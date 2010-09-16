@@ -6405,17 +6405,21 @@ StartupXLOG(void)
 				int tablespaceCount;
 				int filespaceCount;
 			
-				mmxlog_get_checkpoint_counts(
+				if (mmxlog_get_checkpoint_counts(
 										masterMirroringCheckpoint,
+										masterMirroringCheckpointLen,
+										record->xl_len,
 										&checkPointLoc,
+										/* errlevel */ COMMERROR,	// Suppress elog.
 										&tablespaceCount,
-										&filespaceCount);
-										
-				elog(PersistentRecovery_DebugPrintLevel(), 
-					 "StartupXLOG: master mirroring information: %d tablespaces, %d filespaces, location %s",
-					 tablespaceCount,
-					 filespaceCount,
-					 XLogLocationToString(&checkPointLoc));
+										&filespaceCount))
+				{
+					elog(PersistentRecovery_DebugPrintLevel(), 
+						 "StartupXLOG: master mirroring information: %d tablespaces, %d filespaces, location %s",
+						 tablespaceCount,
+						 filespaceCount,
+						 XLogLocationToString(&checkPointLoc));
+				}
 			}
 		}
 
@@ -7267,7 +7271,7 @@ XLogPopulateMasterMirroring(
 
 	if (masterMirroringCheckpoint != NULL)
 	{
-		mmxlog_read_checkpoint_data(masterMirroringCheckpoint, redoCheckPointLoc);
+		mmxlog_read_checkpoint_data(masterMirroringCheckpoint, masterMirroringCheckpointLen, record->xl_len, redoCheckPointLoc);
 	}
 
 	CloseReadRecord();
@@ -7887,7 +7891,12 @@ UnpackCheckPointRecord(
 			*masterMirroringCheckpoint = ((char*)*dtxCheckpoint) + *dtxCheckpointLen;
 			*masterMirroringCheckpointLen = remainderLen;
 
-			// UNDONE: Validate the Master Mirroring length.
+			mmxlog_verify_checkpoint_info(
+									*masterMirroringCheckpoint,
+									*masterMirroringCheckpointLen,
+									record->xl_len,
+									location,
+									PANIC);
 		}
 	}
 }
@@ -8607,17 +8616,21 @@ xlog_redo_print_extended_checkpoint_info(XLogRecPtr beginLoc, XLogRecord *record
 			int tablespaceCount;
 			int filespaceCount;
 
-			mmxlog_get_checkpoint_counts(
+			if (!mmxlog_get_checkpoint_counts(
 									masterMirroringCheckpoint,
+									masterMirroringCheckpointLen,
+									record->xl_len,
 									&beginLoc,
+									/* errlevel */ COMMERROR,	// Suppress elog.
 									&tablespaceCount,
-									&filespaceCount);
-									
-			elog(PersistentRecovery_DebugPrintLevel(), 
-				 "xlog_redo_print_extended_checkpoint_info: master mirroring information: %d tablespaces, %d filespaces, location %s",
-				 tablespaceCount,
-				 filespaceCount,
-				 XLogLocationToString(&beginLoc));
+									&filespaceCount))
+			{
+				elog(PersistentRecovery_DebugPrintLevel(), 
+					 "xlog_redo_print_extended_checkpoint_info: master mirroring information: %d filespaces, %d tablespaces, location %s",
+					 filespaceCount,
+					 tablespaceCount,
+					 XLogLocationToString(&beginLoc));
+			}
 		}
 	}
 }
@@ -8676,7 +8689,8 @@ xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribut
 		}
 
 		RecoveryRestartPoint(&checkPoint);
-		
+
+		// Could run into old format checkpoint redo records...
 		if (Debug_persistent_recovery_print)
 		{
 			xlog_redo_print_extended_checkpoint_info(beginLoc, record);
@@ -8711,6 +8725,7 @@ xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribut
 
 		RecoveryRestartPoint(&checkPoint);
 		
+		// Could run into old format checkpoint redo records...
 		if (Debug_persistent_recovery_print)
 		{
 			xlog_redo_print_extended_checkpoint_info(beginLoc, record);
@@ -8775,16 +8790,20 @@ xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 				int tablespaceCount;
 				int filespaceCount;
 			
-				mmxlog_get_checkpoint_counts(
+				if (mmxlog_get_checkpoint_counts(
 										masterMirroringCheckpoint,
+										masterMirroringCheckpointLen,
+										record->xl_len,
 										&beginLoc,
+										/* errlevel */ COMMERROR,	// Suppress elog.
 										&tablespaceCount,
-										&filespaceCount);
-										
-				appendStringInfo(buf,
-					 ", master mirroring information: %d tablespaces, %d filespaces",
-					 tablespaceCount,
-					 filespaceCount);
+										&filespaceCount))
+				{
+					appendStringInfo(buf,
+						 ", master mirroring information: %d filespaces, %d tablespaces",
+						 filespaceCount,
+						 tablespaceCount);
+				}
 			}
 		}
 	}

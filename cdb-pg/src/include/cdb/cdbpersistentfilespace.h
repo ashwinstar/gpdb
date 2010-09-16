@@ -212,12 +212,7 @@ extern void PersistentFilespace_RemoveSegment(int16 dbid, bool ismirror);
 extern void PersistentFilespace_ActivateStandby(int16 oldmaster,
 												int16 newmaster);
 #ifdef MASTER_MIRROR_SYNC
-extern void
-agg_filespace_data(void *s,
-				   void (*fn)(void *s, Oid filespace,
-							  int16 dbid1, char *path1,
-							  int16 dbid2, char *path2,
-							  char *caller),
-						char *caller);
+extern void get_filespace_data(fspc_agg_state **fas, char *caller);
 #endif
+
 #endif   /* CDBPERSISTENTFILEESPACE_H */

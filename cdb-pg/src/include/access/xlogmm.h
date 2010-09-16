@@ -54,6 +54,54 @@ typedef struct xl_mm_fs_obj
 	char mirror_path[MAXPGPATH];
 } xl_mm_fs_obj;
 
+/*
+ * XLOG format.
+ */
+
+typedef struct fspc_map
+{
+	Oid filespaceoid;
+	int16 dbid1;
+	int16 dbid2;
+	char path1[MAXPGPATH];
+	char path2[MAXPGPATH];
+} fspc_map;
+
+typedef struct tspc_map
+{
+	Oid tablespaceoid;
+	Oid filespaceoid;
+} tspc_map;
+
+/*
+ * Container of filespaces/tablespaces used to accumulate mappings
+ */
+typedef struct fspc_agg_state
+{
+	union
+	{
+		int count;
+		int64 dummy;
+	};
+	fspc_map maps[0]; /* variable length */
+} fspc_agg_state;
+
+#define FSPC_CHECKPOINT_BYTES(count) \
+    (SIZEOF_VARSTRUCT(count, fspc_agg_state, maps))
+
+typedef struct tspc_agg_state
+{
+	union
+	{
+		int count;
+		int64 dummy;
+	};
+	tspc_map maps[0]; /* variable length */
+} tspc_agg_state;
+
+#define TSPC_CHECKPOINT_BYTES(count) \
+    (SIZEOF_VARSTRUCT(count, tspc_agg_state, maps))
+
 extern void mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
 extern void mmxlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record);
 
@@ -77,8 +125,7 @@ extern void mmxlog_log_create_database(Oid tablespace, Oid database);
 extern void mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 										  Oid relfilenode, uint32 segnum);
 extern void mmxlog_append_checkpoint_data(XLogRecData rdata[4]);
-extern void mmxlog_get_checkpoint_counts(char *cpdata, XLogRecPtr *beginLoc, int *tablespaceCount, int *filespaceCount);
-extern void mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc);
+extern void mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc);
 extern bool mmxlog_filespace_get_path(
 	Oid fspcoid,
 
@@ -87,4 +134,26 @@ extern bool mmxlog_tablespace_get_filespace(
 	Oid tspcoid,
 
 	Oid *filespaceOid);
+
+extern void mmxlog_add_filespace_init(
+	fspc_agg_state **fas, int *maxCount);
+extern void mmxlog_add_filespace(
+	fspc_agg_state **fas, int *maxCount,
+	Oid filespace, 
+	int16 dbid1, char *path1,
+	int16 dbid2, char *path2, 
+	char *caller);
+
+extern void mmxlog_add_tablespace_init(
+		tspc_agg_state **tas, int *maxCount);
+extern void mmxlog_add_tablespace( 
+		tspc_agg_state **tas, int *maxCount,
+		Oid filespace, Oid tablespace, char *caller);
+
+extern bool mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel,
+		fspc_agg_state **f,
+		tspc_agg_state **t);
+extern bool mmxlog_verify_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel);
+extern bool mmxlog_get_checkpoint_counts(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel, int *tablespaceCount, int *filespaceCount);
+
 #endif /* MMXLOG_H */

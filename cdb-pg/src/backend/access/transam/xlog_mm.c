@@ -33,52 +33,12 @@
 #include "cdb/cdbpersistentrecovery.h"
 #include "cdb/cdbpersistentfilesysobj.h"
 
-typedef struct fspc_map
-{
-	Oid filespaceoid;
-	int16 dbid1;
-	int16 dbid2;
-	char path1[MAXPGPATH];
-	char path2[MAXPGPATH];
-} fspc_map;
-
-typedef struct tspc_map
-{
-	Oid tablespaceoid;
-	Oid filespaceoid;
-} tspc_map;
-
-/*
- * Container of filespaces/tablespaces used to accumulate mappings
- */
-typedef struct fspc_agg_state
-{
-	union
-	{
-		int pos;
-		int64 dummy;
-	};
-	fspc_map maps[0]; /* variable length */
-} fspc_agg_state;
-
-typedef struct tspc_agg_state
-{
-	union
-	{
-		int pos;
-		int64 dummy;
-	};
-	tspc_map maps[0]; /* variable length */
-} tspc_agg_state;
-
 static void tblspc_get_filespace_paths(Oid tblspc, int16 master_dbid, 
 									   int16 mirror_dbid,
 									   char **master_path, char **mirror_path);
 static void get_filespace_paths(Oid filespace, char **master_path, char **mirror_path);
 static void add_filespace_map_entry(fspc_map *m, XLogRecPtr *beginLoc, char *caller);
 static void add_tablespace_map_entry(tspc_map *m, XLogRecPtr *beginLoc, char *caller);
-static int mmxlog_get_filespace_count(fspc_map *fmap, int limit);
-static int mmxlog_get_tablespace_count(tspc_map *tmap, int limit);
 
 /*
  * Remember filespace and tablespace mappings, used so that we know
@@ -1084,22 +1044,54 @@ mmxlog_tablespace_get_filespace(
 	return true;
 }
 
-static void
-agg_fspc(void *s, Oid filespace, int16 dbid1, char *path1,
-		 int16 dbid2, char *path2, char *caller)
+void
+mmxlog_add_filespace_init(
+	fspc_agg_state **fas, int *maxCount)
 {
-	fspc_agg_state *fas = (fspc_agg_state *)s;
-	int pos;
+	int len;
+
+	Assert (*fas == NULL);
+	
+	*maxCount = 10;		// Start off with at least this much room.
+	len = FSPC_CHECKPOINT_BYTES(*maxCount);
+	*fas = (fspc_agg_state*)palloc0(len);
+}
+
+void
+mmxlog_add_filespace(
+	fspc_agg_state **fas, int *maxCount,
+	Oid filespace, 
+	int16 dbid1, char *path1,
+	int16 dbid2, char *path2, 
+	char *caller)
+{
+	int len;
+	int count;
 	fspc_map *m;
 
 	char *filespaceLocation1;
 	char *filespaceLocation2;
 
-	pos = fas->pos;
+	Assert(*fas != NULL);
+	Assert(*maxCount > 0);
 
-	Insist(pos < gp_max_filespaces);
+	count = (*fas)->count;
+	Assert(count <= *maxCount);
 
-	m = &fas->maps[pos];
+	if (count == *maxCount)
+	{
+		fspc_agg_state *oldFas;
+
+		oldFas = *fas;
+		
+		(*maxCount) *= 2;		// Double.
+		len = FSPC_CHECKPOINT_BYTES(*maxCount);
+		*fas = (fspc_agg_state*)palloc0(len);
+		memcpy(*fas, oldFas, FSPC_CHECKPOINT_BYTES(count));
+		pfree(oldFas);
+	}
+
+	m = &(*fas)->maps[count];
 	m->filespaceoid = filespace;
 
 	m->dbid1 = dbid1;
@@ -1151,8 +1143,8 @@ agg_fspc(void *s, Oid filespace, int16 dbid1, char *path1,
 		SUPPRESS_ERRCONTEXT_PUSH();
 
 		elog(PersistentRecovery_DebugPrintLevel(), 
-			 "agg_fspc[%d]: add filespace %u (dbid1 %d, path1 \"%s\", dbid2 %d, path2 \"%s\", caller '%s')",
-			 pos,
+			 "add_filespace[%d]: add filespace %u (dbid1 %d, path1 \"%s\", dbid2 %d, path2 \"%s\", caller '%s')",
+			 count,
 			 filespace,
 			 dbid1,
 			 m->path1,
@@ -1163,19 +1155,51 @@ agg_fspc(void *s, Oid filespace, int16 dbid1, char *path1,
 		SUPPRESS_ERRCONTEXT_POP();
 	}
 
-	fas->pos++;
+	(*fas)->count++;
 }
 
-static void
-agg_tspc(void *s, Oid filespace, Oid tablespace, char *caller)
+void
+mmxlog_add_tablespace_init(
+	tspc_agg_state **tas, int *maxCount)
 {
-	tspc_agg_state *tas = (tspc_agg_state *)s;
-	int pos;
+	int len;
+
+	Assert (*tas == NULL);
+	
+	*maxCount = 10;		// Start off with at least this much room.
+	len = TSPC_CHECKPOINT_BYTES(*maxCount);
+	*tas = (tspc_agg_state*)palloc0(len);
+}
+
+void
+mmxlog_add_tablespace( 
+	tspc_agg_state **tas, int *maxCount,
+	Oid filespace, Oid tablespace, char *caller)
+{
+	int len;
+	int count;
 	tspc_map *m;
 
-	pos = tas->pos;
+	Assert(*tas != NULL);
+	Assert(*maxCount > 0);
 
-	m = &tas->maps[pos];
+	count = (*tas)->count;
+	Assert(count <= *maxCount);
+
+	if (count == *maxCount)
+	{
+		tspc_agg_state *oldTas;
+
+		oldTas = *tas;
+		
+		(*maxCount) *= 2;		// Double.
+		len = TSPC_CHECKPOINT_BYTES(*maxCount);
+		*tas = (tspc_agg_state*)palloc0(len);
+		memcpy(*tas, oldTas, TSPC_CHECKPOINT_BYTES(count));
+		pfree(oldTas);
+	}
+
+	m = &(*tas)->maps[count];
 	m->filespaceoid = filespace;
 	m->tablespaceoid = tablespace;
 	
@@ -1186,8 +1210,8 @@ agg_tspc(void *s, Oid filespace, Oid tablespace, char *caller)
 		SUPPRESS_ERRCONTEXT_PUSH();
 
 		elog(PersistentRecovery_DebugPrintLevel(), 
-			 "agg_fspc[%d]: add tablespace %u (filespace %u, caller '%s')",
-			 pos,
+			 "add_tablespace[%d]: add tablespace %u (filespace %u, caller '%s')",
+			 count,
 			 tablespace,
 			 filespace,
 			 caller);
@@ -1195,7 +1219,7 @@ agg_tspc(void *s, Oid filespace, Oid tablespace, char *caller)
 		SUPPRESS_ERRCONTEXT_POP();
 	}
 
-	tas->pos++;
+	(*tas)->count++;
 }
 
 /*
@@ -1209,8 +1233,6 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 {
 	fspc_agg_state *f;
 	tspc_agg_state *t;
-	Size sz_f;
-	Size sz_t;
 
 	/* 
 	 * We must make sure no one traverses the rdata chain into uninitialised
@@ -1254,22 +1276,18 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 		return;
 	}
 
-	sz_f = sizeof(fspc_agg_state) + (sizeof(fspc_map) * gp_max_filespaces);
-	sz_t = sizeof(tspc_agg_state) + (sizeof(tspc_map) * gp_max_tablespaces);
-	f = palloc0(sz_f);
-	t = palloc0(sz_t);
+	f = NULL;
+	get_filespace_data(&f, "mmxlog_append_checkpoint_data");
+	
+	t = NULL;
+	get_tablespace_data(&t, "mmxlog_append_checkpoint_data");
 
-	agg_filespace_data((void *)f, agg_fspc, "mmxlog_append_checkpoint_data");
-	Assert(f->pos == mmxlog_get_filespace_count(f->maps, gp_max_filespaces));
-	agg_tablespace_data((void  *)t, agg_tspc, "mmxlog_append_checkpoint_data");
-	Assert(t->pos == mmxlog_get_tablespace_count(t->maps, gp_max_tablespaces));
-
-	rdata[2].data = (void *)f->maps;
+	rdata[2].data = (char*)f;
 	rdata[2].buffer = InvalidBuffer;
-	rdata[2].len = sz_f - sizeof(fspc_agg_state);
-	rdata[3].data = (void *)t->maps;
+	rdata[2].len = FSPC_CHECKPOINT_BYTES(f->count);
+	rdata[3].data = (char*)t;
 	rdata[3].buffer = InvalidBuffer;
-	rdata[3].len = sz_t - sizeof(tspc_agg_state);
+	rdata[3].len = TSPC_CHECKPOINT_BYTES(t->count);
 
 	rdata[1].next = &(rdata[2]);
 	rdata[2].next = &(rdata[3]);
@@ -1281,66 +1299,108 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 		SUPPRESS_ERRCONTEXT_PUSH();
 	
 		elog(PersistentRecovery_DebugPrintLevel(), 
-			 "mmxlog_append_checkpoint_data: %d tablespaces and %d filespaces checkpoint information",
-			 t->pos,
-			 f->pos);
+			 "mmxlog_append_checkpoint_data: %d filespaces and %d tablespaces checkpoint information",
+			 f->count,
+			 t->count);
 	
 		SUPPRESS_ERRCONTEXT_POP();
 	}
 }
 
-static int
-mmxlog_get_filespace_count(fspc_map *fmap, int limit)
+bool
+mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel,
+	fspc_agg_state **f,
+	tspc_agg_state **t)
 {
-	int i;
-	
-	for (i = 0; i < limit; i++)
-	{
-		fspc_map *m = &(fmap[i]);
+	int remainderLen;
+	int filespaceInfoLen;
+	int tablespaceInfoLen;
 
-		if (m->filespaceoid == InvalidOid)
-			break;
+	remainderLen = masterMirroringLen;
+	if (remainderLen < FSPC_CHECKPOINT_BYTES(0))
+	{
+		if (errlevel != COMMERROR)
+			ereport(errlevel,
+				 (errmsg("Bad checkpoint record length %u (Master mirroring filespace information header: expected at least length %u, actual length %u) at location %s",
+						 checkpointLen,
+						 (uint32)FSPC_CHECKPOINT_BYTES(0),
+						 remainderLen,
+						 XLogLocationToString(beginLoc))));
+		return false;
 	}
-	return i;
+	*f = (fspc_agg_state*)cpdata;
+	filespaceInfoLen = FSPC_CHECKPOINT_BYTES((*f)->count);
+	if (remainderLen < filespaceInfoLen)
+	{
+		if (errlevel != COMMERROR)
+			ereport(errlevel,
+				 (errmsg("Bad checkpoint record length %u (Master mirroring filesapce information: expected at least length %u, actual length %u) at location %s",
+						 checkpointLen,
+						 filespaceInfoLen,
+						 remainderLen,
+						 XLogLocationToString(beginLoc))));
+		return false;
+	}
+
+	remainderLen -= filespaceInfoLen;
+	if (remainderLen < TSPC_CHECKPOINT_BYTES(0))
+	{
+		if (errlevel != COMMERROR)
+			ereport(errlevel,
+				 (errmsg("Bad checkpoint record length %u (Master mirroring tablespace information header: expected at least length %u, actual length %u) at location %s",
+						 checkpointLen,
+						 (uint32)TSPC_CHECKPOINT_BYTES(0),
+						 remainderLen,
+						 XLogLocationToString(beginLoc))));
+		return false;
+	}
+	*t = (tspc_agg_state*) (cpdata + filespaceInfoLen);
+	tablespaceInfoLen = TSPC_CHECKPOINT_BYTES((*t)->count);
+	if (remainderLen != tablespaceInfoLen)
+	{
+		if (errlevel != COMMERROR)
+			ereport(errlevel,
+				 (errmsg("Bad checkpoint record length %u (Master mirroring tablesapce information: expected length %u, actual length %u) at location %s",
+						 checkpointLen,
+						 tablespaceInfoLen,
+						 remainderLen,
+						 XLogLocationToString(beginLoc))));
+		return false;
+	}
+	return true;
 }
 
-static int
-mmxlog_get_tablespace_count(tspc_map *tmap, int limit)
+bool
+mmxlog_verify_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel)
 {
-	int i;
-	
-	for (i = 0; i < limit; i++)
-	{
-		tspc_map *m = &(tmap[i]);
+	fspc_agg_state *f;
+	tspc_agg_state *t;
 
-		if (m->tablespaceoid == InvalidOid)
-			break;
-	}
-	return i;
+	return mmxlog_get_checkpoint_info(cpdata, masterMirroringLen, checkpointLen, beginLoc, errlevel, &f, &t);
 }
 
 /* 
  * If we're on the master standby, we expect to receive filespace and tablespace
  * meta data from a checkpoint.
  */
-void
-mmxlog_get_checkpoint_counts(char *cpdata, XLogRecPtr *beginLoc, int *tablespaceCount, int *filespaceCount)
+bool
+mmxlog_get_checkpoint_counts(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel, int *tablespaceCount, int *filespaceCount)
 {
-	fspc_map *fmap = NULL;
-	tspc_map *tmap = NULL;
+	fspc_agg_state *f;
+	tspc_agg_state *t;
 
 	*tablespaceCount = 0;
 	*filespaceCount = 0;
 
-	if (!cpdata)
-		return;
+	Assert(cpdata != NULL);
 
- 	fmap = (fspc_map *)cpdata;
-	tmap = (tspc_map *)(cpdata + (sizeof(fspc_map) * gp_max_filespaces));
+	if (!mmxlog_get_checkpoint_info(cpdata, masterMirroringLen, checkpointLen, beginLoc, errlevel, &f, &t))
+		return false;
 
-	*filespaceCount = mmxlog_get_filespace_count(fmap, gp_max_filespaces);
+	*filespaceCount = f->count;
 
-	*tablespaceCount = mmxlog_get_tablespace_count(tmap, gp_max_tablespaces);
+	*tablespaceCount = t->count;
+	return true;
 }
 
 /* 
@@ -1348,36 +1408,35 @@ mmxlog_get_checkpoint_counts(char *cpdata, XLogRecPtr *beginLoc, int *tablespace
  * meta data from a checkpoint.
  */
 void
-mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc)
+mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc)
 {
-	fspc_map *fmap = NULL;
-	tspc_map *tmap = NULL;
-	int n;
-	int i;
-	int filespaceCount;
-	int tablespaceCount;
+	fspc_agg_state *f;
+	tspc_agg_state *t;
 
-	if (!cpdata)
-		return;
+	fspc_map *fmap;
+	tspc_map *tmap;
+	
+	int i;
+
+	Assert(cpdata != NULL);
 
 	if (!GPStandby())
 		return;
- 	fmap = (fspc_map *)cpdata;
-	tmap = (tspc_map *)(cpdata + (sizeof(fspc_map) * gp_max_filespaces));
+
+	mmxlog_get_checkpoint_info(cpdata, masterMirroringLen, checkpointLen, beginLoc, PANIC, &f, &t);
 
 	/*
 	 * Push the data down into the hash tables. We calculate the array length
 	 * from the byte length of the array. We need to do filespaces first as
 	 * they are the root of the space hierarchy.
 	 */
-	n = gp_max_filespaces;
-
-	for (i = 0; i < n; i++)
+	fmap = &(f->maps[0]);
+	for (i = 0; i < f->count; i++)
 	{
 		fspc_map *m = &(fmap[i]);
 
 		if (m->filespaceoid == InvalidOid)
-			break;
+			elog(ERROR, "bad filespace checkpoint information for entry %d", i);
 
 		add_filespace_map_entry(m, beginLoc, "mmxlog_read_checkpoint_data");
 		
@@ -1411,17 +1470,16 @@ mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc)
 			}
 		}
 	}
-	filespaceCount = i;
 
-	n = gp_max_tablespaces;
-	for (i = 0; i < n; i++)
+	tmap = &(t->maps[0]);
+	for (i = 0; i < t->count; i++)
 	{
 		char path[MAXPGPATH];
 		char *tmp;
 		tspc_map *m = &(tmap[i]);
 
 		if (m->tablespaceoid == InvalidOid)
-			break;
+			elog(ERROR, "bad tableespace checkpoint information for entry %d", i);
 
 		add_tablespace_map_entry(m, beginLoc, "mmxlog_read_checkpoint_data");
 
@@ -1466,14 +1524,13 @@ mmxlog_read_checkpoint_data(char *cpdata, XLogRecPtr *beginLoc)
 
 		pfree(tmp);
 	}
-	tablespaceCount = i;
 
 	if (Debug_persistent_recovery_print)
 	{
 		elog(PersistentRecovery_DebugPrintLevel(), 
 			 "mmxlog_read_checkpoint_data: %d filespaces, %d tablespaces (beginLoc %s)",
-			 filespaceCount,
-			 tablespaceCount,
+			 f->count,
+			 t->count,
 			 XLogLocationToString(beginLoc));
 	}
 }
