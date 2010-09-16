@@ -1410,8 +1410,8 @@ mmxlog_get_checkpoint_counts(char *cpdata, int masterMirroringLen, int checkpoin
 void
 mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc)
 {
-	fspc_agg_state *f;
-	tspc_agg_state *t;
+	fspc_agg_state *f = NULL;
+	tspc_agg_state *t = NULL;
 
 	fspc_map *fmap;
 	tspc_map *tmap;
