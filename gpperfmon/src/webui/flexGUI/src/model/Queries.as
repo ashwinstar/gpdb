@@ -363,20 +363,11 @@ package model
 				{
 					queryPlanRealtime = false;
 					
-					// Is the query long enough to possibly have a plan?
-					//  -- use a 10 second threshold
-					if (query.time_run < 10.0)
-					{
-						queryPlanCurrent = XML("<queryplan/>");
-					}
-					else
-					{
-						// Issue a single request to get the data					
-						var queryPlanCommand:QueryPlanCommand = new QueryPlanCommand();
-						queryPlanCommand.setParameters(queryPlanID, false,
-												query.tsubmit, query.sample_time);
-						queryPlanCommand.execute();
-					} 
+					// Issue a single request to get the data					
+					var queryPlanCommand:QueryPlanCommand = new QueryPlanCommand();
+					queryPlanCommand.setParameters(queryPlanID, false,
+											query.tsubmit, query.sample_time);
+					queryPlanCommand.execute();
 				} 
 			}
 		}		
