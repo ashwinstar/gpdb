@@ -99,7 +99,6 @@ struct snmp_module_params_t
 {
 	char configfile[PATH_MAX];
 	char outdir[PATH_MAX];;
-	const char* standby_master;
 	int emcconnect_enabled;
 };
 

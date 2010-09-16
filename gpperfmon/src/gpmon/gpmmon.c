@@ -609,7 +609,6 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 
 	snprintf(snmp_module_params.configfile, PATH_MAX, "%s/gpperfmon/conf/snmp.conf", ax.master_data_directory);
 	snprintf(snmp_module_params.outdir, PATH_MAX, "%s/gpperfmon/data/snmp", ax.master_data_directory);
-	snmp_module_params.standby_master = ax.standby_master_hostname;
 	snmp_module_params.emcconnect_enabled = opt.emcconnect;
 
 	if (gpmmon_init_snmp(&snmp_module_params) != APR_SUCCESS)
@@ -1411,6 +1410,15 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 		}
 		host->hostname = hosts[i];
 		host->data_dir = data_dirs[i];
+
+		// check if the host is the standby master and mark it as a master host
+		if (ax.standby_master_hostname && ax.standby_master_hostname[0])
+		{
+			if (strcmp(host->hostname, ax.standby_master_hostname) == 0)
+			{
+				host->is_master = 1;
+			}
+		}
 
 		TR2(("segment identified: hostname %s datadir %s master %d\n", host->hostname, host->data_dir, host->is_master));
 	}

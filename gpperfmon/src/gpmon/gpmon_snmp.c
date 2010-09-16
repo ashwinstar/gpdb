@@ -1513,10 +1513,6 @@ void snmp_report(host_t* tab, int tabsz)
 		}
 	}
 
-	// do reporting on standby master host
-	if (si.params->standby_master)
-		run_snmp_report_for_dell_host("Master Server", si.params->standby_master);
-
 	snmp_close_hostlist_file();
 
 	snmp_done_report();
