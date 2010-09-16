@@ -36,6 +36,7 @@
 #include "utils/fmgroids.h"
 #include "access/aocssegfiles.h"
 #include "access/aosegfiles.h"
+#include "access/appendonlywriter.h"
 #include "cdb/cdbaocsam.h"
 #include "executor/executor.h"
 
@@ -358,20 +359,9 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(
 
 	Assert(aoEntry != NULL);
 
-    scan = heap_beginscan(pg_aocsseg_rel, snapshot, 0, NULL);
-
     *totalseg = 0;
-    while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
-        ++(*totalseg);
 
-    heap_endscan(scan);
-
-    if(*totalseg == 0)
-    {
-        return NULL;
-    }
-
-    allseg = (AOCSFileSegInfo **) palloc0(sizeof(AOCSFileSegInfo*) * (*totalseg));
+    allseg = (AOCSFileSegInfo **) palloc0(sizeof(AOCSFileSegInfo*) * MAX_AOREL_CONCURRENCY);
     d = (Datum *) palloc(sizeof(Datum) * Natts_pg_aocsseg);
     null = (bool *) palloc(sizeof(bool) * Natts_pg_aocsseg);
 
@@ -382,7 +372,6 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(
     {
         seginfo = (AOCSFileSegInfo *) palloc0(aocsfileseginfo_size(nvp));
 
-        Assert(cur_seg < *totalseg);
         allseg[cur_seg] = seginfo;
 
         heap_deform_tuple(tup, pg_aocsseg_rel->rd_att, d, null);
@@ -421,6 +410,15 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(
 
     heap_endscan(scan);
 
+	*totalseg = cur_seg;
+
+	if (*totalseg == 0)
+	{
+		pfree(allseg);
+		
+		return NULL;
+	}
+	
 	/*
 	 * Sort allseg by the order of segment file number.
 	 *
@@ -429,7 +427,7 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(
 	 * the array for all cases.
 	 */
 	qsort((char *)allseg, *totalseg, sizeof(AOCSFileSegInfo *), aocsFileSegInfoCmp);
-	
+
     return allseg;
 }
 
@@ -451,7 +449,7 @@ int64 GetAOCSTotalBytes(Relation parentrel)
 	Assert(aoEntry != NULL);
 
 	result = 0;
-	allseg = GetAllAOCSFileSegInfo(parentrel, aoEntry, SnapshotNow, &totalseg);
+	allseg = GetAllAOCSFileSegInfo(parentrel, aoEntry, GetTransactionSnapshot(), &totalseg);
 	for (s = 0; s < totalseg; s++)
 	{
 		int32 nEntry;
