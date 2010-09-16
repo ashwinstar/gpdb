@@ -667,6 +667,11 @@ def quote_unident(val):
 
 
 def notice_processor(self):
+    if windowsPlatform == True:
+       # We don't have a pygresql with our notice fix, so skip for windows.
+       # This means we will not get any warnings on windows (MPP10989).
+       return
+
     theNotices = self.db.notices()
     r = re.compile("^NOTICE:  Found (\d) data formatting errors.*")
     messageNumber = 0
