@@ -111,11 +111,11 @@ OPTIONS
  Restart after shutdown is complete.
 
 
--u (reload master pg_hba.conf and postgresql.conf only)
+-u (reload pg_hba.conf and postgresql.conf files only)
 
- This option tells the master instance to reload the 
- pg_hba.conf file and the runtime parameters of the postgresql.conf 
- file but does not shutdown the Greenplum Database array. Use this 
+ This option reloads the pg_hba.conf files of the master and 
+ segments and the runtime parameters of the postgresql.conf files 
+ but does not shutdown the Greenplum Database array. Use this 
  option to make new configuration settings active after editing 
  postgresql.conf or pg_hba.conf. Note that this only applies to 
  configuration parameters that are designated as runtime parameters.
@@ -166,7 +166,7 @@ Stop a master instance that was started in maintenance mode:
   gpstop -m
 
 
-Reload the master postgresql.conf file and pg_hba.conf after 
+Reload the postgresql.conf and pg_hba.conf files after 
 making runtime configuration parameter changes but do not 
 shutdown the Greenplum Database array:
 
