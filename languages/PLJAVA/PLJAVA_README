@@ -107,7 +107,7 @@ ENABLE PL/JAVA IN GREENPLUM
    master postgresql.conf file. Note that this parameter must list all 
    of your Java archive files separated by a colon (:).
 
-    $ gpconfig -c pljava_classpath -v 'examples.jar:myclasses.jar' --masteronly
+    $ gpconfig -c pljava_classpath -v \'examples.jar:myclasses.jar\' --masteronly
 
 3. Reload the configuration changes:
 
