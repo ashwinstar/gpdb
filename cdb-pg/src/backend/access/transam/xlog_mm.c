@@ -1319,7 +1319,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	remainderLen = masterMirroringLen;
 	if (remainderLen < FSPC_CHECKPOINT_BYTES(0))
 	{
-		if (errlevel != COMMERROR)
+		if (errlevel != -1)
 			ereport(errlevel,
 				 (errmsg("Bad checkpoint record length %u (Master mirroring filespace information header: expected at least length %u, actual length %u) at location %s",
 						 checkpointLen,
@@ -1332,7 +1332,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	filespaceInfoLen = FSPC_CHECKPOINT_BYTES((*f)->count);
 	if (remainderLen < filespaceInfoLen)
 	{
-		if (errlevel != COMMERROR)
+		if (errlevel != -1)
 			ereport(errlevel,
 				 (errmsg("Bad checkpoint record length %u (Master mirroring filesapce information: expected at least length %u, actual length %u) at location %s",
 						 checkpointLen,
@@ -1345,7 +1345,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	remainderLen -= filespaceInfoLen;
 	if (remainderLen < TSPC_CHECKPOINT_BYTES(0))
 	{
-		if (errlevel != COMMERROR)
+		if (errlevel != -1)
 			ereport(errlevel,
 				 (errmsg("Bad checkpoint record length %u (Master mirroring tablespace information header: expected at least length %u, actual length %u) at location %s",
 						 checkpointLen,
@@ -1358,7 +1358,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	tablespaceInfoLen = TSPC_CHECKPOINT_BYTES((*t)->count);
 	if (remainderLen != tablespaceInfoLen)
 	{
-		if (errlevel != COMMERROR)
+		if (errlevel != -1)
 			ereport(errlevel,
 				 (errmsg("Bad checkpoint record length %u (Master mirroring tablesapce information: expected length %u, actual length %u) at location %s",
 						 checkpointLen,

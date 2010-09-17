@@ -619,7 +619,8 @@ static void UnpackCheckPointRecord(
 	TMGXACT_CHECKPOINT	**dtxCheckpoint,
 	uint32				*dtxCheckpointLen,
 	char				**masterMirroringCheckpoint,
-	uint32				*masterMirroringCheckpointLen);
+	uint32				*masterMirroringCheckpointLen,
+	int					errlevelMasterMirroring);
 
 static List *readTimeLineHistory(TimeLineID targetTLI);
 static bool existsTimeLineHistory(TimeLineID probeTLI);
@@ -6374,7 +6375,8 @@ StartupXLOG(void)
 							&dtxCheckpoint,
 							&dtxCheckpointLen,
 							&masterMirroringCheckpoint,
-							&masterMirroringCheckpointLen);
+							&masterMirroringCheckpointLen,
+							/* errlevel */ LOG);		// Suppress PANIC on master mirroring checkpoint length checking.
 
 
 		/*
@@ -7256,7 +7258,8 @@ XLogPopulateMasterMirroring(
 						&dtxCheckpoint,
 						&dtxCheckpointLen,
 						&masterMirroringCheckpoint,
-						&masterMirroringCheckpointLen);
+						&masterMirroringCheckpointLen,
+						PANIC);
 
 	if (Debug_persistent_recovery_print)
 	{
@@ -7854,7 +7857,9 @@ UnpackCheckPointRecord(
 	
 	char				**masterMirroringCheckpoint,
 	
-	uint32				*masterMirroringCheckpointLen)
+	uint32				*masterMirroringCheckpointLen,
+
+	int					errlevelMasterMirroring)
 {
 	*dtxCheckpoint = NULL;
 	*dtxCheckpointLen = 0;
@@ -7891,12 +7896,16 @@ UnpackCheckPointRecord(
 			*masterMirroringCheckpoint = ((char*)*dtxCheckpoint) + *dtxCheckpointLen;
 			*masterMirroringCheckpointLen = remainderLen;
 
-			mmxlog_verify_checkpoint_info(
+			if (!mmxlog_verify_checkpoint_info(
 									*masterMirroringCheckpoint,
 									*masterMirroringCheckpointLen,
 									record->xl_len,
 									location,
-									PANIC);
+									errlevelMasterMirroring))
+			{
+				*masterMirroringCheckpoint = NULL;
+				*masterMirroringCheckpointLen = 0;
+			}
 		}
 	}
 }
@@ -8599,7 +8608,8 @@ xlog_redo_print_extended_checkpoint_info(XLogRecPtr beginLoc, XLogRecord *record
 						&dtxCheckpoint,
 						&dtxCheckpointLen,
 						&masterMirroringCheckpoint,
-						&masterMirroringCheckpointLen);
+						&masterMirroringCheckpointLen,
+						/* errlevel */ -1);		// Suppress elog altogether on master mirroring checkpoint length checking.
 
 	if (dtxCheckpointLen > 0)
 	{
@@ -8621,7 +8631,7 @@ xlog_redo_print_extended_checkpoint_info(XLogRecPtr beginLoc, XLogRecord *record
 									masterMirroringCheckpointLen,
 									record->xl_len,
 									&beginLoc,
-									/* errlevel */ COMMERROR,	// Suppress elog.
+									/* errlevel */ -1,		// Suppress elog altogether on master mirroring checkpoint length checking.
 									&tablespaceCount,
 									&filespaceCount))
 			{
@@ -8774,7 +8784,8 @@ xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 							&dtxCheckpoint,
 							&dtxCheckpointLen,
 							&masterMirroringCheckpoint,
-							&masterMirroringCheckpointLen);
+							&masterMirroringCheckpointLen,
+							/* errlevel */ -1); 	// Suppress elog altogether on master mirroring checkpoint length checking.
 
 		if (dtxCheckpointLen > 0)
 		{
@@ -8795,7 +8806,7 @@ xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 										masterMirroringCheckpointLen,
 										record->xl_len,
 										&beginLoc,
-										/* errlevel */ COMMERROR,	// Suppress elog.
+										/* errlevel */ -1,	// Suppress elog altogether on master mirroring checkpoint length checking.
 										&tablespaceCount,
 										&filespaceCount))
 				{
