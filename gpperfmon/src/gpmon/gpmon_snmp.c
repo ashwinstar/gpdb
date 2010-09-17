@@ -1170,8 +1170,20 @@ int snmp_array_collection(EmcConnectSymptom symptom, const char* oidname, const 
 
 	char display_buffer[SNMP_ARRAY_DISPLAY_LENGTH];
 
+	// initialize the display buffer in case no valid objects are found and we need to print an error using the display_buffer
+	if (!displayname_end)
+	{
+		snprintf(display_buffer, SNMP_ARRAY_DISPLAY_LENGTH, "%s", displayname_begin);
+	}
+	else
+	{
+		snprintf(display_buffer, SNMP_ARRAY_DISPLAY_LENGTH, "%s %s", displayname_begin, displayname_end);
+	}
+
 	read_objid(oidname, originalOID, &originalOID_len);
 	originalOID_comparebytes = originalOID_len * sizeof(oid);
+
+	int array_counter = 0; // how many items were in the array requested.... if 0 then we should should this as an error
 
 	// start with original oid
 	memmove(nextOID, originalOID, originalOID_comparebytes);
@@ -1213,50 +1225,57 @@ int snmp_array_collection(EmcConnectSymptom symptom, const char* oidname, const 
 				format_func(symptom, response->variables->name, response->variables->name_length, display_buffer, response->variables);
 				memmove(nextOID, response->variables->name, response->variables->name_length * sizeof(oid));
 				nextOID_len = response->variables->name_length;
+				array_counter++;
 			}
-		}
-		else if (retVal == APR_ETIMEDOUT)
-		{
-			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
-			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			record_status(EMC_CONNECT_SYMPTOM_HOSTUP, oidstring, display_buffer, GPDB_SNMP_STATUS_UNREACHABLE, "timeout");
-			last_item_in_subtree = 1;
-			gpmon_warningx(FLINE, 0, "timeout trying to access snmp data on host %s for oid %s", si.key.hostname, oidstring);
-		}
-		else if (retVal == APR_NOTFOUND)
-		{
-			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
-			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			record_status(EMC_CONNECT_SYMPTOM_SNMP, oidstring, display_buffer, GPDB_SNMP_STATUS_ERROR, "SNMP configuration issue on host");
-			last_item_in_subtree = 1;
-		}
-		else if (retVal == APR_EPROC_UNKNOWN)
-		{
-			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
-			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			gpmon_warningx(FLINE, 0, "snmp_array_collection got unexpected error looking for OID %s at host %d", oidstring, si.key.hostname);
-			last_item_in_subtree = 1;
-		}
-		else if (retVal == APR_ECONNABORTED)
-		{
-			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
-			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			record_status(EMC_CONNECT_SYMPTOM_HOSTUP, oidstring, display_buffer, GPDB_SNMP_STATUS_UNREACHABLE, "could not open session to host");
-			last_item_in_subtree = 1;
 		}
 		else
 		{
+			// ERROR HANDLING 
+
 			char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
 			snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
-			gpmon_warningx(FLINE, 0, "snmp_array_collection got unknown error looking for OID %s at host %d", oidstring, si.key.hostname);
+
+			if (retVal == APR_ETIMEDOUT)
+			{
+				record_status(EMC_CONNECT_SYMPTOM_HOSTUP, oidstring, display_buffer, GPDB_SNMP_STATUS_UNREACHABLE, "timeout");
+			}
+			else if (retVal == APR_NOTFOUND)
+			{
+				record_status(EMC_CONNECT_SYMPTOM_SNMP, oidstring, display_buffer, GPDB_SNMP_STATUS_ERROR, "SNMP configuration issue on host");
+			}
+			else if (retVal == APR_EPROC_UNKNOWN)
+			{
+				record_status(EMC_CONNECT_SYMPTOM_SNMP, oidstring, display_buffer, GPDB_SNMP_STATUS_ERROR, "Got unexpected error looking for snmp OID");
+			}
+			else if (retVal == APR_ECONNABORTED)
+			{
+				record_status(EMC_CONNECT_SYMPTOM_HOSTUP, oidstring, display_buffer, GPDB_SNMP_STATUS_UNREACHABLE, "could not open session to host");
+			}
+			else
+			{
+				record_status(EMC_CONNECT_SYMPTOM_SNMP, oidstring, display_buffer, GPDB_SNMP_STATUS_ERROR, "Got unknown error looking for snmp OID");
+			}
+
+			array_counter++; // we did not actually find an item, but we already displayed an error so we can increment to avoid printing error 2 x
 			last_item_in_subtree = 1;
 		}
-	
+
 		if (response)
-	    	snmp_free_pdu(response);
+		{
+			snmp_free_pdu(response);
+		}
 
 		if (last_item_in_subtree)
+		{
+			if (array_counter < 1)
+			{
+				char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
+				snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, nextOID, nextOID_len);
+				record_status(EMC_CONNECT_SYMPTOM_SNMP, oidstring, display_buffer, GPDB_SNMP_STATUS_ERROR, "Data not found for expected snmp OID");
+			}
+
 			break;
+		}
 	}
 
 	if (retVal == APR_ETIMEDOUT)
