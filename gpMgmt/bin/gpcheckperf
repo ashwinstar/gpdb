@@ -28,7 +28,7 @@ Usage: gpcheckperf <options>
     -h host    : the host to connect to (multiple -h is okay)
     -f file    : a file listing all hosts to connect to
     --duration : how long to run network test (default 5 seconds)
-    --netserver: use netserver/netperf instead of gpnetbenchServer/gpnetbenchClient
+    --netperf  : use netperf instead of gpnetbenchServer/gpnetbenchClient
 """
 
 import os, sys
@@ -205,7 +205,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:h:f:', ['duration=', 'version', 'netserver'])
+	(options, args) = getopt.getopt(sys.argv[1:], '?vVDd:r:B:S:p:h:f:', ['duration=', 'version', 'netperf'])
     except Exception, e:
 	usage('Error: ' + str(e))
 
@@ -217,7 +217,7 @@ def parseCommandLine():
         elif (switch[1] in 'BS'): GV.opt[switch] = parseMemorySize(val)
         elif (switch == '--duration'): GV.opt[switch] = parseDuration(val)
         elif (switch == '--version'): print_version()
-        elif (switch == '--netserver'): 
+        elif (switch == '--netperf'): 
             GV.opt['--netserver'] = 'netserver'
             GV.opt['--netclient'] = 'netperf'
 
