@@ -554,6 +554,7 @@ AIX_LOADERS_LIBS=libbz2.a libz.a libpq.a liblber*.a libldap*.a
 Darwin_LOADERS_LIBS=libcrypto.*.dylib libssl.*.dylib libpq.*.dylib* libkrb5.*.dylib libcom_err.*.dylib libldap_r-*.dylib libk5crypto.*.dylib libkrb5support.*.dylib liblber-*.dylib
 Linux_LOADERS_LIBS=libcrypto.so* libssl.so.* libz.so* libpq.so* libkrb5.so* libcom_err.so* libk5crypto.so* libkrb5support.so*
 SunOS_LOADERS_LIBS=libcrypto.so* libssl.so.* libgcc_s.so.1 libz.so* libpq.so* libk5crypto.so* libkrb5support.so* liblber*.so* libldap_r-*so* libcom_err.so* libkrb5.so*
+Windows_LOADERS_LIBS=libpq.dll
 define tmpLOADERS_FILESET_LIB
 	$($(BLD_OS)_LOADERS_LIBS)
 endef
@@ -726,6 +727,10 @@ else
 	(cd $(INSTLOC)/bin/ && $(TAR) cf - $(LOADERS_FILESET_BIN)) | (cd $(LOADERSINSTLOC_BIN)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
 	mkdir -p $(LOADERSINSTLOC_BINEXT)
 	(cd $(GPMGMT)/bin/ext/ && $(TAR) cf - $(LOADERS_FILESET_BINEXT)) | (cd $(LOADERSINSTLOC_BINEXT)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
+ifeq "$(findstring win,$(BLD_ARCH))" "win"
+	# ---- copy pygresql from ext/win32 ----
+	(cd $(BLD_THIRDPARTY)/win32 && $(TAR) cf - pygresql) | (cd $(LOADERSINSTLOC_BINEXT)/ && $(TAR) xvpf -)$(check_pipe_for_errors)
+endif
 ifneq "$($(BLD_ARCH)_PYTHON)" ""
 	mkdir -p $(LOADERSINSTLOC_EXT)/python
 	(cd $($(BLD_ARCH)_PYTHON) && $(TAR) cf - $(BLD_PYTHON_FILESET)) | (cd $(LOADERSINSTLOC_EXT)/python/ && $(TAR) xpf -)$(check_pipe_for_errors)
