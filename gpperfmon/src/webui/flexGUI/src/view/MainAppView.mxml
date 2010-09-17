@@ -121,7 +121,6 @@
 	<mx:Canvas width="100%" height="100%">
 		<mx:VBox width="100%" height="100%" verticalGap="8" x="{header.x}" y="{header.y + header.height}">
 			<mx:Canvas width="100%" height="100%" minHeight="100">
-				<!-- This HBox contains DBStatus icon and Label-->
 				<mx:TabNavigator id="mainTab" width="100%" height="100%" styleName="mainTabNavigator" x="0" y="8"
 					 selectedIndex="{mdl.nav.mainPageIndex}"
 					 change="toggleMainTab(event)">
@@ -137,30 +136,31 @@
 		   			 borderThickness="0" borderStyle="solid" cornerRadius="6"
 		   			 styleName="footerText" minWidth="0" 
 		   			 horizontalScrollPolicy="off" verticalScrollPolicy="off">
-				<mx:Label text="{Resources.copyrightShort}"/>
-				<mx:Spacer width="100%"/>
+				<mx:HBox width="50%">
+					<mx:Label text="{Resources.copyrightShort}"/>
+				</mx:HBox>
 				<mx:Label styleName="mainSubTitle"  text="Greenplum Performance Monitor"/>	
-				<mx:Spacer width="100%"/>
-				<mx:Label text="{'Status: ' + mdl.session.connectionStatus}"/>
+				<mx:HBox width="50%">
+				</mx:HBox>
 			</mx:HBox>
 		</mx:VBox>
 		
-		<!-- This is header part of the main view. It is placed here so that it will be added to the view after the TabNavigator. This change is done
-			 to add the DBStatus(Degraded or Potentially Unbalanced) as per the design-->
 		<mx:HBox width="100%" height="46" verticalAlign="middle" paddingLeft="5" paddingRight="2" verticalGap="0"
 		   			 paddingTop="2" paddingBottom="2" x="0" y="0" id="header"
 		   			 backgroundColor="0xFFFFFF" borderColor="0xFFFFFF" dropShadowEnabled="true"
 		   			 borderThickness="0" borderStyle="solid" cornerRadius="6"
 		   			 minWidth="0" 
 		   			 horizontalScrollPolicy="off" verticalScrollPolicy="off">
-			<mx:Image source="{Resources.gp_logo_sml}" scaleContent="false"/>
-			<mx:Spacer width="100%"/>
+		   	<mx:HBox width="50%" horizontalAlign="left">
+				<mx:Image source="{Resources.gp_logo_sml}" scaleContent="false"/>
+		   	</mx:HBox>
 			<mx:Label styleName="mainTitle" text="{mdl.session.databaseName}"/>			
-			<mx:Spacer width="100%"/>
-			<mx:Label text="{'Welcome ' + mdl.session.username}" id="greetingLabel" fontSize="9"/>
-			<mx:LinkButton label="Logout" click="tryLogout()" fontSize="9"/>
-			<mx:LinkButton label="About" click="aboutBox()" fontSize="9"/>
-			<mx:LinkButton label="Help" fontSize="9" click="switchToHelpPage(event)" />
+		   	<mx:HBox width="50%" horizontalAlign="right" verticalAlign="middle">
+				<mx:Label text="{'Welcome ' + mdl.session.username}" id="greetingLabel" fontSize="9"/>
+				<mx:LinkButton label="Logout" click="tryLogout()" fontSize="9"/>
+				<mx:LinkButton label="About" click="aboutBox()" fontSize="9"/>
+				<mx:LinkButton label="Help" fontSize="9" click="switchToHelpPage(event)" />
+		   	</mx:HBox>
 		</mx:HBox>
 	</mx:Canvas>
 	
