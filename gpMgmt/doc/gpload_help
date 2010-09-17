@@ -188,6 +188,7 @@ GPLOAD:
     - DELIMITER: '<delimiter_character>'
     - ESCAPE: '<escape_character>' | 'OFF'
     - NULL_AS: '<null_string>'
+    - FORCE_NOT_NULL: true | false
     - QUOTE: '<csv_quote_character>'
     - HEADER: true | false
     - ENCODING: <database_encoding>
@@ -330,6 +331,11 @@ NULL_AS - Optional. Specifies the string that represents a null value. The
           in TEXT mode for cases where you do not want to distinguish nulls 
           from empty strings. Any source data item that matches this string 
           will be considered a null value.
+
+FORCE_NOT_NULL - Optional. In CSV mode, processes each specified column as 
+                 though it were quoted and hence not a NULL value. For the 
+                 default null string in CSV mode (nothing between two delimiters), 
+                 this causes missing values to be evaluated as zero-length strings.
 
 QUOTE - Required when FORMAT is CSV. Specifies the quotation character 
         for CSV mode. The default is double-quote (").
