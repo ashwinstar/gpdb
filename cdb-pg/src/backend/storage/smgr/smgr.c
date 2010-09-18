@@ -34,6 +34,8 @@
 #include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbpersistentrecovery.h"
+#include "cdb/cdbmirroredappendonly.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "commands/filespace.h"
@@ -199,8 +201,13 @@ typedef struct AppendOnlyMirrorResyncEofs
 	
 	ItemPointerData persistentTid;
 	int64			persistentSerialNum;
+	
+	bool						mirrorCatchupRequired;
 
-	int64		mirrorLossEof;
+	MirrorDataLossTrackingState mirrorDataLossTrackingState;
+
+	int64						mirrorDataLossTrackingSessionNum;
+
 	int64		mirrorNewEof;
 
 } AppendOnlyMirrorResyncEofs;
@@ -252,6 +259,19 @@ static void smgr_internal_unlink(
 	bool						*mirrorDataLossOccurred);
 
 static void
+AppendOnlyMirrorResyncEofs_HashTableInit(void);
+
+static void
+AppendOnlyMirrorResyncEofs_InitKey(
+	AppendOnlyMirrorResyncEofsKey *key,
+
+	RelFileNode		*relFileNode,
+
+	int32			segmentFileNum,
+
+	int				nestLevel);		/* Transaction nesting level. */
+
+static void
 AppendOnlyMirrorResyncEofs_Merge(
 	RelFileNode		*relFileNode,
 
@@ -263,8 +283,13 @@ AppendOnlyMirrorResyncEofs_Merge(
 	
 	ItemPointer 	persistentTid,
 	int64			persistentSerialNum,
+	
+	bool						mirrorCatchupRequired,
 
-	int64			mirrorLossEof,
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
+
+	int64						mirrorDataLossTrackingSessionNum,
+
 	int64			mirrorNewEof);
 
 static void
@@ -1229,8 +1254,12 @@ void smgrappendonlymirrorresynceofs(
 	ItemPointer						persistentTid,
 
 	int64							persistentSerialNum,
+	
+	bool							mirrorCatchupRequired,
 
-	int64							mirrorLossEof,
+	MirrorDataLossTrackingState 	mirrorDataLossTrackingState,
+
+	int64							mirrorDataLossTrackingSessionNum,
 
 	int64							mirrorNewEof)
 {
@@ -1243,13 +1272,80 @@ void smgrappendonlymirrorresynceofs(
 								relationName,
 								persistentTid,
 								persistentSerialNum,
-								mirrorLossEof,
+								mirrorCatchupRequired,
+								mirrorDataLossTrackingState,
+								mirrorDataLossTrackingSessionNum,
 								mirrorNewEof);
 
 	/*
 	 * Indicate we have work to do in AtEOXact_smgr.
 	 */
 	pendingDeletesPerformed = false;
+}
+
+bool
+smgrgetappendonlyinfo(
+	RelFileNode						*relFileNode,
+
+	int32							segmentFileNum,
+
+	char							*relationName,
+
+	bool							*mirrorCatchupRequired,
+
+	MirrorDataLossTrackingState 	*mirrorDataLossTrackingState,
+
+	int64							*mirrorDataLossTrackingSessionNum)
+{
+	int nestLevel;
+
+	*mirrorCatchupRequired = false;
+	*mirrorDataLossTrackingState = (MirrorDataLossTrackingState)-1;
+	*mirrorDataLossTrackingSessionNum = 0;
+	
+	if (AppendOnlyMirrorResyncEofsTable == NULL)
+		AppendOnlyMirrorResyncEofs_HashTableInit();
+	
+	/*
+	 * The hash table is keyed by RelFileNode, segmentFileNum, AND transaction nesting level...
+	 *
+	 * So, we need to search more indirectly by walking down the transaction nesting levels.
+	 */
+	nestLevel = GetCurrentTransactionNestLevel();
+	while (true)
+	{
+		AppendOnlyMirrorResyncEofsKey key;
+		AppendOnlyMirrorResyncEofs *entry;
+		bool found;
+
+		AppendOnlyMirrorResyncEofs_InitKey(
+										&key,
+										relFileNode,
+										segmentFileNum,
+										nestLevel);
+		
+		entry = 
+			(AppendOnlyMirrorResyncEofs*) 
+							hash_search(AppendOnlyMirrorResyncEofsTable,
+										(void *) &key,
+										HASH_FIND,
+										&found);
+		
+		if (found)
+		{
+			Assert(entry != NULL);
+			*mirrorCatchupRequired = entry->mirrorCatchupRequired;
+			*mirrorDataLossTrackingState = entry->mirrorDataLossTrackingState;
+			*mirrorDataLossTrackingSessionNum = entry->mirrorDataLossTrackingSessionNum;
+			return true;
+		}
+
+		if (nestLevel == 0)
+			break;
+		nestLevel--;
+	}
+
+	return false;
 }
 
 /*
@@ -1555,10 +1651,17 @@ AppendOnlyMirrorResyncEofs_Merge(
 	
 	ItemPointer		persistentTid,
 	int64			persistentSerialNum,
+	
+	bool						mirrorCatchupRequired,
 
-	int64			mirrorLossEof,
+	MirrorDataLossTrackingState mirrorDataLossTrackingState,
+
+	int64						mirrorDataLossTrackingSessionNum,
+
 	int64			mirrorNewEof)
 {
+	int64			previousMirrorNewEof = 0;
+
 	AppendOnlyMirrorResyncEofsKey key;
 	AppendOnlyMirrorResyncEofs *entry;
 	bool found;
@@ -1584,49 +1687,35 @@ AppendOnlyMirrorResyncEofs_Merge(
 		entry->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
 		entry->persistentSerialNum = persistentSerialNum;
 		entry->persistentTid = *persistentTid;
-		entry->mirrorLossEof = mirrorLossEof;
+		entry->mirrorCatchupRequired = mirrorCatchupRequired;
+		entry->mirrorDataLossTrackingState = mirrorDataLossTrackingState;
+		entry->mirrorDataLossTrackingSessionNum = mirrorDataLossTrackingSessionNum;
 		entry->mirrorNewEof = mirrorNewEof;
 	}
 	else
 	{
-		if (entry->mirrorLossEof == entry->mirrorNewEof)
-		{
-			/*
-			 * If the 2 EOFs are synchronized, then we use the loss value (which is often equal to new).
-			 */
-			entry->mirrorLossEof = mirrorLossEof;
-		}
-		else
-		{
-			/*
-			 * Old value should be less than or equal.  Keep it.
-			 */
-			if (entry->mirrorLossEof > mirrorLossEof)
-			{
-				elog(ERROR,
-					"Merge Append-Only mirror resync mirror loss EOF current value should be less than or equal : %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", input mirror loss EOF " INT64_FORMAT ", current mirror loss EOF " INT64_FORMAT ", input mirror new EOF " INT64_FORMAT ", current mirror new EOF " INT64_FORMAT ")",
-					entry->key.relFileNode.spcNode,
-					entry->key.relFileNode.dbNode,
-					entry->key.relFileNode.relNode,
-					entry->key.segmentFileNum,
-					(entry->relationName == NULL ? "<null>" : entry->relationName),
-					entry->key.nestLevel,
-					ItemPointerToString(&entry->persistentTid),
-					entry->persistentSerialNum,
-					mirrorLossEof,
-					entry->mirrorLossEof,
-					mirrorNewEof,
-					entry->mirrorNewEof);
-			}
-		}
-		
+		previousMirrorNewEof = entry->mirrorNewEof;
+
+		// UNDONE: What is the purpose of this IF stmt?  Shouldn't we always set the new EOF?
 		if (mirrorNewEof > entry->mirrorNewEof)
 			entry->mirrorNewEof = mirrorNewEof;
+
+		/*
+		 * We adopt the newer FileRep state because we accurately track the state of mirror
+		 * data.  For example, the first write session might have had loss because the mirror
+		 * was down.  But then the second write session discovered we were in sync and 
+		 * copied both the first and second write session to the mirror and flushed it.
+		 */
+		entry->mirrorCatchupRequired = mirrorCatchupRequired;
+		entry->mirrorDataLossTrackingState = mirrorDataLossTrackingState;
+		entry->mirrorDataLossTrackingSessionNum = mirrorDataLossTrackingSessionNum;
 	}
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-			 "Storage Manager: %s Append-Only mirror resync eofs entry: %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", input mirror loss EOF " INT64_FORMAT ", saved mirror loss EOF " INT64_FORMAT ", input mirror new EOF " INT64_FORMAT ", saved mirror new EOF " INT64_FORMAT ")",
+			 "Storage Manager: %s Append-Only mirror resync eofs entry: %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", "
+			 "mirror data loss tracking (state '%s', session num " INT64_FORMAT "), "
+			 "previous mirror new EOF " INT64_FORMAT ", input mirror new EOF " INT64_FORMAT ", saved mirror new EOF " INT64_FORMAT ")",
 			 (found ? "Merge" : "New"),
 			 entry->key.relFileNode.spcNode,
 			 entry->key.relFileNode.dbNode,
@@ -1636,8 +1725,9 @@ AppendOnlyMirrorResyncEofs_Merge(
 			 entry->key.nestLevel,
 			 ItemPointerToString(&entry->persistentTid),
 			 entry->persistentSerialNum,
-			 mirrorLossEof,
-			 entry->mirrorLossEof,
+			 MirrorDataLossTrackingState_Name(mirrorDataLossTrackingState),
+			 mirrorDataLossTrackingSessionNum,
+			 previousMirrorNewEof,
 			 mirrorNewEof,
 			 entry->mirrorNewEof);
 }
@@ -1652,7 +1742,8 @@ AppendOnlyMirrorResyncEofs_Remove(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-			 "Storage Manager (%s): Remove Append-Only mirror resync eofs entry: %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", saved mirror loss EOF " INT64_FORMAT ", saved mirror new EOF " INT64_FORMAT ")",
+			 "Storage Manager (%s): Remove Append-Only mirror resync eofs entry: "
+			 "%u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s, saved mirror new EOF " INT64_FORMAT ")",
 			 procName,
 			 entry->key.relFileNode.spcNode,
 			 entry->key.relFileNode.dbNode,
@@ -1662,7 +1753,7 @@ AppendOnlyMirrorResyncEofs_Remove(
 			 entry->key.nestLevel,
 			 ItemPointerToString(&entry->persistentTid),
 			 entry->persistentSerialNum,
-			 entry->mirrorLossEof,
+			 (entry->mirrorCatchupRequired ? "true" : "false"),
 			 entry->mirrorNewEof);
 
 	if (entry->relationName != NULL)
@@ -1690,7 +1781,9 @@ AppendOnlyMirrorResyncEofs_Promote(
 								entry->relationName,
 								&entry->persistentTid,
 								entry->persistentSerialNum,
-								entry->mirrorLossEof,
+								entry->mirrorCatchupRequired,
+								entry->mirrorDataLossTrackingState,
+								entry->mirrorDataLossTrackingSessionNum,
 								entry->mirrorNewEof);
 
 	AppendOnlyMirrorResyncEofs_Remove(
@@ -2089,7 +2182,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 															entry->key.segmentFileNum,
 															&entry->persistentTid,
 															entry->persistentSerialNum,
-															entry->mirrorLossEof,
+															entry->mirrorCatchupRequired,
 															entry->mirrorNewEof,
 															/* recovery */ false,
 															/* flushToXLog */ false);
@@ -2097,7 +2190,8 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 
 		if (Debug_persistent_print)
 			elog(Persistent_DebugPrintLevel(), 
-				 "Storage Manager: Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' (forCommit %s, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+				 "Storage Manager: Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' "
+				 "(forCommit %s, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s,  mirror new EOF " INT64_FORMAT ")",
 				 appendOnlyMirrorResyncEofsCount,
 				 entry->key.relFileNode.spcNode,
 				 entry->key.relFileNode.dbNode,
@@ -2107,7 +2201,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 (forCommit ? "true" : "false"),
 				 ItemPointerToString(&entry->persistentTid),
 				 entry->persistentSerialNum,
-				 entry->mirrorLossEof,
+				 (entry->mirrorCatchupRequired ? "true" : "false"),
 				 entry->mirrorNewEof);
 		
 		appendOnlyMirrorResyncEofsCount++;
@@ -2631,19 +2725,45 @@ smgrGetAppendOnlyMirrorResyncEofs(
 		{
 			MIRRORED_LOCK_DECLARE;
 
+			MIRRORED_LOCK;
+
+			MirroredAppendOnly_EndXactCatchup(
+				entryIndex,
+				&entry->key.relFileNode,
+				entry->key.segmentFileNum,
+				entry->key.nestLevel,
+				entry->relationName,
+				&entry->persistentTid,
+				entry->persistentSerialNum,
+				&mirroredLockLocalVars,
+				entry->mirrorCatchupRequired,
+				entry->mirrorDataLossTrackingState,
+				entry->mirrorDataLossTrackingSessionNum,
+				entry->mirrorNewEof);
+
+			/*
+			 * See if the mirror situation for this Append-Only segment file has changed
+			 * since we flushed it to disk.
+			 */
 			rptr->relFileNode = entry->key.relFileNode;
 			rptr->segmentFileNum = entry->key.segmentFileNum;
 
 			rptr->persistentTid = entry->persistentTid;
 			rptr->persistentSerialNum = entry->persistentSerialNum;
 
-			rptr->mirrorLossEof = entry->mirrorLossEof;
+			if (entry->mirrorCatchupRequired)
+			{
+				rptr->mirrorLossEof = INT64CONST(-1);
+			}
+			else
+			{
+				rptr->mirrorLossEof = entry->mirrorNewEof;
+			}
 			rptr->mirrorNewEof = entry->mirrorNewEof;
 
 			rptr++;
 			returned = true;
 
-			MIRRORED_LOCK;
 			FileRepPrimary_IntentAppendOnlyCommitWork();
 			pendingAppendOnlyMirrorResyncIntentCount++;
 			MIRRORED_UNLOCK;
@@ -2653,7 +2773,8 @@ smgrGetAppendOnlyMirrorResyncEofs(
 		{
 			if (entry->relationName == NULL)
 				elog(Persistent_DebugPrintLevel(), 
-					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d "
+					 "(returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s, mirror new EOF " INT64_FORMAT ")",
 					 entryIndex,
 					 entry->key.relFileNode.spcNode,
 					 entry->key.relFileNode.dbNode,
@@ -2663,11 +2784,12 @@ smgrGetAppendOnlyMirrorResyncEofs(
 					 entry->key.nestLevel,
 					 ItemPointerToString(&entry->persistentTid),
 					 entry->persistentSerialNum,
-					 entry->mirrorLossEof,
+					 (entry->mirrorCatchupRequired ? "true" : "false"),
 					 entry->mirrorNewEof);
 			else
 				elog(Persistent_DebugPrintLevel(), 
-					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' (returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' "
+					 "(returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s, mirror new EOF " INT64_FORMAT ")",
 					 entryIndex,
 					 entry->key.relFileNode.spcNode,
 					 entry->key.relFileNode.dbNode,
@@ -2678,7 +2800,7 @@ smgrGetAppendOnlyMirrorResyncEofs(
 					 entry->key.nestLevel,
 					 ItemPointerToString(&entry->persistentTid),
 					 entry->persistentSerialNum,
-					 entry->mirrorLossEof,
+					 (entry->mirrorCatchupRequired ? "true" : "false"),
 					 entry->mirrorNewEof);
 		}
 		entryIndex++;

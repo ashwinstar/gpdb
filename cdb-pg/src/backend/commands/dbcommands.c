@@ -411,6 +411,8 @@ static void copy_append_only_segment_file(
 	int64			persistentSerialNum,
 	char			*buffer)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	char srcFileName[MAXPGPATH];
 	char dstFileName[MAXPGPATH];
 	char extension[12];
@@ -429,6 +431,9 @@ static void copy_append_only_segment_file(
 	bool mirrorDataLossOccurred;
 
 	bool mirrorCatchupRequired;
+
+	MirrorDataLossTrackingState 	originalMirrorDataLossTrackingState;
+	int64 							originalMirrorDataLossTrackingSessionNum;
 
 	Assert(eof > 0);
 
@@ -528,11 +533,19 @@ static void copy_append_only_segment_file(
 		bufferLen = (Size) Min(2*BLCKSZ, endOffset - readOffset);						
 	}
 
+	/*
+	 * Use the MirroredLock here to cover the flush (and close) and evaluation below whether
+	 * we must catchup the mirror.
+	 */
+	MIRRORED_LOCK;
+
 	MirroredAppendOnly_FlushAndClose(
 							&mirroredDstOpen,
 							&primaryError,
 							&mirrorDataLossOccurred,
-							&mirrorCatchupRequired);
+							&mirrorCatchupRequired,
+							&originalMirrorDataLossTrackingState,
+							&originalMirrorDataLossTrackingSessionNum);
 	if (primaryError != 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -544,45 +557,40 @@ static void copy_append_only_segment_file(
 	
 	if (eof > 0)
 	{
-		int64 mirrorLossEof;
-
-		if (mirrorCatchupRequired)
-		{
-			/*
-			 * Assume all mirror data we tried to write was lost, or
-			 * we found at open time that resynchronize could be working on the
-			 * segment file and didn't write the mirror.
-			 */
-			mirrorLossEof = 0;
-		}
-		else
-			mirrorLossEof = eof;		// No loss.
-
 		/* 
 		 * This routine will handle both updating the persistent information about the
 		 * new EOFs and copy data to the mirror if we are now in synchronized state.
 		 */
-		MirroredAppendOnly_AddMirrorResyncEofs(
-										dstRelFileNode,
-										segmentFileNum,
-										relationName,
-										persistentTid,
-										persistentSerialNum,
-										&mirrorLossEof,		// Input and Output
-										eof);
-
 		if (Debug_persistent_print)
 			elog(Persistent_DebugPrintLevel(), 
-				 "copy_append_only_segment_file: Exit %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+				 "copy_append_only_segment_file: Exit %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror catchup required %s, "
+				 "mirror data loss tracking (state '%s', session num " INT64_FORMAT "), mirror new EOF " INT64_FORMAT,
 				 dstRelFileNode->spcNode,
 				 dstRelFileNode->dbNode,
 				 dstRelFileNode->relNode,
 				 segmentFileNum,
 				 persistentSerialNum,
 				 ItemPointerToString(persistentTid),
-				 mirrorLossEof,
+				 (mirrorCatchupRequired ? "true" : "false"),
+				 MirrorDataLossTrackingState_Name(originalMirrorDataLossTrackingState),
+				 originalMirrorDataLossTrackingSessionNum,
 				 eof);
+		MirroredAppendOnly_AddMirrorResyncEofs(
+										dstRelFileNode,
+										segmentFileNum,
+										relationName,
+										persistentTid,
+										persistentSerialNum,
+										&mirroredLockLocalVars,
+										mirrorCatchupRequired,
+										originalMirrorDataLossTrackingState,
+										originalMirrorDataLossTrackingSessionNum,
+										eof);
+
 	}
+	
+	MIRRORED_UNLOCK;
+
 }
 
 // -----------------------------------------------------------------------------

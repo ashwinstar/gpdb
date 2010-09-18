@@ -349,10 +349,26 @@ extern void smgrappendonlymirrorresynceofs(
 	ItemPointer						persistentTid,
 
 	int64							persistentSerialNum,
+	
+	bool							mirrorCatchupRequired,
 
-	int64							mirrorLossEof,
+	MirrorDataLossTrackingState 	mirrorDataLossTrackingState,
+
+	int64							mirrorDataLossTrackingSessionNum,
 
 	int64							mirrorNewEof);
+extern bool smgrgetappendonlyinfo(
+	RelFileNode 					*relFileNode,
+
+	int32							segmentFileNum,
+
+	char							*relationName,
+
+	bool							*mirrorCatchupRequired,
+
+	MirrorDataLossTrackingState 	*mirrorDataLossTrackingState,
+
+	int64							*mirrorDataLossTrackingSessionNum);
 extern int	smgrGetPendingDeletes(
 	EndXactRecKind						endXactRecKind,
 

@@ -14,6 +14,7 @@
 #include "storage/relfilenode.h"
 #include "storage/smgr.h"
 #include "cdb/cdbfilerepprimary.h"
+#include "cdb/cdbpersistentstore.h"
 
 /*
  * This module is for doing mirrored writes for Append-Only relation files privately being written
@@ -137,26 +138,40 @@ extern void MirroredAppendOnly_AddMirrorResyncEofs(
 
 	int64							persistentSerialNum,
 
-	int64							*mirrorLossEof,
+	MirroredLockLocalVars 			*mirroredLockByRefVars,
+
+	bool							originalMirrorCatchupRequired,
+
+	MirrorDataLossTrackingState 	originalMirrorDataLossTrackingState,
+
+	int64 							originalMirrorDataLossTrackingSessionNum,
 
 	int64							mirrorNewEof);
 
-extern void MirroredAppendOnly_CopyToMirror(
-	RelFileNode						*relFileNode,
-
-	int32							segmentFileNum,
-
-	char							*relationName,
-
-	ItemPointer						persistentTid,
-
-	int64							persistentSerialNum,
-
-	int64							*mirrorLossEof,
-
-	int64							mirrorNewEof,
+extern void MirroredAppendOnly_EndXactCatchup(
+		int 							entryIndex,
 	
-	bool							*mirrorDataLossOccurred);
+		RelFileNode 					*relFileNode,
+	
+		int32							segmentFileNum,
+	
+		int 							nestLevel,
+	
+		char							*relationName,
+	
+		ItemPointer 					persistentTid,
+	
+		int64							persistentSerialNum,
+	
+		MirroredLockLocalVars			*mirroredLockVarsByRef,
+	
+		bool							lastMirrorCatchupRequired,
+	
+		MirrorDataLossTrackingState 	lastMirrorDataLossTrackingState,
+	
+		int64							lastMirrorDataLossTrackingSessionNum,
+	
+		int64							mirrorNewEof);
 
 extern void MirroredAppendOnly_OpenResynchonize(
 	MirroredAppendOnlyOpen		*open,
@@ -195,7 +210,11 @@ extern void MirroredAppendOnly_FlushAndClose(
 	
 	bool					*mirrorDataLossOccurred,
 
-	bool					*mirrorCatchupRequired);
+	bool					*mirrorCatchupRequired,
+
+	MirrorDataLossTrackingState 	*originalMirrorDataLossTrackingState,
+	
+	int64 							*originalMirrorDataLossTrackingSessionNum);
 
 /*
  * Flush an Append-Only relation file.

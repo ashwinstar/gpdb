@@ -267,7 +267,7 @@ extern void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 
 	int64						persistentSerialNum,
 
-	int64						mirrorLossEof,
+	bool						mirrorCatchupRequired,
 
 	int64						mirrorNewEof,
 
@@ -275,14 +275,27 @@ extern void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 	
 	bool						flushToXLog);
 
-bool PersistentFileSysObj_CheckForAppendOnlyCatchup(
+extern bool PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
+		RelFileNode 				*relFileNode,
+	
+		int32						segmentFileNum,
+	
+		ItemPointer 				persistentTid,
+	
+		int64						persistentSerialNum,
+	
+		int64						*eof);
+
+extern void PersistentFileSysObj_GetAppendOnlyCatchupMirrorStartEof(
 	RelFileNode					*relFileNode,
 
 	int32						segmentFileNum,
 
 	ItemPointer 				persistentTid,
 
-	int64						persistentSerialNum);
+	int64						persistentSerialNum,
+
+	int64						*startEof);
 
 extern void PersistentFileSysObj_RequestResynchronizeTransition(void);
 
@@ -390,7 +403,7 @@ extern void PersistentFileSysObj_ResynchronizeRelationComplete(
 
 	int64							persistentSerialNum,
 
-	int64						mirrorLossEof,
+	int64							mirrorLossEof,
 
 	bool							flushToXLog);
 

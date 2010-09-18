@@ -1746,6 +1746,8 @@ PersistentRecovery_UpdateAppendOnlyMirrorResyncEofs(void)
 
 	while (true)
 	{
+		bool mirrorCatchupRequired;
+
 		eofsEntry = 
 			(AoMirrorResyncEofsEntry)
 						hash_seq_search(&iterateStatus);
@@ -1791,13 +1793,26 @@ PersistentRecovery_UpdateAppendOnlyMirrorResyncEofs(void)
 				 "Update Append-Only EOFs REDO: %s is newer than persistent entry %s",
 				 AoMirrorResyncEofsEntryToString(eofsEntry),
 				 FsObjEntryToString(fsObjEntry));
-
+		
+		if (eofsEntry->mirrorLossEof == INT64CONST(-1))
+		{
+			mirrorCatchupRequired = true;
+		}
+		else
+		{
+			if (eofsEntry->mirrorLossEof != eofsEntry->mirrorNewEof)
+				elog(ERROR, "mirror loss EOF " INT64_FORMAT " doesn't match new EOF " INT64_FORMAT,
+					 eofsEntry->mirrorLossEof,
+					 eofsEntry->mirrorNewEof);
+			mirrorCatchupRequired = false;
+		}
+		
 		PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 														&eofsEntry->relFileNode,
 														eofsEntry->segmentFileNum,
 														&eofsEntry->key.persistentTid,
 														eofsEntry->persistentSerialNum,
-														eofsEntry->mirrorLossEof,
+														mirrorCatchupRequired,
 														eofsEntry->mirrorNewEof,
 														/* recovery */ true,
 														/* flushToXLog */ false);

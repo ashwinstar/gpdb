@@ -2996,7 +2996,7 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 
 	int64						persistentSerialNum,
 
-	int64						mirrorLossEof,
+	bool						mirrorCatchupRequired,
 
 	int64						mirrorNewEof,
 
@@ -3035,7 +3035,6 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 	ItemPointerData 				previousFreeTid;
 
 	int64							updateMirrorAppendOnlyLossEof;
-	int64							updateMirrorAppendOnlyNewEof;
 
 	PersistentFileSysObj_GetDataPtrs(
 								PersistentFsObjType_RelationFile,
@@ -3163,15 +3162,13 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 		}
 	}
 
-	updateMirrorAppendOnlyLossEof = mirrorLossEof;		// Assume.
-	updateMirrorAppendOnlyNewEof = mirrorNewEof;		// Assume.
-	
-	if (mirrorAppendOnlyLossEof < mirrorAppendOnlyNewEof)
+	if (mirrorCatchupRequired)
 	{
-		/*
-		 * Keep original loss EOF.
-		 */
-		updateMirrorAppendOnlyLossEof = mirrorAppendOnlyLossEof;
+		updateMirrorAppendOnlyLossEof = mirrorAppendOnlyLossEof;	// No change.
+	}
+	else
+	{
+		updateMirrorAppendOnlyLossEof = mirrorNewEof;				// No loss.
 	}
 
 	PersistentFileSysObj_UpdateTupleAppendOnlyMirrorResyncEofs(
@@ -3181,16 +3178,17 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 												persistentTid,
 												persistentSerialNum,
 												updateMirrorAppendOnlyLossEof,
-												updateMirrorAppendOnlyNewEof,
+												mirrorNewEof,
 												flushToXLog);
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-			 "PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs: %u/%u/%u, segment file #%d, Append-Only Mirror Resync EOFs (recovery %s) -- persistent serial num " INT64_FORMAT ", TID %s" 
-			 ", original mirror loss EOF " INT64_FORMAT ", input mirror loss EOF " INT64_FORMAT ", update mirror loss EOF " INT64_FORMAT 
-			 ", original mirror new EOF " INT64_FORMAT ", input mirror new EOF " INT64_FORMAT ", update mirror new EOF " INT64_FORMAT,
+			 "PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs: %u/%u/%u, segment file #%d, Append-Only Mirror Resync EOFs (recovery %s) -- persistent serial num " INT64_FORMAT ", TID %s, " 
+			 "mirror catchup required %s"
+			 ", original mirror loss EOF " INT64_FORMAT ", update mirror loss EOF " INT64_FORMAT 
+			 ", original mirror new EOF " INT64_FORMAT ", update mirror new EOF " INT64_FORMAT,
 			 relFileNode->spcNode,
 			 relFileNode->dbNode,
 			 relFileNode->relNode,
@@ -3198,12 +3196,11 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 			 (recovery ? "true" : "false"),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid),
+			 (mirrorCatchupRequired ? "true" : "false"),
 			 mirrorAppendOnlyLossEof,
-			 mirrorLossEof,
 			 updateMirrorAppendOnlyLossEof,
 			 mirrorAppendOnlyNewEof,
-			 mirrorNewEof,
-			 updateMirrorAppendOnlyNewEof);
+			 mirrorNewEof);
 }
 
 void PersistentFileSysObj_PreparedEndXactAction(
@@ -3523,15 +3520,30 @@ void PersistentFileSysObj_PreparedEndXactAction(
 		 */
 		for (i = 0; i < persistentObjects->typed.appendOnlyMirrorResyncEofsCount; i++)
 		{
+			bool mirrorCatchupRequired;
+
 			PersistentEndXactAppendOnlyMirrorResyncEofs *eofs = 
 						&persistentObjects->typed.appendOnlyMirrorResyncEofs[i];
+
+			if (eofs->mirrorLossEof == INT64CONST(-1))
+			{
+				mirrorCatchupRequired = true;
+			}
+			else
+			{
+				if (eofs->mirrorLossEof != eofs->mirrorNewEof)
+					elog(ERROR, "mirror loss EOF " INT64_FORMAT " doesn't match new EOF " INT64_FORMAT,
+						 eofs->mirrorLossEof,
+						 eofs->mirrorNewEof);
+				mirrorCatchupRequired = false;
+			}
 
 			PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 															&eofs->relFileNode,
 															eofs->segmentFileNum,
 															&eofs->persistentTid,
 															eofs->persistentSerialNum,
-															eofs->mirrorLossEof,
+															mirrorCatchupRequired,
 															eofs->mirrorNewEof,
 															/* recovery */ false,
 															/* flushToXLog */ false);
@@ -4036,14 +4048,16 @@ void PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 	pfree(values);
 }
 
-bool PersistentFileSysObj_CheckForAppendOnlyCatchup(
+bool PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
 	RelFileNode					*relFileNode,
 
 	int32						segmentFileNum,
 
 	ItemPointer 				persistentTid,
 
-	int64						persistentSerialNum)
+	int64						persistentSerialNum,
+
+	int64						*eof)
 {
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
@@ -4154,8 +4168,9 @@ bool PersistentFileSysObj_CheckForAppendOnlyCatchup(
 		/*
 		 * Resynchronize needs to catch-up the mirror.
 		 */
-		return true;
+		return false;
 	}
+	Assert(mirrorAppendOnlyLossEof == mirrorAppendOnlyNewEof);
 
 	if ((persistentState == PersistentFileSysState_CreatePending ||
 		 persistentState == PersistentFileSysState_Created)
@@ -4165,10 +4180,135 @@ bool PersistentFileSysObj_CheckForAppendOnlyCatchup(
 		/*
 		 * When Resynchronize need to do a full copy, we need to not access the mirror.
 		 */
-		return true;
+		return false;
 	}
 
-	return false;
+	*eof = mirrorAppendOnlyNewEof;
+	return true;
+}
+
+void PersistentFileSysObj_GetAppendOnlyCatchupMirrorStartEof(
+	RelFileNode					*relFileNode,
+
+	int32						segmentFileNum,
+
+	ItemPointer 				persistentTid,
+
+	int64						persistentSerialNum,
+
+	int64						*startEof)
+{
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
+
+	PersistentFileSysObjData 		*fileSysObjData;
+	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
+	
+	PersistentFileSysObjName 		fsObjName;
+
+	Datum *values;
+
+	HeapTuple tupleCopy;
+
+	RelFileNode 					actualRelFileNode;
+	int32							actualSegmentFileNum;
+	
+	PersistentFileSysRelStorageMgr	relationStorageManager;
+	PersistentFileSysState			persistentState;
+	int64							createMirrorDataLossTrackingSessionNum;
+	MirroredObjectExistenceState	mirrorExistenceState;
+	MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
+	bool							mirrorBufpoolMarkedForScanIncrementalResync;
+	int64							mirrorBufpoolResyncChangedPageCount;
+	XLogRecPtr						mirrorBufpoolResyncCkptLoc;
+	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
+	int64							mirrorAppendOnlyLossEof;
+	int64							mirrorAppendOnlyNewEof;
+	int32							reserved;
+	TransactionId					parentXid;
+	int64							actualPersistentSerialNum;
+	ItemPointerData 				previousFreeTid;
+
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName,
+										relFileNode,
+										segmentFileNum);
+
+	PersistentFileSysObj_GetDataPtrs(
+								PersistentFsObjType_RelationFile,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+	
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent '%s' tuple for update relation physically truncated is invalid (0,0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
+	if (persistentSerialNum == 0)
+		elog(ERROR, "Persistent '%s' serial number for update relation physically truncated is invalid (0)",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName));
+
+	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(&fsObjName, persistentTid, persistentSerialNum);
+
+	PersistentFileSysObj_ReadTuple(
+							PersistentFsObjType_RelationFile,
+							persistentTid,
+							values,
+							&tupleCopy);
+
+	READTUPLE_FOR_UPDATE_ERRCONTEXT_POP;
+
+	GpPersistentRelationNode_GetValues(
+									values,
+									&actualRelFileNode.spcNode,
+									&actualRelFileNode.dbNode,
+									&actualRelFileNode.relNode,
+									&actualSegmentFileNum,
+									&relationStorageManager,
+									&persistentState,
+									&createMirrorDataLossTrackingSessionNum,
+									&mirrorExistenceState,
+									&mirrorDataSynchronizationState,
+									&mirrorBufpoolMarkedForScanIncrementalResync,
+									&mirrorBufpoolResyncChangedPageCount,
+									&mirrorBufpoolResyncCkptLoc,
+									&mirrorBufpoolResyncCkptBlockNum,
+									&mirrorAppendOnlyLossEof,
+									&mirrorAppendOnlyNewEof,
+									&reserved,
+									&parentXid,
+									&actualPersistentSerialNum,
+									&previousFreeTid);
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+
+	pfree(values);
+	
+	heap_freetuple(tupleCopy);
+
+	if (persistentSerialNum != actualPersistentSerialNum)
+		elog(ERROR, "Persistent '%s' serial number mismatch for check for Append-Only catch-up (expected " INT64_FORMAT ", found " INT64_FORMAT ")",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName),
+			 persistentSerialNum,
+			 actualPersistentSerialNum);
+
+	if (relationStorageManager != PersistentFileSysRelStorageMgr_AppendOnly)
+		elog(ERROR, "Persistent '%s' relation storage manager mismatch for check for Append-Only catch-up (expected '%s', found '%s')",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName),
+			 PersistentFileSysRelStorageMgr_Name(PersistentFileSysRelStorageMgr_AppendOnly),
+			 PersistentFileSysRelStorageMgr_Name(relationStorageManager));
+
+	if (mirrorAppendOnlyLossEof != mirrorAppendOnlyNewEof)
+		elog(ERROR, "Persistent '%s' EOF mismatch for check for Append-Only catch-up (loss EOF " INT64_FORMAT ", new EOF " INT64_FORMAT ")",
+			 PersistentFileSysObjName_TypeAndObjectName(&fsObjName),
+			 mirrorAppendOnlyLossEof,
+			 mirrorAppendOnlyNewEof);
+
+	*startEof = mirrorAppendOnlyNewEof;
 }
 
 static int32 PersistentFileSysObj_GetBufferPoolRelationTotalBlocks(

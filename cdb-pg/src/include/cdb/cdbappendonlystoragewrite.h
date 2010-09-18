@@ -285,7 +285,11 @@ extern void AppendOnlyStorageWrite_FlushAndCloseFile(
 
 	bool						*mirrorDataLossOccurred,
 
-	bool 						*mirrorCatchupRequired);
+	bool 						*mirrorCatchupRequired,
+
+	MirrorDataLossTrackingState 	*originalMirrorDataLossTrackingState,
+
+	int64							*originalMirrorDataLossTrackingSessionNum);
 
 /*
  * Flush and close the current segment file under a transaction.

@@ -569,7 +569,11 @@ void AppendOnlyStorageWrite_FlushAndCloseFile(
 
 	bool						*mirrorDataLossOccurred,
 
-	bool 						*mirrorCatchupRequired)
+	bool 						*mirrorCatchupRequired,
+
+	MirrorDataLossTrackingState 	*originalMirrorDataLossTrackingState,
+
+	int64							*originalMirrorDataLossTrackingSessionNum)
 {
 	int primaryError;
 
@@ -609,7 +613,9 @@ void AppendOnlyStorageWrite_FlushAndCloseFile(
 							&storageWrite->bufferedAppend.mirroredOpen,
 							&primaryError,
 							mirrorDataLossOccurred,
-							mirrorCatchupRequired);
+							mirrorCatchupRequired,
+							originalMirrorDataLossTrackingState,
+							originalMirrorDataLossTrackingSessionNum);
 	if (primaryError != 0)
 		ereport(ERROR,
 			   (errcode_for_file_access(),
@@ -641,6 +647,8 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 
 	int64						*fileLen_uncompressed)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	RelFileNode relFileNode;
 	int32 segmentFileNum;
 	ItemPointerData persistentTid;
@@ -649,6 +657,9 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 	int64	startEof;
 	bool	mirrorDataLossOccurred;
 	bool 	mirrorCatchupRequired;
+
+	MirrorDataLossTrackingState 	originalMirrorDataLossTrackingState;
+	int64 							originalMirrorDataLossTrackingSessionNum;
 
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
@@ -666,46 +677,33 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 	persistentSerialNum = storageWrite->persistentSerialNum;
 
 	startEof = storageWrite->startEof;
-	
+
+	/*
+	 * Use the MirroredLock here to cover the flush (and close) and evaluation below whether
+	 * we must catchup the mirror.
+	 */
+	MIRRORED_LOCK;
+
 	AppendOnlyStorageWrite_FlushAndCloseFile(
 										storageWrite,
 										newLogicalEof,
 										fileLen_uncompressed,
 										&mirrorDataLossOccurred,
-										&mirrorCatchupRequired);
+										&mirrorCatchupRequired,
+										&originalMirrorDataLossTrackingState,
+										&originalMirrorDataLossTrackingSessionNum);
 
 	if (*newLogicalEof - startEof > 0)
 	{
-		int64 mirrorLossEof;
-
-		if (mirrorCatchupRequired)
-		{
-			/*
-			 * Assume all mirror data we tried to write was lost, or
-			 * we found at open time that resynchronize could be working on the
-			 * segment file and didn't write the mirror.
-			 */
-			mirrorLossEof = startEof;
-		}
-		else
-			mirrorLossEof = *newLogicalEof;		// No loss.
-
 		/* 
 		 * This routine will handle both updating the persistent information about the
-		 * new EOFs and copy data to the mirror if we are now in synchronized state.
+		 * new EOF and copy data to the mirror if we are now in synchronized state.
 		 */
-		MirroredAppendOnly_AddMirrorResyncEofs(
-										&relFileNode,
-										segmentFileNum,
-										storageWrite->relationName,
-										&persistentTid,
-										persistentSerialNum,
-										&mirrorLossEof,		// Input and Output
-										*newLogicalEof);
-
 		if (Debug_persistent_print)
 			elog(Persistent_DebugPrintLevel(), 
-				 "AppendOnlyStorageWrite_TransactionFlushAndCloseFile: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror catchup required %s, mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
+				 "AppendOnlyStorageWrite_TransactionFlushAndCloseFile: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror catchup required %s, "
+				 "mirror data loss tracking (state '%s', session num " INT64_FORMAT "), "
+				 "mirror start EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
 				 relFileNode.spcNode,
 				 relFileNode.dbNode,
 				 relFileNode.relNode,
@@ -713,9 +711,26 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 				 persistentSerialNum,
 				 ItemPointerToString(&persistentTid),
 				 (mirrorCatchupRequired ? "true" : "false"),
-				 mirrorLossEof,
+				 MirrorDataLossTrackingState_Name(originalMirrorDataLossTrackingState),
+				 originalMirrorDataLossTrackingSessionNum,
+				 startEof,
 				 *newLogicalEof);
+		MirroredAppendOnly_AddMirrorResyncEofs(
+										&relFileNode,
+										segmentFileNum,
+										storageWrite->relationName,
+										&persistentTid,
+										persistentSerialNum,
+										&mirroredLockLocalVars,
+										mirrorCatchupRequired,
+										originalMirrorDataLossTrackingState,
+										originalMirrorDataLossTrackingSessionNum,
+										*newLogicalEof);
+
 	}
+	
+	MIRRORED_UNLOCK;
+
 }
 
 // -----------------------------------------------------------------------------

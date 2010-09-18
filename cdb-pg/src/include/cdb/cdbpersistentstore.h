@@ -130,26 +130,41 @@ inline static bool PersistentStore_IsZeroTid(
 
 
 #ifdef USE_ASSERT_CHECKING
+
+typedef struct MirroredLockLocalVars
+{
+	bool mirroredLockIsHeldByMe;
+
+	bool specialResyncManagerFlag;
+
+	bool mirroredVariablesSet;
+} MirroredLockLocalVars;
+
 #define MIRRORED_LOCK_DECLARE \
-	bool mirroredLockIsHeldByMe = false; \
-	bool specialResyncManagerFlag = false; \
-	bool mirroredVariablesSet = false;
+	MirroredLockLocalVars mirroredLockLocalVars = {false, false, false};
 #else
+
+typedef struct MirroredLockLocalVars
+{
+	bool mirroredLockIsHeldByMe;
+
+	bool specialResyncManagerFlag;
+} MirroredLockLocalVars;
+
 #define MIRRORED_LOCK_DECLARE \
-	bool mirroredLockIsHeldByMe = false; \
-	bool specialResyncManagerFlag = false;
+	MirroredLockLocalVars mirroredLockLocalVars = {false, false};
 #endif
 
 #ifdef USE_ASSERT_CHECKING
 #define MIRRORED_LOCK \
 	{ \
-		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
-		specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
-		mirroredVariablesSet = true; \
+		mirroredLockLocalVars.mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		mirroredLockLocalVars.specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
+		mirroredLockLocalVars.mirroredVariablesSet = true; \
 		\
-		if (!mirroredLockIsHeldByMe) \
+		if (!mirroredLockLocalVars.mirroredLockIsHeldByMe) \
 		{ \
-			if (!specialResyncManagerFlag) \
+			if (!mirroredLockLocalVars.specialResyncManagerFlag) \
 			{ \
 				LWLockAcquire(MirroredLock , LW_SHARED); \
 			} \
@@ -164,12 +179,12 @@ inline static bool PersistentStore_IsZeroTid(
 #else
 #define MIRRORED_LOCK \
 	{ \
-		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
-		specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
+		mirroredLockLocalVars.mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		mirroredLockLocalVars.specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
 		\
-		if (!mirroredLockIsHeldByMe) \
+		if (!mirroredLockLocalVars.mirroredLockIsHeldByMe) \
 		{ \
-			if (!specialResyncManagerFlag) \
+			if (!mirroredLockLocalVars.specialResyncManagerFlag) \
 			{ \
 				LWLockAcquire(MirroredLock , LW_SHARED); \
 			} \
@@ -185,12 +200,12 @@ inline static bool PersistentStore_IsZeroTid(
 #ifdef USE_ASSERT_CHECKING
 #define MIRRORED_UNLOCK \
 	{ \
-		Assert(mirroredVariablesSet); \
+		Assert(mirroredLockLocalVars.mirroredVariablesSet); \
 		Assert(InterruptHoldoffCount > 0); \
 		\
-		if (!mirroredLockIsHeldByMe) \
+		if (!mirroredLockLocalVars.mirroredLockIsHeldByMe) \
 		{ \
-			if (!specialResyncManagerFlag) \
+			if (!mirroredLockLocalVars.specialResyncManagerFlag) \
 			{ \
 				LWLockRelease(MirroredLock); \
 			} \
@@ -203,9 +218,9 @@ inline static bool PersistentStore_IsZeroTid(
 #else
 #define MIRRORED_UNLOCK \
 	{ \
-		if (!mirroredLockIsHeldByMe) \
+		if (!mirroredLockLocalVars.mirroredLockIsHeldByMe) \
 		{ \
-			if (!specialResyncManagerFlag) \
+			if (!mirroredLockLocalVars.specialResyncManagerFlag) \
 			{ \
 				LWLockRelease(MirroredLock); \
 			} \
@@ -216,6 +231,84 @@ inline static bool PersistentStore_IsZeroTid(
 		} \
 	}
 #endif
+
+#ifdef USE_ASSERT_CHECKING
+#define MIRRORED_LOCK_BY_REF \
+	{ \
+		mirroredLockByRefVars->mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		mirroredLockByRefVars->specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
+		mirroredLockByRefVars->mirroredVariablesSet = true; \
+		\
+		if (!mirroredLockByRefVars->mirroredLockIsHeldByMe) \
+		{ \
+			if (!mirroredLockByRefVars->specialResyncManagerFlag) \
+			{ \
+				LWLockAcquire(MirroredLock , LW_SHARED); \
+			} \
+			else \
+			{ \
+				HOLD_INTERRUPTS(); \
+			} \
+		} \
+		\
+		Assert(InterruptHoldoffCount > 0); \
+	}
+#else
+#define MIRRORED_LOCK_BY_REF \
+	{ \
+		mirroredLockByRefVars->mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		mirroredLockByRefVars->specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
+		\
+		if (!mirroredLockByRefVars->mirroredLockIsHeldByMe) \
+		{ \
+			if (!mirroredLockByRefVars->specialResyncManagerFlag) \
+			{ \
+				LWLockAcquire(MirroredLock , LW_SHARED); \
+			} \
+			else \
+			{ \
+				HOLD_INTERRUPTS(); \
+			} \
+		} \
+		\
+	}
+#endif
+	
+#ifdef USE_ASSERT_CHECKING
+#define MIRRORED_UNLOCK_BY_REF \
+	{ \
+		Assert(mirroredLockByRefVars->mirroredVariablesSet); \
+		Assert(InterruptHoldoffCount > 0); \
+		\
+		if (!mirroredLockByRefVars->mirroredLockIsHeldByMe) \
+		{ \
+			if (!mirroredLockByRefVars->specialResyncManagerFlag) \
+			{ \
+				LWLockRelease(MirroredLock); \
+			} \
+			else \
+			{ \
+				RESUME_INTERRUPTS(); \
+			} \
+		} \
+	}
+#else
+#define MIRRORED_UNLOCK_BY_REF \
+	{ \
+		if (!mirroredLockByRefVars->mirroredLockIsHeldByMe) \
+		{ \
+			if (!mirroredLockByRefVars->specialResyncManagerFlag) \
+			{ \
+				LWLockRelease(MirroredLock); \
+			} \
+			else \
+			{ \
+				RESUME_INTERRUPTS(); \
+			} \
+		} \
+	}
+#endif
+
 
 // Helper DEFINEs for MirroredLock within the Persistent state-change modules
 // so we can maintain the lock ordering when calls under the PersistentObjLock

@@ -120,26 +120,41 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 
 // Helper DEFINEs for MirroredLock within Buffer Pool Manager ONLY.
 #ifdef USE_ASSERT_CHECKING
+
+typedef struct MirroredLockBufMgrLocalVars
+{
+	bool mirroredLockIsHeldByMe;
+
+	bool specialResyncManagerFlag;
+
+	bool mirroredVariablesSet;
+} MirroredLockBufMgrLocalVars;
+
 #define MIRROREDLOCK_BUFMGR_DECLARE \
-	bool mirroredLockIsHeldByMe = false; \
-	bool specialResyncManagerFlag = false; \
-	bool mirroredVariablesSet = false;
+	MirroredLockBufMgrLocalVars mirroredLockBufMgrLocalVars = {false, false, false};
 #else
+
+typedef struct MirroredLockBufMgrLocalVars
+{
+	bool mirroredLockIsHeldByMe;
+
+	bool specialResyncManagerFlag;
+} MirroredLockBufMgrLocalVars;
+
 #define MIRROREDLOCK_BUFMGR_DECLARE \
-	bool mirroredLockIsHeldByMe = false; \
-	bool specialResyncManagerFlag = false;
+	MirroredLockBufMgrLocalVars mirroredLockBufMgrLocalVars = {false, false};
 #endif
 
 #ifdef USE_ASSERT_CHECKING
 #define MIRROREDLOCK_BUFMGR_LOCK \
 	{ \
-		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
-		specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
-		mirroredVariablesSet = true; \
+		mirroredLockBufMgrLocalVars.mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		mirroredLockBufMgrLocalVars.specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
+		mirroredLockBufMgrLocalVars.mirroredVariablesSet = true; \
 		\
-		if (!mirroredLockIsHeldByMe) \
+		if (!mirroredLockBufMgrLocalVars.mirroredLockIsHeldByMe) \
 		{ \
-			if (!specialResyncManagerFlag) \
+			if (!mirroredLockBufMgrLocalVars.specialResyncManagerFlag) \
 			{ \
 				LWLockAcquire(MirroredLock , LW_SHARED); \
 			} \
@@ -154,12 +169,12 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 #else
 #define MIRROREDLOCK_BUFMGR_LOCK \
 	{ \
-		mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
-		specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
+		mirroredLockBufMgrLocalVars.mirroredLockIsHeldByMe = LWLockHeldByMe(MirroredLock); \
+		mirroredLockBufMgrLocalVars.specialResyncManagerFlag = FileRepPrimary_IsResyncManagerOrWorker(); \
 		\
-		if (!mirroredLockIsHeldByMe) \
+		if (!mirroredLockBufMgrLocalVars.mirroredLockIsHeldByMe) \
 		{ \
-			if (!specialResyncManagerFlag) \
+			if (!mirroredLockBufMgrLocalVars.specialResyncManagerFlag) \
 			{ \
 				LWLockAcquire(MirroredLock , LW_SHARED); \
 			} \
@@ -174,12 +189,12 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 #ifdef USE_ASSERT_CHECKING
 #define MIRROREDLOCK_BUFMGR_UNLOCK \
 	{ \
-		Assert(mirroredVariablesSet); \
+		Assert(mirroredLockBufMgrLocalVars.mirroredVariablesSet); \
 		Assert(InterruptHoldoffCount > 0); \
 		\
-		if (!mirroredLockIsHeldByMe) \
+		if (!mirroredLockBufMgrLocalVars.mirroredLockIsHeldByMe) \
 		{ \
-			if (!specialResyncManagerFlag) \
+			if (!mirroredLockBufMgrLocalVars.specialResyncManagerFlag) \
 			{ \
 				LWLockRelease(MirroredLock); \
 			} \
@@ -192,9 +207,9 @@ extern PGDLLIMPORT int32 *LocalRefCount;
 #else
 #define MIRROREDLOCK_BUFMGR_UNLOCK \
 	{ \
-		if (!mirroredLockIsHeldByMe) \
+		if (!mirroredLockBufMgrLocalVars.mirroredLockIsHeldByMe) \
 		{ \
-			if (!specialResyncManagerFlag) \
+			if (!mirroredLockBufMgrLocalVars.specialResyncManagerFlag) \
 			{ \
 				LWLockRelease(MirroredLock); \
 			} \

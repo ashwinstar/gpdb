@@ -27,6 +27,7 @@
 #include "utils/guc.h"
 #include "cdb/cdbpersistentfilesysobj.h"
 #include "cdb/cdbpersistentstore.h"
+#include "cdb/cdbpersistentrecovery.h"
 
 static void MirroredAppendOnly_SetUpMirrorAccess(
 	RelFileNode					*relFileNode,
@@ -78,6 +79,12 @@ static void MirroredAppendOnly_SetUpMirrorAccess(
 			elog(ERROR, "No mirror configured for mirror only");
 		
 		*mirrorMode = StorageManagerMirrorMode_PrimaryOnly;
+
+		/*
+		 * We want to declare mirror loss to force us to evaluate the mirror
+		 * configuration at flush time.
+		 */
+		*mirrorDataLossOccurred = true;
 		break;
 		
 	case MirrorDataLossTrackingState_MirrorCurrentlyUpInSync:
@@ -345,6 +352,21 @@ static void MirroredAppendOnly_DoOpen(
 									&open->mirrorMode,
 									&open->mirrorDataLossOccurred);
 
+	/*
+	 * In the case where we got our FileRep state from a previous SQL command
+	 * in our transaction (i.e. smgrgetappendonlyinfo), we need to re-evaluate here.
+	 */
+	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
+		!open->mirrorDataLossOccurred)
+	{
+		MirroredAppendOnly_CheckMirrorOperationSession(
+												&open->relFileNode,
+												open->segmentFileNum,
+												open->mirrorDataLossTrackingState,
+												open->mirrorDataLossTrackingSessionNum,
+												&open->mirrorDataLossOccurred);
+	}
+
 	PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 										relFileNode->spcNode,
 										&primaryFilespaceLocation,
@@ -468,6 +490,9 @@ void MirroredAppendOnly_Create(
 
 	bool mirrorCatchupRequired;
 
+	MirrorDataLossTrackingState originalMirrorDataLossTrackingState;
+	int64						originalMirrorDataLossTrackingSessionNum;
+
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
 
@@ -494,7 +519,9 @@ void MirroredAppendOnly_Create(
 							&mirroredOpen,
 							primaryError,
 							mirrorDataLossOccurred,
-							&mirrorCatchupRequired);
+							&mirrorCatchupRequired,
+							&originalMirrorDataLossTrackingState,
+							&originalMirrorDataLossTrackingSessionNum);
 }
 
 void MirroredAppendOnly_MirrorReCreate(
@@ -517,6 +544,9 @@ void MirroredAppendOnly_MirrorReCreate(
 	bool mirrorCatchupRequired;
 
 	*mirrorDataLossOccurred = false;
+
+	MirrorDataLossTrackingState originalMirrorDataLossTrackingState;
+	int64						originalMirrorDataLossTrackingSessionNum;
 
 	MirroredAppendOnly_DoOpen(
 				&mirroredOpen, 
@@ -542,7 +572,9 @@ void MirroredAppendOnly_MirrorReCreate(
 							&mirroredOpen,
 							&primaryError,
 							mirrorDataLossOccurred,
-							&mirrorCatchupRequired);
+							&mirrorCatchupRequired,
+							&originalMirrorDataLossTrackingState,
+							&originalMirrorDataLossTrackingSessionNum);
 	Assert(primaryError == 0);	// No primary work here.
 }
 
@@ -589,38 +621,58 @@ void MirroredAppendOnly_OpenReadWrite(
 
 	MIRRORED_LOCK;
 
-	/*
-	 * Make this call while under the MirroredLock (unless we are a resync worker).
-	 */
-	mirrorDataLossTrackingState = 
-				FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
-												&mirrorDataLossTrackingSessionNum);
-	if (mirrorDataLossTrackingState == MirrorDataLossTrackingState_MirrorCurrentlyUpInResync &&
-		logicalEof > 0)
+	if (smgrgetappendonlyinfo(
+						relFileNode,
+						segmentFileNum,
+						relationName,
+						/* OUT mirrorCatchupRequired */ &primaryOnlyToLetResynchronizeWork,
+						&mirrorDataLossTrackingState,
+						&mirrorDataLossTrackingSessionNum))
 	{
 		/*
-		 * While in resynchronize state, we don't know for this Append-Only segment
-		 * file whether to write to the mirror or not.
-		 *
-		 * If the Append-Only segment file already has mirror loss, then NO.
-		 *
-		 * However, if the Append-Only segment file is synchronized because either
-		 * there was no data loss from a previous committed transaction or resynchronize
-		 * has completed recovery of that segment file.
+		 * If we have already written to the same Append-Only segment file in this transaction,
+		 * use the FileRep state information it collected.
 		 */
-		if (PersistentFileSysObj_CheckForAppendOnlyCatchup(
-												relFileNode,
-												segmentFileNum,
-												persistentTid,
-												persistentSerialNum))
+	}
+	else
+	{
+		/*
+		 * Make this call while under the MirroredLock (unless we are a resync worker).
+		 */
+		mirrorDataLossTrackingState = 
+					FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+													&mirrorDataLossTrackingSessionNum);
+
+		primaryOnlyToLetResynchronizeWork = false;
+		if (mirrorDataLossTrackingState == MirrorDataLossTrackingState_MirrorCurrentlyUpInResync &&
+			logicalEof > 0)
 		{
+			int64 eof;
+
 			/*
-			 * Don't write to mirror while resynchronize may be working on the segment file.
+			 * While in resynchronize state, we don't know for this Append-Only segment
+			 * file whether to write to the mirror or not.
+			 *
+			 * If the Append-Only segment file already has mirror loss, then NO.
+			 *
+			 * However, if the Append-Only segment file is synchronized because either
+			 * there was no data loss from a previous committed transaction or resynchronize
+			 * has completed recovery of that segment file.
 			 */
-			primaryOnlyToLetResynchronizeWork = true;
+			if (!PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
+																relFileNode,
+																segmentFileNum,
+																persistentTid,
+																persistentSerialNum,
+																&eof))
+			{
+				/*
+				 * Don't write to mirror while resynchronize may be working on the segment file.
+				 */
+				primaryOnlyToLetResynchronizeWork = true;
+			}
 		}
 	}
-	
 	MirroredAppendOnly_DoOpen(
 							open, 
 							relFileNode,
@@ -723,7 +775,12 @@ void MirroredAppendOnly_FlushAndClose(
 
 	bool					*mirrorDataLossOccurred,
 
-	bool					*mirrorCatchupRequired)
+	bool					*mirrorCatchupRequired,
+
+	MirrorDataLossTrackingState 	*originalMirrorDataLossTrackingState,
+	
+	int64 							*originalMirrorDataLossTrackingSessionNum)
+
 {
 	MIRRORED_LOCK_DECLARE;
 
@@ -733,6 +790,8 @@ void MirroredAppendOnly_FlushAndClose(
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
 	*mirrorCatchupRequired = false;
+	*originalMirrorDataLossTrackingState = (MirrorDataLossTrackingState)-1;
+	*originalMirrorDataLossTrackingSessionNum = 0;
 	
 	if (open->guardOtherCallsWithMirroredLock)
 	{
@@ -835,6 +894,8 @@ void MirroredAppendOnly_FlushAndClose(
 	 * Evaluate whether we need to catchup the mirror.
 	 */
 	*mirrorCatchupRequired = (open->primaryOnlyToLetResynchronizeWork || open->mirrorDataLossOccurred);
+	*originalMirrorDataLossTrackingState = open->mirrorDataLossTrackingState;
+	*originalMirrorDataLossTrackingSessionNum = open->mirrorDataLossTrackingSessionNum;
 
 	open->isActive = false;
 	open->primaryFile = 0;
@@ -1102,31 +1163,43 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 	int64							persistentSerialNum,
 
-	int64							*mirrorLossEof,
+	MirroredLockLocalVars 			*mirroredLockByRefVars,
+
+	bool							originalMirrorCatchupRequired,
+
+	MirrorDataLossTrackingState 	originalMirrorDataLossTrackingState,
+
+	int64 							originalMirrorDataLossTrackingSessionNum,
 
 	int64							mirrorNewEof)
 {
-	MIRRORED_LOCK_DECLARE;
-
 	MirroredAppendOnlyOpen 		mirroredOpen;
 
-	MirrorDataLossTrackingState mirrorDataLossTrackingState;
-	int64 mirrorDataLossTrackingSessionNum;
+	bool						flushMirrorCatchupRequired;
+	MirrorDataLossTrackingState flushMirrorDataLossTrackingState;
+	int64 						flushMirrorDataLossTrackingSessionNum;
+
 	int64 seekResult = 0;
 
 	int 	primaryError;
 	bool	mirrorDataLossOccurred;
 	
-	bool mirrorCatchupRequired;
+	int64	startEof;
+
+	/*
+	 * Start these values with the original ones of the writer.
+	 */
+	flushMirrorCatchupRequired = originalMirrorCatchupRequired;
+	flushMirrorDataLossTrackingState = originalMirrorDataLossTrackingState;
+	flushMirrorDataLossTrackingSessionNum = originalMirrorDataLossTrackingSessionNum;
 
 	while (true)
 	{
 		/*
-		 * Do our FileRep mirror data loss tracking state evaluation under the MirroredLock.
+		 * We already have the MirroredLock for safely evaluating the FileRep mirror data loss
+		 * tracking state.
 		 */
-		MIRRORED_LOCK;
-
-		if (*mirrorLossEof == mirrorNewEof)
+		if (!flushMirrorCatchupRequired)
 		{
 			/*
 			 * No data loss.  Report new EOFs now.
@@ -1155,21 +1228,22 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 									relationName,
 									persistentTid,
 									persistentSerialNum,
-									*mirrorLossEof,
+									/* mirrorCatchupRequired */ false,
+									flushMirrorDataLossTrackingState,
+									flushMirrorDataLossTrackingSessionNum,
 									mirrorNewEof);
-			MIRRORED_UNLOCK;
-			break;
+			return;
 		}
 
-		mirrorDataLossTrackingState = 
+		flushMirrorDataLossTrackingState = 
 					FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
-													&mirrorDataLossTrackingSessionNum);
+													&flushMirrorDataLossTrackingSessionNum);
 
-		switch (mirrorDataLossTrackingState)
+		switch (flushMirrorDataLossTrackingState)
 		{
 		case MirrorDataLossTrackingState_MirrorNotConfigured:
 			/*
-			 * Apparently, we've dropped the mirror.
+			 * We were not configured with a mirror or we've dropped the mirror.
 			 */
 			if (Debug_persistent_print)
 			{
@@ -1184,7 +1258,7 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 					 relFileNode->relNode,
 					 segmentFileNum,
 					 (relationName == NULL ? "<null>" : relationName),
-					 mirrorDataLossTrackingSessionNum,
+					 flushMirrorDataLossTrackingSessionNum,
 					 mirrorNewEof);
 			
 				SUPPRESS_ERRCONTEXT_PUSH();
@@ -1196,9 +1270,10 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 									relationName,
 									persistentTid,
 									persistentSerialNum,
-									mirrorNewEof,	// No data loss for no mirror.
+									/* mirrorCatchupRequired */ false,
+									flushMirrorDataLossTrackingState,
+									flushMirrorDataLossTrackingSessionNum,
 									mirrorNewEof);
-			MIRRORED_UNLOCK;
 			return;
 
 		case MirrorDataLossTrackingState_MirrorDown:
@@ -1213,14 +1288,13 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 				elog(Persistent_DebugPrintLevel(), 
 					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': mirror down (mirror data loss tracking serial num " INT64_FORMAT ") --> "
-					 "report loss (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+					 "report loss (mirror new EOF " INT64_FORMAT ")",
 					 relFileNode->spcNode,
 					 relFileNode->dbNode,
 					 relFileNode->relNode,
 					 segmentFileNum,
 					 (relationName == NULL ? "<null>" : relationName),
-					 mirrorDataLossTrackingSessionNum,
-					 *mirrorLossEof,
+					 flushMirrorDataLossTrackingSessionNum,
 					 mirrorNewEof);
 
 				SUPPRESS_ERRCONTEXT_POP();
@@ -1232,13 +1306,52 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 									relationName,
 									persistentTid,
 									persistentSerialNum,
-									*mirrorLossEof,
+									/* mirrorCatchupRequired */ true,
+									flushMirrorDataLossTrackingState,
+									flushMirrorDataLossTrackingSessionNum,
 									mirrorNewEof);
-			MIRRORED_UNLOCK;
 			return;
 
 		case MirrorDataLossTrackingState_MirrorCurrentlyUpInSync:
+			/*
+			 * Fetch mirror loss EOF.
+			 */
+			PersistentFileSysObj_GetAppendOnlyCatchupMirrorStartEof(
+														relFileNode,
+														segmentFileNum,
+														persistentTid,
+														persistentSerialNum,
+														&startEof);
+			/*
+			 * Fall through and catch-up the mirror.
+			 */
+			break;
+
 		case MirrorDataLossTrackingState_MirrorCurrentlyUpInResync:
+			{
+				if (!PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
+																	relFileNode,
+																	segmentFileNum,
+																	persistentTid,
+																	persistentSerialNum,
+																	&startEof))
+				{
+					/*
+					 * Don't write to mirror while resynchronize may be working on the segment file.
+					 */
+					smgrappendonlymirrorresynceofs(
+											relFileNode,
+											segmentFileNum,
+											relationName,
+											persistentTid,
+											persistentSerialNum,
+											/* mirrorCatchupRequired */ true,
+											flushMirrorDataLossTrackingState,
+											flushMirrorDataLossTrackingSessionNum,
+											mirrorNewEof);
+					return;
+				}
+			}
 			/*
 			 * Fall through and catch-up the mirror.
 			 */
@@ -1246,7 +1359,8 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 		default:
 			elog(ERROR, "Unexpected mirror data loss tracking state: %d",
-				 mirrorDataLossTrackingState);
+				 flushMirrorDataLossTrackingState);
+			startEof = 0;
 		}
 
 		/*
@@ -1260,15 +1374,17 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 			SUPPRESS_ERRCONTEXT_PUSH();
 
 			elog(Persistent_DebugPrintLevel(), 
-				 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': we are in '%s' state (mirror data loss tracking serial num " INT64_FORMAT "), so it is our responsibility to catch-up mirror (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+				 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': "
+				 "we are in '%s' state (mirror data loss tracking serial num " INT64_FORMAT "), so it is our responsibility to catch-up mirror "
+				 "(fetched mirror start EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
 				 relFileNode->spcNode,
 				 relFileNode->dbNode,
 				 relFileNode->relNode,
 				 segmentFileNum,
 				 (relationName == NULL ? "<null>" : relationName),
-				 MirrorDataLossTrackingState_Name(mirrorDataLossTrackingState),
-				 mirrorDataLossTrackingSessionNum,
-				 *mirrorLossEof,
+				 MirrorDataLossTrackingState_Name(flushMirrorDataLossTrackingState),
+				 flushMirrorDataLossTrackingSessionNum,
+				 startEof,
 				 mirrorNewEof);
 
 			SUPPRESS_ERRCONTEXT_POP();
@@ -1279,9 +1395,9 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 						relFileNode,
 						segmentFileNum,
 						relationName,
-						/* logicalEof */ *mirrorLossEof,
-						mirrorDataLossTrackingState,
-						mirrorDataLossTrackingSessionNum,
+						/* logicalEof */ startEof,
+						flushMirrorDataLossTrackingState,
+						flushMirrorDataLossTrackingSessionNum,
 						/* create */ false,
 						/* primaryOnly */ false,
 						/* mirrorOnly */ false,
@@ -1293,14 +1409,14 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 		errno = 0;
 		seekResult = FileSeek(mirroredOpen.primaryFile, 
-							  *mirrorLossEof, 
+							  startEof, 
 							  SEEK_SET);
-		if (seekResult != *mirrorLossEof) 
+		if (seekResult != startEof) 
 		{
 			primaryError = errno;
 		}		
 		
-		MIRRORED_UNLOCK;
+		MIRRORED_UNLOCK_BY_REF;
 
 		if (primaryError != 0)
 		{
@@ -1314,22 +1430,26 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 
 		if (!mirrorDataLossOccurred)
 			MirroredAppendOnly_DoCopyDataToMirror(
-							&mirroredOpen,
-							*mirrorLossEof,
-							mirrorNewEof,
-							&mirrorDataLossOccurred);
+										&mirroredOpen,
+										startEof,
+										mirrorNewEof,
+										&mirrorDataLossOccurred);
+
+		MIRRORED_LOCK_BY_REF;
 
 		MirroredAppendOnly_FlushAndClose(
-						&mirroredOpen,
-						&primaryError,
-						&mirrorDataLossOccurred,
-						&mirrorCatchupRequired);
+								&mirroredOpen,
+								&primaryError,
+								&mirrorDataLossOccurred,
+								&flushMirrorCatchupRequired,
+								&flushMirrorDataLossTrackingState,
+								&flushMirrorDataLossTrackingSessionNum);
 		Assert(primaryError == 0);	// No primary work.
 
 		/*
 		 * We we successful in copying the data to the mirror?
 		 */
-		if (mirrorCatchupRequired)
+		if (flushMirrorCatchupRequired)
 		{
 			if (Debug_persistent_print)
 			{
@@ -1338,13 +1458,15 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 				SUPPRESS_ERRCONTEXT_PUSH();
 
 				elog(Persistent_DebugPrintLevel(), 
-					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': mirror catch-up mirror required again... (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': mirror catch-up mirror required again..., "
+					 "we are in '%s' state (mirror data loss tracking serial num " INT64_FORMAT "), (mirror new EOF " INT64_FORMAT ")",
 					 relFileNode->spcNode,
 					 relFileNode->dbNode,
 					 relFileNode->relNode,
 					 segmentFileNum,
 					 (relationName == NULL ? "<null>" : relationName),
-					 *mirrorLossEof,
+					 MirrorDataLossTrackingState_Name(flushMirrorDataLossTrackingState),
+					 flushMirrorDataLossTrackingSessionNum,
 					 mirrorNewEof);
 
 				SUPPRESS_ERRCONTEXT_POP();
@@ -1359,28 +1481,32 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 				SUPPRESS_ERRCONTEXT_PUSH();
 
 				elog(Persistent_DebugPrintLevel(), 
-					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': no mirror data loss occurred --> mirror catch-up copied and flushed (mirror loss EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': no mirror data loss occurred --> mirror catch-up copied and flushed, "
+					 "we are in '%s' state (mirror data loss tracking serial num " INT64_FORMAT "), mirror new EOF " INT64_FORMAT ")",
 					 relFileNode->spcNode,
 					 relFileNode->dbNode,
 					 relFileNode->relNode,
 					 segmentFileNum,
 					 (relationName == NULL ? "<null>" : relationName),
-					 *mirrorLossEof,
+					 MirrorDataLossTrackingState_Name(flushMirrorDataLossTrackingState),
+					 flushMirrorDataLossTrackingSessionNum,
 					 mirrorNewEof);
 
 				SUPPRESS_ERRCONTEXT_POP();
 			}
-			
-			*mirrorLossEof = mirrorNewEof;
 		}
 	}
 
 }
 
-void MirroredAppendOnly_CopyToMirror(
+void MirroredAppendOnly_EndXactCatchup(
+	int								entryIndex,
+
 	RelFileNode						*relFileNode,
 
 	int32							segmentFileNum,
+
+	int								nestLevel,
 
 	char							*relationName,
 
@@ -1388,86 +1514,382 @@ void MirroredAppendOnly_CopyToMirror(
 
 	int64							persistentSerialNum,
 
-	int64							*mirrorLossEof,
+	MirroredLockLocalVars 			*mirroredLockByRefVars,
 
-	int64							mirrorNewEof,
-	
-	bool							*mirrorDataLossOccurred)
+	bool							lastMirrorCatchupRequired,
+
+	MirrorDataLossTrackingState 	lastMirrorDataLossTrackingState,
+
+	int64 							lastMirrorDataLossTrackingSessionNum,
+
+	int64							mirrorNewEof)
 {
-	MIRRORED_LOCK_DECLARE;
-
 	MirroredAppendOnlyOpen 		mirroredOpen;
 
-	MirrorDataLossTrackingState mirrorDataLossTrackingState;
-	int64 mirrorDataLossTrackingSessionNum;
+	MirrorDataLossTrackingState currentMirrorDataLossTrackingState;
+	int64 						currentMirrorDataLossTrackingSessionNum;
+
+	bool						flushMirrorCatchupRequired;
+	MirrorDataLossTrackingState flushMirrorDataLossTrackingState;
+	int64 						flushMirrorDataLossTrackingSessionNum;
+
 	int64 seekResult = 0;
 
 	int 	primaryError;
+	bool	mirrorDataLossOccurred;
+	
+	int64	startEof;
 
-	bool mirrorCatchupRequired;
+	currentMirrorDataLossTrackingState =
+		FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+										&currentMirrorDataLossTrackingSessionNum);
+	
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "MirroredAppendOnly_EndXactCatchup: Evaluate Append-Only mirror resync eofs list entry #%d for loss: %u/%u/%u, segment file #%d, relation name '%s' "
+			 "(transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", "
+			 "mirror catchup required %s, "
+			 "last mirror data loss tracking (state '%s', session num " INT64_FORMAT "), "
+			 "current mirror data loss tracking (state '%s', session num " INT64_FORMAT "), "
+			 "mirror new EOF " INT64_FORMAT ")",
+			 entryIndex,
+			 relFileNode->spcNode,
+			 relFileNode->dbNode,
+			 relFileNode->relNode,
+			 segmentFileNum,
+			(relationName == NULL ? "<null>" : relationName),
+			 nestLevel,
+			 ItemPointerToString(persistentTid),
+			 persistentSerialNum,
+			 (lastMirrorCatchupRequired ? "true" : "false"),
+			 MirrorDataLossTrackingState_Name(lastMirrorDataLossTrackingState),
+			 lastMirrorDataLossTrackingSessionNum,
+			 MirrorDataLossTrackingState_Name(currentMirrorDataLossTrackingState),
+			 currentMirrorDataLossTrackingSessionNum,
+			 mirrorNewEof);
+	}
 
-	MIRRORED_LOCK;
-	
-	mirrorDataLossTrackingState = 
-				FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
-												&mirrorDataLossTrackingSessionNum);
-	
-	MirroredAppendOnly_DoOpen(
-					&mirroredOpen, 
-					relFileNode,
-					segmentFileNum,
-					relationName,
-					/* logicalEof */ *mirrorLossEof,
-					mirrorDataLossTrackingState,
-					mirrorDataLossTrackingSessionNum,
-					/* create */ false,
-					/* primaryOnly */ false,
-					/* mirrorOnly */ false,
-					/* copyToMirror */ true,
-					/* guardOtherCallsWithMirroredLock */ true,
-					/* traceOpenFlags */ false,
-					&primaryError,
-					mirrorDataLossOccurred);
-	
-	errno = 0;
-	seekResult = FileSeek(mirroredOpen.primaryFile, 
-						  *mirrorLossEof, 
-						  SEEK_SET);
-	if (seekResult != *mirrorLossEof) 
+	if (lastMirrorCatchupRequired)
 	{
-		primaryError = errno;
-	}			
-	
-	MIRRORED_UNLOCK;
-	
-	if (primaryError != 0)
+		flushMirrorCatchupRequired = true;
+		flushMirrorDataLossTrackingState = currentMirrorDataLossTrackingState;
+		flushMirrorDataLossTrackingSessionNum = currentMirrorDataLossTrackingSessionNum;
+	}
+	else
 	{
-		ereport(ERROR,
-			(errcode_for_file_access(),
-			 errmsg("could not open relation file '%s', relation name '%s': %s",
-					relpath(*relFileNode),
-					relationName,
-					strerror(primaryError))));
+		flushMirrorCatchupRequired = false;	// Assume.
+		if (lastMirrorDataLossTrackingSessionNum != currentMirrorDataLossTrackingSessionNum)
+		{
+			Assert(currentMirrorDataLossTrackingSessionNum > lastMirrorDataLossTrackingSessionNum);
+		
+			flushMirrorCatchupRequired = true;
+		}
+		else if (lastMirrorDataLossTrackingState != currentMirrorDataLossTrackingState)
+		{
+			/*
+			 * Same mirror data loss tracking number, but different state.
+			 */
+		
+			if (lastMirrorDataLossTrackingState == MirrorDataLossTrackingState_MirrorDown)
+			{
+				/*
+				 * We started with the mirror down and ended with the mirror up in either
+				 * Resynchronized or Synchronized state (or not configured).
+				 *
+				 * So, there was mirror data loss.
+				 */
+				flushMirrorCatchupRequired = true;
+			}
+		}
+		if (flushMirrorCatchupRequired)
+		{
+			flushMirrorDataLossTrackingState = currentMirrorDataLossTrackingState;
+			flushMirrorDataLossTrackingSessionNum = currentMirrorDataLossTrackingSessionNum;
+		}
+		else
+		{
+			flushMirrorDataLossTrackingState = lastMirrorDataLossTrackingState;
+			flushMirrorDataLossTrackingSessionNum = lastMirrorDataLossTrackingSessionNum;
+		}
 	}
 	
-	if (!mirrorDataLossOccurred)
-		MirroredAppendOnly_DoCopyDataToMirror(
-						&mirroredOpen,
-						*mirrorLossEof,
-						mirrorNewEof,
-						mirrorDataLossOccurred);
-	
-	if (!mirrorDataLossOccurred)
+	while (true)
 	{
-		MirroredAppendOnly_FlushAndClose(
-						&mirroredOpen,
+		/*
+		 * We already have the MirroredLock for safely evaluating the FileRep mirror data loss
+		 * tracking state.
+		 */
+		if (!flushMirrorCatchupRequired)
+		{
+			/*
+			 * No data loss.
+			 */
+			if (Debug_persistent_print)
+			{
+				SUPPRESS_ERRCONTEXT_DECLARE;
+
+				SUPPRESS_ERRCONTEXT_POP();
+
+				elog(Persistent_DebugPrintLevel(), 
+					 "MirroredAppendOnly_EndXactCatchup %u/%u/%u, segment file #%d, relation name '%s': no mirror data loss occurred --> report new EOF (EOF " INT64_FORMAT ")",
+					 relFileNode->spcNode,
+					 relFileNode->dbNode,
+					 relFileNode->relNode,
+					 segmentFileNum,
+					 (relationName == NULL ? "<null>" : relationName),
+					 mirrorNewEof);
+
+				SUPPRESS_ERRCONTEXT_PUSH();
+			}
+
+			return;
+		}
+
+		switch (flushMirrorDataLossTrackingState)
+		{
+		case MirrorDataLossTrackingState_MirrorNotConfigured:
+			/*
+			 * We were not configured with a mirror or we've dropped the mirror.
+			 */
+			if (Debug_persistent_print)
+			{
+				SUPPRESS_ERRCONTEXT_DECLARE;
+			
+				SUPPRESS_ERRCONTEXT_POP();
+			
+				elog(Persistent_DebugPrintLevel(), 
+					 "MirroredAppendOnly_EndXactCatchup %u/%u/%u, segment file #%d, relation name '%s': mirror no longer configured (mirror data loss tracking serial num " INT64_FORMAT ")-- reporting no data loss occurred --> report new EOF (EOF " INT64_FORMAT ")",
+					 relFileNode->spcNode,
+					 relFileNode->dbNode,
+					 relFileNode->relNode,
+					 segmentFileNum,
+					 (relationName == NULL ? "<null>" : relationName),
+					 flushMirrorDataLossTrackingSessionNum,
+					 mirrorNewEof);
+			
+				SUPPRESS_ERRCONTEXT_PUSH();
+			}
+			return;
+
+		case MirrorDataLossTrackingState_MirrorDown:
+			/*
+			 * We are not in synchronized state -- let resynchronize catchup.
+			 */
+			if (Debug_persistent_print)
+			{
+				SUPPRESS_ERRCONTEXT_DECLARE;
+
+				SUPPRESS_ERRCONTEXT_PUSH();
+
+				elog(Persistent_DebugPrintLevel(), 
+					 "MirroredAppendOnly_EndXactCatchup %u/%u/%u, segment file #%d, relation name '%s': mirror down (mirror data loss tracking serial num " INT64_FORMAT ") --> "
+					 "report loss (mirror new EOF " INT64_FORMAT ")",
+					 relFileNode->spcNode,
+					 relFileNode->dbNode,
+					 relFileNode->relNode,
+					 segmentFileNum,
+					 (relationName == NULL ? "<null>" : relationName),
+					 flushMirrorDataLossTrackingSessionNum,
+					 mirrorNewEof);
+
+				SUPPRESS_ERRCONTEXT_POP();
+			}
+			return;
+
+		case MirrorDataLossTrackingState_MirrorCurrentlyUpInSync:
+			/*
+			 * Fetch mirror loss EOF.
+			 */
+			PersistentFileSysObj_GetAppendOnlyCatchupMirrorStartEof(
+														relFileNode,
+														segmentFileNum,
+														persistentTid,
+														persistentSerialNum,
+														&startEof);
+			/*
+			 * Fall through and catch-up the mirror.
+			 */
+			break;
+
+		case MirrorDataLossTrackingState_MirrorCurrentlyUpInResync:
+			{
+				if (!PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
+																	relFileNode,
+																	segmentFileNum,
+																	persistentTid,
+																	persistentSerialNum,
+																	&startEof))
+				{
+					/*
+					 * Don't write to mirror while resynchronize may be working on the segment file.
+					 */
+					smgrappendonlymirrorresynceofs(
+											relFileNode,
+											segmentFileNum,
+											relationName,
+											persistentTid,
+											persistentSerialNum,
+											/* mirrorCatchupRequired */ true,
+											flushMirrorDataLossTrackingState,
+											flushMirrorDataLossTrackingSessionNum,
+											mirrorNewEof);
+					return;
+				}
+			}
+			/*
+			 * Fall through and catch-up the mirror.
+			 */
+			break;
+
+		default:
+			elog(ERROR, "Unexpected mirror data loss tracking state: %d",
+				 flushMirrorDataLossTrackingState);
+			startEof = 0;
+		}
+
+		/*
+		 * Resynchronize didn't know about us writing more data, so it is our responsibility
+		 * to catch-up the mirror.
+		 */
+		if (Debug_persistent_print)
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+
+			SUPPRESS_ERRCONTEXT_PUSH();
+
+			elog(Persistent_DebugPrintLevel(), 
+				 "MirroredAppendOnly_EndXactCatchup %u/%u/%u, segment file #%d, relation name '%s': "
+				 "we are in '%s' state (mirror data loss tracking serial num " INT64_FORMAT "), so it is our responsibility to catch-up mirror "
+				 "(fetched mirror start EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT ")",
+				 relFileNode->spcNode,
+				 relFileNode->dbNode,
+				 relFileNode->relNode,
+				 segmentFileNum,
+				 (relationName == NULL ? "<null>" : relationName),
+				 MirrorDataLossTrackingState_Name(flushMirrorDataLossTrackingState),
+				 flushMirrorDataLossTrackingSessionNum,
+				 startEof,
+				 mirrorNewEof);
+
+			SUPPRESS_ERRCONTEXT_POP();
+		}
+
+		MirroredAppendOnly_DoOpen(
+						&mirroredOpen, 
+						relFileNode,
+						segmentFileNum,
+						relationName,
+						/* logicalEof */ startEof,
+						flushMirrorDataLossTrackingState,
+						flushMirrorDataLossTrackingSessionNum,
+						/* create */ false,
+						/* primaryOnly */ false,
+						/* mirrorOnly */ false,
+						/* copyToMirror */ true,
+						/* guardOtherCallsWithMirroredLock */ true,
+						/* traceOpenFlags */ false,
 						&primaryError,
-						mirrorDataLossOccurred,
-						&mirrorCatchupRequired);
-		Assert(primaryError == 0);	// No primary work.
-	}
-}
+						&mirrorDataLossOccurred);
 
+		errno = 0;
+		seekResult = FileSeek(mirroredOpen.primaryFile, 
+							  startEof, 
+							  SEEK_SET);
+		if (seekResult != startEof) 
+		{
+			primaryError = errno;
+		}		
+		
+		MIRRORED_UNLOCK_BY_REF;
+
+		if (primaryError != 0)
+		{
+			ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open relation file '%s', relation name '%s': %s",
+						relpath(*relFileNode),
+						relationName,
+						strerror(primaryError))));
+		}
+
+		if (!mirrorDataLossOccurred)
+			MirroredAppendOnly_DoCopyDataToMirror(
+										&mirroredOpen,
+										startEof,
+										mirrorNewEof,
+										&mirrorDataLossOccurred);
+		
+		MIRRORED_LOCK_BY_REF;
+
+		MirroredAppendOnly_FlushAndClose(
+								&mirroredOpen,
+								&primaryError,
+								&mirrorDataLossOccurred,
+								&flushMirrorCatchupRequired,
+								&flushMirrorDataLossTrackingState,
+								&flushMirrorDataLossTrackingSessionNum);
+		Assert(primaryError == 0);	// No primary work.
+
+		/*
+		 * We we successful in copying the data to the mirror?
+		 */
+		if (flushMirrorCatchupRequired)
+		{
+			if (Debug_persistent_print)
+			{
+				SUPPRESS_ERRCONTEXT_DECLARE;
+
+				SUPPRESS_ERRCONTEXT_PUSH();
+
+				elog(Persistent_DebugPrintLevel(), 
+					 "MirroredAppendOnly_EndXactCatchup %u/%u/%u, segment file #%d, relation name '%s': mirror catch-up mirror required again..., "
+					 "we are in '%s' state (mirror data loss tracking serial num " INT64_FORMAT "), (mirror new EOF " INT64_FORMAT ")",
+					 relFileNode->spcNode,
+					 relFileNode->dbNode,
+					 relFileNode->relNode,
+					 segmentFileNum,
+					 (relationName == NULL ? "<null>" : relationName),
+					 MirrorDataLossTrackingState_Name(flushMirrorDataLossTrackingState),
+					 flushMirrorDataLossTrackingSessionNum,
+					 mirrorNewEof);
+
+				SUPPRESS_ERRCONTEXT_POP();
+			}
+		}
+		else
+		{
+			if (Debug_persistent_print)
+			{
+				SUPPRESS_ERRCONTEXT_DECLARE;
+
+				SUPPRESS_ERRCONTEXT_PUSH();
+
+				elog(Persistent_DebugPrintLevel(), 
+					 "MirroredAppendOnly_AddMirrorResyncEofs %u/%u/%u, segment file #%d, relation name '%s': no mirror data loss occurred --> mirror catch-up copied and flushed, "
+					 "we are in '%s' state (mirror data loss tracking serial num " INT64_FORMAT "), mirror new EOF " INT64_FORMAT ")",
+					 relFileNode->spcNode,
+					 relFileNode->dbNode,
+					 relFileNode->relNode,
+					 segmentFileNum,
+					 (relationName == NULL ? "<null>" : relationName),
+					 MirrorDataLossTrackingState_Name(flushMirrorDataLossTrackingState),
+					 flushMirrorDataLossTrackingSessionNum,
+					 mirrorNewEof);
+
+				SUPPRESS_ERRCONTEXT_POP();
+			}
+		}
+
+		if (flushMirrorCatchupRequired)
+		{
+			flushMirrorDataLossTrackingState = 
+						FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+														&flushMirrorDataLossTrackingSessionNum);
+		}
+	}
+
+}
 static void MirroredAppendOnly_DoDrop(
 	RelFileNode					*relFileNode,
 	 
