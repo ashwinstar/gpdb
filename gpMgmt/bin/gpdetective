@@ -904,8 +904,20 @@ class GPDetective:
                tempStr = self.runCmd(['scp', '-qr',
                             '%s/pg_changetracking' % seg[1],
                             '%s/pg_changetracking_%s' % m.group(1,3)])
-        
-            
+        elif self.runconnected == True:
+           # We still want to get some of the log files.
+           self.log('    get primary segment pg_changetracking FILEREP_CONFIG_LOG and FILEREP_LOG  logs')
+           for seg in self.segments:
+               m = host_rx.search(seg[1])
+               hostname = m.group(1)
+               tempStr = self.runCmd(['mkdir', '%s/pg_changetracking_%s' % m.group(1,3)])
+               tempStr = self.runCmd(['scp', '-qr',
+                            '%s/pg_changetracking/FILEREP_CONFIG_LOG' % seg[1],
+                            '%s/pg_changetracking_%s/FILEREP_CONFIG_LOG' % m.group(1,3)])
+               tempStr = self.runCmd(['scp', '-qr',
+                            '%s/pg_changetracking/FILEREP_LOG' % seg[1],
+                            '%s/pg_changetracking_%s/FILEREP_LOG' % m.group(1,3)])
+
         # Grab backup (mirror) pg_changetracking logs
         #                    host  : fullpath / filename
         host_rx = re.compile('(.*)\:(.*)/([^/]*)')
@@ -919,7 +931,20 @@ class GPDetective:
                tempStr = self.runCmd(['scp', '-qr',
                             '%s/pg_changetracking' % mir[1],
                             '%s/pg_changetracking_%s_mirror' % m.group(1,3)])
-    
+        elif self.runconnected == True:
+           # We still want to get some of the log files.
+           self.log('    get mirror segment pg_changetracking FILEREP_CONFIG_LOG and FILEREP_LOG  logs')
+           for mir in self.mirrors:
+               m = host_rx.search(mir[1])
+               hostname = m.group(1)
+               tempStr = self.runCmd(['mkdir', '%s/pg_changetracking_%s_mirror' % m.group(1,3)])
+               tempStr = self.runCmd(['scp', '-qr',
+                            '%s/pg_changetracking/FILEREP_CONFIG_LOG' % mir[1],
+                            '%s/pg_changetracking_%s_mirror/FILEREP_CONFIG_LOG' % m.group(1,3)])
+               tempStr = self.runCmd(['scp', '-qr',
+                            '%s/pg_changetracking/FILEREP_LOG' % mir[1],
+                            '%s/pg_changetracking_%s_mirror/FILEREP_LOG' % m.group(1,3)])
+
     #------------------------------------------------------------
     def systemInfo(self):
         '''
