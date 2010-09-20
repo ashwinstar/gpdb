@@ -9,22 +9,9 @@ import os, sys, re, tempfile, subprocess, pickle
 try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
-
-class HostType:
-    GPCHECK_HOSTTYPE_UNDEFINED  = 0
-    GPCHECK_HOSTTYPE_DELL_LINUX = 1
-
-class chkconfig:
-    def __init__(self):
-        self.services = dict()
-        self.xinetd = dict()
-        self.errormsg = None
-
-class DellOutputData:
-    def __init__(self):
-        self.chkconfig = None
 
 output = None
 options = None
