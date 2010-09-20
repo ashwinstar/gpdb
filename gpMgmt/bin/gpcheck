@@ -5,7 +5,7 @@ USAGE:   gpcheck -h|--hostfile HOSTFILE -m|--master MASTER_HOST -s|--standymaste
          where MASTER_HOST indicates hosts that should be assumed to be master or standby masters
 '''
 
-import os, sys, re, tempfile, shutil
+import os, sys, re, tempfile, shutil, pickle
 
 try:
     from optparse import Option, OptionParser 
@@ -31,6 +31,7 @@ class GpCheckHost:
         self.hostname = name
         self.ismaster = False
         self.datafile = None
+        self.data = None
     def __str__(self):
         return "%s ismaster(%s) datafile(%s)" % (self.hostname, self.ismaster, self.datafile)
 
@@ -157,13 +158,47 @@ def copyFilesLocally():
 
     return False
 
+#true is error
+def deleteRemoteFiles():
+
+    logger.info("delete remote tmp files")
+
+    try:
+        for host in hosts.keys():
+            cmdStr = "rm -f %s" % hosts[host].datafile
+            cmd = Command(host, cmdStr, REMOTE, host)
+            pool.addCommand(cmd)
+
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc or i.results.halt or not i.results.completed:
+                logger.error("error deleting remote tmp files")
+                logger.error(i.results.stderr.strip())
+                return True
+    except Exception, e:
+        logger.error("Exception deleting remote tmp files")
+        logger.error(e.__str__())
+        return True
+
+    return False
+
+
+#true is error
+def readDataFiles():
+
+    for host in hosts.keys():
+        fname = "%s/%s.data" % (tmpdir, host)
+        fd = open(fname, "rb")
+        hosts[host].data = pickle.load(fd)
+
 
 #true is error
 def createTmpDir():
     global tmpdir
 
     try:
-        tmpdir = tempfile.mkdtemp()
+        tmpdir = tempfile.mkdtemp(prefix='gpcheck')
 
     except Exception, e:
         logger.error("error creating tmp dir on master")
@@ -176,11 +211,16 @@ def createTmpDir():
 def runCollections():
 
     retVal = runCollectionOnDells()
-
     if retVal:
         return True
 
     retVal = copyFilesLocally()
+    if retVal:
+        return True
+
+    retVal = deleteRemoteFiles()
+    if retVal:
+        return True
 
     return False
 
@@ -189,8 +229,7 @@ def earlyExit(error = False):
 
     try:
         if tmpdir:
-            #shutil.rmtree(tmpdir)
-            print tmpdir
+            shutil.rmtree(tmpdir)
     except Exception, e:
         logger.error("error removing tempdir during job cleanup")
         logger.error(e.__str__())
@@ -224,6 +263,9 @@ if (createTmpDir()):
     earlyExit(True)
 
 if (runCollections()):
+    earlyExit(True)
+
+if (readDataFiles()):
     earlyExit(True)
 
 earlyExit(False)
