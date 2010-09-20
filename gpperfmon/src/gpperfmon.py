@@ -187,28 +187,33 @@ def lighty_start(instance):
         # see if there are values in conf file
         master_hostname = ''
         master_port = ''
+
+        ###########################
         try:
             master_hostname = cfg.get('WEB APP', 'master_hostname')
         except:
             pass
         if master_hostname == '':
-            master_hostname = '127.0.0.1'
+            if old_pghost:
+                master_hostname = old_pghost
+            else:
+                master_hostname = '127.0.0.1'
+        os.environ['PGHOST'] = master_hostname
+        ###########################
         
+        ###########################
         try:
             master_port = cfg.get('WEB APP', 'master_port')
         except:
             pass
-        
         if master_port == '':
             if old_pgport:
                 master_port = old_pgport
             else:
                 master_port = '5432'
-            os.environ['PGPORT'] = master_port
+        os.environ['PGPORT'] = master_port
+        ###########################
 
-        if master_hostname:
-            os.environ['PGHOST'] = master_hostname
-            
         password = pgpass.get_password('gpmon', master_hostname, master_port, 'gpperfmon')
         if not password:
             password = old_pgpassword
