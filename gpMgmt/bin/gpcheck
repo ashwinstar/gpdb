@@ -1,0 +1,231 @@
+#!/usr/bin/env python
+'''
+USAGE:   gpcheck -h|--hostfile HOSTFILE -m|--master MASTER_HOST -s|--standymaster MASTER_HOST
+         where HOSTFILE lists all the hosts to check
+         where MASTER_HOST indicates hosts that should be assumed to be master or standby masters
+'''
+
+import os, sys, re, tempfile, shutil
+
+try:
+    from optparse import Option, OptionParser 
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gplog import get_default_logger, setup_tool_logging
+    from gppylib.commands.unix import getLocalHostname, getUserName
+    from gppylib.commands.base import WorkerPool, Command, REMOTE
+
+except ImportError, e:    
+    sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+EXECNAME = os.path.split(__file__)[-1]
+
+gphome = None
+options = None
+logger = None
+pool = None
+hosts = dict()
+tmpdir = None
+
+class GpCheckHost:
+    def __init__(self, name):
+        self.hostname = name
+        self.ismaster = False
+        self.datafile = None
+    def __str__(self):
+        return "%s ismaster(%s) datafile(%s)" % (self.hostname, self.ismaster, self.datafile)
+
+# True is an error
+def parseargs():
+
+    global options, gphome
+
+    parser = OptParser(option_class=OptChecker)
+    parser.remove_option('-h')
+    parser.add_option('-?', '--help', action='store_true')
+    parser.add_option('-h', '--hostfile',  type='string')
+    parser.add_option('-m', '--master', type='string')
+    parser.add_option('-s', '--standbymaster', type='string')
+    (options, args) = parser.parse_args()
+
+    global gphome
+    gphome = os.environ.get('GPHOME')
+    if not gphome:
+        logger.error("GPHOME not set")
+        return True
+
+    if options.help:
+        print __doc__
+        return True
+
+    if not options.hostfile:
+        logger.error("--hostfile must be specified")
+        return True
+
+    return False
+
+#true is error
+def createHostList():
+
+    logger.info("dedupe hostnames")
+
+    global hosts
+
+    try:
+        for line in open(options.hostfile, "r"):
+            hostname = line.rstrip()
+            cmd = Command(hostname, "hostname", REMOTE, hostname)
+            pool.addCommand(cmd)
+
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            address = i.remoteHost
+            if i.results.rc or i.results.halt or not i.results.completed:
+                logger.error("error obtaining information from host %s" % address)
+                logger.error(i.results.stderr.strip())
+                return True
+            actualHostname = i.results.stdout.strip()
+
+            if actualHostname in hosts:
+                pass
+            else:
+                hosts[actualHostname] = GpCheckHost(actualHostname)
+                if actualHostname == options.master or actualHostname == options.standbymaster:
+                    hosts[actualHostname].ismaster = True
+
+    except Exception, e:
+        logger.error("Error while deduping host file: %s" % options.hostfile)
+        logger.error(e.__str__())
+        return True
+
+    return False
+
+#true is error
+def runCollectionOnDells():
+
+    logger.info("generate data on servers")
+
+    global hosts
+
+    try:
+        for host in hosts.keys():
+            cmdStr = "%s/sbin/gpcheck_hostdump --dell" % gphome
+            cmd = Command(host, cmdStr, REMOTE, host)
+            pool.addCommand(cmd)
+
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc or i.results.halt or not i.results.completed:
+                logger.error("error obtaining information from host %s" % i.remoteHost)
+                logger.error(i.results.stderr.strip())
+                return True
+
+            hosts[i.remoteHost].datafile = i.results.stdout.strip()
+            
+    except Exception, e:
+        logger.error("Exception collecting data from servers")
+        logger.error(e.__str__())
+        return True
+
+    return False
+
+#true is error
+def copyFilesLocally():
+
+    logger.info("copy data files from servers")
+
+    global hosts
+
+    try:
+        for host in hosts.keys():
+            cmdStr = "scp %s:%s %s/%s.data" % (host, hosts[host].datafile, tmpdir, host)
+            cmd = Command(host, cmdStr)
+            pool.addCommand(cmd)
+
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc or i.results.halt or not i.results.completed:
+                logger.error("error running cmd: %s" % i.cmdStr)
+                logger.error(i.results.stderr.strip())
+                return True
+    except Exception, e:
+        logger.error("Exception collecting data from servers")
+        logger.error(e.__str__())
+        return True
+
+    return False
+
+
+#true is error
+def createTmpDir():
+    global tmpdir
+
+    try:
+        tmpdir = tempfile.mkdtemp()
+
+    except Exception, e:
+        logger.error("error creating tmp dir on master")
+        logger.error(e.__str__())
+        return True
+
+    return False
+
+#true is error
+def runCollections():
+
+    retVal = runCollectionOnDells()
+
+    if retVal:
+        return True
+
+    retVal = copyFilesLocally()
+
+    return False
+
+
+def earlyExit(error = False):
+
+    try:
+        if tmpdir:
+            #shutil.rmtree(tmpdir)
+            print tmpdir
+    except Exception, e:
+        logger.error("error removing tempdir during job cleanup")
+        logger.error(e.__str__())
+    
+    if error:
+        logger.fatal("early exit from gpcheck")
+    if pool:
+        pool.join()
+        pool.haltWork()
+        pool.joinWorkers()
+
+    if error:
+        sys.exit(1)
+    else:
+        sys.exit(0)
+
+
+
+logger = get_default_logger()
+setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
+
+if (parseargs()):
+    sys.exit(0)
+
+pool = WorkerPool()
+
+if (createHostList()):
+    earlyExit(True)
+
+if (createTmpDir()):
+    earlyExit(True)
+
+if (runCollections()):
+    earlyExit(True)
+
+earlyExit(False)
+
+
