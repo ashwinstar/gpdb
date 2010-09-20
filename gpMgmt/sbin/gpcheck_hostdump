@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+'''
+USAGE:   gpcheck_local [--dell]
+         where --dell will do a dump of dell server data   
+'''
+
+import os, sys, re, tempfile, subprocess, pickle
+
+try:
+    from optparse import Option, OptionParser 
+    from gppylib.gpparseopts import OptParser, OptChecker
+except ImportError, e:    
+    sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+class HostType:
+    GPCHECK_HOSTTYPE_UNDEFINED  = 0
+    GPCHECK_HOSTTYPE_DELL_LINUX = 1
+
+class chkconfig:
+    def __init__(self):
+        self.services = dict()
+        self.xinetd = dict()
+        self.errormsg = None
+
+class DellOutputData:
+    def __init__(self):
+        self.chkconfig = None
+
+output = None
+options = None
+hosttype = HostType.GPCHECK_HOSTTYPE_UNDEFINED
+
+def collectChkconfigData():
+
+    data = chkconfig()
+
+    p = subprocess.Popen("/sbin/chkconfig --list", shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+
+    result = p.communicate()
+
+    data.errormsg = result[1].strip()
+
+    if p.returncode:
+        return data
+
+    startxInet = False
+    for line in result[0].splitlines():
+        if not startxInet:
+            if re.search(line, "xinetd based services"):
+                startxInet = True
+            else:
+                words = line.split()
+                if len(words) != 8:
+                    continue
+                levels = dict()
+                for i in range(1,8):
+                    state = words[i].split(":")
+                    if state[1] == 'on':
+                        levels[state[0]] = True
+                    else:
+                        levels[state[0]] = False
+                data.services[words[0]] = levels
+        else:
+            words = line.split()
+            if len(words) != 2:
+                continue
+            name = words[0].split(":")
+            if words[1] == 'on':
+                data.xinetd[name[0]] = True
+            else:
+                data.xinetd[name[0]] = False
+        
+    
+    return data
+        
+
+def processDellServer():
+
+    global output
+    output = DellOutputData()
+    output.chkconfig = collectChkconfigData()
+
+# True is an error
+def parseargs():
+
+    global options, hosttype
+
+    parser = OptParser(option_class=OptChecker)
+    parser.remove_option('-h')
+    parser.add_option('-h', '-?', '--help', action='store_true')
+    parser.add_option('--dell',  action='store_true')
+    (options, args) = parser.parse_args()
+
+    global gphome
+    gphome = os.environ.get('GPHOME')
+    if not gphome:
+        logger.error("GPHOME not set")
+        return True
+
+    if options.help:
+        print __doc__
+        return True
+
+    if options.dell:
+        hosttype = HostType.GPCHECK_HOSTTYPE_DELL_LINUX
+
+    if hosttype == HostType.GPCHECK_HOSTTYPE_UNDEFINED:
+        print "host type not specified on command line"
+        return True
+
+    return False
+
+
+if (parseargs()):
+    sys.exit(1)
+
+if hosttype == HostType.GPCHECK_HOSTTYPE_DELL_LINUX:
+    processDellServer()
+   
+(fd, filename) = tempfile.mkstemp(dir='/tmp', prefix='gpcheck_dump', text=True)
+fd = open(filename, "wb")
+pickle.dump(output, fd)
+fd.close()
+print filename
