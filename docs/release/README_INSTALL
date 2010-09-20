@@ -55,11 +55,6 @@ kern.maxfilesperproc=65535
 net.inet.tcp.msl=60
 
 
-Add the following to your shell profile file ( such as .bashrc):
-
-ulimit -n 65535
-
-
 If using DHCP, add the following line to /etc/hostconfig:
 
 HOSTNAME="<your_hostname>"
