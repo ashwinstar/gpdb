@@ -275,12 +275,12 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		rnode.dbNode = xlrec->database;
 		rnode.relNode = xlrec->relfilenode;
 
+		XLogDropRelation(rnode);
+
 		DropRelFileNodeBuffers(rnode,
 							   false /* not a local buffer if we got here*/,
 							   0); 
 		FreeSpaceMapForgetRel(&rnode);
-
-		XLogDropRelation(rnode);
 
 		if (Debug_print_qd_mirroring)
 			elog(DEBUG1, "dropped buffers and freespace for %u/%u/%u",
