@@ -4,12 +4,13 @@ USAGE:   gpcheck_local [--dell]
          where --dell will do a dump of dell server data   
 '''
 
-import os, sys, re, tempfile, subprocess, pickle
+import os, sys, re, tempfile, subprocess, pickle, glob
 
 try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport, grubconf, mounts, GpMount, GpMount, inittab
+    from gppylib.gpcheckutil import securetty, ioschedulers
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -204,6 +205,43 @@ def collectMounts():
 
     return data
  
+# returns populated ioschedulers object
+def collectIOschedulers():
+    
+    data = ioschedulers()
+    devices = set()
+
+    try:
+        files = glob.glob("/sys/block/*/queue/scheduler")
+
+        for f in files:
+            words = f.split("/")
+            if len(words) != 6:
+                continue
+            devices.add(words[3].strip())
+
+    except Exception, e:
+        data.errormsg = e.__str__()
+
+    for d in devices:
+
+        try:
+            fd = open("/sys/block/%s/queue/scheduler" % d, 'r')
+            scheduler = fd.read()
+            words = scheduler.split("[")
+            if len(words) != 2:
+                continue
+            words = words[1].split("]")
+            if len(words) != 2:
+                continue
+
+            data.devices[d] = words[0].strip()
+
+        except Exception, e:
+            data.errormsg += e.__str__()
+    
+    return data
+
 
 # returns populated grubconf object
 def collectGrubConf():
@@ -244,6 +282,21 @@ def collectInittab():
         data.errormsg = e.__str__()
     
     return data
+
+ # returns populated securetty object
+def collectSecuretty():
+    data = securetty()
+
+    try:
+        for line in open("/etc/securetty", "r"):
+
+            val = line.strip()
+            data.data.add(val)
+
+    except Exception, e:
+        data.errormsg = e.__str__()
+    
+    return data
         
 
 def processDellServer():
@@ -255,6 +308,8 @@ def processDellServer():
     output.grubconf = collectGrubConf()
     output.mounts = collectMounts()
     output.inittab = collectInittab()
+    output.securetty = collectSecuretty()
+    output.ioschedulers = collectIOschedulers()
 
 # True is an error
 def parseargs():

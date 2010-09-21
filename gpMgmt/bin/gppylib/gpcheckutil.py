@@ -42,7 +42,16 @@ class inittab:
 
     def __str__(self):
         return "s1_declaration(%s) default_run_level(%s)" % (self.s1, self.defaultRunLevel)
-    
+
+class securetty:
+    def __init__(self):
+        self.errormsg = None
+        self.data = set() 
+
+class ioschedulers:
+    def __init__(self):
+        self.devices = dict() # key is device name value is scheduler name
+        self.errormsg = None
 
 class GpMount:
     def __init__(self):
@@ -90,6 +99,7 @@ class DellOutputData:
         self.grubconf = None
         self.mounts = None
         self.inittab = None
+        self.securetty = None
 
     def __str__(self):
         ser = "=============SERVICES=======================\n"
@@ -124,6 +134,14 @@ class DellOutputData:
         grc = "============= INITTAB========================\n"
         gre = "============= INITTAB ERRORMSG===============\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.inittab.__str__(), gre, self.inittab.errormsg)
+
+        grc = "============= SECURETTY======================\n"
+        gre = "============= SECURETTY ERRORMSG=============\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.securetty.data.__str__(), gre, self.securetty.errormsg)
+
+        grc = "============= IO SCHEDULERS==================\n"
+        gre = "============= IO SCHEDULERS  ERRORMSG========\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.ioschedulers.devices.__str__(), gre, self.ioschedulers.errormsg)
 
         return output
     
