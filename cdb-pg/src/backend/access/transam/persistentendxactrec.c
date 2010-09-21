@@ -229,8 +229,6 @@ PersistentEndXactRec_VerifyFileSysActionInfos(
 	if (InRecovery || Persistent_BeforePersistenceWork())
 		return;
 
-//	PersistentFileSysObj_InitScan();
-
 	for (i = 0; i < count; i++)
 	{
 		PersistentTidIsKnownResult persistentTidIsKnownResult;

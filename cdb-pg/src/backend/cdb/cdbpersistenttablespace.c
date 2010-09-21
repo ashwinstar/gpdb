@@ -84,12 +84,12 @@ static HTAB *persistentTablespaceSharedHashTable = NULL;
 
 PersistentTablespaceData	persistentTablespaceData = PersistentTablespaceData_StaticInit;
 
-static void PersistentTablespace_InitScan(void)
+static void PersistentTablespace_VerifyInitScan(void)
 {
 	if (persistentTablespaceSharedData == NULL)
 		elog(PANIC, "Persistent tablespace information shared-memory not setup");
 
-	PersistentFileSysObj_InitScan();
+	PersistentFileSysObj_VerifyInitScan();
 }
 
 /*
@@ -196,7 +196,7 @@ PersistentTablespace_GetState(
 		return PersistentFileSysState_Created; 
 	}
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.
@@ -329,7 +329,7 @@ static bool PersistentTablespace_CheckScanTupleCallback(
 bool PersistentTablespace_Check(
 	Oid				tablespace)
 {
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	persistentTablespaceCheck = tablespace;
 	persistentTablespaceCheckFound = false;
@@ -352,7 +352,7 @@ extern void PersistentTablespace_LookupTidAndSerialNum(
 {
 	TablespaceDirEntry tablespaceDirEntry;
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.
@@ -481,7 +481,10 @@ PersistentTablespaceGetFilespaces PersistentTablespace_TryGetPrimaryAndMirrorFil
 	if (gp_before_filespace_setup)
 		elog(ERROR, "can not lookup tablespace location: gp_before_filespace_setup=true");
 
-	PersistentTablespace_InitScan();
+	/*
+	 * Important to make this call AFTER we check if we are the Standby Master.
+	 */
+	PersistentTablespace_VerifyInitScan();
 
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.
@@ -541,6 +544,12 @@ void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 
 	Oid filespaceOid;
 
+	/*
+	 * Do not call PersistentTablepace_VerifyInitScan here to allow 
+	 * PersistentTablespace_TryGetPrimaryAndMirrorFilespaces to handle the Standby Master
+	 * special case.
+	 */
+
 	tablespaceGetFilespaces =
 			PersistentTablespace_TryGetPrimaryAndMirrorFilespaces(
 													tablespaceOid,
@@ -590,7 +599,7 @@ PersistentTablespace_GetFileSpaceOid(Oid tablespaceOid)
 		 return SYSTEMFILESPACE_OID;
 	}
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.
@@ -668,7 +677,7 @@ void PersistentTablespace_MarkCreatePending(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
@@ -710,7 +719,7 @@ xlog_persistent_tablespace_create(Oid filespaceoid, Oid tablespaceoid)
 	TablespaceDirEntry tde;
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
@@ -760,7 +769,7 @@ void PersistentTablespace_Created(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
@@ -811,7 +820,7 @@ PersistentTablespace_RemoveSegment(int16 dbid, bool ismirror)
 	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
@@ -851,7 +860,7 @@ PersistentTablespace_ActivateStandby(int16 oldmaster, int16 newmaster)
 	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
@@ -892,7 +901,7 @@ PersistentTablespace_AddMirrorAll(
 	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
@@ -963,7 +972,7 @@ bool PersistentTablespace_MarkDropPending(
 		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
@@ -1042,7 +1051,7 @@ bool PersistentTablespace_MarkAbortingCreate(
 		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
@@ -1117,7 +1126,7 @@ void PersistentTablespace_Dropped(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentTablespace_InitScan();
+	PersistentTablespace_VerifyInitScan();
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 

@@ -597,29 +597,14 @@ void PersistentFileSysObj_GetDataPtrs(
 		     fsObjType);
 }
 	
-void PersistentFileSysObj_InitScan(void)
+static void PersistentFileSysObj_DoInitScan(void)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
-
 	PersistentFsObjType				fsObjType;
 
 	PersistentFileSysObjData		*fileSysObjData;
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
-	
-	if (persistentFileSysObjPrivateSharedData == NULL)
-		elog(PANIC, "Persistent File-System Object shared-memory not initialized");
 
-	if (!persistentFileSysObjPrivateSharedData->needInitScan)
-		return;
-	
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
-
-	// Re-test.
-	if (!persistentFileSysObjPrivateSharedData->needInitScan)
-	{
-		MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
-		return;
-	}
+	Assert(persistentFileSysObjPrivateSharedData->needInitScan);
 
 	for (fsObjType = PersistentFsObjType_First; 
 		 fsObjType <= PersistentFsObjType_Last;
@@ -635,8 +620,48 @@ void PersistentFileSysObj_InitScan(void)
 	}
 
 	 persistentFileSysObjPrivateSharedData->needInitScan = false;
+}
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+void PersistentFileSysObj_BuildInitScan(void)
+{
+	if (persistentFileSysObjPrivateSharedData == NULL)
+		elog(PANIC, "Persistent File-System Object shared-memory not initialized");
+
+	if (!persistentFileSysObjPrivateSharedData->needInitScan)
+	{
+		// gp_persistent_build_db can be called multiple times.
+		return;
+	}
+
+	PersistentFileSysObj_DoInitScan();
+}
+
+void PersistentFileSysObj_StartupInitScan(void)
+{
+	if (persistentFileSysObjPrivateSharedData == NULL)
+		elog(PANIC, "Persistent File-System Object shared-memory not initialized");
+
+	/*
+	 * We only scan persistent meta-data from with Startup phase 1.
+	 * Build is only done in special states.
+	 */
+	if (!persistentFileSysObjPrivateSharedData->needInitScan)
+	{
+		elog(PANIC, "We only scan persistent meta-data once during Startup Pass 1");
+	}
+
+	PersistentFileSysObj_DoInitScan();
+}
+
+void PersistentFileSysObj_VerifyInitScan(void)
+{
+	if (persistentFileSysObjPrivateSharedData == NULL)
+		elog(PANIC, "Persistent File-System Object shared-memory not initialized");
+
+	if (persistentFileSysObjPrivateSharedData->needInitScan)
+	{
+		elog(PANIC, "Persistent File-System Object meta-data not scanned into memory");
+	}
 }
 
 void PersistentFileSysObj_FlushXLog(void)
@@ -4794,7 +4819,7 @@ void PersistentFileSysObj_MarkWholeMirrorFullCopy(void)
 {
 	PersistentFsObjType		fsObjType;
 
-	PersistentFileSysObj_InitScan();
+	PersistentFileSysObj_VerifyInitScan();
 
 	for (fsObjType = PersistentFsObjType_First; 
 		 fsObjType <= PersistentFsObjType_Last;
@@ -4901,7 +4926,7 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
 
-	PersistentFileSysObj_InitScan();
+	PersistentFileSysObj_VerifyInitScan();
 
 	PersistentFileSysObj_GetDataPtrs(
 								PersistentFsObjType_RelationFile,
@@ -5038,7 +5063,7 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
 
-	PersistentFileSysObj_InitScan();
+	PersistentFileSysObj_VerifyInitScan();
 
 	PersistentFileSysObj_GetDataPtrs(
 								PersistentFsObjType_RelationFile,
@@ -5205,7 +5230,7 @@ void PersistentFileSysObj_MarkAppendOnlyCatchup(void)
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
 
-	PersistentFileSysObj_InitScan();
+	PersistentFileSysObj_VerifyInitScan();
 
 	PersistentFileSysObj_GetDataPtrs(
 								PersistentFsObjType_RelationFile,
@@ -5541,7 +5566,7 @@ void PersistentFileSysObj_MarkPageIncrementalFromChangeLog(void)
 	int 					count = 0;
 	int 					i;
 
-	PersistentFileSysObj_InitScan();
+	PersistentFileSysObj_VerifyInitScan();
 	
 	/* 
 	 * Finalize the compacting steps of the changetracking logs. after
@@ -5822,7 +5847,7 @@ bool PersistentFileSysObj_ResynchronizeRefetch(
 		elog(ERROR, "Persistent '%s' serial number for update mirror existence state is invalid (0)",
 			 PersistentFileSysObjName_TypeName(PersistentFsObjType_RelationFile));
 
-	PersistentFileSysObj_InitScan();
+	PersistentFileSysObj_VerifyInitScan();
 
 	PersistentFileSysObj_GetDataPtrs(
 								PersistentFsObjType_RelationFile,
@@ -6093,7 +6118,7 @@ bool PersistentFileSysObj_ScanForRelation(
 			 segmentFileNum);
 	}
 
-	PersistentFileSysObj_InitScan();
+	PersistentFileSysObj_VerifyInitScan();
 
 	PersistentFileSysObj_GetDataPtrs(
 								PersistentFsObjType_RelationFile,

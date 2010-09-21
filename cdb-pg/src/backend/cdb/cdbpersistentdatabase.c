@@ -76,12 +76,12 @@ PersistentDatabaseSharedData	*persistentDatabaseSharedData = NULL;
 
 PersistentDatabaseData	persistentDatabaseData = PersistentDatabaseData_StaticInit;
 
-static void PersistentDatabase_InitScan(void)
+static void PersistentDatabase_VerifyInitScan(void)
 {
 	if (persistentDatabaseSharedData == NULL)
 		elog(PANIC, "Persistent database information shared-memory not setup");
 
-	PersistentFileSysObj_InitScan();
+	PersistentFileSysObj_VerifyInitScan();
 }
 
 // -----------------------------------------------------------------------------
@@ -215,7 +215,7 @@ void PersistentDatabase_DirIterateInit(void)
 {
 	Assert(persistentDatabaseSharedData != NULL);
 	
-	PersistentDatabase_InitScan();
+	PersistentDatabase_VerifyInitScan();
 
 	PersistentDatabase_ReleaseDirIterator();
 
@@ -248,6 +248,8 @@ bool PersistentDatabase_DirIterateNext(
 	DatabaseDirEntry prevDatabaseDirEntry;
 
 	Assert(persistentDatabaseSharedData != NULL);
+	
+	PersistentDatabase_VerifyInitScan();
 
 	MemSet(dbDirNode, 0, sizeof(DbDirNode));
 
@@ -297,6 +299,9 @@ bool PersistentDatabase_DirIterateNext(
 void PersistentDatabase_DirIterateClose(void)
 {
 	Assert(persistentDatabaseSharedData != NULL);
+	
+	PersistentDatabase_VerifyInitScan();
+
 	PersistentDatabase_ReleaseDirIterator();
 }
 
@@ -306,6 +311,8 @@ bool PersistentDatabase_DbDirExistsUnderLock(
 {
 	DatabaseDirEntry databaseDirEntry;
 	
+	PersistentDatabase_VerifyInitScan();
+
 	databaseDirEntry =
 			(DatabaseDirEntry)
 				    SharedOidSearch_Find(
@@ -326,6 +333,9 @@ static void PersistentDatabase_LookupExistingDbDir(
 
 	DatabaseDirEntry 	    *databaseDirEntry)
 {
+	
+	PersistentDatabase_VerifyInitScan();
+
 	*databaseDirEntry =
 			(DatabaseDirEntry)
 				    SharedOidSearch_Find(
@@ -433,7 +443,7 @@ void PersistentDatabase_MarkCreatePending(
 		return;
 	}
 
-	PersistentDatabase_InitScan();
+	PersistentDatabase_VerifyInitScan();
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
@@ -507,9 +517,11 @@ void PersistentDatabase_AddCreated(
 
 	int64 persistentSerialNum;
 
-	Assert (Persistent_BeforePersistenceWork());
+	if (!Persistent_BeforePersistenceWork())
+		elog(ERROR, "We can only add to persistent meta-data when special states");
 
-	PersistentDatabase_InitScan();
+	// Verify PersistentFileSysObj_BuildInitScan has been called.
+	PersistentDatabase_VerifyInitScan();
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
@@ -578,7 +590,7 @@ xlog_create_database(DbDirNode *db)
 	SharedOidSearchAddResult addResult;
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 
-	PersistentDatabase_InitScan();
+	PersistentDatabase_VerifyInitScan();
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
@@ -658,7 +670,7 @@ void PersistentDatabase_Created(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentDatabase_InitScan();
+	PersistentDatabase_VerifyInitScan();
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
@@ -711,6 +723,8 @@ PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror)
 	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
+	PersistentDatabase_VerifyInitScan();
+
 	rel = heap_open(GpPersistentDatabaseNodeRelationId,
 					AccessExclusiveLock);
 	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
@@ -759,6 +773,8 @@ PersistentDatabase_ActivateStandby(int16 oldmaster, int16 newmaster)
 
 	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
+
+	PersistentDatabase_VerifyInitScan();
 
 	rel = heap_open(GpPersistentDatabaseNodeRelationId,
 					AccessExclusiveLock);
@@ -816,6 +832,8 @@ PersistentDatabase_AddMirrorAll(
 
 		return;
 	}
+
+	PersistentDatabase_VerifyInitScan();
 
 	rel = heap_open(GpPersistentDatabaseNodeRelationId,
 					AccessExclusiveLock);
@@ -894,7 +912,7 @@ bool PersistentDatabase_MarkDropPending(
 		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentDatabase_InitScan();
+	PersistentDatabase_VerifyInitScan();
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
@@ -974,7 +992,7 @@ bool PersistentDatabase_MarkAbortingCreate(
 		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentDatabase_InitScan();
+	PersistentDatabase_VerifyInitScan();
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
@@ -1051,7 +1069,7 @@ void PersistentDatabase_Dropped(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentDatabase_InitScan();
+	PersistentDatabase_VerifyInitScan();
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
@@ -1120,7 +1138,7 @@ PersistentDatabase_DirIsCreated(DbDirNode *dbDirNode)
 		return true;
 	}
 
-	PersistentDatabase_InitScan();
+	PersistentDatabase_VerifyInitScan();
 
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
@@ -1176,7 +1194,7 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentDatabase_InitScan();
+	PersistentDatabase_VerifyInitScan();
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
@@ -1273,7 +1291,7 @@ void PersistentDatabase_JustInTimeCreated(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentDatabase_InitScan();
+	PersistentDatabase_VerifyInitScan();
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
@@ -1342,7 +1360,7 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentDatabase_InitScan();
+	PersistentDatabase_VerifyInitScan();
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 

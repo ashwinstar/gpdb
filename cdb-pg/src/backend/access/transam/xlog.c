@@ -6860,8 +6860,12 @@ StartupXLOG(void)
 		 * same fake-relcache facility that WAL replay uses.
 		 */
 		XLogInitRelationCache();
-		
-		PersistentFileSysObj_InitScan();
+
+		/*
+		 * During startup after we have performed recovery is the only place we
+		 * scan in the persistent meta-data into memory on already initdb database.
+		 */
+		PersistentFileSysObj_StartupInitScan();
 		
 		/*
 		 * Close down recovery environment

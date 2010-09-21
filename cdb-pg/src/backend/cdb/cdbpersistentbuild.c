@@ -442,6 +442,12 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 	
 	defaultTablespace = form_pg_database->dattablespace;
 
+	/*
+	 * Special call here to scan the persistent meta-data structures so we are open for 
+	 * business and then we can add information.
+	 */
+	PersistentFileSysObj_BuildInitScan();
+
 	info = DatabaseInfo_Collect(
 						MyDatabaseId,
 						defaultTablespace,

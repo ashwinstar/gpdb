@@ -91,12 +91,12 @@ static HTAB *persistentFilespaceSharedHashTable = NULL;
 
 PersistentFilespaceData	persistentFilespaceData = PersistentFilespaceData_StaticInit;
 
-static void PersistentFilespace_InitScan(void)
+static void PersistentFilespace_VerifyInitScan(void)
 {
 	if (persistentFilespaceSharedData == NULL)
 		elog(PANIC, "Persistent filespace information shared-memory not setup");
 
-	PersistentFileSysObj_InitScan();
+	PersistentFileSysObj_VerifyInitScan();
 }
 
 /*
@@ -322,6 +322,8 @@ static bool PersistentFilespace_CheckScanTupleCallback(
 bool PersistentFilespace_Check(
 	Oid				filespace)
 {
+	PersistentFilespace_VerifyInitScan();
+
 	persistentFilespaceCheck = filespace;
 	persistentFilespaceCheckFound = false;
 
@@ -343,7 +345,7 @@ extern void PersistentFilespace_LookupTidAndSerialNum(
 {
 	FilespaceDirEntry filespaceDirEntry;
 
-	PersistentFilespace_InitScan();
+	PersistentFilespace_VerifyInitScan();
 
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.
@@ -516,6 +518,11 @@ bool PersistentFilespace_TryGetPrimaryAndMirrorUnderLock(
 	}
 #endif
 
+	/*
+	 * Important to make this call AFTER we check if we are the Standby Master.
+	 */
+	PersistentFilespace_VerifyInitScan();
+
 	filespaceDirEntry = 
 				PersistentFilespace_FindDirUnderLock(
 												filespaceOid);
@@ -604,6 +611,12 @@ void PersistentFilespace_GetPrimaryAndMirrorUnderLock(
 				/* The primary filespace directory path.  Return NULL for global and base. 
 				 * Or, returns NULL when mirror not configured. */
 {
+	/*
+	 * Do not call PersistentFilespace_VerifyInitScan here to allow 
+	 * PersistentFilespace_TryGetPrimaryAndMirrorUnderLock to handle the Standby Master
+	 * special case.
+	 */
+
 	if (!PersistentFilespace_TryGetPrimaryAndMirrorUnderLock(
 													filespaceOid,
 													primaryFilespaceLocation,
@@ -627,7 +640,11 @@ bool PersistentFilespace_TryGetPrimaryAndMirror(
 {
 	bool result;
 
-	PersistentFilespace_InitScan();
+	/*
+	 * Do not call PersistentFilespace_VerifyInitScan here to allow 
+	 * PersistentFilespace_TryGetPrimaryAndMirrorUnderLock to handle the Standby Master
+	 * special case.
+	 */
 
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.
@@ -655,7 +672,11 @@ void PersistentFilespace_GetPrimaryAndMirror(
 				/* The primary filespace directory path.  Return NULL for global and base. 
 				 * Or, returns NULL when mirror not configured. */
 {
-	PersistentFilespace_InitScan();
+	/*
+	 * Do not call PersistentFilespace_VerifyInitScan here to allow 
+	 * PersistentFilespace_TryGetPrimaryAndMirrorUnderLock to handle the Standby Master
+	 * special case.
+	 */
 
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.
@@ -732,7 +753,7 @@ void PersistentFilespace_MarkCreatePending(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentFilespace_InitScan();
+	PersistentFilespace_VerifyInitScan();
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName,filespaceOid);
 
@@ -810,14 +831,14 @@ void PersistentFilespace_Created(
 				 "Skipping persistent filespace %u because we are before "
 				 "persistence work",
 				 filespaceOid);
-	/* 
-	 * The initdb process will load the persistent table once we out of
-	 * bootstrap mode.
-	 */
+		/* 
+		 * The initdb process will load the persistent table once we out of
+		 * bootstrap mode.
+		 */
 		return;
 	}
 
-	PersistentFilespace_InitScan();
+	PersistentFilespace_VerifyInitScan();
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName,filespaceOid);
 
@@ -898,7 +919,7 @@ bool PersistentFilespace_MarkDropPending(
 		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentFilespace_InitScan();
+	PersistentFilespace_VerifyInitScan();
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName,filespaceOid);
 
@@ -978,7 +999,7 @@ bool PersistentFilespace_MarkAbortingCreate(
 		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentFilespace_InitScan();
+	PersistentFilespace_VerifyInitScan();
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName,filespaceOid);
 
@@ -1053,7 +1074,7 @@ void PersistentFilespace_Dropped(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentFilespace_InitScan();
+	PersistentFilespace_VerifyInitScan();
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName,filespaceOid);
 
@@ -1114,7 +1135,7 @@ PersistentFilespace_AddMirror(Oid filespace,
 	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
 
-	PersistentFilespace_InitScan();
+	PersistentFilespace_VerifyInitScan();
 
 	PersistentFileSysObjName_SetFilespaceDir(&fsObjName, filespace);
 
@@ -1174,7 +1195,8 @@ PersistentFilespace_RemoveSegment(int16 dbid, bool ismirror)
 
 	hash_seq_init(&hstat, persistentFilespaceSharedHashTable);
 
-	PersistentFilespace_InitScan();
+	PersistentFilespace_VerifyInitScan();
+
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	while ((fde = hash_seq_search(&hstat)) != NULL)
@@ -1223,7 +1245,8 @@ PersistentFilespace_ActivateStandby(int16 oldmaster, int16 newmaster)
 
 	hash_seq_init(&hstat, persistentFilespaceSharedHashTable);
 
-	PersistentFilespace_InitScan();
+	PersistentFilespace_VerifyInitScan();
+
 	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	while ((fde = hash_seq_search(&hstat)) != NULL)
@@ -1278,8 +1301,7 @@ PersistentFilespace_LookupMirrorDbid(int16 primaryDbid)
 	FilespaceDirEntry   dirEntry;
 	int16				mirrorDbid = 0;
 
-	/* Initialize the hash table if needed */
-	PersistentFileSysObj_InitScan();
+	PersistentFilespace_VerifyInitScan();
 
 	/* Start scan */
 	hash_seq_init(&status, persistentFilespaceSharedHashTable);

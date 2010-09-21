@@ -71,7 +71,11 @@ extern void PersistentFileSysObj_GetDataPtrs(
 	
 	PersistentFileSysObjSharedData	**fileSysObjSharedData);
 
-extern void PersistentFileSysObj_InitScan(void);
+extern void PersistentFileSysObj_BuildInitScan(void);
+
+extern void PersistentFileSysObj_StartupInitScan(void);
+
+extern void PersistentFileSysObj_VerifyInitScan(void);
 
 extern void PersistentFileSysObj_Scan(
 	PersistentFsObjType			fsObjType,

@@ -70,12 +70,12 @@ PersistentRelationSharedData	*persistentRelationSharedData = NULL;
 
 PersistentRelationData	persistentRelationData = PersistentRelationData_StaticInit;
 
-static void PersistentRelation_InitScan(void)
+static void PersistentRelation_VerifyInitScan(void)
 {
 	if (persistentRelationSharedData == NULL)
 		elog(PANIC, "Persistent relation information shared-memory not setup");
 
-	PersistentFileSysObj_InitScan();
+	PersistentFileSysObj_VerifyInitScan();
 }
 
 // -----------------------------------------------------------------------------
@@ -279,7 +279,7 @@ void PersistentRelation_AddCreatePending(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentRelation_InitScan();
+	PersistentRelation_VerifyInitScan();
 
 	PersistentFileSysObjName_SetRelationFile(
 										&fsObjName, 
@@ -376,9 +376,11 @@ void PersistentRelation_AddCreated(
 	MemSet(&previousFreeTid, 0, sizeof(ItemPointerData));
 	MemSet(&mirrorBufpoolResyncCkptLoc, 0, sizeof(XLogRecPtr));
 
-	Assert (Persistent_BeforePersistenceWork());
+	if (!Persistent_BeforePersistenceWork())
+		elog(ERROR, "We can only add to persistent meta-data when special states");
 
-	PersistentRelation_InitScan();
+	// Verify PersistentFileSysObj_BuildInitScan has been called.
+	PersistentRelation_VerifyInitScan();
 
 	PersistentFileSysObjName_SetRelationFile(
 										&fsObjName, 
@@ -465,7 +467,7 @@ void PersistentRelation_FinishBufferPoolBulkLoad(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentRelation_InitScan();
+	PersistentRelation_VerifyInitScan();
 
 	PersistentFileSysObjName_SetRelationFile(
 										&fsObjName, 
@@ -537,7 +539,7 @@ void PersistentRelation_Created(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentRelation_InitScan();
+	PersistentRelation_VerifyInitScan();
 
 	PersistentFileSysObjName_SetRelationFile(
 										&fsObjName, 
@@ -777,7 +779,7 @@ bool PersistentRelation_MarkDropPending(
 		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentRelation_InitScan();
+	PersistentRelation_VerifyInitScan();
 
 	PersistentFileSysObjName_SetRelationFile(
 										&fsObjName, 
@@ -858,7 +860,7 @@ bool PersistentRelation_MarkAbortingCreate(
 		return false;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentRelation_InitScan();
+	PersistentRelation_VerifyInitScan();
 
 	PersistentFileSysObjName_SetRelationFile(
 										&fsObjName, 
@@ -934,7 +936,7 @@ void PersistentRelation_Dropped(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentRelation_InitScan();
+	PersistentRelation_VerifyInitScan();
 
 	PersistentFileSysObjName_SetRelationFile(
 										&fsObjName, 
@@ -1018,7 +1020,7 @@ void PersistentRelation_MarkBufPoolRelationForScanIncrementalResync(
 		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
 	}
 
-	PersistentRelation_InitScan();
+	PersistentRelation_VerifyInitScan();
 
 	PersistentFileSysObjName_SetRelationFile(
 										&fsObjName, 
