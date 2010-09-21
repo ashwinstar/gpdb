@@ -269,6 +269,7 @@ if (readDataFiles()):
     earlyExit(True)
 
 for h in hosts:
+    print h
     print hosts[h].data.__str__()
 
 earlyExit(False)
