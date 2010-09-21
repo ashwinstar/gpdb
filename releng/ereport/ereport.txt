@@ -1218,112 +1218,137 @@ xaae: xlog:00007329:  ereport(FATAL,
 xaae: xlog:00007330:  (errmsg("%s: control file contains invalid data", callerStr))); 
 xaae: xlog:00007376:  ereport(ERROR, 
 xaae: xlog:00007377:  (errmsg("%s: could not locate a valid checkpoint record", callerStr))); 
-xaae: xlog:00007394:  ereport(ERROR, 
-xaae: xlog:00007395:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
-xaae: xlog:00007404:  ereport(ERROR, 
-xaae: xlog:00007405:  (errmsg("%s: first redo record before checkpoint not found at %s", 
-xaae: xlog:00007406:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
-xaae: xlog:00008034:  ereport(LOG, 
-xaae: xlog:00008035:  (errmsg("database system is shut down"), 
-xaae: xlog:00008036:  errSendAlert(true),errOmitLocation(true))); 
-xaae: xlog:00009000:  ereport(ERROR, 
-xaae: xlog:00009001:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009002:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00009005:  ereport(ERROR, 
-xaae: xlog:00009006:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009007:  (errmsg("WAL archiving is not active"), 
-xaae: xlog:00009008:  (errhint("archive_command must be defined before " 
-xaae: xlog:00009009:  "online backups can be made safely."))))); 
-xaae: xlog:00009035:  ereport(ERROR, 
-xaae: xlog:00009036:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009037:  errmsg("a backup is already in progress"), 
-xaae: xlog:00009038:  errhint("Run pg_stop_backup() and try again."))); 
-xaae: xlog:00009083:  ereport(ERROR, 
-xaae: xlog:00009084:  (errcode_for_file_access(), 
-xaae: xlog:00009085:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00009086:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009089:  ereport(ERROR, 
-xaae: xlog:00009090:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009091:  errmsg("a backup is already in progress"), 
-xaae: xlog:00009092:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
-xaae: xlog:00009093:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009100:  ereport(ERROR, 
-xaae: xlog:00009101:  (errcode_for_file_access(), 
-xaae: xlog:00009102:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00007399:  ereport(ERROR, 
+xaae: xlog:00007400:  (errmsg("%s: invalid redo in checkpoint record", callerStr))); 
+xaae: xlog:00007409:  ereport(ERROR, 
+xaae: xlog:00007410:  (errmsg("%s: first redo record before checkpoint not found at %s", 
+xaae: xlog:00007411:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
+xaae: xlog:00008044:  ereport(LOG, 
+xaae: xlog:00008045:  (errmsg("database system is shut down"), 
+xaae: xlog:00008046:  errSendAlert(true),errOmitLocation(true))); 
+xaae: xlog:00009010:  ereport(ERROR, 
+xaae: xlog:00009011:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009012:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00009015:  ereport(ERROR, 
+xaae: xlog:00009016:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009017:  (errmsg("WAL archiving is not active"), 
+xaae: xlog:00009018:  (errhint("archive_command must be defined before " 
+xaae: xlog:00009019:  "online backups can be made safely."))))); 
+xaae: xlog:00009045:  ereport(ERROR, 
+xaae: xlog:00009046:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009047:  errmsg("a backup is already in progress"), 
+xaae: xlog:00009048:  errhint("Run pg_stop_backup() and try again."))); 
+xaae: xlog:00009093:  ereport(ERROR, 
+xaae: xlog:00009094:  (errcode_for_file_access(), 
+xaae: xlog:00009095:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00009096:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009099:  ereport(ERROR, 
+xaae: xlog:00009100:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009101:  errmsg("a backup is already in progress"), 
+xaae: xlog:00009102:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
 xaae: xlog:00009103:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009111:  ereport(ERROR, 
-xaae: xlog:00009112:  (errcode_for_file_access(), 
-xaae: xlog:00009113:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00009114:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009166:  ereport(ERROR, 
-xaae: xlog:00009167:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009168:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00009200:  ereport(ERROR, 
-xaae: xlog:00009201:  (errcode_for_file_access(), 
-xaae: xlog:00009202:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009203:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009204:  ereport(ERROR, 
-xaae: xlog:00009205:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009206:  errmsg("a backup is not in progress"))); 
-xaae: xlog:00009216:  ereport(ERROR, 
-xaae: xlog:00009217:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009218:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009228:  ereport(ERROR, 
-xaae: xlog:00009229:  (errcode_for_file_access(), 
-xaae: xlog:00009230:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00009231:  histfilepath))); 
-xaae: xlog:00009241:  ereport(ERROR, 
-xaae: xlog:00009242:  (errcode_for_file_access(), 
-xaae: xlog:00009243:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00009244:  histfilepath))); 
-xaae: xlog:00009250:  ereport(ERROR, 
-xaae: xlog:00009251:  (errcode_for_file_access(), 
-xaae: xlog:00009252:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009253:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009255:  ereport(ERROR, 
-xaae: xlog:00009256:  (errcode_for_file_access(), 
-xaae: xlog:00009257:  errmsg("could not remove file \"%s\": %m", 
-xaae: xlog:00009258:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009288:  ereport(ERROR, 
-xaae: xlog:00009289:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009290:  (errmsg("must be superuser to switch transaction log files")))); 
-xaae: xlog:00009396:  ereport(ERROR, 
-xaae: xlog:00009397:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009398:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009399:  locationstr))); 
-xaae: xlog:00009465:  ereport(ERROR, 
-xaae: xlog:00009466:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009467:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009468:  locationstr))); 
-xaae: xlog:00009525:  ereport(FATAL, 
-xaae: xlog:00009526:  (errcode_for_file_access(), 
-xaae: xlog:00009527:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009528:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009540:  ereport(FATAL, 
-xaae: xlog:00009541:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009542:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009546:  ereport(FATAL, 
-xaae: xlog:00009547:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009548:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009110:  ereport(ERROR, 
+xaae: xlog:00009111:  (errcode_for_file_access(), 
+xaae: xlog:00009112:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00009113:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009121:  ereport(ERROR, 
+xaae: xlog:00009122:  (errcode_for_file_access(), 
+xaae: xlog:00009123:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009124:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009176:  ereport(ERROR, 
+xaae: xlog:00009177:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009178:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00009210:  ereport(ERROR, 
+xaae: xlog:00009211:  (errcode_for_file_access(), 
+xaae: xlog:00009212:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009213:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009214:  ereport(ERROR, 
+xaae: xlog:00009215:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009216:  errmsg("a backup is not in progress"))); 
+xaae: xlog:00009226:  ereport(ERROR, 
+xaae: xlog:00009227:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009228:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009238:  ereport(ERROR, 
+xaae: xlog:00009239:  (errcode_for_file_access(), 
+xaae: xlog:00009240:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00009241:  histfilepath))); 
+xaae: xlog:00009251:  ereport(ERROR, 
+xaae: xlog:00009252:  (errcode_for_file_access(), 
+xaae: xlog:00009253:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009254:  histfilepath))); 
+xaae: xlog:00009260:  ereport(ERROR, 
+xaae: xlog:00009261:  (errcode_for_file_access(), 
+xaae: xlog:00009262:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009263:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009265:  ereport(ERROR, 
+xaae: xlog:00009266:  (errcode_for_file_access(), 
+xaae: xlog:00009267:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00009268:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009298:  ereport(ERROR, 
+xaae: xlog:00009299:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009300:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00009406:  ereport(ERROR, 
+xaae: xlog:00009407:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009408:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009409:  locationstr))); 
+xaae: xlog:00009475:  ereport(ERROR, 
+xaae: xlog:00009476:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009477:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009478:  locationstr))); 
+xaae: xlog:00009535:  ereport(FATAL, 
+xaae: xlog:00009536:  (errcode_for_file_access(), 
+xaae: xlog:00009537:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009538:  BACKUP_LABEL_FILE))); 
 xaae: xlog:00009550:  ereport(FATAL, 
-xaae: xlog:00009551:  (errcode_for_file_access(), 
-xaae: xlog:00009552:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009553:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009577:  ereport(FATAL, 
-xaae: xlog:00009578:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009579:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009583:  ereport(FATAL, 
-xaae: xlog:00009584:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009585:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009588:  ereport(FATAL, 
-xaae: xlog:00009589:  (errcode_for_file_access(), 
-xaae: xlog:00009590:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009591:  histfilepath))); 
-xaae: xlog:00009938:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-xaae: xlog:00009939:  errmsg("database 'postgres' does not exist"))); 
-xaae: xlog:00010615:  ereport(ERROR, 
-xaae: xlog:00010616:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-xaae: xlog:00010617:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
+xaae: xlog:00009551:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009552:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009556:  ereport(FATAL, 
+xaae: xlog:00009557:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009558:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009560:  ereport(FATAL, 
+xaae: xlog:00009561:  (errcode_for_file_access(), 
+xaae: xlog:00009562:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009563:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009587:  ereport(FATAL, 
+xaae: xlog:00009588:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009589:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009593:  ereport(FATAL, 
+xaae: xlog:00009594:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009595:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009598:  ereport(FATAL, 
+xaae: xlog:00009599:  (errcode_for_file_access(), 
+xaae: xlog:00009600:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009601:  histfilepath))); 
+xaae: xlog:00009948:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+xaae: xlog:00009949:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00010186:  ereport(WARNING, 
+xaae: xlog:00010187:  (errcode_for_file_access(), 
+xaae: xlog:00010188:  errmsg("could not allocate path, path too long \"%s/%s\"", 
+xaae: xlog:00010189:  XLOGDIR, fname))); 
+xaae: xlog:00010195:  ereport(WARNING, 
+xaae: xlog:00010196:  (errcode_for_file_access(), 
+xaae: xlog:00010197:  errmsg("could not open xlog file \"%s\" : %m", 
+xaae: xlog:00010198:  path))); 
+xaae: xlog:00010203:  ereport(WARNING, 
+xaae: xlog:00010204:  (errcode_for_file_access(), 
+xaae: xlog:00010205:  errmsg("could not truncate xlog file \"%s\" to position \"%d\" : %m", 
+xaae: xlog:00010206:  path, startOffset))); 
+xaae: xlog:00010212:  ereport(WARNING, 
+xaae: xlog:00010213:  (errcode_for_file_access(), 
+xaae: xlog:00010214:  errmsg("could not seek xlog file \"%s\" to position \"%d\" : %m", 
+xaae: xlog:00010215:  path, startOffset))); 
+xaae: xlog:00010245:  ereport(WARNING, 
+xaae: xlog:00010246:  (errcode_for_file_access(), 
+xaae: xlog:00010247:  errmsg("could not write to file \"%s\": %m", path))); 
+xaae: xlog:00010258:  ereport(WARNING, 
+xaae: xlog:00010259:  (errcode_for_file_access(), 
+xaae: xlog:00010260:  errmsg("could not fsync file \"%s\": %m", path))); 
+xaae: xlog:00010267:  ereport(WARNING, 
+xaae: xlog:00010268:  (errcode_for_file_access(), 
+xaae: xlog:00010269:  errmsg("could not close file \"%s\": %m", path))); 
+xaae: xlog:00010627:  ereport(ERROR, 
+xaae: xlog:00010628:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+xaae: xlog:00010629:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -2648,18 +2673,65 @@ caba: cdbexplain:00000506:  errhint("Please verify that all instances are using 
 caba: cdbexplain:00000507:  "the correct %s software version.", 
 caba: cdbexplain:00000508:  PACKAGE_NAME))); 
 aaaaa GP_IGNORE: caba: cdbfilerep - ./backend/cdb/cdbfilerep.c
-caba: cdbfilerep:00000482:  ereport(ERROR, 
-caba: cdbfilerep:00000483:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000484:  (errmsg("Not enough shared memory for Mirroring.")))); 
-caba: cdbfilerep:00000508:  ereport(ERROR, 
-caba: cdbfilerep:00000509:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000510:  (errmsg("shared memory for filerep ipc not initialized")))); 
-caba: cdbfilerep:00000635:  ereport(ERROR, 
-caba: cdbfilerep:00000636:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000637:  (errmsg("Not enough shared memory for Mirroring.")))); 
-caba: cdbfilerep:00000795:  ereport(ERROR, 
-caba: cdbfilerep:00000796:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000797:  (errmsg("shared memory for Mirroring not initialized.")))); 
+caba: cdbfilerep:00000470:  ereport(ERROR, 
+caba: cdbfilerep:00000471:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000472:  (errmsg("not enough shared memory for mirroring")))); 
+caba: cdbfilerep:00000496:  ereport(ERROR, 
+caba: cdbfilerep:00000497:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000498:  (errmsg("shared memory for filerep ipc not initialized")))); 
+caba: cdbfilerep:00000623:  ereport(ERROR, 
+caba: cdbfilerep:00000624:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000625:  (errmsg("not enough shared memory for mirroring")))); 
+caba: cdbfilerep:00000766:  ereport(ERROR, 
+caba: cdbfilerep:00000767:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000768:  (errmsg("shared memory for mirroring not initialized.")))); 
+caba: cdbfilerep:00001084:  ereport(WARNING, 
+caba: cdbfilerep:00001085:  (errmsg("threshold '75' percent of 'gp_segment_connect_timeout=%d' is reached, " 
+caba: cdbfilerep:00001086:  "mirror may not be able to keep up with primary, " 
+caba: cdbfilerep:00001087:  "primary may transition to change tracking", 
+caba: cdbfilerep:00001088:  gp_segment_connect_timeout), 
+caba: cdbfilerep:00001089:  errhint("increase guc 'gp_segment_connect_timeout' by 'gpconfig' and 'gpstop -u' "), 
+caba: cdbfilerep:00001090:  errSendAlert(true))); 
+caba: cdbfilerep:00001118: ereport(WARNING, 
+caba: cdbfilerep:00001119:  (errmsg("mirror is staying behind primary for '%d' seconds"), // 75% *gp_segment_connect_timeout 
+caba: cdbfilerep:00001120:  errSendAlert(true))); 
+caba: cdbfilerep:00001465:  ereport(ERROR, 
+caba: cdbfilerep:00001466:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00001467:  (errmsg("not enough shared memory to log filerep config")))); 
+caba: cdbfilerep:00001499:  ereport(ERROR, 
+caba: cdbfilerep:00001500:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00001501:  (errmsg("not enough shared memory to log filerep config")))); 
+caba: cdbfilerep:00001532:  ereport(ERROR, 
+caba: cdbfilerep:00001533:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00001534:  (errmsg("not enough shared memory to log filerep config")))); 
+caba: cdbfilerep:00001650:  ereport(WARNING, 
+caba: cdbfilerep:00001651:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001652:  errmsg("could not open file '%s' : %m", 
+caba: cdbfilerep:00001653:  path))); 
+caba: cdbfilerep:00001668:  ereport(WARNING, 
+caba: cdbfilerep:00001669:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001670:  errmsg("could not seek in file to position '0' in file '%s' : %m", 
+caba: cdbfilerep:00001671:  path))); 
+caba: cdbfilerep:00001687:  ereport(WARNING, 
+caba: cdbfilerep:00001688:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001689:  errmsg("could not write to file '%s' data '%p' dataLength '%u' : %m", 
+caba: cdbfilerep:00001690:  path, 
+caba: cdbfilerep:00001691:  data, 
+caba: cdbfilerep:00001692:  dataLengthLocal))); 
+caba: cdbfilerep:00001703:  ereport(WARNING, 
+caba: cdbfilerep:00001704:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001705:  errmsg("could not fsync file '%s' : %m", path))); 
+caba: cdbfilerep:00001884:  ereport(WARNING, 
+caba: cdbfilerep:00001885:  (errmsg("signal to children failed pid '%ld' signal '%d' : %m", 
+caba: cdbfilerep:00001886:  (long) subProc->pid, signal))); 
+caba: cdbfilerep:00002560:  ereport(WARNING, 
+caba: cdbfilerep:00002561:  (errmsg("could not fork %s : %m", 
+caba: cdbfilerep:00002562:  FileRepProcessTypeToString[type]))); 
+caba: cdbfilerep:00003297:  ereport(WARNING, 
+caba: cdbfilerep:00003298:  (errmsg("mirror failure, " 
+caba: cdbfilerep:00003299:  "could not retrieve segment configuration, " 
+caba: cdbfilerep:00003300:  "failover requested"), 
+caba: cdbfilerep:00003301:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
 aaaaa GP_IGNORE: caca: cdbfilerepconnclient - ./backend/cdb/cdbfilerepconnclient.c
 caca: cdbfilerepconnclient:00000058:  ereport(WARNING, 
 caca: cdbfilerepconnclient:00000059:  (errcode_for_socket_access(), 
@@ -2722,422 +2794,781 @@ caca: cdbfilerepconnserver:00000374:  ereport(WARNING,
 caca: cdbfilerepconnserver:00000375:  (errcode_for_socket_access(), 
 caca: cdbfilerepconnserver:00000376:  errmsg("receive EOF on connection: %m"))); 
 aaaaa GP_IGNORE: cabg: cdbfilerepmirror - ./backend/cdb/cdbfilerepmirror.c
-cabg: cdbfilerepmirror:00000142:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000143:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000144:  "injected fault by guc filerep_inject_listener_fault, " 
-cabg: cdbfilerepmirror:00000145:  "failover requested"), 
-cabg: cdbfilerepmirror:00000146:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000308:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000309:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000310:  "could not queue received message to be processed, " 
-cabg: cdbfilerepmirror:00000311:  "failover requested"), 
-cabg: cdbfilerepmirror:00000312:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000313:  FileRep_errdetail_Shmem(), 
-cabg: cdbfilerepmirror:00000314:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000707:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000708:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000709:  "could not match message header checksum between primary:'%u' and mirror:'%u', " 
-cabg: cdbfilerepmirror:00000710:  "failover requested", 
-cabg: cdbfilerepmirror:00000711:  *fileRepMessageHeaderCrc, 
-cabg: cdbfilerepmirror:00000712:  messageHeaderCrcLocal), 
-cabg: cdbfilerepmirror:00000713:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000714:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000715:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000716:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000717:  FileRep_errdetail_Shmem(), 
-cabg: cdbfilerepmirror:00000718:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000738:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000739:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000740:  "could not match message body checksum between primary:'%u' and mirror:'%u' data length:'%u', " 
-cabg: cdbfilerepmirror:00000741:  "failover requested", 
-cabg: cdbfilerepmirror:00000742:  fileRepMessageHeader->fileRepMessageBodyCrc, 
-cabg: cdbfilerepmirror:00000743:  messageBodyLocal, 
-cabg: cdbfilerepmirror:00000744:  fileRepMessageHeader->fileRepOperationDescription.write.dataLength), 
-cabg: cdbfilerepmirror:00000745:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000746:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000747:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000748:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000749:  FileRep_errdetail_Shmem(), 
-cabg: cdbfilerepmirror:00000750:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000811:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000812:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00000813:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000814:  "could not seek to file position:" INT64_FORMAT " : %m, " 
-cabg: cdbfilerepmirror:00000815:  "failover requested", 
-cabg: cdbfilerepmirror:00000816:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof), 
-cabg: cdbfilerepmirror:00000817:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000818:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000819:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000820:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000821:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000863:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000864:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00000865:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000866:  "could not open file position:" INT64_FORMAT " file flags:'%x' " 
-cabg: cdbfilerepmirror:00000867:  "file mode:'%o' : %m, " 
-cabg: cdbfilerepmirror:00000868:  "failover requested", 
-cabg: cdbfilerepmirror:00000869:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
-cabg: cdbfilerepmirror:00000870:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
-cabg: cdbfilerepmirror:00000871:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
-cabg: cdbfilerepmirror:00000872:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000873:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000874:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000875:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000876:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000904:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000905:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00000906:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000907:  "could not seek to file position:" INT64_FORMAT " : %m, " 
-cabg: cdbfilerepmirror:00000908:  "failover requested", 
-cabg: cdbfilerepmirror:00000909:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof), 
-cabg: cdbfilerepmirror:00000910:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000911:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000912:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000913:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000914:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00000957:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00000958:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00000959:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00000960:  "could not open file position:" INT64_FORMAT " " 
-cabg: cdbfilerepmirror:00000961:  "file flags:'%x' file mode:'%o' : %m, " 
-cabg: cdbfilerepmirror:00000962:  "failover requested", 
-cabg: cdbfilerepmirror:00000963:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
-cabg: cdbfilerepmirror:00000964:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
-cabg: cdbfilerepmirror:00000965:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
-cabg: cdbfilerepmirror:00000966:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00000967:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00000968:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00000969:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00000970:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001022:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001023:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001024:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001025:  "could not open file position:" INT64_FORMAT " " 
-cabg: cdbfilerepmirror:00001026:  "file flags:'%x' file mode:'%o' : %m, " 
-cabg: cdbfilerepmirror:00001027:  "failover requested", 
-cabg: cdbfilerepmirror:00001028:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
-cabg: cdbfilerepmirror:00001029:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
-cabg: cdbfilerepmirror:00001030:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
-cabg: cdbfilerepmirror:00001031:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001032:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001033:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001034:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001035:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001069:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001070:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001071:  "could not find file descriptor, " 
-cabg: cdbfilerepmirror:00001072:  "failover requested"), 
-cabg: cdbfilerepmirror:00001073:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001074:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001075:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001076:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001077:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001109:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001110:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001111:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001112:  "could not open file file flags:'%x' file mode:'%o': %m, " 
-cabg: cdbfilerepmirror:00001113:  "failover requested", 
-cabg: cdbfilerepmirror:00001114:  O_CREAT *PIPE* O_RDWR *PIPE* PG_BINARY, 
-cabg: cdbfilerepmirror:00001115:  fileMode), 
-cabg: cdbfilerepmirror:00001116:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001117:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001118:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001119:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001120:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001157:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001158:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001159:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001160:  "could not fill zero blocks into segment file : %m, " 
-cabg: cdbfilerepmirror:00001161:  "failover requested"), 
-cabg: cdbfilerepmirror:00001162:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001163:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001164:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001165:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001166:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001178:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001179:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001180:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001181:  "could not seek to file position:'%d' : %m, " 
-cabg: cdbfilerepmirror:00001182:  "failover requested", 
-cabg: cdbfilerepmirror:00001183:  fileRepMessageHeader->fileRepOperationDescription.write.offset), 
-cabg: cdbfilerepmirror:00001184:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001185:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001186:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001187:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001188:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001206:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001207:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001208:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001209:  "could not write to file : %m, " 
-cabg: cdbfilerepmirror:00001210:  "failover requested"), 
-cabg: cdbfilerepmirror:00001211:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001212:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001213:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001214:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001215:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001230:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001231:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001232:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001233:  "could not find file descriptor : %m, " 
-cabg: cdbfilerepmirror:00001234:  "failover requested"), 
-cabg: cdbfilerepmirror:00001235:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001236:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001237:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001238:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001239:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001263:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001264:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001265:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001266:  "could not find file descriptor or open file : %m" 
-cabg: cdbfilerepmirror:00001267:  "failover requested"), 
-cabg: cdbfilerepmirror:00001268:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001269:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001270:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001271:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001272:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001305:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001306:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001307:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001308:  "could not fsync file : %m" 
-cabg: cdbfilerepmirror:00001309:  "failover requested"), 
-cabg: cdbfilerepmirror:00001310:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001311:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001312:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001313:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001314:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001383:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001384:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001385:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001386:  "could not find file descriptor or open file : %m" 
-cabg: cdbfilerepmirror:00001387:  "failover requested"), 
-cabg: cdbfilerepmirror:00001388:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001389:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001390:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001391:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001392:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001417:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001418:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001419:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001420:  "could not fsync file : %m" 
-cabg: cdbfilerepmirror:00001421:  "failover requested"), 
-cabg: cdbfilerepmirror:00001422:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001423:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001424:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001425:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001426:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001463:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001464:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001465:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001466:  "could not find file descriptor or open file : %m" 
-cabg: cdbfilerepmirror:00001467:  "failover requested"), 
-cabg: cdbfilerepmirror:00001468:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001469:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001470:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001471:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001472:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001498:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001499:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001500:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001501:  "could not truncate file to position:'" INT64_FORMAT "' : %m" 
-cabg: cdbfilerepmirror:00001502:  "failover requested", 
-cabg: cdbfilerepmirror:00001503:  fileRepMessageHeader->fileRepOperationDescription.truncate.position), 
-cabg: cdbfilerepmirror:00001504:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001505:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001506:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001507:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001508:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001545:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001546:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001547:  "could not reconcile xlog file : %m" 
-cabg: cdbfilerepmirror:00001548:  "failover requested"), 
-cabg: cdbfilerepmirror:00001549:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001550:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001551:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001552:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001553:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001596:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001597:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001598:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001599:  "could not create directory : %m" 
-cabg: cdbfilerepmirror:00001600:  "failover requested"), 
-cabg: cdbfilerepmirror:00001601:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001602:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001603:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001604:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001675:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001676:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001677:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001678:  "could not create file : %m, " 
-cabg: cdbfilerepmirror:00001679:  "failover requested"), 
-cabg: cdbfilerepmirror:00001680:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001681:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001682:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001683:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001937:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001938:  (errmsg("mirror failure, could not queue ACK message to be sent to primary, failover requested"), 
-cabg: cdbfilerepmirror:00001939:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001940:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001941:  fileRepMessageHeader->fileRepOperation), 
-cabg: cdbfilerepmirror:00001942:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000150:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000151:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000152:  "injected fault by guc filerep_inject_listener_fault, " 
+cabg: cdbfilerepmirror:00000153:  "failover requested"), 
+cabg: cdbfilerepmirror:00000154:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000316:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000317:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000318:  "could not queue received message to be processed, " 
+cabg: cdbfilerepmirror:00000319:  "failover requested"), 
+cabg: cdbfilerepmirror:00000320:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000321:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00000322:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000712:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000713:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000714:  "could not match message header checksum between primary '%u' and mirror '%u', " 
+cabg: cdbfilerepmirror:00000715:  "failover requested", 
+cabg: cdbfilerepmirror:00000716:  *fileRepMessageHeaderCrc, 
+cabg: cdbfilerepmirror:00000717:  messageHeaderCrcLocal), 
+cabg: cdbfilerepmirror:00000718:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000719:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000720:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000721:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00000722:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00000723:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00000724:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000744:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000745:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000746:  "could not match message body checksum between primary '%u' and mirror '%u' data length '%u', " 
+cabg: cdbfilerepmirror:00000747:  "failover requested", 
+cabg: cdbfilerepmirror:00000748:  fileRepMessageHeader->fileRepMessageBodyCrc, 
+cabg: cdbfilerepmirror:00000749:  messageBodyLocal, 
+cabg: cdbfilerepmirror:00000750:  fileRepMessageHeader->fileRepOperationDescription.write.dataLength), 
+cabg: cdbfilerepmirror:00000751:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000752:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000753:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000754:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00000755:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00000756:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00000757:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000819:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000820:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00000821:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000822:  "could not seek to file position " INT64_FORMAT " : %m, " 
+cabg: cdbfilerepmirror:00000823:  "failover requested", 
+cabg: cdbfilerepmirror:00000824:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof), 
+cabg: cdbfilerepmirror:00000825:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000826:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000827:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000828:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00000829:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00000830:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000876:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000877:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00000878:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000879:  "could not open file position:" INT64_FORMAT " file flags '%x' " 
+cabg: cdbfilerepmirror:00000880:  "file mode '%o' : %m, " 
+cabg: cdbfilerepmirror:00000881:  "failover requested", 
+cabg: cdbfilerepmirror:00000882:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
+cabg: cdbfilerepmirror:00000883:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
+cabg: cdbfilerepmirror:00000884:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
+cabg: cdbfilerepmirror:00000885:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000886:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000887:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000888:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00000889:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00000890:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000919:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000920:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00000921:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000922:  "could not seek to file position " INT64_FORMAT " : %m, " 
+cabg: cdbfilerepmirror:00000923:  "failover requested", 
+cabg: cdbfilerepmirror:00000924:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof), 
+cabg: cdbfilerepmirror:00000925:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000926:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000927:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000928:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00000929:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00000930:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00000973:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00000974:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00000975:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00000976:  "could not open file position " INT64_FORMAT " " 
+cabg: cdbfilerepmirror:00000977:  "file flags '%x' file mode '%o' : %m, " 
+cabg: cdbfilerepmirror:00000978:  "failover requested", 
+cabg: cdbfilerepmirror:00000979:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
+cabg: cdbfilerepmirror:00000980:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
+cabg: cdbfilerepmirror:00000981:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
+cabg: cdbfilerepmirror:00000982:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00000983:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00000984:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00000985:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00000986:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00000987:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001040:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001041:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001042:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001043:  "could not open file position '" INT64_FORMAT "' " 
+cabg: cdbfilerepmirror:00001044:  "file flags '%x' file mode '%o' : %m, " 
+cabg: cdbfilerepmirror:00001045:  "failover requested", 
+cabg: cdbfilerepmirror:00001046:  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
+cabg: cdbfilerepmirror:00001047:  fileRepMessageHeader->fileRepOperationDescription.open.fileFlags, 
+cabg: cdbfilerepmirror:00001048:  fileRepMessageHeader->fileRepOperationDescription.open.fileMode), 
+cabg: cdbfilerepmirror:00001049:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001050:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001051:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001052:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001053:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001054:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001085:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001086:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001087:  "could not find file descriptor, " 
+cabg: cdbfilerepmirror:00001088:  "failover requested"), 
+cabg: cdbfilerepmirror:00001089:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001090:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001091:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001092:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001093:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001094:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001126:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001127:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001128:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001129:  "could not open file file flags '%x' file mode '%o': %m, " 
+cabg: cdbfilerepmirror:00001130:  "failover requested", 
+cabg: cdbfilerepmirror:00001131:  O_CREAT *PIPE* O_RDWR *PIPE* PG_BINARY, 
+cabg: cdbfilerepmirror:00001132:  fileMode), 
+cabg: cdbfilerepmirror:00001133:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001134:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001135:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001136:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001137:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001138:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001175:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001176:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001177:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001178:  "could not fill zero blocks into segment file : %m, " 
+cabg: cdbfilerepmirror:00001179:  "failover requested"), 
+cabg: cdbfilerepmirror:00001180:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001181:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001182:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001183:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001184:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001185:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001197:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001198:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001199:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001200:  "could not seek to file position '%d' : %m, " 
+cabg: cdbfilerepmirror:00001201:  "failover requested", 
+cabg: cdbfilerepmirror:00001202:  fileRepMessageHeader->fileRepOperationDescription.write.offset), 
+cabg: cdbfilerepmirror:00001203:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001204:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001205:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001206:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001207:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001208:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001226:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001227:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001228:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001229:  "could not write to file : %m, " 
+cabg: cdbfilerepmirror:00001230:  "failover requested"), 
+cabg: cdbfilerepmirror:00001231:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001232:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001233:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001234:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001235:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001236:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001249:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001250:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001251:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001252:  "could not find file descriptor : %m, " 
+cabg: cdbfilerepmirror:00001253:  "failover requested"), 
+cabg: cdbfilerepmirror:00001254:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001255:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001256:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001257:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001258:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001259:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001283:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001284:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001285:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001286:  "could not find file descriptor or open file : %m" 
+cabg: cdbfilerepmirror:00001287:  "failover requested"), 
+cabg: cdbfilerepmirror:00001288:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001289:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001290:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001291:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001292:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001293:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001358:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001359:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001360:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001361:  "could not fsync file : %m" 
+cabg: cdbfilerepmirror:00001362:  "failover requested"), 
+cabg: cdbfilerepmirror:00001363:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001364:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001365:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001366:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001367:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001368:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001440:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001441:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001442:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001443:  "could not find file descriptor or open file : %m" 
+cabg: cdbfilerepmirror:00001444:  "failover requested"), 
+cabg: cdbfilerepmirror:00001445:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001446:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001447:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001448:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001449:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001450:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001475:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001476:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001477:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001478:  "could not fsync file : %m" 
+cabg: cdbfilerepmirror:00001479:  "failover requested"), 
+cabg: cdbfilerepmirror:00001480:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001481:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001482:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001483:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001484:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001485:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001519:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001520:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001521:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001522:  "could not find file descriptor or open file : %m" 
+cabg: cdbfilerepmirror:00001523:  "failover requested"), 
+cabg: cdbfilerepmirror:00001524:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001525:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001526:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001527:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001528:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001529:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001555:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001556:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001557:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001558:  "could not truncate file to position '" INT64_FORMAT "' : %m" 
+cabg: cdbfilerepmirror:00001559:  "failover requested", 
+cabg: cdbfilerepmirror:00001560:  fileRepMessageHeader->fileRepOperationDescription.truncate.position), 
+cabg: cdbfilerepmirror:00001561:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001562:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001563:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001564:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001565:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001566:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001602:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001603:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001604:  "could not reconcile xlog file" 
+cabg: cdbfilerepmirror:00001605:  "failover requested"), 
+cabg: cdbfilerepmirror:00001606:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001607:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001608:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001609:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001610:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001611:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001661:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001662:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001663:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001664:  "could not create directory : %m" 
+cabg: cdbfilerepmirror:00001665:  "failover requested"), 
+cabg: cdbfilerepmirror:00001666:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001667:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001668:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001669:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001670:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001742:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001743:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001744:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001745:  "could not create file : %m, " 
+cabg: cdbfilerepmirror:00001746:  "failover requested"), 
+cabg: cdbfilerepmirror:00001747:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001748:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001749:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001750:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001751:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001793:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001794:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001795:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001796:  "could not remove directory : %m, " 
+cabg: cdbfilerepmirror:00001797:  "failover requested"), 
+cabg: cdbfilerepmirror:00001798:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001799:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001800:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001801:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001802:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001803:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001941:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001942:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001943:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001944:  "could not rename to '%s' : %m, " 
+cabg: cdbfilerepmirror:00001945:  "failover requested", 
+cabg: cdbfilerepmirror:00001946:  newFileName), 
+cabg: cdbfilerepmirror:00001947:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001948:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001949:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001950:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001951:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001952:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001965:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001966:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001967:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001968:  "could not link to '%s' : %m, " 
+cabg: cdbfilerepmirror:00001969:  "failover requested", 
+cabg: cdbfilerepmirror:00001970:  newFileName), 
+cabg: cdbfilerepmirror:00001971:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00001972:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00001973:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00001974:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00001975:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00001976:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002031:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002032:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002033:  "could not queue ACK message to be sent to primary, " 
+cabg: cdbfilerepmirror:00002034:  "failover requested"), 
+cabg: cdbfilerepmirror:00002035:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002036:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00002037:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00002038:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00002039:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00002040:  FileRep_errdetail_ShmemAck(), 
+cabg: cdbfilerepmirror:00002041:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002151:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002152:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002153:  "could not insert file information in open files hash table identifier '%s' fd '%d', " 
+cabg: cdbfilerepmirror:00002154:  "failover requested", 
+cabg: cdbfilerepmirror:00002155:  fileName, 
+cabg: cdbfilerepmirror:00002156:  fd), 
+cabg: cdbfilerepmirror:00002157:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002158:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00002159:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002187:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002188:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002189:  "could not insert file information in open files hash table, entry exists " 
+cabg: cdbfilerepmirror:00002190:  "identifier '%s' fd '%d' relation type '%s', " 
+cabg: cdbfilerepmirror:00002191:  "failover requested", 
+cabg: cdbfilerepmirror:00002192:  fileName, 
+cabg: cdbfilerepmirror:00002193:  fd, 
+cabg: cdbfilerepmirror:00002194:  FileRepRelationTypeToString[fileRepRelationType]), 
+cabg: cdbfilerepmirror:00002195:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002196:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00002197:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002429:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002430:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002431:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002432:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002433:  "could not seek to end of file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002434:  "failover requested", 
+cabg: cdbfilerepmirror:00002435:  fd), 
+cabg: cdbfilerepmirror:00002436:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002437:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002454:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002455:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002456:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002457:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002458:  "could not seek to position " INT64_FORMAT " of file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002459:  "failover requested", 
+cabg: cdbfilerepmirror:00002460:  startOffset, 
+cabg: cdbfilerepmirror:00002461:  fd), 
+cabg: cdbfilerepmirror:00002462:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002463:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002483:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002484:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002485:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002486:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002487:  "could not write to file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002488:  "failover requested", 
+cabg: cdbfilerepmirror:00002489:  fd), 
+cabg: cdbfilerepmirror:00002490:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002491:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002502:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002503:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002504:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002505:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002506:  "could not fsync file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002507:  "failover requested", 
+cabg: cdbfilerepmirror:00002508:  fd), 
+cabg: cdbfilerepmirror:00002509:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002510:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002545:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002546:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002547:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002548:  "could not open file '%s' to issue drop : %m, " 
+cabg: cdbfilerepmirror:00002549:  "failover requested", 
+cabg: cdbfilerepmirror:00002550:  fileName), 
+cabg: cdbfilerepmirror:00002551:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002552:  FileRep_errcontext())); 
+aaaaa GP_IGNORE: cabj: cdbfilerepmirrorack - ./backend/cdb/cdbfilerepmirrorack.c
+cabj: cdbfilerepmirrorack:00000074:  ereport(WARNING, 
+cabj: cdbfilerepmirrorack:00000075:  (errmsg("mirror failure, " 
+cabj: cdbfilerepmirrorack:00000076:  "could not queue ack message to be sent to primary, " 
+cabj: cdbfilerepmirrorack:00000077:  "failover requested"), 
+cabj: cdbfilerepmirrorack:00000078:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabj: cdbfilerepmirrorack:00000079:  FileRep_errdetail(fileRepIdentifier, 
+cabj: cdbfilerepmirrorack:00000080:  fileRepRelationType, 
+cabj: cdbfilerepmirrorack:00000081:  fileRepOperation, 
+cabj: cdbfilerepmirrorack:00000082:  FILEREP_UNDEFINED), 
+cabj: cdbfilerepmirrorack:00000083:  FileRep_errdetail_ShmemAck(), 
+cabj: cdbfilerepmirrorack:00000084:  FileRep_errcontext())); 
+cabj: cdbfilerepmirrorack:00000412:  ereport(WARNING, 
+cabj: cdbfilerepmirrorack:00000413:  (errcode_for_socket_access(), 
+cabj: cdbfilerepmirrorack:00000414:  errmsg("mirror failure, " 
+cabj: cdbfilerepmirrorack:00000415:  "could not sent ack message to primary : %m, " 
+cabj: cdbfilerepmirrorack:00000416:  "failover requested"), 
+cabj: cdbfilerepmirrorack:00000417:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabj: cdbfilerepmirrorack:00000418:  FileRep_errdetail_ShmemAck(), 
+cabj: cdbfilerepmirrorack:00000419:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: cabh: cdbfilerepprimary - ./backend/cdb/cdbfilerepprimary.c
-cabh: cdbfilerepprimary:00000224:  ereport(ERROR, 
-cabh: cdbfilerepprimary:00000225:  (errmsg("failure is detected in segment mirroring during shutdown, abort requested (%d)", 
-cabh: cdbfilerepprimary:00000226:  getpid()))); 
-cabh: cdbfilerepprimary:00000272:  ereport(LOG, 
-cabh: cdbfilerepprimary:00000273:  (errmsg("failover is performed to the primary segment, " 
-cabh: cdbfilerepprimary:00000274:  "segment mirroring is suspended "), 
-cabh: cdbfilerepprimary:00000275:  errSendAlert(true), 
-cabh: cdbfilerepprimary:00000276:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00000338:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00000339:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00000340:  "could not insert message in ACK table" 
-cabh: cdbfilerepprimary:00000341:  "failover requested"), 
-cabh: cdbfilerepprimary:00000342:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00000343:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00000344:  fileRepRelationType, 
-cabh: cdbfilerepprimary:00000345:  fileRepOperation), 
-cabh: cdbfilerepprimary:00000346:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00000347:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00000376:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00000377:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00000378:  "could not queue message to be mirrored, " 
-cabh: cdbfilerepprimary:00000379:  "failover requested"), 
-cabh: cdbfilerepprimary:00000380:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00000381:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00000382:  fileRepRelationType, 
-cabh: cdbfilerepprimary:00000383:  fileRepOperation), 
-cabh: cdbfilerepprimary:00000384:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00000385:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00001069:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00001070:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00001071:  "could not resynchonize mirror due to missing directories or relations on mirror, " 
-cabh: cdbfilerepprimary:00001072:  "failover requested"), 
-cabh: cdbfilerepprimary:00001073:  errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00001074:  errSendAlert(true), 
-cabh: cdbfilerepprimary:00001075:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00001076:  fileRepRelationType, 
-cabh: cdbfilerepprimary:00001077:  FileRepOperationValidation), 
-cabh: cdbfilerepprimary:00001078:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00001556:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00001557:  (errcode_for_socket_access(), 
-cabh: cdbfilerepprimary:00001558:  errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00001559:  "could not sent message to mirror msg header count:'%d' local count:'%d' : %m, " 
-cabh: cdbfilerepprimary:00001560:  "failover requested", 
-cabh: cdbfilerepprimary:00001561:  fileRepMessageHeader->messageCount, 
-cabh: cdbfilerepprimary:00001562:  spare), 
-cabh: cdbfilerepprimary:00001563:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00001564:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabh: cdbfilerepprimary:00001565:  fileRepMessageHeader->fileRepRelationType, 
-cabh: cdbfilerepprimary:00001566:  fileRepMessageHeader->fileRepOperation), 
-cabh: cdbfilerepprimary:00001567:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00001568:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00000283:  ereport(LOG, 
+cabh: cdbfilerepprimary:00000284:  (errmsg("failover was performed to the primary segment, " 
+cabh: cdbfilerepprimary:00000285:  "segment mirroring is suspended "), 
+cabh: cdbfilerepprimary:00000286:  errSendAlert(true), 
+cabh: cdbfilerepprimary:00000287:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00000353:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00000354:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00000355:  "could not insert message in ACK table" 
+cabh: cdbfilerepprimary:00000356:  "failover requested"), 
+cabh: cdbfilerepprimary:00000357:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00000358:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00000359:  fileRepRelationType, 
+cabh: cdbfilerepprimary:00000360:  fileRepOperation, 
+cabh: cdbfilerepprimary:00000361:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00000362:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00000363:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00000396:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00000397:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00000398:  "could not queue message to be mirrored, " 
+cabh: cdbfilerepprimary:00000399:  "failover requested"), 
+cabh: cdbfilerepprimary:00000400:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00000401:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00000402:  fileRepRelationType, 
+cabh: cdbfilerepprimary:00000403:  fileRepOperation, 
+cabh: cdbfilerepprimary:00000404:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00000405:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00000406:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00000824:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00000825:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00000826:  "could not queue message to be mirrored, " 
+cabh: cdbfilerepprimary:00000827:  "failover requested"), 
+cabh: cdbfilerepprimary:00000828:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00000829:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00000830:  fileRepRelationType, 
+cabh: cdbfilerepprimary:00000831:  FileRepOperationWrite, 
+cabh: cdbfilerepprimary:00000832:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00000833:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00000834:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001101:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001102:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001103:  "could not resynchronize mirror due to missing directories or relations on mirror, " 
+cabh: cdbfilerepprimary:00001104:  "failover requested"), 
+cabh: cdbfilerepprimary:00001105:  errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001106:  errSendAlert(true), 
+cabh: cdbfilerepprimary:00001107:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001108:  fileRepRelationType, 
+cabh: cdbfilerepprimary:00001109:  FileRepOperationValidation, 
+cabh: cdbfilerepprimary:00001110:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00001111:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001166:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001167:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001168:  "could not complete operation on mirror, " 
+cabh: cdbfilerepprimary:00001169:  "failover requested"), 
+cabh: cdbfilerepprimary:00001170:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001171:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001172:  FileRepRelationTypeUnknown, 
+cabh: cdbfilerepprimary:00001173:  FileRepOperationShutdown, 
+cabh: cdbfilerepprimary:00001174:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00001175:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00001176:  FileRep_errdetail_ShmemAck(), 
+cabh: cdbfilerepprimary:00001177:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001217:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001218:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001219:  "could not complete operation on mirror, " 
+cabh: cdbfilerepprimary:00001220:  "failover requested"), 
+cabh: cdbfilerepprimary:00001221:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001222:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001223:  FileRepRelationTypeUnknown, 
+cabh: cdbfilerepprimary:00001224:  FileRepOperationInSyncTransition, 
+cabh: cdbfilerepprimary:00001225:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00001226:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00001227:  FileRep_errdetail_ShmemAck(), 
+cabh: cdbfilerepprimary:00001228:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001272:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001273:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001274:  "could not complete operation on mirror, " 
+cabh: cdbfilerepprimary:00001275:  "failover requested"), 
+cabh: cdbfilerepprimary:00001276:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001277:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001278:  FileRepRelationTypeUnknown, 
+cabh: cdbfilerepprimary:00001279:  FileRepOperationHeartBeat, 
+cabh: cdbfilerepprimary:00001280:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00001281:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00001282:  FileRep_errdetail_ShmemAck(), 
+cabh: cdbfilerepprimary:00001283:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001314:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001315:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001316:  "could not complete operation on mirror, " 
+cabh: cdbfilerepprimary:00001317:  "failover requested"), 
+cabh: cdbfilerepprimary:00001318:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001319:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001320:  fileRepRelationType, 
+cabh: cdbfilerepprimary:00001321:  FileRepOperationNotSpecified, 
+cabh: cdbfilerepprimary:00001322:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00001323:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00001324:  FileRep_errdetail_ShmemAck(), 
+cabh: cdbfilerepprimary:00001325:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001630:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001631:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001632:  "unknown relation type '%d' " 
+cabh: cdbfilerepprimary:00001633:  "failover requested", 
+cabh: cdbfilerepprimary:00001634:  fileRepMessageHeader->fileRepRelationType), 
+cabh: cdbfilerepprimary:00001635:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001636:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001637:  fileRepMessageHeader->fileRepRelationType, 
+cabh: cdbfilerepprimary:00001638:  fileRepMessageHeader->fileRepOperation, 
+cabh: cdbfilerepprimary:00001639:  fileRepMessageHeader->messageCount), 
+cabh: cdbfilerepprimary:00001640:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001654:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001655:  (errcode_for_socket_access(), 
+cabh: cdbfilerepprimary:00001656:  errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001657:  "could not sent message to mirror msg header count '%d' local count '%d' : %m, " 
+cabh: cdbfilerepprimary:00001658:  "failover requested", 
+cabh: cdbfilerepprimary:00001659:  fileRepMessageHeader->messageCount, 
+cabh: cdbfilerepprimary:00001660:  spare), 
+cabh: cdbfilerepprimary:00001661:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001662:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001663:  fileRepMessageHeader->fileRepRelationType, 
+cabh: cdbfilerepprimary:00001664:  fileRepMessageHeader->fileRepOperation, 
+cabh: cdbfilerepprimary:00001665:  fileRepMessageHeader->messageCount), 
+cabh: cdbfilerepprimary:00001666:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00001667:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: caca: cdbfilerepprimaryack - ./backend/cdb/cdbfilerepprimaryack.c
-caca: cdbfilerepprimaryack:00000139:  ereport(WARNING, 
-caca: cdbfilerepprimaryack:00000140:  (errmsg("mirror failure, " 
-caca: cdbfilerepprimaryack:00000141:  "injected fault by guc filerep_inject_listener_fault, " 
-caca: cdbfilerepprimaryack:00000142:  "failover requested"), 
-caca: cdbfilerepprimaryack:00000143:  FileRep_errcontext())); 
-caca: cdbfilerepprimaryack:00000352:  ereport(ERROR, 
-caca: cdbfilerepprimaryack:00000353:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caca: cdbfilerepprimaryack:00000354:  (errmsg("Not enough shared memory for Mirroring.")))); 
-caca: cdbfilerepprimaryack:00000375:  ereport(ERROR, 
-caca: cdbfilerepprimaryack:00000376:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caca: cdbfilerepprimaryack:00000377:  (errmsg("Not enough shared memory for Mirroring.")))); 
-caca: cdbfilerepprimaryack:00000393:  ereport(ERROR, 
-caca: cdbfilerepprimaryack:00000394:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caca: cdbfilerepprimaryack:00000395:  (errmsg("Not enough shared memory for Mirroring.")))); 
-caca: cdbfilerepprimaryack:00000401:  ereport(ERROR, 
-caca: cdbfilerepprimaryack:00000402:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caca: cdbfilerepprimaryack:00000403:  (errmsg("Not enough shared memory for Mirroring.")))); 
-caca: cdbfilerepprimaryack:00001052:  ereport(LOG, 
-caca: cdbfilerepprimaryack:00001053:  (errmsg("ERROR(filerep): could not complete operation on mirror " 
-caca: cdbfilerepprimaryack:00001054:  "msg header count:'%d' ack state:'%s' ", 
-caca: cdbfilerepprimaryack:00001055:  fileRepMessageHeader->messageCount, 
-caca: cdbfilerepprimaryack:00001056:  FileRepAckStateToString[fileRepMessageHeader->fileRepAckState]), 
-caca: cdbfilerepprimaryack:00001057:  errSendAlert(true), 
-caca: cdbfilerepprimaryack:00001058:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-caca: cdbfilerepprimaryack:00001059:  fileRepMessageHeader->fileRepRelationType, 
-caca: cdbfilerepprimaryack:00001060:  fileRepMessageHeader->fileRepOperation), 
-caca: cdbfilerepprimaryack:00001061:  FileRep_errdetail_Shmem(), 
-caca: cdbfilerepprimaryack:00001062:  FileRep_errdetail_ShmemAck(), 
-caca: cdbfilerepprimaryack:00001063:  FileRep_errcontext())); 
+caca: cdbfilerepprimaryack:00000141:  ereport(WARNING, 
+caca: cdbfilerepprimaryack:00000142:  (errmsg("mirror failure, " 
+caca: cdbfilerepprimaryack:00000143:  "injected fault by guc filerep_inject_listener_fault, " 
+caca: cdbfilerepprimaryack:00000144:  "failover requested"), 
+caca: cdbfilerepprimaryack:00000145:  FileRep_errcontext())); 
+caca: cdbfilerepprimaryack:00000265:  ereport(WARNING, 
+caca: cdbfilerepprimaryack:00000266:  (errmsg("mirror failure, " 
+caca: cdbfilerepprimaryack:00000267:  "could not queue received ack message to be processed, " 
+caca: cdbfilerepprimaryack:00000268:  "failover requested"), 
+caca: cdbfilerepprimaryack:00000269:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+caca: cdbfilerepprimaryack:00000270:  FileRep_errdetail_Shmem(), 
+caca: cdbfilerepprimaryack:00000271:  FileRep_errdetail_ShmemAck(), 
+caca: cdbfilerepprimaryack:00000272:  FileRep_errcontext())); 
+caca: cdbfilerepprimaryack:00000363:  ereport(ERROR, 
+caca: cdbfilerepprimaryack:00000364:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caca: cdbfilerepprimaryack:00000365:  (errmsg("not enough shared memory for mirroring")))); 
+caca: cdbfilerepprimaryack:00000386:  ereport(ERROR, 
+caca: cdbfilerepprimaryack:00000387:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caca: cdbfilerepprimaryack:00000388:  (errmsg("not enough shared memory for mirroring")))); 
+caca: cdbfilerepprimaryack:00000404:  ereport(ERROR, 
+caca: cdbfilerepprimaryack:00000405:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caca: cdbfilerepprimaryack:00000406:  (errmsg("not enough shared memory for mirroring")))); 
+caca: cdbfilerepprimaryack:00000412:  ereport(ERROR, 
+caca: cdbfilerepprimaryack:00000413:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caca: cdbfilerepprimaryack:00000414:  (errmsg("not enough shared memory for mirroring")))); 
+caca: cdbfilerepprimaryack:00000452:  ereport(WARNING, 
+caca: cdbfilerepprimaryack:00000453:  (errmsg("mirror failure, " 
+caca: cdbfilerepprimaryack:00000454:  "could not lookup ack entry '%s' into ack table, no entry " 
+caca: cdbfilerepprimaryack:00000455:  "failover requested", 
+caca: cdbfilerepprimaryack:00000456:  (fileName == NULL) ? "<null>" : fileName), 
+caca: cdbfilerepprimaryack:00000457:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+caca: cdbfilerepprimaryack:00000458:  FileRep_errcontext())); 
+caca: cdbfilerepprimaryack:00000575:  ereport(WARNING, 
+caca: cdbfilerepprimaryack:00000576:  (errmsg("mirror failure, " 
+caca: cdbfilerepprimaryack:00000577:  "could not insert ack entry into ack table, no memory " 
+caca: cdbfilerepprimaryack:00000578:  "failover requested"), 
+caca: cdbfilerepprimaryack:00000579:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+caca: cdbfilerepprimaryack:00000580:  FileRep_errdetail(fileRepIdentifier, 
+caca: cdbfilerepprimaryack:00000581:  fileRepRelationType, 
+caca: cdbfilerepprimaryack:00000582:  fileRepOperation, 
+caca: cdbfilerepprimaryack:00000583:  FILEREP_UNDEFINED), 
+caca: cdbfilerepprimaryack:00000584:  FileRep_errcontext())); 
+caca: cdbfilerepprimaryack:00000630:  ereport(WARNING, 
+caca: cdbfilerepprimaryack:00000631:  (errmsg("mirror failure, " 
+caca: cdbfilerepprimaryack:00000632:  "could not insert ack entry into ack table, entry exists " 
+caca: cdbfilerepprimaryack:00000633:  "failover requested"), 
+caca: cdbfilerepprimaryack:00000634:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+caca: cdbfilerepprimaryack:00000635:  FileRep_errdetail(fileRepIdentifier, 
+caca: cdbfilerepprimaryack:00000636:  fileRepRelationType, 
+caca: cdbfilerepprimaryack:00000637:  fileRepOperation, 
+caca: cdbfilerepprimaryack:00000638:  FILEREP_UNDEFINED), 
+caca: cdbfilerepprimaryack:00000639:  FileRep_errcontext())); 
+caca: cdbfilerepprimaryack:00000686:  ereport(WARNING, 
+caca: cdbfilerepprimaryack:00000687:  (errmsg("mirror failure, " 
+caca: cdbfilerepprimaryack:00000688:  "could not update ack entry with ack status, no entry found " 
+caca: cdbfilerepprimaryack:00000689:  "identifier '%s' relation type '%s' " 
+caca: cdbfilerepprimaryack:00000690:  "failover requested", 
+caca: cdbfilerepprimaryack:00000691:  (fileName == NULL) ? "<null>" : fileName, 
+caca: cdbfilerepprimaryack:00000692:  FileRepRelationTypeToString[fileRepRelationType]), 
+caca: cdbfilerepprimaryack:00000693:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+caca: cdbfilerepprimaryack:00000694:  FileRep_errcontext())); 
+caca: cdbfilerepprimaryack:00000817:  ereport(WARNING, 
+caca: cdbfilerepprimaryack:00000818:  (errmsg("threshold '75' percent of 'gp_segment_connect_timeout=%d' is reached, " 
+caca: cdbfilerepprimaryack:00000819:  "mirror may not be able to keep up with primary, " 
+caca: cdbfilerepprimaryack:00000820:  "primary may transition to change tracking", 
+caca: cdbfilerepprimaryack:00000821:  gp_segment_connect_timeout), 
+caca: cdbfilerepprimaryack:00000822:  errhint("increase guc 'gp_segment_connect_timeout' by 'gpconfig' and 'gpstop -u' "), 
+caca: cdbfilerepprimaryack:00000823:  errSendAlert(true))); 
+caca: cdbfilerepprimaryack:00000853:  ereport(WARNING, 
+caca: cdbfilerepprimaryack:00000854:  (errmsg("mirror failure, " 
+caca: cdbfilerepprimaryack:00000855:  "could not complete mirrored request identifier '%s' ack state '%s', " 
+caca: cdbfilerepprimaryack:00000856:  "failover requested", 
+caca: cdbfilerepprimaryack:00000857:  (fileName == NULL) ? "<null>" : fileName, 
+caca: cdbfilerepprimaryack:00000858:  FileRepAckStateToString[entry->fileRepAckState]), 
+caca: cdbfilerepprimaryack:00000859:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+caca: cdbfilerepprimaryack:00000860:  FileRep_errdetail_ShmemAck(), 
+caca: cdbfilerepprimaryack:00000861:  FileRep_errcontext())); 
+caca: cdbfilerepprimaryack:00001034:  ereport(WARNING, 
+caca: cdbfilerepprimaryack:00001035:  (errmsg("mirror failure, " 
+caca: cdbfilerepprimaryack:00001036:  "could not match ack message header checksum between primary '%u' and mirror '%u', " 
+caca: cdbfilerepprimaryack:00001037:  "failover requested", 
+caca: cdbfilerepprimaryack:00001038:  *fileRepMessageHeaderCrc, 
+caca: cdbfilerepprimaryack:00001039:  messageHeaderCrcLocal), 
+caca: cdbfilerepprimaryack:00001040:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+caca: cdbfilerepprimaryack:00001041:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+caca: cdbfilerepprimaryack:00001042:  fileRepMessageHeader->fileRepRelationType, 
+caca: cdbfilerepprimaryack:00001043:  fileRepMessageHeader->fileRepOperation, 
+caca: cdbfilerepprimaryack:00001044:  fileRepMessageHeader->messageCount), 
+caca: cdbfilerepprimaryack:00001045:  FileRep_errdetail_ShmemAck(), 
+caca: cdbfilerepprimaryack:00001046:  FileRep_errcontext())); 
+caca: cdbfilerepprimaryack:00001099:  ereport(WARNING, 
+caca: cdbfilerepprimaryack:00001100:  (errmsg("mirror failure, " 
+caca: cdbfilerepprimaryack:00001101:  "could not complete operation on mirror ack state '%s', " 
+caca: cdbfilerepprimaryack:00001102:  "failover requested", 
+caca: cdbfilerepprimaryack:00001103:  FileRepAckStateToString[fileRepMessageHeader->fileRepAckState]), 
+caca: cdbfilerepprimaryack:00001104:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+caca: cdbfilerepprimaryack:00001105:  errSendAlert(true), 
+caca: cdbfilerepprimaryack:00001106:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+caca: cdbfilerepprimaryack:00001107:  fileRepMessageHeader->fileRepRelationType, 
+caca: cdbfilerepprimaryack:00001108:  fileRepMessageHeader->fileRepOperation, 
+caca: cdbfilerepprimaryack:00001109:  fileRepMessageHeader->messageCount), 
+caca: cdbfilerepprimaryack:00001110:  FileRep_errdetail_Shmem(), 
+caca: cdbfilerepprimaryack:00001111:  FileRep_errdetail_ShmemAck(), 
+caca: cdbfilerepprimaryack:00001112:  FileRep_errcontext())); 
+caca: cdbfilerepprimaryack:00001127:  ereport(WARNING, 
+caca: cdbfilerepprimaryack:00001128:  (errmsg("mirror failure, " 
+caca: cdbfilerepprimaryack:00001129:  "could not update ack state '%s' in ack hash table, " 
+caca: cdbfilerepprimaryack:00001130:  "failover requested", 
+caca: cdbfilerepprimaryack:00001131:  FileRepAckStateToString[fileRepMessageHeader->fileRepAckState]), 
+caca: cdbfilerepprimaryack:00001132:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+caca: cdbfilerepprimaryack:00001133:  errSendAlert(true), 
+caca: cdbfilerepprimaryack:00001134:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+caca: cdbfilerepprimaryack:00001135:  fileRepMessageHeader->fileRepRelationType, 
+caca: cdbfilerepprimaryack:00001136:  fileRepMessageHeader->fileRepOperation, 
+caca: cdbfilerepprimaryack:00001137:  fileRepMessageHeader->messageCount), 
+caca: cdbfilerepprimaryack:00001138:  FileRep_errdetail_Shmem(), 
+caca: cdbfilerepprimaryack:00001139:  FileRep_errdetail_ShmemAck(), 
+caca: cdbfilerepprimaryack:00001140:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: cacd: cdbfilerepresyncmanager - ./backend/cdb/cdbfilerepresyncmanager.c
-cacd: cdbfilerepresyncmanager:00000443:  ereport(ERROR, 
-cacd: cdbfilerepresyncmanager:00000444:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacd: cdbfilerepresyncmanager:00000445:  (errmsg("Not enough shared memory for Mirroring.")))); 
-cacd: cdbfilerepresyncmanager:00000491:  ereport(ERROR, 
-cacd: cdbfilerepresyncmanager:00000492:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacd: cdbfilerepresyncmanager:00000493:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
-cacd: cdbfilerepresyncmanager:00000509:  ereport(ERROR, 
-cacd: cdbfilerepresyncmanager:00000510:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacd: cdbfilerepresyncmanager:00000511:  (errmsg("Not enough shared memory for Mirroring.")))); 
-cacd: cdbfilerepresyncmanager:00000541:  ereport(ERROR, 
-cacd: cdbfilerepresyncmanager:00000542:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacd: cdbfilerepresyncmanager:00000543:  (errmsg("Not enough shared memory for FileRep Resync.")))); 
-cacd: cdbfilerepresyncmanager:00001019:  ereport(ERROR, 
-cacd: cdbfilerepresyncmanager:00001020:  (errcode_for_file_access(), 
-cacd: cdbfilerepresyncmanager:00001021:  errmsg("unexpected mirror synchronization state during full resynchronization" 
-cacd: cdbfilerepresyncmanager:00001022:  "relation path to be resynchronized:'%s' " 
-cacd: cdbfilerepresyncmanager:00001023:  "relStorageMgr:'%s(%d)' mirrorDataSynchronizationState:'%s(%d)' " 
-cacd: cdbfilerepresyncmanager:00001024:  "AppendOnlyLossEof:" INT64_FORMAT " " 
-cacd: cdbfilerepresyncmanager:00001025:  "AppendOnlyNewEof:" INT64_FORMAT " " 
-cacd: cdbfilerepresyncmanager:00001026:  "mirrorBufpoolResyncChangedPageCount:" INT64_FORMAT " ", 
-cacd: cdbfilerepresyncmanager:00001027:  entry.fileName, 
-cacd: cdbfilerepresyncmanager:00001028:  PersistentFileSysRelStorageMgr_Name(entry.relStorageMgr), 
-cacd: cdbfilerepresyncmanager:00001029:  entry.relStorageMgr, 
-cacd: cdbfilerepresyncmanager:00001030:  MirroredRelDataSynchronizationState_Name(entry.mirrorDataSynchronizationState), 
-cacd: cdbfilerepresyncmanager:00001031:  entry.mirrorDataSynchronizationState, 
-cacd: cdbfilerepresyncmanager:00001032:  entry.mirrorAppendOnlyLossEof, 
-cacd: cdbfilerepresyncmanager:00001033:  entry.mirrorAppendOnlyNewEof, 
-cacd: cdbfilerepresyncmanager:00001034:  entry.mirrorBufpoolResyncChangedPageCount))); 
+cacd: cdbfilerepresyncmanager:00000447:  ereport(ERROR, 
+cacd: cdbfilerepresyncmanager:00000448:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacd: cdbfilerepresyncmanager:00000449:  (errmsg("not enough shared memory to run resynchronization")))); 
+cacd: cdbfilerepresyncmanager:00000495:  ereport(ERROR, 
+cacd: cdbfilerepresyncmanager:00000496:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacd: cdbfilerepresyncmanager:00000497:  (errmsg("not enough shared memory to run resynchronization")))); 
+cacd: cdbfilerepresyncmanager:00000513:  ereport(ERROR, 
+cacd: cdbfilerepresyncmanager:00000514:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacd: cdbfilerepresyncmanager:00000515:  (errmsg("not enough shared memory to run resynchronization")))); 
+cacd: cdbfilerepresyncmanager:00000545:  ereport(ERROR, 
+cacd: cdbfilerepresyncmanager:00000546:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacd: cdbfilerepresyncmanager:00000547:  (errmsg("not enough shared memory to run resynchronization")))); 
+cacd: cdbfilerepresyncmanager:00000768:  ereport(ERROR, 
+cacd: cdbfilerepresyncmanager:00000769:  (errcode(ERRCODE_INTERNAL_ERROR), 
+cacd: cdbfilerepresyncmanager:00000770:  (errmsg("'MirroredLock' is already held by primary resync manager process")))); 
+cacd: cdbfilerepresyncmanager:00001037:  ereport(WARNING, 
+cacd: cdbfilerepresyncmanager:00001038:  (errmsg("resync failure, " 
+cacd: cdbfilerepresyncmanager:00001039:  "unexpected mirror synchronization state during full resynchronization, " 
+cacd: cdbfilerepresyncmanager:00001040:  "failover requested, " 
+cacd: cdbfilerepresyncmanager:00001041:  "relation path to be resynchronized '%s' " 
+cacd: cdbfilerepresyncmanager:00001042:  "relation storage manager '%s(%d)' mirror synchronization state '%s(%d)' " 
+cacd: cdbfilerepresyncmanager:00001043:  "append only loss eof " INT64_FORMAT " " 
+cacd: cdbfilerepresyncmanager:00001044:  "append only new eof " INT64_FORMAT " " 
+cacd: cdbfilerepresyncmanager:00001045:  "mirror buffer pool resync changed page count " INT64_FORMAT " ", 
+cacd: cdbfilerepresyncmanager:00001046:  entry.fileName, 
+cacd: cdbfilerepresyncmanager:00001047:  PersistentFileSysRelStorageMgr_Name(entry.relStorageMgr), 
+cacd: cdbfilerepresyncmanager:00001048:  entry.relStorageMgr, 
+cacd: cdbfilerepresyncmanager:00001049:  MirroredRelDataSynchronizationState_Name(entry.mirrorDataSynchronizationState), 
+cacd: cdbfilerepresyncmanager:00001050:  entry.mirrorDataSynchronizationState, 
+cacd: cdbfilerepresyncmanager:00001051:  entry.mirrorAppendOnlyLossEof, 
+cacd: cdbfilerepresyncmanager:00001052:  entry.mirrorAppendOnlyNewEof, 
+cacd: cdbfilerepresyncmanager:00001053:  entry.mirrorBufpoolResyncChangedPageCount), 
+cacd: cdbfilerepresyncmanager:00001054:  errhint("run gprecoverseg -F again to re-establish mirror connectivity"))); 
+cacd: cdbfilerepresyncmanager:00001339:  ereport(WARNING, 
+cacd: cdbfilerepresyncmanager:00001340:  (errmsg("resync failure, " 
+cacd: cdbfilerepresyncmanager:00001341:  "could not insert resync information into hash table identifier '%s', no memory " 
+cacd: cdbfilerepresyncmanager:00001342:  "failover requested", 
+cacd: cdbfilerepresyncmanager:00001343:  key), 
+cacd: cdbfilerepresyncmanager:00001344:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cacd: cdbfilerepresyncmanager:00001345:  FileRep_errcontext())); 
+cacd: cdbfilerepresyncmanager:00001352:  ereport(WARNING, 
+cacd: cdbfilerepresyncmanager:00001353:  (errmsg("resync failure, " 
+cacd: cdbfilerepresyncmanager:00001354:  "could not insert resync information into hash table identifier '%s', entry exists " 
+cacd: cdbfilerepresyncmanager:00001355:  "failover requested", 
+cacd: cdbfilerepresyncmanager:00001356:  key), 
+cacd: cdbfilerepresyncmanager:00001357:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cacd: cdbfilerepresyncmanager:00001358:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: cacc: cdbfilerepresyncworker - ./backend/cdb/cdbfilerepresyncworker.c
-cacc: cdbfilerepresyncworker:00000323:  ereport(ERROR, 
-cacc: cdbfilerepresyncworker:00000324:  (errmsg("could not resynchronize file '%u/%u/%u' " 
-cacc: cdbfilerepresyncworker:00000325:  "mirror synchronization state:'%s(%d)' ", 
-cacc: cdbfilerepresyncworker:00000326:  entry->relFileNode.relNode, 
-cacc: cdbfilerepresyncworker:00000327:  entry->relFileNode.spcNode, 
-cacc: cdbfilerepresyncworker:00000328:  entry->relFileNode.dbNode, 
-cacc: cdbfilerepresyncworker:00000329:  MirroredRelDataSynchronizationState_Name(entry->mirrorDataSynchronizationState), 
-cacc: cdbfilerepresyncworker:00000330:  entry->mirrorDataSynchronizationState))); 
-cacc: cdbfilerepresyncworker:00000373:  ereport(ERROR, 
-cacc: cdbfilerepresyncworker:00000374:  (errcode_for_file_access(), 
-cacc: cdbfilerepresyncworker:00000375:  errmsg("could not open file %u/%u/%u.%u : %s", 
-cacc: cdbfilerepresyncworker:00000376:  entry->relFileNode.dbNode, 
-cacc: cdbfilerepresyncworker:00000377:  entry->relFileNode.spcNode, 
-cacc: cdbfilerepresyncworker:00000378:  entry->relFileNode.relNode, 
-cacc: cdbfilerepresyncworker:00000379:  entry->segmentFileNum, 
-cacc: cdbfilerepresyncworker:00000380:  strerror(primaryError)))); 
-cacc: cdbfilerepresyncworker:00000392:  ereport(ERROR, 
-cacc: cdbfilerepresyncworker:00000393:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacc: cdbfilerepresyncworker:00000394:  (errmsg("not enough memory for resynchronization")))); 
-cacc: cdbfilerepresyncworker:00000407:  ereport(ERROR, 
-cacc: cdbfilerepresyncworker:00000408:  (errcode_for_file_access(), 
-cacc: cdbfilerepresyncworker:00000409:  errmsg("could not read from position:" INT64_FORMAT " in file %u/%u/%u.%u : %m", 
-cacc: cdbfilerepresyncworker:00000410:  startOffset, 
-cacc: cdbfilerepresyncworker:00000411:  entry->relFileNode.dbNode, 
-cacc: cdbfilerepresyncworker:00000412:  entry->relFileNode.spcNode, 
-cacc: cdbfilerepresyncworker:00000413:  entry->relFileNode.relNode, 
-cacc: cdbfilerepresyncworker:00000414:  entry->segmentFileNum))); 
-cacc: cdbfilerepresyncworker:00000467:  ereport(ERROR, 
-cacc: cdbfilerepresyncworker:00000468:  (errmsg("could not resynchronize file '%u/%u/%u' " 
-cacc: cdbfilerepresyncworker:00000469:  "mirror synchronization state:'%s(%d)' ", 
-cacc: cdbfilerepresyncworker:00000470:  entry->relFileNode.relNode, 
-cacc: cdbfilerepresyncworker:00000471:  entry->relFileNode.spcNode, 
-cacc: cdbfilerepresyncworker:00000472:  entry->relFileNode.dbNode, 
-cacc: cdbfilerepresyncworker:00000473:  MirroredRelDataSynchronizationState_Name(entry->mirrorDataSynchronizationState), 
-cacc: cdbfilerepresyncworker:00000474:  entry->mirrorDataSynchronizationState))); 
-cacc: cdbfilerepresyncworker:00000543:  ereport(ERROR, 
-cacc: cdbfilerepresyncworker:00000544:  (errmsg("could not resynchronize (incremental) file '%u/%u/%u' ", 
-cacc: cdbfilerepresyncworker:00000545:  result->entries[ii].relFileNode.spcNode, 
-cacc: cdbfilerepresyncworker:00000546:  result->entries[ii].relFileNode.dbNode, 
-cacc: cdbfilerepresyncworker:00000547:  result->entries[ii].relFileNode.relNode))); 
+cacc: cdbfilerepresyncworker:00000391:  ereport(ERROR, 
+cacc: cdbfilerepresyncworker:00000392:  (errcode_for_file_access(), 
+cacc: cdbfilerepresyncworker:00000393:  errmsg("could not open file %u/%u/%u.%u : %s", 
+cacc: cdbfilerepresyncworker:00000394:  entry->relFileNode.dbNode, 
+cacc: cdbfilerepresyncworker:00000395:  entry->relFileNode.spcNode, 
+cacc: cdbfilerepresyncworker:00000396:  entry->relFileNode.relNode, 
+cacc: cdbfilerepresyncworker:00000397:  entry->segmentFileNum, 
+cacc: cdbfilerepresyncworker:00000398:  strerror(primaryError)))); 
+cacc: cdbfilerepresyncworker:00000410:  ereport(ERROR, 
+cacc: cdbfilerepresyncworker:00000411:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacc: cdbfilerepresyncworker:00000412:  (errmsg("not enough memory for resynchronization")))); 
+cacc: cdbfilerepresyncworker:00000425:  ereport(ERROR, 
+cacc: cdbfilerepresyncworker:00000426:  (errcode_for_file_access(), 
+cacc: cdbfilerepresyncworker:00000427:  errmsg("could not read from position:" INT64_FORMAT " in file %u/%u/%u.%u : %m", 
+cacc: cdbfilerepresyncworker:00000428:  startOffset, 
+cacc: cdbfilerepresyncworker:00000429:  entry->relFileNode.dbNode, 
+cacc: cdbfilerepresyncworker:00000430:  entry->relFileNode.spcNode, 
+cacc: cdbfilerepresyncworker:00000431:  entry->relFileNode.relNode, 
+cacc: cdbfilerepresyncworker:00000432:  entry->segmentFileNum))); 
+cacc: cdbfilerepresyncworker:00000551:  ereport(WARNING, 
+cacc: cdbfilerepresyncworker:00000552:  (errmsg("mirror failure, " 
+cacc: cdbfilerepresyncworker:00000553:  "could not resynchonize buffer pool relation '%u/%u/%u', no such relation " 
+cacc: cdbfilerepresyncworker:00000554:  "failover requested", 
+cacc: cdbfilerepresyncworker:00000555:  result->entries[ii].relFileNode.spcNode, 
+cacc: cdbfilerepresyncworker:00000556:  result->entries[ii].relFileNode.dbNode, 
+cacc: cdbfilerepresyncworker:00000557:  result->entries[ii].relFileNode.relNode), 
+cacc: cdbfilerepresyncworker:00000558:  errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"), 
+cacc: cdbfilerepresyncworker:00000559:  errSendAlert(true), 
+cacc: cdbfilerepresyncworker:00000560:  FileRep_errcontext())); 
+cacc: cdbfilerepresyncworker:00000648:  ereport(WARNING, 
+cacc: cdbfilerepresyncworker:00000649:  (errmsg("mirror failure, " 
+cacc: cdbfilerepresyncworker:00000650:  "could not resynchonize buffer pool relation '%u/%u/%u' block '%d' due to inconsistent lsn, " 
+cacc: cdbfilerepresyncworker:00000651:  "lsn end change tracking '%s(%u/%u)' lsn page '%s(%u/%u)' " 
+cacc: cdbfilerepresyncworker:00000652:  "number of blocks '%d', " 
+cacc: cdbfilerepresyncworker:00000653:  "failover requested", 
+cacc: cdbfilerepresyncworker:00000654:  smgr_relation->smgr_rnode.spcNode, 
+cacc: cdbfilerepresyncworker:00000655:  smgr_relation->smgr_rnode.dbNode, 
+cacc: cdbfilerepresyncworker:00000656:  smgr_relation->smgr_rnode.relNode, 
+cacc: cdbfilerepresyncworker:00000657:  result->entries[ii].block_num, 
+cacc: cdbfilerepresyncworker:00000658:  XLogLocationToString(&loc), 
+cacc: cdbfilerepresyncworker:00000659:  loc.xlogid, 
+cacc: cdbfilerepresyncworker:00000660:  loc.xrecoff, 
+cacc: cdbfilerepresyncworker:00000661:  XLogLocationToString(&loc1), 
+cacc: cdbfilerepresyncworker:00000662:  loc1.xlogid, 
+cacc: cdbfilerepresyncworker:00000663:  loc1.xrecoff, 
+cacc: cdbfilerepresyncworker:00000664:  numBlocks), 
+cacc: cdbfilerepresyncworker:00000665:  errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"), 
+cacc: cdbfilerepresyncworker:00000666:  errSendAlert(true), 
+cacc: cdbfilerepresyncworker:00000667:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: cabh: cdbfilerepservice - ./backend/cdb/cdbfilerepservice.c
-cabh: cdbfilerepservice:00000313:  ereport(WARNING, 
-cabh: cdbfilerepservice:00000314:  (errmsg("failure is detected in segment mirroring during backend shutdown, " 
-cabh: cdbfilerepservice:00000315:  "abort requested (%d)", 
-cabh: cdbfilerepservice:00000316:  getpid()))); 
-cabh: cdbfilerepservice:00000572:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-cabh: cdbfilerepservice:00000573:  errmsg("database 'postgres' does not exist"))); 
+cabh: cdbfilerepservice:00000402:  ereport(WARNING, 
+cabh: cdbfilerepservice:00000403:  (errmsg("mirror failure, " 
+cabh: cdbfilerepservice:00000404:  "unexpected filerep state transition from '%s' to '%s' " 
+cabh: cdbfilerepservice:00000405:  "failover requested", 
+cabh: cdbfilerepservice:00000406:  FileRepStateToString[fileRepState], 
+cabh: cdbfilerepservice:00000407:  FileRepStateToString[fileRepStateLocal]), 
+cabh: cdbfilerepservice:00000408:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cabh: cdbfilerepservice:00000427:  ereport(WARNING, 
+cabh: cdbfilerepservice:00000428:  (errmsg("mirror failure, " 
+cabh: cdbfilerepservice:00000429:  "unexpected filerep state transition from '%s' to '%s' " 
+cabh: cdbfilerepservice:00000430:  "failover requested", 
+cabh: cdbfilerepservice:00000431:  FileRepStateToString[fileRepState], 
+cabh: cdbfilerepservice:00000432:  FileRepStateToString[fileRepStateLocal]), 
+cabh: cdbfilerepservice:00000433:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cabh: cdbfilerepservice:00000458:  ereport(WARNING, 
+cabh: cdbfilerepservice:00000459:  (errmsg("mirror failure, " 
+cabh: cdbfilerepservice:00000460:  "unexpected filerep state transition from '%s' to '%s' " 
+cabh: cdbfilerepservice:00000461:  "failover requested", 
+cabh: cdbfilerepservice:00000462:  FileRepStateToString[fileRepState], 
+cabh: cdbfilerepservice:00000463:  FileRepStateToString[fileRepStateLocal]), 
+cabh: cdbfilerepservice:00000464:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cabh: cdbfilerepservice:00000487:  ereport(WARNING, 
+cabh: cdbfilerepservice:00000488:  (errmsg("mirror failure, " 
+cabh: cdbfilerepservice:00000489:  "unexpected filerep state transition from '%s' to '%s' " 
+cabh: cdbfilerepservice:00000490:  "failover requested", 
+cabh: cdbfilerepservice:00000491:  FileRepStateToString[fileRepState], 
+cabh: cdbfilerepservice:00000492:  FileRepStateToString[fileRepStateLocal]), 
+cabh: cdbfilerepservice:00000493:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+cabh: cdbfilerepservice:00000580:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+cabh: cdbfilerepservice:00000581:  errmsg("database 'postgres' does not exist"))); 
 aaaaa GP_IGNORE: caag: cdbfts - ./backend/cdb/cdbfts.c
 caag: cdbfts:00000206:  ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress"), 
 caag: cdbfts:00000207:  errSendAlert(true))); 
@@ -3320,69 +3751,69 @@ caba: cdblogsync:00000722:  ereport(ERROR,
 caba: cdblogsync:00000723:  (errcode_for_file_access(), 
 caba: cdblogsync:00000724:  errmsg("QDSYNC: could not fsync file '%s': %m", xlogfilename))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredappendonly - ./backend/cdb/cdbmirroredappendonly.c
-cacb: cdbmirroredappendonly:00001130:  ereport(ERROR, 
-cacb: cdbmirroredappendonly:00001131:  (errcode_for_file_access(), 
-cacb: cdbmirroredappendonly:00001132:  errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
-cacb: cdbmirroredappendonly:00001133:  readOffset, 
-cacb: cdbmirroredappendonly:00001134:  mirroredOpen->relFileNode.dbNode, 
-cacb: cdbmirroredappendonly:00001135:  mirroredOpen->relFileNode.spcNode, 
-cacb: cdbmirroredappendonly:00001136:  mirroredOpen->relFileNode.relNode, 
-cacb: cdbmirroredappendonly:00001137:  mirroredOpen->segmentFileNum))); 
-cacb: cdbmirroredappendonly:00001429:  ereport(ERROR, 
-cacb: cdbmirroredappendonly:00001430:  (errcode_for_file_access(), 
-cacb: cdbmirroredappendonly:00001431:  errmsg("could not open relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredappendonly:00001432:  relpath(*relFileNode), 
-cacb: cdbmirroredappendonly:00001433:  relationName, 
-cacb: cdbmirroredappendonly:00001434:  strerror(primaryError)))); 
-cacb: cdbmirroredappendonly:00001814:  ereport(ERROR, 
-cacb: cdbmirroredappendonly:00001815:  (errcode_for_file_access(), 
-cacb: cdbmirroredappendonly:00001816:  errmsg("could not open relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredappendonly:00001817:  relpath(*relFileNode), 
-cacb: cdbmirroredappendonly:00001818:  relationName, 
-cacb: cdbmirroredappendonly:00001819:  strerror(primaryError)))); 
+cacb: cdbmirroredappendonly:00001136:  ereport(ERROR, 
+cacb: cdbmirroredappendonly:00001137:  (errcode_for_file_access(), 
+cacb: cdbmirroredappendonly:00001138:  errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
+cacb: cdbmirroredappendonly:00001139:  readOffset, 
+cacb: cdbmirroredappendonly:00001140:  mirroredOpen->relFileNode.dbNode, 
+cacb: cdbmirroredappendonly:00001141:  mirroredOpen->relFileNode.spcNode, 
+cacb: cdbmirroredappendonly:00001142:  mirroredOpen->relFileNode.relNode, 
+cacb: cdbmirroredappendonly:00001143:  mirroredOpen->segmentFileNum))); 
+cacb: cdbmirroredappendonly:00001435:  ereport(ERROR, 
+cacb: cdbmirroredappendonly:00001436:  (errcode_for_file_access(), 
+cacb: cdbmirroredappendonly:00001437:  errmsg("could not open relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredappendonly:00001438:  relpath(*relFileNode), 
+cacb: cdbmirroredappendonly:00001439:  relationName, 
+cacb: cdbmirroredappendonly:00001440:  strerror(primaryError)))); 
+cacb: cdbmirroredappendonly:00001820:  ereport(ERROR, 
+cacb: cdbmirroredappendonly:00001821:  (errcode_for_file_access(), 
+cacb: cdbmirroredappendonly:00001822:  errmsg("could not open relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredappendonly:00001823:  relpath(*relFileNode), 
+cacb: cdbmirroredappendonly:00001824:  relationName, 
+cacb: cdbmirroredappendonly:00001825:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredbufferpool - ./backend/cdb/cdbmirroredbufferpool.c
-cacb: cdbmirroredbufferpool:00000710:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000711:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacb: cdbmirroredbufferpool:00000712:  (errmsg("could not allocate memory for mirrored alligned buffer")))); 
-cacb: cdbmirroredbufferpool:00000763:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000764:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00000765:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
-cacb: cdbmirroredbufferpool:00000766:  position, 
-cacb: cdbmirroredbufferpool:00000767:  relpath(open->relFileNode), 
-cacb: cdbmirroredbufferpool:00000768:  open->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00000816:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000817:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00000818:  errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
-cacb: cdbmirroredbufferpool:00000819:  position, 
-cacb: cdbmirroredbufferpool:00000820:  relpath(open->relFileNode), open->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00001066:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00001067:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001068:  errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
-cacb: cdbmirroredbufferpool:00001069:  readOffset, 
-cacb: cdbmirroredbufferpool:00001070:  mirroredOpen->relFileNode.dbNode, 
-cacb: cdbmirroredbufferpool:00001071:  mirroredOpen->relFileNode.spcNode, 
-cacb: cdbmirroredbufferpool:00001072:  mirroredOpen->relFileNode.relNode, 
-cacb: cdbmirroredbufferpool:00001073:  mirroredOpen->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00001083:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00001084:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001085:  errmsg("could not write mirror position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
-cacb: cdbmirroredbufferpool:00001086:  readOffset, 
-cacb: cdbmirroredbufferpool:00001087:  mirroredOpen->relFileNode.dbNode, 
-cacb: cdbmirroredbufferpool:00001088:  mirroredOpen->relFileNode.spcNode, 
-cacb: cdbmirroredbufferpool:00001089:  mirroredOpen->relFileNode.relNode, 
-cacb: cdbmirroredbufferpool:00001090:  mirroredOpen->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00001199:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00001200:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001201:  errmsg("could not open relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredbufferpool:00001202:  relpath(*relFileNode), 
-cacb: cdbmirroredbufferpool:00001203:  relationName, 
-cacb: cdbmirroredbufferpool:00001204:  strerror(primaryError)))); 
-cacb: cdbmirroredbufferpool:00001232:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00001233:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001234:  errmsg("could not flush relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredbufferpool:00001235:  relpath(*relFileNode), 
-cacb: cdbmirroredbufferpool:00001236:  relationName, 
-cacb: cdbmirroredbufferpool:00001237:  strerror(primaryError)))); 
+cacb: cdbmirroredbufferpool:00000714:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000715:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacb: cdbmirroredbufferpool:00000716:  (errmsg("could not allocate memory for mirrored alligned buffer")))); 
+cacb: cdbmirroredbufferpool:00000768:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000769:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00000770:  errmsg("could not seek in file to position %d in file '%s', segment file %d : %m", 
+cacb: cdbmirroredbufferpool:00000771:  position, 
+cacb: cdbmirroredbufferpool:00000772:  relpath(open->relFileNode), 
+cacb: cdbmirroredbufferpool:00000773:  open->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00000821:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000822:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00000823:  errmsg("could not seek in file to position %d in file '%s', segment file %d: %m", 
+cacb: cdbmirroredbufferpool:00000824:  position, 
+cacb: cdbmirroredbufferpool:00000825:  relpath(open->relFileNode), open->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00001071:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00001072:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00001073:  errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
+cacb: cdbmirroredbufferpool:00001074:  readOffset, 
+cacb: cdbmirroredbufferpool:00001075:  mirroredOpen->relFileNode.dbNode, 
+cacb: cdbmirroredbufferpool:00001076:  mirroredOpen->relFileNode.spcNode, 
+cacb: cdbmirroredbufferpool:00001077:  mirroredOpen->relFileNode.relNode, 
+cacb: cdbmirroredbufferpool:00001078:  mirroredOpen->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00001088:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00001089:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00001090:  errmsg("could not write mirror position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
+cacb: cdbmirroredbufferpool:00001091:  readOffset, 
+cacb: cdbmirroredbufferpool:00001092:  mirroredOpen->relFileNode.dbNode, 
+cacb: cdbmirroredbufferpool:00001093:  mirroredOpen->relFileNode.spcNode, 
+cacb: cdbmirroredbufferpool:00001094:  mirroredOpen->relFileNode.relNode, 
+cacb: cdbmirroredbufferpool:00001095:  mirroredOpen->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00001204:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00001205:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00001206:  errmsg("could not open relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredbufferpool:00001207:  relpath(*relFileNode), 
+cacb: cdbmirroredbufferpool:00001208:  relationName, 
+cacb: cdbmirroredbufferpool:00001209:  strerror(primaryError)))); 
+cacb: cdbmirroredbufferpool:00001237:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00001238:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00001239:  errmsg("could not flush relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredbufferpool:00001240:  relpath(*relFileNode), 
+cacb: cdbmirroredbufferpool:00001241:  relationName, 
+cacb: cdbmirroredbufferpool:00001242:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredfilesysobj - ./backend/cdb/cdbmirroredfilesysobj.c
 cacb: cdbmirroredfilesysobj:00000217:  ereport(ERROR, 
 cacb: cdbmirroredfilesysobj:00000218:  (errcode_for_file_access(), 
@@ -3497,9 +3928,31 @@ cabj: cdbmirroredflatfile:00000969:  ereport(ERROR,
 cabj: cdbmirroredflatfile:00000970:  (errcode_for_file_access(), 
 cabj: cdbmirroredflatfile:00000971:  errmsg("could not read from position:%d in file \"%s\" : %m", 
 cabj: cdbmirroredflatfile:00000972:  startOffset, primaryOpen.path))); 
-cabj: cdbmirroredflatfile:00001249:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00001250:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cabj: cdbmirroredflatfile:00001251:  (errmsg("Not enough shared memory for Mirroring.")))); 
+cabj: cdbmirroredflatfile:00001204:  ereport(WARNING, 
+cabj: cdbmirroredflatfile:00001205:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00001206:  errmsg("mirror failure, " 
+cabj: cdbmirroredflatfile:00001207:  "could not open file '%s' : %m " 
+cabj: cdbmirroredflatfile:00001208:  "failover requested", 
+cabj: cdbmirroredflatfile:00001209:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+cabj: cdbmirroredflatfile:00001210:  FileRep_errcontext())); 
+cabj: cdbmirroredflatfile:00001223:  ereport(WARNING, 
+cabj: cdbmirroredflatfile:00001224:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00001225:  errmsg("mirror failure, " 
+cabj: cdbmirroredflatfile:00001226:  "could not seek to end of file '%s' : %m " 
+cabj: cdbmirroredflatfile:00001227:  "failover requested", 
+cabj: cdbmirroredflatfile:00001228:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+cabj: cdbmirroredflatfile:00001229:  FileRep_errcontext())); 
+cabj: cdbmirroredflatfile:00001255:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00001256:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cabj: cdbmirroredflatfile:00001257:  (errmsg("not enough shared memory for mirroring")))); 
+cabj: cdbmirroredflatfile:00001274:  ereport(WARNING, 
+cabj: cdbmirroredflatfile:00001275:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00001276:  errmsg("mirror failure, " 
+cabj: cdbmirroredflatfile:00001277:  "could not read from position '%d' file '%s' : %m " 
+cabj: cdbmirroredflatfile:00001278:  "failover requested", 
+cabj: cdbmirroredflatfile:00001279:  startOffset, 
+cabj: cdbmirroredflatfile:00001280:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+cabj: cdbmirroredflatfile:00001281:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: caaj: cdbmutate - ./backend/cdb/cdbmutate.c
 caaj: cdbmutate:00000410:  ereport(NOTICE, 
 caaj: cdbmutate:00000411:  (errcode(ERRCODE_SUCCESSFUL_COMPLETION), 
@@ -3637,30 +4090,30 @@ cada: cdbresynchronizechangetracking:00001882:  ereport(ERROR,
 cada: cdbresynchronizechangetracking:00001883:  (errcode_for_file_access(), 
 cada: cdbresynchronizechangetracking:00001884:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
 cada: cdbresynchronizechangetracking:00001885:  fn1, fn2))); 
-cada: cdbresynchronizechangetracking:00002113:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002114:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002115:  errmsg("ERROR(filerep): unable to read change tracking meta file \"%s\", " 
-cada: cdbresynchronizechangetracking:00002116:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00002117:  path), 
-cada: cdbresynchronizechangetracking:00002118:  errSendAlert(true))); 
-cada: cdbresynchronizechangetracking:00002202:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002203:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002204:  errmsg("write error for change tracking meta file in " 
-cada: cdbresynchronizechangetracking:00002205:  "ChangeTracking_MarkFullResyncLockAcquired. " 
-cada: cdbresynchronizechangetracking:00002206:  "Change Tracking disabled : %m"), 
-cada: cdbresynchronizechangetracking:00002207:  errSendAlert(true))); 
-cada: cdbresynchronizechangetracking:00002557:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002558:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002559:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
-cada: cdbresynchronizechangetracking:00002878:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002879:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002880:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
-cada: cdbresynchronizechangetracking:00003005:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00003006:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00003007:  errmsg("write error for change tracking %s file, " 
-cada: cdbresynchronizechangetracking:00003008:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00003009:  ChangeTracking_FtypeToString(ft)), 
-cada: cdbresynchronizechangetracking:00003010:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002114:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002115:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002116:  errmsg("unable to read change tracking meta file \"%s\", " 
+cada: cdbresynchronizechangetracking:00002117:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00002118:  path), 
+cada: cdbresynchronizechangetracking:00002119:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002204:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002205:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002206:  errmsg("write error for change tracking meta file in " 
+cada: cdbresynchronizechangetracking:00002207:  "ChangeTracking_MarkFullResyncLockAcquired. " 
+cada: cdbresynchronizechangetracking:00002208:  "Change Tracking disabled : %m"), 
+cada: cdbresynchronizechangetracking:00002209:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002562:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00002563:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00002564:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
+cada: cdbresynchronizechangetracking:00002883:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00002884:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00002885:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
+cada: cdbresynchronizechangetracking:00003010:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00003011:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00003012:  errmsg("write error for change tracking %s file, " 
+cada: cdbresynchronizechangetracking:00003013:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00003014:  ChangeTracking_FtypeToString(ft)), 
+cada: cdbresynchronizechangetracking:00003015:  errSendAlert(true))); 
 aaaaa GP_IGNORE: caai: cdbsetop - ./backend/cdb/cdbsetop.c
 caai: cdbsetop:00000152:  ereport(ERROR, ( 
 caai: cdbsetop:00000153:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
@@ -13032,29 +13485,29 @@ laai: localbuf:00000303:  ereport(FATAL,
 laai: localbuf:00000304:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 laai: localbuf:00000305:  errmsg("out of memory"))); 
 aaaaa GP_IGNORE: faac: fd - ./backend/storage/file/fd.c
-faac: fd:00000325:  ereport(FATAL, 
-faac: fd:00000326:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-faac: fd:00000327:  errmsg("out of memory"))); 
-faac: fd:00000437:  ereport(FATAL, 
-faac: fd:00000438:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-faac: fd:00000439:  errmsg("insufficient file descriptors available to start server process"), 
-faac: fd:00000440:  errdetail("System allows %d, we need at least %d.", 
-faac: fd:00000441:  max_safe_fds + NUM_RESERVED_FDS, 
-faac: fd:00000442:  FD_MINFREE + NUM_RESERVED_FDS))); 
-faac: fd:00000684:  ereport(ERROR, 
-faac: fd:00000685:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-faac: fd:00000686:  errmsg("out of memory"))); 
-faac: fd:00000819:  ereport(ERROR, 
-faac: fd:00000820:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-faac: fd:00000821:  errmsg("out of memory"))); 
-faac: fd:00001571:  ereport(ERROR, 
-faac: fd:00001572:  (errcode_for_file_access(), 
-faac: fd:00001573:  errmsg("could not open directory \"%s\": %m", 
-faac: fd:00001574:  dirname))); 
-faac: fd:00001591:  ereport(ERROR, 
-faac: fd:00001592:  (errcode_for_file_access(), 
-faac: fd:00001593:  errmsg("could not read directory \"%s\": %m", 
-faac: fd:00001594:  dirname))); 
+faac: fd:00000326:  ereport(FATAL, 
+faac: fd:00000327:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+faac: fd:00000328:  errmsg("out of memory"))); 
+faac: fd:00000438:  ereport(FATAL, 
+faac: fd:00000439:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+faac: fd:00000440:  errmsg("insufficient file descriptors available to start server process"), 
+faac: fd:00000441:  errdetail("System allows %d, we need at least %d.", 
+faac: fd:00000442:  max_safe_fds + NUM_RESERVED_FDS, 
+faac: fd:00000443:  FD_MINFREE + NUM_RESERVED_FDS))); 
+faac: fd:00000685:  ereport(ERROR, 
+faac: fd:00000686:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+faac: fd:00000687:  errmsg("out of memory"))); 
+faac: fd:00000820:  ereport(ERROR, 
+faac: fd:00000821:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+faac: fd:00000822:  errmsg("out of memory"))); 
+faac: fd:00001583:  ereport(ERROR, 
+faac: fd:00001584:  (errcode_for_file_access(), 
+faac: fd:00001585:  errmsg("could not open directory \"%s\": %m", 
+faac: fd:00001586:  dirname))); 
+faac: fd:00001603:  ereport(ERROR, 
+faac: fd:00001604:  (errcode_for_file_access(), 
+faac: fd:00001605:  errmsg("could not read directory \"%s\": %m", 
+faac: fd:00001606:  dirname))); 
 aaaaa GP_IGNORE: gabb: gpxcompress - ./backend/storage/file/gp_compress.c
 gabb: gpxcompress:00000035:  ereport(ERROR, 
 gabb: gpxcompress:00000036:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -17211,68 +17664,68 @@ waaf: wchar:00001642:  buf,
 waaf: wchar:00001643:  pg_enc2name_tbl[src_encoding].name, 
 waaf: wchar:00001644:  pg_enc2name_tbl[dest_encoding].name))); 
 aaaaa GP_IGNORE: fabd: faultinjector - ./backend/utils/misc/faultinjector.c
-fabd: faultinjector:00000303:  ereport(ERROR, 
-fabd: faultinjector:00000304:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000305:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000329:  ereport(ERROR, 
-fabd: faultinjector:00000330:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000331:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000429:  ereport(FATAL, 
-fabd: faultinjector:00000430:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000431:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000432:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000451:  ereport(ERROR, 
-fabd: faultinjector:00000452:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000453:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000454:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000627:  ereport(WARNING, 
-fabd: faultinjector:00000628:  (errmsg("could not insert fault injection, no slots available" 
-fabd: faultinjector:00000629:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000630:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000631:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000664:  ereport(WARNING, 
-fabd: faultinjector:00000665:  (errmsg("could not insert fault injection, fault type not supported" 
-fabd: faultinjector:00000666:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000667:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000668:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000719:  ereport(WARNING, 
-fabd: faultinjector:00000720:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
-fabd: faultinjector:00000721:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000722:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000723:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000743:  ereport(WARNING, 
-fabd: faultinjector:00000744:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000745:  "segment not in primary or mirror role, " 
-fabd: faultinjector:00000746:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000747:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000748:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000762:  ereport(WARNING, 
-fabd: faultinjector:00000763:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000764:  "segment not in master role, " 
-fabd: faultinjector:00000765:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000766:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000767:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000783:  ereport(WARNING, 
-fabd: faultinjector:00000784:  (errmsg("could not insert fault injection entry into table, no memory, " 
-fabd: faultinjector:00000785:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000786:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000787:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000797:  ereport(WARNING, 
-fabd: faultinjector:00000798:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000799:  "entry already exists, " 
-fabd: faultinjector:00000800:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000801:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000802:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000861:  ereport(WARNING, 
-fabd: faultinjector:00000862:  (errmsg("could not update fault injection hash entry with fault injection status, " 
-fabd: faultinjector:00000863:  "no entry found, " 
-fabd: faultinjector:00000864:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000865:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000866:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00001079:  ereport(WARNING, 
-fabd: faultinjector:00001080:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00001081:  FaultInjectorIdentifierEnumToString[identifier], 
-fabd: faultinjector:00001082:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000309:  ereport(ERROR, 
+fabd: faultinjector:00000310:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000311:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000335:  ereport(ERROR, 
+fabd: faultinjector:00000336:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000337:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000435:  ereport(FATAL, 
+fabd: faultinjector:00000436:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000437:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000438:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000457:  ereport(ERROR, 
+fabd: faultinjector:00000458:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000459:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000460:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000633:  ereport(WARNING, 
+fabd: faultinjector:00000634:  (errmsg("could not insert fault injection, no slots available" 
+fabd: faultinjector:00000635:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000636:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000637:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000670:  ereport(WARNING, 
+fabd: faultinjector:00000671:  (errmsg("could not insert fault injection, fault type not supported" 
+fabd: faultinjector:00000672:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000673:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000674:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000728:  ereport(WARNING, 
+fabd: faultinjector:00000729:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
+fabd: faultinjector:00000730:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000731:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000732:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000752:  ereport(WARNING, 
+fabd: faultinjector:00000753:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000754:  "segment not in primary or mirror role, " 
+fabd: faultinjector:00000755:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000756:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000757:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000771:  ereport(WARNING, 
+fabd: faultinjector:00000772:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000773:  "segment not in master role, " 
+fabd: faultinjector:00000774:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000775:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000776:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000792:  ereport(WARNING, 
+fabd: faultinjector:00000793:  (errmsg("could not insert fault injection entry into table, no memory, " 
+fabd: faultinjector:00000794:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000795:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000796:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000806:  ereport(WARNING, 
+fabd: faultinjector:00000807:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000808:  "entry already exists, " 
+fabd: faultinjector:00000809:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000810:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000811:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000870:  ereport(WARNING, 
+fabd: faultinjector:00000871:  (errmsg("could not update fault injection hash entry with fault injection status, " 
+fabd: faultinjector:00000872:  "no entry found, " 
+fabd: faultinjector:00000873:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000874:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000875:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00001088:  ereport(WARNING, 
+fabd: faultinjector:00001089:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00001090:  FaultInjectorIdentifierEnumToString[identifier], 
+fabd: faultinjector:00001091:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
 aaaaa GP_IGNORE: gaai: gucxfile - ./backend/utils/misc/guc-file.c
 gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
 gaai: gucxfile:00000543:  
@@ -17288,81 +17741,81 @@ gaai: gucxfile:00000552:  GUC_EOL = 99,
 gaai: gucxfile:00000553:  GUC_ERROR = 100 
 gaai: gucxfile:00000554: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00007589:  ereport(ERROR, 
-gaad: guc:00007590:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007591:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007593:  ereport(ERROR, 
-gaad: guc:00007594:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007595:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007629:  ereport(ERROR, 
-gaad: guc:00007630:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007631:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007633:  ereport(ERROR, 
-gaad: guc:00007634:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007635:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007704:  ereport(ERROR, 
-gaad: guc:00007705:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007706:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007713:  ereport(ERROR, 
-gaad: guc:00007714:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00007715:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00007886:  ereport(ERROR, 
-gaad: guc:00007887:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00007888:  errmsg("SET requires parameter name"))); 
-gaad: guc:00007950:  ereport(ERROR, 
-gaad: guc:00007951:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00007952:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008271:  ereport(ERROR, 
-gaad: guc:00008272:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008273:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008275:  ereport(ERROR, 
-gaad: guc:00008276:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008277:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009079:  ereport(FATAL, 
-gaad: guc:00009080:  (errcode_for_file_access(), 
-gaad: guc:00009081:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009082:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009189:  ereport(WARNING, 
-gaad: guc:00009190:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009191:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009385:  ereport(ERROR, 
-gaad: guc:00009386:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009387:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009408:  ereport(ERROR, 
-gaad: guc:00009409:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009410:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009411:  tok))); 
-gaad: guc:00009437:  ereport(ERROR, 
-gaad: guc:00009438:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009439:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009440:  value))); 
-gaad: guc:00009790:  ereport(ERROR, 
-gaad: guc:00009791:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00009792:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00009866:  ereport(ERROR, 
-gaad: guc:00009867:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009868:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00009887:  ereport(ERROR, 
-gaad: guc:00009888:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009889:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00007602:  ereport(ERROR, 
+gaad: guc:00007603:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007604:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007606:  ereport(ERROR, 
+gaad: guc:00007607:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007608:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007642:  ereport(ERROR, 
+gaad: guc:00007643:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007644:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007646:  ereport(ERROR, 
+gaad: guc:00007647:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007648:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007717:  ereport(ERROR, 
+gaad: guc:00007718:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007719:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007726:  ereport(ERROR, 
+gaad: guc:00007727:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00007728:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00007899:  ereport(ERROR, 
+gaad: guc:00007900:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00007901:  errmsg("SET requires parameter name"))); 
+gaad: guc:00007963:  ereport(ERROR, 
+gaad: guc:00007964:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00007965:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008284:  ereport(ERROR, 
+gaad: guc:00008285:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008286:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008288:  ereport(ERROR, 
+gaad: guc:00008289:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008290:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009092:  ereport(FATAL, 
+gaad: guc:00009093:  (errcode_for_file_access(), 
+gaad: guc:00009094:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009095:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009202:  ereport(WARNING, 
+gaad: guc:00009203:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009204:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009398:  ereport(ERROR, 
+gaad: guc:00009399:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009400:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009421:  ereport(ERROR, 
+gaad: guc:00009422:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009423:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009424:  tok))); 
+gaad: guc:00009450:  ereport(ERROR, 
+gaad: guc:00009451:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009452:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009453:  value))); 
+gaad: guc:00009803:  ereport(ERROR, 
+gaad: guc:00009804:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00009805:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00009879:  ereport(ERROR, 
+gaad: guc:00009880:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009881:  errmsg("assertion checking is not supported by this build"))); 
 gaad: guc:00009900:  ereport(ERROR, 
 gaad: guc:00009901:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009902:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00009917:  ereport(ERROR, 
-gaad: guc:00009918:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009919:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00009920:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009921:  "\"log_dispatch_stats\", " 
-gaad: guc:00009922:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009937:  ereport(ERROR, 
-gaad: guc:00009938:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009939:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00009940:  "\"log_statement_stats\", " 
-gaad: guc:00009941:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009942:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009957:  ereport(ERROR, 
-gaad: guc:00009958:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009959:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00009902:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00009913:  ereport(ERROR, 
+gaad: guc:00009914:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009915:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00009930:  ereport(ERROR, 
+gaad: guc:00009931:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009932:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00009933:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009934:  "\"log_dispatch_stats\", " 
+gaad: guc:00009935:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009950:  ereport(ERROR, 
+gaad: guc:00009951:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009952:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00009953:  "\"log_statement_stats\", " 
+gaad: guc:00009954:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009955:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009970:  ereport(ERROR, 
+gaad: guc:00009971:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009972:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
