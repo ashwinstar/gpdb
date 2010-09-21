@@ -48,6 +48,14 @@ class securetty:
         self.errormsg = None
         self.data = set() 
 
+class bcu:
+    def __init__(self):
+        self.firmware = None
+        self.errormsg = None
+
+    def __str__(self):
+        return "firmware_version=%s" % self.firmware
+
 class ioschedulers:
     def __init__(self):
         self.devices = dict() # key is device name value is scheduler name
@@ -105,6 +113,7 @@ class DellOutputData:
         self.mounts = None
         self.inittab = None
         self.securetty = None
+        self.bcu = None
 
     def __str__(self):
         ser = "=============SERVICES=======================\n"
@@ -151,6 +160,10 @@ class DellOutputData:
         grc = "============= BLOCKDEV RA ====================\n"
         gre = "============= BLOCKDEV RA ERRORMSG============\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.blockdev.ra.__str__(), gre, self.blockdev.errormsg)
+
+        grc = "============= BCU CNA ========================\n"
+        gre = "============= BCU CNA ERRORMSG================\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.bcu.__str__(), gre, self.bcu.errormsg)
 
         return output
     
