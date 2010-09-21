@@ -183,6 +183,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 			size = add_size(size, FileRepAckPrimary_ShmemSize());
 			size = add_size(size, FileRepResync_ShmemSize()); 
 			size = add_size(size, FileRepIpc_ShmemSize());
+			size = add_size(size, FileRepLog_ShmemSize());
 		}
 		
 #ifdef FAULT_INJECTOR
@@ -214,9 +215,6 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		/* might as well round it off to a multiple of a typical page size */
 		size = add_size(size, BLCKSZ - (size % BLCKSZ));
 
-		elog(LOG, "invoking IpcMemoryCreate(size = %lu)",
-			 (unsigned long) size);
-
 		/*
 		 * Create the shmem segment
 		 */
@@ -234,7 +232,6 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 
 		if (GPAreFileReplicationStructuresRequired()) 
 		{
-			elog(LOG, "reserving filerep semaphores");
 			numSemas += FileRepSemas();
 		}
 		
@@ -366,6 +363,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		FileRepAckPrimary_ShmemInit();
 		FileRepResync_ShmemInit();
 		FileRepIpc_ShmemInit();
+		FileRepLog_ShmemInit();
 	}
 	
 #ifdef FAULT_INJECTOR

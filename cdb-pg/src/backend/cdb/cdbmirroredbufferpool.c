@@ -356,8 +356,9 @@ static void MirroredBufferPool_DoOpen(
 					  fileMode,
 					  TRUE /* supressError */) != 0) 
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent file open request to mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not sent file open request to mirror "), 
 							FileRep_ReportRelationPath(
 												open->mirrorFilespaceLocation,
 												open->relFileNode,
@@ -568,8 +569,9 @@ bool MirroredBufferPool_Flush(
 																	  open->segmentFileNum),
 										FileRepRelationTypeBufferPool) != 0) 
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent file fsync request to mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not sent file fsync request to mirror "), 
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
@@ -599,8 +601,9 @@ bool MirroredBufferPool_Flush(
 													  open->segmentFileNum),									
 						FileRepRelationTypeBufferPool) == FALSE)	
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not fsync file on mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not fsync file on mirror "), 
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
@@ -640,8 +643,9 @@ void MirroredBufferPool_Close(
 												  open->segmentFileNum),
 					FileRepRelationTypeBufferPool) != 0) 
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent file close request to mirror"), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not sent file close request to mirror"), 
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
@@ -739,8 +743,9 @@ bool MirroredBufferPool_Write(
 						   bufferLen, 
 						   FileRep_GetXLogRecPtrUndefined())	!= 0) 	
 		{
-			ereport(LOG,
-					 (errmsg("ERROR(filerep): could not sent write request to mirror position:'%d' ", 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					 (errmsg("could not sent write request to mirror position '%d' ", 
 							 position), 
 							 FileRep_ReportRelationPath(
 														open->mirrorFilespaceLocation,
@@ -762,7 +767,7 @@ bool MirroredBufferPool_Write(
 		{
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
+					 errmsg("could not seek in file to position %d in file '%s', segment file %d : %m", 
 							position,
 							relpath(open->relFileNode), 
 							open->segmentFileNum)));
@@ -807,7 +812,7 @@ int MirroredBufferPool_Read(
 	Assert(open->isActive);
 
 	if (!StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode))
-		elog(ERROR, "File not open on the primary");
+		elog(ERROR, "file not open on the primary");
 
 	errno = 0;
 	seekResult = FileSeek(open->primaryFile, position, SEEK_SET);
@@ -815,7 +820,7 @@ int MirroredBufferPool_Read(
 	{
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not seek in file to position %d in file \"%s\", segment file %d: %m", 
+				 errmsg("could not seek in file to position %d in file '%s', segment file %d: %m", 
 				        position,
 				        relpath(open->relFileNode), open->segmentFileNum)));
 	}
@@ -833,7 +838,7 @@ int64 MirroredBufferPool_SeekSet(
 	Assert(open->isActive);
 
 	if (!StorageManagerMirrorMode_DoPrimaryWork(open->mirrorMode))
-		elog(ERROR, "File not open on the primary");
+		elog(ERROR, "file not open on the primary");
 
 	errno = 0;
 	return FileSeek(open->primaryFile, position, SEEK_SET);
@@ -1309,8 +1314,9 @@ static void MirroredBufferPool_DoDrop(
 																	  segmentFileNum),				  
 										FileRepRelationTypeBufferPool) != 0) 
 		{
-			ereport(LOG,
-					 (errmsg("ERROR(filerep): could not sent file drop request to mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					 (errmsg("could not sent file drop request to mirror "), 
 							 FileRep_ReportRelationPath(
 														mirrorFilespaceLocation,
 														*relFileNode,
@@ -1361,8 +1367,9 @@ static void MirroredBufferPool_DoDrop(
 																		  segmentFileNum),									
 											FileRepRelationTypeBufferPool) == FALSE)	
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not drop file on mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not drop file on mirror "), 
 							FileRep_ReportRelationPath(
 													   mirrorFilespaceLocation,
 													   *relFileNode,
@@ -1482,8 +1489,9 @@ bool MirroredBufferPool_Truncate(
 										  FileRepRelationTypeBufferPool,
 										  position) != 0) 
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent file truncate request to mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not sent file truncate request to mirror "), 
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,

@@ -17,6 +17,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/time.h>
 
 #include "miscadmin.h"
 
@@ -29,6 +30,7 @@
 #include "cdb/cdbvars.h"
 #include "storage/lwlock.h"
 #include "storage/pmsignal.h"
+#include "storage/ipc.h"
 #include "postmaster/primary_mirror_mode.h"
 #include "utils/faultinjector.h"
 #include "utils/memutils.h"
@@ -102,6 +104,18 @@ FileRepPrimary_GetMirrorDataLossTrackingSessionNum(int64 *sessionNum)
 			return MirrorDataLossTrackingState_MirrorCurrentlyUpInSync;
 			
 		case DataStateInChangeTracking:
+			
+            /*
+             * If segment is in transition to Change Tracking then IO activity 
+             * must be suspended.
+             */
+            if (fileRepProcessType != FileRepProcessTypePrimaryRecovery)
+            {
+                FileRepPrimary_IsMirroringRequired(
+                                                   FileRepRelationTypeNotSpecified,
+                                                   FileRepOperationNotSpecified);
+            }
+						
 			return MirrorDataLossTrackingState_MirrorDown;
 
 		default:
@@ -214,16 +228,10 @@ FileRepPrimary_IsMirroringRequired(
 					!(isInTransition == TRUE &&
 					  dataStateTransition == DataStateInChangeTracking))
 				{
-					// UNDONE: Debugging
-					elog(LOG, "segmentState %d, fileRepShmemArray[0]->state %d, fileRepProcessType %d, isInTransition %s, dataStateTransition %d",
-						 segmentState,
-						 fileRepShmemArray[0]->state,
-						 fileRepProcessType,
-						 (isInTransition ? "true" : "false"),
-						 dataStateTransition);
-					ereport(ERROR,
-							(errmsg("failure is detected in segment mirroring during shutdown, abort requested (%d)",
-							 getpid())));
+					FileRep_InsertConfigLogEntry("failure is detected in segment mirroring during backend shutdown, abort requested");
+					
+					LWLockReleaseAll();
+					proc_exit(0);
 				}
 				
 				if (segmentState != SegmentStateFault &&
@@ -231,14 +239,17 @@ FileRepPrimary_IsMirroringRequired(
 					  dataStateTransition == DataStateInChangeTracking)) 
 				{
 					isMirroringRequired = TRUE;
-				} else {
+				} 
+				else 
+				{
 					/* shutdown request has to be let through in order to transition to change tracking */
 					if (FileRep_IsIpcSleep(fileRepOperation))
 					{
 						break;
 					}
 					
-					if (! report) {
+					if (! report) 
+					{
 						ereport(LOG,
 								(errmsg("failure is detected in segment mirroring, "
 										"failover requested "),
@@ -270,10 +281,11 @@ FileRepPrimary_IsMirroringRequired(
 
 				if (report) {
 					ereport(LOG,
-							(errmsg("failover is performed to the primary segment, "
+							(errmsg("failover was performed to the primary segment, "
 									"segment mirroring is suspended "),
 							 errSendAlert(true),
-							FileRep_errcontext()));
+							 FileRep_errcontext()));
+					
 					report = FALSE;	
 					
 					/* database is resumed */
@@ -312,9 +324,9 @@ FileRepPrimary_ConstructAndInsertMessage(
 	pg_crc32					*fileRepMessageHeaderCrc;
 	pg_crc32					fileRepMessageHeaderCrcLocal;
 	char*						msgPositionInsert = NULL;
-	uint32						msgLength;
+	uint32						msgLength = 0;
 	int							status = STATUS_OK;
-	uint32						spareField;
+	uint32						spareField = 0;
 	
 	/* 
 	 * Prevent cancel/die interrupt while doing this multi-step in order to  
@@ -331,22 +343,27 @@ FileRepPrimary_ConstructAndInsertMessage(
 												fileRepRelationType);
 	}
 	
-	if (status != STATUS_OK && dataState != DataStateInChangeTracking) {
+	if (status != STATUS_OK) 
+	{
 		
 		RESUME_INTERRUPTS();
 		
-		ereport(WARNING,	
-				(errmsg("mirror failure, "
-						"could not insert message in ACK table"
-						"failover requested"),  	
-				 errhint("run gprecoverseg to re-establish mirror connectivity"),
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   fileRepOperation),
-				 FileRep_errdetail_Shmem(),
-				 FileRep_errcontext()));	
-		
-		FileRep_SetSegmentState(SegmentStateFault);
+		if ((! primaryMirrorIsIOSuspended()) && dataState != DataStateInChangeTracking)
+		{
+			ereport(WARNING,	
+					(errmsg("mirror failure, "
+							"could not insert message in ACK table"
+							"failover requested"),  	
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
+					 FileRep_errdetail(fileRepIdentifier,
+									   fileRepRelationType,
+									   fileRepOperation,
+									   FILEREP_UNDEFINED),
+					 FileRep_errdetail_Shmem(),
+					 FileRep_errcontext()));	
+			
+			FileRep_SetSegmentState(SegmentStateFault);
+		}
 		
 		FileRepPrimary_IsMirroringRequired(
 										   fileRepRelationType,
@@ -367,31 +384,36 @@ FileRepPrimary_ConstructAndInsertMessage(
 											  msgLength, 
 											  &spareField,
 											  fileRepOperation);
-	
-	if (msgPositionInsert == NULL && dataState != DataStateInChangeTracking) {
-		
+
+	if (msgPositionInsert == NULL) 
+	{
 		RESUME_INTERRUPTS();
 		
 		status = STATUS_ERROR;
-		ereport(WARNING,	
-				(errmsg("mirror failure, "
-						"could not queue message to be mirrored, "
-						"failover requested"),  	
-				 errhint("run gprecoverseg to re-establish mirror connectivity"),
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   fileRepOperation),
-				 FileRep_errdetail_Shmem(),
-				 FileRep_errcontext()));	
+		
+		if ((! primaryMirrorIsIOSuspended()) && dataState != DataStateInChangeTracking)
+		{
+			ereport(WARNING,	
+					(errmsg("mirror failure, "
+							"could not queue message to be mirrored, "
+							"failover requested"),  	
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
+					 FileRep_errdetail(fileRepIdentifier,
+									   fileRepRelationType,
+									   fileRepOperation,
+									   FILEREP_UNDEFINED),
+					 FileRep_errdetail_Shmem(),
+					 FileRep_errcontext()));	
 
-		FileRep_SetSegmentState(SegmentStateFault);
+			FileRep_SetSegmentState(SegmentStateFault);
+		}
 		
 		FileRepPrimary_IsMirroringRequired(
 										   fileRepRelationType,
 										   fileRepOperation);
 		return status;
 	}
-		
+
 /* Construct FileRepMessageHeader_s */
 	
 	fileRepMessageHeader = 
@@ -456,24 +478,25 @@ FileRepPrimary_ConstructAndInsertMessage(
 						   FileRepAckStateNotInitialized,
 						   FILEREP_UNDEFINED,
 						   fileRepMessageHeader->messageCount);
-						   	
+	
 	if (Debug_filerep_print)
 		ereport(LOG,
-			(errmsg("LOG(filerep): P_ConstructAndInsertMessage "
-					"msg header count:'%d' msg header crc:'%u' position insert:'%p' "
-					"msg length:'%u' open file flags:'%x' "
-					"truncate position:'" INT64_FORMAT "' ",
+			(errmsg("P_ConstructAndInsertMessage "
+					"msg header count '%d' msg header crc '%u' position insert '%p' "
+					"msg length '%u' open file flags '%x' "
+					"truncate position '" INT64_FORMAT "' ",
 					fileRepMessageHeader->messageCount,
 					fileRepMessageHeaderCrcLocal,
 					msgPositionInsert,
 					msgLength,
-					(fileRepOperation == FileRepOperationOpen || fileRepOperation == FileRepOperationCreateAndOpen)?
-					fileRepOperationDescription.open.fileFlags:0,
-					(fileRepOperation == FileRepOperationTruncate)?
-					fileRepOperationDescription.truncate.position:0),
+					(fileRepOperation == FileRepOperationOpen || fileRepOperation == FileRepOperationCreateAndOpen) ?
+					fileRepOperationDescription.open.fileFlags : 0,
+					(fileRepOperation == FileRepOperationTruncate) ?
+					fileRepOperationDescription.truncate.position : 0),
 			 FileRep_errdetail(fileRepIdentifier,
 							   fileRepRelationType,
-							   fileRepOperation),
+							   fileRepOperation,
+							   spareField),
 			 FileRep_errdetail_Shmem(),
 			 FileRep_errcontext()));		
 
@@ -524,7 +547,7 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 	{
 		fileRepOperation = FileRepOperationCreateAndOpen;
 	}
-	
+
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, fileRepOperation))
 	{
 		if (! (dataState == DataStateInResync &&
@@ -543,7 +566,7 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 			}	
 		}
 	}
-	
+
 	if (mirrorCreateAndOpen) 
 	{
 		if (FileRepPrimary_IsOperationCompleted(
@@ -790,20 +813,28 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 													 &spareField,
 													 FileRepOperationWrite);
 			
-			if (msgPositionInsert == NULL && dataState != DataStateInChangeTracking) {
-				
+			if (msgPositionInsert == NULL) 
+			{
 				RESUME_INTERRUPTS();
 				
 				status = STATUS_ERROR;
-				ereport(LOG,
-						(errmsg("ERROR(filerep): could not queue message to be mirrored"), 
-						 FileRep_errdetail(fileRepIdentifier,
-										   fileRepRelationType,
-										   FileRepOperationWrite),
-						 FileRep_errdetail_Shmem(),
-						 FileRep_errcontext()));	
 				
-				FileRep_SetSegmentState(SegmentStateFault);
+				if ((! primaryMirrorIsIOSuspended()) && dataState != DataStateInChangeTracking)
+				{
+					ereport(WARNING,
+							(errmsg("mirror failure, "
+									"could not queue message to be mirrored, "
+									"failover requested"), 
+							 errhint("run gprecoverseg to re-establish mirror connectivity"),
+							 FileRep_errdetail(fileRepIdentifier,
+											   fileRepRelationType,
+											   FileRepOperationWrite,
+											   FILEREP_UNDEFINED), 
+							 FileRep_errdetail_Shmem(),
+							 FileRep_errcontext()));	
+				
+					FileRep_SetSegmentState(SegmentStateFault);
+				}
 				
 				FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationWrite);
 
@@ -868,16 +899,17 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 						
 			if (Debug_filerep_print)
 				ereport(LOG,
-					(errmsg("LOG(filerep): P_ConstructAndInsertMessage "
-							"msg header count:'%d' msg header crc:'%u' position insert:'%p' "
-							"msg body crc:'%u' ",
+					(errmsg("P_ConstructAndInsertMessage "
+							"msg header count '%d' msg header crc '%u' position insert '%p' "
+							"msg body crc '%u' ",
 							fileRepMessageHeader->messageCount,
 							fileRepMessageHeaderCrcLocal,
 							msgPositionInsert,
 							fileRepMessageHeader->fileRepMessageBodyCrc),
 					 FileRep_errdetail(fileRepIdentifier,
 									   fileRepRelationType,
-									   FileRepOperationWrite),
+									   FileRepOperationWrite,
+									   spareField),
 					 FileRep_errdetail_Shmem(),
 					 FileRep_errcontext()));					
 			
@@ -1068,13 +1100,14 @@ FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
 		{
 			ereport(WARNING,	
 					(errmsg("mirror failure, "
-							"could not resynchonize mirror due to missing directories or relations on mirror, "
+							"could not resynchronize mirror due to missing directories or relations on mirror, "
 							"failover requested"),  	
 					 errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"),
 					 errSendAlert(true),
 					 FileRep_errdetail(fileRepIdentifier,
 									   fileRepRelationType,
-									   FileRepOperationValidation),
+									   FileRepOperationValidation,
+									   FILEREP_UNDEFINED),
 					 FileRep_errcontext()));	
 			
 			FileRep_SetSegmentState(SegmentStateFault);
@@ -1116,27 +1149,35 @@ FileRepPrimary_MirrorShutdown(void)
 	if ( shouldSendShutdownToMirror )
 	{
         status = FileRepPrimary_ConstructAndInsertMessage(
-															  fileRepIdentifier,
-															  FileRepRelationTypeUnknown,
-															  FileRepOperationShutdown,
-															  descr);
+														  fileRepIdentifier,
+														  FileRepRelationTypeUnknown,
+														  FileRepOperationShutdown,
+														  descr);
 		if (status != STATUS_OK)
 			return;
 		retval = FileRepAckPrimary_IsOperationCompleted(
-											   fileRepIdentifier,									
-											   FileRepRelationTypeUnknown);
-		if (retval == FALSE && dataState != DataStateInChangeTracking) {
-			ereport(LOG,
-					(errmsg("WARNING(filerep): could not complete operation on mirror"), 
-					 FileRep_errdetail(fileRepIdentifier,
-									   FileRepRelationTypeUnknown,
-									   FileRepOperationShutdown), 
-					 FileRep_errdetail_Shmem(),
-					 FileRep_errdetail_ShmemAck(),
-					 FileRep_errcontext()));	
-			
-		}
+														fileRepIdentifier,									
+														FileRepRelationTypeUnknown);
 		
+		if (retval == FALSE && 
+			dataState != DataStateInChangeTracking &&
+			! primaryMirrorIsIOSuspended()) 
+		{
+				ereport(WARNING,
+						(errmsg("mirror failure, "
+								"could not complete operation on mirror, "
+								"failover requested"), 
+						 errhint("run gprecoverseg to re-establish mirror connectivity"),
+						 FileRep_errdetail(fileRepIdentifier,
+										   FileRepRelationTypeUnknown,
+										   FileRepOperationShutdown,
+										   FILEREP_UNDEFINED), 
+						 FileRep_errdetail_Shmem(),
+						 FileRep_errdetail_ShmemAck(),
+						 FileRep_errcontext()));	
+			
+			FileRep_SetSegmentState(SegmentStateFault);
+		}
 	}
 	
 	return;
@@ -1169,12 +1210,19 @@ FileRepPrimary_MirrorInSyncTransition(void)
 		retval = FileRepAckPrimary_IsOperationCompleted(
 														fileRepIdentifier,									
 														FileRepRelationTypeUnknown);
-		if (retval == FALSE && dataState != DataStateInChangeTracking) {
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not complete operation on mirror"), 
+		if (retval == FALSE && 
+			dataState != DataStateInChangeTracking &&
+			! primaryMirrorIsIOSuspended())
+		{
+			ereport(WARNING,
+					(errmsg("mirror failure, "
+							"could not complete operation on mirror, "
+							"failover requested"), 
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
 					 FileRep_errdetail(fileRepIdentifier,
 									   FileRepRelationTypeUnknown,
-									   FileRepOperationInSyncTransition), 
+									   FileRepOperationInSyncTransition,
+									   FILEREP_UNDEFINED), 
 					 FileRep_errdetail_Shmem(),
 					 FileRep_errdetail_ShmemAck(),
 					 FileRep_errcontext()));	
@@ -1217,16 +1265,23 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 		retval = FileRepAckPrimary_IsOperationCompleted(
 														fileRepIdentifier,									
 														FileRepRelationTypeUnknown);
-		if (retval == FALSE && dataState != DataStateInChangeTracking) {
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not complete operation on mirror"), 
-					 FileRep_errdetail(fileRepIdentifier,
-									   FileRepRelationTypeUnknown,
-									   FileRepOperationNotSpecified), 
-					 FileRep_errdetail_Shmem(),
-					 FileRep_errdetail_ShmemAck(),
-					 FileRep_errcontext()));	
-			
+		if (retval == FALSE && 
+			dataState != DataStateInChangeTracking &&
+			! primaryMirrorIsIOSuspended())
+		{
+				ereport(WARNING,
+						(errmsg("mirror failure, "
+								"could not complete operation on mirror, "
+								"failover requested"), 
+						 errhint("run gprecoverseg to re-establish mirror connectivity"),
+						 FileRep_errdetail(fileRepIdentifier,
+										   FileRepRelationTypeUnknown,
+										   FileRepOperationHeartBeat,
+										   FILEREP_UNDEFINED), 
+						 FileRep_errdetail_Shmem(),
+						 FileRep_errdetail_ShmemAck(),
+						 FileRep_errcontext()));	
+						
 			FileRep_SetSegmentState(SegmentStateFault);
 		}		
 	}
@@ -1250,18 +1305,27 @@ FileRepPrimary_IsOperationCompleted(
 			retval = FileRepAckPrimary_IsOperationCompleted(
 							fileRepIdentifier,									
 						    fileRepRelationType);
-				/* suspend if mirror reported fault */
-			if (retval == FALSE && dataState != DataStateInChangeTracking) {
-				ereport(LOG,
-						(errmsg("ERROR(filerep): could not complete operation on mirror"), 
-						 FileRep_errdetail(fileRepIdentifier,
-										   fileRepRelationType,
-										   FileRepOperationNotSpecified), 
-						 FileRep_errdetail_Shmem(),
-						 FileRep_errdetail_ShmemAck(),
-						 FileRep_errcontext()));	
-				
-				FileRep_SetSegmentState(SegmentStateFault);
+			
+			/* suspend if mirror reported fault */
+			if (retval == FALSE)
+			{
+				if (dataState != DataStateInChangeTracking && ! primaryMirrorIsIOSuspended())
+				{
+					ereport(WARNING,
+							(errmsg("mirror failure, "
+									"could not complete operation on mirror, "
+									"failover requested"), 
+							 errhint("run gprecoverseg to re-establish mirror connectivity"),
+							 FileRep_errdetail(fileRepIdentifier,
+											   fileRepRelationType,
+											   FileRepOperationNotSpecified,
+											   FILEREP_UNDEFINED), 
+							 FileRep_errdetail_Shmem(),
+							 FileRep_errdetail_ShmemAck(),
+							 FileRep_errcontext()));	
+			
+					FileRep_SetSegmentState(SegmentStateFault);
+				}
 				
 				FileRepPrimary_IsMirroringRequired(fileRepRelationType,
 												   FileRepOperationNotSpecified);
@@ -1305,21 +1369,25 @@ FileRepPrimary_GetMirrorStatus(void)
 void 
 FileRepPrimary_StartSender(void)
 {
-	int status = STATUS_OK;
-	int retry = 0;
+	int				status = STATUS_OK;
+	int				retry = 0;
+	struct timeval	currentTime;
+	pg_time_t		beginTime = 0;
+	pg_time_t		endTime = 0;
 	
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepPrimary_StartSender() ");
+	FileRep_InsertConfigLogEntry("start sender");
 	
-	ereport(LOG,
-			(errmsg("P_StartSender primary host address:'%s' and port:'%d' "
-					"mirror host address:'%s' and port:'%d', fullResync %s ",
-					fileRepPrimaryHostAddress,
-					fileRepPrimaryPort,
-					fileRepMirrorHostAddress,
-					fileRepMirrorPort,
-					fileRepFullResync ? "true" : "false"),
-			 FileRep_errcontext()));		
+	{
+		char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+		
+		snprintf(tmpBuf, sizeof(tmpBuf), "primary address(port) '%s(%d)' mirror address(port) '%s(%d)' ",
+				 fileRepPrimaryHostAddress, 
+				 fileRepPrimaryPort,
+				 fileRepMirrorHostAddress, 
+				 fileRepMirrorPort);
+		
+		FileRep_InsertConfigLogEntry(tmpBuf);
+	}
 	
 	while (1) {
 		
@@ -1349,23 +1417,40 @@ FileRepPrimary_StartSender(void)
 													   fileRepMirrorPort,
 													   FALSE /* reportError */);
 		
-		while (status != STATUS_OK && retry < file_rep_retry)  {
-			FileRep_Sleep10ms(retry++);
+		if (status != STATUS_OK)
+		{
+			gettimeofday(&currentTime, NULL);
+			beginTime = (pg_time_t) currentTime.tv_sec;
+		}
+			
+		while (status != STATUS_OK && 
+			   FileRep_IsRetry(retry) && 
+			   (endTime - beginTime) < gp_segment_connect_timeout)  
+		{
+			FileRep_Sleep10ms(retry);
+			
+			FileRep_IncrementRetry(retry);
+			
+			gettimeofday(&currentTime, NULL);
+			endTime = (pg_time_t) currentTime.tv_sec;			
 			
 			status = FileRepConnClient_EstablishConnection(
 														   fileRepMirrorHostAddress,
 														   fileRepMirrorPort,
-														   (retry == file_rep_retry) ? TRUE : FALSE);
+														   (retry == file_rep_retry && file_rep_retry != 0) || 
+														   ((endTime - beginTime) > gp_segment_connect_timeout) ? TRUE : FALSE);
 			
 			if (FileRepSubProcess_IsStateTransitionRequested())
 			{
 				break;
-			}			
+			}					
 		}
 		
 		if (status != STATUS_OK) {
 			continue;
 		}
+		
+		FileRep_SetFileRepRetry();
 		
 		status = FileRepPrimary_RunSender();
 		
@@ -1392,8 +1477,7 @@ FileRepPrimary_RunSender(void)
 	FileRepShmem_s				*fileRepShmem = fileRepShmemArray[fileRepProcIndex];
 	FileRepConsumerProcIndex_e	messageType = FileRepMessageTypeUndefined;
 	
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepPrimary_RunSender() ");
+	FileRep_InsertConfigLogEntry("run sender");
 	
 	while (1) {
 		
@@ -1493,12 +1577,13 @@ FileRepPrimary_RunSender(void)
 		
 		if (Debug_filerep_print)
 			ereport(LOG,
-				(errmsg("LOG(filerep): P_RunSender msg header count:'%d' local count:'%d' ",
+				(errmsg("P_RunSender msg header count '%d' local count '%d' ",
 						fileRepMessageHeader->messageCount,
 						spare),
 				 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 								   fileRepMessageHeader->fileRepRelationType,
-								   fileRepMessageHeader->fileRepOperation),
+								   fileRepMessageHeader->fileRepOperation,
+								   fileRepMessageHeader->messageCount),
 				 FileRep_errdetail_Shmem(),
 				 FileRep_errcontext()));				
 		
@@ -1542,8 +1627,19 @@ FileRepPrimary_RunSender(void)
 				break;
 				
 			default:
-				elog(ERROR, "unknown relation type:'%d' ",
-					 fileRepMessageHeader->fileRepRelationType);
+				ereport(WARNING, 
+						(errmsg("mirror failure, "
+								"unknown relation type '%d' "
+								"failover requested",
+								fileRepMessageHeader->fileRepRelationType),
+						 errhint("run gprecoverseg to re-establish mirror connectivity"),
+						 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+										   fileRepMessageHeader->fileRepRelationType,
+										   fileRepMessageHeader->fileRepOperation,
+										   fileRepMessageHeader->messageCount),
+						 FileRep_errcontext()));		
+
+				status = STATUS_ERROR;		
 				break;
 		}
 		
@@ -1553,20 +1649,23 @@ FileRepPrimary_RunSender(void)
 					fileRepMessage,
 					fileRepShmemMessageDescr->messageLength)) {
 			
-			ereport(WARNING, 
+			if (! primaryMirrorIsIOSuspended())
+			{
+				ereport(WARNING, 
 					(errcode_for_socket_access(),
 					 errmsg("mirror failure, "
-							"could not sent message to mirror msg header count:'%d' local count:'%d' : %m, "
+							"could not sent message to mirror msg header count '%d' local count '%d' : %m, "
 							"failover requested",
 							fileRepMessageHeader->messageCount,
 							spare),
 					 errhint("run gprecoverseg to re-establish mirror connectivity"),
 					 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 									   fileRepMessageHeader->fileRepRelationType,
-									   fileRepMessageHeader->fileRepOperation),
+									   fileRepMessageHeader->fileRepOperation,
+									   fileRepMessageHeader->messageCount),
 					 FileRep_errdetail_Shmem(),
 					 FileRep_errcontext()));		
-
+			}
 			status = STATUS_ERROR;
 			break;
 		}

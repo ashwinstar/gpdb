@@ -7382,12 +7382,17 @@ XLogGetRecoveryStart(char *callerStr, char *reasonStr, XLogRecPtr *redoCheckPoin
 
 	if (XLByteEQ(checkPointLoc,checkPoint.redo))
 	{
-		ereport(LOG,
-		 (errmsg("%s: control file has restart %scheckpoint record at %s (LSN %s).  Redo starts at checkpoint",
-		 		 callerStr, 
-				 (previous ? "previous " : ""),
-			      XLogLocationToString(&checkPointLoc),
-			      XLogLocationToString2(&checkPointLSN))));
+		{
+			char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+			
+			snprintf(tmpBuf, sizeof(tmpBuf), 
+					 "control file has restart '%s' and redo start checkpoint at location(lsn) '%s(%s)' ",
+					 (previous ? "previous " : ""),
+					 XLogLocationToString3(&checkPointLoc),
+					 XLogLocationToString4(&checkPointLSN));
+			
+			FileRep_InsertConfigLogEntry(tmpBuf);
+		}		
 	}
  	else if (XLByteLT(checkPointLoc, checkPoint.redo))
 	{
@@ -7406,14 +7411,19 @@ XLogGetRecoveryStart(char *callerStr, char *reasonStr, XLogRecPtr *redoCheckPoin
 					 callerStr, XLogLocationToString(&checkPoint.redo))));
 		}
 		
-		ereport(LOG,
-		 (errmsg("%s: control file has restart %scheckpoint at %s (LSN %s).  Redo starts at location %s (LSN %s)",
-		 		 callerStr,
-				 (previous ? "previous " : ""),
-				 XLogLocationToString3(&checkPointLoc),
-				 XLogLocationToString4(&checkPointLSN),
-				 XLogLocationToString(&checkPoint.redo),
-				 XLogLocationToString2(&EndRecPtr))));
+		{
+			char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+			
+			snprintf(tmpBuf, sizeof(tmpBuf), 
+					 "control file has restart '%s' checkpoint at location(lsn) '%s(%s)', redo starts at location(lsn) '%s(%s)' ",
+					 (previous ? "previous " : ""),
+					 XLogLocationToString3(&checkPointLoc),
+					 XLogLocationToString4(&checkPointLSN),
+					 XLogLocationToString(&checkPoint.redo),
+					 XLogLocationToString2(&EndRecPtr));
+			
+			FileRep_InsertConfigLogEntry(tmpBuf);
+		}		
 	}
 	
 	CloseReadRecord();
@@ -10020,6 +10030,8 @@ StartupProcessMain(int passNum)
 		SetProcessingMode(NormalProcessing);
 
 		StartupXLOG_Pass3();
+			
+		PgVersionRecoverMirror();	
 		break;
 
 	default:
@@ -10049,19 +10061,13 @@ int XLogGetEof(XLogRecPtr *eofRecPtr)
 	XLogRecord	*record;
 	XLogRecPtr	LastRec;
 		
-	XLogGetRecoveryStart("FileRep",
+	XLogGetRecoveryStart("filerep",
 						 "get checkpoint location",
 						 &redoCheckpointLoc,
 						 &redoCheckpoint);
 	
 	startLoc = redoCheckpoint.redo;
 	
-	elog(LOG, "scan forward starting at restart location to determine end location");
-		
-	elog(LOG, "scan with ThisTimeLineID %u, location %s",
-			 ThisTimeLineID, 
-			 XLogLocationToString(&startLoc));
-		
 	CloseReadRecord();
 		
 	record = ReadRecord(&startLoc, DEBUG1);
@@ -10129,9 +10135,16 @@ int XLogReconcileEofInternal(
 		else
 			endOffset = XLogSegSize;
 		
-		elog(LOG, "XLogReconcileEofInternal() logId %u seg %u start:%d end:%d xlogsize:%d", 
-			 logId, seg, startOffset, endOffset, XLogSegSize);
-		
+		{
+			char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+			
+			snprintf(tmpBuf, sizeof(tmpBuf), 
+					 "xlog reconcile log id '%u' seg '%u' start offset '%d' end offset '%d' xlog size '%d' ",
+					 logId, seg, startOffset, endOffset, XLogSegSize); 
+			
+			FileRep_InsertConfigLogEntry(tmpBuf);
+		}
+				
 		status = XLogFillZero(logId, seg, startOffset, endOffset);
 		if (status != STATUS_OK) {
 			break;
@@ -10141,7 +10154,6 @@ int XLogReconcileEofInternal(
 			break;
 		
 		NextLogSeg(logId, seg);
-		elog(DEBUG1, "next logId %u seg %u", logId, seg);
 	}
 	
 	return STATUS_OK;
@@ -10169,20 +10181,18 @@ int XLogFillZero(
 	errno = 0;
 	
 	XLogFileName(fname, ThisTimeLineID, logId, seg);
-	elog(LOG, "opening logid %d seg %d file %s", logId, seg, fname);
 	
-	/* the first time or file is changed */
 	if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, fname) >= MAXPGPATH) {
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode_for_file_access(),
-				 errmsg("could not create xlog file \"%s/%s\"",
+				 errmsg("could not allocate path, path too long \"%s/%s\"",
 						XLOGDIR, fname)));
 		return STATUS_ERROR;
 	}
 	
 	fd = open(path, O_RDWR, 0);
 	if (fd < 0) {
-			ereport(LOG,
+			ereport(WARNING,
 					(errcode_for_file_access(),
 					 errmsg("could not open xlog file \"%s\" : %m",
 							path)));
@@ -10190,7 +10200,7 @@ int XLogFillZero(
 	}
 			
 	if (ftruncate(fd, startOffset) < 0) {
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("could not truncate xlog file \"%s\" to position \"%d\" : %m",
 						path, startOffset)));
@@ -10199,7 +10209,7 @@ int XLogFillZero(
 	}		
 	
 	if (lseek(fd, (off_t) startOffset, SEEK_SET) < 0) {
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("could not seek xlog file \"%s\" to position \"%d\" : %m",
 						path, startOffset)));
@@ -10232,7 +10242,7 @@ int XLogFillZero(
 			/* if write didn't set errno, assume problem is no disk space */
 			errno = save_errno ? save_errno : ENOSPC;
 			
-			ereport(LOG,
+			ereport(WARNING,
 					(errcode_for_file_access(),
 					 errmsg("could not write to file \"%s\": %m", path)));
 			status = STATUS_ERROR;
@@ -10245,7 +10255,7 @@ int XLogFillZero(
 	}
 	
 	if (pg_fsync(fd) != 0) {
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("could not fsync file \"%s\": %m", path)));
 		status = STATUS_ERROR;
@@ -10254,7 +10264,7 @@ int XLogFillZero(
 exit:
 	if (fd > 0) {
 		if (close(fd)) {
-			ereport(LOG,
+			ereport(WARNING,
 					(errcode_for_file_access(),
 					 errmsg("could not close file \"%s\": %m", path)));
 			status = STATUS_ERROR;
@@ -10305,21 +10315,23 @@ XLogReconcileEofPrimary(void)
 		return status;
 	}
 	
-	if (XLByteEQ(primaryEof, mirrorEof)) {
-		elog(LOG, "primary and mirror XLog EOF match");
+	if (XLByteEQ(primaryEof, mirrorEof)) 
+	{
+		FileRep_InsertConfigLogEntry("primary and mirror xlog eof match");
 		return STATUS_OK;
 	}
 	
-	if (XLByteLT(primaryEof, mirrorEof)) {
-		elog(LOG, "primary is behind. XLog was truncated on mirror.");
+	if (XLByteLT(primaryEof, mirrorEof)) 
+	{
+		FileRep_InsertConfigLogEntry("primary is behind, xlog was truncated on mirror");
 		return STATUS_OK;
 	}
 	
-	elog(LOG, "mirror is behind. XLog will be truncated on primary.");
-		
+	FileRep_InsertConfigLogEntry("mirror is behind, xlog will be truncated on primary");
+
 	status = XLogReconcileEofInternal(
-						mirrorEof,
-						primaryEof);
+									  mirrorEof,
+									  primaryEof);
 	
 	return status;
 }
@@ -10345,16 +10357,16 @@ XLogReconcileEofMirror(
 
 		
 	if (XLByteEQ(primaryEof, mirrorEofLocal)) {
-		elog(LOG, "primary and mirror XLog EOF match");
+		FileRep_InsertConfigLogEntry("primary and mirror xlog eof match");
 		return STATUS_OK;
 	}
 		
 	if (! XLByteLT(primaryEof, mirrorEofLocal)) {
-		elog(LOG, "Mirror is behind. XLog will be truncated on primary.");
+		FileRep_InsertConfigLogEntry("mirror is behind, xlog will be truncated on primary");
 		return STATUS_OK;
 	}
 			
-	elog(LOG, "Primary is behind. XLog will be truncated on mirror.");
+	FileRep_InsertConfigLogEntry("primary is behind, xlog was truncated on mirror");
 		
 	status = XLogReconcileEofInternal(
 						  primaryEof,

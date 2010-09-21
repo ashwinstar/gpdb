@@ -434,8 +434,9 @@ static void MirroredAppendOnly_DoOpen(
 									  fileMode,
 									  TRUE /* supressError */) != 0) 
 		{		
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent file open request to mirror "),
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not sent file open request to mirror "),
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
@@ -828,8 +829,9 @@ void MirroredAppendOnly_FlushAndClose(
 																		 open->segmentFileNum),
 										   FileRepRelationTypeAppendOnly) != 0)
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent file fsync and close request to mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not sent file fsync and close request to mirror "), 
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
@@ -865,8 +867,9 @@ void MirroredAppendOnly_FlushAndClose(
 																		  open->segmentFileNum),									
 											FileRepRelationTypeAppendOnly) == FALSE)	
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not fsync file on mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not fsync file on mirror "), 
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
@@ -962,8 +965,9 @@ void MirroredAppendOnly_Flush(
 																 open->segmentFileNum),
 									FileRepRelationTypeAppendOnly) != 0) 
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent file fsync and close request to mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not sent file fsync and close request to mirror "), 
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
@@ -997,8 +1001,9 @@ void MirroredAppendOnly_Flush(
 																			  open->segmentFileNum),									
 												FileRepRelationTypeAppendOnly) == FALSE)
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not fsync file on mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not fsync file on mirror "), 
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
@@ -1064,8 +1069,9 @@ void MirroredAppendOnly_Close(
 																	 open->segmentFileNum),
 									   FileRepRelationTypeAppendOnly) != 0)
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent file close request to mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not sent file close request to mirror "), 
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
@@ -1963,8 +1969,9 @@ static void MirroredAppendOnly_DoDrop(
 																	segmentFileNum),				  
 									  FileRepRelationTypeAppendOnly) != 0) 
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent file drop request to mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not sent file drop request to mirror "), 
 					 FileRep_ReportRelationPath(
 												mirrorFilespaceLocation,
 												*relFileNode,
@@ -2014,8 +2021,9 @@ static void MirroredAppendOnly_DoDrop(
 																			  segmentFileNum),									
 												FileRepRelationTypeAppendOnly) == FALSE)	
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not drop file on mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not drop file on mirror "), 
 					 FileRep_ReportRelationPath(
 												mirrorFilespaceLocation,
 												*relFileNode,
@@ -2165,8 +2173,9 @@ void MirroredAppendOnly_Append(
 									   bufferLen, 
 									   FileRep_GetXLogRecPtrUndefined())	!= 0)
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent write request to mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not sent write request to mirror "), 
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
@@ -2251,8 +2260,9 @@ void MirroredAppendOnly_Truncate(
 									  FileRepRelationTypeAppendOnly,
 									  position) != 0)
 		{
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not sent file truncate request to mirror "), 
+			if (Debug_filerep_print)
+				ereport(LOG,
+					(errmsg("could not sent file truncate request to mirror "), 
 							FileRep_ReportRelationPath(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,

@@ -15,9 +15,11 @@
  */
 #include "postgres.h"
 
+#include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <assert.h>
 #include <sys/time.h>
 
@@ -36,6 +38,7 @@
 #include "cdb/cdbresynchronizechangetracking.h"
 #include "libpq/pqsignal.h"
 #include "postmaster/fork_process.h"
+#include "storage/fd.h"
 #include "storage/lwlock.h"
 #include "storage/ipc.h"
 #include "storage/pmsignal.h"
@@ -163,153 +166,136 @@ static FileRepSubProc FileRepSubProcList[MaxFileRepSubProc] =
 	{0, FileRepProcessTypeResyncWorker4},
 };
 
-
-/*
- * GUC parameter
- *			file_rep_num_log_entries = 512;
- * 
- * Number of log entries maintained in memory for troubleshooting.
- */
-#define	file_rep_num_log_entries 512
-
-static FileRepLogEntry_s fileRepLog[file_rep_num_log_entries];
-
-static	int	logIndex = 0;
-
-static	int fileRepInsertedLogEntries = 0; 
-
-static void FileRep_ReportLogEntry(int	index);
-
 const char*
 FileRepProcessTypeToString[] = {
-	_("FileRep Uninitialized Process"),
-	_("FileRep Main Process"), /* note that this one is actually changed when we set the title */
-	_("FileRep Primary Sender Process"),
-	_("FileRep Mirror Receiver Process"),
-	_("FileRep Mirror Consumer Process"),
+	_("filerep uninitialized process"),
+	_("filerep main process"), /* note that this one is actually changed when we set the title */
+	_("primary sender process"),
+	_("mirror receiver process"),
+	_("mirror consumer process"),
 
-	_("FileRep Mirror Sender Ack Process"),
-	_("FileRep Primary Receiver Ack Process"),
-	_("FileRep Primary Consumer Ack Process"),
-	_("FileRep Primary Recovery Process"),
-	_("FileRep Mirror Consumer Writer Process"),
+	_("mirror sender ack process"),
+	_("primary receiver ack process"),
+	_("primary consumer ack process"),
+	_("primary recovery process"),
+	_("mirror consumer writer process"),
 
-	_("FileRep Mirror Consumer Append Only 1 Process"),
-	_("FileRep Mirror Consumer Append Only 2 Process"),
+	_("mirror consumer append only #1 process"),
+	_("mirror consumer append only #2 process"),
 
-	_("FileRep Primary Resync Manager Process"),
+	_("primary resync manager process"),
 
-	_("FileRep Primary Resync Worker 1 Process"),
-	_("FileRep Primary Resync Worker 2 Process"),
-	_("FileRep Primary Resync Worker 3 Process"),
-	_("FileRep Primary Resync Worker 4 Process"),
+	_("primary resync worker #1 process"),
+	_("primary resync worker #2 process"),
+	_("primary resync worker #3 process"),
+	_("primary resync worker #4 process"),
 };
 
 const char*
 FileRepRoleToString[] = {
-	_("Role not Initialized"),
-	_("Role not Configured"),
-	_("Primary Role"),
-	_("Mirror Role"),
+	_("role not initialized"),
+	_("role not configured"),
+	_("primary role"),
+	_("mirror role"),
 };
 
 const char*
 SegmentStateToString[] = {
-	_("Not Initialized"),
-	_("Initialization and Recovery"),
-	_("Transition to InChangeTracking"),
-	_("Transition to InResync"),	
-	_("Transition to InSync"),
-	_("Up and Running"),
-	_("Change Tracking Disabled"),
-	_("In Fault"),
-	_("In Shutdown of Backends"),
-	_("In Shutdown"),
-	_("In Immediate Shutdown"),
+	_("not initialized"),
+	_("initialization and recovery"),
+	_("transition to change tracking"),
+	_("transition to resync"),	
+	_("transition to sync"),
+	_("up and running"),
+	_("change tracking disabled"),
+	_("in fault"),
+	_("in backends shutdown"),
+	_("in shutdown"),
+	_("in immediate shutdown"),
 };
 
 const char*
 DataStateToString[] = {
-	_("Not Initialized"),
-	_("In Sync"),
-	_("In Change Tracking"),
-	_("In Resync"),
+	_("not initialized"),
+	_("sync"),
+	_("change tracking"),
+	_("resync"),
 };
 
 const char*
 FileRepStateToString[] = {
-	_("Not Initialized"),
-	_("Initialization and Recovery"),
-	_("Up and Running"),
-	_("In Fault"),
-	_("In Shutdown of Backends"),
-	_("In Shutdown"),
+	_("not initialized"),
+	_("initialization and recovery"),
+	_("up and running"),
+	_("fault"),
+	_("in backends shutdown"),
+	_("in shutdown"),
 };
 						  
 const char*
 FileRepOperationToString[] = {
-	_("Open"),
-	_("Write"),
-	_("Flush (fsync)"),
-	_("Close"),
-	_("Flush (fsync) and Close"),
-	_("Truncate"),
-	_("Create"),
-	_("Drop"),
-	_("Reconcile xlog"),
-	_("Link or Rename"),
-	_("Shutdown"),
-	_("In Sync Transition"),
-	_("Heart Beat"),
-	_("Create and Open"),
-	_("Validation FileSpace Dir or Existence"),
-	_("Drop files from Dir"),
-	_("Drop temporary files"),
-	_("Not Specified"),
+	_("open"),
+	_("write"),
+	_("flush (fsync)"),
+	_("close"),
+	_("flush (fsync) and close"),
+	_("truncate"),
+	_("create"),
+	_("drop"),
+	_("reconcile xlog"),
+	_("link or rename"),
+	_("shutdown"),
+	_("in sync transition"),
+	_("heart beat"),
+	_("create and open"),
+	_("validation fileSpace dir or existence"),
+	_("drop files from dir"),
+	_("drop temporary files"),
+	_("not specified"),
 };
 
 const char*
 FileRepRelationTypeToString[] = {
-	_("Flat File"),
-	_("Append Only"),
-	_("Buffer Pool"),
-	_("Bulk"),
-	_("Directory"),
-	_("Control Message"),
-	_("Not Specified"),
+	_("flat file"),
+	_("append only"),
+	_("buffer pool"),
+	_("bulk"),
+	_("directory"),
+	_("control message"),
+	_("not specified"),
 };
 
 const char *
 FileRepAckStateToString[] = {
-	_("Not Initialized"),
-	_("Waiting for Ack"),
-	_("Ack Completed"),
-	_("Mirror In Fault"),
+	_("not initialized"),
+	_("waiting for ack"),
+	_("ack completed"),
+	_("mirror in fault"),
 };
 
 const char*
 FileRepConsumerProcIndexToString[] = {
 	_("xlog"),
 	_("writer"),
-	_("append only 1"),
-	_("append only 2"),
+	_("append only #1"),
+	_("append only #2"),
 	_("shutdown"),
 	_("undefined"),
 };
 
 const char*
 FileRepStatusToString[] = {
-	_("Success"),
-	_("Not a directory"),
-	_("No such file or directory"),
-	_("Error reading directory"),
-	_("Directory not empty"),
-	_("File exists"),
-	_("No space"),
-	_("Permission denied"),
-	_("Read-only file system"),
-	_("Mirror loss occurred"),
-	_("Mirror error"),
+	_("success"),
+	_("not a directory"),
+	_("no such file or directory"),
+	_("error reading directory"),
+	_("directory not empty"),
+	_("file exists"),
+	_("no space"),
+	_("permission denied"),
+	_("read-only file system"),
+	_("mirror loss occurred"),
+	_("mirror error"),
 };
 
 /****************************************************************
@@ -384,14 +370,13 @@ int		file_rep_ack_buffer_size = 512 * 1024;
 /*
  * GUC parameter
  *
- * If a mirror does not respond in gp_mirror_inactivity_timeout time (in seconds), 
+ * If a mirror does not respond in gp_segment_connect_timeout time (in seconds), 
  * it is deemed inactive or down.
  * 
  * Number of retries to insert message into shared memory. Buffer
  * may be full due to i.e. network down, mirror host down, 
  * slow processing, ...
  */
-int		gp_mirror_inactivity_timeout = 180;
 int		file_rep_retry = 2000;  // 186 seconds  
 
 /**
@@ -433,6 +418,9 @@ FileRepSemas(void)
 	 *		4) receiver and consumer Append Only 2 (FileRepShmem_s = 2)
 	 *		5) consumers and sender ack (FileRepAckShmem_s = 2)
 	 *
+	 */
+	
+	/*
 	 *	FileRep_IpcSignal() and reference count are protected by the following locks
 	 *
 	 *  PRIMARY
@@ -473,7 +461,7 @@ FileRepIpc_ShmemInit(void)
 		
 	for (ii=0; ii < FILEREP_MAX_IPC_ARRAY; ii++)
 	{
-		sprintf(label, "FileRep Ipc %d", ii);
+		sprintf(label, "filerep ipc %d", ii);
 		fileRepIpcArray[ii] = (FileRepIpcShmem_s *) ShmemInitStruct(label,
 																	sizeof(FileRepIpcShmem_s), 
 																	&foundPtr);
@@ -481,7 +469,7 @@ FileRepIpc_ShmemInit(void)
 		if (fileRepIpcArray[ii] == NULL) {
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 (errmsg("Not enough shared memory for Mirroring."))));
+					 (errmsg("not enough shared memory for mirroring"))));
 		}	
 		
 		if (! foundPtr) {
@@ -634,7 +622,7 @@ static FileRepShmem_s *FileRep_ShmemInitOneBuffer(const char *bufferLabel, int s
 	if (result == NULL) {
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				(errmsg("Not enough shared memory for Mirroring."))));
+				(errmsg("not enough shared memory for mirroring"))));
 	}
 
 	if (! foundPtr) {
@@ -661,12 +649,6 @@ static FileRepShmem_s *FileRep_ShmemInitOneBuffer(const char *bufferLabel, int s
 	
 	result->state = FileRepStateNotInitialized;
 
-	elog(DEBUG1, "FileRep_ShmemInit result:%p insert:%p end:%p ", 
-		 result, 
-		 result->positionBegin,
-		 result->positionEnd);
-
-	
 	/*
 	 * positionWraparound is initialized
 	 * when message is inserted at the positionBegin.
@@ -683,13 +665,11 @@ static FileRepShmem_s *FileRep_ShmemInitOneBuffer(const char *bufferLabel, int s
 void 
 FileRep_ShmemInit(void)
 {
-	fileRepShmemArray[fileRepProcIndex] = FileRep_ShmemInitOneBuffer("FileRep Primary Mirror Messages",
+	fileRepShmemArray[fileRepProcIndex] = FileRep_ShmemInitOneBuffer("filerep primary mirror messages",
 							FileRep_ShmemSize(), FileRep_ShmemSize() - sizeof(FileRepShmem_s));
 	
 	fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex = IndexIpcArrayShmem;
 		
-	elog(DEBUG1, "FileRep_ShmemInit shmemArray:%p array index:'%d' ", 
-		 fileRepShmemArray[fileRepProcIndex], fileRepProcIndex);
 }
 
 /*
@@ -700,7 +680,7 @@ FileRep_ShmemInit(void)
 void 
 FileRepAck_ShmemInit(void)
 {
-	fileRepAckShmem = FileRep_ShmemInitOneBuffer("FileRepAck Primary Mirror Messages",
+	fileRepAckShmem = FileRep_ShmemInitOneBuffer("filerep ack primary mirror messages",
 							FileRepAck_ShmemSize(), file_rep_ack_buffer_size );
 	
 	fileRepAckShmem->ipcArrayIndex = IndexIpcArrayAckShmem;
@@ -746,10 +726,6 @@ FileRep_ShmemInitArray(void)
 {
 	int	ii;
 	
-	elog(LOG, "FileRep_ShmemInitArray() position begin:'%p' position end:'%p' ",
-		 fileRepShmemArray[0]->positionBegin,
-		 fileRepShmemArray[0]->positionEnd);
-	
 	for (ii = 0; ii < fileRepShmemArrayCount; ii++) {
 		
 		fileRepShmemArray[ii]->positionBegin =
@@ -757,11 +733,6 @@ FileRep_ShmemInitArray(void)
 		
 		fileRepShmemArray[ii]->positionEnd =
 				fileRepShmemArray[ii]->positionBegin + file_rep_buffer_size;
-		
-		elog(LOG, "FileRep_ShmemInitArray() position begin:'%p' position end:'%p' index:'%d' ",
-			 fileRepShmemArray[ii]->positionBegin,
-			 fileRepShmemArray[ii]->positionEnd, ii);
-		
 		
 		fileRepShmemArray[ii]->positionInsert = fileRepShmemArray[ii]->positionBegin;
 		
@@ -794,7 +765,7 @@ FileRep_ShmemReInitOneBuffer(FileRepShmem_s *result, int shmemSize, int bufSize)
 	if (result == NULL) {
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 (errmsg("shared memory for Mirroring not initialized."))));
+				 (errmsg("shared memory for mirroring not initialized."))));
 	}
 	
 	
@@ -820,17 +791,10 @@ FileRep_ShmemReInitOneBuffer(FileRepShmem_s *result, int shmemSize, int bufSize)
 	
 	result->state = FileRepStateNotInitialized;
 	
-	elog(LOG, "FileRep_ShmemReInitOneBuffer() result:%p insert:%p end:%p ", 
-		 result, 
-		 result->positionBegin,
-		 result->positionEnd);
-	
-	
 	/*
 	 * positionWraparound is initialized
 	 * when message is inserted at the positionBegin.
 	 */
-	
 }
 
 /* 
@@ -853,8 +817,6 @@ FileRep_ShmemReInit(void)
 	PGSemaphoreReset(&fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->semC);
 	PGSemaphoreReset(&fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->semP);
 
-	elog(LOG, "FileRep_ShmemReInit() shmemArray:%p array index:'%d' ", 
-		 fileRepShmemArray[fileRepProcIndex], fileRepProcIndex);
 }
 
 /*
@@ -876,9 +838,7 @@ FileRepAck_ShmemReInit(void)
 	
 	PGSemaphoreReset(&fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC);
 	PGSemaphoreReset(&fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semP);		
-	
-	elog(LOG, "FileRepAck_ShmemReInit() fileRepAckShmem:%p  ", 
-		 fileRepAckShmem);
+
 }
 
 char *
@@ -892,7 +852,7 @@ FileRepAck_ReserveShmem(
 	char	*msgPositionInsert = NULL;
 	FileRepShmemMessageDescr_s *fileRepShmemMessageDescr;
 		
-	while ((insert == false) && (retry < file_rep_retry)) {
+	while ((insert == false) && FileRep_IsRetry(retry)) {
 		
 		LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
 		
@@ -983,13 +943,14 @@ FileRepAck_ReserveShmem(
 			FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semP);
 						
 			//FileRep_Sleep10ms(retry);
-
-			retry++;
+			
+			FileRep_IncrementRetry(retry);
+			
 		}
 		
 	}
 	
-	if (insert == false) {
+	if (insert == false && Debug_filerep_print) {
 		ereport(LOG,
 				(errmsg("Reserving FileRepAck Shared Memory fail.")));
 	}
@@ -1022,7 +983,7 @@ FileRep_ReserveShmem(
 	char	*msgPositionInsert = NULL;
 	FileRepShmemMessageDescr_s *fileRepShmemMessageDescr;
 	
-	while ((insert == false) && (retry < file_rep_retry)) {
+	while ((insert == false) && (FileRep_IsRetry(retry))) {
 		
 		LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
 		
@@ -1118,6 +1079,15 @@ FileRep_ReserveShmem(
 			if (FileRep_IsIpcSleep(fileRepOperation))
 			{					
 				FileRep_Sleep10ms(retry);
+				
+				if (retry == (3 * file_rep_retry / 4))
+					ereport(WARNING,
+							(errmsg("threshold '75' percent of 'gp_segment_connect_timeout=%d' is reached, "
+									"mirror may not be able to keep up with primary, "
+									"primary may transition to change tracking",
+									gp_segment_connect_timeout),
+							errhint("increase guc 'gp_segment_connect_timeout' by 'gpconfig' and 'gpstop -u' "),
+							errSendAlert(true)));					
 			}
 			else
 			{
@@ -1130,17 +1100,26 @@ FileRep_ReserveShmem(
 				}
 			}
 
-			retry++;
+			FileRep_IncrementRetry(retry);
+			
 		}
 	}
 	
-	if (insert == false) {
-		ereport(LOG,
-			(errmsg("reserving filerep shared memory fail")));
+	if (insert == false && Debug_filerep_print) 
+	{
+			ereport(LOG,
+					(errmsg("reserving filerep shared memory fail")));
 	}
 	
 	return (msgPositionInsert);
 }
+
+/*
+ereport(WARNING,
+		(errmsg("mirror is staying behind primary for '%d' seconds"), // 75% *gp_segment_connect_timeout
+		 errSendAlert(true)));
+
+*/
 
 /****************************************************************
  * ERROR REPORTING
@@ -1150,17 +1129,16 @@ FileRep_errcontext(void)
 {
 	
 	errcontext(
-			   "file rep role:'%s' "
-			   "primary-mirror pair state:'%s' "
-			   "segment state:'%s' "
-			   "process pid:'%d' "
-			   "process name:'%s' "
-			   "filerep state:'%s' ",
+			   "mirroring role '%s' "
+			   "mirroring state '%s' "
+			   "segment state '%s' "
+			   "process name(pid) '%s(%d)' "
+			   "filerep state '%s' ",
 			   FileRepRoleToString[fileRepRole],
 			   DataStateToString[dataState],
 			   SegmentStateToString[segmentState],
-			   getpid(),
 			   FileRepProcessTypeToString[fileRepProcessType],
+			   getpid(),
 			   FileRepStateToString[FileRepSubProcess_GetState()]);
 	
 	return 0;
@@ -1171,13 +1149,13 @@ FileRep_errdetail_Shmem(void)
 {
 	
 	errcontext(
-		   "position begin:'%p' "
-		   "position end:'%p' "
-		   "position insert:'%p' "
-		   "position consume:'%p' "
-		   "position wraparound:'%p' "
-		   "insert count:'%d' "
-		   "consume count:'%d' ",
+		   "position begin '%p' "
+		   "position end '%p' "
+		   "position insert '%p' "
+		   "position consume '%p' "
+		   "position wraparound '%p' "
+		   "insert count '%d' "
+		   "consume count '%d' ",
 			fileRepShmemArray[fileRepProcIndex]->positionBegin,
 			fileRepShmemArray[fileRepProcIndex]->positionEnd,
 			fileRepShmemArray[fileRepProcIndex]->positionInsert,
@@ -1194,13 +1172,13 @@ FileRep_errdetail_ShmemAck(void)
 {
 	
 	errcontext(
-			  "position ack begin:'%p' "
-			  "position ack end:'%p' "
-			  "position ack insert:'%p' "
-			  "position ack consume:'%p' "
-			  "position ack wraparound:'%p' "
-			  "insert count ack:'%d' "
-			  "consume count ack:'%d' ",
+			  "position ack begin '%p' "
+			  "position ack end '%p' "
+			  "position ack insert '%p' "
+			  "position ack consume '%p' "
+			  "position ack wraparound '%p' "
+			  "insert count ack '%d' "
+			  "consume count ack '%d' ",
 			  fileRepAckShmem->positionBegin,
 			  fileRepAckShmem->positionEnd,
 			  fileRepAckShmem->positionInsert,
@@ -1216,7 +1194,8 @@ int
 FileRep_errdetail(
 				  FileRepIdentifier_u		fileRepIdentifier,
 				  FileRepRelationType_e		fileRepRelationType,
-				  FileRepOperation_e		fileRepOperation)
+				  FileRepOperation_e		fileRepOperation,
+				  int						messageCount)
 {
 	char						*fileName = NULL;
 
@@ -1225,12 +1204,14 @@ FileRep_errdetail(
 								   fileRepRelationType);
 
 	errdetail(
-			  "identifier:'%s' "
-			  "operation:'%s' "
-			  "relation type:'%s' ",
+			  "identifier '%s' "
+			  "operation '%s' "
+			  "relation type '%s' "
+			  "message count '%d' ",
 			  (fileName == NULL) ? "<null>" : fileName,
 			  FileRepOperationToString[fileRepOperation],
-			  FileRepRelationTypeToString[fileRepRelationType]);	
+			  FileRepRelationTypeToString[fileRepRelationType],
+			  messageCount);	
 		
 	if (fileName) {
 		pfree(fileName);
@@ -1257,16 +1238,95 @@ FileRep_ReportRelationPath(
 		sprintf(path, "%s.%u", path, segmentFileNum);
 	}
 	
-	errdetail("relation path:'%s' ", path);
+	errdetail("relation path '%s' ", path);
 	
 	return 0;
 }
 
-
+/****************************************************************
+ * FILEREP IN SHARED MEMORY CONFIGURATION LOG
+ ****************************************************************/
 /*
- * static FileRepLogEntry *fileRepLog[file_rep_num_log_entries];
- * static logIndex
+ * Wraparound configuration log for troubleshooting is maintained by each segment.
  */
+typedef struct FileRepLogShmem_s 
+{
+	slock_t		logLock;
+	
+	char		*logBegin;
+	
+	char		*logEnd;
+	
+	char		*logInsert;
+	
+	bool		activeSlot1;
+	
+	bool		flushSlot1;
+	
+	bool		flushSlot2;
+		
+} FileRepLogShmem_s;
+
+static	FileRepLogShmem_s *fileRepConfigLogShmem = NULL;
+static	FileRepLogShmem_s *fileRepLogShmem = NULL;
+
+
+static void FileRep_FlushLogActiveSlot(void);
+
+static void FileRep_FlushLog(
+							 char		*data,
+							 uint32		dataLength,
+							 bool		isConfigLog);
+
+static void FileRepLog_ShmemReInit(void);
+
+static void FileRep_CheckFlushLogs(
+								   FileRepLogShmem_s	*logShmem,
+								   bool					isConfigLog);
+
+static void
+FileRep_CheckFlushLogs(
+					   FileRepLogShmem_s	*logShmem,
+					   bool					isConfigLog)
+{
+	uint32	dataLength = 0;
+	bool	flushConfigLog = FALSE;
+	char	*configBegin = NULL;
+
+	dataLength = (logShmem->logEnd - logShmem->logBegin) / 2;
+	
+	SpinLockAcquire(&logShmem->logLock);
+	
+	if (logShmem->flushSlot2 == TRUE)
+	{
+		flushConfigLog = TRUE;
+		
+		logShmem->flushSlot2 = FALSE;
+		
+		configBegin = logShmem->logBegin + dataLength;
+	}
+	
+	if (logShmem->flushSlot1 == TRUE)
+	{
+		flushConfigLog = TRUE;
+		
+		logShmem->flushSlot1 = FALSE;
+		
+		configBegin = logShmem->logBegin;
+	}
+	
+	SpinLockRelease(&logShmem->logLock);
+	
+	if (flushConfigLog == TRUE)
+	{
+		Assert(configBegin != NULL);
+		
+		if (configBegin != NULL)
+			FileRep_FlushLog(configBegin, dataLength, isConfigLog /* isConfigLog */);
+		flushConfigLog = FALSE;
+	}
+}	
+
 void
 FileRep_InsertLogEntry(
 					char*					routineName,
@@ -1279,264 +1339,462 @@ FileRep_InsertLogEntry(
 					uint32					localCount,
 					uint32					fileRepMessageCount)
 {
-	
-	strcpy(fileRepLog[logIndex].routineName, routineName);
-	
-	fileRepLog[logIndex].fileRepRelationType = fileRepRelationType;
-	
-	fileRepLog[logIndex].fileRepOperation = fileRepOperation;
-	
-	fileRepLog[logIndex].fileRepIdentifier = fileRepIdentifier;
-	
-	fileRepLog[logIndex].fileRepMessageHeaderCrc = fileRepMessageHeaderCrc;
-	
-	fileRepLog[logIndex].fileRepMessageBodyCrc = fileRepMessageBodyCrc;
-	
-	fileRepLog[logIndex].fileRepAckState = fileRepAckState;
-	
-	fileRepLog[logIndex].localCount = localCount;
-	
-	fileRepLog[logIndex].fileRepMessageCount = fileRepMessageCount; 
-	
-	fileRepLog[logIndex].shmemPositionBegin = fileRepShmemArray[fileRepProcIndex]->positionBegin;
-	fileRepLog[logIndex].shmemPositionEnd = fileRepShmemArray[fileRepProcIndex]->positionEnd;
-	fileRepLog[logIndex].shmemPositionInsert = fileRepShmemArray[fileRepProcIndex]->positionInsert;
-	fileRepLog[logIndex].shmemPositionConsume = fileRepShmemArray[fileRepProcIndex]->positionConsume;
-	fileRepLog[logIndex].shmemPositionWraparound = fileRepShmemArray[fileRepProcIndex]->positionWraparound;
-	fileRepLog[logIndex].shmemInsertCount = fileRepShmemArray[fileRepProcIndex]->insertCount;
-	fileRepLog[logIndex].shmemConsumeCount = fileRepShmemArray[fileRepProcIndex]->consumeCount;
-
-	fileRepLog[logIndex].shmemAckPositionBegin = fileRepAckShmem->positionBegin;
-	fileRepLog[logIndex].shmemAckPositionEnd = fileRepAckShmem->positionEnd;
-	fileRepLog[logIndex].shmemAckPositionInsert = fileRepAckShmem->positionInsert;
-	fileRepLog[logIndex].shmemAckPositionConsume = fileRepAckShmem->positionConsume;
-	fileRepLog[logIndex].shmemAckPositionWraparound = fileRepAckShmem->positionWraparound;
-	fileRepLog[logIndex].shmemAckInsertCount = fileRepAckShmem->insertCount;
-	fileRepLog[logIndex].shmemAckConsumeCount = fileRepAckShmem->consumeCount;
-
-	fileRepLog[logIndex].fileRepRole = fileRepRole;
-	
-	fileRepLog[logIndex].segmentState = segmentState;
-	
-	fileRepLog[logIndex].dataState = dataState;
-	
-	fileRepLog[logIndex].fileRepState = FileRepSubProcess_GetState();
-	
-	fileRepLog[logIndex].procPid = getpid();
-	
-	fileRepLog[logIndex].fileRepProcessType = fileRepProcessType;
-	
-	gettimeofday(&fileRepLog[logIndex].logTime, NULL);
-	
-	logIndex++;
-	
-	if (logIndex == file_rep_num_log_entries)
-		logIndex = 0;
-	
-	if (fileRepInsertedLogEntries < file_rep_num_log_entries)
-		fileRepInsertedLogEntries++;
-}
-
-/*
- * 30 parameters
- */
-
-static void
-FileRep_ReportLogEntry(int	index)
-{
-	char		*fileName = NULL;
 	char		temp[128];
 	char		buftime[128];
+	char		buffer[2048];
 	pg_time_t	tt;
+	uint32		halfLength = 0;
+	char		*fileName = NULL;
 	
-	tt = (pg_time_t) fileRepLog[index].logTime.tv_sec;
+	struct timeval	logTime;
+	
+	if (Debug_filerep_print || fileRepAckShmem == NULL)
+		return;
+		
+	halfLength = (fileRepLogShmem->logEnd - fileRepLogShmem->logBegin) / 2;
+	
+	SpinLockAcquire(&fileRepLogShmem->logLock);
+
+	gettimeofday(&logTime, NULL);
+	
+	tt = (pg_time_t) logTime.tv_sec;
 	pg_strftime(temp, sizeof(temp), "%a %b %d %H:%M:%S.%%06d %Y %Z",
 				pg_localtime(&tt, session_timezone));
-	snprintf(buftime, sizeof(buftime), temp, fileRepLog[index].logTime.tv_usec);
+	snprintf(buftime, sizeof(buftime), temp, logTime.tv_usec);
 	
 	fileName = FileRep_GetFileName(
-								   fileRepLog[index].fileRepIdentifier,
-								   fileRepLog[index].fileRepRelationType);	
+								   fileRepIdentifier,
+								   fileRepRelationType);		
+	
+	sprintf(buffer, 
+			"\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%d\",\"%d\",\"%u\",\"%u\",\"%s\",\"%p\",\"%p\",\"%p\",\"%p\",\"%p\",\"%d\",\"%d\",\"%p\",\"%p\",\"%p\",\"%p\",\"%p\",\"%d\",\"%d\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%d\"  \n",
+			buftime,														
+			routineName,												//1
+			(fileName == NULL) ? "<null>" : fileName,						
+			FileRepOperationToString[fileRepOperation],					//3
+			FileRepRelationTypeToString[fileRepRelationType],	
+			localCount,													//5
+			fileRepMessageCount,
+			fileRepMessageHeaderCrc,									//7
+			fileRepMessageBodyCrc,
+			FileRepAckStateToString[fileRepAckState],					//9
+			fileRepShmemArray[fileRepProcIndex]->positionBegin,			
+			fileRepShmemArray[fileRepProcIndex]->positionEnd,			//11
+			fileRepShmemArray[fileRepProcIndex]->positionInsert,		
+			fileRepShmemArray[fileRepProcIndex]->positionConsume,		//13
+			fileRepShmemArray[fileRepProcIndex]->positionWraparound,	
+			fileRepShmemArray[fileRepProcIndex]->insertCount,			//15
+			fileRepShmemArray[fileRepProcIndex]->consumeCount,				
+			fileRepAckShmem->positionBegin,								//17
+			fileRepAckShmem->positionEnd,								
+			fileRepAckShmem->positionInsert,							//19
+			fileRepAckShmem->positionConsume,							
+			fileRepAckShmem->positionWraparound,						//21
+			fileRepAckShmem->insertCount,								
+			fileRepAckShmem->consumeCount,								//23
+			FileRepRoleToString[fileRepRole],							
+			DataStateToString[dataState],								//25
+			SegmentStateToString[segmentState],							
+			FileRepStateToString[FileRepSubProcess_GetState()],			//27
+			FileRepProcessTypeToString[fileRepProcessType],				
+			getpid());													//29
+		
+	if ((fileRepLogShmem->logInsert + strlen(buffer)) > fileRepLogShmem->logEnd)
+	{
+		fileRepLogShmem->logInsert = fileRepLogShmem->logBegin;
+			
+		fileRepLogShmem->activeSlot1 = TRUE;
+			
+		fileRepLogShmem->flushSlot2 = TRUE;
+	}
+			
+	if (fileRepLogShmem->logInsert > fileRepLogShmem->logBegin + halfLength)
+	{
+		fileRepLogShmem->activeSlot1 = FALSE;
+			
+		fileRepLogShmem->flushSlot1 = TRUE;
+	}
+			
+	memcpy(fileRepLogShmem->logInsert, buffer, strlen(buffer));
+			
+	fileRepLogShmem->logInsert = fileRepLogShmem->logInsert + strlen(buffer);
 
-	ereport(LOG,
-			(errmsg("LOG(filerep): 	time:'%s' "
-					"routine:'%s' "
-					"identifier:'%s' "
-					"operation:'%s' "
-					"relation type:'%s' "
-					"local count:'%d' "
-					"msg count:'%d' "
-					"msg header crc:'%u' "
-					"msg body crc:'%u' "
-					"msg ack state:'%s' "
-					"position begin:'%p' "
-					"position end:'%p' "
-					"position insert:'%p' "
-					"position consume:'%p' "
-					"position wraparound:'%p' "
-					"shmem insert count:'%d' "
-					"shmem consume count:'%d' "
-					"position ack begin:'%p' "
-					"position ack end:'%p' "
-					"position ack insert:'%p' "
-					"position ack consume:'%p' "
-					"position ack wraparound:'%p' "
-					"shmem insert count ack:'%d' "
-					"shmem consume count ack:'%d' "
-					"file rep role:'%s' "
-					"primary-mirror pair state:'%s' "
-					"segment state:'%s' "
-					"filerep state:'%s' "
-					"process name:'%s' "
-					"process pid:'%d' ",
-					buftime,
-					fileRepLog[index].routineName,
-					(fileName == NULL) ? "<null>" : fileName,
-					FileRepOperationToString[fileRepLog[index].fileRepOperation],
-					FileRepRelationTypeToString[fileRepLog[index].fileRepRelationType],
-					fileRepLog[index].localCount,
-					fileRepLog[index].fileRepMessageCount,
-					fileRepLog[index].fileRepMessageHeaderCrc,
-					fileRepLog[index].fileRepMessageBodyCrc,
-					FileRepAckStateToString[fileRepLog[index].fileRepAckState],
-					fileRepLog[index].shmemPositionBegin,
-					fileRepLog[index].shmemPositionEnd,
-					fileRepLog[index].shmemPositionInsert,
-					fileRepLog[index].shmemPositionConsume,
-					fileRepLog[index].shmemPositionWraparound,
-					fileRepLog[index].shmemInsertCount,
-					fileRepLog[index].shmemConsumeCount,
-					fileRepLog[index].shmemAckPositionBegin,
-					fileRepLog[index].shmemAckPositionEnd,
-					fileRepLog[index].shmemAckPositionInsert,
-					fileRepLog[index].shmemAckPositionConsume,
-					fileRepLog[index].shmemAckPositionWraparound,
-					fileRepLog[index].shmemAckInsertCount,
-					fileRepLog[index].shmemAckConsumeCount,
-					FileRepRoleToString[fileRepLog[index].fileRepRole],
-					DataStateToString[fileRepLog[index].dataState],
-					SegmentStateToString[fileRepLog[index].segmentState],
-					FileRepStateToString[FileRepSubProcess_GetState()],
-					FileRepProcessTypeToString[fileRepLog[index].fileRepProcessType], 
-					getpid())));
-			 
-					
-					
+	SpinLockRelease(&fileRepLogShmem->logLock);
+	
 	if (fileName) {
 		pfree(fileName);
 		fileName = NULL;
-	}		
+	}			
 }
-	
-void
-FileRep_ReportLog(void)
-{
-	int	ii;
-	int numEntries;
 
-	numEntries = Min(fileRepInsertedLogEntries, file_rep_num_log_entries);
+/*
+ * FileRepLog_ShmemSize()
+ *		Calculate size required for configuration log
+ */
+Size 
+FileRepLog_ShmemSize(void)
+{
+	Size	size;
 	
-	for (ii = logIndex; ii < numEntries; ii++) 
+	size = sizeof(FileRepLogShmem_s);
+	
+	size = add_size(size, file_rep_ack_buffer_size); // 512kB
+	
+	/* double size, one slot for config log and another slot for messages */
+	size = mul_size(size, 2); 
+		
+	return size;
+}
+
+/* 
+ * FileRepLog_ShmemInit()
+ *			Allocate and initialize FileRep Shared Memory 
+ *
+ */
+void 
+FileRepLog_ShmemInit(void)
+{
+	bool	foundPtr;
+	
+	fileRepConfigLogShmem = (FileRepLogShmem_s *) ShmemInitStruct("filerep config log", 
+																	FileRepLog_ShmemSize()/2,
+																	&foundPtr);
+	
+	if (fileRepConfigLogShmem == NULL) 
 	{
-		FileRep_ReportLogEntry(ii);
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 (errmsg("not enough shared memory to log filerep config"))));
+	}	
+	
+	if (! foundPtr) 
+	{
+		MemSet(fileRepConfigLogShmem, 0, sizeof(FileRepLogShmem_s));
 	}
 	
-	for (ii = 0; ii < logIndex; ii++) {
-		FileRep_ReportLogEntry(ii);
+	SpinLockInit(&fileRepConfigLogShmem->logLock);
+	
+	fileRepConfigLogShmem->logBegin = ((char*) fileRepConfigLogShmem) + sizeof(FileRepLogShmem_s);
+	
+	fileRepConfigLogShmem->logInsert = fileRepConfigLogShmem->logBegin;
+	
+	fileRepConfigLogShmem->logEnd = fileRepConfigLogShmem->logBegin + file_rep_ack_buffer_size;
+	
+	MemSet(fileRepConfigLogShmem->logBegin, 0, file_rep_ack_buffer_size);
+
+	fileRepConfigLogShmem->activeSlot1 = TRUE;
+	
+	fileRepConfigLogShmem->flushSlot1 = FALSE;
+	
+	fileRepConfigLogShmem->flushSlot2 = FALSE;
+	
+	
+	
+	fileRepLogShmem = (FileRepLogShmem_s *) ShmemInitStruct("filerep log", 
+															FileRepLog_ShmemSize()/2,
+															&foundPtr);
+	
+	if (fileRepLogShmem == NULL) 
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 (errmsg("not enough shared memory to log filerep config"))));
+	}	
+	
+	if (! foundPtr) 
+	{
+		MemSet(fileRepLogShmem, 0, sizeof(FileRepLogShmem_s));
 	}
 	
+	SpinLockInit(&fileRepLogShmem->logLock);
+	
+	fileRepLogShmem->logBegin = ((char*) fileRepLogShmem) + sizeof(FileRepLogShmem_s);
+	
+	fileRepLogShmem->logInsert = fileRepLogShmem->logBegin;
+	
+	fileRepLogShmem->logEnd = fileRepLogShmem->logBegin + file_rep_ack_buffer_size;
+	
+	MemSet(fileRepLogShmem->logBegin, 0, file_rep_ack_buffer_size);
+	
+	fileRepLogShmem->activeSlot1 = TRUE;
+	
+	fileRepLogShmem->flushSlot1 = FALSE;
+	
+	fileRepLogShmem->flushSlot2 = FALSE;	
 }
 
-/****************************************************************
- * FILEREP IN SHARED MEMORY CONFIGURATION LOG
- ****************************************************************/
-/*
- * Wraparound configuration log for troubleshooting is maintained by each segment.
- */
+static void 
+FileRepLog_ShmemReInit(void)
+{
 
-#ifdef CONFIGLOG
-typedef struct FileRepConfigLogShmem_s {
-	slock_t					lock;
+	if (fileRepConfigLogShmem == NULL || fileRepLogShmem == NULL) 
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 (errmsg("not enough shared memory to log filerep config"))));
+	}	
 	
-	FileRepConfigLogEntry_s	configLog;	
-	/* number of fault injection set */
+	MemSet(fileRepConfigLogShmem, 0, sizeof(FileRepLogShmem_s));
 	
-	int						logIndex;
+	SpinLockInit(&fileRepConfigLogShmem->logLock);
 	
-	bool					failoverRequestReported;
-} FileRepConfigLogShmem_s;
-
-static	FileRepConfigLogShmem_s *fileRepConfigLogShmem = NULL;
+	fileRepConfigLogShmem->logBegin = ((char*) fileRepConfigLogShmem) + sizeof(FileRepLogShmem_s);
+	
+	fileRepConfigLogShmem->logInsert = fileRepConfigLogShmem->logBegin;
+	
+	fileRepConfigLogShmem->logEnd = fileRepConfigLogShmem->logBegin + file_rep_ack_buffer_size;
+	
+	MemSet(fileRepConfigLogShmem->logBegin, 0, file_rep_ack_buffer_size);
+	
+	fileRepConfigLogShmem->activeSlot1 = TRUE;
+	
+	fileRepConfigLogShmem->flushSlot1 = FALSE;
+	
+	fileRepConfigLogShmem->flushSlot2 = FALSE;
+	
+	
+	MemSet(fileRepLogShmem, 0, sizeof(FileRepLogShmem_s));
+	
+	SpinLockInit(&fileRepLogShmem->logLock);
+	
+	fileRepLogShmem->logBegin = ((char*) fileRepLogShmem) + sizeof(FileRepLogShmem_s);
+	
+	fileRepLogShmem->logInsert = fileRepLogShmem->logBegin;
+	
+	fileRepLogShmem->logEnd = fileRepLogShmem->logBegin + file_rep_ack_buffer_size;
+	
+	MemSet(fileRepLogShmem->logBegin, 0, file_rep_ack_buffer_size);
+	
+	fileRepLogShmem->activeSlot1 = TRUE;
+	
+	fileRepLogShmem->flushSlot1 = FALSE;
+	
+	fileRepLogShmem->flushSlot2 = FALSE;
+}
 
 static void
-LockAcquire(void) 
-{	
-	SpinLockAcquire(&fileRepConfigLogShmem->lock);
+FileRep_FlushLogActiveSlot(void)
+{
+	uint32 dataLength = 0;
+	
+	dataLength = (fileRepConfigLogShmem->logEnd - fileRepConfigLogShmem->logBegin) / 2;
+
+	if (! Debug_filerep_config_print)
+	{
+		if (fileRepConfigLogShmem->activeSlot1 == TRUE)
+		{
+			/* flush what is inserted in slot1 */
+			FileRep_FlushLog(fileRepConfigLogShmem->logBegin, 
+							 fileRepConfigLogShmem->logInsert - fileRepConfigLogShmem->logBegin,
+							 TRUE /* isConfigLog */); 
+		}
+		else
+		{
+			/* flush what is inserted in slot2 */
+			FileRep_FlushLog(fileRepConfigLogShmem->logBegin + dataLength, 
+							 fileRepConfigLogShmem->logInsert - fileRepConfigLogShmem->logBegin + dataLength,
+							 TRUE /* isConfigLog */); 
+		}
+	}
+	
+	dataLength = (fileRepLogShmem->logEnd - fileRepLogShmem->logBegin) / 2;
+	
+	if (! Debug_filerep_print)
+	{
+		if (fileRepLogShmem->activeSlot1 == TRUE)
+		{
+			/* flush what is inserted in slot1 */
+			FileRep_FlushLog(fileRepLogShmem->logBegin, 
+							 fileRepLogShmem->logInsert - fileRepLogShmem->logBegin,
+							 FALSE /* isConfigLog */); 
+		}
+		else
+		{
+			/* flush what is inserted in slot2 */
+			FileRep_FlushLog(fileRepLogShmem->logBegin + dataLength, 
+							 fileRepLogShmem->logInsert - fileRepLogShmem->logBegin + dataLength,
+							 FALSE /* isConfigLog */); 
+		}
+	}	
 }
 
 static void
-LockRelease(void) 
-{	
-	SpinLockRelease(&fileRepConfigLogShmem->lock);
+FileRep_FlushLog(
+					   char		*data,
+					   uint32	dataLength,
+					   bool		isConfigLog)
+{
+	File	file = 0;
+	char	path[MAXPGPATH+1];
+	int64	position = 0;
+	
+	uint32	dataLengthLocal = 0;
+
+	if (isConfigLog)
+	{
+		FileRepConfigLogPath(path);
+	}
+	else
+	{
+		FileRepLogPath(path);
+	}
+	
+	errno = 0;
+	/* open it (and create if doesn't exist) */
+	file = 	PathNameOpenFile(path, 
+							 O_RDWR | O_CREAT | PG_BINARY, 
+							 S_IRUSR | S_IWUSR);
+	
+	if (file < 0)
+	{
+		ereport(WARNING,
+				(errcode_for_file_access(),
+				 errmsg("could not open file '%s' : %m", 
+						path)));
+		return;
+		
+	}
+	
+	position = FileSeek(file, 0, SEEK_END);
+	
+	/* 
+	 * seek to beginning of file. The meta file only has a single
+	 * block. we will overwrite it each time with new meta data.
+	 */
+	if (position > FILEREP_LOG_MAX_SIZE)
+	{
+		if (FileSeek(file, 0, SEEK_SET) != 0)
+		{
+			ereport(WARNING,
+					(errcode_for_file_access(),
+					 errmsg("could not seek in file to position '0' in file '%s' : %m", 
+							path)));
+			return;
+		}
+	}
+	
+	while (dataLength > 0) 
+	{	
+		dataLengthLocal = Min(FILEREP_MESSAGEBODY_LEN, dataLength);
+		
+		if ((int) FileWrite(file, 
+							(char*) data, 
+							dataLengthLocal) != dataLengthLocal)
+		{
+			if (errno == 0)
+				errno = ENOSPC;
+			
+			ereport(WARNING,
+					(errcode_for_file_access(),
+					 errmsg("could not write to file '%s' data '%p' dataLength '%u' : %m", 
+							path,
+							data,
+							dataLengthLocal)));
+			return;
+		}	
+		
+		data = (char *) data + dataLengthLocal;	
+		
+		dataLength -= dataLengthLocal;	
+	}
+		
+	if (FileSync(file) != 0)
+	{
+		ereport(WARNING,
+				(errcode_for_file_access(),
+				 errmsg("could not fsync file '%s' : %m", path)));	
+		return;
+	}
+	
+	FileClose(file);
+	
 }
 
 /*
- * static FileRepLogEntry *fileRepLog[file_rep_num_log_entries];
- * static logIndex
+ * 
+ * 
  */
 void
-FileRep_InsertConfigLogEntry(char *description)
+FileRep_InsertConfigLogEntryInternal(char		*description, 
+									 const char *fileName, 
+									 int		lineNumber, 
+									 const char *funcName)
 {
-	int		index = 0;
+	char		temp[128];
+	char		buftime[128];
+	char		buffer[2048];
+	pg_time_t	tt;
 	
-	SpinLockAcquire(&fileRepConfigLogShmem->lock);
+	struct timeval	logTime;
+	uint32		halfLength = (fileRepConfigLogShmem->logEnd - fileRepConfigLogShmem->logBegin) / 2;
+
+	if (Debug_filerep_config_print)
+	{
+		ereport(LOG,
+				(errmsg("'%s', "
+						"mirroring role '%s' "
+						"mirroring state '%s' "
+						"segment state '%s' "
+						"filerep state '%s' "
+						"process name(pid) '%s(%d)' "
+						"'%s' 'L%d' '%s' ",
+						description,
+						FileRepRoleToString[fileRepRole],
+						DataStateToString[dataState],
+						SegmentStateToString[segmentState],
+						FileRepStateToString[FileRepSubProcess_GetState()],
+						FileRepProcessTypeToString[fileRepProcessType],
+						getpid(),
+						fileName,
+						lineNumber,
+						funcName)));						
+		return;
+	}
 	
-	index = fileRepConfigLogShmem->logIndex;
+	SpinLockAcquire(&fileRepConfigLogShmem->logLock);
 	
-	fileRepConfigLogShmem->configLog[index].fileRepRole = fileRepRole;
+	gettimeofday(&logTime, NULL);
+
+	tt = (pg_time_t) logTime.tv_sec;
+	pg_strftime(temp, sizeof(temp), "%a %b %d %H:%M:%S.%%06d %Y %Z",
+				pg_localtime(&tt, session_timezone));
+	snprintf(buftime, sizeof(buftime), temp, logTime.tv_usec);
 	
-	fileRepConfigLogShmem->configLog[index].dataState = dataState;
-	
-	fileRepConfigLogShmem->configLog[index].segmentState = segmentState;
-	
-	fileRepConfigLogShmem->configLog[index].procPid = getpid();
-	
-	fileRepConfigLogShmem->configLog[index].fileRepProcessType = fileRepProcessType;
-	
-	gettimeofday(&fileRepConfigLogShmem->configLog[index].logTime, NULL);
-	
-	strncpy(fileRepConfigLogShmem->configLog[index].description,
+	sprintf(buffer, "\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%d\",\"%s L%d %s\" \n",
+			buftime,
 			description,
-			FILEREP_MAX_LOG_DESCRIPTION_LEN);
-
-	fileRepConfigLogShmem->logIndex++;
+			FileRepRoleToString[fileRepRole],
+			DataStateToString[dataState],
+			SegmentStateToString[segmentState],
+			FileRepStateToString[FileRepSubProcess_GetState()], 
+			FileRepProcessTypeToString[fileRepProcessType],
+			getpid(),
+			fileName,
+			lineNumber,
+			funcName);						
 	
-	SpinLockRelease(&fileRepConfigLogShmem->lock);
-}
-
-
-void
-FileRep_ReportConfigLog(void)
-{
-	int	ii;
-	int numEntries;
-	int index = fileRepConfigLogShmem->logIndex;
-	
-	numEntries = Min(fileRepInsertedConfigLogEntries, filerep_num_config_log_entries);
-	
-	for (ii = index; ii < numEntries; ii++) 
+	if ((fileRepConfigLogShmem->logInsert + strlen(buffer)) > fileRepConfigLogShmem->logEnd)
 	{
-		FileRep_ReportConfigLogEntry(ii);
+		fileRepConfigLogShmem->logInsert = fileRepConfigLogShmem->logBegin;
+		
+		fileRepConfigLogShmem->activeSlot1 = TRUE;
+		
+		fileRepConfigLogShmem->flushSlot2 = TRUE;
 	}
 	
-	for (ii = 0; ii < index; ii++) {
-		FileRep_ReportConfigLogEntry(ii);
+	if (fileRepConfigLogShmem->logInsert > fileRepConfigLogShmem->logBegin + halfLength)
+	{
+		fileRepConfigLogShmem->activeSlot1 = FALSE;
+	
+		fileRepConfigLogShmem->flushSlot1 = TRUE;
 	}
 	
+	memcpy(fileRepConfigLogShmem->logInsert, buffer, strlen(buffer));
+	
+	fileRepConfigLogShmem->logInsert = fileRepConfigLogShmem->logInsert + strlen(buffer);
+	
+	SpinLockRelease(&fileRepConfigLogShmem->logLock);	
 }
-
-
-#endif
 
 /****************************************************************
  *  FILEREP PROCESS
@@ -1623,8 +1881,8 @@ FileRep_SignalChildren(int signal, bool backendsOnly)
         }
 
         if (kill(subProc->pid, signal) < 0)  {
-            ereport(LOG,
-                    (errmsg("Signal to children failed pid %ld signal %d: %m",
+            ereport(WARNING,
+                    (errmsg("signal to children failed pid '%ld' signal '%d' : %m",
                      (long) subProc->pid, signal)));
 
         }
@@ -1764,6 +2022,17 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 				(errmsg("%s (PID %d) exited with unrecognized status %d",
 						FileRepProcessTypeToString[fileRepProcessType], 
 						pid, exitstatus)));
+
+	{
+		char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+		
+		snprintf(tmpBuf, sizeof(tmpBuf), "process exit, process name '%s' process pid '%d' exit status '%d' ",
+				 procname,
+				 pid,
+				 WEXITSTATUS(exitstatus));
+		
+		FileRep_InsertConfigLogEntry(tmpBuf);				
+	}	
 }
 
 /*
@@ -1777,9 +2046,19 @@ FileRep_ProcessSignals()
 	
 	if (reloadConfigFile)
 	{
+		bool	temp = Debug_filerep_memory_log_flush;
+		
 		FileRep_SignalChildren(SIGHUP, false);
 		reloadConfigFile = false;
 		ProcessConfigFile(PGC_SIGHUP);
+		
+		FileRep_SetFileRepRetry();
+		
+		if (temp == FALSE && 
+			Debug_filerep_memory_log_flush == TRUE)
+		{
+			FileRep_FlushLogActiveSlot();
+		}
 	}
 	
 	if (shutdownRequested)
@@ -1869,7 +2148,8 @@ FileRep_ProcessSignals()
 			{
 				if (term_pid == FileRepSubProcList[i].pid)
 				{
-					LogChildExit(LOG, (FileRepProcessTypeToString[i]),
+					LogChildExit(Debug_filerep_print ? LOG : DEBUG1, 
+								 (FileRepProcessTypeToString[i]),
 								 FileRepSubProcList[i].pid,
 								 term_status);
 					
@@ -1938,11 +2218,7 @@ FileRep_ProcessSignals()
         lastChangeRequestProcessCounterValue = curStateChangeRequestCounter;
 
 		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
-#ifdef FILEREP_DEBUG
-		ereport(LOG,
-				(errmsg("LOG(filerep): FileRep_ProcessSignals() "),
-						FileRep_errcontext()));		
-#endif
+
 		FileRep_SignalChildren(SIGUSR1, false);
 	}
 	
@@ -2004,7 +2280,7 @@ FileRepIsBackendSubProcess(FileRepProcessType_e processType)
         case FileRepProcessTypeResyncWorker4:
             return true;
         default:
-            Assert(!"Unknown process type in FileRepIsBackendSubProcess");
+            Assert(!"unknown process type in 'FileRepIsBackendSubProcess' ");
             return false;
     }
 }
@@ -2037,11 +2313,8 @@ FileRep_SetDataState(DataState_e dataState, bool signalPostmaster)
 	if (updateDataState(dataState) && signalPostmaster) {
 		SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 	}
-#ifdef FILEREP_DEBUG
-	elog(LOG, "FileRep_SetDataState() state:'%s' MyProcPid:'%d'", 
-		 DataStateToString[dataState],
-		 getpid());	
-#endif
+		
+	FileRep_InsertConfigLogEntry("set data state");
 }
 
 void 
@@ -2059,17 +2332,16 @@ FileRep_SetSegmentState(SegmentState_e segmentState)
 	if (updateSegmentState(segmentState)) {
 		SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 	}
-#ifdef FILEREP_DEBUG
-	elog(LOG, "FileRep_SetSegmentState() state:'%s' MyProcPid:'%d'", 
-		 SegmentStateToString[segmentState],
-		 getpid());	
-#endif
+
+	FileRep_InsertConfigLogEntry("set segment state");
 }
 
 void
 FileRep_SetPostmasterReset(void)
 {
-		SendPostmasterSignal(PMSIGNAL_FILEREP_POSTMASTER_RESET_REQUIRED);
+	SendPostmasterSignal(PMSIGNAL_FILEREP_POSTMASTER_RESET_REQUIRED);
+
+	FileRep_InsertConfigLogEntry("request postmaster reset");
 }
 
 /*
@@ -2195,11 +2467,17 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
             Assert(0);
             break;
 	}
-#ifdef FILEREP_DEBUG
-	elog(LOG, "LOG(filerep)FileRep_SetState() state:'%s' MyProcPid:'%d'",
-		 FileRepStateToString[FileRep_GetState()],
-		 getpid());
-#endif
+			 
+	switch (FileRep_GetState())
+	{
+		 case FileRepStateShutdownBackends:
+		 case FileRepStateShutdown:
+			break;
+		 default:
+			FileRep_InsertConfigLogEntry("set filerep state");
+
+			break;
+	 }
 }
 
 /*
@@ -2271,7 +2549,7 @@ FileRep_StartChildProcess(FileRepProcessType_e type)
 		IsUnderPostmaster = TRUE;
 		
 		fileRepProcessType = type;
-					
+		
 		FileRepSubProcess_Main();
 		proc_exit(0);
 	}
@@ -2279,7 +2557,7 @@ FileRep_StartChildProcess(FileRepProcessType_e type)
 	/* in parent, fork failed */
 	if (pid < 0) {	
 		
-		ereport(LOG,
+		ereport(WARNING,
 				(errmsg("could not fork %s : %m", 
 						FileRepProcessTypeToString[type])));
 		
@@ -2290,6 +2568,36 @@ FileRep_StartChildProcess(FileRepProcessType_e type)
 	
 	/* in parent, successful fork */
 	return pid;
+}
+
+void
+FileRep_SetFileRepRetry(void)
+{
+	if (gp_segment_connect_timeout == 0)
+	{
+		file_rep_retry = 0; 
+	}
+	else
+	{
+		file_rep_retry = gp_segment_connect_timeout * 10 + 200;
+	}
+
+	if (Debug_filerep_print)
+	{
+		/*
+		 * Double response time since additional tracing significantly slow down the system
+		 */
+		file_rep_retry *= 2;
+	}
+	
+	{
+		char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+		
+		snprintf(tmpBuf, sizeof(tmpBuf), "guc 'gp_segment_connect_timeout' value '%d' ",
+				 gp_segment_connect_timeout);
+		
+		FileRep_InsertConfigLogEntry(tmpBuf);				
+	}	
 }
 
 /*
@@ -2909,7 +3217,7 @@ void FileRep_Main(void)
 {
 	SegmentState_e	segmentState = SegmentStateNotInitialized;
 
-	int status = STATUS_OK;
+	int		status = STATUS_OK;
 	
 	char title[100];
 	
@@ -2948,7 +3256,7 @@ void FileRep_Main(void)
 		EmitErrorReport();
 		
 		LWLockReleaseAll();
-
+		
 		/*
 		 * We can now go away.	Note that because we'll call InitProcess, a
 		 * callback will be registered to do ProcKill, which will clean up
@@ -2964,7 +3272,7 @@ void FileRep_Main(void)
 	
 	/* Create the memory context where cross-transaction state is stored */
 	fileRepMemoryContext = AllocSetContextCreate(TopMemoryContext,
-										  "FileRep memory context",
+										  "filerep memory context",
 										  ALLOCSET_DEFAULT_MINSIZE,
 										  ALLOCSET_DEFAULT_INITSIZE,
 										  ALLOCSET_DEFAULT_MAXSIZE);
@@ -2973,19 +3281,12 @@ void FileRep_Main(void)
 	
 	FileRep_SetState(FileRepStateInitialization);
 	
-	file_rep_retry = gp_mirror_inactivity_timeout * 10 + 200;
-	
-	if (Debug_filerep_print)
-	{
-		/*
-		 * Double response time since additional tracing significantly slow down the system
-		 */
-		file_rep_retry *= 2;
-	}
+	FileRep_SetFileRepRetry();
 	
 	FileRepIpc_ShmemReInit();
 	FileRep_ShmemReInit();
 	FileRepAck_ShmemReInit();
+	FileRepLog_ShmemReInit();
 
 	MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
 	primaryMirrorGetFilerepArguments(&fileRepRole, &segmentState, &dataState, &fileRepPrimaryHostAddress,
@@ -2993,22 +3294,41 @@ void FileRep_Main(void)
     MemoryContextSwitchTo(oldContext);
 	
 	if (fileRepRole == FileRepNoRoleConfigured) {
-		ereport(LOG,
-			(errmsg("Retrieving Configuration parameters fail.")));
-		FileRep_SetState(FileRepStateFault);
+		 ereport(WARNING,
+				 (errmsg("mirror failure, "
+						 "could not retrieve segment configuration, "
+						 "failover requested"), 
+				  errhint("run gprecoverseg to re-establish mirror connectivity")));
+			 
+		 FileRep_SetState(FileRepStateFault);
 		goto shutdown;
 	}
 		
 	snprintf(title, sizeof(title), "%s",
 			 fileRepRole == FileRepPrimaryRole ?
-			 	"FileRep Primary Main Process" : "FileRep Mirror Main Process");
+			 	"primary process" : "mirror process");
 	init_ps_display(title, "", "", "");
 		
-	elog(LOG, "FileRep_Main() started with role %d\n\t\t segmentState %d\n\t\t dataState %d\n\t\t"
-	            "primary: %s:%d\n\t\tmirror: %s:%d"
-	            "\n",
-		        fileRepRole, segmentState, dataState,
-		        fileRepPrimaryHostAddress, fileRepPrimaryPort, fileRepMirrorHostAddress, fileRepMirrorPort );
+	{
+		char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+		
+		snprintf(tmpBuf, sizeof(tmpBuf), "mirror transition, primary address(port) '%s(%d)' mirror address(port) '%s(%d)' ",
+				 fileRepPrimaryHostAddress, 
+				 fileRepPrimaryPort,
+				 fileRepMirrorHostAddress, 
+				 fileRepMirrorPort);
+		
+		FileRep_InsertConfigLogEntry(tmpBuf);
+	}
+		
+	ereport(LOG,
+			(errmsg("mirror transition, "
+					"primary address(port) '%s(%d)' mirror address(port) '%s(%d)' ",
+			 fileRepPrimaryHostAddress, 
+			 fileRepPrimaryPort,
+			 fileRepMirrorHostAddress, 
+			 fileRepMirrorPort),			
+			 FileRep_errcontext()));
 	
 	if (dataState == DataStateInChangeTracking) 
 	{
@@ -3136,6 +3456,10 @@ shutdown:
             /* tell postmaster that filerep backends have been shutdown */
             SendPostmasterSignal(PMSIGNAL_PRIMARY_MIRROR_ALL_BACKENDS_SHUTDOWN);
         }
+		
+		FileRep_CheckFlushLogs(fileRepConfigLogShmem, TRUE /* isConfigLog */);
+		
+		FileRep_CheckFlushLogs(fileRepLogShmem, FALSE /* isConfigLog */);
 
 		/*
 		 * check and process any signals received 
@@ -3147,13 +3471,15 @@ shutdown:
 	}
 	
     /* wait for all children to terminate */
-	while ( FileRep_IsAnyChildAlive())
-	{
-		FileRep_ProcessSignals();
-		if ( ! FileRep_IsAnyChildAlive())
-			break;
-		pg_usleep(1000000L); // 1sec
-	}
+    while ( FileRep_IsAnyChildAlive())
+    {
+        FileRep_ProcessSignals();
+        if ( ! FileRep_IsAnyChildAlive())
+            break;
+			pg_usleep(1000000L); // 1sec
+    }
+	
+	FileRep_FlushLogActiveSlot();
 
 	if (exitWithImmediateShutdown)
 	{

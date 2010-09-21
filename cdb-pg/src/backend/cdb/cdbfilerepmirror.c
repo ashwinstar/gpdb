@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <glob.h>
 #include <signal.h>
+#include <sys/time.h>
 
 #include "cdb/cdbvars.h"
 
@@ -127,12 +128,19 @@ FileRepMirror_StartReceiver(void)
 	int status = STATUS_OK;
 	int retval;
 
-	elog(LOG, "FileRepMirror_StartReceiver() ");
+	FileRep_InsertConfigLogEntry("start receiver");
 	
-	elog(LOG, "FileRepMirror_StartReceiver() started with role %d\n\t\tstate %d\n\t\tPrimary %s:%d\n\t\tMirror %s:%d\n",
-		 fileRepRole, segmentState,
-		 fileRepPrimaryHostAddress, fileRepPrimaryPort, 
-		 fileRepMirrorHostAddress, fileRepMirrorPort);
+	{
+		char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+		
+		snprintf(tmpBuf, sizeof(tmpBuf), "primary address(port) '%s(%d)' mirror address(port) '%s(%d)' ",
+				 fileRepPrimaryHostAddress, 
+				 fileRepPrimaryPort,
+				 fileRepMirrorHostAddress, 
+				 fileRepMirrorPort);
+		
+		FileRep_InsertConfigLogEntry(tmpBuf);
+	}
 	
 	Insist(fileRepRole == FileRepMirrorRole);
 	
@@ -240,7 +248,7 @@ FileRepMirror_RunReceiver(void)
 
 	enum mirror_receiver_state current_state = RECVTYPE;
 
-	elog(LOG, "FileRepMirror_RunReceiver()");
+	FileRep_InsertConfigLogEntry("run receiver");
 	
 	for (;;)
 	{
@@ -348,19 +356,20 @@ FileRepMirror_RunReceiver(void)
 											   ""); // tableName
 #endif				
 				
-#ifdef FILEREP_DEBUG
-				fileRepProcIndex = msgType;
-				ereport(LOG,
-						(errmsg("LOG(filerep): M_RunReceiver "
-								"local count:'%d' position insert:'%p' msg length:'%u' "
-								"consumer proc index:'%d' ",
-								spareField,
-								msgPositionInsert,
-								msgLength,
-								msgType),
-						 FileRep_errdetail_Shmem(),
-						 FileRep_errcontext()));		
-#endif				
+				if (Debug_filerep_print)
+				{
+					fileRepProcIndex = msgType;
+					ereport(LOG,
+							(errmsg("M_RunReceiver "
+									"local count '%d' position insert '%p' msg length '%u' "
+									"consumer proc index '%d' ",
+									spareField,
+									msgPositionInsert,
+									msgLength,
+									msgType),
+							 FileRep_errdetail_Shmem(),
+							 FileRep_errcontext()));	
+				}
 				
 				fileRepShmemMessageDescr = (FileRepShmemMessageDescr_s*) msgPositionInsert;	
 		
@@ -428,7 +437,7 @@ FileRepMirror_Init(void)
 	hash_ctl.entrysize = sizeof(OpenFileEntry);
 	hash_ctl.hash = string_hash;
 														
-	openFilesTable = hash_create("Open Files Table",
+	openFilesTable = hash_create("open files hash",
 								FILEREP_MAX_OPEN_FILES,
 								&hash_ctl,
 								HASH_ELEM | HASH_FUNCTION); 
@@ -499,8 +508,7 @@ FileRepMirror_StartConsumer(void)
 {
 	int status = STATUS_OK;
 	
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepMirror_StartConsumer() ");
+	FileRep_InsertConfigLogEntry("start consumer");
 	
 	FileRepMirror_ReInit();
 	
@@ -525,11 +533,6 @@ FileRepMirror_StartConsumer(void)
 	}
 	
 	fileRepShmem = fileRepShmemArray[fileRepProcIndex];
-	
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepMirror_StartConsumer consumer proc index:'%d' fileRepShmem:%p \n",
-			 fileRepProcIndex,
-			 fileRepShmem);
 	
 	status = FileRepMirror_Init();
 	
@@ -607,9 +610,11 @@ FileRepMirror_RunConsumer(void)
 	bool						movePositionConsume = FALSE;
 	XLogRecPtr					mirrorEofRecPtr = {0, 0};
 	uint32						spare = 0;
+	struct timeval				currentTime;
+	pg_time_t					beginTime = 0;
+	pg_time_t					endTime = 0;
 		
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepMirror_RunConsumer() ");
+	FileRep_InsertConfigLogEntry("run consumer");
 
 	errno = 0;
 	
@@ -706,14 +711,15 @@ FileRepMirror_RunConsumer(void)
 			status = STATUS_ERROR;
 			ereport(WARNING,
 				(errmsg("mirror failure, "
-						"could not match message header checksum between primary:'%u' and mirror:'%u', "
+						"could not match message header checksum between primary '%u' and mirror '%u', "
 						"failover requested", 
 						*fileRepMessageHeaderCrc, 
 						messageHeaderCrcLocal),
 				 errhint("run gprecoverseg to re-establish mirror connectivity"),
 				 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 								   fileRepMessageHeader->fileRepRelationType,
-								   fileRepMessageHeader->fileRepOperation),
+								   fileRepMessageHeader->fileRepOperation,
+								   fileRepMessageHeader->messageCount),
 				 FileRep_errdetail_Shmem(),
 				 FileRep_errcontext()));		
 			
@@ -737,7 +743,7 @@ FileRepMirror_RunConsumer(void)
 			if (messageBodyLocal != fileRepMessageHeader->fileRepMessageBodyCrc) {
 				ereport(WARNING,
 					(errmsg("mirror failure, "
-							"could not match message body checksum between primary:'%u' and mirror:'%u' data length:'%u', "
+							"could not match message body checksum between primary '%u' and mirror '%u' data length '%u', "
 							"failover requested", 
 							fileRepMessageHeader->fileRepMessageBodyCrc, 
 							messageBodyLocal,
@@ -745,10 +751,10 @@ FileRepMirror_RunConsumer(void)
 					 errhint("run gprecoverseg to re-establish mirror connectivity"),
 						FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 										  fileRepMessageHeader->fileRepRelationType,
-										  fileRepMessageHeader->fileRepOperation),
+										  fileRepMessageHeader->fileRepOperation,
+										  fileRepMessageHeader->messageCount),
 						FileRep_errdetail_Shmem(),
 						FileRep_errcontext()));		
-				
 				
 				status = STATUS_ERROR;
 				break;
@@ -768,14 +774,15 @@ FileRepMirror_RunConsumer(void)
 		
 		if (Debug_filerep_print)
 			ereport(LOG,
-				(errmsg("LOG(filerep): M_RunConsumer msg header count:'%d' local count:'%d' "
-						"consumer proc index:'%d'",
+				(errmsg("M_RunConsumer msg header count '%d' local count '%d' "
+						"consumer proc index '%d'",
 						fileRepMessageHeader->messageCount,
 						spare,
 						fileRepProcIndex),
 				 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 								   fileRepMessageHeader->fileRepRelationType,
-								   fileRepMessageHeader->fileRepOperation),
+								   fileRepMessageHeader->fileRepOperation,
+								   fileRepMessageHeader->messageCount),
 				 FileRep_errdetail_Shmem(),
 				 FileRep_errcontext()));		
 	
@@ -806,18 +813,20 @@ FileRepMirror_RunConsumer(void)
 							seekResult = FileSeek(fd, 
 												  fileRepMessageHeader->fileRepOperationDescription.open.logicalEof, 
 												  SEEK_SET);
-							if (seekResult != fileRepMessageHeader->fileRepOperationDescription.open.logicalEof) {
+							if (seekResult != fileRepMessageHeader->fileRepOperationDescription.open.logicalEof) 
+							{
 								status = STATUS_ERROR;
 								ereport(WARNING,
 										(errcode_for_file_access(),
 										 errmsg("mirror failure, "
-												"could not seek to file position:" INT64_FORMAT " : %m, "
+												"could not seek to file position " INT64_FORMAT " : %m, "
 												"failover requested",
 												fileRepMessageHeader->fileRepOperationDescription.open.logicalEof),
 										 errhint("run gprecoverseg to re-establish mirror connectivity"),
 										 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 														   fileRepMessageHeader->fileRepRelationType,
-														   fileRepMessageHeader->fileRepOperation),
+														   fileRepMessageHeader->fileRepOperation,
+														   fileRepMessageHeader->messageCount),
 										 FileRep_errcontext()));					
 								break;
 							}
@@ -828,15 +837,19 @@ FileRepMirror_RunConsumer(void)
 						case FileRepRelationTypeBulk:
 
 							found = TRUE;
-#ifdef FILEREP_DEBUG
-							ereport(LOG, 
-									(errmsg("LOG(filerep): File is already opened with file descriptor:'%d' ",
-											entry->fd),
-									FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-													  fileRepMessageHeader->fileRepRelationType,
-													  fileRepMessageHeader->fileRepOperation),
-									FileRep_errcontext()));		
-#endif							
+							
+							if (Debug_filerep_print)
+							{
+								ereport(LOG, 
+										(errmsg("file with file descriptor '%d' is already opened ",
+												entry->fd),
+										FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+														  fileRepMessageHeader->fileRepRelationType,
+														  fileRepMessageHeader->fileRepOperation,
+														  fileRepMessageHeader->messageCount),
+										FileRep_errcontext()));		
+							}
+							
 							break;
 						
 						default:
@@ -863,8 +876,8 @@ FileRepMirror_RunConsumer(void)
 							ereport(WARNING,
 									(errcode_for_file_access(),
 									 errmsg("mirror failure, "
-											"could not open file position:" INT64_FORMAT " file flags:'%x' "
-											"file mode:'%o' : %m, "
+											"could not open file position:" INT64_FORMAT " file flags '%x' "
+											"file mode '%o' : %m, "
 											"failover requested", 
 											fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
 											fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
@@ -872,26 +885,28 @@ FileRepMirror_RunConsumer(void)
 									 errhint("run gprecoverseg to re-establish mirror connectivity"),
 									 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 													   fileRepMessageHeader->fileRepRelationType,
-													   fileRepMessageHeader->fileRepOperation),
+													   fileRepMessageHeader->fileRepOperation,
+													   fileRepMessageHeader->messageCount),
 									 FileRep_errcontext()));					
 							
 						} else {
 							
 							fd = 0;
-#ifdef FILEREP
-							ereport(LOG,
-									(errcode_for_file_access(),
-									 errmsg("LOG(filerep): could not open file, primary will send another request for create " 
-											"position:" INT64_FORMAT " file flags:'%x' "
-											"file mode:'%o' : %m", 
-											fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
-											fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
-											fileRepMessageHeader->fileRepOperationDescription.open.fileMode),
-									 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-													   fileRepMessageHeader->fileRepRelationType,
-													   fileRepMessageHeader->fileRepOperation),
-									 FileRep_errcontext()));					
-#endif							
+
+							if (Debug_filerep_print)
+								ereport(LOG,
+										(errcode_for_file_access(),
+										 errmsg("could not open file, primary will send another request for create " 
+												"position " INT64_FORMAT " file flags '%x' "
+												"file mode '%o' : %m", 
+												fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
+												fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
+												fileRepMessageHeader->fileRepOperationDescription.open.fileMode),
+										 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+														   fileRepMessageHeader->fileRepRelationType,
+														   fileRepMessageHeader->fileRepOperation,
+														   fileRepMessageHeader->messageCount),
+										 FileRep_errcontext()));											
 						}
 						break;
 					}
@@ -904,13 +919,14 @@ FileRepMirror_RunConsumer(void)
 						ereport(WARNING,
 								(errcode_for_file_access(),
 								 errmsg("mirror failure, "
-										"could not seek to file position:" INT64_FORMAT " : %m, "
+										"could not seek to file position " INT64_FORMAT " : %m, "
 										"failover requested", 
 										fileRepMessageHeader->fileRepOperationDescription.open.logicalEof),
 								 errhint("run gprecoverseg to re-establish mirror connectivity"),
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
-												   fileRepMessageHeader->fileRepOperation),
+												   fileRepMessageHeader->fileRepOperation,
+												   fileRepMessageHeader->messageCount),
 								 FileRep_errcontext()));					
  						break;
 					}
@@ -931,7 +947,7 @@ FileRepMirror_RunConsumer(void)
 							if (Debug_filerep_print)
 								ereport(LOG,
 										(errcode_for_file_access(),
-										 errmsg("LOG(filerep): could not open file \"%s\" suppressError==TRUE : %m", fileName)));
+										 errmsg("could not open file '%s' suppressError==TRUE : %m", fileName)));
 							
 							errno = 0;
 							fd = PathNameOpenFile(
@@ -946,7 +962,7 @@ FileRepMirror_RunConsumer(void)
 							if (Debug_filerep_print)
 								ereport(LOG,
 										(errcode_for_file_access(),
-										 errmsg("LOG(filerep): could not open file \"%s\" suppressError==TRUE : %m", fileName)));
+										 errmsg("could not open file '%s' suppressError==TRUE : %m", fileName)));
 							fd = 0;
 							break;							
 						}	
@@ -957,8 +973,8 @@ FileRepMirror_RunConsumer(void)
 							ereport(WARNING,
 									(errcode_for_file_access(),
 									 errmsg("mirror failure, "
-											"could not open file position:" INT64_FORMAT " "
-											"file flags:'%x' file mode:'%o' : %m, "
+											"could not open file position " INT64_FORMAT " "
+											"file flags '%x' file mode '%o' : %m, "
 											"failover requested", 
 											fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
 											fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
@@ -966,7 +982,8 @@ FileRepMirror_RunConsumer(void)
 									 errhint("run gprecoverseg to re-establish mirror connectivity"),
 									 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 													   fileRepMessageHeader->fileRepRelationType,
-													   fileRepMessageHeader->fileRepOperation),
+													   fileRepMessageHeader->fileRepOperation,
+													   fileRepMessageHeader->messageCount),
 									 FileRep_errcontext()));					
 							
 							break;
@@ -1001,14 +1018,15 @@ FileRepMirror_RunConsumer(void)
 							if (Debug_filerep_print)
 								ereport(LOG,
 										(errcode_for_file_access(),
-										 errmsg("WARNING(filerep): could not open file position:" INT64_FORMAT " "
-												"file flags:'%x' file mode:'%o' : %m", 
+										 errmsg("could not open file position '" INT64_FORMAT "' "
+												"file flags '%x' file mode '%o' : %m", 
 												fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
 												fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
 												fileRepMessageHeader->fileRepOperationDescription.open.fileMode),
 										 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 														   fileRepMessageHeader->fileRepRelationType,
-														   fileRepMessageHeader->fileRepOperation),
+														   fileRepMessageHeader->fileRepOperation,
+														   fileRepMessageHeader->messageCount),
 										 FileRep_errcontext()));					
 				
 							/* NOTE see md.c L242 there are exceptions, how mirror will know about it */ 
@@ -1022,8 +1040,8 @@ FileRepMirror_RunConsumer(void)
 							ereport(WARNING,
 									(errcode_for_file_access(),
 									 errmsg("mirror failure, "
-											"could not open file position:" INT64_FORMAT " "
-											"file flags:'%x' file mode:'%o' : %m, "
+											"could not open file position '" INT64_FORMAT "' "
+											"file flags '%x' file mode '%o' : %m, "
 											"failover requested", 
 											fileRepMessageHeader->fileRepOperationDescription.open.logicalEof,
 											fileRepMessageHeader->fileRepOperationDescription.open.fileFlags,
@@ -1031,7 +1049,8 @@ FileRepMirror_RunConsumer(void)
 									 errhint("run gprecoverseg to re-establish mirror connectivity"),
 									 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 													   fileRepMessageHeader->fileRepRelationType,
-													   fileRepMessageHeader->fileRepOperation),
+													   fileRepMessageHeader->fileRepOperation,
+													   fileRepMessageHeader->messageCount),
 									 FileRep_errcontext()));					
 							
 							break;
@@ -1059,10 +1078,7 @@ FileRepMirror_RunConsumer(void)
 			case FileRepOperationWrite:
 				
 				fd = FileRepMirror_GetFileDescriptor(fileName);
-				
-				elog(DEBUG1, "FileRepOperationWrite() filename:%s fd:%d", 
-					 fileName, fd);	
-				
+								
 				if (fd < 0) {	
 					if (fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeAppendOnly) {
 
@@ -1073,7 +1089,8 @@ FileRepMirror_RunConsumer(void)
 								 errhint("run gprecoverseg to re-establish mirror connectivity"),
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
-												   fileRepMessageHeader->fileRepOperation),
+												   fileRepMessageHeader->fileRepOperation,
+												   fileRepMessageHeader->messageCount),
 								 FileRep_errcontext()));					
 						
 						status = STATUS_ERROR;
@@ -1109,14 +1126,15 @@ FileRepMirror_RunConsumer(void)
 						ereport(WARNING,
 								(errcode_for_file_access(),
 								 errmsg("mirror failure, "
-										"could not open file file flags:'%x' file mode:'%o': %m, "
+										"could not open file file flags '%x' file mode '%o': %m, "
 										"failover requested",
 								 O_CREAT | O_RDWR | PG_BINARY,
 								 fileMode), 
 								 errhint("run gprecoverseg to re-establish mirror connectivity"),
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
-												   fileRepMessageHeader->fileRepOperation),
+												   fileRepMessageHeader->fileRepOperation,
+												   fileRepMessageHeader->messageCount),
 								 FileRep_errcontext()));					
 						break;
 					}	
@@ -1162,7 +1180,8 @@ FileRepMirror_RunConsumer(void)
 								 errhint("run gprecoverseg to re-establish mirror connectivity"),
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
-												   fileRepMessageHeader->fileRepOperation),
+												   fileRepMessageHeader->fileRepOperation,
+												   fileRepMessageHeader->messageCount),
 								 FileRep_errcontext()));					
 						
 						break;
@@ -1178,13 +1197,14 @@ FileRepMirror_RunConsumer(void)
 						ereport(WARNING,
 								(errcode_for_file_access(),
 								 errmsg("mirror failure, "
-										"could not seek to file position:'%d' : %m, "
+										"could not seek to file position '%d' : %m, "
 										"failover requested", 
 										fileRepMessageHeader->fileRepOperationDescription.write.offset),
 								 errhint("run gprecoverseg to re-establish mirror connectivity"),
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
-												   fileRepMessageHeader->fileRepOperation),
+												   fileRepMessageHeader->fileRepOperation,
+												   fileRepMessageHeader->messageCount),
 								 FileRep_errcontext()));	
 						break;
 						
@@ -1211,7 +1231,8 @@ FileRepMirror_RunConsumer(void)
 							 errhint("run gprecoverseg to re-establish mirror connectivity"),
 							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 											   fileRepMessageHeader->fileRepRelationType,
-											   fileRepMessageHeader->fileRepOperation),
+											   fileRepMessageHeader->fileRepOperation,
+											   fileRepMessageHeader->messageCount),
 							 FileRep_errcontext()));					
 					
 					break;
@@ -1221,9 +1242,7 @@ FileRepMirror_RunConsumer(void)
 			case FileRepOperationFlush:
 				
 				fd = FileRepMirror_GetFileDescriptor(fileName);
-				elog(DEBUG1, "FileRepOperationFlush() filename:%s fd:%d", 
-					 fileName, fd);	
-					
+				
 					if (fd < 0) {	
 						if (fileRepMessageHeader->fileRepRelationType == FileRepRelationTypeAppendOnly) {
 
@@ -1235,7 +1254,8 @@ FileRepMirror_RunConsumer(void)
 									  errhint("run gprecoverseg to re-establish mirror connectivity"),
 									  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 														fileRepMessageHeader->fileRepRelationType,
-														fileRepMessageHeader->fileRepOperation),
+														fileRepMessageHeader->fileRepOperation,
+														fileRepMessageHeader->messageCount),
 									  FileRep_errcontext()));					
 							
 							 status = STATUS_ERROR;
@@ -1252,8 +1272,8 @@ FileRepMirror_RunConsumer(void)
 							if (Debug_filerep_print)
 									 ereport(LOG,
 										(errcode_for_file_access(),
-										 errmsg("LOG(filerep): could not open file; "
-												"file was already dropped identifier:'%s' : %m", 
+										 errmsg("could not open file, "
+												"file was already dropped identifier '%s' : %m", 
 												(fileName == NULL) ? "" : fileName)));
 							break;
 						}
@@ -1268,7 +1288,8 @@ FileRepMirror_RunConsumer(void)
 									 errhint("run gprecoverseg to re-establish mirror connectivity"),
 									 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 													   fileRepMessageHeader->fileRepRelationType,
-													   fileRepMessageHeader->fileRepOperation),
+													   fileRepMessageHeader->fileRepOperation,
+													   fileRepMessageHeader->messageCount),
 									 FileRep_errcontext()));					
 							
 							break;
@@ -1298,8 +1319,40 @@ FileRepMirror_RunConsumer(void)
 											   "",	//databaseName
 											   ""); // tableName
 #endif								
+				gettimeofday(&currentTime, NULL);
+				beginTime = (pg_time_t) currentTime.tv_sec;
 				
 				status = FileSync(fd);
+				
+				gettimeofday(&currentTime, NULL);
+				endTime = (pg_time_t) currentTime.tv_sec;
+
+				if (endTime - beginTime > 120)  // 120 seconds
+				{
+					ereport(LOG,
+							(errmsg("fsync was taken '" INT64_FORMAT "' seconds, "
+									"mirror may not be able to keep up with primary, "
+									"primary may transition to change tracking",
+									endTime - beginTime), 
+							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+											   fileRepMessageHeader->fileRepRelationType,
+											   fileRepMessageHeader->fileRepOperation,
+											   fileRepMessageHeader->messageCount)));										
+				}
+				
+				if (endTime - beginTime > 60)  // 60 seconds
+				{
+					
+					{
+						char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+						
+						snprintf(tmpBuf, sizeof(tmpBuf), "fsync was taken " INT64_FORMAT " seconds identifier '%s' ",
+								 endTime - beginTime,
+								 fileName);
+						
+						FileRep_InsertConfigLogEntry(tmpBuf);				
+					}					
+				}				
 				
 				if (status != STATUS_OK) {
 					ereport(WARNING,
@@ -1310,7 +1363,8 @@ FileRepMirror_RunConsumer(void)
 							 errhint("run gprecoverseg to re-establish mirror connectivity"),
 							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 											   fileRepMessageHeader->fileRepRelationType,
-											   fileRepMessageHeader->fileRepOperation),
+											   fileRepMessageHeader->fileRepOperation,
+											   fileRepMessageHeader->messageCount),
 							 FileRep_errcontext()));					
 					
 					break;
@@ -1321,19 +1375,18 @@ FileRepMirror_RunConsumer(void)
 			case FileRepOperationClose:
 								
 				fd = FileRepMirror_GetFileDescriptor(fileName);
-				
-				elog(DEBUG1, "FileRepOperationClose() filename:%s fd:%d", 
-					 fileName, fd);	
-				
+								
 				if (fd < 0) {
-#ifdef FILEREP_DEBUG
-					ereport(LOG,
-							(errmsg("LOG(filerep): could not find file descriptor"),
-							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-											   fileRepMessageHeader->fileRepRelationType,
-											   fileRepMessageHeader->fileRepOperation),
-							 FileRep_errcontext()));					
-#endif					
+
+					if (Debug_filerep_print)
+						ereport(LOG,
+								(errmsg("could not find file descriptor"),
+								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+												   fileRepMessageHeader->fileRepRelationType,
+												   fileRepMessageHeader->fileRepOperation,
+												   fileRepMessageHeader->messageCount),
+								 FileRep_errcontext()));					
+				
 					fd = 0;
 					break;
 				}
@@ -1347,10 +1400,7 @@ FileRepMirror_RunConsumer(void)
 			case FileRepOperationFlushAndClose:
 								
 				fd = FileRepMirror_GetFileDescriptor(fileName);
-				
-				elog(DEBUG1, "FileRepOperationFlushAndClose() filename:%s fd:%d", 
-					 fileName, fd);	
-				
+								
 				if (fd < 0) {
 					/*
 					ereport(LOG,
@@ -1368,13 +1418,20 @@ FileRepMirror_RunConsumer(void)
 										  fileMode);
 
 					
-					if (fd < 0 && errno == ENOENT) {
+					if (fd < 0 && errno == ENOENT) 
+					{
 						fd = 0;
+						
 						ereport(LOG,
 								(errcode_for_file_access(),
-								 errmsg("LOG(filerep): could not flush and close file, "
-										"The file was already dropped identifier:'%s' : %m", 
-										(fileName == NULL) ? "" : fileName)));
+								 errmsg("could not flush and close file, "
+										"file was already dropped identifier '%s' : %m", 
+										(fileName == NULL) ? "<null>" : fileName),
+								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+												   fileRepMessageHeader->fileRepRelationType,
+												   fileRepMessageHeader->fileRepOperation,
+												   fileRepMessageHeader->messageCount),
+								 FileRep_errcontext()));	
 						break;
 					}					
 					
@@ -1388,7 +1445,8 @@ FileRepMirror_RunConsumer(void)
 								 errhint("run gprecoverseg to re-establish mirror connectivity"),
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
-												   fileRepMessageHeader->fileRepOperation),
+												   fileRepMessageHeader->fileRepOperation,
+												   fileRepMessageHeader->messageCount),
 								 FileRep_errcontext()));					
 						
 						break;
@@ -1422,7 +1480,8 @@ FileRepMirror_RunConsumer(void)
 							 errhint("run gprecoverseg to re-establish mirror connectivity"),
 							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 											   fileRepMessageHeader->fileRepRelationType,
-											   fileRepMessageHeader->fileRepOperation),
+											   fileRepMessageHeader->fileRepOperation,
+											   fileRepMessageHeader->messageCount),
 							 FileRep_errcontext()));					
 					
 					/* no break */
@@ -1438,9 +1497,6 @@ FileRepMirror_RunConsumer(void)
 			case FileRepOperationTruncate:
 				
 				fd = FileRepMirror_GetFileDescriptor(fileName);
-				
-				elog(DEBUG1, "FileRepOperationTruncate() filename:%s fd:%d", 
-					 fileName, fd);	
 				
 				if (fd < 0) {
 					/*
@@ -1468,7 +1524,8 @@ FileRepMirror_RunConsumer(void)
 								 errhint("run gprecoverseg to re-establish mirror connectivity"),
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
-												   fileRepMessageHeader->fileRepOperation),
+												   fileRepMessageHeader->fileRepOperation,
+												   fileRepMessageHeader->messageCount),
 								 FileRep_errcontext()));					
 						
 						break;
@@ -1498,13 +1555,14 @@ FileRepMirror_RunConsumer(void)
 					ereport(WARNING,
 							(errcode_for_file_access(),
 							 errmsg("mirror failure, "
-									"could not truncate file to position:'" INT64_FORMAT "' : %m"
+									"could not truncate file to position '" INT64_FORMAT "' : %m"
 									"failover requested",  
 							 fileRepMessageHeader->fileRepOperationDescription.truncate.position), 
 							 errhint("run gprecoverseg to re-establish mirror connectivity"),
 							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 											   fileRepMessageHeader->fileRepRelationType,
-											   fileRepMessageHeader->fileRepOperation),
+											   fileRepMessageHeader->fileRepOperation,
+											   fileRepMessageHeader->messageCount),
 							 FileRep_errcontext()));					
 					
 					status = STATUS_ERROR;
@@ -1535,7 +1593,6 @@ FileRepMirror_RunConsumer(void)
 				break;				
 				
 			case FileRepOperationReconcileXLogEof:
-				elog(DEBUG1, "FileRepOperationReconcile() filename:%s", fileName);	
 				
 				status = XLogReconcileEofMirror(
 						fileRepMessageHeader->fileRepOperationDescription.reconcile.xLogEof,
@@ -1544,12 +1601,13 @@ FileRepMirror_RunConsumer(void)
 			    if (status != STATUS_OK) {
 				    ereport(WARNING,
 							(errmsg("mirror failure, "
-								   "could not reconcile xlog file : %m"
+								   "could not reconcile xlog file"
 								   "failover requested"),  
 							 errhint("run gprecoverseg to re-establish mirror connectivity"),
 							FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 											  fileRepMessageHeader->fileRepRelationType,
-											  fileRepMessageHeader->fileRepOperation),
+											  fileRepMessageHeader->fileRepOperation,
+											  fileRepMessageHeader->messageCount),
 							FileRep_errcontext()));					
 						
 				    break;
@@ -1557,14 +1615,21 @@ FileRepMirror_RunConsumer(void)
 				
 				fileRepMessageHeader->fileRepOperationDescription.reconcile.xLogEof = mirrorEofRecPtr;
 
-				elog(LOG, "FileRepOperationReconcile() filename:%s xlogid:%d xrecoff:%d", 
-					 fileName, mirrorEofRecPtr.xlogid, 
-					 mirrorEofRecPtr.xrecoff);	
-
+				{
+					char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+					
+					snprintf(tmpBuf, sizeof(tmpBuf), "xlog reconcile identifier '%s' lsn xlog '%s(%u/%u)' ",
+							 fileName,
+							 XLogLocationToString(&mirrorEofRecPtr),
+							 mirrorEofRecPtr.xlogid,
+							 mirrorEofRecPtr.xrecoff);
+					
+					FileRep_InsertConfigLogEntry(tmpBuf);				
+				}
+				
 			    break;
 				
 			case FileRepOperationCreate:
-				elog(DEBUG1, "FileRepOperationCreate() filename:%s", fileName);	
 
 				switch (fileRepMessageHeader->fileRepRelationType) {
 					case FileRepRelationTypeDir:
@@ -1600,7 +1665,8 @@ FileRepMirror_RunConsumer(void)
 												"failover requested"),  
 										 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 														   fileRepMessageHeader->fileRepRelationType,
-														   fileRepMessageHeader->fileRepOperation),
+														   fileRepMessageHeader->fileRepOperation,
+														   fileRepMessageHeader->messageCount),
 										 FileRep_errcontext()));										
 							}
 							else
@@ -1613,7 +1679,8 @@ FileRepMirror_RunConsumer(void)
 											 errmsg("could not create directory : %m"), 
 											 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 															   fileRepMessageHeader->fileRepRelationType,
-															   fileRepMessageHeader->fileRepOperation),
+															   fileRepMessageHeader->fileRepOperation,
+															   fileRepMessageHeader->messageCount),
 											 FileRep_errcontext()));										
 							}
 						}
@@ -1679,7 +1746,8 @@ FileRepMirror_RunConsumer(void)
 											"failover requested"), 
 									 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 													   fileRepMessageHeader->fileRepRelationType,
-													   fileRepMessageHeader->fileRepOperation),
+													   fileRepMessageHeader->fileRepOperation,
+													   fileRepMessageHeader->messageCount),
 									 FileRep_errcontext()));					
 					
 							break;
@@ -1712,7 +1780,6 @@ FileRepMirror_RunConsumer(void)
 				break;
 				
 			case FileRepOperationDrop:
-				elog(DEBUG1, "FileRepOperationDrop() filename:%s", fileName);	
 			
 				switch (fileRepMessageHeader->fileRepRelationType) {
 					case FileRepRelationTypeDir:
@@ -1722,13 +1789,19 @@ FileRepMirror_RunConsumer(void)
 						{
 
 							status = STATUS_ERROR;
-							ereport(LOG,
+							
+							ereport(WARNING,
 									(errcode_for_file_access(),
-									 errmsg("ERROR(filerep): could not remove directory : %m"), 
+									 errmsg("mirror failure, "
+											"could not remove directory : %m, "
+											"failover requested"), 
+									 errhint("run gprecoverseg to re-establish mirror connectivity"),
 									 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 													   fileRepMessageHeader->fileRepRelationType,
-													   fileRepMessageHeader->fileRepOperation),
+													   fileRepMessageHeader->fileRepOperation,
+													   fileRepMessageHeader->messageCount), 
 									 FileRep_errcontext()));	
+														
 							break;
 						}
 						
@@ -1761,8 +1834,6 @@ FileRepMirror_RunConsumer(void)
 				
 			case FileRepOperationDropFilesFromDir:
 				
-				elog(DEBUG1, "FileRepOperationDropFilesFromDir() filename:%s", fileName);
-				
 				switch (fileRepMessageHeader->fileRepRelationType) 
 				{
 					case FileRepRelationTypeFlatFile:
@@ -1775,8 +1846,6 @@ FileRepMirror_RunConsumer(void)
 				break;
 				
 			case FileRepOperationValidation:
-				
-				elog(DEBUG1, "FileRepOperationValidation() filename:%s", fileName);	
 
 				switch (fileRepMessageHeader->fileRepOperationDescription.validation.fileRepValidationType)
 				{	
@@ -1811,15 +1880,21 @@ FileRepMirror_RunConsumer(void)
 				
 			case FileRepOperationRename:
 						
-				elog(DEBUG1, "FileRepOperationRename() from filename:%s", fileName);	
 				errno = 0;
 				
 				/* Ensure that file is not opened. */
 				fd = FileRepMirror_GetFileDescriptor(fileName);
 				
 				if (fd > 0) {
-					ereport(LOG,
-							(errmsg("FileRepOperationRename() Removing file name from table. fd:%d", fd)));		
+					if (Debug_filerep_print)
+						ereport(LOG,
+							(errmsg("FileRepOperationRename() removing file name from table. fd '%d' ", 
+									fd),
+							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+											   fileRepMessageHeader->fileRepRelationType,
+											   fileRepMessageHeader->fileRepOperation,
+											   fileRepMessageHeader->messageCount),
+							 FileRep_errcontext()));	
 
 				/*	FileClose(fd);*/
 					FileRepMirror_RemoveFileName(fileName);
@@ -1834,8 +1909,16 @@ FileRepMirror_RunConsumer(void)
 				fd = FileRepMirror_GetFileDescriptor(newFileName);
 				
 				if (fd > 0) {
-					ereport(LOG,
-							(errmsg("FileRepOperationRename() newFileName:%s fd:%d", newFileName, fd)));		
+					if (Debug_filerep_print)
+						ereport(LOG,
+								(errmsg("FileRepOperationRename() new identifier '%s' fd '%d' ", 
+										newFileName, 
+										fd),
+							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+											   fileRepMessageHeader->fileRepRelationType,
+											   fileRepMessageHeader->fileRepOperation,
+											   fileRepMessageHeader->messageCount),
+							 FileRep_errcontext()));		
 					
 					FileUnlink(fd);
 					FileRepMirror_RemoveFileName(newFileName);
@@ -1849,45 +1932,54 @@ FileRepMirror_RunConsumer(void)
 				if (strcmp(newFileName, "global/pg_database") == 0 ||
 					strcmp(newFileName, "global/pg_auth") == 0)
 				{
-					elog(DEBUG1, "FileRepOperationRename()  from filename:%s to %s",
-						 fileName, newFileName);	
 
 					errno = 0;
 					if (rename(fileName, newFileName) < 0 && errno != ENOENT)
 					{
 						status = STATUS_ERROR;
-						ereport(LOG,
+						
+						ereport(WARNING,
 								(errcode_for_file_access(),
-								 errmsg("ERROR(filerep): could not rename to:'%s' : %m",
-										newFileName),
+								 errmsg("mirror failure, "
+										"could not rename to '%s' : %m, "
+										"failover requested",
+										newFileName), 
+								 errhint("run gprecoverseg to re-establish mirror connectivity"),
 								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 												   fileRepMessageHeader->fileRepRelationType,
-												   fileRepMessageHeader->fileRepOperation),
-								 FileRep_errcontext()));					
-				
+												   fileRepMessageHeader->fileRepOperation,
+												   fileRepMessageHeader->messageCount),
+								 FileRep_errcontext()));	
+						
 						break;
 					}
 				}
 				else
 				{
-					elog(DEBUG1, "LINK from filename:%s to %s", fileName, newFileName);	
 	
 					errno = 0;
-					if (link(fileName, newFileName) < 0 && errno != ENOENT) {
+					if (link(fileName, newFileName) < 0 && errno != ENOENT) 
+					{
 						status = STATUS_ERROR;
-						ereport(LOG,
+						
+						ereport(WARNING,
 								(errcode_for_file_access(),
-								errmsg("ERROR(filerep): could not link to:'%s' : %m",
-									   newFileName),
-								FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-												  fileRepMessageHeader->fileRepRelationType,
-												  fileRepMessageHeader->fileRepOperation),
-								FileRep_errcontext()));					
+								 errmsg("mirror failure, "
+										"could not link to '%s' : %m, "
+										"failover requested",
+										newFileName), 
+								 errhint("run gprecoverseg to re-establish mirror connectivity"),
+								 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+												   fileRepMessageHeader->fileRepRelationType,
+												   fileRepMessageHeader->fileRepOperation,
+												   fileRepMessageHeader->messageCount),
+								 FileRep_errcontext()));							
 						break;
 						
 					}
 				}
-				if (newFileName) {
+				if (newFileName) 
+				{
 					pfree(newFileName);
 					newFileName = NULL;
 				}		
@@ -1914,7 +2006,8 @@ FileRepMirror_RunConsumer(void)
 			
 		}
 
-		if (fd == -1) {
+		if (fd == -1) 
+		{
 			Assert(status == STATUS_ERROR);
 		}
 		
@@ -1931,24 +2024,31 @@ FileRepMirror_RunConsumer(void)
 							  fileRepMessageHeader->fileRepRelationType,
 							  fileRepMessageHeader->fileRepOperation,
 							  fileRepMessageHeader->fileRepOperationDescription,
-							  fileRepMessageHeader->fileRepAckState) != STATUS_OK) {
+							  fileRepMessageHeader->fileRepAckState) != STATUS_OK) 
+			{
 			
 				status = STATUS_ERROR;
 				ereport(WARNING,
-						(errmsg("mirror failure, could not queue ACK message to be sent to primary, failover requested"),
+						(errmsg("mirror failure, "
+								"could not queue ACK message to be sent to primary, "
+								"failover requested"),
+						 errhint("run gprecoverseg to re-establish mirror connectivity"),
 						 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 										   fileRepMessageHeader->fileRepRelationType,
-										   fileRepMessageHeader->fileRepOperation),
+										   fileRepMessageHeader->fileRepOperation,
+										   fileRepMessageHeader->messageCount),
+						 FileRep_errdetail_ShmemAck(),
 						 FileRep_errcontext()));					
-
 			}
 		}		
 				
-		if (status != STATUS_OK) {
+		if (status != STATUS_OK) 
+		{
 			break;
 		}
 					
-		if (fileName) {
+		if (fileName) 
+		{
 			pfree(fileName);
 			fileName = NULL;
 		}		
@@ -1956,15 +2056,14 @@ FileRepMirror_RunConsumer(void)
 		movePositionConsume = TRUE;
 	} // while(1)	
 	
-	if (fileName) {
+	if (fileName) 
+	{
 		pfree(fileName);
 		fileName = NULL;
 	}		
 	
 	return status;
 }
-
-						
 							  							  
 /*
  * Find File Descriptor in hash table of open files.
@@ -1988,12 +2087,13 @@ FileRepMirror_GetFileDescriptor(FileName fileName)
 						HASH_FIND, 
 						NULL);
 	
-	if (entry == NULL) {
+	if (entry == NULL) 
+	{
 		fd = -1;
-		elog(DEBUG1, "FileRepMirror_GetFileDescriptor() fd not found in hash table filename:%s fd:%d", fileName, fd); 
-	} else {
+	} 
+	else 
+	{
 		fd = entry->fd;
-/*		elog(DEBUG1, "FileRepMirror_GetFileDescriptor() filename:%s fd:%d", fileName, fd); */
 	}
 	
 	return fd;
@@ -2014,12 +2114,7 @@ FileRepMirror_LookupFileName(FileName fileName)
 										  (void *) &key, 
 										  HASH_FIND, 
 										  NULL);
-	
-	if (entry != NULL) {
-		elog(DEBUG1, "FileRepMirror_LookupFileName() filename:%s", 
-			 fileName);
-	}
-	
+		
 	return entry;
 }
 
@@ -2045,8 +2140,6 @@ FileRepMirror_InsertFileName(
 	
 	Assert(openFilesTable != NULL);
 	
-	elog(DEBUG1, "FileRepMirror_InsertFileName() filename:%s fd:%d ", fileName, fd);
-	
 	entry = (OpenFileEntry *) hash_search(
 							  openFilesTable, 
 							  (void *) &key, 
@@ -2054,10 +2147,17 @@ FileRepMirror_InsertFileName(
 							  &foundPtr);
 
 	if (entry == NULL) {
-		ereport(LOG, 
-				(errmsg("ERROR(filerep): could not insert file information into hash table "
-						"identifier:'%s' file descriptor:'%d' ",
-				 fileName, fd)));
+		
+		ereport(WARNING,
+				(errmsg("mirror failure, "
+						"could not insert file information in open files hash table identifier '%s' fd '%d', "
+						"failover requested",
+						fileName, 
+						fd), 
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
+				 FileRep_errdetail_Shmem(),
+				 FileRep_errcontext()));							
+		
 		status = STATUS_ERROR;
 		return status;
 	}
@@ -2071,10 +2171,11 @@ FileRepMirror_InsertFileName(
 				Assert(entry->fileRepRelationType == fileRepRelationType);
 				entry->reference++;
 				
-				ereport(LOG, 
-					(errmsg("LOG(filerep): could not insert file information into hash table, "
-							"entry is already inserted "
-							"identifier:'%s' file descriptor:'%d' relation type:'%s' ",
+				if (Debug_filerep_print)
+					ereport(LOG, 
+						(errmsg("could not insert file information into hash table, "
+								"entry is already inserted "
+								"identifier '%s' file descriptor '%d' relation type '%s' ",
 							fileName,
 							fd,
 							FileRepRelationTypeToString[fileRepRelationType])));
@@ -2083,13 +2184,18 @@ FileRepMirror_InsertFileName(
 			case FileRepRelationTypeAppendOnly:
 			case FileRepRelationTypeBulk:
 				
-				ereport(LOG, 
-					(errmsg("ERROR(filerep): could not insert file information into hash table, "
-							"entry is already inserted "
-							"identifier:'%s' file descriptor:'%d' relation type:'%s' ",
-							fileName,
-							fd,
-							FileRepRelationTypeToString[fileRepRelationType])));
+				ereport(WARNING,
+						(errmsg("mirror failure, "
+								"could not insert file information in open files hash table, entry exists "
+								"identifier '%s' fd '%d' relation type '%s', "
+								"failover requested",
+								fileName, 
+								fd,
+								FileRepRelationTypeToString[fileRepRelationType]), 
+						 errhint("run gprecoverseg to re-establish mirror connectivity"),
+						 FileRep_errdetail_Shmem(),
+						 FileRep_errcontext()));											
+				
 				status = STATUS_ERROR;
 				
 				break;
@@ -2125,8 +2231,6 @@ FileRepMirror_RemoveFileName(FileName  fileName)
 	
 	Assert(openFilesTable != NULL);
 	
-	elog(DEBUG1, "FileRepMirror_RemoveFileName() filename:%s ", fileName);
-	
 	entry = (OpenFileEntry *) hash_search(
 						  openFilesTable, 
 						  (void *) &key, 
@@ -2134,9 +2238,12 @@ FileRepMirror_RemoveFileName(FileName  fileName)
 						  NULL);
 	Assert(entry != NULL);
 	
-	if (entry->reference > 1) {
+	if (entry->reference > 1) 
+	{
 		entry->reference--;
-	} else {
+	} 
+	else 
+	{
 		/* File should be closed. */
 		/*Assert(FileIsNotOpen(entry->fd));  Not public routine. */
 		hash_search(openFilesTable, (void *) &key, HASH_REMOVE, NULL);
@@ -2196,11 +2303,18 @@ exit:
 	if (mirrorStatus != FileRepStatusSuccess)
 	{
 		Assert(errordir != NULL);
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): %s: %s", 
-						errordir, FileRepStatusToString[mirrorStatus])));
+		
+		{
+			char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+			
+			snprintf(tmpBuf, sizeof(tmpBuf), "mirror validation failure identifier '%s' : '%s' ",
+					 errordir, 
+					 FileRepStatusToString[mirrorStatus]);
+			
+			FileRep_InsertConfigLogEntry(tmpBuf);
+		}		
 	}
+	
 	if (parentdir)
 	{
 		pfree(parentdir);
@@ -2223,18 +2337,32 @@ FileRepMirror_DropFilesFromDir(FileName fileName)
 		/* Is it actually a directory? */
 		if (! S_ISDIR(st.st_mode))
 		{
-			ereport(LOG,
-					(errcode_for_file_access(),
-					 errmsg("LOG(filerep): %s : Not a directory : %m", fileName)));
+			{
+				char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+				
+				snprintf(tmpBuf, sizeof(tmpBuf), "not a directory identifier '%s' errno '%d' ",
+						 fileName, 
+						 errno);
+				
+				FileRep_InsertConfigLogEntry(tmpBuf);
+			}		
+
 			goto exit;
 		}
 				
 		/* Drop from the directory flat files */
 		if ((dir = AllocateDir(fileName)) == NULL)
 		{
-			ereport(LOG,
-					(errcode_for_file_access(),
-					 errmsg("LOG(filerep): %s : Error reading directory : %m", fileName)));
+			{
+				char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+				
+				snprintf(tmpBuf, sizeof(tmpBuf), "error reading directory identifier '%s' errno '%d' ",
+						 fileName, 
+						 errno);
+				
+				FileRep_InsertConfigLogEntry(tmpBuf);
+			}		
+			
 			goto exit;
 		}
 		
@@ -2255,10 +2383,16 @@ FileRepMirror_DropFilesFromDir(FileName fileName)
 					if (S_ISDIR(st.st_mode))
 						continue;
 				}	
+
+				{
+					char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
 					
-				ereport(LOG,
-						(errcode_for_file_access(),
-						 errmsg("LOG(filerep): %s : unlink failed : %m", path)));
+					snprintf(tmpBuf, sizeof(tmpBuf), "unlink failed identifier '%s' errno '%d' ",
+							 fileName, 
+							 errno);
+					
+					FileRep_InsertConfigLogEntry(tmpBuf);
+				}						
 			}
 		}
 	}
@@ -2292,9 +2426,16 @@ SegmentFileFillZero(File fd, int64 writeOffset)
 	
 	if (startOffset < 0)
 	{
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): could not seek to the end of file : %m")));
+				 errmsg("mirror failure, "
+						"could not zero segment file, "
+						"could not seek to end of file fd '%d' : %m, "
+						"failover requested",
+						fd),
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
+				 FileRep_errcontext()));					
+
 		status = STATUS_ERROR;		
 		return status;
 	}
@@ -2310,10 +2451,17 @@ SegmentFileFillZero(File fd, int64 writeOffset)
 	seekResult = FileSeek(fd, startOffset, SEEK_SET);
 	if (seekResult != startOffset)
 	{
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): could not seek in file to position " INT64_FORMAT ": %m", 
-				        startOffset)));
+				 errmsg("mirror failure, "
+						"could not zero segment file, "
+						"could not seek to position " INT64_FORMAT " of file fd '%d' : %m, "
+						"failover requested",
+						startOffset,
+						fd),
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
+				 FileRep_errcontext()));					
+		
 		status = STATUS_ERROR;		
 		return status;
 	}
@@ -2332,9 +2480,16 @@ SegmentFileFillZero(File fd, int64 writeOffset)
 			/* if write didn't set errno, assume problem is no disk space */
 			errno = save_errno ? save_errno : ENOSPC;
 			
-			ereport(LOG,
+			ereport(WARNING,
 					(errcode_for_file_access(),
-					 errmsg("ERROR(filerep): could not zero segment file : %m")));
+					 errmsg("mirror failure, "
+							"could not zero segment file, "
+							"could not write to file fd '%d' : %m, "
+							"failover requested",
+							fd),
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
+					 FileRep_errcontext()));					
+			
 			status = STATUS_ERROR;
 			return status;
 		}
@@ -2344,9 +2499,16 @@ SegmentFileFillZero(File fd, int64 writeOffset)
 	errno = 0;
 	if (FileSync(fd) != 0) 
 	{
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): could not fsync file : %m")));
+				 errmsg("mirror failure, "
+						"could not zero segment file, "
+						"could not fsync file fd '%d' : %m, "
+						"failover requested",
+						fd),
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
+				 FileRep_errcontext()));					
+
 		status = STATUS_ERROR;
 	}
 	
@@ -2375,20 +2537,21 @@ FileRepMirror_Drop(FileName fileName)
 		if (fd < 0 && errno == ENOENT) 
 		{
 			fd = 0;
-			ereport(LOG,
-					(errcode_for_file_access(),
-					 errmsg("LOG(filerep): file was already dropped identifier:'%s' : %m", 
-							fileName)));
 			return status;
 		}							
 		
 		if (fd < 0) 
 		{
-			status = STATUS_ERROR;
-			ereport(LOG,
+			ereport(WARNING,
 					(errcode_for_file_access(),
-					 errmsg("ERROR(filerep): could not open file to issue drop:'%s' : %m", 
-							fileName)));
+					 errmsg("mirror failure, "
+							"could not open file '%s' to issue drop : %m, "
+							"failover requested",
+							fileName),
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
+					 FileRep_errcontext()));								
+			
+			status = STATUS_ERROR;
 			
 			return status;
 		}	
@@ -2435,7 +2598,6 @@ FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName, int segmentFileNum)
 			
 			if (strncmp(match, tmp, constantPrefixLen) != 0)
 			{
-				elog(LOG, "LOG(filerep): File name pattern problem prefix:'%s' ", tmp);
 				continue;
 			}
 			
@@ -2443,7 +2605,6 @@ FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName, int segmentFileNum)
 			
 			if (segmentFileNumLocal <= 0)
 			{
-				elog(LOG, "LOG(filerep): Invalid segment file num:'%u' ", segmentFileNumLocal);
 				continue;
 			}
 			

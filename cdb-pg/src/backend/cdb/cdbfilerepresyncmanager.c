@@ -278,6 +278,8 @@ FileRepResync_GetEndFullResyncLSN(void)
 void
 FileRepResyncManager_SetEndResyncLSN(XLogRecPtr endResyncLSN)
 {
+	char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+	
 	Assert(! (endResyncLSN.xlogid == 0 && endResyncLSN.xrecoff == 0));
 			   
 	if (isFullResync())
@@ -291,12 +293,14 @@ FileRepResyncManager_SetEndResyncLSN(XLogRecPtr endResyncLSN)
 		fileRepResyncShmem->endIncrResyncLSN.xrecoff = endResyncLSN.xrecoff;		
 	}
 	
-    elog(LOG, "FileRepResync_SetEndResyncLSN() isFullResync:'%d' lsn:'%u'/'%u' '%s'",
-		 isFullResync(),
-		 endResyncLSN.xlogid,
-		 endResyncLSN.xrecoff,
-		 XLogLocationToString(&endResyncLSN));
-
+	
+	snprintf(tmpBuf, sizeof(tmpBuf), "full resync '%s' resync lsn '%s(%u/%u)' ",
+			 (isFullResync() == TRUE) ? "true" : "false",
+			 XLogLocationToString(&endResyncLSN),
+			 endResyncLSN.xlogid,
+			 endResyncLSN.xrecoff);
+	
+	FileRep_InsertConfigLogEntry(tmpBuf);
 }
 
 void
@@ -435,14 +439,14 @@ FileRepResync_ShmemInit(void)
 	HASHCTL	hash_ctl;
 	bool	foundPtr;
 	
-	fileRepResyncShmem = (FileRepResyncShmem_s *) ShmemInitStruct("FileRep Resync", 
+	fileRepResyncShmem = (FileRepResyncShmem_s *) ShmemInitStruct("filerep resync", 
 																  sizeof(FileRepResyncShmem_s),
 																  &foundPtr);
 	  
 	if (fileRepResyncShmem == NULL) {
 		ereport(ERROR,
 		  (errcode(ERRCODE_OUT_OF_MEMORY),
-		   (errmsg("Not enough shared memory for Mirroring."))));
+		   (errmsg("not enough shared memory to run resynchronization"))));
 	}	
   
 	if (! foundPtr) 
@@ -480,7 +484,7 @@ FileRepResync_ShmemInit(void)
 	hash_ctl.entrysize = sizeof(FileRepResyncHashEntry_s);
 	hash_ctl.hash = string_hash;
 	
-	fileRepResyncShmem->fileRepResyncHash = ShmemInitHash("FileRep Resync Hash",
+	fileRepResyncShmem->fileRepResyncHash = ShmemInitHash("filerep resync hash",
 														  FILEREP_MAX_RESYNC_FILES,
 														  FILEREP_MAX_RESYNC_FILES,
 														  &hash_ctl,
@@ -490,7 +494,7 @@ FileRepResync_ShmemInit(void)
 	{
 		ereport(ERROR, 
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 (errmsg("Not enough shared memory for FileRep Resync."))));
+				 (errmsg("not enough shared memory to run resynchronization"))));
 	}
 	
 	return;						  
@@ -508,7 +512,7 @@ FileRepResync_ShmemReInit(void)
 	if (fileRepResyncShmem == NULL) {
 		ereport(ERROR,
 		  (errcode(ERRCODE_OUT_OF_MEMORY),
-		   (errmsg("Not enough shared memory for Mirroring."))));
+		   (errmsg("not enough shared memory to run resynchronization"))));
 	}	
 	
 	fileRepResyncShmem->appendOnlyCommitCount = 0;
@@ -540,7 +544,7 @@ FileRepResync_ShmemReInit(void)
 	{
 		ereport(ERROR, 
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 (errmsg("Not enough shared memory for FileRep Resync."))));
+				 (errmsg("not enough shared memory to run resynchronization"))));
 	}
 	
 	FileRepResync_LockAcquire();
@@ -581,9 +585,6 @@ FileRepResync_Cleanup(void)
 	
 	while ((entry = (FileRepResyncHashEntry_s *) hash_seq_search(&hash_status)) != NULL) {
 		
-		elog(LOG, "LOG(filerep) FileRepResync_Cleanup() mirror relation path:'%s' ",
-			 entry->fileName);
-			 
 		FileRepResync_RemoveEntry(entry->fileName);
 		UnlockRelationForResynchronize(
 									   &entry->relFileNode, 
@@ -612,8 +613,8 @@ FileRepPrimary_StartResyncManager(void)
 	int	status = STATUS_OK;
 	bool isLastLocTracked = FALSE;
 	
-	elog(LOG, "FileRepPrimary_StartResyncManager()");
-	
+	FileRep_InsertConfigLogEntry("start resync manager");
+
 	Insist(fileRepRole == FileRepPrimaryRole);
 
 	Insist(dataState == DataStateInResync);
@@ -737,11 +738,19 @@ FileRepPrimary_StartResyncManager(void)
 			continue;
 		}
 		
+		ereport(LOG,
+				(errmsg("mirror transition to sync completed, "
+						"primary address(port) '%s(%d)' mirror address(port) '%s(%d)' ",
+				 fileRepPrimaryHostAddress, 
+				 fileRepPrimaryPort,
+				 fileRepMirrorHostAddress, 
+				 fileRepMirrorPort),			
+				 FileRep_errcontext()));		
 		break;
 		
 	} // while(1)	
 	
-	elog(LOG, "FileRepPrimary_StartResyncManager() END");
+	FileRep_InsertConfigLogEntry("resync manager completed");
 
 }
 
@@ -753,17 +762,19 @@ FileRepResyncManager_InResyncTransition(void)
 {
 	int status = STATUS_OK;
 	
-	elog(LOG, "FileRepResyncManager_InResyncTransition()");
+	FileRep_InsertConfigLogEntry("run resync transition");
 
 	if (LWLockHeldByMe(MirroredLock))
-		elog(ERROR, "FileRep Manager already holding the MirroredLock");
+		ereport(ERROR, 
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 (errmsg("'MirroredLock' is already held by primary resync manager process"))));
 	
 	LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
 	
 	/* database transitions to suspended state, IO activity on the segment is suspended */
 	primaryMirrorSetIOSuspended(TRUE);
 	
-	elog(LOG, "FileRepResyncManager_InResyncTransition() ChangeTracking_RecordLastChangeTrackedLoc");
+	FileRep_InsertConfigLogEntry("run resync transition, record last lsn in change tracking");
 
 	ChangeTracking_RecordLastChangeTrackedLoc();
 	
@@ -782,9 +793,9 @@ FileRepResyncManager_InResyncTransition(void)
 	
 	if (isFullResync())
 	{
-		PersistentFileSysObj_MarkWholeMirrorFullCopy();
-		elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MarkWholeMirrorFullCopy");
+		FileRep_InsertConfigLogEntry("run resync transition, mark full copy");
 
+		PersistentFileSysObj_MarkWholeMirrorFullCopy();
 	}
 	else
 	{
@@ -798,6 +809,8 @@ FileRepResyncManager_InResyncTransition(void)
 		 * as 'Scan incremental' because we don't know how to process old changes in
 		 * the change tracking log.
 		 */
+		FileRep_InsertConfigLogEntry("run resync transition, mark scan incremental");
+		
 		PersistentFileSysObj_MarkSpecialScanIncremental();
 
 		/*
@@ -805,14 +818,16 @@ FileRepResyncManager_InResyncTransition(void)
 		 * log as 'Page Incremental', except those relations marked 'Scan Incremental' in the
 		 * first step.
 		 */
+		FileRep_InsertConfigLogEntry("run resync transition, mark page incremental");
+		
 		PersistentFileSysObj_MarkPageIncrementalFromChangeLog();
 
 		/*
 		 * Finally, find any Append-Only tables that have mirror data loss.
 		 */
-		PersistentFileSysObj_MarkAppendOnlyCatchup();
+		FileRep_InsertConfigLogEntry("run resync transition, mark append only incremental");
 
-		elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MarkPageIncrementalFromChangeLog");
+		PersistentFileSysObj_MarkAppendOnlyCatchup();
 	}
 	
 	FileRepSubProcess_ProcessSignals();
@@ -831,9 +846,10 @@ FileRepResyncManager_InResyncTransition(void)
 								   ""); // tableName
 #endif
 	
-	PersistentFileSysObj_MirrorReCreate();	
-	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MirrorReCreate DONE");
+	FileRep_InsertConfigLogEntry("run resync transition, mirror recreate");	
 	
+	PersistentFileSysObj_MirrorReCreate();	
+		
 	FileRepSubProcess_ProcessSignals();
 	if (! ((segmentState == SegmentStateInResyncTransition ||
 			segmentState == SegmentStateReady) &&
@@ -852,8 +868,9 @@ FileRepResyncManager_InResyncTransition(void)
 								   ""); // tableName
 #endif
 	
+	FileRep_InsertConfigLogEntry("run resync transition, mark mirror recreated");	
+	
 	PersistentFileSysObj_MarkMirrorReCreated();
-	elog(LOG, "FileRepResyncManager_InResyncTransition() PersistentFileSysObj_MarkMirrorReCreated DONE");
 	
 	FileRepSubProcess_ProcessSignals();
 	if (! (segmentState == SegmentStateReady &&
@@ -869,10 +886,9 @@ FileRepResyncManager_InResyncTransition(void)
 								   "",	// databaseName
 								   ""); // tableName
 #endif		
-	
+	FileRep_InsertConfigLogEntry("run resync transition, mark transition to resync completed");	
+
 	ChangeTracking_MarkTransitionToResyncCompleted();
-	
-	elog(LOG, "FileRepResyncManager_InResyncTransition() ChangeTracking_MarkTransitionToResyncCompleted DONE");	
 	
 	FileRepSubProcess_ProcessSignals();
 	if (! (segmentState == SegmentStateReady &&
@@ -904,12 +920,12 @@ FileRepPrimary_RunResyncManager(void)
 	FileRepResyncHashEntry_s	entry;
 	ResynchronizeScanToken		token;
 	
-	elog(LOG, "FileRepPrimary_RunResyncManager()");
+	FileRep_InsertConfigLogEntry("run resync manager");
 
 	PersistentFileSysObj_MirrorReDrop();
 	
-	elog(LOG, "FileRepPrimary_RunResyncManager() PersistentFileSysObj_MirrorReDrop DONE");
-	
+	FileRep_InsertConfigLogEntry("run resync manager, redrop completed");
+
 	ResynchronizeScanToken_Init(&token);
 	
 	/* set start resync time required for reporting */
@@ -973,14 +989,14 @@ FileRepPrimary_RunResyncManager(void)
 				break;
 			}				
 			
-			elog(LOG, "FileRepPrimary_RunResyncManager() PersistentFileSysObj_ResynchronizeScan DONE, append only commit count:'%d' ",
-				 fileRepResyncShmem->appendOnlyCommitCount);
-			
 			LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
 			mirroredLock = TRUE;
 						
 			if (fileRepResyncShmem->appendOnlyCommitCount == 0)
 			{
+				
+				FileRep_InsertConfigLogEntry("run resync transition, mark append only incremental");
+			
 				PersistentFileSysObj_MarkAppendOnlyCatchup();
 				ResynchronizeScanToken_Init(&token);
 								
@@ -997,6 +1013,8 @@ FileRepPrimary_RunResyncManager(void)
 				 */
 				pg_usleep(100000L);  // 100ms
 				
+				FileRep_InsertConfigLogEntry("run resync transition, mark append only incremental");
+
 				LWLockAcquire(MirroredLock, LW_EXCLUSIVE);
 				PersistentFileSysObj_MarkAppendOnlyCatchup();
 				LWLockRelease(MirroredLock);
@@ -1016,14 +1034,15 @@ FileRepPrimary_RunResyncManager(void)
 		{
 			if  (entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_BufferPoolPageIncremental)
 			{
-				ereport(ERROR,
-						(errcode_for_file_access(),
-						 errmsg("unexpected mirror synchronization state during full resynchronization"
-								"relation path to be resynchronized:'%s' "
-								"relStorageMgr:'%s(%d)' mirrorDataSynchronizationState:'%s(%d)' "
-								"AppendOnlyLossEof:" INT64_FORMAT " "
-								"AppendOnlyNewEof:" INT64_FORMAT " "
-								"mirrorBufpoolResyncChangedPageCount:" INT64_FORMAT " ", 
+				ereport(WARNING,
+						(errmsg("resync failure, "
+								"unexpected mirror synchronization state during full resynchronization, "
+								"failover requested, "
+								"relation path to be resynchronized '%s' "
+								"relation storage manager '%s(%d)' mirror synchronization state '%s(%d)' "
+								"append only loss eof " INT64_FORMAT " "
+								"append only new eof " INT64_FORMAT " "
+								"mirror buffer pool resync changed page count " INT64_FORMAT " ",
 								entry.fileName, 
 								PersistentFileSysRelStorageMgr_Name(entry.relStorageMgr),
 								entry.relStorageMgr,
@@ -1031,7 +1050,10 @@ FileRepPrimary_RunResyncManager(void)
 								entry.mirrorDataSynchronizationState,
 								entry.mirrorAppendOnlyLossEof,
 								entry.mirrorAppendOnlyNewEof,
-								entry.mirrorBufpoolResyncChangedPageCount)));
+								entry.mirrorBufpoolResyncChangedPageCount),
+						errhint("run gprecoverseg -F again to re-establish mirror connectivity")));
+				
+				FileRepSubProcess_SetState(FileRepStateFault);
 			}
 		}
 		
@@ -1075,25 +1097,26 @@ FileRepPrimary_RunResyncManager(void)
 								
 		FileRepResync_InsertEntry(&entry);
 
-		elog(LOG, "FileRepPrimary_RunResyncManager() mirror relation path:'%s' index:'%d' "
-				 "relStorageMgr:'%s(%d)' mirrorDataSynchronizationState:'%s(%d)' "
-				 "ResyncCkptLoc:'%d/%d' "
-				 "ResyncCkptBlockNum:'%u' "
-				 "AppendOnlyLossEof:" INT64_FORMAT " "
-				 "AppendOnlyNewEof:" INT64_FORMAT " "
-				 "mirrorBufpoolResyncChangedPageCount:" INT64_FORMAT " ", 
-				 entry.fileName, ii++,
-				 PersistentFileSysRelStorageMgr_Name(entry.relStorageMgr),
-			     entry.relStorageMgr,
-				 MirroredRelDataSynchronizationState_Name(entry.mirrorDataSynchronizationState),
-				 entry.mirrorDataSynchronizationState,
-				 entry.mirrorBufpoolResyncCkptLoc.xlogid,
-				 entry.mirrorBufpoolResyncCkptLoc.xrecoff,
-				 entry.mirrorBufpoolResyncCkptBlockNum,
-				 entry.mirrorAppendOnlyLossEof,
-				 entry.mirrorAppendOnlyNewEof,
-				 entry.mirrorBufpoolResyncChangedPageCount);
-		
+		{
+			char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+			
+			snprintf(tmpBuf, sizeof(tmpBuf), 
+					 "resync running identifier'%s' index '%d' rel storage mgr '%s(%d)' mirror sync state:'%s(%d)' resync ckpt lsn '%d/%d' resync ckpt blkno '%u' ao loss eof " INT64_FORMAT " ao new eof " INT64_FORMAT " changed page count " INT64_FORMAT " ",
+					 entry.fileName, 
+					 ii++,
+					 PersistentFileSysRelStorageMgr_Name(entry.relStorageMgr),
+					 entry.relStorageMgr,
+					 MirroredRelDataSynchronizationState_Name(entry.mirrorDataSynchronizationState),
+					 entry.mirrorDataSynchronizationState,
+					 entry.mirrorBufpoolResyncCkptLoc.xlogid,
+					 entry.mirrorBufpoolResyncCkptLoc.xrecoff,
+					 entry.mirrorBufpoolResyncCkptBlockNum,
+					 entry.mirrorAppendOnlyLossEof,
+					 entry.mirrorAppendOnlyNewEof,
+					 entry.mirrorBufpoolResyncChangedPageCount);
+			
+			FileRep_InsertConfigLogEntry(tmpBuf);
+		}		
 	}
 	
 	FileRepResync_Cleanup();
@@ -1109,13 +1132,22 @@ FileRepResyncManager_InSyncTransition(void)
 {	
 	int			status = STATUS_OK;
 	
-	elog(LOG, "FileRepResyncManager_InSyncTransition()");
+	FileRep_InsertConfigLogEntry("run resync sync transition");
+
+	
+#ifdef FAULT_INJECTOR	
+	FaultInjector_InjectFaultIfSet(
+								   FileRepTransitionToInSyncBegin, 
+								   DDLNotSpecified,
+								   "",	// databaseName
+								   ""); // tableName
+#endif	
 	
 	while (1) {
 		/*
 		 * (MirroredLock, LW_EXCLUSIVE) is acquired and released in CreateCheckPoint
 		 */
-		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestCheckpoint() BEGIN");
+		FileRep_InsertConfigLogEntry("run sync transition, request checkpoint");
 		
 		MirroredFlatFile_DropFilesFromDir();
 		
@@ -1129,20 +1161,21 @@ FileRepResyncManager_InSyncTransition(void)
 		 */
 		CreateCheckPoint(false, true);
 		
-		elog(LOG, "FileRepResyncManager_InSyncTransition() RequestCheckpoint() END");
-		
 		FileRepSubProcess_ProcessSignals();
 		if (! (FileRepSubProcess_GetState() == FileRepStateReady &&
 			   dataState == DataStateInSync))
 		{
 			break;
-		}				
+		}		
+		
+		FileRep_InsertConfigLogEntry("run sync transition, mirror to sync transition");
+
 		FileRepPrimary_MirrorInSyncTransition();
 		
+		FileRep_InsertConfigLogEntry("run sync transition, mark transition to sync completed");
+
 		ChangeTracking_MarkTransitionToInsyncCompleted();
 		
-		elog(LOG, "FileRepResyncManager_InSyncTransition() ChangeTracking_MarkTransitionToInsyncCompleted DONE");	
-
 #ifdef FAULT_INJECTOR	
 		FaultInjector_InjectFaultIfSet(
 									   FileRepTransitionToInSyncMarkCompleted, 
@@ -1167,8 +1200,6 @@ FileRepResyncManager_ResyncFlatFiles(void)
 	
 	FileRep_SetSegmentState(SegmentStateInSyncTransition);
 	
-	elog(LOG, "FileRepResyncManager_ResyncFlatFiles()");
-	
 #ifdef FAULT_INJECTOR	
 	FaultInjector_InjectFaultIfSet(
 								   FileRepTransitionToInSync, 
@@ -1179,9 +1210,9 @@ FileRepResyncManager_ResyncFlatFiles(void)
 	
 	while (1) 
 	{
-	
+		FileRep_InsertConfigLogEntry("run sync transition, resync pg_control file");
+
 		status = XLogRecoverMirrorControlFile();
-		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() XLogRecoverMirrorControlFile");
 		
 		if (status != STATUS_OK) {
 			break;
@@ -1191,17 +1222,16 @@ FileRepResyncManager_ResyncFlatFiles(void)
 		if (segmentState != SegmentStateInSyncTransition) {
 			break;
 		}		
-		
 		MirroredFlatFile_MirrorDropTemporaryFiles();
-		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() MirroredFlatFile_MirrorDropTemporaryFiles");
-				
+		FileRep_InsertConfigLogEntry("run sync transition, resync drop temporary files");
+
 		FileRepSubProcess_ProcessSignals();
 		if (segmentState != SegmentStateInSyncTransition) {
 			break;
 		}		
 		
 		status = FlatFilesTemporaryResynchronizeMirror();
-		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() FlatFilesTemporaryResynchronizeMirror");
+		FileRep_InsertConfigLogEntry("run sync transition, resync temporary files");
 		
 		if (status != STATUS_OK) {
 			break;
@@ -1212,8 +1242,9 @@ FileRepResyncManager_ResyncFlatFiles(void)
 			break;
 		}		
 		
+		FileRep_InsertConfigLogEntry("run sync transition, resync pg_database and pg_auth files");
+
 		status = FlatFilesRecoverMirror();
-		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() FlatFilesRecoverMirror");
 		
 		if (status != STATUS_OK) {
 			break;
@@ -1224,8 +1255,9 @@ FileRepResyncManager_ResyncFlatFiles(void)
 			break;
 		}		
 		
+		FileRep_InsertConfigLogEntry("run sync transition, resync pg_twophase files");
+
 		status = TwoPhaseRecoverMirror();
-		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() TwoPhaseRecoverMirror");
 		
 		if (status != STATUS_OK) {
 			break;
@@ -1236,8 +1268,9 @@ FileRepResyncManager_ResyncFlatFiles(void)
 			break;
 		}	
 		
+		FileRep_InsertConfigLogEntry("run sync transition, resync slru files");
+
 		status = SlruRecoverMirror();
-		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() SlruRecoverMirror");
 		
 		if (status != STATUS_OK) {
 			break;
@@ -1248,8 +1281,9 @@ FileRepResyncManager_ResyncFlatFiles(void)
 			break;
 		}	
 		
+		FileRep_InsertConfigLogEntry("run sync transition, resync pgversion files");
+
 		status = PgVersionRecoverMirror();
-		elog(LOG, "FileRepResyncManager_ResyncFlatFiles() PgVersionRecoverMirror");
 		
 		if (status != STATUS_OK) {
 			break;
@@ -1286,7 +1320,8 @@ FileRepResync_InsertEntry(
 	
 	snprintf(key, sizeof(key), "%s", entry->fileName);
 	
-	elog(LOG, "FileRepResync_InsertEntry() identifier:'%s'  ", key);
+	if (Debug_filerep_print)
+		elog(LOG, "FileRepResync_InsertEntry() identifier:'%s'  ", key);
 	
 	FileRepResync_LockAcquire();
 	
@@ -1301,21 +1336,28 @@ FileRepResync_InsertEntry(
 	if (entryLocal == NULL) {
 		
 		status = STATUS_ERROR;
-		ereport(LOG, 
-				(errmsg("ERROR(filerep): could not insert resync information into hash table, no memory "
-						"identifier:'%s' ",
-						key)));
+		ereport(WARNING, 
+				(errmsg("resync failure, "
+						"could not insert resync information into hash table identifier '%s', no memory "
+						"failover requested", 
+						key), 
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
+				 FileRep_errcontext()));		
 		goto exit;
 	}
 	
 	if (foundPtr) {
 		
 		status = STATUS_ERROR;
-		ereport(LOG, 
-				(errmsg("LOG(filerep): could not insert resync information into hash table, "
-						"entry is already inserted "
-						"identifier:'%s' ",
-						key)));
+		ereport(WARNING, 
+				(errmsg("resync failure, "
+						"could not insert resync information into hash table identifier '%s', entry exists "
+						"failover requested", 
+						key), 
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
+				 FileRep_errcontext()));		
+		
+		
 	} else {
 		
 		entryLocal->relFileNode.relNode = entry->relFileNode.relNode;
@@ -1366,15 +1408,13 @@ FileRepResync_LookupEntry(FileName fileName)
 													 HASH_ENTER_NULL, 
 													 &foundPtr);
 	
-	if (entry != NULL) {
-		elog(DEBUG1, "FileRepResync_LookupEntry() identifier:'%s'", 
-			 fileName);
-	} else {
-		elog(LOG, "could not find resync entry identifier:'%s' ", fileName);
+	if (Debug_filerep_print)
+	{
+		if (entry == NULL) 
+			elog(LOG, "FileRepResync_LookupEntry() could not find resync entry identifier:'%s' ", fileName);
 	}
 	
 	return entry;							  
-	
 }
 
 static bool
@@ -1443,7 +1483,7 @@ FileRepResync_CheckProgress(void)
 					{
 						Assert(0);
 					}
-					
+										
 					fileRepResyncShmem->blocksSynchronized += entry->mirrorBufpoolResyncChangedPageCount;
 					
 					if (Debug_filerep_print)
@@ -1480,6 +1520,15 @@ FileRepResync_CheckProgress(void)
 		}
 	}
 
+#ifdef FAULT_INJECTOR	
+	if (fileRepResyncShmem->resyncInProgressCount > 10)
+		FaultInjector_InjectFaultIfSet(
+									   FileRepResyncInProgress, 
+									   DDLNotSpecified,
+									   "",	// databaseName
+									   ""); // tableName
+#endif		
+	
 	countProgress = fileRepResyncShmem->resyncCompletedCount + 
 					fileRepResyncShmem->writeCount + 
 					fileRepResyncShmem->resyncInProgressCount;

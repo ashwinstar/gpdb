@@ -89,8 +89,6 @@ static void
 FileRepSubProcess_SigHupHandler(SIGNAL_ARGS)
 {
 	reloadConfigFile = true;
-	elog(DEBUG1, "FileRepSubProcess_SigHupHandler()");
-	
 }
 
 /* 
@@ -99,7 +97,6 @@ FileRepSubProcess_SigHupHandler(SIGNAL_ARGS)
 static void 
 FileRepSubProcess_ImmediateShutdownHandler(SIGNAL_ARGS)
 {
-	elog(DEBUG1, "FileRepSubProcess_ImmediateShutdownHandler()");
     quickdie(PASS_SIGNAL_ARGS);
 }
 
@@ -140,24 +137,26 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 			}
 			
 		}
-			
-		/* temporary workaround for gcov testing */
-		if (Debug_filerep_gcov && fileRepProcessType == FileRepProcessTypePrimaryConsumerAck)
-		{
-			getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, &isInTransition, &dataStateTransition);
-			
-			if (isInTransition == TRUE &&
-				dataStateTransition == DataStateInChangeTracking)
-			{	
-				proc_exit(0);
-				return;
-			}
-		}
-		
+					
 		/* call the normal postgres die so that it requests query cancel/procdie */
 		die(PASS_SIGNAL_ARGS);
     }
-
+	
+	/* temporary workaround for gcov testing */
+	if (Debug_filerep_gcov && 
+		(fileRepProcessType == FileRepProcessTypePrimaryConsumerAck ||
+		 fileRepProcessType == FileRepProcessTypePrimaryReceiverAck))
+	{
+		getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, &isInTransition, &dataStateTransition);
+		
+		if (isInTransition == TRUE &&
+			dataStateTransition == DataStateInChangeTracking)
+		{	
+			proc_exit(0);
+			return;
+		}
+	}	
+	
 	elog(DEBUG1, "FileRepSubProcess_ShutdownHandler()");
 }
 
@@ -169,7 +168,6 @@ static void
 FileRepSubProcess_FileRepStateHandler(SIGNAL_ARGS)
 {
 	++stateChangeRequestCounter;
-	elog(DEBUG1, "FileRepSubProcess_FileRepStateHandler()");	
 }
 
 /*
@@ -181,12 +179,16 @@ FileRepSubProcess_ProcessSignals()
 {
 	bool processExit = false;
 
-	if (reloadConfigFile) {
+	if (reloadConfigFile) 
+	{
 		reloadConfigFile = false;
 		ProcessConfigFile(PGC_SIGHUP);
+		
+		FileRep_SetFileRepRetry(); 
 	}
 	
-	if (shutdownRequested) {
+	if (shutdownRequested) 
+	{
 	    SegmentState_e segmentState;
 		getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL);
 
@@ -249,8 +251,7 @@ FileRepSubProcess_ProcessSignals()
                 FileRepSubProcess_SetState(FileRepStateReady);
                 break;
 
-            case SegmentStateFault:
-                FileRep_ReportLog();
+            case SegmentStateFault:	
                 FileRepSubProcess_SetState(FileRepStateFault);
                 break;
 
@@ -275,16 +276,16 @@ FileRepSubProcess_ProcessSignals()
                 Assert(0);
                 break;
         } // switch()
-		
+				
 		if (processExit == true) 
 		{
 			FileRep_IpcSignalAll();
 		}
     }
-
+		
 	return(processExit);
 }
-
+	
 bool
 FileRepSubProcess_IsStateTransitionRequested(void)
 {
@@ -309,12 +310,8 @@ FileRepSubProcess_IsStateTransitionRequested(void)
 			if (segmentState == SegmentStateShutdownFilerepBackends && 
 				fileRepShmemArray[0]->state == FileRepStateFault)
 			{
-				if (Debug_filerep_print)
-					ereport(WARNING,
-							(errmsg("failure is detected in segment mirroring during backend shutdown, "
-									"abort requested (%d)",
-									getpid())));
-				
+				FileRep_InsertConfigLogEntry("failure is detected in segment mirroring during backend shutdown, abort requested");
+
 				LWLockReleaseAll();
 				proc_exit(0);
 			}
@@ -347,11 +344,9 @@ FileRepSubProcess_IsStateTransitionRequested(void)
 			break;
 	}
 	
-	if (Debug_filerep_print && isStateTransitionRequested)
+	if (isStateTransitionRequested)
 	{
-		ereport(LOG,
-				(errmsg("state transition requested "),
-				 FileRep_errcontext()));		
+		FileRep_InsertConfigLogEntry("state transition requested ");
 	}
 	return isStateTransitionRequested;
 }
@@ -404,10 +399,14 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
             switch (fileRepStateLocal) 
 			{
                 case FileRepStateNotInitialized:
-                    Assert(0);
-					ereport(LOG,
-							(errmsg("unexpected filerep state transition from '%s' to '%s' ",
-									FileRepStateToString[fileRepState], FileRepStateToString[fileRepStateLocal])));
+					ereport(WARNING,
+							(errmsg("mirror failure, "
+									"unexpected filerep state transition from '%s' to '%s' "
+									"failover requested",
+									FileRepStateToString[fileRepState], 
+									FileRepStateToString[fileRepStateLocal]),
+							 errhint("run gprecoverseg to re-establish mirror connectivity")));
+
 					fileRepState = FileRepStateFault;							 
 					break;
 					
@@ -425,10 +424,14 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
                     fileRepState = fileRepStateLocal;
                     break;
                 case FileRepStateNotInitialized:
-                    Assert(0);
-					ereport(LOG,
-							(errmsg("unexpected filerep state transition from '%s' to '%s' ",
-							 FileRepStateToString[fileRepState], FileRepStateToString[fileRepStateLocal])));
+					ereport(WARNING,
+							(errmsg("mirror failure, "
+									"unexpected filerep state transition from '%s' to '%s' "
+									"failover requested",
+									FileRepStateToString[fileRepState], 
+									FileRepStateToString[fileRepStateLocal]),
+							 errhint("run gprecoverseg to re-establish mirror connectivity")));
+					
 					fileRepState = FileRepStateFault;
                     break;
                 case FileRepStateInitialization:
@@ -452,10 +455,14 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
                 case FileRepStateNotInitialized:
                 case FileRepStateInitialization:
                 case FileRepStateReady:
-                    Assert(0);
-					ereport(LOG,
-							(errmsg("unexpected filerep state transition from '%s' to '%s' ",
-							FileRepStateToString[fileRepState], FileRepStateToString[fileRepStateLocal])));
+					ereport(WARNING,
+							(errmsg("mirror failure, "
+									"unexpected filerep state transition from '%s' to '%s' "
+									"failover requested",
+									FileRepStateToString[fileRepState], 
+									FileRepStateToString[fileRepStateLocal]),
+							 errhint("run gprecoverseg to re-establish mirror connectivity")));
+					
 					fileRepState = FileRepStateFault;
 									  
                     break;
@@ -477,10 +484,13 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
                 case FileRepStateNotInitialized:
                 case FileRepStateInitialization:
                 case FileRepStateReady:
-                    Assert(0);
-					ereport(LOG,
-						 (errmsg("unexpected filerep state transition from '%s' to '%s' ",
-					 	 FileRepStateToString[fileRepState], FileRepStateToString[fileRepStateLocal])));
+					ereport(WARNING,
+							(errmsg("mirror failure, "
+									"unexpected filerep state transition from '%s' to '%s' "
+									"failover requested",
+									FileRepStateToString[fileRepState], 
+									FileRepStateToString[fileRepStateLocal]),
+							 errhint("run gprecoverseg to re-establish mirror connectivity")));
 					fileRepState = FileRepStateFault;
 									  
                 case FileRepStateFault:
@@ -534,9 +544,7 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
 	/* report the change */
 	if (fileRepState != FileRepStateShutdown)
 	{
-		elog(LOG, "FileRepSubProcess_SetState() state:'%s' MyProcPid:'%d'", 
-			FileRepStateToString[FileRepSubProcess_GetState()],
-			getpid());
+		FileRep_InsertConfigLogEntry("set filerep state");
 	}
 	
 }
@@ -752,24 +760,19 @@ FileRepSubProcess_Main()
 	
 	/* Create the memory context where cross-transaction state is stored */
 	fileRepSubProcessMemoryContext = AllocSetContextCreate(TopMemoryContext,
-										 "FileRep SubProcess memory context",
+										 "filerep subprocess memory context",
 										 ALLOCSET_DEFAULT_MINSIZE,
 										 ALLOCSET_DEFAULT_INITSIZE,
 										 ALLOCSET_DEFAULT_MAXSIZE);
 	
 	MemoryContextSwitchTo(fileRepSubProcessMemoryContext);
 	
-	elog(LOG, "FileRepSubProcess_Main() MyProcPid:%d (%s) MyProc->pid:%d", 
-		 getpid(), 
- 		 FileRepProcessTypeToString[fileRepProcessType], 
-		 MyProc->pid);
-	
 	stateChangeRequestCounter++;
 	
 	FileRepSubProcess_ProcessSignals();
 	
-	switch (fileRepProcessType) {
-	
+	switch (fileRepProcessType) 
+	{
 		case FileRepProcessTypePrimarySender:
 			FileRepPrimary_StartSender();
 			break;
@@ -833,8 +836,9 @@ FileRepSubProcess_Main()
 				 statmsg, fileRepProcessType);
 			break;
 	}
-
-	switch (FileRepSubProcess_GetState()) {
+		
+	switch (FileRepSubProcess_GetState()) 
+	{
 		case FileRepStateShutdown:
 		case FileRepStateReady:
 			proc_exit(0);

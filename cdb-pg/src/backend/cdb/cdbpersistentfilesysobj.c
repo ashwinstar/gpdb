@@ -5578,7 +5578,16 @@ void PersistentFileSysObj_MarkPageIncrementalFromChangeLog(void)
 		
 		Assert(incrementalChangeList->entries[i].numblocks > 0);
 		
-		elog(LOG, "marking page incremental for SN " INT64_FORMAT, incrementalChangeList->entries[i].persistentSerialNum);
+		{
+			char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+			
+			snprintf(tmpBuf, sizeof(tmpBuf), 
+					 "marking page incremental for serial number '" INT64_FORMAT "' ",
+					 incrementalChangeList->entries[i].persistentSerialNum);
+			
+			FileRep_InsertConfigLogEntry(tmpBuf);				
+		}					
+		
 		PersistentFileSysObj_MarkPageIncremental(
 											&incrementalChangeList->entries[i].persistentTid,
 											incrementalChangeList->entries[i].persistentSerialNum,

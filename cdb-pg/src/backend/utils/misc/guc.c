@@ -298,6 +298,8 @@ bool 		Debug_print_xlog_relation_change_info_backtrace_skip_issues = false;
 bool		Debug_filerep_crc_on = true;
 bool		Debug_filerep_print = false;
 bool		Debug_filerep_gcov = false;
+bool		Debug_filerep_config_print = false;
+bool		Debug_filerep_memory_log_flush = false;
 bool		filerep_inject_listener_fault = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
@@ -2228,7 +2230,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_persistent_recovery_print,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 					
 	{
@@ -2610,6 +2612,26 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_filerep_gcov,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_filerep_config_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("enable filerep config logs"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_filerep_config_print,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_filerep_memory_log_flush", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("enable filerep config logs"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_filerep_memory_log_flush,
 		false, NULL, NULL
 	},
 
@@ -3727,12 +3749,12 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"gp_segment_connect_timeout", PGC_USERSET, GP_ARRAY_TUNING,
-			gettext_noop("Maximum time (in seconds) allowed for a new worker process to start."),
+			gettext_noop("Maximum time (in seconds) allowed for a new worker process to start or a mirror to respond."),
 			gettext_noop("0 indicates 'wait forever'."),
 			GUC_UNIT_S
 		},
 		&gp_segment_connect_timeout,
-		60, 0, INT_MAX, NULL, NULL
+		180, 0, INT_MAX, NULL, NULL
 	},
 
 	{
@@ -4094,15 +4116,6 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&file_rep_ack_buffer_size,
 		524288, 131072, 1048576, NULL, NULL
-	},
-
-	{
-		{"gp_mirror_inactivity_timeout", PGC_POSTMASTER, GP_ARRAY_TUNING,
-			gettext_noop("If a mirror does not respond in this time (in seconds), it is deemed inactive or down."),
-			NULL,
-		},
-		&gp_mirror_inactivity_timeout,
-		180, 60, 1200, NULL, NULL
 	},
 
 	{

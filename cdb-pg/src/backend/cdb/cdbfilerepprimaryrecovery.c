@@ -38,7 +38,7 @@ static void FileRepPrimary_RunHeartBeat(void);
 void 
 FileRepPrimary_StartRecovery(void)
 {		
-	elog(LOG, "FileRepPrimary_StartRecovery()");
+	FileRep_InsertConfigLogEntry("start recovery");
 	
 	switch (dataState)
 	{
@@ -77,7 +77,7 @@ FileRepPrimary_StartRecoveryInSync(void)
 {	
 	int	status = STATUS_OK;
 	
-	elog(LOG, "FileRepPrimary_StartRecoveryInSync()");
+	FileRep_InsertConfigLogEntry("run recovery");
 	
 	while (1) {
 		
@@ -139,13 +139,12 @@ static int
 FileRepPrimary_RunRecoveryInSync(void)
 {	
 	int status = STATUS_OK;
-
-	elog(LOG, "FileRepPrimary_RunRecoveryInSync()");
+	
+	FileRep_InsertConfigLogEntry("run recovery of flat files");
 	
 	while (1) {
 		
 		status = XLogRecoverMirrorControlFile();
-		elog(DEBUG1, "FileRepPrimary_RunRecovery() XLogRecoverMirrorControlFile");
 		
 		if (status != STATUS_OK) {
 			break;
@@ -157,7 +156,6 @@ FileRepPrimary_RunRecoveryInSync(void)
 		}		
 		
 		status = XLogReconcileEofPrimary();
-		elog(DEBUG1, "FileRepPrimary_RunRecovery() XLogReconcileEofPrimary");
 		
 		if (status != STATUS_OK) {
 			break;
@@ -169,7 +167,6 @@ FileRepPrimary_RunRecoveryInSync(void)
 		}
 		
 		MirroredFlatFile_DropTemporaryFiles();
-		elog(DEBUG1, "FileRepPrimary_RunRecovery() MirroredFlatFile_DropTemporaryFiles");
 				
 		FileRepSubProcess_ProcessSignals();
 		if (FileRepSubProcess_GetState() != FileRepStateInitialization) {
@@ -177,7 +174,6 @@ FileRepPrimary_RunRecoveryInSync(void)
 		}				
 
 		MirroredFlatFile_MirrorDropTemporaryFiles();
-		elog(DEBUG1, "FileRepPrimary_RunRecovery() MirroredFlatFile_MirrorDropTemporaryFiles");
 
 		FileRepSubProcess_ProcessSignals();
 		if (FileRepSubProcess_GetState() != FileRepStateInitialization) {
@@ -185,7 +181,6 @@ FileRepPrimary_RunRecoveryInSync(void)
 		}						
 		
 		status = FlatFilesRecoverMirror();
-		elog(DEBUG1, "FileRepPrimary_RunRecovery() FlatFilesRecoverMirror");
 		
 		if (status != STATUS_OK) {
 			break;
@@ -197,7 +192,6 @@ FileRepPrimary_RunRecoveryInSync(void)
 		}		
 
 		status = TwoPhaseRecoverMirror();
-		elog(DEBUG1, "FileRepPrimary_RunRecovery() TwoPhaseRecoverMirror");
 
 		if (status != STATUS_OK) {
 			break;
@@ -209,7 +203,6 @@ FileRepPrimary_RunRecoveryInSync(void)
 		}	
 		
 		status = SlruRecoverMirror();
-		elog(DEBUG1, "FileRepPrimary_RunRecovery() SlruRecoverMirror");
 		
 		if (status != STATUS_OK) {
 			break;
@@ -219,19 +212,7 @@ FileRepPrimary_RunRecoveryInSync(void)
 		if (FileRepSubProcess_GetState() != FileRepStateInitialization) {
 			break;
 		}			
-		
-		status = PgVersionRecoverMirror();
-		elog(DEBUG1, "FileRepPrimary_RunRecovery() PgVersionRecoverMirror");
-		
-		if (status != STATUS_OK) {
-			break;
-		}
-		
-		FileRepSubProcess_ProcessSignals();
-		if (FileRepSubProcess_GetState() != FileRepStateInitialization) {
-			break;
-		}					
-		
+				
 		FileRepSubProcess_SetState(FileRepStateReady);
 		break;
 	}
@@ -252,7 +233,7 @@ FileRepPrimary_RunRecoveryInSync(void)
 static void 
 FileRepPrimary_StartRecoveryInChangeTracking(void)
 {		
-	elog(LOG, "FileRepPrimary_StartRecoveryInChangeTracking()");
+	FileRep_InsertConfigLogEntry("run recovery");
 	
 	while (1) {
 					
@@ -281,6 +262,7 @@ FileRepPrimary_StartRecoveryInChangeTracking(void)
 				isFullResync())
 			{
 				ChangeTracking_MarkFullResync();
+				/* segmentState == SegmentStateChangeTrackingDisabled */
 			}
 			else
 			{
@@ -293,6 +275,8 @@ FileRepPrimary_StartRecoveryInChangeTracking(void)
 				
 		/* NOTE: Any error during change tracking will result in disabling Change Tracking */
 		FileRepSubProcess_SetState(FileRepStateReady);
+				
+		FileRep_InsertConfigLogEntry("change tracking recovery completed");
 		
 		break;
 		
@@ -309,7 +293,7 @@ FileRepPrimary_RunChangeTrackingCompacting(void)
 {
 	int		retry = 0;
 	
-	elog(LOG, "FileRepPrimary_RunChangeTrackingCompacting()");
+	FileRep_InsertConfigLogEntry("run change tracking compacting");
 	
 	while (1) {
 		
@@ -351,8 +335,6 @@ static void
 FileRepPrimary_RunHeartBeat(void)
 {	
 	int retry = 0;
-	
-	elog(LOG, "FileRepPrimary_RunHeartBeat()");
 	
 	Insist(fileRepRole == FileRepPrimaryRole);
 	

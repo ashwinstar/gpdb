@@ -23,7 +23,7 @@ extern int	pq_putmessage(char msgtype, const char *s, size_t len);
 #include "cdb/cdbutil.h"            /* CdbComponentDatabaseInfo */
 #include "cdb/cdbvars.h"
 
-int		gp_segment_connect_timeout = 60;
+int		gp_segment_connect_timeout = 180;
 
 static void MPPnoticeReceiver(void * arg, const PGresult * res)
 {

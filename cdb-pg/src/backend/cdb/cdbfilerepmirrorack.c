@@ -8,6 +8,7 @@
 #include "postgres.h"
 
 #include <signal.h>
+#include <sys/time.h>
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbfilerepservice.h"
@@ -51,13 +52,13 @@ FileRepAckMirror_ConstructAndInsertMessage(
 			 FileRepAckState_e		fileRepAckState)
 {
 	
-	FileRepShmemMessageDescr_s	*fileRepShmemMessageDescr;
-	FileRepMessageHeader_s		*fileRepMessageHeader;
-	pg_crc32					*fileRepMessageHeaderCrc;
-	pg_crc32					fileRepMessageHeaderCrcLocal;
+	FileRepShmemMessageDescr_s	*fileRepShmemMessageDescr = NULL;
+	FileRepMessageHeader_s		*fileRepMessageHeader = NULL;
+	pg_crc32					*fileRepMessageHeaderCrc = 0;
+	pg_crc32					fileRepMessageHeaderCrcLocal = 0;
 	char*						msgPositionInsert = NULL;
-	uint32						msgLength;
-	uint32						spareField;
+	uint32						msgLength = 0;
+	uint32						spareField = 0;
 	
 	msgLength = sizeof(FileRepMessageHeader_s) + sizeof(pg_crc32);
 	/*
@@ -69,18 +70,21 @@ FileRepAckMirror_ConstructAndInsertMessage(
 	msgPositionInsert = FileRepAck_ReserveShmem(msgLength, &spareField);
 	
 	if (msgPositionInsert == NULL) {
-		ereport(LOG,
-				(errmsg("ERROR(filerep): could not queue ack message to primary"),
+		
+		ereport(WARNING,	
+				(errmsg("mirror failure, "
+						"could not queue ack message to be sent to primary, "
+						"failover requested"),  	
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
 				 FileRep_errdetail(fileRepIdentifier,
 								   fileRepRelationType,
-								   fileRepOperation),
+								   fileRepOperation,
+								   FILEREP_UNDEFINED),
 				 FileRep_errdetail_ShmemAck(),
-				 FileRep_errcontext()));							
-
+				 FileRep_errcontext()));	
+		
 		return STATUS_ERROR;
 	}
-	
-	/* Construct FileRepMessageHeader_s */
 	
 	fileRepMessageHeader = 
 	(FileRepMessageHeader_s *) (msgPositionInsert + 
@@ -117,8 +121,6 @@ FileRepAckMirror_ConstructAndInsertMessage(
 	 *		c) messageCount
 	 */
 	
-	/* Construct FileRepShmemMessageHeaderCrc */
-	
 	fileRepMessageHeaderCrc =
 	(pg_crc32 *) (msgPositionInsert + 
 				  sizeof(FileRepMessageHeader_s) + 
@@ -141,21 +143,19 @@ FileRepAckMirror_ConstructAndInsertMessage(
 						   FILEREP_UNDEFINED,
 						   fileRepMessageHeader->messageCount);	
 
-#ifdef FILEREP_DEBUG
-	ereport(LOG,
-			(errmsg("LOG(filerep): M_ConstructAndInsertMessageAck msg header count:'%d' "
-					"msg header crc:'%u' position insert:'%p' ack state:'%s' ",
-					fileRepMessageHeader->messageCount,
-					fileRepMessageHeaderCrcLocal,
-					msgPositionInsert,
-					FileRepAckStateToString[fileRepAckState]),
-			 FileRep_errdetail(fileRepIdentifier,
-							   fileRepRelationType,
-							   fileRepOperation),
-			 FileRep_errdetail_ShmemAck(),
-			 FileRep_errcontext()));		
-#endif
-	
+	if (Debug_filerep_print)
+		ereport(LOG,
+				(errmsg("M_ConstructAndInsertMessageAck construct and insert ack message "
+						"msg header crc:'%u' position insert:'%p' ack state:'%s' ",
+						fileRepMessageHeaderCrcLocal,
+						msgPositionInsert,
+						FileRepAckStateToString[fileRepAckState]),
+				 FileRep_errdetail(fileRepIdentifier,
+								   fileRepRelationType,
+								   fileRepOperation,
+								   fileRepMessageHeader->messageCount),
+				 FileRep_errdetail_ShmemAck(),
+				 FileRep_errcontext()));			
 
 	fileRepShmemMessageDescr = 
 	(FileRepShmemMessageDescr_s*) msgPositionInsert;	
@@ -206,12 +206,14 @@ FileRepAckMirror_Ack(
 void 
 FileRepAckMirror_StartSender(void)
 {
-	int status = STATUS_OK;
+	int				status = STATUS_OK;
+	int				retry = 0; 
+	struct timeval	currentTime;
+	pg_time_t		beginTime = 0;
+	pg_time_t		endTime = 0;
 	
-	int retry = 0; 
+	FileRep_InsertConfigLogEntry("start sender ack");
 
-	elog(LOG, "FileRepMirror_StartSender() ");
-	
 	while (1) {
 		
 		if (status != STATUS_OK) {
@@ -233,15 +235,18 @@ FileRepAckMirror_StartSender(void)
 			break;
 		}
 
-		ereport(LOG,
-				(errmsg("M_StartSender primary host address:'%s' and port:'%d' "
-						"mirror host address:'%s' and port:'%d' ",
-						fileRepPrimaryHostAddress,
-						fileRepPrimaryPort,
-						fileRepMirrorHostAddress,
-						fileRepMirrorPort),
-				 FileRep_errcontext()));	
-				
+		{
+			char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+			
+			snprintf(tmpBuf, sizeof(tmpBuf), "primary address(port) '%s(%d)' mirror address(port) '%s(%d)' ",
+					 fileRepPrimaryHostAddress, 
+					 fileRepPrimaryPort,
+					 fileRepMirrorHostAddress, 
+					 fileRepMirrorPort);
+			
+			FileRep_InsertConfigLogEntry(tmpBuf);
+		}
+		
 		Insist(fileRepRole == FileRepMirrorRole);
 
 		status = FileRepConnClient_EstablishConnection(
@@ -249,13 +254,28 @@ FileRepAckMirror_StartSender(void)
 									   fileRepPrimaryPort,
 									   FALSE /* reportError */);		
 
-		while (status != STATUS_OK && retry < file_rep_retry)  {
-			FileRep_Sleep10ms(retry++);
+		if (status != STATUS_OK)
+		{
+			gettimeofday(&currentTime, NULL);
+			beginTime = (pg_time_t) currentTime.tv_sec;
+		}
+		
+		while (status != STATUS_OK && 
+			   FileRep_IsRetry(retry) &&
+			   (endTime - beginTime) < gp_segment_connect_timeout)  
+		{
+			FileRep_Sleep10ms(retry);
+			
+			FileRep_IncrementRetry(retry);
+			
+			gettimeofday(&currentTime, NULL);
+			endTime = (pg_time_t) currentTime.tv_sec;			
 			
 			status = FileRepConnClient_EstablishConnection(
-							fileRepPrimaryHostAddress,
-							fileRepPrimaryPort,
-							(retry == file_rep_retry) ? TRUE : FALSE);
+														   fileRepPrimaryHostAddress,
+														   fileRepPrimaryPort,
+														   (retry == file_rep_retry && file_rep_retry != 0) ||
+														   ((endTime - beginTime) > gp_segment_connect_timeout) ? TRUE : FALSE);
 
 			if (FileRepSubProcess_IsStateTransitionRequested())
 			{
@@ -266,6 +286,8 @@ FileRepAckMirror_StartSender(void)
 		if (status != STATUS_OK) {
 			continue;
 		}
+		
+		FileRep_SetFileRepRetry();
 		
 		status = FileRepAckMirror_RunSender();
 		
@@ -288,7 +310,7 @@ FileRepAckMirror_RunSender(void)
 	int							status = STATUS_OK;
 	bool						movePositionConsume = FALSE;
 	
-	elog(LOG, "FileRepMirror_RunSender() ");
+	FileRep_InsertConfigLogEntry("run sender ack");
 	
 	while (1) {
 
@@ -384,11 +406,15 @@ FileRepAckMirror_RunSender(void)
 						FileRepMessageTypeXLog, 
 						fileRepShmemMessageDescr->messageSync,
 						fileRepMessage,
-						fileRepShmemMessageDescr->messageLength)) {
+						fileRepShmemMessageDescr->messageLength)) 
+		{
 
-			ereport(LOG, 
+			ereport(WARNING, 
 					(errcode_for_socket_access(),
-					 errmsg("ERROR(filerep): could not sent ACK message to primary : %m"),
+					 errmsg("mirror failure, "
+							"could not sent ack message to primary : %m, "
+							"failover requested"),
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
 					 FileRep_errdetail_ShmemAck(),
 					 FileRep_errcontext()));		
 			

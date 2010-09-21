@@ -1916,13 +1916,14 @@ static void ChangeTracking_DropMetaFile(void)
 	file = ChangeTracking_OpenFile(CTF_META);
 	
 	changeTrackingResyncMeta->resync_mode_full = false;
+	setFullResync(changeTrackingResyncMeta->resync_mode_full);
 	changeTrackingResyncMeta->resync_lsn_end.xlogid = 0;
 	changeTrackingResyncMeta->resync_lsn_end.xrecoff = 0;
 	changeTrackingResyncMeta->resync_transition_completed = false;
 	changeTrackingResyncMeta->insync_transition_completed = false;
 	
 	/* delete the change tracking meta file*/
-	FileUnlink(file);
+	FileUnlink(file);	
 }
 
 /*
@@ -2112,7 +2113,7 @@ ChangeTracking_ReadMeta(File file, ChangeTrackingMetaRecord* rec)
 		ChangeTrackingMetaFilePath(path);
 		ereport(WARNING, 
 				(errcode_for_file_access(),
-				 errmsg("ERROR(filerep): unable to read change tracking meta file \"%s\", "
+				 errmsg("unable to read change tracking meta file \"%s\", "
 						"change tracking disabled : %m", 
 					   path),
 				 errSendAlert(true)));
@@ -2171,9 +2172,10 @@ ChangeTracking_MarkFullResyncLockAcquired(void)
 	/* 
 	 * Insert an entry into the meta file that mark FullResync needed, and fsync.
 	 */
-	elog(LOG, "CHANGETRACKING: marking full resync");
+	FileRep_InsertConfigLogEntry("marking full resync ");
 	
 	changeTrackingResyncMeta->resync_mode_full = true;
+	setFullResync(changeTrackingResyncMeta->resync_mode_full);
 	changeTrackingResyncMeta->resync_lsn_end.xlogid = 0;
 	changeTrackingResyncMeta->resync_lsn_end.xrecoff = 0;
 	changeTrackingResyncMeta->resync_transition_completed = false;
@@ -2234,11 +2236,12 @@ void ChangeTracking_MarkIncrResync(void)
 	File		file;
 	CTFType		ftype = CTF_META;
 
-	elog(LOG, "CHANGETRACKING: marking incremental resync");
+	FileRep_InsertConfigLogEntry("marking incremental resync ");
 	
 	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
-
+	
 	changeTrackingResyncMeta->resync_mode_full = false;
+	setFullResync(changeTrackingResyncMeta->resync_mode_full);
 	changeTrackingResyncMeta->resync_lsn_end.xlogid = 0;
 	changeTrackingResyncMeta->resync_lsn_end.xrecoff = 0;
 	changeTrackingResyncMeta->resync_transition_completed = false;
@@ -2268,7 +2271,8 @@ ChangeTracking_MarkTransitionToResyncCompleted(void)
 	
 	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
 
-	elog(LOG, "CHANGETRACKING: setting resync_transition_completed to true");
+	FileRep_InsertConfigLogEntry("setting resync_transition_completed to true ");
+
 	changeTrackingResyncMeta->resync_transition_completed = true;
 	file = ChangeTracking_OpenFile(ftype);	
 	
@@ -2294,7 +2298,8 @@ ChangeTracking_MarkTransitionToInsyncCompleted(void)
 	
 	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
 
-	elog(LOG, "CHANGETRACKING: setting insync_transition_completed to true");
+	FileRep_InsertConfigLogEntry("setting insync_transition_completed to true ");
+	
 	changeTrackingResyncMeta->insync_transition_completed = true;
 	file = ChangeTracking_OpenFile(ftype);	
 	
@@ -2337,7 +2342,8 @@ ChangeTracking_RecordLastChangeTrackedLoc(void)
 	 * in Change Tracking before resync takes place. Later If transition from 
 	 * Resync to Change tracking occurs then new changes will be appended.
 	 */
-	elog(LOG, "CHANGETRACKING: setting resync lsn");
+	FileRep_InsertConfigLogEntry("setting resync lsn ");
+
 	changeTrackingResyncMeta->resync_lsn_end = endResyncLSN;
 	file = ChangeTracking_OpenFile(ftype);	
 	
@@ -2422,8 +2428,7 @@ ChangeTracking_RetrieveLastChangeTrackedLoc(void)
 		}
 	}
 	else
-		elog(LOG, "CHANGETRACKING: didn't find an MD record");
-
+		FileRep_InsertConfigLogEntry("pg_changetracking meta data record not found ");
 	
 	ChangeTracking_CloseFile(file);
 	
@@ -2461,7 +2466,7 @@ ChangeTracking_RetrieveIsTransitionToInsync(void)
 		
 	}
 	else
-		elog(LOG, "CHANGETRACKING: didn't find an MD record");
+		FileRep_InsertConfigLogEntry("pg_changetracking meta data record not found ");
 
 	ChangeTracking_CloseFile(file);
 	
@@ -2498,7 +2503,7 @@ ChangeTracking_RetrieveIsTransitionToResync(void)
 			 (recptr->resync_mode_full == TRUE) ? "true" : "false");
 	}
 	else
-		elog(LOG, "CHANGETRACKING: didn't find an MD record");
+		FileRep_InsertConfigLogEntry("pg_changetracking meta data record not found ");
 	
 	ChangeTracking_CloseFile(file);
 	
@@ -2715,8 +2720,8 @@ void ChangeTracking_CompactLogsIfPossible(void)
 	if (compact_transient)
 	{
 		/* Now do the actual compacting. Remove transient log file when done */
-		elog(LOG, "ChangeTracking: Compacting the transient log file");
-		
+		FileRep_InsertConfigLogEntry("compacting the transient log file ");
+
 		ChangeTracking_ResetBufStatus(CTCompactWriteBufStatus);
 		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT, NULL);
 		ChangeTracking_DropLogFile(CTF_LOG_TRANSIENT);
@@ -2737,8 +2742,8 @@ void ChangeTracking_CompactLogsIfPossible(void)
 	if (compact_compact)
 	{
 		/* Now do the actual compacting. Remove transient log file when done */
-		elog(LOG, "ChangeTracking: Compacting the compact log file");
-		
+		FileRep_InsertConfigLogEntry("compacting the compact log file ");
+
 		ChangeTracking_ResetBufStatus(CTCompactWriteBufStatus);
 		ChangeTracking_RenameLogFile(CTF_LOG_COMPACT, CTF_LOG_TRANSIENT);
 		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT, NULL);
@@ -2787,7 +2792,7 @@ void ChangeTracking_DoFullCompactingRound(XLogRecPtr* upto_lsn)
 	
 	Assert(!changeTrackingCompState->in_progress);
 	
-	elog(LOG, "ChangeTracking: running a full round of compacting the logs");
+	FileRep_InsertConfigLogEntry("running a full round of compacting the logs ");
 	
 	if (upto_lsn != NULL)
 		elog(LOG, "ChangeTracking: discarding records with LSN higher than %s", 
@@ -2825,7 +2830,7 @@ void ChangeTracking_DoFullCompactingRound(XLogRecPtr* upto_lsn)
 	ChangeTracking_DropLogFile(CTF_LOG_TRANSIENT);
 	changeTrackingCompState->ctcompact_bufs_added = 0;
 
-	elog(LOG, "ChangeTracking: full compacting round is finished.");
+	FileRep_InsertConfigLogEntry("full compacting round is finished ");
 }
 
 /*

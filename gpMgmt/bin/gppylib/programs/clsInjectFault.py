@@ -316,10 +316,13 @@ class GpInjectFaultProgram:
 			      "filerep_sender (inject fault before data are sent to network), " \
 			      "filerep_receiver (inject fault after data are received from network), " \
 			      "filerep_flush (inject fault before fsync is issued to file system), " \
-			      "filerep_resync (inject fault while in resync), " \
+			      "filerep_resync (inject fault while in resync when first relation is ready to be resynchronized), " \
+			      "filerep_resync_in_progress (inject fault while resync is in progress), " \
+			      "filerep_resync_worker (inject fault after write to mirror), " \
 			      "filerep_transition_to_resync (inject fault during transition to InResync before mirror re-create), " \
 			      "filerep_transition_to_resync_mark_recreate (inject fault during transition to InResync before marking re-created), " \
 			      "filerep_transition_to_resync_mark_completed (inject fault during transition to InResync before marking completed), " \
+			      "filerep_transition_to_sync_begin (inject fault before transition to InSync begin), " \
 			      "filerep_transition_to_sync (inject fault during transition to InSync), " \
 			      "filerep_transition_to_sync_before_checkpoint (inject fault during transition to InSync before checkpoint is created), " \
 			      "filerep_transition_to_sync_mark_completed (inject fault during transition to InSync before marking completed), " \

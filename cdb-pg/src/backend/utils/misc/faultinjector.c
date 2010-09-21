@@ -110,13 +110,19 @@ FaultInjectorIdentifierEnumToString[] = {
 	_("filerep_flush"),
 		/* inject fault before fsync is issued to file system */
 	_("filerep_resync"),
-		/* inject fault while InResync */
+		/* inject fault while InResync when first relations is inserted to be resynced */
+	_("filerep_resync_in_progress"),
+		/* inject fault while InResync when more then 10 relations in progress */
+	_("filerep_resync_worker"),
+		/* inject fault after write to mirror while all locks are still hold */
 	_("filerep_transition_to_resync"),
 		/* inject fault during transition to InResync before objects are re-created on mirror */
 	_("filerep_transition_to_resync_mark_recreate"),
 		/* inject fault during transition to InResync before objects are marked re-created */
 	_("filerep_transition_to_resync_mark_completed"),
 		/* inject fault during transition to InResync before transition is marked completed */
+	_("filerep_transition_to_sync_begin"),
+		/* inject fault before transition to InSync begin */
 	_("filerep_transition_to_sync"),
 		/* inject fault during transition to InSync */
 	_("filerep_transition_to_sync_before_checkpoint"),
@@ -680,9 +686,12 @@ FaultInjector_NewHashEntry(
 	switch (entry->faultInjectorIdentifier)
 	{
 		case FileRepResync:
+		case FileRepResyncInProgress:
+		case FileRepResyncWorker:
 		case FileRepTransitionToInResyncMirrorReCreate:
 		case FileRepTransitionToInResyncMarkReCreated:
 		case FileRepTransitionToInResyncMarkCompleted:
+		case FileRepTransitionToInSyncBegin:
 		case FileRepTransitionToInSync:
 		case FileRepTransitionToInSyncMarkCompleted:
 		case FileRepTransitionToInSyncBeforeCheckpoint:

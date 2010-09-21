@@ -41,11 +41,17 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	FileRepResync,
 	
+	FileRepResyncInProgress,	
+	
+	FileRepResyncWorker,
+	
 	FileRepTransitionToInResyncMirrorReCreate,
 	
 	FileRepTransitionToInResyncMarkReCreated,
 	
 	FileRepTransitionToInResyncMarkCompleted,
+	
+	FileRepTransitionToInSyncBegin,
 	
 	FileRepTransitionToInSync,
 	

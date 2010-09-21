@@ -117,18 +117,20 @@ FileRepAckPrimary_StartReceiver(void)
 	
 	int retval;
 	
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepAckPrimary_StartReceiver() ");
+	FileRep_InsertConfigLogEntry("start receiver ack");
+
+	{
+		char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
 		
-	ereport(LOG,
-			(errmsg("LOG(filerep): P_StartReceiver primary host address:'%s' and port:'%d' "
-					"mirror host address:'%s' and port:'%d' ",
-					fileRepPrimaryHostAddress,
-					fileRepPrimaryPort,
-					fileRepMirrorHostAddress,
-					fileRepMirrorPort),
-			 FileRep_errcontext()));	
-	
+		snprintf(tmpBuf, sizeof(tmpBuf), "primary address(port) '%s(%d)' mirror address(port) '%s(%d)' ",
+				 fileRepPrimaryHostAddress, 
+				 fileRepPrimaryPort,
+				 fileRepMirrorHostAddress, 
+				 fileRepMirrorPort);
+		
+		FileRep_InsertConfigLogEntry(tmpBuf);
+	}
+		
 	FileRepAckPrimary_ShmemReInit();
 	
 	Insist(fileRepRole == FileRepPrimaryRole);
@@ -227,8 +229,7 @@ FileRepAckPrimary_RunReceiver(void)
 	FileRepShmemMessageDescr_s  *fileRepShmemMessageDescr;
 	uint32					spareField;
 	
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepAckPrimary_RunReceiver()");
+	FileRep_InsertConfigLogEntry("run receiver");
 	
 	while (1) {
 		
@@ -261,11 +262,14 @@ FileRepAckPrimary_RunReceiver(void)
 		if (msgPositionInsert == NULL) {
 			
 			status = STATUS_ERROR;
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not queue ack message to be processed"),
+			ereport(WARNING,
+					(errmsg("mirror failure, "
+							"could not queue received ack message to be processed, "
+							"failover requested"), 
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
 					 FileRep_errdetail_Shmem(),
 					 FileRep_errdetail_ShmemAck(),
-					 FileRep_errcontext()));							
+					 FileRep_errcontext()));													
 			break;
 		}
 		
@@ -308,6 +312,13 @@ FileRepAckPrimary_RunReceiver(void)
 							   FileRepAckStateNotInitialized,
 							   spareField,
 							   FILEREP_UNDEFINED);			
+		
+		if (Debug_filerep_print)
+			ereport(LOG,
+					(errmsg("P_RunReceiver ack msg header count '%d' ",
+							spareField),
+					 FileRep_errdetail_ShmemAck(),
+					 FileRep_errcontext()));				
 				
 	} // while(1)
 	
@@ -345,13 +356,13 @@ FileRepAckPrimary_ShmemInit(void)
 	HASHCTL	hash_ctl;
 	bool	foundPtr;
 	
-	fileRepAckHashShmem = (FileRepAckHashShmem_s *) ShmemInitStruct("FileRep Ack Base Hash",
+	fileRepAckHashShmem = (FileRepAckHashShmem_s *) ShmemInitStruct("filerep ack base hash",
 																	sizeof(FileRepAckHashShmem_s),
 																	&foundPtr);
 	if (fileRepAckHashShmem == NULL) {
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 (errmsg("Not enough shared memory for Mirroring."))));
+				 (errmsg("not enough shared memory for mirroring"))));
 	}
 	
 	if (! foundPtr) {
@@ -365,7 +376,7 @@ FileRepAckPrimary_ShmemInit(void)
 	hash_ctl.entrysize = sizeof(FileRepAckHashEntry_s);
 	hash_ctl.hash = string_hash;
 	
-	fileRepAckHashShmem->hash = ShmemInitHash("FileRep Ack Hash",
+	fileRepAckHashShmem->hash = ShmemInitHash("filerep ack hash",
 								   FILEREP_MAX_OPEN_FILES,
 								   FILEREP_MAX_OPEN_FILES,
 								   &hash_ctl,
@@ -374,7 +385,7 @@ FileRepAckPrimary_ShmemInit(void)
 	if (fileRepAckHashShmem->hash == NULL) {
 		ereport(ERROR, 
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				(errmsg("Not enough shared memory for Mirroring."))));
+				(errmsg("not enough shared memory for mirroring"))));
 	}
 	
 	return;						  
@@ -392,7 +403,7 @@ FileRepAckPrimary_ShmemReInit(void)
 	if (fileRepAckHashShmem == NULL) {
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 (errmsg("Not enough shared memory for Mirroring."))));
+				 (errmsg("not enough shared memory for mirroring"))));
 	}
 		
 	fileRepAckHashShmem->ipcArrayIndex = IndexIpcArrayAckHashShmem;
@@ -400,7 +411,7 @@ FileRepAckPrimary_ShmemReInit(void)
 	if (fileRepAckHashShmem->hash == NULL) {
 		ereport(ERROR, 
 				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 (errmsg("Not enough shared memory for Mirroring."))));
+				 (errmsg("not enough shared memory for mirroring"))));
 	}
 	
 	LWLockAcquire(FileRepAckHashShmemLock, LW_EXCLUSIVE);
@@ -437,10 +448,14 @@ FileRepAckPrimary_LookupHashEntry(FileName fileName)
 										  NULL);
 	
 	if (entry == NULL) {
-		ereport(LOG,
-				(errmsg("ERROR(filerep): could not find ACK entry in hash table identifier:'%s' ",
-						(fileName == NULL) ? "" : fileName),
-				FileRep_errcontext()));
+		
+		ereport(WARNING,
+				(errmsg("mirror failure, "
+						"could not lookup ack entry '%s' into ack table, no entry "
+						"failover requested",
+						(fileName == NULL) ? "<null>" : fileName), 
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
+				 FileRep_errcontext()));			
 	} 
 
 	return entry;
@@ -473,9 +488,6 @@ FileRepAckPrimary_InsertHashEntry(
 		*exists = FALSE;
 		return entry;
 	} 
-	
-	elog(DEBUG1, "FileRepAckPrimary_InsertHashEntry() entry_key:%s", 
-		 entry->fileName);
 	
 	if (foundPtr) {
 		*exists = TRUE;
@@ -511,7 +523,6 @@ FileRepAckPrimary_RemoveHashEntry(FileName  fileName)
 										NULL);
 	
 	if (entry) {
-		elog(DEBUG1, "FileRepAckPrimary_RemoveHashEntry() Removed hash entry entry_key:%s", entry->fileName);
 
 		isRemoved = TRUE;
 		FileRep_IpcSignal(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semC,
@@ -533,7 +544,7 @@ FileRepAckPrimary_NewHashEntry(
 {
 
 	FileRepAckHashEntry_s	*entry=NULL;
-	bool					exists;
+	bool					exists = FALSE;
 	FileName				fileName = NULL;
 	int						status = STATUS_OK;
 	int						retry = 0;
@@ -541,7 +552,7 @@ FileRepAckPrimary_NewHashEntry(
 		
 	fileName = FileRep_GetFileName(fileRepIdentifier, fileRepRelationType);
 		
-	while (retry < file_rep_retry) {
+	while (FileRep_IsRetry(retry)) {
 		LWLockAcquire(FileRepAckHashShmemLock, LW_EXCLUSIVE);
 		
 
@@ -556,19 +567,27 @@ FileRepAckPrimary_NewHashEntry(
 		
 		entry = FileRepAckPrimary_InsertHashEntry(fileName, &exists);
 					
-		if (entry == NULL) {
+		if (entry == NULL) 
+		{
 			LWLockRelease(FileRepAckHashShmemLock);
 			status = STATUS_ERROR;
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not insert ACK entry into table, no memory"),
+			
+			ereport(WARNING,
+					(errmsg("mirror failure, "
+							"could not insert ack entry into ack table, no memory "
+							"failover requested"), 
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
 					 FileRep_errdetail(fileRepIdentifier,
 									   fileRepRelationType,
-									   fileRepOperation),
-					 FileRep_errcontext()));							
+									   fileRepOperation,
+									   FILEREP_UNDEFINED),				 
+					 FileRep_errcontext()));	
+			
 			goto exit;
 		}
 					
-		if (exists) {
+		if (exists) 
+		{
 			if (! FileRep_IsIpcSleep(fileRepOperation))
 			{					
 					fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->refCountSemC++;
@@ -591,7 +610,7 @@ FileRepAckPrimary_NewHashEntry(
 				FileRep_IpcWait(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semC);
 			}	
 			
-			retry++;
+			FileRep_IncrementRetry(retry);
 			continue;
 		}
 
@@ -605,22 +624,25 @@ FileRepAckPrimary_NewHashEntry(
 		break;
 	}
 
-	if (retry == file_rep_retry) {
+	if (exists) {
 		status = STATUS_ERROR;
-		ereport(LOG,
-				(errmsg("ERROR(filerep): could not insert ACK entry into table, entry already exists"),
+		
+		ereport(WARNING,
+				(errmsg("mirror failure, "
+						"could not insert ack entry into ack table, entry exists "
+						"failover requested"), 
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
 				 FileRep_errdetail(fileRepIdentifier,
 								   fileRepRelationType,
-								   fileRepOperation),
-				 FileRep_errcontext()));		
-	} else {
-	
-		elog(DEBUG1, "FileRepAckPrimary_NewHashEntry() %s", entry->fileName);
-	}
+								   fileRepOperation,
+								   FILEREP_UNDEFINED),				 
+				 FileRep_errcontext()));	
+	} 
 	
 exit:
 	
-	if (fileName) {
+	if (fileName) 
+	{
 		pfree(fileName);
 		fileName = NULL;
 	}		
@@ -659,13 +681,18 @@ FileRepAckPrimary_UpdateHashEntry(
 		{
 			goto exit;
 		}
+		
 		status = STATUS_ERROR;
-		ereport(LOG,
-				(errmsg("ERROR(filerep): could not update ACK entry with ACK status, no entry found "
-						"identifier:'%s' relation type:'%s' ",
-						(fileName == NULL) ? "" : fileName,
+		ereport(WARNING,
+				(errmsg("mirror failure, "
+						"could not update ack entry with ack status, no entry found "
+						"identifier '%s' relation type '%s' "
+						"failover requested", 
+						(fileName == NULL) ? "<null>" : fileName,
 						FileRepRelationTypeToString[fileRepRelationType]),
-				 FileRep_errcontext()));		
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
+				 FileRep_errcontext()));	
+		
 		goto exit;
 	}
 
@@ -679,15 +706,15 @@ FileRepAckPrimary_UpdateHashEntry(
 
 	LWLockRelease(FileRepAckHashShmemLock);
 		
-#ifdef FILEREP_DEBUG	
-	ereport(LOG,
-			(errmsg("LOG(filerep): P_UpdateHashEntry identifier:'%s' ack state:'%s' ",
-					(entry->fileName == NULL) ? "":entry->fileName, 
+	if (Debug_filerep_print)	
+		ereport(LOG,
+			(errmsg("update hash entry identifier '%s' ack state '%s' ",
+					(entry->fileName == NULL) ? "<null>" : entry->fileName, 
 					FileRepAckStateToString[entry->fileRepAckState])));
-#endif
 
 exit:	
-	if (fileName) {
+	if (fileName) 
+	{
 		pfree(fileName);
 		fileName = NULL;
 	}		
@@ -708,7 +735,7 @@ FileRepAckPrimary_IsOperationCompleted(
 					   FileRepRelationType_e fileRepRelationType)
 {
 
-	FileRepAckHashEntry_s	*entry=NULL;
+	FileRepAckHashEntry_s	*entry = NULL;
 	bool					isCompleted = FALSE;
 	bool					isRemoved;
 	FileName				fileName = NULL;
@@ -718,7 +745,8 @@ FileRepAckPrimary_IsOperationCompleted(
 
 	fileName = FileRep_GetFileName(fileRepIdentifier, fileRepRelationType);
 	
-	while ((isCompleted == FALSE) && (retry < file_rep_retry)) {
+	while ((isCompleted == FALSE) && FileRep_IsRetry(retry)) 
+	{
 		
 		LWLockAcquire(FileRepAckHashShmemLock, LW_EXCLUSIVE);
 		
@@ -739,8 +767,8 @@ FileRepAckPrimary_IsOperationCompleted(
 			}
 		}
 							
-		switch (entry->fileRepAckState) {
-				
+		switch (entry->fileRepAckState) 
+		{
 			case FileRepAckStateWaiting:
 				/* No Operation */
 				break;
@@ -774,7 +802,8 @@ FileRepAckPrimary_IsOperationCompleted(
 		
 		LWLockRelease(FileRepAckHashShmemLock);
 		
-		if (isCompleted == false) {
+		if (isCompleted == false) 
+		{
 			if (FileRepSubProcess_IsStateTransitionRequested())
 			{
 				break;
@@ -783,13 +812,22 @@ FileRepAckPrimary_IsOperationCompleted(
 			if (FileRep_IsIpcSleep(entry->fileRepOperation))
 			{					
 				FileRep_Sleep1ms(retry);
+				
+				if (retry == (3 * file_rep_retry / 4))
+					ereport(WARNING,
+						(errmsg("threshold '75' percent of 'gp_segment_connect_timeout=%d' is reached, "
+								"mirror may not be able to keep up with primary, "
+								"primary may transition to change tracking",
+								gp_segment_connect_timeout),
+						errhint("increase guc 'gp_segment_connect_timeout' by 'gpconfig' and 'gpstop -u' "),
+						errSendAlert(true)));											
 			}
 			else
 			{
 				FileRep_IpcWait(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semP);
 			}			
 				
-			retry++;
+			FileRep_IncrementRetry(retry);
 
 			/*
 			 * if the message was from the main filerep process then it is a
@@ -806,20 +844,26 @@ FileRepAckPrimary_IsOperationCompleted(
 		}
 	}
 	
-	if (retval == FALSE) {
+	if (retval == FALSE) 
+	{
 		mirrorStatus = FileRepStatusMirrorLossOccurred;
-		ereport(LOG,
-				(errmsg("ERROR(filerep): could not complete mirror request identifier:'%s' ack state:'%s' "
-						"position insert:'%p' count:'%d' ",
-						(fileName == NULL) ? "" : fileName,
-						FileRepAckStateToString[entry->fileRepAckState],
-						fileRepAckShmem->positionInsert,
-						fileRepAckShmem->insertCount),
-				 FileRep_errdetail_ShmemAck(),
-				 FileRep_errcontext()));		
+		
+		if (! primaryMirrorIsIOSuspended())
+		{
+			ereport(WARNING,
+					(errmsg("mirror failure, "
+							"could not complete mirrored request identifier '%s' ack state '%s', "
+							"failover requested",
+							(fileName == NULL) ? "<null>" : fileName,
+							FileRepAckStateToString[entry->fileRepAckState]),
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
+					 FileRep_errdetail_ShmemAck(),
+					 FileRep_errcontext()));	
+		}
 	}
 	
-	if (fileName) {
+	if (fileName) 
+	{
 		pfree(fileName);
 		fileName = NULL;
 	}		
@@ -837,8 +881,7 @@ FileRepAckPrimary_StartConsumer(void)
 {
 	int status = STATUS_OK;
 	
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepAckPrimary_StartConsumer()");
+	FileRep_InsertConfigLogEntry("run consumer");
 		
 	while (1) {
 		
@@ -887,15 +930,14 @@ FileRepAckPrimary_StartConsumer(void)
 static int
 FileRepAckPrimary_RunConsumer(void)
 {
-	FileRepShmemMessageDescr_s	*fileRepShmemMessageDescr=NULL;
-	FileRepMessageHeader_s		*fileRepMessageHeader;
+	FileRepShmemMessageDescr_s	*fileRepShmemMessageDescr = NULL;
+	FileRepMessageHeader_s		*fileRepMessageHeader = NULL;
 	pg_crc32					*fileRepMessageHeaderCrc;
-	pg_crc32					messageHeaderCrcLocal;
+	pg_crc32					messageHeaderCrcLocal = 0;
 	int							status = STATUS_OK;
 	bool						movePositionConsume = FALSE;
 		
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepAckPrimary_RunConsumer() ");
+	FileRep_InsertConfigLogEntry("run consumer");
 	
 	while (1) {	
 		
@@ -986,19 +1028,23 @@ FileRepAckPrimary_RunConsumer(void)
 						  sizeof(FileRepMessageHeader_s) + 
 						  sizeof(FileRepShmemMessageDescr_s));
 		
-		if (*fileRepMessageHeaderCrc != messageHeaderCrcLocal) {
-			 
+		if (*fileRepMessageHeaderCrc != messageHeaderCrcLocal) 
+		{
 			status = STATUS_ERROR;
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not match Message Header CRC primary crc:'%u' mirror crc:'%u' ", 
+			ereport(WARNING,
+					(errmsg("mirror failure, "
+							"could not match ack message header checksum between primary '%u' and mirror '%u', "
+							"failover requested", 
 							*fileRepMessageHeaderCrc, 
 							messageHeaderCrcLocal),
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
 					 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 									   fileRepMessageHeader->fileRepRelationType,
-									   fileRepMessageHeader->fileRepOperation),
+									   fileRepMessageHeader->fileRepOperation,
+									   fileRepMessageHeader->messageCount),
 					 FileRep_errdetail_ShmemAck(),
-					 FileRep_errcontext()));					
-			
+					 FileRep_errcontext()));		
+						
 			break;
 		}
 				
@@ -1013,30 +1059,33 @@ FileRepAckPrimary_RunConsumer(void)
 		{
 			case FileRepOperationReconcileXLogEof:			
 				xLogEof = fileRepMessageHeader->fileRepOperationDescription.reconcile.xLogEof;
-#ifdef FILEREP_DEBUG
-				ereport(LOG,
-					(errmsg("LOG(filerep): P_RunConsumer ack reconcile xlogid:'%d' reconcile xrecoff:'%d' ",
+
+				if (Debug_filerep_print)
+					ereport(LOG,
+						(errmsg("ack reconcile xlogid '%d' xrecoff '%d' ",
 							xLogEof.xlogid, 
 							xLogEof.xrecoff)));	
-#endif
+
 				break;
 		
 			case FileRepOperationValidation:
 				mirrorStatus = fileRepMessageHeader->fileRepOperationDescription.validation.mirrorStatus;
-#ifdef FILEREP_DEBUG
-				ereport(LOG,
-					(errmsg("LOG(filerep): P_RunConsumer ack validation status:'%s' ",
+
+				if (Debug_filerep_print)
+					ereport(LOG,
+						(errmsg("ack validation status '%s' ",
 							FileRepStatusToString[mirrorStatus])));	
-#endif
+
 				break;
 				
 			case FileRepOperationCreate:
 				mirrorStatus = fileRepMessageHeader->fileRepOperationDescription.create.mirrorStatus;
-#ifdef FILEREP_DEBUG
-				ereport(LOG,
-						(errmsg("LOG(filerep): P_RunConsumer ack create status:'%s' ",
+
+				if (Debug_filerep_print)
+					ereport(LOG,
+						(errmsg("ack create status '%s' ",
 								FileRepStatusToString[mirrorStatus])));	
-#endif
+
 				break;
 				
 			default:
@@ -1044,24 +1093,28 @@ FileRepAckPrimary_RunConsumer(void)
 		}
 		
 		if (fileRepMessageHeader->fileRepAckState != FileRepAckStateCompleted) {
-			/* 
-			 * FAULT has to be set before entry is updated in hash
-			 * in order to suspend backend process.
-			 */			
+
 			status = STATUS_ERROR;
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not complete operation on mirror "
-							"msg header count:'%d' ack state:'%s' ",
-							fileRepMessageHeader->messageCount,
+			
+			ereport(WARNING,
+					(errmsg("mirror failure, "
+							"could not complete operation on mirror ack state '%s', "
+							"failover requested", 
 							FileRepAckStateToString[fileRepMessageHeader->fileRepAckState]),
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
 					 errSendAlert(true),
 					 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 									   fileRepMessageHeader->fileRepRelationType,
-									   fileRepMessageHeader->fileRepOperation),
+									   fileRepMessageHeader->fileRepOperation,
+									   fileRepMessageHeader->messageCount),
 					 FileRep_errdetail_Shmem(),
 					 FileRep_errdetail_ShmemAck(),
-					 FileRep_errcontext()));					
+					 FileRep_errcontext()));	
 			
+			/* 
+			 * FAULT has to be set before entry is updated in ack hash table
+			 * in order to suspend backend process.
+			 */						
 			FileRepSubProcess_SetState(FileRepStateFault);
 		}
 				
@@ -1071,14 +1124,17 @@ FileRepAckPrimary_RunConsumer(void)
 				fileRepMessageHeader->fileRepAckState) != STATUS_OK) {
 			
 			status = STATUS_ERROR;
-			ereport(LOG,
-					(errmsg("ERROR(filerep): could not update ack state "
-							"msg header count:'%d'  ack state:'%s' ",
-							fileRepMessageHeader->messageCount,
+			ereport(WARNING,
+					(errmsg("mirror failure, "
+							"could not update ack state '%s' in ack hash table, "
+							"failover requested", 
 							FileRepAckStateToString[fileRepMessageHeader->fileRepAckState]),
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
+					 errSendAlert(true),
 					 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 									   fileRepMessageHeader->fileRepRelationType,
-									   fileRepMessageHeader->fileRepOperation),
+									   fileRepMessageHeader->fileRepOperation,
+									   fileRepMessageHeader->messageCount),
 					 FileRep_errdetail_Shmem(),
 					 FileRep_errdetail_ShmemAck(),
 					 FileRep_errcontext()));					
@@ -1095,18 +1151,17 @@ FileRepAckPrimary_RunConsumer(void)
 							   FILEREP_UNDEFINED,
 							   fileRepMessageHeader->messageCount);				
 		
-#ifdef FILEREP_DEBUG
-		ereport(LOG,
-				(errmsg("LOG(filerep): P_RunConsumer ack msg header count:'%d' ack state:'%s' ",
+		if (Debug_filerep_print)
+			ereport(LOG,
+				(errmsg("P_RunConsumer ack msg header count '%d' ack state '%s' ",
 						fileRepMessageHeader->messageCount,
 						FileRepAckStateToString[fileRepMessageHeader->fileRepAckState]),
 				 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
 								   fileRepMessageHeader->fileRepRelationType,
-								   fileRepMessageHeader->fileRepOperation),
+								   fileRepMessageHeader->fileRepOperation,
+								   fileRepMessageHeader->messageCount),
 				 FileRep_errdetail_ShmemAck(),
 				 FileRep_errcontext()));		
-#endif		
-		
 
 		if (status != STATUS_OK) {
 			break;

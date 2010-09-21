@@ -253,11 +253,6 @@
 /* #define WAL_DEBUG */
 
 /*
- * Enable debugging print statements for filerep-related operations.
- */
-/*#define FILEREP_DEBUG 1*/
-
-/*
  * Enable injecting faults.
  */
 #define FAULT_INJECTOR 1

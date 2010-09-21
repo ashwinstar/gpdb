@@ -14,6 +14,7 @@
 #include "pg_config_manual.h"
 #include "storage/relfilenode.h"
 #include "access/xlogdefs.h"
+#include "cdb/cdbresynchronizechangetracking.h"
 #include "postmaster/primary_mirror_mode.h"
 #include "storage/fd.h"
 #include "storage/dbdirnode.h"
@@ -41,8 +42,29 @@
 
 #define FILEREP_UNKNOWN_IDENTIFIER_LEN	16
 
-#define FILEREP_MAX_LOG_DESCRIPTION_LEN 32
+#define FILEREP_LOG_MAX_SIZE 1024 * 1024 * 100 //100M
+
+#define FILEREP_MAX_LOG_DESCRIPTION_LEN 128
+
+#define FileRepConfigLogPath(path) \
+		snprintf(path, MAXPGPATH, CHANGETRACKINGDIR "/FILEREP_CONFIG_LOG")
+
+#define FileRepLogPath(path) \
+	snprintf(path, MAXPGPATH, CHANGETRACKINGDIR "/FILEREP_LOG")
+
 	
+/*
+ * 'file_rep_retry == 0' indicates retry forever
+ */
+#define FileRep_IsRetry(retry) \
+		(retry < file_rep_retry || file_rep_retry == 0)
+
+
+#define FileRep_IncrementRetry(retry)										\
+			if ((file_rep_retry != 0) ||								\
+				(file_rep_retry == 0 && retry < FILEREP_UNDEFINED))		\
+				retry++;												
+
 /* GUC parameters */
 extern int file_rep_message_body_length; 	
 extern int file_rep_buffer_size;
@@ -50,7 +72,6 @@ extern int file_rep_ack_buffer_size;
 extern int file_rep_retry;
 extern int file_rep_min_data_before_flush;
 extern int file_rep_mirror_consumer_process_count;
-extern int gp_mirror_inactivity_timeout;
 
 extern FileRepRole_e		fileRepRole;
 extern SegmentState_e		segmentState;
@@ -837,101 +858,6 @@ typedef enum FileRepProcessType_e {
 	
 } FileRepProcessType_e;
 
-
-/*********************************************************
- * FILE REP IN MEMORY LOG
- *********************************************************/
-/*
- * Wraparound log for troubleshooting is maintained by each file rep process
- */
-
-typedef struct FileRepLogEntry_s {
-	
-	char	routineName[32];
-		
-	FileRepRelationType_e fileRepRelationType;
-		/* Relation type. */
-	
-	FileRepOperation_e fileRepOperation;
-		/* Operation logged. */
-	
-	FileRepIdentifier_u fileRepIdentifier;
-		/* Identifier logged */
-		
-	pg_crc32 fileRepMessageHeaderCrc;	
-		
-	pg_crc32 fileRepMessageBodyCrc;
-		/* CRC of the message body */
-	
-	FileRepAckState_e fileRepAckState;	
-		/* state/status of the ACK message */	
-	
-	uint32	localCount;
-		/* local count */
-	
-	uint32	fileRepMessageCount;
-		/* count in the message */
-	
-	char*	positionInsert;
-			
-	char*	shmemPositionBegin;
-	char*	shmemPositionEnd;
-	char*	shmemPositionInsert;
-	char*	shmemPositionConsume;
-	char*	shmemPositionWraparound;
-	uint32	shmemInsertCount;
-	uint32	shmemConsumeCount;
-
-	char*	shmemAckPositionBegin;
-	char*	shmemAckPositionEnd;
-	char*	shmemAckPositionInsert;
-	char*	shmemAckPositionConsume;
-	char*	shmemAckPositionWraparound;
-	uint32	shmemAckInsertCount;
-	uint32	shmemAckConsumeCount;
-	
-	FileRepRole_e		fileRepRole;
-	
-	SegmentState_e		segmentState;
-	
-	DataState_e			dataState;
-
-	FileRepState_e		fileRepState;
-
-	int					procPid;
-	
-	FileRepProcessType_e fileRepProcessType;
-		/* process type */
-	
-	struct timeval		logTime;
-	
-} FileRepLogEntry_s;
-
-/****************************************************************
- * FILEREP IN SHARED MEMORY CONFIGURATION LOG
- ****************************************************************/
-/*
- * Wraparound configuration log for troubleshooting is maintained by each segment.
- */
-#ifdef FILEREP
-typedef struct FileRepConfigLogEntry_s {
-	
-	FileRepRole_e			fileRepRole;
-	
-	DataState_e				dataState;
-	
-	SegmentState_e			segmentState;
-	
-	int						procPid;
-	
-	FileRepProcessType_e	fileRepProcessType;	
-	
-	char					description[FILEREP_MAX_LOG_DESCRIPTION_LEN];
-	
-	struct timeval			logTime;
-
-} FileRepConfigLogEntry_s;
-#endif
 /*
  * Postmaster forks FileRep process. Input parameters 
  * are stored in shared memory. Postmaster-backend process
@@ -1004,7 +930,8 @@ extern int FileRep_errcontext(void);
 extern int FileRep_errdetail(
 				  FileRepIdentifier_u		fileRepIdentifier,
 				  FileRepRelationType_e		fileRepRelationType,
-				  FileRepOperation_e		fileRepOperation);
+				  FileRepOperation_e		fileRepOperation,
+				  int						messageCount);
 
 extern int FileRep_ReportRelationPath(
 							   char*		filespaceLocation,
@@ -1015,19 +942,34 @@ extern int FileRep_errdetail_Shmem(void);
 
 extern int FileRep_errdetail_ShmemAck(void);
 
-extern	void
-FileRep_InsertLogEntry(
-					   char						*routineName,
-					   FileRepIdentifier_u		fileRepIdentifier,
-					   FileRepRelationType_e	fileRepRelationType,
-					   FileRepOperation_e		fileRepOperation,
-					   pg_crc32					fileRepMessageHeaderCrc,
-					   pg_crc32					fileRepMessageBodyCrc,
-					   FileRepAckState_e		fileRepAckState,
-					   uint32					localCount,
-					   uint32					fileRepMessageCount);
+/*********************************************************
+ * FILEREP IN SHARED MEMORY LOG
+ *********************************************************/
+/*
+ * Wraparound configuration log for troubleshooting is maintained by each segment.
+ */
+extern Size FileRepLog_ShmemSize(void);
 
-extern void FileRep_ReportLog(void);
+extern void FileRepLog_ShmemInit(void);
+
+extern	void FileRep_InsertLogEntry(
+									char					*routineName,
+									FileRepIdentifier_u		fileRepIdentifier,
+									FileRepRelationType_e	fileRepRelationType,
+									FileRepOperation_e		fileRepOperation,
+									pg_crc32				fileRepMessageHeaderCrc,
+									pg_crc32				fileRepMessageBodyCrc,
+									FileRepAckState_e		fileRepAckState,
+									uint32					localCount,
+									uint32					fileRepMessageCount);
+
+#define FileRep_InsertConfigLogEntry(description)	\
+			FileRep_InsertConfigLogEntryInternal(description, __FILE__, __LINE__, PG_FUNCNAME_MACRO)
+
+extern void	FileRep_InsertConfigLogEntryInternal(char		*description, 
+												 const char *fileName, 
+												 int		lineNumber, 
+												 const char *funcName);
 
 extern void FileRep_Sleep1ms(int retry);
 extern void FileRep_Sleep10ms(int retry);
@@ -1085,6 +1027,8 @@ extern void FileRep_GetRelationPath(
  *   shutdown before the bgwriter shuts down, for example)
  */
 extern bool FileRepIsBackendSubProcess(FileRepProcessType_e processType);
+
+extern void FileRep_SetFileRepRetry(void);
 
 #endif   /* CDBFILEREP_H */
 

@@ -22,6 +22,7 @@
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
 #include "storage/smgr.h"
+#include "utils/faultinjector.h"
 #include "utils/relcache.h"
 
 static int FileRepPrimary_RunResyncWorker(void);
@@ -58,7 +59,7 @@ FileRepPrimary_StartResyncWorker(void)
 {	
 	int	status = STATUS_OK;
 	
-	elog(LOG, "FileRepPrimary_StartResyncWorker()");
+	FileRep_InsertConfigLogEntry("start resync worker");
 	
 	Insist(fileRepRole == FileRepPrimaryRole);
 	
@@ -106,10 +107,7 @@ FileRepPrimary_RunResyncWorker(void)
 	FileRepResyncHashEntry_s	*entry = NULL;
 	ChangeTrackingRequest		*request = NULL;
 
-	
-	
-	elog(LOG, "FileRepPrimary_RunResyncWorker()");
-	
+	FileRep_InsertConfigLogEntry("run resync worker");
 	
 	while (1) {
 
@@ -218,14 +216,15 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 					}
 					
 					numBlocks = smgrnblocks(smgr_relation);
-#ifdef FILEREP_DEBUG					
-					elog(LOG, "FileRepPrimary_ResyncWrite() relfilenode:'%u/%u/%u' "
-							  "numBlocks:'%d' ",
-						 smgr_relation->smgr_rnode.spcNode,
-						 smgr_relation->smgr_rnode.dbNode,
-						 smgr_relation->smgr_rnode.relNode,
-						 numBlocks);					
-#endif					
+
+					if (Debug_filerep_print)
+						elog(LOG, "resync buffer pool relation '%u/%u/%u' "
+								  "number of blocks '%d' ",
+							 smgr_relation->smgr_rnode.spcNode,
+							 smgr_relation->smgr_rnode.dbNode,
+							 smgr_relation->smgr_rnode.relNode,
+							 numBlocks);					
+				
 					thresholdCount = Min(numBlocks, 1024);
 					
 					/* 
@@ -252,19 +251,30 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 						page = BufferGetPage(buf);
 						
 						loc = PageGetLSN(page);
-#ifdef FILEREP_DEBUG						
-						elog(LOG, "FileRepPrimary_ResyncWrite() blkno:'%d' "
-							 "lsn_begin:'%u'/'%u' "
-							 "lsn_page:'%u'/'%u' "
-							 "lsn_end:'%u'/'%u' ",
-							 blkno,
-							 entry->mirrorBufpoolResyncCkptLoc.xlogid,
-							 entry->mirrorBufpoolResyncCkptLoc.xrecoff,
-							 loc.xlogid,
-							 loc.xrecoff,
-							 endResyncLSN.xlogid,
-							 endResyncLSN.xrecoff);
-#endif						
+						
+						{
+							char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+							
+							snprintf(tmpBuf, sizeof(tmpBuf), 
+									 "full resync buffer pool identifier '%u/%u/%u' num blocks '%d' blkno '%d' lsn begin change tracking '%s(%u/%u)' lsn page '%s(%u/%u)' lsn end change tracking '%s(%u/%u)' ",
+									 smgr_relation->smgr_rnode.spcNode,
+									 smgr_relation->smgr_rnode.dbNode,
+									 smgr_relation->smgr_rnode.relNode,		
+									 numBlocks,
+									 blkno,
+									 XLogLocationToString(&entry->mirrorBufpoolResyncCkptLoc),
+									 entry->mirrorBufpoolResyncCkptLoc.xlogid,
+									 entry->mirrorBufpoolResyncCkptLoc.xrecoff,
+									 XLogLocationToString(&loc),
+									 loc.xlogid,
+									 loc.xrecoff,
+									 XLogLocationToString(&endResyncLSN),
+									 endResyncLSN.xlogid,
+									 endResyncLSN.xrecoff);
+														
+							FileRep_InsertConfigLogEntry(tmpBuf);
+						}
+						
 						if (XLByteLE(PageGetLSN(page), endResyncLSN) &&
 							XLByteLE(entry->mirrorBufpoolResyncCkptLoc, PageGetLSN(page))) 
 						{
@@ -273,7 +283,15 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 									  (char *)BufferGetBlock(buf),
 									  FALSE);
 						}
-							
+						
+#ifdef FAULT_INJECTOR	
+						FaultInjector_InjectFaultIfSet(
+													   FileRepResyncWorker, 
+													   DDLNotSpecified,
+													   "",	// databaseName
+													   ""); // tableName
+#endif				
+						
 						UnlockReleaseBuffer(buf);
 						
 						if (count > thresholdCount)
@@ -320,8 +338,8 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 					break;
 					
 				default:
-					ereport(ERROR, 
-							(errmsg("could not resynchronize file '%u/%u/%u' "
+					ereport(LOG, 
+							(errmsg("could not resynchronize relation '%u/%u/%u' "
 									"mirror synchronization state:'%s(%d)' ",
 									entry->relFileNode.relNode,
 									entry->relFileNode.spcNode,
@@ -464,8 +482,8 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 					break;					
 					
 				default:
-					ereport(ERROR, 
-							(errmsg("could not resynchronize file '%u/%u/%u' "
+					ereport(LOG, 
+							(errmsg("could not resynchronize relation '%u/%u/%u' "
 									"mirror synchronization state:'%s(%d)' ",
 									entry->relFileNode.relNode,
 									entry->relFileNode.spcNode,
@@ -507,10 +525,6 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 	FileRepResyncHashEntry_s	entry;
 	ChangeTrackingResult		*result = NULL;	
 
-	if (Debug_filerep_print)
-		elog(LOG, "FileRepPrimary_ResyncBufferPoolIncrementalWrite() NumberOfRelations:'%d' ", 
-			 NumberOfRelations);
-	
 	while (1)
 	{
 		/* allow flushing buffers from buffer pool during scan */
@@ -525,12 +539,6 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 				if (smgr_relation == NULL)
 				{
 					NumberOfRelations--;
-	#ifdef FILEREP_DEBUG
-					elog(LOG, "FileRepPrimary_ResyncBufferPoolIncrementalWrite() file:'%u/%u/%u' ",
-						 result->entries[ii].relFileNode.spcNode,
-						 result->entries[ii].relFileNode.dbNode,
-						 result->entries[ii].relFileNode.relNode);
-	#endif				
 					
 					smgr_relation = smgropen(result->entries[ii].relFileNode);
 					
@@ -540,18 +548,27 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 				
 					if (smgr_relation == NULL)
 					{
-						ereport(ERROR, 
-								(errmsg("could not resynchronize (incremental) file '%u/%u/%u' ",
+						ereport(WARNING,	
+								(errmsg("mirror failure, "
+										"could not resynchonize buffer pool relation '%u/%u/%u', no such relation "
+										"failover requested",
 										result->entries[ii].relFileNode.spcNode,
 										result->entries[ii].relFileNode.dbNode,
-										result->entries[ii].relFileNode.relNode)));
+										result->entries[ii].relFileNode.relNode),
+								 errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"),
+								 errSendAlert(true),
+								 FileRep_errcontext()));	
+						
+						FileRep_SetSegmentState(SegmentStateFault);						
+						
 						goto flush_check;
 					}
 					
 					numBlocks = smgrnblocks(smgr_relation);
+					
 					if (Debug_filerep_print)
-						elog(LOG, "FileRepPrimary_ResyncBufferPoolIncrementalWrite() file:'%u/%u/%u' "
-							 "numBlocks:'%u' ",
+						elog(LOG, "resynchronize buffer pool relation '%u/%u/%u' "
+							 "number of blocks:'%u' ",
 							 smgr_relation->smgr_rnode.spcNode,
 							 smgr_relation->smgr_rnode.dbNode,
 							 smgr_relation->smgr_rnode.relNode,
@@ -567,19 +584,19 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 				 */
 				if (result->entries[ii].block_num >=  numBlocks)
 				{
-					ereport(LOG, 
-							(errmsg("WARNING(filerep): did not resync (maybe due to truncate) "
-									"file:'%u/%u/%u' numBlocks:'%d' " 
-									"blkno:''%d' "
-									"lsn end:'%u'/'%u' '%s' ",
+					ereport(LOG,	
+							(errmsg("could not resynchonize buffer pool relation '%u/%u/%u' block '%d' (maybe due to truncate), "
+									"lsn change tracking '%s(%u/%u)' "
+									"number of blocks '%d' ",
 									smgr_relation->smgr_rnode.spcNode,
 									smgr_relation->smgr_rnode.dbNode,
 									smgr_relation->smgr_rnode.relNode,
-									numBlocks,
 									result->entries[ii].block_num,
+									XLogLocationToString(&loc1),
 									loc1.xlogid,
 									loc1.xrecoff,
-									XLogLocationToString(&loc1))));
+									numBlocks),						
+							 FileRep_errcontext()));						
 					
 					goto flush_check;
 				}
@@ -597,57 +614,80 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 				
 				loc = PageGetLSN(page); 
 				
-				if (Debug_filerep_print)
-					elog(LOG, "FileRepPrimary_ResyncBufferPoolIncrementalWrite() file:'%u/%u/%u' "
-						 "numBlocks:'%d' blkno:'%d' "
-						 "lsn page:'%u'/'%u' '%s' "
-						 "lsn end:'%u'/'%u' '%s' ",
-						 smgr_relation->smgr_rnode.spcNode,
-						 smgr_relation->smgr_rnode.dbNode,
-						 smgr_relation->smgr_rnode.relNode,		
-						 numBlocks,
-						 result->entries[ii].block_num,
-						 loc.xlogid,
-						 loc.xrecoff,
-						 XLogLocationToString(&loc),
-						 loc1.xlogid,
-						 loc1.xrecoff,
-						 XLogLocationToString(&loc1));
+				{
+					char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+					
+					snprintf(tmpBuf, sizeof(tmpBuf), 
+							 "incremental resync buffer pool identifier '%u/%u/%u' num blocks '%d' blkno '%d' lsn page '%s(%u/%u)' lsn end change tracking '%s(%u/%u)' ",
+							 smgr_relation->smgr_rnode.spcNode,
+							 smgr_relation->smgr_rnode.dbNode,
+							 smgr_relation->smgr_rnode.relNode,		
+							 numBlocks,
+							 result->entries[ii].block_num,
+							 XLogLocationToString(&loc),
+							 loc.xlogid,
+							 loc.xrecoff,
+							 XLogLocationToString(&loc1),
+							 loc1.xlogid,
+							 loc1.xrecoff);
+					
+					FileRep_InsertConfigLogEntry(tmpBuf);
+				}
 				
 				if (XLByteEQ(PageGetLSN(page), result->entries[ii].lsn_end)) 	
 				{
-					
 					smgrwrite(smgr_relation, 
 							  result->entries[ii].block_num,
 							  (char *)BufferGetBlock(buf),
 							  FALSE);
-					
 				}
 				else
-				{
-					ereport(LOG, 
-							(errmsg("WARNING(filerep): did not resync "
-									"file:'%u/%u/%u' num blocks:'%d' " 
-									"blkno:''%d' "
-									"lsn page:'%u'/'%u' '%s' "
-									"lsn end:'%u'/'%u' '%s' ",
-									smgr_relation->smgr_rnode.spcNode,
-									smgr_relation->smgr_rnode.dbNode,
-									smgr_relation->smgr_rnode.relNode,
-									numBlocks,
-									result->entries[ii].block_num,
-									loc.xlogid,
-									loc.xrecoff,
-									XLogLocationToString(&loc),
-									loc1.xlogid,
-									loc1.xrecoff,
-									XLogLocationToString(&loc1))));
-					
-					Assert(XLByteLT(result->entries[ii].lsn_end, PageGetLSN(page)));
+				{					
+					if (! XLByteLE(result->entries[ii].lsn_end, PageGetLSN(page)))
+					{
+						ereport(WARNING,	
+								(errmsg("mirror failure, "
+										"could not resynchonize buffer pool relation '%u/%u/%u' block '%d' due to inconsistent lsn, "
+										"lsn end change tracking '%s(%u/%u)' lsn page '%s(%u/%u)' "
+										"number of blocks '%d', "
+										"failover requested",
+										smgr_relation->smgr_rnode.spcNode,
+										smgr_relation->smgr_rnode.dbNode,
+										smgr_relation->smgr_rnode.relNode,
+										result->entries[ii].block_num,
+										XLogLocationToString(&loc),
+										loc.xlogid,
+										loc.xrecoff,
+										XLogLocationToString(&loc1),
+										loc1.xlogid,
+										loc1.xrecoff,
+										numBlocks),						
+								 errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"),
+								 errSendAlert(true),
+								 FileRep_errcontext()));	
+						
+						FileRep_SetSegmentState(SegmentStateFault);						
+					}
 					
 				}
 				
-				UnlockReleaseBuffer(buf); 
+#ifdef FAULT_INJECTOR	
+				FaultInjector_InjectFaultIfSet(
+											   FileRepResyncWorker, 
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName
+#endif				
+				
+				UnlockReleaseBuffer(buf);
+				
+#ifdef FAULT_INJECTOR	
+				FaultInjector_InjectFaultIfSet(
+											   FileRepResyncWorker, 
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName
+#endif				
 		
 	flush_check:			
 				if (((ii + 1) == result->count && result->ask_for_more == false) ||

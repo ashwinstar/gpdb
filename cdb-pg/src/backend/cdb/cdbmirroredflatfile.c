@@ -1077,17 +1077,13 @@ MirroredFlatFile_DropTemporaryFiles(void)
 			errno = 0;
 			if (unlink(path))
 			{
-					char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
-									
-					snprintf(tmpBuf, sizeof(tmpBuf), "unlink failed identifier '%s' errno '%d' ",
-							 de->d_name, 
-							 errno);
-				
-					ereport(LOG,
-						(errcode_for_file_access(),
-						 errmsg("LOG(filerep): %s : unlink failed : %m", path)));
-				
-					//FileRep_InsertConfigLogEntry(tmpBuf);				
+				char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+								
+				snprintf(tmpBuf, sizeof(tmpBuf), "unlink failed identifier '%s' errno '%d' ",
+						 de->d_name, 
+						 errno);
+			
+				FileRep_InsertConfigLogEntry(tmpBuf);				
 			}
 		}
 	}
@@ -1204,10 +1200,14 @@ PgVersionRecoverMirror(void)
 				if (retval != ENOENT)
 				{
 					status = STATUS_ERROR;
-					ereport(LOG,
+					
+					ereport(WARNING,
 							(errcode_for_file_access(),
-							 errmsg("ERROR(filerep): could not open file \"%s\" : %m",
-									primaryOpen.path)));					
+							 errmsg("mirror failure, "
+									 "could not open file '%s' : %m "
+									 "failover requested",
+									 (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+							  FileRep_errcontext()));								
 				}
 				break;
 			}
@@ -1216,12 +1216,18 @@ PgVersionRecoverMirror(void)
 			 * Determine the end.
 			 */
 			endOffset = MirroredFlatFile_SeekEnd(&primaryOpen);
-			if (endOffset < 0) {
+			if (endOffset < 0) 
+			{
 				status = STATUS_ERROR;
-				ereport(LOG,
+							
+				ereport(WARNING,
 						(errcode_for_file_access(),
-						 errmsg("ERROR(filerep): could not seek to end of file \"%s\" : %m",
-								primaryOpen.path)));
+						 errmsg("mirror failure, "
+								 "could not seek to end of file '%s' : %m "
+								 "failover requested",
+								 (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+						  FileRep_errcontext()));								
+									
 				break;
 			}
 			
@@ -1248,11 +1254,12 @@ PgVersionRecoverMirror(void)
 			if (buffer == NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_OUT_OF_MEMORY),
-						 (errmsg("Not enough shared memory for Mirroring."))));
+						 (errmsg("not enough shared memory for mirroring"))));
 			
 			MemSet(buffer, 0, bufferLen);
 			
-			while (startOffset < endOffset) {
+			while (startOffset < endOffset) 
+			{
 				
 				retval = MirroredFlatFile_Read(	
 											   &primaryOpen,
@@ -1260,13 +1267,19 @@ PgVersionRecoverMirror(void)
 											   buffer,
 											   bufferLen);
 				
-				if (retval != bufferLen) {
+				if (retval != bufferLen) 
+				{
 					status = STATUS_ERROR;
-					ereport(LOG,
+						
+					ereport(WARNING,
 							(errcode_for_file_access(),
-							 errmsg("ERROR(filerep): could not read from position:'%d' in file '%s' : %m",
-									startOffset, primaryOpen.path)));
-					
+							 errmsg("mirror failure, "
+									 "could not read from position '%d' file '%s' : %m "
+									 "failover requested",
+									 startOffset,
+									 (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+							  FileRep_errcontext()));								
+								
 					break;
 				}
 				

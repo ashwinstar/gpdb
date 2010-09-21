@@ -49,6 +49,7 @@
 
 #include "miscadmin.h"
 #include "access/xact.h"
+#include "cdb/cdbfilerep.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 
@@ -1140,6 +1141,17 @@ FileWrite(File file, char *buffer, int amount)
 		elog(LOG, "FileWrite: %d (%s) " INT64_FORMAT " %d %p",
 		 file, VfdCache[file].fileName,
 		 VfdCache[file].seekPos, amount, buffer);
+	else
+		FileRep_InsertLogEntry(
+							   "FileWrite",
+							   FileRep_GetFlatFileIdentifier(VfdCache[file].fileName, ""),
+							   FileRepRelationTypeFlatFile,
+							   FileRepOperationWrite,
+							   FILEREP_UNDEFINED,
+							   FILEREP_UNDEFINED,
+							   FileRepAckStateNotInitialized,
+							   VfdCache[file].seekPos,
+							   amount);		
 	
 	returnCode = FileAccess(file);
 	if (returnCode < 0)
