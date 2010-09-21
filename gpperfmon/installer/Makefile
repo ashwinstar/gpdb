@@ -77,8 +77,8 @@ all:
 	cp -R $(GPMONWS_DIR)/* .tmp/www
 	cp -R $(GPMONUI_DIR)/bin-release/* .tmp/www/static
 	cp -R $(LIGHTY_DIR)/* .tmp
-	if [ -f $(BLD_TOP)/docs/release/pdf/GPPerfmonUserGuide.pdf ]; then \
-		cp $(BLD_TOP)/docs/release/pdf/GPPerfmonUserGuide.pdf .tmp/docs; \
+	if [ -f $(BLD_TOP)/docs/release/pdf/GPPerfmonAdminGuide.pdf ]; then \
+		cp $(BLD_TOP)/docs/release/pdf/GPPerfmonAdminGuide.pdf .tmp/docs; \
 		cp -R $(CONSOLEDOCS_DIR)/* .tmp/www/static/docs; \
 	fi;
 	cp $(BLD_TOP)/ext/$(BLD_ARCH)/bin/openssl .tmp/bin
