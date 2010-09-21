@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpcheck -f|--file HOSTFILE -m|--master MASTER_HOST -s|--standymaster MASTER_HOST
+USAGE:   gpcheck -f|--file HOSTFILE -m|--master MASTER_HOST -s|--standymaster MASTER_HOST [--dump]
          where HOSTFILE lists all the hosts to check
          where MASTER_HOST indicates hosts that should be assumed to be master or standby masters
+         where --dump will indicate to dump all collected data without doing any checks
 '''
 
 import os, sys, re, tempfile, shutil, pickle
@@ -43,6 +44,7 @@ def parseargs():
     parser = OptParser(option_class=OptChecker)
     parser.remove_option('-h')
     parser.add_option('-?', '--help', action='store_true')
+    parser.add_option('-d', '--dump', action='store_true')
     parser.add_option('-f', '--file',  type='string')
     parser.add_option('-m', '--master', type='string')
     parser.add_option('-s', '--standbymaster', type='string')
@@ -246,6 +248,12 @@ def earlyExit(error = False):
     else:
         sys.exit(0)
 
+def doDump():
+    for h in hosts:
+        print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+        print "HOST: %s" % h
+        print hosts[h].data.__str__()
+        print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 
 
 logger = get_default_logger()
@@ -268,10 +276,8 @@ if (runCollections()):
 if (readDataFiles()):
     earlyExit(True)
 
-for h in hosts:
-    print h
-    print hosts[h].data.__str__()
+if options.dump:
+    doDump()
+    earlyExit(False)
 
 earlyExit(False)
-
-
