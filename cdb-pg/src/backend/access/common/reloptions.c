@@ -289,7 +289,7 @@ parseRelOptions(Datum options, int numkeywords, const char *const * keywords,
  * Parse reloptions for anything using StdRdOptions
  */
 bytea *
-default_reloptions(Datum reloptions, bool validate,
+default_reloptions(Datum reloptions, bool validate, char relkind,
 				   int minFillfactor, int defaultFillfactor)
 {
 	static const char *const default_keywords[] = {
@@ -338,6 +338,12 @@ default_reloptions(Datum reloptions, bool validate,
 	/* appendonly */
 	if(values[1] != NULL)
 	{
+		if (relkind != RELKIND_RELATION)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("usage of parameter \"appendonly\" in a non relation object is not supported"),
+					 errOmitLocation(false)));
+			
 		if (!(pg_strcasecmp(values[1], "true") == 0 ||
 			  pg_strcasecmp(values[1], "false") == 0))
 		{
@@ -353,6 +359,11 @@ default_reloptions(Datum reloptions, bool validate,
 	/* blocksize */
 	if(values[2] != NULL)
 	{
+		if (relkind != RELKIND_RELATION)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("usage of parameter \"blocksize\" in a non relation object is not supported"),
+					 errOmitLocation(false)));
 
 		if(!appendonly)
 			ereport(ERROR,
@@ -381,6 +392,12 @@ default_reloptions(Datum reloptions, bool validate,
 	/* compression type */
 	if(values[3] != NULL)
 	{
+		if (relkind != RELKIND_RELATION)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("usage of parameter \"compresstype\" in a non relation object is not supported"),
+					 errOmitLocation(false)));
+
 		if(!appendonly)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
@@ -409,6 +426,11 @@ default_reloptions(Datum reloptions, bool validate,
 	/* compression level */
 	if(values[4] != NULL)
 	{
+		if (relkind != RELKIND_RELATION)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("usage of parameter \"compresslevel\" in a non relation object is not supported"),
+					 errOmitLocation(false)));
 
 		if(!appendonly)
 			ereport(ERROR,
@@ -470,6 +492,12 @@ default_reloptions(Datum reloptions, bool validate,
 	/* checksum */
 	if(values[5] != NULL)
 	{
+		if (relkind != RELKIND_RELATION)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("usage of parameter \"checksum\" in a non relation object is not supported"),
+					 errOmitLocation(false)));
+
 		if(!appendonly)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
@@ -492,6 +520,12 @@ default_reloptions(Datum reloptions, bool validate,
 	/* columnstore */
 	if(values[6] != NULL)
 	{
+		if (relkind != RELKIND_RELATION)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("usage of parameter \"orientation\" in a non relation object is not supported"),
+					 errOmitLocation(false)));
+
 		if(!appendonly)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
@@ -606,6 +640,7 @@ bytea *
 heap_reloptions(char relkind __attribute__((unused)), Datum reloptions, bool validate)
 {
 	return default_reloptions(reloptions, validate,
+							  RELKIND_RELATION,
 							  HEAP_MIN_FILLFACTOR,
 							  HEAP_DEFAULT_FILLFACTOR);
 }

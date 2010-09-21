@@ -31,7 +31,7 @@ extern void parseRelOptions(Datum options, int numkeywords,
 				const char *const * keywords,
 				char **values, bool validate);
 
-extern bytea *default_reloptions(Datum reloptions, bool validate,
+extern bytea *default_reloptions(Datum reloptions, bool validate, char relkind,
 				   int minFillfactor, int defaultFillfactor);
 
 extern void heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *safewrite);

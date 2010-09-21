@@ -679,6 +679,7 @@ gistoptions(PG_FUNCTION_ARGS)
 	bytea	   *result;
 
 	result = default_reloptions(reloptions, validate,
+								RELKIND_INDEX,
 								GIST_MIN_FILLFACTOR,
 								GIST_DEFAULT_FILLFACTOR);
 	if (result)

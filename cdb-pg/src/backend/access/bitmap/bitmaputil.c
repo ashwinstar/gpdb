@@ -1203,6 +1203,7 @@ bmoptions(PG_FUNCTION_ARGS)
 #define BM_DEFAULT_FILLFACTOR		100
 
 	result = default_reloptions(reloptions, validate,
+								RELKIND_INDEX,
 								BM_MIN_FILLFACTOR,
 								BM_DEFAULT_FILLFACTOR);
 	if (result)

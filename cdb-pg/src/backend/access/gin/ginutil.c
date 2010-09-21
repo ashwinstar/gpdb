@@ -238,6 +238,7 @@ ginoptions(PG_FUNCTION_ARGS)
 #define GIN_DEFAULT_FILLFACTOR		100
 
 	result = default_reloptions(reloptions, validate,
+								RELKIND_INDEX,
 								GIN_MIN_FILLFACTOR,
 								GIN_DEFAULT_FILLFACTOR);
 	if (result)

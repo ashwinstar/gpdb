@@ -1141,6 +1141,7 @@ btoptions(PG_FUNCTION_ARGS)
 	bytea	   *result;
 
 	result = default_reloptions(reloptions, validate,
+								RELKIND_INDEX,
 								BTREE_MIN_FILLFACTOR,
 								BTREE_DEFAULT_FILLFACTOR);
 	if (result)

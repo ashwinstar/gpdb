@@ -187,6 +187,7 @@ hashoptions(PG_FUNCTION_ARGS)
 	bytea	   *result;
 
 	result = default_reloptions(reloptions, validate,
+								RELKIND_INDEX,
 								HASH_MIN_FILLFACTOR,
 								HASH_DEFAULT_FILLFACTOR);
 	if (result)
