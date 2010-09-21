@@ -9,7 +9,7 @@ import os, sys, re, tempfile, subprocess, pickle
 try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
-    from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport
+    from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport, grubconf
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -166,6 +166,27 @@ def collectOmReports():
     omReportStorageVdisk(data)
 
     return data
+
+# returns populated grubconf object
+def collectGrubConf():
+    data = grubconf()
+
+    try:
+        for line in open("/boot/grub/grub.conf", "r"):
+            if re.search("^serial ", line):
+                data.serial_declaration = True
+            if re.search("^terminal ", line):
+                data.terminal_declaration = True
+            if re.search("#.*kernel", line):
+                continue
+            if re.search("kernel", line):
+                if re.search(" console=ttyS1,", line):
+                    data.ttyS1_declaration = True
+    
+    except Exception, e:
+        data.errormsg = e.__str__()
+    
+    return data
         
 
 def processDellServer():
@@ -174,6 +195,7 @@ def processDellServer():
     output = DellOutputData()
     output.chkconfig = collectChkconfigData()
     output.omreport = collectOmReports()
+    output.grubconf = collectGrubConf()
 
 # True is an error
 def parseargs():

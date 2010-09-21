@@ -24,10 +24,21 @@ class chkconfig:
         self.xinetd = dict()   # hash of services, value is boolean
         self.errormsg = None
 
+class grubconf:
+    def __init__(self):
+        self.serial_declaration = False
+        self.terminal_declaration = False
+        self.ttyS1_declaration = False
+        self.errormsg = None
+
+    def __str__(self):
+        return "serial_declaration(%s) terminal_declaration(%s) ttyS1_declaration(%s)" % (self.serial_declaration, self.terminal_declaration, self.ttyS1_declaration)
+
 class DellOutputData:
     def __init__(self):
         self.chkconfig = None
         self.omreport = None
+        self.grubconf = None
 
     def __str__(self):
         ser = "=============SERVICES=======================\n"
@@ -50,6 +61,10 @@ class DellOutputData:
         omr = "=============OMREPORT VIRTUAL DISKS=========\n"
         ome = "=============OMREPORT VIRTUAL DISKS ERRORMSG\n"
         output = "%s\n%s%s\n%s%s" % (output, omr, self.omreport.vdisks.__str__(), ome,self.omreport.vdisks_errormsg)
+
+        grc = "============= GRUB.CONF======================\n"
+        gre = "============= GRUB.CONF ERRORMSG=============\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.grubconf.__str__(), gre, self.grubconf.errormsg)
 
         return output
     
