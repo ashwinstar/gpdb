@@ -32,7 +32,7 @@ except ImportError, e:
 
 
 script_name = os.path.split(__file__)[-1]
-script_version = 'main build dev'
+script_version = '$Revision$'
 
 # consts
 STOPPED = 0
