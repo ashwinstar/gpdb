@@ -52,6 +52,8 @@ static void MirroredAppendOnly_SetUpMirrorAccess(
 	
 	bool						copyToMirror,
 
+	bool						treatNonConfiguredAsMirrorDataLoss,
+
 	bool						traceOpenFlags,
 
 	int							fileFlags,
@@ -84,7 +86,10 @@ static void MirroredAppendOnly_SetUpMirrorAccess(
 		 * We want to declare mirror loss to force us to evaluate the mirror
 		 * configuration at flush time.
 		 */
-		*mirrorDataLossOccurred = true;
+		if (treatNonConfiguredAsMirrorDataLoss)
+		{
+			*mirrorDataLossOccurred = true;
+		}
 		break;
 		
 	case MirrorDataLossTrackingState_MirrorCurrentlyUpInSync:
@@ -346,6 +351,7 @@ static void MirroredAppendOnly_DoOpen(
 									primaryOnlyToLetResynchronizeWork,
 									mirrorOnly,
 									copyToMirror,
+									/* treatNonConfiguredAsMirrorDataLoss */ true,	// We want to force mirror catchup to examine the configuration after flush.
 									traceOpenFlags,
 									fileFlags,
 									fileMode,
@@ -1936,6 +1942,7 @@ static void MirroredAppendOnly_DoDrop(
 									mirrorOnly,
 									/* copyToMirror */ false,
 									/* traceOpenFlags */ false,
+									/* treatNonConfiguredAsMirrorDataLoss */ false,	// Don't go into "Only Mirror Drop Remains" state on DROP.
 									/* fileFlags */ 0,
 									/* fileMode */ 0,
 									&mirrorMode,
