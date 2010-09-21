@@ -26,6 +26,7 @@ logger = None
 pool = None
 hosts = dict()
 tmpdir = None
+appliance_version = None
 
 class GpCheckHost:
     def __init__(self, name):
@@ -226,6 +227,22 @@ def runCollections():
 
     return False
 
+# True for error, for now this utility only works on an appliance
+def checkAppliance():
+    global appliance_version
+    if not os.path.exists('/etc/gpdb-appliance-version'):
+        return True
+
+    fd = open('/etc/gpdb-appliance-version')
+
+    appliance_version = fd.read()
+
+    appliance_version = appliance_version.strip()
+
+    logger.info("GPDB Appliance Version: %s" % appliance_version)
+
+    return False
+
 
 def earlyExit(error = False):
 
@@ -260,6 +277,9 @@ logger = get_default_logger()
 setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
 
 if (parseargs()):
+    sys.exit(0)
+
+if (checkAppliance()):
     sys.exit(0)
 
 pool = WorkerPool()
