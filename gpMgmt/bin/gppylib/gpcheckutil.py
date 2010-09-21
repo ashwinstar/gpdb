@@ -34,6 +34,16 @@ class grubconf:
     def __str__(self):
         return "serial_declaration(%s) terminal_declaration(%s) ttyS1_declaration(%s)" % (self.serial_declaration, self.terminal_declaration, self.ttyS1_declaration)
 
+class inittab:
+    def __init__(self):
+        self.s1 = False
+        self.defaultRunLevel = None
+        self.errormsg = None
+
+    def __str__(self):
+        return "s1_declaration(%s) default_run_level(%s)" % (self.s1, self.defaultRunLevel)
+    
+
 class GpMount:
     def __init__(self):
         self.partition = None
@@ -79,6 +89,7 @@ class DellOutputData:
         self.omreport = None
         self.grubconf = None
         self.mounts = None
+        self.inittab = None
 
     def __str__(self):
         ser = "=============SERVICES=======================\n"
@@ -109,6 +120,10 @@ class DellOutputData:
         mnt = "============= MOUNT==========================\n"
         mte = "============= MOUNT ERRORMSG=================\n"
         output = "%s\n%s%s\n%s%s" % (output, mnt, self.mounts.__str__(), mte, self.mounts.errormsg)
+
+        grc = "============= INITTAB========================\n"
+        gre = "============= INITTAB ERRORMSG===============\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.inittab.__str__(), gre, self.inittab.errormsg)
 
         return output
     

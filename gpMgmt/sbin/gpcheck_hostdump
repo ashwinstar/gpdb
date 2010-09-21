@@ -9,7 +9,7 @@ import os, sys, re, tempfile, subprocess, pickle
 try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
-    from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport, grubconf, mounts, GpMount, GpMount
+    from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport, grubconf, mounts, GpMount, GpMount, inittab
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -225,6 +225,25 @@ def collectGrubConf():
         data.errormsg = e.__str__()
     
     return data
+
+# returns populated inittab object
+def collectInittab():
+    data = inittab()
+
+    try:
+        for line in open("/etc/inittab", "r"):
+            if re.search("^id:", line):
+                words = line.split(":")
+                if len(words) > 2:
+                    data.defaultRunLevel = words[1]
+
+            if re.search("^S1", line):
+                data.s1 = True
+    
+    except Exception, e:
+        data.errormsg = e.__str__()
+    
+    return data
         
 
 def processDellServer():
@@ -235,6 +254,7 @@ def processDellServer():
     output.omreport = collectOmReports()
     output.grubconf = collectGrubConf()
     output.mounts = collectMounts()
+    output.inittab = collectInittab()
 
 # True is an error
 def parseargs():
