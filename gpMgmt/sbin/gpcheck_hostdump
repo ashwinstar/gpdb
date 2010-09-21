@@ -9,7 +9,7 @@ import os, sys, re, tempfile, subprocess, pickle
 try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
-    from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig
+    from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -33,7 +33,7 @@ def collectChkconfigData():
     startxInet = False
     for line in result[0].splitlines():
         if not startxInet:
-            if re.search(line, "xinetd based services"):
+            if re.search("xinetd based services", line):
                 startxInet = True
             else:
                 words = line.split()
@@ -59,6 +59,35 @@ def collectChkconfigData():
         
     
     return data
+
+def collectOmReports():
+
+    data = omreport()
+
+    p = subprocess.Popen("omreport chassis biossetup", shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+
+    result = p.communicate()
+
+    data.errormsg = result[1].strip()
+
+    if p.returncode:
+        return data
+
+    attribute = None
+    for line in result[0].splitlines():
+
+        if not attribute:
+            if re.search("Attribute :", line):
+                words = line.strip().split("Attribute :")
+                attribute = words[1].strip()
+        else:
+            if re.search("Setting   :", line):
+                words = line.strip().split("Setting   :")
+                data.biossetup[attribute] = words[1].strip()
+
+            attribute = None
+
+    return data
         
 
 def processDellServer():
@@ -66,6 +95,7 @@ def processDellServer():
     global output
     output = DellOutputData()
     output.chkconfig = collectChkconfigData()
+    output.omreport = collectOmReports()
 
 # True is an error
 def parseargs():
