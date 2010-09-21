@@ -61,6 +61,29 @@ def collectChkconfigData():
     return data
 
 # argument is a reference to instantiated omreport object
+def omReportStorageVdisk(data):
+
+    p = subprocess.Popen("omreport storage vdisk controller=0", shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+
+    result = p.communicate()
+
+    data.vdisks_errormsg = result[1].strip()
+
+    if p.returncode:
+        return
+    
+    counter = -1
+    for line in result[0].splitlines():
+        if re.search("ID\s*:", line):
+            counter += 1
+            data.vdisks.append(dict())
+        words = line.split(":")
+        if len(words) < 2:
+            continue
+        data.vdisks[counter][words[0].strip()] =  ":".join(words[1:]).strip()
+
+
+# argument is a reference to instantiated omreport object
 def omReportChassisRemoteaccess(data):
     p = subprocess.Popen("omreport chassis remoteaccess", shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
 
@@ -140,6 +163,7 @@ def collectOmReports():
     omReportChassisBiossetup(data)
     omReportChassisBiossetupBootorder(data)
     omReportChassisRemoteaccess(data)
+    omReportStorageVdisk(data)
 
     return data
         

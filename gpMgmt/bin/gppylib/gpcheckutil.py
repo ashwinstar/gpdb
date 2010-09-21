@@ -15,6 +15,9 @@ class omreport:
         self.remoteaccess = dict()  # key value pairs
         self.remoteaccess_errormsg = None
 
+        self.vdisks = list()        # list of dicts, 1 for each virtual disk
+        self.vdisks_errormsg = None 
+
 class chkconfig:
     def __init__(self):
         self.services = dict() # hash of services, each entry is hash of run levels and boolean value
@@ -43,6 +46,10 @@ class DellOutputData:
         omr = "=============OMREPORT REMOTEACCESS==========\n"
         ome = "=============OMREPORT REMOTEACCESS ERRORMSG=\n"
         output = "%s\n%s%s\n%s%s" % (output, omr, self.omreport.remoteaccess.__str__(), ome,self.omreport.remoteaccess_errormsg)
+
+        omr = "=============OMREPORT VIRTUAL DISKS=========\n"
+        ome = "=============OMREPORT VIRTUAL DISKS ERRORMSG\n"
+        output = "%s\n%s%s\n%s%s" % (output, omr, self.omreport.vdisks.__str__(), ome,self.omreport.vdisks_errormsg)
 
         return output
     
