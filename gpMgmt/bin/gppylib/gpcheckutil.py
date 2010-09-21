@@ -51,7 +51,12 @@ class securetty:
 class ioschedulers:
     def __init__(self):
         self.devices = dict() # key is device name value is scheduler name
-        self.errormsg = None
+        self.errormsg = ''
+
+class blockdev:
+    def __init__(self):
+        self.ra = dict() # key is device name value is getra value
+        self.errormsg = ''
 
 class GpMount:
     def __init__(self):
@@ -142,6 +147,10 @@ class DellOutputData:
         grc = "============= IO SCHEDULERS==================\n"
         gre = "============= IO SCHEDULERS  ERRORMSG========\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.ioschedulers.devices.__str__(), gre, self.ioschedulers.errormsg)
+
+        grc = "============= BLOCKDEV RA ====================\n"
+        gre = "============= BLOCKDEV RA ERRORMSG============\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.blockdev.ra.__str__(), gre, self.blockdev.errormsg)
 
         return output
     

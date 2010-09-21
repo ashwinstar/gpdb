@@ -10,7 +10,7 @@ try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport, grubconf, mounts, GpMount, GpMount, inittab
-    from gppylib.gpcheckutil import securetty, ioschedulers
+    from gppylib.gpcheckutil import securetty, ioschedulers, blockdev
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -204,7 +204,35 @@ def collectMounts():
         data.entries[mdata.partition] = mdata
 
     return data
- 
+
+# returns populated blockdev object
+def collectBlockdev():
+    
+    data = blockdev()
+    devices = list()
+
+    try:
+        devices = glob.glob("/dev/sd*")
+
+    except Exception, e:
+        data.errormsg = e.__str__()
+
+    for d in devices:
+
+        p = subprocess.Popen("/sbin/blockdev --getra %s" % d, shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+
+        result = p.communicate()
+
+        data.errormsg += result[1].strip()
+
+        if p.returncode:
+            continue
+
+        data.ra[d] = result[0].strip()
+    
+    return data
+
+
 # returns populated ioschedulers object
 def collectIOschedulers():
     
@@ -310,6 +338,7 @@ def processDellServer():
     output.inittab = collectInittab()
     output.securetty = collectSecuretty()
     output.ioschedulers = collectIOschedulers()
+    output.blockdev = collectBlockdev()
 
 # True is an error
 def parseargs():
