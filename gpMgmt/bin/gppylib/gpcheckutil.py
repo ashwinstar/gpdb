@@ -6,10 +6,14 @@ class HostType:
 
 class omreport:
     def __init__(self):
-        self.biossetup = dict() # key value pairs
+        self.biossetup = dict()     # key value pairs
         self.biossetup_errormsg = None
-        self.bootorder = list() # list of Devices in order of boot
+
+        self.bootorder = list()     # list of Devices in order of boot
         self.bootorder_errormsg = None
+
+        self.remoteaccess = dict()  # key value pairs
+        self.remoteaccess_errormsg = None
 
 class chkconfig:
     def __init__(self):
@@ -35,6 +39,10 @@ class DellOutputData:
         boo = "=============OMREPORT BOOTORDER=============\n"
         boe = "=============OMREPORT BOOTORDER ERRORMSG====\n"
         output = "%s\n%s%s\n%s%s" % (output, boo, self.omreport.bootorder.__str__(), boe, self.omreport.bootorder_errormsg)
+
+        omr = "=============OMREPORT REMOTEACCESS==========\n"
+        ome = "=============OMREPORT REMOTEACCESS ERRORMSG=\n"
+        output = "%s\n%s%s\n%s%s" % (output, omr, self.omreport.remoteaccess.__str__(), ome,self.omreport.remoteaccess_errormsg)
 
         return output
     
