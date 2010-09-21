@@ -9,7 +9,7 @@ import os, sys, re, tempfile, subprocess, pickle
 try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
-    from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport, grubconf
+    from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport, grubconf, mounts, GpMount, GpMount
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -167,6 +167,44 @@ def collectOmReports():
 
     return data
 
+# returns populated mounts object
+def collectMounts():
+
+    data = mounts()
+
+    p = subprocess.Popen("mount", shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+
+    result = p.communicate()
+
+    data.errormsg = result[1].strip()
+
+    if p.returncode:
+        return data
+
+    for line in result[0].splitlines():
+
+        mdata = GpMount()
+        words = line.strip().split()
+        mdata.partition = words[0]
+        mdata.dir = words[2]
+        mdata.type = words[4]
+
+        # get the options string
+        tmpa = words[5]
+        tmpb = tmpa.strip().strip("()")
+        tmpc = tmpb.split(",")
+        for op in tmpc:
+            tokens = op.split("=")
+            if len(tokens) == 1:
+                mdata.options[op] = None
+            elif len(tokens) == 2:
+                mdata.options[tokens[0]] = tokens[1]
+
+        data.entries[mdata.partition] = mdata
+
+    return data
+ 
+
 # returns populated grubconf object
 def collectGrubConf():
     data = grubconf()
@@ -196,6 +234,7 @@ def processDellServer():
     output.chkconfig = collectChkconfigData()
     output.omreport = collectOmReports()
     output.grubconf = collectGrubConf()
+    output.mounts = collectMounts()
 
 # True is an error
 def parseargs():

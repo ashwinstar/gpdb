@@ -34,11 +34,51 @@ class grubconf:
     def __str__(self):
         return "serial_declaration(%s) terminal_declaration(%s) ttyS1_declaration(%s)" % (self.serial_declaration, self.terminal_declaration, self.ttyS1_declaration)
 
+class GpMount:
+    def __init__(self):
+        self.partition = None
+        self.dir= None
+        self.type = None
+        self.options = dict() # dictionary of options, some options have no value, some have values
+
+    def __str__(self):
+        optionstring = ''
+        first = True
+        for k in self.options.keys():
+
+            if not first:
+                optionstring = "%s," % optionstring
+
+            thisoption = k
+            if self.options[k]:
+                thisoption = "%s=%s" % (thisoption, self.options[k])
+
+            optionstring = "%s%s" % (optionstring, thisoption)
+            first = False
+
+        return "%s on %s type %s (%s)" % (self.partition, self.dir, self.type, optionstring)
+                
+ 
+class mounts:
+
+    def __init__(self):
+        self.entries = dict() # dictionary key=partition value=mount object
+        self.errormsg = None
+
+    def __str__(self):
+        output = ''
+        for k in self.entries.keys():
+            output = "%s\n%s" % (output, self.entries[k].__str__())
+        return output
+
+
+       
 class DellOutputData:
     def __init__(self):
         self.chkconfig = None
         self.omreport = None
         self.grubconf = None
+        self.mounts = None
 
     def __str__(self):
         ser = "=============SERVICES=======================\n"
@@ -65,6 +105,10 @@ class DellOutputData:
         grc = "============= GRUB.CONF======================\n"
         gre = "============= GRUB.CONF ERRORMSG=============\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.grubconf.__str__(), gre, self.grubconf.errormsg)
+
+        mnt = "============= MOUNT==========================\n"
+        mte = "============= MOUNT ERRORMSG=================\n"
+        output = "%s\n%s%s\n%s%s" % (output, mnt, self.mounts.__str__(), mte, self.mounts.errormsg)
 
         return output
     
