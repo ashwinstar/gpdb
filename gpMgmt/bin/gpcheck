@@ -28,6 +28,7 @@ hosts = dict()
 tmpdir = None
 appliance_version = None
 is_root = False
+found_errors = False
 
 class GpCheckHost:
     def __init__(self, name):
@@ -67,6 +68,15 @@ def parseargs():
         return True
 
     return False
+
+def printWarning(msg):
+    logger.warning("GPCHECK_WARNING: %s", msg)
+    
+
+def printError(msg):
+    global found_errors
+    found_errors = True
+    logger.error("GPCHECK_ERROR: %s", msg)
 
 #true is error
 def createHostList():
@@ -211,7 +221,7 @@ def testAppliance1001Chkconfig(host):
             success = True
 
     if not success:
-        logger.error("GPCHECK_ERROR: host (%s) ipmi service should be on for levels 3 4 and 5" % host.hostname)
+        printError("host (%s) ipmi service should be on for levels 3 4 and 5" % host.hostname)
 
     services_that_should_be_off = ['iptables', 'ip6tables', 'avahi-daemon', 'avahi-dnsconfd', 'conman', 'bluetooth', 'cpuspeed',
                                    'setroubleshoot', 'hidd', 'hplip', 'kudzu']
@@ -221,15 +231,15 @@ def testAppliance1001Chkconfig(host):
         service = host.data.chkconfig.services[sname] # return a dict of run levels and values
 
         if not service:
-            logger.error("GPCHECK_ERROR: host (%s) service (%s) service not reported on machine in chkconfig output" % (host.hostname, sname))
+            printError("host (%s) service (%s) service not reported on machine in chkconfig output" % (host.hostname, sname))
 
         if len(service.keys()) != 7:
-            logger.error("GPCHECK_ERROR: host (%s) service (%s) unexpected number of run levels for service" % (host.hostname, sname))
+            printError("host (%s) service (%s) unexpected number of run levels for service" % (host.hostname, sname))
             continue
 
         for level in service.keys():
             if service[level]:
-                logger.error("GPCHECK_ERROR: host (%s) service (%s) should be off" % (host.hostname, sname))
+                printError("host (%s) service (%s) should be off" % (host.hostname, sname))
                 break
 
 
@@ -264,12 +274,12 @@ def runTests():
         is_root = True
     else:
         is_root = False
-        logger.warning("GPCHECK_WARNING: utility will not check all settings when run as non-root user")
+        printWarning("utility will not check all settings when run as non-root user")
 
     if appliance_version == "1.0.0.1":
         testAppliance1001()
     else:
-        logger.error("GPCHECK_ERROR: Unkown appliance version: %s" % appliance_version)
+        printError("Unkown appliance version: %s" % appliance_version)
         return False
 
 #true is error
@@ -378,5 +388,8 @@ if options.dump:
 
 if (runTests()):
     earlyExit(True)
+
+if not found_errors:
+    logger.info("GPCHECK_NORMAL")
 
 earlyExit(False)
