@@ -285,6 +285,63 @@ def testAppliance1001OmreportRemoteaccess(host):
 
 
 
+def testAppliance1001OmreportVdisks(host):
+
+    deviceName = 'Device Name'
+    vdiskSize = 'Size'
+    vdiskStripeSize = 'Stripe Element Size'
+
+    allDevices = set()
+    virtualDisks = dict() # mapping from device name to dict of properties 
+    errmsg = None
+    expectedSize = 50000000000
+    expectedVdiskStripeSize = '128 KB'
+
+    if host.is_a_master:
+        allDevices.add('/dev/sda')
+        allDevices.add('/dev/sdb')
+        allDevices.add('/dev/sdc')
+        errmsg = "on master host"
+    else:
+        allDevices.add('/dev/sda')
+        allDevices.add('/dev/sdc')
+        allDevices.add('/dev/sdb')
+        allDevices.add('/dev/sdd')
+        errmsg = "on segment host"
+
+    # populate dictionary keyed on device name
+    for vdisk in host.data.omreport.vdisks:
+        if deviceName in vdisk:
+            device = vdisk[deviceName]
+            virtualDisks[device]  = vdisk
+
+    for dev in allDevices:
+        if dev not in virtualDisks:
+            printError(host.hostname, "can not find device '%s' expected %s" % (dev, errmsg))
+            continue
+
+        vdisk = virtualDisks[dev]
+
+        if vdiskSize in vdisk:
+            size = 0
+            words = vdisk[vdiskSize].split("(")
+            if len(words) == 2:
+                words = words[1].split()
+                if len(words) > 0:
+                    size = int(words[0].strip())
+            if size < expectedSize:
+                printError(host.hostname, "virtual disk %s size is too small %d bytes. minumum %d bytes." % (dev, size, expectedSize))
+        else:
+            printError(host.hostname, "attribute %s not found in omreport for virtual disk %s" % (vdiskSize, dev))
+
+        if vdiskStripeSize in vdisk:
+            if vdisk[vdiskStripeSize] != expectedVdiskStripeSize:
+                printError(host.hostname, "Virtual Disk Stripe Size '%s' does not match expected '%s' for %s" % (vdisk[vdiskStripeSize], expectedVdiskStripeSize, dev))
+        
+        else:
+            printError(host.hostname, "attribute %s not found in omreport for virtual disk %s" % (vdiskStripeSize, dev))
+
+
 
 def testAppliance1001OmreportBootorder(host):
 
@@ -349,6 +406,7 @@ def testAppliance1001Host(host):
     testAppliance1001OmreportBiossetup(host)
     testAppliance1001OmreportBootorder(host)
     testAppliance1001OmreportRemoteaccess(host)
+    testAppliance1001OmreportVdisks(host)
 
     # test grubconf
     # test mounts
