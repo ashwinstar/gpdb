@@ -1433,7 +1433,6 @@ void PersistentFilespace_ShmemInit(void)
 void
 get_filespace_data(fspc_agg_state **fas, char *caller)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 	HASH_SEQ_STATUS stat;
 	FilespaceDirEntry fde;
 
@@ -1443,7 +1442,6 @@ get_filespace_data(fspc_agg_state **fas, char *caller)
 
 	mmxlog_add_filespace_init(fas, &maxCount);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 	hash_seq_init(&stat, persistentFilespaceSharedHashTable);
 
 	while ((fde = hash_seq_search(&stat)) != NULL)
@@ -1454,6 +1452,5 @@ get_filespace_data(fspc_agg_state **fas, char *caller)
                  fde->dbId2, fde->locationBlankPadded2,
                  caller);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 #endif

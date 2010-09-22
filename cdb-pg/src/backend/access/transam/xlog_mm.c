@@ -21,6 +21,7 @@
 #include "catalog/pg_tablespace.h"
 #include "cdb/cdbpersistentfilespace.h"
 #include "cdb/cdbpersistenttablespace.h"
+#include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "commands/dbcommands.h"
@@ -1143,7 +1144,7 @@ mmxlog_add_filespace(
 		SUPPRESS_ERRCONTEXT_PUSH();
 
 		elog(PersistentRecovery_DebugPrintLevel(), 
-			 "add_filespace[%d]: add filespace %u (dbid1 %d, path1 \"%s\", dbid2 %d, path2 \"%s\", caller '%s')",
+			 "mmxlog_add_filespace[%d]: add filespace %u (dbid1 %d, path1 \"%s\", dbid2 %d, path2 \"%s\", caller '%s')",
 			 count,
 			 filespace,
 			 dbid1,
@@ -1210,7 +1211,7 @@ mmxlog_add_tablespace(
 		SUPPRESS_ERRCONTEXT_PUSH();
 
 		elog(PersistentRecovery_DebugPrintLevel(), 
-			 "add_tablespace[%d]: add tablespace %u (filespace %u, caller '%s')",
+			 "mmxlog_add_tablespace[%d]: add tablespace %u (filespace %u, caller '%s')",
 			 count,
 			 tablespace,
 			 filespace,
@@ -1222,6 +1223,70 @@ mmxlog_add_tablespace(
 	(*tas)->count++;
 }
 
+void
+mmxlog_add_database_init(
+	dbdir_agg_state **das, int *maxCount)
+{
+	int len;
+
+	Assert (*das == NULL);
+	
+	*maxCount = 10;		// Start off with at least this much room.
+	len = DBDIR_CHECKPOINT_BYTES(*maxCount);
+	*das = (dbdir_agg_state*)palloc0(len);
+}
+
+void
+mmxlog_add_database( 
+	dbdir_agg_state **das, int *maxCount,
+	Oid database, Oid tablespace, char *caller)
+{
+	int len;
+	int count;
+	dbdir_map *m;
+
+	Assert(*das != NULL);
+	Assert(*maxCount > 0);
+
+	count = (*das)->count;
+	Assert(count <= *maxCount);
+
+	if (count == *maxCount)
+	{
+		dbdir_agg_state *oldDas;
+
+		oldDas = *das;
+		
+		(*maxCount) *= 2;		// Double.
+		len = DBDIR_CHECKPOINT_BYTES(*maxCount);
+		*das = (dbdir_agg_state*)palloc0(len);
+		memcpy(*das, oldDas, DBDIR_CHECKPOINT_BYTES(count));
+		pfree(oldDas);
+	}
+
+	m = &(*das)->maps[count];
+	m->databaseoid = database;
+	m->tablespaceoid = tablespace;
+	
+	if (Debug_persistent_recovery_print)
+	{
+		SUPPRESS_ERRCONTEXT_DECLARE;
+
+		SUPPRESS_ERRCONTEXT_PUSH();
+
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "mmxlog_add_database[%d]: add database %u (tablespace %u, caller '%s')",
+			 count,
+			 database,
+			 tablespace,
+			 caller);
+
+		SUPPRESS_ERRCONTEXT_POP();
+	}
+
+	(*das)->count++;
+}
+
 /*
  * Add filespace and tablespace OID => path maps to the checkpoint payload. This
  * is used by the standby to construct a valid picture of the filespace and
@@ -1229,10 +1294,13 @@ mmxlog_add_tablespace(
  * which it cannot do since they're not guaranteed to be in a consistent state.
  */
 void
-mmxlog_append_checkpoint_data(XLogRecData rdata[4])
+mmxlog_append_checkpoint_data(XLogRecData rdata[5])
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	fspc_agg_state *f;
 	tspc_agg_state *t;
+	dbdir_agg_state *d;
 
 	/* 
 	 * We must make sure no one traverses the rdata chain into uninitialised
@@ -1241,6 +1309,7 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 	rdata[1].next = NULL;
 	rdata[2].next = NULL;
 	rdata[3].next = NULL;
+	rdata[4].next = NULL;
 
 	if (gp_before_filespace_setup)
 	{
@@ -1276,11 +1345,16 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 		return;
 	}
 
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 	f = NULL;
 	get_filespace_data(&f, "mmxlog_append_checkpoint_data");
 	
 	t = NULL;
 	get_tablespace_data(&t, "mmxlog_append_checkpoint_data");
+
+	d = NULL;
+	get_database_data(&d, "mmxlog_append_checkpoint_data");
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	rdata[2].data = (char*)f;
 	rdata[2].buffer = InvalidBuffer;
@@ -1288,9 +1362,13 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 	rdata[3].data = (char*)t;
 	rdata[3].buffer = InvalidBuffer;
 	rdata[3].len = TSPC_CHECKPOINT_BYTES(t->count);
+	rdata[4].data = (char*)d;
+	rdata[4].buffer = InvalidBuffer;
+	rdata[4].len = DBDIR_CHECKPOINT_BYTES(t->count);
 
 	rdata[1].next = &(rdata[2]);
 	rdata[2].next = &(rdata[3]);
+	rdata[3].next = &(rdata[4]);
 
 	if (Debug_persistent_recovery_print)
 	{
@@ -1299,9 +1377,10 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 		SUPPRESS_ERRCONTEXT_PUSH();
 	
 		elog(PersistentRecovery_DebugPrintLevel(), 
-			 "mmxlog_append_checkpoint_data: %d filespaces and %d tablespaces checkpoint information",
+			 "mmxlog_append_checkpoint_data: %d filespaces, %d tablespaces, %d databases checkpoint information",
 			 f->count,
-			 t->count);
+			 t->count,
+			 d->count);
 	
 		SUPPRESS_ERRCONTEXT_POP();
 	}
@@ -1310,11 +1389,13 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[4])
 bool
 mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel,
 	fspc_agg_state **f,
-	tspc_agg_state **t)
+	tspc_agg_state **t,
+	dbdir_agg_state **d)
 {
 	int remainderLen;
 	int filespaceInfoLen;
 	int tablespaceInfoLen;
+	int databaseInfoLen;
 
 	remainderLen = masterMirroringLen;
 	if (remainderLen < FSPC_CHECKPOINT_BYTES(0))
@@ -1356,17 +1437,44 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	}
 	*t = (tspc_agg_state*) (cpdata + filespaceInfoLen);
 	tablespaceInfoLen = TSPC_CHECKPOINT_BYTES((*t)->count);
-	if (remainderLen != tablespaceInfoLen)
+	if (remainderLen < tablespaceInfoLen)
 	{
 		if (errlevel != -1)
 			ereport(errlevel,
-				 (errmsg("Bad checkpoint record length %u (Master mirroring tablesapce information: expected length %u, actual length %u) at location %s",
+				 (errmsg("Bad checkpoint record length %u (Master mirroring tablesapce information: expected at least length %u, actual length %u) at location %s",
 						 checkpointLen,
 						 tablespaceInfoLen,
 						 remainderLen,
 						 XLogLocationToString(beginLoc))));
 		return false;
 	}
+
+	remainderLen -= tablespaceInfoLen;
+	if (remainderLen < DBDIR_CHECKPOINT_BYTES(0))
+	{
+		if (errlevel != -1)
+			ereport(errlevel,
+				 (errmsg("Bad checkpoint record length %u (Master mirroring database direcotry information header: expected at least length %u, actual length %u) at location %s",
+						 checkpointLen,
+						 (uint32)DBDIR_CHECKPOINT_BYTES(0),
+						 remainderLen,
+						 XLogLocationToString(beginLoc))));
+		return false;
+	}
+	*d = (dbdir_agg_state*) (cpdata + filespaceInfoLen + tablespaceInfoLen);
+	databaseInfoLen = DBDIR_CHECKPOINT_BYTES((*d)->count);
+	if (remainderLen != databaseInfoLen)
+	{
+		if (errlevel != -1)
+			ereport(errlevel,
+				 (errmsg("Bad checkpoint record length %u (Master mirroring database directory information: expected length %u, actual length %u) at location %s",
+						 checkpointLen,
+						 databaseInfoLen,
+						 remainderLen,
+						 XLogLocationToString(beginLoc))));
+		return false;
+	}
+
 	return true;
 }
 
@@ -1375,8 +1483,9 @@ mmxlog_verify_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpoi
 {
 	fspc_agg_state *f;
 	tspc_agg_state *t;
+	dbdir_agg_state *d;
 
-	return mmxlog_get_checkpoint_info(cpdata, masterMirroringLen, checkpointLen, beginLoc, errlevel, &f, &t);
+	return mmxlog_get_checkpoint_info(cpdata, masterMirroringLen, checkpointLen, beginLoc, errlevel, &f, &t, &d);
 }
 
 /* 
@@ -1384,22 +1493,26 @@ mmxlog_verify_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpoi
  * meta data from a checkpoint.
  */
 bool
-mmxlog_get_checkpoint_counts(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel, int *tablespaceCount, int *filespaceCount)
+mmxlog_get_checkpoint_counts(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel, int *filespaceCount, int *tablespaceCount, int *databaseCount)
 {
 	fspc_agg_state *f = NULL;
 	tspc_agg_state *t = NULL;
+	dbdir_agg_state *d = NULL;
 
-	*tablespaceCount = 0;
 	*filespaceCount = 0;
+	*tablespaceCount = 0;
+	*databaseCount = 0;
 
 	Assert(cpdata != NULL);
 
-	if (!mmxlog_get_checkpoint_info(cpdata, masterMirroringLen, checkpointLen, beginLoc, errlevel, &f, &t))
+	if (!mmxlog_get_checkpoint_info(cpdata, masterMirroringLen, checkpointLen, beginLoc, errlevel, &f, &t, &d))
 		return false;
 
 	*filespaceCount = f->count;
 
 	*tablespaceCount = t->count;
+	
+	*databaseCount = t->count;
 	return true;
 }
 
@@ -1412,9 +1525,11 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 {
 	fspc_agg_state *f = NULL;
 	tspc_agg_state *t = NULL;
+	dbdir_agg_state *d = NULL;
 
 	fspc_map *fmap;
 	tspc_map *tmap;
+	dbdir_map *dmap;
 	
 	int i;
 
@@ -1423,7 +1538,7 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 	if (!GPStandby())
 		return;
 
-	mmxlog_get_checkpoint_info(cpdata, masterMirroringLen, checkpointLen, beginLoc, PANIC, &f, &t);
+	mmxlog_get_checkpoint_info(cpdata, masterMirroringLen, checkpointLen, beginLoc, PANIC, &f, &t, &d);
 
 	/*
 	 * Push the data down into the hash tables. We calculate the array length
@@ -1479,7 +1594,7 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 		tspc_map *m = &(tmap[i]);
 
 		if (m->tablespaceoid == InvalidOid)
-			elog(ERROR, "bad tableespace checkpoint information for entry %d", i);
+			elog(ERROR, "bad tablespace checkpoint information for entry %d", i);
 
 		add_tablespace_map_entry(m, beginLoc, "mmxlog_read_checkpoint_data");
 
@@ -1490,7 +1605,7 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 			elog(ERROR, "cannot find filespace path for filespace OID %u (tablespace %u)",
 				 m->filespaceoid, m->tablespaceoid);
 		}
-		snprintf(path, sizeof(path), "%s/%u", tmp, tmap[i].tablespaceoid);
+		snprintf(path, sizeof(path), "%s/%u", tmp, m->tablespaceoid);
 
 		if (mkdir(path, 0700) == 0)
 		{
@@ -1525,12 +1640,83 @@ mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpoint
 		pfree(tmp);
 	}
 
+	dmap = &(d->maps[0]);
+	for (i = 0; i < d->count; i++)
+	{
+		char path[MAXPGPATH];
+		dbdir_map *m = &(dmap[i]);
+		Oid filespaceoid;
+
+		if (m->databaseoid == InvalidOid)
+			elog(ERROR, "bad database directory checkpoint information for entry %d", i);
+
+//		add_tablespace_map_entry(m, beginLoc, "mmxlog_read_checkpoint_data");
+
+		if (m->tablespaceoid == GLOBALTABLESPACE_OID)
+			elog(ERROR, "should not have the global tablespace in the database directory entries");
+
+		if (m->tablespaceoid == DEFAULTTABLESPACE_OID)
+			snprintf(path, sizeof(path), "base/%u", m->databaseoid);
+		else
+		{
+			char *tmp;
+			if (!mmxlog_tablespace_get_filespace(
+										m->tablespaceoid,
+										&filespaceoid))
+			{
+				elog(ERROR, "cannot find filespace OID for tablespace %u",
+					 m->tablespaceoid);
+			}
+			if (!mmxlog_filespace_get_path(
+									filespaceoid,
+									&tmp))
+			{
+				elog(ERROR, "cannot find filespace path for filespace OID %u (tablespace %u)",
+					 filespaceoid, m->tablespaceoid);
+			}
+			snprintf(path, sizeof(path), "%s/%u/%u", tmp, m->tablespaceoid, m->databaseoid);
+			pfree(tmp);
+		}
+
+		if (mkdir(path, 0700) == 0)
+		{
+			if (Debug_persistent_recovery_print)
+			{
+				elog(PersistentRecovery_DebugPrintLevel(), 
+					 "mmxlog_read_checkpoint_data: Re-created database directory \"%s\"",
+					 path);
+			}
+		}
+		else
+		{
+			/*
+			 * Allowed to already exist.
+			 */
+			if (errno != EEXIST)
+			{
+				elog(ERROR, "could not create database directory \"%s\": %m",
+					 path);
+			}
+			else
+			{
+				if (Debug_persistent_recovery_print)
+				{
+					elog(PersistentRecovery_DebugPrintLevel(), 
+						 "mmxlog_read_checkpoint_data: Database directory \"%s\" already exists",
+						 path);
+				}
+			}
+		}
+
+	}
+
 	if (Debug_persistent_recovery_print)
 	{
 		elog(PersistentRecovery_DebugPrintLevel(), 
-			 "mmxlog_read_checkpoint_data: %d filespaces, %d tablespaces (beginLoc %s)",
+			 "mmxlog_read_checkpoint_data: %d filespaces, %d tablespaces, %d databases (beginLoc %s)",
 			 f->count,
 			 t->count,
+			 d->count,
 			 XLogLocationToString(beginLoc));
 	}
 }

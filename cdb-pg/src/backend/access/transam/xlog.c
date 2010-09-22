@@ -6404,8 +6404,9 @@ StartupXLOG(void)
 			if (masterMirroringCheckpointLen > 0 &&
 				Debug_persistent_recovery_print)
 			{
-				int tablespaceCount;
 				int filespaceCount;
+				int tablespaceCount;
+				int databaseCount;
 			
 				if (mmxlog_get_checkpoint_counts(
 										masterMirroringCheckpoint,
@@ -6413,13 +6414,15 @@ StartupXLOG(void)
 										record->xl_len,
 										&checkPointLoc,
 										/* errlevel */ COMMERROR,	// Suppress elog.
+										&filespaceCount,
 										&tablespaceCount,
-										&filespaceCount))
+										&databaseCount))
 				{
 					elog(PersistentRecovery_DebugPrintLevel(), 
-						 "StartupXLOG: master mirroring information: %d tablespaces, %d filespaces, location %s",
-						 tablespaceCount,
+						 "StartupXLOG: master mirroring information: %d tablespaces, %d filespaces, %d databases, location %s",
 						 filespaceCount,
+						 tablespaceCount,
+						 databaseCount,
 						 XLogLocationToString(&checkPointLoc));
 				}
 			}
@@ -8062,7 +8065,7 @@ CreateCheckPoint(bool shutdown, bool force)
 	CheckPoint	checkPoint;
 	XLogRecPtr	recptr;
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
-	XLogRecData rdata[4];
+	XLogRecData rdata[5];
 	char* 		dtxCheckPointInfo;
 	int			dtxCheckPointInfoSize;
 	uint32		freespace;
@@ -8302,13 +8305,16 @@ CreateCheckPoint(bool shutdown, bool force)
 			 "CreateCheckPoint: Regular checkpoint length = %u"
 			 ", DTX checkpoint length %u (rdata[1].next is NULL %s)"
 			 ", Master mirroring filespace length = %u (rdata[2].next is NULL %s)"
-			 ", Master mirroring tablespace length = %u",
+			 ", Master mirroring tablespace length = %u (rdata[3].next is NULL %s)"
+			 ", Master mirroring database directory length = %u",
 			 rdata[0].len,
 			 rdata[1].len,
 			 (rdata[1].next == NULL ? "true" : "false"),
 			 rdata[2].len,
 			 (rdata[2].next == NULL ? "true" : "false"),
-			 rdata[3].len);
+			 rdata[3].len,
+			 (rdata[3].next == NULL ? "true" : "false"),
+			 rdata[4].len);
 	}
 
 	recptr = XLogInsert(RM_XLOG_ID,
@@ -8637,8 +8643,9 @@ xlog_redo_print_extended_checkpoint_info(XLogRecPtr beginLoc, XLogRecord *record
 
 		if (masterMirroringCheckpointLen > 0)
 		{
-			int tablespaceCount;
 			int filespaceCount;
+			int tablespaceCount;
+			int databaseCount;
 
 			if (!mmxlog_get_checkpoint_counts(
 									masterMirroringCheckpoint,
@@ -8646,13 +8653,15 @@ xlog_redo_print_extended_checkpoint_info(XLogRecPtr beginLoc, XLogRecord *record
 									record->xl_len,
 									&beginLoc,
 									/* errlevel */ -1,		// Suppress elog altogether on master mirroring checkpoint length checking.
+									&filespaceCount,
 									&tablespaceCount,
-									&filespaceCount))
+									&databaseCount))
 			{
 				elog(PersistentRecovery_DebugPrintLevel(), 
-					 "xlog_redo_print_extended_checkpoint_info: master mirroring information: %d filespaces, %d tablespaces, location %s",
+					 "xlog_redo_print_extended_checkpoint_info: master mirroring information: %d filespaces, %d tablespaces, %d databases, location %s",
 					 filespaceCount,
 					 tablespaceCount,
+					 databaseCount,
 					 XLogLocationToString(&beginLoc));
 			}
 		}
@@ -8812,8 +8821,9 @@ xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 			
 			if (masterMirroringCheckpointLen > 0)
 			{
-				int tablespaceCount;
 				int filespaceCount;
+				int tablespaceCount;
+				int databaseCount;
 			
 				if (mmxlog_get_checkpoint_counts(
 										masterMirroringCheckpoint,
@@ -8822,12 +8832,14 @@ xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 										&beginLoc,
 										/* errlevel */ -1,	// Suppress elog altogether on master mirroring checkpoint length checking.
 										&tablespaceCount,
-										&filespaceCount))
+										&filespaceCount,
+										&databaseCount))
 				{
 					appendStringInfo(buf,
-						 ", master mirroring information: %d filespaces, %d tablespaces",
+						 ", master mirroring information: %d filespaces, %d tablespaces, %d databases",
 						 filespaceCount,
-						 tablespaceCount);
+						 tablespaceCount,
+						 databaseCount);
 				}
 			}
 		}

@@ -1465,3 +1465,40 @@ void PersistentDatabase_ShmemInit(void)
 
 	Assert(persistentDatabaseSharedData != NULL);
 }
+
+/*
+ * Pass shared data back to the caller. See add_tablespace_data() for why we do
+ * it like this.
+ */
+#ifdef MASTER_MIRROR_SYNC /* annotation to show that this is just for mmsync */
+void
+get_database_data(dbdir_agg_state **das, char *caller)
+{
+	DatabaseDirEntry databaseDirEntry;
+
+	int maxCount;
+
+	Assert(*das == NULL);
+
+	mmxlog_add_database_init(das, &maxCount);
+
+	databaseDirEntry = NULL;
+	while (true)
+	{
+		SharedOidSearch_Iterate(
+						&persistentDatabaseSharedData->databaseDirSearchTable,
+						(SharedOidSearchObjHeader**)&databaseDirEntry);
+		if (databaseDirEntry == NULL)
+		{
+			break;
+		}
+		
+		mmxlog_add_database(
+				 das, &maxCount, 
+				 /* databaseoid */ databaseDirEntry->header.oid1, 
+				 /* tablespaceoid */ databaseDirEntry->header.oid2,
+				 caller);
+	}
+}
+#endif
+

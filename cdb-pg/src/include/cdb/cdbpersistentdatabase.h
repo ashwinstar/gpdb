@@ -15,6 +15,7 @@
 #include "cdb/cdbsharedoidsearch.h"
 #include "access/persistentfilesysobjname.h"
 #include "cdb/cdbdoublylinked.h"
+#include "access/xlogmm.h"
 
 typedef struct DatabaseDirEntryData
 {
@@ -222,5 +223,8 @@ extern void PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror);
 extern void PersistentDatabase_ActivateStandby(int16 oldmaster,
 											   int16 newmaster);
 extern void xlog_create_database(DbDirNode *db);
+
+extern void get_database_data(dbdir_agg_state **das, char *caller);
+
 #endif   /* CDBPERSISTENTDATABASE_H */
 

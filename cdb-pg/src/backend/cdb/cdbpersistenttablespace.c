@@ -1274,7 +1274,6 @@ void PersistentTablespace_ShmemInit(void)
 void
 get_tablespace_data(tspc_agg_state **tas, char *caller)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
 	HASH_SEQ_STATUS stat;
 	TablespaceDirEntry tde;
 
@@ -1284,7 +1283,6 @@ get_tablespace_data(tspc_agg_state **tas, char *caller)
 
 	mmxlog_add_tablespace_init(tas, &maxCount);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 	hash_seq_init(&stat, persistentTablespaceSharedHashTable);
 
 	while ((tde = hash_seq_search(&stat)) != NULL)
@@ -1293,6 +1291,5 @@ get_tablespace_data(tspc_agg_state **tas, char *caller)
 				 tde->filespaceOid, tde->key.tablespaceOid,
 				 caller);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 }
 #endif

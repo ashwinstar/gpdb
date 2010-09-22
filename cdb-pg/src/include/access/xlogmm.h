@@ -73,6 +73,13 @@ typedef struct tspc_map
 	Oid filespaceoid;
 } tspc_map;
 
+typedef struct dbdir_map
+{
+	Oid tablespaceoid;
+	Oid databaseoid;
+} dbdir_map;
+
+
 /*
  * Container of filespaces/tablespaces used to accumulate mappings
  */
@@ -102,6 +109,20 @@ typedef struct tspc_agg_state
 #define TSPC_CHECKPOINT_BYTES(count) \
     (SIZEOF_VARSTRUCT(count, tspc_agg_state, maps))
 
+typedef struct dbdir_agg_state
+{
+	union
+	{
+		int count;
+		int64 dummy;
+	};
+	dbdir_map maps[0]; /* variable length */
+}dbdir_agg_state;
+
+#define DBDIR_CHECKPOINT_BYTES(count) \
+    (SIZEOF_VARSTRUCT(count, dbdir_agg_state, maps))
+
+
 extern void mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
 extern void mmxlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record);
 
@@ -124,7 +145,7 @@ extern void mmxlog_log_create_tablespace(Oid filespace, Oid tablespace);
 extern void mmxlog_log_create_database(Oid tablespace, Oid database);
 extern void mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 										  Oid relfilenode, uint32 segnum);
-extern void mmxlog_append_checkpoint_data(XLogRecData rdata[4]);
+extern void mmxlog_append_checkpoint_data(XLogRecData rdata[5]);
 extern void mmxlog_read_checkpoint_data(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc);
 extern bool mmxlog_filespace_get_path(
 	Oid fspcoid,
@@ -150,10 +171,17 @@ extern void mmxlog_add_tablespace(
 		tspc_agg_state **tas, int *maxCount,
 		Oid filespace, Oid tablespace, char *caller);
 
+extern void mmxlog_add_database_init(
+		dbdir_agg_state **das, int *maxCount);
+extern void mmxlog_add_database( 
+		dbdir_agg_state **das, int *maxCount,
+		Oid database, Oid tablespace, char *caller);
+
 extern bool mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel,
 		fspc_agg_state **f,
-		tspc_agg_state **t);
+		tspc_agg_state **t,
+		dbdir_agg_state **d);
 extern bool mmxlog_verify_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel);
-extern bool mmxlog_get_checkpoint_counts(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel, int *tablespaceCount, int *filespaceCount);
+extern bool mmxlog_get_checkpoint_counts(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel, int *filespaceCount, int *tablespaceCount, int *databaseCount);
 
 #endif /* MMXLOG_H */
