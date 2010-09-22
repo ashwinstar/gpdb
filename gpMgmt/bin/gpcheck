@@ -33,11 +33,12 @@ found_errors = False
 class GpCheckHost:
     def __init__(self, name):
         self.hostname = name
-        self.ismaster = False
+        self.is_a_master = False
+        self.primary_master = False
         self.datafile = None
         self.data = None
     def __str__(self):
-        return "%s ismaster(%s) datafile(%s)" % (self.hostname, self.ismaster, self.datafile)
+        return "%s is_a_master(%s) primary_master(%s) datafile(%s)" % (self.hostname, self.is_a_master, self.primary_master, self.datafile)
 
 # True is an error
 def parseargs():
@@ -105,8 +106,18 @@ def createHostList():
                 pass
             else:
                 hosts[actualHostname] = GpCheckHost(actualHostname)
-                if actualHostname == options.master or actualHostname == options.standbymaster:
-                    hosts[actualHostname].ismaster = True
+
+                if actualHostname == options.master:
+                    hosts[actualHostname].is_a_master = True
+                    hosts[actualHostname].primary_master = True
+
+                elif actualHostname == options.standbymaster:
+                    hosts[actualHostname].is_a_master = True
+                    hosts[actualHostname].primary_master = False
+
+                else:
+                    hosts[actualHostname].is_a_master = False
+                    hosts[actualHostname].primary_master = False
 
     except Exception, e:
         logger.error("Error while deduping host file: %s" % options.file)
@@ -211,7 +222,7 @@ def testAppliance1001OmreportBiossetup(host):
 
     # first NIC should be PXE enabled
     firstNicAttribute = "Dual NIC"
-    if host.ismaster:
+    if host.is_a_master:
         firstNicAttribute = "Dual NIC (1/2)"
     pxeText = "Enabled with 1st NIC PXE and 2nd NIC None"
 
@@ -235,11 +246,49 @@ def testAppliance1001OmreportBiossetup(host):
         else:
             printError(host.hostname, "can not find Attribute in omreport chassis biossetup '%s'" % (k))
 
+def testAppliance1001OmreportRemoteaccess(host):
+
+    expectedKeyValuePairs = dict()
+    expectedKeyValuePairs['Enable IPMI Over LAN'] = 'Yes'
+    expectedKeyValuePairs['SOL Enabled'] = 'Yes'
+    expectedKeyValuePairs['IP Address Source'] = 'Static'
+    expectedKeyValuePairs['IP Subnet'] = '255.255.248.0'
+
+    for k in expectedKeyValuePairs.keys():
+        if k in host.data.omreport.remoteaccess:
+            value = host.data.omreport.remoteaccess[k]
+            if value != expectedKeyValuePairs[k]:
+                printError(host.hostname, "omreport chassis remoteaccess attribute '%s' Value '%s' does not match expected '%s'" % (k, value, expectedKeyValuePairs[k]))
+        else:
+            printError(host.hostname, "can not find Attribute in omreport chassis remoteaccess '%s'" % (k))
+
+    ipaddressAttribute = "IP Address"
+    ipadd_root = "172.28.0"
+    if host.is_a_master:
+        if host.primary_master:
+            expectedIpAddress = "%s.250" % ipadd_root
+        else:
+            expectedIpAddress = "%s.251" % ipadd_root
+    else:
+        words = host.hostname.split("sdw")
+        expectedIpAddress = ipadd_root
+        if len(words) == 2:
+            expectedIpAddress = "%s.%s" % (expectedIpAddress, words[1])
+
+
+    if ipaddressAttribute in host.data.omreport.remoteaccess:
+        ipaddress = host.data.omreport.remoteaccess[ipaddressAttribute]
+        if ipaddress != expectedIpAddress:
+            printError(host.hostname, "LOM IP Address %s does not match expected IP Address %s" % (ipaddress, expectedIpAddress))
+    else:
+        printError(host.hostname, "can not find Attribute in omreport chassis remoteaccess '%s'" % (ipaddressAttribute))
+
+
 
 
 def testAppliance1001OmreportBootorder(host):
 
-    if host.ismaster:
+    if host.is_a_master:
         if len(host.data.omreport.bootorder) < 2:
             printError(host.hostname, "omreport chassis biossetup attribute=bootorder, less then 2 boot devices on a master host")
         if host.data.omreport.bootorder[0] != "SATA Optical Drive":
@@ -299,6 +348,7 @@ def testAppliance1001Host(host):
     # test omreport
     testAppliance1001OmreportBiossetup(host)
     testAppliance1001OmreportBootorder(host)
+    testAppliance1001OmreportRemoteaccess(host)
 
     # test grubconf
     # test mounts
