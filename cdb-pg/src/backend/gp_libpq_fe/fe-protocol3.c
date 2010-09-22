@@ -277,9 +277,12 @@ pqParseInput3(PGconn *conn)
 					PQaoRelTupCount *ao;
 
 					/* row count for AO partitioned tables */
-					conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
-					if (!conn->result)
-						return;
+					if (conn->result == NULL)
+					{
+						conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
+						if (!conn->result)
+							return;
+					}
 							
 					if (pqGetInt(&(conn->result->naotupcounts), 4, conn))
 						return;
@@ -298,7 +301,6 @@ pqParseInput3(PGconn *conn)
 						ao++;
 					}
 				}
-				conn->asyncStatus = PGASYNC_READY;
 				break;
 				case 'E':		/* error return */
 					if (pqGetErrorNotice3(conn, true))
@@ -489,14 +491,16 @@ pqParseInput3(PGconn *conn)
 					 * QE COPY reports number of rejected rows to the QD COPY
 					 * in single row error handling mode.
 					 */
-					conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
-					if (!conn->result)
-						return;
+					if (conn->result == NULL)
+					{
+						conn->result = PQmakeEmptyPGresult(conn, PGRES_COMMAND_OK);
+						if (!conn->result)
+							return;
+					}
 						
 					if (pqGetInt(&(conn->result->numRejected), 4, conn))
 						return;
 							
-					conn->asyncStatus = PGASYNC_READY;
 					break;
 				case 'Y':       /* CDB: statistical response from QE to QD */
 					/* for certain queries, the stats may arrive
