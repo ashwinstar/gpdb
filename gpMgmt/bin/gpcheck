@@ -207,6 +207,23 @@ def readDataFiles():
         hosts[host].data = pickle.load(fd)
 
 
+def testAppliance1001OmreportBiossetup(host):
+
+    # first NIC should be PXE enabled
+    firstNicAttribute = "Dual NIC"
+    if host.ismaster:
+        firstNicAttribute = "Dual NIC (1/2)"
+    pxeText = "Enabled with 1st NIC PXE and 2nd NIC None"
+
+    if firstNicAttribute in host.data.omreport.biossetup:
+        firstNicText =  host.data.omreport.biossetup[firstNicAttribute]
+        if firstNicText != pxeText:
+            printError("host (%s) omreport chassis biossetup '%s:%s' PXE not enabled" % (host.hostname, firstNicAttribute, firstNicText))
+    else:
+        printError("host (%s) can not find Attribute in omreport chassis biossetup '%s'" % (host.hostname, firstNicAttribute))
+
+
+
 def testAppliance1001Chkconfig(host):
 
     # ipmi should be on for 3 4 5
@@ -249,9 +266,9 @@ def testAppliance1001Host(host):
     # test chkconfig
     testAppliance1001Chkconfig(host)
 
-
-
     # test omreport
+    testAppliance1001OmreportBiossetup(host)
+
     # test grubconf
     # test mounts
     # test inittab
