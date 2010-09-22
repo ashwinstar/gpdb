@@ -73,10 +73,10 @@ def printWarning(msg):
     logger.warning("GPCHECK_WARNING: %s", msg)
     
 
-def printError(msg):
+def printError(host, msg):
     global found_errors
     found_errors = True
-    logger.error("GPCHECK_ERROR: %s", msg)
+    logger.error("GPCHECK_ERROR host(%s): %s", host, msg)
 
 #true is error
 def createHostList():
@@ -218,9 +218,24 @@ def testAppliance1001OmreportBiossetup(host):
     if firstNicAttribute in host.data.omreport.biossetup:
         firstNicText =  host.data.omreport.biossetup[firstNicAttribute]
         if firstNicText != pxeText:
-            printError("host (%s) omreport chassis biossetup '%s:%s' PXE not enabled" % (host.hostname, firstNicAttribute, firstNicText))
+            printError(host.hostname, "omreport chassis biossetup '%s:%s' PXE not enabled" % (firstNicAttribute, firstNicText))
     else:
-        printError("host (%s) can not find Attribute in omreport chassis biossetup '%s'" % (host.hostname, firstNicAttribute))
+        printError(host.hostname, "can not find Attribute in omreport chassis biossetup '%s'" % (firstNicAttribute))
+
+    expectedKeyValuePairs = dict()
+    expectedKeyValuePairs['Serial Communications'] = 'On with Console Redirection via COM2'
+    expectedKeyValuePairs['Console Redirection After Boot'] = 'Disabled'
+    expectedKeyValuePairs['Processor C State Control'] = 'Disabled'
+
+    for k in expectedKeyValuePairs.keys():
+        if k in host.data.omreport.biossetup:
+            value = host.data.omreport.biossetup[k]
+            if value != expectedKeyValuePairs[k]:
+                printError(host.hostname, "omreport chassis biossetup attribute '%s' Value '%s' does not match expected '%s'" % (k, value, expectedKeyValuePairs[k]))
+        else:
+            printError(host.hostname, "can not find Attribute in omreport chassis biossetup '%s'" % (k))
+
+
 
 
 
@@ -238,7 +253,7 @@ def testAppliance1001Chkconfig(host):
             success = True
 
     if not success:
-        printError("host (%s) ipmi service should be on for levels 3 4 and 5" % host.hostname)
+        printError(host.hostname, "ipmi service should be on for levels 3 4 and 5")
 
     services_that_should_be_off = ['iptables', 'ip6tables', 'avahi-daemon', 'avahi-dnsconfd', 'conman', 'bluetooth', 'cpuspeed',
                                    'setroubleshoot', 'hidd', 'hplip', 'kudzu']
@@ -248,15 +263,15 @@ def testAppliance1001Chkconfig(host):
         service = host.data.chkconfig.services[sname] # return a dict of run levels and values
 
         if not service:
-            printError("host (%s) service (%s) service not reported on machine in chkconfig output" % (host.hostname, sname))
+            printError(host.hostname, "service (%s) service not reported on machine in chkconfig output" % (sname))
 
         if len(service.keys()) != 7:
-            printError("host (%s) service (%s) unexpected number of run levels for service" % (host.hostname, sname))
+            printError(host.hostname, "service (%s) unexpected number of run levels for service" % (sname))
             continue
 
         for level in service.keys():
             if service[level]:
-                printError("host (%s) service (%s) should be off" % (host.hostname, sname))
+                printError(host.hostname, "service (%s) should be off" % (sname))
                 break
 
 
@@ -296,7 +311,7 @@ def runTests():
     if appliance_version == "1.0.0.1":
         testAppliance1001()
     else:
-        printError("Unkown appliance version: %s" % appliance_version)
+        printError(None, "Unkown appliance version: %s" % appliance_version)
         return False
 
 #true is error
