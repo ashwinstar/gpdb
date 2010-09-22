@@ -237,6 +237,21 @@ def testAppliance1001OmreportBiossetup(host):
 
 
 
+def testAppliance1001OmreportBootorder(host):
+
+    if host.ismaster:
+        if len(host.data.omreport.bootorder) < 2:
+            printError(host.hostname, "omreport chassis biossetup attribute=bootorder, less then 2 boot devices on a master host")
+        if host.data.omreport.bootorder[0] != "SATA Optical Drive":
+            printError(host.hostname, "omreport chassis biossetup attribute=bootorder, first boot device is not the dvd drive")
+        if host.data.omreport.bootorder[1] != "Hard drive C:":
+            printError(host.hostname, "omreport chassis biossetup attribute=bootorder, second boot device is not the hard drive")
+    else:
+        if len(host.data.omreport.bootorder) < 1:
+            printError(host.hostname, "omreport chassis biossetup attribute=bootorder, less then 1 boot devices on a segment host")
+        if host.data.omreport.bootorder[0] != "Hard drive C:":
+            printError(host.hostname, "omreport chassis biossetup attribute=bootorder, first boot device is not the hard drive")
+
 
 
 def testAppliance1001Chkconfig(host):
@@ -283,6 +298,7 @@ def testAppliance1001Host(host):
 
     # test omreport
     testAppliance1001OmreportBiossetup(host)
+    testAppliance1001OmreportBootorder(host)
 
     # test grubconf
     # test mounts
