@@ -359,6 +359,16 @@ def testAppliance1001OmreportBootorder(host):
             printError(host.hostname, "omreport chassis biossetup attribute=bootorder, first boot device is not the hard drive")
 
 
+def testAppliance1001Grub(host):
+
+    if not host.data.grubconf.serial_declaration:
+        printError(host.hostname, "did not detect serial properties declaration in grub.conf file")
+
+    if not host.data.grubconf.terminal_declaration:
+        printError(host.hostname, "did not detect terminal properties declaration in grub.conf file")
+
+    if not host.data.grubconf.ttyS1_declaration:
+        printError(host.hostname, "did not detect console ttyS1 declaration in grub.conf file")
 
 def testAppliance1001Chkconfig(host):
 
@@ -409,6 +419,8 @@ def testAppliance1001Host(host):
     testAppliance1001OmreportVdisks(host)
 
     # test grubconf
+    testAppliance1001Grub(host)
+
     # test mounts
     # test inittab
     # test securetty
