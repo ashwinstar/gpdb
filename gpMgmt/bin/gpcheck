@@ -196,8 +196,64 @@ def readDataFiles():
         fd = open(fname, "rb")
         hosts[host].data = pickle.load(fd)
 
+
+def testAppliance1001Chkconfig(host):
+
+    # ipmi should be on for 3 4 5
+    ipmi = host.data.chkconfig.services['ipmi'] # return a dict of run levels and values
+    success = False
+
+    if ipmi:
+        lev3 = ipmi['3']
+        lev4 = ipmi['4']
+        lev5 = ipmi['5']
+        if lev3 and lev4 and lev5:
+            success = True
+
+    if not success:
+        logger.error("GPCHECK_ERROR: host (%s) ipmi service should be on for levels 3 4 and 5" % host.hostname)
+
+    services_that_should_be_off = ['iptables', 'ip6tables', 'avahi-daemon', 'avahi-dnsconfd', 'conman', 'bluetooth', 'cpuspeed',
+                                   'setroubleshoot', 'hidd', 'hplip', 'kudzu']
+
+    for sname in services_that_should_be_off:
+
+        service = host.data.chkconfig.services[sname] # return a dict of run levels and values
+
+        if not service:
+            logger.error("GPCHECK_ERROR: host (%s) service (%s) service not reported on machine in chkconfig output" % (host.hostname, sname))
+
+        if len(service.keys()) != 7:
+            logger.error("GPCHECK_ERROR: host (%s) service (%s) unexpected number of run levels for service" % (host.hostname, sname))
+            continue
+
+        for level in service.keys():
+            if service[level]:
+                logger.error("GPCHECK_ERROR: host (%s) service (%s) should be off" % (host.hostname, sname))
+                break
+
+
+
+def testAppliance1001Host(host):
+
+    # test chkconfig
+    testAppliance1001Chkconfig(host)
+
+
+
+    # test omreport
+    # test grubconf
+    # test mounts
+    # test inittab
+    # test securetty
+    # test bcu
+
+######################################################################################
+
+
 def testAppliance1001():
-    pass
+    for h in hosts.keys():
+        testAppliance1001Host(hosts[h])
 
 
 def runTests():
