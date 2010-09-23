@@ -4,13 +4,13 @@ USAGE:   gpcheck_local [--dell]
          where --dell will do a dump of dell server data   
 '''
 
-import os, sys, re, tempfile, subprocess, pickle, glob
+import os, sys, re, tempfile, subprocess, pickle, glob, stat
 
 try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport, grubconf, mounts, GpMount, GpMount, inittab
-    from gppylib.gpcheckutil import securetty, ioschedulers, blockdev, bcu
+    from gppylib.gpcheckutil import securetty, ioschedulers, blockdev, bcu, rclocal
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -319,6 +319,22 @@ def collectGrubConf():
     
     return data
 
+# returns populated rclocal object
+def collectRclocal():
+
+    data = rclocal()
+    data.isexecutable = False
+
+    try:
+        bits = os.stat('/etc/rc.d/rc.local')[stat.ST_MODE]
+        if bits & 0100:
+            data.isexecutable = True
+
+    except Exception, e:
+        pass
+
+    return data
+
 # returns populated inittab object
 def collectInittab():
     data = inittab()
@@ -367,6 +383,7 @@ def processDellServer():
     output.ioschedulers = collectIOschedulers()
     output.blockdev = collectBlockdev()
     output.bcu = collectBcu()
+    output.rclocal = collectRclocal()
 
 # True is an error
 def parseargs():

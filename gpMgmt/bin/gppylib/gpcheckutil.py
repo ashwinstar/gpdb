@@ -66,6 +66,13 @@ class blockdev:
         self.ra = dict() # key is device name value is getra value
         self.errormsg = ''
 
+class rclocal:
+    def __init__(self):
+        self.isexecutable = False # check that /etc/rc.d/rc.local is executable permissions
+
+    def __str__(self):
+        return "executable(%s)" % self.isexecutable
+
 class GpMount:
     def __init__(self):
         self.partition = None
@@ -115,6 +122,7 @@ class DellOutputData:
         self.securetty = None
         self.bcu = None
         self.blockdev = None
+        self.rclocal = None
         self.ioschedulers = None
 
     def __str__(self):
@@ -166,6 +174,9 @@ class DellOutputData:
         grc = "============= BCU CNA ========================\n"
         gre = "============= BCU CNA ERRORMSG================\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.bcu.__str__(), gre, self.bcu.errormsg)
+
+        grc = "============= /etc/rc.d/rc.local =============\n"
+        output = "%s\n%s%s" % (output, grc, self.rclocal.__str__())
 
         return output
     

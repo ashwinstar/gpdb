@@ -466,6 +466,13 @@ def testAppliance1001IOSchedulers(host):
             printError(host.hostname, "on device (%s) IO scheduler '%s' does not match expected value '%s'" % (dev, scheduler, expectedScheduler))
 
 
+def testAppliance1001Rclocal(host):
+
+    if not host.data.rclocal.isexecutable:
+
+        printError(host.hostname, "/etc/rc.d/rc.local is not present and executable")
+
+
 def testAppliance1001Mounts(host):
 
     xfs_mounts = list()
@@ -567,6 +574,9 @@ def testAppliance1001Host(host):
 
     # test blockdev
     testAppliance1001Blockdev(host)
+
+    # test rclocal
+    testAppliance1001Rclocal(host)
 
 ######################################################################################
 
