@@ -24,17 +24,19 @@ B<gpcheckmirrorseg> [options]
 
 Options:
 
-    -help            brief help message
-    -man             full documentation
-    -connect         psql connect parameters
-    -ignore          filename pattern to ignore during comparison
-    -dirignore       directory name pattern to ignore during comparison
-	-mastermirror    compare master and standby only 
-	-matchdirs       compare directory structure
-	-skipsegments    skip mirror check for segments which are not in sync
-	-parallel        run checks in parallel
-	-fixfile         location for fix file
-	-content         only compare segments with the specified content id
+    -help             brief help message
+    -man              full documentation
+    -connect          psql connect parameters
+    -ignore           filename pattern to ignore during comparison
+    -dirignore        directory name pattern to ignore during comparison
+	-mastermirror     compare master and standby only 
+	-forcefilecompare perform full file comparison for master/standby
+	-matchdirs        compare directory structure
+	-skipsegments     skip mirror check for segments which are not in sync
+	-parallel         run checks in parallel
+	-nohash           skip md5 hash during file comparison
+	-fixfile          location for fix file
+	-content          only compare segments with the specified content id
 
 =head1 OPTIONS
 
@@ -84,6 +86,13 @@ the master and standby have identical relfilenode layout, ie the
 datafiles are identical in name and number.  Does not compare file
 contents, which may differ due to logical mirroring.
 
+=item B<-forcefilecompare> 
+    
+Boolean flag to control whether to compare file contents for master
+mirroring (normally false).  That is, file contents are always
+compared for primary/mirror segment pairs, but file contents are not
+compared for master/standby unless this flag is set.
+
 =item B<-matchdirs> 
     
 Boolean flag to control whether to compare if the segment and mirror
@@ -109,6 +118,13 @@ gpcheckmirrorseg forks a separate process on each segment to generate
 the md5 hashes for the initial raw diff phase.  Note that the actual
 diff of primary/mirror hashes and subsequent "enhanced diff" phases
 are performed sequentially.
+
+=item B<-nohash> 
+    
+Boolean flag to control whether md5 hash generation is disabled
+(normally false).  That is, the standard comparison phase generates an
+md5 hash for every file, but if "nohash" is set to true, then the
+comparison phase only performs a file size difference.
 
 =item B<-fixfile> 
     
@@ -214,6 +230,8 @@ my $glob_exit;
 
 my $glob_mm;
 
+my $glob_ffc;
+
 my $glob_matchdirs;
 
 my $glob_skipseg;
@@ -231,6 +249,12 @@ my $glob_content;
 
 my $glob_platform;
 
+# from pg_tablespace.h: 
+my $DEFAULTTABLESPACE_OID = 1663;
+my $GLOBALTABLESPACE_OID  = 1664;
+
+my $DEFAULTFILESPACE_OID  = 3052;
+
 BEGIN {
     my $man  = 0;
     my $help = 0;
@@ -239,6 +263,7 @@ BEGIN {
 	my @dirignore;
 	my $skipseg;
 	my $mm;
+	my $ffc;
 	my $matchdirs;
 	my $parallel;
 	my $nohash;
@@ -253,6 +278,7 @@ BEGIN {
 		       'exclude|ignore:s' => \@ignore,
 		       'directoryignore|dirignore:s' => \@dirignore,
 		       'mm|mastermirror:s' => \$mm,
+		       'ffc|forcefilecompare:s' => \$ffc,
 		       'matchdirs:s' => \$matchdirs,
 		       'skipsegments:s' => \$skipseg,
 		       'parallel:s' => \$parallel,
@@ -298,6 +324,15 @@ BEGIN {
 	else
 	{
 		$glob_mm = 0;
+	}
+
+	if (defined($ffc))
+	{
+		$glob_ffc = ($ffc =~ m/^\s*(1|t|true|y|yes)/i) ? 1 : 0;
+	}
+	else
+	{
+		$glob_ffc = 0;
 	}
 
 	if (defined($matchdirs))
@@ -432,7 +467,6 @@ sub ignore_list
 	my @m1 = qw(
 		pg_stat 
 		pg_log
-		pg_xlog
 		pg_internal
 		pg_fsm.cache
 		pgstat
@@ -1424,12 +1458,12 @@ sub get_relfilenode_func
 						else
 						{
 							if (exists($rnod->{tspace}->{base})
-								&& (1663 == $tspoid))
+								&& ($DEFAULTTABLESPACE_OID == $tspoid))
 							{
 								$rnod->{tspace_match} = 1;
 							}
 							elsif (exists($rnod->{tspace}->{global})
-								   && (1664 == $tspoid))
+								   && ($GLOBALTABLESPACE_OID == $tspoid))
 							{
 								$rnod->{tspace_match} = 1;
 							}
@@ -1562,10 +1596,6 @@ sub get_relfilenode_func
 					$tspace1 = "no tablespace";
 					$nomatch = 1;
 				}
-
-				# from pg_tablespace.h: 
-				my $DEFAULTTABLESPACE_OID = 1663;
-				my $GLOBALTABLESPACE_OID = 1664;
 
 				if ($tspace1 =~ m/base/)
 				{
@@ -1817,6 +1847,9 @@ sub diff_again
 		{
 			my $dbname = $vv->{dbname};
 
+			$dbname = "<unknown dbname>" 
+				unless (defined($dbname) && length($dbname));
+
 			# for all relfilenodes
 			while (my ($kk2, $vv2) = each(%{$vv->{relfilenodeh}}))
 			{
@@ -1831,7 +1864,8 @@ sub diff_again
 					push @filpref, "base" 
 						unless (($kk eq "global")
 								# MPP-9415: no "base" for other filespaces
-								|| ($row->{fsoid} != 3052)); # pg_system
+								|| ($row->{fsoid} != $DEFAULTFILESPACE_OID)); 
+					                                 # pg_system
 					
 					# MPP-9415: and use the tablespace oid in the name
 					# if not in pg_system filespace
@@ -1839,7 +1873,7 @@ sub diff_again
 					# MPP-10123: use gprn.tablespace_oid vs
 					# pg_class.reltablespace, which is 0 for pg_default
 					push @filpref, $rnod->{tablespace_oid}
-						if (($row->{fsoid} != 3052)
+						if (($row->{fsoid} != $DEFAULTFILESPACE_OID)
 							&& exists($rnod->{tablespace_oid}));
 
 					push @filpref, $kk; # dbid
@@ -2489,7 +2523,7 @@ if (1)
 			if ($do_mm_skip);
 	}
 
-	my $presh_txt = $glob_mm ? get_mm_presh_txt() : 
+	my $presh_txt = ($glob_mm && !$glob_ffc) ? get_mm_presh_txt() : 
 		($glob_nohash ? get_nohash_presh_txt() : get_presh_txt());
 	my $presh2_txt = get_presh2_txt();
 
