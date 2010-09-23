@@ -1411,14 +1411,25 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	}
 	*f = (fspc_agg_state*)cpdata;
 	filespaceInfoLen = FSPC_CHECKPOINT_BYTES((*f)->count);
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "mmxlog_get_checkpoint_info: Checkpoint record length %u, %d filespaces, filespaceInfoLen %d, remainder length %d, location %s",
+			 checkpointLen,
+			 (*f)->count,
+			 filespaceInfoLen,
+			 remainderLen,
+			 XLogLocationToString(beginLoc));
+	}
 	if (remainderLen < filespaceInfoLen)
 	{
 		if (errlevel != -1)
 			ereport(errlevel,
-				 (errmsg("Bad checkpoint record length %u (Master mirroring filesapce information: expected at least length %u, actual length %u) at location %s",
+				 (errmsg("Bad checkpoint record length %u (Master mirroring filesapce information: expected at least length %u, actual length %u, count %d) at location %s",
 						 checkpointLen,
 						 filespaceInfoLen,
 						 remainderLen,
+						 (*f)->count,
 						 XLogLocationToString(beginLoc))));
 		return false;
 	}
@@ -1437,14 +1448,25 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	}
 	*t = (tspc_agg_state*) (cpdata + filespaceInfoLen);
 	tablespaceInfoLen = TSPC_CHECKPOINT_BYTES((*t)->count);
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "mmxlog_get_checkpoint_info: Checkpoint record length %u, %d tablespaces, tablespaceInfoLen %d, remainder length %d, location %s",
+			 checkpointLen,
+			 (*t)->count,
+			 filespaceInfoLen,
+			 remainderLen,
+			 XLogLocationToString(beginLoc));
+	}
 	if (remainderLen < tablespaceInfoLen)
 	{
 		if (errlevel != -1)
 			ereport(errlevel,
-				 (errmsg("Bad checkpoint record length %u (Master mirroring tablesapce information: expected at least length %u, actual length %u) at location %s",
+				 (errmsg("Bad checkpoint record length %u (Master mirroring tablesapce information: expected at least length %u, actual length %u, count %d) at location %s",
 						 checkpointLen,
 						 tablespaceInfoLen,
 						 remainderLen,
+						 (*t)->count,
 						 XLogLocationToString(beginLoc))));
 		return false;
 	}
@@ -1454,7 +1476,7 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	{
 		if (errlevel != -1)
 			ereport(errlevel,
-				 (errmsg("Bad checkpoint record length %u (Master mirroring database direcotry information header: expected at least length %u, actual length %u) at location %s",
+				 (errmsg("Bad checkpoint record length %u (Master mirroring database directory information header: expected at least length %u, actual length %u) at location %s",
 						 checkpointLen,
 						 (uint32)DBDIR_CHECKPOINT_BYTES(0),
 						 remainderLen,
@@ -1463,14 +1485,25 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	}
 	*d = (dbdir_agg_state*) (cpdata + filespaceInfoLen + tablespaceInfoLen);
 	databaseInfoLen = DBDIR_CHECKPOINT_BYTES((*d)->count);
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "mmxlog_get_checkpoint_info: Checkpoint record length %u, %d databases, databaseInfoLen %d, remainder length %d, location %s",
+			 checkpointLen,
+			 (*d)->count,
+			 databaseInfoLen,
+			 remainderLen,
+			 XLogLocationToString(beginLoc));
+	}
 	if (remainderLen != databaseInfoLen)
 	{
 		if (errlevel != -1)
 			ereport(errlevel,
-				 (errmsg("Bad checkpoint record length %u (Master mirroring database directory information: expected length %u, actual length %u) at location %s",
+				 (errmsg("Bad checkpoint record length %u (Master mirroring database directory information: expected length %u, actual length %u, count %d) at location %s",
 						 checkpointLen,
 						 databaseInfoLen,
 						 remainderLen,
+						 (*d)->count,
 						 XLogLocationToString(beginLoc))));
 		return false;
 	}
