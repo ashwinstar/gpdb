@@ -1364,7 +1364,7 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[5])
 	rdata[3].len = TSPC_CHECKPOINT_BYTES(t->count);
 	rdata[4].data = (char*)d;
 	rdata[4].buffer = InvalidBuffer;
-	rdata[4].len = DBDIR_CHECKPOINT_BYTES(t->count);
+	rdata[4].len = DBDIR_CHECKPOINT_BYTES(d->count);
 
 	rdata[1].next = &(rdata[2]);
 	rdata[2].next = &(rdata[3]);
