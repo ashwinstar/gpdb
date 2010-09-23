@@ -439,6 +439,19 @@ def testAppliance1001Chkconfig(host):
                 printError(host.hostname, "service (%s) should be off" % (sname))
                 break
 
+def testAppliance1001Blockdev(host):
+
+    expectedReadAhead = "16384"
+
+    for dev in host.data.blockdev.ra.keys():
+
+        ra = host.data.blockdev.ra[dev]
+
+        if ra != expectedReadAhead:
+
+            printError(host.hostname, "on device (%s) blockdev readahead value '%s' does not match expected value '%s'" % (dev, ra, expectedReadAhead))
+
+
 
 def testAppliance1001IOSchedulers(host):
 
@@ -553,6 +566,7 @@ def testAppliance1001Host(host):
     testAppliance1001IOSchedulers(host)
 
     # test blockdev
+    testAppliance1001Blockdev(host)
 
 ######################################################################################
 
