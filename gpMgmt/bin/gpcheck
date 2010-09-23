@@ -261,6 +261,7 @@ def testAppliance1001OmreportRemoteaccess(host):
                 printError(host.hostname, "omreport chassis remoteaccess attribute '%s' Value '%s' does not match expected '%s'" % (k, value, expectedKeyValuePairs[k]))
         else:
             printError(host.hostname, "can not find Attribute in omreport chassis remoteaccess '%s'" % (k))
+            logger.warning("errmsg on host: %s" % host.data.omreport.remoteaccess_errormsg)
 
     ipaddressAttribute = "IP Address"
     ipadd_root = "172.28.0"
@@ -406,6 +407,75 @@ def testAppliance1001Chkconfig(host):
                 break
 
 
+def testAppliance1001Mounts(host):
+
+    xfs_mounts = list()
+
+    if host.is_a_master:
+        p = '/dev/sdc'
+        loc = '/data'
+        hosttype = 'master'
+        if p in host.data.mounts.entries:
+            entry = host.data.mounts.entries[p]
+            if entry.dir != loc:
+                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
+            xfs_mounts.append(entry)
+        else:
+            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
+    else:
+        hosttype = 'segment'
+        p = '/dev/sdb'
+        loc = '/data1'
+        if p in host.data.mounts.entries:
+            entry = host.data.mounts.entries[p]
+            xfs_mounts.append(entry)
+            if entry.dir != loc:
+                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
+        else:
+            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
+
+        p = '/dev/sdd'
+        loc = '/data2'
+        if p in host.data.mounts.entries:
+            entry = host.data.mounts.entries[p]
+            xfs_mounts.append(entry)
+            if entry.dir != loc:
+                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
+        else:
+            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
+
+    for mnt in xfs_mounts:
+
+        # expected XFS options
+        # rw,noatime,nodiratime,logbufs=8
+
+        if mnt.type != "xfs":
+            printError(host.hostname, "device %s is not XFS and is expected to be so on a %s host" % (mnt.partition, hosttype))
+            continue
+
+        if len(mnt.options) != 4:
+            printError(host.hostname, "XFS filesystem on device %s has %d XFS mount options and 4 are expected" % mnt.partition)
+
+        simpleoptions = set([ 'rw', 'noatime', 'nodiratime'])
+        for opt in simpleoptions:
+
+            if opt not in mnt.options:
+                printError(host.hostname, "XFS filesystem on device %s has does not have expected XFS mount options '%s' " % (mnt.partition, opt))
+                continue
+
+            value = mnt.options[opt]
+            if value:
+                printError(host.hostname, "XFS filesystem on device %s has XFS mount option '%s' with a parameter, this XFS option is not expected to have a param " % (mnt.partition, opt))
+
+        logbufs = 'logbufs'
+        if logbufs in mnt.options:
+            value = mnt.options[logbufs]
+            if not value or value != '8':
+                printError(host.hostname, "XFS filesystem on device %s has mount option '%s' without expected value '8'" % (mnt.partition, logbufs))
+        else:
+            printError(host.hostname, "XFS filesystem on device %s has does not have expected XFS mount options '%s' " % (mnt.partition, logbufs))
+            
+
 
 def testAppliance1001Host(host):
 
@@ -422,6 +492,8 @@ def testAppliance1001Host(host):
     testAppliance1001Grub(host)
 
     # test mounts
+    testAppliance1001Mounts(host)
+
     # test inittab
     # test securetty
     # test bcu

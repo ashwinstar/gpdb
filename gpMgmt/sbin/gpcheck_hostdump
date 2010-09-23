@@ -86,13 +86,18 @@ def omReportStorageVdisk(data):
 
 # argument is a reference to instantiated omreport object
 def omReportChassisRemoteaccess(data):
-    p = subprocess.Popen("omreport chassis remoteaccess", shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
 
+    p = subprocess.Popen("omreport chassis remoteaccess", shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
     result = p.communicate()
 
-    data.remoteaccess_errormsg = result[1].strip()
+    if p.returncode:
+        # the remote access command on omreport is flaky... retry it once
+        p = subprocess.Popen("omreport chassis remoteaccess", shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+        result = p.communicate()
+        data.remoteaccess_errormsg = result[1].strip()
 
     if p.returncode:
+        data.remoteaccess_errormsg = "%s\nreturn code from omreport %d" % (data.remoteaccess_errormsg, p.returncode)
         return
 
     attribute = None
