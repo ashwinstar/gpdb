@@ -114,6 +114,8 @@ class DellOutputData:
         self.inittab = None
         self.securetty = None
         self.bcu = None
+        self.blockdev = None
+        self.ioschedulers = None
 
     def __str__(self):
         ser = "=============SERVICES=======================\n"

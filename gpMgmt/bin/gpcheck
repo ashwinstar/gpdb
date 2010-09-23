@@ -371,6 +371,16 @@ def testAppliance1001Grub(host):
     if not host.data.grubconf.ttyS1_declaration:
         printError(host.hostname, "did not detect console ttyS1 declaration in grub.conf file")
 
+def testAppliance1001Bcu(host):
+
+    expectedFwversion = 'FCHBA2.2.0.1'
+
+    if host.data.bcu.firmware != expectedFwversion:
+
+        printError(host.hostname, "CNA firmware version '%s' does not match expected '%s'" % (host.data.bcu.firmware, expectedFwversion))
+
+
+
 def testAppliance1001Inittab(host):
 
     expectedDefaultRunLevel = "3"
@@ -523,6 +533,7 @@ def testAppliance1001Host(host):
     testAppliance1001Securetty(host)
 
     # test bcu
+    testAppliance1001Bcu(host)
 
 ######################################################################################
 
