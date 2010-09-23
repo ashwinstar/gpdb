@@ -2643,11 +2643,11 @@ insert into ao_p values(1), (2), (3);
 select partitiontablename, ao_ptotal(partitiontablename)
 from pg_partitions where tablename = 'ao_p';
 -- end_ignore
-select ao_ptotal(partitiontablename)
-from pg_partitions where tablename = 'ao_p';
 truncate ao_p;
+-- start_ignore
 select partitiontablename, ao_ptotal(partitiontablename)
 from pg_partitions where tablename = 'ao_p';
+-- end_ignore
 copy ao_p from stdin;
 4
 5
@@ -2657,8 +2657,6 @@ copy ao_p from stdin;
 select partitiontablename, ao_ptotal(partitiontablename)
 from pg_partitions where tablename = 'ao_p';
 -- end_ignore
-select ao_ptotal(partitiontablename)
-from pg_partitions where tablename = 'ao_p';
 -- try SREH
 copy ao_p from stdin log errors into ao_p_err segment reject limit 100;
 6
@@ -2670,8 +2668,6 @@ f
 select partitiontablename, ao_ptotal(partitiontablename)
 from pg_partitions where tablename = 'ao_p';
 -- end_ignore
-select ao_ptotal(partitiontablename)
-from pg_partitions where tablename = 'ao_p';
 drop table ao_p;
 
 -- MPP-3591: make sure we get inclusive/exclusive right with every().
