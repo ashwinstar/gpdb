@@ -371,6 +371,7 @@ def testAppliance1001Grub(host):
     if not host.data.grubconf.ttyS1_declaration:
         printError(host.hostname, "did not detect console ttyS1 declaration in grub.conf file")
 
+
 def testAppliance1001Bcu(host):
 
     expectedFwversion = 'FCHBA2.2.0.1'
@@ -437,6 +438,19 @@ def testAppliance1001Chkconfig(host):
             if service[level]:
                 printError(host.hostname, "service (%s) should be off" % (sname))
                 break
+
+
+def testAppliance1001IOSchedulers(host):
+
+    expectedScheduler = "deadline"
+
+    for dev in host.data.ioschedulers.devices.keys():
+
+        scheduler = host.data.ioschedulers.devices[dev]
+
+        if scheduler != expectedScheduler:
+
+            printError(host.hostname, "on device (%s) IO scheduler '%s' does not match expected value '%s'" % (dev, scheduler, expectedScheduler))
 
 
 def testAppliance1001Mounts(host):
@@ -534,6 +548,11 @@ def testAppliance1001Host(host):
 
     # test bcu
     testAppliance1001Bcu(host)
+
+    # test IO schedulers
+    testAppliance1001IOSchedulers(host)
+
+    # test blockdev
 
 ######################################################################################
 
