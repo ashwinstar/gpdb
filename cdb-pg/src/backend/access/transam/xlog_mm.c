@@ -1397,6 +1397,10 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 	int tablespaceInfoLen;
 	int databaseInfoLen;
 
+	SUPPRESS_ERRCONTEXT_DECLARE;
+	
+	SUPPRESS_ERRCONTEXT_PUSH();
+	
 	remainderLen = masterMirroringLen;
 	if (remainderLen < FSPC_CHECKPOINT_BYTES(0))
 	{
@@ -1407,6 +1411,8 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 						 (uint32)FSPC_CHECKPOINT_BYTES(0),
 						 remainderLen,
 						 XLogLocationToString(beginLoc))));
+	
+		SUPPRESS_ERRCONTEXT_POP();
 		return false;
 	}
 	*f = (fspc_agg_state*)cpdata;
@@ -1431,6 +1437,8 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 						 remainderLen,
 						 (*f)->count,
 						 XLogLocationToString(beginLoc))));
+	
+		SUPPRESS_ERRCONTEXT_POP();
 		return false;
 	}
 
@@ -1444,6 +1452,8 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 						 (uint32)TSPC_CHECKPOINT_BYTES(0),
 						 remainderLen,
 						 XLogLocationToString(beginLoc))));
+	
+		SUPPRESS_ERRCONTEXT_POP();
 		return false;
 	}
 	*t = (tspc_agg_state*) (cpdata + filespaceInfoLen);
@@ -1468,6 +1478,8 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 						 remainderLen,
 						 (*t)->count,
 						 XLogLocationToString(beginLoc))));
+	
+		SUPPRESS_ERRCONTEXT_POP();
 		return false;
 	}
 
@@ -1481,6 +1493,8 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 						 (uint32)DBDIR_CHECKPOINT_BYTES(0),
 						 remainderLen,
 						 XLogLocationToString(beginLoc))));
+	
+		SUPPRESS_ERRCONTEXT_POP();
 		return false;
 	}
 	*d = (dbdir_agg_state*) (cpdata + filespaceInfoLen + tablespaceInfoLen);
@@ -1505,9 +1519,12 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 						 remainderLen,
 						 (*d)->count,
 						 XLogLocationToString(beginLoc))));
+	
+		SUPPRESS_ERRCONTEXT_POP();
 		return false;
 	}
 
+	SUPPRESS_ERRCONTEXT_POP();
 	return true;
 }
 

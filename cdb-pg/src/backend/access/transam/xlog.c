@@ -7889,22 +7889,38 @@ UnpackCheckPointRecord(
 
 		remainderLen = record->xl_len - sizeof(CheckPoint);
 		if (remainderLen < TMGXACT_CHECKPOINT_BYTES(0))
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+			
+			SUPPRESS_ERRCONTEXT_PUSH();
+			
 			ereport(PANIC,
 				 (errmsg("Bad checkpoint record length %u (DTX information header: expected at least length %u, actual length %u) at location %s",
 				 		 record->xl_len,
 				 		 (uint32)TMGXACT_CHECKPOINT_BYTES(0),
 				 		 remainderLen,
 				 		 XLogLocationToString(location))));
+			
+			SUPPRESS_ERRCONTEXT_POP();
+		}
 
 		*dtxCheckpoint = (TMGXACT_CHECKPOINT *)(XLogRecGetData(record) + sizeof(CheckPoint));
 		*dtxCheckpointLen = TMGXACT_CHECKPOINT_BYTES((*dtxCheckpoint)->committedCount);
 		if (remainderLen < *dtxCheckpointLen)
+		{
+			SUPPRESS_ERRCONTEXT_DECLARE;
+			
+			SUPPRESS_ERRCONTEXT_PUSH();
+			
 			ereport(PANIC,
 				 (errmsg("Bad checkpoint record length %u (DTX information: expected at least length %u, actual length %u) at location %s",
 				 		 record->xl_len,
 				 		 *dtxCheckpointLen,
 				 		 remainderLen,
 				 		 XLogLocationToString(location))));
+			
+			SUPPRESS_ERRCONTEXT_POP();
+		}
 
 		remainderLen -= *dtxCheckpointLen;
 
