@@ -371,6 +371,17 @@ def testAppliance1001Grub(host):
     if not host.data.grubconf.ttyS1_declaration:
         printError(host.hostname, "did not detect console ttyS1 declaration in grub.conf file")
 
+def testAppliance1001Inittab(host):
+
+    expectedDefaultRunLevel = "3"
+
+    if not host.data.inittab.s1:
+        printError(host.hostname, "S1 tty declaration not found in /etc/inittab")
+
+    if host.data.inittab.defaultRunLevel != expectedDefaultRunLevel:
+        printError(host.hostname, "default run level in /etc/initab is %s and expected to be %s" % (host.data.inittab.defaultRunLevel, expectedDefaultRunLevel))
+
+
 def testAppliance1001Chkconfig(host):
 
     # ipmi should be on for 3 4 5
@@ -495,6 +506,8 @@ def testAppliance1001Host(host):
     testAppliance1001Mounts(host)
 
     # test inittab
+    testAppliance1001Inittab(host)
+
     # test securetty
     # test bcu
 
