@@ -191,6 +191,137 @@ struct conn_htab_bin	**conn_htab = NULL;
 #define DEFAULT_CONN_HTAB_SIZE (Max((GpIdentity.numsegments*Gp_interconnect_hash_multiplier), 16))
 int						conn_htab_size = 0;
 
+#define CURSOR_IC_TABLE_SIZE (128)
+
+struct cursor_ic_history_entry
+{
+	uint32 icId;
+	uint32 cid;
+	uint8 status;
+	struct cursor_ic_history_entry *next;
+};
+
+uint32 cursor_ic_history_count=0;
+
+struct cursor_ic_history_entry *cursor_ic_history_table[CURSOR_IC_TABLE_SIZE];
+
+static void
+add_cursor_ic_entry(uint32 icId, uint32 cid)
+{
+	struct cursor_ic_history_entry *p;
+	uint8 index = icId % CURSOR_IC_TABLE_SIZE;
+
+	p = malloc(sizeof(struct cursor_ic_history_entry));
+	if (p == NULL)
+	{
+	}
+
+	p->icId = icId;
+	p->cid = cid;
+	p->status = 1;
+	p->next = cursor_ic_history_table[index];
+
+	cursor_ic_history_table[index] = p;
+
+	cursor_ic_history_count++;
+
+	return;
+}
+
+static void
+update_cursor_ic_entry(uint32 icId, uint8 status)
+{
+	struct cursor_ic_history_entry *p;
+	uint8 index = icId % CURSOR_IC_TABLE_SIZE;
+
+	for (p = cursor_ic_history_table[index]; p; p = p->next)
+	{
+		if (p->icId == icId)
+		{
+			p->status = status;
+			return;
+		}
+	}
+	/* not found */
+}
+
+static struct cursor_ic_history_entry *
+get_cursor_ic_entry(uint32 icId)
+{
+	struct cursor_ic_history_entry *p;
+	uint8 index = icId % CURSOR_IC_TABLE_SIZE;
+
+	for (p = cursor_ic_history_table[index]; p; p = p->next)
+	{
+		if (p->icId == icId)
+		{
+			return p;
+		}
+	}
+	/* not found */
+	return NULL;
+}
+
+static void
+prune_cursor_ic_entry(uint32 icId)
+{
+	uint8 index;
+
+	for (index=0; index<CURSOR_IC_TABLE_SIZE; index++)
+	{
+		struct cursor_ic_history_entry *p, *q;
+
+		p = cursor_ic_history_table[index];
+		q = NULL;
+		while (p)
+		{
+			/*  remove an entry if it is older than the prune-point */
+			if (p->icId < icId)
+			{
+				struct cursor_ic_history_entry *trash;
+
+				if (!q)
+				{
+					cursor_ic_history_table[index] = p->next;
+				}
+				else
+				{
+					q->next = p->next;
+				}
+				trash = p;
+				p = trash->next; /* set up next loop */
+				free(trash);
+
+				cursor_ic_history_count--;
+			}
+			else
+			{
+				q = p;
+				p = p->next;
+			}
+		}
+	}
+}
+
+static void
+purge_cursor_ic_entry(void)
+{
+	uint8 index;
+
+	for (index=0; index<CURSOR_IC_TABLE_SIZE; index++)
+	{
+		struct cursor_ic_history_entry *trash;
+
+		while (cursor_ic_history_table[index])
+		{
+			trash = cursor_ic_history_table[index];
+			cursor_ic_history_table[index] = trash->next;
+
+			free(trash);
+		}
+	}
+}
+
 static ChunkTransportStateEntry *startOutgoingUDPConnections(ChunkTransportState *transportStates,
 															 Slice *sendSlice,
 															 int *pOutgoingCount);
@@ -221,6 +352,8 @@ static void doSendStopMessageUDP(ChunkTransportState *transportStates, int16 mot
 static bool dispatcherAYT(void);
 
 static void *ic_rx_thread_func(void *arg);
+
+static void rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_in *peer);
 
 static void
 setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
@@ -320,6 +453,8 @@ InitMotionUDP(int *listenerSocketFd, uint16 *listenerPort)
 	/* attributes of the thread we're creating */
 	pthread_attr_t t_atts;
 
+	memset(cursor_ic_history_table, 0, sizeof(cursor_ic_history_table));
+
 	setupUDPListeningSocket(listenerSocketFd, listenerPort);
 
 	/* set up the connection hash table */
@@ -380,6 +515,8 @@ CleanupMotionUDP(void)
 	pthread_join(ic_rx_thread, NULL);
 
 	elog(DEBUG2, "udp-ic: receiver thread shutdown.");
+
+	purge_cursor_ic_entry();
 
 	for (i=0; i < conn_htab_size; i++)
 	{
@@ -1202,6 +1339,21 @@ SetupUDPInterconnect(EState *estate)
 
 	gp_interconnect_id = estate->interconnect_context->sliceTable->ic_instance_id;
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		if (cursor_ic_history_count > (2 * CURSOR_IC_TABLE_SIZE))
+		{
+			uint32 prune_id = gp_interconnect_id - CURSOR_IC_TABLE_SIZE;
+
+			/* only prune if we didn't underflow -- also we want the prune id to be newer than the limit (hysteresis) */
+			if (prune_id < gp_interconnect_id) 
+			{
+				prune_cursor_ic_entry(prune_id);
+			}
+		}
+		add_cursor_ic_entry(gp_interconnect_id, gp_command_count);
+	}
+
 	pthread_mutex_lock(&rx_thread_mutex);
 
 	/* rearrange the connection hash table, if required */
@@ -1922,6 +2074,11 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		rx_buf_maxcount -= (pEntry->numConns * Gp_interconnect_queue_depth);
 		pfree(pEntry->conns);
 
+		/*
+		 * we're inside a loop here, which is weird, but we need to
+		 * make sure this stuff gets updated before we release the
+		 * lock.
+		 */
 		ic_id_last_teardown = gp_interconnect_id;
 
 		pthread_mutex_unlock(&rx_thread_mutex);
@@ -1967,6 +2124,8 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 	ic_stats_mismatch=0;
 	ic_stats_rx_overrun=0;
 	ic_stats_crc_error=0;
+
+	update_cursor_ic_entry(gp_interconnect_id, 0);
 
 	pthread_mutex_unlock(&rx_thread_mutex);
 
@@ -2352,6 +2511,12 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				continue;
 			}
 
+			if ((pkt.flags & UDPIC_FLAGS_NAK) && (pkt.flags & UDPIC_FLAGS_EOS))
+			{
+				elog(DEBUG2, "GOT NAK FOR EOS: srcpid %d dstpid %d srccontent %d dstcontent %d cmd %d flags 0x%x pktseq %d connseq %d gp_interconnect_id %d",
+					 pkt.srcPid, pkt.dstPid, pkt.srcContentId, pkt.dstContentId, pkt.icId, pkt.flags, pkt.seq, ackConn->conn_info.seq, gp_interconnect_id);
+			}
+
 			if (pkt.flags & UDPIC_FLAGS_NAK)
 			{
 				/* this packet needs to get retried -- the receiver isn't ready to receive it yet. */
@@ -2411,7 +2576,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 			}
 		}
 		else
-			elog(DEBUG4, "flushUDPbuffer: not the ack we're looking for (flags 0x%x)...mot(%d) content(%d:%d) srcpid(%d:%d) dstpid(%d) srcport(%d:%d) dstport(%d) sess(%d:%d) cmd(%d:%d)",
+			elog(DEBUG4, "handleAcks: not the ack we're looking for (flags 0x%x)...mot(%d) content(%d:%d) srcpid(%d:%d) dstpid(%d) srcport(%d:%d) dstport(%d) sess(%d:%d) cmd(%d:%d)",
 				 pkt.flags, pkt.motNodeId,
 				 pkt.srcContentId, Gp_segment,
 				 pkt.srcPid, MyProcPid, 
@@ -2620,10 +2785,12 @@ handleStopMsgs(ChunkTransportState *transportStates, ChunkTransportStateEntry *p
 		elog(DEBUG3, "handleStopMsgs: node %d route %d msgSize %d", motionId, conn->route, conn->msgSize);
 #endif
 
-		/* MPP-2427: we're guaranteed to have recently flushed, but
+		/*
+		 * MPP-2427: we're guaranteed to have recently flushed, but
 		 * this might not be empty (if we got a stop on a buffer that
 		 * wasn't the one we were sending) ... empty it first so the
-		 * outbound buffer is empty when we get here. */
+		 * outbound buffer is empty when we get here.
+		 */
 		if (conn->stillActive && conn->stopRequested)
 		{
 			/* mark buffer empty */
@@ -2781,8 +2948,8 @@ SendEosUDP(MotionLayerState *mlStates,
 
 		if (conn->state == mcsStarted && conn->stillActive)
 		{
-			elog(DEBUG2, "sent eos to route %d tuplecount %d seq %d flags 0x%x stillActive %s",
-				 conn->route, conn->tupleCount, conn->conn_info.seq, conn->conn_info.flags, (conn->stillActive ? "true" : "false"));
+			elog(DEBUG2, "sent eos to route %d tuplecount %d seq %d flags 0x%x stillActive %s icId %d",
+				 conn->route, conn->tupleCount, conn->conn_info.seq, conn->conn_info.flags, (conn->stillActive ? "true" : "false"), conn->conn_info.icId);
 
 			if (conn->activeXmit)
 			{
@@ -3447,49 +3614,19 @@ ic_rx_thread_func(void *arg)
 			}
 			else
 			{
-				/* else, ignore and drop */
-				/* perhaps we want to check to see if this *is* a
-				 * packet from our session (previous command-id ?)
-				 * which still needs some acking ?*/
+				/* else, ignore and drop, but we may need to ack it */
 
+				/* 
+				 * we want to check to see if this *is* a
+				 * packet from our session (previous command-id ?)
+				 * which still needs some acking ?
+				 */
 				ic_stats_mismatch++;
 
-				if (DEBUG4 >= log_min_messages)
-					write_log("dropping packet from command-id %d seq %d (my cmd %d)", pkt->icId, pkt->seq, gp_interconnect_id);
+				rx_handle_mismatch(pkt, &peer);
 
-				/* we want to ack old packets; but *must* avoid acking connection requests */
-				if (pkt->seq > 0 && pkt->sessionId == gp_session_id && 
-					(gp_interconnect_id == 0 || gp_interconnect_id >= pkt->icId))
-				{
-					MotionConn dummyconn;
-
-					memcpy(&dummyconn.conn_info, pkt, sizeof(struct icpkthdr));
-
-					/*
-					 * If we aren't doing the setup hand-shake, the
-					 * stop message we're about to send is ambiguous.
-					 * We disambiguate using a NAK flag -- our peer
-					 * will continue retrying.
-					 *
-					 * We want to "ACK the past, but NAK the future."
-					 *
-					 * handleAcks() on our sender will retransmit.
-					 */
-					if (pkt->seq == 1 && pkt->icId > ic_id_last_teardown)
-					{
-						dummyconn.conn_info.flags |= UDPIC_FLAGS_NAK;
-					}
-
-					dummyconn.peer = peer;
-
-					if (DEBUG4 >= log_min_messages)
-						write_log("idle, acking old packet ?");
-
-					/* we're idle ? send an Ack to a fake conn */
-					sendAck(&dummyconn, true);
-				}
+				pthread_mutex_unlock(&rx_thread_mutex);
 			}
-			pthread_mutex_unlock(&rx_thread_mutex);
 		}
 
 		/* pthread_yield(); */
@@ -3500,4 +3637,101 @@ ic_rx_thread_func(void *arg)
 
 	/* nothing to return */
 	return NULL;
+}
+
+/*
+ * If the mismatched packet is from an old connection, we may need to
+ * send an acknowledgement.
+ * 
+ * We are called with the receiver-lock held, and we never release it.
+ */
+static void
+rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_in *peer)
+{
+	/*
+	 * we want to ack old packets; but *must* avoid acking connection requests:
+	 * 
+	 *   "ACK the past, NAK the future" explicit NAKs aren't necessary, we just don't
+	 *   want to ACK future packets, that confuses everyone.
+	 */
+	if (pkt->seq > 0 && pkt->sessionId == gp_session_id)
+	{
+		bool need_ack=false;
+		uint8 ack_flags=0;
+
+		/*
+		 * The QD-backends can't use a counter, they've potentially got multiple instances (one for each active cursor)
+		 */
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			struct cursor_ic_history_entry *p;
+
+			p = get_cursor_ic_entry(pkt->icId);
+			if (p)
+			{
+				if (p->status == 0)
+				{
+					need_ack = true;
+				}
+				else
+				{
+					/* not torn down yet ? how can this happen ? */
+					write_log("GOT A MISMATCH PACKET WITH ID %d HISTORY THINKS IT IS ACTIVE", pkt->icId);
+					return; /* ignore, no ack */
+				}
+			}
+			else
+			{
+				write_log("GOT A MISMATCH PACKET WITH ID %d HISTORY HAS NO RECORD", pkt->icId);
+				/* no record means that it is from the future ? */
+				ack_flags = UDPIC_FLAGS_NAK;
+				need_ack = true;
+			}
+		}
+		/* The QEs get to use a simple counter. */
+		else if (Gp_role == GP_ROLE_EXECUTE &&
+				 (gp_interconnect_id == 0 || gp_interconnect_id >= pkt->icId))
+		{
+			need_ack = true;
+
+			/*
+			 * If we aren't doing the setup hand-shake, the
+			 * stop message we're about to send is ambiguous.
+			 * We disambiguate using a NAK flag -- our peer
+			 * will continue retrying.
+			 *
+			 * We want to "ACK the past, but NAK the future."
+			 *
+			 * handleAcks() on our sender will retransmit.
+			 */
+			if (pkt->seq == 1 && pkt->icId > ic_id_last_teardown)
+			{
+				ack_flags = UDPIC_FLAGS_NAK;
+			}
+		}
+
+		if (need_ack)
+		{
+			MotionConn dummyconn;
+
+			memcpy(&dummyconn.conn_info, pkt, sizeof(struct icpkthdr));
+			dummyconn.peer = *peer;
+
+			dummyconn.conn_info.flags |= ack_flags;
+
+			if (DEBUG4 >= log_min_messages)
+				write_log("idle, acking old packet ?");
+
+			write_log("ACKING PACKET WITH FLAGS: pkt->seq %d 0x%x pkt->icId %d last-teardown %d interconnect_id %d",
+					  pkt->seq, dummyconn.conn_info.flags, pkt->icId, ic_id_last_teardown, gp_interconnect_id);
+
+			/* we're idle ? send an Ack to a fake conn */
+			sendAck(&dummyconn, true);
+		}
+	}
+	else
+	{
+		if (DEBUG4 >= log_min_messages)
+			write_log("dropping packet from command-id %d seq %d (my cmd %d)", pkt->icId, pkt->seq, gp_interconnect_id);
+	}
 }
