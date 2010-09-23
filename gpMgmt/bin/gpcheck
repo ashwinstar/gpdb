@@ -382,6 +382,17 @@ def testAppliance1001Inittab(host):
         printError(host.hostname, "default run level in /etc/initab is %s and expected to be %s" % (host.data.inittab.defaultRunLevel, expectedDefaultRunLevel))
 
 
+def testAppliance1001Securetty(host):
+
+    expectedSecureTTys = set(['ttyS1'])
+
+    for tty in expectedSecureTTys:
+
+        if tty not in host.data.securetty.data:
+
+            printError(host.hostname, "%s not detected in /etc/securetty" % tty)
+
+
 def testAppliance1001Chkconfig(host):
 
     # ipmi should be on for 3 4 5
@@ -509,6 +520,8 @@ def testAppliance1001Host(host):
     testAppliance1001Inittab(host)
 
     # test securetty
+    testAppliance1001Securetty(host)
+
     # test bcu
 
 ######################################################################################
