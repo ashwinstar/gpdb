@@ -1536,7 +1536,32 @@ run_schedule(const char *schedule, test_function tfunc)
 		if (scbuf[0] == '\0' || scbuf[0] == '#')
 			continue;
 		if (strncmp(scbuf, "test: ", 6) == 0)
+		{
+			char		cmd[MAXPGPATH * 3];
+
 			test = scbuf + 6;
+
+			/* MPP-9643: allow ability to disable tests per platform */
+			snprintf(cmd, sizeof(cmd),
+					 SYSTEMQUOTE "gpexclude.pl --test %s --exclude %s.EXCLUDE  --quiet  " SYSTEMQUOTE, test, schedule);
+
+			if (run_diff(cmd, "") != 0)
+			{
+				c = test;
+				while (*c && isspace((unsigned char) *c))
+						c++;
+				add_stringlist_item(&ignorelist, c);
+
+				/*
+				 * Note: ignore: lines do not run the test, they just
+				 * say that failure of this test when run later on is
+				 * to be ignored. A bit odd but that's how the
+				 * shell-script version did it.
+				 */
+				continue;
+
+			}
+		}
 		else if (strncmp(scbuf, "ignore: ", 8) == 0)
 		{
 			c = scbuf + 8;
