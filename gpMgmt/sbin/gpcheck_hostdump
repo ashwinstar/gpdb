@@ -10,7 +10,7 @@ try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport, grubconf, mounts, GpMount, GpMount, inittab
-    from gppylib.gpcheckutil import securetty, ioschedulers, blockdev, bcu, rclocal, sysctl
+    from gppylib.gpcheckutil import securetty, ioschedulers, blockdev, bcu, rclocal, sysctl, limitsconf, limitsconf_entry
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -319,6 +319,36 @@ def collectGrubConf():
     
     return data
 
+
+# returns populated limitsconf object
+def collectLimits():
+
+    data = limitsconf()
+
+    try:
+        for line in open("/etc/security/limits.conf", "r"):
+
+            # todo: fix to work with partial line comments
+            if re.search("#", line):
+                continue
+            words = line.split()
+            if len(words) != 4:
+                continue
+
+            domain = words[0].strip()
+            type = words[1].strip()
+            item = words[2].strip()
+            value = words[3].strip()
+            data.lines.append(limitsconf_entry(domain, type, item, value))
+
+    except Exception, e:
+        data.errormsg = e.__str__()
+
+    return data
+
+
+
+
 # returns populated sysctl object
 def collectSysctl():
 
@@ -409,6 +439,7 @@ def processDellServer():
     output.bcu = collectBcu()
     output.rclocal = collectRclocal()
     output.sysctl = collectSysctl()
+    output.limitsconf = collectLimits()
 
 # True is an error
 def parseargs():

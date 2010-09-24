@@ -78,6 +78,27 @@ class rclocal:
     def __str__(self):
         return "executable(%s)" % self.isexecutable
 
+class limitsconf_entry:
+    def __init__(self, domain, type, item, value):
+        self.domain = domain
+        self.type = type
+        self.item = item
+        self.value = value
+
+    def __str__(self):
+        return "%s %s %s %s" % (self.domain, self.type, self.item, self.value)
+
+class limitsconf:
+    def __init__(self):
+        self.lines = list() 
+        self.errormsg = None
+
+    def __str__(self):
+        output = ""
+        for line in self.lines:
+            output = "%s\n%s" % (output, line)
+        return output
+
 class GpMount:
     def __init__(self):
         self.partition = None
@@ -130,6 +151,7 @@ class DellOutputData:
         self.rclocal = None
         self.ioschedulers = None
         self.sysctl = None
+        self.limitsconf = None
 
     def __str__(self):
         ser = "=============SERVICES=======================\n"
@@ -160,6 +182,10 @@ class DellOutputData:
         grc = "============= SYSCTL=========================\n"
         gre = "============= SYSCTL ERRORMSG================\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.sysctl.variables.__str__(), gre, self.sysctl.errormsg)
+
+        grc = "============= LIMITS=========================\n"
+        gre = "============= LIMITS ERRORMSG================\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.limits.__str__(), gre, self.limits.errormsg)
 
         mnt = "============= MOUNT==========================\n"
         mte = "============= MOUNT ERRORMSG=================\n"
