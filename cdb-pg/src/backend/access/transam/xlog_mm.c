@@ -251,6 +251,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 	else if (info == MMXLOG_REMOVE_FILE)
 	{
 		RelFileNode rnode;
+		bool mirrorDataLossOccurred;
 
 		Insist(xlrec->objtype == MM_OBJ_RELFILENODE);
 
@@ -275,16 +276,13 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		rnode.relNode = xlrec->relfilenode;
 
 		XLogDropRelation(rnode);
-
-		DropRelFileNodeBuffers(rnode,
-							   false /* not a local buffer if we got here*/,
-							   0); 
-		FreeSpaceMapForgetRel(&rnode);
-
-		if (Debug_print_qd_mirroring)
-			elog(DEBUG1, "dropped buffers and freespace for %u/%u/%u",
-				 rnode.spcNode, rnode.dbNode, rnode.relNode);
-		unlink_obj(path, info);
+		smgrdounlink(
+				&rnode, 
+				/* isLocalBuf */ false,
+				/* relationName */ NULL,
+				/* primaryOnly */ true,
+				/* ignoreNonExistence */ true,
+				&mirrorDataLossOccurred);
 	}
 	else
 		elog(PANIC, "unknown mmxlog op code %u", info);
