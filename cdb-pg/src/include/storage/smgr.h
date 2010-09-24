@@ -263,6 +263,8 @@ extern void smgrdounlink(
 	
 	bool  						primaryOnly,
 
+	bool						isRedo,
+
 	bool 						ignoreNonExistence,
 
 	bool						*mirrorDataLossOccurred);
@@ -457,6 +459,8 @@ extern bool mdunlink(
 					/* For tracing only.  Can be NULL in some execution paths. */
 	
 	bool  						primaryOnly,
+
+	bool						isRedo,
 
 	bool 						ignoreNonExistence,
 

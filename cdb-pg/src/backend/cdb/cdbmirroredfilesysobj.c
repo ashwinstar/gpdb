@@ -1329,6 +1329,7 @@ void MirroredFileSysObj_DropRelFile(
 				isLocalBuf,
 				relationName,
 				primaryOnly,
+				/* isRedo */ false,
 				ignoreNonExistence,
 				mirrorDataLossOccurred);
 		break;

@@ -784,6 +784,8 @@ mdunlink(
 	
 	bool  						primaryOnly,
 
+	bool						isRedo,
+
 	bool 						ignoreNonExistence,
 
 	bool						*mirrorDataLossOccurred)
@@ -805,6 +807,7 @@ mdunlink(
 						/* segmentFileNum */ 0,
 						relationName,
 						primaryOnly,
+						isRedo,
 						&primaryError,
 						mirrorDataLossOccurred);
 	if (primaryError != 0)
@@ -862,6 +865,7 @@ mdunlink(
 													segmentFileNum, 
 													relationName,
 													primaryOnly,
+													isRedo,
 													&primaryError,
 													mirrorDataLossOccurred);
 								if (primaryError != 0)

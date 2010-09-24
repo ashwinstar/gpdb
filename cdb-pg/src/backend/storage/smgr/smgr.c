@@ -254,6 +254,8 @@ static void smgr_internal_unlink(
 	
 	bool  						primaryOnly,
 
+	bool						isRedo,
+
 	bool 						ignoreNonExistence,
 
 	bool						*mirrorDataLossOccurred);
@@ -955,6 +957,8 @@ smgrdounlink(
 	
 	bool  						primaryOnly,
 
+	bool						isRedo,
+
 	bool 						ignoreNonExistence,
 
 	bool						*mirrorDataLossOccurred)
@@ -964,6 +968,7 @@ smgrdounlink(
 				isLocalBuf,
 				relationName,
 				primaryOnly,
+				isRedo,
 				ignoreNonExistence,
 				mirrorDataLossOccurred);
 }
@@ -981,6 +986,8 @@ smgr_internal_unlink(
 					/* For tracing only.  Can be NULL in some execution paths. */
 	
 	bool  						primaryOnly,
+
+	bool						isRedo,
 
 	bool 						ignoreNonExistence,
 
@@ -1011,7 +1018,7 @@ smgr_internal_unlink(
 	 * Note: we treat deletion failure as a WARNING, not an error, because
 	 * we've already decided to commit or abort the current xact.
 	 */
-	if (!mdunlink(rnode, relationName, primaryOnly, ignoreNonExistence, mirrorDataLossOccurred))
+	if (!mdunlink(rnode, relationName, primaryOnly, isRedo, ignoreNonExistence, mirrorDataLossOccurred))
 	{
 		if (relationName == NULL)
 			ereport(WARNING,

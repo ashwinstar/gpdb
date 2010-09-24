@@ -156,6 +156,8 @@ extern void MirroredBufferPool_Drop(
 	
 	bool						primaryOnly,
 	
+	bool						isRedo,
+	
 	int 						*primaryError,
 
 	bool						*mirrorDataLossOccurred);

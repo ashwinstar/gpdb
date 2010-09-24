@@ -281,6 +281,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 				/* isLocalBuf */ false,
 				/* relationName */ NULL,
 				/* primaryOnly */ true,
+				/* isRedo */ true,		// Don't generate Master Mirroring records...
 				/* ignoreNonExistence */ true,
 				&mirrorDataLossOccurred);
 	}
