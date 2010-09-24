@@ -77,13 +77,4 @@ extern void UnlockSharedObject(Oid classid, Oid objid, uint16 objsubid,
 /* Knowledge about which locktags describe temp objects */
 extern bool LockTagIsTemp(const LOCKTAG *tag);
 
-/*
- * CdbLockRelation -- Lock a relation for reading or updating.
- *
- * CDB: Returns true if decided to use a stronger lock mode than requested, to
- * serialize access to a distributed relation.
- */
-bool
-CdbLockRelation(Relation relation, LOCKMODE reqmode, bool nowait);
-
 #endif   /* LMGR_H */

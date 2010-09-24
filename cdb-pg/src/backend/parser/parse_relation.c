@@ -46,7 +46,7 @@ bool		add_missing_from;
 static RangeTblEntry *scanNameSpaceForRefname(ParseState *pstate,
 						const char *refname);
 static RangeTblEntry *scanNameSpaceForRelid(ParseState *pstate, Oid relid);
-static void lockSourceRel(Relation srcrel, ParseState *pstate, char *refname);
+static LockingClause *getLockingClause(ParseState *pstate, char *refname);
 static void expandRelation(Oid relid, Alias *eref,
 			   int rtindex, int sublevels_up,
 			   bool include_dropped,
@@ -636,18 +636,32 @@ addRangeTableEntry(ParseState *pstate,
 				   bool inh,
 				   bool inFromCl)
 {
-	RangeTblEntry *rte = makeNode(RangeTblEntry);
-	char	   *refname = alias ? alias->aliasname : relation->relname;
-	Relation	rel;
-
+	RangeTblEntry		*rte	 = makeNode(RangeTblEntry);
+	char				*refname = alias ? alias->aliasname : relation->relname;
+	LOCKMODE             lockmode = AccessShareLock;
+	bool                 nowait = false;
+	LockingClause		*locking;
+	Relation			 rel;
+	
+	/* 
+	 * CDB: lock promotion around the locking clause is a little different
+	 * from postgres to allow for required lock promotion for distributed
+	 * tables.
+	 */
+	locking = getLockingClause(pstate, refname);
+	if (locking)
+	{
+		lockmode = locking->forUpdate ? RowExclusiveLock : RowShareLock;
+		nowait	 = locking->noWait;
+	}
+	rel = CdbOpenRelationRv(relation, lockmode, nowait, NULL);
+	
 	/*
 	 * Get the rel's OID.  This access also ensures that we have an up-to-date
 	 * relcache entry for the rel.	Since this is typically the first access
 	 * to a rel in a statement, be careful to get the right access level
 	 * depending on whether we're doing SELECT FOR UPDATE/SHARE.
 	 */
-	rel = heap_openrv(relation, NoLock);        /*CDB*/
-	lockSourceRel(rel, pstate, refname);        /*CDB*/
 	rte->relid = RelationGetRelid(rel);
 	rte->alias = alias;
 	rte->rtekind = RTE_RELATION;
@@ -655,7 +669,6 @@ addRangeTableEntry(ParseState *pstate,
 	/* external tables don't allow inheritance */
 	if(RelationIsExternal(rel))
 		inh = false;
-
 
 	/*
 	 * Build the list of effective column names using user-supplied aliases
@@ -1108,11 +1121,9 @@ addRangeTableEntryForJoin(ParseState *pstate,
  *
  * Note: we pay no attention to whether it's FOR UPDATE vs FOR SHARE.
  */
-static void
-lockSourceRel(Relation srcrel, ParseState *pstate, char *refname)
+static LockingClause*
+getLockingClause(ParseState *pstate, char *refname)
 {
-	bool forUpdate = false;
-	bool noWait = false;
 	/* Outer loop to check parent query levels as well as this one */
 	while (pstate != NULL)
 	{
@@ -1122,39 +1133,27 @@ lockSourceRel(Relation srcrel, ParseState *pstate, char *refname)
 		{
 			LockingClause *lc = (LockingClause *) lfirst(l);
 
-			forUpdate = lc->forUpdate;
-			noWait = lc->noWait;
-
 			if (lc->lockedRels == NIL)
 			{
-				/* all tables used in query */
-				break;
+				return lc;  				/* all tables used in query */
 			}
 			else
 			{
 				/* just the named tables */
-				ListCell   *l2;
-
+				ListCell	*l2;
 				foreach(l2, lc->lockedRels)
 				{
-					char	   *rname = strVal(lfirst(l2));
+					char	*rname = strVal(lfirst(l2));
 
 					if (strcmp(refname, rname) == 0)
-						break;
+						return lc;         /* refname matched */
 				}
 			}
 		}
 		pstate = pstate->parentParseState;
 	}
 
-    /* Default: Don't let the relation definition be changed by other xacts. */
-    if (pstate == NULL)
-        LockRelation(srcrel, AccessShareLock);
-
-    /* User wants result rows to be locked FOR UPDATE or FOR SHARE. */
-    else
-        CdbLockRelation(srcrel, forUpdate ? RowExclusiveLock : RowShareLock, noWait);
-
+	return NULL;
 }
 
 /*

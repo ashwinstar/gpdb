@@ -753,39 +753,16 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
      * CDB: Acquire ExclusiveLock if it is a distributed relation and we are
      * doing UPDATE or DELETE activity
 	 */
-	PG_TRY();
-	{
-		pstate->p_target_relation = heap_openrv(relation, AccessShareLock);
-	}
-	PG_CATCH();
-	{
-		/* 
-		 * In the case of the table being dropped concurrently, 
-		 * throw a friendlier error than:
-		 * 
-		 * "could not open relation with relid 1234"
-		 */
-		if (relation->schemaname)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_TABLE),
-					 errmsg("relation \"%s.%s\" does not exist",
-							relation->schemaname, relation->relname),
-					 errOmitLocation(true)));
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_TABLE),
-					 errmsg("relation \"%s\" does not exist",
-							relation->relname),
-					 errOmitLocation(true)));
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
 	if (pstate->p_is_insert && !pstate->p_is_update)
-		LockRelation(pstate->p_target_relation, RowExclusiveLock);
+	{
+		pstate->p_target_relation = heap_openrv(relation, RowExclusiveLock);
+	}
 	else
-    	CdbLockRelation(pstate->p_target_relation, RowExclusiveLock, false);
-
+	{
+    	pstate->p_target_relation = CdbOpenRelationRv(relation, 
+													  RowExclusiveLock, 
+													  false, NULL);
+	}
 	
 	/*
 	 * Now build an RTE.

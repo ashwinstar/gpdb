@@ -1464,15 +1464,15 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		RowMarkClause *rc = (RowMarkClause *) lfirst(l);
 		Oid			relid = getrelid(rc->rti, rangeTable);
 		Relation	relation;
+		LOCKMODE    lockmode;
+		bool        lockUpgraded;
 		ExecRowMark *erm;
 
         /* CDB: On QD, lock whole table in S or X mode, if distributed. */
-		relation = heap_open(relid, NoLock);
-        if (CdbLockRelation(relation,
-                            rc->forUpdate ? RowExclusiveLock
-                                                 : RowShareLock,
-                            rc->noWait))
-        {
+		lockmode = rc->forUpdate ? RowExclusiveLock : RowShareLock;
+		relation = CdbOpenRelation(relid, lockmode, rc->noWait, &lockUpgraded);
+		if (lockUpgraded)
+		{
             heap_close(relation, NoLock);
             continue;
         }
@@ -1767,6 +1767,7 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 {
 	Oid			resultRelationOid;
 	Relation	resultRelationDesc;
+	LOCKMODE    lockmode;
 
 	resultRelationOid = getrelid(resultRelationIndex, rangeTable);
 
@@ -1788,17 +1789,20 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	 *
 	 * So we're going to ignore the "NoLock" issue above.
 	 */
-	/* CDB: QD must acquire X lock on whole relation if distributed. */
-    resultRelationDesc = heap_open(resultRelationOid, NoLock);
+	/* CDB: we must promote locks for UPDATE and DELETE operations. */
+	lockmode = needLock ? RowExclusiveLock : NoLock;
+	if (operation == CMD_UPDATE || operation == CMD_DELETE)
+	{
+		resultRelationDesc = CdbOpenRelation(resultRelationOid,
+											 lockmode,
+											 false, /* noWait */ 
+											 NULL); /* lockUpgraded */
+	}
+	else
+	{
+		resultRelationDesc = heap_open(resultRelationOid, lockmode);
+	}
 
-    /* CDB: Only the root slice needs to get the locks, because only the root slice will do updating */
-    if (needLock)
-   	{
-   		if (operation == CMD_UPDATE || operation == CMD_DELETE)
-    		CdbLockRelation(resultRelationDesc, RowExclusiveLock, false);
-    	else
-    		LockRelation(resultRelationDesc, RowExclusiveLock);
-   	}
     /*
 	 * Check valid relkind ... parser and/or planner should have noticed this
 	 * already, but let's make sure.

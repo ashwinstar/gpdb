@@ -4024,7 +4024,7 @@ open_relation_and_check_permission(VacuumStmt *vacstmt,
 	 * There's a race condition here: the rel may have gone away since the
 	 * last time we saw it.  If so, we don't need to vacuum it.
 	 */
-	onerel = try_relation_open(relid, lmode);
+	onerel = try_relation_open(relid, lmode, false);
 
 	if (!onerel)
 		return NULL;

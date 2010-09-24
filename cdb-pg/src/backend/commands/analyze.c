@@ -384,7 +384,8 @@ void analyzeStatement(VacuumStmt *stmt, List *relids)
 		}
 
 		candidateOid = lfirst_oid(le1);
-		candidateRelation = try_relation_open(candidateOid, ShareUpdateExclusiveLock);
+		candidateRelation = 
+			try_relation_open(candidateOid, ShareUpdateExclusiveLock, false);
 
 		if (candidateRelation)
 		{
@@ -2660,7 +2661,7 @@ gp_statistics_estimate_reltuples_relpages_oid(PG_FUNCTION_ARGS)
 	Datum		values[2];
 	ArrayType   *result;
 	
-	Relation rel = try_relation_open(relOid, AccessShareLock);
+	Relation rel = try_relation_open(relOid, AccessShareLock, false);
 	
 	if (rel != NULL)
 	{
@@ -2668,15 +2669,15 @@ gp_statistics_estimate_reltuples_relpages_oid(PG_FUNCTION_ARGS)
 		{
 			if (RelationIsHeap(rel))
 			{
-				gp_statistics_estimate_reltuples_relpages_heap(rel, &reltuples, &relpages);	
+				gp_statistics_estimate_reltuples_relpages_heap(rel, &reltuples, &relpages);
 			}
 			else if (RelationIsAoRows(rel))
 			{
-				gp_statistics_estimate_reltuples_relpages_ao_rows(rel, &reltuples, &relpages);					
+				gp_statistics_estimate_reltuples_relpages_ao_rows(rel, &reltuples, &relpages);
 			}
 			else if	(RelationIsAoCols(rel))
 			{
-				gp_statistics_estimate_reltuples_relpages_ao_cs(rel, &reltuples, &relpages);					
+				gp_statistics_estimate_reltuples_relpages_ao_cs(rel, &reltuples, &relpages);
 			}	
 		}
 		else if (rel->rd_rel->relkind == RELKIND_INDEX)

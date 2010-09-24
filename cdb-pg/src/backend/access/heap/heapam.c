@@ -48,6 +48,7 @@
 #include "access/valid.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
+#include "catalog/gp_policy.h"
 #include "catalog/namespace.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -891,7 +892,7 @@ relation_open(Oid relationId, LOCKMODE lockmode)
  * ----------------
  */
 Relation
-try_relation_open(Oid relationId, LOCKMODE lockmode)
+try_relation_open(Oid relationId, LOCKMODE lockmode, bool noWait)
 {
 	Relation	r;
 
@@ -899,7 +900,38 @@ try_relation_open(Oid relationId, LOCKMODE lockmode)
 
 	/* Get the lock first */
 	if (lockmode != NoLock)
-		LockRelationOid(relationId, lockmode);
+	{
+		if (!noWait)
+			LockRelationOid(relationId, lockmode);
+		else
+		{
+			/*
+			 * noWait is a Greenplum addition to the open_relation code
+			 * basically to support INSERT ... FOR UPDATE NOWAIT.  Our NoWait
+			 * handling needs to be more tollerant of failed locks than standard
+			 * postgres largely due to the fact that we have to promote certain
+			 * update locks in order to handle distributed updates.
+			 */
+			if (!ConditionalLockRelationOid(relationId, lockmode))
+			{
+				/* Get the name for error reporting */
+				char *relname = get_rel_name(relationId);
+
+				/* 
+				 * If the relation was dropped then accept the lock 
+				 * failure and return null.
+				 */
+				if (relname == NULL)
+					return NULL;
+				
+				/* Otherwise report the failed lock */
+				ereport(ERROR, 
+						(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+						 errmsg("could not obtain lock on relation \"%s\"",
+								relname)));
+			}
+		}
+	}
 
 	/*
 	 * Now that we have the lock, probe to see if the relation really exists
@@ -926,6 +958,141 @@ try_relation_open(Oid relationId, LOCKMODE lockmode)
 
 	return r;
 }
+
+
+
+/*
+ * CdbTryOpenRelation -- Opens a relation with a specified lock mode.
+ *
+ * CDB: Like try_open_relation, except that it will upgrade the lock when needed
+ * for distributed tables.
+ */
+Relation
+CdbTryOpenRelation(Oid relid, LOCKMODE reqmode, bool noWait, bool *lockUpgraded)
+{
+    LOCKMODE    lockmode = reqmode;
+	Relation    rel;
+
+	if (lockUpgraded != NULL)
+		*lockUpgraded = false;
+
+    /*
+	 * CDB: We need to upgrade the requested lock from RowExclusiveLock
+	 * to Exclusive lock (locking the whole relation) when doing updates
+	 * on distributed relations.
+	 *
+	 * Historically the need for this was do to limitations caused by lack of
+	 * distributed deadlock detection (which we now have) and due to our use
+	 * of logical mirroring (which has been replaced with physical replication).
+	 * However the need for this remains due to our current implementation
+	 * of partitioning.
+	 *
+	 * Specifically in the case of INSERT SELECT we do not know which partitions
+	 * we may be updating.  So we need to serialize UPDATE and DELETE operations
+	 * to the same partitioned table.  
+	 *
+	 * Note: This code could be improved substantiatally.
+	 */
+	if (lockmode == RowExclusiveLock)
+	{
+		rel = try_heap_open(relid, NoLock, noWait);
+		if (!rel)
+			return NULL;
+		
+		if (rel->rd_cdbpolicy &&
+			rel->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+		{
+			lockmode = ExclusiveLock;
+			if (lockUpgraded != NULL)
+				*lockUpgraded = true;
+		}
+		relation_close(rel, NoLock);
+    }
+
+	rel = try_heap_open(relid, lockmode, noWait);
+	if (!RelationIsValid(rel))
+		return NULL;
+
+	/* 
+	 * There is a slim chance that ALTER TABLE SET DISTRIBUTED BY may
+	 * have altered the distribution policy between the time that we
+	 * decided to upgrade the lock and the time we opened the relation
+	 * with the lock.  Double check that our chosen lock mode is still
+	 * okay.
+	 */
+	if (lockmode == RowExclusiveLock &&
+		rel->rd_cdbpolicy &&
+		rel->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+	{
+		elog(ERROR, "relation \"%s\" concurrently updated", 
+			 RelationGetRelationName(rel));
+	}
+
+	return rel;
+}                                       /* CdbOpenRelation */
+
+/*
+ * CdbOpenRelation -- Opens a relation with a specified lock mode.
+ *
+ * CDB: Like CdbTryOpenRelation, except that it guarantees either
+ * an error or a valid opened relation returned.
+ */
+Relation
+CdbOpenRelation(Oid relid, LOCKMODE reqmode, bool noWait, bool *lockUpgraded)
+{
+	Relation rel;
+
+	rel = CdbTryOpenRelation(relid, reqmode, noWait, lockUpgraded);
+
+	if (!RelationIsValid(rel))
+		elog(ERROR, "could not open relation with OID %u", relid);
+
+	return rel;
+
+}                                       /* CdbOpenRelation */
+
+/*
+ * CdbOpenRelationRv -- Opens a relation with a specified lock mode.
+ *
+ * CDB: Like CdbTryOpenRelation, except that it guarantees either
+ * an error or a valid opened relation returned.
+ */
+Relation
+CdbOpenRelationRv(const RangeVar *relation, LOCKMODE reqmode, bool noWait, 
+				  bool *lockUpgraded)
+{
+	Oid			relid;
+	Relation	rel;
+
+	/* Look up the appropriate relation using namespace search */
+	relid = RangeVarGetRelid(relation, false);
+	rel = CdbTryOpenRelation(relid, reqmode, noWait, lockUpgraded);
+
+	if (!RelationIsValid(rel))
+	{
+		if (relation->schemaname)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_TABLE),
+					 errmsg("relation \"%s.%s\" does not exist",
+							relation->schemaname, relation->relname),
+					 errOmitLocation(true)));
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_TABLE),
+					 errmsg("relation \"%s\" does not exist",
+							relation->relname),
+					 errOmitLocation(true)));
+		}
+	}
+
+	return rel;
+
+}                                       /* CdbOpenRelation */
+
+
 
 /* ----------------
  *		relation_open_nowait - open but don't wait for lock
@@ -981,6 +1148,7 @@ Relation
 relation_openrv(const RangeVar *relation, LOCKMODE lockmode)
 {
 	Oid			relOid;
+	Relation    rel;
 
 	/*
 	 * Check for shared-cache-inval messages before trying to open the
@@ -1000,9 +1168,75 @@ relation_openrv(const RangeVar *relation, LOCKMODE lockmode)
 	/* Look up the appropriate relation using namespace search */
 	relOid = RangeVarGetRelid(relation, false);
 
-	/* Let relation_open do the rest */
-	return relation_open(relOid, lockmode);
+	/* 
+	 * use try_relation_open instead of relation_open so that we can
+	 * throw a more graceful error message if the relation was dropped
+	 * between the RangeVarGetRelid and when we try to open the relation.
+	 */
+	rel = try_relation_open(relOid, lockmode, false);
+
+	if (!RelationIsValid(rel))
+	{
+		if (relation->schemaname)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_TABLE),
+					 errmsg("relation \"%s.%s\" does not exist",
+							relation->schemaname, relation->relname),
+					 errOmitLocation(true)));
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_TABLE),
+					 errmsg("relation \"%s\" does not exist",
+							relation->relname),
+					 errOmitLocation(true)));
+		}
+	}
+
+	return rel;
 }
+
+/* ----------------
+ *		try_relation_openrv - open any relation specified by a RangeVar
+ *
+ *		Same as relation_openrv, but return NULL instead of failing for
+ *		relation-not-found.  (Note that some other causes, such as
+ *		permissions problems, will still result in an ereport.)
+ * ----------------
+ */
+Relation
+try_relation_openrv(const RangeVar *relation, LOCKMODE lockmode, bool noWait)
+{
+	Oid			relOid;
+
+	/*
+	 * Check for shared-cache-inval messages before trying to open the
+	 * relation.  This is needed to cover the case where the name identifies a
+	 * rel that has been dropped and recreated since the start of our
+	 * transaction: if we don't flush the old syscache entry then we'll latch
+	 * onto that entry and suffer an error when we do RelationIdGetRelation.
+	 * Note that relation_open does not need to do this, since a relation's
+	 * OID never changes.
+	 *
+	 * We skip this if asked for NoLock, on the assumption that the caller has
+	 * already ensured some appropriate lock is held.
+	 */
+	if (lockmode != NoLock)
+		AcceptInvalidationMessages();
+
+	/* Look up the appropriate relation using namespace search */
+	relOid = RangeVarGetRelid(relation, true);
+
+	/* Return NULL on not-found */
+	if (!OidIsValid(relOid))
+		return NULL;
+
+	/* Let relation_open do the rest */
+	return try_relation_open(relOid, lockmode, noWait);
+}
+
 
 /* ----------------
  *		relation_close - close any relation
@@ -1058,6 +1292,36 @@ heap_open(Oid relationId, LOCKMODE lockmode)
 }
 
 /* ----------------
+ *		try_heap_open - open a heap relation by relation OID
+ *
+ *		As above, but relation return NULL for relation-not-found
+ * ----------------
+ */
+Relation
+try_heap_open(Oid relationId, LOCKMODE lockmode, bool noWait)
+{
+	Relation	r;
+
+	r = try_relation_open(relationId, lockmode, noWait);
+
+	if (!RelationIsValid(r))
+		return NULL;
+
+	if (r->rd_rel->relkind == RELKIND_INDEX)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is an index",
+						RelationGetRelationName(r))));
+	else if (r->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("\"%s\" is a composite type",
+						RelationGetRelationName(r))));
+
+	return r;
+}
+
+/* ----------------
  *		heap_openrv - open a heap relation specified
  *		by a RangeVar node
  *
@@ -1084,6 +1348,37 @@ heap_openrv(const RangeVar *relation, LOCKMODE lockmode)
 
 	return r;
 }
+
+/* ----------------
+ *      try_heap_openrv - open a heap relation specified
+ *      by a RangeVar node
+ *
+ *      As above, but return NULL instead of failing for relation-not-found.
+ * ----------------
+ */
+Relation
+try_heap_openrv(const RangeVar *relation, LOCKMODE lockmode, bool noWait)
+{
+    Relation    r;
+
+    r = try_relation_openrv(relation, lockmode, noWait);
+
+    if (r)
+    {
+        if (r->rd_rel->relkind == RELKIND_INDEX)
+            ereport(ERROR,
+                    (errcode(ERRCODE_WRONG_OBJECT_TYPE),
+                     errmsg("\"%s\" is an index",
+                            RelationGetRelationName(r))));
+        else if (r->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
+            ereport(ERROR,
+                    (errcode(ERRCODE_WRONG_OBJECT_TYPE),
+                     errmsg("\"%s\" is a composite type",
+                            RelationGetRelationName(r))));
+    }
+    return r;
+}
+           
 
 
 /* ----------------

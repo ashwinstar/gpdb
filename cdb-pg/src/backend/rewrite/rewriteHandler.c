@@ -105,6 +105,7 @@ AcquireRewriteLocks(Query *parsetree)
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
 		Relation	rel;
 		LOCKMODE	lockmode;
+		bool        needLockUpgrade;
 		List	   *newaliasvars;
 		Index		curinputvarno;
 		RangeTblEntry *curinputrte;
@@ -129,38 +130,40 @@ AcquireRewriteLocks(Query *parsetree)
                  *
                  * CDB: The proper lock mode depends on whether the relation is
                  * local or distributed, which is discovered by heap_open().
-                 * Therefore we don't ask heap_open() to acquire the lock.
-                 * Instead call CdbLockRelation() on return from heap_open().
+				 * To handle this we make use of CdbOpenRelation().
 				 */
-				 
+				needLockUpgrade = false;
 				if (rt_index == parsetree->resultRelation)
 					lockmode = RowExclusiveLock;
 				else if (get_rowmark(parsetree, rt_index))
 					lockmode = RowShareLock;
 				else
 					lockmode = AccessShareLock;
-					
-				rel = heap_open(rte->relid, NoLock);
-				
+								
                 /* Target of INSERT/UPDATE/DELETE? */
                 if (rt_index == parsetree->resultRelation)
                 {
-                	/* 
-                	 * If it's an UPDATE or DELETE, we need special handling
-                	 */
-                	if (parsetree->commandType == CMD_INSERT)
-                		LockRelation(rel, RowExclusiveLock);
-                	else
-                    	CdbLockRelation(rel, RowExclusiveLock, false);
+					lockmode = RowExclusiveLock;
+                	if (parsetree->commandType != CMD_INSERT)
+						needLockUpgrade = true;
                 }
 
                 /* FOR UPDATE/SHARE? */
 				else if (get_rowmark(parsetree, rt_index) != NULL)
-                    CdbLockRelation(rel, lockmode, false);
+				{
+					needLockUpgrade = true;
+				}
 
-                /* Ordinary source relation */
+
+				/* Take a lock either using CDB lock promotion or not */
+				if (needLockUpgrade)
+				{
+					rel = CdbOpenRelation(rte->relid, lockmode, false, NULL);
+				}
 				else
-                    LockRelation(rel, lockmode);
+				{
+					rel = heap_open(rte->relid, lockmode);
+				}
 
                 /* Close the relcache entry without releasing the lock. */
                 heap_close(rel, NoLock);

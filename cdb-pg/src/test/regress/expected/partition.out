@@ -5799,14 +5799,13 @@ insert into g values(3, 'f');
 select * from locktest;
           coalesce          |       mode       
 ----------------------------+------------------
- g                          | AccessShareLock
  g                          | RowExclusiveLock
  locktest                   | AccessShareLock
  pg_class                   | AccessShareLock
  pg_class_oid_index         | AccessShareLock
  pg_class_relname_nsp_index | AccessShareLock
  pg_locks                   | AccessShareLock
-(7 rows)
+(6 rows)
 
 commit;
 -- delete locking
@@ -5815,7 +5814,6 @@ delete from g where i = 4;
 select * from locktest;
           coalesce          |      mode       
 ----------------------------+-----------------
- g                          | AccessShareLock
  g                          | ExclusiveLock
  g_1_prt_4                  | ExclusiveLock
  locktest                   | AccessShareLock
@@ -5823,7 +5821,7 @@ select * from locktest;
  pg_class_oid_index         | AccessShareLock
  pg_class_relname_nsp_index | AccessShareLock
  pg_locks                   | AccessShareLock
-(8 rows)
+(7 rows)
 
 commit;
 -- drop index
