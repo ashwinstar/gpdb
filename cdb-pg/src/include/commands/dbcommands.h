@@ -19,7 +19,6 @@
 
 /* XLOG stuff */
 #define XLOG_DBASE_CREATE		0x00
-#define XLOG_DBASE_DROP			0x10
 
 typedef struct xl_dbase_create_rec_old
 {

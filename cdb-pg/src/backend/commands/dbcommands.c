@@ -2429,20 +2429,6 @@ dbase_redo(XLogRecPtr beginLoc  __attribute__((unused)), XLogRecPtr lsn  __attri
 		 */
 		copydir(src_path, dst_path, false);
 	}
-	else if (info == XLOG_DBASE_DROP)
-	{
-		xl_dbase_drop_rec *xlrec = (xl_dbase_drop_rec *) XLogRecGetData(record);
-		char	   *dst_path;
-
-		dst_path = GetDatabasePath(xlrec->db_id, xlrec->tablespace_id);
-		xlog_prepare_database_drop(InvalidOid, xlrec->db_id);
-
-		/* And remove the physical files */
-		if (!rmtree(dst_path, true))
-			ereport(WARNING,
-					(errmsg("could not remove database directory \"%s\"",
-							dst_path)));
-	}
 	else
 		elog(PANIC, "dbase_redo: unknown op code %u", info);
 }
@@ -2459,13 +2445,6 @@ dbase_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 
 		appendStringInfo(buf, "create db: copy dir %u/%u to %u/%u",
 						 xlrec->src_db_id, xlrec->src_tablespace_id,
-						 xlrec->db_id, xlrec->tablespace_id);
-	}
-	else if (info == XLOG_DBASE_DROP)
-	{
-		xl_dbase_drop_rec *xlrec = (xl_dbase_drop_rec *) rec;
-
-		appendStringInfo(buf, "drop db: dir %u/%u",
 						 xlrec->db_id, xlrec->tablespace_id);
 	}
 	else

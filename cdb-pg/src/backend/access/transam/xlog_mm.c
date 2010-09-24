@@ -209,8 +209,6 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 				 xlrec->u.dbid.mirror,
 				 xlrec->mirror_path);
 		}
-		if (xlrec->objtype == MM_OBJ_DATABASE)
-			xlog_prepare_database_drop(xlrec->tablespace, xlrec->database);
 
 		/* tablespace and database should be fine */
 		unlink_obj(path, info);
