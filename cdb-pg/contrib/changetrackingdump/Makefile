@@ -4,8 +4,6 @@ OBJS    = changetrackingdump.o ../../src/port/sprompt.o ../../src/backend/utils/
 PG_CPPFLAGS = -I$(libpq_srcdir)
 PG_LIBS = $(libpq_pgport)
 
-DOCS = README.changetrackingdump
-
 ifdef USE_PGXS
 PGXS := $(shell pg_config --pgxs)
 include $(PGXS)

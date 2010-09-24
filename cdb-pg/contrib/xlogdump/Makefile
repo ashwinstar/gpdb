@@ -6,8 +6,6 @@ OBJS    = xlogdump.o ../../src/port/sprompt.o ../../src/backend/utils/hash/pg_cr
 PG_CPPFLAGS = -I$(libpq_srcdir)
 PG_LIBS = $(libpq_pgport)
 
-DOCS = README.xlogdump
-
 ifdef USE_PGXS
 PGXS := $(shell pg_config --pgxs)
 include $(PGXS)

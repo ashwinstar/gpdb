@@ -18,7 +18,6 @@ OBJS		:= $(SRCS:.c=.o)
 SHLIB_LINK	+= -L$(r_libdir1x) -L$(r_libdir2x) -lR
 
 DATA_built	:= plr.sql 
-DOCS		:= README.plr
 REGRESS		:= plr
 EXTRA_CLEAN	:= doc/HTML.index
 
