@@ -26,6 +26,12 @@ class omreport:
         self.controller = dict()    # key value pairs
         self.controller_errormsg = None
 
+        self.omversion = None
+        self.omversion_errormsg = None
+
+        self.bios = dict()          # key value pairs
+        self.bios_errormsg = None
+
 class chkconfig:
     def __init__(self):
         self.services = dict() # hash of services, each entry is hash of run levels and boolean value
@@ -161,6 +167,14 @@ class App1001OutputData:
         xin = "=============XINETD  =======================\n"
         err = "=============CHKCONFIG ERRORMSG=============\n"
         output = "%s%s\n%s%s\n%s%s" % (ser, self.chkconfig.services.__str__(), xin, self.chkconfig.xinetd.__str__(), err, self.chkconfig.errormsg)
+
+        omr = "=============OMREPORT VERSION ==============\n"
+        ome = "=============OMREPORT VERSION ERRORMSG======\n"
+        output = "%s\n%s%s\n%s%s" % (output, omr, self.omreport.omversion, ome, self.omreport.omversion_errormsg)
+
+        omr = "=============OMREPORT BIOS==================\n"
+        ome = "=============OMREPORT BIOS ERRORMSG=========\n"
+        output = "%s\n%s%s\n%s%s" % (output, omr, self.omreport.bios.__str__(), ome,self.omreport.bios_errormsg)
 
         omr = "=============OMREPORT BIOSSETUP=============\n"
         ome = "=============OMREPORT BIOSSETUP ERRORMSG====\n"
