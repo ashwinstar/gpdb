@@ -2,7 +2,7 @@
 
 class HostType:
     GPCHECK_HOSTTYPE_UNDEFINED  = 0
-    GPCHECK_HOSTTYPE_DELL_LINUX = 1
+    GPCHECK_HOSTTYPE_APPLIANCE_1001 = 1
 
 class sysctl:
     def __init__(self):
@@ -22,6 +22,9 @@ class omreport:
 
         self.vdisks = list()        # list of dicts, 1 for each virtual disk
         self.vdisks_errormsg = None 
+
+        self.controller = dict()    # key value pairs
+        self.controller_errormsg = None
 
 class chkconfig:
     def __init__(self):
@@ -138,7 +141,7 @@ class mounts:
 
 
        
-class DellOutputData:
+class App1001OutputData:
     def __init__(self):
         self.chkconfig = None
         self.omreport = None
@@ -163,6 +166,10 @@ class DellOutputData:
         ome = "=============OMREPORT BIOSSETUP ERRORMSG====\n"
         output = "%s\n%s%s\n%s%s" % (output, omr, self.omreport.biossetup.__str__(), ome,self.omreport.biossetup_errormsg)
 
+        omr = "=============OMREPORT CONTROLLER============\n"
+        ome = "=============OMREPORT CONTROLLER ERRORMSG===\n"
+        output = "%s\n%s%s\n%s%s" % (output, omr, self.omreport.controller.__str__(), ome,self.omreport.controller_errormsg)
+
         boo = "=============OMREPORT BOOTORDER=============\n"
         boe = "=============OMREPORT BOOTORDER ERRORMSG====\n"
         output = "%s\n%s%s\n%s%s" % (output, boo, self.omreport.bootorder.__str__(), boe, self.omreport.bootorder_errormsg)
@@ -185,7 +192,7 @@ class DellOutputData:
 
         grc = "============= LIMITS=========================\n"
         gre = "============= LIMITS ERRORMSG================\n"
-        output = "%s\n%s%s\n%s%s" % (output, grc, self.limits.__str__(), gre, self.limits.errormsg)
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.limitsconf.__str__(), gre, self.limitsconf.errormsg)
 
         mnt = "============= MOUNT==========================\n"
         mte = "============= MOUNT ERRORMSG=================\n"

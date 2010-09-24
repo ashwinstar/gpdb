@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpcheck_local [--dell]
-         where --dell will do a dump of dell server data   
+USAGE:   gpcheck_local [--app1001]
+         where --app1001 will do a dump of appliance1001 server data   
 '''
 
 import os, sys, re, tempfile, subprocess, pickle, glob, stat
@@ -9,7 +9,7 @@ import os, sys, re, tempfile, subprocess, pickle, glob, stat
 try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
-    from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport, grubconf, mounts, GpMount, GpMount, inittab
+    from gppylib.gpcheckutil import HostType, App1001OutputData, chkconfig, omreport, grubconf, mounts, GpMount, GpMount, inittab
     from gppylib.gpcheckutil import securetty, ioschedulers, blockdev, bcu, rclocal, sysctl, limitsconf, limitsconf_entry
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -60,6 +60,27 @@ def collectChkconfigData():
         
     
     return data
+
+# argument is a reference to instantiated omreport object
+def omReportStorageController(data):
+
+    p = subprocess.Popen("omreport storage controller", shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+
+    result = p.communicate()
+
+    data.controller_errormsg = result[1].strip()
+
+    if p.returncode:
+        return
+
+    for line in result[0].splitlines():
+
+        words = line.split(":")
+        if len(words) != 2:
+            continue
+
+        data.controller[words[0].strip()] = words[1].strip()
+
 
 # argument is a reference to instantiated omreport object
 def omReportStorageVdisk(data):
@@ -170,6 +191,7 @@ def collectOmReports():
     omReportChassisBiossetupBootorder(data)
     omReportChassisRemoteaccess(data)
     omReportStorageVdisk(data)
+    omReportStorageController(data)
 
     return data
 
@@ -424,10 +446,10 @@ def collectSecuretty():
     return data
         
 
-def processDellServer():
+def processApp1001Server():
 
     global output
-    output = DellOutputData()
+    output = App1001OutputData()
     output.chkconfig = collectChkconfigData()
     output.omreport = collectOmReports()
     output.grubconf = collectGrubConf()
@@ -449,7 +471,7 @@ def parseargs():
     parser = OptParser(option_class=OptChecker)
     parser.remove_option('-h')
     parser.add_option('-h', '-?', '--help', action='store_true')
-    parser.add_option('--dell',  action='store_true')
+    parser.add_option('--app1001',  action='store_true')
     (options, args) = parser.parse_args()
 
     global gphome
@@ -462,8 +484,8 @@ def parseargs():
         print __doc__
         return True
 
-    if options.dell:
-        hosttype = HostType.GPCHECK_HOSTTYPE_DELL_LINUX
+    if options.app1001:
+        hosttype = HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001
 
     if hosttype == HostType.GPCHECK_HOSTTYPE_UNDEFINED:
         print "host type not specified on command line"
@@ -475,8 +497,8 @@ def parseargs():
 if (parseargs()):
     sys.exit(1)
 
-if hosttype == HostType.GPCHECK_HOSTTYPE_DELL_LINUX:
-    processDellServer()
+if hosttype == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
+    processApp1001Server()
    
 (fd, filename) = tempfile.mkstemp(dir='/tmp', prefix='gpcheck_dump', text=True)
 fd = open(filename, "wb")

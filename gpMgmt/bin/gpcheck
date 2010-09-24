@@ -127,7 +127,7 @@ def createHostList():
     return False
 
 #true is error
-def runCollectionOnDells():
+def runCollectionOnApp1001Serverss():
 
     logger.info("generate data on servers")
 
@@ -135,7 +135,7 @@ def runCollectionOnDells():
 
     try:
         for host in hosts.keys():
-            cmdStr = "%s/sbin/gpcheck_hostdump --dell" % gphome
+            cmdStr = "%s/sbin/gpcheck_hostdump --app1001" % gphome
             cmd = Command(host, cmdStr, REMOTE, host)
             pool.addCommand(cmd)
 
@@ -261,7 +261,6 @@ def testAppliance1001OmreportRemoteaccess(host):
                 printError(host.hostname, "omreport chassis remoteaccess attribute '%s' Value '%s' does not match expected '%s'" % (k, value, expectedKeyValuePairs[k]))
         else:
             printError(host.hostname, "can not find Attribute in omreport chassis remoteaccess '%s'" % (k))
-            logger.warning("errmsg on host: %s" % host.data.omreport.remoteaccess_errormsg)
 
     ipaddressAttribute = "IP Address"
     ipadd_root = "172.28.0"
@@ -284,6 +283,20 @@ def testAppliance1001OmreportRemoteaccess(host):
     else:
         printError(host.hostname, "can not find Attribute in omreport chassis remoteaccess '%s'" % (ipaddressAttribute))
 
+
+
+def testAppliance1001OmreportController(host):
+    expectedKeyValuePairs = dict()
+    expectedKeyValuePairs['Firmware Version'] = '12.3.0-0032'
+    expectedKeyValuePairs['Driver Version'] = '00.00.04.29'
+
+    for k in expectedKeyValuePairs.keys():
+        if k in host.data.omreport.controller:
+            value = host.data.omreport.controller[k]
+            if value != expectedKeyValuePairs[k]:
+                printError(host.hostname, "omreport storage controller attribute '%s' Value '%s' does not match expected '%s'" % (k, value, expectedKeyValuePairs[k]))
+        else:
+            printError(host.hostname, "can not find Attribute in omreport storage controller '%s'" % (k))
 
 
 def testAppliance1001OmreportVdisks(host):
@@ -629,6 +642,7 @@ def testAppliance1001Host(host):
     testAppliance1001OmreportBootorder(host)
     testAppliance1001OmreportRemoteaccess(host)
     testAppliance1001OmreportVdisks(host)
+    testAppliance1001OmreportController(host)
 
     # test grubconf
     testAppliance1001Grub(host)
@@ -701,7 +715,7 @@ def createTmpDir():
 #true is error
 def runCollections():
 
-    retVal = runCollectionOnDells()
+    retVal = runCollectionOnApp1001Serverss()
     if retVal:
         return True
 
