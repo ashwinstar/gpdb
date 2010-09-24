@@ -10,7 +10,7 @@ try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gpcheckutil import HostType, DellOutputData, chkconfig, omreport, grubconf, mounts, GpMount, GpMount, inittab
-    from gppylib.gpcheckutil import securetty, ioschedulers, blockdev, bcu, rclocal
+    from gppylib.gpcheckutil import securetty, ioschedulers, blockdev, bcu, rclocal, sysctl
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -319,6 +319,30 @@ def collectGrubConf():
     
     return data
 
+# returns populated sysctl object
+def collectSysctl():
+
+    data = sysctl()
+
+    try:
+        for line in open("/etc/sysctl.conf", "r"):
+
+            # todo: fix to work with partial line comments
+            if re.search("#", line):
+                continue
+            words = line.split("=")
+            if len(words) != 2:
+                continue
+
+            key = words[0].strip()
+            value = words[1].strip()
+            data.variables[key] = value
+
+    except Exception, e:
+        data.errormsg = e.__str__()
+
+    return data
+
 # returns populated rclocal object
 def collectRclocal():
 
@@ -384,6 +408,7 @@ def processDellServer():
     output.blockdev = collectBlockdev()
     output.bcu = collectBcu()
     output.rclocal = collectRclocal()
+    output.sysctl = collectSysctl()
 
 # True is an error
 def parseargs():

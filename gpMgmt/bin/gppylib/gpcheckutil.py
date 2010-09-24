@@ -4,6 +4,11 @@ class HostType:
     GPCHECK_HOSTTYPE_UNDEFINED  = 0
     GPCHECK_HOSTTYPE_DELL_LINUX = 1
 
+class sysctl:
+    def __init__(self):
+        self.variables = dict() # dictionary of values
+        self.errormsg = None
+
 class omreport:
     def __init__(self):
         self.biossetup = dict()     # key value pairs
@@ -124,6 +129,7 @@ class DellOutputData:
         self.blockdev = None
         self.rclocal = None
         self.ioschedulers = None
+        self.sysctl = None
 
     def __str__(self):
         ser = "=============SERVICES=======================\n"
@@ -150,6 +156,10 @@ class DellOutputData:
         grc = "============= GRUB.CONF======================\n"
         gre = "============= GRUB.CONF ERRORMSG=============\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.grubconf.__str__(), gre, self.grubconf.errormsg)
+
+        grc = "============= SYSCTL=========================\n"
+        gre = "============= SYSCTL ERRORMSG================\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.sysctl.variables.__str__(), gre, self.sysctl.errormsg)
 
         mnt = "============= MOUNT==========================\n"
         mte = "============= MOUNT ERRORMSG=================\n"

@@ -452,6 +452,37 @@ def testAppliance1001Blockdev(host):
             printError(host.hostname, "on device (%s) blockdev readahead value '%s' does not match expected value '%s'" % (dev, ra, expectedReadAhead))
 
 
+def testAppliance1001Sysctl(host):
+
+    expectedValues = dict()
+    expectedValues['kernel.sem'] = '250 64000 100 512'
+    expectedValues['kernel.shmmax'] = '500000000'
+    expectedValues['kernel.shmmni'] = '4096'
+    expectedValues['kernel.shmall'] = '4000000000'
+    expectedValues['kernel.sem'] = '250 64000 100 512'
+    expectedValues['kernel.sysrq'] = '1'
+    expectedValues['kernel.core_uses_pid'] = '1'
+    expectedValues['kernel.msgmnb'] = '65536'
+    expectedValues['kernel.msgmax'] = '65536'
+    expectedValues['net.ipv4.tcp_syncookies'] = '1'
+    expectedValues['net.ipv4.ip_forward'] = '0'
+    expectedValues['net.ipv4.conf.default.accept_source_route'] = '0'
+    expectedValues['net.ipv4.tcp_tw_recycle'] = '1'
+    expectedValues['net.ipv4.tcp_max_syn_backlog'] = '4096'
+    expectedValues['net.ipv4.conf.all.arp_filter'] = '1'
+    expectedValues['net.core.netdev_max_backlog'] = '10000'
+    expectedValues['vm.overcommit_memory'] = '2'
+
+    for k in expectedValues.keys():
+        if k not in host.data.sysctl.variables:
+            printError(host.hostname, "variable not detected in /etc/sysctl.conf: '%s'" % k)
+            continue
+
+        value = host.data.sysctl.variables[k]
+
+        if value != expectedValues[k]:
+            printError(host.hostname, "/etc/sysctl.conf value for key '%s' has value '%s' and expects '%s'" % (k, value, expectedValues[k]))
+
 
 def testAppliance1001IOSchedulers(host):
 
@@ -577,6 +608,9 @@ def testAppliance1001Host(host):
 
     # test rclocal
     testAppliance1001Rclocal(host)
+
+    # test sysctl
+    testAppliance1001Sysctl(host)
 
 ######################################################################################
 
