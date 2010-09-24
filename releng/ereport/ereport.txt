@@ -547,57 +547,97 @@ haai: hashutil:00000176:  RelationGetRelationName(rel)),
 haai: hashutil:00000177:  errhint("Please REINDEX it."), 
 haai: hashutil:00000178:  errSendAlert(true))); 
 aaaaa GP_IGNORE: haag: heapam - ./backend/access/heap/heapam.c
-haag: heapam:00000204:  ereport(ERROR, 
-haag: heapam:00000205:  (errcode(ERRCODE_INTERNAL_ERROR), 
-haag: heapam:00000206:  errmsg("page number mismatch, expect %d, but got %d", 
-haag: heapam:00000207:  page, scan->rs_rahead[ri].block))); 
-haag: heapam:00000953:  ereport(ERROR, 
-haag: heapam:00000954:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00000955:  errmsg("could not obtain lock on relation \"%s\"", 
-haag: heapam:00000956:  relname))); 
-haag: heapam:00000958:  ereport(ERROR, 
-haag: heapam:00000959:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00000960:  errmsg("could not obtain lock on relation with OID %u", 
-haag: heapam:00000961:  relationId))); 
-haag: heapam:00001047:  ereport(ERROR, 
-haag: heapam:00001048:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001049:  errmsg("\"%s\" is an index", 
-haag: heapam:00001050:  RelationGetRelationName(r)))); 
-haag: heapam:00001052:  ereport(ERROR, 
-haag: heapam:00001053:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001054:  errmsg("\"%s\" is a composite type", 
-haag: heapam:00001055:  RelationGetRelationName(r)))); 
+haag: heapam:00000205:  ereport(ERROR, 
+haag: heapam:00000206:  (errcode(ERRCODE_INTERNAL_ERROR), 
+haag: heapam:00000207:  errmsg("page number mismatch, expect %d, but got %d", 
+haag: heapam:00000208:  page, scan->rs_rahead[ri].block))); 
+haag: heapam:00000928:  ereport(ERROR, 
+haag: heapam:00000929:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00000930:  errmsg("could not obtain lock on relation \"%s\"", 
+haag: heapam:00000931:  relname))); 
 haag: heapam:00001075:  ereport(ERROR, 
-haag: heapam:00001076:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001077:  errmsg("\"%s\" is an index", 
-haag: heapam:00001078:  RelationGetRelationName(r)))); 
-haag: heapam:00001080:  ereport(ERROR, 
-haag: heapam:00001081:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-haag: heapam:00001082:  errmsg("\"%s\" is a composite type", 
-haag: heapam:00001083:  RelationGetRelationName(r)))); 
-haag: heapam:00001300:  ereport(ERROR, 
-haag: heapam:00001301:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-haag: heapam:00001302:  errmsg("illegal value in tdatacnt"))); 
-haag: heapam:00002057:  ereport(ERROR, 
-haag: heapam:00002058:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haag: heapam:00002059:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
-haag: heapam:00002060:  errOmitLocation(true))); 
-haag: heapam:00002416:  ereport(ERROR, 
-haag: heapam:00002417:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haag: heapam:00002418:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
-haag: heapam:00002419:  errOmitLocation(true))); 
-haag: heapam:00003034:  ereport(ERROR, 
-haag: heapam:00003035:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003036:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003037:  RelationGetRelationName(relation)))); 
-haag: heapam:00003074:  ereport(ERROR, 
-haag: heapam:00003075:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003076:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003077:  RelationGetRelationName(relation)))); 
-haag: heapam:00003117:  ereport(ERROR, 
-haag: heapam:00003118:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003119:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003120:  RelationGetRelationName(relation)))); 
+haag: heapam:00001076:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+haag: heapam:00001077:  errmsg("relation \"%s.%s\" does not exist", 
+haag: heapam:00001078:  relation->schemaname, relation->relname), 
+haag: heapam:00001079:  errOmitLocation(true))); 
+haag: heapam:00001083:  ereport(ERROR, 
+haag: heapam:00001084:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+haag: heapam:00001085:  errmsg("relation \"%s\" does not exist", 
+haag: heapam:00001086:  relation->relname), 
+haag: heapam:00001087:  errOmitLocation(true))); 
+haag: heapam:00001120:  ereport(ERROR, 
+haag: heapam:00001121:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00001122:  errmsg("could not obtain lock on relation \"%s\"", 
+haag: heapam:00001123:  relname))); 
+haag: heapam:00001125:  ereport(ERROR, 
+haag: heapam:00001126:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00001127:  errmsg("could not obtain lock on relation with OID %u", 
+haag: heapam:00001128:  relationId))); 
+haag: heapam:00001182:  ereport(ERROR, 
+haag: heapam:00001183:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+haag: heapam:00001184:  errmsg("relation \"%s.%s\" does not exist", 
+haag: heapam:00001185:  relation->schemaname, relation->relname), 
+haag: heapam:00001186:  errOmitLocation(true))); 
+haag: heapam:00001190:  ereport(ERROR, 
+haag: heapam:00001191:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+haag: heapam:00001192:  errmsg("relation \"%s\" does not exist", 
+haag: heapam:00001193:  relation->relname), 
+haag: heapam:00001194:  errOmitLocation(true))); 
+haag: heapam:00001281:  ereport(ERROR, 
+haag: heapam:00001282:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001283:  errmsg("\"%s\" is an index", 
+haag: heapam:00001284:  RelationGetRelationName(r)))); 
+haag: heapam:00001286:  ereport(ERROR, 
+haag: heapam:00001287:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001288:  errmsg("\"%s\" is a composite type", 
+haag: heapam:00001289:  RelationGetRelationName(r)))); 
+haag: heapam:00001311:  ereport(ERROR, 
+haag: heapam:00001312:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001313:  errmsg("\"%s\" is an index", 
+haag: heapam:00001314:  RelationGetRelationName(r)))); 
+haag: heapam:00001316:  ereport(ERROR, 
+haag: heapam:00001317:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001318:  errmsg("\"%s\" is a composite type", 
+haag: heapam:00001319:  RelationGetRelationName(r)))); 
+haag: heapam:00001339:  ereport(ERROR, 
+haag: heapam:00001340:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001341:  errmsg("\"%s\" is an index", 
+haag: heapam:00001342:  RelationGetRelationName(r)))); 
+haag: heapam:00001344:  ereport(ERROR, 
+haag: heapam:00001345:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001346:  errmsg("\"%s\" is a composite type", 
+haag: heapam:00001347:  RelationGetRelationName(r)))); 
+haag: heapam:00001369:  ereport(ERROR, 
+haag: heapam:00001370:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001371:  errmsg("\"%s\" is an index", 
+haag: heapam:00001372:  RelationGetRelationName(r)))); 
+haag: heapam:00001374:  ereport(ERROR, 
+haag: heapam:00001375:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+haag: heapam:00001376:  errmsg("\"%s\" is a composite type", 
+haag: heapam:00001377:  RelationGetRelationName(r)))); 
+haag: heapam:00001595:  ereport(ERROR, 
+haag: heapam:00001596:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+haag: heapam:00001597:  errmsg("illegal value in tdatacnt"))); 
+haag: heapam:00002352:  ereport(ERROR, 
+haag: heapam:00002353:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haag: heapam:00002354:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
+haag: heapam:00002355:  errOmitLocation(true))); 
+haag: heapam:00002711:  ereport(ERROR, 
+haag: heapam:00002712:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haag: heapam:00002713:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
+haag: heapam:00002714:  errOmitLocation(true))); 
+haag: heapam:00003329:  ereport(ERROR, 
+haag: heapam:00003330:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003331:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003332:  RelationGetRelationName(relation)))); 
+haag: heapam:00003369:  ereport(ERROR, 
+haag: heapam:00003370:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003371:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003372:  RelationGetRelationName(relation)))); 
+haag: heapam:00003412:  ereport(ERROR, 
+haag: heapam:00003413:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003414:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003415:  RelationGetRelationName(relation)))); 
 aaaaa GP_IGNORE: haad: hio - ./backend/access/heap/hio.c
 haad: hio:00000125:  ereport(ERROR, 
 haad: hio:00000126:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -3873,14 +3913,14 @@ cacb: cdbmirroredfilesysobj:00001128:  errmsg("could not create relation file '%
 cacb: cdbmirroredfilesysobj:00001129:  relpath(*relFileNode), 
 cacb: cdbmirroredfilesysobj:00001130:  relationName, 
 cacb: cdbmirroredfilesysobj:00001131:  strerror(primaryError)))); 
-cacb: cdbmirroredfilesysobj:00001349:  ereport(WARNING, 
-cacb: cdbmirroredfilesysobj:00001350:  (errcode_for_file_access(), 
-cacb: cdbmirroredfilesysobj:00001351:  errmsg("could not remove relation %u/%u/%u (segment file #%d): %s", 
-cacb: cdbmirroredfilesysobj:00001352:  relFileNode->spcNode, 
-cacb: cdbmirroredfilesysobj:00001353:  relFileNode->dbNode, 
-cacb: cdbmirroredfilesysobj:00001354:  relFileNode->relNode, 
-cacb: cdbmirroredfilesysobj:00001355:  segmentFileNum, 
-cacb: cdbmirroredfilesysobj:00001356:  strerror(primaryError)))); 
+cacb: cdbmirroredfilesysobj:00001350:  ereport(WARNING, 
+cacb: cdbmirroredfilesysobj:00001351:  (errcode_for_file_access(), 
+cacb: cdbmirroredfilesysobj:00001352:  errmsg("could not remove relation %u/%u/%u (segment file #%d): %s", 
+cacb: cdbmirroredfilesysobj:00001353:  relFileNode->spcNode, 
+cacb: cdbmirroredfilesysobj:00001354:  relFileNode->dbNode, 
+cacb: cdbmirroredfilesysobj:00001355:  relFileNode->relNode, 
+cacb: cdbmirroredfilesysobj:00001356:  segmentFileNum, 
+cacb: cdbmirroredfilesysobj:00001357:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: cabj: cdbmirroredflatfile - ./backend/cdb/cdbmirroredflatfile.c
 cabj: cdbmirroredflatfile:00000121:  ereport(ERROR, 
 cabj: cdbmirroredflatfile:00000122:  (errcode_for_file_access(), 
@@ -4715,22 +4755,22 @@ aabd: aggregatecmds:00000318:  procForm->pronargs,
 aabd: aggregatecmds:00000319:  procForm->proargtypes.values), 
 aabd: aggregatecmds:00000320:  get_namespace_name(namespaceOid)))); 
 aaaaa GP_IGNORE: aaah: analyze - ./backend/commands/analyze.c
-aaah: analyze:00000432:  ereport(WARNING, 
-aaah: analyze:00000433:  (errmsg("skipping \"%s\" --- cannot analyze indexes, views, external tables or special system tables", 
-aaah: analyze:00000434:  RelationGetRelationName(candidateRelation)))); 
-aaah: analyze:00000502:  ereport(WARNING, 
-aaah: analyze:00000503:  (errmsg("Skipping \"%s\" --- only table or database owner can analyze it", 
-aaah: analyze:00000504:  RelationGetRelationName(candidateRelation)))); 
-aaah: analyze:00000575:  ereport(ERROR, 
-aaah: analyze:00000576:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00000577:  errmsg("Attribute %s has been dropped in relation %s.", 
-aaah: analyze:00000578:  attributeName, get_rel_name(relationOid)))); 
-aaah: analyze:00000592:  ereport(ERROR, 
-aaah: analyze:00000593:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00000594:  errmsg("Relation %s does not have an attribute named %s.", 
-aaah: analyze:00000595:  get_rel_name(relationOid),attributeName))); 
-aaah: analyze:00000985:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaah: analyze:00000986:  errmsg("Unable to connect to execute internal query."))); 
+aaah: analyze:00000433:  ereport(WARNING, 
+aaah: analyze:00000434:  (errmsg("skipping \"%s\" --- cannot analyze indexes, views, external tables or special system tables", 
+aaah: analyze:00000435:  RelationGetRelationName(candidateRelation)))); 
+aaah: analyze:00000503:  ereport(WARNING, 
+aaah: analyze:00000504:  (errmsg("Skipping \"%s\" --- only table or database owner can analyze it", 
+aaah: analyze:00000505:  RelationGetRelationName(candidateRelation)))); 
+aaah: analyze:00000576:  ereport(ERROR, 
+aaah: analyze:00000577:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00000578:  errmsg("Attribute %s has been dropped in relation %s.", 
+aaah: analyze:00000579:  attributeName, get_rel_name(relationOid)))); 
+aaah: analyze:00000593:  ereport(ERROR, 
+aaah: analyze:00000594:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00000595:  errmsg("Relation %s does not have an attribute named %s.", 
+aaah: analyze:00000596:  get_rel_name(relationOid),attributeName))); 
+aaah: analyze:00000986:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaah: analyze:00000987:  errmsg("Unable to connect to execute internal query."))); 
 aaaaa GP_IGNORE: aaaf: async - ./backend/commands/async.c
 aaaf: async:00000342:  ereport(ERROR, 
 aaaf: async:00000343:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -9327,87 +9367,87 @@ eaai: execmain:00000832:  errmsg("Undefined Greenplum parallel execution strateg
 eaai: execmain:00001214:  ereport(ERROR, 
 eaai: execmain:00001215:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
 eaai: execmain:00001216:  errmsg("transaction is read-only"))); 
-eaai: execmain:00001812:  ereport(ERROR, 
-eaai: execmain:00001813:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001814:  errmsg("cannot change sequence \"%s\"", 
-eaai: execmain:00001815:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001818:  ereport(ERROR, 
-eaai: execmain:00001819:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001820:  errmsg("cannot change TOAST relation \"%s\"", 
-eaai: execmain:00001821:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001824:  ereport(ERROR, 
-eaai: execmain:00001825:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001826:  errmsg("cannot change AO segment listing relation \"%s\"", 
-eaai: execmain:00001827:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001830:  ereport(ERROR, 
-eaai: execmain:00001831:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001832:  errmsg("cannot change AO block directory relation \"%s\"", 
-eaai: execmain:00001833:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001836:  ereport(ERROR, 
-eaai: execmain:00001837:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001838:  errmsg("cannot change view \"%s\"", 
-eaai: execmain:00001839:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00002196:  ereport(ERROR, 
-eaai: execmain:00002197:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002198:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002199:  errdetail("Query has too many columns."))); 
-eaai: execmain:00002206:  ereport(ERROR, 
-eaai: execmain:00002207:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002208:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002209:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
-eaai: execmain:00002210:  format_type_be(attr->atttypid), 
-eaai: execmain:00002211:  attno, 
-eaai: execmain:00002212:  format_type_be(exprType((Node *) tle->expr))))); 
-eaai: execmain:00002223:  ereport(ERROR, 
-eaai: execmain:00002224:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002225:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002226:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
-eaai: execmain:00002227:  attno))); 
-eaai: execmain:00002231:  ereport(ERROR, 
-eaai: execmain:00002232:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002233:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002234:  errdetail("Query has too few columns."))); 
-eaai: execmain:00002429:  ereport(ERROR, 
-eaai: execmain:00002430:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002431:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00002888:  ereport(ERROR, 
-eaai: execmain:00002889:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002890:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003028:  ereport(ERROR, 
-eaai: execmain:00003029:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00003030:  errmsg("no partition for partitioning key"))); 
-eaai: execmain:00003034:  ereport(ERROR, 
-eaai: execmain:00003035:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execmain:00003036:  errmsg("moving tuple from partition \"%s\" to " 
-eaai: execmain:00003037:  "partition \"%s\" not supported", 
-eaai: execmain:00003038:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
-eaai: execmain:00003039:  get_rel_name(targetid)), 
-eaai: execmain:00003040:  errOmitLocation(true))); 
-eaai: execmain:00003113:  ereport(ERROR, 
-eaai: execmain:00003114:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00003115:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003257:  ereport(ERROR, 
-eaai: execmain:00003258:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
-eaai: execmain:00003259:  errmsg("null value in column \"%s\" violates not-null constraint", 
-eaai: execmain:00003260:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
-eaai: execmain:00003261:  errOmitLocation(true))); 
-eaai: execmain:00003270:  ereport(ERROR, 
-eaai: execmain:00003271:  (errcode(ERRCODE_CHECK_VIOLATION), 
-eaai: execmain:00003272:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
-eaai: execmain:00003273:  RelationGetRelationName(rel), failed), 
-eaai: execmain:00003274:  errOmitLocation(true))); 
-eaai: execmain:00003996:  ereport(ERROR, 
-eaai: execmain:00003997:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-eaai: execmain:00003998:  errmsg("ON COMMIT can only be used on temporary tables"), 
-eaai: execmain:00003999:  errOmitLocation(true))); 
-eaai: execmain:00004025:  ereport(ERROR, 
-eaai: execmain:00004026:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eaai: execmain:00004027:  errmsg("tablespace \"%s\" does not exist", 
-eaai: execmain:00004028:  intoClause->tableSpaceName))); 
-eaai: execmain:00004435:  ereport(ERROR, 
-eaai: execmain:00004436:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00004437:  errmsg("no partition for partitioning key"), 
-eaai: execmain:00004438:  errOmitLocation(true))); 
+eaai: execmain:00001816:  ereport(ERROR, 
+eaai: execmain:00001817:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001818:  errmsg("cannot change sequence \"%s\"", 
+eaai: execmain:00001819:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001822:  ereport(ERROR, 
+eaai: execmain:00001823:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001824:  errmsg("cannot change TOAST relation \"%s\"", 
+eaai: execmain:00001825:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001828:  ereport(ERROR, 
+eaai: execmain:00001829:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001830:  errmsg("cannot change AO segment listing relation \"%s\"", 
+eaai: execmain:00001831:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001834:  ereport(ERROR, 
+eaai: execmain:00001835:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001836:  errmsg("cannot change AO block directory relation \"%s\"", 
+eaai: execmain:00001837:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001840:  ereport(ERROR, 
+eaai: execmain:00001841:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001842:  errmsg("cannot change view \"%s\"", 
+eaai: execmain:00001843:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00002200:  ereport(ERROR, 
+eaai: execmain:00002201:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002202:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002203:  errdetail("Query has too many columns."))); 
+eaai: execmain:00002210:  ereport(ERROR, 
+eaai: execmain:00002211:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002212:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002213:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
+eaai: execmain:00002214:  format_type_be(attr->atttypid), 
+eaai: execmain:00002215:  attno, 
+eaai: execmain:00002216:  format_type_be(exprType((Node *) tle->expr))))); 
+eaai: execmain:00002227:  ereport(ERROR, 
+eaai: execmain:00002228:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002229:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002230:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
+eaai: execmain:00002231:  attno))); 
+eaai: execmain:00002235:  ereport(ERROR, 
+eaai: execmain:00002236:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002237:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002238:  errdetail("Query has too few columns."))); 
+eaai: execmain:00002433:  ereport(ERROR, 
+eaai: execmain:00002434:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002435:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00002892:  ereport(ERROR, 
+eaai: execmain:00002893:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002894:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003032:  ereport(ERROR, 
+eaai: execmain:00003033:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00003034:  errmsg("no partition for partitioning key"))); 
+eaai: execmain:00003038:  ereport(ERROR, 
+eaai: execmain:00003039:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execmain:00003040:  errmsg("moving tuple from partition \"%s\" to " 
+eaai: execmain:00003041:  "partition \"%s\" not supported", 
+eaai: execmain:00003042:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
+eaai: execmain:00003043:  get_rel_name(targetid)), 
+eaai: execmain:00003044:  errOmitLocation(true))); 
+eaai: execmain:00003117:  ereport(ERROR, 
+eaai: execmain:00003118:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00003119:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003261:  ereport(ERROR, 
+eaai: execmain:00003262:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+eaai: execmain:00003263:  errmsg("null value in column \"%s\" violates not-null constraint", 
+eaai: execmain:00003264:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
+eaai: execmain:00003265:  errOmitLocation(true))); 
+eaai: execmain:00003274:  ereport(ERROR, 
+eaai: execmain:00003275:  (errcode(ERRCODE_CHECK_VIOLATION), 
+eaai: execmain:00003276:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
+eaai: execmain:00003277:  RelationGetRelationName(rel), failed), 
+eaai: execmain:00003278:  errOmitLocation(true))); 
+eaai: execmain:00004000:  ereport(ERROR, 
+eaai: execmain:00004001:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+eaai: execmain:00004002:  errmsg("ON COMMIT can only be used on temporary tables"), 
+eaai: execmain:00004003:  errOmitLocation(true))); 
+eaai: execmain:00004029:  ereport(ERROR, 
+eaai: execmain:00004030:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execmain:00004031:  errmsg("tablespace \"%s\" does not exist", 
+eaai: execmain:00004032:  intoClause->tableSpaceName))); 
+eaai: execmain:00004439:  ereport(ERROR, 
+eaai: execmain:00004440:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00004441:  errmsg("no partition for partitioning key"), 
+eaai: execmain:00004442:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: eaai: execqual - ./backend/executor/execQual.c
 eaai: execqual:00000279:  ereport(ERROR, 
 eaai: execqual:00000280:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -11573,138 +11613,128 @@ pabc: parsexclause:00000669:  "clause"),
 pabc: parsexclause:00000670:  errhint("Second bound must be FOLLOWING if first " 
 pabc: parsexclause:00000671:  "bound is FOLLOWING"), 
 pabc: parsexclause:00000672:  errOmitLocation(true))); 
-pabc: parsexclause:00000769:  ereport(ERROR, 
-pabc: parsexclause:00000770:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-pabc: parsexclause:00000771:  errmsg("relation \"%s.%s\" does not exist", 
-pabc: parsexclause:00000772:  relation->schemaname, relation->relname), 
-pabc: parsexclause:00000773:  errOmitLocation(true))); 
-pabc: parsexclause:00000775:  ereport(ERROR, 
-pabc: parsexclause:00000776:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-pabc: parsexclause:00000777:  errmsg("relation \"%s\" does not exist", 
-pabc: parsexclause:00000778:  relation->relname), 
-pabc: parsexclause:00000779:  errOmitLocation(true))); 
-pabc: parsexclause:00000803:  ereport(ERROR, 
-pabc: parsexclause:00000804:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-pabc: parsexclause:00000805:  errmsg("foreign tables are read only. cannot change \"%s\"", 
-pabc: parsexclause:00000806:  RelationGetRelationName(pstate->p_target_relation)), 
-pabc: parsexclause:00000807:  errOmitLocation(true))); 
-pabc: parsexclause:00000815:  ereport(ERROR, 
-pabc: parsexclause:00000816:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-pabc: parsexclause:00000817:  errmsg("cannot update or delete from external relation \"%s\"", 
-pabc: parsexclause:00000818:  RelationGetRelationName(pstate->p_target_relation)), 
-pabc: parsexclause:00000819:  errOmitLocation(true))); 
-pabc: parsexclause:00000830:  ereport(ERROR, 
-pabc: parsexclause:00000831:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-pabc: parsexclause:00000832:  errmsg("cannot change a readable external table \"%s\"", 
-pabc: parsexclause:00000833:  RelationGetRelationName(pstate->p_target_relation)), 
-pabc: parsexclause:00000834:  errOmitLocation(true))); 
-pabc: parsexclause:00001052:  ereport(ERROR, 
-pabc: parsexclause:00001053:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001054:  errmsg("JOIN/ON clause refers to \"%s\", which is not part of JOIN", 
-pabc: parsexclause:00001055:  rt_fetch(varno, pstate->p_rtable)->eref->aliasname))); 
+pabc: parsexclause:00000780:  ereport(ERROR, 
+pabc: parsexclause:00000781:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00000782:  errmsg("foreign tables are read only. cannot change \"%s\"", 
+pabc: parsexclause:00000783:  RelationGetRelationName(pstate->p_target_relation)), 
+pabc: parsexclause:00000784:  errOmitLocation(true))); 
+pabc: parsexclause:00000792:  ereport(ERROR, 
+pabc: parsexclause:00000793:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+pabc: parsexclause:00000794:  errmsg("cannot update or delete from external relation \"%s\"", 
+pabc: parsexclause:00000795:  RelationGetRelationName(pstate->p_target_relation)), 
+pabc: parsexclause:00000796:  errOmitLocation(true))); 
+pabc: parsexclause:00000807:  ereport(ERROR, 
+pabc: parsexclause:00000808:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00000809:  errmsg("cannot change a readable external table \"%s\"", 
+pabc: parsexclause:00000810:  RelationGetRelationName(pstate->p_target_relation)), 
+pabc: parsexclause:00000811:  errOmitLocation(true))); 
+pabc: parsexclause:00001029:  ereport(ERROR, 
+pabc: parsexclause:00001030:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001031:  errmsg("JOIN/ON clause refers to \"%s\", which is not part of JOIN", 
+pabc: parsexclause:00001032:  rt_fetch(varno, pstate->p_rtable)->eref->aliasname))); 
+pabc: parsexclause:00001077:  ereport(ERROR, 
+pabc: parsexclause:00001078:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00001079:  errmsg("subquery in FROM must have an alias"))); 
 pabc: parsexclause:00001100:  ereport(ERROR, 
 pabc: parsexclause:00001101:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00001102:  errmsg("subquery in FROM must have an alias"))); 
-pabc: parsexclause:00001123:  ereport(ERROR, 
-pabc: parsexclause:00001124:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00001125:  errmsg("subquery in FROM may not have SELECT INTO"))); 
-pabc: parsexclause:00001143:  ereport(ERROR, 
-pabc: parsexclause:00001144:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001145:  errmsg("subquery in FROM may not refer to other relations of same query level"), 
-pabc: parsexclause:00001146:  errOmitLocation(true))); 
-pabc: parsexclause:00001250:  ereport(ERROR, 
-pabc: parsexclause:00001251:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001252:  errmsg("function expression in FROM may not refer to other relations of same query level"), 
-pabc: parsexclause:00001253:  errOmitLocation(true))); 
-pabc: parsexclause:00001263:  ereport(ERROR, 
-pabc: parsexclause:00001264:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00001265:  errmsg("cannot use aggregate function in function expression in FROM"), 
-pabc: parsexclause:00001266:  errOmitLocation(true))); 
-pabc: parsexclause:00001532:  ereport(ERROR, 
-pabc: parsexclause:00001533:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-pabc: parsexclause:00001534:  errmsg("column name \"%s\" appears more than once in USING clause", 
-pabc: parsexclause:00001535:  u_colname))); 
+pabc: parsexclause:00001102:  errmsg("subquery in FROM may not have SELECT INTO"))); 
+pabc: parsexclause:00001120:  ereport(ERROR, 
+pabc: parsexclause:00001121:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001122:  errmsg("subquery in FROM may not refer to other relations of same query level"), 
+pabc: parsexclause:00001123:  errOmitLocation(true))); 
+pabc: parsexclause:00001227:  ereport(ERROR, 
+pabc: parsexclause:00001228:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001229:  errmsg("function expression in FROM may not refer to other relations of same query level"), 
+pabc: parsexclause:00001230:  errOmitLocation(true))); 
+pabc: parsexclause:00001240:  ereport(ERROR, 
+pabc: parsexclause:00001241:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00001242:  errmsg("cannot use aggregate function in function expression in FROM"), 
+pabc: parsexclause:00001243:  errOmitLocation(true))); 
+pabc: parsexclause:00001509:  ereport(ERROR, 
+pabc: parsexclause:00001510:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+pabc: parsexclause:00001511:  errmsg("column name \"%s\" appears more than once in USING clause", 
+pabc: parsexclause:00001512:  u_colname))); 
+pabc: parsexclause:00001524:  ereport(ERROR, 
+pabc: parsexclause:00001525:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
+pabc: parsexclause:00001526:  errmsg("common column name \"%s\" appears more than once in left table", 
+pabc: parsexclause:00001527:  u_colname))); 
+pabc: parsexclause:00001533:  ereport(ERROR, 
+pabc: parsexclause:00001534:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+pabc: parsexclause:00001535:  errmsg("column \"%s\" specified in USING clause does not exist in left table", 
+pabc: parsexclause:00001536:  u_colname))); 
 pabc: parsexclause:00001547:  ereport(ERROR, 
 pabc: parsexclause:00001548:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
-pabc: parsexclause:00001549:  errmsg("common column name \"%s\" appears more than once in left table", 
+pabc: parsexclause:00001549:  errmsg("common column name \"%s\" appears more than once in right table", 
 pabc: parsexclause:00001550:  u_colname))); 
 pabc: parsexclause:00001556:  ereport(ERROR, 
 pabc: parsexclause:00001557:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabc: parsexclause:00001558:  errmsg("column \"%s\" specified in USING clause does not exist in left table", 
+pabc: parsexclause:00001558:  errmsg("column \"%s\" specified in USING clause does not exist in right table", 
 pabc: parsexclause:00001559:  u_colname))); 
-pabc: parsexclause:00001570:  ereport(ERROR, 
-pabc: parsexclause:00001571:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
-pabc: parsexclause:00001572:  errmsg("common column name \"%s\" appears more than once in right table", 
-pabc: parsexclause:00001573:  u_colname))); 
-pabc: parsexclause:00001579:  ereport(ERROR, 
-pabc: parsexclause:00001580:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabc: parsexclause:00001581:  errmsg("column \"%s\" specified in USING clause does not exist in right table", 
-pabc: parsexclause:00001582:  u_colname))); 
-pabc: parsexclause:00001634:  ereport(ERROR, 
-pabc: parsexclause:00001635:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00001636:  errmsg("column alias list for \"%s\" has too many entries", 
-pabc: parsexclause:00001637:  j->alias->aliasname))); 
-pabc: parsexclause:00001856:  ereport(ERROR, 
-pabc: parsexclause:00001857:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001858:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
-pabc: parsexclause:00001859:  errmsg("argument of %s must not contain variables", 
-pabc: parsexclause:00001860:  constructName))); 
-pabc: parsexclause:00001864:  ereport(ERROR, 
-pabc: parsexclause:00001865:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00001866:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
-pabc: parsexclause:00001867:  errmsg("argument of %s must not contain aggregates", 
-pabc: parsexclause:00001868:  constructName))); 
-pabc: parsexclause:00001872:  ereport(ERROR, 
-pabc: parsexclause:00001873:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-pabc: parsexclause:00001874:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
-pabc: parsexclause:00001875:  errmsg("argument of %s must not contain subqueries", 
-pabc: parsexclause:00001876:  constructName))); 
-pabc: parsexclause:00002081:  ereport(ERROR, 
-pabc: parsexclause:00002082:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
-pabc: parsexclause:00002083:  
-pabc: parsexclause:00002084:  /*------ 
-pabc: parsexclause:00002085:  translator: first %s is name of a SQL construct, eg ORDER BY */ 
-pabc: parsexclause:00002086:  errmsg("%s \"%s\" is ambiguous", 
-pabc: parsexclause:00002087:  clauseText[clause], name), 
-pabc: parsexclause:00002088:  parser_errposition(pstate, location))); 
-pabc: parsexclause:00002106:  ereport(ERROR, 
-pabc: parsexclause:00002107:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00002108:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
-pabc: parsexclause:00002109:  errmsg("non-integer constant in %s", 
-pabc: parsexclause:00002110:  clauseText[clause]))); 
-pabc: parsexclause:00002122:  ereport(ERROR, 
-pabc: parsexclause:00002123:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00002124:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
-pabc: parsexclause:00002125:  errmsg("%s position %d is not in select list", 
-pabc: parsexclause:00002126:  clauseText[clause], target_pos), 
-pabc: parsexclause:00002127:  errOmitLocation(true))); 
-pabc: parsexclause:00002309:  ereport(ERROR, 
-pabc: parsexclause:00002310:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00002311:  errmsg("row type can not be used inside a grouping function."), 
-pabc: parsexclause:00002312:  errOmitLocation(true))); 
-pabc: parsexclause:00002315:  ereport(ERROR, 
-pabc: parsexclause:00002316:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00002317:  errmsg("expression in a grouping fuction does not appear in GROUP BY."), 
-pabc: parsexclause:00002318:  errOmitLocation(true))); 
-pabc: parsexclause:00002327:  ereport(ERROR, 
-pabc: parsexclause:00002328:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00002329:  errmsg("column \"%s\".\"%s\" is not in GROUP BY", 
-pabc: parsexclause:00002330:  rte->eref->aliasname, attname), 
-pabc: parsexclause:00002331:  errOmitLocation(true))); 
-pabc: parsexclause:00002662:  ereport(ERROR, 
-pabc: parsexclause:00002663:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00002664:  errmsg("for SELECT DISTINCT, ORDER BY expressions must appear in select list"), 
-pabc: parsexclause:00002665:  errOmitLocation(true))); 
-pabc: parsexclause:00002703:  ereport(ERROR, 
-pabc: parsexclause:00002704:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00002705:  errmsg("SELECT DISTINCT ON expressions must match initial ORDER BY expressions"), 
-pabc: parsexclause:00002706:  errOmitLocation(true))); 
-pabc: parsexclause:00002889:  ereport(ERROR, 
-pabc: parsexclause:00002890:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-pabc: parsexclause:00002891:  errmsg("operator %s is not a valid ordering operator", 
-pabc: parsexclause:00002892:  strVal(llast(sortby_opname))), 
-pabc: parsexclause:00002893:  errhint("Ordering operators must be \"<\" or \">\" members of btree operator families."), 
-pabc: parsexclause:00002894:  errOmitLocation(true))); 
+pabc: parsexclause:00001611:  ereport(ERROR, 
+pabc: parsexclause:00001612:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00001613:  errmsg("column alias list for \"%s\" has too many entries", 
+pabc: parsexclause:00001614:  j->alias->aliasname))); 
+pabc: parsexclause:00001833:  ereport(ERROR, 
+pabc: parsexclause:00001834:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001835:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+pabc: parsexclause:00001836:  errmsg("argument of %s must not contain variables", 
+pabc: parsexclause:00001837:  constructName))); 
+pabc: parsexclause:00001841:  ereport(ERROR, 
+pabc: parsexclause:00001842:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00001843:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+pabc: parsexclause:00001844:  errmsg("argument of %s must not contain aggregates", 
+pabc: parsexclause:00001845:  constructName))); 
+pabc: parsexclause:00001849:  ereport(ERROR, 
+pabc: parsexclause:00001850:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+pabc: parsexclause:00001851:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+pabc: parsexclause:00001852:  errmsg("argument of %s must not contain subqueries", 
+pabc: parsexclause:00001853:  constructName))); 
+pabc: parsexclause:00002058:  ereport(ERROR, 
+pabc: parsexclause:00002059:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
+pabc: parsexclause:00002060:  
+pabc: parsexclause:00002061:  /*------ 
+pabc: parsexclause:00002062:  translator: first %s is name of a SQL construct, eg ORDER BY */ 
+pabc: parsexclause:00002063:  errmsg("%s \"%s\" is ambiguous", 
+pabc: parsexclause:00002064:  clauseText[clause], name), 
+pabc: parsexclause:00002065:  parser_errposition(pstate, location))); 
+pabc: parsexclause:00002083:  ereport(ERROR, 
+pabc: parsexclause:00002084:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00002085:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
+pabc: parsexclause:00002086:  errmsg("non-integer constant in %s", 
+pabc: parsexclause:00002087:  clauseText[clause]))); 
+pabc: parsexclause:00002099:  ereport(ERROR, 
+pabc: parsexclause:00002100:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00002101:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
+pabc: parsexclause:00002102:  errmsg("%s position %d is not in select list", 
+pabc: parsexclause:00002103:  clauseText[clause], target_pos), 
+pabc: parsexclause:00002104:  errOmitLocation(true))); 
+pabc: parsexclause:00002286:  ereport(ERROR, 
+pabc: parsexclause:00002287:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00002288:  errmsg("row type can not be used inside a grouping function."), 
+pabc: parsexclause:00002289:  errOmitLocation(true))); 
+pabc: parsexclause:00002292:  ereport(ERROR, 
+pabc: parsexclause:00002293:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00002294:  errmsg("expression in a grouping fuction does not appear in GROUP BY."), 
+pabc: parsexclause:00002295:  errOmitLocation(true))); 
+pabc: parsexclause:00002304:  ereport(ERROR, 
+pabc: parsexclause:00002305:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00002306:  errmsg("column \"%s\".\"%s\" is not in GROUP BY", 
+pabc: parsexclause:00002307:  rte->eref->aliasname, attname), 
+pabc: parsexclause:00002308:  errOmitLocation(true))); 
+pabc: parsexclause:00002639:  ereport(ERROR, 
+pabc: parsexclause:00002640:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00002641:  errmsg("for SELECT DISTINCT, ORDER BY expressions must appear in select list"), 
+pabc: parsexclause:00002642:  errOmitLocation(true))); 
+pabc: parsexclause:00002680:  ereport(ERROR, 
+pabc: parsexclause:00002681:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00002682:  errmsg("SELECT DISTINCT ON expressions must match initial ORDER BY expressions"), 
+pabc: parsexclause:00002683:  errOmitLocation(true))); 
+pabc: parsexclause:00002866:  ereport(ERROR, 
+pabc: parsexclause:00002867:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00002868:  errmsg("operator %s is not a valid ordering operator", 
+pabc: parsexclause:00002869:  strVal(llast(sortby_opname))), 
+pabc: parsexclause:00002870:  errhint("Ordering operators must be \"<\" or \">\" members of btree operator families."), 
+pabc: parsexclause:00002871:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: pabc: parsexcoerce - ./backend/parser/parse_coerce.c
 pabc: parsexcoerce:00000169:  ereport(ERROR, 
 pabc: parsexcoerce:00000170:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
@@ -12233,91 +12263,91 @@ pabe: parsexrelation:00000594:  ereport(ERROR,
 pabe: parsexrelation:00000595:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
 pabe: parsexrelation:00000596:  errmsg("too many column aliases specified for function %s", 
 pabe: parsexrelation:00000597:  funcname))); 
-pabe: parsexrelation:00000799:  ereport(ERROR, 
-pabe: parsexrelation:00000800:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabe: parsexrelation:00000801:  errmsg("table \"%s\" has %d columns available but %d columns specified", 
-pabe: parsexrelation:00000802:  refname, varattno, numaliases))); 
-pabe: parsexrelation:00000876:  ereport(ERROR, 
-pabe: parsexrelation:00000877:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabe: parsexrelation:00000878:  errmsg("a column definition list is only allowed for functions returning \"record\""), 
-pabe: parsexrelation:00000879:  errOmitLocation(true))); 
-pabe: parsexrelation:00000884:  ereport(ERROR, 
-pabe: parsexrelation:00000885:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabe: parsexrelation:00000886:  errmsg("a column definition list is required for functions returning \"record\""), 
-pabe: parsexrelation:00000887:  errOmitLocation(true))); 
-pabe: parsexrelation:00000919:  ereport(ERROR, 
-pabe: parsexrelation:00000920:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-pabe: parsexrelation:00000921:  errmsg("column \"%s\" cannot be declared SETOF", 
-pabe: parsexrelation:00000922:  attrname), 
-pabe: parsexrelation:00000923:  errOmitLocation(true))); 
+pabe: parsexrelation:00000812:  ereport(ERROR, 
+pabe: parsexrelation:00000813:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabe: parsexrelation:00000814:  errmsg("table \"%s\" has %d columns available but %d columns specified", 
+pabe: parsexrelation:00000815:  refname, varattno, numaliases))); 
+pabe: parsexrelation:00000889:  ereport(ERROR, 
+pabe: parsexrelation:00000890:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabe: parsexrelation:00000891:  errmsg("a column definition list is only allowed for functions returning \"record\""), 
+pabe: parsexrelation:00000892:  errOmitLocation(true))); 
+pabe: parsexrelation:00000897:  ereport(ERROR, 
+pabe: parsexrelation:00000898:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabe: parsexrelation:00000899:  errmsg("a column definition list is required for functions returning \"record\""), 
+pabe: parsexrelation:00000900:  errOmitLocation(true))); 
 pabe: parsexrelation:00000932:  ereport(ERROR, 
-pabe: parsexrelation:00000933:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-pabe: parsexrelation:00000934:  errmsg("function \"%s\" in FROM has unsupported return type %s", 
-pabe: parsexrelation:00000935:  funcname, format_type_be(funcrettype)), 
+pabe: parsexrelation:00000933:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+pabe: parsexrelation:00000934:  errmsg("column \"%s\" cannot be declared SETOF", 
+pabe: parsexrelation:00000935:  attrname), 
 pabe: parsexrelation:00000936:  errOmitLocation(true))); 
-pabe: parsexrelation:00001002:  ereport(ERROR, 
-pabe: parsexrelation:00001003:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabe: parsexrelation:00001004:  errmsg("VALUES lists \"%s\" have %d columns available but %d columns specified", 
-pabe: parsexrelation:00001005:  refname, numcolumns, numaliases), 
-pabe: parsexrelation:00001006:  errOmitLocation(true))); 
-pabe: parsexrelation:00001056:  ereport(ERROR, 
-pabe: parsexrelation:00001057:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-pabe: parsexrelation:00001058:  errmsg("joins can have at most %d columns", 
-pabe: parsexrelation:00001059:  MaxAttrNumber))); 
-pabe: parsexrelation:00001638:  ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR), 
-pabe: parsexrelation:00001639:  errmsg_internal("invalid attnum %d for rangetable entry %s", 
-pabe: parsexrelation:00001640:  attnum, name) )); 
-pabe: parsexrelation:00001674:  ereport(ERROR, 
-pabe: parsexrelation:00001675:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabe: parsexrelation:00001676:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-pabe: parsexrelation:00001677:  NameStr(att_tup->attname), 
-pabe: parsexrelation:00001678:  get_rel_name(rte->relid)), 
-pabe: parsexrelation:00001679:  errOmitLocation(true))); 
-pabe: parsexrelation:00001717:  ereport(ERROR, 
-pabe: parsexrelation:00001718:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabe: parsexrelation:00001719:  errmsg("column %d of relation \"%s\" does not exist", 
-pabe: parsexrelation:00001720:  attnum, 
-pabe: parsexrelation:00001721:  rte->eref->aliasname))); 
-pabe: parsexrelation:00001730:  ereport(ERROR, 
-pabe: parsexrelation:00001731:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabe: parsexrelation:00001732:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-pabe: parsexrelation:00001733:  NameStr(att_tup->attname), 
-pabe: parsexrelation:00001734:  rte->eref->aliasname))); 
-pabe: parsexrelation:00002069:  ereport(ERROR, 
-pabe: parsexrelation:00002070:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-pabe: parsexrelation:00002071:  errmsg("invalid reference to FROM-clause entry for table \"%s\"", 
-pabe: parsexrelation:00002072:  relation->relname), 
-pabe: parsexrelation:00002073:  (badAlias ? 
-pabe: parsexrelation:00002074:  errhint("Perhaps you meant to reference the table alias \"%s\".", 
-pabe: parsexrelation:00002075:  badAlias) : 
-pabe: parsexrelation:00002076:  errhint("There is an entry for table \"%s\", but it cannot be referenced from this part of the query.", 
-pabe: parsexrelation:00002077:  rte->eref->aliasname)), 
-pabe: parsexrelation:00002078:  errOmitLocation(true), 
-pabe: parsexrelation:00002079:  parser_errposition(pstate, location))); 
-pabe: parsexrelation:00002081:  ereport(ERROR, 
-pabe: parsexrelation:00002082:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-pabe: parsexrelation:00002083:  (pstate->parentParseState ? 
-pabe: parsexrelation:00002084:  errmsg("missing FROM-clause entry in subquery for table \"%s\"", 
-pabe: parsexrelation:00002085:  relation->relname) : 
-pabe: parsexrelation:00002086:  errmsg("missing FROM-clause entry for table \"%s\"", 
-pabe: parsexrelation:00002087:  relation->relname)), 
-pabe: parsexrelation:00002088:  errOmitLocation(true), 
-pabe: parsexrelation:00002089:  parser_errposition(pstate, location))); 
-pabe: parsexrelation:00002094:  ereport(NOTICE, 
-pabe: parsexrelation:00002095:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-pabe: parsexrelation:00002096:  (pstate->parentParseState ? 
-pabe: parsexrelation:00002097:  errmsg("adding missing FROM-clause entry in subquery for table \"%s\"", 
-pabe: parsexrelation:00002098:  relation->relname) : 
-pabe: parsexrelation:00002099:  errmsg("adding missing FROM-clause entry for table \"%s\"", 
-pabe: parsexrelation:00002100:  relation->relname)), 
-pabe: parsexrelation:00002101:  (badAlias ? 
-pabe: parsexrelation:00002102:  errhint("Perhaps you meant to reference the table alias \"%s\".", 
-pabe: parsexrelation:00002103:  badAlias) : 
-pabe: parsexrelation:00002104:  (rte ? 
-pabe: parsexrelation:00002105:  errhint("There is an entry for table \"%s\", but it cannot be referenced from this part of the query.", 
-pabe: parsexrelation:00002106:  rte->eref->aliasname) : 0)), 
-pabe: parsexrelation:00002107:  errOmitLocation(true), 
-pabe: parsexrelation:00002108:  parser_errposition(pstate, location))); 
+pabe: parsexrelation:00000945:  ereport(ERROR, 
+pabe: parsexrelation:00000946:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+pabe: parsexrelation:00000947:  errmsg("function \"%s\" in FROM has unsupported return type %s", 
+pabe: parsexrelation:00000948:  funcname, format_type_be(funcrettype)), 
+pabe: parsexrelation:00000949:  errOmitLocation(true))); 
+pabe: parsexrelation:00001015:  ereport(ERROR, 
+pabe: parsexrelation:00001016:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabe: parsexrelation:00001017:  errmsg("VALUES lists \"%s\" have %d columns available but %d columns specified", 
+pabe: parsexrelation:00001018:  refname, numcolumns, numaliases), 
+pabe: parsexrelation:00001019:  errOmitLocation(true))); 
+pabe: parsexrelation:00001069:  ereport(ERROR, 
+pabe: parsexrelation:00001070:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+pabe: parsexrelation:00001071:  errmsg("joins can have at most %d columns", 
+pabe: parsexrelation:00001072:  MaxAttrNumber))); 
+pabe: parsexrelation:00001637:  ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR), 
+pabe: parsexrelation:00001638:  errmsg_internal("invalid attnum %d for rangetable entry %s", 
+pabe: parsexrelation:00001639:  attnum, name) )); 
+pabe: parsexrelation:00001673:  ereport(ERROR, 
+pabe: parsexrelation:00001674:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+pabe: parsexrelation:00001675:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+pabe: parsexrelation:00001676:  NameStr(att_tup->attname), 
+pabe: parsexrelation:00001677:  get_rel_name(rte->relid)), 
+pabe: parsexrelation:00001678:  errOmitLocation(true))); 
+pabe: parsexrelation:00001716:  ereport(ERROR, 
+pabe: parsexrelation:00001717:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+pabe: parsexrelation:00001718:  errmsg("column %d of relation \"%s\" does not exist", 
+pabe: parsexrelation:00001719:  attnum, 
+pabe: parsexrelation:00001720:  rte->eref->aliasname))); 
+pabe: parsexrelation:00001729:  ereport(ERROR, 
+pabe: parsexrelation:00001730:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+pabe: parsexrelation:00001731:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+pabe: parsexrelation:00001732:  NameStr(att_tup->attname), 
+pabe: parsexrelation:00001733:  rte->eref->aliasname))); 
+pabe: parsexrelation:00002068:  ereport(ERROR, 
+pabe: parsexrelation:00002069:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+pabe: parsexrelation:00002070:  errmsg("invalid reference to FROM-clause entry for table \"%s\"", 
+pabe: parsexrelation:00002071:  relation->relname), 
+pabe: parsexrelation:00002072:  (badAlias ? 
+pabe: parsexrelation:00002073:  errhint("Perhaps you meant to reference the table alias \"%s\".", 
+pabe: parsexrelation:00002074:  badAlias) : 
+pabe: parsexrelation:00002075:  errhint("There is an entry for table \"%s\", but it cannot be referenced from this part of the query.", 
+pabe: parsexrelation:00002076:  rte->eref->aliasname)), 
+pabe: parsexrelation:00002077:  errOmitLocation(true), 
+pabe: parsexrelation:00002078:  parser_errposition(pstate, location))); 
+pabe: parsexrelation:00002080:  ereport(ERROR, 
+pabe: parsexrelation:00002081:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+pabe: parsexrelation:00002082:  (pstate->parentParseState ? 
+pabe: parsexrelation:00002083:  errmsg("missing FROM-clause entry in subquery for table \"%s\"", 
+pabe: parsexrelation:00002084:  relation->relname) : 
+pabe: parsexrelation:00002085:  errmsg("missing FROM-clause entry for table \"%s\"", 
+pabe: parsexrelation:00002086:  relation->relname)), 
+pabe: parsexrelation:00002087:  errOmitLocation(true), 
+pabe: parsexrelation:00002088:  parser_errposition(pstate, location))); 
+pabe: parsexrelation:00002093:  ereport(NOTICE, 
+pabe: parsexrelation:00002094:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+pabe: parsexrelation:00002095:  (pstate->parentParseState ? 
+pabe: parsexrelation:00002096:  errmsg("adding missing FROM-clause entry in subquery for table \"%s\"", 
+pabe: parsexrelation:00002097:  relation->relname) : 
+pabe: parsexrelation:00002098:  errmsg("adding missing FROM-clause entry for table \"%s\"", 
+pabe: parsexrelation:00002099:  relation->relname)), 
+pabe: parsexrelation:00002100:  (badAlias ? 
+pabe: parsexrelation:00002101:  errhint("Perhaps you meant to reference the table alias \"%s\".", 
+pabe: parsexrelation:00002102:  badAlias) : 
+pabe: parsexrelation:00002103:  (rte ? 
+pabe: parsexrelation:00002104:  errhint("There is an entry for table \"%s\", but it cannot be referenced from this part of the query.", 
+pabe: parsexrelation:00002105:  rte->eref->aliasname) : 0)), 
+pabe: parsexrelation:00002106:  errOmitLocation(true), 
+pabe: parsexrelation:00002107:  parser_errposition(pstate, location))); 
 aaaaa GP_IGNORE: pabc: parsextarget - ./backend/parser/parse_target.c
 pabc: parsextarget:00000366:  ereport(ERROR, 
 pabc: parsextarget:00000367:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -13352,64 +13382,64 @@ rabd: rewritedefine:00000698:  (errcode(ERRCODE_DUPLICATE_OBJECT),
 rabd: rewritedefine:00000699:  errmsg("rule \"%s\" for relation \"%s\" already exists", 
 rabd: rewritedefine:00000700:  newName, get_rel_name(owningRel)))); 
 aaaaa GP_IGNORE: rabe: rewritehandler - ./backend/rewrite/rewriteHandler.c
-rabe: rewritehandler:00000442:  ereport(ERROR, 
-rabe: rewritehandler:00000443:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-rabe: rewritehandler:00000444:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"))); 
-rabe: rewritehandler:00000504:  ereport(ERROR, 
-rabe: rewritehandler:00000505:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-rabe: rewritehandler:00000506:  errmsg("cannot have RETURNING lists in multiple rules"))); 
-rabe: rewritehandler:00000804:  ereport(ERROR, 
-rabe: rewritehandler:00000805:  (errcode(ERRCODE_SYNTAX_ERROR), 
-rabe: rewritehandler:00000806:  errmsg("multiple assignments to same column \"%s\"", 
-rabe: rewritehandler:00000807:  attrName), 
-rabe: rewritehandler:00000808:  errOmitLocation(true))); 
-rabe: rewritehandler:00000823:  ereport(ERROR, 
-rabe: rewritehandler:00000824:  (errcode(ERRCODE_SYNTAX_ERROR), 
-rabe: rewritehandler:00000825:  errmsg("multiple assignments to same column \"%s\"", 
-rabe: rewritehandler:00000826:  attrName))); 
-rabe: rewritehandler:00000961:  ereport(ERROR, 
-rabe: rewritehandler:00000962:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-rabe: rewritehandler:00000963:  errmsg("column \"%s\" is of type %s" 
-rabe: rewritehandler:00000964:  " but default expression is of type %s", 
-rabe: rewritehandler:00000965:  NameStr(att_tup->attname), 
-rabe: rewritehandler:00000966:  format_type_be(atttype), 
-rabe: rewritehandler:00000967:  format_type_be(exprtype)), 
-rabe: rewritehandler:00000968:  errhint("You will need to rewrite or cast the expression."))); 
-rabe: rewritehandler:00001393:  ereport(ERROR, 
-rabe: rewritehandler:00001394:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-rabe: rewritehandler:00001395:  errmsg("infinite recursion detected in rules for relation \"%s\"", 
-rabe: rewritehandler:00001396:  RelationGetRelationName(rel)))); 
-rabe: rewritehandler:00001705:  ereport(ERROR, 
-rabe: rewritehandler:00001706:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-rabe: rewritehandler:00001707:  errmsg("infinite recursion detected in rules for relation \"%s\"", 
-rabe: rewritehandler:00001708:  RelationGetRelationName(rt_entry_relation)))); 
-rabe: rewritehandler:00001743:  ereport(ERROR, 
-rabe: rewritehandler:00001744:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-rabe: rewritehandler:00001745:  errmsg("cannot perform INSERT RETURNING on relation \"%s\"", 
-rabe: rewritehandler:00001746:  RelationGetRelationName(rt_entry_relation)), 
-rabe: rewritehandler:00001747:  errhint("You need an unconditional ON INSERT DO INSTEAD rule with a RETURNING clause."))); 
-rabe: rewritehandler:00001750:  ereport(ERROR, 
-rabe: rewritehandler:00001751:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-rabe: rewritehandler:00001752:  errmsg("cannot perform UPDATE RETURNING on relation \"%s\"", 
-rabe: rewritehandler:00001753:  RelationGetRelationName(rt_entry_relation)), 
-rabe: rewritehandler:00001754:  errhint("You need an unconditional ON UPDATE DO INSTEAD rule with a RETURNING clause."))); 
-rabe: rewritehandler:00001757:  ereport(ERROR, 
-rabe: rewritehandler:00001758:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-rabe: rewritehandler:00001759:  errmsg("cannot perform DELETE RETURNING on relation \"%s\"", 
-rabe: rewritehandler:00001760:  RelationGetRelationName(rt_entry_relation)), 
-rabe: rewritehandler:00001761:  errhint("You need an unconditional ON DELETE DO INSTEAD rule with a RETURNING clause."))); 
-rabe: rewritehandler:00001857:  ereport(ERROR, 
-rabe: rewritehandler:00001858:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-rabe: rewritehandler:00001859:  errmsg("cannot insert into a view"), 
-rabe: rewritehandler:00001860:  errhint("You need an unconditional ON INSERT DO INSTEAD rule."))); 
-rabe: rewritehandler:00001863:  ereport(ERROR, 
-rabe: rewritehandler:00001864:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-rabe: rewritehandler:00001865:  errmsg("cannot update a view"), 
-rabe: rewritehandler:00001866:  errhint("You need an unconditional ON UPDATE DO INSTEAD rule."))); 
-rabe: rewritehandler:00001869:  ereport(ERROR, 
-rabe: rewritehandler:00001870:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-rabe: rewritehandler:00001871:  errmsg("cannot delete from a view"), 
-rabe: rewritehandler:00001872:  errhint("You need an unconditional ON DELETE DO INSTEAD rule."))); 
+rabe: rewritehandler:00000445:  ereport(ERROR, 
+rabe: rewritehandler:00000446:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+rabe: rewritehandler:00000447:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"))); 
+rabe: rewritehandler:00000507:  ereport(ERROR, 
+rabe: rewritehandler:00000508:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+rabe: rewritehandler:00000509:  errmsg("cannot have RETURNING lists in multiple rules"))); 
+rabe: rewritehandler:00000807:  ereport(ERROR, 
+rabe: rewritehandler:00000808:  (errcode(ERRCODE_SYNTAX_ERROR), 
+rabe: rewritehandler:00000809:  errmsg("multiple assignments to same column \"%s\"", 
+rabe: rewritehandler:00000810:  attrName), 
+rabe: rewritehandler:00000811:  errOmitLocation(true))); 
+rabe: rewritehandler:00000826:  ereport(ERROR, 
+rabe: rewritehandler:00000827:  (errcode(ERRCODE_SYNTAX_ERROR), 
+rabe: rewritehandler:00000828:  errmsg("multiple assignments to same column \"%s\"", 
+rabe: rewritehandler:00000829:  attrName))); 
+rabe: rewritehandler:00000964:  ereport(ERROR, 
+rabe: rewritehandler:00000965:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+rabe: rewritehandler:00000966:  errmsg("column \"%s\" is of type %s" 
+rabe: rewritehandler:00000967:  " but default expression is of type %s", 
+rabe: rewritehandler:00000968:  NameStr(att_tup->attname), 
+rabe: rewritehandler:00000969:  format_type_be(atttype), 
+rabe: rewritehandler:00000970:  format_type_be(exprtype)), 
+rabe: rewritehandler:00000971:  errhint("You will need to rewrite or cast the expression."))); 
+rabe: rewritehandler:00001396:  ereport(ERROR, 
+rabe: rewritehandler:00001397:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+rabe: rewritehandler:00001398:  errmsg("infinite recursion detected in rules for relation \"%s\"", 
+rabe: rewritehandler:00001399:  RelationGetRelationName(rel)))); 
+rabe: rewritehandler:00001708:  ereport(ERROR, 
+rabe: rewritehandler:00001709:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+rabe: rewritehandler:00001710:  errmsg("infinite recursion detected in rules for relation \"%s\"", 
+rabe: rewritehandler:00001711:  RelationGetRelationName(rt_entry_relation)))); 
+rabe: rewritehandler:00001746:  ereport(ERROR, 
+rabe: rewritehandler:00001747:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+rabe: rewritehandler:00001748:  errmsg("cannot perform INSERT RETURNING on relation \"%s\"", 
+rabe: rewritehandler:00001749:  RelationGetRelationName(rt_entry_relation)), 
+rabe: rewritehandler:00001750:  errhint("You need an unconditional ON INSERT DO INSTEAD rule with a RETURNING clause."))); 
+rabe: rewritehandler:00001753:  ereport(ERROR, 
+rabe: rewritehandler:00001754:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+rabe: rewritehandler:00001755:  errmsg("cannot perform UPDATE RETURNING on relation \"%s\"", 
+rabe: rewritehandler:00001756:  RelationGetRelationName(rt_entry_relation)), 
+rabe: rewritehandler:00001757:  errhint("You need an unconditional ON UPDATE DO INSTEAD rule with a RETURNING clause."))); 
+rabe: rewritehandler:00001760:  ereport(ERROR, 
+rabe: rewritehandler:00001761:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+rabe: rewritehandler:00001762:  errmsg("cannot perform DELETE RETURNING on relation \"%s\"", 
+rabe: rewritehandler:00001763:  RelationGetRelationName(rt_entry_relation)), 
+rabe: rewritehandler:00001764:  errhint("You need an unconditional ON DELETE DO INSTEAD rule with a RETURNING clause."))); 
+rabe: rewritehandler:00001860:  ereport(ERROR, 
+rabe: rewritehandler:00001861:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+rabe: rewritehandler:00001862:  errmsg("cannot insert into a view"), 
+rabe: rewritehandler:00001863:  errhint("You need an unconditional ON INSERT DO INSTEAD rule."))); 
+rabe: rewritehandler:00001866:  ereport(ERROR, 
+rabe: rewritehandler:00001867:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+rabe: rewritehandler:00001868:  errmsg("cannot update a view"), 
+rabe: rewritehandler:00001869:  errhint("You need an unconditional ON UPDATE DO INSTEAD rule."))); 
+rabe: rewritehandler:00001872:  ereport(ERROR, 
+rabe: rewritehandler:00001873:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+rabe: rewritehandler:00001874:  errmsg("cannot delete from a view"), 
+rabe: rewritehandler:00001875:  errhint("You need an unconditional ON DELETE DO INSTEAD rule."))); 
 aaaaa GP_IGNORE: rabc: rewritemanip - ./backend/rewrite/rewriteManip.c
 rabc: rewritemanip:00000747:  ereport(ERROR, 
 rabc: rewritemanip:00000748:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -13613,11 +13643,6 @@ daai: deadlock:00000959:  ereport(ERROR,
 daai: deadlock:00000960:  (errcode(ERRCODE_T_R_DEADLOCK_DETECTED), 
 daai: deadlock:00000961:  errmsg("deadlock detected"), 
 daai: deadlock:00000962:  errdetail("%s", buf.data))); 
-aaaaa GP_IGNORE: laae: lmgr - ./backend/storage/lmgr/lmgr.c
-laae: lmgr:00000249:  ereport(ERROR, (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-laae: lmgr:00000250:  errmsg("could not obtain lock on relation \"%s\"", 
-laae: lmgr:00000251:  get_rel_name(relation->rd_id)) 
-laae: lmgr:00000252:  )); 
 aaaaa GP_IGNORE: laae: lock - ./backend/storage/lmgr/lock.c
 laae: lock:00000658:  ereport(ERROR, 
 laae: lock:00000659:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -13695,104 +13720,104 @@ maac: md:00000539:  ereport(ERROR,
 maac: md:00000540:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
 maac: md:00000541:  errmsg("could not create dbdir on mirror '%s' ", 
 maac: md:00000542:  FileRepStatusToString[mirrorStatus]))); 
-maac: md:00001343:  ereport(ERROR, 
-maac: md:00001344:  (errcode_for_file_access(), 
-maac: md:00001345:  errmsg("could not open relation %u/%u/%u: %s", 
-maac: md:00001346:  reln->smgr_rnode.spcNode, 
-maac: md:00001347:  reln->smgr_rnode.dbNode, 
-maac: md:00001348:  reln->smgr_rnode.relNode, 
-maac: md:00001349:  strerror(saved_err)), 
-maac: md:00001350:  errdetail_nonexistent_relation(saved_err, &reln->smgr_rnode))); 
-maac: md:00002214:  ereport(ERROR, 
-maac: md:00002215:  (errcode_for_file_access(), 
-maac: md:00002216:  errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %s", 
-maac: md:00002217:  nextsegno, 
-maac: md:00002218:  reln->smgr_rnode.spcNode, 
-maac: md:00002219:  reln->smgr_rnode.dbNode, 
-maac: md:00002220:  reln->smgr_rnode.relNode, 
-maac: md:00002221:  blkno, 
-maac: md:00002222:  strerror(saved_err)), 
-maac: md:00002223:  errdetail_nonexistent_relation(saved_err, &reln->smgr_rnode))); 
+maac: md:00001347:  ereport(ERROR, 
+maac: md:00001348:  (errcode_for_file_access(), 
+maac: md:00001349:  errmsg("could not open relation %u/%u/%u: %s", 
+maac: md:00001350:  reln->smgr_rnode.spcNode, 
+maac: md:00001351:  reln->smgr_rnode.dbNode, 
+maac: md:00001352:  reln->smgr_rnode.relNode, 
+maac: md:00001353:  strerror(saved_err)), 
+maac: md:00001354:  errdetail_nonexistent_relation(saved_err, &reln->smgr_rnode))); 
+maac: md:00002218:  ereport(ERROR, 
+maac: md:00002219:  (errcode_for_file_access(), 
+maac: md:00002220:  errmsg("could not open segment %u of relation %u/%u/%u (target block %u): %s", 
+maac: md:00002221:  nextsegno, 
+maac: md:00002222:  reln->smgr_rnode.spcNode, 
+maac: md:00002223:  reln->smgr_rnode.dbNode, 
+maac: md:00002224:  reln->smgr_rnode.relNode, 
+maac: md:00002225:  blkno, 
+maac: md:00002226:  strerror(saved_err)), 
+maac: md:00002227:  errdetail_nonexistent_relation(saved_err, &reln->smgr_rnode))); 
 aaaaa GP_IGNORE: saae: smgr - ./backend/storage/smgr/smgr.c
-saae: smgr:00000416:  ereport(ERROR, 
-saae: smgr:00000417:  (errcode_for_file_access(), 
-saae: smgr:00000418:  errmsg("could not close relation %u/%u/%u: %m", 
-saae: smgr:00000419:  reln->smgr_rnode.spcNode, 
-saae: smgr:00000420:  reln->smgr_rnode.dbNode, 
-saae: smgr:00000421:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001017:  ereport(WARNING, 
-saae: smgr:00001018:  (errcode_for_file_access(), 
-saae: smgr:00001019:  errmsg("could not remove relation %u/%u/%u: %m", 
-saae: smgr:00001020:  rnode.spcNode, 
-saae: smgr:00001021:  rnode.dbNode, 
-saae: smgr:00001022:  rnode.relNode))); 
+saae: smgr:00000418:  ereport(ERROR, 
+saae: smgr:00000419:  (errcode_for_file_access(), 
+saae: smgr:00000420:  errmsg("could not close relation %u/%u/%u: %m", 
+saae: smgr:00000421:  reln->smgr_rnode.spcNode, 
+saae: smgr:00000422:  reln->smgr_rnode.dbNode, 
+saae: smgr:00000423:  reln->smgr_rnode.relNode))); 
 saae: smgr:00001024:  ereport(WARNING, 
 saae: smgr:00001025:  (errcode_for_file_access(), 
-saae: smgr:00001026:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
+saae: smgr:00001026:  errmsg("could not remove relation %u/%u/%u: %m", 
 saae: smgr:00001027:  rnode.spcNode, 
 saae: smgr:00001028:  rnode.dbNode, 
-saae: smgr:00001029:  rnode.relNode, 
-saae: smgr:00001030:  relationName))); 
-saae: smgr:00001099:  ereport(WARNING, 
-saae: smgr:00001100:  (errcode_for_file_access(), 
-saae: smgr:00001101:  errmsg("could not remove filespace directory %u: %m", 
-saae: smgr:00001102:  filespaceOid))); 
-saae: smgr:00001188:  ereport(WARNING, 
-saae: smgr:00001189:  (errcode_for_file_access(), 
-saae: smgr:00001190:  errmsg("could not remove tablespace directory %u: %m", 
-saae: smgr:00001191:  tablespaceOid))); 
-saae: smgr:00001216:  ereport(WARNING, 
-saae: smgr:00001217:  (errcode_for_file_access(), 
-saae: smgr:00001218:  errmsg("could not remove database directory %u/%u: %m", 
-saae: smgr:00001219:  dbDirNode->tablespace, 
-saae: smgr:00001220:  dbDirNode->database))); 
-saae: smgr:00001363:  ereport(ERROR, 
-saae: smgr:00001364:  (errcode_for_file_access(), 
-saae: smgr:00001365:  errmsg("could not extend relation %u/%u/%u: %m", 
-saae: smgr:00001366:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001367:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001368:  reln->smgr_rnode.relNode), 
-saae: smgr:00001369:  errhint("Check free disk space."))); 
-saae: smgr:00001384:  ereport(ERROR, 
-saae: smgr:00001385:  (errcode_for_file_access(), 
-saae: smgr:00001386:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
-saae: smgr:00001387:  blocknum, 
-saae: smgr:00001388:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001389:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001390:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001408:  ereport(ERROR, 
-saae: smgr:00001409:  (errcode_for_file_access(), 
-saae: smgr:00001410:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
-saae: smgr:00001411:  blocknum, 
-saae: smgr:00001412:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001413:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001414:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001438:  ereport(ERROR, 
-saae: smgr:00001439:  (errcode_for_file_access(), 
-saae: smgr:00001440:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
-saae: smgr:00001441:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001442:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001443:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001476:  ereport(ERROR, 
-saae: smgr:00001477:  (errcode_for_file_access(), 
-saae: smgr:00001478:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
-saae: smgr:00001479:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001480:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001481:  reln->smgr_rnode.relNode, 
-saae: smgr:00001482:  nblocks))); 
-saae: smgr:00001568:  ereport(ERROR, 
-saae: smgr:00001569:  (errcode_for_file_access(), 
-saae: smgr:00001570:  errmsg("could not sync relation %u/%u/%u: %m", 
-saae: smgr:00001571:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001572:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001573:  reln->smgr_rnode.relNode))); 
-saae: smgr:00003065:  ereport(WARNING, 
-saae: smgr:00003066:  (errcode_for_file_access(), 
-saae: smgr:00003067:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
-saae: smgr:00003068:  reln->smgr_rnode.spcNode, 
-saae: smgr:00003069:  reln->smgr_rnode.dbNode, 
-saae: smgr:00003070:  reln->smgr_rnode.relNode, 
-saae: smgr:00003071:  xlrec->blkno))); 
+saae: smgr:00001029:  rnode.relNode))); 
+saae: smgr:00001031:  ereport(WARNING, 
+saae: smgr:00001032:  (errcode_for_file_access(), 
+saae: smgr:00001033:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
+saae: smgr:00001034:  rnode.spcNode, 
+saae: smgr:00001035:  rnode.dbNode, 
+saae: smgr:00001036:  rnode.relNode, 
+saae: smgr:00001037:  relationName))); 
+saae: smgr:00001106:  ereport(WARNING, 
+saae: smgr:00001107:  (errcode_for_file_access(), 
+saae: smgr:00001108:  errmsg("could not remove filespace directory %u: %m", 
+saae: smgr:00001109:  filespaceOid))); 
+saae: smgr:00001195:  ereport(WARNING, 
+saae: smgr:00001196:  (errcode_for_file_access(), 
+saae: smgr:00001197:  errmsg("could not remove tablespace directory %u: %m", 
+saae: smgr:00001198:  tablespaceOid))); 
+saae: smgr:00001223:  ereport(WARNING, 
+saae: smgr:00001224:  (errcode_for_file_access(), 
+saae: smgr:00001225:  errmsg("could not remove database directory %u/%u: %m", 
+saae: smgr:00001226:  dbDirNode->tablespace, 
+saae: smgr:00001227:  dbDirNode->database))); 
+saae: smgr:00001370:  ereport(ERROR, 
+saae: smgr:00001371:  (errcode_for_file_access(), 
+saae: smgr:00001372:  errmsg("could not extend relation %u/%u/%u: %m", 
+saae: smgr:00001373:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001374:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001375:  reln->smgr_rnode.relNode), 
+saae: smgr:00001376:  errhint("Check free disk space."))); 
+saae: smgr:00001391:  ereport(ERROR, 
+saae: smgr:00001392:  (errcode_for_file_access(), 
+saae: smgr:00001393:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
+saae: smgr:00001394:  blocknum, 
+saae: smgr:00001395:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001396:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001397:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001415:  ereport(ERROR, 
+saae: smgr:00001416:  (errcode_for_file_access(), 
+saae: smgr:00001417:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
+saae: smgr:00001418:  blocknum, 
+saae: smgr:00001419:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001420:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001421:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001445:  ereport(ERROR, 
+saae: smgr:00001446:  (errcode_for_file_access(), 
+saae: smgr:00001447:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
+saae: smgr:00001448:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001449:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001450:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001483:  ereport(ERROR, 
+saae: smgr:00001484:  (errcode_for_file_access(), 
+saae: smgr:00001485:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+saae: smgr:00001486:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001487:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001488:  reln->smgr_rnode.relNode, 
+saae: smgr:00001489:  nblocks))); 
+saae: smgr:00001575:  ereport(ERROR, 
+saae: smgr:00001576:  (errcode_for_file_access(), 
+saae: smgr:00001577:  errmsg("could not sync relation %u/%u/%u: %m", 
+saae: smgr:00001578:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001579:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001580:  reln->smgr_rnode.relNode))); 
+saae: smgr:00003072:  ereport(WARNING, 
+saae: smgr:00003073:  (errcode_for_file_access(), 
+saae: smgr:00003074:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+saae: smgr:00003075:  reln->smgr_rnode.spcNode, 
+saae: smgr:00003076:  reln->smgr_rnode.dbNode, 
+saae: smgr:00003077:  reln->smgr_rnode.relNode, 
+saae: smgr:00003078:  xlrec->blkno))); 
 aaaaa GP_IGNORE: faai: fastpath - ./backend/tcop/fastpath.c
 faai: fastpath:00000106:  ereport(FATAL, 
 faai: fastpath:00000107:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
@@ -17675,54 +17700,54 @@ fabd: faultinjector:00000457:  ereport(ERROR,
 fabd: faultinjector:00000458:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
 fabd: faultinjector:00000459:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
 fabd: faultinjector:00000460:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000633:  ereport(WARNING, 
-fabd: faultinjector:00000634:  (errmsg("could not insert fault injection, no slots available" 
-fabd: faultinjector:00000635:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000636:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000637:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000670:  ereport(WARNING, 
-fabd: faultinjector:00000671:  (errmsg("could not insert fault injection, fault type not supported" 
-fabd: faultinjector:00000672:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000673:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000674:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000728:  ereport(WARNING, 
-fabd: faultinjector:00000729:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
-fabd: faultinjector:00000730:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000731:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000732:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000752:  ereport(WARNING, 
-fabd: faultinjector:00000753:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000754:  "segment not in primary or mirror role, " 
-fabd: faultinjector:00000755:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000756:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000757:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000771:  ereport(WARNING, 
-fabd: faultinjector:00000772:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000773:  "segment not in master role, " 
-fabd: faultinjector:00000774:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000775:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000776:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000792:  ereport(WARNING, 
-fabd: faultinjector:00000793:  (errmsg("could not insert fault injection entry into table, no memory, " 
-fabd: faultinjector:00000794:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000795:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000796:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000806:  ereport(WARNING, 
-fabd: faultinjector:00000807:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000808:  "entry already exists, " 
-fabd: faultinjector:00000809:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000810:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000811:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000870:  ereport(WARNING, 
-fabd: faultinjector:00000871:  (errmsg("could not update fault injection hash entry with fault injection status, " 
-fabd: faultinjector:00000872:  "no entry found, " 
-fabd: faultinjector:00000873:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000874:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000875:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00001088:  ereport(WARNING, 
-fabd: faultinjector:00001089:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00001090:  FaultInjectorIdentifierEnumToString[identifier], 
-fabd: faultinjector:00001091:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000646:  ereport(WARNING, 
+fabd: faultinjector:00000647:  (errmsg("could not insert fault injection, no slots available" 
+fabd: faultinjector:00000648:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000649:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000650:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000683:  ereport(WARNING, 
+fabd: faultinjector:00000684:  (errmsg("could not insert fault injection, fault type not supported" 
+fabd: faultinjector:00000685:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000686:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000687:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000741:  ereport(WARNING, 
+fabd: faultinjector:00000742:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
+fabd: faultinjector:00000743:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000744:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000745:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000765:  ereport(WARNING, 
+fabd: faultinjector:00000766:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000767:  "segment not in primary or mirror role, " 
+fabd: faultinjector:00000768:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000769:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000770:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000784:  ereport(WARNING, 
+fabd: faultinjector:00000785:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000786:  "segment not in master role, " 
+fabd: faultinjector:00000787:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000788:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000789:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000805:  ereport(WARNING, 
+fabd: faultinjector:00000806:  (errmsg("could not insert fault injection entry into table, no memory, " 
+fabd: faultinjector:00000807:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000808:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000809:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000819:  ereport(WARNING, 
+fabd: faultinjector:00000820:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000821:  "entry already exists, " 
+fabd: faultinjector:00000822:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000823:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000824:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000883:  ereport(WARNING, 
+fabd: faultinjector:00000884:  (errmsg("could not update fault injection hash entry with fault injection status, " 
+fabd: faultinjector:00000885:  "no entry found, " 
+fabd: faultinjector:00000886:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000887:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000888:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00001106:  ereport(WARNING, 
+fabd: faultinjector:00001107:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00001108:  FaultInjectorIdentifierEnumToString[identifier], 
+fabd: faultinjector:00001109:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
 aaaaa GP_IGNORE: gaai: gucxfile - ./backend/utils/misc/guc-file.c
 gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
 gaai: gucxfile:00000543:  
