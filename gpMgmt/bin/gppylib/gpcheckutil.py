@@ -60,6 +60,14 @@ class inittab:
     def __str__(self):
         return "s1_declaration(%s) default_run_level(%s)" % (self.s1, self.defaultRunLevel)
 
+class uname:
+    def __init__(self):
+        self.output = None
+        self.errormsg = None
+
+    def __str__(self):
+        return self.output
+
 class securetty:
     def __init__(self):
         self.errormsg = None
@@ -148,8 +156,6 @@ class mounts:
             output = "%s\n%s" % (output, self.entries[k].__str__())
         return output
 
-
-       
 class App1001OutputData:
     def __init__(self):
         self.chkconfig = None
@@ -157,6 +163,7 @@ class App1001OutputData:
         self.grubconf = None
         self.mounts = None
         self.inittab = None
+        self.uname = None
         self.securetty = None
         self.bcu = None
         self.blockdev = None
@@ -222,6 +229,10 @@ class App1001OutputData:
         grc = "============= INITTAB========================\n"
         gre = "============= INITTAB ERRORMSG===============\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.inittab.__str__(), gre, self.inittab.errormsg)
+
+        grc = "============= UNAME==========================\n"
+        gre = "============= UNAME ERRORMSG=================\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.uname.__str__(), gre, self.uname.errormsg)
 
         grc = "============= SECURETTY======================\n"
         gre = "============= SECURETTY ERRORMSG=============\n"

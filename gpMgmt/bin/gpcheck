@@ -703,12 +703,29 @@ def testAppliance1001Host(host):
     # test limits.conf
     testAppliance1001LimitsConf(host)
 
-######################################################################################
 
+def testUnameConsistency():
+
+    firstUname = None
+    firstHost = None
+
+    for h in hosts.keys():
+
+        host = hosts[h]
+        uname = host.data.uname.output
+
+        if firstUname:
+            if firstUname != uname:
+                printError(h, "uname -r output different among hosts: %s : %s != %s : %s" % (firstHost, firstUname, host.hostname, uname))
+        else:
+            firstUname = uname
+            firstHost = host.hostname
 
 def testAppliance1001():
     for h in hosts.keys():
         testAppliance1001Host(hosts[h])
+
+    testUnameConsistency()
 
 
 def runTests():
