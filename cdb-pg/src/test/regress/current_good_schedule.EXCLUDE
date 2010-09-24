@@ -19,4 +19,4 @@
  sreh ::: $gpx->{generic_processor} !~ m/powerpc/i
 
 # MPP-9643: disable upg2 on sparc for now
- ugp2 ::: $gpx->{isainfo} =~ m/sparc/
+ upg2 ::: $gpx->{isainfo} !~ m/sparc/
