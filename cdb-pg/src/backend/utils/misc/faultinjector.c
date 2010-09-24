@@ -489,10 +489,19 @@ FaultInjector_InjectFaultIfSet(
 				pg_usleep(1000000L);  // 1 sec
 			}
 
-			ereport(LOG, 
+			if (entry != NULL)
+			{
+				ereport(LOG, 
 					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
-							FaultInjectorTypeEnumToString[entry->faultInjectorType])));				
+							FaultInjectorTypeEnumToString[entry->faultInjectorType])));	
+			}
+			else
+			{
+				ereport(LOG, 
+						(errmsg("fault 'NULL', fault name:'%s'  ",
+								FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier])));				
+			}
 			break;
 		}
 		case FaultInjectorTypeSkip:
@@ -604,9 +613,13 @@ FaultInjector_RemoveHashEntry(
 												  HASH_REMOVE, 
 												  NULL);
 	
-	if (entry) {
-		elog(DEBUG1, "FaultInjector_RemoveHashEntry() Removed hash entry entry_key:%d", 
-			 entry->faultInjectorIdentifier);
+	if (entry) 
+	{
+		ereport(LOG, 
+				(errmsg("fault removed, fault name:'%s' fault type:'%s' ",
+						FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+						FaultInjectorTypeEnumToString[entry->faultInjectorType])));							
+		
 		isRemoved = TRUE;
 	}
 	
@@ -1018,6 +1031,11 @@ FaultInjector_SetFaultInjection(
 			break;
 		}
 		case FaultInjectorTypeResume:
+			ereport(LOG, 
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entry->faultInjectorType])));	
+			
 			FaultInjector_UpdateHashEntry(entry);	
 			
 			break;
