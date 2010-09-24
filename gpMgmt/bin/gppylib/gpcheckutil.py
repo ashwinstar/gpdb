@@ -32,6 +32,9 @@ class omreport:
         self.bios = dict()          # key value pairs
         self.bios_errormsg = None
 
+        self.alerts = list()        # list of alerts... each alert is a dictionary of key value pairs
+        self.alerts_errormsg = None
+
 class chkconfig:
     def __init__(self):
         self.services = dict() # hash of services, each entry is hash of run levels and boolean value
@@ -191,6 +194,10 @@ class App1001OutputData:
         omr = "=============OMREPORT REMOTEACCESS==========\n"
         ome = "=============OMREPORT REMOTEACCESS ERRORMSG=\n"
         output = "%s\n%s%s\n%s%s" % (output, omr, self.omreport.remoteaccess.__str__(), ome,self.omreport.remoteaccess_errormsg)
+
+        omr = "=============OMREPORT ALERTS==========\n"
+        ome = "=============OMREPORT ALERTS ERRORMSG=\n"
+        output = "%s\n%s%s\n%s%s" % (output, omr, self.omreport.alerts.__str__(), ome,self.omreport.alerts_errormsg)
 
         omr = "=============OMREPORT VIRTUAL DISKS=========\n"
         ome = "=============OMREPORT VIRTUAL DISKS ERRORMSG\n"
