@@ -547,7 +547,7 @@ def collectUname():
     if p.returncode:
         return data
 
-    data.output = result[0]
+    data.output = result[0].strip()
  
     return data
 

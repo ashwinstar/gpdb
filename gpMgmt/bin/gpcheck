@@ -389,14 +389,15 @@ def testAppliance1001OmreportBootorder(host):
     if host.is_a_master:
         if len(host.data.omreport.bootorder) < 2:
             printError(host.hostname, "omreport chassis biossetup attribute=bootorder, less then 2 boot devices on a master host")
-        if host.data.omreport.bootorder[0] != "SATA Optical Drive":
-            printError(host.hostname, "omreport chassis biossetup attribute=bootorder, first boot device is not the dvd drive")
-        if host.data.omreport.bootorder[1] != "Hard drive C:":
-            printError(host.hostname, "omreport chassis biossetup attribute=bootorder, second boot device is not the hard drive")
+        else:
+            if host.data.omreport.bootorder[0] != "SATA Optical Drive":
+                printError(host.hostname, "omreport chassis biossetup attribute=bootorder, first boot device is not the dvd drive")
+            if host.data.omreport.bootorder[1] != "Hard drive C:":
+                printError(host.hostname, "omreport chassis biossetup attribute=bootorder, second boot device is not the hard drive")
     else:
         if len(host.data.omreport.bootorder) < 1:
             printError(host.hostname, "omreport chassis biossetup attribute=bootorder, less then 1 boot devices on a segment host")
-        if host.data.omreport.bootorder[0] != "Hard drive C:":
+        elif host.data.omreport.bootorder[0] != "Hard drive C:":
             printError(host.hostname, "omreport chassis biossetup attribute=bootorder, first boot device is not the hard drive")
 
 
@@ -667,14 +668,18 @@ def testAppliance1001Host(host):
     # test omreport
     testAppliance1001OmreportVersion(host)
     testAppliance1001OmreportBios(host)
-    testAppliance1001OmreportBiossetup(host)
-    testAppliance1001OmreportBootorder(host)
+
+    if is_root:
+        testAppliance1001OmreportBiossetup(host)
+        testAppliance1001OmreportBootorder(host)
+
     testAppliance1001OmreportRemoteaccess(host)
     testAppliance1001OmreportVdisks(host)
     testAppliance1001OmreportController(host)
 
     # test grubconf
-    testAppliance1001Grub(host)
+    if is_root:
+        testAppliance1001Grub(host)
 
     # test mounts
     testAppliance1001Mounts(host)
@@ -683,10 +688,12 @@ def testAppliance1001Host(host):
     testAppliance1001Inittab(host)
 
     # test securetty
-    testAppliance1001Securetty(host)
+    if is_root:
+        testAppliance1001Securetty(host)
 
     # test bcu
-    testAppliance1001Bcu(host)
+    if is_root:
+        testAppliance1001Bcu(host)
 
     # test IO schedulers
     testAppliance1001IOSchedulers(host)
@@ -730,13 +737,8 @@ def testAppliance1001():
 
 def runTests():
 
-    global is_root
-
-    if getpass.getuser() == "root":
-        is_root = True
-    else:
-        is_root = False
-        printWarning("utility will not check all settings when run as non-root user")
+    if not is_root:
+        printError(None, "utility will not check all settings when run as non-root user")
 
     if appliance_version == "1.0.0.1":
         testAppliance1001()
@@ -820,6 +822,15 @@ def doDump():
         print hosts[h].data.__str__()
         print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 
+def checkUser():
+
+    global is_root
+    user = getpass.getuser()
+    if user == 'root':
+        is_root = True
+    else:
+        is_root = False
+
 
 logger = get_default_logger()
 setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
@@ -829,6 +840,8 @@ if (parseargs()):
 
 if (checkAppliance()):
     sys.exit(0)
+
+checkUser()
 
 pool = WorkerPool()
 
