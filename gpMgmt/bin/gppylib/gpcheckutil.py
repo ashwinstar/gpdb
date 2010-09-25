@@ -3,6 +3,7 @@
 class HostType:
     GPCHECK_HOSTTYPE_UNDEFINED  = 0
     GPCHECK_HOSTTYPE_APPLIANCE_1001 = 1
+    GPCHECK_HOSTTYPE_GENERIC_LINUX = 2
 
 class sysctl:
     def __init__(self):
@@ -155,6 +156,45 @@ class mounts:
         for k in self.entries.keys():
             output = "%s\n%s" % (output, self.entries[k].__str__())
         return output
+
+
+class GenericLinuxOutputData:
+    def __init__(self):
+        self.mounts = None
+        self.uname = None
+        self.blockdev = None
+        self.ioschedulers = None
+        self.sysctl = None
+        self.limitsconf = None
+
+    def __str__(self):
+
+        grc = "============= SYSCTL=========================\n"
+        gre = "============= SYSCTL ERRORMSG================\n"
+        output = "%s%s\n%s%s" % (grc, self.sysctl.variables.__str__(), gre, self.sysctl.errormsg)
+
+        grc = "============= LIMITS=========================\n"
+        gre = "============= LIMITS ERRORMSG================\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.limitsconf.__str__(), gre, self.limitsconf.errormsg)
+
+        mnt = "============= MOUNT==========================\n"
+        mte = "============= MOUNT ERRORMSG=================\n"
+        output = "%s\n%s%s\n%s%s" % (output, mnt, self.mounts.__str__(), mte, self.mounts.errormsg)
+
+        grc = "============= UNAME==========================\n"
+        gre = "============= UNAME ERRORMSG=================\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.uname.__str__(), gre, self.uname.errormsg)
+
+        grc = "============= IO SCHEDULERS==================\n"
+        gre = "============= IO SCHEDULERS  ERRORMSG========\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.ioschedulers.devices.__str__(), gre, self.ioschedulers.errormsg)
+
+        grc = "============= BLOCKDEV RA ====================\n"
+        gre = "============= BLOCKDEV RA ERRORMSG============\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.blockdev.ra.__str__(), gre, self.blockdev.errormsg)
+
+        return output
+
 
 class App1001OutputData:
     def __init__(self):

@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpcheck_local [--app1001]
-         where --app1001 will do a dump of appliance1001 server data   
+USAGE:   gpcheck_local [--app1001] [--linux]
+         where --app1001 will do a dump of appliance1001 server
+         where --linux will do a dump of a generic linux server 
 '''
 
 import os, sys, re, tempfile, subprocess, pickle, glob, stat
@@ -9,7 +10,8 @@ import os, sys, re, tempfile, subprocess, pickle, glob, stat
 try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
-    from gppylib.gpcheckutil import HostType, App1001OutputData, chkconfig, omreport, grubconf, mounts, GpMount, GpMount, inittab
+    from gppylib.gpcheckutil import HostType, App1001OutputData, GenericLinuxOutputData
+    from gppylib.gpcheckutil import chkconfig, omreport, grubconf, mounts, GpMount, GpMount, inittab
     from gppylib.gpcheckutil import securetty, ioschedulers, blockdev, bcu, rclocal, sysctl, limitsconf, limitsconf_entry, uname
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -566,6 +568,17 @@ def collectSecuretty():
     
     return data
         
+def processGenericLinuxServer():
+
+    global output
+    output = GenericLinuxOutputData()
+    output.mounts = collectMounts()
+    output.uname = collectUname()
+    output.ioschedulers = collectIOschedulers()
+    output.blockdev = collectBlockdev()
+    output.sysctl = collectSysctl()
+    output.limitsconf = collectLimits()
+
 
 def processApp1001Server():
 
@@ -594,6 +607,7 @@ def parseargs():
     parser.remove_option('-h')
     parser.add_option('-h', '-?', '--help', action='store_true')
     parser.add_option('--app1001',  action='store_true')
+    parser.add_option('--linux',  action='store_true')
     (options, args) = parser.parse_args()
 
     global gphome
@@ -605,6 +619,9 @@ def parseargs():
     if options.help:
         print __doc__
         return True
+
+    if options.linux:
+        hosttype = HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX
 
     if options.app1001:
         hosttype = HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001
@@ -621,6 +638,8 @@ if (parseargs()):
 
 if hosttype == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
     processApp1001Server()
+elif hosttype == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
+    processGenericLinuxServer()
    
 (fd, filename) = tempfile.mkstemp(dir='/tmp', prefix='gpcheck_dump', text=True)
 fd = open(filename, "wb")

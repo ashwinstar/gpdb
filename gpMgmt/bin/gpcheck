@@ -12,8 +12,9 @@ try:
     from optparse import Option, OptionParser 
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import get_default_logger, setup_tool_logging
-    from gppylib.commands.unix import getLocalHostname, getUserName
+    from gppylib.commands.unix import getLocalHostname, getUserName, SYSTEM
     from gppylib.commands.base import WorkerPool, Command, REMOTE
+    from gppylib.gpcheckutil import HostType
 
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -26,9 +27,9 @@ logger = None
 pool = None
 hosts = dict()
 tmpdir = None
-appliance_version = None
 is_root = False
 found_errors = False
+host_type = HostType.GPCHECK_HOSTTYPE_UNDEFINED
 
 class GpCheckHost:
     def __init__(self, name):
@@ -127,15 +128,23 @@ def createHostList():
     return False
 
 #true is error
-def runCollectionOnApp1001Serverss():
+def runCollectionOnServerss():
 
     logger.info("generate data on servers")
 
     global hosts
 
+    if host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
+        host_type_cl = "--app1001"
+    elif host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
+        host_type_cl = "--linux"
+    else:
+        logger.error("Unexpected host_type in runCollectionOnServerss")
+        return True
+
     try:
         for host in hosts.keys():
-            cmdStr = "%s/sbin/gpcheck_hostdump --app1001" % gphome
+            cmdStr = "%s/sbin/gpcheck_hostdump %s" % (gphome, host_type_cl)
             cmd = Command(host, cmdStr, REMOTE, host)
             pool.addCommand(cmd)
 
@@ -480,7 +489,7 @@ def testAppliance1001Chkconfig(host):
                 printError(host.hostname, "service (%s) should be off" % (sname))
                 break
 
-def testAppliance1001Blockdev(host):
+def testBlockdev(host):
 
     expectedReadAhead = "16384"
 
@@ -493,7 +502,7 @@ def testAppliance1001Blockdev(host):
             printError(host.hostname, "on device (%s) blockdev readahead value '%s' does not match expected value '%s'" % (dev, ra, expectedReadAhead))
 
 
-def testAppliance1001Sysctl(host):
+def testSysctl(host):
 
     expectedValues = dict()
     expectedValues['kernel.sem'] = '250 64000 100 512'
@@ -525,7 +534,7 @@ def testAppliance1001Sysctl(host):
             printError(host.hostname, "/etc/sysctl.conf value for key '%s' has value '%s' and expects '%s'" % (k, value, expectedValues[k]))
 
 
-def testAppliance1001IOSchedulers(host):
+def testIOSchedulers(host):
 
     expectedScheduler = "deadline"
 
@@ -544,7 +553,7 @@ def testAppliance1001Rclocal(host):
 
         printError(host.hostname, "/etc/rc.d/rc.local is not present and executable")
 
-def testAppliance1001LimitsConf(host):
+def testLimitsConf(host):
 
     # utility class for this function only
     class limitsconf_data:
@@ -590,43 +599,52 @@ def testAppliance1001LimitsConf(host):
 
             printError(host.hostname, "%s %s in  /etc/security/limits.conf has value %d lower than expected value %d" % (k[0], k[1], found, ld.value_expected))
 
-def testAppliance1001Mounts(host):
+
+def testLinuxMounts(host):
 
     xfs_mounts = list()
 
-    if host.is_a_master:
-        p = '/dev/sdc'
-        loc = '/data'
-        hosttype = 'master'
-        if p in host.data.mounts.entries:
-            entry = host.data.mounts.entries[p]
-            if entry.dir != loc:
-                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
-            xfs_mounts.append(entry)
-        else:
-            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
+    if host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
+	    if host.is_a_master:
+	        p = '/dev/sdc'
+	        loc = '/data'
+	        hosttype = 'master'
+	        if p in host.data.mounts.entries:
+	            entry = host.data.mounts.entries[p]
+	            if entry.dir != loc:
+	                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
+	            xfs_mounts.append(entry)
+	        else:
+	            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
+	    else:
+	        hosttype = 'segment'
+	        p = '/dev/sdb'
+	        loc = '/data1'
+	        if p in host.data.mounts.entries:
+	            entry = host.data.mounts.entries[p]
+	            xfs_mounts.append(entry)
+	            if entry.dir != loc:
+	                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
+	        else:
+	            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
+	
+	        p = '/dev/sdd'
+	        loc = '/data2'
+	        if p in host.data.mounts.entries:
+	            entry = host.data.mounts.entries[p]
+	            xfs_mounts.append(entry)
+	            if entry.dir != loc:
+	                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
+	        else:
+	            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
     else:
-        hosttype = 'segment'
-        p = '/dev/sdb'
-        loc = '/data1'
-        if p in host.data.mounts.entries:
-            entry = host.data.mounts.entries[p]
-            xfs_mounts.append(entry)
-            if entry.dir != loc:
-                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
-        else:
-            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
 
-        p = '/dev/sdd'
-        loc = '/data2'
-        if p in host.data.mounts.entries:
-            entry = host.data.mounts.entries[p]
-            xfs_mounts.append(entry)
-            if entry.dir != loc:
-                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
-        else:
-            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
-
+        for k in host.data.mounts.entries.keys():
+            entry = host.data.mounts.entries[k]
+            if entry.type == "xfs":
+	            xfs_mounts.append(entry)
+            
+	
     for mnt in xfs_mounts:
 
         # expected XFS options
@@ -682,7 +700,7 @@ def testAppliance1001Host(host):
         testAppliance1001Grub(host)
 
     # test mounts
-    testAppliance1001Mounts(host)
+    testLinuxMounts(host)
 
     # test inittab
     testAppliance1001Inittab(host)
@@ -696,19 +714,38 @@ def testAppliance1001Host(host):
         testAppliance1001Bcu(host)
 
     # test IO schedulers
-    testAppliance1001IOSchedulers(host)
+    testIOSchedulers(host)
 
     # test blockdev
-    testAppliance1001Blockdev(host)
+    testBlockdev(host)
 
     # test rclocal
     testAppliance1001Rclocal(host)
 
     # test sysctl
-    testAppliance1001Sysctl(host)
+    testSysctl(host)
 
     # test limits.conf
-    testAppliance1001LimitsConf(host)
+    testLimitsConf(host)
+
+
+def testGenericLinuxHost(host):
+
+    # test IO schedulers
+    testIOSchedulers(host)
+
+    # test blockdev
+    testBlockdev(host)
+
+    # test sysctl
+    testSysctl(host)
+
+    # test limits.conf
+    testLimitsConf(host)
+
+    # test XFS mounts
+    testLinuxMounts(host)
+
 
 
 def testUnameConsistency():
@@ -735,15 +772,25 @@ def testAppliance1001():
     testUnameConsistency()
 
 
+def testGenericLinuxCluster():
+
+    for h in hosts.keys():
+        testGenericLinuxHost(hosts[h])
+
+    testUnameConsistency()
+
+
 def runTests():
 
     if not is_root:
         printError(None, "utility will not check all settings when run as non-root user")
 
-    if appliance_version == "1.0.0.1":
+    if host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
         testAppliance1001()
+    elif host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
+        testGenericLinuxCluster()
     else:
-        printError(None, "Unkown appliance version: %s" % appliance_version)
+        printWarning("No tests exist for this platform in gpcheck")
         return False
 
 #true is error
@@ -763,7 +810,7 @@ def createTmpDir():
 #true is error
 def runCollections():
 
-    retVal = runCollectionOnApp1001Serverss()
+    retVal = runCollectionOnServerss()
     if retVal:
         return True
 
@@ -777,21 +824,34 @@ def runCollections():
 
     return False
 
-# True for error, for now this utility only works on an appliance
-def checkAppliance():
-    global appliance_version
-    if not os.path.exists('/etc/gpdb-appliance-version'):
-        return True
+# true is error
+def checkPlatform():
 
-    fd = open('/etc/gpdb-appliance-version')
+    global host_type
 
-    appliance_version = fd.read()
+    host_type = HostType.GPCHECK_HOSTTYPE_UNDEFINED
 
-    appliance_version = appliance_version.strip()
+    if os.path.exists('/etc/gpdb-appliance-version'):
 
-    logger.info("GPDB Appliance Version: %s" % appliance_version)
+        try:
+            fd = open('/etc/gpdb-appliance-version')
+            appliance_version = fd.read()
+            appliance_version = appliance_version.strip()
 
-    return False
+            if appliance_version == "1.0.0.1":
+                logger.info("GPDB Appliance Version: %s" % appliance_version)
+                host_type = HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001
+                return False
+        except:
+            pass
+
+    if SYSTEM.getName() == 'linux':
+        logger.info("Detected Linux Non-Appliance Configuration")
+        host_type = HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX
+        return False
+
+    printWarning("No tests exist for this platform in gpcheck")
+    return True
 
 
 def earlyExit(error = False):
@@ -838,7 +898,7 @@ setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
 if (parseargs()):
     sys.exit(0)
 
-if (checkAppliance()):
+if (checkPlatform()):
     sys.exit(0)
 
 checkUser()
