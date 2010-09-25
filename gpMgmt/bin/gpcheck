@@ -147,7 +147,11 @@ def collectSwitchData(switch):
 
     result = p.communicate()
 
-    switch.versionstring = result[0].strip()
+    output = result[0].strip()
+    words = output.split("STRING:")
+    if len(words) == 2:
+        switch.versionstring = words[1].strip()
+
     switch.version_errormsg = result[1].strip()
 
  
@@ -803,12 +807,28 @@ def testUnameConsistency():
             firstUname = uname
             firstHost = host.hostname
 
+def testAppliance1001Switches():
+
+    for s in switches:
+        switch = switches[s]
+    
+        if switch.category == 'Interconnect':
+            expected = "v6.3.1b"
+            if switch.versionstring != expected:
+                printError(switch.hostname, "Interconnect Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
+
+        elif switch.category == 'Admin':
+            expected = "Allied Telesis AT-9924T-EMC - v1.1.5"
+            if switch.versionstring != expected:
+                printError(switch.hostname, "Interconnect Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
+
 def testAppliance1001():
     for h in hosts.keys():
         testAppliance1001Host(hosts[h])
 
     testUnameConsistency()
 
+    testAppliance1001Switches()
 
 def testGenericLinuxCluster():
 
