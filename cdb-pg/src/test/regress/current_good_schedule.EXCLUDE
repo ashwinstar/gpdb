@@ -1,6 +1,6 @@
 # 
 # EXCLUDE file for known_good_schedule.  Do not run the test if the
-# condition evaluates to FALSE.
+# condition evaluates to FALSE, ie run the test when the condition is TRUE.
 #
 
 # .* :::  $gpx->{hostname} !~ m/foo/ 
