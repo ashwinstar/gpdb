@@ -6,7 +6,7 @@ USAGE:   gpcheck -f|--file HOSTFILE -m|--master MASTER_HOST -s|--standymaster MA
          where --dump will indicate to dump all collected data without doing any checks
 '''
 
-import os, sys, re, tempfile, shutil, pickle, getpass
+import os, sys, re, tempfile, shutil, pickle, getpass, subprocess
 
 try:
     from optparse import Option, OptionParser 
@@ -26,6 +26,7 @@ options = None
 logger = None
 pool = None
 hosts = dict()
+switches = dict()
 tmpdir = None
 is_root = False
 found_errors = False
@@ -40,6 +41,17 @@ class GpCheckHost:
         self.data = None
     def __str__(self):
         return "%s is_a_master(%s) primary_master(%s) datafile(%s)" % (self.hostname, self.is_a_master, self.primary_master, self.datafile)
+
+class GpCheckSwitch:
+    def __init__(self, name, category, oid):
+        self.hostname = name
+        self.category = category
+        self.versionstring = None
+        self.oid = oid
+        self.version_errormsg = None
+
+    def __str__(self):
+        return "%s Switch: %s\nVersionString: %s\nErrorMsg: %s" % (self.category, self.hostname, self.versionstring, self.version_errormsg)
 
 # True is an error
 def parseargs():
@@ -127,8 +139,34 @@ def createHostList():
 
     return False
 
+def collectSwitchData(switch):
+    
+    cmd = "snmpwalk -v 2c -c public %s %s" % (switch.hostname, switch.oid)
+
+    p = subprocess.Popen(cmd, shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+
+    result = p.communicate()
+
+    switch.versionstring = result[0].strip()
+    switch.version_errormsg = result[1].strip()
+
+ 
 #true is error
-def runCollectionOnServerss():
+def runCollectionOnSwitches():
+
+    global switches
+    if host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
+
+        switches['i-sw-1'] = GpCheckSwitch('i-sw-1', 'Interconnect', '1.3.6.1.4.1.1588.2.1.1.1.1.6')
+        switches['i-sw-2'] = GpCheckSwitch('i-sw-2', 'Interconnect', '1.3.6.1.4.1.1588.2.1.1.1.1.6')
+        switches['a-sw-1'] = GpCheckSwitch('a-sw-1', 'Admin', '1.3.6.1.2.1.1.1')
+
+    for s in switches:
+        collectSwitchData(switches[s])
+
+
+#true is error
+def runCollectionOnServers():
 
     logger.info("generate data on servers")
 
@@ -139,7 +177,7 @@ def runCollectionOnServerss():
     elif host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
         host_type_cl = "--linux"
     else:
-        logger.error("Unexpected host_type in runCollectionOnServerss")
+        logger.error("Unexpected host_type in runCollectionOnServers")
         return True
 
     try:
@@ -810,7 +848,11 @@ def createTmpDir():
 #true is error
 def runCollections():
 
-    retVal = runCollectionOnServerss()
+    retVal = runCollectionOnServers()
+    if retVal:
+        return True
+
+    retVal = runCollectionOnSwitches()
     if retVal:
         return True
 
@@ -880,6 +922,11 @@ def doDump():
         print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
         print "HOST: %s" % h
         print hosts[h].data.__str__()
+        print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+
+    for s in switches:
+        print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+        print switches[s].__str__()
         print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 
 def checkUser():
