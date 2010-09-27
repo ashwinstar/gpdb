@@ -71,8 +71,8 @@ Run gpsnmpd as a background process.
 Specify the SNMP configuration file to use when starting gpsnmpd as a 
 stand-alone agent. Note that you can specify any configuration file to 
 run gpsnmpd as a stand-alone agent; you do not have to use the 
-/etc/snmp/snmpd.conf file. The configuration file you use must include a 
-value for rocommunity.
+/etc/snmp/snmpd.conf file (/etc/sma/snmp/ on Solaris platforms). The 
+configuration file you use must include a value for rocommunity.
 
 
 -g (use syslog)
