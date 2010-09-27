@@ -96,7 +96,7 @@ public class Loader extends ClassLoader
 			try 
 			{
 				URL url = new URL("file:///" + jarpath + "/" + m_classpath[i]);
-				JarLoader loader = new JarLoader(url);
+				JarLoader loader = new JarLoader(this, url);
 				m_jarloaders.add(loader);
 			}
 			catch (MalformedURLException e)
@@ -252,7 +252,7 @@ public class Loader extends ClassLoader
 			JarLoader loader = (JarLoader) iter.next();
 			try 
 			{
-				Class r = loader.loadClass(name);
+				Class r = loader.findClass(name);
 				if (r != null)
 					return r;
 			}

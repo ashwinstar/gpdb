@@ -39,9 +39,9 @@ public class JarLoader extends ClassLoader
 	 * @throws IOException : when the Jar cannot be read
 	 *
 	 */
-	JarLoader(URL url) throws IOException
+	JarLoader(ClassLoader parent, URL url) throws IOException
 	{
-		super(JarLoader.class.getClassLoader());
+		super(parent);
 
 		m_url = url;
 		m_entries = new HashMap();
