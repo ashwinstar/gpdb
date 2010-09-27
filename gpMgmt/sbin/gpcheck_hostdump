@@ -20,6 +20,13 @@ output = None
 options = None
 hosttype = HostType.GPCHECK_HOSTTYPE_UNDEFINED
 
+def removeComments(line):
+    words = line.split("#")
+    if len(words) < 2:
+        return line
+    return words[0]
+
+
 def collectChkconfigData():
 
     data = chkconfig()
@@ -431,12 +438,11 @@ def collectGrubConf():
 
     try:
         for line in open("/boot/grub/grub.conf", "r"):
+            line = removeComments(line)
             if re.search("^serial ", line):
                 data.serial_declaration = True
             if re.search("^terminal ", line):
                 data.terminal_declaration = True
-            if re.search("#.*kernel", line):
-                continue
             if re.search("kernel", line):
                 if re.search(" console=ttyS1,", line):
                     data.ttyS1_declaration = True
@@ -455,9 +461,8 @@ def collectLimits():
     try:
         for line in open("/etc/security/limits.conf", "r"):
 
-            # todo: fix to work with partial line comments
-            if re.search("#", line):
-                continue
+            line = removeComments(line)
+
             words = line.split()
             if len(words) != 4:
                 continue
@@ -484,9 +489,7 @@ def collectSysctl():
     try:
         for line in open("/etc/sysctl.conf", "r"):
 
-            # todo: fix to work with partial line comments
-            if re.search("#", line):
-                continue
+            line = removeComments(line)
             words = line.split("=")
             if len(words) != 2:
                 continue
