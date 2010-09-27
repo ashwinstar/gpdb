@@ -355,7 +355,7 @@ bool fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("gp_restore (Greenplum Database) " PG_VERSION);
+			puts("gp_restore (Greenplum Database) " GP_VERSION);
 			exit(0);
 		}
 	}
