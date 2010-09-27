@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpcheck -f|--file HOSTFILE -m|--master MASTER_HOST -s|--standymaster MASTER_HOST [--stdout] [--zipout] 
+USAGE:   gpcheck -f|--file HOSTFILE -m|--master MASTER_HOST -s|--standymaster MASTER_HOST [--stdout] [--zipout] [--zipin FILE]
          where HOSTFILE lists all the hosts to check
          where MASTER_HOST indicates hosts that should be assumed to be master or standby masters
          where --stdout indicates to print all collected data without doing any checks
          where --zipout indicates to save all collected data to a zip file in the current working directory without doing any checks
+         where --zipin indicates to get information from FILE and not live from the cluster
 '''
 
-import os, sys, re, tempfile, shutil, pickle, getpass, subprocess, time
+import os, sys, re, tempfile, shutil, pickle, getpass, subprocess, time, glob
 
 try:
     from optparse import Option, OptionParser 
@@ -15,23 +16,27 @@ try:
     from gppylib.gplog import get_default_logger, setup_tool_logging
     from gppylib.commands.unix import getLocalHostname, getUserName, SYSTEM
     from gppylib.commands.base import WorkerPool, Command, REMOTE
-    from gppylib.gpcheckutil import HostType
+    from gppylib.gpcheckutil import HostType, hosttype_str
 
 except ImportError, e:    
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
 EXECNAME = os.path.split(__file__)[-1]
 
+class GpCheckInfo:
+    def __init__(self):
+        self.is_root = False
+        self.host_type = HostType.GPCHECK_HOSTTYPE_UNDEFINED
+        self.hosts = dict()
+        self.switches = dict()
+
+gpcheck_info = None
 gphome = None
 options = None
 logger = None
 pool = None
-hosts = dict()
-switches = dict()
 tmpdir = None
-is_root = False
 found_errors = False
-host_type = HostType.GPCHECK_HOSTTYPE_UNDEFINED
 
 class GpCheckHost:
     def __init__(self, name):
@@ -64,6 +69,7 @@ def parseargs():
     parser.add_option('-?', '--help', action='store_true')
     parser.add_option('--stdout', action='store_true')
     parser.add_option('--zipout', action='store_true')
+    parser.add_option('--zipin', type='string')
     parser.add_option('-f', '--file',  type='string')
     parser.add_option('-m', '--master', type='string')
     parser.add_option('-s', '--standbymaster', type='string')
@@ -79,12 +85,16 @@ def parseargs():
         print __doc__
         return True
 
-    if not options.file:
-        logger.error("--file must be specified")
+    if not options.file and not options.zipin:
+        logger.error("--file or --zipin must be specified")
         return True
 
     if options.stdout and options.zipout:
         logger.error("--stdout and --zipout options can not be used together")
+        return True
+
+    if options.zipin and (options.master or options.standbymaster or options.file):
+        logger.error(" the options: --master --standbymaster --file can not be used when reading data form zip file")
         return True
 
     return False
@@ -103,7 +113,7 @@ def createHostList():
 
     logger.info("dedupe hostnames")
 
-    global hosts
+    global gpcheck_info
 
     try:
         for line in open(options.file, "r"):
@@ -121,22 +131,22 @@ def createHostList():
                 return True
             actualHostname = i.results.stdout.strip()
 
-            if actualHostname in hosts:
+            if actualHostname in gpcheck_info.hosts:
                 pass
             else:
-                hosts[actualHostname] = GpCheckHost(actualHostname)
+                gpcheck_info.hosts[actualHostname] = GpCheckHost(actualHostname)
 
                 if actualHostname == options.master:
-                    hosts[actualHostname].is_a_master = True
-                    hosts[actualHostname].primary_master = True
+                    gpcheck_info.hosts[actualHostname].is_a_master = True
+                    gpcheck_info.hosts[actualHostname].primary_master = True
 
                 elif actualHostname == options.standbymaster:
-                    hosts[actualHostname].is_a_master = True
-                    hosts[actualHostname].primary_master = False
+                    gpcheck_info.hosts[actualHostname].is_a_master = True
+                    gpcheck_info.hosts[actualHostname].primary_master = False
 
                 else:
-                    hosts[actualHostname].is_a_master = False
-                    hosts[actualHostname].primary_master = False
+                    gpcheck_info.hosts[actualHostname].is_a_master = False
+                    gpcheck_info.hosts[actualHostname].primary_master = False
 
     except Exception, e:
         logger.error("Error while deduping host file: %s" % options.file)
@@ -164,15 +174,15 @@ def collectSwitchData(switch):
 #true is error
 def runCollectionOnSwitches():
 
-    global switches
-    if host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
+    global gpcheck_info
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
 
-        switches['i-sw-1'] = GpCheckSwitch('i-sw-1', 'Interconnect', '1.3.6.1.4.1.1588.2.1.1.1.1.6')
-        switches['i-sw-2'] = GpCheckSwitch('i-sw-2', 'Interconnect', '1.3.6.1.4.1.1588.2.1.1.1.1.6')
-        switches['a-sw-1'] = GpCheckSwitch('a-sw-1', 'Admin', '1.3.6.1.2.1.1.1')
+        gpcheck_info.switches['i-sw-1'] = GpCheckSwitch('i-sw-1', 'Interconnect', '1.3.6.1.4.1.1588.2.1.1.1.1.6')
+        gpcheck_info.switches['i-sw-2'] = GpCheckSwitch('i-sw-2', 'Interconnect', '1.3.6.1.4.1.1588.2.1.1.1.1.6')
+        gpcheck_info.switches['a-sw-1'] = GpCheckSwitch('a-sw-1', 'Admin', '1.3.6.1.2.1.1.1')
 
-    for s in switches:
-        collectSwitchData(switches[s])
+    for s in gpcheck_info.switches:
+        collectSwitchData(gpcheck_info.switches[s])
 
 
 #true is error
@@ -180,18 +190,18 @@ def runCollectionOnServers():
 
     logger.info("generate data on servers")
 
-    global hosts
+    global gpcheck_info
 
-    if host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
         host_type_cl = "--app1001"
-    elif host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
+    elif gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
         host_type_cl = "--linux"
     else:
         logger.error("Unexpected host_type in runCollectionOnServers")
         return True
 
     try:
-        for host in hosts.keys():
+        for host in gpcheck_info.hosts.keys():
             cmdStr = "%s/sbin/gpcheck_hostdump %s" % (gphome, host_type_cl)
             cmd = Command(host, cmdStr, REMOTE, host)
             pool.addCommand(cmd)
@@ -204,7 +214,7 @@ def runCollectionOnServers():
                 logger.error(i.results.stderr.strip())
                 return True
 
-            hosts[i.remoteHost].datafile = i.results.stdout.strip()
+            gpcheck_info.hosts[i.remoteHost].datafile = i.results.stdout.strip()
             
     except Exception, e:
         logger.error("Exception collecting data from servers")
@@ -218,11 +228,9 @@ def copyFilesLocally():
 
     logger.info("copy data files from servers")
 
-    global hosts
-
     try:
-        for host in hosts.keys():
-            cmdStr = "scp %s:%s %s/%s.data" % (host, hosts[host].datafile, tmpdir, host)
+        for host in gpcheck_info.hosts.keys():
+            cmdStr = "scp %s:%s %s/%s.data" % (host, gpcheck_info.hosts[host].datafile, tmpdir, host)
             cmd = Command(host, cmdStr)
             pool.addCommand(cmd)
 
@@ -246,8 +254,8 @@ def deleteRemoteFiles():
     logger.info("delete remote tmp files")
 
     try:
-        for host in hosts.keys():
-            cmdStr = "rm -f %s" % hosts[host].datafile
+        for host in gpcheck_info.hosts.keys():
+            cmdStr = "rm -f %s" % gpcheck_info.hosts[host].datafile
             cmd = Command(host, cmdStr, REMOTE, host)
             pool.addCommand(cmd)
 
@@ -269,10 +277,19 @@ def deleteRemoteFiles():
 #true is error
 def readDataFiles():
 
-    for host in hosts.keys():
+    for host in gpcheck_info.hosts.keys():
         fname = "%s/%s.data" % (tmpdir, host)
-        fd = open(fname, "rb")
-        hosts[host].data = pickle.load(fd)
+        try:
+            fd = open(fname, "rb")
+            gpcheck_info.hosts[host].data = pickle.load(fd)
+            fd.close()
+
+        except Exception, e:
+            logger.errr(e.__str__())
+            logger.error("Failed extracting pickled save file: %s" % fname)
+            return True
+
+    return False
 
 
 def testAppliance1001OmreportBiossetup(host):
@@ -652,7 +669,7 @@ def testLinuxMounts(host):
 
     xfs_mounts = list()
 
-    if host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
 	    if host.is_a_master:
 	        p = '/dev/sdc'
 	        loc = '/data'
@@ -735,7 +752,7 @@ def testAppliance1001Host(host):
     testAppliance1001OmreportVersion(host)
     testAppliance1001OmreportBios(host)
 
-    if is_root:
+    if gpcheck_info.is_root:
         testAppliance1001OmreportBiossetup(host)
         testAppliance1001OmreportBootorder(host)
 
@@ -744,7 +761,7 @@ def testAppliance1001Host(host):
     testAppliance1001OmreportController(host)
 
     # test grubconf
-    if is_root:
+    if gpcheck_info.is_root:
         testAppliance1001Grub(host)
 
     # test mounts
@@ -754,11 +771,11 @@ def testAppliance1001Host(host):
     testAppliance1001Inittab(host)
 
     # test securetty
-    if is_root:
+    if gpcheck_info.is_root:
         testAppliance1001Securetty(host)
 
     # test bcu
-    if is_root:
+    if gpcheck_info.is_root:
         testAppliance1001Bcu(host)
 
     # test IO schedulers
@@ -801,9 +818,9 @@ def testUnameConsistency():
     firstUname = None
     firstHost = None
 
-    for h in hosts.keys():
+    for h in gpcheck_info.hosts.keys():
 
-        host = hosts[h]
+        host = gpcheck_info.hosts[h]
         uname = host.data.uname.output
 
         if firstUname:
@@ -815,8 +832,8 @@ def testUnameConsistency():
 
 def testAppliance1001Switches():
 
-    for s in switches:
-        switch = switches[s]
+    for s in gpcheck_info.switches:
+        switch = gpcheck_info.switches[s]
     
         if switch.category == 'Interconnect':
             expected = "v6.3.1b"
@@ -829,8 +846,8 @@ def testAppliance1001Switches():
                 printError(switch.hostname, "Interconnect Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
 
 def testAppliance1001():
-    for h in hosts.keys():
-        testAppliance1001Host(hosts[h])
+    for h in gpcheck_info.hosts.keys():
+        testAppliance1001Host(gpcheck_info.hosts[h])
 
     testUnameConsistency()
 
@@ -838,20 +855,20 @@ def testAppliance1001():
 
 def testGenericLinuxCluster():
 
-    for h in hosts.keys():
-        testGenericLinuxHost(hosts[h])
+    for h in gpcheck_info.hosts.keys():
+        testGenericLinuxHost(gpcheck_info.hosts[h])
 
     testUnameConsistency()
 
 
 def runTests():
 
-    if not is_root:
+    if not gpcheck_info.is_root:
         printError(None, "utility will not check all settings when run as non-root user")
 
-    if host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
         testAppliance1001()
-    elif host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
+    elif gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
         testGenericLinuxCluster()
     else:
         printWarning("No tests exist for this platform in gpcheck")
@@ -895,9 +912,9 @@ def runCollections():
 # true is error
 def checkPlatform():
 
-    global host_type
+    global gpcheck_info
 
-    host_type = HostType.GPCHECK_HOSTTYPE_UNDEFINED
+    gpcheck_info.host_type = HostType.GPCHECK_HOSTTYPE_UNDEFINED
 
     if os.path.exists('/etc/gpdb-appliance-version'):
 
@@ -907,15 +924,13 @@ def checkPlatform():
             appliance_version = appliance_version.strip()
 
             if appliance_version == "1.0.0.1":
-                logger.info("GPDB Appliance Version: %s" % appliance_version)
-                host_type = HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001
+                gpcheck_info.host_type = HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001
                 return False
         except:
             pass
 
     if SYSTEM.getName() == 'linux':
-        logger.info("Detected Linux Non-Appliance Configuration")
-        host_type = HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX
+        gpcheck_info.host_type = HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX
         return False
 
     printWarning("No tests exist for this platform in gpcheck")
@@ -943,38 +958,83 @@ def earlyExit(error = False):
     else:
         sys.exit(0)
 
-def doZip(dirname):
+# True is an error
+def readZip():
 
+    words = options.zipin.split(".tar.gz")
+    if len(words) != 2:
+        logger.error("--zipin file needs to be a .tar.gz file")
+        return True
+
+    fname = words[0]
+
+    cmdStr = "tar xfz %s" % (options.zipin)
     try:
-        os.mkdir(dirname)
+        print cmdStr
+        cmd = Command("tarcmd", cmdStr)
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc or i.results.halt or not i.results.completed:
+                logger.error("error running command: %s" % cmdStr)
+                return True
+
     except Exception, e:
         logger.errr(e.__str__())
-        logger.error("Failed to make temport directory in zip file creation: %s" % dirname)
+        logger.error("Failed extracting pickled save file: %s" % options.zipin)
+        return True
+
+    newfname = "%s/%s" % (tmpdir, fname)
+
+    cmdStr = "mv %s %s" % (fname, newfname)
+    try:
+        cmd = Command("mvcmd", cmdStr)
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc or i.results.halt or not i.results.completed:
+                logger.error("error running command: %s" % cmdStr)
+                return True
+
+    except Exception, e:
+        logger.errr(e.__str__())
+        logger.error("Exception running command: %s" % cmdStr)
+        return True
+
+    fname = newfname
+    
+    global gpcheck_info
+    try:
+        fd = open(fname, "rb")
+        gpcheck_info = pickle.load(fd)
+        fd.close()
+    except Exception, e:
+        logger.error(e.__str__())
+        logger.error("Failed extracting pickled save file: %s" % fname)
+        return True
+
+    logger.info("read from gpcheck file platform = %s" % hosttype_str(gpcheck_info.host_type))
+    logger.info("read from gpcheck file is_root = %s" % gpcheck_info.is_root)
+    logger.info("read from gpcheck file number hosts = %s" % len(gpcheck_info.hosts))
+    logger.info("read from gpcheck file number switches = %s" % len(gpcheck_info.switches))
+  
+    return False
+
+
+def doZip(fname):
+
+    try:
+        fd = open(fname, "wb")
+        pickle.dump(gpcheck_info, fd)
+        fd.close()
+    except Exception, e:
+        logger.errr(e.__str__())
+        logger.error("Failed writing pickled save file: %s" % fname)
         return
 
-    for h in hosts:
-        fname = "%s/%s.host.pickle" % (dirname, hosts[h].hostname)
-        try:
-            fd = open(fname, "wb")
-            pickle.dump(hosts[h], fd)
-            fd.close()
-        except Exception, e:
-            logger.errr(e.__str__())
-            logger.error("Failed write pickled save file: %s" % fname)
-            return
-
-    for s in switches:
-        fname = "%s/%s.switch.pickle" % (dirname, switches[s].hostname)
-        try:
-            fd = open(fname, "wb")
-            pickle.dump(switches[s], fd)
-            fd.close()
-        except Exception, e:
-            logger.errr(e.__str__())
-            logger.error("Failed write pickled save file: %s" % fname)
-            return
-
-    cmdStr = "tar cfz %s.tar.gz %s" % (dirname, dirname)
+    cmdStr = "tar cfz %s.tar.gz %s" % (fname, fname)
     try:
         cmd = Command("tarcmd", cmdStr)
         pool.addCommand(cmd)
@@ -987,10 +1047,10 @@ def doZip(dirname):
 
     except Exception, e:
         logger.errr(e.__str__())
-        logger.error("Failed write pickled save file: %s" % fname)
+        logger.error("Exception running command: %s" % cmdStr)
         return 
 
-    logger.info("SUCCESS creating %s.tar.gz" % dirname)
+    logger.info("SUCCESS creating %s.tar.gz" % fname)
 
 def cleanZip(dirname):
 
@@ -1011,25 +1071,25 @@ def cleanZip(dirname):
         return 
 
 def doPrint():
-    for h in hosts:
+    for h in gpcheck_info.hosts:
         print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
         print "HOST: %s" % h
-        print hosts[h].data.__str__()
+        print gpcheck_info.hosts[h].data.__str__()
         print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 
-    for s in switches:
+    for s in gpcheck_info.switches:
         print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-        print switches[s].__str__()
+        print gpcheck_info.switches[s].__str__()
         print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 
 def checkUser():
 
-    global is_root
+    global gpcheck_info
     user = getpass.getuser()
     if user == 'root':
-        is_root = True
+        gpcheck_info.is_root = True
     else:
-        is_root = False
+        gpcheck_info.is_root = False
 
 
 logger = get_default_logger()
@@ -1038,29 +1098,44 @@ setup_tool_logging(EXECNAME,getLocalHostname(),getUserName())
 if (parseargs()):
     sys.exit(0)
 
-if (checkPlatform()):
-    sys.exit(0)
-
-checkUser()
-
 pool = WorkerPool()
 
-if (createHostList()):
-    earlyExit(True)
+## COLLECT INPUT SECTION ###
 
 if (createTmpDir()):
     earlyExit(True)
 
-if (runCollections()):
-    earlyExit(True)
+if options.zipin:
 
-if (readDataFiles()):
-    earlyExit(True)
+    if (readZip()):
+        earlyExit(True)
+
+else:
+    gpcheck_info = GpCheckInfo()
+
+    if (checkPlatform()):
+        sys.exit(0)
+
+    logger.info("Detected platform: %s" % hosttype_str(gpcheck_info.host_type))
+
+    checkUser()
+
+    if (createHostList()):
+        earlyExit(True)
+
+    if (runCollections()):
+        earlyExit(True)
+
+    if (readDataFiles()):
+        earlyExit(True)
+
+
+## GENERATE OUTPUT SECTION ###
 
 if options.zipout:
-    dirname = "./gpcheck_%s" % time.time()
-    doZip(dirname)
-    cleanZip(dirname)
+    filename = "./gpcheck_%s" % time.time()
+    doZip(filename)
+    cleanZip(filename)
     earlyExit(False)
 
 if options.stdout:

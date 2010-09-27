@@ -5,6 +5,14 @@ class HostType:
     GPCHECK_HOSTTYPE_APPLIANCE_1001 = 1
     GPCHECK_HOSTTYPE_GENERIC_LINUX = 2
 
+def hosttype_str(type):
+    if type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
+        return "GPDB Appliance 1.0.0.1"
+    elif type == GPCHECK_HOSTTYPE_GENERIC_LINUX:
+        return "Generic Linux Cluster"
+    else:
+        return "Non-Linux Cluster"
+
 class sysctl:
     def __init__(self):
         self.variables = dict() # dictionary of values
@@ -294,4 +302,3 @@ class App1001OutputData:
         output = "%s\n%s%s" % (output, grc, self.rclocal.__str__())
 
         return output
-    
