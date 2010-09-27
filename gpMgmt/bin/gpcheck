@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpcheck -f|--file HOSTFILE -m|--master MASTER_HOST -s|--standymaster MASTER_HOST [--dump]
+USAGE:   gpcheck -f|--file HOSTFILE -m|--master MASTER_HOST -s|--standymaster MASTER_HOST [--stdout] [--zipout] 
          where HOSTFILE lists all the hosts to check
          where MASTER_HOST indicates hosts that should be assumed to be master or standby masters
-         where --dump will indicate to dump all collected data without doing any checks
+         where --stdout indicates to print all collected data without doing any checks
+         where --zipout indicates to save all collected data to a zip file in the current working directory without doing any checks
 '''
 
-import os, sys, re, tempfile, shutil, pickle, getpass, subprocess
+import os, sys, re, tempfile, shutil, pickle, getpass, subprocess, time
 
 try:
     from optparse import Option, OptionParser 
@@ -61,7 +62,8 @@ def parseargs():
     parser = OptParser(option_class=OptChecker)
     parser.remove_option('-h')
     parser.add_option('-?', '--help', action='store_true')
-    parser.add_option('-d', '--dump', action='store_true')
+    parser.add_option('--stdout', action='store_true')
+    parser.add_option('--zipout', action='store_true')
     parser.add_option('-f', '--file',  type='string')
     parser.add_option('-m', '--master', type='string')
     parser.add_option('-s', '--standbymaster', type='string')
@@ -79,6 +81,10 @@ def parseargs():
 
     if not options.file:
         logger.error("--file must be specified")
+        return True
+
+    if options.stdout and options.zipout:
+        logger.error("--stdout and --zipout options can not be used together")
         return True
 
     return False
@@ -937,7 +943,74 @@ def earlyExit(error = False):
     else:
         sys.exit(0)
 
-def doDump():
+def doZip(dirname):
+
+    try:
+        os.mkdir(dirname)
+    except Exception, e:
+        logger.errr(e.__str__())
+        logger.error("Failed to make temport directory in zip file creation: %s" % dirname)
+        return
+
+    for h in hosts:
+        fname = "%s/%s.host.pickle" % (dirname, hosts[h].hostname)
+        try:
+            fd = open(fname, "wb")
+            pickle.dump(hosts[h], fd)
+            fd.close()
+        except Exception, e:
+            logger.errr(e.__str__())
+            logger.error("Failed write pickled save file: %s" % fname)
+            return
+
+    for s in switches:
+        fname = "%s/%s.switch.pickle" % (dirname, switches[s].hostname)
+        try:
+            fd = open(fname, "wb")
+            pickle.dump(switches[s], fd)
+            fd.close()
+        except Exception, e:
+            logger.errr(e.__str__())
+            logger.error("Failed write pickled save file: %s" % fname)
+            return
+
+    cmdStr = "tar cfz %s.tar.gz %s" % (dirname, dirname)
+    try:
+        cmd = Command("tarcmd", cmdStr)
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc or i.results.halt or not i.results.completed:
+                logger.error("error running command: %s" % cmdStr)
+                return 
+
+    except Exception, e:
+        logger.errr(e.__str__())
+        logger.error("Failed write pickled save file: %s" % fname)
+        return 
+
+    logger.info("SUCCESS creating %s.tar.gz" % dirname)
+
+def cleanZip(dirname):
+
+    cmdStr = "rm -rf %s" % (dirname)
+    try:
+        cmd = Command("rmcmd", cmdStr)
+        pool.addCommand(cmd)
+        pool.join()
+        items = pool.getCompletedItems()
+        for i in items:
+            if i.results.rc or i.results.halt or not i.results.completed:
+                logger.error("error running command: %s" % cmdStr)
+                return 
+
+    except Exception, e:
+        logger.errr(e.__str__())
+        logger.error("Failed cleaning up after running gpcheck")
+        return 
+
+def doPrint():
     for h in hosts:
         print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
         print "HOST: %s" % h
@@ -984,8 +1057,14 @@ if (runCollections()):
 if (readDataFiles()):
     earlyExit(True)
 
-if options.dump:
-    doDump()
+if options.zipout:
+    dirname = "./gpcheck_%s" % time.time()
+    doZip(dirname)
+    cleanZip(dirname)
+    earlyExit(False)
+
+if options.stdout:
+    doPrint()
     earlyExit(False)
 
 if (runTests()):
