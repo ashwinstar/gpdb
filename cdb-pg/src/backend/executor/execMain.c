@@ -147,7 +147,6 @@ static void intorel_startup(DestReceiver *self, int operation, TupleDesc typeinf
 static void intorel_receive(TupleTableSlot *slot, DestReceiver *self);
 static void intorel_shutdown(DestReceiver *self);
 static void intorel_destroy(DestReceiver *self);
-static AttrNumber *attr_insert_map(Relation base, Relation part);
 static TupleTableSlot * CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo);
 static void ClearPartitionState(EState *estate);
 
@@ -4509,9 +4508,11 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 						  estate->es_instrument,
 						  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
 		
-		resultRelInfo->ri_partInsertMap =
-			attr_insert_map(estate->es_result_relations->ri_RelationDesc, 
-							resultRelInfo->ri_RelationDesc);
+		map_part_attrs(estate->es_result_relations->ri_RelationDesc, 
+					   resultRelInfo->ri_RelationDesc,
+					   &(resultRelInfo->ri_partInsertMap),
+					   TRUE); /* throw on error, so result not needed */
+
 		if (resultRelInfo->ri_partInsertMap)
 			resultRelInfo->ri_partSlot = 
 				MakeSingleTupleTableSlot(resultRelInfo->ri_RelationDesc->rd_att);
@@ -4557,27 +4558,224 @@ slot_get_partition(TupleTableSlot *slot, EState *estate)
 	return resultRelInfo;
 }
 
-/*
- * Make a vector mapping input attribute numbers to attribute
- * numbers in a "relatively compressed" relation.
+/* Wrap an attribute map (presumably from base partitioned table to part
+ * as created by map_part_attrs in execMain.c) with an AttrMap. The new
+ * AttrMap will contain a copy of the argument map.  The caller retains
+ * the responsibility to dispose of the argument map eventually.
  *
- * base	The partitioned table to insert into
- * part	The part table that the insert targets
+ * If the input AttrNumber vector is empty or null, it is taken as an
+ * identity map, i.e., a null AttrMap.
+ */
+AttrMap *makeAttrMap(int base_count, AttrNumber *base_map)
+{
+	int i, n, p;
+	AttrMap *map;
+	
+	if ( base_count < 1 || base_map == NULL )
+		return NULL;
+	
+	map = palloc0(sizeof(AttrMap) + base_count * sizeof(AttrNumber));
+	
+	for ( i = n = p = 0; i <= base_count; i++ )
+	{
+		map->attr_map[i] = base_map[i];
+		
+		if ( map->attr_map[i] != 0 ) 
+		{
+			if ( map->attr_map[i] > p ) p = map->attr_map[i];
+			n++;
+		}
+	}	
+	
+	map->live_count = n;
+	map->attr_max = p;
+	map->attr_count = base_count;
+	
+	return map;
+}
+
+/* Invert a base-to-part attribute map to produce a part-to-base attribute map.
+ * The result attribute map will have a attribute count at least as large as
+ * the largest part attribute in the base map, however, the argument inv_count
+ * may be used to force a larger count.
  *
- * The explicit result is a vector one longer than the number
+ * The identity map, null, is handled specially.
+ */
+AttrMap *invertedAttrMap(AttrMap *base_map, int inv_count)
+{
+	AttrMap *inv_map;
+	int i;
+	
+	if ( base_map == NULL )
+		return NULL;
+	
+	if ( inv_count < base_map->attr_max )
+	{
+		inv_count = base_map->attr_max;
+	}	
+	
+	inv_map = palloc0(sizeof(AttrMap) + inv_count * sizeof(AttrNumber));
+	
+	inv_map->live_count = base_map->live_count;
+	inv_map->attr_max = base_map->attr_count;
+	inv_map->attr_count = inv_count;
+	
+	for ( i = 1; i <= base_map->attr_count; i++ )
+	{
+		AttrNumber inv = base_map->attr_map[i];
+		
+		if ( inv == 0 ) continue;
+		inv_map->attr_map[inv] = i;
+	}
+	
+	return inv_map;
+}
+
+static AttrMap *copyAttrMap(AttrMap *original)
+{
+	AttrMap *copy;
+	size_t sz;
+	
+	if ( original == NULL ) return NULL;
+	
+	sz = sizeof(AttrMap) + original->attr_count *sizeof(AttrNumber);
+	copy = palloc0(sz);
+	memcpy(copy, original, sz);
+	
+	return copy;
+}
+
+/* Compose two attribute maps giving a map with the same effect as applying
+ * the first (input) map, then the second (output) map.
+ */
+AttrMap *compositeAttrMap(AttrMap *input_map, AttrMap *output_map)
+{
+	AttrMap *composite_map;
+	int i;
+	
+	if ( input_map == NULL )
+		return copyAttrMap(output_map);
+	if ( output_map == NULL )
+	    return copyAttrMap(input_map);
+	
+	composite_map = copyAttrMap(input_map);
+	composite_map->attr_max = output_map->attr_max;
+	
+	for ( i = 1; i <=input_map->attr_count; i++ )
+	{
+		AttrNumber k = attrMap(output_map, attrMap(input_map, i));
+		composite_map->attr_map[i] = k;
+	}
+	
+	return composite_map;
+}
+
+/* Use the given attribute map to convert an attribute number in the
+ * base relation to an attribute number in the other relation.  Forgive
+ * out-of-range attributes by mapping them to zero.  Treat null as
+ * the identity map.
+ */
+AttrNumber attrMap(AttrMap *map, AttrNumber anum)
+{
+	if ( map == NULL )
+		return anum;
+	if ( 0 < anum && anum <= map->attr_count )
+		return map->attr_map[anum];
+	return 0;
+}
+
+/* Apply attrMap over an integer list of attribute numbers.
+ */
+List *attrMapIntList(AttrMap *map, List *attrs)
+{
+	ListCell *lc;
+	List *remapped_list = NIL;
+	
+	foreach (lc, attrs)
+	{
+		int anum = (int)attrMap(map, (AttrNumber)lfirst_int(lc));
+		remapped_list = lappend_int(remapped_list, anum);
+	}
+	return remapped_list;
+}
+
+/* For attrMapExpr below.
+ *
+ * Mutate Var nodes in an expression using the given attribute map.
+ * Insist the Var nodes have varno == 1 and the that the mapping
+ * yields a live attribute number (non-zero).
+ */
+static Node *apply_attrmap_mutator(Node *node, AttrMap *map)
+{
+	if ( node == NULL )
+		return NULL;
+	
+	if (IsA(node, Var) )
+	{
+		AttrNumber anum = 0;
+		Var *var = (Var*)node;
+		Assert(var->varno == 1); /* in CHECK contraints */
+		anum = attrMap(map, var->varattno);
+		
+		if ( anum == 0 )
+		{
+			/* Should never happen, but best caught early. */
+			elog(ERROR, "attribute map discrepancy");
+		}
+		else if ( anum != var->varattno )
+		{
+			var = copyObject(var);
+			var->varattno = anum;
+		}
+		return (Node *)var;
+	}
+	return expression_tree_mutator(node, apply_attrmap_mutator, (void *)map);
+}
+
+/* Apply attrMap over the Var nodes in an expression.
+ */
+Node *attrMapExpr(AttrMap *map, Node *expr)
+{
+	return apply_attrmap_mutator(expr, map);
+}
+
+
+/* Check compatibility of the attributes of the given partitioned
+ * table and part for purposes of INSERT (through the partitioned
+ * table) or EXCHANGE (of the part into the partitioned table).
+ * Don't use any partitioning catalogs, because this must run
+ * on the segment databases as well as on the entry database.
+ *
+ * If requested and needed, make a vector mapping the attribute
+ * numbers of the partitioned table to corresponding attribute 
+ * numbers in the part.  Represent the "unneeded" identity map
+ * as null.
+ *
+ * base -- the partitioned table
+ * part -- the part table
+ * map_ptr -- where to store a pointer to the result, or NULL
+ * throw -- whether to throw an error in case of incompatibility
+ *
+ * The implicit result is a vector one longer than the number
  * of attributes (existing or not) in the base relation.
+ * It is returned through the map_ptr argument, if that argument
+ * is non-null.
  *
- * Note that result element 0 is wasted and is always zero, so
- * the vector is indexed by attribute number (origin 1).
+ * The explicit result indicates whether the part is compatible
+ * with the base relation.  If the throw argument is true, however,
+ * an error is issued rather than returning false.
  *
- * The i-th element of the result is the attribute number in 
- * the compressed part relation that corresponds to the i-th 
- * attribute of the base relation, or it is zero to indicate 
- * that the i-th attribute of the base relation doesn't exist 
- * (has been dropped).
+ * Note that, in the map, element 0 is wasted and is always zero, 
+ * so the vector is indexed by attribute number (origin 1).
+ *
+ * The i-th element of the map is the attribute number in 
+ * the part relation that corresponds to attribute i of the  
+ * base relation, or it is zero to indicate that attribute 
+ * i of the base relation doesn't exist (has been dropped).
  *
  * This is a handy map for renumbering attributes for use with
- * part relations that may have had "holes" compressed out.
+ * part relations that may have a different configuration of 
+ * "holes" than the partitioned table in which they occur.
  * 
  * Be sure to call this in the memory context in which the result
  * vector ought to be stored.
@@ -4585,121 +4783,193 @@ slot_get_partition(TupleTableSlot *slot, EState *estate)
  * Though some error checking is done, it is not comprehensive.
  * If internal assumptions about possible tuple formats are
  * correct, errors should not occur.  Still, the downside is
- * incorrect data, so it seems worthwhile to use errors (not
- * assertions) for the case.
+ * incorrect data, so use errors (not assertions) for the case.
  *
- * Assumptions include same number of non-dropped attributes
- * in all parts of a partitioned table, corresponding attributes
- * (whether dropped or not) in the same order, attribute numbers
- * agree with position in tuple, etc.  Unchecked assumptions
- * include, e.g., certain cases of alignment agreement.
+ * Checks include same number of non-dropped attributes in all 
+ * parts of a partitioned table, non-dropped attributes in 
+ * corresponding relative positions must match in name, type
+ * and alignment, attribute numbers must agree with their
+ * position in tuple, etc.
  */
-
-static AttrNumber*
-attr_insert_map(Relation base, Relation part)
+bool 
+map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 {	
-	AttrNumber *v = NULL;
+	AttrNumber i = 1;
+	AttrNumber n = base->rd_att->natts;
+	FormData_pg_attribute *battr = NULL;
 	
-	int i = 1;
-	int n = base->rd_att->natts;
-	FormData_pg_attribute *battr;
-	
-	int j = 1;
-	int m = part->rd_att->natts;
+	AttrNumber j = 1;
+	AttrNumber m = part->rd_att->natts;
 	FormData_pg_attribute *pattr = NULL;
 	
-	if ( m > n )
-		elog(ERROR, 
-			 "physical attribute count in part relation exceeds that of parent");
-	else if ( m == n )
+	AttrNumber *v = NULL;
+	
+	/* If we might want a map, allocate one. */
+	if ( map_ptr != NULL )
 	{
-		/* Since the physical tuple length is the same, the current exchange regime
-		 * guarantees that the tuples are identical.  But do a cursory check. */
-		for ( i = 0; i < n; i++ )
-		{
-			battr = (base->rd_att->attrs)[i];
-			pattr = (part->rd_att->attrs)[i];
-			
-			if ( battr->attnum != pattr->attnum
-				|| battr->attisdropped != pattr->attisdropped )
-				elog(ERROR, 
-					 "corresponding attributes of part and parent relations"
-					 " have different attribute numbers");
-
-			if (battr->attalign != pattr->attalign )
-				elog(ERROR, 
-					 "corresponding attributes of part and parent relations"
-					 " have different alignment");
-			
-			if (!battr->attisdropped && battr->atttypid != pattr->atttypid)
-				elog(ERROR, 
-					 "corresponding attributes of part and parent relations"
-					 " have different datatypes");
-		}
-		return NULL; /* No map needed. */
+		v = palloc0(sizeof(AttrNumber)*(n+1));
+		*map_ptr = NULL;
 	}
 	
-	/* Construct a map. */
-	v = palloc0(sizeof(AttrNumber)*(n+1));
+	bool identical = TRUE;
+	bool compatible = TRUE;
 	
-	for ( i = 1, j = 1; i <= n; i++ )
+	/* For each matched pair of attributes ... */
+	while ( i <= n && j <= m )
 	{
-		/* Skip dropped attributes in base */
-		battr = (base->rd_att->attrs)[i-1];
-		Assert(battr->attnum == i);
+		battr = base->rd_att->attrs[i-1];
+		pattr = part->rd_att->attrs[j-1];
+		
+		/* Skip dropped attributes. */
+		
 		if ( battr->attisdropped )
-			continue;
-				
-		/* Skip dropped attributes in part. */
-		for (; j <= m; j++ )
 		{
-			pattr = (part->rd_att->attrs)[j-1];
-			Assert(pattr->attnum == j);
-			if ( !pattr->attisdropped )
-				break;
-		}
-		if ( j > m )
-			elog(ERROR, "part relation has fewer columns than parent");
-			
-		/* We have a pairing, but check plausibility. */
-			if ( battr->atttypid != pattr->atttypid )
-				elog(ERROR, 
-					 "corresponding attributes of part and parent relations"
-					 " have different datatypes");
-		
-		if ( battr->attnum != i || pattr->attnum != j )
-			elog(ERROR,  
-				 "corresponding attributes of part and parent relations"
-				 " have different attribute numbers");
-		
-		v[i] = j++;
-	} /* next i */
-	
-	/* Make sure we used up all the attributes in part. */
-	for (; j <= m; j++ )
-	{
-		pattr = part->rd_att->attrs[j];
-		if ( pattr->attisdropped )
+			i++;
 			continue;
+		}
 		
-		elog(ERROR, 
-			 "physical attribute count in parent relation exceeds that of part");
+		if ( pattr->attisdropped )
+		{
+			j++;
+			continue;
+		}
+		
+		/* Check attribute conformability requirements. */
+		
+		/* -- Names must match. */
+		if ( strncmp(NameStr(battr->attname), NameStr(pattr->attname), NAMEDATALEN) != 0 )
+		{
+			if ( throw )
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("relation \"%s\" must have the same "
+								"column names and column order as \"%s\"",
+								RelationGetRelationName(part),
+								RelationGetRelationName(base)),
+						 errOmitLocation(true)));
+			compatible = FALSE;
+			break;
+		}
+		
+		/* -- Types must match. */
+		if (battr->atttypid != pattr->atttypid)
+		{
+			if ( throw )
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("type mismatch for attribute \"%s\"",
+								NameStr((battr->attname))),
+						 errOmitLocation(true)));
+			compatible = FALSE;
+			break;
+		}
+		
+		/* -- Alignment should match, but check just to be safe. */
+		if (battr->attalign != pattr->attalign )
+		{
+			if ( throw )
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("alignment mismatch for attribute \"%s\"",
+								NameStr((battr->attname))),
+						 errOmitLocation(true)));
+			compatible = FALSE;
+			break;
+		}
+		
+		/* -- Attribute numbers must match position (+1) in tuple. 
+		 *    This is a hard requirement so always throw.  This could
+		 *    be an assertion, except that we want to fail even in a 
+		 *    distribution build.
+		 */
+		if ( battr->attnum != i || pattr->attnum != j )
+			elog(ERROR,
+				 "attribute numbers out of order");
+		
+		/* Note any attribute number difference. */
+		if ( i != j )
+			identical = FALSE;
+		
+		/* If we're building a map, update it. */
+		if ( v != NULL )
+			v[i] = j;
+		
+		i++;
+		j++;
 	}
+	
+	if ( compatible )
+	{
+		/* Any excess attributes in parent better be marked dropped */
+		for ( ; i <= n; i++ )
+		{
+			if ( !base->rd_att->attrs[i-1]->attisdropped )
+			{
+				if ( throw )
+				/* the partitioned table has more columns than the part */
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("relation \"%s\" must have the same number columns as relation \"%s\"",
+									RelationGetRelationName(part),
+									RelationGetRelationName(base)),
+							 errOmitLocation(true)));
+				compatible = FALSE;
+			}
+		}
 		
-	return v;
+		/* Any excess attributes in part better be marked dropped */
+		for ( ; j <= m; j++ )
+		{
+			if ( !part->rd_att->attrs[j-1]->attisdropped )
+			{
+				if ( throw )
+				/* the partitioned table has fewer columns than the part */
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("relation \"%s\" must have the same number columns as relation \"%s\"",
+									RelationGetRelationName(part),
+									RelationGetRelationName(base)),
+							 errOmitLocation(true)));
+				compatible = FALSE;
+			}
+		}
+	}
+	
+	if ( !compatible )
+	{
+		Assert( !throw );
+		if ( v != NULL )
+			pfree(v);
+		return FALSE;
+	}
+	
+	/* If parent and part are the same, don't use a map */
+	if ( identical && v != NULL )
+	{
+		pfree(v);
+		v = NULL;
+	}
+	
+	if ( map_ptr != NULL && v != NULL )
+	{
+		*map_ptr = makeAttrMap(n, v);
+		pfree(v);
+	}
+	return TRUE;
 }
 
 
+
 /*
- * Use the supplied ResultRelInfo to create an appropriately compressed 
+ * Use the supplied ResultRelInfo to create an appropriately restructured 
  * version of the tuple in the supplied slot, if necessary.
  *
  * slot -- slot containing the input (uncompressed) tuple
  * resultRelInfo -- info pertaining to the target part of an insert 
  *
- * If no compression is required, the result is the argument slot, else
+ * If no restructuring is required, the result is the argument slot, else
  * it is the slot from the argument result info updated to hold the 
- * compressed tuple.
+ * restructured tuple.
  */
 static TupleTableSlot *
 CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
@@ -4708,7 +4978,7 @@ CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 	int natts;
 	Datum *values;
 	bool *isnull;
-	AttrNumber *map; 
+	AttrMap *map; 
 	TupleTableSlot *partslot;
 	Datum *partvalues;
 	bool *partisnull;
@@ -4717,37 +4987,37 @@ CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo)
 	
 	map = resultRelInfo->ri_partInsertMap;
 	
-	/* No map means no compression needed. */
+	/* No map means no restructuring needed. */
 	if ( map == NULL )
 		return slot;
 	
-	/* Expand the given tuple into attribute arrays. */
+	/* Put the given tuple into attribute arrays. */
 	natts = slot->tts_tupleDescriptor->natts;
 	slot_getallattrs(slot);
 	values = slot_get_values(slot);
 	isnull = slot_get_isnull(slot);
 	
-	/* Get the compressed slot ready. */
+	/* Get the target slot ready. */
 	partslot = ExecStoreAllNullTuple(resultRelInfo->ri_partSlot);
 	partvalues = slot_get_values(partslot);
 	partisnull = slot_get_isnull(partslot);
 	
-	/* Compress the expanded tuple.  Non-zero  map entries are attribute
-	 * numbers in the compressed tuple, however, not every attribute
-	 * number of the compressed tuple need be present.  In particular, 
+	/* Restructure the input tuple.  Non-zero map entries are attribute
+	 * numbers in the target tuple, however, not every attribute
+	 * number of the input tuple need be present.  In particular, 
 	 * attribute numbers corresponding to dropped attributes will be 
 	 * missing.
 	 */
 	for ( i = 1; i <= natts; i++ )
 	{
-		j = map[i];
+		j = attrMap(map, i);
 		if ( j == 0 )
 			continue;
-				
+		
 		partvalues[j-1] = values[i-1];
 		partisnull[j-1] = isnull[i-1];
 	}
-		
+	
 	partslot = ExecStoreVirtualTuple(partslot);
 	
 	return partslot;

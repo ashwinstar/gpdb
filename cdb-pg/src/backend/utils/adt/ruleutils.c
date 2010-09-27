@@ -880,6 +880,13 @@ pg_get_constraintdef_string(Oid constraintId)
 	return pg_get_constraintdef_worker(constraintId, true, 0);
 }
 
+/* Internal version that returns a palloc'd C string */
+char *
+pg_get_constraintexpr_string(Oid constraintId)
+{
+	return pg_get_constraintdef_worker(constraintId, false, 0);
+}
+
 static char *
 pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 							int prettyFlags)
@@ -1139,7 +1146,6 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 
 	return buf.data;
 }
-
 
 /*
  * Convert an int16[] Datum into a comma-separated list of column names

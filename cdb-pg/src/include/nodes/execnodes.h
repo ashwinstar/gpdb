@@ -275,7 +275,7 @@ typedef struct ResultRelInfo
 	struct ExternalInsertDescData	*ri_extInsertDesc;   
 	int                     ri_aosegno;
 	uint64                  ri_aoprocessed; /* tuples processed for AO */
-	AttrNumber				*ri_partInsertMap;
+	struct AttrMap			*ri_partInsertMap;
 	TupleTableSlot			*ri_partSlot;
 } ResultRelInfo;
 

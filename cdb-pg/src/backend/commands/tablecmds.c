@@ -434,8 +434,10 @@ static Oid DefineRelation_int(CreateStmt *stmt, char relkind, char relstorage, C
 
 static void ATExecPartAddInternal(Relation rel, Node *def);
 static void exchange_part_rule(Oid oldrelid, Oid newrelid);
-static List *exchange_part_constraints(List *pcols, Relation oldrel,
-									   Relation newrel, bool validate);
+static List *exchange_part_constraints(List *pcols, 
+									   Relation oldrel, AttrMap *oldmap, 
+									   Relation newrel, AttrMap *newmap,
+									   bool validate);
 static List *get_part_constraints(List *part, Relation pgcon, Relation rel);
 
 static List *rel_get_part_path(Oid relid);
@@ -18946,11 +18948,18 @@ exchange_part_inheritance(Oid oldrelid, Oid newrelid)
 }
 
 /*
- * Get CHECK constraints on partitioned columns listed in the partition
- * configuration.
+ * Get CHECK constraints on columns specified in the attrs argument.
+ *
+ * This is basically a subroutine used by exchange_part_constraints
+ * to obtain  the constraints on a part's partitioning columns that 
+ * guard its partition rule.
+ *
+ * Note that pgcon (the ConstraintRelationId appropriately locked) 
+ * is supplied externally for efficiency.  No other relation should
+ * be used.
  */
 static List *
-get_part_constraints(List *part, Relation pgcon, Relation rel)
+get_part_constraints(List *attrs, Relation pgcon, Relation rel)
 {
 	List 	   *cons;
 	SysScanDesc scan;
@@ -18990,7 +18999,7 @@ get_part_constraints(List *part, Relation pgcon, Relation rel)
 					      &keys, NULL, &nkeys);
 
 		/* use naive search since number of columns is presumed small */
-		foreach(lc, part)
+		foreach(lc, attrs)
 		{
 			AttrNumber attno = lfirst_int(lc);
 			int j;
@@ -19023,21 +19032,42 @@ get_part_constraints(List *part, Relation pgcon, Relation rel)
 	return cons;
 }
 
+/* Subroutine of ATPExecPartExchange used to swap constraints on existing
+ * part and candidate part.
+ *
+ * part -- an integer list of partitioning attribute numbers relative
+ *         to the parent partitioned table.
+ * oldrel -- open relation of existing part to exchange
+ * oldmap -- maps part list to partitioning attribute number relative
+ *           to the existing part.
+ * newrel -- open relation of the candidate part
+ * newmap -- maps part list to partitioning attribute number relative
+ *           to the table to exchange
+ * validate -- whether to collect added constraints into result list
+ *			   for phase 3 enforcement
+ */
 static List *
-exchange_part_constraints(List *part, Relation oldrel, Relation newrel,
+exchange_part_constraints(List *part, 
+						  Relation oldrel, AttrMap *oldmap,
+						  Relation newrel, AttrMap *newmap,
 						  bool validate)
 {
+	List *oldpart = part;
+	List *newpart = part;
 	List *oldcons;
 	List *newcons;
-	ListCell *lc;
+	ListCell *oldlc;
 	Relation pgcon;
 	bool add_cons = true;
 	List *outcons = NIL;
 
 	pgcon = heap_open(ConstraintRelationId, AccessShareLock);
 
-	oldcons = get_part_constraints(part, pgcon, oldrel);
-	newcons = get_part_constraints(part, pgcon, newrel);
+	oldpart = attrMapIntList(oldmap, part);
+	newpart = attrMapIntList(newmap, part);
+
+	oldcons = get_part_constraints(oldpart, pgcon, oldrel);	
+	newcons = get_part_constraints(newpart, pgcon, newrel);
 
 	/*
 	 * If we found constraints for the new table, they better be identical
@@ -19045,30 +19075,39 @@ exchange_part_constraints(List *part, Relation oldrel, Relation newrel,
 	 */
 	if (newcons)
 	{
-		foreach(lc, oldcons)
+		foreach(oldlc, oldcons)
 		{
-			ListCell *lc2;
-			HeapTuple oldtup = lfirst(lc);
-			Datum val;
+			ListCell *newlc;
+			HeapTuple oldtup = lfirst(oldlc);
 			bool isnull;
-
-			val = heap_getattr(oldtup, Anum_pg_constraint_consrc,
-							   RelationGetDescr(pgcon), &isnull);
-
+			Oid conid;
+			char *oldconstr;
+			char *newconstr;
+			
+			conid = DatumGetObjectId(heap_getattr(oldtup, 
+												  ObjectIdAttributeNumber,
+												  RelationGetDescr(pgcon), 
+												  &isnull));
 			Assert(!isnull);
+			oldconstr = pg_get_constraintexpr_string(conid);
 
-			foreach(lc2, newcons)
+			foreach(newlc, newcons)
 			{
-				HeapTuple newtup = lfirst(lc2);
-				Datum res;
-				Datum newval;
+				HeapTuple newtup = lfirst(newlc);
+				Oid newconid;
+				bool match;
 
-				newval = heap_getattr(newtup, Anum_pg_constraint_consrc,
-									  RelationGetDescr(pgcon), &isnull);
+				newconid = DatumGetObjectId(heap_getattr(newtup, 
+														 ObjectIdAttributeNumber,
+														 RelationGetDescr(pgcon), 
+														 &isnull));
 				Assert(!isnull);
 
-				res = DirectFunctionCall2(texteq, val, newval);
-				if (!DatumGetBool(res))
+				newconstr = pg_get_constraintexpr_string(newconid);
+				match = ( 0 == strcmp(oldconstr, newconstr));
+											
+											
+				if ( ! match )
 				{
 					Form_pg_constraint con =
 						(Form_pg_constraint)GETSTRUCT(newtup);
@@ -19088,9 +19127,9 @@ exchange_part_constraints(List *part, Relation oldrel, Relation newrel,
 		add_cons = false;
 	}
 
-	foreach (lc, oldcons)
+	foreach (oldlc, oldcons)
 	{
-		HeapTuple tuple = lfirst(lc);
+		HeapTuple tuple = lfirst(oldlc);
 		ObjectAddress conobj;
 		if (add_cons)
 		{
@@ -19099,12 +19138,20 @@ exchange_part_constraints(List *part, Relation oldrel, Relation newrel,
 			int16 *keys;
 			Datum val;
 			bool isnull;
-			Node *n;
+			Node *conexpr;
 			char *consrc;
 			char *conbin;
 			int nkeys;
 			int i;
+			AttrMap *imap = NULL;
+			AttrMap *xmap = NULL;
+			
+			/* xmap: old (part) to new (candidate) attributes by way of parent. */
+			imap = invertedAttrMap(oldmap, 0);
+			xmap = compositeAttrMap(imap, newmap);
+			if ( imap != NULL ) pfree(imap);
 
+			/* Translate pg_constraint.conkey */
 			val = heap_getattr(tuple, Anum_pg_constraint_conkey,
 							   RelationGetDescr(pgcon), &isnull);
 
@@ -19116,21 +19163,29 @@ exchange_part_constraints(List *part, Relation oldrel, Relation newrel,
 
 			keys = palloc(sizeof(int16) * nkeys);
 			for (i = 0; i < nkeys; i++)
-				keys[i] = DatumGetInt16(dats[i]);
+			{
+				int16 key =  DatumGetInt16(dats[i]);
+				keys[i] = (int16)attrMap(xmap, key);
+			}
 
+			/* Translate pg_constraint.conbin */
 			val = heap_getattr(tuple, Anum_pg_constraint_conbin,
 							   RelationGetDescr(pgcon), &isnull);
-
 			Assert(!isnull);
-			conbin = DatumGetCString(DirectFunctionCall1(textout, val));
-			n = stringToNode(conbin);
 
+			conbin = DatumGetCString(DirectFunctionCall1(textout, val));
+			conexpr = stringToNode(conbin);
+			conexpr = attrMapExpr(xmap, conexpr);
+			conbin = nodeToString(conexpr);
+
+			/* Don't translate pg_constraint.consrc -- per doc'n, use original */
 			val = heap_getattr(tuple, Anum_pg_constraint_consrc,
 							   RelationGetDescr(pgcon), &isnull);
 
 			Assert(!isnull);
 			consrc = DatumGetCString(DirectFunctionCall1(textout, val));
 
+			/* Apply translated constraint to candidate. */
 			CreateConstraintEntry(NameStr(con->conname),
 								  con->connamespace,
 								  con->contype,
@@ -19147,7 +19202,7 @@ exchange_part_constraints(List *part, Relation oldrel, Relation newrel,
 								  ' ',
 								  ' ',
 								  InvalidOid,
-								  n,
+								  conexpr,
 								  conbin,
 								  consrc);
 
@@ -19160,10 +19215,12 @@ exchange_part_constraints(List *part, Relation oldrel, Relation newrel,
 				Assert(con->contype == CONSTRAINT_CHECK);
 
 				/* ExecQual wants implicit-AND format */
-				newcon->qual = (Node *)make_ands_implicit((Expr *)n);
+				newcon->qual = (Node *)make_ands_implicit((Expr *)conexpr);
 
 				outcons = lappend(outcons, newcon);
 			}
+			
+			if ( xmap != NULL ) pfree(xmap);
 		}
 
 		/* remove old constraint */
@@ -19298,16 +19355,19 @@ exchange_permissions(Oid oldrelid, Oid newrelid)
 	heap_close(rel, NoLock);
 }
 
-/* ALTER TABLE ... EXCHANGE PARTITION */
+/* ALTER TABLE ... EXCHANGE PARTITION 
+ * 
+ * Do the exchange that was validated earlier (in ATPrepPartExchange).
+ */
 static void
 ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 {
 	Oid					 oldrelid 	= InvalidOid;
 	Oid					 newrelid 	= InvalidOid;
-	AlterPartitionId   	*orig_pid 	= NULL;	/* save for NOTICE msg at end... */
 	PgPartRule   	    *orig_prule = NULL;
 	AlterPartitionCmd	*pc2 = NULL;
 	List				*pcols = NIL; /* partitioned attributes of rel */
+	AlterPartitionIdType orig_pid_type = AT_AP_IDNone;	/* save for NOTICE msg at end... */
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		return;
@@ -19339,7 +19399,7 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 							 ),
 									   errOmitLocation(true)));
 
-		orig_pid = pid;
+		orig_pid_type = pid->idtype;
 		orig_prule = prule;
 
 		oldrelid = prule->topRule->parchildrelid;
@@ -19388,21 +19448,32 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 #else
 	/*
 	 * It would be nice to just swap the relfilenodes. In fact, we could
-	 * do that in most cases, the exceptions being tables with dropped columns
-	 * and append only tables.
+	 * do that in most cases, the exceptions being tables with dropped 
+	 * columns and append only tables.
 	 *
-	 * Instead, we swap the names of the tables, the type names,
-	 * the constraints, inheritance. We do not swap indexes, ao information
+	 * So instead, we swap the names of the tables, the type names, the 
+	 * constraints, inheritance. We do not swap indexes, ao information
 	 * or statistics.
+	 *
+	 * Note that the state, whether QD or QE, at this point is
+	 * - rel -- relid of partitioned table
+	 * - oldrelid -- relid of part currently in place
+	 * - newrelid -- relid of candidate part to exchange in
+	 * - orig_pid_type -- what kind of AlterTablePartitionId id'd the part
+	 * - orig_prule -- Used in issuing notice in occasional case.
+	 * - pc2->arg1 -- integer Value node: 1 validate, else 0.
+	 * - pcols -- integer list of master partitioning columns
 	 */
-
 	{
 		char tmpname[NAMEDATALEN];
 		char *newname;
 		char *oldname;
 		Relation newrel;
 		Relation oldrel;
+		AttrMap *newmap;
+		AttrMap *oldmap;
 		List *newcons;
+		bool ok;
 		bool validate = intVal(pc2->arg1) ? true : false;
 
 		newrel = heap_open(newrelid, AccessExclusiveLock);
@@ -19410,8 +19481,13 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 
 		newname = pstrdup(RelationGetRelationName(newrel));
 		oldname = pstrdup(RelationGetRelationName(oldrel));
+		
+		ok = map_part_attrs(rel, newrel, &newmap, FALSE);
+		Assert(ok);
+		ok = map_part_attrs(rel, oldrel, &oldmap, FALSE);
+		Assert(ok);
 
-		newcons = exchange_part_constraints(pcols, oldrel, newrel, validate);
+		newcons = exchange_part_constraints(pcols, oldrel, oldmap, newrel, newmap, validate);
 		tab->constraints = list_concat(tab->constraints, newcons);
 		CommandCounterIncrement();
 
@@ -19447,19 +19523,17 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 		{
 			exchange_part_rule(oldrelid, newrelid);
 			CommandCounterIncrement();
+
+			/* Notify of name if did not use name for partition id spec */
+			if ( orig_pid_type != AT_AP_IDName && orig_prule->isName )
+				ereport(NOTICE,
+						(errmsg("exchanged partition%s of "
+								"%s with relation \"%s\"",
+								orig_prule->partIdStr,
+								orig_prule->relname,
+								newname),
+						 errOmitLocation(true)));
 		}
-
-		/* Notify of name if did not use name for partition id spec */
-		if (orig_pid && (orig_pid->idtype != AT_AP_IDName)
-			&& orig_prule->isName)
-			ereport(NOTICE,
-					(errmsg("exchanged partition%s of "
-							"%s with relation \"%s\"",
-							orig_prule->partIdStr,
-							orig_prule->relname,
-							newname),
-									   errOmitLocation(true)));
-
 	}
 	tab->exchange_relid = newrelid;
 #endif
@@ -23339,111 +23413,51 @@ ATPrepExchange(Relation rel, AlterPartitionCmd *pc)
  */
 static bool
 is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw)
-{
-	int i;
+{	
+	AttrMap *map_new = NULL;
+	AttrMap *map_old = NULL;
+	bool congruent = TRUE;
 	
 	/* Both parts must be relations. */
 	if (!(oldrel->rd_rel->relkind == RELKIND_RELATION ||
 		  newrel->rd_rel->relkind == RELKIND_RELATION))
 	{
-		if ( !throw )
-			return false;
-		else
+		congruent = FALSE;
+		if ( throw )
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("cannot exchange relation "
 							"which is not a table")));
 	}
-	
-	/* Both parts must have the same number of attributes */
-	if (oldrel->rd_rel->relnatts != newrel->rd_rel->relnatts)
+
+	/* Attributes of the existing part (oldrel) must be compatible with the 
+	 * partitioned table as a whole.  This might be an assertion, but we don't
+	 * want this case to pass in a production build, so we use an internal
+	 * error.
+	 */
+	if (congruent && ! map_part_attrs(rel, oldrel, &map_old, FALSE) )
 	{
-		int ocnt = 0;
-		int ncnt = 0;
-		
-		if ( !throw )
-			return false;
-		
-		for (i = 0; i < oldrel->rd_rel->relnatts; i++)
-			ocnt += ( oldrel->rd_att->attrs[i]->attisdropped ? 0 : 1 );
-		
-		for (i = 0; i < newrel->rd_rel->relnatts; i++)
-			ncnt += ( newrel->rd_att->attrs[i]->attisdropped ? 0 : 1 );
-		
-		if (ocnt != ncnt)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("relation \"%s\" must have the same number "
-							"columns as relation \"%s\"",
-							RelationGetRelationName(newrel),
-							RelationGetRelationName(rel)),
-					 errOmitLocation(true)));
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("relation \"%s\" and relation \"%s\" "
-							"have mismatched dropped attributes",
-							RelationGetRelationName(newrel),
-							RelationGetRelationName(rel)),
-					 errOmitLocation(true)));
-		
+		congruent = FALSE;
+		if ( throw )
+			elog(ERROR, "existing part \"%s\" not congruent with"
+						"partitioned table \"%s\"",
+						RelationGetRelationName(oldrel),
+						RelationGetRelationName(rel));
 	}
+
+	/* From here on we need to be careful to free the maps. */
 	
-	/* Part attributes must match in name, type, and order. */
-	for (i = 0; i < oldrel->rd_rel->relnatts; i++)
-	{
-		/* Same columns in the same order */
-		Form_pg_attribute oldatt = oldrel->rd_att->attrs[i];
-		Form_pg_attribute newatt = newrel->rd_att->attrs[i];
-		
-		/* both attributes exist or both are dropped */
-		if ( oldatt->attisdropped != newatt->attisdropped )
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("relation \"%s\" and relation \"%s\" "
-							"have mismatched dropped attributes",
-							RelationGetRelationName(newrel),
-							RelationGetRelationName(rel)),
-					 errOmitLocation(true)));
-		
-		/* attribute name */
-		if (memcmp(NameStr(oldatt->attname),
-				   NameStr(newatt->attname),
-				   NAMEDATALEN) != 0)
-		{
-			if ( !throw )
-				return false;
-			else
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("relation \"%s\" must have the same "
-								"column names and column order as \"%s\"",
-								RelationGetRelationName(newrel),
-								RelationGetRelationName(rel)),
-						 errOmitLocation(true)));
-		}
-		
-		/* attribute type */
-		if (oldatt->atttypid != newatt->atttypid ||
-			oldatt->atttypmod != newatt->atttypmod )
-		{
-			if ( !throw )
-				return false;
-			else
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("type mismatch for attribute \"%s\"",
-								NameStr((oldatt->attname))),
-						 errOmitLocation(true)));
-		}
-	}
+	/* Attributes of new part must be compatible with the partitioned table.
+	 * (We assume that the attributes of the old part are compatible.)
+	 */
+	if ( congruent && ! map_part_attrs(rel, newrel, &map_new, throw) )
+		congruent = FALSE;
 	
 	/* Both parts must have the same owner. */
-	if (oldrel->rd_rel->relowner != newrel->rd_rel->relowner)
+	if ( congruent && oldrel->rd_rel->relowner != newrel->rd_rel->relowner)
 	{
-		if ( !throw )
-			return false;
-		else
+		congruent = FALSE;
+		if ( throw )
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("owner of \"%s\" must be the same as that "
@@ -23454,11 +23468,10 @@ is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw)
 	}
 	
 	/* Both part tables must have the same "WITH OID"s setting */
-	if (oldrel->rd_rel->relhasoids != newrel->rd_rel->relhasoids)
+	if (congruent && oldrel->rd_rel->relhasoids != newrel->rd_rel->relhasoids)
 	{
-		if ( !throw )
-			return false;
-		else
+		congruent = FALSE;
+		if ( throw )
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("\"%s\" and \"%s\" must have same OIDs setting",
@@ -23468,11 +23481,10 @@ is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw)
 	}
 	
 	/* The new part table must not be involved in inheritance. */
-	if (has_subclass(RelationGetRelid(newrel)))
+	if ( congruent && has_subclass(RelationGetRelid(newrel)))
 	{
-		if ( !throw )
-			return false;
-		else
+		congruent = FALSE;
+		if ( throw )
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("cannot EXCHANGE table \"%s\" as it has "
@@ -23481,11 +23493,10 @@ is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw)
 					 errOmitLocation(true)));
 	}
 	
-	if (relation_has_supers(RelationGetRelid(newrel)))
+	if (congruent && relation_has_supers(RelationGetRelid(newrel)))
 	{
-		if ( !throw )
-			return false;
-		else
+		congruent = FALSE;
+		if ( throw )
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("cannot exchange table \"%s\" as it "
@@ -23495,11 +23506,10 @@ is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw)
 	}
 	
 	/* The new part table must not have rules on it. */
-	if (newrel->rd_rules || oldrel->rd_rules)
+	if ( congruent && ( newrel->rd_rules || oldrel->rd_rules ) )
 	{
-		if ( !throw )
-			return false;
-		else
+		congruent = FALSE;
+		if ( throw )
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("cannot exchange table which has rules "
@@ -23507,23 +23517,65 @@ is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw)
 					 errOmitLocation(true)));
 	}
 	
-	/* The distribution policies of the parts (and BTW the whole partitioned
-	 * table) must match.  However, we can only check this where the policy
-	 * table is populated, i.e., on the entry database.
+	/* The distribution policies of the existing part (oldpart) and the
+	 * candidate part (newpart) must match that of the whole partitioned
+	 * table.  However, we can only check this where the policy table is 
+	 * populated, i.e., on the entry database.  Note checking the policy
+	 * of the existing part is defensive.  It SHOULD match.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if (congruent && Gp_role == GP_ROLE_DISPATCH)
 	{
+		GpPolicy *parpol = rel->rd_cdbpolicy;
 		GpPolicy *oldpol = oldrel->rd_cdbpolicy;
 		GpPolicy *newpol = newrel->rd_cdbpolicy;
+		GpPolicy *adjpol = NULL;
 		
-		if (oldpol->ptype != oldpol->ptype ||
-			oldpol->nattrs != newpol->nattrs ||
-			memcmp(oldpol->attrs, newpol->attrs,
-				   sizeof(AttrNumber) * oldpol->nattrs))
+		if ( map_old != NULL )
 		{
-			if ( !throw )
-				return false;
-			else
+			int i;
+			AttrNumber remapped_parent_attr = 0;
+			
+			for ( i = 0; i < parpol->nattrs; i++ )
+			{
+				remapped_parent_attr = attrMap(map_old, parpol->attrs[i]);
+				
+				if ( ! (parpol->attrs[i] > 0  /* assert parent live */
+						&& oldpol->attrs[i] > 0   /* assert old part live */
+						&& remapped_parent_attr == oldpol->attrs[i] /* assert match */
+					))
+					elog(ERROR, 
+						 "discrepancy in partitioning policy of \"%s\"",
+						 RelationGetRelationName(rel));
+			}
+		}
+		else
+		{
+			if (! GpPolicyEqual(parpol, oldpol) )
+				elog(ERROR, 
+					 "discrepancy in partitioning policy of \"%s\"",
+					 RelationGetRelationName(rel));
+		}
+		
+		if ( map_new != NULL )
+		{
+			int i;
+			adjpol = GpPolicyCopy(CurrentMemoryContext, parpol);
+			
+			for ( i = 0; i < adjpol->nattrs; i++ )
+			{
+				adjpol->attrs[i] = attrMap(map_new, parpol->attrs[i]);
+				Assert(newpol->attrs[i] > 0); /* check new part */
+			}
+		}
+		else
+		{
+			adjpol = parpol;
+		}
+		
+		if (! GpPolicyEqual(adjpol, newpol) )
+		{
+			congruent = FALSE;
+			if ( throw )
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("distribution policy for \"%s\" "
@@ -23532,8 +23584,21 @@ is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw)
 								RelationGetRelationName(rel)),
 						 errOmitLocation(true)));
 		}
+		else if (false && memcmp(oldpol->attrs, newpol->attrs,
+						sizeof(AttrNumber) * adjpol->nattrs))
+		{
+			congruent = FALSE;
+			if ( throw )
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("distribution policy matches but implementation lags"),
+						 errOmitLocation(true)));
+		}
 	}
 	
-	return true;
+	if ( map_old != NULL ) pfree(map_old);
+	if ( map_new != NULL ) pfree(map_new);
+	
+	return congruent;
 }
 	
