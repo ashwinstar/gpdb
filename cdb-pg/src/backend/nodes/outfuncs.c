@@ -75,7 +75,13 @@
 
 /* Write a char field (ie, one ascii character) */
 #define WRITE_CHAR_FIELD(fldname) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %c", node->fldname)
+	if ( node->fldname == '\\' ) \
+		appendStringInfo(str, " :" CppAsString(fldname) " \\\\"); \
+	else if ( isprint(node->fldname) ) \
+		appendStringInfo(str, " :" CppAsString(fldname) " %c", node->fldname); \
+	else \
+		appendStringInfo(str, " :" CppAsString(fldname) " %03u", (unsigned)node->fldname)
+
 
 /* Write an enumerated-type field as an integer code */
 #define WRITE_ENUM_FIELD(fldname, enumtype) \

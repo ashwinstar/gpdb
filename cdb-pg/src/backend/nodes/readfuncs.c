@@ -87,8 +87,36 @@
 /* Read a long-integer field (anything written as ":fldname %ld") */
 #define READ_LONG_FIELD(fldname)    READ_SCALAR_FIELD(fldname, atol(token))
 
+/*
+ * extended_char
+ *    In GPDB some structures have char fields with non-printing characters
+ *    in them.  '\0' is problematic in particular because it ends debugging
+ *    displays of nodes.  It is a bad practice, but hard to stem.  This
+ *    function used in readfuncs.c READ_CHAR_FIELD is the inverse of the
+ *    character output format in outfuncs.c WRITE_CHAR_FIELD.  A length
+ *    one token is translated as before.  A longer token is taken as the
+ *    decimal code of the desired character.  (The only zero length token,
+ *    <>, should not appear in a character field.)
+ */
+inline static char extended_char(char* token, size_t length)
+{
+	char c, *s;
+	
+	if ( length == 1 )
+		return *token;
+	
+	s = debackslash(token, length);
+	if ( strlen(s) == 1 )
+		c = s[0];
+	else
+		c = (char)strtoul(s, NULL, 10);
+	pfree(s);
+	return c;
+}
+
 /* Read a char field (ie, one ascii character) */
-#define READ_CHAR_FIELD(fldname)    READ_SCALAR_FIELD(fldname, token[0])
+#define READ_CHAR_FIELD(fldname) \
+	READ_SCALAR_FIELD(fldname, extended_char(token, length))
 
 /* Read an enumerated-type field that was written as an integer code */
 #define READ_ENUM_FIELD(fldname, enumtype)  READ_SCALAR_FIELD(fldname, (enumtype)atoi(token))
