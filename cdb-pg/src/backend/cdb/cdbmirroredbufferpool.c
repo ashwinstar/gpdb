@@ -167,7 +167,7 @@ static void MirroredBufferPool_RecheckMirrorAccess(
 		open->relFileNode.spcNode != DEFAULTTABLESPACE_OID &&
 		strcmp(open->mirrorFilespaceLocation, "") == 0)
 	{
-		if (mirrorDataLossTrackingState == MirrorDataLossTrackingState_MirrorCurrentlyUpInSync &&
+		if (mirrorDataLossTrackingState == MirrorDataLossTrackingState_MirrorCurrentlyUpInSync ||
 			mirrorDataLossTrackingState == MirrorDataLossTrackingState_MirrorCurrentlyUpInResync)
 		{
 			char *primaryFilespaceLocation;
@@ -182,14 +182,18 @@ static void MirroredBufferPool_RecheckMirrorAccess(
 			{
 				sprintf(open->mirrorFilespaceLocation, "%s", mirrorFilespaceLocation);		
 			
-				if (Debug_persistent_print || Debug_filerep_print)
-					elog(LOG, 
-						 "recheck mirror access, "
-						 "mirror filespace location:'%s' relation file node:'%u/%u/%u'  ", 
-						 open->mirrorFilespaceLocation,
-						 open->relFileNode.spcNode,
-						 open->relFileNode.dbNode,
-						 open->relFileNode.relNode);
+				{
+					char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+					
+					snprintf(tmpBuf, sizeof(tmpBuf), 
+							 "recheck mirror access, identifier '%s/%u/%u/%u' ",
+							 open->mirrorFilespaceLocation,
+							 open->relFileNode.spcNode,
+							 open->relFileNode.dbNode,
+							 open->relFileNode.relNode);
+					
+					FileRep_InsertConfigLogEntry(tmpBuf);
+				}
 			}
 					 
 			if (primaryFilespaceLocation != NULL)
