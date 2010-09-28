@@ -114,8 +114,7 @@ public class JarLoader extends ClassLoader
 	protected URL findResource(String name)
 	{
 		/* Lookup the name */
-		String path = name.replace('.', '/').concat(".class");
-		Object entryImg = m_entries.get(path);
+		Object entryImg = m_entries.get(name);
 		
 		/* Return null when not found */
 		if (entryImg == null)
@@ -125,7 +124,7 @@ public class JarLoader extends ClassLoader
 		{
 			URL url = new URL("jar",
 							  m_url.getHost(),
-							  m_url.getPath() + "!" + path);
+							  "file:" + m_url.getPath() + "!/" + name);
 			return url;
 		}
 		catch (MalformedURLException e)
