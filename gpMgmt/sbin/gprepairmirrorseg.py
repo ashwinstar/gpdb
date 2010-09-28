@@ -4,6 +4,7 @@
 #
 
 from gppylib.commands.base import *
+from gppylib.commands.gp import *
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 from time import strftime, sleep
 import bisect
@@ -168,6 +169,13 @@ def parseargs():
     parser.add_option('-h', '-?', '--help', action='help',
                         help='show this help message and exit.', default=False)
     parser.add_option('--usage', action="briefhelp")    
+    parser.add_option('-d', '--master_data_directory', type='string',
+                        dest="masterDataDirectory",
+                        metavar="<master data directory>",
+                        help="Optional. The master host data directory. If not specified, the value set for $MASTER_DATA_DIRECTORY will be used.",
+                        default=get_masterdatadir()
+                     )
+
 
     """
      Parse the command line arguments
@@ -226,6 +234,16 @@ def is_gprepairmirrorseg_running():
         raise
 
     return is_running
+
+#-------------------------------------------------------------------------------
+def check_master_running():
+    logger.debug("Check if Master is running...")
+    if os.path.exists(options.masterDataDirectory + '/postmaster.pid'):
+       logger.warning("postmaster.pid file exists on Master")
+       logger.warning("The database must not be running during gprepairmirrorseg.")
+
+       # Would be nice to check the standby master as well, but if the system is down, we can't find it.
+       raise Exception("Unable to continue gprepairmirrorseg")
 
 
 #-------------------------------------------------------------------------------
@@ -416,6 +434,8 @@ try:
 
   options, args = parseargs()
   
+  check_master_running()
+
   if options.file == None or len(options.file) == 0:
      logger.error('The --file command line argument is required')
      raise Exception("Unable to continue")
