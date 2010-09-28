@@ -15,8 +15,10 @@ import java.util.NoSuchElementException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.jar.Attributes;
+import java.util.jar.Attributes.Name;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
+import java.util.jar.Manifest;
 
 /**
  * @author Caleb Welton
@@ -26,6 +28,7 @@ public class JarLoader extends ClassLoader
 	private final URL m_url;
 	private final Map m_entries;
 	private Map       m_images;
+	private Manifest  m_manifest;
 
 	/**
 	 * Creates a loader to load a specified JAR file.
@@ -70,6 +73,7 @@ public class JarLoader extends ClassLoader
 				
 			m_entries.put(entryName, img.toByteArray());
 		}
+		m_manifest = jis.getManifest();
 	}
 
 	/**
@@ -107,8 +111,11 @@ public class JarLoader extends ClassLoader
 		if (entryImg == null)
 			throw new ClassNotFoundException(name);
 
+		/* create a package for the class */
+		definePackage(name);
+
 		/* otherwise convert the image to a class and return it */
-		return this.defineClass(name, entryImg, 0, entryImg.length);
+		return defineClass(name, entryImg, 0, entryImg.length);
 	}
 
 	protected URL findResource(String name)
@@ -131,6 +138,85 @@ public class JarLoader extends ClassLoader
 		{
 			throw new RuntimeException(e);
 		}
+	}
+
+
+    /**
+     * Define the package information associated with a class.
+	 */
+    protected void definePackage(String className) 
+	{
+        int    classIndex  = className.lastIndexOf('.');
+		String specTitle   = null;
+		String specVendor  = null;
+		String specVersion = null;
+        String implTitle   = null;
+        String implVendor  = null;
+        String implVersion = null;
+        String sealed      = null;
+        URL    sealBase    = null;
+
+		/* Quick return if the class has no package */
+        if (classIndex == -1)
+            return;
+
+		/* Or if the package has already been defined */
+        String packageName = className.substring(0, classIndex);
+        if (getPackage(packageName) != null)
+            return;
+
+		/* Read package information from the manifest, if any */
+        if (m_manifest != null) 
+        {
+			String     sectionName       = packageName.replace('.', '/') + "/";
+			Attributes sectionAttributes = m_manifest.getAttributes(sectionName);
+			Attributes mainAttributes    = m_manifest.getMainAttributes();
+			
+			if (sectionAttributes != null)
+			{
+				specTitle   = sectionAttributes.getValue(Name.SPECIFICATION_TITLE);
+				specVendor  = sectionAttributes.getValue(Name.SPECIFICATION_VENDOR);
+				specVersion = sectionAttributes.getValue(Name.SPECIFICATION_VERSION);
+				implTitle   = sectionAttributes.getValue(Name.IMPLEMENTATION_TITLE);
+				implVendor  = sectionAttributes.getValue(Name.IMPLEMENTATION_VENDOR);
+				implVersion = sectionAttributes.getValue(Name.IMPLEMENTATION_VERSION);
+				sealed      = sectionAttributes.getValue(Name.SEALED);
+			}
+
+			if (mainAttributes != null)
+			{
+				if (specTitle == null)
+					specTitle = mainAttributes.getValue(Name.SPECIFICATION_TITLE);
+
+				if (specVendor == null)
+					specVendor = mainAttributes.getValue(Name.SPECIFICATION_VENDOR);
+
+				if (specVersion == null)
+					specVersion = mainAttributes.getValue(Name.SPECIFICATION_VERSION);
+
+				if (implTitle == null)
+					implTitle = mainAttributes.getValue(Name.IMPLEMENTATION_TITLE);
+
+				if (implVendor == null)
+					implVendor = mainAttributes.getValue(Name.IMPLEMENTATION_VENDOR);
+            
+				if (implVersion == null) 
+					implVersion = mainAttributes.getValue(Name.IMPLEMENTATION_VERSION);
+            
+				if (sealed == null) 
+					sealed = mainAttributes.getValue(Name.SEALED);
+            }
+		}
+
+		/* If the package was defined as sealed then use the jar url for the base */
+		if (sealed != null && sealed.equalsIgnoreCase("true"))
+			sealBase = m_url;
+
+		/* finally define the package and return */
+		definePackage(packageName, 
+					  specTitle, specVersion, specVendor, 
+					  implTitle, implVersion, implVendor, 
+					  sealBase);
 	}
 
 }
