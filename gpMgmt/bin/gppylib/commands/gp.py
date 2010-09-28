@@ -316,6 +316,8 @@ def getSegmentsReprArgWithoutFilespaces(segments):
 # list of valid segment statuses that can be requested
 #
 
+SEGMENT_STATUS_GET_STATUS = "getStatus"
+
 #
 # corresponds to a postmaster string value; result is a string object, or None if version could not be fetched
 #

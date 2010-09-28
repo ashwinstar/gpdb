@@ -19,7 +19,7 @@ from gppylib.mainUtils import *
 
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 import os, sys, getopt, socket, StringIO, signal
-from gppylib import gparray, gplog, pgconf, userinput, utils
+from gppylib import gparray, gplog, pgconf, userinput, utils 
 from gppylib.util import gp_utils
 from gppylib.commands import base, gp, pg, unix
 from gppylib.db import catalog, dbconn
@@ -34,6 +34,9 @@ from gppylib.test.testUtils import *
 from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, \
                                 PathNormalizationException, normalizeAndValidateInputPath, TableLogger
 from gppylib.gphostcache import GpInterfaceToHostNameCache
+
+import gppylib.commands.gp
+
 
 logger = gplog.get_default_logger()
 
@@ -686,6 +689,54 @@ class GpRecoverSegmentProgram:
 
         confProvider = configInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort())
         gpArray = confProvider.loadSystemConfig(useUtilityMode=False) 
+
+        # Make sure gpArray and segments are in agreement on current state of system.
+        segmentList = gpArray.getSegDbList()
+        getVersionCmds = {}
+        for seg in segmentList:
+           if seg.isSegmentQD() == True:
+              continue
+           if seg.isSegmentModeInChangeLogging() == False:
+              continue
+           cmd = gp.SendFilerepTransitionStatusMessage( name = "Get segment status information"
+                                                      , msg = gp.SEGMENT_STATUS_GET_STATUS
+                                                      , dataDir = seg.getSegmentDataDirectory()
+                                                      , port = seg.getSegmentPort()
+                                                      , ctxt = gp.REMOTE
+                                                      , remoteHost = seg.getSegmentHostName()
+                                                      )
+           getVersionCmds[seg.getSegmentDbId()] = cmd
+           self.__pool.addCommand(cmd)
+        self.__pool.join()
+
+        # We can not check to see if the command was successful or not, because gp_primarymirror always returns a non-zero result.
+        # That is just the way gp_primarymirror was designed.
+
+        dbsMap = gpArray.getSegDbMap()
+        for dbid in getVersionCmds:
+            cmd = getVersionCmds[dbid]
+            mode         = None
+            segmentState = None
+            dataState    = None
+            try:
+               lines = str(cmd.get_results().stderr).split("\n")
+               mode         = lines[0].split(": ")[1].strip()
+               segmentState = lines[1].split(": ")[1].strip()
+               dataState    = lines[2].split(": ")[1].strip()
+            except Exception, e:
+               logger.warning("Problem getting Segment state dbid = %s, results = %s." % (str(dbid), str(cmd.get_results().stderr)))
+               continue
+
+            db = dbsMap[dbid]
+            if gparray.ROLE_TO_MODE_MAP[db.getSegmentRole()] != mode:
+               raise Exception("Inconsistency in catalog and segment Role/Mode. Catalog Role = %s. Segment Mode = %s." % (db.getSegmentRole(), mode))
+            if gparray.MODE_TO_DATA_STATE_MAP[db.getSegmentMode()] != dataState:
+               raise Exception("Inconsistency in catalog and segment Mode/DataState. Catalog Mode = %s. Segment DataState = %s." % (db.getSegmentMode(), dataState))
+            if segmentState != gparray.SEGMENT_STATE_READY:
+               if segmentState == gparray.SEGMENT_STATE_INITIALIZATION or segmentState == gparray.SEGMENT_STATE_IN_CHANGE_TRACKING_TRANSITION:
+                  raise Exception("Segment is not ready for recovery dbid = %s, segmentState = %s. Retry recovery in a few moments" % (str(db.getSegmentDbId()), segmentState))
+               else:
+                  raise Exception("Segment is in unexpected state. dbid = %s, segmentState = %s." % (str(db.getSegmentDbId()), segmentState))
 
         # check that we actually have mirrors
         if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_SAN:
