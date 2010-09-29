@@ -3788,8 +3788,6 @@ finally:
         logger.info("==========================================================================")
         logger.info("The gpupgrademirror log information can be found in " + str(get_logfile()))
         if len(minionList) > 0:
-           for minion in minionList:
-             finalStr = finalStr + "  " + minion.remoteHost + "\n" 
            logger.info("Under certain failure situations, not all log information can be collected.")
            logger.info("There may be additional log information under the gpAdminLogs directory on the following hosts:")
            logger.info("")
