@@ -96,6 +96,9 @@ Owners = []
 # drop leaked temporary schemas
 Schemas = []
 
+# fix distribution policies
+Policies = []
+
 ###############################
 def usage(exitarg = None):
     print __doc__
@@ -361,7 +364,7 @@ def checkDistribPolicy():
         for e in err:
             cons = e[2]
             removeIndexConstraint(cons['nspname'], cons['relname'],
-                                      cons['constraint'])
+                                  cons['constraint'])
 
     logger.info('-----------------------------------')
     logger.info('Checking that unique constraints are only on distribution columns')
@@ -470,6 +473,110 @@ def checkPartitionIntegrity():
             logger.error("...")
         # TODO: add repair script
 
+
+    # MPP-11120: check for child partitions with different distribution policies
+    # The complexity of this query is due to having to account for the possibility
+    # of partitions with "holes" which would make similar distribution policies
+    # appear different in gp_distribution_policy.  This is handled by unnesting
+    # both distribution
+    qry = '''
+    select
+      parrelid, 
+      parchildrelid, 
+      d1.attrnums as parpolicy, 
+      d2.attrnums as parchildpolicy
+    from
+      (
+        select distinct
+          coalesce(p1.parrelid, p2.parrelid)::regclass as parrelid,
+          coalesce(p1.parchildrelid, p2.parchildrelid)::regclass as parchildrelid
+        from
+          (
+            select parrelid, parchildrelid, g1.attname, g1.index
+            from   pg_partition_rule pr 
+                   join pg_partition p on (pr.paroid = p.oid)
+                   join (
+                     select localoid, attname, index
+                     from (
+                       select
+                         localoid,
+                         unnest(attrnums) as offset,
+                         generate_series(1, array_upper(attrnums, 1)) as index
+                       from
+                         gp_distribution_policy
+                      ) d
+                      join pg_attribute a on (a.attrelid = d.localoid and a.attnum = d.offset)
+                   ) g1 on (parrelid = g1.localoid)
+            where  parchildrelid != 0
+          ) p1
+          full outer join
+          (
+            select parrelid, parchildrelid, g2.attname, g2.index
+            from   pg_partition_rule pr 
+                   join pg_partition p on (pr.paroid = p.oid)
+                   join (
+                     select localoid, attname, index
+                     from (
+                       select
+                         localoid,
+                         unnest(attrnums) as offset,
+                         generate_series(1, array_upper(attrnums, 1)) as index
+                       from
+                         gp_distribution_policy
+                      ) d
+                      join pg_attribute a on (a.attrelid = d.localoid and a.attnum = d.offset)
+                   ) g2 on (parchildrelid = g2.localoid)
+            where  parchildrelid != 0
+          ) p2
+          on (p1.parrelid = p2.parrelid and
+              p1.parchildrelid = p2.parchildrelid and
+              p1.index = p2.index)
+        where p1.attname is distinct from p2.attname
+      ) p
+    join gp_distribution_policy d1 on (d1.localoid = p.parrelid)
+    join gp_distribution_policy d2 on (d2.localoid = p.parchildrelid)
+    where d2.attrnums is not null
+    '''
+    curs = db.query(qry)
+    cols = ('parrelid', 'parchildrelid', 'parpolicy', 'parchildpolicy')
+
+    err = []
+    for row in curs.dictresult():
+        err.append([GV.cfg[1], cols, row])
+
+    if not err:
+        logger.info('[OK] partition distribution policy check')
+    else:
+        setError(ERROR_REPAIR)
+        logger.info('[FAIL] partition distribution policy check')
+        logger.error('partition distribution policy check found %d issue(s)' % len(err))
+        if len(err) > 100:
+            logger.error(qry)
+
+        count = 0
+        for e in err:
+            cfg = e[0]
+            col = e[1]
+            row = e[2]
+
+            # generate repair script for this row
+            distributeRandomly(row['parchildrelid'])
+
+            # report at most 100 rows, for brevity
+            if count == 100:
+                logger.error("...")
+                count += 1
+            if count > 100:
+                continue
+
+            if count == 0:
+                logger.error("--------")
+                logger.error("  " + " | ".join(map(str, col)))
+                logger.error("  " + "-+-".join(['-'*len(x) for x in col]))
+
+            
+            logger.error("  " + " | ".join([str(row[x]) for x in col]))
+            count += 1
 
     db.close()
 
@@ -820,6 +927,9 @@ def removeInheritance(seg, db, reloid, rel):
 def removeIndexConstraint(nspname, relname, constraint):
     Constraints.append('ALTER TABLE "%s"."%s" DROP CONSTRAINT "%s";' % \
             (nspname, relname, constraint))
+
+def distributeRandomly(rel):
+    Policies.append('ALTER TABLE %s SET DISTRIBUTED RANDOMLY;' % rel)
 
 def removeStats(seg, db, reloid, rel):
     buildRemove(seg, 'statistics', 'pg_statistic',
@@ -1976,7 +2086,8 @@ if __name__ == '__main__':
              len(Reindex) > 0 or 
              len(Constraints) > 0 or
              len(Owners) > 0 or 
-             len(Schemas) > 0)
+             len(Schemas) > 0 or
+             len(Policies) > 0)
     if GV.opt['-g'] != None and fixes:
         try:
             if not os.path.exists(GV.opt['-g']):
@@ -2106,6 +2217,28 @@ if __name__ == '__main__':
             script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
 
+        if len(Policies) > 0:
+            # changes to distribution policies
+            filename = 'fixdistribution.sql'
+            fullpath = '%s/%s' % (GV.opt['-g'], filename)
+
+            try:
+                file = open(fullpath, 'w')
+            except Exception, e:
+                logger.fatal('Unable to create file "%s": %s' %
+                             (fullpath, str(e)))
+                sys.exit(1)
+
+            for r in Policies:
+                file.write('%s\n' % r)
+            file.close()
+
+            script += 'echo "Fixing distribution policies"\n'
+            c = GV.cfg[1]
+            script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
+                    (c['hostname'], c['port'], filename, GV.dbname, filename)
+
+
         try:
             path = '%s/runsql.sh' % GV.opt['-g']
             file = open(path, 'w')
@@ -2122,3 +2255,6 @@ if __name__ == '__main__':
     if GV.retcode >= ERROR_NOREPAIR:
         logger.warn('unable to generate repairs for some issues')
     sys.exit(GV.retcode)
+
+
+
