@@ -1349,7 +1349,16 @@ sub get_relfilenode_func
 			# Note: filter out non-numeric names like "pg_auth"
 			if ($relfilenode =~ m/^\d+$/)
 			{
-				push @relfnods, $relfilenode;
+				# MPP-11263: don't look up long names as relfilenodes
+				# or the query will fail with "OID out of range"
+				if (length($relfilenode) > 15)
+				{
+					warn "relfilenode too long: $relfilenode in db: $db";
+				}
+				else
+				{
+					push @relfnods, $relfilenode;
+				}
 			}
 			else
 			{
