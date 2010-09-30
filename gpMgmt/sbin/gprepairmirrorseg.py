@@ -175,6 +175,9 @@ def parseargs():
                         help="Optional. The master host data directory. If not specified, the value set for $MASTER_DATA_DIRECTORY will be used.",
                         default=get_masterdatadir()
                      )
+    parser.add_option('-a', help='don\'t ask to confirm repairs',
+                      dest='confirm', default=True, action='store_false')
+
 
 
     """
@@ -455,17 +458,18 @@ try:
   logger.info("gprepairmirrorseg will attempt to repair the following files:")
   prettyPrintFiles(resyncFiles)
 
-  msg = "Do you wish to continue with re-sync of these files"
-  ans = ask_yesno(None,msg,'N')
-  if not ans:
-     logger.info("User abort requested, Exiting...")
-     sys.exit(4)
+  if options.confirm == True:
+     msg = "Do you wish to continue with re-sync of these files"
+     ans = ask_yesno(None,msg,'N')
+     if not ans:
+        logger.info("User abort requested, Exiting...")
+        sys.exit(4)
      
-  msg = "Are you sure you wish to continue"
-  ans = ask_yesno(None,msg,'N')
-  if not ans:
-     logger.info("User abort requested, Exiting...")
-     sys.exit(4)
+     msg = "Are you sure you wish to continue"
+     ans = ask_yesno(None,msg,'N')
+     if not ans:
+        logger.info("User abort requested, Exiting...")
+        sys.exit(4)
 
   syncListLength = len(resyncFiles.fileList)
   
