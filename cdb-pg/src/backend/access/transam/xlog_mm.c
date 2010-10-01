@@ -111,6 +111,9 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 	xl_mm_fs_obj *xlrec = (xl_mm_fs_obj *) XLogRecGetData(record);
 	char *path = obj_get_path(xlrec);
 
+	bool found;
+	void *entry;
+
 	if (info == MMXLOG_CREATE_DIR)
 	{
 		bool dir_created = true;
@@ -200,8 +203,11 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		if (Debug_persistent_recovery_print)
 		{
 			elog(PersistentRecovery_DebugPrintLevel(), 
-				 "mmxlog_redo: remove directory request %d: path \"%s\", filespace %u, primary dbid %u, path \"%s\"; mirror dbid %u, path \"%s\"",
-				 info,
+				 "mmxlog_redo: remove directory request %s: path \"%s\", filespace %u, primary dbid %u, path \"%s\"; mirror dbid %u, path \"%s\"",
+				 (xlrec->objtype == MM_OBJ_FILESPACE ? "filespace" :
+				    (xlrec->objtype == MM_OBJ_TABLESPACE ? "tablespace" :
+					   (xlrec->objtype == MM_OBJ_DATABASE ? "database" :
+						   "unknown"))),
 				 path,
 				 xlrec->filespace,
 				 xlrec->u.dbid.master,
@@ -212,6 +218,34 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 
 		/* tablespace and database should be fine */
 		unlink_obj(path, info);
+		if (xlrec->objtype == MM_OBJ_FILESPACE)
+		{
+			if (filespace_map_ht == NULL)
+				elog(ERROR, "Master mirroring hash table for filespaces not initialized");
+			
+			entry = hash_search(filespace_map_ht,
+								&(xlrec->filespace),
+								HASH_REMOVE,
+								&found);
+			if (entry == NULL)
+				elog(ERROR, 
+					 "Master mirroring hash table entry for filespace %u not found",
+					 xlrec->filespace);
+		}
+		else if (xlrec->objtype == MM_OBJ_TABLESPACE)
+		{
+			if (tablespace_map_ht == NULL)
+				elog(ERROR, "Master mirroring hash table for tablespaces not initialized");
+			
+			entry = hash_search(tablespace_map_ht,
+								&(xlrec->tablespace),
+								HASH_REMOVE,
+								&found);
+			if (entry == NULL)
+				elog(ERROR, 
+					 "Master mirroring hash table entry for tablespace %u not found",
+					 xlrec->tablespace);
+		}
 	}
 	else if (info == MMXLOG_CREATE_FILE)
 	{
@@ -789,8 +823,106 @@ init_hash(const char *name, Size keysize, Size entrysize, int initialSize)
 					   HASH_ELEM | HASH_ALLOC);
 }
 
+static void
+mmxlog_empty_filespace_hashtable(char *caller)
+{
+	HASH_SEQ_STATUS iterateStatus;
+	fspc_map *entry;
+	int i;
+	bool found;
+
+	hash_seq_init(&iterateStatus, filespace_map_ht);
+
+	i = 0;
+	while (true)
+	{
+		entry = 
+			(fspc_map*)
+					hash_seq_search(&iterateStatus);
+		if (entry == NULL)
+			break;
+
+		if (Debug_persistent_recovery_print)
+		{
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "mmxlog_empty_filespace_hashtable[%d]: filespace %u, dbid1 %d, dbid2 %d (caller '%s')",
+				 i,
+				 entry->filespaceoid,
+				 entry->dbid1,
+				 entry->dbid2,
+				 caller);
+		}
+		entry = hash_search(filespace_map_ht,
+							&(entry->filespaceoid),
+							HASH_REMOVE,
+							&found);
+		if (entry == NULL)
+			elog(ERROR, "Corrupted filespace hashtable");
+		i++;
+	}
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "mmxlog_empty_filespace_hashtable: filespace remove count %d (caller '%s')",
+			 i,
+			 caller);
+	}
+}
 
 static void
+mmxlog_empty_tablespace_hashtable(char *caller)
+{
+	HASH_SEQ_STATUS iterateStatus;
+	tspc_map *entry;
+	int i;
+	bool found;
+
+	hash_seq_init(&iterateStatus, tablespace_map_ht);
+
+	i = 0;
+	while (true)
+	{
+		entry = 
+			(tspc_map*)
+					hash_seq_search(&iterateStatus);
+		if (entry == NULL)
+			break;
+
+		if (Debug_persistent_recovery_print)
+		{
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "mmxlog_empty_tablespace_hashtable[%d]: tablespace %u, (filespace %u, caller '%s')",
+				 i,
+				 entry->tablespaceoid,
+				 entry->filespaceoid,
+				 caller);
+		}
+		entry = hash_search(tablespace_map_ht,
+							&(entry->tablespaceoid),
+							HASH_REMOVE,
+							&found);
+		if (entry == NULL)
+			elog(ERROR, "Corrupted tablespace hashtable");
+		i++;
+	}
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+			 "mmxlog_empty_tablespace_hashtable: tablespace remove count %d (caller '%s')",
+			 i,
+			 caller);
+	}
+}
+
+void
+mmxlog_empty_hashtables(void)
+{
+	mmxlog_empty_filespace_hashtable("mmxlog_empty_hashtables");
+	mmxlog_empty_tablespace_hashtable("mmxlog_empty_hashtables");
+}
+
+
+void
 mmxlog_print_filespaces(int elevel, char *caller)
 {
 	HASH_SEQ_STATUS iterateStatus;
@@ -809,11 +941,13 @@ mmxlog_print_filespaces(int elevel, char *caller)
 			break;
 
 		elog(elevel, 
-			 "mmxlog_print_filespaces[%d]: filespace %u, dbid1 %d, dbid2 %d (caller '%s')",
+			 "mmxlog_print_filespaces[%d]: filespace %u (dbid1 %d, path1 \"%s\", dbid2 %d, path2 \"%s\", caller '%s')",
 			 i,
 			 entry->filespaceoid,
 			 entry->dbid1,
+			 entry->path1,
 			 entry->dbid2,
+			 entry->path2,
 			 caller);
 		i++;
 	}
@@ -823,7 +957,7 @@ mmxlog_print_filespaces(int elevel, char *caller)
 		 caller);
 }
 
-static void
+void
 mmxlog_print_tablespaces(int elevel, char *caller)
 {
 	HASH_SEQ_STATUS iterateStatus;

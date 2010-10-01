@@ -7255,6 +7255,8 @@ XLogPopulateMasterMirroring(
 
 	XLogRecord *record;
 
+	mmxlog_empty_hashtables();
+
 	CloseReadRecord();
 
 	record = ReadRecord(redoCheckPointLoc, PANIC);
@@ -7526,6 +7528,14 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 	ShmemVariableCache->nextOid = redoCheckPoint->nextOid;
 	ShmemVariableCache->oidCount = 0;
 	MultiXactSetNextMXact(redoCheckPoint->nextMulti, redoCheckPoint->nextMultiOffset);
+
+	/*
+	 * We need to initialize the Master Mirroring persistent hash tables from the checkpoint.
+	 * It first empties out the current entries and then reads the Master Mirroring checkpoint
+	 * information to populate the hashtables which includes re-creating necessary filespaces,
+	 * tablespaces, and database directories.
+	 */
+	XLogPopulateMasterMirroring(redoCheckpointLoc);
 
 	/* Start up the recovery environment */
 	XLogInitRelationCache();

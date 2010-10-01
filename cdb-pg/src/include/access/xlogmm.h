@@ -184,4 +184,9 @@ extern bool mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int
 extern bool mmxlog_verify_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel);
 extern bool mmxlog_get_checkpoint_counts(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel, int *filespaceCount, int *tablespaceCount, int *databaseCount);
 
+extern void mmxlog_print_filespaces(int elevel, char *caller);
+extern void mmxlog_print_tablespaces(int elevel, char *caller);
+
+extern void mmxlog_empty_hashtables(void);
+
 #endif /* MMXLOG_H */
