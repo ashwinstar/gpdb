@@ -292,6 +292,17 @@ def readDataFiles():
     return False
 
 
+def testConnectEmc(host):
+
+    if not host.is_a_master:
+        return
+    
+    expected = "Running"
+
+    if host.data.connectemc.output != expected:
+        printError(host.hostname, "Connect EMC is not running on master (try /etc/init.d/connectemc status)")
+    
+
 def testAppliance1001OmreportBiossetup(host):
 
     # first NIC should be PXE enabled
@@ -793,6 +804,8 @@ def testAppliance1001Host(host):
     # test limits.conf
     testLimitsConf(host)
 
+    # test connectemc
+    testConnectEmc(host)
 
 def testGenericLinuxHost(host):
 

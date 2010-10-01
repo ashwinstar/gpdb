@@ -77,6 +77,14 @@ class uname:
     def __str__(self):
         return self.output
 
+class connectemc:
+    def __init__(self):
+        self.output = None
+        self.errormsg = None
+
+    def __str__(self):
+        return self.output
+
 class securetty:
     def __init__(self):
         self.errormsg = None
@@ -219,6 +227,7 @@ class App1001OutputData:
         self.ioschedulers = None
         self.sysctl = None
         self.limitsconf = None
+        self.connectemc = None
 
     def __str__(self):
         ser = "=============SERVICES=======================\n"
@@ -281,6 +290,10 @@ class App1001OutputData:
         grc = "============= UNAME==========================\n"
         gre = "============= UNAME ERRORMSG=================\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.uname.__str__(), gre, self.uname.errormsg)
+
+        grc = "============= CONNECTEMC=====================\n"
+        gre = "============= CONNECtEMC ERRORMSG============\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.connectemc.__str__(), gre, self.connectemc.errormsg)
 
         grc = "============= SECURETTY======================\n"
         gre = "============= SECURETTY ERRORMSG=============\n"
