@@ -311,7 +311,7 @@ static apr_status_t check_partition(const char* tbl, apr_pool_t* pool)
 	TR0(("check partitions on %s_history\n", tbl));
 
    	now = time(NULL);
-	if (!gmtime_r(&now, &tm))
+	if (!localtime_r(&now, &tm))
 	{
 		gpmon_warning(FLINE, "error in check_partition getting current time\n");
 		return APR_EGENERAL;
