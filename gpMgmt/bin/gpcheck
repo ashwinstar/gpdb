@@ -948,6 +948,8 @@ def earlyExit(error = False):
     
     if error:
         logger.fatal("early exit from gpcheck")
+    else:
+        logger.info("gpcheck completing...")
     if pool:
         pool.join()
         pool.haltWork()
