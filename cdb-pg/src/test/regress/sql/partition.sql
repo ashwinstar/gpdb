@@ -4124,4 +4124,60 @@ select partitionboundary from pg_partitions where tablename = 'cov1';
 
 drop table cov1;
 
+-- MPP-11120
+--  ADD PARTITION didn't explicitly specify the distribution policy in the
+-- CreateStmt distributedBy field and as such we followed the behaviour encoded
+-- in transformDistributedBy(). Unfortunately, it chooses to set the
+-- distribution policy to that of the primary key if the distribution policy
+-- is not explicitly set.
+create table test_table (
+	a	int,
+	b	int,
+	c	int,
+	primary key (a,b,c)
+)
+distributed by (a)
+partition by range (b)
+(
+	default partition default_partition,
+	partition p1 start (1) end (2)
+);
 
+insert into test_table values(1,2,3);
+
+select * from test_table; -- expected: (1,2,3)
+
+delete from test_table where a=1 and b=2 and c=3; -- this should delete the row in test_table
+
+select * from test_table; -- expected, no rows
+
+insert into test_table values(1,2,3); -- reinsert data
+
+-- all partitions should have same distribution policy
+select relname, attrnums as distribution_attributes from
+gp_distribution_policy p, pg_class c
+where p.localoid = c.oid and relname like 'test_table%' order by p.localoid;
+
+alter table test_table split default partition
+        start (3)
+	end (4)
+	into (partition p2, partition default_partition);
+
+
+select relname, attrnums as distribution_attributes from
+gp_distribution_policy p, pg_class c where p.localoid = c.oid and 
+relname like 'test_table%' order by p.localoid;
+
+delete from test_table where a=1 and b=2 and c=3; -- this should delete the row in test_table
+
+select * from test_table; -- expected, no rows! But we see the row. Wrong results!
+
+alter table test_table drop partition default_partition;
+
+alter table test_table add partition foo start(10) end(20);
+
+select relname, attrnums as distribution_attributes from
+gp_distribution_policy p, pg_class c where p.localoid = c.oid and
+relname like 'test_table%' order by p.localoid;
+
+drop table test_table;

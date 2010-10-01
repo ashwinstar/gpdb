@@ -453,6 +453,7 @@ static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
 								List *opts, List **hidden_types, bool isTmpTableAo);
 static void ATPartitionCheck(Relation rel, AlterTableType typ, bool recursing);
 static Oid get_settable_tablespace_oid(char *tablespacename);
+static List *make_dist_clause(Relation rel);
 
 #define parkindIsHash(c)   ((c) == 'h')
 #define parkindIsRange(c)  ((c) == 'r')
@@ -12656,28 +12657,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		}
 
 		if (!ldistro)
-		{
-			int i;
-
-			for (i = 0; i < rel->rd_cdbpolicy->nattrs; i++)
-			{
-				AttrNumber attno = rel->rd_cdbpolicy->attrs[i];
-				TupleDesc tupdesc = RelationGetDescr(rel);
-				Value *attstr;
-				NameData attname;
-
-				attname = tupdesc->attrs[attno - 1]->attname;
-				attstr = makeString(pstrdup(NameStr(attname)));
-
-				ldistro = lappend(ldistro, attstr);
-			}
-
-			if (!ldistro)
-			{
-				/* must be random distribution */
-				ldistro = list_make1(NULL);
-			}
-		}
+			ldistro = make_dist_clause(rel);
 
 		/* Step (b) - build CTAS */
 		queryDesc = build_ctas_with_dist(rel, ldistro, newopts, &tmprv,
@@ -16952,6 +16932,9 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	ct->ownerid = ownerid;
 
+	if (!ct->distributedBy)
+		ct->distributedBy = make_dist_clause(rel);
+
 	if (bSetTemplate)
 		/* if creating a template, silence partition name messages */
 		pBy->partQuiet = PART_VERBO_NOPARTNAME;
@@ -21156,6 +21139,34 @@ atpxSplitDropRule(PartitionNode *pNode, PartitionRule *topRule,
 
 } /* end atpxSplitDropRule */
 
+/* Given a Relation, make a distributed by () clause for parser consumption. */
+static List *
+make_dist_clause(Relation rel)
+{
+	int i;
+	List *distro = NIL;
+
+	for (i = 0; i < rel->rd_cdbpolicy->nattrs; i++)
+	{
+		AttrNumber attno = rel->rd_cdbpolicy->attrs[i];
+		TupleDesc tupdesc = RelationGetDescr(rel);
+		Value *attstr;
+		NameData attname;
+
+		attname = tupdesc->attrs[attno - 1]->attname;
+		attstr = makeString(pstrdup(NameStr(attname)));
+
+		distro = lappend(distro, attstr);
+	}
+
+	if (!distro)
+	{
+		/* must be random distribution */
+		distro = list_make1(NULL);
+	}
+	return distro;
+}
+
 static void
 ATPExecPartSplit(Relation rel,
                  AlterPartitionCmd *pc)
@@ -21202,6 +21213,7 @@ ATPExecPartSplit(Relation rel,
 		StdRdOptions *existopts;
 		ListCell *lc;
 		char *defparname = NULL; /* name of default partition (if specified) */
+		List *distro = NIL;
 
 		/* Get target meta data */
 		prule = get_part_rule(rel, pid, true, true,
@@ -21417,6 +21429,8 @@ ATPExecPartSplit(Relation rel,
 		existrel = heap_open(prule->topRule->parchildrelid, NoLock);
 		existopts = relopts_for_ctas(existrel);
 		existstorage_opts = stdoptions_to_list(existrel, existopts);
+		distro = make_dist_clause(existrel);
+
 		heap_close(existrel, NoLock);
 
 		/* 1) Create temp table */
@@ -21426,6 +21440,7 @@ ATPExecPartSplit(Relation rel,
 									  CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS,
 									  CREATE_TABLE_LIKE_INCLUDING_INDEXES);
 		ct->tableElts = list_make1(inh);
+		ct->distributedBy = list_copy(distro); /* must preserve the list for later */
 
 		/* should be unique enough */
 		snprintf(tmpname, NAMEDATALEN, "pg_temp_%u", relid);
