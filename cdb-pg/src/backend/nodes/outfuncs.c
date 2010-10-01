@@ -2450,7 +2450,6 @@ static void
 _outPartitionRangeItem(StringInfo str, PartitionRangeItem *node)
 {
 	WRITE_NODE_TYPE("PARTITIONRANGEITEM");
-	WRITE_NODE_FIELD(partEveryNum);
 	WRITE_NODE_FIELD(partRangeVal);
 	WRITE_ENUM_FIELD(partedge, PartitionEdgeBounding);
 	WRITE_INT_FIELD(location);

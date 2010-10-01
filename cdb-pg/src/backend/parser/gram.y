@@ -3839,7 +3839,6 @@ TabPartitionBoundarySpecStart:
 			OptTabPartitionRangeInclusive
 				{
                         PartitionRangeItem *n = makeNode(PartitionRangeItem); 
-                        n->partEveryNum  = NULL; 
                         n->partRangeVal  = $3;
                         if (!($5))
                             n->partedge = PART_EDGE_INCLUSIVE;
@@ -3856,7 +3855,6 @@ TabPartitionBoundarySpecEnd:
 			OptTabPartitionRangeInclusive
 				{
                         PartitionRangeItem *n = makeNode(PartitionRangeItem); 
-                        n->partEveryNum  = NULL; 
                         n->partRangeVal  = $3;
                         if (!($5))
                             n->partedge = PART_EDGE_EXCLUSIVE;
@@ -3873,15 +3871,10 @@ OptNumericOnly:
             ;
 
 OptTabPartitionBoundarySpecEvery:
-            EVERY OptNumericOnly 
-            '(' TabPartitionBoundarySpecValList ')' 
+            EVERY '(' TabPartitionBoundarySpecValList ')' 
 				{
                         PartitionRangeItem *n = makeNode(PartitionRangeItem); 
-                        if ($2)
-                            n->partEveryNum  = makeAConst($2, @2); 
-                        else
-                            n->partEveryNum  = NULL; 
-                        n->partRangeVal  = $4;
+                        n->partRangeVal  = $3;
                         n->location  = @1;
 
                         $$ = (Node *)n;

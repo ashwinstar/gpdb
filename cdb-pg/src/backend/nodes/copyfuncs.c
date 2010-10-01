@@ -2614,7 +2614,6 @@ _copyPartitionRangeItem(PartitionRangeItem *from)
 {
 	PartitionRangeItem *newnode = makeNode(PartitionRangeItem);
 
-	COPY_NODE_FIELD(partEveryNum);
 	COPY_NODE_FIELD(partRangeVal);
 	COPY_SCALAR_FIELD(partedge);
 	COPY_SCALAR_FIELD(location);

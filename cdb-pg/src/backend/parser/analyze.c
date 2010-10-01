@@ -4781,7 +4781,6 @@ validate_range_partition(partValidationState *vstate)
 
 			}
 
-			prevRI->partEveryNum  = NULL;
 			prevRI->location  = pRI->location;
 
 			prevRI->partRangeVal  = list_copy(pRI->partRangeVal);
@@ -4836,7 +4835,6 @@ validate_range_partition(partValidationState *vstate)
 					(PartitionRangeItem *)
 					(prevBSpec->partEnd);
 
-			pRI->partEveryNum  = NULL;
 			pRI->location  =
 					prevRI->location;
 
@@ -6425,22 +6423,6 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				c = makeConst(restypid, -1, typeLen(typ), res, false,
 							  typeByVal(typ));
 				ReleaseSysCache(typ);
-
-				/* every_num * (every_cnt * n3t) */
-				if (pRI_Every->partEveryNum)
-				{
-					Node *et = transformExpr(pstate, pRI_Every->partEveryNum);
-
-					restypid = InvalidOid;
-					res = eval_basic_opexpr(pstate, oprmul, (Node *)c,
-											et, NULL, NULL, &restypid,
-											((A_Const *)pRI_Every->partEveryNum)->location);
-					pfree(c);
-					typ = typeidType(restypid);
-					c = makeConst(restypid, -1, typeLen(typ), res, false,
-								  typeByVal(typ));
-					ReleaseSysCache(typ);
-				}
 
 				/*
 				 * n1t + (...)

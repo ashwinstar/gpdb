@@ -1795,7 +1795,6 @@ _readPartitionRangeItem(const char **str)
 {
 	READ_LOCALS(PartitionRangeItem);
 
-	READ_NODE_FIELD(partEveryNum);
 	READ_NODE_FIELD(partRangeVal);
 	READ_ENUM_FIELD(partedge, PartitionEdgeBounding);
 	READ_INT_FIELD(location);

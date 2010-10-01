@@ -1563,7 +1563,6 @@ typedef enum PartitionEdgeBounding
 typedef struct PartitionRangeItem
 {
 	NodeTag				type;
-	Node			   *partEveryNum;	/*  (constant number) (EVERY only) */
 	List			   *partRangeVal;	/*  value */
 	PartitionEdgeBounding partedge;		/* inclusive/exclusive ? */
 	int					everycount;		/* if EVERY, how many in the set */

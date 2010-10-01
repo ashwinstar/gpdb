@@ -17043,7 +17043,6 @@ atpxPartAddList(AlteredTableInfo *tab,
 					{
 						PartitionRangeItem *ri = makeNode(PartitionRangeItem);
 
-						ri->partEveryNum  = NULL;
 						ri->location = -1;
 
 						ri->partRangeVal =
@@ -17178,7 +17177,6 @@ atpxPartAddList(AlteredTableInfo *tab,
 					{
 						PartitionRangeItem *ri = makeNode(PartitionRangeItem);
 
-						ri->partEveryNum  = NULL;
 						ri->location = -1;
 
 						ri->partRangeVal =
@@ -19810,7 +19808,6 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 				{
 					PartitionRangeItem *ri = makeNode(PartitionRangeItem);
 
-					ri->partEveryNum  = NULL;
 					ri->location = -1;
 
 					ri->partRangeVal =
@@ -19838,7 +19835,6 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 				{
 					PartitionRangeItem *ri = makeNode(PartitionRangeItem);
 
-					ri->partEveryNum  = NULL;
 					ri->location = -1;
 
 					ri->partRangeVal = copyObject(prule->topRule->parrangeend);

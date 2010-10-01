@@ -4094,7 +4094,7 @@ select * from pg_partitions where tablename = 'cov1';
 
 drop table cov1;
 
--- ??? should be every 5, not every 1...
+-- every 5 (1) now disallowed...
 create table cov1 (a int, b int)
 distributed by (a)
 partition by range (b)
@@ -4102,9 +4102,7 @@ partition by range (b)
 start (1) end(20) every 5 (1)
 );
 
-select * from pg_partitions where tablename = 'cov1';
-
-drop table cov1;
+drop table if exists cov1;
 
 create table cov1 (a int, b int)
 distributed by (a)

@@ -8142,57 +8142,18 @@ select * from pg_partitions where tablename = 'cov1';
 (1 row)
 
 drop table cov1;
--- ??? should be every 5, not every 1...
+-- every 5 (1) now disallowed...
 create table cov1 (a int, b int)
 distributed by (a)
 partition by range (b)
 (
 start (1) end(20) every 5 (1)
 );
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_1" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_2" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_3" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_4" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_5" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_6" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_7" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_8" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_9" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_10" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_11" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_12" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_13" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_14" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_15" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_16" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_17" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_18" for table "cov1"
-NOTICE:  CREATE TABLE will create partition "cov1_1_prt_19" for table "cov1"
-select * from pg_partitions where tablename = 'cov1';
- schemaname | tablename | partitionschemaname | partitiontablename | partitionname | parentpartitiontablename | parentpartitionname | partitiontype | partitionlevel | partitionrank | partitionposition | partitionlistvalues | partitionrangestart | partitionstartinclusive | partitionrangeend | partitionendinclusive | partitioneveryclause | partitionisdefault |       partitionboundary       | parenttablespace | partitiontablespace 
-------------+-----------+---------------------+--------------------+---------------+--------------------------+---------------------+---------------+----------------+---------------+-------------------+---------------------+---------------------+-------------------------+-------------------+-----------------------+----------------------+--------------------+-------------------------------+------------------+---------------------
- public     | cov1      | public              | cov1_1_prt_1       |               |                          |                     | range         |              0 |             1 |                 1 |                     | 1                   | t                       | 2                 | f                     | 1                    | f                  | START (1) END (2) EVERY (1)   | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_2       |               |                          |                     | range         |              0 |             2 |                 2 |                     | 2                   | t                       | 3                 | f                     | 1                    | f                  | START (2) END (3) EVERY (1)   | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_3       |               |                          |                     | range         |              0 |             3 |                 3 |                     | 3                   | t                       | 4                 | f                     | 1                    | f                  | START (3) END (4) EVERY (1)   | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_4       |               |                          |                     | range         |              0 |             4 |                 4 |                     | 4                   | t                       | 5                 | f                     | 1                    | f                  | START (4) END (5) EVERY (1)   | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_5       |               |                          |                     | range         |              0 |             5 |                 5 |                     | 5                   | t                       | 6                 | f                     | 1                    | f                  | START (5) END (6) EVERY (1)   | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_6       |               |                          |                     | range         |              0 |             6 |                 6 |                     | 6                   | t                       | 7                 | f                     | 1                    | f                  | START (6) END (7) EVERY (1)   | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_7       |               |                          |                     | range         |              0 |             7 |                 7 |                     | 7                   | t                       | 8                 | f                     | 1                    | f                  | START (7) END (8) EVERY (1)   | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_8       |               |                          |                     | range         |              0 |             8 |                 8 |                     | 8                   | t                       | 9                 | f                     | 1                    | f                  | START (8) END (9) EVERY (1)   | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_9       |               |                          |                     | range         |              0 |             9 |                 9 |                     | 9                   | t                       | 10                | f                     | 1                    | f                  | START (9) END (10) EVERY (1)  | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_10      |               |                          |                     | range         |              0 |            10 |                10 |                     | 10                  | t                       | 11                | f                     | 1                    | f                  | START (10) END (11) EVERY (1) | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_11      |               |                          |                     | range         |              0 |            11 |                11 |                     | 11                  | t                       | 12                | f                     | 1                    | f                  | START (11) END (12) EVERY (1) | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_12      |               |                          |                     | range         |              0 |            12 |                12 |                     | 12                  | t                       | 13                | f                     | 1                    | f                  | START (12) END (13) EVERY (1) | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_13      |               |                          |                     | range         |              0 |            13 |                13 |                     | 13                  | t                       | 14                | f                     | 1                    | f                  | START (13) END (14) EVERY (1) | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_14      |               |                          |                     | range         |              0 |            14 |                14 |                     | 14                  | t                       | 15                | f                     | 1                    | f                  | START (14) END (15) EVERY (1) | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_15      |               |                          |                     | range         |              0 |            15 |                15 |                     | 15                  | t                       | 16                | f                     | 1                    | f                  | START (15) END (16) EVERY (1) | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_16      |               |                          |                     | range         |              0 |            16 |                16 |                     | 16                  | t                       | 17                | f                     | 1                    | f                  | START (16) END (17) EVERY (1) | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_17      |               |                          |                     | range         |              0 |            17 |                17 |                     | 17                  | t                       | 18                | f                     | 1                    | f                  | START (17) END (18) EVERY (1) | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_18      |               |                          |                     | range         |              0 |            18 |                18 |                     | 18                  | t                       | 19                | f                     | 1                    | f                  | START (18) END (19) EVERY (1) | pg_default       | pg_default
- public     | cov1      | public              | cov1_1_prt_19      |               |                          |                     | range         |              0 |            19 |                19 |                     | 19                  | t                       | 20                | f                     | 1                    | f                  | START (19) END (20) EVERY (1) | pg_default       | pg_default
-(19 rows)
-
-drop table cov1;
+ERROR:  syntax error at or near "5"
+LINE 5: start (1) end(20) every 5 (1)
+                                ^
+drop table if exists cov1;
+NOTICE:  table "cov1" does not exist, skipping
 create table cov1 (a int, b int)
 distributed by (a)
 partition by list (b)

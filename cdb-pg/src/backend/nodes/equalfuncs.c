@@ -1036,7 +1036,6 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 static bool
 _equalPartitionRangeItem(PartitionRangeItem *a, PartitionRangeItem *b)
 {
-	COMPARE_NODE_FIELD(partEveryNum);
 	COMPARE_NODE_FIELD(partRangeVal);
 	COMPARE_SCALAR_FIELD(partedge);
 	COMPARE_SCALAR_FIELD(everycount);
