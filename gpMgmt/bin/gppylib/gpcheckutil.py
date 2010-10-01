@@ -8,7 +8,7 @@ class HostType:
 def hosttype_str(type):
     if type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
         return "GPDB Appliance 1.0.0.1"
-    elif type == GPCHECK_HOSTTYPE_GENERIC_LINUX:
+    elif type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
         return "Generic Linux Cluster"
     else:
         return "Non-Linux Cluster"
