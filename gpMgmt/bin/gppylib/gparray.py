@@ -1195,6 +1195,11 @@ class GpArray:
                    if gpdb.isSegmentMaster() == True:
                       continue
                    address = gpdb.getSegmentAddress()
+                   if address == host:
+                      if len(suffixList) == 0:
+                         continue
+                      else:
+                         raise Exception("The address value for %s is the same as the host name, but other addresses on the host are not." % address)
                    suffix  = address.split('-')[-1]
                    if suffix.isdigit() == False:
                       raise Exception("The address value for %s does not correspond to a standard address." % address)
