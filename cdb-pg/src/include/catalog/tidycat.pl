@@ -108,7 +108,7 @@ unused_oids to find one.
 =back
 
 Similarly, index definitions are unique or non-unique, and require an
-indexid.
+indexid (and an optional indexname).
 
 Running tidycat.pl against pg_foobar.h adds the following section
 after the definition:
@@ -231,16 +231,19 @@ my $glob_faketab = 0;
 my $glob_tabstr = "\t";
 #my $glob_tabstr = " " x $glob_tabwidth; 
 my $glob_preview;
+my $glob_sqldef;
 my $glob_tmpdir = "/tmp";
 
 BEGIN {
     my $man  = 0;
     my $help = 0;
 	my $preview = 0;
+	my $sqldef = 0;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
-	 	       "preview|pretend" => \$preview
+	 	       "preview|pretend" => \$preview,
+	 	       "sqldef:s" => \$sqldef
                )
         or pod2usage(2);
 
@@ -249,6 +252,7 @@ BEGIN {
     pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
 
 	$glob_preview = $preview;
+	$glob_sqldef = $sqldef if (defined($sqldef) && length($sqldef));
 
 #    print "loading...\n" ;
 }
@@ -505,6 +509,10 @@ sub parseindex
 	die "no index oid: $bigstr" unless (exists($idef->{with}->{indexid}));
 
 	$idef->{indexid} = $idef->{with}->{indexid};
+	if (exists($idef->{with}->{indexname}))
+	{
+		$idef->{indexname} = $idef->{with}->{indexname};
+	}
 
 	push @{$alltabs->{$tname}->{indexes}}, $idef;
 }
@@ -725,6 +733,16 @@ sub parsetab
 		else
 		{
 			$alltabs->{$tname}->{with}->{shared} = 0;
+		}
+
+		if (exists($alltabs->{$tname}->{with}->{bootstrap}))
+		{
+			$alltabs->{$tname}->{with}->{bootstrap} =
+				($alltabs->{$tname}->{with}->{bootstrap} =~ m/t|true|y|yes|1/i);
+		}
+		else
+		{
+			$alltabs->{$tname}->{with}->{bootstrap} = 0;
 		}
 
 		if (exists($alltabs->{$tname}->{with}->{oid}))
@@ -1306,6 +1324,12 @@ sub formatindexes
 			}
 			$iname .= "_index";
 
+			# if indexname was supplied, use it instead
+			if (exists($ind->{indexname}))
+			{
+				$iname = $ind->{indexname};
+			}
+
 			if ($ind->{unique})
 			{
 				$bigstr .= $rct;
@@ -1353,6 +1377,10 @@ sub formattab
 		$bigstr .= "\n/*\n TidyCat Comments for $kk:\n";
 		$bigstr .= "  Table is shared, so catalog.c:IsSharedRelation is " .
 			"updated.\n" if $vv->{with}->{shared};
+		if ($vv->{with}->{bootstrap})
+		{
+			$bigstr .= "  Table is a **bootstrap** table.\n";
+		}
 		if ($vv->{with}->{oid})
 		{
 			$bigstr .= "  Table has an Oid column.\n";
@@ -1387,6 +1415,7 @@ sub formattab
 		$bigstr .= simpletabalign($ccdef, $relid) . "\n\n";
 			
 		$bigstr .= 'CATALOG('. $kk . ',' . $relid . ')';
+		$bigstr .= " BKI_BOOTSTRAP" if $vv->{with}->{bootstrap};
 		$bigstr .= " BKI_SHARED_RELATION" if $vv->{with}->{shared};
 		$bigstr .= " BKI_WITHOUT_OIDS" unless $vv->{with}->{oid};
 		$bigstr .= "\n{";
@@ -1803,6 +1832,8 @@ if (1)
 
 	my %alltabs;
 
+	my @arr_sql;
+
 	for my $filnam (@ARGV)
 	{
 		%alltabs = ();
@@ -1878,6 +1909,21 @@ if (1)
 
 		push @arr_bootparse, fix_bootparse(\%alltabs);
 
+		if ($glob_sqldef)
+		{
+			while (my ($jj, $ww) = each(%alltabs))
+			{
+				if (exists($ww->{tabdef_text})
+					&& length($ww->{tabdef_text})
+					&& ($ww->{tabdef_text} =~ m/CREATE\s+TABLE/i))
+				{
+					push @arr_sql, $ww->{tabdef_text};
+				}
+			}
+
+			next; # don't update file only want sql
+		}
+
 		# write the modified file to the temp directory
 		open my $file_out, "> " . File::Spec->catfile($glob_tmpdir, $basename)
 			or die "Cannot open $basename for write in $glob_tmpdir";
@@ -1890,6 +1936,17 @@ if (1)
 	} # end for filnam
 
 #	print "tmp: $tmp_indexing\tfil: $fil_indexing\n";
+
+	if ($glob_sqldef)
+	{
+		open my $file_out, "> " . $glob_sqldef
+			or die "Cannot open $glob_sqldef for write : $!";
+
+		print $file_out join(";\n", @arr_sql), ";\n";
+
+		close $file_out;
+		exit();
+	}
 
 	fixup_generated_code (\%alltabs, 
 						  "indexing.h", $fil_indexing, $tmp_indexing,

@@ -13171,7 +13171,8 @@ del_part_template(Oid rootrelid, int16 parlevel, Oid parent)
 				BTEqualStrategyNumber, F_INT2EQ,
 				ObjectIdGetDatum(parent));
 
-	scan = systable_beginscan(rel, PartitionRuleParoidParentRuleOrdIndexId,
+	scan = systable_beginscan(rel, 
+						  PartitionRuleParoidParparentruleParruleordIndexId,
 							  true, SnapshotNow, 2, key);
 
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
@@ -13471,7 +13472,7 @@ add_part_to_catalog(Oid relid, PartitionBy *pby,
 						Int16GetDatum(parruleord));
 
 			scan = systable_beginscan(rel,
-									  PartitionRuleParoidParentRuleOrdIndexId,
+						  PartitionRuleParoidParparentruleParruleordIndexId,
 									  true, SnapshotAny, 3, key);
 
 			tuple = systable_getnext(scan);
@@ -13581,7 +13582,8 @@ parruleord_reset_rank(Oid partid, int2 level, Oid parent, int2 ruleord,
 				BTGreaterEqualStrategyNumber, F_INT2GE,
 				Int16GetDatum(ruleord));
 
-	scan = systable_beginscan(rel, PartitionRuleParoidParentRuleOrdIndexId,
+	scan = systable_beginscan(rel, 
+						  PartitionRuleParoidParparentruleParruleordIndexId,
 							  true, SnapshotNow, 3, key);
 
 	while ((tuple = systable_getnext(scan)))
@@ -13642,7 +13644,8 @@ parruleord_open_gap(Oid partid, int2 level, Oid parent, int2 ruleord,
 				BTLessEqualStrategyNumber, F_INT2LE,
 				Int16GetDatum(ruleord));
 
-	scan = systable_beginscan(rel, PartitionRuleParoidParentRuleOrdIndexId,
+	scan = systable_beginscan(rel, 
+						  PartitionRuleParoidParparentruleParruleordIndexId,
 							  true, SnapshotNow, 3, key);
 
 	while ((tuple = systable_getprev(scan)))
@@ -13954,7 +13957,8 @@ get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 				BTEqualStrategyNumber, F_INT2EQ,
 				ObjectIdGetDatum(parent));
 
-	scan = systable_beginscan(rel, PartitionRuleParoidParentRuleOrdIndexId,
+	scan = systable_beginscan(rel, 
+						  PartitionRuleParoidParparentruleParruleordIndexId,
 							  true, SnapshotNow, 2, key);
 
 	while ((tuple = systable_getnext(scan)))

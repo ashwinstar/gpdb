@@ -1665,7 +1665,8 @@ RemovePartitioning(Oid relid)
 					Anum_pg_partition_rule_paroid,
 					BTEqualStrategyNumber, F_OIDEQ,
 					ObjectIdGetDatum(paroid));
-		del_part_entry_by_key(pgrule, PartitionRuleParoidParentRuleOrdIndexId,
+		del_part_entry_by_key(pgrule, 
+						  PartitionRuleParoidParparentruleParruleordIndexId,
 							  &rkey, 1);
 
 		/* remove ourself */

@@ -459,7 +459,7 @@ if (1)
 #    print "$filnam\n";
     system "perl -i -ple \' s/$hostexp/$hostname/gm; s,$gphomeexp,$gphome,gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; s/$infoschema/public/gm; s,$ugdir,$curdir/data/,gm; s/$gpglobconn/$glob_connect/gm;   \' $filnam\n";
 
-    # replace all "which" expressions with binary
+    # replace filespace
     if (defined($gpfspace_all) && length($gpfspace_all))
     {
         my @foo = split(/\@/, $gpfspace_all);
