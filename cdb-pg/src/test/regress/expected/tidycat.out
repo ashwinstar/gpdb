@@ -1,0 +1,215 @@
+-- --------------------------------------
+-- tidycat
+-- --------------------------------------
+-- start_matchsubs
+--
+-- # weird char mapping
+--
+-- m/pg\_partition\s*\|\s*parkind/
+-- s/bpchar/char/
+--
+-- end_matchsubs
+-- *********************************************************************
+-- *********************************************************************
+-- This script will produce diffs if you add or change catalog table
+-- definitions in src/include/catalog.
+--
+-- *********************************************************************
+-- *********************************************************************
+CREATE EXTERNAL WEB TABLE get_tc (x text)
+execute E'(find /Users/jcohen/dev/cdb2/main/cdb-pg/src/test/regress/../../include/catalog -name \'pg_*.h\'  | xargs perl /Users/jcohen/dev/cdb2/main/cdb-pg/src/test/regress/../../include/catalog/tidycat.pl -sql /Users/jcohen/dev/cdb2/main/cdb-pg/src/test/regress/data/tidyddl.sql 2>&1 > /dev/null ; perl -i -ple \' s/^\\s*with\\s*\\(.*\\)\\s*//gm \' /Users/jcohen/dev/cdb2/main/cdb-pg/src/test/regress/data/tidyddl.sql )' 
+FORMAT 'text' (delimiter '|');
+select * from get_tc order by 1;
+ x 
+---
+(0 rows)
+
+drop external table get_tc;
+create schema tidycat;
+set search_path to tidycat, "$user", public;
+-- start_ignore
+\i /Users/jcohen/dev/cdb2/main/cdb-pg/src/test/regress/data/tidyddl.sql
+   CREATE TABLE pg_authid
+   (
+   rolname name, -- name of role  
+   rolsuper boolean, -- read this field via superuser() only! 
+   rolinherit boolean, -- inherit privileges from other roles? 
+   rolcreaterole boolean, -- allowed to create more roles? 
+   rolcreatedb boolean, -- allowed to create databases? 
+   rolcatupdate boolean, -- allowed to alter catalogs manually? 
+   rolcanlogin boolean, -- allowed to log in as session user? 
+   rolconnlimit integer, -- max connections allowed (-1=no limit) 
+   -- remaining fields may be null. use heap_getattr to read them! 
+   rolpassword text, -- password, if any 
+   rolvaliduntil timestamp with time zone, -- password expiration time, if any
+   rolconfig text[], -- GUC settings to apply at login 
+   rolresqueue oid, -- ID of resource queue for this role 
+   
+   -- GP added fields
+   rolcreaterextgpfd boolean, -- allowed to create readable gpfdist tbl? 
+   rolcreaterexthttp boolean, -- allowed to create readable http tbl? 
+   rolcreatewextgpfd boolean -- allowed to create writable gpfdist tbl? 
+   );
+psql:/Users/jcohen/dev/cdb2/main/cdb-pg/src/test/regress/data/tidyddl.sql:24: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rolname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_partition
+   (
+   parrelid       oid,
+   parkind        char,
+   parlevel       smallint,
+   paristemplate  boolean,
+   parnatts       smallint,
+   paratts        int2vector,
+   parclass       oidvector
+   );
+psql:/Users/jcohen/dev/cdb2/main/cdb-pg/src/test/regress/data/tidyddl.sql:36: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'parrelid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_resqueue
+   (
+   rsqname name, -- name of resource queue
+   rsqcountlimit real, -- max active count limit
+   rsqcostlimit real, -- max cost limit
+   rsqovercommit boolean, -- allow overcommit on suitable  limits
+   rsqignorecostlimit real -- ignore queries with cost less than
+   );
+psql:/Users/jcohen/dev/cdb2/main/cdb-pg/src/test/regress/data/tidyddl.sql:46: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rsqname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_resqueuecapability
+   (
+   resqueueid oid,		-- OID of the queue with this capability 
+   restypid smallint,	-- resource type id (key to pg_resourcetype) 
+   ressetting text		-- resource setting (opaque type) 
+   );
+psql:/Users/jcohen/dev/cdb2/main/cdb-pg/src/test/regress/data/tidyddl.sql:54: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resqueueid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_resourcetype
+   (
+   resname name, -- name of resource type 
+   restypid smallint, -- resource type id 
+   resrequired boolean, -- if required, user must specify during CREATE
+   reshasdefault boolean, -- create a default entry for optional type
+   reshasdisable boolean, -- whether the type can be removed or shut off
+   resdefaultsetting text,	-- default resource setting 
+   resdisabledsetting text	-- value that turns it off 
+   );
+psql:/Users/jcohen/dev/cdb2/main/cdb-pg/src/test/regress/data/tidyddl.sql:66: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+-- end_ignore
+-- start_equiv
+select pc1.relname, pa1.attname, pt1.typname 
+from 
+	 pg_attribute pa1,
+	 pg_class pc1, 
+	 pg_type pt1 
+where pt1.oid = pa1.atttypid
+and pa1.attnum > 0
+and pa1.attisdropped is false
+and pc1.oid = pa1.attrelid 
+and pc1.relnamespace = 
+	(select oid from pg_namespace 
+	where nspname = 'tidycat')	  
+order by relname, pa1.attnum;
+        relname        |      attname       |   typname   
+-----------------------+--------------------+-------------
+ pg_authid             | rolname            | name
+ pg_authid             | rolsuper           | bool
+ pg_authid             | rolinherit         | bool
+ pg_authid             | rolcreaterole      | bool
+ pg_authid             | rolcreatedb        | bool
+ pg_authid             | rolcatupdate       | bool
+ pg_authid             | rolcanlogin        | bool
+ pg_authid             | rolconnlimit       | int4
+ pg_authid             | rolpassword        | text
+ pg_authid             | rolvaliduntil      | timestamptz
+ pg_authid             | rolconfig          | _text
+ pg_authid             | rolresqueue        | oid
+ pg_authid             | rolcreaterextgpfd  | bool
+ pg_authid             | rolcreaterexthttp  | bool
+ pg_authid             | rolcreatewextgpfd  | bool
+ pg_partition          | parrelid           | oid
+ pg_partition          | parkind            | bpchar
+ pg_partition          | parlevel           | int2
+ pg_partition          | paristemplate      | bool
+ pg_partition          | parnatts           | int2
+ pg_partition          | paratts            | int2vector
+ pg_partition          | parclass           | oidvector
+ pg_resourcetype       | resname            | name
+ pg_resourcetype       | restypid           | int2
+ pg_resourcetype       | resrequired        | bool
+ pg_resourcetype       | reshasdefault      | bool
+ pg_resourcetype       | reshasdisable      | bool
+ pg_resourcetype       | resdefaultsetting  | text
+ pg_resourcetype       | resdisabledsetting | text
+ pg_resqueue           | rsqname            | name
+ pg_resqueue           | rsqcountlimit      | float4
+ pg_resqueue           | rsqcostlimit       | float4
+ pg_resqueue           | rsqovercommit      | bool
+ pg_resqueue           | rsqignorecostlimit | float4
+ pg_resqueuecapability | resqueueid         | oid
+ pg_resqueuecapability | restypid           | int2
+ pg_resqueuecapability | ressetting         | text
+(37 rows)
+
+select pc1.relname, pa1.attname, pt1.typname 
+from 
+	 pg_attribute pa1,
+	 pg_class pc1, 
+	 pg_type pt1 
+where pt1.oid = pa1.atttypid
+and pa1.attnum > 0
+and pa1.attisdropped is false
+and pc1.oid = pa1.attrelid 
+and pc1.relnamespace = 
+	(select oid from pg_namespace where nspname = 'pg_catalog')
+and pc1.relname	in 
+	(select relname from pg_class where relnamespace =
+			(select	oid from pg_namespace where nspname = 'tidycat'))
+order by relname, pa1.attnum;
+        relname        |      attname       |   typname   
+-----------------------+--------------------+-------------
+ pg_authid             | rolname            | name
+ pg_authid             | rolsuper           | bool
+ pg_authid             | rolinherit         | bool
+ pg_authid             | rolcreaterole      | bool
+ pg_authid             | rolcreatedb        | bool
+ pg_authid             | rolcatupdate       | bool
+ pg_authid             | rolcanlogin        | bool
+ pg_authid             | rolconnlimit       | int4
+ pg_authid             | rolpassword        | text
+ pg_authid             | rolvaliduntil      | timestamptz
+ pg_authid             | rolconfig          | _text
+ pg_authid             | rolresqueue        | oid
+ pg_authid             | rolcreaterextgpfd  | bool
+ pg_authid             | rolcreaterexthttp  | bool
+ pg_authid             | rolcreatewextgpfd  | bool
+ pg_partition          | parrelid           | oid
+ pg_partition          | parkind            | char
+ pg_partition          | parlevel           | int2
+ pg_partition          | paristemplate      | bool
+ pg_partition          | parnatts           | int2
+ pg_partition          | paratts            | int2vector
+ pg_partition          | parclass           | oidvector
+ pg_resourcetype       | resname            | name
+ pg_resourcetype       | restypid           | int2
+ pg_resourcetype       | resrequired        | bool
+ pg_resourcetype       | reshasdefault      | bool
+ pg_resourcetype       | reshasdisable      | bool
+ pg_resourcetype       | resdefaultsetting  | text
+ pg_resourcetype       | resdisabledsetting | text
+ pg_resqueue           | rsqname            | name
+ pg_resqueue           | rsqcountlimit      | float4
+ pg_resqueue           | rsqcostlimit       | float4
+ pg_resqueue           | rsqovercommit      | bool
+ pg_resqueue           | rsqignorecostlimit | float4
+ pg_resqueuecapability | resqueueid         | oid
+ pg_resqueuecapability | restypid           | int2
+ pg_resqueuecapability | ressetting         | text
+(37 rows)
+
+-- end_equiv
+drop schema tidycat CASCADE;
+NOTICE:  drop cascades to table tidycat.pg_resourcetype
+NOTICE:  drop cascades to table tidycat.pg_resqueuecapability
+NOTICE:  drop cascades to table tidycat.pg_resqueue
+NOTICE:  drop cascades to table tidycat.pg_partition
+NOTICE:  drop cascades to table tidycat.pg_authid

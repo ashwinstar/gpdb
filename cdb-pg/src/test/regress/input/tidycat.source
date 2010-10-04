@@ -1,0 +1,74 @@
+-- --------------------------------------
+-- tidycat
+-- --------------------------------------
+
+-- start_matchsubs
+--
+-- # weird char mapping
+--
+-- m/pg\_partition\s*\|\s*parkind/
+-- s/bpchar/char/
+--
+-- end_matchsubs
+
+-- *********************************************************************
+-- *********************************************************************
+-- This script will produce diffs if you add or change catalog table
+-- definitions in src/include/catalog.
+--
+-- *********************************************************************
+-- *********************************************************************
+
+
+CREATE EXTERNAL WEB TABLE get_tc (x text)
+execute E'(find @abs_srcdir@/../../include/catalog -name \'pg_*.h\'  | xargs perl @abs_srcdir@/../../include/catalog/tidycat.pl -sql @abs_srcdir@/data/tidyddl.sql 2>&1 > /dev/null ; perl -i -ple \' s/^\\s*with\\s*\\(.*\\)\\s*//gm \' @abs_srcdir@/data/tidyddl.sql )' 
+FORMAT 'text' (delimiter '|');
+
+select * from get_tc order by 1;
+
+drop external table get_tc;
+
+create schema tidycat;
+
+set search_path to tidycat, "$user", public;
+
+-- start_ignore
+\i @abs_srcdir@/data/tidyddl.sql
+-- end_ignore
+
+-- start_equiv
+
+select pc1.relname, pa1.attname, pt1.typname 
+from 
+	 pg_attribute pa1,
+	 pg_class pc1, 
+	 pg_type pt1 
+where pt1.oid = pa1.atttypid
+and pa1.attnum > 0
+and pa1.attisdropped is false
+and pc1.oid = pa1.attrelid 
+and pc1.relnamespace = 
+	(select oid from pg_namespace 
+	where nspname = 'tidycat')	  
+order by relname, pa1.attnum;
+
+select pc1.relname, pa1.attname, pt1.typname 
+from 
+	 pg_attribute pa1,
+	 pg_class pc1, 
+	 pg_type pt1 
+where pt1.oid = pa1.atttypid
+and pa1.attnum > 0
+and pa1.attisdropped is false
+and pc1.oid = pa1.attrelid 
+and pc1.relnamespace = 
+	(select oid from pg_namespace where nspname = 'pg_catalog')
+and pc1.relname	in 
+	(select relname from pg_class where relnamespace =
+			(select	oid from pg_namespace where nspname = 'tidycat'))
+order by relname, pa1.attnum;
+
+-- end_equiv
+
+drop schema tidycat CASCADE;
+
