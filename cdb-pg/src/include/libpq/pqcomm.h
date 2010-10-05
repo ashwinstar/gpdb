@@ -6,10 +6,10 @@
  * NOTE: for historical reasons, this does not correspond to pqcomm.c.
  * pqcomm.c's routines are declared in libpq.h.
  *
- * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/libpq/pqcomm.h,v 1.110 2009/01/01 17:23:59 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/libpq/pqcomm.h,v 1.111 2010/01/02 16:58:04 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -162,6 +162,7 @@ extern bool Db_user_namespace;
 
 typedef uint32 AuthRequest;
 
+
 /*
  * A client can also send a cancel-current-operation request to the postmaster.
  * This is uglier than sending it directly to the client's backend, but it
@@ -179,6 +180,7 @@ typedef struct CancelRequestPacket
 	uint32		backendPID;		/* PID of client's backend */
 	uint32		cancelAuthCode; /* secret key to authorize cancel */
 } CancelRequestPacket;
+
 
 /*
  * A client can also start by sending a SSL negotiation request, to get a
