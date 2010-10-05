@@ -9,8 +9,8 @@
  *	  polluting the namespace with lots of stuff...
  *
  *
- * Portions Copyright (c) 2006-2009, Greenplum inc
- * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2010, Greenplum inc
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/c.h,v 1.222 2008/01/01 19:45:56 momjian Exp $
@@ -74,11 +74,11 @@ extern "C" {
 #include <string.h>
 #include <stddef.h>
 #include <stdarg.h>
-#ifdef HAVE_STDINT_H
-#include <stdint.h>
-#endif
 #ifdef HAVE_STRINGS_H
 #include <strings.h>
+#endif
+#ifdef HAVE_STDINT_H
+#include <stdint.h>
 #endif
 #include <sys/types.h>
 
@@ -98,7 +98,7 @@ extern "C" {
 /* Must be before gettext() games below */
 #include <locale.h>
 
-#define _(x) gettext((x))
+#define _(x) gettext(x)
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -284,21 +284,10 @@ typedef long long int int64;
 #ifndef HAVE_UINT64
 typedef unsigned long long int uint64;
 #endif
-#else							/* not HAVE_LONG_INT_64 and not
-								 * HAVE_LONG_LONG_INT_64 */
-
-/* Won't actually work, but fall back to long int so that code compiles */
-#ifndef HAVE_INT64
-typedef long int int64;
+#else
+/* neither HAVE_LONG_INT_64 nor HAVE_LONG_LONG_INT_64 */
+#error must have a working 64-bit integer datatype
 #endif
-#ifndef HAVE_UINT64
-typedef unsigned long int uint64;
-#endif
-
-#define INT64_IS_BUSTED
-#error "Greenplum Database cannot be compiled on machines that don't have a 64-bit integer type"
-#endif   /* not HAVE_LONG_INT_64 and not
-								 * HAVE_LONG_LONG_INT_64 */
 
 /* Decide if we need to decorate 64-bit constants */
 #ifdef HAVE_LL_CONSTANTS
@@ -311,7 +300,7 @@ typedef unsigned long int uint64;
 
 
 /* Select timestamp representation (float8 or int64) */
-#if defined(USE_INTEGER_DATETIMES) && !defined(INT64_IS_BUSTED)
+#ifdef USE_INTEGER_DATETIMES
 #define HAVE_INT64_TIMESTAMP
 #endif
 
