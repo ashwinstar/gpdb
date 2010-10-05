@@ -96,7 +96,9 @@
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 
-#define _(x)	gettext((x))
+#ifndef _
+#define _(x)	gettext(x)
+#endif
 
 /* ----------
  * Routines type
