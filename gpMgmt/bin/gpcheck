@@ -849,7 +849,7 @@ def testAppliance1001Switches():
         switch = gpcheck_info.switches[s]
     
         if switch.category == 'Interconnect':
-            expected = "v6.3.1b"
+            expected = '"v6.3.1a"'
             if switch.versionstring != expected:
                 printError(switch.hostname, "Interconnect Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
 
