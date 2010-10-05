@@ -14,10 +14,10 @@
  * a usable vsnprintf(), then a copy of our own implementation of it will
  * be linked into libpq.
  *
- * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/interfaces/libpq/pqexpbuffer.c,v 1.27 2009/06/11 14:49:14 momjian Exp $
+ * $PostgreSQL: pgsql/src/interfaces/libpq/pqexpbuffer.c,v 1.28 2010/01/02 16:58:12 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -127,7 +127,7 @@ termPQExpBuffer(PQExpBuffer str)
 	if (str->data != oom_buffer)
 		free(str->data);
 	/* just for luck, make the buffer validly empty. */
-	str->data = (char *) oom_buffer;		/* see comment above */
+	str->data = (char *) oom_buffer;	/* see comment above */
 	str->maxlen = 0;
 	str->len = 0;
 }
@@ -144,8 +144,8 @@ resetPQExpBuffer(PQExpBuffer str)
 	if (str)
 	{
 		if (str->data != oom_buffer)
-	{
-		str->len = 0;
+		{
+			str->len = 0;
 			str->data[0] = '\0';
 		}
 		else
@@ -161,7 +161,7 @@ resetPQExpBuffer(PQExpBuffer str)
  * Make sure there is enough space for 'needed' more bytes in the buffer
  * ('needed' does not include the terminating null).
  *
- * Returns 1 if OK, 0 if failed to enlarge buffer.  (In the latter case
+ * Returns 1 if OK, 0 if failed to enlarge buffer.	(In the latter case
  * the buffer is left in "broken" state.)
  */
 int
