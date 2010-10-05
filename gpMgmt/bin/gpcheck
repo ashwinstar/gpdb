@@ -86,11 +86,11 @@ def parseargs():
         return True
 
     if not options.file and not options.zipin:
-        logger.error("--file or --zipin must be specified")
+        logger.error(" --file or --zipin must be specified")
         return True
 
     if options.stdout and options.zipout:
-        logger.error("--stdout and --zipout options can not be used together")
+        logger.error(" --stdout and --zipout options can not be used together")
         return True
 
     if options.zipin and (options.master or options.standbymaster or options.file):
