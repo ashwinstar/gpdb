@@ -243,6 +243,15 @@ ScanPgRelation(Oid targetRelId, bool indexOK, Relation *pg_class_relation)
 	ScanKeyData key[1];
 
 	/*
+	 * If something goes wrong during backend startup, we might find ourselves
+	 * trying to read pg_class before we've selected a database.  That ain't
+	 * gonna work, so bail out with a useful error message.  If this happens,
+	 * it probably means a relcache entry that needs to be nailed isn't.
+	 */
+	if (!OidIsValid(MyDatabaseId))
+		elog(FATAL, "cannot read pg_class without having selected a database");
+
+	/*
 	 * form a scan key
 	 */
 	ScanKeyInit(&key[0],
@@ -3990,7 +3999,7 @@ write_relcache_init_file(void)
 		/* next, do all the attribute tuple form data entries */
 		for (i = 0; i < relform->relnatts; i++)
 		{
-			write_item(rel->rd_att->attrs[i], ATTRIBUTE_TUPLE_SIZE, fp);
+			write_item(rel->rd_att->attrs[i], ATTRIBUTE_FIXED_PART_SIZE, fp);
 		}
 
 		/* next, do the access method specific field */
@@ -4104,7 +4113,7 @@ RelationIdIsInInitFile(Oid relationId)
 /*
  * Invalidate (remove) the init file during commit of a transaction that
  * changed one or more of the relation cache entries that are kept in the
- * init file.
+ * local init file.
  *
  * We actually need to remove the init file twice: once just before sending
  * the SI messages that include relcache inval for such relations, and once
@@ -4119,6 +4128,13 @@ RelationIdIsInInitFile(Oid relationId)
  *
  * Ignore any failure to unlink the file, since it might not be there if
  * no backend has been started since the last removal.
+ *
+ * Notice this deals only with the local init file, not the shared init file.
+ * The reason is that there can never be a "significant" change to the
+ * relcache entry of a shared relation; the most that could happen is
+ * updates of noncritical fields such as relpages/reltuples.  So, while
+ * it's worth updating the shared init file from time to time, it can never
+ * be invalid enough to make it necessary to remove it.
  */
 void
 RelationCacheInitFileInvalidate(bool beforeSend)
