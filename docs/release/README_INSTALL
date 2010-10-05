@@ -19,13 +19,13 @@ RUNNING THE GREENPLUM DATABASE INSTALLER
 
 2. Execute the installer using bash:
 
-   /bin/bash greenplum-db-4.0.1.x-<PLATFORM>.bin 
+   /bin/bash greenplum-db-4.0.x.x-<PLATFORM>.bin 
 
 3. When prompted, type 'yes' to accept the license agreement.
 
 4. When prompted, provide an installation path. For example:
 
-   /usr/local/greenplum-db-4.0.1.x
+   /usr/local/greenplum-db-4.0.x.x
 
 
 ***********************************************************
