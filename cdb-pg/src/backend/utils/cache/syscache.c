@@ -53,9 +53,8 @@
 
 	Adding system caches:
 
-	Add your new cache to the list in include/utils/syscache.h.  Keep
-	the list sorted alphabetically and adjust the cache numbers
-	accordingly.
+	Add your new cache to the list in include/utils/syscache.h.
+	Keep the list sorted alphabetically.
 
 	Add your entry to the cacheinfo[] array below. All cache lists are
 	alphabetical, so add it in the proper place.  Specify the relation OID,
@@ -227,7 +226,8 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		128
 	},
-	{CastRelationId,			/* CASTSOURCETARGET */
+	{
+		CastRelationId,			/* CASTSOURCETARGET */
 		CastSourceTargetIndexId,
 		2,
 		{
