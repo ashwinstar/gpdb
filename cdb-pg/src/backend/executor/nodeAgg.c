@@ -38,9 +38,7 @@
  *    Postgres stores transvalues in the memory context aggstate->aggcontext,
  *	  which is also used for the hashtable structures in AGG_HASHED mode.
  *    MPP (in order to support hybrid hash aggregation) stores hash table
- *    entries and associated transition values in aggstate->transcontext.
- *    In AGG_PLAIN and AGG_SORTED cases, these contexts are the same, but
- *    for AGG_HASHED they differ.
+ *    entries and associated transition values in aggstate->aggcontext.
  *
  *	  The node's regular econtext (aggstate->csstate.cstate.cs_ExprContext)
  *	  is used to run finalize functions and compute the output tuple;
@@ -287,7 +285,7 @@ initialize_aggregates(AggState *aggstate,
 		 * (Re)set transValue to the initial value.
 		 *
 		 * Note that when the initial value is pass-by-ref, we must copy it
-		 * (into the transcontext) since we will pfree the transValue later.
+		 * (into the aggcontext) since we will pfree the transValue later.
 		 */
 		if (peraggstate->initValueIsNull)
 		{
@@ -391,7 +389,7 @@ invoke_agg_trans_func(FmgrInfo *transfn, int numargs, Datum transValue,
 			 * already checked that the agg's input type is binary-compatible
 			 * with its transtype, so straight copy here is OK.)
 			 *
-			 * We must copy the datum into transcontext if it is pass-by-ref.
+			 * We must copy the datum into aggcontext if it is pass-by-ref.
 			 * We do not need to pfree the old transValue, since it's NULL.
 			 */
 			newVal = datumCopyWithMemManager(transValue, fcinfo->arg[1], transtypeByVal,
@@ -430,7 +428,7 @@ invoke_agg_trans_func(FmgrInfo *transfn, int numargs, Datum transValue,
 	newVal = FunctionCallInvoke(fcinfo);
 
 	/*
-	 * If pass-by-ref datatype, must copy the new value into transcontext and
+	 * If pass-by-ref datatype, must copy the new value into aggcontext and
 	 * pfree the prior transValue.	But if transfn returned a pointer to its
 	 * first input, we don't need to do anything.
 	 */
@@ -1555,18 +1553,6 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 							  ALLOCSET_DEFAULT_INITSIZE,
 							  ALLOCSET_DEFAULT_MAXSIZE);
 
-	if ( node->aggstrategy == AGG_HASHED )
-	{
-		aggstate->transcontext =
-			AllocSetContextCreate(aggstate->aggcontext,
-								  "TransContext",
-								  ALLOCSET_DEFAULT_MINSIZE,
-								  ALLOCSET_DEFAULT_INITSIZE,
-								  ALLOCSET_DEFAULT_MAXSIZE);
-	}
-	else
-		aggstate->transcontext = aggstate->aggcontext;
-
 #define AGG_NSLOTS 3
 
 	/*
@@ -1677,7 +1663,6 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	if (node->aggstrategy == AGG_HASHED)
 	{
 		aggstate->hash_needed = get_agg_hash_collist(aggstate);
-		aggstate->table_filled = false;
 	}
 	else
 	{
@@ -1964,7 +1949,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	/* Set the default memory manager */
 	aggstate->mem_manager.alloc = cxt_alloc;
 	aggstate->mem_manager.free = cxt_free;
-	aggstate->mem_manager.manager = aggstate->transcontext;
+	aggstate->mem_manager.manager = aggstate->aggcontext;
 	aggstate->mem_manager.realloc_ratio = 1;
 
 	initGpmonPktForAgg((Plan *)node, &aggstate->ss.ps.gpmon_pkt, estate);
@@ -2061,34 +2046,6 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 
 	node->agg_done = false;
 
-	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
-	{
-		/* MPP-1140 */
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Illegal rescan of hashagg node: invalid plan."),
-				 errhint("likely caused by bad NL-join, try setting enable_nestloop off, or disabling hashagg")));
-
-		/*
-		 * In the hashed case, if we haven't yet built the hash table then we
-		 * can just return; nothing done yet, so nothing to undo. If subnode's
-		 * chgParam is not NULL then it will be re-scanned by ExecProcNode,
-		 * else no reason to re-scan it at all.
-		 */
-		if (!node->table_filled)
-			return;
-
-		/*
-		 * If we do have the hash table and the subplan does not have any
-		 * parameter changes, then we can just rescan the existing hash table;
-		 * no need to build it again.
-		 */
-		if (((PlanState *) node)->lefttree->chgParam == NULL)
-		{
-			ResetTupleHashIterator(node->hashtable, &node->hashiter);
-			return;
-		}
-	}
 
 	/* Make sure we have closed any open tuplesorts */
 	for (aggno = 0; aggno < node->numaggs; aggno++)
@@ -2120,19 +2077,10 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 	MemSet(econtext->ecxt_aggvalues, 0, sizeof(Datum) * node->numaggs);
 	MemSet(econtext->ecxt_aggnulls, 0, sizeof(bool) * node->numaggs);
 
-	/*
-	 * Release all temp storage. Note that with AGG_HASHED, the hash table
-	 * is allocated in a sub-context of the aggcontext. We're going to
-	 * rebuild the hash table from scratch, so we need to use
-	 * MemoryContextResetAndDeleteChildren() to avoid leaking the old hash
-	 * table's memory context header.
-	 */
-	MemoryContextResetAndDeleteChildren(node->aggcontext);
 
 	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
 	{
 		destroy_agg_hash_table(node);
-		node->table_filled = false;
 	}
 	else
 	{
@@ -2143,13 +2091,23 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 			   sizeof(AggStatePerGroupData) * node->numaggs);
 	}
 
+	/*
+	 * Release all temp storage. Note that with AGG_HASHED, the hash table
+	 * is allocated in a sub-context of the aggcontext. We're going to
+	 * rebuild the hash table from scratch, so we need to use
+	 * MemoryContextResetAndDeleteChildren() to avoid leaking the old hash
+	 * table's memory context header.
+	 */
+	MemoryContextResetAndDeleteChildren(node->aggcontext);
+	
 	if (((Agg *) node->ss.ps.plan)->inputHasGrouping)
+	{
 		/*
 		 * Reset the per-passthru state (in particular, mark transvalues null)
 		 */
 		MemSet(node->perpassthru, 0,
 			   sizeof(AggStatePerGroupData) * node->numaggs);
-		
+	}	
 
 	/*
 	 * if chgParam of subnode is not null then plan will be re-scanned by

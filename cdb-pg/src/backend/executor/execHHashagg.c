@@ -654,9 +654,8 @@ static Size est_hash_tuple_size(TupleTableSlot *hashslot, List *hash_needed)
  * should be installed in the AggState.
  *
  * The main control structure for the hash table is allocated in the memory
- * context aggstate->aggcontext as is the bucket array and the items related
- * to overflow files.  The contents of the hash table will be allocated in
- * child context aggstate->transcontext to allow quick resets.
+ * context aggstate->aggcontext as is the bucket array, the hashtable and the items related
+ * to overflow files.  
  */
 HashAggTable *
 create_agg_hash_table(AggState *aggstate)
@@ -668,7 +667,7 @@ create_agg_hash_table(AggState *aggstate)
 	oldcxt = MemoryContextSwitchTo(aggstate->aggcontext);
 	hashtable = (HashAggTable *)palloc0(sizeof(HashAggTable));
 
-	hashtable->entry_cxt = AllocSetContextCreate(aggstate->transcontext, 
+	hashtable->entry_cxt = AllocSetContextCreate(aggstate->aggcontext, 
 												 "HashAggTableContext",
 												 ALLOCSET_DEFAULT_MINSIZE,
 												 ALLOCSET_DEFAULT_INITSIZE,
