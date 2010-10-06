@@ -296,6 +296,8 @@ BEGIN {
     $glob_ignore = \@ignore;
     $glob_dirignore = \@dirignore;
 
+	push @{$glob_dirignore}, "pgsql_tmp"; # this directory only on primaries
+
 	$glob_content = \@content;
 
 	my $gp_filedump = `which gp_filedump`;
@@ -2700,31 +2702,52 @@ EOF_msgstr
 
 		print "dispatch directory: ", $fil, "\nfilespace: $fsname\n";
 
+		my $cmd_template = "";
+
+		if ($glob_matchdirs)
+		{
+			my @mdirs = qw(
+base
+global
+pg_changetracking
+pg_clog
+pg_distributedlog
+pg_distributedxidmap
+pg_log
+pg_multixact
+pg_stat_tmp
+pg_subtrans
+pg_tblspc
+pg_twophase
+pg_utilitymodedtmredo
+pg_xlog
+);
+
+			# MPP-11041: check for important directories
+			# MPP-11301: check for even more important directories
+			$cmd_template .= 
+				'find MYDIR -type d | awk \'{print $1" 0 ("$1") 0"}\' ' .
+				'| perl -nle \'print if /' . join('|', @mdirs) . '/ \' ' .
+				$dirignore_cmd .
+				'| sort  ' .
+				'| perl -i -ple \'s|MYDIR||gm \' ' . 
+				# strip out [hostname] prefix
+				'| perl -i -ple \'s|^\\s*\\[.*\\]\\s*||gm \'  ' ;
+
+			$cmd_template .= "\n\n";
+
+		}
+
 		# use openssl to construct an md5 hash for every file
 		# Note: use mypresh*1*, because this script runs on the copy
 		# of the file on the segment
-		my $cmd_template = 
+		$cmd_template .= 
 			'find MYDIR -type f | xargs perl MYPRESH1  ' .
 			'| ' . $ignore_cmd . " " .
 			'| sort  ' .
 			'| perl -i -ple \'s|MYDIR||gm \' ' . 
 			# strip out [hostname] prefix
 			'| perl -i -ple \'s|^\\s*\\[.*\\]\\s*||gm \'  ' ;
-
-		if ($glob_matchdirs)
-		{
-			$cmd_template .= "\n\n";
-
-			# MPP-11041: check for important directories
-			$cmd_template .= 
-				'find MYDIR -type d | awk \'{print $1" 0 ("$1") 0"}\' ' .
-				'| perl -nle \'print if /pg_changetracking|pg_stat_tmp/ \' ' .
-				$dirignore_cmd .
-				'| sort  ' .
-				'| perl -i -ple \'s|MYDIR||gm \' ' . 
-				# strip out [hostname] prefix
-				'| perl -i -ple \'s|^\\s*\\[.*\\]\\s*||gm \'  ' ;
-		}
 
 		my $cmd = $cmd_template;
 		$cmd =~ s/MYHOST/$primhost/g;
