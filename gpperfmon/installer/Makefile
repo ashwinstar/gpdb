@@ -90,7 +90,7 @@ all:
 		cd .tmp/lib; \
 		ln -s libpcre.0.0.1.dylib libpcre.0.dylib; \
 		ln -s libssl.0.9.8.dylib libssl.dylib; \
-		ln -l libcrypto.0.9.8 libcrypto.dylib; \
+		ln -s libcrypto.0.9.8 libcrypto.dylib; \
 		cd ../..; \
 	else \
 		cp $(BLD_TOP)/ext/$(BLD_ARCH)/lib/libpcre.so.0.0.1 .tmp/lib; \
