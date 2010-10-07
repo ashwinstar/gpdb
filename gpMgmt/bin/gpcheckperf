@@ -198,7 +198,7 @@ def parseDuration(val):
 
 #############
 def print_version():
-    print '%s version $Revision$' % GV.script_name
+    print '%s version 4.0.2.0 build 3' % GV.script_name
     sys.exit(0)
 
 #############
@@ -533,6 +533,8 @@ def reapNetperfTest(proc, x, y):
             out = proc.stdout.read(-1)
             ok = not killProc(proc)
             proc = None
+        except KeyboardInterrupt, ki:
+            raise
         except:
             pass
         finally:
