@@ -2789,8 +2789,15 @@ void ChangeTracking_CompactLogsIfPossible(void)
  */
 void ChangeTracking_DoFullCompactingRound(XLogRecPtr* upto_lsn)
 {
-	
-	Assert(!changeTrackingCompState->in_progress);
+	/*
+	 * we should normally have in_progress == false now, but if the filerep 
+	 * process that did compacting in the background was killed while compacting
+	 * we issue a warning, mainly for tracking purposes. this should be harmless
+	 * though - resulting in few duplicate entries. compacting state is reset 
+	 * few lines down.
+	 */
+	if(changeTrackingCompState->in_progress)
+		elog(LOG, "ChangeTracking: warning - routine compacting was shut off abnormally");
 	
 	FileRep_InsertConfigLogEntry("running a full round of compacting the logs ");
 	
