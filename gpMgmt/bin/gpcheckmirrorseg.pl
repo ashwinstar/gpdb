@@ -2723,16 +2723,38 @@ pg_utilitymodedtmredo
 pg_xlog
 );
 
+			my $std_dirs = "";
+			my $post_fix = "";
+
+			if ($fsname eq 'pg_system')
+			{
+				# filter out special directories for standard
+				# pg_system filespace, but not for other filespaces
+
+				$std_dirs =
+					'| perl -nle \'print if /' . join('|', @mdirs) . '/ \' ' ;
+			}
+			else
+			{
+				# remove line for top-level directory of filespace
+				# because it prints as " 0 () 0" after filtering,
+				# which is useless...
+
+				$post_fix =
+					'| perl -nle \'print unless /0\s+\(\)\s+0/ \' ' ;
+			}
+
 			# MPP-11041: check for important directories
 			# MPP-11301: check for even more important directories
 			$cmd_template .= 
 				'find MYDIR -type d | awk \'{print $1" 0 ("$1") 0"}\' ' .
-				'| perl -nle \'print if /' . join('|', @mdirs) . '/ \' ' .
+				$std_dirs .
 				$dirignore_cmd .
 				'| sort  ' .
 				'| perl -i -ple \'s|MYDIR||gm \' ' . 
 				# strip out [hostname] prefix
-				'| perl -i -ple \'s|^\\s*\\[.*\\]\\s*||gm \'  ' ;
+				'| perl -i -ple \'s|^\\s*\\[.*\\]\\s*||gm \'  ' .
+				$post_fix ;
 
 			$cmd_template .= "\n\n";
 
