@@ -72,12 +72,14 @@ COPY       = 'COPY     '
 DELETE     = 'DELETE   '
 NO_ACTION  = 'NO ACTION'
 
-categoryAction['ao:']       = COPY
-categoryAction['heap:']    = COPY
-categoryAction['btree:']   = COPY
-categoryAction['extra_p:'] = COPY
-categoryAction['extra_m:'] = DELETE
-categoryAction['unknown:'] = NO_ACTION
+categoryAction['ao:']              = COPY
+categoryAction['heap:']            = COPY
+categoryAction['btree:']           = COPY
+categoryAction['extra_p:']         = COPY
+categoryAction['extra_m:']         = DELETE
+categoryAction['missing_topdir_p:'] = COPY
+categoryAction['missing_topdir_m:'] = COPY
+categoryAction['unknown:']         = NO_ACTION
 
 
 #-------------------------------------------------------------------------------
