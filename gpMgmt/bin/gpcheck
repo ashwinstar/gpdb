@@ -196,6 +196,8 @@ def runCollectionOnServers():
         host_type_cl = "--app1001"
     elif gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
         host_type_cl = "--linux"
+    elif gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_SOLARIS:
+        host_type_cl = "--solaris"
     else:
         logger.error("Unexpected host_type in runCollectionOnServers")
         return True
@@ -530,6 +532,71 @@ def testAppliance1001Securetty(host):
             printError(host.hostname, "%s not detected in /etc/securetty" % tty)
 
 
+def testSolarisEtcSystem(host):
+
+    requiredValues = {  'rlim_fd_cur' : '65536',
+                        'zfs:zfs_arc_max' : '0x600000000',
+                        'pcplusmp:apic_panic_on_nmi' : '1',
+                        'nopanicdebug' : '1' }
+
+    results = dict()
+
+    for k in requiredValues.keys():
+        results[k] = 0
+        
+    for key in host.data.etc_system.parameters.keys():
+
+        if key not in requiredValues:
+            continue
+
+        foundValue = host.data.etc_system.parameters[key]
+        if foundValue == requiredValues[key]:
+            results[key] = 1
+
+    for k in results.keys():
+
+        if results[k]:
+            continue
+
+        printError(host.hostname, "/etc/system is missing expected line 'set %s=%s'" % (k, requiredValues[k]))
+
+
+def testSolarisEtcProject(host):
+
+    requiredValues = {  'default:3::::project.max-sem-ids=(priv,1024,deny);process.max-file-descriptor=(priv,252144,deny)' : 0 }
+
+    unexpectedValues = set(['default:3::::'])
+
+    for line in host.data.etc_project.lines:
+        if line in unexpectedValues:
+            printError(host.hostname, "unexpected line in /etc/project: '%s'" % line)
+            continue
+
+        if line in requiredValues:
+            requiredValues[line] = 1
+
+    for line in requiredValues.keys():
+        if requiredValues[line]:
+            continue
+
+        printError(host.hostname, "/etc/project is missing expected line '%s'" % line)
+        
+
+def testSolarisEtcUserAttr(host):
+
+    requiredValues = { 'gpadmin::::defaultpriv=basic,dtrace_user,dtrace_proc' : 0 }
+
+    for line in host.data.etc_user_attr.lines:
+        if line in requiredValues:
+            requiredValues[line] = 1
+
+    for line in requiredValues.keys():
+        if requiredValues[line]:
+            continue
+
+        printError(host.hostname, "/etc/user_attr is missing expected line '%s'" % line)
+ 
+
 def testAppliance1001Chkconfig(host):
 
     # ipmi should be on for 3 4 5
@@ -825,6 +892,11 @@ def testGenericLinuxHost(host):
     testLinuxMounts(host)
 
 
+def testGenericSolarisHost(host):
+
+    testSolarisEtcSystem(host)
+    testSolarisEtcProject(host)
+    testSolarisEtcUserAttr(host)
 
 def testUnameConsistency():
 
@@ -873,6 +945,12 @@ def testGenericLinuxCluster():
 
     testUnameConsistency()
 
+def testGenericSolarisCluster():
+
+    for h in gpcheck_info.hosts.keys():
+        testGenericSolarisHost(gpcheck_info.hosts[h])
+
+    testUnameConsistency()
 
 def runTests():
 
@@ -883,6 +961,8 @@ def runTests():
         testAppliance1001()
     elif gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
         testGenericLinuxCluster()
+    elif gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_SOLARIS:
+        testGenericSolarisCluster()
     else:
         printWarning("No tests exist for this platform in gpcheck")
         return False
@@ -944,6 +1024,9 @@ def checkPlatform():
 
     if SYSTEM.getName() == 'linux':
         gpcheck_info.host_type = HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX
+        return False
+    elif SYSTEM.getName() == 'sunos':
+        gpcheck_info.host_type = HostType.GPCHECK_HOSTTYPE_GENERIC_SOLARIS
         return False
 
     printWarning("No tests exist for this platform in gpcheck")
