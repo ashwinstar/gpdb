@@ -921,7 +921,32 @@ sub dandydiff
 	my $pstat = ($plin = <$pfh>);
 	my $mstat = ($mlin = <$mfh>);
 
-	my (@extrafiles, %sizediff, %hashdiff);
+	my (@extrafiles, %sizediff, %hashdiff, @topdir);
+
+	# MPP-11315: check if top directory exists on primary and mirror.
+	# make sure file is non-zero, and first line is a TOPDIR line.
+	if ($pstat && ($plin =~ m/TOPDIR/)) 
+	{
+		unless ($plin =~ m/TOPDIR_TRUE/)
+		{
+			push @topdir, "missing_topdir_p: " ;
+		}
+
+		$pstat = ($plin = <$pfh>);
+	}
+	if ($mstat && ($mlin =~ m/TOPDIR/))
+	{
+		unless ($mlin =~ m/TOPDIR_TRUE/)
+		{
+			push @topdir, "missing_topdir_m: " ;
+		}
+
+		$mstat = ($mlin = <$mfh>);
+	}
+
+	# if missing a top directory, don't bother with rest of comparison
+	goto L_skipdandy
+		if (scalar(@topdir));
 
 	while ($pstat && $mstat)
 	{
@@ -1022,11 +1047,12 @@ sub dandydiff
 		$mstat = ($mlin = <$mfh>);
 	}
 
+  L_skipdandy:
 	close $pfh;
 	close $mfh;
 
 	my %bigh = (extrafiles => \@extrafiles, sizediff => \%sizediff, 
-				hashdiff => \%hashdiff);
+				hashdiff => \%hashdiff, topdir => \@topdir);
 
 	return \%bigh;
 
@@ -1781,7 +1807,8 @@ sub resolve_sizediff
 	# for all db's
 	while (my ($kk, $vv) = each(%{$dbs}))	
 	{
-		my $dbname = $vv->{dbname};
+		my $dbname = exists($vv->{dbname}) ? $vv->{dbname} :
+			"<unknown dbname: ?>";
 
 		# for all relfilenodes
 		while (my ($kk2, $vv2) = each(%{$vv->{relfilenodeh}}))
@@ -2726,6 +2753,16 @@ pg_xlog
 			my $std_dirs = "";
 			my $post_fix = "";
 
+			# MPP-11315: check for missing top-level filespace directory
+			$cmd_template .= 
+				'perl -e \'{if (-e "MYDIR") {print "TOPDIR_TRUE" } else {print "TOPDIR_FALSE"}}\' ' .
+				'| awk \'{print $1" 0 (TOPDIR) 0"}\' ' .
+				'| perl -i -ple \'s|MYDIR||gm \' ' . 
+				# strip out [hostname] prefix
+				'| perl -i -ple \'s|^\\s*\\[.*\\]\\s*||gm \'  ' ;
+
+			$cmd_template .= "\n\n";
+
 			if ($fsname eq 'pg_system')
 			{
 				# filter out special directories for standard
@@ -2978,6 +3015,41 @@ pg_xlog
 		{
 			my $bigh = dandydiff($primtmp, $mirrtmp);
 
+			if (exists($bigh->{topdir})
+				&& scalar(@{($bigh->{topdir})}))
+			{
+				print $diffi;
+
+				print Data::Dumper->Dump([$row]);
+
+				print Data::Dumper->Dump([$bigh]);	 
+
+				warn "missing top-level data directory -- this is very bad";
+
+				for my $td (@{($bigh->{topdir})})
+				{
+
+					if ($td =~ m/missing_topdir_p/)
+					{
+						push @{$glob_fixlist}, $td .
+							$row->{maddress} . ":" .
+							$mirrfil . " " .
+							$row->{paddress} . ":" .
+							$primfil ;
+					}
+					else
+					{
+						push @{$glob_fixlist}, $td .						
+							$row->{paddress} . ":" .
+							$primfil . " " .
+							$row->{maddress} . ":" .
+							$mirrfil ;
+					}
+					# mark as difference for exit condition
+					push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; 
+				}
+			}
+
 			if (exists($bigh->{extrafiles})
 				&& scalar(@{($bigh->{extrafiles})}))
 			{
@@ -3012,7 +3084,6 @@ pg_xlog
 					}
 					else
 					{
-						
 						$extry =~ s|^p\:(/)?||i;
 
 						push @{$glob_fixlist}, "extra_p: " . 
@@ -3077,7 +3148,7 @@ pg_xlog
 				}
 				else
 				{
-
+					# XXX XXX: else don't complain? 
 				}
 			}
 
