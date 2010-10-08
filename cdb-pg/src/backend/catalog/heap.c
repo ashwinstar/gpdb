@@ -1518,6 +1518,7 @@ heap_create_with_catalog(const char *relname,
         GpPolicyStore(relid, policy);
     }
 
+	if (Gp_role == GP_ROLE_DISPATCH) /* MPP-11313: */
 	{
 		bool doIt = true;
 		char *subtyp = "TABLE";
