@@ -8101,6 +8101,11 @@ CreateCheckPoint(bool shutdown, bool force)
 	int			nsegsremoved = 0;
 	int			nsegsrecycled = 0;
 
+	if (shutdown && ControlFile->state == DB_STARTUP)
+	{
+		return;
+	}
+	
 #ifdef FAULT_INJECTOR	
 	/* During resync checkpoint has to complete otherwise segment cannot transition into Sync state */
 	if (! FileRepResync_IsTransitionFromResyncToInSync())

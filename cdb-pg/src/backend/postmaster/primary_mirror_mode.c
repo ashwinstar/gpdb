@@ -1232,6 +1232,13 @@ updateSegmentState(SegmentState_e segmentState)
 			{					
 				isUpdated = TRUE;
 			}
+			else
+			{
+				if (curState == SegmentStateInChangeTrackingTransition)
+				{
+					isUpdated = TRUE;
+				}
+			}
 		}
 		if (isUpdated)
 		{

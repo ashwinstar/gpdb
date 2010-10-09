@@ -1095,7 +1095,21 @@ FileRepPrimary_RunResyncManager(void)
 								entry.relFileNode, 
 								entry.segmentFileNum);
 								
-		FileRepResync_InsertEntry(&entry);
+		status = FileRepResync_InsertEntry(&entry);
+		
+		if (status != STATUS_OK)
+		{
+			/* 
+			 * UnlockRelationForResynchronize() will be issued in FileRepResync_Cleanup().
+			 */
+			FileRep_SetSegmentState(SegmentStateFault);		
+			if (mirroredLock == TRUE)
+			{
+				LWLockRelease(MirroredLock);
+				
+				mirroredLock = FALSE;
+			}
+		}
 
 		{
 			char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];

@@ -690,12 +690,14 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 #endif				
 		
 	flush_check:			
-				if (((ii + 1) == result->count && result->ask_for_more == false) ||
+				if (((ii + 1) == result->count) ||
 					! (result->entries[ii].relFileNode.spcNode == result->entries[ii+1].relFileNode.spcNode &&
 					   result->entries[ii].relFileNode.dbNode == result->entries[ii+1].relFileNode.dbNode &&
 					   result->entries[ii].relFileNode.relNode == result->entries[ii+1].relFileNode.relNode))
 				{
-								 
+					if (result->ask_for_more == false)
+					{
+								
 						smgrimmedsync(smgr_relation);
 						
 						smgrclose(smgr_relation);
@@ -712,6 +714,7 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 						{
 							 break;
 						}
+					}
 								 
 				}			
 							
@@ -744,7 +747,7 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 		{
 			break;
 		}
-	
+
 	} // while(1) 
 		
 	ChangeTracking_FreeRequest(request);

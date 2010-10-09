@@ -1515,6 +1515,23 @@ FileRepMirror_RunConsumer(void)
 										  fileMode);
 					
 					if (fd < 0) {
+						if (errno == ENOENT) 
+						{
+							{
+								char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+								
+								snprintf(tmpBuf, sizeof(tmpBuf), 
+										 "could not find '%s' operation '%s' position '" INT64_FORMAT "' ",
+										 fileName,
+										 FileRepOperationToString[fileRepMessageHeader->fileRepOperation],
+										 fileRepMessageHeader->fileRepOperationDescription.truncate.position);
+								
+								FileRep_InsertConfigLogEntry(tmpBuf);				
+							}
+							
+							break;
+						}
+						
 						status = STATUS_ERROR;
 						ereport(WARNING,
 								(errcode_for_file_access(),

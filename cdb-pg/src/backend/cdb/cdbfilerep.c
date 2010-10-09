@@ -952,7 +952,7 @@ FileRepAck_ReserveShmem(
 	
 	if (insert == false && Debug_filerep_print) {
 		ereport(LOG,
-				(errmsg("Reserving FileRepAck Shared Memory fail.")));
+				(errmsg("reserving filerep ack shared memory fail")));
 	}
 	
 	return (msgPositionInsert);
@@ -2174,10 +2174,12 @@ FileRep_ProcessSignals()
 								getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 								if ((dataState == DataStateInSync ||
 									 dataState == DataStateInChangeTracking) && 
-									segmentState == SegmentStateInitialization)
+									(segmentState == SegmentStateInitialization || 
+									 segmentState == SegmentStateInChangeTrackingTransition))
 								{
 									FileRep_SetSegmentState(SegmentStateFault);
-								}								
+								}	
+								
 								break;
 							default:
 								break;
