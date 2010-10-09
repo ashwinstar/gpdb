@@ -162,6 +162,17 @@ class GpMount:
             first = False
 
         return "%s on %s type %s (%s)" % (self.partition, self.dir, self.type, optionstring)
+
+class ntp:
+    def __init__(self):
+        self.running = False
+        self.hosts = set()
+        self.currentime = None
+        self.errormsg = None
+
+    def __str__(self):
+        return "(running %s) (time %f) (peers: %s)" % (self.running, self.currenttime, self.hosts)
+
                 
  
 class mounts:
@@ -228,6 +239,7 @@ class GenericLinuxOutputData:
         self.ioschedulers = None
         self.sysctl = None
         self.limitsconf = None
+        self.ntp = None
 
     def __str__(self):
 
@@ -255,6 +267,10 @@ class GenericLinuxOutputData:
         gre = "============= BLOCKDEV RA ERRORMSG============\n"
         output = "%s\n%s%s\n%s%s" % (output, grc, self.blockdev.ra.__str__(), gre, self.blockdev.errormsg)
 
+        grc = "============= NTPD ===========================\n"
+        gre = "============= NTPD ERRORMSG===================\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.ntp.__str__(), gre, self.ntp.errormsg)
+
         return output
 
 
@@ -274,6 +290,7 @@ class App1001OutputData:
         self.sysctl = None
         self.limitsconf = None
         self.connectemc = None
+        self.ntp = None
 
     def __str__(self):
         ser = "=============SERVICES=======================\n"
@@ -359,5 +376,9 @@ class App1001OutputData:
 
         grc = "============= /etc/rc.d/rc.local =============\n"
         output = "%s\n%s%s" % (output, grc, self.rclocal.__str__())
+
+        grc = "============= NTPD ===========================\n"
+        gre = "============= NTPD ERRORMSG===================\n"
+        output = "%s\n%s%s\n%s%s" % (output, grc, self.ntp.__str__(), gre, self.ntp.errormsg)
 
         return output

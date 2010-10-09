@@ -29,6 +29,8 @@ class GpCheckInfo:
         self.host_type = HostType.GPCHECK_HOSTTYPE_UNDEFINED
         self.hosts = dict()
         self.switches = dict()
+        self.collection_start_time = 0 # used in NTPD testing
+        self.collection_end_time = 0 # used in NTPD testing
 
 gpcheck_info = None
 gphome = None
@@ -202,6 +204,8 @@ def runCollectionOnServers():
         logger.error("Unexpected host_type in runCollectionOnServers")
         return True
 
+    gpcheck_info.collection_start_time = time.time()
+
     try:
         for host in gpcheck_info.hosts.keys():
             cmdStr = "%s/sbin/gpcheck_hostdump %s" % (gphome, host_type_cl)
@@ -222,6 +226,8 @@ def runCollectionOnServers():
         logger.error("Exception collecting data from servers")
         logger.error(e.__str__())
         return True
+
+    gpcheck_info.collection_end_time = time.time()
 
     return False
 
@@ -689,6 +695,37 @@ def testIOSchedulers(host):
 
             printError(host.hostname, "on device (%s) IO scheduler '%s' does not match expected value '%s'" % (dev, scheduler, expectedScheduler))
 
+def testNtp(host):
+
+    if host.data.ntp.currenttime < (gpcheck_info.collection_start_time - 1):
+        printError(host.hostname, "potential NTPD issue.  gpcheck start time (%s) time on machine (%s)" % (time.ctime(gpcheck_info.collection_start_time), time.ctime(host.data.ntp.currenttime)))
+
+    if host.data.ntp.currenttime > (gpcheck_info.collection_end_time + 1):
+        printError(host.hostname, "potential NTPD issue.  gpcheck end time (%s) time on machine (%s)" % (time.ctime(gpcheck_info.collection_start_time), time.ctime(host.data.ntp.currenttime)))
+
+    if not host.data.ntp.running:
+        printError(host.hostname, "ntpd not detected on machine")
+
+    if host.is_a_master:
+
+        if host.primary_master:
+            if 'mdw-cm'  in host.data.ntp.hosts:
+                printError(host.hostname, "mdw-cm is a ntpd peer of this master host. The master host, should use an external source")
+            if 'smdw-cm'  in host.data.ntp.hosts:
+                printError(host.hostname, "smdw-cm is a ntpd peer of this master host. The master host, should use an external source")
+
+        else:
+            if 'mdw-cm' not in host.data.ntp.hosts:
+                printError(host.hostname, "mdw-cm is not a ntpd peer of this stand by master host")
+            if 'smdw-cm'  in host.data.ntp.hosts:
+                printError(host.hostname, "smdw-cm is a ntpd peer of this stand by master host. This is redundant.")
+
+    else:
+        if 'mdw-cm' not in host.data.ntp.hosts:
+            printError(host.hostname, "mdw-cm is not a ntpd peer of this segment host")
+        if 'smdw-cm' not in host.data.ntp.hosts:
+            printError(host.hostname, "smdw-cm is not a ntpd peer of this segment host")
+
 
 def testAppliance1001Rclocal(host):
 
@@ -874,6 +911,9 @@ def testAppliance1001Host(host):
     # test connectemc
     testConnectEmc(host)
 
+    # ntpd tests
+    testNtp(host)
+
 def testGenericLinuxHost(host):
 
     # test IO schedulers
@@ -891,6 +931,8 @@ def testGenericLinuxHost(host):
     # test XFS mounts
     testLinuxMounts(host)
 
+    # ntpd tests
+    testNtp(host)
 
 def testGenericSolarisHost(host):
 
