@@ -706,6 +706,11 @@ def testNtp(host):
     if not host.data.ntp.running:
         printError(host.hostname, "ntpd not detected on machine")
 
+
+def testAppliance1001Ntp(host):
+
+    testNtp(host)
+
     if host.is_a_master:
 
         if host.primary_master:
@@ -912,7 +917,7 @@ def testAppliance1001Host(host):
     testConnectEmc(host)
 
     # ntpd tests
-    testNtp(host)
+    testAppliance1001Ntp(host)
 
 def testGenericLinuxHost(host):
 
