@@ -895,9 +895,6 @@ tuplesort_begin_datum_mk(Oid datumType,
 void
 tuplesort_end_mk(Tuplesortstate_mk *state)
 {
-    /* context swap probably not needed, but let's be safe */
-    MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
-
     long		spaceUsed;
 
     if (state->tapeset)
@@ -917,9 +914,24 @@ tuplesort_end_mk(Tuplesortstate_mk *state)
         state->tapeset = NULL;
     }
 
-    /* 
-     * CDB: Report statistics to EXPLAIN ANALYZE. /mk
-     */ 
+    if (trace_sort)
+        PG_TRACE2(tuplesort__end, state->tapeset ? 1 : 0, spaceUsed);
+
+    /*
+     * Free the per-sort memory context, thereby releasing all working memory,
+     * including the Tuplesortstate_mk struct itself.
+     */
+    MemoryContextDelete(state->sortcontext);
+}
+
+/*
+ * tuplesort_finalize_stats_mk
+ *
+ * Finalize the EXPLAIN ANALYZE stats.
+ */
+void
+tuplesort_finalize_stats_mk(Tuplesortstate_mk *state)
+{
     if (state->instrument)
     {
     	Size maxSpaceUsedOnSort = MemoryContextGetPeakSpace(state->sortcontext);
@@ -938,17 +950,8 @@ tuplesort_end_mk(Tuplesortstate_mk *state)
         else
             state->instrument->workmemwanted = 0;
     }
-
-    if (trace_sort)
-        PG_TRACE2(tuplesort__end, state->tapeset ? 1 : 0, spaceUsed);
-
-    MemoryContextSwitchTo(oldcontext);
-    /*
-     * Free the per-sort memory context, thereby releasing all working memory,
-     * including the Tuplesortstate_mk struct itself.
-     */
-    MemoryContextDelete(state->sortcontext);
 }
+
 
 
 /*

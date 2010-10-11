@@ -594,13 +594,15 @@ ExecReScanSort(SortState *node, ExprContext *exprCtxt)
 void
 ExecSortExplainEnd(PlanState *planstate, struct StringInfoData *buf)
 {
-    /*
-     * Some of the cleanup that ordinarily would occur during ExecEndSort()
-     * needs to be done earlier (i.e. now) in order to report statistics to 
-     * EXPLAIN ANALYZE.  Note that ExecEndSort_internal() may be called twice:
-     * first here, and again when ExecEndSort is called during ExecutorEnd().
-     */
-    ExecEndSort_internal((SortState *)planstate);
+	SortState *sortstate = (SortState *)planstate;
+	
+	if (sortstate->tuplesortstate != NULL)
+	{
+		if (gp_enable_mk_sort)
+			tuplesort_finalize_stats_mk((Tuplesortstate_mk *)sortstate->tuplesortstate);
+		else
+			tuplesort_finalize_stats((Tuplesortstate *)sortstate->tuplesortstate);
+	}
 }                               /* ExecSortExplainEnd */
 
 void

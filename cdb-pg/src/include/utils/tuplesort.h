@@ -129,6 +129,9 @@ extern void tuplesort_end_mk(Tuplesortstate_mk *state);
 extern void tuplesort_flush(Tuplesortstate *state);
 extern void tuplesort_flush_mk(Tuplesortstate_mk *state);
 
+extern void tuplesort_finalize_stats(Tuplesortstate *state);
+extern void tuplesort_finalize_stats_mk(Tuplesortstate_mk *state);
+
 extern int	tuplesort_merge_order(long allowedMem);
 
 /*

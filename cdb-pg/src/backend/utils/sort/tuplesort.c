@@ -850,9 +850,6 @@ tuplesort_begin_datum(Oid datumType,
 void
 tuplesort_end(Tuplesortstate *state)
 {
-	/* context swap probably not needed, but let's be safe */
-	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
-
 	long		spaceUsed;
 
 	if (state->tapeset)
@@ -869,9 +866,31 @@ tuplesort_end(Tuplesortstate *state)
 	if (state->tapeset)
 		LogicalTapeSetClose(state->tapeset);
 
-    /* 
-     * CDB: Report statistics to EXPLAIN ANALYZE. 
-     */ 
+	if (trace_sort)
+	{
+		if (state->tapeset)
+			elog(LOG, "external sort ended, %ld disk blocks used: %s",
+				 spaceUsed, pg_rusage_show(&state->ru_start));
+		else
+			elog(LOG, "internal sort ended, %ld KB used: %s",
+				 spaceUsed, pg_rusage_show(&state->ru_start));
+	}
+
+	/*
+	 * Free the per-sort memory context, thereby releasing all working memory,
+	 * including the Tuplesortstate struct itself.
+	 */
+	MemoryContextDelete(state->sortcontext);
+}
+
+/*
+ * tuplesort_finalize_stats
+ *
+ * Finalize the EXPLAIN ANALYZE stats.
+ */
+void
+tuplesort_finalize_stats(Tuplesortstate *state)
+{
     if (state->instrument)
     {
         double  workmemused;
@@ -886,26 +905,7 @@ tuplesort_end(Tuplesortstate *state)
         state->instrument->execmemused +=
             (double)MemoryContextGetPeakSpace(state->sortcontext);
     }
-
-	if (trace_sort)
-	{
-		if (state->tapeset)
-			elog(LOG, "external sort ended, %ld disk blocks used: %s",
-				 spaceUsed, pg_rusage_show(&state->ru_start));
-		else
-			elog(LOG, "internal sort ended, %ld KB used: %s",
-				 spaceUsed, pg_rusage_show(&state->ru_start));
-	}
-
-	MemoryContextSwitchTo(oldcontext);
-
-	/*
-	 * Free the per-sort memory context, thereby releasing all working memory,
-	 * including the Tuplesortstate struct itself.
-	 */
-	MemoryContextDelete(state->sortcontext);
 }
-
 
 /*
  * tuplesort_set_instrument
