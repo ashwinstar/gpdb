@@ -89,26 +89,15 @@ ShareInputNext(ShareInputScanState *node)
 			char rwfile_prefix[100];
 			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
 	
-#ifdef USE_OLD_TUPLESTORE
-			node->ts_state = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, false);
-			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
-			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
-#else
 			node->ts_state = (void *) ntuplestore_create_readerwriter(rwfile_prefix, 0, false);
 			node->ts_pos = (void *) ntuplestore_create_accessor((NTupleStore *) node->ts_state, false);
 			ntuplestore_acc_seek_bof((NTupleStoreAccessor *)node->ts_pos);
-#endif
 		}
 		else if(share_type == SHARE_MATERIAL)
 		{
 			node->ts_state = ((MaterialState *)snState)->ts_state;
-#ifdef USE_OLD_TUPLESTORE
-			tuplestore_begin_pos((Tuplestorestate *) node->ts_state, (TuplestorePos **)(&node->ts_pos));
-			tuplestore_rescan_pos((Tuplestorestate *) node->ts_state, (TuplestorePos *)node->ts_pos); 
-#else
 			node->ts_pos = (void *) ntuplestore_create_accessor((NTupleStore *) node->ts_state, false);
 			ntuplestore_acc_seek_bof((NTupleStoreAccessor *)node->ts_pos);
-#endif
 		}
 		else if(share_type == SHARE_SORT_XSLICE)
 		{
@@ -161,12 +150,8 @@ ShareInputNext(ShareInputScanState *node)
 
 		if(share_type == SHARE_MATERIAL || share_type == SHARE_MATERIAL_XSLICE) 
 		{
-#ifdef USE_OLD_TUPLESTORE
-			gotOK = tuplestore_gettupleslot_pos( (Tuplestorestate *)node->ts_state, (TuplestorePos *)node->ts_pos, forward, slot);
-#else
 			ntuplestore_acc_advance((NTupleStoreAccessor *) node->ts_pos, forward ? 1 : -1);
 			gotOK = ntuplestore_acc_current_tupleslot((NTupleStoreAccessor *) node->ts_pos, slot);
-#endif
 		}
 		else
 		{
@@ -312,7 +297,6 @@ void ExecEndShareInputScan(ShareInputScanState *node)
 	if(node->share_lk_ctxt)
 		shareinput_reader_notifydone(node->share_lk_ctxt, sisc->share_id);
 
-#ifndef USE_OLD_TUPLESTORE
 	if(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_MATERIAL_XSLICE) 
 	{
 		if(node->ts_pos != NULL)
@@ -326,7 +310,6 @@ void ExecEndShareInputScan(ShareInputScanState *node)
 				ntuplestore_destroy((NTupleStore *) node->ts_state);
 		}
 	}
-#endif
 
 	node->ts_state = NULL;
 	node->ts_pos = NULL;
@@ -353,17 +336,12 @@ void ExecShareInputScanMarkPos(ShareInputScanState *node)
 
 	if(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_MATERIAL_XSLICE)
 	{
-#ifdef USE_OLD_TUPLESTORE
-		tuplestore_markpos_pos((Tuplestorestate *) node->ts_state,
-			(TuplestorePos *) node->ts_pos);
-#else
 		Assert(node->ts_pos);
 
 		if(node->ts_markpos == NULL)
 			node->ts_markpos = palloc(sizeof(NTupleStorePos));
 
 		ntuplestore_acc_tell((NTupleStoreAccessor *)node->ts_pos, (NTupleStorePos *) node->ts_markpos);
-#endif
 	}
 	else if(sisc->share_type == SHARE_SORT || sisc->share_type == SHARE_SORT_XSLICE) 
 	{
@@ -387,13 +365,8 @@ void ExecShareInputScanRestrPos(ShareInputScanState *node)
 
 	if(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_MATERIAL_XSLICE)
 	{
-#ifdef USE_OLD_TUPLESTORE
-		tuplestore_restorepos_pos((Tuplestorestate *) node->ts_state,
-				(TuplestorePos *) node->ts_pos);
-#else
 		Assert(node->ts_pos && node->ts_markpos);
 		ntuplestore_acc_seek((NTupleStoreAccessor *) node->ts_pos, (NTupleStorePos *) node->ts_markpos);
-#endif
 	}
 	else if(sisc->share_type == SHARE_SORT || sisc->share_type == SHARE_SORT_XSLICE) 
 	{
@@ -421,13 +394,8 @@ void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	if(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_MATERIAL_XSLICE)
 	{
-#ifdef USE_OLD_TUPLESTORE
-		tuplestore_rescan_pos((Tuplestorestate *) node->ts_state,
-				(TuplestorePos *) node->ts_pos);
-#else
 		Assert(node->ts_pos);
 		ntuplestore_acc_seek_bof((NTupleStoreAccessor *) node->ts_pos);
-#endif
 	}
 	else if (sisc->share_type == SHARE_SORT || sisc->share_type == SHARE_SORT_XSLICE)
 	{
