@@ -451,13 +451,15 @@ static List *atpxRenameList(Relation rel, PartitionNode *pNode,
 static RangeVar *make_temp_table_name(Relation rel, BackendId id);
 static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
 								List *opts, List **hidden_types, bool isTmpTableAo);
-static void ATPartitionCheck(Relation rel, AlterTableType typ, bool recursing);
+static void ATPartitionCheck(AlterTableType subtype, Relation rel, bool rejectroot, bool recursing);
 static Oid get_settable_tablespace_oid(char *tablespacename);
 static List *make_dist_clause(Relation rel);
 
 #define parkindIsHash(c)   ((c) == 'h')
 #define parkindIsRange(c)  ((c) == 'r')
 #define parkindIsList(c)   ((c) == 'l')
+
+static char *alterTableCmdString(AlterTableType subtype);
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -4067,7 +4069,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			 * test that this is allowed for partitioning, but only if we aren't
 			 * recursing.
 			 */
-			ATPartitionCheck(rel, cmd->subtype, recursing);
+			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 			/* Performs own recursion */
 			ATPrepAddColumn(wqueue, rel, recurse, cmd);
 			pass = AT_PASS_ADD_COL;
@@ -4081,14 +4083,14 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			 * rules.
 			 */
 			ATSimplePermissions(rel, true);
-			ATPartitionCheck(rel, cmd->subtype, recursing);
+			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
 			/* No command-specific prep needed */
 			pass = cmd->def ? AT_PASS_ADD_CONSTR : AT_PASS_DROP;
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype, recursing);
+			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
 			/* No command-specific prep needed */
 			pass = AT_PASS_DROP;
@@ -4097,7 +4099,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			ATSimplePermissions(rel, false);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse);
 			if (!cmd->part_expanded)
-				ATPartitionCheck(rel, cmd->subtype, recursing);
+				ATPartitionCheck(cmd->subtype, rel, false, recursing);
 			/* No command-specific prep needed */
 			pass = AT_PASS_ADD_CONSTR;
 			break;
@@ -4116,7 +4118,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_DropColumn:		/* DROP COLUMN */
 		case AT_DropColumnRecurse:
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype, recursing);
+			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 			/* Recursion occurs during execution phase */
 			/* No command-specific prep needed except saving recurse flag */
 			if (recurse)
@@ -4131,6 +4133,11 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_AddConstraint:	/* ADD CONSTRAINT */
 			ATSimplePermissions(rel, false);
+			/* (!recurse &&  !recursing) is supposed to detect the ONLY clause.
+			 * We allow operations on the root of a partitioning hierarchy, but
+			 * not ONLY the root.
+			 */
+			ATPartitionCheck(cmd->subtype, rel, (!recurse && !recursing), recursing);
 
 			/*
 			 * Currently we recurse only for CHECK constraints, never for
@@ -4144,6 +4151,11 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_DropConstraint:	/* DROP CONSTRAINT */
 			ATSimplePermissions(rel, false);
+			/* (!recurse &&  !recursing) is supposed to detect the ONLY clause.
+			 * We allow operations on the root of a partitioning hierarchy, but
+			 * not ONLY the root.
+			 */
+			ATPartitionCheck(cmd->subtype, rel, (!recurse && !recursing), recursing);
 			/* Performs own recursion */
 			ATPrepDropConstraint(wqueue, rel, recurse, cmd);
 			pass = AT_PASS_DROP;
@@ -4156,7 +4168,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_AlterColumnType:		/* ALTER COLUMN TYPE */
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype, recursing);
+			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 			/* Performs own recursion */
 			ATPrepAlterColumnType(wqueue, tab, rel, recurse, recursing, cmd);
 			pass = AT_PASS_ALTER_TYPE;
@@ -4167,7 +4179,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
-					ATPartitionCheck(rel, cmd->subtype, recursing);
+					ATPartitionCheck(cmd->subtype, rel, false, recursing);
 					if (rel_is_partitioned(RelationGetRelid(rel)))
 					{
 						do_recurse = true;
@@ -4196,7 +4208,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_DropOids:		/* SET WITHOUT OIDS */
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype, recursing);
+			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 			/* Performs own recursion */
 			if (rel->rd_rel->relhasoids)
 			{
@@ -4348,10 +4360,16 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_DisableTrig:	/* DISABLE TRIGGER variants */
 		case AT_DisableTrigAll:
 		case AT_DisableTrigUser:
+			ATSimplePermissions(rel, false);
+			ATPartitionCheck(cmd->subtype, rel, false, recursing);
+			/* These commands never recurse */
+			/* No command-specific prep needed */
+			pass = AT_PASS_MISC;
+			break;
 		case AT_AddInherit:		/* INHERIT / NO INHERIT */
 		case AT_DropInherit:
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype, recursing);
+			ATPartitionCheck(cmd->subtype, rel, true, recursing);
 			/* These commands never recurse */
 			/* No command-specific prep needed */
 			pass = AT_PASS_MISC;
@@ -4359,7 +4377,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			/* CDB: Partitioned Table commands */
 		case AT_PartExchange:			/* Exchange */
 			
-			ATPartitionCheck(rel, cmd->subtype, recursing);
+			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 			
 			if (Gp_role == GP_ROLE_UTILITY)
 				ereport(ERROR,
@@ -4381,7 +4399,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			List			   *source_rels = NIL;
 			Relation			target = NULL;
 
-			ATPartitionCheck(rel, cmd->subtype, recursing);
+			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 
 			if (Gp_role == GP_ROLE_UTILITY)
 				ereport(ERROR,
@@ -4480,7 +4498,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			PgPartRule			*prule3	= NULL;
 			Relation			 target = NULL;
 
-			ATPartitionCheck(rel, cmd->subtype, recursing);
+			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 
 			if (Gp_role == GP_ROLE_UTILITY)
 				ereport(ERROR,
@@ -4968,7 +4986,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_PartAddInternal:		/* internal partition creation */
 		case AT_PartModify:             /* Modify */
 			ATSimplePermissions(rel, false);
-			ATPartitionCheck(rel, cmd->subtype, recursing);
+			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 				/* XXX XXX XXX */
 			/* This command never recurses */
 			/* No command-specific prep needed */
@@ -6104,21 +6122,27 @@ ATGetQueueEntry(List **wqueue, Relation rel)
 }
 
 /*
- * If this is a child partition in a partition set, error out.
+ * Issue an error, if this is a part of a partitioned table or, in case 
+ * rejectroot is true, if this is a partitioned table itself.
+ *
+ * Usually called from ATPrepCmd to validate a subcommand of an ALTER
+ * TABLE command.  Many commands may be invoked on an entire partitioned
+ * table, but not on just a part.  These specify rejectroot as false.
  */
 static void
-ATPartitionCheck(Relation rel, AlterTableType typ, bool recursing)
+ATPartitionCheck(AlterTableType subtype, Relation rel, bool rejectroot, bool recursing)
 {
 	if (recursing)
 		return;
 
-	if ((typ == AT_AddInherit || typ == AT_DropInherit) &&
+	if (rejectroot &&
 		(rel_is_child_partition(RelationGetRelid(rel)) ||
 		 rel_is_partitioned(RelationGetRelid(rel))))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is a member of a partitioning configuration",
+				 errmsg("can't %s \"%s\"; it is a partitioned table or part thereof",
+						alterTableCmdString(subtype),
 						RelationGetRelationName(rel)),
 				 errOmitLocation(true)));
 	}
@@ -6126,9 +6150,10 @@ ATPartitionCheck(Relation rel, AlterTableType typ, bool recursing)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is a member of a partitioning configuration",
+				 errmsg("can't %s \"%s\"; it is part of a partitioned table",
+						alterTableCmdString(subtype),
 						RelationGetRelationName(rel)),
-				 errhint("Perform the operation on the master table."),
+				 errhint("You may be able to perform the operation on the partitioned table as a whole."),
 				 errOmitLocation(true)));
 	}
 }
@@ -8499,6 +8524,10 @@ ATPrepDropConstraint(List **wqueue, Relation rel,
 	/*
 	 * We don't want errors or noise from child tables, so we have to pass
 	 * down a modified command.
+	 *
+	 * This can't result in dropping the partitioning rule because the
+	 * partitioning rule exists only on the part, and ATPrepCmd guards
+	 * against dropping directly from parts.
 	 */
 	if (recurse)
 	{
@@ -8506,41 +8535,6 @@ ATPrepDropConstraint(List **wqueue, Relation rel,
 
 		childCmd->subtype = AT_DropConstraintQuietly;
 		ATSimpleRecursion(wqueue, rel, childCmd, recurse);
-	}
-
-	/*
-	 * If this is a partition child, make sure the user isn't dropping the
-	 * partitioning rule.
-	 */
-	if (rel_is_child_partition(RelationGetRelid(rel)))
-	{
-		Relation conrel = heap_open(ConstraintRelationId, AccessShareLock);
-		Oid masteroid = rel_partition_get_master(RelationGetRelid(rel));
-		Relation masterrel = heap_open(masteroid, AccessShareLock);
-		PartitionNode *pn = RelationBuildPartitionDesc(masterrel, false);
-		List *attnos = get_partition_attrs(pn);
-		List *cons = get_part_constraints(attnos, conrel, rel);
-		ListCell *lc;
-
-		foreach(lc, cons)
-		{
-			HeapTuple tup = lfirst(lc);
-			Form_pg_constraint con = (Form_pg_constraint)GETSTRUCT(tup);
-
-			if (strcmp(NameStr(con->conname), cmd->name) == 0)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("cannot remove constraint \"%s\" on \"%s\" "
-							"as it is part of a partitioning configuration",
-								cmd->name, RelationGetRelationName(rel)),
-										   errOmitLocation(true)));
-
-			}
-		}
-		heap_close(conrel, AccessShareLock);
-		heap_close(masterrel, AccessShareLock);
-		list_free_deep(cons);
 	}
 }
 
@@ -23616,4 +23610,131 @@ is_exchangeable(Relation rel, Relation oldrel, Relation newrel, bool throw)
 	
 	return congruent;
 }
+
+/*
+ * Return a palloc'd string representing an AlterTableCmd type for use
+ * in a message pattern like "can't %s a partitioned table".  The default
+ * return string is "alter".
+ *
+ * This may pose a challenge for localization.  
+ */
+static
+char *alterTableCmdString(AlterTableType subtype)
+{
+	char *cmdstring = NULL;
 	
+	switch (subtype)
+	{
+		case AT_AddColumn: /* add column */
+			cmdstring = pstrdup("add a column to");
+			break;
+			
+		case AT_ColumnDefault: /* alter column default */
+			cmdstring = pstrdup("alter a column default of");
+			break;
+			
+		case AT_DropNotNull: /* alter column drop not null */
+		case AT_SetNotNull: /* alter column set not null */
+			cmdstring = pstrdup("alter a column null setting of");
+			break;
+			
+		case AT_SetStatistics: /* alter column statistics */
+		case AT_SetStorage: /* alter column storage */
+			break;
+			
+		case AT_DropColumn: /* drop column */
+		case AT_DropColumnRecurse: /* internal to commands/tablecmds.c */
+			cmdstring = pstrdup("drop a column from");
+			break;
+			
+		case AT_AddIndex: /* add index */
+		case AT_ReAddIndex: /* internal to commands/tablecmds.c */
+			break;
+			
+		case AT_AddConstraint: /* add constraint */
+			cmdstring = pstrdup("add a constraint to");
+			break;
+			
+		case AT_ProcessedConstraint: /* pre-processed add constraint (local in parser/analyze.c) */
+			break;
+			
+		case AT_DropConstraint: /* drop constraint */
+			cmdstring = pstrdup("drop a constraint from");
+			break;
+			
+		case AT_DropConstraintQuietly: /* drop constraint, no error/warning (local in commands/tablecmds.c) */
+			break;
+			
+		case AT_AlterColumnType: /* alter column type */
+			cmdstring = pstrdup("alter a column datatype of");
+			break;
+			
+		case AT_ChangeOwner: /* change owner */
+			cmdstring = pstrdup("alter the owner of");
+			break;
+			
+		case AT_ClusterOn: /* CLUSTER ON */
+		case AT_DropCluster: /* SET WITHOUT CLUSTER */
+			break;
+			
+		case AT_DropOids: /* SET WITHOUT OIDS */
+			cmdstring = pstrdup("alter the oid setting of");
+			break;
+			
+		case AT_SetTableSpace: /* SET TABLESPACE */
+		case AT_SetRelOptions: /* SET (...) -- AM specific parameters */
+		case AT_ResetRelOptions: /* RESET (...) -- AM specific parameters */
+			break;
+			
+		case AT_EnableTrig: /* ENABLE TRIGGER name */
+		case AT_DisableTrig: /* DISABLE TRIGGER name */
+		case AT_EnableTrigAll: /* ENABLE TRIGGER ALL */
+		case AT_DisableTrigAll: /* DISABLE TRIGGER ALL */
+		case AT_EnableTrigUser: /* ENABLE TRIGGER USER */
+		case AT_DisableTrigUser: /* DISABLE TRIGGER USER */
+			cmdstring = pstrdup("enable or disable triggers on");
+			break;
+			
+		case AT_AddInherit: /* INHERIT parent */
+		case AT_DropInherit: /* NO INHERIT parent */
+			cmdstring = pstrdup("alter inheritance on");
+			break;
+			
+		case AT_SetDistributedBy: /* SET DISTRIBUTED BY */
+			break;
+			
+		case AT_PartAdd: /* Add */
+		case AT_PartAlter: /* Alter */
+		case AT_PartCoalesce: /* Coalesce */
+		case AT_PartDrop: /* Drop */
+			break;
+			
+		case AT_PartExchange: /* Exchange */
+			cmdstring = pstrdup("exchange a part into");
+			break;
+			
+		case AT_PartMerge: /* Merge */
+			cmdstring = pstrdup("merge parts of");
+			break;
+			
+		case AT_PartModify: /* Modify */
+		case AT_PartRename: /* Rename */
+		case AT_PartSetTemplate: /* Set Subpartition Template */
+			break;
+			
+		case AT_PartSplit: /* Split */
+			cmdstring = pstrdup("split parts of");
+			break;
+			
+		case AT_PartTruncate: /* Truncate */
+		case AT_PartAddInternal: /* CREATE TABLE time partition addition */
+			break;
+	}
+	
+	if ( cmdstring == NULL )
+	{
+		cmdstring = pstrdup("alter");
+	}
+	
+	return cmdstring;
+}
