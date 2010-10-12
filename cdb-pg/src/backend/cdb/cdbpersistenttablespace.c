@@ -40,7 +40,6 @@
 #include "storage/smgr.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
-#include "cdb/cdbpersistentrecovery.h"
 
 typedef struct PersistentTablespaceSharedData
 {
@@ -466,7 +465,7 @@ PersistentTablespaceGetFilespaces PersistentTablespace_TryGetPrimaryAndMirrorFil
 			{
 				// Print this information when we are not doing other tracing.
 				mmxlog_print_tablespaces(
-									PersistentRecovery_DebugPrintLevel(),
+									LOG,
 									"Standby Get Filespace for Tablespace");
 			}
 			return PersistentTablespaceGetFilespaces_TablespaceNotFound;
@@ -480,7 +479,7 @@ PersistentTablespaceGetFilespaces PersistentTablespace_TryGetPrimaryAndMirrorFil
 			{
 				// Print this information when we are not doing other tracing.
 				mmxlog_print_filespaces(
-									PersistentRecovery_DebugPrintLevel(),
+									LOG,
 									"Standby Get Filespace Location");
 			}
 			return PersistentTablespaceGetFilespaces_FilespaceNotFound;
