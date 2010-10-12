@@ -218,33 +218,42 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 
 		/* tablespace and database should be fine */
 		unlink_obj(path, info);
-		if (xlrec->objtype == MM_OBJ_FILESPACE)
+
+		
+		if (GpIdentity.dbid == MASTER_DBID)
 		{
-			if (filespace_map_ht == NULL)
-				elog(ERROR, "Master mirroring hash table for filespaces not initialized");
-			
-			entry = hash_search(filespace_map_ht,
-								&(xlrec->filespace),
-								HASH_REMOVE,
-								&found);
-			if (entry == NULL)
-				elog(ERROR, 
-					 "Master mirroring hash table entry for filespace %u not found",
-					 xlrec->filespace);
+			// We only maintain the master mirroring hash tables on the standby.
 		}
-		else if (xlrec->objtype == MM_OBJ_TABLESPACE)
+		else
 		{
-			if (tablespace_map_ht == NULL)
-				elog(ERROR, "Master mirroring hash table for tablespaces not initialized");
-			
-			entry = hash_search(tablespace_map_ht,
-								&(xlrec->tablespace),
-								HASH_REMOVE,
-								&found);
-			if (entry == NULL)
-				elog(ERROR, 
-					 "Master mirroring hash table entry for tablespace %u not found",
-					 xlrec->tablespace);
+			if (xlrec->objtype == MM_OBJ_FILESPACE)
+			{
+				if (filespace_map_ht == NULL)
+					elog(ERROR, "Master mirroring hash table for filespaces not initialized");
+				
+				entry = hash_search(filespace_map_ht,
+									&(xlrec->filespace),
+									HASH_REMOVE,
+									&found);
+				if (entry == NULL)
+					elog(ERROR, 
+						 "Master mirroring hash table entry for filespace %u not found",
+						 xlrec->filespace);
+			}
+			else if (xlrec->objtype == MM_OBJ_TABLESPACE)
+			{
+				if (tablespace_map_ht == NULL)
+					elog(ERROR, "Master mirroring hash table for tablespaces not initialized");
+				
+				entry = hash_search(tablespace_map_ht,
+									&(xlrec->tablespace),
+									HASH_REMOVE,
+									&found);
+				if (entry == NULL)
+					elog(ERROR, 
+						 "Master mirroring hash table entry for tablespace %u not found",
+						 xlrec->tablespace);
+			}
 		}
 	}
 	else if (info == MMXLOG_CREATE_FILE)
