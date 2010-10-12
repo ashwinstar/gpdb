@@ -2579,21 +2579,21 @@ ExecInsert(TupleTableSlot *slot,
 		   DestReceiver *dest,
 		   EState *estate)
 {
-	void		*tuple;
-    void *tofree = NULL;
-	ResultRelInfo *resultRelInfo;
-	Relation	resultRelationDesc;
-	Relation	baseRelationDesc;
-	Oid			newId;
+	void		*tuple = NULL;
+    void		*tofree = NULL;
+	ResultRelInfo *resultRelInfo = NULL;
+	Relation	resultRelationDesc = NULL;
+	Relation	baseRelationDesc = NULL;
+	Oid			newId = InvalidOid;
 	TupleTableSlot *partslot = NULL;
-	Oid         sourceTableOid;
+	Oid         sourceTableOid = InvalidOid;
 
 	AOTupleId	aoTupleId = AOTUPLEID_INIT;
 
-	bool		rel_is_heap,
-				rel_is_aorows,
-				rel_is_aocols,
-				rel_is_external;
+	bool		rel_is_heap = false;
+	bool 		rel_is_aorows = false;
+	bool		rel_is_aocols = false;
+	bool		rel_is_external = false;
 
 	/*
 	 * get information on the (current) result relation
@@ -2617,7 +2617,7 @@ ExecInsert(TupleTableSlot *slot,
 	rel_is_aocols = RelationIsAoCols(resultRelationDesc);
 	rel_is_aorows = RelationIsAoRows(resultRelationDesc);
 	rel_is_external = RelationIsExternal(resultRelationDesc);
-	
+		
 	/*
 	 * get the heap tuple out of the tuple table slot, making sure we have a
 	 * writable copy
@@ -2674,7 +2674,9 @@ ExecInsert(TupleTableSlot *slot,
 		partslot = CompressedHeapTupleSlot(slot, resultRelInfo);
 	}
 
-
+	AssertEquivalent(rel_is_aocols, (tuple == NULL));
+	AssertEquivalent(rel_is_heap || rel_is_external, (partslot != NULL));
+	
 	/* BEFORE ROW INSERT Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
@@ -2709,6 +2711,11 @@ ExecInsert(TupleTableSlot *slot,
 			newslot->tts_tableOid = slot->tts_tableOid; /* for constraints */
 			slot = newslot;
 			tuple = newtuple;
+			if (partslot)
+			{
+				Assert(rel_is_heap || rel_is_external);
+				partslot = newslot;
+			}
 		}
 	}
 
