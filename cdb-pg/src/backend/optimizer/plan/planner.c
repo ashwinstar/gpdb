@@ -2414,7 +2414,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	 * don't choose hashed grouping here, we make note in agg_counts to 
 	 * indicate whether DQAs are the only reason.
 	 */
-	hash_ok = enable_hashagg && hash_safe_grouping(root) && !agg_counts->missing_prelimfunc;
+	hash_ok = enable_hashagg && hash_safe_grouping(root);
 	
 	has_dqa = agg_counts->numDistinctAggs != 0;
 
