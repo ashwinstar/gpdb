@@ -5,7 +5,7 @@
  *	  along with the relation's initial contents.
  *
  *
- * Copyright (c) 2009-2009, Greenplum Inc
+ * Copyright (c) 2009-2010, Greenplum Inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -28,6 +28,19 @@
  *		can be read by both genbki.sh and the C compiler.
  * ----------------
  */
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_filespace
+   with (camelcase=FileSpace, shared=true, relid=5009, reltype_oid=6438)
+   (
+   fsname name, -- filespace name
+   fsowner oid -- owner of filespace
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 
 /* ----------------
  *		pg_filespace definition.  cpp turns this into

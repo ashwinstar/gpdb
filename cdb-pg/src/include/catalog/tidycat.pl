@@ -1475,6 +1475,15 @@ sub parsefile
 	{
 		$begin_def_str = "TIDYCAT_BEGINDEF";
 		$end_def_str = "TIDYCAT_ENDDEF";
+
+		# XXX XXX: if only dumping sql definitions, allow "fake" ones...
+		if (defined($glob_sqldef))
+		{
+			$begin_def_str .= "|TIDYCAT_BEGINFAKEDEF";
+			$end_def_str .= "|TIDYCAT_ENDFAKEDEF";
+
+		}
+
 	}
 
 

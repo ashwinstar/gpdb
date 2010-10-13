@@ -5,6 +5,7 @@
  *	  along with the relation's initial contents.
  *
  *
+ * Copyright (c) 2009-2010, Greenplum Inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -20,6 +21,24 @@
 #define PG_FOREIGN_DATA_WRAPPER_H
 
 #include "catalog/genbki.h"
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_foreign_data_wrapper
+   with (camelcase=ForeignDataWrapper, relid=2898, reltype_oid=6447)
+   (
+   fdwname       name, -- foreign-data wrapper name
+   fdwowner      oid, -- FDW owner
+   fdwvalidator  oid, -- optional validation function
+
+   -- VARIABLE LENGTH FIELDS start here.
+
+   fdwacl        aclitem[], -- access permissions
+   fdwoptions    text[] -- FDW options
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
 
 /* ----------------
  *		pg_foreign_data_wrapper definition.  cpp turns this into

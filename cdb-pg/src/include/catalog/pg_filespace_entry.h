@@ -14,7 +14,7 @@
  *    bootstrapping issue of what gets added first (the segment or the 
  *    filespace_entry for the segment).
  *
- * Copyright (c) 2009-2009, Greenplum Inc
+ * Copyright (c) 2009-2010, Greenplum Inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -35,6 +35,19 @@
  *		can be read by both genbki.sh and the C compiler.
  * ----------------
  */
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_filespace_entry
+   with (camelcase=FileSpaceEntry, shared=true, oid=false, relid=5033, reltype_oid=6439)
+   (
+   fsefsoid     oid, -- foreign key to pg_filespace 
+   fsedbid      smallint, -- segment dbid this refers to 
+   fselocation  text -- location of filespace directory
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
 
 /* ----------------
  *		pg_filespace_entry definition.  cpp turns this into

@@ -4,10 +4,15 @@
 
 -- start_matchsubs
 --
--- # weird char mapping
+-- # weird char mapping -- need to fix this for pg_partition
 --
 -- m/pg\_partition\s*\|\s*parkind/
 -- s/bpchar/char/
+--
+-- # pg_statistic stavalues -- can't define a column of type anyarray
+--
+-- m/pg\_statistic\s*\|\s*stavalues/
+-- s/text/anyarray/
 --
 -- end_matchsubs
 
@@ -21,7 +26,7 @@
 
 
 CREATE EXTERNAL WEB TABLE get_tc (x text)
-execute E'(find @abs_srcdir@/../../include/catalog -name \'pg_*.h\'  | xargs perl @abs_srcdir@/../../include/catalog/tidycat.pl -sql @abs_srcdir@/data/tidyddl.sql 2>&1 > /dev/null ; perl -i -ple \' s/^\\s*with\\s*\\(.*\\)\\s*//gm \' @abs_srcdir@/data/tidyddl.sql )' 
+execute E'(find @abs_srcdir@/../../include/catalog -name \'pg_*.h\'  | xargs perl @abs_srcdir@/../../include/catalog/tidycat.pl -sql @abs_srcdir@/data/tidyddl.sql 2>&1 > /dev/null ; sleep 3; perl -i -ple \' s/^\\s*with\\s*\\(.*\\)\\s*//gm \' @abs_srcdir@/data/tidyddl.sql ; sleep 3)' 
 FORMAT 'text' (delimiter '|');
 
 select * from get_tc order by 1;
@@ -34,6 +39,37 @@ set search_path to tidycat, "$user", public;
 
 -- start_ignore
 \i @abs_srcdir@/data/tidyddl.sql
+
+-- how many tidycat defs?
+select pc1.relname
+from 
+	 pg_class pc1
+where 
+ pc1.relnamespace = 
+	(select oid from pg_namespace 
+	where nspname = 'tidycat')	  
+order by relname;
+
+-- how many non-tidycat defs?
+select pc2.relname
+from 
+	 pg_class pc2
+where 
+ pc2.relnamespace = 
+	(select oid from pg_namespace 
+	where nspname = 'pg_catalog')	  
+and pc2.relkind = 'r'
+and
+ pc2.relname not in 
+ 			 (select pc1.relname
+			 from 
+			 	 pg_class pc1
+				 where 
+				  pc1.relnamespace = 
+				  	(select oid from pg_namespace 
+						where nspname = 'tidycat'))	  
+order by relname;
+
 -- end_ignore
 
 -- start_equiv

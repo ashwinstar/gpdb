@@ -28,6 +28,37 @@
  */
 typedef struct varlena anyarray;
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_statistic
+   with (camelcase=Statistic, oid=false, relid=2619)
+   (
+   starelid     oid, 
+   staattnum    smallint, 
+   stanullfrac  real, 
+   stawidth     integer, 
+   stadistinct  real, 
+   stakind1     smallint, 
+   stakind2     smallint, 
+   stakind3     smallint, 
+   stakind4     smallint, 
+   staop1       oid, 
+   staop2       oid, 
+   staop3       oid, 
+   staop4       oid, 
+   stanumbers1  real[], 
+   stanumbers2  real[], 
+   stanumbers3  real[], 
+   stanumbers4  real[], 
+   stavalues1   text, 
+   stavalues2   text, 
+   stavalues3   text, 
+   stavalues4   text
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_statistic definition.  cpp turns this into
  *		typedef struct FormData_pg_statistic
@@ -230,6 +261,22 @@ typedef FormData_pg_statistic *Form_pg_statistic;
 #define STATISTIC_KIND_CORRELATION	3
 
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_stat_last_operation
+   with (camelcase=StatLastOp, oid=false, relid=6052, reltype_oid=6440)
+   (
+   classid        oid, 
+   objid          oid, 
+   staactionname  name, 
+   stasysid       oid, 
+   stausename     name, 
+   stasubtype     text, 
+   statime        timestamp with time zone
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
 /* quoting pg_authid and gp_configuration: */
 
 /*
@@ -286,13 +333,30 @@ typedef FormData_pg_statlastop *Form_pg_statlastop;
 
 /* here is the "shared" version */
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_stat_last_shoperation
+   with (camelcase=StatLastShOp, shared=true, oid=false, relid=6056, reltype_oid=6441)
+   (
+   classid        oid, 
+   objid          oid, 
+   staactionname  name, 
+   stasysid       oid, 
+   stausename     name, 
+   stasubtype     text, 
+   statime        timestamp with time zone
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
 #define timestamptz Datum
 
 #define StatLastShOpRelationName		"pg_stat_last_shoperation"
 
 #define StatLastShOpRelationId 6056
 
-CATALOG(pg_stat_last_shoperation,6056)  BKI_SHARED_RELATION BKI_WITHOUT_OIDS{
+CATALOG(pg_stat_last_shoperation,6056)  BKI_SHARED_RELATION BKI_WITHOUT_OIDS
+{
 	/* unique key */
 	Oid			classid;		/* OID of table containing object */
 	Oid			objid;			/* OID of object itself */

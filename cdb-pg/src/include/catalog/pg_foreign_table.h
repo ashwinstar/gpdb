@@ -3,7 +3,7 @@
  * pg_foreign_table.h
  *	  definition of the system "foreign table" relation (pg_foreign_table)
  *
- * Portions Copyright (c) 2009, Greenplum Inc.
+ * Copyright (c) 2009-2010, Greenplum Inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  * *
@@ -16,6 +16,21 @@
 #define PG_FOREIGN_TABLE_H
 
 #include "catalog/genbki.h"
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_foreign_table
+   with (camelcase=ForeignTable, oid=false, relid=2879, reltype_oid=6452)
+   (
+   reloid      oid, -- refers to this relation's oid in pg_class
+   server      oid, -- table's foreign server
+   -- VARIABLE LENGTH FIELDS start here.  These fields may be NULL, too.
+
+   tbloptions    text[] -- foreign table-specific options
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
 
 /* ----------------
  *		pg_foreign_table definition.  cpp turns this into

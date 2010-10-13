@@ -3,6 +3,7 @@
  * pg_foreign_server.h
  *	  definition of the system "foreign server" relation (pg_foreign_server)
  *
+ * Copyright (c) 2009-2010, Greenplum Inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -18,6 +19,26 @@
 #define PG_FOREIGN_SERVER_H
 
 #include "catalog/genbki.h"
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_foreign_server
+   with (camelcase=ForeignServer, relid=2899, reltype_oid=6448)
+   (
+   srvname       name, -- foreign server name
+   srvowner      oid, -- server owner
+   srvfdw      oid, -- server FDW
+
+   -- VARIABLE LENGTH FIELDS start here.  These fields may be NULL, too.
+
+   srvtype     text,
+   srvversion  text,
+   srvacl        aclitem[], -- access permissions
+   srvoptions    text[] -- FDW-specific options
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
 
 /* ----------------
  *		pg_foreign_server definition.  cpp turns this into
