@@ -19,8 +19,16 @@
 -- *********************************************************************
 -- *********************************************************************
 -- This script will produce diffs if you add or change catalog table
--- definitions in src/include/catalog.
+-- definitions in src/include/catalog. If you want to change the results, 
+-- you must make the changes in regress/output/tidycat.source, not
+-- regress/expected, and use gpsourcify.pl to generate a ".out" file.
 --
+-- From the regress directory invoke the command:
+--
+--    gpsourcify.pl results/tidycat.out > output/tidycat.source
+--
+-- *********************************************************************
+-- *********************************************************************
 -- *********************************************************************
 -- *********************************************************************
 
