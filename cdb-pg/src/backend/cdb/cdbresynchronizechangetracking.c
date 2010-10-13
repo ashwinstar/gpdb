@@ -174,6 +174,16 @@ extern void ChangeTrackingShmemInit(void)
 	return;
 }
 
+/*
+ * Reset shmem variables to zero.
+ */
+extern void ChangeTrackingShmemReset(void)
+{
+	ChangeTracking_ResetBufStatus(CTMainWriteBufStatus);
+	ChangeTracking_ResetCompactingStatus(changeTrackingCompState);
+	
+	return;
+}
 
 /*
  * This procedure will be called when mirror loss has been detected AND 

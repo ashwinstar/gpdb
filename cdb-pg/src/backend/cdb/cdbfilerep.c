@@ -3289,6 +3289,7 @@ void FileRep_Main(void)
 	FileRep_ShmemReInit();
 	FileRepAck_ShmemReInit();
 	FileRepLog_ShmemReInit();
+	ChangeTrackingShmemReset();
 
 	MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
 	primaryMirrorGetFilerepArguments(&fileRepRole, &segmentState, &dataState, &fileRepPrimaryHostAddress,

@@ -387,6 +387,11 @@ extern Size ChangeTrackingShmemSize(void);
  */
 extern void ChangeTrackingShmemInit(void);
 
+/*
+ * Reset shmem variables to zero.
+ */
+extern void ChangeTrackingShmemReset(void);
+
 
 #endif   /* CDBRESYNCHRONIZECHANGETRACKING_H */
 
