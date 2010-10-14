@@ -286,7 +286,7 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 		apr_thread_mutex_unlock(ax.agg_mutex);
 		if (e)
 		{
-        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 			gpmon_fatalx(FLINE, e, "agg_put failed");
 		}
 	}
@@ -316,7 +316,7 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 
 	if (!event_init())
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_init failed");
 	}
 	while (!ax.exit)
@@ -355,7 +355,7 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 								recv_from_gx, h);
 						if (event_add(h->event, 0))
 						{
-        					interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+							interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 							gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_add failed");
 						}
 					}
@@ -382,18 +382,18 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 		TR2(("event_loopexit\n"));
 		if (-1 == event_loopexit(&tv))
 		{
-        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_loopexit failed");
 		}
 		TR2(("event_dispatch\n"));
 		if (-1 == event_dispatch() && ETIME != errno)
 		{
-        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "event_dispatch failed");
 		}
 		if (ax.reload == 1)
 		{
-            TR0(("sighup received, reloading conf files\n"));
+			TR0(("sighup received, reloading conf files\n"));
 
 			ax.reload = 0;
 			/* Check if perfmon is enabled.  If not, exit */
@@ -406,7 +406,7 @@ static void* event_main(apr_thread_t* thread_, void* arg_)
 			else
 				read_conf_file(opt.conf_file);
 
-            TR0(("finished reloading conf files\n"));
+			TR0(("finished reloading conf files\n"));
 		}
 	}
 	return 0;
@@ -548,11 +548,15 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 							" %s %s/bin/gpsmon -m %" FMT64 " -l %s%s -v %d %d ",
 							h->hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v, ax.port);
 
-                    if (h->ever_connected)
-					    TR0(("Connection to %s lost.  Restarting gpsmon.\n", h->hostname));
-                    else
-					    TR0(("Making initial connection to %s\n", h->hostname));
-                    h->ever_connected = 1;
+					if (h->ever_connected)
+					{
+						TR0(("Connection to %s lost.  Restarting gpsmon.\n", h->hostname));
+					}
+					else
+					{
+						TR0(("Making initial connection to %s\n", h->hostname));
+					}
+					h->ever_connected = 1;
 
 					TR1(("%s\n", line));
 					fp[j] = popen(line, "w");
@@ -777,44 +781,44 @@ static void gpmmon_main(void)
 
 	if (0 != (e = apr_pool_create(&ax.pool, 0)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
 	}
 
 	if (0 != (e = apr_env_get(&ax.gphome, "GPHOME", ax.pool)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "GPHOME environment variable not set");
 	}
 
 	/* Create mutexes */
 	if (0 != (e = apr_thread_mutex_create(&ax.agg_mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "Resource Error: Failed to create agg_mutex");
 	}
 
 	if (0 != (e = apr_thread_mutex_create(&ax.tailfile_mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "Resource Error: Failed to create tailfile_mutex");
 	}
 
 	if (0 != (e = apr_thread_mutex_create(&logfile_mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "Resource Error: Failed to create logfile_mutex");
 	}
 
 	if (0 != (e = apr_threadattr_create(&ta, ax.pool)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_threadattr_create failed");
 	}
 
 	if (0 != (e = apr_threadattr_detach_set(ta, 1)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_threadattr_detach_set failed");
 	}
 
@@ -834,28 +838,28 @@ static void gpmmon_main(void)
 	/* create the agg */
 	if (0 != (e = agg_create(&ax.agg, 1, ax.pool)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "agg_create failed");
 	}
 
 	/* spawn conm thread */
 	if (0 != (e = apr_thread_create(&conm_th, ta, conm_main, 0, ax.pool)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
 	}
 
 	/* spawn event thread */
 	if (0 != (e = apr_thread_create(&event_th, ta, event_main, 0, ax.pool)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
 	}
 
 	/* spawn harvest thread */
 	if (0 != (e = apr_thread_create(&harvest_th, ta, harvest_main, 0, ax.pool)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
 	}
 
@@ -866,7 +870,7 @@ static void gpmmon_main(void)
 		{
 			if (0 != (e = apr_thread_create(&snmp_th, ta, snmp_main, 0, ax.pool)))
 			{
-	        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+				interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 				gpmon_fatalx(FLINE, e, "apr_thread_create failed");
 			}
 		}
@@ -934,7 +938,7 @@ static void gpmmon_main(void)
 			/* make a new one, copy only recently updated entries */
 			if (0 != (e = agg_dup(&newagg, ax.agg, ax.pool)))
 			{
-        		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+				interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 				gpmon_fatalx(FLINE, e, "agg_dup failed");
 			}
 			oldagg = ax.agg;
@@ -1179,7 +1183,7 @@ static void parse_command_line(int argc, const char* const argv[])
 
 	if (0 != (e = apr_pool_create(&pool, 0)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
 	}
 
@@ -1193,7 +1197,7 @@ static void parse_command_line(int argc, const char* const argv[])
 
 	if (0 != (e = apr_getopt_init(&os, pool, argc, argv)))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatalx(FLINE, e, "apr_getopt_init failed");
 	}
 
@@ -1246,13 +1250,13 @@ int main(int argc, const char* const argv[])
 	if (apr_initialize())
 	{
 		fprintf(stderr, "Performance Monitor - Internal error, failed to initialize APR.\n");
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		exit(1);
 	}
 
 	if ( gpdb_debug_string_lookup_table() != APR_SUCCESS)
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatal(FLINE, "internal consistency check failed at gpperfmon startup");
 	}
 
@@ -1271,7 +1275,7 @@ int main(int argc, const char* const argv[])
 		(signal(SIGHUP, SIGHUP_handler) == SIG_ERR) ||
 		(signal(SIGUSR2, SIGUSR2_handler) == SIG_ERR))
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatal(FLINE, "Failed to set signal handlers\n");
 	}
 
@@ -1300,7 +1304,7 @@ int main(int argc, const char* const argv[])
 
 			db_check_count += 1;
 
-            interuptable_sleep(60); // sleep to prevent loop of forking process and failing
+			interuptable_sleep(60); // sleep to prevent loop of forking process and failing
 		}
 		else
 			break;
@@ -1309,23 +1313,24 @@ int main(int argc, const char* const argv[])
 	getconfig();
 	read_conf_file(opt.conf_file);
 
-    /* redirect output to log_file */
+	/* redirect output to log_file */
 	/* stdout goes to log: debug and warnings */
 	/* stderr goes to pg_log: fatal errors */
 	{
-        if (gpmon_recursive_mkdir(opt.log_dir))
-        {
-            fprintf(stderr, "\nPerformance Monitor -- cannot create directory %s", opt.log_dir);
-            interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-            gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s", opt.log_dir);
-        }
+		if (gpmon_recursive_mkdir(opt.log_dir))
+		{
+			fprintf(stderr, "\nPerformance Monitor -- cannot create directory %s", opt.log_dir);
+			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+			gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot create directory %s", opt.log_dir);
+		}
 
 		update_mmonlog_filename();
-		if (!freopen(mmon_log_filename, "w", stdout)){
-            fprintf(stderr, "\nPerformance Monitor -- failed to open perfmon log file %s\n", mmon_log_filename);
-            interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-		    gpmon_fatal(FLINE, "\nfailed (1) to open perfmon log file %s\n", mmon_log_filename);
-        }
+		if (!freopen(mmon_log_filename, "w", stdout))
+		{
+			fprintf(stderr, "\nPerformance Monitor -- failed to open perfmon log file %s\n", mmon_log_filename);
+			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+			gpmon_fatal(FLINE, "\nfailed (1) to open perfmon log file %s\n", mmon_log_filename);
+		}
 	}
 
 
@@ -1425,7 +1430,7 @@ static void gethostlist(host_t** rettab, int* rettabsz)
 
 	if (apr_is_empty_array(hostarray))
 	{
-        interuptable_sleep(10); // sleep to prevent loop of forking process and failing
+		interuptable_sleep(10); // sleep to prevent loop of forking process and failing
 		gpmon_fatal(FLINE, "No valid hosts in gp_segment_configuration.");
 	}
 
