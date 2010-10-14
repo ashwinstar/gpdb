@@ -4,11 +4,6 @@
 
 -- start_matchsubs
 --
--- # weird char mapping -- need to fix this for pg_partition
---
--- m/pg\_partition\s*\|\s*parkind/
--- s/bpchar/char/
---
 -- # pg_statistic stavalues -- can't define a column of type anyarray
 --
 -- m/pg\_statistic\s*\|\s*stavalues/

@@ -38,6 +38,26 @@
  *	agginitval			initial value for transition state (can be NULL)
  * ----------------------------------------------------------------
  */
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_aggregate
+   with (oid=false, relid=2600)
+   (
+   aggfnoid        regproc, 
+   aggtransfn      regproc, 
+   agginvtransfn   regproc, 
+   aggprelimfn     regproc, 
+   agginvprelimfn  regproc, 
+   aggfinalfn      regproc, 
+   aggsortop       oid, 
+   aggtranstype    oid, 
+   agginitval      text
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 #define AggregateRelationId  2600
 
 CATALOG(pg_aggregate,2600) BKI_WITHOUT_OIDS

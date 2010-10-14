@@ -24,6 +24,42 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_am
+   with (camelcase=AccessMethod,  relid=2601)
+   (
+   amname           name, 
+   amstrategies     smallint, 
+   amsupport        smallint, 
+   amorderstrategy  smallint, 
+   amcanunique      boolean, 
+   amcanmulticol    boolean, 
+   amoptionalkey    boolean, 
+   amindexnulls     boolean, 
+   amstorage        boolean, 
+   amclusterable    boolean, 
+   amcanshrink      boolean, 
+   aminsert         regproc, 
+   ambeginscan      regproc, 
+   amgettuple       regproc, 
+   amgetmulti       regproc, 
+   amrescan         regproc, 
+   amendscan        regproc, 
+   ammarkpos        regproc, 
+   amrestrpos       regproc, 
+   ambuild          regproc, 
+   ambulkdelete     regproc, 
+   amvacuumcleanup  regproc, 
+   amcostestimate   regproc, 
+   amoptions        regproc
+    );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
+
+
 /* ----------------
  *		pg_am definition.  cpp turns this into
  *		typedef struct FormData_pg_am

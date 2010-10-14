@@ -36,6 +36,21 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_amop
+   with (camelcase=AccessMethodOperator, oid=false, relid=2602)
+   (
+   amopclaid     oid, 
+   amopsubtype   oid, 
+   amopstrategy  smallint, 
+   amopreqcheck  boolean, 
+   amopopr       oid
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_amop definition.  cpp turns this into
  *		typedef struct FormData_pg_amop

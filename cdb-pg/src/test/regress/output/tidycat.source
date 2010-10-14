@@ -3,11 +3,6 @@
 -- --------------------------------------
 -- start_matchsubs
 --
--- # weird char mapping -- need to fix this for pg_partition
---
--- m/pg\_partition\s*\|\s*parkind/
--- s/bpchar/char/
---
 -- # pg_statistic stavalues -- can't define a column of type anyarray
 --
 -- m/pg\_statistic\s*\|\s*stavalues/
@@ -42,6 +37,127 @@ create schema tidycat;
 set search_path to tidycat, "$user", public;
 -- start_ignore
 \i @abs_srcdir@/data/tidyddl.sql
+   CREATE TABLE pg_aggregate
+   (
+   aggfnoid        regproc, 
+   aggtransfn      regproc, 
+   agginvtransfn   regproc, 
+   aggprelimfn     regproc, 
+   agginvprelimfn  regproc, 
+   aggfinalfn      regproc, 
+   aggsortop       oid, 
+   aggtranstype    oid, 
+   agginitval      text
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:14: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aggfnoid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_am
+   (
+   amname           name, 
+   amstrategies     smallint, 
+   amsupport        smallint, 
+   amorderstrategy  smallint, 
+   amcanunique      boolean, 
+   amcanmulticol    boolean, 
+   amoptionalkey    boolean, 
+   amindexnulls     boolean, 
+   amstorage        boolean, 
+   amclusterable    boolean, 
+   amcanshrink      boolean, 
+   aminsert         regproc, 
+   ambeginscan      regproc, 
+   amgettuple       regproc, 
+   amgetmulti       regproc, 
+   amrescan         regproc, 
+   amendscan        regproc, 
+   ammarkpos        regproc, 
+   amrestrpos       regproc, 
+   ambuild          regproc, 
+   ambulkdelete     regproc, 
+   amvacuumcleanup  regproc, 
+   amcostestimate   regproc, 
+   amoptions        regproc
+    );
+psql:@abs_srcdir@/data/tidyddl.sql:43: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_amop
+   (
+   amopclaid     oid, 
+   amopsubtype   oid, 
+   amopstrategy  smallint, 
+   amopreqcheck  boolean, 
+   amopopr       oid
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:53: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amopclaid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_amproc
+   (
+   amopclaid      oid, 
+   amprocsubtype  oid, 
+   amprocnum      smallint, 
+   amproc         regproc
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:62: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amopclaid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_appendonly
+   (
+   relid            oid, 
+   blocksize        integer, 
+   safefswritesize  integer, 
+   compresslevel    smallint, 
+   majorversion     smallint, 
+   minorversion     smallint, 
+   checksum         boolean, 
+   compresstype     text, 
+   columnstore      boolean, 
+   segrelid         oid, 
+   segidxid         oid, 
+   blkdirrelid      oid, 
+   blkdiridxid      oid, 
+   version          integer
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:81: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_appendonly_alter_column
+   (
+   relid             oid, 
+   changenum         integer, 
+   segfilenums       integer[], 
+   highwaterrownums  bytea
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:90: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_attrdef
+   (
+   adrelid  oid, 
+   adnum    smallint, 
+   adbin    text, 
+   adsrc    text
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:99: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'adrelid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_attribute
+   (
+   attrelid       oid, 
+   attname        name, 
+   atttypid       oid, 
+   attstattarget  integer, 
+   attlen         smallint, 
+   attnum         smallint, 
+   attndims       integer, 
+   attcacheoff    integer, 
+   atttypmod      integer, 
+   attbyval       boolean, 
+   attstorage     "char", 
+   attalign       "char", 
+   attnotnull     boolean, 
+   atthasdef      boolean, 
+   attisdropped   boolean, 
+   attislocal     boolean, 
+   attinhcount    integer
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:121: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'attrelid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_authid
    (
    rolname name, -- name of role  
@@ -63,14 +179,14 @@ set search_path to tidycat, "$user", public;
    rolcreaterexthttp boolean, -- allowed to create readable http tbl? 
    rolcreatewextgpfd boolean -- allowed to create writable gpfdist tbl? 
    );
-psql:@abs_srcdir@/data/tidyddl.sql:24: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rolname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:145: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rolname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_filespace
    (
    fsname name, -- filespace name
    fsowner oid -- owner of filespace
    );
-psql:@abs_srcdir@/data/tidyddl.sql:31: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:152: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_filespace_entry
    (
@@ -78,7 +194,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    fsedbid      smallint, -- segment dbid this refers to 
    fselocation  text -- location of filespace directory
    );
-psql:@abs_srcdir@/data/tidyddl.sql:39: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsefsoid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:160: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsefsoid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_foreign_data_wrapper
    (
@@ -89,7 +205,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    fdwacl        aclitem[], -- access permissions
    fdwoptions    text[] -- FDW options
    );
-psql:@abs_srcdir@/data/tidyddl.sql:52: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fdwname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:173: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fdwname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_foreign_server
    (
@@ -102,7 +218,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    srvacl        aclitem[], -- access permissions
    srvoptions    text[] -- FDW-specific options
    );
-psql:@abs_srcdir@/data/tidyddl.sql:67: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'srvname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:188: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'srvname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_foreign_table
    (
@@ -111,19 +227,19 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    -- VARIABLE LENGTH FIELDS start here.  These fields may be NULL, too.
    tbloptions    text[] -- foreign table-specific options
    );
-psql:@abs_srcdir@/data/tidyddl.sql:77: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'reloid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:198: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'reloid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_partition
    (
    parrelid       oid,
-   parkind        char,
+   parkind        "char",
    parlevel       smallint,
    paristemplate  boolean,
    parnatts       smallint,
    paratts        int2vector,
    parclass       oidvector
    );
-psql:@abs_srcdir@/data/tidyddl.sql:89: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'parrelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:210: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'parrelid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_partition_rule
    ( 
@@ -142,7 +258,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    parreloptions      text[],
    partemplatespace   oid
    );
-psql:@abs_srcdir@/data/tidyddl.sql:108: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'paroid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:229: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'paroid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_resqueue
    (
@@ -152,7 +268,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    rsqovercommit boolean, -- allow overcommit on suitable  limits
    rsqignorecostlimit real -- ignore queries with cost less than
    );
-psql:@abs_srcdir@/data/tidyddl.sql:118: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rsqname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:239: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rsqname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_resqueuecapability
    (
@@ -160,7 +276,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    restypid smallint,	-- resource type id (key to pg_resourcetype) 
    ressetting text		-- resource setting (opaque type) 
    );
-psql:@abs_srcdir@/data/tidyddl.sql:126: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resqueueid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:247: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resqueueid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_resourcetype
    (
@@ -172,7 +288,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    resdefaultsetting text,	-- default resource setting 
    resdisabledsetting text	-- value that turns it off 
    );
-psql:@abs_srcdir@/data/tidyddl.sql:138: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:259: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_stat_last_shoperation
    (
@@ -184,7 +300,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    stasubtype     text, 
    statime        timestamp with time zone
    );
-psql:@abs_srcdir@/data/tidyddl.sql:150: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:271: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_statistic
    (
@@ -210,7 +326,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    stavalues3   text, 
    stavalues4   text
    );
-psql:@abs_srcdir@/data/tidyddl.sql:176: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'starelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:297: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'starelid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_stat_last_operation
    (
@@ -222,7 +338,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    stasubtype     text, 
    statime        timestamp with time zone
    );
-psql:@abs_srcdir@/data/tidyddl.sql:188: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:309: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 -- how many tidycat defs?
 select pc1.relname
@@ -233,8 +349,16 @@ where
 	(select oid from pg_namespace 
 	where nspname = 'tidycat')	  
 order by relname;
-         relname          
---------------------------
+          relname           
+----------------------------
+ pg_aggregate
+ pg_am
+ pg_amop
+ pg_amproc
+ pg_appendonly
+ pg_appendonly_alter_column
+ pg_attrdef
+ pg_attribute
  pg_authid
  pg_filespace
  pg_filespace_entry
@@ -249,7 +373,7 @@ order by relname;
  pg_stat_last_operation
  pg_stat_last_shoperation
  pg_statistic
-(14 rows)
+(22 rows)
 
 -- how many non-tidycat defs?
 select pc2.relname
@@ -290,14 +414,6 @@ order by relname;
  gp_san_configuration
  gp_segment_configuration
  gp_version_at_initdb
- pg_aggregate
- pg_am
- pg_amop
- pg_amproc
- pg_appendonly
- pg_appendonly_alter_column
- pg_attrdef
- pg_attribute
  pg_auth_members
  pg_autovacuum
  pg_cast
@@ -326,7 +442,7 @@ order by relname;
  pg_type
  pg_user_mapping
  pg_window
-(54 rows)
+(46 rows)
 
 -- end_ignore
 -- start_equiv
@@ -343,115 +459,196 @@ and pc1.relnamespace =
 	(select oid from pg_namespace 
 	where nspname = 'tidycat')	  
 order by relname, pa1.attnum;
-         relname          |      attname       |   typname   
---------------------------+--------------------+-------------
- pg_authid                | rolname            | name
- pg_authid                | rolsuper           | bool
- pg_authid                | rolinherit         | bool
- pg_authid                | rolcreaterole      | bool
- pg_authid                | rolcreatedb        | bool
- pg_authid                | rolcatupdate       | bool
- pg_authid                | rolcanlogin        | bool
- pg_authid                | rolconnlimit       | int4
- pg_authid                | rolpassword        | text
- pg_authid                | rolvaliduntil      | timestamptz
- pg_authid                | rolconfig          | _text
- pg_authid                | rolresqueue        | oid
- pg_authid                | rolcreaterextgpfd  | bool
- pg_authid                | rolcreaterexthttp  | bool
- pg_authid                | rolcreatewextgpfd  | bool
- pg_filespace             | fsname             | name
- pg_filespace             | fsowner            | oid
- pg_filespace_entry       | fsefsoid           | oid
- pg_filespace_entry       | fsedbid            | int2
- pg_filespace_entry       | fselocation        | text
- pg_foreign_data_wrapper  | fdwname            | name
- pg_foreign_data_wrapper  | fdwowner           | oid
- pg_foreign_data_wrapper  | fdwvalidator       | oid
- pg_foreign_data_wrapper  | fdwacl             | _aclitem
- pg_foreign_data_wrapper  | fdwoptions         | _text
- pg_foreign_server        | srvname            | name
- pg_foreign_server        | srvowner           | oid
- pg_foreign_server        | srvfdw             | oid
- pg_foreign_server        | srvtype            | text
- pg_foreign_server        | srvversion         | text
- pg_foreign_server        | srvacl             | _aclitem
- pg_foreign_server        | srvoptions         | _text
- pg_foreign_table         | reloid             | oid
- pg_foreign_table         | server             | oid
- pg_foreign_table         | tbloptions         | _text
- pg_partition             | parrelid           | oid
- pg_partition             | parkind            | bpchar
- pg_partition             | parlevel           | int2
- pg_partition             | paristemplate      | bool
- pg_partition             | parnatts           | int2
- pg_partition             | paratts            | int2vector
- pg_partition             | parclass           | oidvector
- pg_partition_rule        | paroid             | oid
- pg_partition_rule        | parchildrelid      | oid
- pg_partition_rule        | parparentrule      | oid
- pg_partition_rule        | parname            | name
- pg_partition_rule        | parisdefault       | bool
- pg_partition_rule        | parruleord         | int2
- pg_partition_rule        | parrangestartincl  | bool
- pg_partition_rule        | parrangeendincl    | bool
- pg_partition_rule        | parrangestart      | text
- pg_partition_rule        | parrangeend        | text
- pg_partition_rule        | parrangeevery      | text
- pg_partition_rule        | parlistvalues      | text
- pg_partition_rule        | parreloptions      | _text
- pg_partition_rule        | partemplatespace   | oid
- pg_resourcetype          | resname            | name
- pg_resourcetype          | restypid           | int2
- pg_resourcetype          | resrequired        | bool
- pg_resourcetype          | reshasdefault      | bool
- pg_resourcetype          | reshasdisable      | bool
- pg_resourcetype          | resdefaultsetting  | text
- pg_resourcetype          | resdisabledsetting | text
- pg_resqueue              | rsqname            | name
- pg_resqueue              | rsqcountlimit      | float4
- pg_resqueue              | rsqcostlimit       | float4
- pg_resqueue              | rsqovercommit      | bool
- pg_resqueue              | rsqignorecostlimit | float4
- pg_resqueuecapability    | resqueueid         | oid
- pg_resqueuecapability    | restypid           | int2
- pg_resqueuecapability    | ressetting         | text
- pg_stat_last_operation   | classid            | oid
- pg_stat_last_operation   | objid              | oid
- pg_stat_last_operation   | staactionname      | name
- pg_stat_last_operation   | stasysid           | oid
- pg_stat_last_operation   | stausename         | name
- pg_stat_last_operation   | stasubtype         | text
- pg_stat_last_operation   | statime            | timestamptz
- pg_stat_last_shoperation | classid            | oid
- pg_stat_last_shoperation | objid              | oid
- pg_stat_last_shoperation | staactionname      | name
- pg_stat_last_shoperation | stasysid           | oid
- pg_stat_last_shoperation | stausename         | name
- pg_stat_last_shoperation | stasubtype         | text
- pg_stat_last_shoperation | statime            | timestamptz
- pg_statistic             | starelid           | oid
- pg_statistic             | staattnum          | int2
- pg_statistic             | stanullfrac        | float4
- pg_statistic             | stawidth           | int4
- pg_statistic             | stadistinct        | float4
- pg_statistic             | stakind1           | int2
- pg_statistic             | stakind2           | int2
- pg_statistic             | stakind3           | int2
- pg_statistic             | stakind4           | int2
- pg_statistic             | staop1             | oid
- pg_statistic             | staop2             | oid
- pg_statistic             | staop3             | oid
- pg_statistic             | staop4             | oid
- pg_statistic             | stanumbers1        | _float4
- pg_statistic             | stanumbers2        | _float4
- pg_statistic             | stanumbers3        | _float4
- pg_statistic             | stanumbers4        | _float4
- pg_statistic             | stavalues1         | text
- pg_statistic             | stavalues2         | text
- pg_statistic             | stavalues3         | text
- pg_statistic             | stavalues4         | text
-(106 rows)
+          relname           |      attname       |   typname   
+----------------------------+--------------------+-------------
+ pg_aggregate               | aggfnoid           | regproc
+ pg_aggregate               | aggtransfn         | regproc
+ pg_aggregate               | agginvtransfn      | regproc
+ pg_aggregate               | aggprelimfn        | regproc
+ pg_aggregate               | agginvprelimfn     | regproc
+ pg_aggregate               | aggfinalfn         | regproc
+ pg_aggregate               | aggsortop          | oid
+ pg_aggregate               | aggtranstype       | oid
+ pg_aggregate               | agginitval         | text
+ pg_am                      | amname             | name
+ pg_am                      | amstrategies       | int2
+ pg_am                      | amsupport          | int2
+ pg_am                      | amorderstrategy    | int2
+ pg_am                      | amcanunique        | bool
+ pg_am                      | amcanmulticol      | bool
+ pg_am                      | amoptionalkey      | bool
+ pg_am                      | amindexnulls       | bool
+ pg_am                      | amstorage          | bool
+ pg_am                      | amclusterable      | bool
+ pg_am                      | amcanshrink        | bool
+ pg_am                      | aminsert           | regproc
+ pg_am                      | ambeginscan        | regproc
+ pg_am                      | amgettuple         | regproc
+ pg_am                      | amgetmulti         | regproc
+ pg_am                      | amrescan           | regproc
+ pg_am                      | amendscan          | regproc
+ pg_am                      | ammarkpos          | regproc
+ pg_am                      | amrestrpos         | regproc
+ pg_am                      | ambuild            | regproc
+ pg_am                      | ambulkdelete       | regproc
+ pg_am                      | amvacuumcleanup    | regproc
+ pg_am                      | amcostestimate     | regproc
+ pg_am                      | amoptions          | regproc
+ pg_amop                    | amopclaid          | oid
+ pg_amop                    | amopsubtype        | oid
+ pg_amop                    | amopstrategy       | int2
+ pg_amop                    | amopreqcheck       | bool
+ pg_amop                    | amopopr            | oid
+ pg_amproc                  | amopclaid          | oid
+ pg_amproc                  | amprocsubtype      | oid
+ pg_amproc                  | amprocnum          | int2
+ pg_amproc                  | amproc             | regproc
+ pg_appendonly              | relid              | oid
+ pg_appendonly              | blocksize          | int4
+ pg_appendonly              | safefswritesize    | int4
+ pg_appendonly              | compresslevel      | int2
+ pg_appendonly              | majorversion       | int2
+ pg_appendonly              | minorversion       | int2
+ pg_appendonly              | checksum           | bool
+ pg_appendonly              | compresstype       | text
+ pg_appendonly              | columnstore        | bool
+ pg_appendonly              | segrelid           | oid
+ pg_appendonly              | segidxid           | oid
+ pg_appendonly              | blkdirrelid        | oid
+ pg_appendonly              | blkdiridxid        | oid
+ pg_appendonly              | version            | int4
+ pg_appendonly_alter_column | relid              | oid
+ pg_appendonly_alter_column | changenum          | int4
+ pg_appendonly_alter_column | segfilenums        | _int4
+ pg_appendonly_alter_column | highwaterrownums   | bytea
+ pg_attrdef                 | adrelid            | oid
+ pg_attrdef                 | adnum              | int2
+ pg_attrdef                 | adbin              | text
+ pg_attrdef                 | adsrc              | text
+ pg_attribute               | attrelid           | oid
+ pg_attribute               | attname            | name
+ pg_attribute               | atttypid           | oid
+ pg_attribute               | attstattarget      | int4
+ pg_attribute               | attlen             | int2
+ pg_attribute               | attnum             | int2
+ pg_attribute               | attndims           | int4
+ pg_attribute               | attcacheoff        | int4
+ pg_attribute               | atttypmod          | int4
+ pg_attribute               | attbyval           | bool
+ pg_attribute               | attstorage         | char
+ pg_attribute               | attalign           | char
+ pg_attribute               | attnotnull         | bool
+ pg_attribute               | atthasdef          | bool
+ pg_attribute               | attisdropped       | bool
+ pg_attribute               | attislocal         | bool
+ pg_attribute               | attinhcount        | int4
+ pg_authid                  | rolname            | name
+ pg_authid                  | rolsuper           | bool
+ pg_authid                  | rolinherit         | bool
+ pg_authid                  | rolcreaterole      | bool
+ pg_authid                  | rolcreatedb        | bool
+ pg_authid                  | rolcatupdate       | bool
+ pg_authid                  | rolcanlogin        | bool
+ pg_authid                  | rolconnlimit       | int4
+ pg_authid                  | rolpassword        | text
+ pg_authid                  | rolvaliduntil      | timestamptz
+ pg_authid                  | rolconfig          | _text
+ pg_authid                  | rolresqueue        | oid
+ pg_authid                  | rolcreaterextgpfd  | bool
+ pg_authid                  | rolcreaterexthttp  | bool
+ pg_authid                  | rolcreatewextgpfd  | bool
+ pg_filespace               | fsname             | name
+ pg_filespace               | fsowner            | oid
+ pg_filespace_entry         | fsefsoid           | oid
+ pg_filespace_entry         | fsedbid            | int2
+ pg_filespace_entry         | fselocation        | text
+ pg_foreign_data_wrapper    | fdwname            | name
+ pg_foreign_data_wrapper    | fdwowner           | oid
+ pg_foreign_data_wrapper    | fdwvalidator       | oid
+ pg_foreign_data_wrapper    | fdwacl             | _aclitem
+ pg_foreign_data_wrapper    | fdwoptions         | _text
+ pg_foreign_server          | srvname            | name
+ pg_foreign_server          | srvowner           | oid
+ pg_foreign_server          | srvfdw             | oid
+ pg_foreign_server          | srvtype            | text
+ pg_foreign_server          | srvversion         | text
+ pg_foreign_server          | srvacl             | _aclitem
+ pg_foreign_server          | srvoptions         | _text
+ pg_foreign_table           | reloid             | oid
+ pg_foreign_table           | server             | oid
+ pg_foreign_table           | tbloptions         | _text
+ pg_partition               | parrelid           | oid
+ pg_partition               | parkind            | char
+ pg_partition               | parlevel           | int2
+ pg_partition               | paristemplate      | bool
+ pg_partition               | parnatts           | int2
+ pg_partition               | paratts            | int2vector
+ pg_partition               | parclass           | oidvector
+ pg_partition_rule          | paroid             | oid
+ pg_partition_rule          | parchildrelid      | oid
+ pg_partition_rule          | parparentrule      | oid
+ pg_partition_rule          | parname            | name
+ pg_partition_rule          | parisdefault       | bool
+ pg_partition_rule          | parruleord         | int2
+ pg_partition_rule          | parrangestartincl  | bool
+ pg_partition_rule          | parrangeendincl    | bool
+ pg_partition_rule          | parrangestart      | text
+ pg_partition_rule          | parrangeend        | text
+ pg_partition_rule          | parrangeevery      | text
+ pg_partition_rule          | parlistvalues      | text
+ pg_partition_rule          | parreloptions      | _text
+ pg_partition_rule          | partemplatespace   | oid
+ pg_resourcetype            | resname            | name
+ pg_resourcetype            | restypid           | int2
+ pg_resourcetype            | resrequired        | bool
+ pg_resourcetype            | reshasdefault      | bool
+ pg_resourcetype            | reshasdisable      | bool
+ pg_resourcetype            | resdefaultsetting  | text
+ pg_resourcetype            | resdisabledsetting | text
+ pg_resqueue                | rsqname            | name
+ pg_resqueue                | rsqcountlimit      | float4
+ pg_resqueue                | rsqcostlimit       | float4
+ pg_resqueue                | rsqovercommit      | bool
+ pg_resqueue                | rsqignorecostlimit | float4
+ pg_resqueuecapability      | resqueueid         | oid
+ pg_resqueuecapability      | restypid           | int2
+ pg_resqueuecapability      | ressetting         | text
+ pg_stat_last_operation     | classid            | oid
+ pg_stat_last_operation     | objid              | oid
+ pg_stat_last_operation     | staactionname      | name
+ pg_stat_last_operation     | stasysid           | oid
+ pg_stat_last_operation     | stausename         | name
+ pg_stat_last_operation     | stasubtype         | text
+ pg_stat_last_operation     | statime            | timestamptz
+ pg_stat_last_shoperation   | classid            | oid
+ pg_stat_last_shoperation   | objid              | oid
+ pg_stat_last_shoperation   | staactionname      | name
+ pg_stat_last_shoperation   | stasysid           | oid
+ pg_stat_last_shoperation   | stausename         | name
+ pg_stat_last_shoperation   | stasubtype         | text
+ pg_stat_last_shoperation   | statime            | timestamptz
+ pg_statistic               | starelid           | oid
+ pg_statistic               | staattnum          | int2
+ pg_statistic               | stanullfrac        | float4
+ pg_statistic               | stawidth           | int4
+ pg_statistic               | stadistinct        | float4
+ pg_statistic               | stakind1           | int2
+ pg_statistic               | stakind2           | int2
+ pg_statistic               | stakind3           | int2
+ pg_statistic               | stakind4           | int2
+ pg_statistic               | staop1             | oid
+ pg_statistic               | staop2             | oid
+ pg_statistic               | staop3             | oid
+ pg_statistic               | staop4             | oid
+ pg_statistic               | stanumbers1        | _float4
+ pg_statistic               | stanumbers2        | _float4
+ pg_statistic               | stanumbers3        | _float4
+ pg_statistic               | stanumbers4        | _float4
+ pg_statistic               | stavalues1         | text
+ pg_statistic               | stavalues2         | text
+ pg_statistic               | stavalues3         | text
+ pg_statistic               | stavalues4         | text
+(187 rows)
 
 select pc1.relname, pa1.attname, pt1.typname 
 from 
@@ -468,115 +665,196 @@ and pc1.relname	in
 	(select relname from pg_class where relnamespace =
 			(select	oid from pg_namespace where nspname = 'tidycat'))
 order by relname, pa1.attnum;
-         relname          |      attname       |   typname   
---------------------------+--------------------+-------------
- pg_authid                | rolname            | name
- pg_authid                | rolsuper           | bool
- pg_authid                | rolinherit         | bool
- pg_authid                | rolcreaterole      | bool
- pg_authid                | rolcreatedb        | bool
- pg_authid                | rolcatupdate       | bool
- pg_authid                | rolcanlogin        | bool
- pg_authid                | rolconnlimit       | int4
- pg_authid                | rolpassword        | text
- pg_authid                | rolvaliduntil      | timestamptz
- pg_authid                | rolconfig          | _text
- pg_authid                | rolresqueue        | oid
- pg_authid                | rolcreaterextgpfd  | bool
- pg_authid                | rolcreaterexthttp  | bool
- pg_authid                | rolcreatewextgpfd  | bool
- pg_filespace             | fsname             | name
- pg_filespace             | fsowner            | oid
- pg_filespace_entry       | fsefsoid           | oid
- pg_filespace_entry       | fsedbid            | int2
- pg_filespace_entry       | fselocation        | text
- pg_foreign_data_wrapper  | fdwname            | name
- pg_foreign_data_wrapper  | fdwowner           | oid
- pg_foreign_data_wrapper  | fdwvalidator       | oid
- pg_foreign_data_wrapper  | fdwacl             | _aclitem
- pg_foreign_data_wrapper  | fdwoptions         | _text
- pg_foreign_server        | srvname            | name
- pg_foreign_server        | srvowner           | oid
- pg_foreign_server        | srvfdw             | oid
- pg_foreign_server        | srvtype            | text
- pg_foreign_server        | srvversion         | text
- pg_foreign_server        | srvacl             | _aclitem
- pg_foreign_server        | srvoptions         | _text
- pg_foreign_table         | reloid             | oid
- pg_foreign_table         | server             | oid
- pg_foreign_table         | tbloptions         | _text
- pg_partition             | parrelid           | oid
- pg_partition             | parkind            | char
- pg_partition             | parlevel           | int2
- pg_partition             | paristemplate      | bool
- pg_partition             | parnatts           | int2
- pg_partition             | paratts            | int2vector
- pg_partition             | parclass           | oidvector
- pg_partition_rule        | paroid             | oid
- pg_partition_rule        | parchildrelid      | oid
- pg_partition_rule        | parparentrule      | oid
- pg_partition_rule        | parname            | name
- pg_partition_rule        | parisdefault       | bool
- pg_partition_rule        | parruleord         | int2
- pg_partition_rule        | parrangestartincl  | bool
- pg_partition_rule        | parrangeendincl    | bool
- pg_partition_rule        | parrangestart      | text
- pg_partition_rule        | parrangeend        | text
- pg_partition_rule        | parrangeevery      | text
- pg_partition_rule        | parlistvalues      | text
- pg_partition_rule        | parreloptions      | _text
- pg_partition_rule        | partemplatespace   | oid
- pg_resourcetype          | resname            | name
- pg_resourcetype          | restypid           | int2
- pg_resourcetype          | resrequired        | bool
- pg_resourcetype          | reshasdefault      | bool
- pg_resourcetype          | reshasdisable      | bool
- pg_resourcetype          | resdefaultsetting  | text
- pg_resourcetype          | resdisabledsetting | text
- pg_resqueue              | rsqname            | name
- pg_resqueue              | rsqcountlimit      | float4
- pg_resqueue              | rsqcostlimit       | float4
- pg_resqueue              | rsqovercommit      | bool
- pg_resqueue              | rsqignorecostlimit | float4
- pg_resqueuecapability    | resqueueid         | oid
- pg_resqueuecapability    | restypid           | int2
- pg_resqueuecapability    | ressetting         | text
- pg_stat_last_operation   | classid            | oid
- pg_stat_last_operation   | objid              | oid
- pg_stat_last_operation   | staactionname      | name
- pg_stat_last_operation   | stasysid           | oid
- pg_stat_last_operation   | stausename         | name
- pg_stat_last_operation   | stasubtype         | text
- pg_stat_last_operation   | statime            | timestamptz
- pg_stat_last_shoperation | classid            | oid
- pg_stat_last_shoperation | objid              | oid
- pg_stat_last_shoperation | staactionname      | name
- pg_stat_last_shoperation | stasysid           | oid
- pg_stat_last_shoperation | stausename         | name
- pg_stat_last_shoperation | stasubtype         | text
- pg_stat_last_shoperation | statime            | timestamptz
- pg_statistic             | starelid           | oid
- pg_statistic             | staattnum          | int2
- pg_statistic             | stanullfrac        | float4
- pg_statistic             | stawidth           | int4
- pg_statistic             | stadistinct        | float4
- pg_statistic             | stakind1           | int2
- pg_statistic             | stakind2           | int2
- pg_statistic             | stakind3           | int2
- pg_statistic             | stakind4           | int2
- pg_statistic             | staop1             | oid
- pg_statistic             | staop2             | oid
- pg_statistic             | staop3             | oid
- pg_statistic             | staop4             | oid
- pg_statistic             | stanumbers1        | _float4
- pg_statistic             | stanumbers2        | _float4
- pg_statistic             | stanumbers3        | _float4
- pg_statistic             | stanumbers4        | _float4
- pg_statistic             | stavalues1         | anyarray
- pg_statistic             | stavalues2         | anyarray
- pg_statistic             | stavalues3         | anyarray
- pg_statistic             | stavalues4         | anyarray
-(106 rows)
+          relname           |      attname       |   typname   
+----------------------------+--------------------+-------------
+ pg_aggregate               | aggfnoid           | regproc
+ pg_aggregate               | aggtransfn         | regproc
+ pg_aggregate               | agginvtransfn      | regproc
+ pg_aggregate               | aggprelimfn        | regproc
+ pg_aggregate               | agginvprelimfn     | regproc
+ pg_aggregate               | aggfinalfn         | regproc
+ pg_aggregate               | aggsortop          | oid
+ pg_aggregate               | aggtranstype       | oid
+ pg_aggregate               | agginitval         | text
+ pg_am                      | amname             | name
+ pg_am                      | amstrategies       | int2
+ pg_am                      | amsupport          | int2
+ pg_am                      | amorderstrategy    | int2
+ pg_am                      | amcanunique        | bool
+ pg_am                      | amcanmulticol      | bool
+ pg_am                      | amoptionalkey      | bool
+ pg_am                      | amindexnulls       | bool
+ pg_am                      | amstorage          | bool
+ pg_am                      | amclusterable      | bool
+ pg_am                      | amcanshrink        | bool
+ pg_am                      | aminsert           | regproc
+ pg_am                      | ambeginscan        | regproc
+ pg_am                      | amgettuple         | regproc
+ pg_am                      | amgetmulti         | regproc
+ pg_am                      | amrescan           | regproc
+ pg_am                      | amendscan          | regproc
+ pg_am                      | ammarkpos          | regproc
+ pg_am                      | amrestrpos         | regproc
+ pg_am                      | ambuild            | regproc
+ pg_am                      | ambulkdelete       | regproc
+ pg_am                      | amvacuumcleanup    | regproc
+ pg_am                      | amcostestimate     | regproc
+ pg_am                      | amoptions          | regproc
+ pg_amop                    | amopclaid          | oid
+ pg_amop                    | amopsubtype        | oid
+ pg_amop                    | amopstrategy       | int2
+ pg_amop                    | amopreqcheck       | bool
+ pg_amop                    | amopopr            | oid
+ pg_amproc                  | amopclaid          | oid
+ pg_amproc                  | amprocsubtype      | oid
+ pg_amproc                  | amprocnum          | int2
+ pg_amproc                  | amproc             | regproc
+ pg_appendonly              | relid              | oid
+ pg_appendonly              | blocksize          | int4
+ pg_appendonly              | safefswritesize    | int4
+ pg_appendonly              | compresslevel      | int2
+ pg_appendonly              | majorversion       | int2
+ pg_appendonly              | minorversion       | int2
+ pg_appendonly              | checksum           | bool
+ pg_appendonly              | compresstype       | text
+ pg_appendonly              | columnstore        | bool
+ pg_appendonly              | segrelid           | oid
+ pg_appendonly              | segidxid           | oid
+ pg_appendonly              | blkdirrelid        | oid
+ pg_appendonly              | blkdiridxid        | oid
+ pg_appendonly              | version            | int4
+ pg_appendonly_alter_column | relid              | oid
+ pg_appendonly_alter_column | changenum          | int4
+ pg_appendonly_alter_column | segfilenums        | _int4
+ pg_appendonly_alter_column | highwaterrownums   | bytea
+ pg_attrdef                 | adrelid            | oid
+ pg_attrdef                 | adnum              | int2
+ pg_attrdef                 | adbin              | text
+ pg_attrdef                 | adsrc              | text
+ pg_attribute               | attrelid           | oid
+ pg_attribute               | attname            | name
+ pg_attribute               | atttypid           | oid
+ pg_attribute               | attstattarget      | int4
+ pg_attribute               | attlen             | int2
+ pg_attribute               | attnum             | int2
+ pg_attribute               | attndims           | int4
+ pg_attribute               | attcacheoff        | int4
+ pg_attribute               | atttypmod          | int4
+ pg_attribute               | attbyval           | bool
+ pg_attribute               | attstorage         | char
+ pg_attribute               | attalign           | char
+ pg_attribute               | attnotnull         | bool
+ pg_attribute               | atthasdef          | bool
+ pg_attribute               | attisdropped       | bool
+ pg_attribute               | attislocal         | bool
+ pg_attribute               | attinhcount        | int4
+ pg_authid                  | rolname            | name
+ pg_authid                  | rolsuper           | bool
+ pg_authid                  | rolinherit         | bool
+ pg_authid                  | rolcreaterole      | bool
+ pg_authid                  | rolcreatedb        | bool
+ pg_authid                  | rolcatupdate       | bool
+ pg_authid                  | rolcanlogin        | bool
+ pg_authid                  | rolconnlimit       | int4
+ pg_authid                  | rolpassword        | text
+ pg_authid                  | rolvaliduntil      | timestamptz
+ pg_authid                  | rolconfig          | _text
+ pg_authid                  | rolresqueue        | oid
+ pg_authid                  | rolcreaterextgpfd  | bool
+ pg_authid                  | rolcreaterexthttp  | bool
+ pg_authid                  | rolcreatewextgpfd  | bool
+ pg_filespace               | fsname             | name
+ pg_filespace               | fsowner            | oid
+ pg_filespace_entry         | fsefsoid           | oid
+ pg_filespace_entry         | fsedbid            | int2
+ pg_filespace_entry         | fselocation        | text
+ pg_foreign_data_wrapper    | fdwname            | name
+ pg_foreign_data_wrapper    | fdwowner           | oid
+ pg_foreign_data_wrapper    | fdwvalidator       | oid
+ pg_foreign_data_wrapper    | fdwacl             | _aclitem
+ pg_foreign_data_wrapper    | fdwoptions         | _text
+ pg_foreign_server          | srvname            | name
+ pg_foreign_server          | srvowner           | oid
+ pg_foreign_server          | srvfdw             | oid
+ pg_foreign_server          | srvtype            | text
+ pg_foreign_server          | srvversion         | text
+ pg_foreign_server          | srvacl             | _aclitem
+ pg_foreign_server          | srvoptions         | _text
+ pg_foreign_table           | reloid             | oid
+ pg_foreign_table           | server             | oid
+ pg_foreign_table           | tbloptions         | _text
+ pg_partition               | parrelid           | oid
+ pg_partition               | parkind            | char
+ pg_partition               | parlevel           | int2
+ pg_partition               | paristemplate      | bool
+ pg_partition               | parnatts           | int2
+ pg_partition               | paratts            | int2vector
+ pg_partition               | parclass           | oidvector
+ pg_partition_rule          | paroid             | oid
+ pg_partition_rule          | parchildrelid      | oid
+ pg_partition_rule          | parparentrule      | oid
+ pg_partition_rule          | parname            | name
+ pg_partition_rule          | parisdefault       | bool
+ pg_partition_rule          | parruleord         | int2
+ pg_partition_rule          | parrangestartincl  | bool
+ pg_partition_rule          | parrangeendincl    | bool
+ pg_partition_rule          | parrangestart      | text
+ pg_partition_rule          | parrangeend        | text
+ pg_partition_rule          | parrangeevery      | text
+ pg_partition_rule          | parlistvalues      | text
+ pg_partition_rule          | parreloptions      | _text
+ pg_partition_rule          | partemplatespace   | oid
+ pg_resourcetype            | resname            | name
+ pg_resourcetype            | restypid           | int2
+ pg_resourcetype            | resrequired        | bool
+ pg_resourcetype            | reshasdefault      | bool
+ pg_resourcetype            | reshasdisable      | bool
+ pg_resourcetype            | resdefaultsetting  | text
+ pg_resourcetype            | resdisabledsetting | text
+ pg_resqueue                | rsqname            | name
+ pg_resqueue                | rsqcountlimit      | float4
+ pg_resqueue                | rsqcostlimit       | float4
+ pg_resqueue                | rsqovercommit      | bool
+ pg_resqueue                | rsqignorecostlimit | float4
+ pg_resqueuecapability      | resqueueid         | oid
+ pg_resqueuecapability      | restypid           | int2
+ pg_resqueuecapability      | ressetting         | text
+ pg_stat_last_operation     | classid            | oid
+ pg_stat_last_operation     | objid              | oid
+ pg_stat_last_operation     | staactionname      | name
+ pg_stat_last_operation     | stasysid           | oid
+ pg_stat_last_operation     | stausename         | name
+ pg_stat_last_operation     | stasubtype         | text
+ pg_stat_last_operation     | statime            | timestamptz
+ pg_stat_last_shoperation   | classid            | oid
+ pg_stat_last_shoperation   | objid              | oid
+ pg_stat_last_shoperation   | staactionname      | name
+ pg_stat_last_shoperation   | stasysid           | oid
+ pg_stat_last_shoperation   | stausename         | name
+ pg_stat_last_shoperation   | stasubtype         | text
+ pg_stat_last_shoperation   | statime            | timestamptz
+ pg_statistic               | starelid           | oid
+ pg_statistic               | staattnum          | int2
+ pg_statistic               | stanullfrac        | float4
+ pg_statistic               | stawidth           | int4
+ pg_statistic               | stadistinct        | float4
+ pg_statistic               | stakind1           | int2
+ pg_statistic               | stakind2           | int2
+ pg_statistic               | stakind3           | int2
+ pg_statistic               | stakind4           | int2
+ pg_statistic               | staop1             | oid
+ pg_statistic               | staop2             | oid
+ pg_statistic               | staop3             | oid
+ pg_statistic               | staop4             | oid
+ pg_statistic               | stanumbers1        | _float4
+ pg_statistic               | stanumbers2        | _float4
+ pg_statistic               | stanumbers3        | _float4
+ pg_statistic               | stanumbers4        | _float4
+ pg_statistic               | stavalues1         | anyarray
+ pg_statistic               | stavalues2         | anyarray
+ pg_statistic               | stavalues3         | anyarray
+ pg_statistic               | stavalues4         | anyarray
+(187 rows)
 
 -- end_equiv
 drop schema tidycat CASCADE;
@@ -594,3 +872,11 @@ NOTICE:  drop cascades to table tidycat.pg_foreign_data_wrapper
 NOTICE:  drop cascades to table tidycat.pg_filespace_entry
 NOTICE:  drop cascades to table tidycat.pg_filespace
 NOTICE:  drop cascades to table tidycat.pg_authid
+NOTICE:  drop cascades to table tidycat.pg_attribute
+NOTICE:  drop cascades to table tidycat.pg_attrdef
+NOTICE:  drop cascades to table tidycat.pg_appendonly_alter_column
+NOTICE:  drop cascades to table tidycat.pg_appendonly
+NOTICE:  drop cascades to table tidycat.pg_amproc
+NOTICE:  drop cascades to table tidycat.pg_amop
+NOTICE:  drop cascades to table tidycat.pg_am
+NOTICE:  drop cascades to table tidycat.pg_aggregate

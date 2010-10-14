@@ -3,7 +3,7 @@
 * pg_appendonly_alter_column.h
 *	  Internal specifications of the pg_appendonly_alter_column relation storage.
 *
-* Portions Copyright (c) 2008, Greenplum Inc.
+* Copyright (c) 2008-2010, Greenplum Inc.
 *-------------------------------------------------------------------------
 */
 #ifndef PG_APPENDONLY_ALTER_COLUMN_H
@@ -13,6 +13,21 @@
 /*
  * pg_appendonly_alter_column definition.
  */
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_appendonly_alter_column
+   with (camelcase=AppendOnlyAlterColumn, oid=false, relid=6110, reltype_oid=6437)
+   (
+   relid             oid, 
+   changenum         integer, 
+   segfilenums       integer[], 
+   highwaterrownums  bytea
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 #define AppendOnlyAlterColumnRelationId  6110
 
 CATALOG(pg_appendonly_alter_column,6110) BKI_WITHOUT_OIDS

@@ -32,6 +32,20 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_amproc
+   with (camelcase=AccessMethodProcedure, oid=false, relid=2603)
+   (
+   amopclaid      oid, 
+   amprocsubtype  oid, 
+   amprocnum      smallint, 
+   amproc         regproc
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_amproc definition.  cpp turns this into
  *		typedef struct FormData_pg_amproc

@@ -272,6 +272,7 @@ my %dynamic_reltype_h =
  2603 => "pg_amproc",
  6105 => "pg_appendonly",
  2604 => "pg_attrdef",
+ 1249 => "pg_attribute", # special bootstrap case
  1261 => "pg_auth_members",
  1260 => "pg_authid",
  2605 => "pg_cast",
@@ -381,7 +382,7 @@ sub sqltype_to_ctype
 
 	# "[]" for optional "array of" suffix
 
-	unless ($coltype =~ m/^(name|oid|boolean|real|smallint|integer|timestamp\_with\_time\_zone)(\[\])?$/)
+	unless ($coltype =~ m/^(quoted\_char|name|oid|boolean|real|smallint|integer|timestamp\_with\_time\_zone)(\[\])?$/)
 	{
 		$coltype =~ s/\[\]/\[1\]/;
 		return $coltype;
@@ -394,6 +395,9 @@ sub sqltype_to_ctype
 	$ctype = "int2" if ($coltype =~ m/smallint/);
 	$ctype = "int4" if ($coltype =~ m/integer/);
 	$ctype = "timestamptz" if ($coltype =~ m/timestamp\_with\_time\_zone/);
+
+	# Note: a quoted_char (or "char") is a single C char
+	$ctype = "char" if ($coltype =~ m/quoted\_char/);
 
 	# make an array of 1
 	$ctype .= "[1]" if ($coltype =~ m/\[\]$/);
@@ -564,13 +568,20 @@ sub parsecols
 		}
 		else
 		{
-			# word space word
+			# word space word (or word space "char")
 			die "bad col: $lin"
-				unless ($lin =~ m/\s*\w+\s+\w+/);
+				unless ($lin =~ m/(\s*\w+\s+\w+)|\s*\w+\s+\"char\"/);
 
-			# timestamp fix - make into a single token
+			# Note: timestamp fix - make into a single token
 			$lin =~ 
 				s/timestamp\s+with\s+time\s+zone/timestamp_with_time_zone/igm;
+
+			# Note: quoted char (ie "char") substitution --
+			# distinguish unquoted sql char, which is "character(1)",
+			# or sql type bpchar, from postgresql-specific 
+			# quoted char ("char"), which is a single C char
+			$lin =~ 
+				s/\"char\"/quoted_char/igm;
 
 			# in sql, have a colname space coltype (followed by
 			# optional array brackets), optionally followed by a comma

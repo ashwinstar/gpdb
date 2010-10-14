@@ -5,7 +5,7 @@
  *	  along with the relation's initial contents.
  *
  *
- * Portions Copyright (c) 2006-2009, Greenplum inc
+ * Portions Copyright (c) 2006-2010, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -26,6 +26,33 @@
 #define PG_ATTRIBUTE_H
 
 #include "catalog/genbki.h"
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_attribute
+   with (camelcase=Attribute, relid=1249)
+   (
+   attrelid       oid, 
+   attname        name, 
+   atttypid       oid, 
+   attstattarget  integer, 
+   attlen         smallint, 
+   attnum         smallint, 
+   attndims       integer, 
+   attcacheoff    integer, 
+   atttypmod      integer, 
+   attbyval       boolean, 
+   attstorage     "char", 
+   attalign       "char", 
+   attnotnull     boolean, 
+   atthasdef      boolean, 
+   attisdropped   boolean, 
+   attislocal     boolean, 
+   attinhcount    integer
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
 
 /* ----------------
  *		pg_attribute definition.  cpp turns this into

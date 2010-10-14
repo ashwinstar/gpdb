@@ -3,7 +3,7 @@
 * pg_appendonly.h
 *	  internal specifications of the appendonly relation storage.
 *
-* Portions Copyright (c) 2008, Greenplum Inc.
+* Copyright (c) 2008-2010, Greenplum Inc.
 *-------------------------------------------------------------------------
 */
 #ifndef PG_APPENDONLY_H
@@ -15,6 +15,31 @@
 /*
  * pg_appendonly definition.
  */
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_appendonly
+   with (camelcase=AppendOnly, oid=false, relid=6105)
+   (
+   relid            oid, 
+   blocksize        integer, 
+   safefswritesize  integer, 
+   compresslevel    smallint, 
+   majorversion     smallint, 
+   minorversion     smallint, 
+   checksum         boolean, 
+   compresstype     text, 
+   columnstore      boolean, 
+   segrelid         oid, 
+   segidxid         oid, 
+   blkdirrelid      oid, 
+   blkdiridxid      oid, 
+   version          integer
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 #define AppendOnlyRelationId  6105
 
 CATALOG(pg_appendonly,6105) BKI_WITHOUT_OIDS

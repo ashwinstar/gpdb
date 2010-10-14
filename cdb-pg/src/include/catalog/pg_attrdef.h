@@ -21,6 +21,20 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_attrdef
+   with (camelcase=AttrDefault, relid=2604)
+   (
+   adrelid  oid, 
+   adnum    smallint, 
+   adbin    text, 
+   adsrc    text
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_attrdef definition.	cpp turns this into
  *		typedef struct FormData_pg_attrdef
