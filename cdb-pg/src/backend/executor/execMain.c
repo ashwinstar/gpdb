@@ -2609,9 +2609,14 @@ ExecInsert(TupleTableSlot *slot,
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 	baseRelationDesc = estate->es_result_relations[0].ri_RelationDesc;
 	
-	/* The base and result should be the same if and only if non-partitioned */
-	Assert((resultRelationDesc == baseRelationDesc) 
-		   == (estate->es_result_partitions == NULL) );
+	/* It may seem as if the base and result should be the same if and only if 
+	 * non-partitioned, however, insertion directly to a part is an exception.
+	 *
+	 * Assert((resultRelationDesc == baseRelationDesc) 
+	 *         == (estate->es_result_partitions == NULL) );
+	 *
+	 * is invalid.  MPP-11341
+	 */
 	
 	rel_is_heap = RelationIsHeap(resultRelationDesc);
 	rel_is_aocols = RelationIsAoCols(resultRelationDesc);
