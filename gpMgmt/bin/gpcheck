@@ -975,7 +975,7 @@ def testAppliance1001Switches():
         elif switch.category == 'Admin':
             expected = "Allied Telesis AT-9924T-EMC - v1.1.5"
             if switch.versionstring != expected:
-                printError(switch.hostname, "Interconnect Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
+                printError(switch.hostname, "Admin Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
 
 def testAppliance1001():
     for h in gpcheck_info.hosts.keys():
