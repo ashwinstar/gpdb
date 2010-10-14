@@ -21,6 +21,7 @@ from gppylib import gplog
 from gppylib.commands import base
 from gppylib.commands import unix
 from gppylib.commands import gp
+from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
 from gppylib.commands import pg
 from gppylib.db import catalog
 from gppylib.db import dbconn
@@ -48,10 +49,11 @@ class SegStopStatus:
 #-------------------------------------------------------------------------    
 class GpSegStop:
     ######
-    def __init__(self,dblist,mode,gpversion):
+    def __init__(self,dblist,mode,gpversion,timeout=SEGMENT_TIMEOUT_DEFAULT):
         self.dblist=dblist
         self.mode=mode
         self.expected_gpversion=gpversion
+        self.timeout=timeout
         self.gphome=os.path.abspath(os.pardir)
         self.actual_gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
         if self.actual_gpversion != self.expected_gpversion:
@@ -72,7 +74,7 @@ class GpSegStop:
             fields=db.split(':')
             datadir=fields[0]
             port=fields[1]
-            cmd=gp.SegmentStop('segment shutdown' , datadir,mode=self.mode)
+            cmd=gp.SegmentStop('segment shutdown' , datadir,mode=self.mode,timeout=self.timeout)
             cmd.run()
             
             res = cmd.get_results()
@@ -130,11 +132,13 @@ class GpSegStop:
                           help="expected software version")
         parser.add_option("-m", "--mode", dest="mode",metavar="<MODE>",
                           help="how to shutdown. modes are smart,fast, or immediate")
+        parser.add_option("-t", "--timeout", dest="timeout", type="int", default=SEGMENT_TIMEOUT_DEFAULT,
+                          help="seconds to wait")
         return parser
 
     @staticmethod
     def createProgram(options, args):
-        return GpSegStop(options.dblist,options.mode,options.gpversion)
+        return GpSegStop(options.dblist,options.mode,options.gpversion,options.timeout)
 
 #-------------------------------------------------------------------------
 if __name__ == '__main__':

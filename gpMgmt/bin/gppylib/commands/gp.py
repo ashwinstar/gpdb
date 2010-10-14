@@ -115,9 +115,10 @@ class MasterStart(Command):
 
 #-----------------------------------------------
 class MasterStop(Command):
-    def __init__(self,name,dataDir,mode='smart',ctxt=LOCAL,remoteHost=None):
+    def __init__(self,name,dataDir,mode='smart',timeout=SEGMENT_TIMEOUT_DEFAULT,
+                 ctxt=LOCAL,remoteHost=None):
         self.dataDir=dataDir
-        cmdStr="$GPHOME/bin/pg_ctl -w -D %s -m %s stop" % (dataDir,mode)
+        cmdStr="$GPHOME/bin/pg_ctl -w -D %s -m %s -t %s stop" % (dataDir,mode, timeout)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     @staticmethod
@@ -279,10 +280,12 @@ class SendFilerepTransitionStatusMessage(Command):
 
 #-----------------------------------------------
 class SegmentStop(Command):
-    def __init__(self, name, dataDir,mode='smart', nowait=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, dataDir,mode='smart', nowait=False, ctxt=LOCAL, 
+                 remoteHost=None, timeout=SEGMENT_TIMEOUT_DEFAULT):
         cmdfrags=['$GPHOME/bin/pg_ctl stop -D %s -m %s' % (dataDir,mode)]
         if not nowait:
             cmdfrags.append('-w')
+            cmdfrags.append('-t %d' % timeout)
         cmdStr=' '.join(cmdfrags)
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
@@ -486,7 +489,8 @@ class GpSegChangeMirrorModeCmd(Command):
 
 #-----------------------------------------------
 class GpSegStopCmd(Command):
-    def __init__(self, name, gphome, version,mode,dbs,verbose=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, gphome, version,mode,dbs,timeout=SEGMENT_TIMEOUT_DEFAULT,
+                 verbose=False, ctxt=LOCAL, remoteHost=None):
         self.gphome=gphome
         self.dblist=dbs
         self.dirportlist=[]
@@ -496,15 +500,15 @@ class GpSegStopCmd(Command):
             datadir = db.getSegmentDataDirectory()
             port = db.getSegmentPort()
             self.dirportlist.append(datadir + ':' + str(port))
-
+        self.timeout=timeout
         dirstr=" -D ".join(self.dirportlist)
         if verbose:
             setverbose=" -v "
         else:
             setverbose=""
 
-        self.cmdStr="$GPHOME/sbin/gpsegstop.py %s -D %s -m %s -V '%s'"  %\
-                        (setverbose,dirstr,mode,version)
+        self.cmdStr="$GPHOME/sbin/gpsegstop.py %s -D %s -m %s -t %s -V '%s'"  %\
+                        (setverbose,dirstr,mode,timeout,version)
 
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 

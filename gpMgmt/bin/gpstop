@@ -24,6 +24,7 @@ try:
     from gppylib import pgconf
     from gppylib.commands import unix
     from gppylib.commands import gp
+    from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
     from gppylib.commands import base
     from gppylib.commands import pg
     from gppylib.gpcoverage import GpCoverage
@@ -37,11 +38,12 @@ logger = get_default_logger()
 #---------------------------------------------------------------
 class SegStopStatus:
     """Tracks result of trying to stop an individual segment database"""
-    def __init__(self,db,stopped=False,reason=None,failedCmd=None):
+    def __init__(self,db,stopped=False,reason=None,failedCmd=None,timedOut=False):
         self.db=db
         self.stopped=stopped
         self.reason=reason
         self.failedCmd=failedCmd
+        self.timedOut=timedOut
         
     
     def __str__(self):
@@ -56,7 +58,8 @@ class GpStop:
     ######
     def __init__(self,mode,master_datadir=None,
                  parallel=DEFAULT_NUM_WORKERS,quiet=False,masteronly=False,sighup=False,
-                 interactive=False,stopstandby=False,restart=False):
+                 interactive=False,stopstandby=False,restart=False,
+                 timeout=SEGMENT_TIMEOUT_DEFAULT):
         self.mode=mode
         self.master_datadir=master_datadir
         self.pool = None
@@ -69,6 +72,7 @@ class GpStop:
         self.stopstandby=stopstandby
         self.restart=restart
         self.hadFailures = False
+        self.timeout=timeout
 
         # some variables that will be assigned during run() 
         self.gphome = None
@@ -192,7 +196,7 @@ class GpStop:
         logger.info("Commencing Master instance shutdown with mode=%s" % self.mode)
         logger.info("Master segment instance directory=%s" % self.master_datadir)
         
-        cmd=gp.MasterStop("stopping master", self.master_datadir, mode=self.mode)
+        cmd=gp.MasterStop("stopping master", self.master_datadir, mode=self.mode, timeout=self.timeout)
         cmd.run(validateAfter=True)
         
         logger.debug("Successfully shutdown the Master instance in admin mode")
@@ -220,7 +224,10 @@ class GpStop:
                 logger.info("Will wait for shutdown to complete, this may take some time if")
                 logger.info("there are a large number of active complex transactions, please wait...")
             else:
-                logger.info("Using standard WAIT mode of 60 seconds")
+                if self.timeout == SEGMENT_TIMEOUT_DEFAULT:
+                    logger.info("Using standard WAIT mode of %s seconds" % SEGMENT_TIMEOUT_DEFAULT)
+                else:
+                    logger.info("Using WAIT mode of %s seconds" % self.timeout)
         pass
     
     
@@ -235,7 +242,8 @@ class GpStop:
             
             logger.info("Stopping gpsyncmaster on standby host %s mode=fast" % standby.hostname)
             try:
-                cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='fast',ctxt=base.REMOTE,remoteHost=standby.hostname)
+                cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='fast',timeout=self.timeout, 
+                                   ctxt=base.REMOTE,remoteHost=standby.hostname)
                 cmd.run(validateAfter=True)                
             except base.ExecutionError, e:
                 logger.warning("Error occured while stopping the standby master: %s" % e)
@@ -246,7 +254,8 @@ class GpStop:
             else:
                 logger.warning("Process gpsyncmaster still running, will issue fast shutdown with immediate")
                 try:            
-                    cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='immediate',ctxt=base.REMOTE,remoteHost=standby.hostname)
+                    cmd=gp.SegmentStop("stopping gpsyncmaster", standby.datadir,mode='immediate', timeout=self.timeout, 
+                                       ctxt=base.REMOTE,remoteHost=standby.hostname)
                     cmd.run(validateAfter=True)
                 except base.ExecutionError, e:
                     logger.warning("Error occured while stopping the standby master: %s" % e)
@@ -320,7 +329,8 @@ class GpStop:
                 
             logger.debug("Dispatching command to shutdown %d segments on host: %s" % (len(dbs), hostname))
             cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % hostname, self.gphome,self.gpversion,
-                                mode=self.mode, dbs=dbs, verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
+                                mode=self.mode, dbs=dbs, timeout=self.timeout,
+                                verbose=logging_is_verbose(),ctxt=base.REMOTE, remoteHost=hostname)
             self.pool.addCommand(cmd)
             dispatch_count+=1
         
@@ -332,6 +342,7 @@ class GpStop:
     def _process_segment_stop(self,failed_seg_status):
         '''reviews results of gpsegstop commands '''
         success_seg_status=[]
+        seg_timed_out=False
         cmds=self.pool.getCompletedItems()
         for cmd in cmds:
             if cmd.get_results().rc == 0 or cmd.get_results().rc == 1:                            
@@ -357,7 +368,9 @@ class GpStop:
                                     #dbs that are marked invalid are 'skipped' but we dispatch to them
                                     #anyway since we want to try and shutdown any runaway pg processes.
                                     if db.valid:
-                                        failed_seg_status.append( SegStopStatus(db,stopped=False,reason=reasonStr,failedCmd=cmd) )                        
+                                        failed_seg_status.append( SegStopStatus(db,stopped=False,reason=reasonStr,failedCmd=cmd) )
+                    elif line.strip().startswith('stderr: pg_ctl: server does not shut down'):
+                        failed_seg_status[-1].timedOut=True
             else:
                 for db in cmd.dblist:
                     #dbs that are marked invalid are 'skipped' but we dispatch to them
@@ -376,6 +389,7 @@ class GpStop:
         invalid = self.gparray.get_invalid_segdbs()
         inactive = self.gparray.get_inactive_mirrors_segdbs()
         total_segs = len(self.gparray.getSegDbList())
+        timed_out = len([x for x in failed_seg_status if x.timedOut])
 
         if failed > 0 or logging_is_verbose():
             logger.info("------------------------------------------------")
@@ -412,6 +426,11 @@ class GpStop:
             logger.warning("------------------------------------------------")
             logger.warning("Segment instance shutdown failures reported")
             logger.warning("Failed to shutdown %d of %d segment instances <<<<<" % (failed,total_segs))
+            if timed_out > 0:
+                logger.warning("%d segments did not complete their shutdown in the allowed" % timed_out)
+                logger.warning("timeout of %d seconds.  These segments are still in the process" % self.timeout)
+                logger.warning("of shutting down.  You will not be able to restart the database")
+                logger.warning("until all processes have terminated.")
             logger.warning("A total of %d errors were encountered" % failed)
             logger.warning("Review logfile %s" % get_logfile())
             logger.warning("For more details on segment shutdown failure(s)")
@@ -456,6 +475,7 @@ class GpStop:
         tabLog.info(["Master port", "= %s" % self.port ])
         tabLog.info(["Master directory", "= %s" % self.master_datadir ])
         tabLog.info(["Shutdown mode", "= %s" % self.mode])
+        tabLog.info(["Timeout", "= %s" % self.timeout])
 
         standbyMsg = "On" if self.gparray.standbyMaster and self.stopstandby else "Off"
         tabLog.info(["Shutdown Master standby host", "= %s" % standbyMsg])
@@ -514,6 +534,8 @@ class GpStop:
 
         addTo.add_option('-B', '--parallel', type="int", default=DEFAULT_NUM_WORKERS, metavar="<parallel_processes>",
                             help='number of segment hosts to run in parallel. Default is %d' % DEFAULT_NUM_WORKERS)
+        addTo.add_option('-t', '--timeout', dest='timeout', default=SEGMENT_TIMEOUT_DEFAULT, type='int',
+                           help='time to wait for segment stop (in seconds)')
 
         parser.set_defaults(verbose=False, filters=[], slice=(None, None))
         return parser
@@ -544,6 +566,10 @@ class GpStop:
         if options.parallel > 128 or options.parallel < 1:
             raise ProgramArgumentValidationException("Invalid value for parallel degree: %s" % options.parallel )
 
+        # Don't allow them to go below default
+        if options.timeout < SEGMENT_TIMEOUT_DEFAULT:
+            raise ProgramArgumentValidationException("Invalid timeout value.  Must be greater than %s seconds." % SEGMENT_TIMEOUT_DEFAULT)
+
         if args:
             raise ProgramArgumentValidationException("Argument %s is invalid.  Is an option missing a parameter?" % args[-1])
 
@@ -555,7 +581,8 @@ class GpStop:
                         sighup=options.request_sighup,
                         interactive=options.interactive,
                         stopstandby=options.stop_standby,
-                        restart=options.restart)
+                        restart=options.restart,
+                        timeout=options.timeout)
 
 if __name__ == '__main__':
     simple_main( GpStop.createParser, GpStop.createProgram)
