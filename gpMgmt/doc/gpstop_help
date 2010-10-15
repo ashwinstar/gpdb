@@ -112,14 +112,16 @@ OPTIONS
 
 -t <timeout_seconds>
 
- Specifies a timeout threshold (in seconds) to wait for a segment 
- instance to shutdown. If a segment instance does not shutdown in 
- the specified number of seconds, the gpstop operation is aborted. 
- This option is useful in situations where gpstop is executed and 
- there are very large transactions that need to rollback so that 
- segment shutdown can occur successfully. These large transactions 
- can take over a minute to rollback and surpass the default timeout 
- threshold of 60 seconds. 
+ Specifies a timeout threshold (in seconds) to wait for a 
+ segment instance to shutdown. If a segment instance does not 
+ shutdown in the specified number of seconds, gpstop displays 
+ a message indicating that one or more segments are still in 
+ the process of shutting down and that you cannot restart 
+ Greenplum Database until the segment instance(s) are stopped. 
+ This option is useful in situations where gpstop is executed 
+ and there are very large transactions that need to rollback. 
+ These large transactions can take over a minute to rollback 
+ and surpass the default timeout period of 60 seconds.
 
 
 -u (reload pg_hba.conf and postgresql.conf files only)
