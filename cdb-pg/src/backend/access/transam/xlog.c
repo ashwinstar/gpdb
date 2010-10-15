@@ -8088,6 +8088,8 @@ ShutdownXLOG(int code __attribute__((unused)) , Datum arg __attribute__((unused)
 void
 CreateCheckPoint(bool shutdown, bool force)
 {
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+
 	CheckPoint	checkPoint;
 	XLogRecPtr	recptr;
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
@@ -8324,6 +8326,13 @@ CreateCheckPoint(bool shutdown, bool force)
 	rdata[1].next = NULL;
 
 	/*
+	 * Hold the PersistentObjLock from the point we collect the Master Mirroring information
+	 * from mmxlog_append_checkpoint_data until after the checkpoint record is inserted into
+	 * the XLOG to prevent the persistent information from changing.
+	 */
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+
+	/*
 	 * Have the master mirror sync code add filespace and tablespace
 	 * meta data to keep the standby consistent. Safe to call on segments
 	 * as this is a NOOP if we're not the master.
@@ -8361,6 +8370,8 @@ CreateCheckPoint(bool shutdown, bool force)
 			 XLogLastInsertTotalLen(),
 			 XLogLastInsertDataLen());
 	}
+
+	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	freeDtxCheckPointInfoAndUnlock(dtxCheckPointInfo, dtxCheckPointInfoSize, &recptr);
 	

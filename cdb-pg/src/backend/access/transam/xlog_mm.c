@@ -1432,12 +1432,12 @@ mmxlog_add_database(
  * is used by the standby to construct a valid picture of the filespace and
  * tablespace configuration without having to touch the persistent tables --
  * which it cannot do since they're not guaranteed to be in a consistent state.
+ *
+ * NOTE: You must hold the PersistentObjLock before calling this routine!
  */
 void
 mmxlog_append_checkpoint_data(XLogRecData rdata[5])
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
-
 	fspc_agg_state *f;
 	tspc_agg_state *t;
 	dbdir_agg_state *d;
@@ -1485,7 +1485,6 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[5])
 		return;
 	}
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 	f = NULL;
 	get_filespace_data(&f, "mmxlog_append_checkpoint_data");
 	
@@ -1494,7 +1493,6 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[5])
 
 	d = NULL;
 	get_database_data(&d, "mmxlog_append_checkpoint_data");
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 
 	rdata[2].data = (char*)f;
 	rdata[2].buffer = InvalidBuffer;
