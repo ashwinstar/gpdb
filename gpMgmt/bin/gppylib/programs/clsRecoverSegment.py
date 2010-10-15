@@ -57,8 +57,13 @@ class PortAssigner:
         #   we need to know the ports that are in use and the valid range of ports
         #
         segments = gpArray.getDbList()
-        self.__minPort = min([seg.getSegmentPort() for seg in segments if seg.isSegmentQE()])
-        self.__minReplicationPort = min([seg.getSegmentReplicationPort() for seg in segments if seg.getSegmentReplicationPort() is not None])
+        ports = [seg.getSegmentPort() for seg in segments if seg.isSegmentQE()]
+        replicationPorts = [seg.getSegmentReplicationPort() for seg in segments if seg.getSegmentReplicationPort() is not None]
+        if len(replicationPorts) > 0 and len(ports) > 0:
+            self.__minPort = min(ports)
+            self.__minReplicationPort = min(replicationPorts)
+        else:
+            raise Exception("No segment ports found in array.")
         self.__usedPortsByHostName = {}
 
         byHost = GpArray.getSegmentsByHostName(segments)
