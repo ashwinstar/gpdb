@@ -14,6 +14,28 @@
 #define PG_AUTOVACUUM_H
 
 #include "catalog/genbki.h"
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_autovacuum
+   with (oid=false, relid=1248)
+   (
+   vacrelid          oid, 
+   enabled           boolean, 
+   vac_base_thresh   integer, 
+   vac_scale_factor  real, 
+   anl_base_thresh   integer, 
+   anl_scale_factor  real, 
+   vac_cost_delay    integer, 
+   vac_cost_limit    integer, 
+   freeze_min_age    integer, 
+   freeze_max_age    integer
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
+
 /* ----------------
  *		pg_autovacuum definition.	cpp turns this into
  *		typedef struct FormData_pg_autovacuum

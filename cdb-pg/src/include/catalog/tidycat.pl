@@ -275,6 +275,7 @@ my %dynamic_reltype_h =
  1249 => "pg_attribute", # special bootstrap case
  1261 => "pg_auth_members",
  1260 => "pg_authid",
+ 1248 => "pg_autovacuum",
  2605 => "pg_cast",
  2606 => "pg_constraint",
  2607 => "pg_conversion",

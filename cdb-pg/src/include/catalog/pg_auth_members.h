@@ -21,6 +21,20 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_auth_members
+   with (camelcase=AuthMem, shared=true, oid=false, relid=1261)
+   (
+   roleid        oid, 
+   member        oid, 
+   grantor       oid, 
+   admin_option  boolean
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_auth_members definition.  cpp turns this into
  *		typedef struct FormData_pg_auth_members

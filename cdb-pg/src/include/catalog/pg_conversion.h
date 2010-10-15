@@ -35,6 +35,24 @@
  *	condefault			TRUE if this is a default conversion
  * ----------------------------------------------------------------
  */
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_conversion
+   with (relid=2607)
+   (
+   conname         name, 
+   connamespace    oid, 
+   conowner        oid, 
+   conforencoding  integer, 
+   contoencoding   integer, 
+   conproc         regproc, 
+   condefault      boolean
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 #define ConversionRelationId  2607
 
 CATALOG(pg_conversion,2607)

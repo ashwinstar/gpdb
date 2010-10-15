@@ -38,6 +38,20 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_description
+   with (oid=false, relid=2609)
+   (
+   objoid       oid, 
+   classoid     oid, 
+   objsubid     integer, 
+   description  text
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_description definition.	cpp turns this into
  *		typedef struct FormData_pg_description

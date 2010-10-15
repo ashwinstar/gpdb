@@ -21,6 +21,27 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_database
+   with (shared=true, relid=1262)
+   (
+   datname        name, 
+   datdba         oid, 
+   encoding       integer, 
+   datistemplate  boolean, 
+   datallowconn   boolean, 
+   datconnlimit   integer, 
+   datlastsysoid  oid, 
+   datfrozenxid   xid, 
+   dattablespace  oid, 
+   datconfig      text[], 
+   datacl         aclitem[]
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_database definition.  cpp turns this into
  *		typedef struct FormData_pg_database

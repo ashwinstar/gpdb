@@ -66,7 +66,7 @@ InsertExtTableEntry(Oid 	tbloid,
 	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
 
 	values[Anum_pg_exttable_reloid - 1] = ObjectIdGetDatum(tbloid);
-	values[Anum_pg_exttable_fmtcode - 1] = CharGetDatum(formattype);
+	values[Anum_pg_exttable_fmttype - 1] = CharGetDatum(formattype);
 	values[Anum_pg_exttable_fmtopts - 1] = formatOptStr;
 
 	if(commandString)
@@ -160,7 +160,7 @@ GetExtTableEntry(Oid relid)
 				ObjectIdGetDatum(relid));
 	
     extscan = systable_beginscan(pg_exttable_rel, 
-								 ExtTableRelOidIndexId, 
+								 ExtTableReloidIndexId, 
 								 true,
 								 SnapshotNow, 
 								 1, 
@@ -235,7 +235,7 @@ GetExtTableEntry(Oid relid)
 
 	/* get the format code */
 	fmtcode = heap_getattr(tuple, 
-						   Anum_pg_exttable_fmtcode, 
+						   Anum_pg_exttable_fmttype, 
 						   pg_exttable_rel->rd_att, 
 						   &isNull);
 	
@@ -342,7 +342,7 @@ RemoveExtTableEntry(Oid relid)
 				F_OIDEQ,
 				ObjectIdGetDatum(relid));
 
-	extscan = systable_beginscan(pg_exttable_rel, ExtTableRelOidIndexId, true,
+	extscan = systable_beginscan(pg_exttable_rel, ExtTableReloidIndexId, true,
 								 SnapshotNow, 1, &key);
 
 	tuple = systable_getnext(extscan);

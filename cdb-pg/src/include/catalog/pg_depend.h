@@ -21,6 +21,23 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_depend
+   with (oid=false, relid=2608)
+   (
+   classid      oid, 
+   objid        oid, 
+   objsubid     integer, 
+   refclassid   oid, 
+   refobjid     oid, 
+   refobjsubid  integer, 
+   deptype      "char"
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_depend definition.  cpp turns this into
  *		typedef struct FormData_pg_depend

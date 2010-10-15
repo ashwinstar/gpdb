@@ -23,6 +23,31 @@
 #include "nodes/pg_list.h"
 #include "access/attnum.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_constraint
+   with (relid=2606)
+   (
+   conname        name, 
+   connamespace   oid, 
+   contype        "char", 
+   condeferrable  boolean, 
+   condeferred    boolean, 
+   conrelid       oid, 
+   contypid       oid, 
+   confrelid      oid, 
+   confupdtype    "char", 
+   confdeltype    "char", 
+   confmatchtype  "char", 
+   conkey         smallint[], 
+   confkey        smallint[], 
+   conbin         text, 
+   consrc         text
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_constraint definition.  cpp turns this into
  *		typedef struct FormData_pg_constraint
