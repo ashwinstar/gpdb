@@ -8,7 +8,7 @@ SYNOPSIS
 *****************************************************
 
 gpstop [-d <master_data_directory>] [-B <parallel_processes>] 
-       [-M smart | fast | immediate] 
+       [-M smart | fast | immediate] [-t <timeout_seconds>]
        [-r] [-y] [-a] [-l <logfile_directory>] [-v | -q]
 
 gpstop -m [-d <master_data_directory>] [-y] [-l <logfile_directory>] 
@@ -109,6 +109,17 @@ OPTIONS
 -r (restart)
 
  Restart after shutdown is complete.
+
+-t <timeout_seconds>
+
+ Specifies a timeout threshold (in seconds) to wait for a segment 
+ instance to shutdown. If a segment instance does not shutdown in 
+ the specified number of seconds, the gpstop operation is aborted. 
+ This option is useful in situations where gpstop is executed and 
+ there are very large transactions that need to rollback so that 
+ segment shutdown can occur successfully. These large transactions 
+ can take over a minute to rollback and surpass the default timeout 
+ threshold of 60 seconds. 
 
 
 -u (reload pg_hba.conf and postgresql.conf files only)
