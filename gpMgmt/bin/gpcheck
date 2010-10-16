@@ -8,7 +8,7 @@ USAGE:   gpcheck -f|--file HOSTFILE -m|--master MASTER_HOST -s|--standymaster MA
          where --zipin indicates to get information from FILE and not live from the cluster
 '''
 
-import os, sys, re, tempfile, shutil, pickle, getpass, subprocess, time, glob
+import os, sys, re, tempfile, shutil, pickle, getpass, subprocess, time, glob, ConfigParser
 
 try:
     from optparse import Option, OptionParser 
@@ -27,13 +27,22 @@ class GpCheckInfo:
     def __init__(self):
         self.is_root = False
         self.host_type = HostType.GPCHECK_HOSTTYPE_UNDEFINED
+        self.appliance_version = None
         self.hosts = dict()
         self.switches = dict()
         self.collection_start_time = 0 # used in NTPD testing
         self.collection_end_time = 0 # used in NTPD testing
 
+class GpCheckConfig:
+    def __init__(self):
+        self.gpcheck_config_version = None
+        self.xfs_mount_options = None
+
 gpcheck_info = None
+gpcheck_config = None
+config = None
 gphome = None
+configfilename = None
 options = None
 logger = None
 pool = None
@@ -64,7 +73,7 @@ class GpCheckSwitch:
 # True is an error
 def parseargs():
 
-    global options, gphome
+    global options, gphome, configfilename
 
     parser = OptParser(option_class=OptChecker)
     parser.remove_option('-h')
@@ -82,6 +91,8 @@ def parseargs():
     if not gphome:
         logger.error("GPHOME not set")
         return True
+
+    configfilename = "%s/etc/gpcheck.cnf" % gphome
 
     if options.help:
         print __doc__
@@ -177,7 +188,7 @@ def collectSwitchData(switch):
 def runCollectionOnSwitches():
 
     global gpcheck_info
-    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
 
         gpcheck_info.switches['i-sw-1'] = GpCheckSwitch('i-sw-1', 'Interconnect', '1.3.6.1.4.1.1588.2.1.1.1.1.6')
         gpcheck_info.switches['i-sw-2'] = GpCheckSwitch('i-sw-2', 'Interconnect', '1.3.6.1.4.1.1588.2.1.1.1.1.6')
@@ -194,8 +205,8 @@ def runCollectionOnServers():
 
     global gpcheck_info
 
-    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
-        host_type_cl = "--app1001"
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
+        host_type_cl = "--appliance"
     elif gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
         host_type_cl = "--linux"
     elif gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_SOLARIS:
@@ -311,13 +322,13 @@ def testConnectEmc(host):
         printError(host.hostname, "Connect EMC is not running on master (try /etc/init.d/connectemc status)")
     
 
-def testAppliance1001OmreportBiossetup(host):
+def testApplianceOmreportBiossetup(host):
 
     # first NIC should be PXE enabled
     firstNicAttribute = "Dual NIC"
     if host.is_a_master:
         firstNicAttribute = "Dual NIC (1/2)"
-    pxeText = "Enabled with 1st NIC PXE and 2nd NIC None"
+    pxeText = "Enabled with 1st NIC PXE and 2nd NIC PXE"
 
     if firstNicAttribute in host.data.omreport.biossetup:
         firstNicText =  host.data.omreport.biossetup[firstNicAttribute]
@@ -339,7 +350,7 @@ def testAppliance1001OmreportBiossetup(host):
         else:
             printError(host.hostname, "can not find Attribute in omreport chassis biossetup '%s'" % (k))
 
-def testAppliance1001OmreportRemoteaccess(host):
+def testApplianceOmreportRemoteaccess(host):
 
     expectedKeyValuePairs = dict()
     expectedKeyValuePairs['Enable IPMI Over LAN'] = 'Yes'
@@ -378,7 +389,7 @@ def testAppliance1001OmreportRemoteaccess(host):
 
 
 
-def testAppliance1001OmreportController(host):
+def testApplianceOmreportController(host):
     expectedKeyValuePairs = dict()
     expectedKeyValuePairs['Firmware Version'] = '12.3.0-0032'
     expectedKeyValuePairs['Driver Version'] = '00.00.04.29'
@@ -392,7 +403,7 @@ def testAppliance1001OmreportController(host):
             printError(host.hostname, "can not find Attribute in omreport storage controller '%s'" % (k))
 
 
-def testAppliance1001OmreportVdisks(host):
+def testApplianceOmreportVdisks(host):
 
     deviceName = 'Device Name'
     vdiskSize = 'Size'
@@ -449,7 +460,7 @@ def testAppliance1001OmreportVdisks(host):
             printError(host.hostname, "attribute %s not found in omreport for virtual disk %s" % (vdiskStripeSize, dev))
 
 
-def testAppliance1001OmreportVersion(host):
+def testApplianceOmreportVersion(host):
 
     expectedOmversion = "6.3.0"
 
@@ -457,7 +468,7 @@ def testAppliance1001OmreportVersion(host):
         printError(host.hostname, "Version of omreport '%s' does not match expected version '%s'" % (host.data.omreport.omversion, expectedOmversion))
 
 
-def testAppliance1001OmreportBios(host):
+def testApplianceOmreportBios(host):
 
     biosVersion = None
 
@@ -477,7 +488,7 @@ def testAppliance1001OmreportBios(host):
         
 
 
-def testAppliance1001OmreportBootorder(host):
+def testApplianceOmreportBootorder(host):
 
     if host.is_a_master:
         if len(host.data.omreport.bootorder) < 2:
@@ -494,7 +505,7 @@ def testAppliance1001OmreportBootorder(host):
             printError(host.hostname, "omreport chassis biossetup attribute=bootorder, first boot device is not the hard drive")
 
 
-def testAppliance1001Grub(host):
+def testApplianceGrub(host):
 
     if not host.data.grubconf.serial_declaration:
         printError(host.hostname, "did not detect serial properties declaration in grub.conf file")
@@ -506,7 +517,7 @@ def testAppliance1001Grub(host):
         printError(host.hostname, "did not detect console ttyS1 declaration in grub.conf file")
 
 
-def testAppliance1001Bcu(host):
+def testApplianceBcu(host):
 
     expectedFwversion = 'FCHBA2.2.0.1'
 
@@ -516,7 +527,7 @@ def testAppliance1001Bcu(host):
 
 
 
-def testAppliance1001Inittab(host):
+def testApplianceInittab(host):
 
     expectedDefaultRunLevel = "3"
 
@@ -527,7 +538,7 @@ def testAppliance1001Inittab(host):
         printError(host.hostname, "default run level in /etc/initab is %s and expected to be %s" % (host.data.inittab.defaultRunLevel, expectedDefaultRunLevel))
 
 
-def testAppliance1001Securetty(host):
+def testApplianceSecuretty(host):
 
     expectedSecureTTys = set(['ttyS1'])
 
@@ -603,7 +614,7 @@ def testSolarisEtcUserAttr(host):
         printError(host.hostname, "/etc/user_attr is missing expected line '%s'" % line)
  
 
-def testAppliance1001Chkconfig(host):
+def testApplianceChkconfig(host):
 
     # ipmi should be on for 3 4 5
     ipmi = host.data.chkconfig.services['ipmi'] # return a dict of run levels and values
@@ -707,7 +718,7 @@ def testNtp(host):
         printError(host.hostname, "ntpd not detected on machine")
 
 
-def testAppliance1001Ntp(host):
+def testApplianceNtp(host):
 
     testNtp(host)
 
@@ -732,7 +743,7 @@ def testAppliance1001Ntp(host):
             printError(host.hostname, "smdw-cm is not a ntpd peer of this segment host")
 
 
-def testAppliance1001Rclocal(host):
+def testApplianceRclocal(host):
 
     if not host.data.rclocal.isexecutable:
 
@@ -789,7 +800,7 @@ def testLinuxMounts(host):
 
     xfs_mounts = list()
 
-    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
 	    if host.is_a_master:
 	        p = '/dev/sdc'
 	        loc = '/data'
@@ -832,71 +843,56 @@ def testLinuxMounts(host):
 	
     for mnt in xfs_mounts:
 
-        # expected XFS options
-        # rw,noatime,nodiratime,logbufs=8
-
         if mnt.type != "xfs":
             printError(host.hostname, "device %s is not XFS and is expected to be so on a %s host" % (mnt.partition, hosttype))
             continue
 
-        if len(mnt.options) != 4:
-            printError(host.hostname, "XFS filesystem on device %s has %d XFS mount options and 4 are expected" % mnt.partition)
+        expectedOptions = set(gpcheck_config.xfs_mount_options.split(","))
 
-        simpleoptions = set([ 'rw', 'noatime', 'nodiratime'])
-        for opt in simpleoptions:
+        if len(mnt.options) != len(expectedOptions):
+            printError(host.hostname, "XFS filesystem on device %s has %d XFS mount options and %d are expected" % (mnt.partition, len(mnt.options), len(expectedOptions)))
+
+        for opt in expectedOptions:
 
             if opt not in mnt.options:
                 printError(host.hostname, "XFS filesystem on device %s has does not have expected XFS mount options '%s' " % (mnt.partition, opt))
                 continue
 
-            value = mnt.options[opt]
-            if value:
-                printError(host.hostname, "XFS filesystem on device %s has XFS mount option '%s' with a parameter, this XFS option is not expected to have a param " % (mnt.partition, opt))
 
-        logbufs = 'logbufs'
-        if logbufs in mnt.options:
-            value = mnt.options[logbufs]
-            if not value or value != '8':
-                printError(host.hostname, "XFS filesystem on device %s has mount option '%s' without expected value '8'" % (mnt.partition, logbufs))
-        else:
-            printError(host.hostname, "XFS filesystem on device %s has does not have expected XFS mount options '%s' " % (mnt.partition, logbufs))
-            
-
-
-def testAppliance1001Host(host):
+def testApplianceHost(host):
 
     # test chkconfig
-    testAppliance1001Chkconfig(host)
+    testApplianceChkconfig(host)
 
     # test omreport
-    testAppliance1001OmreportVersion(host)
-    testAppliance1001OmreportBios(host)
+    testApplianceOmreportVersion(host)
+    testApplianceOmreportBios(host)
 
     if gpcheck_info.is_root:
-        testAppliance1001OmreportBiossetup(host)
-        testAppliance1001OmreportBootorder(host)
+        testApplianceOmreportBiossetup(host)
+        testApplianceOmreportBootorder(host)
 
-    testAppliance1001OmreportRemoteaccess(host)
-    testAppliance1001OmreportVdisks(host)
-    testAppliance1001OmreportController(host)
+    testApplianceOmreportRemoteaccess(host)
+    testApplianceOmreportVdisks(host)
+    testApplianceOmreportController(host)
 
     # test grubconf
     if gpcheck_info.is_root:
-        testAppliance1001Grub(host)
+        testApplianceGrub(host)
 
     # test mounts
     testLinuxMounts(host)
 
     # test inittab
-    testAppliance1001Inittab(host)
+    testApplianceInittab(host)
 
     # test securetty
     if gpcheck_info.is_root:
-        testAppliance1001Securetty(host)
+        testApplianceSecuretty(host)
 
     # test bcu
     if gpcheck_info.is_root:
-        testAppliance1001Bcu(host)
+        testApplianceBcu(host)
 
     # test IO schedulers
     testIOSchedulers(host)
@@ -905,7 +901,7 @@ def testAppliance1001Host(host):
     testBlockdev(host)
 
     # test rclocal
-    testAppliance1001Rclocal(host)
+    testApplianceRclocal(host)
 
     # test sysctl
     testSysctl(host)
@@ -917,7 +913,7 @@ def testAppliance1001Host(host):
     testConnectEmc(host)
 
     # ntpd tests
-    testAppliance1001Ntp(host)
+    testApplianceNtp(host)
 
 def testGenericLinuxHost(host):
 
@@ -962,7 +958,7 @@ def testUnameConsistency():
             firstUname = uname
             firstHost = host.hostname
 
-def testAppliance1001Switches():
+def testApplianceSwitches():
 
     for s in gpcheck_info.switches:
         switch = gpcheck_info.switches[s]
@@ -973,19 +969,45 @@ def testAppliance1001Switches():
                 printError(switch.hostname, "Interconnect Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
 
         elif switch.category == 'Admin':
-            expected = "Allied Telesis AT-9924T-EMC - v1.1.5"
+            expected = "Allied Telesis AT-9924T-EMC - v1.2.0"
             if switch.versionstring != expected:
                 printError(switch.hostname, "Admin Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
 
-def testAppliance1001():
+# return True for error
+def populateGpCheckLinuxConfigParams():
+
+    if not config.has_section('linux'):
+        printError(None, "%s does not contain a linux section.  Exiting early" % configfilename)
+        return True
+
+    requiredOptions = set(['xfs_mount_options'])
+
+    for option in requiredOptions:
+        if not config.has_option('linux', option):
+            printError(None, "%s does not contain required option %s.  Exiting early" % (option,configfilename))
+            return True
+
+    global gpcheck_config
+    gpcheck_config.xfs_mount_options = config.get('linux', 'xfs_mount_options')
+
+    
+
+def testAppliance():
+
+    if populateGpCheckLinuxConfigParams():
+        return
+
     for h in gpcheck_info.hosts.keys():
-        testAppliance1001Host(gpcheck_info.hosts[h])
+        testApplianceHost(gpcheck_info.hosts[h])
 
     testUnameConsistency()
 
-    testAppliance1001Switches()
+    testApplianceSwitches()
 
 def testGenericLinuxCluster():
+
+    if populateGpCheckLinuxConfigParams():
+        return
 
     for h in gpcheck_info.hosts.keys():
         testGenericLinuxHost(gpcheck_info.hosts[h])
@@ -1001,18 +1023,46 @@ def testGenericSolarisCluster():
 
 def runTests():
 
+    global config, gpcheck_config
+
+    gpcheck_config = GpCheckConfig()
+
+    try:
+        config = ConfigParser.SafeConfigParser()
+        config.readfp(open(configfilename))
+
+        if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
+            if config.has_section(gpcheck_info.appliance_version):
+                gpcheck_config.gpcheck_config_version = gpcheck_info.appliance_version
+            elif config.has_option('global', 'max_version'):
+                max_version = config.get('global', 'max_version')
+                if config.has_section(max_version):
+                    gpcheck_config.gpcheck_config_version = max_version
+                else:
+                    raise Exception("config does not have a section for max_version specified in config")
+            else:
+                raise Exception("config does not have a section for max_version or current ISO version")
+
+            logger.info("gpcheck to use test rules for appliance version: %s" % gpcheck_config.gpcheck_config_version)
+            
+    except Exception, e:
+        logger.error(e.__str__())
+        printError(None, "Exception reading config file: %s" % configfilename)
+        return True
+
     if not gpcheck_info.is_root:
         printError(None, "utility will not check all settings when run as non-root user")
 
-    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
-        testAppliance1001()
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
+        testAppliance()
     elif gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
         testGenericLinuxCluster()
     elif gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_GENERIC_SOLARIS:
         testGenericSolarisCluster()
     else:
         printWarning("No tests exist for this platform in gpcheck")
-        return False
+
+    return False
 
 #true is error
 def createTmpDir():
@@ -1060,12 +1110,10 @@ def checkPlatform():
 
         try:
             fd = open('/etc/gpdb-appliance-version')
-            appliance_version = fd.read()
-            appliance_version = appliance_version.strip()
-
-            if appliance_version == "1.0.0.1":
-                gpcheck_info.host_type = HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001
-                return False
+            gpcheck_info.appliance_version = fd.read()
+            gpcheck_info.appliance_version = gpcheck_info.appliance_version.strip()
+            gpcheck_info.host_type = HostType.GPCHECK_HOSTTYPE_APPLIANCE
+            return False
         except:
             pass
 
@@ -1161,6 +1209,8 @@ def readZip():
         return True
 
     logger.info("read from gpcheck file platform = %s" % hosttype_str(gpcheck_info.host_type))
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
+        logger.info("read from gpcheck file appliance_version = %s" % gpcheck_info.appliance_version)
     logger.info("read from gpcheck file is_root = %s" % gpcheck_info.is_root)
     logger.info("read from gpcheck file number hosts = %s" % len(gpcheck_info.hosts))
     logger.info("read from gpcheck file number switches = %s" % len(gpcheck_info.switches))
@@ -1262,6 +1312,8 @@ else:
         sys.exit(0)
 
     logger.info("Detected platform: %s" % hosttype_str(gpcheck_info.host_type))
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
+        logger.info("Appliance Version = %s" % gpcheck_info.appliance_version)
 
     checkUser()
 

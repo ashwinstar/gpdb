@@ -2,13 +2,13 @@
 
 class HostType:
     GPCHECK_HOSTTYPE_UNDEFINED  = 0
-    GPCHECK_HOSTTYPE_APPLIANCE_1001 = 1
+    GPCHECK_HOSTTYPE_APPLIANCE = 1
     GPCHECK_HOSTTYPE_GENERIC_LINUX = 2
     GPCHECK_HOSTTYPE_GENERIC_SOLARIS = 3
 
 def hosttype_str(type):
-    if type == HostType.GPCHECK_HOSTTYPE_APPLIANCE_1001:
-        return "GPDB Appliance 1.0.0.1"
+    if type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
+        return "GPDB Appliance"
     elif type == HostType.GPCHECK_HOSTTYPE_GENERIC_LINUX:
         return "Generic Linux Cluster"
     elif type == HostType.GPCHECK_HOSTTYPE_GENERIC_SOLARIS:
@@ -144,7 +144,7 @@ class GpMount:
         self.partition = None
         self.dir= None
         self.type = None
-        self.options = dict() # dictionary of options, some options have no value, some have values
+        self.options = set() # mount options
 
     def __str__(self):
         optionstring = ''
@@ -155,9 +155,6 @@ class GpMount:
                 optionstring = "%s," % optionstring
 
             thisoption = k
-            if self.options[k]:
-                thisoption = "%s=%s" % (thisoption, self.options[k])
-
             optionstring = "%s%s" % (optionstring, thisoption)
             first = False
 
@@ -274,7 +271,7 @@ class GenericLinuxOutputData:
         return output
 
 
-class App1001OutputData:
+class ApplianceOutputData:
     def __init__(self):
         self.chkconfig = None
         self.omreport = None

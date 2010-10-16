@@ -1,0 +1,10 @@
+[global]
+max_version = 1.0.2.0
+
+[1.0.2.0]
+
+
+[1.0.0.1]
+
+[linux]
+xfs_mount_options = rw,noatime,inode64,allocsize=1g
