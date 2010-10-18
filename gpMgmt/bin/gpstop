@@ -326,6 +326,13 @@ class GpStop:
                     dbs.append(db)
             
             hostname=gphost.dbs[0].hostname                            
+            
+            # If we have no dbs then we have no segments of the type primary
+            # or mirror.  This will occur when you have an entire host fail
+            # when using group mirroring.  This is because all the mirror segs
+            # on the alive host will be marked primary (or vice-versa)
+            if len(dbs) == 0:
+                continue
                 
             logger.debug("Dispatching command to shutdown %d segments on host: %s" % (len(dbs), hostname))
             cmd=gp.GpSegStopCmd("remote segment starts on host '%s'" % hostname, self.gphome,self.gpversion,
