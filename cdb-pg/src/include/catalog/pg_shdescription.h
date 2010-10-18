@@ -31,6 +31,19 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_shdescription
+   with (camelcase=SharedDescription, shared=true, oid=false, relid=2396)
+   (
+   objoid       oid, 
+   classoid     oid, 
+   description  text
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_shdescription definition.	cpp turns this into
  *		typedef struct FormData_pg_shdescription

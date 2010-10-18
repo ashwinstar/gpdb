@@ -21,6 +21,22 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_language
+   with (relid=2612)
+   ( 
+   lanname        name, 
+   lanispl        boolean, 
+   lanpltrusted   boolean, 
+   lanplcallfoid  oid, 
+   lanvalidator   oid, 
+   lanacl         aclitem[]
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_language definition.  cpp turns this into
  *		typedef struct FormData_pg_language

@@ -26,6 +26,22 @@
  * ----------------
  */
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_pltemplate
+   with (camelcase=PLTemplate, shared=true, oid=false, relid=1136)
+   (
+   tmplname       name, 
+   tmpltrusted    boolean, 
+   tmplhandler    text, 
+   tmplvalidator  text, 
+   tmpllibrary    text, 
+   tmplacl        aclitem[]
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_pltemplate definition.  cpp turns this into
  *		typedef struct FormData_pg_pltemplate

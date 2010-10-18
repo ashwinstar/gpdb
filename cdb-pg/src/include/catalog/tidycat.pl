@@ -294,6 +294,7 @@ my %dynamic_reltype_h =
  5010 => "pg_partition",
  5011 => "pg_partition_rule",
  1136 => "pg_pltemplate",
+ 1255 => "pg_proc", # special bootstrap case
  6026 => "pg_resqueue",
  2618 => "pg_rewrite",
  1214 => "pg_shdepend",
@@ -411,10 +412,13 @@ sub ctype_to_btree_op_prefix
 	my $ctype = shift;
 
 	return $ctype
-		unless ($ctype =~ m/Oid|NameData/);
+		unless ($ctype =~ m/Oid|NameData|regproc/);
 
 	$ctype = "name" if ($ctype =~ m/NameData/);
 	$ctype = "oid" if ($ctype =~ m/Oid/);
+
+	# NOTE: regproc is an oid typedef
+	$ctype = "oid" if ($ctype =~ m/regproc/);
 
 	return $ctype;
 }

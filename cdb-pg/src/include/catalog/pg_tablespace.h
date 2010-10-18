@@ -21,6 +21,34 @@
 
 #include "catalog/genbki.h"
 
+/*
+ * pg_tablespace
+ *
+ * Note: spclocation, spcprilocations and spcmirlocations are all
+ * deprecated and will always be null.  They are left in place only
+ * due to upgrade concerns.
+ *
+ * If an upgrade strategy is developed that will allow dropping of
+ * columns then this table should be restructured.
+ */
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_tablespace
+   with (camelcase=TableSpace, relid=1213)
+   (
+   spcname          name, 
+   spcowner         oid, 
+   spclocation      text, 
+   spcacl           aclitem[], 
+   spcprilocations  text[], 
+   spcmirlocations  text[], 
+   spcfsoid         oid
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
+
 /* ----------------
  *		pg_tablespace definition.  cpp turns this into
  *		typedef struct FormData_pg_tablespace
@@ -31,7 +59,7 @@
 /*
  * pg_tablespace
  *
- * Note: spclocaction, spcprilocations and spcmirlocations are all deprecated
+ * Note: spclocation, spcprilocations and spcmirlocations are all deprecated
  * and will always be null.  They are left in place only due to upgrade concerns.
  * If an upgrade strategy is developed that will allow dropping of columns then
  * this table should be restructured.

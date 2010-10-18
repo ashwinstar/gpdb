@@ -26,6 +26,35 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_proc
+   with (camelcase=Procedure, bootstrap=true, relid=1255)
+   (
+   proname         name, 
+   pronamespace    oid, 
+   proowner        oid, 
+   prolang         oid, 
+   proisagg        boolean, 
+   prosecdef       boolean, 
+   proisstrict     boolean, 
+   proretset       boolean, 
+   provolatile     "char", 
+   pronargs        smallint, 
+   prorettype      oid, 
+   proiswin        boolean, 
+   proargtypes     oidvector, 
+   proallargtypes  oid[], 
+   proargmodes     "char"[], 
+   proargnames     text[], 
+   prosrc          text, 
+   probin          bytea, 
+   proacl          aclitem[]
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_proc definition.  cpp turns this into
  *		typedef struct FormData_pg_proc

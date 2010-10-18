@@ -18,6 +18,29 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_trigger
+   with (relid=2620)
+   (
+   tgrelid         oid, 
+   tgname          name, 
+   tgfoid          oid, 
+   tgtype          smallint, 
+   tgenabled       boolean, 
+   tgisconstraint  boolean, 
+   tgconstrname    name, 
+   tgconstrrelid   oid, 
+   tgdeferrable    boolean, 
+   tginitdeferred  boolean, 
+   tgnargs         smallint, 
+   tgattr          int2vector, 
+   tgargs          bytea
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_trigger definition.	cpp turns this into
  *		typedef struct FormData_pg_trigger

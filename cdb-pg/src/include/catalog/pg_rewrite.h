@@ -24,6 +24,23 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_rewrite
+   with (relid=2618)
+   (
+   rulename    name, 
+   ev_class    oid, 
+   ev_attr     smallint, 
+   ev_type     "char", 
+   is_instead  boolean, 
+   ev_qual     text, 
+   ev_action   text
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_rewrite definition.	cpp turns this into
  *		typedef struct FormData_pg_rewrite

@@ -3,6 +3,7 @@
  * syscache.c
  *	  System cache management routines
  *
+ * Copyright (c) 2007-2010, Greenplum inc
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -95,7 +96,7 @@ struct cachedesc
 
 static const struct cachedesc cacheinfo[] = {
 	{AggregateRelationId,		/* AGGFNOID */
-		AggregateFnoidIndexId,
+		AggregateAggfnoidIndexId,
 		1,
 		{
 			Anum_pg_aggregate_aggfnoid,
@@ -547,7 +548,7 @@ static const struct cachedesc cacheinfo[] = {
 		128
 	},
 	{WindowRelationId,		/* WINFNOID */
-		WindowFnoidIndexId,
+		WindowWinfnoidIndexId,
 		1,
 		{
 			Anum_pg_window_winfnoid,

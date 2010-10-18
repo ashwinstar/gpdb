@@ -19,6 +19,19 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_user_mapping
+   with (camelcase=UserMapping, relid=2895, reltype_oid=6449)
+   (
+   umuser     oid, 
+   umserver   oid, 
+   umoptions  text[]
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_user_mapping definition.  cpp turns this into
  *		typedef struct FormData_pg_user_mapping
