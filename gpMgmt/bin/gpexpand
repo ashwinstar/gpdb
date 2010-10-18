@@ -1636,6 +1636,8 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         self.gparray.reOrderExpansionSegs()
 
         self.conn.commit()
+        # Issue checkpoint due to forced shutdown below
+        dbconn.execSQL(self.conn, "CHECKPOINT")
         self.conn.close()
 
         self.logger.info('Stopping database')
