@@ -55,7 +55,7 @@
    agginitval      text -- VARIABLE LENGTH FIELD
    );
 
-   create unique index on pg_aggregate(aggfnoid) with (indexid=2650);
+   create unique index on pg_aggregate(aggfnoid) with (indexid=2650, indexname=pg_aggregate_fnoid_index);
 
    TIDYCAT_ENDDEF
 

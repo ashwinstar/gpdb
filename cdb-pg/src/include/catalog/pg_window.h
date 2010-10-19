@@ -42,7 +42,7 @@
    winkind          "char" 
    );
 
-   create unique index on pg_window(winfnoid) with (indexid=5005);
+   create unique index on pg_window(winfnoid) with (indexid=5005, indexname=pg_window_fnoid_index);
 
    TIDYCAT_ENDDEF
 */
