@@ -461,7 +461,26 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat)
 							  latestWriteXid))
 		return true;
 	
-	Snapshot snapshot = GetTransactionSnapshot();
+	/*
+	 * Obtain the snapshot that is taken at the beginning of the
+	 * transaction. We can't simply call GetTransactionSnapshot() here because
+	 * it will create a new distributed snapshot for non-serializable
+	 * transaction isolation level, and it may be too late.
+	 */
+	Snapshot snapshot = NULL;
+	if (SerializableSnapshot == NULL) 
+	{ 
+		Assert(LatestSnapshot == NULL); 
+		snapshot = GetTransactionSnapshot(); 
+	}
+	else if (LatestSnapshot != NULL) 
+	{ 
+		snapshot = LatestSnapshot; 
+	} 
+	else 
+	{ 
+		snapshot = SerializableSnapshot; 
+	}
 
 	if (!snapshot->haveDistribSnapshot)
 		return false;
