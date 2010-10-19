@@ -8162,6 +8162,14 @@ CreateCheckPoint(bool shutdown, bool force)
 	checkPoint.time = time(NULL);
 
 	/*
+	 * Hold the PersistentObjLock from the point we decide on the redo start location,
+	 * through where we collect the Master Mirroring information
+	 * from mmxlog_append_checkpoint_data until finally after the checkpoint record is
+	 * inserted into the XLOG to prevent the persistent information from changing.
+	 */
+	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+
+	/*
 	 * We must hold CheckpointStartLock while determining the checkpoint REDO
 	 * pointer.  This ensures that any concurrent transaction commits will be
 	 * either not yet logged, or logged and recorded in pg_clog. See notes in
@@ -8219,6 +8227,15 @@ CreateCheckPoint(bool shutdown, bool force)
 				LWLockRelease(MirroredLock);
 			}			
 			LWLockRelease(CheckpointLock);
+
+			/*
+			 * Note that even though we have logic above that releases
+			 * the MirroredLock, our variables inside the 
+			 * MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE define
+			 * will detect the situation and do the right thing.
+			 */
+			MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+			
 			END_CRIT_SECTION();
 			return;
 		}
@@ -8324,13 +8341,6 @@ CreateCheckPoint(bool shutdown, bool force)
 	rdata[1].len = dtxCheckPointInfoSize;
 	rdata[1].buffer = InvalidBuffer;
 	rdata[1].next = NULL;
-
-	/*
-	 * Hold the PersistentObjLock from the point we collect the Master Mirroring information
-	 * from mmxlog_append_checkpoint_data until after the checkpoint record is inserted into
-	 * the XLOG to prevent the persistent information from changing.
-	 */
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
 
 	/*
 	 * Have the master mirror sync code add filespace and tablespace
@@ -8473,7 +8483,7 @@ CreateCheckPoint(bool shutdown, bool force)
 			 (shutdown ? "true" : "false"),
 			 (force ? "true" : "false"),
 			 XLogLocationToString(&ControlFile->checkPoint),
-			 XLogLocationToString(&checkPoint.redo));
+			 XLogLocationToString2(&checkPoint.redo));
 
 	if (FileRepResync_IsTransitionFromResyncToInSync())
 	{
