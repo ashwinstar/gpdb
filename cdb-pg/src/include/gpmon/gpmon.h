@@ -20,6 +20,7 @@ typedef struct gpmon_qexec_t gpmon_qexec_t;
 typedef struct gpmon_hello_t gpmon_hello_t;
 typedef struct gpmon_metrics_t gpmon_metrics_t;
 typedef struct gpmon_seginfo_t gpmon_seginfo_t;
+typedef struct gpmon_filerepinfo_t gpmon_filerepinfo_t;
 
 /*
  * this dir sits in $MASTER_DATA_DIRECTORY. always include the
@@ -183,6 +184,68 @@ struct gpmon_seginfo_t {
 	apr_uint64_t dynamic_memory_available;		// available memory in bytes,
 };
 
+/* 
+ * Filerep related statistics
+ */
+struct gpmon_filerepinfo_t 
+{
+	// sequence number incremented by 1 for each gpperfmon message sent by a sender
+	apr_uint32_t sequencenum;
+
+	// KEY
+	char hostname[NAMEDATALEN];					// hostname without NIC extension .. filled in by perfmon not GPDB
+    apr_uint16_t primary_port;
+    apr_uint16_t mirror_port;
+
+	// EVENT: write systemcall on primary
+	apr_uint32_t primary_write_syscall_size_avg;
+	apr_uint32_t primary_write_syscall_size_max;
+	apr_uint32_t primary_write_syscall_time_avg; // microseconds;
+	apr_uint32_t primary_write_syscall_time_max; // microseconds;
+	apr_uint32_t primary_write_syscall_count; 
+
+	// EVENT: write systemcall on mirror
+	apr_uint32_t mirror_write_syscall_size_avg;
+	apr_uint32_t mirror_write_syscall_size_max;
+	apr_uint32_t mirror_write_syscall_time_avg; // microseconds;
+	apr_uint32_t mirror_write_syscall_time_max; // microseconds;
+	apr_uint32_t mirror_write_syscall_count; 
+
+	// EVENT: fsync systemcall on primary
+	apr_uint32_t primary_fsync_syscall_time_avg; // microseconds;
+	apr_uint32_t primary_fsync_syscall_time_max; // microseconds;
+	apr_uint32_t primary_fsync_syscall_count; 
+
+	// EVENT: fsync systemcall on mirror
+	apr_uint32_t mirror_fsync_syscall_time_avg; // microseconds;
+	apr_uint32_t mirror_fsync_syscall_time_max; // microseconds;
+	apr_uint32_t mirror_fsync_syscall_count; 
+
+	// EVENT: putting write message into shared memory
+	apr_uint32_t primary_write_shmem_size_avg;
+	apr_uint32_t primary_write_shmem_size_max;
+	apr_uint32_t primary_write_shmem_time_avg; // microseconds;
+	apr_uint32_t primary_write_shmem_time_max; // microseconds;
+	apr_uint32_t primary_write_shmem_count; 
+
+	// EVENT: putting fsync message into shared memory
+	apr_uint32_t primary_fsync_shmem_size_avg;
+	apr_uint32_t primary_fsync_shmem_size_max;
+	apr_uint32_t primary_fsync_shmem_time_avg; // microseconds;
+	apr_uint32_t primary_fsync_shmem_time_max; // microseconds;
+	apr_uint32_t primary_fsync_shmem_count; 
+
+	// EVENT: Roundtrip from sending fsync message to mirror to get ack back on primary
+	apr_uint32_t roundtrip_fsync_msg_time_avg; // microseconds;
+	apr_uint32_t roundtrip_fsync_msg_time_max; // microseconds;
+	apr_uint32_t roundtrip_fsync_msg_count;
+
+	// EVENT: Roundtrip from sending test message to mirror to getting back on primary
+	apr_uint32_t roundtrip_test_msg_time_avg; // microseconds;
+	apr_uint32_t roundtrip_test_msg_time_max; // microseconds;
+	apr_uint32_t roundtrip_test_msg_count;
+};
+
 /* ------------------------------------------------------------------
          HELLO
    ------------------------------------------------------------------ */
@@ -200,8 +263,8 @@ struct gpmon_hello_t {
  *  in order to make sure that the communication between the GPDB
  *  and perfmon is compatible 
  */
-#define GPMON_PACKET_VERSION   4
-#define GPMMON_PACKET_VERSION_STRING "gpmmon packet version 4\n"
+#define GPMON_PACKET_VERSION   5
+#define GPMMON_PACKET_VERSION_STRING "gpmmon packet version 5\n"
 
 enum gpmon_pkttype_t {
     GPMON_PKTTYPE_NONE = 0,
@@ -210,6 +273,7 @@ enum gpmon_pkttype_t {
     GPMON_PKTTYPE_QLOG = 3,
     GPMON_PKTTYPE_QEXEC = 4,
     GPMON_PKTTYPE_SEGINFO = 5,
+    GPMON_PKTTYPE_FILEREP = 6,
 
     GPMON_PKTTYPE_MAX
 };
@@ -227,6 +291,7 @@ struct gpmon_packet_t {
 		gpmon_qlog_t    qlog;
 		gpmon_qexec_t   qexec;
 		gpmon_seginfo_t seginfo;
+		gpmon_filerepinfo_t filerepinfo;
     } u;
 };
 

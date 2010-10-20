@@ -1079,6 +1079,8 @@ static void gx_recvfrom(SOCKET sock, short event, void* arg)
 	case GPMON_PKTTYPE_QEXEC:
 		gx_recvqexec(&pkt);
 		break;
+	case GPMON_PKTTYPE_FILEREP:
+		break;
 	default:
 		gpmon_warning(FLINE, "unexpected packet type %d", pkt.pkttype);
 		return;
