@@ -71,7 +71,7 @@ static bool CLOGPagePrecedes(int page1, int page2);
 static void WriteZeroPageXlogRec(int pageno);
 static void WriteTruncateXlogRec(int pageno);
 
-static char *XidStatus_Name(XidStatus status)
+char *XidStatus_Name(XidStatus status)
 {
 	switch (status)
 	{

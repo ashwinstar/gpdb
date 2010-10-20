@@ -250,6 +250,7 @@ bool		Debug_appendonly_use_no_toast = false;
 bool 		Debug_appendonly_print_blockdirectory = false;
 bool 		Debug_appendonly_print_read_block = false;
 bool 		Debug_appendonly_print_append_block = false;
+bool		gp_crash_recovery_abort_suppress_fatal = false;
 bool		Debug_bitmap_print_insert = false;
 bool 		Test_appendonly_override = false;
 bool		Test_print_direct_dispatch_info = false;
@@ -1670,7 +1671,15 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_interconnect_aggressive_retry,
 		true, NULL, NULL
 	},
-
+	{
+		{"gp_crash_recovery_abort_suppress_fatal", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Warning about crash recovery abort transaction issue"),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_crash_recovery_abort_suppress_fatal,
+		false, NULL, NULL
+	},
 	{
 		{"gp_select_invisible", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Use dummy snapshot for MVCC visibility calculation."),

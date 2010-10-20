@@ -232,7 +232,7 @@ extern void UnregisterSubXactCallback(SubXactCallback callback, void *arg);
 
 extern void RecordTransactionCommit(void);
 extern void RecordDistributedForgetCommitted(struct TMGXACT_LOG *gxact_log);
-extern void RecordCrashTransactionAbortRecord(
+extern bool RecordCrashTransactionAbortRecord(
 	TransactionId				xid,
 	PersistentEndXactRecObjects *persistentAbortObjects);
 

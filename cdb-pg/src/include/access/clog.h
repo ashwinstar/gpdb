@@ -35,6 +35,8 @@ typedef int XidStatus;
 extern void TransactionIdSetStatus(TransactionId xid, XidStatus status);
 extern XidStatus TransactionIdGetStatus(TransactionId xid);
 
+extern char *XidStatus_Name(XidStatus status);
+
 extern Size CLOGShmemSize(void);
 extern void CLOGShmemInit(void);
 extern void BootStrapCLOG(void);

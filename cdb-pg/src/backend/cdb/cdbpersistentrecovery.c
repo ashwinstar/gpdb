@@ -158,23 +158,21 @@ FsObjEntryToBuffer(char *buffer, int maxBufferLen, FsObjEntry fsObjEntry)
 			snprintf(
 				buffer,
 				maxBufferLen,
-			    "%s: state '%s', transaction %u, relation storage manager '%s', persistent serial number " INT64_FORMAT ", TID %s, fsObjEntry address %p",
+			    "%s: state '%s', transaction %u, relation storage manager '%s', persistent serial number " INT64_FORMAT ", TID %s",
 				PersistentFileSysObjName_TypeAndObjectName(&fsObjEntry->fsObjName),
 				PersistentFileSysObjState_Name(fsObjEntry->state),
 				fsObjEntry->xid,
 				PersistentFileSysRelStorageMgr_Name(fsObjEntry->relStorageMgr),
 				fsObjEntry->persistentSerialNum,
-				ItemPointerToString(&fsObjEntry->key.persistentTid),
-				fsObjEntry);
+				ItemPointerToString(&fsObjEntry->key.persistentTid));
 	else
 		snprintfResult = 
 			snprintf(
 				buffer,
 				maxBufferLen,
-			    "Free entry as free number " INT64_FORMAT ", TID %s, fsObjEntry address %p",
+			    "Free entry as free number " INT64_FORMAT ", TID %s",
 				fsObjEntry->persistentSerialNum,
-				ItemPointerToString(&fsObjEntry->key.persistentTid),
-				fsObjEntry);
+				ItemPointerToString(&fsObjEntry->key.persistentTid));
 
 	Assert(snprintfResult >= 0);
 	Assert(snprintfResult < maxBufferLen);
@@ -1347,6 +1345,7 @@ PersistentRecovery_CrashAbort(void)
 		int e;
 		PersistentEndXactFileSysActionInfo	*fileSysActionInfos;
 		PersistentEndXactRecObjects persistentObjects;
+		bool abortSuccessfullyRecorded;
 
 		xactEntry = 
 				(XactEntry)
@@ -1491,7 +1490,8 @@ PersistentRecovery_CrashAbort(void)
 		errcontext.previous = error_context_stack;
 		error_context_stack = &errcontext;
 		
-		RecordCrashTransactionAbortRecord(
+		abortSuccessfullyRecorded =
+			RecordCrashTransactionAbortRecord(
 									xactEntry->xid, 
 									&persistentObjects);
 		
@@ -1515,8 +1515,16 @@ PersistentRecovery_CrashAbort(void)
 					     "PersistentRecovery_CrashAbort: Set state of %s to 'Aborting Create'", 
 					     FsObjEntryToString(fsObjEntry));
 
-				fsObjEntry->updateNeeded = true;
-				fsObjEntry->state = PersistentFileSysState_AbortingCreate;
+				if (abortSuccessfullyRecorded)
+				{
+					fsObjEntry->updateNeeded = true;
+					fsObjEntry->state = PersistentFileSysState_AbortingCreate;
+				}
+				else
+				{
+					elog(WARNING, "Not setting the state of '%s' to 'Aborting Create'",
+						 FsObjEntryToString(fsObjEntry));
+				}
 				
 			}
 			else if (fsObjEntry->state != PersistentFileSysState_Free)

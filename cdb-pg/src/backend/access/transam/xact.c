@@ -53,6 +53,7 @@
 #include "utils/relcache.h"
 #include "utils/resscheduler.h"
 #include "access/distributedlog.h"
+#include "access/clog.h"
 
 #include "cdb/cdbgang.h"
 #include "cdb/cdbvars.h" /* Gp_role, Gp_is_writer, interconnect_setup_timeout */
@@ -1574,7 +1575,7 @@ RecordTransactionAbort(void)
 }
 
 
-void RecordCrashTransactionAbortRecord(
+bool RecordCrashTransactionAbortRecord(
 	TransactionId				xid,
 	PersistentEndXactRecObjects *persistentAbortObjects)
 {
@@ -1586,6 +1587,27 @@ void RecordCrashTransactionAbortRecord(
 	int			lastrdata = 0;
 	xl_xact_abort xlrec;
 	XLogRecPtr	recptr;
+	XidStatus 	status;
+
+	status = TransactionIdGetStatus(xid);
+	if (status != 0 &&
+		status != TRANSACTION_STATUS_ABORTED)
+	{
+		int elevel;
+
+		if (gp_crash_recovery_abort_suppress_fatal)
+			elevel = WARNING;
+		else
+			elevel = FATAL;
+
+		elog(elevel,"Crash recovery abort invalid for transaction %u current status '%s' (0x%x) and new status '%s' (0x%x)",
+			 xid, 
+			 XidStatus_Name(status),
+			 status,
+			 XidStatus_Name(TRANSACTION_STATUS_ABORTED),
+			 TRANSACTION_STATUS_ABORTED);
+		return false;
+	}
 
 	persistentAbortObjectCount = 
 				PersistentEndXactRec_ObjectCount(
@@ -1664,6 +1686,8 @@ void RecordCrashTransactionAbortRecord(
 	TransactionIdAbort(xid);
 
 	END_CRIT_SECTION();
+
+	return true;
 }
 
 /*
