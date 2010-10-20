@@ -21,6 +21,7 @@ import getopt
 
 try:
     from gppylib.gplog import *
+    from gppylib.gpcatalog import *
     from pygresql.pgdb import DatabaseError
     from pygresql import pg
 except ImportError, e:
@@ -79,6 +80,7 @@ class Global():
     if user == None:
         usage('Error: either $USER or $LOGNAME must be set')
 
+
 GV = Global()
 
 # array of SQL statements. Key is dbid
@@ -98,6 +100,7 @@ Schemas = []
 
 # fix distribution policies
 Policies = []
+
 
 ###############################
 def usage(exitarg = None):
@@ -883,12 +886,18 @@ def removeSchema(seg, db, schemaid):
 #############
 def removeTable(seg, db, reloid):
     # see if table has a toast table and if so, remove that
-    curs = db.query('select oid, reltoastrelid, reltoastidxid from pg_class ' + 
-               'where oid = %i' % reloid)
+    qry = """
+      SELECT oid, reltoastrelid, reltoastidxid
+      FROM pg_class
+      WHERE oid = %i
+    """ % reloid
+    curs = db.query(qry)
     for row in curs.dictresult():
         if row['reltoastrelid'] != 0:
             removeTable(seg, db, row['reltoastrelid'])
-    
+        if row['reltoastidxid'] != 0:
+            removeTable(seg, db, row['reltoastidxid'])
+
     if reloid in oidmap:
         rel = oidmap[reloid]
     else:
@@ -914,6 +923,7 @@ def removeTable(seg, db, reloid):
     removeIndexes(seg, db, reloid, rel)
     removeRelType(seg, db, reloid, rel)
     removeExtTable(seg, db, reloid, rel)
+    removeAppendOnly(seg, db, reloid, rel)
     removeDepend(seg, db, reloid, rel)
 
     if seg == -1:
@@ -966,13 +976,33 @@ def removeRelType(seg, db, reloid, rel):
                 dict([('typrelid', reloid)]), rel)
 
 def removeIndexes(seg, db, reloid, rel):
-    buildRemove(seg, 'indexes', 'pg_index', dict([('indrelid', reloid)]), rel)
+    buildRemove(seg, 'indexes', 'pg_index', {'indrelid': reloid}, rel)
+
+def removeAppendOnly(seg, db, reloid, rel):
+    # see if table has appendonly subtables and if so, remove them
+    qry = """
+      SELECT relid, segrelid, segidxid
+      FROM pg_appendonly
+      WHERE relid = %i
+    """ % reloid
+    curs = db.query(qry)
+    if curs.ntuples() == 0:
+        return
+    for row in curs.dictresult():
+        if row['segrelid'] != 0:
+            removeTable(seg, db, row['segrelid'])
+        if row['segidxid'] != 0:
+            removeTable(seg, db, row['segidxid'])
+    
+    buildRemove(seg, 'append only subtables', 'pg_appendonly',
+                {'relid': reloid}, rel)
+
 
 def removeDepend(seg, db, reloid, rel):
     buildRemove(seg, 'dependencies', 'pg_depend',
-                dict([('objid', reloid), ('refobjid', reloid)]), rel)
+                {'objid': reloid, 'refobjid': reloid}, rel)
     buildRemove(seg, 'shared dependencies', 'pg_shdepend',
-                dict([('objid', reloid), ('refobjid', reloid)]), rel)
+                {'objid': reloid, 'refobjid': reloid}, rel)
 
 def buildRemove(seg, name, table, cols, objname):
     first = False
@@ -1037,137 +1067,222 @@ def crossDbCheck():
     logger.info('Performing cross database consistency tests')
     logger.info('-------------------------------------------')
 
-    # If we have specified "-o" then we want all the OIDs to be idenitical
-    # between segments, otherwise the queries should all be oid/relfile neutral
-    if GV.opt['-o'] == True:
-        oids       = ', x.oid'
-        nspexclude = 'pg_temp_.*'
-    else:
-        oids       = ''
-        nspexclude = 'pg_(temp_.*|toast)'
+    # Establish a connection to the master
+    db = connect2(GV.cfg[1], utilityMode=False)
 
-    # 1: get catalog from every node
-    # we use copy (...) to stdout here in case the result set is huge (which is
-    # often with pg_attribute). Otherwise, psql caches the whole result set in
-    # its local memory, then copies to stdout.
-    # Note the complex sorting of relacl. This is necessary because relacls
-    # might be in different orders when you compare the master to segments.
-    
-    # pg_class
-    #   Since relowner and relhasindex have checks run above, we exclude them
-    #   here since the other checks produce cleaner error output.
-    catalogs = {
-                'pg_class':  '''
-copy (
-SELECT nspname, relname, typname, amname, spcname, relnatts, relkind,
-       array(select relacl[i] from 
-               generate_series(array_lower(relacl,1), array_upper(relacl,1)) i
-               order by textin(aclitemout(relacl[i]))) as acl
-        %s
-FROM pg_catalog.pg_class x
-     LEFT OUTER JOIN pg_catalog.pg_namespace n on (relnamespace = n.oid)
-     LEFT OUTER JOIN pg_catalog.pg_type t on (reltype = t.oid)
-     LEFT OUTER JOIN pg_catalog.pg_tablespace spc on (reltablespace = spc.oid)
-     LEFT OUTER JOIN pg_catalog.pg_am am on (relam = am.oid)
-WHERE (nspname is null or nspname !~ '%s')
-ORDER BY nspname, relname
-) to stdout delimiter ','
-''' % (oids, nspexclude),
-                
-                'pg_attribute': '''
-copy (
-SELECT nspname, relname, attnum, attname, typname, attlen, attbyval, attalign,
-       attstorage, attndims, attstattarget
-FROM pg_catalog.pg_attribute x
-     LEFT OUTER JOIN pg_catalog.pg_class c on (attrelid = c.oid)
-     LEFT OUTER JOIN pg_catalog.pg_namespace n on (relnamespace = n.oid)
-     LEFT OUTER JOIN pg_catalog.pg_type t on (atttypid = t.oid)
-WHERE (nspname is null or nspname !~ '%s')
-ORDER BY nspname, relname, attnum
-) to stdout delimiter ','
-''' % (nspexclude),
+    # Find the highest contentid
+    max_content = max([GV.cfg[dbid]['content'] for dbid in GV.cfg])
 
-                'pg_type': '''
-copy (
-SELECT nspname, typname, relname, 
-       typlen, typbyval, typtype, typisdefined, typdelim, typelem %s
-FROM pg_catalog.pg_type x
-     LEFT OUTER JOIN pg_catalog.pg_namespace n on (typnamespace = n.oid)
-     LEFT OUTER JOIN pg_catalog.pg_class c on (typrelid = c.oid)
-WHERE (nspname is null or nspname !~ '%s')
-ORDER BY nspname, typname
-) to stdout delimiter ','
-''' % (oids, nspexclude),
+    # the GPCatalog object looks up information in the catalog:
+    #   - a list of catalog tables defined in the database
+    #   - which tables are "master only"
+    #   - the primary keys for the tables
+    #   - the oid columns for the tables
+    #   - the acl columns for the tables
+    #   - which tables have foreign keys on other tables
+    #   - etc
+    #
+    # Most of this is derived directly from the catalog definition, but
+    # some requires extra hinting.  
+    #
+    # see gppylib.gpcatalog for details
+    #
+    catalog = GPCatalog(db)
+    tables = catalog.getCatalogTables()
 
-                'pg_namespace': '''
-copy (
-SELECT nspname, usename, nspacl %s
-FROM   pg_catalog.pg_namespace x
-       LEFT OUTER JOIN pg_catalog.pg_user u on (nspowner = usesysid)
-WHERE nspname !~ '^pg_temp_'
-ORDER BY nspname
-) to stdout delimiter ','
-''' % (oids),
-                }
+    for cat in sorted(tables):
+        catname = cat.getTableName()
+        pkey    = cat.getPrimaryKey()
+        master  = cat.isMasterOnly()
+        columns = cat.getTableColumns(with_acl=False)
 
-    # Establish a connection to each node
+        # Skip master only tables
+        if master:
+            continue
+
+        # Skip catalogs without primary key
+        if pkey == []:
+            logger.warn("[WARN] Skipped cross consistency check for %s" % 
+                        catname)
+            continue
+
+        # Build up the query based on catalog definition
+        pkey      = ', '.join(pkey)
+        catcols   = 'c.' + ', c.'.join(columns)
+
+        # MPP-10286 - oid inconsistencies for temp schemas
+        #
+        # Due to oid differences for temp schemas the query would show
+        # relnamespace and typnamespace differences for any table defined
+        # in a temporary schema.  For the purposes of this consistency
+        # test we hack around this right now by joining to pg_namespace
+        # and eliminating temporary schemas.
+        if catname == 'pg_class':
+            temp_schema_hack_1 = """
+            JOIN gp_dist_random('pg_namespace') as n
+              ON (c.relnamespace = n.oid and n.nspname !~ '^pg_temp_' and
+                  c.gp_segment_id = n.gp_segment_id)
+            """
+            temp_schema_hack_2 = """
+            JOIN pg_namespace as n
+              ON (c.relnamespace = n.oid and n.nspname !~ '^pg_temp_')
+            """
+        elif catname == 'pg_type':
+            temp_schema_hack_1 = """
+            JOIN gp_dist_random('pg_namespace') as n
+              ON (c.typnamespace = n.oid and n.nspname !~ '^pg_temp_' and
+                  c.gp_segment_id = n.gp_segment_id)
+            """
+            temp_schema_hack_2 = """
+            JOIN pg_namespace as n
+              ON (c.typnamespace = n.oid and n.nspname !~ '^pg_temp_')
+            """
+        else:
+            temp_schema_hack_1 = ""
+            temp_schema_hack_2 = ""
+
+
+        # Construct the query
+        # 
+        # Basic idea of the query is:
+        #   SELECT (all rows on segments different from master)
+        #   UNION ALL
+        #   SELECT (all rows on master different from segments)
+        qry = """
+        SELECT * FROM (
+            SELECT c.gp_segment_id, {columns}
+            FROM   gp_dist_random('{catalog}') as c {schema_join_1}
+            WHERE  ({primary_key}) in (
+               SELECT {primary_key} FROM (
+                   select c.gp_segment_id, {columns}
+                   from   gp_dist_random('{catalog}') as c
+                   except all 
+                   select segid as gp_segment_id, {columns}
+                   from   {catalog} as c, 
+                          generate_series(0,{max_content}) as segid
+               ) segments
+            )
+        ) x
+        UNION ALL
+        SELECT * FROM (
+            select c.gp_segment_id, {columns}
+            from   {catalog} as c {schema_join_2}
+            where ({primary_key}) in (
+               SELECT {primary_key} FROM (
+                   select segid as gp_segment_id, {columns}
+                   from   {catalog} as c, 
+                          generate_series(0,{max_content}) as segid
+                   except all 
+                   select c.gp_segment_id, {columns}
+                   from   gp_dist_random('{catalog}') as c
+               ) master
+            )
+        ) y
+        order by {primary_key}, gp_segment_id
+        """.format(max_content = max_content,
+                   catalog     = catname,
+                   primary_key = pkey,
+                   columns     = catcols,
+                   schema_join_1 = temp_schema_hack_1,
+                   schema_join_2 = temp_schema_hack_2)
+
         
-    # check each catalog in turn
-    error = False
-    for cid in catalogs:
-        logger.info('  - Comparing %s on master to all segments' % cid)
+        # Execute the query
+        try:
+            curs  = db.query(qry)
+            nrows = curs.ntuples()
+        
+            if nrows == 0:
+                logger.info('[OK] Cross consistency check for ' + catname)
+            else:
+                logger.info('[FAIL] Cross consistency check for ' + catname)
+                logger.error('  %s has %d issue(s)' % (catname, nrows))
+                # logger.error(qry)
 
-        threads = []
-        i = 1
-        for dbid in GV.cfg:
-            thread = sysCatThread(dbid, cid, catalogs[cid])
-            thread.start()
-            logger.debug('launching query thread %s for dbid %i' %
-                        (thread.getName(), dbid))
-            threads.append(thread)
+                # TODO: smarter handling of output
+                #   - Improved reporting when all segments are different 
+                #     from master
+                #   - Improved identification of what the difference is
+                #   - Dumping to a file when there is too much data
+                #   - Don't use "print"
+                fields = curs.listfields()
+                print "    " + " | ".join(fields)
+                for row in curs.getresult():
+                    print "    " + " | ".join(map(str, row))
+        
+        except Exception, e:
+            logger.info('[FAIL] Cross consistency check for ' + catname)
+            logger.error('  Execution error: ' + str(e))
+            logger.error(qry)
 
-            # we don't want too much going on at once
-            if (i % GV.opt['-B']) == 0:
-                for th in threads:
-                    logger.debug('waiting on thread %s' % 
-                            th.getName())
-                    th.join()
-                threads = []
-            i += 1
+            
+    # Checking ACLs in the above query proved prohibitively difficult to
+    # do correctly, so we break the ACL check into a separate query.
+    for cat in sorted(tables):
 
-        # process leftovers
-        for th in threads:
-            logger.debug('waiting on thread %s' % 
-                            th.getName())
-            th.join()
+        catname   = cat.getTableName()
+        pkey      = cat.getPrimaryKey()
+        master    = cat.isMasterOnly()
+        acl       = cat.getTableAcl()
 
-        for dbid in GV.cfg:
-            if dbid == 1:
-                continue    # master segment
+        # Skip:
+        #   - master only tables
+        #   - tables without a primary key
+        #   - tables without acls
+        if master or pkey == [] or acl == None:
+            continue
 
-            cmd = 'diff %s/gpcheckcat_m %s/gpcheckcat.%s.%s_s' % \
-                (GV.tmpdir, GV.tmpdir, dbid, cid)
-            pipe = subprocess.Popen(cmd, shell=True,
-                                    stdout=subprocess.PIPE, close_fds=True)
 
-            lines = ''
-            for line in pipe.stdout:
-                lines += line
+        # Build up the catalog query based on the catalog definition
+        #
+        # It is sufficient to only compare acls for objects that exist on
+        # both master and segment, so we can do a simple join on the primary
+        # key instead of the complex union/except queries above.
+        #
+        # Comparing ACLs cannot be done with a simple equality comparison
+        # since it is valid for the ACLs to have different order.  Instead
+        # we compare that both acls are subsets of each other => equality.
+        pkey = ', '.join(pkey)
+        qry = """
+        SELECT s.gp_segment_id, {primary_key}, 
+               m.{acl} as master_acl, s.{acl} as segment_acl
+        FROM {catalog} m
+        JOIN gp_dist_random('{catalog}') s using ({primary_key})
+        WHERE  not (m.{acl} @> s.{acl} and s.{acl} @> m.{acl}) or
+               (m.{acl} is null and s.{acl} is not null) or
+               (s.{acl} is null and m.{acl} is not null)
+        ORDER BY {primary_key}, s.gp_segment_id
+        """.format(catalog     = catname,
+                   primary_key = pkey,
+                   acl         = acl)
 
-            if len(lines) > 0:
-                setError(ERROR_NOREPAIR)
-                logger.error('\n')
-                logger.error('inconsistency between master and seg %i' % dbid)
-                #logger.info("return code %i\n" % pipe.returncode)
-                logger.error(lines)
-                error = True
+        try:
+            curs  = db.query(qry)
+            nrows = curs.ntuples()
+        
+            if nrows == 0:
+                logger.info('[OK] Cross consistency acl check for ' + catname)
+            else:
+                logger.info('[FAIL] Cross consistency acl check for ' + catname)
+                logger.error('  %s acl check has %d issue(s)' % (catname, nrows))
+                # logger.error(qry)
 
-            os.unlink('%s/gpcheckcat.%s.%s_s' % (GV.tmpdir, dbid, cid))
+                # TODO: smarter handling of output
+                #   - Improved reporting when all segments are different 
+                #     from master
+                #   - Improved identification of what the difference is
+                #   - Dumping to a file when there is too much data
+                #   - Don't use "print"
+                fields = curs.listfields()
+                print "    " + " | ".join(fields)
+                for row in curs.getresult():
+                    print "    " + " | ".join(map(str, row))
+        
+        except Exception, e:
+            logger.info('[FAIL] Cross consistency check for ' + catname)
+            logger.error('  Execution error: ' + str(e))
+            logger.error(qry)
 
-        os.unlink('%s/gpcheckcat_m' % GV.tmpdir)
-
-    if error == False:
-        logger.info('[OK]')
 
 class fileCheckThread(Thread):
     # connect to host and look for oidlist for each segment on the host
@@ -1364,6 +1479,89 @@ def checkBitmapIndexes():
 
     else:
         logger.info('[OK] bitmap indexes')
+
+def checkDepend():
+    # Check for dependencies on non-existent objects
+    logger.info('-----------------------------------')
+    logger.info('Checking Object Dependencies')
+
+    db = connect2(GV.cfg[1], utilityMode=False)
+
+    # Catalogs that link up to pg_depend/pg_shdepend
+    qry = "select relname from pg_class where relnamespace=11 and relhasoids"
+    curs = db.query(qry)
+    catalogs = []
+    for row in curs.getresult():
+        catalogs.append(row[0])
+
+    # For each catalog construct the subquery for that catalog
+    #
+    # It would be desireable to switch these queries to a gp_dist_random
+    # type query rather than issueing it in utility mode on every segment,
+    # however because there are numerous issues remaining with oid 
+    # inconsistencies (see crossDBCheck()) that doesn't work out well.
+    deps = []
+    for cat in catalogs:
+        qry = """
+          SELECT '{catalog}' as catalog, objid FROM (
+            SELECT objid FROM pg_depend 
+              WHERE classid = '{catalog}'::regclass
+            UNION ALL
+            SELECT refobjid FROM pg_depend 
+              WHERE refclassid = '{catalog}'::regclass
+          ) d 
+          LEFT OUTER JOIN {catalog} c on (d.objid = c.oid)
+          WHERE c.oid is NULL
+          UNION ALL
+          SELECT '{catalog}' as catalog, objid FROM (
+            SELECT dbid, objid FROM pg_shdepend
+              WHERE classid = '{catalog}'::regclass
+            UNION ALL
+            SELECT dbid, refobjid FROM pg_shdepend
+              WHERE refclassid = '{catalog}'::regclass
+          ) d JOIN pg_database db 
+            ON (d.dbid = db.oid and datname= current_database())
+          LEFT OUTER JOIN {catalog} c on (d.objid = c.oid)
+          WHERE c.oid is NULL
+          """.format(catalog=cat)
+        deps.append(qry)
+
+    qry = """
+    SELECT distinct catalog, objid 
+    FROM (%s
+    ) q
+    """ % "UNION ALL".join(deps)
+    try:
+        err = connect2run(qry)
+        if not err:
+            logger.info('[OK] basic object dependencies')
+        else:
+            setError(ERROR_REPAIR)
+            logger.info('[FAIL] basic object dependencies')
+            logger.error('  found %d dependencies on dropped objects' % len(err))
+            # logger.info(qry)
+
+            todrop = {}
+            for e in err:
+                seg = e[0]['dbid']    # segment the error came from
+                oid = e[2]['objid']   # objid that did not exist
+                cat = e[2]['catalog'] # catname
+                if seg not in todrop:
+                    todrop[seg] = set()
+                todrop[seg].add((oid, cat))
+
+            for seg in todrop:
+                segdb = connect2(GV.cfg[seg])
+                for (objid, cat) in todrop[seg]:
+                    name = "dropped oid %s in %s" % (objid, cat)
+                    removeDepend(seg, segdb, objid, name)
+            
+
+    except Exception, e:
+        logger.info("[FAIL] basic object dependencies")
+        logger.error("  Execution error: " + str(e))
+        logger.error(qry)
+        
 
 def fixupowners(nspname, relname, oldrole, newrole):
     
@@ -2076,12 +2274,15 @@ if __name__ == '__main__':
     checkOwners()
     checkIndexes()
     checkBitmapIndexes()
+    checkDepend()
     checkPersistentTables()
 
-    closeDbs()
-
     crossDbCheck()
+
+    closeDbs()
     
+    logger.info("------------------------------------")
+
     fixes = (len(Remove) > 0 or 
              len(Reindex) > 0 or 
              len(Constraints) > 0 or
@@ -2254,6 +2455,7 @@ if __name__ == '__main__':
 
     if GV.retcode >= ERROR_NOREPAIR:
         logger.warn('unable to generate repairs for some issues')
+    logger.info("Check complete")
     sys.exit(GV.retcode)
 
 
