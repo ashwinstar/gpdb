@@ -8,10 +8,10 @@
  *	  Structs that need to be client-visible are in pqcomm.h.
  *
  *
- * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/libpq/libpq-be.h,v 1.71 2009/06/11 14:49:11 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/libpq/libpq-be.h,v 1.74 2010/01/15 09:19:08 heikki Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -92,7 +92,7 @@ typedef struct
 	gss_ctx_id_t ctx;			/* GSSAPI connection context */
 	gss_name_t	name;			/* GSSAPI client name */
 #endif
-}	pg_gssinfo;
+} pg_gssinfo;
 #endif
 
 /*
@@ -106,7 +106,8 @@ typedef struct
 
 typedef struct Port
 {
-	int			sock;			/* File descriptor */
+	pgsocket	sock;			/* File descriptor */
+	bool		noblock;		/* is the socket in non-blocking mode? */
 	ProtocolVersion proto;		/* FE/BE protocol version */
 	SockAddr	laddr;			/* local addr (postmaster) */
 	SockAddr	raddr;			/* remote addr (client) */
@@ -127,7 +128,7 @@ typedef struct Port
 	/*
 	 * Information that needs to be held during the authentication cycle.
 	 */
-	HbaLine	   *hba;
+	HbaLine    *hba;
 	char		md5Salt[4];		/* Password salt */
 
 	/*
