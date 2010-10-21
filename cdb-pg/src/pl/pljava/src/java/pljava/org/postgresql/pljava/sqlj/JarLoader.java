@@ -104,6 +104,12 @@ public class JarLoader extends ClassLoader
 			throw new ClassNotFoundException(name); 
 		}
 
+		/* Look to see if we have already loaded the class */
+		Class c = findLoadedClass(name);
+		if (c != null)
+			return c;
+
+		/* Check for the class within our jar */
 		String path = name.replace('.', '/').concat(".class");
 		byte[] entryImg = (byte[]) m_entries.get(path);
 		
