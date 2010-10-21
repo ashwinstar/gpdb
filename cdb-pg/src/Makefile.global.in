@@ -246,8 +246,21 @@ LDAP_LIBS_BE = @LDAP_LIBS_BE@
 LD = @LD@
 with_gnu_ld = @with_gnu_ld@
 ld_R_works = @ld_R_works@
-LDFLAGS = @LDFLAGS@
-LDFLAGS_SL = @LDFLAGS_SL@
+
+# We want -L for libpgport.a to be first in LDFLAGS.  We also need LDFLAGS
+# to be a "recursively expanded" variable, else adjustments to rpathdir
+# don't work right.  So we must NOT do LDFLAGS := something, meaning this has
+# to be done first and elsewhere we must only do LDFLAGS += something.
+ifdef PGXS
+  LDFLAGS = -L$(libdir)
+else
+  LDFLAGS = -L$(top_builddir)/src/port
+endif
+LDFLAGS += @LDFLAGS@
+
+LDFLAGS_EX = @LDFLAGS_EX@
+# LDFLAGS_SL might have already been assigned by calling makefile
+LDFLAGS_SL += @LDFLAGS_SL@
 LDREL = -r
 LDOUT = -o
 RANLIB = @RANLIB@
@@ -314,6 +327,9 @@ INSTALL_STLIB	= $(INSTALL_STLIB_ENV) $(INSTALL_DATA) $(INSTALL_STRIP_FLAG)
 INSTALL_SHLIB	= $(INSTALL_SHLIB_ENV) $(INSTALL) $(INSTALL_SHLIB_OPTS) $(INSTALL_STRIP_FLAG)
 # Override in Makefile.port if necessary
 INSTALL_SHLIB_OPTS = -m 755
+
+
+MKDIR_P = @MKDIR_P@
 
 mkinstalldirs	= $(SHELL) $(top_srcdir)/config/mkinstalldirs
 missing		= $(SHELL) $(top_srcdir)/config/missing
