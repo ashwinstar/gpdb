@@ -8,6 +8,7 @@ typedef int32 apr_int32_t;
 typedef int16 apr_int16_t;
 typedef uint8 apr_byte_t;
 typedef uint16 apr_uint16_t;
+typedef uint32 apr_uint32_t;
 typedef uint64 apr_uint64_t;
 #endif
 
