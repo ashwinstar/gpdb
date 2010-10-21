@@ -286,7 +286,7 @@ static int errdetail_nonexistent_relation(
 			/*
 			 * Give DETAIL on the filespace directory!
 			 */
-			errdetail(buffer);
+			errdetail("%s", buffer);
 			pfree(buffer);
 
 			pfree(primaryFilespaceLocation);
@@ -310,7 +310,7 @@ static int errdetail_nonexistent_relation(
 				Assert(snprintfResult >= 0);
 				Assert(snprintfResult < MAX_MSG_LEN);
 				
-				errdetail(buffer);
+				errdetail("%s",buffer);
 			}
 		}
 	
@@ -356,7 +356,7 @@ static int errdetail_nonexistent_relation(
 			/*
 			 * Give DETAIL on the tablespace directory!
 			 */
-			errdetail(buffer);
+			errdetail("%s", buffer);
 			pfree(buffer);
 
 			if (primaryFilespaceLocation != NULL)
@@ -379,7 +379,7 @@ static int errdetail_nonexistent_relation(
 				Assert(snprintfResult >= 0);
 				Assert(snprintfResult < MAX_MSG_LEN);
 				
-				errdetail(buffer);
+				errdetail("%s", buffer);
 			}
 		}
 
@@ -433,7 +433,7 @@ static int errdetail_nonexistent_relation(
 			/*
 			 * Give DETAIL on the database directory!
 			 */
-			errdetail(buffer);
+			errdetail("%s", buffer);
 			pfree(buffer);
 		
 			if (primaryFilespaceLocation != NULL)
@@ -456,7 +456,7 @@ static int errdetail_nonexistent_relation(
 				Assert(snprintfResult >= 0);
 				Assert(snprintfResult < MAX_MSG_LEN);
 				
-				errdetail(buffer);
+				errdetail("%s", buffer);
 			}
 		}
 
