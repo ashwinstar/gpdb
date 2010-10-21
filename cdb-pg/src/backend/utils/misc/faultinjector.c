@@ -33,6 +33,13 @@
 
 #ifdef FAULT_INJECTOR
 
+/*
+ * gettext() can't be used in a static initializer... This breaks nls builds.
+ * So, to work around this issue, I've made _() be a no-op.
+ */
+#undef _
+#define _(x) x
+
 typedef struct FaultInjectorShmem_s {
 	slock_t		lock;
 	
