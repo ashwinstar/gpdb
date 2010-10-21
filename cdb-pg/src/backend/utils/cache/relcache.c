@@ -85,11 +85,11 @@
 /*
  *		hardcoded tuple descriptors.  see include/catalog/pg_attribute.h
  */
-static FormData_pg_attribute Desc_pg_class[Natts_pg_class] = {Schema_pg_class};
-static FormData_pg_attribute Desc_pg_attribute[Natts_pg_attribute] = {Schema_pg_attribute};
-static FormData_pg_attribute Desc_pg_proc[Natts_pg_proc] = {Schema_pg_proc};
-static FormData_pg_attribute Desc_pg_type[Natts_pg_type] = {Schema_pg_type};
-static FormData_pg_attribute Desc_pg_index[Natts_pg_index] = {Schema_pg_index};
+static const FormData_pg_attribute Desc_pg_class[Natts_pg_class] = {Schema_pg_class};
+static const FormData_pg_attribute Desc_pg_attribute[Natts_pg_attribute] = {Schema_pg_attribute};
+static const FormData_pg_attribute Desc_pg_proc[Natts_pg_proc] = {Schema_pg_proc};
+static const FormData_pg_attribute Desc_pg_type[Natts_pg_type] = {Schema_pg_type};
+static const FormData_pg_attribute Desc_pg_index[Natts_pg_index] = {Schema_pg_index};
 
 /*
  *		Hash tables that index the relation cache
@@ -170,7 +170,8 @@ do { \
 /*
  * Special cache for opclass-related information
  *
- * Note: only default-subtype operators and support procs get cached
+ * Note: only default operators and support procs get cached, ie, those with
+ * lefttype = righttype = opcintype.
  */
 typedef struct opclasscacheent
 {
@@ -197,7 +198,7 @@ static void write_relcache_init_file(void);
 static void write_item(const void *data, Size len, FILE *fp);
 
 static void formrdesc(const char *relationName, Oid relationReltype,
-		  bool hasoids, int natts, FormData_pg_attribute *att);
+		  bool hasoids, int natts, const FormData_pg_attribute *att);
 
 static HeapTuple ScanPgRelation(Oid targetRelId, bool indexOK, Relation *pg_class_relation);
 static Relation AllocateRelationDesc(Form_pg_class relp);
@@ -718,7 +719,12 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 			break;
 	}
 
-	/* Copy parsed data into CacheMemoryContext */
+	/*
+	 * Copy parsed data into CacheMemoryContext.  To guard against the
+	 * possibility of leaks in the reloptions code, we want to do the actual
+	 * parsing in the caller's memory context and copy the results into
+	 * CacheMemoryContext after the fact.
+	 */
 	if (options)
 	{
 		relation->rd_options = MemoryContextAlloc(CacheMemoryContext,
@@ -1561,7 +1567,7 @@ LookupOpclassInfo(Oid operatorClassOid,
 
 	/*
 	 * Scan pg_amproc to obtain support procs for the opclass.	We only fetch
-	 * the default ones (those with subtype zero).
+	 * the default ones (those with lefttype = righttype = opcintype).
 	 */
 	if (numSupport > 0)
 	{
@@ -1619,7 +1625,7 @@ LookupOpclassInfo(Oid operatorClassOid,
  */
 static void
 formrdesc(const char *relationName, Oid relationReltype,
-		  bool hasoids, int natts, FormData_pg_attribute *att)
+		  bool hasoids, int natts, const FormData_pg_attribute *att)
 {
 	Relation	relation;
 	int			i;
@@ -2776,11 +2782,14 @@ RelationCacheInitialize(void)
 	HASHCTL		ctl;
 
 	/*
-	 * switch to cache memory context
+	 * make sure cache memory context exists
 	 */
 	if (!CacheMemoryContext)
 		CreateCacheMemoryContext();
 
+    /*
+	 * switch to cache memory context
+	 */
 	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 
 	/*
@@ -2948,7 +2957,10 @@ RelationCacheInitializePhase2(void)
 			RelationParseRelOptions(relation, htup);
 
 			/*
-			 * Also update the derived fields in rd_att.
+			 * Check the values in rd_att were set up correctly.  (We cannot
+			 * just copy them over now: formrdesc must have set up the rd_att
+			 * data correctly to start with, because it may already have been
+			 * copied into one or more catcache entries.)
 			 */
 			Assert(relation->rd_att->tdtypeid == relp->reltype);
 			Assert(relation->rd_att->tdtypmod == -1);
@@ -3052,7 +3064,8 @@ load_critical_index(Oid indexoid, Oid heapoid)
  * extracting fields.
  */
 static TupleDesc
-BuildHardcodedDescriptor(int natts, Form_pg_attribute attrs, bool hasoids)
+BuildHardcodedDescriptor(int natts, const FormData_pg_attribute *attrs,
+						 bool hasoids)
 {
 	TupleDesc	result;
 	MemoryContext oldcxt;
@@ -3109,6 +3122,9 @@ GetPgIndexDescriptor(void)
 	return pgindexdesc;
 }
 
+/*
+ * Load any default attribute value definitions for the relation.
+ */
 static void
 AttrDefaultFetch(Relation relation)
 {
@@ -3174,6 +3190,9 @@ AttrDefaultFetch(Relation relation)
 			 ndef - found, RelationGetRelationName(relation));
 }
 
+/*
+ * Load any check constraints for the relation.
+ */
 static void
 CheckConstraintFetch(Relation relation)
 {
@@ -3597,7 +3616,7 @@ RelationGetIndexPredicate(Relation relation)
  *			  relation descriptors using sequential scans and write 'em to
  *			  the initialization file for use by subsequent backends.
  *
- *		We could dispense with the initialization file and just build the
+ *		We could dispense with the initialization files and just build the
  *		critical reldescs the hard way on every backend startup, but that
  *		slows down backend startup noticeably.
  *
@@ -3605,12 +3624,12 @@ RelationGetIndexPredicate(Relation relation)
  *		just the ones that are absolutely critical; this allows us to speed
  *		up backend startup by not having to build such entries the hard way.
  *		Presently, all the catalog and index entries that are referred to
- *		by catcaches are stored in the initialization file.
+ *		by catcaches are stored in the initialization files.
  *
  *		The same mechanism that detects when catcache and relcache entries
  *		need to be invalidated (due to catalog updates) also arranges to
- *		unlink the initialization file when its contents may be out of date.
- *		The file will then be rebuilt during the next backend startup.
+ *		unlink the initialization files when the contents may be out of date.
+ *		The files will then be rebuilt during the next backend startup.
  */
 
 /*
