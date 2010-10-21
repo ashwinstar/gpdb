@@ -23,7 +23,7 @@
 # SHLIB_LINK            If shared library relies on other libraries,
 #                       additional stuff to put in its link command
 # SHLIB_EXPORTS         (optional) Name of file containing list of symbols to
-#                       export
+#                       export, in the format "function_name  number"
 #
 # When building a shared library, the following version information
 # must also be set.  It should be omitted when building a dynamically
