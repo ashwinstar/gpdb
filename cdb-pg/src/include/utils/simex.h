@@ -39,13 +39,13 @@ typedef enum SimExESClass
 #define SimExESClass_IsValid(class) \
 	(class >= SimExESClass_Base && class < SimExESClass_Max)
 
-static inline void SimExESClass_CheckValid(int class)
+static inline void SimExESClass_CheckValid(int simexclass)
 {
-	if (!SimExESClass_IsValid(class))
+	if (!SimExESClass_IsValid(simexclass))
 	{
 		ereport(ERROR,
 	 		    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-	 		     errmsg("SimEx ES class %d is invalid", class)));
+	 		     errmsg("SimEx ES class %d is invalid", simexclass)));
 	}
 }
 

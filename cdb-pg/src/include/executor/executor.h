@@ -206,7 +206,7 @@ extern AttrMap *compositeAttrMap(AttrMap *input_map, AttrMap *output_map);
 extern AttrNumber attrMap(AttrMap *map, AttrNumber anum);
 extern List *attrMapIntList(AttrMap *map, List *attrs);
 extern Node *attrMapExpr(AttrMap *map, Node *expr);
-extern bool map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw);
+extern bool map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throwerror);
 
 /*
  * prototypes from functions in execProcnode.c

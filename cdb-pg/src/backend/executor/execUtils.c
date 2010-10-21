@@ -744,7 +744,7 @@ ExecBuildProjectionInfo(List *targetList,
 	}
 	else
 	{
-		projInfo->pi_itemIsDone = (enum ExprDoneCond *)
+		projInfo->pi_itemIsDone = (ExprDoneCond *)
 			palloc(len * sizeof(ExprDoneCond));
 		projInfo->pi_varSlotOffsets = NULL;
 		projInfo->pi_varNumbers = NULL;

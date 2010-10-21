@@ -44,7 +44,7 @@ struct FileScanDescData;
 struct TBMIterateResult;
 struct TriggerDesc;
 struct MirroredBufferPoolBulkLoadInfo;
-enum ExprDoneCond;
+//enum ExprDoneCond;
 
 
 /* ----------------
@@ -182,7 +182,7 @@ typedef struct ProjectionInfo
         List                   *pi_targetlist;
         ExprContext         *pi_exprContext;
         struct TupleTableSlot         *pi_slot;
-        enum ExprDoneCond         *pi_itemIsDone;
+        ExprDoneCond         *pi_itemIsDone;
         bool                pi_isVarList;
         int                   *pi_varSlotOffsets;
         int                 *pi_varNumbers;

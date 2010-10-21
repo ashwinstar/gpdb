@@ -677,7 +677,7 @@ typedef enum ShareType
 	SHARE_MATERIAL,          	/* Sharing a material node */
 	SHARE_MATERIAL_XSLICE,		/* Sharing a material node, across slice */
 	SHARE_SORT,					/* Sharing a sort */
-	SHARE_SORT_XSLICE,			/* Sharing a sort, across slice */
+	SHARE_SORT_XSLICE			/* Sharing a sort, across slice */
 	/* Other types maybe added later, like sharing a hash */
 } ShareType;
 
@@ -998,7 +998,7 @@ typedef struct Limit
 typedef enum MotionType
 {
 	MOTIONTYPE_HASH,		/* Use hashing to select a segindex destination */
-	MOTIONTYPE_FIXED,		/* Send tuples to a fixed set of segindexes */
+	MOTIONTYPE_FIXED		/* Send tuples to a fixed set of segindexes */
 } MotionType;
 
 /*
