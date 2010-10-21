@@ -62,7 +62,7 @@ static const struct encoding_match encoding_match_list[] = {
 	{PG_EUC_KR, "IBM-eucKR"},
 	{PG_EUC_KR, "deckorean"},
 	{PG_EUC_KR, "5601"},
-	{PG_EUC_KR, "CP51949"},		/* or 20949 ? */
+	{PG_EUC_KR, "CP51949"},
 
 	{PG_EUC_TW, "EUC-TW"},
 	{PG_EUC_TW, "eucTW"},
@@ -182,6 +182,8 @@ static const struct encoding_match encoding_match_list[] = {
 
 	{PG_SHIFT_JIS_2004, "SJIS_2004"},
 
+	{PG_SQL_ASCII, "US-ASCII"},
+
 	{PG_SQL_ASCII, NULL}		/* end marker */
 };
 
@@ -216,13 +218,13 @@ win32_langinfo(const char *ctype)
 
 /*
  * Given a setting for LC_CTYPE, return the Postgres ID of the associated
- * encoding, if we can determine it.
+ * encoding, if we can determine it.  Return -1 if we can't determine it.
  *
  * Pass in NULL to get the encoding for the current locale setting.
+ * Pass "" to get the encoding selected by the server's environment.
  *
  * If the result is PG_SQL_ASCII, callers should treat it as being compatible
- * with any desired encoding.  We return this if the locale is C/POSIX or we
- * can't determine the encoding.
+ * with any desired encoding.
  */
 int
 pg_get_encoding_from_locale(const char *ctype)
