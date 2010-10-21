@@ -166,6 +166,14 @@ static FileRepSubProc FileRepSubProcList[MaxFileRepSubProc] =
 	{0, FileRepProcessTypeResyncWorker4},
 };
 
+
+/*
+ * gettext() can't be used in a static initializer... This breaks nls builds.
+ * So, to work around this issue, I've made _() be a no-op.
+ */
+#undef _
+#define _(x) x
+
 const char*
 FileRepProcessTypeToString[] = {
 	_("filerep uninitialized process"),
