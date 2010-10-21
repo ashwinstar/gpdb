@@ -1021,9 +1021,9 @@ exec_mpp_query(const char *query_string,
     }
     if (gp_enable_resqueue_priority)
     {
-    	if (plan && plan->planTree->backoff_weight > 0)
+    	if (plan && plan->backoff_weight > 0)
     	{
-    		BackoffBackendEntryInit(gp_session_id, gp_command_count, plan->planTree->backoff_weight);
+    		BackoffBackendEntryInit(gp_session_id, gp_command_count, plan->backoff_weight);
     	}
     	else
     	{

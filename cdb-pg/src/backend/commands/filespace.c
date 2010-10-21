@@ -35,6 +35,7 @@
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbutil.h"
+#include "access/genam.h"
 
 static void checkPathFormat(char *path);
 static void checkPathPermissions(char *path);

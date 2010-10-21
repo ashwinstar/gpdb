@@ -31,12 +31,8 @@
 
 #include "lib/stringinfo.h"
 #include "nodes/plannodes.h"
-#include "nodes/execnodes.h"
 #include "nodes/relation.h"
 #include "utils/datum.h"
-#include "utils/lsyscache.h"  /* For get_typlenbyval */
-#include "cdb/cdbvars.h"
-
 
 /*
  * Macros to simplify output of different kinds of fields.	Use these
@@ -298,7 +294,6 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_NODE_FIELD(righttree);
 	WRITE_NODE_FIELD(initPlan);
 	
-    WRITE_INT_FIELD(backoff_weight);
 }
 
 /*
@@ -3044,13 +3039,13 @@ _outGroupingFunc(StringInfo str, GroupingFunc *node)
 }
 
 static void
-_outGrouping(StringInfo str, Grouping *node)
+_outGrouping(StringInfo str, Grouping *node __attribute__((unused)))
 {
 	WRITE_NODE_TYPE("GROUPING");
 }
 
 static void
-_outGroupId(StringInfo str, GroupId *node)
+_outGroupId(StringInfo str, GroupId *node __attribute__((unused)))
 {
 	WRITE_NODE_TYPE("GROUPID");
 }
@@ -3260,7 +3255,7 @@ _outValue(StringInfo str, Value *value)
 }
 
 static void
-_outNull(StringInfo str, Node *n)
+_outNull(StringInfo str, Node *n __attribute__((unused)))
 {
 	WRITE_NODE_TYPE("NULL");
 }

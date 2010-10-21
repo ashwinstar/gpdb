@@ -250,13 +250,13 @@ ProcessQuery(Portal portal,
 	{
 		if (superuser())
 		{
-			queryDesc->plannedstmt->planTree->backoff_weight = BackoffSuperuserStatementWeight();
+			queryDesc->plannedstmt->backoff_weight = BackoffSuperuserStatementWeight();
 
 		} else
 		{
-			queryDesc->plannedstmt->planTree->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);
+			queryDesc->plannedstmt->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);
 		}
-		BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->planTree->backoff_weight);
+		BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->backoff_weight);
 	}
 	
 	/*
@@ -804,13 +804,13 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 				{
 					if (superuser())
 					{
-						queryDesc->plannedstmt->planTree->backoff_weight = BackoffSuperuserStatementWeight();
+						queryDesc->plannedstmt->backoff_weight = BackoffSuperuserStatementWeight();
 
 					} else
 					{
-						queryDesc->plannedstmt->planTree->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);
+						queryDesc->plannedstmt->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);
 					}
-					BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->planTree->backoff_weight);
+					BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->backoff_weight);
 				}
 				
 				/*

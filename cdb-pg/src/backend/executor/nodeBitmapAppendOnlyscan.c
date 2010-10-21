@@ -32,6 +32,7 @@
 #include "miscadmin.h"
 #include "parser/parsetree.h"
 #include "cdb/cdbvars.h" /* gp_select_invisible */
+#include "nodes/tidbitmap.h"
 
 static TupleTableSlot *BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node);
 
@@ -187,7 +188,7 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 	aocsFetchDesc = node->baos_currentAOCSFetchDesc;
 	scanrelid = ((BitmapAppendOnlyScan *) node->ss.ps.plan)->scan.scanrelid;
 	tbm = node->baos_tbm;
-	tbmres = node->baos_tbmres;
+	tbmres = (TBMIterateResult *) node->baos_tbmres;
 	Assert(tbmres != NULL);
 
 	/*

@@ -18,7 +18,7 @@
 
 extern int	ExecCountSlotsAgg(Agg *node);
 extern AggState *ExecInitAgg(Agg *node, EState *estate, int eflags);
-extern TupleTableSlot *ExecAgg(AggState *node);
+extern struct TupleTableSlot *ExecAgg(AggState *node);
 extern void ExecEndAgg(AggState *node);
 extern void ExecReScanAgg(AggState *node, ExprContext *exprCtxt);
 

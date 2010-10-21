@@ -241,7 +241,8 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->es_into_relation_is_bulkload = false;
 
 	MemSet(&estate->es_into_relation_last_heap_tid, 0, sizeof(ItemPointerData));
-	MemSet(&estate->es_into_relation_bulkloadinfo, 0, sizeof (MirroredBufferPoolBulkLoadInfo));
+	
+	estate->es_into_relation_bulkloadinfo = (struct MirroredBufferPoolBulkLoadInfo *) palloc0(sizeof (MirroredBufferPoolBulkLoadInfo));
 
 	estate->es_param_list_info = NULL;
 	estate->es_param_exec_vals = NULL;
@@ -743,7 +744,7 @@ ExecBuildProjectionInfo(List *targetList,
 	}
 	else
 	{
-		projInfo->pi_itemIsDone = (ExprDoneCond *)
+		projInfo->pi_itemIsDone = (enum ExprDoneCond *)
 			palloc(len * sizeof(ExprDoneCond));
 		projInfo->pi_varSlotOffsets = NULL;
 		projInfo->pi_varNumbers = NULL;
@@ -2318,4 +2319,12 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 			break;
 	}
 }
+
+void ResetExprContext(ExprContext *econtext)
+{
+	MemoryContext memctxt = econtext->ecxt_per_tuple_memory;
+	if(memctxt->allBytesAlloc - memctxt->allBytesFreed > 50000)
+		MemoryContextReset(memctxt);
+}
+
 

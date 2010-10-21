@@ -19,22 +19,12 @@
 #include <sys/time.h>
 #endif
 
-#include "access/genam.h"
-#include "access/heapam.h"
-#include "access/skey.h"
-#include "access/relscan.h"
-#include "utils/memutils.h"
-#include "fmgr.h"                       /* ExprDoneCond, SetFunctionReturnMode */
-#include "lib/dllist.h"
 #include "nodes/params.h"
 #include "nodes/plannodes.h"
 #include "nodes/relation.h"
-#include "nodes/tidbitmap.h"
 #include "utils/hsearch.h"
-#include "utils/rel.h"
-#include "utils/tuplesort.h"
-#include "access/filerepdefs.h"
-
+#include "access/tupdesc.h"
+#include "utils/relcache.h"
 #include "gpmon/gpmon.h"                /* gpmon_packet_t */
 
 struct CdbDispatchResults;              /* in cdbdispatchresult.h */
@@ -43,7 +33,19 @@ struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
 struct IndexInfo;                       /* #include "catalog/index.h" */
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
-struct TuplestorePos;                   /* #include "utils/tuplestore.h" */
+struct TupleTableSlot;
+struct TupleTableData;
+struct MemTupleBinding;
+struct SnapshotData;
+struct MemTupleData;
+struct HeapScanDescData;
+struct IndexScanDescData;
+struct FileScanDescData;
+struct TBMIterateResult;
+struct TriggerDesc;
+struct MirroredBufferPoolBulkLoadInfo;
+enum ExprDoneCond;
+
 
 /* ----------------
  *          IndexInfo information
@@ -95,9 +97,9 @@ typedef struct ExprContext
         NodeTag                type;
 
         /* Tuples that Var nodes in expression may refer to */
-        TupleTableSlot *ecxt_scantuple;
-        TupleTableSlot *ecxt_innertuple;
-        TupleTableSlot *ecxt_outertuple;
+        struct TupleTableSlot *ecxt_scantuple;
+        struct TupleTableSlot *ecxt_innertuple;
+        struct TupleTableSlot *ecxt_outertuple;
 
         /* Memory contexts for expression evaluation --- see notes above */
         MemoryContext ecxt_per_query_memory;
@@ -179,8 +181,8 @@ typedef struct ProjectionInfo
         NodeTag                type;
         List                   *pi_targetlist;
         ExprContext         *pi_exprContext;
-        TupleTableSlot         *pi_slot;
-        ExprDoneCond         *pi_itemIsDone;
+        struct TupleTableSlot         *pi_slot;
+        enum ExprDoneCond         *pi_itemIsDone;
         bool                pi_isVarList;
         int                   *pi_varSlotOffsets;
         int                 *pi_varNumbers;
@@ -218,7 +220,7 @@ typedef struct JunkFilter
         List           *jf_targetList;
         TupleDesc        jf_cleanTupType;
         AttrNumber *jf_cleanMap;
-        TupleTableSlot *jf_resultSlot;
+        struct TupleTableSlot *jf_resultSlot;
 } JunkFilter;
 
 
@@ -261,14 +263,14 @@ typedef struct ResultRelInfo
 	int                     ri_NumIndices;
 	RelationPtr             ri_IndexRelationDescs;
 	struct IndexInfo        **ri_IndexRelationInfo;
-	TriggerDesc             *ri_TrigDesc;
+	struct TriggerDesc             *ri_TrigDesc;
 	FmgrInfo                *ri_TrigFunctions;
 	struct Instrumentation  *ri_TrigInstrument;
 	List                    **ri_ConstraintExprs;
 	JunkFilter              *ri_junkFilter;
 	ProjectionInfo          *ri_projectReturning;
 	int                     tupdesc_match;
-	MemTupleBinding         *mt_bind;
+	struct MemTupleBinding         *mt_bind;
 
 	struct AppendOnlyInsertDescData *ri_aoInsertDesc;
 	struct AOCSInsertDescData       *ri_aocsInsertDesc;
@@ -276,152 +278,8 @@ typedef struct ResultRelInfo
 	int                     ri_aosegno;
 	uint64                  ri_aoprocessed; /* tuples processed for AO */
 	struct AttrMap			*ri_partInsertMap;
-	TupleTableSlot			*ri_partSlot;
+	struct TupleTableSlot			*ri_partSlot;
 } ResultRelInfo;
-
-/* ----------------
- * MPP Worker Process information
- *
- * This structure represents the global information about a worker process.
- * It is constructed on the entry process (QD) and transmitted as part of
- * the global slice table to the involved QEs.  Note that this is an
- * immutable, fixed-size structure so it can be held in a contiguous
- * array. In the Slice node, however, it is held in a List.
- * ----------------
- */
- typedef struct CdbProcess
- {
-        NodeTag type;
-        
-        /* These fields are established at connection (libpq) time and are
-         * available to the QD in PGconn structure associated with connected
-         * QE.  It needs to be explicitly transmitted to QE's,  however,
-         */
-
-        char *listenerAddr; /* Interconnect listener IPv4 address, a C-string */
-
-        int listenerPort; /* Interconnect listener port */
-        int pid; /* Backend PID of the process. */
-        
-        /* Unclear about why we need these, however, it is no trouble to carry
-         * them.
-         */
-        
-        int contentid;
-        int routeid;
-        
- } CdbProcess;
-
-/* ----------------
- * MPP Plan Slice information
- *
- * These structures summarize how a plan tree is sliced up into separate
- * units of execution or slices. A slice will execute on a each worker within
- * a gang of processes. Some gangs have a worker process on each of several
- * databases, others have a single worker.
- * ----------------
- */
-typedef struct Slice
-{
-	NodeTag type;
-        
-	int sliceIndex;		/*
-						 * The index in the global slice table of this
-						 * slice.  The root slice of the main plan is
-						 * always 0. Slices that have senders at their
-						 * local root have a sliceIndex equal to the
-						 * motionID of their sender Motion.
-						 *
-						 * Undefined slices should have this set to
-						 * -1.
-						 */
-        
-	int rootIndex;		/*
-						 * The root slice of the slice tree of which
-						 * this slice is a part.
-						 */
-                                                        
-	GangType gangType;	/* What kind of gang does this slice need? */
-        
-        int gangSize;                        /* How many gang members needed?
-                                                         *
-                                                         * This may seem redundant, but it is set before
-                                                         * the process lists below and used to decide how
-                                                         * to initialize them.
-                                                         */
-        int numGangMembersToBeActive; /* how many of the gang members will actually be used?
-                                       *  This takes into account directDispatch information
-                                       */
-
-
-        /**
-         * directDispatch->isDirectDispatch should ONLY be set for a slice when it requires an n-gang.
-         */
-        DirectDispatchInfo directDispatch;
-
-	struct Gang *primaryGang;
-        
-	int          primary_gang_id; /* tell dispatch agents which gang we're talking about.*/
-
-                                                        
-	int         parentIndex;	/*
-								 * the index of parent in global slice table (origin 0)
-								 * or -1 if this is root slice.
-								 */
-                                                        
-	List *children;				/*
-								 * An integer list of indices in the global slice
-								 * table (origin  0) of the child slices of
-								 * this slice, or -1 if this is a leaf slice.
-								 * A child slice corresponds to a receiving
-								 * motion in this slice.
-								 */
-        
-	List *primaryProcesses;		/*
-								 * A list of CDBProcess nodes corresponding to
-								 * the worker processes allocated to implement
-								 * this plan slice.
-								 *
-								 * The number of processes must agree with the
-								 * the plan slice to be implemented.  In MPP 2
-								 * the possibilities are 1 for a slice that
-								 * operates on a single stream of tuples (e.g.,
-								 * the receiver of a fixed motion, a 1-gang), or
-								 * the number of segments (e.g., a parallel
-								 * operation or the receiver of the results of a
-								 * parallel operation, an N-gang).
-								 *
-								 * The processes of an N-gang must be in hash
-								 * value order -- a hash value of H used to direct
-								 * an input tuple to this slice will direct it to
-								 * the H+1st process in the list.
-								 */
-} Slice;
-
-/* The SliceTable is a list of Slice structures organized into root slices
- * and motion slices as follows:
- *
- * Slice 0 is the root slice of plan as a whole.
- * Slices 1 through nMotion are motion slices with a sending motion at
- *  the root of the slice.
- * Slices nMotion+1 and on are root slices of initPlans.
- *
- * There may be unused slices in case the plan contains subplans that
- * are  not initPlans.  (This won't happen unless MPP decides to support
- * subplans similarly to PostgreSQL, which isn't the current plan.)
- *
- */
-typedef struct SliceTable
-{
-	NodeTag type;
-        
-	int	nMotions;				/* The number Motion nodes in the entire plan */
-	int nSubplans;				/* The number of subplan slices allocated */
-	int localSlice;				/* Index of the slice to execute. */
-	List *slices;				/* List of slices */
-    bool    doInstrument;		/* true => collect stats for EXPLAIN ANALYZE */
-	uint32 ic_instance_id;
-} SliceTable;
 
 typedef struct ShareNodeEntry
 {
@@ -454,8 +312,8 @@ typedef struct EState
 
 	/* Basic state for all query types: */
 	ScanDirection es_direction; /* current scan direction */
-	Snapshot        es_snapshot;        /* time qual to use */
-	Snapshot        es_crosscheck_snapshot; /* crosscheck time qual for RI */
+	struct SnapshotData        *es_snapshot;        /* time qual to use */
+	struct SnapshotData        *es_crosscheck_snapshot; /* crosscheck time qual for RI */
 	List	   *es_range_table; /* List of RangeTblEntry */
 
 	/* Info about target table for insert/update/delete queries: */
@@ -470,7 +328,7 @@ typedef struct EState
 	/* AO fileseg info for target relation */
 	List                *es_result_aosegnos;
         
-	TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
+	struct TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
 
 	/* Stuff used for SELECT INTO: */
 	Relation	es_into_relation_descriptor;
@@ -478,7 +336,7 @@ typedef struct EState
 
 	ItemPointerData es_into_relation_last_heap_tid;
 
-	MirroredBufferPoolBulkLoadInfo es_into_relation_bulkloadinfo;
+	struct MirroredBufferPoolBulkLoadInfo *es_into_relation_bulkloadinfo;
 
 	/* Parameter info: */
 	ParamListInfo es_param_list_info;        /* values of external params */
@@ -487,7 +345,7 @@ typedef struct EState
 	/* Other working state: */
 	MemoryContext es_query_cxt; /* per-query context in which EState lives */
 
-	TupleTable        es_tupleTable;        /* Array of TupleTableSlots */
+	struct TupleTableData        *es_tupleTable;        /* Array of TupleTableSlots */
 
 	uint64                es_processed;        /* # of tuples processed */
 	Oid                        es_lastoid;                /* last oid processed (by INSERT) */
@@ -583,7 +441,7 @@ typedef struct TupleHashTableData *TupleHashTable;
 typedef struct TupleHashEntryData
 {
 	/* firstTuple must be the first field in this struct! */
-	MemTuple firstTuple;		/* copy of first tuple in this group */
+	struct MemTupleData *firstTuple;		/* copy of first tuple in this group */
 	/* there may be additional data beyond the end of this struct */
 } TupleHashEntryData;                        /* VARIABLE LENGTH STRUCT */
 
@@ -597,8 +455,8 @@ typedef struct TupleHashTableData
 	MemoryContext tablecxt;		/* memory context containing table */
 	MemoryContext tempcxt;		/* context for function evaluations */
 	Size		entrysize;		/* actual size to make each hash entry */
-	TupleTableSlot *tableslot;	/* slot for referencing table entries */
-	TupleTableSlot *inputslot;	/* current input tuple's slot */
+	struct TupleTableSlot *tableslot;	/* slot for referencing table entries */
+	struct TupleTableSlot *inputslot;	/* current input tuple's slot */
 } TupleHashTableData;
 
 typedef HASH_SEQ_STATUS TupleHashIterator;
@@ -645,34 +503,6 @@ static inline void cxt_free(void *manager, void *pointer)
 		pfree(pointer);
 }
 
-#if 0
-/*
- * <= temporarily removed =>
- *
- * This code is unused and depends on unshipped headers 
- */
-
-static inline void *chunkbuf_alloc(void *manager, Size len)
-{
-        return CdbChunkBuf_Alloc((CdbChunkBuf *)manager, len);
-}
-
-static inline void chunkbuf_free(void *manager, void *pointer)
-{
-    UnusedArg(manager);
-    UnusedArg(pointer);
-        /* no op */
-}
-
-/*
- * <= temporarily removed =>
- */
-#endif
-
-static inline void *mpool_cxt_alloc(void *manager, Size len)
-{
-	return mpool_alloc((MPool *)manager, len);
-}
 
 
 /* ----------------------------------------------------------------
@@ -888,7 +718,7 @@ typedef struct SubPlanState
 	List           *args;                        /* states of argument expression(s) */
 	bool                needShutdown;        /* TRUE = need to shutdown subplan */
 
-	MemTuple        curTuple;                /* copy of most recent tuple from subplan */
+	struct MemTupleData *       curTuple;                /* copy of most recent tuple from subplan */
 	/* these are used when hashing the subselect's output: */
 	ProjectionInfo *projLeft;        /* for projecting lefthand exprs */
 	ProjectionInfo *projRight;        /* for projecting subselect output */
@@ -1126,8 +956,8 @@ typedef struct PlanState
         /*
          * Other run-time state needed by most if not all node types.
          */
-        TupleTableSlot *ps_OuterTupleSlot;        /* slot for current "outer" tuple */
-        TupleTableSlot *ps_ResultTupleSlot; /* slot for my result tuples */
+        struct TupleTableSlot *ps_OuterTupleSlot;        /* slot for current "outer" tuple */
+        struct TupleTableSlot *ps_ResultTupleSlot; /* slot for my result tuples */
         ExprContext *ps_ExprContext;        /* node's expression-evaluation context */
         ProjectionInfo *ps_ProjInfo;        /* info for doing tuple projection */
 
@@ -1228,7 +1058,7 @@ typedef struct RepeatState
         PlanState        ps;                                /* its first field is NodeTag */
 
         bool repeat_done;           /* are we done? */
-        TupleTableSlot *slot;       /* The current tuple */
+        struct TupleTableSlot *slot;       /* The current tuple */
         int repeat_count;           /* The number of repeats for the current tuple */
         ExprState *expr_state;      /* The state to evaluate the expression */
 } RepeatState;
@@ -1307,8 +1137,8 @@ typedef struct ScanState
 {
         PlanState        ps;                                /* its first field is NodeTag */
         Relation        ss_currentRelation;
-        HeapScanDesc ss_currentScanDesc;
-        TupleTableSlot *ss_ScanTupleSlot;
+        struct HeapScanDescData * ss_currentScanDesc;
+        struct TupleTableSlot *ss_ScanTupleSlot;
 
         int scan_state;
 
@@ -1376,7 +1206,7 @@ typedef struct IndexScanState
         bool                iss_RuntimeKeysReady;
         ExprContext *iss_RuntimeContext;
         Relation        iss_RelationDesc;
-        IndexScanDesc iss_ScanDesc;
+        struct IndexScanDescData *iss_ScanDesc;
 } IndexScanState;
 
 /* ----------------
@@ -1408,7 +1238,7 @@ typedef struct BitmapIndexScanState
         bool                biss_RuntimeKeysReady;
         ExprContext *biss_RuntimeContext;
         Relation        biss_RelationDesc;
-        IndexScanDesc biss_ScanDesc;
+        struct IndexScanDescData *biss_ScanDesc;
 } BitmapIndexScanState;
 
 /* ----------------
@@ -1424,7 +1254,7 @@ typedef struct BitmapHeapScanState
         ScanState        ss;                                /* its first field is NodeTag */
         List           *bitmapqualorig;
         Node  *tbm;
-        TBMIterateResult *tbmres;
+        struct TBMIterateResult *tbmres;
 } BitmapHeapScanState;
 
 /* ----------------
@@ -1443,7 +1273,7 @@ typedef struct BitmapAppendOnlyScanState
 	struct AOCSFetchDescData *baos_currentAOCSFetchDesc;
 	List	   *baos_bitmapqualorig;
 	Node  		*baos_tbm;
-	TBMIterateResult *baos_tbmres;
+	struct TBMIterateResult *baos_tbmres;
 	bool		baos_gotpage;
 	int			baos_cindex;
 	bool		baos_lossy;
@@ -1551,7 +1381,7 @@ typedef struct ValuesScanState
 typedef struct ExternalScanState
 {
         ScanState        ss;
-        FileScanDesc        ess_ScanDesc;
+        struct FileScanDescData        *ess_ScanDesc;
 } ExternalScanState;
 
 /* ----------------
@@ -1619,7 +1449,7 @@ typedef struct NestLoopState
         bool                reset_inner; /*CDB-OLAP*/
         bool                require_inner_reset; /*CDB-OLAP*/
 
-        TupleTableSlot *nl_NullInnerTupleSlot;
+        struct TupleTableSlot *nl_NullInnerTupleSlot;
 } NestLoopState;
 
 /* ----------------
@@ -1654,11 +1484,11 @@ typedef struct MergeJoinState
         bool                mj_FillInner;
         bool                mj_MatchedOuter;
         bool                mj_MatchedInner;
-        TupleTableSlot *mj_OuterTupleSlot;
-        TupleTableSlot *mj_InnerTupleSlot;
-        TupleTableSlot *mj_MarkedTupleSlot;
-        TupleTableSlot *mj_NullOuterTupleSlot;
-        TupleTableSlot *mj_NullInnerTupleSlot;
+        struct TupleTableSlot *mj_OuterTupleSlot;
+        struct TupleTableSlot *mj_InnerTupleSlot;
+        struct TupleTableSlot *mj_MarkedTupleSlot;
+        struct TupleTableSlot *mj_NullOuterTupleSlot;
+        struct TupleTableSlot *mj_NullInnerTupleSlot;
         ExprContext *mj_OuterEContext;
         ExprContext *mj_InnerEContext;
         bool                prefetch_inner; /* MPP-3300 */
@@ -1706,10 +1536,10 @@ typedef struct HashJoinState
         List           *hj_OuterHashKeys;                /* list of ExprState nodes */
         List           *hj_InnerHashKeys;                /* list of ExprState nodes */
         List           *hj_HashOperators;                /* list of operator OIDs */
-        TupleTableSlot *hj_OuterTupleSlot;
-        TupleTableSlot *hj_HashTupleSlot;
-        TupleTableSlot *hj_NullInnerTupleSlot;
-        TupleTableSlot *hj_FirstOuterTupleSlot;
+        struct TupleTableSlot *hj_OuterTupleSlot;
+        struct TupleTableSlot *hj_HashTupleSlot;
+        struct TupleTableSlot *hj_NullInnerTupleSlot;
+        struct TupleTableSlot *hj_FirstOuterTupleSlot;
         bool                hj_NeedNewOuter;
         bool                hj_MatchedOuter;
         bool                hj_OuterNotEmpty;
@@ -1799,7 +1629,7 @@ typedef struct GroupState
         FmgrInfo   *eqfunctions;        /* per-field lookup data for equality fns */
         bool                grp_done;                /* indicates completion of Group scan */
 
-        MemTuple        grp_firstTuple; /* copy of first tuple of current group */
+        struct MemTupleData *       grp_firstTuple; /* copy of first tuple of current group */
         bool        is_passthru;     /* indicate if grp_firstTuple is a pass-thru tuple. */
 
         /*
@@ -1845,10 +1675,10 @@ typedef struct AggState
 
         /* these fields are used in AGG_PLAIN and AGG_SORTED modes: */
         AggStatePerGroup pergroup;        /* per-Aggref-per-group working state */
-        MemTuple        grp_firstTuple; /* copy of first tuple of current group */
+        struct MemTupleData *       grp_firstTuple; /* copy of first tuple of current group */
         /* these fields are used in AGG_HASHED mode: */
         TupleHashTable hashtable;        /* hash table with one entry per group */
-        TupleTableSlot *hashslot;        /* slot for loading hash table */
+        struct TupleTableSlot *hashslot;        /* slot for loading hash table */
         List           *hash_needed;        /* list of columns needed in hash table */
         TupleHashIterator hashiter; /* for iterating through hash table */
         
@@ -1883,10 +1713,10 @@ typedef struct WindowState
         PlanState        ps;                                /* its first field is NodeTag */
         List           *wrxstates;                /* all WindowRefExprState nodes in targetlist */        
         FmgrInfo   *eqfunctions;        /* equality fns for partition key */
-        TupleTableSlot *priorslot;        /* place for prior tuple */
-        TupleTableSlot *curslot;        /* current tuple */
-        TupleTableSlot *spare;        /* current tuple */
-        TupleTableSlot *saveslot; /* convenient place holder */
+        struct TupleTableSlot *priorslot;        /* place for prior tuple */
+        struct TupleTableSlot *curslot;        /* current tuple */
+        struct TupleTableSlot *spare;        /* current tuple */
+        struct TupleTableSlot *saveslot; /* convenient place holder */
 
         /* meta data about the current slot */
         bool cur_slot_is_new; /* is this a slot from a buffer or outer plan */
@@ -2014,7 +1844,7 @@ typedef struct LimitState
         bool                noCount;                /* if true, ignore count */
         LimitStateCond lstate;                /* state machine status, as above */
         int64                position;                /* 1-based index of last tuple returned */
-        TupleTableSlot *subSlot;        /* tuple last obtained from subplan */
+        struct TupleTableSlot *subSlot;        /* tuple last obtained from subplan */
 } LimitState;
 
 typedef enum MotionStateType

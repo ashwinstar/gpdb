@@ -33,6 +33,7 @@
 #include "executor/instrument.h"
 #include "executor/nodeBitmapOr.h"
 #include "miscadmin.h"
+#include "nodes/tidbitmap.h"
 
 
 /* ----------------------------------------------------------------

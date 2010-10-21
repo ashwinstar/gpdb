@@ -3393,7 +3393,6 @@ void readPlanInfo(Plan *local_node)
     READ_NODE_FIELD(righttree);
     READ_NODE_FIELD(initPlan);
 
-    READ_INT_FIELD(backoff_weight);
     /*
      * Fields that are used only by the qDisp don't need to be serialized for
      * dispatching to qExecs (in outfast.c), and are not read here:

@@ -108,6 +108,12 @@ static HashAggEntry *lookup_agg_hash_entry(AggState *aggstate, void *input_recor
 static void agg_hash_table_stat_upd(HashAggTable *ht);
 static void reset_agg_hash_table(AggState *aggstate);
 static bool agg_hash_reload(AggState *aggstate);
+static inline void *mpool_cxt_alloc(void *manager, Size len);
+
+static inline void *mpool_cxt_alloc(void *manager, Size len)
+{
+ 	return mpool_alloc((MPool *)manager, len);
+}
 
 /* Function: calc_hash_value
  *

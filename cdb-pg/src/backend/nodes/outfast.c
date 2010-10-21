@@ -34,11 +34,8 @@
 #include "lib/stringinfo.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
-#include "nodes/execnodes.h"
 #include "nodes/relation.h"
 #include "utils/datum.h"
-#include "cdb/cdbvars.h"
-
 
 /*
  * Macros to simplify output of different kinds of fields.	Use these
@@ -273,6 +270,12 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_BITMAPSET_FIELD(allParam);
 
 	WRITE_INT_FIELD(nParamExec);
+	
+	WRITE_NODE_FIELD(flow);
+	WRITE_INT_FIELD(dispatch);
+	WRITE_BOOL_FIELD(directDispatch.isDirectDispatch);
+	WRITE_NODE_FIELD(directDispatch.contentIds);
+	
 	WRITE_INT_FIELD(nMotionNodes);
 	WRITE_INT_FIELD(nInitPlans);
 
@@ -282,13 +285,6 @@ _outPlanInfo(StringInfo str, Plan *node)
     WRITE_NODE_FIELD(righttree);
     WRITE_NODE_FIELD(initPlan);
 
-    WRITE_INT_FIELD(backoff_weight);
-    /*
-     * Fields that are used only by the qDisp don't need to be serialized for
-     * dispatching to qExecs:
-     *      flow
-     *      dispatch
-     */
 }
 
 /*
@@ -4006,7 +4002,7 @@ char *
 nodeToBinaryStringFast(void *obj, int * length)
 {
 	StringInfoData str;
-	int16 tg = 0xDEAD;
+	int16 tg = (int16) 0xDEAD;
 
 	/* see stringinfo.h for an explanation of this maneuver */
 	initStringInfoOfSize(&str, 4096);

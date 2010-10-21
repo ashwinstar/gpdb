@@ -2098,13 +2098,14 @@ _equalGroupingFunc(GroupingFunc *a, GroupingFunc *b)
 }
 
 static bool
-_equalGrouping(Grouping *a, Grouping *b)
+_equalGrouping(Grouping *a __attribute__((unused)), Grouping *b __attribute__((unused)))
+
 {
 	return true;
 }
 
 static bool
-_equalGroupId(GroupId *a, GroupId *b)
+_equalGroupId(GroupId *a __attribute__((unused)), GroupId *b __attribute__((unused)))
 {
 	return true;
 }

@@ -17,10 +17,10 @@
 #include <math.h>
 
 #include "nodes/parsenodes.h"
-
-#include "nodes/execnodes.h" /* Just for Slice and SliceTable */
+#include "nodes/plannodes.h"
 #include "nodes/readfuncs.h"
-
+#include "nodes/relation.h"
+#include "catalog/pg_class.h"
 
 
 /*
@@ -285,7 +285,7 @@ _readGroupingFunc(const char ** str)
 }
 
 static Grouping *
-_readGrouping(const char ** str)
+_readGrouping(const char ** str __attribute__((unused)))
 {
 	READ_LOCALS(Grouping);
 
@@ -293,7 +293,7 @@ _readGrouping(const char ** str)
 }
 
 static GroupId *
-_readGroupId(const char ** str)
+_readGroupId(const char ** str __attribute__((unused)))
 {
 	READ_LOCALS(GroupId);
 
@@ -3240,6 +3240,12 @@ void readPlanInfo(const char ** str, Plan *local_node)
 	READ_BITMAPSET_FIELD(extParam);
 	READ_BITMAPSET_FIELD(allParam);
 	READ_INT_FIELD(nParamExec);
+	
+	READ_NODE_FIELD(flow);
+	READ_INT_FIELD(dispatch);
+	READ_BOOL_FIELD(directDispatch.isDirectDispatch);
+	READ_NODE_FIELD(directDispatch.contentIds);
+	
 	READ_INT_FIELD(nMotionNodes);
 	READ_INT_FIELD(nInitPlans);
 	READ_NODE_FIELD(sliceTable);
@@ -3248,13 +3254,6 @@ void readPlanInfo(const char ** str, Plan *local_node)
     READ_NODE_FIELD(righttree);
     READ_NODE_FIELD(initPlan);
 
-    READ_INT_FIELD(backoff_weight);
-    /*
-     * Fields that are used only by the qDisp don't need to be serialized for
-     * dispatching to qExecs (in outfast.c), and are not read here:
-     *      flow
-     *      dispatch
-     */
 }
 
 void readJoinInfo(const char ** str, Join *local_node)
@@ -4185,7 +4184,7 @@ readNodeBinary(const char ** str)
 }
 
 Node *
-readNodeFromBinaryString(const char * str, int len)
+readNodeFromBinaryString(const char * str, int len __attribute__((unused)))
 {
 	Node * node;
 	int16 tg = 0;

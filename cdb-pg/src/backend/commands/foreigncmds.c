@@ -37,7 +37,7 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-
+#include "access/genam.h"
 
 /*
  * Convert a DefElem list to the text array format that is used in

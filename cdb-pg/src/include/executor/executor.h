@@ -334,13 +334,7 @@ extern ExprContext *CreateExprContext(EState *estate);
 extern ExprContext *CreateStandaloneExprContext(void);
 extern void FreeExprContext(ExprContext *econtext);
 extern void ReScanExprContext(ExprContext *econtext);
-
-static inline void ResetExprContext(ExprContext *econtext)
-{
-	MemoryContext memctxt = econtext->ecxt_per_tuple_memory;
-	if(memctxt->allBytesAlloc - memctxt->allBytesFreed > 50000)
-		MemoryContextReset(memctxt);
-}
+extern void ResetExprContext(ExprContext *econtext);
 
 extern ExprContext *MakePerTupleExprContext(EState *estate);
 

@@ -21,7 +21,7 @@ extern int ExecHashRowSize(int tupwidth);
 
 extern int	ExecCountSlotsHash(Hash *node);
 extern HashState *ExecInitHash(Hash *node, EState *estate, int eflags);
-extern TupleTableSlot *ExecHash(HashState *node);
+extern struct TupleTableSlot *ExecHash(HashState *node);
 extern Node *MultiExecHash(HashState *node);
 extern void ExecEndHash(HashState *node);
 extern void ExecReScanHash(HashState *node, ExprContext *exprCtxt);
@@ -29,7 +29,7 @@ extern void ExecReScanHash(HashState *node, ExprContext *exprCtxt);
 extern HashJoinTable ExecHashTableCreate(Hash *node, List *hashOperators);
 extern void ExecHashTableDestroy(HashJoinTable hashtable);
 extern void ExecHashTableInsert(PlanState *ps, HashJoinTable hashtable,
-					TupleTableSlot *slot,
+					struct TupleTableSlot *slot,
 					uint32 hashvalue);
 extern bool ExecHashGetHashValue(HashJoinTable hashtable,
 					 ExprContext *econtext,

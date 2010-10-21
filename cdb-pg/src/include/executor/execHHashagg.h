@@ -18,6 +18,7 @@
 
 #include "executor/nodeAgg.h" /* Must see AggStatePerGroupData. */
 #include "cdb/cdbpublic.h"    /* CdbExplain_Agg / CdbCellBuf */
+#include "utils/memutils.h"
 
 typedef uint32 HashKey;
 typedef struct BatchFileInfo BatchFileInfo;
@@ -128,7 +129,7 @@ typedef struct HashAggTableSizes
  */
 typedef struct GroupKeysAndAggs
 {
-	MemTuple tuple; /* tuple that contains grouping keys */
+	struct MemTupleData *tuple; /* tuple that contains grouping keys */
 	AggStatePerGroup aggs; /* the location for the first aggregate values. */
 } GroupKeysAndAggs;
 
@@ -203,7 +204,7 @@ typedef struct HashAggTable
 	uint32 num_overflows; /* number of times hash table overflows */
 	uint64 total_buckets; /* total number of buckets allocated */
 	bool is_spilling; /* indicate that spilling happened for this batch. */
-	TupleTableSlot *prev_slot; /* a slot that is read previously. */
+	struct TupleTableSlot *prev_slot; /* a slot that is read previously. */
     CdbExplain_Agg      chainlength;
 } HashAggTable;
 

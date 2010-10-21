@@ -18,7 +18,7 @@
 
 extern int	ExecCountSlotsSort(Sort *node);
 extern SortState *ExecInitSort(Sort *node, EState *estate, int eflags);
-extern TupleTableSlot *ExecSort(SortState *node);
+extern struct TupleTableSlot *ExecSort(SortState *node);
 extern void ExecEndSort(SortState *node);
 extern void ExecSortMarkPos(SortState *node);
 extern void ExecSortRestrPos(SortState *node);

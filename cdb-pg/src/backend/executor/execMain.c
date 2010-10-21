@@ -3731,7 +3731,10 @@ EvalPlanQualStart(evalPlanQual *epq, EState *estate, evalPlanQual *priorepq)
 	epqstate->es_into_relation_descriptor = estate->es_into_relation_descriptor;
 	epqstate->es_into_relation_is_bulkload = estate->es_into_relation_is_bulkload;
 	epqstate->es_into_relation_last_heap_tid = estate->es_into_relation_last_heap_tid;
-	epqstate->es_into_relation_bulkloadinfo = estate->es_into_relation_bulkloadinfo;
+	
+	epqstate->es_into_relation_bulkloadinfo = (struct MirroredBufferPoolBulkLoadInfo *) palloc0(sizeof(MirroredBufferPoolBulkLoadInfo));
+	memcpy(epqstate->es_into_relation_bulkloadinfo, estate->es_into_relation_bulkloadinfo, sizeof(MirroredBufferPoolBulkLoadInfo));
+	
 	epqstate->es_param_list_info = estate->es_param_list_info;
 	if (estate->es_plannedstmt->planTree->nParamExec > 0)
 		epqstate->es_param_exec_vals = (ParamExecData *)
@@ -4164,16 +4167,16 @@ OpenIntoRel(QueryDesc *queryDesc)
 								&relFileNode,
 								&persistentTid,
 								persistentSerialNum,
-								&estate->es_into_relation_bulkloadinfo);
+								estate->es_into_relation_bulkloadinfo);
 	}
 	else
 	{
 		/*
 		 * Save this information for tracing in CloseIntoRel.
 		 */
-		estate->es_into_relation_bulkloadinfo.relFileNode = relFileNode;
-		estate->es_into_relation_bulkloadinfo.persistentTid = persistentTid;
-		estate->es_into_relation_bulkloadinfo.persistentSerialNum = persistentSerialNum;
+		estate->es_into_relation_bulkloadinfo->relFileNode = relFileNode;
+		estate->es_into_relation_bulkloadinfo->persistentTid = persistentTid;
+		estate->es_into_relation_bulkloadinfo->persistentSerialNum = persistentSerialNum;
 
 		if (Debug_persistent_print)
 		{
@@ -4249,7 +4252,7 @@ CloseIntoRel(QueryDesc *queryDesc)
 
 					bulkLoadFinished = 
 						MirroredBufferPool_EvaluateBulkLoadFinish(
-									&estate->es_into_relation_bulkloadinfo);
+									estate->es_into_relation_bulkloadinfo);
 
 					if (bulkLoadFinished)
 					{
@@ -4267,12 +4270,12 @@ CloseIntoRel(QueryDesc *queryDesc)
 					 * Copy primary data to mirror and flush.
 					 */
 					MirroredBufferPool_CopyToMirror(
-							&estate->es_into_relation_bulkloadinfo.relFileNode,
+							&estate->es_into_relation_bulkloadinfo->relFileNode,
 							estate->es_into_relation_descriptor->rd_rel->relname.data,
-							&estate->es_into_relation_bulkloadinfo.persistentTid,
-							estate->es_into_relation_bulkloadinfo.persistentSerialNum,
-							estate->es_into_relation_bulkloadinfo.mirrorDataLossTrackingState,
-							estate->es_into_relation_bulkloadinfo.mirrorDataLossTrackingSessionNum,
+							&estate->es_into_relation_bulkloadinfo->persistentTid,
+							estate->es_into_relation_bulkloadinfo->persistentSerialNum,
+							estate->es_into_relation_bulkloadinfo->mirrorDataLossTrackingState,
+							estate->es_into_relation_bulkloadinfo->mirrorDataLossTrackingSessionNum,
 							numOfBlocks,
 							&mirrorDataLossOccurred);
 				}
@@ -4283,11 +4286,11 @@ CloseIntoRel(QueryDesc *queryDesc)
 				{
 					elog(Persistent_DebugPrintLevel(),
 						 "CloseIntoRel %u/%u/%u: did not bypass the WAL -- did not use bulk load, persistent serial num " INT64_FORMAT ", TID %s",
-						 estate->es_into_relation_bulkloadinfo.relFileNode.spcNode,
-						 estate->es_into_relation_bulkloadinfo.relFileNode.dbNode,
-						 estate->es_into_relation_bulkloadinfo.relFileNode.relNode,
-						 estate->es_into_relation_bulkloadinfo.persistentSerialNum,
-						 ItemPointerToString(&estate->es_into_relation_bulkloadinfo.persistentTid));
+						 estate->es_into_relation_bulkloadinfo->relFileNode.spcNode,
+						 estate->es_into_relation_bulkloadinfo->relFileNode.dbNode,
+						 estate->es_into_relation_bulkloadinfo->relFileNode.relNode,
+						 estate->es_into_relation_bulkloadinfo->persistentSerialNum,
+						 ItemPointerToString(&estate->es_into_relation_bulkloadinfo->persistentTid));
 				}
 			}
 		}

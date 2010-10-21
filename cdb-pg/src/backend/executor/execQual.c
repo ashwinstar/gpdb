@@ -4931,7 +4931,7 @@ ExecProject(ProjectionInfo *projInfo, ExprDoneCond *isDone)
 						   projInfo->pi_exprContext,
 						   slot_get_values(slot),
 						   slot_get_isnull(slot),
-						   projInfo->pi_itemIsDone,
+						   (ExprDoneCond *) projInfo->pi_itemIsDone,
 						   isDone))
 			ExecStoreVirtualTuple(slot);
 	}

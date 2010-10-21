@@ -32,7 +32,7 @@
 #include "executor/execdebug.h"
 #include "executor/instrument.h"
 #include "executor/nodeBitmapAnd.h"
-
+#include "nodes/tidbitmap.h"
 
 /* ----------------------------------------------------------------
  *		ExecInitBitmapAnd

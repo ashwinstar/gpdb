@@ -10,6 +10,8 @@
 #ifndef FILEREPDEFS_H
 #define FILEREPDEFS_H
 
+#include "storage/relfilenode.h"
+
 typedef enum MirrorDataLossTrackingState {
 	MirrorDataLossTrackingState_MirrorNotConfigured=0,
 	

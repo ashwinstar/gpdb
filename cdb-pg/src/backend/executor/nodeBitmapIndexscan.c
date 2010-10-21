@@ -31,7 +31,7 @@
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
-
+#include "nodes/tidbitmap.h"
 
 /* ----------------------------------------------------------------
  *		MultiExecBitmapIndexScan(node)

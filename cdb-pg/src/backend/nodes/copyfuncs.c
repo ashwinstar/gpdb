@@ -112,7 +112,6 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_SCALAR_FIELD(directDispatch.isDirectDispatch);
 	COPY_NODE_FIELD(directDispatch.contentIds);
 
-	COPY_SCALAR_FIELD(backoff_weight);
 }
 
 /*
@@ -153,7 +152,9 @@ _copyPlannedStmt(PlannedStmt *from)
 	else
 		newnode->intoPolicy = NULL;
 	COPY_NODE_FIELD(sliceTable);
-	
+
+	COPY_SCALAR_FIELD(backoff_weight);
+
 	return newnode;
 }
 

@@ -1985,18 +1985,18 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 	{
 		if (superuser())
 		{
-			queryDesc->plannedstmt->planTree->backoff_weight = BackoffSuperuserStatementWeight();					
+			queryDesc->plannedstmt->backoff_weight = BackoffSuperuserStatementWeight();					
 
 		} else if (ActivePortal)
 		{
-			queryDesc->plannedstmt->planTree->backoff_weight = ResourceQueueGetPriorityWeight(ActivePortal->queueId);					
+			queryDesc->plannedstmt->backoff_weight = ResourceQueueGetPriorityWeight(ActivePortal->queueId);					
 		}
 		else 
 		{
-			queryDesc->plannedstmt->planTree->backoff_weight = BackoffDefaultWeight();
+			queryDesc->plannedstmt->backoff_weight = BackoffDefaultWeight();
 		}
 
-		Assert(queryDesc->plannedstmt->planTree->backoff_weight > 0);
+		Assert(queryDesc->plannedstmt->backoff_weight > 0);
 	}
 	
 	if (!cdbpathlocus_querysegmentcatalogs && fire_triggers)

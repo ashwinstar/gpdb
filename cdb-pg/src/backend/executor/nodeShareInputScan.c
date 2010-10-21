@@ -30,6 +30,7 @@
 #include "miscadmin.h"
 
 #include "utils/debugbreak.h"
+#include "utils/tuplesort.h"
 
 static TupleTableSlot *ShareInputNext(ShareInputScanState *node);
 
