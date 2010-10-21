@@ -3101,56 +3101,77 @@ lreplace:;
 	if (resultRelationDesc->rd_att->constr)
 		ExecConstraints(resultRelInfo, slot, estate);
 
-	/*
-	 * replace the heap tuple
-	 *
-	 * Note: if es_crosscheck_snapshot isn't InvalidSnapshot, we check that
-	 * the row to be updated is visible to that snapshot, and throw a can't-
-	 * serialize error if not.	This is a special-case behavior needed for
-	 * referential integrity updates in serializable transactions.
-	 */
-	result = heap_update(resultRelationDesc, tupleid, tuple,
-						 &update_ctid, &update_xmax,
-						 estate->es_snapshot->curcid,
-						 estate->es_crosscheck_snapshot,
-						 true /* wait for commit */ );
-	switch (result)
+	if (!GpPersistent_IsPersistentRelation(resultRelationDesc->rd_id))
 	{
-		case HeapTupleSelfUpdated:
-			/* already deleted by self; nothing to do */
-			return;
+		/*
+		 * Normal UPDATE path.
+		 */
 
-		case HeapTupleMayBeUpdated:
-			break;
+		/*
+		 * replace the heap tuple
+		 *
+		 * Note: if es_crosscheck_snapshot isn't InvalidSnapshot, we check that
+		 * the row to be updated is visible to that snapshot, and throw a can't-
+		 * serialize error if not.	This is a special-case behavior needed for
+		 * referential integrity updates in serializable transactions.
+		 */
+		result = heap_update(resultRelationDesc, tupleid, tuple,
+							 &update_ctid, &update_xmax,
+							 estate->es_snapshot->curcid,
+							 estate->es_crosscheck_snapshot,
+							 true /* wait for commit */ );
+		switch (result)
+		{
+			case HeapTupleSelfUpdated:
+				/* already deleted by self; nothing to do */
+				return;
 
-		case HeapTupleUpdated:
-			if (IsXactIsoLevelSerializable)
-				ereport(ERROR,
-						(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-						 errmsg("could not serialize access due to concurrent update")));
-			else if (!ItemPointerEquals(tupleid, &update_ctid))
-			{
-				TupleTableSlot *epqslot;
+			case HeapTupleMayBeUpdated:
+				break;
 
-				epqslot = EvalPlanQual(estate,
-									   resultRelInfo->ri_RangeTableIndex,
-									   &update_ctid,
-									   update_xmax,
-									   estate->es_snapshot->curcid);
-				if (!TupIsNull(epqslot))
+			case HeapTupleUpdated:
+				if (IsXactIsoLevelSerializable)
+					ereport(ERROR,
+							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+							 errmsg("could not serialize access due to concurrent update")));
+				else if (!ItemPointerEquals(tupleid, &update_ctid))
 				{
-					*tupleid = update_ctid;
-					slot = ExecFilterJunk(estate->es_junkFilter, epqslot);
-					tuple = ExecFetchSlotHeapTuple(slot);
-					goto lreplace;
-				}
-			}
-			/* tuple already deleted; nothing to do */
-			return;
+					TupleTableSlot *epqslot;
 
-		default:
-			elog(ERROR, "unrecognized heap_update status: %u", result);
-			return;
+					epqslot = EvalPlanQual(estate,
+										   resultRelInfo->ri_RangeTableIndex,
+										   &update_ctid,
+										   update_xmax,
+										   estate->es_snapshot->curcid);
+					if (!TupIsNull(epqslot))
+					{
+						*tupleid = update_ctid;
+						slot = ExecFilterJunk(estate->es_junkFilter, epqslot);
+						tuple = ExecFetchSlotHeapTuple(slot);
+						goto lreplace;
+					}
+				}
+				/* tuple already deleted; nothing to do */
+				return;
+
+			default:
+				elog(ERROR, "unrecognized heap_update status: %u", result);
+				return;
+		}
+	}
+	else
+	{
+		HeapTuple persistentTuple;
+
+		/*
+		 * Persistent metadata path.
+		 */
+		persistentTuple = heap_copytuple(tuple);
+		persistentTuple->t_self = *tupleid;
+		
+		frozen_heap_inplace_update(resultRelationDesc, persistentTuple);
+
+		heap_freetuple(persistentTuple);
 	}
 
 	IncrReplaced();

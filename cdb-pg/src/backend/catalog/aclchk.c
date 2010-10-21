@@ -2040,6 +2040,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	bool		isNull;
 	Acl		   *acl;
 	Oid			ownerId;
+	bool		updating;
 
 	/*
 	 * Must get the relation's tuple from pg_class
@@ -2063,33 +2064,62 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	 * protected in this way.  Assume the view rules can take care of
 	 * themselves.	ACL_USAGE is if we ever have system sequences.
 	 */
-	if ((mask & (ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE)) &&
-		IsSystemClass(classForm) &&
-		classForm->relkind != RELKIND_VIEW &&
-		!has_rolcatupdate(roleid) &&
-		!allowSystemTableMods)
-	{
-#ifdef ACLDEBUG
-		elog(DEBUG2, "permission denied for system catalog update");
-#endif
-		mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE);
-	}
 
-	/* 
-	 * Deny even superusers with rolcatupdate permissions to modify the
-	 * persistent tables.  These tables are special and rely on precise
-	 * settings of the ctids within the tables, attempting to modify these
-	 * tables via INSERT/UPDATE/DELETE is a mistake.
-	 */
-	if ((mask & (ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE)) &&
-		GpPersistent_IsPersistentRelation(table_oid))
-	{
-#ifdef ACLDEBUG
-		elog(DEBUG2, "permission denied for persistent system catalog update");
-#endif
-		mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE);
-	}
+	updating = ((mask & (ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE)) != 0);
 
+	if (updating)
+	{
+		if (IsSystemClass(classForm) &&
+			classForm->relkind != RELKIND_VIEW &&
+			!has_rolcatupdate(roleid) &&
+			!allowSystemTableMods)
+		{
+#ifdef ACLDEBUG
+			elog(DEBUG2, "permission denied for system catalog update");
+#endif
+			mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE);
+		}
+
+		/* 
+		 * Deny even superusers with rolcatupdate permissions to modify the
+		 * persistent tables.  These tables are special and rely on precise
+		 * settings of the ctids within the tables, attempting to modify these
+		 * tables via INSERT/UPDATE/DELETE is a mistake.
+		 */
+		if (GpPersistent_IsPersistentRelation(table_oid))
+		{
+			if ((mask & ACL_UPDATE) &&
+				gp_permit_persistent_metadata_update)
+			{
+				// Let this UPDATE through.
+			}
+			else
+			{
+#ifdef ACLDEBUG
+				elog(DEBUG2, "permission denied for persistent system catalog update");
+#endif
+				mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE);
+			}
+		}
+
+		/*
+		 * And, gp_relation_node, too.
+		 */
+		if (table_oid == GpRelationNodeRelationId)
+		{
+			if (gp_permit_relation_node_change)
+			{
+				// Let this change through.
+			}
+			else
+			{
+#ifdef ACLDEBUG
+				elog(DEBUG2, "permission denied for gp_relation_node system catalog update");
+#endif
+				mask &= ~(ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_USAGE);
+			}
+		}
+	}
 	/*
 	 * Otherwise, superusers bypass all permission-checking.
 	 */

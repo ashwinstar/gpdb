@@ -138,6 +138,8 @@ extern bool Debug_bitmap_print_insert;
 extern bool Test_appendonly_override;
 extern bool	Test_enable_broken_quicklz3;
 extern bool gp_test_orientation_override;
+extern bool	gp_permit_persistent_metadata_update;
+extern bool gp_permit_relation_node_change;
 extern bool Test_checksum_override;
 extern int  Test_compresslevel_override;
 extern int	Test_blocksize_override;
