@@ -3467,7 +3467,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL,
 		},
 		&gp_max_csv_line_length,
-		64*1024, 32*1024, 1*1024*1024, NULL, NULL
+		1*1024*1024, 32*1024, 4*1024*1024, NULL, NULL
 	},
 
 	{
