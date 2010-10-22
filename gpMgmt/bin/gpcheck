@@ -484,7 +484,7 @@ def testApplianceOmreportVdisks(host):
 
 def testApplianceOmreportVersion(host):
 
-    expectedOmversion = "6.3.0"
+    expectedOmversion = gpcheck_config.dell_om_version
 
     if expectedOmversion != host.data.omreport.omversion:
         printError(host.hostname, "Version of omreport '%s' does not match expected version '%s'" % (host.data.omreport.omversion, expectedOmversion))
@@ -495,9 +495,9 @@ def testApplianceOmreportBios(host):
     biosVersion = None
 
     if host.is_a_master:
-        expectedBiosVersion = '2.1.9'
+        expectedBiosVersion = gpcheck_config.dell_bios_version_master
     else:
-        expectedBiosVersion = '1.3.6'
+        expectedBiosVersion = gpcheck_config.dell_bios_version_segment
 
     if 'Version' in host.data.omreport.bios:
         biosVersion = host.data.omreport.bios['Version']
@@ -541,7 +541,7 @@ def testApplianceGrub(host):
 
 def testApplianceBcu(host):
 
-    expectedFwversion = 'FCHBA2.2.0.1'
+    expectedFwversion = gpcheck_config.cna_firmware_version
 
     if host.data.bcu.firmware != expectedFwversion:
 
@@ -986,12 +986,12 @@ def testApplianceSwitches():
         switch = gpcheck_info.switches[s]
     
         if switch.category == 'Interconnect':
-            expected = '"v6.3.1a"'
+            expected = '"%s"' % gpcheck_config.brocade_switch_firmware_version
             if switch.versionstring != expected:
                 printError(switch.hostname, "Interconnect Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
 
         elif switch.category == 'Admin':
-            expected = "Allied Telesis AT-9924T-EMC - v1.2.0"
+            expected = "Allied Telesis AT-9924T-EMC - %s" % gpcheck_config.at_switch_firmware_version
             if switch.versionstring != expected:
                 printError(switch.hostname, "Admin Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
 
@@ -1017,7 +1017,14 @@ def populateGpCheckApplianceConfigParams():
 
     global gpcheck_config
 
-    requiredOptions = set(['perc_firmware_version', 'perc_driver_version'])
+    requiredOptions = set(['perc_firmware_version', 
+                            'perc_driver_version', 
+                            'dell_om_version', 
+                            'cna_firmware_version', 
+                            'dell_bios_version_master', 
+                            'dell_bios_version_segment',
+                            'brocade_switch_firmware_version',
+                            'at_switch_firmware_version'])
 
     for option in requiredOptions:
         if not config.has_option(gpcheck_config.gpcheck_config_version, option):
@@ -1026,7 +1033,13 @@ def populateGpCheckApplianceConfigParams():
 
     gpcheck_config.perc_firmware_version = config.get(gpcheck_config.gpcheck_config_version, 'perc_firmware_version')
     gpcheck_config.perc_driver_version = config.get(gpcheck_config.gpcheck_config_version, 'perc_driver_version')
-   
+    gpcheck_config.dell_om_version = config.get(gpcheck_config.gpcheck_config_version, 'dell_om_version')
+    gpcheck_config.cna_firmware_version = config.get(gpcheck_config.gpcheck_config_version, 'cna_firmware_version')
+    gpcheck_config.dell_bios_version_master = config.get(gpcheck_config.gpcheck_config_version, 'dell_bios_version_master')
+    gpcheck_config.dell_bios_version_segment = config.get(gpcheck_config.gpcheck_config_version, 'dell_bios_version_segment')
+    gpcheck_config.brocade_switch_firmware_version = config.get(gpcheck_config.gpcheck_config_version, 'brocade_switch_firmware_version')
+    gpcheck_config.at_switch_firmware_version = config.get(gpcheck_config.gpcheck_config_version, 'at_switch_firmware_version')
+
 
 def testAppliance():
 
