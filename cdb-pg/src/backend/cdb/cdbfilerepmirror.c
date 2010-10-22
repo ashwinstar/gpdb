@@ -1973,7 +1973,19 @@ FileRepMirror_RunConsumer(void)
 				}
 				else
 				{
-	
+					/*
+					 * files in pg_xlog may not be recycled due to reversing of primary/mirror roles
+					 */
+					if (unlink(newFileName) == 0)
+					{
+						char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+						
+						snprintf(tmpBuf, sizeof(tmpBuf), "unlink identifier '%s' ",
+								 newFileName);
+						
+						FileRep_InsertConfigLogEntry(tmpBuf);
+					}											
+					
 					errno = 0;
 					if (link(fileName, newFileName) < 0 && errno != ENOENT) 
 					{
