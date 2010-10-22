@@ -824,6 +824,8 @@ void PersistentFilespace_Created(
 
 	FilespaceDirEntry filespaceDirEntry;
 
+	PersistentFileSysObjStateChangeResult stateChangeResult;
+	
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
@@ -857,7 +859,8 @@ void PersistentFilespace_Created(
 			 filespaceOid,
 			 PersistentFileSysObjState_Name(filespaceDirEntry->state));
 
-	PersistentFileSysObj_StateChange(
+	stateChangeResult =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
@@ -872,10 +875,11 @@ void PersistentFilespace_Created(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent filespace directory: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
+		     "Persistent filespace directory: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
-			 ItemPointerToString(persistentTid));
+			 ItemPointerToString(persistentTid),
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 }
 
 /*
@@ -888,7 +892,7 @@ void PersistentFilespace_Created(
  * file-system delete will occur.  The flush guarantees the action will be retried after system
  * crash.
  */
-bool PersistentFilespace_MarkDropPending(
+PersistentFileSysObjStateChangeResult PersistentFilespace_MarkDropPending(
 	Oid 		filespaceOid,
 				/* The filespace OID for the drop. */
 
@@ -907,7 +911,7 @@ bool PersistentFilespace_MarkDropPending(
 
 	FilespaceDirEntry filespaceDirEntry;
 
-	bool result;
+	PersistentFileSysObjStateChangeResult stateChangeResult;
 	
 	if (Persistent_BeforePersistenceWork())
 	{	
@@ -938,7 +942,7 @@ bool PersistentFilespace_MarkDropPending(
 			 filespaceOid,
 			 PersistentFileSysObjState_Name(filespaceDirEntry->state));
 
-	result =
+	stateChangeResult =
 		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
@@ -954,13 +958,13 @@ bool PersistentFilespace_MarkDropPending(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent filespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
+		     "Persistent filespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid),
-			 (result ? "true" : "false"));
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 
-	return result;
+	return stateChangeResult;
 }
 
 /*
@@ -968,7 +972,7 @@ bool PersistentFilespace_MarkDropPending(
  *
  * This state will make sure the filespace gets dropped after a system crash.
  */
-bool PersistentFilespace_MarkAbortingCreate(
+PersistentFileSysObjStateChangeResult PersistentFilespace_MarkAbortingCreate(
 	Oid 		filespaceOid,
 				/* The filespace OID for the aborting create. */
 							
@@ -987,7 +991,7 @@ bool PersistentFilespace_MarkAbortingCreate(
 
 	FilespaceDirEntry filespaceDirEntry;
 
-	bool result;
+	PersistentFileSysObjStateChangeResult stateChangeResult;
 	
 	if (Persistent_BeforePersistenceWork())
 	{	
@@ -1017,7 +1021,7 @@ bool PersistentFilespace_MarkAbortingCreate(
 			 filespaceOid,
 			 PersistentFileSysObjState_Name(filespaceDirEntry->state));
 
-	result =
+	stateChangeResult =
 		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
@@ -1033,13 +1037,13 @@ bool PersistentFilespace_MarkAbortingCreate(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent filespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
+		     "Persistent filespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid),
-			 (result ? "true" : "false"));
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 
-	return result;
+	return stateChangeResult;
 }
 
 /*
@@ -1064,6 +1068,8 @@ void PersistentFilespace_Dropped(
 
 	PersistentFileSysState oldState;
 
+	PersistentFileSysObjStateChangeResult stateChangeResult;
+	
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
@@ -1093,7 +1099,8 @@ void PersistentFilespace_Dropped(
 			 filespaceOid,
 			 PersistentFileSysObjState_Name(filespaceDirEntry->state));
 
-	PersistentFileSysObj_StateChange(
+	stateChangeResult =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
@@ -1110,11 +1117,12 @@ void PersistentFilespace_Dropped(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent filespace directory: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
+		     "Persistent filespace directory: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 PersistentFileSysObjState_Name(oldState),
 			 persistentSerialNum,
-			 ItemPointerToString(persistentTid));
+			 ItemPointerToString(persistentTid),
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 }
 
 /*

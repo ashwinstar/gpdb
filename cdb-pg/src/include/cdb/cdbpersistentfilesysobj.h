@@ -16,8 +16,6 @@
 #include "access/persistentfilesysobjname.h"
 #include "access/persistentendxactrec.h"
 #include "cdb/cdbpersistentstore.h"
-#include "cdb/cdbpersistentrelation.h"
-#include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbdoublylinked.h"
 #include "storage/smgr.h"
 
@@ -157,7 +155,22 @@ extern void PersistentFileSysObj_FreeTuple(
 	bool						flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
-extern bool PersistentFileSysObj_StateChange(
+/*
+ * The file kinds of a persistent file-system object state-change results.
+ */
+typedef enum PersistentFileSysObjStateChangeResult
+{
+	PersistentFileSysObjStateChangeResult_None = 0,
+	PersistentFileSysObjStateChangeResult_DeleteUnnecessary = 1,
+	PersistentFileSysObjStateChangeResult_StateChangeOk = 2,
+	PersistentFileSysObjStateChangeResult_ErrorSuppressed = 3,
+	MaxPersistentFileSysObjStateChangeResult /* must always be last */
+} PersistentFileSysObjStateChangeResult;
+
+extern char *PersistentFileSysObjStateChangeResult_Name(
+	PersistentFileSysObjStateChangeResult result);
+
+extern PersistentFileSysObjStateChangeResult PersistentFileSysObj_StateChange(
 	PersistentFileSysObjName	*fsObjName,
 
 	ItemPointer 				persistentTid,
@@ -181,7 +194,7 @@ extern void PersistentFileSysObj_Created(
 
 	bool					retryPossible);
 
-extern bool PersistentFileSysObj_MarkAbortingCreate(
+extern PersistentFileSysObjStateChangeResult PersistentFileSysObj_MarkAbortingCreate(
 	PersistentFileSysObjName	*fsObjName,
 
 	ItemPointer 			persistentTid,
@@ -190,7 +203,7 @@ extern bool PersistentFileSysObj_MarkAbortingCreate(
 
 	bool					retryPossible);
 
-extern bool PersistentFileSysObj_MarkDropPending(
+extern PersistentFileSysObjStateChangeResult PersistentFileSysObj_MarkDropPending(
 	PersistentFileSysObjName	*fsObjName,
 
 	ItemPointer 			persistentTid,

@@ -143,6 +143,8 @@ typedef struct FsObjEntryData
 
 	bool						updateNeeded;
 
+	PersistentFileSysObjStateChangeResult stateChangeResult;
+	
 	DoubleLinks					xactLinks;
 
 } FsObjEntryData;
@@ -263,6 +265,7 @@ static FsObjEntry PersistentRecovery_FindOrCreateFsObjEntry(
 		fsObjEntry->xid = InvalidTransactionId;
 		fsObjEntry->state = -1;
 		fsObjEntry->updateNeeded = false;
+		fsObjEntry->stateChangeResult = PersistentFileSysObjStateChangeResult_None;
 	}
 
 	return fsObjEntry;
@@ -1553,7 +1556,7 @@ PersistentRecovery_UpdateType(
 	HASH_SEQ_STATUS iterateStatus;
 	FsObjEntry fsObjEntry;
 	PersistentFileSysState	state;
-
+	
 	if (Debug_persistent_recovery_print)
 		elog(PersistentRecovery_DebugPrintLevel(), 
 		     "Entering PersistentRecovery_UpdateType %s",
@@ -1592,7 +1595,8 @@ PersistentRecovery_UpdateType(
 					break;
 				
 				case PersistentFileSysState_AbortingCreate:
-					PersistentFileSysObj_MarkAbortingCreate(
+					fsObjEntry->stateChangeResult =
+						PersistentFileSysObj_MarkAbortingCreate(
 									&fsObjEntry->fsObjName,
 									&fsObjEntry->key.persistentTid,
 									fsObjEntry->persistentSerialNum,
@@ -1600,7 +1604,8 @@ PersistentRecovery_UpdateType(
 					break;
 
 				case PersistentFileSysState_DropPending:
-					PersistentFileSysObj_MarkDropPending(
+					fsObjEntry->stateChangeResult =
+						PersistentFileSysObj_MarkDropPending(
 									&fsObjEntry->fsObjName,
 									&fsObjEntry->key.persistentTid,
 									fsObjEntry->persistentSerialNum,
@@ -1677,6 +1682,25 @@ PersistentRecovery_DropType(
 		if (state == PersistentFileSysState_AbortingCreate ||
 			state == PersistentFileSysState_DropPending)
 		{
+			if (fsObjEntry->stateChangeResult != PersistentFileSysObjStateChangeResult_StateChangeOk)
+			{
+				if (fsObjEntry->stateChangeResult == PersistentFileSysObjStateChangeResult_ErrorSuppressed)
+				{
+					elog(WARNING, 
+						 "Crash recovery skipping drop for %s with State-Change result '%s'", 
+						 FsObjEntryToString(fsObjEntry),
+						 PersistentFileSysObjStateChangeResult_Name(fsObjEntry->stateChangeResult));
+				}
+				else if (Debug_persistent_recovery_print)
+				{
+					elog(PersistentRecovery_DebugPrintLevel(), 
+						 "Drop REDO: Skipping drop for %s with State-Change result '%s'", 
+						 FsObjEntryToString(fsObjEntry),
+						 PersistentFileSysObjStateChangeResult_Name(fsObjEntry->stateChangeResult));
+				}
+				continue;
+			}
+
 			persistentRecoveryCount++;
 
 			if (Debug_persistent_recovery_print)

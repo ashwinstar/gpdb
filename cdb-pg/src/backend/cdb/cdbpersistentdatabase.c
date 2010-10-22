@@ -658,6 +658,8 @@ void PersistentDatabase_Created(
 
 	DatabaseDirEntry databaseDirEntry;
 
+	PersistentFileSysObjStateChangeResult stateChangeResult;
+
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
@@ -687,7 +689,8 @@ void PersistentDatabase_Created(
 			 		dbDirNode->tablespace),
 			 PersistentFileSysObjState_Name(databaseDirEntry->state));
 
-	PersistentFileSysObj_StateChange(
+	stateChangeResult =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
@@ -702,10 +705,11 @@ void PersistentDatabase_Created(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
+		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
-			 ItemPointerToString(persistentTid));
+			 ItemPointerToString(persistentTid),
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 }
 
 /*
@@ -880,7 +884,7 @@ PersistentDatabase_AddMirrorAll(
  * file-system delete will occur.  The flush guarantees the action will be retried after system
  * crash.
  */
-bool PersistentDatabase_MarkDropPending(
+PersistentFileSysObjStateChangeResult PersistentDatabase_MarkDropPending(
 	DbDirNode 		*dbDirNode,
 				/* The tablespace and database OIDs for the drop. */
 
@@ -898,7 +902,7 @@ bool PersistentDatabase_MarkDropPending(
 
 	DatabaseDirEntry databaseDirEntry;
 
-	bool result;
+	PersistentFileSysObjStateChangeResult stateChangeResult;
 
 	if (Persistent_BeforePersistenceWork())
 	{	
@@ -930,7 +934,7 @@ bool PersistentDatabase_MarkDropPending(
 				   dbDirNode->tablespace),
 			 PersistentFileSysObjState_Name(databaseDirEntry->state));
 
-	result =
+	stateChangeResult =
 		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
@@ -946,13 +950,13 @@ bool PersistentDatabase_MarkDropPending(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
+		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid),
-			 (result ? "true" : "false"));
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 
-	return result;
+	return stateChangeResult;
 }
 
 /*
@@ -960,7 +964,7 @@ bool PersistentDatabase_MarkDropPending(
  *
  * This state will make sure the relation gets dropped after a system crash.
  */
-bool PersistentDatabase_MarkAbortingCreate(
+PersistentFileSysObjStateChangeResult PersistentDatabase_MarkAbortingCreate(
 	DbDirNode 		*dbDirNode,
 				/* The tablespace and database OIDs for the aborting create. */
 
@@ -978,7 +982,7 @@ bool PersistentDatabase_MarkAbortingCreate(
 
 	DatabaseDirEntry databaseDirEntry;
 
-	bool result;
+	PersistentFileSysObjStateChangeResult stateChangeResult;
 	
 	if (Persistent_BeforePersistenceWork())
 	{	
@@ -1010,7 +1014,7 @@ bool PersistentDatabase_MarkAbortingCreate(
 			 PersistentFileSysObjState_Name(databaseDirEntry->state));
 
 
-	result =
+	stateChangeResult =
 		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
@@ -1026,13 +1030,13 @@ bool PersistentDatabase_MarkAbortingCreate(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
+		     "Persistent database directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid),
-			 (result ? "true" : "false"));
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 
-	return result;
+	return stateChangeResult;
 }
 
 /*
@@ -1057,6 +1061,8 @@ void PersistentDatabase_Dropped(
 
 	PersistentFileSysState oldState;
 
+	PersistentFileSysObjStateChangeResult stateChangeResult;
+	
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
@@ -1087,7 +1093,8 @@ void PersistentDatabase_Dropped(
 				  dbDirNode->tablespace),
 			 PersistentFileSysObjState_Name(databaseDirEntry->state));
 
-	PersistentFileSysObj_StateChange(
+	stateChangeResult =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
@@ -1107,11 +1114,12 @@ void PersistentDatabase_Dropped(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent database directory: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
+		     "Persistent database directory: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 PersistentFileSysObjState_Name(oldState),
 			 persistentSerialNum,
-			 ItemPointerToString(persistentTid));
+			 ItemPointerToString(persistentTid),
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 }
 
 bool 
@@ -1279,6 +1287,8 @@ void PersistentDatabase_JustInTimeCreated(
 
 	DatabaseDirEntry databaseDirEntry;
 
+	PersistentFileSysObjStateChangeResult stateChangeResult;
+	
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
@@ -1308,7 +1318,8 @@ void PersistentDatabase_JustInTimeCreated(
 			 		dbDirNode->tablespace),
 			 PersistentFileSysObjState_Name(databaseDirEntry->state));
 
-	PersistentFileSysObj_StateChange(
+	stateChangeResult =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
@@ -1323,10 +1334,11 @@ void PersistentDatabase_JustInTimeCreated(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent database directory: '%s' changed state from 'Just-In-Time Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
+		     "Persistent database directory: '%s' changed state from 'Just-In-Time Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
-			 ItemPointerToString(persistentTid));
+			 ItemPointerToString(persistentTid),
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 }
 
 /*
@@ -1348,6 +1360,8 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 
 	DatabaseDirEntry databaseDirEntry;
 
+	PersistentFileSysObjStateChangeResult stateChangeResult;
+	
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
@@ -1377,7 +1391,8 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 			 		dbDirNode->tablespace),
 			 PersistentFileSysObjState_Name(databaseDirEntry->state));
 
-	PersistentFileSysObj_StateChange(
+	stateChangeResult =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
@@ -1397,10 +1412,11 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent database directory: Abandon '%s' in state 'Just-In-Time Create Pending', serial number " INT64_FORMAT " at TID %s",
+		     "Persistent database directory: Abandon '%s' in state 'Just-In-Time Create Pending', serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
-			 ItemPointerToString(persistentTid));
+			 ItemPointerToString(persistentTid),
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 }
 
 

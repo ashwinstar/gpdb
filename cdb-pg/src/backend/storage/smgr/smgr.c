@@ -1886,7 +1886,16 @@ smgrDoDeleteActions(
 	
 	bool dropPending;
 	bool abortingCreate;
-	
+
+	PersistentFileSysObjStateChangeResult *stateChangeResults;
+
+	if (*listCount == 0)
+		stateChangeResults = NULL;
+	else
+		stateChangeResults = 
+				(PersistentFileSysObjStateChangeResult*)
+						palloc0((*listCount) * sizeof(PersistentFileSysObjStateChangeResult));
+
 	/*
 	 * We need to do the transition to 'Aborting Create' or 'Drop Pending' and perform
 	 * the file-system drop while under one acquistion of the MirroredLock.  Otherwise,
@@ -1945,7 +1954,8 @@ smgrDoDeleteActions(
 			}
 			else
 			{
-				PersistentFileSysObj_MarkAbortingCreate(
+				stateChangeResults[entryIndex] =
+					PersistentFileSysObj_MarkAbortingCreate(
 								&current->fsObjName,
 								&current->persistentTid,
 								current->persistentSerialNum,
@@ -1956,7 +1966,8 @@ smgrDoDeleteActions(
 		case PersistentEndXactFileSysAction_Drop:
 			if (forCommit)
 			{
-				PersistentFileSysObj_MarkDropPending(
+				stateChangeResults[entryIndex] =
+					PersistentFileSysObj_MarkDropPending(
 								&current->fsObjName,
 								&current->persistentTid,
 								current->persistentSerialNum,
@@ -1968,7 +1979,8 @@ smgrDoDeleteActions(
 			/*
 			 * Always whether transaction commits or aborts.
 			 */
-			PersistentFileSysObj_MarkAbortingCreate(
+			stateChangeResults[entryIndex] =
+				PersistentFileSysObj_MarkAbortingCreate(
 							&current->fsObjName,
 							&current->persistentTid,
 							current->persistentSerialNum,
@@ -2069,13 +2081,16 @@ smgrDoDeleteActions(
 		
 		if (abortingCreate || dropPending)
 		{
-			PersistentFileSysObj_EndXactDrop(
-							&current->fsObjName,
-							current->relStorageMgr,
-							current->relationName,
-							&current->persistentTid,
-							current->persistentSerialNum,
-							/* ignoreNonExistence */ abortingCreate);
+			if (stateChangeResults[entryIndex] == PersistentFileSysObjStateChangeResult_StateChangeOk)
+			{
+				PersistentFileSysObj_EndXactDrop(
+								&current->fsObjName,
+								current->relStorageMgr,
+								current->relationName,
+								&current->persistentTid,
+								current->persistentSerialNum,
+								/* ignoreNonExistence */ abortingCreate);
+			}
 		}
 		
 #ifdef FAULT_INJECTOR			
@@ -2149,6 +2164,9 @@ smgrDoDeleteActions(
 	PersistentFileSysObj_FlushXLog();
 
 	MIRRORED_UNLOCK;
+
+	if (stateChangeResults != NULL)
+		pfree(stateChangeResults);
 
 }
 

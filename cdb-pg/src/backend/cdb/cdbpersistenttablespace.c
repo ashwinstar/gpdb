@@ -777,6 +777,8 @@ void PersistentTablespace_Created(
 
 	TablespaceDirEntry tablespaceDirEntry;
 
+	PersistentFileSysObjStateChangeResult stateChangeResult;
+	
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
@@ -805,7 +807,8 @@ void PersistentTablespace_Created(
 			 tablespaceOid,
 			 PersistentFileSysObjState_Name(tablespaceDirEntry->state));
 
-	PersistentFileSysObj_StateChange(
+	stateChangeResult =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
@@ -820,10 +823,11 @@ void PersistentTablespace_Created(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s",
+		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Created', serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
-			 ItemPointerToString(persistentTid));
+			 ItemPointerToString(persistentTid),
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 }
 
 void
@@ -959,7 +963,7 @@ PersistentTablespace_AddMirrorAll(
  * file-system delete will occur.  The flush guarantees the action will be retried after system
  * crash.
  */
-bool PersistentTablespace_MarkDropPending(
+PersistentFileSysObjStateChangeResult PersistentTablespace_MarkDropPending(
 	Oid 		tablespaceOid,
 				/* The tablespace OID for the drop. */
 
@@ -978,7 +982,7 @@ bool PersistentTablespace_MarkDropPending(
 
 	TablespaceDirEntry tablespaceDirEntry;
 
-	bool result;
+	PersistentFileSysObjStateChangeResult stateChangeResult;
 	
 	if (Persistent_BeforePersistenceWork())
 	{	
@@ -1009,7 +1013,7 @@ bool PersistentTablespace_MarkDropPending(
 			 tablespaceOid,
 			 PersistentFileSysObjState_Name(tablespaceDirEntry->state));
 
-	result =
+	stateChangeResult =
 		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
@@ -1025,13 +1029,13 @@ bool PersistentTablespace_MarkDropPending(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
+		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid),
-			 (result ? "true" : "false"));
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 
-	return result;
+	return stateChangeResult;
 }
 
 /*
@@ -1039,7 +1043,7 @@ bool PersistentTablespace_MarkDropPending(
  *
  * This state will make sure the tablespace gets dropped after a system crash.
  */
-bool PersistentTablespace_MarkAbortingCreate(
+PersistentFileSysObjStateChangeResult PersistentTablespace_MarkAbortingCreate(
 	Oid 		tablespaceOid,
 				/* The tablespace OID for the aborting create. */
 							
@@ -1057,7 +1061,7 @@ bool PersistentTablespace_MarkAbortingCreate(
 
 	TablespaceDirEntry tablespaceDirEntry;
 
-	bool result;
+	PersistentFileSysObjStateChangeResult stateChangeResult;
 	
 	if (Persistent_BeforePersistenceWork())
 	{	
@@ -1087,7 +1091,7 @@ bool PersistentTablespace_MarkAbortingCreate(
 			 tablespaceOid,
 			 PersistentFileSysObjState_Name(tablespaceDirEntry->state));
 
-	result =
+	stateChangeResult =
 		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
@@ -1103,13 +1107,13 @@ bool PersistentTablespace_MarkAbortingCreate(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (deleteUnnecessary %s)",
+		     "Persistent tablespace directory: '%s' changed state from 'Create Pending' to 'Aborting Create', serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid),
-			 (result ? "true" : "false"));
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 
-	return result;
+	return stateChangeResult;
 }
 
 /*
@@ -1134,6 +1138,8 @@ void PersistentTablespace_Dropped(
 
 	PersistentFileSysState oldState;
 
+	PersistentFileSysObjStateChangeResult stateChangeResult;
+	
 	if (Persistent_BeforePersistenceWork())
 	{	
 		if (Debug_persistent_print)
@@ -1163,7 +1169,8 @@ void PersistentTablespace_Dropped(
 			 tablespaceOid,
 			 PersistentFileSysObjState_Name(tablespaceDirEntry->state));
 
-	PersistentFileSysObj_StateChange(
+	stateChangeResult =
+		PersistentFileSysObj_StateChange(
 								&fsObjName,
 								persistentTid,
 								persistentSerialNum,
@@ -1180,11 +1187,12 @@ void PersistentTablespace_Dropped(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-		     "Persistent tablespace directory: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s",
+		     "Persistent tablespace directory: '%s' changed state from '%s' to (Free), serial number " INT64_FORMAT " at TID %s (State-Change result '%s')",
 			 PersistentFileSysObjName_ObjectName(&fsObjName),
 			 PersistentFileSysObjState_Name(oldState),
 			 persistentSerialNum,
-			 ItemPointerToString(persistentTid));
+			 ItemPointerToString(persistentTid),
+			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 }
 
 // -----------------------------------------------------------------------------

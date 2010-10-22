@@ -12,6 +12,7 @@
 #include "utils/palloc.h"
 #include "storage/fd.h"
 #include "access/persistentfilesysobjname.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 #include "cdb/cdbpersistentdatabase.h"
 #include "cdb/cdbdoublylinked.h"
 
@@ -138,7 +139,7 @@ extern void PersistentRelation_Created(
  * file-system delete will occur.  The flush guarantees the action will be retried after system
  * crash.
  */
-extern bool PersistentRelation_MarkDropPending(
+extern PersistentFileSysObjStateChangeResult PersistentRelation_MarkDropPending(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the drop. */
 	
@@ -158,7 +159,7 @@ extern bool PersistentRelation_MarkDropPending(
  *
  * This state will make sure the relation gets dropped after a system crash.
  */
-extern bool PersistentRelation_MarkAbortingCreate(
+extern PersistentFileSysObjStateChangeResult PersistentRelation_MarkAbortingCreate(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the aborting create. */
 	

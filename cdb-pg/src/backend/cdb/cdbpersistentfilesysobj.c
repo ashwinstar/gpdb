@@ -33,6 +33,8 @@
 #include "cdb/cdbmirroredbufferpool.h"
 #include "cdb/cdbmirroredappendonly.h"
 #include "cdb/cdbpersistentrecovery.h"
+#include "cdb/cdbpersistentrelation.h"
+#include "cdb/cdbpersistentdatabase.h"
 
 #include "storage/itemptr.h"
 #include "access/genam.h"
@@ -1046,6 +1048,7 @@ typedef enum PersistentFileSysObjVerifyExpectedResult
 	PersistentFileSysObjVerifyExpectedResult_DeleteUnnecessary = 1,
 	PersistentFileSysObjVerifyExpectedResult_StateChangeAlreadyDone = 2,
 	PersistentFileSysObjVerifyExpectedResult_StateChangeNeeded = 3,
+	PersistentFileSysObjVerifyExpectedResult_ErrorSuppressed = 4,
 	MaxPersistentFileSysObjVerifyExpectedResult /* must always be last */
 } PersistentFileSysObjVerifyExpectedResult;
 
@@ -1087,6 +1090,10 @@ static PersistentFileSysObjVerifyExpectedResult PersistentFileSysObj_VerifyExpec
 
 	bool expectedStateMatch;
 
+	int elevel;
+
+	elevel = (gp_persistent_statechange_suppress_error ? WARNING : ERROR);
+
 	fsObjType = fsObjName->type;
 
 	if (Debug_persistent_print)
@@ -1124,7 +1131,7 @@ static PersistentFileSysObjVerifyExpectedResult PersistentFileSysObj_VerifyExpec
 			return PersistentFileSysObjVerifyExpectedResult_DeleteUnnecessary;
 		}
 		
-		ereport(ERROR,
+		ereport(elevel,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("Did not expect to find a 'Free' entry"),
 				 errcontext_persistent_relation_state_change(
@@ -1135,6 +1142,7 @@ static PersistentFileSysObjVerifyExpectedResult PersistentFileSysObj_VerifyExpec
 								 						expectedState2,
 								 						expectedState3,
 								 						nextState)));
+		return PersistentFileSysObjVerifyExpectedResult_ErrorSuppressed;
 	}
 	
 	if (actualSerialNum != serialNum)
@@ -1147,7 +1155,7 @@ static PersistentFileSysObjVerifyExpectedResult PersistentFileSysObj_VerifyExpec
 			return PersistentFileSysObjVerifyExpectedResult_DeleteUnnecessary;
 		}
 		
-		ereport(ERROR,
+		ereport(elevel,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')",
 				        actualSerialNum,
@@ -1161,6 +1169,7 @@ static PersistentFileSysObjVerifyExpectedResult PersistentFileSysObj_VerifyExpec
 								 						expectedState2,
 														expectedState3,
 								 						nextState)));
+		return PersistentFileSysObjVerifyExpectedResult_ErrorSuppressed;
 	}
 
 	if (!expectedStateMatch)
@@ -1172,7 +1181,7 @@ static PersistentFileSysObjVerifyExpectedResult PersistentFileSysObj_VerifyExpec
 			return PersistentFileSysObjVerifyExpectedResult_StateChangeAlreadyDone;
 		}
 		
-		ereport(ERROR,
+		ereport(elevel,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("Found persistent file-system object in unexpected state '%s'",
 						PersistentFileSysObjState_Name(actualState)),
@@ -1184,12 +1193,32 @@ static PersistentFileSysObjVerifyExpectedResult PersistentFileSysObj_VerifyExpec
 														expectedState2,
 														expectedState3,
 														nextState)));
+		return PersistentFileSysObjVerifyExpectedResult_ErrorSuppressed;
 	}
 
 	return PersistentFileSysObjVerifyExpectedResult_StateChangeNeeded;
 }
 
-bool PersistentFileSysObj_StateChange(
+extern char *PersistentFileSysObjStateChangeResult_Name(
+	PersistentFileSysObjStateChangeResult result)
+{
+	switch (result)
+	{
+	case PersistentFileSysObjStateChangeResult_DeleteUnnecessary:
+		return "Delete Unnecessary";
+		
+	case PersistentFileSysObjStateChangeResult_StateChangeOk:
+		return "State-Change OK";
+			
+	case PersistentFileSysObjStateChangeResult_ErrorSuppressed:
+		return "Error Suppressed";
+						
+	default:
+		return "Unknown";
+	}
+}
+
+PersistentFileSysObjStateChangeResult PersistentFileSysObj_StateChange(
 	PersistentFileSysObjName 	*fsObjName,
 
 	ItemPointer					persistentTid,
@@ -1322,13 +1351,16 @@ bool PersistentFileSysObj_StateChange(
 	switch (verifyExpectedResult)
 	{
 	case PersistentFileSysObjVerifyExpectedResult_DeleteUnnecessary:
-		return true;
+		return PersistentFileSysObjStateChangeResult_DeleteUnnecessary;
 
 	case PersistentFileSysObjVerifyExpectedResult_StateChangeAlreadyDone:
-		return false;
+		return PersistentFileSysObjStateChangeResult_StateChangeOk;
 	
 	case PersistentFileSysObjVerifyExpectedResult_StateChangeNeeded:
 		break;
+	
+	case PersistentFileSysObjVerifyExpectedResult_ErrorSuppressed:
+		return PersistentFileSysObjStateChangeResult_ErrorSuppressed;
 	
 	default:
 		elog(ERROR, "Unexpected persistent object verify expected result: %d",
@@ -1490,7 +1522,11 @@ bool PersistentFileSysObj_StateChange(
 
 	if (badMirrorExistenceStateTransition)
 	{
-		elog(ERROR, 
+		int elevel;
+		
+		elevel = (gp_persistent_statechange_suppress_error ? WARNING : ERROR);
+		
+		elog(elevel, 
 			 "In state transition of %s from current '%s' persistent state of to new '%s' persistent state "
 			 " found unexpected current mirror existence state '%s' (persistent serial number " INT64_FORMAT ", TID %s)",
 			 PersistentFileSysObjName_TypeAndObjectName(fsObjName),
@@ -1499,6 +1535,7 @@ bool PersistentFileSysObj_StateChange(
 			 MirroredObjectExistenceState_Name(currentMirrorExistenceState),
 			 persistentSerialNum,
 			 ItemPointerToString(persistentTid));
+		return PersistentFileSysObjStateChangeResult_ErrorSuppressed;
 	}
 	
 	if (nextState != PersistentFileSysState_Free)
@@ -1575,7 +1612,7 @@ bool PersistentFileSysObj_StateChange(
 	
 	pfree(values);
 
-	return false;
+	return PersistentFileSysObjStateChangeResult_StateChangeOk;
 }
 
 void
@@ -2331,7 +2368,7 @@ void PersistentFileSysObj_Created(
 	}
 }
 
-bool PersistentFileSysObj_MarkAbortingCreate(
+PersistentFileSysObjStateChangeResult PersistentFileSysObj_MarkAbortingCreate(
 	PersistentFileSysObjName 	*fsObjName,
 
 	ItemPointer				persistentTid,
@@ -2340,7 +2377,7 @@ bool PersistentFileSysObj_MarkAbortingCreate(
 
 	bool					retryPossible)
 {
-	bool result;
+	PersistentFileSysObjStateChangeResult stateChangeResult;
 
 	if (!Persistent_BeforePersistenceWork())
 	{
@@ -2360,7 +2397,7 @@ bool PersistentFileSysObj_MarkAbortingCreate(
 			RelFileNode *relFileNode = PersistentFileSysObjName_GetRelFileNodePtr(fsObjName);
 			int32 segmentFileNum = PersistentFileSysObjName_GetSegmentFileNum(fsObjName);
 
-			result =
+			stateChangeResult =
 				PersistentRelation_MarkAbortingCreate(
 								relFileNode,
 								segmentFileNum,
@@ -2371,7 +2408,7 @@ bool PersistentFileSysObj_MarkAbortingCreate(
 		break;
 
 	case PersistentFsObjType_DatabaseDir:
-		result =
+		stateChangeResult =
 			PersistentDatabase_MarkAbortingCreate(
 							&fsObjName->variant.dbDirNode,
 							persistentTid,
@@ -2380,7 +2417,7 @@ bool PersistentFileSysObj_MarkAbortingCreate(
 		break;
 
 	case PersistentFsObjType_TablespaceDir:
-		result =
+		stateChangeResult =
 			PersistentTablespace_MarkAbortingCreate(
 							fsObjName->variant.tablespaceOid,
 							persistentTid,
@@ -2389,7 +2426,7 @@ bool PersistentFileSysObj_MarkAbortingCreate(
 		break;
 
 	case PersistentFsObjType_FilespaceDir:
-		result =
+		stateChangeResult =
 			PersistentFilespace_MarkAbortingCreate(
 							fsObjName->variant.filespaceOid,
 							persistentTid,
@@ -2400,13 +2437,13 @@ bool PersistentFileSysObj_MarkAbortingCreate(
 	default:
 		elog(ERROR, "Unexpected persistent file-system object type: %d",
 			 fsObjName->type);
-		result = false;
+		stateChangeResult = PersistentFileSysObjStateChangeResult_None;
 	}
 
-	return result;
+	return stateChangeResult;
 }
 
-bool PersistentFileSysObj_MarkDropPending(
+PersistentFileSysObjStateChangeResult PersistentFileSysObj_MarkDropPending(
 	PersistentFileSysObjName 	*fsObjName,
 
 	ItemPointer				persistentTid,
@@ -2415,7 +2452,7 @@ bool PersistentFileSysObj_MarkDropPending(
 
 	bool					retryPossible)
 {
-	bool result;
+	PersistentFileSysObjStateChangeResult stateChangeResult;
 
 	if (!Persistent_BeforePersistenceWork())
 	{
@@ -2435,7 +2472,7 @@ bool PersistentFileSysObj_MarkDropPending(
 			RelFileNode *relFileNode = PersistentFileSysObjName_GetRelFileNodePtr(fsObjName);
 			int32 segmentFileNum = PersistentFileSysObjName_GetSegmentFileNum(fsObjName);
 
-			result =
+			stateChangeResult =
 				PersistentRelation_MarkDropPending(
 								relFileNode,
 								segmentFileNum,
@@ -2446,7 +2483,7 @@ bool PersistentFileSysObj_MarkDropPending(
 		break;
 
 	case PersistentFsObjType_DatabaseDir:
-		result =
+		stateChangeResult =
 			PersistentDatabase_MarkDropPending(
 							&fsObjName->variant.dbDirNode,
 							persistentTid,
@@ -2455,7 +2492,7 @@ bool PersistentFileSysObj_MarkDropPending(
 		break;
 
 	case PersistentFsObjType_TablespaceDir:
-		result =
+		stateChangeResult =
 			PersistentTablespace_MarkDropPending(
 							fsObjName->variant.tablespaceOid,
 							persistentTid,
@@ -2464,7 +2501,7 @@ bool PersistentFileSysObj_MarkDropPending(
 		break;
 
 	case PersistentFsObjType_FilespaceDir:
-		result =
+		stateChangeResult =
 			PersistentFilespace_MarkDropPending(
 							fsObjName->variant.tablespaceOid,
 							persistentTid,
@@ -2475,10 +2512,10 @@ bool PersistentFileSysObj_MarkDropPending(
 	default:
 		elog(ERROR, "Unexpected persistent file-system object type: %d",
 			 fsObjName->type);
-		result = false;
+		stateChangeResult = PersistentFileSysObjStateChangeResult_None;
 	}
 
-	return result;
+	return stateChangeResult;
 }
 
 /*
@@ -3239,7 +3276,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 {
 	MIRRORED_LOCK_DECLARE;
 
-	bool *deleteUnnecessary;
+	PersistentFileSysObjStateChangeResult *stateChangeResults;
 
 	int i;
 
@@ -3252,7 +3289,9 @@ void PersistentFileSysObj_PreparedEndXactAction(
 			 persistentObjects->typed.fileSysActionInfosCount,
 			 persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
 	
-	deleteUnnecessary = (bool*)palloc0(persistentObjects->typed.fileSysActionInfosCount * sizeof(bool));
+	stateChangeResults = 
+			(PersistentFileSysObjStateChangeResult*)
+					palloc0(persistentObjects->typed.fileSysActionInfosCount * sizeof(PersistentFileSysObjStateChangeResult));
 
 	/*
 	 * We need to do the transition to 'Aborting Create' or 'Drop Pending' and perform
@@ -3317,7 +3356,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 						 fileSysActionInfo->persistentSerialNum,
 						 ItemPointerToString(&fileSysActionInfo->persistentTid));
 
-				deleteUnnecessary[i] =
+				stateChangeResults[i] =
 					PersistentFileSysObj_MarkAbortingCreate(
 											&fileSysActionInfo->fsObjName,
 											&fileSysActionInfo->persistentTid,
@@ -3342,7 +3381,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 						 fileSysActionInfo->persistentSerialNum,
 						 ItemPointerToString(&fileSysActionInfo->persistentTid));
 				
-				deleteUnnecessary[i] =
+				stateChangeResults[i] =
 					PersistentFileSysObj_MarkDropPending(
 										&fileSysActionInfo->fsObjName,
 										&fileSysActionInfo->persistentTid,
@@ -3362,7 +3401,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 					 fileSysActionInfo->persistentSerialNum,
 					 ItemPointerToString(&fileSysActionInfo->persistentTid));
 			
-			deleteUnnecessary[i] =
+			stateChangeResults[i] =
 				PersistentFileSysObj_MarkAbortingCreate(
 									&fileSysActionInfo->fsObjName,
 									&fileSysActionInfo->persistentTid,
@@ -3399,7 +3438,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 		if (Debug_persistent_print)
 			elog(Persistent_DebugPrintLevel(), 
 				 "PersistentFileSysObj_PreparedEndXactAction (distributed transaction id %s, local prepared xid %u): [%d] %s, persistent serial num " INT64_FORMAT ", TID %s, "
-				 "looking at persistent end transaction action '%s' where isCommit %s and deleteUnnecessary %s",
+				 "looking at persistent end transaction action '%s' where isCommit %s and State-Change result '%s'",
 				 gid,
 				 preparedXid,
 				 i,
@@ -3408,7 +3447,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 				 ItemPointerToString(&fileSysActionInfo->persistentTid),
 				 PersistentEndXactFileSysAction_Name(action),
 				 (isCommit ? "true" : "false"),
-				 (deleteUnnecessary[i] ? "true" : "false"));
+				 PersistentFileSysObjStateChangeResult_Name(stateChangeResults[i]));
 
 		dropPending = false;		// Assume.
 		abortingCreate = false;		// Assume.
@@ -3466,31 +3505,47 @@ void PersistentFileSysObj_PreparedEndXactAction(
 				 action);
 		}
 
-		if ((abortingCreate || dropPending)
-			&&
-			!deleteUnnecessary[i])
+		if (abortingCreate || dropPending)
 		{
-			
-			if (Debug_persistent_print)
-				elog(Persistent_DebugPrintLevel(), 
-					 "PersistentFileSysObj_PreparedEndXactAction (distributed transaction id %s, local prepared xid %u): [%d] %s, persistent serial num " INT64_FORMAT ", TID %s, "
-					 "going to drop object where abortingCreate %s or dropPending %s",
-					 gid,
-					 preparedXid,
-					 i,
-					 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfo->fsObjName),
-					 fileSysActionInfo->persistentSerialNum,
-					 ItemPointerToString(&fileSysActionInfo->persistentTid),
-					 (abortingCreate ? "true" : "false"),
-					 (dropPending ? "true" : "false"));
-			
-			PersistentFileSysObj_EndXactDrop(
-									&fileSysActionInfo->fsObjName,
-									fileSysActionInfo->relStorageMgr,
-									/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
-									&fileSysActionInfo->persistentTid,
-									fileSysActionInfo->persistentSerialNum,
-									/* ignoreNonExistence */ abortingCreate);
+			if (stateChangeResults[i] == PersistentFileSysObjStateChangeResult_StateChangeOk)
+			{
+				if (Debug_persistent_print)
+					elog(Persistent_DebugPrintLevel(), 
+						 "PersistentFileSysObj_PreparedEndXactAction (distributed transaction id %s, local prepared xid %u): [%d] %s, persistent serial num " INT64_FORMAT ", TID %s, "
+						 "going to drop object where abortingCreate %s or dropPending %s",
+						 gid,
+						 preparedXid,
+						 i,
+						 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfo->fsObjName),
+						 fileSysActionInfo->persistentSerialNum,
+						 ItemPointerToString(&fileSysActionInfo->persistentTid),
+						 (abortingCreate ? "true" : "false"),
+						 (dropPending ? "true" : "false"));
+				
+				PersistentFileSysObj_EndXactDrop(
+										&fileSysActionInfo->fsObjName,
+										fileSysActionInfo->relStorageMgr,
+										/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
+										&fileSysActionInfo->persistentTid,
+										fileSysActionInfo->persistentSerialNum,
+										/* ignoreNonExistence */ abortingCreate);
+			}
+			else
+			{
+				if (Debug_persistent_print)
+					elog(Persistent_DebugPrintLevel(), 
+						 "PersistentFileSysObj_PreparedEndXactAction (distributed transaction id %s, local prepared xid %u): [%d] %s, persistent serial num " INT64_FORMAT ", TID %s, "
+						 "skipping to drop object where abortingCreate %s or dropPending %s with State-Change result '%s'",
+						 gid,
+						 preparedXid,
+						 i,
+						 PersistentFileSysObjName_TypeAndObjectName(&fileSysActionInfo->fsObjName),
+						 fileSysActionInfo->persistentSerialNum,
+						 ItemPointerToString(&fileSysActionInfo->persistentTid),
+						 (abortingCreate ? "true" : "false"),
+						 (dropPending ? "true" : "false"),
+						 PersistentFileSysObjStateChangeResult_Name(stateChangeResults[i]));
+			}
 		}
 		
 #ifdef FAULT_INJECTOR					
@@ -3632,7 +3687,7 @@ injectfaultexit:
 
 	END_CRIT_SECTION();
 
-	pfree(deleteUnnecessary);
+	pfree(stateChangeResults);
 }
 
 

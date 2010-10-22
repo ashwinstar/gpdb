@@ -16,6 +16,7 @@
 #include "storage/fd.h"
 #include "storage/itemptr.h"
 #include "utils/palloc.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 extern bool PersistentTablespace_Check(
 	Oid 			tablespace);
@@ -125,7 +126,7 @@ extern void PersistentTablespace_Created(
  * file-system delete will occur.  The flush guarantees the action will be retried after system
  * crash.
  */
-extern bool PersistentTablespace_MarkDropPending(
+extern PersistentFileSysObjStateChangeResult PersistentTablespace_MarkDropPending(
 	Oid 		tablespaceOid,
 				/* The tablespace OID for the drop. */
 	
@@ -142,7 +143,7 @@ extern bool PersistentTablespace_MarkDropPending(
  *
  * This state will make sure the relation gets dropped after a system crash.
  */
-extern bool PersistentTablespace_MarkAbortingCreate(
+extern PersistentFileSysObjStateChangeResult PersistentTablespace_MarkAbortingCreate(
 	Oid 		tablespaceOid,
 				/* The tablespace OID for the aborting create. */
 							

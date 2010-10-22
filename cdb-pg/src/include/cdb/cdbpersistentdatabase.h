@@ -16,6 +16,7 @@
 #include "access/persistentfilesysobjname.h"
 #include "cdb/cdbdoublylinked.h"
 #include "access/xlogmm.h"
+#include "cdb/cdbpersistentfilesysobj.h"
 
 typedef struct DatabaseDirEntryData
 {
@@ -131,7 +132,7 @@ extern void PersistentDatabase_Created(
  * file-system delete will occur.  The flush guarantees the action will be retried after system
  * crash.
  */
-extern bool PersistentDatabase_MarkDropPending(
+extern PersistentFileSysObjStateChangeResult PersistentDatabase_MarkDropPending(
 	DbDirNode		*dbDirNode,
 				/* The tablespace and database OIDs for the drop. */
 				
@@ -148,7 +149,7 @@ extern bool PersistentDatabase_MarkDropPending(
  *
  * This state will make sure the relation gets dropped after a system crash.
  */
-extern bool PersistentDatabase_MarkAbortingCreate(
+extern PersistentFileSysObjStateChangeResult PersistentDatabase_MarkAbortingCreate(
 	DbDirNode		*dbDirNode,
 				/* The tablespace and database OIDs for the aborting create. */
 							

@@ -134,6 +134,7 @@ extern bool Debug_appendonly_print_blockdirectory;
 extern bool Debug_appendonly_print_read_block;
 extern bool Debug_appendonly_print_append_block;
 extern bool gp_crash_recovery_abort_suppress_fatal;
+extern bool gp_persistent_statechange_suppress_error;
 extern bool Debug_bitmap_print_insert;
 extern bool Test_appendonly_override;
 extern bool	Test_enable_broken_quicklz3;
