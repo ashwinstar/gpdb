@@ -28,6 +28,7 @@ class GpCheckInfo:
         self.is_root = False
         self.host_type = HostType.GPCHECK_HOSTTYPE_UNDEFINED
         self.appliance_version = None
+        self.numracks = 1
         self.hosts = dict()
         self.switches = dict()
         self.collection_start_time = 0 # used in NTPD testing
@@ -166,6 +167,18 @@ def createHostList():
         logger.error(e.__str__())
         return True
 
+    
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
+
+        countHosts = len(gpcheck_info.hosts)
+        if countHosts > 34:
+            logger.warning("2 rack solution is the highest gpcheck can detect, some switches may not be checked")
+        elif countHosts > 18:
+            gpcheck_info.numracks = 2
+        else:
+            gpcheck_info.numracks = 1
+        
+
     return False
 
 def collectSwitchData(switch):
@@ -190,9 +203,18 @@ def runCollectionOnSwitches():
     global gpcheck_info
     if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
 
-        gpcheck_info.switches['i-sw-1'] = GpCheckSwitch('i-sw-1', 'Interconnect', '1.3.6.1.4.1.1588.2.1.1.1.1.6')
-        gpcheck_info.switches['i-sw-2'] = GpCheckSwitch('i-sw-2', 'Interconnect', '1.3.6.1.4.1.1588.2.1.1.1.1.6')
-        gpcheck_info.switches['a-sw-1'] = GpCheckSwitch('a-sw-1', 'Admin', '1.3.6.1.2.1.1.1')
+        brocadeOid = '1.3.6.1.4.1.1588.2.1.1.1.1.6'
+        alliedTelesisOid = '1.3.6.1.2.1.1.1'
+
+        gpcheck_info.switches['i-sw-1'] = GpCheckSwitch('i-sw-1', 'Interconnect', brocadeOid)
+        gpcheck_info.switches['i-sw-2'] = GpCheckSwitch('i-sw-2', 'Interconnect', brocadeOid)
+        gpcheck_info.switches['a-sw-1'] = GpCheckSwitch('a-sw-1', 'Admin', alliedTelesisOid)
+
+        if gpcheck_info.numracks > 1:
+            gpcheck_info.switches['i-sw-3'] = GpCheckSwitch('i-sw-3', 'Interconnect', brocadeOid)
+            gpcheck_info.switches['i-sw-4'] = GpCheckSwitch('i-sw-4', 'Interconnect', brocadeOid)
+            gpcheck_info.switches['a-sw-2'] = GpCheckSwitch('a-sw-2', 'Admin', alliedTelesisOid)
+            
 
     for s in gpcheck_info.switches:
         collectSwitchData(gpcheck_info.switches[s])
@@ -801,46 +823,46 @@ def testLinuxMounts(host):
     xfs_mounts = list()
 
     if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
-	    if host.is_a_master:
-	        p = '/dev/sdc'
-	        loc = '/data'
-	        hosttype = 'master'
-	        if p in host.data.mounts.entries:
-	            entry = host.data.mounts.entries[p]
-	            if entry.dir != loc:
-	                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
-	            xfs_mounts.append(entry)
-	        else:
-	            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
-	    else:
-	        hosttype = 'segment'
-	        p = '/dev/sdb'
-	        loc = '/data1'
-	        if p in host.data.mounts.entries:
-	            entry = host.data.mounts.entries[p]
-	            xfs_mounts.append(entry)
-	            if entry.dir != loc:
-	                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
-	        else:
-	            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
-	
-	        p = '/dev/sdd'
-	        loc = '/data2'
-	        if p in host.data.mounts.entries:
-	            entry = host.data.mounts.entries[p]
-	            xfs_mounts.append(entry)
-	            if entry.dir != loc:
-	                printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
-	        else:
-	            printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
+        if host.is_a_master:
+            p = '/dev/sdc'
+            loc = '/data'
+            hosttype = 'master'
+            if p in host.data.mounts.entries:
+                entry = host.data.mounts.entries[p]
+                if entry.dir != loc:
+                    printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
+                xfs_mounts.append(entry)
+            else:
+                printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
+        else:
+            hosttype = 'segment'
+            p = '/dev/sdb'
+            loc = '/data1'
+            if p in host.data.mounts.entries:
+                entry = host.data.mounts.entries[p]
+                xfs_mounts.append(entry)
+                if entry.dir != loc:
+                    printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
+            else:
+                printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
+    
+            p = '/dev/sdd'
+            loc = '/data2'
+            if p in host.data.mounts.entries:
+                entry = host.data.mounts.entries[p]
+                xfs_mounts.append(entry)
+                if entry.dir != loc:
+                    printError(host.hostname, "%s should be mounted at %s on a %s host" % (p, loc, hosttype))
+            else:
+                printError(host.hostname, "on a %s host '%s' not found in output of mount" % (hosttype, p))
     else:
 
         for k in host.data.mounts.entries.keys():
             entry = host.data.mounts.entries[k]
             if entry.type == "xfs":
-	            xfs_mounts.append(entry)
+                xfs_mounts.append(entry)
             
-	
+    
     for mnt in xfs_mounts:
 
         if mnt.type != "xfs":
@@ -1311,14 +1333,15 @@ else:
     if (checkPlatform()):
         sys.exit(0)
 
-    logger.info("Detected platform: %s" % hosttype_str(gpcheck_info.host_type))
-    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
-        logger.info("Appliance Version = %s" % gpcheck_info.appliance_version)
-
     checkUser()
 
     if (createHostList()):
         earlyExit(True)
+
+    logger.info("Detected platform: %s" % hosttype_str(gpcheck_info.host_type))
+    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
+        logger.info("Appliance Version = %s" % gpcheck_info.appliance_version)
+        logger.info("%d rack configuration detected" % gpcheck_info.numracks)
 
     if (runCollections()):
         earlyExit(True)
