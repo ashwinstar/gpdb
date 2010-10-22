@@ -2290,7 +2290,7 @@ createDtxSnapshot(
 	qsort(
 		inProgressEntryArray,
 	  	count, 
-	  	sizeof(DistributedTransactionId),
+	  	sizeof(DistributedSnapshotMapEntry),
 	    DistributedSnapshotMappedEntry_Compare);
 
 	/*
