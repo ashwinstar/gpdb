@@ -28,6 +28,7 @@
 #endif
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
@@ -215,7 +216,7 @@ CatalogCacheComputeHashValue(CatCache *cache, int nkeys, ScanKey cur_skey)
 static uint32
 CatalogCacheComputeTupleHashValue(CatCache *cache, HeapTuple tuple)
 {
-	ScanKeyData cur_skey[4];
+	ScanKeyData cur_skey[CATCACHE_MAXKEYS];
 	bool		isNull = false;
 
 	/* Copy pre-initialized overhead data for scankey */
@@ -942,44 +943,68 @@ InitCatCachePhase2(CatCache *cache, bool touch_index)
  *		certain system indexes that support critical syscaches.
  *		We can't use an indexscan to fetch these, else we'll get into
  *		infinite recursion.  A plain heap scan will work, however.
- *
  *		Once we have completed relcache initialization (signaled by
  *		criticalRelcachesBuilt), we don't have to worry anymore.
+ *
+ *		Similarly, during backend startup we have to be able to use the
+ *		pg_authid and pg_auth_members syscaches for authentication even if
+ *		we don't yet have relcache entries for those catalogs' indexes.
  */
 static bool
 IndexScanOK(CatCache *cache, ScanKey cur_skey)
 {
-	if (cache->id == INDEXRELID)
+	switch (cache->id)
 	{
+		case INDEXRELID:
+
 		/*
-		 * Since the OIDs of indexes aren't hardwired, it's painful to figure
-		 * out which is which.	Just force all pg_index searches to be heap
-		 * scans while building the relcaches.
+			 * Rather than tracking exactly which indexes have to be loaded
+			 * before we can use indexscans (which changes from time to time),
+			 * just force all pg_index searches to be heap scans until we've
+			 * built the critical relcaches.
 		 */
 		if (!criticalRelcachesBuilt)
 			return false;
-	}
-	else if (cache->id == AMOID ||
-			 cache->id == AMNAME)
-	{
-		/*
-		 * Always do heap scans in pg_am, because it's so small there's not
-		 * much point in an indexscan anyway.  We *must* do this when
-		 * initially building critical relcache entries, but we might as well
-		 * just always do it.
-		 */
-		return false;
-	}
-	else if (cache->id == OPEROID)
-	{
-		if (!criticalRelcachesBuilt)
-		{
-			/* Looking for an OID comparison function? */
-			Oid			lookup_oid = DatumGetObjectId(cur_skey[0].sk_argument);
+			break;
 
-			if (lookup_oid >= MIN_OIDCMP && lookup_oid <= MAX_OIDCMP)
+		case AMOID:
+		case AMNAME:
+
+		    /*
+			 * Always do heap scans in pg_am, because it's so small there's
+			 * not much point in an indexscan anyway.  We *must* do this when
+			 * initially building critical relcache entries, but we might as
+			 * well just always do it.
+		     */
+		return false;
+		
+		case OPEROID:
+		
+			if (!criticalRelcachesBuilt)
+			{
+				/* Looking for an OID comparison function? */
+				Oid			lookup_oid = DatumGetObjectId(cur_skey[0].sk_argument);
+
+				if (lookup_oid >= MIN_OIDCMP && lookup_oid <= MAX_OIDCMP)
+					return false;
+			}
+		
+#if 0
+		case AUTHNAME:
+		case AUTHOID:
+		case AUTHMEMMEMROLE:
+
+			/*
+			 * Protect authentication lookups occurring before relcache has
+			 * collected entries for shared indexes.
+			 */
+			if (!criticalSharedRelcachesBuilt)
 				return false;
-		}
+			break;
+#endif
+
+		default:
+			break;
 	}
 
 	/* Normal case, allow index scan */
@@ -1009,7 +1034,7 @@ SearchCatCache(CatCache *cache,
 			   Datum v3,
 			   Datum v4)
 {
-	ScanKeyData cur_skey[4];
+	ScanKeyData cur_skey[CATCACHE_MAXKEYS];
 	uint32		hashValue;
 	Index		hashIndex;
 	Dlelem	   *elt;
@@ -1250,7 +1275,7 @@ SearchCatCacheList(CatCache *cache,
 				   Datum v3,
 				   Datum v4)
 {
-	ScanKeyData cur_skey[4];
+	ScanKeyData cur_skey[CATCACHE_MAXKEYS];
 	uint32		lHashValue;
 	Dlelem	   *elt;
 	CatCList   *cl;
@@ -1368,7 +1393,7 @@ SearchCatCacheList(CatCache *cache,
 
 		scandesc = systable_beginscan(relation,
 									  cache->cc_indexoid,
-									  true,
+									  IndexScanOK(cache, cur_skey),
 									  SnapshotNow,
 									  nkeys,
 									  cur_skey);
