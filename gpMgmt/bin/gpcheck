@@ -37,7 +37,7 @@ class GpCheckInfo:
 class GpCheckConfig:
     def __init__(self):
         self.gpcheck_config_version = None
-        self.xfs_mount_options = None
+        
 
 gpcheck_info = None
 gpcheck_config = None
@@ -413,8 +413,8 @@ def testApplianceOmreportRemoteaccess(host):
 
 def testApplianceOmreportController(host):
     expectedKeyValuePairs = dict()
-    expectedKeyValuePairs['Firmware Version'] = '12.3.0-0032'
-    expectedKeyValuePairs['Driver Version'] = '00.00.04.29'
+    expectedKeyValuePairs['Firmware Version'] = gpcheck_config.perc_firmware_version
+    expectedKeyValuePairs['Driver Version'] = gpcheck_config.perc_driver_version
 
     for k in expectedKeyValuePairs.keys():
         if k in host.data.omreport.controller:
@@ -1006,17 +1006,34 @@ def populateGpCheckLinuxConfigParams():
 
     for option in requiredOptions:
         if not config.has_option('linux', option):
-            printError(None, "%s does not contain required option %s.  Exiting early" % (option,configfilename))
+            printError(None, "%s does not contain required option %s.  Exiting early" % (configfilename, option))
             return True
 
     global gpcheck_config
     gpcheck_config.xfs_mount_options = config.get('linux', 'xfs_mount_options')
 
-    
+# return True for error
+def populateGpCheckApplianceConfigParams():
+
+    global gpcheck_config
+
+    requiredOptions = set(['perc_firmware_version', 'perc_driver_version'])
+
+    for option in requiredOptions:
+        if not config.has_option(gpcheck_config.gpcheck_config_version, option):
+            printError(None, "%s does not contain required option %s:%s.  Exiting early" % (configfilename, gpcheck_config.gpcheck_config_version, option))
+            return True
+
+    gpcheck_config.perc_firmware_version = config.get(gpcheck_config.gpcheck_config_version, 'perc_firmware_version')
+    gpcheck_config.perc_driver_version = config.get(gpcheck_config.gpcheck_config_version, 'perc_driver_version')
+   
 
 def testAppliance():
 
     if populateGpCheckLinuxConfigParams():
+        return
+
+    if populateGpCheckApplianceConfigParams():
         return
 
     for h in gpcheck_info.hosts.keys():

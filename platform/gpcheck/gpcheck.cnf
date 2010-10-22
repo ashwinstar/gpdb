@@ -2,9 +2,12 @@
 max_version = 1.0.2.0
 
 [1.0.2.0]
-
+perc_firmware_version = 12.3.0-0032
+perc_driver_version = 00.00.04.29
 
 [1.0.0.1]
+perc_firmware_version = 12.3.0-0032
+perc_driver_version = 00.00.04.29
 
 [linux]
 xfs_mount_options = rw,noatime,inode64,allocsize=1g
