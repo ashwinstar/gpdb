@@ -3429,6 +3429,7 @@ ic_rx_thread_func(void *arg)
 						{
 							write_log("non-requested stop flag, EOS! seq %d, flags 0x%x", pkt->seq, pkt->flags);
 						}
+						pthread_mutex_unlock(&rx_thread_mutex);
 						continue;
 					}
 
