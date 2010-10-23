@@ -561,7 +561,7 @@ endef
 LOADERS_FILESET_LIB = $(strip $(tmpLOADERS_FILESET_LIB))
 
 aix5_ppc_32_LOADERS_LIBS_PERZL=libz.a
-aix5_ppc_64_LOADERS_LIBS_PERZL=libz.so*
+aix5_ppc_64_LOADERS_LIBS_PERZL=libz.so libz.so.1 libz.so.1.2.4
 
 aix5_ppc_32_LOADERS_LIBS_PERZL_LOC=/opt/freeware/lib
 aix5_ppc_64_LOADERS_LIBS_PERZL_LOC=/opt/pware64/lib
@@ -748,7 +748,7 @@ endif
 ifneq "$(LOADERS_FILESET_LIB_PERZL)" ""
 	# include libraries from www.perzl.org needed by the pware Python-2.6.1 build
 	mkdir -p $(LOADERSINSTLOC_LIB_PWARE)
-	(cd $(LOADERS_FILESET_LIB_PERZL_LOC) && $(TAR) cf - $(LOADERS_FILESET_LIB_PERZL)) | (cd $(LOADERSINSTLOC_LIB_PWARE) && $(TAR) xvpf -)$(check_pipe_for_errors)
+	($(TAR) cf - -C $(LOADERS_FILESET_LIB_PERZL_LOC) $(LOADERS_FILESET_LIB_PERZL)) | ($(TAR) xvpf - -C $(LOADERSINSTLOC_LIB_PWARE))$(check_pipe_for_errors)
 endif
 ifneq "$(LOADERS_FILESET_LIB_PWARE)" ""
 	# include libraries from pware needed by the pware Python-2.6.1 build
