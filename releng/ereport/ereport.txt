@@ -160,18 +160,18 @@ aabg: appendonlywriter:00000309:  "found none", relid)));
 aabg: appendonlywriter:00000430:  ereport(ERROR, 
 aabg: appendonlywriter:00000431:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
 aabg: appendonlywriter:00000432:  errmsg("int64 out of range"))); 
-aabg: appendonlywriter:00000552:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
-aabg: appendonlywriter:00000553:  "tables open for writing data at the same time. " 
-aabg: appendonlywriter:00000554:  "if tables are heavily partitioned or if your " 
-aabg: appendonlywriter:00000555:  "workload requires, increase the value of " 
-aabg: appendonlywriter:00000556:  "max_appendonly_tables and retry", 
-aabg: appendonlywriter:00000557:  MaxAppendOnlyTables))); 
-aabg: appendonlywriter:00000623:  ereport(ERROR, (errmsg("could not find segment file to use for " 
-aabg: appendonlywriter:00000624:  "inserting into relation %s (%d).", 
-aabg: appendonlywriter:00000625:  get_rel_name(relid), relid))); 
-aabg: appendonlywriter:00000724:  ereport(ERROR, 
-aabg: appendonlywriter:00000725:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-aabg: appendonlywriter:00000726:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
+aabg: appendonlywriter:00000571:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
+aabg: appendonlywriter:00000572:  "tables open for writing data at the same time. " 
+aabg: appendonlywriter:00000573:  "if tables are heavily partitioned or if your " 
+aabg: appendonlywriter:00000574:  "workload requires, increase the value of " 
+aabg: appendonlywriter:00000575:  "max_appendonly_tables and retry", 
+aabg: appendonlywriter:00000576:  MaxAppendOnlyTables))); 
+aabg: appendonlywriter:00000642:  ereport(ERROR, (errmsg("could not find segment file to use for " 
+aabg: appendonlywriter:00000643:  "inserting into relation %s (%d).", 
+aabg: appendonlywriter:00000644:  get_rel_name(relid), relid))); 
+aabg: appendonlywriter:00000743:  ereport(ERROR, 
+aabg: appendonlywriter:00000744:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+aabg: appendonlywriter:00000745:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
 aaaaa GP_IGNORE: baag: bitmap - ./backend/access/bitmap/bitmap.c
 baag: bitmap:00000079:  ereport (ERROR, 
 baag: bitmap:00000080:  (errcode(ERRCODE_INDEX_CORRUPTED), 
@@ -860,84 +860,84 @@ vaag: varsup:00000307:  xidWrapLimit - curXid),
 vaag: varsup:00000308:  errhint("To avoid a database shutdown, execute a full-database VACUUM in \"%s\".", 
 vaag: varsup:00000309:  NameStr(*oldest_datname)))); 
 aaaaa GP_IGNORE: xaae: xact - ./backend/access/transam/xact.c
-xaae: xact:00000763:  ereport(ERROR, 
-xaae: xact:00000764:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-xaae: xact:00000765:  errmsg("cannot have more than 2^32-1 commands in a transaction"))); 
-xaae: xact:00000992:  ereport(ERROR, 
-xaae: xact:00000993:  (errmsg("Reader qExec had local changes to commit! (MyXactMadeXLogEntry = %s, MyXactMadeTempRelUpdate = %s, nrels = %d)", 
-xaae: xact:00000994:  (MyXactMadeXLogEntry ? "true" : "false"), (MyXactMadeTempRelUpdate ? "true" : "false"), nrels), 
-xaae: xact:00000995:  errdetail("A Reader qExec tried to commit local changes. " 
-xaae: xact:00000996:  "Only the single Writer qExec can do so. "), 
-xaae: xact:00000997:  errhint("This is most likely the result of a feature being turned " 
-xaae: xact:00000998:  "on that violates the single WRITER principle"))); 
-xaae: xact:00002419:  ereport(ERROR, 
-xaae: xact:00002420:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-xaae: xact:00002421:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
-xaae: xact:00002422:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
-xaae: xact:00002423:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d\n" 
-xaae: xact:00002424:  "DistributedTransactionContext = %s." 
-xaae: xact:00002425:  "Dump of all sharedsnapshots in shmem: %s", 
-xaae: xact:00002426:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
-xaae: xact:00002427:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
-xaae: xact:00002428:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
-xaae: xact:00002429:  DtxContextToString(DistributedTransactionContext), 
-xaae: xact:00002430:  SharedSnapshotDump()))); 
-xaae: xact:00003903:  ereport(ERROR, 
-xaae: xact:00003904:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00003905:  /* translator: %s represents an SQL statement name */ 
-xaae: xact:00003906:  errmsg("%s cannot run inside a transaction block", 
-xaae: xact:00003907:  stmtType), 
-xaae: xact:00003908:  errOmitLocation(true))); 
-xaae: xact:00003914:  ereport(ERROR, 
-xaae: xact:00003915:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00003916:  /* translator: %s represents an SQL statement name */ 
-xaae: xact:00003917:  errmsg("%s cannot run inside a subtransaction", 
-xaae: xact:00003918:  stmtType), 
-xaae: xact:00003919:  errOmitLocation(true))); 
+xaae: xact:00000764:  ereport(ERROR, 
+xaae: xact:00000765:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+xaae: xact:00000766:  errmsg("cannot have more than 2^32-1 commands in a transaction"))); 
+xaae: xact:00000993:  ereport(ERROR, 
+xaae: xact:00000994:  (errmsg("Reader qExec had local changes to commit! (MyXactMadeXLogEntry = %s, MyXactMadeTempRelUpdate = %s, nrels = %d)", 
+xaae: xact:00000995:  (MyXactMadeXLogEntry ? "true" : "false"), (MyXactMadeTempRelUpdate ? "true" : "false"), nrels), 
+xaae: xact:00000996:  errdetail("A Reader qExec tried to commit local changes. " 
+xaae: xact:00000997:  "Only the single Writer qExec can do so. "), 
+xaae: xact:00000998:  errhint("This is most likely the result of a feature being turned " 
+xaae: xact:00000999:  "on that violates the single WRITER principle"))); 
+xaae: xact:00002443:  ereport(ERROR, 
+xaae: xact:00002444:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+xaae: xact:00002445:  errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."), 
+xaae: xact:00002446:  errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value " 
+xaae: xact:00002447:  "is currently: %d/%u. Our slotindex is: %d our writer-pid %d\n" 
+xaae: xact:00002448:  "DistributedTransactionContext = %s." 
+xaae: xact:00002449:  "Dump of all sharedsnapshots in shmem: %s", 
+xaae: xact:00002450:  QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync, 
+xaae: xact:00002451:  SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync, 
+xaae: xact:00002452:  SharedLocalSnapshotSlot->slotindex, (int)SharedLocalSnapshotSlot->pid, 
+xaae: xact:00002453:  DtxContextToString(DistributedTransactionContext), 
+xaae: xact:00002454:  SharedSnapshotDump()))); 
 xaae: xact:00003927:  ereport(ERROR, 
 xaae: xact:00003928:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
 xaae: xact:00003929:  /* translator: %s represents an SQL statement name */ 
-xaae: xact:00003930:  errmsg("%s cannot be executed from a function", stmtType), 
-xaae: xact:00003931:  errOmitLocation(true))); 
-xaae: xact:00003979:  ereport(ERROR, 
-xaae: xact:00003980:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00003981:  /* translator: %s represents an SQL statement name */ 
-xaae: xact:00003982:  errmsg("%s may only be used in transaction blocks", 
-xaae: xact:00003983:  stmtType))); 
-xaae: xact:00004219:  ereport(WARNING, 
-xaae: xact:00004220:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00004221:  errmsg("there is already a transaction in progress"))); 
-xaae: xact:00004393:  ereport(WARNING, 
-xaae: xact:00004394:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00004395:  errmsg("there is no transaction in progress"))); 
-xaae: xact:00004492:  ereport(WARNING, 
-xaae: xact:00004493:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
-xaae: xact:00004494:  errmsg("there is no transaction in progress"))); 
-xaae: xact:00004621:  ereport(ERROR, 
-xaae: xact:00004622:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004623:  errmsg("no such savepoint"), 
-xaae: xact:00004624:  errOmitLocation(true))); 
-xaae: xact:00004705:  ereport(ERROR, 
-xaae: xact:00004706:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004707:  errmsg("no such savepoint"))); 
-xaae: xact:00004711:  ereport(ERROR, 
-xaae: xact:00004712:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004713:  errmsg("no such savepoint"))); 
-xaae: xact:00004755:  ereport(ERROR, 
-xaae: xact:00004756:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004757:  errmsg("no such savepoint"))); 
-xaae: xact:00004803:  ereport(ERROR, 
-xaae: xact:00004804:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004805:  errmsg("no such savepoint"))); 
-xaae: xact:00004809:  ereport(ERROR, 
-xaae: xact:00004810:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
-xaae: xact:00004811:  errmsg("no such savepoint"))); 
-xaae: xact:00005513:  ereport(ERROR, 
-xaae: xact:00005514:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
-xaae: xact:00005515:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
-xaae: xact:00005532:  ereport(ERROR, 
-xaae: xact:00005533:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-xaae: xact:00005534:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
+xaae: xact:00003930:  errmsg("%s cannot run inside a transaction block", 
+xaae: xact:00003931:  stmtType), 
+xaae: xact:00003932:  errOmitLocation(true))); 
+xaae: xact:00003938:  ereport(ERROR, 
+xaae: xact:00003939:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00003940:  /* translator: %s represents an SQL statement name */ 
+xaae: xact:00003941:  errmsg("%s cannot run inside a subtransaction", 
+xaae: xact:00003942:  stmtType), 
+xaae: xact:00003943:  errOmitLocation(true))); 
+xaae: xact:00003951:  ereport(ERROR, 
+xaae: xact:00003952:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00003953:  /* translator: %s represents an SQL statement name */ 
+xaae: xact:00003954:  errmsg("%s cannot be executed from a function", stmtType), 
+xaae: xact:00003955:  errOmitLocation(true))); 
+xaae: xact:00004003:  ereport(ERROR, 
+xaae: xact:00004004:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00004005:  /* translator: %s represents an SQL statement name */ 
+xaae: xact:00004006:  errmsg("%s may only be used in transaction blocks", 
+xaae: xact:00004007:  stmtType))); 
+xaae: xact:00004243:  ereport(WARNING, 
+xaae: xact:00004244:  (errcode(ERRCODE_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00004245:  errmsg("there is already a transaction in progress"))); 
+xaae: xact:00004417:  ereport(WARNING, 
+xaae: xact:00004418:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00004419:  errmsg("there is no transaction in progress"))); 
+xaae: xact:00004516:  ereport(WARNING, 
+xaae: xact:00004517:  (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION), 
+xaae: xact:00004518:  errmsg("there is no transaction in progress"))); 
+xaae: xact:00004645:  ereport(ERROR, 
+xaae: xact:00004646:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004647:  errmsg("no such savepoint"), 
+xaae: xact:00004648:  errOmitLocation(true))); 
+xaae: xact:00004729:  ereport(ERROR, 
+xaae: xact:00004730:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004731:  errmsg("no such savepoint"))); 
+xaae: xact:00004735:  ereport(ERROR, 
+xaae: xact:00004736:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004737:  errmsg("no such savepoint"))); 
+xaae: xact:00004779:  ereport(ERROR, 
+xaae: xact:00004780:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004781:  errmsg("no such savepoint"))); 
+xaae: xact:00004827:  ereport(ERROR, 
+xaae: xact:00004828:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004829:  errmsg("no such savepoint"))); 
+xaae: xact:00004833:  ereport(ERROR, 
+xaae: xact:00004834:  (errcode(ERRCODE_S_E_INVALID_SPECIFICATION), 
+xaae: xact:00004835:  errmsg("no such savepoint"))); 
+xaae: xact:00005537:  ereport(ERROR, 
+xaae: xact:00005538:  (errcode(ERRCODE_GP_SUBTRANS_LIMIT_EXCEEDED), 
+xaae: xact:00005539:  errmsg("cannot have more than 100 subtransactions in a transaction"))); 
+xaae: xact:00005556:  ereport(ERROR, 
+xaae: xact:00005557:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+xaae: xact:00005558:  errmsg("cannot have more than 2^32-1 subtransactions in a transaction"))); 
 aaaaa GP_IGNORE: xaae: xlog - ./backend/access/transam/xlog.c
 xaae: xlog:00000825:  ereport(ERROR, 
 xaae: xlog:00000826:  (errmsg("Reader qExec had local changes to commit! (rmid = %u)", 
@@ -1266,129 +1266,129 @@ xaae: xlog:00007420:  callerStr, XLogLocationToString(&checkPoint.redo))));
 xaae: xlog:00008077:  ereport(LOG, 
 xaae: xlog:00008078:  (errmsg("database system is shut down"), 
 xaae: xlog:00008079:  errSendAlert(true),errOmitLocation(true))); 
-xaae: xlog:00009057:  ereport(ERROR, 
-xaae: xlog:00009058:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009059:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00009062:  ereport(ERROR, 
-xaae: xlog:00009063:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009064:  (errmsg("WAL archiving is not active"), 
-xaae: xlog:00009065:  (errhint("archive_command must be defined before " 
-xaae: xlog:00009066:  "online backups can be made safely."))))); 
-xaae: xlog:00009092:  ereport(ERROR, 
-xaae: xlog:00009093:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009094:  errmsg("a backup is already in progress"), 
-xaae: xlog:00009095:  errhint("Run pg_stop_backup() and try again."))); 
-xaae: xlog:00009140:  ereport(ERROR, 
-xaae: xlog:00009141:  (errcode_for_file_access(), 
-xaae: xlog:00009142:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00009143:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009146:  ereport(ERROR, 
-xaae: xlog:00009147:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009148:  errmsg("a backup is already in progress"), 
-xaae: xlog:00009149:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
-xaae: xlog:00009150:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009157:  ereport(ERROR, 
-xaae: xlog:00009158:  (errcode_for_file_access(), 
-xaae: xlog:00009159:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00009160:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009168:  ereport(ERROR, 
-xaae: xlog:00009169:  (errcode_for_file_access(), 
-xaae: xlog:00009170:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009078:  ereport(ERROR, 
+xaae: xlog:00009079:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009080:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00009083:  ereport(ERROR, 
+xaae: xlog:00009084:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009085:  (errmsg("WAL archiving is not active"), 
+xaae: xlog:00009086:  (errhint("archive_command must be defined before " 
+xaae: xlog:00009087:  "online backups can be made safely."))))); 
+xaae: xlog:00009113:  ereport(ERROR, 
+xaae: xlog:00009114:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009115:  errmsg("a backup is already in progress"), 
+xaae: xlog:00009116:  errhint("Run pg_stop_backup() and try again."))); 
+xaae: xlog:00009161:  ereport(ERROR, 
+xaae: xlog:00009162:  (errcode_for_file_access(), 
+xaae: xlog:00009163:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00009164:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009167:  ereport(ERROR, 
+xaae: xlog:00009168:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009169:  errmsg("a backup is already in progress"), 
+xaae: xlog:00009170:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
 xaae: xlog:00009171:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009223:  ereport(ERROR, 
-xaae: xlog:00009224:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009225:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00009257:  ereport(ERROR, 
-xaae: xlog:00009258:  (errcode_for_file_access(), 
-xaae: xlog:00009259:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009260:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009261:  ereport(ERROR, 
-xaae: xlog:00009262:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009263:  errmsg("a backup is not in progress"))); 
-xaae: xlog:00009273:  ereport(ERROR, 
-xaae: xlog:00009274:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009275:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009285:  ereport(ERROR, 
-xaae: xlog:00009286:  (errcode_for_file_access(), 
-xaae: xlog:00009287:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00009288:  histfilepath))); 
-xaae: xlog:00009298:  ereport(ERROR, 
-xaae: xlog:00009299:  (errcode_for_file_access(), 
-xaae: xlog:00009300:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00009301:  histfilepath))); 
-xaae: xlog:00009307:  ereport(ERROR, 
-xaae: xlog:00009308:  (errcode_for_file_access(), 
-xaae: xlog:00009309:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009310:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009312:  ereport(ERROR, 
-xaae: xlog:00009313:  (errcode_for_file_access(), 
-xaae: xlog:00009314:  errmsg("could not remove file \"%s\": %m", 
-xaae: xlog:00009315:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009345:  ereport(ERROR, 
-xaae: xlog:00009346:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009347:  (errmsg("must be superuser to switch transaction log files")))); 
-xaae: xlog:00009453:  ereport(ERROR, 
-xaae: xlog:00009454:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009455:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009456:  locationstr))); 
-xaae: xlog:00009522:  ereport(ERROR, 
-xaae: xlog:00009523:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009524:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009525:  locationstr))); 
-xaae: xlog:00009582:  ereport(FATAL, 
-xaae: xlog:00009583:  (errcode_for_file_access(), 
-xaae: xlog:00009584:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009585:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009597:  ereport(FATAL, 
-xaae: xlog:00009598:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009599:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009178:  ereport(ERROR, 
+xaae: xlog:00009179:  (errcode_for_file_access(), 
+xaae: xlog:00009180:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00009181:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009189:  ereport(ERROR, 
+xaae: xlog:00009190:  (errcode_for_file_access(), 
+xaae: xlog:00009191:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009192:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009244:  ereport(ERROR, 
+xaae: xlog:00009245:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009246:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00009278:  ereport(ERROR, 
+xaae: xlog:00009279:  (errcode_for_file_access(), 
+xaae: xlog:00009280:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009281:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009282:  ereport(ERROR, 
+xaae: xlog:00009283:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009284:  errmsg("a backup is not in progress"))); 
+xaae: xlog:00009294:  ereport(ERROR, 
+xaae: xlog:00009295:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009296:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009306:  ereport(ERROR, 
+xaae: xlog:00009307:  (errcode_for_file_access(), 
+xaae: xlog:00009308:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00009309:  histfilepath))); 
+xaae: xlog:00009319:  ereport(ERROR, 
+xaae: xlog:00009320:  (errcode_for_file_access(), 
+xaae: xlog:00009321:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009322:  histfilepath))); 
+xaae: xlog:00009328:  ereport(ERROR, 
+xaae: xlog:00009329:  (errcode_for_file_access(), 
+xaae: xlog:00009330:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009331:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009333:  ereport(ERROR, 
+xaae: xlog:00009334:  (errcode_for_file_access(), 
+xaae: xlog:00009335:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00009336:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009366:  ereport(ERROR, 
+xaae: xlog:00009367:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009368:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00009474:  ereport(ERROR, 
+xaae: xlog:00009475:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009476:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009477:  locationstr))); 
+xaae: xlog:00009543:  ereport(ERROR, 
+xaae: xlog:00009544:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009545:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009546:  locationstr))); 
 xaae: xlog:00009603:  ereport(FATAL, 
-xaae: xlog:00009604:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009605:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009607:  ereport(FATAL, 
-xaae: xlog:00009608:  (errcode_for_file_access(), 
-xaae: xlog:00009609:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009610:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009634:  ereport(FATAL, 
-xaae: xlog:00009635:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009636:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009640:  ereport(FATAL, 
-xaae: xlog:00009641:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009642:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009645:  ereport(FATAL, 
-xaae: xlog:00009646:  (errcode_for_file_access(), 
-xaae: xlog:00009647:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009648:  histfilepath))); 
-xaae: xlog:00009995:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-xaae: xlog:00009996:  errmsg("database 'postgres' does not exist"))); 
-xaae: xlog:00010233:  ereport(WARNING, 
-xaae: xlog:00010234:  (errcode_for_file_access(), 
-xaae: xlog:00010235:  errmsg("could not allocate path, path too long \"%s/%s\"", 
-xaae: xlog:00010236:  XLOGDIR, fname))); 
-xaae: xlog:00010242:  ereport(WARNING, 
-xaae: xlog:00010243:  (errcode_for_file_access(), 
-xaae: xlog:00010244:  errmsg("could not open xlog file \"%s\" : %m", 
-xaae: xlog:00010245:  path))); 
-xaae: xlog:00010250:  ereport(WARNING, 
-xaae: xlog:00010251:  (errcode_for_file_access(), 
-xaae: xlog:00010252:  errmsg("could not truncate xlog file \"%s\" to position \"%d\" : %m", 
-xaae: xlog:00010253:  path, startOffset))); 
-xaae: xlog:00010259:  ereport(WARNING, 
-xaae: xlog:00010260:  (errcode_for_file_access(), 
-xaae: xlog:00010261:  errmsg("could not seek xlog file \"%s\" to position \"%d\" : %m", 
-xaae: xlog:00010262:  path, startOffset))); 
-xaae: xlog:00010292:  ereport(WARNING, 
-xaae: xlog:00010293:  (errcode_for_file_access(), 
-xaae: xlog:00010294:  errmsg("could not write to file \"%s\": %m", path))); 
-xaae: xlog:00010305:  ereport(WARNING, 
-xaae: xlog:00010306:  (errcode_for_file_access(), 
-xaae: xlog:00010307:  errmsg("could not fsync file \"%s\": %m", path))); 
-xaae: xlog:00010314:  ereport(WARNING, 
-xaae: xlog:00010315:  (errcode_for_file_access(), 
-xaae: xlog:00010316:  errmsg("could not close file \"%s\": %m", path))); 
-xaae: xlog:00010674:  ereport(ERROR, 
-xaae: xlog:00010675:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-xaae: xlog:00010676:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
+xaae: xlog:00009604:  (errcode_for_file_access(), 
+xaae: xlog:00009605:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009606:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009618:  ereport(FATAL, 
+xaae: xlog:00009619:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009620:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009624:  ereport(FATAL, 
+xaae: xlog:00009625:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009626:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009628:  ereport(FATAL, 
+xaae: xlog:00009629:  (errcode_for_file_access(), 
+xaae: xlog:00009630:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009631:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009655:  ereport(FATAL, 
+xaae: xlog:00009656:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009657:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009661:  ereport(FATAL, 
+xaae: xlog:00009662:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009663:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009666:  ereport(FATAL, 
+xaae: xlog:00009667:  (errcode_for_file_access(), 
+xaae: xlog:00009668:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009669:  histfilepath))); 
+xaae: xlog:00010016:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+xaae: xlog:00010017:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00010254:  ereport(WARNING, 
+xaae: xlog:00010255:  (errcode_for_file_access(), 
+xaae: xlog:00010256:  errmsg("could not allocate path, path too long \"%s/%s\"", 
+xaae: xlog:00010257:  XLOGDIR, fname))); 
+xaae: xlog:00010263:  ereport(WARNING, 
+xaae: xlog:00010264:  (errcode_for_file_access(), 
+xaae: xlog:00010265:  errmsg("could not open xlog file \"%s\" : %m", 
+xaae: xlog:00010266:  path))); 
+xaae: xlog:00010271:  ereport(WARNING, 
+xaae: xlog:00010272:  (errcode_for_file_access(), 
+xaae: xlog:00010273:  errmsg("could not truncate xlog file \"%s\" to position \"%d\" : %m", 
+xaae: xlog:00010274:  path, startOffset))); 
+xaae: xlog:00010280:  ereport(WARNING, 
+xaae: xlog:00010281:  (errcode_for_file_access(), 
+xaae: xlog:00010282:  errmsg("could not seek xlog file \"%s\" to position \"%d\" : %m", 
+xaae: xlog:00010283:  path, startOffset))); 
+xaae: xlog:00010313:  ereport(WARNING, 
+xaae: xlog:00010314:  (errcode_for_file_access(), 
+xaae: xlog:00010315:  errmsg("could not write to file \"%s\": %m", path))); 
+xaae: xlog:00010326:  ereport(WARNING, 
+xaae: xlog:00010327:  (errcode_for_file_access(), 
+xaae: xlog:00010328:  errmsg("could not fsync file \"%s\": %m", path))); 
+xaae: xlog:00010335:  ereport(WARNING, 
+xaae: xlog:00010336:  (errcode_for_file_access(), 
+xaae: xlog:00010337:  errmsg("could not close file \"%s\": %m", path))); 
+xaae: xlog:00010695:  ereport(ERROR, 
+xaae: xlog:00010696:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+xaae: xlog:00010697:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -1475,66 +1475,66 @@ aaag: aclchk:00001957:  errOmitLocation(true)));
 aaag: aclchk:00001977:  ereport(ERROR, 
 aaag: aclchk:00001978:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 aaag: aclchk:00001979:  errmsg("role with OID %u does not exist", roleid))); 
-aaag: aclchk:00002051:  ereport(ERROR, 
-aaag: aclchk:00002052:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-aaag: aclchk:00002053:  errmsg("relation with OID %u does not exist", 
-aaag: aclchk:00002054:  table_oid))); 
-aaag: aclchk:00002162:  ereport(ERROR, 
-aaag: aclchk:00002163:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
-aaag: aclchk:00002164:  errmsg("database with OID %u does not exist", db_oid))); 
-aaag: aclchk:00002218:  ereport(ERROR, 
-aaag: aclchk:00002219:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-aaag: aclchk:00002220:  errmsg("function with OID %u does not exist", proc_oid))); 
-aaag: aclchk:00002274:  ereport(ERROR, 
-aaag: aclchk:00002275:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaag: aclchk:00002276:  errmsg("language with OID %u does not exist", lang_oid))); 
-aaag: aclchk:00002359:  ereport(ERROR, 
-aaag: aclchk:00002360:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-aaag: aclchk:00002361:  errmsg("schema with OID %u does not exist", nsp_oid))); 
-aaag: aclchk:00002432:  ereport(ERROR, 
-aaag: aclchk:00002433:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaag: aclchk:00002434:  errmsg("tablespace with OID %u does not exist", spc_oid))); 
-aaag: aclchk:00002493:  ereport(ERROR, 
-aaag: aclchk:00002494:  (errmsg("foreign-data wrapper with OID %u does not exist", 
-aaag: aclchk:00002495:  fdw_oid))); 
-aaag: aclchk:00002556:  ereport(ERROR, 
-aaag: aclchk:00002557:  (errmsg("foreign server with OID %u does not exist", 
-aaag: aclchk:00002558:  srv_oid))); 
-aaag: aclchk:00002710:  ereport(ERROR, 
-aaag: aclchk:00002711:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-aaag: aclchk:00002712:  errmsg("relation with OID %u does not exist", class_oid))); 
-aaag: aclchk:00002738:  ereport(ERROR, 
-aaag: aclchk:00002739:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaag: aclchk:00002740:  errmsg("type with OID %u does not exist", type_oid))); 
-aaag: aclchk:00002766:  ereport(ERROR, 
-aaag: aclchk:00002767:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-aaag: aclchk:00002768:  errmsg("operator with OID %u does not exist", oper_oid))); 
-aaag: aclchk:00002794:  ereport(ERROR, 
-aaag: aclchk:00002795:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-aaag: aclchk:00002796:  errmsg("function with OID %u does not exist", proc_oid))); 
-aaag: aclchk:00002822:  ereport(ERROR, 
-aaag: aclchk:00002823:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-aaag: aclchk:00002824:  errmsg("schema with OID %u does not exist", nsp_oid))); 
-aaag: aclchk:00002861:  ereport(ERROR, 
-aaag: aclchk:00002862:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaag: aclchk:00002863:  errmsg("tablespace with OID %u does not exist", spc_oid))); 
-aaag: aclchk:00002901:  ereport(ERROR, 
-aaag: aclchk:00002902:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaag: aclchk:00002903:  errmsg("filepace with OID %u does not exist", fsoid))); 
+aaag: aclchk:00002052:  ereport(ERROR, 
+aaag: aclchk:00002053:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+aaag: aclchk:00002054:  errmsg("relation with OID %u does not exist", 
+aaag: aclchk:00002055:  table_oid))); 
+aaag: aclchk:00002192:  ereport(ERROR, 
+aaag: aclchk:00002193:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+aaag: aclchk:00002194:  errmsg("database with OID %u does not exist", db_oid))); 
+aaag: aclchk:00002248:  ereport(ERROR, 
+aaag: aclchk:00002249:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+aaag: aclchk:00002250:  errmsg("function with OID %u does not exist", proc_oid))); 
+aaag: aclchk:00002304:  ereport(ERROR, 
+aaag: aclchk:00002305:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaag: aclchk:00002306:  errmsg("language with OID %u does not exist", lang_oid))); 
+aaag: aclchk:00002389:  ereport(ERROR, 
+aaag: aclchk:00002390:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+aaag: aclchk:00002391:  errmsg("schema with OID %u does not exist", nsp_oid))); 
+aaag: aclchk:00002462:  ereport(ERROR, 
+aaag: aclchk:00002463:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaag: aclchk:00002464:  errmsg("tablespace with OID %u does not exist", spc_oid))); 
+aaag: aclchk:00002523:  ereport(ERROR, 
+aaag: aclchk:00002524:  (errmsg("foreign-data wrapper with OID %u does not exist", 
+aaag: aclchk:00002525:  fdw_oid))); 
+aaag: aclchk:00002586:  ereport(ERROR, 
+aaag: aclchk:00002587:  (errmsg("foreign server with OID %u does not exist", 
+aaag: aclchk:00002588:  srv_oid))); 
+aaag: aclchk:00002740:  ereport(ERROR, 
+aaag: aclchk:00002741:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+aaag: aclchk:00002742:  errmsg("relation with OID %u does not exist", class_oid))); 
+aaag: aclchk:00002768:  ereport(ERROR, 
+aaag: aclchk:00002769:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaag: aclchk:00002770:  errmsg("type with OID %u does not exist", type_oid))); 
+aaag: aclchk:00002796:  ereport(ERROR, 
+aaag: aclchk:00002797:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+aaag: aclchk:00002798:  errmsg("operator with OID %u does not exist", oper_oid))); 
+aaag: aclchk:00002824:  ereport(ERROR, 
+aaag: aclchk:00002825:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+aaag: aclchk:00002826:  errmsg("function with OID %u does not exist", proc_oid))); 
+aaag: aclchk:00002852:  ereport(ERROR, 
+aaag: aclchk:00002853:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+aaag: aclchk:00002854:  errmsg("schema with OID %u does not exist", nsp_oid))); 
+aaag: aclchk:00002891:  ereport(ERROR, 
+aaag: aclchk:00002892:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaag: aclchk:00002893:  errmsg("tablespace with OID %u does not exist", spc_oid))); 
 aaag: aclchk:00002931:  ereport(ERROR, 
 aaag: aclchk:00002932:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaag: aclchk:00002933:  errmsg("operator class with OID %u does not exist", 
-aaag: aclchk:00002934:  opc_oid))); 
-aaag: aclchk:00002960:  ereport(ERROR, 
-aaag: aclchk:00002961:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaag: aclchk:00002962:  errmsg("foreign server with OID %u does not exist", 
-aaag: aclchk:00002963:  srv_oid))); 
-aaag: aclchk:00002989:  ereport(ERROR, 
-aaag: aclchk:00002990:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
-aaag: aclchk:00002991:  errmsg("database with OID %u does not exist", db_oid))); 
-aaag: aclchk:00003017:  ereport(ERROR, 
-aaag: aclchk:00003018:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaag: aclchk:00003019:  errmsg("conversion with OID %u does not exist", conv_oid))); 
+aaag: aclchk:00002933:  errmsg("filepace with OID %u does not exist", fsoid))); 
+aaag: aclchk:00002961:  ereport(ERROR, 
+aaag: aclchk:00002962:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaag: aclchk:00002963:  errmsg("operator class with OID %u does not exist", 
+aaag: aclchk:00002964:  opc_oid))); 
+aaag: aclchk:00002990:  ereport(ERROR, 
+aaag: aclchk:00002991:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaag: aclchk:00002992:  errmsg("foreign server with OID %u does not exist", 
+aaag: aclchk:00002993:  srv_oid))); 
+aaag: aclchk:00003019:  ereport(ERROR, 
+aaag: aclchk:00003020:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+aaag: aclchk:00003021:  errmsg("database with OID %u does not exist", db_oid))); 
+aaag: aclchk:00003047:  ereport(ERROR, 
+aaag: aclchk:00003048:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaag: aclchk:00003049:  errmsg("conversion with OID %u does not exist", conv_oid))); 
 aaaaa GP_IGNORE: aaai: aoblkdir - ./backend/catalog/aoblkdir.c
 aaai: aoblkdir:00000116:  ereport(ERROR, 
 aaai: aoblkdir:00000117:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
@@ -2713,65 +2713,65 @@ caba: cdbexplain:00000506:  errhint("Please verify that all instances are using 
 caba: cdbexplain:00000507:  "the correct %s software version.", 
 caba: cdbexplain:00000508:  PACKAGE_NAME))); 
 aaaaa GP_IGNORE: caba: cdbfilerep - ./backend/cdb/cdbfilerep.c
-caba: cdbfilerep:00000470:  ereport(ERROR, 
-caba: cdbfilerep:00000471:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000472:  (errmsg("not enough shared memory for mirroring")))); 
-caba: cdbfilerep:00000496:  ereport(ERROR, 
-caba: cdbfilerep:00000497:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000498:  (errmsg("shared memory for filerep ipc not initialized")))); 
-caba: cdbfilerep:00000623:  ereport(ERROR, 
-caba: cdbfilerep:00000624:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000625:  (errmsg("not enough shared memory for mirroring")))); 
-caba: cdbfilerep:00000766:  ereport(ERROR, 
-caba: cdbfilerep:00000767:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000768:  (errmsg("shared memory for mirroring not initialized.")))); 
-caba: cdbfilerep:00001084:  ereport(WARNING, 
-caba: cdbfilerep:00001085:  (errmsg("threshold '75' percent of 'gp_segment_connect_timeout=%d' is reached, " 
-caba: cdbfilerep:00001086:  "mirror may not be able to keep up with primary, " 
-caba: cdbfilerep:00001087:  "primary may transition to change tracking", 
-caba: cdbfilerep:00001088:  gp_segment_connect_timeout), 
-caba: cdbfilerep:00001089:  errhint("increase guc 'gp_segment_connect_timeout' by 'gpconfig' and 'gpstop -u' "), 
-caba: cdbfilerep:00001090:  errSendAlert(true))); 
-caba: cdbfilerep:00001118: ereport(WARNING, 
-caba: cdbfilerep:00001119:  (errmsg("mirror is staying behind primary for '%d' seconds"), // 75% *gp_segment_connect_timeout 
-caba: cdbfilerep:00001120:  errSendAlert(true))); 
-caba: cdbfilerep:00001465:  ereport(ERROR, 
-caba: cdbfilerep:00001466:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00001467:  (errmsg("not enough shared memory to log filerep config")))); 
-caba: cdbfilerep:00001499:  ereport(ERROR, 
-caba: cdbfilerep:00001500:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00001501:  (errmsg("not enough shared memory to log filerep config")))); 
-caba: cdbfilerep:00001532:  ereport(ERROR, 
-caba: cdbfilerep:00001533:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00001534:  (errmsg("not enough shared memory to log filerep config")))); 
-caba: cdbfilerep:00001650:  ereport(WARNING, 
-caba: cdbfilerep:00001651:  (errcode_for_file_access(), 
-caba: cdbfilerep:00001652:  errmsg("could not open file '%s' : %m", 
-caba: cdbfilerep:00001653:  path))); 
-caba: cdbfilerep:00001668:  ereport(WARNING, 
-caba: cdbfilerep:00001669:  (errcode_for_file_access(), 
-caba: cdbfilerep:00001670:  errmsg("could not seek in file to position '0' in file '%s' : %m", 
-caba: cdbfilerep:00001671:  path))); 
-caba: cdbfilerep:00001687:  ereport(WARNING, 
-caba: cdbfilerep:00001688:  (errcode_for_file_access(), 
-caba: cdbfilerep:00001689:  errmsg("could not write to file '%s' data '%p' dataLength '%u' : %m", 
-caba: cdbfilerep:00001690:  path, 
-caba: cdbfilerep:00001691:  data, 
-caba: cdbfilerep:00001692:  dataLengthLocal))); 
-caba: cdbfilerep:00001703:  ereport(WARNING, 
-caba: cdbfilerep:00001704:  (errcode_for_file_access(), 
-caba: cdbfilerep:00001705:  errmsg("could not fsync file '%s' : %m", path))); 
-caba: cdbfilerep:00001884:  ereport(WARNING, 
-caba: cdbfilerep:00001885:  (errmsg("signal to children failed pid '%ld' signal '%d' : %m", 
-caba: cdbfilerep:00001886:  (long) subProc->pid, signal))); 
-caba: cdbfilerep:00002562:  ereport(WARNING, 
-caba: cdbfilerep:00002563:  (errmsg("could not fork %s : %m", 
-caba: cdbfilerep:00002564:  FileRepProcessTypeToString[type]))); 
-caba: cdbfilerep:00003299:  ereport(WARNING, 
-caba: cdbfilerep:00003300:  (errmsg("mirror failure, " 
-caba: cdbfilerep:00003301:  "could not retrieve segment configuration, " 
-caba: cdbfilerep:00003302:  "failover requested"), 
-caba: cdbfilerep:00003303:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+caba: cdbfilerep:00000478:  ereport(ERROR, 
+caba: cdbfilerep:00000479:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000480:  (errmsg("not enough shared memory for mirroring")))); 
+caba: cdbfilerep:00000504:  ereport(ERROR, 
+caba: cdbfilerep:00000505:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000506:  (errmsg("shared memory for filerep ipc not initialized")))); 
+caba: cdbfilerep:00000631:  ereport(ERROR, 
+caba: cdbfilerep:00000632:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000633:  (errmsg("not enough shared memory for mirroring")))); 
+caba: cdbfilerep:00000774:  ereport(ERROR, 
+caba: cdbfilerep:00000775:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000776:  (errmsg("shared memory for mirroring not initialized.")))); 
+caba: cdbfilerep:00001092:  ereport(WARNING, 
+caba: cdbfilerep:00001093:  (errmsg("threshold '75' percent of 'gp_segment_connect_timeout=%d' is reached, " 
+caba: cdbfilerep:00001094:  "mirror may not be able to keep up with primary, " 
+caba: cdbfilerep:00001095:  "primary may transition to change tracking", 
+caba: cdbfilerep:00001096:  gp_segment_connect_timeout), 
+caba: cdbfilerep:00001097:  errhint("increase guc 'gp_segment_connect_timeout' by 'gpconfig' and 'gpstop -u' "), 
+caba: cdbfilerep:00001098:  errSendAlert(true))); 
+caba: cdbfilerep:00001126: ereport(WARNING, 
+caba: cdbfilerep:00001127:  (errmsg("mirror is staying behind primary for '%d' seconds"), // 75% *gp_segment_connect_timeout 
+caba: cdbfilerep:00001128:  errSendAlert(true))); 
+caba: cdbfilerep:00001473:  ereport(ERROR, 
+caba: cdbfilerep:00001474:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00001475:  (errmsg("not enough shared memory to log filerep config")))); 
+caba: cdbfilerep:00001507:  ereport(ERROR, 
+caba: cdbfilerep:00001508:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00001509:  (errmsg("not enough shared memory to log filerep config")))); 
+caba: cdbfilerep:00001540:  ereport(ERROR, 
+caba: cdbfilerep:00001541:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00001542:  (errmsg("not enough shared memory to log filerep config")))); 
+caba: cdbfilerep:00001658:  ereport(WARNING, 
+caba: cdbfilerep:00001659:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001660:  errmsg("could not open file '%s' : %m", 
+caba: cdbfilerep:00001661:  path))); 
+caba: cdbfilerep:00001676:  ereport(WARNING, 
+caba: cdbfilerep:00001677:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001678:  errmsg("could not seek in file to position '0' in file '%s' : %m", 
+caba: cdbfilerep:00001679:  path))); 
+caba: cdbfilerep:00001695:  ereport(WARNING, 
+caba: cdbfilerep:00001696:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001697:  errmsg("could not write to file '%s' data '%p' dataLength '%u' : %m", 
+caba: cdbfilerep:00001698:  path, 
+caba: cdbfilerep:00001699:  data, 
+caba: cdbfilerep:00001700:  dataLengthLocal))); 
+caba: cdbfilerep:00001711:  ereport(WARNING, 
+caba: cdbfilerep:00001712:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001713:  errmsg("could not fsync file '%s' : %m", path))); 
+caba: cdbfilerep:00001892:  ereport(WARNING, 
+caba: cdbfilerep:00001893:  (errmsg("signal to children failed pid '%ld' signal '%d' : %m", 
+caba: cdbfilerep:00001894:  (long) subProc->pid, signal))); 
+caba: cdbfilerep:00002570:  ereport(WARNING, 
+caba: cdbfilerep:00002571:  (errmsg("could not fork %s : %m", 
+caba: cdbfilerep:00002572:  FileRepProcessTypeToString[type]))); 
+caba: cdbfilerep:00003308:  ereport(WARNING, 
+caba: cdbfilerep:00003309:  (errmsg("mirror failure, " 
+caba: cdbfilerep:00003310:  "could not retrieve segment configuration, " 
+caba: cdbfilerep:00003311:  "failover requested"), 
+caba: cdbfilerep:00003312:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
 aaaaa GP_IGNORE: caca: cdbfilerepconnclient - ./backend/cdb/cdbfilerepconnclient.c
 caca: cdbfilerepconnclient:00000058:  ereport(WARNING, 
 caca: cdbfilerepconnclient:00000059:  (errcode_for_socket_access(), 
@@ -3130,94 +3130,94 @@ cabg: cdbfilerepmirror:00001966:  fileRepMessageHeader->fileRepRelationType,
 cabg: cdbfilerepmirror:00001967:  fileRepMessageHeader->fileRepOperation, 
 cabg: cdbfilerepmirror:00001968:  fileRepMessageHeader->messageCount), 
 cabg: cdbfilerepmirror:00001969:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00001982:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00001983:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00001984:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00001985:  "could not link to '%s' : %m, " 
-cabg: cdbfilerepmirror:00001986:  "failover requested", 
-cabg: cdbfilerepmirror:00001987:  newFileName), 
-cabg: cdbfilerepmirror:00001988:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00001989:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00001990:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00001991:  fileRepMessageHeader->fileRepOperation, 
-cabg: cdbfilerepmirror:00001992:  fileRepMessageHeader->messageCount), 
-cabg: cdbfilerepmirror:00001993:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002048:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002049:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002050:  "could not queue ACK message to be sent to primary, " 
-cabg: cdbfilerepmirror:00002051:  "failover requested"), 
-cabg: cdbfilerepmirror:00002052:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002053:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00002054:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00002055:  fileRepMessageHeader->fileRepOperation, 
-cabg: cdbfilerepmirror:00002056:  fileRepMessageHeader->messageCount), 
-cabg: cdbfilerepmirror:00002057:  FileRep_errdetail_ShmemAck(), 
-cabg: cdbfilerepmirror:00002058:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002168:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002169:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002170:  "could not insert file information in open files hash table identifier '%s' fd '%d', " 
-cabg: cdbfilerepmirror:00002171:  "failover requested", 
-cabg: cdbfilerepmirror:00002172:  fileName, 
-cabg: cdbfilerepmirror:00002173:  fd), 
-cabg: cdbfilerepmirror:00002174:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002175:  FileRep_errdetail_Shmem(), 
-cabg: cdbfilerepmirror:00002176:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002204:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002205:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002206:  "could not insert file information in open files hash table, entry exists " 
-cabg: cdbfilerepmirror:00002207:  "identifier '%s' fd '%d' relation type '%s', " 
-cabg: cdbfilerepmirror:00002208:  "failover requested", 
-cabg: cdbfilerepmirror:00002209:  fileName, 
-cabg: cdbfilerepmirror:00002210:  fd, 
-cabg: cdbfilerepmirror:00002211:  FileRepRelationTypeToString[fileRepRelationType]), 
-cabg: cdbfilerepmirror:00002212:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002213:  FileRep_errdetail_Shmem(), 
-cabg: cdbfilerepmirror:00002214:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002446:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002447:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002448:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002449:  "could not zero segment file, " 
-cabg: cdbfilerepmirror:00002450:  "could not seek to end of file fd '%d' : %m, " 
-cabg: cdbfilerepmirror:00002451:  "failover requested", 
-cabg: cdbfilerepmirror:00002452:  fd), 
-cabg: cdbfilerepmirror:00002453:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002454:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002471:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002472:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002473:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002474:  "could not zero segment file, " 
-cabg: cdbfilerepmirror:00002475:  "could not seek to position " INT64_FORMAT " of file fd '%d' : %m, " 
-cabg: cdbfilerepmirror:00002476:  "failover requested", 
-cabg: cdbfilerepmirror:00002477:  startOffset, 
-cabg: cdbfilerepmirror:00002478:  fd), 
-cabg: cdbfilerepmirror:00002479:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002480:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002500:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002501:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002502:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002503:  "could not zero segment file, " 
-cabg: cdbfilerepmirror:00002504:  "could not write to file fd '%d' : %m, " 
-cabg: cdbfilerepmirror:00002505:  "failover requested", 
-cabg: cdbfilerepmirror:00002506:  fd), 
-cabg: cdbfilerepmirror:00002507:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002508:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002519:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002520:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002521:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002522:  "could not zero segment file, " 
-cabg: cdbfilerepmirror:00002523:  "could not fsync file fd '%d' : %m, " 
-cabg: cdbfilerepmirror:00002524:  "failover requested", 
-cabg: cdbfilerepmirror:00002525:  fd), 
-cabg: cdbfilerepmirror:00002526:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002527:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002562:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002563:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002564:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002565:  "could not open file '%s' to issue drop : %m, " 
-cabg: cdbfilerepmirror:00002566:  "failover requested", 
-cabg: cdbfilerepmirror:00002567:  fileName), 
-cabg: cdbfilerepmirror:00002568:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002569:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00001994:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00001995:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00001996:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00001997:  "could not link to '%s' : %m, " 
+cabg: cdbfilerepmirror:00001998:  "failover requested", 
+cabg: cdbfilerepmirror:00001999:  newFileName), 
+cabg: cdbfilerepmirror:00002000:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002001:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00002002:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00002003:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00002004:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00002005:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002060:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002061:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002062:  "could not queue ACK message to be sent to primary, " 
+cabg: cdbfilerepmirror:00002063:  "failover requested"), 
+cabg: cdbfilerepmirror:00002064:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002065:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00002066:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00002067:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00002068:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00002069:  FileRep_errdetail_ShmemAck(), 
+cabg: cdbfilerepmirror:00002070:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002180:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002181:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002182:  "could not insert file information in open files hash table identifier '%s' fd '%d', " 
+cabg: cdbfilerepmirror:00002183:  "failover requested", 
+cabg: cdbfilerepmirror:00002184:  fileName, 
+cabg: cdbfilerepmirror:00002185:  fd), 
+cabg: cdbfilerepmirror:00002186:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002187:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00002188:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002216:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002217:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002218:  "could not insert file information in open files hash table, entry exists " 
+cabg: cdbfilerepmirror:00002219:  "identifier '%s' fd '%d' relation type '%s', " 
+cabg: cdbfilerepmirror:00002220:  "failover requested", 
+cabg: cdbfilerepmirror:00002221:  fileName, 
+cabg: cdbfilerepmirror:00002222:  fd, 
+cabg: cdbfilerepmirror:00002223:  FileRepRelationTypeToString[fileRepRelationType]), 
+cabg: cdbfilerepmirror:00002224:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002225:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00002226:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002458:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002459:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002460:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002461:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002462:  "could not seek to end of file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002463:  "failover requested", 
+cabg: cdbfilerepmirror:00002464:  fd), 
+cabg: cdbfilerepmirror:00002465:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002466:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002483:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002484:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002485:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002486:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002487:  "could not seek to position " INT64_FORMAT " of file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002488:  "failover requested", 
+cabg: cdbfilerepmirror:00002489:  startOffset, 
+cabg: cdbfilerepmirror:00002490:  fd), 
+cabg: cdbfilerepmirror:00002491:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002492:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002512:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002513:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002514:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002515:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002516:  "could not write to file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002517:  "failover requested", 
+cabg: cdbfilerepmirror:00002518:  fd), 
+cabg: cdbfilerepmirror:00002519:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002520:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002531:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002532:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002533:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002534:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002535:  "could not fsync file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002536:  "failover requested", 
+cabg: cdbfilerepmirror:00002537:  fd), 
+cabg: cdbfilerepmirror:00002538:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002539:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002574:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002575:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002576:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002577:  "could not open file '%s' to issue drop : %m, " 
+cabg: cdbfilerepmirror:00002578:  "failover requested", 
+cabg: cdbfilerepmirror:00002579:  fileName), 
+cabg: cdbfilerepmirror:00002580:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002581:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: cabj: cdbfilerepmirrorack - ./backend/cdb/cdbfilerepmirrorack.c
 cabj: cdbfilerepmirrorack:00000074:  ereport(WARNING, 
 cabj: cdbfilerepmirrorack:00000075:  (errmsg("mirror failure, " 
@@ -3812,48 +3812,48 @@ cacb: cdbmirroredappendonly:00001823:  relpath(*relFileNode),
 cacb: cdbmirroredappendonly:00001824:  relationName, 
 cacb: cdbmirroredappendonly:00001825:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredbufferpool - ./backend/cdb/cdbmirroredbufferpool.c
-cacb: cdbmirroredbufferpool:00000718:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000719:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacb: cdbmirroredbufferpool:00000720:  (errmsg("could not allocate memory for mirrored alligned buffer")))); 
-cacb: cdbmirroredbufferpool:00000772:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000773:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00000774:  errmsg("could not seek in file to position %d in file '%s', segment file %d : %m", 
-cacb: cdbmirroredbufferpool:00000775:  position, 
-cacb: cdbmirroredbufferpool:00000776:  relpath(open->relFileNode), 
-cacb: cdbmirroredbufferpool:00000777:  open->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00000825:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00000826:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00000827:  errmsg("could not seek in file to position %d in file '%s', segment file %d: %m", 
-cacb: cdbmirroredbufferpool:00000828:  position, 
-cacb: cdbmirroredbufferpool:00000829:  relpath(open->relFileNode), open->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00001075:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00001076:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001077:  errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
-cacb: cdbmirroredbufferpool:00001078:  readOffset, 
-cacb: cdbmirroredbufferpool:00001079:  mirroredOpen->relFileNode.dbNode, 
-cacb: cdbmirroredbufferpool:00001080:  mirroredOpen->relFileNode.spcNode, 
-cacb: cdbmirroredbufferpool:00001081:  mirroredOpen->relFileNode.relNode, 
-cacb: cdbmirroredbufferpool:00001082:  mirroredOpen->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00001092:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00001093:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001094:  errmsg("could not write mirror position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
-cacb: cdbmirroredbufferpool:00001095:  readOffset, 
-cacb: cdbmirroredbufferpool:00001096:  mirroredOpen->relFileNode.dbNode, 
-cacb: cdbmirroredbufferpool:00001097:  mirroredOpen->relFileNode.spcNode, 
-cacb: cdbmirroredbufferpool:00001098:  mirroredOpen->relFileNode.relNode, 
-cacb: cdbmirroredbufferpool:00001099:  mirroredOpen->segmentFileNum))); 
-cacb: cdbmirroredbufferpool:00001208:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00001209:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001210:  errmsg("could not open relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredbufferpool:00001211:  relpath(*relFileNode), 
-cacb: cdbmirroredbufferpool:00001212:  relationName, 
-cacb: cdbmirroredbufferpool:00001213:  strerror(primaryError)))); 
-cacb: cdbmirroredbufferpool:00001241:  ereport(ERROR, 
-cacb: cdbmirroredbufferpool:00001242:  (errcode_for_file_access(), 
-cacb: cdbmirroredbufferpool:00001243:  errmsg("could not flush relation file '%s', relation name '%s': %s", 
-cacb: cdbmirroredbufferpool:00001244:  relpath(*relFileNode), 
-cacb: cdbmirroredbufferpool:00001245:  relationName, 
-cacb: cdbmirroredbufferpool:00001246:  strerror(primaryError)))); 
+cacb: cdbmirroredbufferpool:00000719:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000720:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacb: cdbmirroredbufferpool:00000721:  (errmsg("could not allocate memory for mirrored alligned buffer")))); 
+cacb: cdbmirroredbufferpool:00000773:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000774:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00000775:  errmsg("could not seek in file to position %d in file '%s', segment file %d : %m", 
+cacb: cdbmirroredbufferpool:00000776:  position, 
+cacb: cdbmirroredbufferpool:00000777:  relpath(open->relFileNode), 
+cacb: cdbmirroredbufferpool:00000778:  open->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00000826:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00000827:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00000828:  errmsg("could not seek in file to position %d in file '%s', segment file %d: %m", 
+cacb: cdbmirroredbufferpool:00000829:  position, 
+cacb: cdbmirroredbufferpool:00000830:  relpath(open->relFileNode), open->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00001076:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00001077:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00001078:  errmsg("could not read from position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
+cacb: cdbmirroredbufferpool:00001079:  readOffset, 
+cacb: cdbmirroredbufferpool:00001080:  mirroredOpen->relFileNode.dbNode, 
+cacb: cdbmirroredbufferpool:00001081:  mirroredOpen->relFileNode.spcNode, 
+cacb: cdbmirroredbufferpool:00001082:  mirroredOpen->relFileNode.relNode, 
+cacb: cdbmirroredbufferpool:00001083:  mirroredOpen->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00001093:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00001094:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00001095:  errmsg("could not write mirror position: " INT64_FORMAT " in file %d/%d/%d.%d : %m", 
+cacb: cdbmirroredbufferpool:00001096:  readOffset, 
+cacb: cdbmirroredbufferpool:00001097:  mirroredOpen->relFileNode.dbNode, 
+cacb: cdbmirroredbufferpool:00001098:  mirroredOpen->relFileNode.spcNode, 
+cacb: cdbmirroredbufferpool:00001099:  mirroredOpen->relFileNode.relNode, 
+cacb: cdbmirroredbufferpool:00001100:  mirroredOpen->segmentFileNum))); 
+cacb: cdbmirroredbufferpool:00001209:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00001210:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00001211:  errmsg("could not open relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredbufferpool:00001212:  relpath(*relFileNode), 
+cacb: cdbmirroredbufferpool:00001213:  relationName, 
+cacb: cdbmirroredbufferpool:00001214:  strerror(primaryError)))); 
+cacb: cdbmirroredbufferpool:00001242:  ereport(ERROR, 
+cacb: cdbmirroredbufferpool:00001243:  (errcode_for_file_access(), 
+cacb: cdbmirroredbufferpool:00001244:  errmsg("could not flush relation file '%s', relation name '%s': %s", 
+cacb: cdbmirroredbufferpool:00001245:  relpath(*relFileNode), 
+cacb: cdbmirroredbufferpool:00001246:  relationName, 
+cacb: cdbmirroredbufferpool:00001247:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: cacb: cdbmirroredfilesysobj - ./backend/cdb/cdbmirroredfilesysobj.c
 cacb: cdbmirroredfilesysobj:00000217:  ereport(ERROR, 
 cacb: cdbmirroredfilesysobj:00000218:  (errcode_for_file_access(), 
@@ -4049,111 +4049,73 @@ aaaaa GP_IGNORE: cacc: cdbpersistentfilespace - ./backend/cdb/cdbpersistentfiles
 cacc: cdbpersistentfilespace:00000580:  ereport(FATAL, 
 cacc: cdbpersistentfilespace:00000581:  (errcode(ERRCODE_INTERNAL_ERROR), 
 cacc: cdbpersistentfilespace:00000582:  errmsg("Unable to determine dbid for filespace lookup"))); 
-cacc: cdbpersistentfilespace:00001414:  ereport(FATAL, 
-cacc: cdbpersistentfilespace:00001415:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacc: cdbpersistentfilespace:00001416:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
-aaaaa GP_IGNORE: cacd: cdbpersistentfilesysobj - ./backend/cdb/cdbpersistentfilesysobj.c
-cacd: cdbpersistentfilesysobj:00001127:  ereport(ERROR, 
-cacd: cdbpersistentfilesysobj:00001128:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cacd: cdbpersistentfilesysobj:00001129:  errmsg("Did not expect to find a 'Free' entry"), 
-cacd: cdbpersistentfilesysobj:00001130:  errcontext_persistent_relation_state_change( 
-cacd: cdbpersistentfilesysobj:00001131:  fsObjName, 
-cacd: cdbpersistentfilesysobj:00001132:  persistentTid, 
-cacd: cdbpersistentfilesysobj:00001133:  serialNum, 
-cacd: cdbpersistentfilesysobj:00001134:  expectedState1, 
-cacd: cdbpersistentfilesysobj:00001135:  expectedState2, 
-cacd: cdbpersistentfilesysobj:00001136:  expectedState3, 
-cacd: cdbpersistentfilesysobj:00001137:  nextState))); 
-cacd: cdbpersistentfilesysobj:00001150:  ereport(ERROR, 
-cacd: cdbpersistentfilesysobj:00001151:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cacd: cdbpersistentfilesysobj:00001152:  errmsg("Found different serial number " INT64_FORMAT " than expected (persistent file-system object found is '%s', state '%s')", 
-cacd: cdbpersistentfilesysobj:00001153:  actualSerialNum, 
-cacd: cdbpersistentfilesysobj:00001154:  PersistentFileSysObjName_TypeAndObjectName(&actualFsObjName), 
-cacd: cdbpersistentfilesysobj:00001155:  PersistentFileSysObjState_Name(actualState)), 
-cacd: cdbpersistentfilesysobj:00001156:  errcontext_persistent_relation_state_change( 
-cacd: cdbpersistentfilesysobj:00001157:  fsObjName, 
-cacd: cdbpersistentfilesysobj:00001158:  persistentTid, 
-cacd: cdbpersistentfilesysobj:00001159:  serialNum, 
-cacd: cdbpersistentfilesysobj:00001160:  expectedState1, 
-cacd: cdbpersistentfilesysobj:00001161:  expectedState2, 
-cacd: cdbpersistentfilesysobj:00001162:  expectedState3, 
-cacd: cdbpersistentfilesysobj:00001163:  nextState))); 
-cacd: cdbpersistentfilesysobj:00001175:  ereport(ERROR, 
-cacd: cdbpersistentfilesysobj:00001176:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cacd: cdbpersistentfilesysobj:00001177:  errmsg("Found persistent file-system object in unexpected state '%s'", 
-cacd: cdbpersistentfilesysobj:00001178:  PersistentFileSysObjState_Name(actualState)), 
-cacd: cdbpersistentfilesysobj:00001179:  errcontext_persistent_relation_state_change( 
-cacd: cdbpersistentfilesysobj:00001180:  fsObjName, 
-cacd: cdbpersistentfilesysobj:00001181:  persistentTid, 
-cacd: cdbpersistentfilesysobj:00001182:  serialNum, 
-cacd: cdbpersistentfilesysobj:00001183:  expectedState1, 
-cacd: cdbpersistentfilesysobj:00001184:  expectedState2, 
-cacd: cdbpersistentfilesysobj:00001185:  expectedState3, 
-cacd: cdbpersistentfilesysobj:00001186:  nextState))); 
+cacc: cdbpersistentfilespace:00001422:  ereport(FATAL, 
+cacc: cdbpersistentfilespace:00001423:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacc: cdbpersistentfilespace:00001424:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
 aaaaa GP_IGNORE: cacb: cdbpersistentrecovery - ./backend/cdb/cdbpersistentrecovery.c
-cacb: cdbpersistentrecovery:00001895:  ereport(ERROR, 
-cacb: cdbpersistentrecovery:00001896:  (errcode_for_file_access(), 
-cacb: cdbpersistentrecovery:00001897:  errmsg("could not write redo relation file : %m"))); 
-cacb: cdbpersistentrecovery:00002044:  ereport(ERROR, 
-cacb: cdbpersistentrecovery:00002045:  (errcode_for_file_access(), 
-cacb: cdbpersistentrecovery:00002046:  errmsg("error reading redo relation file: %m"))); 
+cacb: cdbpersistentrecovery:00001927:  ereport(ERROR, 
+cacb: cdbpersistentrecovery:00001928:  (errcode_for_file_access(), 
+cacb: cdbpersistentrecovery:00001929:  errmsg("could not write redo relation file : %m"))); 
+cacb: cdbpersistentrecovery:00002076:  ereport(ERROR, 
+cacb: cdbpersistentrecovery:00002077:  (errcode_for_file_access(), 
+cacb: cdbpersistentrecovery:00002078:  errmsg("error reading redo relation file: %m"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistenttablespace - ./backend/cdb/cdbpersistenttablespace.c
-cacd: cdbpersistenttablespace:00000562:  ereport(ERROR, 
-cacd: cdbpersistenttablespace:00000563:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cacd: cdbpersistenttablespace:00000564:  errmsg("Unable to find entry for tablespace OID = %u when getting filespace directory paths", 
-cacd: cdbpersistenttablespace:00000565:  tablespaceOid))); 
-cacd: cdbpersistenttablespace:00000569:  ereport(ERROR, 
-cacd: cdbpersistenttablespace:00000570:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cacd: cdbpersistenttablespace:00000571:  errmsg("Unable to find entry for filespace OID = %u when forming filespace directory paths for tablespace OID = %u", 
-cacd: cdbpersistenttablespace:00000572:  filespaceOid, 
-cacd: cdbpersistenttablespace:00000573:  tablespaceOid))); 
-cacd: cdbpersistenttablespace:00001254:  ereport(FATAL, 
-cacd: cdbpersistenttablespace:00001255:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacd: cdbpersistenttablespace:00001256:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
+cacd: cdbpersistenttablespace:00000580:  ereport(ERROR, 
+cacd: cdbpersistenttablespace:00000581:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cacd: cdbpersistenttablespace:00000582:  errmsg("Unable to find entry for tablespace OID = %u when getting filespace directory paths", 
+cacd: cdbpersistenttablespace:00000583:  tablespaceOid))); 
+cacd: cdbpersistenttablespace:00000587:  ereport(ERROR, 
+cacd: cdbpersistenttablespace:00000588:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cacd: cdbpersistenttablespace:00000589:  errmsg("Unable to find entry for filespace OID = %u when forming filespace directory paths for tablespace OID = %u", 
+cacd: cdbpersistenttablespace:00000590:  filespaceOid, 
+cacd: cdbpersistenttablespace:00000591:  tablespaceOid))); 
+cacd: cdbpersistenttablespace:00001280:  ereport(FATAL, 
+cacd: cdbpersistenttablespace:00001281:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacd: cdbpersistenttablespace:00001282:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
 aaaaa GP_IGNORE: caba: cdbrelsize - ./backend/cdb/cdbrelsize.c
 caba: cdbrelsize:00000102:  ereport(WARNING, (errmsg("cdbRelSize error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
 caba: cdbrelsize:00000103:  errdetail("%s", errbuf.data))); 
 aaaaa GP_IGNORE: cada: cdbresynchronizechangetracking - ./backend/cdb/cdbresynchronizechangetracking.c
-cada: cdbresynchronizechangetracking:00001315:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00001316:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00001317:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
-cada: cdbresynchronizechangetracking:00001601:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00001602:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00001603:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
-cada: cdbresynchronizechangetracking:00001793:  ereport(ERROR, 
-cada: cdbresynchronizechangetracking:00001794:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00001795:  errmsg("change tracking failure, " 
-cada: cdbresynchronizechangetracking:00001796:  "could not create '%s' directory : %m", 
-cada: cdbresynchronizechangetracking:00001797:  CHANGETRACKINGDIR), 
-cada: cdbresynchronizechangetracking:00001798:  errhint("create directory and re-start the cluster"))); 
-cada: cdbresynchronizechangetracking:00001882:  ereport(ERROR, 
-cada: cdbresynchronizechangetracking:00001883:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00001884:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-cada: cdbresynchronizechangetracking:00001885:  fn1, fn2))); 
-cada: cdbresynchronizechangetracking:00002114:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002115:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002116:  errmsg("unable to read change tracking meta file \"%s\", " 
-cada: cdbresynchronizechangetracking:00002117:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00002118:  path), 
-cada: cdbresynchronizechangetracking:00002119:  errSendAlert(true))); 
-cada: cdbresynchronizechangetracking:00002204:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002205:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002206:  errmsg("write error for change tracking meta file in " 
-cada: cdbresynchronizechangetracking:00002207:  "ChangeTracking_MarkFullResyncLockAcquired. " 
-cada: cdbresynchronizechangetracking:00002208:  "Change Tracking disabled : %m"), 
-cada: cdbresynchronizechangetracking:00002209:  errSendAlert(true))); 
-cada: cdbresynchronizechangetracking:00002562:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002563:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002564:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
-cada: cdbresynchronizechangetracking:00002890:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002891:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002892:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
-cada: cdbresynchronizechangetracking:00003017:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00003018:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00003019:  errmsg("write error for change tracking %s file, " 
-cada: cdbresynchronizechangetracking:00003020:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00003021:  ChangeTracking_FtypeToString(ft)), 
-cada: cdbresynchronizechangetracking:00003022:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00001325:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00001326:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00001327:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
+cada: cdbresynchronizechangetracking:00001611:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00001612:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00001613:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
+cada: cdbresynchronizechangetracking:00001803:  ereport(ERROR, 
+cada: cdbresynchronizechangetracking:00001804:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00001805:  errmsg("change tracking failure, " 
+cada: cdbresynchronizechangetracking:00001806:  "could not create '%s' directory : %m", 
+cada: cdbresynchronizechangetracking:00001807:  CHANGETRACKINGDIR), 
+cada: cdbresynchronizechangetracking:00001808:  errhint("create directory and re-start the cluster"))); 
+cada: cdbresynchronizechangetracking:00001892:  ereport(ERROR, 
+cada: cdbresynchronizechangetracking:00001893:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00001894:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+cada: cdbresynchronizechangetracking:00001895:  fn1, fn2))); 
+cada: cdbresynchronizechangetracking:00002124:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002125:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002126:  errmsg("unable to read change tracking meta file \"%s\", " 
+cada: cdbresynchronizechangetracking:00002127:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00002128:  path), 
+cada: cdbresynchronizechangetracking:00002129:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002214:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002215:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002216:  errmsg("write error for change tracking meta file in " 
+cada: cdbresynchronizechangetracking:00002217:  "ChangeTracking_MarkFullResyncLockAcquired. " 
+cada: cdbresynchronizechangetracking:00002218:  "Change Tracking disabled : %m"), 
+cada: cdbresynchronizechangetracking:00002219:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002572:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00002573:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00002574:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
+cada: cdbresynchronizechangetracking:00002900:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00002901:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00002902:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
+cada: cdbresynchronizechangetracking:00003027:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00003028:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00003029:  errmsg("write error for change tracking %s file, " 
+cada: cdbresynchronizechangetracking:00003030:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00003031:  ChangeTracking_FtypeToString(ft)), 
+cada: cdbresynchronizechangetracking:00003032:  errSendAlert(true))); 
 aaaaa GP_IGNORE: caai: cdbsetop - ./backend/cdb/cdbsetop.c
 caai: cdbsetop:00000152:  ereport(ERROR, ( 
 caai: cdbsetop:00000153:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
@@ -5543,115 +5505,115 @@ daag: define:00000302:  (errcode(ERRCODE_SYNTAX_ERROR),
 daag: define:00000303:  errmsg("invalid argument for %s: \"%s\"", 
 daag: define:00000304:  def->defname, defGetString(def)))); 
 aaaaa GP_IGNORE: faaj: filespace - ./backend/commands/filespace.c
-faaj: filespace:00000109:  ereport(ERROR, 
-faaj: filespace:00000110:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-faaj: filespace:00000111:  errmsg("permission denied to create filespace \"%s\"", 
-faaj: filespace:00000112:  stmt->filespacename), 
-faaj: filespace:00000113:  errhint("Must be superuser to create a filespace."))); 
-faaj: filespace:00000127:  ereport(ERROR, 
-faaj: filespace:00000128:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000129:  errmsg("unacceptable filespace name \"%s\"", 
-faaj: filespace:00000130:  stmt->filespacename), 
-faaj: filespace:00000131:  errdetail("The prefix \"%s\" is reserved for system filespaces.", 
-faaj: filespace:00000132:  GetReservedPrefix(stmt->filespacename)))); 
-faaj: filespace:00000146:  ereport(ERROR, 
-faaj: filespace:00000147:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-faaj: filespace:00000148:  errmsg("filespace \"%s\" already exists", 
-faaj: filespace:00000149:  stmt->filespacename))); 
-faaj: filespace:00000207:  ereport(ERROR, 
-faaj: filespace:00000208:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000209:  errmsg("multiple filespace locations specified " 
-faaj: filespace:00000210:  "for dbid %d", dbid))); 
-faaj: filespace:00000235:  ereport(ERROR, 
-faaj: filespace:00000236:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000237:  errmsg("missing filespace location for dbid %d", 
-faaj: filespace:00000238:  dbid))); 
-faaj: filespace:00000255:  ereport(ERROR, 
-faaj: filespace:00000256:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000257:  errmsg("missing filespace location for dbid %d", 
-faaj: filespace:00000258:  dbid))); 
-faaj: filespace:00000280:  ereport(ERROR, 
-faaj: filespace:00000281:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
-faaj: filespace:00000282:  errmsg("filespace location specified for non-existent " 
-faaj: filespace:00000283:  "dbid %d", segElem->dbid))); 
-faaj: filespace:00000505:  ereport(ERROR, 
-faaj: filespace:00000506:  (errcode(ERRCODE_SYNTAX_ERROR), 
-faaj: filespace:00000507:  errmsg("filespace name may not be qualified"))); 
-faaj: filespace:00000512:  ereport(ERROR, 
-faaj: filespace:00000513:  (errcode(ERRCODE_SYNTAX_ERROR), 
-faaj: filespace:00000514:  errmsg("syntax at or near \"cascade\""))); 
-faaj: filespace:00000532:  ereport(NOTICE, 
-faaj: filespace:00000533:  (errmsg("filespace \"%s\" does not exist, skipping", 
-faaj: filespace:00000534:  fsname))); 
-faaj: filespace:00000539:  ereport(ERROR, 
-faaj: filespace:00000540:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-faaj: filespace:00000541:  errmsg("filespace \"%s\" does not exist", fsname))); 
-faaj: filespace:00000551:  ereport(ERROR, 
-faaj: filespace:00000552:  (errmsg("cannot drop filespace %s because it is required " 
-faaj: filespace:00000553:  "by the database system", fsname))); 
-faaj: filespace:00000684:  ereport(ERROR, 
-faaj: filespace:00000685:  (errcode(ERRCODE_SYNTAX_ERROR), 
-faaj: filespace:00000686:  errmsg("filespace name may not be qualified"))); 
-faaj: filespace:00000698:  ereport(ERROR, 
-faaj: filespace:00000699:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-faaj: filespace:00000700:  errmsg("filespace \"%s\" does not exist", fsname))); 
-faaj: filespace:00000706:  ereport(ERROR, 
-faaj: filespace:00000707:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000708:  errmsg("permission denied: \"%s\" is a system filespace", 
-faaj: filespace:00000709:  fsname))); 
-faaj: filespace:00000793:  ereport(ERROR, 
-faaj: filespace:00000794:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-faaj: filespace:00000795:  errmsg("filespace \"%s\" does not exist", 
-faaj: filespace:00000796:  oldname))); 
-faaj: filespace:00000803:  ereport(ERROR, 
-faaj: filespace:00000804:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000805:  errmsg("permission denied: \"%s\" is a system filespace", 
-faaj: filespace:00000806:  oldname))); 
-faaj: filespace:00000816:  ereport(ERROR, 
-faaj: filespace:00000817:  (errcode(ERRCODE_RESERVED_NAME), 
-faaj: filespace:00000818:  errmsg("unacceptable filespace name \"%s\"", newname), 
-faaj: filespace:00000819:  errdetail("The prefix \"%s\" is reserved for system filespaces.", 
-faaj: filespace:00000820:  GetReservedPrefix(newname)))); 
-faaj: filespace:00000830:  ereport(ERROR, 
-faaj: filespace:00000831:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-faaj: filespace:00000832:  errmsg("filespace \"%s\" already exists", newname))); 
-faaj: filespace:00001002:  ereport(ERROR, 
-faaj: filespace:00001003:  (errcode(ERRCODE_INVALID_NAME), 
-faaj: filespace:00001004:  errmsg("filespace location \"%s\" " 
-faaj: filespace:00001005:  "cannot contain single quotes", path))); 
-faaj: filespace:00001013:  ereport(ERROR, 
-faaj: filespace:00001014:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faaj: filespace:00001015:  errmsg("filespace location \"%s\" " 
-faaj: filespace:00001016:  "must be an absolute path", path))); 
-faaj: filespace:00001022:  ereport(ERROR, 
-faaj: filespace:00001023:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faaj: filespace:00001024:  errmsg("filespace location \"%s\" is too long", 
-faaj: filespace:00001025:  path), 
-faaj: filespace:00001026:  errhint("maximum length %d characters", 
-faaj: filespace:00001027:  MAX_FILESPACE_PATH))); 
-faaj: filespace:00001069:  ereport(ERROR, 
-faaj: filespace:00001070:  (errcode_for_file_access(), 
-faaj: filespace:00001071:  errmsg("%s: File exists", path))); 
-faaj: filespace:00001080:  ereport(ERROR, 
-faaj: filespace:00001081:  (errcode_for_file_access(), 
-faaj: filespace:00001082:  errmsg("%s: No such file or directory", 
-faaj: filespace:00001083:  parentdir))); 
-faaj: filespace:00001087:  ereport(ERROR, 
-faaj: filespace:00001088:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faaj: filespace:00001089:  errmsg("%s: Not a directory", parentdir))); 
-faaj: filespace:00001103:  ereport(ERROR, 
-faaj: filespace:00001104:  (errcode_for_file_access(), 
-faaj: filespace:00001105:  errmsg("%s: Permission denied", path))); 
-faaj: filespace:00001164:  ereport(ERROR, 
-faaj: filespace:00001165:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-faaj: filespace:00001166:  errmsg("duplicate filespace locations: " 
-faaj: filespace:00001167:  "(%d: '%s', %d: '%s')", 
-faaj: filespace:00001168:  fse2->dbid, fse2->location, 
-faaj: filespace:00001169:  fse1->dbid, fse1->location))); 
-faaj: filespace:00001203:  ereport(ERROR, 
-faaj: filespace:00001204:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-faaj: filespace:00001205:  errmsg("filespace \"%s\" is not empty", 
-faaj: filespace:00001206:  get_filespace_name(fsoid)))); 
+faaj: filespace:00000110:  ereport(ERROR, 
+faaj: filespace:00000111:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+faaj: filespace:00000112:  errmsg("permission denied to create filespace \"%s\"", 
+faaj: filespace:00000113:  stmt->filespacename), 
+faaj: filespace:00000114:  errhint("Must be superuser to create a filespace."))); 
+faaj: filespace:00000128:  ereport(ERROR, 
+faaj: filespace:00000129:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000130:  errmsg("unacceptable filespace name \"%s\"", 
+faaj: filespace:00000131:  stmt->filespacename), 
+faaj: filespace:00000132:  errdetail("The prefix \"%s\" is reserved for system filespaces.", 
+faaj: filespace:00000133:  GetReservedPrefix(stmt->filespacename)))); 
+faaj: filespace:00000147:  ereport(ERROR, 
+faaj: filespace:00000148:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+faaj: filespace:00000149:  errmsg("filespace \"%s\" already exists", 
+faaj: filespace:00000150:  stmt->filespacename))); 
+faaj: filespace:00000208:  ereport(ERROR, 
+faaj: filespace:00000209:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000210:  errmsg("multiple filespace locations specified " 
+faaj: filespace:00000211:  "for dbid %d", dbid))); 
+faaj: filespace:00000236:  ereport(ERROR, 
+faaj: filespace:00000237:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000238:  errmsg("missing filespace location for dbid %d", 
+faaj: filespace:00000239:  dbid))); 
+faaj: filespace:00000256:  ereport(ERROR, 
+faaj: filespace:00000257:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000258:  errmsg("missing filespace location for dbid %d", 
+faaj: filespace:00000259:  dbid))); 
+faaj: filespace:00000281:  ereport(ERROR, 
+faaj: filespace:00000282:  (errcode(ERRCODE_GP_COMMAND_ERROR), 
+faaj: filespace:00000283:  errmsg("filespace location specified for non-existent " 
+faaj: filespace:00000284:  "dbid %d", segElem->dbid))); 
+faaj: filespace:00000506:  ereport(ERROR, 
+faaj: filespace:00000507:  (errcode(ERRCODE_SYNTAX_ERROR), 
+faaj: filespace:00000508:  errmsg("filespace name may not be qualified"))); 
+faaj: filespace:00000513:  ereport(ERROR, 
+faaj: filespace:00000514:  (errcode(ERRCODE_SYNTAX_ERROR), 
+faaj: filespace:00000515:  errmsg("syntax at or near \"cascade\""))); 
+faaj: filespace:00000533:  ereport(NOTICE, 
+faaj: filespace:00000534:  (errmsg("filespace \"%s\" does not exist, skipping", 
+faaj: filespace:00000535:  fsname))); 
+faaj: filespace:00000540:  ereport(ERROR, 
+faaj: filespace:00000541:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+faaj: filespace:00000542:  errmsg("filespace \"%s\" does not exist", fsname))); 
+faaj: filespace:00000552:  ereport(ERROR, 
+faaj: filespace:00000553:  (errmsg("cannot drop filespace %s because it is required " 
+faaj: filespace:00000554:  "by the database system", fsname))); 
+faaj: filespace:00000685:  ereport(ERROR, 
+faaj: filespace:00000686:  (errcode(ERRCODE_SYNTAX_ERROR), 
+faaj: filespace:00000687:  errmsg("filespace name may not be qualified"))); 
+faaj: filespace:00000699:  ereport(ERROR, 
+faaj: filespace:00000700:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+faaj: filespace:00000701:  errmsg("filespace \"%s\" does not exist", fsname))); 
+faaj: filespace:00000707:  ereport(ERROR, 
+faaj: filespace:00000708:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000709:  errmsg("permission denied: \"%s\" is a system filespace", 
+faaj: filespace:00000710:  fsname))); 
+faaj: filespace:00000794:  ereport(ERROR, 
+faaj: filespace:00000795:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+faaj: filespace:00000796:  errmsg("filespace \"%s\" does not exist", 
+faaj: filespace:00000797:  oldname))); 
+faaj: filespace:00000804:  ereport(ERROR, 
+faaj: filespace:00000805:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000806:  errmsg("permission denied: \"%s\" is a system filespace", 
+faaj: filespace:00000807:  oldname))); 
+faaj: filespace:00000817:  ereport(ERROR, 
+faaj: filespace:00000818:  (errcode(ERRCODE_RESERVED_NAME), 
+faaj: filespace:00000819:  errmsg("unacceptable filespace name \"%s\"", newname), 
+faaj: filespace:00000820:  errdetail("The prefix \"%s\" is reserved for system filespaces.", 
+faaj: filespace:00000821:  GetReservedPrefix(newname)))); 
+faaj: filespace:00000831:  ereport(ERROR, 
+faaj: filespace:00000832:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+faaj: filespace:00000833:  errmsg("filespace \"%s\" already exists", newname))); 
+faaj: filespace:00001003:  ereport(ERROR, 
+faaj: filespace:00001004:  (errcode(ERRCODE_INVALID_NAME), 
+faaj: filespace:00001005:  errmsg("filespace location \"%s\" " 
+faaj: filespace:00001006:  "cannot contain single quotes", path))); 
+faaj: filespace:00001014:  ereport(ERROR, 
+faaj: filespace:00001015:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faaj: filespace:00001016:  errmsg("filespace location \"%s\" " 
+faaj: filespace:00001017:  "must be an absolute path", path))); 
+faaj: filespace:00001023:  ereport(ERROR, 
+faaj: filespace:00001024:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faaj: filespace:00001025:  errmsg("filespace location \"%s\" is too long", 
+faaj: filespace:00001026:  path), 
+faaj: filespace:00001027:  errhint("maximum length %d characters", 
+faaj: filespace:00001028:  MAX_FILESPACE_PATH))); 
+faaj: filespace:00001070:  ereport(ERROR, 
+faaj: filespace:00001071:  (errcode_for_file_access(), 
+faaj: filespace:00001072:  errmsg("%s: File exists", path))); 
+faaj: filespace:00001081:  ereport(ERROR, 
+faaj: filespace:00001082:  (errcode_for_file_access(), 
+faaj: filespace:00001083:  errmsg("%s: No such file or directory", 
+faaj: filespace:00001084:  parentdir))); 
+faaj: filespace:00001088:  ereport(ERROR, 
+faaj: filespace:00001089:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faaj: filespace:00001090:  errmsg("%s: Not a directory", parentdir))); 
+faaj: filespace:00001104:  ereport(ERROR, 
+faaj: filespace:00001105:  (errcode_for_file_access(), 
+faaj: filespace:00001106:  errmsg("%s: Permission denied", path))); 
+faaj: filespace:00001165:  ereport(ERROR, 
+faaj: filespace:00001166:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+faaj: filespace:00001167:  errmsg("duplicate filespace locations: " 
+faaj: filespace:00001168:  "(%d: '%s', %d: '%s')", 
+faaj: filespace:00001169:  fse2->dbid, fse2->location, 
+faaj: filespace:00001170:  fse1->dbid, fse1->location))); 
+faaj: filespace:00001204:  ereport(ERROR, 
+faaj: filespace:00001205:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+faaj: filespace:00001206:  errmsg("filespace \"%s\" is not empty", 
+faaj: filespace:00001207:  get_filespace_name(fsoid)))); 
 aaaaa GP_IGNORE: fabb: foreigncmds - ./backend/commands/foreigncmds.c
 fabb: foreigncmds:00000134:  ereport(ERROR, 
 fabb: foreigncmds:00000135:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
@@ -9300,26 +9262,26 @@ eabc: exechhashagg:00000086:  (GET_TOTAL_USED_SIZE(hashtable) < (hashtable)->max
 eabc: exechhashagg:00000087:  
 eabc: exechhashagg:00000088: /* Methods that handle batch files */ 
 eabc: exechhashagg:00000089: static SpillSet *newSpillSet(unsigned branching_factor, unsigned parent_hash_bit); 
-eabc: exechhashagg:00000432:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00000433:  errmsg("HashAgg: invalid InputRecordType %d.", input_type))); 
-eabc: exechhashagg:00000465:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00000466:  errmsg("HashAgg: invalid InputRecordType."))); 
-eabc: exechhashagg:00000570:  ereport(ERROR, 
-eabc: exechhashagg:00000571:  (errcode(ERRCODE_INTERNAL_ERROR), 
-eabc: exechhashagg:00000572:  errmsg("HashAgg: too many passes or hash entries"))); 
-eabc: exechhashagg:00000826:  ereport(ERROR, 
-eabc: exechhashagg:00000827:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00000828:  errmsg("HashAgg: work_mem is too smalle to hold *one* group."))); 
-eabc: exechhashagg:00001444:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00001445:  errmsg("HashAgg: error in reading a batch file."))); 
-eabc: exechhashagg:00001456:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00001457:  errmsg("HashAgg: error in reading a batch file, requesting %d bytes, read %d bytes", 
-eabc: exechhashagg:00001458:  *p_input_size, read_size))); 
-eabc: exechhashagg:00001565:  ereport(ERROR, 
-eabc: exechhashagg:00001566:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00001567:  errmsg("HashAgg: work_mem is too smalle to hold *one* group."))); 
-eabc: exechhashagg:00001698:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00001699:  errmsg("HashAgg: no enough memory for hashagg."))); 
+eabc: exechhashagg:00000438:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00000439:  errmsg("HashAgg: invalid InputRecordType %d.", input_type))); 
+eabc: exechhashagg:00000471:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00000472:  errmsg("HashAgg: invalid InputRecordType."))); 
+eabc: exechhashagg:00000576:  ereport(ERROR, 
+eabc: exechhashagg:00000577:  (errcode(ERRCODE_INTERNAL_ERROR), 
+eabc: exechhashagg:00000578:  errmsg("HashAgg: too many passes or hash entries"))); 
+eabc: exechhashagg:00000832:  ereport(ERROR, 
+eabc: exechhashagg:00000833:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00000834:  errmsg("HashAgg: work_mem is too smalle to hold *one* group."))); 
+eabc: exechhashagg:00001450:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00001451:  errmsg("HashAgg: error in reading a batch file."))); 
+eabc: exechhashagg:00001462:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00001463:  errmsg("HashAgg: error in reading a batch file, requesting %d bytes, read %d bytes", 
+eabc: exechhashagg:00001464:  *p_input_size, read_size))); 
+eabc: exechhashagg:00001571:  ereport(ERROR, 
+eabc: exechhashagg:00001572:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00001573:  errmsg("HashAgg: work_mem is too smalle to hold *one* group."))); 
+eabc: exechhashagg:00001704:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00001705:  errmsg("HashAgg: no enough memory for hashagg."))); 
 aaaaa GP_IGNORE: eaai: execmain - ./backend/executor/execMain.c
 eaai: execmain:00000369:  ereport(ERROR, 
 eaai: execmain:00000370:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
@@ -9377,73 +9339,73 @@ eaai: execmain:00002237:  errdetail("Query has too few columns.")));
 eaai: execmain:00002432:  ereport(ERROR, 
 eaai: execmain:00002433:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
 eaai: execmain:00002434:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00002898:  ereport(ERROR, 
-eaai: execmain:00002899:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002900:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003038:  ereport(ERROR, 
-eaai: execmain:00003039:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00003040:  errmsg("no partition for partitioning key"))); 
-eaai: execmain:00003044:  ereport(ERROR, 
-eaai: execmain:00003045:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execmain:00003046:  errmsg("moving tuple from partition \"%s\" to " 
-eaai: execmain:00003047:  "partition \"%s\" not supported", 
-eaai: execmain:00003048:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
-eaai: execmain:00003049:  get_rel_name(targetid)), 
-eaai: execmain:00003050:  errOmitLocation(true))); 
-eaai: execmain:00003123:  ereport(ERROR, 
-eaai: execmain:00003124:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00003125:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003267:  ereport(ERROR, 
-eaai: execmain:00003268:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
-eaai: execmain:00003269:  errmsg("null value in column \"%s\" violates not-null constraint", 
-eaai: execmain:00003270:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
-eaai: execmain:00003271:  errOmitLocation(true))); 
-eaai: execmain:00003280:  ereport(ERROR, 
-eaai: execmain:00003281:  (errcode(ERRCODE_CHECK_VIOLATION), 
-eaai: execmain:00003282:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
-eaai: execmain:00003283:  RelationGetRelationName(rel), failed), 
-eaai: execmain:00003284:  errOmitLocation(true))); 
-eaai: execmain:00004006:  ereport(ERROR, 
-eaai: execmain:00004007:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-eaai: execmain:00004008:  errmsg("ON COMMIT can only be used on temporary tables"), 
-eaai: execmain:00004009:  errOmitLocation(true))); 
+eaai: execmain:00002903:  ereport(ERROR, 
+eaai: execmain:00002904:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002905:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003043:  ereport(ERROR, 
+eaai: execmain:00003044:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00003045:  errmsg("no partition for partitioning key"))); 
+eaai: execmain:00003049:  ereport(ERROR, 
+eaai: execmain:00003050:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execmain:00003051:  errmsg("moving tuple from partition \"%s\" to " 
+eaai: execmain:00003052:  "partition \"%s\" not supported", 
+eaai: execmain:00003053:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
+eaai: execmain:00003054:  get_rel_name(targetid)), 
+eaai: execmain:00003055:  errOmitLocation(true))); 
+eaai: execmain:00003134:  ereport(ERROR, 
+eaai: execmain:00003135:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00003136:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003293:  ereport(ERROR, 
+eaai: execmain:00003294:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+eaai: execmain:00003295:  errmsg("null value in column \"%s\" violates not-null constraint", 
+eaai: execmain:00003296:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
+eaai: execmain:00003297:  errOmitLocation(true))); 
+eaai: execmain:00003306:  ereport(ERROR, 
+eaai: execmain:00003307:  (errcode(ERRCODE_CHECK_VIOLATION), 
+eaai: execmain:00003308:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
+eaai: execmain:00003309:  RelationGetRelationName(rel), failed), 
+eaai: execmain:00003310:  errOmitLocation(true))); 
 eaai: execmain:00004035:  ereport(ERROR, 
-eaai: execmain:00004036:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eaai: execmain:00004037:  errmsg("tablespace \"%s\" does not exist", 
-eaai: execmain:00004038:  intoClause->tableSpaceName))); 
-eaai: execmain:00004445:  ereport(ERROR, 
-eaai: execmain:00004446:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00004447:  errmsg("no partition for partitioning key"), 
-eaai: execmain:00004448:  errOmitLocation(true))); 
-eaai: execmain:00004850:  ereport(ERROR, 
-eaai: execmain:00004851:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004852:  errmsg("relation \"%s\" must have the same " 
-eaai: execmain:00004853:  "column names and column order as \"%s\"", 
-eaai: execmain:00004854:  RelationGetRelationName(part), 
-eaai: execmain:00004855:  RelationGetRelationName(base)), 
-eaai: execmain:00004856:  errOmitLocation(true))); 
-eaai: execmain:00004865:  ereport(ERROR, 
-eaai: execmain:00004866:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004867:  errmsg("type mismatch for attribute \"%s\"", 
-eaai: execmain:00004868:  NameStr((battr->attname))), 
-eaai: execmain:00004869:  errOmitLocation(true))); 
-eaai: execmain:00004878:  ereport(ERROR, 
-eaai: execmain:00004879:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004880:  errmsg("alignment mismatch for attribute \"%s\"", 
-eaai: execmain:00004881:  NameStr((battr->attname))), 
-eaai: execmain:00004882:  errOmitLocation(true))); 
-eaai: execmain:00004917:  ereport(ERROR, 
-eaai: execmain:00004918:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004919:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
-eaai: execmain:00004920:  RelationGetRelationName(part), 
-eaai: execmain:00004921:  RelationGetRelationName(base)), 
-eaai: execmain:00004922:  errOmitLocation(true))); 
-eaai: execmain:00004934:  ereport(ERROR, 
-eaai: execmain:00004935:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004936:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
-eaai: execmain:00004937:  RelationGetRelationName(part), 
-eaai: execmain:00004938:  RelationGetRelationName(base)), 
-eaai: execmain:00004939:  errOmitLocation(true))); 
+eaai: execmain:00004036:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+eaai: execmain:00004037:  errmsg("ON COMMIT can only be used on temporary tables"), 
+eaai: execmain:00004038:  errOmitLocation(true))); 
+eaai: execmain:00004064:  ereport(ERROR, 
+eaai: execmain:00004065:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execmain:00004066:  errmsg("tablespace \"%s\" does not exist", 
+eaai: execmain:00004067:  intoClause->tableSpaceName))); 
+eaai: execmain:00004474:  ereport(ERROR, 
+eaai: execmain:00004475:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00004476:  errmsg("no partition for partitioning key"), 
+eaai: execmain:00004477:  errOmitLocation(true))); 
+eaai: execmain:00004879:  ereport(ERROR, 
+eaai: execmain:00004880:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004881:  errmsg("relation \"%s\" must have the same " 
+eaai: execmain:00004882:  "column names and column order as \"%s\"", 
+eaai: execmain:00004883:  RelationGetRelationName(part), 
+eaai: execmain:00004884:  RelationGetRelationName(base)), 
+eaai: execmain:00004885:  errOmitLocation(true))); 
+eaai: execmain:00004894:  ereport(ERROR, 
+eaai: execmain:00004895:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004896:  errmsg("type mismatch for attribute \"%s\"", 
+eaai: execmain:00004897:  NameStr((battr->attname))), 
+eaai: execmain:00004898:  errOmitLocation(true))); 
+eaai: execmain:00004907:  ereport(ERROR, 
+eaai: execmain:00004908:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004909:  errmsg("alignment mismatch for attribute \"%s\"", 
+eaai: execmain:00004910:  NameStr((battr->attname))), 
+eaai: execmain:00004911:  errOmitLocation(true))); 
+eaai: execmain:00004946:  ereport(ERROR, 
+eaai: execmain:00004947:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004948:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
+eaai: execmain:00004949:  RelationGetRelationName(part), 
+eaai: execmain:00004950:  RelationGetRelationName(base)), 
+eaai: execmain:00004951:  errOmitLocation(true))); 
+eaai: execmain:00004963:  ereport(ERROR, 
+eaai: execmain:00004964:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004965:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
+eaai: execmain:00004966:  RelationGetRelationName(part), 
+eaai: execmain:00004967:  RelationGetRelationName(base)), 
+eaai: execmain:00004968:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: eaai: execqual - ./backend/executor/execQual.c
 eaai: execqual:00000279:  ereport(ERROR, 
 eaai: execqual:00000280:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -9729,10 +9691,10 @@ naba: nodemotion:00001561:  (errcode(ERRCODE_INTERNAL_ERROR),
 naba: nodemotion:00001562:  errmsg("Illegal rescan of motion node: invalid plan."), 
 naba: nodemotion:00001563:  errhint("likely caused by bad NL-join, try setting enable_nestloop off"))); 
 aaaaa GP_IGNORE: nabi: nodeshareinputscan - ./backend/executor/nodeShareInputScan.c
-nabi: nodeshareinputscan:00000621:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-nabi: nodeshareinputscan:00000622:  errmsg("Share input reader failed: out of memory"))); 
-nabi: nodeshareinputscan:00000693:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-nabi: nodeshareinputscan:00000694:  errmsg("Shareinput Writer failed: out of memory"))); 
+nabi: nodeshareinputscan:00000622:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+nabi: nodeshareinputscan:00000623:  errmsg("Share input reader failed: out of memory"))); 
+nabi: nodeshareinputscan:00000694:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+nabi: nodeshareinputscan:00000695:  errmsg("Shareinput Writer failed: out of memory"))); 
 aaaaa GP_IGNORE: nabb: nodesubplan - ./backend/executor/nodeSubplan.c
 nabb: nodesubplan:00000295:  ereport(ERROR, 
 nabb: nodesubplan:00000296:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
@@ -10056,12 +10018,12 @@ raae: read:00000332:  "supported in this version of %s.",
 raae: read:00000333:  tok_len, token, PACKAGE_NAME) 
 raae: read:00000334:  )); 
 aaaaa GP_IGNORE: raaj: readfuncs - ./backend/nodes/readfuncs.c
-raaj: readfuncs:00003734:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-raaj: readfuncs:00003735:  errmsg("This operation involves an internal data item " 
-raaj: readfuncs:00003736:  "of a type called \"%.*s\" which is not " 
-raaj: readfuncs:00003737:  "supported in this version of %s.", 
-raaj: readfuncs:00003738:  length, token, PACKAGE_NAME) 
-raaj: readfuncs:00003739:  )); 
+raaj: readfuncs:00003733:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+raaj: readfuncs:00003734:  errmsg("This operation involves an internal data item " 
+raaj: readfuncs:00003735:  "of a type called \"%.*s\" which is not " 
+raaj: readfuncs:00003736:  "supported in this version of %s.", 
+raaj: readfuncs:00003737:  length, token, PACKAGE_NAME) 
+raaj: readfuncs:00003738:  )); 
 aaaaa GP_IGNORE: aaai: allpaths - ./backend/optimizer/path/allpaths.c
 aaai: allpaths:00000420:  ereport(ERROR, 
 aaai: allpaths:00000421:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -13803,13 +13765,13 @@ saae: smgr:00001577:  errmsg("could not sync relation %u/%u/%u: %m",
 saae: smgr:00001578:  reln->smgr_rnode.spcNode, 
 saae: smgr:00001579:  reln->smgr_rnode.dbNode, 
 saae: smgr:00001580:  reln->smgr_rnode.relNode))); 
-saae: smgr:00003072:  ereport(WARNING, 
-saae: smgr:00003073:  (errcode_for_file_access(), 
-saae: smgr:00003074:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
-saae: smgr:00003075:  reln->smgr_rnode.spcNode, 
-saae: smgr:00003076:  reln->smgr_rnode.dbNode, 
-saae: smgr:00003077:  reln->smgr_rnode.relNode, 
-saae: smgr:00003078:  xlrec->blkno))); 
+saae: smgr:00003090:  ereport(WARNING, 
+saae: smgr:00003091:  (errcode_for_file_access(), 
+saae: smgr:00003092:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+saae: smgr:00003093:  reln->smgr_rnode.spcNode, 
+saae: smgr:00003094:  reln->smgr_rnode.dbNode, 
+saae: smgr:00003095:  reln->smgr_rnode.relNode, 
+saae: smgr:00003096:  xlrec->blkno))); 
 aaaaa GP_IGNORE: faai: fastpath - ./backend/tcop/fastpath.c
 faai: fastpath:00000106:  ereport(FATAL, 
 faai: fastpath:00000107:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
@@ -17228,11 +17190,11 @@ laaj: lsyscache:00002383:  (errcode(ERRCODE_UNDEFINED_OBJECT),
 laaj: lsyscache:00002384:  errmsg("role \"%s\" does not exist", rolname), 
 laaj: lsyscache:00002385:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: raai: relcache - ./backend/utils/cache/relcache.c
-raai: relcache:00003965:  ereport(WARNING, 
-raai: relcache:00003966:  (errcode_for_file_access(), 
-raai: relcache:00003967:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
-raai: relcache:00003968:  tempfilename), 
-raai: relcache:00003969:  errdetail("Continuing anyway, but there's something wrong."))); 
+raai: relcache:00003984:  ereport(WARNING, 
+raai: relcache:00003985:  (errcode_for_file_access(), 
+raai: relcache:00003986:  errmsg("could not create relation-cache initialization file \"%s\": %m", 
+raai: relcache:00003987:  tempfilename), 
+raai: relcache:00003988:  errdetail("Continuing anyway, but there's something wrong."))); 
 aaaaa GP_IGNORE: taai: typcache - ./backend/utils/cache/typcache.c
 taai: typcache:00000143:  ereport(ERROR, 
 taai: typcache:00000144:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
@@ -17678,68 +17640,68 @@ waaf: wchar:00001642:  buf,
 waaf: wchar:00001643:  pg_enc2name_tbl[src_encoding].name, 
 waaf: wchar:00001644:  pg_enc2name_tbl[dest_encoding].name))); 
 aaaaa GP_IGNORE: fabd: faultinjector - ./backend/utils/misc/faultinjector.c
-fabd: faultinjector:00000309:  ereport(ERROR, 
-fabd: faultinjector:00000310:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000311:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000335:  ereport(ERROR, 
-fabd: faultinjector:00000336:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000337:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000435:  ereport(FATAL, 
-fabd: faultinjector:00000436:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000437:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000438:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000457:  ereport(ERROR, 
-fabd: faultinjector:00000458:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000459:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000460:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000646:  ereport(WARNING, 
-fabd: faultinjector:00000647:  (errmsg("could not insert fault injection, no slots available" 
-fabd: faultinjector:00000648:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000649:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000650:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000683:  ereport(WARNING, 
-fabd: faultinjector:00000684:  (errmsg("could not insert fault injection, fault type not supported" 
-fabd: faultinjector:00000685:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000686:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000687:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000741:  ereport(WARNING, 
-fabd: faultinjector:00000742:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
-fabd: faultinjector:00000743:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000744:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000745:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000765:  ereport(WARNING, 
-fabd: faultinjector:00000766:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000767:  "segment not in primary or mirror role, " 
-fabd: faultinjector:00000768:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000769:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000770:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000784:  ereport(WARNING, 
-fabd: faultinjector:00000785:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000786:  "segment not in master role, " 
-fabd: faultinjector:00000787:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000788:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000789:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000805:  ereport(WARNING, 
-fabd: faultinjector:00000806:  (errmsg("could not insert fault injection entry into table, no memory, " 
-fabd: faultinjector:00000807:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000808:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000809:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000819:  ereport(WARNING, 
-fabd: faultinjector:00000820:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000821:  "entry already exists, " 
-fabd: faultinjector:00000822:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000823:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000824:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000883:  ereport(WARNING, 
-fabd: faultinjector:00000884:  (errmsg("could not update fault injection hash entry with fault injection status, " 
-fabd: faultinjector:00000885:  "no entry found, " 
-fabd: faultinjector:00000886:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000887:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000888:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00001106:  ereport(WARNING, 
-fabd: faultinjector:00001107:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00001108:  FaultInjectorIdentifierEnumToString[identifier], 
-fabd: faultinjector:00001109:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000316:  ereport(ERROR, 
+fabd: faultinjector:00000317:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000318:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000342:  ereport(ERROR, 
+fabd: faultinjector:00000343:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000344:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000442:  ereport(FATAL, 
+fabd: faultinjector:00000443:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000444:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000445:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000464:  ereport(ERROR, 
+fabd: faultinjector:00000465:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000466:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000467:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000653:  ereport(WARNING, 
+fabd: faultinjector:00000654:  (errmsg("could not insert fault injection, no slots available" 
+fabd: faultinjector:00000655:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000656:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000657:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000690:  ereport(WARNING, 
+fabd: faultinjector:00000691:  (errmsg("could not insert fault injection, fault type not supported" 
+fabd: faultinjector:00000692:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000693:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000694:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000748:  ereport(WARNING, 
+fabd: faultinjector:00000749:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
+fabd: faultinjector:00000750:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000751:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000752:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000772:  ereport(WARNING, 
+fabd: faultinjector:00000773:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000774:  "segment not in primary or mirror role, " 
+fabd: faultinjector:00000775:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000776:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000777:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000791:  ereport(WARNING, 
+fabd: faultinjector:00000792:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000793:  "segment not in master role, " 
+fabd: faultinjector:00000794:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000795:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000796:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000812:  ereport(WARNING, 
+fabd: faultinjector:00000813:  (errmsg("could not insert fault injection entry into table, no memory, " 
+fabd: faultinjector:00000814:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000815:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000816:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000826:  ereport(WARNING, 
+fabd: faultinjector:00000827:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000828:  "entry already exists, " 
+fabd: faultinjector:00000829:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000830:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000831:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000890:  ereport(WARNING, 
+fabd: faultinjector:00000891:  (errmsg("could not update fault injection hash entry with fault injection status, " 
+fabd: faultinjector:00000892:  "no entry found, " 
+fabd: faultinjector:00000893:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000894:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000895:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00001113:  ereport(WARNING, 
+fabd: faultinjector:00001114:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00001115:  FaultInjectorIdentifierEnumToString[identifier], 
+fabd: faultinjector:00001116:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
 aaaaa GP_IGNORE: gaai: gucxfile - ./backend/utils/misc/guc-file.c
 gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
 gaai: gucxfile:00000543:  
@@ -17755,81 +17717,81 @@ gaai: gucxfile:00000552:  GUC_EOL = 99,
 gaai: gucxfile:00000553:  GUC_ERROR = 100 
 gaai: gucxfile:00000554: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00007602:  ereport(ERROR, 
-gaad: guc:00007603:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007604:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007606:  ereport(ERROR, 
-gaad: guc:00007607:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007608:  errmsg("must be superuser to examine \"%s\"", name))); 
 gaad: guc:00007642:  ereport(ERROR, 
 gaad: guc:00007643:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 gaad: guc:00007644:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
 gaad: guc:00007646:  ereport(ERROR, 
 gaad: guc:00007647:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
 gaad: guc:00007648:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007717:  ereport(ERROR, 
-gaad: guc:00007718:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007719:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007726:  ereport(ERROR, 
-gaad: guc:00007727:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00007728:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00007899:  ereport(ERROR, 
-gaad: guc:00007900:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00007901:  errmsg("SET requires parameter name"))); 
-gaad: guc:00007963:  ereport(ERROR, 
-gaad: guc:00007964:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00007965:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008284:  ereport(ERROR, 
-gaad: guc:00008285:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008286:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008288:  ereport(ERROR, 
-gaad: guc:00008289:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008290:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009092:  ereport(FATAL, 
-gaad: guc:00009093:  (errcode_for_file_access(), 
-gaad: guc:00009094:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009095:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009202:  ereport(WARNING, 
-gaad: guc:00009203:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009204:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009398:  ereport(ERROR, 
-gaad: guc:00009399:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009400:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009421:  ereport(ERROR, 
-gaad: guc:00009422:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009423:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009424:  tok))); 
-gaad: guc:00009450:  ereport(ERROR, 
-gaad: guc:00009451:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009452:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009453:  value))); 
-gaad: guc:00009803:  ereport(ERROR, 
-gaad: guc:00009804:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00009805:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00009879:  ereport(ERROR, 
-gaad: guc:00009880:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009881:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00009900:  ereport(ERROR, 
-gaad: guc:00009901:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009902:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00009913:  ereport(ERROR, 
-gaad: guc:00009914:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009915:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00009930:  ereport(ERROR, 
-gaad: guc:00009931:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009932:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00009933:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009934:  "\"log_dispatch_stats\", " 
-gaad: guc:00009935:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009950:  ereport(ERROR, 
-gaad: guc:00009951:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009952:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00009953:  "\"log_statement_stats\", " 
-gaad: guc:00009954:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009955:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00007682:  ereport(ERROR, 
+gaad: guc:00007683:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007684:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007686:  ereport(ERROR, 
+gaad: guc:00007687:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007688:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007757:  ereport(ERROR, 
+gaad: guc:00007758:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007759:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007766:  ereport(ERROR, 
+gaad: guc:00007767:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00007768:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00007939:  ereport(ERROR, 
+gaad: guc:00007940:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00007941:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008003:  ereport(ERROR, 
+gaad: guc:00008004:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008005:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008324:  ereport(ERROR, 
+gaad: guc:00008325:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008326:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008328:  ereport(ERROR, 
+gaad: guc:00008329:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008330:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009132:  ereport(FATAL, 
+gaad: guc:00009133:  (errcode_for_file_access(), 
+gaad: guc:00009134:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009135:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009242:  ereport(WARNING, 
+gaad: guc:00009243:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009244:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009438:  ereport(ERROR, 
+gaad: guc:00009439:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009440:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009461:  ereport(ERROR, 
+gaad: guc:00009462:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009463:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009464:  tok))); 
+gaad: guc:00009490:  ereport(ERROR, 
+gaad: guc:00009491:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009492:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009493:  value))); 
+gaad: guc:00009843:  ereport(ERROR, 
+gaad: guc:00009844:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00009845:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00009919:  ereport(ERROR, 
+gaad: guc:00009920:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009921:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00009940:  ereport(ERROR, 
+gaad: guc:00009941:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009942:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00009953:  ereport(ERROR, 
+gaad: guc:00009954:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009955:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
 gaad: guc:00009970:  ereport(ERROR, 
 gaad: guc:00009971:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009972:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00009972:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00009973:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009974:  "\"log_dispatch_stats\", " 
+gaad: guc:00009975:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00009990:  ereport(ERROR, 
+gaad: guc:00009991:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009992:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00009993:  "\"log_statement_stats\", " 
+gaad: guc:00009994:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00009995:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010010:  ereport(ERROR, 
+gaad: guc:00010011:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010012:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -19057,10 +19019,10 @@ paaf: pltcl:00001150:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 paaf: pltcl:00001151:  errmsg("pltcl functions cannot take type %s", 
 paaf: pltcl:00001152:  format_type_be(procStruct->proargtypes.values[i])))); 
 aaaaa GP_IGNORE: caaj: chklocale - ./port/chklocale.c
-caaj: chklocale:00000325:  ereport(WARNING, 
-caaj: chklocale:00000326:  (errmsg("could not determine encoding for locale \"%s\": codeset is \"%s\"", 
-caaj: chklocale:00000327:  ctype, sys), 
-caaj: chklocale:00000328:  errdetail("Please report this to <pgsql-bugs@postgresql.org>."))); 
+caaj: chklocale:00000327:  ereport(WARNING, 
+caaj: chklocale:00000328:  (errmsg("could not determine encoding for locale \"%s\": codeset is \"%s\"", 
+caaj: chklocale:00000329:  ctype, sys), 
+caaj: chklocale:00000330:  errdetail("Please report this to <pgsql-bugs@postgresql.org>."))); 
 aaaaa GP_IGNORE: caah: copydir - ./port/copydir.c
 caah: copydir:00000057:  ereport(ERROR, 
 caah: copydir:00000058:  (errcode_for_file_access(), 
