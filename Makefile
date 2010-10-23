@@ -748,7 +748,7 @@ endif
 ifneq "$(LOADERS_FILESET_LIB_PERZL)" ""
 	# include libraries from www.perzl.org needed by the pware Python-2.6.1 build
 	mkdir -p $(LOADERSINSTLOC_LIB_PWARE)
-	($(TAR) cf - -C $(LOADERS_FILESET_LIB_PERZL_LOC) $(LOADERS_FILESET_LIB_PERZL)) | ($(TAR) xvpf - -C $(LOADERSINSTLOC_LIB_PWARE))$(check_pipe_for_errors)
+	(cd $(LOADERS_FILESET_LIB_PERZL_LOC) && $(TAR) cf - $(LOADERS_FILESET_LIB_PERZL)) | (cd $(LOADERSINSTLOC_LIB_PWARE) && $(TAR) xvpf -)$(check_pipe_for_errors)
 endif
 ifneq "$(LOADERS_FILESET_LIB_PWARE)" ""
 	# include libraries from pware needed by the pware Python-2.6.1 build
