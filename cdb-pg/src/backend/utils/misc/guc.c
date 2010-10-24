@@ -45,6 +45,7 @@
 #include "commands/vacuum.h"
 #include "commands/variable.h"
 #include "executor/executor.h"          /* TupOutputState, TupleDesc */
+#include "executor/execWorkfile.h"
 #include "funcapi.h"
 #include "libpq/auth.h"
 #include "libpq/pqformat.h"
@@ -795,6 +796,25 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&gp_enable_predicate_propagation,
 		true, NULL, NULL
+	},
+	{
+		{"gp_workfile_checksumming", PGC_USERSET, QUERY_TUNING_OTHER,
+		 gettext_noop("Enable checksumming on the executor work files in order to "
+					  "catch possible faulty writes caused by your disk drivers."),
+		 NULL,
+		 GUC_GPDB_ADDOPT
+		},
+		&gp_workfile_checksumming,
+		true, NULL, NULL
+	},
+	{
+		{"gp_workfile_faultinject", PGC_SUSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Fault inject a torn page to an executor workfile."),
+		 gettext_noop("Used to simulate a failure and test workfile checksumming."),
+		 GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_workfile_faultinject,
+		false, NULL, NULL
 	},
 	{
 		{"constraint_exclusion", PGC_USERSET, QUERY_TUNING_OTHER,
@@ -4198,6 +4218,16 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_segworker_relative_priority,
 		PRIO_MAX,
 		0, PRIO_MAX, NULL, NULL
+	},
+
+	{
+		{"gp_workfile_bytes_to_checksum", PGC_USERSET, GP_ARRAY_TUNING,
+		 gettext_noop("The number of bytes to be checksummed in every WORKFILE_SAFEWRITE_SIZE bytes."),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_workfile_bytes_to_checksum,
+		16, 0, WORKFILE_SAFEWRITE_SIZE, NULL, NULL
 	},
 
 	/* for pljava */

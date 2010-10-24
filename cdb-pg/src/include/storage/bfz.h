@@ -15,26 +15,26 @@ struct bfz;
 
 struct bfz_freeable_stuff
 {
-	int64		tot_bytes;
-	char	   *buffer_pointer;
-	char	   *buffer_end;
+	int64 tot_bytes;
+	char *buffer_pointer;
+	char *buffer_end;
 
 /*
- * We always call read_ex with size==BFZ_BUFFER_SIZE. So far, no code
- * depends on this.  Some block compression algorithm might take
- * advantage of this in the future.
+ * We always call read_ex with size==BFZ_BUFFER_SIZE.
+ * The checksumming algorithm relies on this to determine the
+ * boundary of a buffer that a checksum is applied to.
  */
-	int			(*read_ex) (struct bfz * thiz, char *buffer, int size);
+	int	(*read_ex) (struct bfz * thiz, char *buffer, int size);
 
 /*
  * We always call write_ex with size==BFZ_BUFFER_SIZE, except for the
- * last write. So far, no code depends on this.  Some block
- * compression algorithm might take advantage of this in the
- * future.
+ * last write. The checksumming algorithm relies on this to
+ * determine the boundary of a buffer that a checksum is applied to.
  */
-	void		(*write_ex) (struct bfz * thiz, const char *buffer, int size);
-	void		(*close_ex) (struct bfz * thiz);
-	char		buffer[BFZ_BUFFER_SIZE];
+	void (*write_ex) (struct bfz * thiz, const char *buffer, int size);
+	void (*close_ex) (struct bfz * thiz);
+
+	char buffer[BFZ_BUFFER_SIZE];
 };
 
 struct bfz_threaded_freeable_stuff
@@ -50,6 +50,21 @@ typedef struct bfz
 	int			fd;
 	unsigned char mode;
 	unsigned char compression_index;
+
+	/* Indicate if this bfz file stores block checksums. */
+	bool has_checksum;
+
+	/*
+	 * The following are used to simulate a torn page.
+	 *
+	 * 'numBlocks' represents total number of blocks this bfz file contains.
+	 * 'blockNo' represents the number for the block that is currently accessed.
+	 * 'chosenBlockNo' represents the number for the block that will become
+	 *    a torn page.
+	 */
+	int64 numBlocks;
+	int64 blockNo;
+	int64 chosenBlockNo;
 }	bfz_t;
 
 /* These functions are internal to bfz. */

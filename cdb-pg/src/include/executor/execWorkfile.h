@@ -16,6 +16,12 @@ typedef enum ExecWorkFileType
 	BFZ
 } ExecWorkFileType;
 
+/*
+ * The size of a single write that OS disk drivers guaranteed to write to
+ * disk.
+ */ 
+#define WORKFILE_SAFEWRITE_SIZE 512
+
 /* 
  * ExecWorkFile structure.
  */

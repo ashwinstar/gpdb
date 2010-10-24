@@ -8,6 +8,21 @@
 #include "access/xact.h"
 
 #include "utils/memutils.h"		/* For MemoryContext stuff */
+#include "cdb/cdbvars.h"
+#include "executor/execWorkfile.h"
+
+typedef pg_crc32 BFZ_CHECKSUM_TYPE;
+
+#define BFZ_CHECKSUM_SIZE(has_checksum)	\
+	((has_checksum) ? sizeof(BFZ_CHECKSUM_TYPE) : 0)
+
+/*
+ * Since checksumming a full BFZ block is too expensive,
+ * we only checksum several bytes in every sector in a BFZ
+ * block. The size of a sector is defined as below. The bytes
+ * to be checksummed are defined by gp_workfile_bytes_to_checksum.
+ */
+#define BFZ_CHECKSUM_SECTOR_SIZE WORKFILE_SAFEWRITE_SIZE
 
 static const struct{
     const char*name[6];
@@ -44,6 +59,168 @@ static void
 bfz_close_callback(XactEvent event, void *arg)
 {
 	bfz_close(arg, false);
+}
+
+#define BFZ_CHECKSUM_EQ(c1, c2) EQ_CRC32(c1, c2)
+
+/*
+ * Compute a checksum for a given char array.
+ */
+static BFZ_CHECKSUM_TYPE
+compute_checksum(const char *buffer, uint32 size)
+{
+	BFZ_CHECKSUM_TYPE crc = 0;
+	/*
+	 * We only checksum the first gp_workfile_bytes_to_checksum bytes
+	 * in every BFZ_CHECKSUM_SECTOR_SIZE bytes.
+	 */
+	uint32 currSectorBegin = 0;
+	
+	INIT_CRC32(crc);
+	
+	while (currSectorBegin < size)
+	{
+		COMP_CRC32(crc, buffer + currSectorBegin,
+				   Min(size - currSectorBegin,
+					   gp_workfile_bytes_to_checksum));
+		currSectorBegin += BFZ_CHECKSUM_SECTOR_SIZE;
+	}
+
+	FIN_CRC32(crc);
+
+	return crc;
+}
+
+/*
+ * Write out a bfz buffer.
+ *
+ * If isLast is true, the size of content of the buffer could be
+ * smaller than BFZ_BUFFER_SIZE - BFZ_CHECKSUM_SIZE. Otherwise,
+ * the content of the buffer has the size of
+ * BFZ_BUFFER_SIZE - BFZ_CHECKSUM_SIZE.
+ *
+ * If computing a checksum for the block is requested, this function
+ * computes the checksum for the content in the buffer and stores
+ * it at the end of the buffer.
+ */
+static void
+write_bfz_buffer(bfz_t *bfz, bool isLast)
+{
+	struct bfz_freeable_stuff *fs = bfz->freeable_stuff;
+	
+	AssertImply(isLast, fs->buffer_pointer - fs->buffer <=
+				sizeof(fs->buffer) - BFZ_CHECKSUM_SIZE(bfz->has_checksum));
+	AssertImply(!isLast, fs->buffer_pointer -  fs->buffer ==
+				sizeof(fs->buffer) - BFZ_CHECKSUM_SIZE(bfz->has_checksum));
+	
+	fs->tot_bytes += fs->buffer_pointer - fs->buffer + BFZ_CHECKSUM_SIZE(bfz->has_checksum);
+
+	if (bfz->has_checksum)
+	{
+		BFZ_CHECKSUM_TYPE crc;
+
+		Assert(fs->buffer_pointer - fs->buffer >= 0);
+		crc =
+			compute_checksum(fs->buffer, fs->buffer_pointer - fs->buffer);
+		
+		memcpy(fs->buffer_pointer, &crc, sizeof(BFZ_CHECKSUM_TYPE));
+		fs->buffer_pointer += sizeof(BFZ_CHECKSUM_TYPE);
+	}
+	
+	fs->write_ex(bfz, fs->buffer, fs->buffer_pointer - fs->buffer);
+	bfz->numBlocks ++;
+}
+
+/*
+ * Read a buffer length of content from the bfz file into a given array.
+ *
+ * This function always tries to read BFZ_BUFFER_SIZE of bytes from
+ * the bfz file, and stores them into the buffer.
+ *
+ * The returned value is the number of bytes that are actually read - 
+ * BFZ_CHECKSUM_SIZE.
+ *
+ * Note that the caller should provide the given array to have the size of
+ * at least BFZ_BUFFER_SIZE.
+ */
+static int
+read_bfz_buffer(bfz_t *bfz, char *buffer)
+{
+	int bytesRead = 0;
+	struct bfz_freeable_stuff *fs = bfz->freeable_stuff;
+	int dataSize = 0;
+	char *oldBuffer = NULL;
+	
+	/*
+	 * Copy the original buffer so that we can simulate a torn page
+	 * later.
+	 */
+	if (gp_workfile_faultinject)
+	{
+		oldBuffer = palloc(sizeof(fs->buffer));
+		memcpy(oldBuffer, buffer, sizeof(fs->buffer));
+	}
+
+	bytesRead = fs->read_ex(bfz, buffer, sizeof(fs->buffer));
+	Assert(bytesRead <= sizeof(fs->buffer));
+
+	if (bytesRead == 0)
+		return 0;
+
+	dataSize = bytesRead;
+
+	/*
+	 * If size is greater than WORKFILE_SAFEWRITE_SIZE, and the GUC
+	 * gp_workfile_faultinject is on, we simulate a torn page
+	 * if this block is chosen to do so.
+	 */
+	if (dataSize > WORKFILE_SAFEWRITE_SIZE &&
+		gp_workfile_faultinject)
+	{
+		if (bfz->blockNo == bfz->chosenBlockNo)
+		{
+			Assert(oldBuffer != NULL);
+			
+			/*
+			 * Simulate a torn page by copying the data after
+			 * WORKFILE_SAFEWRITE_SIZE in the old buffer into
+			 * the new buffer.
+			 */
+			memcpy(buffer + WORKFILE_SAFEWRITE_SIZE,
+				   oldBuffer + WORKFILE_SAFEWRITE_SIZE,
+				   sizeof(fs->buffer) - WORKFILE_SAFEWRITE_SIZE);
+			elog(NOTICE, "Simulate a torn page at block " INT64_FORMAT, bfz->blockNo);
+		}
+	}
+
+	if (gp_workfile_faultinject)
+		pfree(oldBuffer);
+
+	if (bfz->has_checksum)
+	{
+		BFZ_CHECKSUM_TYPE storedCrc;
+		BFZ_CHECKSUM_TYPE crc;
+
+		dataSize -= sizeof(BFZ_CHECKSUM_TYPE);
+		Assert(dataSize >= 0);
+
+		/*
+		 * Verify the stored checksum for this block with the computed
+		 * value.
+		 */
+		crc = compute_checksum(buffer, dataSize);
+		memcpy(&storedCrc, buffer + dataSize, sizeof(BFZ_CHECKSUM_TYPE));
+
+		if (!BFZ_CHECKSUM_EQ(crc,storedCrc))
+			ereport(ERROR,
+					(errcode(ERRCODE_IO_ERROR),
+					 errmsg("Executor workfile block checksum mismatch -- current %u, "
+							"expected %u", storedCrc, crc)));
+	}
+
+	bfz->blockNo++;
+
+	return dataSize;
 }
 
 bfz_t *
@@ -99,10 +276,19 @@ bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress)
 
 	compression_algorithms[compress].init(thiz);
 
+	thiz->has_checksum = gp_workfile_checksumming;
+
+	if (gp_workfile_checksumming || gp_workfile_faultinject)
+	{
+		srandom((unsigned int) time(NULL));
+	}
+
+	thiz->numBlocks = thiz->blockNo = thiz->chosenBlockNo = 0;
+	
 	fs = thiz->freeable_stuff;
 	fs->tot_bytes = 0;
 	fs->buffer_pointer = fs->buffer;
-	fs->buffer_end = fs->buffer + sizeof fs->buffer;
+	fs->buffer_end = fs->buffer + sizeof(fs->buffer) - BFZ_CHECKSUM_SIZE(thiz->has_checksum);
 
 	return thiz;
 }
@@ -134,8 +320,7 @@ bfz_append_end(bfz_t * thiz)
 
 	Assert(thiz->mode == BFZ_MODE_APPEND);
 
-	fs->tot_bytes += fs->buffer_pointer - fs->buffer;
-	fs->write_ex(thiz, fs->buffer, fs->buffer_pointer - fs->buffer);
+	write_bfz_buffer(thiz, true);
 	tot_bytes = fs->tot_bytes;
 	fs->close_ex(thiz);
 
@@ -143,7 +328,8 @@ bfz_append_end(bfz_t * thiz)
 		elog(ERROR, "bfz: lseek failed with (errno %d) %m", errno);
 
 	elog(DEBUG1, "bfz file size uncompressed %lld, compressed %lld, savings %d%%", 
-		 (long long) tot_bytes, (long long) tot_compressed, tot_bytes == 0 ? 0 : (int) ((tot_bytes - tot_compressed) * 100 / tot_bytes));
+		 (long long) tot_bytes, (long long) tot_compressed,
+		 tot_bytes == 0 ? 0 : (int) ((tot_bytes - tot_compressed) * 100 / tot_bytes));
 
 	thiz->mode = BFZ_MODE_FREED;
 }
@@ -160,6 +346,14 @@ bfz_scan_begin(bfz_t * thiz)
 	compression_algorithms[thiz->compression_index].init(thiz);
 	fs = thiz->freeable_stuff;
 	fs->buffer_pointer = fs->buffer_end = fs->buffer;
+
+	if (gp_workfile_faultinject)
+	{
+		thiz->chosenBlockNo = (((double)random()) / ((double)MAX_RANDOM_VALUE)) * thiz->numBlocks;
+		elog(LOG, "Test workfile checksumming: choose block " INT64_FORMAT
+			 " to simulate a torn page",
+			 thiz->chosenBlockNo);
+	}
 }
 
 void
@@ -170,28 +364,22 @@ bfz_write_ex(bfz_t * thiz, const char *buffer, int size)
 	Assert(thiz->mode == BFZ_MODE_APPEND);
 	while (size)
 	{
-		int			s = fs->buffer_end - fs->buffer_pointer;
+		int	sizeToWrite =
+			fs->buffer_end - fs->buffer_pointer;
 
-		if (size < s)
-			s = size;
-		size -= s;
-		if (s == sizeof fs->buffer)
+		sizeToWrite = Min(size, sizeToWrite);
+		size -= sizeToWrite;
+
+		memcpy(fs->buffer_pointer, buffer, sizeToWrite);
+		fs->buffer_pointer += sizeToWrite;
+		if (fs->buffer_end == fs->buffer_pointer)
 		{
-			fs->tot_bytes += sizeof fs->buffer;
-			fs->write_ex(thiz, buffer, sizeof fs->buffer);
+			write_bfz_buffer(thiz, false);
+			fs->buffer_pointer = fs->buffer;
+			
 		}
-		else
-		{
-			memcpy(fs->buffer_pointer, buffer, s);
-			fs->buffer_pointer += s;
-			if (fs->buffer_pointer == fs->buffer_end)
-			{
-				fs->tot_bytes += sizeof fs->buffer;
-				fs->write_ex(thiz, fs->buffer, sizeof fs->buffer);
-				fs->buffer_pointer = fs->buffer;
-			}
-		}
-		buffer += s;
+
+		buffer += sizeToWrite;
 	}
 }
 
@@ -205,28 +393,30 @@ bfz_read_ex(bfz_t * thiz, char *buffer, int size)
 
 	while (size)
 	{
-		int			s = fs->buffer_end - fs->buffer_pointer;
+		int sizeForRead = fs->buffer_end - fs->buffer_pointer;
 
-		if (size < s)
-			s = size;
-		memcpy(buffer, fs->buffer_pointer, s);
-		fs->buffer_pointer += s;
-		buffer += s;
-		size -= s;
+		Assert(sizeForRead >= 0 &&
+			   sizeForRead <= sizeof(fs->buffer) - BFZ_CHECKSUM_SIZE(thiz->has_checksum));
+
+		sizeForRead = Min(size, sizeForRead);
+		memcpy(buffer, fs->buffer_pointer, sizeForRead);
+		fs->buffer_pointer += sizeForRead;
+		buffer += sizeForRead;
+		size -= sizeForRead;
 		if (fs->buffer_pointer == fs->buffer_end)
 		{
-			while (size >= sizeof fs->buffer)
+			while (size >= sizeof(fs->buffer) - BFZ_CHECKSUM_SIZE(thiz->has_checksum))
 			{
-				s = fs->read_ex(thiz, buffer, sizeof fs->buffer);
-				buffer += s;
-				size -= s;
-				if (s == 0)
+				sizeForRead = read_bfz_buffer(thiz, buffer);
+				buffer += sizeForRead;
+				size -= sizeForRead;
+				if (sizeForRead == 0)
 					break;
 			}
-			s = fs->read_ex(thiz, fs->buffer, sizeof fs->buffer);
+			sizeForRead = read_bfz_buffer(thiz, fs->buffer);
 			fs->buffer_pointer = fs->buffer;
-			fs->buffer_end = fs->buffer + s;
-			if (s == 0)
+			fs->buffer_end = fs->buffer + sizeForRead;
+			if (sizeForRead == 0)
 				break;
 		}
 	}
