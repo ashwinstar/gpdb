@@ -7,7 +7,7 @@ SYNOPSIS
 *****************************************************
 
 gpcheck -f <host_file> [-m <master_host>] [-s <standy_master_host>] 
-        [--stdout | --zipout]
+        [--stdout | --zipout] [--config <config_file>]
 
 gpcheck --zipin <file>
 
@@ -37,6 +37,11 @@ these settings will be validated.
 *****************************************************
 OPTIONS
 *****************************************************
+
+--config <config_file>
+  The name of a configuration file to use instead of the default 
+  file $GPHOME/etc/gpcheck.cnf. This file specifies the 
+  OS-specific checks to run.
 
 -f <host_file>
    Specifies the name of a file that contains a list of hosts 
