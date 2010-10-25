@@ -3886,7 +3886,7 @@ performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound)
 	 */
 	PG_TRY();
 	{
-		FinishPreparedTransaction((char *)gid, /* isCommit */ true, raiseErrorIfNotFound);
+		FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* isCrashRecovery */ false, raiseErrorIfNotFound);
 	}
 	PG_CATCH();
 	{
@@ -3919,7 +3919,7 @@ performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound)
 	 */
 	PG_TRY();
 	{
-		FinishPreparedTransaction((char *)gid, /* isCommit */ false, raiseErrorIfNotFound);
+		FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* isCrashRecovery */ false, raiseErrorIfNotFound);
 	}
 	PG_CATCH();
 	{
