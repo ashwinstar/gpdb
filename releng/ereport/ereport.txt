@@ -817,29 +817,29 @@ taai: twophase:00001279:  (errcode(ERRCODE_DATA_CORRUPTED),
 taai: twophase:00001280:  errmsg("two-phase state file for transaction %u is corrupt", 
 taai: twophase:00001281:  xid), 
 taai: twophase:00001282:  errSendAlert(true))); 
-taai: twophase:00001447:  ereport(WARNING, 
-taai: twophase:00001448:  (errcode_for_file_access(), 
-taai: twophase:00001449:  errmsg("could not remove two-phase state file \"%s\": %m", 
-taai: twophase:00001450:  path))); 
-taai: twophase:00001597:  ereport(ERROR, 
-taai: twophase:00001598:  (errcode_for_file_access(), 
-taai: twophase:00001599:  errmsg("could not open two-phase state file \"%s\": %m", 
-taai: twophase:00001600:  path))); 
-taai: twophase:00001663:  ereport(WARNING, 
-taai: twophase:00001664:  (errmsg("removing future two-phase state file \"%s\"", 
-taai: twophase:00001665:  clde->d_name))); 
-taai: twophase:00001679:  ereport(WARNING, 
-taai: twophase:00001680:  (errmsg("removing corrupt two-phase state file \"%s\"", 
-taai: twophase:00001681:  clde->d_name))); 
-taai: twophase:00001690:  ereport(WARNING, 
-taai: twophase:00001691:  (errmsg("removing corrupt two-phase state file \"%s\"", 
-taai: twophase:00001692:  clde->d_name))); 
-taai: twophase:00001774:  ereport(WARNING, 
-taai: twophase:00001775:  (errmsg("removing stale two-phase state file \"%s\"", 
-taai: twophase:00001776:  clde->d_name))); 
-taai: twophase:00001785:  ereport(WARNING, 
-taai: twophase:00001786:  (errmsg("removing corrupt two-phase state file \"%s\"", 
-taai: twophase:00001787:  clde->d_name))); 
+taai: twophase:00001448:  ereport(WARNING, 
+taai: twophase:00001449:  (errcode_for_file_access(), 
+taai: twophase:00001450:  errmsg("could not remove two-phase state file \"%s\": %m", 
+taai: twophase:00001451:  path))); 
+taai: twophase:00001598:  ereport(ERROR, 
+taai: twophase:00001599:  (errcode_for_file_access(), 
+taai: twophase:00001600:  errmsg("could not open two-phase state file \"%s\": %m", 
+taai: twophase:00001601:  path))); 
+taai: twophase:00001664:  ereport(WARNING, 
+taai: twophase:00001665:  (errmsg("removing future two-phase state file \"%s\"", 
+taai: twophase:00001666:  clde->d_name))); 
+taai: twophase:00001680:  ereport(WARNING, 
+taai: twophase:00001681:  (errmsg("removing corrupt two-phase state file \"%s\"", 
+taai: twophase:00001682:  clde->d_name))); 
+taai: twophase:00001691:  ereport(WARNING, 
+taai: twophase:00001692:  (errmsg("removing corrupt two-phase state file \"%s\"", 
+taai: twophase:00001693:  clde->d_name))); 
+taai: twophase:00001775:  ereport(WARNING, 
+taai: twophase:00001776:  (errmsg("removing stale two-phase state file \"%s\"", 
+taai: twophase:00001777:  clde->d_name))); 
+taai: twophase:00001786:  ereport(WARNING, 
+taai: twophase:00001787:  (errmsg("removing corrupt two-phase state file \"%s\"", 
+taai: twophase:00001788:  clde->d_name))); 
 aaaaa GP_IGNORE: vaag: varsup - ./backend/access/transam/varsup.c
 vaag: varsup:00000089:  ereport(ERROR, 
 vaag: varsup:00000090:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -3266,101 +3266,101 @@ cabh: cdbfilerepprimary:00000403:  fileRepOperation,
 cabh: cdbfilerepprimary:00000404:  FILEREP_UNDEFINED), 
 cabh: cdbfilerepprimary:00000405:  FileRep_errdetail_Shmem(), 
 cabh: cdbfilerepprimary:00000406:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00000824:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00000825:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00000826:  "could not queue message to be mirrored, " 
-cabh: cdbfilerepprimary:00000827:  "failover requested"), 
-cabh: cdbfilerepprimary:00000828:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00000829:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00000830:  fileRepRelationType, 
-cabh: cdbfilerepprimary:00000831:  FileRepOperationWrite, 
-cabh: cdbfilerepprimary:00000832:  FILEREP_UNDEFINED), 
-cabh: cdbfilerepprimary:00000833:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00000834:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00001101:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00001102:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00001103:  "could not resynchronize mirror due to missing directories or relations on mirror, " 
-cabh: cdbfilerepprimary:00001104:  "failover requested"), 
-cabh: cdbfilerepprimary:00001105:  errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00001106:  errSendAlert(true), 
-cabh: cdbfilerepprimary:00001107:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00001108:  fileRepRelationType, 
-cabh: cdbfilerepprimary:00001109:  FileRepOperationValidation, 
-cabh: cdbfilerepprimary:00001110:  FILEREP_UNDEFINED), 
-cabh: cdbfilerepprimary:00001111:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00001166:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00001167:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00001168:  "could not complete operation on mirror, " 
-cabh: cdbfilerepprimary:00001169:  "failover requested"), 
-cabh: cdbfilerepprimary:00001170:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00001171:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00001172:  FileRepRelationTypeUnknown, 
-cabh: cdbfilerepprimary:00001173:  FileRepOperationShutdown, 
-cabh: cdbfilerepprimary:00001174:  FILEREP_UNDEFINED), 
-cabh: cdbfilerepprimary:00001175:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00001176:  FileRep_errdetail_ShmemAck(), 
-cabh: cdbfilerepprimary:00001177:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00001217:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00001218:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00001219:  "could not complete operation on mirror, " 
-cabh: cdbfilerepprimary:00001220:  "failover requested"), 
-cabh: cdbfilerepprimary:00001221:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00001222:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00001223:  FileRepRelationTypeUnknown, 
-cabh: cdbfilerepprimary:00001224:  FileRepOperationInSyncTransition, 
-cabh: cdbfilerepprimary:00001225:  FILEREP_UNDEFINED), 
-cabh: cdbfilerepprimary:00001226:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00001227:  FileRep_errdetail_ShmemAck(), 
-cabh: cdbfilerepprimary:00001228:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00001272:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00001273:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00001274:  "could not complete operation on mirror, " 
-cabh: cdbfilerepprimary:00001275:  "failover requested"), 
-cabh: cdbfilerepprimary:00001276:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00001277:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00001278:  FileRepRelationTypeUnknown, 
-cabh: cdbfilerepprimary:00001279:  FileRepOperationHeartBeat, 
-cabh: cdbfilerepprimary:00001280:  FILEREP_UNDEFINED), 
-cabh: cdbfilerepprimary:00001281:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00001282:  FileRep_errdetail_ShmemAck(), 
-cabh: cdbfilerepprimary:00001283:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00001314:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00001315:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00001316:  "could not complete operation on mirror, " 
-cabh: cdbfilerepprimary:00001317:  "failover requested"), 
-cabh: cdbfilerepprimary:00001318:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00001319:  FileRep_errdetail(fileRepIdentifier, 
-cabh: cdbfilerepprimary:00001320:  fileRepRelationType, 
-cabh: cdbfilerepprimary:00001321:  FileRepOperationNotSpecified, 
-cabh: cdbfilerepprimary:00001322:  FILEREP_UNDEFINED), 
-cabh: cdbfilerepprimary:00001323:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00001324:  FileRep_errdetail_ShmemAck(), 
-cabh: cdbfilerepprimary:00001325:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00001630:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00001631:  (errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00001632:  "unknown relation type '%d' " 
-cabh: cdbfilerepprimary:00001633:  "failover requested", 
-cabh: cdbfilerepprimary:00001634:  fileRepMessageHeader->fileRepRelationType), 
-cabh: cdbfilerepprimary:00001635:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00001636:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabh: cdbfilerepprimary:00001637:  fileRepMessageHeader->fileRepRelationType, 
-cabh: cdbfilerepprimary:00001638:  fileRepMessageHeader->fileRepOperation, 
-cabh: cdbfilerepprimary:00001639:  fileRepMessageHeader->messageCount), 
-cabh: cdbfilerepprimary:00001640:  FileRep_errcontext())); 
-cabh: cdbfilerepprimary:00001654:  ereport(WARNING, 
-cabh: cdbfilerepprimary:00001655:  (errcode_for_socket_access(), 
-cabh: cdbfilerepprimary:00001656:  errmsg("mirror failure, " 
-cabh: cdbfilerepprimary:00001657:  "could not sent message to mirror msg header count '%d' local count '%d' : %m, " 
-cabh: cdbfilerepprimary:00001658:  "failover requested", 
-cabh: cdbfilerepprimary:00001659:  fileRepMessageHeader->messageCount, 
-cabh: cdbfilerepprimary:00001660:  spare), 
-cabh: cdbfilerepprimary:00001661:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabh: cdbfilerepprimary:00001662:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabh: cdbfilerepprimary:00001663:  fileRepMessageHeader->fileRepRelationType, 
-cabh: cdbfilerepprimary:00001664:  fileRepMessageHeader->fileRepOperation, 
-cabh: cdbfilerepprimary:00001665:  fileRepMessageHeader->messageCount), 
-cabh: cdbfilerepprimary:00001666:  FileRep_errdetail_Shmem(), 
-cabh: cdbfilerepprimary:00001667:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00000823:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00000824:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00000825:  "could not queue message to be mirrored, " 
+cabh: cdbfilerepprimary:00000826:  "failover requested"), 
+cabh: cdbfilerepprimary:00000827:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00000828:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00000829:  fileRepRelationType, 
+cabh: cdbfilerepprimary:00000830:  FileRepOperationWrite, 
+cabh: cdbfilerepprimary:00000831:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00000832:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00000833:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001100:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001101:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001102:  "could not resynchronize mirror due to missing directories or relations on mirror, " 
+cabh: cdbfilerepprimary:00001103:  "failover requested"), 
+cabh: cdbfilerepprimary:00001104:  errhint("run gprecoverseg -F (full copy) to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001105:  errSendAlert(true), 
+cabh: cdbfilerepprimary:00001106:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001107:  fileRepRelationType, 
+cabh: cdbfilerepprimary:00001108:  FileRepOperationValidation, 
+cabh: cdbfilerepprimary:00001109:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00001110:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001165:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001166:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001167:  "could not complete operation on mirror, " 
+cabh: cdbfilerepprimary:00001168:  "failover requested"), 
+cabh: cdbfilerepprimary:00001169:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001170:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001171:  FileRepRelationTypeUnknown, 
+cabh: cdbfilerepprimary:00001172:  FileRepOperationShutdown, 
+cabh: cdbfilerepprimary:00001173:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00001174:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00001175:  FileRep_errdetail_ShmemAck(), 
+cabh: cdbfilerepprimary:00001176:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001216:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001217:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001218:  "could not complete operation on mirror, " 
+cabh: cdbfilerepprimary:00001219:  "failover requested"), 
+cabh: cdbfilerepprimary:00001220:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001221:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001222:  FileRepRelationTypeUnknown, 
+cabh: cdbfilerepprimary:00001223:  FileRepOperationInSyncTransition, 
+cabh: cdbfilerepprimary:00001224:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00001225:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00001226:  FileRep_errdetail_ShmemAck(), 
+cabh: cdbfilerepprimary:00001227:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001271:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001272:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001273:  "could not complete operation on mirror, " 
+cabh: cdbfilerepprimary:00001274:  "failover requested"), 
+cabh: cdbfilerepprimary:00001275:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001276:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001277:  FileRepRelationTypeUnknown, 
+cabh: cdbfilerepprimary:00001278:  FileRepOperationHeartBeat, 
+cabh: cdbfilerepprimary:00001279:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00001280:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00001281:  FileRep_errdetail_ShmemAck(), 
+cabh: cdbfilerepprimary:00001282:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001313:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001314:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001315:  "could not complete operation on mirror, " 
+cabh: cdbfilerepprimary:00001316:  "failover requested"), 
+cabh: cdbfilerepprimary:00001317:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001318:  FileRep_errdetail(fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001319:  fileRepRelationType, 
+cabh: cdbfilerepprimary:00001320:  FileRepOperationNotSpecified, 
+cabh: cdbfilerepprimary:00001321:  FILEREP_UNDEFINED), 
+cabh: cdbfilerepprimary:00001322:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00001323:  FileRep_errdetail_ShmemAck(), 
+cabh: cdbfilerepprimary:00001324:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001629:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001630:  (errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001631:  "unknown relation type '%d' " 
+cabh: cdbfilerepprimary:00001632:  "failover requested", 
+cabh: cdbfilerepprimary:00001633:  fileRepMessageHeader->fileRepRelationType), 
+cabh: cdbfilerepprimary:00001634:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001635:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001636:  fileRepMessageHeader->fileRepRelationType, 
+cabh: cdbfilerepprimary:00001637:  fileRepMessageHeader->fileRepOperation, 
+cabh: cdbfilerepprimary:00001638:  fileRepMessageHeader->messageCount), 
+cabh: cdbfilerepprimary:00001639:  FileRep_errcontext())); 
+cabh: cdbfilerepprimary:00001653:  ereport(WARNING, 
+cabh: cdbfilerepprimary:00001654:  (errcode_for_socket_access(), 
+cabh: cdbfilerepprimary:00001655:  errmsg("mirror failure, " 
+cabh: cdbfilerepprimary:00001656:  "could not sent message to mirror msg header count '%d' local count '%d' : %m, " 
+cabh: cdbfilerepprimary:00001657:  "failover requested", 
+cabh: cdbfilerepprimary:00001658:  fileRepMessageHeader->messageCount, 
+cabh: cdbfilerepprimary:00001659:  spare), 
+cabh: cdbfilerepprimary:00001660:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabh: cdbfilerepprimary:00001661:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabh: cdbfilerepprimary:00001662:  fileRepMessageHeader->fileRepRelationType, 
+cabh: cdbfilerepprimary:00001663:  fileRepMessageHeader->fileRepOperation, 
+cabh: cdbfilerepprimary:00001664:  fileRepMessageHeader->messageCount), 
+cabh: cdbfilerepprimary:00001665:  FileRep_errdetail_Shmem(), 
+cabh: cdbfilerepprimary:00001666:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: caca: cdbfilerepprimaryack - ./backend/cdb/cdbfilerepprimaryack.c
 caca: cdbfilerepprimaryack:00000141:  ereport(WARNING, 
 caca: cdbfilerepprimaryack:00000142:  (errmsg("mirror failure, " 
@@ -4283,12 +4283,12 @@ caah: cdbutil:00000362:  (errcode(ERRCODE_DATA_EXCEPTION),
 caah: cdbutil:00000363:  errmsg("Content values not valid in %s table. They must be in the range 0 to %d inclusive", 
 caah: cdbutil:00000364:  GpSegmentConfigRelationName, getgpsegmentCount() - 1))); 
 aaaaa GP_IGNORE: caah: cdbvars - ./backend/cdb/cdbvars.c
-caah: cdbvars:00000966:  ereport(ERROR, 
-caah: cdbvars:00000967:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-caah: cdbvars:00000968:  errmsg("must be superuser to set gp_enable_gpperfmon"))); 
-caah: cdbvars:00000986:  ereport(ERROR, 
-caah: cdbvars:00000987:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-caah: cdbvars:00000988:  errmsg("must be superuser to set gp_gpperfmon_send_interval"))); 
+caah: cdbvars:00000970:  ereport(ERROR, 
+caah: cdbvars:00000971:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caah: cdbvars:00000972:  errmsg("must be superuser to set gp_enable_gpperfmon"))); 
+caah: cdbvars:00000990:  ereport(ERROR, 
+caah: cdbvars:00000991:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caah: cdbvars:00000992:  errmsg("must be superuser to set gp_gpperfmon_send_interval"))); 
 aaaaa GP_IGNORE: cabb: cdbworkfile - ./backend/cdb/cdbworkfile.c
 cabb: cdbworkfile:00000113:  ereport(ERROR, (errmsg("Workfile I/O error: %m."), 
 cabb: cdbworkfile:00000114:  errdetail("Failed to seek to offset " UINT64_FORMAT 
@@ -13465,6 +13465,11 @@ laai: localbuf:00000140:  errmsg("no empty local buffer available")));
 laai: localbuf:00000303:  ereport(FATAL, 
 laai: localbuf:00000304:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 laai: localbuf:00000305:  errmsg("out of memory"))); 
+aaaaa GP_IGNORE: baad: bfz - ./backend/storage/file/bfz.c
+baad: bfz:00000215:  ereport(ERROR, 
+baad: bfz:00000216:  (errcode(ERRCODE_IO_ERROR), 
+baad: bfz:00000217:  errmsg("Executor workfile block checksum mismatch -- current %u, " 
+baad: bfz:00000218:  "expected %u", storedCrc, crc))); 
 aaaaa GP_IGNORE: faac: fd - ./backend/storage/file/fd.c
 faac: fd:00000326:  ereport(FATAL, 
 faac: fd:00000327:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -17717,81 +17722,81 @@ gaai: gucxfile:00000552:  GUC_EOL = 99,
 gaai: gucxfile:00000553:  GUC_ERROR = 100 
 gaai: gucxfile:00000554: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00007642:  ereport(ERROR, 
-gaad: guc:00007643:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007644:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007646:  ereport(ERROR, 
-gaad: guc:00007647:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007648:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007682:  ereport(ERROR, 
-gaad: guc:00007683:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007684:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007686:  ereport(ERROR, 
-gaad: guc:00007687:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007688:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007757:  ereport(ERROR, 
-gaad: guc:00007758:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007759:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007766:  ereport(ERROR, 
-gaad: guc:00007767:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00007768:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00007939:  ereport(ERROR, 
-gaad: guc:00007940:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00007941:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008003:  ereport(ERROR, 
-gaad: guc:00008004:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008005:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008324:  ereport(ERROR, 
-gaad: guc:00008325:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008326:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008328:  ereport(ERROR, 
-gaad: guc:00008329:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008330:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009132:  ereport(FATAL, 
-gaad: guc:00009133:  (errcode_for_file_access(), 
-gaad: guc:00009134:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009135:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009242:  ereport(WARNING, 
-gaad: guc:00009243:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009244:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009438:  ereport(ERROR, 
-gaad: guc:00009439:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009440:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009461:  ereport(ERROR, 
-gaad: guc:00009462:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009463:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009464:  tok))); 
-gaad: guc:00009490:  ereport(ERROR, 
-gaad: guc:00009491:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009492:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009493:  value))); 
-gaad: guc:00009843:  ereport(ERROR, 
-gaad: guc:00009844:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00009845:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00009919:  ereport(ERROR, 
-gaad: guc:00009920:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009921:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00009940:  ereport(ERROR, 
-gaad: guc:00009941:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009942:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00009953:  ereport(ERROR, 
-gaad: guc:00009954:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009955:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00007672:  ereport(ERROR, 
+gaad: guc:00007673:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007674:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007676:  ereport(ERROR, 
+gaad: guc:00007677:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007678:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007712:  ereport(ERROR, 
+gaad: guc:00007713:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007714:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007716:  ereport(ERROR, 
+gaad: guc:00007717:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007718:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007787:  ereport(ERROR, 
+gaad: guc:00007788:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007789:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007796:  ereport(ERROR, 
+gaad: guc:00007797:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00007798:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00007969:  ereport(ERROR, 
+gaad: guc:00007970:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00007971:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008033:  ereport(ERROR, 
+gaad: guc:00008034:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008035:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008354:  ereport(ERROR, 
+gaad: guc:00008355:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008356:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008358:  ereport(ERROR, 
+gaad: guc:00008359:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008360:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009162:  ereport(FATAL, 
+gaad: guc:00009163:  (errcode_for_file_access(), 
+gaad: guc:00009164:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009165:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009272:  ereport(WARNING, 
+gaad: guc:00009273:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009274:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009468:  ereport(ERROR, 
+gaad: guc:00009469:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009470:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009491:  ereport(ERROR, 
+gaad: guc:00009492:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009493:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009494:  tok))); 
+gaad: guc:00009520:  ereport(ERROR, 
+gaad: guc:00009521:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009522:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009523:  value))); 
+gaad: guc:00009873:  ereport(ERROR, 
+gaad: guc:00009874:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00009875:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00009949:  ereport(ERROR, 
+gaad: guc:00009950:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009951:  errmsg("assertion checking is not supported by this build"))); 
 gaad: guc:00009970:  ereport(ERROR, 
 gaad: guc:00009971:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009972:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00009973:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009974:  "\"log_dispatch_stats\", " 
-gaad: guc:00009975:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00009990:  ereport(ERROR, 
-gaad: guc:00009991:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009992:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00009993:  "\"log_statement_stats\", " 
-gaad: guc:00009994:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00009995:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010010:  ereport(ERROR, 
-gaad: guc:00010011:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010012:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00009972:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00009983:  ereport(ERROR, 
+gaad: guc:00009984:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009985:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010000:  ereport(ERROR, 
+gaad: guc:00010001:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010002:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010003:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010004:  "\"log_dispatch_stats\", " 
+gaad: guc:00010005:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010020:  ereport(ERROR, 
+gaad: guc:00010021:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010022:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010023:  "\"log_statement_stats\", " 
+gaad: guc:00010024:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010025:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010040:  ereport(ERROR, 
+gaad: guc:00010041:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010042:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
