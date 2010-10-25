@@ -815,7 +815,6 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 			
 			if (msgPositionInsert == NULL) 
 			{
-				RESUME_INTERRUPTS();
 				
 				status = STATUS_ERROR;
 				
