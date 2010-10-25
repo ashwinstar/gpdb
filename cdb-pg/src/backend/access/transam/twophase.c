@@ -1240,7 +1240,7 @@ ReadTwoPhaseFile(TransactionId xid)
  * FinishPreparedTransaction: execute COMMIT PREPARED or ROLLBACK PREPARED
  */
 bool
-FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound)
+FinishPreparedTransaction(const char *gid, bool isCommit, bool isCrashRecovery, bool raiseErrorIfNotFound)
 {
 	MIRRORED_LOCK_DECLARE;
 
@@ -1370,7 +1370,8 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 											xid,
 											gid,
 											&persistentPrepareObjects,
-											isCommit);
+											isCommit,
+											isCrashRecovery);
 
 	/* And now do the callbacks */
 	if (isCommit)

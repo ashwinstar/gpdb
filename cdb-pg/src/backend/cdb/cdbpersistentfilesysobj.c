@@ -3272,7 +3272,9 @@ void PersistentFileSysObj_PreparedEndXactAction(
 
 	PersistentEndXactRecObjects 	*persistentObjects,
 	
-	bool							isCommit)
+	bool							isCommit,
+
+	bool							isCrashRecovery)
 {
 	MIRRORED_LOCK_DECLARE;
 
@@ -3282,10 +3284,11 @@ void PersistentFileSysObj_PreparedEndXactAction(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-			 "PersistentFileSysObj_PreparedEndXactAction (distributed transaction id %s, local prepared xid %u): commit %s, file-system action count %d, , Append-Only mirror resync EOFs count %d",
+			 "PersistentFileSysObj_PreparedEndXactAction (distributed transaction id %s, local prepared xid %u): commit %s, Crash Recovery %s, file-system action count %d, , Append-Only mirror resync EOFs count %d",
 			 gid,
 			 preparedXid,
 			 (isCommit ? "true" : "false"),
+			 (isCrashRecovery ? "true" : "false"),
 			 persistentObjects->typed.fileSysActionInfosCount,
 			 persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
 	
@@ -3633,7 +3636,8 @@ void PersistentFileSysObj_PreparedEndXactAction(
 	/*
 	 * For both COMMIT and ABORT, release our intent to add Append-Only mirror resync EOFs.
 	 */
-	if (persistentObjects->typed.appendOnlyMirrorResyncEofsCount > 0)
+	if (persistentObjects->typed.appendOnlyMirrorResyncEofsCount > 0 &&
+		!isCrashRecovery)
 	{
 		PersistentEndXactAppendOnlyMirrorResyncEofs *eofsExample;
 

@@ -251,7 +251,9 @@ extern void PersistentFileSysObj_PreparedEndXactAction(
 
 	PersistentEndXactRecObjects 	*persistentObjects,
 	
-	bool							isCommit);
+	bool							isCommit,
+
+	bool							isCrashRecovery);
 
 extern void PersistentFileSysObj_ChangeMirrorState(
 	PersistentFsObjType 			fsObjType,
