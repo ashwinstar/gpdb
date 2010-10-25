@@ -145,8 +145,8 @@ static bool isDtxQueryDispatcher(void);
 static void UtilityModeSaveRedo(bool committed, TMGXACT_LOG * gxact_log);
 static void ReplayRedoFromUtilityMode(void);
 static void RemoveRedoUtilityModeFile(void);
-static void performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound);
-static void performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound);
+static void performDtxProtocolCommitPrepared(const char *gid, bool isCrashRecovery, bool raiseErrorIfNotFound);
+static void performDtxProtocolAbortPrepared(const char *gid, bool isCrashRecovery, bool raiseErrorIfNotFound);
 static DistributedTransactionId determineSegmentMaxDistributedXid(void);
 
 extern void resetSessionForPrimaryGangLoss(void);
@@ -3874,7 +3874,7 @@ performDtxProtocolPrepare(const char *gid)
  * On the QD, run the Commit Prepared operation.
  */
 static void
-performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound)
+performDtxProtocolCommitPrepared(const char *gid, bool isCrashRecovery, bool raiseErrorIfNotFound)
 {
 	elog(DTM_DEBUG5,
 		 "performDtxProtocolCommitPrepared going to call FinishPreparedTransaction for distributed transaction %s", gid);
@@ -3886,7 +3886,7 @@ performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound)
 	 */
 	PG_TRY();
 	{
-		FinishPreparedTransaction((char *)gid, /* isCommit */ true, /* isCrashRecovery */ false, raiseErrorIfNotFound);
+		FinishPreparedTransaction((char *)gid, /* isCommit */ true, isCrashRecovery, raiseErrorIfNotFound);
 	}
 	PG_CATCH();
 	{
@@ -3908,7 +3908,7 @@ performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound)
  * On the QD, run the Abort Prepared operation.
  */
 static void
-performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound)
+performDtxProtocolAbortPrepared(const char *gid, bool isCrashRecovery, bool raiseErrorIfNotFound)
 {
 	elog(DTM_DEBUG5, "performDtxProtocolAbortPrepared going to call FinishPreparedTransaction for distributed transaction %s", gid);
 
@@ -4037,7 +4037,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 			
 				case DTX_CONTEXT_QE_PREPARED:
 					setDistributedTransactionContext( DTX_CONTEXT_QE_FINISH_PREPARED );
-					performDtxProtocolAbortPrepared(gid, /* raiseErrorIfNotFound */ true);
+					performDtxProtocolAbortPrepared(gid, /* isCrashRecovery */ false, /* raiseErrorIfNotFound */ true);
 					break;
 					
 				case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
@@ -4057,25 +4057,33 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		case DTX_PROTOCOL_COMMAND_COMMIT_PREPARED:
 			requireDistributedTransactionContext( DTX_CONTEXT_QE_PREPARED );
 			setDistributedTransactionContext( DTX_CONTEXT_QE_FINISH_PREPARED );
-			performDtxProtocolCommitPrepared(gid, /* raiseErrorIfNotFound */ true);
+			performDtxProtocolCommitPrepared(gid, /* isCrashRecovery */ false, /* raiseErrorIfNotFound */ true);
 			break;
 			
 		case DTX_PROTOCOL_COMMAND_ABORT_PREPARED:
 			requireDistributedTransactionContext( DTX_CONTEXT_QE_PREPARED );
 			setDistributedTransactionContext( DTX_CONTEXT_QE_FINISH_PREPARED );
-			performDtxProtocolAbortPrepared(gid, /* raiseErrorIfNotFound */ true);
+			performDtxProtocolAbortPrepared(gid, /* isCrashRecovery */ false, /* raiseErrorIfNotFound */ true);
 			break;
 			
 		case DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED:
-		case DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED:
 			requireDistributedTransactionContext( DTX_CONTEXT_LOCAL_ONLY );
-			performDtxProtocolCommitPrepared(gid, /* raiseErrorIfNotFound */ false);
+			performDtxProtocolCommitPrepared(gid, /* isCrashRecovery */ false, /* raiseErrorIfNotFound */ false);
 			break;
 			
 		case DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED:
+			requireDistributedTransactionContext( DTX_CONTEXT_LOCAL_ONLY );
+			performDtxProtocolAbortPrepared(gid, /* isCrashRecovery */ false, /* raiseErrorIfNotFound */ false);
+			break;
+
+		case DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED:
+			requireDistributedTransactionContext( DTX_CONTEXT_LOCAL_ONLY );
+			performDtxProtocolCommitPrepared(gid, /* isCrashRecovery */ true, /* raiseErrorIfNotFound */ false);
+			break;
+			
 		case DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED:
 			requireDistributedTransactionContext( DTX_CONTEXT_LOCAL_ONLY );
-			performDtxProtocolAbortPrepared(gid, /* raiseErrorIfNotFound */ false);
+			performDtxProtocolAbortPrepared(gid, /* isCrashRecovery */ true, /* raiseErrorIfNotFound */ false);
 			break;
 
 		default:
