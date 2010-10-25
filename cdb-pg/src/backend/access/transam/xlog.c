@@ -10374,10 +10374,10 @@ XLogReconcileEofPrimary(void)
 	XLogFileName(simpleFileName, ThisTimeLineID, logId, seg);
 	
 	status = MirroredFlatFile_ReconcileXLogEof(
-						  XLOGDIR,
-						  simpleFileName,
-						  primaryEof,
-						  &mirrorEof);
+											   XLOGDIR,
+											   simpleFileName,
+											   primaryEof,
+											   &mirrorEof);
 	
 	if (status != STATUS_OK) {
 		return status;
@@ -10395,12 +10395,12 @@ XLogReconcileEofPrimary(void)
 		return STATUS_OK;
 	}
 	
-	FileRep_InsertConfigLogEntry("mirror is behind, xlog will be truncated on primary");
+	FileRep_InsertConfigLogEntry("mirror is behind, xlog will be copied to mirror");
 
-	status = XLogReconcileEofInternal(
-									  mirrorEof,
-									  primaryEof);
-	
+	status = MirrorFlatFile(
+							XLOGDIR,
+							simpleFileName);
+		
 	return status;
 }
 
