@@ -153,6 +153,7 @@ extern int ChangeTracking_CompactLogFile(CTFType source, CTFType dest, XLogRecPt
 extern bool ChangeTracking_doesFileNeedCompacting(CTFType ftype);
 extern void ChangeTracking_CompactLogsIfPossible(void);
 extern void ChangeTracking_DoFullCompactingRound(XLogRecPtr* upto_lsn);
+extern bool ChangeTrackingIsCompactingInProgress(void);
 
 /*
  * The information needed for a change tracking record to be

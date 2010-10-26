@@ -26,6 +26,7 @@
 
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepservice.h"
+#include "cdb/cdbresynchronizechangetracking.h"
 #include "storage/spin.h"
 #include "storage/shmem.h"
 #include "utils/faultinjector.h"
@@ -138,6 +139,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault during transition to InSync before transition is marked completed */
 	_("checkpoint"),
 		/* inject fault before checkpoint is taken */
+	_("change_tracking_compacting_report"),
+		/* report if compacting is in progress */
 	_("transaction_abort_after_distributed_prepared"),
 		/* inject fault after transaction is prepared */
 	_("transaction_commit_pass1_from_create_pending_to_created"),
@@ -983,6 +986,14 @@ FaultInjector_SetFaultInjection(
 				break;
 			} 
 			snprintf(entry->bufOutput, sizeof(entry->bufOutput), "Success: ");
+			
+			if (entry->faultInjectorIdentifier == ChangeTrackingCompactingReport)
+			{
+				snprintf(entry->bufOutput, sizeof(entry->bufOutput), 
+						 "Success: compacting in progress %s",
+						 ChangeTrackingIsCompactingInProgress() ? "true" : "false");
+				break;
+			}
 			
 			hash_seq_init(&hash_status, faultInjectorShmem->hash);
 			

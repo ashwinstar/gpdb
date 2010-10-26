@@ -2764,6 +2764,16 @@ void ChangeTracking_CompactLogsIfPossible(void)
 		
 }
 
+bool
+ChangeTrackingIsCompactingInProgress(void)
+{
+	/* 
+	 * no lock is required since that information is required only for status report 
+	 * for test automation 
+	 */
+	return changeTrackingCompState->in_progress;
+}
+	
 /*
  * This routine must be called before resync is started
  * and after the last call to ChangeTracking_CompactLogsIfPossible(),
