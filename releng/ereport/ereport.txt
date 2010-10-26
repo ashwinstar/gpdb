@@ -3,29 +3,33 @@ aaag: aocsam:00000577:  ereport(ERROR,
 aaag: aocsam:00000578:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
 aaag: aocsam:00000579:  errmsg("append-only column-oriented tables do not support rows with OIDs"))); 
 aaaaa GP_IGNORE: aabc: aocssegfiles - ./backend/access/aocs/aocssegfiles.c
-aabc: aocssegfiles:00000192:  ereport(ERROR, 
-aabc: aocssegfiles:00000193:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-aabc: aocssegfiles:00000194:  errmsg("could not serialize access due to concurrent update"))); 
-aabc: aocssegfiles:00000506:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aabc: aocssegfiles:00000507:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
-aabc: aocssegfiles:00000508:  RelationGetRelationName(prel), idesc->cur_segno) 
-aabc: aocssegfiles:00000509:  )); 
-aabc: aocssegfiles:00000582:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aabc: aocssegfiles:00000583:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
-aabc: aocssegfiles:00000584:  RelationGetRelationName(prel), segno) 
-aabc: aocssegfiles:00000585:  )); 
-aabc: aocssegfiles:00000625:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000626:  errmsg("invalid entry for decoding aocsvpinfo") 
-aabc: aocssegfiles:00000627:  )); 
+aabc: aocssegfiles:00000195:  ereport(ERROR, 
+aabc: aocssegfiles:00000196:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+aabc: aocssegfiles:00000197:  errmsg("could not serialize access due to concurrent update"))); 
+aabc: aocssegfiles:00000511:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aabc: aocssegfiles:00000512:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
+aabc: aocssegfiles:00000513:  RelationGetRelationName(prel), idesc->cur_segno) 
+aabc: aocssegfiles:00000514:  )); 
+aabc: aocssegfiles:00000587:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aabc: aocssegfiles:00000588:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
+aabc: aocssegfiles:00000589:  RelationGetRelationName(prel), segno) 
+aabc: aocssegfiles:00000590:  )); 
 aabc: aocssegfiles:00000630:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 aabc: aocssegfiles:00000631:  errmsg("invalid entry for decoding aocsvpinfo") 
 aabc: aocssegfiles:00000632:  )); 
-aabc: aocssegfiles:00000678:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00000679:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00000680:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aabc: aocssegfiles:00000844:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00000845:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00000846:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aabc: aocssegfiles:00000635:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000636:  errmsg("invalid entry for decoding aocsvpinfo") 
+aabc: aocssegfiles:00000637:  )); 
+aabc: aocssegfiles:00000726:  ereport(ERROR, 
+aabc: aocssegfiles:00000727:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000728:  errmsg("'%s' is not an append-only columnar relation", 
+aabc: aocssegfiles:00000729:  RelationGetRelationName(aocsRel)))); 
+aabc: aocssegfiles:00000860:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00000861:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00000862:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aabc: aocssegfiles:00001026:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00001027:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00001028:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
 aaaaa GP_IGNORE: aaae: aomd - ./backend/access/appendonly/aomd.c
 aaae: aomd:00000168:  ereport(ERROR, 
 aaae: aomd:00000169:  (errcode_for_file_access(), 
@@ -4107,15 +4111,15 @@ cada: cdbresynchronizechangetracking:00002219:  errSendAlert(true)));
 cada: cdbresynchronizechangetracking:00002572:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
 cada: cdbresynchronizechangetracking:00002573:  errmsg("Unable to obtain change tracking information from segment database."), 
 cada: cdbresynchronizechangetracking:00002574:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
-cada: cdbresynchronizechangetracking:00002900:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002901:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002902:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
-cada: cdbresynchronizechangetracking:00003027:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00003028:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00003029:  errmsg("write error for change tracking %s file, " 
-cada: cdbresynchronizechangetracking:00003030:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00003031:  ChangeTracking_FtypeToString(ft)), 
-cada: cdbresynchronizechangetracking:00003032:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002910:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00002911:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00002912:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
+cada: cdbresynchronizechangetracking:00003037:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00003038:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00003039:  errmsg("write error for change tracking %s file, " 
+cada: cdbresynchronizechangetracking:00003040:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00003041:  ChangeTracking_FtypeToString(ft)), 
+cada: cdbresynchronizechangetracking:00003042:  errSendAlert(true))); 
 aaaaa GP_IGNORE: caai: cdbsetop - ./backend/cdb/cdbsetop.c
 caai: cdbsetop:00000152:  ereport(ERROR, ( 
 caai: cdbsetop:00000153:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
@@ -5293,10 +5297,10 @@ caae: copy:00005963:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 caae: copy:00005964:  errmsg("COPY metadata not found. This probably means that there is a " 
 caae: copy:00005965:  "mixture of newline types in the data. Use the NEWLINE keyword " 
 caae: copy:00005966:  "in order to resolve this reliably."))); 
-caae: copy:00006641:  ereport(ERROR, 
-caae: copy:00006642:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caae: copy:00006643:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
-caae: copy:00006644:  cstate->eol_str))); 
+caae: copy:00006648:  ereport(ERROR, 
+caae: copy:00006649:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caae: copy:00006650:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
+caae: copy:00006651:  cstate->eol_str))); 
 aaaaa GP_IGNORE: daba: dbcommands - ./backend/commands/dbcommands.c
 daba: dbcommands:00000469:  ereport(ERROR, 
 daba: dbcommands:00000470:  (errcode_for_file_access(), 
@@ -16602,18 +16606,18 @@ saai: selfuncs:00004535:  ereport(ERROR,
 saai: selfuncs:00004536:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 saai: selfuncs:00004537:  errmsg("regular-expression matching not supported on type bytea"))); 
 aaaaa GP_IGNORE: taad: tid - ./backend/utils/adt/tid.c
-taad: tid:00000069:  ereport(ERROR, 
-taad: tid:00000070:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-taad: tid:00000071:  errmsg("invalid input syntax for type tid: \"%s\"", 
-taad: tid:00000072:  str))); 
-taad: tid:00000077:  ereport(ERROR, 
-taad: tid:00000078:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-taad: tid:00000079:  errmsg("invalid input syntax for type tid: \"%s\"", 
-taad: tid:00000080:  str))); 
-taad: tid:00000085:  ereport(ERROR, 
-taad: tid:00000086:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-taad: tid:00000087:  errmsg("invalid input syntax for type tid: \"%s\"", 
-taad: tid:00000088:  str))); 
+taad: tid:00000066:  ereport(ERROR, 
+taad: tid:00000067:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+taad: tid:00000068:  errmsg("invalid input syntax for type tid: \"%s\"", 
+taad: tid:00000069:  str))); 
+taad: tid:00000074:  ereport(ERROR, 
+taad: tid:00000075:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+taad: tid:00000076:  errmsg("invalid input syntax for type tid: \"%s\"", 
+taad: tid:00000077:  str))); 
+taad: tid:00000082:  ereport(ERROR, 
+taad: tid:00000083:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+taad: tid:00000084:  errmsg("invalid input syntax for type tid: \"%s\"", 
+taad: tid:00000085:  str))); 
 aaaaa GP_IGNORE: taaj: timestamp - ./backend/utils/adt/timestamp.c
 taaj: timestamp:00000093:  ereport(ERROR, 
 taaj: timestamp:00000094:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
@@ -17645,68 +17649,68 @@ waaf: wchar:00001642:  buf,
 waaf: wchar:00001643:  pg_enc2name_tbl[src_encoding].name, 
 waaf: wchar:00001644:  pg_enc2name_tbl[dest_encoding].name))); 
 aaaaa GP_IGNORE: fabd: faultinjector - ./backend/utils/misc/faultinjector.c
-fabd: faultinjector:00000316:  ereport(ERROR, 
-fabd: faultinjector:00000317:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000318:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000342:  ereport(ERROR, 
-fabd: faultinjector:00000343:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000344:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000442:  ereport(FATAL, 
-fabd: faultinjector:00000443:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000444:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000445:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000464:  ereport(ERROR, 
-fabd: faultinjector:00000465:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000466:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000467:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000653:  ereport(WARNING, 
-fabd: faultinjector:00000654:  (errmsg("could not insert fault injection, no slots available" 
-fabd: faultinjector:00000655:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000656:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000657:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000690:  ereport(WARNING, 
-fabd: faultinjector:00000691:  (errmsg("could not insert fault injection, fault type not supported" 
-fabd: faultinjector:00000692:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000693:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000694:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000748:  ereport(WARNING, 
-fabd: faultinjector:00000749:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
-fabd: faultinjector:00000750:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000751:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000752:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000772:  ereport(WARNING, 
-fabd: faultinjector:00000773:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000774:  "segment not in primary or mirror role, " 
-fabd: faultinjector:00000775:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000776:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000777:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000791:  ereport(WARNING, 
-fabd: faultinjector:00000792:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000793:  "segment not in master role, " 
-fabd: faultinjector:00000794:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000795:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000796:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000812:  ereport(WARNING, 
-fabd: faultinjector:00000813:  (errmsg("could not insert fault injection entry into table, no memory, " 
-fabd: faultinjector:00000814:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000815:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000816:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000826:  ereport(WARNING, 
-fabd: faultinjector:00000827:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000828:  "entry already exists, " 
-fabd: faultinjector:00000829:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000830:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000831:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000890:  ereport(WARNING, 
-fabd: faultinjector:00000891:  (errmsg("could not update fault injection hash entry with fault injection status, " 
-fabd: faultinjector:00000892:  "no entry found, " 
-fabd: faultinjector:00000893:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000894:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000895:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00001113:  ereport(WARNING, 
-fabd: faultinjector:00001114:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00001115:  FaultInjectorIdentifierEnumToString[identifier], 
-fabd: faultinjector:00001116:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000319:  ereport(ERROR, 
+fabd: faultinjector:00000320:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000321:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000345:  ereport(ERROR, 
+fabd: faultinjector:00000346:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000347:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000445:  ereport(FATAL, 
+fabd: faultinjector:00000446:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000447:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000448:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000467:  ereport(ERROR, 
+fabd: faultinjector:00000468:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000469:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000470:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000656:  ereport(WARNING, 
+fabd: faultinjector:00000657:  (errmsg("could not insert fault injection, no slots available" 
+fabd: faultinjector:00000658:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000659:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000660:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000693:  ereport(WARNING, 
+fabd: faultinjector:00000694:  (errmsg("could not insert fault injection, fault type not supported" 
+fabd: faultinjector:00000695:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000696:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000697:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000751:  ereport(WARNING, 
+fabd: faultinjector:00000752:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
+fabd: faultinjector:00000753:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000754:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000755:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000775:  ereport(WARNING, 
+fabd: faultinjector:00000776:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000777:  "segment not in primary or mirror role, " 
+fabd: faultinjector:00000778:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000779:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000780:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000794:  ereport(WARNING, 
+fabd: faultinjector:00000795:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000796:  "segment not in master role, " 
+fabd: faultinjector:00000797:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000798:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000799:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000815:  ereport(WARNING, 
+fabd: faultinjector:00000816:  (errmsg("could not insert fault injection entry into table, no memory, " 
+fabd: faultinjector:00000817:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000818:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000819:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000829:  ereport(WARNING, 
+fabd: faultinjector:00000830:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000831:  "entry already exists, " 
+fabd: faultinjector:00000832:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000833:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000834:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000893:  ereport(WARNING, 
+fabd: faultinjector:00000894:  (errmsg("could not update fault injection hash entry with fault injection status, " 
+fabd: faultinjector:00000895:  "no entry found, " 
+fabd: faultinjector:00000896:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000897:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000898:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00001124:  ereport(WARNING, 
+fabd: faultinjector:00001125:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00001126:  FaultInjectorIdentifierEnumToString[identifier], 
+fabd: faultinjector:00001127:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
 aaaaa GP_IGNORE: gaai: gucxfile - ./backend/utils/misc/guc-file.c
 gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
 gaai: gucxfile:00000543:  
