@@ -41,6 +41,9 @@ public class UsingProperties implements ResultSetProvider, PooledObject
 
                 URL urlloc = this.getClass().getResource("example.properties");
                 s_logger.info("example.properties location is " + urlloc);
+		Package pack = this.getClass().getPackage();
+		String packageName = pack.getName()+" "+pack.getImplementationTitle() + " " + pack.getImplementationVendor() + " " + pack.getImplementationVersion();
+		s_logger.info("UsingProperties package name: " + packageName );
 
 		s_logger.info("** UsingProperties()");
 		InputStream propStream = this.getClass().getResourceAsStream("example.properties");
@@ -53,6 +56,13 @@ public class UsingProperties implements ResultSetProvider, PooledObject
 			m_properties.load(propStream);
 			propStream.close();
 			s_logger.info("example.properties has " + m_properties.size() + " entries");
+		}
+		pack = m_properties.getClass().getPackage();
+		packageName = pack.getName()+" "+pack.getImplementationTitle() + " " + pack.getImplementationVendor() + " " + pack.getImplementationVersion();
+		s_logger.info("m_properties package name: " + packageName );
+		if (pack.isSealed())
+		{
+			s_logger.info("package sealed");
 		}
 	}
 
