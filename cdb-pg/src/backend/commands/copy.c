@@ -6020,25 +6020,32 @@ copy_in_error_callback(void *arg)
 	 */
 	if(cstate->err_loc_type == ROWNUM_EMBEDDED && !cstate->md_error)
 	{
-		
+
 		/* the following is a compacted mod of CopyExtractRowMetaData */
 		int value_len = 0;
 		char *line_start = copy_of_line_buf.data;
 		char *lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
 
-		if (!(lineno_delim && (lineno_delim != line_start)))
-			write_log("Error in copy_in_error_callback: !(lineno_delim && (lineno_delim != line_start))\n");
+		if (lineno_delim && (lineno_delim != line_start))
+		{
+			/*
+			 * we only continue parsing metadata if the first extraction above
+			 * succeeded. there are some edge cases where we may not have a line
+			 * with MD to parse, for example if some non-copy related error 
+			 * propagated here and we don't yet have a proper data line. 
+			 * see MPP-11328
+			 */
+			value_len = lineno_delim - line_start + 1;
+			copy_of_line_buf.data += value_len; /* advance beyond original lineno */
+			copy_of_line_buf.len -= value_len;
 
-		value_len = lineno_delim - line_start + 1;
-		copy_of_line_buf.data += value_len; /* advance beyond original lineno */
-		copy_of_line_buf.len -= value_len;
+			line_start = copy_of_line_buf.data;
+			lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
 
-		line_start = copy_of_line_buf.data;
-		lineno_delim = memchr(line_start, COPY_METADATA_DELIM, 32);
-
-		value_len = lineno_delim - line_start + 1;
-		copy_of_line_buf.data += value_len; /* advance beyond line_buf_converted */
-		copy_of_line_buf.len -= value_len;		
+			value_len = lineno_delim - line_start + 1;
+			copy_of_line_buf.data += value_len; /* advance beyond line_buf_converted */
+			copy_of_line_buf.len -= value_len;		
+		}
 	}
 
 	/*
