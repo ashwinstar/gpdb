@@ -20,6 +20,8 @@ import org.postgresql.pljava.PooledObject;
 import org.postgresql.pljava.ResultSetProvider;
 import org.postgresql.pljava.SessionManager;
 
+import java.net.*;
+
 /**
  * @author Thomas Hallgren
  */
@@ -36,6 +38,9 @@ public class UsingProperties implements ResultSetProvider, PooledObject
 	{
 		m_pool = pool;
 		m_properties = new Properties();
+
+                URL urlloc = this.getClass().getResource("example.properties");
+                s_logger.info("example.properties location is " + urlloc);
 
 		s_logger.info("** UsingProperties()");
 		InputStream propStream = this.getClass().getResourceAsStream("example.properties");
