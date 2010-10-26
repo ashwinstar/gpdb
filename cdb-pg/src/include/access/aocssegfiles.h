@@ -76,6 +76,7 @@ static inline AOCSVPInfo *create_aocs_vpinfo(int nvp)
  */
 typedef struct AOCSFileSegInfo
 {
+	ItemPointerData	aocssegTid;
 	int32 segno;
 	int64 tupcount;
 	int64 varblockcount;

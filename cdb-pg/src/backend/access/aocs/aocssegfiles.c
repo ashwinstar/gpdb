@@ -5,7 +5,6 @@
  */
 
 #include "postgres.h"
-#include "postgres.h"
 
 #include "cdb/cdbappendonlystorage.h"
 #include "access/aomd.h"
@@ -41,6 +40,10 @@
 #include "executor/executor.h"
 
 #include "utils/debugbreak.h"
+#include "funcapi.h"
+#include "access/heapam.h"
+#include "catalog/pg_type.h"
+#include "utils/builtins.h"
 
 
 void InsertInitialAOCSFileSegInfo(Oid segrelid, int4 segno, int4 nvp)
@@ -374,6 +377,8 @@ AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(
 
         allseg[cur_seg] = seginfo;
 
+		seginfo->aocssegTid = tup->t_self;
+
         heap_deform_tuple(tup, pg_aocsseg_rel->rd_att, d, null);
 
         Assert(!null[Anum_pg_aocs_segno - 1]);
@@ -637,6 +642,183 @@ Datum aocsvpinfo_decode(PG_FUNCTION_ARGS)
         result = vpinfo->entry[i].eof_uncompressed;
 
     PG_RETURN_INT64(result);
+}
+
+
+PG_MODULE_MAGIC;
+
+PG_FUNCTION_INFO_V1(gp_aocsseg_vpinfo_array);
+
+extern Datum
+gp_aocsseg_vpinfo_array(PG_FUNCTION_ARGS);
+
+Datum
+gp_aocsseg_vpinfo_array(PG_FUNCTION_ARGS)
+{
+    int aocsRelOid = PG_GETARG_OID(0);
+
+	typedef struct Context
+	{
+		Oid		aocsRelOid;
+
+		int		relnatts;
+		
+		struct AOCSFileSegInfo **aocsSegfileArray;
+
+		int 	totalAocsSegFiles;
+
+		int		segfileArrayIndex;
+
+		int		columnNum;
+						// 0-based index into columns.
+	} Context;
+	
+	FuncCallContext *funcctx;
+	Context *context;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		TupleDesc	tupdesc;
+		MemoryContext oldcontext;
+		Relation aocsRel;
+		AppendOnlyEntry *aoEntry;
+		Relation pg_aocsseg_rel;
+
+		/* create a function context for cross-call persistence */
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/*
+		 * switch to memory context appropriate for multiple function
+		 * calls
+		 */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		/* build tupdesc for result tuples */
+		tupdesc = CreateTemplateTupleDesc(7, false);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "aocsseg_tid",
+						   TIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "segno",
+						   INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "column_num",
+						   INT2OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "physical_segno",
+						   INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "tupcount",
+						   INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "eof",
+						   INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "eof_uncompressed",
+						   INT8OID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		/*
+		 * Collect all the locking information that we will format and send
+		 * out as a result set.
+		 */
+		context = (Context *) palloc(sizeof(Context));
+		funcctx->user_fctx = (void *) context;
+
+		context->aocsRelOid = aocsRelOid;
+
+		aocsRel = heap_open(aocsRelOid, NoLock);
+		if(!RelationIsAoCols(aocsRel))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("'%s' is not an append-only columnar relation",
+							RelationGetRelationName(aocsRel))));
+
+		// Remember the number of columns.
+		context->relnatts = aocsRel->rd_rel->relnatts;
+
+		aoEntry = GetAppendOnlyEntry(aocsRelOid);
+		
+		pg_aocsseg_rel = heap_open(aoEntry->segrelid, NoLock);
+		
+		context->aocsSegfileArray = GetAllAOCSFileSegInfo_pg_aocsseg_rel(
+														aocsRel->rd_rel->relnatts,
+														aocsRel->rd_rel->relname.data, 
+														aoEntry, 
+														pg_aocsseg_rel,
+														SnapshotNow, 
+														&context->totalAocsSegFiles);
+
+		heap_close(pg_aocsseg_rel, NoLock);
+		heap_close(aocsRel, NoLock);
+
+		// Iteration positions.
+		context->segfileArrayIndex = 0;
+		context->columnNum = 0;
+
+		funcctx->user_fctx = (void *) context;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	context = (Context *) funcctx->user_fctx;
+
+	/*
+	 * Process each column for each segment file.
+	 */
+	while (true)
+	{
+		Datum		values[7];
+		bool		nulls[7];
+		HeapTuple	tuple;
+		Datum		result;
+
+		struct AOCSFileSegInfo *aocsSegfile;
+
+		AOCSVPInfoEntry *entry;
+		
+		if (context->segfileArrayIndex >= context->totalAocsSegFiles)
+		{
+			break;
+		}
+
+		if (context->columnNum >= context->relnatts)
+		{
+			/*
+			 * Finished with the current segment file.
+			 */
+			context->segfileArrayIndex++;
+			if (context->segfileArrayIndex >= context->totalAocsSegFiles)
+			{
+				continue;
+			}
+
+			context->columnNum = 0;
+		}
+		
+		/*
+		 * Form tuple with appropriate data.
+		 */
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+
+		aocsSegfile = context->aocsSegfileArray[context->segfileArrayIndex];
+
+		entry = getAOCSVPEntry(aocsSegfile, context->columnNum);
+
+		values[0] = ItemPointerGetDatum(&aocsSegfile->aocssegTid);
+		values[1] = Int32GetDatum(aocsSegfile->segno);
+		values[2] = Int16GetDatum(context->columnNum);
+		values[3] = Int32GetDatum(context->columnNum * AOTupleId_MultiplierSegmentFileNum + aocsSegfile->segno);
+		values[4] = Int64GetDatum(aocsSegfile->tupcount);
+		values[5] = Int64GetDatum(entry->eof);
+		values[6] = Int64GetDatum(entry->eof_uncompressed);
+
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+
+		// Indicate we emitted one column.
+		context->columnNum++;
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+
+	SRF_RETURN_DONE(funcctx);
 }
 
 Datum

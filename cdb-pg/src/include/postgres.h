@@ -52,6 +52,7 @@ extern "C" {
 
 #include "utils/elog.h"
 #include "utils/palloc.h"
+#include "storage/itemptr.h"
 #include "utils/simex.h"
 
 /* ----------------------------------------------------------------
@@ -461,6 +462,11 @@ static inline Datum Float4GetDatum(float4 f) { Datum_U du; du.d = 0; du.f4[1] = 
 static inline float8 DatumGetFloat8(Datum d) { Datum_U du; du.d = d; return du.f8; } 
 static inline Datum Float8GetDatum(float8 f) { Datum_U du; du.f8 = f; return du.d; }
 static inline Datum Float8GetDatumFast(float8 f) { return Float8GetDatum(f); }
+
+
+static inline ItemPointer DatumGetItemPointer(Datum d) { return (ItemPointer) DatumGetPointer(d); }
+static inline Datum ItemPointerGetDatum(ItemPointer i) { return PointerGetDatum(i); }
+
 
 static inline bool IsAligned(void *p, int align)
 {
