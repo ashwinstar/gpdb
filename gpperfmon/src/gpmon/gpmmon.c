@@ -41,6 +41,7 @@ struct
 	char* conf_file;
 	char* log_dir;
 	char* smon_log_dir;
+	char* smdw_aliases;
 	apr_uint64_t max_log_size;
 	int max_fd; /* this is the max fd value we ever seen */
 	int v;
@@ -52,6 +53,7 @@ struct
 	int harvest_interval;
 	int snmp_interval;
 	apr_uint64_t tail_buffer_max;
+	int console;
 } opt = { 0 };
 
 /* gpmmon host */
@@ -106,7 +108,7 @@ sigset_t blocksig;
 
 /* Function defs */
 static int read_conf_file(char *conffile);
-static void gethostlist(host_t** tab, int* tabsz);
+static void gethostlist();
 static void getconfig(void);
 static apr_status_t sendpkt(int sock, const gpmon_packet_t* pkt);
 static apr_status_t recvpkt(int sock, gpmon_packet_t* pkt);
@@ -229,7 +231,7 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 	int e;
 	gpmon_packet_t pktbuf;
 	gpmon_packet_t* pkt = 0;
-	TR2(("recv_from_gx sock %d host %s (%s:%d)\n", sock, h->hostname, h->ipstr, ax.port));
+	TR2(("recv_from_gx sock %d host %s port %d\n", sock, h->hostname, ax.port));
 
 	if (!(event & EV_READ))
 		return;
@@ -253,15 +255,13 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 					case EAGAIN:
 						continue;
 					}
-					gpmon_warningx(FLINE, APR_FROM_OS_ERROR(errno),
-							"cannot get packet from host %s (%s:%d)",
-							h->hostname, h->ipstr, ax.port);
+					gpmon_warningx(FLINE, APR_FROM_OS_ERROR(errno), "cannot get packet from host %s port %d", h->hostname, ax.port);
 					break;
 				}
 				p += n;
 				if (p == (char*) &pktbuf)
 				{
-					TR1(("at %s: connection dropped by host %s (%s:%d) [set eflag]\n", FLINE, h->hostname, h->ipstr, ax.port));
+					TR1(("at %s: connection dropped by host %s port %d [set eflag]\n", FLINE, h->hostname, ax.port));
 					h->eflag = 1;
 					break;
 				}
@@ -275,7 +275,7 @@ static void recv_from_gx(SOCKET sock, short event, void* arg)
 		else
 		{
 			pkt = &pktbuf;
-			TR2(("received packet %d from %s (%s:%d)\n", pkt->pkttype, h->hostname, h->ipstr, ax.port));
+			TR2(("received packet %d from %s:%d\n", pkt->pkttype, h->hostname, ax.port));
 		}
 	}
 	apr_thread_mutex_unlock(h->mutex);
@@ -416,7 +416,7 @@ static apr_status_t conm_connect(SOCKET* retsock, const char* ipstr, int port)
 {
 	struct sockaddr_in sa;
 	SOCKET sock = -1;
-	gpmon_packet_t pkt;
+	gpmon_packet_t pkt = { 0 };
 	int e = 0;
 
 	if (-1 == (sock = socket(AF_INET, SOCK_STREAM, 0)))
@@ -526,6 +526,11 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 				for (j = 0; j < 8 && i < count_broken; j++, i++)
 				{
 					host_t* h = &tab[broken[i]];
+					char* active_hostname;
+
+					advance_connection_hostname(h); // if we have to connect many times to same host try a new hostname for same host
+
+					active_hostname = get_connection_hostname(h);
 
 					// smon will log to gpperfmon directory on master, specified location on smon, or one of the gpperfmon subdir of one of the data directories as default
 					if (h->is_master)
@@ -546,15 +551,15 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 
 					snprintf(line, line_size, "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'"
 							" %s %s/bin/gpsmon -m %" FMT64 " -l %s%s -v %d %d ",
-							h->hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v, ax.port);
+							active_hostname, ax.gphome, opt.max_log_size, ptr_smon_log_location, ptr_smon_log_location_suffix, opt.v, ax.port);
 
 					if (h->ever_connected)
 					{
-						TR0(("Connection to %s lost.  Restarting gpsmon.\n", h->hostname));
+						TR0(("Connection to %s lost.  Restarting gpsmon.\n", active_hostname));
 					}
 					else
 					{
-						TR0(("Making initial connection to %s\n", h->hostname));
+						TR0(("Making initial connection to %s\n", active_hostname));
 					}
 					h->ever_connected = 1;
 
@@ -584,16 +589,18 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 			{
 				host_t* h = &tab[broken[i]];
 				SOCKET sock = 0;
+				char* active_hostname = get_connection_hostname(h);
+				char* active_ip = get_connection_ip(h);
 
-				TR1(("connecting to %s (%s:%d)\n", h->hostname, h->ipstr, ax.port));
-				if (0 != (e = conm_connect(&sock, h->ipstr, ax.port)))
+				TR1(("connecting to %s (%s:%d)\n", active_hostname, active_ip, ax.port));
+				if (0 != (e = conm_connect(&sock, active_ip, ax.port)))
 				{
 					gpmon_warningx(FLINE, e, "cannot connect to %s (%s:%d)",
-							h->hostname, h->ipstr, ax.port);
+							active_hostname, active_ip, ax.port);
 					continue;
 				}
 				/* connected - set it to valid */
-				TR1(("connected to %s (%s:%d)\n", h->hostname, h->ipstr, ax.port));
+				TR1(("connected to %s (%s:%d)\n", active_hostname, active_ip, ax.port));
 				apr_thread_mutex_lock(h->mutex);
 				h->sock = sock;
 				h->event = 0;
@@ -833,7 +840,7 @@ static void gpmmon_main(void)
 		ax.signature = ~ax.signature;
 
 	/* get hostlist */
-	gethostlist(&ax.hosttab, &ax.hosttabsz);
+	gethostlist();
 
 	/* create the agg */
 	if (0 != (e = agg_create(&ax.agg, 1, ax.pool)))
@@ -953,7 +960,7 @@ static void gpmmon_main(void)
 			dump_to_file_safety_ticks = safety_ticks;
 		}
 
-		if (ticks_since_last_log_check > log_check_interval)
+		if (!opt.console && (ticks_since_last_log_check > log_check_interval))
 		{
 			apr_finfo_t finfo;
 			if (0 == apr_stat(&finfo, mmon_log_filename, APR_FINFO_SIZE, ax.pool))
@@ -1063,6 +1070,11 @@ static int read_conf_file(char *conffile)
 				/* this will enable sending health alerts through the emc connect api */
 				opt.emcconnect = atoi(pVal);
 			}
+			else if (apr_strnatcasecmp(pName, "console") == 0)
+			{
+				/* this will disable logging to log files */
+				opt.console = atoi(pVal);
+			}
 			else if (apr_strnatcasecmp(pName, "log_location") == 0)
 			{
 				/* can't use APR here as the pool is just temporary */
@@ -1078,7 +1090,10 @@ static int read_conf_file(char *conffile)
 
 				opt.smon_log_dir = strdup(pVal);
 			}
-
+			else if (apr_strnatcasecmp(pName, "smdw_aliases") == 0)
+			{
+				opt.smdw_aliases = strdup(pVal);
+			}
 			else if (apr_strnatcasecmp(pName, "tail_buffer_max") == 0)
 			{
 				opt.tail_buffer_max = apr_atoi64(pVal);
@@ -1325,7 +1340,7 @@ int main(int argc, const char* const argv[])
 		}
 
 		update_mmonlog_filename();
-		if (!freopen(mmon_log_filename, "w", stdout))
+		if (!opt.console && !freopen(mmon_log_filename, "w", stdout))
 		{
 			fprintf(stderr, "\nPerformance Monitor -- failed to open perfmon log file %s\n", mmon_log_filename);
 			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
@@ -1372,200 +1387,116 @@ int main(int argc, const char* const argv[])
 	return 0;
 }
 
-#define GPMMON_GETHOSTLIST_LINE_BUFSIZE 1024
-static void gethostlist(host_t** rettab, int* rettabsz)
+void populate_smdw_aliases(host_t* host)
 {
-	apr_pool_t* pool;
-	apr_hash_t* htab;
-	int e, i;
-	bool first_time = true;
-	
-	char line[GPMMON_GETHOSTLIST_LINE_BUFSIZE];
-	apr_array_header_t* hostarray;
-	int host_count = 0;
-	char **hosts = NULL;
-	char **data_dirs = NULL;
+	char* saveptr;
+	char* token;
 
-	if (0 != (e = apr_pool_create(&pool, NULL)))
+	if (!opt.smdw_aliases)
 	{
-        interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+		return;
 	}
 
-	hostarray = apr_array_make(pool, 4, sizeof(host_t));
-	CHECKMEM(hostarray);
+	token = strtok_r(opt.smdw_aliases, ",", &saveptr);
+	while (token)
+	{
+		if (!host->addressinfo_tail)
+		{
+            		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+            		gpmon_fatalx(FLINE, 0, "smdw addressname structure is inconsistent");
+		}
 
-	htab = apr_hash_make(pool);
-	CHECKMEM(htab);
+		// permenant memory for address list -- stored for duration
+		host->addressinfo_tail->next = calloc(1, sizeof(addressinfo_holder_t));
+		CHECKMEM(host->addressinfo_tail);
+
+		host->addressinfo_tail = host->addressinfo_tail->next;
+
+		host->addressinfo_tail->address = strdup(token);
+		CHECKMEM(host->addressinfo_tail->address);
+
+		host->address_count++;
+
+		token = strtok_r(NULL, ",", &saveptr);
+	}
+}
+
+char* get_ip_for_host(char* host)
+{
+	struct hostent *hp;
+	char * ipstr;
+	hp = gethostbyname(host);
+	if (!hp)
+	{
+		return NULL;
+	}
+		
+	ipstr = strdup(inet_ntoa(*(struct in_addr*) hp->h_addr_list[0]));
+	return ipstr;
+}
+
+#define GPMMON_GETHOSTLIST_LINE_BUFSIZE 1024
+static void gethostlist()
+{
+	int i = 0;
 
 	/* Connect to database, get segment hosts from gp_segment_configuration */
-	gpdb_get_hostlist(&host_count, &hosts, &data_dirs, ax.pool);
+	gpdb_get_hostlist(&ax.hosttabsz, &ax.hosttab, ax.pool);
 
-	for (i = 0; i < host_count; i++)
+	for (i = 0; i < ax.hosttabsz; ++i)
 	{
-		host_t *host = apr_array_push(hostarray);
-		CHECKMEM(host);
-		memset(host, 0, sizeof(*host));
+		addressinfo_holder_t* addressinfo;
 
-		if (first_time)
-		{
-			// the master is first in the list since the query is sorted by dbid asc 
-			host->is_master = 1;
-			first_time = false;
+		// there are potentially more hostnames for standby master
+		// specified in the config file
+		if (strcmp(ax.standby_master_hostname, ax.hosttab[i].hostname) == 0)
+	  	{
+			populate_smdw_aliases(&ax.hosttab[i]);
 		}
-		host->hostname = hosts[i];
-		host->data_dir = data_dirs[i];
 
-		// check if the host is the standby master and mark it as a master host
-		if (ax.standby_master_hostname && ax.standby_master_hostname[0])
+		addressinfo = ax.hosttab[i].addressinfo_head;		
+		while (addressinfo)
 		{
-			if (strcmp(host->hostname, ax.standby_master_hostname) == 0)
+			addressinfo->ipstr = get_ip_for_host(addressinfo->address);
+			if (!addressinfo->ipstr)
 			{
-				host->is_master = 1;
+				interuptable_sleep(60); // sleep to prevent loop of forking process and failing
+				gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno), "cannot convert host %s to IP", addressinfo->address);
 			}
+			addressinfo = addressinfo->next;
 		}
-
-		TR2(("segment identified: hostname %s datadir %s master %d\n", host->hostname, host->data_dir, host->is_master));
 	}
 
-	if (apr_is_empty_array(hostarray))
+	// SANITY TEST AND DEBUG PRINT
+	TR0(("found %d unique live hosts from catalog\n", ax.hosttabsz));
+
+	for (i = 0; i < ax.hosttabsz; i++)
 	{
-		interuptable_sleep(10); // sleep to prevent loop of forking process and failing
-		gpmon_fatal(FLINE, "No valid hosts in gp_segment_configuration.");
+		addressinfo_holder_t* addressinfo;
+		int counter = 0;
+
+		TR1(("HOST: (hostname %s) (is_master %d) (datadir %s) (host_alias_count %d)\n", 
+			ax.hosttab[i].hostname, 
+			ax.hosttab[i].is_master,
+			ax.hosttab[i].data_dir,
+			ax.hosttab[i].address_count));
+
+		addressinfo = ax.hosttab[i].addressinfo_head;		
+		while (addressinfo)
+		{
+			// extra sanity checking
+			counter++;
+			if (counter > ax.hosttab[i].address_count)
+			{
+				gpmon_fatalx(FLINE, 0, "address counter exceeds number of addresses for host %s", ax.hosttab[i].hostname);
+			}
+
+			TR1(("\tALIAS: (host %s) (ipstr %s)\n", addressinfo->address, addressinfo->ipstr));
+			addressinfo = addressinfo->next;
+		}
 	}
 
-	/* popen ssh hostname, put host_t entries into htab to
-	 eliminate duplicate */
-	for (;;)
-	{
-		host_t host[BATCH];
-		FILE* fp[BATCH];
-		int i;
-		host_t* rec;
 
-		memset(fp, 0, sizeof(fp));
-		memset(host, 0, sizeof(host));
-		for (i = 0; i < BATCH; i++)
-		{
-			rec = apr_array_pop(hostarray);
-			if (!rec)
-				break;
-			memcpy(&host[i], rec, sizeof(*rec));
-			snprintf(line, GPMMON_GETHOSTLIST_LINE_BUFSIZE, "ssh -o 'BatchMode yes' -o "
-				"'StrictHostKeyChecking no' %s hostname", host[i].hostname);
-			fp[i] = popen(line, "r");
-			if (!fp[i])
-			{
-				SET_MAXFD(fileno(fp[i]));
-				gpmon_warning(FLINE, "cannot ssh to %s ... skipped\n",
-						host[i].hostname);
-				continue;
-			}
-		}
-
-		for (i = 0; i < BATCH && host[i].hostname; i++)
-		{
-			if (! fp[i]) continue;
-			line[sizeof(line)-1] = 0;
-			if (! fgets(line, sizeof(line), fp[i]))
-			{
-				gpmon_warning(FLINE, "cannot read hostname of %s",
-						host[i].hostname);
-				continue;
-			}
-			if (line[sizeof(line)-1])
-			{
-				line[sizeof(line)-1] = 0;
-				gpmon_warning(FLINE,
-						"hostname of %s is too long\n\t%s ...",
-						host[i].hostname, line);
-				continue;
-			}
-
-			host[i].realhostname = gpmon_trim(line);
-			rec = apr_hash_get(htab, host[i].realhostname,
-					APR_HASH_KEY_STRING);
-			if (rec)
-			{
-				/* FIXME:throw a coin to determine which hostname to use */
-				/* for now, just use the last entry that got there */
-				rec->hostname = host[i].hostname;
-				rec->data_dir = host[i].data_dir;
-				if (host[i].is_master)
-				{
-					rec->is_master = 1;
-				}
-				apr_thread_mutex_create(&rec->mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool);
-			}
-			else
-			{
-				/* insert a new entry */
-				rec = apr_palloc(pool, sizeof(*rec));
-				CHECKMEM(rec);
-				memcpy(rec, &host[i], sizeof(*rec));
-				rec->realhostname = apr_pstrdup(pool, rec->realhostname);
-				CHECKMEM(rec->realhostname);
-				rec->data_dir = apr_pstrdup(pool, rec->data_dir);
-				CHECKMEM(rec->data_dir);
-				apr_hash_set(htab, rec->realhostname,
-						APR_HASH_KEY_STRING, rec);
-				apr_thread_mutex_create(&rec->mutex, APR_THREAD_MUTEX_UNNESTED, ax.pool);
-			}
-		}
-		/* clean up file handles */
-		for (i = 0; i < BATCH && fp[i]; i++)
-		{
-			if (fp[i])
-			{
-				fflush(fp[i]);
-				pclose(fp[i]);
-			}
-		}
-
-		if (i < BATCH)
-		break;
-	}
-
-	{
-		int max = apr_hash_count(htab);
-		apr_hash_index_t* hi;
-		int i;
-		host_t* ret = malloc(sizeof(host_t) * (max+1));
-		CHECKMEM(ret);
-
-		/* NOTE: ret and its contents are malloc-ed */
-
-		for (i = 0, hi = apr_hash_first(pool, htab);
-				hi; hi = apr_hash_next(hi), i++)
-		{
-			void *val;
-			struct hostent *hp;
-
-			apr_hash_this(hi, 0, 0, &val);
-			memcpy(&ret[i], val, sizeof(ret[i]));
-			ret[i].hostname = strdup(ret[i].hostname);
-			CHECKMEM(ret[i].hostname);
-			ret[i].realhostname = strdup(ret[i].realhostname);
-			CHECKMEM(ret[i].realhostname);
-			hp = gethostbyname(ret[i].hostname);
-			if (! hp)
-			{
-        		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
-				gpmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
-						"cannot resolve host %s",
-						ret[i].hostname);
-			}
-			ret[i].ipstr =
-			strdup(inet_ntoa(*(struct in_addr*) hp->h_addr_list[0]));
-			CHECKMEM(ret[i].ipstr);
-		}
-		memset(&ret[max], 0, sizeof(ret[max]));
-
-		*rettab = ret;
-		*rettabsz = max;
-	}
-
-	apr_pool_destroy(pool);
 }
 
 /* send a packet thru sock */

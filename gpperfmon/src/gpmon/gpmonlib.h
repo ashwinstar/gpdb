@@ -76,23 +76,52 @@ extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
 
 #define PATH_TO_APPLIANCE_VERSION_FILE "/etc/gpdb-appliance-version"
 
+typedef struct addressinfo_holder_t addressinfo_holder_t;
+struct addressinfo_holder_t                                                                        
+{
+        char* address;  // an alternate host name to access this host                                                                           
+	char* ipstr; // the ipstring assoicated with this address
+        struct addressinfo_holder_t* next;
+};
+
+typedef struct multi_interface_holder_t multi_interface_holder_t;
+struct multi_interface_holder_t
+{
+	addressinfo_holder_t* current; 
+	unsigned int counter;
+};
+
 
 /* segment host */ 
 typedef struct host_t host_t; 
 struct host_t
 {
-    apr_thread_mutex_t *mutex; 
-    int sock; /* socket connected to gpsmon on this host */ 
-    int eflag; /* flag: socket has error */
-    struct event* event; /* points to _event if set */
-    struct event _event; /* static */
-    char* hostname; /* static */
-    char* realhostname; /* static */
-    char* ipstr; /* static */
-    char* data_dir;
-    unsigned char is_master; /* 1 if host is the same host where the master runs */ 
-    char ever_connected; /* set to non-zero after first connection attempt */
+	apr_thread_mutex_t *mutex; 
+	int sock; /* socket connected to gpsmon on this host */ 
+	int eflag; /* flag: socket has error */
+	struct event* event; /* points to _event if set */
+	struct event _event; 
+
+	char* hostname; 
+
+	addressinfo_holder_t* addressinfo_head; 
+	addressinfo_holder_t* addressinfo_tail; 
+
+	// there are 2 of these so we don't need to mutex
+	multi_interface_holder_t connection_hostname;	
+	multi_interface_holder_t snmp_hostname;	
+
+	apr_uint32_t address_count; 
+	char* data_dir;
+	unsigned char is_master; /* 1 if host is the same host where the master runs */ 
+	char ever_connected; /* set to non-zero after first connection attempt */
 };
+
+char* get_connection_hostname(host_t* host);
+char* get_connection_ip(host_t* host);
+char* get_snmp_hostname(host_t* host);
+char* get_snmp_ip(host_t* host);
+void advance_connection_hostname(host_t* host);
 
 typedef struct snmp_module_params_t snmp_module_params_t;
 struct snmp_module_params_t

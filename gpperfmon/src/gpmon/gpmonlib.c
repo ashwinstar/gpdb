@@ -943,3 +943,47 @@ apr_status_t gpdb_getnode_metricinfo(PerfmonNodeType type, apr_byte_t metricnum,
 	}
 }
 
+void advance_connection_hostname(host_t* host)
+{
+	// for connections we should only be connecting 1 time
+	// if the smon fails we may have to reconnect but this event is rare
+	// we try 3 times on each hostname and then switch to another
+	host->connection_hostname.counter++;
+
+	if (host->connection_hostname.counter > 3)
+	{
+		if (host->connection_hostname.current->next)
+		{
+			// try the next hostname
+			host->connection_hostname.current = host->connection_hostname.current->next;
+		}
+		else
+		{
+			// restart at the head of address list
+			host->connection_hostname.current = host->addressinfo_head;
+		}
+		host->connection_hostname.counter = 1;
+	}
+}
+
+char* get_connection_hostname(host_t* host)
+{
+	return host->connection_hostname.current->address;
+}
+
+char* get_connection_ip(host_t* host)
+{
+	return host->connection_hostname.current->ipstr;
+}
+
+
+char* get_snmp_hostname(host_t* host)
+{
+	return host->hostname;
+}
+
+char* get_snmp_ip(host_t* host)
+{
+	return host->addressinfo_head->ipstr;
+}
+

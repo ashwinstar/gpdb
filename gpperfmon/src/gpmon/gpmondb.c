@@ -6,6 +6,7 @@
 #include "libpq-fe.h"
 #include "apr_strings.h"
 #include "apr_file_io.h"
+#include "apr_hash.h"
 #include "time.h"
 
 static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
@@ -138,58 +139,158 @@ int gpdb_get_gpmon_port(void)
 	return port;
 }
 
-void gpdb_get_hostlist(int* hostcnt, char*** hostvec, char*** datadirvec,
-		apr_pool_t* pool)
+
+struct hostinfo_holder_t
 {
+	addressinfo_holder_t* addressinfo_head;
+	addressinfo_holder_t* addressinfo_tail;
+	apr_uint32_t address_count;
+
+	char* datadir;
+	char* hostname;
+	int is_master;
+};
+
+void gpdb_get_hostlist(int* hostcnt, host_t** host_table, apr_pool_t* global_pool)
+{
+	apr_pool_t* pool;
 	PGconn* conn = 0;
 	PGresult* result = 0;
 	int rowcount, i;
-	const char
-			* QUERY = "SELECT hostname, fselocation as datadir, dbid FROM pg_filespace_entry JOIN gp_segment_configuration on (dbid = fsedbid) WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system') AND STATUS = 'u' ORDER BY dbid ASC";
-	int cnt = 0;
-	char** vec = 0;
-	char** vec2 = 0;
+	unsigned int unique_hosts = 0;
+	apr_hash_t* htab;
+	struct hostinfo_holder_t* hostinfo_holder = NULL;
+	host_t* hosts = NULL;
+	int e;
+
+	// 0 -- hostname, 1 -- address, 2 -- datadir, 3 -- is_master, 
+	const char *QUERY = "SELECT distinct hostname, address, case when content < 0 then 1 else 0 end as is_master, MAX(fselocation) as datadir FROM pg_filespace_entry "
+			    "JOIN gp_segment_configuration on (dbid = fsedbid) WHERE fsefsoid = (select oid from pg_filespace where fsname='pg_system') "
+		  	    "GROUP BY (hostname, address, is_master) order by hostname";
+
+	if (0 != (e = apr_pool_create(&pool, NULL)))
+	{
+		gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+	}
+
 	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
+
+	TR2((QUERY));
+	TR2(("\n"));
+
 	if (errmsg)
 	{
 		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
-		*hostcnt = 0;
-		*hostvec = NULL;
-		*datadirvec = NULL;
 	}
 	else
 	{
-		rowcount = PQntuples(result);
-		if (rowcount > 0)
-		{
-			vec = apr_pcalloc(pool, sizeof(char*) * (1 + rowcount));
-			CHECKMEM(vec);
-			vec2 = apr_pcalloc(pool, sizeof(char*) * (1 + rowcount));
-			CHECKMEM(vec2);
+		// hash of hostnames to addresses
+ 		htab = apr_hash_make(pool);
 
-			for (i = 0; i < rowcount; i++)
+		rowcount = PQntuples(result);
+
+		for (i = 0; i < rowcount; i++)
+		{
+			char* curr_hostname = PQgetvalue(result, i, 0);
+
+			hostinfo_holder = apr_hash_get(htab, curr_hostname, APR_HASH_KEY_STRING);
+
+			if (!hostinfo_holder)
 			{
-				char* p = PQgetvalue(result, i, 0);
-				char* datadir = PQgetvalue(result, i, 1);
-				if (!p || !datadir)
-					continue;
-				p = apr_pstrdup(pool, p);
-				CHECKMEM(p);
-				datadir = apr_pstrdup(pool, datadir);
-				CHECKMEM(datadir);
-				p = gpmon_trim(p);
-				datadir = gpmon_trim(datadir);
-				vec[cnt] = p;
-				vec2[cnt++] = datadir;
+				hostinfo_holder = apr_pcalloc(pool, sizeof(struct hostinfo_holder_t));
+				CHECKMEM(hostinfo_holder);
+
+				apr_hash_set(htab, curr_hostname, APR_HASH_KEY_STRING, hostinfo_holder);
+
+				hostinfo_holder->hostname = curr_hostname;
+				hostinfo_holder->is_master = atoi(PQgetvalue(result, i, 2));
+				hostinfo_holder->datadir = PQgetvalue(result, i, 3);
+
+				// use permenant memory for address list -- stored for duration
+
+				// populate 1st on list and save to head and tail
+				hostinfo_holder->addressinfo_head = hostinfo_holder->addressinfo_tail = calloc(1, sizeof(addressinfo_holder_t));
+				CHECKMEM(hostinfo_holder->addressinfo_tail);
+
+				// first is the hostname
+				hostinfo_holder->addressinfo_tail->address = strdup(hostinfo_holder->hostname);
+				CHECKMEM(hostinfo_holder->addressinfo_tail->address);
+
+
+				// add a 2nd to the list
+				hostinfo_holder->addressinfo_tail->next = calloc(1, sizeof(addressinfo_holder_t));
+				CHECKMEM(hostinfo_holder->addressinfo_tail);
+				hostinfo_holder->addressinfo_tail = hostinfo_holder->addressinfo_tail->next;
+
+				// second is address
+				hostinfo_holder->addressinfo_tail->address = strdup(PQgetvalue(result, i, 1));
+				CHECKMEM(hostinfo_holder->addressinfo_tail->address);
+
+				// one for hostname one for address
+				hostinfo_holder->address_count = 2; 
 			}
+			else
+			{
+				// permenant memory for address list -- stored for duration
+				hostinfo_holder->addressinfo_tail->next = calloc(1, sizeof(addressinfo_holder_t));
+				CHECKMEM(hostinfo_holder->addressinfo_tail);
+
+				hostinfo_holder->addressinfo_tail = hostinfo_holder->addressinfo_tail->next;
+
+				// permenant memory for address list -- stored for duration
+				hostinfo_holder->addressinfo_tail->address = strdup(PQgetvalue(result, i, 1));
+				CHECKMEM(hostinfo_holder->addressinfo_tail->address);
+
+				hostinfo_holder->address_count++;
+			}
+
 		}
-		*hostcnt = cnt;
-		*hostvec = vec;
-		*datadirvec = vec2;
+
+		unique_hosts = apr_hash_count(htab);
+
+		// allocate memory for host list (not freed ever)
+		hosts = calloc(unique_hosts, sizeof(host_t));
+
+		apr_hash_index_t* hi;
+		void* vptr;
+		int hostcounter = 0;
+		for (hi = apr_hash_first(0, htab); hi; hi = apr_hash_next(hi))
+		{
+			// sanity check
+			if (hostcounter >= unique_hosts)
+			{
+				gpmon_fatalx(FLINE, 0, "host counter exceeds unique hosts");
+			}
+
+			apr_hash_this(hi, 0, 0, &vptr);
+			hostinfo_holder = vptr;
+
+			hosts[hostcounter].hostname = strdup(hostinfo_holder->hostname);
+			hosts[hostcounter].data_dir = strdup(hostinfo_holder->datadir);
+			hosts[hostcounter].is_master = hostinfo_holder->is_master;
+			hosts[hostcounter].addressinfo_head = hostinfo_holder->addressinfo_head;
+			hosts[hostcounter].addressinfo_tail = hostinfo_holder->addressinfo_tail;
+			hosts[hostcounter].address_count = hostinfo_holder->address_count;
+			hosts[hostcounter].connection_hostname.current = hosts[hostcounter].addressinfo_head;
+			hosts[hostcounter].snmp_hostname.current = hosts[hostcounter].addressinfo_head;
+			apr_thread_mutex_create(&hosts[hostcounter].mutex, APR_THREAD_MUTEX_UNNESTED, global_pool); // use the global pool so the mutexes last beyond this function
+
+			hostcounter++;
+		}
+
+		*hostcnt = hostcounter;
 	}
 
+	apr_pool_destroy(pool);
 	PQclear(result);
 	PQfinish(conn);
+
+	if (!hosts || *hostcnt < 1)
+	{
+		gpmon_fatalx(FLINE, 0, "no valid hosts found");
+	}
+
+	*host_table = hosts;
 }
 
 void gpdb_get_master_data_dir(char** hostname, char** mstrdir, apr_pool_t* pool)
