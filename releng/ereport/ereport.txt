@@ -1746,74 +1746,74 @@ iaaf: index:00002579:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 iaaf: index:00002580:  errmsg("shared index \"%s\" can only be reindexed in stand-alone mode", 
 iaaf: index:00002581:  RelationGetRelationName(iRel)))); 
 aaaaa GP_IGNORE: naaj: namespace - ./backend/catalog/namespace.c
-naaj: namespace:00000199:  ereport(ERROR, 
-naaj: namespace:00000200:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-naaj: namespace:00000201:  errmsg("cross-database references are not implemented: \"%s.%s.%s\"", 
-naaj: namespace:00000202:  relation->catalogname, relation->schemaname, 
-naaj: namespace:00000203:  relation->relname))); 
-naaj: namespace:00000221:  ereport(ERROR, 
-naaj: namespace:00000222:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-naaj: namespace:00000223:  errmsg("relation \"%s.%s\" does not exist", 
-naaj: namespace:00000224:  relation->schemaname, relation->relname), 
-naaj: namespace:00000225:  errOmitLocation(true))); 
-naaj: namespace:00000227:  ereport(ERROR, 
-naaj: namespace:00000228:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-naaj: namespace:00000229:  errmsg("relation \"%s\" does not exist", 
-naaj: namespace:00000230:  relation->relname), 
-naaj: namespace:00000231:  errOmitLocation(true))); 
-naaj: namespace:00000256:  ereport(ERROR, 
-naaj: namespace:00000257:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-naaj: namespace:00000258:  errmsg("cross-database references are not implemented: \"%s.%s.%s\"", 
-naaj: namespace:00000259:  newRelation->catalogname, newRelation->schemaname, 
-naaj: namespace:00000260:  newRelation->relname))); 
-naaj: namespace:00000271:  ereport(ERROR, 
-naaj: namespace:00000272:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-naaj: namespace:00000273:  errmsg("temporary tables may not specify a schema name"), 
-naaj: namespace:00000274:  errOmitLocation(true))); 
-naaj: namespace:00000297:  ereport(ERROR, 
-naaj: namespace:00000298:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-naaj: namespace:00000299:  errmsg("schema \"%s\" does not exist", 
-naaj: namespace:00000300:  newRelation->schemaname), 
-naaj: namespace:00000301:  errOmitLocation(true))); 
-naaj: namespace:00000316:  ereport(ERROR, 
-naaj: namespace:00000317:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-naaj: namespace:00000318:  errmsg("no schema has been selected to create in"), 
-naaj: namespace:00000319:  errOmitLocation(true))); 
-naaj: namespace:00001269:  ereport(ERROR, 
-naaj: namespace:00001270:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-naaj: namespace:00001271:  errmsg("cross-database references are not implemented: %s", 
-naaj: namespace:00001272:  NameListToString(names)))); 
-naaj: namespace:00001275:  ereport(ERROR, 
-naaj: namespace:00001276:  (errcode(ERRCODE_SYNTAX_ERROR), 
-naaj: namespace:00001277:  errmsg("improper qualified name (too many dotted names): %s", 
-naaj: namespace:00001278:  NameListToString(names)))); 
-naaj: namespace:00001316:  ereport(ERROR, 
-naaj: namespace:00001317:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-naaj: namespace:00001318:  errmsg("schema \"%s\" does not exist", nspname), 
-naaj: namespace:00001319:  errOmitLocation(true))); 
-naaj: namespace:00001358:  ereport(ERROR, 
-naaj: namespace:00001359:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-naaj: namespace:00001360:  errmsg("schema \"%s\" does not exist", nspname), 
-naaj: namespace:00001361:  errOmitLocation(true))); 
-naaj: namespace:00001407:  ereport(ERROR, 
-naaj: namespace:00001408:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-naaj: namespace:00001409:  errmsg("schema \"%s\" does not exist", schemaname), 
-naaj: namespace:00001410:  errOmitLocation(true))); 
-naaj: namespace:00001425:  ereport(ERROR, 
-naaj: namespace:00001426:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-naaj: namespace:00001427:  errmsg("no schema has been selected to create in"))); 
-naaj: namespace:00001457:  ereport(ERROR, 
-naaj: namespace:00001458:  (errcode(ERRCODE_SYNTAX_ERROR), 
-naaj: namespace:00001459:  errmsg("improper relation name (too many dotted names): %s", 
-naaj: namespace:00001460:  NameListToString(names)))); 
-naaj: namespace:00001866:  ereport(ERROR, 
-naaj: namespace:00001867:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-naaj: namespace:00001868:  errmsg("permission denied to create temporary tables in database \"%s\"", 
-naaj: namespace:00001869:  get_database_name(MyDatabaseId)))); 
-naaj: namespace:00002250:  ereport(ERROR, 
-naaj: namespace:00002251:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-naaj: namespace:00002252:  errmsg("temporary table schema removed while session " 
-naaj: namespace:00002253:  "still in progress"))); 
+naaj: namespace:00000200:  ereport(ERROR, 
+naaj: namespace:00000201:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+naaj: namespace:00000202:  errmsg("cross-database references are not implemented: \"%s.%s.%s\"", 
+naaj: namespace:00000203:  relation->catalogname, relation->schemaname, 
+naaj: namespace:00000204:  relation->relname))); 
+naaj: namespace:00000222:  ereport(ERROR, 
+naaj: namespace:00000223:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+naaj: namespace:00000224:  errmsg("relation \"%s.%s\" does not exist", 
+naaj: namespace:00000225:  relation->schemaname, relation->relname), 
+naaj: namespace:00000226:  errOmitLocation(true))); 
+naaj: namespace:00000228:  ereport(ERROR, 
+naaj: namespace:00000229:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+naaj: namespace:00000230:  errmsg("relation \"%s\" does not exist", 
+naaj: namespace:00000231:  relation->relname), 
+naaj: namespace:00000232:  errOmitLocation(true))); 
+naaj: namespace:00000257:  ereport(ERROR, 
+naaj: namespace:00000258:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+naaj: namespace:00000259:  errmsg("cross-database references are not implemented: \"%s.%s.%s\"", 
+naaj: namespace:00000260:  newRelation->catalogname, newRelation->schemaname, 
+naaj: namespace:00000261:  newRelation->relname))); 
+naaj: namespace:00000272:  ereport(ERROR, 
+naaj: namespace:00000273:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+naaj: namespace:00000274:  errmsg("temporary tables may not specify a schema name"), 
+naaj: namespace:00000275:  errOmitLocation(true))); 
+naaj: namespace:00000298:  ereport(ERROR, 
+naaj: namespace:00000299:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+naaj: namespace:00000300:  errmsg("schema \"%s\" does not exist", 
+naaj: namespace:00000301:  newRelation->schemaname), 
+naaj: namespace:00000302:  errOmitLocation(true))); 
+naaj: namespace:00000317:  ereport(ERROR, 
+naaj: namespace:00000318:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+naaj: namespace:00000319:  errmsg("no schema has been selected to create in"), 
+naaj: namespace:00000320:  errOmitLocation(true))); 
+naaj: namespace:00001270:  ereport(ERROR, 
+naaj: namespace:00001271:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+naaj: namespace:00001272:  errmsg("cross-database references are not implemented: %s", 
+naaj: namespace:00001273:  NameListToString(names)))); 
+naaj: namespace:00001276:  ereport(ERROR, 
+naaj: namespace:00001277:  (errcode(ERRCODE_SYNTAX_ERROR), 
+naaj: namespace:00001278:  errmsg("improper qualified name (too many dotted names): %s", 
+naaj: namespace:00001279:  NameListToString(names)))); 
+naaj: namespace:00001317:  ereport(ERROR, 
+naaj: namespace:00001318:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+naaj: namespace:00001319:  errmsg("schema \"%s\" does not exist", nspname), 
+naaj: namespace:00001320:  errOmitLocation(true))); 
+naaj: namespace:00001359:  ereport(ERROR, 
+naaj: namespace:00001360:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+naaj: namespace:00001361:  errmsg("schema \"%s\" does not exist", nspname), 
+naaj: namespace:00001362:  errOmitLocation(true))); 
+naaj: namespace:00001408:  ereport(ERROR, 
+naaj: namespace:00001409:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+naaj: namespace:00001410:  errmsg("schema \"%s\" does not exist", schemaname), 
+naaj: namespace:00001411:  errOmitLocation(true))); 
+naaj: namespace:00001426:  ereport(ERROR, 
+naaj: namespace:00001427:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+naaj: namespace:00001428:  errmsg("no schema has been selected to create in"))); 
+naaj: namespace:00001458:  ereport(ERROR, 
+naaj: namespace:00001459:  (errcode(ERRCODE_SYNTAX_ERROR), 
+naaj: namespace:00001460:  errmsg("improper relation name (too many dotted names): %s", 
+naaj: namespace:00001461:  NameListToString(names)))); 
+naaj: namespace:00001869:  ereport(ERROR, 
+naaj: namespace:00001870:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+naaj: namespace:00001871:  errmsg("permission denied to create temporary tables in database \"%s\"", 
+naaj: namespace:00001872:  get_database_name(MyDatabaseId)))); 
+naaj: namespace:00002287:  ereport(ERROR, 
+naaj: namespace:00002288:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+naaj: namespace:00002289:  errmsg("temporary table schema removed while session " 
+naaj: namespace:00002290:  "still in progress"))); 
 aaaaa GP_IGNORE: pabc: pgxaggregate - ./backend/catalog/pg_aggregate.c
 pabc: pgxaggregate:00000122:  ereport(ERROR, 
 pabc: pgxaggregate:00000123:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
@@ -2589,22 +2589,6 @@ caba: cdbcellbuf:00000179:  MemoryContextName(cellbuf->context,
 caba: cdbcellbuf:00000180:  NULL, 
 caba: cdbcellbuf:00000181:  mcname, 
 caba: cdbcellbuf:00000182:  sizeof(mcname))) )); 
-aaaaa GP_IGNORE: cabb: cdbchunkbuf - ./backend/cdb/cdbchunkbuf.c
-cabb: cdbchunkbuf:00000669:  ereport(ERROR, (errmsg("Workfile read error: Unexpected eof."), 
-cabb: cdbchunkbuf:00000670:  errdetail("Workfile offset=" UINT64_FORMAT " " 
-cabb: cdbchunkbuf:00000671:  "size=" UINT64_FORMAT ". " 
-cabb: cdbchunkbuf:00000672:  "Subfile offset=" UINT64_FORMAT " " 
-cabb: cdbchunkbuf:00000673:  "size=" UINT64_FORMAT ".", 
-cabb: cdbchunkbuf:00000674:  it->subfileit.extent->seekbeg, 
-cabb: cdbchunkbuf:00000675:  it->subfileit.workfile->len, 
-cabb: cdbchunkbuf:00000676:  readendoffset, 
-cabb: cdbchunkbuf:00000677:  cbuf->len) 
-cabb: cdbchunkbuf:00000678:  )); 
-cabb: cdbchunkbuf:00000797:  ereport(ERROR, (errmsg_internal("Invalid length for CdbChunkBuf_Alloc. " 
-cabb: cdbchunkbuf:00000798:  "len=%ld exceeds limit of %ld bytes.", 
-cabb: cdbchunkbuf:00000799:  (long)len, 
-cabb: cdbchunkbuf:00000800:  (long)cbuf->chunksize) 
-cabb: cdbchunkbuf:00000801:  )); 
 aaaaa GP_IGNORE: cabf: cdbdatabaseinfo - ./backend/cdb/cdbdatabaseinfo.c
 cabf: cdbdatabaseinfo:00000752:  ereport(ERROR, 
 cabf: cdbdatabaseinfo:00000753:  (errcode_for_file_access(), 
@@ -6514,47 +6498,47 @@ qaaf: queue:00001464:  ereport(WARNING,
 qaaf: queue:00001465:  (errmsg("resource scheduling is disabled"), 
 qaaf: queue:00001466:  errhint("To enable set resource_scheduler=on"))); 
 aaaaa GP_IGNORE: saba: schemacmds - ./backend/commands/schemacmds.c
-saba: schemacmds:00000087:  ereport(ERROR, 
-saba: schemacmds:00000088:  (errcode(ERRCODE_RESERVED_NAME), 
-saba: schemacmds:00000089:  errmsg("unacceptable schema name \"%s\"", schemaName), 
-saba: schemacmds:00000090:  errdetail("The prefix \"%s\" is reserved for system schemas.", 
-saba: schemacmds:00000091:  GetReservedPrefix(schemaName)))); 
-saba: schemacmds:00000120:  * Waits for QEs to finish. Exits via ereport(ERROR,...) if error. 
-saba: schemacmds:00000121:  */ 
-saba: schemacmds:00000122:  CdbDispatchUtilityStatement((Node *)stmt, "CreateSchemaCommand"); 
-saba: schemacmds:00000206:  ereport(ERROR, 
-saba: schemacmds:00000207:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saba: schemacmds:00000208:  errmsg("schema name may not be qualified"))); 
-saba: schemacmds:00000218:  ereport(ERROR, 
-saba: schemacmds:00000219:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-saba: schemacmds:00000220:  errmsg("schema \"%s\" does not exist", namespaceName), 
-saba: schemacmds:00000221:  errOmitLocation(true))); 
-saba: schemacmds:00000226:  ereport(NOTICE, 
-saba: schemacmds:00000227:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-saba: schemacmds:00000228:  errmsg("schema \"%s\" does not exist, skipping", 
-saba: schemacmds:00000229:  namespaceName))); 
-saba: schemacmds:00000300:  ereport(ERROR, 
-saba: schemacmds:00000301:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-saba: schemacmds:00000302:  errmsg("schema \"%s\" does not exist", oldname))); 
-saba: schemacmds:00000309:  ereport(ERROR, 
-saba: schemacmds:00000310:  (errcode(ERRCODE_DUPLICATE_SCHEMA), 
-saba: schemacmds:00000311:  errmsg("schema \"%s\" already exists", newname))); 
-saba: schemacmds:00000327:  ereport(ERROR, 
-saba: schemacmds:00000328:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saba: schemacmds:00000329:  errmsg("permission denied to ALTER SCHEMA \"%s\"", oldname), 
-saba: schemacmds:00000330:  errdetail("Schema %s is reserved for system use.", oldname))); 
+saba: schemacmds:00000114:  ereport(ERROR, 
+saba: schemacmds:00000115:  (errcode(ERRCODE_RESERVED_NAME), 
+saba: schemacmds:00000116:  errmsg("unacceptable schema name \"%s\"", schemaName), 
+saba: schemacmds:00000117:  errdetail("The prefix \"%s\" is reserved for system schemas.", 
+saba: schemacmds:00000118:  GetReservedPrefix(schemaName)))); 
+saba: schemacmds:00000148:  * Waits for QEs to finish. Exits via ereport(ERROR,...) if error. 
+saba: schemacmds:00000149:  */ 
+saba: schemacmds:00000150:  CdbDispatchUtilityStatement((Node *)stmt, "CreateSchemaCommand"); 
+saba: schemacmds:00000236:  ereport(ERROR, 
+saba: schemacmds:00000237:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saba: schemacmds:00000238:  errmsg("schema name may not be qualified"))); 
+saba: schemacmds:00000257:  ereport(ERROR, 
+saba: schemacmds:00000258:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+saba: schemacmds:00000259:  errmsg("schema \"%s\" does not exist", schemaName), 
+saba: schemacmds:00000260:  errOmitLocation(true))); 
+saba: schemacmds:00000264:  ereport(NOTICE, 
+saba: schemacmds:00000265:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+saba: schemacmds:00000266:  errmsg("schema \"%s\" does not exist, skipping", 
+saba: schemacmds:00000267:  schemaName))); 
 saba: schemacmds:00000335:  ereport(ERROR, 
-saba: schemacmds:00000336:  (errcode(ERRCODE_RESERVED_NAME), 
-saba: schemacmds:00000337:  errmsg("unacceptable schema name \"%s\"", newname), 
-saba: schemacmds:00000338:  errdetail("The prefix \"%s\" is reserved for system schemas.", 
-saba: schemacmds:00000339:  GetReservedPrefix(newname)))); 
-saba: schemacmds:00000399:  ereport(ERROR, 
-saba: schemacmds:00000400:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-saba: schemacmds:00000401:  errmsg("schema \"%s\" does not exist", name))); 
-saba: schemacmds:00000405:  ereport(ERROR, 
-saba: schemacmds:00000406:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saba: schemacmds:00000407:  errmsg("permission denied to ALTER SCHEMA \"%s\"", name), 
-saba: schemacmds:00000408:  errdetail("Schema %s is reserved for system use.", name))); 
+saba: schemacmds:00000336:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+saba: schemacmds:00000337:  errmsg("schema \"%s\" does not exist", oldname))); 
+saba: schemacmds:00000344:  ereport(ERROR, 
+saba: schemacmds:00000345:  (errcode(ERRCODE_DUPLICATE_SCHEMA), 
+saba: schemacmds:00000346:  errmsg("schema \"%s\" already exists", newname))); 
+saba: schemacmds:00000362:  ereport(ERROR, 
+saba: schemacmds:00000363:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saba: schemacmds:00000364:  errmsg("permission denied to ALTER SCHEMA \"%s\"", oldname), 
+saba: schemacmds:00000365:  errdetail("Schema %s is reserved for system use.", oldname))); 
+saba: schemacmds:00000370:  ereport(ERROR, 
+saba: schemacmds:00000371:  (errcode(ERRCODE_RESERVED_NAME), 
+saba: schemacmds:00000372:  errmsg("unacceptable schema name \"%s\"", newname), 
+saba: schemacmds:00000373:  errdetail("The prefix \"%s\" is reserved for system schemas.", 
+saba: schemacmds:00000374:  GetReservedPrefix(newname)))); 
+saba: schemacmds:00000434:  ereport(ERROR, 
+saba: schemacmds:00000435:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+saba: schemacmds:00000436:  errmsg("schema \"%s\" does not exist", name))); 
+saba: schemacmds:00000440:  ereport(ERROR, 
+saba: schemacmds:00000441:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saba: schemacmds:00000442:  errmsg("permission denied to ALTER SCHEMA \"%s\"", name), 
+saba: schemacmds:00000443:  errdetail("Schema %s is reserved for system use.", name))); 
 aaaaa GP_IGNORE: saai: sequence - ./backend/commands/sequence.c
 saai: sequence:00000836:  ereport(ERROR, 
 saai: sequence:00000837:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
@@ -10022,12 +10006,12 @@ raae: read:00000332:  "supported in this version of %s.",
 raae: read:00000333:  tok_len, token, PACKAGE_NAME) 
 raae: read:00000334:  )); 
 aaaaa GP_IGNORE: raaj: readfuncs - ./backend/nodes/readfuncs.c
-raaj: readfuncs:00003733:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-raaj: readfuncs:00003734:  errmsg("This operation involves an internal data item " 
-raaj: readfuncs:00003735:  "of a type called \"%.*s\" which is not " 
-raaj: readfuncs:00003736:  "supported in this version of %s.", 
-raaj: readfuncs:00003737:  length, token, PACKAGE_NAME) 
-raaj: readfuncs:00003738:  )); 
+raaj: readfuncs:00003734:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+raaj: readfuncs:00003735:  errmsg("This operation involves an internal data item " 
+raaj: readfuncs:00003736:  "of a type called \"%.*s\" which is not " 
+raaj: readfuncs:00003737:  "supported in this version of %s.", 
+raaj: readfuncs:00003738:  length, token, PACKAGE_NAME) 
+raaj: readfuncs:00003739:  )); 
 aaaaa GP_IGNORE: aaai: allpaths - ./backend/optimizer/path/allpaths.c
 aaai: allpaths:00000420:  ereport(ERROR, 
 aaai: allpaths:00000421:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
