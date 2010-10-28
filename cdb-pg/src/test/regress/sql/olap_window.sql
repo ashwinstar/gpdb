@@ -1,4 +1,11 @@
 --
+-- Exercise outfuncs
+--
+
+set Debug_print_parse=on;
+set Debug_print_plan=on;
+
+--
 -- OLAP_WINDOW 
 --
 -- Changes here should also be made to olap_window_seq.sql
