@@ -12,7 +12,6 @@
 #include "access/transam.h"
 #include "access/tuptoaster.h"
 #include "catalog/pg_type.h"
-#include "cdb/cdbchunkbuf.h"
 
 #include "cdb/cdbvars.h"
 

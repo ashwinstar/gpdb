@@ -19,7 +19,7 @@ OBJS = cdbanalyze.o \
        cdbappendonlystorage.o cdbappendonlystorageformat.o \
        cdbappendonlystorageread.o cdbappendonlystoragewrite.o \
 	   cdbbackup.o cdbbufferedappend.o cdbbufferedread.o \
-	   cdbcat.o cdbcellbuf.o cdbchunkbuf.o cdbchunkpool.o cdbconn.o cdbcopy.o \
+	   cdbcat.o cdbcellbuf.o cdbchunkpool.o cdbconn.o cdbcopy.o \
 	   cdbdatabaseinfo.o cdbdirectopen.o \
 	   cdbdisp.o cdbdispatchresult.o \
 	   cdbdistributedsnapshot.o \
