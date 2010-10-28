@@ -3145,3 +3145,202 @@ WatchVisibilityInActionString(
 }
 
 #endif
+
+static char *TupleTransactionStatus_Name(TupleTransactionStatus status)
+{
+	switch (status)
+	{
+	case TupleTransactionStatus_None: 				return "None";
+	case TupleTransactionStatus_Frozen: 			return "Frozen";
+	case TupleTransactionStatus_HintCommitted: 		return "Hint-Committed";
+	case TupleTransactionStatus_HintAborted: 		return "Hint-Aborted";
+	case TupleTransactionStatus_CLogInProgress: 	return "CLog-In-Progress";
+	case TupleTransactionStatus_CLogCommitted: 		return "CLog-Committed";
+	case TupleTransactionStatus_CLogAborted:		return "CLog-Aborted";
+	case TupleTransactionStatus_CLogSubCommitted:	return "CLog-Sub-Committed";
+	default:
+		return "Unknown";
+	}
+}
+
+static char *TupleVisibilityStatus_Name(TupleVisibilityStatus status)
+{
+	switch (status)
+	{
+	case TupleVisibilityStatus_Unknown: 	return "Unknown";
+	case TupleVisibilityStatus_InProgress: 	return "In-Progress";
+	case TupleVisibilityStatus_Aborted: 	return "Aborted";
+	case TupleVisibilityStatus_Past: 		return "Past";
+	case TupleVisibilityStatus_Now: 		return "Now";
+	default:
+		return "Unknown";
+	}
+}
+
+static TupleTransactionStatus GetTupleVisibilityCLogStatus(TransactionId xid)
+{
+	XidStatus xidStatus;
+	
+	xidStatus = TransactionIdGetStatus(xid);
+	switch (xidStatus)
+	{
+	case TRANSACTION_STATUS_IN_PROGRESS:	return TupleTransactionStatus_CLogInProgress;
+	case TRANSACTION_STATUS_COMMITTED:		return TupleTransactionStatus_CLogCommitted;
+	case TRANSACTION_STATUS_ABORTED:		return TupleTransactionStatus_CLogAborted;
+	case TRANSACTION_STATUS_SUB_COMMITTED:	return TupleTransactionStatus_CLogSubCommitted;
+	default:
+		// Never gets here.  XidStatus is only 2-bits.
+		return TupleTransactionStatus_None;
+	}
+}
+
+void GetTupleVisibilitySummary(
+	HeapTuple				tuple,
+	TupleVisibilitySummary	*tupleVisibilitySummary)
+{
+	tupleVisibilitySummary->tid = tuple->t_self;
+	tupleVisibilitySummary->infomask = tuple->t_data->t_infomask;
+	tupleVisibilitySummary->infomask2 = tuple->t_data->t_infomask2;
+	
+	tupleVisibilitySummary->xmin = HeapTupleHeaderGetXmin(tuple->t_data);
+	if (!TransactionIdIsNormal(tupleVisibilitySummary->xmin))
+	{
+		if (tupleVisibilitySummary->xmin == FrozenTransactionId)
+		{
+			tupleVisibilitySummary->xminStatus = TupleTransactionStatus_Frozen;
+		}
+		else
+		{
+			tupleVisibilitySummary->xminStatus = TupleTransactionStatus_None;
+		}
+	} 
+	else if (tuple->t_data->t_infomask & HEAP_XMIN_COMMITTED)
+	{
+		tupleVisibilitySummary->xminStatus = TupleTransactionStatus_HintCommitted;
+	} 
+	else if (tuple->t_data->t_infomask & HEAP_XMIN_INVALID)
+	{
+		tupleVisibilitySummary->xminStatus = TupleTransactionStatus_HintAborted;
+	}
+	else
+	{
+		tupleVisibilitySummary->xminStatus = 
+					GetTupleVisibilityCLogStatus(tupleVisibilitySummary->xmin);
+	}
+	tupleVisibilitySummary->xmax = HeapTupleHeaderGetXmax(tuple->t_data);
+	if (!TransactionIdIsNormal(tupleVisibilitySummary->xmax))
+	{
+		if (tupleVisibilitySummary->xmax == FrozenTransactionId)
+		{
+			tupleVisibilitySummary->xmaxStatus = TupleTransactionStatus_Frozen;
+		}
+		else
+		{
+			tupleVisibilitySummary->xmaxStatus = TupleTransactionStatus_None;
+		}
+	} 
+	else if (tuple->t_data->t_infomask & HEAP_XMAX_COMMITTED)
+	{
+		tupleVisibilitySummary->xmaxStatus = TupleTransactionStatus_HintCommitted;
+	} 
+	else if (tuple->t_data->t_infomask & HEAP_XMAX_INVALID)
+	{
+		tupleVisibilitySummary->xmaxStatus = TupleTransactionStatus_HintAborted;
+	}
+	else
+	{
+		tupleVisibilitySummary->xmaxStatus = 
+					GetTupleVisibilityCLogStatus(tupleVisibilitySummary->xmax);
+	}
+
+	/*
+	 * Evaluate xmin and xmax status to produce overall visibility.
+	 *
+	 * UNDONE: Too simplistic?
+	 */
+	switch (tupleVisibilitySummary->xminStatus)
+	{
+	case TupleTransactionStatus_None:
+	case TupleTransactionStatus_CLogSubCommitted:
+		tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Unknown;
+		break;
+
+	case TupleTransactionStatus_CLogInProgress:
+		tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_InProgress;
+		break;
+
+	case TupleTransactionStatus_HintAborted:
+	case TupleTransactionStatus_CLogAborted:
+		tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Aborted;
+		break;
+
+	case TupleTransactionStatus_Frozen:
+	case TupleTransactionStatus_HintCommitted:
+	case TupleTransactionStatus_CLogCommitted:
+		{
+			switch (tupleVisibilitySummary->xmaxStatus)
+			{
+			case TupleTransactionStatus_None:
+			case TupleTransactionStatus_CLogInProgress:
+			case TupleTransactionStatus_HintAborted:
+			case TupleTransactionStatus_CLogAborted:
+				tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Now;
+				break;
+				
+			case TupleTransactionStatus_CLogSubCommitted:
+				tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Unknown;
+				break;
+			
+			case TupleTransactionStatus_HintCommitted:
+			case TupleTransactionStatus_CLogCommitted:
+				tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Past;
+				break;
+			
+			default:
+				elog(PANIC, "Unrecognized tuple transaction status: %d",
+					 (int) tupleVisibilitySummary->xmaxStatus);
+				tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Unknown;
+				break;
+			}
+		}
+		break;
+
+	default:
+		elog(PANIC, "Unrecognized tuple transaction status: %d",
+			 (int) tupleVisibilitySummary->xminStatus);
+		tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Unknown;
+		break;
+	}
+}
+
+// 0 tuple_tid                 TIDOID
+// 1 tuple_xmin               XIDOID
+// 2 tuple_xmin_status     TEXTOID
+// 3 tuple_xmax		    XIDOID
+// 4 tuple_xmax_status    TEXTOID
+// 5 tuple_visible_status   TEXTOID
+
+void GetTupleVisibilitySummaryDatums(
+	Datum		*values,
+	TupleVisibilitySummary	*tupleVisibilitySummary)
+{
+	values[0] = ItemPointerGetDatum(&tupleVisibilitySummary->tid);
+	values[1] = TransactionIdGetDatum(tupleVisibilitySummary->xmin);
+	values[2] = 
+		DirectFunctionCall1(textin,
+							CStringGetDatum(
+								TupleTransactionStatus_Name(
+											tupleVisibilitySummary->xminStatus)));
+	values[3] = TransactionIdGetDatum(tupleVisibilitySummary->xmax);
+	values[4] = 
+		DirectFunctionCall1(textin,
+							CStringGetDatum(
+								TupleTransactionStatus_Name(
+											tupleVisibilitySummary->xmaxStatus)));
+	values[5] = 
+		DirectFunctionCall1(textin,
+							CStringGetDatum(
+								TupleVisibilityStatus_Name(
+											tupleVisibilitySummary->visibilityStatus)));
+}
+

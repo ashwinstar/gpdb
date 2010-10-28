@@ -57,6 +57,8 @@ extern int MaxAppendOnlyTables;		/* Max # of tables */
  */
 typedef struct FileSegInfo
 {
+	TupleVisibilitySummary	tupleVisibilitySummary;
+
 	int			segno;			/* the file segment number */
 	int64		tupcount;		/* total number of tuples in this fileseg */
 	int64		varblockcount;	/* total number of varblocks in this fileseg */	

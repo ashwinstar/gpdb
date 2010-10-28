@@ -524,7 +524,11 @@ FileSegInfo **GetAllFileSegInfo_pg_aoseg_rel(
 		
 		allseginfo[seginfo_no] = (FileSegInfo *)palloc0(sizeof(FileSegInfo));
 		oneseginfo = allseginfo[seginfo_no];
-		
+
+		GetTupleVisibilitySummary(
+								tuple,
+								&oneseginfo->tupleVisibilitySummary);
+
 		segno = fastgetattr(tuple, Anum_pg_aoseg_segno, pg_aoseg_dsc, &isNull);
 		oneseginfo->segno = DatumGetInt32(segno);
 
@@ -809,6 +813,164 @@ int64 GetAOTotalBytes(Relation parentrel)
 	pfree(aoEntry);
 
 	return result;
+}
+
+PG_FUNCTION_INFO_V1(gp_aoseg_history);
+
+extern Datum
+gp_aoseg_history(PG_FUNCTION_ARGS);
+
+Datum
+gp_aoseg_history(PG_FUNCTION_ARGS)
+{
+    int aoRelOid = PG_GETARG_OID(0);
+
+	typedef struct Context
+	{
+		Oid		aoRelOid;
+
+		FileSegInfo **aoSegfileArray;
+
+		int totalAoSegFiles;
+
+		int		segfileArrayIndex;
+	} Context;
+	
+	FuncCallContext *funcctx;
+	Context *context;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		TupleDesc	tupdesc;
+		MemoryContext oldcontext;
+		Relation aocsRel;
+		AppendOnlyEntry *aoEntry;
+		Relation pg_aoseg_rel;
+
+		/* create a function context for cross-call persistence */
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/*
+		 * switch to memory context appropriate for multiple function
+		 * calls
+		 */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		/* build tupdesc for result tuples */
+		tupdesc = CreateTemplateTupleDesc(11, false);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "segment_id",
+						   INT2OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "gp_tid",
+						   TIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "gp_xmin",
+						   XIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "gp_xmin_status",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "gp_xmax",
+						   XIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "gp_xmax_status",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "gp_visibility_status",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "segno",
+						   INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "tupcount",
+						   INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "eof",
+						   INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 11, "eof_uncompressed",
+						   INT8OID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		/*
+		 * Collect all the locking information that we will format and send
+		 * out as a result set.
+		 */
+		context = (Context *) palloc(sizeof(Context));
+		funcctx->user_fctx = (void *) context;
+
+		context->aoRelOid = aoRelOid;
+
+		aocsRel = heap_open(aoRelOid, NoLock);
+		if(!RelationIsAoRows(aocsRel))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("'%s' is not an append-only row relation",
+							RelationGetRelationName(aocsRel))));
+
+		aoEntry = GetAppendOnlyEntry(aoRelOid);
+		
+		pg_aoseg_rel = heap_open(aoEntry->segrelid, NoLock);
+		
+		context->aoSegfileArray = 
+				GetAllFileSegInfo_pg_aoseg_rel(
+											aocsRel->rd_rel->relname.data, 
+											aoEntry, 
+											pg_aoseg_rel,
+											SnapshotAny,	// Get ALL tuples from pg_aoseg_% including aborted and in-progress ones. 
+											&context->totalAoSegFiles);
+
+		heap_close(pg_aoseg_rel, NoLock);
+		heap_close(aocsRel, NoLock);
+
+		// Iteration position.
+		context->segfileArrayIndex = 0;
+
+		funcctx->user_fctx = (void *) context;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	context = (Context *) funcctx->user_fctx;
+
+	/*
+	 * Process each column for each segment file.
+	 */
+	while (true)
+	{
+		Datum		values[11];
+		bool		nulls[11];
+		HeapTuple	tuple;
+		Datum		result;
+
+		struct FileSegInfo *aoSegfile;
+
+		if (context->segfileArrayIndex >= context->totalAoSegFiles)
+		{
+			break;
+		}
+		
+		/*
+		 * Form tuple with appropriate data.
+		 */
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+
+		aoSegfile = context->aoSegfileArray[context->segfileArrayIndex];
+
+		values[0] = Int16GetDatum((int16)Gp_segment);
+
+		GetTupleVisibilitySummaryDatums(
+								&values[1],
+								&aoSegfile->tupleVisibilitySummary);
+
+		values[7] = Int32GetDatum(aoSegfile->segno);
+		values[8] = Int64GetDatum(aoSegfile->tupcount);
+		values[9] = Int64GetDatum(aoSegfile->eof);
+		values[10] = Int64GetDatum(aoSegfile->eof_uncompressed);
+
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+
+		// Indicate we emitted one segment file.
+		context->segfileArrayIndex++;
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+
+	SRF_RETURN_DONE(funcctx);
 }
 
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))

@@ -310,6 +310,41 @@ extern bool WatchVisibilityAllZeros(void);
 #define WATCH_VISIBILITY_ADDPAIR(nth,is_xmax)
 #endif
 
+/* Result codes for TupleTransactionStatus */
+typedef enum TupleTransactionStatus
+{
+	TupleTransactionStatus_None,
+	TupleTransactionStatus_Frozen,
+	TupleTransactionStatus_HintCommitted,
+	TupleTransactionStatus_HintAborted,
+	TupleTransactionStatus_CLogInProgress,
+	TupleTransactionStatus_CLogCommitted,
+	TupleTransactionStatus_CLogAborted,
+	TupleTransactionStatus_CLogSubCommitted,
+} TupleTransactionStatus;
+
+/* Result codes for TupleVisibilityStatus */
+typedef enum TupleVisibilityStatus
+{
+	TupleVisibilityStatus_Unknown,
+	TupleVisibilityStatus_InProgress,
+	TupleVisibilityStatus_Aborted,
+	TupleVisibilityStatus_Past,
+	TupleVisibilityStatus_Now,
+} TupleVisibilityStatus;
+
+typedef struct TupleVisibilitySummary
+{
+	ItemPointerData				tid;
+	int16						infomask;
+	int16						infomask2;
+	TransactionId				xmin;
+	TupleTransactionStatus      xminStatus;
+	TransactionId				xmax;
+	TupleTransactionStatus      xmaxStatus;
+	TupleVisibilityStatus		visibilityStatus;
+} TupleVisibilitySummary;
+
 
 /* MPP Shared Snapshot */
 extern Size SharedSnapshotShmemSize(void);
@@ -340,5 +375,20 @@ extern Snapshot GetLatestSnapshot(void);
 extern Snapshot CopySnapshot(Snapshot snapshot);
 extern void FreeSnapshot(Snapshot snapshot);
 extern void FreeXactSnapshot(void);
+extern void GetTupleVisibilitySummary(
+	HeapTuple				tuple,
+	TupleVisibilitySummary	*tupleVisibilitySummary);
+
+
+// 0 tuple_tid                 TIDOID
+// 1 tuple_xmin               XIDOID
+// 2 tuple_xmin_status     TEXTOID
+// 3 tuple_xmax		    XIDOID
+// 4 tuple_xmax_status    TEXTOID
+// 5 tuple_visible_status   TEXTOID
+
+extern void GetTupleVisibilitySummaryDatums(
+	Datum		*values,
+	TupleVisibilitySummary	*tupleVisibilitySummary);
 
 #endif   /* TQUAL_H */
