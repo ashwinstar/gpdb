@@ -46,6 +46,7 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
+#include "tcop/utility.h"
 
 #include "cdb/cdbtm.h"
 
@@ -274,7 +275,7 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 							   errOmitLocation(true)));
 		}
 		/* Initialize temp namespace if first time through */
-		if (!OidIsValid(myTempNamespace))
+		if (!TempNamespaceValid(false))
 			InitTempTableNamespace();
 		return myTempNamespace;
 	}
@@ -285,7 +286,7 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 		if (strcmp(newRelation->schemaname, "pg_temp") == 0)
 		{
 			/* Initialize temp namespace if first time through */
-			if (!OidIsValid(myTempNamespace))
+			if (!TempNamespaceValid(false))
 				InitTempTableNamespace();
 			return myTempNamespace;
 		}
@@ -1346,7 +1347,7 @@ LookupCreationNamespace(const char *nspname)
 	if (strcmp(nspname, "pg_temp") == 0)
 	{
 		/* Initialize temp namespace if first time through */
-		if (!OidIsValid(myTempNamespace))
+		if (!TempNamespaceValid(false))
 			InitTempTableNamespace();
 		return myTempNamespace;
 	}
@@ -1395,7 +1396,7 @@ QualifiedNameGetCreationNamespace(List *names, char **objname_p)
 		if (strcmp(schemaname, "pg_temp") == 0)
 		{
 			/* Initialize temp namespace if first time through */
-			if (!OidIsValid(myTempNamespace))
+			if (!TempNamespaceValid(false))
 				InitTempTableNamespace();
 			return myTempNamespace;
 		}
@@ -1846,8 +1847,10 @@ recomputeNamespacePath(void)
 static void
 InitTempTableNamespace(void)
 {
-	char		namespaceName[NAMEDATALEN];
-	Oid			namespaceId;
+	char				 namespaceName[NAMEDATALEN];
+	HeapTuple			 tup;
+	char				*rolname;
+	CreateSchemaStmt   	*stmt;
 
 	Assert(!OidIsValid(myTempNamespace));
 
@@ -1868,49 +1871,59 @@ InitTempTableNamespace(void)
 				 errmsg("permission denied to create temporary tables in database \"%s\"",
 						get_database_name(MyDatabaseId))));
 
-	if (Gp_role == GP_ROLE_UTILITY)
-		snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", MyBackendId);
-	else
-		snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", gp_session_id);
+	/* 
+	 * TempNamespace name creation rules are different depending on the
+	 * nature of the current connection role.
+	 */
+	switch (Gp_role)
+	{
+		case GP_ROLE_DISPATCH:
+			snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", 
+					 gp_session_id);
+			break;
 
-	namespaceId = GetSysCacheOid(NAMESPACENAME,
-								 CStringGetDatum(namespaceName),
-								 0, 0, 0);
-	if (!OidIsValid(namespaceId))
-	{
-		/*
-		 * First use of this temp namespace in this database; create it. The
-		 * temp namespaces are always owned by the superuser.  We leave their
-		 * permissions at default --- i.e., no access except to superuser ---
-		 * to ensure that unprivileged users can't peek at other backends'
-		 * temp tables.  This works because the places that access the temp
-		 * namespace for my own backend skip permissions checks on it.
-		 */
-		namespaceId = NamespaceCreate(namespaceName, BOOTSTRAP_SUPERUSERID, 0);
-		/* Advance command counter to make namespace visible */
-		CommandCounterIncrement();
-	}
-	else
-	{
-		/*
-		 * If the namespace already exists, clean it out (in case the former
-		 * owner crashed without doing so).
-		 */
-		RemoveTempRelations(namespaceId);
+		case GP_ROLE_UTILITY:
+			snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", 
+					 MyBackendId);
+			break;
+
+		default:
+			/* Should never hit this */
+			elog(ERROR, "invalid backend temp schema creation");
+			break;
 	}
 
 	/*
-	 * Okay, we've prepared the temp namespace ... but it's not committed yet,
-	 * so all our work could be undone by transaction rollback.  Set flag for
-	 * AtEOXact_Namespace to know what to do.
+	 * First use of this temp namespace in this database; create it. The
+	 * temp namespaces are always owned by the superuser.  We leave their
+	 * permissions at default --- i.e., no access except to superuser ---
+	 * to ensure that unprivileged users can't peek at other backends'
+	 * temp tables.  This works because the places that access the temp
+	 * namespace for my own backend skip permissions checks on it.
 	 */
-	myTempNamespace = namespaceId;
 
-	/* It should not be done already. */
-	AssertState(myTempNamespaceSubID == InvalidSubTransactionId);
-	myTempNamespaceSubID = GetCurrentSubTransactionId();
+	/* 
+	 * CDB: Dispatch CREATE SCHEMA command.
+	 *
+	 * We need to keep the OID of temp schemas synchronized across the
+	 * cluster which means that we must go through regular dispatch
+	 * logic rather than letting every backend manage the 
+	 */
+		
+	/* Lookup the name of the superuser */
+	tup = SearchSysCache(AUTHOID, ObjectIdGetDatum(BOOTSTRAP_SUPERUSERID),
+						 0,0,0);
+	Assert(HeapTupleIsValid(tup));  /* bootstrap user MUST exist */
+	rolname = pstrdup(NameStr(((Form_pg_authid) GETSTRUCT(tup))->rolname));
+	ReleaseSysCache(tup);
 
-	namespaceSearchPathValid = false;	/* need to rebuild list */
+	/* Execute the internal DDL */
+	stmt = makeNode(CreateSchemaStmt);
+	stmt->schemaname = namespaceName;
+	stmt->istemp	 = true;
+	stmt->authid	 = rolname;
+	ProcessUtility((Node*) stmt, "(internal create temp schema command)",
+				   NULL, false, None_Receiver, NULL);
 }
 
 /*
@@ -1945,6 +1958,29 @@ DropTempTableNamespaceForResetSession(Oid namespaceOid)
 	RemoveTempRelations(namespaceOid);
 
 	CommitTransactionCommand();
+}
+
+/*
+ * Called by CreateSchemaCommand when creating a temporary schema 
+ */
+void
+SetTempNamespace(Oid namespaceOid)
+{
+	if (TempNamespaceValid(false))
+		elog(ERROR, "temporary namespace already exists");
+
+	/*
+	 * Okay, we've prepared the temp namespace ... but it's not committed yet,
+	 * so all our work could be undone by transaction rollback.  Set flag for
+	 * AtEOXact_Namespace to know what to do.
+	 */
+	myTempNamespace = namespaceOid;
+
+	/* It should not be done already. */
+	AssertState(myTempNamespaceSubID == InvalidSubTransactionId);
+	myTempNamespaceSubID = GetCurrentSubTransactionId();
+
+	namespaceSearchPathValid = false;	/* need to rebuild list */
 }
 
 /*
@@ -2235,6 +2271,7 @@ TempNamespaceValid(bool error_if_removed)
 		 * This implies we must be in a Portal, and if we are in a Portal, we are in
 		 * a transaction.  So you can't use this if we are currently idle.
 		 */
+		AcceptInvalidationMessages();  /* minimize race conditions */
 		myTempNamespace = GetSysCacheOid(NAMESPACEOID,
 									 	 ObjectIdGetDatum(myTempNamespace),
 									 	 0, 0, 0);

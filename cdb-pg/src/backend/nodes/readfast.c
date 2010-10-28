@@ -1982,6 +1982,7 @@ _readCreateSchemaStmt(const char ** str)
 	READ_STRING_FIELD(schemaname);
 	READ_STRING_FIELD(authid);
 	local_node->schemaElts = 0;
+	READ_BOOL_FIELD(istemp);
 	READ_OID_FIELD(schemaOid);
 
 	READ_DONE();

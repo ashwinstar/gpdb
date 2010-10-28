@@ -1048,6 +1048,7 @@ typedef struct CreateSchemaStmt
 	char	   *schemaname;		/* the name of the schema to create */
 	char	   *authid;			/* the owner of the created schema */
 	List	   *schemaElts;		/* schema components (list of parsenodes) */
+	bool        istemp;         /* true for temp schemas (internal only) */
 	Oid			schemaOid;
 } CreateSchemaStmt;
 

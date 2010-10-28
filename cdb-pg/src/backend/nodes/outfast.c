@@ -3127,6 +3127,7 @@ _outCreateSchemaStmt(StringInfo str, CreateSchemaStmt *node)
 
 	WRITE_STRING_FIELD(schemaname);
 	WRITE_STRING_FIELD(authid);
+	WRITE_BOOL_FIELD(istemp);
 	WRITE_OID_FIELD(schemaOid);
 
 }

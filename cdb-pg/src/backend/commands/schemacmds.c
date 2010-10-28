@@ -38,6 +38,9 @@
 #include "cdb/cdbcat.h"
 
 static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId);
+static void RemoveSchema_internal(const char *schemaName, DropBehavior behavior, 
+								  bool missing_ok, bool is_internal);
+
 
 /*
  * CREATE SCHEMA
@@ -47,6 +50,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 {
 	const char *schemaName = stmt->schemaname;
 	const char *authId = stmt->authid;
+	const bool  istemp = stmt->istemp;
 	Oid			namespaceId = 0;
 	List	   *parsetree_list;
 	ListCell   *parsetree_item;
@@ -67,28 +71,52 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 	else
 		owner_uid = saved_uid;
 
-	/*
-	 * To create a schema, must have schema-create privilege on the current
-	 * database and must be able to become the target role (this does not
-	 * imply that the target role itself must have create-schema privilege).
-	 * The latter provision guards against "giveaway" attacks.	Note that a
-	 * superuser will always have both of these privileges a fortiori.
+	/* 
+	 * If we are creating a temporary schema then we can skip a 
+	 * bunch of checks that we would otherwise make.
 	 */
-	aclresult = pg_database_aclcheck(MyDatabaseId, saved_uid, ACL_CREATE);
-	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_DATABASE,
-					   get_database_name(MyDatabaseId));
-
-	check_is_member_of_role(saved_uid, owner_uid);
-
-	/* Additional check to protect reserved schema names */
-	if (!allowSystemTableMods && IsReservedName(schemaName))
+	if (istemp)
 	{
-		ereport(ERROR,
-				(errcode(ERRCODE_RESERVED_NAME),
-				 errmsg("unacceptable schema name \"%s\"", schemaName),
-				 errdetail("The prefix \"%s\" is reserved for system schemas.",
-						   GetReservedPrefix(schemaName))));
+		/*
+		 * CDB: Delete old temp schema.
+		 *
+		 * Remove any vestigages of old temporary schema, if any.  This can
+		 * happen when an old session crashes and doesn't run normal session
+		 * shutdown.  
+		 *
+		 * In postgres they try to reuse existing schemas in this case, 
+		 * however that does not work well for us since the schemas may exist 
+		 * on a segment by segment basis and we want to keep them syncronized
+		 * on oid.  The best way of dealing with this is to just delete the
+		 * old schemas.
+		 */
+		RemoveSchema_internal(schemaName, DROP_CASCADE, true, true);
+	}
+	else
+	{
+		/*
+		 * To create a schema, must have schema-create privilege on the current
+		 * database and must be able to become the target role (this does not
+		 * imply that the target role itself must have create-schema privilege).
+		 * The latter provision guards against "giveaway" attacks. Note that a
+		 * superuser will always have both of these privileges a fortiori.
+		 */
+		aclresult = pg_database_aclcheck(MyDatabaseId, saved_uid, ACL_CREATE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, ACL_KIND_DATABASE,
+						   get_database_name(MyDatabaseId));
+
+		check_is_member_of_role(saved_uid, owner_uid);
+
+		/* Additional check to protect reserved schema names */
+		if (!allowSystemTableMods && IsReservedName(schemaName))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_RESERVED_NAME),
+					 errmsg("unacceptable schema name \"%s\"", schemaName),
+					 errdetail("The prefix \"%s\" is reserved for system schemas.",
+							   GetReservedPrefix(schemaName))));
+		}
 	}
 
 	/*
@@ -123,7 +151,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 		}
 
 		/* MPP-6929: metadata tracking */
-		if (Gp_role == GP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH && !istemp)
 			MetaTrackAddObject(NamespaceRelationId,
 							   namespaceId,
 							   saved_uid,
@@ -137,6 +165,10 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 
 	/* Advance cmd counter to make the namespace visible */
 	CommandCounterIncrement();
+
+	/* If this is the temporary namespace we must mark it specially */
+	if (istemp)
+		SetTempNamespace(namespaceId);
 
 	/*
 	 * Temporarily make the new namespace be the front of the search path, as
@@ -198,44 +230,49 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 void
 RemoveSchema(List *names, DropBehavior behavior, bool missing_ok)
 {
-	char	   *namespaceName;
-	Oid			namespaceId;
-	ObjectAddress object;
+	char	   *schemaName;
 
 	if (list_length(names) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("schema name may not be qualified")));
-	namespaceName = strVal(linitial(names));
+	schemaName = strVal(linitial(names));
+
+	RemoveSchema_internal(schemaName, behavior, missing_ok, false);
+}
+
+static void
+RemoveSchema_internal(const char *schemaName, DropBehavior behavior, 
+					  bool missing_ok, bool is_internal)
+{
+	Oid				namespaceId;
+	ObjectAddress	object;
 
 	namespaceId = GetSysCacheOid(NAMESPACENAME,
-								 CStringGetDatum(namespaceName),
-								 0, 0, 0);
+								 CStringGetDatum(schemaName), 0, 0, 0);
 	if (!OidIsValid(namespaceId))
 	{
 		if (!missing_ok)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
-					 errmsg("schema \"%s\" does not exist", namespaceName),
+					 errmsg("schema \"%s\" does not exist", schemaName),
 					 errOmitLocation(true)));
 		}
-		else
+		if (!is_internal && Gp_role != GP_ROLE_EXECUTE)
 		{
-			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_SCHEMA),
 					 errmsg("schema \"%s\" does not exist, skipping", 
-							namespaceName)));
+							schemaName)));
 		}
-
 		return;
 	}
 
 	/* Permission check */
-	if (!pg_namespace_ownercheck(namespaceId, GetUserId()))
+	if (!is_internal && !pg_namespace_ownercheck(namespaceId, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_NAMESPACE,
-					   namespaceName);
+					   schemaName);
 
 	/*
 	 * Do the deletion.  Objects contained in the schema are removed by means
@@ -248,10 +285,8 @@ RemoveSchema(List *names, DropBehavior behavior, bool missing_ok)
 	performDeletion(&object, behavior);
 
 	/* MPP-6929: metadata tracking */
-	if (Gp_role == GP_ROLE_DISPATCH)
-		MetaTrackDropObject(NamespaceRelationId,
-							namespaceId);
-
+	if (!is_internal && Gp_role == GP_ROLE_DISPATCH)
+		MetaTrackDropObject(NamespaceRelationId, namespaceId);
 }
 
 

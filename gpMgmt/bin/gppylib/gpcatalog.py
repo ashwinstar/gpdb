@@ -56,6 +56,7 @@ SPECIAL_TABLES = [
     'gp_id',
     'pg_depend',  # (not if we fix oid inconsistencies)
     'pg_shdepend', # (not if we fix oid inconsistencies)
+    'gp_fastsequence', # AO segment row id allocations
     'pg_statistic',
     ]
 
@@ -256,7 +257,9 @@ class GPCatalog():
         self._tables['pg_database']._setKnownDifferences("datfrozenxid")
 
         # MPP-10286 : inconsistent oids for temporary schemas
-        self._tables['pg_namespace']._setKnownDifferences("oid")
+        #   Fixed in 4.1
+        if self._version < '4.1':
+            self._tables['pg_namespace']._setKnownDifferences("oid")
 
         # MPP-11282 : Inconsistent oids for language callback functions
         self._tables['pg_proc']._setKnownDifferences("oid prolang")
