@@ -26,11 +26,6 @@
 #include "executor/executor.h"
 #include "executor/nodeGroup.h"
 
-#if 0
-/* debugging.. */
-#include "utils/debugutils.h"
-#endif
-
 /*
  *	 ExecGroup -
  *
@@ -138,10 +133,6 @@ ExecGroup(GroupState *node)
 			}
 			Gpmon_M_Incr(GpmonPktFromGroupState(node), GPMON_QEXEC_M_ROWSIN);
                         CheckSendPlanStateGpmonPkt(&node->ss.ps);
-#if 0
-			elog(LOG, "nodeGroup: numNullCols=%d, inputHasGrouping=%d, INPUT tuple: %s",
-				 group_node->numNullCols, group_node->inputHasGrouping, tup2str(outerslot));
-#endif
 
 			outer_grouping =
 				tuple_grouping(outerslot, numCols, input_grouping, input_has_grouping,
@@ -197,13 +188,8 @@ ExecGroup(GroupState *node)
 		 */
 		if (passthru_ready && !group_node->lastGroup)
 		{
-#if 0
-			elog(LOG, "nodeGroup: numNullCols=%d, inputHasGrouping=%d, output tuple: %s",
-				 group_node->numNullCols, group_node->inputHasGrouping, tup2str(outerslot));
-#endif
-
-                        Gpmon_M_Incr_Rows_Out(GpmonPktFromGroupState(node));
-                        CheckSendPlanStateGpmonPkt(&node->ss.ps);
+			Gpmon_M_Incr_Rows_Out(GpmonPktFromGroupState(node));
+			CheckSendPlanStateGpmonPkt(&node->ss.ps);
 			return outerslot;
 		}
 

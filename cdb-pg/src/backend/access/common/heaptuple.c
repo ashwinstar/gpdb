@@ -1204,7 +1204,7 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
 	slot->PRIVATE_tts_slow = slow;
 }
 
-#if 0
+#ifdef USE_ASSERT_CHECKING
 #include "utils/array.h"
 static void check_type_sanity(Form_pg_attribute attr, Datum d, bool isnull)
 {
@@ -1282,7 +1282,7 @@ _slot_getsomeattrs(TupleTableSlot *slot, int attnum)
 		slot->PRIVATE_tts_isnull[attno] = true;
 	}
 
-#if 0
+#ifdef USE_ASSERT_CHECKING
 	for(attno = 0; attno < attnum; ++attno)
 		check_type_sanity(slot->tts_tupleDescriptor->attrs[attno], slot->PRIVATE_tts_values[attno], slot->PRIVATE_tts_isnull[attno]);
 #endif

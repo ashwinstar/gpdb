@@ -279,42 +279,6 @@ void mk_qsort_impl(MKEntry *a, int left, int right, int lv, bool lvdown, MKConte
 	 */
 	mk_qsort_part3(a, left, right, lv, ctxt, &lastInLow, &firstInHigh);
 
-#if 0 
-	/* Check that the partition is done right. */
-	{
-		void *cmpctxt = mk_get_ctxt(ctxt, lv); 
-
-		int x = 0;
-		int c;
-
-		MKEntry *pv = a+lastInLow+1;
-
-		/* low should all be smaller than pivot */
-		for(x=left; x<=lastInLow; ++x)
-		{
-			c = mkqs_comp(a+x, pv, cmpctxt);
-			Assert(c < 0);
-		}
-
-		/* the ones in the middle should all equal the pivot */
-		for(x=i+lastInLow; x<firstInHigh; ++x)
-		{
-			if(a+x != pv)
-			{
-				c = mkqs_comp(a+x, pv, cmpctxt);
-				Assert(c == 0);
-			}
-		}
-
-		/* high should all be bigger than pivot */
-		for(x=firstInHigh; x<=right; ++x)
-		{
-			c = mkqs_comp(a+x, pv, cmpctxt);
-			Assert(c > 0);
-		}
-	}
-#endif
-
 	/* recurse to left chunk */
 	mk_qsort_impl(a, left, lastInLow, lv, false, ctxt, seenNull);
 

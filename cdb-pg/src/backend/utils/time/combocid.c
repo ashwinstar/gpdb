@@ -550,17 +550,3 @@ loadSharedComboCommandId(TransactionId xmin, CommandId combocid, CommandId *cmin
 		elog(ERROR, "loadSharedComboCommandId: no combocid entry found for %u/%u", xmin, combocid);
 	}
 }
-
-#if 0
-void
-sharedCombocid_ProcClean(void)
-{
-	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
-	{
-		return;
-	}
-
-	/* We're either GP_ROLE_DISPATCH, GP_ROLE_UTILITY, or  QE-writer */
-}
-
-#endif

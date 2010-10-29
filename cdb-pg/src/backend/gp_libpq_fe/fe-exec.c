@@ -351,81 +351,8 @@ PQcopyResult(const PGresult *src, int flags)
 	if (flags & PG_COPYRES_NOTICEHOOKS)
 		dest->noticeHooks = src->noticeHooks;
 
-#if 0
-	/* Wants to copy PGEvents? */
-	if ((flags & PG_COPYRES_EVENTS) && src->nEvents > 0)
-	{
-		dest->events = dupEvents(src->events, src->nEvents);
-		if (!dest->events)
-		{
-			PQclear(dest);
-			return NULL;
-		}
-		dest->nEvents = src->nEvents;
-	}
-
-	/* Okay, trigger PGEVT_RESULTCOPY event */
-	for (i = 0; i < dest->nEvents; i++)
-	{
-		if (src->events[i].resultInitialized)
-		{
-			PGEventResultCopy evt;
-
-			evt.src = src;
-			evt.dest = dest;
-			if (!dest->events[i].proc(PGEVT_RESULTCOPY, &evt,
-									  dest->events[i].passThrough))
-			{
-				PQclear(dest);
-				return NULL;
-			}
-			dest->events[i].resultInitialized = TRUE;
-		}
-	}
-#endif
-
 	return dest;
 }
-
-#if 0
-/*
- * Copy an array of PGEvents (with no extra space for more).
- * Does not duplicate the event instance data, sets this to NULL.
- * Also, the resultInitialized flags are all cleared.
- */
-static PGEvent *
-dupEvents(PGEvent *events, int count)
-{
-	PGEvent *newEvents;
-	int i;
-
-	if (!events || count <= 0)
-		return NULL;
-
-	newEvents = (PGEvent *) malloc(count * sizeof(PGEvent));
-	if (!newEvents)
-		return NULL;
-
-	for (i = 0; i < count; i++)
-	{
-		newEvents[i].proc = events[i].proc;
-		newEvents[i].passThrough = events[i].passThrough;
-		newEvents[i].data = NULL;
-		newEvents[i].resultInitialized = FALSE;
-		newEvents[i].name = strdup(events[i].name);
-		if (!newEvents[i].name)
-		{
-			while (--i >= 0)
-				free(newEvents[i].name);
-			free(newEvents);
-			return NULL;
-		}
-	}
-
-	return newEvents;
-}
-#endif
-
 
 /*
  * Sets the value for a tuple field.  The tup_num must be less than or
@@ -1361,13 +1288,6 @@ PQbuildGpDtxProtocolCommand(
 	tmp = htonl(primary_gang_id);
 	memcpy(pos, &tmp, 4);
 	pos += 4;
-
-	/* REMOVED MIRROR GANG */
-#if 0
-	tmp = htonl(mirror_gang_id);
-	memcpy(pos, &tmp, 4);
-	pos += 4;
-#endif
 	
 	tmp = htonl(argumentLength);
 	memcpy(pos, &tmp, 4);

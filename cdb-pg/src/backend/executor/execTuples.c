@@ -607,10 +607,6 @@ ExecStoreAllNullTuple(TupleTableSlot *slot)
 	/*
 	 * Fill all the columns of the virtual tuple with nulls
 	 */
-#if 0
-	MemSet(slot->PRIVATE_tts_values, 0,
-		   slot->tts_tupleDescriptor->natts * sizeof(Datum));
-#endif
 	MemSet(slot->PRIVATE_tts_isnull, true,
 		   slot->tts_tupleDescriptor->natts * sizeof(bool));
 

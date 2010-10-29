@@ -161,10 +161,6 @@ static void analyzeComputeHistogram(Oid relationOid,
 		unsigned int nEntries,
 		ArrayType *mcv,
 		ArrayType **hist);
-#if 0
-/* TODO: enable this code once NOT-IN parsing bugs are resolved */
-static char *buildNotInString(ArrayType *mcv);
-#endif
 
 /* Catalog related */
 static void updateAttributeStatisticsInCatalog(Oid relationOid, const char *attributeName, 
@@ -1855,69 +1851,6 @@ static void analyzeComputeMCV(Oid relationOid,
 	return;
 }
 
-#if 0
-/**
- * TODO: currently, there seem to be many problems with not-in subqueries.
- * 		 will enable and test this code once MPP-6672 is resolved.
- * 
- * Helper method used by analyzeComputeHistogram to build in a NOT IN clause
- * to eliminate most common values during histogram calculation.
- * Input:
- * 	mcv - most common values. should be non-null
- * Output:
- * 	NOT IN ('v1','v2',...). Caller is responsible for pfree'ing the result.
- */
-static char *buildNotInString(ArrayType *mcv)
-{
-	Oid				elementType = InvalidOid;
-	StringInfoData	notInBuf;
-	HeapTuple		typeTuple = NULL;
-	Form_pg_type	typeStruct = NULL;
-	Oid				typeOutputOid = InvalidOid;
-	Datum			*values = NULL;
-	int				valuesLength = 0;
-	int				i = 0;
-
-	elementType = ARR_ELEMTYPE(mcv);
-	typeTuple = SearchSysCache(TYPEOID,
-			ObjectIdGetDatum(elementType),
-			0, 0, 0);
-	if (!HeapTupleIsValid(typeTuple))
-		elog(ERROR, "cache lookup failed for type %u", elementType);
-	typeStruct = (Form_pg_type) GETSTRUCT(typeTuple);
-
-	deconstruct_array(mcv,
-			elementType,
-			typeStruct->typlen, 
-			typeStruct->typbyval, 
-			typeStruct->typalign,
-			&values, NULL, &valuesLength);
-	Assert(valuesLength > 0);
-	Assert(typeStruct->typoutput != InvalidOid);
-	Assert(typeStruct->typinput != InvalidOid);
-	typeOutputOid = typeStruct->typoutput;
-	ReleaseSysCache(typeTuple);
-	
-	initStringInfo(&notInBuf);
-	appendStringInfo(&notInBuf, "not in (");
-
-	for (i = 0; i < valuesLength; i++)
-	{
-		const char *valueStr = NULL;
-		valueStr = DatumGetCString(OidFunctionCall1(typeOutputOid, values[i]));
-		Assert(valueStr);
-		appendStringInfo(&notInBuf, "%s", quote_literal_internal(valueStr));
-		if (i != valuesLength - 1)
-		{
-			appendStringInfo(&notInBuf, ",");
-		}
-	}
-	
-	appendStringInfo(&notInBuf, ")");
-	return notInBuf.data;
-}
-#endif
-
 /**
  * Compute histogram entries for relation.
  * Input:
@@ -1959,18 +1892,6 @@ static void analyzeComputeHistogram(Oid relationOid,
 	initStringInfo(&str);
 	initStringInfo(&whereClause);
 	
-	/**
-	 * Build the not-in clause using the mcv values.
-	 */
-#if 0
-	/* TODO: enable this code once NOT-IN bugs are resolved */
-	if (mcv)
-	{
-		const char *notIn = buildNotInString(mcv);
-		Assert(notIn);
-		appendStringInfo(&whereClause, "%s %s and ", quote_identifier(attributeName), notIn);
-	}
-#endif
 	appendStringInfo(&whereClause, "%s is not null", quote_identifier(attributeName));
 	
 	/**

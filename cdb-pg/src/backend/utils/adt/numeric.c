@@ -58,25 +58,6 @@
  * ----------
  */
 
-#if 0
-#define NBASE		10
-#define HALF_NBASE	5
-#define DEC_DIGITS	1			/* decimal digits per NBASE digit */
-#define MUL_GUARD_DIGITS	4	/* these are measured in NBASE digits */
-#define DIV_GUARD_DIGITS	8
-
-typedef signed char NumericDigit;
-#endif
-
-#if 0
-#define NBASE		100
-#define HALF_NBASE	50
-#define DEC_DIGITS	2			/* decimal digits per NBASE digit */
-#define MUL_GUARD_DIGITS	3	/* these are measured in NBASE digits */
-#define DIV_GUARD_DIGITS	6
-
-typedef signed char NumericDigit;
-#endif
 
 #if 1
 #define NBASE		10000

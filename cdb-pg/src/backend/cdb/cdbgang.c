@@ -163,13 +163,6 @@ segment_failure_due_to_recovery(SegmentDatabaseDescriptor *segdbDesc)
 		/* We could do retries for "sorry, too many clients already" here too */
 	}
 
-#if 0
-	if (ptr != NULL)
-		elog(LOG, "segment failure *not* in startup or recovery '%s' %d ptr '%c'", message, fatal_len, *ptr);
-	else
-		elog(LOG, "segment failure *not* in startup or recovery '%s' %d", message, fatal_len);
-#endif
-
 	return false;
 }
 
@@ -811,10 +804,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 		elog(ERROR, "Not all primary segment instances are active and connected");
 		/* not reached */
 	}
-#if 0
-	elog(NOTICE, "DEBUG ME %u", (unsigned int)getpid());
-	pg_usleep(10000000);
-#endif
 	return newGangDefinition;
 }
 

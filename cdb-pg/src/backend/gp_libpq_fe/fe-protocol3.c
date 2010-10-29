@@ -252,12 +252,6 @@ pqParseInput3(PGconn *conn)
 					
 					if (getQEWriterTransactionInfo(conn))
 						return;
-#if 0
-					pqInternalNotice(&conn->noticeHooks,
-									 "Called getQEWriterTransactionInfo from pqParseInput3 (DistributedTransactionId = %u, CommandId = %u, Dirty = %s)\n",
-									 conn->QEWriter_DistributedTransactionId, conn->QEWriter_CommandId,
-									 (conn->QEWriter_Dirty ? "true" : "false"));
-#endif
 
 					if (conn->result == NULL)
 					{

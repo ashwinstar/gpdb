@@ -3606,14 +3606,6 @@ expression_tree_walker(Node *node,
 			}
 			break;
 		case T_GroupingFunc:
-			{
-#if 0
-				GroupingFunc *gfunc = (GroupingFunc *)node;
-
-				if (expression_tree_walker((Node*) gfunc->args, walker, context))
-					return true;
-#endif
-			}
 			break;
 		case T_Grouping:
 		case T_GroupId:

@@ -2418,21 +2418,12 @@ copytup_heap(Tuplesortstate_mk *state, MKEntry *e, void *tup)
      */
     TupleTableSlot *slot = (TupleTableSlot *) tup;
 
-#if 0
-    /* copy the tuple into sort storage */
-    /* XXX BUG BUG:
-     * Slot mismatch.  slot is from outer plan, but we will
-     * access using state->mt_bind
-     */
-    stup->tuple = ExecCopySlotMemTuple(slot);
-#else
     slot_getallattrs(slot);
     e->ptr = (void *) memtuple_form_to(state->mt_bind, 
             slot_get_values(slot),
             slot_get_isnull(slot),
             NULL, NULL, false
             );
-#endif
     Assert(state->mt_bind);
 }
 

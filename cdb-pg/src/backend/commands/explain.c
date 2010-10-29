@@ -241,31 +241,6 @@ ExplainOneUtility(Node *utilityStmt, ExplainStmt *stmt,
 	if (utilityStmt == NULL)
 		return;
 
-#if 0
-	if (IsA(utilityStmt, DeclareCursorStmt))
-		{
-			DeclareCursorStmt *dcstmt;
-			List	   *rewritten;
-			Query *query;
-
-			dcstmt = (DeclareCursorStmt *) utilityStmt;
-			query = (Query *) dcstmt->query;
-			bool isCursor = true;
-			int cursorOptions = dcstmt->options;
-			/* Still need to rewrite cursor command */
-			Assert(query->commandType == CMD_SELECT);
-			/* get locks (we assume ExplainQuery already copied tree) */
-			AcquireRewriteLocks(query);
-			rewritten = QueryRewrite(query);
-			if (list_length(rewritten) != 1)
-				elog(ERROR, "unexpected rewrite result");
-			query = (Query *) linitial(rewritten);
-			Assert(query->commandType == CMD_SELECT);
-			/* do not actually execute the underlying query! */
-			stmt->analyze = false;
-		}
-	else
-#endif
 	if (IsA(utilityStmt, ExecuteStmt))
 		ExplainExecuteQuery((ExecuteStmt *) utilityStmt, stmt,
 							queryString, params, tstate);

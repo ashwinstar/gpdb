@@ -121,11 +121,6 @@ pg_atoi(char *s, int size, int c)
 void
 pg_itoa(int16 i, char *a)
 {
-	
-#if 0 
-	sprintf(a, "%hd", (short) i);
-#else
- 
 	/* 
 	 * The standard postgres way is to sprintf, but that uses a lot of cpu.
 	 * Do a fast conversion to string instead.
@@ -154,7 +149,6 @@ pg_itoa(int16 i, char *a)
 		*sp++ = *--tp;
 	*sp = 0;
 	
-#endif 
 }
 
 /*
@@ -167,10 +161,6 @@ pg_itoa(int16 i, char *a)
 void
 pg_ltoa(int32 l, char *a)
 {
-#if 0
-	sprintf(a, "%d", l);
-#else
- 
 	/* 
 	 * The standard postgres way is to sprintf, but that uses a lot of cpu.
 	 * Do a fast conversion to string instead.
@@ -199,5 +189,4 @@ pg_ltoa(int32 l, char *a)
 		*sp++ = *--tp;
 	*sp = 0;
 	
-#endif 
 }

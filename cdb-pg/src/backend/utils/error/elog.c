@@ -1997,40 +1997,6 @@ write_eventlog(int level, const char *line)
 #endif   /* WIN32 */
 
 /*
- * setup formatted_log_time, for consistent times between CSV and regular logs
- */
-#if 0
-static void
-setup_formatted_log_time(void)
-{
-    struct timeval tv;
-    pg_time_t	stamp_time;
-    pg_tz	   *tz;
-    char		msbuf[8];
-
-    gettimeofday(&tv, NULL);
-    stamp_time = (pg_time_t) tv.tv_sec;
-
-    /*
-     * Normally we print log timestamps in log_timezone, but during startup we
-     * could get here before that's set. If so, fall back to gmt_timezone
-     * (which guc.c ensures is set up before Log_line_prefix can become
-     * nonempty).
-     */
-    tz = log_timezone ? log_timezone : gmt_timezone;
-
-    pg_strftime(formatted_log_time, FORMATTED_TS_LEN,
-                /* leave room for milliseconds... */
-                "%Y-%m-%d %H:%M:%S     %Z",
-                pg_localtime(&stamp_time, tz));
-
-    /* 'paste' milliseconds into place... */
-    sprintf(msbuf, ".%03d", (int) (tv.tv_usec / 1000));
-    strncpy(formatted_log_time + 19, msbuf, 4);
-}
-#endif
-
-/*
  * setup formatted_start_time
  */
 static void

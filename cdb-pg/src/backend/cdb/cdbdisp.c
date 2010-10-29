@@ -147,37 +147,6 @@ cdbdisp_dispatchCommandToAllGangs(const char	*strCommand,
 #define MPPEXEC_CAP_STR "MPPEXEC "
 #define MPPEXEC_STR "mppexec "
 
-/* check if any segment is down and give a notice. */
-static inline void
-checkSegmentDown(const char *strCommand, int nsegdb, Gang *primaryGang)
-{
-#if 0
-	if (mirrorGang &&
-		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
-	{
-		elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d",
-			 nsegdb, mirrorGang->segdb_count, mirrorGang->size);
-		elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d",
-			 nsegdb, primaryGang->segdb_count, primaryGang->size);
-		elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only", strCommand);
-
-		if (strncmp(strCommand, BEGIN_STR, sizeof(BEGIN_STR) - 1) != 0 &&
-			strncmp(strCommand, PREPARE_STR, sizeof(PREPARE_STR) - 1) != 0 &&
-			strncmp(strCommand, COMMIT_STR, sizeof(COMMIT_STR) - 1) != 0 &&
-			strncmp(strCommand, ROLLBACK_STR, sizeof(ROLLBACK_STR) - 1) != 0 &&
-			strncmp(strCommand, PG_RELATION_SIZE_STR, sizeof(PG_RELATION_SIZE_STR) - 1) != 0 &&
-			strncmp(strCommand, PG_HIGHEST_OID_STR, sizeof(PG_HIGHEST_OID_STR) - 1) != 0)
-		{
-			if (strncmp(strCommand, MPPEXEC_CAP_STR, sizeof(MPPEXEC_CAP_STR) - 1) == 0 ||
-				strncmp(strCommand, MPPEXEC_STR, sizeof(MPPEXEC_STR) - 1) == 0)
-				elog(NOTICE, "Segment failures detected in system - normal query processing continuing with mirror segments.");
-			else
-				elog(NOTICE, "Segment failures detected in system - normal query processing continuing with mirror segments (%.50s).", strCommand);
-		}
-	}
-#endif
-}
-
 /*
  * Clear our "active" flags; so that we know that the writer gangs are busy -- and don't stomp on
  * internal dispatcher structures. See MPP-6253 and MPP-6579.
@@ -1399,9 +1368,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	Assert(primaryGang);
 
 	queryParms.primary_gang_id = primaryGang->gang_id;
-		
-	checkSegmentDown(strCommand, nsegdb, primaryGang);
-
+	
 	/* Serialize a version of our DTX Context Info */
 	queryParms.serializedDtxContextInfo = 
 		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, withSnapshot, false, generateTxnOptions(needTwoPhase), "cdbdisp_dispatchCommand");
@@ -1649,8 +1616,6 @@ cdbdisp_dispatchCommandToAllGangs(const char	*strCommand,
 	Assert(primaryGang);
 	
 	queryParms.primary_gang_id = primaryGang->gang_id;
-
-	checkSegmentDown(strCommand, nsegdb, primaryGang);
 
 	/* serialized a version of our snapshot */
 	queryParms.serializedDtxContextInfo = 
@@ -2724,18 +2689,6 @@ CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbD
 	
 	if (conn && conn->QEWriter_HaveInfo)
 	{
-#if 0
-		if (log_min_messages >= DEBUG1)
-		write_log("%s -> Collected Segment Writer transaction info (segment %d (%s)"
-				  ", DistributedTransactionId = %u, CommandId = %u, pRes->QEDirty = %s, dispatchResult->QEDirty = %s)", 
-			segdbDesc->whoami,
-			segdbDesc->segment_database_info->segindex,
-			(segdbDesc->segment_database_info->isprimary ? "primary" : "mirror"),
-			conn->QEWriter_DistributedTransactionId,
-			conn->QEWriter_CommandId,
-			(conn->QEWriter_Dirty ? "true" : "false"),
-			(dispatchResult->QEWriter_Dirty ? "true" : "false"));
-#endif
 		dispatchResult->QEIsPrimary = true;
 		dispatchResult->QEWriter_HaveInfo = true;
 		dispatchResult->QEWriter_DistributedTransactionId = conn->QEWriter_DistributedTransactionId;

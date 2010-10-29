@@ -1483,12 +1483,6 @@ PostmasterMain(int argc, char *argv[])
 	load_ident();
 
 
-#if 0                   /* CDB: This code has been moved to an earlier point. */
-	/*
-	 * Remember postmaster startup time
-	 */
-	PgStartTime = GetCurrentTimestamp();
-#endif
 	/* PostmasterRandom wants its own copy */
 	gettimeofday(&random_start_time, NULL);
 
@@ -2193,34 +2187,6 @@ ServerLoop(void)
 					signal_child(BgWriterPID, SIGUSR2);
 			}
 
-#if 0
-			/* If we have lost the archiver, try to start a new one */
-			if (XLogArchivingActive() && PgArchPID == 0 && pmState == PM_RUN && !SyncMaster)
-			{
-				PgArchPID = pgarch_start();
-				if (Debug_print_server_processes)
-					elog(LOG,"restarted 'archiver process' as pid %ld",
-						 (long)PgArchPID);
-			}
-
-			/*
-			 * Likewise, if we have lost the walwriter process, try to start a new
-			 * one.
-			 */
-			if (WalWriterPID == 0 && pmState == PM_RUN)
-				WalWriterPID = StartWalWriter();
-
-
-			/* If we have lost the autovacuum launcher, try to start a new one */
-			if (AutoVacPID == 0 &&
-				(AutoVacuumingActive() || start_autovac_launcher) &&
-				pmState == PM_RUN)
-			{
-				AutoVacPID = StartAutoVacLauncher();
-				if (AutoVacPID != 0)
-					start_autovac_launcher = false; /* signal processed */
-			}
-#endif
 			/*
 			 * Start a new autovacuum process, if there isn't one running already.
 			 * (It'll die relatively quickly.)  We check that it's not started too
@@ -3386,11 +3352,6 @@ canAcceptConnections(void)
 	 */
 	if (pmState != PM_RUN)
 	{
-#if 0
-        /* GPDB doesn't have WAIT_BACKUP */
-		if (pmState == PM_WAIT_BACKUP)
-			return CAC_WAITBACKUP;		/* allow superusers only */
-#endif
 		if (Shutdown > NoShutdown)
 			return CAC_SHUTDOWN;	/* shutdown is pending */
 		if (!FatalError &&
@@ -3861,12 +3822,6 @@ static bool CommenceNormalOperations(void)
 	 * Likewise, start other special children as needed.  In a restart
 	 * situation, some of them may be alive already.
 	 */
-#if 0
-	if (WalWriterPID == 0)
-		WalWriterPID = StartWalWriter();
-	if (AutoVacuumingActive() && AutoVacPID == 0)
-		AutoVacPID = StartAutoVacLauncher();
-#endif
 	if (Shutdown > NoShutdown && BgWriterPID != 0)
 		signal_child(BgWriterPID, SIGUSR2);
 	else if (Shutdown == NoShutdown)
@@ -5286,10 +5241,6 @@ static void StateMachineTransition_ShutdownBackends(void)
 
     signal_filerep_to_shutdown(SegmentStateShutdownFilerepBackends);
 
-#if 0 /* gpdb does not have wal writer .. should this happen in backends or archiver? */
-    /* and wal writer */
-    signal_child_if_up(WalWriterPID, SIGTERM);
-#endif
 }
 
 /**
@@ -5456,15 +5407,6 @@ PostmasterStateMachine(void)
             case PM_RUN:
                 nextPmState = pmState;
                 break;
-    #if 0 /* gpdb does not have PM_WAIT_BACKUP */
-            case PM_WAIT_BACKUP:
-                /*
-                 * PM_WAIT_BACKUP state ends when online backup mode is not active.
-                 */
-                if (!BackupInProgress())
-                    nextPmState = PM_WAIT_BACKENDS;
-                break;
-    #endif
 
             case PM_CHILD_STOP_BEGIN:
                 nextPmState = pmState + 1; /* immediately move to next step and run its transition actions ... */
@@ -5547,11 +5489,6 @@ PostmasterStateMachine(void)
             case PM_RECOVERY_CONSISTENT:
             case PM_RUN:
                 break;
-    #if 0 /* gpdb does not have PM_WAIT_BACKUP */
-            case PM_WAIT_BACKUP:
-                /* how to trigger WAIT_BACKUP */
-                break;
-    #endif
 
             case PM_CHILD_STOP_BEGIN:
                 Assert("Unreachable state; the only change of pmState to PM_CHILD_STOP_BEGIN is in the pmdie handler.");
@@ -6599,14 +6536,6 @@ SubPostmasterMain(int argc, char *argv[])
 		strcmp(argv[1], "--forkboot") == 0)
 		PGSharedMemoryReAttach();
 
-#if 0
-	/* autovacuum needs this set before calling InitProcess */
-	if (strcmp(argv[1], "--forkavlauncher") == 0)
-		AutovacuumLauncherIAm();
-	if (strcmp(argv[1], "--forkavworker") == 0)
-		AutovacuumWorkerIAm();
-#endif
-
 	/*
 	 * Start our win32 signal implementation. This has to be done after we
 	 * read the backend variables, because we need to pick up the signal pipe
@@ -6702,25 +6631,6 @@ SubPostmasterMain(int argc, char *argv[])
 		AuxiliaryProcessMain(argc - 2, argv + 2);
 		proc_exit(0);
 	}
-#if 0
-	if (strcmp(argv[1], "--forkavlauncher") == 0)
-	{
-		/* Close the postmaster's sockets */
-		ClosePostmasterPorts(false);
-
-		/* Restore basic shared memory pointers */
-		InitShmemAccess(UsedShmemSegAddr);
-
-		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
-		InitAuxiliaryProcess();
-
-		/* Attach process to shared data structures */
-		CreateSharedMemoryAndSemaphores(false, 0);
-
-		AutoVacLauncherMain(argc - 2, argv + 2);
-		proc_exit(0);
-	}
-#endif
 	if (strcmp(argv[1], "--forkautovac") == 0)
 	{
 		/* Close the postmaster's sockets */
@@ -7199,90 +7109,6 @@ StartChildProcess(AuxProcType type)
 	 */
 	return pid;
 }
-
-#if 0
-
-/*
- * StartAutovacuumWorker
- *		Start an autovac worker process.
- *
- * This function is here because it enters the resulting PID into the
- * postmaster's private backends list.
- *
- * NB -- this code very roughly matches BackendStartup.
- */
-static void
-StartAutovacuumWorker(void)
-{
-	Backend    *bn;
-
-	/*
-	 * If not in condition to run a process, don't try, but handle it like a
-	 * fork failure.  This does not normally happen, since the signal is only
-	 * supposed to be sent by autovacuum launcher when it's OK to do it, but
-	 * we have to check to avoid race-condition problems during DB state
-	 * changes.
-	 */
-	if (canAcceptConnections() == CAC_OK)
-	{
-		bn = (Backend *) malloc(sizeof(Backend));
-		if (bn)
-		{
-			/*
-			 * Compute the cancel key that will be assigned to this session.
-			 * We probably don't need cancel keys for autovac workers, but
-			 * we'd better have something random in the field to prevent
-			 * unfriendly people from sending cancels to them.
-			 */
-			MyCancelKey = PostmasterRandom();
-			bn->cancel_key = MyCancelKey;
-
-			/* Autovac workers are not dead_end and need a child slot */
-			bn->dead_end = false;
-			bn->child_slot = MyPMChildSlot = AssignPostmasterChildSlot();
-
-			bn->pid = StartAutoVacWorker();
-			if (bn->pid > 0)
-			{
-				bn->is_autovacuum = true;
-				DLInitElem(&bn->elem, bn);
-				DLAddHead(BackendList, &bn->elem);
-#ifdef EXEC_BACKEND
-				ShmemBackendArrayAdd(bn);
-#endif
-				/* all OK */
-				return;
-			}
-
-			/*
-			 * fork failed, fall through to report -- actual error message was
-			 * logged by StartAutoVacWorker
-			 */
-			(void) ReleasePostmasterChildSlot(bn->child_slot);
-			free(bn);
-		}
-		else
-			ereport(LOG,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
-	}
-
-	/*
-	 * Report the failure to the launcher, if it's running.  (If it's not, we
-	 * might not even be connected to shared memory, so don't try to call
-	 * AutoVacWorkerFailed.)  Note that we also need to signal it so that it
-	 * responds to the condition, but we don't do that here, instead waiting
-	 * for ServerLoop to do it.  This way we avoid a ping-pong signalling in
-	 * quick succession between the autovac launcher and postmaster in case
-	 * things get ugly.
-	 */
-	if (AutoVacPID != 0)
-	{
-		AutoVacWorkerFailed();
-		avlauncher_needs_signal = true;
-	}
-}
-#endif
 
 /*
  * Create the opts file

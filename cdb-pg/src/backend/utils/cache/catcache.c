@@ -989,20 +989,6 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
 					return false;
 			}
 		
-#if 0
-		case AUTHNAME:
-		case AUTHOID:
-		case AUTHMEMMEMROLE:
-
-			/*
-			 * Protect authentication lookups occurring before relcache has
-			 * collected entries for shared indexes.
-			 */
-			if (!criticalSharedRelcachesBuilt)
-				return false;
-			break;
-#endif
-
 		default:
 			break;
 	}

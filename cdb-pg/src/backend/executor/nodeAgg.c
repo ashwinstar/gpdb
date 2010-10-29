@@ -102,11 +102,6 @@
 #include "cdb/cdbexplain.h"
 #include "cdb/cdbvars.h" /* mpp_hybrid_hash_agg */
 
-#if 0
-/* debugging ... */
-#include "utils/debugutils.h"
-#endif
-
 /*
  * AggStatePerAggData -- per-aggregate working state
  * AggStatePerGroupData - per-aggregate-per-group working state
@@ -1005,22 +1000,11 @@ agg_retrieve_direct(AggState *aggstate)
 
 				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSIN);
                                 CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
-#if 0
-				/*
-				 * XXX BUG BUG:
-				 * Slot mismatch.  Here we create a mem tuple using outerSlot.
-				 * However, later we will store this baby in firstSlot.
-				 *
-				 * The two slot maybe different!
-				 */
-				aggstate->grp_firstTuple = ExecCopySlotMemTuple(outerslot);
-#else
 				slot_getallattrs(outerslot);
 				aggstate->grp_firstTuple = memtuple_form_to(firstSlot->tts_mt_bind,
 						slot_get_values(outerslot),
 						slot_get_isnull(outerslot),
 						NULL, NULL, false);
-#endif
 			}
 			else
 			{
@@ -1031,11 +1015,6 @@ agg_retrieve_direct(AggState *aggstate)
 					return NULL;
 			}
 
-#if 0
-			if (!TupIsNull(outerslot))
-				elog(LOG, "nodeAgg: numNullCols=%d, inputHasGrouping=%d, input tuple: %s",
-					 node->numNullCols, node->inputHasGrouping, tup2str(outerslot));
-#endif
 		}
 		
 		if (!aggstate->has_partial_agg)
@@ -1135,11 +1114,6 @@ agg_retrieve_direct(AggState *aggstate)
                                         CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 					/* set up for next advance aggregates call */
 					tmpcontext->ecxt_scantuple = outerslot;
-
-#if 0
-					elog(LOG, "nodeAgg: numNullCols=%d, inputHasGrouping=%d, input tuple: %s",
-						 node->numNullCols, node->inputHasGrouping, tup2str(outerslot));
-#endif
 
 					/*
 					 * If we are grouping, check whether we've crossed a group

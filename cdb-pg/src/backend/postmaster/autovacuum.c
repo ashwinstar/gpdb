@@ -193,15 +193,6 @@ typedef struct
 
 static AutoVacuumShmemStruct *AutoVacuumShmem;
 
-/* the database list in the launcher, and the context that contains it */
-#if 0
-static Dllist *DatabaseList = NULL;
-static MemoryContext DatabaseListCxt = NULL;
-
-/* Pointer to my own WorkerInfo, valid on each worker */
-static WorkerInfo MyWorkerInfo = NULL;
-#endif
-
 /* PID of launcher, valid only in worker while shutting down */
 int			AutovacuumLauncherPid = 0;
 
@@ -211,11 +202,6 @@ static pid_t avlauncher_forkexec(void); // new
 static pid_t avworker_forkexec(void);  // new
 #endif
 NON_EXEC_STATIC void AutoVacMain(int argc, char *argv[]);
-#if 0
-NON_EXEC_STATIC void AutoVacWorkerMain(int argc, char *argv[]);
-NON_EXEC_STATIC void AutoVacLauncherMain(int argc, char *argv[]);
-#endif
-
 
 static void do_autovacuum(PgStat_StatDBEntry *dbentry);
 static List *autovac_get_database_list(void);
@@ -306,63 +292,6 @@ autovac_stopped(void)
 	last_autovac_stop_time = time(NULL);
 }
 
-#if 0
-
-/* SIGHUP: set flag to re-read config file at next convenient time */
-static void
-avl_sighup_handler(SIGNAL_ARGS)
-{
-	got_SIGHUP = true;
-}
-
-/* SIGUSR1: a worker is up and running, or just finished */
-static void
-avl_sigusr1_handler(SIGNAL_ARGS)
-{
-	got_SIGUSR1 = true;
-}
-
-/* SIGTERM: time to die */
-static void
-avl_sigterm_handler(SIGNAL_ARGS)
-{
-	got_SIGTERM = true;
-}
-#endif
-
-/*
- * avl_quickdie occurs when signalled SIGQUIT from postmaster.
- *
- * Some backend has bought the farm, so we need to stop what we're doing
- * and exit.
- */
-#if 0
-static void
-avl_quickdie(SIGNAL_ARGS)
-{
-	PG_SETMASK(&BlockSig);
-
-	/*
-	 * We DO NOT want to run proc_exit() callbacks -- we're here because
-	 * shared memory may be corrupted, so we don't want to try to clean up our
-	 * transaction.  Just nail the windows shut and get out of town.  Now that
-	 * there's an atexit callback to prevent third-party code from breaking
-	 * things by calling exit() directly, we have to reset the callbacks
-	 * explicitly to make this work as intended.
-	 */
-	on_exit_reset();
-
-	/*
-	 * Note we do exit(2) not exit(0).	This is to force the postmaster into a
-	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
-	 * backend.  This is necessary precisely because we don't clean up our
-	 * shared memory state.  (The "dead man switch" mechanism in pmsignal.c
-	 * should ensure the postmaster sees this as a crash, too, but no harm in
-	 * being doubly sure.)
-	 */
-	exit(2);
-}
-#endif
 
 /********************************************************************
  *					  AUTOVACUUM WORKER CODE
@@ -859,60 +788,6 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 }
 
 /*
- * extract_autovac_opts
- *
- * Given a relation's pg_class tuple, return the AutoVacOpts portion of
- * reloptions, if set; otherwise, return NULL.
- */
-#if 0
-static AutoVacOpts *
-extract_autovac_opts(HeapTuple tup, TupleDesc pg_class_desc)
-{
-	bytea	   *relopts = NULL;
-	AutoVacOpts *av;
-
-	Assert(((Form_pg_class) GETSTRUCT(tup))->relkind == RELKIND_RELATION ||
-		   ((Form_pg_class) GETSTRUCT(tup))->relkind == RELKIND_TOASTVALUE);
-
-	relopts = extractRelOptions(tup, pg_class_desc, InvalidOid);
-	if (relopts == NULL)
-		return NULL;
-
-	av = palloc(sizeof(AutoVacOpts));
-	memcpy(av, &(((StdRdOptions *) relopts)->autovacuum), sizeof(AutoVacOpts));
-	pfree(relopts);
-
-	return av;
-}
-#endif
-
-/*
- * get_pgstat_tabentry_relid
- *
- * Fetch the pgstat entry of a table, either local to a database or shared.
- */
-#if 0
-static PgStat_StatTabEntry *
-get_pgstat_tabentry_relid(Oid relid, bool isshared, PgStat_StatDBEntry *shared,
-						  PgStat_StatDBEntry *dbentry)
-{
-	PgStat_StatTabEntry *tabentry = NULL;
-
-	if (isshared)
-	{
-		if (PointerIsValid(shared))
-			tabentry = hash_search(shared->tables, &relid,
-								   HASH_FIND, NULL);
-	}
-	else if (PointerIsValid(dbentry))
-		tabentry = hash_search(dbentry->tables, &relid,
-							   HASH_FIND, NULL);
-
-	return tabentry;
-}
-#endif
-
-/*
  * test_rel_for_autovac
  *
  * Check whether a table needs to be vacuumed or analyzed.	Add it to the
@@ -1336,40 +1211,6 @@ AutoVacuumShmemInit(void)
 	else
 		Assert(found);
 }
-
-/*
- * autovac_refresh_stats
- *		Refresh pgstats data for an autovacuum process
- *
- * Cause the next pgstats read operation to obtain fresh data, but throttle
- * such refreshing in the autovacuum launcher.	This is mostly to avoid
- * rereading the pgstats files too many times in quick succession when there
- * are many databases.
- *
- * Note: we avoid throttling in the autovac worker, as it would be
- * counterproductive in the recheck logic.
- */
-#if 0
-static void
-autovac_refresh_stats(void)
-{
-	if (IsAutoVacuumLauncherProcess())
-	{
-		static TimestampTz last_read = 0;
-		TimestampTz current_time;
-
-		current_time = GetCurrentTimestamp();
-
-		if (!TimestampDifferenceExceeds(last_read, current_time,
-										STATS_READ_DELAY))
-			return;
-
-		last_read = current_time;
-	}
-
-	pgstat_clear_snapshot();
-}
-#endif
 
 /** Auto-stats related functions. */
 

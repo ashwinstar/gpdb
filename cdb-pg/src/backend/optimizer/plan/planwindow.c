@@ -306,11 +306,7 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	/* Assert existence of windowing in query. */
 	Assert(parse->targetList != NIL);
 	Assert(parse->windowClause != NULL);
-	Assert(parse->hasWindFuncs);
-	
-#if 0	/* window clauses may occur inside a "declare cursor" utility statement */
-	Assert(parse->utilityStmt == NULL);
-#endif
+	Assert(parse->hasWindFuncs);	
 	/* Assert no unsupported stuff */
 	Assert(parse->setOperations == NULL);
 	Assert(!parse->hasAggs);

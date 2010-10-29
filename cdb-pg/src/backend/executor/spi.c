@@ -1843,42 +1843,6 @@ fail:
 	return my_res;
 }
 
-#if 0
-/*
- * Convert query parameters to form wanted by planner and executor
- */
-static ParamListInfo
-_SPI_convert_params(int nargs, Oid *argtypes,
-					Datum *Values, const char *Nulls,
-					int pflags)
-{
-	ParamListInfo paramLI;
-
-	if (nargs > 0)
-	{
-		int			i;
-
-		/* sizeof(ParamListInfoData) includes the first array element */
-		paramLI = (ParamListInfo) palloc(sizeof(ParamListInfoData) +
-									   (nargs - 1) *sizeof(ParamExternData));
-		paramLI->numParams = nargs;
-
-		for (i = 0; i < nargs; i++)
-		{
-			ParamExternData *prm = &paramLI->params[i];
-
-			prm->value = Values[i];
-			prm->isnull = (Nulls && Nulls[i] == 'n');
-			prm->pflags = pflags;
-			prm->ptype = argtypes[i];
-		}
-	}
-	else
-		paramLI = NULL;
-	return paramLI;
-}
-#endif
-
 static int
 _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 {

@@ -1278,89 +1278,6 @@ process_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 
 			dest = (p.log_format == 'c' || p.log_format == 'f') ?
 			 	LOG_DESTINATION_CSVLOG : LOG_DESTINATION_STDERR;
-#if 0
-			if (p.is_last == 'f' || p.is_last == 'F')
-			{
-				/*
-				 * Save a complete non-final chunk in the per-pid buffer if
-				 * possible - if not just write it out.
-				 */
-				int			free_slot = -1,
-							existing_slot = -1;
-				int			i;
-				StringInfo	str;
-
-				for (i = 0; i < CHUNK_SLOTS; i++)
-				{
-					if (saved_chunks[i].hdr.pid == p.pid)
-					{
-						existing_slot = i;
-						break;
-					}
-					if (free_slot < 0 && saved_chunks[i].hdr.pid == 0)
-						free_slot = i;
-				}
-				if (existing_slot >= 0)
-				{
-					str = &(saved_chunks[existing_slot].data);
-					appendBinaryStringInfo(str,
-										   cursor + PIPE_HEADER_SIZE,
-										   p.len);
-				}
-				else if (free_slot >= 0)
-				{
-					saved_chunks[free_slot].hdr.pid = p.pid;
-					str = &(saved_chunks[free_slot].data);
-					initStringInfo(str);
-					appendBinaryStringInfo(str,
-										   cursor + PIPE_HEADER_SIZE,
-										   p.len);
-				}
-				else
-				{
-					/*
-					 * If there is no free slot we'll just have to take our
-					 * chances and write out a partial message and hope that
-					 * it's not followed by something from another pid.
-					 */
-					write_syslogger_file(cursor + PIPE_HEADER_SIZE, p.len /*,dest*/);
-				}
-			}
-			else
-			{
-				/*
-				 * Final chunk --- add it to anything saved for that pid, and
-				 * either way write the whole thing out.
-				 */
-				int			existing_slot = -1;
-				int			i;
-				StringInfo	str;
-
-				for (i = 0; i < CHUNK_SLOTS; i++)
-				{
-					if (saved_chunks[i].hdr.pid == p.pid)
-					{
-						existing_slot = i;
-						break;
-					}
-				}
-				if (existing_slot >= 0)
-				{
-					str = &(saved_chunks[existing_slot].data);
-					appendBinaryStringInfo(str,
-										   cursor + PIPE_HEADER_SIZE,
-										   p.len);
-					write_syslogger_file(str->data, str->len /*, dest*/);
-					saved_chunks[existing_slot].hdr.pid = 0;
-					pfree(str->data);
-				}
-				else
-				{
-					/* The whole message was one chunk, evidently. */
-					write_syslogger_file(cursor + PIPE_HEADER_SIZE, p.len /*, dest*/);
-				}
-			}
-#endif 
 
 			/* Finished processing this chunk */
 			cursor += chunklen;
@@ -1406,32 +1323,7 @@ process_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 static void
 flush_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 {
-    syslogger_flush_chunks();
-#if 0
-	int			i;
-	StringInfo	str;
-
-	/* Dump any incomplete protocol messages */
-	for (i = 0; i < CHUNK_SLOTS; i++)
-	{
-		if (saved_chunks[i].pid != 0)
-		{
-			str = &(saved_chunks[i].data);
-			write_syslogger_file(str->data, str->len, LOG_DESTINATION_STDERR);
-			saved_chunks[i].pid = 0;
-			pfree(str->data);
-		}
-	}
-
-	/*
-	 * Force out any remaining pipe data as-is; we don't bother trying to
-	 * remove any protocol headers that may exist in it.
-	 */
-	if (*bytes_in_logbuffer > 0)
-		write_syslogger_file(logbuffer, *bytes_in_logbuffer,
-							 LOG_DESTINATION_STDERR);
-	*bytes_in_logbuffer = 0;
-#endif 
+    syslogger_flush_chunks(); 
 }
 #endif
 

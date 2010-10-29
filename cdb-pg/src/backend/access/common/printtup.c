@@ -173,19 +173,6 @@ SendRowDescriptionMessage(TupleDesc typeinfo, List *targetlist, int16 *formats)
 	pq_beginmessage(&buf, 'T'); /* tuple descriptor message type */
 	pq_sendint(&buf, natts, 2); /* # of attrs in tuples */
 
-#if 0
-	for (i = 0; i < natts; ++i)
-		{
-			Oid			atttypid = attrs[i]->atttypid;
-			int32		atttypmod = attrs[i]->atttypmod;
-
-			/* If column is a domain, send the base type and typmod instead */
-						atttypid = getBaseTypeAndTypmod(atttypid, &atttypmod);
-			elog(NOTICE," Col %d named %s type %d typmod %d",i,NameStr(attrs[i]->attname),atttypid,atttypmod);
-
-
-		}
-#endif
 	for (i = 0; i < natts; ++i)
 	{
 		Oid			atttypid = attrs[i]->atttypid;

@@ -1530,31 +1530,4 @@ cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
        appendStringInfoChar(str, '\n');
     }
 
-    /*
-     * Summary over the whole query
-     */
-#if 0   /* not used... but if you want whole-query stats, here's an example */
-    startlen = str->len;
-
-    /* Max work_mem used/wanted anywhere in the query */
-    if (showstatctx->workmemwanted_max > 0)
-    {
-        cdbexplain_formatMemory(usedbuf, showstatctx->workmemused_max);
-        cdbexplain_formatMemory(wantedbuf, showstatctx->workmemwanted_max);
-        appendStringInfo(str,
-                         "Work_mem: Max %s used, %s wanted.",
-                         usedbuf,
-                         wantedbuf);
-    }
-    else if (showstatctx->workmemused_max > 0)
-    {
-        cdbexplain_formatMemory(usedbuf, showstatctx->workmemused_max);
-        appendStringInfo(str,
-                         "Work_mem: Max %s used.",
-                         usedbuf);
-    }
-
-    if (startlen < str->len)
-        appendStringInfoChar(str, '\n');
-#endif
 }                               /* cdbexplain_showExecStatsEnd */

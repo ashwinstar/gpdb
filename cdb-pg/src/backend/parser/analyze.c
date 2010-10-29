@@ -4989,87 +4989,6 @@ L_setprevElem:
 
 	} /* end compare to last */
 
-#if 0
-	/*
-	 * XXX: this would be a nice test to add in, perhaps we enable it when
-	 * cassert is enabled?
-	 */
-	{
-		/*
-		 * Better make sure the current boundary specification doesn't
-		 * overlap an existing one. It's not enough to just do the
-		 * previous spec as they might be out of order.
-		 */
-		ListCell *lc;
-		PartitionRangeItem *ri_start = (PartitionRangeItem *)spec->partStart;
-
-		foreach(lc, vstate->allRangeVals)
-		{
-			PartitionBoundSpec *s = lfirst(lc);
-			PartitionRangeItem *s_start = (PartitionRangeItem *)s->partStart;
-			PartitionRangeItem *s_end = (PartitionRangeItem *)s->partEnd;
-			int rc;
-
-			rc = partition_range_compare(vstate->pstate,
-											vstate->cxt, vstate->stmt,
-											vstate->pBy,
-											vstate->at_depth,
-											vstate->partNumber,
-											"=",
-											ri_start,
-											s_start);
-
-			if (rc == 1 &&
-				ri_start->partedge == PART_EDGE_INCLUSIVE &&
-				s_start->partedge == PART_EDGE_INCLUSIVE)
-			{
-				elog(ERROR, "overlapping");
-			}
-
-			rc = partition_range_compare(vstate->pstate,
-											vstate->cxt, vstate->stmt,
-											vstate->pBy,
-											vstate->at_depth,
-											vstate->partNumber,
-											">",
-											ri_start,
-											s_start);
-
-			/* ri_start > s_start */
-			if (rc == 1)
-			{
-				/* see if ri_start < s_end */
-				rc = partition_range_compare(vstate->pstate,
-											vstate->cxt, vstate->stmt,
-											vstate->pBy,
-											vstate->at_depth,
-											vstate->partNumber,
-											"<",
-											ri_start,
-											s_end);
-				if (rc == 1)
-					elog(ERROR, "overlapping 2");
-
-				rc = partition_range_compare(vstate->pstate,
-											vstate->cxt, vstate->stmt,
-											vstate->pBy,
-											vstate->at_depth,
-											vstate->partNumber,
-											"=",
-											ri_start,
-											s_end);
-
-				if (rc == 1 &&
-					ri_start->partedge == PART_EDGE_INCLUSIVE &&
-					s_end->partedge == PART_EDGE_INCLUSIVE)
-				{
-					elog(ERROR, "overlapping");
-				}
-			}
-		}
-	}
-#endif
-
 	if (bAppendRange)
 	{
 		vstate->allRangeVals = lappend(vstate->allRangeVals, spec);
@@ -6790,37 +6709,6 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 		}
 	}
 	
-#if 0
-	/*
-	 * XXX XXX: it would be nice to copy the parent table's
-	 * distribution policy if it has one.  Otherwise,
-	 * transformDistributedBy will get annoyed that the parent
-	 * table doesn't exist yet when it attempts to build the
-	 * policy for the child table. However, transformCreateStmt
-	 * will null out the policy, even if we supply it, so don't
-	 * bother.  Add an "ALTER TABLE...INHERIT parent" after the
-	 * create instead.
-	 */
-	if (0 && policy)
-	{
-		GpPolicy   *newpolicy = NULL;
-		int			maxattrs  = 200;
-		int			ii_attrs  = 0;
-
-		newpolicy =
-			(GpPolicy *) palloc(
-				sizeof(GpPolicy) + maxattrs * sizeof(newpolicy->attrs[0]));
-		newpolicy->ptype  = policy->ptype;
-		newpolicy->nattrs = policy->nattrs;
-
-		for (ii_attrs = 0; ii_attrs < policy->nattrs; ii_attrs++)
-		{
-			newpolicy->attrs[ii_attrs] = policy->attrs[ii_attrs];
-		}
-
-		child_tab_stmt->policy = newpolicy;
-	}
-#endif
 	cxt->alist = lappend(cxt->alist, child_tab_stmt);
 
 	/*
@@ -11062,25 +10950,6 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 
 				if (target->resname && strcmp(target->resname, key) == 0)
 				{
-#if 0
-					Oid typeOid = typenameTypeId(target->typname);
-					bool isArray = (target->typname->arrayBounds == NIL ? false : true);
-
-					/*
-					 * To be a part of a distribution key, this type must be supported
-					 * for hashing internally in Greenplum Database. We check if the base type is
-					 * supported for hashing or if it is an array type (we support
-					 * hashing on all array types).
-					 */
-					if(!isGreenplumDbHashable(typeOid) && !isArray)
-					{
-						ereport(ERROR,
-								(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-								 errmsg("type \"%s\" can't be a part of a distribution key",
-										strVal(linitial(column->typname->names)))));
-					}
-#endif
-
 					found = true;
 
 				} /*if*/

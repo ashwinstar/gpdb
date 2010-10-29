@@ -187,14 +187,6 @@ Datum matrix_multiply(PG_FUNCTION_ARGS)
 	 *
 	 * This will need to be reworked for variable length numeric elements.
 	 */
-#if 0
-    int A[][], B[][], C[][];
-	for (i = 0 ...)
-		for ( j = 0 ...)
-			for ( k = 0 ...) 
-				C[i][j] +=  A[i][k] * B[k][j];
-#endif
-
 	for (i = 0; i < ARR_DIMS(result)[0]; i++)
 	{
 		for (j = 0; j < ARR_DIMS(result)[1]; j++)

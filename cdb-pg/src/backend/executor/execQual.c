@@ -4848,21 +4848,6 @@ ExecVariableList(ProjectionInfo *projInfo,
 	int		   *varNumbers = projInfo->pi_varNumbers;
 	int			i;
 
-#if 0
-	/*
-	 * Force extraction of all input values that we need.
-	 */
-	if (projInfo->pi_lastInnerVar > 0)
-		slot_getsomeattrs(econtext->ecxt_innertuple,
-						  projInfo->pi_lastInnerVar);
-	if (projInfo->pi_lastOuterVar > 0)
-		slot_getsomeattrs(econtext->ecxt_outertuple,
-						  projInfo->pi_lastOuterVar);
-	if (projInfo->pi_lastScanVar > 0)
-		slot_getsomeattrs(econtext->ecxt_scantuple,
-						  projInfo->pi_lastScanVar);
-#endif
-
 	/*
 	 * Assign to result by direct extraction of fields from source slots ... a
 	 * mite ugly, but fast ...

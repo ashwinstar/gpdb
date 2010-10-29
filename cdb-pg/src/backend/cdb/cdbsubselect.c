@@ -299,33 +299,6 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
      */
     cdbsubselect_add_rte_and_ininfo(root, rtrlist_inout, subselect, "EXISTS_subquery");
 
-#if 0
-    /*
-     * Update FROM clause, placing the subselect into the right-hand side
-     * of a LEFT JOIN.
-     */
-
-    /* Replace targetlist with TRUE. (Any non-NULL value would do.) */
-    node = makeBoolConst(true, false);
-    tle = makeTargetEntry((Expr *)node, 1, NULL, false);
-    /* $$$$ tle->resname must be filled in $$$$$$ */
-    subselect->targetList = list_make1(tle);
-
-    /* Make a Var node referencing the subplan's result. */
-	lnode = (Node *)makeVar(rtindex, tle->resno,
-							exprType((Node *)tle->expr),
-							exprTypmod((Node *)tle->expr),
-							0);
-	ininfo->sub_targetlist = list_make1(copyObject(lnode));
-
-    /* Build (t IS NOT NULL) predicate. */
-    ntest = makeNode(NullTest);
-	ntest->nulltesttype = IS_NOT_NULL;
-	ntest->arg = (Expr *)lnode;
-
-    return make_and_qual(limitqual, (Node *)ntest);
-#endif
-
     return limitqual;
 }                               /* convert_EXISTS_to_join */
 
@@ -370,20 +343,6 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
      * CDB TODO: Let it become an InitPlan, so its QEs can be recycled.
      */
     correlated = contain_vars_of_level_or_above(sublink->subselect, 1);
-#if 0
-    if (!correlated &&
-        !contain_vars_of_level_or_above((Node *)sublink->lefthand, 0))
-		return (Node *)sublink;
-#endif
-
-#if 0
-    /*
-     * Transform
-     *      c IN (SELECT e ... WHERE/HAVING q)
-     * to
-     *      EXISTS (SELECT ... WHERE/HAVING q AND c = e)
-     */
-#endif
 
     /*
 	 * Okay, pull up the sub-select into top range table and jointree.

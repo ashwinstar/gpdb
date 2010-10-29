@@ -3707,84 +3707,6 @@ readNodeBinary(const char ** str)
 			case T_Flow:
 				return_value = _readFlow(str);
 				break;
-#if 0
-			case T_Path:
-				return_value = _readPath(str);
-				break;
-			case T_IndexPath:
-				return_value = _readIndexPath(str);
-				break;
-			case T_BitmapHeapPath:
-				return_value = _readBitmapHeapPath(str);
-				break;
-			case T_BitmapAppendOnlyPath:
-				return_value = _readBitmapAppendOnlyPath(str);
-				break;
-			case T_BitmapAndPath:
-				return_value = _readBitmapAndPath(str);
-				break;
-			case T_BitmapOrPath:
-				return_value = _readBitmapOrPath(str);
-				break;
-			case T_TidPath:
-				return_value = _readTidPath(str);
-				break;
-			case T_AppendPath:
-				return_value = _readAppendPath(str);
-				break;
-			case T_ResultPath:
-				return_value = _readResultPath(str);
-				break;
-			case T_MaterialPath:
-				return_value = _readMaterialPath(str);
-				break;
-			case T_UniquePath:
-				return_value = _readUniquePath(str);
-				break;
-			case T_NestPath:
-				return_value = _readNestPath(str);
-				break;
-			case T_MergePath:
-				return_value = _readMergePath(str);
-				break;
-			case T_HashPath:
-				return_value = _readHashPath(str);
-				break;
-            case T_CdbMotionPath:
-                return_value = _readCdbMotionPath(str);
-                break;
-			case T_PlannerInfo:
-				return_value = _readPlannerInfo(str);
-				break;
-			case T_RelOptInfo:
-				return_value = _readRelOptInfo(str);
-				break;
-			case T_IndexOptInfo:
-				return_value = _readIndexOptInfo(str);
-				break;
-			case T_CdbRelDedupInfo:
-				return_value = _readCdbRelDedupInfo(str);
-				break;
-			case T_PathKeyItem:
-				return_value = _readPathKeyItem(str);
-				break;
-			case T_RestrictInfo:
-				return_value = _readRestrictInfo(str);
-				break;
-			case T_InnerIndexscanInfo:
-				return_value = _readInnerIndexscanInfo(str);
-				break;
-			case T_OuterJoinInfo:
-				return_value = _readOuterJoinInfo(str);
-				break;
-			case T_InClauseInfo:
-				return_value = _readInClauseInfo(str);
-				break;
-			case T_AppendRelInfo:
-				return_value = _readAppendRelInfo(str);
-				break;
-#endif
-
 			case T_GrantStmt:
 				return_value = _readGrantStmt(str);
 				break;
@@ -4011,12 +3933,6 @@ readNodeBinary(const char ** str)
 			case T_DropUserMappingStmt:
 				return_value = _readDropUserMappingStmt(str);
 				break;
-	
-#if 0
-			case T_TransactionStmt:
-				return_value = _readTransactionStmt(str);
-				break;
-#endif
 			case T_NotifyStmt:
 				return_value = _readNotifyStmt(str);
 				break;
@@ -4030,11 +3946,6 @@ readNodeBinary(const char ** str)
 			case T_CopyStmt:
 				return_value = _readCopyStmt(str);
 				break;
-#if 0
-			case T_SelectStmt:
-				return_value = _readSelectStmt(str);
-				break;
-#endif
 			case T_ColumnDef:
 				return_value = _readColumnDef(str);
 				break;
@@ -4095,11 +4006,6 @@ readNodeBinary(const char ** str)
 			case T_ColumnRef:
 				return_value = _readColumnRef(str);
 				break;
-#if 0
-			case T_ParamRef:
-				return_value = _readParamRef(str);
-				break;
-#endif
 			case T_A_Const:
 				return_value = _readAConst(str);
 				break;
@@ -4109,12 +4015,6 @@ readNodeBinary(const char ** str)
 			case T_A_Indirection:
 				return_value = _readA_Indirection(str);
 				break;
-
-#if 0
-			case T_ResTarget:
-				return_value = _readResTarget(str);
-				break;
-#endif
 			case T_Constraint:
 				return_value = _readConstraint(str);
 				break;
@@ -4151,12 +4051,6 @@ readNodeBinary(const char ** str)
 			case T_VariableResetStmt:
 				return_value = _readVariableResetStmt(str);
 				break;
-#if 0
-			case T_LockingClause:
-				return_value = _readLockingClause(str);
-				break;
-#endif
-
 			case T_CreateTrigStmt:
 				return_value = _readCreateTrigStmt(str);
 				break;

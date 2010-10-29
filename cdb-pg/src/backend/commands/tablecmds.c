@@ -11639,10 +11639,6 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 	}
 	*tmprv = tmprel;
 
-#if 0
-	elog_node_display(NOTICE, "f", n, true);
-#endif
-
 	parsetrees = parse_analyze((Node *)n, NULL, NULL, 0);
 	Assert(list_length(parsetrees) == 1);
 	q = (Query *)linitial(parsetrees);
@@ -11831,9 +11827,6 @@ build_iofunc(char *newname, char *iotype, char *baseio, char *returns)
 	iofunc->options = list_make2(makeDefElem("as", (Node *)list_make1(makeString(baseio))),
 								 makeDefElem("language", (Node *)makeString("internal")));
 
-#if 0
-	elog_node_display(NOTICE, "f", iofunc, true);
-#endif
 	return iofunc;
 }
 
@@ -11951,9 +11944,6 @@ build_hidden_type(Form_pg_attribute att)
 	newtype->definition = lappend(newtype->definition, makeDefElem("alignment",
 																   (Node *)makeString(alignname)));
 
-#if 0
-	elog_node_display(NOTICE, "type", newtype, true);
-#endif
 	parsetrees = parse_analyze((Node *)newtype, NULL, NULL, 0);
 	q = (Query *)linitial(parsetrees);
 	ProcessUtility((Node *)q->utilityStmt,
@@ -12215,9 +12205,6 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 			cd->typname = tname;
 			cs->tableElts = lappend(cs->tableElts, cd);
 		}
-#if 0
-		elog_node_display(NOTICE, "CREATE STATEMENT", cs, true);
-#endif
 		parsetrees = parse_analyze((Node *)cs, NULL, NULL, 0);
 		Assert(list_length(parsetrees) == 1);
 		q = (Query *)linitial(parsetrees);
@@ -12828,9 +12815,6 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	reindex_relation(tarrelid, false, false /* ao_segs ? */, false,
 					 &oid_map, Gp_role == GP_ROLE_DISPATCH);
 
-#if 0
-	elog_node_display(NOTICE, "f", oid_map, true);
-#endif
 	/* Step (g) */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{

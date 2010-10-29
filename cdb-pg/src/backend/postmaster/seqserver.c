@@ -751,11 +751,6 @@ processSequenceRequest(int sockfd )
 			{
 				elog(LOG, "bogus start cookie.");
 				return false; /* this will close the connection */
-#if 0
-				/* ignore bogus start ? */
-				bytesRead -= sizeof(uint32_t);
-				memmove(inputBuffer, inputBuffer + sizeof(uint32), bytesRead);
-#endif
 			}
 			checkCookie = false;
 		}

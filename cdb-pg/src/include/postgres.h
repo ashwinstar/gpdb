@@ -181,46 +181,6 @@ typedef struct
 #define SET_VARSIZE_1B(PTR,len) \
 	(((varattrib_1b *) (PTR))->va_header = (len) | 0x80)
 
-
-/*
- *  This is how postgreSQL does it on little-endian machines
- *  NOT USED in GPDB
- */
-/*
-#if 0
-#define VARATT_IS_4B(PTR) \
-	((((varattrib_1b *) (PTR))->va_header & 0x01) == 0x00)
-#define VARATT_IS_4B_U(PTR) \
-	((((varattrib_1b *) (PTR))->va_header & 0x03) == 0x00)
-#define VARATT_IS_4B_C(PTR) \
-	((((varattrib_1b *) (PTR))->va_header & 0x03) == 0x02)
-#define VARATT_IS_1B(PTR) \
-	((((varattrib_1b *) (PTR))->va_header & 0x01) == 0x01)
-#define VARATT_IS_1B_E(PTR) \
-	((((varattrib_1b *) (PTR))->va_header) == 0x01)
-#define VARATT_NOT_PAD_BYTE(PTR) \
-	(*((uint8 *) (PTR)) != 0)
-
-#define VARSIZE_4B(PTR) \
-	((((varattrib_4b *) (PTR))->va_4byte.va_header >> 2) & 0x3FFFFFFF)
-#define VARSIZE_1B(PTR) \
-	((((varattrib_1b *) (PTR))->va_header >> 1) & 0x7F)
-#define VARSIZE_1B_E(PTR) \
-	(((varattrib_1b_e *) (PTR))->va_len_1be)
-#define VARRAWSIZE_4B_C(PTR) \
-	(((varattrib_4b *) (PTR))->va_compressed.va_rawsize)
-#define SET_VARSIZE_4B(PTR,len) \
-	(((varattrib_4b *) (PTR))->va_4byte.va_header = (((uint32) (len)) << 2))
-#define SET_VARSIZE_4B_C(PTR,len) \
-	(((varattrib_4b *) (PTR))->va_4byte.va_header = (((uint32) (len)) << 2) | 0x02)
-#define SET_VARSIZE_1B(PTR,len) \
-	(((varattrib_1b *) (PTR))->va_header = (((uint8) (len)) << 1) | 0x01)
-#define SET_VARSIZE_1B_E(PTR,len) \
-	(((varattrib_1b_e *) (PTR))->va_header = 0x01, \
-	 ((varattrib_1b_e *) (PTR))->va_len_1be = (len))
-#endif
-*/
-
 #define VARHDRSZ_SHORT			1
 #define VARATT_SHORT_MAX		0x7F
 #define VARATT_CAN_MAKE_SHORT(PTR) \

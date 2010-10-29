@@ -451,12 +451,6 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
 	else
 	{
 #ifdef HAVE_INT64_TIMESTAMP
-#if 0
-		if (fillzeros)
-			sprintf(cp, "%02d.%0*d", abs(sec), precision, (int) Abs(fsec));
-		else
-			sprintf(cp, "%d.%0*d", abs(sec), precision, (int) Abs(fsec));
-#else
 
 		if (fillzeros || abs(sec)  > 9)
 			cp[j++] = abs(sec)  / 10 + '0';
@@ -469,7 +463,6 @@ AppendSeconds(char *cp, int sec, fsec_t fsec, int precision, bool fillzeros)
 		cp[j++] = ((int) Abs(fsec) ) / 10 % 10 + '0';
 		cp[j++] = ((int) Abs(fsec) ) % 10 + '0';
 		cp[j] = '\0';
-#endif
 
 #else
 		if (fillzeros)
@@ -3770,9 +3763,6 @@ EncodeDateOnly(struct pg_tm * tm, int style, char *str)
 void
 EncodeTimeOnly(struct pg_tm * tm, fsec_t fsec, int *tzp, int style, char *str)
 {
-#if 0
-	sprintf(str, "%02d:%02d:", tm->tm_hour, tm->tm_min);
-#else
 	str[0] = tm->tm_hour/10 + '0';
 	str[1] = tm->tm_hour % 10 + '0';
 	str[2] = ':';
@@ -3780,7 +3770,6 @@ EncodeTimeOnly(struct pg_tm * tm, fsec_t fsec, int *tzp, int style, char *str)
 	str[4] = tm->tm_min % 10 + '0';
 	str[5] = ':';
 	str[6] = '\0';
-#endif 
 	str += strlen(str);
 
 	AppendSeconds(str, tm->tm_sec, fsec, MAX_TIME_PRECISION, true);
