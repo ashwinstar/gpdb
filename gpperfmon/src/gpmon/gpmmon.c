@@ -1158,9 +1158,9 @@ static int read_conf_file(char *conffile)
 		opt.harvest_interval = 120;
 	}
 
-	if (opt.snmp_interval && opt.snmp_interval < 10)
+	if (opt.snmp_interval && opt.snmp_interval < 0)
 	{
-		fprintf(stderr, "Performance Monitor - snmp_interval must be either 0 or greater than 10.  Using "
+		fprintf(stderr, "Performance Monitor - snmp_interval must be either 0 or greater than 0.  Using "
 				"default value 10\n");
 		opt.snmp_interval = 10;
 	}
@@ -1449,7 +1449,7 @@ static void gethostlist()
 
 		// there are potentially more hostnames for standby master
 		// specified in the config file
-		if (strcmp(ax.standby_master_hostname, ax.hosttab[i].hostname) == 0)
+		if (ax.standby_master_hostname && strcmp(ax.standby_master_hostname, ax.hosttab[i].hostname) == 0)
 	  	{
 			populate_smdw_aliases(&ax.hosttab[i]);
 		}

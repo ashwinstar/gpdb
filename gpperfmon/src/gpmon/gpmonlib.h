@@ -120,8 +120,8 @@ struct host_t
 char* get_connection_hostname(host_t* host);
 char* get_connection_ip(host_t* host);
 char* get_snmp_hostname(host_t* host);
-char* get_snmp_ip(host_t* host);
 void advance_connection_hostname(host_t* host);
+void advance_snmp_hostname(host_t* host);
 
 typedef struct snmp_module_params_t snmp_module_params_t;
 struct snmp_module_params_t
