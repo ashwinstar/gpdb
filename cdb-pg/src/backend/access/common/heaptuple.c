@@ -1204,38 +1204,6 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
 	slot->PRIVATE_tts_slow = slow;
 }
 
-#ifdef USE_ASSERT_CHECKING
-#include "utils/array.h"
-static void check_type_sanity(Form_pg_attribute attr, Datum d, bool isnull)
-{
-	if(isnull)
-		return;
-
-	if(attr->atttypid == FLOAT4ARRAYOID)
-	{
-		ArrayType *a = (ArrayType *) DatumGetPointer(d);
-		if(ARR_NDIM(a) != 1 
-				|| ARR_DIMS(a) <= 0
-				|| ARR_HASNULL(a)
-				|| ARR_ELEMTYPE(a) != FLOAT4OID
-		  )
-			Assert(!"Float4 Array type failure");
-	}
-
-	if(attr->atttypid == INT4ARRAYOID)
-	{
-		ArrayType *a = (ArrayType *) DatumGetPointer(d);
-		if(ARR_NDIM(a) != 1 
-				|| ARR_DIMS(a) <= 0
-				|| ARR_HASNULL(a)
-				|| ARR_ELEMTYPE(a) != INT4OID
-		  )
-			Assert(!"Int4 Array type failure");
-	}
-}
-#endif
-
-
 /*
  * slot_getsomeattrs
  *		This function forces the entries of the slot's Datum/isnull
@@ -1281,11 +1249,6 @@ _slot_getsomeattrs(TupleTableSlot *slot, int attnum)
 		slot->PRIVATE_tts_values[attno] = (Datum) 0;
 		slot->PRIVATE_tts_isnull[attno] = true;
 	}
-
-#ifdef USE_ASSERT_CHECKING
-	for(attno = 0; attno < attnum; ++attno)
-		check_type_sanity(slot->tts_tupleDescriptor->attrs[attno], slot->PRIVATE_tts_values[attno], slot->PRIVATE_tts_isnull[attno]);
-#endif
 
 	slot->PRIVATE_tts_nvalid = attnum;
 	TupSetVirtualTuple(slot);
