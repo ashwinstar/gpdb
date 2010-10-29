@@ -96,10 +96,11 @@ class securetty:
 class bcu:
     def __init__(self):
         self.firmware = None
+        self.biosversion = None
         self.errormsg = None
 
     def __str__(self):
-        return "firmware_version=%s" % self.firmware
+        return "firmware_version=%s|biosversion=%s" % (self.firmware, self.biosversion)
 
 class ioschedulers:
     def __init__(self):
@@ -149,7 +150,7 @@ class GpMount:
     def __str__(self):
         optionstring = ''
         first = True
-        for k in self.options.keys():
+        for k in self.options:
 
             if not first:
                 optionstring = "%s," % optionstring

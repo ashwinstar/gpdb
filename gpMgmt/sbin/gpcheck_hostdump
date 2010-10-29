@@ -325,8 +325,11 @@ def collectBcu():
         if re.search("bios version:", line):
             words = line.strip().split("bios version:")
             if len(words) == 2:
+                data.biosversion = words[1].strip()
+        if re.search("fw version:", line):
+            words = line.strip().split("fw version:")
+            if len(words) == 2:
                 data.firmware = words[1].strip()
-                break
 
     return data
 

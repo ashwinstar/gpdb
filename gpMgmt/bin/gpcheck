@@ -552,6 +552,11 @@ def testApplianceBcu(host):
 
         printError(host.hostname, "CNA firmware version '%s' does not match expected '%s'" % (host.data.bcu.firmware, expectedFwversion))
 
+    expectedBiosVersion = gpcheck_config.cna_bios_version
+
+    if host.data.bcu.biosversion != expectedBiosVersion:
+
+        printError(host.hostname, "CNA bios version '%s' does not match expected '%s'" % (host.data.bcu.biosversion, expectedBiosVersion))
 
 
 def testApplianceInittab(host):
@@ -1026,6 +1031,7 @@ def populateGpCheckApplianceConfigParams():
                             'perc_driver_version', 
                             'dell_om_version', 
                             'cna_firmware_version', 
+                            'cna_bios_version', 
                             'dell_bios_version_master', 
                             'dell_bios_version_segment',
                             'brocade_switch_firmware_version',
@@ -1040,6 +1046,7 @@ def populateGpCheckApplianceConfigParams():
     gpcheck_config.perc_driver_version = config.get(gpcheck_config.gpcheck_config_version, 'perc_driver_version')
     gpcheck_config.dell_om_version = config.get(gpcheck_config.gpcheck_config_version, 'dell_om_version')
     gpcheck_config.cna_firmware_version = config.get(gpcheck_config.gpcheck_config_version, 'cna_firmware_version')
+    gpcheck_config.cna_bios_version = config.get(gpcheck_config.gpcheck_config_version, 'cna_bios_version')
     gpcheck_config.dell_bios_version_master = config.get(gpcheck_config.gpcheck_config_version, 'dell_bios_version_master')
     gpcheck_config.dell_bios_version_segment = config.get(gpcheck_config.gpcheck_config_version, 'dell_bios_version_segment')
     gpcheck_config.brocade_switch_firmware_version = config.get(gpcheck_config.gpcheck_config_version, 'brocade_switch_firmware_version')
