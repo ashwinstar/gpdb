@@ -431,13 +431,19 @@ btree_xlog_delete(XLogRecPtr lsn, XLogRecord *record)
 	buffer = XLogReadBuffer(reln, xlrec->block, false);
 	REDO_PRINT_READ_BUFFER_NOT_FOUND(reln, xlrec->block, buffer, lsn);
 	if (!BufferIsValid(buffer))
+	{
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
 		return;
+	}
 	page = (Page) BufferGetPage(buffer);
 
 	REDO_PRINT_LSN_APPLICATION(reln, xlrec->block, page, lsn);
 	if (XLByteLE(lsn, PageGetLSN(page)))
 	{
 		UnlockReleaseBuffer(buffer);
+		MIRROREDLOCK_BUFMGR_UNLOCK;
+		// -------- MirroredLock ----------
 		return;
 	}
 
