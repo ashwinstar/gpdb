@@ -3314,9 +3314,9 @@ void GetTupleVisibilitySummary(
 }
 
 // 0 tuple_tid                 TIDOID
-// 1 tuple_xmin               XIDOID
+// 1 tuple_xmin               INT4OID
 // 2 tuple_xmin_status     TEXTOID
-// 3 tuple_xmax		    XIDOID
+// 3 tuple_xmax		    INT4OID
 // 4 tuple_xmax_status    TEXTOID
 // 5 tuple_visible_status   TEXTOID
 
@@ -3325,13 +3325,13 @@ void GetTupleVisibilitySummaryDatums(
 	TupleVisibilitySummary	*tupleVisibilitySummary)
 {
 	values[0] = ItemPointerGetDatum(&tupleVisibilitySummary->tid);
-	values[1] = TransactionIdGetDatum(tupleVisibilitySummary->xmin);
+	values[1] = Int32GetDatum((int32)tupleVisibilitySummary->xmin);
 	values[2] = 
 		DirectFunctionCall1(textin,
 							CStringGetDatum(
 								TupleTransactionStatus_Name(
 											tupleVisibilitySummary->xminStatus)));
-	values[3] = TransactionIdGetDatum(tupleVisibilitySummary->xmax);
+	values[3] = Int32GetDatum((int32)tupleVisibilitySummary->xmax);
 	values[4] = 
 		DirectFunctionCall1(textin,
 							CStringGetDatum(
