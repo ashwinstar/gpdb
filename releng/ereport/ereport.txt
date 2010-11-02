@@ -20,20 +20,20 @@ aabc: aocssegfiles:00000634:  ));
 aabc: aocssegfiles:00000637:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 aabc: aocssegfiles:00000638:  errmsg("invalid entry for decoding aocsvpinfo") 
 aabc: aocssegfiles:00000639:  )); 
-aabc: aocssegfiles:00000730:  ereport(ERROR, 
-aabc: aocssegfiles:00000731:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000732:  errmsg("'%s' is not an append-only columnar relation", 
-aabc: aocssegfiles:00000733:  RelationGetRelationName(aocsRel)))); 
-aabc: aocssegfiles:00000917:  ereport(ERROR, 
-aabc: aocssegfiles:00000918:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000919:  errmsg("'%s' is not an append-only columnar relation", 
-aabc: aocssegfiles:00000920:  RelationGetRelationName(aocsRel)))); 
-aabc: aocssegfiles:00001056:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00001057:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00001058:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aabc: aocssegfiles:00001222:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00001223:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00001224:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aabc: aocssegfiles:00000728:  ereport(ERROR, 
+aabc: aocssegfiles:00000729:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000730:  errmsg("'%s' is not an append-only columnar relation", 
+aabc: aocssegfiles:00000731:  RelationGetRelationName(aocsRel)))); 
+aabc: aocssegfiles:00000912:  ereport(ERROR, 
+aabc: aocssegfiles:00000913:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000914:  errmsg("'%s' is not an append-only columnar relation", 
+aabc: aocssegfiles:00000915:  RelationGetRelationName(aocsRel)))); 
+aabc: aocssegfiles:00001049:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00001050:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00001051:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aabc: aocssegfiles:00001215:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00001216:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00001217:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
 aaaaa GP_IGNORE: aaae: aomd - ./backend/access/appendonly/aomd.c
 aaae: aomd:00000168:  ereport(ERROR, 
 aaae: aomd:00000169:  (errcode_for_file_access(), 
@@ -68,38 +68,38 @@ aaba: aosegfiles:00000653:  errmsg("got invalid pg_aoseg filetupcount value: NUL
 aaba: aosegfiles:00000667:  ereport(ERROR, 
 aaba: aosegfiles:00000668:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 aaba: aosegfiles:00000669:  errmsg("got invalid pg_aoseg varblockcount value: NULL"))); 
-aaba: aosegfiles:00000897:  ereport(ERROR, 
-aaba: aosegfiles:00000898:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00000899:  errmsg("'%s' is not an append-only row relation", 
-aaba: aosegfiles:00000900:  RelationGetRelationName(aocsRel)))); 
-aaba: aosegfiles:00001015:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001016:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001017:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aaba: aosegfiles:00001151:  ereport(ERROR, 
-aaba: aosegfiles:00001152:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001153:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001154:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001267:  ereport(ERROR, 
-aaba: aosegfiles:00001268:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001269:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001270:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001308:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001309:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001310:  errdetail("SPI_connect failed in get_ao_distribution"))); 
-aaba: aosegfiles:00001457:  ereport(ERROR, 
-aaba: aosegfiles:00001458:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001459:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001460:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001486:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001487:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001488:  errdetail("SPI_connect failed in get_ao_distribution"))); 
-aaba: aosegfiles:00001667:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001668:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001669:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
-aaba: aosegfiles:00001763:  ereport(ERROR, 
-aaba: aosegfiles:00001764:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001765:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001766:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00000895:  ereport(ERROR, 
+aaba: aosegfiles:00000896:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00000897:  errmsg("'%s' is not an append-only row relation", 
+aaba: aosegfiles:00000898:  RelationGetRelationName(aocsRel)))); 
+aaba: aosegfiles:00001011:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001012:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001013:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aaba: aosegfiles:00001147:  ereport(ERROR, 
+aaba: aosegfiles:00001148:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001149:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001150:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001263:  ereport(ERROR, 
+aaba: aosegfiles:00001264:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001265:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001266:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001304:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001305:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001306:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+aaba: aosegfiles:00001453:  ereport(ERROR, 
+aaba: aosegfiles:00001454:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001455:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001456:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001482:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001483:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001484:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+aaba: aosegfiles:00001663:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001664:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001665:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aaba: aosegfiles:00001759:  ereport(ERROR, 
+aaba: aosegfiles:00001760:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001761:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001762:  RelationGetRelationName(parentrel)))); 
 aaaaa GP_IGNORE: aabc: appendonlyam - ./backend/access/appendonly/appendonlyam.c
 aabc: appendonlyam:00000610:  ereport(ERROR, 
 aabc: appendonlyam:00000611:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -9851,161 +9851,210 @@ saba: stringinfo:00000285:  errmsg("out of memory"),
 saba: stringinfo:00000286:  errdetail("Cannot enlarge string buffer containing %d bytes by %d more bytes.", 
 saba: stringinfo:00000287:  str->len, needed))); 
 aaaaa GP_IGNORE: aaae: auth - ./backend/libpq/auth.c
-aaae: auth:00000281:  ereport(FATAL, 
-aaae: auth:00000282:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000283:  errmsg(errstr, port->user_name), 
-aaae: auth:00000284:  errSendAlert(false))); 
-aaae: auth:00000305:  ereport(FATAL, 
-aaae: auth:00000306:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
-aaae: auth:00000307:  errmsg("missing or erroneous pg_hba.conf file"), 
-aaae: auth:00000308:  errhint("See server log for details."))); 
+aaae: auth:00000304:  ereport(FATAL, 
+aaae: auth:00000305:  (errcode(errcode_return), 
+aaae: auth:00000306:  errmsg(errstr, port->user_name))); 
 aaae: auth:00000327:  ereport(FATAL, 
-aaae: auth:00000328:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000329:  errmsg("connection requires a valid client certificate"))); 
-aaae: auth:00000366:  ereport(FATAL, 
-aaae: auth:00000367:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000368:  errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\", %s", 
-aaae: auth:00000369:  hostinfo, port->user_name, port->database_name, 
-aaae: auth:00000370:  port->ssl ? _("SSL on") : _("SSL off")), 
-aaae: auth:00000371:  errSendAlert(false))); 
-aaae: auth:00000373:  ereport(FATAL, 
-aaae: auth:00000374:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000375:  errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\"", 
-aaae: auth:00000376:  hostinfo, port->user_name, port->database_name) 
-aaae: auth:00000377:  errSendAlert(false))); 
-aaae: auth:00000430:  ereport(FATAL, 
-aaae: auth:00000431:  (errcode_for_socket_access(), 
-aaae: auth:00000432:  errmsg("could not enable credential reception: %m"))); 
-aaae: auth:00000443:  ereport(FATAL, 
-aaae: auth:00000444:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000445:  errmsg("MD5 authentication is not supported when \"db_user_namespace\" is enabled"))); 
-aaae: auth:00000864:  ereport(WARNING, 
-aaae: auth:00000865:  (errmsg_internal("incomplete GSS error report"))); 
-aaae: auth:00000875:  ereport(WARNING, 
-aaae: auth:00000876:  (errmsg_internal("incomplete GSS minor error report"))); 
-aaae: auth:00000908:  ereport(FATAL, 
-aaae: auth:00000909:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaae: auth:00000910:  errmsg("GSSAPI is not supported in protocol version 2"))); 
-aaae: auth:00001169:  ereport(FATAL, 
-aaae: auth:00001170:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaae: auth:00001171:  errmsg("SSPI is not supported in protocol version 2"))); 
-aaae: auth:00001282:  ereport(ERROR, 
-aaae: auth:00001283:  (errmsg("out of memory"))); 
-aaae: auth:00001312:  ereport(ERROR, 
-aaae: auth:00001313:  (errmsg_internal("could not load secur32.dll: %d", 
-aaae: auth:00001314:  (int) GetLastError()))); 
-aaae: auth:00001321:  ereport(ERROR, 
-aaae: auth:00001322:  (errmsg_internal("could not locate QuerySecurityContextToken in secur32.dll: %d", 
-aaae: auth:00001323:  (int) GetLastError()))); 
-aaae: auth:00001344:  ereport(ERROR, 
-aaae: auth:00001345:  (errmsg_internal("could not get token user size: error code %d", 
-aaae: auth:00001346:  (int) GetLastError()))); 
-aaae: auth:00001350:  ereport(ERROR, 
-aaae: auth:00001351:  (errmsg("out of memory"))); 
-aaae: auth:00001354:  ereport(ERROR, 
-aaae: auth:00001355:  (errmsg_internal("could not get user token: error code %d", 
-aaae: auth:00001356:  (int) GetLastError()))); 
-aaae: auth:00001360:  ereport(ERROR, 
-aaae: auth:00001361:  (errmsg_internal("could not lookup acconut sid: error code %d", 
-aaae: auth:00001362:  (int) GetLastError()))); 
+aaae: auth:00000328:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
+aaae: auth:00000329:  errmsg("missing or erroneous pg_hba.conf file"), 
+aaae: auth:00000330:  errhint("See server log for details."))); 
+aaae: auth:00000358:  ereport(FATAL, 
+aaae: auth:00000359:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000360:  errmsg("connection requires a valid client certificate"))); 
+aaae: auth:00000401:  ereport(FATAL, 
+aaae: auth:00000402:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000403:  errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\", %s", 
+aaae: auth:00000404:  hostinfo, port->user_name, 
+aaae: auth:00000405:  port->ssl ? _("SSL on") : _("SSL off")))); 
+aaae: auth:00000407:  ereport(FATAL, 
+aaae: auth:00000408:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000409:  errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\"", 
+aaae: auth:00000410:  hostinfo, port->user_name))); 
+aaae: auth:00000417:  ereport(FATAL, 
+aaae: auth:00000418:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000419:  errmsg("pg_hba.conf rejects connection for host \"%s\", user \"%s\", database \"%s\", %s", 
+aaae: auth:00000420:  hostinfo, port->user_name, 
+aaae: auth:00000421:  port->database_name, 
+aaae: auth:00000422:  port->ssl ? _("SSL on") : _("SSL off")), 
+aaae: auth:00000423:  errSendAlert(false))); 
+aaae: auth:00000425:  ereport(FATAL, 
+aaae: auth:00000426:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000427:  errmsg("pg_hba.conf rejects connection for host \"%s\", user \"%s\", database \"%s\"", 
+aaae: auth:00000428:  hostinfo, port->user_name, 
+aaae: auth:00000429:  port->database_name) 
+aaae: auth:00000430:  errSendAlert(false))); 
+aaae: auth:00000458:  ereport(FATAL, 
+aaae: auth:00000459:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000460:  errmsg("no pg_hba.conf entry for replication connection from host \"%s\", user \"%s\", %s", 
+aaae: auth:00000461:  hostinfo, port->user_name, 
+aaae: auth:00000462:  port->ssl ? _("SSL on") : _("SSL off")))); 
+aaae: auth:00000464:  ereport(FATAL, 
+aaae: auth:00000465:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000466:  errmsg("no pg_hba.conf entry for replication connection from host \"%s\", user \"%s\"", 
+aaae: auth:00000467:  hostinfo, port->user_name))); 
+aaae: auth:00000474:  ereport(FATAL, 
+aaae: auth:00000475:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000476:  errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\", %s", 
+aaae: auth:00000477:  hostinfo, port->user_name, 
+aaae: auth:00000478:  port->database_name, 
+aaae: auth:00000479:  port->ssl ? _("SSL on") : _("SSL off")))); 
+aaae: auth:00000481:  ereport(FATAL, 
+aaae: auth:00000482:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000483:  errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\"", 
+aaae: auth:00000484:  hostinfo, port->user_name, 
+aaae: auth:00000485:  port->database_name))); 
+aaae: auth:00000539:  ereport(FATAL, 
+aaae: auth:00000540:  (errcode_for_socket_access(), 
+aaae: auth:00000541:  errmsg("could not enable credential reception: %m"))); 
+aaae: auth:00000552:  ereport(FATAL, 
+aaae: auth:00000553:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000554:  errmsg("MD5 authentication is not supported when \"db_user_namespace\" is enabled"))); 
+aaae: auth:00000976:  ereport(WARNING, 
+aaae: auth:00000977:  (errmsg_internal("incomplete GSS error report"))); 
+aaae: auth:00000987:  ereport(WARNING, 
+aaae: auth:00000988:  (errmsg_internal("incomplete GSS minor error report"))); 
+aaae: auth:00001020:  ereport(FATAL, 
+aaae: auth:00001021:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaae: auth:00001022:  errmsg("GSSAPI is not supported in protocol version 2"))); 
+aaae: auth:00001281:  ereport(FATAL, 
+aaae: auth:00001282:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaae: auth:00001283:  errmsg("SSPI is not supported in protocol version 2"))); 
+aaae: auth:00001394:  ereport(ERROR, 
+aaae: auth:00001395:  (errmsg("out of memory"))); 
+aaae: auth:00001424:  ereport(ERROR, 
+aaae: auth:00001425:  (errmsg_internal("could not load secur32.dll: %d", 
+aaae: auth:00001426:  (int) GetLastError()))); 
+aaae: auth:00001433:  ereport(ERROR, 
+aaae: auth:00001434:  (errmsg_internal("could not locate QuerySecurityContextToken in secur32.dll: %d", 
+aaae: auth:00001435:  (int) GetLastError()))); 
+aaae: auth:00001456:  ereport(ERROR, 
+aaae: auth:00001457:  (errmsg_internal("could not get token user size: error code %d", 
+aaae: auth:00001458:  (int) GetLastError()))); 
+aaae: auth:00001462:  ereport(ERROR, 
+aaae: auth:00001463:  (errmsg("out of memory"))); 
+aaae: auth:00001466:  ereport(ERROR, 
+aaae: auth:00001467:  (errmsg_internal("could not get user token: error code %d", 
+aaae: auth:00001468:  (int) GetLastError()))); 
+aaae: auth:00001472:  ereport(ERROR, 
+aaae: auth:00001473:  (errmsg_internal("could not lookup acconut sid: error code %d", 
+aaae: auth:00001474:  (int) GetLastError()))); 
 aaaaa GP_IGNORE: baba: bexfsstubs - ./backend/libpq/be-fsstubs.c
-baba: bexfsstubs:00000125:  ereport(ERROR, 
-baba: bexfsstubs:00000126:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-baba: bexfsstubs:00000127:  errmsg("invalid large-object descriptor: %d", fd))); 
-baba: bexfsstubs:00000155:  ereport(ERROR, 
-baba: bexfsstubs:00000156:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-baba: bexfsstubs:00000157:  errmsg("invalid large-object descriptor: %d", fd))); 
-baba: bexfsstubs:00000170:  ereport(ERROR, 
-baba: bexfsstubs:00000171:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-baba: bexfsstubs:00000172:  errmsg("invalid large-object descriptor: %d", fd))); 
-baba: bexfsstubs:00000175:  ereport(ERROR, 
-baba: bexfsstubs:00000176:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-baba: bexfsstubs:00000177:  errmsg("large object descriptor %d was not opened for writing", 
-baba: bexfsstubs:00000178:  fd))); 
-baba: bexfsstubs:00000195:  ereport(ERROR, 
-baba: bexfsstubs:00000196:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-baba: bexfsstubs:00000197:  errmsg("invalid large-object descriptor: %d", fd))); 
-baba: bexfsstubs:00000242:  ereport(ERROR, 
-baba: bexfsstubs:00000243:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-baba: bexfsstubs:00000244:  errmsg("invalid large-object descriptor: %d", fd))); 
-baba: bexfsstubs:00000355:  ereport(ERROR, 
-baba: bexfsstubs:00000356:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-baba: bexfsstubs:00000357:  errmsg("must be superuser to use server-side lo_import()"), 
-baba: bexfsstubs:00000358:  errhint("Anyone can use the client-side lo_import() provided by libpq."))); 
-baba: bexfsstubs:00000369:  ereport(ERROR, 
-baba: bexfsstubs:00000370:  (errcode_for_file_access(), 
-baba: bexfsstubs:00000371:  errmsg("could not open server file \"%s\": %m", 
-baba: bexfsstubs:00000372:  fnamebuf))); 
-baba: bexfsstubs:00000391:  ereport(ERROR, 
-baba: bexfsstubs:00000392:  (errcode_for_file_access(), 
-baba: bexfsstubs:00000393:  errmsg("could not read server file \"%s\": %m", 
-baba: bexfsstubs:00000394:  fnamebuf))); 
-baba: bexfsstubs:00000421:  ereport(ERROR, 
-baba: bexfsstubs:00000422:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-baba: bexfsstubs:00000423:  errmsg("must be superuser to use server-side lo_export()"), 
-baba: bexfsstubs:00000424:  errhint("Anyone can use the client-side lo_export() provided by libpq."))); 
-baba: bexfsstubs:00000446:  ereport(ERROR, 
-baba: bexfsstubs:00000447:  (errcode_for_file_access(), 
-baba: bexfsstubs:00000448:  errmsg("could not create server file \"%s\": %m", 
-baba: bexfsstubs:00000449:  fnamebuf))); 
-baba: bexfsstubs:00000458:  ereport(ERROR, 
-baba: bexfsstubs:00000459:  (errcode_for_file_access(), 
-baba: bexfsstubs:00000460:  errmsg("could not write server file \"%s\": %m", 
-baba: bexfsstubs:00000461:  fnamebuf))); 
-baba: bexfsstubs:00000481:  ereport(ERROR, 
-baba: bexfsstubs:00000482:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-baba: bexfsstubs:00000483:  errmsg("invalid large-object descriptor: %d", fd))); 
+baba: bexfsstubs:00000130:  ereport(ERROR, 
+baba: bexfsstubs:00000131:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+baba: bexfsstubs:00000132:  errmsg("invalid large-object descriptor: %d", fd))); 
+baba: bexfsstubs:00000160:  ereport(ERROR, 
+baba: bexfsstubs:00000161:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+baba: bexfsstubs:00000162:  errmsg("invalid large-object descriptor: %d", fd))); 
+baba: bexfsstubs:00000171:  ereport(ERROR, 
+baba: bexfsstubs:00000172:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+baba: bexfsstubs:00000173:  errmsg("permission denied for large object %u", 
+baba: bexfsstubs:00000174:  cookies[fd]->id))); 
+baba: bexfsstubs:00000188:  ereport(ERROR, 
+baba: bexfsstubs:00000189:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+baba: bexfsstubs:00000190:  errmsg("invalid large-object descriptor: %d", fd))); 
+baba: bexfsstubs:00000193:  ereport(ERROR, 
+baba: bexfsstubs:00000194:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+baba: bexfsstubs:00000195:  errmsg("large object descriptor %d was not opened for writing", 
+baba: bexfsstubs:00000196:  fd))); 
+baba: bexfsstubs:00000205:  ereport(ERROR, 
+baba: bexfsstubs:00000206:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+baba: bexfsstubs:00000207:  errmsg("permission denied for large object %u", 
+baba: bexfsstubs:00000208:  cookies[fd]->id))); 
+baba: bexfsstubs:00000226:  ereport(ERROR, 
+baba: bexfsstubs:00000227:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+baba: bexfsstubs:00000228:  errmsg("invalid large-object descriptor: %d", fd))); 
+baba: bexfsstubs:00000273:  ereport(ERROR, 
+baba: bexfsstubs:00000274:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+baba: bexfsstubs:00000275:  errmsg("invalid large-object descriptor: %d", fd))); 
+baba: bexfsstubs:00000289:  ereport(ERROR, 
+baba: bexfsstubs:00000290:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+baba: bexfsstubs:00000291:  errmsg("must be owner of large object %u", lobjId))); 
+baba: bexfsstubs:00000395:  ereport(ERROR, 
+baba: bexfsstubs:00000396:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+baba: bexfsstubs:00000397:  errmsg("must be superuser to use server-side lo_import()"), 
+baba: bexfsstubs:00000398:  errhint("Anyone can use the client-side lo_import() provided by libpq."))); 
+baba: bexfsstubs:00000409:  ereport(ERROR, 
+baba: bexfsstubs:00000410:  (errcode_for_file_access(), 
+baba: bexfsstubs:00000411:  errmsg("could not open server file \"%s\": %m", 
+baba: bexfsstubs:00000412:  fnamebuf))); 
+baba: bexfsstubs:00000431:  ereport(ERROR, 
+baba: bexfsstubs:00000432:  (errcode_for_file_access(), 
+baba: bexfsstubs:00000433:  errmsg("could not read server file \"%s\": %m", 
+baba: bexfsstubs:00000434:  fnamebuf))); 
+baba: bexfsstubs:00000461:  ereport(ERROR, 
+baba: bexfsstubs:00000462:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+baba: bexfsstubs:00000463:  errmsg("must be superuser to use server-side lo_export()"), 
+baba: bexfsstubs:00000464:  errhint("Anyone can use the client-side lo_export() provided by libpq."))); 
+baba: bexfsstubs:00000486:  ereport(ERROR, 
+baba: bexfsstubs:00000487:  (errcode_for_file_access(), 
+baba: bexfsstubs:00000488:  errmsg("could not create server file \"%s\": %m", 
+baba: bexfsstubs:00000489:  fnamebuf))); 
+baba: bexfsstubs:00000498:  ereport(ERROR, 
+baba: bexfsstubs:00000499:  (errcode_for_file_access(), 
+baba: bexfsstubs:00000500:  errmsg("could not write server file \"%s\": %m", 
+baba: bexfsstubs:00000501:  fnamebuf))); 
+baba: bexfsstubs:00000521:  ereport(ERROR, 
+baba: bexfsstubs:00000522:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+baba: bexfsstubs:00000523:  errmsg("invalid large-object descriptor: %d", fd))); 
+baba: bexfsstubs:00000532:  ereport(ERROR, 
+baba: bexfsstubs:00000533:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+baba: bexfsstubs:00000534:  errmsg("permission denied for large object %u", 
+baba: bexfsstubs:00000535:  cookies[fd]->id))); 
 aaaaa GP_IGNORE: baaj: bexsecure - ./backend/libpq/be-secure.c
-baaj: bexsecure:00000725:  ereport(FATAL, 
-baaj: bexsecure:00000726:  (errmsg("could not create SSL context: %s", 
-baaj: bexsecure:00000727:  SSLerrmessage()))); 
-baaj: bexsecure:00000734:  ereport(FATAL, 
-baaj: bexsecure:00000735:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
-baaj: bexsecure:00000736:  errmsg("could not load server certificate file \"%s\": %s", 
-baaj: bexsecure:00000737:  SERVER_CERT_FILE, SSLerrmessage()))); 
-baaj: bexsecure:00000740:  ereport(FATAL, 
-baaj: bexsecure:00000741:  (errcode_for_file_access(), 
-baaj: bexsecure:00000742:  errmsg("could not access private key file \"%s\": %m", 
-baaj: bexsecure:00000743:  SERVER_PRIVATE_KEY_FILE))); 
-baaj: bexsecure:00000755:  ereport(FATAL, 
-baaj: bexsecure:00000756:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
-baaj: bexsecure:00000757:  errmsg("private key file \"%s\" has group or world access", 
-baaj: bexsecure:00000758:  SERVER_PRIVATE_KEY_FILE), 
-baaj: bexsecure:00000759:  errdetail("Permissions should be u=rw (0600) or less."))); 
+baaj: bexsecure:00000735:  ereport(FATAL, 
+baaj: bexsecure:00000736:  (errmsg("could not create SSL context: %s", 
+baaj: bexsecure:00000737:  SSLerrmessage()))); 
+baaj: bexsecure:00000744:  ereport(FATAL, 
+baaj: bexsecure:00000745:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
+baaj: bexsecure:00000746:  errmsg("could not load server certificate file \"%s\": %s", 
+baaj: bexsecure:00000747:  SERVER_CERT_FILE, SSLerrmessage()))); 
+baaj: bexsecure:00000750:  ereport(FATAL, 
+baaj: bexsecure:00000751:  (errcode_for_file_access(), 
+baaj: bexsecure:00000752:  errmsg("could not access private key file \"%s\": %m", 
+baaj: bexsecure:00000753:  SERVER_PRIVATE_KEY_FILE))); 
 baaj: bexsecure:00000765:  ereport(FATAL, 
-baaj: bexsecure:00000766:  (errmsg("could not load private key file \"%s\": %s", 
-baaj: bexsecure:00000767:  SERVER_PRIVATE_KEY_FILE, SSLerrmessage()))); 
-baaj: bexsecure:00000770:  ereport(FATAL, 
-baaj: bexsecure:00000771:  (errmsg("check of private key failed: %s", 
-baaj: bexsecure:00000772:  SSLerrmessage()))); 
-baaj: bexsecure:00000799:  ereport(FATAL, 
-baaj: bexsecure:00000800:  (errmsg("could not access root certificate file \"%s\": %m", 
-baaj: bexsecure:00000801:  ROOT_CERT_FILE))); 
-baaj: bexsecure:00000812:  ereport(FATAL, 
-baaj: bexsecure:00000813:  (errmsg("could not load root certificate file \"%s\": %s", 
-baaj: bexsecure:00000814:  ROOT_CERT_FILE, SSLerrmessage()))); 
+baaj: bexsecure:00000766:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
+baaj: bexsecure:00000767:  errmsg("private key file \"%s\" has group or world access", 
+baaj: bexsecure:00000768:  SERVER_PRIVATE_KEY_FILE), 
+baaj: bexsecure:00000769:  errdetail("Permissions should be u=rw (0600) or less."))); 
+baaj: bexsecure:00000775:  ereport(FATAL, 
+baaj: bexsecure:00000776:  (errmsg("could not load private key file \"%s\": %s", 
+baaj: bexsecure:00000777:  SERVER_PRIVATE_KEY_FILE, SSLerrmessage()))); 
+baaj: bexsecure:00000780:  ereport(FATAL, 
+baaj: bexsecure:00000781:  (errmsg("check of private key failed: %s", 
+baaj: bexsecure:00000782:  SSLerrmessage()))); 
+baaj: bexsecure:00000808:  ereport(FATAL, 
+baaj: bexsecure:00000809:  (errmsg("could not access root certificate file \"%s\": %m", 
+baaj: bexsecure:00000810:  ROOT_CERT_FILE))); 
+baaj: bexsecure:00000819:  ereport(FATAL, 
+baaj: bexsecure:00000820:  (errmsg("could not load root certificate file \"%s\": %s", 
+baaj: bexsecure:00000821:  ROOT_CERT_FILE, SSLerrmessage()))); 
+aaaaa GP_IGNORE: paag: pqcomm - ./backend/libpq/pqcomm.c
+paag: pqcomm:00000932:  ereport(ERROR, 
+paag: pqcomm:00000933:  (errmsg("could not set socket to non-blocking mode: %m"))); 
+paag: pqcomm:00000978:  ereport(FATAL, 
+paag: pqcomm:00000979:  (errmsg("could not set socket to blocking mode: %m"))); 
+paag: pqcomm:00000989:  ereport(FATAL, 
+paag: pqcomm:00000990:  (errmsg("could not set socket to blocking mode: %m"))); 
 aaaaa GP_IGNORE: paai: pqformat - ./backend/libpq/pqformat.c
-paai: pqformat:00000461:  ereport(ERROR, 
-paai: pqformat:00000462:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: pqformat:00000463:  errmsg("no data left in message"))); 
-paai: pqformat:00000527:  ereport(ERROR, 
-paai: pqformat:00000528:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-paai: pqformat:00000529:  errmsg("binary value is out of range for type bigint"))); 
-paai: pqformat:00000609:  ereport(ERROR, 
-paai: pqformat:00000610:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: pqformat:00000611:  errmsg("insufficient data left in message"))); 
-paai: pqformat:00000627:  ereport(ERROR, 
-paai: pqformat:00000628:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: pqformat:00000629:  errmsg("insufficient data left in message"))); 
-paai: pqformat:00000648:  ereport(ERROR, 
-paai: pqformat:00000649:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: pqformat:00000650:  errmsg("insufficient data left in message"))); 
-paai: pqformat:00000689:  ereport(ERROR, 
-paai: pqformat:00000690:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: pqformat:00000691:  errmsg("invalid string in message"))); 
-paai: pqformat:00000705:  ereport(ERROR, 
-paai: pqformat:00000706:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: pqformat:00000707:  errmsg("invalid message format"))); 
+paai: pqformat:00000434:  ereport(ERROR, 
+paai: pqformat:00000435:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: pqformat:00000436:  errmsg("no data left in message"))); 
+paai: pqformat:00000554:  ereport(ERROR, 
+paai: pqformat:00000555:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: pqformat:00000556:  errmsg("insufficient data left in message"))); 
+paai: pqformat:00000572:  ereport(ERROR, 
+paai: pqformat:00000573:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: pqformat:00000574:  errmsg("insufficient data left in message"))); 
+paai: pqformat:00000593:  ereport(ERROR, 
+paai: pqformat:00000594:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: pqformat:00000595:  errmsg("insufficient data left in message"))); 
+paai: pqformat:00000634:  ereport(ERROR, 
+paai: pqformat:00000635:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: pqformat:00000636:  errmsg("invalid string in message"))); 
+paai: pqformat:00000650:  ereport(ERROR, 
+paai: pqformat:00000651:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: pqformat:00000652:  errmsg("invalid message format"))); 
 aaaaa GP_IGNORE: raae: read - ./backend/nodes/read.c
 raae: read:00000329:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 raae: read:00000330:  errmsg("This operation requires a feature " 
@@ -12958,103 +13007,109 @@ paba: postmaster:00001721:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 paba: postmaster:00001722:  errmsg("data directory \"%s\" has group or world access", 
 paba: postmaster:00001723:  DataDir), 
 paba: postmaster:00001724:  errdetail("Permissions should be u=rwx (0700)."))); 
-paba: postmaster:00002432:  ereport(FATAL, 
-paba: postmaster:00002433:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: postmaster:00002434:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
-paba: postmaster:00002435:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
-paba: postmaster:00002436:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
-paba: postmaster:00002437:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
-paba: postmaster:00002438:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
-paba: postmaster:00002504:  ereport(FATAL, 
-paba: postmaster:00002505:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paba: postmaster:00002506:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
-paba: postmaster:00002532:  ereport(FATAL, 
-paba: postmaster:00002533:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-paba: postmaster:00002534:  errmsg("no PostgreSQL user name specified in startup packet"))); 
-paba: postmaster:00002581:  ereport(FATAL, 
-paba: postmaster:00002582:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002583:  errSendAlert(true), 
-paba: postmaster:00002584:  errOmitLocation(true), 
-paba: postmaster:00002585:  errmsg("GPAgent deprecated."))); 
-paba: postmaster:00002601:  ereport(FATAL, 
-paba: postmaster:00002602:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002603:  errSendAlert(false), 
-paba: postmaster:00002604:  errOmitLocation(true), 
-paba: postmaster:00002605:  errmsg(POSTMASTER_IN_STARTUP_MSG))); 
-paba: postmaster:00002608:  ereport(FATAL, 
-paba: postmaster:00002609:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002610:  errSendAlert(false), 
-paba: postmaster:00002611:  errOmitLocation(true), 
-paba: postmaster:00002612:  errmsg("the database system is shutting down"))); 
-paba: postmaster:00002615:  ereport(FATAL, 
-paba: postmaster:00002616:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002617:  errSendAlert(true), 
-paba: postmaster:00002618:  errOmitLocation(true), 
-paba: postmaster:00002619:  errmsg(POSTMASTER_IN_RECOVERY_MSG))); 
-paba: postmaster:00002622:  ereport(FATAL, 
-paba: postmaster:00002623:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002624:  errSendAlert(true), 
-paba: postmaster:00002625:  errOmitLocation(true), 
-paba: postmaster:00002626:  errmsg("the database system is in mirror or uninitialized mode"))); 
-paba: postmaster:00002629:  ereport(FATAL, 
-paba: postmaster:00002630:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
-paba: postmaster:00002631:  errSendAlert(true), 
-paba: postmaster:00002632:  errOmitLocation(true), 
-paba: postmaster:00002633:  errmsg("sorry, too many clients already"))); 
-paba: postmaster:00003590:  ereport(WARNING, 
-paba: postmaster:00003591:  (errmsg("pg_hba.conf not reloaded"))); 
-paba: postmaster:00003633:  ereport(LOG, 
-paba: postmaster:00003634:  (errmsg("received smart shutdown request"), 
-paba: postmaster:00003635:  errSendAlert(true), 
-paba: postmaster:00003636:  errOmitLocation(true))); 
-paba: postmaster:00003655:  ereport(LOG, 
-paba: postmaster:00003656:  (errmsg("received fast shutdown request"), 
-paba: postmaster:00003657:  errSendAlert(true), 
-paba: postmaster:00003658:  errOmitLocation(true))); 
-paba: postmaster:00003680:  ereport(LOG, 
-paba: postmaster:00003681:  (errmsg("received immediate shutdown request"), 
-paba: postmaster:00003682:  errSendAlert(true), 
-paba: postmaster:00003683:  errOmitLocation(true))); 
-paba: postmaster:00003882:  ereport(LOG, 
-paba: postmaster:00003883:  (errmsg("database system is ready to accept connections"), 
-paba: postmaster:00003884:  errdetail("%s",version), 
-paba: postmaster:00003885:  errSendAlert(true), 
-paba: postmaster:00003886:  errOmitLocation(true))); 
-paba: postmaster:00004306:  ereport(LOG, 
-paba: postmaster:00004307:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00005323:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00005894:  ereport(WARNING, 
-paba: postmaster:00005895:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
-paba: postmaster:00005896:  gai_strerror(ret)))); 
-paba: postmaster:00005938:  ereport(FATAL, 
-paba: postmaster:00005939:  (errmsg("could not load pg_hba.conf"))); 
-paba: postmaster:00006361:  ereport(ERROR, 
-paba: postmaster:00006362:  (errmsg_internal("could not terminate unstarted process: error code %d", 
-paba: postmaster:00006363:  (int) GetLastError()))); 
-paba: postmaster:00006388:  ereport(ERROR, 
-paba: postmaster:00006389:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
-paba: postmaster:00006390:  (int) GetLastError()))); 
-paba: postmaster:00006405:  ereport(ERROR, 
-paba: postmaster:00006406:  (errmsg_internal("could not terminate unstartable process: error code %d", 
-paba: postmaster:00006407:  (int) GetLastError()))); 
-paba: postmaster:00006414:  ereport(ERROR, 
-paba: postmaster:00006415:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
-paba: postmaster:00006416:  (int) GetLastError()))); 
-paba: postmaster:00006430:  ereport(FATAL, 
-paba: postmaster:00006431:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006432:  errmsg("out of memory"))); 
-paba: postmaster:00006443:  ereport(FATAL, 
-paba: postmaster:00006444:  (errmsg_internal("could not register process for wait: error code %d", 
-paba: postmaster:00006445:  (int) GetLastError()))); 
-paba: postmaster:00006516:  ereport(FATAL, 
-paba: postmaster:00006517:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006518:  errmsg("out of memory"))); 
-paba: postmaster:00007267:  ereport(ERROR, 
-paba: postmaster:00007268:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
-paba: postmaster:00007269:  (int) GetLastError()))); 
-paba: postmaster:00007289:  ereport(ERROR, 
-paba: postmaster:00007290:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
-paba: postmaster:00007291:  src, WSAGetLastError()))); 
+paba: postmaster:00002317:  ereport(FATAL, 
+paba: postmaster:00002318:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00002319:  errmsg("invalid value for boolean option \"replication\""))); 
+paba: postmaster:00002438:  ereport(FATAL, 
+paba: postmaster:00002439:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: postmaster:00002440:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
+paba: postmaster:00002441:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
+paba: postmaster:00002442:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
+paba: postmaster:00002443:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
+paba: postmaster:00002444:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
+paba: postmaster:00002497:  ereport(FATAL, 
+paba: postmaster:00002498:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00002499:  errmsg("option not supported: \"replication\""))); 
+paba: postmaster:00002517:  ereport(FATAL, 
+paba: postmaster:00002518:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paba: postmaster:00002519:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
+paba: postmaster:00002545:  ereport(FATAL, 
+paba: postmaster:00002546:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+paba: postmaster:00002547:  errmsg("no PostgreSQL user name specified in startup packet"))); 
+paba: postmaster:00002594:  ereport(FATAL, 
+paba: postmaster:00002595:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002596:  errSendAlert(true), 
+paba: postmaster:00002597:  errOmitLocation(true), 
+paba: postmaster:00002598:  errmsg("GPAgent deprecated."))); 
+paba: postmaster:00002614:  ereport(FATAL, 
+paba: postmaster:00002615:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002616:  errSendAlert(false), 
+paba: postmaster:00002617:  errOmitLocation(true), 
+paba: postmaster:00002618:  errmsg(POSTMASTER_IN_STARTUP_MSG))); 
+paba: postmaster:00002621:  ereport(FATAL, 
+paba: postmaster:00002622:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002623:  errSendAlert(false), 
+paba: postmaster:00002624:  errOmitLocation(true), 
+paba: postmaster:00002625:  errmsg("the database system is shutting down"))); 
+paba: postmaster:00002628:  ereport(FATAL, 
+paba: postmaster:00002629:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002630:  errSendAlert(true), 
+paba: postmaster:00002631:  errOmitLocation(true), 
+paba: postmaster:00002632:  errmsg(POSTMASTER_IN_RECOVERY_MSG))); 
+paba: postmaster:00002635:  ereport(FATAL, 
+paba: postmaster:00002636:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002637:  errSendAlert(true), 
+paba: postmaster:00002638:  errOmitLocation(true), 
+paba: postmaster:00002639:  errmsg("the database system is in mirror or uninitialized mode"))); 
+paba: postmaster:00002642:  ereport(FATAL, 
+paba: postmaster:00002643:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+paba: postmaster:00002644:  errSendAlert(true), 
+paba: postmaster:00002645:  errOmitLocation(true), 
+paba: postmaster:00002646:  errmsg("sorry, too many clients already"))); 
+paba: postmaster:00003603:  ereport(WARNING, 
+paba: postmaster:00003604:  (errmsg("pg_hba.conf not reloaded"))); 
+paba: postmaster:00003646:  ereport(LOG, 
+paba: postmaster:00003647:  (errmsg("received smart shutdown request"), 
+paba: postmaster:00003648:  errSendAlert(true), 
+paba: postmaster:00003649:  errOmitLocation(true))); 
+paba: postmaster:00003668:  ereport(LOG, 
+paba: postmaster:00003669:  (errmsg("received fast shutdown request"), 
+paba: postmaster:00003670:  errSendAlert(true), 
+paba: postmaster:00003671:  errOmitLocation(true))); 
+paba: postmaster:00003693:  ereport(LOG, 
+paba: postmaster:00003694:  (errmsg("received immediate shutdown request"), 
+paba: postmaster:00003695:  errSendAlert(true), 
+paba: postmaster:00003696:  errOmitLocation(true))); 
+paba: postmaster:00003895:  ereport(LOG, 
+paba: postmaster:00003896:  (errmsg("database system is ready to accept connections"), 
+paba: postmaster:00003897:  errdetail("%s",version), 
+paba: postmaster:00003898:  errSendAlert(true), 
+paba: postmaster:00003899:  errOmitLocation(true))); 
+paba: postmaster:00004319:  ereport(LOG, 
+paba: postmaster:00004320:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00005349:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00005921:  ereport(WARNING, 
+paba: postmaster:00005922:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+paba: postmaster:00005923:  gai_strerror(ret)))); 
+paba: postmaster:00005965:  ereport(FATAL, 
+paba: postmaster:00005966:  (errmsg("could not load pg_hba.conf"))); 
+paba: postmaster:00006392:  ereport(ERROR, 
+paba: postmaster:00006393:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+paba: postmaster:00006394:  (int) GetLastError()))); 
+paba: postmaster:00006419:  ereport(ERROR, 
+paba: postmaster:00006420:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+paba: postmaster:00006421:  (int) GetLastError()))); 
+paba: postmaster:00006436:  ereport(ERROR, 
+paba: postmaster:00006437:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+paba: postmaster:00006438:  (int) GetLastError()))); 
+paba: postmaster:00006445:  ereport(ERROR, 
+paba: postmaster:00006446:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+paba: postmaster:00006447:  (int) GetLastError()))); 
+paba: postmaster:00006461:  ereport(FATAL, 
+paba: postmaster:00006462:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006463:  errmsg("out of memory"))); 
+paba: postmaster:00006474:  ereport(FATAL, 
+paba: postmaster:00006475:  (errmsg_internal("could not register process for wait: error code %d", 
+paba: postmaster:00006476:  (int) GetLastError()))); 
+paba: postmaster:00006547:  ereport(FATAL, 
+paba: postmaster:00006548:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006549:  errmsg("out of memory"))); 
+paba: postmaster:00007298:  ereport(ERROR, 
+paba: postmaster:00007299:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+paba: postmaster:00007300:  (int) GetLastError()))); 
+paba: postmaster:00007320:  ereport(ERROR, 
+paba: postmaster:00007321:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+paba: postmaster:00007322:  src, WSAGetLastError()))); 
 aaaaa GP_IGNORE: saaj: seqserver - ./backend/postmaster/seqserver.c
 saaj: seqserver:00000216:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 saaj: seqserver:00000217:  errmsg("Error: Could not write() message to seqserver: %s", 
@@ -17554,9 +17609,9 @@ uabg: utfeightxandxwin:00000151:  ereport(ERROR,
 uabg: utfeightxandxwin:00000152:  (errcode(ERRCODE_INTERNAL_ERROR), 
 uabg: utfeightxandxwin:00000153:  errmsg("unexpected encoding ID %d for WIN character sets", encoding))); 
 aaaaa GP_IGNORE: eaai: encnames - ./backend/utils/mb/encnames.c
-eaai: encnames:00000562:  ereport(ERROR, 
-eaai: encnames:00000563:  (errcode(ERRCODE_NAME_TOO_LONG), 
-eaai: encnames:00000564:  errmsg("encoding name too long"))); 
+eaai: encnames:00000483:  ereport(ERROR, 
+eaai: encnames:00000484:  (errcode(ERRCODE_NAME_TOO_LONG), 
+eaai: encnames:00000485:  errmsg("encoding name too long"))); 
 aaaaa GP_IGNORE: maah: mbutils - ./backend/utils/mb/mbutils.c
 maah: mbutils:00000192:  ereport(FATAL, 
 maah: mbutils:00000193:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -18095,13 +18150,13 @@ gaai: gpviewcp:00000338:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 gaai: gpviewcp:00000339:  errmsg("gpviewreparse(): called with %hd arguments", 
 gaai: gpviewcp:00000340:  PG_NARGS()))); 
 aaaaa GP_IGNORE: eaai: encnames - ./bin/initdb/encnames.c
-eaai: encnames:00000562:  ereport(ERROR, 
-eaai: encnames:00000563:  (errcode(ERRCODE_NAME_TOO_LONG), 
-eaai: encnames:00000564:  errmsg("encoding name too long"))); 
+eaai: encnames:00000483:  ereport(ERROR, 
+eaai: encnames:00000484:  (errcode(ERRCODE_NAME_TOO_LONG), 
+eaai: encnames:00000485:  errmsg("encoding name too long"))); 
 aaaaa GP_IGNORE: eaai: encnames - ./interfaces/libpq/encnames.c
-eaai: encnames:00000562:  ereport(ERROR, 
-eaai: encnames:00000563:  (errcode(ERRCODE_NAME_TOO_LONG), 
-eaai: encnames:00000564:  errmsg("encoding name too long"))); 
+eaai: encnames:00000483:  ereport(ERROR, 
+eaai: encnames:00000484:  (errcode(ERRCODE_NAME_TOO_LONG), 
+eaai: encnames:00000485:  errmsg("encoding name too long"))); 
 aaaaa GP_IGNORE: waaf: wchar - ./interfaces/libpq/wchar.c
 waaf: wchar:00001607:  ereport(ERROR, 
 waaf: wchar:00001608:  (errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE), 
