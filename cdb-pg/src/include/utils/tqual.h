@@ -380,15 +380,18 @@ extern void GetTupleVisibilitySummary(
 	TupleVisibilitySummary	*tupleVisibilitySummary);
 
 
-// 0 tuple_tid                 TIDOID
-// 1 tuple_xmin               XIDOID
-// 2 tuple_xmin_status     TEXTOID
-// 3 tuple_xmax		    XIDOID
-// 4 tuple_xmax_status    TEXTOID
-// 5 tuple_visible_status   TEXTOID
+// 0 gp_tid                    TIDOID
+// 1 gp_xmin                  INT4OID
+// 2 gp_xmin_status        TEXTOID
+// 3 gp_xmin_distrib_id     TEXTOID
+// 4 gp_xmax		          INT4OID
+// 5 gp_xmax_status       TEXTOID
+// 6 gp_xmax_distrib_id    TEXTOID
+// 7 gp_visibility             TEXTOID
 
 extern void GetTupleVisibilitySummaryDatums(
 	Datum		*values,
+	bool		*nulls,
 	TupleVisibilitySummary	*tupleVisibilitySummary);
 
 #endif   /* TQUAL_H */

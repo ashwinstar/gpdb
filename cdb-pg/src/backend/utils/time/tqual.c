@@ -85,6 +85,7 @@
 #include "access/clog.h"
 
 #include "storage/buffile.h"
+#include "access/distributedlog.h"
 
 static SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId);
 static SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId);
@@ -3281,6 +3282,7 @@ void GetTupleVisibilitySummary(
 			switch (tupleVisibilitySummary->xmaxStatus)
 			{
 			case TupleTransactionStatus_None:
+			case TupleTransactionStatus_Frozen:
 			case TupleTransactionStatus_CLogInProgress:
 			case TupleTransactionStatus_HintAborted:
 			case TupleTransactionStatus_CLogAborted:
@@ -3297,7 +3299,7 @@ void GetTupleVisibilitySummary(
 				break;
 			
 			default:
-				elog(PANIC, "Unrecognized tuple transaction status: %d",
+				elog(ERROR, "Unrecognized tuple transaction status: %d",
 					 (int) tupleVisibilitySummary->xmaxStatus);
 				tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Unknown;
 				break;
@@ -3306,24 +3308,74 @@ void GetTupleVisibilitySummary(
 		break;
 
 	default:
-		elog(PANIC, "Unrecognized tuple transaction status: %d",
+		elog(ERROR, "Unrecognized tuple transaction status: %d",
 			 (int) tupleVisibilitySummary->xminStatus);
 		tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Unknown;
 		break;
 	}
 }
 
-// 0 tuple_tid                 TIDOID
-// 1 tuple_xmin               INT4OID
-// 2 tuple_xmin_status     TEXTOID
-// 3 tuple_xmax		    INT4OID
-// 4 tuple_xmax_status    TEXTOID
-// 5 tuple_visible_status   TEXTOID
+static char *GetTupleVisibilityDistribId(
+	TransactionId 				xid,
+	TupleTransactionStatus      status)
+{
+	DistributedTransactionTimeStamp distribTimeStamp;
+	DistributedTransactionId		distribXid;
+
+	switch (status)
+	{
+	case TupleTransactionStatus_None:
+	case TupleTransactionStatus_Frozen:
+	case TupleTransactionStatus_CLogInProgress:
+	case TupleTransactionStatus_HintAborted:
+	case TupleTransactionStatus_CLogAborted:
+	case TupleTransactionStatus_CLogSubCommitted:
+		return NULL;
+		
+	case TupleTransactionStatus_HintCommitted:
+	case TupleTransactionStatus_CLogCommitted:
+		if (DistributedLog_CommittedCheck(
+										xid,
+										&distribTimeStamp,
+										&distribXid))
+		{
+			char	*distribId;
+
+			distribId = palloc(TMGIDSIZE);
+			sprintf(distribId, "%u-%.10u",
+					distribTimeStamp, distribXid);
+			return distribId;
+		}
+		else
+		{
+			return pstrdup("(info not avail)");
+		}
+		break;
+	
+	default:
+		elog(ERROR, "Unrecognized tuple transaction status: %d",
+			 (int) status);
+		return NULL;
+	}
+}
+
+// 0 gp_tid                    TIDOID
+// 1 gp_xmin                  INT4OID
+// 2 gp_xmin_status        TEXTOID
+// 3 gp_xmin_distrib_id     TEXTOID
+// 4 gp_xmax		          INT4OID
+// 5 gp_xmax_status       TEXTOID
+// 6 gp_xmax_distrib_id    TEXTOID
+// 7 gp_visibility             TEXTOID
 
 void GetTupleVisibilitySummaryDatums(
 	Datum		*values,
+	bool		*nulls,
 	TupleVisibilitySummary	*tupleVisibilitySummary)
 {
+	char *xminDistribId;
+	char *xmaxDistribId;
+
 	values[0] = ItemPointerGetDatum(&tupleVisibilitySummary->tid);
 	values[1] = Int32GetDatum((int32)tupleVisibilitySummary->xmin);
 	values[2] = 
@@ -3331,13 +3383,43 @@ void GetTupleVisibilitySummaryDatums(
 							CStringGetDatum(
 								TupleTransactionStatus_Name(
 											tupleVisibilitySummary->xminStatus)));
-	values[3] = Int32GetDatum((int32)tupleVisibilitySummary->xmax);
-	values[4] = 
+	xminDistribId = GetTupleVisibilityDistribId(
+									tupleVisibilitySummary->xmin,
+									tupleVisibilitySummary->xminStatus);
+	if (xminDistribId != NULL)
+	{
+		values[3] = 
+			DirectFunctionCall1(textin,
+								CStringGetDatum(
+										xminDistribId));
+		pfree(xminDistribId);
+	}
+	else
+	{
+		nulls[3] = true;
+	}
+	values[4] = Int32GetDatum((int32)tupleVisibilitySummary->xmax);
+	values[5] = 
 		DirectFunctionCall1(textin,
 							CStringGetDatum(
 								TupleTransactionStatus_Name(
 											tupleVisibilitySummary->xmaxStatus)));
-	values[5] = 
+	xmaxDistribId = GetTupleVisibilityDistribId(
+									tupleVisibilitySummary->xmax,
+									tupleVisibilitySummary->xmaxStatus);
+	if (xmaxDistribId != NULL)
+	{
+		values[6] = 
+			DirectFunctionCall1(textin,
+								CStringGetDatum(
+										xmaxDistribId));
+		pfree(xmaxDistribId);
+	}
+	else
+	{
+		nulls[6] = true;
+	}
+	values[7] = 
 		DirectFunctionCall1(textin,
 							CStringGetDatum(
 								TupleVisibilityStatus_Name(

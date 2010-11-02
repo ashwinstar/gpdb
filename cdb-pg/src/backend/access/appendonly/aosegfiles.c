@@ -857,26 +857,30 @@ gp_aoseg_history(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/* build tupdesc for result tuples */
-		tupdesc = CreateTemplateTupleDesc(10, false);
+		tupdesc = CreateTemplateTupleDesc(12, false);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "gp_tid",
 						   TIDOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "gp_xmin",
 						   INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "gp_xmin_status",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "gp_xmax",
-						   INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "gp_xmax_status",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "gp_xmin_distrib_id",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "gp_visibility_status",
-						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "segno",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "gp_xmax",
 						   INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "tupcount",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "gp_xmax_status",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "gp_xmax_distrib_id",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "gp_visibility",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "segno",
+						   INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "tupcount",
 						   INT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "eof",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 11, "eof",
 						   INT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "eof_uncompressed",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 12, "eof_uncompressed",
 						   INT8OID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
@@ -928,8 +932,8 @@ gp_aoseg_history(PG_FUNCTION_ARGS)
 	 */
 	while (true)
 	{
-		Datum		values[10];
-		bool		nulls[10];
+		Datum		values[12];
+		bool		nulls[12];
 		HeapTuple	tuple;
 		Datum		result;
 
@@ -950,12 +954,13 @@ gp_aoseg_history(PG_FUNCTION_ARGS)
 
 		GetTupleVisibilitySummaryDatums(
 								&values[0],
+								&nulls[0],
 								&aoSegfile->tupleVisibilitySummary);
 
-		values[6] = Int32GetDatum(aoSegfile->segno);
-		values[7] = Int64GetDatum(aoSegfile->tupcount);
-		values[8] = Int64GetDatum(aoSegfile->eof);
-		values[9] = Int64GetDatum(aoSegfile->eof_uncompressed);
+		values[8] = Int32GetDatum(aoSegfile->segno);
+		values[9] = Int64GetDatum(aoSegfile->tupcount);
+		values[10] = Int64GetDatum(aoSegfile->eof);
+		values[11] = Int64GetDatum(aoSegfile->eof_uncompressed);
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
