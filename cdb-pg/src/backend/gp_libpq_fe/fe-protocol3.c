@@ -4,13 +4,13 @@
  *	  functions that are specific to frontend/backend protocol version 3
  *   This is a modified version that supports GP extensions and changes.
  *
- * Portions Copyright (c) 2006-2009, Greenplum inc
- * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2010, Greenplum inc
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.39 2009/06/11 14:49:14 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.43 2010/04/28 13:46:23 mha Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -219,7 +219,7 @@ pqParseInput3(PGconn *conn)
 			else
 			{
 				pqInternalNotice(&conn->noticeHooks,
-								 "message type 0x%02x arrived from server while idle",
+						"message type 0x%02x arrived from server while idle",
 								 id);
 				/* Discard the unexpected message */
 				conn->inCursor += msgLength;
@@ -444,7 +444,7 @@ pqParseInput3(PGconn *conn)
 					{
 						/* Set up to report error at end of query */
 						printfPQExpBuffer(&conn->errorMessage,
-										  gettext("server sent data (\"D\" message) without prior row description (\"T\" message)\n"));
+										  libpq_gettext("server sent data (\"D\" message) without prior row description (\"T\" message)\n"));
 						pqSaveErrorResult(conn);
 						/* Discard the unexpected message */
 						conn->inCursor += msgLength;
@@ -538,7 +538,7 @@ pqParseInput3(PGconn *conn)
 
 				default:
 					printfPQExpBuffer(&conn->errorMessage,
-									  gettext(
+									  libpq_gettext(
 										  "unexpected response from server; first received character was \"%c\"\n"),
 									  id);
 					/* build an error result holding the error message */
@@ -560,7 +560,7 @@ pqParseInput3(PGconn *conn)
 		{
 			/* Trouble --- report it */
 			printfPQExpBuffer(&conn->errorMessage,
-							  gettext("message contents do not agree with length in message type \"%c\"\n"),
+							  libpq_gettext("message contents do not agree with length in message type \"%c\"\n"),
 							  id);
 			/* build an error result holding the error message */
 			pqSaveErrorResult(conn);
@@ -580,7 +580,7 @@ static void
 handleSyncLoss(PGconn *conn, char id, int msgLength)
 {
 	printfPQExpBuffer(&conn->errorMessage,
-					  gettext(
+					  libpq_gettext(
 						  "lost synchronization with server: got message type \"%c\", length %d\n"),
 					  id, msgLength);
 	/* build an error result holding the error message */
@@ -812,7 +812,7 @@ getAnotherTuple(PGconn *conn, int msgLength)
 	{
 		/* Replace partially constructed result with an error result */
 		printfPQExpBuffer(&conn->errorMessage,
-				 gettext("unexpected field count in \"D\" message\n"));
+				 libpq_gettext("unexpected field count in \"D\" message\n"));
 		pqSaveErrorResult(conn);
 		/* Discard the failed message by pretending we read it */
 		conn->inCursor = conn->inStart + 5 + msgLength;
@@ -867,7 +867,7 @@ outOfMemory:
 	 */
 	pqClearAsyncResult(conn);
 	printfPQExpBuffer(&conn->errorMessage,
-					  gettext("out of memory for query result\n"));
+					  libpq_gettext("out of memory for query result\n"));
 	pqSaveErrorResult(conn);
 
 	/* Discard the failed message by pretending we read it */
@@ -954,7 +954,7 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 		{
 			/* emit position as text addition to primary message */
 			/* translator: %s represents a digit string */
-			appendPQExpBuffer(&workBuf, gettext(" at character %s"),
+			appendPQExpBuffer(&workBuf, libpq_gettext(" at character %s"),
 							  val);
 		}
 	}
@@ -973,7 +973,7 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 			{
 				/* emit position as text addition to primary message */
 				/* translator: %s represents a digit string */
-				appendPQExpBuffer(&workBuf, gettext(" at character %s"),
+				appendPQExpBuffer(&workBuf, libpq_gettext(" at character %s"),
 								  val);
 			}
 		}
@@ -986,16 +986,16 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 								conn->client_encoding);
 		val = PQresultErrorField(res, PG_DIAG_MESSAGE_DETAIL);
 		if (val)
-			appendPQExpBuffer(&workBuf, gettext("DETAIL:  %s\n"), val);
+			appendPQExpBuffer(&workBuf, libpq_gettext("DETAIL:  %s\n"), val);
 		val = PQresultErrorField(res, PG_DIAG_MESSAGE_HINT);
 		if (val)
-			appendPQExpBuffer(&workBuf, gettext("HINT:  %s\n"), val);
+			appendPQExpBuffer(&workBuf, libpq_gettext("HINT:  %s\n"), val);
 		val = PQresultErrorField(res, PG_DIAG_INTERNAL_QUERY);
 		if (val)
-			appendPQExpBuffer(&workBuf, gettext("QUERY:  %s\n"), val);
+			appendPQExpBuffer(&workBuf, libpq_gettext("QUERY:  %s\n"), val);
 		val = PQresultErrorField(res, PG_DIAG_CONTEXT);
 		if (val)
-			appendPQExpBuffer(&workBuf, gettext("CONTEXT:  %s\n"), val);
+			appendPQExpBuffer(&workBuf, libpq_gettext("CONTEXT:  %s\n"), val);
 	}
 	if (conn->verbosity == PQERRORS_VERBOSE)
 	{
@@ -1007,11 +1007,11 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 		val = PQresultErrorField(res, PG_DIAG_SOURCE_FUNCTION);
 		if (val || valf || vall)
 		{
-			appendPQExpBufferStr(&workBuf, gettext("LOCATION:  "));
+			appendPQExpBufferStr(&workBuf, libpq_gettext("LOCATION:  "));
 			if (val)
-				appendPQExpBuffer(&workBuf, gettext("%s, "), val);
+				appendPQExpBuffer(&workBuf, libpq_gettext("%s, "), val);
 			if (valf && vall)	/* unlikely we'd have just one */
-				appendPQExpBuffer(&workBuf, gettext("%s:%s"),
+				appendPQExpBuffer(&workBuf, libpq_gettext("%s:%s"),
 								  valf, vall);
 			appendPQExpBufferChar(&workBuf, '\n');
 		}
@@ -1258,7 +1258,7 @@ reportErrorPosition(PQExpBuffer msg, const char *query, int loc, int encoding)
 
 		/* Begin building the finished message. */
 		i = msg->len;
-		appendPQExpBuffer(msg, gettext("LINE %d: "), loc_line);
+		appendPQExpBuffer(msg, libpq_gettext("LINE %d: "), loc_line);
 		if (beg_trunc)
 			appendPQExpBufferStr(msg, "...");
 
@@ -1718,7 +1718,7 @@ pqGetCopyData3(PGconn *conn, char **buffer, int async)
 			if (*buffer == NULL)
 			{
 				printfPQExpBuffer(&conn->errorMessage,
-								  gettext("out of memory\n"));
+								  libpq_gettext("out of memory\n"));
 				return -2;
 			}
 			memcpy(*buffer, &conn->inBuffer[conn->inCursor], msgLength);
@@ -1750,7 +1750,7 @@ pqGetline3(PGconn *conn, char *s, int maxlen)
 		conn->copy_is_binary)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-					  gettext("PQgetline: not doing text COPY OUT\n"));
+					  libpq_gettext("PQgetline: not doing text COPY OUT\n"));
 		*s = '\0';
 		return EOF;
 	}
@@ -1854,7 +1854,7 @@ pqEndcopy3(PGconn *conn)
 		conn->asyncStatus != PGASYNC_COPY_OUT)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-						  gettext("no COPY in progress\n"));
+						  libpq_gettext("no COPY in progress\n"));
 		return 1;
 	}
 
@@ -2125,7 +2125,7 @@ pqFunctionCall3(PGconn *conn, Oid fnid,
 			default:
 				/* The backend violates the protocol. */
 				printfPQExpBuffer(&conn->errorMessage,
-								  gettext("protocol error: id=0x%x\n"),
+								  libpq_gettext("protocol error: id=0x%x\n"),
 								  id);
 				pqSaveErrorResult(conn);
 				/* trust the specified message length as what to skip */
@@ -2182,6 +2182,7 @@ build_startup_packet(const PGconn *conn, char *packet,
 {
 	int			packet_len = 0;
 	const PQEnvironmentOption *next_eo;
+	const char *val;
 
 	/* Protocol version comes first. */
 	if (packet)
@@ -2193,32 +2194,31 @@ build_startup_packet(const PGconn *conn, char *packet,
 	packet_len += sizeof(ProtocolVersion);
 
 	/* Add user name, database name, options */
+
+#define ADD_STARTUP_OPTION(optname, optval) \
+	do { \
+		if (packet) \
+			strcpy(packet + packet_len, optname); \
+		packet_len += strlen(optname) + 1; \
+		if (packet) \
+			strcpy(packet + packet_len, optval); \
+		packet_len += strlen(optval) + 1; \
+	} while(0)
+
 	if (conn->pguser && conn->pguser[0])
-	{
-		if (packet)
-			strcpy(packet + packet_len, "user");
-		packet_len += strlen("user") + 1;
-		if (packet)
-			strcpy(packet + packet_len, conn->pguser);
-		packet_len += strlen(conn->pguser) + 1;
-	}
+		ADD_STARTUP_OPTION("user", conn->pguser);
 	if (conn->dbName && conn->dbName[0])
-	{
-		if (packet)
-			strcpy(packet + packet_len, "database");
-		packet_len += strlen("database") + 1;
-		if (packet)
-			strcpy(packet + packet_len, conn->dbName);
-		packet_len += strlen(conn->dbName) + 1;
-	}
+		ADD_STARTUP_OPTION("database", conn->dbName);
+	//if (conn->replication && conn->replication[0])
+	//	ADD_STARTUP_OPTION("replication", conn->replication);
 	if (conn->pgoptions && conn->pgoptions[0])
+		ADD_STARTUP_OPTION("options", conn->pgoptions);
+	if (conn->send_appname)
 	{
-		if (packet)
-			strcpy(packet + packet_len, "options");
-		packet_len += strlen("options") + 1;
-		if (packet)
-			strcpy(packet + packet_len, conn->pgoptions);
-		packet_len += strlen(conn->pgoptions) + 1;
+		/* Use appname if present, otherwise use fallback */
+		val = conn->appname ? conn->appname : conn->fbappname;
+		if (val && val[0])
+			ADD_STARTUP_OPTION("application_name", val);
 	}
 
 	/* CDB: Add qExec startup data */
@@ -2268,7 +2268,12 @@ build_startup_packet(const PGconn *conn, char *packet,
 					strcpy(packet + packet_len, val);
 				packet_len += strlen(val) + 1;
 			}
-		}
+		}		if (packet)
+			strcpy(packet + packet_len, "options");
+		packet_len += strlen("options") + 1;
+		if (packet)
+			strcpy(packet + packet_len, conn->pgoptions);
+		packet_len += strlen(conn->pgoptions) + 1;
 	}
 
 	/* Add trailing terminator */

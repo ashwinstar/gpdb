@@ -10,9 +10,9 @@
  * in this file; it can be defined by the caller for special purposes.
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc.
- * Copyright (c) 2003-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2010, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/utils/errcodes.h,v 1.20 2006/06/16 23:29:26 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/errcodes.h,v 1.32 2010/03/13 14:55:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -135,6 +135,8 @@
 #define ERRCODE_INDICATOR_OVERFLOW			MAKE_SQLSTATE('2','2', '0','2','2')
 #define ERRCODE_INTERVAL_FIELD_OVERFLOW		MAKE_SQLSTATE('2','2', '0','1','5')
 #define ERRCODE_INVALID_ARGUMENT_FOR_LOG	MAKE_SQLSTATE('2','2', '0','1','E')
+#define ERRCODE_INVALID_ARGUMENT_FOR_NTILE	MAKE_SQLSTATE('2','2', '0','1','4')
+#define ERRCODE_INVALID_ARGUMENT_FOR_NTH_VALUE	MAKE_SQLSTATE('2','2', '0','1','6')
 #define ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION MAKE_SQLSTATE('2','2', '0', '1', 'F')
 #define ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION	MAKE_SQLSTATE('2','2', '0', '1', 'G')
 #define ERRCODE_INVALID_CHARACTER_VALUE_FOR_CAST		MAKE_SQLSTATE('2','2', '0','1','8')
@@ -166,6 +168,11 @@
 #define ERRCODE_INVALID_BINARY_REPRESENTATION	MAKE_SQLSTATE('2','2', 'P','0','3')
 #define ERRCODE_BAD_COPY_FILE_FORMAT		MAKE_SQLSTATE('2','2', 'P','0','4')
 #define ERRCODE_UNTRANSLATABLE_CHARACTER	MAKE_SQLSTATE('2','2', 'P','0','5')
+#define ERRCODE_NOT_AN_XML_DOCUMENT			MAKE_SQLSTATE('2', '2', '0', '0', 'L')
+#define ERRCODE_INVALID_XML_DOCUMENT			MAKE_SQLSTATE('2', '2', '0', '0', 'M')
+#define ERRCODE_INVALID_XML_CONTENT			MAKE_SQLSTATE('2', '2', '0', '0', 'N')
+#define ERRCODE_INVALID_XML_COMMENT			MAKE_SQLSTATE('2', '2', '0', '0', 'S')
+#define ERRCODE_INVALID_XML_PROCESSING_INSTRUCTION	MAKE_SQLSTATE('2', '2', '0', '0', 'T')
 #define ERROR_INVALID_WINDOW_FRAME_PARAMETER		MAKE_SQLSTATE('2','2','0','1','3')
 #define	ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY	MAKE_SQLSTATE('2','2','M','0','1')
 
@@ -176,6 +183,7 @@
 #define ERRCODE_FOREIGN_KEY_VIOLATION		MAKE_SQLSTATE('2','3', '5','0','3')
 #define ERRCODE_UNIQUE_VIOLATION			MAKE_SQLSTATE('2','3', '5','0','5')
 #define ERRCODE_CHECK_VIOLATION				MAKE_SQLSTATE('2','3', '5','1','4')
+#define ERRCODE_EXCLUSION_VIOLATION			MAKE_SQLSTATE('2','3', 'P','0','1')
 
 /* Class 24 - Invalid Cursor State */
 #define ERRCODE_INVALID_CURSOR_STATE		MAKE_SQLSTATE('2','4', '0','0','0')
@@ -203,6 +211,7 @@
 
 /* Class 28 - Invalid Authorization Specification */
 #define ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION MAKE_SQLSTATE('2','8', '0','0','0')
+#define ERRCODE_INVALID_PASSWORD MAKE_SQLSTATE('2','8', 'P','0','1')
 
 /* Class 2B - Dependent Privilege Descriptors Still Exist */
 #define ERRCODE_DEPENDENT_PRIVILEGE_DESCRIPTORS_STILL_EXIST		MAKE_SQLSTATE('2','B', '0','0','0')
@@ -261,6 +270,8 @@
 #define ERRCODE_INSUFFICIENT_PRIVILEGE		MAKE_SQLSTATE('4','2', '5','0','1')
 #define ERRCODE_CANNOT_COERCE				MAKE_SQLSTATE('4','2', '8','4','6')
 #define ERRCODE_GROUPING_ERROR				MAKE_SQLSTATE('4','2', '8','0','3')
+#define ERRCODE_WINDOWING_ERROR				MAKE_SQLSTATE('4','2', 'P','2','0')
+#define ERRCODE_INVALID_RECURSION			MAKE_SQLSTATE('4','2', 'P','1','9')
 #define ERRCODE_INVALID_FOREIGN_KEY			MAKE_SQLSTATE('4','2', '8','3','0')
 #define ERRCODE_INVALID_NAME				MAKE_SQLSTATE('4','2', '6','0','2')
 #define ERRCODE_NAME_TOO_LONG				MAKE_SQLSTATE('4','2', '6','2','2')

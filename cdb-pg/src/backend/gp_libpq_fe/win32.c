@@ -1,5 +1,5 @@
 /*
- * $PostgreSQL: pgsql/src/interfaces/libpq/win32.c,v 1.26 2009/06/11 14:49:14 momjian Exp $
+ * $PostgreSQL: pgsql/src/interfaces/libpq/win32.c,v 1.27 2010/01/02 16:58:12 momjian Exp $
  *
  *
  *	FILE
@@ -15,7 +15,7 @@
  * The error constants are taken from the Frambak Bakfram LGSOCKET
  * library guys who in turn took them from the Winsock FAQ.
  *
- * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  */
@@ -33,6 +33,13 @@
 #include "win32.h"
 
 /* Declared here to avoid pulling in all includes, which causes name collissions */
+#ifdef ENABLE_NLS
+extern char *
+libpq_gettext(const char *msgid)
+__attribute__((format_arg(1)));
+#else
+#define libpq_gettext(x) (x)
+#endif
 
 
 
@@ -313,7 +320,7 @@ winsock_strerror(int err, char *strerrbuf, size_t buflen)
 	}
 
 	if (!success)
-		sprintf(strerrbuf, gettext("Unknown socket error (0x%08X/%i)"), err, err);
+		sprintf(strerrbuf, libpq_gettext("Unknown socket error (0x%08X/%i)"), err, err);
 	else
 	{
 		strerrbuf[buflen - 1] = '\0';

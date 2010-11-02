@@ -4,7 +4,7 @@
  *	  System cache management routines
  *
  * Copyright (c) 2007-2010, Greenplum inc
- * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *

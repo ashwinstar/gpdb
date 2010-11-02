@@ -70,6 +70,20 @@ static int	pqSocketPoll(int sock, int forRead, int forWrite, time_t end_time);
 
 
 /*
+ * fputnbytes: print exactly N bytes to a file
+ *
+ * We avoid using %.*s here because it can misbehave if the data
+ * is not valid in what libc thinks is the prevailing encoding.
+ */
+static void
+fputnbytes(FILE *f, const char *str, size_t n)
+{
+	while (n-- > 0)
+		fputc(*str++, f);
+}
+
+
+/*
  * pqGetc: get 1 character from the connection
  *
  *	All these routines return 0 on success, EOF on error.
@@ -189,8 +203,11 @@ pqGetnchar(char *s, size_t len, PGconn *conn)
 	conn->inCursor += len;
 
 	if (conn->Pfdebug)
-		fprintf(conn->Pfdebug, "From backend (%lu)> %.*s\n",
-				(unsigned long) len, (int) len, s);
+	{
+		fprintf(conn->Pfdebug, "From backend (%lu)> ", (unsigned long) len);
+		fputnbytes(conn->Pfdebug, s, len);
+		fprintf(conn->Pfdebug, "\n");
+	}
 
 	return 0;
 }
@@ -206,7 +223,11 @@ pqPutnchar(const char *s, size_t len, PGconn *conn)
 		return EOF;
 
 	if (conn->Pfdebug)
-		fprintf(conn->Pfdebug, "To backend> %.*s\n", (int) len, s);
+	{
+		fprintf(conn->Pfdebug, "To backend> ");
+		fputnbytes(conn->Pfdebug, s, len);
+		fprintf(conn->Pfdebug, "\n");
+	}
 
 	return 0;
 }
@@ -601,7 +622,7 @@ pqReadData(PGconn *conn)
 	if (conn->sock < 0)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-						  gettext("connection not open\n"));
+						  libpq_gettext("connection not open\n"));
 		return -1;
 	}
 
@@ -667,7 +688,7 @@ retry3:
 			goto definitelyFailed;
 #endif
 		printfPQExpBuffer(&conn->errorMessage,
-				   gettext("could not receive data from server: %s\n"),
+				   libpq_gettext("could not receive data from server: %s\n"),
 						  SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 		return -1;
 	}
@@ -749,7 +770,7 @@ retry4:
 			goto definitelyFailed;
 #endif
 		printfPQExpBuffer(&conn->errorMessage,
-				   gettext("could not receive data from server: %s\n"),
+				   libpq_gettext("could not receive data from server: %s\n"),
 						  SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 		return -1;
 	}
@@ -765,7 +786,7 @@ retry4:
 	 */
 definitelyFailed:
 	printfPQExpBuffer(&conn->errorMessage,
-					  gettext(
+					  libpq_gettext(
 								"server closed the connection unexpectedly\n"
 				   "\tThis probably means the server terminated abnormally\n"
 							 "\tbefore or while processing the request.\n"));
@@ -796,7 +817,7 @@ pqSendSome(PGconn *conn, int len)
 	if (conn->sock < 0)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-						  gettext("connection not open\n"));
+						  libpq_gettext("connection not open\n"));
 		return -1;
 	}
 
@@ -843,7 +864,7 @@ pqSendSome(PGconn *conn, int len)
 				case ECONNRESET:
 #endif
 					printfPQExpBuffer(&conn->errorMessage,
-									  gettext(
+									  libpq_gettext(
 								"server closed the connection unexpectedly\n"
 					"\tThis probably means the server terminated abnormally\n"
 							 "\tbefore or while processing the request.\n"));
@@ -861,7 +882,7 @@ pqSendSome(PGconn *conn, int len)
 
 				default:
 					printfPQExpBuffer(&conn->errorMessage,
-						gettext("could not send data to server: %s\n"),
+						libpq_gettext("could not send data to server: %s\n"),
 							SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 					/* We don't assume it's a fatal error... */
 					conn->outCount = 0;
@@ -990,7 +1011,7 @@ pqWaitTimed(int forRead, int forWrite, PGconn *conn, time_t finish_time)
 	if (result == 0)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-						  gettext("timeout expired\n"));
+						  libpq_gettext("timeout expired\n"));
 		return EOF;
 	}
 
@@ -1032,7 +1053,7 @@ pqSocketCheck(PGconn *conn, int forRead, int forWrite, time_t end_time)
 	if (conn->sock < 0)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
-						  gettext("socket not open\n"));
+						  libpq_gettext("socket not open\n"));
 		return -1;
 	}
 
@@ -1046,7 +1067,7 @@ pqSocketCheck(PGconn *conn, int forRead, int forWrite, time_t end_time)
 		char		sebuf[256];
 
 		printfPQExpBuffer(&conn->errorMessage,
-						  gettext("select() failed: %s\n"),
+						  libpq_gettext("select() failed: %s\n"),
 						  SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
 	}
 

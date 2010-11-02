@@ -2272,7 +2272,7 @@ initMasks(fd_set *rmask)
 	{
 		int			fd = ListenSocket[i];
 
-		if (fd == -1)
+		if (fd == PGINVALID_SOCKET)
 			break;
 		FD_SET(fd, rmask);
 
@@ -2311,7 +2311,13 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 		/*
 		 * EOF after SSLdone probably means the client didn't like our
 		 * response to NEGOTIATE_SSL_CODE.	That's not an error condition, so
-		 * don't clutter the log with a complaint.
+		 * don't clutter the log with a complaint.else if (strcmp(nameptr, "replication") == 0)
+			{
+				if (!parse_bool(valptr, &am_walsender))
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for boolean option \"replication\"")));
+			}
 		 */
 		if (!SSLdone)
 			ereport(COMMERROR,
@@ -2328,7 +2334,7 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	{
 		ereport(COMMERROR,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("invalid length of startup packet")));
+				 errmsg("invalid length of startup packet %ld",(long)len)));
 		return STATUS_ERROR;
 	}
 
@@ -2485,6 +2491,13 @@ retry1:
 				gpqdid = valptr;
 			else if (strcmp(nameptr, "gpdaid") == 0)
 				gpdaid = valptr;
+			else if (strcmp(nameptr, "replication") == 0)
+			{
+				//if (!parse_bool(valptr, &am_walsender))
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("option not supported: \"replication\"")));
+			}
 			else
 			{
 				/* Assume it's a generic GUC option */
@@ -4614,6 +4627,19 @@ CleanupBackend(int pid,
 	 * assume everything is all right and proceed to remove the backend from
 	 * the active backend list.
 	 */
+#ifdef WIN32
+	/*
+	 * On win32, also treat ERROR_WAIT_NO_CHILDREN (128) as nonfatal
+	 * case, since that sometimes happens under load when the process fails
+	 * to start properly (long before it starts using shared memory).
+	 */
+	if (exitstatus == ERROR_WAIT_NO_CHILDREN)
+	{
+		LogChildExit(LOG, _("server process"), pid, exitstatus);
+		exitstatus = 0;
+	}
+#endif
+
 	if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
 	{
 		HandleChildCrash(pid, exitstatus, _("server process"));
@@ -5837,6 +5863,7 @@ BackendInitialize(Port *port)
 	if (PreAuthDelay > 0)
 		pg_usleep(PreAuthDelay * 1000000L);
 
+	/* This flag will remain set until InitPostgres finishes authentication */
 	ClientAuthInProgress = true;	/* limit visibility of log messages */
 
 	/* save process start time */
@@ -5873,7 +5900,7 @@ BackendInitialize(Port *port)
 	pqsignal(SIGTERM, authdie);
 	pqsignal(SIGQUIT, authdie);
 	pqsignal(SIGALRM, authdie);
-	PG_SETMASK(&AuthBlockSig);
+	PG_SETMASK(&StartupBlockSig);
 
 	/*
 	 * Get the remote host name and port for logging and status display.
@@ -5956,6 +5983,10 @@ BackendInitialize(Port *port)
 	 */
 	status = ProcessStartupPacket(port, false);
 
+	/*
+	 * Stop here if it was bad or a cancel packet.	ProcessStartupPacket
+	 * already did any appropriate error reporting.
+	 */
 	if (status != STATUS_OK)
 		proc_exit(0);
 

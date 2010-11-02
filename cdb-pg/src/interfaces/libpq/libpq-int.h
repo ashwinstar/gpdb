@@ -294,10 +294,9 @@ struct pg_conn
 {
 	/* Saved values of connection options */
 	char	   *pghost;			/* the machine on which the server is running */
-	char	   *pghostaddr;		/* the IPv4 address of the machine on which
-								 * the server is running, in IPv4
-								 * numbers-and-dots notation. Takes precedence
-								 * over above. */
+	char	   *pghostaddr;		/* the numeric IP address of the machine on
+								 * which the server is running.  Takes
+								 * precedence over above. */
 	char	   *pgport;			/* the server's communication port */
 	char	   *pgunixsocket;	/* the Unix-domain socket that the server is
 								 * listening on; if NULL, uses a default
@@ -306,9 +305,18 @@ struct pg_conn
 								 * displayed (OBSOLETE, NOT USED) */
 	char	   *connect_timeout;	/* connection timeout (numeric string) */
 	char	   *pgoptions;		/* options to start the backend with */
+	char	   *appname;		/* application name */
+	char	   *fbappname;		/* fallback application name */
 	char	   *dbName;			/* database name */
+	char	   *replication;	/* connect as the replication standby? */
 	char	   *pguser;			/* Postgres username and password, if any */
 	char	   *pgpass;
+	char	   *keepalives;		/* use TCP keepalives? */
+	char	   *keepalives_idle;	/* time between TCP keepalives */
+	char	   *keepalives_interval;	/* time between TCP keepalive
+										 * retransmits */
+	char	   *keepalives_count;		/* maximum number of TCP keepalive
+										 * retransmits */
 	char	   *sslmode;		/* SSL mode (require,prefer,allow,disable) */
 	char	   *sslkey;			/* client key filename */
 	char	   *sslcert;		/* client certificate filename */
@@ -352,6 +360,9 @@ struct pg_conn
 	ProtocolVersion pversion;	/* FE/BE protocol version in use */
 	int			sversion;		/* server version, e.g. 70401 for 7.4.1 */
 	bool		password_needed;	/* true if server demanded a password */
+	bool		dot_pgpass_used;	/* true if used .pgpass */
+	bool		sigpipe_so;		/* have we masked SIGPIPE via SO_NOSIGPIPE? */
+	bool		sigpipe_flag;	/* can we mask SIGPIPE via MSG_NOSIGNAL? */
 
 	/* Transient state needed while establishing connection */
 	struct addrinfo *addrlist;	/* list of possible backend addresses */
@@ -359,6 +370,7 @@ struct pg_conn
 	int			addrlist_family;	/* needed to know how to free addrlist */
 	PGSetenvStatusType setenv_state;	/* for 2.0 protocol only */
 	const PQEnvironmentOption *next_eo;
+	bool		send_appname;	/* okay to send application_name? */
 
 	/* Miscellaneous stuff */
 	int			be_pid;			/* PID of backend --- needed for cancels */
@@ -402,8 +414,8 @@ struct pg_conn
 #ifdef USE_SSL_ENGINE
 	ENGINE	   *engine;			/* SSL engine, if any */
 #else
-	void	   *engine;			/* dummy field to keep struct the same
-								   if OpenSSL version changes */
+	void	   *engine;			/* dummy field to keep struct the same if
+								 * OpenSSL version changes */
 #endif
 #endif /* USE_SSL */
 

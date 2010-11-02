@@ -23,6 +23,7 @@
 
 /* We assume gp-libpq-fe.h has already been included. */
 #include "postgres_fe.h"
+//#include "libpq-events.h"
 
 #include <time.h>
 #include <sys/types.h>
@@ -44,7 +45,7 @@
 /*
  * POSTGRES backend dependent Constants.
  */
-#define CMDSTATUS_LEN 72  	/* should match COMPLETION_TAG_BUFSIZE */
+#define CMDSTATUS_LEN 72  	/* should match COMPLETION_TAG_BUFSIZE.  GPDB -- this is different from PostgreSQL  */
 
 /*
  * PGresult and the subsidiary types PGresAttDesc, PGresAttValue
@@ -116,6 +117,16 @@ typedef struct
 	void	   *noticeProcArg;
 } PGNoticeHooks;
 
+#if 0
+typedef struct PGEvent
+{
+	PGEventProc proc;			/* the function to call on events */
+	char	   *name;			/* used only for error messages */
+	void	   *passThrough;	/* pointer supplied at registration time */
+	void	   *data;			/* optional state (instance) data */
+	bool		resultInitialized;		/* T if RESULTCREATE/COPY succeeded */
+} PGEvent;
+#endif
 
 /* CDB: Statistical response message list element */
 typedef struct pgCdbStatCell
@@ -267,10 +278,9 @@ struct pg_conn
 {
 	/* Saved values of connection options */
 	char	   *pghost;			/* the machine on which the server is running */
-	char	   *pghostaddr;		/* the IPv4 address of the machine on which
-								 * the server is running, in IPv4
-								 * numbers-and-dots notation. Takes precedence
-								 * over above. */
+	char	   *pghostaddr;		/* the numeric IP address of the machine on
+								 * which the server is running.  Takes
+								 * precedence over above. */
 	char	   *pgport;			/* the server's communication port */
 	char	   *pgunixsocket;	/* the Unix-domain socket that the server is
 								 * listening on; if NULL, uses a default
@@ -279,9 +289,19 @@ struct pg_conn
 								 * displayed (OBSOLETE, NOT USED) */
 	char	   *connect_timeout;	/* connection timeout (numeric string) */
 	char	   *pgoptions;		/* options to start the backend with */
+	char	   *appname;		/* application name */
+	char	   *fbappname;		/* fallback application name */
 	char	   *dbName;			/* database name */
+	//char	   *replication;	/* connect as the replication standby? */
 	char	   *pguser;			/* Postgres username and password, if any */
 	char	   *pgpass;
+	char	   *keepalives;		/* use TCP keepalives? */
+	char	   *keepalives_idle;	/* time between TCP keepalives */
+	char	   *keepalives_interval;	/* time between TCP keepalive
+										 * retransmits */
+	char	   *keepalives_count;		/* maximum number of TCP keepalive
+										 * retransmits */
+
 
 
     char       *gpqeid;        /* MPP: session id & startup info for qExec */
@@ -329,6 +349,9 @@ struct pg_conn
 	ProtocolVersion pversion;	/* FE/BE protocol version in use */
 	int			sversion;		/* server version, e.g. 70401 for 7.4.1 */
 	bool		password_needed;	/* true if server demanded a password */
+	bool		dot_pgpass_used;	/* true if used .pgpass */
+	bool		sigpipe_so;		/* have we masked SIGPIPE via SO_NOSIGPIPE? */
+	bool		sigpipe_flag;	/* can we mask SIGPIPE via MSG_NOSIGNAL? */
 
 	/* Transient state needed while establishing connection */
 	struct addrinfo *addrlist;	/* list of possible backend addresses */
@@ -336,6 +359,7 @@ struct pg_conn
 	int			addrlist_family;	/* needed to know how to free addrlist */
 	PGSetenvStatusType setenv_state;	/* for 2.0 protocol only */
 	const PQEnvironmentOption *next_eo;
+	bool		send_appname;	/* okay to send application_name? */
 
 	/* Miscellaneous stuff */
 	int			be_pid;			/* PID of backend --- needed for cancels */
@@ -502,11 +526,11 @@ extern int	pqPuts(const char *s, PGconn *conn);
 extern int	pqGetnchar(char *s, size_t len, PGconn *conn);
 extern int	pqPutnchar(const char *s, size_t len, PGconn *conn);
 extern int	pqGetInt(int *result, size_t bytes, PGconn *conn);
-extern int64 pqGetInt64(int64 *result, PGconn *conn);
+extern int64 pqGetInt64(int64 *result, PGconn *conn);  /* GPDB only */
 extern int	pqPutInt(int value, size_t bytes, PGconn *conn);
 extern int	pqPutMsgStart(char msg_type, bool force_len, PGconn *conn);
 extern int	pqPutMsgEnd(PGconn *conn);
-extern void pqPutMsgEndNoAutoFlush(PGconn *conn);
+extern void pqPutMsgEndNoAutoFlush(PGconn *conn);   /* GPDB only */
 extern int	pqReadData(PGconn *conn);
 extern int	pqFlush(PGconn *conn);
 extern int	pqWait(int forRead, int forWrite, PGconn *conn);
@@ -539,6 +563,12 @@ extern void pq_reset_sigpipe(sigset_t *osigset, bool sigpipe_pending,
  * without the overhead of a function call
  */
 #define pqIsnonblocking(conn)	((conn)->nonblocking)
+
+#ifdef ENABLE_NLS
+#define libpq_gettext(x) gettext(x)
+#else
+#define libpq_gettext(x) (x)
+#endif
 
 /*
  * These macros are needed to let error-handling code be portable between

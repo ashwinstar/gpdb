@@ -3,12 +3,12 @@
  * be-fsstubs.c
  *	  Builtin functions for open/close/read/write operations on large objects
  *
- * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/be-fsstubs.c,v 1.91 2009/06/11 14:48:58 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/be-fsstubs.c,v 1.94 2010/02/26 02:00:42 momjian Exp $
  *
  * NOTES
  *	  This should be moved to a more appropriate place.  It is here
@@ -47,9 +47,14 @@
 #include "miscadmin.h"
 #include "storage/fd.h"
 #include "storage/large_object.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 
+/*
+ * compatibility flag for permission checks
+ */
+bool		lo_compat_privileges;
 
 /*#define FSDB 1*/
 #define BUFSIZE			8192
@@ -80,7 +85,7 @@ static MemoryContext fscxt = NULL;
 
 static int	newLOfd(LargeObjectDesc *lobjCookie);
 static void deleteLOfd(int fd);
-static Oid lo_import_internal(text *filename, Oid lobjOid);
+static Oid	lo_import_internal(text *filename, Oid lobjOid);
 
 
 /*****************************************************************************
@@ -156,6 +161,19 @@ lo_read(int fd, char *buf, int len)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("invalid large-object descriptor: %d", fd)));
 
+#if 0
+	/* Permission checks */
+	if (!lo_compat_privileges &&
+		pg_largeobject_aclcheck_snapshot(cookies[fd]->id,
+										 GetUserId(),
+										 ACL_SELECT,
+									   cookies[fd]->snapshot) != ACLCHECK_OK)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied for large object %u",
+						cookies[fd]->id)));
+#endif
+
 	status = inv_read(cookies[fd], buf, len);
 
 	return status;
@@ -176,6 +194,19 @@ lo_write(int fd, const char *buf, int len)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 			  errmsg("large object descriptor %d was not opened for writing",
 					 fd)));
+
+#if 0
+	/* Permission checks */
+	if (!lo_compat_privileges &&
+		pg_largeobject_aclcheck_snapshot(cookies[fd]->id,
+										 GetUserId(),
+										 ACL_UPDATE,
+									   cookies[fd]->snapshot) != ACLCHECK_OK)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied for large object %u",
+						cookies[fd]->id)));
+#endif
 
 	status = inv_write(cookies[fd], buf, len);
 
@@ -250,6 +281,15 @@ Datum
 lo_unlink(PG_FUNCTION_ARGS)
 {
 	Oid			lobjId = PG_GETARG_OID(0);
+
+#if 0
+	/* Must be owner of the largeobject */
+	if (!lo_compat_privileges &&
+		!pg_largeobject_ownercheck(lobjId, GetUserId()))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be owner of large object %u", lobjId)));
+#endif
 
 	/*
 	 * If there are any open LO FDs referencing that ID, close 'em.
@@ -334,7 +374,7 @@ Datum
 lo_import_with_oid(PG_FUNCTION_ARGS)
 {
 	text	   *filename = PG_GETARG_TEXT_PP(0);
-	Oid		   oid = PG_GETARG_OID(1);
+	Oid			oid = PG_GETARG_OID(1);
 
 	PG_RETURN_OID(lo_import_internal(filename, oid));
 }
@@ -348,8 +388,8 @@ lo_import_internal(text *filename, Oid lobjOid)
 	char		buf[BUFSIZE];
 	char		fnamebuf[MAXPGPATH];
 	LargeObjectDesc *lobj;
-	Oid	oid;
-	
+	Oid			oid;
+
 #ifndef ALLOW_DANGEROUS_LO_FUNCTIONS
 	if (!superuser())
 		ereport(ERROR,
@@ -481,6 +521,19 @@ lo_truncate(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("invalid large-object descriptor: %d", fd)));
+
+#if 0
+	/* Permission checks */
+	if (!lo_compat_privileges &&
+		pg_largeobject_aclcheck_snapshot(cookies[fd]->id,
+										 GetUserId(),
+										 ACL_UPDATE,
+									   cookies[fd]->snapshot) != ACLCHECK_OK)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied for large object %u",
+						cookies[fd]->id)));
+#endif
 
 	inv_truncate(cookies[fd], len);
 

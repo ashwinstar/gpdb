@@ -3,11 +3,11 @@
  * fe-auth.c
  *	   The front-end (client) authorization routines
  *
- * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.142 2009/06/11 14:49:13 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.144.4.1 2010/07/14 17:09:54 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -41,6 +41,7 @@
 #endif
 
 #ifdef HAVE_CRYPT_H
+/* Is this include obsolete?  */
 #include <crypt.h>
 #endif
 
@@ -100,14 +101,14 @@ pg_local_sendauth(PGconn *conn)
 		char		sebuf[256];
 
 		printfPQExpBuffer(&conn->errorMessage,
-				 "pg_local_sendauth: sendmsg: %s\n",
-				 pqStrerror(errno, sebuf, sizeof(sebuf)));
+						  "pg_local_sendauth: sendmsg: %s\n",
+						  pqStrerror(errno, sebuf, sizeof(sebuf)));
 		return STATUS_ERROR;
 	}
 	return STATUS_OK;
 #else
 	printfPQExpBuffer(&conn->errorMessage,
-			 gettext("SCM_CRED authentication method not supported\n"));
+			libpq_gettext("SCM_CRED authentication method not supported\n"));
 	return STATUS_ERROR;
 #endif
 }
@@ -131,7 +132,7 @@ pg_password_sendauth(PGconn *conn, const char *password, AuthRequest areq)
 				if (!crypt_pwd)
 				{
 					printfPQExpBuffer(&conn->errorMessage,
-									  gettext("out of memory\n"));
+									  libpq_gettext("out of memory\n"));
 					return STATUS_ERROR;
 				}
 
@@ -181,28 +182,28 @@ pg_fe_sendauth(AuthRequest areq, PGconn *conn)
 
 		case AUTH_REQ_KRB4:
 			printfPQExpBuffer(&conn->errorMessage,
-				 gettext("Kerberos 4 authentication not supported\n"));
+				 libpq_gettext("Kerberos 4 authentication not supported\n"));
 			return STATUS_ERROR;
 
 		case AUTH_REQ_KRB5:
 			printfPQExpBuffer(&conn->errorMessage,
-				 gettext("Kerberos 5 authentication not supported\n"));
+				 libpq_gettext("Kerberos 5 authentication not supported\n"));
 			return STATUS_ERROR;
 
 		case AUTH_REQ_GSS:
 		case AUTH_REQ_GSS_CONT:
 			printfPQExpBuffer(&conn->errorMessage,
-					 gettext("GSSAPI authentication not supported\n"));
+					 libpq_gettext("GSSAPI authentication not supported\n"));
 			return STATUS_ERROR;
 
 		case AUTH_REQ_SSPI:
 			printfPQExpBuffer(&conn->errorMessage,
-					   gettext("SSPI authentication not supported\n"));
+					   libpq_gettext("SSPI authentication not supported\n"));
 			return STATUS_ERROR;
 
 		case AUTH_REQ_CRYPT:
 			printfPQExpBuffer(&conn->errorMessage,
-				 gettext("Crypt authentication not supported\n"));
+					  libpq_gettext("Crypt authentication not supported\n"));
 			return STATUS_ERROR;
 
 		case AUTH_REQ_MD5:
@@ -229,7 +230,7 @@ pg_fe_sendauth(AuthRequest areq, PGconn *conn)
 
 		default:
 			printfPQExpBuffer(&conn->errorMessage,
-			gettext("authentication method %u not supported\n"), areq);
+			libpq_gettext("authentication method %u not supported\n"), areq);
 			return STATUS_ERROR;
 	}
 

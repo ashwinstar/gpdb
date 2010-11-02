@@ -242,10 +242,14 @@ typedef struct
 /* make a new client connection to the backend */
 /* Asynchronous (non-blocking) */
 extern PGconn *PQconnectStart(const char *conninfo);
+extern PGconn *PQconnectStartParams(const char **keywords,
+					 const char **values, int expand_dbname);
 extern PostgresPollingStatusType PQconnectPoll(PGconn *conn);
 
 /* Synchronous (blocking) */
 extern PGconn *PQconnectdb(const char *conninfo);
+extern PGconn *PQconnectdbParams(const char **keywords,
+				  const char **values, int expand_dbname);
 extern PGconn *PQsetdbLogin(const char *pghost, const char *pgport,
 			 const char *pgoptions, const char *pgtty,
 			 const char *dbName,
@@ -318,7 +322,12 @@ extern int	PQsetClientEncoding(PGconn *conn, const char *encoding);
  * We don't support SSL for QD to QE internal communications, so this is moot.
 
     extern void *PQgetssl(PGconn *conn);
+
+    .* Tell libpq whether it needs to initialize OpenSSL *.
     extern void PQinitSSL(int do_init);
+
+    .* More detailed way to tell libpq whether it needs to initialize OpenSSL *.
+    extern void PQinitOpenSSL(int do_ssl, int do_crypto);
 
  */
 
@@ -547,6 +556,8 @@ extern int PQsetvalue(PGresult *res, int tup_num, int field_num, char *value, in
 extern size_t PQescapeStringConn(PGconn *conn,
 				   char *to, const char *from, size_t length,
 				   int *error);
+extern char *PQescapeLiteral(PGconn *conn, const char *str, size_t len);
+extern char *PQescapeIdentifier(PGconn *conn, const char *str, size_t len);
 extern unsigned char *PQescapeByteaConn(PGconn *conn,
 				  const unsigned char *from, size_t from_length,
 				  size_t *to_length);
