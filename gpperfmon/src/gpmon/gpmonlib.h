@@ -131,6 +131,8 @@ struct snmp_module_params_t
 	int emcconnect_enabled;
 };
 
+double subtractTimeOfDay(struct timeval* begin, struct timeval* end);
+
 
 extern const char* gpdb_getnodename(PerfmonNodeType type);
 extern const char* gpdb_getnodestatus(PerfmonNodeStatus status);

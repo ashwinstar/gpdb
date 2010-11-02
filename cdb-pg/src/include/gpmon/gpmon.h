@@ -54,27 +54,40 @@ extern void gpmon_gettmid(apr_int32_t*);
 /* ------------------------------------------------------------------
          METRICS
    ------------------------------------------------------------------ */
-struct gpmon_metrics_t {
-    /* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
-    char hname[NAMEDATALEN];
-    struct {
+struct gpmon_metrics_t 
+{
+	/* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
+
+	char hname[NAMEDATALEN];
+	struct 
+	{
 		apr_uint64_t total, used, actual_used, actual_free;
-    } mem;
-    struct {
+	} mem;
+
+	struct 
+	{
 		apr_uint64_t total, used, page_in, page_out;
-    } swap;
-    struct {
+	} swap;
+
+	struct 
+	{
 		float user_pct, sys_pct, idle_pct;
-    } cpu;
-    struct {
+	} cpu;
+
+	struct 
+	{
 		float value[3];
-    } load_avg;
-    struct {
- apr_uint64_t rcount, wcount, rbytes, wbytes;
-    } disk;
-    struct {
-		apr_uint64_t rcount, wcount, rbytes, wbytes;
-    } net;
+	} load_avg;
+
+	struct 
+	{
+		apr_uint64_t ro_rate, wo_rate, rb_rate, wb_rate;
+	} disk;
+
+	struct 
+	{
+		apr_uint64_t rp_rate, wp_rate, rb_rate, wb_rate;
+	} net;
 };
 
 

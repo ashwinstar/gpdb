@@ -58,14 +58,14 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 		GPMON_NTOHLL(p->swap.used);
 		GPMON_NTOHLL(p->swap.page_in);
 		GPMON_NTOHLL(p->swap.page_out);
-		GPMON_NTOHLL(p->disk.rcount);
-		GPMON_NTOHLL(p->disk.wcount);
-		GPMON_NTOHLL(p->disk.rbytes);
-		GPMON_NTOHLL(p->disk.wbytes);
-		GPMON_NTOHLL(p->net.rcount);
-		GPMON_NTOHLL(p->net.wcount);
-		GPMON_NTOHLL(p->net.rbytes);
-		GPMON_NTOHLL(p->net.wbytes);
+		GPMON_NTOHLL(p->disk.ro_rate);
+		GPMON_NTOHLL(p->disk.wo_rate);
+		GPMON_NTOHLL(p->disk.rb_rate);
+		GPMON_NTOHLL(p->disk.wb_rate);
+		GPMON_NTOHLL(p->net.rp_rate);
+		GPMON_NTOHLL(p->net.wp_rate);
+		GPMON_NTOHLL(p->net.rb_rate);
+		GPMON_NTOHLL(p->net.wb_rate);
 		break;
 	    }
 	case GPMON_PKTTYPE_QLOG:
@@ -996,4 +996,20 @@ char* get_snmp_hostname(host_t* host)
 	return host->snmp_hostname.current->address;
 }
 
+double subtractTimeOfDay(struct timeval* begin, struct timeval* end)
+{
+    double seconds;
+
+    if (end->tv_usec < begin->tv_usec)
+    {   
+        end->tv_usec += 1000000;
+        end->tv_sec -= 1;
+    }   
+
+    seconds = end->tv_usec - begin->tv_usec;
+    seconds /= 1000000.0;
+
+    seconds += (end->tv_sec - begin->tv_sec);
+    return seconds;
+}
 

@@ -94,25 +94,26 @@ static kstat_ctl_t *kc = NULL;
 /* structs and hash tables for metrics */
 static apr_hash_t* net_devices = NULL;
 static apr_hash_t* disk_devices = NULL;
+struct timeval g_time_last_reading = { 0 };
 
 typedef struct net_device_t net_device_t;
 struct net_device_t
 {
 	char* name;
-	apr_int64_t rx_bytes;
-	apr_int64_t tx_bytes;
-	apr_int64_t rx_packets;
-	apr_int64_t tx_packets;
+	apr_uint64_t rx_bytes;
+	apr_uint64_t tx_bytes;
+	apr_uint64_t rx_packets;
+	apr_uint64_t tx_packets;
 };
 
 typedef struct disk_device_t disk_device_t;
 struct disk_device_t
 {
 	char* name;
-	apr_int64_t reads;
-	apr_int64_t writes;
-	apr_int64_t read_bytes;
-	apr_int64_t write_bytes;
+	apr_uint64_t reads;
+	apr_uint64_t writes;
+	apr_uint64_t read_bytes;
+	apr_uint64_t write_bytes;
 };
 
 
@@ -271,6 +272,8 @@ static void send_machine_metrics(SOCKET sock)
 	static sigar_cpu_t pcpu = { 0 };
 	static sigar_swap_t pswap = { 0 };
 	gpmon_packet_t pkt;
+	struct timeval currenttime = { 0 };
+	double seconds_duration = 0.0;
 #if defined (sun)
 	kstat_t *ksp = NULL;
 	kstat_named_t *knp = NULL;
@@ -284,16 +287,16 @@ static void send_machine_metrics(SOCKET sock)
 	int cpu_total_diff;
 
 	/* NIC metrics */
-	apr_int64_t rx_packets = 0;
-	apr_int64_t tx_packets = 0;
-	apr_int64_t rx_bytes = 0;
-	apr_int64_t tx_bytes = 0;
+	apr_uint64_t rx_packets = 0;
+	apr_uint64_t tx_packets = 0;
+	apr_uint64_t rx_bytes = 0;
+	apr_uint64_t tx_bytes = 0;
 
 	/* Disk metrics */
-	apr_int64_t reads = 0;
-	apr_int64_t writes = 0;
-	apr_int64_t read_bytes = 0;
-	apr_int64_t write_bytes = 0;
+	apr_uint64_t reads = 0;
+	apr_uint64_t writes = 0;
+	apr_uint64_t read_bytes = 0;
+	apr_uint64_t write_bytes = 0;
 
 	memset(&mem, 0, sizeof(mem));
 	sigar_mem_get(gx.sigar, &mem);
@@ -572,8 +575,8 @@ static void send_machine_metrics(SOCKET sock)
 		}
 	}
 #endif /* sun */
-	TR2(("disk reads: %" FMT64 " writes: %" FMT64
-		 " rbytes: %" FMT64 " wbytes: %" FMT64 "\n",
+	TR2(("disk reads: %" APR_UINT64_T_FMT " writes: %" APR_UINT64_T_FMT
+		 " rbytes: %" APR_UINT64_T_FMT " wbytes: %" APR_UINT64_T_FMT "\n",
 		 tdisk.reads, tdisk.writes, tdisk.read_bytes, tdisk.write_bytes));
 
 #if !defined(sun)
@@ -593,11 +596,6 @@ static void send_machine_metrics(SOCKET sock)
 				nic->tx_bytes = nic->rx_bytes = nic->tx_packets = nic->rx_packets = 0;
 				apr_hash_set(net_devices, nic->name, APR_HASH_KEY_STRING, nic);
 			}
-
-			rx_packets = nic->rx_packets;
-			tx_packets = nic->tx_packets;
-			rx_bytes = nic->rx_bytes;
-			tx_bytes = nic->tx_bytes;
 
 			if (netstat.rx_packets < nic->rx_packets)
 			{
@@ -650,9 +648,9 @@ static void send_machine_metrics(SOCKET sock)
 		}
 	}
 #endif /* !sun */
-	TR2(("rx: %" FMT64 " rx_bytes: %" FMT64 "\n",
+	TR2(("rx: %" APR_UINT64_T_FMT " rx_bytes: %" APR_UINT64_T_FMT "\n",
 					tnet.rx_packets, tnet.rx_bytes));
-	TR2(("tx: %" FMT64 " tx_bytes: %" FMT64 "\n",
+	TR2(("tx: %" APR_UINT64_T_FMT " tx_bytes: %" APR_UINT64_T_FMT "\n",
 					tnet.tx_packets, tnet.tx_bytes));
 
 	if (first)
@@ -716,14 +714,20 @@ static void send_machine_metrics(SOCKET sock)
 	pkt.u.metrics.load_avg.value[0] = (float) loadavg.loadavg[0];
 	pkt.u.metrics.load_avg.value[1] = (float) loadavg.loadavg[1];
 	pkt.u.metrics.load_avg.value[2] = (float) loadavg.loadavg[2];
-	pkt.u.metrics.disk.rcount = tdisk.reads;
-	pkt.u.metrics.disk.wcount = tdisk.writes;
-	pkt.u.metrics.disk.rbytes = tdisk.read_bytes;
-	pkt.u.metrics.disk.wbytes = tdisk.write_bytes;
-	pkt.u.metrics.net.rcount = tnet.rx_packets;
-	pkt.u.metrics.net.wcount = tnet.tx_packets;
-	pkt.u.metrics.net.rbytes = tnet.rx_bytes;
-	pkt.u.metrics.net.wbytes = tnet.tx_bytes;
+
+	gettimeofday(&currenttime, NULL);
+	seconds_duration = subtractTimeOfDay(&g_time_last_reading, &currenttime);
+
+	pkt.u.metrics.disk.ro_rate = (apr_uint64_t)ceil(tdisk.reads/seconds_duration);
+	pkt.u.metrics.disk.wo_rate = (apr_uint64_t)ceil(tdisk.writes/seconds_duration);
+	pkt.u.metrics.disk.rb_rate = (apr_uint64_t)ceil(tdisk.read_bytes/seconds_duration);
+	pkt.u.metrics.disk.wb_rate = (apr_uint64_t)ceil(tdisk.write_bytes/seconds_duration);
+	pkt.u.metrics.net.rp_rate = (apr_uint64_t)ceil(tnet.rx_packets/seconds_duration);
+	pkt.u.metrics.net.wp_rate = (apr_uint64_t)ceil(tnet.tx_packets/seconds_duration);
+	pkt.u.metrics.net.rb_rate = (apr_uint64_t)ceil(tnet.rx_bytes/seconds_duration);
+	pkt.u.metrics.net.wb_rate = (apr_uint64_t)ceil(tnet.tx_bytes/seconds_duration);
+
+	g_time_last_reading = currenttime;
 
 	strncpy(pkt.u.metrics.hname, gx.hostname, sizeof(pkt.u.metrics.hname) - 1);
 	pkt.u.metrics.hname[sizeof(pkt.u.metrics.hname) - 1] = 0;

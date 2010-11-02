@@ -843,14 +843,14 @@ static apr_uint32_t write_system(agg_t* agg, const char* nowstr)
 		mp->load_avg.value[1], 
 		mp->load_avg.value[2],
 		quantum,
-		(apr_int64_t)ceil((double)mp->disk.rcount / (double)quantum),
-		(apr_int64_t)ceil((double)mp->disk.wcount / (double)quantum),
-		(apr_int64_t)ceil((double)mp->disk.rbytes / (double)quantum),
-		(apr_int64_t)ceil((double)mp->disk.wbytes / (double)quantum),
-		(apr_int64_t)ceil((double)mp->net.rcount / (double)quantum),
-		(apr_int64_t)ceil((double)mp->net.wcount / (double)quantum),
-		(apr_int64_t)ceil((double)mp->net.rbytes / (double)quantum),
-		(apr_int64_t)ceil((double)mp->net.wbytes / (double)quantum));
+		mp->disk.ro_rate,
+		mp->disk.wo_rate,
+		mp->disk.rb_rate,
+		mp->disk.wb_rate,
+		mp->net.rp_rate,
+		mp->net.wp_rate,
+		mp->net.rb_rate,
+		mp->net.wb_rate);
 		
 		bytes_this_line = strlen(line) + 1;
 		if (bytes_this_line == line_size){
