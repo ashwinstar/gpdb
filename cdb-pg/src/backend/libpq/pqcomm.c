@@ -1479,7 +1479,7 @@ pq_getkeepalivesidle(Port *port)
 	if (port->default_keepalives_idle == 0)
 	{
 #ifndef WIN32
-		ACCEPT_TYPE_ARG3 size = sizeof(port->default_keepalives_idle);
+		socklen_t size = sizeof(port->default_keepalives_idle);
 
 #ifdef TCP_KEEPIDLE
 		if (getsockopt(port->sock, IPPROTO_TCP, TCP_KEEPIDLE,
@@ -1579,7 +1579,7 @@ pq_getkeepalivesinterval(Port *port)
 	if (port->default_keepalives_interval == 0)
 	{
 #ifndef WIN32
-		ACCEPT_TYPE_ARG3 size = sizeof(port->default_keepalives_interval);
+		socklen_t size = sizeof(port->default_keepalives_interval);
 
 		if (getsockopt(port->sock, IPPROTO_TCP, TCP_KEEPINTVL,
 					   (char *) &port->default_keepalives_interval,
@@ -1659,7 +1659,7 @@ pq_getkeepalivescount(Port *port)
 
 	if (port->default_keepalives_count == 0)
 	{
-		ACCEPT_TYPE_ARG3 size = sizeof(port->default_keepalives_count);
+		socklen_t size = sizeof(port->default_keepalives_count);
 
 		if (getsockopt(port->sock, IPPROTO_TCP, TCP_KEEPCNT,
 					   (char *) &port->default_keepalives_count,

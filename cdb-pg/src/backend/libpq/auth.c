@@ -2645,7 +2645,7 @@ CheckRADIUSAuth(Port *port)
 	struct addrinfo hint;
 	struct addrinfo *serveraddrs;
 	char		portstr[128];
-	ACCEPT_TYPE_ARG3 addrsize;
+	socklen_t   addrsize;
 	fd_set		fdset;
 	struct timeval timeout;
 	int			i,
