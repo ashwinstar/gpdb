@@ -24,16 +24,16 @@ aabc: aocssegfiles:00000728:  ereport(ERROR,
 aabc: aocssegfiles:00000729:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 aabc: aocssegfiles:00000730:  errmsg("'%s' is not an append-only columnar relation", 
 aabc: aocssegfiles:00000731:  RelationGetRelationName(aocsRel)))); 
-aabc: aocssegfiles:00000912:  ereport(ERROR, 
-aabc: aocssegfiles:00000913:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000914:  errmsg("'%s' is not an append-only columnar relation", 
-aabc: aocssegfiles:00000915:  RelationGetRelationName(aocsRel)))); 
-aabc: aocssegfiles:00001049:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00001050:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00001051:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aabc: aocssegfiles:00001215:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00001216:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00001217:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aabc: aocssegfiles:00000916:  ereport(ERROR, 
+aabc: aocssegfiles:00000917:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000918:  errmsg("'%s' is not an append-only columnar relation", 
+aabc: aocssegfiles:00000919:  RelationGetRelationName(aocsRel)))); 
+aabc: aocssegfiles:00001054:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00001055:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00001056:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aabc: aocssegfiles:00001220:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00001221:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00001222:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
 aaaaa GP_IGNORE: aaae: aomd - ./backend/access/appendonly/aomd.c
 aaae: aomd:00000168:  ereport(ERROR, 
 aaae: aomd:00000169:  (errcode_for_file_access(), 
@@ -68,38 +68,38 @@ aaba: aosegfiles:00000653:  errmsg("got invalid pg_aoseg filetupcount value: NUL
 aaba: aosegfiles:00000667:  ereport(ERROR, 
 aaba: aosegfiles:00000668:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 aaba: aosegfiles:00000669:  errmsg("got invalid pg_aoseg varblockcount value: NULL"))); 
-aaba: aosegfiles:00000895:  ereport(ERROR, 
-aaba: aosegfiles:00000896:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00000897:  errmsg("'%s' is not an append-only row relation", 
-aaba: aosegfiles:00000898:  RelationGetRelationName(aocsRel)))); 
-aaba: aosegfiles:00001011:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001012:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001013:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aaba: aosegfiles:00001147:  ereport(ERROR, 
-aaba: aosegfiles:00001148:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001149:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001150:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001263:  ereport(ERROR, 
-aaba: aosegfiles:00001264:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001265:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001266:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001304:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001305:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001306:  errdetail("SPI_connect failed in get_ao_distribution"))); 
-aaba: aosegfiles:00001453:  ereport(ERROR, 
-aaba: aosegfiles:00001454:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001455:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001456:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001482:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001483:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001484:  errdetail("SPI_connect failed in get_ao_distribution"))); 
-aaba: aosegfiles:00001663:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001664:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001665:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
-aaba: aosegfiles:00001759:  ereport(ERROR, 
-aaba: aosegfiles:00001760:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001761:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001762:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00000899:  ereport(ERROR, 
+aaba: aosegfiles:00000900:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00000901:  errmsg("'%s' is not an append-only row relation", 
+aaba: aosegfiles:00000902:  RelationGetRelationName(aocsRel)))); 
+aaba: aosegfiles:00001016:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001017:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001018:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aaba: aosegfiles:00001152:  ereport(ERROR, 
+aaba: aosegfiles:00001153:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001154:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001155:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001268:  ereport(ERROR, 
+aaba: aosegfiles:00001269:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001270:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001271:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001309:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001310:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001311:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+aaba: aosegfiles:00001458:  ereport(ERROR, 
+aaba: aosegfiles:00001459:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001460:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001461:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001487:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001488:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001489:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+aaba: aosegfiles:00001668:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001669:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001670:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aaba: aosegfiles:00001764:  ereport(ERROR, 
+aaba: aosegfiles:00001765:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001766:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001767:  RelationGetRelationName(parentrel)))); 
 aaaaa GP_IGNORE: aabc: appendonlyam - ./backend/access/appendonly/appendonlyam.c
 aabc: appendonlyam:00000610:  ereport(ERROR, 
 aabc: appendonlyam:00000611:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -4285,6 +4285,9 @@ caah: cdbvars:00000972:  errmsg("must be superuser to set gp_enable_gpperfmon"))
 caah: cdbvars:00000990:  ereport(ERROR, 
 caah: cdbvars:00000991:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
 caah: cdbvars:00000992:  errmsg("must be superuser to set gp_gpperfmon_send_interval"))); 
+caah: cdbvars:00001040:  ereport(WARNING, 
+caah: cdbvars:00001041:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caah: cdbvars:00001042:  errmsg("gp_hash_index is deprecated and has no effect"))); 
 aaaaa GP_IGNORE: cabb: cdbworkfile - ./backend/cdb/cdbworkfile.c
 cabb: cdbworkfile:00000113:  ereport(ERROR, (errmsg("Workfile I/O error: %m."), 
 cabb: cdbworkfile:00000114:  errdetail("Failed to seek to offset " UINT64_FORMAT 
@@ -18050,26 +18053,26 @@ raah: regress:00000318:  ereport(ERROR,
 raah: regress:00000319:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 raah: regress:00000320:  errmsg("float8_mregr_r2 called on invalid input array"))); 
 aaaaa GP_IGNORE: taaf: tqual - ./backend/utils/time/tqual.c
-taaf: tqual:00000351:  ereport(FATAL, 
-taaf: tqual:00000352:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
-taaf: tqual:00000353:  errmsg("sorry, too many clients already."), 
-taaf: tqual:00000354:  errdetail("There are no more available slots in the sharedSnapshotArray."), 
-taaf: tqual:00000355:  errhint("Another piece of code should have detected that we have too many clients." 
-taaf: tqual:00000356:  " this probably means that someone isn't releasing their slot properly."))); 
-taaf: tqual:00000523:  ereport(ERROR, 
-taaf: tqual:00000524:  (errmsg("%s could not set the Shared Local Snapshot!", 
-taaf: tqual:00000525:  creatorDescription), 
-taaf: tqual:00000526:  errdetail("Tried to set the shared local snapshot slot with id: %d " 
-taaf: tqual:00000527:  "and failed. Shared Local Snapshots dump: %s", id, 
-taaf: tqual:00000528:  SharedSnapshotDump()))); 
-taaf: tqual:00000545:  ereport(ERROR, 
-taaf: tqual:00000546:  (errmsg("%s could not find Shared Local Snapshot!", 
-taaf: tqual:00000547:  lookerDescription), 
-taaf: tqual:00000548:  errdetail("Tried to find a shared snapshot slot with id: %d " 
-taaf: tqual:00000549:  "and found none. Shared Local Snapshots dump: %s", id, 
-taaf: tqual:00000550:  SharedSnapshotDump()), 
-taaf: tqual:00000551:  errhint("Either this %s was created before the %s or the %s died.", 
-taaf: tqual:00000552:  lookerDescription, creatorDescription, creatorDescription))); 
+taaf: tqual:00000352:  ereport(FATAL, 
+taaf: tqual:00000353:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+taaf: tqual:00000354:  errmsg("sorry, too many clients already."), 
+taaf: tqual:00000355:  errdetail("There are no more available slots in the sharedSnapshotArray."), 
+taaf: tqual:00000356:  errhint("Another piece of code should have detected that we have too many clients." 
+taaf: tqual:00000357:  " this probably means that someone isn't releasing their slot properly."))); 
+taaf: tqual:00000524:  ereport(ERROR, 
+taaf: tqual:00000525:  (errmsg("%s could not set the Shared Local Snapshot!", 
+taaf: tqual:00000526:  creatorDescription), 
+taaf: tqual:00000527:  errdetail("Tried to set the shared local snapshot slot with id: %d " 
+taaf: tqual:00000528:  "and failed. Shared Local Snapshots dump: %s", id, 
+taaf: tqual:00000529:  SharedSnapshotDump()))); 
+taaf: tqual:00000546:  ereport(ERROR, 
+taaf: tqual:00000547:  (errmsg("%s could not find Shared Local Snapshot!", 
+taaf: tqual:00000548:  lookerDescription), 
+taaf: tqual:00000549:  errdetail("Tried to find a shared snapshot slot with id: %d " 
+taaf: tqual:00000550:  "and found none. Shared Local Snapshots dump: %s", id, 
+taaf: tqual:00000551:  SharedSnapshotDump()), 
+taaf: tqual:00000552:  errhint("Either this %s was created before the %s or the %s died.", 
+taaf: tqual:00000553:  lookerDescription, creatorDescription, creatorDescription))); 
 aaaaa GP_IGNORE: gaai: gpviewcp - ./bin/gpupgrade/gpviewcp.c
 gaai: gpviewcp:00000070:  ereport(ERROR, 
 gaai: gpviewcp:00000071:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
