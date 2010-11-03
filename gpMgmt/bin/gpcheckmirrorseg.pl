@@ -540,7 +540,15 @@ sub get_presh_txt
 #      $atime,$mtime,$ctime,$blksize,$blocks) = stat($filnam);
 # my $sz = $size;
 # print $filnam, " ", $sz, " ";
-# print `openssl dgst -md5 -hex $filnam`
+# my $sslstr = `openssl dgst -md5 -hex $filnam`;
+# if (defined($sslstr) && length($sslstr))
+# {
+#   print $sslstr;
+# }
+# else
+# {
+#   print "badMD5 badMD5\n";
+# }
 #}
 EOF_bigstr
 
@@ -3033,8 +3041,15 @@ pg_xlog
 		$mirrtmp .= '1';
 
 		my $diffi = `$glob_diff -b $primtmp $mirrtmp`;
+		my $grepi = "";
 
 		if (!length($diffi))
+		{
+			# check for openssl failures
+			$grepi = `grep badMD5 $primtmp $mirrtmp`;
+		}
+
+		if ((!length($diffi)) && (!length($grepi))) 
 		{
 			print "\n$fil: no differences\n\n";
 		}
