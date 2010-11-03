@@ -360,6 +360,7 @@ extern bool gp_fts_probe_pause;
 
 extern bool gpvars_assign_gp_fts_probe_pause(bool newval, bool doit, GucSource source);
 
+
 /*
  * Parameter gp_connections_per_thread
  *
@@ -1058,6 +1059,9 @@ extern SeqServerControlBlock *seqServerCtl;
 extern void write_log(const char *fmt,...) __attribute__((format(printf, 1, 2)));
 
 extern void verifyGpIdentityIsSet(void);
+
+/* control current usability of enabling hash index */
+extern bool gpvars_assign_gp_hash_index(bool newval, bool doit, GucSource source);
 
 /* wire off SET WITH() for alter table distributed by */
 extern bool gp_disable_atsdb_set_with;

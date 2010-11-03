@@ -1,4 +1,5 @@
 set gp_hash_index = true;
+WARNING:  gp_hash_index is deprecated and has no effect
 --
 -- HASH_INDEX
 -- grep 843938989 hash.data

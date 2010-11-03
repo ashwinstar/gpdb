@@ -350,7 +350,7 @@ DefineIndex(RangeVar *heapRelation,
 	accessMethodId = HeapTupleGetOid(tuple);
 	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
 
-	if (!gp_hash_index && accessMethodId == HASH_AM_OID)
+	if (accessMethodId == HASH_AM_OID)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("hash indexes are not supported")));

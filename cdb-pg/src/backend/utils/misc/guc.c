@@ -2616,12 +2616,12 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"gp_hash_index", PGC_SUSET, UNGROUPED,
-			gettext_noop("Specify whether hash indexes can be used."),
+			gettext_noop("Specify whether hash indexes can be used. Deprecated and has no effect."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE 
 		},
 		&gp_hash_index,
-		false, NULL, NULL
+		false, gpvars_assign_gp_hash_index, NULL
 	},
 
 	{
