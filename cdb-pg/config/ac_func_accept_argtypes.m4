@@ -49,7 +49,7 @@ AC_DEFUN([AC_FUNC_ACCEPT_ARGTYPES],
     [for ac_cv_func_accept_return in 'int' 'unsigned int PASCAL'; do
       for ac_cv_func_accept_arg1 in 'int' 'unsigned int'; do
        for ac_cv_func_accept_arg2 in 'struct sockaddr *' 'const struct sockaddr *' 'void *'; do
-        for ac_cv_func_accept_arg3 in 'int' 'size_t' 'socklen_t' 'unsigned int' 'void'; do
+        for ac_cv_func_accept_arg3 in  'socklen_t' 'int' 'size_t' 'unsigned int' 'void'; do
          AC_TRY_COMPILE(
 [#ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
