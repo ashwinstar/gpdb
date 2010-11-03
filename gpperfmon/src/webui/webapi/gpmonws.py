@@ -164,7 +164,7 @@ class logon:
         try:
             message = authrole(username, password)
         except db.GPDBError, errorinfo:
-            return mkerr(error.DATA_ACCESS, errorinfo)
+            return mkerr(error.DATA_ACCESS, errorinfo.__str__())
 
         if not session.loggedin:
             return mkerr(error.ACCESS_DENIED, message)
