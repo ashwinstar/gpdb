@@ -1630,7 +1630,7 @@ class GpArray:
         return dbs
 
     # --------------------------------------------------------------------
-    def get_synchronized_segments(self):
+    def get_synchronized_segdbs(self):
         dbs=[]
         for seg in self.segments:
             segdb = seg.primaryDB
@@ -1642,12 +1642,17 @@ class GpArray:
         return dbs        
 
     # --------------------------------------------------------------------
-    def get_segdbs_in_non_preferred_role(self):
+    def get_unbalanced_segdbs(self):
         dbs=[]
         for seg in self.segments:
             for segdb in seg.get_dbs():
                 if segdb.preferred_role != segdb.role:
                     dbs.append(segdb)
+        return dbs
+    
+    # --------------------------------------------------------------------
+    def get_unbalanced_primary_segdbs(self):
+        dbs = [seg for seg in self.get_unbalanced_segdbs() if seg.role == ROLE_PRIMARY]
         return dbs
 
     # --------------------------------------------------------------------

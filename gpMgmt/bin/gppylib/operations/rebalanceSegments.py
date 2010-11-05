@@ -11,26 +11,11 @@ class GpSegmentRebalanceOperation:
         self.gpEnv = gpEnv
         self.gpArray = gpArray
     
-    def get_unbalanced_segments(self):
-        segs = self.gpArray.getSegDbList()
-        unbalanced_segs = [seg for seg in segs 
-                           if seg.role != seg.preferred_role]
-        return unbalanced_segs
-    
-    def get_primary_unbalanced_segments_by_host(self):
-        segs = self.gpArray.getSegDbList()
-        primary_unbalanced_segments = \
-            GpArray.getSegmentsByHostName([seg for seg in segs 
-                                           if seg.role == 'p' 
-                                           and seg.role != seg.preferred_role])
-        return primary_unbalanced_segments
-    
     def rebalance(self):
         # Get the unbalanced primary segments grouped by hostname
         # These segments are what we will shutdown.
         logger.info("Getting unbalanced segments")
-        unbalanced_primary_segs = self.get_primary_unbalanced_segments_by_host()
-        
+        unbalanced_primary_segs = GpArray.getSegmentsByHostName(self.gpArray.get_unbalanced_primary_segdbs())
         pool = WorkerPool()
         
         count = 0

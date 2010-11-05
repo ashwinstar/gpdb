@@ -624,8 +624,8 @@ class GpRecoverSegmentProgram:
 
         if self.__options.rebalanceSegments:
             i = 1
-            total = len(mirrorBuilder.get_unbalanced_segments())
-            for toRebalance in mirrorBuilder.get_unbalanced_segments():
+            total = len(gpArray.get_unbalanced_segdbs())
+            for toRebalance in gpArray.get_unbalanced_segdbs():
                 tabLog = TableLogger()
                 logger.info('---------------------------------------------------------')
                 logger.info('Unbalanced segment %d of %d' % (i, total))
@@ -786,7 +786,7 @@ class GpRecoverSegmentProgram:
         if self.__options.rebalanceSegments:
             if len(gpArray.get_invalid_segdbs()) > 0:
                 raise Exception("Down segments still exist.  All segments must be up to rebalance.")
-            if len(gpArray.get_synchronized_segments()) != len(gpArray.getSegDbList()):
+            if len(gpArray.get_synchronized_segdbs()) != len(gpArray.getSegDbList()):
                 raise Exception("Some segments are not yet synchronized.  All segments must be synchronized to rebalance.")
 
 
@@ -801,7 +801,7 @@ class GpRecoverSegmentProgram:
             assert(isinstance(mirrorBuilder,GpSegmentRebalanceOperation))
 
             # Make sure we have work to do
-            if len(gpArray.get_segdbs_in_non_preferred_role()) == 0:
+            if len(gpArray.get_unbalanced_segdbs()) == 0:
                 logger.info("No segments are running in their non-preferred role and need to be rebalanced.")
             else:           
                 self.displayRecovery(mirrorBuilder, gpArray)
