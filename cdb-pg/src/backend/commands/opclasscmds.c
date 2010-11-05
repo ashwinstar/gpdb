@@ -447,8 +447,8 @@ assignOperSubtype(Oid amoid, Oid typeoid, Oid operOid)
 	Operator	optup;
 	Form_pg_operator opform;
 
-	/* Subtypes are currently only supported by btree, others use 0 */
-	if (amoid != BTREE_AM_OID)
+	/* Subtypes are currently only supported by btree and bitmap, others use 0 */
+	if (amoid != BTREE_AM_OID && amoid != BITMAP_AM_OID)
 		return InvalidOid;
 
 	optup = SearchSysCache(OPEROID,
@@ -501,8 +501,8 @@ assignProcSubtype(Oid amoid, Oid typeoid, Oid procOid)
 	HeapTuple	proctup;
 	Form_pg_proc procform;
 
-	/* Subtypes are currently only supported by btree, others use 0 */
-	if (amoid != BTREE_AM_OID)
+	/* Subtypes are currently only supported by btree and bitmap, others use 0 */
+	if (amoid != BTREE_AM_OID && amoid != BITMAP_AM_OID)
 		return InvalidOid;
 
 	proctup = SearchSysCache(PROCOID,
