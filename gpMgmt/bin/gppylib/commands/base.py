@@ -415,10 +415,8 @@ class NakedExecutionPasswordMap:
                 self.mapping[host] = None
                 client.close()
                 continue # next host
-            except paramiko.AuthenticationException:
-                client.close()
             except Exception, e:
-                raise Exception("Error trying to connect to " + host + " " + e.__str__())
+                client.close()
 
             # TRY EXISTING PASSWORDS
             foundit = False
@@ -429,10 +427,8 @@ class NakedExecutionPasswordMap:
                     self.mapping[host] = passwd
                     client.close()
                     break
-                except paramiko.AuthenticationException:
-                    client.close()
                 except Exception, e:
-                    raise Exception("Error trying to connect to " + host + " " + e.__str__())
+                    client.close()
             if foundit:
                 continue
 
@@ -448,10 +444,8 @@ class NakedExecutionPasswordMap:
                         self.unique_passwords.add(passwd)
                     client.close()
                     break
-                except paramiko.AuthenticationException:
-                    client.close()
                 except Exception, e:
-                    raise Exception("Error trying to connect to " + host + " " + e.__str__())
+                    client.close()
 
             if not foundit:
                 raise Exception("Did not get a valid password for host " + host)
