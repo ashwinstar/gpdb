@@ -514,9 +514,11 @@ FileRepResync_ShmemReInit(void)
 		  (errcode(ERRCODE_OUT_OF_MEMORY),
 		   (errmsg("not enough shared memory to run resynchronization"))));
 	}	
-	
-	fileRepResyncShmem->appendOnlyCommitCount = 0;
-	
+
+	/*
+	 * NOTE: Do not zero Commit Work Intent count for ReInit.
+	 */
+
 	fileRepResyncShmem->checkpointRequest = FALSE;
 	
 	fileRepResyncShmem->reCreateRequest = FALSE;	
