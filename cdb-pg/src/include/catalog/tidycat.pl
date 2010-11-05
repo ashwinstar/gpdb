@@ -573,9 +573,9 @@ sub parsecols
 		}
 		else
 		{
-			# word space word (or word space "char")
+			# (optional quoted) word space word (or word space "char")
 			die "bad col: $lin"
-				unless ($lin =~ m/(\s*\w+\s+\w+)|\s*\w+\s+\"char\"/);
+				unless ($lin =~ m/(\s*(\")*\w+(\")*\s+\w+)|\s*\w+\s+\"char\"/);
 
 			# Note: timestamp fix - make into a single token
 			$lin =~ 
@@ -588,16 +588,28 @@ sub parsecols
 			$lin =~ 
 				s/\"char\"/quoted_char/igm;
 
-			# in sql, have a colname space coltype (followed by
-			# optional array brackets), optionally followed by a comma
-			# and/or a sql comment
+			# in sql, have a 
+			# colname (with optional quotes) space coltype (followed
+			# by optional array brackets), optionally followed by a
+			# comma and/or a sql comment
 			my @baz = 
-				($lin =~ m/\s*(\w+)\s+(\w+(?:\[\])?)\s*(\,)?\s*(\-\-.*)?/);
+				($lin =~ m/\s*((?:\")*\w+(?:\")*)\s+(\w+(?:\[\])?)\s*(\,)?\s*(\-\-.*)?/);
 
 #			print Data::Dumper->Dump(\@baz), "\n";
 
-			my $colname = lc (shift @baz );
+			my $colname = shift @baz ;
 			my $coltype = lc (shift @baz );
+
+			# downcase colname unless it is quoted
+			if ($colname !~ m/^\".*\"$/)
+			{
+				$colname = lc ($colname);
+			}
+			else
+			{
+				# remove quotes
+				$colname =~ s/^\"(.*)\"$/$1/;
+			}
 
 			die ("duplicate colname: $colname for $tname")
 				if (exists($colh->{$colname}));
@@ -775,13 +787,22 @@ sub parsetab
 		unless (exists($alltabs->{$tname}->{with}->{camelcase}))
 		{
 			my $cc1 = $tname;
+			my $isgp = 0;
 
-			if ($cc1 =~ m/^(pg|gp)\_/i)
+			if ($cc1 =~ m/^(gp)\_/i)
+			{
+				# treat camel-case name special for Gp tables...
+				$cc1 =~ s/^...//;
+				$isgp = 1;
+			}
+			if ($cc1 =~ m/^(pg)\_/i)
 			{
 				# remove prefix
 				$cc1 =~ s/^...//;
 			}
-			$alltabs->{$tname}->{with}->{camelcase} = ucfirst($cc1);
+			$cc1 = ucfirst($cc1);
+			$cc1 = "Gp" . $cc1 if ($isgp);
+			$alltabs->{$tname}->{with}->{camelcase} = $cc1;
 		}
 
 		if (exists($alltabs->{$tname}->{with}->{reltype_oid}))
@@ -1426,7 +1447,7 @@ sub formattab
 
 		$vv->{CamelCaseRelationId} = $vv->{with}->{camelcase} . "RelationId" ;
 
-		my $ccdef = '#define ' . $vv->{with}->{camelcase} . "RelationId" ;
+		my $ccdef = '#define ' . $vv->{CamelCaseRelationId};
 
 		$bigstr .= simpletabalign($ccdef, $relid) . "\n\n";
 			

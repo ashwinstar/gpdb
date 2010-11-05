@@ -25,7 +25,7 @@
 -- *********************************************************************
 -- *********************************************************************
 CREATE EXTERNAL WEB TABLE get_tc (x text)
-execute E'(find @abs_builddir@/../../include/catalog -name \'pg_*.h\'  | xargs perl @abs_builddir@/../../include/catalog/tidycat.pl -sql @abs_srcdir@/data/tidyddl.sql 2>&1 > /dev/null ; sleep 3; perl -i -ple \' s/^\\s*with\\s*\\(.*\\)\\s*//gm \' @abs_srcdir@/data/tidyddl.sql ; sleep 3)' 
+execute E'(find @abs_builddir@/../../include/catalog \\\( -name \'pg_*.h\' -o -name \'gp_*.h\' \\\)  | xargs perl @abs_builddir@/../../include/catalog/tidycat.pl -sql @abs_srcdir@/data/tidyddl.sql 2>&1 > /dev/null ; sleep 3; perl -i -ple \' s/^\\s*with\\s*\\(.*\\)\\s*//gm \' @abs_srcdir@/data/tidyddl.sql ; sleep 3)' 
 FORMAT 'text' (delimiter '|');
 select * from get_tc order by 1;
  x 
@@ -37,19 +37,56 @@ create schema tidycat;
 set search_path to tidycat, "$user", public;
 -- start_ignore
 \i @abs_srcdir@/data/tidyddl.sql
+   CREATE TABLE gp_interfaces
+   (
+   interfaceid  smallint,
+   address      name,
+   status       smallint 
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:8: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'interfaceid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_db_interfaces
+   (
+   dbid           smallint,
+   interfaceid    smallint,
+   priority       smallint
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:16: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'dbid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_configuration
+   (
+   content         smallint,
+   definedprimary  boolean,
+   dbid            smallint,
+   isprimary       boolean,
+   valid           boolean,
+   hostname        name,
+   port            integer,
+   datadir         text
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:29: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'content' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_configuration_history
+   (
+   time    timestamp with time zone,
+   dbid    smallint,
+   "desc"    text
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:37: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'time' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_aggregate
    (
    aggfnoid        regproc, 
    aggtransfn      regproc, 
-   agginvtransfn   regproc, 
-   aggprelimfn     regproc, 
-   agginvprelimfn  regproc, 
+   agginvtransfn   regproc, -- MPP windowing
+   aggprelimfn     regproc, -- MPP 2-phase agg
+   agginvprelimfn  regproc, -- MPP windowing
    aggfinalfn      regproc, 
    aggsortop       oid, 
    aggtranstype    oid, 
-   agginitval      text
+   agginitval      text -- VARIABLE LENGTH FIELD
    );
-psql:@abs_srcdir@/data/tidyddl.sql:14: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aggfnoid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:51: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aggfnoid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_am
    (
@@ -78,7 +115,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    amcostestimate   regproc, 
    amoptions        regproc
     );
-psql:@abs_srcdir@/data/tidyddl.sql:43: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:80: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_amop
    (
@@ -88,7 +125,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    amopreqcheck  boolean, 
    amopopr       oid
    );
-psql:@abs_srcdir@/data/tidyddl.sql:53: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amopclaid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:90: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amopclaid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_amproc
    (
@@ -97,7 +134,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    amprocnum      smallint, 
    amproc         regproc
    );
-psql:@abs_srcdir@/data/tidyddl.sql:62: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amopclaid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:99: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amopclaid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_appendonly
    (
@@ -116,7 +153,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    blkdiridxid      oid, 
    version          integer
    );
-psql:@abs_srcdir@/data/tidyddl.sql:81: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:118: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_appendonly_alter_column
    (
@@ -125,7 +162,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    segfilenums       integer[], 
    highwaterrownums  bytea
    );
-psql:@abs_srcdir@/data/tidyddl.sql:90: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:127: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_attrdef
    (
@@ -134,7 +171,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    adbin    text, 
    adsrc    text
    );
-psql:@abs_srcdir@/data/tidyddl.sql:99: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'adrelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:136: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'adrelid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_attribute
    (
@@ -156,7 +193,16 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    attislocal     boolean, 
    attinhcount    integer
    );
-psql:@abs_srcdir@/data/tidyddl.sql:121: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'attrelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:158: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'attrelid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_auth_members
+   (
+   roleid        oid, 
+   member        oid, 
+   grantor       oid, 
+   admin_option  boolean
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:167: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'roleid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_authid
    (
@@ -179,14 +225,122 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    rolcreaterexthttp boolean, -- allowed to create readable http tbl? 
    rolcreatewextgpfd boolean -- allowed to create writable gpfdist tbl? 
    );
-psql:@abs_srcdir@/data/tidyddl.sql:145: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rolname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:191: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rolname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_autovacuum
+   (
+   vacrelid          oid, 
+   enabled           boolean, 
+   vac_base_thresh   integer, 
+   vac_scale_factor  real, 
+   anl_base_thresh   integer, 
+   anl_scale_factor  real, 
+   vac_cost_delay    integer, 
+   vac_cost_limit    integer, 
+   freeze_min_age    integer, 
+   freeze_max_age    integer
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:206: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'vacrelid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_cast
+   (
+   castsource   oid, 
+   casttarget   oid, 
+   castfunc     oid, 
+   castcontext  "char"
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:215: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'castsource' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_constraint
+   (
+   conname        name, 
+   connamespace   oid, 
+   contype        "char", 
+   condeferrable  boolean, 
+   condeferred    boolean, 
+   conrelid       oid, 
+   contypid       oid, 
+   confrelid      oid, 
+   confupdtype    "char", 
+   confdeltype    "char", 
+   confmatchtype  "char", 
+   conkey         smallint[], 
+   confkey        smallint[], 
+   conbin         text, 
+   consrc         text
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:235: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'conname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_conversion
+   (
+   conname         name, 
+   connamespace    oid, 
+   conowner        oid, 
+   conforencoding  integer, 
+   contoencoding   integer, 
+   conproc         regproc, 
+   condefault      boolean
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:247: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'conname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_database
+   (
+   datname        name, 
+   datdba         oid, 
+   encoding       integer, 
+   datistemplate  boolean, 
+   datallowconn   boolean, 
+   datconnlimit   integer, 
+   datlastsysoid  oid, 
+   datfrozenxid   xid, 
+   dattablespace  oid, 
+   datconfig      text[], 
+   datacl         aclitem[]
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:263: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'datname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_depend
+   (
+   classid      oid, 
+   objid        oid, 
+   objsubid     integer, 
+   refclassid   oid, 
+   refobjid     oid, 
+   refobjsubid  integer, 
+   deptype      "char"
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:275: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_description
+   (
+   objoid       oid, 
+   classoid     oid, 
+   objsubid     integer, 
+   description  text
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:284: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'objoid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_exttable
+   (
+   reloid           oid, -- refers to this relation's oid in pg_class 
+   location         text[], -- array of URI strings
+   fmttype          "char", -- 't' (text) or 'c' (csv)
+   fmtopts          text, -- the data format options
+   command          text, -- the command string to EXECUTE
+   rejectlimit      integer, -- error count reject limit per segment
+   rejectlimittype  "char", -- 'r' (rows) or 'p' (percent)
+   fmterrtbl        oid, -- the data format error table oid in pg_class
+   encoding         integer, -- character encoding of this external table
+   writable         boolean -- 't' if writable, 'f' if readable
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:299: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'reloid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_filespace
    (
    fsname name, -- filespace name
    fsowner oid -- owner of filespace
    );
-psql:@abs_srcdir@/data/tidyddl.sql:152: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:306: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_filespace_entry
    (
@@ -194,7 +348,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    fsedbid      smallint, -- segment dbid this refers to 
    fselocation  text -- location of filespace directory
    );
-psql:@abs_srcdir@/data/tidyddl.sql:160: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsefsoid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:314: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsefsoid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_foreign_data_wrapper
    (
@@ -205,7 +359,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    fdwacl        aclitem[], -- access permissions
    fdwoptions    text[] -- FDW options
    );
-psql:@abs_srcdir@/data/tidyddl.sql:173: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fdwname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:327: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fdwname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_foreign_server
    (
@@ -218,7 +372,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    srvacl        aclitem[], -- access permissions
    srvoptions    text[] -- FDW-specific options
    );
-psql:@abs_srcdir@/data/tidyddl.sql:188: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'srvname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:342: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'srvname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_foreign_table
    (
@@ -227,7 +381,18 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    -- VARIABLE LENGTH FIELDS start here.  These fields may be NULL, too.
    tbloptions    text[] -- foreign table-specific options
    );
-psql:@abs_srcdir@/data/tidyddl.sql:198: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'reloid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:352: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'reloid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_language
+   ( 
+   lanname        name, 
+   lanispl        boolean, 
+   lanpltrusted   boolean, 
+   lanplcallfoid  oid, 
+   lanvalidator   oid, 
+   lanacl         aclitem[]
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:363: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'lanname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_partition
    (
@@ -239,7 +404,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    paratts        int2vector,
    parclass       oidvector
    );
-psql:@abs_srcdir@/data/tidyddl.sql:210: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'parrelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:375: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'parrelid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_partition_rule
    ( 
@@ -258,7 +423,42 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    parreloptions      text[],
    partemplatespace   oid
    );
-psql:@abs_srcdir@/data/tidyddl.sql:229: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'paroid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:394: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'paroid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_pltemplate
+   (
+   tmplname       name, 
+   tmpltrusted    boolean, 
+   tmplhandler    text, 
+   tmplvalidator  text, 
+   tmpllibrary    text, 
+   tmplacl        aclitem[]
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:405: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'tmplname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_proc
+   (
+   proname         name, 
+   pronamespace    oid, 
+   proowner        oid, 
+   prolang         oid, 
+   proisagg        boolean, 
+   prosecdef       boolean, 
+   proisstrict     boolean, 
+   proretset       boolean, 
+   provolatile     "char", 
+   pronargs        smallint, 
+   prorettype      oid, 
+   proiswin        boolean, 
+   proargtypes     oidvector, 
+   proallargtypes  oid[], 
+   proargmodes     "char"[], 
+   proargnames     text[], 
+   prosrc          text, 
+   probin          bytea, 
+   proacl          aclitem[]
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:429: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'proname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_resqueue
    (
@@ -268,7 +468,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    rsqovercommit boolean, -- allow overcommit on suitable  limits
    rsqignorecostlimit real -- ignore queries with cost less than
    );
-psql:@abs_srcdir@/data/tidyddl.sql:239: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rsqname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:439: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rsqname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_resqueuecapability
    (
@@ -276,7 +476,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    restypid smallint,	-- resource type id (key to pg_resourcetype) 
    ressetting text		-- resource setting (opaque type) 
    );
-psql:@abs_srcdir@/data/tidyddl.sql:247: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resqueueid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:447: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resqueueid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_resourcetype
    (
@@ -288,7 +488,38 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    resdefaultsetting text,	-- default resource setting 
    resdisabledsetting text	-- value that turns it off 
    );
-psql:@abs_srcdir@/data/tidyddl.sql:259: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:459: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_rewrite
+   (
+   rulename    name, 
+   ev_class    oid, 
+   ev_attr     smallint, 
+   ev_type     "char", 
+   is_instead  boolean, 
+   ev_qual     text, 
+   ev_action   text
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:471: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rulename' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_shdepend
+   (
+   dbid        oid, 
+   classid     oid, 
+   objid       oid, 
+   refclassid  oid, 
+   refobjid    oid, 
+   deptype     "char"
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:482: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'dbid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_shdescription
+   (
+   objoid       oid, 
+   classoid     oid, 
+   description  text
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:490: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'objoid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_stat_last_shoperation
    (
@@ -300,7 +531,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    stasubtype     text, 
    statime        timestamp with time zone
    );
-psql:@abs_srcdir@/data/tidyddl.sql:271: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:502: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_statistic
    (
@@ -326,7 +557,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    stavalues3   text, 
    stavalues4   text
    );
-psql:@abs_srcdir@/data/tidyddl.sql:297: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'starelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:528: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'starelid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_stat_last_operation
    (
@@ -338,7 +569,60 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    stasubtype     text, 
    statime        timestamp with time zone
    );
-psql:@abs_srcdir@/data/tidyddl.sql:309: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:540: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_tablespace
+   (
+   spcname          name, 
+   spcowner         oid, 
+   spclocation      text, 
+   spcacl           aclitem[], 
+   spcprilocations  text[], 
+   spcmirlocations  text[], 
+   spcfsoid         oid
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:552: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'spcname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_trigger
+   (
+   tgrelid         oid, 
+   tgname          name, 
+   tgfoid          oid, 
+   tgtype          smallint, 
+   tgenabled       boolean, 
+   tgisconstraint  boolean, 
+   tgconstrname    name, 
+   tgconstrrelid   oid, 
+   tgdeferrable    boolean, 
+   tginitdeferred  boolean, 
+   tgnargs         smallint, 
+   tgattr          int2vector, 
+   tgargs          bytea
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:570: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'tgrelid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_user_mapping
+   (
+   umuser     oid, 
+   umserver   oid, 
+   umoptions  text[]
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:578: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'umuser' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_window
+   (
+   winfnoid         regproc,  -- pg_proc OID of the window function itself
+   winrequireorder  boolean, -- does wf require order by?
+   winallowframe    boolean, -- does wf allow framing?
+   winpeercount     boolean, -- does wf definition need peer row count?
+   wincount         boolean, -- does wf definition need partition row count?
+   winfunc          regproc, -- immediate function (0 if none)
+   winprefunc       regproc, -- preliminary function (0 if none)
+   winpretype       oid, -- type of preliminary function result
+   winfinfunc       regproc, -- final function (0 if none)
+   winkind          "char" 
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:593: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'winfnoid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 -- how many tidycat defs?
 select pc1.relname
@@ -351,6 +635,10 @@ where
 order by relname;
           relname           
 ----------------------------
+ gp_configuration
+ gp_configuration_history
+ gp_db_interfaces
+ gp_interfaces
  pg_aggregate
  pg_am
  pg_amop
@@ -359,21 +647,40 @@ order by relname;
  pg_appendonly_alter_column
  pg_attrdef
  pg_attribute
+ pg_auth_members
  pg_authid
+ pg_autovacuum
+ pg_cast
+ pg_constraint
+ pg_conversion
+ pg_database
+ pg_depend
+ pg_description
+ pg_exttable
  pg_filespace
  pg_filespace_entry
  pg_foreign_data_wrapper
  pg_foreign_server
  pg_foreign_table
+ pg_language
  pg_partition
  pg_partition_rule
+ pg_pltemplate
+ pg_proc
  pg_resourcetype
  pg_resqueue
  pg_resqueuecapability
+ pg_rewrite
+ pg_shdepend
+ pg_shdescription
  pg_stat_last_operation
  pg_stat_last_shoperation
  pg_statistic
-(22 rows)
+ pg_tablespace
+ pg_trigger
+ pg_user_mapping
+ pg_window
+(45 rows)
 
 -- how many non-tidycat defs?
 select pc2.relname
@@ -396,15 +703,11 @@ and
 order by relname;
             relname            
 -------------------------------
- gp_configuration
- gp_configuration_history
- gp_db_interfaces
  gp_distribution_policy
  gp_fastsequence
  gp_fault_strategy
  gp_global_sequence
  gp_id
- gp_interfaces
  gp_master_mirroring
  gp_persistent_database_node
  gp_persistent_filespace_node
@@ -414,35 +717,16 @@ order by relname;
  gp_san_configuration
  gp_segment_configuration
  gp_version_at_initdb
- pg_auth_members
- pg_autovacuum
- pg_cast
  pg_class
- pg_constraint
- pg_conversion
- pg_database
- pg_depend
- pg_description
- pg_exttable
  pg_index
  pg_inherits
- pg_language
  pg_largeobject
  pg_listener
  pg_namespace
  pg_opclass
  pg_operator
- pg_pltemplate
- pg_proc
- pg_rewrite
- pg_shdepend
- pg_shdescription
- pg_tablespace
- pg_trigger
  pg_type
- pg_user_mapping
- pg_window
-(46 rows)
+(23 rows)
 
 -- end_ignore
 -- start_equiv
@@ -461,6 +745,23 @@ and pc1.relnamespace =
 order by relname, pa1.attnum;
           relname           |      attname       |   typname   
 ----------------------------+--------------------+-------------
+ gp_configuration           | content            | int2
+ gp_configuration           | definedprimary     | bool
+ gp_configuration           | dbid               | int2
+ gp_configuration           | isprimary          | bool
+ gp_configuration           | valid              | bool
+ gp_configuration           | hostname           | name
+ gp_configuration           | port               | int4
+ gp_configuration           | datadir            | text
+ gp_configuration_history   | time               | timestamptz
+ gp_configuration_history   | dbid               | int2
+ gp_configuration_history   | desc               | text
+ gp_db_interfaces           | dbid               | int2
+ gp_db_interfaces           | interfaceid        | int2
+ gp_db_interfaces           | priority           | int2
+ gp_interfaces              | interfaceid        | int2
+ gp_interfaces              | address            | name
+ gp_interfaces              | status             | int2
  pg_aggregate               | aggfnoid           | regproc
  pg_aggregate               | aggtransfn         | regproc
  pg_aggregate               | agginvtransfn      | regproc
@@ -542,6 +843,10 @@ order by relname, pa1.attnum;
  pg_attribute               | attisdropped       | bool
  pg_attribute               | attislocal         | bool
  pg_attribute               | attinhcount        | int4
+ pg_auth_members            | roleid             | oid
+ pg_auth_members            | member             | oid
+ pg_auth_members            | grantor            | oid
+ pg_auth_members            | admin_option       | bool
  pg_authid                  | rolname            | name
  pg_authid                  | rolsuper           | bool
  pg_authid                  | rolinherit         | bool
@@ -557,6 +862,74 @@ order by relname, pa1.attnum;
  pg_authid                  | rolcreaterextgpfd  | bool
  pg_authid                  | rolcreaterexthttp  | bool
  pg_authid                  | rolcreatewextgpfd  | bool
+ pg_autovacuum              | vacrelid           | oid
+ pg_autovacuum              | enabled            | bool
+ pg_autovacuum              | vac_base_thresh    | int4
+ pg_autovacuum              | vac_scale_factor   | float4
+ pg_autovacuum              | anl_base_thresh    | int4
+ pg_autovacuum              | anl_scale_factor   | float4
+ pg_autovacuum              | vac_cost_delay     | int4
+ pg_autovacuum              | vac_cost_limit     | int4
+ pg_autovacuum              | freeze_min_age     | int4
+ pg_autovacuum              | freeze_max_age     | int4
+ pg_cast                    | castsource         | oid
+ pg_cast                    | casttarget         | oid
+ pg_cast                    | castfunc           | oid
+ pg_cast                    | castcontext        | char
+ pg_constraint              | conname            | name
+ pg_constraint              | connamespace       | oid
+ pg_constraint              | contype            | char
+ pg_constraint              | condeferrable      | bool
+ pg_constraint              | condeferred        | bool
+ pg_constraint              | conrelid           | oid
+ pg_constraint              | contypid           | oid
+ pg_constraint              | confrelid          | oid
+ pg_constraint              | confupdtype        | char
+ pg_constraint              | confdeltype        | char
+ pg_constraint              | confmatchtype      | char
+ pg_constraint              | conkey             | _int2
+ pg_constraint              | confkey            | _int2
+ pg_constraint              | conbin             | text
+ pg_constraint              | consrc             | text
+ pg_conversion              | conname            | name
+ pg_conversion              | connamespace       | oid
+ pg_conversion              | conowner           | oid
+ pg_conversion              | conforencoding     | int4
+ pg_conversion              | contoencoding      | int4
+ pg_conversion              | conproc            | regproc
+ pg_conversion              | condefault         | bool
+ pg_database                | datname            | name
+ pg_database                | datdba             | oid
+ pg_database                | encoding           | int4
+ pg_database                | datistemplate      | bool
+ pg_database                | datallowconn       | bool
+ pg_database                | datconnlimit       | int4
+ pg_database                | datlastsysoid      | oid
+ pg_database                | datfrozenxid       | xid
+ pg_database                | dattablespace      | oid
+ pg_database                | datconfig          | _text
+ pg_database                | datacl             | _aclitem
+ pg_depend                  | classid            | oid
+ pg_depend                  | objid              | oid
+ pg_depend                  | objsubid           | int4
+ pg_depend                  | refclassid         | oid
+ pg_depend                  | refobjid           | oid
+ pg_depend                  | refobjsubid        | int4
+ pg_depend                  | deptype            | char
+ pg_description             | objoid             | oid
+ pg_description             | classoid           | oid
+ pg_description             | objsubid           | int4
+ pg_description             | description        | text
+ pg_exttable                | reloid             | oid
+ pg_exttable                | location           | _text
+ pg_exttable                | fmttype            | char
+ pg_exttable                | fmtopts            | text
+ pg_exttable                | command            | text
+ pg_exttable                | rejectlimit        | int4
+ pg_exttable                | rejectlimittype    | char
+ pg_exttable                | fmterrtbl          | oid
+ pg_exttable                | encoding           | int4
+ pg_exttable                | writable           | bool
  pg_filespace               | fsname             | name
  pg_filespace               | fsowner            | oid
  pg_filespace_entry         | fsefsoid           | oid
@@ -577,6 +950,12 @@ order by relname, pa1.attnum;
  pg_foreign_table           | reloid             | oid
  pg_foreign_table           | server             | oid
  pg_foreign_table           | tbloptions         | _text
+ pg_language                | lanname            | name
+ pg_language                | lanispl            | bool
+ pg_language                | lanpltrusted       | bool
+ pg_language                | lanplcallfoid      | oid
+ pg_language                | lanvalidator       | oid
+ pg_language                | lanacl             | _aclitem
  pg_partition               | parrelid           | oid
  pg_partition               | parkind            | char
  pg_partition               | parlevel           | int2
@@ -598,6 +977,31 @@ order by relname, pa1.attnum;
  pg_partition_rule          | parlistvalues      | text
  pg_partition_rule          | parreloptions      | _text
  pg_partition_rule          | partemplatespace   | oid
+ pg_pltemplate              | tmplname           | name
+ pg_pltemplate              | tmpltrusted        | bool
+ pg_pltemplate              | tmplhandler        | text
+ pg_pltemplate              | tmplvalidator      | text
+ pg_pltemplate              | tmpllibrary        | text
+ pg_pltemplate              | tmplacl            | _aclitem
+ pg_proc                    | proname            | name
+ pg_proc                    | pronamespace       | oid
+ pg_proc                    | proowner           | oid
+ pg_proc                    | prolang            | oid
+ pg_proc                    | proisagg           | bool
+ pg_proc                    | prosecdef          | bool
+ pg_proc                    | proisstrict        | bool
+ pg_proc                    | proretset          | bool
+ pg_proc                    | provolatile        | char
+ pg_proc                    | pronargs           | int2
+ pg_proc                    | prorettype         | oid
+ pg_proc                    | proiswin           | bool
+ pg_proc                    | proargtypes        | oidvector
+ pg_proc                    | proallargtypes     | _oid
+ pg_proc                    | proargmodes        | _char
+ pg_proc                    | proargnames        | _text
+ pg_proc                    | prosrc             | text
+ pg_proc                    | probin             | bytea
+ pg_proc                    | proacl             | _aclitem
  pg_resourcetype            | resname            | name
  pg_resourcetype            | restypid           | int2
  pg_resourcetype            | resrequired        | bool
@@ -613,6 +1017,22 @@ order by relname, pa1.attnum;
  pg_resqueuecapability      | resqueueid         | oid
  pg_resqueuecapability      | restypid           | int2
  pg_resqueuecapability      | ressetting         | text
+ pg_rewrite                 | rulename           | name
+ pg_rewrite                 | ev_class           | oid
+ pg_rewrite                 | ev_attr            | int2
+ pg_rewrite                 | ev_type            | char
+ pg_rewrite                 | is_instead         | bool
+ pg_rewrite                 | ev_qual            | text
+ pg_rewrite                 | ev_action          | text
+ pg_shdepend                | dbid               | oid
+ pg_shdepend                | classid            | oid
+ pg_shdepend                | objid              | oid
+ pg_shdepend                | refclassid         | oid
+ pg_shdepend                | refobjid           | oid
+ pg_shdepend                | deptype            | char
+ pg_shdescription           | objoid             | oid
+ pg_shdescription           | classoid           | oid
+ pg_shdescription           | description        | text
  pg_stat_last_operation     | classid            | oid
  pg_stat_last_operation     | objid              | oid
  pg_stat_last_operation     | staactionname      | name
@@ -648,7 +1068,40 @@ order by relname, pa1.attnum;
  pg_statistic               | stavalues2         | text
  pg_statistic               | stavalues3         | text
  pg_statistic               | stavalues4         | text
-(187 rows)
+ pg_tablespace              | spcname            | name
+ pg_tablespace              | spcowner           | oid
+ pg_tablespace              | spclocation        | text
+ pg_tablespace              | spcacl             | _aclitem
+ pg_tablespace              | spcprilocations    | _text
+ pg_tablespace              | spcmirlocations    | _text
+ pg_tablespace              | spcfsoid           | oid
+ pg_trigger                 | tgrelid            | oid
+ pg_trigger                 | tgname             | name
+ pg_trigger                 | tgfoid             | oid
+ pg_trigger                 | tgtype             | int2
+ pg_trigger                 | tgenabled          | bool
+ pg_trigger                 | tgisconstraint     | bool
+ pg_trigger                 | tgconstrname       | name
+ pg_trigger                 | tgconstrrelid      | oid
+ pg_trigger                 | tgdeferrable       | bool
+ pg_trigger                 | tginitdeferred     | bool
+ pg_trigger                 | tgnargs            | int2
+ pg_trigger                 | tgattr             | int2vector
+ pg_trigger                 | tgargs             | bytea
+ pg_user_mapping            | umuser             | oid
+ pg_user_mapping            | umserver           | oid
+ pg_user_mapping            | umoptions          | _text
+ pg_window                  | winfnoid           | regproc
+ pg_window                  | winrequireorder    | bool
+ pg_window                  | winallowframe      | bool
+ pg_window                  | winpeercount       | bool
+ pg_window                  | wincount           | bool
+ pg_window                  | winfunc            | regproc
+ pg_window                  | winprefunc         | regproc
+ pg_window                  | winpretype         | oid
+ pg_window                  | winfinfunc         | regproc
+ pg_window                  | winkind            | char
+(356 rows)
 
 select pc1.relname, pa1.attname, pt1.typname 
 from 
@@ -667,6 +1120,23 @@ and pc1.relname	in
 order by relname, pa1.attnum;
           relname           |      attname       |   typname   
 ----------------------------+--------------------+-------------
+ gp_configuration           | content            | int2
+ gp_configuration           | definedprimary     | bool
+ gp_configuration           | dbid               | int2
+ gp_configuration           | isprimary          | bool
+ gp_configuration           | valid              | bool
+ gp_configuration           | hostname           | name
+ gp_configuration           | port               | int4
+ gp_configuration           | datadir            | text
+ gp_configuration_history   | time               | timestamptz
+ gp_configuration_history   | dbid               | int2
+ gp_configuration_history   | desc               | text
+ gp_db_interfaces           | dbid               | int2
+ gp_db_interfaces           | interfaceid        | int2
+ gp_db_interfaces           | priority           | int2
+ gp_interfaces              | interfaceid        | int2
+ gp_interfaces              | address            | name
+ gp_interfaces              | status             | int2
  pg_aggregate               | aggfnoid           | regproc
  pg_aggregate               | aggtransfn         | regproc
  pg_aggregate               | agginvtransfn      | regproc
@@ -748,6 +1218,10 @@ order by relname, pa1.attnum;
  pg_attribute               | attisdropped       | bool
  pg_attribute               | attislocal         | bool
  pg_attribute               | attinhcount        | int4
+ pg_auth_members            | roleid             | oid
+ pg_auth_members            | member             | oid
+ pg_auth_members            | grantor            | oid
+ pg_auth_members            | admin_option       | bool
  pg_authid                  | rolname            | name
  pg_authid                  | rolsuper           | bool
  pg_authid                  | rolinherit         | bool
@@ -763,6 +1237,74 @@ order by relname, pa1.attnum;
  pg_authid                  | rolcreaterextgpfd  | bool
  pg_authid                  | rolcreaterexthttp  | bool
  pg_authid                  | rolcreatewextgpfd  | bool
+ pg_autovacuum              | vacrelid           | oid
+ pg_autovacuum              | enabled            | bool
+ pg_autovacuum              | vac_base_thresh    | int4
+ pg_autovacuum              | vac_scale_factor   | float4
+ pg_autovacuum              | anl_base_thresh    | int4
+ pg_autovacuum              | anl_scale_factor   | float4
+ pg_autovacuum              | vac_cost_delay     | int4
+ pg_autovacuum              | vac_cost_limit     | int4
+ pg_autovacuum              | freeze_min_age     | int4
+ pg_autovacuum              | freeze_max_age     | int4
+ pg_cast                    | castsource         | oid
+ pg_cast                    | casttarget         | oid
+ pg_cast                    | castfunc           | oid
+ pg_cast                    | castcontext        | char
+ pg_constraint              | conname            | name
+ pg_constraint              | connamespace       | oid
+ pg_constraint              | contype            | char
+ pg_constraint              | condeferrable      | bool
+ pg_constraint              | condeferred        | bool
+ pg_constraint              | conrelid           | oid
+ pg_constraint              | contypid           | oid
+ pg_constraint              | confrelid          | oid
+ pg_constraint              | confupdtype        | char
+ pg_constraint              | confdeltype        | char
+ pg_constraint              | confmatchtype      | char
+ pg_constraint              | conkey             | _int2
+ pg_constraint              | confkey            | _int2
+ pg_constraint              | conbin             | text
+ pg_constraint              | consrc             | text
+ pg_conversion              | conname            | name
+ pg_conversion              | connamespace       | oid
+ pg_conversion              | conowner           | oid
+ pg_conversion              | conforencoding     | int4
+ pg_conversion              | contoencoding      | int4
+ pg_conversion              | conproc            | regproc
+ pg_conversion              | condefault         | bool
+ pg_database                | datname            | name
+ pg_database                | datdba             | oid
+ pg_database                | encoding           | int4
+ pg_database                | datistemplate      | bool
+ pg_database                | datallowconn       | bool
+ pg_database                | datconnlimit       | int4
+ pg_database                | datlastsysoid      | oid
+ pg_database                | datfrozenxid       | xid
+ pg_database                | dattablespace      | oid
+ pg_database                | datconfig          | _text
+ pg_database                | datacl             | _aclitem
+ pg_depend                  | classid            | oid
+ pg_depend                  | objid              | oid
+ pg_depend                  | objsubid           | int4
+ pg_depend                  | refclassid         | oid
+ pg_depend                  | refobjid           | oid
+ pg_depend                  | refobjsubid        | int4
+ pg_depend                  | deptype            | char
+ pg_description             | objoid             | oid
+ pg_description             | classoid           | oid
+ pg_description             | objsubid           | int4
+ pg_description             | description        | text
+ pg_exttable                | reloid             | oid
+ pg_exttable                | location           | _text
+ pg_exttable                | fmttype            | char
+ pg_exttable                | fmtopts            | text
+ pg_exttable                | command            | text
+ pg_exttable                | rejectlimit        | int4
+ pg_exttable                | rejectlimittype    | char
+ pg_exttable                | fmterrtbl          | oid
+ pg_exttable                | encoding           | int4
+ pg_exttable                | writable           | bool
  pg_filespace               | fsname             | name
  pg_filespace               | fsowner            | oid
  pg_filespace_entry         | fsefsoid           | oid
@@ -783,6 +1325,12 @@ order by relname, pa1.attnum;
  pg_foreign_table           | reloid             | oid
  pg_foreign_table           | server             | oid
  pg_foreign_table           | tbloptions         | _text
+ pg_language                | lanname            | name
+ pg_language                | lanispl            | bool
+ pg_language                | lanpltrusted       | bool
+ pg_language                | lanplcallfoid      | oid
+ pg_language                | lanvalidator       | oid
+ pg_language                | lanacl             | _aclitem
  pg_partition               | parrelid           | oid
  pg_partition               | parkind            | char
  pg_partition               | parlevel           | int2
@@ -804,6 +1352,31 @@ order by relname, pa1.attnum;
  pg_partition_rule          | parlistvalues      | text
  pg_partition_rule          | parreloptions      | _text
  pg_partition_rule          | partemplatespace   | oid
+ pg_pltemplate              | tmplname           | name
+ pg_pltemplate              | tmpltrusted        | bool
+ pg_pltemplate              | tmplhandler        | text
+ pg_pltemplate              | tmplvalidator      | text
+ pg_pltemplate              | tmpllibrary        | text
+ pg_pltemplate              | tmplacl            | _aclitem
+ pg_proc                    | proname            | name
+ pg_proc                    | pronamespace       | oid
+ pg_proc                    | proowner           | oid
+ pg_proc                    | prolang            | oid
+ pg_proc                    | proisagg           | bool
+ pg_proc                    | prosecdef          | bool
+ pg_proc                    | proisstrict        | bool
+ pg_proc                    | proretset          | bool
+ pg_proc                    | provolatile        | char
+ pg_proc                    | pronargs           | int2
+ pg_proc                    | prorettype         | oid
+ pg_proc                    | proiswin           | bool
+ pg_proc                    | proargtypes        | oidvector
+ pg_proc                    | proallargtypes     | _oid
+ pg_proc                    | proargmodes        | _char
+ pg_proc                    | proargnames        | _text
+ pg_proc                    | prosrc             | text
+ pg_proc                    | probin             | bytea
+ pg_proc                    | proacl             | _aclitem
  pg_resourcetype            | resname            | name
  pg_resourcetype            | restypid           | int2
  pg_resourcetype            | resrequired        | bool
@@ -819,6 +1392,22 @@ order by relname, pa1.attnum;
  pg_resqueuecapability      | resqueueid         | oid
  pg_resqueuecapability      | restypid           | int2
  pg_resqueuecapability      | ressetting         | text
+ pg_rewrite                 | rulename           | name
+ pg_rewrite                 | ev_class           | oid
+ pg_rewrite                 | ev_attr            | int2
+ pg_rewrite                 | ev_type            | char
+ pg_rewrite                 | is_instead         | bool
+ pg_rewrite                 | ev_qual            | text
+ pg_rewrite                 | ev_action          | text
+ pg_shdepend                | dbid               | oid
+ pg_shdepend                | classid            | oid
+ pg_shdepend                | objid              | oid
+ pg_shdepend                | refclassid         | oid
+ pg_shdepend                | refobjid           | oid
+ pg_shdepend                | deptype            | char
+ pg_shdescription           | objoid             | oid
+ pg_shdescription           | classoid           | oid
+ pg_shdescription           | description        | text
  pg_stat_last_operation     | classid            | oid
  pg_stat_last_operation     | objid              | oid
  pg_stat_last_operation     | staactionname      | name
@@ -854,24 +1443,76 @@ order by relname, pa1.attnum;
  pg_statistic               | stavalues2         | anyarray
  pg_statistic               | stavalues3         | anyarray
  pg_statistic               | stavalues4         | anyarray
-(187 rows)
+ pg_tablespace              | spcname            | name
+ pg_tablespace              | spcowner           | oid
+ pg_tablespace              | spclocation        | text
+ pg_tablespace              | spcacl             | _aclitem
+ pg_tablespace              | spcprilocations    | _text
+ pg_tablespace              | spcmirlocations    | _text
+ pg_tablespace              | spcfsoid           | oid
+ pg_trigger                 | tgrelid            | oid
+ pg_trigger                 | tgname             | name
+ pg_trigger                 | tgfoid             | oid
+ pg_trigger                 | tgtype             | int2
+ pg_trigger                 | tgenabled          | bool
+ pg_trigger                 | tgisconstraint     | bool
+ pg_trigger                 | tgconstrname       | name
+ pg_trigger                 | tgconstrrelid      | oid
+ pg_trigger                 | tgdeferrable       | bool
+ pg_trigger                 | tginitdeferred     | bool
+ pg_trigger                 | tgnargs            | int2
+ pg_trigger                 | tgattr             | int2vector
+ pg_trigger                 | tgargs             | bytea
+ pg_user_mapping            | umuser             | oid
+ pg_user_mapping            | umserver           | oid
+ pg_user_mapping            | umoptions          | _text
+ pg_window                  | winfnoid           | regproc
+ pg_window                  | winrequireorder    | bool
+ pg_window                  | winallowframe      | bool
+ pg_window                  | winpeercount       | bool
+ pg_window                  | wincount           | bool
+ pg_window                  | winfunc            | regproc
+ pg_window                  | winprefunc         | regproc
+ pg_window                  | winpretype         | oid
+ pg_window                  | winfinfunc         | regproc
+ pg_window                  | winkind            | char
+(356 rows)
 
 -- end_equiv
 drop schema tidycat CASCADE;
+NOTICE:  drop cascades to table tidycat.pg_window
+NOTICE:  drop cascades to table tidycat.pg_user_mapping
+NOTICE:  drop cascades to table tidycat.pg_trigger
+NOTICE:  drop cascades to table tidycat.pg_tablespace
 NOTICE:  drop cascades to table tidycat.pg_stat_last_operation
 NOTICE:  drop cascades to table tidycat.pg_statistic
 NOTICE:  drop cascades to table tidycat.pg_stat_last_shoperation
+NOTICE:  drop cascades to table tidycat.pg_shdescription
+NOTICE:  drop cascades to table tidycat.pg_shdepend
+NOTICE:  drop cascades to table tidycat.pg_rewrite
 NOTICE:  drop cascades to table tidycat.pg_resourcetype
 NOTICE:  drop cascades to table tidycat.pg_resqueuecapability
 NOTICE:  drop cascades to table tidycat.pg_resqueue
+NOTICE:  drop cascades to table tidycat.pg_proc
+NOTICE:  drop cascades to table tidycat.pg_pltemplate
 NOTICE:  drop cascades to table tidycat.pg_partition_rule
 NOTICE:  drop cascades to table tidycat.pg_partition
+NOTICE:  drop cascades to table tidycat.pg_language
 NOTICE:  drop cascades to table tidycat.pg_foreign_table
 NOTICE:  drop cascades to table tidycat.pg_foreign_server
 NOTICE:  drop cascades to table tidycat.pg_foreign_data_wrapper
 NOTICE:  drop cascades to table tidycat.pg_filespace_entry
 NOTICE:  drop cascades to table tidycat.pg_filespace
+NOTICE:  drop cascades to table tidycat.pg_exttable
+NOTICE:  drop cascades to table tidycat.pg_description
+NOTICE:  drop cascades to table tidycat.pg_depend
+NOTICE:  drop cascades to table tidycat.pg_database
+NOTICE:  drop cascades to table tidycat.pg_conversion
+NOTICE:  drop cascades to table tidycat.pg_constraint
+NOTICE:  drop cascades to table tidycat.pg_cast
+NOTICE:  drop cascades to table tidycat.pg_autovacuum
 NOTICE:  drop cascades to table tidycat.pg_authid
+NOTICE:  drop cascades to table tidycat.pg_auth_members
 NOTICE:  drop cascades to table tidycat.pg_attribute
 NOTICE:  drop cascades to table tidycat.pg_attrdef
 NOTICE:  drop cascades to table tidycat.pg_appendonly_alter_column
@@ -880,3 +1521,7 @@ NOTICE:  drop cascades to table tidycat.pg_amproc
 NOTICE:  drop cascades to table tidycat.pg_amop
 NOTICE:  drop cascades to table tidycat.pg_am
 NOTICE:  drop cascades to table tidycat.pg_aggregate
+NOTICE:  drop cascades to table tidycat.gp_configuration_history
+NOTICE:  drop cascades to table tidycat.gp_configuration
+NOTICE:  drop cascades to table tidycat.gp_db_interfaces
+NOTICE:  drop cascades to table tidycat.gp_interfaces

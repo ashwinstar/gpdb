@@ -4,7 +4,7 @@
  *    a table maintaining a light-weight fast sequence number for a unique
  *    object.
  *
- * Copyright (c) 2009, Greenplum Inc.
+ * Copyright (c) 2009-2011, Greenplum Inc.
  *
  * $Id: $
  * $Change: $
@@ -21,6 +21,19 @@
 /*
  * gp_fastsequence definition
  */
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE gp_fastsequence
+   with (camelcase=FastSequence, oid=false, relid=5043, reltype_oid=6453)
+   (
+   objid   oid,
+   objmod  bigint,
+   last_sequence bigint
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
 #define FastSequenceRelationId 5043
 
 CATALOG(gp_fastsequence,5043) BKI_WITHOUT_OIDS

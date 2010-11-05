@@ -37,6 +37,35 @@
  */
 #define GpPersistentRelationNodeRelationName	"gp_persistent_relation_node"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE gp_persistent_relation_node
+   with (shared=true, oid=false, relid=5090, reltype_oid=6990)
+   (
+   tablespace_oid                                     oid       ,
+   database_oid                                       oid       ,
+   relfilenode_oid                                    oid       ,
+   segment_file_num                                   integer   ,
+   relation_storage_manager                           smallint  ,
+   persistent_state                                   smallint  ,
+   create_mirror_data_loss_tracking_session_num       bigint    ,
+   mirror_existence_state                             smallint  ,
+   mirror_data_synchronization_state                  smallint  ,
+   mirror_bufpool_marked_for_scan_incremental_resync  boolean   ,
+   mirror_bufpool_resync_changed_page_count           bigint    ,
+   mirror_bufpool_resync_ckpt_loc                     gpxlogloc ,
+   mirror_bufpool_resync_ckpt_block_num               integer   ,
+   mirror_append_only_loss_eof                        bigint    ,
+   mirror_append_only_new_eof                         bigint    ,
+   reserved                                           integer   ,
+   parent_xid                                         integer   ,
+   persistent_serial_num                              bigint    ,
+   previous_free_tid                                  tid       
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 #define GpPersistentRelationNodeRelationId 5090
 
 CATALOG(gp_persistent_relation_node,5090) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
@@ -129,6 +158,22 @@ typedef FormData_gp_persistent_relation_node *Form_gp_persistent_relation_node;
  */
 #define GpRelationNodeRelationName		"gp_relation_node"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE gp_relation_node
+   with (shared=false, oid=false, relid=5094, reltype_oid=6994)
+   (
+   relfilenode_oid                               oid     ,
+   segment_file_num                              integer ,
+   create_mirror_data_loss_tracking_session_num  bigint  ,
+   persistent_tid                                tid     ,
+   persistent_serial_num                         bigint  
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
+
 #define GpRelationNodeRelationId 5094
 
 CATALOG(gp_relation_node,5094) BKI_WITHOUT_OIDS
@@ -176,6 +221,25 @@ typedef FormData_gp_relation_node *Form_gp_relation_node;
  * Defines for gp_persistent_database_node table
  */
 #define GpPersistentDatabaseNodeRelationName		"gp_persistent_database_node"
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE gp_persistent_database_node
+   with (shared=true, oid=false, relid=5091, reltype_oid=6991)
+   (
+   tablespace_oid                                oid      ,
+   database_oid                                  oid      ,
+   persistent_state                              smallint ,
+   create_mirror_data_loss_tracking_session_num  bigint   ,
+   mirror_existence_state                        smallint ,
+   reserved                                      integer  ,
+   parent_xid                                    integer  ,
+   persistent_serial_num                         bigint   ,
+   previous_free_tid                             tid      
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
 
 #define GpPersistentDatabaseNodeRelationId 5091
 
@@ -238,6 +302,26 @@ typedef FormData_gp_persistent_database_node *Form_gp_persistent_database_node;
  */
 #define GpPersistentTablespaceNodeRelationName		"gp_persistent_tablespace_node"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE gp_persistent_tablespace_node
+   with (shared=true, oid=false, relid=5092, reltype_oid=6992)
+   (
+   filespace_oid                                 oid      ,
+   tablespace_oid                                oid      ,
+   persistent_state                              smallint ,
+   create_mirror_data_loss_tracking_session_num  bigint   ,
+   mirror_existence_state                        smallint ,
+   reserved                                      integer  ,
+   parent_xid                                    integer  ,
+   persistent_serial_num                         bigint   ,
+   previous_free_tid                             tid      
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
+
 #define GpPersistentTablespaceNodeRelationId 5092
 
 CATALOG(gp_persistent_tablespace_node,5092) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
@@ -298,6 +382,29 @@ typedef FormData_gp_persistent_tablespace_node *Form_gp_persistent_tablespace_no
  * Defines for gp_persistent_filespace_node table
  */
 #define GpPersistentFilespaceNodeRelationName		"gp_persistent_filespace_node"
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE gp_persistent_filespace_node
+   with (shared=true, oid=false, relid=5093, reltype_oid=6993)
+   (
+   filespace_oid                                 oid      ,
+   db_id_1                                       smallint ,
+   location_1                                    text     ,
+   db_id_2                                       smallint ,
+   location_2                                    text     ,
+   persistent_state                              smallint ,
+   create_mirror_data_loss_tracking_session_num  bigint   ,
+   mirror_existence_state                        smallint ,
+   reserved                                      integer  ,
+   parent_xid                                    integer  ,
+   persistent_serial_num                         bigint   ,
+   previous_free_tid                             tid      
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 
 #define GpPersistentFilespaceNodeRelationId 5093
 

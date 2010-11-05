@@ -34,6 +34,20 @@
  */
 #define GpIdRelationName			"gp_id"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE gp_id
+   with (shared=true, oid=false, relid=5001)
+   (
+   gpname       name     ,
+   numsegments  smallint ,
+   dbid         smallint ,
+   content      smallint 
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 #define GpIdRelationId	5001
 
 CATALOG(gp_id,5001) BKI_SHARED_RELATION BKI_WITHOUT_OIDS

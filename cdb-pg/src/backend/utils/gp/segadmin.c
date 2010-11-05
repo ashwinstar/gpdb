@@ -101,7 +101,7 @@ get_maxdbid()
 	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
 
 	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
-		dbid = Max(dbid, ((Form_gp_segment_config)GETSTRUCT(tuple))->dbid);
+		dbid = Max(dbid, ((Form_gp_segment_configuration)GETSTRUCT(tuple))->dbid);
 
 	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
@@ -138,7 +138,7 @@ get_availableDbId()
 	HeapScanDesc scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
 	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 	{
-		int32 dbid = (int32) ((Form_gp_segment_config)GETSTRUCT(tuple))->dbid;
+		int32 dbid = (int32) ((Form_gp_segment_configuration)GETSTRUCT(tuple))->dbid;
 		(void) hash_search(htab, (void *) &dbid, HASH_ENTER, NULL);
 	}
 
@@ -177,7 +177,7 @@ get_maxcontentid()
 
 	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 		contentid = Max(contentid,
-						((Form_gp_segment_config)GETSTRUCT(tuple))->content);
+						((Form_gp_segment_configuration)GETSTRUCT(tuple))->content);
 
 	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
@@ -603,35 +603,35 @@ static void
 add_segment_config(seginfo *i)
 {
 	Relation rel = heap_open(GpSegmentConfigRelationId, AccessExclusiveLock);
-	Datum values[Natts_gp_segment_config];
-	bool nulls[Natts_gp_segment_config];
+	Datum values[Natts_gp_segment_configuration];
+	bool nulls[Natts_gp_segment_configuration];
 	HeapTuple tuple;
 
 	MemSet(nulls, false, sizeof(nulls));
 
-	values[Anum_gp_segment_config_dbid - 1] = Int16GetDatum(i->db.dbid);
-	values[Anum_gp_segment_config_content - 1] = Int16GetDatum(i->db.segindex);
-	values[Anum_gp_segment_config_role - 1] = CharGetDatum(i->db.role);
-	values[Anum_gp_segment_config_preferred_role - 1] = 
+	values[Anum_gp_segment_configuration_dbid - 1] = Int16GetDatum(i->db.dbid);
+	values[Anum_gp_segment_configuration_content - 1] = Int16GetDatum(i->db.segindex);
+	values[Anum_gp_segment_configuration_role - 1] = CharGetDatum(i->db.role);
+	values[Anum_gp_segment_configuration_preferred_role - 1] = 
 		CharGetDatum(i->db.preferred_role);
-	values[Anum_gp_segment_config_mode - 1] =
+	values[Anum_gp_segment_configuration_mode - 1] =
 		CharGetDatum(i->db.mode);
-	values[Anum_gp_segment_config_status - 1] =
+	values[Anum_gp_segment_configuration_status - 1] =
 		CharGetDatum(i->db.status);
-	values[Anum_gp_segment_config_port - 1] =
+	values[Anum_gp_segment_configuration_port - 1] =
 		Int32GetDatum(i->db.port);
-	values[Anum_gp_segment_config_hostname - 1] =
+	values[Anum_gp_segment_configuration_hostname - 1] =
 		CStringGetTextDatum(i->db.hostname);
-	values[Anum_gp_segment_config_address - 1] =
+	values[Anum_gp_segment_configuration_address - 1] =
 		CStringGetTextDatum(i->db.address);
 
 	if (i->db.filerep_port != -1)
-		values[Anum_gp_segment_config_replication_port - 1] =
+		values[Anum_gp_segment_configuration_replication_port - 1] =
 			Int32GetDatum(i->db.filerep_port);
 	else
-		nulls[Anum_gp_segment_config_replication_port - 1] = true;
+		nulls[Anum_gp_segment_configuration_replication_port - 1] = true;
 
-	nulls[Anum_gp_segment_config_san_mounts - 1] = true;
+	nulls[Anum_gp_segment_configuration_san_mounts - 1] = true;
 
 	tuple = heap_form_tuple(RelationGetDescr(rel),
 							values,
@@ -669,7 +669,7 @@ remove_segment_config(int16 dbid)
 							 RowExclusiveLock);
 
 	ScanKeyInit(&key,
-				Anum_gp_segment_config_dbid,
+				Anum_gp_segment_configuration_dbid,
 				BTEqualStrategyNumber, F_INT2EQ,
 				Int16GetDatum(dbid));
 	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
@@ -1108,7 +1108,7 @@ segment_config_activate_standby(int16 standbydbid, int16 newdbid)
 	/* first, delete the old master */
 	Insist(newdbid == MASTER_DBID);
 	ScanKeyInit(&key,
-				Anum_gp_segment_config_dbid,
+				Anum_gp_segment_configuration_dbid,
 				BTEqualStrategyNumber, F_INT2EQ,
 				Int16GetDatum(newdbid));
 	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
@@ -1122,7 +1122,7 @@ segment_config_activate_standby(int16 standbydbid, int16 newdbid)
 
 	/* now, set out old dbid to the new dbid */
 	ScanKeyInit(&key,
-				Anum_gp_segment_config_dbid,
+				Anum_gp_segment_configuration_dbid,
 				BTEqualStrategyNumber, F_INT2EQ,
 				Int16GetDatum(standbydbid));
 	scandesc = heap_beginscan(rel, SnapshotNow, 1, &key);
@@ -1132,9 +1132,9 @@ segment_config_activate_standby(int16 standbydbid, int16 newdbid)
 		elog(ERROR, "cannot find standby, dbid %i", standbydbid);
 	
 	tuple = heap_copytuple(tuple);
-	((Form_gp_segment_config)GETSTRUCT(tuple))->dbid = newdbid;
-	((Form_gp_segment_config)GETSTRUCT(tuple))->role = SEGMENT_ROLE_PRIMARY;
-	((Form_gp_segment_config)GETSTRUCT(tuple))->preferred_role = SEGMENT_ROLE_PRIMARY;
+	((Form_gp_segment_configuration)GETSTRUCT(tuple))->dbid = newdbid;
+	((Form_gp_segment_configuration)GETSTRUCT(tuple))->role = SEGMENT_ROLE_PRIMARY;
+	((Form_gp_segment_configuration)GETSTRUCT(tuple))->preferred_role = SEGMENT_ROLE_PRIMARY;
 	simple_heap_update(rel, &tuple->t_self, tuple);
 	CatalogUpdateIndexes(rel, tuple);
 

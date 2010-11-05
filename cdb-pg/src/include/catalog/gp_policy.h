@@ -3,7 +3,7 @@
  * gp_policy.h
  *	  definitions for the gp_distribution_policy catalog table
  *
- * Copyright (c) 2005-2008, Greenplum inc
+ * Copyright (c) 2005-2011, Greenplum inc
  *
  * NOTES
  *
@@ -19,6 +19,18 @@
  * Defines for gp_policy
  */
 #define GpPolicyRelationName		"gp_distribution_policy"
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE gp_distribution_policy
+   with (camelcase=GpPolicy, oid=false, relid=5002)
+   (
+   localoid  oid,
+   attrnums  smallint[]
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
 
 #define GpPolicyRelationId  5002
 

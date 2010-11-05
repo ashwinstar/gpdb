@@ -485,15 +485,15 @@ create view pg_partitions as
               pg_class cl
                   left join
               pg_tablespace sp on cl.reltablespace = sp.oid, 
-              pg_class cl2, 
+              pg_class cl2
+                  left join
+              pg_tablespace sp3 on cl2.reltablespace = sp3.oid,
               pg_partition pp, 
               pg_partition_rule pr1
                   left join 
               pg_partition_rule pr2 on pr1.parparentrule = pr2.oid
                   left join 
-              pg_class cl3 on pr2.parchildrelid = cl3.oid
-                  left join
-              pg_tablespace sp3 on cl3.reltablespace = sp3.oid,
+              pg_class cl3 on pr2.parchildrelid = cl3.oid,
               (select s.spcname
                from pg_database, pg_tablespace s
                where datname = current_database()

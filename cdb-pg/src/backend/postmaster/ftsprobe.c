@@ -6,7 +6,7 @@
  *
  * Maintains a bitmap in shared memory of the up-ness of each segment.
  *
- * Copyright (c) 2006-2008, Greenplum inc
+ * Copyright (c) 2006-2011, Greenplum inc
  *
  * $Id: //cdb2/private/tkordas/fts_cleanup/cdb-pg/src/backend/postmaster/ftsprobe.c#1 $
  *
@@ -1833,7 +1833,7 @@ getGpFailover_strategy(char *strategy)
 
 	Assert(strategy != NULL);
 
-	strategy_rel = heap_open(GpFaultStrategyId, AccessShareLock);
+	strategy_rel = heap_open(GpFaultStrategyRelationId, AccessShareLock);
 	strategy_scan = heap_beginscan(strategy_rel, SnapshotNow, 0, NULL);
 
 	while (HeapTupleIsValid(strategy_tup = heap_getnext(strategy_scan, ForwardScanDirection)))
@@ -2565,7 +2565,7 @@ getMounts_forDbid(int dbid, List **mountp)
 	Assert(dbid > 0);
 
 	ScanKeyInit(&key[0],
-				Anum_gp_segment_config_dbid,
+				Anum_gp_segment_configuration_dbid,
 				BTEqualStrategyNumber, F_INT2EQ,
 				Int16GetDatum((int16)dbid));
 
@@ -2579,7 +2579,7 @@ getMounts_forDbid(int dbid, List **mountp)
 		Datum	tup_dbid;
 		Datum	conf_datum;
 
-		tup_dbid = heap_getattr(conf_tup, Anum_gp_segment_config_dbid, conf_rel->rd_att, &isNull);
+		tup_dbid = heap_getattr(conf_tup, Anum_gp_segment_configuration_dbid, conf_rel->rd_att, &isNull);
 		Assert(!isNull); /* primary key better not be null ! */
 
 		if ((int)DatumGetInt16(tup_dbid) != dbid)
@@ -2588,7 +2588,7 @@ getMounts_forDbid(int dbid, List **mountp)
 		}
 
 		/* got our dbid, get our array of mountpoints. */
-		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_config_san_mounts, conf_rel->rd_att, &isNull);
+		conf_datum = heap_getattr(conf_tup, Anum_gp_segment_configuration_san_mounts, conf_rel->rd_att, &isNull);
 
 		if (isNull)
 			continue; /* Can this happen ? */
@@ -2619,7 +2619,7 @@ getMounts_forDbid(int dbid, List **mountp)
 			elog(FATAL, "Fault reponse error: %s IS NULL", #ATTR);		\
 	}
 
-#define get_config_attr(datum, ATTR, tuple, rel) get_heap_attr(datum, Anum_gp_segment_config_, ATTR, tuple, rel)
+#define get_config_attr(datum, ATTR, tuple, rel) get_heap_attr(datum, Anum_gp_segment_configuration_, ATTR, tuple, rel)
 
 static void
 startSegment_forDbid(int dbid)
@@ -2634,7 +2634,7 @@ startSegment_forDbid(int dbid)
 	Assert(dbid > 0);
 
 	ScanKeyInit(&key[0],
-				Anum_gp_segment_config_dbid,
+				Anum_gp_segment_configuration_dbid,
 				BTEqualStrategyNumber, F_INT2EQ,
 				Int16GetDatum((int16)dbid));
 
@@ -2745,7 +2745,7 @@ mountMaintenance_forMpid(int mpid)
 	ScanKeyData key[1];
 
 	ScanKeyInit(&key[0],
-				Anum_gp_san_config_mountid,
+				Anum_gp_san_configuration_mountid,
 				BTEqualStrategyNumber, F_INT2EQ,
 				Int16GetDatum((int16)mpid));
 
@@ -2762,7 +2762,7 @@ mountMaintenance_forMpid(int mpid)
 		char	*p_host, *p_mp, *p_dev;
 		char	*m_host, *m_mp, *m_dev;
 
-#define get_mount_attr(datum, ATTR, tuple, rel) get_heap_attr(datum, Anum_gp_san_config_, ATTR, tuple, rel)
+#define get_mount_attr(datum, ATTR, tuple, rel) get_heap_attr(datum, Anum_gp_san_configuration_, ATTR, tuple, rel)
 
 		get_mount_attr(mount_datum, mountid, mount_tup, mount_rel);
 		if ((int)DatumGetInt16(mount_datum) != mpid)
