@@ -208,7 +208,7 @@ typedef FormData_gp_configuration_history *Form_gp_configuration_history;
    priority       smallint
    );
 
-   create unique index on gp_db_interfaces(dbid) with (indexid=6108);
+   create index on gp_db_interfaces(dbid) with (indexid=6108);
 
    TIDYCAT_ENDDEF
 */
