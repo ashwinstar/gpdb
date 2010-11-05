@@ -643,6 +643,12 @@ class GpStop(Command):
         return cmd
 
 #-----------------------------------------------
+class GpRecoverseg(Command):
+    def __init__(self, name, ctxt=LOCAL, remoteHost=None):
+        self.cmdStr = "$GPHOME/bin/gprecoverseg -a"
+        Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
+
+#-----------------------------------------------
 class Psql(Command):
     def __init__(self, name, query, database='template1', utilityMode=False, ctxt=LOCAL, remoteHost=None):
         env = ''

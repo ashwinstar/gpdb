@@ -1630,6 +1630,27 @@ class GpArray:
         return dbs
 
     # --------------------------------------------------------------------
+    def get_synchronized_segments(self):
+        dbs=[]
+        for seg in self.segments:
+            segdb = seg.primaryDB
+            if segdb.mode == MODE_SYNCHRONIZED:
+                dbs.append(segdb)
+            for segdb in seg.mirrorDBs:
+                if segdb.mode == MODE_SYNCHRONIZED:
+                    dbs.append(segdb)
+        return dbs        
+
+    # --------------------------------------------------------------------
+    def get_segdbs_in_non_preferred_role(self):
+        dbs=[]
+        for seg in self.segments:
+            for segdb in seg.get_dbs():
+                if segdb.preferred_role != segdb.role:
+                    dbs.append(segdb)
+        return dbs
+
+    # --------------------------------------------------------------------
     def get_inactive_mirrors_segdbs(self):
         if self.__strategy != FAULT_STRATEGY_SAN:
             return []

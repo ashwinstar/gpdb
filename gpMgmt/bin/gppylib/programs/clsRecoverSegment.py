@@ -26,6 +26,7 @@ from gppylib.db import catalog, dbconn
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib.operations.startSegments import *
 from gppylib.operations.buildMirrorSegments import *
+from gppylib.operations.rebalanceSegments import GpSegmentRebalanceOperation
 from gppylib.programs import programIoUtils
 from gppylib.programs.clsAddMirrors import validateFlexibleHeadersListAllFilespaces
 from gppylib.system import configurationInterface as configInterface
@@ -593,7 +594,9 @@ class GpRecoverSegmentProgram:
         return 0
 
     def getRecoveryActionsBasedOnOptions(self, gpEnv, gpArray):
-        if self.__options.recoveryConfigFile is not None:
+        if self.__options.rebalanceSegments:
+            return GpSegmentRebalanceOperation(gpEnv, gpArray)
+        elif self.__options.recoveryConfigFile is not None:
             return self.getRecoveryActionsFromConfigFile(gpArray)
         else:
             return self.getRecoveryActionsFromConfiguration(gpEnv, gpArray)
@@ -612,33 +615,50 @@ class GpRecoverSegmentProgram:
             logger.info('Recovery type              = Pool Directory')
             logger.info('Mirror pool directory file = %s' % self.__options.spareDataDirectoryFile)
             type_text = 'Pool dir'
+        elif self.__options.rebalanceSegments:
+            logger.info('Recovery type              = Rebalance')
+            type_text = 'Rebalance segments'
         else:
             logger.info('Recovery type              = Standard')
             type_text = 'Failed  '
 
-        count = 0
-        # logger.info('Recovery parallel batch value = %d' % opt['-B'])
-        i = 0
-        total = len(mirrorBuilder.getMirrorsToBuild())
-        for toRecover in mirrorBuilder.getMirrorsToBuild():
-            logger.info('---------------------------------------------------------')
-            logger.info('Recovery %d of %d' % (i+1, total))
-            logger.info('---------------------------------------------------------')
-
-            tabLog = TableLogger()
-
-            syncMode = "Full" if toRecover.isFullSynchronization() else "Incremental"
-            tabLog.info(["Synchronization mode", "= " + syncMode])
-            programIoUtils.appendSegmentInfoForOutput("Failed", gpArray, toRecover.getFailedSegment(), tabLog)
-            programIoUtils.appendSegmentInfoForOutput("Recovery Source", gpArray, toRecover.getLiveSegment(), tabLog)
-
-            if toRecover.getFailoverSegment() is not None:
-                programIoUtils.appendSegmentInfoForOutput("Recovery Target", gpArray, toRecover.getFailoverSegment(), tabLog)
-            else:
-                tabLog.info(["Recovery Target", "= in-place"])
-            tabLog.outputTable()
-
-            i = i + 1
+        if self.__options.rebalanceSegments:
+            i = 1
+            total = len(mirrorBuilder.get_unbalanced_segments())
+            for toRebalance in mirrorBuilder.get_unbalanced_segments():
+                tabLog = TableLogger()
+                logger.info('---------------------------------------------------------')
+                logger.info('Unbalanced segment %d of %d' % (i, total))
+                logger.info('---------------------------------------------------------')
+                programIoUtils.appendSegmentInfoForOutput("Unbalanced", gpArray, toRebalance, tabLog)
+                tabLog.info(["Balanced role", "= Primary" if toRebalance.preferred_role == 'p' else "= Mirror"])
+                tabLog.info(["Current role", "= Primary" if toRebalance.role == 'p' else "= Mirror"])                
+                tabLog.outputTable()
+                i+=1                
+        else:
+            count = 0
+            # logger.info('Recovery parallel batch value = %d' % opt['-B'])
+            i = 0
+            total = len(mirrorBuilder.getMirrorsToBuild())
+            for toRecover in mirrorBuilder.getMirrorsToBuild():
+                logger.info('---------------------------------------------------------')
+                logger.info('Recovery %d of %d' % (i+1, total))
+                logger.info('---------------------------------------------------------')
+    
+                tabLog = TableLogger()
+    
+                syncMode = "Full" if toRecover.isFullSynchronization() else "Incremental"
+                tabLog.info(["Synchronization mode", "= " + syncMode])
+                programIoUtils.appendSegmentInfoForOutput("Failed", gpArray, toRecover.getFailedSegment(), tabLog)
+                programIoUtils.appendSegmentInfoForOutput("Recovery Source", gpArray, toRecover.getLiveSegment(), tabLog)
+    
+                if toRecover.getFailoverSegment() is not None:
+                    programIoUtils.appendSegmentInfoForOutput("Recovery Target", gpArray, toRecover.getFailoverSegment(), tabLog)
+                else:
+                    tabLog.info(["Recovery Target", "= in-place"])
+                tabLog.outputTable()
+    
+                i = i + 1
 
         logger.info('---------------------------------------------------------')
 
@@ -686,9 +706,11 @@ class GpRecoverSegmentProgram:
             optionCnt += 1
         if self.__options.outputSpareDataDirectoryFile is not None:
             optionCnt += 1
+        if self.__options.rebalanceSegments:
+            optionCnt += 1
         if optionCnt > 1:
             raise ProgramArgumentValidationException(\
-                    "Only one of -i, -p, -s, and -S may be specified")
+                    "Only one of -i, -p, -s, -r, and -S may be specified")
 
         faultProberInterface.getFaultProber().initializeProber(gpEnv.getMasterPort())
 
@@ -757,6 +779,17 @@ class GpRecoverSegmentProgram:
             self.__outputSpareDataDirectoryFile(gpEnv, gpArray, self.__options.outputSpareDataDirectoryFile)
             return 0
 
+        # If it's a rebalance operation, make sure we are in an acceptable state to do that
+        # Acceptable state is:
+        #    - No segments down
+        #    - No segments in change tracking or unsynchronized state
+        if self.__options.rebalanceSegments:
+            if len(gpArray.get_invalid_segdbs()) > 0:
+                raise Exception("Down segments still exist.  All segments must be up to rebalance.")
+            if len(gpArray.get_synchronized_segments()) != len(gpArray.getSegDbList()):
+                raise Exception("Some segments are not yet synchronized.  All segments must be synchronized to rebalance.")
+
+
         # figure out what needs to be done
         mirrorBuilder = self.getRecoveryActionsBasedOnOptions(gpEnv, gpArray)
 
@@ -764,6 +797,31 @@ class GpRecoverSegmentProgram:
             # just output config file and done
             self.outputToFile(mirrorBuilder, gpArray, self.__options.outputSampleConfigFile)
             logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
+        elif self.__options.rebalanceSegments:
+            assert(isinstance(mirrorBuilder,GpSegmentRebalanceOperation))
+
+            # Make sure we have work to do
+            if len(gpArray.get_segdbs_in_non_preferred_role()) == 0:
+                logger.info("No segments are running in their non-preferred role and need to be rebalanced.")
+            else:           
+                self.displayRecovery(mirrorBuilder, gpArray)
+                
+                if self.__options.interactive:
+                    logger.warn("This operation will cancel queries that are currently executing.")
+                    logger.warn("Connections to the database however will not be interrupted.")
+                    if not userinput.ask_yesno(None, "\nContinue with segment rebalance procedure", 'N'):
+                        raise UserAbortedException()
+                
+                mirrorBuilder.rebalance()
+                
+                logger.info("******************************************************************")
+                logger.info("The rebalance operation has completed successfully.")
+                logger.info("There is a resynchronization running in the background to bring all")
+                logger.info("segments in sync.")
+                logger.info("")
+                logger.info("Use gpstate -s to check the resynchronization progress.")
+                logger.info("******************************************************************")
+            
         elif len(mirrorBuilder.getMirrorsToBuild()) == 0:
             logger.info('No segments to recover')
         else:
@@ -849,6 +907,8 @@ class GpRecoverSegmentProgram:
                             dest="parallelDegree",
                             metavar="<parallelDegree>",
                             help="Max # of workers to use for building recovery segments.  [default: %default]")
+        addTo.add_option("-r", None, default=False, action='store_true',
+                         dest='rebalanceSegments', help='Rebalance synchronized segments.')
 
         parser.set_defaults()
         return parser
