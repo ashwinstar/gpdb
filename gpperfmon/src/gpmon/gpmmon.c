@@ -1269,13 +1269,13 @@ int main(int argc, const char* const argv[])
 		exit(1);
 	}
 
+	parse_command_line(argc, argv);
+
 	if ( gpdb_debug_string_lookup_table() != APR_SUCCESS)
 	{
 		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 		gpmon_fatal(FLINE, "internal consistency check failed at gpperfmon startup");
 	}
-
-	parse_command_line(argc, argv);
 
 	/* Set env if we got a port.  This will be picked up by libpq */
 	if (opt.gpdb_port)
