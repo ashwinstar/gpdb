@@ -45,6 +45,8 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	FileRepResyncWorker,
 	
+	FileRepResyncWorkerRead,
+	
 	FileRepTransitionToInResyncMirrorReCreate,
 	
 	FileRepTransitionToInResyncMarkReCreated,
@@ -58,6 +60,8 @@ typedef enum FaultInjectorIdentifier_e {
 	FileRepTransitionToInSyncBeforeCheckpoint,
 	
 	FileRepTransitionToInSyncMarkCompleted,
+	
+	FileRepTransitionToChangeTracking,
 	
 	Checkpoint,
 	

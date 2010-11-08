@@ -319,6 +319,7 @@ class GpInjectFaultProgram:
 			      "filerep_resync (inject fault while in resync when first relation is ready to be resynchronized), " \
 			      "filerep_resync_in_progress (inject fault while resync is in progress), " \
 			      "filerep_resync_worker (inject fault after write to mirror), " \
+			      "filerep_resync_worker_read (inject fault before read required for resync), " \
 			      "filerep_transition_to_resync (inject fault during transition to InResync before mirror re-create), " \
 			      "filerep_transition_to_resync_mark_recreate (inject fault during transition to InResync before marking re-created), " \
 			      "filerep_transition_to_resync_mark_completed (inject fault during transition to InResync before marking completed), " \
@@ -326,6 +327,7 @@ class GpInjectFaultProgram:
 			      "filerep_transition_to_sync (inject fault during transition to InSync), " \
 			      "filerep_transition_to_sync_before_checkpoint (inject fault during transition to InSync before checkpoint is created), " \
 			      "filerep_transition_to_sync_mark_completed (inject fault during transition to InSync before marking completed), " \
+			      "filerep_transition_to_change_tracking (inject fault during transition to InChangeTracking), " \
 			      "checkpoint (inject fault before checkpoint is taken), " \
 			      "transaction_abort_after_distributed_prepared (abort prepared transaction), " \
 			      "transaction_commit_pass1_from_create_pending_to_created, " \

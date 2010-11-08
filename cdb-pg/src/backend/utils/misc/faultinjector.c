@@ -123,6 +123,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault while InResync when more then 10 relations in progress */
 	_("filerep_resync_worker"),
 		/* inject fault after write to mirror while all locks are still hold */
+	_("filerep_resync_worker_read"),
+		/* inject fault on read required for resync by resync worker process */
 	_("filerep_transition_to_resync"),
 		/* inject fault during transition to InResync before objects are re-created on mirror */
 	_("filerep_transition_to_resync_mark_recreate"),
@@ -137,6 +139,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault during transition to InSync before checkpoint is taken */
 	_("filerep_transition_to_sync_mark_completed"),
 		/* inject fault during transition to InSync before transition is marked completed */
+	_("filerep_transition_to_change_tracking"),
+		/* inject fault during transition to Change Tracking */
 	_("checkpoint"),
 		/* inject fault before checkpoint is taken */
 	_("change_tracking_compacting_report"),
@@ -711,6 +715,7 @@ FaultInjector_NewHashEntry(
 		case FileRepResync:
 		case FileRepResyncInProgress:
 		case FileRepResyncWorker:
+		case FileRepResyncWorkerRead:
 		case FileRepTransitionToInResyncMirrorReCreate:
 		case FileRepTransitionToInResyncMarkReCreated:
 		case FileRepTransitionToInResyncMarkCompleted:
@@ -718,6 +723,7 @@ FaultInjector_NewHashEntry(
 		case FileRepTransitionToInSync:
 		case FileRepTransitionToInSyncMarkCompleted:
 		case FileRepTransitionToInSyncBeforeCheckpoint:
+		case FileRepTransitionToChangeTracking:
 		case Checkpoint:
 		case TransactionCommitPass1FromCreatePendingToCreated:
 		case TransactionCommitPass1FromDropInMemoryToDropPending:

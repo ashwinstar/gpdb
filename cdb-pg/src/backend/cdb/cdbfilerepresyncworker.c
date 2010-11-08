@@ -241,6 +241,13 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 						XLogRecPtr	endResyncLSN = (isFullResync() ? 
 													FileRepResync_GetEndFullResyncLSN() :
 													FileRepResync_GetEndIncrResyncLSN());
+#ifdef FAULT_INJECTOR
+						FaultInjector_InjectFaultIfSet(
+													   FileRepResyncWorkerRead,
+													   DDLNotSpecified,
+													   "",	//databaseName
+													   ""); // tableName
+#endif				
 						
 						FileRepResync_SetReadBufferRequest();
 						buf = ReadBuffer_ResyncEx(smgr_relation, 

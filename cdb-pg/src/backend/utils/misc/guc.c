@@ -306,6 +306,8 @@ bool		Debug_filerep_gcov = false;
 bool		Debug_filerep_config_print = false;
 bool		Debug_filerep_memory_log_flush = false;
 bool		filerep_inject_listener_fault = false;
+bool		filerep_inject_change_tracking_recovery_fault = false;
+bool		gp_crash_recovery_supress_ao_eof = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -2702,6 +2704,26 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&filerep_inject_listener_fault,
+		false, NULL, NULL
+	},
+
+	{
+		{"filerep_inject_change_tracking_recovery_fault", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("inject fault during change tracking recovery"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&filerep_inject_change_tracking_recovery_fault,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_crash_recovery_supress_ao_eof", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Warning about crash recovery append only eof issue"),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_crash_recovery_supress_ao_eof,
 		false, NULL, NULL
 	},
 

@@ -275,6 +275,9 @@ FileRepPrimary_StartRecoveryInChangeTracking(void)
 				
 		/* NOTE: Any error during change tracking will result in disabling Change Tracking */
 		FileRepSubProcess_SetState(FileRepStateReady);
+		
+		/* database is resumed */
+		primaryMirrorSetIOSuspended(FALSE);
 				
 		FileRep_InsertConfigLogEntry("change tracking recovery completed");
 		
