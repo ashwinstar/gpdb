@@ -29,6 +29,46 @@
  * ----------------
  */
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_class
+   with (bootstrap=true, relid=1259)
+   (
+   relname         name      ,
+   relnamespace    oid       ,
+   reltype         oid       ,
+   relowner        oid       ,
+   relam           oid       ,
+   relfilenode     oid       ,
+   reltablespace   oid       ,
+   relpages        integer   ,
+   reltuples       real      ,
+   reltoastrelid   oid       ,
+   reltoastidxid   oid       ,
+   relaosegrelid   oid       ,
+   relaosegidxid   oid       ,
+   relhasindex     boolean   ,
+   relisshared     boolean   ,
+   relkind         "char"    ,
+   relstorage      "char"    ,
+   relnatts        smallint  ,
+   relchecks       smallint  ,
+   reltriggers     smallint  ,
+   relukeys        smallint  ,
+   relfkeys        smallint  ,
+   relrefs         smallint  ,
+   relhasoids      boolean   ,
+   relhaspkey      boolean   ,
+   relhasrules     boolean   ,
+   relhassubclass  boolean   ,
+   relfrozenxid    xid       ,
+   relacl          aclitem[] ,
+   reloptions      text[]    
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_class definition.  cpp turns this into
  *		typedef struct FormData_pg_class

@@ -40,6 +40,23 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_opclass
+   with (camelcase=OperatorClass, shared=false, relid=2616)
+   (
+   opcamid       oid     ,
+   opcname       name    ,
+   opcnamespace  oid     ,
+   opcowner      oid     ,
+   opcintype     oid     ,
+   opcdefault    boolean ,
+   opckeytype    oid     
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_opclass definition.	cpp turns this into
  *		typedef struct FormData_pg_opclass

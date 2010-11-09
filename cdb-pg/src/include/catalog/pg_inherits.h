@@ -21,6 +21,19 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_inherits
+   with (oid=false, relid=2611)
+   (
+   inhrelid   oid     ,
+   inhparent  oid     ,
+   inhseqno   integer 
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_inherits definition.  cpp turns this into
  *		typedef struct FormData_pg_inherits

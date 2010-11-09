@@ -277,6 +277,7 @@ my %dynamic_reltype_h =
  1260 => "pg_authid",
  1248 => "pg_autovacuum",
  2605 => "pg_cast",
+ 1259 => "pg_class", # special bootstrap case
  2606 => "pg_constraint",
  2607 => "pg_conversion",
  1262 => "pg_database",
@@ -311,6 +312,7 @@ my %dynamic_reltype_h =
  2838 => "pg_toast_2618",
  2840 => "pg_toast_2619",
  2620 => "pg_trigger",
+ 1247 => "pg_type", # special bootstrap case
  5004 => "pg_window"
 	);
 
@@ -1514,7 +1516,7 @@ sub parsefile
 		$end_def_str = "TIDYCAT_ENDDEF";
 
 		# XXX XXX: if only dumping sql definitions, allow "fake" ones...
-		if (defined($glob_sqldef))
+		if ($glob_sqldef)
 		{
 			$begin_def_str .= "|TIDYCAT_BEGINFAKEDEF";
 			$end_def_str .= "|TIDYCAT_ENDFAKEDEF";

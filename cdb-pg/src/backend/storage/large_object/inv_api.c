@@ -77,7 +77,7 @@ open_lo_relation(void)
 		if (lo_heap_r == NULL)
 			lo_heap_r = heap_open(LargeObjectRelationId, RowExclusiveLock);
 		if (lo_index_r == NULL)
-			lo_index_r = index_open(LargeObjectLOidPNIndexId, RowExclusiveLock);
+			lo_index_r = index_open(LargeObjectLoidPagenoIndexId, RowExclusiveLock);
 	}
 	PG_CATCH();
 	{
@@ -152,7 +152,7 @@ myLargeObjectExists(Oid loid, Snapshot snapshot)
 
 	pg_largeobject = heap_open(LargeObjectRelationId, AccessShareLock);
 
-	sd = systable_beginscan(pg_largeobject, LargeObjectLOidPNIndexId, true,
+	sd = systable_beginscan(pg_largeobject, LargeObjectLoidPagenoIndexId, true,
 							snapshot, 1, skey);
 
 	if (systable_getnext(sd) != NULL)

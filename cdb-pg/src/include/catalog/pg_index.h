@@ -21,6 +21,27 @@
 
 #include "catalog/genbki.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_index
+   with (oid=false, relid=2610)
+   (
+   indexrelid      oid        ,
+   indrelid        oid        ,
+   indnatts        smallint   ,
+   indisunique     boolean    ,
+   indisprimary    boolean    ,
+   indisclustered  boolean    ,
+   indisvalid      boolean    ,
+   indkey          int2vector ,
+   indclass        oidvector  ,
+   indexprs        text       ,
+   indpred         text       
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_index definition.  cpp turns this into
  *		typedef struct FormData_pg_index.

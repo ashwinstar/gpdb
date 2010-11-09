@@ -33,6 +33,51 @@
  *		See struct FormData_pg_attribute for details.
  * ----------------
  */
+
+/* XXX XXX XXX XXX XXX XXX XXX XXX
+ *   
+ *   Use a fake tidycat definition here.  Note that it does not
+ *   interfere with the type entry code generation because fake
+ *   definitions are only parsed if tidycat.pl is called with the
+ *   "sqldef" option, which extracts sql definitions and does not
+ *   generate real code.
+ *   
+ * XXX XXX XXX XXX XXX XXX XXX XXX
+*/
+
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_type
+   with (bootstrap=true, relid=1247)
+   (
+   typname        name     ,
+   typnamespace   oid      ,
+   typowner       oid      ,
+   typlen         smallint ,
+   typbyval       boolean  ,
+   typtype        "char"   ,
+   typisdefined   boolean  ,
+   typdelim       "char"   ,
+   typrelid       oid      ,
+   typelem        oid      ,
+   typinput       regproc  ,
+   typoutput      regproc  ,
+   typreceive     regproc  ,
+   typsend        regproc  ,
+   typanalyze     regproc  ,
+   typalign       "char"   ,
+   typstorage     "char"   ,
+   typnotnull     boolean  ,
+   typbasetype    oid      ,
+   typtypmod      integer  ,
+   typndims       integer  ,
+   typdefaultbin  text     ,
+   typdefault     text     
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 #define TypeRelationId	1247
 
 CATALOG(pg_type,1247) BKI_BOOTSTRAP

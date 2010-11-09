@@ -25,6 +25,33 @@
 #include "catalog/genbki.h"
 #include "nodes/pg_list.h"
 
+/* TIDYCAT_BEGINFAKEDEF
+
+   CREATE TABLE pg_operator
+   with (camelcase=Operator, shared=false, relid=2617)
+   (
+   oprname       name    ,
+   oprnamespace  oid     ,
+   oprowner      oid     ,
+   oprkind       "char"  ,
+   oprcanhash    boolean ,
+   oprleft       oid     ,
+   oprright      oid     ,
+   oprresult     oid     ,
+   oprcom        oid     ,
+   oprnegate     oid     ,
+   oprlsortop    oid     ,
+   oprrsortop    oid     ,
+   oprltcmpop    oid     ,
+   oprgtcmpop    oid     ,
+   oprcode       regproc ,
+   oprrest       regproc ,
+   oprjoin       regproc 
+   );
+
+   TIDYCAT_ENDFAKEDEF
+*/
+
 /* ----------------
  *		pg_operator definition.  cpp turns this into
  *		typedef struct FormData_pg_operator

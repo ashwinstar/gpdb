@@ -53,7 +53,9 @@ where
 	where nspname = 'tidycat')	  
 order by relname;
 
--- how many non-tidycat defs?
+-- end_ignore
+
+-- how many non-tidycat defs? (should be ZERO)
 select pc2.relname
 from 
 	 pg_class pc2
@@ -72,8 +74,6 @@ and
 				  	(select oid from pg_namespace 
 						where nspname = 'tidycat'))	  
 order by relname;
-
--- end_ignore
 
 -- start_equiv
 

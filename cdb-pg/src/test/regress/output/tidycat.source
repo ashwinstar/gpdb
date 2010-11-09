@@ -74,6 +74,167 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    );
 psql:@abs_srcdir@/data/tidyddl.sql:37: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'time' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_fastsequence
+   (
+   objid   oid,
+   objmod  bigint,
+   last_sequence bigint
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:45: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'objid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_global_sequence
+   (
+   sequence_num bigint
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:51: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'sequence_num' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_id
+   (
+   gpname       name     ,
+   numsegments  smallint ,
+   dbid         smallint ,
+   content      smallint 
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:60: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'gpname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_master_mirroring
+   (
+   summary_state  text,
+   detail_state   text,
+   log_time       timestamp with time zone,
+   error_message  text
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:69: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'summary_state' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_persistent_tablespace_node
+   (
+   filespace_oid                                 oid      ,
+   tablespace_oid                                oid      ,
+   persistent_state                              smallint ,
+   create_mirror_data_loss_tracking_session_num  bigint   ,
+   mirror_existence_state                        smallint ,
+   reserved                                      integer  ,
+   parent_xid                                    integer  ,
+   persistent_serial_num                         bigint   ,
+   previous_free_tid                             tid      
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:83: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'filespace_oid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_relation_node
+   (
+   relfilenode_oid                               oid     ,
+   segment_file_num                              integer ,
+   create_mirror_data_loss_tracking_session_num  bigint  ,
+   persistent_tid                                tid     ,
+   persistent_serial_num                         bigint  
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:93: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relfilenode_oid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_persistent_database_node
+   (
+   tablespace_oid                                oid      ,
+   database_oid                                  oid      ,
+   persistent_state                              smallint ,
+   create_mirror_data_loss_tracking_session_num  bigint   ,
+   mirror_existence_state                        smallint ,
+   reserved                                      integer  ,
+   parent_xid                                    integer  ,
+   persistent_serial_num                         bigint   ,
+   previous_free_tid                             tid      
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:107: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'tablespace_oid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_persistent_relation_node
+   (
+   tablespace_oid                                     oid       ,
+   database_oid                                       oid       ,
+   relfilenode_oid                                    oid       ,
+   segment_file_num                                   integer   ,
+   relation_storage_manager                           smallint  ,
+   persistent_state                                   smallint  ,
+   create_mirror_data_loss_tracking_session_num       bigint    ,
+   mirror_existence_state                             smallint  ,
+   mirror_data_synchronization_state                  smallint  ,
+   mirror_bufpool_marked_for_scan_incremental_resync  boolean   ,
+   mirror_bufpool_resync_changed_page_count           bigint    ,
+   mirror_bufpool_resync_ckpt_loc                     gpxlogloc ,
+   mirror_bufpool_resync_ckpt_block_num               integer   ,
+   mirror_append_only_loss_eof                        bigint    ,
+   mirror_append_only_new_eof                         bigint    ,
+   reserved                                           integer   ,
+   parent_xid                                         integer   ,
+   persistent_serial_num                              bigint    ,
+   previous_free_tid                                  tid       
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:131: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'tablespace_oid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_persistent_filespace_node
+   (
+   filespace_oid                                 oid      ,
+   db_id_1                                       smallint ,
+   location_1                                    text     ,
+   db_id_2                                       smallint ,
+   location_2                                    text     ,
+   persistent_state                              smallint ,
+   create_mirror_data_loss_tracking_session_num  bigint   ,
+   mirror_existence_state                        smallint ,
+   reserved                                      integer  ,
+   parent_xid                                    integer  ,
+   persistent_serial_num                         bigint   ,
+   previous_free_tid                             tid      
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:148: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'filespace_oid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_distribution_policy
+   (
+   localoid  oid,
+   attrnums  smallint[]
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:155: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'localoid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_san_configuration
+   (
+   mountid             smallint ,
+   active_host         "char"   ,
+   san_type            "char"   ,
+   primary_host        text     ,
+   primary_mountpoint  text     ,
+   primary_device      text     ,
+   mirror_host         text     ,
+   mirror_mountpoint   text     ,
+   mirror_device       text     
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:169: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'mountid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_fault_strategy
+   (
+   fault_strategy "char"
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:175: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fault_strategy' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_segment_configuration
+   (
+   dbid              smallint   , -- up to 32767 segment databases
+   content           smallint   , -- up to 32767 contents -- only 16384 usable with mirroring (see dbid)
+   role              "char"     ,
+   preferred_role    "char"     ,
+   mode              "char"     ,
+   status            "char"     ,
+   port              integer    ,
+   hostname          text       ,
+   address           text       ,
+   replication_port  integer    ,
+   san_mounts        int2vector   -- one or more mount-points used by this segment.
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:194: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'dbid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE gp_version_at_initdb
+   (
+    schemaversion   smallint ,
+	productversion  text      
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:201: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'schemaversion' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_aggregate
    (
    aggfnoid        regproc, 
@@ -86,7 +247,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    aggtranstype    oid, 
    agginitval      text -- VARIABLE LENGTH FIELD
    );
-psql:@abs_srcdir@/data/tidyddl.sql:51: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aggfnoid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:215: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aggfnoid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_am
    (
@@ -115,7 +276,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    amcostestimate   regproc, 
    amoptions        regproc
     );
-psql:@abs_srcdir@/data/tidyddl.sql:80: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:244: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_amop
    (
@@ -125,7 +286,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    amopreqcheck  boolean, 
    amopopr       oid
    );
-psql:@abs_srcdir@/data/tidyddl.sql:90: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amopclaid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:254: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amopclaid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_amproc
    (
@@ -134,7 +295,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    amprocnum      smallint, 
    amproc         regproc
    );
-psql:@abs_srcdir@/data/tidyddl.sql:99: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amopclaid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:263: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'amopclaid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_appendonly
    (
@@ -153,7 +314,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    blkdiridxid      oid, 
    version          integer
    );
-psql:@abs_srcdir@/data/tidyddl.sql:118: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:282: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_appendonly_alter_column
    (
@@ -162,7 +323,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    segfilenums       integer[], 
    highwaterrownums  bytea
    );
-psql:@abs_srcdir@/data/tidyddl.sql:127: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:291: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_attrdef
    (
@@ -171,7 +332,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    adbin    text, 
    adsrc    text
    );
-psql:@abs_srcdir@/data/tidyddl.sql:136: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'adrelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:300: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'adrelid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_attribute
    (
@@ -193,7 +354,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    attislocal     boolean, 
    attinhcount    integer
    );
-psql:@abs_srcdir@/data/tidyddl.sql:158: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'attrelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:322: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'attrelid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_auth_members
    (
@@ -202,7 +363,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    grantor       oid, 
    admin_option  boolean
    );
-psql:@abs_srcdir@/data/tidyddl.sql:167: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'roleid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:331: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'roleid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_authid
    (
@@ -225,7 +386,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    rolcreaterexthttp boolean, -- allowed to create readable http tbl? 
    rolcreatewextgpfd boolean -- allowed to create writable gpfdist tbl? 
    );
-psql:@abs_srcdir@/data/tidyddl.sql:191: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rolname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:355: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rolname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_autovacuum
    (
@@ -240,7 +401,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    freeze_min_age    integer, 
    freeze_max_age    integer
    );
-psql:@abs_srcdir@/data/tidyddl.sql:206: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'vacrelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:370: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'vacrelid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_cast
    (
@@ -249,7 +410,42 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    castfunc     oid, 
    castcontext  "char"
    );
-psql:@abs_srcdir@/data/tidyddl.sql:215: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'castsource' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:379: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'castsource' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_class
+   (
+   relname         name      ,
+   relnamespace    oid       ,
+   reltype         oid       ,
+   relowner        oid       ,
+   relam           oid       ,
+   relfilenode     oid       ,
+   reltablespace   oid       ,
+   relpages        integer   ,
+   reltuples       real      ,
+   reltoastrelid   oid       ,
+   reltoastidxid   oid       ,
+   relaosegrelid   oid       ,
+   relaosegidxid   oid       ,
+   relhasindex     boolean   ,
+   relisshared     boolean   ,
+   relkind         "char"    ,
+   relstorage      "char"    ,
+   relnatts        smallint  ,
+   relchecks       smallint  ,
+   reltriggers     smallint  ,
+   relukeys        smallint  ,
+   relfkeys        smallint  ,
+   relrefs         smallint  ,
+   relhasoids      boolean   ,
+   relhaspkey      boolean   ,
+   relhasrules     boolean   ,
+   relhassubclass  boolean   ,
+   relfrozenxid    xid       ,
+   relacl          aclitem[] ,
+   reloptions      text[]    
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:414: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_constraint
    (
@@ -269,7 +465,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    conbin         text, 
    consrc         text
    );
-psql:@abs_srcdir@/data/tidyddl.sql:235: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'conname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:434: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'conname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_conversion
    (
@@ -281,7 +477,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    conproc         regproc, 
    condefault      boolean
    );
-psql:@abs_srcdir@/data/tidyddl.sql:247: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'conname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:446: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'conname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_database
    (
@@ -297,7 +493,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    datconfig      text[], 
    datacl         aclitem[]
    );
-psql:@abs_srcdir@/data/tidyddl.sql:263: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'datname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:462: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'datname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_depend
    (
@@ -309,7 +505,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    refobjsubid  integer, 
    deptype      "char"
    );
-psql:@abs_srcdir@/data/tidyddl.sql:275: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:474: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_description
    (
@@ -318,7 +514,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    objsubid     integer, 
    description  text
    );
-psql:@abs_srcdir@/data/tidyddl.sql:284: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'objoid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:483: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'objoid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_exttable
    (
@@ -333,14 +529,14 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    encoding         integer, -- character encoding of this external table
    writable         boolean -- 't' if writable, 'f' if readable
    );
-psql:@abs_srcdir@/data/tidyddl.sql:299: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'reloid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:498: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'reloid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_filespace
    (
    fsname name, -- filespace name
    fsowner oid -- owner of filespace
    );
-psql:@abs_srcdir@/data/tidyddl.sql:306: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:505: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_filespace_entry
    (
@@ -348,7 +544,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    fsedbid      smallint, -- segment dbid this refers to 
    fselocation  text -- location of filespace directory
    );
-psql:@abs_srcdir@/data/tidyddl.sql:314: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsefsoid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:513: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fsefsoid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_foreign_data_wrapper
    (
@@ -359,7 +555,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    fdwacl        aclitem[], -- access permissions
    fdwoptions    text[] -- FDW options
    );
-psql:@abs_srcdir@/data/tidyddl.sql:327: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fdwname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:526: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'fdwname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_foreign_server
    (
@@ -372,7 +568,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    srvacl        aclitem[], -- access permissions
    srvoptions    text[] -- FDW-specific options
    );
-psql:@abs_srcdir@/data/tidyddl.sql:342: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'srvname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:541: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'srvname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_foreign_table
    (
@@ -381,7 +577,31 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    -- VARIABLE LENGTH FIELDS start here.  These fields may be NULL, too.
    tbloptions    text[] -- foreign table-specific options
    );
-psql:@abs_srcdir@/data/tidyddl.sql:352: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'reloid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:551: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'reloid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_index
+   (
+   indexrelid      oid        ,
+   indrelid        oid        ,
+   indnatts        smallint   ,
+   indisunique     boolean    ,
+   indisprimary    boolean    ,
+   indisclustered  boolean    ,
+   indisvalid      boolean    ,
+   indkey          int2vector ,
+   indclass        oidvector  ,
+   indexprs        text       ,
+   indpred         text       
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:567: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'indexrelid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_inherits
+   (
+   inhrelid   oid     ,
+   inhparent  oid     ,
+   inhseqno   integer 
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:575: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'inhrelid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_language
    ( 
@@ -392,7 +612,65 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    lanvalidator   oid, 
    lanacl         aclitem[]
    );
-psql:@abs_srcdir@/data/tidyddl.sql:363: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'lanname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:586: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'lanname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_largeobject
+   (
+   loid    oid     , -- Identifier of large object 
+   pageno  integer , -- Page number (starting from 0)
+   data    bytea     -- Data for page (may be zero-length)
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:594: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'loid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_listener
+   (
+   relname       name    ,
+   listenerpid   integer ,
+   notification  integer 
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:602: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'relname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_namespace
+   (
+   nspname   name      ,
+   nspowner  oid       ,
+   nspacl    aclitem[]  -- VARIABLE LENGTH FIELD
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:610: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'nspname' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_opclass
+   (
+   opcamid       oid     ,
+   opcname       name    ,
+   opcnamespace  oid     ,
+   opcowner      oid     ,
+   opcintype     oid     ,
+   opcdefault    boolean ,
+   opckeytype    oid     
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:622: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'opcamid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_operator
+   (
+   oprname       name    ,
+   oprnamespace  oid     ,
+   oprowner      oid     ,
+   oprkind       "char"  ,
+   oprcanhash    boolean ,
+   oprleft       oid     ,
+   oprright      oid     ,
+   oprresult     oid     ,
+   oprcom        oid     ,
+   oprnegate     oid     ,
+   oprlsortop    oid     ,
+   oprrsortop    oid     ,
+   oprltcmpop    oid     ,
+   oprgtcmpop    oid     ,
+   oprcode       regproc ,
+   oprrest       regproc ,
+   oprjoin       regproc 
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:644: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'oprname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_partition
    (
@@ -404,7 +682,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    paratts        int2vector,
    parclass       oidvector
    );
-psql:@abs_srcdir@/data/tidyddl.sql:375: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'parrelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:656: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'parrelid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_partition_rule
    ( 
@@ -423,7 +701,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    parreloptions      text[],
    partemplatespace   oid
    );
-psql:@abs_srcdir@/data/tidyddl.sql:394: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'paroid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:675: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'paroid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_pltemplate
    (
@@ -434,7 +712,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    tmpllibrary    text, 
    tmplacl        aclitem[]
    );
-psql:@abs_srcdir@/data/tidyddl.sql:405: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'tmplname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:686: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'tmplname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_proc
    (
@@ -458,7 +736,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    probin          bytea, 
    proacl          aclitem[]
    );
-psql:@abs_srcdir@/data/tidyddl.sql:429: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'proname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:710: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'proname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_resqueue
    (
@@ -468,7 +746,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    rsqovercommit boolean, -- allow overcommit on suitable  limits
    rsqignorecostlimit real -- ignore queries with cost less than
    );
-psql:@abs_srcdir@/data/tidyddl.sql:439: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rsqname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:720: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rsqname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_resqueuecapability
    (
@@ -476,7 +754,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    restypid smallint,	-- resource type id (key to pg_resourcetype) 
    ressetting text		-- resource setting (opaque type) 
    );
-psql:@abs_srcdir@/data/tidyddl.sql:447: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resqueueid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:728: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resqueueid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_resourcetype
    (
@@ -488,7 +766,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    resdefaultsetting text,	-- default resource setting 
    resdisabledsetting text	-- value that turns it off 
    );
-psql:@abs_srcdir@/data/tidyddl.sql:459: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:740: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'resname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_rewrite
    (
@@ -500,7 +778,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    ev_qual     text, 
    ev_action   text
    );
-psql:@abs_srcdir@/data/tidyddl.sql:471: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rulename' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:752: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'rulename' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_shdepend
    (
@@ -511,7 +789,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    refobjid    oid, 
    deptype     "char"
    );
-psql:@abs_srcdir@/data/tidyddl.sql:482: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'dbid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:763: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'dbid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_shdescription
    (
@@ -519,7 +797,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    classoid     oid, 
    description  text
    );
-psql:@abs_srcdir@/data/tidyddl.sql:490: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'objoid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:771: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'objoid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_stat_last_shoperation
    (
@@ -531,7 +809,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    stasubtype     text, 
    statime        timestamp with time zone
    );
-psql:@abs_srcdir@/data/tidyddl.sql:502: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:783: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_statistic
    (
@@ -557,7 +835,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    stavalues3   text, 
    stavalues4   text
    );
-psql:@abs_srcdir@/data/tidyddl.sql:528: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'starelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:809: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'starelid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_stat_last_operation
    (
@@ -569,7 +847,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    stasubtype     text, 
    statime        timestamp with time zone
    );
-psql:@abs_srcdir@/data/tidyddl.sql:540: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:821: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'classid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_tablespace
    (
@@ -581,7 +859,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    spcmirlocations  text[], 
    spcfsoid         oid
    );
-psql:@abs_srcdir@/data/tidyddl.sql:552: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'spcname' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:833: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'spcname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_trigger
    (
@@ -599,7 +877,35 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    tgattr          int2vector, 
    tgargs          bytea
    );
-psql:@abs_srcdir@/data/tidyddl.sql:570: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'tgrelid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:851: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'tgrelid' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+   CREATE TABLE pg_type
+   (
+   typname        name     ,
+   typnamespace   oid      ,
+   typowner       oid      ,
+   typlen         smallint ,
+   typbyval       boolean  ,
+   typtype        "char"   ,
+   typisdefined   boolean  ,
+   typdelim       "char"   ,
+   typrelid       oid      ,
+   typelem        oid      ,
+   typinput       regproc  ,
+   typoutput      regproc  ,
+   typreceive     regproc  ,
+   typsend        regproc  ,
+   typanalyze     regproc  ,
+   typalign       "char"   ,
+   typstorage     "char"   ,
+   typnotnull     boolean  ,
+   typbasetype    oid      ,
+   typtypmod      integer  ,
+   typndims       integer  ,
+   typdefaultbin  text     ,
+   typdefault     text     
+   );
+psql:@abs_srcdir@/data/tidyddl.sql:879: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'typname' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_user_mapping
    (
@@ -607,7 +913,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    umserver   oid, 
    umoptions  text[]
    );
-psql:@abs_srcdir@/data/tidyddl.sql:578: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'umuser' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:887: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'umuser' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
    CREATE TABLE pg_window
    (
@@ -622,7 +928,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
    winfinfunc       regproc, -- final function (0 if none)
    winkind          "char" 
    );
-psql:@abs_srcdir@/data/tidyddl.sql:593: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'winfnoid' as the Greenplum Database data distribution key for this table.
+psql:@abs_srcdir@/data/tidyddl.sql:902: NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'winfnoid' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 -- how many tidycat defs?
 select pc1.relname
@@ -633,12 +939,26 @@ where
 	(select oid from pg_namespace 
 	where nspname = 'tidycat')	  
 order by relname;
-          relname           
-----------------------------
+            relname            
+-------------------------------
  gp_configuration
  gp_configuration_history
  gp_db_interfaces
+ gp_distribution_policy
+ gp_fastsequence
+ gp_fault_strategy
+ gp_global_sequence
+ gp_id
  gp_interfaces
+ gp_master_mirroring
+ gp_persistent_database_node
+ gp_persistent_filespace_node
+ gp_persistent_relation_node
+ gp_persistent_tablespace_node
+ gp_relation_node
+ gp_san_configuration
+ gp_segment_configuration
+ gp_version_at_initdb
  pg_aggregate
  pg_am
  pg_amop
@@ -651,6 +971,7 @@ order by relname;
  pg_authid
  pg_autovacuum
  pg_cast
+ pg_class
  pg_constraint
  pg_conversion
  pg_database
@@ -662,7 +983,14 @@ order by relname;
  pg_foreign_data_wrapper
  pg_foreign_server
  pg_foreign_table
+ pg_index
+ pg_inherits
  pg_language
+ pg_largeobject
+ pg_listener
+ pg_namespace
+ pg_opclass
+ pg_operator
  pg_partition
  pg_partition_rule
  pg_pltemplate
@@ -678,11 +1006,13 @@ order by relname;
  pg_statistic
  pg_tablespace
  pg_trigger
+ pg_type
  pg_user_mapping
  pg_window
-(45 rows)
+(68 rows)
 
--- how many non-tidycat defs?
+-- end_ignore
+-- how many non-tidycat defs? (should be ZERO)
 select pc2.relname
 from 
 	 pg_class pc2
@@ -701,34 +1031,10 @@ and
 				  	(select oid from pg_namespace 
 						where nspname = 'tidycat'))	  
 order by relname;
-            relname            
--------------------------------
- gp_distribution_policy
- gp_fastsequence
- gp_fault_strategy
- gp_global_sequence
- gp_id
- gp_master_mirroring
- gp_persistent_database_node
- gp_persistent_filespace_node
- gp_persistent_relation_node
- gp_persistent_tablespace_node
- gp_relation_node
- gp_san_configuration
- gp_segment_configuration
- gp_version_at_initdb
- pg_class
- pg_index
- pg_inherits
- pg_largeobject
- pg_listener
- pg_namespace
- pg_opclass
- pg_operator
- pg_type
-(23 rows)
+ relname 
+---------
+(0 rows)
 
--- end_ignore
 -- start_equiv
 select pc1.relname, pa1.attname, pt1.typname 
 from 
@@ -743,365 +1049,556 @@ and pc1.relnamespace =
 	(select oid from pg_namespace 
 	where nspname = 'tidycat')	  
 order by relname, pa1.attnum;
-          relname           |      attname       |   typname   
-----------------------------+--------------------+-------------
- gp_configuration           | content            | int2
- gp_configuration           | definedprimary     | bool
- gp_configuration           | dbid               | int2
- gp_configuration           | isprimary          | bool
- gp_configuration           | valid              | bool
- gp_configuration           | hostname           | name
- gp_configuration           | port               | int4
- gp_configuration           | datadir            | text
- gp_configuration_history   | time               | timestamptz
- gp_configuration_history   | dbid               | int2
- gp_configuration_history   | desc               | text
- gp_db_interfaces           | dbid               | int2
- gp_db_interfaces           | interfaceid        | int2
- gp_db_interfaces           | priority           | int2
- gp_interfaces              | interfaceid        | int2
- gp_interfaces              | address            | name
- gp_interfaces              | status             | int2
- pg_aggregate               | aggfnoid           | regproc
- pg_aggregate               | aggtransfn         | regproc
- pg_aggregate               | agginvtransfn      | regproc
- pg_aggregate               | aggprelimfn        | regproc
- pg_aggregate               | agginvprelimfn     | regproc
- pg_aggregate               | aggfinalfn         | regproc
- pg_aggregate               | aggsortop          | oid
- pg_aggregate               | aggtranstype       | oid
- pg_aggregate               | agginitval         | text
- pg_am                      | amname             | name
- pg_am                      | amstrategies       | int2
- pg_am                      | amsupport          | int2
- pg_am                      | amorderstrategy    | int2
- pg_am                      | amcanunique        | bool
- pg_am                      | amcanmulticol      | bool
- pg_am                      | amoptionalkey      | bool
- pg_am                      | amindexnulls       | bool
- pg_am                      | amstorage          | bool
- pg_am                      | amclusterable      | bool
- pg_am                      | amcanshrink        | bool
- pg_am                      | aminsert           | regproc
- pg_am                      | ambeginscan        | regproc
- pg_am                      | amgettuple         | regproc
- pg_am                      | amgetmulti         | regproc
- pg_am                      | amrescan           | regproc
- pg_am                      | amendscan          | regproc
- pg_am                      | ammarkpos          | regproc
- pg_am                      | amrestrpos         | regproc
- pg_am                      | ambuild            | regproc
- pg_am                      | ambulkdelete       | regproc
- pg_am                      | amvacuumcleanup    | regproc
- pg_am                      | amcostestimate     | regproc
- pg_am                      | amoptions          | regproc
- pg_amop                    | amopclaid          | oid
- pg_amop                    | amopsubtype        | oid
- pg_amop                    | amopstrategy       | int2
- pg_amop                    | amopreqcheck       | bool
- pg_amop                    | amopopr            | oid
- pg_amproc                  | amopclaid          | oid
- pg_amproc                  | amprocsubtype      | oid
- pg_amproc                  | amprocnum          | int2
- pg_amproc                  | amproc             | regproc
- pg_appendonly              | relid              | oid
- pg_appendonly              | blocksize          | int4
- pg_appendonly              | safefswritesize    | int4
- pg_appendonly              | compresslevel      | int2
- pg_appendonly              | majorversion       | int2
- pg_appendonly              | minorversion       | int2
- pg_appendonly              | checksum           | bool
- pg_appendonly              | compresstype       | text
- pg_appendonly              | columnstore        | bool
- pg_appendonly              | segrelid           | oid
- pg_appendonly              | segidxid           | oid
- pg_appendonly              | blkdirrelid        | oid
- pg_appendonly              | blkdiridxid        | oid
- pg_appendonly              | version            | int4
- pg_appendonly_alter_column | relid              | oid
- pg_appendonly_alter_column | changenum          | int4
- pg_appendonly_alter_column | segfilenums        | _int4
- pg_appendonly_alter_column | highwaterrownums   | bytea
- pg_attrdef                 | adrelid            | oid
- pg_attrdef                 | adnum              | int2
- pg_attrdef                 | adbin              | text
- pg_attrdef                 | adsrc              | text
- pg_attribute               | attrelid           | oid
- pg_attribute               | attname            | name
- pg_attribute               | atttypid           | oid
- pg_attribute               | attstattarget      | int4
- pg_attribute               | attlen             | int2
- pg_attribute               | attnum             | int2
- pg_attribute               | attndims           | int4
- pg_attribute               | attcacheoff        | int4
- pg_attribute               | atttypmod          | int4
- pg_attribute               | attbyval           | bool
- pg_attribute               | attstorage         | char
- pg_attribute               | attalign           | char
- pg_attribute               | attnotnull         | bool
- pg_attribute               | atthasdef          | bool
- pg_attribute               | attisdropped       | bool
- pg_attribute               | attislocal         | bool
- pg_attribute               | attinhcount        | int4
- pg_auth_members            | roleid             | oid
- pg_auth_members            | member             | oid
- pg_auth_members            | grantor            | oid
- pg_auth_members            | admin_option       | bool
- pg_authid                  | rolname            | name
- pg_authid                  | rolsuper           | bool
- pg_authid                  | rolinherit         | bool
- pg_authid                  | rolcreaterole      | bool
- pg_authid                  | rolcreatedb        | bool
- pg_authid                  | rolcatupdate       | bool
- pg_authid                  | rolcanlogin        | bool
- pg_authid                  | rolconnlimit       | int4
- pg_authid                  | rolpassword        | text
- pg_authid                  | rolvaliduntil      | timestamptz
- pg_authid                  | rolconfig          | _text
- pg_authid                  | rolresqueue        | oid
- pg_authid                  | rolcreaterextgpfd  | bool
- pg_authid                  | rolcreaterexthttp  | bool
- pg_authid                  | rolcreatewextgpfd  | bool
- pg_autovacuum              | vacrelid           | oid
- pg_autovacuum              | enabled            | bool
- pg_autovacuum              | vac_base_thresh    | int4
- pg_autovacuum              | vac_scale_factor   | float4
- pg_autovacuum              | anl_base_thresh    | int4
- pg_autovacuum              | anl_scale_factor   | float4
- pg_autovacuum              | vac_cost_delay     | int4
- pg_autovacuum              | vac_cost_limit     | int4
- pg_autovacuum              | freeze_min_age     | int4
- pg_autovacuum              | freeze_max_age     | int4
- pg_cast                    | castsource         | oid
- pg_cast                    | casttarget         | oid
- pg_cast                    | castfunc           | oid
- pg_cast                    | castcontext        | char
- pg_constraint              | conname            | name
- pg_constraint              | connamespace       | oid
- pg_constraint              | contype            | char
- pg_constraint              | condeferrable      | bool
- pg_constraint              | condeferred        | bool
- pg_constraint              | conrelid           | oid
- pg_constraint              | contypid           | oid
- pg_constraint              | confrelid          | oid
- pg_constraint              | confupdtype        | char
- pg_constraint              | confdeltype        | char
- pg_constraint              | confmatchtype      | char
- pg_constraint              | conkey             | _int2
- pg_constraint              | confkey            | _int2
- pg_constraint              | conbin             | text
- pg_constraint              | consrc             | text
- pg_conversion              | conname            | name
- pg_conversion              | connamespace       | oid
- pg_conversion              | conowner           | oid
- pg_conversion              | conforencoding     | int4
- pg_conversion              | contoencoding      | int4
- pg_conversion              | conproc            | regproc
- pg_conversion              | condefault         | bool
- pg_database                | datname            | name
- pg_database                | datdba             | oid
- pg_database                | encoding           | int4
- pg_database                | datistemplate      | bool
- pg_database                | datallowconn       | bool
- pg_database                | datconnlimit       | int4
- pg_database                | datlastsysoid      | oid
- pg_database                | datfrozenxid       | xid
- pg_database                | dattablespace      | oid
- pg_database                | datconfig          | _text
- pg_database                | datacl             | _aclitem
- pg_depend                  | classid            | oid
- pg_depend                  | objid              | oid
- pg_depend                  | objsubid           | int4
- pg_depend                  | refclassid         | oid
- pg_depend                  | refobjid           | oid
- pg_depend                  | refobjsubid        | int4
- pg_depend                  | deptype            | char
- pg_description             | objoid             | oid
- pg_description             | classoid           | oid
- pg_description             | objsubid           | int4
- pg_description             | description        | text
- pg_exttable                | reloid             | oid
- pg_exttable                | location           | _text
- pg_exttable                | fmttype            | char
- pg_exttable                | fmtopts            | text
- pg_exttable                | command            | text
- pg_exttable                | rejectlimit        | int4
- pg_exttable                | rejectlimittype    | char
- pg_exttable                | fmterrtbl          | oid
- pg_exttable                | encoding           | int4
- pg_exttable                | writable           | bool
- pg_filespace               | fsname             | name
- pg_filespace               | fsowner            | oid
- pg_filespace_entry         | fsefsoid           | oid
- pg_filespace_entry         | fsedbid            | int2
- pg_filespace_entry         | fselocation        | text
- pg_foreign_data_wrapper    | fdwname            | name
- pg_foreign_data_wrapper    | fdwowner           | oid
- pg_foreign_data_wrapper    | fdwvalidator       | oid
- pg_foreign_data_wrapper    | fdwacl             | _aclitem
- pg_foreign_data_wrapper    | fdwoptions         | _text
- pg_foreign_server          | srvname            | name
- pg_foreign_server          | srvowner           | oid
- pg_foreign_server          | srvfdw             | oid
- pg_foreign_server          | srvtype            | text
- pg_foreign_server          | srvversion         | text
- pg_foreign_server          | srvacl             | _aclitem
- pg_foreign_server          | srvoptions         | _text
- pg_foreign_table           | reloid             | oid
- pg_foreign_table           | server             | oid
- pg_foreign_table           | tbloptions         | _text
- pg_language                | lanname            | name
- pg_language                | lanispl            | bool
- pg_language                | lanpltrusted       | bool
- pg_language                | lanplcallfoid      | oid
- pg_language                | lanvalidator       | oid
- pg_language                | lanacl             | _aclitem
- pg_partition               | parrelid           | oid
- pg_partition               | parkind            | char
- pg_partition               | parlevel           | int2
- pg_partition               | paristemplate      | bool
- pg_partition               | parnatts           | int2
- pg_partition               | paratts            | int2vector
- pg_partition               | parclass           | oidvector
- pg_partition_rule          | paroid             | oid
- pg_partition_rule          | parchildrelid      | oid
- pg_partition_rule          | parparentrule      | oid
- pg_partition_rule          | parname            | name
- pg_partition_rule          | parisdefault       | bool
- pg_partition_rule          | parruleord         | int2
- pg_partition_rule          | parrangestartincl  | bool
- pg_partition_rule          | parrangeendincl    | bool
- pg_partition_rule          | parrangestart      | text
- pg_partition_rule          | parrangeend        | text
- pg_partition_rule          | parrangeevery      | text
- pg_partition_rule          | parlistvalues      | text
- pg_partition_rule          | parreloptions      | _text
- pg_partition_rule          | partemplatespace   | oid
- pg_pltemplate              | tmplname           | name
- pg_pltemplate              | tmpltrusted        | bool
- pg_pltemplate              | tmplhandler        | text
- pg_pltemplate              | tmplvalidator      | text
- pg_pltemplate              | tmpllibrary        | text
- pg_pltemplate              | tmplacl            | _aclitem
- pg_proc                    | proname            | name
- pg_proc                    | pronamespace       | oid
- pg_proc                    | proowner           | oid
- pg_proc                    | prolang            | oid
- pg_proc                    | proisagg           | bool
- pg_proc                    | prosecdef          | bool
- pg_proc                    | proisstrict        | bool
- pg_proc                    | proretset          | bool
- pg_proc                    | provolatile        | char
- pg_proc                    | pronargs           | int2
- pg_proc                    | prorettype         | oid
- pg_proc                    | proiswin           | bool
- pg_proc                    | proargtypes        | oidvector
- pg_proc                    | proallargtypes     | _oid
- pg_proc                    | proargmodes        | _char
- pg_proc                    | proargnames        | _text
- pg_proc                    | prosrc             | text
- pg_proc                    | probin             | bytea
- pg_proc                    | proacl             | _aclitem
- pg_resourcetype            | resname            | name
- pg_resourcetype            | restypid           | int2
- pg_resourcetype            | resrequired        | bool
- pg_resourcetype            | reshasdefault      | bool
- pg_resourcetype            | reshasdisable      | bool
- pg_resourcetype            | resdefaultsetting  | text
- pg_resourcetype            | resdisabledsetting | text
- pg_resqueue                | rsqname            | name
- pg_resqueue                | rsqcountlimit      | float4
- pg_resqueue                | rsqcostlimit       | float4
- pg_resqueue                | rsqovercommit      | bool
- pg_resqueue                | rsqignorecostlimit | float4
- pg_resqueuecapability      | resqueueid         | oid
- pg_resqueuecapability      | restypid           | int2
- pg_resqueuecapability      | ressetting         | text
- pg_rewrite                 | rulename           | name
- pg_rewrite                 | ev_class           | oid
- pg_rewrite                 | ev_attr            | int2
- pg_rewrite                 | ev_type            | char
- pg_rewrite                 | is_instead         | bool
- pg_rewrite                 | ev_qual            | text
- pg_rewrite                 | ev_action          | text
- pg_shdepend                | dbid               | oid
- pg_shdepend                | classid            | oid
- pg_shdepend                | objid              | oid
- pg_shdepend                | refclassid         | oid
- pg_shdepend                | refobjid           | oid
- pg_shdepend                | deptype            | char
- pg_shdescription           | objoid             | oid
- pg_shdescription           | classoid           | oid
- pg_shdescription           | description        | text
- pg_stat_last_operation     | classid            | oid
- pg_stat_last_operation     | objid              | oid
- pg_stat_last_operation     | staactionname      | name
- pg_stat_last_operation     | stasysid           | oid
- pg_stat_last_operation     | stausename         | name
- pg_stat_last_operation     | stasubtype         | text
- pg_stat_last_operation     | statime            | timestamptz
- pg_stat_last_shoperation   | classid            | oid
- pg_stat_last_shoperation   | objid              | oid
- pg_stat_last_shoperation   | staactionname      | name
- pg_stat_last_shoperation   | stasysid           | oid
- pg_stat_last_shoperation   | stausename         | name
- pg_stat_last_shoperation   | stasubtype         | text
- pg_stat_last_shoperation   | statime            | timestamptz
- pg_statistic               | starelid           | oid
- pg_statistic               | staattnum          | int2
- pg_statistic               | stanullfrac        | float4
- pg_statistic               | stawidth           | int4
- pg_statistic               | stadistinct        | float4
- pg_statistic               | stakind1           | int2
- pg_statistic               | stakind2           | int2
- pg_statistic               | stakind3           | int2
- pg_statistic               | stakind4           | int2
- pg_statistic               | staop1             | oid
- pg_statistic               | staop2             | oid
- pg_statistic               | staop3             | oid
- pg_statistic               | staop4             | oid
- pg_statistic               | stanumbers1        | _float4
- pg_statistic               | stanumbers2        | _float4
- pg_statistic               | stanumbers3        | _float4
- pg_statistic               | stanumbers4        | _float4
- pg_statistic               | stavalues1         | text
- pg_statistic               | stavalues2         | text
- pg_statistic               | stavalues3         | text
- pg_statistic               | stavalues4         | text
- pg_tablespace              | spcname            | name
- pg_tablespace              | spcowner           | oid
- pg_tablespace              | spclocation        | text
- pg_tablespace              | spcacl             | _aclitem
- pg_tablespace              | spcprilocations    | _text
- pg_tablespace              | spcmirlocations    | _text
- pg_tablespace              | spcfsoid           | oid
- pg_trigger                 | tgrelid            | oid
- pg_trigger                 | tgname             | name
- pg_trigger                 | tgfoid             | oid
- pg_trigger                 | tgtype             | int2
- pg_trigger                 | tgenabled          | bool
- pg_trigger                 | tgisconstraint     | bool
- pg_trigger                 | tgconstrname       | name
- pg_trigger                 | tgconstrrelid      | oid
- pg_trigger                 | tgdeferrable       | bool
- pg_trigger                 | tginitdeferred     | bool
- pg_trigger                 | tgnargs            | int2
- pg_trigger                 | tgattr             | int2vector
- pg_trigger                 | tgargs             | bytea
- pg_user_mapping            | umuser             | oid
- pg_user_mapping            | umserver           | oid
- pg_user_mapping            | umoptions          | _text
- pg_window                  | winfnoid           | regproc
- pg_window                  | winrequireorder    | bool
- pg_window                  | winallowframe      | bool
- pg_window                  | winpeercount       | bool
- pg_window                  | wincount           | bool
- pg_window                  | winfunc            | regproc
- pg_window                  | winprefunc         | regproc
- pg_window                  | winpretype         | oid
- pg_window                  | winfinfunc         | regproc
- pg_window                  | winkind            | char
-(356 rows)
+            relname            |                      attname                      |   typname   
+-------------------------------+---------------------------------------------------+-------------
+ gp_configuration              | content                                           | int2
+ gp_configuration              | definedprimary                                    | bool
+ gp_configuration              | dbid                                              | int2
+ gp_configuration              | isprimary                                         | bool
+ gp_configuration              | valid                                             | bool
+ gp_configuration              | hostname                                          | name
+ gp_configuration              | port                                              | int4
+ gp_configuration              | datadir                                           | text
+ gp_configuration_history      | time                                              | timestamptz
+ gp_configuration_history      | dbid                                              | int2
+ gp_configuration_history      | desc                                              | text
+ gp_db_interfaces              | dbid                                              | int2
+ gp_db_interfaces              | interfaceid                                       | int2
+ gp_db_interfaces              | priority                                          | int2
+ gp_distribution_policy        | localoid                                          | oid
+ gp_distribution_policy        | attrnums                                          | _int2
+ gp_fastsequence               | objid                                             | oid
+ gp_fastsequence               | objmod                                            | int8
+ gp_fastsequence               | last_sequence                                     | int8
+ gp_fault_strategy             | fault_strategy                                    | char
+ gp_global_sequence            | sequence_num                                      | int8
+ gp_id                         | gpname                                            | name
+ gp_id                         | numsegments                                       | int2
+ gp_id                         | dbid                                              | int2
+ gp_id                         | content                                           | int2
+ gp_interfaces                 | interfaceid                                       | int2
+ gp_interfaces                 | address                                           | name
+ gp_interfaces                 | status                                            | int2
+ gp_master_mirroring           | summary_state                                     | text
+ gp_master_mirroring           | detail_state                                      | text
+ gp_master_mirroring           | log_time                                          | timestamptz
+ gp_master_mirroring           | error_message                                     | text
+ gp_persistent_database_node   | tablespace_oid                                    | oid
+ gp_persistent_database_node   | database_oid                                      | oid
+ gp_persistent_database_node   | persistent_state                                  | int2
+ gp_persistent_database_node   | create_mirror_data_loss_tracking_session_num      | int8
+ gp_persistent_database_node   | mirror_existence_state                            | int2
+ gp_persistent_database_node   | reserved                                          | int4
+ gp_persistent_database_node   | parent_xid                                        | int4
+ gp_persistent_database_node   | persistent_serial_num                             | int8
+ gp_persistent_database_node   | previous_free_tid                                 | tid
+ gp_persistent_filespace_node  | filespace_oid                                     | oid
+ gp_persistent_filespace_node  | db_id_1                                           | int2
+ gp_persistent_filespace_node  | location_1                                        | text
+ gp_persistent_filespace_node  | db_id_2                                           | int2
+ gp_persistent_filespace_node  | location_2                                        | text
+ gp_persistent_filespace_node  | persistent_state                                  | int2
+ gp_persistent_filespace_node  | create_mirror_data_loss_tracking_session_num      | int8
+ gp_persistent_filespace_node  | mirror_existence_state                            | int2
+ gp_persistent_filespace_node  | reserved                                          | int4
+ gp_persistent_filespace_node  | parent_xid                                        | int4
+ gp_persistent_filespace_node  | persistent_serial_num                             | int8
+ gp_persistent_filespace_node  | previous_free_tid                                 | tid
+ gp_persistent_relation_node   | tablespace_oid                                    | oid
+ gp_persistent_relation_node   | database_oid                                      | oid
+ gp_persistent_relation_node   | relfilenode_oid                                   | oid
+ gp_persistent_relation_node   | segment_file_num                                  | int4
+ gp_persistent_relation_node   | relation_storage_manager                          | int2
+ gp_persistent_relation_node   | persistent_state                                  | int2
+ gp_persistent_relation_node   | create_mirror_data_loss_tracking_session_num      | int8
+ gp_persistent_relation_node   | mirror_existence_state                            | int2
+ gp_persistent_relation_node   | mirror_data_synchronization_state                 | int2
+ gp_persistent_relation_node   | mirror_bufpool_marked_for_scan_incremental_resync | bool
+ gp_persistent_relation_node   | mirror_bufpool_resync_changed_page_count          | int8
+ gp_persistent_relation_node   | mirror_bufpool_resync_ckpt_loc                    | gpxlogloc
+ gp_persistent_relation_node   | mirror_bufpool_resync_ckpt_block_num              | int4
+ gp_persistent_relation_node   | mirror_append_only_loss_eof                       | int8
+ gp_persistent_relation_node   | mirror_append_only_new_eof                        | int8
+ gp_persistent_relation_node   | reserved                                          | int4
+ gp_persistent_relation_node   | parent_xid                                        | int4
+ gp_persistent_relation_node   | persistent_serial_num                             | int8
+ gp_persistent_relation_node   | previous_free_tid                                 | tid
+ gp_persistent_tablespace_node | filespace_oid                                     | oid
+ gp_persistent_tablespace_node | tablespace_oid                                    | oid
+ gp_persistent_tablespace_node | persistent_state                                  | int2
+ gp_persistent_tablespace_node | create_mirror_data_loss_tracking_session_num      | int8
+ gp_persistent_tablespace_node | mirror_existence_state                            | int2
+ gp_persistent_tablespace_node | reserved                                          | int4
+ gp_persistent_tablespace_node | parent_xid                                        | int4
+ gp_persistent_tablespace_node | persistent_serial_num                             | int8
+ gp_persistent_tablespace_node | previous_free_tid                                 | tid
+ gp_relation_node              | relfilenode_oid                                   | oid
+ gp_relation_node              | segment_file_num                                  | int4
+ gp_relation_node              | create_mirror_data_loss_tracking_session_num      | int8
+ gp_relation_node              | persistent_tid                                    | tid
+ gp_relation_node              | persistent_serial_num                             | int8
+ gp_san_configuration          | mountid                                           | int2
+ gp_san_configuration          | active_host                                       | char
+ gp_san_configuration          | san_type                                          | char
+ gp_san_configuration          | primary_host                                      | text
+ gp_san_configuration          | primary_mountpoint                                | text
+ gp_san_configuration          | primary_device                                    | text
+ gp_san_configuration          | mirror_host                                       | text
+ gp_san_configuration          | mirror_mountpoint                                 | text
+ gp_san_configuration          | mirror_device                                     | text
+ gp_segment_configuration      | dbid                                              | int2
+ gp_segment_configuration      | content                                           | int2
+ gp_segment_configuration      | role                                              | char
+ gp_segment_configuration      | preferred_role                                    | char
+ gp_segment_configuration      | mode                                              | char
+ gp_segment_configuration      | status                                            | char
+ gp_segment_configuration      | port                                              | int4
+ gp_segment_configuration      | hostname                                          | text
+ gp_segment_configuration      | address                                           | text
+ gp_segment_configuration      | replication_port                                  | int4
+ gp_segment_configuration      | san_mounts                                        | int2vector
+ gp_version_at_initdb          | schemaversion                                     | int2
+ gp_version_at_initdb          | productversion                                    | text
+ pg_aggregate                  | aggfnoid                                          | regproc
+ pg_aggregate                  | aggtransfn                                        | regproc
+ pg_aggregate                  | agginvtransfn                                     | regproc
+ pg_aggregate                  | aggprelimfn                                       | regproc
+ pg_aggregate                  | agginvprelimfn                                    | regproc
+ pg_aggregate                  | aggfinalfn                                        | regproc
+ pg_aggregate                  | aggsortop                                         | oid
+ pg_aggregate                  | aggtranstype                                      | oid
+ pg_aggregate                  | agginitval                                        | text
+ pg_am                         | amname                                            | name
+ pg_am                         | amstrategies                                      | int2
+ pg_am                         | amsupport                                         | int2
+ pg_am                         | amorderstrategy                                   | int2
+ pg_am                         | amcanunique                                       | bool
+ pg_am                         | amcanmulticol                                     | bool
+ pg_am                         | amoptionalkey                                     | bool
+ pg_am                         | amindexnulls                                      | bool
+ pg_am                         | amstorage                                         | bool
+ pg_am                         | amclusterable                                     | bool
+ pg_am                         | amcanshrink                                       | bool
+ pg_am                         | aminsert                                          | regproc
+ pg_am                         | ambeginscan                                       | regproc
+ pg_am                         | amgettuple                                        | regproc
+ pg_am                         | amgetmulti                                        | regproc
+ pg_am                         | amrescan                                          | regproc
+ pg_am                         | amendscan                                         | regproc
+ pg_am                         | ammarkpos                                         | regproc
+ pg_am                         | amrestrpos                                        | regproc
+ pg_am                         | ambuild                                           | regproc
+ pg_am                         | ambulkdelete                                      | regproc
+ pg_am                         | amvacuumcleanup                                   | regproc
+ pg_am                         | amcostestimate                                    | regproc
+ pg_am                         | amoptions                                         | regproc
+ pg_amop                       | amopclaid                                         | oid
+ pg_amop                       | amopsubtype                                       | oid
+ pg_amop                       | amopstrategy                                      | int2
+ pg_amop                       | amopreqcheck                                      | bool
+ pg_amop                       | amopopr                                           | oid
+ pg_amproc                     | amopclaid                                         | oid
+ pg_amproc                     | amprocsubtype                                     | oid
+ pg_amproc                     | amprocnum                                         | int2
+ pg_amproc                     | amproc                                            | regproc
+ pg_appendonly                 | relid                                             | oid
+ pg_appendonly                 | blocksize                                         | int4
+ pg_appendonly                 | safefswritesize                                   | int4
+ pg_appendonly                 | compresslevel                                     | int2
+ pg_appendonly                 | majorversion                                      | int2
+ pg_appendonly                 | minorversion                                      | int2
+ pg_appendonly                 | checksum                                          | bool
+ pg_appendonly                 | compresstype                                      | text
+ pg_appendonly                 | columnstore                                       | bool
+ pg_appendonly                 | segrelid                                          | oid
+ pg_appendonly                 | segidxid                                          | oid
+ pg_appendonly                 | blkdirrelid                                       | oid
+ pg_appendonly                 | blkdiridxid                                       | oid
+ pg_appendonly                 | version                                           | int4
+ pg_appendonly_alter_column    | relid                                             | oid
+ pg_appendonly_alter_column    | changenum                                         | int4
+ pg_appendonly_alter_column    | segfilenums                                       | _int4
+ pg_appendonly_alter_column    | highwaterrownums                                  | bytea
+ pg_attrdef                    | adrelid                                           | oid
+ pg_attrdef                    | adnum                                             | int2
+ pg_attrdef                    | adbin                                             | text
+ pg_attrdef                    | adsrc                                             | text
+ pg_attribute                  | attrelid                                          | oid
+ pg_attribute                  | attname                                           | name
+ pg_attribute                  | atttypid                                          | oid
+ pg_attribute                  | attstattarget                                     | int4
+ pg_attribute                  | attlen                                            | int2
+ pg_attribute                  | attnum                                            | int2
+ pg_attribute                  | attndims                                          | int4
+ pg_attribute                  | attcacheoff                                       | int4
+ pg_attribute                  | atttypmod                                         | int4
+ pg_attribute                  | attbyval                                          | bool
+ pg_attribute                  | attstorage                                        | char
+ pg_attribute                  | attalign                                          | char
+ pg_attribute                  | attnotnull                                        | bool
+ pg_attribute                  | atthasdef                                         | bool
+ pg_attribute                  | attisdropped                                      | bool
+ pg_attribute                  | attislocal                                        | bool
+ pg_attribute                  | attinhcount                                       | int4
+ pg_auth_members               | roleid                                            | oid
+ pg_auth_members               | member                                            | oid
+ pg_auth_members               | grantor                                           | oid
+ pg_auth_members               | admin_option                                      | bool
+ pg_authid                     | rolname                                           | name
+ pg_authid                     | rolsuper                                          | bool
+ pg_authid                     | rolinherit                                        | bool
+ pg_authid                     | rolcreaterole                                     | bool
+ pg_authid                     | rolcreatedb                                       | bool
+ pg_authid                     | rolcatupdate                                      | bool
+ pg_authid                     | rolcanlogin                                       | bool
+ pg_authid                     | rolconnlimit                                      | int4
+ pg_authid                     | rolpassword                                       | text
+ pg_authid                     | rolvaliduntil                                     | timestamptz
+ pg_authid                     | rolconfig                                         | _text
+ pg_authid                     | rolresqueue                                       | oid
+ pg_authid                     | rolcreaterextgpfd                                 | bool
+ pg_authid                     | rolcreaterexthttp                                 | bool
+ pg_authid                     | rolcreatewextgpfd                                 | bool
+ pg_autovacuum                 | vacrelid                                          | oid
+ pg_autovacuum                 | enabled                                           | bool
+ pg_autovacuum                 | vac_base_thresh                                   | int4
+ pg_autovacuum                 | vac_scale_factor                                  | float4
+ pg_autovacuum                 | anl_base_thresh                                   | int4
+ pg_autovacuum                 | anl_scale_factor                                  | float4
+ pg_autovacuum                 | vac_cost_delay                                    | int4
+ pg_autovacuum                 | vac_cost_limit                                    | int4
+ pg_autovacuum                 | freeze_min_age                                    | int4
+ pg_autovacuum                 | freeze_max_age                                    | int4
+ pg_cast                       | castsource                                        | oid
+ pg_cast                       | casttarget                                        | oid
+ pg_cast                       | castfunc                                          | oid
+ pg_cast                       | castcontext                                       | char
+ pg_class                      | relname                                           | name
+ pg_class                      | relnamespace                                      | oid
+ pg_class                      | reltype                                           | oid
+ pg_class                      | relowner                                          | oid
+ pg_class                      | relam                                             | oid
+ pg_class                      | relfilenode                                       | oid
+ pg_class                      | reltablespace                                     | oid
+ pg_class                      | relpages                                          | int4
+ pg_class                      | reltuples                                         | float4
+ pg_class                      | reltoastrelid                                     | oid
+ pg_class                      | reltoastidxid                                     | oid
+ pg_class                      | relaosegrelid                                     | oid
+ pg_class                      | relaosegidxid                                     | oid
+ pg_class                      | relhasindex                                       | bool
+ pg_class                      | relisshared                                       | bool
+ pg_class                      | relkind                                           | char
+ pg_class                      | relstorage                                        | char
+ pg_class                      | relnatts                                          | int2
+ pg_class                      | relchecks                                         | int2
+ pg_class                      | reltriggers                                       | int2
+ pg_class                      | relukeys                                          | int2
+ pg_class                      | relfkeys                                          | int2
+ pg_class                      | relrefs                                           | int2
+ pg_class                      | relhasoids                                        | bool
+ pg_class                      | relhaspkey                                        | bool
+ pg_class                      | relhasrules                                       | bool
+ pg_class                      | relhassubclass                                    | bool
+ pg_class                      | relfrozenxid                                      | xid
+ pg_class                      | relacl                                            | _aclitem
+ pg_class                      | reloptions                                        | _text
+ pg_constraint                 | conname                                           | name
+ pg_constraint                 | connamespace                                      | oid
+ pg_constraint                 | contype                                           | char
+ pg_constraint                 | condeferrable                                     | bool
+ pg_constraint                 | condeferred                                       | bool
+ pg_constraint                 | conrelid                                          | oid
+ pg_constraint                 | contypid                                          | oid
+ pg_constraint                 | confrelid                                         | oid
+ pg_constraint                 | confupdtype                                       | char
+ pg_constraint                 | confdeltype                                       | char
+ pg_constraint                 | confmatchtype                                     | char
+ pg_constraint                 | conkey                                            | _int2
+ pg_constraint                 | confkey                                           | _int2
+ pg_constraint                 | conbin                                            | text
+ pg_constraint                 | consrc                                            | text
+ pg_conversion                 | conname                                           | name
+ pg_conversion                 | connamespace                                      | oid
+ pg_conversion                 | conowner                                          | oid
+ pg_conversion                 | conforencoding                                    | int4
+ pg_conversion                 | contoencoding                                     | int4
+ pg_conversion                 | conproc                                           | regproc
+ pg_conversion                 | condefault                                        | bool
+ pg_database                   | datname                                           | name
+ pg_database                   | datdba                                            | oid
+ pg_database                   | encoding                                          | int4
+ pg_database                   | datistemplate                                     | bool
+ pg_database                   | datallowconn                                      | bool
+ pg_database                   | datconnlimit                                      | int4
+ pg_database                   | datlastsysoid                                     | oid
+ pg_database                   | datfrozenxid                                      | xid
+ pg_database                   | dattablespace                                     | oid
+ pg_database                   | datconfig                                         | _text
+ pg_database                   | datacl                                            | _aclitem
+ pg_depend                     | classid                                           | oid
+ pg_depend                     | objid                                             | oid
+ pg_depend                     | objsubid                                          | int4
+ pg_depend                     | refclassid                                        | oid
+ pg_depend                     | refobjid                                          | oid
+ pg_depend                     | refobjsubid                                       | int4
+ pg_depend                     | deptype                                           | char
+ pg_description                | objoid                                            | oid
+ pg_description                | classoid                                          | oid
+ pg_description                | objsubid                                          | int4
+ pg_description                | description                                       | text
+ pg_exttable                   | reloid                                            | oid
+ pg_exttable                   | location                                          | _text
+ pg_exttable                   | fmttype                                           | char
+ pg_exttable                   | fmtopts                                           | text
+ pg_exttable                   | command                                           | text
+ pg_exttable                   | rejectlimit                                       | int4
+ pg_exttable                   | rejectlimittype                                   | char
+ pg_exttable                   | fmterrtbl                                         | oid
+ pg_exttable                   | encoding                                          | int4
+ pg_exttable                   | writable                                          | bool
+ pg_filespace                  | fsname                                            | name
+ pg_filespace                  | fsowner                                           | oid
+ pg_filespace_entry            | fsefsoid                                          | oid
+ pg_filespace_entry            | fsedbid                                           | int2
+ pg_filespace_entry            | fselocation                                       | text
+ pg_foreign_data_wrapper       | fdwname                                           | name
+ pg_foreign_data_wrapper       | fdwowner                                          | oid
+ pg_foreign_data_wrapper       | fdwvalidator                                      | oid
+ pg_foreign_data_wrapper       | fdwacl                                            | _aclitem
+ pg_foreign_data_wrapper       | fdwoptions                                        | _text
+ pg_foreign_server             | srvname                                           | name
+ pg_foreign_server             | srvowner                                          | oid
+ pg_foreign_server             | srvfdw                                            | oid
+ pg_foreign_server             | srvtype                                           | text
+ pg_foreign_server             | srvversion                                        | text
+ pg_foreign_server             | srvacl                                            | _aclitem
+ pg_foreign_server             | srvoptions                                        | _text
+ pg_foreign_table              | reloid                                            | oid
+ pg_foreign_table              | server                                            | oid
+ pg_foreign_table              | tbloptions                                        | _text
+ pg_index                      | indexrelid                                        | oid
+ pg_index                      | indrelid                                          | oid
+ pg_index                      | indnatts                                          | int2
+ pg_index                      | indisunique                                       | bool
+ pg_index                      | indisprimary                                      | bool
+ pg_index                      | indisclustered                                    | bool
+ pg_index                      | indisvalid                                        | bool
+ pg_index                      | indkey                                            | int2vector
+ pg_index                      | indclass                                          | oidvector
+ pg_index                      | indexprs                                          | text
+ pg_index                      | indpred                                           | text
+ pg_inherits                   | inhrelid                                          | oid
+ pg_inherits                   | inhparent                                         | oid
+ pg_inherits                   | inhseqno                                          | int4
+ pg_language                   | lanname                                           | name
+ pg_language                   | lanispl                                           | bool
+ pg_language                   | lanpltrusted                                      | bool
+ pg_language                   | lanplcallfoid                                     | oid
+ pg_language                   | lanvalidator                                      | oid
+ pg_language                   | lanacl                                            | _aclitem
+ pg_largeobject                | loid                                              | oid
+ pg_largeobject                | pageno                                            | int4
+ pg_largeobject                | data                                              | bytea
+ pg_listener                   | relname                                           | name
+ pg_listener                   | listenerpid                                       | int4
+ pg_listener                   | notification                                      | int4
+ pg_namespace                  | nspname                                           | name
+ pg_namespace                  | nspowner                                          | oid
+ pg_namespace                  | nspacl                                            | _aclitem
+ pg_opclass                    | opcamid                                           | oid
+ pg_opclass                    | opcname                                           | name
+ pg_opclass                    | opcnamespace                                      | oid
+ pg_opclass                    | opcowner                                          | oid
+ pg_opclass                    | opcintype                                         | oid
+ pg_opclass                    | opcdefault                                        | bool
+ pg_opclass                    | opckeytype                                        | oid
+ pg_operator                   | oprname                                           | name
+ pg_operator                   | oprnamespace                                      | oid
+ pg_operator                   | oprowner                                          | oid
+ pg_operator                   | oprkind                                           | char
+ pg_operator                   | oprcanhash                                        | bool
+ pg_operator                   | oprleft                                           | oid
+ pg_operator                   | oprright                                          | oid
+ pg_operator                   | oprresult                                         | oid
+ pg_operator                   | oprcom                                            | oid
+ pg_operator                   | oprnegate                                         | oid
+ pg_operator                   | oprlsortop                                        | oid
+ pg_operator                   | oprrsortop                                        | oid
+ pg_operator                   | oprltcmpop                                        | oid
+ pg_operator                   | oprgtcmpop                                        | oid
+ pg_operator                   | oprcode                                           | regproc
+ pg_operator                   | oprrest                                           | regproc
+ pg_operator                   | oprjoin                                           | regproc
+ pg_partition                  | parrelid                                          | oid
+ pg_partition                  | parkind                                           | char
+ pg_partition                  | parlevel                                          | int2
+ pg_partition                  | paristemplate                                     | bool
+ pg_partition                  | parnatts                                          | int2
+ pg_partition                  | paratts                                           | int2vector
+ pg_partition                  | parclass                                          | oidvector
+ pg_partition_rule             | paroid                                            | oid
+ pg_partition_rule             | parchildrelid                                     | oid
+ pg_partition_rule             | parparentrule                                     | oid
+ pg_partition_rule             | parname                                           | name
+ pg_partition_rule             | parisdefault                                      | bool
+ pg_partition_rule             | parruleord                                        | int2
+ pg_partition_rule             | parrangestartincl                                 | bool
+ pg_partition_rule             | parrangeendincl                                   | bool
+ pg_partition_rule             | parrangestart                                     | text
+ pg_partition_rule             | parrangeend                                       | text
+ pg_partition_rule             | parrangeevery                                     | text
+ pg_partition_rule             | parlistvalues                                     | text
+ pg_partition_rule             | parreloptions                                     | _text
+ pg_partition_rule             | partemplatespace                                  | oid
+ pg_pltemplate                 | tmplname                                          | name
+ pg_pltemplate                 | tmpltrusted                                       | bool
+ pg_pltemplate                 | tmplhandler                                       | text
+ pg_pltemplate                 | tmplvalidator                                     | text
+ pg_pltemplate                 | tmpllibrary                                       | text
+ pg_pltemplate                 | tmplacl                                           | _aclitem
+ pg_proc                       | proname                                           | name
+ pg_proc                       | pronamespace                                      | oid
+ pg_proc                       | proowner                                          | oid
+ pg_proc                       | prolang                                           | oid
+ pg_proc                       | proisagg                                          | bool
+ pg_proc                       | prosecdef                                         | bool
+ pg_proc                       | proisstrict                                       | bool
+ pg_proc                       | proretset                                         | bool
+ pg_proc                       | provolatile                                       | char
+ pg_proc                       | pronargs                                          | int2
+ pg_proc                       | prorettype                                        | oid
+ pg_proc                       | proiswin                                          | bool
+ pg_proc                       | proargtypes                                       | oidvector
+ pg_proc                       | proallargtypes                                    | _oid
+ pg_proc                       | proargmodes                                       | _char
+ pg_proc                       | proargnames                                       | _text
+ pg_proc                       | prosrc                                            | text
+ pg_proc                       | probin                                            | bytea
+ pg_proc                       | proacl                                            | _aclitem
+ pg_resourcetype               | resname                                           | name
+ pg_resourcetype               | restypid                                          | int2
+ pg_resourcetype               | resrequired                                       | bool
+ pg_resourcetype               | reshasdefault                                     | bool
+ pg_resourcetype               | reshasdisable                                     | bool
+ pg_resourcetype               | resdefaultsetting                                 | text
+ pg_resourcetype               | resdisabledsetting                                | text
+ pg_resqueue                   | rsqname                                           | name
+ pg_resqueue                   | rsqcountlimit                                     | float4
+ pg_resqueue                   | rsqcostlimit                                      | float4
+ pg_resqueue                   | rsqovercommit                                     | bool
+ pg_resqueue                   | rsqignorecostlimit                                | float4
+ pg_resqueuecapability         | resqueueid                                        | oid
+ pg_resqueuecapability         | restypid                                          | int2
+ pg_resqueuecapability         | ressetting                                        | text
+ pg_rewrite                    | rulename                                          | name
+ pg_rewrite                    | ev_class                                          | oid
+ pg_rewrite                    | ev_attr                                           | int2
+ pg_rewrite                    | ev_type                                           | char
+ pg_rewrite                    | is_instead                                        | bool
+ pg_rewrite                    | ev_qual                                           | text
+ pg_rewrite                    | ev_action                                         | text
+ pg_shdepend                   | dbid                                              | oid
+ pg_shdepend                   | classid                                           | oid
+ pg_shdepend                   | objid                                             | oid
+ pg_shdepend                   | refclassid                                        | oid
+ pg_shdepend                   | refobjid                                          | oid
+ pg_shdepend                   | deptype                                           | char
+ pg_shdescription              | objoid                                            | oid
+ pg_shdescription              | classoid                                          | oid
+ pg_shdescription              | description                                       | text
+ pg_stat_last_operation        | classid                                           | oid
+ pg_stat_last_operation        | objid                                             | oid
+ pg_stat_last_operation        | staactionname                                     | name
+ pg_stat_last_operation        | stasysid                                          | oid
+ pg_stat_last_operation        | stausename                                        | name
+ pg_stat_last_operation        | stasubtype                                        | text
+ pg_stat_last_operation        | statime                                           | timestamptz
+ pg_stat_last_shoperation      | classid                                           | oid
+ pg_stat_last_shoperation      | objid                                             | oid
+ pg_stat_last_shoperation      | staactionname                                     | name
+ pg_stat_last_shoperation      | stasysid                                          | oid
+ pg_stat_last_shoperation      | stausename                                        | name
+ pg_stat_last_shoperation      | stasubtype                                        | text
+ pg_stat_last_shoperation      | statime                                           | timestamptz
+ pg_statistic                  | starelid                                          | oid
+ pg_statistic                  | staattnum                                         | int2
+ pg_statistic                  | stanullfrac                                       | float4
+ pg_statistic                  | stawidth                                          | int4
+ pg_statistic                  | stadistinct                                       | float4
+ pg_statistic                  | stakind1                                          | int2
+ pg_statistic                  | stakind2                                          | int2
+ pg_statistic                  | stakind3                                          | int2
+ pg_statistic                  | stakind4                                          | int2
+ pg_statistic                  | staop1                                            | oid
+ pg_statistic                  | staop2                                            | oid
+ pg_statistic                  | staop3                                            | oid
+ pg_statistic                  | staop4                                            | oid
+ pg_statistic                  | stanumbers1                                       | _float4
+ pg_statistic                  | stanumbers2                                       | _float4
+ pg_statistic                  | stanumbers3                                       | _float4
+ pg_statistic                  | stanumbers4                                       | _float4
+ pg_statistic                  | stavalues1                                        | text
+ pg_statistic                  | stavalues2                                        | text
+ pg_statistic                  | stavalues3                                        | text
+ pg_statistic                  | stavalues4                                        | text
+ pg_tablespace                 | spcname                                           | name
+ pg_tablespace                 | spcowner                                          | oid
+ pg_tablespace                 | spclocation                                       | text
+ pg_tablespace                 | spcacl                                            | _aclitem
+ pg_tablespace                 | spcprilocations                                   | _text
+ pg_tablespace                 | spcmirlocations                                   | _text
+ pg_tablespace                 | spcfsoid                                          | oid
+ pg_trigger                    | tgrelid                                           | oid
+ pg_trigger                    | tgname                                            | name
+ pg_trigger                    | tgfoid                                            | oid
+ pg_trigger                    | tgtype                                            | int2
+ pg_trigger                    | tgenabled                                         | bool
+ pg_trigger                    | tgisconstraint                                    | bool
+ pg_trigger                    | tgconstrname                                      | name
+ pg_trigger                    | tgconstrrelid                                     | oid
+ pg_trigger                    | tgdeferrable                                      | bool
+ pg_trigger                    | tginitdeferred                                    | bool
+ pg_trigger                    | tgnargs                                           | int2
+ pg_trigger                    | tgattr                                            | int2vector
+ pg_trigger                    | tgargs                                            | bytea
+ pg_type                       | typname                                           | name
+ pg_type                       | typnamespace                                      | oid
+ pg_type                       | typowner                                          | oid
+ pg_type                       | typlen                                            | int2
+ pg_type                       | typbyval                                          | bool
+ pg_type                       | typtype                                           | char
+ pg_type                       | typisdefined                                      | bool
+ pg_type                       | typdelim                                          | char
+ pg_type                       | typrelid                                          | oid
+ pg_type                       | typelem                                           | oid
+ pg_type                       | typinput                                          | regproc
+ pg_type                       | typoutput                                         | regproc
+ pg_type                       | typreceive                                        | regproc
+ pg_type                       | typsend                                           | regproc
+ pg_type                       | typanalyze                                        | regproc
+ pg_type                       | typalign                                          | char
+ pg_type                       | typstorage                                        | char
+ pg_type                       | typnotnull                                        | bool
+ pg_type                       | typbasetype                                       | oid
+ pg_type                       | typtypmod                                         | int4
+ pg_type                       | typndims                                          | int4
+ pg_type                       | typdefaultbin                                     | text
+ pg_type                       | typdefault                                        | text
+ pg_user_mapping               | umuser                                            | oid
+ pg_user_mapping               | umserver                                          | oid
+ pg_user_mapping               | umoptions                                         | _text
+ pg_window                     | winfnoid                                          | regproc
+ pg_window                     | winrequireorder                                   | bool
+ pg_window                     | winallowframe                                     | bool
+ pg_window                     | winpeercount                                      | bool
+ pg_window                     | wincount                                          | bool
+ pg_window                     | winfunc                                           | regproc
+ pg_window                     | winprefunc                                        | regproc
+ pg_window                     | winpretype                                        | oid
+ pg_window                     | winfinfunc                                        | regproc
+ pg_window                     | winkind                                           | char
+(547 rows)
 
 select pc1.relname, pa1.attname, pt1.typname 
 from 
@@ -1118,370 +1615,562 @@ and pc1.relname	in
 	(select relname from pg_class where relnamespace =
 			(select	oid from pg_namespace where nspname = 'tidycat'))
 order by relname, pa1.attnum;
-          relname           |      attname       |   typname   
-----------------------------+--------------------+-------------
- gp_configuration           | content            | int2
- gp_configuration           | definedprimary     | bool
- gp_configuration           | dbid               | int2
- gp_configuration           | isprimary          | bool
- gp_configuration           | valid              | bool
- gp_configuration           | hostname           | name
- gp_configuration           | port               | int4
- gp_configuration           | datadir            | text
- gp_configuration_history   | time               | timestamptz
- gp_configuration_history   | dbid               | int2
- gp_configuration_history   | desc               | text
- gp_db_interfaces           | dbid               | int2
- gp_db_interfaces           | interfaceid        | int2
- gp_db_interfaces           | priority           | int2
- gp_interfaces              | interfaceid        | int2
- gp_interfaces              | address            | name
- gp_interfaces              | status             | int2
- pg_aggregate               | aggfnoid           | regproc
- pg_aggregate               | aggtransfn         | regproc
- pg_aggregate               | agginvtransfn      | regproc
- pg_aggregate               | aggprelimfn        | regproc
- pg_aggregate               | agginvprelimfn     | regproc
- pg_aggregate               | aggfinalfn         | regproc
- pg_aggregate               | aggsortop          | oid
- pg_aggregate               | aggtranstype       | oid
- pg_aggregate               | agginitval         | text
- pg_am                      | amname             | name
- pg_am                      | amstrategies       | int2
- pg_am                      | amsupport          | int2
- pg_am                      | amorderstrategy    | int2
- pg_am                      | amcanunique        | bool
- pg_am                      | amcanmulticol      | bool
- pg_am                      | amoptionalkey      | bool
- pg_am                      | amindexnulls       | bool
- pg_am                      | amstorage          | bool
- pg_am                      | amclusterable      | bool
- pg_am                      | amcanshrink        | bool
- pg_am                      | aminsert           | regproc
- pg_am                      | ambeginscan        | regproc
- pg_am                      | amgettuple         | regproc
- pg_am                      | amgetmulti         | regproc
- pg_am                      | amrescan           | regproc
- pg_am                      | amendscan          | regproc
- pg_am                      | ammarkpos          | regproc
- pg_am                      | amrestrpos         | regproc
- pg_am                      | ambuild            | regproc
- pg_am                      | ambulkdelete       | regproc
- pg_am                      | amvacuumcleanup    | regproc
- pg_am                      | amcostestimate     | regproc
- pg_am                      | amoptions          | regproc
- pg_amop                    | amopclaid          | oid
- pg_amop                    | amopsubtype        | oid
- pg_amop                    | amopstrategy       | int2
- pg_amop                    | amopreqcheck       | bool
- pg_amop                    | amopopr            | oid
- pg_amproc                  | amopclaid          | oid
- pg_amproc                  | amprocsubtype      | oid
- pg_amproc                  | amprocnum          | int2
- pg_amproc                  | amproc             | regproc
- pg_appendonly              | relid              | oid
- pg_appendonly              | blocksize          | int4
- pg_appendonly              | safefswritesize    | int4
- pg_appendonly              | compresslevel      | int2
- pg_appendonly              | majorversion       | int2
- pg_appendonly              | minorversion       | int2
- pg_appendonly              | checksum           | bool
- pg_appendonly              | compresstype       | text
- pg_appendonly              | columnstore        | bool
- pg_appendonly              | segrelid           | oid
- pg_appendonly              | segidxid           | oid
- pg_appendonly              | blkdirrelid        | oid
- pg_appendonly              | blkdiridxid        | oid
- pg_appendonly              | version            | int4
- pg_appendonly_alter_column | relid              | oid
- pg_appendonly_alter_column | changenum          | int4
- pg_appendonly_alter_column | segfilenums        | _int4
- pg_appendonly_alter_column | highwaterrownums   | bytea
- pg_attrdef                 | adrelid            | oid
- pg_attrdef                 | adnum              | int2
- pg_attrdef                 | adbin              | text
- pg_attrdef                 | adsrc              | text
- pg_attribute               | attrelid           | oid
- pg_attribute               | attname            | name
- pg_attribute               | atttypid           | oid
- pg_attribute               | attstattarget      | int4
- pg_attribute               | attlen             | int2
- pg_attribute               | attnum             | int2
- pg_attribute               | attndims           | int4
- pg_attribute               | attcacheoff        | int4
- pg_attribute               | atttypmod          | int4
- pg_attribute               | attbyval           | bool
- pg_attribute               | attstorage         | char
- pg_attribute               | attalign           | char
- pg_attribute               | attnotnull         | bool
- pg_attribute               | atthasdef          | bool
- pg_attribute               | attisdropped       | bool
- pg_attribute               | attislocal         | bool
- pg_attribute               | attinhcount        | int4
- pg_auth_members            | roleid             | oid
- pg_auth_members            | member             | oid
- pg_auth_members            | grantor            | oid
- pg_auth_members            | admin_option       | bool
- pg_authid                  | rolname            | name
- pg_authid                  | rolsuper           | bool
- pg_authid                  | rolinherit         | bool
- pg_authid                  | rolcreaterole      | bool
- pg_authid                  | rolcreatedb        | bool
- pg_authid                  | rolcatupdate       | bool
- pg_authid                  | rolcanlogin        | bool
- pg_authid                  | rolconnlimit       | int4
- pg_authid                  | rolpassword        | text
- pg_authid                  | rolvaliduntil      | timestamptz
- pg_authid                  | rolconfig          | _text
- pg_authid                  | rolresqueue        | oid
- pg_authid                  | rolcreaterextgpfd  | bool
- pg_authid                  | rolcreaterexthttp  | bool
- pg_authid                  | rolcreatewextgpfd  | bool
- pg_autovacuum              | vacrelid           | oid
- pg_autovacuum              | enabled            | bool
- pg_autovacuum              | vac_base_thresh    | int4
- pg_autovacuum              | vac_scale_factor   | float4
- pg_autovacuum              | anl_base_thresh    | int4
- pg_autovacuum              | anl_scale_factor   | float4
- pg_autovacuum              | vac_cost_delay     | int4
- pg_autovacuum              | vac_cost_limit     | int4
- pg_autovacuum              | freeze_min_age     | int4
- pg_autovacuum              | freeze_max_age     | int4
- pg_cast                    | castsource         | oid
- pg_cast                    | casttarget         | oid
- pg_cast                    | castfunc           | oid
- pg_cast                    | castcontext        | char
- pg_constraint              | conname            | name
- pg_constraint              | connamespace       | oid
- pg_constraint              | contype            | char
- pg_constraint              | condeferrable      | bool
- pg_constraint              | condeferred        | bool
- pg_constraint              | conrelid           | oid
- pg_constraint              | contypid           | oid
- pg_constraint              | confrelid          | oid
- pg_constraint              | confupdtype        | char
- pg_constraint              | confdeltype        | char
- pg_constraint              | confmatchtype      | char
- pg_constraint              | conkey             | _int2
- pg_constraint              | confkey            | _int2
- pg_constraint              | conbin             | text
- pg_constraint              | consrc             | text
- pg_conversion              | conname            | name
- pg_conversion              | connamespace       | oid
- pg_conversion              | conowner           | oid
- pg_conversion              | conforencoding     | int4
- pg_conversion              | contoencoding      | int4
- pg_conversion              | conproc            | regproc
- pg_conversion              | condefault         | bool
- pg_database                | datname            | name
- pg_database                | datdba             | oid
- pg_database                | encoding           | int4
- pg_database                | datistemplate      | bool
- pg_database                | datallowconn       | bool
- pg_database                | datconnlimit       | int4
- pg_database                | datlastsysoid      | oid
- pg_database                | datfrozenxid       | xid
- pg_database                | dattablespace      | oid
- pg_database                | datconfig          | _text
- pg_database                | datacl             | _aclitem
- pg_depend                  | classid            | oid
- pg_depend                  | objid              | oid
- pg_depend                  | objsubid           | int4
- pg_depend                  | refclassid         | oid
- pg_depend                  | refobjid           | oid
- pg_depend                  | refobjsubid        | int4
- pg_depend                  | deptype            | char
- pg_description             | objoid             | oid
- pg_description             | classoid           | oid
- pg_description             | objsubid           | int4
- pg_description             | description        | text
- pg_exttable                | reloid             | oid
- pg_exttable                | location           | _text
- pg_exttable                | fmttype            | char
- pg_exttable                | fmtopts            | text
- pg_exttable                | command            | text
- pg_exttable                | rejectlimit        | int4
- pg_exttable                | rejectlimittype    | char
- pg_exttable                | fmterrtbl          | oid
- pg_exttable                | encoding           | int4
- pg_exttable                | writable           | bool
- pg_filespace               | fsname             | name
- pg_filespace               | fsowner            | oid
- pg_filespace_entry         | fsefsoid           | oid
- pg_filespace_entry         | fsedbid            | int2
- pg_filespace_entry         | fselocation        | text
- pg_foreign_data_wrapper    | fdwname            | name
- pg_foreign_data_wrapper    | fdwowner           | oid
- pg_foreign_data_wrapper    | fdwvalidator       | oid
- pg_foreign_data_wrapper    | fdwacl             | _aclitem
- pg_foreign_data_wrapper    | fdwoptions         | _text
- pg_foreign_server          | srvname            | name
- pg_foreign_server          | srvowner           | oid
- pg_foreign_server          | srvfdw             | oid
- pg_foreign_server          | srvtype            | text
- pg_foreign_server          | srvversion         | text
- pg_foreign_server          | srvacl             | _aclitem
- pg_foreign_server          | srvoptions         | _text
- pg_foreign_table           | reloid             | oid
- pg_foreign_table           | server             | oid
- pg_foreign_table           | tbloptions         | _text
- pg_language                | lanname            | name
- pg_language                | lanispl            | bool
- pg_language                | lanpltrusted       | bool
- pg_language                | lanplcallfoid      | oid
- pg_language                | lanvalidator       | oid
- pg_language                | lanacl             | _aclitem
- pg_partition               | parrelid           | oid
- pg_partition               | parkind            | char
- pg_partition               | parlevel           | int2
- pg_partition               | paristemplate      | bool
- pg_partition               | parnatts           | int2
- pg_partition               | paratts            | int2vector
- pg_partition               | parclass           | oidvector
- pg_partition_rule          | paroid             | oid
- pg_partition_rule          | parchildrelid      | oid
- pg_partition_rule          | parparentrule      | oid
- pg_partition_rule          | parname            | name
- pg_partition_rule          | parisdefault       | bool
- pg_partition_rule          | parruleord         | int2
- pg_partition_rule          | parrangestartincl  | bool
- pg_partition_rule          | parrangeendincl    | bool
- pg_partition_rule          | parrangestart      | text
- pg_partition_rule          | parrangeend        | text
- pg_partition_rule          | parrangeevery      | text
- pg_partition_rule          | parlistvalues      | text
- pg_partition_rule          | parreloptions      | _text
- pg_partition_rule          | partemplatespace   | oid
- pg_pltemplate              | tmplname           | name
- pg_pltemplate              | tmpltrusted        | bool
- pg_pltemplate              | tmplhandler        | text
- pg_pltemplate              | tmplvalidator      | text
- pg_pltemplate              | tmpllibrary        | text
- pg_pltemplate              | tmplacl            | _aclitem
- pg_proc                    | proname            | name
- pg_proc                    | pronamespace       | oid
- pg_proc                    | proowner           | oid
- pg_proc                    | prolang            | oid
- pg_proc                    | proisagg           | bool
- pg_proc                    | prosecdef          | bool
- pg_proc                    | proisstrict        | bool
- pg_proc                    | proretset          | bool
- pg_proc                    | provolatile        | char
- pg_proc                    | pronargs           | int2
- pg_proc                    | prorettype         | oid
- pg_proc                    | proiswin           | bool
- pg_proc                    | proargtypes        | oidvector
- pg_proc                    | proallargtypes     | _oid
- pg_proc                    | proargmodes        | _char
- pg_proc                    | proargnames        | _text
- pg_proc                    | prosrc             | text
- pg_proc                    | probin             | bytea
- pg_proc                    | proacl             | _aclitem
- pg_resourcetype            | resname            | name
- pg_resourcetype            | restypid           | int2
- pg_resourcetype            | resrequired        | bool
- pg_resourcetype            | reshasdefault      | bool
- pg_resourcetype            | reshasdisable      | bool
- pg_resourcetype            | resdefaultsetting  | text
- pg_resourcetype            | resdisabledsetting | text
- pg_resqueue                | rsqname            | name
- pg_resqueue                | rsqcountlimit      | float4
- pg_resqueue                | rsqcostlimit       | float4
- pg_resqueue                | rsqovercommit      | bool
- pg_resqueue                | rsqignorecostlimit | float4
- pg_resqueuecapability      | resqueueid         | oid
- pg_resqueuecapability      | restypid           | int2
- pg_resqueuecapability      | ressetting         | text
- pg_rewrite                 | rulename           | name
- pg_rewrite                 | ev_class           | oid
- pg_rewrite                 | ev_attr            | int2
- pg_rewrite                 | ev_type            | char
- pg_rewrite                 | is_instead         | bool
- pg_rewrite                 | ev_qual            | text
- pg_rewrite                 | ev_action          | text
- pg_shdepend                | dbid               | oid
- pg_shdepend                | classid            | oid
- pg_shdepend                | objid              | oid
- pg_shdepend                | refclassid         | oid
- pg_shdepend                | refobjid           | oid
- pg_shdepend                | deptype            | char
- pg_shdescription           | objoid             | oid
- pg_shdescription           | classoid           | oid
- pg_shdescription           | description        | text
- pg_stat_last_operation     | classid            | oid
- pg_stat_last_operation     | objid              | oid
- pg_stat_last_operation     | staactionname      | name
- pg_stat_last_operation     | stasysid           | oid
- pg_stat_last_operation     | stausename         | name
- pg_stat_last_operation     | stasubtype         | text
- pg_stat_last_operation     | statime            | timestamptz
- pg_stat_last_shoperation   | classid            | oid
- pg_stat_last_shoperation   | objid              | oid
- pg_stat_last_shoperation   | staactionname      | name
- pg_stat_last_shoperation   | stasysid           | oid
- pg_stat_last_shoperation   | stausename         | name
- pg_stat_last_shoperation   | stasubtype         | text
- pg_stat_last_shoperation   | statime            | timestamptz
- pg_statistic               | starelid           | oid
- pg_statistic               | staattnum          | int2
- pg_statistic               | stanullfrac        | float4
- pg_statistic               | stawidth           | int4
- pg_statistic               | stadistinct        | float4
- pg_statistic               | stakind1           | int2
- pg_statistic               | stakind2           | int2
- pg_statistic               | stakind3           | int2
- pg_statistic               | stakind4           | int2
- pg_statistic               | staop1             | oid
- pg_statistic               | staop2             | oid
- pg_statistic               | staop3             | oid
- pg_statistic               | staop4             | oid
- pg_statistic               | stanumbers1        | _float4
- pg_statistic               | stanumbers2        | _float4
- pg_statistic               | stanumbers3        | _float4
- pg_statistic               | stanumbers4        | _float4
- pg_statistic               | stavalues1         | anyarray
- pg_statistic               | stavalues2         | anyarray
- pg_statistic               | stavalues3         | anyarray
- pg_statistic               | stavalues4         | anyarray
- pg_tablespace              | spcname            | name
- pg_tablespace              | spcowner           | oid
- pg_tablespace              | spclocation        | text
- pg_tablespace              | spcacl             | _aclitem
- pg_tablespace              | spcprilocations    | _text
- pg_tablespace              | spcmirlocations    | _text
- pg_tablespace              | spcfsoid           | oid
- pg_trigger                 | tgrelid            | oid
- pg_trigger                 | tgname             | name
- pg_trigger                 | tgfoid             | oid
- pg_trigger                 | tgtype             | int2
- pg_trigger                 | tgenabled          | bool
- pg_trigger                 | tgisconstraint     | bool
- pg_trigger                 | tgconstrname       | name
- pg_trigger                 | tgconstrrelid      | oid
- pg_trigger                 | tgdeferrable       | bool
- pg_trigger                 | tginitdeferred     | bool
- pg_trigger                 | tgnargs            | int2
- pg_trigger                 | tgattr             | int2vector
- pg_trigger                 | tgargs             | bytea
- pg_user_mapping            | umuser             | oid
- pg_user_mapping            | umserver           | oid
- pg_user_mapping            | umoptions          | _text
- pg_window                  | winfnoid           | regproc
- pg_window                  | winrequireorder    | bool
- pg_window                  | winallowframe      | bool
- pg_window                  | winpeercount       | bool
- pg_window                  | wincount           | bool
- pg_window                  | winfunc            | regproc
- pg_window                  | winprefunc         | regproc
- pg_window                  | winpretype         | oid
- pg_window                  | winfinfunc         | regproc
- pg_window                  | winkind            | char
-(356 rows)
+            relname            |                      attname                      |   typname   
+-------------------------------+---------------------------------------------------+-------------
+ gp_configuration              | content                                           | int2
+ gp_configuration              | definedprimary                                    | bool
+ gp_configuration              | dbid                                              | int2
+ gp_configuration              | isprimary                                         | bool
+ gp_configuration              | valid                                             | bool
+ gp_configuration              | hostname                                          | name
+ gp_configuration              | port                                              | int4
+ gp_configuration              | datadir                                           | text
+ gp_configuration_history      | time                                              | timestamptz
+ gp_configuration_history      | dbid                                              | int2
+ gp_configuration_history      | desc                                              | text
+ gp_db_interfaces              | dbid                                              | int2
+ gp_db_interfaces              | interfaceid                                       | int2
+ gp_db_interfaces              | priority                                          | int2
+ gp_distribution_policy        | localoid                                          | oid
+ gp_distribution_policy        | attrnums                                          | _int2
+ gp_fastsequence               | objid                                             | oid
+ gp_fastsequence               | objmod                                            | int8
+ gp_fastsequence               | last_sequence                                     | int8
+ gp_fault_strategy             | fault_strategy                                    | char
+ gp_global_sequence            | sequence_num                                      | int8
+ gp_id                         | gpname                                            | name
+ gp_id                         | numsegments                                       | int2
+ gp_id                         | dbid                                              | int2
+ gp_id                         | content                                           | int2
+ gp_interfaces                 | interfaceid                                       | int2
+ gp_interfaces                 | address                                           | name
+ gp_interfaces                 | status                                            | int2
+ gp_master_mirroring           | summary_state                                     | text
+ gp_master_mirroring           | detail_state                                      | text
+ gp_master_mirroring           | log_time                                          | timestamptz
+ gp_master_mirroring           | error_message                                     | text
+ gp_persistent_database_node   | tablespace_oid                                    | oid
+ gp_persistent_database_node   | database_oid                                      | oid
+ gp_persistent_database_node   | persistent_state                                  | int2
+ gp_persistent_database_node   | create_mirror_data_loss_tracking_session_num      | int8
+ gp_persistent_database_node   | mirror_existence_state                            | int2
+ gp_persistent_database_node   | reserved                                          | int4
+ gp_persistent_database_node   | parent_xid                                        | int4
+ gp_persistent_database_node   | persistent_serial_num                             | int8
+ gp_persistent_database_node   | previous_free_tid                                 | tid
+ gp_persistent_filespace_node  | filespace_oid                                     | oid
+ gp_persistent_filespace_node  | db_id_1                                           | int2
+ gp_persistent_filespace_node  | location_1                                        | text
+ gp_persistent_filespace_node  | db_id_2                                           | int2
+ gp_persistent_filespace_node  | location_2                                        | text
+ gp_persistent_filespace_node  | persistent_state                                  | int2
+ gp_persistent_filespace_node  | create_mirror_data_loss_tracking_session_num      | int8
+ gp_persistent_filespace_node  | mirror_existence_state                            | int2
+ gp_persistent_filespace_node  | reserved                                          | int4
+ gp_persistent_filespace_node  | parent_xid                                        | int4
+ gp_persistent_filespace_node  | persistent_serial_num                             | int8
+ gp_persistent_filespace_node  | previous_free_tid                                 | tid
+ gp_persistent_relation_node   | tablespace_oid                                    | oid
+ gp_persistent_relation_node   | database_oid                                      | oid
+ gp_persistent_relation_node   | relfilenode_oid                                   | oid
+ gp_persistent_relation_node   | segment_file_num                                  | int4
+ gp_persistent_relation_node   | relation_storage_manager                          | int2
+ gp_persistent_relation_node   | persistent_state                                  | int2
+ gp_persistent_relation_node   | create_mirror_data_loss_tracking_session_num      | int8
+ gp_persistent_relation_node   | mirror_existence_state                            | int2
+ gp_persistent_relation_node   | mirror_data_synchronization_state                 | int2
+ gp_persistent_relation_node   | mirror_bufpool_marked_for_scan_incremental_resync | bool
+ gp_persistent_relation_node   | mirror_bufpool_resync_changed_page_count          | int8
+ gp_persistent_relation_node   | mirror_bufpool_resync_ckpt_loc                    | gpxlogloc
+ gp_persistent_relation_node   | mirror_bufpool_resync_ckpt_block_num              | int4
+ gp_persistent_relation_node   | mirror_append_only_loss_eof                       | int8
+ gp_persistent_relation_node   | mirror_append_only_new_eof                        | int8
+ gp_persistent_relation_node   | reserved                                          | int4
+ gp_persistent_relation_node   | parent_xid                                        | int4
+ gp_persistent_relation_node   | persistent_serial_num                             | int8
+ gp_persistent_relation_node   | previous_free_tid                                 | tid
+ gp_persistent_tablespace_node | filespace_oid                                     | oid
+ gp_persistent_tablespace_node | tablespace_oid                                    | oid
+ gp_persistent_tablespace_node | persistent_state                                  | int2
+ gp_persistent_tablespace_node | create_mirror_data_loss_tracking_session_num      | int8
+ gp_persistent_tablespace_node | mirror_existence_state                            | int2
+ gp_persistent_tablespace_node | reserved                                          | int4
+ gp_persistent_tablespace_node | parent_xid                                        | int4
+ gp_persistent_tablespace_node | persistent_serial_num                             | int8
+ gp_persistent_tablespace_node | previous_free_tid                                 | tid
+ gp_relation_node              | relfilenode_oid                                   | oid
+ gp_relation_node              | segment_file_num                                  | int4
+ gp_relation_node              | create_mirror_data_loss_tracking_session_num      | int8
+ gp_relation_node              | persistent_tid                                    | tid
+ gp_relation_node              | persistent_serial_num                             | int8
+ gp_san_configuration          | mountid                                           | int2
+ gp_san_configuration          | active_host                                       | char
+ gp_san_configuration          | san_type                                          | char
+ gp_san_configuration          | primary_host                                      | text
+ gp_san_configuration          | primary_mountpoint                                | text
+ gp_san_configuration          | primary_device                                    | text
+ gp_san_configuration          | mirror_host                                       | text
+ gp_san_configuration          | mirror_mountpoint                                 | text
+ gp_san_configuration          | mirror_device                                     | text
+ gp_segment_configuration      | dbid                                              | int2
+ gp_segment_configuration      | content                                           | int2
+ gp_segment_configuration      | role                                              | char
+ gp_segment_configuration      | preferred_role                                    | char
+ gp_segment_configuration      | mode                                              | char
+ gp_segment_configuration      | status                                            | char
+ gp_segment_configuration      | port                                              | int4
+ gp_segment_configuration      | hostname                                          | text
+ gp_segment_configuration      | address                                           | text
+ gp_segment_configuration      | replication_port                                  | int4
+ gp_segment_configuration      | san_mounts                                        | int2vector
+ gp_version_at_initdb          | schemaversion                                     | int2
+ gp_version_at_initdb          | productversion                                    | text
+ pg_aggregate                  | aggfnoid                                          | regproc
+ pg_aggregate                  | aggtransfn                                        | regproc
+ pg_aggregate                  | agginvtransfn                                     | regproc
+ pg_aggregate                  | aggprelimfn                                       | regproc
+ pg_aggregate                  | agginvprelimfn                                    | regproc
+ pg_aggregate                  | aggfinalfn                                        | regproc
+ pg_aggregate                  | aggsortop                                         | oid
+ pg_aggregate                  | aggtranstype                                      | oid
+ pg_aggregate                  | agginitval                                        | text
+ pg_am                         | amname                                            | name
+ pg_am                         | amstrategies                                      | int2
+ pg_am                         | amsupport                                         | int2
+ pg_am                         | amorderstrategy                                   | int2
+ pg_am                         | amcanunique                                       | bool
+ pg_am                         | amcanmulticol                                     | bool
+ pg_am                         | amoptionalkey                                     | bool
+ pg_am                         | amindexnulls                                      | bool
+ pg_am                         | amstorage                                         | bool
+ pg_am                         | amclusterable                                     | bool
+ pg_am                         | amcanshrink                                       | bool
+ pg_am                         | aminsert                                          | regproc
+ pg_am                         | ambeginscan                                       | regproc
+ pg_am                         | amgettuple                                        | regproc
+ pg_am                         | amgetmulti                                        | regproc
+ pg_am                         | amrescan                                          | regproc
+ pg_am                         | amendscan                                         | regproc
+ pg_am                         | ammarkpos                                         | regproc
+ pg_am                         | amrestrpos                                        | regproc
+ pg_am                         | ambuild                                           | regproc
+ pg_am                         | ambulkdelete                                      | regproc
+ pg_am                         | amvacuumcleanup                                   | regproc
+ pg_am                         | amcostestimate                                    | regproc
+ pg_am                         | amoptions                                         | regproc
+ pg_amop                       | amopclaid                                         | oid
+ pg_amop                       | amopsubtype                                       | oid
+ pg_amop                       | amopstrategy                                      | int2
+ pg_amop                       | amopreqcheck                                      | bool
+ pg_amop                       | amopopr                                           | oid
+ pg_amproc                     | amopclaid                                         | oid
+ pg_amproc                     | amprocsubtype                                     | oid
+ pg_amproc                     | amprocnum                                         | int2
+ pg_amproc                     | amproc                                            | regproc
+ pg_appendonly                 | relid                                             | oid
+ pg_appendonly                 | blocksize                                         | int4
+ pg_appendonly                 | safefswritesize                                   | int4
+ pg_appendonly                 | compresslevel                                     | int2
+ pg_appendonly                 | majorversion                                      | int2
+ pg_appendonly                 | minorversion                                      | int2
+ pg_appendonly                 | checksum                                          | bool
+ pg_appendonly                 | compresstype                                      | text
+ pg_appendonly                 | columnstore                                       | bool
+ pg_appendonly                 | segrelid                                          | oid
+ pg_appendonly                 | segidxid                                          | oid
+ pg_appendonly                 | blkdirrelid                                       | oid
+ pg_appendonly                 | blkdiridxid                                       | oid
+ pg_appendonly                 | version                                           | int4
+ pg_appendonly_alter_column    | relid                                             | oid
+ pg_appendonly_alter_column    | changenum                                         | int4
+ pg_appendonly_alter_column    | segfilenums                                       | _int4
+ pg_appendonly_alter_column    | highwaterrownums                                  | bytea
+ pg_attrdef                    | adrelid                                           | oid
+ pg_attrdef                    | adnum                                             | int2
+ pg_attrdef                    | adbin                                             | text
+ pg_attrdef                    | adsrc                                             | text
+ pg_attribute                  | attrelid                                          | oid
+ pg_attribute                  | attname                                           | name
+ pg_attribute                  | atttypid                                          | oid
+ pg_attribute                  | attstattarget                                     | int4
+ pg_attribute                  | attlen                                            | int2
+ pg_attribute                  | attnum                                            | int2
+ pg_attribute                  | attndims                                          | int4
+ pg_attribute                  | attcacheoff                                       | int4
+ pg_attribute                  | atttypmod                                         | int4
+ pg_attribute                  | attbyval                                          | bool
+ pg_attribute                  | attstorage                                        | char
+ pg_attribute                  | attalign                                          | char
+ pg_attribute                  | attnotnull                                        | bool
+ pg_attribute                  | atthasdef                                         | bool
+ pg_attribute                  | attisdropped                                      | bool
+ pg_attribute                  | attislocal                                        | bool
+ pg_attribute                  | attinhcount                                       | int4
+ pg_auth_members               | roleid                                            | oid
+ pg_auth_members               | member                                            | oid
+ pg_auth_members               | grantor                                           | oid
+ pg_auth_members               | admin_option                                      | bool
+ pg_authid                     | rolname                                           | name
+ pg_authid                     | rolsuper                                          | bool
+ pg_authid                     | rolinherit                                        | bool
+ pg_authid                     | rolcreaterole                                     | bool
+ pg_authid                     | rolcreatedb                                       | bool
+ pg_authid                     | rolcatupdate                                      | bool
+ pg_authid                     | rolcanlogin                                       | bool
+ pg_authid                     | rolconnlimit                                      | int4
+ pg_authid                     | rolpassword                                       | text
+ pg_authid                     | rolvaliduntil                                     | timestamptz
+ pg_authid                     | rolconfig                                         | _text
+ pg_authid                     | rolresqueue                                       | oid
+ pg_authid                     | rolcreaterextgpfd                                 | bool
+ pg_authid                     | rolcreaterexthttp                                 | bool
+ pg_authid                     | rolcreatewextgpfd                                 | bool
+ pg_autovacuum                 | vacrelid                                          | oid
+ pg_autovacuum                 | enabled                                           | bool
+ pg_autovacuum                 | vac_base_thresh                                   | int4
+ pg_autovacuum                 | vac_scale_factor                                  | float4
+ pg_autovacuum                 | anl_base_thresh                                   | int4
+ pg_autovacuum                 | anl_scale_factor                                  | float4
+ pg_autovacuum                 | vac_cost_delay                                    | int4
+ pg_autovacuum                 | vac_cost_limit                                    | int4
+ pg_autovacuum                 | freeze_min_age                                    | int4
+ pg_autovacuum                 | freeze_max_age                                    | int4
+ pg_cast                       | castsource                                        | oid
+ pg_cast                       | casttarget                                        | oid
+ pg_cast                       | castfunc                                          | oid
+ pg_cast                       | castcontext                                       | char
+ pg_class                      | relname                                           | name
+ pg_class                      | relnamespace                                      | oid
+ pg_class                      | reltype                                           | oid
+ pg_class                      | relowner                                          | oid
+ pg_class                      | relam                                             | oid
+ pg_class                      | relfilenode                                       | oid
+ pg_class                      | reltablespace                                     | oid
+ pg_class                      | relpages                                          | int4
+ pg_class                      | reltuples                                         | float4
+ pg_class                      | reltoastrelid                                     | oid
+ pg_class                      | reltoastidxid                                     | oid
+ pg_class                      | relaosegrelid                                     | oid
+ pg_class                      | relaosegidxid                                     | oid
+ pg_class                      | relhasindex                                       | bool
+ pg_class                      | relisshared                                       | bool
+ pg_class                      | relkind                                           | char
+ pg_class                      | relstorage                                        | char
+ pg_class                      | relnatts                                          | int2
+ pg_class                      | relchecks                                         | int2
+ pg_class                      | reltriggers                                       | int2
+ pg_class                      | relukeys                                          | int2
+ pg_class                      | relfkeys                                          | int2
+ pg_class                      | relrefs                                           | int2
+ pg_class                      | relhasoids                                        | bool
+ pg_class                      | relhaspkey                                        | bool
+ pg_class                      | relhasrules                                       | bool
+ pg_class                      | relhassubclass                                    | bool
+ pg_class                      | relfrozenxid                                      | xid
+ pg_class                      | relacl                                            | _aclitem
+ pg_class                      | reloptions                                        | _text
+ pg_constraint                 | conname                                           | name
+ pg_constraint                 | connamespace                                      | oid
+ pg_constraint                 | contype                                           | char
+ pg_constraint                 | condeferrable                                     | bool
+ pg_constraint                 | condeferred                                       | bool
+ pg_constraint                 | conrelid                                          | oid
+ pg_constraint                 | contypid                                          | oid
+ pg_constraint                 | confrelid                                         | oid
+ pg_constraint                 | confupdtype                                       | char
+ pg_constraint                 | confdeltype                                       | char
+ pg_constraint                 | confmatchtype                                     | char
+ pg_constraint                 | conkey                                            | _int2
+ pg_constraint                 | confkey                                           | _int2
+ pg_constraint                 | conbin                                            | text
+ pg_constraint                 | consrc                                            | text
+ pg_conversion                 | conname                                           | name
+ pg_conversion                 | connamespace                                      | oid
+ pg_conversion                 | conowner                                          | oid
+ pg_conversion                 | conforencoding                                    | int4
+ pg_conversion                 | contoencoding                                     | int4
+ pg_conversion                 | conproc                                           | regproc
+ pg_conversion                 | condefault                                        | bool
+ pg_database                   | datname                                           | name
+ pg_database                   | datdba                                            | oid
+ pg_database                   | encoding                                          | int4
+ pg_database                   | datistemplate                                     | bool
+ pg_database                   | datallowconn                                      | bool
+ pg_database                   | datconnlimit                                      | int4
+ pg_database                   | datlastsysoid                                     | oid
+ pg_database                   | datfrozenxid                                      | xid
+ pg_database                   | dattablespace                                     | oid
+ pg_database                   | datconfig                                         | _text
+ pg_database                   | datacl                                            | _aclitem
+ pg_depend                     | classid                                           | oid
+ pg_depend                     | objid                                             | oid
+ pg_depend                     | objsubid                                          | int4
+ pg_depend                     | refclassid                                        | oid
+ pg_depend                     | refobjid                                          | oid
+ pg_depend                     | refobjsubid                                       | int4
+ pg_depend                     | deptype                                           | char
+ pg_description                | objoid                                            | oid
+ pg_description                | classoid                                          | oid
+ pg_description                | objsubid                                          | int4
+ pg_description                | description                                       | text
+ pg_exttable                   | reloid                                            | oid
+ pg_exttable                   | location                                          | _text
+ pg_exttable                   | fmttype                                           | char
+ pg_exttable                   | fmtopts                                           | text
+ pg_exttable                   | command                                           | text
+ pg_exttable                   | rejectlimit                                       | int4
+ pg_exttable                   | rejectlimittype                                   | char
+ pg_exttable                   | fmterrtbl                                         | oid
+ pg_exttable                   | encoding                                          | int4
+ pg_exttable                   | writable                                          | bool
+ pg_filespace                  | fsname                                            | name
+ pg_filespace                  | fsowner                                           | oid
+ pg_filespace_entry            | fsefsoid                                          | oid
+ pg_filespace_entry            | fsedbid                                           | int2
+ pg_filespace_entry            | fselocation                                       | text
+ pg_foreign_data_wrapper       | fdwname                                           | name
+ pg_foreign_data_wrapper       | fdwowner                                          | oid
+ pg_foreign_data_wrapper       | fdwvalidator                                      | oid
+ pg_foreign_data_wrapper       | fdwacl                                            | _aclitem
+ pg_foreign_data_wrapper       | fdwoptions                                        | _text
+ pg_foreign_server             | srvname                                           | name
+ pg_foreign_server             | srvowner                                          | oid
+ pg_foreign_server             | srvfdw                                            | oid
+ pg_foreign_server             | srvtype                                           | text
+ pg_foreign_server             | srvversion                                        | text
+ pg_foreign_server             | srvacl                                            | _aclitem
+ pg_foreign_server             | srvoptions                                        | _text
+ pg_foreign_table              | reloid                                            | oid
+ pg_foreign_table              | server                                            | oid
+ pg_foreign_table              | tbloptions                                        | _text
+ pg_index                      | indexrelid                                        | oid
+ pg_index                      | indrelid                                          | oid
+ pg_index                      | indnatts                                          | int2
+ pg_index                      | indisunique                                       | bool
+ pg_index                      | indisprimary                                      | bool
+ pg_index                      | indisclustered                                    | bool
+ pg_index                      | indisvalid                                        | bool
+ pg_index                      | indkey                                            | int2vector
+ pg_index                      | indclass                                          | oidvector
+ pg_index                      | indexprs                                          | text
+ pg_index                      | indpred                                           | text
+ pg_inherits                   | inhrelid                                          | oid
+ pg_inherits                   | inhparent                                         | oid
+ pg_inherits                   | inhseqno                                          | int4
+ pg_language                   | lanname                                           | name
+ pg_language                   | lanispl                                           | bool
+ pg_language                   | lanpltrusted                                      | bool
+ pg_language                   | lanplcallfoid                                     | oid
+ pg_language                   | lanvalidator                                      | oid
+ pg_language                   | lanacl                                            | _aclitem
+ pg_largeobject                | loid                                              | oid
+ pg_largeobject                | pageno                                            | int4
+ pg_largeobject                | data                                              | bytea
+ pg_listener                   | relname                                           | name
+ pg_listener                   | listenerpid                                       | int4
+ pg_listener                   | notification                                      | int4
+ pg_namespace                  | nspname                                           | name
+ pg_namespace                  | nspowner                                          | oid
+ pg_namespace                  | nspacl                                            | _aclitem
+ pg_opclass                    | opcamid                                           | oid
+ pg_opclass                    | opcname                                           | name
+ pg_opclass                    | opcnamespace                                      | oid
+ pg_opclass                    | opcowner                                          | oid
+ pg_opclass                    | opcintype                                         | oid
+ pg_opclass                    | opcdefault                                        | bool
+ pg_opclass                    | opckeytype                                        | oid
+ pg_operator                   | oprname                                           | name
+ pg_operator                   | oprnamespace                                      | oid
+ pg_operator                   | oprowner                                          | oid
+ pg_operator                   | oprkind                                           | char
+ pg_operator                   | oprcanhash                                        | bool
+ pg_operator                   | oprleft                                           | oid
+ pg_operator                   | oprright                                          | oid
+ pg_operator                   | oprresult                                         | oid
+ pg_operator                   | oprcom                                            | oid
+ pg_operator                   | oprnegate                                         | oid
+ pg_operator                   | oprlsortop                                        | oid
+ pg_operator                   | oprrsortop                                        | oid
+ pg_operator                   | oprltcmpop                                        | oid
+ pg_operator                   | oprgtcmpop                                        | oid
+ pg_operator                   | oprcode                                           | regproc
+ pg_operator                   | oprrest                                           | regproc
+ pg_operator                   | oprjoin                                           | regproc
+ pg_partition                  | parrelid                                          | oid
+ pg_partition                  | parkind                                           | char
+ pg_partition                  | parlevel                                          | int2
+ pg_partition                  | paristemplate                                     | bool
+ pg_partition                  | parnatts                                          | int2
+ pg_partition                  | paratts                                           | int2vector
+ pg_partition                  | parclass                                          | oidvector
+ pg_partition_rule             | paroid                                            | oid
+ pg_partition_rule             | parchildrelid                                     | oid
+ pg_partition_rule             | parparentrule                                     | oid
+ pg_partition_rule             | parname                                           | name
+ pg_partition_rule             | parisdefault                                      | bool
+ pg_partition_rule             | parruleord                                        | int2
+ pg_partition_rule             | parrangestartincl                                 | bool
+ pg_partition_rule             | parrangeendincl                                   | bool
+ pg_partition_rule             | parrangestart                                     | text
+ pg_partition_rule             | parrangeend                                       | text
+ pg_partition_rule             | parrangeevery                                     | text
+ pg_partition_rule             | parlistvalues                                     | text
+ pg_partition_rule             | parreloptions                                     | _text
+ pg_partition_rule             | partemplatespace                                  | oid
+ pg_pltemplate                 | tmplname                                          | name
+ pg_pltemplate                 | tmpltrusted                                       | bool
+ pg_pltemplate                 | tmplhandler                                       | text
+ pg_pltemplate                 | tmplvalidator                                     | text
+ pg_pltemplate                 | tmpllibrary                                       | text
+ pg_pltemplate                 | tmplacl                                           | _aclitem
+ pg_proc                       | proname                                           | name
+ pg_proc                       | pronamespace                                      | oid
+ pg_proc                       | proowner                                          | oid
+ pg_proc                       | prolang                                           | oid
+ pg_proc                       | proisagg                                          | bool
+ pg_proc                       | prosecdef                                         | bool
+ pg_proc                       | proisstrict                                       | bool
+ pg_proc                       | proretset                                         | bool
+ pg_proc                       | provolatile                                       | char
+ pg_proc                       | pronargs                                          | int2
+ pg_proc                       | prorettype                                        | oid
+ pg_proc                       | proiswin                                          | bool
+ pg_proc                       | proargtypes                                       | oidvector
+ pg_proc                       | proallargtypes                                    | _oid
+ pg_proc                       | proargmodes                                       | _char
+ pg_proc                       | proargnames                                       | _text
+ pg_proc                       | prosrc                                            | text
+ pg_proc                       | probin                                            | bytea
+ pg_proc                       | proacl                                            | _aclitem
+ pg_resourcetype               | resname                                           | name
+ pg_resourcetype               | restypid                                          | int2
+ pg_resourcetype               | resrequired                                       | bool
+ pg_resourcetype               | reshasdefault                                     | bool
+ pg_resourcetype               | reshasdisable                                     | bool
+ pg_resourcetype               | resdefaultsetting                                 | text
+ pg_resourcetype               | resdisabledsetting                                | text
+ pg_resqueue                   | rsqname                                           | name
+ pg_resqueue                   | rsqcountlimit                                     | float4
+ pg_resqueue                   | rsqcostlimit                                      | float4
+ pg_resqueue                   | rsqovercommit                                     | bool
+ pg_resqueue                   | rsqignorecostlimit                                | float4
+ pg_resqueuecapability         | resqueueid                                        | oid
+ pg_resqueuecapability         | restypid                                          | int2
+ pg_resqueuecapability         | ressetting                                        | text
+ pg_rewrite                    | rulename                                          | name
+ pg_rewrite                    | ev_class                                          | oid
+ pg_rewrite                    | ev_attr                                           | int2
+ pg_rewrite                    | ev_type                                           | char
+ pg_rewrite                    | is_instead                                        | bool
+ pg_rewrite                    | ev_qual                                           | text
+ pg_rewrite                    | ev_action                                         | text
+ pg_shdepend                   | dbid                                              | oid
+ pg_shdepend                   | classid                                           | oid
+ pg_shdepend                   | objid                                             | oid
+ pg_shdepend                   | refclassid                                        | oid
+ pg_shdepend                   | refobjid                                          | oid
+ pg_shdepend                   | deptype                                           | char
+ pg_shdescription              | objoid                                            | oid
+ pg_shdescription              | classoid                                          | oid
+ pg_shdescription              | description                                       | text
+ pg_stat_last_operation        | classid                                           | oid
+ pg_stat_last_operation        | objid                                             | oid
+ pg_stat_last_operation        | staactionname                                     | name
+ pg_stat_last_operation        | stasysid                                          | oid
+ pg_stat_last_operation        | stausename                                        | name
+ pg_stat_last_operation        | stasubtype                                        | text
+ pg_stat_last_operation        | statime                                           | timestamptz
+ pg_stat_last_shoperation      | classid                                           | oid
+ pg_stat_last_shoperation      | objid                                             | oid
+ pg_stat_last_shoperation      | staactionname                                     | name
+ pg_stat_last_shoperation      | stasysid                                          | oid
+ pg_stat_last_shoperation      | stausename                                        | name
+ pg_stat_last_shoperation      | stasubtype                                        | text
+ pg_stat_last_shoperation      | statime                                           | timestamptz
+ pg_statistic                  | starelid                                          | oid
+ pg_statistic                  | staattnum                                         | int2
+ pg_statistic                  | stanullfrac                                       | float4
+ pg_statistic                  | stawidth                                          | int4
+ pg_statistic                  | stadistinct                                       | float4
+ pg_statistic                  | stakind1                                          | int2
+ pg_statistic                  | stakind2                                          | int2
+ pg_statistic                  | stakind3                                          | int2
+ pg_statistic                  | stakind4                                          | int2
+ pg_statistic                  | staop1                                            | oid
+ pg_statistic                  | staop2                                            | oid
+ pg_statistic                  | staop3                                            | oid
+ pg_statistic                  | staop4                                            | oid
+ pg_statistic                  | stanumbers1                                       | _float4
+ pg_statistic                  | stanumbers2                                       | _float4
+ pg_statistic                  | stanumbers3                                       | _float4
+ pg_statistic                  | stanumbers4                                       | _float4
+ pg_statistic                  | stavalues1                                        | anyarray
+ pg_statistic                  | stavalues2                                        | anyarray
+ pg_statistic                  | stavalues3                                        | anyarray
+ pg_statistic                  | stavalues4                                        | anyarray
+ pg_tablespace                 | spcname                                           | name
+ pg_tablespace                 | spcowner                                          | oid
+ pg_tablespace                 | spclocation                                       | text
+ pg_tablespace                 | spcacl                                            | _aclitem
+ pg_tablespace                 | spcprilocations                                   | _text
+ pg_tablespace                 | spcmirlocations                                   | _text
+ pg_tablespace                 | spcfsoid                                          | oid
+ pg_trigger                    | tgrelid                                           | oid
+ pg_trigger                    | tgname                                            | name
+ pg_trigger                    | tgfoid                                            | oid
+ pg_trigger                    | tgtype                                            | int2
+ pg_trigger                    | tgenabled                                         | bool
+ pg_trigger                    | tgisconstraint                                    | bool
+ pg_trigger                    | tgconstrname                                      | name
+ pg_trigger                    | tgconstrrelid                                     | oid
+ pg_trigger                    | tgdeferrable                                      | bool
+ pg_trigger                    | tginitdeferred                                    | bool
+ pg_trigger                    | tgnargs                                           | int2
+ pg_trigger                    | tgattr                                            | int2vector
+ pg_trigger                    | tgargs                                            | bytea
+ pg_type                       | typname                                           | name
+ pg_type                       | typnamespace                                      | oid
+ pg_type                       | typowner                                          | oid
+ pg_type                       | typlen                                            | int2
+ pg_type                       | typbyval                                          | bool
+ pg_type                       | typtype                                           | char
+ pg_type                       | typisdefined                                      | bool
+ pg_type                       | typdelim                                          | char
+ pg_type                       | typrelid                                          | oid
+ pg_type                       | typelem                                           | oid
+ pg_type                       | typinput                                          | regproc
+ pg_type                       | typoutput                                         | regproc
+ pg_type                       | typreceive                                        | regproc
+ pg_type                       | typsend                                           | regproc
+ pg_type                       | typanalyze                                        | regproc
+ pg_type                       | typalign                                          | char
+ pg_type                       | typstorage                                        | char
+ pg_type                       | typnotnull                                        | bool
+ pg_type                       | typbasetype                                       | oid
+ pg_type                       | typtypmod                                         | int4
+ pg_type                       | typndims                                          | int4
+ pg_type                       | typdefaultbin                                     | text
+ pg_type                       | typdefault                                        | text
+ pg_user_mapping               | umuser                                            | oid
+ pg_user_mapping               | umserver                                          | oid
+ pg_user_mapping               | umoptions                                         | _text
+ pg_window                     | winfnoid                                          | regproc
+ pg_window                     | winrequireorder                                   | bool
+ pg_window                     | winallowframe                                     | bool
+ pg_window                     | winpeercount                                      | bool
+ pg_window                     | wincount                                          | bool
+ pg_window                     | winfunc                                           | regproc
+ pg_window                     | winprefunc                                        | regproc
+ pg_window                     | winpretype                                        | oid
+ pg_window                     | winfinfunc                                        | regproc
+ pg_window                     | winkind                                           | char
+(547 rows)
 
 -- end_equiv
 drop schema tidycat CASCADE;
 NOTICE:  drop cascades to table tidycat.pg_window
 NOTICE:  drop cascades to table tidycat.pg_user_mapping
+NOTICE:  drop cascades to table tidycat.pg_type
 NOTICE:  drop cascades to table tidycat.pg_trigger
 NOTICE:  drop cascades to table tidycat.pg_tablespace
 NOTICE:  drop cascades to table tidycat.pg_stat_last_operation
@@ -1497,7 +2186,14 @@ NOTICE:  drop cascades to table tidycat.pg_proc
 NOTICE:  drop cascades to table tidycat.pg_pltemplate
 NOTICE:  drop cascades to table tidycat.pg_partition_rule
 NOTICE:  drop cascades to table tidycat.pg_partition
+NOTICE:  drop cascades to table tidycat.pg_operator
+NOTICE:  drop cascades to table tidycat.pg_opclass
+NOTICE:  drop cascades to table tidycat.pg_namespace
+NOTICE:  drop cascades to table tidycat.pg_listener
+NOTICE:  drop cascades to table tidycat.pg_largeobject
 NOTICE:  drop cascades to table tidycat.pg_language
+NOTICE:  drop cascades to table tidycat.pg_inherits
+NOTICE:  drop cascades to table tidycat.pg_index
 NOTICE:  drop cascades to table tidycat.pg_foreign_table
 NOTICE:  drop cascades to table tidycat.pg_foreign_server
 NOTICE:  drop cascades to table tidycat.pg_foreign_data_wrapper
@@ -1509,6 +2205,7 @@ NOTICE:  drop cascades to table tidycat.pg_depend
 NOTICE:  drop cascades to table tidycat.pg_database
 NOTICE:  drop cascades to table tidycat.pg_conversion
 NOTICE:  drop cascades to table tidycat.pg_constraint
+NOTICE:  drop cascades to table tidycat.pg_class
 NOTICE:  drop cascades to table tidycat.pg_cast
 NOTICE:  drop cascades to table tidycat.pg_autovacuum
 NOTICE:  drop cascades to table tidycat.pg_authid
@@ -1521,6 +2218,20 @@ NOTICE:  drop cascades to table tidycat.pg_amproc
 NOTICE:  drop cascades to table tidycat.pg_amop
 NOTICE:  drop cascades to table tidycat.pg_am
 NOTICE:  drop cascades to table tidycat.pg_aggregate
+NOTICE:  drop cascades to table tidycat.gp_version_at_initdb
+NOTICE:  drop cascades to table tidycat.gp_segment_configuration
+NOTICE:  drop cascades to table tidycat.gp_fault_strategy
+NOTICE:  drop cascades to table tidycat.gp_san_configuration
+NOTICE:  drop cascades to table tidycat.gp_distribution_policy
+NOTICE:  drop cascades to table tidycat.gp_persistent_filespace_node
+NOTICE:  drop cascades to table tidycat.gp_persistent_relation_node
+NOTICE:  drop cascades to table tidycat.gp_persistent_database_node
+NOTICE:  drop cascades to table tidycat.gp_relation_node
+NOTICE:  drop cascades to table tidycat.gp_persistent_tablespace_node
+NOTICE:  drop cascades to table tidycat.gp_master_mirroring
+NOTICE:  drop cascades to table tidycat.gp_id
+NOTICE:  drop cascades to table tidycat.gp_global_sequence
+NOTICE:  drop cascades to table tidycat.gp_fastsequence
 NOTICE:  drop cascades to table tidycat.gp_configuration_history
 NOTICE:  drop cascades to table tidycat.gp_configuration
 NOTICE:  drop cascades to table tidycat.gp_db_interfaces
