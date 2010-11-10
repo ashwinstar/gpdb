@@ -7,7 +7,6 @@ bin/generate_load_tpch.pl
 bin/gp
 bin/gpaddmirrors.py
 bin/gpdbupgrade
-bin/gpexclude.pl
 bin/gpexpandsystem
 bin/gpfaultinjector
 bin/gpha
@@ -15,7 +14,6 @@ bin/gpma
 bin/gppaxos
 bin/gpprintdbsizes
 bin/gprecoverseg.py
-bin/gpsourcify.pl
 bin/gpsuspend
 bin/gptorment.pl
 bin/gpugcluster
