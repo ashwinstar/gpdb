@@ -284,7 +284,12 @@ struct Tuplesortstate
 	int			mppsortflags;   /* special sort flags*//* CDB */
 	int64  		gpmaxdistinct;  /* max number of distinct values */ /*CDB*/
 	bool		standardsort;   /* do regular sort if true *//* CDB */
-		
+
+	/*
+	 * A flag to indicate whether the stats for this tuplesort
+	 * has been finalized.
+	 */
+	bool statsFinalized;
 
 	/*
 	 * While building initial runs, this is the current output run number
@@ -590,6 +595,8 @@ tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
 
 	MemoryContextSwitchTo(oldcontext);
 
+	Assert(!state->statsFinalized);
+
 	return state;
 }
 
@@ -866,6 +873,8 @@ tuplesort_end(Tuplesortstate *state)
 	if (state->tapeset)
 		LogicalTapeSetClose(state->tapeset);
 
+	tuplesort_finalize_stats(state);
+
 	if (trace_sort)
 	{
 		if (state->tapeset)
@@ -891,7 +900,7 @@ tuplesort_end(Tuplesortstate *state)
 void
 tuplesort_finalize_stats(Tuplesortstate *state)
 {
-    if (state->instrument)
+    if (state->instrument && !state->statsFinalized)
     {
         double  workmemused;
 
@@ -904,6 +913,8 @@ tuplesort_finalize_stats(Tuplesortstate *state)
         /* Report executor memory used by our memory context. */
         state->instrument->execmemused +=
             (double)MemoryContextGetPeakSpace(state->sortcontext);
+
+		state->statsFinalized = true;
     }
 }
 

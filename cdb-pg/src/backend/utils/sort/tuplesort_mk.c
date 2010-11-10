@@ -265,6 +265,12 @@ struct Tuplesortstate_mk
      */
     MKContext mkctxt;
 
+	/*
+	 * A flag to indicate whether the stats for this tuplesort
+	 * has been finalized.
+	 */
+	bool statsFinalized;
+
     int currentRun;
 
     /*
@@ -564,6 +570,9 @@ tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
      * inittapes(), if needed
      */
     MemoryContextSwitchTo(oldcontext);
+
+	Assert(!state->statsFinalized);
+	
     return state;
 }
 
@@ -914,6 +923,8 @@ tuplesort_end_mk(Tuplesortstate_mk *state)
         state->tapeset = NULL;
     }
 
+	tuplesort_finalize_stats_mk(state);
+
     if (trace_sort)
         PG_TRACE2(tuplesort__end, state->tapeset ? 1 : 0, spaceUsed);
 
@@ -932,7 +943,7 @@ tuplesort_end_mk(Tuplesortstate_mk *state)
 void
 tuplesort_finalize_stats_mk(Tuplesortstate_mk *state)
 {
-    if (state->instrument)
+    if (state->instrument && !state->statsFinalized)
     {
     	Size maxSpaceUsedOnSort = MemoryContextGetPeakSpace(state->sortcontext);
 
@@ -949,6 +960,8 @@ tuplesort_finalize_stats_mk(Tuplesortstate_mk *state)
         }
         else
             state->instrument->workmemwanted = 0;
+
+		state->statsFinalized = true;
     }
 }
 
