@@ -56,6 +56,7 @@
 #include "storage/procarray.h"
 #include "storage/smgr.h"
 #include "utils/builtins.h"
+#include "utils/faultinjector.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "access/distributedlog.h"
@@ -1077,6 +1078,14 @@ EndPrepare(GlobalTransaction gxact)
 	LWLockRelease(CheckpointStartLock);
 
 	END_CRIT_SECTION();
+
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+				       EndPreparedTwoPhaseSleep,
+				       DDLNotSpecified,
+				       "",    // databaseName
+				       "");   // tableName
+#endif           
 
 	records.tail = records.head = NULL;
 }

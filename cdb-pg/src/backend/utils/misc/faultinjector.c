@@ -185,6 +185,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault after persistent state change is permanently stored during first pass */
 	_("finish_prepared_transaction_abort_pass2_aborting_create_needed"),
 		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
+        _("end_prepare_two_phase_sleep"),
+	        /* inject sleep after creation of two phase file */
 	_("not recognized"),
 };
 

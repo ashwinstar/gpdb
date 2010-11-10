@@ -349,6 +349,7 @@ class GpInjectFaultProgram:
 			      "finish_prepared_transaction_commit_pass2_aborting_create_needed, " \
 			      "finish_prepared_transaction_abort_pass1_aborting_create_needed, " \
 			      "finish_prepared_transaction_abort_pass2_aborting_create_needed, " \
+                              "end_prepare_two_phase_sleep (inject sleep after two phase file creation), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",
                          metavar="ddlStatement",
@@ -365,7 +366,6 @@ class GpInjectFaultProgram:
                          help="The number of occurrence of the DDL statement with the database name " \
                          "and the table name before fault is triggered.  Defaults to %default. Max is 1000. " \
 			 "Fault is triggered always if set to '0'. ")
-
         parser.set_defaults()
         return parser
 

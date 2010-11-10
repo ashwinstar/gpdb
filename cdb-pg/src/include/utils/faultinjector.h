@@ -113,6 +113,9 @@ typedef enum FaultInjectorIdentifier_e {
 	FinishPreparedTransactionAbortPass2AbortingCreateNeeded,	
 		/* abort: create pending => aborting create */
 	
+        EndPreparedTwoPhaseSleep,
+	       /* sleep after creating two phase files */
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	
