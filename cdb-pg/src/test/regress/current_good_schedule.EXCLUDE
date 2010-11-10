@@ -20,3 +20,8 @@
 
 # MPP-9643: disable upg2 on sparc for now
  upg2 ::: $gpx->{isainfo} !~ m/sparc/
+
+# disable tidycat on sparc for now
+ tidycat ::: ($gpx->{isainfo} !~ m/sparc/)&&($gpx->{osname} !~ m/solaris/i)
+
+
