@@ -1153,6 +1153,7 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 
     conn->wakeup_ms = 0;
     conn->remoteContentId = cdbProc->contentid;
+	conn->stat_min_ack_time = ~((uint64)0);
 
     snprintf(conn->remoteHostAndPort, sizeof(conn->remoteHostAndPort),
              "%s:%d", cdbProc->listenerAddr, cdbProc->listenerPort);
@@ -2429,6 +2430,36 @@ markUDPConnInactive(MotionConn *conn)
 	return;
 }
 
+static void
+aggregateStatistics(ChunkTransportStateEntry *pEntry)
+{
+	/*
+	 * We first clear the stats, and then compute new stats
+	 * by aggregating the stats from each connection.
+	 */
+	pEntry->stat_total_ack_time = 0;
+	pEntry->stat_count_acks = 0;
+	pEntry->stat_max_ack_time = 0;
+	pEntry->stat_min_ack_time = ~((uint64)0);
+	pEntry->stat_count_resent = 0;
+	pEntry->stat_max_resent = 0;
+	pEntry->stat_count_dropped = 0;
+	
+	int connNo;
+	for (connNo = 0; connNo < pEntry->numConns; connNo++)
+	{
+		MotionConn *conn = &pEntry->conns[connNo];
+		
+		pEntry->stat_total_ack_time += conn->stat_total_ack_time;
+		pEntry->stat_count_acks += conn->stat_count_acks;
+		pEntry->stat_max_ack_time = Max(pEntry->stat_max_ack_time, conn->stat_max_ack_time);
+		pEntry->stat_min_ack_time = Min(pEntry->stat_min_ack_time, conn->stat_min_ack_time);
+		pEntry->stat_count_resent += conn->stat_count_resent;
+		pEntry->stat_max_resent = Max(pEntry->stat_max_resent, conn->stat_max_resent);
+		pEntry->stat_count_dropped += conn->stat_count_dropped;
+	}
+}
+
 /*
  * handle acks incoming from our upstream peers.
  *
@@ -2458,7 +2489,10 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 		if (n < 0)
 		{
 			if (errno == EWOULDBLOCK) /* had nothing to read. */
+			{
+				aggregateStatistics(pEntry);
 				return ret;
+			}
 
 			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 			if (errno == EINTR)
@@ -2570,6 +2604,14 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				if (ackConn->activeXmit)
 					ackConn->activeXmit = NULL;
 
+				ackConn->stat_count_acks++;
+
+				/* Compute the wait time for the Ack */
+				uint64 waitTime = gettime_elapsed_micros(ackConn->ackWaitBeginTime);
+				ackConn->stat_total_ack_time += waitTime;
+				ackConn->stat_max_ack_time = Max(waitTime, ackConn->stat_max_ack_time);
+				ackConn->stat_min_ack_time = Min(waitTime, ackConn->stat_min_ack_time);
+
 				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 					elog(DEBUG5, "got good ack with seq %d node %d route %d peer %d", pkt.seq, pkt.motNodeId, ackConn->route, pkt.dstPid);
 				continue;
@@ -2678,6 +2720,7 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 	bool	got_stops=false;
 	int		n;
 	struct pollfd nfd;
+	uint64 count_resent = 0;
 
 	/* send this packet */
 	for (;;)
@@ -2692,6 +2735,13 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 		{
 			sendOnce(transportStates, pEntry, conn);
 
+			/*
+			 * Start the timer of waiting for the Ack if this is the first time
+			 * this is called.
+			 */
+			if (!retry)
+				gettimeofday(&conn->ackWaitBeginTime, NULL);
+
 			if (timeout)
 			{
 				conn->activeXmitTime.tv_usec += timeout * 1000;
@@ -2703,7 +2753,10 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 			}
 
 			if (retry)
+			{
 				ic_stats_retrans++;
+				count_resent ++;
+			}
 
 			retry++;
 
@@ -2749,6 +2802,9 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				break;
 		}
 	}
+
+	conn->stat_count_resent += count_resent;
+	conn->stat_max_resent = Max(conn->stat_max_resent, count_resent);
 
 	return got_stops;
 }
@@ -2877,6 +2933,9 @@ SendChunkUDP(MotionLayerState *mlStates, ChunkTransportState *transportStates, C
 
 	/* Send the packet */
 	sendOnce(transportStates, pEntry, conn);
+
+	/* Start the timer for Ack wait time */
+	gettimeofday(&conn->ackWaitBeginTime, NULL);
 
 	/* handle any acks, but don't wait */
 	if (handleAcks(transportStates, pEntry))
@@ -3523,6 +3582,7 @@ ic_rx_thread_func(void *arg)
 									  pkt->motNodeId, conn->route, pkt->seq);
 
 						ic_stats_rx_overrun++;
+						conn->stat_count_dropped++;
 
 						pthread_mutex_unlock(&rx_thread_mutex);
 						continue;

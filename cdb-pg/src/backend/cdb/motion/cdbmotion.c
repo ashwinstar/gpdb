@@ -212,21 +212,6 @@ initMotionLayerStructs(MotionLayerState **mlStates)
 	 * Keep our motion layer memory context in our newly created motion layer.
 	 */
 	(*mlStates)->motion_layer_mctx = ml_mctx;
-	
-	/*
-	 * Clear out statistics values.
-	 *
-	 * TODO:  Perhaps move these to a separate struct so we can just memset()
-	 * them all out?
-	 */
-	(*mlStates)->stat_total_chunks_sent = 0;
-	(*mlStates)->stat_total_bytes_sent = 0;
-	(*mlStates)->stat_tuple_bytes_sent = 0;
-	(*mlStates)->stat_total_chunks_recvd = 0;
-	(*mlStates)->stat_total_bytes_recvd = 0;
-	(*mlStates)->stat_tuple_bytes_recvd = 0;
-	(*mlStates)->stat_total_chunkproc_calls = 0;
-							
 }
 
 static void
@@ -748,7 +733,7 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
 			{
 				/* Print chunk-sorter entry statistics. */
 				elog(DEBUG4, "Chunk-sorter entry [route=%d,node=%d] statistics:\n"
-					 "\tAvailable Tuples High-Watermark: %u",
+					 "\tAvailable Tuples High-Watermark: " UINT64_FORMAT,
 					 i, pMNEntry->motion_node_id,
 					 pMNEntry->stat_tuples_available_hwm);
 			}
@@ -804,8 +789,9 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
         if (pMNEntry->stat_total_bytes_sent > 0 ||
             pMNEntry->sel_wr_wait > 0)
         {
-            elog(LOG, "Interconnect seg%d slice%d sent %u tuples, "
-                 "%u total bytes, %u tuple bytes, %u chunks; waited %u usec.",
+            elog(LOG, "Interconnect seg%d slice%d sent " UINT64_FORMAT " tuples, "
+                 UINT64_FORMAT " total bytes, " UINT64_FORMAT " tuple bytes, "
+				 UINT64_FORMAT " chunks; waited " UINT64_FORMAT " usec.",
 		         Gp_segment,
                  currentSliceId,
 		         pMNEntry->stat_total_sends,
@@ -818,8 +804,9 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
         if (pMNEntry->stat_total_bytes_recvd > 0 ||
             pMNEntry->sel_rd_wait > 0)
         {
-            elog(LOG, "Interconnect seg%d slice%d received from slice%d: %u tuples, "
-                 "%u total bytes, %u tuple bytes, %u chunks; waited %u usec.",
+            elog(LOG, "Interconnect seg%d slice%d received from slice%d: " UINT64_FORMAT " tuples, "
+                 UINT64_FORMAT " total bytes, " UINT64_FORMAT " tuple bytes, " 
+				 UINT64_FORMAT " chunks; waited " UINT64_FORMAT " usec.",
                  Gp_segment,
                  currentSliceId,
 		         motNodeID,

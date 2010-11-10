@@ -136,6 +136,18 @@ typedef struct MotionConn
 	int			pkt_q_head;
 	int			pkt_q_tail;
 	uint8		**pkt_q;
+
+	/* Statistics info for this connection */
+	struct timeval ackWaitBeginTime;
+	
+	uint64 stat_total_ack_time;
+	uint64 stat_count_acks;
+	uint64 stat_max_ack_time;
+	uint64 stat_min_ack_time;
+	uint64 stat_count_resent;
+	uint64 stat_max_resent;
+	uint64 stat_count_dropped;
+	
 }	MotionConn;
 
 /*
@@ -173,8 +185,17 @@ typedef struct ChunkTransportStateEntry
 	int			txfd;
 	unsigned short txport;
 
-	bool		sendingEos;
-	
+	bool		sendingEos;	
+
+	/* Statistics info for this motion on the interconnect level */
+	uint64 stat_total_ack_time;
+	uint64 stat_count_acks;
+	uint64 stat_max_ack_time;
+	uint64 stat_min_ack_time;
+	uint64 stat_count_resent;
+	uint64 stat_max_resent;
+	uint64 stat_count_dropped;
+
 }	ChunkTransportStateEntry;
 
 /* ChunkTransportState array initial size */
@@ -276,24 +297,24 @@ typedef struct MotionNodeEntry
 	 * PER-MOTION-NODE STATISTICS
 	 */
 	
-	uint32          stat_total_chunks_sent; /* Tuple-chunks sent. */
-	uint32          stat_total_bytes_sent;  /* Bytes sent, including headers. */
-	uint32          stat_tuple_bytes_sent;  /* Bytes of pure tuple-data sent. */
+	uint64          stat_total_chunks_sent; /* Tuple-chunks sent. */
+	uint64          stat_total_bytes_sent;  /* Bytes sent, including headers. */
+	uint64          stat_tuple_bytes_sent;  /* Bytes of pure tuple-data sent. */
 	
-	uint32          stat_total_chunks_recvd;                /* Tuple-chunks received. */
-	uint32          stat_total_bytes_recvd; /* Bytes received, including headers. */
-	uint32          stat_tuple_bytes_recvd; /* Bytes of pure tuple-data received. */
+	uint64          stat_total_chunks_recvd;                /* Tuple-chunks received. */
+	uint64          stat_total_bytes_recvd; /* Bytes received, including headers. */
+	uint64          stat_tuple_bytes_recvd; /* Bytes of pure tuple-data received. */
 	
-	uint32          stat_total_sends;               /* Total calls to SendTuple. */
+	uint64          stat_total_sends;               /* Total calls to SendTuple. */
 	
-	uint32          stat_total_recvs;               /* Total calls to RecvTuple/etc. */
+	uint64          stat_total_recvs;               /* Total calls to RecvTuple/etc. */
 	
-	uint32          stat_tuples_available;  /* Total tuples awaiting receive. */
-	uint32          stat_tuples_available_hwm;              /* High-water-mark of this
+	uint64          stat_tuples_available;  /* Total tuples awaiting receive. */
+	uint64          stat_tuples_available_hwm;              /* High-water-mark of this
 		* value. */
-	uint32          sel_rd_wait;            /* Total time (usec) spent in select wait trying to read */
-	uint32          sel_wr_wait;            /* Total time spent (usec) in select wait trying to write */
-	
+	uint64          sel_rd_wait;            /* Total time (usec) spent in select wait trying to read */
+	uint64          sel_wr_wait;            /* Total time spent (usec) in select wait trying to write */
+
 }       MotionNodeEntry;
 
 
@@ -333,9 +354,8 @@ typedef struct MotionLayerState
 	uint32		stat_total_bytes_recvd; /* Bytes received, including headers. */
 	uint32		stat_tuple_bytes_recvd; /* Bytes of pure tuple-data received. */
 	
-	uint32		stat_total_chunkproc_calls;		/* Calls to
-		* processIncomingChunks() */
-	
+	uint32		stat_total_chunkproc_calls;		/* Calls to processIncomingChunks() */
+
 }	MotionLayerState;
 
 typedef struct ChunkTransportState

@@ -215,6 +215,20 @@ gettime_elapsed_ms(struct timeval t0)
     return timeval_delta_ms(t1, t0);
 }
 
+static inline uint64
+gettime_elapsed_micros(struct timeval beginTime)
+{
+	struct timeval endTime;
+
+	gettimeofday(&endTime, NULL);
+
+	Assert((endTime.tv_sec > beginTime.tv_sec) ||
+		   (endTime.tv_usec > beginTime.tv_usec));
+
+	return ((endTime.tv_sec - beginTime.tv_sec) * 1000 * 1000 +
+			(endTime.tv_usec - beginTime.tv_usec));
+}
+
 /* The DeregisterReadInterest() function is used to specify that we are no
  * longer interested in reading from the specified srcRoute. After calling this
  * function, we should no longer ever return TupleChunks from this srcRoute
