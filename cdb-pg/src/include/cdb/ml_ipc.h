@@ -223,7 +223,7 @@ gettime_elapsed_micros(struct timeval beginTime)
 	gettimeofday(&endTime, NULL);
 
 	Assert((endTime.tv_sec > beginTime.tv_sec) ||
-		   (endTime.tv_usec > beginTime.tv_usec));
+		   ((endTime.tv_sec == beginTime.tv_sec) && (endTime.tv_usec >= beginTime.tv_usec)));
 
 	return ((endTime.tv_sec - beginTime.tv_sec) * 1000 * 1000 +
 			(endTime.tv_usec - beginTime.tv_usec));
