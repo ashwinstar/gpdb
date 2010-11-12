@@ -21,6 +21,8 @@
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "commands/filespace.h"
+#include "executor/spi.h"
+#include "lib/stringinfo.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/segadmin.h"
@@ -986,6 +988,41 @@ gp_add_master_standby(PG_FUNCTION_ARGS)
 	PG_RETURN_INT16(new.db.dbid);
 }
 
+static void
+update_gp_master_mirroring(char *str)
+{
+	volatile bool connected = false;
+	
+	PG_TRY();
+	{
+		StringInfoData sql;
+
+		initStringInfo(&sql);
+
+		appendStringInfo(&sql, "update gp_master_mirroring set "
+						 "summary_state = '%s', detail_state = null,"
+						 "log_time = current_timestamp, error_message = null",
+						 str);
+
+		if (SPI_OK_CONNECT != SPI_connect())
+			elog(ERROR, "cannot connect via SPI");
+		connected = true;
+
+		if (SPI_execute(sql.data, false, 0) < 0)
+			elog(ERROR, "cannot update gp_master_mirroring");
+	}
+	PG_CATCH();
+	{
+		if (connected)
+			SPI_finish();
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	SPI_finish();
+}
+
 /*
  * Remove the master standby.
  *
@@ -1006,6 +1043,8 @@ gp_remove_master_standby(PG_FUNCTION_ARGS)
 		elog(ERROR, "no master standby defined");
 
 	remove_segment(MASTER_DBID, dbid);
+
+	update_gp_master_mirroring("Not Configured");
 
 	PG_RETURN_BOOL(true);
 }
