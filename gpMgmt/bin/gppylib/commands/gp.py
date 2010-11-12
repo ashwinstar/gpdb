@@ -24,7 +24,7 @@ logger = get_default_logger()
 GPHOME=os.environ.get('GPHOME')
 
 #Default timeout for segment start
-SEGMENT_TIMEOUT_DEFAULT=60
+SEGMENT_TIMEOUT_DEFAULT=600
 
 def check_passive_standby(name,dir):
     path = os.path.join(dir, 'postmaster.opts')

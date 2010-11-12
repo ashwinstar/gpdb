@@ -103,7 +103,6 @@ class ReadPostmasterTempFile(Command):
     def __init__(self,name,port,ctxt=LOCAL,remoteHost=None):
         self.port=port
         self.cmdStr="cat /tmp/.s.PGSQL.%s.lock" % port
-        print self.cmdStr
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)        
     
     def validate(self):

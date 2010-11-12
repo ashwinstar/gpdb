@@ -9,7 +9,7 @@
 from gppylib.mainUtils import *
 
 import os, sys
-
+import signal
 import time
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
@@ -105,10 +105,17 @@ class GpStop:
                     if not userinput.ask_yesno(None, "\nContinue with Greenplum instance shutdown", 'N'):
                         raise UserAbortedException()
 
-                self._stop_master()                                
-                self._stop_standby()            
-                self._stop_segments()                                
-                self.cleanup()
+                try:
+                    # Disable Ctrl-C
+                    signal.signal(signal.SIGINT,signal.SIG_IGN)
+
+                    self._stop_master()                                
+                    self._stop_standby()            
+                    self._stop_segments()                                
+                    self.cleanup()
+                finally:
+                    # Reenable Ctrl-C
+                    signal.signal(signal.SIGINT,signal.default_int_handler)
                 
                 if self.restart:                    
                     logger.info("Restarting System...")                    
@@ -197,8 +204,31 @@ class GpStop:
         logger.info("Master segment instance directory=%s" % self.master_datadir)
         
         cmd=gp.MasterStop("stopping master", self.master_datadir, mode=self.mode, timeout=self.timeout)
-        cmd.run(validateAfter=True)
-        
+        try:
+            cmd.run(validateAfter=True)
+        except:
+            # Didn't stop in timeout or pg_ctl failed.  So try kill
+            (succeeded,mypid,file_datadir)=pg.ReadPostmasterTempFile.local("Read master tmp file", self.dburl.pgport).getResults()
+            if succeeded and file_datadir == self.master_datadir:
+                if unix.check_pid(mypid):
+                    logger.info("Failed to shutdown master with pg_ctl.")
+                    logger.info("Sending SIGQUIT signal...")
+                    os.kill(mypid,signal.SIGQUIT)
+                    time.sleep(5)
+                    
+                    # Still not gone... try SIGABRT
+                    if unix.check_pid(mypid):
+                        logger.info("Sending SIGABRT signal...")
+                        os.kill(mypid,signal.SIGABRT)                      
+                        time.sleep(5)
+                    
+                    if not unix.check_pid(mypid):
+                        # Clean up files
+                        lockfile="/tmp/.s.PGSQL.%s" % port    
+                        if os.path.exists(lockfile):
+                            logger.info("Clearing segment instance lock files")        
+                            os.remove(lockfile)
+            
         logger.debug("Successfully shutdown the Master instance in admin mode")
     
     ######
