@@ -605,8 +605,8 @@ sub get_presh2_txt
 ## args: -adler|noadler -btree|-heap|-other|(-ao <filesize> ) filename
 ##
 ## if adler is specified, prints blockno and adler32 for each block,
-## else if noadler, just preprocesses each block according to ao/heap/btree rules
-## and prints it out.
+## else if noadler, just preprocesses each block according to ao/heap/btree 
+## rules and prints it out.
 #
 ##use strict;
 ##use warnings;
@@ -614,21 +614,53 @@ sub get_presh2_txt
 #use POSIX; # for floor
 #my $glob_adler = 0;
 #my $zero_adler = 2147483649; # for case of blank block
+#my $glob_blanksummary; # MPP-11432: check for blanks -- 
+#					   # only valid for adler&&heap
 #
 #sub doprint
 #{
 #	my ($blockno, $buf, $isLastblock) = @_;
 #	
-#	if ($glob_adler)
+#	if (!$glob_adler)
 #	{
-#		my $adlerval = adler32(1, [$buf]);
-#		# NOTE: can ignore the last block if it is empty
-#		print "GP_IGNORE: " if ($isLastblock && ($adlerval == $zero_adler));
-#		print $blockno, ":", $adlerval, "\n";
+#		print $buf;
 #	}
 #	else
 #	{
-#		print $buf;
+#		my $adlerval = adler32(1, [$buf]);
+#		print $blockno, ":", $adlerval, "\n";
+#
+#		# NOTE: can ignore trailing empty blocks at end of file
+#		#
+#		# MPP-11432: look for trailing regions of contiguous blank blocks
+#		if (defined($glob_blanksummary))
+#		{
+#			# if the current summary is NONE (ie no blanks), then set
+#			# to TRAILING when first blank block is found.  If a
+#			# subsequent block is non-blank, then reset the summary to
+#			# ORPHAN.
+#			if ($adlerval == $zero_adler)
+#			{
+#				$glob_blanksummary = "TRAILING"			
+#					if ($glob_blanksummary eq "NONE");
+#
+#				# if NONE, set to TRAILING.  Subsequent checks will
+#				# verify that there is a contiguous region of blank
+#				# blocks until the eof, or reset the status to ORPHAN
+#				# if a non-blank is discovered.
+#				#
+#				# if TRAILING and still blank, that's good - no change.
+#				#
+#				# if ORPHAN and found another blank, don't
+#				# change. That's still bad.
+#			}
+#			else
+#			{
+#				# found non-blank block after blank region - bad!
+#				$glob_blanksummary = "ORPHAN"			
+#					if ($glob_blanksummary eq "TRAILING");
+#			}
+#		}
 #	}
 #	
 #}
@@ -684,6 +716,8 @@ sub get_presh2_txt
 #		# Otherwise, treat (isBtree == 0) as heap block.
 #		$isBtree = ($flag2 =~ m/btree/i);
 #		$isOther = ($flag2 =~ m/other/i);
+#
+#		$glob_blanksummary = "NONE" if ($glob_adler && !$isBtree && !$isOther);
 #	}
 #
 #	my $filnam = shift @ARGV;
@@ -907,6 +941,17 @@ sub get_presh2_txt
 #			$blockno++;
 #
 #		} # end while read whole file
+#		
+#		if (defined($glob_blanksummary))
+#		{
+#			# MPP-11432: Note the presence of trailing contiguous
+#			# blank blocks for the datafile, which is a valid
+#			# difference for an aborted transaction.  However, a blank
+#			# block or region of blank blocks that is followed by a
+#			# non-blank block is an "orphan", which is an error.
+#			print "BLANK_SUMMARY:", $glob_blanksummary, "\n";
+#			print "SIZE_SUMMARY:", $blockno, "\n";
+#		}
 #		
 #		close $fh;
 #	}
@@ -2401,6 +2446,34 @@ sub diff_thrice
 	my $diffi3 = `$glob_diff -I GP_IGNORE -b $primtmp $mirrtmp`;
 
 	{
+		goto L_diff_fini unless (length($diffi3));
+
+		# do a side-by-side diff (minus heap)
+		my $diffi4 = 
+		`$glob_diff -y --suppress -b $primtmp $mirrtmp | grep -v ':heap:' `;
+		
+		# print all non-heap diffs
+		goto L_diff_fini if (length($diffi4));
+
+		# look for heap diffs that aren't trailing blanks (remove
+		# blocks with "zero_adler")
+		$diffi4 = 
+		`$glob_diff -y --suppress -b $primtmp $mirrtmp | grep -v ':2147483649' | grep -v 'SUMMARY:TRAILING' `;
+
+		# print heap diffs that aren't trailing blanks
+		goto L_diff_fini if (length($diffi4));
+
+		# find TRAILING only
+		$diffi4 = 
+		`$glob_diff -y --suppress -b $primtmp $mirrtmp | grep 'SUMMARY:TRAILING' `;
+
+		if (length($diffi4))
+		{
+			print "block by block: suppress differences for trailing blanks in heap datafiles\n";
+			$diffi3 = "";
+		}
+
+	  L_diff_fini:
 		if (length($diffi3))
 		{
 			print "raw diff:\n";
