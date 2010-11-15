@@ -381,6 +381,10 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 				(errmsg("relation \"%s\" page %u is uninitialized --- fixing",
 						relname, blkno)));
 				PageInit(page, BufferGetPageSize(buf), 0);
+				
+				/* must record in xlog so that changetracking will know about this change */
+				log_heap_newpage(onerel, page, blkno);
+
 				empty_pages++;
 				lazy_record_free_space(vacrelstats, blkno,
 									   PageGetFreeSpace(page));

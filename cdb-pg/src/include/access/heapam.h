@@ -273,6 +273,9 @@ extern bool heap_getrelfilenode(
 extern void heap2_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *rptr);
 extern void heap2_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record);
 
+extern void log_heap_newpage(Relation rel, 
+							 Page page,
+							 BlockNumber bno);
 extern XLogRecPtr log_heap_move(Relation reln, Buffer oldbuf,
 			  ItemPointerData from,
 			  Buffer newbuf, HeapTuple newtup);

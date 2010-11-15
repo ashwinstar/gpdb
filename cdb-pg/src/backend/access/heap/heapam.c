@@ -4046,6 +4046,40 @@ heap_restrpos(HeapScanDesc scan)
 }
 
 /*
+ * Perform XLogInsert for a new heap page operation
+ */
+void
+log_heap_newpage(Relation rel, 
+				 Page page,
+				 BlockNumber bno)
+{
+	xl_heap_newpage xlrec;
+	XLogRecPtr recptr;
+	XLogRecData rdata[2];
+
+	START_CRIT_SECTION();
+
+	xl_heapnode_set(&xlrec.heapnode, rel);
+	xlrec.blkno = bno;
+
+	rdata[0].data = (char*) &xlrec;
+	rdata[0].len = SizeOfHeapNewpage;
+	rdata[0].buffer = InvalidBuffer;
+	rdata[0].next = &rdata[1];
+
+	rdata[1].data = (char*) page;
+	rdata[1].len = BLCKSZ;
+	rdata[1].buffer = InvalidBuffer;
+	rdata[1].next = NULL;
+
+	recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_NEWPAGE, rdata);
+	PageSetLSN(page, recptr);
+	PageSetTLI(page, ThisTimeLineID);
+
+	END_CRIT_SECTION();
+}
+
+/*
  * Perform XLogInsert for a heap-clean operation.  Caller must already
  * have modified the buffer and marked it dirty.
  *
