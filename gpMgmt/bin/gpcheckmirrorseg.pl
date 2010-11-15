@@ -187,7 +187,9 @@ relfilenodes, the script proceeds to the final phase: a block-by-block
 diff.  For this phase, the script utilizes the ao and heap
 preprocessing from the "enhanced" diff, but it generates an Adler32
 hash for each block.  The final diff compares the hashes for each
-block, highlighting the exact location where each file differs.
+block, highlighting the exact location where each file differs.  If
+the final diff is only the result of some trailing empty blocks from
+an aborted transaction on a heap table, the diff is suppressed.
 
 =head2 Master Mirror Comparison
 
@@ -950,7 +952,7 @@ sub get_presh2_txt
 #			# block or region of blank blocks that is followed by a
 #			# non-blank block is an "orphan", which is an error.
 #			print "BLANK_SUMMARY:", $glob_blanksummary, "\n";
-#			print "SIZE_SUMMARY:", $blockno, "\n";
+#			#print "SIZE_SUMMARY:", $blockno, "\n";
 #		}
 #		
 #		close $fh;
@@ -2450,7 +2452,7 @@ sub diff_thrice
 
 		# do a side-by-side diff (minus heap)
 		my $diffi4 = 
-		`$glob_diff -y --suppress -b $primtmp $mirrtmp | grep -v ':heap:' `;
+		`$glob_diff  -y --suppress -b $primtmp $mirrtmp | grep -v ':heap:' `;
 		
 		# print all non-heap diffs
 		goto L_diff_fini if (length($diffi4));
