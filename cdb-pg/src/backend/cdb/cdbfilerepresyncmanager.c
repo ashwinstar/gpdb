@@ -626,7 +626,8 @@ FileRepPrimary_StartResyncManager(void)
 	while (1) {
 		
 		if (status != STATUS_OK) {
-			FileRepSubProcess_SetState(FileRepStateFault);
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 		
 		while (FileRepSubProcess_GetState() == FileRepStateFault ||
@@ -676,7 +677,7 @@ FileRepPrimary_StartResyncManager(void)
 				
 				if (isFullResync())
 				{
-					FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
+					FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled, FaultTypeNotInitialized);
 				}
 				else
 				{
@@ -1055,7 +1056,8 @@ FileRepPrimary_RunResyncManager(void)
 								entry.mirrorBufpoolResyncChangedPageCount),
 						errhint("run gprecoverseg -F again to re-establish mirror connectivity")));
 				
-				FileRepSubProcess_SetState(FileRepStateFault);
+				FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+				FileRepSubProcess_ProcessSignals();
 			}
 		}
 		
@@ -1104,7 +1106,7 @@ FileRepPrimary_RunResyncManager(void)
 			/* 
 			 * UnlockRelationForResynchronize() will be issued in FileRepResync_Cleanup().
 			 */
-			FileRep_SetSegmentState(SegmentStateFault);		
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);		
 			if (mirroredLock == TRUE)
 			{
 				LWLockRelease(MirroredLock);
@@ -1214,7 +1216,7 @@ FileRepResyncManager_ResyncFlatFiles(void)
 {
 	int status = STATUS_OK;
 	
-	FileRep_SetSegmentState(SegmentStateInSyncTransition);
+	FileRep_SetSegmentState(SegmentStateInSyncTransition, FaultTypeNotInitialized);
 	
 #ifdef FAULT_INJECTOR	
 	FaultInjector_InjectFaultIfSet(
@@ -1310,8 +1312,10 @@ FileRepResyncManager_ResyncFlatFiles(void)
 		break;
 	}
 
-	if (status != STATUS_OK) {
-		FileRepSubProcess_SetState(FileRepStateFault);
+	if (status != STATUS_OK) 
+	{
+		FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+		FileRepSubProcess_ProcessSignals();
 	}
 	
 	if (segmentState == SegmentStateInSyncTransition &&
@@ -1319,7 +1323,7 @@ FileRepResyncManager_ResyncFlatFiles(void)
 	{
 		FileRep_SetDataState(DataStateInSync, FALSE);
 		
-		FileRep_SetSegmentState(SegmentStateReady);		
+		FileRep_SetSegmentState(SegmentStateReady, FaultTypeNotInitialized);		
 	}
 	
 	return;

@@ -2232,7 +2232,7 @@ ChangeTracking_MarkFullResyncLockAcquired(void)
 	
 	if (dataState == DataStateInChangeTracking)
 	{
-		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
+		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled, FaultTypeNotInitialized);
 	}	
 
 	return 0;
@@ -3032,7 +3032,7 @@ static void ChangeTracking_HandleWriteError(CTFType ft)
 
 	if(ChangeTracking_MarkFullResyncLockAcquired() != -1)
 	{
-		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled);
+		FileRep_SetSegmentState(SegmentStateChangeTrackingDisabled, FaultTypeNotInitialized);
 		
 		ereport(WARNING, 
 				(errcode_for_file_access(),

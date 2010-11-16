@@ -65,8 +65,10 @@ FileRepPrimary_StartResyncWorker(void)
 	
 	while (1) {
 		
-		if (status != STATUS_OK) {
-			FileRepSubProcess_SetState(FileRepStateFault);
+		if (status != STATUS_OK) 
+		{
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 		
 		while (FileRepSubProcess_GetState() != FileRepStateShutdown &&
@@ -566,7 +568,7 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 								 errSendAlert(true),
 								 FileRep_errcontext()));	
 						
-						FileRep_SetSegmentState(SegmentStateFault);						
+						FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);						
 						
 						goto flush_check;
 					}
@@ -673,7 +675,7 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 								 errSendAlert(true),
 								 FileRep_errcontext()));	
 						
-						FileRep_SetSegmentState(SegmentStateFault);						
+						FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);						
 					}
 					
 				}

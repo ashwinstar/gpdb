@@ -2072,7 +2072,7 @@ FileRep_ProcessSignals()
 	if (shutdownRequested)
 	{
 	    SegmentState_e segmentState;
-		getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL);
+		getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL, NULL);
 
 		shutdownRequested = false;
 
@@ -2174,18 +2174,22 @@ FileRep_ProcessSignals()
 								getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
 								if (dataState != DataStateInSync)
 								{
-									FileRep_SetSegmentState(SegmentStateFault);
+									FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
 								}
 								break;
 							case FileRepProcessTypePrimaryRecovery:
 								
 								getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
-								if ((dataState == DataStateInSync ||
-									 dataState == DataStateInChangeTracking) && 
+								if (dataState == DataStateInSync && segmentState == SegmentStateInitialization)
+								{
+									FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+								}	
+								
+								if (dataState == DataStateInChangeTracking && 
 									(segmentState == SegmentStateInitialization || 
 									 segmentState == SegmentStateInChangeTrackingTransition))
 								{
-									FileRep_SetSegmentState(SegmentStateFault);
+									FileRep_SetPostmasterReset();
 								}	
 								
 								break;
@@ -2209,7 +2213,7 @@ FileRep_ProcessSignals()
 						segmentState != SegmentStateImmediateShutdown &&
 						segmentState != SegmentStateShutdownFilerepBackends)
 					{
-						FileRep_SetSegmentState(SegmentStateFault);
+						FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
 					}
 					FileRepSubProcList[i].pid = 0;
 					break;
@@ -2328,7 +2332,7 @@ FileRep_SetDataState(DataState_e dataState, bool signalPostmaster)
 }
 
 void 
-FileRep_SetSegmentState(SegmentState_e segmentState)
+FileRep_SetSegmentState(SegmentState_e segmentState, FaultType_e faultType)
 {	
 	/* 
 	 * Track mirror loss. That is required since segment state 
@@ -2339,7 +2343,7 @@ FileRep_SetSegmentState(SegmentState_e segmentState)
 		fileRepShmemArray[0]->state = FileRepStateFault;
 	}
 	
-	if (updateSegmentState(segmentState)) {
+	if (updateSegmentState(segmentState, faultType)) {
 		SendPostmasterSignal(PMSIGNAL_FILEREP_STATE_CHANGE);
 	}
 
@@ -2454,7 +2458,7 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
 
 	switch (fileRepState) {
 		case FileRepStateReady:
-			FileRep_SetSegmentState(SegmentStateReady);
+			FileRep_SetSegmentState(SegmentStateReady, FaultTypeNotInitialized);
 			break;
 			
 		case FileRepStateFault:
@@ -2464,7 +2468,7 @@ FileRep_SetState(FileRepState_e fileRepStateLocal)
 			   return FALSE if state was already set to FAULT
 			   change signal to PMSIGNAL_FILEREP_SEGMENT_STATE_CHANGE
 			 */
-			FileRep_SetSegmentState(SegmentStateFault);
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
 			break;
 			
 		case FileRepStateInitialization:

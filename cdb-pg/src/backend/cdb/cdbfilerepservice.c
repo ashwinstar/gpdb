@@ -178,7 +178,7 @@ bool
 FileRepSubProcess_ProcessSignals()
 {
 	bool processExit = false;
-
+		
 	if (reloadConfigFile) 
 	{
 		reloadConfigFile = false;
@@ -190,7 +190,7 @@ FileRepSubProcess_ProcessSignals()
 	if (shutdownRequested) 
 	{
 	    SegmentState_e segmentState;
-		getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL);
+		getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL, NULL);
 
 		shutdownRequested = false;
 
@@ -515,7 +515,7 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
     /* now update in shared memory if needed */
 	switch (fileRepState) {
 		case FileRepStateReady:
-			FileRep_SetSegmentState(SegmentStateReady);
+			FileRep_SetSegmentState(SegmentStateReady, FaultTypeNotInitialized);
 			break;
 			
 		case FileRepStateFault:
@@ -524,10 +524,10 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
 			 return TRUE if state was updated;
 			 return FALSE if state was already set to FAULT
 			 change signal to PMSIGNAL_FILEREP_SEGMENT_STATE_CHANGE
-			 */
-			FileRep_SetSegmentState(SegmentStateFault);
+			 */			
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
 			break;
-		
+			
 		case FileRepStateInitialization:
 		case FileRepStateShutdown:
 		case FileRepStateNotInitialized:
@@ -770,7 +770,7 @@ FileRepSubProcess_Main()
 	stateChangeRequestCounter++;
 	
 	FileRepSubProcess_ProcessSignals();
-	
+
 	switch (fileRepProcessType) 
 	{
 		case FileRepProcessTypePrimarySender:

@@ -788,7 +788,7 @@ signal_filerep_to_shutdown(SegmentState_e shutdownState)
 	        filerep_has_signaled_backends_shutdown = false;
         }
 
-		updateSegmentState(shutdownState);
+		updateSegmentState(shutdownState, FaultTypeNotInitialized);
         NotifyProcessesOfFilerepStateChange(); /* so that interested backends learn of it as well */
 
 		if ( shutdownState == SegmentStateImmediateShutdown)
@@ -2625,6 +2625,8 @@ retry1:
 					 errmsg("the database system is shutting down")));
 			break;
 		case CAC_RECOVERY:
+			updateSegmentState(SegmentStateFault, FaultTypeDB);
+
 			ereport(FATAL,
 					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
 					 errSendAlert(true),
@@ -2811,8 +2813,9 @@ processTransitionRequest_getMirrorStatus(void)
 	PrimaryMirrorMode pm_mode;
 	SegmentState_e s_state;
 	DataState_e d_state;
+	FaultType_e f_type;
 
-	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state);
+	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state, &f_type);
 
 	int64 resyncNumCompleted = FileRepResync_GetBlocksSynchronized();
 	int64 resyncTotalToComplete = FileRepResync_GetTotalBlocksToSynchronize();
@@ -2861,6 +2864,7 @@ processTransitionRequest_getMirrorStatus(void)
 	snprintf(statusBuf, sizeof(statusBuf), "Success: mode:%s\n"
 							  "segmentState:%s\n"
 							  "dataState:%s\n"
+							  "faultType:%s\n"
 							  "databaseStatus:%s\n"
 							  "postmasterState:%s\n"
 							  "isFullResync:%d\n"
@@ -2868,7 +2872,10 @@ processTransitionRequest_getMirrorStatus(void)
 							  "resyncTotalToComplete:" INT64_FORMAT "\n"
 							  "changeTrackingBytesUsed:" INT64_FORMAT "\n"
 							  "estimatedCompletionTimeSecondsSinceEpoch:" INT64_FORMAT "\n",
-			 getMirrorModeLabel(pm_mode), getSegmentStateLabel(s_state), getDataStateLabel(d_state),
+			 getMirrorModeLabel(pm_mode), 
+			 getSegmentStateLabel(s_state), 
+			 getDataStateLabel(d_state),
+			 getFaultTypeLabel(f_type),
 			 databaseStatus,
 			 gPmStateLabels[pmState],
 			 isFullResync() ? 1 : 0,
@@ -3246,7 +3253,7 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 }
 
 static void
-sendPrimaryMirrorTransitionQuery(uint32 mode, uint32 segstate, uint32 datastate)
+sendPrimaryMirrorTransitionQuery(uint32 mode, uint32 segstate, uint32 datastate, uint32 faulttype)
 {
 	StringInfoData buf;
 
@@ -3257,6 +3264,7 @@ sendPrimaryMirrorTransitionQuery(uint32 mode, uint32 segstate, uint32 datastate)
 	pq_sendint(&buf, mode, 4);
 	pq_sendint(&buf, segstate, 4);
 	pq_sendint(&buf, datastate, 4);
+	pq_sendint(&buf, faulttype, 4);
 
 	pq_endmessage(&buf);
 	pq_flush();
@@ -3277,6 +3285,7 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
 	PrimaryMirrorMode pm_mode;
 	SegmentState_e s_state;
 	DataState_e d_state;
+	FaultType_e f_type;
 
 	init_ps_display("filerep status query process", "", "", "");
 
@@ -3288,8 +3297,8 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
 		return;
 	}
 
-	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state);
-	sendPrimaryMirrorTransitionQuery((uint32)pm_mode, (uint32)s_state, (uint32)d_state);
+	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state, &f_type);
+	sendPrimaryMirrorTransitionQuery((uint32)pm_mode, (uint32)s_state, (uint32)d_state, (uint32)f_type);
 	return;
 }
 
@@ -3380,7 +3389,7 @@ canAcceptConnections(void)
          */
         {
             PrimaryMirrorMode mirrorMode;
-            getPrimaryMirrorStatusCodes(&mirrorMode, NULL, NULL);
+            getPrimaryMirrorStatusCodes(&mirrorMode, NULL, NULL, NULL);
 
             if ( mirrorMode == PMModeQuiescentSegment ||
                  mirrorMode == PMModeMirrorSegment)
@@ -4335,7 +4344,7 @@ static void do_reaper()
 			if (Shutdown == NoShutdown)
 			{
 				/* filerep died, we mark a fault */
-				updateSegmentState(SegmentStateFault);
+				updateSegmentState(SegmentStateFault, FaultTypeMirror);
 			}
 
             /* PostmasterStateMachine logic does the rest */

@@ -563,7 +563,7 @@ bool PersistentFilespace_TryGetPrimaryAndMirrorUnderLock(
 		 */
 		PrimaryMirrorMode mode;
 
-		getPrimaryMirrorStatusCodes(&mode, NULL, NULL);
+		getPrimaryMirrorStatusCodes(&mode, NULL, NULL, NULL);
 		
 		if (mode == PMModeMaster)
 		{

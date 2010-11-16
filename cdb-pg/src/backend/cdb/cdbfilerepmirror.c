@@ -151,9 +151,10 @@ FileRepMirror_StartReceiver(void)
 				(errmsg("mirror failure, "
 						"injected fault by guc filerep_inject_listener_fault, "
 						"failover requested"), 
-				 FileRep_errcontext()));												
-
-		FileRepSubProcess_SetState(FileRepStateFault);
+				 FileRep_errcontext()));	
+		
+		FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+		FileRepSubProcess_ProcessSignals();
 		return;
 	}
 	
@@ -166,8 +167,10 @@ FileRepMirror_StartReceiver(void)
 	
 	while (1) {
 		
-		if (status != STATUS_OK) {
-			FileRepSubProcess_SetState(FileRepStateFault);
+		if (status != STATUS_OK) 
+		{
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 		
 		while (FileRepSubProcess_GetState() == FileRepStateFault) {
@@ -538,8 +541,10 @@ FileRepMirror_StartConsumer(void)
 	
 	while (1) {
 		
-		if (status != STATUS_OK) {
-			FileRepSubProcess_SetState(FileRepStateFault);
+		if (status != STATUS_OK) 
+		{
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeIO);
+			FileRepSubProcess_ProcessSignals();
 		}
 		
 		while (FileRepSubProcess_GetState() == FileRepStateInitialization ||
@@ -721,8 +726,10 @@ FileRepMirror_RunConsumer(void)
 								   fileRepMessageHeader->fileRepOperation,
 								   fileRepMessageHeader->messageCount),
 				 FileRep_errdetail_Shmem(),
-				 FileRep_errcontext()));		
+				 FileRep_errcontext()));	
 			
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+
 			break;
 		}
 		
@@ -757,6 +764,9 @@ FileRepMirror_RunConsumer(void)
 						FileRep_errcontext()));		
 				
 				status = STATUS_ERROR;
+				
+				FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+
 				break;
 			}	
 		}
@@ -2022,7 +2032,7 @@ FileRepMirror_RunConsumer(void)
 				
 				FileRep_SetDataState(DataStateInSync, TRUE);
 				
-				FileRep_SetSegmentState(SegmentStateReady);							
+				FileRep_SetSegmentState(SegmentStateReady, FaultTypeNotInitialized);							
 				break;
 				
 			case FileRepOperationHeartBeat:
@@ -2067,7 +2077,9 @@ FileRepMirror_RunConsumer(void)
 										   fileRepMessageHeader->fileRepOperation,
 										   fileRepMessageHeader->messageCount),
 						 FileRep_errdetail_ShmemAck(),
-						 FileRep_errcontext()));					
+						 FileRep_errcontext()));	
+				
+				FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
 			}
 		}		
 				

@@ -144,6 +144,7 @@ typedef struct PMModuleState
 	volatile PrimaryMirrorMode mode;
 	volatile SegmentState_e segmentState;
 	volatile DataState_e dataState;
+	volatile FaultType_e faultType;
 
 	/* changeTrackingSessionId starts at zero and is incremented each time the system enters change tracking */
 	volatile int64 changeTrackingSessionId;
@@ -331,6 +332,28 @@ getSegmentStateLabel(SegmentState_e state)
 }
 
 /**
+ * Note that the label is externally visible (through a getStatus call to the postmaster, for example)
+ *
+ * note also that some python code (as used by gpstate) may use these label values, so when changing them
+ *  be sure to search the management scripts code.
+ */
+const char *
+getFaultTypeLabel(FaultType_e faultType)
+{
+	static const char *labels[] =
+	{
+		"NotInitialized", 
+		"FaultIO", 
+		"FaultDB", 
+		"FaultMirror", 
+		"FaultPostmasterReset"
+	};
+	COMPILE_ASSERT(ARRAY_SIZE(labels) == FaultType__EnumerationCount);
+	
+	return labels[faultType];
+}
+
+/**
  * Get the label for a transition result.  Returns a pointer to static memory.
  *
  * Note that scripts use these values in strings that may be parsed, so please keep
@@ -471,7 +494,10 @@ copyHostData(char **addressOut, int *portOut, char *address, int port)
 }
 
 void
-getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode, SegmentState_e *s_state, DataState_e *d_state)
+getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode, 
+							SegmentState_e *s_state, 
+							DataState_e *d_state, 
+							FaultType_e *f_type)
 {
 	acquireModuleSpinLockAndMaybeStartCriticalSection(false);
 	{
@@ -483,6 +509,9 @@ getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode, SegmentState_e *s_state,
 
         if (d_state)
             *d_state = pmModuleState->dataState;
+		
+		if (f_type)
+			*f_type = pmModuleState->faultType;
 	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 }
@@ -493,13 +522,14 @@ getPrimaryMirrorModeStatus(char *bufOut, int bufSize)
 	PrimaryMirrorMode pm_mode;
 	SegmentState_e s_state;
 	DataState_e d_state;
-
+	FaultType_e f_type;
+	
 	assertModuleInitialized();
 
-	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state);
+	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state, &f_type);
 
-	snprintf(bufOut, bufSize, "mode: %s\n""segmentState: %s\n""dataState: %s",
-			 getMirrorModeLabel(pm_mode), getSegmentStateLabel(s_state), getDataStateLabel(d_state));
+	snprintf(bufOut, bufSize, "mode: %s\n""segmentState: %s\n""dataState: %s\n""faultType: %s",
+			 getMirrorModeLabel(pm_mode), getSegmentStateLabel(s_state), getDataStateLabel(d_state), getFaultTypeLabel(f_type));
 }
 
 /**
@@ -796,6 +826,7 @@ primaryMirrorModeShmemInit(void)
 	pmModuleState->mode = PMModeUninitialized;
 	pmModuleState->segmentState = SegmentStateNotInitialized;
 	pmModuleState->dataState = DataStateNotInitialized;
+	pmModuleState->faultType = FaultTypeNotInitialized;
 	pmModuleState->changeTrackingSessionId = 0;
 	pmModuleState->isDatabaseRunning = false;
 	pmModuleState->isTransitionListenerFinished = true;
@@ -1196,7 +1227,7 @@ updateDataState(DataState_e dataState)
 	}
 
 bool
-updateSegmentState(SegmentState_e segmentState)
+updateSegmentState(SegmentState_e segmentState, FaultType_e faultType)
 {
 	bool isUpdated = FALSE;
 
@@ -1243,6 +1274,14 @@ updateSegmentState(SegmentState_e segmentState)
 		if (isUpdated)
 		{
 			pmModuleState->segmentState = segmentState;
+			
+			if (segmentState == SegmentStateFault)
+			{
+				if (pmModuleState->faultType == FaultTypeNotInitialized)
+				{
+					pmModuleState->faultType = faultType;
+				}
+			}
 		}
 	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
@@ -1301,6 +1340,11 @@ copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, Segmen
 		pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = false;
 
 		pmModuleState->forceFullResync = args->forceFullResync;
+		
+		if (segmentState != SegmentStateFault)
+		{
+			pmModuleState->faultType = FaultTypeNotInitialized;
+		}
 
         /* we've reached the point of no-return, so update this */
         pmModuleState->mode = args->mode;		
@@ -1392,13 +1436,13 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 
 		copyTransitionParametersToLocalMemoryIfNeeded(&requestedTransition);
 		copyTransitionInputParameters(&requestedTransition, SegmentStateInitialization);
-
+		
 		/**
 		 * must be after copying the transition input parameters
 		 */
 		pmModuleState->isInFaultFromPostmasterReset = true;
         
-		if (updateSegmentState(SegmentStateFault))
+		if (updateSegmentState(SegmentStateFault, FaultTypePostmasterReset))
 		{
 			NotifyProcessesOfFilerepStateChange();
 		}
@@ -1596,14 +1640,14 @@ stepWaitForFilerepStartup(TransitionState nextState, TransitionState *stateInOut
 {
 	SegmentState_e segmentState;
 
-	getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL);
-
+	getPrimaryMirrorStatusCodes(NULL, &segmentState, NULL, NULL);
+	
 	if (!IsFilerepProcessRunning() ||
 		segmentState == SegmentStateFault)
 	{
 		elog(getPrimaryMirrorModeDebugLogLevel(false),
 			 "PostmasterPrimaryMirrorTransition: filerep startup: transition error");
-		if (updateSegmentState(SegmentStateFault))
+		if (updateSegmentState(SegmentStateFault, FaultTypeMirror))
 			NotifyProcessesOfFilerepStateChange();
 		strlcpy(extraResultInfoOut, RESULT_INFO_MIRRORING_FAILURE, MAX_TRANSITION_RESULT_EXTRA_INFO);
 		return PMTransitionError;
@@ -1817,7 +1861,6 @@ applyStepForTransitionToPrimarySegmentMode(PrimaryMirrorModeTransitionArguments 
 				{
 					segState = SegmentStateInitialization;
 				}
-
 				copyTransitionInputParameters(args, segState);
 				return stepDoFilerepStartup(TSAwaitingFilerepStartup, stateInOut);
 			}

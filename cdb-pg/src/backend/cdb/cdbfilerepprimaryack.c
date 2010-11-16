@@ -144,7 +144,8 @@ FileRepAckPrimary_StartReceiver(void)
 						"failover requested"), 
 				 FileRep_errcontext()));												
 		
-		FileRepSubProcess_SetState(FileRepStateFault);
+		FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+		FileRepSubProcess_ProcessSignals();
 		return;
 	}
 	
@@ -154,8 +155,10 @@ FileRepAckPrimary_StartReceiver(void)
 	
 	while (1) {
 		
-		if (status != STATUS_OK) {
-			FileRepSubProcess_SetState(FileRepStateFault);
+		if (status != STATUS_OK) 
+		{
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 		
 		while (FileRepSubProcess_GetState() == FileRepStateFault) {
@@ -885,8 +888,10 @@ FileRepAckPrimary_StartConsumer(void)
 		
 	while (1) {
 		
-		if (status != STATUS_OK) {
-			FileRepSubProcess_SetState(FileRepStateFault);
+		if (status != STATUS_OK) 
+		{
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 		
 		while (FileRepSubProcess_GetState() == FileRepStateFault ||
@@ -1114,8 +1119,9 @@ FileRepAckPrimary_RunConsumer(void)
 			/* 
 			 * FAULT has to be set before entry is updated in ack hash table
 			 * in order to suspend backend process.
-			 */						
-			FileRepSubProcess_SetState(FileRepStateFault);
+			 */	
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 				
 		if (FileRepAckPrimary_UpdateHashEntry(

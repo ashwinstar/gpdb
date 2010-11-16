@@ -436,7 +436,37 @@ FaultInjector_InjectFaultIfSet(
 			pg_usleep(entryLocal->sleepTime * 1000000L);
 			break;
 		case FaultInjectorTypeFault:
-			FileRepSubProcess_SetState(FileRepStateFault);
+			
+			switch (entryLocal->faultInjectorIdentifier)
+			{	
+				case FileRepConsumer:
+				case FileRepSender:
+				case FileRepReceiver:
+				case FileRepResync:
+				case FileRepResyncInProgress:
+				case FileRepResyncWorker:
+				case FileRepResyncWorkerRead:
+				case FileRepTransitionToInResyncMirrorReCreate:
+				case FileRepTransitionToInResyncMarkReCreated:
+				case FileRepTransitionToInResyncMarkCompleted:
+				case FileRepTransitionToInSyncBegin:
+				case FileRepTransitionToInSync:
+				case FileRepTransitionToInSyncMarkCompleted:
+				case FileRepTransitionToInSyncBeforeCheckpoint:	
+			
+					FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+					break;
+					
+				case FileRepTransitionToChangeTracking:
+					
+					FileRep_SetSegmentState(SegmentStateFault, FaultTypePostmasterReset);
+					break;
+										
+				default:
+					
+					FileRep_SetSegmentState(SegmentStateFault, FaultTypeIO);
+					break;
+			}
 			ereport(LOG, 
 					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],

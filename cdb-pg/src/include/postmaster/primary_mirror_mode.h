@@ -123,6 +123,27 @@ typedef enum FileRepRole_e {
 	FileRepRole_e_Count
 } FileRepRole_e;
 
+typedef enum FaultType_e {
+    FaultTypeNotInitialized=0,
+		/* Fault type has not been set */
+	
+    FaultTypeIO,
+		/* IO related Fault   */
+	
+    FaultTypeDB,
+		/* Database related Fault */
+	
+	FaultTypeMirror,
+		/* Network, filerep related Fault between primary and mirror, failover can happen to primary */
+	
+	FaultTypePostmasterReset,
+		/* postmaster reset restart of primary/mirror segment pair */
+		
+    /* The number of elements in this enumeration */
+	FaultType__EnumerationCount
+	
+} FaultType_e;
+
 /**
  * Note: if the order or # of values is changed then update the labels in primary_mirror_mode.c
  */
@@ -264,7 +285,7 @@ extern void setFullResync(bool isFullResync);
 
 extern bool isDatabaseRunning(void);
 
-extern bool updateSegmentState(SegmentState_e segmentState);
+extern bool updateSegmentState(SegmentState_e segmentState, FaultType_e faultType);
 
 extern bool updateDataState(DataState_e dataState);
 
@@ -280,11 +301,15 @@ extern bool primaryMirrorIsIOSuspended(void);
 
 extern const char * getTransitionResultLabel(PrimaryMirrorModeTransitionResult res);
 extern void getPrimaryMirrorModeStatus( char *bufOut, int bufSize);
-extern void getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode, SegmentState_e *s_state, DataState_e *d_state);
+extern void getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode, 
+										SegmentState_e *s_state, 
+										DataState_e *d_state, 
+										FaultType_e *f_type);
 
 extern const char *getDataStateLabel(DataState_e state);
 extern const char *getMirrorModeLabel(PrimaryMirrorMode mode);
 extern const char *getSegmentStateLabel(SegmentState_e state);
+extern const char *getFaultTypeLabel(FaultType_e faultType);
 
 /* transitioning */
 extern PrimaryMirrorModeTransitionResult requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,

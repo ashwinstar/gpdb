@@ -361,8 +361,9 @@ FileRepPrimary_ConstructAndInsertMessage(
 									   FILEREP_UNDEFINED),
 					 FileRep_errdetail_Shmem(),
 					 FileRep_errcontext()));	
-			
-			FileRep_SetSegmentState(SegmentStateFault);
+	
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 		
 		FileRepPrimary_IsMirroringRequired(
@@ -405,7 +406,8 @@ FileRepPrimary_ConstructAndInsertMessage(
 					 FileRep_errdetail_Shmem(),
 					 FileRep_errcontext()));	
 
-			FileRep_SetSegmentState(SegmentStateFault);
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 		
 		FileRepPrimary_IsMirroringRequired(
@@ -832,7 +834,8 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 							 FileRep_errdetail_Shmem(),
 							 FileRep_errcontext()));	
 				
-					FileRep_SetSegmentState(SegmentStateFault);
+					FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+					FileRepSubProcess_ProcessSignals();
 				}
 				
 				FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationWrite);
@@ -1109,7 +1112,8 @@ FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
 									   FILEREP_UNDEFINED),
 					 FileRep_errcontext()));	
 			
-			FileRep_SetSegmentState(SegmentStateFault);
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 	}
 	
@@ -1175,7 +1179,8 @@ FileRepPrimary_MirrorShutdown(void)
 						 FileRep_errdetail_ShmemAck(),
 						 FileRep_errcontext()));	
 			
-			FileRep_SetSegmentState(SegmentStateFault);
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 	}
 	
@@ -1226,7 +1231,8 @@ FileRepPrimary_MirrorInSyncTransition(void)
 					 FileRep_errdetail_ShmemAck(),
 					 FileRep_errcontext()));	
 			
-			FileRep_SetSegmentState(SegmentStateFault);
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 		
 	}
@@ -1281,7 +1287,8 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 						 FileRep_errdetail_ShmemAck(),
 						 FileRep_errcontext()));	
 						
-			FileRep_SetSegmentState(SegmentStateFault);
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}		
 	}
 	
@@ -1323,7 +1330,8 @@ FileRepPrimary_IsOperationCompleted(
 							 FileRep_errdetail_ShmemAck(),
 							 FileRep_errcontext()));	
 			
-					FileRep_SetSegmentState(SegmentStateFault);
+					FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+					FileRepSubProcess_ProcessSignals();
 				}
 				
 				FileRepPrimary_IsMirroringRequired(fileRepRelationType,
@@ -1390,8 +1398,10 @@ FileRepPrimary_StartSender(void)
 	
 	while (1) {
 		
-		if (status != STATUS_OK) {
-			FileRepSubProcess_SetState(FileRepStateFault);
+		if (status != STATUS_OK) 
+		{
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 		
 		while (FileRepSubProcess_GetState() == FileRepStateFault) {

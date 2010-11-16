@@ -864,6 +864,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 					PrimaryMirrorMode pm_mode;
 					SegmentState_e s_state;
 					DataState_e d_state;
+					FaultType_e f_type;
 					uint32 msg_int;
 
 					offset += n;
@@ -878,7 +879,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 					}
 
 					memcpy(&msg_int, buf, 4);
-					if (ntohl(msg_int) != 16)
+					if (ntohl(msg_int) != 20)
 					{
 						write_log("Probe protocol violation got length %d", ntohl(msg_int));
 						ret = 0;
@@ -900,16 +901,27 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 					if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 						write_log("third message int %d", ntohl(msg_int));
 					d_state = (DataState_e)ntohl(msg_int);
+					
+					memcpy(&msg_int, buf+16, 4);
+					if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+						write_log("fourth message int %d", ntohl(msg_int));
+					f_type = (FaultType_e)ntohl(msg_int);					
 
 					if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-						write_log("Probe result %s %s %s", getMirrorModeLabel(pm_mode),
-								  getSegmentStateLabel(s_state), getDataStateLabel(d_state));
+						write_log("Probe result %s %s %s %s", 
+								  getMirrorModeLabel(pm_mode),
+								  getSegmentStateLabel(s_state), 
+								  getDataStateLabel(d_state),
+								  getFaultTypeLabel(f_type));
 
 					ret = PROBE_ALIVE;
 
 					if (s_state == SegmentStateFault)
-					{
-						write_log("Segment with dbid %d content %d reported a fault to the prober", dbInfo->dbid, dbInfo->segindex);
+					{						
+						write_log("Segment with dbid %d content %d reported a fault %s to the prober", 
+								  dbInfo->dbid, 
+								  dbInfo->segindex,
+								  getFaultTypeLabel(f_type));
 
 						/* This means that the segment needs to know something from the prober. */
 						ret |= PROBE_FAULT;

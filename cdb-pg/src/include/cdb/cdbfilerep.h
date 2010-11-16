@@ -904,7 +904,7 @@ extern void FileRep_SetDataState(
  * change segment state and inform postmaster in order to signal
  * all segment processes
  */
-extern void FileRep_SetSegmentState(SegmentState_e segmentState);
+extern void FileRep_SetSegmentState(SegmentState_e segmentState, FaultType_e faultType);
 
 extern void FileRep_SetPostmasterReset(void);
 /*

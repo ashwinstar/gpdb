@@ -81,8 +81,10 @@ FileRepPrimary_StartRecoveryInSync(void)
 	
 	while (1) {
 		
-		if (status != STATUS_OK) {
-			FileRepSubProcess_SetState(FileRepStateFault);
+		if (status != STATUS_OK) 
+		{
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
 		}
 		
 		while (FileRepSubProcess_GetState() == FileRepStateFault ||

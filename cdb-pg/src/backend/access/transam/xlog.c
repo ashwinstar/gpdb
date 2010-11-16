@@ -5190,7 +5190,7 @@ XLogInChangeTrackingTransition(void)
 		elog(Persistent_DebugPrintLevel(), 
 			 "XLogInChangeTrackingTransition: SegmentStateInChangeTrackingTransition...");
 
-	FileRep_SetSegmentState(SegmentStateInChangeTrackingTransition);
+	FileRep_SetSegmentState(SegmentStateInChangeTrackingTransition, FaultTypeNotInitialized);
 		
 	XLogFileRepFlushCache(&lastChangeTrackingEndLoc);
 		
@@ -7382,8 +7382,12 @@ XLogGetRecoveryStart(char *callerStr, char *reasonStr, XLogRecPtr *redoCheckPoin
 						    XLogLocationToString2(&EndRecPtr))));
 		}
 		else
+		{
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeDB);
+			
 			ereport(ERROR,
 				 (errmsg("%s: could not locate a valid checkpoint record", callerStr)));
+		}
 	}
 
 	memcpy(&checkPoint, XLogRecGetData(record), sizeof(CheckPoint));
@@ -7405,6 +7409,8 @@ XLogGetRecoveryStart(char *callerStr, char *reasonStr, XLogRecPtr *redoCheckPoin
 	}
  	else if (XLByteLT(checkPointLoc, checkPoint.redo))
 	{
+		FileRep_SetSegmentState(SegmentStateFault, FaultTypeDB);
+
 		ereport(ERROR,
 				(errmsg("%s: invalid redo in checkpoint record", callerStr)));
 	}
@@ -7415,6 +7421,8 @@ XLogGetRecoveryStart(char *callerStr, char *reasonStr, XLogRecPtr *redoCheckPoin
 		record = ReadRecord(&checkPoint.redo, LOG);
 		if (record == NULL)
 		{
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeDB);
+
 			ereport(ERROR,
 			 (errmsg("%s: first redo record before checkpoint not found at %s",
 					 callerStr, XLogLocationToString(&checkPoint.redo))));
@@ -10139,9 +10147,12 @@ int XLogGetEof(XLogRecPtr *eofRecPtr)
 	CloseReadRecord();
 		
 	record = ReadRecord(&startLoc, DEBUG1);
-	if (record == NULL)	{
-			elog(ERROR," couldn't read start location %s",
-				 XLogLocationToString(&startLoc));
+	if (record == NULL)	
+	{
+		FileRep_SetSegmentState(SegmentStateFault, FaultTypeDB);
+
+		elog(WARNING," couldn't read start location %s",
+			 XLogLocationToString(&startLoc));
 		status = STATUS_ERROR;
 	}
 		
@@ -10214,7 +10225,10 @@ int XLogReconcileEofInternal(
 		}
 				
 		status = XLogFillZero(logId, seg, startOffset, endOffset);
-		if (status != STATUS_OK) {
+		if (status != STATUS_OK) 
+		{
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeIO);
+
 			break;
 		}
 		
@@ -10392,6 +10406,10 @@ XLogReconcileEofPrimary(void)
 	if (XLByteLT(primaryEof, mirrorEof)) 
 	{
 		FileRep_InsertConfigLogEntry("primary is behind, xlog was truncated on mirror");
+		
+		status = MirrorFlatFile(
+								XLOGDIR,
+								simpleFileName);		
 		return STATUS_OK;
 	}
 	
@@ -10400,7 +10418,6 @@ XLogReconcileEofPrimary(void)
 	status = MirrorFlatFile(
 							XLOGDIR,
 							simpleFileName);
-		
 	return status;
 }
 
