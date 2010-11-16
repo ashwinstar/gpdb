@@ -5,8 +5,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: psql-tr\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@postgresql.org\n"
-"POT-Creation-Date: 2009-08-15 21:09+0000\n"
-"PO-Revision-Date: 2009-08-17 01:29+0200\n"
+"POT-Creation-Date: 2009-06-11 05:09+0000\n"
+"PO-Revision-Date: 2009-06-11 10:57+0200\n"
 "Last-Translator: Devrim GÜNDÜZ <devrim@gunduz.org>\n"
 "Language-Team: Turkish <ceviri@postgresql.org.tr>\n"
 "MIME-Version: 1.0\n"
@@ -51,170 +51,170 @@ msgstr "\\%s: \"%s\" dizinine geçiş yapılamamıştır: %s\n"
 msgid "Time: %.3f ms\n"
 msgstr "Süre: %.3f milisaniye\n"
 
-#: command.c:469
-#: command.c:497
-#: command.c:1037
+#: command.c:468
+#: command.c:496
+#: command.c:1035
 msgid "no query buffer\n"
 msgstr "sorgu tamponu mevcut değil\n"
 
-#: command.c:539
+#: command.c:538
 msgid "No changes"
 msgstr "Değişiklik yok"
 
-#: command.c:593
+#: command.c:592
 #, c-format
 msgid "%s: invalid encoding name or conversion procedure not found\n"
 msgstr "%s: dil kodlama adı geçersiz ya da dönüştürme fonksiyonu bulunamadı\n"
 
-#: command.c:661
-#: command.c:695
-#: command.c:709
-#: command.c:726
-#: command.c:830
-#: command.c:880
-#: command.c:1017
-#: command.c:1048
+#: command.c:660
+#: command.c:694
+#: command.c:708
+#: command.c:725
+#: command.c:829
+#: command.c:879
+#: command.c:1015
+#: command.c:1046
 #, c-format
 msgid "\\%s: missing required argument\n"
 msgstr "\\%s: zorunlu argüman eksik\n"
 
-#: command.c:758
+#: command.c:757
 msgid "Query buffer is empty."
 msgstr "Sorgu tamponu boş."
 
-#: command.c:768
+#: command.c:767
 msgid "Enter new password: "
 msgstr "Yeni şifre girin:"
 
-#: command.c:769
+#: command.c:768
 msgid "Enter it again: "
 msgstr "Yıneden girin:"
 
-#: command.c:773
+#: command.c:772
 #, c-format
 msgid "Passwords didn't match.\n"
 msgstr "Şifreler uyuşmıyor.\n"
 
-#: command.c:791
+#: command.c:790
 #, c-format
 msgid "Password encryption failed.\n"
 msgstr "Parola şifrleme hatası.\n"
 
-#: command.c:859
-#: command.c:960
-#: command.c:1022
+#: command.c:858
+#: command.c:959
+#: command.c:1020
 #, c-format
 msgid "\\%s: error\n"
 msgstr "\\%s: hata\n"
 
-#: command.c:900
+#: command.c:899
 msgid "Query buffer reset (cleared)."
 msgstr "Sorgu tamponu sıfırlanmış."
 
-#: command.c:913
+#: command.c:912
 #, c-format
 msgid "Wrote history to file \"%s/%s\".\n"
 msgstr "Geçmiş, \"%s/%s\" dosyasına yazılmış.\n"
 
-#: command.c:951
+#: command.c:950
 #: common.c:52
 #: common.c:66
 #: input.c:198
-#: mainloop.c:70
-#: mainloop.c:228
+#: mainloop.c:69
+#: mainloop.c:227
 #: print.c:61
 #: print.c:75
 #, c-format
 msgid "out of memory\n"
 msgstr "yetersiz bellek\n"
 
-#: command.c:1002
+#: command.c:1000
 msgid "Timing is on."
 msgstr "Zamanlama açık."
 
-#: command.c:1004
+#: command.c:1002
 msgid "Timing is off."
 msgstr "Zamanlama kapalı."
 
-#: command.c:1065
-#: command.c:1085
-#: command.c:1584
-#: command.c:1591
-#: command.c:1600
-#: command.c:1610
-#: command.c:1619
-#: command.c:1633
-#: command.c:1650
-#: command.c:1683
+#: command.c:1063
+#: command.c:1083
+#: command.c:1581
+#: command.c:1588
+#: command.c:1597
+#: command.c:1607
+#: command.c:1616
+#: command.c:1630
+#: command.c:1647
+#: command.c:1680
 #: common.c:137
 #: copy.c:517
-#: copy.c:584
+#: copy.c:581
 #, c-format
 msgid "%s: %s\n"
 msgstr "%s: %s\n"
 
-#: command.c:1167
+#: command.c:1165
 #: startup.c:159
 msgid "Password: "
 msgstr "Şifre: "
 
-#: command.c:1174
+#: command.c:1172
 #: startup.c:162
 #: startup.c:164
 #, c-format
 msgid "Password for user %s: "
 msgstr "%s kulalnıcısının şifresi: "
 
-#: command.c:1270
-#: command.c:2113
+#: command.c:1268
+#: command.c:2110
 #: common.c:183
 #: common.c:460
 #: common.c:525
 #: common.c:811
 #: common.c:836
 #: common.c:920
-#: copy.c:655
-#: copy.c:700
-#: copy.c:829
+#: copy.c:652
+#: copy.c:697
+#: copy.c:826
 #, c-format
 msgid "%s"
 msgstr "%s"
 
-#: command.c:1274
+#: command.c:1272
 msgid "Previous connection kept\n"
 msgstr "Önceki bağlantı kullanılacaktır\n"
 
-#: command.c:1278
+#: command.c:1276
 #, c-format
 msgid "\\connect: %s"
 msgstr "\\connect: %s"
 
-#: command.c:1302
+#: command.c:1300
 #, c-format
 msgid "You are now connected to database \"%s\""
 msgstr "Şu an \"%s\" veritabanına bağlısınız"
 
-#: command.c:1305
+#: command.c:1303
 #, c-format
 msgid " on host \"%s\""
 msgstr " \"%s\" sistemi"
 
-#: command.c:1308
+#: command.c:1306
 #, c-format
 msgid " at port \"%s\""
 msgstr " \"%s\" portunda"
 
-#: command.c:1311
+#: command.c:1309
 #, c-format
 msgid " as user \"%s\""
 msgstr " \"%s\" kullanıcısı"
 
-#: command.c:1346
+#: command.c:1344
 #, c-format
 msgid "%s (%s, server %s)\n"
 msgstr "%s (%s, sunucu %s)\n"
 
-#: command.c:1353
+#: command.c:1351
 #, c-format
 msgid ""
 "WARNING: %s version %d.%d, server version %d.%d.\n"
@@ -223,17 +223,17 @@ msgstr ""
 "UYARI: %s sürümü %d.%d, sunucu sürümü %d.%d.\n"
 "         Bazı psql özellikleri çalışmayabilir.\n"
 
-#: command.c:1383
+#: command.c:1381
 #, c-format
 msgid "SSL connection (cipher: %s, bits: %i)\n"
 msgstr "SSL bağlantısı (cipher: %s, bit sayısı: %i)\n"
 
-#: command.c:1393
+#: command.c:1390
 #, c-format
 msgid "SSL connection (unknown cipher)\n"
 msgstr "SSL bağlantısı (bilinmeyen cipher)\n"
 
-#: command.c:1414
+#: command.c:1411
 #, c-format
 msgid ""
 "WARNING: Console code page (%u) differs from Windows code page (%u)\n"
@@ -244,136 +244,136 @@ msgstr ""
 "         8-bitlik karakterler doğru çalışmayabilir. Ayrıntılar için psql referans\n"
 "         belgelerinde \"Windows kullanıcılarına notlar\" bölümüne bakın.\n"
 
-#: command.c:1503
+#: command.c:1500
 #, c-format
 msgid "could not start editor \"%s\"\n"
 msgstr "\"%s\" metin düzenleyicisi çalıştırılamadı\n"
 
-#: command.c:1505
+#: command.c:1502
 msgid "could not start /bin/sh\n"
 msgstr "/bin/sh başlatılamıyor\n"
 
-#: command.c:1542
+#: command.c:1539
 #, c-format
 msgid "cannot locate temporary directory: %s"
 msgstr "geçici dizin bulunamıyor: %s"
 
-#: command.c:1569
+#: command.c:1566
 #, c-format
 msgid "could not open temporary file \"%s\": %s\n"
 msgstr "\"%s\" geçici dosya açılamıyor: %s\n"
 
-#: command.c:1767
+#: command.c:1764
 msgid "\\pset: allowed formats are unaligned, aligned, wrapped, html, latex, troff-ms\n"
 msgstr "\\pset: izin verilen biçimler: unaligned, aligned, wrapped, html, latex, troff-ms\n"
 
-#: command.c:1772
+#: command.c:1769
 #, c-format
 msgid "Output format is %s.\n"
 msgstr "Çıktı formatı: %s.\n"
 
-#: command.c:1782
+#: command.c:1779
 #, c-format
 msgid "Border style is %d.\n"
 msgstr "Kenar stili: %d.\n"
 
-#: command.c:1794
+#: command.c:1791
 #, c-format
 msgid "Expanded display is on.\n"
 msgstr "Geniş gösterme açık.\n"
 
-#: command.c:1795
+#: command.c:1792
 #, c-format
 msgid "Expanded display is off.\n"
 msgstr "Geniş gösterme kapalı.\n"
 
-#: command.c:1808
+#: command.c:1805
 msgid "Showing locale-adjusted numeric output."
 msgstr "Yerel duyarlı sayısal çıktı gösteriliyor."
 
-#: command.c:1810
+#: command.c:1807
 msgid "Locale-adjusted numeric output is off."
 msgstr "Yerel duyarlı sayısıal çıktı biçimlendirme kapalı."
 
-#: command.c:1823
+#: command.c:1820
 #, c-format
 msgid "Null display is \"%s\".\n"
 msgstr "Null display is \"%s\".\n"
 
-#: command.c:1835
+#: command.c:1832
 #, c-format
 msgid "Field separator is \"%s\".\n"
 msgstr "Alan ayracı: \"%s\".\n"
 
-#: command.c:1849
+#: command.c:1846
 #, c-format
 msgid "Record separator is <newline>."
 msgstr "Kayıt ayracı <newline>."
 
-#: command.c:1851
+#: command.c:1848
 #, c-format
 msgid "Record separator is \"%s\".\n"
 msgstr "Kayıt ayracı \"%s\".\n"
 
-#: command.c:1865
+#: command.c:1862
 msgid "Showing only tuples."
 msgstr "Sadece kayıtlar gösteriliyor."
 
-#: command.c:1867
+#: command.c:1864
 msgid "Tuples only is off."
 msgstr "Sadece kayıtları gösterme kapalı."
 
-#: command.c:1883
+#: command.c:1880
 #, c-format
 msgid "Title is \"%s\".\n"
 msgstr "Başlık \"%s\".\n"
 
-#: command.c:1885
+#: command.c:1882
 #, c-format
 msgid "Title is unset.\n"
 msgstr "Başlık kaldırıldı\n"
 
-#: command.c:1901
+#: command.c:1898
 #, c-format
 msgid "Table attribute is \"%s\".\n"
 msgstr "Tablo özelliği: \"%s\".\n"
 
-#: command.c:1903
+#: command.c:1900
 #, c-format
 msgid "Table attributes unset.\n"
 msgstr "Tablo özellikleri kaldırıldı.\n"
 
-#: command.c:1924
+#: command.c:1921
 msgid "Pager is used for long output."
 msgstr "Uzun çıktı için sayfalama kullanıacaktır."
 
-#: command.c:1926
+#: command.c:1923
 msgid "Pager is always used."
 msgstr "Sayfalama her zaman kullanılacak."
 
-#: command.c:1928
+#: command.c:1925
 msgid "Pager usage is off."
 msgstr "Sayfalama kullanımı kapalı."
 
-#: command.c:1942
+#: command.c:1939
 msgid "Default footer is on."
 msgstr "Varsayılan alt başlık açık."
 
-#: command.c:1944
+#: command.c:1941
 msgid "Default footer is off."
 msgstr "Varsayılan alt başlık kapalı."
 
-#: command.c:1955
+#: command.c:1952
 #, c-format
 msgid "Target width for \"wrapped\" format is %d.\n"
 msgstr " \"wrapped\" biçimi için hedef genişlik %d.\n"
 
-#: command.c:1960
+#: command.c:1957
 #, c-format
 msgid "\\pset: unknown option: %s\n"
 msgstr "\\pset: bilinmeyen seçenek: %s\n"
 
-#: command.c:2014
+#: command.c:2011
 msgid "\\!: failed\n"
 msgstr "\\!: başarısız\n"
 
@@ -472,26 +472,22 @@ msgstr "\\copy: %s"
 msgid "\\copy: unexpected response (%d)\n"
 msgstr "\\copy: beklenmeyen yanıt (%d)\n"
 
-#: copy.c:576
-msgid "trying to exit copy mode"
-msgstr "copy modundan çıkmaya çalışıyor"
-
-#: copy.c:630
-#: copy.c:640
+#: copy.c:627
+#: copy.c:637
 #, c-format
 msgid "could not write COPY data: %s\n"
 msgstr "COPY verisi yazılamadı: %s\n"
 
-#: copy.c:647
+#: copy.c:644
 #, c-format
 msgid "COPY data transfer failed: %s"
 msgstr "COPY veri aktarımı başarısız: %s"
 
-#: copy.c:695
+#: copy.c:692
 msgid "canceled by user"
 msgstr "kullanıcı tarafından iptal edildi"
 
-#: copy.c:710
+#: copy.c:707
 msgid ""
 "Enter data to be copied followed by a newline.\n"
 "End with a backslash and a period on a line by itself."
@@ -499,7 +495,7 @@ msgstr ""
 "Kopyalanacak veriyi girin ve ardından entera basın.\n"
 "Sonuçlandırmak için yeni satırda ters taksim işareti ve nokta girin."
 
-#: copy.c:822
+#: copy.c:819
 msgid "aborted because of read failure"
 msgstr "okuma hatası nedeniyle kesildi"
 
@@ -948,8 +944,8 @@ msgstr "  \\dFt[+] [PATTERN]      metin arama şablonlarını listele\n"
 
 #: help.c:213
 #, c-format
-msgid "  \\dg[+]  [PATTERN]      list roles (groups)\n"
-msgstr "  \\dg[+]    [PATTERN]      rolleri (grupları) listele\n"
+msgid "  \\dg     [PATTERN]      list roles (groups)\n"
+msgstr "  \\dg     [PATTERN]      rolleri (grupları) listele\n"
 
 #: help.c:214
 #, c-format
@@ -993,8 +989,8 @@ msgstr "  \\dT[S+] [PATTERN]      veri tiplerini listele\n"
 
 #: help.c:222
 #, c-format
-msgid "  \\du[+]  [PATTERN]      list roles (users)\n"
-msgstr "  \\du[+]     [PATTERN]      rolleri (kullanıcıları) listele\n"
+msgid "  \\du     [PATTERN]      list roles (users)\n"
+msgstr "  \\du     [PATTERN]      rolleri (kullanıcıları) listele\n"
 
 #: help.c:223
 #, c-format
@@ -1210,12 +1206,12 @@ msgstr "ID"
 #: describe.c:158
 #: describe.c:337
 #: describe.c:490
-#: describe.c:566
-#: describe.c:637
-#: describe.c:760
-#: describe.c:1231
-#: describe.c:2006
-#: describe.c:2137
+#: describe.c:565
+#: describe.c:636
+#: describe.c:759
+#: describe.c:1237
+#: describe.c:2008
+#: describe.c:2139
 #: describe.c:2431
 #: describe.c:2493
 #: describe.c:2629
@@ -1231,16 +1227,16 @@ msgstr "Açıklama"
 msgid "Large objects"
 msgstr "Large objectler"
 
-#: mainloop.c:157
+#: mainloop.c:156
 #, c-format
 msgid "Use \"\\q\" to leave %s.\n"
 msgstr "%s'den çıkmak için \"\\q\" kullanın.\n"
 
-#: mainloop.c:183
+#: mainloop.c:182
 msgid "You are using psql, the command-line interface to PostgreSQL."
 msgstr "PostgreSQL'in komut satırı arabirimi olan psql'i kullanıyorsunuz."
 
-#: mainloop.c:184
+#: mainloop.c:183
 #, c-format
 msgid ""
 "Type:  \\copyright for distribution terms\n"
@@ -1255,32 +1251,32 @@ msgstr ""
 "       \\g ya da noktalı virgül:  sorguyu çalıştırmak için\n"
 "       \\q çıkmak için\n"
 
-#: print.c:974
+#: print.c:973
 #, c-format
 msgid "(No rows)\n"
 msgstr "(Satır yok)\n"
 
-#: print.c:1961
+#: print.c:1960
 #, c-format
 msgid "Interrupted\n"
 msgstr "kesildi\n"
 
-#: print.c:2028
+#: print.c:2027
 #, c-format
 msgid "Cannot add header to table content: column count of %d exceeded.\n"
 msgstr "B aşlık tablo içeriğine eklenemedi: %d kolon sayısı aşıldı.\n"
 
-#: print.c:2065
+#: print.c:2064
 #, c-format
 msgid "Cannot add cell to table content: total cell count of %d exceeded.\n"
 msgstr "Hücre tablo içeriğine eklenemedi: %d olan toplan hücre sayısı açıldı.\n"
 
-#: print.c:2264
+#: print.c:2263
 #, c-format
 msgid "invalid output format (internal error): %d"
 msgstr "geçersiz çıktı biçimi (iç hata): %d"
 
-#: print.c:2353
+#: print.c:2352
 #, c-format
 msgid "(%lu row)"
 msgid_plural "(%lu rows)"
@@ -1334,12 +1330,12 @@ msgstr "komut satırı düzenleme desteği mevcuttur"
 #: describe.c:68
 #: describe.c:235
 #: describe.c:462
-#: describe.c:561
-#: describe.c:682
-#: describe.c:757
-#: describe.c:2115
-#: describe.c:2236
-#: describe.c:2291
+#: describe.c:560
+#: describe.c:681
+#: describe.c:756
+#: describe.c:2117
+#: describe.c:2237
+#: describe.c:2292
 #: describe.c:2491
 #: describe.c:2718
 #: describe.c:2790
@@ -1352,13 +1348,13 @@ msgstr "Şema"
 #: describe.c:145
 #: describe.c:236
 #: describe.c:463
-#: describe.c:562
-#: describe.c:612
-#: describe.c:683
-#: describe.c:758
-#: describe.c:2116
-#: describe.c:2237
-#: describe.c:2292
+#: describe.c:561
+#: describe.c:611
+#: describe.c:682
+#: describe.c:757
+#: describe.c:2118
+#: describe.c:2238
+#: describe.c:2293
 #: describe.c:2422
 #: describe.c:2492
 #: describe.c:2719
@@ -1396,8 +1392,8 @@ msgstr "Bu sunucu (%d.%d sürümü) tablespace desteklememektedir.\n"
 
 #: describe.c:146
 #: describe.c:334
-#: describe.c:613
-#: describe.c:2123
+#: describe.c:612
+#: describe.c:2125
 #: describe.c:2423
 #: describe.c:3052
 #: describe.c:3111
@@ -1436,7 +1432,7 @@ msgstr "pencere"
 #: describe.c:253
 #: describe.c:298
 #: describe.c:315
-#: describe.c:897
+#: describe.c:896
 msgid "trigger"
 msgstr "tetikleyici (trigger)"
 
@@ -1449,10 +1445,10 @@ msgstr "normal"
 #: describe.c:255
 #: describe.c:300
 #: describe.c:317
-#: describe.c:685
-#: describe.c:1216
-#: describe.c:2122
-#: describe.c:2238
+#: describe.c:684
+#: describe.c:1222
+#: describe.c:2124
+#: describe.c:2239
 #: describe.c:3123
 msgid "Type"
 msgstr "Veri tipi"
@@ -1490,8 +1486,8 @@ msgid "Internal name"
 msgstr "Dahili adı"
 
 #: describe.c:474
-#: describe.c:629
-#: describe.c:2133
+#: describe.c:628
+#: describe.c:2135
 msgid "Size"
 msgstr "Boyut"
 
@@ -1499,388 +1495,397 @@ msgstr "Boyut"
 msgid "Elements"
 msgstr "Elemanlar"
 
-#: describe.c:530
+#: describe.c:529
 msgid "List of data types"
 msgstr "Veri tiplerinin listesi"
 
-#: describe.c:563
+#: describe.c:562
 msgid "Left arg type"
 msgstr "Sol argüman veri tipi"
 
-#: describe.c:564
+#: describe.c:563
 msgid "Right arg type"
 msgstr "Sağ argüman veri tipi"
 
-#: describe.c:565
+#: describe.c:564
 msgid "Result type"
 msgstr "Sonuç veri tipi"
 
-#: describe.c:584
+#: describe.c:583
 msgid "List of operators"
 msgstr "Operatörlerin listesi"
 
-#: describe.c:614
+#: describe.c:613
 msgid "Encoding"
 msgstr "Dil Kodlaması"
 
-#: describe.c:619
+#: describe.c:618
 msgid "Collation"
 msgstr "Sıralama"
 
-#: describe.c:620
+#: describe.c:619
 msgid "Ctype"
 msgstr "Ctype"
 
-#: describe.c:633
+#: describe.c:632
 msgid "Tablespace"
 msgstr "Tablespace"
 
-#: describe.c:650
+#: describe.c:649
 msgid "List of databases"
 msgstr "Veritabanlarının listesi"
 
-#: describe.c:684
-#: describe.c:852
-#: describe.c:2117
+#: describe.c:683
+#: describe.c:851
+#: describe.c:2119
 msgid "table"
 msgstr "tablo"
 
-#: describe.c:684
-#: describe.c:853
-#: describe.c:2118
+#: describe.c:683
+#: describe.c:852
+#: describe.c:2120
 msgid "view"
 msgstr "view"
 
-#: describe.c:684
-#: describe.c:855
-#: describe.c:2120
+#: describe.c:683
+#: describe.c:854
+#: describe.c:2122
 msgid "sequence"
 msgstr "sequence"
 
-#: describe.c:696
+#: describe.c:695
 msgid "Column access privileges"
 msgstr "Kolon erişim hakları"
 
-#: describe.c:722
+#: describe.c:721
 #: describe.c:3218
 #: describe.c:3222
 msgid "Access privileges"
 msgstr "Erişim hakları"
 
-#: describe.c:759
+#: describe.c:758
 msgid "Object"
 msgstr "Nesne"
 
-#: describe.c:771
+#: describe.c:770
 msgid "aggregate"
 msgstr "aggregate"
 
-#: describe.c:791
+#: describe.c:790
 msgid "function"
 msgstr "fonksiyon"
 
-#: describe.c:810
+#: describe.c:809
 msgid "operator"
 msgstr "operatör"
 
-#: describe.c:829
+#: describe.c:828
 msgid "data type"
 msgstr "veri tipi"
 
-#: describe.c:854
-#: describe.c:2119
+#: describe.c:853
+#: describe.c:2121
 msgid "index"
 msgstr "indeks"
 
-#: describe.c:876
+#: describe.c:875
 msgid "rule"
 msgstr "rule"
 
-#: describe.c:920
+#: describe.c:919
 msgid "Object descriptions"
 msgstr "Nesne açıklamaları"
 
-#: describe.c:973
+#: describe.c:972
 #, c-format
 msgid "Did not find any relation named \"%s\".\n"
 msgstr "\"%s\" adında nesne bulunamadı.\n"
 
-#: describe.c:1110
+#: describe.c:1109
 #, c-format
 msgid "Did not find any relation with OID %s.\n"
 msgstr "OID %s olan nesne bulunamadı.\n"
 
-#: describe.c:1178
+#: describe.c:1184
 #, c-format
 msgid "Table \"%s.%s\""
 msgstr "Tablo \"%s.%s\""
 
-#: describe.c:1182
+#: describe.c:1188
 #, c-format
 msgid "View \"%s.%s\""
 msgstr "View \"%s.%s\""
 
-#: describe.c:1186
+#: describe.c:1192
 #, c-format
 msgid "Sequence \"%s.%s\""
 msgstr "Sequence \"%s.%s\""
 
-#: describe.c:1190
+#: describe.c:1196
 #, c-format
 msgid "Index \"%s.%s\""
 msgstr "İndex \"%s.%s\""
 
-#: describe.c:1195
+#: describe.c:1201
 #, c-format
 msgid "Special relation \"%s.%s\""
 msgstr "Özel nesne \"%s.%s\""
 
-#: describe.c:1199
+#: describe.c:1205
 #, c-format
 msgid "TOAST table \"%s.%s\""
 msgstr "TOAST tablosu \"%s.%s\""
 
-#: describe.c:1203
+#: describe.c:1209
 #, c-format
 msgid "Composite type \"%s.%s\""
 msgstr "Birleşik veri tipi \"%s.%s\""
 
-#: describe.c:1215
+#: describe.c:1221
 msgid "Column"
 msgstr "Kolon"
 
-#: describe.c:1221
+#: describe.c:1227
 msgid "Modifiers"
 msgstr "Modifiers"
 
-#: describe.c:1226
+#: describe.c:1232
 msgid "Value"
 msgstr "Değer"
 
-#: describe.c:1230
+#: describe.c:1236
 msgid "Storage"
 msgstr "Saklama"
 
-#: describe.c:1272
+#: describe.c:1278
 msgid "not null"
 msgstr "Null değil"
 
 #. translator: default values of column definitions
-#: describe.c:1281
+#: describe.c:1287
 #, c-format
 msgid "default %s"
 msgstr "öntanımlı %s"
 
-#: describe.c:1347
+#: describe.c:1353
 msgid "primary key, "
 msgstr "birincil anahtar, "
 
-#: describe.c:1349
+#: describe.c:1355
 msgid "unique, "
 msgstr "tekil, "
 
-#: describe.c:1355
+#: describe.c:1361
 #, c-format
 msgid "for table \"%s.%s\""
 msgstr "\"%s.%s\" tablosu için "
 
-#: describe.c:1359
+#: describe.c:1365
 #, c-format
 msgid ", predicate (%s)"
 msgstr ", belirli (%s)"
 
-#: describe.c:1362
+#: describe.c:1368
 msgid ", clustered"
 msgstr ", clustered"
 
-#: describe.c:1365
+#: describe.c:1371
 msgid ", invalid"
 msgstr ", geçersiz"
 
-#: describe.c:1379
+#: describe.c:1385
 msgid "View definition:"
 msgstr "View tanımı:"
 
-#: describe.c:1396
-#: describe.c:1647
+#: describe.c:1402
+#: describe.c:1655
 msgid "Rules:"
 msgstr "Rulelar:"
 
-#: describe.c:1443
+#: describe.c:1449
 msgid "Indexes:"
 msgstr "İndeksler:"
 
-#: describe.c:1503
+#: describe.c:1509
 msgid "Check constraints:"
 msgstr "Check constraints:"
 
-#: describe.c:1534
+#: describe.c:1540
 msgid "Foreign-key constraints:"
 msgstr "İkincil anahtar sınırlamaları:"
 
-#: describe.c:1565
+#: describe.c:1571
 msgid "Referenced by:"
 msgstr "Referans veren:"
 
-#: describe.c:1650
+#. translator: the first %s is a FK name, the following are
+#. * a table name and the FK definition
+#: describe.c:1576
+#, c-format
+msgid "  \"%s\" IN %s %s"
+msgstr "  \"%s\",  %s %s içinde"
+
+#: describe.c:1658
 msgid "Disabled rules:"
 msgstr "Devre dışı bırakılmış rule'lar:"
 
-#: describe.c:1653
+#: describe.c:1661
 msgid "Rules firing always:"
 msgstr "Her zaman çalıştırılan rule'ler:"
 
-#: describe.c:1656
+#: describe.c:1664
 msgid "Rules firing on replica only:"
 msgstr "Sadece kopyada çalıştırılan rule'ler:"
 
-#: describe.c:1755
+#: describe.c:1760
 msgid "Triggers:"
 msgstr "Tetikleyiciler(Triggers):"
 
-#: describe.c:1758
+#: describe.c:1763
 msgid "Disabled triggers:"
 msgstr "Devre dışı bırakılmış tetikleyiciler:"
 
-#: describe.c:1761
+#: describe.c:1766
 msgid "Triggers firing always:"
 msgstr "Her zaman çalıştırılan tetikleyiciler:"
 
-#: describe.c:1764
+#: describe.c:1769
 msgid "Triggers firing on replica only:"
 msgstr "Sadece kopyada çalıştırılan tetikleyiciler:"
 
-#: describe.c:1797
+#: describe.c:1802
 msgid "Inherits"
 msgstr "Inherits"
 
-#: describe.c:1812
+#: describe.c:1817
 msgid "Has OIDs"
 msgstr " OIDleri var"
 
-#: describe.c:1815
-#: describe.c:2295
+#: describe.c:1820
+#: describe.c:2296
 #: describe.c:2369
 msgid "yes"
 msgstr "evet"
 
-#: describe.c:1815
-#: describe.c:2295
+#: describe.c:1820
+#: describe.c:2296
 #: describe.c:2369
 msgid "no"
 msgstr "hayır"
 
-#: describe.c:1823
+#: describe.c:1828
 #: describe.c:3061
 #: describe.c:3125
 #: describe.c:3181
 msgid "Options"
 msgstr "Seçenekler"
 
-#: describe.c:1908
+#: describe.c:1913
 #, c-format
 msgid "Tablespace: \"%s\""
 msgstr "Tablespace: \"%s\""
 
-#: describe.c:1921
+#. translator: before this string there's an index
+#. * description like '"foo_pkey" PRIMARY KEY, btree (a)'
+#: describe.c:1923
 #, c-format
 msgid ", tablespace \"%s\""
 msgstr ", tablespace \"%s\""
 
-#: describe.c:1999
+#: describe.c:2001
 msgid "List of roles"
 msgstr "Veritabanı rolleri listesi"
 
-#: describe.c:2001
+#: describe.c:2003
 msgid "Role name"
 msgstr "Rol adı"
 
-#: describe.c:2002
+#: describe.c:2004
 msgid "Attributes"
 msgstr "Özellikler"
 
-#: describe.c:2003
+#: describe.c:2005
 msgid "Member of"
 msgstr "Üyesidir"
 
-#: describe.c:2014
+#: describe.c:2016
 msgid "Superuser"
 msgstr "Superuser"
 
-#: describe.c:2017
+#: describe.c:2019
 msgid "No inheritance"
 msgstr "Miras yok"
 
-#: describe.c:2020
+#: describe.c:2022
 msgid "Create role"
 msgstr "Rol oluştur"
 
-#: describe.c:2023
+#: describe.c:2025
 msgid "Create DB"
 msgstr "Veritabanı Oluştur"
 
-#: describe.c:2026
+#: describe.c:2028
 msgid "Cannot login"
 msgstr "Giriş yapılamıyor"
 
-#: describe.c:2035
+#: describe.c:2037
 msgid "No connections"
 msgstr "Bağlantı yok"
 
-#: describe.c:2037
+#: describe.c:2039
 #, c-format
 msgid "%d connection"
 msgid_plural "%d connections"
 msgstr[0] "%d bağlantı"
 msgstr[1] "1 bağlantı"
 
-#: describe.c:2121
+#: describe.c:2123
 msgid "special"
 msgstr "özel"
 
-#: describe.c:2128
+#: describe.c:2130
 msgid "Table"
 msgstr "Tablo"
 
-#: describe.c:2188
+#: describe.c:2189
 #, c-format
 msgid "No matching relations found.\n"
 msgstr "Eşleşen nesne bulunamadı.\n"
 
-#: describe.c:2190
+#: describe.c:2191
 #, c-format
 msgid "No relations found.\n"
 msgstr "Nesne bulunamadı.\n"
 
-#: describe.c:2195
+#: describe.c:2196
 msgid "List of relations"
 msgstr "Nesnelerin listesi"
 
-#: describe.c:2239
+#: describe.c:2240
 msgid "Modifier"
 msgstr "Düzenleyici"
 
-#: describe.c:2240
+#: describe.c:2241
 msgid "Check"
 msgstr "Check"
 
-#: describe.c:2258
+#: describe.c:2259
 msgid "List of domains"
 msgstr "Domainlerin listesi"
 
-#: describe.c:2293
+#: describe.c:2294
 msgid "Source"
 msgstr "Kaynak"
 
-#: describe.c:2294
+#: describe.c:2295
 msgid "Destination"
 msgstr "Hedef"
 
-#: describe.c:2296
+#: describe.c:2297
 msgid "Default?"
 msgstr "Varsayılan?"
 
-#: describe.c:2314
+#: describe.c:2315
 msgid "List of conversions"
 msgstr "Dönüşümlerin listesi"
 
@@ -4735,8 +4740,6 @@ msgstr "alt süreç %d sinyali tarafından sonlandırılmıştır"
 msgid "child process exited with unrecognized status %d"
 msgstr "alt süreç %d bilinmeyen durumu ile sonlandırılmıştır"
 
-#~ msgid "  \"%s\" IN %s %s"
-#~ msgstr "  \"%s\",  %s %s içinde"
 #~ msgid "(1 row)"
 #~ msgid_plural "(%lu rows)"
 #~ msgstr[0] "(%lu satır)"
