@@ -7697,6 +7697,16 @@ XLogStandbyRecoverRange(XLogRecPtr *redoCheckpointLoc, CheckPoint *redoCheckPoin
 			     XLogLocationToString2(&prevReadLoc));
 		}
 	}
+
+	/*
+	 * Since we stop short of redoing the last record -- a checkpoint -- we need to
+	 * flush here because our filespace / tablespace hash tables get emptied the next
+	 * time we call XLogStandbyRecoverRange and the Buffer Pool manager will not be
+	 * able to find where to write and fsync the relation files when trying to process
+	 * a checkpoint...
+	 */
+	FlushBufferPool();
+
 	CurrentResourceOwner = NULL;
 
 	InRedo = false;
@@ -8096,8 +8106,6 @@ ShutdownXLOG(int code __attribute__((unused)) , Datum arg __attribute__((unused)
 void
 CreateCheckPoint(bool shutdown, bool force)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
-
 	CheckPoint	checkPoint;
 	XLogRecPtr	recptr;
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
@@ -8170,14 +8178,23 @@ CreateCheckPoint(bool shutdown, bool force)
 	checkPoint.time = time(NULL);
 
 	/*
-	 * Hold the PersistentObjLock from the point we decide on the redo start location,
-	 * through where we collect the Master Mirroring information
-	 * from mmxlog_append_checkpoint_data until finally after the checkpoint record is
-	 * inserted into the XLOG to prevent the persistent information from changing.
-	 */
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
-
-	/*
+	 * The WRITE_PERSISTENT_STATE_ORDERED_LOCK gets these locks:
+	 *    MirroredLock SHARED, and 
+	 *    CheckpointStartLock EXCLUSIVE,
+	 *    PersistentObjLock EXCLUSIVE.
+	 *
+	 * The READ_PERSISTENT_STATE_ORDERED_LOCK gets this lock:
+	 *    PersistentObjLock SHARED.
+	 *
+	 * They do this to prevent Persistent object changes during checkpoint and
+	 * prevent persistent object reads while writing.  And acquire the MirroredLock
+	 * at a level that blocks DDL during FileRep statechanges... 
+	 *
+	 * We get the CheckpointStartLock to prevent Persistent object writers as
+	 * we collect the Master Mirroring information from mmxlog_append_checkpoint_data 
+	 * until finally after the checkpoint record is inserted into the XLOG to prevent the
+	 * persistent information from changing.
+	 *
 	 * We must hold CheckpointStartLock while determining the checkpoint REDO
 	 * pointer.  This ensures that any concurrent transaction commits will be
 	 * either not yet logged, or logged and recorded in pg_clog. See notes in
@@ -8235,14 +8252,6 @@ CreateCheckPoint(bool shutdown, bool force)
 				LWLockRelease(MirroredLock);
 			}			
 			LWLockRelease(CheckpointLock);
-
-			/*
-			 * Note that even though we have logic above that releases
-			 * the MirroredLock, our variables inside the 
-			 * MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE define
-			 * will detect the situation and do the right thing.
-			 */
-			MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
 			
 			END_CRIT_SECTION();
 			return;
@@ -8292,7 +8301,9 @@ CreateCheckPoint(bool shutdown, bool force)
 	 */
 	LWLockRelease(WALInsertLock);
 
-	LWLockRelease(CheckpointStartLock);
+	// We use to release the CheckpointStartLock here.  Now we do it after the checkpoint
+	// record is written...
+//	LWLockRelease(CheckpointStartLock);
 
 	if (!shutdown)
 		ereport(DEBUG2,
@@ -8389,7 +8400,8 @@ CreateCheckPoint(bool shutdown, bool force)
 			 XLogLastInsertDataLen());
 	}
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	// See the comments above where this lock is acquired.
+	LWLockRelease(CheckpointStartLock);
 
 	freeDtxCheckPointInfoAndUnlock(dtxCheckPointInfo, dtxCheckPointInfoSize, &recptr);
 	

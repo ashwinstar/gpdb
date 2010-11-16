@@ -1927,12 +1927,6 @@ static void MirroredAppendOnly_DoDrop(
 	char *primaryFilespaceLocation;
 	char *mirrorFilespaceLocation;
 
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_remove_relfilenode(relFileNode->spcNode, relFileNode->dbNode, relFileNode->relNode,
-								  segmentFileNum);
-#endif
-
-
 	*primaryError = 0;
 	*mirrorDataLossOccurred = false;
 

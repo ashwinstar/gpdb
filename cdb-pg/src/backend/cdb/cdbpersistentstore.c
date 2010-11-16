@@ -521,7 +521,7 @@ void PersistentStore_Scan(
 
 	PersistentStoreScanTupleCallback	scanTupleCallback)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentStoreScan storeScan;
 
@@ -532,7 +532,7 @@ void PersistentStore_Scan(
 
 	values = (Datum*)palloc(storeData->numAttributes * sizeof(Datum));
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	PersistentStore_BeginScan(
 						storeData,
@@ -559,7 +559,7 @@ void PersistentStore_Scan(
 	
 	PersistentStore_EndScan(&storeScan);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	pfree(values);
 }

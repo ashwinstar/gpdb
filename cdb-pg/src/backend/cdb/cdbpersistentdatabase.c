@@ -213,16 +213,15 @@ static void AtProcExit_PersistentDatabase(int code, Datum arg)
 
 void PersistentDatabase_DirIterateInit(void)
 {
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	Assert(persistentDatabaseSharedData != NULL);
 	
 	PersistentDatabase_VerifyInitScan();
 
 	PersistentDatabase_ReleaseDirIterator();
 
-	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
-	// acquire the MirroredLock.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	if (!iterateOnShmemExitArmed)
 	{
@@ -232,7 +231,7 @@ void PersistentDatabase_DirIterateInit(void)
 
 	dirIterateDatabaseDirEntry = NULL;
 	
-	LWLockRelease(PersistentObjLock);
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 }
 
 
@@ -245,6 +244,8 @@ bool PersistentDatabase_DirIterateNext(
 
 	int64					*persistentSerialNum)
 {
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	DatabaseDirEntry prevDatabaseDirEntry;
 
 	Assert(persistentDatabaseSharedData != NULL);
@@ -253,10 +254,7 @@ bool PersistentDatabase_DirIterateNext(
 
 	MemSet(dbDirNode, 0, sizeof(DbDirNode));
 
-	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
-	// acquire the MirroredLock.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	while (true)
 	{
@@ -269,7 +267,7 @@ bool PersistentDatabase_DirIterateNext(
 
 		if (dirIterateDatabaseDirEntry == NULL)
 		{
-			LWLockRelease(PersistentObjLock);
+			WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 			return false;
 		}
 
@@ -291,7 +289,7 @@ bool PersistentDatabase_DirIterateNext(
 		break;
 	}
 
-	LWLockRelease(PersistentObjLock);
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	return true;
 }
@@ -423,7 +421,7 @@ void PersistentDatabase_MarkCreatePending(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	DatabaseDirEntry databaseDirEntry;
 	SharedOidSearchAddResult addResult;
@@ -445,7 +443,7 @@ void PersistentDatabase_MarkCreatePending(
 
 	PersistentDatabase_VerifyInitScan();
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	databaseDirEntry =
 			(DatabaseDirEntry)
@@ -491,8 +489,15 @@ void PersistentDatabase_MarkCreatePending(
 
 	*persistentTid = databaseDirEntry->persistentTid;
 	*persistentSerialNum = databaseDirEntry->persistentSerialNum;
+	
+	/*
+	 * This XLOG must be generated under the persistent write-lock.
+	 */
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_database(dbDirNode->tablespace, dbDirNode->database); 
+#endif
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 }
 
 void PersistentDatabase_AddCreated(
@@ -508,7 +513,7 @@ void PersistentDatabase_AddCreated(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -525,7 +530,7 @@ void PersistentDatabase_AddCreated(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	databaseDirEntry =
 			(DatabaseDirEntry)
@@ -572,7 +577,7 @@ void PersistentDatabase_AddCreated(
 	*persistentTid = databaseDirEntry->persistentTid;
 	persistentSerialNum = databaseDirEntry->persistentSerialNum;
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -588,11 +593,11 @@ xlog_create_database(DbDirNode *db)
 {
 	DatabaseDirEntry dbe;
 	SharedOidSearchAddResult addResult;
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentDatabase_VerifyInitScan();
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	dbe = (DatabaseDirEntry) SharedOidSearch_Find(
 				    	&persistentDatabaseSharedData->databaseDirSearchTable,
@@ -628,7 +633,7 @@ xlog_create_database(DbDirNode *db)
 
 	dbe->iteratorRefCount = 0;
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 }
 
 
@@ -652,7 +657,7 @@ void PersistentDatabase_Created(
 	bool			retryPossible)
 
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -676,7 +681,7 @@ void PersistentDatabase_Created(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 									dbDirNode,
@@ -697,11 +702,12 @@ void PersistentDatabase_Created(
 								PersistentFileSysState_Created,
 								retryPossible,
 								/* flushToXlog */ false,
-								NULL);
+								/* oldState */ NULL,
+								/* verifiedActionCallback */ NULL);
 
 	databaseDirEntry->state = PersistentFileSysState_Created;
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -722,7 +728,7 @@ PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror)
 	Relation rel;
 	HeapScanDesc scandesc;
 	HeapTuple tuple;
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
@@ -733,7 +739,7 @@ PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror)
 					AccessExclusiveLock);
 	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 	{
@@ -761,7 +767,7 @@ PersistentDatabase_RemoveSegment(int16 dbid, bool ismirror)
 										   /* flushToXlog */ false);
 	}
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
@@ -773,7 +779,7 @@ PersistentDatabase_ActivateStandby(int16 oldmaster, int16 newmaster)
 	Relation rel;
 	HeapScanDesc scandesc;
 	HeapTuple tuple;
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	if (Persistent_BeforePersistenceWork())
 		elog(ERROR, "persistent table changes forbidden");
@@ -784,7 +790,7 @@ PersistentDatabase_ActivateStandby(int16 oldmaster, int16 newmaster)
 					AccessExclusiveLock);
 	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 	{
@@ -812,7 +818,7 @@ PersistentDatabase_ActivateStandby(int16 oldmaster, int16 newmaster)
 											 /* flushToXlog */ false);
 	}
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
@@ -826,7 +832,7 @@ PersistentDatabase_AddMirrorAll(
 	Relation rel;
 	HeapScanDesc scandesc;
 	HeapTuple tuple;
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	if (Persistent_BeforePersistenceWork())
 	{	
@@ -843,7 +849,7 @@ PersistentDatabase_AddMirrorAll(
 					AccessExclusiveLock);
 	scandesc = heap_beginscan(rel, SnapshotNow, 0, NULL);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
 	{
@@ -869,7 +875,7 @@ PersistentDatabase_AddMirrorAll(
                    	        	       /* flushToXlog */ false);
 	}
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	heap_endscan(scandesc);
 	heap_close(rel, NoLock);
@@ -896,7 +902,7 @@ PersistentFileSysObjStateChangeResult PersistentDatabase_MarkDropPending(
 
 	bool			retryPossible)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -920,7 +926,7 @@ PersistentFileSysObjStateChangeResult PersistentDatabase_MarkDropPending(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 									dbDirNode,
@@ -942,11 +948,12 @@ PersistentFileSysObjStateChangeResult PersistentDatabase_MarkDropPending(
 								PersistentFileSysState_DropPending,
 								retryPossible,
 								/* flushToXlog */ false,
-								NULL);
+								/* oldState */ NULL,
+								/* verifiedActionCallback */ NULL);
 
 	databaseDirEntry->state = PersistentFileSysState_DropPending;
-
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -976,7 +983,7 @@ PersistentFileSysObjStateChangeResult PersistentDatabase_MarkAbortingCreate(
 
 	bool			retryPossible)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -1000,7 +1007,7 @@ PersistentFileSysObjStateChangeResult PersistentDatabase_MarkAbortingCreate(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
@@ -1022,11 +1029,12 @@ PersistentFileSysObjStateChangeResult PersistentDatabase_MarkAbortingCreate(
 								PersistentFileSysState_AbortingCreate,
 								retryPossible,
 								/* flushToXlog */ false,
-								NULL);
+								/* oldState */ NULL,
+								/* verifiedActionCallback */ NULL);
 
 	databaseDirEntry->state = PersistentFileSysState_AbortingCreate;
-
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+		
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -1037,6 +1045,43 @@ PersistentFileSysObjStateChangeResult PersistentDatabase_MarkAbortingCreate(
 			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 
 	return stateChangeResult;
+}
+
+static void
+PersistentDatabase_DroppedVerifiedActionCallback(
+	PersistentFileSysObjName 	*fsObjName,
+
+	ItemPointer 				persistentTid,
+			/* TID of the gp_persistent_rel_files tuple for the relation. */
+
+	int64						persistentSerialNum,
+			/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+
+	PersistentFileSysObjVerifyExpectedResult verifyExpectedResult)
+{
+	DbDirNode *dbDirNode = PersistentFileSysObjName_GetDbDirNodePtr(fsObjName);
+
+	switch (verifyExpectedResult)
+	{
+	case PersistentFileSysObjVerifyExpectedResult_DeleteUnnecessary:
+	case PersistentFileSysObjVerifyExpectedResult_StateChangeAlreadyDone:
+	case PersistentFileSysObjVerifyExpectedResult_ErrorSuppressed:
+		break;
+	
+	case PersistentFileSysObjVerifyExpectedResult_StateChangeNeeded:
+		/*
+		 * This XLOG must be generated under the persistent write-lock.
+		 */
+#ifdef MASTER_MIRROR_SYNC
+		mmxlog_log_remove_database(dbDirNode->tablespace, dbDirNode->database);
+#endif
+				
+		break;
+	
+	default:
+		elog(ERROR, "Unexpected persistent object verify expected result: %d",
+			 verifyExpectedResult);
+	}
 }
 
 /*
@@ -1053,7 +1098,7 @@ void PersistentDatabase_Dropped(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -1079,7 +1124,7 @@ void PersistentDatabase_Dropped(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
@@ -1101,7 +1146,8 @@ void PersistentDatabase_Dropped(
 								PersistentFileSysState_Free,
 								/* retryPossible */ false,
 								/* flushToXlog */ false,
-								&oldState);
+								&oldState,
+								PersistentDatabase_DroppedVerifiedActionCallback);
 
 	databaseDirEntry->state = PersistentFileSysState_Free;
 
@@ -1110,7 +1156,7 @@ void PersistentDatabase_Dropped(
 					&persistentDatabaseSharedData->databaseDirSearchTable,
 					&databaseDirEntry->header);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -1125,7 +1171,7 @@ void PersistentDatabase_Dropped(
 bool 
 PersistentDatabase_DirIsCreated(DbDirNode *dbDirNode)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	DatabaseDirEntry databaseDirEntry;
 	bool result;
@@ -1148,7 +1194,7 @@ PersistentDatabase_DirIsCreated(DbDirNode *dbDirNode)
 
 	PersistentDatabase_VerifyInitScan();
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	READ_PERSISTENT_STATE_ORDERED_LOCK;
 
 	databaseDirEntry =
 			(DatabaseDirEntry)
@@ -1166,7 +1212,7 @@ PersistentDatabase_DirIsCreated(DbDirNode *dbDirNode)
 				  dbDirNode->tablespace),
 			 PersistentFileSysObjState_Name(databaseDirEntry->state));
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	return result;
 }
@@ -1182,7 +1228,7 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 	int64			*persistentSerialNum)
 				
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -1206,7 +1252,7 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	databaseDirEntry =
 			(DatabaseDirEntry)
@@ -1257,7 +1303,18 @@ void PersistentDatabase_MarkJustInTimeCreatePending(
 	*persistentTid = databaseDirEntry->persistentTid;
 	*persistentSerialNum = databaseDirEntry->persistentSerialNum;
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	/*
+	 * This XLOG must be generated under the persistent write-lock.
+	 *
+	 * UNDONE: Just-in-time creation is a strange case.  What if we can't create
+	 * the directory??
+	 */
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_database(dbDirNode->tablespace,
+							   dbDirNode->database);	
+#endif
+	
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -1281,7 +1338,7 @@ void PersistentDatabase_JustInTimeCreated(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -1305,7 +1362,7 @@ void PersistentDatabase_JustInTimeCreated(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
@@ -1326,11 +1383,12 @@ void PersistentDatabase_JustInTimeCreated(
 								PersistentFileSysState_Created,
 								/* retryPossible */ false,
 								/* flushToXlog */ false,
-								NULL);
+								/* oldState */ NULL,
+								/* verifiedActionCallback */ NULL);
 
 	databaseDirEntry->state = PersistentFileSysState_Created;
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -1354,7 +1412,7 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -1378,7 +1436,7 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 
 	PersistentFileSysObjName_SetDatabaseDir(&fsObjName,dbDirNode->tablespace,dbDirNode->database);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	PersistentDatabase_LookupExistingDbDir(
 								dbDirNode,
@@ -1399,7 +1457,8 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 								PersistentFileSysState_Free,
 								/* retryPossible */ false,
 								/* flushToXlog */ false,
-								NULL);
+								/* oldState */ NULL,
+								/* verifiedActionCallback */ NULL);
 
 	databaseDirEntry->state = PersistentFileSysState_Free;
 
@@ -1408,7 +1467,7 @@ void PersistentDatabase_AbandonJustInTimeCreatePending(
 					&persistentDatabaseSharedData->databaseDirSearchTable,
 					&databaseDirEntry->header);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 

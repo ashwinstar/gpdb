@@ -155,6 +155,26 @@ extern void PersistentFileSysObj_FreeTuple(
 	bool						flushToXLog);
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
+
+/*
+ * The file kinds of a persistent file-system object verification results.
+ */
+typedef enum PersistentFileSysObjVerifyExpectedResult
+{
+	PersistentFileSysObjVerifyExpectedResult_None = 0,
+	PersistentFileSysObjVerifyExpectedResult_DeleteUnnecessary = 1,
+	PersistentFileSysObjVerifyExpectedResult_StateChangeAlreadyDone = 2,
+	PersistentFileSysObjVerifyExpectedResult_StateChangeNeeded = 3,
+	PersistentFileSysObjVerifyExpectedResult_ErrorSuppressed = 4,
+	MaxPersistentFileSysObjVerifyExpectedResult /* must always be last */
+} PersistentFileSysObjVerifyExpectedResult;
+
+typedef void (*PersistentFileSysObjVerifiedActionCallback) (
+											PersistentFileSysObjName 	*fsObjName,
+											ItemPointer 				persistentTid,
+											int64						persistentSerialNum,
+											PersistentFileSysObjVerifyExpectedResult verifyExpectedResult);
+
 /*
  * The file kinds of a persistent file-system object state-change results.
  */
@@ -183,7 +203,9 @@ extern PersistentFileSysObjStateChangeResult PersistentFileSysObj_StateChange(
 
 	bool						flushToXLog,
 
-	PersistentFileSysState		*oldState);
+	PersistentFileSysState		*oldState,
+
+	PersistentFileSysObjVerifiedActionCallback verifiedActionCallback);
 
 extern void PersistentFileSysObj_Created(
 	PersistentFileSysObjName	*fsObjName,

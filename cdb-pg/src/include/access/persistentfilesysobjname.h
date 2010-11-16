@@ -103,6 +103,14 @@ inline static void PersistentFileSysObjName_SetDatabaseDir(
 	fsObjName->variant.dbDirNode.database = databaseOid;
 }
 
+inline static DbDirNode *PersistentFileSysObjName_GetDbDirNodePtr(
+	PersistentFileSysObjName	*fsObjName)
+{
+	Assert(fsObjName->type == PersistentFsObjType_DatabaseDir);
+
+	return &fsObjName->variant.dbDirNode;
+}
+
 inline static void PersistentFileSysObjName_SetTablespaceDir(
 	PersistentFileSysObjName	*fsObjName,
 	Oid							tablespaceOid)
@@ -112,6 +120,14 @@ inline static void PersistentFileSysObjName_SetTablespaceDir(
 	fsObjName->variant.tablespaceOid = tablespaceOid;
 }
 
+inline static Oid PersistentFileSysObjName_GetTablespaceDir(
+	PersistentFileSysObjName	*fsObjName)
+{
+	Assert(fsObjName->type == PersistentFsObjType_TablespaceDir);
+
+	return fsObjName->variant.tablespaceOid;
+}
+
 inline static void PersistentFileSysObjName_SetFilespaceDir(
 	PersistentFileSysObjName	*fsObjName,
 	Oid							filespaceOid)
@@ -119,6 +135,14 @@ inline static void PersistentFileSysObjName_SetFilespaceDir(
 	MemSet(fsObjName, 0, sizeof(PersistentFileSysObjName));
 	fsObjName->type = PersistentFsObjType_FilespaceDir;
 	fsObjName->variant.filespaceOid = filespaceOid;
+}
+
+inline static Oid PersistentFileSysObjName_GetFilespaceDir(
+	PersistentFileSysObjName	*fsObjName)
+{
+	Assert(fsObjName->type == PersistentFsObjType_FilespaceDir);
+
+	return fsObjName->variant.filespaceOid;
 }
 
 /*

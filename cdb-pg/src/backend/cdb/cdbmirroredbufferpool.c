@@ -1411,12 +1411,6 @@ void MirroredBufferPool_Drop(
 	MirrorDataLossTrackingState mirrorDataLossTrackingState;
 	int64 mirrorDataLossTrackingSessionNum;
 
-#ifdef MASTER_MIRROR_SYNC
-	if (!isRedo)
-	    mmxlog_log_remove_relfilenode(relFileNode->spcNode, relFileNode->dbNode,
-									  relFileNode->relNode, segmentFileNum);
-#endif
-
 	mirrorDataLossTrackingState = 
 				FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
 												&mirrorDataLossTrackingSessionNum);

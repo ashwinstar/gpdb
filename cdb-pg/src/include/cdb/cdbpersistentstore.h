@@ -310,32 +310,88 @@ typedef struct MirroredLockLocalVars
 #endif
 
 
-// Helper DEFINEs for MirroredLock within the Persistent state-change modules
-// so we can maintain the lock ordering when calls under the PersistentObjLock
-// access the Buffer Pool:
+// Helper DEFINEs for the Persistent state-change modules to READ or WRITE.
 //
-//     MirroredLock
-//     PersistentObjLock
+// We maintain proper lock aquistion and ordering.
 //
-// NOTE: Reading the Buffer Pool must also be covered, since getting a Buffer Pool
-// page may require forcing another page out...
+//	 CheckpointStartLock	[For WRITE, prevents persistent object changes during checkpoint]
+//    MirroredLock
+//    PersistentObjLock
 //
-#define MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE \
-	MIRRORED_LOCK_DECLARE;
+// NOTE: Below these locks are the Buffer Pool content locks.
+//
 
-#define MIRRORED_PERSISTENTOBJ_ORDERED_LOCK \
+// WRITE
+
+typedef struct WritePersistentStateLockLocalVars
+{
+	bool persistentObjLockIsHeldByMe;
+	bool checkpointLockIsHeldByMe;
+} WritePersistentStateLockLocalVars;
+
+#define WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE \
+	MIRRORED_LOCK_DECLARE; \
+	WritePersistentStateLockLocalVars writePersistentStateLockLocalVars;
+
+#define WRITE_PERSISTENT_STATE_ORDERED_LOCK \
 	{ \
 		MIRRORED_LOCK; \
 		\
-		LWLockAcquire(PersistentObjLock , LW_EXCLUSIVE); \
+		writePersistentStateLockLocalVars.checkpointLockIsHeldByMe = LWLockHeldByMe(CheckpointStartLock); \
+		if (!writePersistentStateLockLocalVars.checkpointLockIsHeldByMe) \
+		{ \
+			LWLockAcquire(CheckpointStartLock , LW_EXCLUSIVE); \
+		} \
+		\
+		writePersistentStateLockLocalVars.persistentObjLockIsHeldByMe = LWLockHeldByMe(PersistentObjLock); \
+		if (!writePersistentStateLockLocalVars.persistentObjLockIsHeldByMe) \
+		{ \
+			LWLockAcquire(PersistentObjLock , LW_EXCLUSIVE); \
+		} \
 	}
 	
-#define MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK \
+#define WRITE_PERSISTENT_STATE_ORDERED_UNLOCK \
 	{ \
-		LWLockRelease(PersistentObjLock); \
-		\
 		MIRRORED_UNLOCK; \
+		\
+		if (!writePersistentStateLockLocalVars.checkpointLockIsHeldByMe) \
+		{ \
+			LWLockRelease(CheckpointStartLock); \
+		} \
+		\
+		if (!writePersistentStateLockLocalVars.persistentObjLockIsHeldByMe) \
+		{ \
+			LWLockRelease(PersistentObjLock); \
+		} \
 	}
+
+// READ
+
+typedef struct ReadPersistentStateLockLocalVars
+{
+	bool persistentObjLockIsHeldByMe;
+} ReadPersistentStateLockLocalVars;
+
+#define READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE \
+	ReadPersistentStateLockLocalVars readPersistentStateLockLocalVars;
+
+#define READ_PERSISTENT_STATE_ORDERED_LOCK \
+	{ \
+		readPersistentStateLockLocalVars.persistentObjLockIsHeldByMe = LWLockHeldByMe(PersistentObjLock); \
+		if (!readPersistentStateLockLocalVars.persistentObjLockIsHeldByMe) \
+		{ \
+			LWLockAcquire(PersistentObjLock , LW_SHARED); \
+		} \
+	}
+	
+#define READ_PERSISTENT_STATE_ORDERED_UNLOCK \
+	{ \
+		if (!readPersistentStateLockLocalVars.persistentObjLockIsHeldByMe) \
+		{ \
+			LWLockRelease(PersistentObjLock); \
+		} \
+	}
+
 
 inline static bool Persistent_BeforePersistenceWork(void)
 {

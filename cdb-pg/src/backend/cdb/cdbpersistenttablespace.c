@@ -182,6 +182,8 @@ PersistentFileSysState
 PersistentTablespace_GetState(
 	Oid		tablespaceOid)
 {
+	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	TablespaceDirEntry tablespaceDirEntry;
 
 	PersistentFileSysState	state;
@@ -201,7 +203,7 @@ PersistentTablespace_GetState(
 	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
 	// acquire the MirroredLock.
 
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	READ_PERSISTENT_STATE_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindEntryUnderLock(
@@ -212,7 +214,7 @@ PersistentTablespace_GetState(
 
 	state = tablespaceDirEntry->state;
 
-	LWLockRelease(PersistentObjLock);
+	READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	return state;
 }
@@ -350,14 +352,13 @@ extern void PersistentTablespace_LookupTidAndSerialNum(
 
 	int64			*persistentSerialNum)
 {
+	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	TablespaceDirEntry tablespaceDirEntry;
 
 	PersistentTablespace_VerifyInitScan();
 
-	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
-	// acquire the MirroredLock.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	READ_PERSISTENT_STATE_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindEntryUnderLock(
@@ -369,7 +370,7 @@ extern void PersistentTablespace_LookupTidAndSerialNum(
 	*persistentTid = tablespaceDirEntry->persistentTid;
 	*persistentSerialNum = tablespaceDirEntry->persistentSerialNum;
 
-	LWLockRelease(PersistentObjLock);
+	READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 }
 
 // -----------------------------------------------------------------------------
@@ -432,7 +433,7 @@ PersistentTablespaceGetFilespaces PersistentTablespace_TryGetPrimaryAndMirrorFil
 				 
 	Oid *filespaceOid)
 {
-	bool lockHeldByMe;
+	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	TablespaceDirEntry tablespaceDirEntry;
 
@@ -504,17 +505,7 @@ PersistentTablespaceGetFilespaces PersistentTablespace_TryGetPrimaryAndMirrorFil
 	 */
 	PersistentTablespace_VerifyInitScan();
 
-	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
-	// acquire the MirroredLock.
-
-	lockHeldByMe = LWLockHeldByMe(PersistentObjLock);
-
-	/*
-	 * Try to prevent a performance issue from many processes gathering tablespace/filespace
-	 * information.
-	 */
-	if (!lockHeldByMe)
-		LWLockAcquire(PersistentObjLock, LW_SHARED);
+	READ_PERSISTENT_STATE_ORDERED_LOCK;
 
 	tablespaceDirEntry =
 		PersistentTablespace_FindEntryUnderLock(
@@ -541,8 +532,7 @@ PersistentTablespaceGetFilespaces PersistentTablespace_TryGetPrimaryAndMirrorFil
 		}
 	}
 
-	if (!lockHeldByMe)
-		LWLockRelease(PersistentObjLock);
+	READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	return result;
 }
@@ -604,9 +594,10 @@ void PersistentTablespace_GetPrimaryAndMirrorFilespaces(
 Oid
 PersistentTablespace_GetFileSpaceOid(Oid tablespaceOid)
 {
+	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	TablespaceDirEntry tablespaceDirEntry;
 	Oid filespace = InvalidOid;
-	bool lockHeldByMe;
 
 	if (tablespaceOid == GLOBALTABLESPACE_OID ||
 		tablespaceOid == DEFAULTTABLESPACE_OID)
@@ -619,17 +610,7 @@ PersistentTablespace_GetFileSpaceOid(Oid tablespaceOid)
 
 	PersistentTablespace_VerifyInitScan();
 
-	// NOTE: Since we are not accessing data in the Buffer Pool, we don't need to
-	// acquire the MirroredLock.
-
-	lockHeldByMe = LWLockHeldByMe(PersistentObjLock);
-
-	/*
-	 * Try to prevent a performance issue from many processes gathering tablespace/filespace
-	 * information.
-	 */
-	if (!lockHeldByMe)
-		LWLockAcquire(PersistentObjLock, LW_SHARED);
+	READ_PERSISTENT_STATE_ORDERED_LOCK;
 
 	tablespaceDirEntry =
 		PersistentTablespace_FindEntryUnderLock(
@@ -640,8 +621,7 @@ PersistentTablespace_GetFileSpaceOid(Oid tablespaceOid)
 
 	filespace = tablespaceDirEntry->filespaceOid;
 
-	if (!lockHeldByMe)
-		LWLockRelease(PersistentObjLock);
+	READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	return filespace;
 }
@@ -679,7 +659,7 @@ void PersistentTablespace_MarkCreatePending(
 				/* When true, the XLOG record for this change will be flushed to disk. */
 
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -699,7 +679,7 @@ void PersistentTablespace_MarkCreatePending(
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_CreateEntryUnderLock(
@@ -719,8 +699,17 @@ void PersistentTablespace_MarkCreatePending(
 
 	*persistentTid = tablespaceDirEntry->persistentTid;
 	*persistentSerialNum = tablespaceDirEntry->persistentSerialNum;
+		
+	/*
+	 * This XLOG must be generated under the persistent write-lock.
+	 */
+#ifdef MASTER_MIRROR_SYNC
+	mmxlog_log_create_tablespace(	
+						filespaceOid,
+						tablespaceOid);
+#endif
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -735,11 +724,11 @@ void
 xlog_persistent_tablespace_create(Oid filespaceoid, Oid tablespaceoid)
 {
 	TablespaceDirEntry tde;
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentTablespace_VerifyInitScan();
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	tde = PersistentTablespace_CreateEntryUnderLock(filespaceoid,
 												    tablespaceoid);
@@ -747,7 +736,7 @@ xlog_persistent_tablespace_create(Oid filespaceoid, Oid tablespaceoid)
 
 	tde->state = PersistentFileSysState_Created;
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 }
 
 
@@ -771,7 +760,7 @@ void PersistentTablespace_Created(
 	bool			retryPossible)
 
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -793,7 +782,7 @@ void PersistentTablespace_Created(
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindEntryUnderLock(
@@ -815,11 +804,12 @@ void PersistentTablespace_Created(
 								PersistentFileSysState_Created,
 								retryPossible,
 								/* flushToXlog */ false,
-								NULL);
+								/* oldState */ NULL,
+								/* verifiedActionCallback */ NULL);
 
 	tablespaceDirEntry->state = PersistentFileSysState_Created;
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -835,7 +825,7 @@ PersistentTablespace_RemoveSegment(int16 dbid, bool ismirror)
 {
 	TablespaceDirEntry tablespaceDirEntry;
 	HASH_SEQ_STATUS hstat;
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	hash_seq_init(&hstat, persistentTablespaceSharedHashTable);
 
@@ -844,7 +834,7 @@ PersistentTablespace_RemoveSegment(int16 dbid, bool ismirror)
 
 	PersistentTablespace_VerifyInitScan();
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	while ((tablespaceDirEntry = hash_seq_search(&hstat)) != NULL)
 	{
@@ -867,7 +857,7 @@ PersistentTablespace_RemoveSegment(int16 dbid, bool ismirror)
 										   /* flushToXlog */ false);
 	}
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 }
 
 void
@@ -875,7 +865,7 @@ PersistentTablespace_ActivateStandby(int16 oldmaster, int16 newmaster)
 {
 	TablespaceDirEntry tablespaceDirEntry;
 	HASH_SEQ_STATUS hstat;
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	hash_seq_init(&hstat, persistentTablespaceSharedHashTable);
 
@@ -884,7 +874,7 @@ PersistentTablespace_ActivateStandby(int16 oldmaster, int16 newmaster)
 
 	PersistentTablespace_VerifyInitScan();
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	while ((tablespaceDirEntry = hash_seq_search(&hstat)) != NULL)
 	{
@@ -906,7 +896,7 @@ PersistentTablespace_ActivateStandby(int16 oldmaster, int16 newmaster)
 								   /* flushToXlog */ false);
 	}
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 }
 
 void
@@ -916,7 +906,7 @@ PersistentTablespace_AddMirrorAll(
 {
 	TablespaceDirEntry tablespaceDirEntry;
 	HASH_SEQ_STATUS hstat;
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	hash_seq_init(&hstat, persistentTablespaceSharedHashTable);
 
@@ -925,7 +915,7 @@ PersistentTablespace_AddMirrorAll(
 
 	PersistentTablespace_VerifyInitScan();
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	while ((tablespaceDirEntry = hash_seq_search(&hstat)) != NULL)
 	{
@@ -950,7 +940,7 @@ PersistentTablespace_AddMirrorAll(
                     	               /* flushToXlog */ false);
 	}
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 }
 
 /*
@@ -976,7 +966,7 @@ PersistentFileSysObjStateChangeResult PersistentTablespace_MarkDropPending(
 	bool			retryPossible)
 
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -998,7 +988,7 @@ PersistentFileSysObjStateChangeResult PersistentTablespace_MarkDropPending(
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindEntryUnderLock(
@@ -1021,11 +1011,12 @@ PersistentFileSysObjStateChangeResult PersistentTablespace_MarkDropPending(
 								PersistentFileSysState_DropPending,
 								retryPossible,
 								/* flushToXlog */ false,
-								NULL);
+								/* oldState */ NULL,
+								/* verifiedActionCallback */ NULL);
 
 	tablespaceDirEntry->state = PersistentFileSysState_DropPending;
-
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -1055,7 +1046,7 @@ PersistentFileSysObjStateChangeResult PersistentTablespace_MarkAbortingCreate(
 
 	bool			retryPossible)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -1077,7 +1068,7 @@ PersistentFileSysObjStateChangeResult PersistentTablespace_MarkAbortingCreate(
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindEntryUnderLock(
@@ -1099,11 +1090,12 @@ PersistentFileSysObjStateChangeResult PersistentTablespace_MarkAbortingCreate(
 								PersistentFileSysState_AbortingCreate,
 								retryPossible,
 								/* flushToXlog */ false,
-								NULL);
+								/* oldState */ NULL,
+								/* verifiedActionCallback */ NULL);
 
 	tablespaceDirEntry->state = PersistentFileSysState_AbortingCreate;
-
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+		
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -1114,6 +1106,43 @@ PersistentFileSysObjStateChangeResult PersistentTablespace_MarkAbortingCreate(
 			 PersistentFileSysObjStateChangeResult_Name(stateChangeResult));
 
 	return stateChangeResult;
+}
+
+static void
+PersistentTablespace_DroppedVerifiedActionCallback(
+	PersistentFileSysObjName 	*fsObjName,
+
+	ItemPointer 				persistentTid,
+			/* TID of the gp_persistent_rel_files tuple for the relation. */
+
+	int64						persistentSerialNum,
+			/* Serial number for the relation.	Distinquishes the uses of the tuple. */
+
+	PersistentFileSysObjVerifyExpectedResult verifyExpectedResult)
+{
+	Oid tablespaceOid = PersistentFileSysObjName_GetTablespaceDir(fsObjName);
+
+	switch (verifyExpectedResult)
+	{
+	case PersistentFileSysObjVerifyExpectedResult_DeleteUnnecessary:
+	case PersistentFileSysObjVerifyExpectedResult_StateChangeAlreadyDone:
+	case PersistentFileSysObjVerifyExpectedResult_ErrorSuppressed:
+		break;
+	
+	case PersistentFileSysObjVerifyExpectedResult_StateChangeNeeded:
+		/*
+		 * This XLOG must be generated under the persistent write-lock.
+		 */
+#ifdef MASTER_MIRROR_SYNC
+		mmxlog_log_remove_tablespace(tablespaceOid);
+#endif
+				
+		break;
+	
+	default:
+		elog(ERROR, "Unexpected persistent object verify expected result: %d",
+			 verifyExpectedResult);
+	}
 }
 
 /*
@@ -1130,7 +1159,7 @@ void PersistentTablespace_Dropped(
 				/* Serial number for the tablespace.	Distinquishes the uses of the tuple. */
 
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjName fsObjName;
 
@@ -1154,7 +1183,7 @@ void PersistentTablespace_Dropped(
 
 	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	tablespaceDirEntry = 
 				PersistentTablespace_FindEntryUnderLock(
@@ -1177,13 +1206,14 @@ void PersistentTablespace_Dropped(
 								PersistentFileSysState_Free,
 								/* retryPossible */ false,
 								/* flushToXlog */ false,
-								&oldState);
+								&oldState,
+								PersistentTablespace_DroppedVerifiedActionCallback);
 
 	tablespaceDirEntry->state = PersistentFileSysState_Free;
 
 	PersistentTablespace_RemoveEntryUnderLock(tablespaceDirEntry);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 

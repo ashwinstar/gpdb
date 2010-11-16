@@ -521,11 +521,6 @@ smgrcreatefilespacedirpending(
 								persistentSerialNum,
 								flushToXLog);
 
-	
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_create_filespace(filespaceOid);	
-#endif
-	
 	PendingDelete_AddCreatePendingEntry(
 								&fsObjName,
 								persistentTid,
@@ -595,12 +590,6 @@ smgrcreatetablespacedirpending(
 								persistentTid,
 								persistentSerialNum,
 								flushToXLog);
-
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_create_tablespace(	
-						tablespaceDirNode->filespace,
-						tablespaceDirNode->tablespace);
-#endif
 	
 	PendingDelete_AddCreatePendingEntry(
 						&fsObjName,
@@ -664,10 +653,6 @@ smgrcreatedbdirpending(
 								persistentTid,
 								persistentSerialNum,
 								flushToXLog);
-
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_create_database(dbDirNode->tablespace, dbDirNode->database); 
-#endif
 	
 	PendingDelete_AddCreatePendingEntry(
 						&fsObjName,
@@ -721,11 +706,6 @@ smgrcreatedbdirjustintime(
 											mirrorExistenceState,
 											persistentTid,
 											persistentSerialNum);
-
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_create_database(justInTimeDbDirNode->tablespace,
-							   justInTimeDbDirNode->database);	
-#endif
 
 	mdcreatedbdir(
 				justInTimeDbDirNode, 
@@ -797,14 +777,6 @@ void smgrcreatepending(
 								flushToXLog);
 	
 	
-	
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_create_relfilenode(
-						relFileNode->spcNode,
-				  		relFileNode->dbNode,
-				  		relFileNode->relNode,
-				  		/* segmentFileNum */ 0);	
-#endif
 	
 	pending = PendingDelete_AddCreatePendingEntry(
 								&fsObjName,
@@ -1084,11 +1056,6 @@ smgrdormfilespacedir(
 
 	bool						*mirrorDataLossOccurred)
 {
-#ifdef MASTER_MIRROR_SYNC
-	if (!ignoreNonExistence)
-		mmxlog_log_remove_filespace(filespaceOid);
-#endif
-
 	/*
 	 * And remove the physical filespace directory.
 	 *
@@ -1181,10 +1148,6 @@ smgrdormtablespacedir(
 
 	bool						*mirrorDataLossOccurred)
 {
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_remove_tablespace(tablespaceOid);
-#endif
-
 	/*
 	 * And remove the physical tablespace directory.
 	 *
@@ -1239,10 +1202,6 @@ smgrdormdbdir(
 
 	bool						*mirrorDataLossOccurred)
 {
-#ifdef MASTER_MIRROR_SYNC
-	mmxlog_log_remove_database(dbDirNode->tablespace, dbDirNode->database);
-#endif
-
 	smgr_internal_rmdbdir(
 					dbDirNode,
 					primaryOnly, 

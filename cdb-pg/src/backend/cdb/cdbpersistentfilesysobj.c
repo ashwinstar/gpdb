@@ -723,6 +723,8 @@ PersistentTidIsKnownResult PersistentFileSysObj_TidIsKnown(
 	
 	ItemPointer 			maxTid)
 {
+	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjData 		*fileSysObjData;
 	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
 
@@ -733,14 +735,14 @@ PersistentTidIsKnownResult PersistentFileSysObj_TidIsKnown(
 								&fileSysObjData,
 								&fileSysObjSharedData);
 	
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	READ_PERSISTENT_STATE_ORDERED_LOCK;
 
 	result = PersistentStore_TidIsKnown(
 								&fileSysObjSharedData->storeSharedData,
 								persistentTid,
 								maxTid);
 	
-	LWLockRelease(PersistentObjLock);
+	READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	return result;
 }
@@ -1038,20 +1040,6 @@ errcontext_persistent_relation_state_change(
 	return 0;
 }
 
-
-/*
- * The file kinds of a persistent file-system object verification results.
- */
-typedef enum PersistentFileSysObjVerifyExpectedResult
-{
-	PersistentFileSysObjVerifyExpectedResult_None = 0,
-	PersistentFileSysObjVerifyExpectedResult_DeleteUnnecessary = 1,
-	PersistentFileSysObjVerifyExpectedResult_StateChangeAlreadyDone = 2,
-	PersistentFileSysObjVerifyExpectedResult_StateChangeNeeded = 3,
-	PersistentFileSysObjVerifyExpectedResult_ErrorSuppressed = 4,
-	MaxPersistentFileSysObjVerifyExpectedResult /* must always be last */
-} PersistentFileSysObjVerifyExpectedResult;
-
 static PersistentFileSysObjVerifyExpectedResult PersistentFileSysObj_VerifyExpected(
 	PersistentFileSysObjData 		*fileSysObjData,
 
@@ -1231,7 +1219,9 @@ PersistentFileSysObjStateChangeResult PersistentFileSysObj_StateChange(
 
 	bool						flushToXLog,
 
-	PersistentFileSysState		*oldState)
+	PersistentFileSysState		*oldState,
+
+	PersistentFileSysObjVerifiedActionCallback verifiedActionCallback)
 {
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
@@ -1347,6 +1337,15 @@ PersistentFileSysObjStateChangeResult PersistentFileSysObj_StateChange(
 									&currentMirrorExistenceState);
 	if (oldState != NULL)
 		*oldState = localOldState;
+
+	if (verifiedActionCallback != NULL)
+	{
+		(*verifiedActionCallback)(
+								fsObjName,
+								persistentTid,
+								persistentSerialNum,
+								verifyExpectedResult);
+	}
 
 	switch (verifyExpectedResult)
 	{
@@ -1715,7 +1714,8 @@ PersistentFileSysObj_RemoveSegment(PersistentFileSysObjName *fsObjName,
 										PersistentFileSysState_Free,
 										/* retryPossible */ false,
 										/* flushToXLog */ false,
-										&oldState);
+										&oldState,
+										/* verifiedActionCallback */ NULL);
 			return;
 		}
 
@@ -3066,7 +3066,7 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 	
 	bool						flushToXLog)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
@@ -3117,7 +3117,7 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 		relFileNode->relNode,
 		segmentFileNum);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(PersistentFsObjType_RelationFile, persistentTid, persistentSerialNum);
 
@@ -3218,7 +3218,7 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 					 persistentSerialNum,
 					 ItemPointerToString(persistentTid));
 
-			MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+			WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 			return;		// Old news.
 		}
@@ -3243,7 +3243,7 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 												mirrorNewEof,
 												flushToXLog);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -3963,7 +3963,7 @@ void PersistentFileSysObj_ChangeMirrorState(
 
 	bool							flushToXLog)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
@@ -3989,7 +3989,7 @@ void PersistentFileSysObj_ChangeMirrorState(
 
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 		 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(fsObjType, persistentTid, persistentSerialNum);
 
@@ -4012,7 +4012,7 @@ void PersistentFileSysObj_ChangeMirrorState(
 											relDataSynchronizationState,
 											flushToXLog);
 	
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 	
 	pfree(values);
 }
@@ -4026,7 +4026,7 @@ void PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 	
 	bool						flushToXLog)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
@@ -4071,7 +4071,7 @@ void PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 		 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(fsObjName, persistentTid, persistentSerialNum);
 
@@ -4127,7 +4127,7 @@ void PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 											/* newMirrorBufpoolMarkedForScanIncrementalResync */ true,
 											flushToXLog);
 	
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 	
 	pfree(values);
 }
@@ -4143,7 +4143,7 @@ bool PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
 
 	int64						*eof)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
@@ -4195,7 +4195,7 @@ bool PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
 
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(&fsObjName, persistentTid, persistentSerialNum);
 
@@ -4229,7 +4229,7 @@ bool PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
 									&actualPersistentSerialNum,
 									&previousFreeTid);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	pfree(values);
 	
@@ -4282,7 +4282,7 @@ void PersistentFileSysObj_GetAppendOnlyCatchupMirrorStartEof(
 
 	int64						*startEof)
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
@@ -4334,7 +4334,7 @@ void PersistentFileSysObj_GetAppendOnlyCatchupMirrorStartEof(
 
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	READ_PERSISTENT_STATE_ORDERED_LOCK;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHNAME(&fsObjName, persistentTid, persistentSerialNum);
 
@@ -4368,7 +4368,7 @@ void PersistentFileSysObj_GetAppendOnlyCatchupMirrorStartEof(
 									&actualPersistentSerialNum,
 									&previousFreeTid);
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	pfree(values);
 	
@@ -4427,6 +4427,8 @@ static void PersistentFileSysObj_ScanStateAction(
 
 	PersistentFsObjType		fsObjType)
 {
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjData *fileSysObjData;
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
 
@@ -4450,9 +4452,7 @@ static void PersistentFileSysObj_ScanStateAction(
 	 
 	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
 
-	// NOTE: No need to acquire the MirroredLock for Resynchronize routines.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 		 
 	PersistentStore_BeginScan(
 						&fileSysObjData->storeData,
@@ -4520,7 +4520,8 @@ static void PersistentFileSysObj_ScanStateAction(
 													PersistentFileSysState_Free,
 													/* retryPossible */ false,
 													/* flushToXLog */ false,
-													&oldState);
+													&oldState,
+													/* verifiedActionCallback */ NULL);
 					}
 					else
 					{		
@@ -4644,7 +4645,8 @@ static void PersistentFileSysObj_ScanStateAction(
 						 serialNum,
 						 ItemPointerToString(&persistentTid));
 				
-				LWLockRelease(PersistentObjLock);	// Don't hold lock during physical file-system operation.
+				// Don't hold lock during physical file-system operation.
+				WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 				
 				FileRepResync_SetReCreateRequest();
 				
@@ -4666,7 +4668,7 @@ static void PersistentFileSysObj_ScanStateAction(
 
 				// UNDONE: Act on mirrorDataLossOccurred
 				
-				LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+				WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 				
 			}
 			else
@@ -4804,7 +4806,8 @@ static void PersistentFileSysObj_ScanStateAction(
 						 ItemPointerToString(&persistentTid));
 
 				
-				LWLockRelease(PersistentObjLock);	// Don't hold lock during physical file-system operation.
+				// Don't hold lock during physical file-system operation.
+				WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 				
 				// UNDONE: Pass this in from the resync worker?
 				mirrorDataLossTrackingState = 
@@ -4821,7 +4824,7 @@ static void PersistentFileSysObj_ScanStateAction(
 
 				// UNDONE: Act on mirrorDataLossOccurred
 				
-				LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+				WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 				
 			}
 			else
@@ -4861,13 +4864,13 @@ static void PersistentFileSysObj_ScanStateAction(
 				 stateAction);
 		}
 
-		LWLockRelease(PersistentObjLock);
+		WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 		
-		LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 		
 	}
 
-	LWLockRelease(PersistentObjLock);
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	PersistentStore_EndScan(&storeScan);
 
@@ -4975,6 +4978,8 @@ void PersistentFileSysObj_MirrorAdd(void)
 
 void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 {
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjData *fileSysObjData;
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
 
@@ -4992,9 +4997,7 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 								&fileSysObjData,
 								&fileSysObjSharedData);
 
-	// NOTE: No need to acquire the MirroredLock for Resynchronize routines.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 		 
 	PersistentStore_BeginScan(
 						&fileSysObjData->storeData,
@@ -5096,13 +5099,13 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 					 ItemPointerToString(&persistentTid));
 		}
 
-		LWLockRelease(PersistentObjLock);
+		WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 		
-		LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 		
 	}
 
-	LWLockRelease(PersistentObjLock);
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	PersistentStore_EndScan(&storeScan);
 }
@@ -5112,6 +5115,8 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
  */
 void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 {
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjData *fileSysObjData;
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
 
@@ -5129,9 +5134,7 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 								&fileSysObjData,
 								&fileSysObjSharedData);
 
-	// NOTE: No need to acquire the MirroredLock for Resynchronize routines.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 		 
 	PersistentStore_BeginScan(
 						&fileSysObjData->storeData,
@@ -5263,13 +5266,13 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 
 		}
 
-		LWLockRelease(PersistentObjLock);
+		WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 		
-		LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 		
 	}
 
-	LWLockRelease(PersistentObjLock);
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	PersistentStore_EndScan(&storeScan);
 }
@@ -5279,6 +5282,8 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
  */
 void PersistentFileSysObj_MarkAppendOnlyCatchup(void)
 {
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjData *fileSysObjData;
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
 
@@ -5296,9 +5301,7 @@ void PersistentFileSysObj_MarkAppendOnlyCatchup(void)
 								&fileSysObjData,
 								&fileSysObjSharedData);
 
-	// NOTE: No need to acquire the MirroredLock for Resynchronize routines.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 		 
 	PersistentStore_BeginScan(
 						&fileSysObjData->storeData,
@@ -5431,13 +5434,13 @@ void PersistentFileSysObj_MarkAppendOnlyCatchup(void)
 					 ItemPointerToString(&persistentTid));
 		}
 
-		LWLockRelease(PersistentObjLock);
+		WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 		
-		LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 		
 	}
 
-	LWLockRelease(PersistentObjLock);
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	PersistentStore_EndScan(&storeScan);
 }
@@ -5450,6 +5453,8 @@ static void PersistentFileSysObj_MarkPageIncremental(
 
 	int64				newMirrorBufpoolResyncChangedPageCount)
 {
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
 	PersistentFileSysObjData 		*fileSysObjData;
@@ -5493,9 +5498,7 @@ static void PersistentFileSysObj_MarkPageIncremental(
 								&fileSysObjData,
 								&fileSysObjSharedData);
 
-	// NOTE: No need to acquire the MirroredLock for Resynchronize routines.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(PersistentFsObjType_RelationFile, persistentTid, persistentSerialNum);
 
@@ -5540,8 +5543,7 @@ static void PersistentFileSysObj_MarkPageIncremental(
 		
 		heap_freetuple(tupleCopy);
 		
-		LWLockRelease(PersistentObjLock);
-		
+		WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 		return;
 	}
 
@@ -5556,8 +5558,7 @@ static void PersistentFileSysObj_MarkPageIncremental(
 
 		heap_freetuple(tupleCopy);
 		
-		LWLockRelease(PersistentObjLock);
-		
+		WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 		return;
 	}
 
@@ -5615,7 +5616,7 @@ static void PersistentFileSysObj_MarkPageIncremental(
 		heap_freetuple(tupleCopy);
 	}
 
-	LWLockRelease(PersistentObjLock);
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 }
 
@@ -5711,6 +5712,8 @@ bool PersistentFileSysObj_ResynchronizeScan(
 
 	int64							*persistentSerialNum)
 {
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	PersistentFileSysObjData *fileSysObjData;
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
 
@@ -5735,9 +5738,7 @@ bool PersistentFileSysObj_ResynchronizeScan(
 								&fileSysObjData,
 								&fileSysObjSharedData);
 
-	// NOTE: No need to acquire the MirroredLock for Resynchronize routines.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	if (!resynchronizeScanToken->beginScan)
 	{
@@ -5761,8 +5762,8 @@ bool PersistentFileSysObj_ResynchronizeScan(
 			resynchronizeScanToken->beginScan = false;
 			resynchronizeScanToken->done = true;
 			
-			LWLockRelease(PersistentObjLock);
-			
+			WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+
 			return false;
 		}
 
@@ -5825,13 +5826,13 @@ bool PersistentFileSysObj_ResynchronizeScan(
 					 ItemPointerToString(persistentTid));
 		}
 
-		LWLockRelease(PersistentObjLock);
+		WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 		
-		LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+		WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 		
 	}
 	
-	LWLockRelease(PersistentObjLock);
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 	
 	return true;
 }
@@ -5876,6 +5877,8 @@ bool PersistentFileSysObj_ResynchronizeRefetch(
 
 	int64							*mirrorAppendOnlyNewEof)
 {
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
 	PersistentFileSysObjData 		*fileSysObjData;
@@ -5913,9 +5916,7 @@ bool PersistentFileSysObj_ResynchronizeRefetch(
 								&fileSysObjData,
 								&fileSysObjSharedData);
 
-	// NOTE: No need to acquire the MirroredLock for Resynchronize routines.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(PersistentFsObjType_RelationFile, persistentTid, persistentSerialNum);
 
@@ -5951,7 +5952,7 @@ bool PersistentFileSysObj_ResynchronizeRefetch(
 
 	heap_freetuple(tupleCopy);
 
-	LWLockRelease(PersistentObjLock);
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	if (persistentState == PersistentFileSysState_Free)
 		return false;
@@ -5973,6 +5974,8 @@ void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(
 
 	bool							flushToXLog)
 {
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
 	PersistentFileSysObjData 		*fileSysObjData;
@@ -5998,9 +6001,7 @@ void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(
 								&fileSysObjData,
 								&fileSysObjSharedData);
 
-	// NOTE: No need to acquire the MirroredLock for Resynchronize routines.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(PersistentFsObjType_RelationFile, persistentTid, persistentSerialNum);
 
@@ -6031,7 +6032,7 @@ void PersistentFileSysObj_ResynchronizeBufferPoolCkpt(
 								replaces,
 								flushToXLog);
 
-	LWLockRelease(PersistentObjLock);
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 }
 
@@ -6044,6 +6045,8 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 														
 	bool							flushToXLog)
 {
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_DECLARE;
 
 	PersistentFileSysObjData 		*fileSysObjData;
@@ -6075,9 +6078,7 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 								&fileSysObjData,
 								&fileSysObjSharedData);
 
-	// NOTE: No need to acquire the MirroredLock for Resynchronize routines.
-
-	LWLockAcquire(PersistentObjLock, LW_EXCLUSIVE);
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 
 	READTUPLE_FOR_UPDATE_ERRCONTEXT_PUSHTYPE(PersistentFsObjType_RelationFile, persistentTid, persistentSerialNum);
 
@@ -6137,7 +6138,7 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 								replaces,
 								flushToXLog);
 
-	LWLockRelease(PersistentObjLock);
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 }
 
@@ -6153,7 +6154,7 @@ bool PersistentFileSysObj_ScanForRelation(
 	int64				*persistentSerialNum)
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
 {
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK_DECLARE;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjData *fileSysObjData;
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
@@ -6188,7 +6189,7 @@ bool PersistentFileSysObj_ScanForRelation(
 	MemSet(persistentTid, 0, sizeof(ItemPointerData));
 	*persistentSerialNum = 0;
 		 
-	MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 		 
 	PersistentStore_BeginScan(
 						&fileSysObjData->storeData,
@@ -6254,13 +6255,13 @@ bool PersistentFileSysObj_ScanForRelation(
 			break;
 		}
 
-		MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+		WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 		
-		MIRRORED_PERSISTENTOBJ_ORDERED_LOCK;
+		WRITE_PERSISTENT_STATE_ORDERED_LOCK;
 		
 	}
 
-	MIRRORED_PERSISTENTOBJ_ORDERED_UNLOCK;
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	PersistentStore_EndScan(&storeScan);
 
