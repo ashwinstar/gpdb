@@ -1,9 +1,9 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2009, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2010, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/stringutils.c,v 1.48 2009/01/01 17:23:55 momjian Exp $
+ * src/bin/psql/stringutils.c
  */
 #include "postgres_fe.h"
 
