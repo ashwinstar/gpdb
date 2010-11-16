@@ -243,7 +243,7 @@ write_eventlog(int level, const char *line)
 }
 #endif   /* WIN32 */
 
-static void get_timestamp(char * strfbuf)
+void get_timestamp(char * strfbuf, int length)
 {
 	pg_time_t		stamp_time;
 	char			msbuf[8];
@@ -252,7 +252,7 @@ static void get_timestamp(char * strfbuf)
 	gettimeofday(&tv, NULL);
 	stamp_time = tv.tv_sec;
 
-	pg_strftime(strfbuf, 127,
+	pg_strftime(strfbuf, length,
 	/* leave room for microseconds... */
 	/* Win32 timezone names are too long so don't print them */
 #ifndef WIN32
@@ -309,7 +309,7 @@ write_log(const char *fmt,...)
 		return;
 	}
 	
-	get_timestamp(logprefix);
+	get_timestamp(logprefix, sizeof(logprefix));
 	strcat(logprefix,"|");
 	if (MyProcPort)
 	{

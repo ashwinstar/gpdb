@@ -1058,6 +1058,9 @@ extern SeqServerControlBlock *seqServerCtl;
  */
 extern void write_log(const char *fmt,...) __attribute__((format(printf, 1, 2)));
 
+/* format timestamp into string */
+extern void get_timestamp(char * strfbuf, int length);
+
 extern void verifyGpIdentityIsSet(void);
 
 /* control current usability of enabling hash index */

@@ -82,27 +82,175 @@
 #endif
 
 /*
- * FUNCTION PROTOTYPES
+ * CONSTANTS
  */
 
-#ifdef EXEC_BACKEND
-static pid_t ftsprobe_forkexec(void);
-#endif
-NON_EXEC_STATIC void FtsProbeMain(int argc, char *argv[]);
+/* maximum number of segments */
+#define MAX_NUM_OF_SEGMENTS  32768
 
-static void FtsProbeLoop(void);
+/* buffer size for timestamp */
+#define TIMESTAMP_BUF_SIZE   128
 
-static void markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo);
-static char FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo);
+/* buffer size for SQL command */
+#define SQL_CMD_BUF_SIZE     1024
 
-static void retrieveUserAndDb(char **probeUser);
-static bool probeSegments(CdbComponentDatabases *cdb_component_dbs);
+#define GpConfigHistoryRelationName    "gp_configuration_history"
 
-static void *probeSegmentFromThread(void *arg);
 
-extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
+/*
+ * Enum for probe result deciphering - use one byte to store results
+ */
+enum probe_result_e
+{
+	PROBE_DEAD            = 0x00,
+	PROBE_ALIVE           = 0x01,
+	PROBE_FAULT_CRASH     = 0x02,
+	PROBE_FAULT_MIRROR    = 0x04,
+	PROBE_RESYNC_COMPLETE = 0x08,
+	PROBE_SEGMENT         = 0x10,
+};
 
-static void fillTimestampStr(char *str, int maxLength );
+#define PROBE_CHECK_FLAG(result, flag) ((result & flag) == flag)
+
+#define PROBE_IS_ALIVE(dbInfo) \
+	PROBE_CHECK_FLAG(probe_results[(dbInfo)->dbid], PROBE_ALIVE)
+#define PROBE_HAS_FAULT_CRASH(dbInfo) \
+	PROBE_CHECK_FLAG(probe_results[(dbInfo)->dbid], PROBE_FAULT_CRASH)
+#define PROBE_HAS_FAULT_MIRROR(dbInfo) \
+	PROBE_CHECK_FLAG(probe_results[(dbInfo)->dbid], PROBE_FAULT_MIRROR)
+#define PROBE_IS_RESYNC_COMPLETE(dbInfo) \
+	PROBE_CHECK_FLAG(probe_results[(dbInfo)->dbid], PROBE_RESYNC_COMPLETE)
+
+/* segment probing state */
+enum probe_state_t
+{
+	CONNECTING = 0,
+	CONNECTED,
+	REQUEST_SENT,
+	RESPONSE_READY
+};
+
+/*
+ * primary/mirror state after probing;
+ * this is used to transition the segment pair to next state;
+ * we ignore the case where both segments are down, as no transition is performed;
+ * each segment can be:
+ *    1) (U)p or (D)own
+ */
+enum probe_transition_e
+{
+	TRANS_D_D = 0x01,	/* not used for state transitions */
+	TRANS_D_U = 0x02,
+	TRANS_U_D = 0x04,
+	TRANS_U_U = 0x08,
+
+	TRANS_SENTINEL
+};
+
+#define IS_VALID_TRANSITION(trans) \
+	(trans == TRANS_D_D || trans == TRANS_D_U || trans == TRANS_U_D || trans == TRANS_U_U)
+
+
+/*
+ * primary/mirror valid states for filerep;
+ * we enumerate all possible combined states for two segments
+ * before and after state transition, assuming that the first
+ * is the old primary and the second is the old mirror;
+ * each segment can be:
+ *    1) (P)rimary or (M)irror
+ *    2) (U)p or (D)own
+ *    3) in (S)ync, (R)esync or (C)hangetracking mode -- see filerep's DataState_e
+ */
+enum filerep_segment_pair_state_e
+{
+	FILEREP_PUS_MUS = 0,
+	FILEREP_PUR_MUR,
+	FILEREP_PUC_MDX,
+	FILEREP_MDX_PUC,
+
+	FILEREP_SENTINEL
+};
+
+ /* we always assume that primary is up */
+#define IS_VALID_OLD_STATE_FILEREP(state) \
+	(state >= FILEREP_PUS_MUS && state <= FILEREP_PUC_MDX)
+
+#define IS_VALID_NEW_STATE_FILEREP(state) \
+	(state >= FILEREP_PUS_MUS && state < FILEREP_SENTINEL)
+
+/*
+ * state machine matrix for filerep;
+ * we assume that the first segment is the old primary;
+ * transitions from "down" to "resync" and from "resync" to "sync" are excluded;
+ */
+const uint32 state_machine_filerep[][FILEREP_SENTINEL] =
+{
+/* new: PUS_MUS,   PUR_MUR,               PUC_MDX,   MDX_PUC */
+	{         0,         0,             TRANS_U_D, TRANS_D_U },  /* old: PUS_MUS */
+	{         0,         0, TRANS_U_D | TRANS_D_U,         0 },  /* old: PUR_MUR */
+	{         0,         0,                     0,         0 },  /* old: PUC_MDX */
+};
+
+
+/*
+ * primary/mirror valid states for SAN;
+ * we enumerate all possible combined states for two segments
+ * before and after state transition, assuming that the first
+ * is the old primary and the second is the old mirror;
+ * each segment can be:
+ *    1) (P)rimary or (M)irror
+ *    2) (U)p or (D)own
+ */
+enum san_segment_pair_state_e
+{
+	SAN_PU_MU = 0,
+	SAN_PU_MD,
+	SAN_MD_PU,
+
+	SAN_SENTINEL
+};
+
+#define IS_VALID_OLD_STATE_SAN(state) \
+	(state >= SAN_PU_MU && state <= SAN_PU_MD)
+
+#define IS_VALID_NEW_STATE_SAN(state) \
+	(state >= SAN_PU_MU && state < SAN_SENTINEL)
+
+/*
+ * state machine matrix for SAN;
+ * we assume that the first segment is the old primary
+ * transition from "down" to "up" is excluded;
+ */
+const uint32 state_machine_san[][SAN_SENTINEL] =
+{
+/* new:   PU_MU,     PU_MD,     MD_PU */
+	{         0, TRANS_U_D, TRANS_D_U },  /* old: PU_MU */
+	{         0,         0,         0 },  /* old: PU_MD */
+};
+
+
+/*
+ * STRUCTURES
+ */
+
+struct segmentStatusChange {
+	int	dbid;
+	int16 segindex;
+	uint8 oldStatus;
+	uint8 newStatus;
+};
+
+struct threadWorkerInfo {
+	uint8		*scan_status;
+};
+
+
+/*
+ * STATIC VARIABLES
+ */
+
+/* one byte of status for each segment */
+static uint8 scan_status[MAX_NUM_OF_SEGMENTS];
 
 static bool am_ftsprobe = false;
 
@@ -114,18 +262,80 @@ static char *probeDatabase = "postgres";
 
 static char failover_strategy='n';
 
+/* struct holding segment configuration */
 static CdbComponentDatabases *cdb_component_dbs = NULL;
+
+/* mutex used for pthread synchronization in parallel probing */
+static pthread_mutex_t worker_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+
+/*
+ * FUNCTION PROTOTYPES
+ */
+
+#ifdef EXEC_BACKEND
+static pid_t ftsprobe_forkexec(void);
+#endif
+NON_EXEC_STATIC void FtsProbeMain(int argc, char *argv[]);
+
+static void FtsProbeLoop(void);
+
+static void markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror);
+static char FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo);
+
+static void retrieveUserAndDb(char **probeUser);
+static void executeEntrySQL(PGconn *entryConn, const char *query);
+
+static bool probeSegments(void);
+
+static void *probeSegmentFromThread(void *arg);
+
+extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
 
 static void readCdbComponentInfoAndUpdateStatus(void);
 static bool probePublishUpdate(uint8 *scan_status);
+static CdbComponentDatabaseInfo *getMirrorEntryByContent(int content, int dbid);
 
-struct segmentStatusChange {
-	int	dbid;
-	int16 segindex;
-	uint8 oldStatus;
-	uint8 newStatus;
-};
+static uint32 getTransition(bool isPrimaryAlive, bool isMirrorAlive);
+static uint32 getPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror);
+static uint32 getPairStateSAN(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror);
 
+static void
+buildSegmentStateChange(CdbComponentDatabaseInfo *segInfo, struct segmentStatusChange *change, uint8 statusNew);
+
+static uint32 transition
+	(
+	uint32 stateOld,
+	uint32 trans,
+	CdbComponentDatabaseInfo *primary,
+	CdbComponentDatabaseInfo *mirror,
+	struct segmentStatusChange *changesPrimary,
+	struct segmentStatusChange *changesMirror
+	)
+	;
+
+static uint32 transitionFilerep(uint32 stateOld, uint32 trans);
+static uint32 transitionSAN(uint32 stateOld, uint32 trans);
+
+static void resolveStateFilerep
+	(
+	CdbComponentDatabaseInfo *primary,
+	CdbComponentDatabaseInfo *mirror,
+	uint32 stateNew,
+	uint32 *statePrimary,
+	uint32 *stateMirror
+	)
+	;
+
+static void resolveStateSAN
+	(
+	CdbComponentDatabaseInfo *primary,
+	CdbComponentDatabaseInfo *mirror,
+	uint32 stateNew,
+	uint32 *statePrimary,
+	uint32 *stateMirror
+	)
+	;
 
 typedef enum FilerepModeUpdateLoggingEnum
 {
@@ -133,9 +343,10 @@ typedef enum FilerepModeUpdateLoggingEnum
 	FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking,
 } FilerepModeUpdateLoggingEnum;
 
+static void updateConfiguration(struct segmentStatusChange *changes, int changeEntries);
+
 static PGconn *openSelfConn(CdbComponentDatabaseInfo *entryDB);
 static void closeSelfConn(PGconn *conn);
-static void addChangeHistory(PGconn *conn, struct segmentStatusChange *change, int changeCount, char *time_str);
 static void probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
 
 static void getGpFailover_strategy(char *strategy);
@@ -144,9 +355,11 @@ static void SAN_Failover(PGconn *entryConn, struct segmentStatusChange *changes,
 static void Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingEnum logMsgToSend);
 static void Filerep_Failover(struct segmentStatusChange *changes, int changeCount);
 
-static void Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo *segInfo);
+static void Filerep_preprocess_probe_results(uint8 *probe_results);
 
-static void Null_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
+static void Null_Failover(struct segmentStatusChange *changes);
+
+static void dumpChanges(struct segmentStatusChange *changes, int changeEntries);
 
 static void getMounts_forDbid(int dbid, List **mountp);
 static char mountMaintenance_forMpid(int mpid);
@@ -434,7 +647,10 @@ readCdbComponentInfoAndUpdateStatus(void)
 void FtsProbeLoop(void)
 {
 	bool	updated_bitmap, processing_fullscan;
-	MemoryContext probeContext, oldContext;
+	MemoryContext probeContext = NULL, oldContext = NULL;
+	time_t elapsed,	probe_start_time;
+
+	probe_start_time = time(NULL);
 
 	probeContext = AllocSetContextCreate(TopMemoryContext,
 										 "FtsProbeMemCtxt",
@@ -446,8 +662,6 @@ void FtsProbeLoop(void)
 
 	for (;;)
 	{
-		CHECK_FOR_INTERRUPTS();
-
 		if (shutdown_requested)
 			break;
 		
@@ -488,7 +702,7 @@ void FtsProbeLoop(void)
 		oldContext = MemoryContextSwitchTo(probeContext);
 
 		/* Start a scan of the segments */
-		updated_bitmap = probeSegments(cdb_component_dbs);
+		updated_bitmap = probeSegments();
 
 		MemoryContextSwitchTo(oldContext);
 
@@ -530,12 +744,13 @@ void FtsProbeLoop(void)
 
 	prober_sleep:
 		{
-			struct timeval tv;
-
-			tv.tv_usec = 0;
-			tv.tv_sec = gp_fts_probe_interval;
-
-			select(0, NULL, NULL, NULL, &tv); /* don't care about return value. */
+			/* check if we need to sleep before starting next iteration */
+			elapsed = time(NULL) - probe_start_time;
+			if (elapsed < gp_fts_probe_interval)
+			{
+				pg_usleep((gp_fts_probe_interval - elapsed) * USECS_PER_SEC);
+				probe_start_time = time(NULL);
+			}
 		}
 	} /* end server loop */
 
@@ -625,16 +840,6 @@ retrieveUserAndDb(char **probeUser)
 	Assert(*probeUser != NULL);
 }
 
-#define PROBE_SEGMENT	(0x80)
-#define PROBE_PENDING	(0x40)
-#define PROBE_DONE		(0x20)
-
-#define PROBE_ALIVE		(0x01)
-#define PROBE_FAULT		(0x02)
-#define PROBE_TO_IN_SYNC (0x04)
-
-enum probe_state_t { CONNECTING, CONNECTED, REQUEST_SENT, RESPONSE_READY };
-
 /*
  * This is called from several different threads: ONLY USE THREADSAFE FUNCTIONS INSIDE.
  */
@@ -642,7 +847,7 @@ static char
 FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 {
 	bool	done=false;
-	char	ret = 0;
+	char	ret = PROBE_DEAD;
 	enum	probe_state_t probe_state = CONNECTING;
 
 	int		n, fd;
@@ -660,7 +865,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 	{
 		/* something happened ? */
 		write_log("Couldn't get socket to start probe.");
-		return (PROBE_DONE | PROBE_ALIVE);
+		return PROBE_ALIVE;
 	}
 
 	if (!pg_set_noblock(fd))
@@ -668,7 +873,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		/* something happened ? */
 		write_log("Couldn't mark socket non-blocking.");
 		close(fd);
-		return (PROBE_DONE | PROBE_ALIVE);
+		return PROBE_ALIVE;
 	}
 
 	/*
@@ -681,7 +886,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		/* something happened ? */
 		write_log("Couldn't get IP-address of probe target.");
 		close(fd);
-		return (PROBE_DONE | PROBE_ALIVE); /* alive */
+		return PROBE_ALIVE;
 	}
 	saddr.sin_port = htons((unsigned short)dbInfo->port);
 
@@ -699,7 +904,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 				  errno, dbInfo->dbid, dbInfo->segindex, dbInfo->hostip);
 		close(fd);
 
-		return PROBE_DONE; /* NOT alive */
+		return PROBE_DEAD;
 	}
 
   	gettimeofday(&startTime, NULL);
@@ -775,7 +980,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 						else
 						{
 							/* errors other than signals: assume that the target is down. */
-							ret = 0;
+							ret = PROBE_DEAD;
 						}
 						break;
 					}
@@ -843,7 +1048,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 				if (n == 0)
 				{
 					/* peer gave up on us ? */
-					ret = 0;
+					ret = PROBE_DEAD;
 					done = true;
 					break;
 				}
@@ -855,7 +1060,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 						probe_state = REQUEST_SENT;
 						continue;
 					}
-					ret = 0;
+					ret = PROBE_DEAD;
 					done = true;
 					break;
 				}
@@ -882,7 +1087,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 					if (ntohl(msg_int) != 20)
 					{
 						write_log("Probe protocol violation got length %d", ntohl(msg_int));
-						ret = 0;
+						ret = PROBE_DEAD;
 						done = true;
 						break;
 					}
@@ -902,13 +1107,15 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 						write_log("third message int %d", ntohl(msg_int));
 					d_state = (DataState_e)ntohl(msg_int);
 					
+
 					memcpy(&msg_int, buf+16, 4);
 					if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 						write_log("fourth message int %d", ntohl(msg_int));
 					f_type = (FaultType_e)ntohl(msg_int);					
 
 					if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-						write_log("Probe result %s %s %s %s", 
+						write_log("Probe result for dbid %d content %d: %s %s %s %s",
+								  dbInfo->dbid, dbInfo->segindex,
 								  getMirrorModeLabel(pm_mode),
 								  getSegmentStateLabel(s_state), 
 								  getDataStateLabel(d_state),
@@ -917,19 +1124,30 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 					ret = PROBE_ALIVE;
 
 					if (s_state == SegmentStateFault)
-					{						
-						write_log("Segment with dbid %d content %d reported a fault %s to the prober", 
-								  dbInfo->dbid, 
-								  dbInfo->segindex,
-								  getFaultTypeLabel(f_type));
-
-						/* This means that the segment needs to know something from the prober. */
-						ret |= PROBE_FAULT;
+					{
+						/* get fault type - this will be used to decide the next segment state */
+						switch(f_type)
+						{
+							case FaultTypeMirror:
+								ret |= PROBE_FAULT_MIRROR;
+								break;
+							case FaultTypeDB:
+							case FaultTypeIO:
+								ret |= PROBE_FAULT_CRASH;
+								break;
+							case FaultTypePostmasterReset:
+								ret = PROBE_ALIVE;
+								break;
+							default:
+								Assert(!"Unexpected segment fault type");
+						}
+						write_log("Segment with dbid %d content %d reported fault %s to the prober",
+								  dbInfo->dbid, dbInfo->segindex, getFaultTypeLabel(f_type));
 					}
 					
 					if (d_state == DataStateInSync && dbInfo->mode == 'r')
 					{
-						ret |= PROBE_TO_IN_SYNC;
+						ret |= PROBE_RESYNC_COMPLETE;
 					}
 
 					done = true;
@@ -942,7 +1160,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 				 */
 			}
 			default:
-				ret = 0;
+				ret = PROBE_DEAD;
 				done = true;
 				break;
 		}
@@ -960,7 +1178,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		/* If connection takes more than the gp_segment_connect_timeout, we fail. */
 		if (elapsed_ms > gp_segment_connect_timeout * 1000)
 		{
-			ret = 0;
+			ret = PROBE_DEAD;
 			break;
 		}
 	}
@@ -969,7 +1187,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 	shutdown(fd, SHUT_RDWR);
 	close(fd);
 
-	return (PROBE_DONE | ret);
+	return (ret);
 }
 
 static inline bool
@@ -994,111 +1212,60 @@ segmentToProbe(CdbComponentDatabaseInfo *segInfo, char failover_strategy)
 	return false;
 }
 
-pthread_t *threads=NULL;
-static pthread_mutex_t	worker_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-struct threadWorkerInfo {
-	bool		foundFault;
-	bool		probeRestart;
-	uint8		*scan_status;
-	CdbComponentDatabases *dbs;
-};
-
 /*
- * one byte of status for each segment, dbids are int2, so we can represent a max
- * of 32k
+ * probe segments to check if they are alive and if any failure has occurred
  */
-static uint8 scan_status[32768];
-
 static bool
-probeSegments(CdbComponentDatabases *cdb_component_dbs)
+probeSegments()
 {
 	int i;
 	bool updated_bitmap = false;
-	bool probeRestart = false;
+
+	struct threadWorkerInfo worker_info;
+	int pthread_err;
+	int workers = gp_fts_probe_threadcount;
+	pthread_t *threads = NULL;
 
 	if (cdb_component_dbs == NULL)
 		return false;
 
-probe_restart:
 	memset(scan_status, 0, sizeof(scan_status));
 
-	/* single threaded */
-	if (gp_fts_probe_threadcount == 1)
+	/* figure out which segments to include in the scan. */
+	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
-		for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
+		CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
+
+		if (segmentToProbe(segInfo, failover_strategy))
 		{
-			CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
-
-			if (shutdown_requested)
-				break;
-
-			/* if this is worth scanning, then scan it. */
-			if (segmentToProbe(segInfo, failover_strategy))
-			{
-				scan_status[segInfo->dbid] = FtsTestOneSegment(segInfo);
-
-				if ((scan_status[segInfo->dbid] & PROBE_ALIVE) == 0)
-				{
-					if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-						elog(LOG, "Found a fault with a segment %d segment-dbid %d", segInfo->segindex, segInfo->dbid);
-				}
-			}
+			/* mark segment for probing */
+			scan_status[segInfo->dbid] = PROBE_SEGMENT;
+		}
+		else
+		{
+			/* consider segment dead */
+			scan_status[segInfo->dbid] = PROBE_DEAD;
 		}
 	}
-	else
+
+	worker_info.scan_status = scan_status;
+
+	threads = (pthread_t *)palloc(workers * sizeof(pthread_t));
+	for (i = 0; i < workers; i++)
 	{
-		struct threadWorkerInfo worker_info;
-		int pthread_err;
-		int workers = gp_fts_probe_threadcount - 1;
-
-		CdbComponentDatabaseInfo *segInfo = NULL;
-
-		Assert(threads == NULL);
-
-		/* figure out which segments to include in the scan. */
-		for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
-		{
-			segInfo = &cdb_component_dbs->segment_db_info[i];
-
-			if (segmentToProbe(segInfo, failover_strategy))
-			{
-				scan_status[segInfo->dbid] |= PROBE_SEGMENT;
-			}
-			else
-			{
-				scan_status[segInfo->dbid] |= (PROBE_DONE | PROBE_ALIVE);
-			}
-		}
-
-		worker_info.foundFault = false;
-		worker_info.probeRestart = probeRestart;
-		worker_info.scan_status = scan_status;
-		worker_info.dbs = cdb_component_dbs;
-
-		threads = (pthread_t *)palloc(workers * sizeof(pthread_t));
-		for (i = 0; i < workers; i++)
-		{
-			pthread_err = gp_pthread_create(&threads[i], probeSegmentFromThread, &worker_info, "probeSegments");
-			/* XXX: deal with error */
-		}
-
-		/* we have nothing left to do but wait */
-		for (i = 0; i < workers; i++)
-		{
-			pthread_join(threads[i], NULL);
-			/* XXX: deal with error */
-		}
-
-		pfree(threads);
-		threads = NULL;
-
-		if (worker_info.foundFault && !worker_info.probeRestart)
-		{
-			probeRestart = true;
-			goto probe_restart;
-		}
+		pthread_err = gp_pthread_create(&threads[i], probeSegmentFromThread, &worker_info, "probeSegments");
+		/* XXX: deal with error */
 	}
+
+	/* we have nothing left to do but wait */
+	for (i = 0; i < workers; i++)
+	{
+		pthread_join(threads[i], NULL);
+		/* XXX: deal with error */
+	}
+
+	pfree(threads);
+	threads = NULL;
 
 	/* if we're shutting down, just exit. */
 	if (shutdown_requested)
@@ -1129,10 +1296,8 @@ probe_restart:
 static void *
 probeSegmentFromThread(void *arg)
 {
-	CdbComponentDatabaseInfo *segInfo;
 	struct threadWorkerInfo *worker_info;
 	int i;
-	char probe_result;
 
 	worker_info = (struct threadWorkerInfo *)arg;
 
@@ -1140,65 +1305,100 @@ probeSegmentFromThread(void *arg)
 	
 	for (;;)
 	{
-		segInfo = NULL;
+		CdbComponentDatabaseInfo *primary = NULL;
+		CdbComponentDatabaseInfo *mirror = NULL;
+
+		char probe_result_primary = PROBE_DEAD;
+		char probe_result_mirror = PROBE_DEAD;
 
 		/*
-		 * Get a work item: find first un-tested segment, mark it
-		 * "tested" and unlock.
+		 * find untested primary, mark primary and mirror "tested" and unlock.
 		 */
 		pthread_mutex_lock(&worker_thread_mutex);
-		for (; i < worker_info->dbs->total_segment_dbs; i++)
+		for (; i < cdb_component_dbs->total_segment_dbs; i++)
 		{
-			segInfo = &worker_info->dbs->segment_db_info[i];
+			primary = &cdb_component_dbs->segment_db_info[i];
 
-			if ((worker_info->scan_status[segInfo->dbid] & PROBE_SEGMENT) == PROBE_SEGMENT)
+			/* check segments in pairs of primary-mirror */
+			if (!SEGMENT_IS_ACTIVE_PRIMARY(primary))
 			{
-				worker_info->scan_status[segInfo->dbid] = PROBE_PENDING;
-				break;
+				continue;
 			}
-			if (worker_info->foundFault && !worker_info->probeRestart)
+
+			if (PROBE_CHECK_FLAG(worker_info->scan_status[primary->dbid], PROBE_SEGMENT))
 			{
-				/* we need to stop probing, and prepare for our rescan. */
-				i = worker_info->dbs->total_segment_dbs;
+				/* prevent re-checking this pair */
+				worker_info->scan_status[primary->dbid] &= ~PROBE_SEGMENT;
+
+				mirror = getMirrorEntryByContent(primary->segindex, primary->dbid);
+
+				/* check if mirror is marked for probing */
+				if (mirror != NULL &&
+					PROBE_CHECK_FLAG(worker_info->scan_status[mirror->dbid], PROBE_SEGMENT))
+				{
+					worker_info->scan_status[mirror->dbid] &= ~PROBE_SEGMENT;
+				}
+				else
+				{
+					mirror = NULL;
+				}
+
 				break;
 			}
 		}
 		pthread_mutex_unlock(&worker_thread_mutex);
 
-		/* no work left to do */
-		if (i == worker_info->dbs->total_segment_dbs)
+		/* check if all segments were probed */
+		if (i == cdb_component_dbs->total_segment_dbs || primary == NULL)
+		{
 			break;
+		}
 
-		/* no segInfo ? */
-		if (segInfo == NULL)
+		/* if we've gotten a pause or shutdown request, we ignore probe results. */
+		if (ftsProbeInfo->fts_pauseProbes || shutdown_requested)
+		{
 			break;
+		}
 
-		/* shutdown request ? bail-out. */
-		if (shutdown_requested)
-			break;
+		/* probe primary */
+		probe_result_primary = FtsTestOneSegment(primary);
+		Assert(!PROBE_CHECK_FLAG(probe_result_primary, PROBE_SEGMENT));
 
-		/* Got a segment to test, test it. */
-
-		probe_result = FtsTestOneSegment(segInfo);
-		if ((probe_result & PROBE_ALIVE) == 0)
+		if ((probe_result_primary & PROBE_ALIVE) == 0)
 		{
 			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-				write_log("Found a fault with a segment %d segment-dbid %d (status 0x%x)", segInfo->segindex, segInfo->dbid, probe_result);
+				write_log("Segment %d segment-dbid %d (status 0x%x) was found dead",
+				          primary->segindex, primary->dbid, probe_result_primary);
 		}
-		pthread_mutex_lock(&worker_thread_mutex);
-		if ((probe_result & PROBE_FAULT) != 0)
+
+		/* probe mirror */
+		if (mirror != NULL)
 		{
-			worker_info->foundFault = true;
+			probe_result_mirror = FtsTestOneSegment(mirror);
+			Assert(!PROBE_CHECK_FLAG(probe_result_mirror, PROBE_SEGMENT));
+
+			if ((probe_result_mirror & PROBE_ALIVE) == 0)
+			{
+				if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+					write_log("Segment %d segment-dbid %d (status 0x%x) was found dead",
+							  mirror->segindex, mirror->dbid, probe_result_mirror);
+			}
 		}
-		worker_info->scan_status[segInfo->dbid] = probe_result;
+
+		/* update results */
+		pthread_mutex_lock(&worker_thread_mutex);
+		worker_info->scan_status[primary->dbid] = probe_result_primary;
+		if (mirror != NULL)
+		{
+			worker_info->scan_status[mirror->dbid] = probe_result_mirror;
+		}
 		pthread_mutex_unlock(&worker_thread_mutex);
 	}
 
 	return NULL;
 }
 
-static CdbComponentDatabaseInfo *
-getMirrorEntryByContent(CdbComponentDatabases *cdb_component_dbs, int content, int dbid)
+static CdbComponentDatabaseInfo *getMirrorEntryByContent(int content, int dbid)
 {
 	int i;
 
@@ -1216,288 +1416,568 @@ getMirrorEntryByContent(CdbComponentDatabases *cdb_component_dbs, int content, i
 	return NULL;
 }
 
-static void
-fillTimestampStr(char *str, int maxLength )
-{
-	pg_time_t		curtime;
-	struct pg_tm	*time_tm;
-	struct timeval	tv;
-
-	gettimeofday(&tv, NULL);
-	curtime = tv.tv_sec;
-	time_tm = pg_gmtime(&curtime);
-	pg_strftime(str, maxLength, "%+", time_tm); /* "%+" is the format used by the Unix date command */
-}
-
 /*
  * Build a set of changes, based on our current state, and the probe results.
  */
 static bool
 probePublishUpdate(uint8 *probe_results)
 {
-	bool updated_bitmap=false;
+	bool update_found = false;
 	int i;
-
-	struct segmentStatusChange *changes=NULL;
-	int changeEntries=0;
-
-	PGconn *entryConn = NULL;
-
-	CdbComponentDatabaseInfo *primary;
-	CdbComponentDatabaseInfo *mirror;
-
-	char timestamp_str[100];
 
 	if (failover_strategy == 'f')
 	{
-		/* if in filerep mode, convert FAULT messages (a failure in MIRRORING) to changes in ALIVE status */
-		/* this preprocessing may also mark segment pairs in-sync in configuration */
-		for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
-		{
-			CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
-
-			/*
-			 * Handle Filerep state changes (states other than "alive") --
-			 * this has some side-effects on the probe-results.
-			 *
-			 * For instance:
-			 * Handle PROBE_FAULT here. if we have a segment alive,
-			 * but it is reporting a fault, then we need to update
-			 * some state.
-			 *
-			 * "fault" is a Filerep concept.
-			 *
-			 * See FtsTestOneSegment(), PROBE_FAULT implies PROBE_ALIVE.
-			 */
-			Filerep_preprocess_probe_results(probe_results, segInfo);
-		}
+		/* preprocess probe results to decide what is the current segment state */
+		Filerep_preprocess_probe_results(probe_results);
 	}
 
-	/* collect status changes */
-	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
+	for (i = 0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
 		CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
 
-		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-			elog(LOG, "probePublishUpdate: dbid %d", segInfo->dbid);
-
-		/* We're an active segment ? */
-		if (segmentToProbe(segInfo, failover_strategy))
+		/* if we've gotten a pause or shutdown request, we ignore our probe results. */
+		if (ftsProbeInfo->fts_pauseProbes || shutdown_requested)
 		{
-			bool updateMirror = false;
-			int primaryChange;
-			int mirrorChange;
-			uint8 segStatus;
-
-			/* We're no longer responding to probes ? */
-			if ((probe_results[segInfo->dbid] & PROBE_ALIVE) == 0)
-			{
-				/* segment is down. was it already marked down ? */
-				if (FTS_STATUS_ISALIVE(segInfo->dbid, ftsProbeInfo->fts_status))
-				{
-					/* we're going to change the status */
-					primaryChange = changeEntries;
-					if (changes)
-						changes = (struct segmentStatusChange *)
-							repalloc(changes, (changeEntries + 1)*sizeof(struct segmentStatusChange));
-					else
-						changes = (struct segmentStatusChange *)palloc(sizeof(struct segmentStatusChange));
-					changeEntries++;
-
-					primary = segInfo;
-					mirror = getMirrorEntryByContent(cdb_component_dbs, segInfo->segindex, segInfo->dbid);
-
-					segStatus = ftsProbeInfo->fts_status[segInfo->dbid];
-					changes[primaryChange].dbid = segInfo->dbid;
-					changes[primaryChange].segindex = segInfo->segindex;
-					changes[primaryChange].oldStatus = segStatus;
-					changes[primaryChange].newStatus = segStatus & ~FTS_STATUS_ALIVE;
-
-					/*
-					 * If we have a mirror (which is alive), we need
-					 * to update it (even if it was already primary!)
-					 *
-					 * Things are slightly complicated by the differences between
-					 * Filerep and SAN-failover strategies.
-					 */
-					if (mirror != NULL)
-					{
-						if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-							elog(LOG, "probePublishUpdate: dbid %d has mirror %d", segInfo->dbid, mirror->dbid);
-
-						if (FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
-						{
-							if (failover_strategy == 'f')
-							{
-								/* If the mirror is not currently synchronized, we can't use it */
-								if (FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status))
-								{
-									if ((probe_results[mirror->dbid] & PROBE_ALIVE) == PROBE_ALIVE)
-									{
-										updateMirror = true;
-									}
-								}
-								else
-								{
-									/* If the mirror was being synchronized, we need to mark it down. */
-									updateMirror = true;
-								}
-							}
-							else if (failover_strategy == 's')
-							{
-								updateMirror = true;
-							}
-						}
-					}
-
-					if (updateMirror)
-					{
-						/* update the mirror too */
-						mirrorChange = changeEntries;
-						changes = (struct segmentStatusChange *)
-							repalloc(changes, (changeEntries + 1)*sizeof(struct segmentStatusChange));
-						changeEntries++;
-
-						segStatus = ftsProbeInfo->fts_status[mirror->dbid];
-						changes[mirrorChange].dbid = mirror->dbid;
-						changes[mirrorChange].segindex = mirror->segindex;
-						changes[mirrorChange].oldStatus = segStatus;
-
-						if (failover_strategy == 's' ||
-							FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status))
-						{
-							changes[mirrorChange].newStatus = segStatus | FTS_STATUS_PRIMARY;
-
-							/* update primary */
-							/*
-							 * MPP-8764/MPP-8765: We only clear the Primary-status if we successfully found an
-							 * alive mirror. This means that the way we detect a second failure is that we have
-							 * a "newStatus" which is an *invalid primary* (see addChangeHistory() and
-							 * probeUpdateConfig()).
-							 */
-							/* 'p'/'u'/'s' */
-							changes[primaryChange].newStatus &= ~FTS_STATUS_PRIMARY;
-						}
-						else if (FTS_STATUS_ISPRIMARY(mirror->dbid, ftsProbeInfo->fts_status))
-						{
-							/*
-							 *'p'/'u'/'r': We have valid contents and
-							 * were already the primary! No status
-							 * change required.
-							 */
-							changes[mirrorChange].newStatus = segStatus;
-						}
-						else
-						{
-							/* we can't take over, we aren't up-to-date */
-							changes[mirrorChange].newStatus = segStatus & (~FTS_STATUS_ALIVE);
-						}
-					}
-
-					updated_bitmap = true;
-				}
-				/* was already marked down, no change. */
-			}
-		}
-	}
-
-	/* if we've gotten a pause request, we ignore our probe results. */
-	if (ftsProbeInfo->fts_pauseProbes)
-	{
-		if (changes != NULL)
-		{
-			pfree(changes);
-		}
-
-		return false;
-	}
-
-	/* We're going to use these timestamps below. */
-	fillTimestampStr(timestamp_str, sizeof(timestamp_str));
-
-	if (changes != NULL)
-	{
-		CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
-
-		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-			elog(LOG, "probePublishUpdate: Changes is not null");
-
-		if (entryDB->dbid != GpIdentity.dbid)
-		{
-			if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-				elog(LOG, "ftsProbe: advancing to second entryDB.");
-			entryDB = entryDB + 1;
-		}
-
-		entryConn = openSelfConn(entryDB);
-		Assert(entryConn != NULL);
-
-		/* Now we're going to apply the changelist we just generated. */
-		ftsLock();
-
-		/* if we've gotten a pause request, we ignore our probe results. */
-		if (ftsProbeInfo->fts_pauseProbes)
-		{
-			closeSelfConn(entryConn);
-			pfree(changes);
-			ftsUnlock();
-
 			return false;
 		}
-		
+
+		/* we check segments in pairs of primary-mirror */
+		if (!SEGMENT_IS_ACTIVE_PRIMARY(segInfo))
+		{
+			continue;
+		}
+
+		CdbComponentDatabaseInfo *primary = segInfo;
+		CdbComponentDatabaseInfo *mirror = getMirrorEntryByContent(segInfo->segindex, segInfo->dbid);
+
 		if (failover_strategy == 'n')
 		{
-			/* no fault strategy ? */
-			Null_Failover(entryConn, changes, changeEntries, timestamp_str);
+			Assert(SEGMENT_IS_ACTIVE_PRIMARY(segInfo));
+			Assert(FTS_STATUS_ISALIVE(segInfo->dbid, ftsProbeInfo->fts_status));
+			Assert(mirror == NULL);
 
-			/* we don't record history, or update configs */
-			closeSelfConn(entryConn);
+			/* no mirror available to failover */
+			if (!PROBE_IS_ALIVE(segInfo))
+			{
+				struct segmentStatusChange changes;
+				uint8 statusOld = ftsProbeInfo->fts_status[segInfo->dbid];
+				uint8 statusNew = statusOld & ~FTS_STATUS_ALIVE;
+
+				buildSegmentStateChange(segInfo, &changes, statusNew);
+
+				Null_Failover(&changes);
+			}
+			continue;
+		}
+
+		Assert(failover_strategy == 'f' || failover_strategy == 's');
+		Assert(mirror != NULL);
+
+		/* changes required for primary and mirror */
+		struct segmentStatusChange changes[2];
+
+		uint32 stateOld = 0;
+		uint32 stateNew = 0;
+
+		bool isPrimaryAlive = PROBE_IS_ALIVE(primary);
+		bool isMirrorAlive = PROBE_IS_ALIVE(mirror);
+
+		/* get transition type */
+		uint32 trans = getTransition(isPrimaryAlive, isMirrorAlive);
+
+		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		{
+			elog(LOG, "probePublishUpdate: primary found %s, mirror found %s, transition %d",
+				 (isPrimaryAlive ? "alive" : "dead"), (isMirrorAlive ? "alive" : "dead"), trans);
+		}
+
+		if (failover_strategy == 'f')
+		{
+			/* get current state */
+			stateOld = getPairStateFilerep(primary, mirror);
+
+			/* get new state */
+			stateNew = transition(stateOld, trans, primary, mirror, &changes[0], &changes[1]);
 		}
 		else
 		{
-			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-				elog(LOG, "probePublishUpdate: updated config, now modifying segments");
+			Assert(failover_strategy == 's');
 
-			if (failover_strategy == 'f')
-			{
-				addChangeHistory(entryConn, changes, changeEntries, timestamp_str);
-				probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
+			/* get current state */
+			stateOld = getPairStateSAN(primary, mirror);
 
-				/* commit our config/history changes */
-				closeSelfConn(entryConn);
-
-				/* FILEREP response */
-				Filerep_Failover(changes, changeEntries);
-			}
-			else if (failover_strategy == 's')
-			{
-				/* SAN response */
-				SAN_Failover(entryConn, changes, changeEntries, timestamp_str);
-
-				addChangeHistory(entryConn, changes, changeEntries, timestamp_str);
-				probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
-
-				/* commit our config/history changes */
-				closeSelfConn(entryConn);
-			}
-
-			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-				elog(LOG, "probePublishUpdate: finished segment modifications");
+			/* get new state */
+			stateNew = transition(stateOld, trans, primary, mirror, &changes[0], &changes[1]);
 		}
 
-		ftsUnlock();
-
-		pfree(changes);
+		/* check if transition is required */
+		if (stateNew != stateOld)
+		{
+			update_found = true;
+			updateConfiguration(changes, ARRAY_SIZE(changes));
+		}
 	}
 
-	if (updated_bitmap)
+	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 	{
-		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-			elog(LOG, "probePublishUpdate: found changes.");
+		elog(LOG, "probePublishUpdate: probe result processing is complete");
 	}
-	
-	return updated_bitmap;
+
+	return update_found;
 }
+
+
+/*
+ * Build struct with segment changes
+ */
+static void
+buildSegmentStateChange(CdbComponentDatabaseInfo *segInfo, struct segmentStatusChange *change, uint8 statusNew)
+{
+	change->dbid = segInfo->dbid;
+	change->segindex = segInfo->segindex;
+	change->oldStatus = ftsProbeInfo->fts_status[segInfo->dbid];
+	change->newStatus = statusNew;
+}
+
+/*
+ * get transition type - derived from probed primary/mirror state
+ */
+static uint32
+getTransition(bool isPrimaryAlive, bool isMirrorAlive)
+{
+	uint32 state = (isPrimaryAlive ? 2 : 0) + (isMirrorAlive ? 1 : 0);
+
+	switch (state)
+	{
+		case (0):
+			/* primary and mirror dead */
+			return TRANS_D_D;
+		case (1):
+			/* primary dead, mirror alive */
+			return TRANS_D_U;
+		case (2):
+			/* primary alive, mirror dead */
+			return TRANS_U_D;
+		case (3):
+			/* primary and mirror alive */
+			return TRANS_U_U;
+		default:
+			Assert(!"Invalid transition for FTS state machine");
+			return 0;
+	}
+}
+
+
+/*
+ * Get combined state of primary and mirror for filerep
+ */
+static uint32
+getPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror)
+{
+	Assert(FTS_STATUS_ISALIVE(primary->dbid, ftsProbeInfo->fts_status));
+	Assert(FTS_STATUS_ISPRIMARY(primary->dbid, ftsProbeInfo->fts_status));
+	Assert(!FTS_STATUS_ISPRIMARY(mirror->dbid, ftsProbeInfo->fts_status));
+	Assert(!FTS_STATUS_IS_CHANGELOGGING(mirror->dbid, ftsProbeInfo->fts_status));
+
+	if (FTS_STATUS_IS_SYNCED(primary->dbid, ftsProbeInfo->fts_status))
+	{
+		/* Primary: Up, Sync - Mirror: Up, Sync */
+
+		Assert(!FTS_STATUS_IS_CHANGELOGGING(primary->dbid, ftsProbeInfo->fts_status));
+		Assert(FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status));
+		Assert(FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status));
+
+		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		{
+			elog(LOG, "probePublishUpdate: last state: primary dbid=%d sync, mirror dbid=%d sync",
+				 primary->dbid, mirror->dbid);
+		}
+
+		return FILEREP_PUS_MUS;
+	}
+	else if (FTS_STATUS_IS_CHANGELOGGING(primary->dbid, ftsProbeInfo->fts_status))
+	{
+		/* Primary: Up, Changetracking - Mirror: Down */
+
+		Assert(!FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status));
+
+		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		{
+			elog(LOG, "probePublishUpdate: last state: primary dbid=%d change-tracking, mirror dbid=%d dead",
+				 primary->dbid, mirror->dbid);
+		}
+
+		return FILEREP_PUC_MDX;
+	}
+	else
+	{
+		/* Primary: Up, Resync - Mirror: Up, Resync */
+
+		Assert(FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status));
+		Assert(!FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status));
+
+		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		{
+			elog(LOG, "probePublishUpdate: last state: primary dbid=%d resync, mirror dbid=%d resync",
+				 primary->dbid, mirror->dbid);
+		}
+
+		return FILEREP_PUR_MUR;
+	}
+}
+
+
+/*
+ * Get combined state of primary and mirror for SAN
+ */
+static uint32
+getPairStateSAN(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror)
+{
+	Assert(FTS_STATUS_ISALIVE(primary->dbid, ftsProbeInfo->fts_status));
+	Assert(FTS_STATUS_ISPRIMARY(primary->dbid, ftsProbeInfo->fts_status));
+	Assert(!FTS_STATUS_ISPRIMARY(mirror->dbid, ftsProbeInfo->fts_status));
+
+	if (FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
+	{
+		/* Primary: Up - Mirror: Up */
+
+		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		{
+			elog(LOG, "probePublishUpdate: last state: primary dbid=%d up, mirror dbid=%d up",
+				 primary->dbid, mirror->dbid);
+		}
+
+		return SAN_PU_MU;
+	}
+	else
+	{
+		/* Primary: Up - Mirror: Down */
+		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+		{
+			elog(LOG, "probePublishUpdate: last state: primary dbid=%d up, mirror dbid=%d dead",
+				 primary->dbid, mirror->dbid);
+		}
+
+		return SAN_PU_MD;
+	}
+}
+
+
+/*
+ * find new state for primary and mirror
+ */
+static uint32
+transition
+	(
+	uint32 stateOld,
+	uint32 trans,
+	CdbComponentDatabaseInfo *primary,
+    CdbComponentDatabaseInfo *mirror,
+    struct segmentStatusChange *changesPrimary,
+    struct segmentStatusChange *changesMirror
+    )
+{
+	Assert(IS_VALID_TRANSITION(trans));
+
+	/* reset changes */
+	memset(changesPrimary, 0, sizeof(*changesPrimary));
+	memset(changesMirror, 0, sizeof(*changesMirror));
+
+	uint32 stateNew = stateOld;
+
+	/* in case of a double failure we don't do anything */
+	if (trans == TRANS_D_D)
+	{
+		return stateOld;
+	}
+
+	/* get new state for primary and mirror */
+	if (failover_strategy == 'f')
+	{
+		stateNew = transitionFilerep(stateOld, trans);
+	}
+	else
+	{
+		stateNew = transitionSAN(stateOld, trans);
+	}
+
+	/* check if transition is required */
+	if (stateNew != stateOld)
+	{
+		uint32 stateNewPrimary = 0;
+		uint32 stateNewMirror = 0;
+
+		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+		{
+			elog(LOG, "probePublishUpdate: state machine transition from %d to %d", stateOld, stateNew);
+		}
+
+		if (failover_strategy == 'f')
+		{
+			resolveStateFilerep(primary, mirror, stateNew, &stateNewPrimary, &stateNewMirror);
+		}
+		else
+		{
+			resolveStateSAN(primary, mirror, stateNew, &stateNewPrimary, &stateNewMirror);
+		}
+
+		buildSegmentStateChange(primary, changesPrimary, stateNewPrimary);
+		buildSegmentStateChange(mirror, changesMirror, stateNewMirror);
+
+		dumpChanges(changesPrimary, 1);
+		dumpChanges(changesMirror, 1);
+	}
+
+	return stateNew;
+}
+
+
+/*
+ *  get new state for primary and mirror using filerep state machine
+ */
+static uint32
+transitionFilerep(uint32 stateOld, uint32 trans)
+{
+	Assert(failover_strategy == 'f');
+	Assert(IS_VALID_OLD_STATE_FILEREP(stateOld));
+
+	int i = 0;
+
+
+
+	/* check state machine for transition */
+	for (i = 0; i < FILEREP_SENTINEL; i++)
+	{
+		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+		{
+			elog(LOG, "ftsProbe: state machine: row=%d column=%d val=%d trans=%d comp=%d",
+				 stateOld,
+				 i,
+				 state_machine_filerep[stateOld][i],
+				 trans,
+				 state_machine_filerep[stateOld][i] & trans);
+		}
+
+		if ((state_machine_filerep[stateOld][i] & trans) > 0)
+		{
+			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+			{
+				elog(LOG, "ftsProbe: state machine: match found, new state: %d", i);
+			}
+			return i;
+		}
+	}
+
+	return stateOld;
+}
+
+
+/*
+ *  get new state for primary and mirror using SAN state machine
+ */
+static uint32
+transitionSAN(uint32 stateOld, uint32 trans)
+{
+	Assert(failover_strategy == 's');
+	Assert(IS_VALID_OLD_STATE_SAN(stateOld));
+
+	int i = 0;
+
+	/* check state machine for transition */
+	for (i = 0; i < SAN_SENTINEL; i++)
+	{
+		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+		{
+			elog(LOG, "ftsProbe: state machine: row=%d column=%d val=%d trans=%d comp=%d",
+				 stateOld, i, state_machine_san[stateOld][i], trans, state_machine_san[stateOld][i] & trans);
+		}
+
+		if ((state_machine_san[stateOld][i] & trans) > 0)
+		{
+			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+			{
+				elog(LOG, "ftsProbe: state machine: match found, new state: %d", i);
+			}
+			return i;
+		}
+	}
+
+	return stateOld;
+}
+
+
+/*
+ * resolve new filerep state for primary and mirror
+ */
+static void resolveStateFilerep
+	(
+	CdbComponentDatabaseInfo *primary,
+	CdbComponentDatabaseInfo *mirror,
+	uint32 stateNew,
+	uint32 *stateNewPrimary,
+	uint32 *stateNewMirror
+	)
+{
+	Assert(failover_strategy == 'f');
+	Assert(IS_VALID_NEW_STATE_FILEREP(stateNew));
+
+	switch (stateNew)
+	{
+		case (FILEREP_PUC_MDX):
+
+			*stateNewPrimary = ftsProbeInfo->fts_status[primary->dbid];
+			*stateNewMirror = ftsProbeInfo->fts_status[mirror->dbid];
+
+			/* primary: up, change-tracking */
+			*stateNewPrimary &= ~FTS_STATUS_SYNCHRONIZED;
+			*stateNewPrimary |= FTS_STATUS_CHANGELOGGING;
+
+			/* mirror: down */
+			*stateNewMirror &= ~FTS_STATUS_ALIVE;
+
+			break;
+
+		case (FILEREP_MDX_PUC):
+
+			Assert(FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status));
+			Assert(FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status));
+
+			*stateNewPrimary = ftsProbeInfo->fts_status[primary->dbid];
+			*stateNewMirror = ftsProbeInfo->fts_status[mirror->dbid];
+
+			/* primary: down, becomes mirror */
+			*stateNewPrimary &= ~FTS_STATUS_PRIMARY;
+			*stateNewPrimary &= ~FTS_STATUS_ALIVE;
+
+			/* mirror: up, change-tracking, promoted to primary */
+			*stateNewMirror |= FTS_STATUS_PRIMARY;
+			*stateNewMirror &= ~FTS_STATUS_SYNCHRONIZED;
+			*stateNewMirror |= FTS_STATUS_CHANGELOGGING;
+
+			break;
+
+		case (FILEREP_PUS_MUS):
+		case (FILEREP_PUR_MUR):
+			Assert(!"FTS is not responsible for bringing segments back to life");
+		default:
+			Assert(!"Invalid transition in filerep state machine");
+	}
+}
+
+
+/*
+ * resolve new SAN state for primary and mirror
+ */
+static void resolveStateSAN
+	(
+	CdbComponentDatabaseInfo *primary,
+	CdbComponentDatabaseInfo *mirror,
+	uint32 stateNew,
+	uint32 *stateNewPrimary,
+	uint32 *stateNewMirror
+	)
+{
+	Assert(failover_strategy == 's');
+	Assert(IS_VALID_NEW_STATE_SAN(stateNew));
+
+	switch (stateNew)
+	{
+		case (SAN_PU_MD):
+
+			*stateNewPrimary = ftsProbeInfo->fts_status[primary->dbid];
+			*stateNewMirror = ftsProbeInfo->fts_status[mirror->dbid];
+
+			/* mirror: down */
+			*stateNewMirror &= ~FTS_STATUS_ALIVE;
+
+			break;
+
+		case (SAN_MD_PU):
+
+			Assert(FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status));
+
+			*stateNewPrimary = ftsProbeInfo->fts_status[primary->dbid];
+			*stateNewMirror = ftsProbeInfo->fts_status[mirror->dbid];
+
+			/* primary: down, becomes mirror */
+			*stateNewPrimary &= ~FTS_STATUS_PRIMARY;
+			*stateNewPrimary &= ~FTS_STATUS_ALIVE;
+
+			/* mirror: up, change-tracking, promoted to primary */
+			*stateNewMirror |= FTS_STATUS_PRIMARY;
+
+			break;
+
+		case (SAN_PU_MU):
+			Assert(!"FTS is not responsible for bringing segments back to life");
+		default:
+			Assert(!"Invalid transition in filerep state machine");
+	}
+}
+
+
+/*
+ * Apply requested segment transitions
+ */
+static void
+updateConfiguration(struct segmentStatusChange *changes, int changeEntries)
+{
+	Assert(changes != NULL);
+
+	PGconn *entryConn = NULL;
+	char timestamp_str[TIMESTAMP_BUF_SIZE];
+
+	CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
+
+	/* if we've gotten a pause or shutdown request, we ignore our probe results. */
+	if (ftsProbeInfo->fts_pauseProbes || shutdown_requested)
+	{
+		return;
+	}
+
+	get_timestamp(timestamp_str, sizeof(timestamp_str));
+
+	if (entryDB->dbid != GpIdentity.dbid)
+	{
+		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+			elog(LOG, "ftsProbe: advancing to second entryDB.");
+		entryDB = entryDB + 1;
+	}
+
+	entryConn = openSelfConn(entryDB);
+	Assert(entryConn != NULL);
+
+	/* TODO: investigate if lightweight lock is necessary */
+	ftsLock();
+
+	/* update segment configuration */
+	probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
+
+	if (failover_strategy == 'f')
+	{
+		/* commit our config/history changes */
+		closeSelfConn(entryConn);
+
+		/* FILEREP response */
+		Filerep_Failover(changes, changeEntries);
+	}
+	else if (failover_strategy == 's')
+	{
+		/* SAN response */
+		SAN_Failover(entryConn, changes, changeEntries, timestamp_str);
+
+		/* commit our config/history changes */
+		closeSelfConn(entryConn);
+	}
+
+	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+	{
+		elog(LOG, "probePublishUpdate: finished segment modifications");
+	}
+
+	ftsUnlock();
+}
+
 
 /*
  * Obtains utility-mode self-connection to master-DB, and opens a transaction.
@@ -1620,94 +2100,9 @@ closeSelfConn(PGconn *conn)
 	return;
 }
 
-static void
-addChangeHistory(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str)
-{
-	int i;
-	int count;
-	char cmd[200];
-
-	PGresult   *rs;
-
-	bool	valid;
-	bool	primary;
-
-	Assert(changes != NULL);
-	Assert(time_str != NULL);
-
-	for (i=0; i < changeCount; i++)
-	{
-		struct segmentStatusChange *change = &changes[i];
-
-		valid   = (change->newStatus & FTS_STATUS_ALIVE) ? true : false;
-		primary = (change->newStatus & FTS_STATUS_PRIMARY) ? true : false;
-
-		/* see probeUpdateConfig() we're trying to describe the changes that it is going to make in human-readable terms */
-		if (failover_strategy == 'f')
-		{
-			if (!valid && primary)
-			{
-				if ((changes[i].oldStatus & FTS_STATUS_CHANGELOGGING) != 0)
-					continue; /* this was already marked */
-
-				count = snprintf(cmd, sizeof(cmd),
-								 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d double failure, last known primary marked for changetracking')",
-								 time_str, change->dbid, change->segindex);
-			}
-			else
-			{
-				count = snprintf(cmd, sizeof(cmd),
-								 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d fault marking status %s%s role %c')",
-								 time_str, change->dbid, change->segindex,
-								 valid ? "UP" : "DOWN",
-								 (valid && primary) ? " mode: changetracking" : "",
-								 primary ? 'p' : 'm');
-			}
-		}
-		else /* SAN */
-		{
-			/*
-			 * MPP-8764/MPP-8765: if we wound up with an invalid primary,
-			 * we are "down" but we aren't going to record it.
-			 */
-			if (!valid && primary)
-				continue;
-
-			count = snprintf(cmd, sizeof(cmd),
-							 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: content %d fault marking as %s role %c')",
-							 time_str, change->dbid, change->segindex,
-							 valid ? "UP" : "DOWN",
-							 primary ? 'p' : 'm');
-		}
-
-		if (count >= sizeof(cmd))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("FTS: could not insert into configuration history: format command string failure dbid %d", change->dbid)));
-		}
-
-		rs = PQexec(entryConn, cmd);
-		if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-		{
-			char	*error_message = strdup(PQerrorMessage(entryConn));
-
-			if (!error_message)
-				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-								errmsg("FTS: out of memory")));
-
-			PQclear(rs);
-			PQfinish(entryConn);
-			entryConn = NULL;
-
-			elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);
-		}
-	}
-}
 
 /*
- * shared memory has been updated already; we'll pull the updated
- * status from the shared-memory copy.
+ * update segment configuration in catalog and shared memory
  */
 static void
 probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str)
@@ -1715,125 +2110,67 @@ probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int ch
 	int i;
 
 	int count;
-	char cmd[200];
-
-	PGresult   *rs=NULL;
+	char cmd[SQL_CMD_BUF_SIZE];
 
 	bool	valid;
 	bool	primary;
+	bool	changelogging;
 
 	Assert(changes != NULL);
 	Assert(changeCount > 0);
 
-	/* finally, we're ready to actually get some stuff done. */
-	do
+	for (i = 0; i < changeCount; i++)
 	{
-		for (i=0; i < changeCount; i++)
+		struct segmentStatusChange *change = &changes[i];
+		valid   = (changes[i].newStatus & FTS_STATUS_ALIVE) ? true : false;
+		primary = (changes[i].newStatus & FTS_STATUS_PRIMARY) ? true : false;
+		changelogging = (changes[i].newStatus & FTS_STATUS_CHANGELOGGING) ? true : false;
+
+		if (changelogging)
 		{
-			valid   = (changes[i].newStatus & FTS_STATUS_ALIVE) ? true : false;
-			primary = (changes[i].newStatus & FTS_STATUS_PRIMARY) ? true : false;
-
-			if (failover_strategy == 'f')
-			{
-				/*
-				 * MPP-8764/MPP-8765: if we wound up with an invalid primary,
-				 * we are "down" but we aren't going to record it.
-				 * 
-				 * See the changelist generation logic in probePublishUpdate() for
-				 * details.
-				 *
-				 * This means that we also had an out-of-date or dead
-				 * mirror, so someday if we recover, we want to log
-				 * changes.
-				 */
-				if (!valid && primary)
-				{
-					if ((changes[i].oldStatus & FTS_STATUS_CHANGELOGGING) != 0)
-						continue; /* already marked */
-
-					count = snprintf(cmd, sizeof(cmd),
-									 "update %s set mode = 'c' where dbid=CAST(%d AS SMALLINT)",
-									 GpSegmentConfigRelationName,
-									 changes[i].dbid);
-
-				}
-				else
-				{
-					count = snprintf(cmd, sizeof(cmd),
-									 "update %s set role='%c', status='%c'%s where dbid=CAST(%d AS SMALLINT)",
-									 GpSegmentConfigRelationName,
-									 primary ? 'p' : 'm',
-									 valid ? 'u' : 'd',
-									 (valid && primary) ? ", mode = 'c'" : "",
-									 changes[i].dbid);
-				}
-			}
-			else
-			{
-				/*
-				 * MPP-8764/MPP-8765: if we wound up with an invalid primary,
-				 * we are "down" but we aren't going to record it.
-				 * 
-				 * See the changelist generation logic in probePublishUpdate() for
-				 * details.
-				 *
-				 * For SAN we're done on second failure.
-				 */
-				if (!valid && primary)
-					continue;
-
-				count = snprintf(cmd, sizeof(cmd),
-								 "update %s set role='%c', status='%c' where dbid=CAST(%d AS SMALLINT)",
-								 GpSegmentConfigRelationName,
-								 primary ? 'p' : 'm',
-								 valid ? 'u' : 'd',
-								 changes[i].dbid);
-			}
-
-			if (count >= sizeof(cmd))
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("FTS: could not modify config: format command string failure dbid %d", changes[i].dbid)));
-				break;
-			}
-
-			ftsProbeInfo->fts_status[changes[i].dbid] = changes[i].newStatus;
-
-			rs = PQexec(entryConn, cmd);
-			if (PQresultStatus(rs) != PGRES_COMMAND_OK)
-				break;
+			Assert(failover_strategy == 'f');
+			Assert(primary && valid);
 		}
 
-		if (i < changeCount)
-			break;
+		Assert((valid || !primary) && "Primary cannot be down");
 
-		/* No error, we're ready to go */
-
-		PQclear(rs);
-		return;
-	} while (0);
-
-	/* Something horrible happened while marking our database ? */
-	{
 		/*
-		 * When we get an error, we strdup it here.  When the main thread
-		 * checks for errors, it makes a palloc copy of this, and frees
-		 * this.
+		 * Log change to segment configuration
 		 */
-		char	*error_message = strdup(PQerrorMessage(entryConn));
+		count = snprintf(cmd, sizeof(cmd),
+						 "insert into %s values ('%s', %d, 'FTSPROBE: content %d fault marking status %s%s role %c')",
+						 GpConfigHistoryRelationName,
+						 time_str, change->dbid, change->segindex,
+						 valid ? "UP" : "DOWN",
+						 (changelogging) ? " mode: change-tracking" : "",
+						 primary ? 'p' : 'm');
 
-		if (!error_message)
-			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-							errmsg("FTS: out of memory")));
+		Assert(count < sizeof(cmd));
 
-		PQclear(rs);
-		PQfinish(entryConn);
-		entryConn = NULL;
+		executeEntrySQL(entryConn, cmd);
 
-		elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);
+		/*
+		 * Update segment configuration in catalog
+		 */
+		count = snprintf(cmd, sizeof(cmd),
+						 "update %s set role='%c', status='%c'%s where dbid=CAST(%d AS SMALLINT)",
+						 GpSegmentConfigRelationName,
+						 primary ? 'p' : 'm',
+						 valid ? 'u' : 'd',
+						 (changelogging) ? ", mode = 'c'" : "",
+						 changes[i].dbid);
+
+		Assert(count < sizeof(cmd));
+
+		executeEntrySQL(entryConn, cmd);
+
+		/*
+		 * Update shared memory
+		 */
+		ftsProbeInfo->fts_status[changes[i].dbid] = changes[i].newStatus;
 	}
 }
+
 
 static void
 getGpFailover_strategy(char *strategy)
@@ -1870,13 +2207,12 @@ getGpFailover_strategy(char *strategy)
  * Dump out the changes to our logfile.
  */
 static void
-dumpChanges(struct segmentStatusChange *changes, int changeCount)
+dumpChanges(struct segmentStatusChange *changes, int changeEntries)
 {
-	int i;
+	Assert(changes != NULL);
+	int i = 0;
 
-	elog(LOG, "Dump our configuration change list, %d changes", changeCount);
-
-	for (i=0; i < changeCount; i++)
+	for (i = 0; i < changeEntries; i++)
 	{
 		bool new_alive, old_alive;
 		bool new_pri, old_pri;
@@ -1887,201 +2223,106 @@ dumpChanges(struct segmentStatusChange *changes, int changeCount)
 		new_pri = (changes[i].newStatus & FTS_STATUS_PRIMARY ? true : false);
 		old_pri = (changes[i].oldStatus & FTS_STATUS_PRIMARY ? true : false);
 
-		elog(LOG, "   change %d of %d dbid %d content %d alive %d/%d primary %d/%d",
-			 i+1, changeCount, changes[i].dbid, changes[i].segindex, new_alive, old_alive, new_pri, old_pri);
+		elog(LOG, "change: dbid %d content %d alive %d/%d primary %d/%d",
+			 changes[i].dbid, changes[i].segindex, new_alive, old_alive, new_pri, old_pri);
 	}
 }
 
 static void
-Null_Failover(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str)
+Null_Failover(struct segmentStatusChange *changePrimary)
 {
 	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-		dumpChanges(changes, changeCount);
+	{
+		dumpChanges(changePrimary, 1);
+	}
 }
 
 /*
- * Factor this out of probePublishUpdate(), we're pre-processing the
- * probe results to take into account some special state-changes that
- * Filerep uses: when the segments have completed re-sync, or when
- * they report an explicit fault.
+ * pre-process probe results to take into account some special
+ * state-changes that Filerep uses: when the segments have completed
+ * re-sync, or when they report an explicit fault.
  *
- * NOTE: we always call this twice for each mirror-pair, one for the
- * primary and one for the mirror, but we take their respective roles
- * into account (see below) otherwise it is impossible to reason about
- * the state changes.
+ * NOTE: we examine pairs of primary-mirror segments; this is requiring
+ * for reasoning about state changes.
  */
 static void
-Filerep_preprocess_probe_results(uint8 *probe_results, CdbComponentDatabaseInfo *segInfo)
+Filerep_preprocess_probe_results(uint8 *probe_results)
 {
-#define PROBE_IS_DEAD(dbInfo) (((probe_results[(dbInfo)->dbid]) & PROBE_ALIVE) == 0)
-#define PROBE_IS_FAULT(dbInfo) (((probe_results[(dbInfo)->dbid]) & PROBE_FAULT) == PROBE_FAULT)
-#define PROBE_IS_TO_IN_SYNC(dbInfo) (((probe_results[(dbInfo)->dbid]) & PROBE_TO_IN_SYNC) == PROBE_TO_IN_SYNC)
+	int i = 0;
 
-	CdbComponentDatabaseInfo *primary = NULL, *mirror = NULL;
-
-	if (SEGMENT_IS_ACTIVE_PRIMARY(segInfo))
+	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
-		primary = segInfo;
-		mirror = getMirrorEntryByContent(cdb_component_dbs, primary->segindex, primary->dbid);
-		Assert(mirror != NULL); /* mirrors should always be there in filerep mode */
-	}
-	else
-	{
-		/*
-		 * all segment pairs will be preprocessed before we use any
-		 * results, so it's okay to just preprocess when the primary
-		 * is the segInfo.  Early returning here doesn't help
-		 * correctness, but avoids bad log messages because the second
-		 * trip through this function for a pair would print different
-		 * output than the first
-		 */
-		return;
-	}
+		CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
+		CdbComponentDatabaseInfo *primary = NULL, *mirror = NULL;
 
-	/*
-	 * We've completed resync ? NOTE: we've only completed resync if *both* report completion.
-	 */
-	if (PROBE_IS_TO_IN_SYNC(primary) &&
-	    PROBE_IS_TO_IN_SYNC(mirror))
-	{
-		/*
-		 * if primary and mirror are both in-sync then update
-		 * configuration: because will not necessarily reach in-sync
-		 * internally at the same point, we make sure both are in-sync
-		 * before updating configuraiton
-		 */
-		markSegmentInSyncInConfiguration(primary);
-		probe_results[primary->dbid] &= ~PROBE_TO_IN_SYNC;
-
-		markSegmentInSyncInConfiguration(mirror);
-		probe_results[mirror->dbid] &= ~PROBE_TO_IN_SYNC;
-	}
-
-	/*
-	 * There are a few possibilities here:
-	 *    0) primary in fault, mirror already marked down, primary
-	 * expected to be in changetracking -- re-issue changetracking transition.
-	 *    1) primary in fault, mirror OK:
-	 *             mirror is promoted.
-	 *    2) primary in fault, mirror dead
-	 *    3) primary in fault, mirror in fault
-	 *             primary-changelogging, mirror considered dead.
-	 *    4) primary in fault, primary and mirror busy resynching.
-	 *             primary-changelogging, mirror considered dead.
-	 *    5) primary OK, mirror in fault.
-	 *             primary-changelogging, mirror considered dead.
-	 *    6) primary dead, mirror dead.
-	 *             do nothing more
-	 *    7) primary dead, mirror alive (can be in fault) and in-sync
-	 *             mirror-changelogging, primary dead
-	 *    8) primary dead, mirror alive (can be in fault) but out-of-sync
-	 *             consider all dead
-	 *
-	 * We're going to depend on the code further down to make the actual changes,
-	 * here we just mark which segments to consider "down."
-	 */
-	if (PROBE_IS_FAULT(primary))
-	{
-		/* PRIMARY FAULT -- case 0 */
-		if (segInfo->mode == 'c')
+		if (!SEGMENT_IS_ACTIVE_PRIMARY(segInfo))
 		{
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault. Already in changetracking. Retrying transition.",
+			continue;
+		}
+
+		primary = segInfo;
+		mirror = getMirrorEntryByContent(primary->segindex, primary->dbid);
+		Assert(mirror != NULL && "mirrors should always be there in filerep mode");
+
+		/*
+		 * We've completed resync ? NOTE: we've only completed resync if *both* report completion.
+		 */
+		if (PROBE_IS_RESYNC_COMPLETE(primary) &&
+			PROBE_IS_RESYNC_COMPLETE(mirror))
+		{
+			/*
+			 * if primary and mirror are both in-sync then update configuration: because
+			 * they will not necessarily reach in-sync internally at the same point, we
+			 * make sure both are in-sync before updating configuration
+			 */
+			markSegmentInSyncInConfiguration(primary, mirror);
+		}
+
+		/*
+		 * Decide which segments to consider "down."
+		 *
+		 * There are a few possibilities here:
+		 *    1) primary in crash fault
+		 *             primary considered dead
+		 *    2) mirror in crash fault
+		 *             mirror considered dead
+		 *    3) primary in mirroring fault
+		 *             primary considered alive, mirror considered dead
+		 */
+		if (PROBE_HAS_FAULT_CRASH(primary))
+		{
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported crash, considered dead.",
 				 primary->dbid, probe_results[primary->dbid]);
 
-			Filerep_mode_update(primary->dbid, "primary", 'c', FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking);
-		}
-
-		/* PRIMARY FAULT -- cases 1-4 */
-		if (PROBE_IS_FAULT(mirror))
-		{
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault, mirror %d/0x%x considered dead.",
-				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-
-			/* consider mirror dead (3) */
-			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
-		}
-		else if (PROBE_IS_DEAD(mirror))
-		{
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault, mirror %d/0x%x is dead.",
-				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-
-			/* consider mirror dead (2) */
-		}
-		else if (FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status)) /* mirror up, check in-sync */
-		{
-			/* The mirror was intact ? */
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault, mirror %d/0x%x looks good.",
-				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-
-			/* mirror is OK (1) */
+			/* consider primary dead -- case (1) */
 			probe_results[primary->dbid] &= ~PROBE_ALIVE;
 		}
-		else
+		else if (PROBE_HAS_FAULT_MIRROR(primary))
 		{
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported fault, mirror %d/0x%x was resyncing, now considered dead.",
-				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-			/*
-			 * mirror must have been re-syncing,
-			 * so the primary is just reporting a
-			 * problem from the mirror.
-			 */
-			/* consider mirror dead (3)(4) */
-			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
-		}
-	}
-	else if (PROBE_IS_DEAD(primary))
-	{
-		/* PRIMARY DEAD -- cases 6-8 */
-		if (PROBE_IS_DEAD(mirror))
-		{
-			/* mirror reported dead (6) */
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported dead, mirror %d/0x%x reported dead.",
-				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-		}
-		else if (FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status)) /* mirror not dead, check in-sync */
-		{
-			/* The mirror was intact and synchronized -- consider it alive (7) */
-
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported dead, mirror %d/0x%x considered alive.",
-				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-		}
-		else
-		{
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported dead, mirror %d/0x%x was resyncing, now considered dead.",
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported mirroring fault with mirror %d/0x%x, mirror considered dead.",
 				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
 
-			/* mirror was alive but not in-sync, must consider it dead (8) */
+			/* consider mirror dead -- case (3) */
 			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
 		}
-	}
-	else
-	{
- 		/* Primary is OK. What about the mirror ? (case 5) */
-		if (PROBE_IS_FAULT(mirror))
-		{
-			/* case 5: mirror should be considered dead. */
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported OK mirror, %d/0x%x considered dead.",
-				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-			/* consider mirror dead (5) */
-			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
-		}
-		else if (PROBE_IS_DEAD(mirror))
-		{
-			if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-				elog(LOG, "probePublishUpdate: dbid %d/0x%x reported OK, mirror %d/0x%x already dead.",
-				 	primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-		}
-		else
-		{
-			if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-				elog(LOG, "probePublishUpdate: dbid %d/0x%x reported OK, mirror %d/0x%x alive.",
-				 	primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
-		}
-	}
 
-	/* clear PROBE_FAULT because it's not needed after this processing */
-	probe_results[primary->dbid] &= ~PROBE_FAULT;
-	probe_results[mirror->dbid] &= ~PROBE_FAULT;
+		if (PROBE_HAS_FAULT_CRASH(mirror))
+		{
+			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported crash, considered dead.",
+				 mirror->dbid, probe_results[mirror->dbid]);
+
+			/* consider mirror dead -- case (2) */
+			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
+		}
+
+		/* clear resync and fault flags because they are not needed after this processing */
+		probe_results[primary->dbid] &= ~PROBE_FAULT_CRASH;
+		probe_results[primary->dbid] &= ~PROBE_FAULT_MIRROR;
+		probe_results[primary->dbid] &= ~PROBE_RESYNC_COMPLETE;
+		probe_results[mirror->dbid] &= ~PROBE_FAULT_CRASH;
+		probe_results[mirror->dbid] &= ~PROBE_FAULT_MIRROR;
+		probe_results[mirror->dbid] &= ~PROBE_RESYNC_COMPLETE;
+	}
 }
 
 /*
@@ -2159,6 +2400,8 @@ Filerep_Failover(struct segmentStatusChange *changes, int changeCount)
 		}
 		else if (new_alive && old_alive)
 		{
+			Assert(changes[i].newStatus & FTS_STATUS_CHANGELOGGING);
+
 			/* this is a segment that may require a mode-change */
 			if (old_pri && !new_pri)
 			{
@@ -2329,7 +2572,7 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 			char	cmd[1024];
 			int		cmd_status;
 
-			sprintf(cmd, "gp_primarymirror -h %s -p %d -i %s", seg_addr, seg_pm_port, tmp_filename);
+			snprintf(cmd, sizeof(cmd), "gp_primarymirror -h %s -p %d -i %s", seg_addr, seg_pm_port, tmp_filename);
 
 			if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 				elog(LOG, "gp_primarymirror command is [%s]", cmd);
@@ -2375,39 +2618,49 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 }
 
 /*
- * Convenience macro for running some SQL on a previously established self-connection.
+ * Run SQL query on a previously established self-connection.
  */
-#define executeEntrySQL(entryConn, query)								\
-	{																	\
-		PGresult   *rs=NULL;											\
-																		\
-		rs = PQexec(entryConn, query);									\
-		if (PQresultStatus(rs) != PGRES_COMMAND_OK)						\
-		{																\
-			char	*error_message = strdup(PQerrorMessage(entryConn));	\
-																		\
-			if (!error_message)											\
-				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),			\
-								errmsg("FTS: out of memory")));			\
-																		\
-			PQclear(rs);												\
-			PQfinish(entryConn);										\
-			entryConn = NULL;											\
-																		\
-			elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);	\
-		}																\
+static void
+executeEntrySQL(PGconn *entryConn, const char *query)
+{
+	PGresult   *rs = NULL;
+
+	rs = PQexec(entryConn, query);
+	if (PQresultStatus(rs) != PGRES_COMMAND_OK)
+	{
+		char	*error_message = strdup(PQerrorMessage(entryConn));
+
+		if (!error_message)
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("FTS: out of memory")));
+
+		PQclear(rs);
+		PQfinish(entryConn);
+		entryConn = NULL;
+
+		elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);
 	}
+}
 
 /**
  * Marks the given db as in-sync in the segment configuration.
  */
 static void
-markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo)
+markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror)
 {
-	char cmd[2000];
-	char timestamp_str[100];
+	Assert(FTS_STATUS_ISALIVE(primary->dbid, ftsProbeInfo->fts_status));
+	Assert(FTS_STATUS_ISPRIMARY(primary->dbid, ftsProbeInfo->fts_status));
+	Assert(!FTS_STATUS_ISPRIMARY(mirror->dbid, ftsProbeInfo->fts_status));
+	Assert(FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status));
+	Assert(!FTS_STATUS_IS_SYNCED(primary->dbid, ftsProbeInfo->fts_status));
+	Assert(!FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status));
+	Assert(!FTS_STATUS_IS_CHANGELOGGING(primary->dbid, ftsProbeInfo->fts_status));
+	Assert(!FTS_STATUS_IS_CHANGELOGGING(mirror->dbid, ftsProbeInfo->fts_status));
 
-	fillTimestampStr(timestamp_str, sizeof(timestamp_str));
+	char cmd[SQL_CMD_BUF_SIZE];
+	char timestamp_str[TIMESTAMP_BUF_SIZE];
+
+	get_timestamp(timestamp_str, sizeof(timestamp_str));
 
 	CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
 
@@ -2433,34 +2686,45 @@ markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *dbInfo)
 	else
 	{
 		uint8	segStatus=0;
-		bool	isPrimary;
 
-		/* update in-core copy */
-		segStatus = ftsProbeInfo->fts_status[dbInfo->dbid];
+		/* update primary */
+		segStatus = ftsProbeInfo->fts_status[primary->dbid];
 		segStatus |= FTS_STATUS_SYNCHRONIZED;
-		ftsProbeInfo->fts_status[dbInfo->dbid] = segStatus;
+		ftsProbeInfo->fts_status[primary->dbid] = segStatus;
+
+		/* update mirror */
+		segStatus = ftsProbeInfo->fts_status[mirror->dbid];
+		segStatus |= FTS_STATUS_SYNCHRONIZED;
+		ftsProbeInfo->fts_status[mirror->dbid] = segStatus;
 
 		/* update gp_segment_configuration to insync */
 		snprintf(cmd, sizeof(cmd),
 				 "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
 				 GpSegmentConfigRelationName,
-				 dbInfo->dbid);
+				 primary->dbid);
+		executeEntrySQL(entryConn, cmd);
+
+		snprintf(cmd, sizeof(cmd),
+				 "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
+				 GpSegmentConfigRelationName,
+				 mirror->dbid);
 		executeEntrySQL(entryConn, cmd);
 
 		/* update configuration history */
 		snprintf(cmd, sizeof(cmd),
 				 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
-				 timestamp_str, dbInfo->dbid);
+				 timestamp_str, primary->dbid);
 		executeEntrySQL(entryConn, cmd);
 
-		isPrimary = segStatus & FTS_STATUS_PRIMARY;
-		if (!isPrimary)
-		{
-			ereport(LOG,
-					(errmsg("Resynchronization of mirror segment on %s:%d has completed.",
-							dbInfo->address, dbInfo->port ),
-					 errSendAlert(true)));
-		}
+		snprintf(cmd, sizeof(cmd),
+				 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
+				 timestamp_str, mirror->dbid);
+		executeEntrySQL(entryConn, cmd);
+
+		ereport(LOG,
+				(errmsg("Resynchronization of mirror segment on %s:%d has completed.",
+						mirror->address, mirror->port ),
+				 errSendAlert(true)));
 	}
 
 	closeSelfConn(entryConn);

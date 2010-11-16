@@ -97,6 +97,7 @@ struct FtsSegDBState
 #define FTS_STATUS_ISPRIMARY(dbid, status) FTS_STATUS_TEST((dbid), (status), FTS_STATUS_PRIMARY)
 #define FTS_STATUS_ISDEFINEDPRIMARY(dbid, status) FTS_STATUS_TEST((dbid), (status), FTS_STATUS_DEFINEDPRIMARY)
 #define FTS_STATUS_IS_SYNCED(dbid, status) FTS_STATUS_TEST((dbid), (status), FTS_STATUS_SYNCHRONIZED)
+#define FTS_STATUS_IS_CHANGELOGGING(dbid, status) FTS_STATUS_TEST((dbid), (status), FTS_STATUS_CHANGELOGGING)
 
 typedef struct FtsProbeInfo
 {

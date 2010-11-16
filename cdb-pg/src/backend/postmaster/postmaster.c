@@ -519,6 +519,7 @@ extern char    *locale_collate;
  */
 static void getInstallationPaths(const char *argv0);
 static void checkDataDir(void);
+static void checkPgDir(const char *dir);
 
 #ifdef USE_BONJOUR
 static void reg_reply(DNSServiceRegistrationReplyErrorType errorCode,
@@ -1734,6 +1735,34 @@ checkDataDir(void)
 }
 
 
+/*
+ * check if file or directory under "DataDir" exists and is accessible
+ */
+static void checkPgDir(const char *dir)
+{
+	Assert(DataDir);
+
+	struct stat st;
+	char buf[strlen(DataDir) + strlen(dir) + 32];
+
+	snprintf(buf, ARRAY_SIZE(buf), "%s%s", DataDir, dir);
+	buf[ARRAY_SIZE(buf) - 1] = '\0';
+
+	if (stat(buf, &st) != 0)
+	{
+		/* check if pg_log is there */
+		snprintf(buf, ARRAY_SIZE(buf), "%s%s", DataDir, "/pg_log");
+		if (stat(buf, &st) == 0)
+		{
+			elog(LOG, "System file or directory missing (%s), postmaster will shut down", dir);
+		}
+
+		/* quit all processes and exit */
+		pmdie(SIGQUIT);
+	}
+}
+
+
 #ifdef USE_BONJOUR
 
 /*
@@ -2073,16 +2102,22 @@ ServerLoop(void)
             selres = 0;
         }
 
-		/* Sanity check our global filespace data-directory on all segments */
+		/* Sanity check for system directories on all segments */
 		if (GPIsSegmentDatabase())
 		{
-			struct stat st;
-
-			Assert(DataDir);
-			if (stat(DataDir, &st) != 0)
-			{
-				FileRep_SetState(FileRepStateFault);
-			}
+			checkPgDir("");
+			checkPgDir("/base");
+			checkPgDir("/global");
+			checkPgDir("/global/pg_auth");
+			checkPgDir("/global/pg_control");
+			checkPgDir("/global/pg_database");
+			checkPgDir("/pg_distributedlog");
+			checkPgDir("/pg_distributedxidmap");
+			checkPgDir("/pg_multixact");
+			checkPgDir("/pg_subtrans");
+			checkPgDir("/pg_twophase");
+			checkPgDir("/pg_utilitymodedtmredo");
+			checkPgDir("/pg_xlog");
 		}
 
 		/*
