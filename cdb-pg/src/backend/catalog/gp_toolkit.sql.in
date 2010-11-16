@@ -105,6 +105,7 @@ AS
 		fn.fnnspname as autnspname, 
 		fn.fnrelname as autrelname, 
 		relkind as autrelkind,
+		relstorage as autrelstorage,
 		reltuples as autreltuples,
 		relpages as autrelpages,
 		relacl as autrelacl,
@@ -788,7 +789,7 @@ DECLARE
 	skcrec record;
 	
 BEGIN
-	FOR skcoid IN SELECT autoid from %%JETPACK_PREFIX_AUX%%user_data_tables_readable
+	FOR skcoid IN SELECT autoid from tk.__gp_user_data_tables_readable WHERE autrelstorage != 'x'
 	LOOP
 		SELECT * INTO skcrec
 		FROM
@@ -887,7 +888,7 @@ DECLARE
 	skcrec record;
 	
 BEGIN
-	FOR skcoid IN SELECT autoid from %%JETPACK_PREFIX_AUX%%user_data_tables_readable
+	FOR skcoid IN SELECT autoid from tk.__gp_user_data_tables_readable WHERE autrelstorage != 'x'
 	LOOP
 		SELECT * INTO skcrec
 		FROM
