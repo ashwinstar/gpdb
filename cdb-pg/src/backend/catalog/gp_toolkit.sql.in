@@ -1154,7 +1154,7 @@ AS
 		END as resqstatus
 	FROM
 		pg_catalog.pg_stat_activity psa
-	LEFT OUTER JOIN
+	JOIN
 	(
 		SELECT 
 			pgrq.oid as resqoid,
