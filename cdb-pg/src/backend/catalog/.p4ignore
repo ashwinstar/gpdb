@@ -3,3 +3,5 @@ postgres.bki
 postgres.description
 postgres.shdescription
 cdb_util.sql
+gp_toolkit.sql
+gp_test_toolkit.sql
