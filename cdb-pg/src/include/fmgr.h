@@ -430,24 +430,41 @@ extern int no_such_variable
 typedef struct
 {
 	int			len;			/* sizeof(this struct) */
-	int			version;		/* PostgreSQL major version */
+	int			version;		/* product major version */
 	int			funcmaxargs;	/* FUNC_MAX_ARGS */
 	int			indexmaxkeys;	/* INDEX_MAX_KEYS */
 	int			namedatalen;	/* NAMEDATALEN */
 	int			float4byval;	/* FLOAT4PASSBYVAL */
 	int			float8byval;	/* FLOAT8PASSBYVAL */
+	int         product;        /* magic product code */
 } Pg_magic_struct;
 
+/*
+ * List of product codes for products that support some level of compatability
+ * with the postgres contrib module format. 
+ *
+ * GPDB: A patch for this has been supplied to Postgres in the hope of improved
+ * cross product compatibility.  It is currently unknown if they will accept
+ * the patch.
+ */
+typedef enum {
+	PgMagicProductNone		   = 0,
+	PgMagicProductPostgres	   = 1,
+	PgMagicProductGreenplum	   = 2180,     /* 'GPDB' cast to an integer */
+} Pg_magic_product_code;
+
+
 /* The actual data block contents */
-#define PG_MODULE_MAGIC_DATA \
-{ \
-	sizeof(Pg_magic_struct), \
-	PG_VERSION_NUM / 100, \
-	FUNC_MAX_ARGS, \
-	INDEX_MAX_KEYS, \
-	NAMEDATALEN, \
-	FLOAT4PASSBYVAL, \
-	FLOAT8PASSBYVAL \
+#define PG_MODULE_MAGIC_DATA					\
+{												\
+	sizeof(Pg_magic_struct),					\
+	GP_VERSION_NUM / 100,						\
+	FUNC_MAX_ARGS,								\
+	INDEX_MAX_KEYS,								\
+	NAMEDATALEN,								\
+	FLOAT4PASSBYVAL,							\
+	FLOAT8PASSBYVAL,							\
+	PgMagicProductGreenplum,					\
 }
 
 #ifndef FLOAT4PASSBYVAL
