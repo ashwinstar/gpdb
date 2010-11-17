@@ -85,6 +85,7 @@ FaultInjectorTypeEnumToString[] = {
 	_("suspend"),
 	_("resume"),
 	_("skip"),
+	_("memory_full"),
 	_("reset"),
 	_("status"),
 	_("not recognized"),
@@ -557,6 +558,22 @@ FaultInjector_InjectFaultIfSet(
 							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));							
 			break;
 			
+		case FaultInjectorTypeMemoryFull:
+		{
+			char	*buffer = NULL;
+			
+			ereport(LOG, 
+					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
+			
+			while (buffer != NULL)
+			{
+				buffer = (char*) palloc(BLCKSZ);
+			}
+			
+			break;
+		}	
 		case FaultInjectorTypeReset:
 		case FaultInjectorTypeStatus:
 

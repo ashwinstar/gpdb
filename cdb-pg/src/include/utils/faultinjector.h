@@ -147,6 +147,8 @@ typedef enum FaultInjectorType_e {
 	
 	FaultInjectorTypeSkip,
 	
+	FaultInjectorTypeMemoryFull,
+	
 	FaultInjectorTypeReset,
 	
 	FaultInjectorTypeStatus,
