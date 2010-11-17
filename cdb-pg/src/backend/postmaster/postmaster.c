@@ -2108,9 +2108,6 @@ ServerLoop(void)
 			checkPgDir("");
 			checkPgDir("/base");
 			checkPgDir("/global");
-			checkPgDir("/global/pg_auth");
-			checkPgDir("/global/pg_control");
-			checkPgDir("/global/pg_database");
 			checkPgDir("/pg_distributedlog");
 			checkPgDir("/pg_distributedxidmap");
 			checkPgDir("/pg_multixact");
