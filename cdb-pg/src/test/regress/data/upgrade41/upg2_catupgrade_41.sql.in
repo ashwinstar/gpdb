@@ -1,0 +1,62 @@
+--
+-- Catalog Upgrade Script (from 4.0 to 4.1)
+--
+-- All catalog changes should be placed here.
+-- Most operations can be declared as DDL, such as ALTER TABLE, CREATE TABLE
+-- Creating catalog objects must specific its oid. For example,
+--   Create function f1(int) ... with (oid = <newoid>)
+--   Create aggregate agg1(int) (..., oid = <newoid>)
+--
+-- Some operatiosn can't be declared as DDL, such as populating a new catalog column,
+-- or replacing the on-dist representation of views. These must be done DML.
+-- For example:
+--   update pg_aggregate set dummy = 123;
+--   select catDML(‘update pg_aggregate set dummy = 123’) from gp_dist_random(‘gp_id’);
+--
+-- The first DML will populate the mater catalog and the second DML will update the catalog
+-- in all the segments.
+
+-- WE MUST SET ***ON_ERROR_STOP*** TO ON..!!!
+\set ON_ERROR_STOP ON
+
+
+-------------------------------------
+-- Pre upgrade
+--   begin txn
+--   create temp helper routines
+------------------------------------
+BEGIN;
+
+-- Use this pl/pgsql function to execute DML on cat tab on all segs
+create or replace function catDML(stmt text) returns int as $$
+begin
+  execute stmt;
+  return 1;
+end;
+$$ language 'plpgsql';
+
+
+
+--------------------------------------
+-- Catalog Upgrade starts here
+--   everything will happen inside a single txn
+--   create temp internal helper routine
+--------------------------------------
+
+-- Persistent Table
+alter table pg_catalog.gp_persistent_relation_node rename reserved to unreserved;
+
+-- Resource Queue 
+--   create new function
+--   populate pg_resourcetype and pg_resqueuecapability
+
+
+
+
+----------------------------------------
+-- End of Catalog upgrade for one database
+--   drop temp helper routine
+--   commit the txn
+----------------------------------------
+drop function catDML(stmt text);
+commit;
