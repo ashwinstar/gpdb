@@ -789,7 +789,7 @@ DECLARE
 	skcrec record;
 	
 BEGIN
-	FOR skcoid IN SELECT autoid from tk.__gp_user_data_tables_readable WHERE autrelstorage != 'x'
+	FOR skcoid IN SELECT autoid from %%JETPACK_PREFIX_AUX%%user_data_tables_readable WHERE autrelstorage != 'x'
 	LOOP
 		SELECT * INTO skcrec
 		FROM
@@ -888,7 +888,7 @@ DECLARE
 	skcrec record;
 	
 BEGIN
-	FOR skcoid IN SELECT autoid from tk.__gp_user_data_tables_readable WHERE autrelstorage != 'x'
+	FOR skcoid IN SELECT autoid from %%JETPACK_PREFIX_AUX%%user_data_tables_readable WHERE autrelstorage != 'x'
 	LOOP
 		SELECT * INTO skcrec
 		FROM
