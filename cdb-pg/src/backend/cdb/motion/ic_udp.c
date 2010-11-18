@@ -1449,6 +1449,10 @@ SetupUDPInterconnect(EState *estate)
 				if (!gp_interconnect_elide_setup || gp_interconnect_id <= 1)
 				{
 					estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, (void *)conn);
+					if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+						ereport(DEBUG1, (errmsg("Incomplete incoming interconnect connection (content/pid): %d/%d -> %d/%d",
+												conn->conn_info.srcContentId, conn->conn_info.srcPid,
+												conn->conn_info.dstContentId, conn->conn_info.dstPid)));
 				}
 
 				if (!conn_addhash(conn))
@@ -1480,9 +1484,9 @@ SetupUDPInterconnect(EState *estate)
 
     if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
         ereport(DEBUG1, (errmsg("SetupUDPInterconnect will activate "
-                                "%d incoming, %d outgoing routes.  "
+                                "%d incoming, %d outgoing routes for gp_interconnect_id %d. "
                                 "Listening on ports=%d/%d sockfd=%d.",
-                                expectedTotalIncoming, expectedTotalOutgoing,
+                                expectedTotalIncoming, expectedTotalOutgoing, gp_interconnect_id,
                                 Gp_listener_port&0x0ffff, (Gp_listener_port>>16)&0x0ffff, UDP_listenerFd)));
 
   	gettimeofday(&startTime, NULL);
@@ -1715,6 +1719,10 @@ SetupUDPInterconnect(EState *estate)
 				{
 					incoming_count++;
 					estate->interconnect_context->incompleteConns = list_delete_ptr(estate->interconnect_context->incompleteConns, (void *)conn);
+					if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+						ereport(DEBUG1, (errmsg("Remove incomplete incoming interconnect connection (content/pid): %d/%d -> %d/%d",
+												conn->conn_info.srcContentId, conn->conn_info.srcPid,
+												conn->conn_info.dstContentId, conn->conn_info.dstPid)));
 				}
 				pthread_mutex_unlock(&rx_thread_mutex);
 			}
