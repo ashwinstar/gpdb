@@ -41,7 +41,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_description
-   with (oid=false, relid=2609)
+   with (oid=false, relid=2609, toast_oid=2834, toast_index=2835)
    (
    objoid       oid, 
    classoid     oid, 

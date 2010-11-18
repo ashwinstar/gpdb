@@ -105,6 +105,16 @@ The relid of the table in pg_class.  Use unused_oids to find one.
 The static reltype in pg_type (necessary for upgrade).  Use
 unused_oids to find one.
 
+=item toast_oid: (required for all tables with text or array columns)
+
+The oid of the toast table (see toasting.h).  Use unused_oids to find
+one.
+
+=item toast_index: (required for all tables with toast_oid)
+
+The oid of the index of the toast table (see toasting.h).  Use
+unused_oids to find one.
+
 =back
 
 Similarly, index definitions are unique or non-unique, and require an
@@ -315,6 +325,39 @@ my %dynamic_reltype_h =
  1247 => "pg_type", # special bootstrap case
  5004 => "pg_window"
 	);
+
+
+# DO NOT extend this list!  To ensure smooth upgrade, all new tables
+# with text or array columns must have toast tables and indexes
+my %toast_tab_exception_h = 
+	(
+	 "gp_configuration_history" => 1,
+	 "gp_configuration" => 1,
+	 "gp_distribution_policy" => 1,
+	 "gp_master_mirroring" => 1,
+	 "gp_persistent_filespace_node" => 1,
+	 "gp_san_configuration" => 1,
+	 "gp_version_at_initdb" => 1,
+	 "pg_aggregate" => 1,
+	 "pg_appendonly" => 1,
+	 "pg_appendonly_alter_column" => 1,
+	 "pg_class" => 1,
+	 "pg_exttable" => 1,
+	 "pg_foreign_data_wrapper" => 1,
+	 "pg_foreign_server" => 1,
+	 "pg_foreign_table" => 1,
+	 "pg_index" => 1,
+	 "pg_partition_rule" => 1,
+	 "pg_pltemplate" => 1,
+	 "pg_resqueuecapability" => 1,
+	 "pg_resourcetype" => 1,
+	 "pg_stat_last_operation" => 1,
+	 "pg_stat_last_shoperation" => 1,
+	 "pg_tablespace" => 1,
+	 "pg_type" => 1,
+	 "pg_user_mapping" => 1
+	);
+
 
 sub getcomment1
 {
@@ -830,7 +873,48 @@ sub parsetab
 	parsecols($alltabs, $tname, $bigstr);
 
 #	print "bigstr: ", $bigstr, "\n";
-	
+
+	# TOAST table checks
+
+	if (exists($alltabs->{$tname}->{with}->{toast_oid}))
+	{
+		die "toast table for $tname must have index (toast_index)"
+			unless (exists($alltabs->{$tname}->{with}->{toast_index}));
+	}
+	if (exists($alltabs->{$tname}->{with}->{toast_index}))
+	{
+		die "toast index for $tname must have table (toast_oid)"
+			unless (exists($alltabs->{$tname}->{with}->{toast_oid}));
+	}
+
+	if (exists($alltabs->{$tname}->{cols}) &&
+		defined($alltabs->{$tname}->{cols}) &&
+		# ignore pre-existing exception tables
+		(!exists($toast_tab_exception_h{$tname})))
+	{
+		my $badmsg = "";
+
+		for my $col1 (@{$alltabs->{$tname}->{cols}})
+		{
+			my $cname = $col1->{colname};
+			my $ctype = $col1->{sqltype};
+
+			# aclitem arrays are ok
+			next if ($ctype =~ m/aclitem/);
+
+			if (($ctype =~ m/\[.*\]/) ||
+				($ctype =~ /text/))
+			{
+				last # table has a toast table - ok!
+					if (exists($alltabs->{$tname}->{with}->{toast_oid}));
+
+				$badmsg .= "table $tname needs toast table (toast_oid) for column $cname of type $ctype\n";
+			}
+		} # end for
+		die $badmsg if (length($badmsg));
+
+	}
+
 	return $tname;
 
 } # end parsetab

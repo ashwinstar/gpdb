@@ -26,7 +26,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_constraint
-   with (relid=2606)
+   with (relid=2606, toast_oid=2832, toast_index=2833)
    (
    conname        name, 
    connamespace   oid, 

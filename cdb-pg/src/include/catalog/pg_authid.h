@@ -27,7 +27,7 @@
 /* TIDYCAT_BEGINDEF
 
    CREATE TABLE pg_authid
-   with (CamelCase=AuthId, shared=true, relid=1260)
+   with (CamelCase=AuthId, shared=true, relid=1260, toast_oid=2842, toast_index=2843)
    (
    rolname name, -- name of role  
    rolsuper boolean, -- read this field via superuser() only! 

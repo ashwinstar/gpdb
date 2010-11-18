@@ -27,7 +27,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_rewrite
-   with (relid=2618)
+   with (relid=2618, toast_oid=2838, toast_index=2839)
    (
    rulename    name, 
    ev_class    oid, 

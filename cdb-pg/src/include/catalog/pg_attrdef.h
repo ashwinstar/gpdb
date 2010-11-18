@@ -24,7 +24,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_attrdef
-   with (camelcase=AttrDefault, relid=2604)
+   with (camelcase=AttrDefault, relid=2604, toast_oid=2830, toast_index=2831)
    (
    adrelid  oid, 
    adnum    smallint, 

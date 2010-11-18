@@ -29,7 +29,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_proc
-   with (camelcase=Procedure, bootstrap=true, relid=1255)
+   with (camelcase=Procedure, bootstrap=true, relid=1255, toast_oid=2836, toast_index=2837)
    (
    proname         name, 
    pronamespace    oid, 

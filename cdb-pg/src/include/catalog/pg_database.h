@@ -24,7 +24,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_database
-   with (shared=true, relid=1262)
+   with (shared=true, relid=1262, toast_oid=2844, toast_index=2845)
    (
    datname        name, 
    datdba         oid, 

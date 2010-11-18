@@ -39,7 +39,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_filespace_entry
-   with (camelcase=FileSpaceEntry, shared=true, oid=false, relid=5033, reltype_oid=6439)
+   with (camelcase=FileSpaceEntry, shared=true, oid=false, relid=5033, reltype_oid=6439, toast_oid=2902, toast_index=2903)
    (
    fsefsoid     oid, -- foreign key to pg_filespace 
    fsedbid      smallint, -- segment dbid this refers to 

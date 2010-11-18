@@ -31,7 +31,7 @@ typedef struct varlena anyarray;
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_statistic
-   with (camelcase=Statistic, oid=false, relid=2619)
+   with (camelcase=Statistic, oid=false, relid=2619, toast_oid=2840, toast_index=2841)
    (
    starelid     oid, 
    staattnum    smallint, 
