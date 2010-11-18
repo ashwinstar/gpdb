@@ -24,4 +24,4 @@ at_switch_firmware_version = v1.2.0
 brocade_switch_firmware_version = v6.3.2a1
 
 [linux]
-xfs_mount_options = rw,noatime,inode64,allocsize=1g
+xfs_mount_options = rw,noatime,inode64,allocsize=16m
