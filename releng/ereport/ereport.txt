@@ -1275,132 +1275,132 @@ xaae: xlog:00007415:  (errmsg("%s: invalid redo in checkpoint record", callerStr
 xaae: xlog:00007426:  ereport(ERROR, 
 xaae: xlog:00007427:  (errmsg("%s: first redo record before checkpoint not found at %s", 
 xaae: xlog:00007428:  callerStr, XLogLocationToString(&checkPoint.redo)))); 
-xaae: xlog:00008085:  ereport(LOG, 
-xaae: xlog:00008086:  (errmsg("database system is shut down"), 
-xaae: xlog:00008087:  errSendAlert(true),errOmitLocation(true))); 
-xaae: xlog:00009086:  ereport(ERROR, 
-xaae: xlog:00009087:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009088:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00009091:  ereport(ERROR, 
-xaae: xlog:00009092:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009093:  (errmsg("WAL archiving is not active"), 
-xaae: xlog:00009094:  (errhint("archive_command must be defined before " 
-xaae: xlog:00009095:  "online backups can be made safely."))))); 
-xaae: xlog:00009121:  ereport(ERROR, 
-xaae: xlog:00009122:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009123:  errmsg("a backup is already in progress"), 
-xaae: xlog:00009124:  errhint("Run pg_stop_backup() and try again."))); 
-xaae: xlog:00009169:  ereport(ERROR, 
-xaae: xlog:00009170:  (errcode_for_file_access(), 
-xaae: xlog:00009171:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00009172:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009175:  ereport(ERROR, 
-xaae: xlog:00009176:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009177:  errmsg("a backup is already in progress"), 
-xaae: xlog:00009178:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
-xaae: xlog:00009179:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009186:  ereport(ERROR, 
-xaae: xlog:00009187:  (errcode_for_file_access(), 
-xaae: xlog:00009188:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00009189:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009197:  ereport(ERROR, 
-xaae: xlog:00009198:  (errcode_for_file_access(), 
-xaae: xlog:00009199:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00009200:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009252:  ereport(ERROR, 
-xaae: xlog:00009253:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009254:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00009286:  ereport(ERROR, 
-xaae: xlog:00009287:  (errcode_for_file_access(), 
-xaae: xlog:00009288:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009289:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009290:  ereport(ERROR, 
-xaae: xlog:00009291:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009292:  errmsg("a backup is not in progress"))); 
+xaae: xlog:00008095:  ereport(LOG, 
+xaae: xlog:00008096:  (errmsg("database system is shut down"), 
+xaae: xlog:00008097:  errSendAlert(true),errOmitLocation(true))); 
+xaae: xlog:00009098:  ereport(ERROR, 
+xaae: xlog:00009099:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009100:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00009103:  ereport(ERROR, 
+xaae: xlog:00009104:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009105:  (errmsg("WAL archiving is not active"), 
+xaae: xlog:00009106:  (errhint("archive_command must be defined before " 
+xaae: xlog:00009107:  "online backups can be made safely."))))); 
+xaae: xlog:00009133:  ereport(ERROR, 
+xaae: xlog:00009134:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009135:  errmsg("a backup is already in progress"), 
+xaae: xlog:00009136:  errhint("Run pg_stop_backup() and try again."))); 
+xaae: xlog:00009181:  ereport(ERROR, 
+xaae: xlog:00009182:  (errcode_for_file_access(), 
+xaae: xlog:00009183:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00009184:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009187:  ereport(ERROR, 
+xaae: xlog:00009188:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009189:  errmsg("a backup is already in progress"), 
+xaae: xlog:00009190:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
+xaae: xlog:00009191:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009198:  ereport(ERROR, 
+xaae: xlog:00009199:  (errcode_for_file_access(), 
+xaae: xlog:00009200:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00009201:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009209:  ereport(ERROR, 
+xaae: xlog:00009210:  (errcode_for_file_access(), 
+xaae: xlog:00009211:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009212:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009264:  ereport(ERROR, 
+xaae: xlog:00009265:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009266:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00009298:  ereport(ERROR, 
+xaae: xlog:00009299:  (errcode_for_file_access(), 
+xaae: xlog:00009300:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009301:  BACKUP_LABEL_FILE))); 
 xaae: xlog:00009302:  ereport(ERROR, 
 xaae: xlog:00009303:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009304:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009304:  errmsg("a backup is not in progress"))); 
 xaae: xlog:00009314:  ereport(ERROR, 
-xaae: xlog:00009315:  (errcode_for_file_access(), 
-xaae: xlog:00009316:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00009317:  histfilepath))); 
-xaae: xlog:00009327:  ereport(ERROR, 
-xaae: xlog:00009328:  (errcode_for_file_access(), 
-xaae: xlog:00009329:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00009330:  histfilepath))); 
-xaae: xlog:00009336:  ereport(ERROR, 
-xaae: xlog:00009337:  (errcode_for_file_access(), 
-xaae: xlog:00009338:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009339:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009341:  ereport(ERROR, 
-xaae: xlog:00009342:  (errcode_for_file_access(), 
-xaae: xlog:00009343:  errmsg("could not remove file \"%s\": %m", 
-xaae: xlog:00009344:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009374:  ereport(ERROR, 
-xaae: xlog:00009375:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009376:  (errmsg("must be superuser to switch transaction log files")))); 
-xaae: xlog:00009482:  ereport(ERROR, 
-xaae: xlog:00009483:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009484:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009485:  locationstr))); 
-xaae: xlog:00009551:  ereport(ERROR, 
-xaae: xlog:00009552:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009553:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009554:  locationstr))); 
-xaae: xlog:00009611:  ereport(FATAL, 
-xaae: xlog:00009612:  (errcode_for_file_access(), 
-xaae: xlog:00009613:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009614:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009626:  ereport(FATAL, 
-xaae: xlog:00009627:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009628:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009632:  ereport(FATAL, 
-xaae: xlog:00009633:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009634:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009636:  ereport(FATAL, 
-xaae: xlog:00009637:  (errcode_for_file_access(), 
-xaae: xlog:00009638:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009639:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009663:  ereport(FATAL, 
-xaae: xlog:00009664:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009665:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009669:  ereport(FATAL, 
-xaae: xlog:00009670:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009671:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009674:  ereport(FATAL, 
-xaae: xlog:00009675:  (errcode_for_file_access(), 
-xaae: xlog:00009676:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009677:  histfilepath))); 
-xaae: xlog:00010024:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-xaae: xlog:00010025:  errmsg("database 'postgres' does not exist"))); 
-xaae: xlog:00010268:  ereport(WARNING, 
-xaae: xlog:00010269:  (errcode_for_file_access(), 
-xaae: xlog:00010270:  errmsg("could not allocate path, path too long \"%s/%s\"", 
-xaae: xlog:00010271:  XLOGDIR, fname))); 
-xaae: xlog:00010277:  ereport(WARNING, 
-xaae: xlog:00010278:  (errcode_for_file_access(), 
-xaae: xlog:00010279:  errmsg("could not open xlog file \"%s\" : %m", 
-xaae: xlog:00010280:  path))); 
-xaae: xlog:00010285:  ereport(WARNING, 
-xaae: xlog:00010286:  (errcode_for_file_access(), 
-xaae: xlog:00010287:  errmsg("could not truncate xlog file \"%s\" to position \"%d\" : %m", 
-xaae: xlog:00010288:  path, startOffset))); 
-xaae: xlog:00010294:  ereport(WARNING, 
-xaae: xlog:00010295:  (errcode_for_file_access(), 
-xaae: xlog:00010296:  errmsg("could not seek xlog file \"%s\" to position \"%d\" : %m", 
-xaae: xlog:00010297:  path, startOffset))); 
-xaae: xlog:00010327:  ereport(WARNING, 
-xaae: xlog:00010328:  (errcode_for_file_access(), 
-xaae: xlog:00010329:  errmsg("could not write to file \"%s\": %m", path))); 
-xaae: xlog:00010340:  ereport(WARNING, 
-xaae: xlog:00010341:  (errcode_for_file_access(), 
-xaae: xlog:00010342:  errmsg("could not fsync file \"%s\": %m", path))); 
-xaae: xlog:00010349:  ereport(WARNING, 
-xaae: xlog:00010350:  (errcode_for_file_access(), 
-xaae: xlog:00010351:  errmsg("could not close file \"%s\": %m", path))); 
-xaae: xlog:00010734:  ereport(ERROR, 
-xaae: xlog:00010735:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-xaae: xlog:00010736:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
+xaae: xlog:00009315:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009316:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009326:  ereport(ERROR, 
+xaae: xlog:00009327:  (errcode_for_file_access(), 
+xaae: xlog:00009328:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00009329:  histfilepath))); 
+xaae: xlog:00009339:  ereport(ERROR, 
+xaae: xlog:00009340:  (errcode_for_file_access(), 
+xaae: xlog:00009341:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009342:  histfilepath))); 
+xaae: xlog:00009348:  ereport(ERROR, 
+xaae: xlog:00009349:  (errcode_for_file_access(), 
+xaae: xlog:00009350:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009351:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009353:  ereport(ERROR, 
+xaae: xlog:00009354:  (errcode_for_file_access(), 
+xaae: xlog:00009355:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00009356:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009386:  ereport(ERROR, 
+xaae: xlog:00009387:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009388:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00009494:  ereport(ERROR, 
+xaae: xlog:00009495:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009496:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009497:  locationstr))); 
+xaae: xlog:00009563:  ereport(ERROR, 
+xaae: xlog:00009564:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009565:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009566:  locationstr))); 
+xaae: xlog:00009623:  ereport(FATAL, 
+xaae: xlog:00009624:  (errcode_for_file_access(), 
+xaae: xlog:00009625:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009626:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009638:  ereport(FATAL, 
+xaae: xlog:00009639:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009640:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009644:  ereport(FATAL, 
+xaae: xlog:00009645:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009646:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009648:  ereport(FATAL, 
+xaae: xlog:00009649:  (errcode_for_file_access(), 
+xaae: xlog:00009650:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009651:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009675:  ereport(FATAL, 
+xaae: xlog:00009676:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009677:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009681:  ereport(FATAL, 
+xaae: xlog:00009682:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009683:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009686:  ereport(FATAL, 
+xaae: xlog:00009687:  (errcode_for_file_access(), 
+xaae: xlog:00009688:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009689:  histfilepath))); 
+xaae: xlog:00010036:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+xaae: xlog:00010037:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00010280:  ereport(WARNING, 
+xaae: xlog:00010281:  (errcode_for_file_access(), 
+xaae: xlog:00010282:  errmsg("could not allocate path, path too long \"%s/%s\"", 
+xaae: xlog:00010283:  XLOGDIR, fname))); 
+xaae: xlog:00010289:  ereport(WARNING, 
+xaae: xlog:00010290:  (errcode_for_file_access(), 
+xaae: xlog:00010291:  errmsg("could not open xlog file \"%s\" : %m", 
+xaae: xlog:00010292:  path))); 
+xaae: xlog:00010297:  ereport(WARNING, 
+xaae: xlog:00010298:  (errcode_for_file_access(), 
+xaae: xlog:00010299:  errmsg("could not truncate xlog file \"%s\" to position \"%d\" : %m", 
+xaae: xlog:00010300:  path, startOffset))); 
+xaae: xlog:00010306:  ereport(WARNING, 
+xaae: xlog:00010307:  (errcode_for_file_access(), 
+xaae: xlog:00010308:  errmsg("could not seek xlog file \"%s\" to position \"%d\" : %m", 
+xaae: xlog:00010309:  path, startOffset))); 
+xaae: xlog:00010339:  ereport(WARNING, 
+xaae: xlog:00010340:  (errcode_for_file_access(), 
+xaae: xlog:00010341:  errmsg("could not write to file \"%s\": %m", path))); 
+xaae: xlog:00010352:  ereport(WARNING, 
+xaae: xlog:00010353:  (errcode_for_file_access(), 
+xaae: xlog:00010354:  errmsg("could not fsync file \"%s\": %m", path))); 
+xaae: xlog:00010361:  ereport(WARNING, 
+xaae: xlog:00010362:  (errcode_for_file_access(), 
+xaae: xlog:00010363:  errmsg("could not close file \"%s\": %m", path))); 
+xaae: xlog:00010746:  ereport(ERROR, 
+xaae: xlog:00010747:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+xaae: xlog:00010748:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -4042,12 +4042,12 @@ caah: cdbpath:00001331:  "UNION ALL of joined tables "
 caah: cdbpath:00001332:  "with subquery.") 
 caah: cdbpath:00001333:  )); 
 aaaaa GP_IGNORE: cacc: cdbpersistentfilespace - ./backend/cdb/cdbpersistentfilespace.c
-cacc: cdbpersistentfilespace:00000580:  ereport(FATAL, 
-cacc: cdbpersistentfilespace:00000581:  (errcode(ERRCODE_INTERNAL_ERROR), 
-cacc: cdbpersistentfilespace:00000582:  errmsg("Unable to determine dbid for filespace lookup"))); 
-cacc: cdbpersistentfilespace:00001422:  ereport(FATAL, 
-cacc: cdbpersistentfilespace:00001423:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacc: cdbpersistentfilespace:00001424:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
+cacc: cdbpersistentfilespace:00000579:  ereport(FATAL, 
+cacc: cdbpersistentfilespace:00000580:  (errcode(ERRCODE_INTERNAL_ERROR), 
+cacc: cdbpersistentfilespace:00000581:  errmsg("Unable to determine dbid for filespace lookup"))); 
+cacc: cdbpersistentfilespace:00001467:  ereport(FATAL, 
+cacc: cdbpersistentfilespace:00001468:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacc: cdbpersistentfilespace:00001469:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
 aaaaa GP_IGNORE: cacb: cdbpersistentrecovery - ./backend/cdb/cdbpersistentrecovery.c
 cacb: cdbpersistentrecovery:00001927:  ereport(ERROR, 
 cacb: cdbpersistentrecovery:00001928:  (errcode_for_file_access(), 
@@ -4056,18 +4056,18 @@ cacb: cdbpersistentrecovery:00002076:  ereport(ERROR,
 cacb: cdbpersistentrecovery:00002077:  (errcode_for_file_access(), 
 cacb: cdbpersistentrecovery:00002078:  errmsg("error reading redo relation file: %m"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistenttablespace - ./backend/cdb/cdbpersistenttablespace.c
-cacd: cdbpersistenttablespace:00000580:  ereport(ERROR, 
-cacd: cdbpersistenttablespace:00000581:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cacd: cdbpersistenttablespace:00000582:  errmsg("Unable to find entry for tablespace OID = %u when getting filespace directory paths", 
-cacd: cdbpersistenttablespace:00000583:  tablespaceOid))); 
-cacd: cdbpersistenttablespace:00000587:  ereport(ERROR, 
-cacd: cdbpersistenttablespace:00000588:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cacd: cdbpersistenttablespace:00000589:  errmsg("Unable to find entry for filespace OID = %u when forming filespace directory paths for tablespace OID = %u", 
-cacd: cdbpersistenttablespace:00000590:  filespaceOid, 
-cacd: cdbpersistenttablespace:00000591:  tablespaceOid))); 
-cacd: cdbpersistenttablespace:00001280:  ereport(FATAL, 
-cacd: cdbpersistenttablespace:00001281:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacd: cdbpersistenttablespace:00001282:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
+cacd: cdbpersistenttablespace:00000570:  ereport(ERROR, 
+cacd: cdbpersistenttablespace:00000571:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cacd: cdbpersistenttablespace:00000572:  errmsg("Unable to find entry for tablespace OID = %u when getting filespace directory paths", 
+cacd: cdbpersistenttablespace:00000573:  tablespaceOid))); 
+cacd: cdbpersistenttablespace:00000577:  ereport(ERROR, 
+cacd: cdbpersistenttablespace:00000578:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cacd: cdbpersistenttablespace:00000579:  errmsg("Unable to find entry for filespace OID = %u when forming filespace directory paths for tablespace OID = %u", 
+cacd: cdbpersistenttablespace:00000580:  filespaceOid, 
+cacd: cdbpersistenttablespace:00000581:  tablespaceOid))); 
+cacd: cdbpersistenttablespace:00001310:  ereport(FATAL, 
+cacd: cdbpersistenttablespace:00001311:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacd: cdbpersistenttablespace:00001312:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
 aaaaa GP_IGNORE: caba: cdbrelsize - ./backend/cdb/cdbrelsize.c
 caba: cdbrelsize:00000102:  ereport(WARNING, (errmsg("cdbRelSize error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
 caba: cdbrelsize:00000103:  errdetail("%s", errbuf.data))); 
@@ -12713,12 +12713,12 @@ saba: sysvxshmem:00000380:  (errcode_for_file_access(),
 saba: sysvxshmem:00000381:  errmsg("could not stat data directory \"%s\": %m", 
 saba: sysvxshmem:00000382:  DataDir))); 
 aaaaa GP_IGNORE: mabb: mingwcompat - ./backend/port/win32/mingwcompat.c
-mabb: mingwcompat:00000037:  ereport(FATAL, 
-mabb: mingwcompat:00000038:  (errmsg_internal("could not load kernel32.dll: %d", 
-mabb: mingwcompat:00000039:  (int) GetLastError()))); 
-mabb: mingwcompat:00000068:  ereport(FATAL, 
-mabb: mingwcompat:00000069:  (errmsg_internal("could not locate RegisterWaitForSingleObject in kernel32.dll: %d", 
-mabb: mingwcompat:00000070:  (int) GetLastError()))); 
+mabb: mingwcompat:00000044:  ereport(FATAL, 
+mabb: mingwcompat:00000045:  (errmsg_internal("could not load kernel32.dll: %d", 
+mabb: mingwcompat:00000046:  (int) GetLastError()))); 
+mabb: mingwcompat:00000075:  ereport(FATAL, 
+mabb: mingwcompat:00000076:  (errmsg_internal("could not locate RegisterWaitForSingleObject in kernel32.dll: %d", 
+mabb: mingwcompat:00000077:  (int) GetLastError()))); 
 aaaaa GP_IGNORE: saag: signal - ./backend/port/win32/signal.c
 saag: signal:00000085:  ereport(FATAL, 
 saag: signal:00000086:  (errmsg_internal("failed to create signal event: %d", (int) GetLastError()))); 
@@ -12984,109 +12984,109 @@ paba: postmaster:00001722:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 paba: postmaster:00001723:  errmsg("data directory \"%s\" has group or world access", 
 paba: postmaster:00001724:  DataDir), 
 paba: postmaster:00001725:  errdetail("Permissions should be u=rwx (0700)."))); 
-paba: postmaster:00002352:  ereport(FATAL, 
-paba: postmaster:00002353:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00002354:  errmsg("invalid value for boolean option \"replication\""))); 
-paba: postmaster:00002473:  ereport(FATAL, 
-paba: postmaster:00002474:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: postmaster:00002475:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
-paba: postmaster:00002476:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
-paba: postmaster:00002477:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
-paba: postmaster:00002478:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
-paba: postmaster:00002479:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
-paba: postmaster:00002532:  ereport(FATAL, 
-paba: postmaster:00002533:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00002534:  errmsg("option not supported: \"replication\""))); 
-paba: postmaster:00002552:  ereport(FATAL, 
-paba: postmaster:00002553:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paba: postmaster:00002554:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
-paba: postmaster:00002580:  ereport(FATAL, 
-paba: postmaster:00002581:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-paba: postmaster:00002582:  errmsg("no PostgreSQL user name specified in startup packet"))); 
-paba: postmaster:00002629:  ereport(FATAL, 
-paba: postmaster:00002630:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002631:  errSendAlert(true), 
-paba: postmaster:00002632:  errOmitLocation(true), 
-paba: postmaster:00002633:  errmsg("GPAgent deprecated."))); 
-paba: postmaster:00002649:  ereport(FATAL, 
-paba: postmaster:00002650:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002651:  errSendAlert(false), 
-paba: postmaster:00002652:  errOmitLocation(true), 
-paba: postmaster:00002653:  errmsg(POSTMASTER_IN_STARTUP_MSG))); 
-paba: postmaster:00002656:  ereport(FATAL, 
-paba: postmaster:00002657:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002658:  errSendAlert(false), 
-paba: postmaster:00002659:  errOmitLocation(true), 
-paba: postmaster:00002660:  errmsg("the database system is shutting down"))); 
-paba: postmaster:00002665:  ereport(FATAL, 
-paba: postmaster:00002666:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002667:  errSendAlert(true), 
-paba: postmaster:00002668:  errOmitLocation(true), 
-paba: postmaster:00002669:  errmsg(POSTMASTER_IN_RECOVERY_MSG))); 
-paba: postmaster:00002672:  ereport(FATAL, 
-paba: postmaster:00002673:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002674:  errSendAlert(true), 
-paba: postmaster:00002675:  errOmitLocation(true), 
-paba: postmaster:00002676:  errmsg("the database system is in mirror or uninitialized mode"))); 
-paba: postmaster:00002679:  ereport(FATAL, 
-paba: postmaster:00002680:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
-paba: postmaster:00002681:  errSendAlert(true), 
-paba: postmaster:00002682:  errOmitLocation(true), 
-paba: postmaster:00002683:  errmsg("sorry, too many clients already"))); 
-paba: postmaster:00003647:  ereport(WARNING, 
-paba: postmaster:00003648:  (errmsg("pg_hba.conf not reloaded"))); 
-paba: postmaster:00003690:  ereport(LOG, 
-paba: postmaster:00003691:  (errmsg("received smart shutdown request"), 
-paba: postmaster:00003692:  errSendAlert(true), 
-paba: postmaster:00003693:  errOmitLocation(true))); 
-paba: postmaster:00003712:  ereport(LOG, 
-paba: postmaster:00003713:  (errmsg("received fast shutdown request"), 
-paba: postmaster:00003714:  errSendAlert(true), 
-paba: postmaster:00003715:  errOmitLocation(true))); 
-paba: postmaster:00003737:  ereport(LOG, 
-paba: postmaster:00003738:  (errmsg("received immediate shutdown request"), 
-paba: postmaster:00003739:  errSendAlert(true), 
-paba: postmaster:00003740:  errOmitLocation(true))); 
-paba: postmaster:00003939:  ereport(LOG, 
-paba: postmaster:00003940:  (errmsg("database system is ready to accept connections"), 
-paba: postmaster:00003941:  errdetail("%s",version), 
-paba: postmaster:00003942:  errSendAlert(true), 
-paba: postmaster:00003943:  errOmitLocation(true))); 
-paba: postmaster:00004363:  ereport(LOG, 
-paba: postmaster:00004364:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00005393:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00005965:  ereport(WARNING, 
-paba: postmaster:00005966:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
-paba: postmaster:00005967:  gai_strerror(ret)))); 
-paba: postmaster:00006009:  ereport(FATAL, 
-paba: postmaster:00006010:  (errmsg("could not load pg_hba.conf"))); 
-paba: postmaster:00006436:  ereport(ERROR, 
-paba: postmaster:00006437:  (errmsg_internal("could not terminate unstarted process: error code %d", 
-paba: postmaster:00006438:  (int) GetLastError()))); 
-paba: postmaster:00006463:  ereport(ERROR, 
-paba: postmaster:00006464:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
-paba: postmaster:00006465:  (int) GetLastError()))); 
-paba: postmaster:00006480:  ereport(ERROR, 
-paba: postmaster:00006481:  (errmsg_internal("could not terminate unstartable process: error code %d", 
-paba: postmaster:00006482:  (int) GetLastError()))); 
-paba: postmaster:00006489:  ereport(ERROR, 
-paba: postmaster:00006490:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
-paba: postmaster:00006491:  (int) GetLastError()))); 
-paba: postmaster:00006505:  ereport(FATAL, 
-paba: postmaster:00006506:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006507:  errmsg("out of memory"))); 
-paba: postmaster:00006518:  ereport(FATAL, 
-paba: postmaster:00006519:  (errmsg_internal("could not register process for wait: error code %d", 
-paba: postmaster:00006520:  (int) GetLastError()))); 
-paba: postmaster:00006591:  ereport(FATAL, 
-paba: postmaster:00006592:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006593:  errmsg("out of memory"))); 
-paba: postmaster:00007342:  ereport(ERROR, 
-paba: postmaster:00007343:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
-paba: postmaster:00007344:  (int) GetLastError()))); 
-paba: postmaster:00007364:  ereport(ERROR, 
-paba: postmaster:00007365:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
-paba: postmaster:00007366:  src, WSAGetLastError()))); 
+paba: postmaster:00002349:  ereport(FATAL, 
+paba: postmaster:00002350:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00002351:  errmsg("invalid value for boolean option \"replication\""))); 
+paba: postmaster:00002470:  ereport(FATAL, 
+paba: postmaster:00002471:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: postmaster:00002472:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
+paba: postmaster:00002473:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
+paba: postmaster:00002474:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
+paba: postmaster:00002475:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
+paba: postmaster:00002476:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
+paba: postmaster:00002529:  ereport(FATAL, 
+paba: postmaster:00002530:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00002531:  errmsg("option not supported: \"replication\""))); 
+paba: postmaster:00002549:  ereport(FATAL, 
+paba: postmaster:00002550:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paba: postmaster:00002551:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
+paba: postmaster:00002577:  ereport(FATAL, 
+paba: postmaster:00002578:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+paba: postmaster:00002579:  errmsg("no PostgreSQL user name specified in startup packet"))); 
+paba: postmaster:00002626:  ereport(FATAL, 
+paba: postmaster:00002627:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002628:  errSendAlert(true), 
+paba: postmaster:00002629:  errOmitLocation(true), 
+paba: postmaster:00002630:  errmsg("GPAgent deprecated."))); 
+paba: postmaster:00002646:  ereport(FATAL, 
+paba: postmaster:00002647:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002648:  errSendAlert(false), 
+paba: postmaster:00002649:  errOmitLocation(true), 
+paba: postmaster:00002650:  errmsg(POSTMASTER_IN_STARTUP_MSG))); 
+paba: postmaster:00002653:  ereport(FATAL, 
+paba: postmaster:00002654:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002655:  errSendAlert(false), 
+paba: postmaster:00002656:  errOmitLocation(true), 
+paba: postmaster:00002657:  errmsg("the database system is shutting down"))); 
+paba: postmaster:00002662:  ereport(FATAL, 
+paba: postmaster:00002663:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002664:  errSendAlert(true), 
+paba: postmaster:00002665:  errOmitLocation(true), 
+paba: postmaster:00002666:  errmsg(POSTMASTER_IN_RECOVERY_MSG))); 
+paba: postmaster:00002669:  ereport(FATAL, 
+paba: postmaster:00002670:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002671:  errSendAlert(true), 
+paba: postmaster:00002672:  errOmitLocation(true), 
+paba: postmaster:00002673:  errmsg("the database system is in mirror or uninitialized mode"))); 
+paba: postmaster:00002676:  ereport(FATAL, 
+paba: postmaster:00002677:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+paba: postmaster:00002678:  errSendAlert(true), 
+paba: postmaster:00002679:  errOmitLocation(true), 
+paba: postmaster:00002680:  errmsg("sorry, too many clients already"))); 
+paba: postmaster:00003644:  ereport(WARNING, 
+paba: postmaster:00003645:  (errmsg("pg_hba.conf not reloaded"))); 
+paba: postmaster:00003687:  ereport(LOG, 
+paba: postmaster:00003688:  (errmsg("received smart shutdown request"), 
+paba: postmaster:00003689:  errSendAlert(true), 
+paba: postmaster:00003690:  errOmitLocation(true))); 
+paba: postmaster:00003709:  ereport(LOG, 
+paba: postmaster:00003710:  (errmsg("received fast shutdown request"), 
+paba: postmaster:00003711:  errSendAlert(true), 
+paba: postmaster:00003712:  errOmitLocation(true))); 
+paba: postmaster:00003734:  ereport(LOG, 
+paba: postmaster:00003735:  (errmsg("received immediate shutdown request"), 
+paba: postmaster:00003736:  errSendAlert(true), 
+paba: postmaster:00003737:  errOmitLocation(true))); 
+paba: postmaster:00003936:  ereport(LOG, 
+paba: postmaster:00003937:  (errmsg("database system is ready to accept connections"), 
+paba: postmaster:00003938:  errdetail("%s",version), 
+paba: postmaster:00003939:  errSendAlert(true), 
+paba: postmaster:00003940:  errOmitLocation(true))); 
+paba: postmaster:00004360:  ereport(LOG, 
+paba: postmaster:00004361:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00005390:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00005962:  ereport(WARNING, 
+paba: postmaster:00005963:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+paba: postmaster:00005964:  gai_strerror(ret)))); 
+paba: postmaster:00006006:  ereport(FATAL, 
+paba: postmaster:00006007:  (errmsg("could not load pg_hba.conf"))); 
+paba: postmaster:00006433:  ereport(ERROR, 
+paba: postmaster:00006434:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+paba: postmaster:00006435:  (int) GetLastError()))); 
+paba: postmaster:00006460:  ereport(ERROR, 
+paba: postmaster:00006461:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+paba: postmaster:00006462:  (int) GetLastError()))); 
+paba: postmaster:00006477:  ereport(ERROR, 
+paba: postmaster:00006478:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+paba: postmaster:00006479:  (int) GetLastError()))); 
+paba: postmaster:00006486:  ereport(ERROR, 
+paba: postmaster:00006487:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+paba: postmaster:00006488:  (int) GetLastError()))); 
+paba: postmaster:00006502:  ereport(FATAL, 
+paba: postmaster:00006503:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006504:  errmsg("out of memory"))); 
+paba: postmaster:00006515:  ereport(FATAL, 
+paba: postmaster:00006516:  (errmsg_internal("could not register process for wait: error code %d", 
+paba: postmaster:00006517:  (int) GetLastError()))); 
+paba: postmaster:00006588:  ereport(FATAL, 
+paba: postmaster:00006589:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006590:  errmsg("out of memory"))); 
+paba: postmaster:00007339:  ereport(ERROR, 
+paba: postmaster:00007340:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+paba: postmaster:00007341:  (int) GetLastError()))); 
+paba: postmaster:00007361:  ereport(ERROR, 
+paba: postmaster:00007362:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+paba: postmaster:00007363:  src, WSAGetLastError()))); 
 aaaaa GP_IGNORE: saaj: seqserver - ./backend/postmaster/seqserver.c
 saaj: seqserver:00000216:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 saaj: seqserver:00000217:  errmsg("Error: Could not write() message to seqserver: %s", 
@@ -13728,79 +13728,79 @@ saae: smgr:00000420:  errmsg("could not close relation %u/%u/%u: %m",
 saae: smgr:00000421:  reln->smgr_rnode.spcNode, 
 saae: smgr:00000422:  reln->smgr_rnode.dbNode, 
 saae: smgr:00000423:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001024:  ereport(WARNING, 
-saae: smgr:00001025:  (errcode_for_file_access(), 
-saae: smgr:00001026:  errmsg("could not remove relation %u/%u/%u: %m", 
-saae: smgr:00001027:  rnode.spcNode, 
-saae: smgr:00001028:  rnode.dbNode, 
-saae: smgr:00001029:  rnode.relNode))); 
-saae: smgr:00001031:  ereport(WARNING, 
-saae: smgr:00001032:  (errcode_for_file_access(), 
-saae: smgr:00001033:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
-saae: smgr:00001034:  rnode.spcNode, 
-saae: smgr:00001035:  rnode.dbNode, 
-saae: smgr:00001036:  rnode.relNode, 
-saae: smgr:00001037:  relationName))); 
-saae: smgr:00001106:  ereport(WARNING, 
-saae: smgr:00001107:  (errcode_for_file_access(), 
-saae: smgr:00001108:  errmsg("could not remove filespace directory %u: %m", 
-saae: smgr:00001109:  filespaceOid))); 
-saae: smgr:00001195:  ereport(WARNING, 
-saae: smgr:00001196:  (errcode_for_file_access(), 
-saae: smgr:00001197:  errmsg("could not remove tablespace directory %u: %m", 
-saae: smgr:00001198:  tablespaceOid))); 
-saae: smgr:00001223:  ereport(WARNING, 
-saae: smgr:00001224:  (errcode_for_file_access(), 
-saae: smgr:00001225:  errmsg("could not remove database directory %u/%u: %m", 
-saae: smgr:00001226:  dbDirNode->tablespace, 
-saae: smgr:00001227:  dbDirNode->database))); 
-saae: smgr:00001370:  ereport(ERROR, 
-saae: smgr:00001371:  (errcode_for_file_access(), 
-saae: smgr:00001372:  errmsg("could not extend relation %u/%u/%u: %m", 
-saae: smgr:00001373:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001374:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001375:  reln->smgr_rnode.relNode), 
-saae: smgr:00001376:  errhint("Check free disk space."))); 
-saae: smgr:00001391:  ereport(ERROR, 
-saae: smgr:00001392:  (errcode_for_file_access(), 
-saae: smgr:00001393:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
-saae: smgr:00001394:  blocknum, 
-saae: smgr:00001395:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001396:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001397:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001415:  ereport(ERROR, 
-saae: smgr:00001416:  (errcode_for_file_access(), 
-saae: smgr:00001417:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
-saae: smgr:00001418:  blocknum, 
-saae: smgr:00001419:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001420:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001421:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001445:  ereport(ERROR, 
-saae: smgr:00001446:  (errcode_for_file_access(), 
-saae: smgr:00001447:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
-saae: smgr:00001448:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001449:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001450:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001483:  ereport(ERROR, 
-saae: smgr:00001484:  (errcode_for_file_access(), 
-saae: smgr:00001485:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
-saae: smgr:00001486:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001487:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001488:  reln->smgr_rnode.relNode, 
-saae: smgr:00001489:  nblocks))); 
-saae: smgr:00001575:  ereport(ERROR, 
-saae: smgr:00001576:  (errcode_for_file_access(), 
-saae: smgr:00001577:  errmsg("could not sync relation %u/%u/%u: %m", 
-saae: smgr:00001578:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001579:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001580:  reln->smgr_rnode.relNode))); 
-saae: smgr:00003090:  ereport(WARNING, 
-saae: smgr:00003091:  (errcode_for_file_access(), 
-saae: smgr:00003092:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
-saae: smgr:00003093:  reln->smgr_rnode.spcNode, 
-saae: smgr:00003094:  reln->smgr_rnode.dbNode, 
-saae: smgr:00003095:  reln->smgr_rnode.relNode, 
-saae: smgr:00003096:  xlrec->blkno))); 
+saae: smgr:00000996:  ereport(WARNING, 
+saae: smgr:00000997:  (errcode_for_file_access(), 
+saae: smgr:00000998:  errmsg("could not remove relation %u/%u/%u: %m", 
+saae: smgr:00000999:  rnode.spcNode, 
+saae: smgr:00001000:  rnode.dbNode, 
+saae: smgr:00001001:  rnode.relNode))); 
+saae: smgr:00001003:  ereport(WARNING, 
+saae: smgr:00001004:  (errcode_for_file_access(), 
+saae: smgr:00001005:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
+saae: smgr:00001006:  rnode.spcNode, 
+saae: smgr:00001007:  rnode.dbNode, 
+saae: smgr:00001008:  rnode.relNode, 
+saae: smgr:00001009:  relationName))); 
+saae: smgr:00001073:  ereport(WARNING, 
+saae: smgr:00001074:  (errcode_for_file_access(), 
+saae: smgr:00001075:  errmsg("could not remove filespace directory %u: %m", 
+saae: smgr:00001076:  filespaceOid))); 
+saae: smgr:00001158:  ereport(WARNING, 
+saae: smgr:00001159:  (errcode_for_file_access(), 
+saae: smgr:00001160:  errmsg("could not remove tablespace directory %u: %m", 
+saae: smgr:00001161:  tablespaceOid))); 
+saae: smgr:00001186:  ereport(WARNING, 
+saae: smgr:00001187:  (errcode_for_file_access(), 
+saae: smgr:00001188:  errmsg("could not remove database directory %u/%u: %m", 
+saae: smgr:00001189:  dbDirNode->tablespace, 
+saae: smgr:00001190:  dbDirNode->database))); 
+saae: smgr:00001329:  ereport(ERROR, 
+saae: smgr:00001330:  (errcode_for_file_access(), 
+saae: smgr:00001331:  errmsg("could not extend relation %u/%u/%u: %m", 
+saae: smgr:00001332:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001333:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001334:  reln->smgr_rnode.relNode), 
+saae: smgr:00001335:  errhint("Check free disk space."))); 
+saae: smgr:00001350:  ereport(ERROR, 
+saae: smgr:00001351:  (errcode_for_file_access(), 
+saae: smgr:00001352:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
+saae: smgr:00001353:  blocknum, 
+saae: smgr:00001354:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001355:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001356:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001374:  ereport(ERROR, 
+saae: smgr:00001375:  (errcode_for_file_access(), 
+saae: smgr:00001376:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
+saae: smgr:00001377:  blocknum, 
+saae: smgr:00001378:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001379:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001380:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001404:  ereport(ERROR, 
+saae: smgr:00001405:  (errcode_for_file_access(), 
+saae: smgr:00001406:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
+saae: smgr:00001407:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001408:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001409:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001442:  ereport(ERROR, 
+saae: smgr:00001443:  (errcode_for_file_access(), 
+saae: smgr:00001444:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+saae: smgr:00001445:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001446:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001447:  reln->smgr_rnode.relNode, 
+saae: smgr:00001448:  nblocks))); 
+saae: smgr:00001534:  ereport(ERROR, 
+saae: smgr:00001535:  (errcode_for_file_access(), 
+saae: smgr:00001536:  errmsg("could not sync relation %u/%u/%u: %m", 
+saae: smgr:00001537:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001538:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001539:  reln->smgr_rnode.relNode))); 
+saae: smgr:00003049:  ereport(WARNING, 
+saae: smgr:00003050:  (errcode_for_file_access(), 
+saae: smgr:00003051:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+saae: smgr:00003052:  reln->smgr_rnode.spcNode, 
+saae: smgr:00003053:  reln->smgr_rnode.dbNode, 
+saae: smgr:00003054:  reln->smgr_rnode.relNode, 
+saae: smgr:00003055:  xlrec->blkno))); 
 aaaaa GP_IGNORE: faai: fastpath - ./backend/tcop/fastpath.c
 faai: fastpath:00000106:  ereport(FATAL, 
 faai: fastpath:00000107:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
@@ -17277,59 +17277,61 @@ daba: deprecated:00000029:  ereport(ERROR,
 daba: deprecated:00000030:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 daba: deprecated:00000031:  errmsg("function %s has been deprecated", procName))); 
 aaaaa GP_IGNORE: daaf: dfmgr - ./backend/utils/fmgr/dfmgr.c
-daaf: dfmgr:00000123:  ereport(ERROR, 
-daaf: dfmgr:00000124:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-daaf: dfmgr:00000125:  errmsg("could not find function \"%s\" in file \"%s\"", 
-daaf: dfmgr:00000126:  funcname, fullname), 
-daaf: dfmgr:00000127:  errOmitLocation(true))); 
-daaf: dfmgr:00000203:  ereport(ERROR, 
-daaf: dfmgr:00000204:  (errcode_for_file_access(), 
-daaf: dfmgr:00000205:  errmsg("could not access file \"%s\": %m", 
-daaf: dfmgr:00000206:  libname), 
-daaf: dfmgr:00000207:  errOmitLocation(true))); 
-daaf: dfmgr:00000224:  ereport(ERROR, 
-daaf: dfmgr:00000225:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-daaf: dfmgr:00000226:  errmsg("out of memory"))); 
-daaf: dfmgr:00000242:  ereport(ERROR, 
-daaf: dfmgr:00000243:  (errcode_for_file_access(), 
-daaf: dfmgr:00000244:  errmsg("could not load library \"%s\": %s", 
-daaf: dfmgr:00000245:  libname, load_error))); 
-daaf: dfmgr:00000275:  ereport(ERROR, 
-daaf: dfmgr:00000276:  (errmsg("incompatible library \"%s\": missing magic block", 
-daaf: dfmgr:00000277:  libname), 
-daaf: dfmgr:00000278:  errhint("Extension libraries are required to use the PG_MODULE_MAGIC macro."))); 
-daaf: dfmgr:00000313:  ereport(ERROR, 
-daaf: dfmgr:00000314:  (errmsg("incompatible library \"%s\": version mismatch", 
-daaf: dfmgr:00000315:  libname), 
-daaf: dfmgr:00000316:  errdetail("Server is version %d.%d, library is version %d.%d.", 
-daaf: dfmgr:00000317:  magic_data.version / 100, 
-daaf: dfmgr:00000318:  magic_data.version % 100, 
-daaf: dfmgr:00000319:  module_magic_data->version / 100, 
-daaf: dfmgr:00000320:  module_magic_data->version % 100))); 
-daaf: dfmgr:00000380:  ereport(ERROR, 
-daaf: dfmgr:00000381:  (errmsg("incompatible library \"%s\": magic block mismatch", 
-daaf: dfmgr:00000382:  libname), 
-daaf: dfmgr:00000383:  errdetail("%s", details.data))); 
-daaf: dfmgr:00000413:  ereport(ERROR, 
-daaf: dfmgr:00000414:  (errcode_for_file_access(), 
-daaf: dfmgr:00000415:  errmsg("could not access file \"%s\": %m", libname))); 
-daaf: dfmgr:00000461:  ereport(ERROR, 
-daaf: dfmgr:00000462:  (errcode_for_file_access(), 
-daaf: dfmgr:00000463:  errmsg("could not access file \"%s\": %m", name))); 
-daaf: dfmgr:00000545:  ereport(ERROR, 
-daaf: dfmgr:00000546:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-daaf: dfmgr:00000547:  errmsg("access to library \"%s\" is not allowed", 
-daaf: dfmgr:00000548:  name))); 
-daaf: dfmgr:00000572:  ereport(ERROR, 
-daaf: dfmgr:00000573:  (errcode(ERRCODE_INVALID_NAME), 
-daaf: dfmgr:00000574:  errmsg("invalid macro name in dynamic library path: %s", 
-daaf: dfmgr:00000575:  name))); 
-daaf: dfmgr:00000617:  ereport(ERROR, 
-daaf: dfmgr:00000618:  (errcode(ERRCODE_INVALID_NAME), 
-daaf: dfmgr:00000619:  errmsg("zero-length component in parameter \"dynamic_library_path\""))); 
-daaf: dfmgr:00000636:  ereport(ERROR, 
-daaf: dfmgr:00000637:  (errcode(ERRCODE_INVALID_NAME), 
-daaf: dfmgr:00000638:  errmsg("component in parameter \"dynamic_library_path\" is not an absolute path"))); 
+daaf: dfmgr:00000124:  ereport(ERROR, 
+daaf: dfmgr:00000125:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+daaf: dfmgr:00000126:  errmsg("could not find function \"%s\" in file \"%s\"", 
+daaf: dfmgr:00000127:  funcname, fullname), 
+daaf: dfmgr:00000128:  errOmitLocation(true))); 
+daaf: dfmgr:00000204:  ereport(ERROR, 
+daaf: dfmgr:00000205:  (errcode_for_file_access(), 
+daaf: dfmgr:00000206:  errmsg("could not access file \"%s\": %m", 
+daaf: dfmgr:00000207:  libname), 
+daaf: dfmgr:00000208:  errOmitLocation(true))); 
+daaf: dfmgr:00000225:  ereport(ERROR, 
+daaf: dfmgr:00000226:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+daaf: dfmgr:00000227:  errmsg("out of memory"))); 
+daaf: dfmgr:00000243:  ereport(ERROR, 
+daaf: dfmgr:00000244:  (errcode_for_file_access(), 
+daaf: dfmgr:00000245:  errmsg("could not load library \"%s\": %s", 
+daaf: dfmgr:00000246:  libname, load_error))); 
+daaf: dfmgr:00000276:  ereport(ERROR, 
+daaf: dfmgr:00000277:  (errmsg("incompatible library \"%s\": missing magic block", 
+daaf: dfmgr:00000278:  libname), 
+daaf: dfmgr:00000279:  errhint("Extension libraries are required to use the PG_MODULE_MAGIC macro."))); 
+daaf: dfmgr:00000351:  ereport(ERROR, 
+daaf: dfmgr:00000352:  (errmsg("incompatible library \"%s\": version mismatch", 
+daaf: dfmgr:00000353:  libname), 
+daaf: dfmgr:00000354:  errdetail("Server version is %s %d.%d, library is %s %d.%d.", 
+daaf: dfmgr:00000355:  magic_product, 
+daaf: dfmgr:00000356:  magic_data.version / 100, 
+daaf: dfmgr:00000357:  magic_data.version % 100, 
+daaf: dfmgr:00000358:  mod_magic_product, 
+daaf: dfmgr:00000359:  module_magic_data->version / 100, 
+daaf: dfmgr:00000360:  module_magic_data->version % 100))); 
+daaf: dfmgr:00000419:  ereport(ERROR, 
+daaf: dfmgr:00000420:  (errmsg("incompatible library \"%s\": magic block mismatch", 
+daaf: dfmgr:00000421:  libname), 
+daaf: dfmgr:00000422:  errdetail("%s", details.data))); 
+daaf: dfmgr:00000452:  ereport(ERROR, 
+daaf: dfmgr:00000453:  (errcode_for_file_access(), 
+daaf: dfmgr:00000454:  errmsg("could not access file \"%s\": %m", libname))); 
+daaf: dfmgr:00000500:  ereport(ERROR, 
+daaf: dfmgr:00000501:  (errcode_for_file_access(), 
+daaf: dfmgr:00000502:  errmsg("could not access file \"%s\": %m", name))); 
+daaf: dfmgr:00000584:  ereport(ERROR, 
+daaf: dfmgr:00000585:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+daaf: dfmgr:00000586:  errmsg("access to library \"%s\" is not allowed", 
+daaf: dfmgr:00000587:  name))); 
+daaf: dfmgr:00000611:  ereport(ERROR, 
+daaf: dfmgr:00000612:  (errcode(ERRCODE_INVALID_NAME), 
+daaf: dfmgr:00000613:  errmsg("invalid macro name in dynamic library path: %s", 
+daaf: dfmgr:00000614:  name))); 
+daaf: dfmgr:00000656:  ereport(ERROR, 
+daaf: dfmgr:00000657:  (errcode(ERRCODE_INVALID_NAME), 
+daaf: dfmgr:00000658:  errmsg("zero-length component in parameter \"dynamic_library_path\""))); 
+daaf: dfmgr:00000675:  ereport(ERROR, 
+daaf: dfmgr:00000676:  (errcode(ERRCODE_INVALID_NAME), 
+daaf: dfmgr:00000677:  errmsg("component in parameter \"dynamic_library_path\" is not an absolute path"))); 
 aaaaa GP_IGNORE: faae: fmgr - ./backend/utils/fmgr/fmgr.c
 faae: fmgr:00000251:  ereport(ERROR, 
 faae: fmgr:00000252:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
@@ -17655,68 +17657,68 @@ waaf: wchar:00001642:  buf,
 waaf: wchar:00001643:  pg_enc2name_tbl[src_encoding].name, 
 waaf: wchar:00001644:  pg_enc2name_tbl[dest_encoding].name))); 
 aaaaa GP_IGNORE: fabd: faultinjector - ./backend/utils/misc/faultinjector.c
-fabd: faultinjector:00000325:  ereport(ERROR, 
-fabd: faultinjector:00000326:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000327:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000351:  ereport(ERROR, 
-fabd: faultinjector:00000352:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000353:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000481:  ereport(FATAL, 
-fabd: faultinjector:00000482:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000483:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000484:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000503:  ereport(ERROR, 
-fabd: faultinjector:00000504:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000505:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000506:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000692:  ereport(WARNING, 
-fabd: faultinjector:00000693:  (errmsg("could not insert fault injection, no slots available" 
-fabd: faultinjector:00000694:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000695:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000696:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000729:  ereport(WARNING, 
-fabd: faultinjector:00000730:  (errmsg("could not insert fault injection, fault type not supported" 
-fabd: faultinjector:00000731:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000732:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000733:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000789:  ereport(WARNING, 
-fabd: faultinjector:00000790:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
-fabd: faultinjector:00000791:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000792:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000793:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000813:  ereport(WARNING, 
-fabd: faultinjector:00000814:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000815:  "segment not in primary or mirror role, " 
-fabd: faultinjector:00000816:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000817:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000818:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000832:  ereport(WARNING, 
-fabd: faultinjector:00000833:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000834:  "segment not in master role, " 
-fabd: faultinjector:00000835:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000836:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000837:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000853:  ereport(WARNING, 
-fabd: faultinjector:00000854:  (errmsg("could not insert fault injection entry into table, no memory, " 
-fabd: faultinjector:00000855:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000856:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000857:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000867:  ereport(WARNING, 
-fabd: faultinjector:00000868:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000869:  "entry already exists, " 
-fabd: faultinjector:00000870:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000871:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000872:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000931:  ereport(WARNING, 
-fabd: faultinjector:00000932:  (errmsg("could not update fault injection hash entry with fault injection status, " 
-fabd: faultinjector:00000933:  "no entry found, " 
-fabd: faultinjector:00000934:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000935:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000936:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00001162:  ereport(WARNING, 
-fabd: faultinjector:00001163:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00001164:  FaultInjectorIdentifierEnumToString[identifier], 
-fabd: faultinjector:00001165:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000326:  ereport(ERROR, 
+fabd: faultinjector:00000327:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000328:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000352:  ereport(ERROR, 
+fabd: faultinjector:00000353:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000354:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000482:  ereport(FATAL, 
+fabd: faultinjector:00000483:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000484:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000485:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000504:  ereport(ERROR, 
+fabd: faultinjector:00000505:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000506:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000507:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000709:  ereport(WARNING, 
+fabd: faultinjector:00000710:  (errmsg("could not insert fault injection, no slots available" 
+fabd: faultinjector:00000711:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000712:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000713:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000746:  ereport(WARNING, 
+fabd: faultinjector:00000747:  (errmsg("could not insert fault injection, fault type not supported" 
+fabd: faultinjector:00000748:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000749:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000750:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000806:  ereport(WARNING, 
+fabd: faultinjector:00000807:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
+fabd: faultinjector:00000808:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000809:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000810:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000830:  ereport(WARNING, 
+fabd: faultinjector:00000831:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000832:  "segment not in primary or mirror role, " 
+fabd: faultinjector:00000833:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000834:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000835:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000849:  ereport(WARNING, 
+fabd: faultinjector:00000850:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000851:  "segment not in master role, " 
+fabd: faultinjector:00000852:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000853:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000854:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000870:  ereport(WARNING, 
+fabd: faultinjector:00000871:  (errmsg("could not insert fault injection entry into table, no memory, " 
+fabd: faultinjector:00000872:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000873:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000874:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000884:  ereport(WARNING, 
+fabd: faultinjector:00000885:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000886:  "entry already exists, " 
+fabd: faultinjector:00000887:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000888:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000889:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000948:  ereport(WARNING, 
+fabd: faultinjector:00000949:  (errmsg("could not update fault injection hash entry with fault injection status, " 
+fabd: faultinjector:00000950:  "no entry found, " 
+fabd: faultinjector:00000951:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000952:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000953:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00001179:  ereport(WARNING, 
+fabd: faultinjector:00001180:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00001181:  FaultInjectorIdentifierEnumToString[identifier], 
+fabd: faultinjector:00001182:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
 aaaaa GP_IGNORE: gaai: gucxfile - ./backend/utils/misc/guc-file.c
 gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
 gaai: gucxfile:00000543:  
