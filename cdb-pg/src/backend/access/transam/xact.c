@@ -2214,6 +2214,8 @@ StartTransaction(void)
 		 	 * fresh GetCurrentTimestamp() call (which'd be expensive anyway).
 		  	 */
 		  	xactStartTimestamp = stmtStartTimestamp;
+		  	xactStopTimestamp = 0;
+			pgstat_report_xact_timestamp(xactStartTimestamp);
 		}
 		break;
 
@@ -2240,6 +2242,8 @@ StartTransaction(void)
 		 	 * fresh GetCurrentTimestamp() call (which'd be expensive anyway).
 		  	 */
 		  	xactStartTimestamp = stmtStartTimestamp;
+		  	xactStopTimestamp = 0;
+			pgstat_report_xact_timestamp(xactStartTimestamp);
 		}
 		break;
 
@@ -2296,6 +2300,8 @@ StartTransaction(void)
 			 	 * now() and statement_timestamp() should be the same time
 			  	 */
 			  	xactStartTimestamp = stmtStartTimestamp;
+			  	xactStopTimestamp = 0;
+				pgstat_report_xact_timestamp(xactStartTimestamp);
 
 				if (SharedLocalSnapshotSlot != NULL)
 				{
@@ -2417,6 +2423,8 @@ StartTransaction(void)
 
 					s->transactionId = SharedLocalSnapshotSlot->xid;
 					xactStartTimestamp = SharedLocalSnapshotSlot->startTimestamp;
+					xactStopTimestamp = 0;
+					pgstat_report_xact_timestamp(xactStartTimestamp);
 
 					break; /* done with for (;;) waitloop */
 				}
