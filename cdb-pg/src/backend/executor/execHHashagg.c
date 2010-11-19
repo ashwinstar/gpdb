@@ -65,8 +65,8 @@ typedef enum InputRecordType
 } InputRecordType;
 
 #define GET_BUFFER_SIZE(hashtable) \
-   ((hashtable)->entry_cxt->allBytesAlloc - (hashtable)->entry_cxt->allBytesFreed) +\
-   mpool_total_bytes_allocated((hashtable)->group_buf)
+	((hashtable)->entry_buf.nfull_total * (hashtable)->entry_buf.cellbytes + \
+	 mpool_total_bytes_allocated((hashtable)->group_buf))
 
 #define GET_USED_BUFFER_SIZE(hashtable) \
    ((hashtable)->entry_buf.nfull_total * (hashtable)->entry_buf.cellbytes + \
@@ -824,7 +824,6 @@ agg_hash_initial_pass(AggState *aggstate)
 		
 		if (entry == NULL)
 		{
-			hashtable->mem_wanted += GET_USED_BUFFER_SIZE(hashtable);
 			if (GET_TOTAL_USED_SIZE(hashtable) > hashtable->mem_used)
 				hashtable->mem_used = GET_TOTAL_USED_SIZE(hashtable);
 
@@ -884,7 +883,6 @@ agg_hash_initial_pass(AggState *aggstate)
 		outerslot = ExecProcNode(outerPlanState(aggstate));
 	}
 
-	hashtable->mem_wanted += GET_USED_BUFFER_SIZE(hashtable);
 	if (GET_TOTAL_USED_SIZE(hashtable) > hashtable->mem_used)
 		hashtable->mem_used = GET_TOTAL_USED_SIZE(hashtable);
 
@@ -1508,6 +1506,14 @@ agg_hash_reload(AggState *aggstate)
 	SpillFile *spill_file = hashtable->curr_spill_file;
 	int parent_hash_bit;
 
+	/*
+	 * Record the start value for mem_for_metadata, since its value
+	 * has already been accumulated into mem_wanted. Any more memory
+	 * added to mem_for_metadata after this point will be added to
+	 * mem_wanted at the end of loading hashtable.
+	 */
+	uint64 start_mem_for_metadata = hashtable->mem_for_metadata;
+
 	Assert(spill_file != NULL && spill_file->parent_spill_set != NULL);
 
 	hashtable->is_spilling = false;
@@ -1516,6 +1522,7 @@ agg_hash_reload(AggState *aggstate)
 
 	parent_hash_bit = spill_file->parent_spill_set->parent_hash_bit +
 		(unsigned)ceil(log(spill_file->parent_spill_set->num_spill_files)/log(2));
+
 
 	if (spill_file->file_info != NULL &&
 		spill_file->file_info->bfz != NULL)
@@ -1570,7 +1577,7 @@ agg_hash_reload(AggState *aggstate)
 			if (hashtable->num_ht_groups <= 1)
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_INTERNAL_ERROR),
-						 errmsg("HashAgg: work_mem is too smalle to hold *one* group.")));
+						 errmsg("HashAgg: work_mem is too small to hold *one* group.")));
 
 			/* CDB: Report statistics for EXPLAIN ANALYZE. */
 			if (!hashtable->is_spilling && aggstate->ss.ps.instrument)
@@ -1639,6 +1646,19 @@ agg_hash_reload(AggState *aggstate)
 		spill_hash_table(aggstate);
         freed_size = suspendSpillFiles(hashtable->curr_spill_file->spill_set);
         hashtable->mem_for_metadata -= freed_size;
+	}
+
+	else
+	{
+		/*
+		 * Update the workmenwanted value when the hashtable is not spilling.
+		 * At this point, we know that groups in this hashtable will not appear
+		 * at later time.
+		 */
+		Assert(hashtable->mem_for_metadata >= start_mem_for_metadata);
+		hashtable->mem_wanted += 
+			((hashtable->mem_for_metadata - start_mem_for_metadata) +
+			 GET_BUFFER_SIZE(hashtable));
 	}
 
 	/* CDB: Report statistics for EXPLAIN ANALYZE. */
