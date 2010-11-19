@@ -137,7 +137,7 @@ test: toast
 test: mapred
 test: gpparams
 test: tidycat
-test: upg2
+ignore: upg2
 test: alter_distribution_policy
 ignore: gp_delete_as_trunc
 test: gp_numeric_agg
