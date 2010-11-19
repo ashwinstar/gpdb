@@ -79,7 +79,9 @@ PostgreSQL documentation
       <para>
       Specifies that <application>psql</application> is to execute one
       command string, <replaceable class="parameter">command</replaceable>,
-      and then exit. This is useful in shell scripts.
+      and then exit. This is useful in shell scripts. Start-up files
+      (<filename>psqlrc</filename> and <filename>~/.psqlrc</filename>) are
+      ignored with this option.
       </para>
       <para>
       <replaceable class="parameter">command</replaceable> must be either
