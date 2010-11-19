@@ -4584,59 +4584,59 @@ iaag: icxudp:00001267:  "connection."),
 iaag: icxudp:00001268:  errdetail("%m%s", "sendto"))); 
 iaag: icxudp:00001416:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
 iaag: icxudp:00001417:  errmsg("Setup UDP interconnect failed: out of memory"))); 
-iaag: icxudp:00001458:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001459:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
-iaag: icxudp:00001460:  errdetail("%m%s", "malloc"))); 
-iaag: icxudp:00001574:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001575:  errmsg("Interconnect error: %m%s", "poll"))); 
-iaag: icxudp:00001600:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001601:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
-iaag: icxudp:00001605:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001606:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
-iaag: icxudp:00001678:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001679:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00001786:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001787:  errmsg("Interconnect timeout: Unable to " 
-iaag: icxudp:00001788:  "complete setup of all connections " 
-iaag: icxudp:00001789:  "within time limit."), 
-iaag: icxudp:00001790:  errdetail("Completed %d of %d incoming and " 
-iaag: icxudp:00001791:  "%d of %d outgoing connections. " 
-iaag: icxudp:00001792:  "gp_interconnect_setup_timeout = %d " 
-iaag: icxudp:00001793:  "seconds.", 
-iaag: icxudp:00001794:  incoming_count, expectedTotalIncoming, 
-iaag: icxudp:00001795:  outgoing_count, expectedTotalOutgoing, 
-iaag: icxudp:00001796:  interconnect_setup_timeout))); 
-iaag: icxudp:00002169:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002170:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
-iaag: icxudp:00002276:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002277:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
-iaag: icxudp:00002279:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002280:  errmsg("Interconnect error master lost contact with client (recv)"))); 
+iaag: icxudp:00001462:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001463:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
+iaag: icxudp:00001464:  errdetail("%m%s", "malloc"))); 
+iaag: icxudp:00001578:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001579:  errmsg("Interconnect error: %m%s", "poll"))); 
+iaag: icxudp:00001604:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001605:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
+iaag: icxudp:00001609:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001610:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
+iaag: icxudp:00001682:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001683:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00001794:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001795:  errmsg("Interconnect timeout: Unable to " 
+iaag: icxudp:00001796:  "complete setup of all connections " 
+iaag: icxudp:00001797:  "within time limit."), 
+iaag: icxudp:00001798:  errdetail("Completed %d of %d incoming and " 
+iaag: icxudp:00001799:  "%d of %d outgoing connections. " 
+iaag: icxudp:00001800:  "gp_interconnect_setup_timeout = %d " 
+iaag: icxudp:00001801:  "seconds.", 
+iaag: icxudp:00001802:  incoming_count, expectedTotalIncoming, 
+iaag: icxudp:00001803:  outgoing_count, expectedTotalOutgoing, 
+iaag: icxudp:00001804:  interconnect_setup_timeout))); 
+iaag: icxudp:00002177:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002178:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
+iaag: icxudp:00002284:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002285:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
 iaag: icxudp:00002287:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002288:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00002501:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002502:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002503:  errdetail("During recvfrom() call.\n"))); 
-iaag: icxudp:00002516:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002517:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002518:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
-iaag: icxudp:00002691:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002692:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00002693:  errdetail("error during sendto() call (error:%d).\n" 
-iaag: icxudp:00002694:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002695:  errno, conn->remoteContentId, 
-iaag: icxudp:00002696:  conn->remoteHostAndPort))); 
-iaag: icxudp:00002702:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002703:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00002704:  errdetail("short transmit during sendto() call.\n" 
-iaag: icxudp:00002705:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002706:  conn->remoteContentId, 
-iaag: icxudp:00002707:  conn->remoteHostAndPort))); 
-iaag: icxudp:00002766:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002767:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
-iaag: icxudp:00002783:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002784:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002785:  errdetail("During poll() call.\n"))); 
+iaag: icxudp:00002288:  errmsg("Interconnect error master lost contact with client (recv)"))); 
+iaag: icxudp:00002295:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002296:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00002509:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002510:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002511:  errdetail("During recvfrom() call.\n"))); 
+iaag: icxudp:00002524:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002525:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002526:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
+iaag: icxudp:00002699:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002700:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxudp:00002701:  errdetail("error during sendto() call (error:%d).\n" 
+iaag: icxudp:00002702:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00002703:  errno, conn->remoteContentId, 
+iaag: icxudp:00002704:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002710:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002711:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxudp:00002712:  errdetail("short transmit during sendto() call.\n" 
+iaag: icxudp:00002713:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00002714:  conn->remoteContentId, 
+iaag: icxudp:00002715:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002774:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002775:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
+iaag: icxudp:00002791:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002792:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002793:  errdetail("During poll() call.\n"))); 
 aaaaa GP_IGNORE: taag: tupser - ./backend/cdb/motion/tupser.c
 taag: tupser:00000086:  ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION), 
 taag: tupser:00000087:  errmsg("deserialize data underflow"))); 
@@ -9268,19 +9268,19 @@ eabc: exechhashagg:00000472:  errmsg("HashAgg: invalid InputRecordType.")));
 eabc: exechhashagg:00000576:  ereport(ERROR, 
 eabc: exechhashagg:00000577:  (errcode(ERRCODE_INTERNAL_ERROR), 
 eabc: exechhashagg:00000578:  errmsg("HashAgg: too many passes or hash entries"))); 
-eabc: exechhashagg:00000832:  ereport(ERROR, 
-eabc: exechhashagg:00000833:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00000834:  errmsg("HashAgg: work_mem is too smalle to hold *one* group."))); 
-eabc: exechhashagg:00001450:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00001451:  errmsg("HashAgg: error in reading a batch file."))); 
-eabc: exechhashagg:00001462:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00001463:  errmsg("HashAgg: error in reading a batch file, requesting %d bytes, read %d bytes", 
-eabc: exechhashagg:00001464:  *p_input_size, read_size))); 
-eabc: exechhashagg:00001571:  ereport(ERROR, 
-eabc: exechhashagg:00001572:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00001573:  errmsg("HashAgg: work_mem is too smalle to hold *one* group."))); 
-eabc: exechhashagg:00001704:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eabc: exechhashagg:00001705:  errmsg("HashAgg: no enough memory for hashagg."))); 
+eabc: exechhashagg:00000831:  ereport(ERROR, 
+eabc: exechhashagg:00000832:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00000833:  errmsg("HashAgg: work_mem is too smalle to hold *one* group."))); 
+eabc: exechhashagg:00001448:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00001449:  errmsg("HashAgg: error in reading a batch file."))); 
+eabc: exechhashagg:00001460:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00001461:  errmsg("HashAgg: error in reading a batch file, requesting %d bytes, read %d bytes", 
+eabc: exechhashagg:00001462:  *p_input_size, read_size))); 
+eabc: exechhashagg:00001578:  ereport(ERROR, 
+eabc: exechhashagg:00001579:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00001580:  errmsg("HashAgg: work_mem is too small to hold *one* group."))); 
+eabc: exechhashagg:00001724:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eabc: exechhashagg:00001725:  errmsg("HashAgg: no enough memory for hashagg."))); 
 aaaaa GP_IGNORE: eaai: execmain - ./backend/executor/execMain.c
 eaai: execmain:00000369:  ereport(ERROR, 
 eaai: execmain:00000370:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
