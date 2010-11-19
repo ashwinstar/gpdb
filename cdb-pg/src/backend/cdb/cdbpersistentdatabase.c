@@ -213,7 +213,7 @@ static void AtProcExit_PersistentDatabase(int code, Datum arg)
 
 void PersistentDatabase_DirIterateInit(void)
 {
-	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	Assert(persistentDatabaseSharedData != NULL);
 	
@@ -221,7 +221,7 @@ void PersistentDatabase_DirIterateInit(void)
 
 	PersistentDatabase_ReleaseDirIterator();
 
-	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
+	READ_PERSISTENT_STATE_ORDERED_LOCK;
 
 	if (!iterateOnShmemExitArmed)
 	{
@@ -231,7 +231,7 @@ void PersistentDatabase_DirIterateInit(void)
 
 	dirIterateDatabaseDirEntry = NULL;
 	
-	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+	READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 }
 
 
@@ -244,7 +244,7 @@ bool PersistentDatabase_DirIterateNext(
 
 	int64					*persistentSerialNum)
 {
-	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	DatabaseDirEntry prevDatabaseDirEntry;
 
@@ -254,7 +254,7 @@ bool PersistentDatabase_DirIterateNext(
 
 	MemSet(dbDirNode, 0, sizeof(DbDirNode));
 
-	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
+	READ_PERSISTENT_STATE_ORDERED_LOCK;
 
 	while (true)
 	{
@@ -267,7 +267,7 @@ bool PersistentDatabase_DirIterateNext(
 
 		if (dirIterateDatabaseDirEntry == NULL)
 		{
-			WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+			READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 			return false;
 		}
 
@@ -289,18 +289,24 @@ bool PersistentDatabase_DirIterateNext(
 		break;
 	}
 
-	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+	READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	return true;
 }
 
 void PersistentDatabase_DirIterateClose(void)
 {
+	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
 	Assert(persistentDatabaseSharedData != NULL);
-	
+
+	READ_PERSISTENT_STATE_ORDERED_LOCK;
+
 	PersistentDatabase_VerifyInitScan();
 
 	PersistentDatabase_ReleaseDirIterator();
+
+	READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 }
 
 
