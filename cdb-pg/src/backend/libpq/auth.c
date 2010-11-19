@@ -837,6 +837,11 @@ pg_krb5_recvauth(Port *port)
 	char	   *kusername;
 	char	   *cp;
 
+	/* GPDB: Because we are still using the old flatfile method of getting roles, safest to check here if the role exists */
+	/* Not sure if this is necessary, PG took this test out when getting rid of the pg_authid flatfile */
+	if (get_role_line(port->user_name) == NULL)
+		return STATUS_ERROR;
+
 	ret = pg_krb5_init(port);
 	if (ret != STATUS_OK)
 		return ret;
@@ -1966,6 +1971,10 @@ static int
 authident(hbaPort *port)
 {
 	char		ident_user[IDENT_USERNAME_MAX + 1];
+
+	/* GPDB: Because we are still using the old flatfile method of getting roles, safest to check here if the role exists */
+	if (get_role_line(port->user_name) == NULL)
+		return STATUS_ERROR;
 
 	switch (port->raddr.addr.ss_family)
 	{
