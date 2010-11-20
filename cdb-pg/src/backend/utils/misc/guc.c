@@ -198,6 +198,7 @@ static const char *show_tcp_keepalives_interval(void);
 static const char *show_tcp_keepalives_count(void);
 
 static const char *assign_pgstat_temp_directory(const char *newval, bool doit, GucSource source);
+static const char *assign_application_name(const char *newval, bool doit, GucSource source);
 
 static const char *assign_debug_dtm_action(const char *newval,
 						bool doit, GucSource source);
@@ -366,6 +367,8 @@ char       *Debug_dtm_action_protocol_str;
 bool		gp_encoding_check_locale_compatibility;
 
 char	   *pgstat_temp_directory;
+
+char	   *application_name;
 
 int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
@@ -5077,6 +5080,16 @@ static struct config_string ConfigureNamesString[] =
 		"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH", NULL, NULL
 	},
 #endif   /* USE_SSL */
+
+	{
+		{"application_name", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Sets the application name to be reported in statistics and logs."),
+			NULL,
+			GUC_IS_NAME | GUC_REPORT | GUC_NOT_IN_SAMPLE
+		},
+		&application_name,
+		"", assign_application_name, NULL
+	},
 
 	{
 		{"external_pid_file", PGC_POSTMASTER, FILE_LOCATIONS,
@@ -10365,6 +10378,30 @@ assign_debug_dtm_action_protocol(const char *newval,
 	else
 		return NULL;			/* fail */
 	return newval;				/* OK */
+}
+
+static const char *
+assign_application_name(const char *newval, bool doit, GucSource source)
+{
+	if (doit)
+	{
+		/* Only allow clean ASCII chars in the application name */
+		char	   *repval = guc_strdup(ERROR, newval);
+		char	   *p;
+
+		for (p = repval; *p; p++)
+		{
+			if (*p < 32 || *p > 126)
+				*p = '?';
+		}
+
+		/* Update the pg_stat_activity view */
+		pgstat_report_appname(repval);
+
+		return repval;
+	}
+	else
+		return newval;
 }
 
 #include "guc-file.c"

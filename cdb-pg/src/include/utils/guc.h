@@ -4,7 +4,7 @@
  * External declarations pertaining to backend/utils/misc/guc.c and
  * backend/utils/misc/guc-file.l
  *
- * Portions Copyright (c) 2007-2008, Greenplum inc
+ * Portions Copyright (c) 2007-2010, Greenplum inc
  * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
@@ -53,10 +53,10 @@ struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 typedef enum
 {
 	PGC_INTERNAL,
-	PGC_POSTMASTER,  	
+	PGC_POSTMASTER,
 	PGC_SIGHUP,
 	PGC_BACKEND,
-	PGC_SUSET, 
+	PGC_SUSET,
 	PGC_USERSET
 } GucContext;
 
@@ -79,6 +79,8 @@ typedef enum
  * as the actual source of any value).	This is an interactive case, but
  * it needs its own source value because some assign hooks need to make
  * different validity checks in this case.
+ *
+ * NB: see GucSource_Names in guc.c if you change this.
  */
 typedef enum
 {
@@ -241,6 +243,9 @@ extern char *ConfigFileName;
 extern char *HbaFileName;
 extern char *IdentFileName;
 extern char *external_pid_file;
+
+extern char *application_name;
+
 extern char *Debug_dtm_action_sql_command_tag;
 extern char *Debug_dtm_action_str;
 extern char *Debug_dtm_action_target_str;

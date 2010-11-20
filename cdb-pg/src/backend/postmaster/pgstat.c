@@ -2097,6 +2097,7 @@ pgstat_fetch_global(void)
 
 static PgBackendStatus *BackendStatusArray = NULL;
 static PgBackendStatus *MyBEEntry = NULL;
+static char *BackendAppnameBuffer = NULL;
 static char *BackendActivityBuffer = NULL;
 
 
@@ -2108,14 +2109,17 @@ BackendStatusShmemSize(void)
 {
 	Size		size;
 
-	size = add_size(mul_size(sizeof(PgBackendStatus), MaxBackends),
+	size = mul_size(sizeof(PgBackendStatus), MaxBackends);
+	size = add_size(size,
+					mul_size(NAMEDATALEN, MaxBackends));
+	size = add_size(size,
 					mul_size(pgstat_track_activity_query_size, MaxBackends));
 	return size;
 }
 
 /*
- * Initialize the shared status array and activity string buffer during
- * postmaster startup.
+ * Initialize the shared status array and activity/appname string buffers
+ * during postmaster startup.
  */
 void
 CreateSharedBackendStatus(void)
@@ -2136,6 +2140,24 @@ CreateSharedBackendStatus(void)
 		 * We're the first - initialize.
 		 */
 		MemSet(BackendStatusArray, 0, size);
+	}
+
+	/* Create or attach to the shared appname buffer */
+	size = mul_size(NAMEDATALEN, MaxBackends);
+	BackendAppnameBuffer = (char *)
+		ShmemInitStruct("Backend Application Name Buffer", size, &found);
+
+	if (!found)
+	{
+		MemSet(BackendAppnameBuffer, 0, size);
+
+		/* Initialize st_appname pointers. */
+		buffer = BackendAppnameBuffer;
+		for (i = 0; i < MaxBackends; i++)
+		{
+			BackendStatusArray[i].st_appname = buffer;
+			buffer += NAMEDATALEN;
+		}
 	}
 
 	/* Create or attach to the shared activity buffer */
@@ -2183,7 +2205,8 @@ pgstat_initialize(void)
  * pgstat_bestart() -
  *
  *	Initialize this backend's entry in the PgBackendStatus array.
- *	Called from InitPostgres.  MyDatabaseId and session userid must be set
+ *	Called from InitPostgres.
+ *	MyDatabaseId, session userid, and application_name must be set
  *	(hence, this cannot be combined with pgstat_initialize).
  * ----------
  */
@@ -2239,8 +2262,10 @@ pgstat_bestart(void)
 	beentry->st_session_id = gp_session_id;  /* GPDB only */
 	beentry->st_clientaddr = clientaddr;
 	beentry->st_waiting = false;
+	beentry->st_appname[0] = '\0';
 	beentry->st_activity[0] = '\0';
-	/* Also make sure the last byte in the string area is always 0 */
+	/* Also make sure the last byte in each string area is always 0 */
+	beentry->st_appname[NAMEDATALEN - 1] = '\0';
 	beentry->st_activity[pgstat_track_activity_query_size - 1] = '\0';
 
 	beentry->st_changecount++;
@@ -2256,6 +2281,11 @@ pgstat_bestart(void)
 	 * GPDB: Set up a process-exit hook to clean up.
 	 */
 	on_shmem_exit(pgstat_beshutdown_hook, 0);
+	
+	
+	/* Update app name to current GUC setting */
+	if (application_name)
+		pgstat_report_appname(application_name);
 }
 
 /*
@@ -2339,6 +2369,38 @@ pgstat_report_activity(const char *cmd_str)
 	Assert((beentry->st_changecount & 1) == 0);
 }
 
+/* ----------
+ * pgstat_report_appname() -
+ *
+ *	Called to update our application name.
+ * ----------
+ */
+void
+pgstat_report_appname(const char *appname)
+{
+	volatile PgBackendStatus *beentry = MyBEEntry;
+	int			len;
+
+	if (!beentry)
+		return;
+
+	/* This should be unnecessary if GUC did its job, but be safe */
+	len = pg_mbcliplen(appname, strlen(appname), NAMEDATALEN - 1);
+
+	/*
+	 * Update my status entry, following the protocol of bumping
+	 * st_changecount before and after.  We use a volatile pointer here to
+	 * ensure the compiler doesn't try to get cute.
+	 */
+	beentry->st_changecount++;
+
+	memcpy((char *) beentry->st_appname, appname, len);
+	beentry->st_appname[len] = '\0';
+
+	beentry->st_changecount++;
+	Assert((beentry->st_changecount & 1) == 0);
+}
+
 /*
  * Report current transaction start timestamp as the specified value.
  * Zero means there is no active transaction.
@@ -2401,6 +2463,7 @@ pgstat_read_current_status(void)
 	volatile PgBackendStatus *beentry;
 	PgBackendStatus *localtable;
 	PgBackendStatus *localentry;
+	char	   *localappname;
 	char	   *localactivity;
 	int			i;
 
@@ -2413,6 +2476,9 @@ pgstat_read_current_status(void)
 	localtable = (PgBackendStatus *)
 		MemoryContextAlloc(pgStatLocalContext,
 						   sizeof(PgBackendStatus) * MaxBackends);
+	localappname = (char *)
+		MemoryContextAlloc(pgStatLocalContext,
+						   NAMEDATALEN * MaxBackends);
 	localactivity = (char *)
 		MemoryContextAlloc(pgStatLocalContext,
 						   pgstat_track_activity_query_size * MaxBackends);
@@ -2438,10 +2504,12 @@ pgstat_read_current_status(void)
 			{
 				memcpy(localentry, (char *) beentry, sizeof(PgBackendStatus));
 
-			/*
+				/*
 				 * strcpy is safe even if the string is modified concurrently,
 				 * because there's always a \0 at the end of the buffer.
-			 */
+				 */
+				strcpy(localappname, (char *) beentry->st_appname);
+				localentry->st_appname = localappname;
 				strcpy(localactivity, (char *) beentry->st_activity);
 				localentry->st_activity = localactivity;
 			}
@@ -2459,6 +2527,7 @@ pgstat_read_current_status(void)
 		if (localentry->st_procpid > 0)
 		{
 			localentry++;
+			localappname += NAMEDATALEN;
 			localactivity += pgstat_track_activity_query_size;
 			localNumBackends++;
 		}
@@ -2573,7 +2642,7 @@ pgstat_send(void *msg, int len)
 {
 	int			rc;
 
-	if (pgStatSock < 0)
+	if (pgStatSock == PGINVALID_SOCKET)
 		return;
 
 	((PgStat_MsgHdr *) msg)->m_size = len;
@@ -2651,7 +2720,7 @@ PgstatCollectorMain(int argc, char *argv[])
 	IsUnderPostmaster = true;	/* we are a postmaster subprocess now */
 
 	MyProcPid = getpid();		/* reset MyProcPid */
-	
+
 	MyStartTime = time(NULL);	/* record Start Time for logging */
 
 	/*
