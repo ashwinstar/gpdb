@@ -138,7 +138,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		 * Inform the persistent table code about the new filespace or
 		 * tablespace.
 		 */
-		if (xlrec->objtype == MM_OBJ_FILESPACE)
+		if (xlrec->objtype == MM_OBJ_FILESPACE && GPStandby())
 		{
 			fspc_map m;
 
@@ -151,7 +151,7 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			strncpy(m.path2, xlrec->mirror_path, MAXPGPATH);
 			add_filespace_map_entry(&m, &beginLoc, "mmxlog_redo");
 		}
-		else if (xlrec->objtype == MM_OBJ_TABLESPACE)
+		else if (xlrec->objtype == MM_OBJ_TABLESPACE && GPStandby())
 		{
 			tspc_map m;
 
@@ -177,14 +177,19 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			 */
 			if (errno != EEXIST)
 			{
-				elog(ERROR, "could not create directory \"%s\": %m",
-					 path);
+				if (GPStandby())
+				{
+					elog(ERROR, "could not create directory \"%s\": %m",
+						 path);
+				}
+				else
+				{
+					elog(LOG, "Note: unable a create directory \"%s\" from Master Mirroring redo: %m",
+						 path);
+				}
 			}
 			else
 			{
-				// UNDONE: This isn't idempotent!  What if the directory create succeeds but the PG_VERSION create fails in a system crash?
-				dir_created = false;
-
 				if (Debug_persistent_recovery_print)
 				{
 					elog(PersistentRecovery_DebugPrintLevel(), 
@@ -192,6 +197,9 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 						 path);
 				}
 			}
+			// UNDONE: This isn't idempotent!  What if the directory create succeeds but the PG_VERSION create fails in a system crash?
+			dir_created = false;
+			
 		}
 
 		/* need to add PG_VERSION for newly created databases */
@@ -319,6 +327,47 @@ mmxlog_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		rnode.relNode = xlrec->relfilenode;
 
 		XLogDropRelation(rnode);
+
+		if (GpIdentity.dbid == MASTER_DBID)
+		{
+			PersistentTablespaceGetFilespaces tablespaceGetFilespaces;
+
+			char *primaryFilespaceLocation;
+			char *mirrorFilespaceLocation;
+
+			Oid filespaceOid;
+			
+			/*
+			 * If we are re-doing Master Mirroring work on the Master and the tablespace
+			 * doesn't exist in the shared-memory persistent hash-table, skip the unlink...
+			 */
+			tablespaceGetFilespaces =
+				PersistentTablespace_TryGetPrimaryAndMirrorFilespaces(
+															rnode.spcNode,
+															&primaryFilespaceLocation,
+															&mirrorFilespaceLocation,
+															&filespaceOid);
+			switch (tablespaceGetFilespaces)
+			{
+			case PersistentTablespaceGetFilespaces_Ok:
+				break;
+				
+			case PersistentTablespaceGetFilespaces_TablespaceNotFound:
+				elog(LOG, "Note: unable find tablespace %u from Master Mirroring redo",
+					 rnode.spcNode);
+				return;
+
+			case PersistentTablespaceGetFilespaces_FilespaceNotFound:
+				elog(LOG, "Note: unable find filespace %u for tablespace %u for Master Mirroring redo",
+					 filespaceOid, rnode.spcNode);
+				return;
+
+			default:
+				elog(ERROR, "Unexpected tablespace filespace fetch result: %d",
+					 tablespaceGetFilespaces);
+			}
+		}
+		
 		smgrdounlink(
 				&rnode, 
 				/* isLocalBuf */ false,
