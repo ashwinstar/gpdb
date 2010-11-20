@@ -896,7 +896,16 @@ StartPrepare(GlobalTransaction gxact)
 		save_state_data(persistentPrepareBuffer, persistentPrepareSerializeLen);
 
 		pfree(persistentPrepareBuffer);
-	}
+	}	
+	
+#ifdef FAULT_INJECTOR	
+	FaultInjector_InjectFaultIfSet(
+								   StartPrepareTx, 
+								   DDLNotSpecified,
+								   "",	// databaseName
+								   ""); // tableName
+#endif		
+	
 }
 
 /*

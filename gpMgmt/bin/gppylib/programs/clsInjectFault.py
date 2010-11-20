@@ -308,9 +308,10 @@ class GpInjectFaultProgram:
 				 "Min Max Range is [0, 7200 sec] ")
         addTo.add_option('-f','--fault_name', dest="faultName", type='string', metavar="<name>",
                          help="fault name: " \
-			      "postmaster (inject fault when new connection is accepted in postmaster " \
-			      "pg_control (inject fault when global/pg_control file is written " \
-			      "pg_xlog (inject fault when files in pg_xlog directory are written " \
+			      "postmaster (inject fault when new connection is accepted in postmaster), " \
+			      "pg_control (inject fault when global/pg_control file is written), " \
+			      "pg_xlog (inject fault when files in pg_xlog directory are written), " \
+			      "start_prepare (inject fault during start prepare transaction), " \
 			      "filerep_consumer (inject fault before data are processed, i.e. if mirror " \
 			      "then before file operation is issued to file system, if primary " \
 			      "then before mirror file operation is acknowledged to backend processes), " \

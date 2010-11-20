@@ -31,6 +31,8 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	PgXlog,
 	
+	StartPrepareTx,
+	
 	FileRepConsumer,
 	
 	FileRepSender,

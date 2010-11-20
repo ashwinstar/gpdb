@@ -103,6 +103,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault when pg_control file is written */
 	_("pg_xlog"),
 		/* inject fault when files in pg_xlog directory are written */
+	_("start_prepare"),
+		/* inject fault during start prepare */
 	_("filerep_consumer"),
 		/* 
 		 * inject fault before data are processed
@@ -761,6 +763,7 @@ FaultInjector_NewHashEntry(
 	
 	switch (entry->faultInjectorIdentifier)
 	{
+		case StartPrepareTx:
 		case FileRepResync:
 		case FileRepResyncInProgress:
 		case FileRepResyncWorker:

@@ -2657,8 +2657,6 @@ retry1:
 					 errmsg("the database system is shutting down")));
 			break;
 		case CAC_RECOVERY:
-			updateSegmentState(SegmentStateFault, FaultTypeDB);
-
 			ereport(FATAL,
 					(errcode(ERRCODE_CANNOT_CONNECT_NOW),
 					 errSendAlert(true),
