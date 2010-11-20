@@ -6154,7 +6154,7 @@ bool PersistentFileSysObj_ScanForRelation(
 	int64				*persistentSerialNum)
 				/* Resulting serial number for the relation.  Distinquishes the uses of the tuple. */
 {
-	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+	READ_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
 
 	PersistentFileSysObjData *fileSysObjData;
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
@@ -6189,7 +6189,7 @@ bool PersistentFileSysObj_ScanForRelation(
 	MemSet(persistentTid, 0, sizeof(ItemPointerData));
 	*persistentSerialNum = 0;
 		 
-	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
+	READ_PERSISTENT_STATE_ORDERED_LOCK;
 		 
 	PersistentStore_BeginScan(
 						&fileSysObjData->storeData,
@@ -6255,13 +6255,13 @@ bool PersistentFileSysObj_ScanForRelation(
 			break;
 		}
 
-		WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+		READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 		
-		WRITE_PERSISTENT_STATE_ORDERED_LOCK;
+		READ_PERSISTENT_STATE_ORDERED_LOCK;
 		
 	}
 
-	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+	READ_PERSISTENT_STATE_ORDERED_UNLOCK;
 
 	PersistentStore_EndScan(&storeScan);
 
