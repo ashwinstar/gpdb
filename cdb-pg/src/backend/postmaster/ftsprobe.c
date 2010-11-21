@@ -96,6 +96,7 @@
 
 #define GpConfigHistoryRelationName    "gp_configuration_history"
 
+#define MAX_PROBE_RESPONSE_LEN	20
 
 /*
  * Enum for probe result deciphering - use one byte to store results
@@ -1076,7 +1077,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 					remainder -= n;
 
 					/* got legit data */
-					if (offset < 16)
+					if (offset < MAX_PROBE_RESPONSE_LEN)
 					{
 						/* need to wait on more data ? (essentially we're rewinding our state) */
 						probe_state = REQUEST_SENT;
@@ -1084,7 +1085,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 					}
 
 					memcpy(&msg_int, buf, 4);
-					if (ntohl(msg_int) != 20)
+					if (ntohl(msg_int) != MAX_PROBE_RESPONSE_LEN)
 					{
 						write_log("Probe protocol violation got length %d", ntohl(msg_int));
 						ret = PROBE_DEAD;
