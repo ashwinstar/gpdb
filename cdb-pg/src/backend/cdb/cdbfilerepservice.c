@@ -156,8 +156,6 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 			return;
 		}
 	}	
-	
-	elog(DEBUG1, "FileRepSubProcess_ShutdownHandler()");
 }
 
 /*
