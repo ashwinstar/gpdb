@@ -1,0 +1,587 @@
+-- -*- mode: sql; -*-
+
+-- ===========================================================================
+-- upgrade.sql
+-- ===========================================================================
+--
+--  1) Create a schema like the 4.0 catalog schema including:
+--      * catalog tables
+--      * catalog functions
+--      * catalog aggregates
+--      * catalog types
+--      * catalog operators
+--      * catalog casts
+--      etc.
+--
+--  2) Run the upgrade DDL on the schema
+--
+--  3) Compare against the real catalog to check that they are the same
+--
+--  4) Cleanup
+--
+-- ===========================================================================
+--
+-- Exceptions to deal with issues in the definition of various operator classes
+--
+-- start_matchsubs
+--
+-- m/varchar(_pattern)?_ops/
+-- s/ varchar (\s*)\| [tf] / text    $1\| f/
+-- m/cidr_ops/
+-- s/ inet (\s*) \| f/ cidr $1 | t/
+-- m/int4_ops/
+-- s/btint(\d+)cmp/btintXXcmp/
+-- m/pg_stat/
+-- s/ d / i /
+-- m/pg_stat/
+-- s/anyarray/text    /
+-- m/dummycast_(\w*)_(\w*)_(\w*)/
+-- s/dummycast_(\w*)_(\w*)_(\w*)/$3/
+--
+-- end_matchsubs
+--
+-- ===========================================================================
+
+-- ===========================================================================
+-- ===========================================================================
+-- This script will produce diffs if you add or change catalog table
+-- definitions in src/include/catalog. If you want to change the results, 
+-- you must make the changes in regress/output/tidycat.source, not
+-- regress/expected, and use gpsourcify.pl to generate a ".out" file.
+--
+-- From the regress directory invoke the command:
+--
+--    gpsourcify.pl results/tidycat.out > output/tidycat.source
+--
+-- ===========================================================================
+-- ===========================================================================
+
+SET client_min_messages = 'WARNING';
+
+
+-- ===========================================================================
+-- * Create a dummy schema for cast functions
+--   Many of the builtin casts use functions with the wrong prototypes, this
+--   works around this by creating functions with the right prototypes in a
+--   dummy schema.
+-- ===========================================================================
+CREATE SCHEMA dummy_cast_functions;
+
+
+
+-- ===========================================================================
+-- * Create a schema like the 4.0 catalog schema
+-- ===========================================================================
+CREATE SCHEMA upg_catalog;      -- pg_catalog
+SET SEARCH_PATH to upg_catalog;
+
+\i @abs_srcdir@/data/upgrade41/catalog40/type_shells.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/type_functions.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/types.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/tables.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/functions.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/functions_sql.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/dummy_cast_functions.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/cast_functions.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/casts.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/conversions.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/operator_comparison_functions.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/operator_selectivity_functions.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/operators.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/access_method_functions.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/operator_classes.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/aggregates.sql
+-- \i @abs_srcdir@/data/upgrade41/catalog40/indexes.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/system_views.sql
+\i @abs_srcdir@/data/upgrade41/catalog40/cdb_schema.sql
+-- domains?
+-- rules?
+-- sequences?
+-- triggers?
+-- constraints?
+
+
+
+CREATE SCHEMA upg_toolkit;      -- gp_toolkit
+SET SEARCH_PATH to upg_toolkit;
+\i @abs_srcdir@/data/upgrade41/catalog40/toolkit.sql
+
+CREATE SCHEMA upg_information;  -- information_schema
+SET SEARCH_PATH to upg_information;
+\i @abs_srcdir@/data/upgrade41/catalog40/information_schema.sql
+
+
+-- ===========================================================================
+-- * Run the upgrade DDL on the schema
+-- ===========================================================================
+
+-- Currently none
+
+
+-- ===========================================================================
+-- * Compare this the transformed schema to the catalog schema
+-- ===========================================================================
+
+-- Compare pg_type (Types, Tables, Views, Indexes, Sequences)
+-- start_equiv
+SELECT t.typname, t.typlen, t.typbyval, t.typisdefined, t.typdelim, t.typalign
+	   , t.typstorage, t.typnotnull, t.typbasetype, t.typtypmod
+       -- , t.typndims
+	   , input.proname, output.proname, recv.proname, send.proname, anlyze.proname
+	   , c.relname, t.typdefaultbin, t.typdefault
+FROM pg_type t
+	 join pg_namespace n on (n.oid = t.typnamespace)
+	 left join pg_proc input on (input.oid = t.typinput)
+	 left join pg_proc output on (output.oid = t.typoutput)
+	 left join pg_proc send on (send.oid = t.typsend)
+	 left join pg_proc recv on (recv.oid = t.typreceive)
+	 left join pg_proc anlyze on (anlyze.oid = t.typanalyze)
+	 left join pg_class c on (c.oid = t.typrelid)
+WHERE n.nspname = 'upg_catalog'
+ORDER BY 1;
+
+SELECT t.typname, t.typlen, t.typbyval, t.typisdefined, t.typdelim, t.typalign
+	   , t.typstorage, t.typnotnull, t.typbasetype, t.typtypmod
+       -- , t.typndims
+	   , input.proname, output.proname, recv.proname, send.proname, anlyze.proname
+	   , c.relname, t.typdefaultbin, t.typdefault
+FROM pg_type t
+	 join pg_namespace n on (n.oid = t.typnamespace)
+	 left join pg_proc input on (input.oid = t.typinput)
+	 left join pg_proc output on (output.oid = t.typoutput)
+	 left join pg_proc send on (send.oid = t.typsend)
+	 left join pg_proc recv on (recv.oid = t.typreceive)
+	 left join pg_proc anlyze on (anlyze.oid = t.typanalyze)
+	 left join pg_class c on (c.oid = t.typrelid)
+WHERE n.nspname = 'pg_catalog'
+ORDER BY 1;
+-- end_equiv
+
+
+-- Compare pg_class (Types, Tables, Views, Indexes, Sequences)
+-- start_equiv
+SELECT c.relname, t.typname, am.amname, c.relkind, c.relstorage, c.relnatts
+       -- , c.reltoastrelid != 0 as relhastoast
+       -- , c.relhasindex
+	   -- , c.relchecks
+       -- , c.reltriggers
+       -- , c.relukeys
+       -- , c.relfkeys
+       -- , c.relrefs
+	   -- , c.relhasoids
+	   -- , c.relhaspkey 
+       -- , c.relhasrules
+       -- , c.relhassubclass
+FROM pg_class c
+	 left join pg_type t on (t.oid = c.reltype)
+	 left join pg_am am on (am.oid = c.relam)
+	 left join pg_namespace n on (n.oid = c.relnamespace)
+WHERE n.nspname = 'upg_catalog' and relkind != 'i'
+ORDER BY 1;
+
+SELECT c.relname, t.typname, am.amname, c.relkind, c.relstorage, c.relnatts
+       -- , c.reltoastrelid != 0 as relhastoast
+       -- , c.relhasindex
+	   -- , c.relchecks
+       -- , c.reltriggers
+       -- , c.relukeys
+       -- , c.relfkeys
+       -- , c.relrefs
+	   -- , c.relhasoids
+	   -- , c.relhaspkey 
+       -- , c.relhasrules
+       -- , c.relhassubclass
+FROM pg_class c
+	 left join pg_type t on (t.oid = c.reltype)
+	 left join pg_am am on (am.oid = c.relam)
+	 left join pg_namespace n on (n.oid = c.relnamespace)
+WHERE n.nspname = 'pg_catalog' and relkind != 'i'
+ORDER BY 1;
+
+-- end_equiv
+
+-- Compare pg_attribute (Tables, Views, Indexes)
+-- start_equiv
+SELECT
+    c.relname, a.attnum, a.attname, t.typname, a.atttypmod, a.attbyval, 
+    a.attstorage, a.attalign
+    -- , a.attndims
+    -- , a.attnotnull
+    , atthasdef, attislocal, attinhcount
+FROM
+    pg_class c
+	join pg_attribute a on (a.attrelid = c.oid)
+    join pg_type t on (a.atttypid = t.oid)
+    join pg_namespace n on (n.oid = c.relnamespace)
+WHERE a.attnum > 0 and nspname = 'upg_catalog' and c.relkind != 'i'
+ORDER BY c.relname, a.attnum;
+
+SELECT
+    c.relname, a.attnum, a.attname, t.typname, a.atttypmod, a.attbyval,
+    a.attstorage, a.attalign
+    -- , a.attndims
+    -- , a.attnotnull
+    , atthasdef, attislocal, attinhcount
+FROM
+    pg_class c
+    join pg_attribute a on (a.attrelid = c.oid)
+    join pg_type t on (a.atttypid = t.oid)
+    join pg_namespace n on (n.oid = c.relnamespace)
+WHERE a.attnum > 0 and nspname = 'pg_catalog' and c.relkind != 'i'
+ORDER BY c.relname, a.attnum;
+-- end_equiv
+
+-- Compare pg_proc (Functions, Aggregates, Window Functions)
+-- start_equiv
+SELECT 
+    proname, proisagg, proiswin, prosecdef, proisstrict, proretset, provolatile,
+    typname as rettype, pronargs,
+    array(select typname 
+          from pg_type t, 
+              generate_series(array_lower(proargtypes,1), array_upper(proargtypes,1)) i
+          where t.oid=proargtypes[i] 
+          order by i) as argtypes,
+    array(select typname 
+          from pg_type t, 
+              generate_series(array_lower(proallargtypes,1), array_upper(proallargtypes,1)) i
+          where t.oid=proallargtypes[i] 
+          order by i) as allargtypes,
+    proargmodes, proargnames,
+    lanname as language, 
+    case when lanname = 'sql' 
+         then 'SQL LANGUAGE FUNCTION: no check' 
+         else replace(prosrc,E'\n',E'\\n') 
+         end as prosrc, 
+    probin
+FROM
+    pg_proc p 
+    join pg_namespace n on (p.pronamespace = n.oid and n.nspname='upg_catalog')
+    join pg_language l on (p.prolang = l.oid)
+    join pg_type t on (p.prorettype = t.oid)
+WHERE proisagg = 'f' and proiswin = 'f'
+ORDER BY proname, 10;
+
+SELECT 
+    proname, proisagg, proiswin, prosecdef, proisstrict, proretset, provolatile,
+    typname as rettype, pronargs,
+    array(select typname 
+          from pg_type t, 
+              generate_series(array_lower(proargtypes,1), array_upper(proargtypes,1)) i
+          where t.oid=proargtypes[i] 
+          order by i) as argtypes,
+    array(select typname 
+          from pg_type t, 
+              generate_series(array_lower(proallargtypes,1), array_upper(proallargtypes,1)) i
+          where t.oid=proallargtypes[i] 
+          order by i) as allargtypes,
+    proargmodes, proargnames,
+    lanname as language,
+    case when lanname = 'sql' 
+         then 'SQL LANGUAGE FUNCTION: no check' 
+         else replace(prosrc,E'\n',E'\\n') 
+         end as prosrc, 
+    probin
+FROM
+    pg_proc p 
+    join pg_namespace n on (p.pronamespace = n.oid and n.nspname='pg_catalog')
+    join pg_language l on (p.prolang = l.oid)
+    join pg_type t on (p.prorettype = t.oid)
+WHERE proisagg = 'f' and proiswin = 'f' 
+    and p.oid not in (select unnest(array[lanplcallfoid, lanvalidator]) 
+                      from pg_language 
+                      where lanname not in ('internal', 'c', 'sql', 'plpgsql'))
+ORDER BY proname, 10;
+-- end_equiv
+
+
+-- Compare pg_aggregate (Aggregates, Window Functions)
+--
+-- We must exclude a couple aggregates that we can't create via regular DDL
+--   This includes: 
+--      - count(*)
+--      - min(abstime)
+--      - max(abstime)
+--      - pivot_sum(_text, text, int4)
+--
+-- start_equiv
+SELECT
+    p.proname as aggname,
+    array(select typname 
+          from pg_type t, 
+               generate_series(array_lower(p.proargtypes,1), array_upper(p.proargtypes,1)) i
+          where t.oid=p.proargtypes[i] 
+          order by i) as aggargs,
+    tran.proname as transition,  -- invtran.proname as invtransition,  (no syntax support)
+    pre.proname as prelim, -- invpre.proname as invprelim,  (no syntax support)
+    fin.proname as final, sort.oprname as sortop, typ.typname as trantype, a.agginitval
+FROM
+    pg_aggregate a
+    join pg_proc p on (p.oid = a.aggfnoid)
+    join pg_namespace n on (n.oid = p.pronamespace)
+    left join pg_proc tran on (tran.oid = a.aggtransfn)
+    left join pg_proc invtran on (invtran.oid = a.agginvtransfn)
+    left join pg_proc pre on (pre.oid = a.aggprelimfn)
+    left join pg_proc invpre on (invpre.oid = a.agginvprelimfn)
+    left join pg_proc fin on (fin.oid = a.aggfinalfn)
+    left join pg_operator sort on (sort.oid = a.aggsortop)
+    left join pg_type typ on (typ.oid = a.aggtranstype)
+WHERE n.nspname = 'upg_catalog'
+  and not p.proiswin  -- Skip checking Window Functions (no DDL support)
+ORDER BY 1, 2;
+
+SELECT
+    p.proname as aggname,
+    array(select typname 
+          from pg_type t, 
+               generate_series(array_lower(p.proargtypes,1), array_upper(p.proargtypes,1)) i
+          where t.oid=p.proargtypes[i] 
+          order by i) as aggargs,
+    tran.proname as transition,  -- invtran.proname as invtransition,  (no syntax support)
+    pre.proname as prelim, -- invpre.proname as invprelim,  (no syntax support)
+    fin.proname as final, sort.oprname as sortop, typ.typname as trantype, a.agginitval
+FROM
+    pg_aggregate a
+    join pg_proc p on (p.oid = a.aggfnoid)
+    join pg_namespace n on (n.oid = p.pronamespace)
+    left join pg_proc tran on (tran.oid = a.aggtransfn)
+    left join pg_proc invtran on (invtran.oid = a.agginvtransfn)
+    left join pg_proc pre on (pre.oid = a.aggprelimfn)
+    left join pg_proc invpre on (invpre.oid = a.agginvprelimfn)
+    left join pg_proc fin on (fin.oid = a.aggfinalfn)
+    left join pg_operator sort on (sort.oid = a.aggsortop)
+    left join pg_type typ on (typ.oid = a.aggtranstype)
+WHERE n.nspname = 'pg_catalog'
+  and not p.proiswin  -- Skip checking Window Functions (no DDL support)
+  and p.oid not in ('count()'::regprocedure,
+                    'min(abstime)'::regprocedure,
+                    'max(abstime)'::regprocedure,
+                    'pivot_sum(_text,text,int4)'::regprocedure)
+ORDER BY 1, 2;
+-- end_equiv
+
+-- Compare pg_cast (Casts)
+-- start_equiv
+SELECT 
+    src.typname as source, trg.typname as target, p.proname as func, c.castcontext
+FROM
+    pg_cast c
+    join pg_proc p on (c.castfunc = p.oid)
+    join pg_namespace n on (p.pronamespace = n.oid)
+    left join pg_type src on (c.castsource = src.oid)
+    left join pg_type trg on (c.casttarget = trg.oid)
+WHERE n.nspname in ('upg_catalog', 'dummy_cast_functions')
+ORDER BY 1,2,3;
+
+SELECT 
+    src.typname as source, trg.typname as target, p.proname as func, c.castcontext
+FROM
+    pg_cast c
+    join pg_proc p on (c.castfunc = p.oid)
+    join pg_namespace n on (p.pronamespace = n.oid)
+    left join pg_type src on (c.castsource = src.oid)
+    left join pg_type trg on (c.casttarget = trg.oid)
+WHERE n.nspname = 'pg_catalog'
+ORDER BY 1,2,3;
+-- end_equiv
+
+-- Compare pg_operator (Operators)
+-- start_equiv
+SELECT
+    o.oprname, p.proname as oprfunc,
+    tleft.typname as typleft, tright.typname as typright, 
+    result.typname as typresult, o.oprkind, o.oprcanhash,
+    com.oprname as oprcom, neg.oprname as oprnegate, 
+    sort1.oprname as oprsort1, sort2.oprname as oprsort2,
+    ltcmp.oprname as oprltcmp, gtcmp.oprname as oprgtcmp,
+    rest.proname as oprrest, pjoin.proname as oprjoin
+FROM
+    pg_operator o
+    join pg_namespace n on (o.oprnamespace = n.oid)
+    join pg_proc p on (o.oprcode = p.oid)
+    left join pg_type tleft on (o.oprleft = tleft.oid)
+    left join pg_type tright on (o.oprright = tright.oid)
+    left join pg_type result on (o.oprresult = result.oid)
+    left join pg_operator com on (o.oprcom = com.oid)
+    left join pg_operator neg on (o.oprnegate = neg.oid)
+    left join pg_proc rest on (o.oprrest = rest.oid)
+    left join pg_proc pjoin on (o.oprjoin = pjoin.oid)
+    left join pg_operator sort1 on (o.oprlsortop = sort1.oid)
+    left join pg_operator sort2 on (o.oprrsortop = sort2.oid)
+    left join pg_operator ltcmp on (o.oprltcmpop = ltcmp.oid)
+    left join pg_operator gtcmp on (o.oprgtcmpop = gtcmp.oid)
+WHERE n.nspname = 'upg_catalog'
+ORDER BY 1,2,3;
+
+SELECT
+    o.oprname, p.proname as oprfunc,
+    tleft.typname as typleft, tright.typname as typright, 
+    result.typname as typresult, o.oprkind, o.oprcanhash,
+    com.oprname as oprcom, neg.oprname as oprnegate, 
+    sort1.oprname as oprsort1, sort2.oprname as oprsort2,
+    ltcmp.oprname as oprltcmp, gtcmp.oprname as oprgtcmp,
+    rest.proname as oprrest, pjoin.proname as oprjoin
+FROM
+    pg_operator o
+    join pg_namespace n on (o.oprnamespace = n.oid)
+    join pg_proc p on (o.oprcode = p.oid)
+    left join pg_type tleft on (o.oprleft = tleft.oid)
+    left join pg_type tright on (o.oprright = tright.oid)
+    left join pg_type result on (o.oprresult = result.oid)
+    left join pg_operator com on (o.oprcom = com.oid)
+    left join pg_operator neg on (o.oprnegate = neg.oid)
+    left join pg_proc rest on (o.oprrest = rest.oid)
+    left join pg_proc pjoin on (o.oprjoin = pjoin.oid)
+    left join pg_operator sort1 on (o.oprlsortop = sort1.oid)
+    left join pg_operator sort2 on (o.oprrsortop = sort2.oid)
+    left join pg_operator ltcmp on (o.oprltcmpop = ltcmp.oid)
+    left join pg_operator gtcmp on (o.oprgtcmpop = gtcmp.oid)
+WHERE n.nspname = 'pg_catalog'
+ORDER BY 1,2,3;
+-- end_equiv
+
+-- Compare pg_opclass (Operator Classes)
+-- start_equiv
+SELECT
+    c.opcname, am.amname, intype.typname as intype, c.opcdefault, 
+    keytype.typname as keytype
+FROM
+    pg_opclass c
+    join pg_namespace n ON (c.opcnamespace = n.oid)
+    left join pg_am am on (c.opcamid = am.oid)
+    left join pg_type intype on (c.opcintype = intype.oid)
+    left join pg_type keytype on (c.opckeytype = keytype.oid)
+WHERE n.nspname = 'upg_catalog'
+ORDER BY 1, 2, 3;
+
+SELECT
+    c.opcname, am.amname, intype.typname as intype, c.opcdefault, 
+    keytype.typname as keytype
+FROM
+    pg_opclass c
+    join pg_namespace n ON (c.opcnamespace = n.oid)
+    left join pg_am am on (c.opcamid = am.oid)
+    left join pg_type intype on (c.opcintype = intype.oid)
+    left join pg_type keytype on (c.opckeytype = keytype.oid)
+WHERE n.nspname = 'pg_catalog'
+ORDER BY 1, 2, 3;
+-- end_equiv
+
+-- Compare pg_amproc (Operator Classes)
+-- start_equiv
+SELECT
+    c.opcname, am.amname, t.typname, op.amprocnum, p.proname
+FROM
+    pg_amproc op
+    JOIN pg_opclass c on (op.amopclaid = c.oid)
+    JOIN pg_namespace n on (c.opcnamespace = n.oid)
+    JOIN pg_am am on (c.opcamid = am.oid)
+    LEFT JOIN pg_proc p on (op.amproc = p.oid)
+    LEFT JOIN pg_type t on (op.amprocsubtype = t.oid)
+WHERE n.nspname = 'upg_catalog'
+ORDER BY 1, 2, 3, 4;
+
+SELECT
+    c.opcname, am.amname, t.typname, cp.amprocnum, p.proname
+FROM
+    pg_amproc cp
+    JOIN pg_opclass c on (cp.amopclaid = c.oid)
+    JOIN pg_namespace n on (c.opcnamespace = n.oid)
+    JOIN pg_am am on (c.opcamid = am.oid)
+    LEFT JOIN pg_proc p on (cp.amproc = p.oid)
+    LEFT JOIN pg_type t on (cp.amprocsubtype = t.oid)
+WHERE n.nspname = 'pg_catalog'
+ORDER BY 1, 2, 3, 4;
+-- end_equiv
+
+-- Compare pg_amop (Operator Classes)
+-- start_equiv
+SELECT
+    c.opcname, am.amname, t.typname, co.amopstrategy, co.amopreqcheck, o.oprname
+FROM
+    pg_amop co
+    JOIN pg_opclass c on (co.amopclaid = c.oid)
+    JOIN pg_namespace n on (c.opcnamespace = n.oid)
+    JOIN pg_am am on (c.opcamid = am.oid)
+    LEFT JOIN pg_operator o on (co.amopopr = o.oid)
+    LEFT JOIN pg_type t on (co.amopsubtype = t.oid)
+WHERE n.nspname = 'upg_catalog'
+ORDER BY 1, 2, 3, 4;
+
+SELECT
+    c.opcname, am.amname, t.typname, co.amopstrategy, co.amopreqcheck, o.oprname
+FROM
+    pg_amop co
+    JOIN pg_opclass c on (co.amopclaid = c.oid)
+    JOIN pg_namespace n on (c.opcnamespace = n.oid)
+    JOIN pg_am am on (c.opcamid = am.oid)
+    LEFT JOIN pg_operator o on (co.amopopr = o.oid)
+    LEFT JOIN pg_type t on (co.amopsubtype = t.oid)
+WHERE n.nspname = 'pg_catalog'
+ORDER BY 1, 2, 3, 4;
+-- end_equiv
+
+-- Compare pg_conversion (Conversions)
+-- start_equiv
+SELECT
+    c.conname, c.conforencoding, c.contoencoding, p.proname, c.condefault
+FROM
+    pg_conversion c
+    JOIN pg_namespace n ON (c.connamespace = n.oid)
+    LEFT JOIN pg_proc p ON (c.conproc = p.oid)
+WHERE n.nspname = 'upg_catalog'
+ORDER BY 1,2,3;
+
+SELECT
+    c.conname, c.conforencoding, c.contoencoding, p.proname, c.condefault
+FROM
+    pg_conversion c
+    JOIN pg_namespace n ON (c.connamespace = n.oid)
+    LEFT JOIN pg_proc p ON (c.conproc = p.oid)
+WHERE n.nspname = 'pg_catalog'
+ORDER BY 1,2,3;
+-- end_equiv
+
+
+-- ===========================================================================
+-- Validate as much as possible that we can't validate via the above checks:
+--    * Shared Objects (Tablespace/Filespaces/Databases/Resource Queues/etc
+--    * Objects without corresponding DDL (Window Functions, Access Methods)
+--    * Objects without schemas (Languages, Schemas)
+--    * Objects we skipped above for some other reason
+--
+-- ===========================================================================
+SELECT * FROM pg_pltemplate ORDER BY tmplname;
+SELECT oid, * FROM pg_resqueue WHERE oid < 10000 ORDER BY rsqname;
+SELECT oid, * FROM pg_filespace WHERE oid < 10000 ORDER BY fsname;
+SELECT oid, * FROM pg_tablespace WHERE oid < 10000 ORDER BY spcname;
+SELECT oid, * FROM pg_database WHERE oid < 10000 ORDER BY datname;
+SELECT oid, * FROM pg_resourcetype ORDER BY resname;
+SELECT oid, * FROM pg_resqueuecapability WHERE resqueueid < 10000 ORDER BY oid;
+
+SELECT oid, * FROM pg_am ORDER BY amname;
+SELECT * FROM pg_window ORDER BY winfnoid;
+
+SELECT oid, * FROM pg_language WHERE oid < 10000 ORDER BY lanname;
+SELECT oid, * FROM pg_namespace WHERE oid < 10000 ORDER BY nspname;
+
+SELECT * FROM pg_aggregate WHERE aggfnoid in (
+        'count()'::regprocedure,
+        'min(abstime)'::regprocedure,
+        'max(abstime)'::regprocedure,
+        'pivot_sum(_text,text,int4)'::regprocedure) ;
+
+--
+-- TODO: Checks for pg_description, pg_shdescription
+
+-- ===========================================================================
+-- * Test Cleanup
+-- ===========================================================================
+-- start_ignore
+--DROP SCHEMA upg_toolkit CASCADE;
+--DROP SCHEMA upg_information CASCADE;
+--DROP SCHEMA upg_catalog CASCADE;
+--DROP SCHEMA dummy_cast_functions CASCADE;
+-- end_ignore
+
+RESET search_path;
+RESET log_min_messages;
