@@ -25,7 +25,7 @@ where option can be:
       SUPERUSER | NOSUPERUSER
     | CREATEDB | NOCREATEDB
     | CREATEROLE | NOCREATEROLE
-    | CREATEEXTABLE | NOCREATEEXTABLE 
+    | CREATEEXTTABLE | NOCREATEEXTTABLE 
       [ ( attribute='value'[, ...] ) ]
            where attributes and values are:
            type='readable'|'writable'
