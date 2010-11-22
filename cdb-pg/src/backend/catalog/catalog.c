@@ -49,10 +49,13 @@
 #include "catalog/gp_id.h"
 #include "catalog/gp_version.h"
 #include "catalog/toasting.h"
+#include "catalog/gp_policy.h"
+
 #include "miscadmin.h"
 #include "storage/fd.h"
 #include "utils/fmgroids.h"
 #include "utils/relcache.h"
+#include "utils/lsyscache.h"
 
 #include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbvars.h"
@@ -621,6 +624,29 @@ IsAoSegmentNamespace(Oid namespaceId)
 	return namespaceId == PG_AOSEGMENT_NAMESPACE;
 }
 
+/**
+ * Method determines if a relation is master-only or distributed among segments.
+ * Input:
+ * 	relationOid
+ * Output:
+ * 	true if masteronly
+ */
+bool
+isMasterOnly(Oid relationOid)
+{
+	Assert(relationOid != InvalidOid);
+	Oid				schemaOid = get_rel_namespace(relationOid);
+	GpPolicy		*distributionPolicy = GpPolicyFetch(CurrentMemoryContext, relationOid);
+	
+	bool masterOnly = (Gp_role == GP_ROLE_UTILITY 
+			|| IsSystemNamespace(schemaOid)
+			|| IsToastNamespace(schemaOid)
+			|| IsAoSegmentNamespace(schemaOid)
+			|| (distributionPolicy == NULL)
+			|| (distributionPolicy->ptype == POLICYTYPE_ENTRY));
+	
+	return masterOnly;
+}
 /*
  * IsReservedName
  *		True iff name starts with the pg_ prefix.

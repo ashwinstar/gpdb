@@ -494,6 +494,7 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_TYPE_REDISTRIBUTE_MOTION "Redistribute Motion"
 #define QENODE_TYPE_BROADCAST_MOTION "Broadcast Motion"
 #define QENODE_TYPE_GATHER_MOTION "Gather Motion"
+#define QENODE_TYPE_EXPLICIT_REDISTRIBUTE_MOTION "Explicit Redistribute Motion"
 #define QENODE_TYPE_NESTED_LOOP "Nested Loop"
 #define QENODE_TYPE_NESTED_LOOP_LEFT_JOIN "Nested Loop Left Join"
 #define QENODE_TYPE_NESTED_LOOP_LEFT_ANTI_SEMI_JOIN "Nested Loop Left Anti Semi Join"
@@ -784,6 +785,10 @@ QenodeNamesDescriptor nodetype_string_lookup[PMNT_MAXIMUM_ENUM] =
 	 	QENODE_MOTION_UNITS
 	},
 	{PMNT_GatherMotion, QENODE_TYPE_GATHER_MOTION, 
+	 	QENODE_MOTION_METRICS, 
+	 	QENODE_MOTION_UNITS
+	},
+	{PMNT_ExplicitRedistributeMotion, QENODE_TYPE_EXPLICIT_REDISTRIBUTE_MOTION, 
 	 	QENODE_MOTION_METRICS, 
 	 	QENODE_MOTION_UNITS
 	},

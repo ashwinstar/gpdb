@@ -941,7 +941,9 @@ _copyMotion(Motion *from)
 	COPY_SCALAR_FIELD(numSortCols);
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
 	COPY_POINTER_FIELD(sortOperators, from->numSortCols * sizeof(Oid));
-
+	
+	COPY_SCALAR_FIELD(segidColIdx);
+	
 	return newnode;
 }
 

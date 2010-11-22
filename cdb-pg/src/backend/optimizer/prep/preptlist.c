@@ -35,7 +35,7 @@
 #include "parser/analyze.h"
 #include "parser/parsetree.h"
 #include "parser/parse_coerce.h"
-
+#include "utils/lsyscache.h"
 
 static List *expand_targetlist(List *tlist, int command_type,
 				  Index result_relation, List *range_table);
@@ -85,16 +85,42 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
 	 */
 	if (command_type == CMD_UPDATE || command_type == CMD_DELETE)
 	{
-		TargetEntry *tle;
-		Var		   *var;
-
-		var = makeVar(result_relation, SelfItemPointerAttributeNumber,
+		TargetEntry *tleCtid = NULL;
+		Var			*varCtid = NULL;
+		
+		TargetEntry *tleSegid = NULL;
+		Var 		*varSegid = NULL;
+		
+		varCtid = makeVar(result_relation, SelfItemPointerAttributeNumber,
 					  TIDOID, -1, 0);
 
-		tle = makeTargetEntry((Expr *) var,
-							  list_length(tlist) + 1,
-							  pstrdup("ctid"),
-							  true);
+		tleCtid = makeTargetEntry((Expr *) varCtid,
+							  list_length(tlist) + 1, 	/* resno */
+							  pstrdup("ctid"),			/* resname */
+							  true);					/* resjunk */
+		/* Get type info for segid column */
+		Oid			reloid,
+					vartypeid;
+		int32		type_mod;
+		
+		reloid = getrelid(result_relation, parse->rtable);
+		
+		get_atttypetypmod(reloid, GpSegmentIdAttributeNumber, &vartypeid, &type_mod);
+
+		varSegid = makeVar
+					(
+					result_relation,
+					GpSegmentIdAttributeNumber,
+					vartypeid,
+					type_mod,
+					0
+					);
+
+		tleSegid = makeTargetEntry((Expr *) varSegid,
+							  list_length(tlist) + 2,	/* resno */
+							  pstrdup("gp_segment_id"),	/* resname */
+							  true);					/* resjunk */
+		
 
 		/*
 		 * For an UPDATE, expand_targetlist already created a fresh tlist. For
@@ -104,7 +130,8 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
 		if (command_type == CMD_DELETE)
 			tlist = list_copy(tlist);
 
-		tlist = lappend(tlist, tle);
+		tlist = lappend(tlist, tleCtid);
+		tlist = lappend(tlist, tleSegid);
 	}
 
 	/*

@@ -41,6 +41,8 @@
 	  public static var ex_broadcast_motion:Class;
 	  [Embed(source="../assets/img/gather_motion.png")]	
 	  public static var ex_gather_motion:Class;			
+	  [Embed(source="../assets/img/explicit_motion.png")]	
+	  public static var ex_explicit_motion:Class;			
 	  [Embed(source="../assets/img/hash.png")]	
 	  public static var ex_hash:Class;
 	  [Embed(source="../assets/img/index_scan.png")]	
@@ -288,6 +290,9 @@
 				  
 				case "Gather Motion":
 				  return ex_gather_motion; break;		
+
+				case "Explicit Redistribute Motion":				  
+				  return ex_explicit_motion; break;
 
 				case "Hash":				  
 				  return ex_hash; break;

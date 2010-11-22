@@ -998,7 +998,8 @@ typedef struct Limit
 typedef enum MotionType
 {
 	MOTIONTYPE_HASH,		/* Use hashing to select a segindex destination */
-	MOTIONTYPE_FIXED		/* Send tuples to a fixed set of segindexes */
+	MOTIONTYPE_FIXED,		/* Send tuples to a fixed set of segindexes */
+	MOTIONTYPE_EXPLICIT		/* Send tuples to the segment explicitly specified in their segid column */
 } MotionType;
 
 /*
@@ -1023,6 +1024,9 @@ typedef struct Motion
 	/* For Fixed */
 	int 	  	numOutputSegs;		/* number of seg indexes in outputSegIdx array, 0 for broadcast */
 	int 	 	*outputSegIdx; 	 	/* array of output segindexes */
+
+	/* For Explicit */
+	AttrNumber segidColIdx;			/* index of the segid column in the target list */
 
 	List       *sliceEntries;       /* for each output slice */
 

@@ -26,6 +26,8 @@ extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
 
 extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary );
 
+extern Motion *make_explicit_motion(Plan *lefttree, bool sendToSecondary, AttrNumber segidColIdx);
+
 void 
 cdbmutate_warn_ctid_without_segid(struct PlannerInfo *root, struct RelOptInfo *rel);
 

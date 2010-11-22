@@ -3250,7 +3250,9 @@ _readMotion(void)
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	READ_OID_ARRAY(sortOperators, numSortCols);
-
+	
+	READ_INT_FIELD(segidColIdx);
+	
 	readPlanInfo((Plan *)local_node);
 
 	READ_DONE();

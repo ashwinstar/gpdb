@@ -361,6 +361,7 @@ DROP TABLE J2_TBL;
 CREATE TEMP TABLE t1_join (a int, b int);
 CREATE TEMP TABLE t2_join (a int, b int);
 CREATE TEMP TABLE t3_join (x int, y int);
+CREATE TEMP TABLE t4_join (x int, y int);
 
 INSERT INTO t1_join VALUES (5, 10);
 INSERT INTO t1_join VALUES (15, 20);
@@ -371,11 +372,12 @@ INSERT INTO t3_join VALUES (5, 20);
 INSERT INTO t3_join VALUES (6, 7);
 INSERT INTO t3_join VALUES (7, 8);
 INSERT INTO t3_join VALUES (500, 100);
+INSERT INTO t4_join SELECT * FROM t3_join;
 
 DELETE FROM t3_join USING t1_join table1 WHERE t3_join.x = table1.a;
 SELECT * FROM t3_join ORDER BY 1,2;
-DELETE FROM t3_join USING t1_join JOIN t2_join USING (a) WHERE t3_join.x > t1_join.a;
-SELECT * FROM t3_join ORDER BY 1,2;
+DELETE FROM t4_join USING t1_join JOIN t2_join USING (a) WHERE t4_join.x > t1_join.a;
+SELECT * FROM t4_join ORDER BY 1,2;
 DELETE FROM t3_join USING t3_join t3_other WHERE t3_join.x = t3_other.x AND t3_join.y = t3_other.y;
 SELECT * FROM t3_join ORDER BY 1,2;
 

@@ -513,8 +513,6 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
 				Motion	   *pMotion = (Motion *) childPlan;
 				if (pMotion->motionType == MOTIONTYPE_FIXED && pMotion->numOutputSegs != 0)
 				{
-					/* Gather Motion: this should not be reached in the current implementation */
-					Assert(!"Gather motion node cannot appear below a DML statement.");
 					numSegments = 1;
 				}
 				/* else: other motion nodes execute on all segments */
@@ -1056,6 +1054,10 @@ explain_outNode(StringInfo str,
 						}
 						else
 							pname = "Gather Motion";
+						break;
+					case MOTIONTYPE_EXPLICIT:
+						nReceivers = getgpsegmentCount();
+						pname = "Explicit Redistribute Motion";
 						break;
 					default:
 						pname = "Motion ???";

@@ -760,7 +760,7 @@ repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hash
  * Helper Function: adjustPlanFlow
  *
  * Recursively pushes a motion request down the plan tree which allows us
- * to remove contraints in some cases.	For example, pushing a motion below
+ * to remove constraints in some cases.	For example, pushing a motion below
  * a Sort removes the stability constraint.
  *
  * Returns true if successful.  Returns false and doesn't change anything

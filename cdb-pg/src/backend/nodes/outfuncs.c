@@ -836,7 +836,9 @@ _outMotion(StringInfo str, Motion *node)
 	for (i = 0; i < node->numSortCols; i++)
 		appendStringInfo(str, " %u", node->sortOperators[i]);
 
-    _outPlanInfo(str, (Plan *) node);
+	WRITE_INT_FIELD(segidColIdx);
+
+	_outPlanInfo(str, (Plan *) node);
 }
 
 /*****************************************************************************

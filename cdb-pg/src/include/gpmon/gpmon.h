@@ -357,6 +357,7 @@ typedef enum PerfmonNodeType
     PMNT_RedistributeMotion,
     PMNT_BroadcastMotion,
     PMNT_GatherMotion,
+    PMNT_ExplicitRedistributeMotion,
     PMNT_NestedLoop,
     PMNT_NestedLoopLeftJoin,
     PMNT_NestedLoopLeftAntiSemiJoin,

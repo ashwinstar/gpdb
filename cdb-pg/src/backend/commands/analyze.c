@@ -117,7 +117,6 @@ static void gp_statistics_estimate_reltuples_relpages_heap(Relation rel, float4 
 static void gp_statistics_estimate_reltuples_relpages_ao_rows(Relation rel, float4 *reltuples, float4 *relpages);
 static void gp_statistics_estimate_reltuples_relpages_ao_cs(Relation rel, float4 *reltuples, float4 *relpages);
 static void analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *relPages);
-static bool isMasterOnly(Oid relationOid);
 static void analyzeEstimateIndexpages(Oid relationOid, Oid indexOid, float4 *indexPages);
 
 /* Attribute-type related functions */
@@ -1236,28 +1235,6 @@ static void dropSampleTable(Oid sampleTableOid)
 	pfree((void *)sampleTableName);
 }
 
-/**
- * Method determines if a relation is master-only or distributed among segments.
- * Input:
- * 	relationOid
- * Output:
- * 	true if masteronly
- */
-static bool isMasterOnly(Oid relationOid)
-{
-	Assert(relationOid != InvalidOid);
-	Oid				schemaOid = get_rel_namespace(relationOid);
-	GpPolicy		*distributionPolicy = GpPolicyFetch(CurrentMemoryContext, relationOid);
-	
-	bool masterOnly = (Gp_role == GP_ROLE_UTILITY 
-			|| IsSystemNamespace(schemaOid)
-			|| IsToastNamespace(schemaOid)
-			|| IsAoSegmentNamespace(schemaOid)
-			|| (distributionPolicy == NULL)
-			|| (distributionPolicy->ptype == POLICYTYPE_ENTRY));
-	
-	return masterOnly;
-}
 
 /**
  * This method determines the number of pages corresponding to an index.
@@ -1891,7 +1868,6 @@ static void analyzeComputeHistogram(Oid relationOid,
 	
 	initStringInfo(&str);
 	initStringInfo(&whereClause);
-	
 	appendStringInfo(&whereClause, "%s is not null", quote_identifier(attributeName));
 	
 	/**

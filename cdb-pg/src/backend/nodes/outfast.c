@@ -791,6 +791,8 @@ _outMotion(StringInfo str, Motion *node)
 	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	WRITE_OID_ARRAY(sortOperators, numSortCols);
 
+	WRITE_INT_FIELD(segidColIdx);
+
 	_outPlanInfo(str, (Plan *) node);
 }
 

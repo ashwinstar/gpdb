@@ -1190,7 +1190,8 @@ typedef enum Movement
 	MOVEMENT_FOCUS,			/* Fixed motion to a single segment. */
 	MOVEMENT_BROADCAST,		/* Broadcast motion. */
 	MOVEMENT_REPARTITION,	/* Hash motion */
-	MOVEMENT_LIM_RESTRUCT	/* Restructure a Limit node into three stages */
+	MOVEMENT_LIM_RESTRUCT,	/* Restructure a Limit node into three stages */
+	MOVEMENT_EXPLICIT		/* Move tuples to the segments specified in the segid column */
 } Movement;
 
 /*----------
@@ -1232,6 +1233,10 @@ typedef struct Flow
 	 * otherwise, they are NIL. */
 	List       *hashExpr;			/* list of hash expressions */
 
+	/* If req_move is MOVEMENT_EXPLICIT, this contains the index of the segid column
+	 * to use in the motion	 */
+	AttrNumber segidColIdx;
+	
     /* The original Flow ptr is saved here upon setting req_move. */
     struct Flow    *flow_before_req_move;
 	

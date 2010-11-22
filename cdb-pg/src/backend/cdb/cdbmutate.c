@@ -84,11 +84,16 @@ make_motion(Plan       *lefttree,
 	
 static Node *apply_motion_mutator(Node *node, ApplyMotionState * context);
 
+static void request_explicit_motion(Plan *plan, Index resultRelationIdx, List *rtable);
+
+static void request_explicit_motion_append(Append *append, List *resultRelationsIdx, List *rtable);
+
+static AttrNumber find_segid_column(List *tlist, Index relid);
+
 static bool
 doesUpdateAffectPartitionCols(PlannerInfo  *root,
 							  Plan         *plan,
                               Query        *query);
-
 
 /*
  * Given an expression, return true if it contains anything non-constant.
@@ -699,14 +704,6 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 		case CMD_UPDATE:
 		case CMD_DELETE:
-			/*
-			 * For updates and deletes on partitioned tables, we restrict the query
-			 * to only those with a partioned flow, and involving no other tables.
-			 * In this manner , we avoid any motion nodes.	If there are subqueries,
-			 * the query will get rejected by the parallelizer unless they are initPlan subqueries.
-			 * If the table is an entry database table, we reject the query unless the
-			 * flow is a singleton on the entry database.
-			 */
 		{
 			/* Distributed target table? */
 			if (targetPolicyType == POLICYTYPE_PARTITIONED)
@@ -729,6 +726,19 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 								    errOmitLocation(true)
 								));
 				}
+				else if (IsA(plan, Append))
+				{
+					/* updating a partitioned table */					
+					request_explicit_motion_append((Append *) plan, root->resultRelations, root->glob->finalrtable);
+				}
+				else
+				{
+					/* updating a non-partitioned table */
+					Assert(list_length(root->resultRelations) == 1);
+					Index relid = list_nth_int(root->resultRelations, 0);
+					request_explicit_motion(plan, relid, root->glob->finalrtable);
+				}
+				
 
 				needToAssignDirectDispatchContentIds = gp_enable_direct_dispatch;
 			}
@@ -740,15 +750,31 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 					plan->flow->flotype == FLOW_REPLICATED ||
 					(plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1))
 				{
-					ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									errmsg("Cannot parallelize that %s yet",
-										   query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
-								));
+					/*
+					 * target table is master-only but flow is distributed:
+					 * add a GatherMotion on top
+					 */
+					
+					/* create a shallow copy of the plan flow */
+					Flow *flow = plan->flow;
+					plan->flow = (Flow *) palloc(sizeof(Flow));
+					*(plan->flow) = *flow;
+					
+					/* save original flow information */
+					plan->flow->flow_before_req_move = flow;
+					
+					/* request a GatherMotion node */
+					plan->flow->req_move = MOVEMENT_FOCUS;
+					plan->flow->hashExpr = NIL;
+					plan->flow->segindex = 0;
 				}
-				/*
-				 * Source is, presumably, a dispatcher singleton.
-				 */
-				plan->flow->req_move = MOVEMENT_NONE;
+				else
+				{
+					/*
+					 * Source is, presumably, a dispatcher singleton.
+					 */
+					plan->flow->req_move = MOVEMENT_NONE;
+				}
 				break;
 			}
 		}
@@ -778,30 +804,46 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
         subplan->qDispSliceId = state.nextMotionID++;
     }
 
-	/* Last minute check for Greenplum Database badness. */
+#ifdef USE_ASSERT_CHECKING
+	/* Check whether plan brings back the tuples to their original segments so they
+	 * can be updated */
 	if (query->commandType == CMD_DELETE ||
         query->commandType == CMD_UPDATE)
 	{
-        char   *cmd = (query->commandType == CMD_UPDATE) ? "UPDATE" : "DELETE";
-
-		/*
-		 * Currently, we only support update or delete involving 1 gang
-         * (not counting Init Plans).
-		 */
-		if (result->nMotionNodes > state.numInitPlanMotionNodes)
+		if (targetPolicyType == POLICYTYPE_ENTRY)
 		{
-			ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-					        errmsg("Cannot parallelize that %s yet", cmd),
-                            errdetail("Passage of data from one segment to another "
-                                      "is not yet supported during %s operations.",
-                                      cmd),
-                            errhint("The WHERE condition must specify equality "
-                                    "between corresponding DISTRIBUTED BY columns "
-                                    "of the target table and all joined tables."),
-                            errOmitLocation(true)
-						));
+			/* target table is master-only */
+			Assert(list_length(root->resultRelations) == 1);
+			Assert(result->flow->flotype == FLOW_SINGLETON && result->flow->segindex == -1);
+		}
+		else if (result->nMotionNodes > state.numInitPlanMotionNodes)
+		{
+			/* target table is distributed and plan involves motion nodes */
+			/*
+			 * Currently, we require all DML plans with Motion to have an ExplicitRedistribute
+			 * motion on top or (for partitioned tables) an Append node with ExplicitRedistribute
+			 * child plans
+			 */
+			if (list_length(root->resultRelations) == 1)
+			{
+				/* non-partitioned table */
+				Assert(IsA(result, Motion) && ((Motion *) result)->motionType == MOTIONTYPE_EXPLICIT);
+			}
+			else
+			{
+				/* updating a partitioned table */
+				Assert(IsA(result, Append));
+				ListCell *lcAppend;
+				foreach(lcAppend, ((Append *) result)->appendplans)
+				{
+					Plan *appendPlan = (Plan *) lfirst(lcAppend);
+					Assert(IsA(appendPlan, Motion) &&
+							((Motion *) appendPlan)->motionType == MOTIONTYPE_EXPLICIT);
+				}
+			}
 		}
 	}
+#endif
 
     /* 
 	 * Discard subtrees of Query node that aren't needed for execution. 
@@ -965,6 +1007,28 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 				);
             break;
 
+        case MOVEMENT_EXPLICIT:
+        	/* add an ExplicitRedistribute motion node only if child plan nodes
+        	 * have a motion node
+        	 */ 
+        	if (context->nextMotionID - context->numInitPlanMotionNodes - saveNextMotionID > 0)
+        	{
+        		/* motion node in child nodes: add a ExplicitRedistribute motion */
+				newnode = (Node *) make_explicit_motion(plan,
+													 	sendToSecondary,
+													 	flow->segidColIdx
+													 	);
+        	}
+        	else
+        	{
+        		/* no motion nodes in child plan nodes - no need for ExplicitRedistribute:
+        		 * restore flow */
+        		flow->req_move = MOVEMENT_NONE;
+        		flow->flow_before_req_move = NULL;
+        	}
+
+        	break;
+        	
         case MOVEMENT_NONE:
             /* Update flow if reassigning singleton top slice to qDisp. */
             if (flow->flotype == FLOW_SINGLETON &&
@@ -1178,6 +1242,11 @@ void add_slice_to_motion(Motion *motion,
 				motion->plan.flow = NULL;
 			}
 			break;
+		case MOTIONTYPE_EXPLICIT:
+			motion->plan.flow = makeFlow(FLOW_PARTITIONED);
+			/* TODO: antova - Nov 18, 2010; add a special locus type for ExplicitRedistribute flows */ 
+			motion->plan.flow->locustype = CdbLocusType_Strewn;
+			break;
 		default:
 			Assert(!"Invalid motion type");
 			motion->plan.flow = NULL;
@@ -1210,7 +1279,7 @@ make_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex)
 	outSegIdx[0] = destSegIndex; 
 
 	motion = make_motion(lefttree, sendToSecondary, false,
-			0, NULL, NULL /* numSortCols, sortColIdx, sortOperaotrs */
+			0, NULL, NULL /* numSortCols, sortColIdx, sortOperators */
 			);
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED, 
 			NULL, 1, outSegIdx);
@@ -1258,6 +1327,23 @@ make_broadcast_motion(Plan *lefttree, bool sendToSecondary)
 
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED,
 			NULL, 0, NULL);
+	return motion;
+}
+
+Motion *
+make_explicit_motion(Plan *lefttree, bool sendToSecondary, AttrNumber segidColIdx)
+{
+	Motion *motion;
+
+	motion = make_motion(lefttree, sendToSecondary, false,
+			0, NULL, NULL); /* numSortCols, sortColIdx, sortOperators */
+
+	Assert(segidColIdx > 0 && segidColIdx <= list_length(lefttree->targetlist));
+	
+	motion->segidColIdx = segidColIdx;
+	
+	add_slice_to_motion(motion, MOTIONTYPE_EXPLICIT,
+			NULL, 0, NULL); /* hashExpr, numOutputSegs, outputSegIdx */
 	return motion;
 }
 
@@ -1373,6 +1459,89 @@ isAnyColChangedByUpdate(Index       targetvarno,
 	return false;
 }                               /* isAnyColChangedByUpdate */
 
+/*
+ * Request an ExplicitRedistribute motion node for a plan node
+ */
+void request_explicit_motion(Plan *plan, Index resultRelationsIdx, List *rtable)
+{
+	/* request a segid redistribute motion */
+	/* create a shallow copy of the plan flow */
+	Flow *flow = plan->flow;
+	plan->flow = (Flow *) palloc(sizeof(*(plan->flow)));
+	*(plan->flow) = *flow;
+	
+	/* save original flow information */
+	plan->flow->flow_before_req_move = flow;
+	
+	/* request a SegIdRedistribute motion node */
+	plan->flow->req_move = MOVEMENT_EXPLICIT;
+	
+	/* find segid column in target list */
+	AttrNumber segidColIdx = find_segid_column(plan->targetlist, resultRelationsIdx);
+	
+	Assert(-1 != segidColIdx);
+	
+	plan->flow->segidColIdx = segidColIdx;
+}
+
+/*
+ * Request SegIdRedistribute motion node for an Append plan updating a partitioned
+ * table
+ */
+void request_explicit_motion_append(Append *append, List *resultRelationsIdx, List *rtable)
+{
+	Assert(IsA(append, Append));
+	Assert(list_length(append->appendplans) == list_length(resultRelationsIdx));
+	
+	ListCell *lcAppendPlan = NULL;
+	ListCell *lcResultRel = NULL;
+	
+	forboth(lcAppendPlan, append->appendplans,
+			lcResultRel, resultRelationsIdx)
+	{
+		/* request a segid redistribute motion node to be put above each
+		 * append plan */ 
+		Plan *appendChildPlan = (Plan *) lfirst(lcAppendPlan);
+		Index relid = (Index) lfirst (lcResultRel);
+		request_explicit_motion(appendChildPlan, relid, rtable);
+	}
+	
+}
+
+
+/*
+ * Find the index of the segid column of the requested relation (relid) in the 
+ * target list
+ */
+AttrNumber find_segid_column(List *tlist, Index relid)
+{	
+	if (NIL == tlist)
+	{
+		return -1;
+	}
+	
+	ListCell *lcte = NULL;
+	
+	foreach(lcte, tlist)
+	{
+		TargetEntry *te = (TargetEntry *) lfirst(lcte);
+		
+		Var *var = (Var *) te->expr;
+		if (!IsA(var, Var))
+		{
+			continue;
+		}
+		
+		if ((var->varno    == relid && var->varattno  == GpSegmentIdAttributeNumber) ||
+			(var->varnoold == relid && var->varoattno == GpSegmentIdAttributeNumber))
+		{
+			return te->resno;
+		}
+	}
+	
+	// no segid column found
+	return -1;
+}
 
 /*
  * doesUpdateAffectPartitionCols

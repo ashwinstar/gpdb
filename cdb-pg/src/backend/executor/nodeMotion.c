@@ -291,7 +291,8 @@ execMotionSender(MotionState * node)
 	gettimeofday(&time1, NULL);
 #endif
 
-	AssertState(motion->motionType == MOTIONTYPE_HASH ||
+	AssertState(motion->motionType == MOTIONTYPE_HASH || 
+			(motion->motionType == MOTIONTYPE_EXPLICIT && motion->segidColIdx > 0) || 
 			(motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
 	Assert(node->ps.state->interconnect_context);
 
@@ -386,6 +387,7 @@ execMotionUnsortedReceiver(MotionState * node)
 	ReceiveReturnCode recvRC;
 
 	AssertState(motion->motionType == MOTIONTYPE_HASH ||
+			(motion->motionType == MOTIONTYPE_EXPLICIT && motion->segidColIdx > 0) || 
 			(motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
 
 	Assert(node->ps.state->motionlayer_context);
@@ -1506,7 +1508,7 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 			targetRoute = 0;
 		}
 	}
-	else /* Hash motion node */
+	else if (motion->motionType == MOTIONTYPE_HASH) /* Redistribute */
 	{
 		uint32		hval = 0;
 
@@ -1535,7 +1537,17 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 		 * map, and is passed around our system a fair amount!). */
 		Assert(targetRoute != BROADCAST_SEGIDX);
 	}
+	else /* ExplicitRedistribute */
+	{
+		Datum segidColIdxDatum;
 
+		Assert(motion->segidColIdx > 0 && motion->segidColIdx <= list_length((motion->plan).targetlist));
+		bool is_null = false;
+		segidColIdxDatum = slot_getattr(outerTupleSlot, motion->segidColIdx, &is_null);
+		targetRoute = Int32GetDatum(segidColIdxDatum);
+		Assert(!is_null);
+	}
+	
 	tuple = ExecFetchSlotGenericTuple(outerTupleSlot, true);
 	
 	/* send the tuple out. */
@@ -1635,10 +1647,15 @@ initGpmonPktForMotion(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 	Assert(planNode != NULL && gpmon_pkt != NULL && IsA(planNode, Motion));
 
 	{
+		MotionType motionType = ((Motion *)planNode)->motionType;
 		PerfmonNodeType type = PMNT_Invalid;
-		if (((Motion *)planNode)->motionType == MOTIONTYPE_HASH)
+		if (motionType == MOTIONTYPE_HASH)
 		{
 			type = PMNT_RedistributeMotion;
+		}
+		else if (motionType == MOTIONTYPE_EXPLICIT)
+		{
+			type = PMNT_ExplicitRedistributeMotion;
 		}
 		else if (((Motion *)planNode)->numOutputSegs == 0)
 		{

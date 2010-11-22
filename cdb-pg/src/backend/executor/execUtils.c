@@ -66,6 +66,8 @@
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbsreh.h"
 
+#include "catalog/catalog.h" // isMasterOnly()
+
 #include "utils/elog.h"
 
 /* ----------------------------------------------------------------
@@ -1474,11 +1476,21 @@ InitRootSlices(QueryDesc *queryDesc)
 				case CMD_INSERT:
 				case CMD_UPDATE:
 				case CMD_DELETE:
-					slice->gangType = GANGTYPE_PRIMARY_WRITER;
-					slice->gangSize = getgpsegmentCount();
-					slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice, getgpsegmentCount());
+				{
+					/* if updating a master-only table: do not dispatch to segments */
+					List *resultRelations = queryDesc->plannedstmt->resultRelations; 
+					Assert(list_length(resultRelations) > 0);
+					Index idx = list_nth_int(resultRelations, 0);
+					Oid reloid = getrelid(idx, queryDesc->plannedstmt->rtable);
+					if (!isMasterOnly(reloid))
+					{
+						slice->gangType = GANGTYPE_PRIMARY_WRITER;
+						slice->gangSize = getgpsegmentCount();
+						slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice, getgpsegmentCount());
+			        }
+			        /* else: result relation is master-only, so top slice should run on the QD and not be dispatched */
 					break;
-
+				}
 				default:
 					Assert(FALSE);
 			}
