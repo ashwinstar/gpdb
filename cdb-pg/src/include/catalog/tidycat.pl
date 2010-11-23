@@ -50,11 +50,12 @@ Options:
 tidycat.pl handles all of your stinky catalog problems, leaving a
 fresh, clean scent.  Catalog tables require several sets of
 co-ordinated modifications to multiple source files to define the
-table and indexes, as well as some special code in catalog.c and
-bootparse.y to aid in bootstrap and upgrade.  tidycat.pl uses a single
-definition statement to generate the code associated with the table in
-multiple source files.  A sample definition for the fictional
-pg_foobar.h follows:
+table and indexes, and (under some circumstances) the toast tables and
+indexes (in toasting.h and toasting.c), as well as some special code
+in catalog.c and bootparse.y to aid in bootstrap and upgrade.
+tidycat.pl uses a single definition statement to generate the code
+associated with the table in multiple source files.  A sample
+definition for the fictional pg_foobar.h follows:
 
   /* TIDYCAT_BEGINDEF
 
