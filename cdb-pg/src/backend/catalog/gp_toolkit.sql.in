@@ -105,12 +105,12 @@ AS
 		fn.fnnspname as autnspname, 
 		fn.fnrelname as autrelname, 
 		relkind as autrelkind,
-		relstorage as autrelstorage,
 		reltuples as autreltuples,
 		relpages as autrelpages,
 		relacl as autrelacl,
 		pgc.oid as autoid,
-		pgc.reltoastrelid as auttoastoid
+		pgc.reltoastrelid as auttoastoid,
+		pgc.relstorage as autrelstorage
 	FROM 
 		pg_catalog.pg_class pgc,
 		%%JETPACK_PREFIX_AUX%%fullname fn
