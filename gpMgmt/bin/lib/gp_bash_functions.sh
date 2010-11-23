@@ -756,30 +756,77 @@ POSTGRES_PORT_CHK () {
 CREATE_SPREAD_MIRROR_ARRAY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	((MAX_ARRAY=${#QE_PRIMARY_ARRAY[@]}-1))
-        SEG_OFFSET=0
-	LOOP=1
-	SEG_PROCESSED=0
-        STAGGER_NICS=1
+
+	# Current host and subnet we are working on
+	CURRENT_HOST=0
+	CURRENT_SUBNET=0
+	
+	# Destination host and subnet
+	DEST_HOST=0
+	DEST_SUBNET=0
+	
+	if [ x"$NUM_MHOST_NODE" != x"" ] && [ $NUM_MHOST_NODE -gt 0 ] ; then
+		((DIRS_PER_SUBNET=$NUM_DATADIR/$NUM_MHOST_NODE))
+	else
+		DIRS_PER_SUBNET=$NUM_DATADIR
+	fi
+	
+	((MAX_SUBNET=$NUM_DATADIR/$DIRS_PER_SUBNET))
+	((MAX_HOST=${#QE_PRIMARY_ARRAY[@]}/$NUM_DATADIR))
+	
+	SEGS_PROCESSED=0
+	SEGS_PROCESSED_HOST=0
+
+
+	# The following is heavily dependent on sort order of primary array.  This sort
+	# order will be affected by hostnames so something non-standard will cause 
+	# strange behaviour.  This isn't new (just recording this fact for future generations) 
+	# and can be worked around with a mapping file to gpinitsystem (-I option).
+	# The right way to do this would require us to connect to remote hosts, determine 
+	# what subnet we are on for that hostname and then build the array that way.  We *will*
+	# do this once this is in python (or anything other than BASH)
 	LOG_MSG "[INFO]:-Building spread mirror array type $MULTI_TXT, please wait..." 1
 	for QE_LINE in ${QE_PRIMARY_ARRAY[@]}
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-                if [ $SEG_PROCESSED -eq $NUM_DATADIR ];then
-                        LOOP=1
-                        # Stagger the index so that a mirror ends up on a different subnet than its primary.
-                        STAGGER_NICS=1
-                        SEG_PROCESSED=0
-                        ((SEG_OFFSET=$SEG_OFFSET+$NUM_DATADIR))
-                elif [ $SEG_PROCESSED -eq `expr $NUM_DATADIR - 1` ] ; then
-                        # Last segment on a node, so offset to the first primary segment's subnet.
-                        ((STAGGER_NICS=1-$NUM_DATADIR))
-		fi
-		((STEP=$NUM_DATADIR*$LOOP))
-		((VECTOR=$STEP+$SEG_PROCESSED+$SEG_OFFSET+$STAGGER_NICS))
-		if [ $VECTOR -gt $MAX_ARRAY ];then
-			((VECTOR=$VECTOR-$MAX_ARRAY-1))
-		fi
-		QE_M_NAME=`$ECHO ${QE_PRIMARY_ARRAY[$VECTOR]}|$AWK -F":" '{print $1}'`
+
+		if [ $(($SEGS_PROCESSED%$NUM_DATADIR)) -eq 0 ] ; then
+			# A new host group is starting
+			if [ $SEGS_PROCESSED -ne 0 ] ; then ((CURRENT_HOST=$CURRENT_HOST+1)); fi
+			# Start the mirroring on the next host
+			((DEST_HOST=$CURRENT_HOST+1))
+			# Always subnet "0" to start
+			CURRENT_SUBNET=0
+			DEST_SUBNET=1
+			# Make sure we loop back when needed
+			if [ $DEST_HOST -ge $MAX_HOST ] ; then DEST_HOST=0; fi
+			SEGS_PROCESSED_HOST=0
+		else
+			# Continue with current host
+			# move dest host to the next one (This is spread mirroring)
+			((DEST_HOST=$DEST_HOST+1))
+			# Make sure we look back when needed
+			if [ $DEST_HOST -ge $MAX_HOST ] ; then DEST_HOST=0; fi
+			# Get what subnet we are on, we may have moved to next
+			((CURRENT_SUBNET=($SEGS_PROCESSED_HOST+1)/$DIRS_PER_SUBNET))
+			((DEST_SUBNET=$CURRENT_SUBNET+1))
+			# Handle looping over
+			if [ $DEST_SUBNET -ge $MAX_SUBNET ] ; then DEST_SUBNET=0; fi
+			# Increment the number of segments we've processed for this host
+			((SEGS_PROCESSED_HOST=$SEGS_PROCESSED_HOST+1))
+		fi			
+        
+        # Handle the case where it's a single hostname (thus a single subnet)
+		# This case will mainly be for QA testing
+		if [ $NUM_DATADIR -eq $DIRS_PER_SUBNET ] ; then DEST_SUBNET=0; fi
+		
+		# Handle possible loop
+		if [ $DEST_SUBNET -ge $MAX_SUBNET ] ; then DEST_SUBNET=0; fi
+
+		# Calculate the index based on host and subnet number
+		((PRIM_SEG_INDEX=($DEST_HOST*$NUM_DATADIR)+($DEST_SUBNET*$DIRS_PER_SUBNET)))
+
+		QE_M_NAME=`$ECHO ${QE_PRIMARY_ARRAY[$PRIM_SEG_INDEX]}|$AWK -F":" '{print $1}'`
 		GP_M_DIR=${MIRROR_DATA_DIRECTORY[$SEG_PROCESSED]}
 		P_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $2}'`
 		P_REPL_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $6}'`
@@ -790,8 +837,7 @@ CREATE_SPREAD_MIRROR_ARRAY () {
 		QE_MIRROR_ARRAY=(${QE_MIRROR_ARRAY[@]} ${QE_M_NAME}:${GP_M_PORT}:${GP_M_DIR}/${M_SEG}:${DBID_COUNT}:${M_CONTENT}:${M_REPL_PORT})
 		POSTGRES_PORT_CHK $GP_M_PORT $QE_M_NAME
 		((DBID_COUNT=$DBID_COUNT+1))
-		((SEG_PROCESSED=$SEG_PROCESSED+1))
-		((LOOP=$LOOP+1))
+		((SEGS_PROCESSED=$SEGS_PROCESSED+1))
 	done
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -813,30 +859,44 @@ CREATE_GROUP_MIRROR_ARRAY () {
 		PRI_HOST_COUNT=1
 	fi
 
+	if [ x"$NUM_MHOST_NODE" != x"" ] && [ $NUM_MHOST_NODE -gt 0 ] ; then
+		((DIRS_PER_SUBNET=$NUM_DATADIR/$NUM_MHOST_NODE))
+	else
+		DIRS_PER_SUBNET=$NUM_DATADIR
+	fi
+	((MAX_SUBNET=$NUM_DATADIR/$DIRS_PER_SUBNET))
+	((MAX_HOST=${#QE_PRIMARY_ARRAY[@]}/$NUM_DATADIR))
+
+	# Current host we are working on
+	CURRENT_HOST=0
+	
+	# Destination host and subnet
+	DEST_HOST=0
+	DEST_SUBNET=0
+
 	PRIMARY_ARRAY_LENGTH=${#QE_PRIMARY_ARRAY[@]}
 	PRIMARY_INDEX=0
-        STAGGER_NICS=1
+
 	for QE_LINE in ${QE_PRIMARY_ARRAY[@]}
 	do
+		if [ $(($PRIMARY_INDEX%$NUM_DATADIR)) -eq 0 ] ; then
+			if [ $PRIMARY_INDEX -ne 0 ] ; then ((CURRENT_HOST=$CURRENT_HOST+1)); fi
+			((DEST_HOST=$CURRENT_HOST+1))
+			if [ $DEST_HOST -ge $MAX_HOST ] ; then DEST_HOST=0; fi
+			DEST_SUBNET=1
+		else
+			if [ $(($PRIMARY_INDEX%$DIRS_PER_SUBNET)) -eq 0 ] ; then
+				((DEST_SUBNET=$DEST_SUBNET+1))
+			fi	
+		fi
 
-        #
-        #  the mirror will take the host from the primary of $MIRROR_INDEX
-        #     this is (primary+numDataDirs) % numPrimaries to get from the next block of hosts
-        # 
-	    MIRROR_INDEX=$(($PRIMARY_INDEX+$NUM_DATADIR))
-	    MIRROR_INDEX=$(($MIRROR_INDEX%$PRIMARY_ARRAY_LENGTH))
+		# Handle possible loop
+		if [ $DEST_SUBNET -ge $MAX_SUBNET ] ; then DEST_SUBNET=0; fi		
 
-            MIRROR_DIR_INDEX=$(($MIRROR_INDEX % $NUM_DATADIR))
-
-            # Stagger the index so that a mirror ends up on a different subnet than its primary.
-            if [ $(($MIRROR_INDEX % $NUM_DATADIR)) -eq $(($NUM_DATADIR - 1)) ];then
-               ((MIRROR_INDEX=$MIRROR_INDEX-$NUM_DATADIR+1))
-            else
-               ((MIRROR_INDEX=$MIRROR_INDEX+1))
-            fi
+		((MIRROR_INDEX=($DEST_HOST*$NUM_DATADIR)+($DEST_SUBNET*$DIRS_PER_SUBNET)))
 
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		
+
 		QE_M_NAME=`$ECHO ${QE_PRIMARY_ARRAY[$MIRROR_INDEX]}|$AWK -F":" '{print $1}'`
 		GP_M_DIR=${MIRROR_DATA_DIRECTORY[$MIRROR_DIR_INDEX]}/`$ECHO $QE_LINE|$AWK -F":" '{print $3}'|$AWK -F"/" '{print $NF}'`
 
