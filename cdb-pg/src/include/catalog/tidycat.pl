@@ -108,12 +108,18 @@ unused_oids to find one.
 =item toast_oid: (required for all tables with text or array columns)
 
 The oid of the toast table (see toasting.h).  Use unused_oids to find
-one.
+one.  tidycat will automatically detect if the table definition
+requires a toast table and return an error if it is not specified.
 
 =item toast_index: (required for all tables with toast_oid)
 
 The oid of the index of the toast table (see toasting.h).  Use
 unused_oids to find one.
+
+=item toast_reltype: (required for all toast tables post-3.3)
+
+The static reltype of the toast table in pg_type (necessary for
+upgrade). Use unused_oids to find one.
 
 =back
 
@@ -242,17 +248,20 @@ my $glob_tabstr = "\t";
 #my $glob_tabstr = " " x $glob_tabwidth; 
 my $glob_preview;
 my $glob_sqldef;
+my $glob_dumpdef;
 my $glob_tmpdir = "/tmp";
 
 BEGIN {
     my $man  = 0;
     my $help = 0;
 	my $preview = 0;
-	my $sqldef = 0;
+	my $sqldef;
+	my $dumpdef;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
 	 	       "preview|pretend" => \$preview,
+	 	       "dumpdef:s" => \$dumpdef,
 	 	       "sqldef:s" => \$sqldef
                )
         or pod2usage(2);
@@ -263,6 +272,7 @@ BEGIN {
 
 	$glob_preview = $preview;
 	$glob_sqldef = $sqldef if (defined($sqldef) && length($sqldef));
+	$glob_dumpdef = $dumpdef if (defined($dumpdef) && length($dumpdef));
 
 #    print "loading...\n" ;
 }
@@ -356,6 +366,21 @@ my %toast_tab_exception_h =
 	 "pg_tablespace" => 1,
 	 "pg_type" => 1,
 	 "pg_user_mapping" => 1
+	);
+
+# DO NOT extend this list!  To ensure smooth upgrade, all new toast
+# tables must have a fixed reltype in pg_type.h
+my %toast_reltype_exception_h = 
+	(
+	 "pg_attrdef" => 1,
+	 "pg_constraint" => 1,
+	 "pg_description" => 1,
+	 "pg_proc" => 1,
+	 "pg_rewrite" => 1,
+	 "pg_statistic"=> 1,
+	 "pg_authid" => 1,
+	 "pg_database" => 1,
+	 "pg_shdescription" => 1
 	);
 
 
@@ -886,6 +911,20 @@ sub parsetab
 		die "toast index for $tname must have table (toast_oid)"
 			unless (exists($alltabs->{$tname}->{with}->{toast_oid}));
 	}
+	if (exists($alltabs->{$tname}->{with}->{toast_oid}))
+	{
+		die "toast table for $tname must have static reltype (toast_reltype)"
+			unless (exists($alltabs->{$tname}->{with}->{toast_reltype}) ||
+					exists($toast_reltype_exception_h{$tname}));
+	}
+	if (exists($alltabs->{$tname}->{with}->{toast_reltype}))
+	{
+		die "toast table for $tname has dynamic reltype -- cannot redefine to static!!"
+			if (exists($toast_reltype_exception_h{$tname}));
+
+		die "toast table static reltype for $tname must have table (toast_oid)"
+			unless (exists($alltabs->{$tname}->{with}->{toast_oid}));
+	}
 
 	if (exists($alltabs->{$tname}->{cols}) &&
 		defined($alltabs->{$tname}->{cols}) &&
@@ -1237,6 +1276,7 @@ sub fix_issharedrelation_function
 {
 	my $alltabs = shift;
 	my $bigstr = "";
+	my $toaststr = "";
 	my %relidh;
 
 	# nicer to sort by relid (vs tablename)
@@ -1262,6 +1302,18 @@ sub fix_issharedrelation_function
 		$bigstr .= $rct;
 		$bigstr .= "relationId == " . $vv->{CamelCaseRelationId} . " || ";
 		$bigstr .= "\n";
+
+		# build entries for Toast table and toast index
+		if (exists($vv->{CamelCaseToastTab}))
+		{
+			$toaststr .= "\n\n";
+			$toaststr .= $rct;
+			$toaststr .= "relationId == " . $vv->{CamelCaseToastTab} . " || ";
+			$toaststr .= "\n";
+			$toaststr .= "relationId == " . $vv->{CamelCaseToastInd} . " || ";
+			$toaststr .= "\n";
+		}
+
 	}
 
 	my $indstr = "";
@@ -1289,8 +1341,8 @@ sub fix_issharedrelation_function
 		$indstr .= "\n\n";
 	}
 
-	return [$bigstr, $indstr];
-}
+	return [$bigstr, $indstr, $toaststr];
+} # end fix_issharedrelation_function
 
 sub bootparse_str
 {
@@ -1346,7 +1398,63 @@ sub fix_bootparse
 
 	return $bigstr;
 
+} # end fix_bootparse
+
+sub toastbootstrap_str
+{
+	my ($cctoastid, $ucreltypid) = @_;
+
+	my $bigstr = <<"EOF_bigstr";
+TWOTABScase CAMELCASETOASTID:
+THREETABStypid = UPPERCASERELTYPID;
+THREETABSbreak;
+EOF_bigstr
+
+	my $twotabs   = $glob_tabstr x 2;
+	my $threetabs = $glob_tabstr x 3;
+
+	$bigstr =~ s/TWOTABS/$twotabs/gm;
+	$bigstr =~ s/THREETABS/$threetabs/gm;
+
+	$bigstr =~ s/CAMELCASETOASTID/$cctoastid/gm;
+	$bigstr =~ s/UPPERCASERELTYPID/$ucreltypid/gm;
+
+	return $bigstr;
 }
+
+sub fix_toastbootstrap
+{
+	my $alltabs = shift;
+	my $bigstr = "";
+	my %relidh;
+
+	# nicer to sort by relid (vs tablename)
+	while (my ($jj, $ww) = each(%{$alltabs}))
+	{
+		$relidh{$ww->{with}->{relid}} = $jj;
+	}
+
+#	for my $kk (sort (keys (%{$alltabs})))
+	for my $jj (sort {$a <=> $b} (keys (%relidh)))
+	{
+		my $kk = $relidh{$jj};
+		my $vv = $alltabs->{$kk};
+		my $rct   = $vv->{relid_comment_tag}; # standard comment
+
+		next
+			unless (exists($vv->{with}->{toast_reltype}));
+
+		$bigstr .= "\n\n";
+		$bigstr .= $rct;
+		$bigstr .=  toastbootstrap_str($vv->{CamelCaseToastTab}, 
+									   $vv->{UppercaseToastReltypeOid});
+		$bigstr .= "\n\n";
+	}
+
+	return $bigstr;
+
+} # end fix_toastbootstrap
+
 
 sub formattypedata
 {
@@ -1359,6 +1467,23 @@ EOF_bigstr
 $bigstr =~ s/TABLENAME/$tname/gm;
 $bigstr =~ s/RELTYPE\_OID/$reltype_oid/gm;
 $bigstr =~ s/THEE\_OID/$oid/gm;
+
+return $bigstr;
+
+}
+sub formattoasttypedata
+{
+	my ($oid, $tname, $reltype_oid, $toast_oid, $toast_reltype) = @_;
+
+	my $bigstr = <<'EOF_bigstr';
+DATA(insert OID = TOAST_RELTYPE (pg_toast_THEE_OID TOASTNSP PGUID -1 f c t \054 TOAST_OID 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
+EOF_bigstr
+
+$bigstr =~ s/TABLENAME/$tname/gm;
+$bigstr =~ s/RELTYPE\_OID/$reltype_oid/gm;
+$bigstr =~ s/THEE\_OID/$oid/gm;
+$bigstr =~ s/TOAST\_OID/$toast_oid/gm;
+$bigstr =~ s/TOAST\_RELTYPE/$toast_reltype/gm;
 
 return $bigstr;
 
@@ -1397,6 +1522,21 @@ sub formattypes
 		$bigstr .= formattypedata($relid, $kk, $reltype_oid);
 		$bigstr .= 
 			"#define " . $uc_tname . "_RELTYPE_OID " . $reltype_oid . "\n\n\n";
+
+		# do TOAST
+		next
+			unless (exists($vv->{with}->{toast_reltype}) &&
+					exists($vv->{with}->{toast_oid}));
+
+		$vv->{UppercaseToastReltypeOid} = $uc_tname . "_TOAST_RELTYPE_OID";
+		$bigstr .= $rct;
+		$bigstr .= formattoasttypedata($relid, $kk, $reltype_oid, 
+									   $vv->{with}->{toast_oid},
+									   $vv->{with}->{toast_reltype}
+			);
+		$bigstr .= 
+			"#define " . $vv->{UppercaseToastReltypeOid} . " " .
+			$vv->{with}->{toast_reltype} . "\n\n\n";
 	}
 
 	return $bigstr;
@@ -1485,7 +1625,77 @@ sub formatindexes
 	}
 
 	return $bigstr;
-}
+} # end formatindexes
+
+sub formattoastheaders
+{
+	my $alltabs = shift;
+	my $bigstr = "";
+	my %relidh;
+
+	# nicer to sort by relid (vs tablename)
+	while (my ($jj, $ww) = each(%{$alltabs}))
+	{
+		$relidh{$ww->{with}->{relid}} = $jj;
+	}
+
+#	for my $kk (sort (keys (%{$alltabs})))
+	for my $jj (sort {$a <=> $b} (keys (%relidh)))
+	{
+		my $kk = $relidh{$jj};
+		my $vv = $alltabs->{$kk};
+		my $relid = $vv->{with}->{relid};
+		my $rct   = $vv->{relid_comment_tag}; # standard comment
+
+		next unless (exists($vv->{with}->{toast_oid}));
+
+		{
+			my $camelname;
+
+			$camelname = $vv->{with}->{camelcase};
+			
+			# maintain PG/GP prefix for the camelname for TOAST.
+			# weird, but true...
+			if ($kk =~ m/pg/i)
+			{
+				$camelname = "Pg" . $camelname
+					unless ($camelname =~ m/pg/i);
+			}
+			elsif ($kk =~ m/gp/i)
+			{
+				$camelname = "Gp" . $camelname
+					unless ($camelname =~ m/gp/i);
+			}
+
+
+			$bigstr .= $rct;
+			$bigstr .= "DECLARE_TOAST(";
+			$bigstr .=
+				$kk . ", " . $vv->{with}->{toast_oid} . ", " .
+				$vv->{with}->{toast_index} . ");\n";
+
+			my $toasttabname = $camelname . "ToastTable";
+
+			my $ccdef = "#define " . $toasttabname;
+
+			$bigstr .= simpletabalign($ccdef, 
+									  $vv->{with}->{toast_oid}) . "\n";
+
+
+			my $toastindname = $camelname . "ToastIndex";
+
+			$ccdef = "#define " . $toastindname;
+
+			$bigstr .= simpletabalign($ccdef, 
+									  $vv->{with}->{toast_index}) . "\n\n\n";
+
+			$vv->{CamelCaseToastTab} = $toasttabname;
+			$vv->{CamelCaseToastInd} = $toastindname;
+		}
+	}
+
+	return $bigstr;
+} # end formattoastheaders
 
 sub formattab
 {
@@ -1521,6 +1731,29 @@ sub formattab
 			$bigstr .= "  Table does not have static type " .
 				"(only legal for pre-3.3 tables). \n"; 
 		}
+
+		# TOAST comments
+		if (exists($vv->{with}->{toast_oid}))
+		{
+			$bigstr .= "  Table has TOASTable columns,";
+			if (exists($toast_reltype_exception_h{$kk}))
+			{
+				$bigstr .= " but TOAST table does not have static type\n"; 
+			}
+			else
+			{
+				$bigstr .= " and TOAST table has static type\n"; 
+			}
+		}
+		else
+		{
+			if (exists($toast_tab_exception_h{$kk}))
+			{
+				$bigstr .= "  Table has TOASTable columns, but NO TOAST table\n"; 
+			}
+		}
+
+
 		$bigstr .= "  Table has weird hack for timestamp column.\n " 
 			if (exists($vv->{tzhack}));
 
@@ -1600,7 +1833,7 @@ sub parsefile
 		$end_def_str = "TIDYCAT_ENDDEF";
 
 		# XXX XXX: if only dumping sql definitions, allow "fake" ones...
-		if ($glob_sqldef)
+		if ($glob_sqldef || $glob_dumpdef)
 		{
 			$begin_def_str .= "|TIDYCAT_BEGINFAKEDEF";
 			$end_def_str .= "|TIDYCAT_ENDFAKEDEF";
@@ -1763,20 +1996,32 @@ sub clean_duplicate_entries
 {
 	my ($alltabs, $basename, $gen_code) = @_;
 
+	my $db1 = 1;
+
+	print $basename, ":\n\n"
+		if ($db1);
+
+	# NOTE: list the names of special files with generated code
 	return $gen_code
-		unless ($basename =~ m/^(indexing\.h|catalog\.c ind|catalog\.c tab|bootparse\.y|pg\_type\.h)$/);
+		unless ($basename =~ m/^(indexing\.h|toasting\.h|toasting\.c|catalog\.c toast|catalog\.c ind|catalog\.c tab|bootparse\.y|pg\_type\.h)$/);
 
 	my $skiplines = 0;
 
 	# skip N lines of generated code for duplicate entries
 	$skiplines = 2 
 		if ($basename =~ m/indexing/);
+	$skiplines = 3 
+		if ($basename =~ m/toasting\.h/);
+	$skiplines = 3 
+		if ($basename =~ m/toasting\.c/);
 	$skiplines = 2 
 		if ($basename =~ m/pg\_type/);
 	$skiplines = 1
 		if ($basename =~ m/catalog.*ind/);
 	$skiplines = 1
 		if ($basename =~ m/catalog.*tab/);
+	$skiplines = 2
+		if ($basename =~ m/catalog.*toast/);
 	$skiplines = 3
 		if ($basename =~ m/bootparse/);
 
@@ -1801,7 +2046,7 @@ sub clean_duplicate_entries
 		while (scalar(@foo))
 		{
 			my $lin = shift @foo;
-			
+
 			# iter by line, but skip the line which matches the
 			# "relation id" comment
 			if ($lin !~ m/$rct\s+/)
@@ -1810,7 +2055,8 @@ sub clean_duplicate_entries
 			}
 			else
 			{
-#				print "skip: $lin\n";
+				print "skip: $lin\n"
+					if ($db1);
 
 				# and the subsequent N generated lines after the comment
 				for my $ii (1..$skiplines)
@@ -1839,7 +2085,10 @@ sub fixup_generated_code
 
 	my $elist_index = 1;
 
-	# catalog.c index case is second set of definitions
+	# catalog.c toast case is third, and index case is second set of
+	# definitions
+	$elist_index = 3
+		if ($basename =~ m/catalog\.c toast/);
 	$elist_index = 2
 		if ($basename =~ m/catalog\.c ind/);
 
@@ -1848,7 +2097,8 @@ sub fixup_generated_code
 
 	my ($elist, $buffil);
 
-	if (defined($fixup_ref) && (2 == scalar(@{$fixup_ref})))
+	# handle toast, then index
+	if (defined($fixup_ref) && (2 <= scalar(@{$fixup_ref})))
 	{
 		$elist = shift @{$fixup_ref};
 		$buffil = shift @{$fixup_ref};
@@ -1859,7 +2109,8 @@ sub fixup_generated_code
 		$buffil = bufferfile($fullname);
 	}
 
-	print $basename,":\n", Data::Dumper->Dump($elist), "\n";
+	# XXX XXX XXX XXX: dump of regen
+#	print $basename,":\n", Data::Dumper->Dump($elist), "\n";
 
 	return
 		unless (scalar(@{$elist}) >= $elist_index);
@@ -1936,6 +2187,11 @@ if (1)
 	my $buf_indexing;
 	my @arr_indexing;
 
+	my $tmp_toastingh = File::Spec->catfile($glob_tmpdir, "toasting.h");
+	my $fil_toastingh = File::Spec->catfile($dirs0, "toasting.h");
+	my $buf_toastingh;
+	my @arr_toastingh;
+
 	my $tmp_pg_type = File::Spec->catfile($glob_tmpdir, "pg_type.h");
 	my $fil_pg_type = File::Spec->catfile($dirs0, "pg_type.h");
 	my $buf_pg_type;
@@ -1954,6 +2210,13 @@ if (1)
 	my @arr_catalogc;
 	my @arr_catalogc_tab;
 	my @arr_catalogc_ind;
+	my @arr_catalogc_toast;
+
+	my $tmp_toastingc = File::Spec->catfile($glob_tmpdir, "toasting.c");
+	my $fil_toastingc = File::Spec->catfile(
+		File::Spec->catdir(@srcdirs, "backend", "catalog"), "toasting.c");
+	my $buf_toastingc;
+	my @arr_toastingc;
 
 	# src/backend/bootstrap
 	my $tmp_bootparse = File::Spec->catfile($glob_tmpdir, "bootparse.y");
@@ -2022,12 +2285,15 @@ if (1)
 		} # end for entry
 
 		push @arr_indexing, formatindexes(\%alltabs);
+
+		push @arr_toastingh, formattoastheaders(\%alltabs);
 		
 		push @arr_pg_type, formattypes(\%alltabs);
+		push @arr_toastingc, fix_toastbootstrap(\%alltabs);
 
 		my $tab_ind = fix_issharedrelation_function(\%alltabs);
 
-		print Data::Dumper->Dump($tab_ind), "\n";
+#		print Data::Dumper->Dump($tab_ind), "\n";
 
 		push @arr_catalogc, $tab_ind;
 
@@ -2037,6 +2303,8 @@ if (1)
 				if (length($tab_ind->[0]));
 			push @arr_catalogc_ind, $tab_ind->[1]
 				if ((1 < scalar(@{$tab_ind})) && (length($tab_ind->[1])));
+			push @arr_catalogc_toast, $tab_ind->[2]
+				if ((2 < scalar(@{$tab_ind})) && (length($tab_ind->[2])));
 		}
 
 		push @arr_bootparse, fix_bootparse(\%alltabs);
@@ -2055,6 +2323,10 @@ if (1)
 
 			next; # don't update file only want sql
 		}
+		
+		# don't update file if dumping definitions
+		next if ($glob_dumpdef);
+
 
 		# write the modified file to the temp directory
 		open my $file_out, "> " . File::Spec->catfile($glob_tmpdir, $basename)
@@ -2079,11 +2351,30 @@ if (1)
 		close $file_out;
 		exit();
 	}
+	if ($glob_dumpdef)
+	{
+		open my $file_out, "> " . $glob_dumpdef
+			or die "Cannot open $glob_dumpdef for write : $!";
+
+		print $file_out Data::Dumper->Dump([%alltabs]),"\n";
+
+		close $file_out;
+		exit();
+	}
 
 	fixup_generated_code (\%alltabs, 
 						  "indexing.h", $fil_indexing, $tmp_indexing,
 		\@arr_indexing, $verzion, $nnow)
 		if (scalar(@arr_indexing));
+
+	fixup_generated_code (\%alltabs, 
+						  "toasting.h", $fil_toastingh, $tmp_toastingh,
+		\@arr_toastingh, $verzion, $nnow)
+		if (scalar(@arr_toastingh));
+	fixup_generated_code (\%alltabs, 
+						  "toasting.c", $fil_toastingc, $tmp_toastingc,
+		\@arr_toastingc, $verzion, $nnow)
+		if (scalar(@arr_toastingc));
 
 	fixup_generated_code (\%alltabs, 
 						  "pg_type.h", $fil_pg_type, $tmp_pg_type,
@@ -2092,17 +2383,29 @@ if (1)
 
 #	print Data::Dumper->Dump(\@arr_catalogc_tab), "\n";
 
-	# do index entries first because they are last (keep line
-	# numbering consistent for prior items)
+	# do toast entries first because they are last (keep line
+	# numbering consistent for prior items), then index, then table
 	#
 	# catalog.c IsSharedRelation index entries
-	my $catc_ref;
+	my ($catc_ref, $catc_ref2);
 
-	$catc_ref = 
+	$catc_ref2 = 
 		fixup_generated_code (\%alltabs, 
-							  "catalog.c ind", $fil_catalogc, $tmp_catalogc,
-							  \@arr_catalogc_ind, $verzion, $nnow)
-		if (scalar(@arr_catalogc_ind));
+							  "catalog.c toast", $fil_catalogc, $tmp_catalogc,
+							  \@arr_catalogc_toast, $verzion, $nnow)
+		if (scalar(@arr_catalogc_toast));
+
+	if (scalar(@arr_catalogc_ind))
+	{
+		$catc_ref = 
+		fixup_generated_code (\%alltabs, 
+						  "catalog.c ind", $fil_catalogc, $tmp_catalogc,
+							  \@arr_catalogc_ind, $verzion, $nnow, $catc_ref2);
+	}
+	else
+	{
+		$catc_ref = $catc_ref2;
+	}
 
 	# catalog.c IsSharedRelation table entries
 	fixup_generated_code (\%alltabs, 

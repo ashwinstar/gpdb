@@ -649,7 +649,7 @@ DeleteFilespaceEntryTuples(Oid fsoid)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(fsoid));
 
-	scan = systable_beginscan(rel, FilespaceEntryFsIndexId, true,
+	scan = systable_beginscan(rel, FileSpaceEntryFsefsoidIndexId, true,
 							  SnapshotNow, 1, entry);
 
 	/* Delete all the matching tuples */
@@ -953,7 +953,7 @@ get_filespace_path(Oid fseoid, int16 dbid)
 				F_OIDEQ,
 				Int16GetDatum(dbid));
 
-	scan = systable_beginscan(rel, FilespaceEntryFsDbIndexId,
+	scan = systable_beginscan(rel, FileSpaceEntryFsefsoidFsedbidIndexId,
 							  true, /* index ok? */
 							  SnapshotSelf,
 							  2,
