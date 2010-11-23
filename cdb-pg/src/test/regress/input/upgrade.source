@@ -25,16 +25,39 @@
 --
 -- start_matchsubs
 --
+-- # several functions that should return varchar actually return text
+--
 -- m/varchar(_pattern)?_ops/
 -- s/ varchar (\s*)\| [tf] / text    $1\| f/
+--
+-- # Functions that should return cidr actually return inet
+--
 -- m/cidr_ops/
 -- s/ inet (\s*) \| f/ cidr $1 | t/
+--
+-- # The bitmap operator class for int4_ops misdeclares its comparison functions
+--
 -- m/int4_ops/
 -- s/btint(\d+)cmp/btintXXcmp/
+--
+-- # Because we hacked together pg_stat to have "text" rather than "anyarray"
+-- # columns the alignment of the columns is different in our fake schema.
+--
 -- m/pg_stat/
 -- s/ d / i /
+--
+-- # We can't actually create a table with anyarray columns, so we hacked our
+-- # fake schema to have text columns and fix our comparison with this 
+-- # substitution.
+--
 -- m/pg_stat/
 -- s/anyarray/text    /
+--
+-- # Many cast functions actually return the wrong datatype, which makes them
+-- # impossible to create as they are defined in the catalog.  To work around
+-- # this it is necessary to create a bunch of dummy functions, then substitute
+-- # the original function name back in for comparison.
+--
 -- m/dummycast_(\w*)_(\w*)_(\w*)/
 -- s/dummycast_(\w*)_(\w*)_(\w*)/$3/
 --
@@ -46,12 +69,12 @@
 -- ===========================================================================
 -- This script will produce diffs if you add or change catalog table
 -- definitions in src/include/catalog. If you want to change the results, 
--- you must make the changes in regress/output/tidycat.source, not
+-- you must make the changes in regress/output/upgrade.source, not
 -- regress/expected, and use gpsourcify.pl to generate a ".out" file.
 --
 -- From the regress directory invoke the command:
 --
---    gpsourcify.pl results/tidycat.out > output/tidycat.source
+--    gpsourcify.pl results/upgrade.out > output/upgrade.source
 --
 -- ===========================================================================
 -- ===========================================================================
@@ -577,10 +600,10 @@ SELECT * FROM pg_aggregate WHERE aggfnoid in (
 -- * Test Cleanup
 -- ===========================================================================
 -- start_ignore
---DROP SCHEMA upg_toolkit CASCADE;
---DROP SCHEMA upg_information CASCADE;
---DROP SCHEMA upg_catalog CASCADE;
---DROP SCHEMA dummy_cast_functions CASCADE;
+DROP SCHEMA upg_toolkit CASCADE;
+DROP SCHEMA upg_information CASCADE;
+DROP SCHEMA upg_catalog CASCADE;
+DROP SCHEMA dummy_cast_functions CASCADE;
 -- end_ignore
 
 RESET search_path;
