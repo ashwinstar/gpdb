@@ -16,5 +16,6 @@ extern int set_alert_severity(const GpErrorData * errorData,
 						bool *send_via_snmp,
 						char *snmp_severity,
 						bool *send_via_connectemc,
-						EmcConnectSeverity *connectemc_severity);
+						EmcConnectSeverity *connectemc_severity,
+						EmcConnectDetailedSymptom *connectemc_symptom);
 #endif 

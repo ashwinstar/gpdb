@@ -198,56 +198,48 @@ struct gpmon_seginfo_t {
 	apr_uint64_t dynamic_memory_available;		// available memory in bytes,
 };
 
+/*
+//we could clean up the primary and mirror stats using this basicStat struct
+typedef struct gpmon_filerep_basicStat_s
+{
+		apr_uint32_t count; 
+		apr_uint32_t time_avg; 
+		apr_uint32_t time_max; 
+		apr_uint32_t size_avg; 
+		apr_uint32_t size_max; 
+
+} gpmon_filerep_basicStat_s;
+*/
 /* 
  * Filerep related statistics
  */
-struct gpmon_filerepinfo_t 
+typedef struct gpmon_filerep_primarystats_s
 {
-	// sequence number incremented by 1 for each gpperfmon message sent by a sender
-	apr_uint32_t sequencenum;
 
-	// KEY
-	char hostname[NAMEDATALEN];					// hostname without NIC extension .. filled in by perfmon not GPDB
-    apr_uint16_t primary_port;
-    apr_uint16_t mirror_port;
-
+	//NOTE: 32 bits can store over an hour of microseconds - we will not worry about this
 	// EVENT: write systemcall on primary
-	apr_uint32_t primary_write_syscall_size_avg;
-	apr_uint32_t primary_write_syscall_size_max;
-	apr_uint32_t primary_write_syscall_time_avg; // microseconds;
-	apr_uint32_t primary_write_syscall_time_max; // microseconds;
-	apr_uint32_t primary_write_syscall_count; 
-
-	// EVENT: write systemcall on mirror
-	apr_uint32_t mirror_write_syscall_size_avg;
-	apr_uint32_t mirror_write_syscall_size_max;
-	apr_uint32_t mirror_write_syscall_time_avg; // microseconds;
-	apr_uint32_t mirror_write_syscall_time_max; // microseconds;
-	apr_uint32_t mirror_write_syscall_count; 
+	apr_uint32_t write_syscall_size_avg;
+	apr_uint32_t write_syscall_size_max;
+	apr_uint32_t write_syscall_time_avg; // microseconds;
+	apr_uint32_t write_syscall_time_max; // microseconds;
+	apr_uint32_t write_syscall_count; 
 
 	// EVENT: fsync systemcall on primary
-	apr_uint32_t primary_fsync_syscall_time_avg; // microseconds;
-	apr_uint32_t primary_fsync_syscall_time_max; // microseconds;
-	apr_uint32_t primary_fsync_syscall_count; 
-
-	// EVENT: fsync systemcall on mirror
-	apr_uint32_t mirror_fsync_syscall_time_avg; // microseconds;
-	apr_uint32_t mirror_fsync_syscall_time_max; // microseconds;
-	apr_uint32_t mirror_fsync_syscall_count; 
+	apr_uint32_t fsync_syscall_time_avg; // microseconds;
+	apr_uint32_t fsync_syscall_time_max; // microseconds;
+	apr_uint32_t fsync_syscall_count; 
 
 	// EVENT: putting write message into shared memory
-	apr_uint32_t primary_write_shmem_size_avg;
-	apr_uint32_t primary_write_shmem_size_max;
-	apr_uint32_t primary_write_shmem_time_avg; // microseconds;
-	apr_uint32_t primary_write_shmem_time_max; // microseconds;
-	apr_uint32_t primary_write_shmem_count; 
+	apr_uint32_t write_shmem_size_avg;
+	apr_uint32_t write_shmem_size_max;
+	apr_uint32_t write_shmem_time_avg; // microseconds;
+	apr_uint32_t write_shmem_time_max; // microseconds;
+	apr_uint32_t write_shmem_count; 
 
 	// EVENT: putting fsync message into shared memory
-	apr_uint32_t primary_fsync_shmem_size_avg;
-	apr_uint32_t primary_fsync_shmem_size_max;
-	apr_uint32_t primary_fsync_shmem_time_avg; // microseconds;
-	apr_uint32_t primary_fsync_shmem_time_max; // microseconds;
-	apr_uint32_t primary_fsync_shmem_count; 
+	apr_uint32_t fsync_shmem_time_avg; // microseconds;
+	apr_uint32_t fsync_shmem_time_max; // microseconds;
+	apr_uint32_t fsync_shmem_count; 
 
 	// EVENT: Roundtrip from sending fsync message to mirror to get ack back on primary
 	apr_uint32_t roundtrip_fsync_msg_time_avg; // microseconds;
@@ -258,6 +250,52 @@ struct gpmon_filerepinfo_t
 	apr_uint32_t roundtrip_test_msg_time_avg; // microseconds;
 	apr_uint32_t roundtrip_test_msg_time_max; // microseconds;
 	apr_uint32_t roundtrip_test_msg_count;
+} gpmon_filerep_primarystats_s;
+
+typedef struct gpmon_filerep_mirrorstats_s
+{
+	// EVENT: write systemcall on mirror
+	apr_uint32_t write_syscall_size_avg;
+	apr_uint32_t write_syscall_size_max;
+	apr_uint32_t write_syscall_time_avg; // microseconds;
+	apr_uint32_t write_syscall_time_max; // microseconds;
+	apr_uint32_t write_syscall_count; 
+
+	// EVENT: fsync systemcall on mirror
+	apr_uint32_t fsync_syscall_time_avg; // microseconds;
+	apr_uint32_t fsync_syscall_time_max; // microseconds;
+	apr_uint32_t fsync_syscall_count; 
+} gpmon_filerep_mirrorstats_s;
+
+
+typedef union gpmon_filerep_stats_u {
+    gpmon_filerep_primarystats_s primary;
+    gpmon_filerep_mirrorstats_s mirror;
+} gpmon_filerep_stats_u;
+
+typedef struct gpmmon_filerep_key_t
+{
+	char primary_hostname[NAMEDATALEN];				
+	apr_uint16_t primary_port;
+	char mirror_hostname[NAMEDATALEN];				
+	apr_uint16_t mirror_port;
+
+} gpmmon_filerep_key_t;
+
+typedef struct gpsmon_filerep_key_t
+{
+	gpmmon_filerep_key_t dkey;
+	bool isPrimary;
+} gpsmon_filerep_key_t;
+
+
+struct gpmon_filerepinfo_t 
+{
+	gpsmon_filerep_key_t key;
+
+	float elapsedTime_secs;
+
+	gpmon_filerep_stats_u stats;
 };
 
 /* ------------------------------------------------------------------

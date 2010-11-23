@@ -1129,6 +1129,22 @@ int
 FileWrite(File file, char *buffer, int amount)
 {
 	int			returnCode;
+	FileRepGpmonRecord_s gpmonRecord;
+	FileRepGpmonStatType_e whichStat =0;
+
+	if (fileRepRole == FileRepPrimaryRole)
+	{
+			whichStat = FileRepGpmonStatType_PrimaryWriteSyscall;
+			FileRepGpmonStat_OpenRecord(whichStat, &gpmonRecord);
+			gpmonRecord.size = amount;
+
+	} else if (fileRepRole == FileRepMirrorRole)
+	{
+			whichStat = FileRepGpmonStatType_MirrorWriteSyscall;
+			FileRepGpmonStat_OpenRecord(whichStat, &gpmonRecord);
+			gpmonRecord.size = amount;
+
+	}
 
 	Assert(FileIsValid(file));
 
@@ -1222,6 +1238,15 @@ retry:
 		VfdCache[file].seekPos = FileUnknownPos;
 	}
 
+	if (returnCode >=0 )
+	{
+			//only include stat if successful
+			if ((fileRepRole == FileRepPrimaryRole) || 
+				(fileRepRole == FileRepMirrorRole))
+			{
+					FileRepGpmonStat_CloseRecord(whichStat, &gpmonRecord);
+			}
+	}
 	return returnCode;
 }
 
@@ -1229,7 +1254,18 @@ int
 FileSync(File file)
 {
 	int			returnCode;
+	FileRepGpmonRecord_s gpmonRecord;
+	FileRepGpmonStatType_e whichStat;
 
+	if (fileRepRole == FileRepPrimaryRole)
+	{
+			whichStat = FileRepGpmonStatType_PrimaryFsyncSyscall;
+			FileRepGpmonStat_OpenRecord(whichStat, &gpmonRecord);
+	} else 
+	{
+			whichStat = FileRepGpmonStatType_MirrorFsyncSyscall;
+			FileRepGpmonStat_OpenRecord(whichStat, &gpmonRecord);
+	}
 	Assert(FileIsValid(file));
 
 	DO_DB(elog(LOG, "FileSync: %d (%s)",
@@ -1247,7 +1283,18 @@ FileSync(File file)
 								   ""); // tableName
 #endif								
 	
-	return pg_fsync(VfdCache[file].fd);
+	returnCode =  pg_fsync(VfdCache[file].fd);
+	
+	if (returnCode >= 0)
+	{
+			//only include stats if successful
+			if ((fileRepRole == FileRepPrimaryRole) || 
+				(fileRepRole == FileRepMirrorRole))
+			{
+					FileRepGpmonStat_CloseRecord(whichStat, &gpmonRecord);
+			}
+	}
+	return returnCode;
 }
 
 int64

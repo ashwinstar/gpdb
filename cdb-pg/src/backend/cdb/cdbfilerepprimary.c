@@ -327,7 +327,19 @@ FileRepPrimary_ConstructAndInsertMessage(
 	uint32						msgLength = 0;
 	int							status = STATUS_OK;
 	uint32						spareField = 0;
-	
+	FileRepGpmonRecord_s        gpmonRecord;
+
+	if ((fileRepOperation == FileRepOperationFlush) ||
+		(fileRepOperation == FileRepOperationFlushAndClose))
+	{
+			
+			if (fileRepRole == FileRepPrimaryRole) 
+			{
+					FileRepGpmonStat_OpenRecord(
+							FileRepGpmonStatType_PrimaryFsyncShmem,
+							&gpmonRecord);
+			}
+	}
 	/* 
 	 * Prevent cancel/die interrupt while doing this multi-step in order to  
 	 * insert message and update message state atomically with respect to 
@@ -520,8 +532,23 @@ FileRepPrimary_ConstructAndInsertMessage(
 	
 	RESUME_INTERRUPTS();
 	
+	if ((fileRepOperation == FileRepOperationFlush) ||
+		(fileRepOperation == FileRepOperationFlushAndClose))
+	{
+			if (status == STATUS_OK)
+			{
+
+					if (fileRepRole == FileRepPrimaryRole) 
+					{
+							//only include stat if successful
+							FileRepGpmonStat_CloseRecord(
+									FileRepGpmonStatType_PrimaryFsyncShmem,
+									&gpmonRecord);
+					}
+			}
+	}
 	return status;
-}	
+}
 
 /*
  * FileRepPrimary_MirrorOpen
@@ -783,6 +810,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 	uint32						dataLengthLocal;
 	int							status = STATUS_OK;
 	uint32						spareField;
+	FileRepGpmonRecord_s        gpmonRecord;
 
 	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationWrite)) 
 	{
@@ -796,6 +824,14 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 		 * insert message and update message state atomically with respect to 
 		 * cancel/die interrupts. See MPP-10040.
 		 */
+
+		if (fileRepRole == FileRepPrimaryRole) 
+		{
+				FileRepGpmonStat_OpenRecord(FileRepGpmonStatType_PrimaryWriteShmem, 
+											&gpmonRecord);
+				gpmonRecord.size = dataLength;
+		}
+
 		HOLD_INTERRUPTS();
 			
 		while (dataLength > 0) {
@@ -946,6 +982,16 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 		} // while()		
 			
 		RESUME_INTERRUPTS();
+		if (status == STATUS_OK)
+		{
+				//only include stat if successful
+				if (fileRepRole == FileRepPrimaryRole) 
+				{
+						FileRepGpmonStat_CloseRecord(
+								FileRepGpmonStatType_PrimaryWriteShmem, 
+								&gpmonRecord);
+				}
+		}
 		} // if
 	}
 	
@@ -1250,15 +1296,24 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 	int status = STATUS_OK;
 	bool retval = TRUE;
 	FileRepIdentifier_u	fileRepIdentifier;
-	FileRepOperationDescription_u descr;
+	FileRepOperationDescription_u descr;	
+	FileRepGpmonRecord_s gpmonRecord;
+
 	
 	descr.heartBeat.fileRepConsumerProcIndex = index;
 	
 	fileRepIdentifier = FileRep_GetUnknownIdentifier("heartBeat");
 	
+	
 	if (FileRepPrimary_IsMirroringRequired(FileRepRelationTypeUnknown, FileRepOperationHeartBeat)) 
 	{
-		status = FileRepPrimary_ConstructAndInsertMessage(
+			if (fileRepRole == FileRepPrimaryRole) 
+			{
+					FileRepGpmonStat_OpenRecord(
+							FileRepGpmonStatType_PrimaryRoundtripTestMsg, 
+							&gpmonRecord);
+			}
+			status = FileRepPrimary_ConstructAndInsertMessage(
 														  fileRepIdentifier,
 														  FileRepRelationTypeUnknown,
 														  FileRepOperationHeartBeat,
@@ -1289,6 +1344,15 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 						
 			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
 			FileRepSubProcess_ProcessSignals();
+		} else 
+		{
+				//only include stat if successful
+				if (fileRepRole == FileRepPrimaryRole) 
+				{
+						FileRepGpmonStat_CloseRecord(
+								FileRepGpmonStatType_PrimaryRoundtripTestMsg, 
+								&gpmonRecord);
+				}
 		}		
 	}
 	
@@ -1383,7 +1447,7 @@ FileRepPrimary_StartSender(void)
 	pg_time_t		endTime = 0;
 	
 	FileRep_InsertConfigLogEntry("start sender");
-	
+
 	{
 		char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
 		
@@ -1395,7 +1459,7 @@ FileRepPrimary_StartSender(void)
 		
 		FileRep_InsertConfigLogEntry(tmpBuf);
 	}
-	
+
 	while (1) {
 		
 		if (status != STATUS_OK) 

@@ -115,7 +115,7 @@ extern pg_time_t	MyStartTime;
 
 
 #if defined(__linux__)
-static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity);
+static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity, EmcConnectDetailedSymptom symptom);
 #endif
 
 int send_alert_from_chunks(const PipeProtoChunk *chunk,
@@ -542,7 +542,7 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData, const char * 
 #endif
 
 #if defined(__linux__)
-static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity)
+static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity, EmcConnectDetailedSymptom symptom)
 {
 	int retVal = 0;
 
@@ -583,10 +583,13 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 		}
 
 	elog(DEBUG1, "Sending via connectEMC: %s", subject);
-	retVal = gpmon_emcconnect_send_alert(EMC_CONNECT_SYMPTOM_GPDB,
+	retVal = gpmon_emcconnect_send_alert(EMC_CONNECT_SYMPTOM_GPDB, symptom,
 									status,
 									severity,
 									EMC_CONNECT_ORIGIN_GPDBALERTS,
+									0, // not history only
+									"", // display name 
+									"", // snmpoid
 									myhostname,
 									msg);
 	if (retVal)
@@ -920,6 +923,7 @@ int send_alert(const GpErrorData * errorData)
 	char snmp_severity[2];
 	bool send_via_connectemc = false;
 	EmcConnectSeverity connectemc_severity;
+	EmcConnectDetailedSymptom connectemc_symptom;
 
 	static char previous_subject[128];
 	pg_time_t current_time;
@@ -946,7 +950,8 @@ int send_alert(const GpErrorData * errorData)
 						&send_via_snmp,
 						snmp_severity,
 						&send_via_connectemc,
-						&connectemc_severity);
+						&connectemc_severity,
+						&connectemc_symptom);
 
 
 	/*
@@ -1037,7 +1042,7 @@ int send_alert(const GpErrorData * errorData)
 	/* Connect EMC is only available on Linux systems */
 
 	if (send_via_connectemc)
-		send_alert_via_connect_emc(errorData, subject, connectemc_severity);
+		send_alert_via_connect_emc(errorData, subject, connectemc_severity, connectemc_symptom);
 	else
 		elog(DEBUG5,"Not sending via connect emc");
 #endif

@@ -77,6 +77,9 @@ APR_DECLARE (apr_status_t) gpdb_copy_stage_to_harvest_files(apr_pool_t* pool);
  */
 APR_DECLARE (apr_status_t) gpdb_truncate_tail_files(apr_pool_t* pool);
 
+APR_DECLARE (apr_status_t) gpdb_harvest_one(const char* table);
+
+APR_DECLARE (apr_status_t) gpdb_harvest_healthdata();
 
 
 #endif /* GPMONDB_H */

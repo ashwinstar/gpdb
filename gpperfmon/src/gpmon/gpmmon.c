@@ -54,6 +54,7 @@ struct
 	int snmp_interval;
 	apr_uint64_t tail_buffer_max;
 	int console;
+	int health_harvest_interval;
 } opt = { 0 };
 
 /* gpmmon host */
@@ -617,10 +618,13 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 {
 	unsigned int loop;
 	int ticks_since_last_snmp_report = 0;
+	int retVal = 0;
 
 	snprintf(snmp_module_params.configfile, PATH_MAX, "%s/gpperfmon/conf/snmp.conf", ax.master_data_directory);
 	snprintf(snmp_module_params.outdir, PATH_MAX, "%s/gpperfmon/data/snmp", ax.master_data_directory);
+	snprintf(snmp_module_params.externaltable_dir, PATH_MAX, "%s/gpperfmon/data", ax.master_data_directory);
 	snmp_module_params.emcconnect_enabled = opt.emcconnect;
+	snmp_module_params.health_harvest_interval = opt.health_harvest_interval;
 
 	if (gpmmon_init_snmp(&snmp_module_params) != APR_SUCCESS)
 	{
@@ -637,8 +641,19 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 
 		if (ticks_since_last_snmp_report >= opt.snmp_interval)
 		{
-			snmp_report(ax.hosttab, ax.hosttabsz);
-			ticks_since_last_snmp_report = 0;
+			retVal = snmp_report(ax.hosttab, ax.hosttabsz);
+			if (retVal)
+			{
+				gpmon_warningx(FLINE, 0, "failure collecting snmp data from cluster code %d", retVal);
+				fflush(stdout);
+
+				// wait a while before trying to do the report again 
+				ticks_since_last_snmp_report = -60;
+			}
+			else
+			{
+				ticks_since_last_snmp_report = 0;
+			}
 		}
 	}
 
@@ -1047,6 +1062,10 @@ static int read_conf_file(char *conffile)
 			else if (apr_strnatcasecmp(pName, "harvest_interval") == 0)
 			{
 				opt.harvest_interval = atoi(pVal);
+			}
+			else if (apr_strnatcasecmp(pName, "health_harvest_interval") == 0)
+			{
+				opt.health_harvest_interval = atoi(pVal);
 			}
 			else if (apr_strnatcasecmp(pName, "min_query_time") == 0)
 			{

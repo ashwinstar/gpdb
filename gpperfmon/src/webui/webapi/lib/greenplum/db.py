@@ -1106,7 +1106,7 @@ def healthdetails(hostname):
         for line in f:
             line = line.strip()
             cols = line.split("|")
-            if len(cols) != 5:
+            if len(cols) != 8:
                 continue
             results.append(cols)
     except:

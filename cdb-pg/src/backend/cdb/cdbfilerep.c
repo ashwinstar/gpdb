@@ -22,6 +22,8 @@
 #include <sys/stat.h>
 #include <assert.h>
 #include <sys/time.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 #include "miscadmin.h"
 #include "catalog/catalog.h"
@@ -75,6 +77,15 @@ char *fileRepMirrorHostAddress = NULL;
 int fileRepMirrorPort = -1;
 bool fileRepFullResync = false;
 
+/************* FILEREPGPMON ********************/
+
+FileRepGpmonInfo_s * fileRepGpmonInfo;
+
+void FileRepStats_GpmonSend(int sig);
+
+int gp_perfmon_filerep_interval = 3; // send every 3 seconds, this could be a guc in the future if needed
+
+/****************************************/
 FileRepConsumerProcIndex_e 	fileRepProcIndex = FileRepMessageTypeXLog;
 
 static	MemoryContext	fileRepMemoryContext;
@@ -3362,7 +3373,7 @@ void FileRep_Main(void)
 	}
 		
 	Insist(dataState == DataStateInSync || dataState == DataStateInResync);
-	
+
 	switch (fileRepRole) {
 		case FileRepPrimaryRole:
 				
@@ -3461,6 +3472,11 @@ void FileRep_Main(void)
 		FileRep_SetState(FileRepStateFault);
 		goto shutdown;
 	}
+
+	//go ahead and init even if not sending? if(gp_enable_gpperfmon)
+	//Milena mentioned we may want to keep stats anyway even if not sending
+	FileRepStats_GpmonInit();
+
 shutdown:
 
 	while (FileRep_ProcessSignals() == false) {
@@ -3476,6 +3492,9 @@ shutdown:
 		
 		FileRep_CheckFlushLogs(fileRepLogShmem, FALSE /* isConfigLog */);
 
+#if !(FILEREP_GPMON_USE_TIMERS)
+		FileRepStats_GpmonSend(0);
+#endif
 		/*
 		 * check and process any signals received 
 		 * The routine returns TRUE if the received signal requests
@@ -3507,3 +3526,510 @@ shutdown:
 } // FileRep_Main()
 
 
+
+/************* FILEREPGPMON ********************/
+
+void FileRepGpmonStat_OpenRecord(FileRepGpmonStatType_e whichStat, 
+								 FileRepGpmonRecord_s *record)
+{
+		
+		Assert( whichStat < FileRepGpmonStatType__EnumerationCount);
+		record->whichStat = whichStat;
+		record->startTime = GetCurrentTimestamp();
+		record->endTime = 0;
+		record->size = 0;
+
+}
+
+void FileRepGpmonStat_CloseRecord(FileRepGpmonStatType_e whichStat, 
+								  FileRepGpmonRecord_s *record)
+{
+		
+	unsigned long thisTime_msecs;
+	long secs;
+	int microsecs;
+	unsigned long oldCount;
+	gpmon_filerep_stats_u *gfs;
+	
+	gfs = &(fileRepGpmonInfo->gpmonPacket.u.filerepinfo.stats);
+
+	Assert(whichStat == record->whichStat);
+	Assert( whichStat < FileRepGpmonStatType__EnumerationCount);
+
+	record->endTime = GetCurrentTimestamp();
+	
+	TimestampDifference(record->startTime,record->endTime,&secs, &microsecs);
+	//if  secs > 4290 (~) then this could overflow
+	thisTime_msecs = secs*1000000 + microsecs;
+
+	//this would be much cleaner if we used gpmon_filerep_basicStat_s
+	switch (whichStat)
+	{
+
+			/*******************  COUNT AND TIME ONLY *************************/
+			case FileRepGpmonStatType_PrimaryRoundtripTestMsg:
+					Assert (fileRepRole == FileRepPrimaryRole);
+					//count
+					oldCount = 	gfs->primary.roundtrip_test_msg_count;
+					gfs->primary.roundtrip_test_msg_count++;	
+
+					//time max
+					if (thisTime_msecs > 
+						gfs->primary.roundtrip_test_msg_time_max)
+					{
+							gfs->primary.roundtrip_test_msg_time_max = 
+									thisTime_msecs; 
+					}	 
+	
+					//time avg - running average
+					gfs->primary.roundtrip_test_msg_time_avg = 
+							(thisTime_msecs + 
+							 oldCount*gfs->primary.roundtrip_test_msg_time_avg)/
+							(oldCount+1); 
+					return;
+
+			case FileRepGpmonStatType_PrimaryRoundtripFsyncMsg:
+					Assert (fileRepRole == FileRepPrimaryRole);
+					//count
+					oldCount = 	gfs->primary.roundtrip_fsync_msg_count;
+					gfs->primary.roundtrip_fsync_msg_count++;	
+
+					//time max
+					if (thisTime_msecs > 
+						gfs->primary.roundtrip_fsync_msg_time_max)
+					{
+							gfs->primary.roundtrip_fsync_msg_time_max = 
+									thisTime_msecs; 
+					}	 
+	
+					//time avg - running average
+					gfs->primary.roundtrip_fsync_msg_time_avg = 
+							(thisTime_msecs + 
+							oldCount*gfs->primary.roundtrip_fsync_msg_time_avg)/
+							(oldCount+1); 
+					return;
+
+			case FileRepGpmonStatType_PrimaryFsyncSyscall:
+					Assert (fileRepRole == FileRepPrimaryRole);
+					//count
+					oldCount = 	gfs->primary.fsync_syscall_count;
+					gfs->primary.fsync_syscall_count++;	
+
+					//time max
+					if (thisTime_msecs > gfs->primary.fsync_syscall_time_max)
+					{
+							gfs->primary.fsync_syscall_time_max = 
+									thisTime_msecs; 
+					}	 
+	
+					//time avg - running average
+					gfs->primary.fsync_syscall_time_avg = 
+							(thisTime_msecs + 
+							 oldCount*gfs->primary.fsync_syscall_time_avg)/
+							(oldCount+1); 
+					return;
+			case FileRepGpmonStatType_PrimaryFsyncShmem:
+					Assert (fileRepRole == FileRepPrimaryRole);
+					//count
+					oldCount = 	gfs->primary.fsync_shmem_count;
+					gfs->primary.fsync_shmem_count++;	
+					
+					//time max
+					if (thisTime_msecs > gfs->primary.fsync_shmem_time_max)
+					{
+							gfs->primary.fsync_shmem_time_max = thisTime_msecs; 
+					}	 
+	
+					//time avg - running average 
+					gfs->primary.fsync_shmem_time_avg = 
+							(thisTime_msecs + 
+							oldCount*gfs->primary.fsync_shmem_time_avg)/
+							(oldCount+1); 
+					return;
+
+			case FileRepGpmonStatType_MirrorFsyncSyscall:
+					Assert (fileRepRole == FileRepMirrorRole);
+					//count
+					oldCount = 	gfs->mirror.fsync_syscall_count;
+					gfs->mirror.fsync_syscall_count++;	
+
+					//time max
+					if (thisTime_msecs > gfs->mirror.fsync_syscall_time_max)
+					{
+							gfs->mirror.fsync_syscall_time_max = thisTime_msecs; 
+					}	 
+	
+					//time avg - running average
+					gfs->mirror.fsync_syscall_time_avg = 
+							(thisTime_msecs + 
+							 oldCount*gfs->mirror.fsync_syscall_time_avg)/
+							(oldCount+1); 
+					return;
+
+
+			/*******************  COUNT, TIME AND SIZE ************************/
+			case FileRepGpmonStatType_PrimaryWriteShmem:
+					Assert (fileRepRole == FileRepPrimaryRole);
+					//count
+					oldCount = 	gfs->primary.write_shmem_count;
+					gfs->primary.write_shmem_count++;	
+					
+					//time max
+					if (thisTime_msecs > gfs->primary.write_shmem_time_max)
+					{
+							gfs->primary.write_shmem_time_max = thisTime_msecs; 
+					}	 
+	
+					//time avg - running average 
+					gfs->primary.write_shmem_time_avg = 
+							(thisTime_msecs + 
+							oldCount*gfs->primary.write_shmem_time_avg)/
+							(oldCount+1); 
+
+					//size max
+					if (record->size > gfs->primary.write_shmem_size_max)
+					{
+							gfs->primary.write_shmem_size_max = record->size; 
+					}	 
+					
+					//size avg - running average 
+					gfs->primary.write_shmem_size_avg = 
+							(record->size + 
+							 oldCount*gfs->primary.write_shmem_size_avg)/
+							(oldCount+1); 
+					return;
+
+			case FileRepGpmonStatType_PrimaryWriteSyscall:
+					Assert (fileRepRole == FileRepPrimaryRole);
+					//count
+					oldCount = 	gfs->primary.write_syscall_count;
+					gfs->primary.write_syscall_count++;	
+					
+					//time max
+					if (thisTime_msecs > gfs->primary.write_syscall_time_max)
+					{
+							gfs->primary.write_syscall_time_max = 
+									thisTime_msecs; 
+					}	 
+	
+					//time avg - running average 
+					gfs->primary.write_syscall_time_avg = 
+							(thisTime_msecs + 
+							 oldCount*gfs->primary.write_syscall_time_avg)/
+							(oldCount+1); 
+
+					//size max
+					if (record->size > gfs->primary.write_syscall_size_max)
+					{
+							gfs->primary.write_syscall_size_max = record->size; 
+					}	 
+					
+					//size avg - running average 
+					gfs->primary.write_syscall_size_avg = 
+							(record->size + 
+							 oldCount*gfs->primary.write_syscall_size_avg)/
+							(oldCount+1); 
+					return;
+
+			case FileRepGpmonStatType_MirrorWriteSyscall:
+					Assert (fileRepRole == FileRepMirrorRole);
+					//count
+					oldCount = 	gfs->mirror.write_syscall_count;
+					gfs->mirror.write_syscall_count++;	
+					
+					//time max
+					if (thisTime_msecs > gfs->mirror.write_syscall_time_max)
+					{
+							gfs->mirror.write_syscall_time_max = thisTime_msecs; 
+					}	 
+	
+					//time avg - running average 
+					gfs->mirror.write_syscall_time_avg = 
+							(thisTime_msecs + 
+							 oldCount*gfs->mirror.write_syscall_time_avg)/
+							(oldCount+1); 
+
+					//size max
+					if (record->size > gfs->mirror.write_syscall_size_max)
+					{
+							gfs->mirror.write_syscall_size_max = record->size; 
+					}	 
+					
+					//size avg - running average 
+					gfs->mirror.write_syscall_size_avg = 
+							(record->size + 
+							 oldCount*gfs->mirror.write_syscall_size_avg)/
+							(oldCount+1); 
+					return;
+					
+			default:
+					//Invalid stat type
+					Assert(0);
+					return;
+
+						  
+	}
+}
+
+void
+FileRepStats_ShmemInit(void)
+{
+	
+     bool	foundPtr;	
+	 fileRepGpmonInfo = 
+			 (FileRepGpmonInfo_s *) ShmemInitStruct("FileRepGpmonInfo",
+													sizeof(FileRepGpmonInfo_s),
+													&foundPtr);
+		
+	 if (fileRepGpmonInfo == NULL) 
+	 {
+			 ereport(ERROR,
+					 (errcode(ERRCODE_OUT_OF_MEMORY),
+					  (errmsg("not enough shared memory for gpmon stats"))));
+			 //shouldn't we return an errcode?
+			 return;
+	 }	
+		
+	 if (! foundPtr) 
+	 {
+			 MemSet(fileRepGpmonInfo, 0, sizeof(FileRepGpmonInfo_s));
+	 }
+
+}
+
+Size
+FileRepStats_ShmemSize(void)
+{
+		return sizeof(FileRepGpmonInfo_s);
+
+}
+
+
+void FileRepStats_GpmonInit(void)
+{
+
+     FileRepGpmonInfo_s *gpmonInfo;
+	 gpmon_packet_t * packet;
+	 gpmon_filerepinfo_t *filerepInfo;
+	 gpmon_filerep_stats_u *stats;
+	 int sock;
+
+	 gpmonInfo = fileRepGpmonInfo;
+
+	 packet = &(gpmonInfo->gpmonPacket);
+	 filerepInfo = &(gpmonInfo->gpmonPacket.u.filerepinfo);
+	 stats = &(gpmonInfo->gpmonPacket.u.filerepinfo.stats);
+
+
+	 packet->magic = GPMON_MAGIC;
+	 packet->version = GPMON_PACKET_VERSION;
+	 packet->pkttype = GPMON_PKTTYPE_FILEREP;
+	 
+	 if (fileRepRole == FileRepPrimaryRole)
+	 {
+			 elog(DEBUG1, "Initializing Filerep Gpmon Stats on primary\n");
+			 filerepInfo->key.isPrimary = true;
+	 } else if (fileRepRole == FileRepMirrorRole)
+	 {
+			 elog(DEBUG1, "Initializing Filerep Gpmon Stats on mirror\n");
+			 filerepInfo->key.isPrimary = false;
+	 } else 
+	 {
+			 Assert(0);
+			 return;
+	 }
+	 
+	 strncpy(filerepInfo->key.dkey.primary_hostname, fileRepPrimaryHostAddress, 
+			 NAMEDATALEN);
+	 filerepInfo->key.dkey.primary_hostname[NAMEDATALEN-1] = '\0';
+	 filerepInfo->key.dkey.primary_port = fileRepPrimaryPort;
+
+	 strncpy(filerepInfo->key.dkey.mirror_hostname, fileRepMirrorHostAddress, 
+			 NAMEDATALEN);
+	 filerepInfo->key.dkey.mirror_hostname[NAMEDATALEN-1] = '\0';
+	 filerepInfo->key.dkey.mirror_port = fileRepMirrorPort;
+
+	 //should all ready be 0 from the initialization - but double check
+	 MemSet(stats, 0, sizeof(gpmon_filerep_stats_u));
+
+#if FILEREP_GPMON_USE_TIMERS
+	 {
+	 struct itimerval tv;
+	 pqsigfunc sfunc;
+	 int retval;
+	 //set a handler for the itimer
+	 sfunc = pqsignal(SIGVTALRM, FileRepStats_GpmonSend );
+	 if (sfunc == SIG_ERR) 
+	 {
+	     elog(WARNING, 
+			  "filerep gpmon: unable to set signal handler for SIGVTALRM (%m)");
+	 } 
+
+	 
+	 tv.it_interval.tv_sec = gp_perfmon_segment_interval; ///gp_perfmon_segment_interval; //gp_gpperfmon_send_interval;
+	 tv.it_interval.tv_usec = 0;
+	 tv.it_value = tv.it_interval;
+
+	 //set the itimer
+	 retval = setitimer(ITIMER_VIRTUAL, &tv, 0);
+	 if (-1 == retval) 
+	 {
+			 elog(WARNING, "gpmon: unable to start timer (%m)");
+	 } 
+	 }
+#else
+	 gpmonInfo->lastSend = GetCurrentTimestamp();
+#endif
+
+	 sock = socket(AF_INET, SOCK_DGRAM, 0);
+	 if (sock == -1) 
+	 {
+			 elog(WARNING, "gpmon: cannot create socket (%m)");
+	 }
+
+#ifndef WIN32
+	 if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) 
+	 {
+			 elog(WARNING, "fcntl(F_SETFL, O_NONBLOCK) failed");
+	 } 
+
+	 if (fcntl(sock, F_SETFD, 1) == -1) 
+	 {
+			 elog(WARNING, "fcntl(F_SETFD) failed");
+	 } 
+#endif 
+	 gpmonInfo->gpsock = sock;
+	 memset(&(gpmonInfo->gpaddr), 0, sizeof(struct sockaddr_in));
+	 gpmonInfo->gpaddr.sin_family = AF_INET;
+	 gpmonInfo->gpaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	 //gpperfmon_port in utils/init/globals
+	 gpmonInfo->gpaddr.sin_port = htons(gpperfmon_port);
+
+	 elog(DEBUG1, "FileRepStats_GpmonInit destAddress 127.0.0.1, port %d\n", 
+		  gpperfmon_port);
+				 
+}
+void FileRepStats_GpmonSend(int sig)
+{
+	 
+	 FileRepGpmonInfo_s *gpmonInfo;
+	 gpmon_packet_t * packet;
+	 gpmon_filerepinfo_t *filerepInfo;
+	 gpmon_filerep_stats_u *stats;
+	 int bytesSent;
+	 TimestampTz currentTime = GetCurrentTimestamp();
+	 long secs;
+	 int microsecs;
+
+	 if (!gp_enable_gpperfmon)
+	 {
+			 return;
+	 }
+	 
+	 gpmonInfo = fileRepGpmonInfo;
+	 
+	 TimestampDifference(gpmonInfo->lastSend,currentTime,&secs, 
+						&microsecs);
+
+#if !(FILEREP_GPMON_USE_TIMERS)
+	 if (secs < gp_perfmon_filerep_interval) // gp_perfmon_segment_interval) //gp_gpperfmon_send_interval)
+	 {
+			 return;
+	 }
+#endif
+
+	 packet = &(gpmonInfo->gpmonPacket);
+	 filerepInfo = &(gpmonInfo->gpmonPacket.u.filerepinfo);
+	 stats = &(gpmonInfo->gpmonPacket.u.filerepinfo.stats);
+
+	filerepInfo->elapsedTime_secs = (float) secs + (float)microsecs/1000000.0;
+
+	 elog(DEBUG1, "Sending Filerep Gpmon Stats every %d seconds, is primary %d, \
+                primaryhostname %s primaryport %d mirrorhostname %s \
+                mirrorport %d...\n", 
+		  gp_gpperfmon_send_interval, filerepInfo->key.isPrimary,
+		  filerepInfo->key.dkey.primary_hostname, filerepInfo->key.dkey.primary_port, 
+		  filerepInfo->key.dkey.mirror_hostname, filerepInfo->key.dkey.mirror_port);
+
+	 if (filerepInfo->key.isPrimary)
+	 {
+			 elog(DEBUG1, "Primary: write_syscall_count %d time_avg %d \
+                        time_max %d size_avg %d size_max %d\n",
+				  stats->primary.write_syscall_count, 
+				  stats->primary.write_syscall_time_avg, 
+				  stats->primary.write_syscall_time_max, 
+				  stats->primary.write_syscall_size_avg, 
+				  stats->primary.write_syscall_size_max);
+			 elog(DEBUG1, "Primary: fsync_syscall_count %d time_avg %d \
+                        time_max %d \n",
+				  stats->primary.fsync_syscall_count, 
+				  stats->primary.fsync_syscall_time_avg, 
+				  stats->primary.fsync_syscall_time_max);
+			 elog(DEBUG1, "Primary: write_shmem_count %d time_avg %d \
+                        time_max %d size_avg %d size_max %d\n",
+				  stats->primary.write_shmem_count, 
+				  stats->primary.write_shmem_time_avg, 
+				  stats->primary.write_shmem_time_max, 
+				  stats->primary.write_shmem_size_avg, 
+				  stats->primary.write_shmem_size_max);
+			 elog(DEBUG1, "Primary: fsync_shmem_count %d time_avg %d \
+                        time_max %d\n",
+				  stats->primary.fsync_shmem_count, 
+				  stats->primary.fsync_shmem_time_avg, 
+				  stats->primary.fsync_shmem_time_max);
+			 elog(DEBUG1, "Primary: roundtrip_fsync_msg_count %d time_avg %d \
+                        time_max %d \n",
+				  stats->primary.roundtrip_fsync_msg_count, 
+				  stats->primary.roundtrip_fsync_msg_time_avg, 
+				  stats->primary.roundtrip_fsync_msg_time_max);
+			 elog(DEBUG1, "Primary: roundtrip_test_msg_count %d time_avg %d \
+                        time_max %d \n",
+				  stats->primary.roundtrip_test_msg_count, 
+				  stats->primary.roundtrip_test_msg_time_avg, 
+				  stats->primary.roundtrip_test_msg_time_max);
+
+	 } else 
+	 {
+			 elog(DEBUG1, "Mirror: write_syscall_count %d time_avg %d \
+                        time_max %d size_avg %d size_max %d\n",
+				  stats->mirror.write_syscall_count, 
+				  stats->mirror.write_syscall_time_avg, 
+				  stats->mirror.write_syscall_time_max, 
+				  stats->mirror.write_syscall_size_avg, 
+				  stats->mirror.write_syscall_size_max);
+			 elog(DEBUG1, "Mirror: fsync_syscall_count %d time_avg %d \
+                        time_max %d \n",
+				  stats->mirror.fsync_syscall_count, 
+				  stats->mirror.fsync_syscall_time_avg, 
+				  stats->mirror.fsync_syscall_time_max);
+	 }
+
+	 Assert(packet->magic == GPMON_MAGIC);
+	 Assert(packet->version == GPMON_PACKET_VERSION);
+	 Assert(packet->pkttype == GPMON_PKTTYPE_FILEREP);
+
+	 if (gpmonInfo->gpsock <0)
+	 {
+			 elog(WARNING, 
+				  "Cannot send file rep stats to perfmon - socket invalid\n");
+			 return;
+	 }
+
+	 bytesSent = sendto(gpmonInfo->gpsock, packet, sizeof(gpmon_packet_t), 0,
+						(struct sockaddr *) &(gpmonInfo->gpaddr),
+						sizeof(struct sockaddr));
+	 if (bytesSent != sizeof (gpmon_packet_t))
+	 {
+			 elog(WARNING, "Error when sending file rep stats to perfmon - \
+                            only %d bytes of %lu sent\n",
+				  bytesSent, sizeof(gpmon_packet_t));
+	 } else 
+	 {
+
+			 elog(DEBUG1, "Sent %d bytes of filerepstats\n", (int)sizeof(gpmon_packet_t));
+			 //after sending out the stats - 0 them again to restart the counts
+			 MemSet(stats, 0, sizeof(gpmon_filerep_stats_u));
+			 gpmonInfo->lastSend = currentTime;
+	 }
+	return;
+}

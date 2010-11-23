@@ -459,6 +459,30 @@ static apr_status_t check_partition(const char* tbl, apr_pool_t* pool)
 	return APR_SUCCESS;
 }
 
+apr_status_t gpdb_harvest_healthdata()
+{
+	PGconn* conn = 0;
+	PGresult* result = 0;
+	const char* QRY = "insert into health_history select * from health_now;";
+	const char* errmsg;
+	apr_status_t res = APR_SUCCESS;
+
+	errmsg = gpdb_exec(&conn, &result, QRY);
+	if (errmsg)
+	{
+		res = 1;
+		gpmon_warningx(FLINE, 0, "---- ARCHIVING HISTORICAL HEALTH DATA FAILED ---- on query %s with error %s\n", QRY, errmsg);
+	}
+	else
+	{
+		TR1(("load completed OK: health\n"));
+	}
+
+	PQclear(result);
+	PQfinish(conn);
+	return res;
+}
+
 static apr_status_t harvest(const char* tbl, apr_pool_t* pool)
 {
 	PGconn* conn = 0;
@@ -486,6 +510,12 @@ static apr_status_t harvest(const char* tbl, apr_pool_t* pool)
 	PQfinish(conn);
 	return res;
 }
+
+apr_status_t gpdb_harvest_one(const char* table)
+{
+	return harvest(table, NULL);
+}
+
 
 
 apr_status_t truncate_file(char* fn, apr_pool_t* pool)
@@ -567,7 +597,7 @@ static apr_status_t append_to_harvest(const char* tbl, apr_pool_t* pool)
 
 typedef apr_status_t eachtablefunc(const char* tbl, apr_pool_t*);
 
-char* all_tables[] = { "system", "queries", "iterators", "database", "segment" };
+char* all_tables[] = { "system", "queries", "iterators", "database", "segment", "filerep" };
 
 apr_status_t call_for_each_table(eachtablefunc func, apr_pool_t* pool)
 { 
@@ -637,6 +667,19 @@ apr_status_t gpdb_harvest(void)
 /* insert _tail data into history table */
 apr_status_t gpdb_check_partitions(void)
 {
-	return call_for_each_table(check_partition, NULL);
+	// health is not a full table and needs to be added to the list
+
+	apr_status_t r1, r2;
+
+	r1 = check_partition("health", NULL);
+	
+	r2 = call_for_each_table(check_partition, NULL);
+
+	if (r1  != APR_SUCCESS)
+	{
+		return r1;
+	}	
+
+	return r2;
 }
 

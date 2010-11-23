@@ -299,10 +299,19 @@ int MirroredFlatFile_Flush(
 {
 	bool	mirrorFlush = TRUE;
 	int		save_errno = 0;
+	FileRepGpmonRecord_s gpmonRecord;
+
 	
 	Assert(open != NULL);
 	Assert(open->isActive);
-	
+
+	if (fileRepRole == FileRepPrimaryRole) 
+	{
+			FileRepGpmonStat_OpenRecord(
+					FileRepGpmonStatType_PrimaryRoundtripFsyncMsg, 
+					&gpmonRecord);
+	}
+
 	if (FileRepPrimary_MirrorFlush(
 			   FileRep_GetFlatFileIdentifier(
 							 open->subDirectory, 
@@ -331,11 +340,20 @@ int MirroredFlatFile_Flush(
 					   FileRep_GetFlatFileIdentifier(
 								 open->subDirectory, 
 								 open->simpleFileName),									
-					   FileRepRelationTypeFlatFile) == FALSE)	
+					   FileRepRelationTypeFlatFile) == FALSE){	
 			ereport(LOG,
 				    (errmsg("could not fsync file on mirror '%s/%s' ", 
 							open->subDirectory,
 							open->simpleFileName)));	
+		} else {
+				//only include this stat if the fsync was successful
+				if (fileRepRole == FileRepPrimaryRole) 
+				{
+						FileRepGpmonStat_CloseRecord(
+								FileRepGpmonStatType_PrimaryRoundtripFsyncMsg, 
+								&gpmonRecord);
+				}
+		}
 	}
 		
 	return save_errno;

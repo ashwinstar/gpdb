@@ -7,11 +7,11 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include "gpmonlib.h"
-#include "apr_time.h"
 #include "apr_queue.h"
 #include "apr_atomic.h"
 #include "apr_lib.h"
 #include "assert.h"
+#include "time.h"
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -32,6 +32,9 @@ extern apr_thread_mutex_t *logfile_mutex;
 
 apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 {
+	return 0;
+// this should be irrelevant because the mmon process is running on the master which is the same hardware architecture
+#if 0
 	static apr_int64_t last_err_sec = 0;
 
     if (pkt->magic != GPMON_MAGIC) {
@@ -127,20 +130,20 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 	}
     }
 
-    if (pkt->magic != GPMON_MAGIC)
+	if (pkt->magic != GPMON_MAGIC)
 	{
-		apr_int64_t now = apr_time_sec(apr_time_now());
+		apr_int64_t now = time(NULL);
 		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
 		{
 			last_err_sec = now;
 			gpmon_warning(FLINE, "bad packet (magic number mismatch)");
 		}
 		return APR_EINVAL;
-    }
+	}
 
-    if (pkt->version != GPMON_PACKET_VERSION)
+	if (pkt->version != GPMON_PACKET_VERSION)
 	{
-		apr_int64_t now = apr_time_sec(apr_time_now());
+		apr_int64_t now = time(NULL);
 		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
 		{
 			last_err_sec = now;
@@ -148,11 +151,11 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 		    			  pkt->version, GPMON_PACKET_VERSION);
 		}
 		return APR_EINVAL;
-    }
+	}
 
     if (! (GPMON_PKTTYPE_NONE < pkt->pkttype && pkt->pkttype < GPMON_PKTTYPE_MAX))
 	{
-		apr_int64_t now = apr_time_sec(apr_time_now());
+		apr_int64_t now = time(NULL);
 		if (now - last_err_sec >= GPMON_PACKET_ERR_LOG_TIME)
 		{
 			last_err_sec = now;
@@ -163,19 +166,17 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
     }
 
     return 0;
+#endif
 }
 
 
 #define GPMONLIB_DATETIME_BUFSIZE_LOCAL 100
 static char* datetime(void)
 {
-    static char buf[GPMONLIB_DATETIME_BUFSIZE_LOCAL];
-    apr_time_exp_t t;
-    apr_time_exp_lt(&t, apr_time_now());
-
-    snprintf(buf, GPMONLIB_DATETIME_BUFSIZE_LOCAL, "%04d-%02d-%02d %02d:%02d:%02d",
-            1900 + t.tm_year, 1 + t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
-    return buf;
+	static char buf[GPMONLIB_DATETIME_BUFSIZE_LOCAL];
+	time_t now;
+	now = time(NULL);
+	return gpmon_datetime(now, buf);
 }
 
 
@@ -337,38 +338,36 @@ char* gpmon_trim(char* s)
 
 
 /* datetime, e.g. 2004-02-14  23:50:02 */
-char* gpmon_datetime(apr_time_t t, char str[GPMON_DATE_BUF_SIZE])
+char* gpmon_datetime(time_t t, char str[GPMON_DATE_BUF_SIZE])
 {
-    apr_time_exp_t tm;
-    int e;
-    str[0] = 0;
-    if (t < 0)
-	t = 0;
-    if (0 != (e = apr_time_exp_lt(&tm, t))) {
-	gpmon_warningx(FLINE, e, "apr_time_exp_lt failed");
-	return str;
-    }
-    snprintf(str, GPMON_DATE_BUF_SIZE, "%04d-%02d-%02d %02d:%02d:%02d",
+	struct tm tm =  { 0 };
+
+	str[0] = 0;
+
+	if (!localtime_r(&t, &tm))
+	{
+		gpmon_warningx(FLINE, APR_FROM_OS_ERROR(errno), "localtime_r failed");
+		return str;
+	}
+
+	snprintf(str, GPMON_DATE_BUF_SIZE, "%04d-%02d-%02d %02d:%02d:%02d",
 	    1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday,
 	    tm.tm_hour, tm.tm_min, tm.tm_sec);
-    return str;
+
+    	return str;
 }
 
 /* datetime, e.g. 2004-02-14  23:50:10 
    round to lowest 5 second interval */
-char* gpmon_datetime_rounded(apr_time_t t, char str[GPMON_DATE_BUF_SIZE])
+char* gpmon_datetime_rounded(time_t t, char str[GPMON_DATE_BUF_SIZE])
 {
-	apr_time_exp_t tm;
-	int e;
-	str[0] = 0;
-	if (t < 0)
-	{
-		t = 0;
-	}
+	struct tm tm =  { 0 };
 
-	if (0 != (e = apr_time_exp_lt(&tm, t))) 
+	str[0] = 0;
+
+	if (!localtime_r(&t, &tm))
 	{
-		gpmon_warningx(FLINE, e, "apr_time_exp_lt failed");
+		gpmon_warningx(FLINE, APR_FROM_OS_ERROR(errno), "localtime_r failed");
 		return str;
 	}
 
@@ -376,7 +375,7 @@ char* gpmon_datetime_rounded(apr_time_t t, char str[GPMON_DATE_BUF_SIZE])
 	1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday,
 		tm.tm_hour, tm.tm_min, ((tm.tm_sec/5)*5));
 
-    return str;
+	return str;
 }
 
 /* get status from query text file */

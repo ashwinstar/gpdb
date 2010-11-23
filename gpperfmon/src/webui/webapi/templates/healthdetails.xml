@@ -4,10 +4,10 @@ $def with (hostname, rows)
 <Host Name='$hostname'>
 $for r in rows:
     <Line>    
-        <ComponentName>$r[2]</ComponentName>
-        <ObjectID>$r[1]</ObjectID>
-        <Status>$r[3]</Status>
-        <Message>$r[4]</Message>
+        <ComponentName>$r[4]</ComponentName>
+        <ObjectID>$r[5]</ObjectID>
+        <Status>$r[6]</Status>
+        <Message>$r[7]</Message>
     </Line>
 </Host>
 </HealthDetails>

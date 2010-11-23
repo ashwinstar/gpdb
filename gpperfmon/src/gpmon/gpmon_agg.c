@@ -32,13 +32,25 @@ struct qdnode_t {
     qenode_t*    qenode_list;
 };
 
+typedef struct gpmon_filrep_holder_t gpmon_filrep_holder_t;
+struct gpmon_filrep_holder_t
+{
+	gpmmon_filerep_key_t key;
+	double elapsedTime_secs_primary;
+	double elapsedTime_secs_mirror;
+	gpmon_filerep_primarystats_s primary;
+	gpmon_filerep_mirrorstats_s mirror;
+};
 
-struct agg_t {
-    apr_int64_t generation;
-    apr_pool_t* pool;
-    apr_hash_t* qtab;		/* key = gpmon_qlog_key_t, value = qdnode ptr. */
-    apr_hash_t* htab;		/* key = hostname, value = gpmon_metrics_t ptr */
-    apr_hash_t* stab;		/* key = databaseid, value = gpmon_seginfo_t ptr */
+
+struct agg_t 
+{
+	apr_int64_t generation;
+	apr_pool_t* pool;
+	apr_hash_t* qtab;		/* key = gpmon_qlog_key_t, value = qdnode ptr. */
+	apr_hash_t* htab;		/* key = hostname, value = gpmon_metrics_t ptr */
+	apr_hash_t* stab;		/* key = databaseid, value = gpmon_seginfo_t ptr */
+	apr_hash_t* ftab;		/* key = gpmmon_filerep_key_t, value = gpmon_filrep_holder_t ptr */
 };
 
 typedef struct dbmetrics_t dbmetrics_t;
@@ -90,6 +102,43 @@ static apr_status_t agg_put_segment(agg_t* agg, const gpmon_seginfo_t* seg)
 		*rec = *seg;
 		apr_hash_set(agg->stab, &rec->dbid, sizeof(rec->dbid), rec);
     }
+    return 0;
+}
+
+static apr_status_t agg_put_filerep(agg_t* agg, const gpmon_filerepinfo_t* filerep)
+{
+	gpmon_filrep_holder_t* rec;
+	int addtoHash = 0;
+
+	rec = apr_hash_get(agg->ftab, &filerep->key.dkey, sizeof(filerep->key.dkey));
+	if (!rec) 
+	{
+		// use pcalloc to initialize to 0
+		rec = apr_pcalloc(agg->pool, sizeof(*rec));
+		if (!rec)	
+		{
+			return APR_ENOMEM;
+		}
+		memcpy(&rec->key, &filerep->key.dkey, (sizeof(rec->key)));
+		addtoHash = 1;
+	}
+
+	if (filerep->key.isPrimary)
+	{
+		rec->primary = filerep->stats.primary;
+		rec->elapsedTime_secs_primary = filerep->elapsedTime_secs;
+	}
+	else
+	{
+		rec->mirror = filerep->stats.mirror;
+		rec->elapsedTime_secs_mirror = filerep->elapsedTime_secs;
+	}	
+
+	if (addtoHash)
+	{
+		apr_hash_set(agg->ftab, &rec->key, sizeof(rec->key), rec);
+	}
+
     return 0;
 }
 
@@ -223,6 +272,12 @@ apr_status_t agg_create(agg_t** retagg, apr_int64_t generation,
 	return APR_ENOMEM;
     }
 
+    agg->ftab = apr_hash_make(pool);
+    if (!agg->ftab) {
+	apr_pool_destroy(pool);
+	return APR_ENOMEM;
+    }
+
     *retagg = agg;
     return 0;
 }
@@ -321,17 +376,19 @@ void agg_destroy(agg_t* agg)
 
 apr_status_t agg_put(agg_t* agg, const gpmon_packet_t* pkt)
 {
-    if (pkt->pkttype == GPMON_PKTTYPE_METRICS)
-	return agg_put_metrics(agg, &pkt->u.metrics);
-    if (pkt->pkttype == GPMON_PKTTYPE_QLOG)
-	return agg_put_qlog(agg, &pkt->u.qlog, agg->generation);
-    if (pkt->pkttype == GPMON_PKTTYPE_QEXEC)
-	return agg_put_qexec(agg, &pkt->u.qexec, agg->generation);
-    if (pkt->pkttype == GPMON_PKTTYPE_SEGINFO)
-	return agg_put_segment(agg, &pkt->u.seginfo);
+	if (pkt->pkttype == GPMON_PKTTYPE_METRICS)
+		return agg_put_metrics(agg, &pkt->u.metrics);
+	if (pkt->pkttype == GPMON_PKTTYPE_QLOG)
+		return agg_put_qlog(agg, &pkt->u.qlog, agg->generation);
+	if (pkt->pkttype == GPMON_PKTTYPE_QEXEC)
+		return agg_put_qexec(agg, &pkt->u.qexec, agg->generation);
+	if (pkt->pkttype == GPMON_PKTTYPE_SEGINFO)
+		return agg_put_segment(agg, &pkt->u.seginfo);
+	if (pkt->pkttype == GPMON_PKTTYPE_FILEREP)
+		return agg_put_filerep(agg, &pkt->u.filerepinfo);
 
-    gpmon_warning(FLINE, "unknown packet type %d", pkt->pkttype);
-    return 0;
+	gpmon_warning(FLINE, "unknown packet type %d", pkt->pkttype);
+	return 0;
 }
 
 
@@ -347,6 +404,7 @@ static void delete_old_files(bloom_t* bloom);
 
 static apr_uint32_t write_system(agg_t* agg, const char* nowstr);
 static apr_uint32_t write_segmentinfo(agg_t* agg, char* nowstr);
+static apr_uint32_t write_filerepinfo(agg_t* agg, char* nowstr);
 static apr_uint32_t write_dbmetrics(dbmetrics_t* dbmetrics, char* nowstr);
 static apr_uint32_t write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr, apr_uint32_t done);
 static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nowstr);
@@ -411,7 +469,7 @@ static apr_uint32_t write_qenode_row(FILE* fp, const qenode_t* qenode, const cha
     	qexec->_hname,
     	gpdb_getnodename(qexec->nodeType),
     	gpdb_getnodestatus(qexec->status),
-		gpmon_datetime(apr_time_from_sec(qexec->tstart), qexec_tstamp),
+		gpmon_datetime((time_t)qexec->tstart, qexec_tstamp),
 		qexec->tduration,
 	    qexec->p_mem, 
 		qexec->p_memmax,
@@ -458,7 +516,7 @@ apr_status_t agg_dump(agg_t* agg)
 
     apr_uint32_t temp_bytes_written = 0;
 
-    gpmon_datetime_rounded(apr_time_now(), nowstr);
+    gpmon_datetime_rounded(time(NULL), nowstr);
 
     bloom_init(&bloom);
 
@@ -485,23 +543,32 @@ apr_status_t agg_dump(agg_t* agg)
     bloom_set(&bloom, GPMON_DIR "segment_tail.dat");
     bloom_set(&bloom, GPMON_DIR "segment_stage.dat");
     bloom_set(&bloom, GPMON_DIR "_segment_tail.dat");
+    bloom_set(&bloom, GPMON_DIR "filerep_now.dat");
+    bloom_set(&bloom, GPMON_DIR "filerep_tail.dat");
+    bloom_set(&bloom, GPMON_DIR "filerep_stage.dat");
+    bloom_set(&bloom, GPMON_DIR "_filerep_tail.dat");
 
-    /* dump metrics */
-    temp_bytes_written = write_system(agg, nowstr);
+
+	/* dump metrics */
+	temp_bytes_written = write_system(agg, nowstr);
 	incremement_tail_bytes(temp_bytes_written);
 
 	/* write segment metrics */
 	temp_bytes_written = write_segmentinfo(agg, nowstr);
 	incremement_tail_bytes(temp_bytes_written);
 
-    if (! (fp_queries_tail = fopen(GPMON_DIR "queries_tail.dat", "a"))) 
+	/* write filerep metrics */
+	temp_bytes_written = write_filerepinfo(agg, nowstr);
+	incremement_tail_bytes(temp_bytes_written);
+
+	if (! (fp_queries_tail = fopen(GPMON_DIR "queries_tail.dat", "a"))) 
 	{
 		e = APR_FROM_OS_ERROR(errno);
 		goto bail;
-    }
+	}
 
 	/* loop through queries */
-    for (hi = apr_hash_first(0, agg->qtab); hi; hi = apr_hash_next(hi)) 
+	for (hi = apr_hash_first(0, agg->qtab); hi; hi = apr_hash_next(hi)) 
 	{
 		void* vptr;
 		qdnode_t* qdnode;
@@ -627,6 +694,7 @@ apr_status_t agg_dump(agg_t* agg)
     rename(GPMON_DIR "_iterators_now.dat", GPMON_DIR "iterators_now.dat");
     rename(GPMON_DIR "_queries_now.dat", GPMON_DIR "queries_now.dat");
     rename(GPMON_DIR "_database_now.dat", GPMON_DIR "database_now.dat");
+    rename(GPMON_DIR "_filerep_now.dat", GPMON_DIR "filerep_now.dat");
 
     /* clean up ... delete all old files by checking our bloom filter */
     delete_old_files(&bloom);
@@ -718,6 +786,95 @@ static void delete_old_files(bloom_t* bloom)
     {
     	gpmon_warning(FLINE, "Failed to get a list of query text files.\n");
     }
+}
+
+static apr_uint32_t write_filerepinfo(agg_t* agg, char* nowstr)
+{
+	const int million = 1000000;
+	apr_uint32_t bytes_written = 0;
+	FILE* fp = fopen(GPMON_DIR "filerep_tail.dat", "a");
+	FILE* fp2 = fopen(GPMON_DIR "_filerep_now.dat", "w");
+	apr_hash_index_t* hi;
+	const int line_size = 2048;
+	char line[line_size];
+
+	if (!fp || !fp2) 
+	{
+		if (fp) fclose(fp);
+		if (fp2) fclose(fp2);
+		return 0;
+	}
+
+	for (hi = apr_hash_first(0, agg->ftab); hi; hi = apr_hash_next(hi)) 
+	{
+		gpmon_filrep_holder_t* sp;
+		int bytes_this_record;
+		void* valptr = 0;
+		apr_hash_this(hi, 0, 0, (void**) &valptr);
+		sp = (gpmon_filrep_holder_t*) valptr;
+
+		snprintf(line, line_size, "%s|%u|%u|%s|%d|%s|%d|" // through mirror_port
+					  "%d|%d|%d|%d|%.2f|" // primary write syscall
+					  "%d|%d|%.2f|" // primary fsync syscall
+					  "%d|%d|%d|%d|%.2f|" // primary write shmem
+					  "%d|%d|%.2f|" // primary fsync shmem
+					  "%d|%d|%.2f|" // primary fsync roundtrip
+					  "%d|%d|%.2f|" // primary test roundtrip
+					  "%d|%d|%d|%d|%.2f|" // mirror write syscall
+					  "%d|%d|%.2f", // mirror fsync syscall
+			nowstr, 
+			(apr_uint32_t)(sp->elapsedTime_secs_primary * million),
+			(apr_uint32_t)(sp->elapsedTime_secs_primary * million),
+			sp->key.primary_hostname,
+			sp->key.primary_port,
+			sp->key.mirror_hostname,
+			sp->key.mirror_port,
+			sp->primary.write_syscall_size_avg,
+			sp->primary.write_syscall_size_max,
+			sp->primary.write_syscall_time_avg,
+			sp->primary.write_syscall_time_max,
+			sp->primary.write_syscall_count / sp->elapsedTime_secs_primary,
+			sp->primary.fsync_syscall_time_avg,
+			sp->primary.fsync_syscall_time_max,
+			sp->primary.fsync_syscall_count  / sp->elapsedTime_secs_primary,
+			sp->primary.write_shmem_size_avg,
+			sp->primary.write_shmem_size_max,
+			sp->primary.write_shmem_time_avg,
+			sp->primary.write_shmem_time_max,
+			sp->primary.write_shmem_count / sp->elapsedTime_secs_primary,
+			sp->primary.fsync_shmem_time_avg,
+			sp->primary.fsync_shmem_time_max,
+			sp->primary.fsync_shmem_count / sp->elapsedTime_secs_primary,
+			sp->primary.roundtrip_fsync_msg_time_avg,
+			sp->primary.roundtrip_fsync_msg_time_max,
+			sp->primary.roundtrip_fsync_msg_count / sp->elapsedTime_secs_primary,
+			sp->primary.roundtrip_test_msg_time_avg, 
+			sp->primary.roundtrip_test_msg_time_max,
+			sp->primary.roundtrip_test_msg_count / sp->elapsedTime_secs_primary,
+			sp->mirror.write_syscall_size_avg,
+			sp->mirror.write_syscall_size_max,
+			sp->mirror.write_syscall_time_avg,
+			sp->mirror.write_syscall_time_max, 
+			sp->mirror.write_syscall_count / sp->elapsedTime_secs_mirror, 
+			sp->mirror.fsync_syscall_time_avg, 
+			sp->mirror.fsync_syscall_time_max,
+			sp->mirror.fsync_syscall_count / sp->elapsedTime_secs_mirror);
+
+		bytes_this_record = strlen(line) + 1;
+		if (bytes_this_record == line_size)
+		{
+			gpmon_warning(FLINE, "filerep stats line to too long ... ignored: %s", line);
+			continue;
+		}
+		fprintf(fp, "%s\n", line);
+		fprintf(fp2, "%s\n", line);
+		bytes_written += bytes_this_record;
+    }
+
+	fclose(fp);
+	fclose(fp2);
+
+	return bytes_written;
 }
 
 static apr_uint32_t write_segmentinfo(agg_t* agg, char* nowstr)
@@ -1185,21 +1342,21 @@ static void fmt_qlog(char* line, const int line_size, qdnode_t* qdnode, const ch
 	char timsubmitted[GPMON_DATE_BUF_SIZE];
 	char timstarted[GPMON_DATE_BUF_SIZE];
 	char timfinished[GPMON_DATE_BUF_SIZE];
-    double cpu_skew = 0.0f;
-    double row_skew = 0.0f;
+	double cpu_skew = 0.0f;
+	double row_skew = 0.0f;
 	int query_hash = 0;
-    apr_int64_t cpu_elapsed = 0;
-    apr_int64_t rowsout = 0;
-    float cpu_current;
-    cpu_elapsed = get_total_cpu_elapsed(qdnode);
-    cpu_skew = get_cpu_skew(qdnode);
-    row_skew = get_row_skew(qdnode);
-    rowsout = get_rowsout(qdnode);
-	gpmon_datetime(apr_time_from_sec(qdnode->qlog.tsubmit), timsubmitted);
+	apr_int64_t cpu_elapsed = 0;
+	apr_int64_t rowsout = 0;
+	float cpu_current;
+	cpu_elapsed = get_total_cpu_elapsed(qdnode);
+	cpu_skew = get_cpu_skew(qdnode);
+	row_skew = get_row_skew(qdnode);
+	rowsout = get_rowsout(qdnode);
+	gpmon_datetime((time_t)qdnode->qlog.tsubmit, timsubmitted);
 
 	if (qdnode->qlog.tstart)
 	{
-		gpmon_datetime(apr_time_from_sec(qdnode->qlog.tstart), timstarted); 
+		gpmon_datetime((time_t)qdnode->qlog.tstart, timstarted); 
 	}
 	else
 	{
@@ -1209,7 +1366,7 @@ static void fmt_qlog(char* line, const int line_size, qdnode_t* qdnode, const ch
     if (done)
 	{
     	cpu_current = 0.0f;
-		gpmon_datetime(apr_time_from_sec(qdnode->qlog.tfin), timfinished);
+		gpmon_datetime((time_t)qdnode->qlog.tfin, timfinished);
 	}
 	else
 	{

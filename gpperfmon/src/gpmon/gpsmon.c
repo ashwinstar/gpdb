@@ -12,7 +12,6 @@
 #include <sys/param.h>
 #include "apr_getopt.h"
 #include "apr_env.h"
-#include "apr_time.h"
 #include "apr_hash.h"
 #include "apr_strings.h"
 #include "apr_pools.h"
@@ -59,7 +58,7 @@ struct gx_t
 	int port;
 	apr_int64_t signature;
 	apr_int64_t tick;
-	apr_time_t now;
+	time_t now;
 
 	sigar_t* sigar;
 	const char** fslist;
@@ -84,6 +83,7 @@ struct gx_t
 	apr_hash_t* qlogtab; /* stores qlog packets */
 	apr_hash_t* segmenttab; /* stores segment packets */
 	apr_hash_t* pidtab; /* key=pid, value=pidrec_t */
+	apr_hash_t* filereptab; /* stores gpmon_filerepinfo_t packets */
 };
 static struct gx_t gx = { 0 };
 
@@ -131,6 +131,19 @@ void update_log_filename()
 		tm->tm_min,
 		tm->tm_sec);
 }
+
+typedef struct gpsmon_filerepinfo_t 
+{
+	// KEY
+	char primary_hostname[NAMEDATALEN];				
+	apr_uint16_t primary_port;
+	char mirror_hostname[NAMEDATALEN];				
+	apr_uint16_t mirror_port;
+	bool isPrimary;
+
+} gpsmon_filerepinfo_t;
+
+
 	
 
 static void gx_accept(SOCKET sock, short event, void* arg);
@@ -745,6 +758,7 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	apr_hash_t* qdtab;
 	apr_hash_t* pidtab;
 	apr_hash_t* segtab;
+	apr_hash_t* filereptab;
 
 	n = recv(sock, &dump, 1, 0);
 	if (n == 0)
@@ -762,8 +776,9 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	qdtab = gx.qlogtab;
 	pidtab = gx.pidtab;
 	segtab = gx.segmenttab;
+	filereptab = gx.filereptab;
 
-	/* make a new qexec/qlog/segment/pidtab hashtab for next cycle */
+	/* make new  hashtabs for next cycle */
 	{
 		apr_pool_t* newpool;
 		if (0 != (e = apr_pool_create(&newpool, gx.pool)))
@@ -782,6 +797,10 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 		gx.segmenttab = apr_hash_make(newpool);
 		CHECKMEM(gx.segmenttab);
 
+		/* filerep hash table */
+		gx.filereptab = apr_hash_make(newpool);
+		CHECKMEM(gx.filereptab);
+
 		/* pidtab hash table */
 		gx.pidtab = apr_hash_make(newpool);
 		CHECKMEM(gx.pidtab);
@@ -790,13 +809,25 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	/* push out a metric of the machine */
 	send_machine_metrics(sock);
 
-	/* push out records in segment/qe/qd */
+	/* push out records */
 	{
 		void* vptr;
 		apr_hash_index_t* hi;
 		gpmon_packet_t* ppkt;
 		pidrec_t* pidrec;
 		int count = 0;
+
+		for (hi = apr_hash_first(0, filereptab); hi; hi = apr_hash_next(hi))
+		{
+			apr_hash_this(hi, 0, 0, &vptr);
+			ppkt = vptr;
+			if (ppkt->pkttype != GPMON_PKTTYPE_FILEREP)
+				continue;
+
+			TR2(("sending magic %x, pkttype %d\n", ppkt->magic, ppkt->pkttype));
+			send_fully(sock, ppkt, sizeof(*ppkt));
+			count++;
+		}
 
 		for (hi = apr_hash_first(0, segtab); hi; hi = apr_hash_next(hi))
 		{
@@ -977,6 +1008,185 @@ static void gx_recvqlog(gpmon_packet_t* pkt)
 	}
 }
 
+static void update_max_value(apr_uint32_t* total, apr_uint32_t newdata)
+{
+	if (newdata > *total)
+	{
+		*total = newdata;
+	}
+}
+
+static void update_avg_value(apr_uint32_t totalcount, apr_uint32_t* totalavg, apr_uint32_t newcount, apr_uint32_t newavg)
+{
+	//OldAverage*oldCount + AverageInNewPacket*countInNewPacket
+	//----------------------------------------------------------
+	// OldCount + countInNewPacket
+
+	*totalavg = (apr_uint32_t)(( (*totalavg * (double)totalcount) + (newavg * (double)newcount) ) / ((double)(totalcount+newcount)));
+}
+
+static void update_count_value(apr_uint32_t* total, apr_uint32_t newdata)
+{
+	*total += newdata;
+}
+
+
+static void accumulate_filerep_primary_data(gpmon_filerep_primarystats_s* total, gpmon_filerep_primarystats_s* newdata)
+{
+ 	// ALWAYS UPDATE AVERAGES BEFORE COUNTS ... AVERAGE UPDATE USES COUNT
+
+	// write_syscall_size_avg
+	update_avg_value(total->write_syscall_count, &total->write_syscall_size_avg, 
+			 newdata->write_syscall_count, newdata->write_syscall_size_avg);
+
+	// write_syscall_size_max
+	update_max_value(&total->write_syscall_size_max, newdata->write_syscall_size_max);
+
+	// write_syscall_time_avg
+	update_avg_value(total->write_syscall_count, &total->write_syscall_time_avg, 
+			 newdata->write_syscall_count, newdata->write_syscall_time_avg);
+
+	// write_syscall_time_max
+	update_max_value(&total->write_syscall_time_max, newdata->write_syscall_time_max);
+
+	// write_syscall_count
+	update_count_value(&total->write_syscall_count, newdata->write_syscall_count);
+
+	// fsync_syscall_time_avg
+	update_avg_value(total->fsync_syscall_count, &total->fsync_syscall_time_avg, 
+			 newdata->fsync_syscall_count, newdata->fsync_syscall_time_avg);
+
+	// fsync_syscall_time_max
+	update_max_value(&total->fsync_syscall_time_max, newdata->fsync_syscall_time_max);
+
+	// fsync_syscall_count
+	update_count_value(&total->fsync_syscall_count, newdata->fsync_syscall_count);
+
+	// write_shmem_size_avg
+	update_avg_value(total->write_shmem_count, &total->write_shmem_size_avg, 
+			 newdata->write_shmem_count, newdata->write_shmem_size_avg);
+
+	// write_shmem_size_max
+	update_max_value(&total->write_shmem_size_max, newdata->write_shmem_size_max);
+
+	// write_shmem_time_avg
+	update_avg_value(total->write_shmem_count, &total->write_shmem_time_avg, 
+			 newdata->write_shmem_count, newdata->write_shmem_time_avg);
+
+	// write_shmem_time_max
+	update_max_value(&total->write_shmem_time_max, newdata->write_shmem_time_max);
+
+	// write_shmem_count
+	update_count_value(&total->write_shmem_count, newdata->write_shmem_count);
+
+	// fsync_shmem_time_avg
+	update_avg_value(total->fsync_shmem_count, &total->fsync_shmem_time_avg, 
+			 newdata->fsync_shmem_count, newdata->fsync_shmem_time_avg);
+
+	// fsync_shmem_time_max
+	update_max_value(&total->fsync_shmem_time_max, newdata->fsync_shmem_time_max);
+
+	// fsync_shmem_count
+	update_count_value(&total->fsync_shmem_count, newdata->fsync_shmem_count);
+
+	// roundtrip_fsync_msg_time_avg
+	update_avg_value(total->roundtrip_fsync_msg_count, &total->roundtrip_fsync_msg_time_avg, 
+			 newdata->roundtrip_fsync_msg_count, newdata->roundtrip_fsync_msg_time_avg);
+
+	// roundtrip_fsync_msg_time_max
+	update_max_value(&total->roundtrip_fsync_msg_time_max, newdata->roundtrip_fsync_msg_time_max);
+
+	// roundtrip_fsync_msg_count
+	update_count_value(&total->roundtrip_fsync_msg_count, newdata->roundtrip_fsync_msg_count);
+
+	// roundtrip_test_msg_time_avg
+	update_avg_value(total->roundtrip_test_msg_count, &total->roundtrip_test_msg_time_avg, 
+			 newdata->roundtrip_test_msg_count, newdata->roundtrip_test_msg_time_avg);
+
+	// roundtrip_test_msg_time_max
+	update_max_value(&total->roundtrip_test_msg_time_max, newdata->roundtrip_test_msg_time_max);
+
+	// roundtrip_test_msg_count
+	update_count_value(&total->roundtrip_test_msg_count, newdata->roundtrip_test_msg_count);
+}
+
+static void accumulate_filerep_mirror_data(gpmon_filerep_mirrorstats_s* total, gpmon_filerep_mirrorstats_s* newdata)
+{
+ 	// ALWAYS UPDATE AVERAGES BEFORE COUNTS ... AVERAGE UPDATE USES COUNT
+
+	// write_syscall_size_avg
+	update_avg_value(total->write_syscall_count, &total->write_syscall_size_avg, 
+			 newdata->write_syscall_count, newdata->write_syscall_size_avg);
+
+	// write_syscall_size_max
+	update_max_value(&total->write_syscall_size_max, newdata->write_syscall_size_max);
+
+	// write_syscall_time_avg;
+	update_avg_value(total->write_syscall_count, &total->write_syscall_time_avg, 
+			 newdata->write_syscall_count, newdata->write_syscall_time_avg);
+
+	// write_syscall_time_max
+	update_max_value(&total->write_syscall_time_max, newdata->write_syscall_time_max);
+
+	// write_syscall_count
+	update_count_value(&total->write_syscall_count, newdata->write_syscall_count);
+
+	// fsync_syscall_time_avg;
+	update_avg_value(total->fsync_syscall_count, &total->fsync_syscall_time_avg, 
+			 newdata->fsync_syscall_count, newdata->fsync_syscall_time_avg);
+
+	// fsync_syscall_time_max	
+	update_max_value(&total->fsync_syscall_time_max, newdata->fsync_syscall_time_max);
+
+	// fsync_syscall_count
+	update_count_value(&total->fsync_syscall_count, newdata->fsync_syscall_count);
+}
+
+static void accumulate_filerep_data_in_packet(gpmon_filerepinfo_t* total, gpmon_filerepinfo_t* newdata)
+{
+	if (total->key.isPrimary != newdata->key.isPrimary)
+	{
+		gpmon_warning(FLINE, "filerep unexpected key mismatch");
+		return;
+	}
+
+	total->elapsedTime_secs += newdata->elapsedTime_secs;
+
+	if (total->key.isPrimary)
+	{
+		accumulate_filerep_primary_data(&total->stats.primary, &newdata->stats.primary);
+	}
+	else
+	{
+		accumulate_filerep_mirror_data(&total->stats.mirror, &newdata->stats.mirror);
+	}
+}
+
+static void gx_recvfilerep(gpmon_packet_t* pkt)
+{
+	gpmon_filerepinfo_t* p;
+	gpmon_packet_t* rec = NULL;
+
+	if (pkt->pkttype != GPMON_PKTTYPE_FILEREP)
+		gpsmon_fatal(FLINE, "assert failed; expected pkttype filerep");
+
+	p = &pkt->u.filerepinfo;
+
+	TR2(("Received filerep packet primary %s:%d mirror %s:%d isPrimary(%d)\n", 
+		p->key.dkey.primary_hostname, p->key.dkey.primary_port, p->key.dkey.mirror_hostname, p->key.dkey.mirror_port));
+
+	rec = apr_hash_get(gx.filereptab, &p->key, sizeof(p->key));
+	if (rec)
+	{
+		accumulate_filerep_data_in_packet(&rec->u.filerepinfo, &pkt->u.filerepinfo);
+	}
+	else
+	{
+		rec = gx_pktdup(apr_hash_pool_get(gx.filereptab), pkt);
+		apr_hash_set(gx.filereptab, &rec->u.filerepinfo.key, sizeof(rec->u.filerepinfo.key), rec);
+	}
+}
+
 static void gx_recvsegment(gpmon_packet_t* pkt)
 {
 	gpmon_seginfo_t* p;
@@ -1014,12 +1224,12 @@ static void gx_recvqexec(gpmon_packet_t* pkt)
 	/* fill in the tstart / tduration */
 	if (p->tstart == 0)
 	{
-		p->tstart = apr_time_sec(gx.now);
+		p->tstart = gx.now;
 		p->tduration = 0;
 	}
 	else
 	{
-		p->tduration = apr_time_sec(gx.now) - p->tstart;
+		p->tduration = gx.now - p->tstart;
 	}
 
 	rec = apr_hash_get(gx.qexectab, &p->key, sizeof(p->key));
@@ -1084,6 +1294,7 @@ static void gx_recvfrom(SOCKET sock, short event, void* arg)
 		gx_recvqexec(&pkt);
 		break;
 	case GPMON_PKTTYPE_FILEREP:
+		gx_recvfilerep(&pkt);
 		break;
 	default:
 		gpmon_warning(FLINE, "unexpected packet type %d", pkt.pkttype);
@@ -1225,6 +1436,10 @@ static void setup_gx(int port, apr_int64_t signature)
 	gx.segmenttab = apr_hash_make(subpool);
 	CHECKMEM(gx.segmenttab);
 
+	/* filerep hash table */
+	gx.filereptab = apr_hash_make(subpool);
+	CHECKMEM(gx.filereptab);
+
 	/* pidtab */
 	gx.pidtab = apr_hash_make(subpool);
 	CHECKMEM(gx.pidtab);
@@ -1344,7 +1559,7 @@ void gx_main(int port, apr_int64_t signature)
 
 		/* serve events every 2 second */
 		gx.tick++;
-		gx.now = apr_time_now();
+		gx.now = time(NULL);
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
 		if (-1 == event_loopexit(&tv))

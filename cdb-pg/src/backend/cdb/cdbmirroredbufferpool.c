@@ -551,6 +551,7 @@ bool MirroredBufferPool_Flush(
 
 {
 	int primaryError;
+	FileRepGpmonRecord_s gpmonRecord;
 
 	Assert(open != NULL);
 	Assert(open->isActive);
@@ -567,6 +568,12 @@ bool MirroredBufferPool_Flush(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
+	    if (fileRepRole == FileRepPrimaryRole) 
+		{
+				FileRepGpmonStat_OpenRecord(
+						FileRepGpmonStatType_PrimaryRoundtripFsyncMsg, 
+						&gpmonRecord);
+		}
 		if (FileRepPrimary_MirrorFlush(
 										FileRep_GetRelationIdentifier(
 																	  open->mirrorFilespaceLocation,
@@ -613,8 +620,16 @@ bool MirroredBufferPool_Flush(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
 													   open->segmentFileNum)));
+		} else 
+		{
+				//only include this stat if the fsync was successful
+				if (fileRepRole == FileRepPrimaryRole) 
+				{
+						FileRepGpmonStat_CloseRecord(
+								FileRepGpmonStatType_PrimaryRoundtripFsyncMsg, 
+								&gpmonRecord);
+				}
 		}
-
 		open->mirrorDataLossOccurred = FileRepPrimary_IsMirrorDataLossOccurred();
 
 	}

@@ -65,10 +65,10 @@ extern char* gpmon_trim(char* s);
 extern int gpmon_recursive_mkdir(char* work_dir);
 
 /* datetime, e.g. 2004-02-14  23:50:02 */
-extern char* gpmon_datetime(apr_time_t t, char str[GPMON_DATE_BUF_SIZE]);
+extern char* gpmon_datetime(time_t t, char str[GPMON_DATE_BUF_SIZE]);
 
 /* version that rounds to lowest 5 sec interval */
-extern char* gpmon_datetime_rounded(apr_time_t t, char str[GPMON_DATE_BUF_SIZE]);
+extern char* gpmon_datetime_rounded(time_t t, char str[GPMON_DATE_BUF_SIZE]);
 
 /* utility */
 extern apr_int32_t get_query_status(apr_int32_t tmid, apr_int32_t ssid,
@@ -127,8 +127,10 @@ typedef struct snmp_module_params_t snmp_module_params_t;
 struct snmp_module_params_t
 {
 	char configfile[PATH_MAX];
-	char outdir[PATH_MAX];;
+	char outdir[PATH_MAX];
+	char externaltable_dir[PATH_MAX];
 	int emcconnect_enabled;
+	int health_harvest_interval;
 };
 
 double subtractTimeOfDay(struct timeval* begin, struct timeval* end);
@@ -139,6 +141,6 @@ extern const char* gpdb_getnodestatus(PerfmonNodeStatus status);
 extern apr_status_t gpdb_getnode_metricinfo(PerfmonNodeType type, apr_byte_t metricnum, const char** name, const char** unit);
 extern apr_status_t gpdb_debug_string_lookup_table();
 extern void gpdb_get_single_string_from_query(const char* QUERY, char** resultstring, apr_pool_t* pool);
-extern void snmp_report(host_t* tab, int tabsz);
+extern int snmp_report(host_t* tab, int tabsz);
 extern apr_status_t gpmmon_init_snmp(snmp_module_params_t* params);
 #endif /* GPMONLIB_H */

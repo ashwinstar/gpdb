@@ -49,7 +49,8 @@ int set_alert_severity(const GpErrorData * errorData,
 						bool *send_via_snmp,
 						char *snmp_severity,
 						bool *send_via_connectemc,
-						EmcConnectSeverity *connectemc_severity)
+						EmcConnectSeverity *connectemc_severity,
+						EmcConnectDetailedSymptom *connectemc_symptom)
 {
 
 	/*
@@ -114,6 +115,7 @@ int set_alert_severity(const GpErrorData * errorData,
 	email_priority[1] = '\0';
 	
 	*connectemc_severity = EMC_CONNECT_SEVERITY_UNKNOWN;
+	*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_NULL;
 
 
 	/*
@@ -153,6 +155,7 @@ int set_alert_severity(const GpErrorData * errorData,
 		email_priority[0] = '5'; // 1 == highest priority
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_INFO;
+		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_DATABASEUP;
 	}
 
 	else if (strstr(errorData->error_message, gettext("could not access status of transaction"))  != NULL)
@@ -162,6 +165,7 @@ int set_alert_severity(const GpErrorData * errorData,
 		email_priority[0] = '1'; /// 1 == highest priority
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
+		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_COULD_NOT_ACCESS_STATUS_OF_TRANS;
 	}
 
 	else if (strstr(errorData->error_message, gettext("database system was interrupted while in recovery"))  != NULL)
@@ -171,6 +175,7 @@ int set_alert_severity(const GpErrorData * errorData,
 		email_priority[0] = '1'; // 1 == highest priority
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
+		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_INTERUPTED_IN_RECOVERY;
 	}
 
 	else if (strstr(errorData->error_message, gettext("two-phase state file for transaction"))  != NULL &&
@@ -180,6 +185,7 @@ int set_alert_severity(const GpErrorData * errorData,
 		email_priority[0] = '1'; // 1 == highest priority
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
+		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_CORRUPT_2PHASE_FILE;
 	}
 
 	else if (strstr(errorData->error_message, "Test message for Connect EMC")  != NULL)
@@ -188,6 +194,7 @@ int set_alert_severity(const GpErrorData * errorData,
 		email_priority[0] = '5'; // 5  == lowest priority
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_INFO;
+		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_TEST_MESSAGE;
 	}
 
 	else if (strcmp(errorData->error_severity,gettext("PANIC")) == 0)
@@ -196,6 +203,7 @@ int set_alert_severity(const GpErrorData * errorData,
 		email_priority[0] = '1'; // 1 == highest priority
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
+		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_PANIC;
 	}
 
 	else if (strcmp(errorData->error_severity,gettext("FATAL")) == 0)

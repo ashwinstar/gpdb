@@ -789,6 +789,8 @@ void MirroredAppendOnly_FlushAndClose(
 	int64 							*originalMirrorDataLossTrackingSessionNum)
 
 {
+	FileRepGpmonRecord_s gpmonRecord;
+
 	MIRRORED_LOCK_DECLARE;
 
 	Assert(open != NULL);
@@ -822,6 +824,12 @@ void MirroredAppendOnly_FlushAndClose(
 	if (StorageManagerMirrorMode_SendToMirror(open->mirrorMode) &&
 		!open->mirrorDataLossOccurred)
 	{
+	    if (fileRepRole == FileRepPrimaryRole) 
+		{
+			   FileRepGpmonStat_OpenRecord(
+					   FileRepGpmonStatType_PrimaryRoundtripFsyncMsg,
+					   &gpmonRecord);
+	    }
 		if (FileRepPrimary_MirrorFlushAndClose(
 										   FileRep_GetRelationIdentifier(
 																		 open->mirrorFilespaceLocation,
@@ -874,8 +882,16 @@ void MirroredAppendOnly_FlushAndClose(
 													   open->mirrorFilespaceLocation,
 													   open->relFileNode,
 													   open->segmentFileNum)));	
+		} else 
+		{
+				//only include this stat if the fsync was successful
+				if (fileRepRole == FileRepPrimaryRole) 
+				{
+						FileRepGpmonStat_CloseRecord(
+								FileRepGpmonStatType_PrimaryRoundtripFsyncMsg, 
+								&gpmonRecord);
+				}
 		}
-		
 		if (FileRepPrimary_IsMirrorDataLossOccurred())
 		{
 			MirroredAppendOnly_SetMirrorDataLossOccurred(open, "MirrorFlushAndClose (complete)");
