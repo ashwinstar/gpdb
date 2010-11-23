@@ -1480,7 +1480,8 @@ InitRootSlices(QueryDesc *queryDesc)
 					/* if updating a master-only table: do not dispatch to segments */
 					List *resultRelations = queryDesc->plannedstmt->resultRelations; 
 					Assert(list_length(resultRelations) > 0);
-					Index idx = list_nth_int(resultRelations, 0);
+					int idx = list_nth_int(resultRelations, 0);
+					Assert (idx > 0);
 					Oid reloid = getrelid(idx, queryDesc->plannedstmt->rtable);
 					if (!isMasterOnly(reloid))
 					{

@@ -735,7 +735,8 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 				{
 					/* updating a non-partitioned table */
 					Assert(list_length(root->resultRelations) == 1);
-					Index relid = list_nth_int(root->resultRelations, 0);
+					int relid = list_nth_int(root->resultRelations, 0);
+					Assert(relid > 0);
 					request_explicit_motion(plan, relid, root->glob->finalrtable);
 				}
 				
@@ -1502,7 +1503,8 @@ void request_explicit_motion_append(Append *append, List *resultRelationsIdx, Li
 		/* request a segid redistribute motion node to be put above each
 		 * append plan */ 
 		Plan *appendChildPlan = (Plan *) lfirst(lcAppendPlan);
-		Index relid = (Index) lfirst (lcResultRel);
+		int relid = lfirst_int(lcResultRel);
+		Assert(relid > 0);
 		request_explicit_motion(appendChildPlan, relid, rtable);
 	}
 	
@@ -1561,7 +1563,7 @@ doesUpdateAffectPartitionCols(PlannerInfo  *root,
 	    RangeTblEntry  *rte;
         Relation        relation;
 		int				resultRelation = linitial_int(root->resultRelations);
-
+		
         rte = rt_fetch(resultRelation, query->rtable);
 	    Assert(rte->rtekind == RTE_RELATION);
 
