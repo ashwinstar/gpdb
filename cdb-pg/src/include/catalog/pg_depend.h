@@ -24,7 +24,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_depend
-   with (oid=false, relid=2608)
+   with (oid=false, relid=2608, content=SEGMENT_LOCAL)
    (
    classid      oid, 
    objid        oid, 

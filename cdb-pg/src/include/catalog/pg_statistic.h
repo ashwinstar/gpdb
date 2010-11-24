@@ -31,7 +31,7 @@ typedef struct varlena anyarray;
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_statistic
-   with (camelcase=Statistic, oid=false, relid=2619, toast_oid=2840, toast_index=2841)
+   with (camelcase=Statistic, oid=false, relid=2619, toast_oid=2840, toast_index=2841, content=SEGMENT_LOCAL)
    (
    starelid     oid, 
    staattnum    smallint, 
@@ -264,7 +264,7 @@ typedef FormData_pg_statistic *Form_pg_statistic;
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_stat_last_operation
-   with (camelcase=StatLastOp, oid=false, relid=6052, reltype_oid=6440)
+   with (camelcase=StatLastOp, oid=false, relid=6052, reltype_oid=6440, content=MASTER_ONLY)
    (
    classid        oid, 
    objid          oid, 
@@ -336,7 +336,7 @@ typedef FormData_pg_statlastop *Form_pg_statlastop;
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_stat_last_shoperation
-   with (camelcase=StatLastShOp, shared=true, oid=false, relid=6056, reltype_oid=6441)
+   with (camelcase=StatLastShOp, shared=true, oid=false, relid=6056, reltype_oid=6441, content=MASTER_ONLY)
    (
    classid        oid, 
    objid          oid, 

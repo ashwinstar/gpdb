@@ -34,7 +34,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_shdescription
-   with (camelcase=SharedDescription, shared=true, oid=false, relid=2396, toast_oid=2846, toast_index=2847)
+   with (camelcase=SharedDescription, shared=true, oid=false, relid=2396, toast_oid=2846, toast_index=2847, content=MASTER_ONLY)
    (
    objoid       oid, 
    classoid     oid, 

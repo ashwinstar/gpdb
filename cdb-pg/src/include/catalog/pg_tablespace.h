@@ -34,7 +34,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_tablespace
-   with (camelcase=TableSpace, relid=1213)
+   with (camelcase=TableSpace, shared=true, relid=1213)
    (
    spcname          name, 
    spcowner         oid, 

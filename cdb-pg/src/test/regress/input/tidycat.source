@@ -29,7 +29,7 @@
 
 
 CREATE EXTERNAL WEB TABLE get_tc (x text)
-execute E'(find @abs_srcdir@/../../include/catalog \\\( -name \'pg_*.h\' -o -name \'gp_*.h\' \\\)  | xargs perl @abs_srcdir@/../../include/catalog/tidycat.pl -sql @abs_srcdir@/data/tidyddl.sql 2>&1 > /dev/null ; sleep 3; perl -i -ple \' s/^\\s*with\\s*\\(.*\\)\\s*//gm \' @abs_srcdir@/data/tidyddl.sql ; sleep 3)' 
+execute E'(find @abs_srcdir@/../../include/catalog \\\( -name \'pg_*.h\' -o -name \'gp_*.h\' \\\)  | xargs perl @abs_srcdir@/../../include/catalog/tidycat.pl -sql @abs_srcdir@/data/tidyddl.sql 2>&1 > /dev/null ; sleep 7; perl -i -ple \' s/^\\s*with\\s*\\(.*\\)\\s*//gm \' @abs_srcdir@/data/tidyddl.sql ; sleep 7)' 
 FORMAT 'text' (delimiter '|');
 
 select * from get_tc order by 1;

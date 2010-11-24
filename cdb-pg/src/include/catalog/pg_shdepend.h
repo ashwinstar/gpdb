@@ -24,7 +24,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_shdepend
-   with (camelcase=SharedDepend, shared=true, oid=false, relid=1214)
+   with (camelcase=SharedDepend, shared=true, oid=false, relid=1214, content=SEGMENT_LOCAL)
    (
    dbid        oid, 
    classid     oid, 

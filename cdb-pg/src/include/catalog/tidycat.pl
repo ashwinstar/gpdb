@@ -122,6 +122,16 @@ unused_oids to find one.
 The static reltype of the toast table in pg_type (necessary for
 upgrade). Use unused_oids to find one.
 
+=item content: (optional)
+
+The "content" is only for catalog tables with non-standard content
+management.  "Normal" catalog tables are replicated from the master to
+all the segments.  Non-standard tables fall into three categories:
+MASTER_ONLY, SEGMENT_LOCAL, and PERSISTENT. Don't add any new
+non-standard tables.  Please.  Note that this flag controls the
+generation of validation logic for checkcat; it does not control the
+catalog table tuple replication mechanisms.
+
 =back
 
 Similarly, index definitions are unique or non-unique, and require an
@@ -250,6 +260,7 @@ my $glob_tabstr = "\t";
 my $glob_preview;
 my $glob_sqldef;
 my $glob_dumpdef;
+my $glob_dumpfmt;
 my $glob_tmpdir = "/tmp";
 
 BEGIN {
@@ -258,11 +269,13 @@ BEGIN {
 	my $preview = 0;
 	my $sqldef;
 	my $dumpdef;
+	my $dumpfmt;
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
 	 	       "preview|pretend" => \$preview,
-	 	       "dumpdef:s" => \$dumpdef,
+	 	       "dd|dumpdef:s" => \$dumpdef,
+	 	       "df|dumpfmt|dumpformat:s" => \$dumpfmt,
 	 	       "sqldef:s" => \$sqldef
                )
         or pod2usage(2);
@@ -274,6 +287,19 @@ BEGIN {
 	$glob_preview = $preview;
 	$glob_sqldef = $sqldef if (defined($sqldef) && length($sqldef));
 	$glob_dumpdef = $dumpdef if (defined($dumpdef) && length($dumpdef));
+
+	if ($glob_dumpdef && defined($dumpfmt) && length($dumpfmt))
+	{
+		$glob_dumpfmt = $dumpfmt;
+
+		die ("bad dump format: $dumpfmt")
+			unless ($dumpfmt =~ m/jason|json|perl/i);
+	}
+	else
+	{
+		$glob_dumpfmt = "perl";
+	}
+
 
 #    print "loading...\n" ;
 }
@@ -899,6 +925,15 @@ sub parsetab
 	parsecols($alltabs, $tname, $bigstr);
 
 #	print "bigstr: ", $bigstr, "\n";
+
+	# CONTENT checks: 
+	# NOTE: no code generation - only for validation
+	if (exists($alltabs->{$tname}->{with}->{content}))
+	{
+		die "unknown content type for $tname: $alltabs->{$tname}->{with}->{content}"
+			unless ($alltabs->{$tname}->{with}->{content} =~
+					m/MASTER\_ONLY|PERSISTENT|SEGMENT\_LOCAL/);
+	}
 
 	# TOAST table checks
 
@@ -1739,21 +1774,36 @@ sub formattab
 			$bigstr .= "  Table has TOASTable columns,";
 			if (exists($toast_reltype_exception_h{$kk}))
 			{
-				$bigstr .= " but TOAST table does not have static type\n"; 
+				$bigstr .= " but TOAST table does not have static type.\n"; 
 			}
 			else
 			{
-				$bigstr .= " and TOAST table has static type\n"; 
+				$bigstr .= " and TOAST table has static type.\n"; 
 			}
 		}
 		else
 		{
 			if (exists($toast_tab_exception_h{$kk}))
 			{
-				$bigstr .= "  Table has TOASTable columns, but NO TOAST table\n"; 
+				$bigstr .= "  Table has TOASTable columns, but NO TOAST table.\n"; 
 			}
 		}
 
+		if (exists($vv->{with}->{content}))
+		{
+			if ($vv->{with}->{content} =~ m/MASTER/)
+			{
+				$bigstr .= "  Table contents are only maintained on MASTER.\n";
+			}
+			elsif ($vv->{with}->{content} =~ m/PERSISTENT/)
+			{
+				$bigstr .= "  Table contents maintain PERSISTENT objects in special way.\n";
+			}
+			elsif ($vv->{with}->{content} =~ m/SEGMENT/)
+			{
+				$bigstr .= "  Table contents are local to each SEGMENT.\n";
+			}
+		}
 
 		$bigstr .= "  Table has weird hack for timestamp column.\n " 
 			if (exists($vv->{tzhack}));
@@ -2228,7 +2278,8 @@ if (1)
 
 	my %alltabs;
 
-	my @arr_sql;
+	my @arr_sql; # array of sql statement output
+	my %dumptabs_h; # hash of table definitions
 
 	for my $filnam (@ARGV)
 	{
@@ -2325,8 +2376,16 @@ if (1)
 			next; # don't update file only want sql
 		}
 		
-		# don't update file if dumping definitions
-		next if ($glob_dumpdef);
+		
+		if ($glob_dumpdef)
+		{
+			while (my ($jj, $ww) = each(%alltabs))
+			{
+				$dumptabs_h{$jj} = $ww;
+			}
+
+			next; # don't update file if dumping definitions
+		}
 
 
 		# write the modified file to the temp directory
@@ -2374,7 +2433,28 @@ if (1)
 		open my $file_out, "> " . $glob_dumpdef
 			or die "Cannot open $glob_dumpdef for write : $!";
 
-		print $file_out Data::Dumper->Dump([%alltabs]),"\n";
+		local $Data::Dumper::Sortkeys = 1;
+
+        # JSON might not be installed, so test for it.
+
+		if ($glob_dumpfmt =~ m/j/)
+		{
+			if (eval "require JSON")
+			{
+				# because JSON is REQUIREd, not USEd, the symbols are not
+				# imported into the environment.
+				print $file_out JSON::to_json(\%dumptabs_h, 
+												{pretty => 1, indent => 2});
+			}
+			else
+			{
+				die("Fatal Error: The required package JSON is not installed -- please download it from www.cpan.org\n");
+			}
+		}
+		else
+		{
+			print $file_out Data::Dumper->Dump([\%dumptabs_h]),"\n";
+		}
 
 		close $file_out;
 		exit();

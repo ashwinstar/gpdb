@@ -40,7 +40,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE gp_persistent_relation_node
-   with (shared=true, oid=false, relid=5090, reltype_oid=6990)
+   with (shared=true, oid=false, relid=5090, reltype_oid=6990, content=PERSISTENT)
    (
    tablespace_oid                                     oid       ,
    database_oid                                       oid       ,
@@ -161,7 +161,7 @@ typedef FormData_gp_persistent_relation_node *Form_gp_persistent_relation_node;
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE gp_relation_node
-   with (shared=false, oid=false, relid=5094, reltype_oid=6994)
+   with (shared=false, oid=false, relid=5094, reltype_oid=6994, content=PERSISTENT)
    (
    relfilenode_oid                               oid     ,
    segment_file_num                              integer ,
@@ -225,7 +225,7 @@ typedef FormData_gp_relation_node *Form_gp_relation_node;
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE gp_persistent_database_node
-   with (shared=true, oid=false, relid=5091, reltype_oid=6991)
+   with (shared=true, oid=false, relid=5091, reltype_oid=6991, content=PERSISTENT)
    (
    tablespace_oid                                oid      ,
    database_oid                                  oid      ,
@@ -305,7 +305,7 @@ typedef FormData_gp_persistent_database_node *Form_gp_persistent_database_node;
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE gp_persistent_tablespace_node
-   with (shared=true, oid=false, relid=5092, reltype_oid=6992)
+   with (shared=true, oid=false, relid=5092, reltype_oid=6992, content=PERSISTENT)
    (
    filespace_oid                                 oid      ,
    tablespace_oid                                oid      ,
@@ -386,7 +386,7 @@ typedef FormData_gp_persistent_tablespace_node *Form_gp_persistent_tablespace_no
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE gp_persistent_filespace_node
-   with (shared=true, oid=false, relid=5093, reltype_oid=6993)
+   with (shared=true, oid=false, relid=5093, reltype_oid=6993, content=PERSISTENT)
    (
    filespace_oid                                 oid      ,
    db_id_1                                       smallint ,

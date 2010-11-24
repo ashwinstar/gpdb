@@ -23,7 +23,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE gp_distribution_policy
-   with (camelcase=GpPolicy, oid=false, relid=5002)
+   with (camelcase=GpPolicy, oid=false, relid=5002, content=MASTER_ONLY)
    (
    localoid  oid,
    attrnums  smallint[]

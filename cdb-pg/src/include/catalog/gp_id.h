@@ -37,7 +37,7 @@
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE gp_id
-   with (shared=true, oid=false, relid=5001)
+   with (shared=true, oid=false, relid=5001, content=SEGMENT_LOCAL)
    (
    gpname       name     ,
    numsegments  smallint ,
