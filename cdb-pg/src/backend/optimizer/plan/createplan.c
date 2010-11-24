@@ -321,14 +321,14 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 													   tlist,
 													   scan_clauses);
 			break;
-			
+
 		case T_ExternalScan:
 			plan = (Plan *) create_externalscan_plan(ctx,
 													 best_path,
 													 tlist,
 													 scan_clauses);
 			break;
-			
+
 		case T_IndexScan:
 			plan = (Plan *) create_indexscan_plan(ctx,
 												  (IndexPath *) best_path,
@@ -653,9 +653,15 @@ create_append_plan(CreatePlanContext *ctx, AppendPath *best_path)
 		subplans = lappend(subplans, create_subplan(ctx, subpath));
 	}
 
-	plan = make_append(subplans, false, tlist);
+	/* We create an append node only when there are more than one subplans*/
+	if(list_length(subplans) > 1)
+	{
+		plan = make_append(subplans, false, tlist);
+		return (Plan *) plan;
+	}
 
-	return (Plan *) plan;
+	Assert(list_length(subplans) == 1);
+	return (Plan *) subplans->head->data.ptr_value;
 }
 
 /*
@@ -974,23 +980,23 @@ create_appendonlyscan_plan(CreatePlanContext *ctx, Path *best_path,
 {
 	AppendOnlyScan		*scan_plan;
 	Index				scan_relid = best_path->parent->relid;
-	
+
 	/* it should be a base rel... */
 	Assert(scan_relid > 0);
 	Assert(best_path->parent->rtekind == RTE_RELATION);
-	
+
 	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
 	scan_clauses = extract_actual_clauses(scan_clauses, false);
-	
+
 	/* Sort clauses into best execution order */
 	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
-	
+
 	scan_plan = make_appendonlyscan(tlist,
 									scan_clauses,
 									scan_relid);
-	
+
 	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
-	
+
 	return scan_plan;
 }
 
@@ -1005,23 +1011,23 @@ create_aocsscan_plan(CreatePlanContext *ctx, Path *best_path,
 {
 	AOCSScan		*scan_plan;
 	Index				scan_relid = best_path->parent->relid;
-	
+
 	/* it should be a base rel... */
 	Assert(scan_relid > 0);
 	Assert(best_path->parent->rtekind == RTE_RELATION);
-	
+
 	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
 	scan_clauses = extract_actual_clauses(scan_clauses, false);
-	
+
 	/* Sort clauses into best execution order */
 	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
-	
+
 	scan_plan = make_aocsscan(tlist,
 									scan_clauses,
 									scan_relid);
-	
+
 	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
-	
+
 	return scan_plan;
 }
 
@@ -1076,14 +1082,14 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	int				total_primaries = 0;
 	int				i;
 	Oid				fmtErrTblOid = InvalidOid;
-	
+
 	/* various processing flags */
 	bool			using_execute = false; /* true if EXECUTE is used */
 	bool			using_location = false; /* true if LOCATION is used */
 	bool			found_candidate = false;
 	bool			found_match = false;
 	bool			done = false;
-	
+
 	/* gpfdist or EXECUTE specific variables */
 	int				total_to_skip = 0;
 	int				max_participants_allowed = 0;
@@ -1094,23 +1100,23 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	/* it should be an external rel... */
 	Assert(scan_relid > 0);
 	Assert(rel->rtekind == RTE_RELATION);
-	
+
 	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
 	scan_clauses = extract_actual_clauses(scan_clauses, false);
-	
+
 	/* Sort clauses into best execution order */
 	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
-	
+
 	/* get the total valid primary segdb count */
 	db_info = getCdbComponentDatabases();
 	for (i = 0; i < db_info->total_segment_dbs; i++)
 	{
 		CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
-		
+
 		if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 			total_primaries++;
 	}
-	
+
 	/*
 	 * initialize a file-to-segdb mapping. segdb_file_map string array indexes
  	 * segindex and the entries are the external file path is assigned to this
@@ -1120,7 +1126,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
  	 */
     segdb_file_map = (char **) palloc(total_primaries * sizeof(char *));
 	MemSet(segdb_file_map, 0, total_primaries * sizeof(char *));
-	
+
 	Assert(rel->locationlist != NIL);
 
 	/* is this an EXECUTE table or a LOCATION (URI) table */
@@ -1134,9 +1140,9 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		using_execute = false;
 		using_location = true;
 	}
-		
+
 	/* various validations */
-	
+
 	if(rel->writable)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1144,7 +1150,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				errhint("Create the table as READABLE instead"),
 						 errOmitLocation(true)));
 
-		
+
 	if(rel->rejectlimit != -1)
 	{
 		/* 
@@ -1156,7 +1162,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		 */
 		VerifyRejectLimit(rel->rejectlimittype, rel->rejectlimit);
 	}
-	
+
 	if(using_execute && !gp_external_enable_exec)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), /* any better errcode? */
@@ -1173,7 +1179,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		first_uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
 		uri = ParseUriString(first_uri_str);		
 	}
-	
+
 
 	/*
 	 * Now we do the actual assignment of work to the segment databases (where 
@@ -1219,13 +1225,13 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		foreach(c, rel->locationlist)
 		{
 			const char	*uri_str = (char *) strVal(lfirst(c));
-			
+
 			uri = ParseUriString(uri_str);
-			
+
 			found_candidate = false;
 			found_match = false;
 
-			
+
 			/*
 			 * look through our segment database list and try to find
 			 * a database that can handle this uri.
@@ -1234,7 +1240,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			{
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
-				
+
 				/* 
 				 * Assign mapping of external file to this segdb only if:
 				 * 1) This segdb is a valid primary.
@@ -1253,21 +1259,21 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 						if (pg_strcasecmp(uri->hostname, p->hostname) != 0)
 							continue;
 					}
-										
+
 					/* a valid primary segdb exist on this host */
 					found_candidate = true;
-					
+
 					if(segdb_file_map[segind] == NULL)
 					{
 						/* segdb not taken yet. assign this URI to this segdb */
 						segdb_file_map[segind] = pstrdup(uri_str);
 						found_match = true;					
 					}
-					
+
 					/* too bad. this segdb already has an external source assigned */
 				}
 			}
-			
+
 			/*
 			 * We failed to find a segdb for this URI.
 			 */
@@ -1304,9 +1310,9 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 											 errOmitLocation(true)));
 				}
 			}		
-		}		
-		
-	
+		}
+
+
 	}
 	/* (2) */
 	else if(using_location && uri->protocol == URI_GPFDIST)
@@ -1336,26 +1342,26 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		 * randomly select 1 segdb to skip (7 - 6 = 1). so it may look like this:
 		 * [F F T F F F F] - in which case we know to skip the 3rd segment only.
 		 */
-		
+
 		/* total num of segs that will participate in the external operation */
 		num_segs_participating = total_primaries;
-		
+
 		/* max num of segs that are allowed to participate in the operation */
 		max_participants_allowed = list_length(rel->locationlist) * 
 			gp_external_max_segs;
-		
+
 		/* see (**) above */
 		if(num_segs_participating > max_participants_allowed)
 		{
 			total_to_skip = num_segs_participating - max_participants_allowed;
 			num_segs_participating = max_participants_allowed;
 			should_skip_randomly = true;
-			
+
 			elog(NOTICE, "External scan from gpfdist client will utilize %d out "
 				 "of %d segment databases", num_segs_participating,
 				 total_primaries);
 		}
-		
+
 		if(list_length(rel->locationlist) > num_segs_participating)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -1364,7 +1370,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 							"%d primary segments.",list_length(rel->locationlist),
 							num_segs_participating),
 									 errOmitLocation(true)));
-		
+
 		/* 
 		 * restart location list and fill in new list until number of
 		 * locations equals the number of segments participating in this
@@ -1375,10 +1381,10 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			foreach(c, rel->locationlist)
 			{
 				char *uri_str = (char *) strVal(lfirst(c));
-				
+
 				/* append to a list of Value nodes, size nelems */
 				modifiedloclist = lappend(modifiedloclist, makeString(pstrdup(uri_str)));				
-				
+
 				if(list_length(modifiedloclist) == num_segs_participating)
 				{
 					done = true;
@@ -1391,7 +1397,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				}
 			}
 		}
-		
+
 		/* See (***) above for details */
 		if(should_skip_randomly)
 			skip_map = makeRandomSegMap(total_primaries, total_to_skip);
@@ -1402,12 +1408,12 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		foreach(c, modifiedloclist)
 		{
 			const char	*uri_str = (char *) strVal(lfirst(c));
-			
+
 			uri = ParseUriString(uri_str);
-			
+
 			found_candidate = false;
 			found_match = false;
-			
+
 			/*
 			 * look through our segment database list and try to find
 			 * a database that can handle this uri.
@@ -1416,7 +1422,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			{
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
-				
+
 				/* 
 				 * Assign mapping of external file to this segdb only if:
 				 * 1) This segdb is a valid primary.
@@ -1431,42 +1437,42 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 					if(should_skip_randomly)
 					{
 						Assert(segind < total_primaries);
-						
+
 						if(skip_map[segind])
 							continue; /* skip it */					
 					}
-					
+
 					/* a valid primary segdb exist on this host */
 					found_candidate = true;
-					
+
 					if(segdb_file_map[segind] == NULL)
 					{
 						/* segdb not taken yet. assign this URI to this segdb */
 						segdb_file_map[segind] = pstrdup(uri_str);
 						found_match = true;					
 					}
-					
+
 					/* too bad. this segdb already has an external source assigned */
 				}
 			}
-			
+
 			/* We failed to find a segdb for this gpfdist URI */
 			if(!found_match)
 			{
 				/* should never happen */
 				elog(LOG, "external tables gpfdist allocation error. "
 					 "total_primaries: %d, num_segs_participating %d "
-					 "max_participants_allowed %d, total_to_skip %d", 
-					 total_primaries, num_segs_participating, 
+					 "max_participants_allowed %d, total_to_skip %d",
+					 total_primaries, num_segs_participating,
 					 max_participants_allowed, total_to_skip);
-				
+
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_INTERNAL_ERROR),
 						 errmsg("Internal error in createplan for external tables"
-								" when trying to assign segments for gpfdist")));				
+								" when trying to assign segments for gpfdist")));
 			}		
 		}
-		
+
 	}
 	/* (3) */
 	else if(using_execute)
@@ -1476,20 +1482,20 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		char		*prefixed_command = NULL;
 		char		*on_clause = NULL;
 		bool		match_found = false;
-				
+
 		/* build the command string for the executor - 'execute:command' */
 		StringInfo buf = makeStringInfo();
 
 		appendStringInfo(buf, "%s%s", prefix, command);
 		prefixed_command = pstrdup(buf->data);
-		
+
 		pfree(buf->data);
 		pfree(buf);
 		buf = NULL;
-		
+
 		/* get the ON clause (execute location) information */
 		on_clause = (char *) strVal(lfirst(list_head(rel->locationlist)));
-			
+
 		/*
 		 * Now we handle each one of the ON locations separately:
 		 *
@@ -1503,44 +1509,44 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		if(strcmp(on_clause, "ALL_SEGMENTS") == 0)
 		{
 			/* all segments get a copy of the command to execute */
-			
+
 			for (i = 0; i < db_info->total_segment_dbs; i++)
 			{
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
-				
+
 				if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 					segdb_file_map[segind] = pstrdup(prefixed_command);					
 			}
-			
+
 		}
 		else if(strcmp(on_clause, "PER_HOST") == 0)
 		{
 			/* 1 seg per host */
-			
+
 			List	 *visited_hosts = NIL;
 			ListCell *lc = NULL;
-			
+
 			for (i = 0; i < db_info->total_segment_dbs; i++)
 			{
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
-				
+
 				if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 				{
 					bool	host_taken = false;
-					
+
 					foreach(lc, visited_hosts)
 					{
 						const char	*hostname = (char *) strVal(lfirst(lc));
-						
+
 						if (pg_strcasecmp(hostname, p->hostname) == 0)
 						{
 							host_taken = true;
 							break;
 						}
 					}
-					
+
 					/* 
 					 * if not assigned to a seg on this host before - do it now
 					 * and add this hostname to the list so that we don't use
@@ -1564,7 +1570,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			{
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
-				
+
 				if (SEGMENT_IS_ACTIVE_PRIMARY(p) &&
 					pg_strcasecmp(hostname, p->hostname) == 0)
 				{
@@ -1585,21 +1591,21 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		else if(strncmp(on_clause, "SEGMENT_ID:", strlen("SEGMENT_ID:")) == 0)
 		{
 			/* 1 seg with specified id gets a copy of the command */
-			
+
 			int		target_segid = atoi(on_clause + strlen("SEGMENT_ID:"));
-		
+
 			for (i = 0; i < db_info->total_segment_dbs; i++)
 			{
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
-				
+
 				if (SEGMENT_IS_ACTIVE_PRIMARY(p) && segind == target_segid)	
 				{
 					segdb_file_map[segind] = pstrdup(prefixed_command);
 					match_found = true;
 				}
 			}
-			
+
 			if(!match_found)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -1612,30 +1618,30 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		else if(strncmp(on_clause, "TOTAL_SEGS:", strlen("TOTAL_SEGS:")) == 0)
 		{
 			/* total n segments selected randomly */
-			
+
 			int		num_segs_to_use = atoi(on_clause + strlen("TOTAL_SEGS:"));
-						
+
 			if(num_segs_to_use > total_primaries)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						 errmsg("Table defined with EXECUTE ON %d but there "
 								"are only %d valid primary segments in the "
-								"database.", num_segs_to_use, total_primaries)));				
-			
+								"database.", num_segs_to_use, total_primaries)));
+
 			total_to_skip = total_primaries - num_segs_to_use;
 			skip_map = makeRandomSegMap(total_primaries, total_to_skip);
-			
+
 			for (i = 0; i < db_info->total_segment_dbs; i++)
 			{
 				CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
 				int segind = p->segindex;
-				
+
 				if (SEGMENT_IS_ACTIVE_PRIMARY(p))
 				{
 					Assert(segind < total_primaries);
 					if(skip_map[segind])
 						continue; /* skip it */					
-										
+
 					segdb_file_map[segind] = pstrdup(prefixed_command);					
 				}
 			}
@@ -1654,7 +1660,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Internal error in createplan for external tables: "
-							"got invalid ON clause code %s", on_clause)));							
+							"got invalid ON clause code %s", on_clause)));
 		}
 	}
 	else
@@ -1662,11 +1668,11 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		/* should never get here */
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("Internal error in createplan for external tables")));				
+				 errmsg("Internal error in createplan for external tables")));
 	}
 
 
-   /* 
+   /*
     * convert array map to a list so it can be serialized as part of the plan
     */
 	for (i = 0; i < total_primaries; i++)
@@ -1681,12 +1687,12 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			filenames = lappend(filenames, n);
 		}	
 	}
-	
+
 	/* data format description */
 	istext = (rel->fmttype == 't' ? true : false);	
 	Assert(rel->fmtopts);
 	fmtopts = lappend(fmtopts, makeString(pstrdup(rel->fmtopts)));
-	
+
 	/* single row error handling */
 	if(rel->rejectlimit != -1)
 	{
@@ -1709,7 +1715,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 								  islimitinrows,
 								  fmtErrTblOid,
 								  encoding);
-	
+
 	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
 
 	pfree(segdb_file_map);
@@ -2439,7 +2445,7 @@ create_nestloop_plan(CreatePlanContext *ctx,
 		Path		matpath; /* dummy for cost fixup */
 
 		mat = make_material(inner_plan);
-		
+
 		/* Set cost data */
 		cost_material(&matpath,
 					  ctx->root,
@@ -3216,15 +3222,15 @@ make_appendonlyscan(List *qptlist,
 {
 	AppendOnlyScan    *node = makeNode(AppendOnlyScan);
 	Plan			  *plan = &node->scan.plan;
-	
+
 	/* cost should be inserted by caller */
 	plan->targetlist = qptlist;
 	plan->qual = qpqual;
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
-	
+
 	node->scan.scanrelid = scanrelid;
-	
+
 	return node;
 }
 
@@ -3263,14 +3269,14 @@ make_externalscan(List *qptlist,
 	ExternalScan    *node = makeNode(ExternalScan);
 	Plan	   *plan = &node->scan.plan;
 	static uint32 scancounter = 0;
-	
+
 	/* cost should be inserted by caller */
 	plan->targetlist = qptlist;
 	plan->qual = qpqual;
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
-	
+
 	/* external specifictions */
 	node->uriList = urilist;
 	node->fmtOpts = fmtopts;
@@ -3281,7 +3287,7 @@ make_externalscan(List *qptlist,
 	node->fmterrtbl = fmterrtableOid;
 	node->encoding = encoding;
 	node->scancounter = scancounter++;
-	
+
 	return node;
 }
 
@@ -3510,7 +3516,7 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 	node->isTarget = isTarget;
 	node->isZapped = false;
 	node->hasXslice = false;
-	
+
 	return node;
 }
 
@@ -4036,7 +4042,7 @@ make_sort_from_reordered_groupcols(PlannerInfo *root,
 	if (grouping != NULL)
 	{
 		Assert(groupid != NULL);
-		
+
 		sortColIdx = (AttrNumber *) palloc((numgrpkeys + 2) * sizeof(AttrNumber));
 		sortOperators = (Oid *) palloc((numgrpkeys + 2) * sizeof(Oid));
 	}
@@ -4066,7 +4072,7 @@ make_sort_from_reordered_groupcols(PlannerInfo *root,
 			if (orig_grpColIdx[pos] == new_grpColIdx[grpno])
 				break;
 		}
-		
+
 		Assert (pos < numgrpkeys);
 
 		grpcl = (GroupClause *)list_nth(flat_groupcls, pos);
@@ -4115,7 +4121,7 @@ reconstruct_group_clause(List *orig_groupClause, List *tlist, AttrNumber *grpCol
 	List *new_groupClause = NIL;
 	int numgrpkeys;
 	int grpno;
-	
+
 	numgrpkeys = num_distcols_in_grouplist(orig_groupClause);
 	flat_groupcls = flatten_grouping_list(orig_groupClause);
 	for (grpno = 0; grpno < numcols; grpno++)
@@ -4123,13 +4129,13 @@ reconstruct_group_clause(List *orig_groupClause, List *tlist, AttrNumber *grpCol
 		ListCell *lc = NULL;
 		TargetEntry *te;
 		GroupClause *gc = NULL;
-		
+
 		te = get_tle_by_resno(tlist, grpColIdx[grpno]);
 
 		foreach (lc, flat_groupcls)
 		{
 			gc = (GroupClause *)lfirst(lc);
-			
+
 			if (gc->tleSortGroupRef == te->ressortgroupref)
 				break;
 		}
@@ -4190,7 +4196,7 @@ materialize_finished_plan(PlannerInfo *root, Plan *subplan)
 	matplan->total_cost = matpath.total_cost;
 	matplan->plan_rows = subplan->plan_rows;
 	matplan->plan_width = subplan->plan_width;
-	
+
 	/* MPP -- propagate dispatch method and flow */
 	matplan->dispatch = subplan->dispatch;
 	matplan->flow = copyObject(subplan->flow);
@@ -4204,7 +4210,7 @@ materialize_finished_plan(PlannerInfo *root, Plan *subplan)
 
 Agg *
 make_agg(PlannerInfo *root, List *tlist, List *qual,
-		 AggStrategy aggstrategy, bool streaming, 
+		 AggStrategy aggstrategy, bool streaming,
 		 int numGroupCols, AttrNumber *grpColIdx,
 		 long numGroups, int num_nullcols,
 		 uint64 input_grouping, uint64 grouping,
@@ -4253,8 +4259,8 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
  */
 Plan *add_agg_cost(PlannerInfo *root, Plan *plan, 
 		 List *tlist, List *qual,
-		 AggStrategy aggstrategy, 
-		 bool streaming, 
+		 AggStrategy aggstrategy,
+		 bool streaming,
 		 int numGroupCols, AttrNumber *grpColIdx,
 		 long numGroups, int num_nullcols,
 		 int numAggs, int transSpace)
@@ -4418,7 +4424,7 @@ Window *make_window(PlannerInfo *root, List *tlist,
 	node->numPartCols = numPartCols;
 	node->partColIdx = partColIdx;
 	node->windowKeys = windowKeys;
-	
+
 	numOrderCols = numPartCols;
 	foreach(cell, windowKeys)
 	{
@@ -4805,7 +4811,7 @@ groupcol_in_list(GroupClause *gc, List *glist)
 {
 	bool found = false;
 	ListCell *lc;
-	
+
 	foreach (lc, glist)
 	{
 		GroupClause *entry = (GroupClause *)lfirst(lc);
@@ -4847,28 +4853,28 @@ flatten_grouping_list(List *groupcls)
 			List *flatten_groupsets =
 				flatten_grouping_list(groupsets);
 			ListCell *lc;
-			
+
 			foreach (lc, flatten_groupsets)
 			{
 				GroupClause *flatten_gc = (GroupClause *)lfirst(lc);
 				Assert(IsA(flatten_gc, GroupClause));
-				
+
 				if (!groupcol_in_list(flatten_gc, result))
 					result = lappend(result, flatten_gc);
 			}
-			
+
 		}
 		else if (IsA(node, List))
 		{
 			List *flatten_groupsets =
 				flatten_grouping_list((List *)node);
 			ListCell *lc;
-			
+
 			foreach (lc, flatten_groupsets)
 			{
 				GroupClause *flatten_gc = (GroupClause *)lfirst(lc);
 				Assert(IsA(flatten_gc, GroupClause));
-				
+
 				if (!groupcol_in_list(flatten_gc, result))
 					result = lappend(result, flatten_gc);
 			}
@@ -4876,7 +4882,7 @@ flatten_grouping_list(List *groupcls)
 		else
 		{
 			Assert(IsA(node, GroupClause));
-			
+
 			if (!groupcol_in_list((GroupClause *)node, result))
 				result = lappend(result, node);
 		}
