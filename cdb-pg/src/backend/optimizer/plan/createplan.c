@@ -1056,6 +1056,8 @@ create_aocsscan_plan(CreatePlanContext *ctx, Path *best_path,
  *                      less than (total segdbs/total URIs) then we make sure
  *                      that no URI gets mapped to more than this GUC number by
  *                      skipping some segdbs randomly.
+ *   - 'gphdfs' protocol: file is divided in to chucks and each chuck is assigned
+ *                      to a segdb.
  *   - 'exec' protocol: all segdbs get mapped to execute the command (this is
  *                      soon to be changed though).
  */                     
@@ -1214,6 +1216,10 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	 * different ways, for example: assign the command to all segdb, or one
 	 * command per host, or assign to 5 random segments, etc...
 	 *
+	 * 4) segment mapping for tables with LOCATION gphdfs://
+	 *
+	 * The file chuck division and assignment will be done in the external
+	 * Java program. We simply assign the location to all the segdbs.
 	 */
 
 	/* (1) */
@@ -1661,6 +1667,19 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Internal error in createplan for external tables: "
 							"got invalid ON clause code %s", on_clause)));
+		}
+	}
+	/* (4) */
+	else if(using_location && uri->protocol == URI_GPHDFS)
+	{
+		const char	*uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
+
+		for (i = 0; i < db_info->total_segment_dbs; i++)
+		{
+			CdbComponentDatabaseInfo *p = &db_info->segment_db_info[i];
+			int segind = p->segindex;
+
+			segdb_file_map[segind] = pstrdup(uri_str);
 		}
 	}
 	else

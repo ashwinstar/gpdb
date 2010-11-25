@@ -52,6 +52,11 @@ ParseUriString(const char *uri_str)
 		uri->protocol = URI_GPFDIST;
 		protocol_len = strlen(PROTOCOL_GPFDIST);
 	}
+	else if (IS_GPHDFS_URI(uri_str))
+	{
+		uri->protocol = URI_GPHDFS;
+		protocol_len = strlen(PROTOCOL_GPHDFS);
+	}
 	else
 	{
 		protocol_len = 0; /* shut compiler up */

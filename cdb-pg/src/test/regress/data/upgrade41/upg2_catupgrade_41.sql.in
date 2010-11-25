@@ -50,6 +50,33 @@ alter table pg_catalog.gp_persistent_relation_node rename reserved to unreserved
 --   create new function
 --   populate pg_resourcetype and pg_resqueuecapability
 
+-- HDFS Privilege
+alter table pg_catalog.pg_authid add column rolcreaterexthdfs bool;
+alter table pg_catalog.pg_authid add column rolcreatewexthdfs bool;
+update pg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
+select catDML('update pg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random(‘gp_id’);
+
+CREATE OR REPLACE VIEW pg_roles AS 
+    SELECT 
+        rolname,
+        rolsuper,
+        rolinherit,
+        rolcreaterole,
+        rolcreatedb,
+        rolcatupdate,
+        rolcanlogin,
+        rolconnlimit,
+        '********'::text as rolpassword,
+        rolvaliduntil,
+        rolconfig,
+		rolresqueue,
+        oid,
+        rolcreaterextgpfd,
+		rolcreaterexthttp,
+		rolcreatewextgpfd,
+		rolcreaterexthdfs,
+		rolcreatewexthdfs   
+    FROM pg_authid;
 
 
 

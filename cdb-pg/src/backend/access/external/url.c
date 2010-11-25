@@ -432,7 +432,7 @@ make_export(char *name, const char *value, char *buf)
 
 
 static int
-make_command(const char *cmd, extvar_t * ev, char *buf)
+make_command(const char* prefix, const char *cmd, extvar_t * ev, char *buf)
 {
 	int sz = 0;
 
@@ -452,13 +452,19 @@ make_command(const char *cmd, extvar_t * ev, char *buf)
 	sz += make_export("GP_SESSION_ID", ev->GP_SESSION_ID, buf ? buf + sz : 0);
 	sz += make_export("GP_SEGMENT_COUNT", ev->GP_SEGMENT_COUNT, buf ? buf + sz : 0);
 
+	if (prefix)
+	{
+		if (buf)
+			strcpy(buf+sz, prefix);
+		sz += strlen(prefix);
+	}
+
 	if (buf)
 		strcpy(buf + sz, cmd);
 	sz += strlen(cmd);
 
 	return sz + 1;				/* add NUL terminator */
 }
-
 
 static char *
 local_strstr(const char *str1, const char *str2)
@@ -583,20 +589,40 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 	strcpy(file->url, url);
 
 	/*
+	 * Both HDFS and Execute will use the execute framework.
+	 * if 'url' starts with 'hdfs://' then we convert it to execute.
 	 * if 'url' starts with "execute:" then it's a command to execute and
 	 * not a url (the command specified in CREATE EXTERNAL TABLE .. EXECUTE)
 	 */
-	if (pg_strncasecmp(url, exec_prefix, strlen(exec_prefix)) == 0)
+	if (IS_GPHDFS_URI(url) || pg_strncasecmp(url, exec_prefix, strlen(exec_prefix)) == 0)
 	{
 		int 			save_errno;
 		struct itimers 	savetimers;
 		pqsigfunc 		save_SIGPIPE;
 
-		char*	cmd = url + strlen(exec_prefix);
-		int 	sz = make_command(cmd, ev, 0);
-		char*	shexec = palloc(sz);
+		char*   prefix;
+		char*	cmd;
+		int 	sz;
+		char*	shexec;
 
-		make_command(cmd, ev, shexec);
+		/* Execute command */
+		if (!IS_GPHDFS_URI(url))
+		{
+			prefix = 0;
+			cmd    = url + strlen(exec_prefix);
+		}
+		/* hdfs:// */
+		else
+		{
+			if (forwrite)
+				prefix = "source $GPHOME/bin/hadoop_env.sh; java -classpath $CLASSPATH HDFSWriter2 $GP_SEGMENT_ID $GP_XID \0";
+			else
+				prefix = "source $GPHOME/bin/hadoop_env.sh; java -classpath $CLASSPATH HDFSReader2 $GP_SEGMENT_ID $GP_SEGMENT_COUNT \0";
+			cmd = url;
+		}
+		sz     = make_command(prefix, cmd, ev, 0);
+		shexec = palloc(sz);
+		make_command(prefix, cmd, ev, shexec);
 
 		file->type = CFTYPE_EXEC; /* marked as a EXEC */
 		file->u.exec.shexec = shexec;

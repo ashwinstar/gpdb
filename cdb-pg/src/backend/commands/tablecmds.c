@@ -1071,6 +1071,29 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 										errOmitLocation(true)));
 
 				}
+				else if (uri->protocol == URI_GPHDFS && iswritable)
+				{
+					Datum 	d_wexthdfs = heap_getattr(tuple, Anum_pg_authid_rolcreatewexthdfs, pg_authid_dsc, &isnull);
+					bool	createwexthdfs = (isnull ? false : DatumGetBool(d_wexthdfs));
+
+					if (!createwexthdfs)
+						ereport(ERROR,
+								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+								errmsg("permission denied: no privilege to create a writable gphdfs external table"),
+										errOmitLocation(true)));
+				}
+				else if (uri->protocol == URI_GPHDFS && !iswritable)
+				{
+					Datum 	d_rexthdfs = heap_getattr(tuple, Anum_pg_authid_rolcreaterexthdfs, pg_authid_dsc, &isnull);
+					bool	createrexthdfs = (isnull ? false : DatumGetBool(d_rexthdfs));
+
+					if (!createrexthdfs)
+						ereport(ERROR,
+								(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+								errmsg("permission denied: no privilege to create a readable gphdfs external table"),
+										errOmitLocation(true)));
+
+				}
 				else if (uri->protocol == URI_HTTP && !iswritable)
 				{
 					Datum 	d_exthttp = heap_getattr(tuple, Anum_pg_authid_rolcreaterexthttp, pg_authid_dsc, &isnull);
@@ -22690,6 +22713,7 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 	bool		first_uri = true;
 
 #define FDIST_DEF_PORT 8080
+#define HDFS_DEF_PORT  9000
 
 	/* Parser should not let this happen */
 	Assert(locs != NIL);
@@ -22747,7 +22771,7 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 		 * in here edit the uri string if needed
 		 */
 
-		/* no port was specified for gpfdist. add the default */
+		/* no port was specified for gpfdist or hdfs. add the default */
 		if(uri->protocol == URI_GPFDIST && uri->port == -1)
 		{
 			char *at_hostname = (char *) uri_str_orig + strlen("gpfdist://");
@@ -22763,6 +22787,21 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 
 			pfree(hostname);
 		}
+		else if(uri->protocol == URI_GPHDFS && uri->port == -1)
+		{
+			char *at_hostname = (char *) uri_str_orig + strlen("gphdfs://");
+			char *after_hostname = strchr(at_hostname, '/');
+			int  len = after_hostname - at_hostname;
+			char *hostname = pstrdup(at_hostname);
+
+			hostname[len] = '\0';
+
+			/* add the default port number to the uri string */
+			sprintf(uri_str_final, "%s%s:%d%s", PROTOCOL_GPHDFS, hostname,
+					HDFS_DEF_PORT, after_hostname);
+
+			pfree(hostname);
+		}
 		else
 		{
 			/* no changes to original uri string */
@@ -22772,6 +22811,14 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 		/*
 		 * check for various errors
 		 */
+		if (!first_uri && uri->protocol == URI_GPHDFS)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("GPHDFS can only have one location list"),
+					errhint("Combine multiple HDFS files into a single file"),
+					errOmitLocation(true)));
+
+
 		if(first_uri)
 		{
 		    first_protocol = uri->protocol;
@@ -22790,12 +22837,13 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 
 		if(uri->protocol != URI_FILE &&
 		   uri->protocol != URI_HTTP &&
+		   uri->protocol != URI_GPHDFS &&
 		   uri->protocol != URI_GPFDIST)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("unsupported URI protocol for \'%s\'", uri_str_final),
-					 errhint("Use 'file', 'http' or 'gpfdist' protocol instead."),
+					 errhint("Use 'file', 'http', 'hdfs' or 'gpfdist' protocol instead."),
 							   errOmitLocation(true)));
 		}
 
@@ -22835,7 +22883,7 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 							"\'%s\'", uri_str_final),
 					errhint("Specify the explicit path and file name to write into."),
 							   errOmitLocation(true)));
-		
+
 		len = VARHDRSZ + strlen(uri_str_final);
 
 		/* +1 leaves room for sprintf's trailing null */
