@@ -46,13 +46,13 @@ CREATE EXTERNAL TABLE EXT_HDFS_READ  ( N_NATIONKEY  INTEGER ,
                             N_NAME       CHAR(25) ,
                             N_REGIONKEY  INTEGER ,
                             N_COMMENT    VARCHAR(152))
-location ('gphdfs://alanpc-4.local@:123/Data/nation.tbl' )
+location ('gphdfs://@hostname@@:123/Data/nation.tbl' )
 FORMAT 'text' (delimiter '|');
 CREATE WRITABLE EXTERNAL TABLE EXT_HDFS_WRITE  ( N_NATIONKEY  INTEGER ,
                             N_NAME       CHAR(25) ,
                             N_REGIONKEY  INTEGER ,
                             N_COMMENT    VARCHAR(152))
-location ('gphdfs://alanpc-4.local@/data/nation.tbl' )
+location ('gphdfs://@hostname@@/data/nation.tbl' )
 FORMAT 'text';
 -- drop tables
 DROP EXTERNAL TABLE EXT_HDFS_READ;
@@ -79,8 +79,8 @@ DETAIL:  Command: execute:( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)
 select * from check_env;
                                                                                                       x                                                                                                       
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- DYLD_LIBRARY_PATH=/Users/jcohen/greenplum-db-devel/lib:/Users/jcohen/greenplum-db-devel/ext/python/lib:
- GPHOME=/Users/jcohen/greenplum-db-devel
+ DYLD_LIBRARY_PATH=/Users/@gpcurusername@/greenplum-db-devel/lib:/Users/@gpcurusername@/greenplum-db-devel/ext/python/lib:
+ GPHOME=/Users/@gpcurusername@/greenplum-db-devel
  GP_CID=0
  GP_DATABASE=regression
  GP_DATE=20091008
@@ -88,35 +88,35 @@ select * from check_env;
  GP_MASTER_PORT=11000
  GP_SEGMENT_COUNT=2
  GP_SEGMENT_ID=0
- GP_SEG_DATADIR=/Users/jcohen/cdb-data/testdb0
- GP_SEG_PG_CONF=/Users/jcohen/cdb-data/testdb0/postgresql.conf
- GP_SEG_PORT=11002
- GP_SESSION_ID=978
+ GP_SEG_DATADIR=/Users/@gpcurusername@/cdb-data/testdb0
+ GP_SEG_PG_CONF=/Users/@gpcurusername@/cdb-data/testdb0/postgresql.conf
+ GP_SEG_PORT=11001
+ GP_SESSION_ID=162
  GP_SN=1
- GP_TIME=143624
- GP_USER=jcohen
- GP_XID=1255035298-0000020560
- HOME=/Users/jcohen
+ GP_TIME=122908
+ GP_USER=@gpcurusername@
+ GP_XID=1291062503-0000000175
+ HOME=/Users/@gpcurusername@
  LC_COLLATE=en_US.utf-8
  LC_CTYPE=en_US.utf-8
  LC_MESSAGES=C
  LC_MONETARY=C
  LC_NUMERIC=C
  LC_TIME=C
- LOGNAME=jcohen
- MAIL=/var/mail/jcohen
- OPENSSL_CONF=/Users/jcohen/greenplum-db-devel/etc/openssl.cnf
- PATH=/Users/jcohen/greenplum-db-devel/bin:/Users/jcohen/greenplum-db-devel/ext/python/bin:/Users/jcohen/greenplum-db-devel/bin:/Users/jcohen/greenplum-db-devel/ext/python/bin:/usr/bin:/bin:/usr/sbin:/sbin
- PGDATA=/Users/jcohen/cdb-data/testdb0
- PGSYSCONFDIR=/Users/jcohen/greenplum-db-devel/etc/postgresql
- PWD=/Users/jcohen/cdb-data/testdb0
- PYTHONHOME=/Users/jcohen/greenplum-db-devel/ext/python
- PYTHONPATH=/Users/jcohen/greenplum-db-devel/lib/python
+ LOGNAME=@gpcurusername@
+ MAIL=/var/mail/@gpcurusername@
+ OPENSSL_CONF=/Users/@gpcurusername@/greenplum-db-devel/etc/openssl.cnf
+ PATH=/Users/@gpcurusername@/greenplum-db-devel/bin:/Users/@gpcurusername@/greenplum-db-devel/ext/python/bin:/Users/@gpcurusername@/greenplum-db-devel/bin:/Users/@gpcurusername@/greenplum-db-devel/ext/python/bin:/usr/bin:/bin:/usr/sbin:/sbin
+ PGDATA=/Users/@gpcurusername@/cdb-data/testdb0
+ PGSYSCONFDIR=/Users/@gpcurusername@/greenplum-db-devel/etc/postgresql
+ PWD=/Users/@gpcurusername@/cdb-data/testdb0
+ PYTHONHOME=/Users/@gpcurusername@/greenplum-db-devel/ext/python
+ PYTHONPATH=/Users/@gpcurusername@/greenplum-db-devel/lib/python
  SHELL=/bin/bash
  SHLVL=4
- SSH_CLIENT=::1 53075 22
- SSH_CONNECTION=::1 53075 ::1 22
- USER=jcohen
+ SSH_CLIENT=127.0.0.1 53700 22
+ SSH_CONNECTION=127.0.0.1 53700 127.0.0.1 22
+ USER=@gpcurusername@
  _=/usr/bin/env
  __CF_USER_TEXT_ENCODING=0x1F6:0:0
 (40 rows)
@@ -705,16 +705,16 @@ NOTICE:  resource queue required -- using default resource queue "pg_default"
 CREATE ROLE exttab1_u3 CREATEEXTTABLE(protocol='gpfdist') NOCREATEEXTTABLE(protocol='gpfdist', type='readable'); -- fail due to conflict 
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 ERROR:  conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE
-CREATE ROLE exttab1_u4 CREATEEXTTABLE(protocol='gphdfs', type='readable');
+CREATE ROLE exttab1_u4 CREATEEXTTABLE(protocol='gphdfs', type='readable'); 
 NOTICE:  resource queue required -- using default resource queue "pg_default"
-CREATE ROLE exttab1_u5 CREATEEXTTABLE(protocol='gphdfs', type='writable');
+CREATE ROLE exttab1_u5 CREATEEXTTABLE(protocol='gphdfs', type='writable'); 
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 CREATE ROLE exttab1_u6 NOCREATEEXTTABLE(protocol='gphdfs', type='readable') NOCREATEEXTTABLE(protocol='gphdfs', type='writable');
 NOTICE:  resource queue required -- using default resource queue "pg_default"
-CREATE ROLE exttab1_u7 CREATEEXTTABLE(protocol='gphdfs') NOCREATEEXTTABLE(protocol='gphdfs', type='readable'); -- fail due to conflict
+CREATE ROLE exttab1_u7 CREATEEXTTABLE(protocol='gphdfs') NOCREATEEXTTABLE(protocol='gphdfs', type='readable'); -- fail due to conflict 
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 ERROR:  conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE
-CREATE ROLE exttab1_u7 CREATEEXTTABLE(protocol='gphdfs', type='writable') NOCREATEEXTTABLE(protocol='gphdfs', type='writable'); -- fail due to conflict
+CREATE ROLE exttab1_u7 CREATEEXTTABLE(protocol='gphdfs', type='writable') NOCREATEEXTTABLE(protocol='gphdfs', type='writable'); -- fail due to conflict 
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 ERROR:  conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE
 SET SESSION AUTHORIZATION exttab1_su;
@@ -793,7 +793,7 @@ select count(*) from pg_catalog.pg_exttable where reloid in (select r.oid from p
 drop schema exttabletest cascade;
 NOTICE:  drop cascades to external table exttabletest.ext_nation
 select count(*) from pg_catalog.pg_exttable where reloid in (select r.oid from pg_class r where r.relname in ('ext_nation', 'ext_whois', 'gpfdist_status'));
- count
+ count 
 -------
      0
 (1 row)
