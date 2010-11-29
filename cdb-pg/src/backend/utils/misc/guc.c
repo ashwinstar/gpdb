@@ -397,6 +397,8 @@ char	   *gp_snmp_use_inform_or_trap;
 char       *gp_snmp_debug_log;
 #endif
 
+char	   *gp_connectemc_mode;;
+
 /* The following GUC holds the default version for append-only tables */
 int	test_appendonly_version_default = AORelationVersion_GetLatest();
 
