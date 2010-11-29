@@ -1077,6 +1077,8 @@ extern Datum float8_mregr_accum(PG_FUNCTION_ARGS);
 extern Datum float8_mregr_combine(PG_FUNCTION_ARGS);
 extern Datum float8_mregr_coef(PG_FUNCTION_ARGS);
 extern Datum float8_mregr_r2(PG_FUNCTION_ARGS);
+extern Datum float8_mregr_tstats(PG_FUNCTION_ARGS);
+extern Datum float8_mregr_pvalues(PG_FUNCTION_ARGS);
 
 /* utils/stat/pinv.c */
 Datum pseudoinverse(PG_FUNCTION_ARGS);

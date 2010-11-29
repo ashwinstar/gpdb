@@ -293,6 +293,8 @@ DATA(insert ( 3255  nb_classify_accum     - nb_classify_combine   - nb_classify_
 /* multiple linear regression */
 DATA(insert ( 3261  float8_mregr_accum    - float8_mregr_combine  - float8_mregr_coef   0   1022    "{0}" ));
 DATA(insert ( 3262  float8_mregr_accum    - float8_mregr_combine  - float8_mregr_r2     0   1022    "{0}" ));
+DATA(insert ( 3264  float8_mregr_accum    - float8_mregr_combine  - float8_mregr_tstats 0   1022    "{0}" ));
+DATA(insert ( 3266  float8_mregr_accum    - float8_mregr_combine  - float8_mregr_pvalues 0   1022    "{0}" ));
 
 
 /*

@@ -34,7 +34,7 @@ ifeq ($(PORTNAME), darwin)
 LDOPTS = $(CLAPACKLIBS) -Z $(LIBS) 
 endif
 
-OBJS = bayes.o pinv.o regress.o
+OBJS = bayes.o pinv.o regress.o student.o
 
 include $(top_srcdir)/src/backend/common.mk
 

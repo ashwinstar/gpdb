@@ -1,0 +1,636 @@
+--
+-- leastsquares.sql - test for ordinary least squares regression aggregates:
+--   * regr_count
+--   * regr_avgx
+--   * regr_avgy
+--   * regr_sxx
+--   * regr_sxy
+--   * regr_syy
+--   * regr_intercept
+--   * regr_slope
+--   * regr_r2
+--   * mregr_coef
+--   * mregr_r2
+--   * mregr_tstats
+--   * mregr_pvalues
+--
+CREATE TABLE weibull
+(
+	id INTEGER NOT NULL,
+	x1 DOUBLE PRECISION,
+	x2 DOUBLE PRECISION,
+	y DOUBLE PRECISION
+) DISTRIBUTED BY (id);
+COPY weibull (id, x1, x2, y) FROM stdin;
+-- Testing of basic single linear regression code
+-- start_equiv
+select 
+    regr_count(y, x1)::real as count,
+    regr_avgx(y, x1)::real as avgx,
+    regr_avgy(y, x1)::real as avgy,
+    regr_sxx(y, x1)::real as sxx,
+    regr_sxy(y, x1)::real as sxy,
+    regr_syy(y, x1)::real as syy,
+    regr_intercept(y, x1)::real as intercept,
+    regr_slope(y, x1)::real as slope,
+    regr_r2(y, x1)::real as r2
+from weibull;
+ count |  avgx   | avgy  |   sxx   |   sxy   |   syy   | intercept |  slope  |    r2    
+-------+---------+-------+---------+---------+---------+-----------+---------+----------
+    17 | 55.3529 | 288.4 | 2182.86 | 5230.02 | 13239.7 |   155.777 | 2.39595 | 0.946458
+(1 row)
+
+select
+    count(y)::real as count,
+    avg(x1)::real as avgx,
+    avg(y)::real as avgy,
+    ((count(y) * sum(x1*x1) - sum(x1)^2)/count(y))::real as sxx,
+    ((count(y) * sum(x1*y) - sum(x1)*sum(y))/count(y))::real as sxy,
+    ((count(y) * sum(y*y) - sum(y)^2)/count(y))::real as sxy,
+    ((sum(y)*sum(x1*x1) - sum(x1)*sum(x1*y))/(count(y) * sum(x1*x1) - sum(x1)^2))::real as intercept,
+    ((count(y) * sum(x1*y) - sum(x1)*sum(y))/(count(y) * sum(x1*x1) - sum(x1)^2))::real as slope,
+    ((count(y) * sum(x1*y) - sum(x1)*sum(y))^2/
+        ((count(y) * sum(x1*x1) - sum(x1)^2) * (count(y) * sum(y*y) - sum(y)^2)))::real as r2
+from weibull;
+ count |  avgx   | avgy  |   sxx   |   sxy   |   sxy   | intercept |  slope  |    r2    
+-------+---------+-------+---------+---------+---------+-----------+---------+----------
+    17 | 55.3529 | 288.4 | 2182.86 | 5230.02 | 13239.7 |   155.777 | 2.39595 | 0.946458
+(1 row)
+
+-- end_equiv
+-- Single linear and multivariate should match for a single independent variable
+-- start_equiv
+select 
+    array[regr_intercept(y, x1), regr_slope(y, x1)]::real[] as coef,
+    regr_r2(y,x1)::real as r2
+from weibull;
+       coef        |    r2    
+-------------------+----------
+ {155.777,2.39595} | 0.946458
+(1 row)
+
+select 
+    mregr_coef(y, array[1,x1])::real[] as coef,
+    mregr_r2(y, array[1,x1])::real as r2
+from weibull;
+       coef        |    r2    
+-------------------+----------
+ {155.777,2.39595} | 0.946458
+(1 row)
+
+-- end_equiv
+-- start_equiv
+select 
+    array[regr_intercept(y, x2), regr_slope(y, x2)]::real[] as coef,
+    regr_r2(y,x2)::real as r2
+from weibull;
+        coef        |    r2    
+--------------------+----------
+ {-449.025,23.8649} | 0.945513
+(1 row)
+
+select 
+    mregr_coef(y, array[1, x2])::real[] as coef,
+    mregr_r2(y, array[1, x2])::real as r2
+from weibull;
+        coef        |    r2    
+--------------------+----------
+ {-449.025,23.8649} | 0.945513
+(1 row)
+
+-- end_equiv
+-- When there is a single element regr returns null, mregr still tries to give numbers.
+-- start_equiv
+select
+    id,
+    regr_intercept(y, x2)::real as intercept,
+    regr_slope(y, x2)::real as slope,
+    regr_r2(y,x1)::real as r2
+from weibull
+group by id
+order by id;
+ id | intercept | slope | r2 
+----+-----------+-------+----
+  1 |           |       |   
+  2 |           |       |   
+  3 |           |       |   
+  4 |           |       |   
+  5 |           |       |   
+  6 |           |       |   
+  7 |           |       |   
+  8 |           |       |   
+  9 |           |       |   
+ 10 |           |       |   
+ 11 |           |       |   
+ 12 |           |       |   
+ 13 |           |       |   
+ 14 |           |       |   
+ 15 |           |       |   
+ 16 |           |       |   
+ 17 |           |       |   
+(17 rows)
+
+select 
+    id,
+    regr_intercept(y, x2)::real as intercept,
+    regr_slope(y, x2)::real as slope,
+    regr_r2(y,x1)::real as r2
+from gp_dist_random('weibull')
+group by id
+order by id;
+ id | intercept | slope | r2 
+----+-----------+-------+----
+  1 |           |       |   
+  2 |           |       |   
+  3 |           |       |   
+  4 |           |       |   
+  5 |           |       |   
+  6 |           |       |   
+  7 |           |       |   
+  8 |           |       |   
+  9 |           |       |   
+ 10 |           |       |   
+ 11 |           |       |   
+ 12 |           |       |   
+ 13 |           |       |   
+ 14 |           |       |   
+ 15 |           |       |   
+ 16 |           |       |   
+ 17 |           |       |   
+(17 rows)
+
+select 
+    id,
+    (regr_intercept(y, x2) over (partition by id))::real as intercept,
+    (regr_slope(y, x2) over (partition by id))::real as slope,
+    (regr_r2(y,x1) over (partition by id))::real as r2
+from weibull
+order by id;
+ id | intercept | slope | r2 
+----+-----------+-------+----
+  1 |           |       |   
+  2 |           |       |   
+  3 |           |       |   
+  4 |           |       |   
+  5 |           |       |   
+  6 |           |       |   
+  7 |           |       |   
+  8 |           |       |   
+  9 |           |       |   
+ 10 |           |       |   
+ 11 |           |       |   
+ 12 |           |       |   
+ 13 |           |       |   
+ 14 |           |       |   
+ 15 |           |       |   
+ 16 |           |       |   
+ 17 |           |       |   
+(17 rows)
+
+-- end_equiv
+-- start_equiv
+select 
+    id,
+    mregr_coef(y, array[1, x2])::real[] as coef,
+    mregr_r2(y, array[1, x2])::real as r2
+from weibull
+group by id
+order by id;
+ id |        coef        |    r2     
+----+--------------------+-----------
+  1 | {0.296411,8.62555} |       NaN
+  2 | {0.292383,8.56681} |  Infinity
+  3 | {0.284993,8.40729} |       NaN
+  4 | {0.302914,8.99654} |       NaN
+  5 | {0.305025,9.12023} | -Infinity
+  6 | {0.300841,9.11548} |  Infinity
+  7 | {0.290255,8.85278} | -Infinity
+  8 | {0.291365,8.94491} | -Infinity
+  9 | {0.300114,9.2435}  | -Infinity
+ 10 | {0.303408,9.37529} |  Infinity
+ 11 | {0.299018,9.41908} |  Infinity
+ 12 | {0.300729,9.5331}  |  Infinity
+ 13 | {0.298937,9.53608} | -Infinity
+ 14 | {0.301756,9.65619} |       NaN
+ 15 | {0.311903,10.0121} |  Infinity
+ 16 | {0.312793,10.1658} |  Infinity
+ 17 | {0.322131,10.5981} |  Infinity
+(17 rows)
+
+select 
+    id,
+    mregr_coef(y, array[1, x2])::real[] as coef,
+    mregr_r2(y, array[1, x2])::real as r2
+from gp_dist_random('weibull')
+group by id
+order by id;
+ id |        coef        |    r2     
+----+--------------------+-----------
+  1 | {0.296411,8.62555} |       NaN
+  2 | {0.292383,8.56681} |  Infinity
+  3 | {0.284993,8.40729} |       NaN
+  4 | {0.302914,8.99654} |       NaN
+  5 | {0.305025,9.12023} | -Infinity
+  6 | {0.300841,9.11548} |  Infinity
+  7 | {0.290255,8.85278} | -Infinity
+  8 | {0.291365,8.94491} | -Infinity
+  9 | {0.300114,9.2435}  | -Infinity
+ 10 | {0.303408,9.37529} |  Infinity
+ 11 | {0.299018,9.41908} |  Infinity
+ 12 | {0.300729,9.5331}  |  Infinity
+ 13 | {0.298937,9.53608} | -Infinity
+ 14 | {0.301756,9.65619} |       NaN
+ 15 | {0.311903,10.0121} |  Infinity
+ 16 | {0.312793,10.1658} |  Infinity
+ 17 | {0.322131,10.5981} |  Infinity
+(17 rows)
+
+select 
+    id,
+    (mregr_coef(y, array[1, x2]) over (partition by id))::real[] as coef,
+    (mregr_r2(y, array[1, x2]) over (partition by id))::real as r2
+from weibull
+order by id;
+ id |        coef        |    r2     
+----+--------------------+-----------
+  1 | {0.296411,8.62555} |       NaN
+  2 | {0.292383,8.56681} |  Infinity
+  3 | {0.284993,8.40729} |       NaN
+  4 | {0.302914,8.99654} |       NaN
+  5 | {0.305025,9.12023} | -Infinity
+  6 | {0.300841,9.11548} |  Infinity
+  7 | {0.290255,8.85278} | -Infinity
+  8 | {0.291365,8.94491} | -Infinity
+  9 | {0.300114,9.2435}  | -Infinity
+ 10 | {0.303408,9.37529} |  Infinity
+ 11 | {0.299018,9.41908} |  Infinity
+ 12 | {0.300729,9.5331}  |  Infinity
+ 13 | {0.298937,9.53608} | -Infinity
+ 14 | {0.301756,9.65619} |       NaN
+ 15 | {0.311903,10.0121} |  Infinity
+ 16 | {0.312793,10.1658} |  Infinity
+ 17 | {0.322131,10.5981} |  Infinity
+(17 rows)
+
+-- end_equiv
+-- Test multivariate regression
+select 
+    mregr_coef(y, array[1, x1, x2])::real[] as coef,
+    mregr_r2(y, array[1, x1, x2])::real as r2,
+    mregr_tstats(y, array[1, x1, x2])::real[] as tstats,
+    mregr_pvalues(y, array[1, x1, x2])::real[] as pvalues
+from weibull;
+            coef            |    r2    |          tstats           |             pvalues             
+----------------------------+----------+---------------------------+---------------------------------
+ {-153.512,1.23872,12.0824} | 0.968022 | {-1.52173,3.13926,3.0726} | {0.15034,0.00724458,0.00827039}
+(1 row)
+
+select 
+    id,
+    mregr_coef(y, array[1, x1, x2])::real[] as coef,
+    mregr_r2(y, array[1, x1, x2])::real as r2,
+    mregr_tstats(y, array[1, x1, x2])::real[] as tstats,
+    mregr_pvalues(y, array[1, x1, x2])::real[] as pvalues
+from weibull
+group by id
+order by id;
+ id |            coef             |    r2     |                 tstats                 |    pvalues    
+----+-----------------------------+-----------+----------------------------------------+---------------
+  1 | {-0.0390625,-1.5,11.5}      |  Infinity | {-3.42176e-09,-6.89158e-08,3.2487e-07} | {NaN,NaN,NaN}
+  2 | {0.0916134,3.97602,2.68427} | -Infinity | {NaN,NaN,NaN}                          | {NaN,NaN,NaN}
+  3 | {0.0887274,3.89513,2.61746} |  Infinity | {9.20517e+07,9.20517e+07,9.20517e+07}  | {NaN,NaN,NaN}
+  4 | {0.0934224,4.1573,2.77464}  |       NaN | {-Infinity,-Infinity,-Infinity}        | {NaN,NaN,NaN}
+  5 | {0.25,4,5}                  |  Infinity | {6.23735e-09,6.75412e-08,5.60016e-08}  | {NaN,NaN,NaN}
+  6 | {0.171875,2.25,5.25}        | -Infinity | {1.42718e-08,1.59178e-07,2.82464e-07}  | {NaN,NaN,NaN}
+  7 | {0.0837968,4.01387,2.5558}  | -Infinity | {NaN,NaN,NaN}                          | {NaN,NaN,NaN}
+  8 | {0.0793699,3.98437,2.43666} | -Infinity | {NaN,NaN,NaN}                          | {NaN,NaN,NaN}
+  9 | {0.0762546,4.02624,2.34864} |       NaN | {-Infinity,-Infinity,-Infinity}        | {NaN,NaN,NaN}
+ 10 | {0.076597,4.07496,2.36685}  |       NaN | {-Infinity,-Infinity,-Infinity}        | {NaN,NaN,NaN}
+ 11 | {0.0705775,4.00174,2.22319} |  Infinity | {1.10106e+08,1.10106e+08,1.10106e+08}  | {NaN,NaN,NaN}
+ 12 | {0.0710947,4.0524,2.2537}   | -Infinity | {NaN,NaN,NaN}                          | {NaN,NaN,NaN}
+ 13 | {0.0602868,3.82821,1.92315} |  Infinity | {7.98228e+07,7.98228e+07,7.98228e+07}  | {NaN,NaN,NaN}
+ 14 | {0.0584789,3.81867,1.87132} | -Infinity | {NaN,NaN,NaN}                          | {NaN,NaN,NaN}
+ 15 | {0.0546875,3.625,2}         |  Infinity | {5.21163e-08,NaN,NaN}                  | {NaN,NaN,NaN}
+ 16 | {0.0473358,3.64486,1.53841} | -Infinity | {NaN,NaN,NaN}                          | {NaN,NaN,NaN}
+ 17 | {0.0489052,3.80483,1.60898} |  Infinity | {9.14883e+07,9.14883e+07,9.14883e+07}  | {NaN,NaN,NaN}
+(17 rows)
+
+-- Accumulation/combination order shouldn't matter to the result.
+-- start_equiv
+select float8_regr_accum(float8_regr_accum(array[0,0,0,0,0,0], 1, 2),  2, 1);
+ float8_regr_accum 
+-------------------
+ {2,3,5,3,5,4}
+(1 row)
+
+select float8_regr_accum(float8_regr_accum(array[0,0,0,0,0,0], 2, 1),  1, 2);
+ float8_regr_accum 
+-------------------
+ {2,3,5,3,5,4}
+(1 row)
+
+select float8_regr_amalg(float8_regr_accum(array[0,0,0,0,0,0], 1, 2),
+                         float8_regr_accum(array[0,0,0,0,0,0], 2, 1));
+ float8_regr_amalg 
+-------------------
+ {2,3,5,3,5,4}
+(1 row)
+
+-- end_equiv
+select float8_mregr_combine(array[2,1,2,3,4,5,6,7,8,9],array[2,1,2,3,4,5,6,7,8,9]);
+    float8_mregr_combine    
+----------------------------
+ {2,2,4,6,8,10,12,14,16,18}
+(1 row)
+
+-- Component testing of the individual aggregate callback functions
+--  * null handling
+--  * malformed state
+--  * check for invalid in-place updates of first parameter
+select float8_regr_accum(null, 1, 2);
+ float8_regr_accum 
+-------------------
+ 
+(1 row)
+
+select float8_regr_accum(array[0,0,0,0,0,0], 1, null);
+ float8_regr_accum 
+-------------------
+ 
+(1 row)
+
+select float8_regr_accum(array[0,0,0,0,0,0], null, 2);
+ float8_regr_accum 
+-------------------
+ 
+(1 row)
+
+select float8_regr_amalg(array[0,0,0,0,0,0], null);
+ float8_regr_amalg 
+-------------------
+ 
+(1 row)
+
+select float8_regr_amalg(null, array[0,0,0,0,0,0]);
+ float8_regr_amalg 
+-------------------
+ 
+(1 row)
+
+select float8_regr_sxx(null);
+ float8_regr_sxx 
+-----------------
+                
+(1 row)
+
+select float8_regr_sxx(array[0,0,0,0,0,0]);
+ float8_regr_sxx 
+-----------------
+                
+(1 row)
+
+select float8_regr_sxx(float8_regr_accum(array[0,0,0,0,0,0], 1, 2));
+ float8_regr_sxx 
+-----------------
+               0
+(1 row)
+
+select float8_regr_syy(null);
+ float8_regr_syy 
+-----------------
+                
+(1 row)
+
+select float8_regr_syy(array[0,0,0,0,0,0]);
+ float8_regr_syy 
+-----------------
+                
+(1 row)
+
+select float8_regr_syy(float8_regr_accum(array[0,0,0,0,0,0], 1, 2));
+ float8_regr_syy 
+-----------------
+               0
+(1 row)
+
+select float8_regr_sxy(null);
+ float8_regr_sxy 
+-----------------
+                
+(1 row)
+
+select float8_regr_sxy(array[0,0,0,0,0,0]);
+ float8_regr_sxy 
+-----------------
+                
+(1 row)
+
+select float8_regr_sxy(float8_regr_accum(array[0,0,0,0,0,0], 1, 2));
+ float8_regr_sxy 
+-----------------
+               0
+(1 row)
+
+select float8_regr_avgx(null);
+ float8_regr_avgx 
+------------------
+                 
+(1 row)
+
+select float8_regr_avgx(array[0,0,0,0,0,0]);
+ float8_regr_avgx 
+------------------
+                 
+(1 row)
+
+select float8_regr_avgx(float8_regr_accum(array[0,0,0,0,0,0], 1, 2));
+ float8_regr_avgx 
+------------------
+                2
+(1 row)
+
+select float8_regr_avgy(null);
+ float8_regr_avgy 
+------------------
+                 
+(1 row)
+
+select float8_regr_avgy(array[0,0,0,0,0,0]);
+ float8_regr_avgy 
+------------------
+                 
+(1 row)
+
+select float8_regr_avgy(float8_regr_accum(array[0,0,0,0,0,0], 1, 2));
+ float8_regr_avgy 
+------------------
+                1
+(1 row)
+
+select float8_regr_r2(null);
+ float8_regr_r2 
+----------------
+               
+(1 row)
+
+select float8_regr_r2(array[0,0,0,0,0,0]);
+ float8_regr_r2 
+----------------
+               
+(1 row)
+
+select float8_regr_r2(float8_regr_accum(array[0,0,0,0,0,0], 1, 2));
+ float8_regr_r2 
+----------------
+               
+(1 row)
+
+select float8_regr_slope(null);
+ float8_regr_slope 
+-------------------
+                  
+(1 row)
+
+select float8_regr_slope(array[0,0,0,0,0,0]);
+ float8_regr_slope 
+-------------------
+                  
+(1 row)
+
+select float8_regr_slope(float8_regr_accum(array[0,0,0,0,0,0], 1, 2));
+ float8_regr_slope 
+-------------------
+                  
+(1 row)
+
+select float8_regr_intercept(null);
+ float8_regr_intercept 
+-----------------------
+                      
+(1 row)
+
+select float8_regr_intercept(array[0,0,0,0,0,0]);
+ float8_regr_intercept 
+-----------------------
+                      
+(1 row)
+
+select float8_regr_intercept(float8_regr_accum(array[0,0,0,0,0,0], 1, 2));
+ float8_regr_intercept 
+-----------------------
+                      
+(1 row)
+
+select float8_mregr_accum(null, 1, array[1,2]);
+ float8_mregr_accum 
+--------------------
+ 
+(1 row)
+
+select float8_mregr_accum('{}'::float8[], null, array[1,2]);
+ float8_mregr_accum 
+--------------------
+ 
+(1 row)
+
+select float8_mregr_accum('{}'::float8[], 1, null);
+ float8_mregr_accum 
+--------------------
+ 
+(1 row)
+
+select float8_mregr_combine(null, '{}');
+ float8_mregr_combine 
+----------------------
+ 
+(1 row)
+
+select float8_mregr_combine('{}', null);
+ float8_mregr_combine 
+----------------------
+ 
+(1 row)
+
+select float8_mregr_combine('{0}'::float8[], '{0}'::float8[]);
+ float8_mregr_combine 
+----------------------
+ {0}
+(1 row)
+
+select float8_regr_accum('{}'::float8[], 1, 2);
+ERROR:  float8_regr_accum: expected 6-element float8 array (float.c:1874)
+select float8_regr_amalg('{}'::float8[], array[0,0,0,0,0,0]);
+ERROR:  float8_regr_amalg: expected 6-element float8 array (float.c:1874)
+select float8_regr_amalg(array[0,0,0,0,0,0], '{}'::float8[]);
+ERROR:  float8_regr_amalg: expected 6-element float8 array (float.c:1874)
+select float8_regr_amalg(array[null,0,0,0,0,0], '{}'::float8[]);
+ERROR:  null array element where not supported (arrayfuncs.c:872)
+select float8_regr_sxx('{}'::float8[]);
+ERROR:  float8_regr_sxx: expected 6-element float8 array (float.c:1874)
+select float8_regr_syy('{}'::float8[]);
+ERROR:  float8_regr_syy: expected 6-element float8 array (float.c:1874)
+select float8_regr_sxy('{}'::float8[]);
+ERROR:  float8_regr_sxy: expected 6-element float8 array (float.c:1874)
+select float8_regr_avgx('{}'::float8[]);
+ERROR:  float8_regr_avgx: expected 6-element float8 array (float.c:1874)
+select float8_regr_avgy('{}'::float8[]);
+ERROR:  float8_regr_avgy: expected 6-element float8 array (float.c:1874)
+select float8_regr_slope('{}'::float8[]);
+ERROR:  float8_regr_slope: expected 6-element float8 array (float.c:1874)
+select float8_regr_r2('{}'::float8[]);
+ERROR:  float8_regr_r2: expected 6-element float8 array (float.c:1874)
+select float8_regr_intercept('{}'::float8[]);
+ERROR:  float8_regr_intercept: expected 6-element float8 array (float.c:1874)
+select float8_mregr_accum('{}'::float8[], 1, array[1,null]);
+ERROR:  null array element where not supported (arrayfuncs.c:872)
+select float8_mregr_accum('{}'::float8[], 1, array[1,2]);
+ERROR:  invalid transition state
+select float8_mregr_accum('{0}'::float8[], 1, array[1,2]);
+ERROR:  float8_mregr_accum called from invalid context
+select float8_mregr_combine('{}'::float8[], '{}'::float8[]);
+ERROR:  invalid transition state
+select float8_mregr_combine(array[1,null,0,0,0,0,0], array[[1,0,0,0,0,0,0]]);
+ERROR:  null array element where not supported (arrayfuncs.c:872)
+select float8_mregr_combine(array[1,0,0,0,0,0,0], array[[1,0,0,0,0,0,0]]);
+ERROR:  invalid transition state
+select float8_mregr_combine(array[1,0,0,0,0,0,0], array[1,0,0,0,0,0,0]);
+ERROR:  mregr_combine: invalid state
+select float8_mregr_combine(array[0,0,0,0,0,0], array[1,2,3,4,5,6]);
+ERROR:  independent variable array not constant width
+CREATE TABLE regr_test as 
+   select array[0,0,0,0,0,0]::float8[] as x, array[2,0,0,0,0,0,0,0,0,0] as y
+DISTRIBUTED RANDOMLY;
+select float8_regr_accum(x, 0, 3), 
+       float8_regr_accum(x, 0, 2), 
+       x 
+from regr_test;
+ float8_regr_accum | float8_regr_accum |       x       
+-------------------+-------------------+---------------
+ {1,3,9,0,0,0}     | {1,2,4,0,0,0}     | {0,0,0,0,0,0}
+(1 row)
+
+select float8_regr_amalg(x, array[1,3,9,0,0,0]), 
+       float8_regr_amalg(x, array[1,2,4,0,0,0]), 
+       x 
+from regr_test;
+ float8_regr_amalg | float8_regr_amalg |       x       
+-------------------+-------------------+---------------
+ {1,3,9,0,0,0}     | {1,2,4,0,0,0}     | {0,0,0,0,0,0}
+(1 row)
+
+select float8_mregr_accum(x, 0, array[1,3]), 
+       float8_mregr_accum(x, 0, array[1,2]), 
+       x 
+from regr_test;
+ERROR:  float8_mregr_accum called from invalid context  (seg1 slice1 maple.local:50001 pid=39711)
+select float8_mregr_combine(y, array[2,1,2,3,4,5,6,7,8,9]), 
+       float8_mregr_combine(y, array[2,9,8,7,6,5,4,3,2,1]), 
+       y
+from regr_test;
+ float8_mregr_combine  | float8_mregr_combine  |           y           
+-----------------------+-----------------------+-----------------------
+ {2,1,2,3,4,5,6,7,8,9} | {2,9,8,7,6,5,4,3,2,1} | {2,0,0,0,0,0,0,0,0,0}
+(1 row)
+
+DROP TABLE regr_test;
+DROP TABLE weibull;
