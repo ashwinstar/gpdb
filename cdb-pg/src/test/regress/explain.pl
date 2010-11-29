@@ -1621,17 +1621,24 @@ sub prune_heavily
     my $node = shift;
 
     return 
-        unless (exists($node->{short}) &&
-                ($node->{short} =~ m/\d+\:\d+/));
+        unless (exists($node->{short}));
 
-    # example: Gather Motion 8:1 (slice4);
+	if ($node->{short} =~ m/Delete\s*\(slice.*segment.*\)\s*\(row.*width.*\)/)
+	{
+		# fix strange DELETE operator formatting
+		$node->{short} = "Delete";
+	}
+	elsif ($node->{short} =~ m/\d+\:\d+/)
+	{
 
-    # strip the number of nodes and slice information
-    $node->{short} =~ s/\s+\d+\:\d+.*//;
+		# example: Gather Motion 8:1 (slice4);
 
-    # Note: don't worry about removing "(slice1)" info from the
-    # "short" because addslice processes node->{text}
+		# strip the number of nodes and slice information
+		$node->{short} =~ s/\s+\d+\:\d+.*//;
 
+		# Note: don't worry about removing "(slice1)" info from the
+		# "short" because addslice processes node->{text}
+	}
 }
 
 # identify the slice for each node
