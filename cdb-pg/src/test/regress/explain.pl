@@ -1625,7 +1625,7 @@ sub prune_heavily
 
 	if ($node->{short} =~ m/Delete\s*\(slice.*segment.*\)\s*\(row.*width.*\)/)
 	{
-		# fix strange DELETE operator formatting
+		# QA-1309: fix strange DELETE operator formatting
 		$node->{short} = "Delete";
 	}
 	elsif ($node->{short} =~ m/\d+\:\d+/)
