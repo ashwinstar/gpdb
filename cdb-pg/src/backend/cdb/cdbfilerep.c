@@ -4022,7 +4022,7 @@ void FileRepStats_GpmonSend(int sig)
 	 {
 			 elog(WARNING, "Error when sending file rep stats to perfmon - \
                             only %d bytes of %lu sent\n",
-				  bytesSent, sizeof(gpmon_packet_t));
+				  bytesSent, (unsigned long)sizeof(gpmon_packet_t));
 	 } else 
 	 {
 
