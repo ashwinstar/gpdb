@@ -1047,9 +1047,9 @@ select tablename, partitionname, partitiontablename, parenttablespace,
 partitiontablespace from pg_partitions where tablename = 'cov1';
  tablename | partitionname | partitiontablename | parenttablespace | partitiontablespace 
 -----------+---------------+--------------------+------------------+---------------------
- cov1      | p1            | cov1_1_prt_p1      | pg_default       | pg_default
- cov1      | p2            | cov1_1_prt_p2      | pg_default       | pg_default
- cov1      | p3            | cov1_1_prt_p3      | pg_default       | pg_default
+ cov1      | p1            | cov1_1_prt_p1      | pg_default       | regressionts1
+ cov1      | p2            | cov1_1_prt_p2      | pg_default       | regressionts1
+ cov1      | p3            | cov1_1_prt_p3      | pg_default       | regressionts1
 (3 rows)
 
 drop table cov1;
@@ -1098,7 +1098,7 @@ drop tablespace funky.regressionts1;
 ERROR:  tablespace name may not be qualified
 -- don't do this!
 drop filespace pg_system;
-ERROR:  cannot drop filespace pg_system because it is required by the database system (filespace.c:553)
+ERROR:  cannot drop filespace pg_system because it is required by the database system (filespace.c:554)
 drop tablespace pg_default;
 ERROR:  permission denied for tablespace pg_default
 drop tablespace pg_global;
