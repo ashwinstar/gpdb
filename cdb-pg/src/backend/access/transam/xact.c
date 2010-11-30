@@ -58,6 +58,8 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdbvars.h" /* Gp_role, Gp_is_writer, interconnect_setup_timeout */
 
+#include "cdb/cdbpersistentstore.h"
+
 /*
  *	User-tweakable parameters
  */
@@ -930,6 +932,8 @@ AtSubStart_ResourceOwner(void)
 void
 RecordTransactionCommit(void)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	int32						persistentCommitSerializeLen;
 	PersistentEndXactRecObjects persistentCommitObjects;
 	int16						persistentCommitObjectCount;
@@ -1025,7 +1029,17 @@ RecordTransactionCommit(void)
 		 */
 		madeTCentries = (MyLastRecPtr.xrecoff != 0);
 		if (madeTCentries)
+		{
+			/*
+			 * When we use CheckpointStartLock, we make sure we already have the
+			 * MirroredLock first.
+			 *
+			 * The lock order is: MirroredLock then CheckpointStartLock.
+			 */
+			MIRRORED_LOCK;
+				
 			LWLockAcquire(CheckpointStartLock, LW_SHARED);
+		}
 
 		SetCurrentTransactionStopTimestamp();
 		/*
@@ -1193,7 +1207,11 @@ RecordTransactionCommit(void)
 
 		/* Unlock checkpoint lock if we acquired it */
 		if (madeTCentries)
+		{
 			LWLockRelease(CheckpointStartLock);
+
+			MIRRORED_UNLOCK;
+		}
 
 		END_CRIT_SECTION();
 	}

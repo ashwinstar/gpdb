@@ -955,6 +955,15 @@ EndPrepare(GlobalTransaction gxact)
 	 * PANIC anyway.
 	 */
 
+
+	/*
+	 * The MirroredLock will cover BOTH mirrored writes to the pg_twophase directory
+	 * and the Prepared XLOG record.
+	 *
+	 * The lock order is: MirroredLock then CheckpointStartLock.
+	 */
+	MIRRORED_LOCK;
+		
 	/*
 	 * We have to lock out checkpoint start here, too; otherwise a checkpoint
 	 * starting immediately after the WAL record is inserted could complete
@@ -967,16 +976,10 @@ EndPrepare(GlobalTransaction gxact)
 	 *
 	 * NOTE: Critical seciton and CheckpointStartLock were moved up.
 	 */
-	START_CRIT_SECTION();
-
 	LWLockAcquire(CheckpointStartLock, LW_SHARED);
 
-	/*
-	 * The MirroredLock will cover BOTH mirrored writes to the pg_twophase directory
-	 * and the Prepared XLOG record.
-	 */
-	MIRRORED_LOCK;
-		
+	START_CRIT_SECTION();
+
 	TwoPhaseSimpleFileName(simpleFileName, xid);
 
 	MirroredFlatFile_Open(
@@ -1078,16 +1081,16 @@ EndPrepare(GlobalTransaction gxact)
 								&gxact->proc.localDistribXactRef,
 								LOCALDISTRIBXACT_STATE_PREPARED);
 
+	END_CRIT_SECTION();
+
 	/*
 	 * Now we can release the checkpoint start lock: a checkpoint starting
 	 * after this will certainly see the gxact as a candidate for fsyncing.
 	 */
-	MIRRORED_UNLOCK;
-		
 	LWLockRelease(CheckpointStartLock);
 
-	END_CRIT_SECTION();
-
+	MIRRORED_UNLOCK;
+		
 #ifdef FAULT_INJECTOR
 	FaultInjector_InjectFaultIfSet(
 				       EndPreparedTwoPhaseSleep,
@@ -1912,6 +1915,8 @@ RecordTransactionCommitPrepared(TransactionId xid,
 								TransactionId *children,
 								PersistentEndXactRecObjects *persistentPrepareObjects)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	int16	persistentCommitObjectCount;
 	char	*persistentCommitBuffer = NULL;
 
@@ -1932,6 +1937,15 @@ RecordTransactionCommitPrepared(TransactionId xid,
 										EndXactRecKind_Commit);
 
 	/* See notes in RecordTransactionCommit */
+
+	/*
+	 * When we use CheckpointStartLock, we make sure we already have the MirroredLock
+	 * first.
+	 *
+	 * The lock order is: MirroredLock then CheckpointStartLock.
+	 */
+	MIRRORED_LOCK;
+		
 	LWLockAcquire(CheckpointStartLock, LW_SHARED);
 
 	/* Emit the XLOG commit record */
@@ -2026,6 +2040,8 @@ RecordTransactionCommitPrepared(TransactionId xid,
 
 	/* Checkpoint is allowed again */
 	LWLockRelease(CheckpointStartLock);
+
+	MIRRORED_UNLOCK;
 
 	if (persistentCommitBuffer != NULL)
 		pfree(persistentCommitBuffer);
