@@ -149,7 +149,7 @@ int gpmon_emcconnect_create_xml(char* buffer,
 }
 
 
-const char* emcconnect_alert_gpmon_template = "%d-%d-%d %d:%d:%d|%s|%d|%d|%s|%s|%s|%s|%s|%s\n";
+const char* emcconnect_alert_gpmon_template = "%d-%02d-%02d %02d:%02d:%02d|%s|%d|%d|%s|%s|%s|%s|%s|%s\n";
 
 // return 0 for success
 int gpmon_emcconnect_create_gpmon_string(char* buffer, 
@@ -324,7 +324,7 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom, EmcConnectDetailedSym
 
 	retVal = gpmon_emcconnect_create_gpmon_string(buffer, GPMON_EMCCONNECT_BUFFER_SIZE, symptom, dSymptom, status, severity, 
 							historyOnly, displayname, snmpoid, hostname, msg,
-							year, mon, day, hr, min, sec);
+							year+2000, mon, day, hr, min, sec);
 	if (retVal)
 		return 12;
 
