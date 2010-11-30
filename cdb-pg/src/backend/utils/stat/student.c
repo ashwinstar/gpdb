@@ -60,8 +60,8 @@
 
 /* Prototypes of internal functions */
 
-static float8 normal_cdf(float8 t);
-static float8 studentT_cdf_approx(uint32 nu, float8 t);
+static inline float8 normal_cdf(float8 t);
+static inline float8 studentT_cdf_approx(uint32 nu, float8 t);
 
 
 /* 
@@ -192,7 +192,7 @@ static inline float8 normal_cdf(float8 t)
  * for all nu >= 200. (Tested on Mac OS X 10.6, gcc-4.2.)
  */
 
-static float8 studentT_cdf_approx(uint32 nu, float8 t)
+static inline float8 studentT_cdf_approx(uint32 nu, float8 t)
 {
 	uint32	g = (nu - 1.5) / ((nu - 1) * (nu - 1)),
 			z = sqrt( log(1. + t * t / nu) / g );

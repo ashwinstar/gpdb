@@ -429,6 +429,7 @@ float8_mregr_coef(PG_FUNCTION_ARGS)
 	MRegrState state;
 	ArrayType *coef;
 	
+	MemSet(&state, '\0', sizeof(state));
 	goodArguments = float8_mregr_get_state(fcinfo, &state);
 	if (!goodArguments)
 		PG_RETURN_NULL();
@@ -447,6 +448,7 @@ float8_mregr_r2(PG_FUNCTION_ARGS)
 	MRegrState state;
 	float8 r2 = 0.0;
 	
+	MemSet(&state, '\0', sizeof(state));
 	goodArguments = float8_mregr_get_state(fcinfo, &state);
 	if (!goodArguments)
 		PG_RETURN_NULL();
@@ -465,6 +467,7 @@ float8_mregr_tstats(PG_FUNCTION_ARGS)
 	MRegrState state;
 	ArrayType *tstats;
 	
+	MemSet(&state, '\0', sizeof(state));
 	goodArguments = float8_mregr_get_state(fcinfo, &state);
 	if (!goodArguments)
 		PG_RETURN_NULL();
@@ -483,6 +486,7 @@ float8_mregr_pvalues(PG_FUNCTION_ARGS)
 	MRegrState state;
 	ArrayType *pvalues;
 	
+	MemSet(&state, '\0', sizeof(state));
 	goodArguments = float8_mregr_get_state(fcinfo, &state);
 	if (!goodArguments)
 		PG_RETURN_NULL();
