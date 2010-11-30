@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbfilerepservice.h"
@@ -113,9 +114,11 @@ static int FileRepAckPrimary_RunConsumer(void);
 void 
 FileRepAckPrimary_StartReceiver(void)
 {	
-	int status = STATUS_OK;
-	
-	int retval;
+	int				status = STATUS_OK;
+	struct timeval	currentTime;
+	pg_time_t		beginTime = 0;
+	pg_time_t		endTime = 0;	
+	int				retval = 0;
 	
 	FileRep_InsertConfigLogEntry("start receiver ack");
 
@@ -153,6 +156,9 @@ FileRepAckPrimary_StartReceiver(void)
 								 fileRepPrimaryHostAddress,
 								 fileRepPrimaryPort);
 	
+	gettimeofday(&currentTime, NULL);
+	beginTime = (pg_time_t) currentTime.tv_sec;
+	
 	while (1) {
 		
 		if (status != STATUS_OK) 
@@ -175,6 +181,28 @@ FileRepAckPrimary_StartReceiver(void)
 		PG_SETMASK(&BlockSig);
 		retval = FileRepConnServer_Select();	
 		PG_SETMASK(&UnBlockSig);
+		
+		gettimeofday(&currentTime, NULL);
+		endTime = (pg_time_t) currentTime.tv_sec;
+
+		if ((endTime - beginTime) > gp_segment_connect_timeout) 
+		{
+			ereport(WARNING, 
+					(errmsg("mirror failure, "
+							"no connection was established from client from mirror, "
+							"primary address(port) '%s(%d)' mirror address(port) '%s(%d)' timeout reached '%d' "
+							"failover requested",
+							fileRepPrimaryHostAddress, 
+							fileRepPrimaryPort,
+							fileRepMirrorHostAddress, 
+							fileRepMirrorPort,
+							gp_segment_connect_timeout),
+					 errSendAlert(true),
+					 FileRep_errcontext()));
+			
+			status = STATUS_ERROR;
+			continue;
+		}
 
 		/* 
 		 * check and process any signals received 

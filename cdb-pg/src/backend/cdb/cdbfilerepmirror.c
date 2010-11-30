@@ -125,8 +125,11 @@ static int FileRepMirror_Drop(FileName fileName);
 void 
 FileRepMirror_StartReceiver(void)
 {	
-	int status = STATUS_OK;
-	int retval;
+	int				status = STATUS_OK;
+	struct timeval	currentTime;
+	pg_time_t		beginTime = 0;
+	pg_time_t		endTime = 0;		
+	int				retval = 0;
 
 	FileRep_InsertConfigLogEntry("start receiver");
 	
@@ -165,6 +168,9 @@ FileRepMirror_StartReceiver(void)
 		FileRepSubProcess_SetState(FileRepStateReady);
 	}
 	
+	gettimeofday(&currentTime, NULL);
+	beginTime = (pg_time_t) currentTime.tv_sec;
+
 	while (1) {
 		
 		if (status != STATUS_OK) 
@@ -187,6 +193,28 @@ FileRepMirror_StartReceiver(void)
 		PG_SETMASK(&BlockSig); 
 		retval = FileRepConnServer_Select();
 		PG_SETMASK(&UnBlockSig); 
+		
+		gettimeofday(&currentTime, NULL);
+		endTime = (pg_time_t) currentTime.tv_sec;
+		
+		if ((endTime - beginTime) > gp_segment_connect_timeout) 
+		{
+			ereport(WARNING, 
+					(errmsg("mirror failure, "
+							"no connection was established from client from primary, "
+							"primary address(port) '%s(%d)' mirror address(port) '%s(%d)' timeout reached '%d' "
+							"failover requested",
+							fileRepPrimaryHostAddress, 
+							fileRepPrimaryPort,
+							fileRepMirrorHostAddress, 
+							fileRepMirrorPort,
+							gp_segment_connect_timeout),
+					 errSendAlert(true),
+					 FileRep_errcontext()));
+			
+			status = STATUS_ERROR;
+			continue;
+		}		
 		
 		/* 
 		 * check and process any signals received 
