@@ -5229,8 +5229,15 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 					 ItemPointerToString(&persistentTid));
 
 		}
-		else if (mirrorBufpoolMarkedForScanIncrementalResync)
+		else if (persistentState != PersistentFileSysState_BulkLoadCreatePending &&
+				 MirroredObjectExistenceState_IsResynchCreated(mirrorExistenceState) &&
+				 mirrorBufpoolMarkedForScanIncrementalResync)
 		{
+			/*
+			 * If this is a relation that ~_ResynchronizeScan would choose and it is marked
+			 * needs be resynchronized with 'Scan Incremental', then mark and examine
+			 * the file EOFs.
+			 */
 			PersistentFileSysObj_UpdateTupleRelDataSynchronizationState(
 													fileSysObjData,
 													fileSysObjSharedData,
