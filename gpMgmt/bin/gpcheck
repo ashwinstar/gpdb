@@ -125,7 +125,9 @@ def createHostList():
 
     try:
         for line in open(options.file, "r"):
-            hostname = line.rstrip()
+            hostname = line.strip()
+            if len(hostname) < 1:
+                continue
             cmd = Command(hostname, "hostname", REMOTE, hostname)
             pool.addCommand(cmd)
 
