@@ -10,51 +10,95 @@
 -- Some operatiosn can't be declared as DDL, such as populating a new catalog column,
 -- or replacing the on-dist representation of views. These must be done DML.
 -- For example:
---   update pg_aggregate set dummy = 123;
---   select catDML(‘update pg_aggregate set dummy = 123’) from gp_dist_random(‘gp_id’);
+--   update pg_catalog.pg_aggregate set dummy = 123;
+--   select catDML('update pg_catalog.pg_aggregate set dummy = 123') from gp_dist_random('gp_id');
 --
 -- The first DML will populate the mater catalog and the second DML will update the catalog
 -- in all the segments.
 
--- WE MUST SET ***ON_ERROR_STOP*** TO ON..!!!
-\set ON_ERROR_STOP ON
 
-
--------------------------------------
--- Pre upgrade
---   begin txn
---   create temp helper routines
-------------------------------------
-BEGIN;
-
--- Use this pl/pgsql function to execute DML on cat tab on all segs
-create or replace function catDML(stmt text) returns int as $$
-begin
-  execute stmt;
-  return 1;
-end;
-$$ language 'plpgsql';
-
-
-
---------------------------------------
--- Catalog Upgrade starts here
---   everything will happen inside a single txn
---   create temp internal helper routine
---------------------------------------
 
 -- Persistent Table
-alter table pg_catalog.gp_persistent_relation_node rename reserved to unreserved;
+alter table @gpupgradeschemaname@.gp_persistent_relation_node rename reserved to unreserved;
 
 -- Resource Queue 
 --   create new function
 --   populate pg_resourcetype and pg_resqueuecapability
 
+--------------------------------
+-- Re-create gp_toolkit
+--   1. drop all the objects in gp_toolkit
+--   2. remove the pin on gp_toolkit
+--   3. drop and recreate the schema gp_toolkit
+--------------------------------
+DROP VIEW if exists gp_toolkit.__gp_is_append_only cascade;
+DROP VIEW if exists gp_toolkit.__gp_fullname cascade;
+DROP VIEW if exists gp_toolkit.__gp_user_namespaces cascade;
+DROP VIEW if exists gp_toolkit.__gp_user_tables cascade;
+DROP VIEW if exists gp_toolkit.__gp_user_data_tables cascade;
+DROP VIEW if exists gp_toolkit.__gp_user_data_tables_readable cascade;
+DROP EXTERNAL WEB TABLE if exists gp_toolkit.__gp_localid cascade;
+DROP EXTERNAL WEB TABLE if exists gp_toolkit.__gp_masterid cascade;
+DROP VIEW if exists gp_toolkit.__gp_number_of_segments cascade;
+DROP EXTERNAL WEB TABLE if exists gp_toolkit.__gp_log_segment_ext cascade;
+DROP EXTERNAL WEB TABLE if exists gp_toolkit.__gp_log_master_ext cascade;
+DROP VIEW if exists gp_toolkit.gp_log_system  cascade;
+DROP VIEW if exists gp_toolkit.gp_log_database  cascade;
+DROP VIEW if exists gp_toolkit.gp_log_master_concise cascade;
+DROP VIEW if exists gp_toolkit.gp_log_command_timings cascade;
+DROP TYPE if exists gp_toolkit.gp_param_setting_t cascade;
+DROP FUNCTION if exists gp_toolkit.__gp_param_local_setting(varchar) cascade;
+DROP FUNCTION if exists gp_toolkit.gp_param_setting(varchar) cascade;
+DROP FUNCTION if exists gp_toolkit.gp_param_settings()  cascade;
+DROP VIEW if exists gp_toolkit.gp_param_settings_seg_value_diffs cascade;
+DROP VIEW if exists gp_toolkit.gp_pgdatabase_invalid  cascade;
+DROP TYPE if exists gp_toolkit.gp_skew_details_t cascade;
+DROP FUNCTION if exists gp_toolkit.gp_skew_details(oid) cascade;
+DROP TYPE if exists gp_toolkit.gp_skew_analysis_t cascade;
+DROP FUNCTION if exists gp_toolkit.gp_skew_coefficient(targetoid oid, OUT skcoid oid, OUT skccoeff numeric) cascade;
+DROP FUNCTION if exists gp_toolkit.__gp_skew_coefficients() cascade;
+DROP VIEW if exists gp_toolkit.gp_skew_coefficients cascade;
+DROP FUNCTION if exists gp_toolkit.gp_skew_idle_fraction(targetoid oid, OUT sifoid oid, OUT siffraction numeric) cascade;
+DROP FUNCTION if exists gp_toolkit.__gp_skew_idle_fractions() cascade;
+DROP VIEW if exists gp_toolkit.gp_skew_idle_fractions cascade;
+DROP VIEW if exists gp_toolkit.gp_stats_missing cascade;
+DROP EXTERNAL WEB TABLE if exists gp_toolkit.gp_disk_free cascade;
+DROP VIEW if exists gp_toolkit.gp_bloat_expected_pages cascade;
+DROP FUNCTION if exists gp_toolkit.gp_bloat_diag(btdrelpages int, btdexppages int, aotable bool, OUT bltidx int, OUT bltdiag text) cascade;
+DROP VIEW if exists gp_toolkit.gp_bloat_diag cascade;
+DROP VIEW if exists gp_toolkit.gp_resq_activity cascade;
+DROP VIEW if exists gp_toolkit.gp_resq_activity_by_queue cascade;
+DROP VIEW if exists gp_toolkit.gp_resq_priority_backend cascade;
+DROP VIEW if exists gp_toolkit.gp_resq_priority_statement cascade;
+DROP VIEW if exists gp_toolkit.gp_resq_role cascade;
+DROP VIEW if exists gp_toolkit.gp_locks_on_resqueue cascade;
+DROP VIEW if exists gp_toolkit.gp_locks_on_relation cascade;
+DROP VIEW if exists gp_toolkit.gp_roles_assigned cascade;
+DROP VIEW if exists gp_toolkit.gp_size_of_index cascade;
+DROP VIEW if exists gp_toolkit.gp_size_of_table_disk cascade;
+DROP VIEW if exists gp_toolkit.gp_size_of_table_uncompressed cascade;
+DROP VIEW if exists gp_toolkit.gp_table_indexes  cascade;
+DROP VIEW if exists gp_toolkit.gp_size_of_all_table_indexes cascade;
+DROP VIEW if exists gp_toolkit.gp_size_of_table_and_indexes_disk cascade;
+DROP VIEW if exists gp_toolkit.gp_size_of_table_and_indexes_licensing cascade;
+DROP VIEW if exists gp_toolkit.gp_size_of_partition_and_indexes_disk cascade;
+DROP VIEW if exists gp_toolkit.gp_size_of_schema_disk cascade;
+DROP VIEW if exists gp_toolkit.gp_size_of_database cascade;
+DROP FUNCTION if exists gp_toolkit.__gp__seg_locks(segid int) cascade;
+DROP VIEW if exists gp_toolkit.gp_locks cascade;
+
+delete from @gpupgradeschemaname@.pg_depend where refobjid=8001;
+select catDML('delete from @gpupgradeschemaname@.pg_depend where refobjid=8001') from gp_dist_random('gp_id');
+
+drop schema if exists gp_toolkit;
+create schema gp_toolkit;
+
+
 -- HDFS Privilege
 alter table pg_catalog.pg_authid add column rolcreaterexthdfs bool;
 alter table pg_catalog.pg_authid add column rolcreatewexthdfs bool;
 update pg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
-select catDML('update pg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random(�gp_id�);
+select catDML('update pg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random(gp_id);
 
 CREATE OR REPLACE VIEW pg_roles AS 
     SELECT 
@@ -182,10 +226,3 @@ CREATE OR REPLACE VIEW pg_partitions AS
           cl.relnamespace = n.oid and 
           cl2.relnamespace = n2.oid) p1;
 
-----------------------------------------
--- End of Catalog upgrade for one database
---   drop temp helper routine
---   commit the txn
-----------------------------------------
-drop function catDML(stmt text);
-commit;
