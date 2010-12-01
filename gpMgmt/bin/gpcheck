@@ -93,10 +93,6 @@ def parseargs():
     else:
         configfilename = "%s/etc/gpcheck.cnf" % gphome
 
-    if options.help:
-        print __doc__
-        return True
-
     if not options.file and not options.zipin:
         logger.error(" --file or --zipin must be specified")
         return True
