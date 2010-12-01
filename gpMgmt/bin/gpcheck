@@ -1,13 +1,6 @@
 #!/usr/bin/env python
-'''
-USAGE:   gpcheck -f|--file HOSTFILE -m|--master MASTER_HOST -s|--standymaster MASTER_HOST [--stdout] [--zipout] [--zipin FILE] [--config]
-         where HOSTFILE lists all the hosts to check
-         where MASTER_HOST indicates hosts that should be assumed to be master or standby masters
-         where --stdout indicates to print all collected data without doing any checks
-         where --zipout indicates to save all collected data to a zip file in the current working directory without doing any checks
-         where --zipin indicates to get information from FILE and not live from the cluster
-         where --config indicates a config file to use rather than the default $GPHOME/etc/gpcheck.cnf
-'''
+#
+# Copyright (c) Greenplum Inc 2010. All Rights Reserved. 
 
 import os, sys, re, tempfile, shutil, pickle, getpass, subprocess, time, glob, ConfigParser
 
@@ -79,7 +72,7 @@ def parseargs():
 
     parser = OptParser(option_class=OptChecker)
     parser.remove_option('-h')
-    parser.add_option('-?', '--help', action='store_true')
+    parser.add_option('-h', '-?', '--help', action='help')
     parser.add_option('--stdout', action='store_true')
     parser.add_option('--zipout', action='store_true')
     parser.add_option('--zipin', type='string')
