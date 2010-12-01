@@ -1,5 +1,6 @@
 [global]
 max_version = 1.0.2.0
+configfile_version = 1
 
 [1.0.2.0]
 dell_om_version = 6.3.0

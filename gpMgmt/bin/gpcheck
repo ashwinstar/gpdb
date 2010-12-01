@@ -43,6 +43,8 @@ logger = None
 pool = None
 tmpdir = None
 found_errors = False
+GPCHECK_CONFIGFILE_GPHOME = None
+GPCHECK_CONFIGFILE_DCA = "/home/gpadmin/gpconfigs/gpcheck_dca_config"
 
 class GpCheckHost:
     def __init__(self, name):
@@ -68,7 +70,7 @@ class GpCheckSwitch:
 # True is an error
 def parseargs():
 
-    global options, gphome, configfilename
+    global options, gphome, configfilename, GPCHECK_CONFIGFILE_GPHOME
 
     parser = OptParser(option_class=OptChecker)
     parser.remove_option('-h')
@@ -90,8 +92,8 @@ def parseargs():
 
     if options.config:
         configfilename = options.config
-    else:
-        configfilename = "%s/etc/gpcheck.cnf" % gphome
+
+    GPCHECK_CONFIGFILE_GPHOME = "%s/etc/gpcheck.cnf" % gphome
 
     if not options.file and not options.zipin:
         logger.error(" --file or --zipin must be specified")
@@ -1084,6 +1086,47 @@ def testGenericSolarisCluster():
 
     testUnameConsistency()
 
+
+def getVersionNumberFromConfigFile(file):
+
+    version = 0
+
+    try:
+
+        config = ConfigParser.SafeConfigParser()
+
+        config.readfp(open(file))
+
+        if not config.has_option('global', 'configfile_version'):
+            return 0
+
+        version = config.getint('global', 'configfile_version')
+
+    except Exception, e:
+
+        logger.warning("GPCHECK_WARNING: could not read config file %s: exception: %s" % (file, e.__str__()))
+
+    return version
+
+
+# get the filename that has the latest version number
+# could be in gphome or part of dca configs
+def findAndSetConfigFileName():
+
+    global configfilename
+
+    if gpcheck_info.host_type != HostType.GPCHECK_HOSTTYPE_APPLIANCE:
+        configfilename = GPCHECK_CONFIGFILE_GPHOME
+        return
+
+    dcafile = getVersionNumberFromConfigFile(GPCHECK_CONFIGFILE_DCA)
+    gphomefile = getVersionNumberFromConfigFile(GPCHECK_CONFIGFILE_GPHOME)
+
+    if dcafile > gphomefile:
+        configfilename = GPCHECK_CONFIGFILE_DCA
+    else:
+        configfilename = GPCHECK_CONFIGFILE_GPHOME
+        
 def runTests():
 
     global config, gpcheck_config
@@ -1091,6 +1134,11 @@ def runTests():
     gpcheck_config = GpCheckConfig()
 
     try:
+        if not configfilename:
+            findAndSetConfigFileName()
+
+        logger.info("Using gpcheck config file: %s", configfilename)
+
         config = ConfigParser.SafeConfigParser()
         config.readfp(open(configfilename))
 
