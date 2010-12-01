@@ -17,9 +17,8 @@
 -- in all the segments.
 
 
-
 -- Persistent Table
-alter table @gpupgradeschemaname@.gp_persistent_relation_node rename reserved to unreserved;
+-- alter table @gpupgradeschemaname@.gp_persistent_relation_node rename reserved to unreserved;
 
 -- Resource Queue 
 --   create new function
@@ -31,76 +30,76 @@ alter table @gpupgradeschemaname@.gp_persistent_relation_node rename reserved to
 --   2. remove the pin on gp_toolkit
 --   3. drop and recreate the schema gp_toolkit
 --------------------------------
-DROP VIEW if exists gp_toolkit.__gp_is_append_only cascade;
-DROP VIEW if exists gp_toolkit.__gp_fullname cascade;
-DROP VIEW if exists gp_toolkit.__gp_user_namespaces cascade;
-DROP VIEW if exists gp_toolkit.__gp_user_tables cascade;
-DROP VIEW if exists gp_toolkit.__gp_user_data_tables cascade;
-DROP VIEW if exists gp_toolkit.__gp_user_data_tables_readable cascade;
-DROP EXTERNAL WEB TABLE if exists gp_toolkit.__gp_localid cascade;
-DROP EXTERNAL WEB TABLE if exists gp_toolkit.__gp_masterid cascade;
-DROP VIEW if exists gp_toolkit.__gp_number_of_segments cascade;
-DROP EXTERNAL WEB TABLE if exists gp_toolkit.__gp_log_segment_ext cascade;
-DROP EXTERNAL WEB TABLE if exists gp_toolkit.__gp_log_master_ext cascade;
-DROP VIEW if exists gp_toolkit.gp_log_system  cascade;
-DROP VIEW if exists gp_toolkit.gp_log_database  cascade;
-DROP VIEW if exists gp_toolkit.gp_log_master_concise cascade;
-DROP VIEW if exists gp_toolkit.gp_log_command_timings cascade;
-DROP TYPE if exists gp_toolkit.gp_param_setting_t cascade;
-DROP FUNCTION if exists gp_toolkit.__gp_param_local_setting(varchar) cascade;
-DROP FUNCTION if exists gp_toolkit.gp_param_setting(varchar) cascade;
-DROP FUNCTION if exists gp_toolkit.gp_param_settings()  cascade;
-DROP VIEW if exists gp_toolkit.gp_param_settings_seg_value_diffs cascade;
-DROP VIEW if exists gp_toolkit.gp_pgdatabase_invalid  cascade;
-DROP TYPE if exists gp_toolkit.gp_skew_details_t cascade;
-DROP FUNCTION if exists gp_toolkit.gp_skew_details(oid) cascade;
-DROP TYPE if exists gp_toolkit.gp_skew_analysis_t cascade;
-DROP FUNCTION if exists gp_toolkit.gp_skew_coefficient(targetoid oid, OUT skcoid oid, OUT skccoeff numeric) cascade;
-DROP FUNCTION if exists gp_toolkit.__gp_skew_coefficients() cascade;
-DROP VIEW if exists gp_toolkit.gp_skew_coefficients cascade;
-DROP FUNCTION if exists gp_toolkit.gp_skew_idle_fraction(targetoid oid, OUT sifoid oid, OUT siffraction numeric) cascade;
-DROP FUNCTION if exists gp_toolkit.__gp_skew_idle_fractions() cascade;
-DROP VIEW if exists gp_toolkit.gp_skew_idle_fractions cascade;
-DROP VIEW if exists gp_toolkit.gp_stats_missing cascade;
-DROP EXTERNAL WEB TABLE if exists gp_toolkit.gp_disk_free cascade;
-DROP VIEW if exists gp_toolkit.gp_bloat_expected_pages cascade;
-DROP FUNCTION if exists gp_toolkit.gp_bloat_diag(btdrelpages int, btdexppages int, aotable bool, OUT bltidx int, OUT bltdiag text) cascade;
-DROP VIEW if exists gp_toolkit.gp_bloat_diag cascade;
-DROP VIEW if exists gp_toolkit.gp_resq_activity cascade;
-DROP VIEW if exists gp_toolkit.gp_resq_activity_by_queue cascade;
-DROP VIEW if exists gp_toolkit.gp_resq_priority_backend cascade;
-DROP VIEW if exists gp_toolkit.gp_resq_priority_statement cascade;
-DROP VIEW if exists gp_toolkit.gp_resq_role cascade;
-DROP VIEW if exists gp_toolkit.gp_locks_on_resqueue cascade;
-DROP VIEW if exists gp_toolkit.gp_locks_on_relation cascade;
-DROP VIEW if exists gp_toolkit.gp_roles_assigned cascade;
-DROP VIEW if exists gp_toolkit.gp_size_of_index cascade;
-DROP VIEW if exists gp_toolkit.gp_size_of_table_disk cascade;
-DROP VIEW if exists gp_toolkit.gp_size_of_table_uncompressed cascade;
-DROP VIEW if exists gp_toolkit.gp_table_indexes  cascade;
-DROP VIEW if exists gp_toolkit.gp_size_of_all_table_indexes cascade;
-DROP VIEW if exists gp_toolkit.gp_size_of_table_and_indexes_disk cascade;
-DROP VIEW if exists gp_toolkit.gp_size_of_table_and_indexes_licensing cascade;
-DROP VIEW if exists gp_toolkit.gp_size_of_partition_and_indexes_disk cascade;
-DROP VIEW if exists gp_toolkit.gp_size_of_schema_disk cascade;
-DROP VIEW if exists gp_toolkit.gp_size_of_database cascade;
-DROP FUNCTION if exists gp_toolkit.__gp__seg_locks(segid int) cascade;
-DROP VIEW if exists gp_toolkit.gp_locks cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.__gp_is_append_only cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.__gp_fullname cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.__gp_user_namespaces cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.__gp_user_tables cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.__gp_user_data_tables cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.__gp_user_data_tables_readable cascade;
+DROP EXTERNAL WEB TABLE if exists @gpupgradetoolkitschema@.__gp_localid cascade;
+DROP EXTERNAL WEB TABLE if exists @gpupgradetoolkitschema@.__gp_masterid cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.__gp_number_of_segments cascade;
+DROP EXTERNAL WEB TABLE if exists @gpupgradetoolkitschema@.__gp_log_segment_ext cascade;
+DROP EXTERNAL WEB TABLE if exists @gpupgradetoolkitschema@.__gp_log_master_ext cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_log_system  cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_log_database  cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_log_master_concise cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_log_command_timings cascade;
+DROP TYPE if exists @gpupgradetoolkitschema@.gp_param_setting_t cascade;
+DROP FUNCTION if exists @gpupgradetoolkitschema@.__gp_param_local_setting(varchar) cascade;
+DROP FUNCTION if exists @gpupgradetoolkitschema@.gp_param_setting(varchar) cascade;
+DROP FUNCTION if exists @gpupgradetoolkitschema@.gp_param_settings()  cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_param_settings_seg_value_diffs cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_pgdatabase_invalid  cascade;
+DROP TYPE if exists @gpupgradetoolkitschema@.gp_skew_details_t cascade;
+DROP FUNCTION if exists @gpupgradetoolkitschema@.gp_skew_details(oid) cascade;
+DROP TYPE if exists @gpupgradetoolkitschema@.gp_skew_analysis_t cascade;
+DROP FUNCTION if exists @gpupgradetoolkitschema@.gp_skew_coefficient(targetoid oid, OUT skcoid oid, OUT skccoeff numeric) cascade;
+DROP FUNCTION if exists @gpupgradetoolkitschema@.__gp_skew_coefficients() cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_skew_coefficients cascade;
+DROP FUNCTION if exists @gpupgradetoolkitschema@.gp_skew_idle_fraction(targetoid oid, OUT sifoid oid, OUT siffraction numeric) cascade;
+DROP FUNCTION if exists @gpupgradetoolkitschema@.__gp_skew_idle_fractions() cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_skew_idle_fractions cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_stats_missing cascade;
+DROP EXTERNAL WEB TABLE if exists @gpupgradetoolkitschema@.gp_disk_free cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_bloat_expected_pages cascade;
+DROP FUNCTION if exists @gpupgradetoolkitschema@.gp_bloat_diag(btdrelpages int, btdexppages int, aotable bool, OUT bltidx int, OUT bltdiag text) cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_bloat_diag cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_resq_activity cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_resq_activity_by_queue cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_resq_priority_backend cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_resq_priority_statement cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_resq_role cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_locks_on_resqueue cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_locks_on_relation cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_roles_assigned cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_size_of_index cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_size_of_table_disk cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_size_of_table_uncompressed cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_table_indexes  cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_size_of_all_table_indexes cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_size_of_table_and_indexes_disk cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_size_of_table_and_indexes_licensing cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_size_of_partition_and_indexes_disk cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_size_of_schema_disk cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_size_of_database cascade;
+DROP FUNCTION if exists @gpupgradetoolkitschema@.__gp__seg_locks(segid int) cascade;
+DROP VIEW if exists @gpupgradetoolkitschema@.gp_locks cascade;
 
 delete from @gpupgradeschemaname@.pg_depend where refobjid=8001;
 select catDML('delete from @gpupgradeschemaname@.pg_depend where refobjid=8001') from gp_dist_random('gp_id');
 
-drop schema if exists gp_toolkit;
-create schema gp_toolkit;
-
+drop schema if exists @gpupgradetoolkitschema@;
+create schema @gpupgradetoolkitschema@;
 
 -- HDFS Privilege
-alter table pg_catalog.pg_authid add column rolcreaterexthdfs bool;
-alter table pg_catalog.pg_authid add column rolcreatewexthdfs bool;
-update pg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
-select catDML('update pg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random(gp_id);
+alter table @gpupgradeschemaname@.pg_authid add column rolcreaterexthdfs bool;
+alter table @gpupgradeschemaname@.pg_authid add column rolcreatewexthdfs bool;
+update @gpupgradeschemaname@.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
+select catDML('update @gpupgradeschemaname@.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random('gp_id');
 
-CREATE OR REPLACE VIEW pg_roles AS 
+
+CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_roles AS 
     SELECT 
         rolname,
         rolsuper,
@@ -120,10 +119,10 @@ CREATE OR REPLACE VIEW pg_roles AS
 		rolcreatewextgpfd,
 		rolcreaterexthdfs,
 		rolcreatewexthdfs   
-    FROM pg_authid;
+    FROM pg_catalog.pg_authid;
 
 -- MPP-11461, MPP-11127: fix tablespace
-CREATE OR REPLACE VIEW pg_partitions AS
+CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_partitions AS
   select 
       schemaname, 
       tablename, 
@@ -226,3 +225,30 @@ CREATE OR REPLACE VIEW pg_partitions AS
           cl.relnamespace = n.oid and 
           cl2.relnamespace = n2.oid) p1;
 
+-- tstats & pvalues
+create function @gpupgradeschemaname@.float8_mregr_tstats(float8[]) 
+    returns float8[] 
+    language internal AS 'float8_mregr_tstats' strict immutable 
+    with (oid = 3263);
+create aggregate @gpupgradeschemaname@.mregr_tstats(float8, float8[]) (
+    stype     = float8[],
+    initcond  = '{0}',
+    sfunc     = float8_mregr_accum, 
+    prefunc   = float8_mregr_combine,
+    finalfunc = float8_mregr_tstats,
+    oid       = 3264
+);
+create function @gpupgradeschemaname@.float8_mregr_pvalues(float8[]) 
+    returns float8[] 
+    language internal AS 'float8_mregr_pvalues' strict immutable 
+    with (oid = 3265);
+create aggregate @gpupgradeschemaname@.mregr_pvalues(float8, float8[]) (
+    stype     = float8[],
+    initcond  = '{0}',
+    sfunc     = float8_mregr_accum, 
+    prefunc   = float8_mregr_combine,
+    finalfunc = float8_mregr_pvalues,
+    oid       = 3266
+);
+
+\unset ON_ERROR_STOP

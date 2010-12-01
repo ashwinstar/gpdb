@@ -163,32 +163,9 @@ else
 endif
 
 # Copy and transform all of the upgrade related data files
-upg2_data := $(wildcard data/upgrade*/*.data)
-upg2_in   := $(wildcard data/upgrade*/*.in)
-upg2_out  := $(basename $(addprefix data/, $(notdir $(upg2_in))))
-upg2_temp_files := $(addprefix data/, $(notdir $(upg2_data))) \
-			       $(addprefix data/, $(notdir $(upg2_in))) \
-				   $(upg2_out)
 upg2-setup:
-	@cp -f input/loadcat33.source.in input/loadcat33.source
-	@gpstringsubs.pl input/loadcat33.source
-	@cp -f input/loadcat34.source.in input/loadcat34.source
-	@gpstringsubs.pl input/loadcat34.source
-	@cp -f input/loadcat34_sh.source.in input/loadcat34_sh.source
-	@gpstringsubs.pl input/loadcat34_sh.source
-	@cp -f $(upg2_data) data/.
-	@cp -f $(upg2_in) data/.
-	$(MAKE) upg2-transform
-
-upg2-transform: $(upg2_out)
-
-data/%.data: data/%.data.in
-	@cp -f $< $@ 
-	@gpstringsubs.pl $@
-
-data/%.sql: data/%.sql.in
-	@cp -f $< $@ 
-	@gpstringsubs.pl $@
+	@cp -f data/upgrade41/upg2_catupgrade_41.sql.in data/upg_catupgrade_41.sql
+	@gpstringsubs.pl data/upg_catupgrade_41.sql
 
 ugpart-setup:
 	@cp -f data/upgrade_pg_partitions.sql.in data/upgrade_pg_partitions.sql

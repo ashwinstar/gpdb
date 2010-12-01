@@ -133,13 +133,31 @@ CREATE SCHEMA upg_information;  -- information_schema
 SET SEARCH_PATH to upg_information;
 \i @abs_srcdir@/data/upgrade41/catalog40/information_schema.sql
 
+RESET search_path;
 
 -- ===========================================================================
 -- * Run the upgrade DDL on the schema
+--
+-- We expect warnings due to not supporting oid assignment in regular
+-- connection mode, set client_min_messages to error to hide these warnings.
 -- ===========================================================================
+set client_min_messages = 'ERROR';
 
--- Currently none
+-- The following views have new columns added as part of upgrade, this can 
+-- only occur correctly when we are in a _real_ upgrade mode, here we can
+-- only manage this by dropping the views first.  CASCADE should not be 
+-- necessary - the views should all point to the real catalog so there are
+-- no dependencies on them.
+DROP VIEW upg_catalog.pg_roles;
 
+-- Run the actual upgrade DDL
+--
+-- Note: Calls to catDML will fail since we have not defined the function
+-- the test would fail if we did because the calls will return a different
+-- number of rows depending on the number of segments in the system.
+\i @abs_srcdir@/data/upg_catupgrade_41.sql
+
+set client_min_messages = 'WARNING';
 
 -- ===========================================================================
 -- * Compare this the transformed schema to the catalog schema
@@ -607,4 +625,4 @@ DROP SCHEMA dummy_cast_functions CASCADE;
 -- end_ignore
 
 RESET search_path;
-RESET log_min_messages;
+RESET client_min_messages;

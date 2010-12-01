@@ -15883,10 +15883,9 @@ INSERT INTO upg_information.sql_sizing VALUES (25003, 'MAXIMUM CURRENT ROLE LENG
 INSERT INTO upg_information.sql_sizing VALUES (25004, 'MAXIMUM SESSION USER LENGTH', 63, NULL);
 INSERT INTO upg_information.sql_sizing VALUES (25005, 'MAXIMUM SYSTEM USER LENGTH', 63, NULL);
 UPDATE upg_information.sql_sizing
-    SET supported_value = (SELECT typlen-1 FROM pg_catalog.pg_type WHERE typname = 'name'),
+    SET supported_value = (SELECT typlen-1 FROM pg_catalog.pg_type WHERE typname = 'name' and typnamespace=11),
         comments = 'Might be less, depending on character set.'
     WHERE supported_value = 63;
-psql:@abs_srcdir@/data/upgrade41/catalog40/information_schema.sql:1719: ERROR:  more than one row returned by a subquery used as an expression
 GRANT SELECT ON sql_sizing TO PUBLIC;
 /*
  * 5.57
@@ -16589,10 +16588,277 @@ CREATE VIEW user_mappings AS
            foreign_server_name
     FROM _pg_user_mappings;
 GRANT SELECT ON user_mappings TO PUBLIC;
+RESET search_path;
 -- ===========================================================================
 -- * Run the upgrade DDL on the schema
+--
+-- We expect warnings due to not supporting oid assignment in regular
+-- connection mode, set client_min_messages to error to hide these warnings.
 -- ===========================================================================
--- Currently none
+set client_min_messages = 'ERROR';
+-- The following views have new columns added as part of upgrade, this can 
+-- only occur correctly when we are in a _real_ upgrade mode, here we can
+-- only manage this by dropping the views first.  CASCADE should not be 
+-- necessary - the views should all point to the real catalog so there are
+-- no dependencies on them.
+DROP VIEW upg_catalog.pg_roles;
+-- Run the actual upgrade DDL
+--
+-- Note: Calls to catDML will fail since we have not defined the function
+-- the test would fail if we did because the calls will return a different
+-- number of rows depending on the number of segments in the system.
+\i @abs_srcdir@/data/upg_catupgrade_41.sql
+--
+-- Catalog Upgrade Script (from 4.0 to 4.1)
+--
+-- All catalog changes should be placed here.
+-- Most operations can be declared as DDL, such as ALTER TABLE, CREATE TABLE
+-- Creating catalog objects must specific its oid. For example,
+--   Create function f1(int) ... with (oid = <newoid>)
+--   Create aggregate agg1(int) (..., oid = <newoid>)
+--
+-- Some operatiosn can't be declared as DDL, such as populating a new catalog column,
+-- or replacing the on-dist representation of views. These must be done DML.
+-- For example:
+--   update pg_catalog.pg_aggregate set dummy = 123;
+--   select catDML('update pg_catalog.pg_aggregate set dummy = 123') from gp_dist_random('gp_id');
+--
+-- The first DML will populate the mater catalog and the second DML will update the catalog
+-- in all the segments.
+-- Persistent Table
+-- alter table upg_catalog.gp_persistent_relation_node rename reserved to unreserved;
+-- Resource Queue 
+--   create new function
+--   populate pg_resourcetype and pg_resqueuecapability
+--------------------------------
+-- Re-create gp_toolkit
+--   1. drop all the objects in gp_toolkit
+--   2. remove the pin on gp_toolkit
+--   3. drop and recreate the schema gp_toolkit
+--------------------------------
+DROP VIEW if exists upg_toolkit.__gp_is_append_only cascade;
+DROP VIEW if exists upg_toolkit.__gp_fullname cascade;
+DROP VIEW if exists upg_toolkit.__gp_user_namespaces cascade;
+DROP VIEW if exists upg_toolkit.__gp_user_tables cascade;
+DROP VIEW if exists upg_toolkit.__gp_user_data_tables cascade;
+DROP VIEW if exists upg_toolkit.__gp_user_data_tables_readable cascade;
+DROP EXTERNAL WEB TABLE if exists upg_toolkit.__gp_localid cascade;
+DROP EXTERNAL WEB TABLE if exists upg_toolkit.__gp_masterid cascade;
+DROP VIEW if exists upg_toolkit.__gp_number_of_segments cascade;
+DROP EXTERNAL WEB TABLE if exists upg_toolkit.__gp_log_segment_ext cascade;
+DROP EXTERNAL WEB TABLE if exists upg_toolkit.__gp_log_master_ext cascade;
+DROP VIEW if exists upg_toolkit.gp_log_system  cascade;
+DROP VIEW if exists upg_toolkit.gp_log_database  cascade;
+DROP VIEW if exists upg_toolkit.gp_log_master_concise cascade;
+DROP VIEW if exists upg_toolkit.gp_log_command_timings cascade;
+DROP TYPE if exists upg_toolkit.gp_param_setting_t cascade;
+DROP FUNCTION if exists upg_toolkit.__gp_param_local_setting(varchar) cascade;
+DROP FUNCTION if exists upg_toolkit.gp_param_setting(varchar) cascade;
+DROP FUNCTION if exists upg_toolkit.gp_param_settings()  cascade;
+DROP VIEW if exists upg_toolkit.gp_param_settings_seg_value_diffs cascade;
+DROP VIEW if exists upg_toolkit.gp_pgdatabase_invalid  cascade;
+DROP TYPE if exists upg_toolkit.gp_skew_details_t cascade;
+DROP FUNCTION if exists upg_toolkit.gp_skew_details(oid) cascade;
+DROP TYPE if exists upg_toolkit.gp_skew_analysis_t cascade;
+DROP FUNCTION if exists upg_toolkit.gp_skew_coefficient(targetoid oid, OUT skcoid oid, OUT skccoeff numeric) cascade;
+DROP FUNCTION if exists upg_toolkit.__gp_skew_coefficients() cascade;
+DROP VIEW if exists upg_toolkit.gp_skew_coefficients cascade;
+DROP FUNCTION if exists upg_toolkit.gp_skew_idle_fraction(targetoid oid, OUT sifoid oid, OUT siffraction numeric) cascade;
+DROP FUNCTION if exists upg_toolkit.__gp_skew_idle_fractions() cascade;
+DROP VIEW if exists upg_toolkit.gp_skew_idle_fractions cascade;
+DROP VIEW if exists upg_toolkit.gp_stats_missing cascade;
+DROP EXTERNAL WEB TABLE if exists upg_toolkit.gp_disk_free cascade;
+DROP VIEW if exists upg_toolkit.gp_bloat_expected_pages cascade;
+DROP FUNCTION if exists upg_toolkit.gp_bloat_diag(btdrelpages int, btdexppages int, aotable bool, OUT bltidx int, OUT bltdiag text) cascade;
+DROP VIEW if exists upg_toolkit.gp_bloat_diag cascade;
+DROP VIEW if exists upg_toolkit.gp_resq_activity cascade;
+DROP VIEW if exists upg_toolkit.gp_resq_activity_by_queue cascade;
+DROP VIEW if exists upg_toolkit.gp_resq_priority_backend cascade;
+DROP VIEW if exists upg_toolkit.gp_resq_priority_statement cascade;
+DROP VIEW if exists upg_toolkit.gp_resq_role cascade;
+DROP VIEW if exists upg_toolkit.gp_locks_on_resqueue cascade;
+DROP VIEW if exists upg_toolkit.gp_locks_on_relation cascade;
+DROP VIEW if exists upg_toolkit.gp_roles_assigned cascade;
+DROP VIEW if exists upg_toolkit.gp_size_of_index cascade;
+DROP VIEW if exists upg_toolkit.gp_size_of_table_disk cascade;
+DROP VIEW if exists upg_toolkit.gp_size_of_table_uncompressed cascade;
+DROP VIEW if exists upg_toolkit.gp_table_indexes  cascade;
+DROP VIEW if exists upg_toolkit.gp_size_of_all_table_indexes cascade;
+DROP VIEW if exists upg_toolkit.gp_size_of_table_and_indexes_disk cascade;
+DROP VIEW if exists upg_toolkit.gp_size_of_table_and_indexes_licensing cascade;
+DROP VIEW if exists upg_toolkit.gp_size_of_partition_and_indexes_disk cascade;
+DROP VIEW if exists upg_toolkit.gp_size_of_schema_disk cascade;
+DROP VIEW if exists upg_toolkit.gp_size_of_database cascade;
+DROP FUNCTION if exists upg_toolkit.__gp__seg_locks(segid int) cascade;
+DROP VIEW if exists upg_toolkit.gp_locks cascade;
+delete from upg_catalog.pg_depend where refobjid=8001;
+select catDML('delete from upg_catalog.pg_depend where refobjid=8001') from gp_dist_random('gp_id');
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:90: ERROR:  function catdml(unknown) does not exist
+LINE 1: select catDML('delete from upg_catalog.pg_depend where refob...
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+drop schema if exists upg_toolkit;
+create schema upg_toolkit;
+-- HDFS Privilege
+alter table upg_catalog.pg_authid add column rolcreaterexthdfs bool;
+alter table upg_catalog.pg_authid add column rolcreatewexthdfs bool;
+update upg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
+select catDML('update upg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random('gp_id');
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:99: ERROR:  function catdml(unknown) does not exist
+LINE 1: select catDML('update upg_catalog.pg_authid set rolcreaterex...
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+CREATE OR REPLACE VIEW upg_catalog.pg_roles AS 
+    SELECT 
+        rolname,
+        rolsuper,
+        rolinherit,
+        rolcreaterole,
+        rolcreatedb,
+        rolcatupdate,
+        rolcanlogin,
+        rolconnlimit,
+        '********'::text as rolpassword,
+        rolvaliduntil,
+        rolconfig,
+		rolresqueue,
+        oid,
+        rolcreaterextgpfd,
+		rolcreaterexthttp,
+		rolcreatewextgpfd,
+		rolcreaterexthdfs,
+		rolcreatewexthdfs   
+    FROM pg_catalog.pg_authid;
+-- MPP-11461, MPP-11127: fix tablespace
+CREATE OR REPLACE VIEW upg_catalog.pg_partitions AS
+  select 
+      schemaname, 
+      tablename, 
+      partitionschemaname, 
+      partitiontablename, 
+      partitionname, 
+      parentpartitiontablename, 
+      parentpartitionname, 
+      partitiontype, 
+      partitionlevel, 
+      -- Only the non-default parts of range partitions have 
+      -- a non-null partition rank.  For these the rank is
+      -- from (1, 2, ...) in keeping with the use of RANK(n)
+      -- to identify the parts of a range partition in the 
+      -- ALTER statement.
+      case
+          when partitiontype <> 'range'::text then null::bigint
+          when partitionnodefault > 0 then partitionrank
+          when partitionrank = 0 then null::bigint
+          else partitionrank
+          end as partitionrank, 
+      partitionposition, 
+      partitionlistvalues, 
+      partitionrangestart, 
+      case
+          when partitiontype = 'range'::text then partitionstartinclusive
+          else null::boolean
+          end as partitionstartinclusive, partitionrangeend, 
+      case
+          when partitiontype = 'range'::text then partitionendinclusive
+          else null::boolean
+          end as partitionendinclusive, 
+      partitioneveryclause, 
+      parisdefault as partitionisdefault, 
+      partitionboundary,
+      parentspace as parenttablespace,
+      partspace as partitiontablespace
+  from 
+      ( 
+          select 
+              n.nspname as schemaname, 
+              cl.relname as tablename, 
+              n2.nspname as partitionschemaname, 
+              cl2.relname as partitiontablename, 
+              pr1.parname as partitionname, 
+              cl3.relname as parentpartitiontablename, 
+              pr2.parname as parentpartitionname, 
+              case
+                  when pp.parkind = 'h'::"char" then 'hash'::text
+                  when pp.parkind = 'r'::"char" then 'range'::text
+                  when pp.parkind = 'l'::"char" then 'list'::text
+                  else null::text
+                  end as partitiontype, 
+              pp.parlevel as partitionlevel, 
+              pr1.parruleord as partitionposition, 
+              case
+                  when pp.parkind != 'r'::"char" or pr1.parisdefault then null::bigint
+                  else
+                      rank() over(
+                      partition by pp.oid, cl.relname, pp.parlevel, cl3.relname
+                      order by pr1.parisdefault, pr1.parruleord) 
+                  end as partitionrank, 
+              pg_get_expr(pr1.parlistvalues, pr1.parchildrelid) as partitionlistvalues, 
+              pg_get_expr(pr1.parrangestart, pr1.parchildrelid) as partitionrangestart, 
+              pr1.parrangestartincl as partitionstartinclusive, 
+              pg_get_expr(pr1.parrangeend, pr1.parchildrelid) as partitionrangeend, 
+              pr1.parrangeendincl as partitionendinclusive, 
+              pg_get_expr(pr1.parrangeevery, pr1.parchildrelid) as partitioneveryclause, 
+              min(pr1.parruleord) over(
+                  partition by pp.oid, cl.relname, pp.parlevel, cl3.relname
+                  order by pr1.parruleord) as partitionnodefault, 
+              pr1.parisdefault, 
+              pg_get_partition_rule_def(pr1.oid, true) as partitionboundary,
+              coalesce(sp.spcname, dfltspcname) as parentspace,
+              coalesce(sp3.spcname, dfltspcname) as partspace
+          from 
+              pg_namespace n, 
+              pg_namespace n2, 
+              pg_class cl
+                  left join
+              pg_tablespace sp on cl.reltablespace = sp.oid, 
+              pg_class cl2
+                  left join
+              pg_tablespace sp3 on cl2.reltablespace = sp3.oid,
+              pg_partition pp, 
+              pg_partition_rule pr1
+                  left join 
+              pg_partition_rule pr2 on pr1.parparentrule = pr2.oid
+                  left join 
+              pg_class cl3 on pr2.parchildrelid = cl3.oid,
+              (select s.spcname
+               from pg_database, pg_tablespace s
+               where datname = current_database()
+                 and dattablespace = s.oid) d(dfltspcname)
+      where 
+          pp.paristemplate = false and 
+          pp.parrelid = cl.oid and 
+          pr1.paroid = pp.oid and 
+          cl2.oid = pr1.parchildrelid and 
+          cl.relnamespace = n.oid and 
+          cl2.relnamespace = n2.oid) p1;
+-- tstats & pvalues
+create function upg_catalog.float8_mregr_tstats(float8[]) 
+    returns float8[] 
+    language internal AS 'float8_mregr_tstats' strict immutable 
+    with (oid = 3263);
+create aggregate upg_catalog.mregr_tstats(float8, float8[]) (
+    stype     = float8[],
+    initcond  = '{0}',
+    sfunc     = float8_mregr_accum, 
+    prefunc   = float8_mregr_combine,
+    finalfunc = float8_mregr_tstats,
+    oid       = 3264
+);
+create function upg_catalog.float8_mregr_pvalues(float8[]) 
+    returns float8[] 
+    language internal AS 'float8_mregr_pvalues' strict immutable 
+    with (oid = 3265);
+create aggregate upg_catalog.mregr_pvalues(float8, float8[]) (
+    stype     = float8[],
+    initcond  = '{0}',
+    sfunc     = float8_mregr_accum, 
+    prefunc   = float8_mregr_combine,
+    finalfunc = float8_mregr_pvalues,
+    oid       = 3266
+);
+\unset ON_ERROR_STOP
+set client_min_messages = 'WARNING';
 -- ===========================================================================
 -- * Compare this the transformed schema to the catalog schema
 -- ===========================================================================
@@ -17162,7 +17428,7 @@ ORDER BY 1;
  pg_attrdef                    | pg_attrdef                    |        | r       | h          |        4
  pg_attribute                  | pg_attribute                  |        | r       | h          |       17
  pg_auth_members               | pg_auth_members               |        | r       | h          |        4
- pg_authid                     | pg_authid                     |        | r       | h          |       15
+ pg_authid                     | pg_authid                     |        | r       | h          |       17
  pg_autovacuum                 | pg_autovacuum                 |        | r       | h          |       10
  pg_cast                       | pg_cast                       |        | r       | h          |        4
  pg_class                      | pg_class                      |        | r       | h          |       30
@@ -17205,7 +17471,7 @@ ORDER BY 1;
  pg_resqueue_status            | pg_resqueue_status            |        | v       | v          |        7
  pg_resqueuecapability         | pg_resqueuecapability         |        | r       | h          |        3
  pg_rewrite                    | pg_rewrite                    |        | r       | h          |        7
- pg_roles                      | pg_roles                      |        | v       | v          |       16
+ pg_roles                      | pg_roles                      |        | v       | v          |       18
  pg_rules                      | pg_rules                      |        | v       | v          |        4
  pg_settings                   | pg_settings                   |        | v       | v          |       11
  pg_shadow                     | pg_shadow                     |        | v       | v          |        8
@@ -17300,7 +17566,7 @@ ORDER BY 1;
  pg_attrdef                    | pg_attrdef                    |        | r       | h          |        4
  pg_attribute                  | pg_attribute                  |        | r       | h          |       17
  pg_auth_members               | pg_auth_members               |        | r       | h          |        4
- pg_authid                     | pg_authid                     |        | r       | h          |       15
+ pg_authid                     | pg_authid                     |        | r       | h          |       17
  pg_autovacuum                 | pg_autovacuum                 |        | r       | h          |       10
  pg_cast                       | pg_cast                       |        | r       | h          |        4
  pg_class                      | pg_class                      |        | r       | h          |       30
@@ -17343,7 +17609,7 @@ ORDER BY 1;
  pg_resqueue_status            | pg_resqueue_status            |        | v       | v          |        7
  pg_resqueuecapability         | pg_resqueuecapability         |        | r       | h          |        3
  pg_rewrite                    | pg_rewrite                    |        | r       | h          |        7
- pg_roles                      | pg_roles                      |        | v       | v          |       16
+ pg_roles                      | pg_roles                      |        | v       | v          |       18
  pg_rules                      | pg_rules                      |        | v       | v          |        4
  pg_settings                   | pg_settings                   |        | v       | v          |       11
  pg_shadow                     | pg_shadow                     |        | v       | v          |        8
@@ -17635,6 +17901,8 @@ ORDER BY c.relname, a.attnum;
  pg_authid                     |     13 | rolcreaterextgpfd                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_authid                     |     14 | rolcreaterexthttp                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_authid                     |     15 | rolcreatewextgpfd                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
+ pg_authid                     |     16 | rolcreaterexthdfs                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
+ pg_authid                     |     17 | rolcreatewexthdfs                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_autovacuum                 |      1 | vacrelid                                          | oid         |        -1 | t        | p          | i        | f         | t          |           0
  pg_autovacuum                 |      2 | enabled                                           | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_autovacuum                 |      3 | vac_base_thresh                                   | int4        |        -1 | t        | p          | i        | f         | t          |           0
@@ -17983,6 +18251,8 @@ ORDER BY c.relname, a.attnum;
  pg_roles                      |     14 | rolcreaterextgpfd                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_roles                      |     15 | rolcreaterexthttp                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_roles                      |     16 | rolcreatewextgpfd                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
+ pg_roles                      |     17 | rolcreaterexthdfs                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
+ pg_roles                      |     18 | rolcreatewexthdfs                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_rules                      |      1 | schemaname                                        | name        |        -1 | f        | p          | i        | f         | t          |           0
  pg_rules                      |      2 | tablename                                         | name        |        -1 | f        | p          | i        | f         | t          |           0
  pg_rules                      |      3 | rulename                                          | name        |        -1 | f        | p          | i        | f         | t          |           0
@@ -18330,7 +18600,7 @@ ORDER BY c.relname, a.attnum;
  pg_window                     |      8 | winpretype                                        | oid         |        -1 | t        | p          | i        | f         | t          |           0
  pg_window                     |      9 | winfinfunc                                        | regproc     |        -1 | t        | p          | i        | f         | t          |           0
  pg_window                     |     10 | winkind                                           | char        |        -1 | t        | p          | c        | f         | t          |           0
-(926 rows)
+(930 rows)
 
 SELECT
     c.relname, a.attnum, a.attname, t.typname, a.atttypmod, a.attbyval,
@@ -18578,6 +18848,8 @@ ORDER BY c.relname, a.attnum;
  pg_authid                     |     13 | rolcreaterextgpfd                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_authid                     |     14 | rolcreaterexthttp                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_authid                     |     15 | rolcreatewextgpfd                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
+ pg_authid                     |     16 | rolcreaterexthdfs                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
+ pg_authid                     |     17 | rolcreatewexthdfs                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_autovacuum                 |      1 | vacrelid                                          | oid         |        -1 | t        | p          | i        | f         | t          |           0
  pg_autovacuum                 |      2 | enabled                                           | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_autovacuum                 |      3 | vac_base_thresh                                   | int4        |        -1 | t        | p          | i        | f         | t          |           0
@@ -18926,6 +19198,8 @@ ORDER BY c.relname, a.attnum;
  pg_roles                      |     14 | rolcreaterextgpfd                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_roles                      |     15 | rolcreaterexthttp                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_roles                      |     16 | rolcreatewextgpfd                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
+ pg_roles                      |     17 | rolcreaterexthdfs                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
+ pg_roles                      |     18 | rolcreatewexthdfs                                 | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_rules                      |      1 | schemaname                                        | name        |        -1 | f        | p          | i        | f         | t          |           0
  pg_rules                      |      2 | tablename                                         | name        |        -1 | f        | p          | i        | f         | t          |           0
  pg_rules                      |      3 | rulename                                          | name        |        -1 | f        | p          | i        | f         | t          |           0
@@ -19273,7 +19547,7 @@ ORDER BY c.relname, a.attnum;
  pg_window                     |      8 | winpretype                                        | oid         |        -1 | t        | p          | i        | f         | t          |           0
  pg_window                     |      9 | winfinfunc                                        | regproc     |        -1 | t        | p          | i        | f         | t          |           0
  pg_window                     |     10 | winkind                                           | char        |        -1 | t        | p          | c        | f         | t          |           0
-(926 rows)
+(930 rows)
 
 -- end_equiv
 -- Compare pg_proc (Functions, Aggregates, Window Functions)
@@ -19859,7 +20133,9 @@ ORDER BY proname, 10;
  float8_mregr_accum                            | f        | f        | f         | t           | f         | i           | _float8                     |        3 | {_float8,float8,_float8}                                                                              |                                                                  |                       |                                                                                       | internal | float8_mregr_accum                            | -
  float8_mregr_coef                             | f        | f        | f         | t           | f         | i           | _float8                     |        1 | {_float8}                                                                                             |                                                                  |                       |                                                                                       | internal | float8_mregr_coef                             | -
  float8_mregr_combine                          | f        | f        | f         | t           | f         | i           | _float8                     |        2 | {_float8,_float8}                                                                                     |                                                                  |                       |                                                                                       | internal | float8_mregr_combine                          | -
+ float8_mregr_pvalues                          | f        | f        | f         | t           | f         | i           | _float8                     |        1 | {_float8}                                                                                             |                                                                  |                       |                                                                                       | internal | float8_mregr_pvalues                          | -
  float8_mregr_r2                               | f        | f        | f         | t           | f         | i           | float8                      |        1 | {_float8}                                                                                             |                                                                  |                       |                                                                                       | internal | float8_mregr_r2                               | -
+ float8_mregr_tstats                           | f        | f        | f         | t           | f         | i           | _float8                     |        1 | {_float8}                                                                                             |                                                                  |                       |                                                                                       | internal | float8_mregr_tstats                           | -
  float8_pivot_accum                            | f        | f        | f         | f           | f         | i           | _float8                     |        4 | {_float8,_text,text,float8}                                                                           |                                                                  |                       |                                                                                       | internal | float8_pivot_accum                            | -
  float8_regr_accum                             | f        | f        | f         | t           | f         | i           | _float8                     |        3 | {_float8,float8,float8}                                                                               |                                                                  |                       |                                                                                       | internal | float8_regr_accum                             | -
  float8_regr_amalg                             | f        | f        | f         | t           | f         | i           | _float8                     |        2 | {_float8,_float8}                                                                                     |                                                                  |                       |                                                                                       | internal | float8_regr_amalg                             | -
@@ -21330,7 +21606,7 @@ ORDER BY proname, 10;
  xidout                                        | f        | f        | f         | t           | f         | i           | cstring                     |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidout                                        | -
  xidrecv                                       | f        | f        | f         | t           | f         | i           | xid                         |        1 | {internal}                                                                                            |                                                                  |                       |                                                                                       | internal | xidrecv                                       | -
  xidsend                                       | f        | f        | f         | t           | f         | i           | bytea                       |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidsend                                       | -
-(2023 rows)
+(2025 rows)
 
 SELECT 
     proname, proisagg, proiswin, prosecdef, proisstrict, proretset, provolatile,
@@ -21916,7 +22192,9 @@ ORDER BY proname, 10;
  float8_mregr_accum                            | f        | f        | f         | t           | f         | i           | _float8                     |        3 | {_float8,float8,_float8}                                                                              |                                                                  |                       |                                                                                       | internal | float8_mregr_accum                            | -
  float8_mregr_coef                             | f        | f        | f         | t           | f         | i           | _float8                     |        1 | {_float8}                                                                                             |                                                                  |                       |                                                                                       | internal | float8_mregr_coef                             | -
  float8_mregr_combine                          | f        | f        | f         | t           | f         | i           | _float8                     |        2 | {_float8,_float8}                                                                                     |                                                                  |                       |                                                                                       | internal | float8_mregr_combine                          | -
+ float8_mregr_pvalues                          | f        | f        | f         | t           | f         | i           | _float8                     |        1 | {_float8}                                                                                             |                                                                  |                       |                                                                                       | internal | float8_mregr_pvalues                          | -
  float8_mregr_r2                               | f        | f        | f         | t           | f         | i           | float8                      |        1 | {_float8}                                                                                             |                                                                  |                       |                                                                                       | internal | float8_mregr_r2                               | -
+ float8_mregr_tstats                           | f        | f        | f         | t           | f         | i           | _float8                     |        1 | {_float8}                                                                                             |                                                                  |                       |                                                                                       | internal | float8_mregr_tstats                           | -
  float8_pivot_accum                            | f        | f        | f         | f           | f         | i           | _float8                     |        4 | {_float8,_text,text,float8}                                                                           |                                                                  |                       |                                                                                       | internal | float8_pivot_accum                            | -
  float8_regr_accum                             | f        | f        | f         | t           | f         | i           | _float8                     |        3 | {_float8,float8,float8}                                                                               |                                                                  |                       |                                                                                       | internal | float8_regr_accum                             | -
  float8_regr_amalg                             | f        | f        | f         | t           | f         | i           | _float8                     |        2 | {_float8,_float8}                                                                                     |                                                                  |                       |                                                                                       | internal | float8_regr_amalg                             | -
@@ -23387,7 +23665,7 @@ ORDER BY proname, 10;
  xidout                                        | f        | f        | f         | t           | f         | i           | cstring                     |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidout                                        | -
  xidrecv                                       | f        | f        | f         | t           | f         | i           | xid                         |        1 | {internal}                                                                                            |                                                                  |                       |                                                                                       | internal | xidrecv                                       | -
  xidsend                                       | f        | f        | f         | t           | f         | i           | bytea                       |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidsend                                       | -
-(2023 rows)
+(2025 rows)
 
 -- end_equiv
 -- Compare pg_aggregate (Aggregates, Window Functions)
@@ -23488,7 +23766,9 @@ ORDER BY 1, 2;
  min            | {timestamptz}            | timestamptz_smaller   | timestamptz_smaller  |                       | <      | timestamptz       | 
  min            | {timetz}                 | timetz_smaller        | timetz_smaller       |                       | <      | timetz            | 
  mregr_coef     | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_coef     |        | _float8           | {0}
+ mregr_pvalues  | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_pvalues  |        | _float8           | {0}
  mregr_r2       | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_r2       |        | _float8           | {0}
+ mregr_tstats   | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_tstats   |        | _float8           | {0}
  nb_classify    | {_text,int8,_int8,_int8} | nb_classify_accum     | nb_classify_combine  | nb_classify_final     |        | nb_classification | 
  pivot_sum      | {_text,text,float8}      | float8_pivot_accum    | float8_matrix_accum  |                       |        | _float8           | 
  pivot_sum      | {_text,text,int8}        | int8_pivot_accum      | int8_matrix_accum    |                       |        | _int8             | 
@@ -23549,7 +23829,7 @@ ORDER BY 1, 2;
  variance       | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
  variance       | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
  variance       | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
-(123 rows)
+(125 rows)
 
 SELECT
     p.proname as aggname,
@@ -23643,7 +23923,9 @@ ORDER BY 1, 2;
  min            | {timestamptz}            | timestamptz_smaller   | timestamptz_smaller  |                       | <      | timestamptz       | 
  min            | {timetz}                 | timetz_smaller        | timetz_smaller       |                       | <      | timetz            | 
  mregr_coef     | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_coef     |        | _float8           | {0}
+ mregr_pvalues  | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_pvalues  |        | _float8           | {0}
  mregr_r2       | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_r2       |        | _float8           | {0}
+ mregr_tstats   | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_tstats   |        | _float8           | {0}
  nb_classify    | {_text,int8,_int8,_int8} | nb_classify_accum     | nb_classify_combine  | nb_classify_final     |        | nb_classification | 
  pivot_sum      | {_text,text,float8}      | float8_pivot_accum    | float8_matrix_accum  |                       |        | _float8           | 
  pivot_sum      | {_text,text,int8}        | int8_pivot_accum      | int8_matrix_accum    |                       |        | _int8             | 
@@ -23704,7 +23986,7 @@ ORDER BY 1, 2;
  variance       | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
  variance       | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
  variance       | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
-(123 rows)
+(125 rows)
 
 -- end_equiv
 -- Compare pg_cast (Casts)
@@ -28587,10 +28869,10 @@ SELECT * FROM pg_aggregate WHERE aggfnoid in (
 -- * Test Cleanup
 -- ===========================================================================
 -- start_ignore
---DROP SCHEMA upg_toolkit CASCADE;
---DROP SCHEMA upg_information CASCADE;
---DROP SCHEMA upg_catalog CASCADE;
---DROP SCHEMA dummy_cast_functions CASCADE;
+DROP SCHEMA upg_toolkit CASCADE;
+DROP SCHEMA upg_information CASCADE;
+DROP SCHEMA upg_catalog CASCADE;
+DROP SCHEMA dummy_cast_functions CASCADE;
 -- end_ignore
 RESET search_path;
-RESET log_min_messages;
+RESET client_min_messages;

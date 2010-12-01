@@ -104,7 +104,7 @@ The tokens are:
 
 =item gpupgradeschemaname
 
- Replace @gpupgradeschemaname@ with public.
+ Replace @gpupgradeschemaname@ with upg_catalog.
 
 =item gpupgradedatadir
 
@@ -408,6 +408,7 @@ if (1)
     my $psexp   = '\\@ps_pidfirst\\@';
 	my $unexp = '\\@gpcurusername\\@';
 	my $schema = '\\@gpupgradeschemaname\\@';
+	my $upgtoolkit = '\\@gpupgradetoolkitschema\\@';
 	my $infoschema = '\\@gpinfoschemaname\\@';
 	my $ugdir = '\\@gpupgradedatadir\\@';
 	my $gphomeexp = '\\@gphome\\@';
@@ -457,7 +458,7 @@ if (1)
 	chomp $curdir;
 
 #    print "$filnam\n";
-    system "perl -i -ple \' s/$hostexp/$hostname/gm; s,$gphomeexp,$gphome,gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/public/gm; s/$infoschema/public/gm; s,$ugdir,$curdir/data/,gm; s/$gpglobconn/$glob_connect/gm;   \' $filnam\n";
+    system "perl -i -ple \' s/$hostexp/$hostname/gm; s,$gphomeexp,$gphome,gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm; s/$unexp/$username/gm; s/$schema/upg_catalog/gm; s/$infoschema/upg_information/gm; s,$ugdir,$curdir/data/,gm; s/$gpglobconn/$glob_connect/gm; s/$upgtoolkit/upg_toolkit/gm;   \' $filnam\n";
 
     # replace filespace
     if (defined($gpfspace_all) && length($gpfspace_all))

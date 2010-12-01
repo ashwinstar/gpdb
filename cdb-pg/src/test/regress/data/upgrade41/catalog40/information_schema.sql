@@ -1714,7 +1714,7 @@ INSERT INTO upg_information.sql_sizing VALUES (25004, 'MAXIMUM SESSION USER LENG
 INSERT INTO upg_information.sql_sizing VALUES (25005, 'MAXIMUM SYSTEM USER LENGTH', 63, NULL);
 
 UPDATE upg_information.sql_sizing
-    SET supported_value = (SELECT typlen-1 FROM pg_catalog.pg_type WHERE typname = 'name'),
+    SET supported_value = (SELECT typlen-1 FROM pg_catalog.pg_type WHERE typname = 'name' and typnamespace=11),
         comments = 'Might be less, depending on character set.'
     WHERE supported_value = 63;
 
