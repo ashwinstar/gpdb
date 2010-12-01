@@ -731,7 +731,7 @@ AcceptInvalidationMessages(void)
 		InvalidateSystemCaches();
 	}
 
-#elif USE_FAULT_INJECTION
+#elif USE_TEST_UTILS
 	{
 		/*
 		 * Same basic idea as above, except using the SimEx facility, the main

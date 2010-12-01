@@ -110,6 +110,8 @@ extern void LWLockRelease(LWLockId lockid);
 extern void LWLockReleaseAll(void);
 extern bool LWLockHeldByMe(LWLockId lockid);
 extern bool LWLockHeldExclusiveByMe(LWLockId lockid);
+extern uint32 LWLocksHeld(void);
+extern const char *LWLocksHeldStackTraces(void);
 
 extern int	NumLWLocks(void);
 extern Size LWLockShmemSize(void);

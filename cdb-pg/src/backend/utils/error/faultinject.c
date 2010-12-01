@@ -21,7 +21,7 @@
 extern Datum gp_fault_inject(PG_FUNCTION_ARGS) ;
 Datum gp_fault_inject(PG_FUNCTION_ARGS) 
 {
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 	int64 reason = PG_GETARG_INT32(0);
 	int64 arg = PG_GETARG_INT64(1);
 
@@ -32,7 +32,7 @@ Datum gp_fault_inject(PG_FUNCTION_ARGS)
 #endif
 }
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 
 static char * longmsg = 
 "12345678901234567890123456789012345678901234567890"

@@ -792,7 +792,7 @@ enable_cassert
 enable_forceplan
 enable_debugbreak
 enable_debugntuplestore
-enable_faultinjection
+enable_testutils
 enable_snmp
 enable_email
 enable_thread_safety
@@ -1458,7 +1458,7 @@ build with coverage testing instrumentation
   --enable-forceplan        enable forcing of plans via EXPLAIN FORCE (for debugging)
   --enable-debugbreak        enable debug_break and debug_break_n (for debugging)
   --enable-ntuplestore      enable debug_ntuplestore (for debugging)
-  --enable-faultinjection        enable fault injection for testing
+  --enable-testutils        enable testing utilities
   --enable-snmp        enable snmp for MIB and alerts via TRAP/INFORM
   --enable-email        enable email alerts
   --disable-thread-safety  Do not make client libraries thread-safe
@@ -4778,27 +4778,27 @@ fi
 # Enable fault injection
 #
 
-pgac_args="$pgac_args enable_faultinjection"
+pgac_args="$pgac_args enable_testutils"
 
-# Check whether --enable-faultinjection was given.
-if test "${enable_faultinjection+set}" = set; then :
-  enableval=$enable_faultinjection;
+# Check whether --enable-testutils was given.
+if test "${enable_testutils+set}" = set; then :
+  enableval=$enable_testutils;
   case $enableval in
     yes)
 
-$as_echo "#define USE_FAULT_INJECTION 1" >>confdefs.h
+$as_echo "#define USE_TEST_UTILS 1" >>confdefs.h
 
       ;;
     no)
       :
       ;;
     *)
-      as_fn_error "no argument expected for --enable-faultinjection option" "$LINENO" 5
+      as_fn_error "no argument expected for --enable-testutils option" "$LINENO" 5
       ;;
   esac
 
 else
-  enable_faultinjection=no
+  enable_testutils=no
 
 fi
 

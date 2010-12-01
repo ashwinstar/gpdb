@@ -83,10 +83,16 @@ NON_EXEC_STATIC LWLockPadded *LWLockArray = NULL;
  * ever be held simultaneously.
  */
 #define MAX_SIMUL_LWLOCKS	100
+#define MAX_FRAME_DEPTH  	64
 
 static int	num_held_lwlocks = 0;
 static LWLockId held_lwlocks[MAX_SIMUL_LWLOCKS];
 static bool held_lwlocks_exclusive[MAX_SIMUL_LWLOCKS];
+
+#ifdef USE_TEST_UTILS
+static void *held_lwlocks_addresses[MAX_SIMUL_LWLOCKS][MAX_FRAME_DEPTH];
+static int32 held_lwlocks_depth[MAX_SIMUL_LWLOCKS];
+#endif /* USE_TEST_UTILS */
 
 static int	lock_addin_request = 0;
 static bool lock_addin_request_allowed = true;
@@ -586,6 +592,12 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 			 (mode == LW_EXCLUSIVE ? "Exclusive" : "Shared"));
 #endif
 
+#ifdef USE_TEST_UTILS
+	/* keep track of stack trace where lock got acquired */
+	held_lwlocks_depth[num_held_lwlocks] =
+			gp_backtrace(held_lwlocks_addresses[num_held_lwlocks], MAX_FRAME_DEPTH);
+#endif /* USE_TEST_UTILS */
+
 	/* Add lock to list of locks held by this backend */
 	held_lwlocks_exclusive[num_held_lwlocks] = (mode == LW_EXCLUSIVE);
 	held_lwlocks[num_held_lwlocks++] = lockid;
@@ -668,6 +680,13 @@ LWLockConditionalAcquire(LWLockId lockid, LWLockMode mode)
 				 num_held_lwlocks,
 				 (mode == LW_EXCLUSIVE ? "Exclusive" : "Shared"));
 #endif
+
+#ifdef USE_TEST_UTILS
+		/* keep track of stack trace where lock got acquired */
+		held_lwlocks_depth[num_held_lwlocks] =
+				gp_backtrace(held_lwlocks_addresses[num_held_lwlocks], MAX_FRAME_DEPTH);
+#endif /* USE_TEST_UTILS */
+
 		/* Add lock to list of locks held by this backend */
 		held_lwlocks_exclusive[num_held_lwlocks] = (mode == LW_EXCLUSIVE);
 		held_lwlocks[num_held_lwlocks++] = lockid;
@@ -724,11 +743,25 @@ LWLockRelease(LWLockId lockid)
 	{
 		held_lwlocks_exclusive[i] = held_lwlocks_exclusive[i + 1];
 		held_lwlocks[i] = held_lwlocks[i + 1];
+#ifdef USE_TEST_UTILS
+		/* shift stack traces */
+		held_lwlocks_depth[i] = held_lwlocks_depth[i + 1];
+		memcpy
+			(
+			held_lwlocks_addresses[i],
+			held_lwlocks_addresses[i + 1],
+			held_lwlocks_depth[i] * sizeof(*held_lwlocks_depth)
+			)
+			;
+#endif /* USE_TEST_UTILS */
 	}
 
 	// Clear out old last entry.
 	held_lwlocks_exclusive[num_held_lwlocks] = false;
 	held_lwlocks[num_held_lwlocks] = 0;
+#ifdef USE_TEST_UTILS
+	held_lwlocks_depth[num_held_lwlocks] = 0;
+#endif /* USE_TEST_UTILS */
 
 	/* Acquire mutex.  Time spent holding mutex should be short! */
 	SpinLockAcquire(&lock->mutex);
@@ -873,4 +906,51 @@ LWLockHeldExclusiveByMe(LWLockId lockid)
 			return true;
 	}
 	return false;
+}
+
+/*
+ * Return number of locks held by my process
+ */
+uint32
+LWLocksHeld()
+{
+	Assert(num_held_lwlocks >= 0);
+	return num_held_lwlocks;
+}
+
+
+/*
+ * Build string containing stack traces where all exclusively-held
+ * locks were acquired;
+ */
+const char*
+LWLocksHeldStackTraces()
+{
+#ifdef USE_TEST_UTILS
+	if (num_held_lwlocks == 0)
+	{
+		return NULL;
+	}
+
+	StringInfo append = makeStringInfo();	/* palloc'd */
+	uint32 i = 0;
+
+	/* append stack trace for each held lock */
+	for (i = 0; i < num_held_lwlocks; i++)
+	{
+		appendStringInfo(append, "%d: LWLock %d:\n", i + 1, held_lwlocks[i] );
+
+		char *stackTrace =
+				gp_stacktrace(held_lwlocks_addresses[i], held_lwlocks_depth[i]);
+
+		Assert(stackTrace != NULL);
+		appendStringInfoString(append, stackTrace);
+		pfree(stackTrace);
+	}
+
+	Assert(append->len > 0);
+	return append->data;
+#else
+	return NULL;
+#endif /* USE_TEST_UTILS */
 }

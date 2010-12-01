@@ -3387,21 +3387,21 @@ void
 ProcessInterrupts(void)
 {
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 	int simex_run = gp_simex_run;
-#endif   /* USE_FAULT_INJECTION */
+#endif   /* USE_TEST_UTILS */
 
 	/* OK to accept interrupt now? */
 	if (InterruptHoldoffCount != 0 || CritSectionCount != 0)
 		return;
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 	/* disable SimEx for CHECK_FOR_INTERRUPTS */
 	if (gp_simex_init && gp_simex_run && gp_simex_class == SimExESClass_Cancel)
 	{
 		gp_simex_run = 0;
 	}
-#endif   /* USE_FAULT_INJECTION */
+#endif   /* USE_TEST_UTILS */
 
 	InterruptPending = false;
 	if (ProcDiePending)
@@ -3450,13 +3450,13 @@ ProcessInterrupts(void)
 	}
 	/* If we get here, do nothing (probably, QueryCancelPending was reset) */
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 	/* restore SimEx for CHECK_FOR_INTERRUPTS */
 	if (gp_simex_init && simex_run && gp_simex_class == SimExESClass_Cancel)
 	{
 		gp_simex_run = simex_run;
 	}
-#endif   /* USE_FAULT_INJECTION */
+#endif   /* USE_TEST_UTILS */
 }
 
 /*
@@ -4468,6 +4468,11 @@ PostgresMain(int argc, char *argv[], const char *username)
 		 */
 		QueryCancelPending = false;		/* forget any earlier CANCEL signal */
 		DoingCommandRead = true;
+
+#ifdef USE_TEST_UTILS
+		/* reset time slice */
+		TimeSliceReset();
+#endif /* USE_TEST_UTILS */
 
 		/*
 		 * (2b) Check for disable work for QD mirroring.
@@ -5938,6 +5943,11 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 
 		EnableNotifyInterrupt();
 		EnableCatchupInterrupt();
+
+#ifdef USE_TEST_UTILS
+		/* reset time slice */
+		TimeSliceReset();
+#endif /* USE_TEST_UTILS */
 
 		/* Allow "die" interrupt to be processed while waiting */
 		ImmediateInterruptOK = true;

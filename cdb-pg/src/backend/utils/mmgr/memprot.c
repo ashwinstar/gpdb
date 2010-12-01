@@ -70,7 +70,7 @@ void GPMemoryProtectReset()
 #endif 
 }
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 int64 gp_mp_fault(int32 reason, int64 arg)
 {
 	elog(LOG, "GPDB does not support mem prot on this plat form.  Fault reason %d, arg" INT64_FORMAT ".", reason, arg);
@@ -99,7 +99,7 @@ static int gpmemprot_peek_sem(PGSemaphoreData *psem);
 
 /* Global physical mem counter */
 static PGSemaphoreData gpsema_vmem_prot;
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 static PGSemaphoreData gpsema_mp_fault;
 #endif
 
@@ -159,7 +159,7 @@ static inline bool gp_memprot_enabled()
 	if(!gp_mp_inited || Gp_role != GP_ROLE_EXECUTE)
 		return false;
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 	return gpmemprot_peek_sem(&gpsema_mp_fault) != 0;
 #else
 	return gp_vmem_protect_limit != 0;
@@ -197,7 +197,7 @@ void GPMemoryProtectInit()
             gpsema_vmem_prot_max >>= 1;
         }
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
         PGSemaphoreCreateInitVal(&gpsema_vmem_prot, gpsema_vmem_prot_max);
         PGSemaphoreCreateInitVal(&gpsema_mp_fault, gpsema_vmem_prot_max);
 #else
@@ -345,7 +345,7 @@ static void *gp_malloc_internal(int64 sz1, int64 sz2, bool ismalloc)
 	else
 		ret = calloc(sz1, sz2);
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 	if (gp_simex_init && gp_simex_run && gp_simex_class == SimExESClass_OOM && ret)
 	{
 		SimExESSubClass subclass = SimEx_CheckInject();
@@ -450,7 +450,7 @@ void *gp_realloc(void *ptr, int64 sz, int64 newsz)
 
 		ret = realloc(ptr, newsz);
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 		if (gp_simex_init && gp_simex_run && gp_simex_class == SimExESClass_OOM && ret)
 		{
 			SimExESSubClass subclass = SimEx_CheckInject();
@@ -589,14 +589,14 @@ int gpmemprot_peek_sem(PGSemaphoreData *psem)
 int
 MemProtSemas(void)
 {
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 	return 2;
 #else
 	return 1;
 #endif
 }
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 static inline int64 chunk_to_mb(int64 chunk)
 {
 	Assert(gp_memprot_chunksize_shift >= 20);

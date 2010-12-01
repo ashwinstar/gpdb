@@ -17,7 +17,7 @@ SUBDIRS     := fstream
 
 override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)
 
-OBJS = guc.o help_config.o pg_rusage.o ps_status.o superuser.o tzparser.o uriparser.o faultinjector.o simex.o syncbitvector.o
+OBJS = guc.o help_config.o pg_rusage.o ps_status.o superuser.o tzparser.o uriparser.o faultinjector.o simex.o syncbitvector.o testutils.o
 
 # This location might depend on the installation directories. Therefore
 # we can't subsitute it into pg_config.h.

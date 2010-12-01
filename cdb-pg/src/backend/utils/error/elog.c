@@ -143,6 +143,29 @@ static void write_eventlog(int level, const char *line);
 /* We provide a small stack of ErrorData records for re-entrant cases */
 #define ERRORDATA_STACK_SIZE  10
 
+#define CMD_BUFFER_SIZE  1024
+#define SYMBOL_SIZE      512
+#define ADDRESS_SIZE     20
+#define STACK_DEPTH_MAX  100
+
+/*
+ * Assembly code, gets the values of the frame pointer.
+ * It only works for x86 processors.
+ */
+#if defined(__i386)
+#define ASMFP asm volatile ("movl %%ebp, %0" : "=g" (ulp));
+#define GET_PTR_FROM_VALUE(value) ((uint32)value)
+#define GET_FRAME_POINTER(x) do { uint64 ulp; ASMFP; x = ulp; } while (0)
+#elif defined(__x86_64__)
+#define ASMFP asm volatile ("movq %%rbp, %0" : "=g" (ulp));
+#define GET_PTR_FROM_VALUE(value) (value)
+#define GET_FRAME_POINTER(x) do { uint64 ulp; ASMFP; x = ulp; } while (0)
+#else
+#define ASMFP
+#define GET_PTR_FROM_VALUE(value) (value)
+#define GET_FRAME_POINTER(x)
+#endif
+
 static ErrorData errordata[ERRORDATA_STACK_SIZE];
 
 static int	errordata_stack_depth = -1; /* index of topmost active frame */
@@ -2616,14 +2639,12 @@ append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
  * If buffer is NULL, the stack is written to the syslogger file if amsyslogger is true.
  * Otherwise, write to stderr.
  */
-static inline void
+static void
 append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stackarray,
                   int stacksize, bool amsyslogger)
 {
-#ifndef WIN32
-#if !defined(_AIX)
+#if !defined(WIN32) && !defined(_AIX)
     int stack_no;
-    const int SYMBOL_SIZE = 512;
     char symbol[SYMBOL_SIZE]; /* a reasonable size for a symbol */
     Dl_info dli;
     int symbol_len;
@@ -2631,10 +2652,9 @@ append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stacka
 
     FILE * fd;
 	bool fd_ok = false;
-    bool addr2line_ok = false;
-    char cmd[1024];
-    char cmdresult[100][SYMBOL_SIZE];
-    char addrtxt[20];
+    char cmd[CMD_BUFFER_SIZE];
+    char cmdresult[STACK_DEPTH_MAX][SYMBOL_SIZE];
+    char addrtxt[ADDRESS_SIZE];
 
 #if defined(__darwin__)
     const char * prog = "atos -o";
@@ -2643,12 +2663,15 @@ append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stacka
 #else
     const char * prog = "addr2line -s -e";
 #endif
+
     static bool in_translate_stacktrace = false;
+    bool addr2line_ok = gp_log_stack_trace_lines;
 
     if (stacksize == 0)
     	return;
 
-    if (!in_translate_stacktrace)
+
+	if (!in_translate_stacktrace && addr2line_ok)
     {
     	/*
     	 * Keep a record that we are doing this work, so if we crash during it, we don't
@@ -2656,15 +2679,13 @@ append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stacka
     	 */
     	in_translate_stacktrace = true;
 
-		snprintf(cmd,1024,"%s %s ",prog,my_exec_path);
+		snprintf(cmd,sizeof(cmd),"%s %s ",prog,my_exec_path);
 
 		for (stack_no = 0; stack_no < stacksize && stack_no < 100; stack_no++)
 		{
 			cmdresult[stack_no][0] = '\0';   /* clear this array for later */
-			snprintf(addrtxt,20,"%p ",stackarray[stack_no]);
-			if (strlen(addrtxt) + strlen(cmd) >= 1024)
-				break;
-			strcat(cmd,addrtxt);
+			snprintf(addrtxt, sizeof(addrtxt),"%p ",stackarray[stack_no]);
+			strncat(cmd, addrtxt, sizeof(cmd));
 		}
 
 		cmdresult[0][0] = '\0';
@@ -2674,7 +2695,7 @@ append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stacka
 
 		if (fd_ok)
 		{
-			for (stack_no = 0; stack_no < stacksize && stack_no < 100 && errno == 0; stack_no++)
+			for (stack_no = 0; stack_no < stacksize && stack_no < STACK_DEPTH_MAX && errno == 0; stack_no++)
 			{
 				/* initialize the string */
 				cmdresult[stack_no][0] = '\0';
@@ -2703,25 +2724,59 @@ append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stacka
 
     for (stack_no = 0; stack_no < stacksize; stack_no++)
     {
-
-        if (addr2line_ok && stack_no < 100)
+        if (addr2line_ok && stack_no < STACK_DEPTH_MAX)
         {
-        	symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p %s\n",stack_no, stackarray[stack_no], cmdresult[stack_no]);
+        	symbol_len = snprintf(symbol,
+        			              ARRAY_SIZE(symbol),
+        			              "%-4d %p %s\n",
+        			              stack_no + 1,
+        			              stackarray[stack_no],
+        			              cmdresult[stack_no]);
         }
         else
-        if (dladdr(stackarray[stack_no], &dli) != 0 &&
-            dli.dli_fname != NULL &&
-            dli.dli_fname[0] != '\0')
+        if (dladdr(stackarray[stack_no], &dli) != 0)
         {
-            symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: %s %s+0x%x\n",
-                                  stack_no, stackarray[stack_no], strncmp(dli.dli_fname,"postgres:",strlen("postgres:"))==0 ? "postgres" : dli.dli_fname,
-                                  (dli.dli_sname != NULL ? dli.dli_sname : ""),
+        	const char *file = dli.dli_fname;
+        	if (file != NULL &&	file[0] != '\0')
+        	{
+				const char *dir_path = strrchr(file, '/');
+				if (strncmp(file, "postgres:", strlen("postgres:")) == 0)
+				{
+					file = "postgres";
+				}
+				else if (dir_path != NULL)
+				{
+					/* don't print path to file */
+					file = dir_path + 1;
+				}
+        	}
+        	else
+        	{
+        		file = "";
+        	}
+
+        	const char *function = dli.dli_sname;
+        	if (function == NULL || function[0] == '\0')
+        	{
+        		function = "<symbol not found>";
+        	}
+
+        	symbol_len = snprintf(symbol,
+        				          ARRAY_SIZE(symbol),
+            		              "%-4d %p %s %s + 0x%x \n",
+                                  stack_no + 1,
+                                  stackarray[stack_no],
+                                  file,
+                                  function,
                                   (int)((char *)(stackarray[stack_no]) - (char *)(dli.dli_saddr)));
         }
         else
         {
-            symbol_len = snprintf(symbol, SYMBOL_SIZE, "Traceback %d: %p: <not found>\n",
-                                  stack_no, stackarray[stack_no]);
+            symbol_len = snprintf(symbol,
+			                      ARRAY_SIZE(symbol),
+            		              "%-4d %p <symbol not found>\n",
+                                  stack_no + 1,
+                                  stackarray[stack_no]);
         }
 
         if (buffer != NULL)
@@ -2750,7 +2805,6 @@ append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stacka
         	}
         }
     }
-#endif
 #endif
 }
 
@@ -2900,7 +2954,8 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
         edata->stacktracesize > 0 &&
         edata->stacktracearray != NULL)
     {
-        append_stacktrace(NULL /*PipeProtoChunk*/, NULL /*StringInfo*/, edata->stacktracearray, edata->stacktracesize, amsyslogger);
+        append_stacktrace(NULL /*PipeProtoChunk*/, NULL /*StringInfo*/, edata->stacktracearray,
+        		          edata->stacktracesize, amsyslogger);
     }
     else
     {
@@ -3051,17 +3106,22 @@ write_message_to_server_log(int elevel,
     append_string_to_pipe_chunk(&buffer, filename);
 
     /* stacktrace */
-
     if (elevel >= ERROR &&
         (elevel == PANIC || !omit_location) &&
         stacktracesize > 0 &&
         stacktracearray != NULL)
     {
-        append_stacktrace(&buffer, NULL /*StringInfo*/, stacktracearray, stacktracesize, false);
+    	// move stack trace to new line
+    	append_string_to_pipe_chunk(&buffer, "Stack trace:\n");
+    	buffer.hdr.len --;
+
+    	append_stacktrace(&buffer, NULL /*StringInfo*/, stacktracearray, stacktracesize,
+                          false /*amsyslogger*/);
     }
     else
     {
-        append_stacktrace(&buffer, NULL /*StringInfo*/, NULL, 0, false);
+    	append_stacktrace(&buffer, NULL /*StringInfo*/, NULL, 0,
+    	                  false/*amsyslogger*/);
     }
 
     /* Send the last chunk */
@@ -4101,24 +4161,82 @@ debug_backtrace(void)
 
 	stacktracesize = backtrace(stacktracearray, 30);
 
-	append_stacktrace(NULL /*PipeProtoChunk*/, NULL /*StringInfo*/, stacktracearray, stacktracesize, false);
+	append_stacktrace(NULL /*PipeProtoChunk*/, NULL /*StringInfo*/, stacktracearray, stacktracesize,
+					 false/*amsyslogger*/);
 #endif
 
 }
 
-char *get_backtrace(int maxStackDepth)
+/*
+ * Unwind stack up to a given depth and store frame addresses to passed array;
+ * return stack depth;
+ */
+uint32 gp_backtrace(void **stackAddresses, uint32 maxStackDepth)
 {
-#ifndef WIN32
-	void *stackTraceBuffer[maxStackDepth];
-	int funcCount = backtrace(stackTraceBuffer, maxStackDepth);
+#if defined(__i386) || defined(__x86_64__)
+	/* get base pointer of current frame */
+	uint64 framePtrValue = 0;
+	GET_FRAME_POINTER(framePtrValue);
 
-	StringInfo append = makeStringInfo();	/* palloc'd */
+	uint32 depth = 0;
+	void **pFramePtr = (void**) GET_PTR_FROM_VALUE(framePtrValue);
 
-	append_stacktrace(NULL /*PipeProtoChunk*/, append, stackTraceBuffer, funcCount, false);
+	/* check if the stack base pointer has been set */
+	if (stack_base_ptr == NULL)
+	{
+		return backtrace(stackAddresses, maxStackDepth);
+	}
 
-	return append->data;
+	/* consider the first maxStackDepth frames only, below the stack base pointer */
+	for (depth = 0; depth < maxStackDepth; depth++)
+	{
+		/* check if next frame is within stack */
+		if ((void *) pFramePtr > *pFramePtr ||
+			(void *) stack_base_ptr < *pFramePtr)
+		{
+			break;
+		}
+
+		/* get return address (one above the frame pointer) */
+		const uintptr_t *returnAddr = (uintptr_t *)(pFramePtr + 1);
+
+		/* store return address */
+		stackAddresses[depth] = (void *) *returnAddr;
+
+		// move to next frame
+		pFramePtr = (void**)*pFramePtr;
+	}
+
+	return depth;
 
 #else
-	return NULL;
+	return backtrace(stackAddresses, maxStackDepth);
 #endif
 }
+
+
+/*
+ * Build stack trace
+ */
+char *gp_stacktrace(void **stackAddresses, uint32 stackDepth)
+{
+	StringInfo append = makeStringInfo();	/* palloc'd */
+
+#ifdef WIN32
+	appendStringInfoString(append, "stack trace is not available for this platform");
+#else
+	append_stacktrace(NULL /*PipeProtoChunk*/, append, stackAddresses, stackDepth,
+	                 false/*amsyslogger*/);
+#endif
+
+	/* we may fail to retrieve stack on opt build */
+	if (0 == append->len)
+	{
+		appendStringInfoString(append, "failed to retrieve stack");
+	}
+
+	return append->data;
+}
+
+
+/* EOF */

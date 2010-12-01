@@ -195,7 +195,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, ShmemBackendArraySize());
 #endif
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 		if (gp_simex_init)
 		{
 			// initialize SimEx

@@ -487,11 +487,11 @@ PGAC_ARG_BOOL(enable, debugntuplestore, no, [  --enable-ntuplestore      enable 
                          [Define to 1 to build with debug_ntuplestore. (--enable-ntuplestore)])])
 
 #
-# Enable fault injection
+# Enable testing utilities
 #
-PGAC_ARG_BOOL(enable, faultinjection, no, [  --enable-faultinjection        enable fault injection for testing],
-              [AC_DEFINE([USE_FAULT_INJECTION], 1,
-                         [Define to 1 to build with fault injection capabilities. (--enable-faultinjection)])])
+PGAC_ARG_BOOL(enable, testutils, no, [  --enable-testutils        enable testing utilities],
+              [AC_DEFINE([USE_TEST_UTILS], 1,
+                         [Define to 1 to build with testing utilities. (--enable-testutils)])])
                          
 #
 # --enable-snmp enables snmp mib and trap/inform

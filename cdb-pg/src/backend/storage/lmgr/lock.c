@@ -41,6 +41,7 @@
 #include "storage/lmgr.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
+#include "utils/testutils.h"
 #include "executor/execdesc.h"
 #include "utils/resscheduler.h"
 #include "storage/procarray.h"
@@ -585,8 +586,16 @@ LockAcquire(const LOCKTAG *locktag,
 		return LOCKACQUIRE_ALREADY_HELD;
 	}
 	
+#ifdef USE_TEST_UTILS
+	if (gp_test_deadlock_hazard && !dontWait)
+	{
+		/* blocking lock request, check if any lightweight lock is already held */
+		CHECK_LW_LOCKS_HELD();
+	}
+#endif /* USE_TEST_UTILS */
+
 	/*
-	 * lockHolder is the the gang member that should hold and manage locks for this
+	 * lockHolder is the gang member that should hold and manage locks for this
 	 * transaction.  In Utility mode, or on the QD, it's allways myself.
 	 * 
 	 * On the QEs, it should normally be the Writer gang member.

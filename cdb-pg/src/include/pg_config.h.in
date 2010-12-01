@@ -747,9 +747,8 @@
 /* Define to 1 to build with email alert capabilities. (--enable-email) */
 #undef USE_EMAIL
 
-/* Define to 1 to build with fault injection capabilities.
-   (--enable-faultinjection) */
-#undef USE_FAULT_INJECTION
+/* Define to 1 to build with testing utilities. (--enable-testutils) */
+#undef USE_TEST_UTILS
 
 /* Define to 1 to build with plan forcing capabilities. (--enable-forceplan)
    */

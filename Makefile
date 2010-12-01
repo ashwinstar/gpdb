@@ -414,7 +414,7 @@ devel : CLIENTINSTLOC=$(CLIENTDEVPATH)
 devel : CONNECTIVITYINSTLOC=$(CONNECTIVITYDEVPATH)
 devel : LOADERSINSTLOC=$(LOADERSDEVPATH)
 devel : GPPERFMONINSTLOC=$(GPPERFMONDEVPATH)
-devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak --enable-depend
+devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-testutils --enable-debugbreak --enable-depend
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	$(BUILD_STEPS)
 
@@ -437,14 +437,14 @@ dist_prof : CLIENTINSTLOC=$(CLIENTDISTPATH)
 dist_prof : CONNECTIVITYINSTLOC=$(CONNECTIVITYDISTPATH)
 dist_prof : LOADERSINSTLOC=$(LOADERSDISTPATH)
 dist_prof : GPPERFMONINSTLOC=$(GPPERFMONDISTPATH)
-dist_prof : CONFIGFLAGS+= --enable-faultinjection 
+dist_prof : CONFIGFLAGS+= --enable-testutils 
 dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	$(BUILD_STEPS)
 
 dist_faultinj : CLIENTINSTLOC=$(CLIENTDISTPATH)
 dist_faultinj : CONNECTIVITYINSTLOC=$(CONNECTIVITYDISTPATH)
 dist_faultinj : LOADERSINSTLOC=$(LOADERSDISTPATH)
-dist_faultinj : CONFIGFLAGS+= --enable-faultinjection --enable-debugbreak
+dist_faultinj : CONFIGFLAGS+= --enable-testutils --enable-debugbreak
 dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	$(BUILD_STEPS)
 

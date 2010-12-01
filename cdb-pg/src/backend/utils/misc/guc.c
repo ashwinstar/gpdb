@@ -477,6 +477,16 @@ bool gp_simex_run;
 int gp_simex_class;
 int gp_simex_rand;
 
+/* time slice enforcement */
+bool gp_test_time_slice;
+int gp_test_time_slice_interval;
+
+/* database-lightweight lock hazard detection */
+bool gp_test_deadlock_hazard;
+
+/* include file/line information to stack traces */
+bool gp_log_stack_trace_lines;
+
 /*
  * Displayable names for context types (enum GucContext)
  *
@@ -2783,6 +2793,36 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
+	{
+		{"gp_test_time_slice", PGC_USERSET, GP_ERROR_HANDLING,
+		 gettext_noop("Check for time slice violation between checks for interrupts"),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_test_time_slice,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_test_deadlock_hazard", PGC_USERSET, GP_ERROR_HANDLING,
+		 gettext_noop("Check if a lightweight lock is already held when requesting a database lock"),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_test_deadlock_hazard,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_log_stack_trace_lines", PGC_USERSET, LOGGING_WHAT,
+		 gettext_noop("Control if file/line information is included in stack traces"),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_log_stack_trace_lines,
+		true, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -4287,6 +4327,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&gp_simex_rand,
 		100, 0, 100, NULL, NULL
+	},
+
+	{
+		{"gp_test_time_slice_interval", PGC_USERSET, GP_ERROR_HANDLING,
+		 gettext_noop("Maximum interval in ms between successive checks for interrupts."),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_test_time_slice_interval,
+		1000, 1, 10000, NULL, NULL
 	},
 
 	/* End-of-list marker */

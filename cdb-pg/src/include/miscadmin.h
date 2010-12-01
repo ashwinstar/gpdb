@@ -83,9 +83,14 @@ extern bool gp_enable_resqueue_priority;
 
 #ifndef WIN32
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
 #define CHECK_FOR_INTERRUPTS() \
 do { \
+	if (gp_test_time_slice) \
+	{ \
+		CHECK_TIME_SLICE(); \
+	} \
+\
 	if (gp_simex_init && gp_simex_run && gp_simex_class == SimExESClass_Cancel && !InterruptPending) \
 	{\
 		SimExESSubClass subclass = SimEx_CheckInject(); \
@@ -113,7 +118,7 @@ do { \
 	if (gp_enable_resqueue_priority)	\
 		BackoffBackendTick(); \
 } while(0)
-#endif   /* USE_FAULT_INJECTION */
+#endif   /* USE_TEST_UTILS */
 
 #else							/* WIN32 */
 

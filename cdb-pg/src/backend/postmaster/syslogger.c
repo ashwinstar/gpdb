@@ -1153,7 +1153,7 @@ static void syslogger_handle_chunk(PipeProtoChunk *chunk)
     PipeProtoChunk *first = NULL; 
     PipeProtoChunk *prev = NULL; 
 
-#ifdef USE_FAULT_INJECTION
+#ifdef USE_TEST_UTILS
     if (chunk->hdr.log_format == 'X')
     {
         if (chunk->hdr.log_line_number == 1)

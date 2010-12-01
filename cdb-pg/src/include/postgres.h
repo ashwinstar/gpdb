@@ -54,6 +54,7 @@ extern "C" {
 #include "utils/palloc.h"
 #include "storage/itemptr.h"
 #include "utils/simex.h"
+#include "utils/testutils.h"
 
 /* ----------------------------------------------------------------
  *				Section 1:	variable-length datatypes (TOAST support)

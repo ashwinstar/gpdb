@@ -22,6 +22,8 @@
  * Copyright (c) 2010, Greenplum inc
  */
 
+#include <dlfcn.h>
+
 #include "postgres.h"
 #include "lib/stringinfo.h"
 #include "utils/elog.h"
@@ -51,31 +53,12 @@ const SimExESClassAssociate SimExESClassAssociateTable[] =
 #define SimExESClassAssociateTable_Size (sizeof(SimExESClassAssociateTable) / sizeof(SimExESClassAssociate))
 
 #define SIMEX_ES_SUBCLASS_MAX_COUNT 	(SYNC_BITVECTOR_MAX_COUNT)	/* one bit vector per ES subclass */
-#define SIMEX_MAX_FRAME_DEPTH 			20							/* number of frames used to compute a stack's hash value,
+#define SIMEX_MAX_FRAME_DEPTH 			64							/* number of frames used to compute a stack's hash value,
 																	 * set to low value to prevent multiple ES injection for a
 																	 * repeating function sequence.
 																	 */
-#define SIMEX_MAX_STACKTRACE_DEPTH 		100							/* max number of functions included in a stack trace */
 #define OFFSET_NOT_FOUND				-1
 #define PERCENT							100
-
-/*
- * Assembly code, gets the values of the frame pointer.
- * It only works for x86 processors.
- */
-#if defined(__i386)
-#define ASMFP asm volatile ("movl %%ebp, %0" : "=g" (ulp));
-#define GET_PTR_FROM_VALUE(value) ((uint32)value)
-#define GET_FRAME_POINTER(x) do { uint64 ulp; ASMFP; x = ulp; } while (0)
-#elif defined(__x86_64__)
-#define ASMFP asm volatile ("movq %%rbp, %0" : "=g" (ulp));
-#define GET_PTR_FROM_VALUE(value) (value)
-#define GET_FRAME_POINTER(x) do { uint64 ulp; ASMFP; x = ulp; } while (0)
-#else
-#define ASMFP
-#define GET_PTR_FROM_VALUE(value) (value)
-#define GET_FRAME_POINTER(x)
-#endif
 
 /* SimEx bit vector container */
 static SyncBitvectorContainer bitvectorContainer = NULL;
@@ -84,8 +67,11 @@ static SyncBitvectorContainer bitvectorContainer = NULL;
 static int16 SimExESSubclassOffset[SIMEX_ES_SUBCLASS_MAX_COUNT];
 static int32 SimExESSubclassCount = 0;
 
-/* Should SimEx log stack traces, probably should become a GUC */
-static bool  SimExStackLogging = true;
+/* holds return addresses of frames in stack */
+static void *SimExStackAddresses[SIMEX_MAX_FRAME_DEPTH];
+
+/* stack depth */
+static uint32 SimExStackDepth = 0;
 
 /* static functions */
 static bool check_associate_table(void);
@@ -104,10 +90,10 @@ simex_log_and_return(int32 associateOffset, const char *file, int32 line, uint64
  */
 void simex_init(void)
 {
-	COMPILE_ASSERT(check_associate_table() && "ES class/subclass association is not consistent");
+	Assert(check_associate_table() && "ES class/subclass association is not consistent");
 
 /* check if the build allows SimEx */
-#ifndef USE_FAULT_INJECTION
+#ifndef USE_TEST_UTILS
 	gp_simex_init = false;
 #endif
 
@@ -137,6 +123,8 @@ void simex_init(void)
 			SimExESSubclassCount++;
 		}
 	}
+
+	SimExStackDepth = 0;
 }
 
 /*
@@ -196,7 +184,7 @@ bool check_associate_table()
 	}
 
 	/* check if all subclasses are associated to classes */
-	for (i = 0; i < SimExESSubClass_Max - 1; i++)
+	for (i = 1; i < SimExESSubClass_Max - 1; i++)
 	{
 		if (subclassAssociated[i] == false)
 		{
@@ -236,7 +224,7 @@ SimExESSubClass simex_check(const char *file, int32 line)
 {
 
 /* check if the build allows SimEx */
-#ifndef USE_FAULT_INJECTION
+#ifndef USE_TEST_UTILS
 	return SimExESSubClass_OK;
 #endif
 
@@ -272,33 +260,21 @@ SimExESSubClass simex_check(const char *file, int32 line)
 static
 uint64 simex_get_fingerprint(void)
 {
-	/* get base pointer of current frame */
-	uint64 framePtrValue = 0;
-	GET_FRAME_POINTER(framePtrValue);
-
-	int32 depth = 0;
 	uint64 hash = 0;
-	void **pFramePtr = (void**) GET_PTR_FROM_VALUE(framePtrValue);
+
+	/* get frame addresses */
+	SimExStackDepth = gp_backtrace(SimExStackAddresses, SIMEX_MAX_FRAME_DEPTH);
+
+	Assert(SIMEX_MAX_FRAME_DEPTH >= SimExStackDepth && "Stack size exceeds maximum");
 
 	/* consider the first SIMEX_MAX_FRAME_DEPTH frames only, below the stack base pointer */
-	for (depth = 0;
-	     depth < SIMEX_MAX_FRAME_DEPTH && (uint64 *) pFramePtr < (uint64 *) stack_base_ptr;
-	     depth++)
+	for (uint32 depth = 0; depth < SimExStackDepth; depth++)
 	{
-		/* the next frame must be above us or be NULL */
-		Assert((void *)pFramePtr < *pFramePtr && "Unexpected frame pointer");
-
-		/* get return address (one above the frame pointer) */
-		const uint64 *returnAddr = (uint64 *)(pFramePtr + 1);
-
 		/*
 		 * compute a hash -- xor with multiple of height of stack to make sure
 		 * multiple recursive calls are distinguished from each other.
 		 */
-		hash ^= *returnAddr ^ (depth * 23);
-
-		// move to next frame
-		pFramePtr = (void**)*pFramePtr;
+		hash ^= (*(uintptr_t*)SimExStackAddresses[depth]) ^ (depth * 23);
 	}
 
 	return hash;
@@ -350,18 +326,16 @@ SimExESSubClass simex_log_and_return(int32 associateOffset, const char *file, in
 
 	Assert(associateOffset < SimExESClassAssociateTable_Size && "Invalid association offset");
 
-	if (SimExStackLogging)
-	{
-		const char *buffer = get_backtrace(SIMEX_MAX_STACKTRACE_DEPTH);
-		
-		ereport(LOG,
-				(errmsg("SimEx inject: class='%s', file='%s', line=%d, hash=%lu, stack trace: \n%s\n",
-						SimExESClassAssociateTable[associateOffset].ESName,
-						file,
-						line,
-						(unsigned long int) fingerprint,
-						buffer)));
-	}
+	char *stackTrace = gp_stacktrace(SimExStackAddresses, SimExStackDepth);
+
+	/* log stack trace */
+	ereport(LOG,
+			(errmsg("SimEx inject: class='%s', file='%s', line=%d, hash=%lu, stack trace: \n%s\n",
+					SimExESClassAssociateTable[associateOffset].ESName,
+					file,
+					line,
+					(unsigned long int) fingerprint,
+					stackTrace)));
 
 	return SimExESClassAssociateTable[associateOffset].subclass;
 }

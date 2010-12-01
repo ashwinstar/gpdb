@@ -486,7 +486,13 @@ extern void write_message_to_server_log(int elevel,
 										void* const *stacktracearray);
 
 extern void debug_backtrace(void);
+extern uint32 gp_backtrace(void **stackAddresses, uint32 maxStackDepth);
+extern char *gp_stacktrace(void **stackAddresses, uint32 stackDepth);
 
-extern char *get_backtrace(int maxStackDepth);
+/* stack base pointer, defined in postmaster.c */
+extern char *stack_base_ptr;
+
+/* GUCs */
+extern bool gp_log_stack_trace_lines;   /* session GUC, controls line info in stack traces */
 
 #endif   /* ELOG_H */
