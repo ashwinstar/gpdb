@@ -19,13 +19,7 @@ LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl
 
 MODCAT_OBJS= gpmodcatversion.o pg_crc.o
 
-UPGRADEFILES := $(top_srcdir)/src/test/regress/input/loadcat33.source.in
-UPGRADEFILES += $(top_srcdir)/src/test/regress/input/loadcat34.source.in 
-UPGRADEFILES += $(top_srcdir)/src/test/regress/input/loadcat34_sh.source.in 
-UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade33/upg2*.data)
-UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade33/upg2*.in)
-UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade34/upg2*.data)
-UPGRADEFILES +=	$(wildcard $(top_srcdir)/src/test/regress/data/upgrade34/upg2*.in)
+UPGRADEFILES += $(wildcard $(top_srcdir)/src/test/regress/data/upgrade41/upg2*.in)
 
 # This sets things up to create a "contrib" module for upgrade extensions
 MODULE_big = gpupgrade
