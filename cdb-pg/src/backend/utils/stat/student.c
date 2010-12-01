@@ -61,11 +61,11 @@
 /* Prototypes of internal functions */
 
 static inline float8 normal_cdf(float8 t);
-static inline float8 studentT_cdf_approx(uint32 nu, float8 t);
+static inline float8 studentT_cdf_approx(int64 nu, float8 t);
 
 
 /* 
- * float8 studentT_cdf(uint32 nu, float8 t)
+ * float8 studentT_cdf(int64 nu, float8 t)
  * -----------------------------------------------
  *
  * Compute Pr[T <= t] for Student-t distributed T with nu degrees of freedom.
@@ -107,7 +107,7 @@ static inline float8 studentT_cdf_approx(uint32 nu, float8 t);
  */
 
 float8 
-studentT_cdf(uint32 nu, float8 t) 
+studentT_cdf(int64 nu, float8 t) 
 {
 	float8		z,
 				t_by_sqrt_nu;
@@ -116,7 +116,7 @@ studentT_cdf(uint32 nu, float8 t)
 				sum = 1.;
 
 	/* Handle extreme cases. See above. */
-	if (nu == 0)
+	if (nu <= 0)
 		return NAN;	 
 	else if (nu >= 1000000)
 		return normal_cdf(t);
@@ -181,7 +181,7 @@ static inline float8 normal_cdf(float8 t)
 }
 
 
-/* float8 studentT_cdf_approx(uint32 nu, float8 t)
+/* float8 studentT_cdf_approx(int64 nu, float8 t)
  * ------------------------------------------------------
  * 
  * We approximate the the Studen-T distribution using a formula suggested in
@@ -192,9 +192,9 @@ static inline float8 normal_cdf(float8 t)
  * for all nu >= 200. (Tested on Mac OS X 10.6, gcc-4.2.)
  */
 
-static inline float8 studentT_cdf_approx(uint32 nu, float8 t)
+static inline float8 studentT_cdf_approx(int64 nu, float8 t)
 {
-	uint32	g = (nu - 1.5) / ((nu - 1) * (nu - 1)),
+	int64	g = (nu - 1.5) / ((nu - 1) * (nu - 1)),
 			z = sqrt( log(1. + t * t / nu) / g );
 
 	if (t < 0)
