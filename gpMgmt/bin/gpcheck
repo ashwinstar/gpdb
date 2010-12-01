@@ -648,9 +648,12 @@ def testSolarisEtcUserAttr(host):
 
 def testApplianceChkconfig(host):
 
-    # ipmi should be on for 3 4 5
-    ipmi = host.data.chkconfig.services['ipmi'] # return a dict of run levels and values
     success = False
+
+    # ipmi should be on for 3 4 5
+    ipmi = None
+    if 'ipmi' in host.data.chkconfig.services:
+        ipmi = host.data.chkconfig.services['ipmi'] # return a dict of run levels and values
 
     if ipmi:
         lev3 = ipmi['3']
@@ -667,10 +670,13 @@ def testApplianceChkconfig(host):
 
     for sname in services_that_should_be_off:
 
-        service = host.data.chkconfig.services[sname] # return a dict of run levels and values
+        service = None
 
-        if not service:
+        if sname in host.data.chkconfig.services:
+            service = host.data.chkconfig.services[sname] # return a dict of run levels and values
+        else:
             printError(host.hostname, "service (%s) service not reported on machine in chkconfig output" % (sname))
+            continue
 
         if len(service.keys()) != 7:
             printError(host.hostname, "service (%s) unexpected number of run levels for service" % (sname))
