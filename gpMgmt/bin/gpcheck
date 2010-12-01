@@ -353,9 +353,11 @@ def testApplianceOmreportBiossetup(host):
 
     # first NIC should be PXE enabled
     firstNicAttribute = "Dual NIC"
+    pxeText = "Enabled with 1st NIC PXE and 2nd NIC PXE"
+
     if host.is_a_master:
         firstNicAttribute = "Dual NIC (1/2)"
-    pxeText = "Enabled with 1st NIC PXE and 2nd NIC PXE"
+        pxeText = "Enabled with 1st NIC PXE and 2nd NIC None"
 
     if firstNicAttribute in host.data.omreport.biossetup:
         firstNicText =  host.data.omreport.biossetup[firstNicAttribute]
