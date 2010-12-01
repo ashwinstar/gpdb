@@ -898,7 +898,7 @@ CREATE_GROUP_MIRROR_ARRAY () {
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 
 		QE_M_NAME=`$ECHO ${QE_PRIMARY_ARRAY[$MIRROR_INDEX]}|$AWK -F":" '{print $1}'`
-		GP_M_DIR=${MIRROR_DATA_DIRECTORY[$MIRROR_DIR_INDEX]}/`$ECHO $QE_LINE|$AWK -F":" '{print $3}'|$AWK -F"/" '{print $NF}'`
+		GP_M_DIR=${MIRROR_DATA_DIRECTORY[$PRIMARY_INDEX]}/`$ECHO $QE_LINE|$AWK -F":" '{print $3}'|$AWK -F"/" '{print $NF}'`
 
 		M_CONTENT=`$ECHO $QE_LINE|$AWK -F":" '{print $5}'`
 		P_PORT=`$ECHO $QE_LINE|$AWK -F":" '{print $2}'`
