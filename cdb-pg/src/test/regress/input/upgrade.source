@@ -595,7 +595,9 @@ SELECT * FROM pg_pltemplate ORDER BY tmplname;
 SELECT oid, * FROM pg_resqueue WHERE oid < 10000 ORDER BY rsqname;
 SELECT oid, * FROM pg_filespace WHERE oid < 10000 ORDER BY fsname;
 SELECT oid, * FROM pg_tablespace WHERE oid < 10000 ORDER BY spcname;
-SELECT oid, * FROM pg_database WHERE oid < 10000 ORDER BY datname;
+SELECT oid, datname, datdba, encoding, datistemplate, datallowconn, datconnlimit, datlastsysoid,
+       dattablespace, datconfig
+FROM pg_database WHERE oid < 10000 ORDER BY datname;
 SELECT oid, * FROM pg_resourcetype ORDER BY resname;
 SELECT oid, * FROM pg_resqueuecapability WHERE resqueueid < 10000 ORDER BY oid;
 
@@ -603,7 +605,7 @@ SELECT oid, * FROM pg_am ORDER BY amname;
 SELECT * FROM pg_window ORDER BY winfnoid;
 
 SELECT oid, * FROM pg_language WHERE oid < 10000 ORDER BY lanname;
-SELECT oid, * FROM pg_namespace WHERE oid < 10000 ORDER BY nspname;
+SELECT oid, nspname, nspowner FROM pg_namespace WHERE oid < 10000 ORDER BY nspname;
 
 SELECT * FROM pg_aggregate WHERE aggfnoid in (
         'count()'::regprocedure,

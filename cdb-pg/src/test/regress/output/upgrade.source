@@ -28522,10 +28522,12 @@ SELECT oid, * FROM pg_tablespace WHERE oid < 10000 ORDER BY spcname;
  1664 | pg_global  |       10 |             |        |                 |                 |     3052
 (2 rows)
 
-SELECT oid, * FROM pg_database WHERE oid < 10000 ORDER BY datname;
- oid |  datname  | datdba | encoding | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | dattablespace | datconfig |              datacl              
------+-----------+--------+----------+---------------+--------------+--------------+---------------+--------------+---------------+-----------+----------------------------------
-   1 | template1 |     10 |        6 | t             | t            |           -1 |         10888 |          794 |          1663 |           | {=c/@gpcurusername@,@gpcurusername@=CTc/@gpcurusername@}
+SELECT oid, datname, datdba, encoding, datistemplate, datallowconn, datconnlimit, datlastsysoid,
+       dattablespace, datconfig
+FROM pg_database WHERE oid < 10000 ORDER BY datname;
+ oid |  datname  | datdba | encoding | datistemplate | datallowconn | datconnlimit | datlastsysoid | dattablespace | datconfig 
+-----+-----------+--------+----------+---------------+--------------+--------------+---------------+---------------+-----------
+   1 | template1 |     10 |        6 | t             | t            |           -1 |         10888 |          1663 | 
 (1 row)
 
 SELECT oid, * FROM pg_resourcetype ORDER BY resname;
@@ -28855,15 +28857,15 @@ SELECT oid, * FROM pg_language WHERE oid < 10000 ORDER BY lanname;
   14 | sql      | f       | t            |             0 |         2248 | 
 (3 rows)
 
-SELECT oid, * FROM pg_namespace WHERE oid < 10000 ORDER BY nspname;
- oid  |    nspname     | nspowner |              nspacl              
-------+----------------+----------+----------------------------------
- 8001 | gp_toolkit     |       10 | {@gpcurusername@=UC/@gpcurusername@,=U/@gpcurusername@}
- 6104 | pg_aoseg       |       10 | 
- 3012 | pg_bitmapindex |       10 | 
-   11 | pg_catalog     |       10 | {@gpcurusername@=UC/@gpcurusername@,=U/@gpcurusername@}
-   99 | pg_toast       |       10 | 
- 2200 | public         |       10 | {@gpcurusername@=UC/@gpcurusername@,=UC/@gpcurusername@}
+SELECT oid, nspname, nspowner FROM pg_namespace WHERE oid < 10000 ORDER BY nspname;
+ oid  |    nspname     | nspowner 
+------+----------------+----------
+ 8001 | gp_toolkit     |       10
+ 6104 | pg_aoseg       |       10
+ 3012 | pg_bitmapindex |       10
+   11 | pg_catalog     |       10
+   99 | pg_toast       |       10
+ 2200 | public         |       10
 (6 rows)
 
 SELECT * FROM pg_aggregate WHERE aggfnoid in (
