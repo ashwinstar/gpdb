@@ -158,6 +158,8 @@ select
     mregr_pvalues(y, array[1, x1, x2])::real[] as pvalues
 from weibull;
 
+-- MPP-11680: numeric stability on low cardinality
+/*
 select 
     id,
     mregr_coef(y, array[1, x1, x2])::real[] as coef,
@@ -167,6 +169,7 @@ select
 from weibull
 group by id
 order by id;
+*/
 
 -- Accumulation/combination order shouldn't matter to the result.
 -- start_equiv
