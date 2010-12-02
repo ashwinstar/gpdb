@@ -1071,6 +1071,7 @@ Datum unnest(PG_FUNCTION_ARGS);
 extern Datum nb_classify_accum(PG_FUNCTION_ARGS);
 extern Datum nb_classify_combine(PG_FUNCTION_ARGS);
 extern Datum nb_classify_final(PG_FUNCTION_ARGS);
+extern Datum nb_classify_probabilities(PG_FUNCTION_ARGS);
 
 /* utils/stat/regress.c */
 extern Datum float8_mregr_accum(PG_FUNCTION_ARGS);

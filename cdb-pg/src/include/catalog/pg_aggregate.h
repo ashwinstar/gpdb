@@ -289,6 +289,7 @@ DATA(insert ( 3230  float8_pivot_accum    - float8_matrix_accum   - -   0   1022
 
 /* naive bayes classification */
 DATA(insert ( 3255  nb_classify_accum     - nb_classify_combine   - nb_classify_final   0   3251    _null_ ));
+DATA(insert ( 3268  nb_classify_accum     - nb_classify_combine   - nb_classify_probabilities   0   3251    _null_ ));
 
 /* multiple linear regression */
 DATA(insert ( 3261  float8_mregr_accum    - float8_mregr_combine  - float8_mregr_coef   0   1022    "{0}" ));

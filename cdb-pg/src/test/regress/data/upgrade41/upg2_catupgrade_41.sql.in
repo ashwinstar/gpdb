@@ -251,4 +251,17 @@ create aggregate @gpupgradeschemaname@.mregr_pvalues(float8, float8[]) (
     oid       = 3266
 );
 
-\unset ON_ERROR_STOP
+-- naive bayes probability values
+create function @gpupgradeschemaname@.nb_classify_probabilities(nb_classification) 
+    returns float8[]
+    language internal AS 'nb_classify_probabilities' strict immutable
+    with (oid = 3267);
+create aggregate @gpupgradeschemaname@.nb_probabilities(text[], bigint, bigint[], bigint[]) (
+    stype     = nb_classification,
+    sfunc     = nb_classify_accum,
+    prefunc   = nb_classify_combine,
+    finalfunc = nb_classify_probabilities,
+    oid       = 3268
+);
+
+-- Catalog Upgrade DDL complete

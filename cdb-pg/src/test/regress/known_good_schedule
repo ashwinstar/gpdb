@@ -68,6 +68,7 @@ test: case
 test: join
 test: aggregates
 test: leastsquares
+test: naivebayes
 test: direct_dispatch
 test: partition_pruning_with_fn
 ignore: transactions

@@ -4463,6 +4463,8 @@ DATA(insert OID = 3252 (  nb_classify_accum   PGNSP PGUID 12 f f f f i 5 3251 f 
 DATA(insert OID = 3253 (  nb_classify_combine PGNSP PGUID 12 f f f f i 2 3251 f "3251 3251" _null_ _null_ _null_ nb_classify_combine - _null_ ));
 DATA(insert OID = 3254 (  nb_classify_final   PGNSP PGUID 12 f f t f i 1 25 f "3251" _null_ _null_ _null_ nb_classify_final - _null_ ));
 DATA(insert OID = 3255 (  nb_classify         PGNSP PGUID 12 t f f f i 4 25 f "1009 20 1016 1016" _null_ _null_ _null_ aggregate_dummy - _null_ ));
+DATA(insert OID = 3267 (  nb_classify_probabilities PGNSP PGUID 12 f f t f i 1 1022 f "3251" _null_ _null_ _null_ nb_classify_probabilities - _null_ ));
+DATA(insert OID = 3268 (  nb_probabilities    PGNSP PGUID 12 t f f f i 4 1022 f "1009 20 1016 1016" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 
 DATA(insert OID = 3256 (  pinv                PGNSP PGUID 12 f f t f i 1 1022 f "1022" _null_ _null_ _null_ pseudoinverse - _null_ ));
 DATA(insert OID = 3257 (  float8_mregr_accum  PGNSP PGUID 12 f f t f i 3 1022 f "1022 701 1022" _null_ _null_ _null_ float8_mregr_accum - _null_ ));

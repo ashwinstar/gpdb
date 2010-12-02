@@ -16857,7 +16857,19 @@ create aggregate upg_catalog.mregr_pvalues(float8, float8[]) (
     finalfunc = float8_mregr_pvalues,
     oid       = 3266
 );
-\unset ON_ERROR_STOP
+-- naive bayes probability values
+create function upg_catalog.nb_classify_probabilities(nb_classification) 
+    returns float8[]
+    language internal AS 'nb_classify_probabilities' strict immutable
+    with (oid = 3267);
+create aggregate upg_catalog.nb_probabilities(text[], bigint, bigint[], bigint[]) (
+    stype     = nb_classification,
+    sfunc     = nb_classify_accum,
+    prefunc   = nb_classify_combine,
+    finalfunc = nb_classify_probabilities,
+    oid       = 3268
+);
+-- Catalog Upgrade DDL complete
 set client_min_messages = 'WARNING';
 -- ===========================================================================
 -- * Compare this the transformed schema to the catalog schema
@@ -20836,6 +20848,7 @@ ORDER BY proname, 10;
  nb_classify_accum                             | f        | f        | f         | f           | f         | i           | nb_classification           |        5 | {nb_classification,_text,int8,_int8,_int8}                                                            |                                                                  |                       |                                                                                       | internal | nb_classify_accum                             | -
  nb_classify_combine                           | f        | f        | f         | f           | f         | i           | nb_classification           |        2 | {nb_classification,nb_classification}                                                                 |                                                                  |                       |                                                                                       | internal | nb_classify_combine                           | -
  nb_classify_final                             | f        | f        | f         | t           | f         | i           | text                        |        1 | {nb_classification}                                                                                   |                                                                  |                       |                                                                                       | internal | nb_classify_final                             | -
+ nb_classify_probabilities                     | f        | f        | f         | t           | f         | i           | _float8                     |        1 | {nb_classification}                                                                                   |                                                                  |                       |                                                                                       | internal | nb_classify_probabilities                     | -
  neqjoinsel                                    | f        | f        | f         | t           | f         | s           | float8                      |        4 | {internal,oid,internal,int2}                                                                          |                                                                  |                       |                                                                                       | internal | neqjoinsel                                    | -
  neqsel                                        | f        | f        | f         | t           | f         | s           | float8                      |        4 | {internal,oid,internal,int4}                                                                          |                                                                  |                       |                                                                                       | internal | neqsel                                        | -
  netmask                                       | f        | f        | f         | t           | f         | i           | inet                        |        1 | {inet}                                                                                                |                                                                  |                       |                                                                                       | internal | network_netmask                               | -
@@ -21606,7 +21619,7 @@ ORDER BY proname, 10;
  xidout                                        | f        | f        | f         | t           | f         | i           | cstring                     |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidout                                        | -
  xidrecv                                       | f        | f        | f         | t           | f         | i           | xid                         |        1 | {internal}                                                                                            |                                                                  |                       |                                                                                       | internal | xidrecv                                       | -
  xidsend                                       | f        | f        | f         | t           | f         | i           | bytea                       |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidsend                                       | -
-(2025 rows)
+(2026 rows)
 
 SELECT 
     proname, proisagg, proiswin, prosecdef, proisstrict, proretset, provolatile,
@@ -22895,6 +22908,7 @@ ORDER BY proname, 10;
  nb_classify_accum                             | f        | f        | f         | f           | f         | i           | nb_classification           |        5 | {nb_classification,_text,int8,_int8,_int8}                                                            |                                                                  |                       |                                                                                       | internal | nb_classify_accum                             | -
  nb_classify_combine                           | f        | f        | f         | f           | f         | i           | nb_classification           |        2 | {nb_classification,nb_classification}                                                                 |                                                                  |                       |                                                                                       | internal | nb_classify_combine                           | -
  nb_classify_final                             | f        | f        | f         | t           | f         | i           | text                        |        1 | {nb_classification}                                                                                   |                                                                  |                       |                                                                                       | internal | nb_classify_final                             | -
+ nb_classify_probabilities                     | f        | f        | f         | t           | f         | i           | _float8                     |        1 | {nb_classification}                                                                                   |                                                                  |                       |                                                                                       | internal | nb_classify_probabilities                     | -
  neqjoinsel                                    | f        | f        | f         | t           | f         | s           | float8                      |        4 | {internal,oid,internal,int2}                                                                          |                                                                  |                       |                                                                                       | internal | neqjoinsel                                    | -
  neqsel                                        | f        | f        | f         | t           | f         | s           | float8                      |        4 | {internal,oid,internal,int4}                                                                          |                                                                  |                       |                                                                                       | internal | neqsel                                        | -
  netmask                                       | f        | f        | f         | t           | f         | i           | inet                        |        1 | {inet}                                                                                                |                                                                  |                       |                                                                                       | internal | network_netmask                               | -
@@ -23665,7 +23679,7 @@ ORDER BY proname, 10;
  xidout                                        | f        | f        | f         | t           | f         | i           | cstring                     |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidout                                        | -
  xidrecv                                       | f        | f        | f         | t           | f         | i           | xid                         |        1 | {internal}                                                                                            |                                                                  |                       |                                                                                       | internal | xidrecv                                       | -
  xidsend                                       | f        | f        | f         | t           | f         | i           | bytea                       |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidsend                                       | -
-(2025 rows)
+(2026 rows)
 
 -- end_equiv
 -- Compare pg_aggregate (Aggregates, Window Functions)
@@ -23702,134 +23716,135 @@ FROM
 WHERE n.nspname = 'upg_catalog'
   and not p.proiswin  -- Skip checking Window Functions (no DDL support)
 ORDER BY 1, 2;
-    aggname     |         aggargs          |      transition       |        prelim        |         final         | sortop |     trantype      |     agginitval      
-----------------+--------------------------+-----------------------+----------------------+-----------------------+--------+-------------------+---------------------
- array_sum      | {_int4}                  | array_add             | array_add            |                       |        | _int4             | {}
- avg            | {float4}                 | float4_avg_accum      | float8_avg_amalg     | float8_avg            |        | bytea             | 
- avg            | {float8}                 | float8_avg_accum      | float8_avg_amalg     | float8_avg            |        | bytea             | 
- avg            | {int2}                   | int2_avg_accum        | int8_avg_amalg       | int8_avg              |        | bytea             | 
- avg            | {int4}                   | int4_avg_accum        | int8_avg_amalg       | int8_avg              |        | bytea             | 
- avg            | {int8}                   | int8_avg_accum        | int8_avg_amalg       | int8_avg              |        | bytea             | 
- avg            | {interval}               | interval_accum        | interval_amalg       | interval_avg          |        | _interval         | {0 second,0 second}
- avg            | {numeric}                | numeric_avg_accum     | numeric_avg_amalg    | numeric_avg           |        | bytea             | 
- bit_and        | {bit}                    | bitand                | bitand               |                       |        | bit               | 
- bit_and        | {int2}                   | int2and               | int2and              |                       |        | int2              | 
- bit_and        | {int4}                   | int4and               | int4and              |                       |        | int4              | 
- bit_and        | {int8}                   | int8and               | int8and              |                       |        | int8              | 
- bit_or         | {bit}                    | bitor                 | bitor                |                       |        | bit               | 
- bit_or         | {int2}                   | int2or                | int2or               |                       |        | int2              | 
- bit_or         | {int4}                   | int4or                | int4or               |                       |        | int4              | 
- bit_or         | {int8}                   | int8or                | int8or               |                       |        | int8              | 
- bool_and       | {bool}                   | booland_statefunc     | booland_statefunc    |                       |        | bool              | 
- bool_or        | {bool}                   | boolor_statefunc      | boolor_statefunc     |                       |        | bool              | 
- corr           | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_corr           |        | _float8           | {0,0,0,0,0,0}
- count          | {any}                    | int8inc_any           | int8pl               |                       |        | int8              | 0
- covar_pop      | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_covar_pop      |        | _float8           | {0,0,0,0,0,0}
- covar_samp     | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_covar_samp     |        | _float8           | {0,0,0,0,0,0}
- every          | {bool}                   | booland_statefunc     | booland_statefunc    |                       |        | bool              | 
- max            | {anyarray}               | array_larger          | array_larger         |                       | >      | anyarray          | 
- max            | {bpchar}                 | bpchar_larger         | bpchar_larger        |                       | >      | bpchar            | 
- max            | {date}                   | date_larger           | date_larger          |                       | >      | date              | 
- max            | {float4}                 | float4larger          | float4larger         |                       | >      | float4            | 
- max            | {float8}                 | float8larger          | float8larger         |                       | >      | float8            | 
- max            | {gpxlogloc}              | gpxlogloclarger       | gpxlogloclarger      |                       | >      | gpxlogloc         | 
- max            | {int2}                   | int2larger            | int2larger           |                       | >      | int2              | 
- max            | {int4}                   | int4larger            | int4larger           |                       | >      | int4              | 
- max            | {int8}                   | int8larger            | int8larger           |                       | >      | int8              | 
- max            | {interval}               | interval_larger       | interval_larger      |                       | >      | interval          | 
- max            | {money}                  | cashlarger            | cashlarger           |                       | >      | money             | 
- max            | {numeric}                | numeric_larger        | numeric_larger       |                       | >      | numeric           | 
- max            | {oid}                    | oidlarger             | oidlarger            |                       | >      | oid               | 
- max            | {text}                   | text_larger           | text_larger          |                       | >      | text              | 
- max            | {tid}                    | tidlarger             | tidlarger            |                       | >      | tid               | 
- max            | {time}                   | time_larger           | time_larger          |                       | >      | time              | 
- max            | {timestamp}              | timestamp_larger      | timestamp_larger     |                       | >      | timestamp         | 
- max            | {timestamptz}            | timestamptz_larger    | timestamptz_larger   |                       | >      | timestamptz       | 
- max            | {timetz}                 | timetz_larger         | timetz_larger        |                       | >      | timetz            | 
- min            | {anyarray}               | array_smaller         | array_smaller        |                       | <      | anyarray          | 
- min            | {bpchar}                 | bpchar_smaller        | bpchar_smaller       |                       | <      | bpchar            | 
- min            | {date}                   | date_smaller          | date_smaller         |                       | <      | date              | 
- min            | {float4}                 | float4smaller         | float4smaller        |                       | <      | float4            | 
- min            | {float8}                 | float8smaller         | float8smaller        |                       | <      | float8            | 
- min            | {gpxlogloc}              | gpxloglocsmaller      | gpxloglocsmaller     |                       | <      | gpxlogloc         | 
- min            | {int2}                   | int2smaller           | int2smaller          |                       | <      | int2              | 
- min            | {int4}                   | int4smaller           | int4smaller          |                       | <      | int4              | 
- min            | {int8}                   | int8smaller           | int8smaller          |                       | <      | int8              | 
- min            | {interval}               | interval_smaller      | interval_smaller     |                       | <      | interval          | 
- min            | {money}                  | cashsmaller           | cashsmaller          |                       | <      | money             | 
- min            | {numeric}                | numeric_smaller       | numeric_smaller      |                       | <      | numeric           | 
- min            | {oid}                    | oidsmaller            | oidsmaller           |                       | <      | oid               | 
- min            | {text}                   | text_smaller          | text_smaller         |                       | <      | text              | 
- min            | {tid}                    | tidsmaller            | tidsmaller           |                       | <      | tid               | 
- min            | {time}                   | time_smaller          | time_smaller         |                       | <      | time              | 
- min            | {timestamp}              | timestamp_smaller     | timestamp_smaller    |                       | <      | timestamp         | 
- min            | {timestamptz}            | timestamptz_smaller   | timestamptz_smaller  |                       | <      | timestamptz       | 
- min            | {timetz}                 | timetz_smaller        | timetz_smaller       |                       | <      | timetz            | 
- mregr_coef     | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_coef     |        | _float8           | {0}
- mregr_pvalues  | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_pvalues  |        | _float8           | {0}
- mregr_r2       | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_r2       |        | _float8           | {0}
- mregr_tstats   | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_tstats   |        | _float8           | {0}
- nb_classify    | {_text,int8,_int8,_int8} | nb_classify_accum     | nb_classify_combine  | nb_classify_final     |        | nb_classification | 
- pivot_sum      | {_text,text,float8}      | float8_pivot_accum    | float8_matrix_accum  |                       |        | _float8           | 
- pivot_sum      | {_text,text,int8}        | int8_pivot_accum      | int8_matrix_accum    |                       |        | _int8             | 
- regr_avgx      | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_avgx      |        | _float8           | {0,0,0,0,0,0}
- regr_avgy      | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_avgy      |        | _float8           | {0,0,0,0,0,0}
- regr_count     | {float8,float8}          | int8inc_float8_float8 | int8pl               |                       |        | int8              | 0
- regr_intercept | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_intercept |        | _float8           | {0,0,0,0,0,0}
- regr_r2        | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_r2        |        | _float8           | {0,0,0,0,0,0}
- regr_slope     | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_slope     |        | _float8           | {0,0,0,0,0,0}
- regr_sxx       | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_sxx       |        | _float8           | {0,0,0,0,0,0}
- regr_sxy       | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_sxy       |        | _float8           | {0,0,0,0,0,0}
- regr_syy       | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_syy       |        | _float8           | {0,0,0,0,0,0}
- stddev         | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_samp    |        | _float8           | {0,0,0}
- stddev         | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_samp    |        | _float8           | {0,0,0}
- stddev         | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev         | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev         | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev         | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev_pop     | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_pop     |        | _float8           | {0,0,0}
- stddev_pop     | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_pop     |        | _float8           | {0,0,0}
- stddev_pop     | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_pop    |        | _numeric          | {0,0,0}
- stddev_pop     | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_pop    |        | _numeric          | {0,0,0}
- stddev_pop     | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_pop    |        | _numeric          | {0,0,0}
- stddev_pop     | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_pop    |        | _numeric          | {0,0,0}
- stddev_samp    | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_samp    |        | _float8           | {0,0,0}
- stddev_samp    | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_samp    |        | _float8           | {0,0,0}
- stddev_samp    | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev_samp    | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev_samp    | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev_samp    | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- sum            | {_float8}                | float8_matrix_accum   | float8_matrix_accum  |                       |        | _float8           | 
- sum            | {_int2}                  | int2_matrix_accum     | int8_matrix_accum    |                       |        | _int8             | 
- sum            | {_int4}                  | int4_matrix_accum     | int8_matrix_accum    |                       |        | _int8             | 
- sum            | {_int8}                  | int8_matrix_accum     | int8_matrix_accum    |                       |        | _int8             | 
- sum            | {float4}                 | float4pl              | float4pl             |                       |        | float4            | 
- sum            | {float8}                 | float8pl              | float8pl             |                       |        | float8            | 
- sum            | {int2}                   | int2_sum              | int8pl               |                       |        | int8              | 
- sum            | {int4}                   | int4_sum              | int8pl               |                       |        | int8              | 
- sum            | {int8}                   | int8_sum              | numeric_add          |                       |        | numeric           | 
- sum            | {interval}               | interval_pl           | interval_pl          |                       |        | interval          | 
- sum            | {money}                  | cash_pl               | cash_pl              |                       |        | money             | 
- sum            | {numeric}                | numeric_add           | numeric_add          |                       |        | numeric           | 
- var_pop        | {float4}                 | float4_accum          | float8_amalg         | float8_var_pop        |        | _float8           | {0,0,0}
- var_pop        | {float8}                 | float8_accum          | float8_amalg         | float8_var_pop        |        | _float8           | {0,0,0}
- var_pop        | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_pop       |        | _numeric          | {0,0,0}
- var_pop        | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_pop       |        | _numeric          | {0,0,0}
- var_pop        | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_pop       |        | _numeric          | {0,0,0}
- var_pop        | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_pop       |        | _numeric          | {0,0,0}
- var_samp       | {float4}                 | float4_accum          | float8_amalg         | float8_var_samp       |        | _float8           | {0,0,0}
- var_samp       | {float8}                 | float8_accum          | float8_amalg         | float8_var_samp       |        | _float8           | {0,0,0}
- var_samp       | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- var_samp       | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- var_samp       | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- var_samp       | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- variance       | {float4}                 | float4_accum          | float8_amalg         | float8_var_samp       |        | _float8           | {0,0,0}
- variance       | {float8}                 | float8_accum          | float8_amalg         | float8_var_samp       |        | _float8           | {0,0,0}
- variance       | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- variance       | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- variance       | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- variance       | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
-(125 rows)
+     aggname      |         aggargs          |      transition       |        prelim        |           final           | sortop |     trantype      |     agginitval      
+------------------+--------------------------+-----------------------+----------------------+---------------------------+--------+-------------------+---------------------
+ array_sum        | {_int4}                  | array_add             | array_add            |                           |        | _int4             | {}
+ avg              | {float4}                 | float4_avg_accum      | float8_avg_amalg     | float8_avg                |        | bytea             | 
+ avg              | {float8}                 | float8_avg_accum      | float8_avg_amalg     | float8_avg                |        | bytea             | 
+ avg              | {int2}                   | int2_avg_accum        | int8_avg_amalg       | int8_avg                  |        | bytea             | 
+ avg              | {int4}                   | int4_avg_accum        | int8_avg_amalg       | int8_avg                  |        | bytea             | 
+ avg              | {int8}                   | int8_avg_accum        | int8_avg_amalg       | int8_avg                  |        | bytea             | 
+ avg              | {interval}               | interval_accum        | interval_amalg       | interval_avg              |        | _interval         | {0 second,0 second}
+ avg              | {numeric}                | numeric_avg_accum     | numeric_avg_amalg    | numeric_avg               |        | bytea             | 
+ bit_and          | {bit}                    | bitand                | bitand               |                           |        | bit               | 
+ bit_and          | {int2}                   | int2and               | int2and              |                           |        | int2              | 
+ bit_and          | {int4}                   | int4and               | int4and              |                           |        | int4              | 
+ bit_and          | {int8}                   | int8and               | int8and              |                           |        | int8              | 
+ bit_or           | {bit}                    | bitor                 | bitor                |                           |        | bit               | 
+ bit_or           | {int2}                   | int2or                | int2or               |                           |        | int2              | 
+ bit_or           | {int4}                   | int4or                | int4or               |                           |        | int4              | 
+ bit_or           | {int8}                   | int8or                | int8or               |                           |        | int8              | 
+ bool_and         | {bool}                   | booland_statefunc     | booland_statefunc    |                           |        | bool              | 
+ bool_or          | {bool}                   | boolor_statefunc      | boolor_statefunc     |                           |        | bool              | 
+ corr             | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_corr               |        | _float8           | {0,0,0,0,0,0}
+ count            | {any}                    | int8inc_any           | int8pl               |                           |        | int8              | 0
+ covar_pop        | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_covar_pop          |        | _float8           | {0,0,0,0,0,0}
+ covar_samp       | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_covar_samp         |        | _float8           | {0,0,0,0,0,0}
+ every            | {bool}                   | booland_statefunc     | booland_statefunc    |                           |        | bool              | 
+ max              | {anyarray}               | array_larger          | array_larger         |                           | >      | anyarray          | 
+ max              | {bpchar}                 | bpchar_larger         | bpchar_larger        |                           | >      | bpchar            | 
+ max              | {date}                   | date_larger           | date_larger          |                           | >      | date              | 
+ max              | {float4}                 | float4larger          | float4larger         |                           | >      | float4            | 
+ max              | {float8}                 | float8larger          | float8larger         |                           | >      | float8            | 
+ max              | {gpxlogloc}              | gpxlogloclarger       | gpxlogloclarger      |                           | >      | gpxlogloc         | 
+ max              | {int2}                   | int2larger            | int2larger           |                           | >      | int2              | 
+ max              | {int4}                   | int4larger            | int4larger           |                           | >      | int4              | 
+ max              | {int8}                   | int8larger            | int8larger           |                           | >      | int8              | 
+ max              | {interval}               | interval_larger       | interval_larger      |                           | >      | interval          | 
+ max              | {money}                  | cashlarger            | cashlarger           |                           | >      | money             | 
+ max              | {numeric}                | numeric_larger        | numeric_larger       |                           | >      | numeric           | 
+ max              | {oid}                    | oidlarger             | oidlarger            |                           | >      | oid               | 
+ max              | {text}                   | text_larger           | text_larger          |                           | >      | text              | 
+ max              | {tid}                    | tidlarger             | tidlarger            |                           | >      | tid               | 
+ max              | {time}                   | time_larger           | time_larger          |                           | >      | time              | 
+ max              | {timestamp}              | timestamp_larger      | timestamp_larger     |                           | >      | timestamp         | 
+ max              | {timestamptz}            | timestamptz_larger    | timestamptz_larger   |                           | >      | timestamptz       | 
+ max              | {timetz}                 | timetz_larger         | timetz_larger        |                           | >      | timetz            | 
+ min              | {anyarray}               | array_smaller         | array_smaller        |                           | <      | anyarray          | 
+ min              | {bpchar}                 | bpchar_smaller        | bpchar_smaller       |                           | <      | bpchar            | 
+ min              | {date}                   | date_smaller          | date_smaller         |                           | <      | date              | 
+ min              | {float4}                 | float4smaller         | float4smaller        |                           | <      | float4            | 
+ min              | {float8}                 | float8smaller         | float8smaller        |                           | <      | float8            | 
+ min              | {gpxlogloc}              | gpxloglocsmaller      | gpxloglocsmaller     |                           | <      | gpxlogloc         | 
+ min              | {int2}                   | int2smaller           | int2smaller          |                           | <      | int2              | 
+ min              | {int4}                   | int4smaller           | int4smaller          |                           | <      | int4              | 
+ min              | {int8}                   | int8smaller           | int8smaller          |                           | <      | int8              | 
+ min              | {interval}               | interval_smaller      | interval_smaller     |                           | <      | interval          | 
+ min              | {money}                  | cashsmaller           | cashsmaller          |                           | <      | money             | 
+ min              | {numeric}                | numeric_smaller       | numeric_smaller      |                           | <      | numeric           | 
+ min              | {oid}                    | oidsmaller            | oidsmaller           |                           | <      | oid               | 
+ min              | {text}                   | text_smaller          | text_smaller         |                           | <      | text              | 
+ min              | {tid}                    | tidsmaller            | tidsmaller           |                           | <      | tid               | 
+ min              | {time}                   | time_smaller          | time_smaller         |                           | <      | time              | 
+ min              | {timestamp}              | timestamp_smaller     | timestamp_smaller    |                           | <      | timestamp         | 
+ min              | {timestamptz}            | timestamptz_smaller   | timestamptz_smaller  |                           | <      | timestamptz       | 
+ min              | {timetz}                 | timetz_smaller        | timetz_smaller       |                           | <      | timetz            | 
+ mregr_coef       | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_coef         |        | _float8           | {0}
+ mregr_pvalues    | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_pvalues      |        | _float8           | {0}
+ mregr_r2         | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_r2           |        | _float8           | {0}
+ mregr_tstats     | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_tstats       |        | _float8           | {0}
+ nb_classify      | {_text,int8,_int8,_int8} | nb_classify_accum     | nb_classify_combine  | nb_classify_final         |        | nb_classification | 
+ nb_probabilities | {_text,int8,_int8,_int8} | nb_classify_accum     | nb_classify_combine  | nb_classify_probabilities |        | nb_classification | 
+ pivot_sum        | {_text,text,float8}      | float8_pivot_accum    | float8_matrix_accum  |                           |        | _float8           | 
+ pivot_sum        | {_text,text,int8}        | int8_pivot_accum      | int8_matrix_accum    |                           |        | _int8             | 
+ regr_avgx        | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_avgx          |        | _float8           | {0,0,0,0,0,0}
+ regr_avgy        | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_avgy          |        | _float8           | {0,0,0,0,0,0}
+ regr_count       | {float8,float8}          | int8inc_float8_float8 | int8pl               |                           |        | int8              | 0
+ regr_intercept   | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_intercept     |        | _float8           | {0,0,0,0,0,0}
+ regr_r2          | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_r2            |        | _float8           | {0,0,0,0,0,0}
+ regr_slope       | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_slope         |        | _float8           | {0,0,0,0,0,0}
+ regr_sxx         | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_sxx           |        | _float8           | {0,0,0,0,0,0}
+ regr_sxy         | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_sxy           |        | _float8           | {0,0,0,0,0,0}
+ regr_syy         | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_syy           |        | _float8           | {0,0,0,0,0,0}
+ stddev           | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_samp        |        | _float8           | {0,0,0}
+ stddev           | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_samp        |        | _float8           | {0,0,0}
+ stddev           | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev           | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev           | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev           | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev_pop       | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_pop         |        | _float8           | {0,0,0}
+ stddev_pop       | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_pop         |        | _float8           | {0,0,0}
+ stddev_pop       | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_pop        |        | _numeric          | {0,0,0}
+ stddev_pop       | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_pop        |        | _numeric          | {0,0,0}
+ stddev_pop       | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_pop        |        | _numeric          | {0,0,0}
+ stddev_pop       | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_pop        |        | _numeric          | {0,0,0}
+ stddev_samp      | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_samp        |        | _float8           | {0,0,0}
+ stddev_samp      | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_samp        |        | _float8           | {0,0,0}
+ stddev_samp      | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev_samp      | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev_samp      | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev_samp      | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ sum              | {_float8}                | float8_matrix_accum   | float8_matrix_accum  |                           |        | _float8           | 
+ sum              | {_int2}                  | int2_matrix_accum     | int8_matrix_accum    |                           |        | _int8             | 
+ sum              | {_int4}                  | int4_matrix_accum     | int8_matrix_accum    |                           |        | _int8             | 
+ sum              | {_int8}                  | int8_matrix_accum     | int8_matrix_accum    |                           |        | _int8             | 
+ sum              | {float4}                 | float4pl              | float4pl             |                           |        | float4            | 
+ sum              | {float8}                 | float8pl              | float8pl             |                           |        | float8            | 
+ sum              | {int2}                   | int2_sum              | int8pl               |                           |        | int8              | 
+ sum              | {int4}                   | int4_sum              | int8pl               |                           |        | int8              | 
+ sum              | {int8}                   | int8_sum              | numeric_add          |                           |        | numeric           | 
+ sum              | {interval}               | interval_pl           | interval_pl          |                           |        | interval          | 
+ sum              | {money}                  | cash_pl               | cash_pl              |                           |        | money             | 
+ sum              | {numeric}                | numeric_add           | numeric_add          |                           |        | numeric           | 
+ var_pop          | {float4}                 | float4_accum          | float8_amalg         | float8_var_pop            |        | _float8           | {0,0,0}
+ var_pop          | {float8}                 | float8_accum          | float8_amalg         | float8_var_pop            |        | _float8           | {0,0,0}
+ var_pop          | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_pop           |        | _numeric          | {0,0,0}
+ var_pop          | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_pop           |        | _numeric          | {0,0,0}
+ var_pop          | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_pop           |        | _numeric          | {0,0,0}
+ var_pop          | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_pop           |        | _numeric          | {0,0,0}
+ var_samp         | {float4}                 | float4_accum          | float8_amalg         | float8_var_samp           |        | _float8           | {0,0,0}
+ var_samp         | {float8}                 | float8_accum          | float8_amalg         | float8_var_samp           |        | _float8           | {0,0,0}
+ var_samp         | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ var_samp         | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ var_samp         | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ var_samp         | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ variance         | {float4}                 | float4_accum          | float8_amalg         | float8_var_samp           |        | _float8           | {0,0,0}
+ variance         | {float8}                 | float8_accum          | float8_amalg         | float8_var_samp           |        | _float8           | {0,0,0}
+ variance         | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ variance         | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ variance         | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ variance         | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+(126 rows)
 
 SELECT
     p.proname as aggname,
@@ -23859,134 +23874,135 @@ WHERE n.nspname = 'pg_catalog'
                     'max(abstime)'::regprocedure,
                     'pivot_sum(_text,text,int4)'::regprocedure)
 ORDER BY 1, 2;
-    aggname     |         aggargs          |      transition       |        prelim        |         final         | sortop |     trantype      |     agginitval      
-----------------+--------------------------+-----------------------+----------------------+-----------------------+--------+-------------------+---------------------
- array_sum      | {_int4}                  | array_add             | array_add            |                       |        | _int4             | {}
- avg            | {float4}                 | float4_avg_accum      | float8_avg_amalg     | float8_avg            |        | bytea             | 
- avg            | {float8}                 | float8_avg_accum      | float8_avg_amalg     | float8_avg            |        | bytea             | 
- avg            | {int2}                   | int2_avg_accum        | int8_avg_amalg       | int8_avg              |        | bytea             | 
- avg            | {int4}                   | int4_avg_accum        | int8_avg_amalg       | int8_avg              |        | bytea             | 
- avg            | {int8}                   | int8_avg_accum        | int8_avg_amalg       | int8_avg              |        | bytea             | 
- avg            | {interval}               | interval_accum        | interval_amalg       | interval_avg          |        | _interval         | {0 second,0 second}
- avg            | {numeric}                | numeric_avg_accum     | numeric_avg_amalg    | numeric_avg           |        | bytea             | 
- bit_and        | {bit}                    | bitand                | bitand               |                       |        | bit               | 
- bit_and        | {int2}                   | int2and               | int2and              |                       |        | int2              | 
- bit_and        | {int4}                   | int4and               | int4and              |                       |        | int4              | 
- bit_and        | {int8}                   | int8and               | int8and              |                       |        | int8              | 
- bit_or         | {bit}                    | bitor                 | bitor                |                       |        | bit               | 
- bit_or         | {int2}                   | int2or                | int2or               |                       |        | int2              | 
- bit_or         | {int4}                   | int4or                | int4or               |                       |        | int4              | 
- bit_or         | {int8}                   | int8or                | int8or               |                       |        | int8              | 
- bool_and       | {bool}                   | booland_statefunc     | booland_statefunc    |                       |        | bool              | 
- bool_or        | {bool}                   | boolor_statefunc      | boolor_statefunc     |                       |        | bool              | 
- corr           | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_corr           |        | _float8           | {0,0,0,0,0,0}
- count          | {any}                    | int8inc_any           | int8pl               |                       |        | int8              | 0
- covar_pop      | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_covar_pop      |        | _float8           | {0,0,0,0,0,0}
- covar_samp     | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_covar_samp     |        | _float8           | {0,0,0,0,0,0}
- every          | {bool}                   | booland_statefunc     | booland_statefunc    |                       |        | bool              | 
- max            | {anyarray}               | array_larger          | array_larger         |                       | >      | anyarray          | 
- max            | {bpchar}                 | bpchar_larger         | bpchar_larger        |                       | >      | bpchar            | 
- max            | {date}                   | date_larger           | date_larger          |                       | >      | date              | 
- max            | {float4}                 | float4larger          | float4larger         |                       | >      | float4            | 
- max            | {float8}                 | float8larger          | float8larger         |                       | >      | float8            | 
- max            | {gpxlogloc}              | gpxlogloclarger       | gpxlogloclarger      |                       | >      | gpxlogloc         | 
- max            | {int2}                   | int2larger            | int2larger           |                       | >      | int2              | 
- max            | {int4}                   | int4larger            | int4larger           |                       | >      | int4              | 
- max            | {int8}                   | int8larger            | int8larger           |                       | >      | int8              | 
- max            | {interval}               | interval_larger       | interval_larger      |                       | >      | interval          | 
- max            | {money}                  | cashlarger            | cashlarger           |                       | >      | money             | 
- max            | {numeric}                | numeric_larger        | numeric_larger       |                       | >      | numeric           | 
- max            | {oid}                    | oidlarger             | oidlarger            |                       | >      | oid               | 
- max            | {text}                   | text_larger           | text_larger          |                       | >      | text              | 
- max            | {tid}                    | tidlarger             | tidlarger            |                       | >      | tid               | 
- max            | {time}                   | time_larger           | time_larger          |                       | >      | time              | 
- max            | {timestamp}              | timestamp_larger      | timestamp_larger     |                       | >      | timestamp         | 
- max            | {timestamptz}            | timestamptz_larger    | timestamptz_larger   |                       | >      | timestamptz       | 
- max            | {timetz}                 | timetz_larger         | timetz_larger        |                       | >      | timetz            | 
- min            | {anyarray}               | array_smaller         | array_smaller        |                       | <      | anyarray          | 
- min            | {bpchar}                 | bpchar_smaller        | bpchar_smaller       |                       | <      | bpchar            | 
- min            | {date}                   | date_smaller          | date_smaller         |                       | <      | date              | 
- min            | {float4}                 | float4smaller         | float4smaller        |                       | <      | float4            | 
- min            | {float8}                 | float8smaller         | float8smaller        |                       | <      | float8            | 
- min            | {gpxlogloc}              | gpxloglocsmaller      | gpxloglocsmaller     |                       | <      | gpxlogloc         | 
- min            | {int2}                   | int2smaller           | int2smaller          |                       | <      | int2              | 
- min            | {int4}                   | int4smaller           | int4smaller          |                       | <      | int4              | 
- min            | {int8}                   | int8smaller           | int8smaller          |                       | <      | int8              | 
- min            | {interval}               | interval_smaller      | interval_smaller     |                       | <      | interval          | 
- min            | {money}                  | cashsmaller           | cashsmaller          |                       | <      | money             | 
- min            | {numeric}                | numeric_smaller       | numeric_smaller      |                       | <      | numeric           | 
- min            | {oid}                    | oidsmaller            | oidsmaller           |                       | <      | oid               | 
- min            | {text}                   | text_smaller          | text_smaller         |                       | <      | text              | 
- min            | {tid}                    | tidsmaller            | tidsmaller           |                       | <      | tid               | 
- min            | {time}                   | time_smaller          | time_smaller         |                       | <      | time              | 
- min            | {timestamp}              | timestamp_smaller     | timestamp_smaller    |                       | <      | timestamp         | 
- min            | {timestamptz}            | timestamptz_smaller   | timestamptz_smaller  |                       | <      | timestamptz       | 
- min            | {timetz}                 | timetz_smaller        | timetz_smaller       |                       | <      | timetz            | 
- mregr_coef     | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_coef     |        | _float8           | {0}
- mregr_pvalues  | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_pvalues  |        | _float8           | {0}
- mregr_r2       | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_r2       |        | _float8           | {0}
- mregr_tstats   | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_tstats   |        | _float8           | {0}
- nb_classify    | {_text,int8,_int8,_int8} | nb_classify_accum     | nb_classify_combine  | nb_classify_final     |        | nb_classification | 
- pivot_sum      | {_text,text,float8}      | float8_pivot_accum    | float8_matrix_accum  |                       |        | _float8           | 
- pivot_sum      | {_text,text,int8}        | int8_pivot_accum      | int8_matrix_accum    |                       |        | _int8             | 
- regr_avgx      | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_avgx      |        | _float8           | {0,0,0,0,0,0}
- regr_avgy      | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_avgy      |        | _float8           | {0,0,0,0,0,0}
- regr_count     | {float8,float8}          | int8inc_float8_float8 | int8pl               |                       |        | int8              | 0
- regr_intercept | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_intercept |        | _float8           | {0,0,0,0,0,0}
- regr_r2        | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_r2        |        | _float8           | {0,0,0,0,0,0}
- regr_slope     | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_slope     |        | _float8           | {0,0,0,0,0,0}
- regr_sxx       | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_sxx       |        | _float8           | {0,0,0,0,0,0}
- regr_sxy       | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_sxy       |        | _float8           | {0,0,0,0,0,0}
- regr_syy       | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_syy       |        | _float8           | {0,0,0,0,0,0}
- stddev         | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_samp    |        | _float8           | {0,0,0}
- stddev         | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_samp    |        | _float8           | {0,0,0}
- stddev         | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev         | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev         | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev         | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev_pop     | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_pop     |        | _float8           | {0,0,0}
- stddev_pop     | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_pop     |        | _float8           | {0,0,0}
- stddev_pop     | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_pop    |        | _numeric          | {0,0,0}
- stddev_pop     | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_pop    |        | _numeric          | {0,0,0}
- stddev_pop     | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_pop    |        | _numeric          | {0,0,0}
- stddev_pop     | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_pop    |        | _numeric          | {0,0,0}
- stddev_samp    | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_samp    |        | _float8           | {0,0,0}
- stddev_samp    | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_samp    |        | _float8           | {0,0,0}
- stddev_samp    | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev_samp    | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev_samp    | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- stddev_samp    | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_samp   |        | _numeric          | {0,0,0}
- sum            | {_float8}                | float8_matrix_accum   | float8_matrix_accum  |                       |        | _float8           | 
- sum            | {_int2}                  | int2_matrix_accum     | int8_matrix_accum    |                       |        | _int8             | 
- sum            | {_int4}                  | int4_matrix_accum     | int8_matrix_accum    |                       |        | _int8             | 
- sum            | {_int8}                  | int8_matrix_accum     | int8_matrix_accum    |                       |        | _int8             | 
- sum            | {float4}                 | float4pl              | float4pl             |                       |        | float4            | 
- sum            | {float8}                 | float8pl              | float8pl             |                       |        | float8            | 
- sum            | {int2}                   | int2_sum              | int8pl               |                       |        | int8              | 
- sum            | {int4}                   | int4_sum              | int8pl               |                       |        | int8              | 
- sum            | {int8}                   | int8_sum              | numeric_add          |                       |        | numeric           | 
- sum            | {interval}               | interval_pl           | interval_pl          |                       |        | interval          | 
- sum            | {money}                  | cash_pl               | cash_pl              |                       |        | money             | 
- sum            | {numeric}                | numeric_add           | numeric_add          |                       |        | numeric           | 
- var_pop        | {float4}                 | float4_accum          | float8_amalg         | float8_var_pop        |        | _float8           | {0,0,0}
- var_pop        | {float8}                 | float8_accum          | float8_amalg         | float8_var_pop        |        | _float8           | {0,0,0}
- var_pop        | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_pop       |        | _numeric          | {0,0,0}
- var_pop        | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_pop       |        | _numeric          | {0,0,0}
- var_pop        | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_pop       |        | _numeric          | {0,0,0}
- var_pop        | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_pop       |        | _numeric          | {0,0,0}
- var_samp       | {float4}                 | float4_accum          | float8_amalg         | float8_var_samp       |        | _float8           | {0,0,0}
- var_samp       | {float8}                 | float8_accum          | float8_amalg         | float8_var_samp       |        | _float8           | {0,0,0}
- var_samp       | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- var_samp       | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- var_samp       | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- var_samp       | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- variance       | {float4}                 | float4_accum          | float8_amalg         | float8_var_samp       |        | _float8           | {0,0,0}
- variance       | {float8}                 | float8_accum          | float8_amalg         | float8_var_samp       |        | _float8           | {0,0,0}
- variance       | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- variance       | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- variance       | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
- variance       | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_samp      |        | _numeric          | {0,0,0}
-(125 rows)
+     aggname      |         aggargs          |      transition       |        prelim        |           final           | sortop |     trantype      |     agginitval      
+------------------+--------------------------+-----------------------+----------------------+---------------------------+--------+-------------------+---------------------
+ array_sum        | {_int4}                  | array_add             | array_add            |                           |        | _int4             | {}
+ avg              | {float4}                 | float4_avg_accum      | float8_avg_amalg     | float8_avg                |        | bytea             | 
+ avg              | {float8}                 | float8_avg_accum      | float8_avg_amalg     | float8_avg                |        | bytea             | 
+ avg              | {int2}                   | int2_avg_accum        | int8_avg_amalg       | int8_avg                  |        | bytea             | 
+ avg              | {int4}                   | int4_avg_accum        | int8_avg_amalg       | int8_avg                  |        | bytea             | 
+ avg              | {int8}                   | int8_avg_accum        | int8_avg_amalg       | int8_avg                  |        | bytea             | 
+ avg              | {interval}               | interval_accum        | interval_amalg       | interval_avg              |        | _interval         | {0 second,0 second}
+ avg              | {numeric}                | numeric_avg_accum     | numeric_avg_amalg    | numeric_avg               |        | bytea             | 
+ bit_and          | {bit}                    | bitand                | bitand               |                           |        | bit               | 
+ bit_and          | {int2}                   | int2and               | int2and              |                           |        | int2              | 
+ bit_and          | {int4}                   | int4and               | int4and              |                           |        | int4              | 
+ bit_and          | {int8}                   | int8and               | int8and              |                           |        | int8              | 
+ bit_or           | {bit}                    | bitor                 | bitor                |                           |        | bit               | 
+ bit_or           | {int2}                   | int2or                | int2or               |                           |        | int2              | 
+ bit_or           | {int4}                   | int4or                | int4or               |                           |        | int4              | 
+ bit_or           | {int8}                   | int8or                | int8or               |                           |        | int8              | 
+ bool_and         | {bool}                   | booland_statefunc     | booland_statefunc    |                           |        | bool              | 
+ bool_or          | {bool}                   | boolor_statefunc      | boolor_statefunc     |                           |        | bool              | 
+ corr             | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_corr               |        | _float8           | {0,0,0,0,0,0}
+ count            | {any}                    | int8inc_any           | int8pl               |                           |        | int8              | 0
+ covar_pop        | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_covar_pop          |        | _float8           | {0,0,0,0,0,0}
+ covar_samp       | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_covar_samp         |        | _float8           | {0,0,0,0,0,0}
+ every            | {bool}                   | booland_statefunc     | booland_statefunc    |                           |        | bool              | 
+ max              | {anyarray}               | array_larger          | array_larger         |                           | >      | anyarray          | 
+ max              | {bpchar}                 | bpchar_larger         | bpchar_larger        |                           | >      | bpchar            | 
+ max              | {date}                   | date_larger           | date_larger          |                           | >      | date              | 
+ max              | {float4}                 | float4larger          | float4larger         |                           | >      | float4            | 
+ max              | {float8}                 | float8larger          | float8larger         |                           | >      | float8            | 
+ max              | {gpxlogloc}              | gpxlogloclarger       | gpxlogloclarger      |                           | >      | gpxlogloc         | 
+ max              | {int2}                   | int2larger            | int2larger           |                           | >      | int2              | 
+ max              | {int4}                   | int4larger            | int4larger           |                           | >      | int4              | 
+ max              | {int8}                   | int8larger            | int8larger           |                           | >      | int8              | 
+ max              | {interval}               | interval_larger       | interval_larger      |                           | >      | interval          | 
+ max              | {money}                  | cashlarger            | cashlarger           |                           | >      | money             | 
+ max              | {numeric}                | numeric_larger        | numeric_larger       |                           | >      | numeric           | 
+ max              | {oid}                    | oidlarger             | oidlarger            |                           | >      | oid               | 
+ max              | {text}                   | text_larger           | text_larger          |                           | >      | text              | 
+ max              | {tid}                    | tidlarger             | tidlarger            |                           | >      | tid               | 
+ max              | {time}                   | time_larger           | time_larger          |                           | >      | time              | 
+ max              | {timestamp}              | timestamp_larger      | timestamp_larger     |                           | >      | timestamp         | 
+ max              | {timestamptz}            | timestamptz_larger    | timestamptz_larger   |                           | >      | timestamptz       | 
+ max              | {timetz}                 | timetz_larger         | timetz_larger        |                           | >      | timetz            | 
+ min              | {anyarray}               | array_smaller         | array_smaller        |                           | <      | anyarray          | 
+ min              | {bpchar}                 | bpchar_smaller        | bpchar_smaller       |                           | <      | bpchar            | 
+ min              | {date}                   | date_smaller          | date_smaller         |                           | <      | date              | 
+ min              | {float4}                 | float4smaller         | float4smaller        |                           | <      | float4            | 
+ min              | {float8}                 | float8smaller         | float8smaller        |                           | <      | float8            | 
+ min              | {gpxlogloc}              | gpxloglocsmaller      | gpxloglocsmaller     |                           | <      | gpxlogloc         | 
+ min              | {int2}                   | int2smaller           | int2smaller          |                           | <      | int2              | 
+ min              | {int4}                   | int4smaller           | int4smaller          |                           | <      | int4              | 
+ min              | {int8}                   | int8smaller           | int8smaller          |                           | <      | int8              | 
+ min              | {interval}               | interval_smaller      | interval_smaller     |                           | <      | interval          | 
+ min              | {money}                  | cashsmaller           | cashsmaller          |                           | <      | money             | 
+ min              | {numeric}                | numeric_smaller       | numeric_smaller      |                           | <      | numeric           | 
+ min              | {oid}                    | oidsmaller            | oidsmaller           |                           | <      | oid               | 
+ min              | {text}                   | text_smaller          | text_smaller         |                           | <      | text              | 
+ min              | {tid}                    | tidsmaller            | tidsmaller           |                           | <      | tid               | 
+ min              | {time}                   | time_smaller          | time_smaller         |                           | <      | time              | 
+ min              | {timestamp}              | timestamp_smaller     | timestamp_smaller    |                           | <      | timestamp         | 
+ min              | {timestamptz}            | timestamptz_smaller   | timestamptz_smaller  |                           | <      | timestamptz       | 
+ min              | {timetz}                 | timetz_smaller        | timetz_smaller       |                           | <      | timetz            | 
+ mregr_coef       | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_coef         |        | _float8           | {0}
+ mregr_pvalues    | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_pvalues      |        | _float8           | {0}
+ mregr_r2         | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_r2           |        | _float8           | {0}
+ mregr_tstats     | {float8,_float8}         | float8_mregr_accum    | float8_mregr_combine | float8_mregr_tstats       |        | _float8           | {0}
+ nb_classify      | {_text,int8,_int8,_int8} | nb_classify_accum     | nb_classify_combine  | nb_classify_final         |        | nb_classification | 
+ nb_probabilities | {_text,int8,_int8,_int8} | nb_classify_accum     | nb_classify_combine  | nb_classify_probabilities |        | nb_classification | 
+ pivot_sum        | {_text,text,float8}      | float8_pivot_accum    | float8_matrix_accum  |                           |        | _float8           | 
+ pivot_sum        | {_text,text,int8}        | int8_pivot_accum      | int8_matrix_accum    |                           |        | _int8             | 
+ regr_avgx        | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_avgx          |        | _float8           | {0,0,0,0,0,0}
+ regr_avgy        | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_avgy          |        | _float8           | {0,0,0,0,0,0}
+ regr_count       | {float8,float8}          | int8inc_float8_float8 | int8pl               |                           |        | int8              | 0
+ regr_intercept   | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_intercept     |        | _float8           | {0,0,0,0,0,0}
+ regr_r2          | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_r2            |        | _float8           | {0,0,0,0,0,0}
+ regr_slope       | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_slope         |        | _float8           | {0,0,0,0,0,0}
+ regr_sxx         | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_sxx           |        | _float8           | {0,0,0,0,0,0}
+ regr_sxy         | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_sxy           |        | _float8           | {0,0,0,0,0,0}
+ regr_syy         | {float8,float8}          | float8_regr_accum     | float8_regr_amalg    | float8_regr_syy           |        | _float8           | {0,0,0,0,0,0}
+ stddev           | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_samp        |        | _float8           | {0,0,0}
+ stddev           | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_samp        |        | _float8           | {0,0,0}
+ stddev           | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev           | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev           | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev           | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev_pop       | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_pop         |        | _float8           | {0,0,0}
+ stddev_pop       | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_pop         |        | _float8           | {0,0,0}
+ stddev_pop       | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_pop        |        | _numeric          | {0,0,0}
+ stddev_pop       | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_pop        |        | _numeric          | {0,0,0}
+ stddev_pop       | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_pop        |        | _numeric          | {0,0,0}
+ stddev_pop       | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_pop        |        | _numeric          | {0,0,0}
+ stddev_samp      | {float4}                 | float4_accum          | float8_amalg         | float8_stddev_samp        |        | _float8           | {0,0,0}
+ stddev_samp      | {float8}                 | float8_accum          | float8_amalg         | float8_stddev_samp        |        | _float8           | {0,0,0}
+ stddev_samp      | {int2}                   | int2_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev_samp      | {int4}                   | int4_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev_samp      | {int8}                   | int8_accum            | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ stddev_samp      | {numeric}                | numeric_accum         | numeric_amalg        | numeric_stddev_samp       |        | _numeric          | {0,0,0}
+ sum              | {_float8}                | float8_matrix_accum   | float8_matrix_accum  |                           |        | _float8           | 
+ sum              | {_int2}                  | int2_matrix_accum     | int8_matrix_accum    |                           |        | _int8             | 
+ sum              | {_int4}                  | int4_matrix_accum     | int8_matrix_accum    |                           |        | _int8             | 
+ sum              | {_int8}                  | int8_matrix_accum     | int8_matrix_accum    |                           |        | _int8             | 
+ sum              | {float4}                 | float4pl              | float4pl             |                           |        | float4            | 
+ sum              | {float8}                 | float8pl              | float8pl             |                           |        | float8            | 
+ sum              | {int2}                   | int2_sum              | int8pl               |                           |        | int8              | 
+ sum              | {int4}                   | int4_sum              | int8pl               |                           |        | int8              | 
+ sum              | {int8}                   | int8_sum              | numeric_add          |                           |        | numeric           | 
+ sum              | {interval}               | interval_pl           | interval_pl          |                           |        | interval          | 
+ sum              | {money}                  | cash_pl               | cash_pl              |                           |        | money             | 
+ sum              | {numeric}                | numeric_add           | numeric_add          |                           |        | numeric           | 
+ var_pop          | {float4}                 | float4_accum          | float8_amalg         | float8_var_pop            |        | _float8           | {0,0,0}
+ var_pop          | {float8}                 | float8_accum          | float8_amalg         | float8_var_pop            |        | _float8           | {0,0,0}
+ var_pop          | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_pop           |        | _numeric          | {0,0,0}
+ var_pop          | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_pop           |        | _numeric          | {0,0,0}
+ var_pop          | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_pop           |        | _numeric          | {0,0,0}
+ var_pop          | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_pop           |        | _numeric          | {0,0,0}
+ var_samp         | {float4}                 | float4_accum          | float8_amalg         | float8_var_samp           |        | _float8           | {0,0,0}
+ var_samp         | {float8}                 | float8_accum          | float8_amalg         | float8_var_samp           |        | _float8           | {0,0,0}
+ var_samp         | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ var_samp         | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ var_samp         | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ var_samp         | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ variance         | {float4}                 | float4_accum          | float8_amalg         | float8_var_samp           |        | _float8           | {0,0,0}
+ variance         | {float8}                 | float8_accum          | float8_amalg         | float8_var_samp           |        | _float8           | {0,0,0}
+ variance         | {int2}                   | int2_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ variance         | {int4}                   | int4_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ variance         | {int8}                   | int8_accum            | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+ variance         | {numeric}                | numeric_accum         | numeric_amalg        | numeric_var_samp          |        | _numeric          | {0,0,0}
+(126 rows)
 
 -- end_equiv
 -- Compare pg_cast (Casts)

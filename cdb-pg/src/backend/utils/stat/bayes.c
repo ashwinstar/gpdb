@@ -143,7 +143,12 @@ nb_classify_accum(PG_FUNCTION_ARGS)
 	/* Get/create the accumulation state */
 	if (!PG_ARGISNULL(0))
 	{
-		get_nb_state(PG_GETARG_HEAPTUPLEHEADER(0), &state, nclasses);
+		HeapTupleHeader tup;
+		tup = (fcinfo->context && IsA(fcinfo->context, AggState))
+			? PG_GETARG_HEAPTUPLEHEADER(0)
+			: PG_GETARG_HEAPTUPLEHEADER_COPY(0);
+
+		get_nb_state(tup, &state, nclasses);
 	}
 	else
 	{
@@ -230,7 +235,7 @@ nb_classify_accum(PG_FUNCTION_ARGS)
 
 	/* Construct the return tuple */
 	funcClass = get_call_result_type(fcinfo, &resultType, &resultDesc);
-	BlessTupleDesc(resultDesc);  /* really? */
+	BlessTupleDesc(resultDesc); 
 	
 	resultDatum[0] = PointerGetDatum(state.classes);
 	resultDatum[1] = PointerGetDatum(state.accum);
@@ -246,6 +251,7 @@ nb_classify_accum(PG_FUNCTION_ARGS)
 Datum 
 nb_classify_combine(PG_FUNCTION_ARGS)
 {
+	HeapTupleHeader    tup;
 	Oid                resultType;
 	TupleDesc          resultDesc;
 	TypeFuncClass      funcClass;
@@ -273,7 +279,11 @@ nb_classify_combine(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		PG_RETURN_DATUM(PG_GETARG_DATUM(1));
 
-	get_nb_state(PG_GETARG_HEAPTUPLEHEADER(0), &state[0], 0);
+
+	tup = (fcinfo->context && IsA(fcinfo->context, AggState))
+		? PG_GETARG_HEAPTUPLEHEADER(0)
+		: PG_GETARG_HEAPTUPLEHEADER_COPY(0);
+	get_nb_state(tup, &state[0], 0);
 	nclasses = ARR_DIMS(state[0].classes)[0];
 
 	get_nb_state(PG_GETARG_HEAPTUPLEHEADER(1), &state[1], nclasses);
@@ -320,7 +330,7 @@ nb_classify_final(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
 
-	get_nb_state(PG_GETARG_HEAPTUPLEHEADER(0), &state, 0);
+	get_nb_state(PG_GETARG_HEAPTUPLEHEADER_COPY(0), &state, 0);
 	
 	/* The the prior with maximum likelyhood */
 	prior_data = (float8*) ARR_DATA_PTR(state.accum);
@@ -348,6 +358,51 @@ nb_classify_final(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(class_data);
 }
 
+/* 
+ * nb_classify_probabilities - calculate naive bayes probabilty vector
+ * 
+ * Similar to nb_classify_final, except the return value is the vector of
+ * probabilities for each class rather than the text value of the most
+ * likely class.
+ */
+Datum 
+nb_classify_probabilities(PG_FUNCTION_ARGS)
+{
+	nb_classify_state  state;
+	int64             *total_data;
+	float8             total, normalize;
+	float8            *prior_data;
+	int                i, nclasses;
+
+	if (PG_NARGS() != 1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("nb_classify_probabilities called with %d arguments", 
+						PG_NARGS())));
+	}
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	get_nb_state(PG_GETARG_HEAPTUPLEHEADER_COPY(0), &state, 0);
+	
+	/* The the prior with maximum likelyhood */
+	prior_data = (float8*) ARR_DATA_PTR(state.accum);
+	total_data = (int64*) ARR_DATA_PTR(state.total);
+	nclasses = ARR_DIMS(state.classes)[0];
+	for (total = i = 0; i < nclasses; i++)
+		total += total_data[i];
+	for (normalize = i = 0; i < nclasses; i++)
+	{
+		prior_data[i] = exp(prior_data[i]) * (total_data[i] / total);
+		normalize += prior_data[i];
+	}
+	for (i = 0; i < nclasses; i++)
+		prior_data[i] /= normalize;
+
+	PG_RETURN_ARRAYTYPE_P(state.accum);
+}
+
 
 /* 
  * Helper function used to extract interesting information from
@@ -367,7 +422,7 @@ static void get_nb_state(HeapTupleHeader tuple,
 	 */
 	class_datum = GetAttributeByNum(tuple, 1, &isnull[0]);
 	accum_datum = GetAttributeByNum(tuple, 2, &isnull[1]);
-	total_datum = GetAttributeByNum(tuple, 3, &isnull[2]);		
+	total_datum = GetAttributeByNum(tuple, 3, &isnull[2]);
 	if (isnull[0] || isnull[1] || isnull[2])
 	{
 		ereport(ERROR, 
