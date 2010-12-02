@@ -355,14 +355,14 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom, EmcConnectDetailedSym
 
 	retVal = snprintf(tmp_filename_buf, PATH_MAX, "%s/%s_%s.tmp", GPMON_EMCCONNECT_POLL_DIR, "TMP", fn_buffer);
 	if (retVal < 0)
-		return 11;
-	if (retVal >= PATH_MAX)
 		return 18;
+	if (retVal >= PATH_MAX)
+		return 19;
 
 	fd = fopen(tmp_filename_buf, "w");
 
 	if (!fd)
-		return 19;
+		return 20;
 
 	fprintf(fd, "%s", buffer);
 
@@ -370,7 +370,7 @@ int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom, EmcConnectDetailedSym
 
 	retVal = rename(tmp_filename_buf, filename_buf);
 	if (retVal)
-		return 20;
+		return 21;
 
 	return 0;
 }
