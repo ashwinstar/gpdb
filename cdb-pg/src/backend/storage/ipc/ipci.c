@@ -370,14 +370,16 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	
 #ifdef FAULT_INJECTOR
 	FaultInjector_ShmemInit();
+#endif
 
+#ifdef USE_TEST_UTILS
 	if (gp_simex_init)
 	{
 		// initialize shmem segment for SimEx
 		simex_set_sync_bitvector_container(
 			SyncBitVector_ShmemInit("SimEx bit vector container", simex_get_subclass_count()));
 	}
-#endif
+#endif /* USE_TEST_UTILS */
 
 	/*
 	 * Set up other modules that need some shared memory space

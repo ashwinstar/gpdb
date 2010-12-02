@@ -25,6 +25,9 @@
 #define SIMEX_H_
 
 #include "utils/syncbitvector.h"
+#include "pg_config.h"
+
+#ifdef USE_TEST_UTILS
 
 /* Enum for Exceptional Situation Class */
 typedef enum SimExESClass
@@ -96,5 +99,7 @@ extern bool gp_simex_init;            // start-up GUC, controls SimEx initializa
 extern int  gp_simex_class;           // start-up GUC, sets ES class to be simulated
 extern int  gp_simex_rand;            // start-up GUC, controls randomized ES injection (not implemented)
 extern bool gp_simex_run;             // session GUC, starts/stops ES injection
+
+#endif /* USE_TEST_UTILS */
 
 #endif /* SIMEX_H_ */

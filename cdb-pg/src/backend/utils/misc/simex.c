@@ -29,6 +29,8 @@
 #include "utils/elog.h"
 #include "utils/simex.h"
 
+#ifdef USE_TEST_UTILS
+
 /* associate an ES subclass with its class */
 typedef struct SimExESClassAssociate
 {
@@ -339,3 +341,5 @@ SimExESSubClass simex_log_and_return(int32 associateOffset, const char *file, in
 
 	return SimExESClassAssociateTable[associateOffset].subclass;
 }
+
+#endif /* USE_TEST_UTILS */
