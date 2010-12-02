@@ -1039,24 +1039,25 @@ sub dandydiff
 		my $pfilnam = shift @ppp;
 		my $mfilnam = shift @mmm;
 
+		my $pfilsiz = shift @ppp;
+		my $mfilsiz = shift @mmm;
+
 		# if filenames don't match, advance the lesser (and mark it as
 		# an "extra")
 		if ($pfilnam gt $mfilnam)
 		{
-			push @extrafiles, "m:". $mfilnam;
+			push @extrafiles, ["m:". $mfilnam, $mfilsiz];
 			$mstat = ($mlin = <$mfh>);
 			next;
 		}
 		elsif ($pfilnam lt $mfilnam)
 		{
-			push @extrafiles, "p:". $pfilnam;
+			push @extrafiles, ["p:". $pfilnam, $pfilsiz];
 			$pstat = ($plin = <$pfh>);
 			next;
 		}
 
 		# filenames match, so check file sizes
-		my $pfilsiz = shift @ppp;
-		my $mfilsiz = shift @mmm;
 		
 		if ($pfilsiz != $mfilsiz)
 		{
@@ -1099,8 +1100,9 @@ sub dandydiff
 		warn ("bad line: $plin\nin file: $prim") unless (scalar(@ppp));
 
 		my $pfilnam = shift @ppp;
+		my $pfilsiz = shift @ppp;
 
-		push @extrafiles, "p:". $pfilnam;
+		push @extrafiles, ["p:". $pfilnam, $pfilsiz];
 
 		$pstat = ($plin = <$pfh>);
 	}
@@ -1113,8 +1115,9 @@ sub dandydiff
 		warn ("bad line: $mlin\nin file: $mirr") unless (scalar(@mmm));
 
 		my $mfilnam = shift @mmm;
+		my $mfilsiz = shift @mmm;
 
-		push @extrafiles, "m:". $mfilnam;
+		push @extrafiles, ["m:". $mfilnam, $mfilsiz];
 
 		$mstat = ($mlin = <$mfh>);
 	}
@@ -1933,9 +1936,118 @@ sub resolve_hashdiff
 
 } # end resolve_hashdiff
 
+sub extra_files_check_for_zero_length_heap
+{
+	my ($dbs3,  
+		$diffi, $row, $fselochsh, $bigh,
+		$primfil, $mirrfil, $primhost, $mirrhost, 
+		$primtmp, $mirrtmp,
+		$ppresh2, $mpresh2,
+		$primsh, $mirrsh) = @_;
+
+	my $bstat = 1;
+
+	# MPP-11639: 
+	print "extra files: check for zero-length heap files\n";
+
+#	print Data::Dumper->Dump([$bigh, $dbs3]);
+	
+	for my $e2 (@{($bigh->{extrafiles})})
+	{
+		my $extry;
+		my $elen;
+		
+		$extry = "" . $e2->[0];
+		$elen = $e2->[1];
+
+		if ($elen !~ /\d+/)
+		{
+			warn "bad length $elen for extra file $extry";
+			$bstat = 0;
+			next; # keep going
+		}
+		if ($elen > 0)
+		{
+			warn "extra file $extry has non-zero length $elen";
+			# if extra file has non-zero length always complain
+			$bstat = 0;
+			next; # keep going
+		}
+
+		# if extra file has zero length, then only complain for ao/co
+		# or non-index heap
+
+		$extry =~ s|^m\:(/)?||i;
+		$extry =~ s|^p\:(/)?||i;
+		$extry =~ s|\.\d+$||i;
+
+		if ($extry =~ m|/|)
+		{
+			my @baz = split(/\//, $extry);
+
+			$extry = pop (@baz);
+		}
+
+#		print "extry: $extry\n";
+
+		while (my ($kk, $vv) = each(%{$dbs3}))	
+		{
+			my $dbname = $vv->{dbname};
+
+			$dbname = "<unknown dbname>" 
+				unless (defined($dbname) && length($dbname));
+
+			# check if "extra" file exists in this database
+			my $kk2 = $extry;
+			next unless (exists($vv->{relfilenodeh}) &&
+						 exists($vv->{relfilenodeh}->{$kk2}));
+
+			my $vv2 = $vv->{relfilenodeh}->{$kk2};
+			my $rnod = $vv2;
+			my $relname = exists($rnod->{relname}) ? $rnod->{relname} : 
+				"<unknown relname: $kk2>";
+			if ($rnod->{relstorage} ne "h")
+			{
+				warn "extra file $e2->[0] for relation $relname in db $dbname is storage class: " . $rnod->{relstorage} . ", not heap";
+
+				# if extra file is zero length but not heap, complain
+				$bstat = 0;
+				last; # keep going
+			}
+			if ($rnod->{relkind} eq "i")
+			{
+				warn "extra file $e2->[0] for relation $relname in db $dbname is index";
+				# if extra file is zero length and is heap, but is an
+				# index, complain
+				$bstat = 0;
+				last; # keep going
+			}
+
+		} # end while kk
+
+	} # end while e2
+
+	if ($bstat)
+	{
+		print "extra files: no differences\n";
+	}
+	else
+	{
+		my $floc = $row->{ploc};
+
+		# found differences
+		print "\nextra files [$floc]: found differences\n\n";
+		push @{$glob_exit}, $row->{ploc}." ".$row->{mloc} ; 
+		return (0);
+	}
+
+	return (1);
+
+} # end extra_files_check_for_zero_length_heap
+
 sub diff_again
 {
-	my ($dbs1, $dbs2,
+	my ($dbs1, $dbs2, 
 		$diffi, $row, $fselochsh, $bigh,
 		$primfil, $mirrfil, $primhost, $mirrhost, 
 		$primtmp, $mirrtmp,
@@ -1953,6 +2065,8 @@ sub diff_again
 
 	for my $dbs ($dbs1, $dbs2)
 	{
+		next unless ($dbs);
+
 		while (my ($kk, $vv) = each(%{$dbs}))	
 		{
 			my $dbname = $vv->{dbname};
@@ -2024,7 +2138,7 @@ sub diff_again
 									push @heapfiles, $filnam;
 								}
 							}
-							elsif ($rnod->{relstorage} =~m/a|c/)
+							elsif ($rnod->{relstorage} =~ m/a|c/)
 							{
 								my @foo = split(/\./, $filnam);
 								
@@ -2039,6 +2153,7 @@ sub diff_again
 								$eof = $rnod->{aoseg_eof}->{$segno};
 								
 								push @aofiles, {file => $filnam, eof=> $eof};
+
 							}
 						}
 						else 
@@ -3182,7 +3297,7 @@ pg_xlog
 				{
 					my $extry;
 
-					$extry = "" . $e2;
+					$extry = "" . $e2->[0];
 
 					# make primary/mirror names explicit (and remove
 					# leading "/" in filename)
@@ -3217,7 +3332,7 @@ pg_xlog
 
 			print "\n\nraw diff mismatch for $fil: will diff again using storage-specific techniques\n\n";
 
-			my ($dbs1, $dbs2);
+			my ($dbs1, $dbs2, $dbs3);
 
 			if (exists($bigh->{sizediff}) 
 				&& scalar(keys(%{($bigh->{sizediff})})))
@@ -3238,8 +3353,9 @@ pg_xlog
 
 				print "trying to resolve extra files in catalog\n";
 
-				for my $extrafil (@{($bigh->{extrafiles})})
+				for my $e2 (@{($bigh->{extrafiles})})
 				{
+					my $extrafil = "" . $e2->[0];
 					$extrafil =~ s/^p\://;
 					$extrafil =~ s/^m\://;
 
@@ -3250,7 +3366,7 @@ pg_xlog
 				# catalog, then need to complain here
 				my @bstat_ref_arr;
 
-				my $dbs3 = 
+				$dbs3 = 
 					get_relfilenode_func($extras,
 										 $diffi, $row, $fselochsh, $bigh,
 										 \@bstat_ref_arr
@@ -3265,7 +3381,13 @@ pg_xlog
 				}
 				else
 				{
-					# XXX XXX: else don't complain? 
+					extra_files_check_for_zero_length_heap(
+					   $dbs3,
+					   $diffi, $row, $fselochsh, $bigh,
+					   $primfil, $mirrfil, $primhost, $mirrhost, 
+					   $primtmp, $mirrtmp, 
+					   $ppresh2, $mpresh2,
+					   $primsh, $mirrsh);
 				}
 			}
 
