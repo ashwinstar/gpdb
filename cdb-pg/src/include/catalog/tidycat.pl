@@ -548,13 +548,19 @@ sub parseindex
 
 	my $icols = [];
 
+	$tname = lc($tname);
+	$tname =~ s/^\s+//;
+	$tname =~ s/\s+$//;
+
+	die "bad index def - no such table: $tname" unless (exists($alltabs->{$tname}));
+
 	for my $c1 (@cols)
 	{
 		$c1 = lc($c1);
 		$c1 =~ s/^\s+//;
 		$c1 =~ s/\s+$//;
 
-		die "no such col: $c1" 
+		die "bad index for $tname - no such col: $c1" 
 			unless (exists($alltabs->{$tname}->{colh}->{$c1}));
 
 		my $colop = $alltabs->{$tname}->{colh}->{$c1};
@@ -573,7 +579,7 @@ sub parseindex
 
 	my @baz = ($with =~ m/^\s*(with\s*\(.*\))/is);
 
-	die "no index oid: $bigstr" unless (scalar(@baz));
+	die "bad index for $tname - no index oid: $bigstr" unless (scalar(@baz));
 
 	my $indwithclause = shift @baz;
 
@@ -586,7 +592,7 @@ sub parseindex
 	{
 		my @bzz = split("=", $withdef, 2);
 
-		die "bad with def: $withdef" unless (2 == scalar(@bzz));
+		die "bad index with def for $tname: $withdef" unless (2 == scalar(@bzz));
 
 		my $kk = shift @bzz;
 		my $vv = shift @bzz;
@@ -601,18 +607,12 @@ sub parseindex
 		$idef->{with}->{$kk} = $vv;
 	}
 
-	$tname = lc($tname);
-	$tname =~ s/^\s+//;
-	$tname =~ s/\s+$//;
-
-	die "no such table: $tname" unless (exists($alltabs->{$tname}));
-
 	$alltabs->{$tname}->{indexes} = []
 		unless (exists(	$alltabs->{$tname}->{indexes}));
 	
 	$idef->{cols} = $icols;
 
-	die "no index oid: $bigstr" unless (exists($idef->{with}->{indexid}));
+	die "bad index def for $tname - no index oid: $bigstr" unless (exists($idef->{with}->{indexid}));
 
 	$idef->{indexid} = $idef->{with}->{indexid};
 	if (exists($idef->{with}->{indexname}))
@@ -621,8 +621,39 @@ sub parseindex
 	}
 
 	push @{$alltabs->{$tname}->{indexes}}, $idef;
-}
+} # end parseindex
 
+# parse foreign key definitions
+sub parsefk
+{
+	my ($alltabs, $bigstr) = @_;
+
+	my @baz = ($bigstr =~ m/^\s*alter\s+table\s+(\w+)\s+add\s+fk/i);
+
+	my $tname = shift @baz;
+
+	die "bad foreign key - no such table: $tname" unless (exists($alltabs->{$tname}));
+
+	$bigstr =~ s/^\s*alter\s+table\s+\w+\s+add\s+fk//i;
+
+	my @foo = ($bigstr =~ m/\s*(\w+)\s*on\s*(\w+)\s*\((\w+(\s*\,\s*\w+)*)\)/i);
+
+#	print Data::Dumper->Dump(\@foo), "\n";
+
+	die "bad foreign key for table $tname: $bigstr" unless (2 < scalar(@foo));
+
+	$alltabs->{$tname}->{foreign_keys} = []
+		unless (exists($alltabs->{$tname}->{foreign_keys}));
+
+	my $fkname = shift @foo; # the foreign key column name
+	my $pktname = shift @foo; # the primary key table name
+	my $colnamlist = shift @foo; # the primary key cols
+	my @cols = split(",", $colnamlist);
+
+	die "bad foreign key for table $tname - no such column: $fkname" unless (exists($alltabs->{$tname}->{colh}->{$fkname}));
+
+	push @{$alltabs->{$tname}->{foreign_keys}}, [$fkname, $pktname, \@cols];
+} # end parsefk
 
 sub parsecols
 {
@@ -1014,6 +1045,11 @@ sub parsetabdef
 		elsif ($stat =~ m/^\s*create\s+(unique\s+)?index/is)
 		{
 			parseindex($alltabs, $stat);
+		}
+#		elsif ($stat =~ m/^\s*alter\s+table\s+\w+add\s+fk/is)
+		elsif ($stat =~ m/^\s*alter\s+table/is)
+		{
+			parsefk($alltabs, $stat);
 		}
 	}
 
