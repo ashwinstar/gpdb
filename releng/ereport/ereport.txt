@@ -13653,25 +13653,25 @@ daai: deadlock:00000960:  (errcode(ERRCODE_T_R_DEADLOCK_DETECTED),
 daai: deadlock:00000961:  errmsg("deadlock detected"), 
 daai: deadlock:00000962:  errdetail("%s", buf.data))); 
 aaaaa GP_IGNORE: laae: lock - ./backend/storage/lmgr/lock.c
-laae: lock:00000658:  ereport(ERROR, 
-laae: lock:00000659:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-laae: lock:00000660:  errmsg("out of shared memory"), 
-laae: lock:00000661:  errhint("You might need to increase max_locks_per_transaction."))); 
-laae: lock:00000833:  ereport(ERROR, 
-laae: lock:00000834:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-laae: lock:00000835:  errmsg("out of shared memory"), 
-laae: lock:00000836:  errhint("You might need to increase max_locks_per_transaction."))); 
-laae: lock:00002779:  ereport(ERROR, 
-laae: lock:00002780:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-laae: lock:00002781:  errmsg("out of shared memory"), 
-laae: lock:00002782:  errhint("You might need to increase max_locks_per_transaction."))); 
-laae: lock:00002844:  ereport(ERROR, 
-laae: lock:00002845:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-laae: lock:00002846:  errmsg("out of shared memory"), 
-laae: lock:00002847:  errhint("You might need to increase max_locks_per_transaction."))); 
+laae: lock:00000667:  ereport(ERROR, 
+laae: lock:00000668:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+laae: lock:00000669:  errmsg("out of shared memory"), 
+laae: lock:00000670:  errhint("You might need to increase max_locks_per_transaction."))); 
+laae: lock:00000842:  ereport(ERROR, 
+laae: lock:00000843:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+laae: lock:00000844:  errmsg("out of shared memory"), 
+laae: lock:00000845:  errhint("You might need to increase max_locks_per_transaction."))); 
+laae: lock:00002788:  ereport(ERROR, 
+laae: lock:00002789:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+laae: lock:00002790:  errmsg("out of shared memory"), 
+laae: lock:00002791:  errhint("You might need to increase max_locks_per_transaction."))); 
+laae: lock:00002853:  ereport(ERROR, 
+laae: lock:00002854:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+laae: lock:00002855:  errmsg("out of shared memory"), 
+laae: lock:00002856:  errhint("You might need to increase max_locks_per_transaction."))); 
 aaaaa GP_IGNORE: laag: lwlock - ./backend/storage/lmgr/lwlock.c
-laag: lwlock:00000410:  ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY), 
-laag: lwlock:00000411:  errmsg("LWLockAcquire failed: out of memory")); 
+laag: lwlock:00000416:  ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY), 
+laag: lwlock:00000417:  errmsg("LWLockAcquire failed: out of memory")); 
 aaaaa GP_IGNORE: paae: proc - ./backend/storage/lmgr/proc.c
 paae: proc:00000191:  ereport(FATAL, 
 paae: proc:00000192:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -14021,43 +14021,43 @@ paai: postgres:00004135:  ereport(FATAL,
 paai: postgres:00004136:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 paai: postgres:00004137:  errmsg("%s: no database nor user name specified", 
 paai: postgres:00004138:  argv[0]))); 
-paai: postgres:00004963:  ereport(ERROR, 
-paai: postgres:00004964:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00004965:  errmsg("invalid CLOSE message subtype %d", 
-paai: postgres:00004966:  close_type))); 
-paai: postgres:00005000:  ereport(ERROR, 
-paai: postgres:00005001:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005002:  errmsg("invalid DESCRIBE message subtype %d", 
-paai: postgres:00005003:  describe_type))); 
-paai: postgres:00005057:  ereport(FATAL, 
-paai: postgres:00005058:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005059:  errmsg("invalid frontend message type %d ('%c')", 
-paai: postgres:00005060:  firstchar,firstchar))); 
-paai: postgres:00005560:  ereport(ERROR, 
-paai: postgres:00005561:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005562:  errmsg("--%s requires a value", 
-paai: postgres:00005563:  optarg))); 
+paai: postgres:00004968:  ereport(ERROR, 
+paai: postgres:00004969:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00004970:  errmsg("invalid CLOSE message subtype %d", 
+paai: postgres:00004971:  close_type))); 
+paai: postgres:00005005:  ereport(ERROR, 
+paai: postgres:00005006:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005007:  errmsg("invalid DESCRIBE message subtype %d", 
+paai: postgres:00005008:  describe_type))); 
+paai: postgres:00005062:  ereport(FATAL, 
+paai: postgres:00005063:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005064:  errmsg("invalid frontend message type %d ('%c')", 
+paai: postgres:00005065:  firstchar,firstchar))); 
 paai: postgres:00005565:  ereport(ERROR, 
 paai: postgres:00005566:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005567:  errmsg("-c %s requires a value", 
+paai: postgres:00005567:  errmsg("--%s requires a value", 
 paai: postgres:00005568:  optarg))); 
-paai: postgres:00005681:  ereport(FATAL, 
-paai: postgres:00005682:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005683:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00005684:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005695:  ereport(FATAL, 
-paai: postgres:00005696:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005697:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00005698:  argv[0]), 
-paai: postgres:00005699:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005705:  ereport(FATAL, 
-paai: postgres:00005706:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00005707:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00005708:  argv[0]))); 
-paai: postgres:00006026:  ereport(FATAL, 
-paai: postgres:00006027:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00006028:  errmsg("invalid frontend message type %d", 
-paai: postgres:00006029:  firstchar))); 
+paai: postgres:00005570:  ereport(ERROR, 
+paai: postgres:00005571:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005572:  errmsg("-c %s requires a value", 
+paai: postgres:00005573:  optarg))); 
+paai: postgres:00005686:  ereport(FATAL, 
+paai: postgres:00005687:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005688:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00005689:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005700:  ereport(FATAL, 
+paai: postgres:00005701:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005702:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00005703:  argv[0]), 
+paai: postgres:00005704:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005710:  ereport(FATAL, 
+paai: postgres:00005711:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00005712:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00005713:  argv[0]))); 
+paai: postgres:00006036:  ereport(FATAL, 
+paai: postgres:00006037:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00006038:  errmsg("invalid frontend message type %d", 
+paai: postgres:00006039:  firstchar))); 
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
 paag: pquery:00000958:  ereport(ERROR, 
 paag: pquery:00000959:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
@@ -17264,40 +17264,40 @@ taai: typcache:00000320:  (errcode(ERRCODE_WRONG_OBJECT_TYPE),
 taai: typcache:00000321:  errmsg("record type has not been registered"), 
 taai: typcache:00000322:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: eaae: elog - ./backend/utils/error/elog.c
-eaae: elog:00000166:  ereport(ERROR, (errmsg_internal("errstart was not called"))); \ 
-eaae: elog:00000167:  } \ 
-eaae: elog:00000168:  } while (0) 
-eaae: elog:00000169:  
-eaae: elog:00000170: bool SuppressPanic = false; /* GP */ 
-eaae: elog:00000171:  
-eaae: elog:00000172: static void cdb_tidy_message(ErrorData *edata); 
-eaae: elog:00001774:  ereport(FATAL, 
-eaae: elog:00001775:  (errcode_for_file_access(), 
-eaae: elog:00001776:  errmsg("could not open file \"%s\": %m", OutputFileName))); 
-eaae: elog:00001784:  ereport(FATAL, 
-eaae: elog:00001785:  (errcode_for_file_access(), 
-eaae: elog:00001786:  errmsg("could not reopen file \"%s\" as stderr: %m", 
-eaae: elog:00001787:  OutputFileName))); 
+eaae: elog:00000189:  ereport(ERROR, (errmsg_internal("errstart was not called"))); \ 
+eaae: elog:00000190:  } \ 
+eaae: elog:00000191:  } while (0) 
+eaae: elog:00000192:  
+eaae: elog:00000193: bool SuppressPanic = false; /* GP */ 
+eaae: elog:00000194:  
+eaae: elog:00000195: static void cdb_tidy_message(ErrorData *edata); 
 eaae: elog:00001797:  ereport(FATAL, 
 eaae: elog:00001798:  (errcode_for_file_access(), 
-eaae: elog:00001799:  errmsg("could not reopen file \"%s\" as stdout: %m", 
-eaae: elog:00001800:  OutputFileName))); 
-eaae: elog:00003935:  ereport(ERROR, 
-eaae: elog:00003936:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00003937:  errmsg("gp_elog(): called with %hd arguments", 
-eaae: elog:00003938:  PG_NARGS()))); 
-eaae: elog:00003940:  ereport(ERROR, 
-eaae: elog:00003941:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00003942:  errmsg("gp_elog(): called with null arguments"))); 
-eaae: elog:00003945:  ereport(ERROR, 
-eaae: elog:00003946:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00003947:  errmsg("gp_elog(): called with null arguments"))); 
-eaae: elog:00003951:  ereport(ERROR, 
-eaae: elog:00003952:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-eaae: elog:00003953:  errmsg("permission denied"), 
-eaae: elog:00003954:  errhint("gp_elog(): requires superuser privileges."))); 
-eaae: elog:00004063:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-eaae: elog:00004064:  errmsg("Failed to get backtrace symbol: out of memory"))); 
+eaae: elog:00001799:  errmsg("could not open file \"%s\": %m", OutputFileName))); 
+eaae: elog:00001807:  ereport(FATAL, 
+eaae: elog:00001808:  (errcode_for_file_access(), 
+eaae: elog:00001809:  errmsg("could not reopen file \"%s\" as stderr: %m", 
+eaae: elog:00001810:  OutputFileName))); 
+eaae: elog:00001820:  ereport(FATAL, 
+eaae: elog:00001821:  (errcode_for_file_access(), 
+eaae: elog:00001822:  errmsg("could not reopen file \"%s\" as stdout: %m", 
+eaae: elog:00001823:  OutputFileName))); 
+eaae: elog:00003995:  ereport(ERROR, 
+eaae: elog:00003996:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00003997:  errmsg("gp_elog(): called with %hd arguments", 
+eaae: elog:00003998:  PG_NARGS()))); 
+eaae: elog:00004000:  ereport(ERROR, 
+eaae: elog:00004001:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00004002:  errmsg("gp_elog(): called with null arguments"))); 
+eaae: elog:00004005:  ereport(ERROR, 
+eaae: elog:00004006:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00004007:  errmsg("gp_elog(): called with null arguments"))); 
+eaae: elog:00004011:  ereport(ERROR, 
+eaae: elog:00004012:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+eaae: elog:00004013:  errmsg("permission denied"), 
+eaae: elog:00004014:  errhint("gp_elog(): requires superuser privileges."))); 
+eaae: elog:00004123:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+eaae: elog:00004124:  errmsg("Failed to get backtrace symbol: out of memory"))); 
 aaaaa GP_IGNORE: daba: deprecated - ./backend/utils/fmgr/deprecated.c
 daba: deprecated:00000029:  ereport(ERROR, 
 daba: deprecated:00000030:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -17760,85 +17760,104 @@ gaai: gucxfile:00000552:  GUC_EOL = 99,
 gaai: gucxfile:00000553:  GUC_ERROR = 100 
 gaai: gucxfile:00000554: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00007709:  ereport(ERROR, 
-gaad: guc:00007710:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007711:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007713:  ereport(ERROR, 
-gaad: guc:00007714:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007715:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007749:  ereport(ERROR, 
-gaad: guc:00007750:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007751:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007753:  ereport(ERROR, 
-gaad: guc:00007754:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007755:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007824:  ereport(ERROR, 
-gaad: guc:00007825:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007826:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007833:  ereport(ERROR, 
-gaad: guc:00007834:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00007835:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008006:  ereport(ERROR, 
-gaad: guc:00008007:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008008:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008070:  ereport(ERROR, 
-gaad: guc:00008071:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008072:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008391:  ereport(ERROR, 
-gaad: guc:00008392:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008393:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008395:  ereport(ERROR, 
-gaad: guc:00008396:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008397:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009199:  ereport(FATAL, 
-gaad: guc:00009200:  (errcode_for_file_access(), 
-gaad: guc:00009201:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009202:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009309:  ereport(WARNING, 
-gaad: guc:00009310:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009311:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009505:  ereport(ERROR, 
-gaad: guc:00009506:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009507:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009528:  ereport(ERROR, 
-gaad: guc:00009529:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009530:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009531:  tok))); 
-gaad: guc:00009557:  ereport(ERROR, 
-gaad: guc:00009558:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009559:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009560:  value))); 
-gaad: guc:00009910:  ereport(ERROR, 
-gaad: guc:00009911:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00009912:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00009986:  ereport(ERROR, 
-gaad: guc:00009987:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009988:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010007:  ereport(ERROR, 
-gaad: guc:00010008:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010009:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010020:  ereport(ERROR, 
-gaad: guc:00010021:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010022:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010037:  ereport(ERROR, 
-gaad: guc:00010038:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010039:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010040:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010041:  "\"log_dispatch_stats\", " 
-gaad: guc:00010042:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00007759:  ereport(ERROR, 
+gaad: guc:00007760:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007761:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007763:  ereport(ERROR, 
+gaad: guc:00007764:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007765:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007799:  ereport(ERROR, 
+gaad: guc:00007800:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007801:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007803:  ereport(ERROR, 
+gaad: guc:00007804:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007805:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007874:  ereport(ERROR, 
+gaad: guc:00007875:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007876:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007883:  ereport(ERROR, 
+gaad: guc:00007884:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00007885:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008056:  ereport(ERROR, 
+gaad: guc:00008057:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008058:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008120:  ereport(ERROR, 
+gaad: guc:00008121:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008122:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008441:  ereport(ERROR, 
+gaad: guc:00008442:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008443:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008445:  ereport(ERROR, 
+gaad: guc:00008446:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008447:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009249:  ereport(FATAL, 
+gaad: guc:00009250:  (errcode_for_file_access(), 
+gaad: guc:00009251:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009252:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009359:  ereport(WARNING, 
+gaad: guc:00009360:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009361:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009555:  ereport(ERROR, 
+gaad: guc:00009556:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009557:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009578:  ereport(ERROR, 
+gaad: guc:00009579:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009580:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009581:  tok))); 
+gaad: guc:00009607:  ereport(ERROR, 
+gaad: guc:00009608:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009609:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009610:  value))); 
+gaad: guc:00009960:  ereport(ERROR, 
+gaad: guc:00009961:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00009962:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010036:  ereport(ERROR, 
+gaad: guc:00010037:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010038:  errmsg("assertion checking is not supported by this build"))); 
 gaad: guc:00010057:  ereport(ERROR, 
 gaad: guc:00010058:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010059:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010060:  "\"log_statement_stats\", " 
-gaad: guc:00010061:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010062:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010077:  ereport(ERROR, 
-gaad: guc:00010078:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010079:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00010059:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010070:  ereport(ERROR, 
+gaad: guc:00010071:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010072:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010087:  ereport(ERROR, 
+gaad: guc:00010088:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010089:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010090:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010091:  "\"log_dispatch_stats\", " 
+gaad: guc:00010092:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010107:  ereport(ERROR, 
+gaad: guc:00010108:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010109:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010110:  "\"log_statement_stats\", " 
+gaad: guc:00010111:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010112:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010127:  ereport(ERROR, 
+gaad: guc:00010128:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010129:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 sabd: syncbitvector:00000069:  (errmsg("Not enough shared memory for SyncBitVector.")))); 
+aaaaa GP_IGNORE: taaj: testutils - ./backend/utils/misc/testutils.c
+taaj: testutils:00000090:  ereport(ERROR, 
+taaj: testutils:00000091:  (errmsg("Time slice of %d ms exceeded at (%s:%d), last CFI before %d ms.\n" 
+taaj: testutils:00000092:  "Stack trace of last CFI:\n%s\n" 
+taaj: testutils:00000093:  "Current stack trace:\n%s\n", 
+taaj: testutils:00000094:  gp_test_time_slice_interval, 
+taaj: testutils:00000095:  file, 
+taaj: testutils:00000096:  line, 
+taaj: testutils:00000097:  elapsedMs, 
+taaj: testutils:00000098:  stackTraceLastCFI, 
+taaj: testutils:00000099:  stackTraceCurrent))); 
+taaj: testutils:00000138:  ereport(ERROR, 
+taaj: testutils:00000139:  (errmsg("Attempt to acquire database lock at (%s:%d) while holding lightweight lock(s).\n" 
+taaj: testutils:00000140:  "Stack trace(s) where lightweight lock(s) got acquired:\n%s\n" 
+taaj: testutils:00000141:  "Current stack trace:\n%s\n", 
+taaj: testutils:00000142:  file, 
+taaj: testutils:00000143:  line, 
+taaj: testutils:00000144:  stackTraces, 
+taaj: testutils:00000145:  stackTraceCurrent))); 
 aaaaa GP_IGNORE: uaaj: uriparser - ./backend/utils/misc/uriparser.c
 uaaj: uriparser:00000063:  ereport(ERROR, 
 uaaj: uriparser:00000064:  (errcode(ERRCODE_SYNTAX_ERROR), 
