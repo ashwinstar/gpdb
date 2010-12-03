@@ -739,6 +739,8 @@ void smgrcreatepending(
 
 	PersistentFileSysRelStorageMgr relStorageMgr,
 
+	PersistentFileSysRelBufpoolKind relBufpoolKind,
+
 	MirroredObjectExistenceState 	mirrorExistenceState,
 
 	MirroredRelDataSynchronizationState relDataSynchronizationState,
@@ -768,6 +770,7 @@ void smgrcreatepending(
 								relFileNode,
 								segmentFileNum,
 								relStorageMgr,
+								relBufpoolKind,
 								bufferPoolBulkLoad,
 								mirrorExistenceState,
 								relDataSynchronizationState,

@@ -78,6 +78,7 @@
 
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "catalog/gp_persistent.h"
 
 static void MetaTrackAddUpdInternal(Oid			classid, 
 									Oid			objoid, 
@@ -239,6 +240,7 @@ heap_create(const char *relname,
 			Oid reltablespace,
 			Oid relid,
 			TupleDesc tupDesc,
+			Oid relam,
 			char relkind,
 			char relstorage,
 			bool shared_relation,
@@ -337,11 +339,23 @@ heap_create(const char *relname,
 
 		if (!isAppendOnly)
 		{
+			PersistentFileSysRelStorageMgr localRelStorageMgr;
+			PersistentFileSysRelBufpoolKind relBufpoolKind;
+			
+			GpPersistentRelationNode_GetRelationInfo(
+												relkind,
+												relstorage,
+												relam,
+												&localRelStorageMgr,
+												&relBufpoolKind);
+			Assert(localRelStorageMgr == PersistentFileSysRelStorageMgr_BufferPool);
+
 			Assert(rel->rd_smgr == NULL);
 			RelationOpenSmgr(rel);
 
 			MirroredFileSysObj_TransactionCreateBufferPoolFile(
 												rel->rd_smgr,
+												relBufpoolKind,
 												rel->rd_isLocalBuf,
 												rel->rd_rel->relname.data,
 												/* doJustInTimeDirCreate */ true,
@@ -1228,6 +1242,7 @@ heap_create_with_catalog(const char *relname,
 						 Oid relid,
 						 Oid ownerid,
 						 TupleDesc tupdesc,
+						 Oid relam,
 						 char relkind,
 						 char relstorage,
 						 bool shared_relation,
@@ -1341,6 +1356,7 @@ heap_create_with_catalog(const char *relname,
 							   reltablespace,
 							   relid,
 							   tupdesc,
+							   relam,
 							   relkind,
 							   relstorage,
 							   shared_relation,
@@ -3281,10 +3297,22 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 	{
 		SMgrRelation srel;
 
+		PersistentFileSysRelStorageMgr localRelStorageMgr;
+		PersistentFileSysRelBufpoolKind relBufpoolKind;
+		
+		GpPersistentRelationNode_GetRelationInfo(
+											relation->rd_rel->relkind,
+											relation->rd_rel->relstorage,
+											relation->rd_rel->relam,
+											&localRelStorageMgr,
+											&relBufpoolKind);
+		Assert(localRelStorageMgr == PersistentFileSysRelStorageMgr_BufferPool);
+		
 		srel = smgropen(newrnode);
 	
 		MirroredFileSysObj_TransactionCreateBufferPoolFile(
 											srel,
+											relBufpoolKind,
 											relation->rd_isLocalBuf,
 											relation->rd_rel->relname.data,
 											/* doJustInTimeDirCreate */ true,

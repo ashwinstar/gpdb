@@ -192,6 +192,8 @@ extern void smgrcreatepending(
 
 	PersistentFileSysRelStorageMgr relStorageMgr,
 
+	PersistentFileSysRelBufpoolKind relBufpoolKind,
+
 	MirroredObjectExistenceState 	mirrorExistenceState,
 
 	MirroredRelDataSynchronizationState relDataSynchronizationState,

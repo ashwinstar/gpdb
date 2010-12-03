@@ -517,6 +517,7 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 	Oid					reltablespace,
 	char				relkind,
 	char				relstorage,
+	Oid					relam,
 	int					relnatts)
 {
 	DbInfoRel	*dbInfoRel;
@@ -543,6 +544,7 @@ static void DatabaseInfo_AddPgClassStoredRelation(
 	dbInfoRel->reltablespace = reltablespace;
 	dbInfoRel->relkind = relkind;
 	dbInfoRel->relstorage = relstorage;
+	dbInfoRel->relam = relam;
 	dbInfoRel->relnatts = relnatts;
 
 	dbInfoRel->gpRelationNodesMaxCount = 1;
@@ -1249,6 +1251,7 @@ DatabaseInfo_CollectPgClass(
 											reltablespace,
 											relkind,
 											relstorage,
+											form_pg_class->relam,
 											relnatts);
 
 		(*count)++;

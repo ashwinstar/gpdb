@@ -57,7 +57,7 @@
    mirror_bufpool_resync_ckpt_block_num               integer   ,
    mirror_append_only_loss_eof                        bigint    ,
    mirror_append_only_new_eof                         bigint    ,
-   reserved                                           integer   ,
+   reserved                    						  integer   ,
    parent_xid                                         integer   ,
    persistent_serial_num                              bigint    ,
    previous_free_tid                                  tid       
@@ -68,6 +68,8 @@
 
 #define GpPersistentRelationNodeRelationId 5090
 
+// UNDONE: Change reserved column to relation_bufpool_kind in tidycat above and CATALOG
+// UNDONE: defintition below.  The Anum_* DEFINE below has already been renamed.
 CATALOG(gp_persistent_relation_node,5090) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 {
 	Oid			tablespace_oid;
@@ -107,7 +109,7 @@ CATALOG(gp_persistent_relation_node,5090) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 #define Anum_gp_persistent_relation_node_mirror_bufpool_resync_ckpt_block_num 					13
 #define Anum_gp_persistent_relation_node_mirror_append_only_loss_eof		  					14
 #define Anum_gp_persistent_relation_node_mirror_append_only_new_eof			  					15
-#define Anum_gp_persistent_relation_node_reserved	  											16
+#define Anum_gp_persistent_relation_node_relation_bufpool_kind									16
 #define Anum_gp_persistent_relation_node_parent_xid  						  					17
 #define Anum_gp_persistent_relation_node_persistent_serial_num     			  					18
 #define Anum_gp_persistent_relation_node_previous_free_tid  				  					19
@@ -137,7 +139,7 @@ typedef FormData_gp_persistent_relation_node *Form_gp_persistent_relation_node;
 { GpPersistentRelationNodeRelationId, {"mirror_bufpool_resync_ckpt_block_num"},					23, -1, 4, 13, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_append_only_loss_eof"},							20, -1, 8, 14, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"mirror_append_only_new_eof"},							20, -1, 8, 15, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
-{ GpPersistentRelationNodeRelationId, {"reserved"},												23, -1, 4, 16, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ GpPersistentRelationNodeRelationId, {"relation_bufpool_kind"},								23, -1, 4, 16, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"parent_xid"},											23, -1, 4, 17, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"persistent_serial_num"},								20, -1, 8, 18, 0, -1, -1, true, 'p', 'd', true, false, false, true, 0 }, \
 { GpPersistentRelationNodeRelationId, {"previous_free_tid"},									27, -1, 6, 19, 0, -1, -1, false, 'p', 's', true, false, false, true, 0 }
@@ -518,6 +520,13 @@ inline static bool GpPersistent_SkipXLogInfo(
 	return false;
 }
 
+extern void GpPersistentRelationNode_GetRelationInfo(
+	char		relkind,			/* see RELKIND_xxx constants */
+	char		relstorage,			/* see RELSTORAGE_xxx constants */
+	Oid			relam,				/* index access method; 0 if not an index */
+
+	PersistentFileSysRelStorageMgr			*relationStorageManager,
+	PersistentFileSysRelBufpoolKind			*relationBufpoolKind);
 
 extern void GpPersistentRelationNode_GetValues(
 	Datum									*values,
@@ -537,7 +546,7 @@ extern void GpPersistentRelationNode_GetValues(
 	BlockNumber								*mirrorBufpoolResyncCkptBlockNum,
 	int64									*mirrorAppendOnlyLossEof,
 	int64									*mirrorAppendOnlyNewEof,
-	int32									*reserved,
+	PersistentFileSysRelBufpoolKind 		*relBufpoolKind,
 	TransactionId							*parentXid,
 	int64									*persistentSerialNum,
 	ItemPointerData 						*previousFreeTid);
@@ -560,7 +569,7 @@ extern void GpPersistentRelationNode_SetDatumValues(
 	BlockNumber								mirrorBufpoolResyncCkptBlockNum,
 	int64									mirrorAppendOnlyLossEof,
 	int64									mirrorAppendOnlyNewEof,
-	int32									reserved,
+	PersistentFileSysRelBufpoolKind 		relBufpoolKind,
 	TransactionId							parentXid,
 	int64									persistentSerialNum,
 	ItemPointerData 						*previousFreeTid);

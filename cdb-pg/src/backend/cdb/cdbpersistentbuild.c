@@ -83,7 +83,7 @@ static void PersistentBuild_ScanGpPersistentRelationNodeForGlobal(
 		BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 		int64							mirrorAppendOnlyLossEof;
 		int64							mirrorAppendOnlyNewEof;
-		int32							reserved;
+		PersistentFileSysRelBufpoolKind relBufpoolKind;
 		TransactionId					parentXid;
 		int64							serialNum;
 		ItemPointerData					previousFreeTid;
@@ -107,7 +107,7 @@ static void PersistentBuild_ScanGpPersistentRelationNodeForGlobal(
 										&mirrorBufpoolResyncCkptBlockNum,
 										&mirrorAppendOnlyLossEof,
 										&mirrorAppendOnlyNewEof,
-										&reserved,
+										&relBufpoolKind,
 										&parentXid,
 										&serialNum,
 										&previousFreeTid);
@@ -191,6 +191,17 @@ static void PersistentBuild_PopulateGpRelationNode(
 		 */
 		if (relStorageMgr == PersistentFileSysRelStorageMgr_BufferPool)
 		{
+			PersistentFileSysRelStorageMgr localRelStorageMgr;
+			PersistentFileSysRelBufpoolKind relBufpoolKind;
+			
+			GpPersistentRelationNode_GetRelationInfo(
+												dbInfoRel->relkind,
+												dbInfoRel->relstorage,
+												dbInfoRel->relam,
+												&localRelStorageMgr,
+												&relBufpoolKind);
+			Assert(localRelStorageMgr == PersistentFileSysRelStorageMgr_BufferPool);
+
 			/*
 			 * Heap tables only ever add a single segment_file_num=0 entry to
 			 * gp_persistent_relation regardless of how many segment files there
@@ -200,6 +211,7 @@ static void PersistentBuild_PopulateGpRelationNode(
 										&relFileNode,
 										/* segmentFileNum */ 0,
 										relStorageMgr,
+										relBufpoolKind,
 										mirrorExistenceState,
 										relDataSynchronizationState,
 										/* mirrorAppendOnlyLossEof */ 0,
@@ -324,6 +336,7 @@ static void PersistentBuild_PopulateGpRelationNode(
 											&relFileNode,
 											physicalSegmentFileNum,
 											relStorageMgr,
+											PersistentFileSysRelBufpoolKind_None,
 											mirrorExistenceState,
 											relDataSynchronizationState,
 											/* mirrorAppendOnlyLossEof */ logicalEof,

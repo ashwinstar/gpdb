@@ -30,6 +30,83 @@
 #include "storage/ipc.h"
 #include "utils/builtins.h"
 
+void GpPersistentRelationNode_GetRelationInfo(
+	char		relkind,			/* see RELKIND_xxx constants */
+	char		relstorage,			/* see RELSTORAGE_xxx constants */
+	Oid			relam,				/* index access method; 0 if not an index */
+
+	PersistentFileSysRelStorageMgr			*relationStorageManager,
+	PersistentFileSysRelBufpoolKind			*relationBufpoolKind)
+{
+	// Assume.
+	*relationStorageManager = PersistentFileSysRelStorageMgr_BufferPool;	
+	*relationBufpoolKind = PersistentFileSysRelBufpoolKind_None;
+
+	switch(relkind)
+	{
+	case RELKIND_INDEX:				/* secondary index */
+		if (relam == BTREE_AM_OID)
+		{
+			*relationBufpoolKind = PersistentFileSysRelBufpoolKind_Btree;
+		}
+		else if (relam == BITMAP_AM_OID)
+		{
+			*relationBufpoolKind = PersistentFileSysRelBufpoolKind_BitMap;
+		}
+		else
+		{
+			*relationBufpoolKind = PersistentFileSysRelBufpoolKind_UnknownIndex;
+		}
+		break;
+
+	case RELKIND_RELATION:			/* ordinary cataloged heap or Append-Only */
+		if (relstorage_is_ao(relstorage))
+		{
+			*relationStorageManager = PersistentFileSysRelStorageMgr_AppendOnly;	
+			Assert(*relationBufpoolKind == PersistentFileSysRelBufpoolKind_None);
+		}
+		else if (relstorage == 'h')
+		{
+			*relationBufpoolKind = PersistentFileSysRelBufpoolKind_Heap;
+		}
+		else
+		{
+			*relationBufpoolKind = PersistentFileSysRelBufpoolKind_UnknownRelStorage;
+		}
+		break;
+
+	case RELKIND_SEQUENCE:			/* SEQUENCE relation */
+		*relationBufpoolKind = PersistentFileSysRelBufpoolKind_Sequence;
+		break;
+
+	case RELKIND_TOASTVALUE:		/* moved off huge values */
+		*relationBufpoolKind = PersistentFileSysRelBufpoolKind_Toast;
+		break;
+
+	case RELKIND_AOSEGMENTS:		/* AO segment files and eof's */
+		*relationBufpoolKind = PersistentFileSysRelBufpoolKind_AppendOnlySeginfo;
+		break;
+
+	case RELKIND_AOBLOCKDIR:		/* AO block directory */
+		*relationBufpoolKind = PersistentFileSysRelBufpoolKind_AppendOnlyBlockDirectory;
+		break;
+
+	case RELKIND_UNCATALOGED:		/* temporary heap */
+		*relationBufpoolKind = PersistentFileSysRelBufpoolKind_UncatalogedHeap;
+		break;
+
+	case RELKIND_VIEW:				/* view */
+	case RELKIND_COMPOSITE_TYPE:	/* composite type */
+		*relationStorageManager = PersistentFileSysRelStorageMgr_None;
+		break;
+
+	default:
+		*relationBufpoolKind = PersistentFileSysRelBufpoolKind_UnknownRelKind;
+		break;
+
+	}
+}
+
 void GpPersistentRelationNode_GetValues(
 	Datum									*values,
 
@@ -48,7 +125,7 @@ void GpPersistentRelationNode_GetValues(
 	BlockNumber								*mirrorBufpoolResyncCkptBlockNum,
 	int64									*mirrorAppendOnlyLossEof,
 	int64									*mirrorAppendOnlyNewEof,
-	int32									*reserved,
+	PersistentFileSysRelBufpoolKind 		*relBufpoolKind,
 	TransactionId							*parentXid,
 	int64									*persistentSerialNum,
 	ItemPointerData 						*previousFreeTid)
@@ -83,7 +160,7 @@ void GpPersistentRelationNode_GetValues(
 
 	*mirrorAppendOnlyNewEof = DatumGetInt64(values[Anum_gp_persistent_relation_node_mirror_append_only_new_eof - 1]);
 
-	*reserved = DatumGetInt32(values[Anum_gp_persistent_relation_node_reserved - 1]);
+	*relBufpoolKind = (PersistentFileSysRelBufpoolKind)DatumGetInt32(values[Anum_gp_persistent_relation_node_relation_bufpool_kind - 1]);
 
 	*parentXid = (TransactionId)DatumGetInt32(values[Anum_gp_persistent_relation_node_parent_xid - 1]);
 
@@ -111,7 +188,7 @@ void GpPersistentRelationNode_SetDatumValues(
 	BlockNumber						mirrorBufpoolResyncCkptBlockNum,
 	int64							mirrorAppendOnlyLossEof,
 	int64							mirrorAppendOnlyNewEof,
-	int32							reserved,
+	PersistentFileSysRelBufpoolKind relBufpoolKind,
 	TransactionId					parentXid,
 	int64							persistentSerialNum,
 	ItemPointerData 				*previousFreeTid)
@@ -163,8 +240,8 @@ void GpPersistentRelationNode_SetDatumValues(
 	values[Anum_gp_persistent_relation_node_mirror_append_only_new_eof - 1] = 
 									Int64GetDatum(mirrorAppendOnlyNewEof);
 
-	values[Anum_gp_persistent_relation_node_reserved - 1] = 
-									Int32GetDatum(reserved);
+	values[Anum_gp_persistent_relation_node_relation_bufpool_kind - 1] = 
+									Int32GetDatum((int32)relBufpoolKind);
 
 	values[Anum_gp_persistent_relation_node_parent_xid - 1] = 
 									Int32GetDatum(parentXid);
@@ -478,6 +555,7 @@ void GpPersistent_GetCommonValues(
 			BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 			int64							mirrorAppendOnlyLossEof;
 			int64							mirrorAppendOnlyNewEof;
+			PersistentFileSysRelBufpoolKind relBufpoolKind;
 
 			GpPersistentRelationNode_GetValues(
 											values,
@@ -496,7 +574,7 @@ void GpPersistent_GetCommonValues(
 											&mirrorBufpoolResyncCkptBlockNum,
 											&mirrorAppendOnlyLossEof,
 											&mirrorAppendOnlyNewEof,
-											&reserved,
+											&relBufpoolKind,
 											parentXid,
 											persistentSerialNum,
 											&previousFreeTid);

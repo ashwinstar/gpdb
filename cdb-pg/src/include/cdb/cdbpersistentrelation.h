@@ -53,6 +53,8 @@ extern void PersistentRelation_AddCreatePending(
 
 	PersistentFileSysRelStorageMgr relStorageMgr,
 
+	PersistentFileSysRelBufpoolKind relBufpoolKind,
+
 	bool				bufferPoolBulkLoad,
 
 	MirroredObjectExistenceState mirrorExistenceState,
@@ -77,7 +79,9 @@ extern void PersistentRelation_AddCreated(
 	int32				segmentFileNum,
 				
 	PersistentFileSysRelStorageMgr relStorageMgr,
-				
+	
+	PersistentFileSysRelBufpoolKind relBufpoolKind,
+	
 	MirroredObjectExistenceState mirrorExistenceState,
 	
 	MirroredRelDataSynchronizationState relDataSynchronizationState,

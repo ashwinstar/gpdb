@@ -1166,14 +1166,26 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 			{
 				bool useWal;
 				
+				PersistentFileSysRelStorageMgr localRelStorageMgr;
+				PersistentFileSysRelBufpoolKind relBufpoolKind;
+				
 				useWal = !XLog_CanBypassWal();
 				
+				GpPersistentRelationNode_GetRelationInfo(
+													dbInfoRel->relkind,
+													dbInfoRel->relstorage,
+													dbInfoRel->relam,
+													&localRelStorageMgr,
+													&relBufpoolKind);
+				Assert(localRelStorageMgr == PersistentFileSysRelStorageMgr_BufferPool);
+
 				/*
 				 * Generate new page XLOG records with the one persistent TID and
 				 * serial number for the Buffer Pool managed relation.
 				 */
 				MirroredFileSysObj_TransactionCreateBufferPoolFile(
 													smgropen(dstRelFileNode),
+													relBufpoolKind,
 													/* isLocalBuf */ false,
 													dbInfoRel->relname,
 													/* doJustInTimeDirCreate */ false,

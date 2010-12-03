@@ -4128,6 +4128,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 											  intoOid,			/* MPP */
 											  GetUserId(),
 											  tupdesc,
+											  /* relam */ InvalidOid,
 											  relkind,
 											  relstorage,
 											  false,

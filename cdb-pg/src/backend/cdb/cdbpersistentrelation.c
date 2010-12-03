@@ -144,7 +144,9 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 
 	int64					mirrorAppendOnlyLossEof;
 	int64					mirrorAppendOnlyNewEof;
-	int32					reserved;
+
+	PersistentFileSysRelBufpoolKind relBufpoolKind;
+
 	TransactionId			parentXid;
 	int64					serialNum;
 	ItemPointerData			previousFreeTid;
@@ -166,7 +168,7 @@ static bool PersistentRelation_CheckTablespaceScanTupleCallback(
 									&mirrorBufpoolResyncCkptBlockNum,
 									&mirrorAppendOnlyLossEof,
 									&mirrorAppendOnlyNewEof,
-									&reserved,
+									&relBufpoolKind,
 									&parentXid,
 									&serialNum,
 									&previousFreeTid);
@@ -225,6 +227,8 @@ void PersistentRelation_AddCreatePending(
 	int32				segmentFileNum,
 
 	PersistentFileSysRelStorageMgr relStorageMgr,
+
+	PersistentFileSysRelBufpoolKind relBufpoolKind,
 
 	bool				bufferPoolBulkLoad,
 
@@ -300,7 +304,7 @@ void PersistentRelation_AddCreatePending(
 										/* mirrorBufpoolResyncCkptBlockNum */ 0,
 										/* mirrorAppendOnlyLossEof */ 0,
 										/* mirrorAppendOnlyNewEof */ 0,
-										/* reseved */ 0,
+										relBufpoolKind,
 										GetTopTransactionId(),
 										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 										&previousFreeTid);
@@ -344,6 +348,8 @@ void PersistentRelation_AddCreated(
 	int32				segmentFileNum,
 
 	PersistentFileSysRelStorageMgr relStorageMgr,
+
+	PersistentFileSysRelBufpoolKind relBufpoolKind,
 
 	MirroredObjectExistenceState mirrorExistenceState,
 
@@ -410,7 +416,7 @@ void PersistentRelation_AddCreated(
 										/* mirrorBufpoolResyncCkptBlockNum */ 0,
 										mirrorAppendOnlyLossEof,
 										mirrorAppendOnlyNewEof,
-										/* reserved */ 0,
+										relBufpoolKind,
 										InvalidTransactionId,
 										/* persistentSerialNum */ 0,	// This will be set by PersistentFileSysObj_AddTuple.
 										&previousFreeTid);

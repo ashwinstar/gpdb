@@ -901,6 +901,8 @@ static void MirroredFileSysObj_JustInTimeDbDirCreate(
 void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 	SMgrRelation 			smgrOpen,
 
+	PersistentFileSysRelBufpoolKind relBufpoolKind,
+
 	bool 					isLocalBuf,
 
 	char					*relationName,
@@ -967,6 +969,7 @@ void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 				&smgrOpen->smgr_rnode,
 				/* segmentFileNum */ 0,
 				PersistentFileSysRelStorageMgr_BufferPool,
+				relBufpoolKind,
 				mirrorExistenceState,
 				relDataSynchronizationState,
 				relationName,
@@ -1100,6 +1103,7 @@ void MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 				relFileNode,
 				segmentFileNum,
 				PersistentFileSysRelStorageMgr_AppendOnly,
+				PersistentFileSysRelBufpoolKind_None,
 				mirrorExistenceState,
 				relDataSynchronizationState,
 				relationName,

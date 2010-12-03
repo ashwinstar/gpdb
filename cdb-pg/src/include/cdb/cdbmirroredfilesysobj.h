@@ -155,6 +155,8 @@ extern void MirroredFileSysObj_DropDbDir(
 extern void MirroredFileSysObj_TransactionCreateBufferPoolFile(
 	SMgrRelation 			smgrOpen,
 
+	PersistentFileSysRelBufpoolKind relBufpoolKind,
+
 	bool 					isLocalBuf,
 
 	char					*relationName,

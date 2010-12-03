@@ -233,6 +233,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 										   aosegOid,
 										   rel->rd_rel->relowner,
 										   tupdesc,
+										   /* relam */ InvalidOid,
 										   RELKIND_AOSEGMENTS,
 										   RELSTORAGE_HEAP,
 										   shared_relation,

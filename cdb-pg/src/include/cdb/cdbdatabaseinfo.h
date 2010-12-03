@@ -111,6 +111,7 @@ typedef struct DbInfoRel
 	Oid									 reltablespace;
 	char								 relkind;
 	char								 relstorage;
+	Oid									 relam;
 	int									 relnatts;
 
 	/* segment files - as described in gp_relation_node */

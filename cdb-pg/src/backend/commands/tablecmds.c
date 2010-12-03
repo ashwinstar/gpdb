@@ -811,6 +811,7 @@ DefineRelation_int(CreateStmt *stmt,
 										  stmt->oidInfo.relOid,
 										  stmt->ownerid,
 										  descriptor,
+										  /* relam */ InvalidOid,
 										  relkind,
 										  relstorage,
 										  shared_relation,
@@ -10362,7 +10363,10 @@ ATExecSetTableSpace_BufferPool(
 	int64 newPersistentSerialNum;
 	SMgrRelation dstrel;
 	bool useWal;
-
+	
+	PersistentFileSysRelStorageMgr localRelStorageMgr;
+	PersistentFileSysRelBufpoolKind relBufpoolKind;
+	
 	oldTablespace = rel->rd_rel->reltablespace ? rel->rd_rel->reltablespace : MyDatabaseTableSpace;
 
 	/*
@@ -10397,9 +10401,18 @@ ATExecSetTableSpace_BufferPool(
 		     oldTablespace,
 		     rel->rd_rel->relfilenode);
 
+	GpPersistentRelationNode_GetRelationInfo(
+										rel->rd_rel->relkind,
+										rel->rd_rel->relstorage,
+										rel->rd_rel->relam,
+										&localRelStorageMgr,
+										&relBufpoolKind);
+	Assert(localRelStorageMgr == PersistentFileSysRelStorageMgr_BufferPool);
+	
 	dstrel = smgropen(*newRelFileNode);
 	MirroredFileSysObj_TransactionCreateBufferPoolFile(
 											dstrel,
+											relBufpoolKind,
 											rel->rd_isLocalBuf,
 											rel->rd_rel->relname.data,
 											/* doJustInTimeDirCreate */ true,

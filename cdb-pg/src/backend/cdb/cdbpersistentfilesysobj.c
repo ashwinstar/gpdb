@@ -136,7 +136,9 @@ static void PersistentFileSysObj_PrintRelationFile(
 
 	int64					mirrorAppendOnlyLossEof;
 	int64					mirrorAppendOnlyNewEof;
-	int32					reserved;
+
+	PersistentFileSysRelBufpoolKind relBufpoolKind;
+
 	TransactionId			parentXid;
 	int64					persistentSerialNum;
 	ItemPointerData			previousFreeTid;
@@ -158,7 +160,7 @@ static void PersistentFileSysObj_PrintRelationFile(
 									&mirrorBufpoolResyncCkptBlockNum,
 									&mirrorAppendOnlyLossEof,
 									&mirrorAppendOnlyNewEof,
-									&reserved,
+									&relBufpoolKind,
 									&parentXid,
 									&persistentSerialNum,
 									&previousFreeTid);
@@ -180,7 +182,7 @@ static void PersistentFileSysObj_PrintRelationFile(
 			 "Buffer Pool (marked for scan incremental resync = %s, "
 			 "resync changed page count " INT64_FORMAT ", "
 			 "resync checkpoint loc %s, resync checkpoint block num %u), "
-			 "reserved %u, parent xid %u, "
+			 "relation buffer pool kind %u, parent xid %u, "
 			 "persistent serial num " INT64_FORMAT ", previous free TID %s",
 			 prefix,
 			 ItemPointerToString(persistentTid),
@@ -197,7 +199,7 @@ static void PersistentFileSysObj_PrintRelationFile(
 			 mirrorBufpoolResyncChangedPageCount,
 			 XLogLocationToString(&mirrorBufpoolResyncCkptLoc),
 			 (unsigned int)mirrorBufpoolResyncCkptBlockNum,
-			 reserved,
+			 relBufpoolKind,
 			 parentXid,
 			 persistentSerialNum,
 			 ItemPointerToString2(&previousFreeTid));
@@ -209,7 +211,7 @@ static void PersistentFileSysObj_PrintRelationFile(
 			 "%s gp_persistent_relation_node %s: %u/%u/%u, segment file #%d, relation storage manager '%s', persistent state '%s', create mirror data loss tracking session num " INT64_FORMAT ", "
 			 "mirror existence state '%s', data synchronization state '%s', "
 			 "Append-Only (loss EOF " INT64_FORMAT ", new EOF " INT64_FORMAT ", equal = %s), "
-			 "reserved %u, parent xid %u, "
+			 "relation buffer pool kind %u, parent xid %u, "
 			 "persistent serial num " INT64_FORMAT ", previous free TID %s",
 			 prefix,
 			 ItemPointerToString(persistentTid),
@@ -225,7 +227,7 @@ static void PersistentFileSysObj_PrintRelationFile(
 			 mirrorAppendOnlyLossEof,
 			 mirrorAppendOnlyNewEof,
 			 ((mirrorAppendOnlyLossEof == mirrorAppendOnlyNewEof) ? "true" : "false"),
-			 reserved,
+			 relBufpoolKind,
 			 parentXid,
 			 persistentSerialNum,
 			 ItemPointerToString2(&previousFreeTid));
@@ -895,7 +897,7 @@ void PersistentFileSysObj_FreeTuple(
 												/* mirrorBufpoolResyncCkptBlockNum */ 0,
 												/* mirrorAppendOnlyLossEof */ 0,
 												/* mirrorAppendOnlyNewEof */ 0,
-												/* reserved */ 0,
+												PersistentFileSysRelBufpoolKind_None,
 												InvalidTransactionId,
 												/* persistentSerialNum */ 0,
 												&previousFreeTid);
@@ -3091,7 +3093,7 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 	int64							mirrorAppendOnlyLossEof;
 	int64							mirrorAppendOnlyNewEof;
-	int32							reserved;
+	PersistentFileSysRelBufpoolKind relBufpoolKind;
 	TransactionId					parentXid;
 	int64							actualPersistentSerialNum;
 	ItemPointerData 				previousFreeTid;
@@ -3146,7 +3148,7 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 									&mirrorBufpoolResyncCkptBlockNum,
 									&mirrorAppendOnlyLossEof,
 									&mirrorAppendOnlyNewEof,
-									&reserved,
+									&relBufpoolKind,
 									&parentXid,
 									&actualPersistentSerialNum,
 									&previousFreeTid);	
@@ -4051,7 +4053,7 @@ void PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 	int64							mirrorAppendOnlyLossEof;
 	int64							mirrorAppendOnlyNewEof;
-	int32							reserved;
+	PersistentFileSysRelBufpoolKind relBufpoolKind;
 	TransactionId					parentXid;
 	int64							actualPersistentSerialNum;
 	ItemPointerData 				previousFreeTid;
@@ -4100,7 +4102,7 @@ void PersistentFileSysObj_MarkBufPoolRelationForScanIncrementalResync(
 									&mirrorBufpoolResyncCkptBlockNum,
 									&mirrorAppendOnlyLossEof,
 									&mirrorAppendOnlyNewEof,
-									&reserved,
+									&relBufpoolKind,
 									&parentXid,
 									&actualPersistentSerialNum,
 									&previousFreeTid);
@@ -4170,7 +4172,7 @@ bool PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
 	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 	int64							mirrorAppendOnlyLossEof;
 	int64							mirrorAppendOnlyNewEof;
-	int32							reserved;
+	PersistentFileSysRelBufpoolKind relBufpoolKind;
 	TransactionId					parentXid;
 	int64							actualPersistentSerialNum;
 	ItemPointerData 				previousFreeTid;
@@ -4224,7 +4226,7 @@ bool PersistentFileSysObj_CanAppendOnlyCatchupDuringResync(
 									&mirrorBufpoolResyncCkptBlockNum,
 									&mirrorAppendOnlyLossEof,
 									&mirrorAppendOnlyNewEof,
-									&reserved,
+									&relBufpoolKind,
 									&parentXid,
 									&actualPersistentSerialNum,
 									&previousFreeTid);
@@ -4309,7 +4311,7 @@ void PersistentFileSysObj_GetAppendOnlyCatchupMirrorStartEof(
 	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 	int64							mirrorAppendOnlyLossEof;
 	int64							mirrorAppendOnlyNewEof;
-	int32							reserved;
+	PersistentFileSysRelBufpoolKind relBufpoolKind;
 	TransactionId					parentXid;
 	int64							actualPersistentSerialNum;
 	ItemPointerData 				previousFreeTid;
@@ -4363,7 +4365,7 @@ void PersistentFileSysObj_GetAppendOnlyCatchupMirrorStartEof(
 									&mirrorBufpoolResyncCkptBlockNum,
 									&mirrorAppendOnlyLossEof,
 									&mirrorAppendOnlyNewEof,
-									&reserved,
+									&relBufpoolKind,
 									&parentXid,
 									&actualPersistentSerialNum,
 									&previousFreeTid);
@@ -5024,7 +5026,7 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 		BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 		int64							mirrorAppendOnlyLossEof;
 		int64							mirrorAppendOnlyNewEof;
-		int32							reserved;
+		PersistentFileSysRelBufpoolKind relBufpoolKind;
 		TransactionId					parentXid;
 		int64							serialNum;
 		ItemPointerData					previousFreeTid;
@@ -5048,7 +5050,7 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 										&mirrorBufpoolResyncCkptBlockNum,
 										&mirrorAppendOnlyLossEof,
 										&mirrorAppendOnlyNewEof,
-										&reserved,
+										&relBufpoolKind,
 										&parentXid,
 										&serialNum,
 										&previousFreeTid);
@@ -5161,7 +5163,7 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 		BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 		int64							mirrorAppendOnlyLossEof;
 		int64							mirrorAppendOnlyNewEof;
-		int32							reserved;
+		PersistentFileSysRelBufpoolKind relBufpoolKind;
 		TransactionId					parentXid;
 		int64							serialNum;
 		ItemPointerData					previousFreeTid;
@@ -5187,7 +5189,7 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 										&mirrorBufpoolResyncCkptBlockNum,
 										&mirrorAppendOnlyLossEof,
 										&mirrorAppendOnlyNewEof,
-										&reserved,
+										&relBufpoolKind,
 										&parentXid,
 										&serialNum,
 										&previousFreeTid);
@@ -5335,7 +5337,7 @@ void PersistentFileSysObj_MarkAppendOnlyCatchup(void)
 		BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 		int64							mirrorAppendOnlyLossEof;
 		int64							mirrorAppendOnlyNewEof;
-		int32							reserved;
+		PersistentFileSysRelBufpoolKind relBufpoolKind;
 		TransactionId					parentXid;
 		int64							serialNum;
 		ItemPointerData					previousFreeTid;
@@ -5359,7 +5361,7 @@ void PersistentFileSysObj_MarkAppendOnlyCatchup(void)
 										&mirrorBufpoolResyncCkptBlockNum,
 										&mirrorAppendOnlyLossEof,
 										&mirrorAppendOnlyNewEof,
-										&reserved,
+										&relBufpoolKind,
 										&parentXid,
 										&serialNum,
 										&previousFreeTid);
@@ -5485,7 +5487,7 @@ static void PersistentFileSysObj_MarkPageIncremental(
 	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 	int64							mirrorAppendOnlyLossEof;
 	int64							mirrorAppendOnlyNewEof;
-	int32							reserved;
+	PersistentFileSysRelBufpoolKind relBufpoolKind;
 	TransactionId					parentXid;
 	int64							serialNum;
 	ItemPointerData 				previousFreeTid;
@@ -5534,7 +5536,7 @@ static void PersistentFileSysObj_MarkPageIncremental(
 									&mirrorBufpoolResyncCkptBlockNum,
 									&mirrorAppendOnlyLossEof,
 									&mirrorAppendOnlyNewEof,
-									&reserved,
+									&relBufpoolKind,
 									&parentXid,
 									&serialNum,
 									&previousFreeTid);
@@ -5732,7 +5734,7 @@ bool PersistentFileSysObj_ResynchronizeScan(
 	bool							mirrorBufpoolMarkedForScanIncrementalResync;
 	TransactionId					parentXid;
 	int64							serialNum;
-	int32							reserved;
+	PersistentFileSysRelBufpoolKind relBufpoolKind;
 	ItemPointerData 				previousFreeTid;
 
 	PersistentFileSysObjName		fsObjName;
@@ -5791,7 +5793,7 @@ bool PersistentFileSysObj_ResynchronizeScan(
 										mirrorBufpoolResyncCkptBlockNum,
 										mirrorAppendOnlyLossEof,
 										mirrorAppendOnlyNewEof,
-										&reserved,
+										&relBufpoolKind,
 										&parentXid,
 										&serialNum,
 										&previousFreeTid);
@@ -5903,7 +5905,7 @@ bool PersistentFileSysObj_ResynchronizeRefetch(
 	MirroredObjectExistenceState	mirrorExistenceState;
 	bool							mirrorBufpoolMarkedForScanIncrementalResync;
 	int64							mirrorBufpoolResyncChangedPageCount;
-	int32							reserved;
+	PersistentFileSysRelBufpoolKind relBufpoolKind;
 	TransactionId					parentXid;
 	int64							serialNum;
 	ItemPointerData 				previousFreeTid;
@@ -5952,7 +5954,7 @@ bool PersistentFileSysObj_ResynchronizeRefetch(
 									mirrorBufpoolResyncCkptBlockNum,
 									mirrorAppendOnlyLossEof,
 									mirrorAppendOnlyNewEof,
-									&reserved,
+									&relBufpoolKind,
 									&parentXid,
 									&serialNum,
 									&previousFreeTid);
@@ -6223,7 +6225,7 @@ bool PersistentFileSysObj_ScanForRelation(
 		BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 		int64							mirrorAppendOnlyLossEof;
 		int64							mirrorAppendOnlyNewEof;
-		int32							reserved;
+		PersistentFileSysRelBufpoolKind relBufpoolKind;
 		TransactionId					parentXid;
 		int64							serialNum;
 		ItemPointerData					previousFreeTid;
@@ -6245,7 +6247,7 @@ bool PersistentFileSysObj_ScanForRelation(
 										&mirrorBufpoolResyncCkptBlockNum,
 										&mirrorAppendOnlyLossEof,
 										&mirrorAppendOnlyNewEof,
-										&reserved,
+										&relBufpoolKind,
 										&parentXid,
 										&serialNum,
 										&previousFreeTid);
@@ -6328,7 +6330,7 @@ static void PersistentFileSysObj_StartupIntegrityCheckRelation(void)
 		BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
 		int64							mirrorAppendOnlyLossEof;
 		int64							mirrorAppendOnlyNewEof;
-		int32							reserved;
+		PersistentFileSysRelBufpoolKind relBufpoolKind;
 		TransactionId					parentXid;
 		int64							serialNum;
 		ItemPointerData					previousFreeTid;
@@ -6352,7 +6354,7 @@ static void PersistentFileSysObj_StartupIntegrityCheckRelation(void)
 										&mirrorBufpoolResyncCkptBlockNum,
 										&mirrorAppendOnlyLossEof,
 										&mirrorAppendOnlyNewEof,
-										&reserved,
+										&relBufpoolKind,
 										&parentXid,
 										&serialNum,
 										&previousFreeTid);
