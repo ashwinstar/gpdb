@@ -3262,12 +3262,12 @@ try:
      pass
   elif len(options.ids) == 0:
      if options.phase2 == True:
-        GpStart.local('gpupgrademirror start database', masterOnly = True)
+        GpStart.local('gpupgrademirror start database', masterOnly = False)
      else:
         """ We are running in a 4.0 environment, but need to start like we are in a 3.3.x environment. """
         env = SetupEnv(options.gphome)
         Startup(env = env, utility = True)
-     gpstartStatus = "MASTER"
+     gpstartStatus = "MASTER_AND_SEGMENTS"
 
   if options.rollback == True and options.phase2 == False:
      ''' setup for rollback '''
@@ -3328,67 +3328,70 @@ try:
          dbrow = DatabaseRow(row)
          databaseList.append(dbrow)
      conn.close()
-         
-     ''' Connect to each database, and make a list of files we will use '''
-     fileList = []
-     specialDirList = []
-     ''' always copy the global directory '''
-     specialDirList.append('global')
-     ''' always copy the pg_xlog directory '''
-     specialDirList.append('pg_xlog')     
-     for db in databaseList:
-         if str(db.databaseName) == str("template0"):
-            ''' Special case where we copy the entire database '''
-            specialDirList.append('base/' + str(db.databaseDirectory))
-            continue
-                            
-         connectURL = dbconn.DbURL(dbname = db.databaseName)
-         connectForDB = dbconn.connect( dburl   = connectURL
-                                      , utility = True
-                                      ) 
-         ''' List of non-toast catalog tables '''
-         DBcursor = dbconn.execSQL(connectForDB, NonCatalogToastTablesRow.query())
-         for fileRow in DBcursor:
-             nonToastRow = NonCatalogToastTablesRow(fileRow)
-             fileList.append('base/' + str(db.databaseDirectory) + '/' + str(nonToastRow.filename))
-
-         ''' List of Information Schema catalog tables '''
-         DBcursor = dbconn.execSQL(connectForDB, InformationSchemaTablesRow.query())
-         for fileRow in DBcursor:
-             informationSchemaRow = InformationSchemaTablesRow(fileRow)
-             fileList.append('base/' + str(db.databaseDirectory) + '/' + str(informationSchemaRow.filename))
-             
-         ''' List of toast catalog tables and their toast files '''
-         DBcursor = dbconn.execSQL(connectForDB, CatalogToastTablesRow.query())
-         for fileRow in DBcursor:
-             toastTableRow = CatalogToastTablesRow(fileRow)
-             fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.filename))
-             fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.toastfilename))
-             fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.toastfileindex))
-         connectForDB.close()
-    
+  
      try:
         p2MirrorInfo = Phase1and2MirrorInfo(dbUrl)
      except Exception, e:
         logger.warning('Unable to obtain mirror information: ' + str(e))
         logger.warning('gpupgradmirror exiting')
         exit(0)
-
+       
      ''' Get list of all segments '''
      allSegMirrorInfo = p2MirrorInfo.getAllMirrorInfoList()
-     
+
+     ''' Go to each segment'''
      for mirrorInfo in allSegMirrorInfo:
-        ''' Create a phase2 object for each mirror segment'''
-        tempNode = Phase2(dbUrl, logger, options.info_data_directory, mirrorInfo.nic_address)
-        
-        ''' Setup the mirror node '''
-        """ KAS note to self. Setup could be done in parallel. """
-        tempNode.setup([mirrorInfo], fileList, specialDirList)
-        
-        phase2MirrorList.append(tempNode)
+
+         ''' Connect to each segment's database, and make a list of files we will use '''
+         fileList = []
+         specialDirList = []
+         ''' always copy the global directory '''
+         specialDirList.append('global')
+         ''' always copy the pg_xlog directory '''
+         specialDirList.append('pg_xlog')     
+         for db in databaseList:
+             if str(db.databaseName) == str("template0"):
+                ''' Special case where we copy the entire database '''
+                specialDirList.append('base/' + str(db.databaseDirectory))
+                continue
+
+             connectURL = dbconn.DbURL(dbname = db.databaseName, hostname = mirrorInfo.nic_address, port = mirrorInfo.primary_host_port)
+             connectForDB = dbconn.connect( dburl   = connectURL
+                                          , utility = True
+                                          ) 
+             ''' List of non-toast catalog tables '''
+             DBcursor = dbconn.execSQL(connectForDB, NonCatalogToastTablesRow.query())
+             for fileRow in DBcursor:
+                 nonToastRow = NonCatalogToastTablesRow(fileRow)
+                 fileList.append('base/' + str(db.databaseDirectory) + '/' + str(nonToastRow.filename))
     
-     if gpstartStatus != None and gpstartStatus == "MASTER":
-        GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
+             ''' List of Information Schema catalog tables '''
+             DBcursor = dbconn.execSQL(connectForDB, InformationSchemaTablesRow.query())
+             for fileRow in DBcursor:
+                 informationSchemaRow = InformationSchemaTablesRow(fileRow)
+                 fileList.append('base/' + str(db.databaseDirectory) + '/' + str(informationSchemaRow.filename))
+             
+             ''' List of toast catalog tables and their toast files '''
+             DBcursor = dbconn.execSQL(connectForDB, CatalogToastTablesRow.query())
+             for fileRow in DBcursor:
+                 toastTableRow = CatalogToastTablesRow(fileRow)
+                 fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.filename))
+                 fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.toastfilename))
+                 fileList.append('base/' + str(db.databaseDirectory) + '/' + str(toastTableRow.toastfileindex))
+             connectForDB.close()
+         """ END for db in databaseList """
+
+         """ Create a phase2 object for each mirror segment """
+         tempNode = Phase2(dbUrl, logger, options.info_data_directory, mirrorInfo.nic_address)
+
+         """ Setup the mirror node """
+         tempNode.setup([mirrorInfo], fileList, specialDirList)
+
+         phase2MirrorList.append(tempNode)
+     """ END for mirrorInfo in allSegMirrorInfo: """    
+
+     if gpstartStatus != None and gpstartStatus == "MASTER_AND_SEGMENTS":
+        GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = False)
         gpstartStatus = "STOPPED"
 
      """
