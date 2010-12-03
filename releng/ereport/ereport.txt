@@ -17992,23 +17992,27 @@ baaf: bayes:00000118:  errmsg("nb_classify: total_data values must be >= 0")));
 baaf: bayes:00000122:  ereport(ERROR, 
 baaf: bayes:00000123:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 baaf: bayes:00000124:  errmsg("nb_classify: class_data values must be <= total_data"))); 
-baaf: bayes:00000264:  ereport(ERROR, 
-baaf: bayes:00000265:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-baaf: bayes:00000266:  errmsg("nb_classify_final called with %d arguments", 
-baaf: bayes:00000267:  PG_NARGS()))); 
-baaf: bayes:00000315:  ereport(ERROR, 
-baaf: bayes:00000316:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-baaf: bayes:00000317:  errmsg("nb_classify_final called with %d arguments", 
-baaf: bayes:00000318:  PG_NARGS()))); 
-baaf: bayes:00000373:  ereport(ERROR, 
-baaf: bayes:00000374:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-baaf: bayes:00000375:  errmsg("nb_classify: invalid accumulation state"))); 
-baaf: bayes:00000388:  ereport(ERROR, 
-baaf: bayes:00000389:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-baaf: bayes:00000390:  errmsg("nb_classify: invalid accumulation state"))); 
-baaf: bayes:00000396:  ereport(ERROR, 
-baaf: bayes:00000397:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-baaf: bayes:00000398:  errmsg("nb_classify: mismatched inter-row input lengths"))); 
+baaf: bayes:00000270:  ereport(ERROR, 
+baaf: bayes:00000271:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+baaf: bayes:00000272:  errmsg("nb_classify_final called with %d arguments", 
+baaf: bayes:00000273:  PG_NARGS()))); 
+baaf: bayes:00000325:  ereport(ERROR, 
+baaf: bayes:00000326:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+baaf: bayes:00000327:  errmsg("nb_classify_final called with %d arguments", 
+baaf: bayes:00000328:  PG_NARGS()))); 
+baaf: bayes:00000379:  ereport(ERROR, 
+baaf: bayes:00000380:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+baaf: bayes:00000381:  errmsg("nb_classify_probabilities called with %d arguments", 
+baaf: bayes:00000382:  PG_NARGS()))); 
+baaf: bayes:00000428:  ereport(ERROR, 
+baaf: bayes:00000429:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+baaf: bayes:00000430:  errmsg("nb_classify: invalid accumulation state"))); 
+baaf: bayes:00000443:  ereport(ERROR, 
+baaf: bayes:00000444:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+baaf: bayes:00000445:  errmsg("nb_classify: invalid accumulation state"))); 
+baaf: bayes:00000451:  ereport(ERROR, 
+baaf: bayes:00000452:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+baaf: bayes:00000453:  errmsg("nb_classify: mismatched inter-row input lengths"))); 
 aaaaa GP_IGNORE: paae: pinv - ./backend/utils/stat/pinv.c
 paae: pinv:00000036:  ereport(ERROR, 
 paae: pinv:00000037:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
