@@ -876,6 +876,7 @@ def createSegmentRowsFromSegmentList( newHostlist
     rows    = []
     dbid    = 0
     content = 0
+    interfaceDict = {}
 
     for host in newHostlist:
         isprimary='t'
@@ -886,6 +887,7 @@ def createSegmentRowsFromSegmentList( newHostlist
             if len(interface_list) > 0:
                interfaceNumber = interface_list[index % len(interface_list)]
                address = host + '-' + str(interfaceNumber)
+               interfaceDict[content] = index % len(interface_list)
             else:
                address = host
             newFulldir = "%s/%s%d" % (GpDB.getDataDirPrefix(pSeg.getSegmentDataDirectory()), dir_prefix, content)
@@ -911,10 +913,6 @@ def createSegmentRowsFromSegmentList( newHostlist
     if mirror_type is None or mirror_type == 'none':
         return rows
     elif mirror_type.lower().strip() == 'spread':
-        #TODO: must be sure to put mirrors on a different subnet than primary.
-        #      this is a general problem for GPDB these days. perhaps we should
-        #      add something to gpdetective to be able to detect this and fix it.
-        #      best to have the interface mapping stuff 1st.
         content=0
         isprimary='f'
         num_hosts = len(newHostlist)
@@ -926,7 +924,7 @@ def createSegmentRowsFromSegmentList( newHostlist
         mirror_replication_port = {}
 
         mirror_host_offset=1
-        last_mirror_offset=1
+        last_mirror_offset=0
         for host in newHostlist:
             mirror_host_offset = last_mirror_offset + 1
             last_mirror_offset += 1
@@ -938,7 +936,7 @@ def createSegmentRowsFromSegmentList( newHostlist
                     mirror_host_offset += 1
                     mirror_host = newHostlist[mirror_host_offset % num_hosts]
                 if len(interface_list) > 0:
-                   interfaceNumber = interface_list[mirror_host_offset % len(interface_list)]
+                   interfaceNumber = interface_list[(interfaceDict[content] + 1) % len(interface_list)]
                    address = mirror_host + '-' + str(interfaceNumber)
                 else:
                    address = mirror_host
@@ -985,7 +983,7 @@ def createSegmentRowsFromSegmentList( newHostlist
             index = 0
             for mSeg in mirror_segment_list:
                 if len(interface_list) > 0:
-                   interfaceNumber = interface_list[(index + 1) % len(interface_list)]
+                   interfaceNumber = interface_list[(interfaceDict[content] + 1) % len(interface_list)]
                    address = mirror_host + '-' + str(interfaceNumber)
                 else:
                    address = mirror_host
