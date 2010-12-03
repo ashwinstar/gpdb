@@ -8,7 +8,7 @@ COPY bayes1 FROM stdin;
 1	C1	1	2	3
 2	C1	1	2	1
 3	C1	1	4	3
-4	C2	1	3	1
+4	C2	1	3	2
 5	C2	0	2	2
 6	C2	0	1	3
 \.
