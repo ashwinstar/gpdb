@@ -653,15 +653,8 @@ create_append_plan(CreatePlanContext *ctx, AppendPath *best_path)
 		subplans = lappend(subplans, create_subplan(ctx, subpath));
 	}
 
-	/* We create an append node only when there are more than one subplans*/
-	if(list_length(subplans) > 1)
-	{
-		plan = make_append(subplans, false, tlist);
-		return (Plan *) plan;
-	}
-
-	Assert(list_length(subplans) == 1);
-	return (Plan *) subplans->head->data.ptr_value;
+	plan = make_append(subplans, false, tlist);
+	return (Plan *) plan;
 }
 
 /*
