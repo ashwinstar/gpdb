@@ -416,7 +416,12 @@ class NakedExecutionPasswordMap:
                 client.close()
                 continue # next host
             except Exception, e:
+                pass
+
+            try:
                 client.close()
+            except Exception, e:
+                pass
 
             # TRY EXISTING PASSWORDS
             foundit = False
@@ -425,10 +430,10 @@ class NakedExecutionPasswordMap:
                     client.connect(host, password=passwd)
                     foundit = True
                     self.mapping[host] = passwd
-                    client.close()
                     break
                 except Exception, e:
-                    client.close()
+                    pass
+
             if foundit:
                 continue
 
@@ -442,10 +447,14 @@ class NakedExecutionPasswordMap:
                     self.mapping[host] = passwd
                     if passwd not in self.unique_passwords:
                         self.unique_passwords.add(passwd)
-                    client.close()
                     break
                 except Exception, e:
-                    client.close()
+                    pass
+
+            try:
+                client.close()
+            except Exception, e:
+                pass
 
             if not foundit:
                 raise Exception("Did not get a valid password for host " + host)
