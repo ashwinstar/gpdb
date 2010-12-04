@@ -309,6 +309,91 @@ typedef struct MirroredLockLocalVars
 	}
 #endif
 
+#ifdef USE_ASSERT_CHECKING
+
+typedef struct CheckpointStartLockLocalVars
+{
+	bool checkpointStartLockIsHeldByMe;
+
+	bool checkpointStartVariablesSet;
+} CheckpointStartLockLocalVars;
+
+#define CHECKPOINT_START_LOCK_DECLARE \
+	CheckpointStartLockLocalVars checkpointStartLockLocalVars = {false, false};
+#else
+
+typedef struct CheckpointStartLockLocalVars
+{
+	bool checkpointStartLockIsHeldByMe;
+} CheckpointStartLockLocalVars;
+
+#define CHECKPOINT_START_LOCK_DECLARE \
+	CheckpointStartLockLocalVars checkpointStartLockLocalVars = {false};
+#endif
+
+#ifdef USE_ASSERT_CHECKING
+#define CHECKPOINT_START_LOCK \
+	{ \
+		checkpointStartLockLocalVars.checkpointStartLockIsHeldByMe = LWLockHeldByMe(CheckpointStartLock); \
+		checkpointStartLockLocalVars.checkpointStartVariablesSet = true; \
+		\
+		if (!checkpointStartLockLocalVars.checkpointStartLockIsHeldByMe) \
+		{ \
+			LWLockAcquire(CheckpointStartLock , LW_SHARED); \
+		} \
+		else \
+		{ \
+			HOLD_INTERRUPTS(); \
+		} \
+		\
+		Assert(InterruptHoldoffCount > 0); \
+	}
+#else
+#define CHECKPOINT_START_LOCK \
+	{ \
+		checkpointStartLockLocalVars.checkpointStartLockIsHeldByMe = LWLockHeldByMe(CheckpointStartLock); \
+		\
+		if (!checkpointStartLockLocalVars.checkpointStartLockIsHeldByMe) \
+		{ \
+			LWLockAcquire(CheckpointStartLock , LW_SHARED); \
+		} \
+		else \
+		{ \
+			HOLD_INTERRUPTS(); \
+		} \
+	} \
+		\
+	}
+#endif
+	
+#ifdef USE_ASSERT_CHECKING
+#define CHECKPOINT_START_UNLOCK \
+	{ \
+		Assert(checkpointStartLockLocalVars.checkpointStartVariablesSet); \
+		Assert(InterruptHoldoffCount > 0); \
+		\
+		if (!checkpointStartLockLocalVars.checkpointStartLockIsHeldByMe) \
+		{ \
+			LWLockRelease(CheckpointStartLock); \
+		} \
+		else \
+		{ \
+			RESUME_INTERRUPTS(); \
+		} \
+	}
+#else
+#define CHECKPOINT_START_UNLOCK \
+	{ \
+		if (!checkpointStartLockLocalVars.checkpointStartLockIsHeldByMe) \
+		{ \
+			LWLockRelease(CheckpointStartLock); \
+		} \
+		else \
+		{ \
+			RESUME_INTERRUPTS(); \
+		} \
+	}
+#endif
 
 // Helper DEFINEs for the Persistent state-change modules to READ or WRITE.
 //

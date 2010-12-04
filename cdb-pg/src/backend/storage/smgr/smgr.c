@@ -2535,7 +2535,8 @@ smgrSubTransAbort(void)
 }
 
 /*
- * smgrGetPendingDeletes() -- Get a list of relations to be deleted.
+ * smgrGetPendingFileSysWork() -- Get a list of relations that have post-commit or post-abort
+ * work.
  *
  * The return value is the number of relations scheduled for termination.
  * *ptr is set to point to a freshly-palloc'd array of RelFileNodes.
@@ -2545,7 +2546,7 @@ smgrSubTransAbort(void)
  * by upper-level transactions.
  */
 int
-smgrGetPendingDeletes(
+smgrGetPendingFileSysWork(
 	EndXactRecKind						endXactRecKind,
 
 	PersistentEndXactFileSysActionInfo 	**ptr)
@@ -2796,34 +2797,33 @@ smgrGetAppendOnlyMirrorResyncEofs(
 }
 
 /*
- * smgrIsPendingDeletes() -- Returns true if there are relations to be deleted.
+ * smgrIsPendingFileSysWork() -- Returns true if there are relations that need post-commit or
+ * post-abort work.
  *
  * Note that the list does not include anything scheduled for termination
  * by upper-level transactions.
  */
 bool
-smgrIsPendingDeletes(bool forCommit)
+smgrIsPendingFileSysWork(
+	EndXactRecKind						endXactRecKind)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
-	PendingDelete *pending;
-	HASH_SEQ_STATUS iterateStatus;
-	AppendOnlyMirrorResyncEofs *entry;
 
+	PendingDelete *pending;
+
+	PersistentEndXactFileSysAction action;
+
+	Assert(endXactRecKind == EndXactRecKind_Commit ||
+		   endXactRecKind == EndXactRecKind_Abort ||
+		   endXactRecKind == EndXactRecKind_Prepare);
+	
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
-		if (pending->nestLevel >= nestLevel && pending->dropForCommit == forCommit)
-			return true;
-	}
+		action = PendingDelete_Action(pending);
 
-	hash_seq_init(
-			&iterateStatus, 
-			AppendOnlyMirrorResyncEofsTable);
-	
-	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
-	{
-		if (entry->key.nestLevel >= nestLevel)
+		if (pending->nestLevel >= nestLevel &&
+			EndXactRecKind_NeedsAction(endXactRecKind, action))
 		{
-			hash_seq_term(&iterateStatus);
 			return true;
 		}
 	}
@@ -2831,6 +2831,40 @@ smgrIsPendingDeletes(bool forCommit)
 	return false;
 }
 
+/*
+ * smgrIsAppendOnlyMirrorResyncEofs() -- Returns true if there Append-Only Mirror Resync
+ * EOF work that needs to be done post-commit or post-abort work.
+ *
+ * Note that the list does not include anything scheduled for termination
+ * by upper-level transactions.
+ */
+bool
+smgrIsAppendOnlyMirrorResyncEofs(
+	EndXactRecKind						endXactRecKind)
+{
+	int			nestLevel = GetCurrentTransactionNestLevel();
+	HASH_SEQ_STATUS iterateStatus;
+	AppendOnlyMirrorResyncEofs *entry;
+
+	if (AppendOnlyMirrorResyncEofsTable ==  NULL)
+	{
+		return false;
+	}
+	
+	hash_seq_init(
+			&iterateStatus, 
+			AppendOnlyMirrorResyncEofsTable);
+
+	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
+	{
+		if (entry->key.nestLevel >= nestLevel)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
 
 
 /*

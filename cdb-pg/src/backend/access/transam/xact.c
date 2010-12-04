@@ -934,6 +934,8 @@ RecordTransactionCommit(void)
 {
 	MIRRORED_LOCK_DECLARE;
 
+	CHECKPOINT_START_LOCK_DECLARE;
+
 	int32						persistentCommitSerializeLen;
 	PersistentEndXactRecObjects persistentCommitObjects;
 	int16						persistentCommitObjectCount;
@@ -1038,7 +1040,7 @@ RecordTransactionCommit(void)
 			 */
 			MIRRORED_LOCK;
 				
-			LWLockAcquire(CheckpointStartLock, LW_SHARED);
+			CHECKPOINT_START_LOCK;
 		}
 
 		SetCurrentTransactionStopTimestamp();
@@ -1208,7 +1210,7 @@ RecordTransactionCommit(void)
 		/* Unlock checkpoint lock if we acquired it */
 		if (madeTCentries)
 		{
-			LWLockRelease(CheckpointStartLock);
+			CHECKPOINT_START_UNLOCK;
 
 			MIRRORED_UNLOCK;
 		}
@@ -2560,11 +2562,16 @@ StartTransaction(void)
 void
 CommitTransaction(void)
 {
+	MIRRORED_LOCK_DECLARE;
+
+	CHECKPOINT_START_LOCK_DECLARE;
+
 	TransactionState s = CurrentTransactionState;
 
 	TransactionId localXid = InvalidTransactionId;
 	LocalDistribXactRef localDistribXactRef;
 	bool needDistribCommitted = false;
+	bool willHaveObjectsFromSmgr;
 
 	LocalDistribXactRef_Init(&localDistribXactRef);
 
@@ -2659,6 +2666,25 @@ CommitTransaction(void)
 //		int *ptr = NULL;
 //		*ptr = 1;
 		elog(ERROR,"Raise an error as directed by Debug_abort_after_distributed_prepared");
+	}
+
+	willHaveObjectsFromSmgr =
+			PersistentEndXactRec_WillHaveObjectsFromSmgr(EndXactRecKind_Commit);
+
+	if (willHaveObjectsFromSmgr)
+	{
+		/*
+		 * We need to ensure the recording of the [distributed-]commit record and the
+		 * persistent post-commit work will be done either before or after a checkpoint.
+		 *
+		 * When we use CheckpointStartLock, we make sure we already have the
+		 * MirroredLock first.
+		 *
+		 * The lock order is: MirroredLock then CheckpointStartLock.
+		 */
+		MIRRORED_LOCK;
+			
+		CHECKPOINT_START_LOCK;
 	}
 
 	/* Prevent cancel/die interrupt while cleaning up */
@@ -2819,6 +2845,13 @@ CommitTransaction(void)
 	 */
 	AtEOXact_smgr(true);
 
+	if (willHaveObjectsFromSmgr)
+	{
+		CHECKPOINT_START_UNLOCK;
+		
+		MIRRORED_UNLOCK;
+	}
+	
 	AtEOXact_MultiXact();
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
@@ -3136,11 +3169,16 @@ PrepareTransaction(void)
 void
 AbortTransaction(void)
 {
+	MIRRORED_LOCK_DECLARE;
+
+	CHECKPOINT_START_LOCK_DECLARE;
+
 	TransactionState s = CurrentTransactionState;
 
 	TransactionId localXid = InvalidTransactionId;
 	LocalDistribXactRef localDistribXactRef;
 	bool needDistribAborted = false;
+	bool willHaveObjectsFromSmgr;
 
 	LocalDistribXactRef_Init(&localDistribXactRef);
 
@@ -3218,6 +3256,26 @@ AbortTransaction(void)
 	AtEOXact_LargeObject(false);	/* 'false' means it's abort */
 	AtAbort_Notify();
 	AtEOXact_UpdateFlatFiles(false);
+
+
+	willHaveObjectsFromSmgr =
+			PersistentEndXactRec_WillHaveObjectsFromSmgr(EndXactRecKind_Abort);
+
+	if (willHaveObjectsFromSmgr)
+	{
+		/*
+		 * We need to ensure the recording of the abort record and the
+		 * persistent post-abort work will be done either before or after a checkpoint.
+		 *
+		 * When we use CheckpointStartLock, we make sure we already have the
+		 * MirroredLock first.
+		 *
+		 * The lock order is: MirroredLock then CheckpointStartLock.
+		 */
+		MIRRORED_LOCK;
+			
+		CHECKPOINT_START_LOCK;
+	}
 
 	/*
 	 * Advertise the fact that we aborted in pg_clog (assuming that we got as
@@ -3314,6 +3372,14 @@ AbortTransaction(void)
 	AtEOXact_RelationCache(false);
 	AtEOXact_Inval(false);
 	AtEOXact_smgr(false);
+
+	if (willHaveObjectsFromSmgr)
+	{
+		CHECKPOINT_START_UNLOCK;
+		
+		MIRRORED_UNLOCK;
+	}
+	
 	AtEOXact_MultiXact();
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_LOCKS,
@@ -5167,7 +5233,7 @@ IsTransactionOrTransactionBlock(void)
 bool
 IsTransactionDirty(void)
 {
-	bool result = (MyXactMadeXLogEntry || MyXactMadeTempRelUpdate || smgrIsPendingDeletes(true));
+	bool result = (MyXactMadeXLogEntry || MyXactMadeTempRelUpdate || smgrIsPendingFileSysWork(EndXactRecKind_Commit));
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "IsTransactionDirty: TopTransactionId %u, dirty = %s",
 		 GetTopTransactionId(), (result ? "true" : "false"));

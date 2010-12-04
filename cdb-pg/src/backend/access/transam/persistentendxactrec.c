@@ -361,7 +361,7 @@ int32 PersistentEndXactRec_FetchObjectsFromSmgr(
 		switch (objKind)
 		{
 		case PersistentEndXactObjKind_FileSysAction:
-			count = smgrGetPendingDeletes(
+			count = smgrGetPendingFileSysWork(
 									endXactRecKind,
 									(PersistentEndXactFileSysActionInfo**)&data);
 			len = count * sizeof(PersistentEndXactFileSysActionInfo);
@@ -396,6 +396,38 @@ int32 PersistentEndXactRec_FetchObjectsFromSmgr(
 	}
 
 	return serializeLen;
+}
+
+bool PersistentEndXactRec_WillHaveObjectsFromSmgr(
+	EndXactRecKind				endXactRecKind)
+{
+	int objKind;
+
+	for (objKind = 1; objKind < MaxPersistentEndXactObjKind; objKind++)
+	{
+		switch (objKind)
+		{
+		case PersistentEndXactObjKind_FileSysAction:
+			if (smgrIsPendingFileSysWork(endXactRecKind))
+			{
+				return true;
+			}
+			break;
+			
+		case PersistentEndXactObjKind_AppendOnlyMirrorResyncEofs:
+			if (smgrIsAppendOnlyMirrorResyncEofs(endXactRecKind))
+			{
+				return true;
+			}
+			break;
+
+		default:
+			elog(ERROR, "Unexpected persistent transaction object kind: %d",
+				 objKind);
+		}
+	}
+
+	return false;
 }
 
 int16 PersistentEndXactRec_ObjectCount(

@@ -918,6 +918,8 @@ EndPrepare(GlobalTransaction gxact)
 {
 	MIRRORED_LOCK_DECLARE;
 
+	CHECKPOINT_START_LOCK_DECLARE;
+
 	TransactionId xid = gxact->proc.xid;
 	TwoPhaseFileHeader *hdr;
 	char		simpleFileName[MAXPGPATH];
@@ -976,7 +978,7 @@ EndPrepare(GlobalTransaction gxact)
 	 *
 	 * NOTE: Critical seciton and CheckpointStartLock were moved up.
 	 */
-	LWLockAcquire(CheckpointStartLock, LW_SHARED);
+	CHECKPOINT_START_LOCK;
 
 	START_CRIT_SECTION();
 
@@ -1087,7 +1089,7 @@ EndPrepare(GlobalTransaction gxact)
 	 * Now we can release the checkpoint start lock: a checkpoint starting
 	 * after this will certainly see the gxact as a candidate for fsyncing.
 	 */
-	LWLockRelease(CheckpointStartLock);
+	CHECKPOINT_START_UNLOCK;
 
 	MIRRORED_UNLOCK;
 		
@@ -1917,6 +1919,8 @@ RecordTransactionCommitPrepared(TransactionId xid,
 {
 	MIRRORED_LOCK_DECLARE;
 
+	CHECKPOINT_START_LOCK_DECLARE;
+
 	int16	persistentCommitObjectCount;
 	char	*persistentCommitBuffer = NULL;
 
@@ -1946,7 +1950,7 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	 */
 	MIRRORED_LOCK;
 		
-	LWLockAcquire(CheckpointStartLock, LW_SHARED);
+	CHECKPOINT_START_LOCK;
 
 	/* Emit the XLOG commit record */
 	xlrec.xid = xid;
@@ -2039,7 +2043,7 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	TransactionIdCommitTree(nchildren, children);
 
 	/* Checkpoint is allowed again */
-	LWLockRelease(CheckpointStartLock);
+	CHECKPOINT_START_UNLOCK;
 
 	MIRRORED_UNLOCK;
 

@@ -373,7 +373,7 @@ extern bool smgrgetappendonlyinfo(
 	MirrorDataLossTrackingState 	*mirrorDataLossTrackingState,
 
 	int64							*mirrorDataLossTrackingSessionNum);
-extern int	smgrGetPendingDeletes(
+extern int	smgrGetPendingFileSysWork(
 	EndXactRecKind						endXactRecKind,
 
 	PersistentEndXactFileSysActionInfo	**ptr);
@@ -381,7 +381,10 @@ extern int	smgrGetAppendOnlyMirrorResyncEofs(
 	EndXactRecKind									endXactRecKind,
 
 	PersistentEndXactAppendOnlyMirrorResyncEofs 	**ptr);
-extern bool	smgrIsPendingDeletes(bool forCommit);
+extern bool	smgrIsPendingFileSysWork(
+	EndXactRecKind						endXactRecKind);
+extern bool smgrIsAppendOnlyMirrorResyncEofs(
+	EndXactRecKind						endXactRecKind);
 extern void AtSubCommit_smgr(void);
 extern void AtSubAbort_smgr(void);
 extern void AtEOXact_smgr(bool forCommit);

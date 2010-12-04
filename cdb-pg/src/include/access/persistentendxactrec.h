@@ -153,6 +153,9 @@ extern int32 PersistentEndXactRec_FetchObjectsFromSmgr(
 
 	int16						*objectCount);
 
+extern bool PersistentEndXactRec_WillHaveObjectsFromSmgr(
+		EndXactRecKind				endXactRecKind);
+
 extern void PersistentEndXactRec_Print(
 		char							*procName,
 	
