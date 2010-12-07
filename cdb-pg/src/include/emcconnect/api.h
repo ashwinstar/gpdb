@@ -1,6 +1,7 @@
 #ifndef GP_EMC_CONNECT_API_H
 #define GP_EMC_CONNECT_API_H
 
+/* symptom code are a high level categorization of a System Healh metric */
 typedef enum EmcConnectSymptom
 {
 	EMC_CONNECT_SYMPTOM_NULL = 0,
@@ -23,6 +24,7 @@ typedef enum EmcConnectSymptom
 	EMC_CONNECT_SYMPTOM_MAX_ENUM
 } EmcConnectSymptom;
 
+/* detailed symptom codes specify on finer granularity health metrics */
 typedef enum EmcConnectDetailedSymptom
 {
 	EMC_CONNECT_DETAILED_SYMPTOM_NULL = 0,
@@ -38,11 +40,16 @@ typedef enum EmcConnectDetailedSymptom
 	EMC_CONNECT_DETAILED_SYMPTOM_OS_MEMORY_STATUS,
 
 	EMC_CONNECT_DETAILED_SYMPTOM_POWER_SUPPLY_STATUS = 2000,
+	EMC_CONNECT_DETAILED_SYMPTOM_POWER_PROBE_TYPE,
+	EMC_CONNECT_DETAILED_SYMPTOM_POWER_PROBE_SYSTEM_WATTS,
+	EMC_CONNECT_DETAILED_SYMPTOM_POWER_PROBE_PS_AMPS,
+	EMC_CONNECT_DETAILED_SYMPTOM_POWER_PROBE_PS_VOLTS,
 
 	EMC_CONNECT_DETAILED_SYMPTOM_BATTERY_STATUS = 3000,
 
 	EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_NAME = 4000,
 	EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_STATUS,
+	EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_TEMPERATURE,
 
 	EMC_CONNECT_DETAILED_SYMPTOM_PROCESSOR_VERSION = 5000,
 	EMC_CONNECT_DETAILED_SYMPTOM_PROCESSOR_STATUS,
@@ -96,6 +103,11 @@ typedef enum EmcConnectDetailedSymptom
 	EMC_CONNECT_DETAILED_SYMPTOM_MAX_ENUM
 } EmcConnectDetailedSymptom;
 
+/* Severity's are used by down stream processes in the EMC Support Center
+   in order to determine whether to open a ticket.
+   INFO severity does not open a ticket.
+   DEBUG is not used
+   all other Severity's result in open Support cases */
 typedef enum EmcConnectSeverity
 {
 	EMC_CONNECT_SEVERITY_UNKNOWN = 0,
@@ -106,6 +118,10 @@ typedef enum EmcConnectSeverity
 	EMC_CONNECT_SEVERITY_MAX_ENUM
 } EmcConnectSeverity;
 
+/* This field is primarily ignored for now.
+   Normally status is set to OK except in timeout event in which case
+   we set UNKNOWN
+*/
 typedef enum EmcConnectStaus
 {
 	EMC_CONNECT_STATUS_UNKNOWN = 0,
@@ -115,6 +131,7 @@ typedef enum EmcConnectStaus
 	EMC_CONNECT_STATUS_MAX_ENUM
 } EmcConnectStatus;
 
+/* differentiate the event based on GPDB perfmon or another sender of events */
 typedef enum EmcConnectOrigin
 {
 	EMC_CONNECT_ORIGIN_GPMMON = 1,
@@ -125,7 +142,19 @@ typedef enum EmcConnectOrigin
 const char* gpmon_emcconnect_print_status(EmcConnectStatus status);
 const char* gpmon_emcconnect_print_severity(EmcConnectSeverity severity);
 
-// return 0 for success
+/* return 0 for success other values for failure
+
+   This function will create the XML file in the connectemc poll directory so that it 
+   gets picked up by the  EMC Connect daemon and sends over the network to EMC Support center
+
+   The function also creates a .txt file that is loaded into GPDB in gpperfmon database
+   so that a history of all events is stored
+
+   historyOnly will not generate the XML file for sending but will generate the .txt file
+   this is loaded into GPDB for connectemc_history
+
+   snmpoid, displayname, hostname, and message are for informational display in the output
+*/
 int gpmon_emcconnect_send_alert(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom,
 								EmcConnectStatus status,
 								EmcConnectSeverity severity,

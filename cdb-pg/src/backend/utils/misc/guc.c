@@ -209,6 +209,8 @@ static const char *assign_debug_dtm_action_protocol(const char *newval,
 static const char *assign_gp_log_format(const char *value, bool doit,
 										GucSource source);
 
+static const char *assign_connectemc_mode(const char *newval, bool doit, GucSource source);
+
 static bool dummy_autovac=false;
 static bool assign_autovacuum_warning(bool newval, bool doit, GucSource source);
 
@@ -397,7 +399,10 @@ char	   *gp_snmp_use_inform_or_trap;
 char       *gp_snmp_debug_log;
 #endif
 
-char	   *gp_connectemc_mode;;
+char	   *gp_connectemc_mode;
+bool        gp_emcconnect_allowed = true;
+bool        gp_emcconnect_localonly = false;
+
 
 /* The following GUC holds the default version for append-only tables */
 int	test_appendonly_version_default = AORelationVersion_GetLatest();
@@ -5399,6 +5404,15 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 #endif
+	{
+		{"gp_connectemc_mode", PGC_POSTMASTER, LOGGING,
+			gettext_noop("control connectemc functionality"),
+			gettext_noop("If 'on' send connectemc messages and log them locally, if 'local' log connectemc message locally only, if 'off', no connectemc messages"),
+			GUC_SUPERUSER_ONLY
+		},
+		&gp_connectemc_mode,
+		"on", assign_connectemc_mode, NULL
+	},
 
 	/* for pljava */
 	{
@@ -10284,6 +10298,39 @@ show_tcp_keepalives_count(void)
 	snprintf(nbuf, sizeof(nbuf), "%d", pq_getkeepalivescount(MyProcPort));
 	return nbuf;
 }
+
+static const char *
+assign_connectemc_mode(const char *newval, bool doit, GucSource source)
+{
+	if (pg_strcasecmp(newval, "on") == 0)
+	{
+		if (doit)
+		{
+			gp_emcconnect_allowed = true;
+			gp_emcconnect_localonly = false;
+		}
+	}
+	else if (pg_strcasecmp(newval, "local") == 0)
+	{
+		if (doit)
+		{
+			gp_emcconnect_allowed = true;
+			gp_emcconnect_localonly = true;
+		}
+	}
+	else if (pg_strcasecmp(newval, "off") == 0)
+	{
+		if (doit)
+		{
+			gp_emcconnect_allowed = false;
+			gp_emcconnect_localonly = false;
+		}
+	}
+	else
+		return NULL;			/* fail */
+	return newval;				/* OK */
+}
+
 
 static const char *
 assign_debug_dtm_action(const char *newval,

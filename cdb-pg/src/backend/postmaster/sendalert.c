@@ -551,6 +551,11 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 	char myhostname[255];	/* gethostname usually is limited to 65 chars out, but make this big to be safe */
 	struct stat statbuf;
 
+	if (!gp_emcconnect_allowed)
+	{
+		return retVal;
+	}
+
 	myhostname[0] = '\0';
 	strcpy(msg,subject); /* subject is no more than 128 bytes */
 	if (errorData->error_detail != NULL && strlen(errorData->error_detail) > 0)
@@ -587,7 +592,7 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 									status,
 									severity,
 									EMC_CONNECT_ORIGIN_GPDBALERTS,
-									0, // not history only
+									gp_emcconnect_localonly ? 1 : 0,
 									"", // display name 
 									"", // snmpoid
 									myhostname,

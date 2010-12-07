@@ -117,6 +117,14 @@ struct host_t
 	char ever_connected; /* set to non-zero after first connection attempt */
 };
 
+typedef enum EmcConnectModeType_t
+{
+	EMCCONNECT_MODE_TYPE_OFF = 0,
+	EMCCONNECT_MODE_TYPE_LOCAL,
+	EMCCONNECT_MODE_TYPE_ON
+} EmcConnectModeType_t;
+
+
 char* get_connection_hostname(host_t* host);
 char* get_connection_ip(host_t* host);
 char* get_snmp_hostname(host_t* host);
@@ -129,7 +137,7 @@ struct snmp_module_params_t
 	char configfile[PATH_MAX];
 	char outdir[PATH_MAX];
 	char externaltable_dir[PATH_MAX];
-	int emcconnect_enabled;
+	EmcConnectModeType_t emcconnect_mode;
 	int health_harvest_interval;
 };
 

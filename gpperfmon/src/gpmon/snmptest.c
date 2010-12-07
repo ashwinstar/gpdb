@@ -8,7 +8,7 @@
 int main(int argc, char** argv)
 {
 	const char* hostname = "localhost";
-	const char* oidname = "1.3.6.1.4.1.674.10892.1.1100.40.1.13.1.1";
+	const char* oidname = "1.3.6.1.4.1.674.10892.1.600.60.1.8.1.1";
 
 	init_snmp("gpmmon");
 	snmp_out_toggle_options("n"); // make output of oids numeric only

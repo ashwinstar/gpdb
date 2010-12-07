@@ -49,7 +49,7 @@ struct
 	int m;
 	int d;
 	int qamode;
-	int emcconnect;
+	int emcconnect; 		// config entry in gpperfmon.conf
 	int harvest_interval;
 	int snmp_interval;
 	apr_uint64_t tail_buffer_max;
@@ -67,6 +67,11 @@ static struct
 
 	host_t* hosttab; /* multi-home filtered machines */
 	int hosttabsz; /* # machines */
+
+	// if emcconnect or guc_emcconnect_allowed are 0 dont send any emcconnect
+	// if guc_emcconnect_localonly then only store locally .. do not send
+	int guc_emcconnect_allowed;	// guc set to off
+	int guc_emcconnect_localonly;	// guc set to localonly
 
 	char* master_data_directory;
 	char* standby_master_hostname;
@@ -623,8 +628,29 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 	snprintf(snmp_module_params.configfile, PATH_MAX, "%s/gpperfmon/conf/snmp.conf", ax.master_data_directory);
 	snprintf(snmp_module_params.outdir, PATH_MAX, "%s/gpperfmon/data/snmp", ax.master_data_directory);
 	snprintf(snmp_module_params.externaltable_dir, PATH_MAX, "%s/gpperfmon/data", ax.master_data_directory);
-	snmp_module_params.emcconnect_enabled = opt.emcconnect;
 	snmp_module_params.health_harvest_interval = opt.health_harvest_interval;
+
+	// if explicitly turned off in gpperfmon.conf or guc then disable
+	// if set to local only in guc, then set local only
+	// else it is on
+	if (!opt.emcconnect)
+	{
+		snmp_module_params.emcconnect_mode = EMCCONNECT_MODE_TYPE_OFF;
+	}
+	else if (!ax.guc_emcconnect_allowed)
+	{
+		snmp_module_params.emcconnect_mode = EMCCONNECT_MODE_TYPE_OFF;
+	}
+	else if (ax.guc_emcconnect_localonly)
+	{
+		snmp_module_params.emcconnect_mode = EMCCONNECT_MODE_TYPE_LOCAL;
+		TR0(("Connect EMC enabled in 'local' mode\n"));
+	}
+	else
+	{
+		snmp_module_params.emcconnect_mode = EMCCONNECT_MODE_TYPE_ON;
+		TR0(("Connect EMC enabled\n"));
+	}
 
 	if (gpmmon_init_snmp(&snmp_module_params) != APR_SUCCESS)
 	{
@@ -1012,6 +1038,7 @@ static int read_conf_file(char *conffile)
 	opt.harvest_interval = 120;
 	opt.max_log_size = 0;
 	opt.log_dir = strdup(DEFAULT_GPMMON_LOGDIR);
+	opt.emcconnect = 1; // assume enabled unless disabled explicitly
 
 	if (!fp)
 	{
@@ -1187,6 +1214,12 @@ static int read_conf_file(char *conffile)
 	if (opt.tail_buffer_max == 0)
 	{
 		opt.tail_buffer_max = (1LL << 31); /* 2GB */
+	}
+
+	if (opt.health_harvest_interval < 1)
+	{
+		// default 15 minutes
+		opt.health_harvest_interval = 15 * 60;
 	}
 
 	verbose = opt.v;
@@ -1574,6 +1607,7 @@ static void getconfig(void)
 	char *hostname = NULL;
 	char *master_data_directory = NULL;
 	char *standby_master_hostname = NULL;
+	char *gp_connectemc_mode = NULL;
 	int rc = 0;
 
 	static apr_pool_t *pool = NULL;
@@ -1585,7 +1619,7 @@ static void getconfig(void)
 	{
 		if (APR_SUCCESS != (rc = apr_pool_create(&pool, NULL)))
 		{
-        	interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+			interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 			gpmon_fatalx(FLINE, rc, "Failed to create APR pool\n");
 		}
 	}
@@ -1608,6 +1642,33 @@ static void getconfig(void)
 	else
 	{
 		ax.standby_master_hostname =  NULL;
+	}
+
+	/* fetch mode for emcconnect */
+	gpdb_get_single_string_from_query("select setting from pg_settings where name = 'gp_connectemc_mode'", &gp_connectemc_mode, pool);
+	if (gp_connectemc_mode)
+	{
+		if (strcmp("on", gp_connectemc_mode) == 0)
+		{
+			ax.guc_emcconnect_allowed = true;
+			ax.guc_emcconnect_localonly = false;
+		}
+		else if (strcmp("local", gp_connectemc_mode) == 0)
+		{
+			ax.guc_emcconnect_allowed = true;
+			ax.guc_emcconnect_localonly = true;
+		}
+		else
+		{
+			ax.guc_emcconnect_allowed = false;
+			ax.guc_emcconnect_localonly = false;
+		}
+	}
+	else
+	{
+		gpmon_warningx(FLINE, 0, "cannot obtain value of guc: 'gp_connectemc_mode', emcconnect is disabled");
+		ax.guc_emcconnect_allowed = false;
+		ax.guc_emcconnect_localonly = false;
 	}
 
 	/* clear pool for next call */

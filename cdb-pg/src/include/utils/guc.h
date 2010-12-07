@@ -277,6 +277,10 @@ extern char   *gp_snmp_use_inform_or_trap;
 extern char   *gp_snmp_debug_log;
 #endif
 
+extern bool   gp_emcconnect_allowed;
+extern bool   gp_emcconnect_localonly;
+
+
 extern void SetConfigOption(const char *name, const char *value,
 				GucContext context, GucSource source);
 

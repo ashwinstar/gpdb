@@ -13,6 +13,7 @@
 #define GPMON_SNMP_ALLOW_REALLOC 0
 #define GPMON_SNMP_CONFIG_MAX_STRING_LENGTH 128
 #define GPMON_SNMP_CLEANUP_ALERT_STATUS_TABLE_INTERVAL 15 // every X reports loop through the alerts table and clear out any thing that is no longer in error
+#define SNMP_ARRAY_DISPLAY_LENGTH 256
 #define GPMON_SNMP_MAX_EMC_CONNECT_MSG_STRING_SIZE 1024
 #define GPMON_EMC_CONNECT_POLLDIR "/opt/connectemc/poll"
 #define GPMON_EMC_CONNECT_GPDB_FIND_PATTERN "GPMON_*.txt"
@@ -116,12 +117,19 @@ static struct
 } si = { 0 };
 
 #define MAX_NIC_MAP_SIZE 16
+#define MAX_POWER_PROBE_MAP_SIZE 8
 
 static struct
 {
 	bool tenGigCard[MAX_NIC_MAP_SIZE];
 
 } nic_map = { { 0 } }; 
+
+static struct
+{
+	// map from index into table to type value
+	unsigned int map[MAX_POWER_PROBE_MAP_SIZE];
+} power_probe_map = { { 0 } };
 
 
 void record_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, const char* oidstring, const char* displayname, GPDB_SNMP_STATUS status, const char* message);
@@ -601,7 +609,7 @@ GPDB_SNMP_STATUS dell_virtual_disk_state_status_code_conversion(int statusCodeIn
 		case 38:
 			status = GPDB_SNMP_STATUS_ERROR;
 			*msgout = "Resynching Paused";
-		break;
+		;
 		case 52:
 			status = GPDB_SNMP_STATUS_ERROR;
 			*msgout = "Permanently Degraded";
@@ -816,6 +824,27 @@ void gpmon_format_snmp_int(EmcConnectSymptom symptom, EmcConnectDetailedSymptom 
 	record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, outbuf);
 }
 
+#define FORMAT_SNMP_CENT_BUFSIZE 64
+void gpmon_format_dell_tenth_centigrade(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
+	snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, oidname, oidlen);
+	char outbuf[FORMAT_SNMP_CENT_BUFSIZE] = { 0 };
+	float farenheit = 0; 
+
+	if (vars->type != ASN_INTEGER)
+	{
+		record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
+		return;
+	}
+
+	// normally you multiply by 9/5 however and then add 32
+	// our number is in tenths of degrees celcius ... so we use .18 instead of 9/5
+	farenheit = (.18 * ((float)*vars->val.integer)) + 32.0;
+
+	snprintf(outbuf, FORMAT_SNMP_CENT_BUFSIZE, "%0.2f", farenheit);
+	record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, outbuf);
+}
 void gpmon_format_dell_network_device_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
 	char* msg;
@@ -959,6 +988,100 @@ void gpmon_format_snmp_string(EmcConnectSymptom symptom, EmcConnectDetailedSympt
 	record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, buffer);
 }
 
+void gpmon_format_dell_volts(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
+	snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, oidname, oidlen);
+	char outbuf[FORMAT_SNMP_INT_BUFSIZE] = { 0 };
+
+	if (vars->type != ASN_INTEGER)
+	{
+		record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
+		return;
+	}
+
+	// number is millivolts -- thousanths of volts
+	snprintf(outbuf, FORMAT_SNMP_INT_BUFSIZE, "%0.2f", .001 * (*vars->val.integer));
+
+	record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, outbuf);
+}
+
+// this format function does not generate any output
+// it just stores the type of the Power Probe into a map by index
+void gpmon_format_dell_power_probe_type(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	unsigned int index = oidname[oidlen - 1];
+	unsigned int probeType;
+
+	if (vars->type != ASN_INTEGER)
+		return;
+
+	if (index >= MAX_POWER_PROBE_MAP_SIZE)
+		return;
+
+	probeType = *vars->val.integer;
+
+	// 23 for Type DellAmperageType == amperageProbeTypeIsPowerSupplyAmps
+	// 26 for Type DellAmperageType == amperageProbeTypeIsSystemWatts
+	if (probeType != 26 && probeType != 23)
+		return;
+
+	// this index into the table has Watts... 
+	power_probe_map.map[index] = probeType;
+}
+
+// this format function uses a value set when querying the Amperage Probe table to determine correct index into the table to utilize
+void gpmon_format_dell_power_probe(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
+	snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, oidname, oidlen);
+	char outbuf[FORMAT_SNMP_INT_BUFSIZE] = { 0 };
+	unsigned int index = oidname[oidlen - 1];
+	unsigned int probeType;
+
+	// display buffer is normally provided but we will create our own for this field
+	// since we dont know how to display until now
+	char display_buffer[SNMP_ARRAY_DISPLAY_LENGTH] = { 0 };
+
+	if (index >= MAX_POWER_PROBE_MAP_SIZE)
+		return;
+
+	probeType = power_probe_map.map[index];
+
+	if (probeType == 23)
+	{
+		dSymptom = EMC_CONNECT_DETAILED_SYMPTOM_POWER_PROBE_PS_AMPS;
+		snprintf(display_buffer, SNMP_ARRAY_DISPLAY_LENGTH, "Power Supply %u Amps", index);
+	}
+	else if (probeType == 26)
+	{
+		dSymptom = EMC_CONNECT_DETAILED_SYMPTOM_POWER_PROBE_SYSTEM_WATTS;
+		snprintf(display_buffer, SNMP_ARRAY_DISPLAY_LENGTH, "System Watts Measurement");
+	}
+	else
+	{
+		return;
+	}
+		
+	if (vars->type != ASN_INTEGER)
+	{
+		record_status(symptom, dSymptom, oidstring, display_buffer, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
+		return;
+	}
+
+	if (probeType == 23)
+	{
+		// number is 10ths of amps
+		snprintf(outbuf, FORMAT_SNMP_INT_BUFSIZE, "%0.2f", .1 * (*vars->val.integer));
+	}
+	else if (probeType == 26)
+	{
+		snprintf(outbuf, FORMAT_SNMP_INT_BUFSIZE, "%ld", *vars->val.integer);
+	}
+
+	record_status(symptom, dSymptom, oidstring, display_buffer, GPDB_SNMP_STATUS_NORMAL, outbuf);
+}
+
 // this format function will both format and generate the output and
 // store the state of which nic cards are 10 gig nic cards
 void gpmon_format_dell_nic_card(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
@@ -1001,16 +1124,23 @@ void run_snmp_report_for_dell_host(const char* categoryname, host_t* host)
 
 	// for each dell host we have nic map to store information about the interfaces
 	// this information is used as part of the status checking
+	// we also have a power probe map that links power probe types to indexes into SNMP table
 	memset(&nic_map, 0, sizeof(nic_map));
+	memset(&power_probe_map, 0, sizeof(power_probe_map));
 
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_OS_NAME, "1.3.6.1.4.1.674.10892.1.400.10.1.6", "OS Name", NULL, gpmon_format_snmp_string)) goto BAIL;
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_OS_VERSION, "1.3.6.1.4.1.674.10892.1.400.10.1.7", "OS Version", NULL, gpmon_format_snmp_string)) goto BAIL;
 
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_POWER_SUPPLY, EMC_CONNECT_DETAILED_SYMPTOM_POWER_SUPPLY_STATUS, "1.3.6.1.4.1.674.10892.1.600.12.1.5", "Power Supply", "Status", gpmon_format_dell_status)) goto BAIL;
+	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_POWER_SUPPLY, EMC_CONNECT_DETAILED_SYMPTOM_POWER_PROBE_TYPE, "1.3.6.1.4.1.674.10892.1.600.30.1.7", "Power Probe", "Type", gpmon_format_dell_power_probe_type)) goto BAIL;
+	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_POWER_SUPPLY, EMC_CONNECT_DETAILED_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.600.30.1.6", "Power Probe", "Value", gpmon_format_dell_power_probe)) goto BAIL;
+	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_POWER_SUPPLY, EMC_CONNECT_DETAILED_SYMPTOM_POWER_PROBE_PS_VOLTS, "1.3.6.1.4.1.674.10892.1.600.20.1.6", "Power Supply Volts", NULL, gpmon_format_dell_volts)) goto BAIL;
+
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_BATTERY, EMC_CONNECT_DETAILED_SYMPTOM_BATTERY_STATUS, "1.3.6.1.4.1.674.10892.1.600.50.1.5", "Battery", "Status", gpmon_format_dell_status)) goto BAIL;
 
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_NAME, "1.3.6.1.4.1.674.10892.1.700.12.1.8", "Cooling Device", "Name", gpmon_format_snmp_string)) goto BAIL;
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_STATUS, "1.3.6.1.4.1.674.10892.1.700.12.1.5", "Cooling Device", "Status", gpmon_format_dell_status)) goto BAIL;
+	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_TEMPERATURE, "1.3.6.1.4.1.674.10892.1.700.20.1.6", "System Temperature", NULL, gpmon_format_dell_tenth_centigrade)) goto BAIL;
 
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_PROCESSOR_VERSION, "1.3.6.1.4.1.674.10892.1.1100.30.1.16", "Processor Version", NULL, gpmon_format_snmp_string)) goto BAIL;
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_PROCESSOR, EMC_CONNECT_DETAILED_SYMPTOM_PROCESSOR_STATUS, "1.3.6.1.4.1.674.10892.1.1100.30.1.5", "Processor Status", NULL, gpmon_format_dell_status)) goto BAIL;
@@ -1200,7 +1330,6 @@ int dell_snmp_array_collection(EmcConnectSymptom symptom, EmcConnectDetailedSymp
 	return retcode;
 }
 
-#define SNMP_ARRAY_DISPLAY_LENGTH 256
 int snmp_array_collection(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, const char* oidname, const char* displayname_begin, const char* displayname_end, gpdb_snmp_format_function format_func, int retry_possible)
 {
 	apr_status_t retVal;
@@ -1383,6 +1512,8 @@ void record_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom
 	if (symptom == EMC_CONNECT_SYMPTOM_NULL)
 		return;
 
+	return;
+
 	// find the entry in the hash table
 	snprintf(si.key.oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, "%s", oidstring);
 	alertData = apr_hash_get(si.alert_status_table, &si.key, sizeof (si.key));
@@ -1426,6 +1557,12 @@ void record_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom
 		}
 	}
 
+	/* emcconnect is off */
+	if (si.params->emcconnect_mode == EMCCONNECT_MODE_TYPE_OFF)
+	{
+		sendAlert = false;
+	}
+
 	// send the alert to EMC Connect if required
 	if (sendAlert)
 	{
@@ -1436,7 +1573,7 @@ void record_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom
 								convert_gpdb_snmp_status_to_emc_connect_status(status),
 								convert_gpdb_snmp_status_to_emc_connect_severity(status),
 								EMC_CONNECT_ORIGIN_GPMMON,
-								si.params->emcconnect_enabled ? 0 : 1,
+								(si.params->emcconnect_mode == EMCCONNECT_MODE_TYPE_LOCAL) ? 1 : 0,
 								(char*)displayname, 
 								(char*)oidstring,
 								si.key.hostname,  
@@ -1454,6 +1591,13 @@ void process_connect_emc_test_alert()
 {
 	FILE* fd;
 	int retVal = 0;
+
+	/* emcconnect is off */
+	if (si.params->emcconnect_mode == EMCCONNECT_MODE_TYPE_OFF)
+	{
+		return;
+	}
+
 	fd = fopen(GPMON_EMC_CONNECT_TESTINFO_ALERT_FILE, "r");
 	if (fd)
 	{
@@ -1465,7 +1609,7 @@ void process_connect_emc_test_alert()
 								EMC_CONNECT_STATUS_OK,
 								EMC_CONNECT_SEVERITY_INFO,
 								EMC_CONNECT_ORIGIN_GPMMON,
-								si.params->emcconnect_enabled ? 0 : 1,
+								(si.params->emcconnect_mode == EMCCONNECT_MODE_TYPE_LOCAL) ? 1 : 0,
 								"EMC Connect Test",
 								(char*)"",
 								"mdw",
@@ -1489,7 +1633,7 @@ void process_connect_emc_test_alert()
 								EMC_CONNECT_STATUS_OK,
 								EMC_CONNECT_SEVERITY_ERROR,
 								EMC_CONNECT_ORIGIN_GPMMON,
-								si.params->emcconnect_enabled ? 0 : 1,
+								(si.params->emcconnect_mode == EMCCONNECT_MODE_TYPE_LOCAL) ? 1 : 0,
 								"EMC Connect Test",
 								(char*)"",
 								"mdw",
@@ -2004,12 +2148,6 @@ apr_status_t gpmmon_init_snmp(snmp_module_params_t* params)
 	snprintf(si.hostlist_file,  	PATH_MAX, "%s/hostlistreport.txt", si.params->outdir);
 	snprintf(si.hostlist_tmpfile, 	PATH_MAX, "%s/_hostlistreport.txt", si.params->outdir);
 	snprintf(si.emcconnect_tailfile,PATH_MAX, "%s/_emcconnect_tail.dat", si.params->externaltable_dir);
-
-	// use default of 15 minutes
-	if (si.params->health_harvest_interval < 1)
-	{
-		si.params->health_harvest_interval = 15 * 60;
-	}
 
 	if (gpmon_recursive_mkdir(si.outputdir))
 	{
