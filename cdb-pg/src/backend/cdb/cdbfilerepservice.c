@@ -111,6 +111,12 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 
 	shutdownRequested = true;
 
+	if (fileRepProcessType == FileRepProcessTypePrimaryReceiverAck ||
+        fileRepProcessType == FileRepProcessTypeMirrorReceiver)
+    {
+			quickdie(PASS_SIGNAL_ARGS);
+    }
+
 	if ( FileRepIsBackendSubProcess(fileRepProcessType))
 	{
 		if (FileRepPrimary_IsResyncManagerOrWorker())

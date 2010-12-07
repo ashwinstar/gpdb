@@ -20,6 +20,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepconnserver.h"
+#include "cdb/cdbfilerepservice.h"
 #include "libpq/libpq.h"
 #include "libpq/auth.h"
 #include "libpq/pqformat.h"
@@ -369,8 +370,9 @@ FileRepConnServer_ReceiveMessageLength(uint32 *len)
 			char		*data,
 			uint32		length)
  {
- 
-	 if (pq_getbytes(data, length) == EOF) {
+
+	 if (pq_getbytes(data, length) == EOF) 
+	 {
 		 ereport(WARNING,
 				 (errcode_for_socket_access(),
 				  errmsg("receive EOF on connection: %m")));
