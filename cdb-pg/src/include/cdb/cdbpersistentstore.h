@@ -361,8 +361,6 @@ typedef struct CheckpointStartLockLocalVars
 		{ \
 			HOLD_INTERRUPTS(); \
 		} \
-	} \
-		\
 	}
 #endif
 	
