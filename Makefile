@@ -966,6 +966,7 @@ mgmtcopy :
 	rm -rf $(INSTLOC)/bin/lib/CVS
 	rm -rf $(INSTLOC)/bin/lib/.p4ignore
 	rm -rf $(INSTLOC)/bin/src
+	rm -f $(INSTLOC)/bin/gpchecksubnetcfg
 	echo "`date` -- INFO: Removing $(INSTLOC)/bin/gpexpandsystem"
 	rm -f $(INSTLOC)/bin/gpexpandsystem
 	rm -rf $(INSTLOC)/bin/gppylib
