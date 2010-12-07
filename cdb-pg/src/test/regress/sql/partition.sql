@@ -4179,3 +4179,50 @@ gp_distribution_policy p, pg_class c where p.localoid = c.oid and
 relname like 'test_table%' order by p.localoid;
 
 drop table test_table;
+
+-- MPP-6979: EXCHANGE partitions - fix namespaces if they differ
+
+-- new schema
+create schema mpp6979dummy;
+
+create table mpp6979part(a int, b int) 
+partition by range(b) 
+(
+start (1) end (10) every (1)
+);
+
+-- append-only table in new schema 
+create table mpp6979dummy.mpp6979tab(like mpp6979part) with (appendonly=true);
+
+-- check that table and all parts in public schema
+select schemaname, tablename, partitionschemaname, partitiontablename
+from pg_partitions 
+where tablename like ('mpp6979%');
+
+-- note that we have heap partitions in public, and ao table in mpp6979dummy
+select nspname, relname, relstorage from pg_class pc, pg_namespace ns 
+where
+pc.relnamespace=ns.oid and relname like ('mpp6979%');
+
+-- exchange the partition with the ao table.  
+-- Now we have an ao partition and mpp6979tab is heap!
+alter table mpp6979part exchange partition for (rank(1)) 
+with table mpp6979dummy.mpp6979tab;
+
+-- after the exchange, all partitions are still in public
+select schemaname, tablename, partitionschemaname, partitiontablename
+from pg_partitions 
+where tablename like ('mpp6979%');
+
+-- the rank 1 partition is ao, but still in public, and 
+-- table mpp6979tab is now heap, but still in mpp6979dummy
+select nspname, relname, relstorage from pg_class pc, pg_namespace ns 
+where
+pc.relnamespace=ns.oid and relname like ('mpp6979%');
+
+drop table mpp6979part;
+drop table mpp6979dummy.mpp6979tab;
+
+drop schema mpp6979dummy;
+
+
