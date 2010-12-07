@@ -438,6 +438,14 @@ static List *exchange_part_constraints(List *pcols,
 									   Relation oldrel, AttrMap *oldmap, 
 									   Relation newrel, AttrMap *newmap,
 									   bool validate);
+
+static void
+AlterRelationNamespaceInternalTwo(Relation rel,
+								  Oid relid,
+								  Oid oldNspOid, Oid newNspOid,
+								  bool hasDependEntry,
+								  const char *newschema);
+
 static List *get_part_constraints(List *part, Relation pgcon, Relation rel);
 
 static List *rel_get_part_path(Oid relid);
@@ -19464,19 +19472,33 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 	 * - pcols -- integer list of master partitioning columns
 	 */
 	{
-		char tmpname[NAMEDATALEN];
-		char *newname;
-		char *oldname;
-		Relation newrel;
-		Relation oldrel;
-		AttrMap *newmap;
-		AttrMap *oldmap;
-		List *newcons;
-		bool ok;
-		bool validate = intVal(pc2->arg1) ? true : false;
+		char			 tmpname1[NAMEDATALEN];
+		char			 tmpname2[NAMEDATALEN];
+		char			*newname;
+		char			*oldname;
+		Relation		 newrel;
+		Relation		 oldrel;
+		AttrMap			*newmap;
+		AttrMap			*oldmap;
+		List			*newcons;
+		bool			 ok;
+		bool			 validate	= intVal(pc2->arg1) ? true : false;
+		Oid				 oldnspid	= InvalidOid;
+		Oid				 newnspid	= InvalidOid;
+		char			*newNspName = NULL;
+		char			*oldNspName = NULL;
 
 		newrel = heap_open(newrelid, AccessExclusiveLock);
 		oldrel = heap_open(oldrelid, AccessExclusiveLock);
+
+		oldnspid = RelationGetNamespace(oldrel);
+		newnspid = RelationGetNamespace(newrel);
+
+		if (oldnspid != newnspid)
+		{
+			newNspName = pstrdup(get_namespace_name(newnspid));
+			oldNspName = pstrdup(get_namespace_name(oldnspid));
+		}
 
 		newname = pstrdup(RelationGetRelationName(newrel));
 		oldname = pstrdup(RelationGetRelationName(oldrel));
@@ -19493,7 +19515,8 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 		exchange_part_inheritance(RelationGetRelid(oldrel), RelationGetRelid(newrel));
 		CommandCounterIncrement();
 
-		snprintf(tmpname, sizeof(tmpname), "pg_temp_%u", oldrelid);
+		snprintf(tmpname1, sizeof(tmpname1), "pg_temp_%u", oldrelid);
+		snprintf(tmpname2, sizeof(tmpname2), "pg_temp_%u", newrelid);
 
 		exchange_permissions(RelationGetRelid(oldrel),
 							 RelationGetRelid(newrel));
@@ -19503,9 +19526,45 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 		heap_close(oldrel, NoLock);
 
 		/* rename rel renames the type too */
-		renamerel(oldrelid, tmpname, NULL);
+		renamerel(oldrelid, tmpname1, NULL);
 		CommandCounterIncrement();
 		RelationForgetRelation(oldrelid);
+
+		/* MPP-6979: if the namespaces are different, switch them */
+		if (newNspName)
+		{
+			/* move the old partition (which has a temporary name) to
+			 * the new namespace 
+			 */
+			oldrel = heap_open(oldrelid, AccessExclusiveLock);
+			AlterRelationNamespaceInternalTwo(oldrel,
+											  oldrelid,
+											  oldnspid, newnspid,
+											  true,
+											  newNspName);
+			heap_close(oldrel, NoLock);
+			CommandCounterIncrement();
+			RelationForgetRelation(oldrelid);
+
+			/* before we move the new table to the old namespace,
+			 * rename it to a temporary name to avoid a name
+			 * collision.  It would be nice to have an atomic
+			 * operation to rename and renamespace a relation... 
+			 */
+			renamerel(newrelid, tmpname2, NULL);
+			CommandCounterIncrement();
+			RelationForgetRelation(newrelid);
+
+			newrel = heap_open(newrelid, AccessExclusiveLock);
+			AlterRelationNamespaceInternalTwo(newrel,
+											  newrelid,
+											  newnspid, oldnspid,
+											  true,
+											  oldNspName);
+			heap_close(newrel, NoLock);
+			CommandCounterIncrement();
+			RelationForgetRelation(newrelid);
+		}
 
 		renamerel(newrelid, oldname, NULL);
 		CommandCounterIncrement();
@@ -22239,7 +22298,6 @@ AlterTableNamespace(RangeVar *relation, const char *newschema)
 	Oid			relid;
 	Oid			oldNspOid;
 	Oid			nspOid;
-	Relation	classRel;
 
 	rel = heap_openrv(relation, AccessExclusiveLock);
 
@@ -22316,24 +22374,12 @@ AlterTableNamespace(RangeVar *relation, const char *newschema)
 				 errmsg("cannot move objects into or out of AO SEGMENT schema"),
 						   errOmitLocation(true)));
 
+
 	/* OK, modify the pg_class row and pg_depend entry */
-	classRel = heap_open(RelationRelationId, RowExclusiveLock);
-
-	AlterRelationNamespaceInternal(classRel, relid, oldNspOid, nspOid, true);
-
-	/* Fix the table's rowtype too */
-	AlterTypeNamespaceInternal(rel->rd_rel->reltype, nspOid, false);
-
-	/* Fix other dependent stuff */
-	if (rel->rd_rel->relkind == RELKIND_RELATION)
-	{
-		AlterIndexNamespaces(classRel, rel, oldNspOid, nspOid);
-		AlterSeqNamespaces(classRel, rel, oldNspOid, nspOid, newschema);
-		AlterConstraintNamespaces(relid, oldNspOid, nspOid, false);
-	}
-
-	heap_close(classRel, RowExclusiveLock);
-
+	AlterRelationNamespaceInternalTwo(rel, relid,
+									  oldNspOid, nspOid,
+									  true, newschema);
+	
 	/* MPP-7825, MPP-6929, MPP-7600: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
 		&& MetaTrackValidKindNsp(rel->rd_rel))
@@ -22352,6 +22398,34 @@ AlterTableNamespace(RangeVar *relation, const char *newschema)
  * entry, and the pg_depend entry if any.  Caller must already have
  * opened and write-locked pg_class.
  */
+static void
+AlterRelationNamespaceInternalTwo(Relation rel,
+								  Oid relid,
+								  Oid oldNspOid, Oid newNspOid,
+								  bool hasDependEntry,
+								  const char *newschema)
+{
+	Relation classRel;
+
+	/* OK, modify the pg_class row and pg_depend entry */
+	classRel = heap_open(RelationRelationId, RowExclusiveLock);
+
+	AlterRelationNamespaceInternal(classRel, relid, oldNspOid, newNspOid, 
+								   hasDependEntry);
+
+	/* Fix the table's rowtype too */
+	AlterTypeNamespaceInternal(rel->rd_rel->reltype, newNspOid, false);
+
+	/* Fix other dependent stuff */
+	if (rel->rd_rel->relkind == RELKIND_RELATION)
+	{
+		AlterIndexNamespaces(classRel, rel, oldNspOid, newNspOid);
+		AlterSeqNamespaces(classRel, rel, oldNspOid, newNspOid, newschema);
+		AlterConstraintNamespaces(relid, oldNspOid, newNspOid, false);
+	}
+	heap_close(classRel, RowExclusiveLock);
+}
+
 void
 AlterRelationNamespaceInternal(Relation classRel, Oid relOid,
 							   Oid oldNspOid, Oid newNspOid,
