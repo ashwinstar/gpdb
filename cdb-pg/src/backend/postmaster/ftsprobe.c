@@ -1991,6 +1991,8 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 
 	PGresult   *rs;
 
+	Assert(entryDB->dbid == -1);
+
 	entryBuffer = createPQExpBuffer();
 	if (PQExpBufferBroken(entryBuffer))
 	{
@@ -2002,13 +2004,10 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 
 	appendPQExpBuffer(entryBuffer, "options='-c gp_session_role=UTILITY' ");
 
-	if (entryDB->hostname == NULL)
-		appendPQExpBufferStr(entryBuffer, "host='' ");
-	else if (isdigit(entryDB->hostname[0]))
-		appendPQExpBuffer(entryBuffer, "hostaddr=%s ", entryDB->hostname);
-	else
-		appendPQExpBuffer(entryBuffer, "host=%s ", entryDB->hostname);
-
+	/*
+	 * Do not need to set host, since FTS is running on the same host
+	 * as the master node.
+	 */
 	appendPQExpBuffer(entryBuffer, "port=%u ", entryDB->port);
 	appendPQExpBuffer(entryBuffer, "dbname=%s ", probeDatabase);
 	appendPQExpBuffer(entryBuffer, "user=%s ", probeUser);
