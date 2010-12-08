@@ -19,7 +19,6 @@
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
 #include "parser/parse_agg.h"
-#include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
@@ -138,53 +137,8 @@ check_call(ParseState *pstate, Node *call)
  *		Finish initial transformation of an aggregate call
  */
 void
-transformAggregateCall(ParseState *pstate, Aggref *agg, List *agg_order)
+transformAggregateCall(ParseState *pstate, Aggref *agg)
 {
-    /* 
-     * Transform the aggregate order by, if any.
-     *
-     * This involves transforming a sortlist, which in turn requires 
-     * maintenace of a targetlist maintained for the purposes of the
-     * sort.  This targetlist cannot be the main query targetlist 
-     * because the rules of which columns are referencable are different
-     * for the two targetlists.  This one can reference any column in
-     * in the from list, the main targetlist is limitted to expressions
-     * that show up in the group by clause.
-     *
-     * CDB: This is a little different from the postgres implementation.
-     * In the postgres implementation the "args" of the aggregate is 
-     * the targetlist.  In the GP implementation the args are a regular
-     * parameter list and we build a separate targetlist for use in 
-     * the order by.
-     */
-    if (agg_order)
-    {
-        AggOrder *aggorder = makeNode(AggOrder);
-        List     *tlist    = NIL;
-        int       save_next_resno;
-
-        /* transformSortClause will move the parse state resno which can
-         * cause problems since this isn't actually modifying the main
-         * target list.  To handle this we simply save the current resno and
-         * restore it when the transform is complete. */
-        save_next_resno = pstate->p_next_resno;
-        pstate->p_next_resno = 1;
-        
-        aggorder->sortImplicit = false;   /* TODO: implicit ordered aggregates */
-        aggorder->sortClause = 
-            transformSortClause(pstate, 
-                                agg_order,
-                                &tlist,
-                                true /* fix unknowns */ ,
-                                true /* use SQL99 rules */ );
-        aggorder->sortTargets = tlist;
-        
-        pstate->p_next_resno = save_next_resno;
-        
-        agg->aggorder = aggorder;
-    }
-
-    /* shared code with window functions */
 	check_call(pstate, (Node *)agg);
 }
 

@@ -64,9 +64,8 @@ static void unknown_attribute(ParseState *pstate, Node *relref, char *attname,
  */
 Node *
 ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
-                  List *agg_order, bool agg_star, bool agg_distinct, 
-                  bool is_column, WindowSpec *over, int location, 
-                  Node *agg_filter)
+				  bool agg_star, bool agg_distinct, bool is_column,
+				  WindowSpec *over, int location, Node *agg_filter)
 {
 	Oid			rettype = InvalidOid;
 	Oid			funcid = InvalidOid;
@@ -79,7 +78,6 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	Node	   *retval;
 	bool		retset = false;
 	bool        retstrict = false;
-	bool        retordered = false;
 	FuncDetailCode fdresult;
 
 	/*
@@ -201,8 +199,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	 * the "function call" could be a projection.  We also check that there
 	 * wasn't any aggregate decoration.
 	 */
-	if (nargs == 1 && agg_order == NIL && !agg_star && !agg_distinct && 
-        !agg_filter && list_length(funcname) == 1)
+	if (nargs == 1 && !agg_star && !agg_distinct && !agg_filter &&
+		list_length(funcname) == 1)
 	{
 		Oid			argtype = actual_arg_types[0];
 
@@ -232,7 +230,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	 */
 	fdresult = func_get_detail(funcname, fargs, nargs, actual_arg_types,
 							   &funcid, &rettype, &retset, &retstrict,
-							   &retordered, &declared_arg_types);
+							   &declared_arg_types);
 	if (fdresult == FUNCDETAIL_COERCION)
 	{
 		/*
@@ -261,13 +259,6 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("DISTINCT specified, but %s is not an aggregate function",
-							NameListToString(funcname)),
-					 errOmitLocation(true),
-					 parser_errposition(pstate, location)));
-        if (agg_order)
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("ORDER BY specified, but %s is not an ordered aggregate function",
 							NameListToString(funcname)),
 					 errOmitLocation(true),
 					 parser_errposition(pstate, location)));
@@ -375,18 +366,8 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 					 errmsg("window functions may not return sets"),
 					 parser_errposition(pstate, location)));
 
-        if (agg_order)
-            ereport(ERROR,
-                    (errcode(ERRCODE_WRONG_OBJECT_TYPE),
-                     errmsg("aggregate ORDER BY is not implemented for window functions"),
-                     parser_errposition(pstate, location)));
-
-
-        /*
-         * If this is a "true" window function, rather than an aggregate
-         * derived window function then it will have a tuple in pg_window
-         */
-		tuple = SearchSysCache(WINFNOID, ObjectIdGetDatum(funcid), 0, 0, 0);
+		tuple = SearchSysCache(WINFNOID, ObjectIdGetDatum(funcid),
+							   0, 0, 0);
 		if (HeapTupleIsValid(tuple))
 		{
 			Form_pg_window wf;
@@ -483,7 +464,13 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	else
 	{
 		/* aggregate function */
-		Aggref	   *aggref;
+		Aggref	   *aggref = makeNode(Aggref);
+
+		aggref->aggfnoid = funcid;
+		aggref->aggtype = rettype;
+		aggref->args = fargs;
+		aggref->aggstar = agg_star;
+		aggref->aggdistinct = agg_distinct;
 
 		/*
 		 * Reject attempt to call a parameterless aggregate without (*)
@@ -524,54 +511,17 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 									 errOmitLocation(true)));
 		}
 
+		/* parse_agg.c does additional aggregate-specific processing */
+		transformAggregateCall(pstate, aggref);
+
+		retval = (Node *) aggref;
+
 		if (retset)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("aggregates may not return sets"),
 					 parser_errposition(pstate, location),
 							 errOmitLocation(true)));
-
-		/* 
-		 * If this is not an ordered aggregate, but it was called with an
-		 * aggregate order by specification then we must raise an error.
-		 */
-		if (!retordered && agg_order != NIL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("ORDER BY specified, but %s is not an ordered aggregate function",
-							NameListToString(funcname)),
-					 errOmitLocation(true),
-					 parser_errposition(pstate, location)));			
-		}
-
-		/* 
-		 * ordered aggregates are not compatible with distinct
-		 */
-		if (agg_distinct && agg_order != NIL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-					 errmsg("ORDER BY and DISTINCT are mutually exclusive"),
-					 errOmitLocation(true),
-					 parser_errposition(pstate, location)));
-		}
-        
-        /* 
-         * Build the aggregate node and transform it
-         *
-         * Note: aggorder is handled inside transformAggregateCall()
-         */
-        aggref = makeNode(Aggref);
-		aggref->aggfnoid    = funcid;
-		aggref->aggtype     = rettype;
-		aggref->args        = fargs;
-		aggref->aggstar     = agg_star;
-		aggref->aggdistinct = agg_distinct;
-
-		transformAggregateCall(pstate, aggref, agg_order);
-
-		retval = (Node *) aggref;
 	}
 
 	return retval;
@@ -983,7 +933,6 @@ func_get_detail(List *funcname,
 				Oid *rettype,	/* return value */
 				bool *retset,	/* return value */
 				bool *retstrict, /* return value */
-				bool *retordered, /* return value */
 				Oid **true_typeids)		/* return value */
 {
 	FuncCandidateList raw_candidates;
@@ -1057,7 +1006,6 @@ func_get_detail(List *funcname,
 					*rettype = targetType;
 					*retset = false;
 					*retstrict = false;
-					*retordered = false;
 					*true_typeids = argtypes;
 					return FUNCDETAIL_COERCION;
 				}
@@ -1118,7 +1066,6 @@ func_get_detail(List *funcname,
 		*rettype = pform->prorettype;
 		*retset = pform->proretset;
 		*retstrict = pform->proisstrict;
-		*retordered = false;
 		ReleaseSysCache(ftup);
 
 		/* 
@@ -1127,15 +1074,8 @@ func_get_detail(List *funcname,
 		 */
 		if (pform->proisagg)
 		{
-		    Form_pg_aggregate	aggform;
-			FmgrInfo			transfn;
-			Relation            aggrel;
-			TupleDesc			aggdesc;
-			Datum				value;
-			bool				isnull;
-
-			aggrel = heap_open(AggregateRelationId, AccessShareLock);
-			aggdesc = RelationGetDescr(aggrel);
+		    Form_pg_aggregate aggform;
+			FmgrInfo transfn;
 			ftup = SearchSysCache(AGGFNOID,
 								  ObjectIdGetDatum(best_candidate->oid),
 								  0, 0, 0);
@@ -1145,19 +1085,7 @@ func_get_detail(List *funcname,
 			aggform = (Form_pg_aggregate) GETSTRUCT(ftup);
 			fmgr_info(aggform->aggtransfn, &transfn);
 			*retstrict = transfn.fn_strict;
-
-			/* 
-			 * Check if this is an ordered aggregate - while aggordered
-			 * should never be null it comes after a variable length field
-			 * so we must access it via heap_getattr.
-			 */
-			value = heap_getattr(ftup, Anum_pg_aggregate_aggordered, aggdesc, 
-								 &isnull);
-			Assert(!isnull);
-			*retordered = (!isnull) && DatumGetBool(value);
-
 			ReleaseSysCache(ftup);
-			heap_close(aggrel, AccessShareLock);
 			return FUNCDETAIL_AGGREGATE;
 		}
 		return FUNCDETAIL_NORMAL;

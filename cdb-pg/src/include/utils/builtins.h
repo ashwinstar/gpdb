@@ -748,10 +748,6 @@ extern Datum bytea_substr(PG_FUNCTION_ARGS);
 extern Datum bytea_substr_no_len(PG_FUNCTION_ARGS);
 extern Datum pg_column_size(PG_FUNCTION_ARGS);
 
-extern Datum string_agg_transfn(PG_FUNCTION_ARGS);
-extern Datum string_agg_delim_transfn(PG_FUNCTION_ARGS);
-extern Datum string_agg_finalfn(PG_FUNCTION_ARGS);
-
 /* version.c */
 extern Datum pgsql_version(PG_FUNCTION_ARGS);
 

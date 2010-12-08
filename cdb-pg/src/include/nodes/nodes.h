@@ -184,7 +184,6 @@ typedef enum NodeTag
 	T_Grouping,
 	T_GroupId,
 	T_IntoClause,
-    T_AggOrder,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)

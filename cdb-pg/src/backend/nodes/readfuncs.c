@@ -1089,12 +1089,6 @@ _readRenameStmt(void)
 }
 
 
-/*
- * _readFuncCall
- *
- * This parsenode is transformed during parse_analyze.
- * It not stored in views = no upgrade implication for changes
- */
 static FuncCall *
 _readFuncCall(void)
 {
@@ -1102,7 +1096,6 @@ _readFuncCall(void)
 
 	READ_NODE_FIELD(funcname);
 	READ_NODE_FIELD(args);
-    READ_NODE_FIELD(agg_order);
 	READ_BOOL_FIELD(agg_star);
 	READ_BOOL_FIELD(agg_distinct);
     READ_INT_FIELD(location);
@@ -1298,33 +1291,7 @@ _readAggref(void)
         READ_ENUM_FIELD(aggstage, AggStage);
     }
 
-    /*
-     * CDB: This field was added after the 4.0 release, it is only filled in
-     * when an aggregate uses the agg(<parameter-list> order by <sort-lits>)
-     * syntax.
-     */
-    if (pg_strtok_peek_fldname("aggorder"))
-    {                           /* braces required, macro doesn't have 'em */
-        READ_NODE_FIELD(aggorder);
-    }
-
 	READ_DONE();
-}
-
-
-/*
- * _outAggOrder
- */
-static AggOrder *
-_readAggOrder(void)
-{
-	READ_LOCALS(AggOrder);
-
-    READ_BOOL_FIELD(sortImplicit);
-    READ_NODE_FIELD(sortTargets);
-    READ_NODE_FIELD(sortClause);
-
-    READ_DONE();
 }
 
 /*
@@ -2511,7 +2478,6 @@ _readDefineStmt(void)
 	READ_NODE_FIELD(definition);
 	READ_OID_FIELD(newOid);
 	READ_OID_FIELD(shadowOid);
-	READ_BOOL_FIELD(ordered);   /* CDB */
 
 	READ_DONE();
 
@@ -3540,7 +3506,6 @@ static ParseNodeInfo infoAr[] =
 {
 	{"AEXPR", (ReadFn)_readAExpr},
 	{"AGG", (ReadFn)_readAgg},
-	{"AGGORDER", (ReadFn)_readAggOrder},
 	{"AGGREF", (ReadFn)_readAggref},
 	{"ALIAS", (ReadFn)_readAlias},
 	{"ALTERDOMAINSTMT", (ReadFn)_readAlterDomainStmt},

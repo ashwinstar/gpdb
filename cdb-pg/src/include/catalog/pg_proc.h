@@ -1065,25 +1065,6 @@ DESCR("smaller of two");
 DATA(insert OID = 6012 (  array_add		   PGNSP PGUID 12 f f t f i 2 1007 f "1007 1007" _null_ _null_ _null_ array_int4_add - _null_ ));
 DESCR("itemwise add two integer arrays");
 
-DATA(insert OID = 2908 (  array_agg_transfn   PGNSP PGUID 12 f f f f i 2 2281 f "2281 2283" _null_ _null_ _null_ array_agg_transfn _null_ _null_ ));
-DESCR("array_agg transition function");
-DATA(insert OID = 2909 (  array_agg_finalfn   PGNSP PGUID 12 f f f f i 1 2277 f "2281" _null_ _null_ _null_ array_agg_finalfn _null_ _null_ ));
-DESCR("array_agg final function");
-DATA(insert OID = 2910 (  array_agg		   PGNSP PGUID 12 t f f f i 1 2277 f "2283" _null_ _null_ _null_ aggregate_dummy _null_ _null_ ));
-DESCR("concatenate aggregate input into an array");
-
-DATA(insert OID = 3534 (  string_agg_transfn		PGNSP PGUID 12 f f f f i 2 2281 f "2281 25" _null_ _null_ _null_ string_agg_transfn _null_ _null_ ));
-DESCR("string_agg(text) transition function");
-DATA(insert OID = 3535 (  string_agg_delim_transfn	PGNSP PGUID 12 f f f f i 3 2281 f "2281 25 25" _null_ _null_ _null_ string_agg_delim_transfn _null_ _null_ ));
-DESCR("string_agg(text, text) transition function");
-DATA(insert OID = 3536 (  string_agg_finalfn		PGNSP PGUID 12 f f f f i 1 25 f "2281" _null_ _null_ _null_ string_agg_finalfn _null_ _null_ ));
-DESCR("string_agg final function");
-DATA(insert OID = 3537 (  string_agg				PGNSP PGUID 12 t f f f i 1 25 f "25" _null_ _null_ _null_ aggregate_dummy _null_ _null_ ));
-DESCR("concatenate aggregate input into an string");
-DATA(insert OID = 3538 (  string_agg				PGNSP PGUID 12 t f f f i 2 25 f "25 25" _null_ _null_ _null_ aggregate_dummy _null_ _null_ ));
-DESCR("concatenate aggregate input into an string with delimiter");
-
-
 DATA(insert OID = 760 (  smgrin			   PGNSP PGUID 12 f f t f s 1 210 f "2275" _null_ _null_ _null_  smgrin - _null_ ));
 DESCR("I/O");
 DATA(insert OID = 761 (  smgrout		   PGNSP PGUID 12 f f t f s 1 2275 f "210" _null_ _null_ _null_  smgrout - _null_ ));

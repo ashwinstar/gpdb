@@ -321,7 +321,7 @@ static TypeName *TableFuncTypeName(List *columns);
 
 %type <boolean> opt_instead opt_analyze
 %type <boolean> index_opt_unique opt_verbose opt_full
-%type <boolean> opt_freeze opt_default opt_ordered opt_recheck
+%type <boolean> opt_freeze opt_default opt_recheck
 %type <defelt>	opt_binary opt_oids copy_delimiter
 
 %type <boolean> copy_from opt_hold
@@ -438,6 +438,7 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <node> 	TabPartitionBoundarySpecStart TabPartitionBoundarySpecEnd
 				OptTabPartitionBoundarySpecEnd        /* PartitionRangeItem */
 %type <node> 	OptTabPartitionBoundarySpecEvery      /* PartitionRangeItem */
+%type <value>	OptNumericOnly 
 %type <node> 	TabPartitionNameDecl TabSubPartitionNameDecl      /* string */
 				TabPartitionDefaultNameDecl TabSubPartitionDefaultNameDecl 
 				opt_table_partition_merge_into 
@@ -510,7 +511,7 @@ static TypeName *TableFuncTypeName(List *columns);
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLS_P NULLIF NUMERIC
 
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OPTIONS OR
-	ORDER ORDERED OTHERS OUT_P OUTER_P OVER OVERCOMMIT OVERLAPS OVERLAY OWNED OWNER
+	ORDER OTHERS OUT_P OUTER_P OVER OVERCOMMIT OVERLAPS OVERLAY OWNED OWNER
 
 	PARTIAL PARTITION PARTITIONS PASSWORD PERCENT PLACING POSITION
 	PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
@@ -3864,6 +3865,11 @@ TabPartitionBoundarySpecEnd:
 				}
             ;
 
+OptNumericOnly:
+            NumericOnly 							{ $$ = $1; }
+			| /*EMPTY*/								{ $$ = NULL; }            
+            ;
+
 OptTabPartitionBoundarySpecEvery:
             EVERY '(' TabPartitionBoundarySpecValList ')' 
 				{
@@ -5516,28 +5522,26 @@ DropAssertStmt:
  *****************************************************************************/
 
 DefineStmt:
-			CREATE opt_ordered AGGREGATE func_name aggr_args definition
+			CREATE AGGREGATE func_name aggr_args definition
 				{
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_AGGREGATE;
 					n->oldstyle = false;
-					n->defnames = $4;
-					n->args = $5;
-					n->definition = $6;
-					n->ordered = $2;
+					n->defnames = $3;
+					n->args = $4;
+					n->definition = $5;
 					$$ = (Node *)n;
 				}
-			| CREATE opt_ordered AGGREGATE func_name old_aggr_definition
+			| CREATE AGGREGATE func_name old_aggr_definition
 				{
 					/* old-style (pre-8.2) syntax for CREATE AGGREGATE */
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_AGGREGATE;
 					n->oldstyle = true;
-					n->defnames = $4;
+					n->defnames = $3;
 					n->args = NIL;
-					n->definition = $5;
+					n->definition = $4;
 					n->newOid = 0;
-					n->ordered = $2;
 					$$ = (Node *)n;
 				}
 			| CREATE OPERATOR any_operator definition
@@ -5611,10 +5615,6 @@ DefineStmt:
 					n->comptypeOid = 0;
 					$$ = (Node *)n;
 				}
-		;
-
-opt_ordered:	ORDERED	{ $$ = TRUE; }
-			| /*EMPTY*/	{ $$ = FALSE; }
 		;
 
 definition: '(' def_list ')'						{ $$ = $2; }
@@ -10129,7 +10129,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("timezone");
 					n->args = list_make2($5, $1);
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -10189,7 +10188,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("like_escape");
 					n->args = list_make2($3, $5);
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -10203,7 +10201,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("like_escape");
 					n->args = list_make2($4, $6);
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -10217,7 +10214,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("like_escape");
 					n->args = list_make2($3, $5);
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -10231,7 +10227,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("like_escape");
 					n->args = list_make2($4, $6);
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -10246,7 +10241,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					c->val.type = T_Null;
 					n->funcname = SystemFuncName("similar_escape");
 					n->args = list_make2($4, (Node *) c);
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -10258,7 +10252,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("similar_escape");
 					n->args = list_make2($4, $6);
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -10272,7 +10265,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					c->val.type = T_Null;
 					n->funcname = SystemFuncName("similar_escape");
 					n->args = list_make2($5, (Node *) c);
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -10284,7 +10276,6 @@ a_expr:		c_expr									{ $$ = $1; }
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("similar_escape");
 					n->args = list_make2($5, $7);
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -10689,7 +10680,6 @@ simple_func: 	func_name '(' ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
 					n->args = NIL;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->agg_filter = NULL;
@@ -10697,12 +10687,11 @@ simple_func: 	func_name '(' ')'
 					n->over = NULL;
 					$$ = (Node *)n;
 				}
-			| func_name '(' expr_list opt_sort_clause')'
+			| func_name '(' expr_list ')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
 					n->args = $3;
-                    n->agg_order = $4;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->agg_filter = NULL;
@@ -10710,12 +10699,11 @@ simple_func: 	func_name '(' ')'
 					n->over = NULL;
 					$$ = (Node *)n;
 				}
-			| func_name '(' ALL expr_list opt_sort_clause')'
+			| func_name '(' ALL expr_list ')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
 					n->args = $4;
-                    n->agg_order = $5;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->agg_filter = NULL;
@@ -10727,12 +10715,11 @@ simple_func: 	func_name '(' ')'
 					n->over = NULL;
 					$$ = (Node *)n;
 				}
-			| func_name '(' DISTINCT expr_list opt_sort_clause')'
+			| func_name '(' DISTINCT expr_list ')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
 					n->args = $4;
-                    n->agg_order = $5;
 					n->agg_star = FALSE;
 					n->agg_distinct = TRUE;
 					n->agg_filter = NULL;
@@ -10755,7 +10742,6 @@ simple_func: 	func_name '(' ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
 					n->args = NIL;
-                    n->agg_order = NIL;
 					n->agg_star = TRUE;
 					n->agg_distinct = FALSE;
 					n->agg_filter = NULL;
@@ -10865,7 +10851,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("now");
 					n->args = NIL;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11003,7 +10988,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("current_user");
 					n->args = NIL;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11015,7 +10999,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("current_user");
 					n->args = NIL;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11027,7 +11010,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("session_user");
 					n->args = NIL;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11039,7 +11021,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("current_user");
 					n->args = NIL;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11051,7 +11032,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("current_database");
 					n->args = NIL;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					/*n->func_variadic = FALSE;*/
@@ -11064,7 +11044,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("current_schema");
 					n->args = NIL;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					/*n->func_variadic = FALSE;*/
@@ -11079,7 +11058,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("date_part");
 					n->args = $3;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11096,7 +11074,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("overlay");
 					n->args = $3;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11109,7 +11086,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("position");
 					n->args = $3;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11124,7 +11100,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("substring");
 					n->args = $3;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11145,7 +11120,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					 */
 					n->funcname = SystemFuncName(((Value *)llast($5->names))->val.str);
 					n->args = list_make1($3);
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11160,7 +11134,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("btrim");
 					n->args = $4;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11172,7 +11145,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("ltrim");
 					n->args = $4;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11184,7 +11156,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("rtrim");
 					n->args = $4;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11196,7 +11167,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("btrim");
 					n->args = $3;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11213,7 +11183,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 
 					n->funcname = SystemFuncName("convert_using");
 					n->args = list_make2($3, c);
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -11225,7 +11194,6 @@ func_expr:	simple_func FILTER '(' WHERE a_expr ')'
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = SystemFuncName("convert");
 					n->args = $3;
-                    n->agg_order = NIL;
 					n->agg_star = FALSE;
 					n->agg_distinct = FALSE;
 					n->over = NULL;
@@ -12137,7 +12105,6 @@ unreserved_keyword:
 			| OPERATOR
 			| OPTION
 			| OPTIONS
-			| ORDERED
 			| OTHERS
 			| OVER
 			| OVERCOMMIT
@@ -12970,7 +12937,6 @@ makeOverlaps(List *largs, List *rargs, int location)
 				 errmsg("wrong number of parameters on right side of OVERLAPS expression"),
 				 scanner_errposition(location)));
 	n->args = list_concat(largs, rargs);
-    n->agg_order = NIL;
 	n->agg_star = FALSE;
 	n->agg_distinct = FALSE;
 	n->over = NULL;

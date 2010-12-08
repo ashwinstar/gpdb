@@ -245,20 +245,6 @@ typedef enum AggStage
 	AGGSTAGE_FINAL /* Second (upper, later) stage of 2-stage aggregation. */
 } AggStage;
 
-
-
-/*
- * AggOrder describes ordering information for ordered aggregates
- */
-typedef struct AggOrder
-{
-    Expr        xpr;
-    bool        sortImplicit;   /* Implict or explicit ordering? */
-    List       *sortTargets;    /* Targetlist for order by clause */
-    List       *sortClause;     /* Sort clause for the aggregate */
-} AggOrder;
-
-
 /*
  * Aggref
  */
@@ -272,7 +258,6 @@ typedef struct Aggref
 	bool		aggstar;		/* TRUE if argument list was really '*' */
 	bool		aggdistinct;	/* TRUE if it's agg(DISTINCT ...) */
 	AggStage	aggstage;		/* MPP: 2-stage? If so, which stage */
-    AggOrder   *aggorder;       /* Ordered aggregate definition */
 	int			location;		/* token location, or -1 if unknown */
 } Aggref;
 

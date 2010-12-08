@@ -178,8 +178,8 @@ static void get_groupingfunc_expr(GroupingFunc *grpfunc,
 static void get_agg_expr(Aggref *aggref, deparse_context *context);
 static void get_windowedge_expr(WindowFrameEdge *edge, 
 								deparse_context *context);
-static void get_sortlist_expr(List *l, List *targetList, bool force_colno,
-                              deparse_context *context, char *keyword_clause);
+static void get_sortlist_expr(List *l, deparse_context *context, 
+							  char *keyword_clause);
 static void get_windowspec_expr(WindowSpec *spec, deparse_context *context);
 static void get_windowref_expr(WindowRef *wref, deparse_context *context);
 static void get_const_expr(Const *constval, deparse_context *context,
@@ -1942,6 +1942,7 @@ get_select_query_def(Query *query, deparse_context *context,
 {
 	StringInfo	buf = context->buf;
 	bool		force_colno;
+	char	   *sep;
 	ListCell   *l;
 
 	/*
@@ -1964,11 +1965,34 @@ get_select_query_def(Query *query, deparse_context *context,
 	/* Add the ORDER BY clause if given */
 	if (query->sortClause != NIL)
 	{
-        get_sortlist_expr(query->sortClause,
-                          query->targetList,
-                          force_colno,
-                          context,
-                          " ORDER BY ");
+		appendContextKeyword(context, " ORDER BY ",
+							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
+		sep = "";
+		foreach(l, query->sortClause)
+		{
+			SortClause *srt = (SortClause *) lfirst(l);
+			Node	   *sortexpr;
+			Oid			sortcoltype;
+			TypeCacheEntry *typentry;
+
+			appendStringInfoString(buf, sep);
+			sortexpr = get_rule_sortgroupclause(srt, query->targetList,
+												force_colno, context);
+			sortcoltype = exprType(sortexpr);
+			/* See whether operator is default < or > for datatype */
+			typentry = lookup_type_cache(sortcoltype,
+										 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
+			if (srt->sortop == typentry->lt_opr)
+				 /* ASC is default, so emit nothing */ ;
+			else if (srt->sortop == typentry->gt_opr)
+				appendStringInfo(buf, " DESC");
+			else
+				appendStringInfo(buf, " USING %s",
+								 generate_operator_name(srt->sortop,
+														sortcoltype,
+														sortcoltype));
+			sep = ", ";
+		}
 	}
 
 	/* Add the LIMIT clause if given */
@@ -4359,16 +4383,6 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 		appendStringInfoChar(buf, '*');
 	else
 		get_rule_expr((Node *) aggref->args, context, true);
-
-    /* Handle ORDER BY clause for ordered aggregates */
-    if (aggref->aggorder != NULL && !aggref->aggorder->sortImplicit)
-    {
-        get_sortlist_expr(aggref->aggorder->sortClause, 
-                          aggref->aggorder->sortTargets,
-                          false,  /* force_colno */
-                          context, 
-                          " ORDER BY ");
-    }
 	appendStringInfoChar(buf, ')');
 }
 
@@ -4403,8 +4417,7 @@ get_windowedge_expr(WindowFrameEdge *edge, deparse_context *context)
 }
 
 static void
-get_sortlist_expr(List *l, List *targetList, bool force_colno,
-                  deparse_context *context, char *keyword_clause)
+get_sortlist_expr(List *l, deparse_context *context, char *keyword_clause)
 {
 	ListCell *cell;
 	char *sep;
@@ -4421,8 +4434,8 @@ get_sortlist_expr(List *l, List *targetList, bool force_colno,
 		TypeCacheEntry *typentry;
 
 		appendStringInfoString(buf, sep);
-		sortexpr = get_rule_sortgroupclause(srt, targetList, force_colno,
-										    context);
+		sortexpr = get_rule_sortgroupclause(srt, context->query->targetList,
+											false, context);
 		sortcoltype = exprType(sortexpr);
 		/* See whether operator is default < or > for datatype */
 		typentry = lookup_type_cache(sortcoltype,
@@ -4455,11 +4468,7 @@ get_windowspec_expr(WindowSpec *spec, deparse_context *context)
 	{
 		/* parent and partition are mutually exclusive */
 		if (spec->partition)
-			get_sortlist_expr(spec->partition, 
-                              context->query->targetList,
-                              false,  /* force_colno */
-                              context, 
-                              "PARTITION BY ");
+			get_sortlist_expr(spec->partition, context, "PARTITION BY ");
 	}	
 	
 	if (spec->order)
@@ -4487,11 +4496,7 @@ get_windowspec_expr(WindowSpec *spec, deparse_context *context)
 		}
 		if (display_order)
 		{
-			get_sortlist_expr(spec->order, 
-                              context->query->targetList,
-                              false,  /* force_colno */
-                              context, 
-                              " ORDER BY ");
+			get_sortlist_expr(spec->order, context, " ORDER BY ");
 		}
 	}
 	
@@ -5599,7 +5604,6 @@ generate_function_name(Oid funcid, int nargs, Oid *argtypes)
 	Oid			p_rettype;
 	bool		p_retset;
 	bool        p_retstrict;
-	bool        p_retordered;
 	Oid		   *p_true_typeids;
 
 	proctup = SearchSysCache(PROCOID,
@@ -5619,8 +5623,7 @@ generate_function_name(Oid funcid, int nargs, Oid *argtypes)
 	p_result = func_get_detail(list_make1(makeString(proname)),
 							   NIL, nargs, argtypes,
 							   &p_funcid, &p_rettype,
-							   &p_retset, &p_retstrict, &p_retordered,
-							   &p_true_typeids);
+							   &p_retset, &p_retstrict, &p_true_typeids);
 	if ((p_result == FUNCDETAIL_NORMAL || p_result == FUNCDETAIL_AGGREGATE) &&
 		p_funcid == funcid)
 		nspname = NULL;

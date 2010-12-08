@@ -42,15 +42,15 @@ typedef enum
 
 
 extern Node *ParseFuncOrColumn(ParseState *pstate,
-				  List *funcname, List *fargs, List *agg_order,
+				  List *funcname, List *fargs,
 				  bool agg_star, bool agg_distinct, bool is_column,
 				  WindowSpec *over, int location, Node *agg_filter);
 
 extern FuncDetailCode func_get_detail(List *funcname, List *fargs,
-									  int nargs, Oid *argtypes,
-									  Oid *funcid, Oid *rettype,
-									  bool *retset, bool *retstrict, 
-									  bool *retordered, Oid **true_typeids);
+				int nargs, Oid *argtypes,
+				Oid *funcid, Oid *rettype,
+				bool *retset, bool *retstrict,
+				Oid **true_typeids);
 
 extern int func_match_argtypes(int nargs,
 					Oid *input_typeids,

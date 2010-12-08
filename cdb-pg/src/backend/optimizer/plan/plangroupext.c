@@ -945,14 +945,12 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	GroupExtContext context_copy = { };
 	double numGroups = *(context->p_dNumGroups);
 	double numGroups_for_gather = 0;
-	bool has_ordered_aggs = list_length(context->agg_counts->aggOrder) > 0;
 
 	root->group_pathkeys = canonicalize_pathkeys(root, root->group_pathkeys);
 
 	/* Plan a list of plans, one for each rollup level. */
 	if (gp_enable_groupext_distinct_gather ||
-		!gp_enable_groupext_distinct_pruning ||
-		has_ordered_aggs )
+		!gp_enable_groupext_distinct_pruning)
 	{
 		memcpy(&context_copy, context, sizeof(GroupExtContext));
 		gather_agg_plan =
@@ -965,7 +963,7 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 		}
 	}
 	
-	if (gp_enable_groupext_distinct_pruning && !has_ordered_aggs)
+	if (gp_enable_groupext_distinct_pruning)
 	{
 		*(context->p_dNumGroups) = numGroups;
 		rewrite_agg_plan =
@@ -1812,6 +1810,7 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 	bool more = true;
 	Index *sortrefs_to_resnos;
 	ListCell *sub_lc;
+	ListCell *lc;
 	int max_sortgroupref = 0;
 	int no;
 
@@ -1831,7 +1830,12 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 	 * the ressortgrouprefs, while the array elements represent the
 	 * resno in the sub_tlist.
 	 */
-	max_sortgroupref = maxSortGroupRef(tlist, true);
+	foreach (lc, tlist)
+	{
+		TargetEntry *tle = (TargetEntry *)lfirst(lc);
+		if (tle->ressortgroupref > max_sortgroupref)
+			max_sortgroupref = tle->ressortgroupref;
+	}
 	
 	sortrefs_to_resnos = (Index *)palloc0(max_sortgroupref * sizeof(Index));
 	
@@ -1854,7 +1858,6 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 	for (no = 0; no < max_sortgroupref; no++)
 	{
 		TargetEntry *tle = NULL;
-		SortClause sc = { };
 		
 		if (sortrefs_to_resnos[no] > 0)
 			continue;
@@ -1863,17 +1866,26 @@ convert_gs_to_rollups(AttrNumber *grpColIdx,
 		 * and find the corresponding target entry in sub_tlist. Fill in the
 		 * resno.
 		 */
-		sc.tleSortGroupRef = no+1;
-		tle = get_sortgroupclause_tle(&sc, tlist);
-		foreach (sub_lc, sub_tlist)
+		foreach (lc, tlist)
 		{
-			TargetEntry *sub_tle = (TargetEntry *)lfirst(sub_lc);
-			Assert(sub_tle);
-			if (equal(sub_tle->expr, tle->expr))
-			{
-				Assert(tle->ressortgroupref - 1 == no);
-				sortrefs_to_resnos[tle->ressortgroupref - 1] = sub_tle->resno;
+			tle = (TargetEntry *)lfirst(lc);
+			if (tle->ressortgroupref == no + 1)
 				break;
+		}
+		
+		if (lc)
+		{
+			Assert(lc != NULL);
+			foreach (sub_lc, sub_tlist)
+			{
+				TargetEntry *sub_tle = (TargetEntry *)lfirst(sub_lc);
+				Assert(sub_tle);
+				if (equal(sub_tle->expr, tle->expr))
+				{
+					Assert(tle->ressortgroupref - 1 == no);
+					sortrefs_to_resnos[tle->ressortgroupref - 1] = sub_tle->resno;
+					break;
+				}
 			}
 		}
 	}

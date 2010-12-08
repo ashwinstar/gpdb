@@ -100,7 +100,7 @@ union all
 select cn, null, null, sum(qty*prc) from sale group by cn
 union all
 select null, null, null, sum(qty*prc) from sale 
-order by 1,2,3; -- order 1,2,3
+order by 1,2,3; -- order 1,2,3    
 select cn, vn, pn, sum(qty*prc) from sale group by rollup(cn,vn,pn) order by 1,2,3; -- order 1,2,3
 select cn, vn, pn, sum(qty*prc) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3
 --end_equiv
@@ -148,9 +148,9 @@ union all
 select cn, null, null, count(distinct dt) from sale group by cn
 union all
 select null, null, null, count(distinct dt) from sale 
-order by 1,2,3; -- order 1,2,3
-select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn) order by 1,2,3; -- order 1,2,3
-select cn, vn, pn, count(distinct dt) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3
+order by 1,2,3; -- order 1,2,3  
+select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn) order by 1,2,3; -- order 1,2,3  
+select cn, vn, pn, count(distinct dt) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3  
 --end_equiv
 
 --start_equiv order 1,2,3
@@ -169,9 +169,9 @@ union all
 select null, vn, null, count(distinct dt) from sale group by vn
 union all
 select null, null, pn, count(distinct dt) from sale group by pn 
-order by 1,2,3; -- order 1,2,3
-select cn, vn, pn, count(distinct dt) from sale group by cube (cn, vn, pn) order by 1,2,3; -- order 1,2,3
-select cn, vn, pn, count(distinct dt) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3
+order by 1,2,3; -- order 1,2,3  
+select cn, vn, pn, count(distinct dt) from sale group by cube (cn, vn, pn) order by 1,2,3; -- order 1,2,3  
+select cn, vn, pn, count(distinct dt) from sale group by grouping sets ((), (cn), (vn), (pn), (cn,vn), (cn,pn), (vn,pn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3  
 --end_equiv
 
 
@@ -564,25 +564,6 @@ select a, b, count(distinct x), count(distinct y)
 from r6756 r, s6756 c, s6756 d, s6756 e
 where r.a = c.c and r.a = d.d and r.a = e.e
 group by rollup (a,b);
---end_equiv
-
---start_equiv
-select a, b, array_agg((a+1)*x order by x), array_agg((b+1)*y order by y)
-from r6756 r
-group by a, b
-union all
-select a, null, array_agg((a+1)*x order by x), array_agg((b+1)*y order by y)
-from r6756 r
-group by a
-union all
-select null, null, array_agg((a+1)*x order by x), array_agg((b+1)*y order by y)
-from r6756 r
-order by 1,2;
-
-select a, b, array_agg((a+1)*x order by x), array_agg((b+1)*y order by y)
-from r6756 r
-group by rollup (a,b)
-order by 1,2;
 --end_equiv
 
 drop table r6756 cascade; --ignore

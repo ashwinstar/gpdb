@@ -48,8 +48,7 @@
  * "args" defines the input type(s).
  */
 void
-DefineAggregate(List *name, List *args, bool oldstyle, List *parameters, 
-				Oid newOid, bool ordered)
+DefineAggregate(List *name, List *args, bool oldstyle, List *parameters, Oid newOid)
 {
 	char	   *aggName;
 	Oid			aggNamespace;
@@ -124,14 +123,6 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 				 errmsg("aggregate sfunc must be specified")));
 
 	/*
-	 * MPP: Ordered aggregates do not support prefuncs
-	 */
-	if (ordered && prelimfuncName != NIL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-				 errmsg("ordered aggregate prefunc is not supported")));
-
-	/*
 	 * look up the aggregate's input datatype(s).
 	 */
 	if (oldstyle)
@@ -203,18 +194,17 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 	/*
 	 * Most of the argument-checking is done inside of AggregateCreate
 	 */
-	aggOid = AggregateCreateWithOid(aggName,		/* aggregate name */
-									aggNamespace,	/* namespace */
-									aggArgTypes,	/* input data type(s) */
-									numArgs,
-									transfuncName,	/* step function name */
-									prelimfuncName,	/* prelim function name */
-									finalfuncName,	/* final function name */
-									sortoperatorName, /* sort operator name */
-									transTypeId,	/* transition data type */
-									initval,		/* initial condition */
-									ordered,		/* ordered aggregates */
-									newOid);
+	aggOid = AggregateCreateWithOid(aggName,	/* aggregate name */
+					aggNamespace,		/* namespace */
+					aggArgTypes,	/* input data type(s) */
+					numArgs,
+					transfuncName,		/* step function name */
+					prelimfuncName,		/* prelim function name */
+					finalfuncName,		/* final function name */
+					sortoperatorName,	/* sort operator name */
+					transTypeId,	/* transition data type */
+					initval,	/* initial condition */
+					newOid);
 					
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -226,7 +216,6 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 		stmt->definition = parameters;
 		stmt->newOid = aggOid;
 		stmt->shadowOid = 0;
-		stmt->ordered = ordered;
 		CdbDispatchUtilityStatement((Node *) stmt, "DefineAggregate");
 	}
 }

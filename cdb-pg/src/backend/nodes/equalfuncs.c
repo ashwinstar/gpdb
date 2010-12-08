@@ -194,17 +194,6 @@ _equalAggref(Aggref *a, Aggref *b)
 	COMPARE_SCALAR_FIELD(aggstar);
 	COMPARE_SCALAR_FIELD(aggdistinct);
 	COMPARE_SCALAR_FIELD(aggstage);
-    COMPARE_NODE_FIELD(aggorder);
-
-	return true;
-}
-
-static bool
-_equalAggOrder(AggOrder *a, AggOrder *b)
-{
-    COMPARE_SCALAR_FIELD(sortImplicit);
-	COMPARE_NODE_FIELD(sortTargets);
-    COMPARE_NODE_FIELD(sortClause);
 
 	return true;
 }
@@ -1110,7 +1099,6 @@ _equalDefineStmt(DefineStmt *a, DefineStmt *b)
 	COMPARE_NODE_FIELD(defnames);
 	COMPARE_NODE_FIELD(args);
 	COMPARE_NODE_FIELD(definition);
-	COMPARE_SCALAR_FIELD(ordered);  /* CDB */
 
 	return true;
 }
@@ -1912,7 +1900,6 @@ _equalFuncCall(FuncCall *a, FuncCall *b)
 {
 	COMPARE_NODE_FIELD(funcname);
 	COMPARE_NODE_FIELD(args);
-    COMPARE_NODE_FIELD(agg_order);
 	COMPARE_SCALAR_FIELD(agg_star);
 	COMPARE_SCALAR_FIELD(agg_distinct);
 	COMPARE_NODE_FIELD(over);
@@ -2333,9 +2320,6 @@ equal(void *a, void *b)
 			break;
 		case T_Aggref:
 			retval = _equalAggref(a, b);
-			break;
-		case T_AggOrder:
-			retval = _equalAggOrder(a, b);
 			break;
 		case T_WindowRef:
 			retval = _equalWindowRef(a, b);

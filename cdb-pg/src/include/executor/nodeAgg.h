@@ -14,10 +14,7 @@
 #ifndef NODEAGG_H
 #define NODEAGG_H
 
-#include "fmgr.h"
-#include "executor/tuptable.h"
 #include "nodes/execnodes.h"
-#include "nodes/primnodes.h"
 
 extern int	ExecCountSlotsAgg(Agg *node);
 extern AggState *ExecInitAgg(Agg *node, EState *estate, int eflags);
@@ -47,10 +44,7 @@ typedef struct AggStatePerAggData
 
 	/* number of input arguments for aggregate */
 	int			numArguments;
-	
-	/* number of inputs including ORDER BY expressions */
-	int			numInputs;
-	
+
 	/* Oids of transfer functions */
 	Oid			transfn_oid;
 	Oid         prelimfn_oid;
@@ -64,21 +58,18 @@ typedef struct AggStatePerAggData
 	FmgrInfo	transfn;
 	FmgrInfo    prelimfn;
 	FmgrInfo	finalfn;
-	
-	/* --- Ordered Aggregate Additions ( --- */
-	
-	/* number of sorting columns */
-	int			numSortCols;
-	
-	/* deconstructed sorting information (arrays of length numSortCols) */
-	AttrNumber *sortColIdx;
-	Oid		   *sortOperators;
 
-	/* --- Ordered Aggregate Additions ) --- */
+	/*
+	 * Type of input data and Oid of sort operator to use for it; only
+	 * set/used when aggregate has DISTINCT flag.  (These are not used
+	 * directly by nodeAgg, but must be passed to the Tuplesort object.)
+	 */
+	Oid			inputType;
+	Oid			sortOperator;
 
 	/*
 	 * fmgr lookup data for input type's equality operator --- only set/used
-	 * when aggregate has DISTINCT flag. (In PG 9, equalfns is a vector.)
+	 * when aggregate has DISTINCT flag.
 	 */
 	FmgrInfo	equalfn;
 
@@ -100,21 +91,6 @@ typedef struct AggStatePerAggData
 				transtypeByVal;
 
 	/*
-	 * Stuff for evaluation of inputs.	We used to just use ExecEvalExpr, but
-	 * with the addition of ORDER BY we now need at least a slot for passing
-	 * data to the sort object, which requires a tupledesc, so we might as
-	 * well go whole hog and use ExecProject too.
-	 */
-	TupleDesc	evaldesc;		/* descriptor of input tuples */
-	ProjectionInfo *evalproj;	/* projection machinery */
-	
-	/*
-	 * Slot for holding the evaluated input arguments.  This is set up
-	 * during ExecInitAgg() and then used for each input row.
-	 */
-	TupleTableSlot *evalslot;	/* current input tuple */
-	
-	/*
 	 * These values are working state that is initialized at the start of an
 	 * input tuple group and updated for each input tuple.
 	 *
@@ -125,7 +101,7 @@ typedef struct AggStatePerAggData
 	 * the transition function on the rest.
 	 */
 
-	void *sortstate;	/* sort object, if DISTINCT or ORDER BY */
+	void *sortstate;	/* sort object, if a DISTINCT agg */
 } AggStatePerAggData;
 
 /*

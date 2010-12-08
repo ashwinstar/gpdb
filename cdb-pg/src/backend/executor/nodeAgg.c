@@ -40,7 +40,7 @@
  *    MPP (in order to support hybrid hash aggregation) stores hash table
  *    entries and associated transition values in aggstate->aggcontext.
  *
- *	  The node's regular econtext (aggstate->ss.ps.ps_ExprContext)
+ *	  The node's regular econtext (aggstate->csstate.cstate.cs_ExprContext)
  *	  is used to run finalize functions and compute the output tuple;
  *	  this context can be reset once per output tuple.
  *
@@ -87,7 +87,6 @@
 #include "lib/stringinfo.h"             /* StringInfo */
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
-#include "optimizer/tlist.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
@@ -131,12 +130,9 @@ static void advance_transition_function(AggState *aggstate,
 										AggStatePerGroup pergroupstate,
 										FunctionCallInfoData *fcinfo,
 										MemoryManagerContainer *mem_manager);
-static void process_ordered_aggregate_single(AggState *aggstate,
-											 AggStatePerAgg peraggstate,
-											 AggStatePerGroup pergroupstate);
-static void process_ordered_aggregate_multi(AggState *aggstate,
-											 AggStatePerAgg peraggstate,
-											 AggStatePerGroup pergroupstate);
+static void process_sorted_aggregate(AggState *aggstate,
+						 AggStatePerAgg peraggstate,
+						 AggStatePerGroup pergroupstate);
 static void finalize_aggregate(AggState *aggstate,
 				   AggStatePerAgg peraggstate,
 				   AggStatePerGroup pergroupstate,
@@ -146,9 +142,6 @@ static bool find_unaggregated_cols_walker(Node *node, Bitmapset **colnos);
 static TupleTableSlot *agg_retrieve_direct(AggState *aggstate);
 static TupleTableSlot *agg_retrieve_hash_table(AggState *aggstate);
 static void ExecAggExplainEnd(PlanState *planstate, struct StringInfoData *buf);
-static List *combineAggrefArgs(Aggref *aggref, List **sort_clauses);
-static int count_extra_agg_slots(Node *node);
-static bool count_extra_agg_slots_walker(Node *node, int *count);
 
 Datum
 datumCopyWithMemManager(Datum oldvalue, Datum value, bool typByVal, int typLen,
@@ -214,11 +207,12 @@ initialize_aggregates(AggState *aggstate,
 	{
 		AggStatePerAgg peraggstate = &peragg[aggno];
 		AggStatePerGroup pergroupstate = &pergroup[aggno];
+		Aggref	   *aggref = peraggstate->aggref;
 
 		/*
-		 * Start a fresh sort operation for each DISTINCT/ORDER BY aggregate.
+		 * Start a fresh sort operation for each DISTINCT aggregate.
 		 */
-		if (peraggstate->numSortCols > 0)
+		if (aggref->aggdistinct)
 		{
 			/*
 			 * In case of rescan, maybe there could be an uncompleted sort
@@ -229,22 +223,11 @@ initialize_aggregates(AggState *aggstate,
 				if (peraggstate->sortstate)
 					tuplesort_end_mk((Tuplesortstate_mk *) peraggstate->sortstate);
 
-				/*
-				 * We use a plain Datum sorter when there's a single input column;
-				 * otherwise sort the full tuple.  (See comments for
-				 * process_ordered_aggregate_single.)
-				 */
 				peraggstate->sortstate =
-					(peraggstate->numInputs == 1) ?
-					tuplesort_begin_datum_mk(peraggstate->evaldesc->attrs[0]->atttypid,
-											 peraggstate->sortOperators[0],
-											 work_mem, false) :
-					tuplesort_begin_heap_mk(peraggstate->evaldesc,
-											peraggstate->numSortCols,
-											peraggstate->sortOperators,
-											peraggstate->sortColIdx,
-											work_mem, false);
-				
+					tuplesort_begin_datum_mk(peraggstate->inputType,
+							peraggstate->sortOperator,
+							work_mem, false);
+
 				/* 
 				 * CDB: If EXPLAIN ANALYZE, let all of our tuplesort operations
 				 * share our Instrumentation object and message buffer.
@@ -254,27 +237,16 @@ initialize_aggregates(AggState *aggstate,
 							aggstate->ss.ps.instrument,
 							aggstate->ss.ps.cdbexplainbuf);
 			}
-			else /* gp_enable_mk_sort is off */
+			else
 			{
 				if (peraggstate->sortstate)
 					tuplesort_end((Tuplesortstate *) peraggstate->sortstate);
 
-				/*
-				 * We use a plain Datum sorter when there's a single input column;
-				 * otherwise sort the full tuple.  (See comments for
-				 * process_ordered_aggregate_single.)
-				 */
 				peraggstate->sortstate =
-					(peraggstate->numInputs == 1) ?
-					tuplesort_begin_datum(peraggstate->evaldesc->attrs[0]->atttypid,
-										  peraggstate->sortOperators[0],
-										  work_mem, false) :
-					tuplesort_begin_heap(peraggstate->evaldesc,
-										 peraggstate->numSortCols,
-										 peraggstate->sortOperators,
-										 peraggstate->sortColIdx,
-										 work_mem, false);
-				
+					tuplesort_begin_datum(peraggstate->inputType,
+							peraggstate->sortOperator,
+							work_mem, false);
+
 				/* 
 				 * CDB: If EXPLAIN ANALYZE, let all of our tuplesort operations
 				 * share our Instrumentation object and message buffer.
@@ -289,8 +261,7 @@ initialize_aggregates(AggState *aggstate,
 			{
 				int64 		limit = 0;
 				int64 		offset = 0;
-				int 		unique = peragg->aggref->aggdistinct &&
-									 ( gp_enable_sort_distinct ? 1 : 0) ;
+				int 		unique = gp_enable_sort_distinct ? 1 : 0;
 				int 		sort_flags = gp_sort_flags; /* get the guc */
 				int         maxdistinct = gp_sort_max_distinct; /* get guc */
 
@@ -486,174 +457,122 @@ void
 advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup,
 				   MemoryManagerContainer *mem_manager)
 {
+	ExprContext *econtext = aggstate->tmpcontext;
 	int			aggno;
 
 	for (aggno = 0; aggno < aggstate->numaggs; aggno++)
 	{
-		Datum value;
-		bool isnull;
 		AggStatePerAgg peraggstate = &aggstate->peragg[aggno];
 		AggStatePerGroup pergroupstate = &pergroup[aggno];
+		AggrefExprState *aggrefstate = peraggstate->aggrefstate;
 		Aggref	   *aggref = peraggstate->aggref;
+		FunctionCallInfoData fcinfo;
 		int			i;
-		TupleTableSlot *slot;
-		int nargs = list_length(aggref->args);
+		ListCell   *arg;
+		MemoryContext oldContext;
 
-		/* Evaluate the current input expressions for this aggregate */
-		slot = ExecProject(peraggstate->evalproj, NULL);
-		slot_getallattrs(slot);	
-		
-		if (peraggstate->numSortCols > 0)
+		/* Switch memory context just once for all args */
+		oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+
+		/* Evaluate inputs and save in fcinfo */
+		/* We start from 1, since the 0th arg will be the transition value */
+		i = 1;
+		foreach(arg, aggrefstate->args)
 		{
-			/* DISTINCT and/or ORDER BY case */
-			Assert(slot->PRIVATE_tts_nvalid == peraggstate->numInputs);
-			
-			/*
-			 * If the transfn is strict, we want to check for nullity before
-			 * storing the row in the sorter, to save space if there are a lot
-			 * of nulls.  Note that we must only check numArguments columns,
-			 * not numInputs, since nullity in columns used only for sorting
-			 * is not relevant here.
-			 */
-			if (peraggstate->transfn.fn_strict)
-			{
-				for (i = 0; i < nargs; i++)
-				{
-					value = slot_getattr(slot, i+1, &isnull);
-					
-					if (isnull)
-						break; /* arg loop */
-				}
-				if (i < nargs)
-					continue; /* aggno loop */
-			}
-			
-			/* OK, put the tuple into the tuplesort object */
-			if (peraggstate->numInputs == 1)
-			{
-				value = slot_getattr(slot, 1, &isnull);
-				
-				if (gp_enable_mk_sort)
-					tuplesort_putdatum_mk((Tuplesortstate_mk*) peraggstate->sortstate,
-									   value,
-									   isnull);
-				else 
-					tuplesort_putdatum((Tuplesortstate*) peraggstate->sortstate,
-									   value,
-									   isnull);
-			}
+			ExprState  *argstate = (ExprState *) lfirst(arg);
+
+			fcinfo.arg[i] = ExecEvalExpr(argstate, econtext,
+										 &fcinfo.argnull[i], NULL);
+			i++;
+		}
+
+		/* Switch back */
+		MemoryContextSwitchTo(oldContext);
+
+		if (aggref->aggdistinct)
+		{
+			/* in DISTINCT mode, we may ignore nulls */
+			/* XXX we assume there is only one input column */
+			if (fcinfo.argnull[1])
+				continue;
+
+			if(gp_enable_mk_sort)
+				tuplesort_putdatum_mk((Tuplesortstate_mk *) peraggstate->sortstate, fcinfo.arg[1],
+						fcinfo.argnull[1]);
 			else
-			{
-				if (gp_enable_mk_sort)
-					tuplesort_puttupleslot_mk((Tuplesortstate_mk*) peraggstate->sortstate, 
-											  slot);
-				else 
-					tuplesort_puttupleslot((Tuplesortstate*) peraggstate->sortstate, 
-										   slot);
-			}
+				tuplesort_putdatum((Tuplesortstate *) peraggstate->sortstate, fcinfo.arg[1],
+						fcinfo.argnull[1]);
 		}
 		else
 		{
-			/* We can apply the transition function immediately */
-			FunctionCallInfoData fcinfo;
-			
-			/* Load values into fcinfo */
-			/* Start from 1, since the 0th arg will be the transition value */
-			Assert(slot->PRIVATE_tts_nvalid >= nargs);
-			for (i = 0; i < nargs; i++)
-			{
-				fcinfo.arg[i + 1] = slot_getattr(slot, i+1, &isnull);
-				fcinfo.argnull[i + 1] = isnull;
-			}
-			
 			advance_transition_function(aggstate, peraggstate, pergroupstate,
 										&fcinfo, mem_manager);
 		}
-	} /* aggno loop */
+	}
 }
 
 /*
- * Run the transition function for a DISTINCT or ORDER BY aggregate
- * with only one input.  This is called after we have completed
- * entering all the input values into the sort object.	We complete the
- * sort, read out the values in sorted order, and run the transition
- * function on each value (applying DISTINCT if appropriate).
- *
- * Note that the strictness of the transition function was checked when
- * entering the values into the sort, so we don't check it again here;
- * we just apply standard SQL DISTINCT logic.
- *
- * The one-input case is handled separately from the multi-input case
- * for performance reasons: for single by-value inputs, such as the
- * common case of count(distinct id), the tuplesort_getdatum code path
- * is around 300% faster.  (The speedup for by-reference types is less
- * but still noticeable.)
+ * Run the transition function for a DISTINCT aggregate.  This is called
+ * after we have completed entering all the input values into the sort
+ * object.	We complete the sort, read out the values in sorted order,
+ * and run the transition function on each non-duplicate value.
  *
  * When called, CurrentMemoryContext should be the per-query context.
  */
 static void
-process_ordered_aggregate_single(AggState *aggstate,
-								 AggStatePerAgg peraggstate,
-								 AggStatePerGroup pergroupstate)
+process_sorted_aggregate(AggState *aggstate,
+						 AggStatePerAgg peraggstate,
+						 AggStatePerGroup pergroupstate)
 {
 	Datum		oldVal = (Datum) 0;
-	bool		oldIsNull = true;
 	bool		haveOldVal = false;
 	MemoryContext workcontext = aggstate->tmpcontext->ecxt_per_tuple_memory;
 	MemoryContext oldContext;
-	bool		isDistinct = peraggstate->aggref->aggdistinct;
 	Datum	   *newVal;
 	bool	   *isNull;
 	FunctionCallInfoData fcinfo;
-	
-	Assert(peraggstate->numInputs == 1);
-	
+
 	if(gp_enable_mk_sort)
 		tuplesort_performsort_mk((Tuplesortstate_mk *) peraggstate->sortstate);
 	else
 		tuplesort_performsort((Tuplesortstate *) peraggstate->sortstate);
-	
-	/* Load the column into argument 1 (arg 0 will be transition value) */
-	
+
 	newVal = fcinfo.arg + 1;
 	isNull = fcinfo.argnull + 1;
-	
+
 	/*
 	 * Note: if input type is pass-by-ref, the datums returned by the sort are
 	 * freshly palloc'd in the per-query context, so we must be careful to
 	 * pfree them when they are no longer needed.
 	 */
-	
+
 	while (
-		   gp_enable_mk_sort ? 
-		   tuplesort_getdatum_mk((Tuplesortstate_mk *)peraggstate->sortstate, true, newVal, isNull)
-		   :
-		   tuplesort_getdatum((Tuplesortstate *)peraggstate->sortstate, true, newVal, isNull)
-		   )
+		gp_enable_mk_sort ? 
+		tuplesort_getdatum_mk((Tuplesortstate_mk *)peraggstate->sortstate, true, newVal, isNull)
+		:
+		tuplesort_getdatum((Tuplesortstate *)peraggstate->sortstate, true, newVal, isNull)
+		)
 	{
+		/*
+		 * DISTINCT always suppresses nulls, per SQL spec, regardless of the
+		 * transition function's strictness.
+		 */
+		if (*isNull)
+			continue;
+
 		/*
 		 * Clear and select the working context for evaluation of the equality
 		 * function and transition function.
 		 */
 		MemoryContextReset(workcontext);
 		oldContext = MemoryContextSwitchTo(workcontext);
-		
-		/*
-		 * If DISTINCT mode, and not distinct from prior, skip it.
-		 */
-		if (isDistinct && *isNull ) 
-		{ 
-			/* per SQL, DISTINCT doesn't use nulls */
-		}
-		else if (isDistinct &&
-				 haveOldVal &&
-				 ((oldIsNull && *isNull) ||
-				  (!oldIsNull && !*isNull &&
-				   DatumGetBool(FunctionCall2(&peraggstate->equalfn,
-											  oldVal, *newVal)))))
+
+		if (haveOldVal &&
+			DatumGetBool(FunctionCall2(&peraggstate->equalfn,
+									   oldVal, *newVal)))
 		{
 			/* equal to prior, so forget this one */
-			if (!peraggstate->inputtypeByVal && !*isNull)
+			if (!peraggstate->inputtypeByVal)
 				pfree(DatumGetPointer(*newVal));
 		}
 		else
@@ -661,91 +580,23 @@ process_ordered_aggregate_single(AggState *aggstate,
 			advance_transition_function(aggstate, peraggstate, pergroupstate,
 										&fcinfo, &(aggstate->mem_manager));
 			/* forget the old value, if any */
-			if (!oldIsNull && !peraggstate->inputtypeByVal)
+			if (haveOldVal && !peraggstate->inputtypeByVal)
 				pfree(DatumGetPointer(oldVal));
 			/* and remember the new one for subsequent equality checks */
 			oldVal = *newVal;
-			oldIsNull = *isNull;
 			haveOldVal = true;
 		}
-		
+
 		MemoryContextSwitchTo(oldContext);
 	}
-	
-	if (!oldIsNull && !peraggstate->inputtypeByVal)
-		pfree(DatumGetPointer(oldVal));
-	
-	if(gp_enable_mk_sort)
-		tuplesort_end_mk((Tuplesortstate_mk *) peraggstate->sortstate);
-	else
-		tuplesort_end((Tuplesortstate *) peraggstate->sortstate);
-	
-	peraggstate->sortstate = NULL;
-}
 
-/*
- * Run the transition function for an ORDER BY aggregate with more than 
- * one input.  In PG DISTINCT aggregates may also have multiple columns,
- * but in GPDB, only ORDER BY aggregates do.  This is called after we have 
- * completed  entering all the input values into the sort object.	We 
- * complete the sort, read out the values in sorted order, and run the 
- * transition function on each value.
- *
- * When called, CurrentMemoryContext should be the per-query context.
- */
-static void
-process_ordered_aggregate_multi(AggState *aggstate,
-								AggStatePerAgg peraggstate,
-								AggStatePerGroup pergroupstate)
-{
-	MemoryContext workcontext = aggstate->tmpcontext->ecxt_per_tuple_memory;
-	FunctionCallInfoData fcinfo;
-	TupleTableSlot *slot = peraggstate->evalslot;
-	int			numArguments = peraggstate->numArguments;
-	int			i;
-	
-	if(gp_enable_mk_sort)
-		tuplesort_performsort_mk((Tuplesortstate_mk *) peraggstate->sortstate);
-	else
-		tuplesort_performsort((Tuplesortstate *) peraggstate->sortstate);
-	
-	ExecClearTuple(slot);
-	
-	while (
-		   gp_enable_mk_sort ? 
-		   tuplesort_gettupleslot_mk((Tuplesortstate_mk *)peraggstate->sortstate, true, slot)
-		   :
-		   tuplesort_gettupleslot((Tuplesortstate *)peraggstate->sortstate, true, slot)
-		   )
-	{
-		/*
-		 * Extract the first numArguments as datums to pass to the transfn.
-		 * (This will help execTuplesMatch too, so do it immediately.)
-		 */
-		slot_getsomeattrs(slot, numArguments);
-		
-		/* Load values into fcinfo */
-		/* Start from 1, since the 0th arg will be the transition value */
-		for (i = 0; i < numArguments; i++)
-		{
-			fcinfo.arg[i + 1] = slot_get_values(slot)[i];
-			fcinfo.argnull[i + 1] = slot_get_isnull(slot)[i];
-		}
-		
-		advance_transition_function(aggstate, peraggstate, pergroupstate,
-									&fcinfo, &(aggstate->mem_manager));
-		
-		/* Reset context each time */
-		MemoryContextReset(workcontext);
-		
-		ExecClearTuple(slot);
-	}
-	
+	if (haveOldVal && !peraggstate->inputtypeByVal)
+		pfree(DatumGetPointer(oldVal));
+
 	if(gp_enable_mk_sort)
 		tuplesort_end_mk((Tuplesortstate_mk *) peraggstate->sortstate);
 	else
 		tuplesort_end((Tuplesortstate *) peraggstate->sortstate);
-	
 	peraggstate->sortstate = NULL;
 }
 
@@ -1370,14 +1221,8 @@ agg_retrieve_direct(AggState *aggstate)
 			else
 				pergroupstate = &perpassthru[aggno];
 
-			if ( peraggstate->numSortCols > 0 )
-			{
-				if ( peraggstate->numInputs == 1 )
-					process_ordered_aggregate_single(aggstate, peraggstate, pergroupstate);
-				else 
-					process_ordered_aggregate_multi(aggstate, peraggstate, pergroupstate);
-
-			}
+			if (peraggstate->aggref->aggdistinct)
+				process_sorted_aggregate(aggstate, peraggstate, pergroupstate);
 
 			finalize_aggregate(aggstate, peraggstate, pergroupstate,
 							   &aggvalues[aggno], &aggnulls[aggno]);
@@ -1815,14 +1660,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		AggrefExprState *aggrefstate = (AggrefExprState *) lfirst(l);
 		Aggref	   *aggref = (Aggref *) aggrefstate->xprstate.expr;
 		AggStatePerAgg peraggstate;
-		List	   *inputTargets = NIL;
-		List	   *inputSortClauses = NIL;
-		Oid		   *inputTypes = NULL;
-		List	   *inputExprStates = NIL;
-		int			numInputs;
+		Oid			inputTypes[FUNC_MAX_ARGS];
 		int			numArguments;
-		int			numSortCols;
-		List	   *sortlist;
 		HeapTuple	aggTuple;
 		Form_pg_aggregate aggform;
 		Oid			aggtranstype;
@@ -1835,7 +1674,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		Datum		textInitVal;
 		int			i;
 		ListCell   *lc;
-		
+
 		/* Planner should have assigned aggregate to correct level */
 		Assert(aggref->agglevelsup == 0);
 
@@ -1864,33 +1703,16 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		peraggstate->aggref = aggref;
 		numArguments = list_length(aggref->args);
 		peraggstate->numArguments = numArguments;
-		
-		/* Combine the argument and sortkey expressions into a single list
-		 * along with the corresponding sortkey clauses, if any.
-		 */
-		inputTargets = combineAggrefArgs(aggref, &inputSortClauses);
-		numInputs = list_length(inputTargets);
-		numSortCols = list_length(inputSortClauses);
-		
-		peraggstate->numSortCols = numSortCols;
-		peraggstate->numInputs = numInputs;
-		
-		/* MPP has some restrictions. */
-		Assert(!(aggref->aggdistinct && aggref->aggorder));
-		Assert(numArguments == 1 || !aggref->aggdistinct);
 
-		/* Get actual datatypes of the inputs.	These could be different from
+		/*
+		 * Get actual datatypes of the inputs.	These could be different from
 		 * the agg's declared input types, when the agg accepts ANY, ANYARRAY
-		 * or ANYELEMENT. The result will have argument types at 0 through 
-		 * numArguments-1 and sort key types mixed in or at numArguments through 
-		 * numInputs.
+		 * or ANYELEMENT.
 		 */
-		inputTypes = (Oid*)palloc0(sizeof(Oid)*(numInputs));
 		i = 0;
-		foreach(lc, inputTargets)
+		foreach(lc, aggref->args)
 		{
-			TargetEntry *tle = (TargetEntry *) lfirst(lc);
-			inputTypes[i++] = exprType((Node*)tle->expr);
+			inputTypes[i++] = exprType((Node *) lfirst(lc));
 		}
 
 		aggTuple = SearchSysCache(AGGFNOID,
@@ -2045,136 +1867,35 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 								aggref->aggfnoid)));
 		}
 
-		/*
-		 * Get a tupledesc corresponding to the inputs (including sort
-		 * expressions) of the agg.
-		 */
-		peraggstate->evaldesc = ExecTypeFromTL(inputTargets, false);
-		
-		/* Create slot we're going to do argument evaluation in */
-		peraggstate->evalslot = ExecInitExtraTupleSlot(estate);
-		ExecSetSlotDescriptor(peraggstate->evalslot, peraggstate->evaldesc);
-		
-		inputExprStates = (List *)
-			ExecInitExpr((Expr *) inputTargets, (PlanState *) aggstate);
-		
-		/* Set up projection info for evaluation */
-		peraggstate->evalproj = ExecBuildProjectionInfo(inputExprStates,
-														aggstate->tmpcontext,
-														peraggstate->evalslot,
-														NULL);
-		
-		/*
-		 * If we're doing either DISTINCT or ORDER BY, then we have a list of
-		 * SortGroupClause nodes; fish out the data in them and stick them
-		 * into arrays.
-		 *
-		 * Note that by construction, if there is a DISTINCT clause then the
-		 * ORDER BY clause is a prefix of it (see transformDistinctClause).
-		 */
 		if (aggref->aggdistinct)
 		{
-			TargetEntry *tle;
-			SortClause *sc;
 			Oid			eq_function;
 
+			/* We don't implement DISTINCT aggs in the HASHED case */
+			Assert(node->aggstrategy != AGG_HASHED);
+
 			/*
-			 * GPDB 4 doesh't implement DISTINCT aggs for aggs having more than
-			 * than one argument, nor does it allow an ordered aggregate to
-			 * specify distinct, but PG 9 does.  The SQL standard allows the
-			 * one-arg-for-DISTINCT restriction, but we really we ought to 
-			 * implement it the way PG 9 does eventually.
-			 *
-			 * For now we use the scalar equalfn field of AggStatePerAggData
-			 * for DQAs instead of treating DQAs more generally. 
+			 * We don't currently implement DISTINCT aggs for aggs having more
+			 * than one argument.  This isn't required for anything in the SQL
+			 * spec, but really it ought to be implemented for
+			 * feature-completeness.  FIXME someday.
 			 */
 			if (numArguments != 1)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("DISTINCT is supported only for single-argument aggregates")));
 
+			peraggstate->inputType = inputTypes[0];
+			get_typlenbyval(inputTypes[0],
+							&peraggstate->inputtypeLen,
+							&peraggstate->inputtypeByVal);
+
 			eq_function = equality_oper_funcid(inputTypes[0]);
 			fmgr_info(eq_function, &(peraggstate->equalfn));
-			
-			tle = (TargetEntry*)linitial(inputTargets);
-			tle->ressortgroupref = 1;
-			
-			sc = makeNode(SortClause);
-			sc->tleSortGroupRef = tle->ressortgroupref;
-			sc->sortop = ordering_oper_opid(inputTypes[0]);
-			
-			sortlist = list_make1(sc);
-			numSortCols = 1;
-		}
-		else if ( aggref->aggorder )
-		{
-			sortlist = aggref->aggorder->sortClause;
-			numSortCols = list_length(sortlist);
-		}
-		else 
-		{
-			sortlist = NULL;
-			numSortCols = 0;
+			peraggstate->sortOperator = ordering_oper_opid(inputTypes[0]);
+			peraggstate->sortstate = NULL;
 		}
 
-		
-		peraggstate->numSortCols = numSortCols;
-
-		if (numSortCols > 0)
-		{
-			/*
-			 * We don't implement DISTINCT or ORDER BY aggs in the HASHED case
-			 * (yet)
-			 */
-			Assert(node->aggstrategy != AGG_HASHED);
-			
-			/* If we have only one input, we need its len/byval info. */
-			if (numInputs == 1)
-			{
-				get_typlenbyval(inputTypes[0],
-								&peraggstate->inputtypeLen,
-								&peraggstate->inputtypeByVal);
-			}
-			
-			/* Extract the sort information for use later */
-			peraggstate->sortColIdx =
-				(AttrNumber *) palloc(numSortCols * sizeof(AttrNumber));
-			peraggstate->sortOperators =
-				(Oid *) palloc(numSortCols * sizeof(Oid));
-			
-			i = 0;
-			foreach(lc, sortlist)
-			{
-				SortClause *sortcl = (SortClause *) lfirst(lc);
-				TargetEntry *tle = get_sortgroupclause_tle(sortcl,
-														   inputTargets);
-				
-				/* the parser should have made sure of this */
-				Assert(OidIsValid(sortcl->sortop));
-				
-				peraggstate->sortColIdx[i] = tle->resno;
-				peraggstate->sortOperators[i] = sortcl->sortop;
-				i++;
-			}
-			Assert(i == numSortCols);
-		}
-
-		if (aggref->aggdistinct)
-		{
-			Oid eqfunc;
-			
-			Assert(numArguments == 1);
-			Assert(numSortCols == 1);
-			
-			/*
-			 * We need the equal function for the DISTINCT comparison we will
-			 * make.
-			 */
-			eqfunc = equality_oper_funcid(inputTypes[0]);
-			fmgr_info(eqfunc, &peraggstate->equalfn);
-		}
-		
-		
 		ReleaseSysCache(aggTuple);
 	}
 
@@ -2226,29 +1947,12 @@ GetAggInitVal(Datum textInitVal, Oid transtype)
 	return initVal;
 }
 
-/*
- * Standard API to count tuple table slots used by an execution 
- * instance of an Agg node.  
- *
- * GPDB precomputes tuple table size, but use of projection means
- * aggregates use a slot.  Since the count is needed earlier, we 
- * than the determination of then number of different aggregate
- * call that happens during initializaiton, we just count Aggref 
- * nodes.  This may be an over count (in case some aggregate
- * calls are duplicated), but shouldn't be too bad.
- */
 int
 ExecCountSlotsAgg(Agg *node)
 {
-	int nextraslots = 0;
-	
-	nextraslots += count_extra_agg_slots((Node*)node->plan.targetlist);
-	nextraslots += count_extra_agg_slots((Node*)node->plan.qual);
-	
 	return ExecCountSlotsNode(outerPlan(node)) +
-	ExecCountSlotsNode(innerPlan(node)) +
-	nextraslots + /* may be high due to duplicate Aggref nodes. */
-	AGG_NSLOTS;
+		ExecCountSlotsNode(innerPlan(node)) +
+		AGG_NSLOTS;
 }
 
 static void
@@ -2524,113 +2228,3 @@ initGpmonPktForAgg(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 							 NULL);
 	}
 }
-
-/*
- * Combine the argument and sortkey expressions of an Aggref
- * node into a single target list (of TargetEntry*) and, if
- * needed, an associated sort key list (of SortClause*).  
- *
- * The explicit result is a  palloc'd target list incorporating 
- * the underlying expressions by reference.  (Everything but
- * the expressions is newly allocated.)
- *
- * The implicit result, if requested by passing a non-null
- * pointer in sort_clauses, is a palloc'd sort key list.
- */
-List *
-combineAggrefArgs(Aggref *aggref, List **sort_clauses)
-{
- 	ListCell *lc;
- 	TargetEntry *tle;
-	List *inputTargets = NIL;
-	List *inputSorts = NIL;
-	int i = 0;
-	
-	/* In GPDB, can't have it both ways. */
-	Assert( !aggref->aggdistinct || aggref->aggorder == NULL ); 
-	
-	/* Target list for cataloged aggregate arguments. */
-	foreach(lc, aggref->args)
-	{
-		TargetEntry *tle = makeNode(TargetEntry);
-		tle->expr = (Expr*)lfirst(lc);
-		tle->resno = ++i;
-		inputTargets = lappend(inputTargets, tle);
-	}
-	
-	if ( aggref->aggorder != NULL )
-	{
-		/* Add targets and sort clauses for call supplied ordering. */
-		inputSorts = aggref->aggorder->sortClause;
-		if ( sort_clauses != NULL )
-			inputSorts = (List*)copyObject(inputSorts);
-		
-		foreach(lc, inputSorts)
-		{
-			SortClause *sc = (SortClause*)lfirst(lc);
-			TargetEntry *newtle;
-			
-			tle = get_sortgroupclause_tle(sc, aggref->aggorder->sortTargets);
-			
-			/* XXX Is it worth looking for tle->expr in the tlist so far to avoid copy? */
-			newtle = makeNode(TargetEntry);
-			newtle->expr = tle->expr; /* by reference */
-			newtle->resno = ++i;
-			newtle->resname = tle->resname ? pstrdup(tle->resname) : NULL;
-			newtle->ressortgroupref = tle->ressortgroupref;
-			
-			inputTargets = lappend(inputTargets, newtle);
-		}
-	}
-	else if ( aggref->aggdistinct )
-	{ 
-		SortClause *sc;
-		
-		/* In GPDB, DISTINCT implies single argument. */
-		Assert( list_length(inputTargets) == 1 );
-		
-		
-		/* Add targets and sort clauses for implied DISTINCT ordering. */
-		tle = (TargetEntry*)linitial(inputTargets);
-		tle->ressortgroupref = 1;
-		
-		if ( sort_clauses != NULL )
-		{
-			sc = makeNode(SortClause);
-			sc->tleSortGroupRef = tle->ressortgroupref;
-			inputSorts = list_make1(sc);
-		}
-	}
-	
-	if ( sort_clauses != NULL )
-		*sort_clauses = inputSorts;
-	
-	return inputTargets;
-}
-
-/*
- * Subroutines for ExecCountSlotsAgg.
- */
-int
-count_extra_agg_slots(Node *node)
-{
-	int count = 0;
-	
-	count_extra_agg_slots_walker(node, &count);
-	return count;
-}
-
-bool 
-count_extra_agg_slots_walker(Node *node, int *count)
-{
-	if (node == NULL)
- 		return false;
-	
-	if (IsA(node, Aggref))
-	{
-		(*count)++;
-	}
-	
-	return expression_tree_walker(node, count_extra_agg_slots_walker, (void *) count);
-}
-

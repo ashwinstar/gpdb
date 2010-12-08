@@ -870,7 +870,6 @@ _readFuncCall(const char ** str)
 
 	READ_NODE_FIELD(funcname);
 	READ_NODE_FIELD(args);
-    READ_NODE_FIELD(agg_order);
 	READ_BOOL_FIELD(agg_star);
 	READ_BOOL_FIELD(agg_distinct);
 	READ_NODE_FIELD(over);
@@ -1044,24 +1043,10 @@ _readAggref(const char ** str)
 	READ_BOOL_FIELD(aggstar);
 	READ_BOOL_FIELD(aggdistinct);
 	READ_ENUM_FIELD(aggstage, AggStage);
-    READ_NODE_FIELD(aggorder);
+
+
 
 	READ_DONE();
-}
-
-/*
- * _outAggOrder
- */
-static AggOrder *
-_readAggOrder(const char ** str)
-{
-	READ_LOCALS(AggOrder);
-
-    READ_BOOL_FIELD(sortImplicit);
-    READ_NODE_FIELD(sortTargets);
-    READ_NODE_FIELD(sortClause);
-
-    READ_DONE();
 }
 
 /*
@@ -2301,7 +2286,6 @@ _readDefineStmt(const char ** str)
 	READ_NODE_FIELD(definition);
 	READ_OID_FIELD(newOid);
 	READ_OID_FIELD(shadowOid);
-	READ_BOOL_FIELD(ordered);  /* CDB */
 
 	READ_DONE();
 
@@ -3628,9 +3612,6 @@ readNodeBinary(const char ** str)
 				break;
 			case T_Aggref:
 				return_value = _readAggref(str);
-				break;
-			case T_AggOrder:
-				return_value = _readAggOrder(str);
 				break;
 			case T_WindowRef:
 				return_value = _readWindowRef(str);

@@ -36,6 +36,4 @@ extern List *get_sortgroupclauses_tles(List *clauses, List *targetList);
 
 extern bool tlist_same_datatypes(List *tlist, List *colTypes, bool junkOK);
 
-extern Index maxSortGroupRef(List *targetlist, bool include_orderedagg);
-
 #endif   /* TLIST_H */
