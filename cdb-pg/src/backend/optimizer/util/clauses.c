@@ -434,6 +434,15 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 				counts->dqaArgs = lappend(counts->dqaArgs, arg);
 		}
 
+		/*
+		 * Build up a list of all ordering clauses from any ordered aggregates
+		 */
+		if (aggref->aggorder)
+		{
+			if ( !list_member(counts->aggOrder, aggref->aggorder) )
+				counts->aggOrder = lappend(counts->aggOrder, aggref->aggorder);
+		}
+
 		/* extract argument types */
 		numArguments = list_length(aggref->args);
 		inputTypes = (Oid *) palloc(sizeof(Oid) * numArguments);
@@ -514,7 +523,8 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 		 * Complain if the aggregate's arguments contain any aggregates;
 		 * nested agg functions are semantically nonsensical.
 		 */
-		if (contain_agg_clause((Node *) aggref->args))
+		if (contain_agg_clause((Node *) aggref->args) ||
+			contain_agg_clause((Node *) aggref->aggorder))
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
 					 errmsg("aggregate function calls may not be nested")));
@@ -2102,31 +2112,31 @@ eval_const_expressions_mutator(Node *node,
         Node *scalar;
         Node *values;
 
-        saop = (ScalarArrayOpExpr *) expression_tree_mutator(node, eval_const_expressions_mutator,
-								   (void *) context);
+		saop = (ScalarArrayOpExpr *) expression_tree_mutator(node, eval_const_expressions_mutator,
+															 (void *) context);
 
-        Assert( IsA(saop, ScalarArrayOpExpr));
-        Assert( list_length(saop->args) == 2);
+		Assert( IsA(saop, ScalarArrayOpExpr));
+		Assert( list_length(saop->args) == 2);
 
-        scalar = (Node *) linitial(saop->args);
-        values = (Node *) lsecond(saop->args);
+		scalar = (Node *) linitial(saop->args);
+		values = (Node *) lsecond(saop->args);
 
-        if ( IsA(scalar, Const) && IsA(values, Const))
-        {
-            Node *result = (Node *) evaluate_expr( (Expr *) saop, BOOLOID);
-            Assert(IsA(result, Const));
-            return result;
-        }
+		if ( IsA(scalar, Const) && IsA(values, Const))
+		{
+			Node *result = (Node *) evaluate_expr( (Expr *) saop, BOOLOID);
+			Assert(IsA(result, Const));
+			return result;
+		}
 
-        /* note a couple things:
-         *
-         * 1) If values is not a constant (it could be an ArrayExpr) then that means
-         *    the ArrayExpr could not be reduced to a constant ...
-         * 2) We could further improve this by, for OR scalar array ops, extract only the Const values
-         *    from the array and make a constant out of those to evaluate.  If it evaluates to true then
-         *    we can return true, otherwise we can return a new ScalarArrayOpExpr with values being
-         *    only the non-Const values.  This seems overkill: I think      a in (1,2,3,x,y,z)    is rare
-         */
+		/* note a couple things:
+		 *
+		 * 1) If values is not a constant (it could be an ArrayExpr) then that means
+		 *    the ArrayExpr could not be reduced to a constant ...
+		 * 2) We could further improve this by, for OR scalar array ops, extract only the Const values
+		 *    from the array and make a constant out of those to evaluate.  If it evaluates to true then
+		 *    we can return true, otherwise we can return a new ScalarArrayOpExpr with values being
+		 *    only the non-Const values.  This seems overkill: I think      a in (1,2,3,x,y,z)    is rare
+		 */
 
         return (Node *) saop; /* this has been walked and is a new one */
 	}
@@ -3360,6 +3370,22 @@ expression_tree_walker(Node *node,
 				if (expression_tree_walker((Node *) expr->args,
 										   walker, context))
 					return true;
+				if (expression_tree_walker((Node *) expr->aggorder,
+										   walker, context))
+					return true;
+			}
+			break;
+		case T_AggOrder:
+			{
+				AggOrder	   *expr = (AggOrder *) node;
+
+				/* recurse directly on List */
+				if (expression_tree_walker((Node *) expr->sortTargets,
+										   walker, context))
+					return true;
+				if (expression_tree_walker((Node *) expr->sortClause,
+										   walker, context))
+					return true;
 			}
 			break;
 		case T_WindowRef:
@@ -3906,6 +3932,18 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, aggref, Aggref);
 				MUTATE(newnode->args, aggref->args, List *);
+				MUTATE(newnode->aggorder, aggref->aggorder, AggOrder*);
+				return (Node *) newnode;
+			}
+			break;
+		case T_AggOrder:
+			{
+				AggOrder	*aggorder = (AggOrder *)node;
+				AggOrder	*newnode;
+				
+				FLATCOPY(newnode, aggorder, AggOrder);
+				MUTATE(newnode->sortTargets, aggorder->sortTargets, List *);
+				MUTATE(newnode->sortClause, aggorder->sortClause, List *);
 				return (Node *) newnode;
 			}
 			break;

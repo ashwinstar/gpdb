@@ -33,10 +33,18 @@ typedef struct GroupContext
 	Path *cheapest_path;
 
 	/*
-	 * If subplan is given, use it instead of creating the plan based
-	 * on the given path.
+	 * If subplan is given, use it (including its targetlist).  
+	 *
+	 * If sub_tlist and no subplan is given, then use sub_tlist
+	 * on the input plan. (This is intended to  assure that targets 
+	 * that appear in the SortClauses of AggOrder  nodes have targets 
+	 * in the subplan that match in sortgroupref.
+	 *
+	 * If neither subplan nor sub_tlist is given, just make a plan with
+	 * a flat target list.
 	 */
 	Plan *subplan;
+	List *sub_tlist;
 
 	List *tlist;
 	bool use_hashed_grouping;

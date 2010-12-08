@@ -316,6 +316,10 @@ static void planDqaJoinOrder(PlannerInfo *root, MppGroupContext *ctx,
 static List *make_subplan_tlist(List *tlist, Node *havingQual, 
 								List *grp_clauses, int *pnum_gkeys, AttrNumber **pcols_gkeys,
 								List *dqa_args, int *pnum_dqas, AttrNumber **pcols_dqas);
+static List *describe_subplan_tlist(List *sub_tlist,
+						List *tlist, Node *havingQual,
+						List *grp_clauses, int *pnum_gkeys, AttrNumber **pcols_gkeys,
+						List *dqa_args, int *pnum_dqas, AttrNumber **pcols_dqas);
 static void generate_multi_stage_tlists(MppGroupContext* ctx,
 						List **p_prelim_tlist,
 						List **p_inter_tlist,
@@ -402,6 +406,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	List * sub_tlist = NIL;
 	bool has_groups = root->parse->groupClause != NIL;
 	bool has_aggs = agg_counts->numAggs > 0;
+	bool has_ordered_aggs = list_length(agg_counts->aggOrder) > 0;
 	ListCell *lc;
 
 	bool is_grpext = false;
@@ -506,16 +511,35 @@ cdb_grouping_planner(PlannerInfo* root,
 	}
 
 	/*
-	 * When the input plan is not given, calculate the subplan target
-	 * list to use in the first stage.  Also note the location of any
-	 * grouping attributes in the target list (numGroupCols,
-	 * groupColIdx).
+	 * When an input plan is given, use it, including its target
+	 * list. When an input target list (and no plan) is given,
+	 * use it for the plan to be created. When neither is given,
+	 * generate a phase 1 target list for the plan to be created. 
+	 * Also note the location of any grouping attributes in the 
+	 * target list (numGroupCols, groupColIdx).
 	 *
 	 * Also make sure there's a target entry with a non-zero
-	 * sortgroupref for each DQA argument and note the location of the
-	 * attributes (numDistinctCols, distinctColIdx).
+	 * sortgroupref for each DQA argument and note the location 
+	 * of the attributes (numDistinctCols, distinctColIdx).
 	 */
-	if (group_context->subplan == NULL)
+	if ( group_context->subplan != NULL)
+	{
+		sub_tlist = group_context->subplan->targetlist;
+	}
+	else if ( group_context->sub_tlist != NULL )
+	{
+		sub_tlist = group_context->sub_tlist;
+		sub_tlist = describe_subplan_tlist(sub_tlist,
+										   group_context->tlist,
+										   root->parse->havingQual,
+										   root->parse->groupClause,
+										   &(group_context->numGroupCols),
+										   &(group_context->groupColIdx),
+										   agg_counts->dqaArgs,
+										   &(group_context->numDistinctCols),
+										   &(group_context->distinctColIdx));
+	}
+	else
 	{
 		sub_tlist = make_subplan_tlist(group_context->tlist,
 									   root->parse->havingQual,
@@ -545,10 +569,6 @@ cdb_grouping_planner(PlannerInfo* root,
 			}
 		}
 	}
-	else
-	{
-		sub_tlist = group_context->subplan->targetlist;
-	}
 
 	/* At this point, we're committed to producing a one- , two- or 
 	 * three-stage plan with motion. Determine what aggregation approaches to explore.
@@ -571,7 +591,15 @@ cdb_grouping_planner(PlannerInfo* root,
 		 */
 		if ( agg_counts->missing_prelimfunc )
 			allowed_agg &= ~ AGG_MULTIPHASE;
-		
+
+		/*
+		 * Ordered aggregates need to run the transition function on the
+		 * values in sorted order, which in turn translates into single
+		 * phase aggregation.
+		 */
+		if ( has_ordered_aggs )
+			allowed_agg &= ~ AGG_MULTIPHASE;
+
 		/* We are currently unwilling to redistribute a gathered
 		 * intermediate across the cluster.  This might change
 		 * one day.
@@ -928,10 +956,10 @@ make_one_stage_agg_plan(PlannerInfo *root,
 				errmsg("no parallel plan for aggregation")));	
 			break; /* Never */
 	}
-	
-    Assert(result_plan->flow); 
-    
-    /*
+
+	Assert(result_plan->flow);
+
+	/*
 	 * Insert AGG or GROUP node if needed, plus an explicit sort step
 	 * if necessary.
 	 *
@@ -1089,18 +1117,18 @@ make_one_stage_agg_plan(PlannerInfo *root,
 		 */
 		return NULL;
 	}
-	
-    /* 
-     * Decorate the top node with a Flow node if it doesn't have one yet.
-     * (In such cases we require the next-to-top node to have a Flow node 
-     * from which we can obtain the distribution info.)
-     */
-    if (!result_plan->flow)
+
+	/*
+	 * Decorate the top node with a Flow node if it doesn't have one yet.
+	 * (In such cases we require the next-to-top node to have a Flow node
+	 * from which we can obtain the distribution info.)
+	 */
+	if (!result_plan->flow)
 	{
-		Assert(!IsA(result_plan, Motion)); 
-        result_plan->flow = pull_up_Flow(result_plan, 
-                                         result_plan->lefttree, 
-                                         (current_pathkeys != NIL));
+		Assert(!IsA(result_plan, Motion));
+		result_plan->flow = pull_up_Flow(result_plan,
+										 result_plan->lefttree,
+										 (current_pathkeys != NIL));
 	}
 
 	/* Marshal implicit results. Return explicit result. */
@@ -2517,6 +2545,69 @@ List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pc
 	return tlist; 
 }
 
+/*
+ * Function describe_subplan_tlist (for single-phase aggregation)
+ *
+ * Implicitly return extra information about a supplied target list with having
+ * qual and and corresponding sub plan target list for single-phase aggregation.
+ * This does, essentially, what make_subplan_tlist does, but for a precalculated
+ * subplan target list.  In particular
+ *
+ * - it constructs the grouping key -> subplan target list resno map.
+ * - it may extend the subplan targetlist for DQAs and record entries
+ *   in the DQA argument -> subplan target list resno map.
+ *
+ * In the later case, the subplan target list may be extended, so return it.
+ * This function is for the case when a subplan target list (not a whole plan)
+ * is supplied to cdb_grouping_planner.
+ */
+List *describe_subplan_tlist(List *sub_tlist,
+							 List *tlist, Node *havingQual,
+							 List *grp_clauses, int *pnum_gkeys, AttrNumber **pcols_gkeys,
+							 List *dqa_args, int *pnum_dqas, AttrNumber **pcols_dqas)
+{
+	int nkeys;
+	AttrNumber *cols;
+	
+	nkeys = num_distcols_in_grouplist(grp_clauses);
+	if ( nkeys > 0 )
+	{
+		List *tles;
+		ListCell *lc;
+		int keyno = 0;
+		
+		cols = (AttrNumber*)palloc0(sizeof(AttrNumber)*nkeys);
+									
+									tles = get_sortgroupclauses_tles(grp_clauses, tlist);
+									
+									foreach (lc, tles)
+									{
+										TargetEntry *tle;
+										TargetEntry *sub_tle;
+										
+										tle = (TargetEntry*)lfirst(lc);
+										sub_tle = tlist_member((Node*)tle->expr, sub_tlist);
+										Assert(tle->ressortgroupref != 0);
+										Assert(tle->ressortgroupref == sub_tle->ressortgroupref);
+										Assert(keyno < nkeys);
+										
+										cols[keyno++] = sub_tle->resno;
+									}
+									*pnum_gkeys = nkeys;
+									*pcols_gkeys = cols;
+									}
+									else
+									{
+										*pnum_gkeys = 0;
+										*pcols_gkeys = NULL;
+									}
+									
+									if ( dqa_args != NIL )
+									sub_tlist = augment_subplan_tlist(sub_tlist, dqa_args, pnum_dqas, pcols_dqas, true);
+									
+									return sub_tlist;
+									}
+									
 
 /*
  * Generate targetlist for a SubqueryScan node to wrap the stage-one
@@ -4758,7 +4849,7 @@ Cost incremental_agg_cost(double rows, int width, AggStrategy strategy,
 Cost incremental_motion_cost(double sendrows, double recvrows)
 {
 	Cost cost_per_row = (gp_motion_cost_per_row > 0.0)
-                    	? gp_motion_cost_per_row
-                    	: 2.0 * cpu_tuple_cost;
-    return cost_per_row * 0.5 * (sendrows + recvrows);
+					  ? gp_motion_cost_per_row
+					  : 2.0 * cpu_tuple_cost;
+	return cost_per_row * 0.5 * (sendrows + recvrows);
 }

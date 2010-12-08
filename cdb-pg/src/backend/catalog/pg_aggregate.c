@@ -37,40 +37,21 @@ static Oid lookup_agg_function(List *fnName, int nargs, Oid *input_types,
 
 
 /*
- * AggregateCreate
+ * AggregateCreateWithOid
  */
 Oid
-AggregateCreate(const char *aggName,
-				Oid aggNamespace,
-				Oid *aggArgTypes,
-				int numArgs,
-				List *aggtransfnName,
-				List *aggprelimfnName,
-				List *aggfinalfnName,
-				List *aggsortopName,
-				Oid aggTransType,
-				const char *agginitval)
-{
-	return
-	AggregateCreateWithOid(aggName, aggNamespace, aggArgTypes, numArgs,
-			aggtransfnName, aggprelimfnName, aggfinalfnName, aggsortopName,
-			aggTransType, agginitval, 0);
-}
-				
-				
-				
-Oid
-AggregateCreateWithOid(const char *aggName,
-				Oid aggNamespace,
-				Oid *aggArgTypes,
-				int numArgs,
-				List *aggtransfnName,
-				List *aggprelimfnName,
-				List *aggfinalfnName,
-				List *aggsortopName,
-				Oid aggTransType,
-				const char *agginitval,
-				Oid procOid)
+AggregateCreateWithOid(const char		*aggName,
+					   Oid				 aggNamespace,
+					   Oid				*aggArgTypes,
+					   int				 numArgs,
+					   List				*aggtransfnName,
+					   List				*aggprelimfnName,
+					   List				*aggfinalfnName,
+					   List				*aggsortopName,
+					   Oid				 aggTransType,
+					   const char		*agginitval,
+					   bool              aggordered,
+					   Oid				 procOid)
 {
 	Relation	aggdesc;
 	HeapTuple	tup;
@@ -304,6 +285,7 @@ AggregateCreateWithOid(const char *aggName,
 		values[Anum_pg_aggregate_agginitval - 1] = CStringGetTextDatum(agginitval);
 	else
 		nulls[Anum_pg_aggregate_agginitval - 1] = true;
+	values[Anum_pg_aggregate_aggordered - 1] = BoolGetDatum(aggordered);
 
 	aggdesc = heap_open(AggregateRelationId, RowExclusiveLock);
 	tupDesc = aggdesc->rd_att;
@@ -390,6 +372,7 @@ lookup_agg_function(List *fnName,
 	Oid			fnOid;
 	bool		retset;
 	bool        retstrict;
+	bool        retordered;
 	Oid		   *true_oid_array;
 	FuncDetailCode fdresult;
 	AclResult	aclresult;
@@ -405,7 +388,7 @@ lookup_agg_function(List *fnName,
 	 */
 	fdresult = func_get_detail(fnName, NIL, nargs, input_types,
 							   &fnOid, rettype, &retset, &retstrict,
-							   &true_oid_array);
+							   &retordered, &true_oid_array);
 
 	/* only valid case is a normal function not returning a set */
 	if (fdresult != FUNCDETAIL_NORMAL || !OidIsValid(fnOid))

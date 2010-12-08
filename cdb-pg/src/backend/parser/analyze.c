@@ -8764,13 +8764,16 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->sortClause = transformSortClause(pstate,
 										  stmt->sortClause,
 										  &qry->targetList,
-										  true /* fix unknowns */ );
+										  true, /* fix unknowns */
+                                          false /* use SQL92 rules */);
 
 	qry->groupClause = transformGroupClause(pstate,
 											stmt->groupClause,
 											&qry->targetList,
-											qry->sortClause);
+											qry->sortClause,
+                                            false /* useSQL92 rules */);
 
+    /* Having clause */
 	qry->havingQual = pstate->having_qual;
 	pstate->having_qual = NULL;
 
@@ -8973,7 +8976,8 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 	qry->sortClause = transformSortClause(pstate,
 										  stmt->sortClause,
 										  &qry->targetList,
-										  true /* fix unknowns */ );
+										  true, /* fix unknowns */ 
+                                          false /* use SQL92 rules */);
 
 	qry->limitOffset = transformLimitClause(pstate, stmt->limitOffset,
 											"OFFSET");
@@ -9235,7 +9239,8 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->sortClause = transformSortClause(pstate,
 										  sortClause,
 										  &qry->targetList,
-										  false /* no unknowns expected */ );
+										  false /* no unknowns expected */,
+                                          false /* use SQL92 rules */ );
 
 	pstate->p_rtable = sv_rtable;
 	pstate->p_relnamespace = sv_relnamespace;

@@ -320,6 +320,7 @@ typedef struct FuncCall
 	NodeTag		type;
 	List	   *funcname;		/* qualified name of function */
 	List	   *args;			/* the arguments (list of exprs) */
+    List       *agg_order;      /* ORDER BY (list of SortBy) */
 	bool		agg_star;		/* argument was really '*' */
 	bool		agg_distinct;	/* arguments were labeled DISTINCT */
 	int			location;		/* token location, or -1 if unknown */
@@ -1883,6 +1884,7 @@ typedef struct DefineStmt
 	List	   *definition;		/* a list of DefElem */
 	Oid			newOid;			/* for MPP only, the new Oid of the object */
 	Oid			shadowOid;
+	bool        ordered;        /* signals ordered aggregates */
 } DefineStmt;
 
 /* ----------------------

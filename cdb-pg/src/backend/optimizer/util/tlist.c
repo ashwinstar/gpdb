@@ -18,8 +18,17 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
+#include "optimizer/clauses.h"
 #include "parser/parse_expr.h"
 
+typedef struct maxSortGroupRef_context
+{
+	Index maxsgr;
+	bool include_orderedagg;
+} maxSortGroupRef_context;
+
+static 
+bool maxSortGroupRef_walker(Node *node, maxSortGroupRef_context *cxt);
 
 /*****************************************************************************
  *		Target list creation and searching utilities
@@ -352,3 +361,79 @@ tlist_same_datatypes(List *tlist, List *colTypes, bool junkOK)
 		return false;			/* tlist shorter than colTypes */
 	return true;
 }
+
+
+/*
+ * Return the largest sortgroupref value in use in the given 
+ * target list.  
+ *
+ * If include_orderedagg is false, consider only the top-level 
+ * entries in the target list, i.e., those that might be occur 
+ * in a groupClause, distinctClause, or sortClause of the Query 
+ * node that immediately contains the target list.
+ *
+ * If include_orderedagg is true, also consider AggOrder entries 
+ * embedded in Aggref nodes within the target list.  Though 
+ * such entries will only occur in the aggregation sub_tlist
+ * (input) they affect sortgroupref numbering for both sub_tlist
+ * and tlist (aggregate).
+ */
+Index maxSortGroupRef(List *targetlist, bool include_orderedagg)
+{
+	maxSortGroupRef_context context;
+	context.maxsgr = 0;
+	context.include_orderedagg = include_orderedagg;
+	
+	if (targetlist != NIL)
+	{
+		if ( !IsA(targetlist, List) || !IsA(linitial(targetlist), TargetEntry ) )
+			elog(ERROR, "non-targetlist argument supplied");
+			
+		maxSortGroupRef_walker((Node*)targetlist, &context);
+	}
+	
+	return context.maxsgr;
+}
+
+bool maxSortGroupRef_walker(Node *node, maxSortGroupRef_context *cxt)
+{
+	if ( node == NULL )
+		return false;
+	
+	if ( IsA(node, TargetEntry) )
+	{
+		TargetEntry *tle = (TargetEntry*)node;
+		if ( tle->ressortgroupref > cxt->maxsgr )
+			cxt->maxsgr = tle->ressortgroupref;
+		
+		return maxSortGroupRef_walker((Node*)tle->expr, cxt);
+	}
+	
+	/* Aggref nodes don't nest, so we can treat them here without recurring
+	 * further.
+	 */
+	
+	if ( IsA(node, Aggref) )
+	{
+		Aggref *ref = (Aggref*)node;
+		if ( ref->aggorder && cxt->include_orderedagg )
+		{
+			ListCell *lc;
+			AggOrder *aggorder = ref->aggorder;
+			
+			foreach (lc, aggorder->sortClause)
+			{
+				SortClause *sort = (SortClause *)lfirst(lc);
+				Assert(IsA(sort, SortClause));
+				Assert( sort->tleSortGroupRef != 0 );
+				if (sort->tleSortGroupRef > cxt->maxsgr )
+					cxt->maxsgr = sort->tleSortGroupRef;
+			}
+			
+		}
+		return false;
+	}
+	
+	return expression_tree_walker(node, maxSortGroupRef_walker, cxt);
+}
+	

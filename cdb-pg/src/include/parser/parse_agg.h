@@ -15,7 +15,8 @@
 
 #include "parser/parse_node.h"
 
-extern void transformAggregateCall(ParseState *pstate, Aggref *agg);
+extern void transformAggregateCall(ParseState *pstate, Aggref *agg, 
+                                   List *agg_order);
 extern void transformWindowFuncCall(ParseState *pstate, WindowRef *wind);
 
 extern void parseCheckAggregates(ParseState *pstate, Query *qry);

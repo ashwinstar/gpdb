@@ -579,8 +579,8 @@ transformIndirection(ParseState *pstate, Node *basenode, List *indirection)
 			result = ParseFuncOrColumn(pstate,
 									   list_make1(n),
 									   list_make1(result),
-									   false, false, true, NULL,
-									   -1, NULL);
+                                       NIL, false, false, true,
+                                       NULL, -1, NULL);
 		}
 	}
 	/* process trailing subscripts, if any */
@@ -714,7 +714,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					node = ParseFuncOrColumn(pstate,
 											 list_make1(makeString(name2)),
 											 list_make1(node),
-											 false, false, true, NULL,
+											 NIL, false, false, true, NULL,
 											 cref->location, NULL);
 				}
 				break;
@@ -744,7 +744,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					node = ParseFuncOrColumn(pstate,
 											 list_make1(makeString(name3)),
 											 list_make1(node),
-											 false, false, true, NULL,
+											 NIL, false, false, true, NULL,
 											 cref->location, NULL);
 				}
 				break;
@@ -785,7 +785,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					node = ParseFuncOrColumn(pstate,
 											 list_make1(makeString(name4)),
 											 list_make1(node),
-											 false, false, true, NULL,
+											 NIL, false, false, true, NULL,
 											 cref->location, NULL);
 				}
 				break;
@@ -1258,6 +1258,7 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 	return ParseFuncOrColumn(pstate,
 							 fn->funcname,
 							 targs,
+                             fn->agg_order,
 							 fn->agg_star,
 							 fn->agg_distinct,
 							 false,

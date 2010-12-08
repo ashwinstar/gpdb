@@ -1208,7 +1208,7 @@ union all
 select cn, null, null, count(distinct dt) from sale group by cn
 union all
 select null, null, null, count(distinct dt) from sale 
-order by 1,2,3; -- order 1,2,3  
+order by 1,2,3; -- order 1,2,3
  cn | vn | pn  | count 
 ----+----+-----+-------
   1 | 10 | 200 |     1
@@ -1239,7 +1239,7 @@ order by 1,2,3; -- order 1,2,3
     |    |     |     6
 (26 rows)
 
-select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn) order by 1,2,3; -- order 1,2,3  
+select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn) order by 1,2,3; -- order 1,2,3
  cn | vn | pn  | count 
 ----+----+-----+-------
   1 | 10 | 200 |     1
@@ -1270,7 +1270,7 @@ select cn, vn, pn, count(distinct dt) from sale group by rollup(cn,vn,pn) order 
     |    |     |     6
 (26 rows)
 
-select cn, vn, pn, count(distinct dt) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3  
+select cn, vn, pn, count(distinct dt) from sale group by grouping sets((), (cn), (cn,vn), (cn,vn,pn)) order by 1,2,3; -- order 1,2,3
  cn | vn | pn  | count 
 ----+----+-----+-------
   1 | 10 | 200 |     1
@@ -5955,6 +5955,44 @@ group by rollup (a,b);
  0 |   |     2 |     2
  1 |   |     2 |     2
    |   |     4 |     4
+(7 rows)
+
+--end_equiv
+--start_equiv
+select a, b, array_agg((a+1)*x order by x), array_agg((b+1)*y order by y)
+from r6756 r
+group by a, b
+union all
+select a, null, array_agg((a+1)*x order by x), array_agg((b+1)*y order by y)
+from r6756 r
+group by a
+union all
+select null, null, array_agg((a+1)*x order by x), array_agg((b+1)*y order by y)
+from r6756 r
+;
+ a | b |       array_agg       |       array_agg       
+---+---+-----------------------+-----------------------
+ 0 | 0 | {1}                   | {1}
+ 0 | 1 | {2,2}                 | {4,4}
+ 0 |   | {1,2,2}               | {1,4,4}
+ 1 | 0 | {6,6,6}               | {3,3,3}
+ 1 | 1 | {8,8,8,8}             | {8,8,8,8}
+ 1 |   | {6,6,6,8,8,8,8}       | {3,3,3,8,8,8,8}
+   |   | {1,2,2,6,6,6,8,8,8,8} | {1,4,4,3,3,3,8,8,8,8}
+(7 rows)
+
+select a, b, array_agg((a+1)*x order by x), array_agg((b+1)*y order by y)
+from r6756 r
+group by rollup (a,b);
+ a | b |       array_agg       |       array_agg       
+---+---+-----------------------+-----------------------
+ 0 | 0 | {1}                   | {1}
+ 0 | 1 | {2,2}                 | {4,4}
+ 0 |   | {1,2,2}               | {1,4,4}
+ 1 | 0 | {6,6,6}               | {3,3,3}
+ 1 | 1 | {8,8,8,8}             | {8,8,8,8}
+ 1 |   | {6,6,6,8,8,8,8}       | {3,3,3,8,8,8,8}
+   |   | {1,2,2,6,6,6,8,8,8,8} | {1,4,4,3,3,3,8,8,8,8}
 (7 rows)
 
 --end_equiv
