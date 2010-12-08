@@ -1938,7 +1938,12 @@ getCdbProcessesForQD(int isPrimary)
 	Assert(qdinfo->hostip != NULL);
 
 	proc = makeNode(CdbProcess);
-	proc->listenerAddr = pstrdup(qdinfo->hostip);
+	/*
+	 * Set QD listener address to NULL. This
+	 * will be filled during starting up outgoing
+	 * interconnect connection.
+	 */
+	proc->listenerAddr = NULL;
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
 		proc->listenerPort = (Gp_listener_port >> 16) & 0x0ffff;
 	else

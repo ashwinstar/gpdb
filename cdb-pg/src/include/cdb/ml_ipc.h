@@ -350,4 +350,6 @@ extern void markUDPConnInactive(MotionConn *conn);
 extern void CleanupMotionTCP(void);
 extern void CleanupMotionUDP(void);
 
+extern void adjustMasterRouting(Slice *recvSlice);
+
 #endif   /* ML_IPC_H */
