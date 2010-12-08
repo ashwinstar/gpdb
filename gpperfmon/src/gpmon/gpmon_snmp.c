@@ -1512,8 +1512,6 @@ void record_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom
 	if (symptom == EMC_CONNECT_SYMPTOM_NULL)
 		return;
 
-	return;
-
 	// find the entry in the hash table
 	snprintf(si.key.oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, "%s", oidstring);
 	alertData = apr_hash_get(si.alert_status_table, &si.key, sizeof (si.key));
