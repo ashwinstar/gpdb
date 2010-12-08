@@ -138,7 +138,10 @@ typedef struct PlannedStmt
 		 */
 		int	backoff_weight;
 
-	} PlannedStmt;
+		/* What is the memory reserved for this query's execution? */
+		uint64		query_mem;
+
+} PlannedStmt;
 
 
 /* 
@@ -265,6 +268,11 @@ typedef struct Plan
 	 * the slice table in the plan as required there.
 	 */
 	Node *sliceTable;
+	
+	/**
+	 * How much memory (in KB) should be used to execute this plan node?
+	 */
+	uint64 operatorMemKB;
 	
 } Plan;
 

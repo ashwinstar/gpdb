@@ -315,6 +315,7 @@ typedef struct MotionNodeEntry
 	uint64          sel_rd_wait;            /* Total time (usec) spent in select wait trying to read */
 	uint64          sel_wr_wait;            /* Total time spent (usec) in select wait trying to write */
 
+	uint64			memKB;	/* How much memory should this motion node use? */
 }       MotionNodeEntry;
 
 

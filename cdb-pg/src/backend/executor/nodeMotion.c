@@ -1107,8 +1107,13 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	/*
 	 * Perform per-node initialization in the motion layer.
 	 */
-	UpdateMotionLayerNode(motionstate->ps.state->motionlayer_context, node->motionID, node->sendSorted, tupDesc);
+	UpdateMotionLayerNode(motionstate->ps.state->motionlayer_context, 
+			node->motionID, 
+			node->sendSorted, 
+			tupDesc, 
+			PlanStateOperatorMemKB((PlanState *) motionstate));
 
+	
 #ifdef CDB_MOTION_DEBUG
     motionstate->outputFunArray = (Oid *)palloc(tupDesc->natts * sizeof(Oid));
     for (i = 0; i < tupDesc->natts; i++)

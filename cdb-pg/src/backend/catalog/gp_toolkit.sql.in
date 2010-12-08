@@ -1789,6 +1789,60 @@ UNION ALL
 
 GRANT SELECT ON %%JETPACK_PREFIX%%locks TO public;
 
+
+--------------------------------------------------------------------------------
+-- @view: 
+--              %%JETPACK_PREFIX%%pg_resqueue_status
+--
+-- @doc:
+--              New version of pg_catalog.pg_resqueue_status that shows memory limits
+--              
+--------------------------------------------------------------------------------
+
+CREATE VIEW %%JETPACK_PREFIX%%resqueue_status
+AS
+	SELECT 
+		q.oid as queueid, 
+		q.rsqname as rsqname,
+		t1.value::int as rsqcountlimit, 
+		t2.value::int as rsqcountvalue, 
+		t3.value::real as rsqcostlimit, 
+		t4.value::real as rsqcostvalue, 
+		t5.value::real as rsqmemorylimit, 
+		t6.value::real as rsqmemoryvalue,
+		t7.value::int as rsqwaiters, 
+		t8.value::int as rsqholders
+	FROM
+		pg_resqueue q,
+		pg_resqueue_status_kv() t1 (queueid oid, key text, value text),
+		pg_resqueue_status_kv() t2 (queueid oid, key text, value text),
+		pg_resqueue_status_kv() t3 (queueid oid, key text, value text),
+		pg_resqueue_status_kv() t4 (queueid oid, key text, value text),
+		pg_resqueue_status_kv() t5 (queueid oid, key text, value text),
+		pg_resqueue_status_kv() t6 (queueid oid, key text, value text),
+		pg_resqueue_status_kv() t7 (queueid oid, key text, value text),
+		pg_resqueue_status_kv() t8 (queueid oid, key text, value text)
+	WHERE
+		q.oid = t1.queueid 
+		AND t1.queueid = t2.queueid 
+		AND t2.queueid = t3.queueid 
+		AND t3.queueid = t4.queueid 
+		AND t4.queueid = t5.queueid 
+		AND t5.queueid = t6.queueid 
+		AND t6.queueid = t7.queueid 
+		AND t7.queueid = t8.queueid
+		AND t1.key = 'rsqcountlimit'
+		AND t2.key = 'rsqcountvalue'
+		AND t3.key = 'rsqcostlimit'
+		AND t4.key = 'rsqcostvalue'
+		AND t5.key = 'rsqmemorylimit'
+		AND t6.key = 'rsqmemoryvalue'
+		AND t7.key = 'rsqwaiters'
+		AND t8.key = 'rsqholders'
+	;
+
+GRANT SELECT ON %%JETPACK_PREFIX%%resqueue_status TO public;
+
 -- Finalize install
 COMMIT;
 

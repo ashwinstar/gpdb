@@ -21,7 +21,7 @@
 #include "gp-libpq-int.h"                  /* pg_result */
 #include "libpq/pqformat.h"             /* pq_beginmessage() etc. */
 #include "utils/memutils.h"             /* MemoryContextGetPeakSpace() */
-
+#include "cdb/memquota.h"
 
 /* EXPLAIN ANALYZE statistics for one plan node of a slice */
 typedef struct CdbExplain_StatInst
@@ -1410,9 +1410,10 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
  * freeing all at once.
  */
 void
-cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
-                            struct StringInfoData          *str,
-                            struct EState                  *estate)
+cdbexplain_showExecStatsEnd(struct PlannedStmt *stmt,
+							struct CdbExplain_ShowStatCtx  *showstatctx,
+							struct StringInfoData          *str,
+							struct EState                  *estate)
 {
     Slice  *slice;
     int     sliceIndex;
@@ -1529,5 +1530,20 @@ cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
 
        appendStringInfoChar(str, '\n');
     }
+    
+    if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+    {
+        appendStringInfoString(str, "Statement statistics:\n");
+        appendStringInfo(str, "  Memory used: %.0fK bytes", ceil((double) stmt->query_mem / 1024.0));
+        
+        if (showstatctx->workmemwanted_max > 0)
+        {
+            appendStringInfo(str, "\n  Memory wanted: %.0fK bytes", 
+            		(double) PolicyAutoStatementMemForNoSpillKB(stmt, (uint64) showstatctx->workmemwanted_max / 1024L));        	
+        }
+        
+        appendStringInfoChar(str, '\n');
+    }
+    
 
 }                               /* cdbexplain_showExecStatsEnd */

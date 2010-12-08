@@ -37,8 +37,15 @@
 #include "executor/execdesc.h"
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
+#include "cdb/memquota.h"
+#include "utils/guc_tables.h"
 
 #define INVALID_RES_LIMIT_STRING		"-1"
+
+/**
+ * Establish a lower bound on what memory limit may be set on a queue.
+ */
+#define MIN_RESOURCEQUEUE_MEMORY_LIMIT_KB (10 * 1024L)
 
 /* MPP-6923: 
  * GetResourceTypeByName: find the named resource in pg_resourcetype
@@ -109,6 +116,42 @@ bool ValidPriority(char			*pResSetting)
 	return false;
 }
 
+/**
+ * Validate memory limit setting.
+ */
+static 
+bool ValidMemoryLimit(char			*pResSetting)
+{
+	int valueKB;
+	const char *restyp = "MEMORY_LIMIT";
+
+	bool result = parse_int(pResSetting, &valueKB, GUC_UNIT_KB, NULL);
+
+	if (!result)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Invalid parameter value \"%s\" for "
+						"resource type \"%s\". "
+						"Value must be in kB, MB or GB.",
+						pResSetting, restyp)));
+
+	}
+	else if (valueKB != -1 && valueKB < MIN_RESOURCEQUEUE_MEMORY_LIMIT_KB)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Invalid parameter value \"%s\" for "
+						"resource type \"%s\". "
+						"Value must be at least %dkB",
+						pResSetting, restyp, (int) MIN_RESOURCEQUEUE_MEMORY_LIMIT_KB)));
+		
+	}
+	
+	return true;
+}
+
+
 /* ValidateResqueueCapabilityEntry
  *
  * Validate the resource setting for a pg_resqueuecapability entry.
@@ -135,6 +178,13 @@ void ValidateResqueueCapabilityEntry(int			 resTypeInt,
 			bValid = ValidPriority(pResSetting);
 			restyp = "PRIORITY";
 			break;				
+
+		case PG_RESRCTYPE_MEMORY_LIMIT:
+			bValid = ValidMemoryLimit(pResSetting);
+			Assert(bValid);
+			restyp = "MEMORY_LIMIT";
+						
+			break;
 
 		default:
 			ereport(ERROR,
@@ -620,8 +670,7 @@ GetResqueueCapabilityEntry(Oid  queueid)
 
 	scan = systable_beginscan(rel,
 							  ResQueueCapabilityResqueueidIndexId,
-							  /* XXX XXX XXX XXX : snapshotnow ? */
-							  true, SnapshotNow, 1, key);
+							  true, SnapshotDirty, 1, key);
 
 	ii = 0;
 	
@@ -660,7 +709,7 @@ GetResqueueCapabilityEntry(Oid  queueid)
 	}
 	systable_endscan(scan); 
 
-	heap_close(rel, RowExclusiveLock);
+	heap_close(rel, NoLock);
 	
 	return (elems);
 } /* end GetResqueueCapabilityEntry */
@@ -848,6 +897,13 @@ CreateQueue(CreateQueueStmt *stmt)
 	 * exist. 
 	 */
 	pg_resqueue_rel = heap_open(ResQueueRelationId, RowExclusiveLock);
+	
+	/**
+	 * Get database locks in anticipation that we'll need to access this catalog table later.
+	 */
+	Relation resqueueCapabilityRel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
+	Relation resqueueCapabilityIndexRel = index_open(ResQueueCapabilityResqueueidIndexId, AccessShareLock);
+	
 	pg_resqueue_dsc = RelationGetDescr(pg_resqueue_rel);
 
 	ScanKeyInit(&key,
@@ -895,6 +951,10 @@ CreateQueue(CreateQueueStmt *stmt)
 	 */
 	queueid = simple_heap_insert(pg_resqueue_rel, tuple);
 
+	/* process the remainder of the WITH (...) list items */
+	if (bWith)
+		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList, true);
+
 	/*
 	 * Create the in-memory resource queue, if resource scheduling is on,
 	 * otherwise don't - and gripe a little about it.
@@ -905,9 +965,16 @@ CreateQueue(CreateQueueStmt *stmt)
 
 		thresholds[RES_COUNT_LIMIT] = activelimit;
 		thresholds[RES_COST_LIMIT] = costlimit;
-
+		thresholds[RES_MEMORY_LIMIT] = ResourceQueueGetMemoryLimit(queueid);
 		queueok = ResCreateQueue(queueid, thresholds, overcommit, ignorelimit);
 
+		/**
+		 * Ensure that the shared data structures are consistent with the catalog table on memory limits.
+		 */
+#ifdef USE_ASSERT_CHECKING
+		AssertMemoryLimitsMatch();
+#endif
+		
 		LWLockRelease(ResQueueLock);
 
 		if (!queueok)
@@ -926,10 +993,7 @@ CreateQueue(CreateQueueStmt *stmt)
 	/* Finish up scan and close resource queue catalog. */
 	systable_endscan(rsqscan);
 
-	/* process the remainder of the WITH (...) list items */
-	if (bWith)
-		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList, true);
-
+	
 	/* MPP-6929, MPP-7583: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		MetaTrackAddObject(ResQueueRelationId,
@@ -939,7 +1003,9 @@ CreateQueue(CreateQueueStmt *stmt)
 				);
 
 	CatalogUpdateIndexes(pg_resqueue_rel, tuple);
-
+	
+	heap_close(resqueueCapabilityIndexRel, NoLock);
+	heap_close(resqueueCapabilityRel, NoLock);
 	heap_close(pg_resqueue_rel, NoLock);
 }
 
@@ -1193,6 +1259,13 @@ AlterQueue(AlterQueueStmt *stmt)
 	 * exists. 
 	 */
 	pg_resqueue_rel = heap_open(ResQueueRelationId, RowExclusiveLock);
+	
+	/**
+	 * Get database locks in anticipation that we'll need to access this catalog table later.
+	 */
+	Relation resqueueCapabilityRel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
+	Relation resqueueCapabilityIndexRel = index_open(ResQueueCapabilityResqueueidIndexId, AccessShareLock);
+
 	pg_resqueue_dsc = RelationGetDescr(pg_resqueue_rel);
 
 	ScanKeyInit(&key,
@@ -1222,6 +1295,7 @@ AlterQueue(AlterQueueStmt *stmt)
 		((Form_pg_resqueue) GETSTRUCT(tuple))->rsqcountlimit;
 	thresholds[RES_COST_LIMIT] = 
 		((Form_pg_resqueue) GETSTRUCT(tuple))->rsqcostlimit;
+	thresholds[RES_MEMORY_LIMIT] = ResourceQueueGetMemoryLimit(queueid);
 
 	/* Also set overcommit if it was *not* specified. */
 	if (!dovercommit)
@@ -1296,6 +1370,9 @@ AlterQueue(AlterQueueStmt *stmt)
 	if (bWith)
 		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList, false);
 
+	/** Get new memory limit if changed */
+	thresholds[RES_MEMORY_LIMIT] = ResourceQueueGetMemoryLimit(queueid);
+
 	CatalogUpdateIndexes(pg_resqueue_rel, new_tuple);
 
 	heap_freetuple(new_tuple);
@@ -1310,6 +1387,13 @@ AlterQueue(AlterQueueStmt *stmt)
 		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
 		queueok = ResAlterQueue(queueid, thresholds, overcommit, ignorelimit);
+
+		/**
+		 * Ensure that the shared data structures are consistent with the catalog table on memory limits.
+		 */
+#ifdef USE_ASSERT_CHECKING
+		AssertMemoryLimitsMatch();
+#endif
 
 		LWLockRelease(ResQueueLock);
 
@@ -1340,6 +1424,9 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	/* Finish up scan and close resource queue catalog. */
 	systable_endscan(rsqscan);
+
+	heap_close(resqueueCapabilityIndexRel, NoLock);
+	heap_close(resqueueCapabilityRel, NoLock);
 
 	/* MPP-6929, MPP-7583: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1380,6 +1467,13 @@ DropQueue(DropQueueStmt *stmt)
 	 * exists. 
 	 */
 	pg_resqueue_rel = heap_open(ResQueueRelationId, RowExclusiveLock);
+	
+	/**
+	 * Get database locks in anticipation that we'll need to access this catalog table later.
+	 */
+	Relation resqueueCapabilityRel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
+	Relation resqueueCapabilityIndexRel = index_open(ResQueueCapabilityResqueueidIndexId, AccessShareLock);
+
 	pg_resqueue_dsc = RelationGetDescr(pg_resqueue_rel);
 
 	ScanKeyInit(&key,
@@ -1451,6 +1545,13 @@ DropQueue(DropQueueStmt *stmt)
 		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
 		queueok = ResDestroyQueue(queueid);
+		
+		/**
+		 * Ensure that the shared data structures are consistent with the catalog table on memory limits.
+		 */
+#ifdef USE_ASSERT_CHECKING
+		AssertMemoryLimitsMatch();
+#endif
 
 		LWLockRelease(ResQueueLock);
 
@@ -1468,6 +1569,9 @@ DropQueue(DropQueueStmt *stmt)
 
 	/* Finish up scan and close resource queue catalog. */
 	systable_endscan(rsqscan);
+
+	heap_close(resqueueCapabilityIndexRel, NoLock);
+	heap_close(resqueueCapabilityRel, NoLock);
 
 	heap_close(pg_resqueue_rel, NoLock);
 

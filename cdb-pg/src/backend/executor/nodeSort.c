@@ -112,7 +112,7 @@ ExecSort(SortState *node)
 					plannode->numCols,
 					plannode->sortOperators,
 					plannode->sortColIdx,
-					work_mem,
+					PlanStateOperatorMemKB((PlanState *) node),
 					true
 					); 
 			else
@@ -122,7 +122,7 @@ ExecSort(SortState *node)
 					plannode->numCols,
 					plannode->sortOperators,
 					plannode->sortColIdx,
-					work_mem,
+					PlanStateOperatorMemKB((PlanState *) node),
 					true
 					); 
 		}
@@ -133,14 +133,14 @@ ExecSort(SortState *node)
 						plannode->numCols,
 						plannode->sortOperators,
 						plannode->sortColIdx,
-						work_mem,
+						PlanStateOperatorMemKB((PlanState *) node),
 						node->randomAccess);
 			else
 				tuplesortstate = tuplesort_begin_heap(tupDesc,
 						plannode->numCols,
 						plannode->sortOperators,
 						plannode->sortColIdx,
-						work_mem,
+						PlanStateOperatorMemKB((PlanState *) node),
 						node->randomAccess);
 		}
 

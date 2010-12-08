@@ -995,6 +995,9 @@ extern void InitPlanNodeGpmonPkt(Plan* plan, gpmon_packet_t *gpmon_pkt, EState *
 								 PerfmonNodeType type, int64 rowsout_est,
 								 char* relname);
 
+
+extern uint64 PlanStateOperatorMemKB(const PlanState *ps);
+
 static inline void Gpmon_M_Incr(gpmon_packet_t *pkt, int nth) 
 {
         ++pkt->u.qexec.measures[nth];

@@ -37,7 +37,7 @@
 #include "cdb/cdbllize.h"
 #include "cdb/cdbvars.h"
 #include "nodes/print.h"
-
+#include "cdb/memquota.h"
 /*
  * GUC variables.
  */
@@ -164,53 +164,48 @@ InitResPortalIncrementHash(void)
 
 
 /*
- * InitResQueues -- initialize the resource queues in shared memory.
- *
+ * InitResQueues -- initialize the resource queues in shared memory. Note this
+ * can only be done after enough setup has been done. This uses
+ * heap_open etc which in turn requires shared memory to be set up.
  */
-void
+
+void 
 InitResQueues(void)
 {
 
-	ResourceOwner		owner;
-	RelFileNode			rnode;
-	Relation			relQueue;
-	HeapScanDesc		scan;
 	HeapTuple			tuple;
-	Form_pg_resqueue	queueform;
-	Oid					queueid;
 	int					numQueues = 0;
-	bool				overcommit;
-	float4				ignorelimit;
-	Cost				thresholds[NUM_RES_LIMIT_TYPES];
-	char				*queuename;
 	bool				queuesok = true;
 	
-	/*
-	 * Use the same fake-relcache facility that WAL replay uses.
-	 */
-	XLogInitRelationCache();
-
+	Assert(ResScheduler);
+	
+	if (ResScheduler->num_queues > 0)
+	{
+		/* Hash table has already been loaded */
+		return;
+	}
+	
 	/*
 	 * Need a resource owner to keep the heapam code happy.
 	 */
-	owner = ResourceOwnerCreate(NULL, "InitQueues");
+	Assert(CurrentResourceOwner == NULL);
+
+	ResourceOwner owner = ResourceOwnerCreate(NULL, "InitQueues");
 	CurrentResourceOwner = owner;
+	
+	Relation relResqueue = heap_open(ResQueueRelationId, AccessShareLock);
+	HeapScanDesc scan = heap_beginscan(relResqueue, SnapshotNow, 0 /* key length */, NULL);
 
-	/* Set the path to the resource queue relation */
-	rnode.spcNode = GLOBALTABLESPACE_OID;
-	rnode.dbNode = 0;
-	rnode.relNode = ResQueueRelationId;
 
-	/* No locking is needed because no one else is alive yet */
-	relQueue = XLogOpenRelation(rnode);
-
-	/*
-	 * setup a queue in shared memory for each record in the queue
-	 * catalog.
-	 */
-	scan = heap_beginscan(relQueue, SnapshotNow, 0, NULL);
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
+		Form_pg_resqueue	queueform;
+		Oid					queueid;
+		bool				overcommit;
+		float4				ignorelimit;
+		Cost				thresholds[NUM_RES_LIMIT_TYPES];
+		char				*queuename;
+
 		numQueues++;
 
 		queueform = (Form_pg_resqueue) GETSTRUCT(tuple);
@@ -219,27 +214,39 @@ InitResQueues(void)
 		queuename = NameStr(queueform->rsqname);
 		thresholds[RES_COUNT_LIMIT] = queueform->rsqcountlimit;
 		thresholds[RES_COST_LIMIT] = queueform->rsqcostlimit;
+
+		/** 
+		 * This lwlock is not essential since this is during initialization of shared memory and no concurrency is possible. However, it enables
+		 * us to write strong asserts in some of the re-used functions.
+		 */
+		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+		thresholds[RES_MEMORY_LIMIT] = ResourceQueueGetMemoryLimit(queueid);
 		overcommit = queueform->rsqovercommit;
 		ignorelimit = queueform->rsqignorecostlimit;
-
 		queuesok = ResCreateQueue(queueid, thresholds, overcommit, ignorelimit);
+		LWLockRelease(ResQueueLock);
+		
+		if (!queuesok)
+		{
+			/** Break out of loop. Close relations, relinquish LWLock and then error out */ 
+			break;
+		}
 	}
-	heap_endscan(scan);
-	
 
-	/* Shut down the fake cache. */
-	CurrentResourceOwner = NULL;
-	ResourceOwnerDelete(owner);
+	heap_endscan(scan);	
+	heap_close(relResqueue, AccessShareLock);
 
-	XLogCloseRelationCache();
-	
 	if (!queuesok)
 		ereport(PANIC,
 			(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
 			 errmsg("insufficient resource queues available"),
 		errhint("Increase max_resource_queues to %d.", numQueues)));
 
+
 	elog(LOG,"initialized %d resource queues", numQueues);
+
+	CurrentResourceOwner = NULL;
+	ResourceOwnerDelete(owner);
 
 	return;
 }
@@ -260,10 +267,16 @@ ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit,
 	ResQueue		queue;
 	int				i;
 
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
+	
 	/* If the new queue pointer is NULL, then we are out of queueus. */
 	if (ResScheduler->num_queues >= MaxResourceQueues)
 		return false;
 
+	/**
+	 * Has an entry for this 
+	 */
+	
 	queue = ResQueueHashNew(queueid);
 	Assert(queue != NULL);
 	
@@ -290,15 +303,15 @@ ResCreateQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit,
 		{
 			case RES_COUNT_LIMIT:
 			case RES_COST_LIMIT:
-			{
-				queue->num_limits++;
-				queue->limits[i].type = i;
-				queue->limits[i].threshold_value = limits[i];
-				queue->limits[i].current_value = 0;
-				queue->limits[i].threshold_is_max = true;
-			}
-			break;
-
+			case RES_MEMORY_LIMIT:
+				{
+					queue->num_limits++;
+					queue->limits[i].type = i;
+					queue->limits[i].threshold_value = limits[i];
+					queue->limits[i].current_value = 0;
+					queue->limits[i].threshold_is_max = true;
+					break;
+				}
 			default:
 				elog(ERROR, "unknown resource limit type %d", i);
 			break;
@@ -378,7 +391,11 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit,
 					(queue->limits[i].current_value > 0.1))
 					result = ALTERQUEUE_OVERCOMMITTED;
 			}
+			
 			break;
+			
+			case RES_MEMORY_LIMIT:
+				break;
 		}
 	}
 
@@ -396,6 +413,7 @@ ResAlterQueue(Oid queueid, Cost limits[NUM_RES_LIMIT_TYPES], bool overcommit,
 			{
 				case RES_COUNT_LIMIT:
 				case RES_COST_LIMIT:
+				case RES_MEMORY_LIMIT:
 				{
 					
 					if (queue->limits[i].threshold_value != limits[i])
@@ -455,6 +473,7 @@ ResDestroyQueue(Oid queueid)
 		{
 			case RES_COUNT_LIMIT:
 			case RES_COST_LIMIT:
+			case RES_MEMORY_LIMIT:
 			{
 				
 				if (queue->limits[i].current_value != 0)
@@ -489,43 +508,6 @@ ResDestroyQueue(Oid queueid)
 	
 }
 
-typedef
-struct inventory_plan_memory_t
-{
-	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
-	double mem_ceiling;
-} inventory_plan_memory_t;
-
-static bool
-inventory_plan_memory_ceiling_walker(Node *plan, inventory_plan_memory_t *context)
-{
-	if (plan == NULL)
-		return false;
-
-    if (!is_plan_node(plan))
-		return false;
-
-//	elog(LOG, "inventory_plan_memory: %s", plannode_type((Plan *)plan));
-
-	switch (nodeTag(plan))
-	{
-		case T_Agg: /* do AGG_PLAIN have any storage ? */
-		case T_Sort:
-		case T_Hash:
-		case T_Material:
-		case T_ShareInputScan: /* I'm not sure exactly how to count
-								* these (only want to count once) */
-		case T_Window: 
-			context->mem_ceiling += work_mem;
-			break;
-
-		default:
-			break;
-	}
-			
-	return (plan_tree_walker((Node *)plan, inventory_plan_memory_ceiling_walker, context));
-}
-
 /*
  * ResLockPortal -- get a resource lock for Portal execution.
  *
@@ -542,23 +524,12 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 	Oid			queueid;
 	int32		lockResult = 0;
 	ResPortalIncrement	incData;
-	Plan *plan;
+	Plan *plan = NULL;
 
 	Assert(qDesc);
 	Assert(qDesc->plannedstmt);
 
 	plan = qDesc->plannedstmt->planTree;
-
-	{
-		inventory_plan_memory_t context;
-		
-		exec_init_plan_tree_base(&context.base, qDesc->plannedstmt);
-		context.mem_ceiling = work_mem;
-
-		plan_tree_walker((Node *)plan, inventory_plan_memory_ceiling_walker, &context);
-
-		elog(DEBUG2, "Memory ceiling for plan: %f", 1024.0 * context.mem_ceiling);
-	}
 
 	queueid = portal->queueId;
 
@@ -601,7 +572,23 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 				incData.portalId = portal->portalId;
 				incData.increments[RES_COUNT_LIMIT] = 1;
 				incData.increments[RES_COST_LIMIT] = ceil(plan->total_cost);
-	
+
+				if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+				{
+					uint64 queryMemory = qDesc->plannedstmt->query_mem;
+					Assert(queryMemory > 0);
+					if (gp_log_resqueue_memory)
+					{
+						elog(gp_resqueue_memory_log_level, "this query requests %.0fkB", (double) queryMemory / 1024.0);
+					}					
+					PolicyAutoAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
+					incData.increments[RES_MEMORY_LIMIT] = (Cost) queryMemory;
+				}
+				else 
+				{
+					Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_NONE);
+					incData.increments[RES_MEMORY_LIMIT] = (Cost) 0.0;				
+				}
 				takeLock = true;
 				returnReleaseOk = true;
 			}
@@ -622,7 +609,23 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 				incData.increments[RES_COST_LIMIT] = ceil(plan->total_cost);
 				incData.isHold = portal->cursorOptions & CURSOR_OPT_HOLD;
 
-	
+				if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+				{
+					uint64 queryMemory = qDesc->plannedstmt->query_mem;
+					Assert(queryMemory > 0);
+					if (gp_log_resqueue_memory)
+					{
+						elog(NOTICE, "this query requests %.0fkB", (double) queryMemory / 1024.0);
+					}					
+					PolicyAutoAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
+					incData.increments[RES_MEMORY_LIMIT] = (Cost) queryMemory;
+				}
+				else 
+				{
+					Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_NONE);
+					incData.increments[RES_MEMORY_LIMIT] = (Cost) 0.0;				
+				}
+
 				takeLock = true;
 				returnReleaseOk = true;
 			}
@@ -883,6 +886,9 @@ ResCreatePortalId(const char *name)
 		return id;
 	}
 
+
+	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
 	/* 
 	 * Named portal.
 	 * Search for a id we can re-use from a closed portal - we want to do this
@@ -900,7 +906,9 @@ ResCreatePortalId(const char *name)
 			break;
 		}
 	}
-
+	
+	LWLockRelease(ResQueueLock);
+	
 	/*
 	 * No re-usable portal ids, check we have not exhaused the # of trackable
 	 * portals and return the next id.

@@ -3259,6 +3259,8 @@ DATA(insert OID = 2626 ( pg_sleep			PGNSP PGUID 12 f f t f v 1 2278 f "701" _nul
 DESCR("Sleep for the specified time in seconds");
 DATA(insert OID = 6030 (  pg_resqueue_status   PGNSP PGUID 12 f f t t v 0 2249 f "" _null_ _null_ _null_ pg_resqueue_status - _null_ ));
 DESCR("Return resource queue information");
+DATA(insert OID = 6069 (  pg_resqueue_status_kv   PGNSP PGUID 12 f f t t v 0 2249 f "" _null_ _null_ _null_ pg_resqueue_status_kv - _null_ ));
+DESCR("Return resource queue information");
 DATA(insert OID = 6045 ( pg_file_read		PGNSP PGUID 12 f f t f v 3 25 f "25 20 20" _null_ _null_ _null_ pg_read_file - _null_ ));
 DESCR("Read text from a file");
 DATA(insert OID = 6046 ( pg_logfile_rotate		PGNSP PGUID 12 f f t f v 0 16 f "" _null_ _null_ _null_ pg_rotate_logfile - _null_ ));

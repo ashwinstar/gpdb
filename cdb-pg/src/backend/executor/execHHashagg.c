@@ -678,7 +678,7 @@ create_agg_hash_table(AggState *aggstate)
 												 ALLOCSET_DEFAULT_MINSIZE,
 												 ALLOCSET_DEFAULT_INITSIZE,
 												 ALLOCSET_DEFAULT_MAXSIZE);
-	if (!calcHashAggTableSizes(1024.0 * (double)work_mem,
+	if (!calcHashAggTableSizes(1024.0 * (double) PlanStateOperatorMemKB( (PlanState *) aggstate),
 							   (double)agg->numGroups,
 							   aggstate->numaggs,
 							   Min(est_hash_tuple_size(aggstate->ss.ss_ScanTupleSlot,
@@ -715,7 +715,7 @@ create_agg_hash_table(AggState *aggstate)
 
 	MemoryContextSwitchTo(oldcxt);
 
-	hashtable->max_mem = 1024.0 * (double)work_mem;
+	hashtable->max_mem = 1024.0 * (double) PlanStateOperatorMemKB((PlanState *) aggstate);
 	hashtable->mem_for_metadata = sizeof(HashAggTable)
 		+ hashtable->nbuckets * sizeof(HashAggEntry *)
 		+ hashtable->nbuckets * sizeof(uint64)

@@ -37,6 +37,7 @@
 #include "postmaster/autovacuum.h"
 #include "postmaster/backoff.h"
 #include "cdb/ml_ipc.h"
+#include "cdb/memquota.h"
 
 /*
  * ActivePortal is the currently executing Portal (the most closely nested,
@@ -238,6 +239,10 @@ ProcessQuery(Portal portal,
 		queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
 	{
 		PortalSetStatus(portal, PORTAL_QUEUE);
+		
+		if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
+		
 		portal->releaseResLock = ResLockPortal(portal, queryDesc);
 	}
 
@@ -259,6 +264,14 @@ ProcessQuery(Portal portal,
 		BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->backoff_weight);
 	}
 	
+	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO
+			&& Gp_role == GP_ROLE_DISPATCH
+			&& gp_session_id > -1
+			&& superuser())
+	{
+		queryDesc->plannedstmt->query_mem = ResourceQueueGetSuperuserQueryMemoryLimit();
+	}
+
 	/*
 	 * Set up to collect AFTER triggers
 	 */
@@ -793,6 +806,10 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 					queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
 				{
 					PortalSetStatus(portal, PORTAL_QUEUE);
+					
+					if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+						queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
+					
 					portal->releaseResLock = ResLockPortal(portal, queryDesc);
 				}
 
@@ -811,6 +828,14 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 						queryDesc->plannedstmt->backoff_weight = ResourceQueueGetPriorityWeight(portal->queueId);
 					}
 					BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->backoff_weight);
+				}
+
+				if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO
+						&& Gp_role == GP_ROLE_DISPATCH
+						&& gp_session_id > -1
+						&& superuser())
+				{
+					queryDesc->plannedstmt->query_mem = ResourceQueueGetSuperuserQueryMemoryLimit();
 				}
 				
 				/*

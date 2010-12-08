@@ -294,6 +294,7 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_NODE_FIELD(righttree);
 	WRITE_NODE_FIELD(initPlan);
 	
+    WRITE_UINT64_FIELD(operatorMemKB);	
 }
 
 /*
@@ -352,6 +353,10 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	
 	/* Don't serialize policy */
 	WRITE_NODE_FIELD(sliceTable);
+	
+	WRITE_INT_FIELD(backoff_weight);
+	WRITE_UINT64_FIELD(query_mem);
+
 }
 
 static void

@@ -52,6 +52,6 @@ GRANT SELECT ON gp_distributed_log TO PUBLIC;
 ------------------------------------------------------------------
 CREATE LANGUAGE plpgsql;
 
-ALTER RESOURCE QUEUE pg_default WITH (priority=medium);
+ALTER RESOURCE QUEUE pg_default WITH (priority=medium, memory_limit='-1');
 
 RESET log_min_messages;

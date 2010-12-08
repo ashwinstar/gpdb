@@ -108,7 +108,7 @@ ExecMaterial(MaterialState *node)
 #ifdef USE_OLD_TUPLESTORE
 			tuplestorestate = tuplestore_begin_heap_file_readerwriter(rwfile_prefix, true);
 #else
-			ts = ntuplestore_create_readerwriter(rwfile_prefix, work_mem * 1024, true);
+			ts = ntuplestore_create_readerwriter(rwfile_prefix, PlanStateOperatorMemKB((PlanState *)node) * 1024, true);
 			tsa = ntuplestore_create_accessor(ts, true);
 #endif
 		}
@@ -117,7 +117,7 @@ ExecMaterial(MaterialState *node)
 #ifdef USE_OLD_TUPLESTORE
 			tuplestorestate = tuplestore_begin_heap(true, false, work_mem); 
 #else
-			ts = ntuplestore_create(work_mem * 1024);
+			ts = ntuplestore_create(PlanStateOperatorMemKB((PlanState *) node) * 1024);
 			tsa = ntuplestore_create_accessor(ts, true);
 #endif
 		}

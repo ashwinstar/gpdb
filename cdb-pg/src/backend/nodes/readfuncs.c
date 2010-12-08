@@ -2675,6 +2675,9 @@ _readPlannedStmt(void)
 	local_node->intoPolicy = NULL; /* not serialized in outfuncs.c */
 	READ_NODE_FIELD(sliceTable);
 	
+	READ_INT_FIELD(backoff_weight);
+	READ_UINT64_FIELD(query_mem);
+
 	READ_DONE();
 }
 
@@ -3402,6 +3405,7 @@ void readPlanInfo(Plan *local_node)
      *      flow
      *      dispatch
      */
+    READ_UINT64_FIELD(operatorMemKB);
 }
 
 void readJoinInfo(Join *local_node)

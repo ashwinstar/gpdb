@@ -34,6 +34,8 @@
 #include "catalog/pg_namespace.h"
 #include "cdb/cdbvars.h"
 #include "optimizer/clauses.h"
+#include "executor/nodeFunctionscan.h"
+#include "cdb/memquota.h"
 
 /*
  * We have an execution_state record for each query in a function.	Each
@@ -448,7 +450,15 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 		 */
 		if (es->qd->operation != CMD_SELECT)
 			AfterTriggerBeginQuery();
-		ExecutorStart(es->qd, 0);
+		
+		
+    	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO
+    			&& !IsEmptyMemoryReservedForFunctionScan())
+    	{
+    		es->qd->plannedstmt->query_mem = CurrentFunctionScanMemoryReserved();                		
+    	}
+
+    	ExecutorStart(es->qd, 0);
 	}
 
 	es->status = F_EXEC_RUN;

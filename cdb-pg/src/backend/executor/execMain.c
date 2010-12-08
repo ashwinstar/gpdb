@@ -91,6 +91,8 @@
 #include "cdb/cdbmirroredbufferpool.h"
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "cdb/cdbllize.h"
+#include "cdb/memquota.h"
 
 extern bool cdbpathlocus_querysegmentcatalogs;
 
@@ -150,8 +152,6 @@ static void intorel_destroy(DestReceiver *self);
 static TupleTableSlot * CompressedHeapTupleSlot(TupleTableSlot *slot, ResultRelInfo *resultRelInfo);
 static void ClearPartitionState(EState *estate);
 
-/* end of local decls */
-
 /*
  * For a partitioned insert target only:  
  * This type represents an entry in the per-part hash table stored at
@@ -173,7 +173,6 @@ typedef struct CopyDirectDispatchToSliceContext
 } CopyDirectDispatchToSliceContext;
 
 static bool CopyDirectDispatchFromPlanToSliceTableWalker( Node *node, CopyDirectDispatchToSliceContext *context);
-
 
 static void
 CopyDirectDispatchToSlice( Plan *ddPlan, int sliceId, CopyDirectDispatchToSliceContext *context)
@@ -271,6 +270,28 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			&& queryDesc->gpmon_pkt)
 	{			
 		gpmon_qlog_query_start(queryDesc->gpmon_pkt);
+	}
+
+	/**
+	 * Distribute memory to operators.
+	 */
+	
+	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO
+			&& Gp_role == GP_ROLE_DISPATCH)
+	{
+		if (gp_log_resqueue_memory)
+		{
+			elog(gp_resqueue_memory_log_level, "this query requests %.0fkB", (double) queryDesc->plannedstmt->query_mem / 1024.0);
+		}
+		
+		/**
+		 * There are some statements that do not go through the resource queue, so we cannot
+		 * put in a strong assert here. Someday, we should fix resource queues.
+		 */
+		if (queryDesc->plannedstmt->query_mem > 0)
+		{
+			PolicyAutoAssignOperatorMemoryKB(queryDesc->plannedstmt, queryDesc->plannedstmt->query_mem);
+		}
 	}
 	
 	/*
@@ -600,7 +621,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 */
 			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, estate->dispatcherState);
 		}
-
+		
+		
 		/*
 		 * Get executor identity (who does the executor serve). we can assume
 		 * Forward scan direction for now just for retrieving the identity.

@@ -246,7 +246,7 @@ ExecEndHash(HashState *node)
  * ----------------------------------------------------------------
  */
 HashJoinTable
-ExecHashTableCreate(Hash *node, List *hashOperators)
+ExecHashTableCreate(Hash *node, List *hashOperators, uint64 operatorMemKB)
 {
 	HashJoinTable hashtable;
 	Plan	   *outerNode;
@@ -265,7 +265,7 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 	outerNode = outerPlan(node);
 
 	ExecChooseHashTableSize(outerNode->plan_rows, outerNode->plan_width,
-							&nbuckets, &nbatch);
+							&nbuckets, &nbatch, operatorMemKB);
 
 #ifdef HJDEBUG
     elog(DEBUG4, "HJ: nbatch = %d, nbuckets = %d\n", nbatch, nbuckets);
@@ -288,7 +288,7 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 	hashtable->growEnabled = true;
 	hashtable->totalTuples = 0;
 	hashtable->batches = NULL;
-	hashtable->spaceAllowed = work_mem * 1024L;
+	hashtable->spaceAllowed = operatorMemKB * 1024L;
     hashtable->stats = NULL;
     hashtable->eagerlyReleased = false;
 	/*
@@ -401,7 +401,8 @@ ExecHashRowSize(int tupwidth)
 void
 ExecChooseHashTableSize(double ntuples, int tupwidth,
 						int *numbuckets,
-						int *numbatches)
+						int *numbatches,
+						uint64 operatorMemKB)
 {
 	int			tupsize;
 	double		inner_rel_bytes;
@@ -431,7 +432,7 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 	/*
 	 * Target in-memory hashtable size is work_mem kilobytes.
 	 */
-	hash_table_bytes = work_mem * 1024L;
+	hash_table_bytes = operatorMemKB * 1024L;
 
 	/*
 	 * Set nbuckets to achieve an average bucket load of gp_hashjoin_tuples_per_bucket when
@@ -1156,7 +1157,7 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
          * the planner's estimate rather than our runtime observations.  For
          * now, we don't try to second-guess the planner; just keep quiet.
          */
-        if (workmemwanted > work_mem * 1024L)
+        if (workmemwanted > PlanStateOperatorMemKB(planstate) * 1024L)
             jinstrument->workmemwanted =
                 Max(jinstrument->workmemwanted, workmemwanted);
     }

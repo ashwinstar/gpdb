@@ -147,6 +147,7 @@ cdbdisp_dispatchCommandToAllGangs(const char	*strCommand,
 #define MPPEXEC_CAP_STR "MPPEXEC "
 #define MPPEXEC_STR "mppexec "
 
+
 /*
  * Clear our "active" flags; so that we know that the writer gangs are busy -- and don't stomp on
  * internal dispatcher structures. See MPP-6253 and MPP-6579.
@@ -3605,7 +3606,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		}
 
 		stmt->planTree = (Plan *) exec_make_plan_constant(stmt, is_SRI);
-
+		
 		MemoryContextSwitchTo(oldContext);
 	}
 
@@ -4291,3 +4292,5 @@ cdbdisp_destroyDispatchThreads(CdbDispatchCmdThreads *dThreads)
 		
 	pfree(dThreads);
 }                               /* cdbdisp_destroyDispatchThreads */
+
+

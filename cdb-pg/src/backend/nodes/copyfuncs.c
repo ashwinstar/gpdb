@@ -111,6 +111,7 @@ CopyPlanFields(Plan *from, Plan *newnode)
 
 	COPY_SCALAR_FIELD(directDispatch.isDirectDispatch);
 	COPY_NODE_FIELD(directDispatch.contentIds);
+	COPY_SCALAR_FIELD(operatorMemKB);
 
 }
 
@@ -154,6 +155,7 @@ _copyPlannedStmt(PlannedStmt *from)
 	COPY_NODE_FIELD(sliceTable);
 
 	COPY_SCALAR_FIELD(backoff_weight);
+	COPY_SCALAR_FIELD(query_mem);
 
 	return newnode;
 }

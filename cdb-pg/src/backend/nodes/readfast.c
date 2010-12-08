@@ -2500,6 +2500,9 @@ _readPlannedStmt(const char ** str)
 	/* intoPolicy not serialized in outfast.c */
 	READ_NODE_FIELD(sliceTable);
 	
+	READ_INT_FIELD(backoff_weight);
+	READ_UINT64_FIELD(query_mem);
+
 	READ_DONE();
 }
 
@@ -3256,7 +3259,8 @@ void readPlanInfo(const char ** str, Plan *local_node)
     READ_NODE_FIELD(lefttree);
     READ_NODE_FIELD(righttree);
     READ_NODE_FIELD(initPlan);
-
+    
+    READ_UINT64_FIELD(operatorMemKB);
 }
 
 void readJoinInfo(const char ** str, Join *local_node)

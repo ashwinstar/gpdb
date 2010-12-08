@@ -35,6 +35,7 @@ select relname from pg_class where relnamespace in (select oid from pg_namespace
  gp_resq_priority_backend
  gp_resq_priority_statement
  gp_resq_role
+ gp_resqueue_status
  gp_roles_assigned
  gp_size_of_all_table_indexes
  gp_size_of_database
@@ -51,6 +52,6 @@ select relname from pg_class where relnamespace in (select oid from pg_namespace
  gp_skew_idle_fractions
  gp_stats_missing
  gp_table_indexes
-(45 rows)
+(46 rows)
 
 \c regression

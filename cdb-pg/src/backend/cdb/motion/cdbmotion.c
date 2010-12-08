@@ -289,7 +289,7 @@ InitMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID)
  * This function is called from:  ExecInitMotion()
  */
 void
-UpdateMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
+UpdateMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserveOrder, TupleDesc tupDesc, uint64 operatorMemKB)
 {
 	MemoryContext oldCtxt;
 	MotionNodeEntry *pEntry;
@@ -301,7 +301,7 @@ UpdateMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserve
 	 * can be reset later.
 	 */
 	oldCtxt = MemoryContextSwitchTo(mlStates->motion_layer_mctx);
-
+	
 	if (motNodeID > mlStates->mneCount)
 	{
 		AddMotionLayerNode(mlStates, motNodeID);
@@ -328,10 +328,14 @@ UpdateMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserve
 	pEntry->tuple_desc = CreateTupleDescCopy(tupDesc);
 	InitSerTupInfo(pEntry->tuple_desc, &pEntry->ser_tup_info);
 
+	pEntry->memKB = operatorMemKB;
+
 	if (!preserveOrder)
 	{
+		Assert(pEntry->memKB > 0);
+		
 		/* Create a tuple-store for the motion node's incoming tuples. */
-		pEntry->ready_tuples = htfifo_create(work_mem);
+		pEntry->ready_tuples = htfifo_create(pEntry->memKB);
 	}
 	else
 		pEntry->ready_tuples = NULL;
@@ -356,6 +360,7 @@ UpdateMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool preserve
 	pEntry->cleanedUp = false;
 	pEntry->stopped = false;
 	pEntry->moreNetWork = true;
+
 
 	/* All done!  Go back to caller memory-context. */
 	MemoryContextSwitchTo(oldCtxt);
@@ -914,7 +919,8 @@ getChunkSorterEntry(MotionLayerState *mlStates,
 	 */
 	if (motNodeEntry->preserve_order)
 	{
-		chunkSorterEntry->ready_tuples = htfifo_create(work_mem);
+		Assert(motNodeEntry->memKB > 0);
+		chunkSorterEntry->ready_tuples = htfifo_create(motNodeEntry->memKB);
 
 #ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG5, "Motion node %d is order-preserving.  Creating"

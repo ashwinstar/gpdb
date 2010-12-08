@@ -42,6 +42,8 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_namespace.h"
 #include "executor/functions.h"
+#include "cdb/memquota.h"
+#include "executor/nodeFunctionscan.h"
 
 extern char *savedSeqServerHost;
 extern int savedSeqServerPort;
@@ -1904,9 +1906,40 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 				}
                 else if (!ActivePortal->releaseResLock)
                 {
+                	/** TODO: siva - can we ever reach this point? */
                     PortalSetStatus(ActivePortal, PORTAL_QUEUE);
+            		
+                    if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+                    {
+            			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, ActivePortal->queueId);
+                    }
+                    
                     ActivePortal->releaseResLock = ResLockPortal(ActivePortal, queryDesc);
                     PortalSetStatus(ActivePortal, PORTAL_ACTIVE);
+                } 
+                else
+                {
+                	/**
+                	 * If we're in this case, then we already have a resource queue lock which means we're calling an SPI query after
+                	 * we've gone through the resource queue. We need to determine how much memory this query deserves. There are two possibilities:
+                	 * 1) We're not in a function scan. We calculate the query's limit using the queue. We don't go through the queue, though.
+                	 * 2) We're inside a function scan. We use the memory allocated to the function scan operator.
+                	 */
+                	Assert(ActivePortal);
+                	Assert(ActivePortal->releaseResLock);
+
+                	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+                	{
+                		if (IsEmptyMemoryReservedForFunctionScan())
+                		{
+                			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, ActivePortal->queueId);                		
+                		}
+                		else
+                		{
+                			queryDesc->plannedstmt->query_mem = CurrentFunctionScanMemoryReserved();
+                		}
+                		Assert(queryDesc->plannedstmt->query_mem > 0);
+                	}
                 }
             }
 
@@ -1963,6 +1996,20 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 		Assert(queryDesc->plannedstmt->backoff_weight > 0);
 	}
 	
+	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO
+			&& superuser())
+	{
+		if (IsEmptyMemoryReservedForFunctionScan())
+		{
+			queryDesc->plannedstmt->query_mem = ResourceQueueGetSuperuserQueryMemoryLimit();                		
+		}
+		else
+		{
+			queryDesc->plannedstmt->query_mem = CurrentFunctionScanMemoryReserved();
+		}
+		Assert(queryDesc->plannedstmt->query_mem > 0);
+	}
+
 	if (!cdbpathlocus_querysegmentcatalogs && fire_triggers)
 		AfterTriggerBeginQuery();
 

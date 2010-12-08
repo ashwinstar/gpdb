@@ -226,7 +226,7 @@ initialize_aggregates(AggState *aggstate,
 				peraggstate->sortstate =
 					tuplesort_begin_datum_mk(peraggstate->inputType,
 							peraggstate->sortOperator,
-							work_mem, false);
+							PlanStateOperatorMemKB((PlanState *) aggstate), false);
 
 				/* 
 				 * CDB: If EXPLAIN ANALYZE, let all of our tuplesort operations
@@ -245,7 +245,7 @@ initialize_aggregates(AggState *aggstate,
 				peraggstate->sortstate =
 					tuplesort_begin_datum(peraggstate->inputType,
 							peraggstate->sortOperator,
-							work_mem, false);
+							PlanStateOperatorMemKB((PlanState *) aggstate), false);
 
 				/* 
 				 * CDB: If EXPLAIN ANALYZE, let all of our tuplesort operations

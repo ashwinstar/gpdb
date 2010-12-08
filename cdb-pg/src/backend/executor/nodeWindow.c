@@ -595,7 +595,7 @@ createFrameBuffers(WindowState *wstate)
 	if (wstate->numlevels <= 0)
 		return;
 	
-	bytes = ((work_mem * 1024L)/2) / wstate->numlevels;
+	bytes = ((PlanStateOperatorMemKB((PlanState *) wstate) * 1024L)/2) / wstate->numlevels;
 	
 	for (level=0; level < wstate->numlevels; level++)
 	{
@@ -2976,7 +2976,7 @@ resetInputBuffer(WindowState *wstate)
 	{
 		wstate->input_buffer = (WindowInputBuffer)palloc0(sizeof(WindowInputBufferData));
 		wstate->input_buffer->tuplestore =
-			ntuplestore_create((work_mem * 1024L)/2); /* correct? */
+			ntuplestore_create((PlanStateOperatorMemKB((PlanState *) wstate) * 1024L)/2); /* correct? */
 		createFrameBuffers(wstate);
 	}
 

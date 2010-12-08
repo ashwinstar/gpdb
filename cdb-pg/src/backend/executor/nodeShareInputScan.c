@@ -109,7 +109,7 @@ ShareInputNext(ShareInputScanState *node)
 			{
 				node->ts_state = tuplesort_begin_heap_file_readerwriter_mk(
 					rwfile_prefix, false,
-					NULL, 0, NULL, NULL, work_mem, true);
+					NULL, 0, NULL, NULL, PlanStateOperatorMemKB((PlanState *) node), true);
 
 				tuplesort_begin_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk **)(&node->ts_pos));
 				tuplesort_rescan_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk *)node->ts_pos); 
@@ -118,7 +118,7 @@ ShareInputNext(ShareInputScanState *node)
 			{
 				node->ts_state = tuplesort_begin_heap_file_readerwriter(
 					rwfile_prefix, false,
-					NULL, 0, NULL, NULL, work_mem, true);
+					NULL, 0, NULL, NULL, PlanStateOperatorMemKB((PlanState *) node), true);
 
 				tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
 				tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos); 

@@ -1539,7 +1539,8 @@ Tuplestorestate *
 ExecMakeTableFunctionResult(ExprState *funcexpr,
 							ExprContext *econtext,
 							TupleDesc expectedDesc,
-							TupleDesc *returnDesc) 
+							TupleDesc *returnDesc,
+							uint64 operatorMemKB) 
 {
 	Tuplestorestate *tupstore = NULL;
 	TupleDesc	tupdesc = NULL;
@@ -1744,7 +1745,7 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 
 				mt_bind = create_memtuple_binding(tupdesc);
 
-				tupstore = tuplestore_begin_heap(true, false, work_mem); 
+				tupstore = tuplestore_begin_heap(true, false, operatorMemKB); 
 				MemoryContextSwitchTo(oldcontext);
 				rsinfo.setResult = tupstore;
 				rsinfo.setDesc = tupdesc;
@@ -1833,7 +1834,7 @@ no_function_result:
 	if (rsinfo.setResult == NULL)
 	{
 		MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
-		tupstore = tuplestore_begin_heap(true, false, work_mem); 
+		tupstore = tuplestore_begin_heap(true, false, operatorMemKB); 
 		rsinfo.setResult = tupstore;  
 		if (!returnsSet)
 		{

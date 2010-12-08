@@ -30,11 +30,16 @@
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
-
+#include "nodes/stack.h"
+#include "cdb/memquota.h"
 
 static TupleTableSlot *FunctionNext(FunctionScanState *node);
 static void tupledesc_match(TupleDesc dst_tupdesc, TupleDesc src_tupdesc);
 static void ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf);
+static void ExecFunctionScanEndCommon(FunctionScanState *node);
+
+static void PushMemoryReservedForFunctionScan(uint64 mem_reserved);
+static void PopMemoryReservedForFunctionScan(void);
 
 
 /* ----------------------------------------------------------------
@@ -47,7 +52,7 @@ static void ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoDa
  *		This is a workhorse for ExecFunctionScan
  * ----------------------------------------------------------------
  */
-	static TupleTableSlot *
+static TupleTableSlot *
 FunctionNext(FunctionScanState *node)
 {
 	TupleTableSlot *slot;
@@ -76,7 +81,8 @@ FunctionNext(FunctionScanState *node)
 				node->funcexpr,
 				econtext,
 				node->tupdesc,
-				&funcTupdesc);
+				&funcTupdesc,
+				PlanStateOperatorMemKB( (PlanState *) node));
 		node->tuplestorestate = tuplestorestate;
 
 		/* CDB: Offer extra info for EXPLAIN ANALYZE. */
@@ -305,6 +311,8 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 
 	initGpmonPktForFunctionScan((Plan *)node, &scanstate->ss.ps.gpmon_pkt, estate);
 	
+	PushMemoryReservedForFunctionScan(((Plan *)node)->operatorMemKB * 1024L);
+	
 	return scanstate;
 }
 
@@ -316,30 +324,11 @@ ExecCountSlotsFunctionScan(FunctionScan *node)
 		FUNCTIONSCAN_NSLOTS;
 }
 
-
-/*
- * ExecFunctionScanExplainEnd
- *      Called before ExecutorEnd to finish EXPLAIN ANALYZE reporting.
- *
- * The cleanup that ordinarily would occur during ExecutorEnd() needs to be 
- * done earlier in order to report statistics to EXPLAIN ANALYZE.  Note that 
- * ExecEndFunctionScan() will be called for a second time during ExecutorEnd().
+/**
+ * Common substrate of ExecFunctionScanExplainEnd and ExecFunctionScanEnd
  */
 void
-ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf)
-{
-    ExecEndFunctionScan((FunctionScanState *)planstate);
-}                               /* ExecFunctionScanExplainEnd */
-
-
-/* ----------------------------------------------------------------
- *		ExecEndFunctionScan
- *
- *		frees any storage allocated through C routines.
- * ----------------------------------------------------------------
- */
-void
-ExecEndFunctionScan(FunctionScanState *node)
+ExecFunctionScanEndCommon(FunctionScanState *node)
 {
 	/*
 	 * Free the exprcontext
@@ -360,6 +349,33 @@ ExecEndFunctionScan(FunctionScanState *node)
 	node->tuplestorestate = NULL;
 
 	EndPlanStateGpmonPkt(&node->ss.ps);
+}
+/*
+ * ExecFunctionScanExplainEnd
+ *      Called before ExecutorEnd to finish EXPLAIN ANALYZE reporting.
+ *
+ * The cleanup that ordinarily would occur during ExecutorEnd() needs to be 
+ * done earlier in order to report statistics to EXPLAIN ANALYZE.  Note that 
+ * ExecEndFunctionScan() will be called for a second time during ExecutorEnd().
+ */
+void
+ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf __attribute__((unused)))
+{
+	ExecFunctionScanEndCommon((FunctionScanState *) planstate);
+}                               /* ExecFunctionScanExplainEnd */
+
+
+/* ----------------------------------------------------------------
+ *		ExecEndFunctionScan
+ *
+ *		frees any storage allocated through C routines.
+ * ----------------------------------------------------------------
+ */
+void
+ExecEndFunctionScan(FunctionScanState *node)
+{
+	ExecFunctionScanEndCommon(node);	
+	PopMemoryReservedForFunctionScan();
 }
 
 /* ----------------------------------------------------------------
@@ -504,4 +520,73 @@ initGpmonPktForFunctionScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 		if (funcname && funcname != rte->eref->aliasname)
 			pfree(funcname);
 	}
+}
+
+/**
+ * Maintain stack of memory reservations for function scan operator.
+ */
+
+static Stack functionScanMemoryReservedStack;
+
+/**
+ * Called once per process per query. See PushMemoryReservedForFunctionScan() for detailed comment.
+ */
+void InitFunctionScanMemoryReservedStack(void)
+{
+	Init(&functionScanMemoryReservedStack);
+}
+
+extern MemoryContext QueryContext;
+
+/**
+ * Push memory reserved for current function scan. It is possible for a function scan to (after several levels of nesting),
+ * result in execution of SQL statements e.g. a pl/pgsql function that issues queries. These queries must be sandboxed into
+ * the limits of the functionscan operator. This stack represents the nesting of such function scan operators and each
+ * operator will push its own limit. 
+ */
+void PushMemoryReservedForFunctionScan(uint64 mem_reserved)
+{
+	Assert(QueryContext);
+	MemoryContext oldContext = MemoryContextSwitchTo(QueryContext);
+
+	/**
+	 * We create a copy in QueryContext since it lives for the duration of a query.
+	 */
+	uint64 *mem_reserved_copy = palloc(sizeof(mem_reserved));
+	(* mem_reserved_copy) = mem_reserved;
+	
+	if (gp_log_resqueue_memory)
+	{
+		elog(gp_resqueue_memory_log_level, "pushing memory reservation on stack %d", (int) mem_reserved);
+	}
+	
+	Push(&functionScanMemoryReservedStack, mem_reserved_copy);
+	
+	MemoryContextSwitchTo(oldContext);
+}
+
+/**
+ * Currently, what is the amount of memory reserved for function scan? See PushMemoryReservedForFunctionScan()
+ * for details.
+ */
+uint64 CurrentFunctionScanMemoryReserved(void)
+{
+	uint64 *mem_reserved = (uint64 *) Peek(&functionScanMemoryReservedStack);
+	return (*mem_reserved);
+}
+
+/**
+ * Pop out value since functionscan is done.
+ */
+void PopMemoryReservedForFunctionScan(void)
+{
+	Pop(&functionScanMemoryReservedStack);
+}
+
+/**
+ * Is memory reserved stack empty?
+ */
+bool IsEmptyMemoryReservedForFunctionScan(void)
+{
+	return IsEmpty(&functionScanMemoryReservedStack);
 }

@@ -33,6 +33,7 @@
 #include "utils/ps_status.h"
 #include "utils/resowner.h"
 #include "utils/resscheduler.h"
+#include "cdb/memquota.h"
 
 static void ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode, bool wakeupNeeded);
 
@@ -43,8 +44,9 @@ static void ResWaitOnLock(LOCALLOCK *locallock, ResourceOwner owner, ResPortalIn
 
 static void ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementSet, bool increment, bool inError);
 
-/* Columns in pg_resqueue_status() */
-#define	NUM_QUEUE_STATUS_ELEM	(3 + NUM_RES_LIMIT_TYPES)
+static void				ResGrantLock(LOCK *lock, PROCLOCK *proclock);
+static bool				ResUnGrantLock(LOCK *lock, PROCLOCK *proclock);
+
 
 /*
  * Global Variables
@@ -62,8 +64,10 @@ typedef struct
 	Oid		queueid;
 	float4	queuecountthreshold;
 	float4	queuecostthreshold;
+	float4  queuememthreshold;
 	float4	queuecountvalue;
 	float4	queuecostvalue;
+	float4  queuememvalue;
 	int		queuewaiters;
 	int		queueholders;
 }	QueueStatusRec;
@@ -75,10 +79,12 @@ typedef struct
  */
 typedef struct
 {
-	TupleDesc		tupdesc;
 	QueueStatusRec	*record;
+	int				numRecords;
 	
 }	QueueStatusContext;
+
+static void BuildQueueStatusContext(QueueStatusContext *fctx);
 
 
 /*
@@ -545,8 +551,6 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	incrementSet = ResIncrementFind(&portalTag);
 	if (!incrementSet)
 	{
-		LWLockRelease(ResQueueLock);
-		LWLockRelease(partitionLock);
         elog(DEBUG1, "Resource queue %d: increment not found on unlock", locktag->locktag_field1);
         if (proclock->nLocks == 0)
 		{
@@ -554,6 +558,8 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 		}
 
 		ResCleanUpLock(lock, proclock, hashcode, true);
+		LWLockRelease(ResQueueLock);
+		LWLockRelease(partitionLock);
 		return false;			
 	}
 
@@ -625,6 +631,8 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementS
 	int				status = STATUS_OK;
 	Cost			increment_amt;
 	int				i;
+
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
 
 	/* Get the queue for this lock.*/
 	queue = GetResQueueFromLock(lock);
@@ -709,6 +717,30 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementS
 			}
 			break;
 
+			case RES_MEMORY_LIMIT:
+			{
+				Assert((limits[i].threshold_is_max));
+
+				/* Setup whether to increment or decrement the # active. */
+				if (increment)
+				{
+					increment_amt = incrementSet->increments[i];
+
+					if (limits[i].current_value + increment_amt > limits[i].threshold_value)
+						over_limit = true;
+				}
+				else
+				{
+					increment_amt = -1 * incrementSet->increments[i];
+				}
+
+#ifdef RESLOCK_DEBUG
+				elog(DEBUG1, "checking memory limit threshold %.0f current %.0f",
+					 limits[i].threshold_value, limits[i].current_value);
+#endif
+			}
+			break;
+			
 			default:
 				break;		
 		}
@@ -744,17 +776,14 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increment
 	Cost			increment_amt;
 	int				i;
 
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
+
 	/* Get the queue for this lock.*/
 	queue = GetResQueueFromLock(lock);
 	limits = queue->limits;
 
 	for (i = 0; i < NUM_RES_LIMIT_TYPES; i++)
 	{
-		/*
-		 * Skip the default threshold, as it means 'no limit'.
-		 */
-		if (limits[i].threshold_value == INVALID_RES_LIMIT_THRESHOLD)
-			continue;
 
 		/*
 		 * MPP-8454: NOTE that if our resource-queue has been modified
@@ -762,38 +791,17 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increment
 		 * that we're deducting an increment that we never added --
 		 * the lowest value we should allow is 0.0.
 		 *
-		 * Note, we skip anything that's negative above.
 		 */
 		switch (limits[i].type)
 		{
 			case RES_COUNT_LIMIT:
+			case RES_COST_LIMIT:
+			case RES_MEMORY_LIMIT:
 			{
 				Cost new_value;
 
 				Assert((limits[i].threshold_is_max));
 				/* setup whether to increment or decrement the # active. */
-				if (increment)
-				{
-					increment_amt = incrementSet->increments[i];
-				}
-				else
-				{
-					increment_amt = -1 * incrementSet->increments[i];
-				}
-
-				new_value = ceil(limits[i].current_value + increment_amt);
-				new_value = Max(new_value, 0.0);
-
-				limits[i].current_value = new_value;
-			}
-			break;
-
-			case RES_COST_LIMIT:
-			{
-				Cost new_value;
-
-				Assert((limits[i].threshold_is_max));
-				/* setup whether to increment or decrement the cost. */
 				if (increment)
 				{
 					increment_amt = incrementSet->increments[i];
@@ -828,6 +836,8 @@ ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increment
 ResQueue
 GetResQueueFromLock(LOCK *lock)
 {	
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
+
 	ResQueue	queue = ResQueueHashFind(GET_RESOURCE_QUEUEID_FOR_LOCK(lock));
 
 	if (queue == NULL)
@@ -838,7 +848,6 @@ GetResQueueFromLock(LOCK *lock)
 	return queue;
 }
 
-
 /*
  * ResGrantLock -- grant a resource lock. 
  *
@@ -846,7 +855,7 @@ GetResQueueFromLock(LOCK *lock)
  *	It is expected that the partition lock is held before calling this 
  *  function, as the various shared queue counts are inspected.
  */
-void
+static void
 ResGrantLock(LOCK *lock, PROCLOCK *proclock)
 {	
 	LOCKMODE	lockmode = ExclusiveLock;
@@ -927,6 +936,8 @@ ResUnGrantLock(LOCK *lock, PROCLOCK *proclock)
 static void
 ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode, bool wakeupNeeded)
 {
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
+
 	/*
 	 * If this was my last hold on this lock, delete my entry in the proclock
 	 * table.
@@ -961,8 +972,10 @@ ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode, bool wakeupNeede
 	 * If appropriate, awaken any waiters.
 	 */
 	if (wakeupNeeded)
+	{
 		ResProcLockWakeup(lock);
-
+	}
+	
 	return;
 }
 
@@ -1045,6 +1058,8 @@ ResProcLockWakeup(LOCK *lock)
 	LWLockId	partitionLock;
 
 	int			status;
+
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
 
 	/*
 	 * XXX: This code is ugly and hard to read -- it should be a lot
@@ -1206,6 +1221,7 @@ ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
 	portalTag.pid = MyProc->pid;
 	portalTag.portalId = MyProc->waitPortalId;
 
+	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 	ResIncrementRemove(&portalTag);
 
 	/*
@@ -1217,6 +1233,8 @@ ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
      * any other waiters for the lock can be woken up now.
    	 */
    	ResCleanUpLock(waitLock, (PROCLOCK *) proclock, hashcode, true);
+	LWLockRelease(ResQueueLock);
+
 }
 
 
@@ -1238,6 +1256,7 @@ ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increme
 	int				numPortals = 0;
 	bool			countThesholdOvercommitted = false;
 	bool			costThesholdOvercommitted = false;
+	bool			memoryThesholdOvercommitted = false;
 	bool			result = false;
 
 	/* Get the resource queue lock before checking the increments.*/
@@ -1280,12 +1299,20 @@ ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increme
 					costThesholdOvercommitted = true;
 				}
 			}
+			
+			case RES_MEMORY_LIMIT:
+			{
+				if (incrementTotals[i] > limits[i].threshold_value)
+				{
+					memoryThesholdOvercommitted = true;
+				}
+			}
 			break;
 		}
 	}
 
 	/* If any threshold is overcommitted then set the result.*/
-	if (countThesholdOvercommitted || costThesholdOvercommitted)
+	if (countThesholdOvercommitted || costThesholdOvercommitted || memoryThesholdOvercommitted)
 	{
 		result = true;
 	}
@@ -1383,6 +1410,8 @@ ResIncrementAdd(ResPortalIncrement *incSet, PROCLOCK *proclock, ResourceOwner ow
 	int					i;
 	bool				found;
 
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
+	
 	/*  Set up the key.*/
 	MemSet(&portaltag, 0, sizeof(ResPortalTag));
 	portaltag.pid = incSet->pid;
@@ -1437,6 +1466,8 @@ ResIncrementFind(ResPortalTag *portaltag)
 {
 	ResPortalIncrement	*incrementSet;
 	bool				found;
+	
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
 
 	incrementSet = (ResPortalIncrement *)
 		hash_search(ResPortalIncrementHash, (void *)portaltag, HASH_FIND, &found);
@@ -1463,6 +1494,8 @@ ResIncrementRemove(ResPortalTag *portaltag)
 	ResPortalIncrement	*incrementSet;
 	bool				found;
 
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
+	
 	incrementSet = (ResPortalIncrement *)
 		hash_search(ResPortalIncrementHash, (void *)portaltag, HASH_REMOVE, &found);
 
@@ -1525,6 +1558,8 @@ ResQueueHashNew(Oid queueid)
 	bool				found;
 	ResQueueData		*queue;
 
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
+	
 	queue = (ResQueueData *)
 		hash_search(ResQueueHash, (void *)&queueid, HASH_ENTER_NULL, &found);
 
@@ -1550,6 +1585,8 @@ ResQueueHashFind(Oid queueid)
 	bool				found;
 	ResQueueData		*queue;
 
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
+	
 	queue = (ResQueueData *)
 		hash_search(ResQueueHash, (void *)&queueid, HASH_FIND, &found);
 
@@ -1573,12 +1610,17 @@ ResQueueHashRemove(Oid queueid)
 	bool				found;
 	void				*queue;
 
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
+	
 	queue = hash_search(ResQueueHash, (void *)&queueid, HASH_REMOVE, &found);
 	if (!queue)
 		return false;
 
 	return true;
 }
+
+/* Number of columns produced by pg_resqueue_status() */
+#define PG_RESQUEUE_STATUS_COLUMNS 5
 
 /*
  * pg_resqueue_status - produce a view with one row per resource queue
@@ -1587,21 +1629,14 @@ ResQueueHashRemove(Oid queueid)
 Datum
 pg_resqueue_status(PG_FUNCTION_ARGS)
 {
-	FuncCallContext			*funcctx;
+	FuncCallContext			*funcctx = NULL;
 	Datum					result;
-	MemoryContext			oldcontext;
-	QueueStatusContext		*fctx;			/* User function context. */
-	TupleDesc				tupledesc;
-	HeapTuple				tuple;
+	MemoryContext			oldcontext = NULL;
+	QueueStatusContext		*fctx = NULL;			/* User function context. */
+	HeapTuple				tuple = NULL;
 
 	if (SRF_IS_FIRSTCALL())
 	{
-		int					i;
-		int					num_calls;
-		HASH_SEQ_STATUS		status;
-		ResQueueData		*queue;
-		int					partition;
-		LWLockId			partitionLock;
 
 		funcctx = SRF_FIRSTCALL_INIT();
 
@@ -1609,18 +1644,6 @@ pg_resqueue_status(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		fctx = (QueueStatusContext *) palloc(sizeof(QueueStatusContext));
-		funcctx->user_fctx = fctx;
-
-		/* Construct a tuple descriptor for the result rows. */
-		tupledesc = CreateTemplateTupleDesc(NUM_QUEUE_STATUS_ELEM, false);
-		TupleDescInitEntry(tupledesc, (AttrNumber) 1, "queueid", OIDOID, -1, 0);
-		TupleDescInitEntry(tupledesc, (AttrNumber) 2, "queuecountvalue", FLOAT4OID, -1, 0);
-		TupleDescInitEntry(tupledesc, (AttrNumber) 3, "queuecostvalue", FLOAT4OID, -1, 0);
-		TupleDescInitEntry(tupledesc, (AttrNumber) 4, "queuewaiters", INT4OID, -1, 0);
-		TupleDescInitEntry(tupledesc, (AttrNumber) 5, "queueholders", INT4OID, -1, 0);
-
-		fctx->tupdesc = BlessTupleDesc(tupledesc);
-
 		/*
 		 * Allocate space for the per-call area - this overestimates, but
 		 * means we can take the resource rescheduler lock after our
@@ -1628,116 +1651,25 @@ pg_resqueue_status(PG_FUNCTION_ARGS)
 		 */
 		fctx->record = (QueueStatusRec *)palloc(sizeof(QueueStatusRec) * MaxResourceQueues);
 
+		funcctx->user_fctx = fctx;
+
+		/* Construct a tuple descriptor for the result rows. */
+		TupleDesc tupledesc = CreateTemplateTupleDesc(PG_RESQUEUE_STATUS_COLUMNS, false);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 1, "queueid", OIDOID, -1, 0);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 2, "queuecountvalue", FLOAT4OID, -1, 0);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 3, "queuecostvalue", FLOAT4OID, -1, 0);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 4, "queuewaiters", INT4OID, -1, 0);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 5, "queueholders", INT4OID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupledesc);
+
 		/* Return to original context when allocating transient memory */
 		MemoryContextSwitchTo(oldcontext);
 
-		/* 
-		 * Take all the partition locks. This is necessary as we want to
-		 * to use the same lock order as the rest of the code - i.e. partition
-		 * locks *first* *then* the queue lock (otherwise we could deadlock
-		 * ourselves). 
-		 */
-		for (partition = 0; partition < NUM_LOCK_PARTITIONS; partition++)
-		{
-			partitionLock = FirstLockMgrLock + partition;
-			LWLockAcquire(partitionLock, LW_EXCLUSIVE);
-		}
-
-		/*
-		 * Lock resource queue structures.
-		 */
-		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
-
-		/* Initialize for a sequential scan of the resource queue hash. */
-		hash_seq_init(&status, ResQueueHash);
-		num_calls = hash_get_num_entries(ResQueueHash);
-		Assert(num_calls == ResScheduler->num_queues);
-
-		i = 0;
-		while ((queue = (ResQueueData *) hash_seq_search(&status)) != NULL)
-		{
-			int			j;
-			ResLimit	limits;
-			LOCKTAG		tag;
-			LOCK		*lock;
-			uint32		hashcode;
-			bool		found;
-
-			/* Get the thresholds and current values for each limit. */
-			limits = queue->limits;
-			
-			fctx->record[i].queueid = queue->queueid;
-
-			for (j = 0; j < NUM_RES_LIMIT_TYPES; j++)
-			{
-				switch (limits[j].type)
-				{
-					case RES_COUNT_LIMIT:
-					{
-						fctx->record[i].queuecountthreshold =
-							limits[j].threshold_value;
-
-						fctx->record[i].queuecountvalue =
-							limits[j].current_value;
-					}
-					break;
-
-					case RES_COST_LIMIT:
-					{
-						fctx->record[i].queuecostthreshold =
-							limits[j].threshold_value;
-
-						fctx->record[i].queuecostvalue =
-							limits[j].current_value;
-					}
-					break;
-
-					default:
-						break;
-				}
-			}
-
-			/* 
-			 * Get the holders and waiters count for the corrosponding resource
-			 * lock.
-			 * Think about this - getting ResQueueLock then partitionLock is the
-			 * opposite way from which the rest of your code does this... so
-			 * you could perhaps deadlock here...!
-			 * Might be better to grab *all* the partition locks first!
-			 */
-			SET_LOCKTAG_RESOURCE_QUEUE(tag, queue->queueid);
-			hashcode = LockTagHashCode(&tag);
-
-			lock = (LOCK *)
-				hash_search_with_hash_value(LockMethodLockHash, (void *)&tag, hashcode, HASH_FIND, &found);
-
-			if (!found || !lock)
-			{
-				fctx->record[i].queuewaiters = 0;
-				fctx->record[i].queueholders = 0;
-			}
-			else
-			{
-				fctx->record[i].queuewaiters = lock->nRequested - lock->nGranted;
-				fctx->record[i].queueholders = lock->nGranted;
-			}
-
-			i++;
-		}
-
-		/* Release the resource scheduler lock. */
-		LWLockRelease(ResQueueLock);
-
-		/* ...and the partition locks. */
-		for (partition = NUM_LOCK_PARTITIONS; --partition >= 0;)
-		{
-			partitionLock = FirstLockMgrLock + partition;
-			LWLockRelease(partitionLock);
-		}
-
-		/* Set the real no. of calls as we know it now! */
-		Assert(i <= num_calls);
-		funcctx->max_calls = num_calls;
+		/* Get a snapshot of current state of resource queues */
+		BuildQueueStatusContext(fctx);
+		
+		funcctx->max_calls = fctx->numRecords;
 	}
 
 	funcctx = SRF_PERCALL_SETUP();
@@ -1749,8 +1681,8 @@ pg_resqueue_status(PG_FUNCTION_ARGS)
 	{
 		int			i = funcctx->call_cntr;
 		QueueStatusRec	*record = &fctx->record[i];
-		Datum		values[NUM_QUEUE_STATUS_ELEM];
-		bool		nulls[NUM_QUEUE_STATUS_ELEM];
+		Datum		values[PG_RESQUEUE_STATUS_COLUMNS];
+		bool		nulls[PG_RESQUEUE_STATUS_COLUMNS];
 
 		values[0] = ObjectIdGetDatum(record->queueid);
 		nulls[0] = false;
@@ -1780,7 +1712,7 @@ pg_resqueue_status(PG_FUNCTION_ARGS)
 		nulls[4] = false;
 		
 		/* Build and return the tuple. */
-		tuple = heap_form_tuple(fctx->tupdesc, values, nulls);
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);
 
 		SRF_RETURN_NEXT(funcctx, result);
@@ -1788,3 +1720,322 @@ pg_resqueue_status(PG_FUNCTION_ARGS)
 	else
 		SRF_RETURN_DONE(funcctx);
 }
+
+/**
+ * This copies out the current state of resource queues.
+ */
+static void BuildQueueStatusContext(QueueStatusContext *fctx)
+{
+	LWLockId partitionLock;
+	int num_calls = 0;
+	int partition = 0;
+	HASH_SEQ_STATUS		status;
+	ResQueueData		*queue = NULL;
+
+	Assert(fctx);
+	Assert(fctx->record);
+
+	/* 
+	 * Take all the partition locks. This is necessary as we want to
+	 * to use the same lock order as the rest of the code - i.e. partition
+	 * locks *first* *then* the queue lock (otherwise we could deadlock
+	 * ourselves). 
+	 */
+	for (partition = 0; partition < NUM_LOCK_PARTITIONS; partition++)
+	{
+		partitionLock = FirstLockMgrLock + partition;
+		LWLockAcquire(partitionLock, LW_EXCLUSIVE);
+	}
+
+	/*
+	 * Lock resource queue structures.
+	 */
+	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
+	/* Initialize for a sequential scan of the resource queue hash. */
+	hash_seq_init(&status, ResQueueHash);
+	num_calls = hash_get_num_entries(ResQueueHash);
+	Assert(num_calls == ResScheduler->num_queues);
+
+	int i = 0;
+	while ((queue = (ResQueueData *) hash_seq_search(&status)) != NULL)
+	{
+		int			j;
+		ResLimit	limits = NULL;
+		uint32		hashcode;
+
+		/**
+		 * Gather thresholds and current values on activestatements, cost and memory
+		 */
+		limits = queue->limits;
+		
+		fctx->record[i].queueid = queue->queueid;
+
+		for (j = 0; j < NUM_RES_LIMIT_TYPES; j++)
+		{
+			switch (limits[j].type)
+			{
+				case RES_COUNT_LIMIT:
+				{
+					fctx->record[i].queuecountthreshold =
+						limits[j].threshold_value;
+
+					fctx->record[i].queuecountvalue =
+						limits[j].current_value;
+				}
+				break;
+
+				case RES_COST_LIMIT:
+				{
+					fctx->record[i].queuecostthreshold =
+						limits[j].threshold_value;
+
+					fctx->record[i].queuecostvalue =
+						limits[j].current_value;
+				}
+				break;
+
+				case RES_MEMORY_LIMIT:
+				{
+					fctx->record[i].queuememthreshold =
+						limits[j].threshold_value;
+
+					fctx->record[i].queuememvalue =
+						limits[j].current_value;					
+				}
+				break;
+				
+				default:
+					Assert(false && "Should never reach here!");
+			}
+		}
+
+		/* 
+		 * Get the holders and waiters count for the corresponding resource
+		 * lock.
+		 */
+		LOCKTAG		tag;
+		LOCK		*lock;
+
+		SET_LOCKTAG_RESOURCE_QUEUE(tag, queue->queueid);
+		hashcode = LockTagHashCode(&tag);
+
+		bool		found = false;
+
+		lock = (LOCK *)
+			hash_search_with_hash_value(LockMethodLockHash, (void *)&tag, hashcode, HASH_FIND, &found);
+
+		if (!found || !lock)
+		{
+			fctx->record[i].queuewaiters = 0;
+			fctx->record[i].queueholders = 0;
+		}
+		else
+		{
+			fctx->record[i].queuewaiters = lock->nRequested - lock->nGranted;
+			fctx->record[i].queueholders = lock->nGranted;
+		}
+
+		i++;
+		Assert(i <= MaxResourceQueues);
+	}
+
+	/* Release the resource scheduler lock. */
+	LWLockRelease(ResQueueLock);
+
+	/* ...and the partition locks. */
+	for (partition = NUM_LOCK_PARTITIONS; --partition >= 0;)
+	{
+		partitionLock = FirstLockMgrLock + partition;
+		LWLockRelease(partitionLock);
+	}
+
+	/* Set the real no. of calls as we know it now! */
+	fctx->numRecords = i;
+	return;
+}
+
+/* Number of records produced per queue. */
+#define PG_RESQUEUE_STATUS_KV_RECORDS_PER_QUEUE 8
+
+/* Number of columns produced by function */
+#define PG_RESQUEUE_STATUS_KV_COLUMNS 3
+
+/* Scratch space used to write out strings */
+#define PG_RESQUEUE_STATUS_KV_BUFSIZE 256
+
+/*
+ * pg_resqueue_status_extended - outputs the current state of resource queues in the following format:
+ * (queueid, key, value) where key and value are text. This makes the function extremely flexible.
+ */
+Datum
+pg_resqueue_status_kv(PG_FUNCTION_ARGS)
+{
+	FuncCallContext			*funcctx = NULL;
+	Datum					result;
+	MemoryContext			oldcontext = NULL;
+	QueueStatusContext		*fctx = NULL;			/* User function context. */
+	HeapTuple				tuple = NULL;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/* Switch context when allocating stuff to be used in later calls */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		fctx = (QueueStatusContext *) palloc(sizeof(QueueStatusContext));
+		/*
+		 * Allocate space for the per-call area - this overestimates, but
+		 * means we can take the resource rescheduler lock after our
+		 * memory context switching.
+		 */
+		fctx->record = (QueueStatusRec *)palloc(sizeof(QueueStatusRec) * MaxResourceQueues);
+
+		funcctx->user_fctx = fctx;
+
+		/* Construct a tuple descriptor for the result rows. */
+		TupleDesc tupledesc = CreateTemplateTupleDesc(PG_RESQUEUE_STATUS_KV_COLUMNS, false);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 1, "queueid", OIDOID, -1, 0);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 2, "key", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupledesc, (AttrNumber) 3, "value", TEXTOID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupledesc);
+
+		/* Return to original context when allocating transient memory */
+		MemoryContextSwitchTo(oldcontext);
+
+		/* Get a snapshot of current state of resource queues */
+		BuildQueueStatusContext(fctx);
+		
+		funcctx->max_calls = fctx->numRecords * PG_RESQUEUE_STATUS_KV_RECORDS_PER_QUEUE; 
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+
+	/* Get the saved state. */
+	fctx = funcctx->user_fctx;
+
+	if (funcctx->call_cntr < funcctx->max_calls)
+	{
+		int			i = funcctx->call_cntr / PG_RESQUEUE_STATUS_KV_RECORDS_PER_QUEUE; /* record number */
+		int			j = funcctx->call_cntr % PG_RESQUEUE_STATUS_KV_RECORDS_PER_QUEUE; /* which attribute is being produced */
+		QueueStatusRec	*record = &fctx->record[i];
+		Datum		values[PG_RESQUEUE_STATUS_KV_COLUMNS];
+		bool		nulls[PG_RESQUEUE_STATUS_KV_COLUMNS];
+		char		buf[PG_RESQUEUE_STATUS_KV_BUFSIZE]; 
+		
+		nulls[0] = false;		
+		nulls[1] = false;
+		nulls[2] = false;
+
+		values[0] = ObjectIdGetDatum(record->queueid);
+
+		switch(j)
+		{
+			case 0:
+			{
+				values[1] = PointerGetDatum(cstring_to_text("rsqcountlimit"));
+				snprintf(buf, ARRAY_SIZE(buf), "%d", (int) ceil(record->queuecountthreshold));
+				values[2] = PointerGetDatum(cstring_to_text(buf));
+				break;
+			}
+			case 1:
+			{
+				values[1] = PointerGetDatum(cstring_to_text("rsqcountvalue"));
+				snprintf(buf, ARRAY_SIZE(buf), "%d", (int) ceil(record->queuecountvalue));
+				values[2] = PointerGetDatum(cstring_to_text(buf));
+				break;
+			}
+			case 2:
+			{
+				values[1] = PointerGetDatum(cstring_to_text("rsqcostlimit"));
+				snprintf(buf, ARRAY_SIZE(buf), "%.2f", record->queuecostthreshold);
+				values[2] = PointerGetDatum(cstring_to_text(buf));
+				break;
+			}
+			case 3:
+			{
+				values[1] = PointerGetDatum(cstring_to_text("rsqcostvalue"));
+				snprintf(buf, ARRAY_SIZE(buf), "%.2f", record->queuecostvalue);
+				values[2] = PointerGetDatum(cstring_to_text(buf));
+				break;
+			}
+			case 4:
+			{
+				values[1] = PointerGetDatum(cstring_to_text("rsqmemorylimit"));
+				snprintf(buf, ARRAY_SIZE(buf), "%.2f", record->queuememthreshold);
+				values[2] = PointerGetDatum(cstring_to_text(buf));
+				break;
+			}
+			case 5:
+			{
+				values[1] = PointerGetDatum(cstring_to_text("rsqmemoryvalue"));
+				snprintf(buf, ARRAY_SIZE(buf), "%.2f", record->queuememvalue);
+				values[2] = PointerGetDatum(cstring_to_text(buf));
+				break;
+			}
+			case 6:
+			{
+				values[1] = PointerGetDatum(cstring_to_text("rsqwaiters"));
+				snprintf(buf, ARRAY_SIZE(buf), "%d", record->queuewaiters);
+				values[2] = PointerGetDatum(cstring_to_text(buf));
+				break;
+			}
+			case 7:
+			{
+				values[1] = PointerGetDatum(cstring_to_text("rsqholders"));
+				snprintf(buf, ARRAY_SIZE(buf), "%d", record->queueholders);
+				values[2] = PointerGetDatum(cstring_to_text(buf));
+				break;
+			}
+			default:
+				Assert(false && "Cannot reach here");
+		}
+				
+		/* Build and return the tuple. */
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+	else
+		SRF_RETURN_DONE(funcctx);
+}
+
+
+#ifdef USE_ASSERT_CHECKING
+/**
+ * Checks that in-memory data-structures are consistent with the catalog table.
+ * This operation can only be performed when we have the ResQueueLock.
+ */
+void AssertMemoryLimitsMatch(void)
+{
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
+	
+	HASH_SEQ_STATUS status;
+	
+	/* Initialize for a sequential scan of the resource queue hash. */
+	hash_seq_init(&status, ResQueueHash);
+
+	ResQueue queue = NULL;
+	while ((queue = (ResQueue) hash_seq_search(&status)) != NULL)
+	{
+		Oid queueId = queue->queueid;
+		Assert(queueId != InvalidOid);
+		double v1 = ceil(queue->limits[RES_MEMORY_LIMIT].threshold_value);
+		double v2 = ceil((double) ResourceQueueGetMemoryLimitInCatalog(queueId));
+				
+		if (gp_log_resqueue_memory)
+		{
+			elog(gp_resqueue_memory_log_level, "Memory limit for queue %d is %.0f in catalog and %.0f in shared mem", queueId, v2, v1);
+		}
+		
+		AssertImply(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO,
+				v1 == v2 && "Resource queue / shared structure do not match on memory limit in policy AUTO.");
+	}
+	
+	return;
+}
+#endif

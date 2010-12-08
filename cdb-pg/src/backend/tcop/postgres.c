@@ -87,8 +87,9 @@
 #include "access/twophase.h"
 #include "postmaster/backoff.h"
 #include <pthread.h>
-
+#include "utils/resscheduler.h"
 #include "pgstat.h"
+#include "executor/nodeFunctionscan.h"
 
 extern int	optind;
 extern char *optarg;
@@ -203,6 +204,8 @@ static DtxContextInfo TempDtxContextInfo = DtxContextInfo_StaticInit;
 extern void CheckForQDMirroringWork(void);
 
 extern void CheckForResetSession(void);
+
+extern bool ResourceScheduler;
 
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
@@ -1500,6 +1503,8 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 
 	QueryContext = CurrentMemoryContext;
 
+	InitFunctionScanMemoryReservedStack();
+	
 	/*
 	 * Do basic parsing of the query or queries (this should be safe even if
 	 * we are in aborted transaction state!)
@@ -4201,6 +4206,12 @@ PostgresMain(int argc, char *argv[], const char *username)
 	am_superuser = InitPostgres(dbname, InvalidOid, username, NULL);
 
 	SetProcessingMode(NormalProcessing);
+	
+	/**
+	 * Initialize resource queue hash structure.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
+		InitResQueues();
 
 	/*
 	 * Now that we know if client is a superuser, we can try to apply SUSET

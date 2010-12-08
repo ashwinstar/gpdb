@@ -264,4 +264,26 @@ create aggregate @gpupgradeschemaname@.nb_probabilities(text[], bigint, bigint[]
     oid       = 3268
 );
 
+--
+-- Memory quota related changes
+--
+
+-- add catalog function
+
+create function @gpupgradeschemaname@.pg_resqueue_status_kv() 
+	returns setof record 
+	language internal AS 'pg_resqueue_status_kv' strict volatile
+	with (oid = 6069);
+
+-- add new resource type in pg_resourcetype. this table is maintained 
+
+insert into @gpupgradeschemaname@.pg_resourcetype values ('memory_limit',6,false,true,true,'-1','-1');
+select catDML('insert into @gpupgradeschemaname@.pg_resourcetype values (''memory_limit'',6,false,true,true,''-1'',''-1'')') from gp_dist_random('gp_id');
+
+-- for every existing queue, add default memory_limit of -1. This table is not maintained on the segments, so we don't do this on the segments.
+
+insert into @gpupgradeschemaname@.pg_resqueuecapability
+	select resqueueid, 6, '-1' from (select distinct resqueueid from @gpupgradeschemaname@.pg_resqueuecapability) s;
+
+
 -- Catalog Upgrade DDL complete

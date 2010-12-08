@@ -16869,6 +16869,24 @@ create aggregate upg_catalog.nb_probabilities(text[], bigint, bigint[], bigint[]
     finalfunc = nb_classify_probabilities,
     oid       = 3268
 );
+--
+-- Memory quota related changes
+--
+-- add catalog function
+create function upg_catalog.pg_resqueue_status_kv() 
+	returns setof record 
+	language internal AS 'pg_resqueue_status_kv' strict volatile
+	with (oid = 6069);
+-- add new resource type in pg_resourcetype. this table is maintained 
+insert into upg_catalog.pg_resourcetype values ('memory_limit',6,false,true,true,'-1','-1');
+select catDML('insert into upg_catalog.pg_resourcetype values (''memory_limit'',6,false,true,true,''-1'',''-1'')') from gp_dist_random('gp_id');
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:281: ERROR:  function catdml(unknown) does not exist
+LINE 1: select catDML('insert into upg_catalog.pg_resourcetype value...
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+-- for every existing queue, add default memory_limit of -1. This table is not maintained on the segments, so we don't do this on the segments.
+insert into upg_catalog.pg_resqueuecapability
+	select resqueueid, 6, '-1' from (select distinct resqueueid from upg_catalog.pg_resqueuecapability) s;
 -- Catalog Upgrade DDL complete
 set client_min_messages = 'WARNING';
 -- ===========================================================================
@@ -21081,6 +21099,7 @@ ORDER BY proname, 10;
  pg_reload_conf                                | f        | f        | f         | t           | f         | v           | bool                        |        0 |                                                                                                       |                                                                  |                       |                                                                                       | internal | pg_reload_conf                                | -
  pg_renice_session                             | f        | f        | f         | t           | f         | v           | int4                        |        2 | {int4,int4}                                                                                           |                                                                  |                       |                                                                                       | internal | pg_renice_session                             | -
  pg_resqueue_status                            | f        | f        | f         | t           | t         | v           | record                      |        0 |                                                                                                       |                                                                  |                       |                                                                                       | internal | pg_resqueue_status                            | -
+ pg_resqueue_status_kv                         | f        | f        | f         | t           | t         | v           | record                      |        0 |                                                                                                       |                                                                  |                       |                                                                                       | internal | pg_resqueue_status_kv                         | -
  pg_rotate_logfile                             | f        | f        | f         | t           | f         | v           | bool                        |        0 |                                                                                                       |                                                                  |                       |                                                                                       | internal | pg_rotate_logfile                             | -
  pg_show_all_settings                          | f        | f        | f         | t           | t         | s           | record                      |        0 |                                                                                                       |                                                                  |                       |                                                                                       | internal | show_all_settings                             | -
  pg_size_pretty                                | f        | f        | f         | t           | f         | v           | text                        |        1 | {int8}                                                                                                |                                                                  |                       |                                                                                       | internal | pg_size_pretty                                | -
@@ -21619,7 +21638,7 @@ ORDER BY proname, 10;
  xidout                                        | f        | f        | f         | t           | f         | i           | cstring                     |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidout                                        | -
  xidrecv                                       | f        | f        | f         | t           | f         | i           | xid                         |        1 | {internal}                                                                                            |                                                                  |                       |                                                                                       | internal | xidrecv                                       | -
  xidsend                                       | f        | f        | f         | t           | f         | i           | bytea                       |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidsend                                       | -
-(2026 rows)
+(2027 rows)
 
 SELECT 
     proname, proisagg, proiswin, prosecdef, proisstrict, proretset, provolatile,
@@ -23141,6 +23160,7 @@ ORDER BY proname, 10;
  pg_reload_conf                                | f        | f        | f         | t           | f         | v           | bool                        |        0 |                                                                                                       |                                                                  |                       |                                                                                       | internal | pg_reload_conf                                | -
  pg_renice_session                             | f        | f        | f         | t           | f         | v           | int4                        |        2 | {int4,int4}                                                                                           |                                                                  |                       |                                                                                       | internal | pg_renice_session                             | -
  pg_resqueue_status                            | f        | f        | f         | t           | t         | v           | record                      |        0 |                                                                                                       |                                                                  |                       |                                                                                       | internal | pg_resqueue_status                            | -
+ pg_resqueue_status_kv                         | f        | f        | f         | t           | t         | v           | record                      |        0 |                                                                                                       |                                                                  |                       |                                                                                       | internal | pg_resqueue_status_kv                         | -
  pg_rotate_logfile                             | f        | f        | f         | t           | f         | v           | bool                        |        0 |                                                                                                       |                                                                  |                       |                                                                                       | internal | pg_rotate_logfile                             | -
  pg_show_all_settings                          | f        | f        | f         | t           | t         | s           | record                      |        0 |                                                                                                       |                                                                  |                       |                                                                                       | internal | show_all_settings                             | -
  pg_size_pretty                                | f        | f        | f         | t           | f         | v           | text                        |        1 | {int8}                                                                                                |                                                                  |                       |                                                                                       | internal | pg_size_pretty                                | -
@@ -23679,7 +23699,7 @@ ORDER BY proname, 10;
  xidout                                        | f        | f        | f         | t           | f         | i           | cstring                     |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidout                                        | -
  xidrecv                                       | f        | f        | f         | t           | f         | i           | xid                         |        1 | {internal}                                                                                            |                                                                  |                       |                                                                                       | internal | xidrecv                                       | -
  xidsend                                       | f        | f        | f         | t           | f         | i           | bytea                       |        1 | {xid}                                                                                                 |                                                                  |                       |                                                                                       | internal | xidsend                                       | -
-(2026 rows)
+(2027 rows)
 
 -- end_equiv
 -- Compare pg_aggregate (Aggregates, Window Functions)
@@ -28527,7 +28547,7 @@ SELECT oid, datname, datdba, encoding, datistemplate, datallowconn, datconnlimit
 FROM pg_database WHERE oid < 10000 ORDER BY datname;
  oid |  datname  | datdba | encoding | datistemplate | datallowconn | datconnlimit | datlastsysoid | dattablespace | datconfig 
 -----+-----------+--------+----------+---------------+--------------+--------------+---------------+---------------+-----------
-   1 | template1 |     10 |        6 | t             | t            |           -1 |         10888 |          1663 | 
+   1 | template1 |     10 |        6 | t             | t            |           -1 |         10889 |          1663 | 
 (1 row)
 
 SELECT oid, * FROM pg_resourcetype ORDER BY resname;
@@ -28536,15 +28556,17 @@ SELECT oid, * FROM pg_resourcetype ORDER BY resname;
  6454 | active_statements |        1 | f           | t             | t             | -1                | -1
  6457 | cost_overcommit   |        4 | f           | t             | t             | -1                | -1
  6455 | max_cost          |        2 | f           | t             | t             | -1                | -1
+ 6459 | memory_limit      |        6 | f           | t             | t             | -1                | -1
  6456 | min_cost          |        3 | f           | t             | t             | -1                | 0
  6458 | priority          |        5 | f           | t             | f             | medium            | 
-(5 rows)
+(6 rows)
 
 SELECT oid, * FROM pg_resqueuecapability WHERE resqueueid < 10000 ORDER BY oid;
   oid  | resqueueid | restypid | ressetting 
 -------+------------+----------+------------
  10887 |       6055 |        5 | medium
-(1 row)
+ 10888 |       6055 |        6 | -1
+(2 rows)
 
 SELECT oid, * FROM pg_am ORDER BY amname;
  oid  | amname | amstrategies | amsupport | amorderstrategy | amcanunique | amcanmulticol | amoptionalkey | amindexnulls | amstorage | amclusterable | amcanshrink |  aminsert  |  ambeginscan  |  amgettuple  |  amgetmulti  |  amrescan  |  amendscan  |  ammarkpos  |  amrestrpos  |  ambuild  |  ambulkdelete  |  amvacuumcleanup  |  amcostestimate  |  amoptions  

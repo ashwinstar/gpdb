@@ -6097,8 +6097,6 @@ StartupXLOG_InProduction(void)
 
 	BuildFlatFiles(false);
 	
-	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
-		InitResQueues();
 }
 
 /*

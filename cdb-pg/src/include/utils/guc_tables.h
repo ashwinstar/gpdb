@@ -260,4 +260,6 @@ extern struct config_generic **get_guc_variables(void);
 extern int get_num_guc_variables(void);
 
 extern void build_guc_variables(void);
+
+extern bool parse_int(const char *value, int *result, int flags, const char **hintmsg);
 #endif   /* GUC_TABLES_H */

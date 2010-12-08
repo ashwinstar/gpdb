@@ -69,6 +69,7 @@
 #include "catalog/catalog.h" // isMasterOnly()
 
 #include "utils/elog.h"
+#include "miscadmin.h"
 
 /* ----------------------------------------------------------------
  *		global counters for number of tuples processed, retrieved,
@@ -2338,6 +2339,31 @@ void ResetExprContext(ExprContext *econtext)
 	MemoryContext memctxt = econtext->ecxt_per_tuple_memory;
 	if(memctxt->allBytesAlloc - memctxt->allBytesFreed > 50000)
 		MemoryContextReset(memctxt);
+}
+
+/**
+ * This method is used to determine how much memory a specific operator
+ * is supposed to use (in KB). 
+ */
+uint64 PlanStateOperatorMemKB(const PlanState *ps)
+{
+	Assert(ps);
+	Assert(ps->plan);
+	uint64 result = 0;
+	if (ps->plan->operatorMemKB == 0)
+	{
+		/**
+		 * There are some statements that do not go through the resource queue and these
+		 * plans dont get decorated with the operatorMemKB. Someday, we should fix resource queues.
+		 */
+		result = work_mem;
+	}
+	else
+	{
+		result = ps->plan->operatorMemKB;
+	}
+	
+	return result;
 }
 
 

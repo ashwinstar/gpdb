@@ -218,6 +218,7 @@ DATA(insert OID = 6455  ( max_cost 2 f t t -1  -1 ));
 DATA(insert OID = 6456  ( min_cost 3 f t t -1   0 ));
 DATA(insert OID = 6457  ( cost_overcommit 4 f t t -1  -1 )); 
 DATA(insert OID = 6458  ( priority 5 f t f medium _null_ ));
+DATA(insert OID = 6459  ( memory_limit 6 f t t -1 -1 ));
 
 /* 
    The first four entries of pg_resourcetype are special mappings for
@@ -241,7 +242,7 @@ DATA(insert OID = 6458  ( priority 5 f t f medium _null_ ));
 #define PG_RESRCTYPE_COST_OVERCOMMIT	4	/* rsqovercommit: cost_overcommit*/
 /* start of "pg_resourcetype" entries... */
 #define PG_RESRCTYPE_PRIORITY			5	/* backoff.c: priority queue */
-
+#define PG_RESRCTYPE_MEMORY_LIMIT		6
 /* TIDYCAT_BEGINDEF
 
    CREATE TABLE pg_resqueuecapability

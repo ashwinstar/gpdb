@@ -102,6 +102,8 @@ bool		allowSystemTableMods = false;
 int			planner_work_mem = 32768;
 int			work_mem = 32768;
 int			max_work_mem = 1024000;
+int			statement_mem = 256000;
+int			max_statement_mem = 2048000;
 int			maintenance_work_mem = 65536;
 
 /* Primary determinants of sizes of shared-memory structures: */

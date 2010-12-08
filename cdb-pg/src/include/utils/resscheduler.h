@@ -41,12 +41,13 @@ extern bool	ResourceCleanupIdleGangs;
 
 /* Resource Limits */
 #define INVALID_RES_LIMIT_THRESHOLD		(-1)
-#define NUM_RES_LIMIT_TYPES				2
+#define NUM_RES_LIMIT_TYPES				3
 
 typedef enum ResLimitType
 {
 	RES_COUNT_LIMIT,					/* Limit total # */
-	RES_COST_LIMIT						/* Limit total cost */
+	RES_COST_LIMIT,						/* Limit total cost */
+	RES_MEMORY_LIMIT
 } ResLimitType;
 
 
@@ -135,8 +136,6 @@ extern int				ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 										  ResPortalIncrement *incrementSet,
 										  bool increment);
 extern ResQueue			GetResQueueFromLock(LOCK *lock);
-extern void				ResGrantLock(LOCK *lock, PROCLOCK *proclock);
-extern bool				ResUnGrantLock(LOCK *lock, PROCLOCK *proclock);
 
 extern void				ResProcLockWakeup(LOCK *lock);
 extern PGPROC 			*ResProcWakeup(PGPROC *proc, int waitStatus);
@@ -180,5 +179,11 @@ extern uint32 ResCreatePortalId(const char *name);
 extern void AtCommit_ResScheduler(void);
 extern void AtAbort_ResScheduler(void);
 
+/**
+ * Assert that the in-memory state matches the catalog table.
+ */
+#ifdef USE_ASSERT_CHECKING
+extern void AssertMemoryLimitsMatch(void);
+#endif
 
 #endif   /* RESSCHEDULER_H */

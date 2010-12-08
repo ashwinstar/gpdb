@@ -32,13 +32,15 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"             /* AllocSetContextCreate() */
-
+#include "utils/resscheduler.h"
 #include "cdb/cdbdisp.h"                /* CheckDispatchResult() */
 #include "cdb/cdbexplain.h"             /* cdbexplain_recvExecStats */
 #include "cdb/cdblink.h"                /* getgpsegmentCount() */
 #include "cdb/cdbpullup.h"              /* cdbpullup_targetlist() */
 #include "cdb/cdbvars.h"
 #include "cdb/cdbpathlocus.h"
+#include "cdb/memquota.h"
+#include "miscadmin.h"
 
 typedef struct ExplainState
 {
@@ -374,6 +376,18 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
 	else
 		eflags = EXEC_FLAG_EXPLAIN_ONLY;
 
+    if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+    {
+		if (superuser())
+		{
+			queryDesc->plannedstmt->query_mem = ResourceQueueGetSuperuserQueryMemoryLimit();			
+		}
+		else
+		{
+			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, GetResQueueId());			
+		}
+    }
+
 	/* call ExecutorStart to prepare the plan for execution */
 	ExecutorStart(queryDesc, eflags);
 
@@ -604,7 +618,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
      * Display per-slice and whole-query statistics.
      */
     if (stmt->analyze)
-        cdbexplain_showExecStatsEnd(es->showstatctx, buf, estate);
+        cdbexplain_showExecStatsEnd(queryDesc->plannedstmt, es->showstatctx, buf, estate);
 
     /*
      * Show non-default GUC settings that might have affected the plan.

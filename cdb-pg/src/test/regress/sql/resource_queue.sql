@@ -68,6 +68,30 @@ ALTER RESOURCE QUEUE regressq2 IGNORE THRESHOLD 1 IGNORE THRESHOLD 1 ;
 ALTER RESOURCE QUEUE none IGNORE THRESHOLD 1 ;
 DROP RESOURCE QUEUE regressq2;
 
+--
+-- memory quota feature
+--
+
+-- negative
+
+create resource queue test_rq with (max_cost=2000000, memory_limit='1gB'); -- should error out
+create resource queue test_rq with (max_cost=2000000, memory_limit='0'); -- should error out
+
+-- Creates and drops
+
+create resource queue test_rq with (active_statements=2);
+drop resource queue test_rq;
+create resource queue test_rq with (active_statements=2, memory_limit='1024MB');
+
+-- Alters
+
+alter resource queue test_rq with (memory_limit='1024mb');
+alter resource queue test_rq with (memory_limit='1024Kb');
+alter resource queue test_rq with (memory_limit='2GB');
+alter resource queue test_rq without (memory_limit);
+
+drop resource queue test_rq;
+
 -- SQL coverage of ROLE -> RESOURCE QUEUE
 
 CREATE RESOURCE QUEUE reg_activeq ACTIVE THRESHOLD 2;

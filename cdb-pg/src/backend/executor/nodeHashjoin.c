@@ -164,7 +164,8 @@ ExecHashJoin(HashJoinState *node)
 		 * create the hash table
 		 */
 		hashtable = ExecHashTableCreate((Hash *) hashNode->ps.plan,
-										node->hj_HashOperators);
+										node->hj_HashOperators,
+										PlanStateOperatorMemKB((PlanState *) hashNode));
 		node->hj_HashTable = hashtable;
 
         /*

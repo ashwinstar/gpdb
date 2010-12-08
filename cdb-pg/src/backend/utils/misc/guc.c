@@ -78,6 +78,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbappendonlyblockdirectory.h"
+#include "cdb/memquota.h"
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -2828,6 +2829,17 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 
+	{
+
+		{"gp_log_resqueue_memory", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints out messages related to resource queue's memory management."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_log_resqueue_memory,
+		false, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -3149,6 +3161,31 @@ static struct config_int ConfigureNamesInt[] =
 		65536, 1024, MAX_KILOBYTES, NULL, NULL
 	},
 
+	{
+		{"statement_mem", PGC_USERSET, RESOURCES_MEM,
+			gettext_noop("Sets the memory to be reserved for a statement."),
+			NULL,
+			GUC_UNIT_KB | GUC_GPDB_ADDOPT
+		},
+		&statement_mem,
+#ifdef USE_ASSERT_CHECKING
+		/** Allow lower values for testing */
+		128000, 50, INT_MAX, gpvars_assign_statement_mem, NULL
+#else
+		128000, 1000, INT_MAX, gpvars_assign_statement_mem, NULL
+#endif
+	},
+
+	{
+		{"max_statement_mem", PGC_SUSET, RESOURCES_MEM,
+		 	gettext_noop("Sets the maximum value for statement_mem setting."),
+		 	NULL,
+			GUC_UNIT_KB | GUC_GPDB_ADDOPT
+		},
+		&max_statement_mem,
+		2048000, 32768, INT_MAX, NULL, NULL
+	},
+	
 	{
 		{"max_stack_depth", PGC_SUSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum stack depth, in kilobytes."),
@@ -4344,6 +4381,16 @@ static struct config_int ConfigureNamesInt[] =
 		1000, 1, 10000, NULL, NULL
 	},
 
+	{
+		{"gp_resqueue_memory_policy_auto_fixed_mem", PGC_USERSET, RESOURCES_MEM,
+			gettext_noop("Sets the fixed amount of memory reserved for non-memory intensive operators in the AUTO policy."),
+			NULL,
+			GUC_UNIT_KB | GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_resqueue_memory_policy_auto_fixed_mem,
+		1000, 100, INT_MAX, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL
@@ -5432,6 +5479,15 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&pljava_classpath,
 		"", NULL, NULL
+	},
+
+	{
+		{"gp_resqueue_memory_policy", PGC_SUSET, RESOURCES_MGM,
+			gettext_noop("Sets the policy for memory allocation of queries."),
+			gettext_noop("Valid values are NONE, AUTO.")
+		},
+		&gp_resqueue_memory_policy_str,
+		"none", gpvars_assign_gp_resqueue_memory_policy, gpvars_show_gp_resqueue_memory_policy
 	},
 
     /* End-of-list marker */
@@ -6815,7 +6871,7 @@ parse_bool(const char *value, bool *result)
  * If not okay and hintmsg is not NULL, *hintmsg is set to a suitable
  *	HINT message, or NULL if no hint provided.
  */
-static bool
+bool
 parse_int(const char *value, int *result, int flags, const char **hintmsg)
 {
 	int64		val;

@@ -82,7 +82,8 @@ SELECT * FROM pg_resqueue_attributes WHERE rsqname='regressq';
  regressq | min_cost          | 1          |        3
  regressq | cost_overcommit   | 1          |        4
  regressq | priority          | high       |        5
-(5 rows)
+ regressq | memory_limit      | -1         |        6
+(6 rows)
 
 ALTER RESOURCE QUEUE regressq WITH (priority='MeDiUm');
 SELECT * FROM pg_resqueue_attributes WHERE rsqname='regressq';
@@ -93,7 +94,8 @@ SELECT * FROM pg_resqueue_attributes WHERE rsqname='regressq';
  regressq | min_cost          | 1          |        3
  regressq | cost_overcommit   | 1          |        4
  regressq | priority          | MeDiUm     |        5
-(5 rows)
+ regressq | memory_limit      | -1         |        6
+(6 rows)
 
 ALTER RESOURCE QUEUE regressq;
 ERROR:  at least one threshold, overcommit or ignore limit must be specified
@@ -153,6 +155,26 @@ ERROR:  conflicting or redundant options
 ALTER RESOURCE QUEUE none IGNORE THRESHOLD 1 ;
 ERROR:  resource queue "none" does not exist
 DROP RESOURCE QUEUE regressq2;
+--
+-- memory quota feature
+--
+-- negative
+create resource queue test_rq with (max_cost=2000000, memory_limit='1gB'); -- should error out
+ERROR:  Invalid parameter value "1gB" for resource type "MEMORY_LIMIT". Value must be in kB, MB or GB.
+create resource queue test_rq with (max_cost=2000000, memory_limit='0'); -- should error out
+ERROR:  Invalid parameter value "0" for resource type "MEMORY_LIMIT". Value must be at least 10240kB
+-- Creates and drops
+create resource queue test_rq with (active_statements=2);
+drop resource queue test_rq;
+create resource queue test_rq with (active_statements=2, memory_limit='1024MB');
+-- Alters
+alter resource queue test_rq with (memory_limit='1024mb');
+ERROR:  Invalid parameter value "1024mb" for resource type "MEMORY_LIMIT". Value must be in kB, MB or GB.
+alter resource queue test_rq with (memory_limit='1024Kb');
+ERROR:  Invalid parameter value "1024Kb" for resource type "MEMORY_LIMIT". Value must be in kB, MB or GB.
+alter resource queue test_rq with (memory_limit='2GB');
+alter resource queue test_rq without (memory_limit);
+drop resource queue test_rq;
 -- SQL coverage of ROLE -> RESOURCE QUEUE
 CREATE RESOURCE QUEUE reg_activeq ACTIVE THRESHOLD 2;
 CREATE RESOURCE QUEUE reg_costq COST THRESHOLD 30000.00;

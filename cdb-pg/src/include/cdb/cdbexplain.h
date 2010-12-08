@@ -20,6 +20,7 @@ struct QueryDesc;                       /* #include "executor/execdesc.h" */
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 
 struct CdbExplain_ShowStatCtx;          /* private, in "cdb/cdbexplain.c" */
+struct PlannedStmt;
 
 static inline void
 cdbexplain_agg_init0(CdbExplain_Agg *agg)
@@ -162,7 +163,8 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
  * freeing all at once.
  */
 void
-cdbexplain_showExecStatsEnd(struct CdbExplain_ShowStatCtx  *showstatctx,
+cdbexplain_showExecStatsEnd(struct PlannedStmt *stmt,
+							struct CdbExplain_ShowStatCtx  *showstatctx,
                             struct StringInfoData          *str,
                             struct EState                  *estate);
 
