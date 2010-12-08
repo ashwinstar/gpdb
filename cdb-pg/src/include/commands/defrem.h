@@ -75,7 +75,7 @@ extern void AlterOperatorOwner_oid(Oid operOid, Oid newOwnerId);
 
 /* commands/aggregatecmds.c */
 extern void DefineAggregate(List *name, List *args, bool oldstyle,
-				List *parameters, Oid newOid);
+							List *parameters, Oid newOid, bool ordered);
 extern void RemoveAggregate(RemoveFuncStmt *stmt);
 extern void RenameAggregate(List *name, List *args, const char *newname);
 extern void AlterAggregateOwner(List *name, List *args, Oid newOwnerId);
