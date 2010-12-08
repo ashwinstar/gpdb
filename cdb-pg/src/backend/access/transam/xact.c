@@ -1220,16 +1220,18 @@ RecordTransactionCommit(void)
 	}
 
 	/* Break the chain of back-links in the XLOG records I output */
-    /*
 	MyLastRecPtr.xrecoff = 0;
 	MyXactMadeXLogEntry = false;
 	MyXactMadeTempRelUpdate = false;
+
+	/* And clean up local data */
+
+	// UNDONE: Free storage in persistentCommitObjects...
 
 	if (persistentCommitBuffer != NULL)
 		pfree(persistentCommitBuffer);
 	if (children)
 		pfree(children);
-    */
 }
 
 /*
