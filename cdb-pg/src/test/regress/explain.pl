@@ -1628,6 +1628,11 @@ sub prune_heavily
 		# QA-1309: fix strange DELETE operator formatting
 		$node->{short} = "Delete";
 	}
+	elsif ($node->{short} =~ m/Update\s*\(slice.*segment.*\)\s*\(row.*width.*\)/)
+        {
+                # QA-1309: fix strange UPDATE operator formatting
+                $node->{short} = "Update";
+        }
 	elsif ($node->{short} =~ m/\d+\:\d+/)
 	{
 
