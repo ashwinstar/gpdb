@@ -1104,6 +1104,22 @@ _copyAggref(Aggref *from)
 	COPY_SCALAR_FIELD(aggstar);
 	COPY_SCALAR_FIELD(aggdistinct);
 	COPY_SCALAR_FIELD(aggstage);
+    COPY_NODE_FIELD(aggorder);
+
+	return newnode;
+}
+
+/*
+ * _copyAggOrder
+ */
+static AggOrder *
+_copyAggOrder(AggOrder *from)
+{
+	AggOrder   *newnode = makeNode(AggOrder);
+
+    COPY_SCALAR_FIELD(sortImplicit);
+	COPY_NODE_FIELD(sortTargets);
+    COPY_NODE_FIELD(sortClause);
 
 	return newnode;
 }
@@ -2022,6 +2038,7 @@ _copyFuncCall(FuncCall *from)
 
 	COPY_NODE_FIELD(funcname);
 	COPY_NODE_FIELD(args);
+    COPY_NODE_FIELD(agg_order);
 	COPY_SCALAR_FIELD(agg_star);
 	COPY_SCALAR_FIELD(agg_distinct);
 	COPY_NODE_FIELD(over);
@@ -2782,6 +2799,7 @@ _copyDefineStmt(DefineStmt *from)
 	COPY_NODE_FIELD(definition);
 	COPY_SCALAR_FIELD(newOid);
 	COPY_SCALAR_FIELD(shadowOid);
+	COPY_SCALAR_FIELD(ordered);  /* CDB */
 
 	return newnode;
 }
@@ -3964,6 +3982,9 @@ copyObject(void *from)
 			break;
 		case T_Aggref:
 			retval = _copyAggref(from);
+			break;
+		case T_AggOrder:
+			retval = _copyAggOrder(from);
 			break;
 		case T_WindowRef:
 			retval = _copyWindowRef(from);

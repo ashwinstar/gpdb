@@ -48,11 +48,16 @@
 
 #include "cdb/cdbvars.h"
 
+/* clause types for findTargetlistEntrySQL92 */
 #define ORDER_CLAUSE 0
 #define GROUP_CLAUSE 1
 #define DISTINCT_ON_CLAUSE 2
 
-static char *clauseText[] = {"ORDER BY", "GROUP BY", "DISTINCT ON"};
+static const char *clauseText[] = {
+    "ORDER BY", 
+    "GROUP BY", 
+    "DISTINCT ON"
+};
 
 static void extractRemainingColumns(List *common_colnames,
 						List *src_colnames, List *src_colvars,
@@ -75,11 +80,14 @@ static Node *transformFromClauseItem(ParseState *pstate, Node *n,
 						Relids *containedRels);
 static Node *buildMergedJoinVar(ParseState *pstate, JoinType jointype,
 				   Var *l_colvar, Var *r_colvar);
-static TargetEntry *findTargetlistEntry(ParseState *pstate, Node *node,
+static TargetEntry *findTargetlistEntrySQL92(ParseState *pstate, Node *node,
 					List **tlist, int clause);
+static TargetEntry *findTargetlistEntrySQL99(ParseState *pstate, Node *node,
+					List **tlist);
 static List *findListTargetlistEntries(ParseState *pstate, Node *node,
 									   List **tlist, bool in_grpext,
-									   bool ignore_in_grpext);
+									   bool ignore_in_grpext,
+                                       bool useSQL99);
 static TargetEntry *getTargetBySortGroupRef(Index ref, List *tl);
 static List *reorderGroupList(List *grouplist);
 static List *transformRowExprToList(ParseState *pstate, RowExpr *rowexpr,
@@ -554,10 +562,12 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		 */
 		if (!newspec->partition && ws->partition)
 		{
-			newspec->partition = transformSortClause(pstate,
-													 ws->partition,
-													 &qry->targetList,
-													 true);
+			newspec->partition = 
+                transformSortClause(pstate,
+                                    ws->partition,
+                                    &qry->targetList,
+                                    true /* fix unknowns */ ,
+                                    false /* use SQL92 rules */ );
 		}
 		/* order is just like partition */
 		if (ws->order || newspec->order)
@@ -567,10 +577,12 @@ transformWindowClause(ParseState *pstate, Query *qry)
 			 */
 			if (ws->order != NIL && newspec->order == NIL)
 			{
-				newspec->order = transformSortClause(pstate,
-													 ws->order,
-													 &qry->targetList,
-													 true);
+				newspec->order = 
+                    transformSortClause(pstate,
+                                        ws->order,
+                                        &qry->targetList,
+                                        true /* fix unknowns */ ,
+                                        false /* use SQL92 rules */ );
 			}
 		}
 
@@ -1887,7 +1899,8 @@ transformLimitClause(ParseState *pstate, Node *clause,
  */
 static List *findListTargetlistEntries(ParseState *pstate, Node *node,
 									   List **tlist, bool in_grpext,
-									   bool ignore_in_grpext)
+									   bool ignore_in_grpext,
+                                       bool useSQL99)
 {
 	List *result_list = NIL;
 
@@ -1908,7 +1921,9 @@ static List *findListTargetlistEntries(ParseState *pstate, Node *node,
 			List *subresult_list;
 
 			subresult_list = findListTargetlistEntries(pstate, lfirst(gl),
-													   tlist, true, ignore_in_grpext);
+													   tlist, true, 
+                                                       ignore_in_grpext,
+                                                       useSQL99);
 
 			result_list = list_concat(result_list, subresult_list);
 		}
@@ -1933,22 +1948,30 @@ static List *findListTargetlistEntries(ParseState *pstate, Node *node,
 		foreach (lc, args)
 		{
 			Node *rowexpr_arg = lfirst(lc);
-			TargetEntry *arg_tle =
-				findTargetlistEntry(pstate, rowexpr_arg,
-									tlist, GROUP_CLAUSE);
+			TargetEntry *tle;
+
+            if (useSQL99)
+                tle = findTargetlistEntrySQL99(pstate, rowexpr_arg, tlist);
+            else
+                tle = findTargetlistEntrySQL92(pstate, rowexpr_arg, tlist,
+                                               GROUP_CLAUSE);
 
 			/* If RowExpr does not appear immediately inside a GROUPING SETS,
 			 * we append its targetlit to the given targetlist.
 			 */
 			if (ignore_in_grpext || !in_grpext)
-				result_list = lappend(result_list, arg_tle);
+				result_list = lappend(result_list, tle);
 		}
 	}
 
 	else
 	{
-		TargetEntry *tle = findTargetlistEntry(pstate, node,
-											   tlist, GROUP_CLAUSE);
+		TargetEntry *tle;
+
+        if (useSQL99)
+            tle = findTargetlistEntrySQL99(pstate, node, tlist);
+        else
+            tle = findTargetlistEntrySQL92(pstate, node, tlist, GROUP_CLAUSE);
 
 		result_list = lappend(result_list, tle);
 	}
@@ -1957,21 +1980,28 @@ static List *findListTargetlistEntries(ParseState *pstate, Node *node,
 }
 
 /*
- *	findTargetlistEntry -
+ *	findTargetlistEntrySQL92 -
  *	  Returns the targetlist entry matching the given (untransformed) node.
  *	  If no matching entry exists, one is created and appended to the target
  *	  list as a "resjunk" node.
  *
- * node		the ORDER BY, GROUP BY, or DISTINCT ON expression to be matched
- * tlist	the target list (passed by reference so we can append to it)
- * clause	identifies clause type being processed
+ *    This function supports the old SQL92 ORDER BY interpretation, where the
+ *    expression is an output column name or number.  If we fail to find a match
+ *    of that sort, we fall through to the SQL99 rules. For historical reasons,
+ *    Postgres also allows this interpretation for GROUP BY, though the standard
+ *    never did. However, for GROUP BY we prefer a SQL99 match.  This function
+ *    is *not* used for WINDOW definitions.
+ *
+ *    node    : the ORDER BY, GROUP BY, or DISTINCT ON expression to be matched
+ *    tlist   : the target list (passed by reference so we can append to it)
+ *    clause  : identifies clause type being processed
  */
 static TargetEntry *
-findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
+findTargetlistEntrySQL92(ParseState *pstate, Node *node, List **tlist, 
+                         int clause)
 {
 	TargetEntry *target_result = NULL;
 	ListCell   *tl;
-	Node	   *expr;
 
     /* CDB: Drop a breadcrumb in case of error. */
     pstate->p_breadcrumb.node = node;
@@ -2012,7 +2042,7 @@ findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
 	 * since the user didn't write them in his SELECT list.
 	 *
 	 * If neither special case applies, fall through to treat the item as
-	 * an expression.
+	 * an expression per SQL99.
 	 *----------
 	 */
 	if (IsA(node, ColumnRef) &&
@@ -2026,10 +2056,10 @@ findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
 			/*
 			 * In GROUP BY, we must prefer a match against a FROM-clause
 			 * column to one against the targetlist.  Look to see if there is
-			 * a matching column.  If so, fall through to let transformExpr()
-			 * do the rest.  NOTE: if name could refer ambiguously to more
-			 * than one column name exposed by FROM, colNameToVar will
-			 * ereport(ERROR).	That's just what we want here.
+			 * a matching column.  If so, fall through to use SQL99 rules
+             * NOTE: if name could refer ambiguously to more than one column
+			 * name exposed by FROM, colNameToVar will ereport(ERROR). That's
+			 * just what we want here.
 			 *
 			 * Small tweak for 7.4.3: ignore matches in upper query levels.
 			 * This effectively changes the search order for bare names to (1)
@@ -2104,13 +2134,38 @@ findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
 				 errOmitLocation(true)));
 	}
 
+
 	/*
-	 * Otherwise, we have an expression (this is a Postgres extension not
-	 * found in SQL92).  Convert the untransformed node to a transformed
-	 * expression, and search for a match in the tlist. NOTE: it doesn't
-	 * really matter whether there is more than one match.	Also, we are
-	 * willing to match a resjunk target here, though the above cases must
-	 * ignore resjunk targets.
+	 * Otherwise, we have an expression, so process it per SQL99 rules.
+	 */
+	return findTargetlistEntrySQL99(pstate, node, tlist);
+}
+
+/*
+ *	findTargetlistEntrySQL99 -
+ *	  Returns the targetlist entry matching the given (untransformed) node.
+ *	  If no matching entry exists, one is created and appended to the target
+ *	  list as a "resjunk" node.
+ *
+ * This function supports the SQL99 interpretation, wherein the expression
+ * is just an ordinary expression referencing input column names.
+ *
+ * node		the ORDER BY, GROUP BY, etc expression to be matched
+ * tlist	the target list (passed by reference so we can append to it)
+ */
+static TargetEntry *
+findTargetlistEntrySQL99(ParseState *pstate, Node *node, List **tlist)
+{
+	TargetEntry *target_result;
+	ListCell   *tl;
+	Node	   *expr;
+
+	/*
+	 * Convert the untransformed node to a transformed expression, and search
+	 * for a match in the tlist.  NOTE: it doesn't really matter whether there
+	 * is more than one match.	Also, we are willing to match an existing
+	 * resjunk target here, though the SQL92 cases above must ignore resjunk
+	 * targets.
 	 */
 	expr = transformExpr(pstate, node);
 
@@ -2202,8 +2257,8 @@ make_grouping_clause(ParseState *pstate, GroupingClause *grpcl, List* targetList
 
 		else
 		{
-			TargetEntry *tle = findTargetlistEntry(pstate, node,
-												   &targetList, GROUP_CLAUSE);
+			TargetEntry *tle = findTargetlistEntrySQL92(pstate, node,
+                                                        &targetList, GROUP_CLAUSE);
 			Oid          sort_op;
 
 			/* Unlike ordinary grouping sets, we will create duplicate
@@ -2345,7 +2400,8 @@ grouping_rewrite_walker(Node *node, void *context)
  */
 List *
 transformGroupClause(ParseState *pstate, List *grouplist,
-					 List **targetlist, List *sortClause)
+					 List **targetlist, List *sortClause,
+                     bool useSQL99)
 {
 	List	   *result = NIL;
 	List	   *tle_list = NIL;
@@ -2362,7 +2418,8 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 		Node        *node;
 
 		node = (Node*)lfirst(l);
-		tl = findListTargetlistEntries(pstate, node, targetlist, false, false);
+		tl = findListTargetlistEntries(pstate, node, targetlist, false, false, 
+                                       useSQL99);
 
         /* CDB: Cursor position not available for errors below this point. */
         pstate->p_breadcrumb.node = NULL;
@@ -2488,8 +2545,12 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 
 		else
 		{
-			tle = findTargetlistEntry(pstate, node,
-									  targetlist, GROUP_CLAUSE);
+
+            if (useSQL99)
+                tle = findTargetlistEntrySQL99(pstate, node, targetlist);
+            else
+                tle = findTargetlistEntrySQL92(pstate, node, targetlist, 
+                                               GROUP_CLAUSE);
 
 			/* avoid making duplicate expression entries */
 			if (targetIsInSortGroupList(tle, result))
@@ -2515,7 +2576,7 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 			grp_tles = list_concat_unique(
 				grp_tles,
 				findListTargetlistEntries(pstate, lfirst(lc),
-										  targetlist, false, true));
+										  targetlist, false, true, useSQL99));
 		}
 
         /* CDB: Cursor position not available for errors below this point. */
@@ -2565,7 +2626,8 @@ List *
 transformSortClause(ParseState *pstate,
 					List *orderlist,
 					List **targetlist,
-					bool resolveUnknown)
+					bool resolveUnknown,
+                    bool useSQL99)
 {
 	List	   *sortlist = NIL;
 	ListCell   *olitem;
@@ -2575,8 +2637,11 @@ transformSortClause(ParseState *pstate,
 		SortBy	   *sortby = lfirst(olitem);
 		TargetEntry *tle;
 
-		tle = findTargetlistEntry(pstate, sortby->node,
-								  targetlist, ORDER_CLAUSE);
+        if (useSQL99)
+            tle = findTargetlistEntrySQL99(pstate, sortby->node, targetlist);
+        else
+            tle = findTargetlistEntrySQL92(pstate, sortby->node, targetlist, 
+                                           ORDER_CLAUSE);
 
 		sortlist = addTargetToSortList(pstate, tle,
 									   sortlist, *targetlist,
@@ -2669,8 +2734,8 @@ transformDistinctClause(ParseState *pstate, List *distinctlist,
 		{
 			TargetEntry *tle;
 
-			tle = findTargetlistEntry(pstate, lfirst(dlitem),
-									  targetlist, DISTINCT_ON_CLAUSE);
+			tle = findTargetlistEntrySQL92(pstate, lfirst(dlitem),
+                                           targetlist, DISTINCT_ON_CLAUSE);
 
 			if (nextsortlist != NULL)
 			{
@@ -3096,7 +3161,7 @@ transformRowExprToList(ParseState *pstate, RowExpr *rowexpr,
 			 * generated in findListTargetlistEntries().
 			 */
 			TargetEntry *arg_tle =
-				findTargetlistEntry(pstate, node, &targetList, GROUP_CLAUSE);
+				findTargetlistEntrySQL92(pstate, node, &targetList, GROUP_CLAUSE);
 			sort_op = ordering_oper_opid(exprType((Node *)arg_tle->expr));
 			grping_set = lappend(grping_set,
 								 make_group_clause(arg_tle, targetList, sort_op));
@@ -3144,7 +3209,7 @@ transformRowExprToGroupClauses(ParseState *pstate, RowExpr *rowexpr,
 			 * generated in findListTargetlistEntries().
 			 */
 			TargetEntry *arg_tle =
-				findTargetlistEntry(pstate, node, &targetList, GROUP_CLAUSE);
+				findTargetlistEntrySQL92(pstate, node, &targetList, GROUP_CLAUSE);
 
 			/* avoid making duplicate expression entries */
 			if (targetIsInSortGroupList(arg_tle, groupsets))

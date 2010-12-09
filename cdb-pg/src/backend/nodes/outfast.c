@@ -906,7 +906,18 @@ _outAggref(StringInfo str, Aggref *node)
 	WRITE_BOOL_FIELD(aggdistinct);
 
 	WRITE_ENUM_FIELD(aggstage, AggStage);
+    WRITE_NODE_FIELD(aggorder);
 
+}
+
+static void
+_outAggOrder(StringInfo str, AggOrder *node)
+{
+	WRITE_NODE_TYPE("AGGORDER");
+
+    WRITE_BOOL_FIELD(sortImplicit);
+    WRITE_NODE_FIELD(sortTargets);
+    WRITE_NODE_FIELD(sortClause);
 }
 
 static void
@@ -2420,7 +2431,7 @@ _outDefineStmt(StringInfo str, DefineStmt *node)
 	WRITE_NODE_FIELD(definition);
 	WRITE_OID_FIELD(newOid);
 	WRITE_OID_FIELD(shadowOid);
-
+	WRITE_BOOL_FIELD(ordered);  /* CDB */
 }
 
 static void
@@ -2644,6 +2655,7 @@ _outFuncCall(StringInfo str, FuncCall *node)
 
 	WRITE_NODE_FIELD(funcname);
 	WRITE_NODE_FIELD(args);
+    WRITE_NODE_FIELD(agg_order);
 	WRITE_BOOL_FIELD(agg_star);
 	WRITE_BOOL_FIELD(agg_distinct);
 	WRITE_NODE_FIELD(over);
@@ -3430,6 +3442,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_Aggref:
 				_outAggref(str, obj);
+				break;
+			case T_AggOrder:
+				_outAggOrder(str, obj);
 				break;
 			case T_WindowRef:
 				_outWindowRef(str, obj);

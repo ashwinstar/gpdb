@@ -2940,3 +2940,108 @@ pg_column_size(PG_FUNCTION_ARGS)
 
 	PG_RETURN_INT32(result);
 }
+
+
+/*
+ * string_agg - Concatenates values and returns string.
+ *
+ * Syntax: string_agg(value text, delimiter text = '') RETURNS text
+ *
+ * Note: Any NULL values are ignored. The first-call delimiter isn't
+ * actually used at all, and on subsequent calls the delimiter precedes
+ * the associated value.
+ */
+
+/* subroutine to initialize state */
+static StringInfo
+makeStringAggState(FunctionCallInfo fcinfo)
+{
+	StringInfo	state;
+	MemoryContext aggcontext;
+	MemoryContext oldcontext;
+
+	if (!(fcinfo->context && IsA(fcinfo->context, AggState)))
+	{
+		/* cannot be called directly because of internal-type argument */
+		elog(ERROR, "string_agg_transfn called in non-aggregate context");
+	}
+	aggcontext = ((AggState*)fcinfo->context)->aggcontext;
+
+	/*
+	 * Create state in aggregate context.  It'll stay there across subsequent
+	 * calls.
+	 */
+	oldcontext = MemoryContextSwitchTo(aggcontext);
+	state = makeStringInfo();
+	MemoryContextSwitchTo(oldcontext);
+
+	return state;
+}
+
+Datum
+string_agg_transfn(PG_FUNCTION_ARGS)
+{
+	StringInfo	state;
+
+	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
+
+	/* Append the element unless null. */
+	if (!PG_ARGISNULL(1))
+	{
+		if (state == NULL)
+			state = makeStringAggState(fcinfo);
+		appendStringInfoText(state, PG_GETARG_TEXT_PP(1));		/* value */
+	}
+
+	/*
+	 * The transition type for string_agg() is declared to be "internal",
+	 * which is a pass-by-value type the same size as a pointer.
+	 */
+	PG_RETURN_POINTER(state);
+}
+
+Datum
+string_agg_delim_transfn(PG_FUNCTION_ARGS)
+{
+	StringInfo	state;
+
+	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
+
+	/* Append the value unless null. */
+	if (!PG_ARGISNULL(1))
+	{
+		/* On the first time through, we ignore the delimiter. */
+		if (state == NULL)
+			state = makeStringAggState(fcinfo);
+		else if (!PG_ARGISNULL(2))
+			appendStringInfoText(state, PG_GETARG_TEXT_PP(2));	/* delimiter */
+
+		appendStringInfoText(state, PG_GETARG_TEXT_PP(1));		/* value */
+	}
+
+	/*
+	 * The transition type for string_agg() is declared to be "internal",
+	 * which is a pass-by-value type the same size as a pointer.
+	 */
+	PG_RETURN_POINTER(state);
+}
+
+Datum
+string_agg_finalfn(PG_FUNCTION_ARGS)
+{
+	StringInfo	state;
+
+	/* cannot be called directly because of internal-type argument */
+	if (!(fcinfo->context && IsA(fcinfo->context, AggState)))
+	{
+		/* cannot be called directly because of internal-type argument */
+		elog(ERROR, "string_agg_finalfn called in non-aggregate context");
+	}
+
+	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
+
+	if (state != NULL)
+		PG_RETURN_TEXT_P(cstring_to_text(state->data));
+	else
+		PG_RETURN_NULL();
+}
