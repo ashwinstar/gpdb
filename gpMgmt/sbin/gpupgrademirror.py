@@ -127,7 +127,7 @@ def Startup(env, utility=False):
         else:
            cmd = 'gpstart -a'
 
-        logger.debug("Starting cluster with env = %s" % str(env))
+        logger.debug("Starting cluster where cmd = %s,  with env = %s" % (str(cmd), str(env)))
         pid = subprocess.Popen( cmd
                               , preexec_fn = os.setpgrp
                               , env = env
@@ -165,6 +165,118 @@ def Startup(env, utility=False):
     except OSError, e:
         logger.fatal(str(e))
         raise Exception('Startup failed')
+
+
+#-------------------------------------------------------------------------------
+def StartupPrimaries(gparray):
+     """ Startup all the primary segments in the cluster """
+
+     logging.debug("Attempting to start primaries.")
+
+     """ get all the primary segments """
+     allSegDbList = gparray.getSegDbList()
+
+     if len(allSegDbList) / 2 > 64:
+        maxThreads = 64
+     else:
+        maxThreads = len(allSegDbList) / 2
+     primarySegCmdList = []
+
+     try:
+         pool = WorkerPool(numWorkers = maxThreads);
+
+         """ get all the primary segments """
+         allSegDbList = gparray.getSegDbList()
+         for db in allSegDbList:
+             if db.isSegmentPrimary() == True:
+                segStartCmd = SegmentStart( name = "start command primary segment %s" + str(db.getSegmentDbId())
+                                          , gpdb = db
+                                          , numContentsInCluster = 123    # unused here, so just pass any number
+                                          , mirroringMode = "mirrorless"
+                                          , utilityMode = True
+                                          , ctxt = REMOTE
+                                          , remoteHost = db.getSegmentAddress()
+                                          , noWait = False
+                                          , timeout = 60
+                                          )
+                logging.debug("attempting to start primary with: " + str(segStartCmd))
+                pool.addCommand(segStartCmd)
+
+         # Wait for the segments to finish
+         try:
+             pool.join()
+         except:
+             pool.haltWork()
+             pool.joinWorkers()
+            
+         failure = False
+         results = []
+         for cmd in pool.getCompletedItems():
+             r = cmd.get_results()
+             if not cmd.was_successful():
+                 logging.error("Unable to start segment: " + str(r))
+                 failure = True
+
+         if failure:
+             raise Exception("There was an issue starting the primary segments.")
+     except Exception, e:
+         ShutdownPrimaries(gparray)
+         raise Exception("Could not start primary segments: " + str(e))
+
+
+#-------------------------------------------------------------------------------                                                                     
+def ShutdownPrimaries(gparray):
+     """ Shutdown all the primary segments in the cluster """
+
+     logging.debug("Attempting to stop primaries.")
+
+     """ get all the primary segments """
+     allSegDbList = gparray.getSegDbList()
+
+     if len(allSegDbList) / 2 > 64:
+        maxThreads = 64
+     else:
+        maxThreads = len(allSegDbList) / 2
+     primarySegCmdList = []
+
+     try:
+         pool = WorkerPool(numWorkers = maxThreads);
+
+         """ get all the primary segments """
+         allSegDbList = gparray.getSegDbList()
+         for db in allSegDbList:
+             if db.isSegmentPrimary() == True:
+                segStopCmd = SegmentStop( name = "stop command primary segment %s" + str(db.getSegmentDbId())
+                                        , dataDir = db.getSegmentDataDirectory()
+                                        , mode = "fast"
+                                        , nowait = False
+                                        , ctxt = REMOTE
+                                        , remoteHost = db.getSegmentAddress()
+                                        , timeout = 60
+                                        )
+                logging.debug("attempting to stop primary with: " + str(segStopCmd))
+                pool.addCommand(segStopCmd)
+
+         # Wait for the segments to finish                                                                                                                
+         try:
+             pool.join()
+         except:
+             pool.haltWork()
+             pool.joinWorkers()
+
+         failure = False
+         results = []
+         for cmd in pool.getCompletedItems():
+             r = cmd.get_results()
+             if not cmd.was_successful():
+                 logging.error("Unable to stop segment: " + str(r))
+                 failure = True
+
+         if failure:
+             raise Exception("There was an issue stopping the primary segments.")
+     except Exception, e:
+         raise Exception("Could not stop primary segments: " + str(e))
+
 
 
 #-------------------------------------------------------------------------------
@@ -3182,6 +3294,7 @@ dburl        = None
 conn         = None
 remove_pid   = True
 p1MirrorInfo = None
+phase2gparray = None
 MirrorNodeList = []
 MirrorInfoList = []
 phase2MirrorList = []
@@ -3253,7 +3366,7 @@ try:
       created on the first phase 1 attempt.   
   """
   dbUrl = dbconn.DbURL(dbname = 'template1')
-  gpstartStatus = None
+  phase1gpstartStatus = None
   if options.rollback == True:
      """ Never start the database in rollback mode. """
      pass
@@ -3262,12 +3375,14 @@ try:
      pass
   elif len(options.ids) == 0:
      if options.phase2 == True:
-        GpStart.local('gpupgrademirror start database', masterOnly = False)
+        GpStart.local('gpupgrademirror start database', masterOnly = True)
+        logging.debug('started database master only with GpStart')
      else:
         """ We are running in a 4.0 environment, but need to start like we are in a 3.3.x environment. """
         env = SetupEnv(options.gphome)
         Startup(env = env, utility = True)
-     gpstartStatus = "MASTER_AND_SEGMENTS"
+        logging.debug('started database master only with Startup')
+        phase1gpstartStatus = "STARTUP_MASTER"
 
   if options.rollback == True and options.phase2 == False:
      ''' setup for rollback '''
@@ -3322,20 +3437,32 @@ try:
                             , utility = True
                             )
 
-     ''' Get a list of databases '''
+     ''' Get a list of databases. '''
      databaseCursor = dbconn.execSQL(conn, DatabaseRow.query())
      for row in databaseCursor:
          dbrow = DatabaseRow(row)
          databaseList.append(dbrow)
      conn.close()
   
+     ''' Setup gparray object. '''
+     try:
+        phase2gparray = GpArray.initFromCatalog(dbUrl, utility = True)
+     except Exception, e:
+        logger.warning('Unable to obtain gparray information: ' + str(e))
+        logger.warning('gpupgradmirror exiting')
+        exit(1)
+
+     ''' Setup mirror info object. '''
      try:
         p2MirrorInfo = Phase1and2MirrorInfo(dbUrl)
      except Exception, e:
         logger.warning('Unable to obtain mirror information: ' + str(e))
         logger.warning('gpupgradmirror exiting')
-        exit(0)
+        exit(1)
        
+     ''' Start all the primary segments '''
+     StartupPrimaries(phase2gparray)
+
      ''' Get list of all segments '''
      allSegMirrorInfo = p2MirrorInfo.getAllMirrorInfoList()
 
@@ -3390,9 +3517,11 @@ try:
          phase2MirrorList.append(tempNode)
      """ END for mirrorInfo in allSegMirrorInfo: """    
 
-     if gpstartStatus != None and gpstartStatus == "MASTER_AND_SEGMENTS":
-        GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = False)
-        gpstartStatus = "STOPPED"
+     """ Stop all the primaries. """
+     ShutdownPrimaries(phase2gparray)
+
+     logging.debug('stopping database master')
+     GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
 
      """
        There is a theoretical issue with running too many threads at once,
@@ -3498,11 +3627,11 @@ try:
       At this point, all setup that requires database access is done. We can continue from here
       without connecting to the database.
     """ 
-    if gpstartStatus != None and gpstartStatus == "MASTER":
-       """GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)"""
+    if phase1gpstartStatus != None and phase1gpstartStatus == "STARTUP_MASTER":
        env = SetupEnv(options.gphome)
+       logging.debug('stopping database master only')
        Shutdown(env = env, utility = True)
-       gpstartStatus = "STOPPED" 
+       phase1gpstartStatus = "STOPPED" 
      
     """ Test the first segment for speed with its mirror. """
     aSeg = allSegMirrorInfo[0]
@@ -3667,11 +3796,11 @@ try:
         MirrorNodeList.append(tempNode)
         shiftIndex = shiftIndex + 1
 
-    if gpstartStatus != None and gpstartStatus == "MASTER":
-       """GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)"""
+    if phase1gpstartStatus != None and phase1gpstartStatus == "STARTUP_MASTER":
+       logging.debug('stopping database master only')
        env = SetupEnv(options.gphome)
        Shutdown(env = env, utility = True)
-       gpstartStatus = "STOPPED" 
+       phase1gpstartStatus = "STOPPED" 
 
     """ 
       Start the threads 
@@ -3801,16 +3930,28 @@ finally:
 
         if remove_pid:
             remove_pid_file(options.info_data_directory)
-        try:
-            if gpstartStatus != None and gpstartStatus == "MASTER":
-               if options.phase2 == True:
-                  GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
-               else:
-                  env = SetupEnv(options.gphome)
-                  Shutdown(env = env, utility = True)
-               gpstartStatus = "STOPPED"
-        except Exception:
-            pass
+
+        """ Normally, the cluster should already be stopped, but if there was an issue, then the cluster might not be down. """
+        """ Try to stop gpdb if anything is still running. """
+        logging.debug('Attempting to stop any remaining processes on the cluster if necessary.')
+        if options.phase2 == True:
+           try:
+              """ Try shutting down the master. """
+              GpStop.local('gpupgrademirror stop databse', fast=True, masterOnly = True)
+           except Exception:
+              pass
+           try:
+              """ Try shutting down the primary segments. """
+              ShutdownPrimaries(phase2gparray)
+           except Exception:
+              pass
+        else:
+           try:
+              """ We are in phase 1, try shutting down the master. """
+              env = SetupEnv(options.gphome)
+              Shutdown(env = env, utility = True)
+           except Exception:
+              pass
         try:
             if minionWP != None:
                minionWP.haltWork()
