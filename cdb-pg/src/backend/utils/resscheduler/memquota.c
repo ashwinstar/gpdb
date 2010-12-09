@@ -371,6 +371,9 @@ uint64 ResourceQueueGetQueryMemoryLimit(PlannedStmt *stmt, Oid queueId)
 	double costLimit = (double) resQueue->limits[RES_COST_LIMIT].threshold_value;
 	double planCost = stmt->planTree->total_cost;
 	
+	if (planCost < 1.0)
+		planCost = 1.0;
+
 	Assert(planCost > 0.0);
 	
 	if (gp_log_resqueue_memory)
