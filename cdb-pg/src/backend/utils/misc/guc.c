@@ -3927,6 +3927,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"gp_fts_probe_timeout", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Maximum time (in seconds) allowed for FTS to complete probing a segment."),
+			gettext_noop("Used by the fts-probe process."),
+			GUC_UNIT_S
+		},
+		&gp_fts_probe_timeout,
+		180, 0, INT_MAX, NULL, NULL
+	},
+
+	{
 		{"gp_fts_probe_interval", PGC_POSTMASTER, GP_ARRAY_TUNING,
 			gettext_noop("A complete probe of all segments starts each time a timer with this period expires."),
 			gettext_noop("Used by the fts-probe process. "),

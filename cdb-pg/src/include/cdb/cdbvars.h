@@ -399,6 +399,7 @@ extern const char *role_to_string(GpRoleValue role);
 
 extern int	gp_segment_connect_timeout; /* GUC var - timeout specifier for gang creation */
 extern int	gp_snapshotadd_timeout; /* GUC var - timeout specifier for snapshot-creation wait */
+extern int	gp_fts_probe_timeout; /* GUC var - specifies probe timeout for fts-probe process */
 extern int	gp_fts_probe_interval; /* GUC var - specifies polling interval for fts-probe process */
 extern int	gp_fts_probe_threadcount; /* GUC var - specifies number of threads to use for fts-probe */
 

@@ -109,6 +109,12 @@ bool          gp_select_invisible=false; /* debug mode to allow select to see "i
  */
 int			gp_snapshotadd_timeout=10;
 
+
+/*
+ * Probe timeout for fts prober.
+ */
+int			gp_fts_probe_timeout = 180;
+
 /*
  * Polling interval for the fts prober. A scan of the entire system starts
  * every time this expires.

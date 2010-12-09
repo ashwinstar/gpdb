@@ -1176,8 +1176,8 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 			break;
 		}
 
-		/* If connection takes more than the gp_segment_connect_timeout, we fail. */
-		if (elapsed_ms > gp_segment_connect_timeout * 1000)
+		/* If connection takes more than the gp_fts_probe_timeout, we fail. */
+		if (elapsed_ms > gp_fts_probe_timeout * 1000)
 		{
 			ret = PROBE_DEAD;
 			break;
@@ -1991,7 +1991,7 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 
 	PGresult   *rs;
 
-	Assert(entryDB->dbid == -1);
+	Assert(entryDB->segindex == -1);
 
 	entryBuffer = createPQExpBuffer();
 	if (PQExpBufferBroken(entryBuffer))
