@@ -332,7 +332,7 @@ float8_mregr_compute(MRegrState	*inState,
 	Datum		temp_datum;
 	ArrayType	*coef_array, *temp_array;
 	float8		ssr, tss, ess, r2, variance;
-	float8		*coef, *XtXinv, *tstats, *pvalues;
+	float8		*coef, *XtXinv, *tstats = NULL, *pvalues;
 	int			i;
 	
 	/* 
