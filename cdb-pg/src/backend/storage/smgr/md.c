@@ -790,10 +790,11 @@ mdunlink(
 
 	bool						*mirrorDataLossOccurred)
 {
-	bool		status = true;
-	int			primaryError;
-
-	primaryError = 0;
+	bool		 status		  = true;
+	int			 primaryError = 0;
+	char		 tmp[MAXPGPATH];
+	char		*path;
+	int			 segmentFileNum;
 
 	/*
 	 * We have to clean out any pending fsync requests for the doomed relation,
@@ -801,86 +802,80 @@ mdunlink(
 	 */
 	ForgetRelationFsyncRequests(rnode);
 
-	/* Delete the first segment, or only segment if not doing segmenting */
-	MirroredBufferPool_Drop(
-						&rnode, 
-						/* segmentFileNum */ 0,
-						relationName,
-						primaryOnly,
-						isRedo,
-						&primaryError,
-						mirrorDataLossOccurred);
-	if (primaryError != 0)
+	/* 
+	 * Delete All segment file extensions
+	 *
+	 * This code used to be implemented via glob(), but globbing data is slow
+	 * when there are many files in a directory, so using glob is to be avoided.
+	 * Instead we perform point lookups for files and delete the ones we find.
+	 * There are different rules for this depending on the type of table:
+	 *
+	 *   Heap Tables: contiguous extensions, no upper bound
+	 *   AO Tables: non contiguous extensions [.1 - .127]
+	 *   CO Tables: non contiguous extensions
+	 *          [  .1 - .127] for first column
+	 *          [.128 - .255] for second column
+	 *          [.256 - .283] for third column
+	 *          etc
+	 *
+	 * mdunlink is only called on Heap Tables, AO/CO tables are handled by a
+	 * different code path.  The following logic assumes that the files are
+	 * a single contiguous range of numbers.
+	 *
+	 * UNDONE: Probably should have mirror do pattern match too.
+	 *    It is conceivably possible that the primary/mirror may have a 
+	 *    different set of segment files, so doing the pattern match only
+	 *    in one place is dangerous.
+	 *
+	 * UNDONE: This is broken for mirroring !!!
+	 *    The fundamental problem is that if we drop a file on the mirror
+	 *    then fail over before we have dropped the file on the primary
+	 *    then the mirror is unaware that the file still needs to be dropped
+	 *    on the old primary.  
+	 *
+	 * The above two issues are tracked in MPP-11724
+	 */
+
+	/* 
+	 * We do this in two passes because it is safer to drop the files in reverse
+	 * order so as to prevent the creation of holes, but we need to scan forward
+	 * to know what files actually exist.
+	 */
+	path = relpath(rnode);
+	for (segmentFileNum = 0; /* break in code */ ; segmentFileNum++)
 	{
-		if (!ignoreNonExistence || primaryError != ENOENT)
+		struct stat sbuf;
+		
+		/* the zero segment file does not have the ".0" extension */
+		if (segmentFileNum == 0)
+			snprintf(tmp, sizeof(tmp), "%s", path);
+		else
+			snprintf(tmp, sizeof(tmp), "%s.%d", path, segmentFileNum);
+
+		if (stat(tmp, &sbuf) < 0)
+			break;  /* No such file, loop is done */
+	}
+	pfree(path);
+
+	/* If the zero segment didn't exist raise an error if requested */
+	if (segmentFileNum == 0 && !ignoreNonExistence)
+	{
+		primaryError = ENOENT;
+		status = false;
+	}
+		
+	/* second pass perform the drops in reverse order: important for REDO */
+	for(segmentFileNum--; segmentFileNum >= 0; segmentFileNum--)
+	{
+		MirroredBufferPool_Drop(&rnode, segmentFileNum, relationName, 
+								primaryOnly, isRedo, &primaryError,
+								mirrorDataLossOccurred);
+		if (primaryError != 0)
 		{
 			status = false;
+			break;
 		}
-		else
-			primaryError = 0;
 	}
-
-	// UNDONE: This is broken for mirroring !!!
-
-#ifndef LET_OS_MANAGE_FILESIZE
-	/* 
-	 * Delete the additional segments, if any. 
-         * Use glob path.* to find all segments.
-         */
-	if (status)
-	{
-		// UNDONE: Probably should have mirror do pattern  match, too.
-		// UNDONE:
-				char	   *path;
-
-                char tmp[MAXPGPATH];
-				int constantPrefixLen;
-                int i;
-                glob_t g;
-
-				path = relpath(rnode);
-
-                sprintf(tmp, "%s.*", path);
-				constantPrefixLen = strlen(tmp) - 1;
-
-                i = glob(tmp, 0, 0, &g);
-
-                /* glob success */
-                if(i==0)
-                {
-                        size_t n;
-                        for(n=0; n<g.gl_pathc; ++n)
-                        {
-								char *match = g.gl_pathv[n];
-								int scanCount;
-								int segmentFileNum;
-
-								if (strncmp(match, tmp, constantPrefixLen) != 0)
-									elog(ERROR, "File name pattern problem");
-
-								scanCount = sscanf(&match[constantPrefixLen], "%u", &segmentFileNum);
-							
-                                MirroredBufferPool_Drop(
-													&rnode, 
-													segmentFileNum, 
-													relationName,
-													primaryOnly,
-													isRedo,
-													&primaryError,
-													mirrorDataLossOccurred);
-								if (primaryError != 0)
-                                {
-                                        status = false;
-                                        break;
-                                }
-                        }
-
-                        globfree(&g);
-                }
-				pfree(path);
-        }
-#endif
-
 
 	errno = primaryError;
 	return status;
