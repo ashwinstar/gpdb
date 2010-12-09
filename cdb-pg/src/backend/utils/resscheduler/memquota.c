@@ -67,7 +67,7 @@ static double minDouble(double a, double b)
  * Is an agg operator memory intensive? The following cases mean it is:
  * 1. If agg strategy is hashed
  * 2. If targetlist or qual contains a DQA
- * 3. If there is an ordered aggregated (TODO: handle this once ordered agg becomes available)
+ * 3. If there is an ordered aggregated.
  */
 static bool IsAggMemoryIntensive(Agg *agg)
 {
@@ -87,9 +87,15 @@ static bool IsAggMemoryIntensive(Agg *agg)
 	Plan *plan = (Plan *) &(agg->plan);
 	count_agg_clauses((Node *) plan->targetlist, &aggInfo);
 	count_agg_clauses((Node *) plan->qual, &aggInfo);
-
+	
 	/* Case 2 */
 	if (aggInfo.numDistinctAggs >0)
+	{
+		return true;
+	}
+	
+	/* Case 3 */
+	if (aggInfo.aggOrder != NIL )
 	{
 		return true;
 	}
