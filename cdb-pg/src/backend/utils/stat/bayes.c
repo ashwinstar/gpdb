@@ -370,7 +370,7 @@ nb_classify_probabilities(PG_FUNCTION_ARGS)
 {
 	nb_classify_state  state;
 	int64             *total_data;
-	float8             total, normalize;
+	float8             maxprior, normalize;
 	float8            *prior_data;
 	int                i, nclasses;
 
@@ -390,13 +390,24 @@ nb_classify_probabilities(PG_FUNCTION_ARGS)
 	prior_data = (float8*) ARR_DATA_PTR(state.accum);
 	total_data = (int64*) ARR_DATA_PTR(state.total);
 	nclasses = ARR_DIMS(state.classes)[0];
-	for (total = i = 0; i < nclasses; i++)
-		total += total_data[i];
+
+	/* Adjust prior to account for percentages of total distributions */
+	for (i = 0; i < nclasses; i++)
+		prior_data[i] += log(total_data[i]);
+
+	/* Calculate max prior to improve numeric stability */
+	maxprior = prior_data[0];
+	for (i = 1; i < nclasses; i++)
+		maxprior = Max(maxprior, prior_data[i]);
+
+	/* Convert log values into true values */
 	for (normalize = i = 0; i < nclasses; i++)
 	{
-		prior_data[i] = exp(prior_data[i]) * (total_data[i] / total);
+		prior_data[i] = exp(prior_data[i] - maxprior);
 		normalize += prior_data[i];
 	}
+
+	/* Normalize results */
 	for (i = 0; i < nclasses; i++)
 		prior_data[i] /= normalize;
 
