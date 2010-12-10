@@ -2,7 +2,7 @@
  * PostgreSQL System Views
  *
  * Copyright (c) 2006-2010, Greenplum inc.
- * Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2010, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/backend/catalog/system_views.sql,v 1.32 2006/11/24 21:18:42 tgl Exp $
  */
@@ -335,23 +335,23 @@ CREATE VIEW pg_statio_user_sequences AS
 
 CREATE VIEW pg_stat_activity AS 
     SELECT 
-            D.oid AS datid, 
-            D.datname AS datname, 
-            pg_stat_get_backend_pid(S.backendid) AS procpid, 
-			pg_stat_get_backend_session_id(S.backendid) AS sess_id, 
-            pg_stat_get_backend_userid(S.backendid) AS usesysid, 
-            U.rolname AS usename, 
-            pg_stat_get_backend_activity(S.backendid) AS current_query,
-            pg_stat_get_backend_waiting(S.backendid) AS waiting,
-            pg_stat_get_backend_activity_start(S.backendid) AS query_start,
-            pg_stat_get_backend_start(S.backendid) AS backend_start,
-            pg_stat_get_backend_client_addr(S.backendid) AS client_addr,
-            pg_stat_get_backend_client_port(S.backendid) AS client_port
-    FROM pg_database D, 
-            (SELECT pg_stat_get_backend_idset() AS backendid) AS S, 
-            pg_authid U 
-    WHERE pg_stat_get_backend_dbid(S.backendid) = D.oid AND 
-            pg_stat_get_backend_userid(S.backendid) = U.oid;
+            S.datid AS datid,
+            D.datname AS datname,
+            S.procpid,
+            S.sess_id,
+            S.usesysid,
+            U.rolname AS usename,
+            S.current_query,
+            S.waiting,
+            S.query_start,
+            S.backend_start,
+            S.client_addr,
+            S.client_port,
+            S.application_name,
+            S.xact_start
+    FROM pg_database D, pg_stat_get_activity(NULL) AS S, pg_authid U
+    WHERE S.datid = D.oid AND 
+            S.usesysid = U.oid;
 
 CREATE VIEW pg_stat_database AS 
     SELECT 

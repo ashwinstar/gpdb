@@ -5,7 +5,7 @@
  *	  along with the relation's initial contents.
  *
  * Portions Copyright (c) 2006-2010, Greenplum inc
- * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/catalog/pg_proc.h,v 1.429 2006/11/28 19:18:44 tgl Exp $
@@ -3061,6 +3061,8 @@ DATA(insert OID = 6039 (  pg_stat_get_backend_session_id	PGNSP PGUID 12 f f t f 
 DESCR("Statistics: Greenplum session id of backend");
 DATA(insert OID = 6042 (  pg_renice_session	PGNSP PGUID 12 f f t f v 2 23 f "23 23" _null_ _null_ _null_ pg_renice_session - _null_ ));
 DESCR("change priority of all the backends for a given session id");
+DATA(insert OID = 6071 (  pg_stat_get_activity			PGNSP PGUID 12 f f f t s 1 2249 f "23" "{23,26,23,26,25,25,16,1184,1184,1184,869,23,23}" "{i,o,o,o,o,o,o,o,o,o,o,o,o}" "{pid,datid,procpid,usesysid,application_name,current_query,waiting,xact_start,query_start,backend_start,client_addr,client_port,sess_id}" pg_stat_get_activity - _null_ ));
+DESCR("statistics: information about currently active backends");
 
 DATA(insert OID = 1946 (  encode						PGNSP PGUID 12 f f t f i 2 25 f "17 25" _null_ _null_ _null_	binary_encode - _null_ ));
 DESCR("Convert bytea value into some ascii-only text string");
