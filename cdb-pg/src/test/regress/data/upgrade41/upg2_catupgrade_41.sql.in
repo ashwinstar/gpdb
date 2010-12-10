@@ -284,6 +284,30 @@ select catDML('insert into @gpupgradeschemaname@.pg_resourcetype values (''memor
 
 insert into @gpupgradeschemaname@.pg_resqueuecapability
 	select resqueueid, 6, '-1' from (select distinct resqueueid from @gpupgradeschemaname@.pg_resqueuecapability) s;
+	
+--
+-- pg_stat_activity
+--
+
+CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_stat_activity AS 
+    SELECT 
+            S.datid AS datid,
+            D.datname AS datname,
+            S.procpid,
+            S.sess_id,
+            S.usesysid,
+            U.rolname AS usename,
+            S.current_query,
+            S.waiting,
+            S.query_start,
+            S.backend_start,
+            S.client_addr,
+            S.client_port,
+            S.application_name,
+            S.xact_start
+    FROM pg_catalog.pg_database D, pg_catalog.pg_stat_get_activity(NULL) AS S, pg_catalog.pg_authid U
+    WHERE S.datid = D.oid AND 
+            S.usesysid = U.oid;
 
 
 -- Catalog Upgrade DDL complete
