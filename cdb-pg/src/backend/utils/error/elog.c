@@ -4182,7 +4182,7 @@ uint32 gp_backtrace(void **stackAddresses, uint32 maxStackDepth)
 	void **pFramePtr = (void**) GET_PTR_FROM_VALUE(framePtrValue);
 
 	/* check if the stack base pointer has been set */
-	if (stack_base_ptr == NULL)
+	if (stack_base_ptr == NULL || pFramePtr == NULL || (void *) stack_base_ptr >= (void *) pFramePtr)
 	{
 		return backtrace(stackAddresses, maxStackDepth);
 	}
@@ -4190,6 +4190,9 @@ uint32 gp_backtrace(void **stackAddresses, uint32 maxStackDepth)
 	/* consider the first maxStackDepth frames only, below the stack base pointer */
 	for (depth = 0; depth < maxStackDepth; depth++)
 	{
+		if (pFramePtr == NULL)
+			break;
+
 		/* check if next frame is within stack */
 		if ((void *) pFramePtr > *pFramePtr ||
 			(void *) stack_base_ptr < *pFramePtr)
