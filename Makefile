@@ -147,7 +147,7 @@ CFLAGS_INLINE=-fno-inline
 endif
 
 ifeq (on, ${GPDBGOPT})
-CFLAGS_OPT=-O1
+CFLAGS_OPT=-O1 -fno-omit-frame-pointer
 else
 CFLAGS_OPT=-O0
 endif

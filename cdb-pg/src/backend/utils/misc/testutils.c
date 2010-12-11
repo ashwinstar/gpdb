@@ -116,6 +116,8 @@ timeElapsedMs(struct timeval *tvLast, struct timeval *tvFirst)
 }
 
 
+#ifdef USE_TEST_UTILS_X86
+
 /*
  * check if lightweight lock(s) are held;
  * print stack trace where lock(s) got acquired and error out;
@@ -145,6 +147,8 @@ LWLockHeldDetect(const char *file, int line)
 						stackTraceCurrent)));
 	}
 }
+
+#endif /* USE_TEST_UTILS_X86 */
 
 #endif /* USE_TEST_UTILS */
 

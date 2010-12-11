@@ -89,10 +89,10 @@ static int	num_held_lwlocks = 0;
 static LWLockId held_lwlocks[MAX_SIMUL_LWLOCKS];
 static bool held_lwlocks_exclusive[MAX_SIMUL_LWLOCKS];
 
-#ifdef USE_TEST_UTILS
+#ifdef USE_TEST_UTILS_X86
 static void *held_lwlocks_addresses[MAX_SIMUL_LWLOCKS][MAX_FRAME_DEPTH];
 static int32 held_lwlocks_depth[MAX_SIMUL_LWLOCKS];
-#endif /* USE_TEST_UTILS */
+#endif /* USE_TEST_UTILS_X86 */
 
 static int	lock_addin_request = 0;
 static bool lock_addin_request_allowed = true;
@@ -592,11 +592,11 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 			 (mode == LW_EXCLUSIVE ? "Exclusive" : "Shared"));
 #endif
 
-#ifdef USE_TEST_UTILS
+#ifdef USE_TEST_UTILS_X86
 	/* keep track of stack trace where lock got acquired */
 	held_lwlocks_depth[num_held_lwlocks] =
 			gp_backtrace(held_lwlocks_addresses[num_held_lwlocks], MAX_FRAME_DEPTH);
-#endif /* USE_TEST_UTILS */
+#endif /* USE_TEST_UTILS_X86 */
 
 	/* Add lock to list of locks held by this backend */
 	held_lwlocks_exclusive[num_held_lwlocks] = (mode == LW_EXCLUSIVE);
@@ -681,11 +681,11 @@ LWLockConditionalAcquire(LWLockId lockid, LWLockMode mode)
 				 (mode == LW_EXCLUSIVE ? "Exclusive" : "Shared"));
 #endif
 
-#ifdef USE_TEST_UTILS
+#ifdef USE_TEST_UTILS_X86
 		/* keep track of stack trace where lock got acquired */
 		held_lwlocks_depth[num_held_lwlocks] =
 				gp_backtrace(held_lwlocks_addresses[num_held_lwlocks], MAX_FRAME_DEPTH);
-#endif /* USE_TEST_UTILS */
+#endif /* USE_TEST_UTILS_X86 */
 
 		/* Add lock to list of locks held by this backend */
 		held_lwlocks_exclusive[num_held_lwlocks] = (mode == LW_EXCLUSIVE);
@@ -743,7 +743,7 @@ LWLockRelease(LWLockId lockid)
 	{
 		held_lwlocks_exclusive[i] = held_lwlocks_exclusive[i + 1];
 		held_lwlocks[i] = held_lwlocks[i + 1];
-#ifdef USE_TEST_UTILS
+#ifdef USE_TEST_UTILS_X86
 		/* shift stack traces */
 		held_lwlocks_depth[i] = held_lwlocks_depth[i + 1];
 		memcpy
@@ -753,15 +753,15 @@ LWLockRelease(LWLockId lockid)
 			held_lwlocks_depth[i] * sizeof(*held_lwlocks_depth)
 			)
 			;
-#endif /* USE_TEST_UTILS */
+#endif /* USE_TEST_UTILS_X86 */
 	}
 
 	// Clear out old last entry.
 	held_lwlocks_exclusive[num_held_lwlocks] = false;
 	held_lwlocks[num_held_lwlocks] = 0;
-#ifdef USE_TEST_UTILS
+#ifdef USE_TEST_UTILS_X86
 	held_lwlocks_depth[num_held_lwlocks] = 0;
-#endif /* USE_TEST_UTILS */
+#endif /* USE_TEST_UTILS_X86 */
 
 	/* Acquire mutex.  Time spent holding mutex should be short! */
 	SpinLockAcquire(&lock->mutex);
@@ -926,7 +926,7 @@ LWLocksHeld()
 const char*
 LWLocksHeldStackTraces()
 {
-#ifdef USE_TEST_UTILS
+#ifdef USE_TEST_UTILS_X86
 	if (num_held_lwlocks == 0)
 	{
 		return NULL;
@@ -952,5 +952,5 @@ LWLocksHeldStackTraces()
 	return append->data;
 #else
 	return NULL;
-#endif /* USE_TEST_UTILS */
+#endif /* USE_TEST_UTILS_X86 */
 }

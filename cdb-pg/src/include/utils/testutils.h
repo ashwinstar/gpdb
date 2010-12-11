@@ -21,8 +21,14 @@ extern PGDLLIMPORT volatile int32 CritSectionCount;
 extern void TimeSliceReset(void);
 extern void TimeSliceCheck(const char *file, int line);
 
+#if defined(__i386) || defined(__x86_64__)
+
+#define USE_TEST_UTILS_X86   1
+
 /* detect database-lightweight lock conflict */
 extern void LWLockHeldDetect(const char *file, int line);
+
+#endif /* defined(__i386) || defined(__x86_64__) */
 
 /* GUCs */
 extern bool gp_test_time_slice;           /* session GUC, controls time slice violation checking */
