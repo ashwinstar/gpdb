@@ -2957,10 +2957,6 @@ write_syslogger_in_csv(ErrorData *edata, bool amsyslogger)
         append_stacktrace(NULL /*PipeProtoChunk*/, NULL /*StringInfo*/, edata->stacktracearray,
         		          edata->stacktracesize, amsyslogger);
     }
-    else
-    {
-        append_stacktrace(NULL /*PipeProtoChunk*/, NULL /*StringInfo*/, NULL, 0, amsyslogger);
-    }
 
     /* EOL */
     if (amsyslogger)
@@ -3117,11 +3113,6 @@ write_message_to_server_log(int elevel,
 
     	append_stacktrace(&buffer, NULL /*StringInfo*/, stacktracearray, stacktracesize,
                           false /*amsyslogger*/);
-    }
-    else
-    {
-    	append_stacktrace(&buffer, NULL /*StringInfo*/, NULL, 0,
-    	                  false/*amsyslogger*/);
     }
 
     /* Send the last chunk */
