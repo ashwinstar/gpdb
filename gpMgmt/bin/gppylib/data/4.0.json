@@ -1,6 +1,6 @@
 {
    "pg_amproc" : {
-      "relid_comment_tag" : "/* relation id: 2603 - pg_amproc 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2603 - pg_amproc 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_amproc\n   with (camelcase=AccessMethodProcedure, oid=false, relid=2603)\n   (\n   amopclaid      oid, \n   amprocsubtype  oid, \n   amprocnum      smallint, \n   amproc         regproc\n   )",
       "CamelCaseRelationId" : "AccessMethodProcedureRelationId",
       "with" : {
@@ -42,7 +42,7 @@
       ]
    },
    "gp_fastsequence" : {
-      "relid_comment_tag" : "/* relation id: 5043 - gp_fastsequence 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5043 - gp_fastsequence 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_fastsequence\n   with (camelcase=FastSequence, oid=false, relid=5043, reltype_oid=6453, content=SEGMENT_LOCAL)\n   (\n   objid   oid,\n   objmod  bigint,\n   last_sequence bigint\n   )",
       "UppercaseReltypeOid" : "GP_FASTSEQUENCE_RELTYPE_OID",
       "CamelCaseRelationId" : "FastSequenceRelationId",
@@ -81,7 +81,7 @@
       ]
    },
    "pg_resqueue" : {
-      "relid_comment_tag" : "/* relation id: 6026 - pg_resqueue 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 6026 - pg_resqueue 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_resqueue\n   with (camelcase=ResQueue, shared=true, relid=6026, content=MASTER_ONLY)\n   (\n   rsqname name, -- name of resource queue\n   rsqcountlimit real, -- max active count limit\n   rsqcostlimit real, -- max cost limit\n   rsqovercommit boolean, -- allow overcommit on suitable  limits\n   rsqignorecostlimit real -- ignore queries with cost less than\n   )",
       "CamelCaseRelationId" : "ResQueueRelationId",
       "with" : {
@@ -166,7 +166,7 @@
       ]
    },
    "pg_foreign_table" : {
-      "relid_comment_tag" : "/* relation id: 2879 - pg_foreign_table 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2879 - pg_foreign_table 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_foreign_table\n   with (camelcase=ForeignTable, oid=false, relid=2879, reltype_oid=6452)\n   (\n   reloid      oid, -- refers to this relation's oid in pg_class\n   server      oid, -- table's foreign server\n   -- VARIABLE LENGTH FIELDS start here.  These fields may be NULL, too.\n\n   tbloptions    text[] -- foreign table-specific options\n   )",
       "UppercaseReltypeOid" : "PG_FOREIGN_TABLE_RELTYPE_OID",
       "CamelCaseRelationId" : "ForeignTableRelationId",
@@ -208,7 +208,7 @@
       ]
    },
    "pg_conversion" : {
-      "relid_comment_tag" : "/* relation id: 2607 - pg_conversion 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2607 - pg_conversion 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_conversion\n   with (relid=2607)\n   (\n   conname         name, \n   connamespace    oid, \n   conowner        oid, \n   conforencoding  integer, \n   contoencoding   integer, \n   conproc         regproc, \n   condefault      boolean\n   )",
       "CamelCaseRelationId" : "ConversionRelationId",
       "with" : {
@@ -269,7 +269,7 @@
       ]
    },
    "pg_shdepend" : {
-      "relid_comment_tag" : "/* relation id: 1214 - pg_shdepend 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 1214 - pg_shdepend 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_shdepend\n   with (camelcase=SharedDepend, shared=true, oid=false, relid=1214, content=SEGMENT_LOCAL)\n   (\n   dbid        oid, \n   classid     oid, \n   objid       oid, \n   refclassid  oid, \n   refobjid    oid, \n   deptype     \"char\"\n   )",
       "CamelCaseRelationId" : "SharedDependRelationId",
       "with" : {
@@ -324,7 +324,7 @@
       ]
    },
    "gp_persistent_relation_node" : {
-      "relid_comment_tag" : "/* relation id: 5090 - gp_persistent_relation_node 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5090 - gp_persistent_relation_node 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_persistent_relation_node\n   with (shared=true, oid=false, relid=5090, reltype_oid=6990, content=PERSISTENT)\n   (\n   tablespace_oid                                     oid       ,\n   database_oid                                       oid       ,\n   relfilenode_oid                                    oid       ,\n   segment_file_num                                   integer   ,\n   relation_storage_manager                           smallint  ,\n   persistent_state                                   smallint  ,\n   create_mirror_data_loss_tracking_session_num       bigint    ,\n   mirror_existence_state                             smallint  ,\n   mirror_data_synchronization_state                  smallint  ,\n   mirror_bufpool_marked_for_scan_incremental_resync  boolean   ,\n   mirror_bufpool_resync_changed_page_count           bigint    ,\n   mirror_bufpool_resync_ckpt_loc                     gpxlogloc ,\n   mirror_bufpool_resync_ckpt_block_num               integer   ,\n   mirror_append_only_loss_eof                        bigint    ,\n   mirror_append_only_new_eof                         bigint    ,\n   reserved                    \t\t\t\t\t\t  integer   ,\n   parent_xid                                         integer   ,\n   persistent_serial_num                              bigint    ,\n   previous_free_tid                                  tid       \n   )",
       "UppercaseReltypeOid" : "GP_PERSISTENT_RELATION_NODE_RELTYPE_OID",
       "CamelCaseRelationId" : "GpPersistent_relation_nodeRelationId",
@@ -560,7 +560,7 @@
             "colname" : "proacl"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 1255 - pg_proc 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 1255 - pg_proc 20101210 */\n",
       "with" : {
          "shared" : 0,
          "toast_oid" : "2836",
@@ -596,7 +596,7 @@
       }
    },
    "gp_version_at_initdb" : {
-      "relid_comment_tag" : "/* relation id: 5003 - gp_version_at_initdb 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5003 - gp_version_at_initdb 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_version_at_initdb\n   with (shared=true, oid=false, relid=5003)\n   (\n    schemaversion   smallint ,\n\tproductversion  text      \n   )",
       "CamelCaseRelationId" : "GpVersion_at_initdbRelationId",
       "with" : {
@@ -626,7 +626,7 @@
       ]
    },
    "pg_largeobject" : {
-      "relid_comment_tag" : "/* relation id: 2613 - pg_largeobject 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2613 - pg_largeobject 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_largeobject\n   with (camelcase=LargeObject, shared=false, oid=false, relid=2613)\n   (\n   loid    oid     , -- Identifier of large object \n   pageno  integer , -- Page number (starting from 0)\n   data    bytea     -- Data for page (may be zero-length)\n   )",
       "CamelCaseRelationId" : "LargeObjectRelationId",
       "with" : {
@@ -727,7 +727,7 @@
             "colname" : "statime"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 6056 - pg_stat_last_shoperation 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 6056 - pg_stat_last_shoperation 20101210 */\n",
       "with" : {
          "shared" : "1",
          "reltype_oid" : "6441",
@@ -832,7 +832,7 @@
             "colname" : "consrc"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 2606 - pg_constraint 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2606 - pg_constraint 20101210 */\n",
       "with" : {
          "toast_oid" : "2832",
          "oid" : 1,
@@ -864,7 +864,7 @@
       }
    },
    "gp_master_mirroring" : {
-      "relid_comment_tag" : "/* relation id: 5008 - gp_master_mirroring 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5008 - gp_master_mirroring 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_master_mirroring\n   with (camelcase=GpMasterMirroring, shared=true, oid=false, relid=5008, content=MASTER_ONLY)\n   (\n   summary_state  text,\n   detail_state   text,\n   log_time       timestamp with time zone,\n   error_message  text\n   )",
       "CamelCaseRelationId" : "GpMasterMirroringRelationId",
       "with" : {
@@ -908,7 +908,7 @@
       ]
    },
    "pg_cast" : {
-      "relid_comment_tag" : "/* relation id: 2605 - pg_cast 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2605 - pg_cast 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_cast\n   with (relid=2605)\n   (\n   castsource   oid, \n   casttarget   oid, \n   castfunc     oid, \n   castcontext  \"char\"\n   )",
       "CamelCaseRelationId" : "CastRelationId",
       "with" : {
@@ -951,7 +951,7 @@
       ]
    },
    "pg_class" : {
-      "relid_comment_tag" : "/* relation id: 1259 - pg_class 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 1259 - pg_class 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_class\n   with (bootstrap=true, relid=1259)\n   (\n   relname         name      ,\n   relnamespace    oid       ,\n   reltype         oid       ,\n   relowner        oid       ,\n   relam           oid       ,\n   relfilenode     oid       ,\n   reltablespace   oid       ,\n   relpages        integer   ,\n   reltuples       real      ,\n   reltoastrelid   oid       ,\n   reltoastidxid   oid       ,\n   relaosegrelid   oid       ,\n   relaosegidxid   oid       ,\n   relhasindex     boolean   ,\n   relisshared     boolean   ,\n   relkind         \"char\"    ,\n   relstorage      \"char\"    ,\n   relnatts        smallint  ,\n   relchecks       smallint  ,\n   reltriggers     smallint  ,\n   relukeys        smallint  ,\n   relfkeys        smallint  ,\n   relrefs         smallint  ,\n   relhasoids      boolean   ,\n   relhaspkey      boolean   ,\n   relhasrules     boolean   ,\n   relhassubclass  boolean   ,\n   relfrozenxid    xid       ,\n   relacl          aclitem[] ,\n   reloptions      text[]    \n   )",
       "CamelCaseRelationId" : "ClassRelationId",
       "with" : {
@@ -1240,7 +1240,7 @@
             "colname" : "fselocation"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 5033 - pg_filespace_entry 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5033 - pg_filespace_entry 20101210 */\n",
       "with" : {
          "reltype_oid" : "6439",
          "toast_oid" : "2902",
@@ -1301,7 +1301,7 @@
       ]
    },
    "pg_tablespace" : {
-      "relid_comment_tag" : "/* relation id: 1213 - pg_tablespace 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 1213 - pg_tablespace 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_tablespace\n   with (camelcase=TableSpace, shared=true, relid=1213)\n   (\n   spcname          name, \n   spcowner         oid, \n   spclocation      text, \n   spcacl           aclitem[], \n   spcprilocations  text[], \n   spcmirlocations  text[], \n   spcfsoid         oid\n   )",
       "CamelCaseRelationId" : "TableSpaceRelationId",
       "with" : {
@@ -1382,7 +1382,7 @@
       ]
    },
    "gp_fault_strategy" : {
-      "relid_comment_tag" : "/* relation id: 5039 - gp_fault_strategy 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5039 - gp_fault_strategy 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_fault_strategy\n   with (camelcase=GpFaultStrategy, shared=true, oid=false, relid=5039, reltype_oid=6443, content=MASTER_ONLY)\n   (\n   fault_strategy \"char\"\n   )",
       "UppercaseReltypeOid" : "GP_FAULT_STRATEGY_RELTYPE_OID",
       "CamelCaseRelationId" : "GpFaultStrategyRelationId",
@@ -1409,7 +1409,7 @@
       ]
    },
    "pg_opclass" : {
-      "relid_comment_tag" : "/* relation id: 2616 - pg_opclass 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2616 - pg_opclass 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_opclass\n   with (camelcase=OperatorClass, shared=false, relid=2616)\n   (\n   opcamid       oid     ,\n   opcname       name    ,\n   opcnamespace  oid     ,\n   opcowner      oid     ,\n   opcintype     oid     ,\n   opcdefault    boolean ,\n   opckeytype    oid     \n   )",
       "CamelCaseRelationId" : "OperatorClassRelationId",
       "with" : {
@@ -1470,7 +1470,7 @@
       ]
    },
    "gp_persistent_tablespace_node" : {
-      "relid_comment_tag" : "/* relation id: 5092 - gp_persistent_tablespace_node 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5092 - gp_persistent_tablespace_node 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_persistent_tablespace_node\n   with (shared=true, oid=false, relid=5092, reltype_oid=6992, content=PERSISTENT)\n   (\n   filespace_oid                                 oid      ,\n   tablespace_oid                                oid      ,\n   persistent_state                              smallint ,\n   create_mirror_data_loss_tracking_session_num  bigint   ,\n   mirror_existence_state                        smallint ,\n   reserved                                      integer  ,\n   parent_xid                                    integer  ,\n   persistent_serial_num                         bigint   ,\n   previous_free_tid                             tid      \n   )",
       "UppercaseReltypeOid" : "GP_PERSISTENT_TABLESPACE_NODE_RELTYPE_OID",
       "CamelCaseRelationId" : "GpPersistent_tablespace_nodeRelationId",
@@ -1545,7 +1545,7 @@
       ]
    },
    "pg_autovacuum" : {
-      "relid_comment_tag" : "/* relation id: 1248 - pg_autovacuum 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 1248 - pg_autovacuum 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_autovacuum\n   with (oid=false, relid=1248)\n   (\n   vacrelid          oid, \n   enabled           boolean, \n   vac_base_thresh   integer, \n   vac_scale_factor  real, \n   anl_base_thresh   integer, \n   anl_scale_factor  real, \n   vac_cost_delay    integer, \n   vac_cost_limit    integer, \n   freeze_min_age    integer, \n   freeze_max_age    integer\n   )",
       "CamelCaseRelationId" : "AutovacuumRelationId",
       "with" : {
@@ -1623,7 +1623,7 @@
       ]
    },
    "pg_namespace" : {
-      "relid_comment_tag" : "/* relation id: 2615 - pg_namespace 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2615 - pg_namespace 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_namespace\n   with (relid=2615)\n   (\n   nspname   name      ,\n   nspowner  oid       ,\n   nspacl    aclitem[]  -- VARIABLE LENGTH FIELD\n   )",
       "CamelCaseRelationId" : "NamespaceRelationId",
       "with" : {
@@ -1801,7 +1801,7 @@
             "colname" : "rolcreatewexthdfs"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 1260 - pg_authid 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 1260 - pg_authid 20101210 */\n",
       "with" : {
          "shared" : "1",
          "toast_oid" : "2842",
@@ -1949,7 +1949,7 @@
             "colname" : "san_mounts"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 5036 - gp_segment_configuration 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5036 - gp_segment_configuration 20101210 */\n",
       "with" : {
          "reltype_oid" : "6442",
          "toast_oid" : "2900",
@@ -2018,7 +2018,7 @@
       ]
    },
    "gp_id" : {
-      "relid_comment_tag" : "/* relation id: 5001 - gp_id 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5001 - gp_id 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_id\n   with (shared=true, oid=false, relid=5001, content=SEGMENT_LOCAL)\n   (\n   gpname       name     ,\n   numsegments  smallint ,\n   dbid         smallint ,\n   content      smallint \n   )",
       "CamelCaseRelationId" : "GpIdRelationId",
       "with" : {
@@ -2061,7 +2061,7 @@
       ]
    },
    "pg_auth_members" : {
-      "relid_comment_tag" : "/* relation id: 1261 - pg_auth_members 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 1261 - pg_auth_members 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_auth_members\n   with (camelcase=AuthMem, shared=true, oid=false, relid=1261)\n   (\n   roleid        oid, \n   member        oid, \n   grantor       oid, \n   admin_option  boolean\n   )",
       "CamelCaseRelationId" : "AuthMemRelationId",
       "with" : {
@@ -2123,7 +2123,7 @@
             "colname" : "desc"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 5006 - gp_configuration_history 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5006 - gp_configuration_history 20101210 */\n",
       "with" : {
          "shared" : "1",
          "reltype_oid" : "6434",
@@ -2254,7 +2254,7 @@
             "colname" : "stavalues4"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 2619 - pg_statistic 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2619 - pg_statistic 20101210 */\n",
       "with" : {
          "shared" : 0,
          "toast_oid" : "2840",
@@ -2292,7 +2292,7 @@
       }
    },
    "pg_foreign_server" : {
-      "relid_comment_tag" : "/* relation id: 2899 - pg_foreign_server 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2899 - pg_foreign_server 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_foreign_server\n   with (camelcase=ForeignServer, relid=2899, reltype_oid=6448)\n   (\n   srvname       name, -- foreign server name\n   srvowner      oid, -- server owner\n   srvfdw      oid, -- server FDW\n\n   -- VARIABLE LENGTH FIELDS start here.  These fields may be NULL, too.\n\n   srvtype     text,\n   srvversion  text,\n   srvacl        aclitem[], -- access permissions\n   srvoptions    text[] -- FDW-specific options\n   )",
       "UppercaseReltypeOid" : "PG_FOREIGN_SERVER_RELTYPE_OID",
       "CamelCaseRelationId" : "ForeignServerRelationId",
@@ -2361,7 +2361,7 @@
       ]
    },
    "pg_window" : {
-      "relid_comment_tag" : "/* relation id: 5004 - pg_window 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5004 - pg_window 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_window\n   with (oid=false, relid=5004)\n   (\n   winfnoid         regproc,  -- pg_proc OID of the window function itself\n   winrequireorder  boolean, -- does wf require order by?\n   winallowframe    boolean, -- does wf allow framing?\n   winpeercount     boolean, -- does wf definition need peer row count?\n   wincount         boolean, -- does wf definition need partition row count?\n   winfunc          regproc, -- immediate function (0 if none)\n   winprefunc       regproc, -- preliminary function (0 if none)\n   winpretype       oid, -- type of preliminary function result\n   winfinfunc       regproc, -- final function (0 if none)\n   winkind          \"char\" \n   )",
       "CamelCaseRelationId" : "WindowRelationId",
       "with" : {
@@ -2516,7 +2516,7 @@
             "colname" : "mirror_device"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 5035 - gp_san_configuration 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5035 - gp_san_configuration 20101210 */\n",
       "with" : {
          "shared" : "1",
          "reltype_oid" : "6444",
@@ -2559,7 +2559,7 @@
       ]
    },
    "pg_am" : {
-      "relid_comment_tag" : "/* relation id: 2601 - pg_am 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2601 - pg_am 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_am\n   with (camelcase=AccessMethod,  relid=2601)\n   (\n   amname           name, \n   amstrategies     smallint, \n   amsupport        smallint, \n   amorderstrategy  smallint, \n   amcanunique      boolean, \n   amcanmulticol    boolean, \n   amoptionalkey    boolean, \n   amindexnulls     boolean, \n   amstorage        boolean, \n   amclusterable    boolean, \n   amcanshrink      boolean, \n   aminsert         regproc, \n   ambeginscan      regproc, \n   amgettuple       regproc, \n   amgetmulti       regproc, \n   amrescan         regproc, \n   amendscan        regproc, \n   ammarkpos        regproc, \n   amrestrpos       regproc, \n   ambuild          regproc, \n   ambulkdelete     regproc, \n   amvacuumcleanup  regproc, \n   amcostestimate   regproc, \n   amoptions        regproc\n    )",
       "CamelCaseRelationId" : "AccessMethodRelationId",
       "with" : {
@@ -2722,7 +2722,7 @@
       ]
    },
    "pg_amop" : {
-      "relid_comment_tag" : "/* relation id: 2602 - pg_amop 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2602 - pg_amop 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_amop\n   with (camelcase=AccessMethodOperator, oid=false, relid=2602)\n   (\n   amopclaid     oid, \n   amopsubtype   oid, \n   amopstrategy  smallint, \n   amopreqcheck  boolean, \n   amopopr       oid\n   )",
       "CamelCaseRelationId" : "AccessMethodOperatorRelationId",
       "with" : {
@@ -2834,7 +2834,7 @@
             "colname" : "writable"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 6040 - pg_exttable 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 6040 - pg_exttable 20101210 */\n",
       "with" : {
          "shared" : 0,
          "text" : "with (camelcase=ExtTable, oid=false, relid=6040)",
@@ -2894,7 +2894,7 @@
       ]
    },
    "pg_partition" : {
-      "relid_comment_tag" : "/* relation id: 5010 - pg_partition 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5010 - pg_partition 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_partition\n   with (relid=5010, content=MASTER_ONLY)\n   (\n   parrelid       oid,\n   parkind        \"char\",\n   parlevel       smallint,\n   paristemplate  boolean,\n   parnatts       smallint,\n   paratts        int2vector,\n   parclass       oidvector\n   )",
       "CamelCaseRelationId" : "PartitionRelationId",
       "with" : {
@@ -3010,7 +3010,7 @@
       ]
    },
    "pg_appendonly" : {
-      "relid_comment_tag" : "/* relation id: 6105 - pg_appendonly 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 6105 - pg_appendonly 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_appendonly\n   with (camelcase=AppendOnly, oid=false, relid=6105)\n   (\n   relid            oid, \n   blocksize        integer, \n   safefswritesize  integer, \n   compresslevel    smallint, \n   majorversion     smallint, \n   minorversion     smallint, \n   checksum         boolean, \n   compresstype     text, \n   columnstore      boolean, \n   segrelid         oid, \n   segidxid         oid, \n   blkdirrelid      oid, \n   blkdiridxid      oid, \n   version          integer\n   )",
       "CamelCaseRelationId" : "AppendOnlyRelationId",
       "with" : {
@@ -3133,7 +3133,7 @@
             "colname" : "description"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 2396 - pg_shdescription 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2396 - pg_shdescription 20101210 */\n",
       "with" : {
          "toast_oid" : "2846",
          "content" : "MASTER_ONLY",
@@ -3153,7 +3153,7 @@
       }
    },
    "pg_user_mapping" : {
-      "relid_comment_tag" : "/* relation id: 2895 - pg_user_mapping 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2895 - pg_user_mapping 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_user_mapping\n   with (camelcase=UserMapping, relid=2895, reltype_oid=6449)\n   (\n   umuser     oid, \n   umserver   oid, \n   umoptions  text[]\n   )",
       "UppercaseReltypeOid" : "PG_USER_MAPPING_RELTYPE_OID",
       "CamelCaseRelationId" : "UserMappingRelationId",
@@ -3192,7 +3192,7 @@
       ]
    },
    "pg_operator" : {
-      "relid_comment_tag" : "/* relation id: 2617 - pg_operator 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2617 - pg_operator 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_operator\n   with (camelcase=Operator, shared=false, relid=2617)\n   (\n   oprname       name    ,\n   oprnamespace  oid     ,\n   oprowner      oid     ,\n   oprkind       \"char\"  ,\n   oprcanhash    boolean ,\n   oprleft       oid     ,\n   oprright      oid     ,\n   oprresult     oid     ,\n   oprcom        oid     ,\n   oprnegate     oid     ,\n   oprlsortop    oid     ,\n   oprrsortop    oid     ,\n   oprltcmpop    oid     ,\n   oprgtcmpop    oid     ,\n   oprcode       regproc ,\n   oprrest       regproc ,\n   oprjoin       regproc \n   )",
       "CamelCaseRelationId" : "OperatorRelationId",
       "with" : {
@@ -3313,7 +3313,7 @@
       ]
    },
    "gp_relation_node" : {
-      "relid_comment_tag" : "/* relation id: 5094 - gp_relation_node 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5094 - gp_relation_node 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_relation_node\n   with (shared=false, oid=false, relid=5094, reltype_oid=6994, content=PERSISTENT)\n   (\n   relfilenode_oid                               oid     ,\n   segment_file_num                              integer ,\n   create_mirror_data_loss_tracking_session_num  bigint  ,\n   persistent_tid                                tid     ,\n   persistent_serial_num                         bigint  \n   )",
       "UppercaseReltypeOid" : "GP_RELATION_NODE_RELTYPE_OID",
       "CamelCaseRelationId" : "GpRelation_nodeRelationId",
@@ -3411,7 +3411,7 @@
             "colname" : "resdisabledsetting"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 6059 - pg_resourcetype 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 6059 - pg_resourcetype 20101210 */\n",
       "with" : {
          "shared" : "1",
          "reltype_oid" : "6445",
@@ -3518,7 +3518,7 @@
             "colname" : "statime"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 6052 - pg_stat_last_operation 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 6052 - pg_stat_last_operation 20101210 */\n",
       "with" : {
          "shared" : 0,
          "reltype_oid" : "6440",
@@ -3542,7 +3542,7 @@
       "tzhack" : "\"statime\""
    },
    "pg_trigger" : {
-      "relid_comment_tag" : "/* relation id: 2620 - pg_trigger 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2620 - pg_trigger 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_trigger\n   with (relid=2620)\n   (\n   tgrelid         oid, \n   tgname          name, \n   tgfoid          oid, \n   tgtype          smallint, \n   tgenabled       boolean, \n   tgisconstraint  boolean, \n   tgconstrname    name, \n   tgconstrrelid   oid, \n   tgdeferrable    boolean, \n   tginitdeferred  boolean, \n   tgnargs         smallint, \n   tgattr          int2vector, \n   tgargs          bytea\n   )",
       "CamelCaseRelationId" : "TriggerRelationId",
       "with" : {
@@ -3662,7 +3662,7 @@
             "colname" : "ressetting"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 6060 - pg_resqueuecapability 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 6060 - pg_resqueuecapability 20101210 */\n",
       "with" : {
          "reltype_oid" : "6446",
          "oid" : 1,
@@ -3746,7 +3746,7 @@
       ]
    },
    "gp_configuration" : {
-      "relid_comment_tag" : "/* relation id: 5000 - gp_configuration 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5000 - gp_configuration 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_configuration\n   with (shared=true, oid=false, relid=5000, content=MASTER_ONLY)\n   (\n   content         smallint,\n   definedprimary  boolean,\n   dbid            smallint,\n   isprimary       boolean,\n   valid           boolean,\n   hostname        name,\n   port            integer,\n   datadir         text\n   )",
       "CamelCaseRelationId" : "GpConfigurationRelationId",
       "with" : {
@@ -3847,7 +3847,7 @@
       ]
    },
    "gp_persistent_filespace_node" : {
-      "relid_comment_tag" : "/* relation id: 5093 - gp_persistent_filespace_node 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5093 - gp_persistent_filespace_node 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_persistent_filespace_node\n   with (shared=true, oid=false, relid=5093, reltype_oid=6993, content=PERSISTENT)\n   (\n   filespace_oid                                 oid      ,\n   db_id_1                                       smallint ,\n   location_1                                    text     ,\n   db_id_2                                       smallint ,\n   location_2                                    text     ,\n   persistent_state                              smallint ,\n   create_mirror_data_loss_tracking_session_num  bigint   ,\n   mirror_existence_state                        smallint ,\n   reserved                                      integer  ,\n   parent_xid                                    integer  ,\n   persistent_serial_num                         bigint   ,\n   previous_free_tid                             tid      \n   )",
       "UppercaseReltypeOid" : "GP_PERSISTENT_FILESPACE_NODE_RELTYPE_OID",
       "CamelCaseRelationId" : "GpPersistent_filespace_nodeRelationId",
@@ -3940,7 +3940,7 @@
       ]
    },
    "pg_attribute" : {
-      "relid_comment_tag" : "/* relation id: 1249 - pg_attribute 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 1249 - pg_attribute 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_attribute\n   with (camelcase=Attribute, relid=1249)\n   (\n   attrelid       oid, \n   attname        name, \n   atttypid       oid, \n   attstattarget  integer, \n   attlen         smallint, \n   attnum         smallint, \n   attndims       integer, \n   attcacheoff    integer, \n   atttypmod      integer, \n   attbyval       boolean, \n   attstorage     \"char\", \n   attalign       \"char\", \n   attnotnull     boolean, \n   atthasdef      boolean, \n   attisdropped   boolean, \n   attislocal     boolean, \n   attinhcount    integer\n   )",
       "CamelCaseRelationId" : "AttributeRelationId",
       "with" : {
@@ -4133,7 +4133,7 @@
             "colname" : "datacl"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 1262 - pg_database 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 1262 - pg_database 20101210 */\n",
       "with" : {
          "toast_oid" : "2844",
          "oid" : 1,
@@ -4161,7 +4161,7 @@
       }
    },
    "pg_inherits" : {
-      "relid_comment_tag" : "/* relation id: 2611 - pg_inherits 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2611 - pg_inherits 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_inherits\n   with (oid=false, relid=2611)\n   (\n   inhrelid   oid     ,\n   inhparent  oid     ,\n   inhseqno   integer \n   )",
       "CamelCaseRelationId" : "InheritsRelationId",
       "with" : {
@@ -4197,8 +4197,8 @@
       ]
    },
    "pg_aggregate" : {
-      "relid_comment_tag" : "/* relation id: 2600 - pg_aggregate 20101209 */\n",
-      "tabdef_text" : "\n   CREATE TABLE pg_aggregate\n   with (oid=false, relid=2600)\n   (\n   aggfnoid        regproc, \n   aggtransfn      regproc, \n   agginvtransfn   regproc, -- MPP windowing\n   aggprelimfn     regproc, -- MPP 2-phase agg\n   agginvprelimfn  regproc, -- MPP windowing\n   aggfinalfn      regproc, \n   aggsortop       oid, \n   aggtranstype    oid, \n   agginitval      text -- VARIABLE LENGTH FIELD\n   )",
+      "relid_comment_tag" : "/* relation id: 2600 - pg_aggregate 20101210 */\n",
+      "tabdef_text" : "\n   CREATE TABLE pg_aggregate\n   with (oid=false, relid=2600)\n   (\n   aggfnoid        regproc, \n   aggtransfn      regproc, \n   agginvtransfn   regproc, -- MPP windowing\n   aggprelimfn     regproc, -- MPP 2-phase agg\n   agginvprelimfn  regproc, -- MPP windowing\n   aggfinalfn      regproc, \n   aggsortop       oid, \n   aggtranstype    oid, \n   agginitval      text,    -- VARIABLE LENGTH FIELD\n   aggordered      bool     -- MPP ordered aggregates\n   )",
       "CamelCaseRelationId" : "AggregateRelationId",
       "with" : {
          "shared" : 0,
@@ -4229,6 +4229,7 @@
       "colh" : {
          "agginitval" : "text",
          "agginvprelimfn" : "regproc",
+         "aggordered" : "bool",
          "aggprelimfn" : "regproc",
          "aggtranstype" : "Oid",
          "aggfnoid" : "regproc",
@@ -4287,11 +4288,17 @@
             "postcomment" : "-- VARIABLE LENGTH FIELD",
             "sqltype" : "text",
             "colname" : "agginitval"
+         },
+         {
+            "ctype" : "bool",
+            "postcomment" : "-- MPP ordered aggregates",
+            "sqltype" : "bool",
+            "colname" : "aggordered"
          }
       ]
    },
    "gp_persistent_database_node" : {
-      "relid_comment_tag" : "/* relation id: 5091 - gp_persistent_database_node 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5091 - gp_persistent_database_node 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_persistent_database_node\n   with (shared=true, oid=false, relid=5091, reltype_oid=6991, content=PERSISTENT)\n   (\n   tablespace_oid                                oid      ,\n   database_oid                                  oid      ,\n   persistent_state                              smallint ,\n   create_mirror_data_loss_tracking_session_num  bigint   ,\n   mirror_existence_state                        smallint ,\n   reserved                                      integer  ,\n   parent_xid                                    integer  ,\n   persistent_serial_num                         bigint   ,\n   previous_free_tid                             tid      \n   )",
       "UppercaseReltypeOid" : "GP_PERSISTENT_DATABASE_NODE_RELTYPE_OID",
       "CamelCaseRelationId" : "GpPersistent_database_nodeRelationId",
@@ -4366,7 +4373,7 @@
       ]
    },
    "pg_listener" : {
-      "relid_comment_tag" : "/* relation id: 2614 - pg_listener 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2614 - pg_listener 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_listener\n   with (shared=false, oid=false, relid=2614, content=MASTER_ONLY)\n   (\n   relname       name    ,\n   listenerpid   integer ,\n   notification  integer \n   )",
       "CamelCaseRelationId" : "ListenerRelationId",
       "with" : {
@@ -4403,7 +4410,7 @@
       ]
    },
    "gp_distribution_policy" : {
-      "relid_comment_tag" : "/* relation id: 5002 - gp_distribution_policy 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5002 - gp_distribution_policy 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_distribution_policy\n   with (camelcase=GpPolicy, oid=false, relid=5002, content=MASTER_ONLY)\n   (\n   localoid  oid,\n   attrnums  smallint[]\n   )",
       "CamelCaseRelationId" : "GpPolicyRelationId",
       "with" : {
@@ -4434,7 +4441,7 @@
       ]
    },
    "gp_global_sequence" : {
-      "relid_comment_tag" : "/* relation id: 5096 - gp_global_sequence 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5096 - gp_global_sequence 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE gp_global_sequence\n   with (camelcase=GpGlobalSequence, oid=false, relid=5096, reltype_oid=6995, content=PERSISTENT)\n   (\n   sequence_num bigint\n   )",
       "UppercaseReltypeOid" : "GP_GLOBAL_SEQUENCE_RELTYPE_OID",
       "CamelCaseRelationId" : "GpGlobalSequenceRelationId",
@@ -4487,7 +4494,7 @@
             "colname" : "adsrc"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 2604 - pg_attrdef 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2604 - pg_attrdef 20101210 */\n",
       "with" : {
          "shared" : 0,
          "toast_oid" : "2830",
@@ -4528,7 +4535,7 @@
             "colname" : "status"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 5030 - gp_interfaces 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5030 - gp_interfaces 20101210 */\n",
       "with" : {
          "shared" : "1",
          "reltype_oid" : "6433",
@@ -4565,7 +4572,7 @@
       ]
    },
    "pg_pltemplate" : {
-      "relid_comment_tag" : "/* relation id: 1136 - pg_pltemplate 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 1136 - pg_pltemplate 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_pltemplate\n   with (camelcase=PLTemplate, shared=true, oid=false, relid=1136)\n   (\n   tmplname       name, \n   tmpltrusted    boolean, \n   tmplhandler    text, \n   tmplvalidator  text, \n   tmpllibrary    text, \n   tmplacl        aclitem[]\n   )",
       "CamelCaseRelationId" : "PLTemplateRelationId",
       "with" : {
@@ -4645,7 +4652,7 @@
             "colname" : "description"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 2609 - pg_description 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2609 - pg_description 20101210 */\n",
       "with" : {
          "toast_oid" : "2834",
          "content" : "MASTER_ONLY",
@@ -4686,7 +4693,7 @@
             "colname" : "priority"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 5029 - gp_db_interfaces 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5029 - gp_db_interfaces 20101210 */\n",
       "with" : {
          "shared" : "1",
          "reltype_oid" : "6436",
@@ -4721,7 +4728,7 @@
       ]
    },
    "pg_language" : {
-      "relid_comment_tag" : "/* relation id: 2612 - pg_language 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2612 - pg_language 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_language\n   with (relid=2612)\n   ( \n   lanname        name, \n   lanispl        boolean, \n   lanpltrusted   boolean, \n   lanplcallfoid  oid, \n   lanvalidator   oid, \n   lanacl         aclitem[]\n   )",
       "CamelCaseRelationId" : "LanguageRelationId",
       "with" : {
@@ -4776,7 +4783,7 @@
       ]
    },
    "pg_partition_rule" : {
-      "relid_comment_tag" : "/* relation id: 5011 - pg_partition_rule 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5011 - pg_partition_rule 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_partition_rule\n   with (camelcase=PartitionRule, relid=5011, content=MASTER_ONLY)\n   ( \n   paroid             oid,\n   parchildrelid      oid,\n   parparentrule      oid,\n   parname            name,\n   parisdefault       boolean,\n   parruleord         smallint,\n   parrangestartincl  boolean,\n   parrangeendincl    boolean,\n   parrangestart      text,\n   parrangeend        text,\n   parrangeevery      text,\n   parlistvalues      text,\n   parreloptions      text[],\n   partemplatespace   oid\n   )",
       "CamelCaseRelationId" : "PartitionRuleRelationId",
       "with" : {
@@ -4956,7 +4963,7 @@
       ]
    },
    "pg_depend" : {
-      "relid_comment_tag" : "/* relation id: 2608 - pg_depend 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2608 - pg_depend 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_depend\n   with (oid=false, relid=2608, content=SEGMENT_LOCAL)\n   (\n   classid      oid, \n   objid        oid, \n   objsubid     integer, \n   refclassid   oid, \n   refobjid     oid, \n   refobjsubid  integer, \n   deptype      \"char\"\n   )",
       "CamelCaseRelationId" : "DependRelationId",
       "with" : {
@@ -5017,7 +5024,7 @@
       ]
    },
    "pg_foreign_data_wrapper" : {
-      "relid_comment_tag" : "/* relation id: 2898 - pg_foreign_data_wrapper 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2898 - pg_foreign_data_wrapper 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_foreign_data_wrapper\n   with (camelcase=ForeignDataWrapper, relid=2898, reltype_oid=6447)\n   (\n   fdwname       name, -- foreign-data wrapper name\n   fdwowner      oid, -- FDW owner\n   fdwvalidator  oid, -- optional validation function\n\n   -- VARIABLE LENGTH FIELDS start here.\n\n   fdwacl        aclitem[], -- access permissions\n   fdwoptions    text[] -- FDW options\n   )",
       "UppercaseReltypeOid" : "PG_FOREIGN_DATA_WRAPPER_RELTYPE_OID",
       "CamelCaseRelationId" : "ForeignDataWrapperRelationId",
@@ -5074,7 +5081,7 @@
       ]
    },
    "pg_type" : {
-      "relid_comment_tag" : "/* relation id: 1247 - pg_type 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 1247 - pg_type 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_type\n   with (bootstrap=true, relid=1247)\n   (\n   typname        name     ,\n   typnamespace   oid      ,\n   typowner       oid      ,\n   typlen         smallint ,\n   typbyval       boolean  ,\n   typtype        \"char\"   ,\n   typisdefined   boolean  ,\n   typdelim       \"char\"   ,\n   typrelid       oid      ,\n   typelem        oid      ,\n   typinput       regproc  ,\n   typoutput      regproc  ,\n   typreceive     regproc  ,\n   typsend        regproc  ,\n   typanalyze     regproc  ,\n   typalign       \"char\"   ,\n   typstorage     \"char\"   ,\n   typnotnull     boolean  ,\n   typbasetype    oid      ,\n   typtypmod      integer  ,\n   typndims       integer  ,\n   typdefaultbin  text     ,\n   typdefault     text     \n   )",
       "CamelCaseRelationId" : "TypeRelationId",
       "with" : {
@@ -5305,7 +5312,7 @@
       ]
    },
    "pg_filespace" : {
-      "relid_comment_tag" : "/* relation id: 5009 - pg_filespace 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 5009 - pg_filespace 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_filespace\n   with (camelcase=FileSpace, shared=true, relid=5009, reltype_oid=6438)\n   (\n   fsname name, -- filespace name\n   fsowner oid -- owner of filespace\n   )",
       "UppercaseReltypeOid" : "PG_FILESPACE_RELTYPE_OID",
       "CamelCaseRelationId" : "FileSpaceRelationId",
@@ -5340,7 +5347,7 @@
       ]
    },
    "pg_appendonly_alter_column" : {
-      "relid_comment_tag" : "/* relation id: 6110 - pg_appendonly_alter_column 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 6110 - pg_appendonly_alter_column 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_appendonly_alter_column\n   with (camelcase=AppendOnlyAlterColumn, oid=false, relid=6110, reltype_oid=6437)\n   (\n   relid             oid, \n   changenum         integer, \n   segfilenums       integer[], \n   highwaterrownums  bytea\n   )",
       "UppercaseReltypeOid" : "PG_APPENDONLY_ALTER_COLUMN_RELTYPE_OID",
       "CamelCaseRelationId" : "AppendOnlyAlterColumnRelationId",
@@ -5384,7 +5391,7 @@
       ]
    },
    "pg_index" : {
-      "relid_comment_tag" : "/* relation id: 2610 - pg_index 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2610 - pg_index 20101210 */\n",
       "tabdef_text" : "\n   CREATE TABLE pg_index\n   with (oid=false, relid=2610)\n   (\n   indexrelid      oid        ,\n   indrelid        oid        ,\n   indnatts        smallint   ,\n   indisunique     boolean    ,\n   indisprimary    boolean    ,\n   indisclustered  boolean    ,\n   indisvalid      boolean    ,\n   indkey          int2vector ,\n   indclass        oidvector  ,\n   indexprs        text       ,\n   indpred         text       \n   )",
       "CamelCaseRelationId" : "IndexRelationId",
       "with" : {
@@ -5509,7 +5516,7 @@
             "colname" : "ev_action"
          }
       ],
-      "relid_comment_tag" : "/* relation id: 2618 - pg_rewrite 20101209 */\n",
+      "relid_comment_tag" : "/* relation id: 2618 - pg_rewrite 20101210 */\n",
       "with" : {
          "toast_oid" : "2838",
          "oid" : 1,

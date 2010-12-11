@@ -26,6 +26,9 @@ Options:
     -help            brief help message
     -man             full documentation
     -preview         generate data file updates in temp directory, but don't modify the actual files
+    -dumpdef         output file for dump of serialized catalog data structures
+    -dumpformat      format options for dump file [perl, jason]
+    -sqldef          output file for dump of catalog DDL statements
 
 =head1 OPTIONS
 
@@ -42,6 +45,23 @@ Options:
 =item B<-preview>
 
     Generate data file updates in temp directory, but don't modify the actual files.
+
+=item B<-dumpdef> <file>
+    
+Specify an optional filename to hold a dump of the serialized catalog
+data structures.  The format of the dump file is determined by
+dumpformat
+
+=item B<-dumpformat>
+    
+Specify a format for the dumpfile.  The only valid options are jason or perl.
+
+=item B<-sqldef> <file>
+    
+Specify an optional filename to hold the CREATE TABLE statements from
+the tidycat definitions.  Note that these statements will contain the
+tidycat WITH clause, which is not valid SQL.
+
 
 =back
 
@@ -652,7 +672,7 @@ sub parsefk
 
 	die "bad foreign key for table $tname - no such column: $fkname" unless (exists($alltabs->{$tname}->{colh}->{$fkname}));
 
-	push @{$alltabs->{$tname}->{foreign_keys}}, [$fkname, $pktname, \@cols];
+	push @{$alltabs->{$tname}->{foreign_keys}}, [[$fkname], $pktname, \@cols];
 } # end parsefk
 
 sub parsecols

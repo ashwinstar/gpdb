@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) EMC Corporation.  All Rights Reserved
+# Copyright (c) 2010-2011 EMC Corporation.  All Rights Reserved
 #
 """
    gpcatalog.py
@@ -11,6 +11,8 @@
        CatalogTable - metadata about a single tables
 """
 # ============================================================================
+import os
+import json
 from gppylib import gplog
 from gppylib.gpversion import GpVersion
 
@@ -125,6 +127,7 @@ class GPCatalog():
         self._dbConnection = dbConnection
         self._tables = {} 
         self._version = None
+        self._tidycat = {} # tidycat definitions from JSON file
 
         version_query = """
            SELECT version()
@@ -222,8 +225,45 @@ class GPCatalog():
             self._tables['pg_resqueuecapability']._setPrimaryKey(
                 "resqueueid restypid")
 
+    def _getJson(self):
+        # read tidycat catalog definitions from json document
+        indir = os.path.dirname(__file__)
+        jname = str(self._version.getVersionRelease()) + ".json"
+        try:
+            # json doc in data subdirectory of pylib module
+            infil = open(os.path.join(indir, "data", jname), "r")
+            d = json.load(infil)
+            infil.close()
+        except Exception, e:            
+            raise GPCatalogException("Error reading JSON data for %s: %s" %
+                                     (jname, str(e)))
+        return d
+
     def _setForeignKeys(self):
-        pass
+        """
+        Use tidycat to generate a json document which contains, among
+        other things, the primary key/foreign key relationships for
+        the catalog tables.  Build the fkeys for each table and
+        validate them against the catalog.
+        """
+        try:
+            d = self._getJson()
+            self._tidycat = d
+            for tname in d:
+                tdef = d[tname]
+                if "foreign_keys" not in tdef:
+                    continue
+                for fkdef in tdef["foreign_keys"]:
+                    fk2 = GPCatalogTableForeignKey(tname, 
+                                                   fkdef[0], 
+                                                   fkdef[1], 
+                                                   fkdef[2])
+                    self._tables[tname]._addForeignKey(fk2)
+        except Exception, e:
+            # older versions of product will not have tidycat defs --
+            # need to handle this case
+            logger.warn("GPCatalogTable: "+ str(e))
+
 
     def _setKnownDifferences(self):
         """
@@ -299,7 +339,7 @@ class GPCatalogTable():
     #   - getTableName()     - Returns the table name (string)
     #   - tableHasOids()     - Returns if the table has oids (boolean)
     #   - isMasterOnly()     - Returns if the table is "master only" (boolean)
-    #   - getTableAcl()      - Retruns name of the acl column (string|None)
+    #   - getTableAcl()      - Returns name of the acl column (string|None)
     #   - getPrimaryKey()    - Returns the primary key (list)
     #   - getForeignKeys()   - Returns a list of foreign keys (list)
     #   - getTableColumns()  - Returns a list of table columns (list)
@@ -371,6 +411,7 @@ class GPCatalogTable():
         self._name      = name
         self._master    = False
         self._pkey      = list(pkey or [])
+        self._fkey      = []      # foreign key
         self._excluding = set()
         self._columns   = []      # initial value
         self._acl       = None    # initial value
@@ -458,8 +499,16 @@ class GPCatalogTable():
 
         self._pkey = pkey
 
-    def _addForeignKey(self, column, catalog, other):
-        pass
+    def _addForeignKey(self, fkey):
+        # Check that the specified keys are real columns
+        for k in fkey.getColumns():
+            if k not in self._columns:
+                raise Exception("%s.%s does not exist" % (self._name, k))
+
+        self._fkey.append(fkey)
+
+#    def _addForeignKey(self, column, catalog, other):
+#        pass
 
     def _setKnownDifferences(self, diffs):
         # Split string input
@@ -469,3 +518,68 @@ class GPCatalogTable():
 
 
 
+# ============================================================================
+class GPCatalogTableForeignKey():
+    """
+    GPCatalogTableForeignKey is a container for a single instance of a
+    postgres catalog primary key/foreign key relationship.  The
+    foreign key is a set of columns for with a table, associated with
+    a set of primary key columns on a primary key table.
+
+    Note that tables can self-join, so it is possible to have the
+    primary and foreign key tables be one and the same.
+
+    This class constructs the key, but does not validate it against
+    the catalog.
+
+    """
+    # --------------------------------------------------------------------
+    # Public API functions:
+    #
+    # Accessor functions
+    #   - getTableName()      - Returns name of table with fkeys
+    #   - getPkeyTableName()  - Returns name of the pkey table for the fkeys
+    #   - getColumns()        - Returns a list of [foreign] key columns (list)
+    #   - getPKey()           - Returns a list of primary key columns (list)
+    #
+    # --------------------------------------------------------------------
+    def getTableName(self):
+        return self._tname
+
+    def getPkeyTableName(self):
+        return self._pktablename
+
+    def getColumns(self):
+        return self._columns 
+
+    def getPKey(self):
+        return self._pkey 
+
+    # --------------------------------------------------------------------
+    # Private Implementation functions
+    # --------------------------------------------------------------------
+    def __init__(self, tname, cols, pktablename, pkey):
+        """
+        Create a new GPCatalogTableForeignKey object
+        
+
+        """
+        assert(tname != None)
+        assert(pktablename != None)
+     
+        # Split string input
+        if isinstance(pkey, str):    
+            pkey = pkey.split()
+
+        self._tname       = tname
+        self._pktablename = pktablename
+        self._pkey        = list(pkey or [])
+        self._columns     = cols
+
+    def __str__(self):
+        return "%s: %s" % (self._tname, str(self._columns))
+
+    def __repr__(self):
+        return "GPCatalogTableForeignKey: %s; col: %s; " % (
+            str(self._tname), str(self._columns)
+            )
