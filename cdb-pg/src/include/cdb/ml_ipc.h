@@ -197,36 +197,35 @@ extern TupleChunkListItem RecvTupleChunkFrom(ChunkTransportState *transportState
 
 /* Some really simple, but handy functions for dealing with time-intervals. */
 static inline uint64
-timeval_delta_ms(struct timeval t1, struct timeval t0)
-{
-    uint64 tdiff = (t1.tv_usec - t0.tv_usec + 500) / 1000;
-
-    if (t1.tv_sec != t0.tv_sec)
-        tdiff += 1000 * (t1.tv_sec - t0.tv_sec);
-    return  tdiff;
-}
-
-static inline uint64
-gettime_elapsed_ms(struct timeval t0)
-{
-    struct timeval  t1;
-
-    gettimeofday(&t1, NULL);
-    return timeval_delta_ms(t1, t0);
-}
-
-static inline uint64
-gettime_elapsed_micros(struct timeval beginTime)
+gettime_elapsed_us(struct timeval *beginTime)
 {
 	struct timeval endTime;
 
-	gettimeofday(&endTime, NULL);
+	gp_get_monotonic_time(&endTime);
 
-	Assert((endTime.tv_sec > beginTime.tv_sec) ||
-		   ((endTime.tv_sec == beginTime.tv_sec) && (endTime.tv_usec >= beginTime.tv_usec)));
+#ifdef HAVE_LIBRT
+	Assert((endTime.tv_sec > beginTime->tv_sec) ||
+		   ((endTime.tv_sec == beginTime->tv_sec) && (endTime.tv_usec >= beginTime->tv_usec)));
+#endif
 
-	return ((endTime.tv_sec - beginTime.tv_sec) * 1000 * 1000 +
-			(endTime.tv_usec - beginTime.tv_usec));
+	if ((endTime.tv_sec > beginTime->tv_sec) ||
+		((endTime.tv_sec == beginTime->tv_sec) && (endTime.tv_usec >= beginTime->tv_usec)))
+	{
+		return ((endTime.tv_sec - beginTime->tv_sec) * 1000 * 1000 +
+				(endTime.tv_usec - beginTime->tv_usec));
+	}
+
+	/*
+	 * If the current time is earlier than beginTime, we simple return
+	 * 0 here.
+	 */
+	return 0;
+}
+
+static inline uint64
+gettime_elapsed_ms(struct timeval *beginTime)
+{
+    return gettime_elapsed_us(beginTime) / 1000;
 }
 
 /* The DeregisterReadInterest() function is used to specify that we are no

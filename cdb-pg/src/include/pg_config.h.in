@@ -322,6 +322,9 @@
 /* Define to 1 if you have the `z' library (-lz). */
 #undef HAVE_LIBZ
 
+/* Define to 1 if you have the `rt' library (-lrt). */
+#undef HAVE_LIBRT
+
 /* Define to 1 if constants of type 'long long int' should have the suffix LL.
    */
 #undef HAVE_LL_CONSTANTS

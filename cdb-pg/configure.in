@@ -729,6 +729,13 @@ PGAC_ARG_BOOL(with, zlib, yes,
 AC_SUBST(with_zlib)
 
 #
+# Realtime library
+#
+PGAC_ARG_BOOL(with, rt, yes,
+              [  --without-rt            do not use Realtime Library])
+AC_SUBST(with_rt)
+
+#
 # Elf
 #
 
@@ -928,6 +935,11 @@ if test "$with_openssl" = yes ; then
   fi
 fi
 
+if test "$with_rt" = yes ; then
+  AC_CHECK_LIB(rt, clock_gettime, [],
+                [AC_MSG_WARN([Realtime library not found])])
+fi
+
 if test "$with_pam" = yes ; then
   AC_CHECK_LIB(pam,    pam_start, [], [AC_MSG_ERROR([library 'pam' is required for PAM])])
 fi
@@ -1096,6 +1108,13 @@ if test "$enable_email" = yes; then
 	AC_CHECK_HEADERS(auth-client.h, [],
 					[AC_MSG_ERROR([header file <auth-client.h> is required for email alert support])])
 fi
+
+# realtime library header
+if test "$with_rt" = yes; then
+	AC_CHECK_HEADERS([time.h], [],
+			 [AC_MSG_ERROR([header file <time.h> is required for realtime library support])])
+fi
+
 
 
 ##

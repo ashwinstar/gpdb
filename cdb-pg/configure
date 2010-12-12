@@ -674,6 +674,7 @@ LDFLAGS_EX
 ELF_SYS
 EGREP
 GREP
+with_rt
 with_zlib
 with_system_tzdata
 with_openssl
@@ -814,6 +815,7 @@ with_readline
 with_libedit_preferred
 with_system_tzdata
 with_zlib
+with_rt
 with_gnu_ld
 enable_largefile
 '
@@ -1492,6 +1494,7 @@ Optional Packages:
   --without-libedit-preferred  Don't prefer BSD Libedit over GNU Readline
   --with-system-tzdata=DIR  use system time zone data in DIR
   --without-zlib          do not use Zlib
+  --without-rt            do not use Realtime Library
   --with-gnu-ld           assume the C compiler uses GNU ld [default=no]
 
 Some influential environment variables:
@@ -4775,7 +4778,7 @@ fi
 
 
 #
-# Enable fault injection
+# Enable testing utilities
 #
 
 pgac_args="$pgac_args enable_testutils"
@@ -5555,6 +5558,36 @@ if test "${with_zlib+set}" = set; then :
 
 else
   with_zlib=yes
+
+fi
+
+
+
+
+#
+# Realtime library
+#
+
+pgac_args="$pgac_args with_rt"
+
+
+# Check whether --with-rt was given.
+if test "${with_rt+set}" = set; then :
+  withval=$with_rt;
+  case $withval in
+    yes)
+      :
+      ;;
+    no)
+      :
+      ;;
+    *)
+      as_fn_error "no argument expected for --with-rt option" "$LINENO" 5
+      ;;
+  esac
+
+else
+  with_rt=yes
 
 fi
 
@@ -8497,6 +8530,57 @@ fi
   fi
 fi
 
+if test "$with_rt" = yes ; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for clock_gettime in -lrt" >&5
+$as_echo_n "checking for clock_gettime in -lrt... " >&6; }
+if test "${ac_cv_lib_rt_clock_gettime+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lrt  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char clock_gettime ();
+int
+main ()
+{
+return clock_gettime ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_rt_clock_gettime=yes
+else
+  ac_cv_lib_rt_clock_gettime=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_rt_clock_gettime" >&5
+$as_echo "$ac_cv_lib_rt_clock_gettime" >&6; }
+if test "x$ac_cv_lib_rt_clock_gettime" = x""yes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBRT 1
+_ACEOF
+
+  LIBS="-lrt $LIBS"
+
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: Realtime library not found" >&5
+$as_echo "$as_me: WARNING: Realtime library not found" >&2;}
+fi
+
+fi
+
 if test "$with_pam" = yes ; then
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pam_start in -lpam" >&5
 $as_echo_n "checking for pam_start in -lpam... " >&6; }
@@ -9670,6 +9754,25 @@ fi
 done
 
 fi
+
+# realtime library header
+if test "$with_rt" = yes; then
+	for ac_header in time.h
+do :
+  ac_fn_c_check_header_mongrel "$LINENO" "time.h" "ac_cv_header_time_h" "$ac_includes_default"
+if test "x$ac_cv_header_time_h" = x""yes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_TIME_H 1
+_ACEOF
+
+else
+  as_fn_error "header file <time.h> is required for realtime library support" "$LINENO" 5
+fi
+
+done
+
+fi
+
 
 
 ##

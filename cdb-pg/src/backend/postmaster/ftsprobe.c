@@ -908,7 +908,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		return PROBE_DEAD;
 	}
 
-  	gettimeofday(&startTime, NULL);
+  	gp_get_monotonic_time(&startTime);
 
 	for (;;)
 	{
@@ -1166,7 +1166,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 				break;
 		}
 
-		elapsed_ms = gettime_elapsed_ms(startTime);
+		elapsed_ms = gettime_elapsed_ms(&startTime);
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 			write_log("Probe elapsed time: " UINT64_FORMAT " milliseconds", elapsed_ms);

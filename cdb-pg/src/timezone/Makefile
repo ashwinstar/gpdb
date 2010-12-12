@@ -16,7 +16,7 @@ override CPPFLAGS := $(CPPFLAGS)
 override CFLAGS := $(CFLAGS) -O1
 
 # files to build into backend
-OBJS= localtime.o strftime.o pgtz.o
+OBJS= localtime.o strftime.o pgtz.o gptime.o
 
 # files needed to build zic utility program
 ZICOBJS= zic.o ialloc.o scheck.o localtime.o

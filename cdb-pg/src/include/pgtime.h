@@ -70,4 +70,15 @@ extern pg_tz *gmt_timezone;
 /* Maximum length of a timezone name (not including trailing null) */
 #define TZ_STRLEN_MAX 255
 
+/*
+ * gp_get_monotonic_time
+ *    This function makes best effort to return the time in the monotonic order.
+ *
+ * This function returns 0 on success, and -1 on failure.
+ *
+ * This function is intended for computing elapsed time between two
+ * calls. It is not for getting the system time.
+ */
+extern int gp_get_monotonic_time(struct timeval *restrict tp);
+
 #endif   /* _PGTIME_H */

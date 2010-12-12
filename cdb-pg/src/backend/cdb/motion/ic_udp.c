@@ -44,7 +44,7 @@
 #include <limits.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <sys/time.h>
+#include "pgtime.h"
 #include <netinet/in.h>
 
 #ifdef HAVE_POLL_H
@@ -1491,7 +1491,7 @@ SetupUDPInterconnect(EState *estate)
                                 expectedTotalIncoming, expectedTotalOutgoing, gp_interconnect_id,
                                 Gp_listener_port&0x0ffff, (Gp_listener_port>>16)&0x0ffff, UDP_listenerFd)));
 
-  	gettimeofday(&startTime, NULL);
+  	gp_get_monotonic_time(&startTime);
 
 	if (interconnect_setup_timeout > 0)
 		elapsed_timeout = interconnect_setup_timeout * 1000;
@@ -1664,7 +1664,7 @@ SetupUDPInterconnect(EState *estate)
 				break;
 			}
 		}
-		elapsed_ms = gettime_elapsed_ms(startTime);
+		elapsed_ms = gettime_elapsed_ms(&startTime);
 	}
 
 	/* we've either timed out, or we're done. Time to count inbound. */
@@ -1808,14 +1808,14 @@ SetupUDPInterconnect(EState *estate)
 		}
 
 		/* Back to top of loop and look again. */
-		elapsed_ms = gettime_elapsed_ms(startTime);
+		elapsed_ms = gettime_elapsed_ms(&startTime);
 	} while (1);
 
 	estate->interconnect_context->activated = true;
 
     if (gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
     {
-        elapsed_ms = gettime_elapsed_ms(startTime);
+        elapsed_ms = gettime_elapsed_ms(&startTime);
         if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE ||
             elapsed_ms >= 0.1 * 1000 * interconnect_setup_timeout)
             elog(LOG, "SetupUDPInterconnect+" UINT64_FORMAT "ms: Activated %d incoming, "
@@ -2617,7 +2617,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				ackConn->stat_count_acks++;
 
 				/* Compute the wait time for the Ack */
-				uint64 waitTime = gettime_elapsed_micros(ackConn->ackWaitBeginTime);
+				uint64 waitTime = gettime_elapsed_us(&(((MotionConn *)ackConn)->ackWaitBeginTime));
 				ackConn->stat_total_ack_time += waitTime;
 				ackConn->stat_max_ack_time = Max(waitTime, ackConn->stat_max_ack_time);
 				ackConn->stat_min_ack_time = Min(waitTime, ackConn->stat_min_ack_time);
@@ -2665,7 +2665,7 @@ prepareXmit(MotionConn *conn)
 		pkt->crc = local_crc;
 	}
 
-	gettimeofday(&conn->activeXmitTime, NULL);
+	gp_get_monotonic_time(&conn->activeXmitTime);
 
 	/* set active xmit */
 	conn->activeXmit = conn->pBuff;
@@ -2726,7 +2726,7 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 {
 	uint64	retry = 0;
 	int		timeout;
-	int		elapsed_ms = 0;
+	uint64  elapsed_ms = 0;
 	bool	got_stops=false;
 	int		n;
 	struct pollfd nfd;
@@ -2737,7 +2737,7 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 	{
 		/* MPP-3088: don't get elapsed time on first call */
 		if (retry)
-			elapsed_ms = gettime_elapsed_ms(conn->activeXmitTime);
+			elapsed_ms = gettime_elapsed_ms(&conn->activeXmitTime);
 
 		timeout = TIMEOUT(retry);
 
@@ -2750,7 +2750,7 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 			 * this is called.
 			 */
 			if (!retry)
-				gettimeofday(&conn->ackWaitBeginTime, NULL);
+				gp_get_monotonic_time(&conn->ackWaitBeginTime);
 
 			if (timeout)
 			{
@@ -2945,7 +2945,7 @@ SendChunkUDP(MotionLayerState *mlStates, ChunkTransportState *transportStates, C
 	sendOnce(transportStates, pEntry, conn);
 
 	/* Start the timer for Ack wait time */
-	gettimeofday(&conn->ackWaitBeginTime, NULL);
+	gp_get_monotonic_time(&conn->ackWaitBeginTime);
 
 	/* handle any acks, but don't wait */
 	if (handleAcks(transportStates, pEntry))
