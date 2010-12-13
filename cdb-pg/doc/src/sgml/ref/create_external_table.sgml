@@ -30,6 +30,7 @@ CREATE [READABLE] EXTERNAL TABLE table_name
                [DELIMITER [AS] 'delimiter' | 'OFF']
                [NULL [AS] 'null string']
                [ESCAPE [AS] 'escape' | 'OFF']
+			   [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
                [FILL MISSING FIELDS] )]
            | 'CSV'
             [( [HEADER]
@@ -38,6 +39,7 @@ CREATE [READABLE] EXTERNAL TABLE table_name
                [NULL [AS] 'null string']
                [FORCE NOT NULL column [, ...]]
                [ESCAPE [AS] 'escape']
+			   [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
                [FILL MISSING FIELDS] )]
      [ ENCODING 'encoding' ]
      [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
@@ -57,6 +59,7 @@ CREATE [READABLE] EXTERNAL WEB TABLE table_name
                [DELIMITER [AS] 'delimiter' | 'OFF']
                [NULL [AS] 'null string']
                [ESCAPE [AS] 'escape' | 'OFF']
+			   [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
                [FILL MISSING FIELDS] )]
            | 'CSV'
             [( [HEADER]
@@ -65,6 +68,7 @@ CREATE [READABLE] EXTERNAL WEB TABLE table_name
                [NULL [AS] 'null string']
                [FORCE NOT NULL column [, ...]]
                [ESCAPE [AS] 'escape']
+			   [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
                [FILL MISSING FIELDS] )]
      [ ENCODING 'encoding' ]
      [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
