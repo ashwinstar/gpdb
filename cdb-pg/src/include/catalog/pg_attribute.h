@@ -51,6 +51,8 @@
    attinhcount    integer
    );
 
+   alter table pg_attribute add fk attrelid on pg_class(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

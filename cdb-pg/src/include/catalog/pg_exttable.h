@@ -37,6 +37,9 @@
 
    create unique index on pg_exttable(reloid) with (indexid=6041);
 
+   alter table pg_exttable add fk reloid on pg_class(oid);
+   alter table pg_exttable add fk fmterrtbl on pg_class(oid);
+
    TIDYCAT_ENDDEF
 */
 /* TIDYCAT_BEGIN_CODEGEN 

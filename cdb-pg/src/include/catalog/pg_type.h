@@ -75,6 +75,15 @@
    typdefault     text     
    );
 
+   alter table pg_type add fk typnamespace on pg_namespace(oid);
+   alter table pg_type add fk typowner on pg_authid(oid);
+   alter table pg_type add fk typrelid on pg_class(oid);
+   alter table pg_type add fk typinput on pg_proc(oid);
+   alter table pg_type add fk typoutput on pg_proc(oid);
+   alter table pg_type add fk typreceive on pg_proc(oid);
+   alter table pg_type add fk typsend on pg_proc(oid);
+   alter table pg_type add fk typanalyze on pg_proc(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

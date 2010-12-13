@@ -25,7 +25,7 @@
 /* TIDYCAT_BEGINDEF
 
    CREATE TABLE pg_resqueue
-   with (camelcase=ResQueue, shared=true, relid=6026)
+   with (camelcase=ResQueue, shared=true, relid=6026, content=MASTER_ONLY)
    (
    rsqname name, -- name of resource queue
    rsqcountlimit real, -- max active count limit
@@ -53,6 +53,7 @@
   Table is shared, so catalog.c:IsSharedRelation is updated.
   Table has an Oid column.
   Table does not have static type (only legal for pre-3.3 tables). 
+  Table contents are only maintained on MASTER.
 
 */
 
@@ -166,6 +167,7 @@ DATA(insert OID = 6055 ( pg_default 20 -1 f 0 ));
   Table is shared, so catalog.c:IsSharedRelation is updated.
   Table has an Oid column.
   Table has static type (see pg_types.h).
+  Table has TOASTable columns, but NO TOAST table.
 
 */
 
@@ -246,7 +248,7 @@ DATA(insert OID = 6459  ( memory_limit 6 f t t -1 -1 ));
 /* TIDYCAT_BEGINDEF
 
    CREATE TABLE pg_resqueuecapability
-   with (camelcase=ResQueueCapability, shared=true, relid=6060, reltype_oid=6446)
+   with (camelcase=ResQueueCapability, shared=true, relid=6060, reltype_oid=6446, content=MASTER_ONLY)
    (
    resqueueid oid,		-- OID of the queue with this capability 
    restypid smallint,	-- resource type id (key to pg_resourcetype) 
@@ -256,6 +258,9 @@ DATA(insert OID = 6459  ( memory_limit 6 f t t -1 -1 ));
    create unique index on pg_resqueuecapability(oid) with (indexid=6064);
    create index on pg_resqueuecapability(resqueueid) with (indexid=6065);
    create index on pg_resqueuecapability(restypid) with (indexid=6066);
+
+   alter table pg_resqueuecapability add fk resqueueid on pg_resqueue(oid);
+   alter table pg_resqueuecapability add fk restypid on pg_resourcetype(restypid);
 
    TIDYCAT_ENDDEF
 */
@@ -272,6 +277,8 @@ DATA(insert OID = 6459  ( memory_limit 6 f t t -1 -1 ));
   Table is shared, so catalog.c:IsSharedRelation is updated.
   Table has an Oid column.
   Table has static type (see pg_types.h).
+  Table has TOASTable columns, but NO TOAST table.
+  Table contents are only maintained on MASTER.
 
 */
 

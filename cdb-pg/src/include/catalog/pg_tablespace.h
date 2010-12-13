@@ -45,6 +45,9 @@
    spcfsoid         oid
    );
 
+   alter table pg_tablespace add fk spcowner on pg_authid(oid);
+   alter table pg_tablespace add fk spcfsoid on pg_filespace(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

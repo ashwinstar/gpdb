@@ -66,6 +66,14 @@
    reloptions      text[]    
    );
 
+   alter table pg_class add fk relnamespace on pg_namespace(oid);
+   alter table pg_class add fk reltype on pg_type(oid);
+   alter table pg_class add fk relowner on pg_authid(oid);
+   alter table pg_class add fk relam on pg_am(oid);
+   alter table pg_class add fk reltablespace on pg_tablespace(oid);
+   alter table pg_class add fk reltoastrelid on pg_class(oid);
+   alter table pg_class add fk reltoastidxid on pg_class(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 
