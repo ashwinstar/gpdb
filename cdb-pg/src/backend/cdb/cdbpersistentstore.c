@@ -68,6 +68,24 @@ void PersistentStore_Init(
 	storeData->attNumPreviousFreeTid = attNumPreviousFreeTid;
 }
 
+void PersistentStore_ResetFreeList(
+	PersistentStoreData 		*storeData,
+
+	PersistentStoreSharedData 	*storeSharedData)
+{
+	int64 persistentSerialNum;
+
+	persistentSerialNum = 
+				GlobalSequence_Current(
+						storeData->gpGlobalSequence);
+
+	storeSharedData->maxInUseSerialNum = persistentSerialNum;
+	storeSharedData->inUseCount = 0;
+	storeSharedData->maxFreeOrderNum = 0;
+	MemSet(&storeSharedData->freeTid, 0, sizeof(ItemPointerData));
+	MemSet(&storeSharedData->maxTid, 0, sizeof(ItemPointerData));
+}
+
 static void PersistentStore_DeformTuple(
 	PersistentStoreData 	*storeData,
 

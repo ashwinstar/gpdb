@@ -358,6 +358,7 @@ void AppendOnlyStorageWrite_TransactionCreateFile(
 						storageWrite->relationName,
 						relFileNode->relNode,
 						segmentFileNum,
+						/* updateIndex */ true,
 						persistentTid,
 						*persistentSerialNum);
 

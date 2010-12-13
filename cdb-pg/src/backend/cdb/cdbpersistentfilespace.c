@@ -319,6 +319,48 @@ static bool PersistentFilespace_CheckScanTupleCallback(
 	return true;	// Continue.
 }
 
+void PersistentFilespace_Reset(void)
+{
+	HASH_SEQ_STATUS stat;
+
+	FilespaceDirEntry filespaceDirEntry;
+
+	hash_seq_init(&stat, persistentFilespaceSharedHashTable);
+
+	while (true)
+	{
+		FilespaceDirEntry removeFilespaceDirEntry;
+
+		PersistentFileSysObjName fsObjName;
+		
+		filespaceDirEntry = hash_seq_search(&stat);
+		if (filespaceDirEntry == NULL)
+			break;
+
+		PersistentFileSysObjName_SetFilespaceDir(
+										&fsObjName,
+										filespaceDirEntry->key.filespaceOid);
+
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "Persistent filespace directory: Resetting '%s' serial number " INT64_FORMAT " at TID %s",
+				 PersistentFileSysObjName_ObjectName(&fsObjName),
+				 filespaceDirEntry->persistentSerialNum,
+				 ItemPointerToString(&filespaceDirEntry->persistentTid));
+
+		removeFilespaceDirEntry = 
+					(FilespaceDirEntry) 
+							hash_search(persistentFilespaceSharedHashTable,
+										(void *) &filespaceDirEntry->key,
+										HASH_REMOVE,
+										NULL);
+		
+		if (removeFilespaceDirEntry == NULL)
+			elog(ERROR, "Trying to delete entry that does not exist");
+	}
+}
+
+
 bool PersistentFilespace_Check(
 	Oid				filespace)
 {

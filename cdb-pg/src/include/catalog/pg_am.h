@@ -158,4 +158,11 @@ DATA(insert OID = 3013 (  bitmap	5 1 0 f t t t f f f bminsert bmbeginscan bmgett
 DESCR("bitmap index access method");
 #define BITMAP_AM_OID 3013
 
+/*
+ * Am_btree AM values for FormData_pg_am.
+ */
+#define Am_btree \
+  {"btree"}, 5, 1, 1, true, true, true, true, false, true, true, BTINSERT_OID, BTBEGINSCAN_OID, BTGETTUPLE_OID, BTGETMULTI_OID, BTRESCAN_OID, BTENDSCAN_OID, BTMARKPOS_OID, BTRESTRPOS_OID, BTBUILD_OID, BTBULKDELETE_OID, BTVACUUMCLEANUP_OID, BTCOSTESTIMATE_OID, BTOPTIONS_OID
+
+
 #endif   /* PG_AM_H */

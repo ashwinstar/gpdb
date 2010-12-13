@@ -697,30 +697,43 @@ DESCR("convert float4 to int4");
 
 DATA(insert OID = 330 (  btgettuple		   PGNSP PGUID 12 f f t f v 2 16 f "2281 2281" _null_ _null_ _null_  btgettuple - _null_ ));
 DESCR("btree(internal)");
+#define BTGETTUPLE_OID 330
 DATA(insert OID = 636 (  btgetmulti		   PGNSP PGUID 12 f f t f v 2 2281 f "2281 2281" _null_ _null_ _null_  btgetmulti - _null_ ));
 DESCR("btree(internal)");
+#define BTGETMULTI_OID 636
 DATA(insert OID = 331 (  btinsert		   PGNSP PGUID 12 f f t f v 6 16 f "2281 2281 2281 2281 2281 2281" _null_ _null_ _null_	btinsert - _null_ ));
 DESCR("btree(internal)");
+#define BTINSERT_OID 331
 DATA(insert OID = 333 (  btbeginscan	   PGNSP PGUID 12 f f t f v 3 2281 f "2281 2281 2281" _null_ _null_ _null_	btbeginscan - _null_ ));
 DESCR("btree(internal)");
+#define BTBEGINSCAN_OID 333
 DATA(insert OID = 334 (  btrescan		   PGNSP PGUID 12 f f t f v 2 2278 f "2281 2281" _null_ _null_ _null_ btrescan - _null_ ));
 DESCR("btree(internal)");
+#define BTRESCAN_OID 334
 DATA(insert OID = 335 (  btendscan		   PGNSP PGUID 12 f f t f v 1 2278 f "2281" _null_ _null_ _null_	btendscan - _null_ ));
 DESCR("btree(internal)");
+#define BTENDSCAN_OID 335
 DATA(insert OID = 336 (  btmarkpos		   PGNSP PGUID 12 f f t f v 1 2278 f "2281" _null_ _null_ _null_	btmarkpos - _null_ ));
 DESCR("btree(internal)");
+#define BTMARKPOS_OID 336
 DATA(insert OID = 337 (  btrestrpos		   PGNSP PGUID 12 f f t f v 1 2278 f "2281" _null_ _null_ _null_	btrestrpos - _null_ ));
 DESCR("btree(internal)");
+#define BTRESTRPOS_OID 337
 DATA(insert OID = 338 (  btbuild		   PGNSP PGUID 12 f f t f v 3 2281 f "2281 2281 2281" _null_ _null_ _null_ btbuild - _null_ ));
 DESCR("btree(internal)");
+#define BTBUILD_OID 338
 DATA(insert OID = 332 (  btbulkdelete	   PGNSP PGUID 12 f f t f v 4 2281 f "2281 2281 2281 2281" _null_ _null_ _null_ btbulkdelete - _null_ ));
 DESCR("btree(internal)");
+#define BTBULKDELETE_OID 332
 DATA(insert OID = 972 (  btvacuumcleanup   PGNSP PGUID 12 f f t f v 2 2281 f "2281 2281" _null_ _null_ _null_ btvacuumcleanup - _null_ ));
 DESCR("btree(internal)");
+#define BTVACUUMCLEANUP_OID 972
 DATA(insert OID = 1268 (  btcostestimate   PGNSP PGUID 12 f f t f v 8 2278 f "2281 2281 2281 2281 2281 2281 2281 2281" _null_ _null_ _null_  btcostestimate - _null_ ));
 DESCR("btree(internal)");
+#define BTCOSTESTIMATE_OID 1268
 DATA(insert OID = 2785 (  btoptions		   PGNSP PGUID 12 f f t f s 2 17 f "1009 16" _null_ _null_ _null_  btoptions - _null_ ));
 DESCR("btree(internal)");
+#define BTOPTIONS_OID 2785
 
 DATA(insert OID = 339 (  poly_same		   PGNSP PGUID 12 f f t f i 2 16 f "604 604" _null_ _null_ _null_ poly_same - _null_ ));
 DESCR("same as?");
@@ -4914,6 +4927,10 @@ DATA(insert OID = 7174 (  gp_update_ao_master_stats    PGNSP PGUID 12 f f f f v 
 DESCR("append only tables utility function");
 DATA(insert OID = 7178 (  gp_persistent_build_db    PGNSP PGUID 12 f f f f v 1 23 f "16" _null_ _null_ _null_ gp_persistent_build_db  - _null_  ));
 DESCR("populate the persistent tables and gp_relation_node for the current database");
+DATA(insert OID = 7179 (  gp_persistent_build_all    PGNSP PGUID 12 f f f f v 1 23 f "16" _null_ _null_ _null_ gp_persistent_build_all  - _null_  ));
+DESCR("populate the persistent tables and gp_relation_node for the whole database instance");
+DATA(insert OID = 7180 (  gp_persistent_reset_all    PGNSP PGUID 12 f f f f v 0 23 f "" _null_ _null_ _null_ gp_persistent_reset_all  - _null_  ));
+DESCR("Remove the persistent tables and gp_relation_node for the whole database instance");
 
 /* GIN array support */
 DATA(insert OID = 2743 (  ginarrayextract	 PGNSP PGUID 12 f f t f i 2 2281 f "2277 2281" _null_ _null_ _null_	ginarrayextract - _null_ ));

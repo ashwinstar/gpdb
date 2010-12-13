@@ -62,6 +62,8 @@ extern void PersistentFileSysObj_Init(
 
 	PersistentStoreScanTupleCallback	scanTupleCallback);
 
+extern void PersistentFileSysObj_Reset(void);
+
 extern void PersistentFileSysObj_GetDataPtrs(
 	PersistentFsObjType				fsObjType,
 	

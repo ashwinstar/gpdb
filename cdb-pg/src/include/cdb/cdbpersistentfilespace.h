@@ -18,6 +18,8 @@
 #include "utils/palloc.h"
 #include "cdb/cdbpersistentfilesysobj.h"
 
+extern void PersistentFilespace_Reset(void);
+
 extern bool PersistentFilespace_Check(
 	Oid 			filespace);
 

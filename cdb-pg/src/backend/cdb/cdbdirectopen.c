@@ -11,6 +11,11 @@
 #include "utils/guc.h"
 #include "storage/smgr.h"
 #include "utils/memutils.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_am.h"
+#include "catalog/pg_index.h"
+#include "catalog/pg_opclass.h"
+#include "utils/builtins.h"
 
 /*
  * pg_class.
@@ -44,6 +49,7 @@ DirectOpenDefineStatic(DirectOpen_GpRelationNode,\
 DatabaseInfo_GpRelationNodePgClass,\
 DatabaseInfo_GpRelationNodeAttrArray,\
 false);
+
 	
 /*
  * pg_appendonly.
@@ -181,6 +187,45 @@ PersistentFileSysObj_FilespacePgClass,\
 PersistentFileSysObj_FilespaceAttrArray,\
 false);
 
+// INDEX Variants
+
+
+/*
+ * gp_relation_node_index.
+ */
+	
+static FormData_pg_class 
+			DatabaseInfo_GpRelationNodeIndexPgClass = 
+						{Class_gp_relation_node_index};
+
+static FormData_pg_attribute 
+			DatabaseInfo_GpRelationNodeIndexAttrArray[Natts_gp_relation_node_index] =
+							{Schema_gp_relation_node_index};
+
+static FormData_pg_am 
+			DatabaseInfo_GpRelationNodeIndexPgAm =
+						{Am_gp_relation_node_index};
+
+static FormData_pg_index 
+			DatabaseInfo_GpRelationNodeIndexPgIndex =
+						{Index_gp_relation_node_index};
+
+static int2 DatabaseInfo_GpRelationNodeIndexIndKeyArray[Natts_gp_relation_node_index] =
+			{IndKey_gp_relation_node_index};
+
+static Oid DatabaseInfo_GpRelationNodeIndexIndClassArray[Natts_gp_relation_node_index] =
+			{IndClass_gp_relation_node_index};
+
+DirectOpenIndexDefineStatic(DirectOpen_GpRelationNodeIndex,\
+DatabaseInfo_GpRelationNodeIndexPgClass,\
+DatabaseInfo_GpRelationNodeIndexAttrArray,\
+DatabaseInfo_GpRelationNodeIndexPgAm,\
+DatabaseInfo_GpRelationNodeIndexPgIndex,\
+DatabaseInfo_GpRelationNodeIndexIndKeyArray,\
+DatabaseInfo_GpRelationNodeIndexIndClassArray,\
+false);
+
+
 Relation DirectOpen_Open(
 	DirectOpen *direct,
 
@@ -196,9 +241,21 @@ Relation DirectOpen_Open(
 
 	FormData_pg_attribute *attrArray,
 
+	FormData_pg_am *pgAm,
+
+	FormData_pg_index *pgIndex,
+
+	int2 *indKeyArray,
+
+	Oid *indClassArray,
+
 	bool relHasOid)
 {
+	int natts;
 	int i;
+
+	Assert(pgClass != NULL);
+	natts = pgClass->relnatts;
 
 	if (relationId == -1)
 		relationId = pgClass->relfilenode;		// Assume it is ok to use the relfilenode as the relationId in our limited usage.
@@ -219,6 +276,105 @@ Relation DirectOpen_Open(
 		direct->relationData.rd_id = relationId;
 
 		direct->relationData.rd_rel = pgClass;
+
+		if (pgIndex != NULL)
+		{
+			int pgIndexFixedLen = offsetof(FormData_pg_index, indkey);
+			int indKeyVectorLen = Int2VectorSize(natts);
+			int2vector *indKeyVector;
+
+			uint16		amstrategies;
+			uint16		amsupport;
+
+			Oid 	   *operator;
+			RegProcedure *support;
+			FmgrInfo   *supportinfo;
+
+			Assert(pgAm != NULL);
+			Assert(indKeyArray != NULL);
+			Assert(indClassArray != NULL);
+
+			/*
+			 * Allocate Formdata_pg_index with fields through indkey
+			 * where indkey is a variable length int2vector with indKeyArray values.
+			 */
+			direct->relationData.rd_index = 
+						(FormData_pg_index*)palloc(
+								pgIndexFixedLen + indKeyVectorLen);
+			memcpy(direct->relationData.rd_index, pgIndex, pgIndexFixedLen);
+
+			indKeyVector = buildint2vector(
+									indKeyArray,
+									natts);
+			memcpy(
+				&direct->relationData.rd_index->indkey, 
+				indKeyVector, 
+				indKeyVectorLen);
+
+			pfree(indKeyVector);
+
+			/*
+			 * Create oidvector in rd_indclass with values from indClassArray.
+			 */
+			direct->relationData.rd_indclass = 
+									buildoidvector(
+											indClassArray, 
+											natts);
+
+			direct->relationData.rd_am = pgAm;
+
+			amstrategies = pgAm->amstrategies;
+			amsupport = pgAm->amsupport;
+
+			direct->relationData.rd_indexcxt = TopMemoryContext;
+
+			/*
+			 * Allocate arrays to hold data
+			 */
+			direct->relationData.rd_aminfo = (RelationAmInfo *)
+				MemoryContextAllocZero(TopMemoryContext, sizeof(RelationAmInfo));
+
+			if (amstrategies > 0)
+				operator = (Oid *)
+					MemoryContextAllocZero(TopMemoryContext,
+										   natts * amstrategies * sizeof(Oid));
+			else
+				operator = NULL;
+
+			if (amsupport > 0)
+			{
+				int			nsupport = natts * amsupport;
+
+				support = (RegProcedure *)
+					MemoryContextAllocZero(TopMemoryContext, nsupport * sizeof(RegProcedure));
+				supportinfo = (FmgrInfo *)
+					MemoryContextAllocZero(TopMemoryContext, nsupport * sizeof(FmgrInfo));
+			}
+			else
+			{
+				support = NULL;
+				supportinfo = NULL;
+			}
+
+			direct->relationData.rd_operator = operator;
+			direct->relationData.rd_support = support;
+			direct->relationData.rd_supportinfo = supportinfo;
+
+			/*
+			 * Fill the operator and support procedure OID arrays.	(aminfo and
+			 * supportinfo are left as zeroes, and are filled on-the-fly when used)
+			 */
+			IndexSupportInitialize(direct->relationData.rd_indclass,
+								   operator, support,
+								   amstrategies, amsupport, natts);
+
+			/*
+			 * expressions and predicate cache will be filled later.
+			 */
+			direct->relationData.rd_indexprs = NIL;
+			direct->relationData.rd_indpred = NIL;
+			direct->relationData.rd_amcache = NULL;		
+		}
 
 		// Not much in terms of contraints.
 		direct->constrData.has_not_null = true;

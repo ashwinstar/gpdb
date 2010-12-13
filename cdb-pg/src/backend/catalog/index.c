@@ -700,6 +700,7 @@ index_create(Oid heapRelationId,
 							indexRelation->rd_rel->relname.data,
 							indexRelation->rd_rel->relfilenode,
 							/* segmentFileNum */ 0,
+							/* updateIndex */ true,
 							&indexRelation->rd_segfile0_relationnodeinfo.persistentTid,
 							indexRelation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 	

@@ -85,6 +85,7 @@ extern void InsertGpRelationNodeTuple(
 	char			*relname,
 	Oid				relation,
 	int32			segmentFileNum,
+	bool			updateIndex,
 	ItemPointer		persistentTid,
 	int64			persistentSerialNum);
 extern void UpdateGpRelationNodeTuple(

@@ -37,6 +37,38 @@
 #include "utils/builtins.h"
 #include "cdb/cdbdatabaseinfo.h"
 #include "utils/syscache.h"
+#include "access/nbtree.h"
+#include "storage/bufpage.h"
+
+static void
+PersistentBuild_NonTransactionTruncate(RelFileNode *relFileNode)
+{
+	SMgrRelation smgrRelation;
+
+	PersistentFileSysObjName fsObjName;
+
+	PersistentFileSysObjName_SetRelationFile(
+										&fsObjName, 
+										relFileNode,
+										/* segmentFileNum */ 0);
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
+			 "Non-transaction truncate of '%s'", 
+			 PersistentFileSysObjName_ObjectName(&fsObjName));
+	
+	smgrRelation = smgropen(*relFileNode);
+	
+	smgrtruncate(
+			smgrRelation, 
+			0, 
+			/* isTemp */ true, 
+			/* isLocalBuf */ false,
+			/* persistentTid */ NULL,
+			/* persistentSerialNum */ 0);
+	
+	smgrclose(smgrRelation);
+}
+
 
 static void PersistentBuild_ScanGpPersistentRelationNodeForGlobal(
 	Relation 	gp_relation_node,
@@ -132,6 +164,7 @@ static void PersistentBuild_ScanGpPersistentRelationNodeForGlobal(
 						/* relationName */ NULL,	// Optional.
 						relFileNode.relNode,	// pg_class relfilenode
 						/* segmentFileNum */ 0,
+						/* updateIndex */ false,
 						&persistentTid,
 						persistentSerialNum);
 
@@ -154,8 +187,23 @@ static void PersistentBuild_PopulateGpRelationNode(
 {
 	Relation gp_relation_node;
 	int r;
+	RelFileNode indexRelFileNode;
+	bool indexFound;
+	Relation gp_relation_node_index;
+	struct IndexInfo *indexInfo;
 
-	gp_relation_node = heap_open(GpRelationNodeRelationId, RowExclusiveLock);
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
+			 "PersistentBuild_PopulateGpRelationNode: Enter for dbOid %u",
+			 info->database);
+
+	MemSet(&indexRelFileNode, 0, sizeof(RelFileNode));
+	indexFound = false;
+	
+	gp_relation_node = 
+			DirectOpen_GpRelationNodeOpen(
+							defaultTablespace, 
+							info->database);
 
 	for (r = 0; r < info->dbInfoRelArrayCount; r++)
 	{
@@ -178,6 +226,11 @@ static void PersistentBuild_PopulateGpRelationNode(
 														0 : info->database);
 		relFileNode.relNode = dbInfoRel->relfilenodeOid;
 
+		if (dbInfoRel->relationOid == GpRelationNodeOidIndexId)
+		{
+			indexRelFileNode = relFileNode;
+			indexFound = true;
+		}
 
 		relStorageMgr = (
 				 (dbInfoRel->relstorage == RELSTORAGE_AOROWS ||
@@ -227,6 +280,7 @@ static void PersistentBuild_PopulateGpRelationNode(
 							dbInfoRel->relname,
 							relFileNode.relNode,	// pg_class relfilenode
 							/* segmentFileNum */ 0,
+							/* updateIndex */ false,
 							&persistentTid,
 							persistentSerialNum);
 			
@@ -352,6 +406,7 @@ static void PersistentBuild_PopulateGpRelationNode(
 								dbInfoRel->relname,
 								relFileNode.relNode,	// pg_class relfilenode
 								physicalSegmentFileNum,
+								/* updateIndex */ false,
 								&persistentTid,
 								persistentSerialNum);
 			}
@@ -366,16 +421,78 @@ static void PersistentBuild_PopulateGpRelationNode(
 														count);
 	}
 
-	heap_close(gp_relation_node, RowExclusiveLock);
+	/*
+	 * Build the index for gp_relation_node.  
+	 *
+	 * The problem is the session we are using is associated with one particular database
+	 * of the cluster, but we need to iterate through all the databases.  So, unfortunately, 
+	 * the solution has been to use the "Direct Open" stuff.
+	 *
+	 * We do this because MyDatabaseId, the default tablespace of the session should not be
+	 * changed.  The various caches and many other implicit things assume the object is for
+	 * MyDatabaseId and the default tablespace. For example, we cannot use 
+	 * CatalogUpdateIndexes called in InsertGpRelationNodeTuple because it will not do
+	 * the right thing.
+	 *
+	 * Also, if they re-indexed gp_relation_node, it will have a different relfilenode and so we 
+	 * must have found it (above) and open it with dynamically.
+	 */
+	Assert(indexFound);
+	
+	PersistentBuild_NonTransactionTruncate(
+									&indexRelFileNode);
+	
+	gp_relation_node_index = 
+			DirectOpen_GpRelationNodeIndexOpenDynamic(
+										GpRelationNodeOidIndexId,
+										indexRelFileNode.spcNode, 
+										indexRelFileNode.dbNode,
+										indexRelFileNode.relNode);
+
+	indexInfo = makeNode(IndexInfo);
+	
+	indexInfo->ii_NumIndexAttrs = Natts_gp_relation_node_index;
+	indexInfo->ii_KeyAttrNumbers[0] = 1;
+	indexInfo->ii_KeyAttrNumbers[1] = 2;
+	indexInfo->ii_Unique = true;
+
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
+			 "PersistentBuild_PopulateGpRelationNode: building gp_relation_node_index %u/%u/%u for gp_relation_node %u/%u/%u",
+			 gp_relation_node_index->rd_node.spcNode,
+			 gp_relation_node_index->rd_node.dbNode,
+			 gp_relation_node_index->rd_node.relNode,
+			 gp_relation_node->rd_node.spcNode,
+			 gp_relation_node->rd_node.dbNode,
+			 gp_relation_node->rd_node.relNode);
+
+	index_build(
+			gp_relation_node,
+			gp_relation_node_index,
+			indexInfo,
+			/* isprimary */ true);
+
+	DirectOpen_GpRelationNodeIndexClose(gp_relation_node_index);
+
+	DirectOpen_GpRelationNodeClose(gp_relation_node);
+
+
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
+			 "PersistentBuild_PopulateGpRelationNode: Exit for dbOid %u",
+			 info->database);
+
 }
 
-Datum
-gp_persistent_build_db(PG_FUNCTION_ARGS)
+static int64
+PersistentBuild_BuildDb(
+	Oid 		dbOid,
+
+	bool 		mirrored)
 {
 	MirroredObjectExistenceState		 mirrorExistenceState;
 	MirroredRelDataSynchronizationState	 relDataSynchronizationState;
 
-	bool				 mirrored = PG_GETARG_BOOL(0);
 	int64				 count = 0;
 	Relation			 gp_global_sequence;
 	Relation			 pg_database;
@@ -404,14 +521,6 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 		mirrorExistenceState = MirroredObjectExistenceState_NotMirrored;
 		relDataSynchronizationState = MirroredRelDataSynchronizationState_None;
 	}
-
-	if (Debug_persistent_print)
-		elog(Persistent_DebugPrintLevel(), 
-			 "gp_persistent_build_db: Using mirror existence state '%s', "
-			 "data synchronization state '%s'",
-			 MirroredObjectExistenceState_Name(mirrorExistenceState),
-			 MirroredRelDataSynchronizationState_Name(
-				 relDataSynchronizationState));
 
 	/* 
 	 * If the gp_global_sequence table hasn't been populated yet then we need 
@@ -447,13 +556,23 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 
 	/* Fetch a copy of the tuple to scribble on */
 	tuple = SearchSysCacheCopy(DATABASEOID,
-							   ObjectIdGetDatum(MyDatabaseId),
+							   ObjectIdGetDatum(dbOid),
 							   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "could not find tuple for database %u", MyDatabaseId);
+		elog(ERROR, "could not find tuple for database %u", dbOid);
 	form_pg_database = (Form_pg_database) GETSTRUCT(tuple);
 	
 	defaultTablespace = form_pg_database->dattablespace;
+
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
+			 "PersistentBuild_BuildDb: dbOid %u, '%s', mirror existence state '%s', "
+			 "data synchronization state '%s'",
+			 dbOid,
+			 form_pg_database->datname.data,
+			 MirroredObjectExistenceState_Name(mirrorExistenceState),
+			 MirroredRelDataSynchronizationState_Name(
+				 relDataSynchronizationState));
 
 	/*
 	 * Special call here to scan the persistent meta-data structures so we are open for 
@@ -462,10 +581,10 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 	PersistentFileSysObj_BuildInitScan();
 
 	info = DatabaseInfo_Collect(
-						MyDatabaseId,
-						defaultTablespace,
-						/* collectGpRelationNodeInfo */ false,
-						/* collectAppendOnlyCatalogSegmentInfo */ true);
+							dbOid,
+							defaultTablespace,
+							/* collectGpRelationNodeInfo */ false,
+							/* collectAppendOnlyCatalogSegmentInfo */ true);
 
 	for (t = 0; t < info->tablespacesCount; t++)
 	{
@@ -477,7 +596,7 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 			continue;
 	
 		dbDirNode.tablespace = tablespace;
-		dbDirNode.database = MyDatabaseId;
+		dbDirNode.database = dbOid;
 
 		PersistentDatabase_AddCreated(
 								&dbDirNode,
@@ -504,6 +623,296 @@ gp_persistent_build_db(PG_FUNCTION_ARGS)
 	 * try to redo those XLOG records in Crash Recovery.
 	 */
 	CreateCheckPoint(false, true);
+
+	return count;
+}
+
+Datum
+gp_persistent_build_db(PG_FUNCTION_ARGS)
+{
+	bool mirrored = PG_GETARG_BOOL(0);
+	int64 count;
+
+	count = PersistentBuild_BuildDb(
+								MyDatabaseId,
+								mirrored);
+
+	PG_RETURN_INT64(count);
+}
+
+
+Datum
+gp_persistent_build_all(PG_FUNCTION_ARGS)
+{
+	bool mirrored = PG_GETARG_BOOL(0);
+
+	int64 count;
+
+	Relation pg_database;
+	HeapScanDesc scan;
+	HeapTuple tuple;
+
+	// UNDONE: Verify we are in some sort of single-user mode.
+
+	/*
+	 * Do template1 first since it will also populate the shared-object persistent objects.
+	 */	
+	count = PersistentBuild_BuildDb(
+								TemplateDbOid,
+								mirrored);
+
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
+			 "gp_persistent_build_all: template1 complete");
+
+	/*
+	 * Now, the remaining databases.
+	 */
+	pg_database = heap_open(
+						DatabaseRelationId,
+						AccessShareLock);
+
+	scan = heap_beginscan(pg_database, SnapshotNow, 0, NULL);
+	count = 0;
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Oid dbOid;
+		
+		dbOid = HeapTupleGetOid(tuple);
+		if (dbOid == TemplateDbOid)
+		{
+			if (Debug_persistent_print)
+				elog(Persistent_DebugPrintLevel(), 
+					 "gp_persistent_build_all: skip template1");
+			continue;
+		}
+
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "gp_persistent_build_all: dbOid %u",
+				 dbOid);
+		
+		count += PersistentBuild_BuildDb(
+										dbOid,
+										mirrored);
+	}
+
+	heap_endscan(scan);
+
+	heap_close(pg_database, AccessShareLock);
+
+	return count;
+
+	PG_RETURN_INT64(count);
+}
+
+static void
+PersistentBuild_FindGpRelationNodeIndex(
+	Oid				database,
+
+	Oid				defaultTablespace,
+
+	RelFileNode		*relFileNode)
+{
+	Relation	pg_class_rel;
+
+	HeapScanDesc scan;
+	HeapTuple	tuple;
+
+	bool found;
+
+	/*
+	 * Iterate through all the relations of the database and find gp_relation_node_index.
+	 */
+	pg_class_rel = 
+			DirectOpen_PgClassOpen(
+							defaultTablespace, 
+							database);
+	scan = heap_beginscan(pg_class_rel, SnapshotNow, 0, NULL);
+	found = false;
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Oid 			relationOid;
+
+		Form_pg_class	form_pg_class;
+
+		Oid 			reltablespace;
+
+		relationOid = HeapTupleGetOid(tuple);
+		if (relationOid != GpRelationNodeOidIndexId)
+		{
+			continue;
+		}
+
+		form_pg_class = (Form_pg_class) GETSTRUCT(tuple);
+
+		reltablespace = form_pg_class->reltablespace;
+
+		if (reltablespace == 0)
+		{
+			reltablespace = defaultTablespace;
+		}
+
+		relFileNode->spcNode = reltablespace;
+		relFileNode->dbNode = database;
+		relFileNode->relNode= form_pg_class->relfilenode;
+
+		found = true;
+		break;
+	}
+	heap_endscan(scan);
+
+	DirectOpen_PgClassClose(pg_class_rel);
+
+	if (!found)
+	{
+		elog(ERROR, "pg_class entry for gp_relation_node_index not found");
+	}
+
+}
+
+static int64
+PersistentBuild_TruncateAllGpRelationNode(void)
+{
+	Relation pg_database;
+	HeapScanDesc scan;
+	HeapTuple tuple;
+
+	int64 count;
+
+	pg_database = heap_open(
+						DatabaseRelationId,
+						AccessShareLock);
+
+	/*
+	 * Truncate gp_relation_node and its index in each database.
+	 */
+	scan = heap_beginscan(pg_database, SnapshotNow, 0, NULL);
+	count = 0;
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Form_pg_database form_pg_database =
+						(Form_pg_database)GETSTRUCT(tuple);
+
+		Oid dbOid;
+		Oid dattablespace;
+		RelFileNode relFileNode;
+		SMgrRelation smgrRelation;
+		Page btree_metapage;
+		
+		dbOid = HeapTupleGetOid(tuple);
+		dattablespace = form_pg_database->dattablespace;
+
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "PersistentBuild_TruncateAllGpRelationNode: dbOid %u, '%s'",
+				 dbOid,
+				 form_pg_database->datname.data);
+
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "Truncating gp_relation_node %u/%u/%u in database oid %u ('%s')",
+				 relFileNode.spcNode,
+				 relFileNode.dbNode,
+				 relFileNode.relNode,
+				 dbOid,
+				 form_pg_database->datname.data);
+
+		relFileNode.spcNode = dattablespace;
+		relFileNode.dbNode = dbOid;
+		relFileNode.relNode = GpRelationNodeRelationId;
+
+		/*
+		 * Truncate WITHOUT generating an XLOG record (i.e. pretend it is a temp relation).
+		 */
+		PersistentBuild_NonTransactionTruncate(&relFileNode);
+		count++;
+
+		/*
+		 * And, the index.  Unfortunately, the relfilenode OID can change due to a
+		 * REINDEX {TABLE|INDEX} command.
+		 */
+		PersistentBuild_FindGpRelationNodeIndex(
+											dbOid,
+											dattablespace,
+											&relFileNode);
+
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "Truncating gp_relation_node_index %u/%u/%u in database oid %u ('%s').  relfilenode different %s, tablespace different %s",
+				 relFileNode.spcNode,
+				 relFileNode.dbNode,
+				 relFileNode.relNode,
+				 dbOid,
+				 form_pg_database->datname.data,
+				 ((relFileNode.relNode != GpRelationNodeOidIndexId) ? "true" : "false"),
+				 ((relFileNode.spcNode != dattablespace) ? "true" : "false"));
+
+		PersistentBuild_NonTransactionTruncate(&relFileNode);
+
+		// The BTree needs an empty meta-data block.
+		smgrRelation = smgropen(relFileNode);
+
+		btree_metapage = (Page)palloc(BLCKSZ);
+		_bt_initmetapage(btree_metapage, P_NONE, 0);
+		smgrwrite(
+			smgrRelation, 
+			/* blockNum */ 0, 
+			(char*)btree_metapage,
+			/* isTemp */ false);
+		smgrimmedsync(smgrRelation);
+		pfree(btree_metapage);
+
+		smgrclose(smgrRelation);
+
+		count++;
+	}
+
+	heap_endscan(scan);
+
+	heap_close(pg_database, AccessShareLock);
+
+	return count;
+}
+
+Datum
+gp_persistent_reset_all(PG_FUNCTION_ARGS)
+{
+	RelFileNode relFileNode;
+
+	int64 count;
+
+	// UNDONE: Verify we are in some sort of single-user mode.
+
+	/*
+	 * Truncate all database's gp_relation_node and their indices.
+	 */
+	count = PersistentBuild_TruncateAllGpRelationNode();
+
+	/*
+	 * Truncate the 4 persistent shared tables.
+	 */
+	relFileNode.spcNode = GLOBALTABLESPACE_OID;
+	relFileNode.dbNode = 0;
+	
+	relFileNode.relNode = GpPersistentRelationNodeRelationId;
+	PersistentBuild_NonTransactionTruncate(&relFileNode);
+	
+	relFileNode.relNode = GpPersistentDatabaseNodeRelationId;
+	PersistentBuild_NonTransactionTruncate(&relFileNode);
+	
+	relFileNode.relNode = GpPersistentTablespaceNodeRelationId;
+	PersistentBuild_NonTransactionTruncate(&relFileNode);
+	
+	relFileNode.relNode = GpPersistentRelationNodeRelationId;
+	PersistentBuild_NonTransactionTruncate(&relFileNode);
+
+	count += 4;
+
+	/*
+	 * Reset the persistent shared-memory free list heads and all shared-memory hash-tables.
+	 */
+	PersistentFileSysObj_Reset();
 
 	PG_RETURN_INT64(count);
 }

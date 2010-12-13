@@ -1120,6 +1120,7 @@ InsertGpRelationNodeTuple(
 	char			*relname,
 	Oid				relfilenode,
 	int32			segmentFileNum,
+	bool			updateIndex,
 	ItemPointer		persistentTid,
 	int64			persistentSerialNum)
 {
@@ -1155,7 +1156,10 @@ InsertGpRelationNodeTuple(
 	/* finally insert the new tuple, update the indexes, and clean up */
 	simple_heap_insert(gp_relation_node, tuple);
 
-	CatalogUpdateIndexes(gp_relation_node, tuple);
+	if (updateIndex)
+	{
+		CatalogUpdateIndexes(gp_relation_node, tuple);
+	}
 
 	heap_freetuple(tuple);
 }
@@ -1223,6 +1227,7 @@ AddNewRelationNodeTuple(
 							new_rel->rd_rel->relname.data,
 							new_rel->rd_rel->relfilenode,
 							/* segmentFileNum */ 0,
+							/* updateIndex */ true,
 							&new_rel->rd_segfile0_relationnodeinfo.persistentTid,
 							new_rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
 							
@@ -3353,6 +3358,7 @@ setNewRelfilenodeCommon(Relation relation, Oid newrelfilenode)
 						relation->rd_rel->relname.data,
 						newrelfilenode,
 						/* segmentFileNum */ 0,
+						/* updateIndex */ true,
 						&relation->rd_segfile0_relationnodeinfo.persistentTid,
 						relation->rd_segfile0_relationnodeinfo.persistentSerialNum);
 

@@ -328,6 +328,52 @@ bool PersistentDatabase_DbDirExistsUnderLock(
 }
 
 
+extern void PersistentDatabase_Reset(void)
+{
+	DatabaseDirEntry databaseDirEntry;
+
+	databaseDirEntry = NULL;
+	SharedOidSearch_Iterate(
+					&persistentDatabaseSharedData->databaseDirSearchTable,
+					(SharedOidSearchObjHeader**)&databaseDirEntry);
+	while (true)
+	{
+		PersistentFileSysObjName fsObjName;
+
+		DatabaseDirEntry nextDatabaseDirEntry;
+		
+		if (databaseDirEntry == NULL)
+		{
+			break;
+		}
+
+		PersistentFileSysObjName_SetDatabaseDir(
+										&fsObjName,
+										/* tablespaceOid */ databaseDirEntry->header.oid2,
+										/* databaseOid */ databaseDirEntry->header.oid1);
+
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "Persistent database directory: Resetting '%s' serial number " INT64_FORMAT " at TID %s",
+				 PersistentFileSysObjName_ObjectName(&fsObjName),
+				 databaseDirEntry->persistentSerialNum,
+				 ItemPointerToString(&databaseDirEntry->persistentTid));
+
+		nextDatabaseDirEntry = databaseDirEntry;
+		SharedOidSearch_Iterate(
+						&persistentDatabaseSharedData->databaseDirSearchTable,
+						(SharedOidSearchObjHeader**)&nextDatabaseDirEntry);
+
+		SharedOidSearch_Delete(
+					&persistentDatabaseSharedData->databaseDirSearchTable,
+					&databaseDirEntry->header);
+
+		databaseDirEntry = nextDatabaseDirEntry;
+	}
+}
+
+
+
 // -----------------------------------------------------------------------------
 // Helpers 
 // -----------------------------------------------------------------------------

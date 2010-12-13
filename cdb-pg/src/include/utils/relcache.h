@@ -147,6 +147,13 @@ extern bool RelationIdIsInInitFile(Oid relationId);
 extern void RelationCacheInitFileInvalidate(bool beforeSend);
 extern void RelationCacheInitFileRemove(const char *dbPath);
 
+extern void IndexSupportInitialize(oidvector *indclass,
+					   Oid *indexOperator,
+					   RegProcedure *indexSupport,
+					   StrategyNumber maxStrategyNumber,
+					   StrategyNumber maxSupportNumber,
+					   AttrNumber maxAttributeNumber);
+
 /* should be used only by relcache.c and catcache.c */
 extern bool criticalRelcachesBuilt;
 

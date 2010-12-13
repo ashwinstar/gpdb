@@ -481,7 +481,7 @@ inline static bool Persistent_BeforePersistenceWork(void)
 	if (IsBootstrapProcessingMode())
 		return true;
 
-	if (gp_before_persistence_work && !IsUnderPostmaster)
+	if (gp_before_persistence_work)
 		return true;
 
 	return false;
@@ -518,6 +518,11 @@ extern void PersistentStore_Init(
 	int 						attNumPersistentSerialNum,
 
 	int 						attNumPreviousFreeTid);
+
+extern void PersistentStore_ResetFreeList(
+	PersistentStoreData 		*storeData,
+
+	PersistentStoreSharedData 	*storeSharedData);
 
 extern void PersistentStore_InitScanUnderLock(
 	PersistentStoreData 		*storeData,

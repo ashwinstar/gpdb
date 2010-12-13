@@ -92,6 +92,12 @@ void PersistentRelation_FlushXLog(void)
 	PersistentFileSysObj_FlushXLog();
 }
 
+extern void PersistentRelation_Reset(void)
+{
+	// Currently, nothing to do.
+}
+
+
 //------------------------------------------------------------------------------
 
 int64 PersistentRelation_MyHighestSerialNum(void)

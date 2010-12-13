@@ -215,9 +215,59 @@ typedef FormData_gp_relation_node *Form_gp_relation_node;
 #define Class_gp_relation_node \
   {"gp_relation_node"}, PG_CATALOG_NAMESPACE, GP_RELATION_NODE_OID, BOOTSTRAP_SUPERUSERID, 0, \
                GpRelationNodeRelationId, DEFAULTTABLESPACE_OID, \
-               25, 10000, 0, 0, 0, 0, false, false, RELKIND_RELATION, RELSTORAGE_HEAP, Natts_gp_relation_node, \
+               25, 10000, 0, 0, 0, 0, true, false, RELKIND_RELATION, RELSTORAGE_HEAP, Natts_gp_relation_node, \
                0, 0, 0, 0, 0, false, false, false, false, FirstNormalTransactionId, {0}, {{{'\0','\0','\0','\0'},{'\0'}}}
 
+/*
+ * gp_relation_node's index.
+ */
+#define Natts_gp_relation_node_index				    					2
+ 
+/*
+ * gp_relation_node_index table values for FormData_pg_attribute.
+ *
+ * [Similar examples are Schema_pg_type, Schema_pg_proc, Schema_pg_attribute, etc, in
+ *  pg_attribute.h]
+ */
+#define Schema_gp_relation_node_index \
+{ GpRelationNodeRelationId, {"relfilenode_oid"}, 	26, -1,	4, 1, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
+{ GpRelationNodeRelationId, {"segment_file_num"}, 	23, -1, 4, 2, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 },
+
+/*
+ * gp_relation_node_index index values for FormData_pg_class.
+ */
+#define Class_gp_relation_node_index \
+  {"gp_relation_node_index"}, PG_CATALOG_NAMESPACE, GP_RELATION_NODE_INDEX_OID, BOOTSTRAP_SUPERUSERID, BTREE_AM_OID, \
+               GpRelationNodeOidIndexId, DEFAULTTABLESPACE_OID, \
+               25, 10000, 0, 0, 0, 0, false, false, RELKIND_INDEX, RELSTORAGE_HEAP, Natts_gp_relation_node_index, \
+               0, 0, 0, 0, 0, false, false, false, false, FirstNormalTransactionId, {0}, {{{'\0','\0','\0','\0'},{'\0'}}}
+
+/*
+ * gp_relation_node_index AM values for FormData_pg_am.
+ */
+#define Am_gp_relation_node_index \
+   Am_btree
+
+/*
+ * Init fields of int2vector with 0 or other values.  Needs to be populated for real later.
+ * vl_len_, ndim, dataoffset, elemtype, dim1, lbound1, values.
+ */
+#define Init_int2vector 0, 1, 0, InvalidOid, 0, 0, {0}
+
+#define Init_oidvector 0, 1, 0, InvalidOid, 0, 0, {InvalidOid}
+
+#define Init_text {'\0','\0','\0','\0'},{'\0'}
+/*
+ * gp_relation_node_index Index values for FormData_pg_index.
+ */
+#define Index_gp_relation_node_index \
+   GpRelationNodeOidIndexId, GpRelationNodeRelationId, Natts_gp_relation_node_index, true, false, false, true, {Init_int2vector}, {Init_oidvector}, {Init_text}, {Init_text}
+
+#define IndKey_gp_relation_node_index \
+    1, 2
+
+#define IndClass_gp_relation_node_index \
+    OID_BTREE_OPS_OID, INT4_BTREE_OPS_OID
 
 /*
  * Defines for gp_persistent_database_node table

@@ -35,6 +35,8 @@ extern void PersistentRelation_CheckTablespace(
 
 extern void PersistentRelation_FlushXLog(void);
 
+extern void PersistentRelation_Reset(void);
+
 /*
  * Indicate we intend to create a relation file as part of the current transaction.
  *

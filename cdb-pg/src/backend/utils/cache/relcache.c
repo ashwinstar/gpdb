@@ -212,12 +212,6 @@ static TupleDesc GetPgIndexDescriptor(void);
 static void AttrDefaultFetch(Relation relation);
 static void CheckConstraintFetch(Relation relation);
 static List *insert_ordered_oid(List *list, Oid datum);
-static void IndexSupportInitialize(oidvector *indclass,
-					   Oid *indexOperator,
-					   RegProcedure *indexSupport,
-					   StrategyNumber maxStrategyNumber,
-					   StrategyNumber maxSupportNumber,
-					   AttrNumber maxAttributeNumber);
 static OpClassCacheEnt *LookupOpclassInfo(Oid operatorClassOid,
 				  StrategyNumber numStrats,
 				  StrategyNumber numSupport);
@@ -1408,7 +1402,7 @@ RelationInitIndexAccessInfo(Relation relation)
  * those obtainable from the system catalog entries for the index and
  * access method.
  */
-static void
+void
 IndexSupportInitialize(oidvector *indclass,
 					   Oid *indexOperator,
 					   RegProcedure *indexSupport,

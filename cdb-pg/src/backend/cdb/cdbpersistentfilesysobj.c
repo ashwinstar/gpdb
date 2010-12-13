@@ -575,6 +575,54 @@ void PersistentFileSysObj_Init(
 	}
 }
 
+/*
+ * Reset the persistent shared-memory free list heads and shared-memory hash tables.
+ */
+void PersistentFileSysObj_Reset(void)
+{
+	PersistentFsObjType	fsObjType;
+	
+	for (fsObjType = PersistentFsObjType_First; 
+		 fsObjType <= PersistentFsObjType_Last;
+		 fsObjType++)
+	{
+		PersistentFileSysObjData		 *fileSysObjData;
+		PersistentFileSysObjSharedData  *fileSysObjSharedData;
+		 
+		PersistentFileSysObj_GetDataPtrs(
+									 fsObjType,
+									 &fileSysObjData,
+									 &fileSysObjSharedData);
+
+		PersistentStore_ResetFreeList(
+						 &fileSysObjData->storeData,
+						 &fileSysObjSharedData->storeSharedData);
+
+		switch (fsObjType)
+		{
+		case PersistentFsObjType_RelationFile:
+			PersistentRelation_Reset();
+			break;
+
+		case PersistentFsObjType_DatabaseDir:
+			PersistentDatabase_Reset();
+			break;
+
+		case PersistentFsObjType_TablespaceDir:
+			PersistentTablespace_Reset();
+			break;
+
+		case PersistentFsObjType_FilespaceDir:
+			PersistentFilespace_Reset();
+			break;
+
+		default:
+			elog(ERROR, "Unexpected persistent file-system object type: %d",
+				 fsObjType);
+		}
+	}
+}
+
 void PersistentFileSysObj_GetDataPtrs(
 	PersistentFsObjType				fsObjType,
 	
