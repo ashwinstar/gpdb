@@ -163,7 +163,7 @@ class GPCatalog():
         self._setPrimaryKeys()
 
         # Foreign key relationships of the catalog tables are not actually
-        # defined in the catalog, so must be setup manually.
+        # defined in the catalog, so must be obtained from tidycat
         self._setForeignKeys()
 
         # Most catalog tables are now ready to go, but some columns can
@@ -233,6 +233,9 @@ class GPCatalog():
             # json doc in data subdirectory of pylib module
             infil = open(os.path.join(indir, "data", jname), "r")
             d = json.load(infil)
+            # remove the tidycat comment
+            if "__comment" in d:
+                del d["__comment"]
             infil.close()
         except Exception, e:            
             raise GPCatalogException("Error reading JSON data for %s: %s" %

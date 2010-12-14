@@ -22393,11 +22393,6 @@ AlterTableNamespace(RangeVar *relation, const char *newschema)
 	relation_close(rel, NoLock);
 }
 
-/*
- * The guts of relocating a relation to another namespace: fix the pg_class
- * entry, and the pg_depend entry if any.  Caller must already have
- * opened and write-locked pg_class.
- */
 static void
 AlterRelationNamespaceInternalTwo(Relation rel,
 								  Oid relid,
@@ -22426,6 +22421,11 @@ AlterRelationNamespaceInternalTwo(Relation rel,
 	heap_close(classRel, RowExclusiveLock);
 }
 
+/*
+ * The guts of relocating a relation to another namespace: fix the pg_class
+ * entry, and the pg_depend entry if any.  Caller must already have
+ * opened and write-locked pg_class.
+ */
 void
 AlterRelationNamespaceInternal(Relation classRel, Oid relOid,
 							   Oid oldNspOid, Oid newNspOid,
