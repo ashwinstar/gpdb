@@ -309,5 +309,70 @@ CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_stat_activity AS
     WHERE S.datid = D.oid AND 
             S.usesysid = U.oid;
 
+--
+-- Ordered Aggregates
+--
+alter table @gpupgradeschemaname@.pg_aggregate add column aggordered boolean;
+update @gpupgradeschemaname@.pg_aggregate set aggordered = 'f';
+select catDML('updatae @gpupgradeschemaname@.pg_aggregate set aggordered = ''f''') from gp_dist_random('gp_id');
+
+-- array_agg
+create function @gpupgradeschemaname@.array_agg_transfn(
+        @gpupgradeschemaname@.internal, 
+        @gpupgradeschemaname@.anyelement) 
+    returns @gpupgradeschemaname@.internal
+    language internal AS 'array_agg_transfn' immutable
+    with (oid = 2908);
+create function @gpupgradeschemaname@.array_agg_finalfn(
+        @gpupgradeschemaname@.internal) 
+    returns @gpupgradeschemaname@.anyarray
+    language internal AS 'array_agg_finalfn' immutable
+    with (oid = 2909);
+create ordered aggregate @gpupgradeschemaname@.array_agg(
+        @gpupgradeschemaname@.anyelement) 
+    (
+        stype     = @gpupgradeschemaname@.internal,
+        sfunc     = @gpupgradeschemaname@.array_agg_transfn,
+        finalfunc = @gpupgradeschemaname@.array_agg_finalfn,
+        oid       = 2910
+    );
+
+-- string_agg
+create function @gpupgradeschemaname@.string_agg_transfn(
+        @gpupgradeschemaname@.internal, 
+        @gpupgradeschemaname@.text)
+    returns @gpupgradeschemaname@.internal
+    language internal AS 'string_agg_transfn' immutable
+    with (oid = 3534);
+create function @gpupgradeschemaname@.string_agg_delim_transfn(
+        @gpupgradeschemaname@.internal, 
+        @gpupgradeschemaname@.text, 
+        @gpupgradeschemaname@.text)
+    returns @gpupgradeschemaname@.internal
+    language internal AS 'string_agg_delim_transfn' immutable
+    with (oid = 3535);
+create function @gpupgradeschemaname@.string_agg_finalfn(
+        @gpupgradeschemaname@.internal)
+    returns @gpupgradeschemaname@.text
+    language internal AS 'string_agg_finalfn' immutable
+    with (oid = 3536);
+create ordered aggregate @gpupgradeschemaname@.string_agg(
+        @gpupgradeschemaname@.text) 
+    (
+        stype     = @gpupgradeschemaname@.internal,
+        sfunc     = @gpupgradeschemaname@.string_agg_transfn,
+        finalfunc = @gpupgradeschemaname@.string_agg_finalfn,
+        oid       = 3537
+    );
+
+create ordered aggregate @gpupgradeschemaname@.string_agg(
+        @gpupgradeschemaname@.text, 
+        @gpupgradeschemaname@.text) 
+    (
+        stype     = @gpupgradeschemaname@.internal,
+        sfunc     = @gpupgradeschemaname@.string_agg_delim_transfn,
+        finalfunc = @gpupgradeschemaname@.string_agg_finalfn,
+        oid       = 3538
+    );
 
 -- Catalog Upgrade DDL complete
