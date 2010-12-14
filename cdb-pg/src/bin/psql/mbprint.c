@@ -1,9 +1,9 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2009, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2010, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/mbprint.c,v 1.35 2009/06/11 14:49:08 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/mbprint.c,v 1.38.6.1 2010/08/16 00:06:24 tgl Exp $
  *
  * XXX this file does not really belong in psql/.  Perhaps move to libpq?
  * It also seems that the mbvalidate function is redundant with existing
@@ -31,7 +31,7 @@
 typedef unsigned int pg_wchar;
 
 static int
-get_utf8_id(void)
+pg_get_utf8_id(void)
 {
 	static int	utf8_id = -1;
 
@@ -40,7 +40,7 @@ get_utf8_id(void)
 	return utf8_id;
 }
 
-#define PG_UTF8		get_utf8_id()
+#define PG_UTF8		pg_get_utf8_id()
 
 
 static pg_wchar
@@ -53,28 +53,20 @@ utf2ucs(const unsigned char *c)
 	if ((*c & 0x80) == 0)
 		return (pg_wchar) c[0];
 	else if ((*c & 0xe0) == 0xc0)
-	{
 		return (pg_wchar) (((c[0] & 0x1f) << 6) |
 						   (c[1] & 0x3f));
-	}
 	else if ((*c & 0xf0) == 0xe0)
-	{
 		return (pg_wchar) (((c[0] & 0x0f) << 12) |
 						   ((c[1] & 0x3f) << 6) |
 						   (c[2] & 0x3f));
-	}
-	else if ((*c & 0xf0) == 0xf0)
-	{
+	else if ((*c & 0xf8) == 0xf0)
 		return (pg_wchar) (((c[0] & 0x07) << 18) |
 						   ((c[1] & 0x3f) << 12) |
 						   ((c[2] & 0x3f) << 6) |
 						   (c[3] & 0x3f));
-	}
 	else
-	{
 		/* that is an invalid code on purpose */
 		return 0xffffffff;
-	}
 }
 
 
@@ -383,7 +375,7 @@ pg_wcsformat(unsigned char *pwcs, size_t len, int encoding,
 	if (count <= 0)
 		exit(1);				/* Screwup */
 
-	if (count > 1)
+	if (count > 1)  /* GPDB only.  Why ? */
 		(lines + 1)->ptr = NULL;	/* terminate line array */
 }
 
