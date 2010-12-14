@@ -179,60 +179,76 @@ static apr_status_t agg_put_qlog(agg_t* agg, const gpmon_qlog_t* qlog,
 static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
 				  apr_int64_t generation)
 {
-    qdnode_t* dp;
-    gpmon_qlogkey_t key;
-    qenode_t* ep;
-    qenode_t** epp;
-    int diff;
-
-    /* find qdnode of this qexec */
-    key.tmid = qexec->key.tmid;
-    key.ssid = qexec->key.ssid;
-    key.ccnt = qexec->key.ccnt;
-    dp = apr_hash_get(agg->qtab, &key, sizeof(key));
-    if (!dp) {
-    	/* not found, internal SPI query.  Ignore. */
-    	return 0;
-    }
-
-    /* find qexec in qenode_list */
-    diff = 0;
-    for (ep = dp->qenode_list, epp = &dp->qenode_list; ep; epp = &ep->next, ep = ep->next) {
-	if (0 == (diff = ep->qexec.key.segid - qexec->key.segid))
-	    diff = ep->qexec.key.nid - qexec->key.nid;
-	if (diff >= 0)
-	    break;
-    }
-
-    /* if found, replace it */
-    if (ep && diff == 0) {
-	ep->qexec = *qexec;
-	ep->cpu_elapsed += qexec->_cpu_elapsed;
-    }
-    else {
-	qenode_t* x;
-	/* not found, make new qenode */
-	if (! (x = apr_palloc(agg->pool, sizeof(*x))))
-	    return APR_ENOMEM;
-
-	x->qexec = *qexec;
-	x->cpu_elapsed = 0;
-	x->next = ep;
-	*epp = x;
-    }
-
-    if (0) {
-	int cnt = 0;
-	TR2(("list now:\n"));
-
-	for (ep = dp->qenode_list; ep; ep = ep->next) {
-	    TR2(("%d: %d.%d.%d\n", ++cnt, ep->qexec.key.segid, ep->qexec.key.nid, ep->qexec.nodeType));
+	qdnode_t* dp;
+	gpmon_qlogkey_t key;
+	qenode_t* ep;
+	qenode_t** epp;
+	int diff;
+	
+	/* find qdnode of this qexec */
+	key.tmid = qexec->key.tmid;
+	key.ssid = qexec->key.ssid;
+	key.ccnt = qexec->key.ccnt;
+	dp = apr_hash_get(agg->qtab, &key, sizeof(key));
+	if (!dp) 
+	{
+    		/* not found, internal SPI query.  Ignore. */
+    		return 0;
 	}
-	TR2(("  -- \n"));
-    }
 
-    dp->last_updated_generation = generation;
-    return 0;
+	/* find qexec in qenode_list */
+	diff = 0;
+	for (ep = dp->qenode_list, epp = &dp->qenode_list; ep; epp = &ep->next, ep = ep->next) 
+	{
+		// different segment id, not a match
+		diff = ep->qexec.key.segid - qexec->key.segid;
+		if (diff)
+			continue;
+
+		// different node id, not a match
+		diff = ep->qexec.key.nid - qexec->key.nid;
+		if (diff)
+	    		continue;
+
+		// complete match break
+		diff = ep->qexec.key.pid - qexec->key.pid;
+		if (!diff)
+	    		break;
+    	}
+
+	/* if found, replace it */
+	if (ep && diff == 0) 
+	{
+		ep->qexec = *qexec;
+		ep->cpu_elapsed += qexec->_cpu_elapsed;
+	}
+	else 
+	{
+		qenode_t* x;
+		/* not found, make new qenode */
+		if (! (x = apr_palloc(agg->pool, sizeof(*x))))
+	    	return APR_ENOMEM;
+
+		x->qexec = *qexec;
+		x->cpu_elapsed = 0;
+		x->next = ep;
+		*epp = x;
+	}
+
+	if (0) 
+	{
+		int cnt = 0;
+		TR2(("list now:\n"));
+
+		for (ep = dp->qenode_list; ep; ep = ep->next) 
+		{
+		TR2(("%d: %d.%d.%d\n", ++cnt, ep->qexec.key.segid, ep->qexec.key.nid, ep->qexec.key.pid));
+		}
+		TR2(("  -- \n"));
+	}
+
+	dp->last_updated_generation = generation;
+	return 0;
 }
 
 
