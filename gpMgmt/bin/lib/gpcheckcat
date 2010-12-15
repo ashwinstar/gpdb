@@ -872,9 +872,9 @@ def checkFKConstraint(db, tables):
     {CATALOG2} cat2
     ON (cat1.gp_segment_id = cat2.gp_segment_id AND
         cat1.{FK1} = cat2.{PK2} )
-        WHERE cat2.{PK2} is NULL
-        AND cat1.{FK1} != 0
-        ORDER BY {primary_key_alias}, gp_segment_id
+    WHERE cat2.{PK2} is NULL
+    AND cat1.{FK1} != 0
+    ORDER BY {primary_key_alias}, gp_segment_id
     '''
 
     tblcnt = 0;
@@ -930,7 +930,7 @@ def checkFKConstraint(db, tables):
                     logger.info('[OK] Foreign key check for %s(%s)'%
                                 (tname, fkeystr))
                 else:
-                    logger.info('[FAIL] Foreign key check for '%
+                    logger.info('[FAIL] Foreign key check for %s(%s)'%
                                 (tname, fkeystr))
                     logger.error('  %s has %d issue(s)' % (tname, nrows))
 
@@ -2370,10 +2370,12 @@ if __name__ == '__main__':
     logger.info('----------------------------------------------')
     logger.info('Performing segment specific consistency checks')
     logger.info('----------------------------------------------')
-    checkPGClass()
-    checkPGAttribute()
-    checkPGType()
-    checkPGExtTable()
+    if GV.version < "4.1":
+        # these checks subsumed by foreign key checks in 4.1
+        checkPGClass()
+        checkPGAttribute()
+        checkPGType()
+        checkPGExtTable()
     checkPGClassToast()
     checkPGNamespace()
     checkDistribPolicy()
