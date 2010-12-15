@@ -330,7 +330,8 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 	Motion *motion;
 
 	Assert(subplan->flow != NULL);
-	Assert(subplan->flow->flotype == FLOW_PARTITIONED);
+	Assert(subplan->flow->flotype == FLOW_PARTITIONED ||
+		   (subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex == 0));
 	
 	if ( keep_ordering && subplan->flow->numSortCols > 0 )
 	{
