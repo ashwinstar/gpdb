@@ -354,6 +354,7 @@ static bool dispatcherAYT(void);
 static void *ic_rx_thread_func(void *arg);
 
 static void rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_in *peer);
+static void aggregateStatistics(ChunkTransportStateEntry *pEntry);
 
 static void
 setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
@@ -2231,6 +2232,8 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 			elog(DEBUG3, "receiveChunksUDP: non-directed rx woke on route %d (%p)", main_thread_waiting_route, rxconn->pBuff);
 #endif
 		}
+
+		aggregateStatistics(pEntry);
 
 		if (rxconn != NULL)
 		{
