@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER]  [-p|--password PASSWORD] [-c|--commands COMMAND_OPTIONS]
+USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER]  [-p|--password PASSWORD] [-c|--commands COMMAND_OPTIONS] [--verbose]
          where HOSTFILE lists all the hosts to install the software on
          where USER will be the user to install the software as. The default is gpadmin. (root only option)
          where PASSWORD will be set for the USER default is changeme (root only option)
@@ -94,6 +94,7 @@ def parseargs():
     parser.add_option('-u', '--user', type='string', default='gpadmin')
     parser.add_option('-p', '--password', type='string', default='changeme')
     parser.add_option('-c', '--commands', type='string')
+    parser.add_option('--verbose', action='store_true')
     (options, args) = parser.parse_args()
 
     global gphome
@@ -271,6 +272,10 @@ def dedupeHosts():
             continue
 
         uniqueseghosts[hostname] = UniqueHost(address, hostname)
+
+    if options.verbose:
+        for k in uniqueseghosts.keys():
+            logger.info("segment hostname: %s (%s)" % (uniqueseghosts[k].address, k))
 
     return False
 
