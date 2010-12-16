@@ -109,7 +109,7 @@ num_low_order_zero_bits(bitmapword w)
 /*
  * bms_copy - make a palloc'd copy of a bitmapset
  */
-inline Bitmapset *
+Bitmapset *
 bms_copy(const Bitmapset *a)
 {
 	Bitmapset  *result;
