@@ -11,6 +11,7 @@
 #include "cdb/cdbselect.h"
 #include "cdb/cdbinterconnect.h"
 #include "cdb/cdbmotion.h"
+#include "cdb/cdbvars.h"
 
 #define IC_SHORT_PACKET_LIMIT (10) /* MPP-10351: treat some short-packets as drops */
 
@@ -203,13 +204,33 @@ gettime_elapsed_us(struct timeval *beginTime)
 
 	gp_get_monotonic_time(&endTime);
 
+	/*
+	 * If either endTime or beginTime is 0, simple return 0.
+	 */
+	if ((endTime.tv_sec == 0 && endTime.tv_usec == 0) ||
+		(beginTime->tv_sec == 0 && beginTime->tv_usec == 0))
+	{
+		return 0;
+	}
+
+	bool endTimeIsBigger = 
+		((endTime.tv_sec > beginTime->tv_sec) ||
+		 ((endTime.tv_sec == beginTime->tv_sec) && (endTime.tv_usec >= beginTime->tv_usec)));
+	
+#ifdef USE_ASSERT_CHECKING
 #ifdef HAVE_LIBRT
-	Assert((endTime.tv_sec > beginTime->tv_sec) ||
-		   ((endTime.tv_sec == beginTime->tv_sec) && (endTime.tv_usec >= beginTime->tv_usec)));
+	if (!endTimeIsBigger)
+	{
+		write_log("endTime (" INT64_FORMAT ", " INT64_FORMAT ") is smaller than beginTime ("
+				  INT64_FORMAT ", " INT64_FORMAT ")",
+				  endTime.tv_sec, endTime.tv_usec, beginTime->tv_sec, beginTime->tv_usec);
+	}
+	
+	Assert(endTimeIsBigger);
+#endif
 #endif
 
-	if ((endTime.tv_sec > beginTime->tv_sec) ||
-		((endTime.tv_sec == beginTime->tv_sec) && (endTime.tv_usec >= beginTime->tv_usec)))
+	if (endTimeIsBigger)
 	{
 		return ((endTime.tv_sec - beginTime->tv_sec) * 1000 * 1000 +
 				(endTime.tv_usec - beginTime->tv_usec));

@@ -27,6 +27,8 @@
  *
  * This function is intended for computing elapsed time between two
  * calls. It is not for getting the system time.
+ *
+ * When the function returns -1, tp is set to 0.
  */
 int
 gp_get_monotonic_time(struct timeval *restrict tp)
@@ -37,13 +39,12 @@ gp_get_monotonic_time(struct timeval *restrict tp)
 	int status = clock_gettime(CLOCK_MONOTONIC, &ts);
 	
 	/*
-	 * If the status is -1, we set ts to the maximum value for
-	 * the time.
+	 * If the status is -1, we set tp to 0.
 	 */
 	if (status == -1)
 	{
-		tp->tv_sec = 0x3fffffff;
-		tp->tv_usec = 0x3fffffff;
+		tp->tv_sec = 0;
+		tp->tv_usec = 0;
 	}
 	else
 	{
