@@ -16,8 +16,8 @@
 #define NODEHASH_H
 
 #include "nodes/execnodes.h"
-
-extern int ExecHashRowSize(int tupwidth);
+#include "executor/hashjoin.h"  /* for HJTUPLE_OVERHEAD */
+#include "access/memtup.h"
 
 extern int	ExecCountSlotsHash(Hash *node);
 extern HashState *ExecInitHash(Hash *node, EState *estate, int eflags);
@@ -65,4 +65,12 @@ static inline gpmon_packet_t * GpmonPktFromHashState(HashState *node)
 {
 	return &node->ps.gpmon_pkt;
 }
+
+static inline int
+ExecHashRowSize(int tupwidth)
+{
+    return HJTUPLE_OVERHEAD +
+		MAXALIGN(sizeof(MemTupleData)) +
+		MAXALIGN(tupwidth);
+}                               /* ExecHashRowSize */
 #endif   /* NODEHASH_H */

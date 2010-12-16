@@ -145,7 +145,7 @@ pull_varnos_cbVar(Var *var, void *context, int sublevelsup)
 	return false;
 }
 
-inline Relids
+static inline Relids
 pull_varnos_of_level(Node *node, int levelsup)      /*CDB*/
 {
 	pull_varnos_context context;

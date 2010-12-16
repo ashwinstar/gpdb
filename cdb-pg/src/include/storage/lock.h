@@ -449,7 +449,26 @@ typedef enum
 extern void InitLocks(void);
 extern LockMethod GetLocksMethodTable(const LOCK *lock);
 extern uint32 LockTagHashCode(const LOCKTAG *locktag);
-extern uint32 ProcLockHashCode(const PROCLOCKTAG *proclocktag, uint32 hashcode);
+/*
+ * Compute the hash code associated with a PROCLOCKTAG, given the hashcode
+ * for its underlying LOCK.
+ *
+ * We use this just to avoid redundant calls of LockTagHashCode().
+ */
+static inline uint32
+ProcLockHashCode(const PROCLOCKTAG *proclocktag, uint32 hashcode)
+{
+	uint32		lockhash = hashcode;
+	Datum		procptr;
+
+	/*
+	 * This must match proclock_hash()!
+	 */
+	procptr = PointerGetDatum(proclocktag->myProc);
+	lockhash ^= ((uint32) procptr) << LOG2_NUM_LOCK_PARTITIONS;
+
+	return lockhash;
+}
 extern LockAcquireResult LockAcquire(const LOCKTAG *locktag,
 			LOCKMODE lockmode,
 			bool sessionLock,

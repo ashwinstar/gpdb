@@ -101,7 +101,7 @@ CdbWorkfile_Destroy(CdbWorkfile *workfile)
  * cooperate by keeping the workfile->curseek field up to date when
  * reading or writing.
  */
-inline void
+static inline void
 CdbWorkfile_Seek(CdbWorkfile *workfile, uint64 seekto)
 {
     Assert(workfile &&

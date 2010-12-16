@@ -449,26 +449,7 @@ proclock_hash(const void *key, Size keysize)
 	return lockhash;
 }
 
-/*
- * Compute the hash code associated with a PROCLOCKTAG, given the hashcode
- * for its underlying LOCK.
- *
- * We use this just to avoid redundant calls of LockTagHashCode().
- */
-inline uint32
-ProcLockHashCode(const PROCLOCKTAG *proclocktag, uint32 hashcode)
-{
-	uint32		lockhash = hashcode;
-	Datum		procptr;
 
-	/*
-	 * This must match proclock_hash()!
-	 */
-	procptr = PointerGetDatum(proclocktag->myProc);
-	lockhash ^= ((uint32) procptr) << LOG2_NUM_LOCK_PARTITIONS;
-
-	return lockhash;
-}
 
 
 /*

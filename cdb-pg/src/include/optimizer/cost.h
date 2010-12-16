@@ -35,7 +35,7 @@
  * clamp_row_est
  *		Force a row-count estimate to a sane value.
  */
-static __inline__ double 
+static inline double
 clamp_row_est(double nrows)
 {
 	/*

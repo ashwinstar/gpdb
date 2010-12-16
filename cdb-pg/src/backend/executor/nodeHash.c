@@ -389,13 +389,6 @@ static const int hprimes[] = {
 };
 
 
-inline int
-ExecHashRowSize(int tupwidth)
-{
-    return HJTUPLE_OVERHEAD +
-		MAXALIGN(sizeof(MemTupleData)) +
-		MAXALIGN(tupwidth);
-}                               /* ExecHashRowSize */
 
 
 void
