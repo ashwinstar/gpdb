@@ -3482,7 +3482,7 @@ try:
                 specialDirList.append('base/' + str(db.databaseDirectory))
                 continue
 
-             connectURL = dbconn.DbURL(dbname = db.databaseName, hostname = mirrorInfo.nic_address, port = mirrorInfo.primary_host_port)
+             connectURL = dbconn.DbURL(dbname = db.databaseName, hostname = mirrorInfo.primary_host, port = mirrorInfo.primary_host_port)
              connectForDB = dbconn.connect( dburl   = connectURL
                                           , utility = True
                                           ) 
