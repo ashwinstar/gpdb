@@ -1508,6 +1508,16 @@ sub get_relfilenode_func
 		}
 	}
 
+	# handle template0 - treat as template1
+	if (exists($dbs{10889}))
+	{
+		print "cannot connect to template0 (oid 10889) - ",
+		"will resolve relfiles against template1 instead\n",
+		Data::Dumper->Dump([$dbs{10889}]);
+		$dbs{10889}->{dbname} = "template1";
+	}
+
+
 #	print Data::Dumper->Dump([%dbs]);
 
 	for my $dbkey (keys(%dbs))
