@@ -138,6 +138,9 @@ static YY_BUFFER_STATE prepare_buffer(const char *txt, int len,
 static void emit(const char *txt, int len);
 static void escape_variable(bool as_ident);
 
+#ifdef ECHO
+#undef ECHO
+#endif
 #define ECHO emit(yytext, yyleng)
 
 %}
