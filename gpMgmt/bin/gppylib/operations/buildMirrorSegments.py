@@ -109,6 +109,7 @@ class GpMirrorToBuild:
         """
         self.__forceFullSynchronization = forceFullSynchronization
 
+
     def getFailedSegment(self):
         """
         returns the segment that failed. This can be None, for example when adding mirrors
@@ -144,11 +145,12 @@ class GpMirrorToBuild:
         return False
 
 class GpMirrorListToBuild:
-    def __init__(self, toBuild, pool, quiet, parallelDegree):
+    def __init__(self, toBuild, pool, quiet, parallelDegree, additionalWarnings=None):
         self.__mirrorsToBuild = toBuild
         self.__pool = pool
         self.__quiet = quiet
         self.__parallelDegree = parallelDegree
+        self.__additionalWarnings = additionalWarnings
         pass
 
     def getMirrorsToBuild(self):
@@ -156,6 +158,12 @@ class GpMirrorListToBuild:
         Returns a newly allocated list
         """
         return [m for m in self.__mirrorsToBuild]
+    
+    def getAdditionalWarnings(self):
+        """
+        Returns any additional warnings generated during building of list
+        """
+        return self.__additionalWarnings
 
     def buildMirrors(self, actionName, gpEnv, gpArray):
         """

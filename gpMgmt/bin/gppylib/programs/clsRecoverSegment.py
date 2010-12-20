@@ -327,13 +327,83 @@ class GpRecoverSegmentProgram:
         failedSegments = [ seg for seg in segments if seg.isSegmentDown() ]
         peersForFailedSegments = self.findAndValidatePeersForFailedSegments(gpArray, failedSegments)
 
-        newRecoverAddress = self.__options.newRecoverHost
-        if newRecoverAddress is not None:
-            interfaceLookup = GpInterfaceToHostNameCache(self.__pool, [newRecoverAddress], [None])
-            newRecoverHost = interfaceLookup.getHostName(newRecoverAddress)
-            if newRecoverHost is None:
-                raise Exception( 'Unable to find host name for address %s' % (newRecoverAddress))
+        # Dictionaries used for building mapping to new hosts
+        recoverAddressMap = {}
+        recoverHostMap = {}
+        interfaceHostnameWarnings = []
+        
+        # Check if the array is a "standard" array
+        (isStandardArray, _ignore) = gpArray.isStandardArray()
+        
+        recoverHostIdx = 0
+        
+        if self.__options.newRecoverHosts and len(self.__options.newRecoverHosts) > 0:
+            for seg in failedSegments:
+                segAddress = seg.getSegmentAddress()
+                segHostname = seg.getSegmentHostName()
+                
+                # Haven't seen this hostname before so we put it on a new host
+                if not recoverHostMap.has_key(segHostname):
+                    try:
+                        recoverHostMap[segHostname] = self.__options.newRecoverHosts[recoverHostIdx]
+                    except:
+                        # If we get here, not enough hosts were specified in the -p option.  Need 1 new host
+                        # per 1 failed host.
+                        raise Exception('Not enough new recovery hosts given for recovery.')
+                    recoverHostIdx += 1
 
+                if isStandardArray:
+                    # We have a standard array configuration, so we'll try to use the same
+                    # interface naming convention.  If this doesn't work, we'll correct it
+                    # below on name lookup
+                    segInterface = segAddress[segAddress.rfind('-'):] 
+                    destAddress = recoverHostMap[segHostname] + segInterface
+                    destHostname = recoverHostMap[segHostname]
+                else:
+                    # Non standard configuration so we won't make assumptions on 
+                    # naming.  Instead we'll use the hostname passed in for both 
+                    # hostname and address and flag for warning later.
+                    destAddress = recoverHostMap[segHostname]
+                    destHostname = recoverHostMap[segHostname]
+
+                # Save off the new host/address for this address.
+                recoverAddressMap[segAddress] = (destHostname, destAddress)
+
+            # Now that we've generated the mapping, look up all the addresses to make
+            # sure they are resolvable.
+            interfaces = [address for (_ignore, address) in recoverAddressMap.values()]
+            interfaceLookup = GpInterfaceToHostNameCache(self.__pool, interfaces, [None] * len(interfaces))
+            
+            for key in recoverAddressMap.keys():
+                (newHostname, newAddress) = recoverAddressMap[key]
+                try:
+                    addressHostnameLookup = interfaceLookup.getHostName(newAddress)
+                    # Lookup failed so use hostname passed in for everything.
+                    if addressHostnameLookup is None:
+                        interfaceHostnameWarnings.append("Lookup of %s failed.  Using %s for both hostname and address." % (newAddress, newHostname))
+                        newAddress = newHostname
+                except:
+                    # Catch all exceptions.  We will use hostname instead of address
+                    # that we generated.
+                    interfaceHostnameWarnings.append("Lookup of %s failed.  Using %s for both hostname and address." % (newAddress, newHostname))
+                    newAddress = newHostname
+                    
+                # if we've updated the address to use the hostname because of lookup failure
+                # make sure the hostname is resolvable and up
+                if newHostname == newAddress:
+                    try:
+                        unix.Ping.local("ping new hostname", newHostname)
+                    except:
+                        raise Exception("Ping of host %s failed." % newHostname)
+                    
+                # Save changes in map
+                recoverAddressMap[key] = (newHostname, newAddress)
+                
+            if len(self.__options.newRecoverHosts) != recoverHostIdx:
+                interfaceHostnameWarnings.append("The following recovery hosts were not needed:")
+                for h in self.__options.newRecoverHosts[recoverHostIdx:]:
+                    interfaceHostnameWarnings.append("\t%s" % h)
+        
         spareDirectoryMap = None
         if self.__options.spareDataDirectoryFile is not None:
             spareDirectoryMap = self.__readSpareDirectoryMap(gpArray, self.__options.spareDataDirectoryFile)
@@ -348,7 +418,8 @@ class GpRecoverSegmentProgram:
             failedSegment = failedSegments[i]
             liveSegment = peersForFailedSegments[i]
 
-            if newRecoverAddress is not None:
+            if self.__options.newRecoverHosts and len(self.__options.newRecoverHosts) > 0:
+                (newRecoverHost, newRecoverAddress) = recoverAddressMap[failedSegment.getSegmentAddress()]
                 # these two lines make it so that failoverSegment points to the object that is registered in gparray
                 failoverSegment = failedSegment
                 failedSegment = failoverSegment.copy()
@@ -368,8 +439,8 @@ class GpRecoverSegmentProgram:
                 # we're failing over to different location on same host so we don't need to assign new ports
 
             segs.append( GpMirrorToBuild(failedSegment, liveSegment, failoverSegment, forceFull ))
-
-        return GpMirrorListToBuild(segs, self.__pool, self.__options.quiet, self.__options.parallelDegree)
+        
+        return GpMirrorListToBuild(segs, self.__pool, self.__options.quiet, self.__options.parallelDegree, interfaceHostnameWarnings)
 
     # San-failback is handled separately from the Filerep-recovery operations.
     # 
@@ -607,9 +678,10 @@ class GpRecoverSegmentProgram:
 
         if self.__options.recoveryConfigFile:
             logger.info('Recovery from configuration -i option supplied')
-        elif self.__options.newRecoverHost is not None:
+        elif self.__options.newRecoverHosts is not None:
             logger.info('Recovery type              = Pool Host')
-            logger.info('Pool host for recovery     = %s' % self.__options.newRecoverHost)
+            for h in self.__options.newRecoverHosts:
+                logger.info('Pool host for recovery     = %s' % h)
             type_text = 'Pool    '
         elif self.__options.spareDataDirectoryFile is not None:
             logger.info('Recovery type              = Pool Directory')
@@ -687,6 +759,10 @@ class GpRecoverSegmentProgram:
                     res.append("Segment is being recovered to the same host as its primary: "
                             "primary %s    failover target: %s"
                             % (self.__getSimpleSegmentLabel(src), self.__getSimpleSegmentLabel(dest)))
+        
+        for warning in mirrorBuilder.getAdditionalWarnings():
+            res.append(warning)
+        
         return res
 
     def run(self):
@@ -698,7 +774,7 @@ class GpRecoverSegmentProgram:
 
         # verify "where to recover" options
         optionCnt = 0
-        if self.__options.newRecoverHost is not None:
+        if self.__options.newRecoverHosts is not None:
             optionCnt += 1
         if self.__options.spareDataDirectoryFile is not None:
             optionCnt += 1
@@ -721,19 +797,19 @@ class GpRecoverSegmentProgram:
         segmentList = gpArray.getSegDbList()
         getVersionCmds = {}
         for seg in segmentList:
-           if seg.isSegmentQD() == True:
-              continue
-           if seg.isSegmentModeInChangeLogging() == False:
-              continue
-           cmd = gp.SendFilerepTransitionStatusMessage( name = "Get segment status information"
-                                                      , msg = gp.SEGMENT_STATUS_GET_STATUS
-                                                      , dataDir = seg.getSegmentDataDirectory()
-                                                      , port = seg.getSegmentPort()
-                                                      , ctxt = gp.REMOTE
-                                                      , remoteHost = seg.getSegmentHostName()
-                                                      )
-           getVersionCmds[seg.getSegmentDbId()] = cmd
-           self.__pool.addCommand(cmd)
+            if seg.isSegmentQD() == True:
+                continue
+            if seg.isSegmentModeInChangeLogging() == False:
+                continue
+            cmd = gp.SendFilerepTransitionStatusMessage( name = "Get segment status information"
+                                                         , msg = gp.SEGMENT_STATUS_GET_STATUS
+                                                         , dataDir = seg.getSegmentDataDirectory()
+                                                         , port = seg.getSegmentPort()
+                                                         , ctxt = gp.REMOTE
+                                                         , remoteHost = seg.getSegmentHostName()
+                                                        )
+            getVersionCmds[seg.getSegmentDbId()] = cmd
+            self.__pool.addCommand(cmd)
         self.__pool.join()
 
         # We can not check to see if the command was successful or not, because gp_primarymirror always returns a non-zero result.
@@ -746,24 +822,24 @@ class GpRecoverSegmentProgram:
             segmentState = None
             dataState    = None
             try:
-               lines = str(cmd.get_results().stderr).split("\n")
-               mode         = lines[0].split(": ")[1].strip()
-               segmentState = lines[1].split(": ")[1].strip()
-               dataState    = lines[2].split(": ")[1].strip()
+                lines = str(cmd.get_results().stderr).split("\n")
+                mode         = lines[0].split(": ")[1].strip()
+                segmentState = lines[1].split(": ")[1].strip()
+                dataState    = lines[2].split(": ")[1].strip()
             except Exception, e:
-               logger.warning("Problem getting Segment state dbid = %s, results = %s." % (str(dbid), str(cmd.get_results().stderr)))
-               continue
+                logger.warning("Problem getting Segment state dbid = %s, results = %s." % (str(dbid), str(cmd.get_results().stderr)))
+                continue
 
             db = dbsMap[dbid]
             if gparray.ROLE_TO_MODE_MAP[db.getSegmentRole()] != mode:
-               raise Exception("Inconsistency in catalog and segment Role/Mode. Catalog Role = %s. Segment Mode = %s." % (db.getSegmentRole(), mode))
+                raise Exception("Inconsistency in catalog and segment Role/Mode. Catalog Role = %s. Segment Mode = %s." % (db.getSegmentRole(), mode))
             if gparray.MODE_TO_DATA_STATE_MAP[db.getSegmentMode()] != dataState:
-               raise Exception("Inconsistency in catalog and segment Mode/DataState. Catalog Mode = %s. Segment DataState = %s." % (db.getSegmentMode(), dataState))
+                raise Exception("Inconsistency in catalog and segment Mode/DataState. Catalog Mode = %s. Segment DataState = %s." % (db.getSegmentMode(), dataState))
             if segmentState != gparray.SEGMENT_STATE_READY:
-               if segmentState == gparray.SEGMENT_STATE_INITIALIZATION or segmentState == gparray.SEGMENT_STATE_IN_CHANGE_TRACKING_TRANSITION:
-                  raise Exception("Segment is not ready for recovery dbid = %s, segmentState = %s. Retry recovery in a few moments" % (str(db.getSegmentDbId()), segmentState))
-               else:
-                  raise Exception("Segment is in unexpected state. dbid = %s, segmentState = %s." % (str(db.getSegmentDbId()), segmentState))
+                if segmentState == gparray.SEGMENT_STATE_INITIALIZATION or segmentState == gparray.SEGMENT_STATE_IN_CHANGE_TRACKING_TRANSITION:
+                    raise Exception("Segment is not ready for recovery dbid = %s, segmentState = %s. Retry recovery in a few moments" % (str(db.getSegmentDbId()), segmentState))
+                else:
+                    raise Exception("Segment is in unexpected state. dbid = %s, segmentState = %s." % (str(db.getSegmentDbId()), segmentState))
 
         # check that we actually have mirrors
         if gpArray.getFaultStrategy() == gparray.FAULT_STRATEGY_SAN:
@@ -778,6 +854,17 @@ class GpRecoverSegmentProgram:
         if self.__options.outputSpareDataDirectoryFile is not None:
             self.__outputSpareDataDirectoryFile(gpEnv, gpArray, self.__options.outputSpareDataDirectoryFile)
             return 0
+
+        if self.__options.newRecoverHosts is not None:
+            try:
+                uniqueHosts = []
+                [uniqueHosts.append(h.strip()) for h in self.__options.newRecoverHosts.split(',') \
+                    if h.strip() not in uniqueHosts ]
+                self.__options.newRecoverHosts = uniqueHosts
+            except Exception, ex:
+                raise ProgramArgumentValidationException(\
+                    "Invalid value for recover hosts: %s" % ex)
+
 
         # If it's a rebalance operation, make sure we are in an acceptable state to do that
         # Acceptable state is:
@@ -885,9 +972,9 @@ class GpRecoverSegmentProgram:
         addTo = OptionGroup(parser, "Recovery Destination Options")
         parser.add_option_group(addTo)
         addTo.add_option("-p", None, type="string",
-                            dest="newRecoverHost",
-                            metavar="<targetHost>",
-                            help="Spare new host to which to recover segments")
+                            dest="newRecoverHosts",
+                            metavar="<targetHosts>",
+                            help="Spare new hosts to which to recover segments")
         addTo.add_option("-s", None, type="string",
                             dest="spareDataDirectoryFile",
                             metavar="<spareDataDirectoryFile>",
