@@ -1627,7 +1627,7 @@ class gpload:
           from pg_catalog.pg_class c join pg_catalog.pg_namespace nt on (c.relnamespace = nt.oid) 
              join pg_attribute a on (a.attrelid = c.oid) 
          where c.relname = '%s' and nt.nspname = '%s'
-         and a.attnum > 0
+         and a.attnum > 0 and a.attisdropped = 'f'
          order by a.attnum """ % (tableName, tableSchema)
 
         count = 0
