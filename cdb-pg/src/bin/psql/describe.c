@@ -2409,7 +2409,7 @@ add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBuffe
 				printfPQExpBuffer(&buf, "Distributed randomly");
 			}
 
-			appendPQExpBuffer(inoutbuf, pg_strdup(buf.data));
+			appendPQExpBuffer(inoutbuf, "%s", pg_strdup(buf.data));
 		}
 
 		PQclear(result1);
