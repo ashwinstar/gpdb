@@ -40,6 +40,8 @@ static struct
 
 int verbose = 0; /* == opt.v */
 int very_verbose = 0; /* == opt.V */
+int number_cpu_cores = 1;
+float cpu_cores_utilization_multiplier = 1.0; /* multipy CPU % from libsigar by this factor to get the CPU % per machine */
 
 typedef struct pidrec_t pidrec_t;
 struct pidrec_t
@@ -50,6 +52,7 @@ struct pidrec_t
 	char* cwd;
 	gpmon_proc_metrics_t p_metrics;
 	apr_int64_t cpu_elapsed;
+	gpmon_qlogkey_t query_key;
 };
 
 typedef struct gx_t gx_t;
@@ -183,12 +186,12 @@ static void send_fully(SOCKET sock, const void* p_, int len)
 	}
 }
 
-static void get_pid_metrics(apr_int32_t pid)
+static void get_pid_metrics(apr_int32_t pid, apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt)
 {
 	sigar_proc_cpu_t cpu;
 	sigar_proc_mem_t mem;
 	sigar_proc_fd_t fd;
-	pidrec_t newrec;
+	int newrec = 0;
 	pidrec_t* rec;
 	apr_pool_t* pool = apr_hash_pool_get(gx.pidtab);
 
@@ -204,51 +207,47 @@ static void get_pid_metrics(apr_int32_t pid)
 	sigar_proc_cpu_get(gx.sigar, pid, &cpu);
 	sigar_proc_fd_get(gx.sigar, pid, &fd);
 
-	if (rec)
-	{
-		newrec.pname = rec->pname;
-		newrec.cwd = rec->cwd;
-	}
-	else
+	if (!rec)
 	{
 		sigar_proc_exe_t exe;
-		newrec.pname = newrec.cwd = 0;
-		if (0 == sigar_proc_exe_get(gx.sigar, pid, &exe))
-		{
-			newrec.pname = apr_pstrdup(pool, exe.name);
-			newrec.cwd = apr_pstrdup(pool, exe.root);
-			/*
-			 TR1(("pname = %s\nroot = %s\ncwd = %s\n",
-			 exe.name, exe.root, exe.cwd));
-			 */
-		}
-		if (!newrec.pname)
-			newrec.pname = "unknown";
-		if (!newrec.cwd)
-			newrec.cwd = "unknown";
-	}
-	newrec.pid = pid;
-	newrec.updated_tick = gx.tick;
-	newrec.p_metrics.fd_cnt = (apr_int32_t) fd.total;
-	newrec.p_metrics.cpu_pct = (float) (cpu.percent * 100);
-	newrec.p_metrics.mem.size = mem.size;
-	newrec.p_metrics.mem.resident = mem.resident;
-#ifdef __linux__
-	newrec.p_metrics.mem.share = mem.share;
-#else
-	newrec.p_metrics.mem.share = 0;
-#endif
-	newrec.cpu_elapsed = cpu.total;
 
-	if (rec)
-		*rec = newrec;
-	else
-	{
+		newrec = 1;
+
 		rec = apr_palloc(pool, sizeof(*rec));
 		CHECKMEM(rec);
-		*rec = newrec;
+
+		rec->pid = pid;
+		rec->query_key.tmid = tmid;
+		rec->query_key.ssid = ssid;
+		rec->query_key.ccnt = ccnt;
+
+		rec->pname = rec->cwd = 0;
+		if (0 == sigar_proc_exe_get(gx.sigar, pid, &exe))
+		{
+			rec->pname = apr_pstrdup(pool, exe.name);
+			rec->cwd = apr_pstrdup(pool, exe.root);
+		}
+		if (!rec->pname)
+			rec->pname = "unknown";
+		if (!rec->cwd)
+			rec->cwd = "unknown";
+
 		apr_hash_set(gx.pidtab, &rec->pid, sizeof(rec->pid), rec);
 	}
+
+	rec->updated_tick = gx.tick;
+	rec->p_metrics.fd_cnt = (apr_int32_t) fd.total;
+	rec->p_metrics.cpu_pct = (float) (cpu.percent * cpu_cores_utilization_multiplier);
+	rec->p_metrics.mem.size = mem.size;
+	rec->p_metrics.mem.resident = mem.resident;
+
+#ifdef __linux__
+	rec->p_metrics.mem.share = mem.share;
+#else
+	rec->p_metrics.mem.share = 0;
+#endif
+
+	rec->cpu_elapsed = cpu.total;
 }
 
 #if defined (sun)
@@ -754,6 +753,7 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 {
 	char dump;
 	int n, e;
+	apr_pool_t* oldpool;
 	apr_hash_t* qetab;
 	apr_hash_t* qdtab;
 	apr_hash_t* pidtab;
@@ -777,6 +777,8 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	pidtab = gx.pidtab;
 	segtab = gx.segmenttab;
 	filereptab = gx.filereptab;
+
+	oldpool = apr_hash_pool_get(qetab);
 
 	/* make new  hashtabs for next cycle */
 	{
@@ -813,9 +815,10 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 	{
 		void* vptr;
 		apr_hash_index_t* hi;
-		gpmon_packet_t* ppkt;
+		gpmon_packet_t* ppkt = 0;
 		pidrec_t* pidrec;
 		int count = 0;
+		apr_hash_t* query_cpu_table = NULL;
 
 		for (hi = apr_hash_first(0, filereptab); hi; hi = apr_hash_next(hi))
 		{
@@ -886,12 +889,75 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 			count++;
 		}
 
+		// calculate CPU utlization per query for this machine
+		query_cpu_table = apr_hash_make(oldpool);
+		CHECKMEM(query_cpu_table);
+
+		// loop through PID's and add to Query CPU Hash Table
+		for (hi = apr_hash_first(0, pidtab); hi; hi = apr_hash_next(hi))
+		{
+			pidrec_t* lookup;
+
+			apr_hash_this(hi, 0, 0, &vptr);
+			pidrec = vptr;
+
+			TR2(("tmid %d ssid %d ccnt %d pid %d (CPU elapsed %d CPU Percent %.2f)\n",
+				pidrec->query_key.tmid, pidrec->query_key.ssid, pidrec->query_key.ccnt, pidrec->pid,
+				pidrec->cpu_elapsed, pidrec->p_metrics.cpu_pct));
+
+			// table is keyed on query key
+			lookup = apr_hash_get(query_cpu_table, &pidrec->query_key, sizeof(pidrec->query_key));
+
+			if (lookup)
+			{
+				// found other pids with same query key so add the metrics to that
+
+				lookup->cpu_elapsed += pidrec->cpu_elapsed;
+				lookup->p_metrics.cpu_pct += pidrec->p_metrics.cpu_pct;
+			}
+			else
+			{
+				// insert existing pid record into table keyed by query key
+				apr_hash_set(query_cpu_table, &pidrec->query_key, sizeof(pidrec->query_key), pidrec);
+			}
+
+		}
+
+		// reset packet to 0
+		memset(ppkt, 0, sizeof(gpmon_packet_t));
+		ppkt->pkttype = GPMON_PKTTYPE_QUERY_HOST_METRICS;
+		ppkt->magic = GPMON_MAGIC;
+		ppkt->version = GPMON_PACKET_VERSION;
+
+		// add the hostname into the packet for DEBUGGING purposes only.  This is not used
+		strncpy(ppkt->u.qlog.user, gx.hostname, sizeof(ppkt->u.qlog.user) - 1);
+		ppkt->u.qlog.user[sizeof(ppkt->u.qlog.user) - 1] = 0;
+
+		// loop through the query per cpu table and send the metrics
+		for (hi = apr_hash_first(0, query_cpu_table); hi; hi = apr_hash_next(hi))
+		{
+			apr_hash_this(hi, 0, 0, &vptr);
+			pidrec = vptr;
+
+			ppkt->u.qlog.key.tmid = pidrec->query_key.tmid;
+			ppkt->u.qlog.key.ssid = pidrec->query_key.ssid;
+			ppkt->u.qlog.key.ccnt = pidrec->query_key.ccnt;
+			ppkt->u.qlog.cpu_elapsed = pidrec->cpu_elapsed;
+			ppkt->u.qlog.p_metrics.cpu_pct = pidrec->p_metrics.cpu_pct;
+
+			TR2(("SEND tmid %d ssid %d ccnt %d (CPU elapsed %d CPU Percent %.2f)\n",
+				ppkt->u.qlog.key.tmid, ppkt->u.qlog.key.ssid, ppkt->u.qlog.key.ccnt, 
+				ppkt->u.qlog.cpu_elapsed, ppkt->u.qlog.p_metrics.cpu_pct));
+
+			send_fully(sock, ppkt, sizeof(*ppkt));
+			count++;
+		}
+
 		TR1(("end dump ... sent %d entries\n", count));
 	}
 
 	/* get rid of the old pool */
 	{
-		apr_pool_t* oldpool = apr_hash_pool_get(qetab);
 		apr_pool_destroy(oldpool);
 	}
 
@@ -1546,6 +1612,10 @@ void gx_main(int port, apr_int64_t signature)
 	freopen(log_filename, "w", stdout);
 	setlinebuf(stdout);
 
+	// first chace to write to log file
+	TR2(("signature = %" FMT64 "\n", signature));
+	TR1(("detected %d cpu cores\n", number_cpu_cores));
+
 	setup_gx(port, signature);
 	setup_sigar();
 	setup_udp();
@@ -1582,7 +1652,10 @@ void gx_main(int port, apr_int64_t signature)
 			rec = vptr;
 			if (rec->pkttype != GPMON_PKTTYPE_QEXEC)
 				continue;
-			get_pid_metrics(rec->u.qexec.key.pid);
+			get_pid_metrics(rec->u.qexec.key.pid, 
+					rec->u.qexec.key.tmid,
+					rec->u.qexec.key.ssid,
+					rec->u.qexec.key.ccnt);
 		}
 
 		/* check log size */
@@ -1708,8 +1781,6 @@ int main(int argc, const char* const argv[])
 		gpsmon_fatal(FLINE, "cannot read signature");
 	}
 
-	TR2(("\tsignature = %" FMT64 "\n", signature));
-
 	if (!opt.D)
 	{
 		if (0 != (e = apr_proc_detach(1)))
@@ -1720,6 +1791,16 @@ int main(int argc, const char* const argv[])
 	if (NULL == (kc = kstat_open()))
 	gpsmon_fatal(FLINE, "failed to open kstat");
 #endif /* sun */
+
+	number_cpu_cores = (int)sysconf(_SC_NPROCESSORS_CONF);
+
+	// sanity check this number a little
+	if (number_cpu_cores < 1)
+	{
+		number_cpu_cores = 1;
+	}
+
+	cpu_cores_utilization_multiplier = 100.0 / (float)number_cpu_cores;
 
 	gx_main(port, signature);
 	return 0;

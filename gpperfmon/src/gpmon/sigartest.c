@@ -56,6 +56,8 @@ int main(int argc, char** argv)
     {
         fatal_error("Failed to open SIGAR");
     }
+   
+    printf("%d CPU cores detected\n", sigar_cpu_total_count(sigar));
 
     memset(&sigar_fslist, 0, sizeof(sigar_fslist));
     /* Get list of filesystems */

@@ -102,6 +102,17 @@ struct gpmon_qlogkey_t {
     apr_int32_t ccnt; /* command count */
 };
 
+/* process metrics ... filled in by gpsmon */
+typedef struct gpmon_proc_metrics_t gpmon_proc_metrics_t;
+struct gpmon_proc_metrics_t {
+    apr_int32_t fd_cnt;		/* # opened files / sockets etc */
+    float       cpu_pct;	/* cpu usage % */
+    struct {
+		apr_int64_t size, resident, share;
+    } mem;
+};
+
+
 #define GPMON_QLOG_STATUS_INVALID -1
 #define GPMON_QLOG_STATUS_SILENT   0
 #define GPMON_QLOG_STATUS_SUBMIT   1
@@ -111,17 +122,16 @@ struct gpmon_qlogkey_t {
 
 #define GPMON_NUM_SEG_CPU 10
 
-struct gpmon_qlog_t {
-    /* if you modify this, do not forget to edit gpperfmon/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
-    gpmon_qlogkey_t key;
-    char        user[NAMEDATALEN];
-    char        db[NAMEDATALEN];
-    apr_int32_t cost;
-    apr_int32_t tsubmit, tstart, tfin;
-    apr_int32_t status;		/* GPMON_QLOG_STATUS_XXXXXX */
-    apr_int64_t rows_out;
-    apr_int32_t _segmax;
-    apr_int32_t _segcpu[GPMON_NUM_SEG_CPU];
+struct gpmon_qlog_t 
+{
+	gpmon_qlogkey_t key;
+	char        user[NAMEDATALEN];
+	char        db[NAMEDATALEN];
+	apr_int32_t tsubmit, tstart, tfin;
+	apr_int32_t status;		/* GPMON_QLOG_STATUS_XXXXXX */
+	apr_int32_t cost;
+	apr_int64_t cpu_elapsed; /* CPU elapsed for query */
+	gpmon_proc_metrics_t p_metrics; 
 };
 
 
@@ -144,16 +154,6 @@ struct gpmon_qexeckey_t {
     apr_int16_t zero;		/* unused */
 };
 
-
-/* process metrics ... filled in by gpsmon */
-typedef struct gpmon_proc_metrics_t gpmon_proc_metrics_t;
-struct gpmon_proc_metrics_t {
-    apr_int32_t fd_cnt;		/* # opened files / sockets etc */
-    float       cpu_pct;	/* cpu usage % */
-    struct {
-		apr_int64_t size, resident, share;
-    } mem;
-};
 
 enum {
 	GPMON_QEXEC_M_ROWSIN = 0,
@@ -326,6 +326,7 @@ enum gpmon_pkttype_t {
     GPMON_PKTTYPE_QEXEC = 4,
     GPMON_PKTTYPE_SEGINFO = 5,
     GPMON_PKTTYPE_FILEREP = 6,
+    GPMON_PKTTYPE_QUERY_HOST_METRICS = 7, // query metrics update from a segment such as CPU per query
 
     GPMON_PKTTYPE_MAX
 };
