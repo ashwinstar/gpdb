@@ -3919,7 +3919,7 @@ performDtxProtocolAbortPrepared(const char *gid, bool isCrashRecovery, bool rais
 	 */
 	PG_TRY();
 	{
-		FinishPreparedTransaction((char *)gid, /* isCommit */ false, /* isCrashRecovery */ false, raiseErrorIfNotFound);
+		FinishPreparedTransaction((char *)gid, /* isCommit */ false, isCrashRecovery, raiseErrorIfNotFound);
 	}
 	PG_CATCH();
 	{
