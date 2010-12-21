@@ -119,7 +119,7 @@ pg_array_get_r(Datum dvalue, FmgrInfo out_func, int typlen, bool typbyval, char 
 	bool	   *elem_nulls;
 
 	/* short-circuit for NULL datums */
-	if (dvalue == (Datum) NULL)
+	if (dvalue == (Datum) 0)
 		return R_NilValue;
 
 	ndim = ARR_NDIM(v);
