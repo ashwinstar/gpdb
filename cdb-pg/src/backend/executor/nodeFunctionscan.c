@@ -529,14 +529,13 @@ initGpmonPktForFunctionScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 static Stack functionScanMemoryReservedStack;
 
 /**
- * Called once per process per query. See PushMemoryReservedForFunctionScan() for detailed comment.
+ * Initialize the function scan stack. See PushMemoryReservedForFunctionScan() for detailed comments on how this stack
+ * is used.
  */
 void InitFunctionScanMemoryReservedStack(void)
 {
 	Init(&functionScanMemoryReservedStack);
 }
-
-extern MemoryContext QueryContext;
 
 /**
  * Push memory reserved for current function scan. It is possible for a function scan to (after several levels of nesting),
@@ -546,12 +545,7 @@ extern MemoryContext QueryContext;
  */
 void PushMemoryReservedForFunctionScan(uint64 mem_reserved)
 {
-	Assert(QueryContext);
-	MemoryContext oldContext = MemoryContextSwitchTo(QueryContext);
-
-	/**
-	 * We create a copy in QueryContext since it lives for the duration of a query.
-	 */
+	Assert(CurrentMemoryContext);
 	uint64 *mem_reserved_copy = palloc(sizeof(mem_reserved));
 	(* mem_reserved_copy) = mem_reserved;
 	
@@ -560,9 +554,7 @@ void PushMemoryReservedForFunctionScan(uint64 mem_reserved)
 		elog(gp_resqueue_memory_log_level, "pushing memory reservation on stack %d", (int) mem_reserved);
 	}
 	
-	Push(&functionScanMemoryReservedStack, mem_reserved_copy);
-	
-	MemoryContextSwitchTo(oldContext);
+	Push(&functionScanMemoryReservedStack, mem_reserved_copy);	
 }
 
 /**

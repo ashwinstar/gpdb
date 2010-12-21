@@ -4398,7 +4398,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB | GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_resqueue_memory_policy_auto_fixed_mem,
-		1000, 100, INT_MAX, NULL, NULL
+		200, 50, INT_MAX, NULL, NULL
 	},
 
 	/* End-of-list marker */

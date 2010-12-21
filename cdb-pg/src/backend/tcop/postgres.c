@@ -1502,8 +1502,6 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 	oldcontext = MemoryContextSwitchTo(MessageContext);
 
 	QueryContext = CurrentMemoryContext;
-
-	InitFunctionScanMemoryReservedStack();
 	
 	/*
 	 * Do basic parsing of the query or queries (this should be safe even if

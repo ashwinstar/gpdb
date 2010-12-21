@@ -225,7 +225,7 @@ static bool PolicyAutoAssignWalker(Node *node, PolicyAutoContext *context)
 	 
 	 if (ctx.queryMemKB <= ctx.numNonMemIntensiveOperators * gp_resqueue_memory_policy_auto_fixed_mem)
 	 {
-		 elog(ERROR, "Unable to reserve sufficient memory for operators. Please increase amount of memory reserved for the statement.");
+		 elog(ERROR, "insufficient memory reserved for statement");
 	 }
 	 
 #ifdef USE_ASSERT_CHECKING
