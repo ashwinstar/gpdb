@@ -169,7 +169,8 @@ pathnode_copy_node(const Path *s)
  * a couple of alternative stopping codes are predefined for walkers to use at
  * their discretion: CdbVisit_Failure and CdbVisit_Success.
  */
-inline CdbVisitOpt
+// inline
+CdbVisitOpt
 pathnode_walk_node(Path            *path,
 			       CdbVisitOpt    (*walker)(Path *path, void *context),
 			       void            *context)
