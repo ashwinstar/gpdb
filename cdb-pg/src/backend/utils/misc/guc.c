@@ -3142,7 +3142,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"max_work_mem", PGC_USERSET, RESOURCES_MEM,
+		{"max_work_mem", PGC_SUSET, RESOURCES_MEM,
 		 	gettext_noop("Sets the maximum value for work_mem setting."),
 		 	NULL,
 			GUC_UNIT_KB | GUC_GPDB_ADDOPT
