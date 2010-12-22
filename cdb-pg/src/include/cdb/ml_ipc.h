@@ -219,13 +219,6 @@ gettime_elapsed_us(struct timeval *beginTime)
 	
 #ifdef USE_ASSERT_CHECKING
 #ifdef HAVE_LIBRT
-	if (!endTimeIsBigger)
-	{
-		write_log("endTime (" INT64_FORMAT ", " INT64_FORMAT ") is smaller than beginTime ("
-				  INT64_FORMAT ", " INT64_FORMAT ")",
-				  endTime.tv_sec, endTime.tv_usec, beginTime->tv_sec, beginTime->tv_usec);
-	}
-	
 	Assert(endTimeIsBigger);
 #endif
 #endif
