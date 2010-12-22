@@ -274,8 +274,9 @@ RemoveSchema_internal(const char *schemaName, DropBehavior behavior,
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_NAMESPACE,
 					   schemaName);
 
-	/* Additional check to protect reserved schema names */
-	if (!allowSystemTableMods && IsReservedName(schemaName))
+	/* Additional check to protect reserved schema names, exclude temp schema */
+	if (!is_internal && !allowSystemTableMods && IsReservedName(schemaName) &&
+        (strlen(schemaName)>=7 && strncmp(schemaName, "pg_temp", 7)!=0))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
