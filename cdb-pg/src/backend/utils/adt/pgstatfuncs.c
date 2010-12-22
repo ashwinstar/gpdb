@@ -386,8 +386,8 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 	if (funcctx->call_cntr < funcctx->max_calls)
 	{
 		/* for each row */
-		Datum		values[11];
-		bool		nulls[11];
+		Datum		values[12];
+		bool		nulls[12];
 		HeapTuple	tuple;
 		PgBackendStatus *beentry;
 		SockAddr	zero_clientaddr;
