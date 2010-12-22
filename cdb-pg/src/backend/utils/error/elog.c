@@ -2690,7 +2690,9 @@ append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stacka
 		{
 			cmdresult[stack_no][0] = '\0';   /* clear this array for later */
 			snprintf(addrtxt, sizeof(addrtxt),"%p ",stackarray[stack_no]);
-			strncat(cmd, addrtxt, sizeof(cmd));
+			
+			Assert(sizeof(cmd) > strlen(cmd));
+			strncat(cmd, addrtxt, sizeof(cmd) - strlen(cmd) - 1);
 		}
 
 		cmdresult[0][0] = '\0';
