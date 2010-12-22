@@ -2082,11 +2082,16 @@ cdb_tidy_message(ErrorData *edata)
     cdb_strip_trailing_whitespace(&edata->message);
 
     /* Look at main error message. */
-    bp = edata->message ? edata->message : "";
-    while (*bp <= ' ' &&
-           *bp > '\0')
-        bp++;
-    ep = bp + strlen(bp);
+    if (edata->message)
+    {
+    	bp = edata->message;
+		while (*bp <= ' ' &&
+			   *bp > '\0')
+			bp++;
+		ep = bp + strlen(bp);
+    }
+    else
+    	ep = bp = "";
 
     /*
      * If more than one line, move lines after the first to errdetail.
