@@ -7264,8 +7264,9 @@ set_config_option(const char *name, const char *value,
         if (record->flags & GUC_DISALLOW_USER_SET)
  	{
               /* Only print a warning in the dispatch or utility mode */
-  	      if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
-	         elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name);
+          if (changeVal)
+  	          if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
+	              elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name);
 	      return true;
         }  /* end if (record->flags & GUC_DISALLOW_USER_SET) */
 
