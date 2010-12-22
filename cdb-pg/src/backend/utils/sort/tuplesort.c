@@ -118,6 +118,8 @@
 
 #include "cdb/cdbvars.h"
 
+#include "utils/dynahash.h" /* my_log2 */
+
 /* GUC variable */
 
 /*
@@ -274,12 +276,12 @@ struct Tuplesortstate
 	 */
 	SortTuple  *memtuples;		/* array of SortTuple structs */
 	long		memtupcount;	/* number of tuples currently present */
-	long		memtupsize;		/* allocated length of memtuples array */
+	long		tuparraysize;		/* allocated length of memtuples array */
 	int64		memtupLIMIT;	/* LIMIT of memtuples array */ /*CDB*/
 	bool		memtupblimited; /* true when hit the limit */
 	int64  		dumpcount;	    /* count of dumps */ /*CDB*/
 	int64  		discardcount;   /* count of discards */ /*CDB*/
-	int64  		alltupcount;    /* count of all input tuples */ /*CDB*/
+	int64  		totalNumTuples;    /* count of all input tuples */ /*CDB*/
 	bool		noduplicates;   /* discard duplicate rows if true *//* CDB */
 	int			mppsortflags;   /* special sort flags*//* CDB */
 	int64  		gpmaxdistinct;  /* max number of distinct values */ /*CDB*/
@@ -374,7 +376,8 @@ struct Tuplesortstate
      */
     struct Instrumentation *instrument;
     struct StringInfoData  *explainbuf;
-    int64       spilledBytes;
+    uint64 spilledBytes;
+	uint64 memUsedBeforeSpill; /* memory that is used at the time of spilling */
 
 	/*
 	 * Resource snapshot for time of sort start.
@@ -558,19 +561,19 @@ tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
 	state->tapeset = NULL;
 
 	state->memtupcount = 0;
-	state->memtupsize = 1024;	/* initial guess */
+	state->tuparraysize = 1024;	/* initial guess */
 	state->memtupLIMIT = 0; /*CDB*/
 	state->memtupblimited = false;
 	state->dumpcount    = 0; /*CDB*/
 	state->discardcount = 0; /*CDB*/
-	state->alltupcount  = 0; /*CDB*/
+	state->totalNumTuples  = 0; /*CDB*/
 	state->mppsortflags = 0;   /* special sort flags*//* CDB */
 	state->standardsort = true; /* normal sort *//* CDB */
 	state->gpmaxdistinct = 20000; /* maximum distinct values *//* CDB */
 
 	if(allocmemtuple)
 	{
-		state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
+		state->memtuples = (SortTuple *) palloc(state->tuparraysize * sizeof(SortTuple));
 		USEMEM(state, GetMemoryChunkSpace(state->memtuples));
 
 		/* workMem must be large enough for the minimal memtuples array */
@@ -906,7 +909,7 @@ tuplesort_finalize_stats(Tuplesortstate *state)
 
         /* How close did we come to the work_mem limit? */
         FREEMEM(state, 0);              /* update low-water mark */
-        workmemused = state->allowedMem - state->availMemMin01;
+        workmemused = MemoryContextGetPeakSpace(state->sortcontext);
         if (state->instrument->workmemused < workmemused)
             state->instrument->workmemused = workmemused;
 
@@ -967,21 +970,21 @@ grow_memtuples(Tuplesortstate *state)
 	 * enough to force palloc to treat it as a separate chunk, so this
 	 * assumption should be good.  But let's check it.)
 	 */
-	if (state->availMem <= (long) (state->memtupsize * sizeof(SortTuple)))
+	if (state->availMem <= (long) (state->tuparraysize * sizeof(SortTuple)))
 		return false;
 
 	/*
 	 * On a 64-bit machine, allowedMem could be high enough to get us into
 	 * trouble with MaxAllocSize, too.
 	 */
-	if ((Size) (state->memtupsize * 2) >= MaxAllocSize / sizeof(SortTuple))
+	if ((Size) (state->tuparraysize * 2) >= MaxAllocSize / sizeof(SortTuple))
 		return false;
 
 	FREEMEM(state, GetMemoryChunkSpace(state->memtuples));
-	state->memtupsize *= 2;
+	state->tuparraysize *= 2;
 	state->memtuples = (SortTuple *)
 		repalloc(state->memtuples,
-				 state->memtupsize * sizeof(SortTuple));
+				 state->tuparraysize * sizeof(SortTuple));
 	USEMEM(state, GetMemoryChunkSpace(state->memtuples));
 	if (LACKMEM(state))
 		elog(ERROR, "unexpected out-of-memory situation during sort");
@@ -1074,7 +1077,7 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 {
 	int do_standardsort = (state->memtupcount == 0) || state->standardsort;
 
-	state->alltupcount++;
+	state->totalNumTuples++;
 
 	/* gpmon */
 	if(state->gpmon_pkt)
@@ -1091,10 +1094,10 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			 * room to store the incoming tuple, and then we'll switch to
 			 * tape-based operation.
 			 */
-			if (state->memtupcount >= state->memtupsize - 1)
+			if (state->memtupcount >= state->tuparraysize - 1)
 			{
 				(void) grow_memtuples(state);
-				Assert(state->memtupcount < state->memtupsize);
+				Assert(state->memtupcount < state->tuparraysize);
 			}
 
 			if (do_standardsort)
@@ -1118,11 +1121,11 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
                 /*
                  * don't bother if mppsortflags set to "always on"
                  */
-                if ((state->mppsortflags > 1)
-                &&  (state->alltupcount >= state->mppsortflags))
+                if ((state->mppsortflags > 1) &&
+					(state->totalNumTuples >= state->mppsortflags))
                 {
                     int64 discard_ratio =
-                        (state->discardcount * 100)/state->alltupcount;
+                        (state->discardcount * 100)/state->totalNumTuples;
                     if (discard_ratio < 50)
                     {
                          state->standardsort = true;
@@ -1141,8 +1144,10 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			 * Done if we still fit in available memory and have array slots.
 			 */
 
-			if (state->memtupcount < state->memtupsize && !LACKMEM(state))
+			if (state->memtupcount < state->tuparraysize && !LACKMEM(state))
 				return;
+
+			state->memUsedBeforeSpill = MemoryContextGetPeakSpace(state->sortcontext);
 
 			/*
 			 * Nope; time to switch to tape-based operation.
@@ -1180,6 +1185,7 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 			 * If we are over the memory limit, dump tuples till we're under.
 			 */
 			dumptuples(state, false);
+
 			break;
 		default:
 			elog(ERROR, "invalid tuplesort state");
@@ -1240,10 +1246,17 @@ tuplesort_performsort(Tuplesortstate *state)
 			/* CDB: How much work_mem would be enough for in-memory sort? */
 			if (state->instrument)
 			{
-				int64   workmemwanted = state->allowedMem - state->availMem +
+				/*
+				 * The workmemwanted is summed up of the following:
+				 * (1) metadata: Tuplesortstate, tuple array
+				 * (2) the total bytes for all tuples.
+				 */
+				int64   workmemwanted = 
+					sizeof(Tuplesortstate) +
+					((uint64)(1 << my_log2(state->totalNumTuples))) * sizeof(SortTuple) +
 					state->spilledBytes;
 
-				state->instrument->workmemwanted = 
+				state->instrument->workmemwanted =
 					Max(state->instrument->workmemwanted, workmemwanted);
 			}
 
@@ -1594,7 +1607,7 @@ inittapes(Tuplesortstate *state, const char* rwfile_prefix)
 	 * we'd not have room for merge heap plus preread.  It seems unlikely that
 	 * this case would ever occur, but be safe.
 	 */
-	maxTapes = Min(maxTapes, state->memtupsize / 2);
+	maxTapes = Min(maxTapes, state->tuparraysize / 2);
 /* XXX XXX: with losers, only need 1x slots because we don't need a merge heap */
 
 	state->maxTapes = maxTapes;
@@ -1990,7 +2003,7 @@ beginmerge(Tuplesortstate *state)
 	 * share of preread space.
 	 */
 	Assert(activeTapes > 0);
-	slotsPerTape = (state->memtupsize - state->mergefirstfree) / activeTapes;
+	slotsPerTape = (state->tuparraysize - state->mergefirstfree) / activeTapes;
 	Assert(slotsPerTape > 0);
 	spacePerTape = state->availMem / activeTapes;
 	for (srcTape = 0; srcTape < state->maxTapes; srcTape++)
@@ -2108,7 +2121,7 @@ mergeprereadone(Tuplesortstate *state, int srcTape)
 		else
 		{
 			tupIndex = state->mergefirstfree++;
-			Assert(tupIndex < state->memtupsize);
+			Assert(tupIndex < state->tuparraysize);
 		}
 		state->mergeavailslots[srcTape]--;
 		/* store tuple, append to list for its tape */
@@ -2152,7 +2165,7 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 
 	while (alltuples ||
 			(LACKMEM(state) && state->memtupcount > 1) ||
-			state->memtupcount >= state->memtupsize)
+			state->memtupcount >= state->tuparraysize)
 	{
 		/* ShareInput or sort: The sort may sort nothing, we still
 		 * need to handle it here 
@@ -2390,7 +2403,7 @@ tuplesort_heap_insert(Tuplesortstate *state, SortTuple *tuple,
 	tuple->tupindex = tupleindex;
 
 	memtuples = state->memtuples;
-	Assert(state->memtupcount < state->memtupsize);
+	Assert(state->memtupcount < state->tuparraysize);
 
 	/*
 	 * Sift-up the new entry, per Knuth 5.2.3 exercise 16. Note that Knuth is
@@ -2443,7 +2456,7 @@ tuplesort_sorted_insert(Tuplesortstate *state, SortTuple *tuple,
 	tuple->tupindex = tupleindex;
 
 	memtuples = state->memtuples;
-	Assert(state->memtupcount < state->memtupsize);
+	Assert(state->memtupcount < state->tuparraysize);
 
 	/* compare to the last value first */
 	comparestat = 

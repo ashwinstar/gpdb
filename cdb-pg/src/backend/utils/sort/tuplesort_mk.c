@@ -347,17 +347,17 @@ struct Tuplesortstate_mk
      */
     struct Instrumentation *instrument;
     struct StringInfoData  *explainbuf;
-    int64       spilledBytes;
+    uint64 totalTupleBytes;
+	uint64 totalNumTuples;
+	uint64 numTuplesInMem;
+	uint64 memUsedBeforeSpill; /* memory that is used by Sort at the time of spilling */
+	long arraySizeBeforeSpill; /* the value for entry_allocsize at the time of spilling */
 
     /* 
      * File fo dump/load logical tape set state.  Used by sharing sort across slice 
      */
     char    *pfile_rwfile_prefix;
     BufFile *pfile_rwfile_state;
-
-    /* My debug counters */
-    int64 put_cnt;
-    int64 get_cnt;
 
     /* Gpmon */
     gpmon_packet_t *gpmon_pkt;
@@ -947,19 +947,39 @@ tuplesort_finalize_stats_mk(Tuplesortstate_mk *state)
     {
     	Size maxSpaceUsedOnSort = MemoryContextGetPeakSpace(state->sortcontext);
 
-        if (state->instrument->workmemused < maxSpaceUsedOnSort)
-            state->instrument->workmemused = maxSpaceUsedOnSort;
-
         /* Report executor memory used by our memory context. */
         state->instrument->execmemused += (double)maxSpaceUsedOnSort;
 
-        /* Wanted */
-        if(state->spilledBytes > 0)
-        {
-            state->instrument->workmemwanted = maxSpaceUsedOnSort + state->spilledBytes;
-        }
-        else
-            state->instrument->workmemwanted = 0;
+		if (state->instrument->workmemused < maxSpaceUsedOnSort)
+		{
+			state->instrument->workmemused = maxSpaceUsedOnSort;
+		}
+
+		if (state->numTuplesInMem < state->totalNumTuples)
+		{
+			uint64 mem_for_metadata = sizeof(Tuplesortstate_mk) +
+				state->arraySizeBeforeSpill * sizeof(MKEntry);
+			double tupleRatio = ((double)state->totalNumTuples) / ((double)state->numTuplesInMem);
+
+			/*
+			 * The memwanted is summed up of the following:
+			 * (1) metadata 
+			 * (2) the array size
+			 * (3) the prorated number of bytes for all tuples, estimated from
+			 *     the memUsedBeforeSpill. Note that because of our memory allocation
+			 *     algorithm, the used memory for tuples may be much larger than
+			 *     the actual bytes needed for tuples.
+			 * (4) the prorated number of bytes for extra space needed.
+			 */
+			uint64 memwanted = 
+				sizeof(Tuplesortstate_mk) /* (1) */ +
+				state->totalNumTuples * sizeof(MKEntry) /* (2) */ +
+				(uint64)(tupleRatio * (double)(state->memUsedBeforeSpill - mem_for_metadata)) /* (3) */ +
+				(uint64)(tupleRatio * (double)state->mkctxt.estimatedExtraForPrep) /* (4) */ ;
+			
+			state->instrument->workmemwanted =
+				Max(state->instrument->workmemwanted, memwanted);
+		}
 
 		state->statsFinalized = true;
     }
@@ -1052,11 +1072,53 @@ tuplesort_putdatum_mk(Tuplesortstate_mk *state, Datum val, bool isNull)
     {
         mke_set_not_null(&e);
         e.d = datumCopy(val, false, state->datumTypeLen);
+		state->totalTupleBytes += state->datumTypeLen;
     }
 
     puttuple_common(state, &e); 
     MemoryContextSwitchTo(oldcontext);
 }
+
+/*
+ * grow_unsorted_array
+ *   Grow the unsorted array to allow more entries to be inserted later.
+
+ * If there are no enough memory available for the growth, this function
+ * returns false. Otherwsie, returns true.
+ */
+static bool
+grow_unsorted_array(Tuplesortstate_mk *state)
+{
+	/*
+	 * We want to grow the array twice as large as the previous one. However,
+	 * when we are close to the memory limit, we do not want to do so. Otherwise,
+	 * too much memory got allocated for the metadata, not to the tuple itself.
+	 * We estimate the maximum number of entries that is possible under the
+	 * current memory limit by considering both metadata and tuple size.
+	 */
+	if (state->memAllowed < MemoryContextGetCurrentSpace(state->sortcontext))
+		return false;
+
+	uint64 availMem = state->memAllowed - MemoryContextGetCurrentSpace(state->sortcontext);
+	uint64 avgTupSize = (uint64)(((double)state->totalTupleBytes) / ((double)state->totalNumTuples));
+	Assert(avgTupSize > 0);
+	uint64 avgExtraForPrep = (uint64) (((double)state->mkctxt.estimatedExtraForPrep) / ((double)state->totalNumTuples));
+
+	if ((availMem / (sizeof(MKEntry) + avgTupSize + avgExtraForPrep)) == 0)
+		return false;
+	
+	int maxNumEntries = state->entry_allocsize + (availMem / (sizeof(MKEntry) + avgTupSize + avgExtraForPrep));
+	int newNumEntries = Min(maxNumEntries, state->entry_allocsize * 2);
+	
+	state->entries = (MKEntry *)repalloc(state->entries, newNumEntries * sizeof(MKEntry));
+	for (int entryNo = state->entry_allocsize; entryNo < newNumEntries; entryNo++)
+		mke_blank(state->entries + entryNo);
+
+	state->entry_allocsize = newNumEntries;
+
+	return true;
+}
+
 
 /*
  * Shared code for tuple and datum cases.
@@ -1065,10 +1127,12 @@ static void
 puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
 {
     Assert(is_under_sort_ctxt(state));
-    ++state->put_cnt;
+	state->totalNumTuples++;
 
     if(state->gpmon_pkt)
         Gpmon_M_Incr(state->gpmon_pkt, GPMON_QEXEC_M_ROWSIN);
+
+	bool growSucceed = true;
 
     switch (state->status)
     {
@@ -1083,16 +1147,7 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
              */
             if (!state->mkheap && state->entry_count >= state->entry_allocsize - 1) 
             {
-                int i;
-                int j;
-
-                state->entries = (MKEntry *) repalloc(state->entries, state->entry_allocsize * 2 * sizeof(MKEntry));
-
-                j = state->entry_allocsize * 2;
-                for(i=state->entry_allocsize; i<j; ++i)
-                    mke_blank(state->entries + i);
-
-                state->entry_allocsize *= 2;
+				growSucceed = grow_unsorted_array(state);
             }
 
             /* full sort? */
@@ -1110,11 +1165,15 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
             }
 
             /* If out of work_mem, switch to diskmode */
-            if(LACKMEM_WITH_ESTIMATE(state))
+            if(!growSucceed)
             {
-                inittapes_mk(state, is_sortstate_rwfile(state) ? state->pfile_rwfile_prefix : NULL);
+				state->arraySizeBeforeSpill = state->entry_allocsize;
+				state->memUsedBeforeSpill = MemoryContextGetPeakSpace(state->sortcontext);
+				inittapes_mk(state, is_sortstate_rwfile(state) ? state->pfile_rwfile_prefix : NULL);
                 Assert(state->status == TSS_BUILDRUNS);
             }
+
+			state->numTuplesInMem++;
             break;
 
         case TSS_BUILDRUNS:
@@ -1217,7 +1276,6 @@ tuplesort_gettuple_common_pos(Tuplesortstate_mk *state, TuplesortPos_mk *pos,
     bool fOK;
 
     Assert(is_under_sort_ctxt(state));
-    ++state->get_cnt;
 
     switch (state->status)
     {
@@ -2077,12 +2135,12 @@ dumptuples_mk(Tuplesortstate_mk *state, bool alltuples)
             {
             	for(i=0; i<state->entry_count; ++i)
             		if ( ! mke_is_empty(&state->entries[i])) /* can be empty because the qsort may have marked duplicates */
-						state->spilledBytes += WRITETUP(state, lt, &state->entries[i]);
+						WRITETUP(state, lt, &state->entries[i]);
             }
             else
             {
             	for(i=0; i<state->entry_count; ++i)
-					state->spilledBytes += WRITETUP(state, lt, &state->entries[i]);
+					WRITETUP(state, lt, &state->entries[i]);
             }
 		}
 
@@ -2123,7 +2181,7 @@ dumptuples_mk(Tuplesortstate_mk *state, bool alltuples)
 
         Assert(!mke_is_empty(&e));
 
-        state->spilledBytes += WRITETUP(state, lt, &e); 
+        WRITETUP(state, lt, &e); 
 
         /*
          * If the heap is empty *or* top run number has changed, we've
@@ -2437,6 +2495,9 @@ copytup_heap(Tuplesortstate_mk *state, MKEntry *e, void *tup)
             slot_get_isnull(slot),
             NULL, NULL, false
             );
+
+	state->totalTupleBytes += memtuple_get_size((MemTuple)e->ptr, NULL);
+
     Assert(state->mt_bind);
 }
 
@@ -2522,6 +2583,8 @@ copytup_index(Tuplesortstate_mk *state, MKEntry *e, void *tup)
     /* copy the tuple into sort storage */
     e->ptr = palloc(tuplen);
     memcpy(e->ptr, tuple, tuplen);
+
+	state->totalTupleBytes += tuplen;
 }
 
 static long 
