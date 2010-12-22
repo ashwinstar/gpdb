@@ -631,13 +631,12 @@ Datum
 gp_persistent_build_db(PG_FUNCTION_ARGS)
 {
 	bool mirrored = PG_GETARG_BOOL(0);
-	int64 count;
 
-	count = PersistentBuild_BuildDb(
-								MyDatabaseId,
-								mirrored);
+	PersistentBuild_BuildDb(
+						MyDatabaseId,
+						mirrored);
 
-	PG_RETURN_INT64(count);
+	PG_RETURN_INT32(1);
 }
 
 
@@ -645,8 +644,6 @@ Datum
 gp_persistent_build_all(PG_FUNCTION_ARGS)
 {
 	bool mirrored = PG_GETARG_BOOL(0);
-
-	int64 count;
 
 	Relation pg_database;
 	HeapScanDesc scan;
@@ -657,9 +654,9 @@ gp_persistent_build_all(PG_FUNCTION_ARGS)
 	/*
 	 * Do template1 first since it will also populate the shared-object persistent objects.
 	 */	
-	count = PersistentBuild_BuildDb(
-								TemplateDbOid,
-								mirrored);
+	PersistentBuild_BuildDb(
+						TemplateDbOid,
+						mirrored);
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
@@ -673,7 +670,6 @@ gp_persistent_build_all(PG_FUNCTION_ARGS)
 						AccessShareLock);
 
 	scan = heap_beginscan(pg_database, SnapshotNow, 0, NULL);
-	count = 0;
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Oid dbOid;
@@ -692,18 +688,16 @@ gp_persistent_build_all(PG_FUNCTION_ARGS)
 				 "gp_persistent_build_all: dbOid %u",
 				 dbOid);
 		
-		count += PersistentBuild_BuildDb(
-										dbOid,
-										mirrored);
+		PersistentBuild_BuildDb(
+							dbOid,
+							mirrored);
 	}
 
 	heap_endscan(scan);
 
 	heap_close(pg_database, AccessShareLock);
 
-	return count;
-
-	PG_RETURN_INT64(count);
+	PG_RETURN_INT32(1);
 }
 
 static void
@@ -880,14 +874,12 @@ gp_persistent_reset_all(PG_FUNCTION_ARGS)
 {
 	RelFileNode relFileNode;
 
-	int64 count;
-
 	// UNDONE: Verify we are in some sort of single-user mode.
 
 	/*
 	 * Truncate all database's gp_relation_node and their indices.
 	 */
-	count = PersistentBuild_TruncateAllGpRelationNode();
+	PersistentBuild_TruncateAllGpRelationNode();
 
 	/*
 	 * Truncate the 4 persistent shared tables.
@@ -907,12 +899,10 @@ gp_persistent_reset_all(PG_FUNCTION_ARGS)
 	relFileNode.relNode = GpPersistentRelationNodeRelationId;
 	PersistentBuild_NonTransactionTruncate(&relFileNode);
 
-	count += 4;
-
 	/*
 	 * Reset the persistent shared-memory free list heads and all shared-memory hash-tables.
 	 */
 	PersistentFileSysObj_Reset();
 
-	PG_RETURN_INT64(count);
+	PG_RETURN_INT32(1);
 }
