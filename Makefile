@@ -257,7 +257,7 @@ autoconf : RECONFIG
 # standardized build rules
 #---------------------------------------------------------------------
 
-rhel5_x86_32_LD_LIBRARY_PATH=/usr/lib
+rhel5_x86_32_LD_LIBRARY_PATH=/usr/lib:$(LD_LIBRARY_PATH)
 BLD_LD_LIBRARY_PATH:=$($(BLD_ARCH)_LD_LIBRARY_PATH):$($(BLD_WHERE_THE_LIBRARY_THINGS_ARE))
 export $(BLD_WHERE_THE_LIBRARY_THINGS_ARE)=$(BLD_LD_LIBRARY_PATH)
 
