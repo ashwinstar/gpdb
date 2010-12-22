@@ -48,6 +48,7 @@ typedef struct bfz
 {
 	struct bfz_freeable_stuff *freeable_stuff;
 	int			fd;
+	char        *filename;
 	unsigned char mode;
 	unsigned char compression_index;
 

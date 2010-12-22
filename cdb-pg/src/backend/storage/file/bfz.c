@@ -246,30 +246,29 @@ bfz_create(const char *filePrefix, int compress)
 static bfz_t *
 bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress)
 {
-	char		name[MAXPGPATH];
 	struct bfz_freeable_stuff *fs;
 
 	memset(thiz, 0, sizeof *thiz);
-	sprintf(name, "%s/" PG_TEMP_FILES_DIR, DatabasePath);
-	mkdir(name, 0777);
-	sprintf(name, "%s/" PG_TEMP_FILES_DIR "/%sXXXXXX", DatabasePath, filePrefix);
+
+	thiz->filename = palloc0(MAXPGPATH);
+	
+	snprintf(thiz->filename, MAXPGPATH, "%s/" PG_TEMP_FILES_DIR, DatabasePath);
+	mkdir(thiz->filename, 0777);
+	snprintf(thiz->filename, MAXPGPATH, "%s/" PG_TEMP_FILES_DIR "/%sXXXXXX", DatabasePath, filePrefix);
 #ifdef WIN32
 	{
-		char	   *tempFileName = tempnam(name, filePrefix);
+		char	   *tempFileName = tempnam(thiz->filename, filePrefix);
 
 		thiz->fd = open(tempFileName, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
 	}
 #else
-	thiz->fd = mkstemp(name);
+	thiz->fd = mkstemp(thiz->filename);
 #endif
 
 	if (thiz->fd == -1)
 		elog(ERROR, "bfz: mkstemp failed with (errno %d) %m", errno);
 
 	RegisterXactCallbackOnce(bfz_close_callback, thiz);
-
-	if (unlink(name))
-		elog(ERROR, "bfz: unlink failed with (errno %d) %m", errno);
 
 	thiz->mode = BFZ_MODE_APPEND;
 	thiz->compression_index = compress;
@@ -307,6 +306,14 @@ bfz_close(bfz_t * thiz, bool unreg)
 		close(thiz->fd);
 		thiz->fd = -1;
 	}
+
+	if (thiz->filename != NULL)
+	{
+		if (unlink(thiz->filename))
+			elog(ERROR, "bfz: unlink file %s failed with (errno %d): %m", thiz->filename, errno);
+		pfree(thiz->filename);
+	}
+
 	thiz->mode = BFZ_MODE_CLOSED;
 	pfree(thiz);
 }
