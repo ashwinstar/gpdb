@@ -137,7 +137,7 @@ INLINE_FLAGS=-finline-limit=1800
 #	TRACE_GCC_FLAG=-m64
 #endif
 
-OPTFLAGS="$(strip -O3 -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS) $(TRACE_GCC_FLAG))"
+OPTFLAGS="$(strip -O3 -funroll-loops -fargument-noalias-global -fno-omit-frame-pointer $(COPTX) -g $(INLINE_FLAGS) $(TRACE_GCC_FLAG))"
 PROFFLAGS="$(strip -O3 -funroll-loops -fargument-noalias-global -fno-omit-frame-pointer $(COPTX) -g $(INLINE_FLAGS) $(TRACE_GCC_FLAG))"
 
 ifeq (on, ${GPDBGINLINE})
