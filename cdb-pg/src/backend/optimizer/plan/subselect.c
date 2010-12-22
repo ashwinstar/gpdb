@@ -1209,7 +1209,6 @@ finalize_plan(PlannerInfo *root, Plan *plan, List *rtable,
 		case T_ShareInputScan:
 		case T_Unique:
 		case T_SetOp:
-		case T_Group:
 		case T_Repeat:
 			break;
 

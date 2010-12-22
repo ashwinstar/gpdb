@@ -668,30 +668,6 @@ _outWindow(StringInfo str, Window *node)
 	WRITE_NODE_FIELD(windowKeys);
 }
 
-
-static void
-_outGroup(StringInfo str, Group *node)
-{
-	int			i;
-
-	WRITE_NODE_TYPE("GROUP");
-
-	_outPlanInfo(str, (Plan *) node);
-
-	WRITE_INT_FIELD(numCols);
-
-	appendStringInfoLiteral(str, " :grpColIdx");
-	for (i = 0; i < node->numCols; i++)
-		appendStringInfo(str, " %d", node->grpColIdx[i]);
-
-	WRITE_INT_FIELD(numNullCols);
-	WRITE_UINT64_FIELD(inputGrouping);
-	WRITE_UINT64_FIELD(grouping);
-	WRITE_BOOL_FIELD(inputHasGrouping);
-	WRITE_INT_FIELD(rollupGSTimes);
-	WRITE_BOOL_FIELD(lastGroup);
-}
-
 static void
 _outMaterial(StringInfo str, Material *node)
 {
@@ -3669,9 +3645,6 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_Window:
 				_outWindow(str, obj);
-				break;
-			case T_Group:
-				_outGroup(str, obj);
 				break;
 			case T_Material:
 				_outMaterial(str, obj);

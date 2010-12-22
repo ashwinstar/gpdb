@@ -1592,7 +1592,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				current_pathkeys = NIL;
 				CdbPathLocus_MakeNull(&current_locus);
 			}
-			else if (parse->hasAggs)
+			else if (parse->hasAggs || parse->groupClause)
 			{
 				if (!grpext)
 				{
@@ -1713,110 +1713,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 						CdbPathLocus_MakeNull(&current_locus);
 					}
 				}
-			}
-			else if (parse->groupClause)
-			{
-				if (!grpext)
-				{
-					/*
-					 * GROUP BY without aggregation, so insert a group node (plus
-					 * the appropriate sort node, if necessary).
-					 *
-					 * Add an explicit sort if we couldn't make the path come out
-					 * the way the GROUP node needs it.
-					 */
-					if (!pathkeys_contained_in(group_pathkeys, current_pathkeys))
-					{
-						result_plan = (Plan *)
-							make_sort_from_groupcols(root,
-													 parse->groupClause,
-													 groupColIdx,
-													 false,
-													 result_plan);
-						current_pathkeys = group_pathkeys;
-						mark_sort_locus(result_plan);
-
-						/* CDB */ /* pass DISTINCT to sort */
-						if (IsA(result_plan, Sort) && gp_enable_sort_distinct)
-						{
-							Sort* pSort = (Sort*)result_plan;
-							pSort->noduplicates = true;
-						}
-					}
-
-					result_plan = (Plan *) make_group(root,
-													  tlist,
-													  (List *) parse->havingQual,
-													  numGroupCols,
-													  groupColIdx,
-													  dNumGroups,
-													  0, /* num_nullcols */
-													  0, /* input_grouping */
-													  0, /* grouping_id */
-													  0, /* rollup_gs_times */
-													  result_plan);
-
-					if (canonical_grpsets != NULL &&
-						canonical_grpsets->grpset_counts != NULL &&
-						canonical_grpsets->grpset_counts[0] > 1)
-					{
-						result_plan->flow = pull_up_Flow(result_plan,
-														 result_plan->lefttree,
-														 (current_pathkeys != NIL));
-						result_plan = add_repeat_node(result_plan,
-													  canonical_grpsets->grpset_counts[0],
-													  0);
-					}
-				}
-				else
-				{
-					ListCell *lc;
-					bool querynode_changed = false;
-
-					List *new_tlist = copyObject(tlist);
-
-					/* Make EXPLAIN output look nice */
-					foreach(lc, result_plan->targetlist)
-					{
-						TargetEntry *tle = (TargetEntry*)lfirst(lc);
-
-						if ( IsA(tle->expr, Var) && tle->resname == NULL )
-						{
-							TargetEntry *vartle = tlist_member((Node*)tle->expr, tlist);
-
-							if ( vartle != NULL && vartle->resname != NULL )
-								tle->resname = pstrdup(vartle->resname);
-						}
-					}
-
-					result_plan = (Plan *)
-						plan_grouping_extension(root, best_path, tuple_fraction,
-												use_hashed_grouping,
-												&new_tlist, result_plan->targetlist,
-												false, false,
-												(List *) parse->havingQual,
-												&numGroupCols,
-												&groupColIdx,
-												&agg_counts,
-												canonical_grpsets,
-												&dNumGroups,
-												&querynode_changed,
-												&current_pathkeys,
-												result_plan);
-					if (querynode_changed)
-					{
-						/* We want to re-write sort_pathkeys here since the 2-stage
-						 * aggregation subplan or grouping extension subplan may change
-						 * the previous root->parse Query node, which makes the current
-						 * sort_pathkeys invalid.
-						 */
-						sort_pathkeys = make_pathkeys_for_sortclauses(parse->sortClause,
-																	  result_plan->targetlist);
-						sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
-					}
-				}
-				/* The Group node won't change sort ordering, but may disrupt locus. */
-				CdbPathLocus_MakeNull(&current_locus);
 			}
 			else if (root->hasHavingQual)
 			{

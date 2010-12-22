@@ -508,7 +508,6 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 				break;
 			case T_Material:
 			case T_Sort:
-			case T_Group:
 			case T_Agg:
 			case T_Unique:
 			case T_Hash:

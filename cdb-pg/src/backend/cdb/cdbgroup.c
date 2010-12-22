@@ -985,7 +985,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 		/* Hashed aggregation produces randomly-ordered results */
 		current_pathkeys = NIL;
 	}
-	else if (parse->hasAggs)
+	else if (parse->hasAggs || parse->groupClause)
 	{
 		if (!ctx->is_grpext)
 		{
@@ -1052,61 +1052,6 @@ make_one_stage_agg_plan(PlannerInfo *root,
 												  &current_pathkeys,
 												  result_plan);
 		}
-	}
-	else if (parse->groupClause)
-	{
-		if (!ctx->is_grpext)
-		{
-			/*
-			 * GROUP BY without aggregation, so insert a group node (plus
-			 * the appropriate sort node, if necessary).
-			 *
-			 * Add an explicit sort if we couldn't make the path come out
-			 * the way the GROUP node needs it.
-			 */
-			if (!pathkeys_contained_in(root->group_pathkeys, current_pathkeys))
-			{
-				result_plan = (Plan *)
-					make_sort_from_groupcols(root,
-											 parse->groupClause,
-											 groupColIdx,
-											 false,
-											 result_plan);
-				current_pathkeys = root->group_pathkeys;
-				mark_sort_locus(result_plan);
-			}
-
-			result_plan = (Plan *) make_group(root,
-											  tlist,
-											  (List *) parse->havingQual,
-											  numGroupCols,
-											  groupColIdx,
-											  *(ctx->p_dNumGroups),
-											  0, /* num_nullcols */
-											  0, /* input_grouping */
-											  ctx->grouping,
-											  0, /* rollup_gs_times */
-											  result_plan);
-		}
-
-		else
-		{
-			result_plan =  plan_grouping_extension(root, path, ctx->tuple_fraction,
-												   ctx->use_hashed_grouping,
-												   &tlist, sub_tlist,
-												   false, false,
-												   (List *) parse->havingQual,
-												   &numGroupCols,
-												   &groupColIdx,
-												   ctx->agg_counts,
-												   ctx->canonical_grpsets,
-												   ctx->p_dNumGroups,
-												   &(ctx->querynode_changed),
-												   &current_pathkeys,
-												   result_plan);
-		}
-
-		/* The Group node won't change sort ordering */
 	}
 	else if (root->hasHavingQual)
 	{
@@ -3837,42 +3782,23 @@ add_second_stage_agg(PlannerInfo *root,
 								   1, subquery, result_plan);
 
 	/* Add an Agg/Group node */
-	if (is_agg ||
-		aggstrategy == AGG_HASHED)
-	{
-		/* convert current_numGroups to long int */
-		long lNumGroups = (long) Min(numGroups, (double) LONG_MAX);
+	/* convert current_numGroups to long int */
+	long lNumGroups = (long) Min(numGroups, (double) LONG_MAX);
 
-		agg_node = (Plan *)make_agg(root,
-									upper_tlist,
-									upper_qual,
-									aggstrategy, false,
-									numGroupCols,
-									prelimGroupColIdx,
-									lNumGroups,
-									num_nullcols,
-									input_grouping,
-									grouping,
-									rollup_gs_times,
-									numAggs,
-									transSpace,
-									result_plan);
-	}
-
-	else
-	{
-		agg_node = (Plan *)make_group(root,
-									  upper_tlist,
-									  upper_qual,
-									  numGroupCols,
-									  prelimGroupColIdx,
-									  numGroups,
-									  num_nullcols,
-									  input_grouping,
-									  grouping,
-									  rollup_gs_times,
-									  result_plan);
-	}
+	agg_node = (Plan *)make_agg(root,
+			upper_tlist,
+			upper_qual,
+			aggstrategy, false,
+			numGroupCols,
+			prelimGroupColIdx,
+			lNumGroups,
+			num_nullcols,
+			input_grouping,
+			grouping,
+			rollup_gs_times,
+			numAggs,
+			transSpace,
+			result_plan);
 
 	/*
 	 * Agg/Group will not change the sort order unless it is hashed.

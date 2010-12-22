@@ -2167,7 +2167,6 @@ void (*initGpmonPktFuncs[])(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 	&initGpmonPktForHashJoin, /* T_HashJoin */
 	&initGpmonPktForMaterial, /* T_Material */
 	&initGpmonPktForSort, /* T_Sort */
-	&initGpmonPktForGroup, /* T_Group */
 	&initGpmonPktForAgg, /* T_Agg */
 	&initGpmonPktForUnique, /* T_Unique */
 	&initGpmonPktForHash, /* T_Hash */
@@ -2285,7 +2284,6 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 		case T_ShareInputScan:
 		case T_Material:
 		case T_Sort:
-		case T_Group:
 		case T_Agg:
 		case T_Window:
 		case T_Unique:

@@ -992,9 +992,6 @@ explain_outNode(StringInfo str,
 		case T_Sort:
 			pname = "Sort";
 			break;
-		case T_Group:
-			pname = "Group";
-			break;
 		case T_Agg:
 			switch (((Agg *) plan)->aggstrategy)
 			{
@@ -1347,18 +1344,6 @@ explain_outNode(StringInfo str,
 			show_grouping_keys(plan,
 						       ((Agg *) plan)->numCols,
 						       ((Agg *) plan)->grpColIdx,
-						       "Group By",
-						       str, indent, es);
-			break;
-		case T_Group:
-			show_upper_qual(plan->qual,
-							"Filter",
-							"subplan", outerPlan(plan),
-							NULL, NULL,
-							str, indent, es);
-			show_grouping_keys(plan,
-						       ((Group *) plan)->numCols,
-						       ((Group *) plan)->grpColIdx,
 						       "Group By",
 						       str, indent, es);
 			break;
@@ -1931,12 +1916,6 @@ show_grouping_keys(Plan        *plan,
 	{
 		num_null_cols = ((Agg*)plan)->numNullCols;
 		rollup_gs_times = ((Agg*)plan)->rollupGSTimes;
-	}
-
-	else if (IsA(plan, Group))
-	{
-		num_null_cols = ((Group*)plan)->numNullCols;
-		rollup_gs_times = ((Group*)plan)->rollupGSTimes;
 	}
 
     for (keyno = 0; keyno < numCols - num_null_cols; keyno++)

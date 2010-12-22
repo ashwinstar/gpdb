@@ -549,8 +549,6 @@ char * plannode_type(Plan *p)
 			return "LIMIT";
 		case T_Hash:
 			return "HASH";
-		case T_Group:
-			return "GROUP";
 		case T_Motion:
 			return "MOTION";
 		default:

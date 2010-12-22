@@ -277,12 +277,6 @@ plan_tree_walker(Node *node,
 			/* Other fields are simple counts and lists of indexes and oids. */
 			break;
 
-		case T_Group:
-			if (walk_plan_node_fields((Plan *) node, walker, context))
-				return true;
-			/* Other fields are simple count and lists of indexes. */
-			break;
-
 		case T_Agg:
 			if (walk_plan_node_fields((Plan *) node, walker, context))
 				return true;
@@ -880,18 +874,6 @@ plan_tree_mutator(Node *node,
 				COPYARRAY(newsort, sort, numCols, sortColIdx);
 				COPYARRAY(newsort, sort, numCols, sortOperators);
 				return (Node *) newsort;
-			}
-			break;
-
-		case T_Group:
-			{
-				Group	   *group = (Group *) node;
-				Group	   *newgroup;
-
-				FLATCOPY(newgroup, group, Group);
-				PLANMUTATE(newgroup, group);
-				COPYARRAY(newgroup, group, numCols, grpColIdx);
-				return (Node *) newgroup;
 			}
 			break;
 

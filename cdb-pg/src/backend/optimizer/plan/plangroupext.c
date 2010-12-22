@@ -725,10 +725,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 										agg_node, false);
 
 		/* Set inputHasGrouping */
-		if (context->is_agg)
-			((Agg *)agg_node)->inputHasGrouping = true;
-		else
-			((Group *)agg_node)->inputHasGrouping = true;
+		((Agg *)agg_node)->inputHasGrouping = true;
 
 		context->querynode_changed = true;
 
@@ -856,10 +853,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		if (context->aggstrategy == AGG_HASHED)
 			context->current_pathkeys = NIL; /* No longer sorted */
 
-		if (context->is_agg || context->aggstrategy == AGG_HASHED)
-			((Agg *)agg_node)->inputHasGrouping = true;
-		else
-			((Group *)agg_node)->inputHasGrouping = true;
+		((Agg *)agg_node)->inputHasGrouping = true;
 
 		context->querynode_changed = true;
 		context->tlist = copyObject(tlist3);
@@ -867,10 +861,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 
 	if (!context->twostage)
 	{
-		if (context->is_agg)
-			((Agg *)agg_node)->lastAgg = true;
-		else
-			((Group*)agg_node)->lastGroup = true;
+		((Agg *)agg_node)->lastAgg = true;
 
 		if (need_repeat_node)
 			agg_node = add_repeat_node(agg_node, 0, 0);
@@ -1655,32 +1646,19 @@ add_first_agg(PlannerInfo *root,
 
 	*context->p_dNumGroups += current_numGroups;
 
-	if (context->is_agg)
-	{
-		/* convert current_numGroups to long int */
-		long lNumGroups = (long) Min(current_numGroups, (double) LONG_MAX);
+	/* convert current_numGroups to long int */
+	long lNumGroups = (long) Min(current_numGroups, (double) LONG_MAX);
 
-		/* For the first Agg node, we don't really want to consider
-		 * GROUPING in groupColIdx, which is the last entry in groupColIdx.
-		 * The parameter numGroupCols should have excluded the GROUPING column.
-		 */
-		agg_node = (Plan *)make_agg(root, current_tlist, current_qual, context->aggstrategy, false,
-									numGroupCols, groupColIdx,
-									lNumGroups, num_nullcols, input_grouping, grouping,
-									rollup_gs_times,
-									context->agg_counts->numAggs, context->agg_counts->transitionSpace,
-									current_lefttree);
-	}
-
-	else
-	{
-		agg_node = (Plan *)make_group(root, current_tlist, current_qual,
-									  numGroupCols,
-									  groupColIdx, current_numGroups,
-									  num_nullcols, input_grouping, grouping,
-									  rollup_gs_times,
-									  current_lefttree);
-	}
+	/* For the first Agg node, we don't really want to consider
+	 * GROUPING in groupColIdx, which is the last entry in groupColIdx.
+	 * The parameter numGroupCols should have excluded the GROUPING column.
+	 */
+	agg_node = (Plan *)make_agg(root, current_tlist, current_qual, context->aggstrategy, false,
+			numGroupCols, groupColIdx,
+			lNumGroups, num_nullcols, input_grouping, grouping,
+			rollup_gs_times,
+			context->agg_counts->numAggs, context->agg_counts->transitionSpace,
+			current_lefttree);
 
 	/* Pull up the Flow from the subplan */
 	agg_node->flow =

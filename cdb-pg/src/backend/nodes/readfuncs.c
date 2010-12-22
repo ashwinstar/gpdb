@@ -3101,30 +3101,6 @@ _readWindow(void)
 }
 
 /*
- * _readGroup
- */
-static Group *
-_readGroup(void)
-{
-	READ_LOCALS(Group);
-
-	readPlanInfo((Plan *)local_node);
-
-	READ_INT_FIELD(numCols);
-
-	READ_INT_ARRAY(grpColIdx, numCols, AttrNumber);
-
-	READ_INT_FIELD(numNullCols);
-	READ_UINT64_FIELD(inputGrouping);
-	READ_UINT64_FIELD(grouping);
-	READ_BOOL_FIELD(inputHasGrouping);
-	READ_INT_FIELD(rollupGSTimes);
-	READ_BOOL_FIELD(lastGroup);
-
-	READ_DONE();
-}
-
-/*
  * _readMaterial
  */
 static Material *
@@ -3631,7 +3607,6 @@ static ParseNodeInfo infoAr[] =
 	{"FUNCWITHARGS", (ReadFn)_readFuncWithArgs},
 	{"GRANTROLESTMT", (ReadFn)_readGrantRoleStmt},
 	{"GRANTSTMT", (ReadFn)_readGrantStmt},
-	{"GROUP", (ReadFn)_readGroup},
 	{"GROUPCLAUSE", (ReadFn)_readGroupClause},
 	{"GROUPID", (ReadFn)_readGroupId},
 	{"GROUPING", (ReadFn)_readGrouping},

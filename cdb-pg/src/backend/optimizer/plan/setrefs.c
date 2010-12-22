@@ -760,7 +760,6 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 		}
 			break;
 		case T_Agg:
-		case T_Group:
 			set_upper_references(glob, plan, rtoffset, true);
 			break;
 		case T_Window:

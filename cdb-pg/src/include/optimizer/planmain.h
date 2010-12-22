@@ -151,12 +151,6 @@ extern Agg *make_agg(PlannerInfo *root, List *tlist, List *qual,
 					 int rollupGSTimes,
 					 int numAggs, int transSpace,
 					 Plan *lefttree);
-extern Group *make_group(PlannerInfo *root, List *tlist, List *qual,
-						 int numGroupCols, AttrNumber *grpColIdx,
-						 double numGroups, int numNullCols,
-						 uint64 inputGrouping,  uint64 grouping,
-						 int rollupGSTimes,
-						 Plan *lefttree);
 extern HashJoin *make_hashjoin(List *tlist,
 			  List *joinclauses, List *otherclauses,
 			  List *hashclauses, List *hashqualclauses,

@@ -1623,29 +1623,6 @@ typedef struct SortState
 } SortState;
 
 /* ---------------------
- *        GroupState information
- * -------------------------
- */
-typedef struct GroupState
-{
-        ScanState        ss;                                /* its first field is NodeTag */
-        FmgrInfo   *eqfunctions;        /* per-field lookup data for equality fns */
-        bool                grp_done;                /* indicates completion of Group scan */
-
-        struct MemTupleData *       grp_firstTuple; /* copy of first tuple of current group */
-        bool        is_passthru;     /* indicate if grp_firstTuple is a pass-thru tuple. */
-
-        /*
-         * The following are used for modifying an input tuple based
-         * on the rollup level of this node.
-         */
-        int num_attrs;
-        Datum *replValues;
-        bool *replIsnull;
-        bool *doReplace;
-} GroupState;
-
-/* ---------------------
  *        AggState information
  *
  *        ss.ss_ScanTupleSlot refers to output of underlying plan.

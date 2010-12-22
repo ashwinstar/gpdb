@@ -737,29 +737,6 @@ _copySort(Sort *from)
 	return newnode;
 }
 
-
-/*
- * _copyGroup
- */
-static Group *
-_copyGroup(Group *from)
-{
-	Group	   *newnode = makeNode(Group);
-
-	CopyPlanFields((Plan *) from, (Plan *) newnode);
-
-	COPY_SCALAR_FIELD(numCols);
-	COPY_POINTER_FIELD(grpColIdx, from->numCols * sizeof(AttrNumber));
-	COPY_SCALAR_FIELD(numNullCols);
-	COPY_SCALAR_FIELD(inputGrouping);
-	COPY_SCALAR_FIELD(grouping);
-	COPY_SCALAR_FIELD(inputHasGrouping);
-	COPY_SCALAR_FIELD(rollupGSTimes);
-	COPY_SCALAR_FIELD(lastGroup);
-
-	return newnode;
-}
-
 /*
  * _copyAgg
  */
@@ -3930,9 +3907,6 @@ copyObject(void *from)
 			break;
 		case T_Sort:
 			retval = _copySort(from);
-			break;
-		case T_Group:
-			retval = _copyGroup(from);
 			break;
 		case T_Agg:
 			retval = _copyAgg(from);

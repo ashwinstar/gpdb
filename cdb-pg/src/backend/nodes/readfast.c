@@ -2934,30 +2934,6 @@ _readWindow(const char ** str)
 }
 
 /*
- * _readGroup
- */
-static Group *
-_readGroup(const char ** str)
-{
-	READ_LOCALS(Group);
-
-	readPlanInfo(str, (Plan *)local_node);
-
-	READ_INT_FIELD(numCols);
-
-	READ_INT_ARRAY(grpColIdx, numCols, AttrNumber);
-
-	READ_INT_FIELD(numNullCols);
-	READ_UINT64_FIELD(inputGrouping);
-	READ_UINT64_FIELD(grouping);
-	READ_BOOL_FIELD(inputHasGrouping);
-	READ_INT_FIELD(rollupGSTimes);
-	READ_BOOL_FIELD(lastGroup);
-
-	READ_DONE();
-}
-
-/*
  * _readMaterial
  */
 static Material *
@@ -3584,9 +3560,6 @@ readNodeBinary(const char ** str)
 				break;
 			case T_Window:
 				return_value = _readWindow(str);
-				break;
-			case T_Group:
-				return_value = _readGroup(str);
 				break;
 			case T_Material:
 				return_value = _readMaterial(str);

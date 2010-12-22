@@ -24,8 +24,6 @@
 #include "executor/nodeBitmapOr.h"
 #include "executor/nodeExternalscan.h"
 #include "executor/nodeFunctionscan.h"
-#include "executor/nodeGroup.h"
-#include "executor/nodeGroup.h"
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
 #include "executor/nodeIndexscan.h"
@@ -188,10 +186,6 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 
 		case T_SortState:
 			ExecReScanSort((SortState *) node, exprCtxt);
-			break;
-
-		case T_GroupState:
-			ExecReScanGroup((GroupState *) node, exprCtxt);
 			break;
 
 		case T_AggState:

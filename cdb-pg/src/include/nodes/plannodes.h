@@ -757,55 +757,6 @@ typedef struct Sort
 } Sort;
 
 /* ---------------
- *	 group node -
- *		Used for queries with GROUP BY (but no aggregates) specified.
- *		The input must be presorted according to the grouping columns.
- * ---------------
- */
-typedef struct Group
-{
-	Plan		plan;
-	int			numCols;		/* number of grouping columns */
-	AttrNumber *grpColIdx;		/* their indexes in the target list */
-
-	/*
-	 * The following are used by ROLLUP.
-	 */
-
-	/*
-	 * The number of null grouping columns for this node.
-	 */
-	int         numNullCols;
-
-    /*
-	 * Indicate the GROUPING value of input tuples for this Group node.
-	 * Refer to struct Agg for details.
-	 *
-	 * If this is not for a rollup, this value is 0.
-	 */
-	uint64 inputGrouping;
-
-	/* The value of GROUPING for this rollup-aware node. */
-	uint64 grouping;
-
-	/*
-	 * Indicate if input tuples contain values for GROUPING column.
-	 */
-	bool inputHasGrouping;
-
-	/*
-	 * How many times the aggregates in this rollup level will be output
-	 * for a given query. Used only for ROLLUP queries.
-	 */
-	int         rollupGSTimes;
-
-	/*
-	 * Indicate if this Group node is the last one in a rollup.
-	 */
-	bool        lastGroup;
-} Group;
-
-/* ---------------
  *		aggregate node
  *
  * An Agg node implements plain or grouped aggregation.  For grouped

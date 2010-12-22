@@ -93,7 +93,6 @@
 #include "executor/nodeAppendOnlyscan.h"
 #include "executor/nodeAOCSScan.h"
 #include "executor/nodeFunctionscan.h"
-#include "executor/nodeGroup.h"
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
 #include "executor/nodeIndexscan.h"
@@ -282,11 +281,6 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 												estate, eflags);
 			break;
 
-		case T_Group:
-			result = (PlanState *) ExecInitGroup((Group *) node,
-												 estate, eflags);
-			break;
-
 		case T_Agg:
 			result = (PlanState *) ExecInitAgg((Agg *) node,
 											   estate, eflags);
@@ -449,7 +443,6 @@ ExecProcNode(PlanState *node)
 		&&Exec_Jmp_HashJoin,
 		&&Exec_Jmp_Material,
 		&&Exec_Jmp_Sort,
-		&&Exec_Jmp_Group,
 		&&Exec_Jmp_Agg,
 		&&Exec_Jmp_Unique,
 		&&Exec_Jmp_Hash,
@@ -564,10 +557,6 @@ Exec_Jmp_Material:
 
 Exec_Jmp_Sort:
 	result = ExecSort((SortState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Group:
-	result = ExecGroup((GroupState *) node);
 	goto Exec_Jmp_Done;
 
 Exec_Jmp_Agg:
@@ -921,9 +910,6 @@ ExecCountSlotsNode(Plan *node)
 		case T_Sort:
 			return ExecCountSlotsSort((Sort *) node);
 
-		case T_Group:
-			return ExecCountSlotsGroup((Group *) node);
-
 		case T_Agg:
 			return ExecCountSlotsAgg((Agg *) node);
 
@@ -1154,10 +1140,6 @@ ExecEndNode(PlanState *node)
 
 		case T_SortState:
 			ExecEndSort((SortState *) node);
-			break;
-
-		case T_GroupState:
-			ExecEndGroup((GroupState *) node);
 			break;
 
 		case T_AggState:

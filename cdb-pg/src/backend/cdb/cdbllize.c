@@ -1061,7 +1061,6 @@ motion_sanity_walker(Node *node, sanity_result_t *result)
 		case T_SubqueryScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
-		case T_Group:
 		case T_Agg:
 		case T_Unique:
 		case T_Hash:
