@@ -124,9 +124,10 @@ bool querytree_safe_for_segment_walker(Node *expr, void *context)
 			{
 				Query *q = (Query *) expr;
 				
-				if (q->commandType != CMD_SELECT 
-						|| q->intoClause != NULL 
-						|| q->resultRelation > 0)
+				if (!gp_upgrade_mode &&
+					(q->commandType != CMD_SELECT
+					 || q->intoClause != NULL
+					 || q->resultRelation > 0))
 				{
 					elog(ERROR, "function cannot execute on segment because it issues a non-SELECT statement");
 				}

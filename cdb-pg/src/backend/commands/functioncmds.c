@@ -422,7 +422,7 @@ compute_attributes_sql_style(List *options,
 
 /*-------------
  *	 Interpret the parameters *parameters and return their contents via
- *	 *isStrict_p and *volatility_p.
+ *	 *isStrict_p, *volatility_p and *oid_p.
  *
  *	These parameters supply optional information about a function.
  *	All have defaults if not specified. Parameters:
@@ -432,10 +432,13 @@ compute_attributes_sql_style(List *options,
  *
  *	 * volatility tells the optimizer whether the function's result can
  *	   be assumed to be repeatable over multiple evaluations.
+ *
+ *   * oid (upgrade mode only) specifies that the function should be
+ *     created with the user-specified oid.
  *------------
  */
 static void
-compute_attributes_with_style(List *parameters, bool *isStrict_p, char *volatility_p)
+compute_attributes_with_style(List *parameters, bool *isStrict_p, char *volatility_p, Oid* oid_p)
 {
 	ListCell   *pl;
 
@@ -450,6 +453,13 @@ compute_attributes_with_style(List *parameters, bool *isStrict_p, char *volatili
 			/* obsolete spelling of isImmutable */
 			if (defGetBoolean(param))
 				*volatility_p = PROVOLATILE_IMMUTABLE;
+		}
+		else if (gp_upgrade_mode && pg_strcasecmp(param->defname, "OID")==0)
+		{
+			/* Catalog obj's OID must be less than FirstBootstrapObjectId */
+			int64 oid = defGetInt64(param);
+			Assert(oid < FirstBootstrapObjectId);
+			*oid_p = (Oid)oid;
 		}
 		else
 			ereport(WARNING,
@@ -632,7 +642,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 		returnsSet = false;
 	}
 
-	compute_attributes_with_style(stmt->withClause, &isStrict, &volatility);
+	compute_attributes_with_style(stmt->withClause, &isStrict, &volatility, &stmt->funcOid);
 
 	interpret_AS_clause(languageOid, languageName, as_clause,
 						&prosrc_str, &probin_str);

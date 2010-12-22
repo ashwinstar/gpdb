@@ -31,7 +31,8 @@ static struct verarray versions[] =
 	{"3.1", 200712072},
 	{"3.2", 200808253},
 	{"3.3", 200905011},
-	{"4.0", CATALOG_VERSION_NO},
+	{"4.0", 201005134},
+	{"4.1", CATALOG_VERSION_NO},
 	{NULL, 0}
 };
 
@@ -40,14 +41,14 @@ usage(const char *progname)
 {
 	printf(_("%s modifies control information of a PostgreSQL database cluster.\n\n"), progname);
 	printf(_("WARNING! This tool should only be used to upgrade/downgrade \n"
-			 "Greenplum 3.0, 3.1, 3.2, 3.3, and 4.0 systems!\n\n"));
+			 "Greenplum 3.0 and above systems!\n\n"));
 	printf
 		(
 		 _(
 		   "Usage:\n"
 		   "  %s [OPTION] [DATADIR]\n\n"
 		   "Options:\n"
-		   "  --catversion [3.0 | 3.1 | 3.2 | 3.3 | 4.0]  replace catalog version with <version>\n"
+		   "  --catversion [3.0 | 3.1 | 3.2 | 3.3 | 4.0 | 4.1]  replace catalog version with <version>\n"
 		   "  --help                    show this help, then exit\n"
 		   "  --version                 output version information, then exit\n"
 		   ),
@@ -209,11 +210,11 @@ main(int argc, char *argv[])
 		else if (ControlFile.catalog_version_no == tover)
 		{
 			/* must be something wrong if we want to do this */
-			printf(_("\nFATAL ERROR\n\n"
+			printf(_("\n\nWarning\n\n"
 					 "Catalog version number is already set to %u\n\n"),
 				   tover);
 			close(fd);
-			exit(1);
+			return 0;
 		}
 		
 		printf(_("New catalog version number: %u\n"), tover);

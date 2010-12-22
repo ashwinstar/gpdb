@@ -468,6 +468,20 @@ InitializeSessionUserId(const char *rolename)
 					 errOmitLocation(true)));
 
 		/*
+		 * In Upgrade Mode, normal connection (i.e. dispatch mode)
+		 * is disallowed unless it's the bootstrap user and the "gp_upgrade_conn" GUC is set.
+		 */
+		if (gp_upgrade_mode && Gp_role == GP_ROLE_DISPATCH &&
+			!(roleid==BOOTSTRAP_SUPERUSERID && gp_upgrade_conn))
+		{
+			ereport(FATAL,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("Upgrade in progress, connection refused"),
+					 errOmitLocation(true),
+					 errSendAlert(false)));
+		}
+
+		/*
 		 * Check connection limit for this role.
 		 *
 		 * There is a race condition here --- we create our PGPROC before

@@ -274,6 +274,14 @@ RemoveSchema_internal(const char *schemaName, DropBehavior behavior,
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_NAMESPACE,
 					   schemaName);
 
+	/* Additional check to protect reserved schema names */
+	if (!allowSystemTableMods && IsReservedName(schemaName))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_RESERVED_NAME),
+				 errmsg("cannot drop schema %s because it is required by the database system", schemaName)));
+	}
+
 	/*
 	 * Do the deletion.  Objects contained in the schema are removed by means
 	 * of their dependency links to the schema.

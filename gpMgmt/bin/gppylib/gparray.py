@@ -147,6 +147,9 @@ class GpDB:
         # Pending filespace creation
         self.__pending_filespace = None
 
+        # Catalog directory for each database in this segment
+        self.catdirs = None
+        
         # Todo: Remove old dead code
         self.valid = (status == 'u')
         
@@ -192,7 +195,7 @@ class GpDB:
             if fsoid not in [SYSTEM_FILESPACE]:
                 filespaces.append("%d:%s" % (fsoid, self.__filespaces[fsoid]))
 
-        return '%d|%d|%s|%s|%s|%s|%s|%s|%d|%s|%s|%s' % (
+        return '%d|%d|%s|%s|%s|%s|%s|%s|%d|%s|%s|%s|%s' % (
             self.dbid,
             self.content,
             self.role,
@@ -204,7 +207,8 @@ class GpDB:
             self.port,
             self.replicationPort,
             self.datadir,
-            ','.join(filespaces)  # this is rather ugly
+            ','.join(filespaces),  # this is rather ugly
+            ','.join(self.catdirs)
             )
 
     # --------------------------------------------------------------------
@@ -242,9 +246,27 @@ class GpDB:
             status          = STATUS_UP if valid else STATUS_DOWN
             replicationPort = None
             filespaces      = ""
+            catdirs         = ""
 
-        # New format: 12 fields
+        # Catalog 3.4 format: 12 fields
         elif len(tup) == 12:
+            # This describes the gp_segment_configuration catalog (3.4)
+            dbid            = int(tup[0])
+            content         = int(tup[1])
+            role            = tup[2]
+            preferred_role  = tup[3]
+            mode            = tup[4]
+            status          = tup[5]
+            hostname        = tup[6]
+            address         = tup[7]
+            port            = int(tup[8])
+            replicationPort = tup[9]
+            datadir         = tup[10]  # from the pg_filespace_entry table
+            filespaces      = tup[11]
+            catdirs         = ""
+
+        # Catalog 4.0+: 13 fields
+        elif len(tup) == 13:
             # This describes the gp_segment_configuration catalog (3.4+)
             dbid            = int(tup[0])
             content         = int(tup[1])
@@ -258,7 +280,7 @@ class GpDB:
             replicationPort = tup[9]
             datadir         = tup[10]  # from the pg_filespace_entry table
             filespaces      = tup[11]
-
+            catdirs         = tup[12]
         else:
             raise Exception("GpDB unknown input format: %s" % s)
 
@@ -281,6 +303,13 @@ class GpDB:
                 continue
             (fsoid, fselocation) = fs.split(":")
             gpdb.addSegmentFilespace(fsoid, fselocation)
+            
+        # Add Catalog Dir, if present
+        gpdb.catdirs = []
+        for d in catdirs.split(","):
+            if d == "":
+                continue
+            gpdb.catdirs.append(d)
 
         # Return the completed segment
         return gpdb
@@ -1307,7 +1336,6 @@ class GpArray:
             ''')
             filespaceArr = [GpFilespaceObj(fsRow[0], fsRow[1]) for fsRow in filespaceRows]
 
-        conn.close()
 
         # Todo: add checks that all segments should have the same filespaces?
         recoveredSegmentDbids = []
@@ -1334,7 +1362,29 @@ class GpArray:
                 seg = GpDB(content, preferred_role, dbid, role, mode, status, 
                            hostname, address, port, fslocation, replicationPort)
                 segments.append(seg)
+        
+        for seg in segments:
+            datcatloc = dbconn.execSQL(conn, '''
+                select fsloc.fselocation || '/' ||
+                       case when db.dattablespace = 1663
+                          then 'base'
+                          else db.dattablespace::text
+                       end || '/'||db.oid as catloc
+                from pg_Database db, pg_tablespace ts,
+                     (SELECT dbid, fs.oid, fselocation
+                      FROM pg_catalog.gp_segment_configuration
+                      JOIN pg_catalog.pg_filespace_entry on (dbid = fsedbid)
+                      JOIN pg_catalog.pg_filespace fs on (fsefsoid = fs.oid)) fsloc
+                      where db.dattablespace = ts.oid
+                      and ts.spcfsoid = fsloc.oid
+                      and fsloc.dbid = %d 
+            ''' % seg.dbid)
+            seg.catdirs = []
+            for row in datcatloc:
+                seg.catdirs.append(row[0])
 
+        conn.close()
+        
         origSegments = [seg.copy() for seg in segments]
         
         if strategy_rows.rowcount == 0:

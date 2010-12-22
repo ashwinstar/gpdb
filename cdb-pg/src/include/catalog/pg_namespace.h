@@ -117,9 +117,6 @@ DESCR("Standard public schema");
 DATA(insert OID = 6104 ( "pg_aoseg" PGUID _null_ ));
 DESCR("Reserved schema for Append Only segment list and eof tables");
 #define PG_AOSEGMENT_NAMESPACE 6104
-DATA(insert OID = 8001 ( "gp_toolkit" PGUID _null_ ));
-DESCR("Greenplum toolkit schema");
-#define GP_TOOLKIT_NAMESPACE 8001
 
 
 #define IsBuiltInNameSpace(namespaceId) \
@@ -127,8 +124,7 @@ DESCR("Greenplum toolkit schema");
 	 namespaceId == PG_TOAST_NAMESPACE || \
 	 namespaceId == PG_BITMAPINDEX_NAMESPACE || \
 	 namespaceId == PG_PUBLIC_NAMESPACE || \
-	 namespaceId == PG_AOSEGMENT_NAMESPACE || \
-	 namespaceId == GP_TOOLKIT_NAMESPACE)
+	 namespaceId == PG_AOSEGMENT_NAMESPACE)
 
 
 /*

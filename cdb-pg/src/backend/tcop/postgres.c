@@ -3775,7 +3775,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 * postmaster/postmaster.c (the option sets should not conflict)
 	 * and with the common help() function in main/main.c.
 	 */
-	while ((flag = getopt(argc, argv, "A:B:b:C:c:D:d:EeFf:h:ijk:lN:nOo:Pp:r:S:sTt:v:W:x:y:z:-:")) != -1)
+	while ((flag = getopt(argc, argv, "A:B:b:C:c:D:d:EeFf:h:ijk:lN:nOo:Pp:r:S:sTt:Uv:W:x:y:z:-:")) != -1)
 	{
 		switch (flag)
 		{
@@ -3908,6 +3908,19 @@ PostgresMain(int argc, char *argv[], const char *username)
 					break;
 				}
 
+			case 'U':
+				/*
+				 * In upgrade mode, we indicate we're in upgrade mode and
+				 * 1. allow DML on persistent table
+				 * 2. alter DDL on catalog table
+				 * 3. TODO: disable the 4.1 xlog format (stick with the old)
+				 */
+				SetConfigOption("upgrade_mode",                         "true", ctx, gucsource);
+				SetConfigOption("gp_permit_persistent_metadata_update", "true", ctx, gucsource);
+				SetConfigOption("allow_system_table_mods",              "true", ctx, gucsource);
+				break;
+
+
 			case 'v':
 				if (secure)
 					FrontendProtocol = (ProtocolVersion) atoi(optarg);
@@ -3996,7 +4009,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 				(errcode(ERRCODE_CANNOT_CONNECT_NOW),
 				 errmsg("System was started in master-only utility mode - only utility mode connections are allowed")));
 	}
-	
+
 	/*
 	 * Process any additional GUC variable settings passed in startup packet.
 	 * These are handled exactly like command-line variables.

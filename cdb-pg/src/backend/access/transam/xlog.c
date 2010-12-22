@@ -5007,7 +5007,8 @@ ReadControlFile(void)
 				(errmsg("incorrect checksum in control file")));
 
 	/*
-	 * Do compatibility checking immediately.  We do this here for 2 reasons:
+	 * Do compatibility checking immediately, except during upgrade.
+	 * We do this here for 2 reasons:
 	 *
 	 * (1) if the database isn't compatible with the backend executable, we
 	 * want to abort before we can possibly do any damage;
@@ -5017,7 +5018,8 @@ ReadControlFile(void)
 	 * themselves.	(These locale settings are considered critical
 	 * compatibility items because they can affect sort order of indexes.)
 	 */
-	if (ControlFile->catalog_version_no != CATALOG_VERSION_NO)
+	if (ControlFile->catalog_version_no != CATALOG_VERSION_NO &&
+		!gp_upgrade_mode)
 		ereport(FATAL,
 				(errmsg("database files are incompatible with server"),
 				 errdetail("The database cluster was initialized with CATALOG_VERSION_NO %d,"

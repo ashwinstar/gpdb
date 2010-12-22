@@ -57,7 +57,7 @@
    mirror_bufpool_resync_ckpt_block_num               integer   ,
    mirror_append_only_loss_eof                        bigint    ,
    mirror_append_only_new_eof                         bigint    ,
-   reserved                    						  integer   ,
+   relation_bufpool_kind                              integer   ,
    parent_xid                                         integer   ,
    persistent_serial_num                              bigint    ,
    previous_free_tid                                  tid       
@@ -87,7 +87,7 @@ CATALOG(gp_persistent_relation_node,5090) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 	int4		mirror_bufpool_resync_ckpt_block_num;
 	int8		mirror_append_only_loss_eof;
 	int8		mirror_append_only_new_eof;
-	int4		reserved;
+	int4		relation_bufpool_kind;
 	int4		parent_xid;
 	int8		persistent_serial_num;
 	tid			previous_free_tid;

@@ -19,33 +19,44 @@ LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl
 
 MODCAT_OBJS= gpmodcatversion.o pg_crc.o
 
-UPGRADEFILES += $(wildcard $(top_srcdir)/src/test/regress/data/upgrade41/upg2*.in)
+UPGRADEFILES = $(top_srcdir)/src/test/regress/data/upgrade41/upg2_catupgrade.sql \
+               $(top_srcdir)/src/test/regress/data/upgrade41/upg2_catupgrade_check.sql \
+               $(top_srcdir)/src/test/regress/data/upgrade41/upg2_catupgrade_41.sql
 
 # This sets things up to create a "contrib" module for upgrade extensions
 MODULE_big = gpupgrade
 OBJS= gpviewcp.o
 include $(top_srcdir)/contrib/contrib-global.mk
 
-# In addition to the contrib module we are also building the gpmodcatversion program
-all: gpmodcatversion
+# In addition to the contrib module we are also building the gpmodcatversion program and the upgrade scripts
+all: gpmodcatversion upgradesql
 
-clean distclean maintainer-clean: clean-lib gpmodcat_clean
+clean distclean maintainer-clean: clean-lib gpmodcat_clean upgradesql_clean
 
 install: all installdirs installupgradefiles gpmodcat_install
 
 uninstall: gpmodcat_uninstall
 
-# The rest is to build the gpmodcatversion program
+# build the gpmodcatversion program and the upgrade script
 gpmodcatversion: $(MODCAT_OBJS)
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LIBS) -o $@$(X)
 
 pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
 	rm -f $@ && $(LN_S) $< .
 
+upgradesql:
+	@for i in $(UPGRADEFILES); \
+	do \
+        sed -e 's/\@gpupgradeschemaname\@/pg_catalog/g' -e 's/\@gpupgradetoolkitschema\@/gp_toolkit/g' $$i.in > $$i; \
+	done
+	
 gpmodcat_clean:
 	rm -f gpmodcatversion$(X)
 	rm -f $(MODCAT_OBJS)
 	rm -f pg_crc.c
+	
+upgradesql_clean:
+	rm -f $(top_srcdir)/src/test/regress/data/upgrade41/*.sql
 
 gpmodcat_install: gpmodcatversion
 	$(INSTALL_PROGRAM) gpmodcatversion$(X) \

@@ -104,6 +104,12 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 			initval = defGetString(defel);
 		else if (pg_strcasecmp(defel->defname, "prefunc") == 0) /* MPP */
 			prelimfuncName = defGetQualifiedName(defel);
+		else if (gp_upgrade_mode && pg_strcasecmp(defel->defname, "oid") == 0) /* OID */
+		{
+			int64 oid = defGetInt64(defel);
+			Assert(oid < FirstBootstrapObjectId);
+			newOid = (Oid)oid;
+		}
 		else
 			ereport(WARNING,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -187,14 +193,16 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 	/*
 	 * look up the aggregate's transtype.
 	 *
-	 * transtype can't be a pseudo-type, since we need to be able to store
-	 * values of the transtype.  However, we can allow polymorphic transtype
-	 * in some cases (AggregateCreate will check).
+	 * transtype can't be a pseudo-type, (except during upgrade mode)
+	 * since we need to be able to store values of the transtype.
+	 * However, we can allow polymorphic transtype in some cases
+	 * (AggregateCreate will check).
 	 */
 	transTypeId = typenameTypeId(NULL, transType);
-	if (get_typtype(transTypeId) == 'p' &&
-		transTypeId != ANYARRAYOID &&
-		transTypeId != ANYELEMENTOID)
+	if (!gp_upgrade_mode &&
+		(get_typtype(transTypeId) == 'p' &&
+		 transTypeId != ANYARRAYOID &&
+		 transTypeId != ANYELEMENTOID))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("aggregate transition data type cannot be %s",

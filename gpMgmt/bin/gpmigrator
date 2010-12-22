@@ -11,16 +11,6 @@ Options:
   -l DIRECTORY          log file directory
   -R                    revert a previous gpmigrator run
   --debug               debugging information
-
-  --nosnapshot          Do not pause upgrade to allow zfs snapshot
-  --resume              Resume upgrade after pause for zfs snapshot
-  
-  --mirror-mode MODE    Specify a mirror mode [redundant/single]
-
-  --replication_port_base PORT
-  --mirror_replication_port_base PORT
-
-  --gpperfmonhome DIRECTORY
 '''
 
 #============================================================
@@ -33,6 +23,7 @@ if sys.version_info < (2, 5, 0) or sys.version_info >= (3, 0, 0):
                      % os.path.split(__file__)[-1])
     sys.exit(1)
 
+import pickle, base64
 import subprocess, csv
 import optparse, tempfile, re, traceback
 from datetime import date
@@ -118,7 +109,7 @@ def is_supported_version(version, upgrade=True):
     '''
     Checks that a given GpVersion Object is supported for upgrade/downgrade.
     We do not support:
-      Versions < 3.3.0.0
+      Versions < 4.0.0.0
       Versions > main
       Versions with unusual "builds" (eg 3.4.0.0_EAP1)
     '''
@@ -136,10 +127,10 @@ def is_supported_version(version, upgrade=True):
             "Greenplum Version '%s' is not supported for %s"
             % (str(version), upstr))            
 
-    if version >= "3.3.0.0" and version <= 'main':
+    if version >= "4.0.0.0" and version <= 'main':
         return True
 
-    if version < "3.3.0.0":
+    if version < "4.0.0.0":
         raise UpgradeError(
             "Greenplum Version '%s' is not supported for %s"
             % (str(version), upstr))
@@ -153,12 +144,13 @@ def is_supported_version(version, upgrade=True):
 #============================================================
 class GpUpgradeCmd(base.Command):
     def __init__(self, name, oldHome, newHome, oldVersion, newVersion,
-                 command, pid, dataDirectories, option1,
+                 command, pid, dataDirectories, filespaces, option1,
                  option2, method, isUpgrade, isRevert, mirrors,
                  ctxt=base.LOCAL, remoteHost=None):
 
         # space separated list of directories
-        datadirs = ' '.join(dataDirectories)
+        datadirs = base64.urlsafe_b64encode(pickle.dumps(dataDirectories))
+        fse      = base64.urlsafe_b64encode(pickle.dumps(filespaces))
 
         hasMirrors = len(mirrors) > 0
 
@@ -171,6 +163,7 @@ class GpUpgradeCmd(base.Command):
             '--internal-command=' + str(command),
             '--internal-pid=' + str(pid),
             '--internal-dirs=' + urllib.quote(datadirs),
+            '--internal-filespaces=' + urllib.quote(fse),
             '--internal-option=' + urllib.quote(str(option1)),
             '--internal-option2=' + urllib.quote(str(option2)),
             '--debug',
@@ -240,7 +233,8 @@ class GPUpgrade:
     commands = ['SETSTATE', 'MKDIR', 'RMDIR', 'CHKDIR', 'RESETXLOG',
                 'DEEPLINK', 'CHKDOWN', 'LOCKDOWN', 'UNLOCK',
                 'EXTRACTCATFILES', 'BUILDSKEL', 'TRANSFORMCAT',
-                'SETCATVERSION', 'EXTRACTAOSEGS', 'GETHIGHESTOID']
+                'SETCATVERSION', 'EXTRACTAOSEGS', 'GETHIGHESTOID',
+                'TOUCHUPCONFIG', 'FIXCONFIG']
 
     #------------------------------------------------------------
     def __init__(self):
@@ -264,6 +258,7 @@ class GPUpgrade:
         self.masterport = 5432    # Master Port
         self.array     = None
         self.datadirs  = None     # Set of all data and mirror directories
+        self.filespaces= None     # Set of filespace directory (dboid as key)
         self.oldhome   = None     # Old gphome/bin directory
         self.newhome   = None     # New gphome/bin directory
         self.oldenv    = None     # enviornment: old gp env
@@ -394,22 +389,6 @@ class GPUpgrade:
             parser.add_option('-R', dest='revert', action='store_true',
                               help=optparse.SUPPRESS_HELP)
             
-            parser.add_option('--mirror-mode', dest='mirrormode',
-                              help=optparse.SUPPRESS_HELP)
-
-            parser.add_option('--replication_port_base', type="int",
-                              help=optparse.SUPPRESS_HELP)
-            parser.add_option('--mirror_replication_port_base', type="int",
-                              help=optparse.SUPPRESS_HELP)
-
-            parser.add_option('--gpperfmonhome',
-                              help=optparse.SUPPRESS_HELP)
-
-            parser.add_option('--nosnapshot', action='store_true',
-                              help=optparse.SUPPRESS_HELP)
-            parser.add_option('--resume', action='store_true',
-                              help=optparse.SUPPRESS_HELP)
-
             parser.add_option('--debug', action='store_true',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-disable-checkschema',
@@ -420,6 +399,8 @@ class GPUpgrade:
             parser.add_option('--internal-pid', dest='pid',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-dirs', dest='datadirs',
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal-filespaces', dest='fse',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-option', dest='option',
                               help=optparse.SUPPRESS_HELP)
@@ -479,7 +460,9 @@ class GPUpgrade:
         self.oldhome   = args[0].rstrip('/')
         self.newhome   = args[1].rstrip('/')
         if options.datadirs:
-            self.datadirs = urllib.unquote(options.datadirs).split();
+            self.datadirs = pickle.loads(base64.urlsafe_b64decode((urllib.unquote(options.datadirs))))
+        if options.fse:
+            self.filespaces = pickle.loads(base64.urlsafe_b64decode((urllib.unquote(options.fse))))
         if options.option:
             self.option   = urllib.unquote(options.option)
         if options.option2:
@@ -520,9 +503,6 @@ class GPUpgrade:
             self.snapshot = True
         else:
             self.snapshot = False
-
-        if options.resume:
-            self.resume = True
 
         if self.cmd != 'MASTER':
             self.oldversion = GpVersion(urllib.unquote(options.oldversion))
@@ -568,14 +548,7 @@ class GPUpgrade:
             if not os.path.isabs(self.newhome):
                 self.newhome = os.path.abspath(self.newhome)
 
-            if options.mirrormode:
-                self.mirrormode = options.mirrormode.lower()
-            self.config['REPLICATION_PORT_BASE'] = \
-                options.replication_port_base
-            self.config['MIRROR_REPLICATION_PORT_BASE'] = \
                 options.mirror_replication_port_base
-            self.config['GPPERFMONHOME'] = \
-                options.gpperfmonhome
 
 
 
@@ -715,6 +688,13 @@ class GPUpgrade:
                 if includeMirrors or seg.isSegmentPrimary():
                     datadirs.append(seg.getSegmentDataDirectory())
 
+            fse = []
+            for seg in host.dbs:
+                if includeMirrors or seg.isSegmentPrimary():
+                    sfs = seg.getSegmentFilespaces();
+                    for (oid, dir) in sfs.iteritems():
+                        fse.append(dir)
+
             # Skip any hosts that have no applicable data directories
             if len(datadirs) == 0:
                continue
@@ -727,6 +707,7 @@ class GPUpgrade:
                              command=cmd,
                              pid=self.pid,
                              dataDirectories=datadirs,
+                             filespaces=fse,
                              option1=option,
                              option2=option2,
                              method=self.method,
@@ -775,15 +756,15 @@ class GPUpgrade:
     #------------------------------------------------------------
     def CheckDirectories(self):
         if self.cmd == 'MASTER':
-            datadirs = [ self.masterdir ]
+            fsdirs = self.masterfilespace
         else:
-            datadirs = self.datadirs
+            fsdirs = self.filespaces
 
         err = False
 
         # Build up a unique set of workdirectories on this host
         locations = set()
-        for d in datadirs:
+        for d in fsdirs:
             (location, _) = os.path.split(d)
             locations.add(os.path.join(location, WORKDIR))
 
@@ -903,7 +884,7 @@ class GPUpgrade:
         return rows
 
     #------------------------------------------------------------
-    def Update(self, qry, db='template1', port=None):
+    def Update(self, qry, db='template1', port=None, forceutility=False, upgradeMode=False):
         '''
         Execute a SQL query expecting no output
         '''
@@ -941,10 +922,15 @@ class GPUpgrade:
         if port == None:
             port = self.masterport
         
-        if utility:  options = '-c gp_session_role=utility'
-        else:        options = ''
+        options = ''
+        if utility or forceutility: options += ' -c gp_session_role=utility'          
+        if upgradeMode:             options += ' -c gp_upgrade_conn=true'
 
-        conn = make_conn(self, user, db, options, port, self.sock_dir)
+        if self.__dict__.get('sock_dir'):
+            sockdir = self.sock_dir
+        else:
+            sockdir = '/tmp/'
+        conn = make_conn(self, user, db, options, port, sockdir)
 
         logger.debug('executing query ' + qry)
         try:
@@ -1044,7 +1030,7 @@ class GPUpgrade:
         return env
 
     #------------------------------------------------------------
-    def Startup(self, env, utility=False):
+    def Startup(self, env, utility=False, upgrade=False):
         '''
         Starts up the specified database
         '''
@@ -1056,14 +1042,18 @@ class GPUpgrade:
         isu = ""
         if utility:
             isu = " in utility mode"
+        elif upgrade:
+            isu = " in upgrade mode"
+
         if (env == self.oldenv):
             logger.info('Starting old Greenplum postmaster%s' % isu)
         else:
             logger.info('Starting new Greenplum postmaster%s' % isu)
 
         try:
-            if utility:  cmd = 'gpstart -a -m'
-            else:        cmd = 'gpstart -a'
+            cmd = "gpstart -a"
+            if utility:  cmd = cmd +' -m'
+            if upgrade:  cmd = cmd +' -U'
 
             cmd += ' -l %s' % self.logdir
 
@@ -1483,13 +1473,13 @@ class GPUpgrade:
         if self.cmd == 'MASTER':
             logger.info('Removing temporary directories')
             self.CallSlaves('RMDIR', force, includeMirrors=True)
-            datadirs = [self.masterdir]
+            fsdirs = self.masterfilespace
         else:
-            datadirs = self.datadirs
+            fsdirs = self.filespaces
 
         # Build up a unique set of workdirectories on this host
         locations = set()
-        for d in datadirs:
+        for d in fsdirs:
             (location, _) = os.path.split(d)
             locations.add(os.path.join(location, WORKDIR))
 
@@ -1535,10 +1525,9 @@ class GPUpgrade:
 
             dirs_exist = False
             try: 
+                self.CheckDirectories()
                 self.CallSlaves('CHKDIR', includeMirrors=True)
             except UpgradeError, e:
-                dirs_exist = True
-            if os.path.exists(self.workdir):
                 dirs_exist = True
             if dirs_exist:
                 self.RemoveDirectories(force=True)
@@ -1549,81 +1538,50 @@ class GPUpgrade:
             # Have the slaves create their directories
             self.CallSlaves('MKDIR', includeMirrors=True)
             
-            # Additionally we need upgrade/ and backup/ under the masterdir
-            # if the masterdir is located in a different location or on
-            # another host.
-            if (not os.path.exists(self.workdir)):
-                try:
-                    os.mkdir(self.workdir)
-                    self.RunCmd('chmod 700 %s' % self.workdir)
-                    flag = open(os.path.join(self.workdir, 'flag'), 'w')
-                    flag.write('%s\n' % str(self.pid))
-                    flag.close()
-
-                    d = os.path.join(self.workdir, UPGRADEDIR)
-                    os.mkdir(d)
-                    self.RunCmd('chmod 700 %s' % d)
-
-                    d = os.path.join(self.workdir, BACKUPDIR)
-                    os.mkdir(d)
-                    self.RunCmd('chmod 700 %s' % d)
-
-
-                except Exception, e:
-                    logger.fatal(str(e))
-                    raise UpgradeError('Failed to create upgrade directories')
-                
-            else:
-                # if it does exist then chances are very good that one of
-                # the slaves just created it since we checked for it before
-                # we called the slaves.  But there is a remote chance that
-                # someone else created the directory in the meantime.  
-                # -- check the flag to be safe (not foolproof).
-                if (not os.path.exists(os.path.join(self.workdir, 'flag')) or
-                    self.RunCmd('cat %s/flag' % self.workdir) != str(self.pid)):
-                    raise UpgradeError('Failed to create upgrade directories')
-
-            # Finally now that we have those directories we'll make a state file
-            self.state = open('%s/state' % self.workdir, 'w')
+            fsdirs = self.masterfilespace
 
         else:
+            fsdirs = self.filespaces
             if self.cmd != 'MKDIR': 
                 raise Exception(self.cmd + ' != MKDIR]')
 
-            # Given all the actual segment datadirs we need to look one 
-            # directory up for the datadir locations and create the gpmigrator
-            # subdirectory there.
-            locations = set()
-            for d in self.datadirs:
-                if not os.path.exists(d):
-                    raise UpgradeError('Missing Data Directory: %s' % d)
-                (location, _) = os.path.split(d)
-                workpath = os.path.join(location, WORKDIR)
-                locations.add(workpath)
+        # Given all the actual segment datadirs we need to look one 
+        # directory up for the datadir locations and create the gpmigrator
+        # subdirectory there.
+        locations = set()
+        for d in fsdirs:
+            if not os.path.exists(d):
+                raise UpgradeError('Missing Data Directory: %s' % d)
+            (location, _) = os.path.split(d)
+            workpath = os.path.join(location, WORKDIR)
+            locations.add(workpath)
 
-            # Actually create the directory, none of the should exist yet!
-            for d in locations:
-                # Creating directories is an atomic operation, if mkdir 
-                # succeeds then it did not exist previously making it ours
-                # This prevents mulitiple upgrades running simultaneously.
-                os.mkdir(d)
-                self.RunCmd('chmod 700 %s' % d)
+        # Actually create the directory, none of the should exist yet!
+        for d in locations:
+            # Creating directories is an atomic operation, if mkdir 
+            # succeeds then it did not exist previously making it ours
+            # This prevents mulitiple upgrades running simultaneously.
+            os.mkdir(d)
+            self.RunCmd('chmod 700 %s' % d)
 
-                # Claim it in the name of our parent process.  We make use of
-                # this flag during tear down to confirm that we created it.
-                flag = open(os.path.join(d, 'flag'), 'w')
-                flag.write('%s\n' % str(self.pid))
-                flag.close()
+            # Claim it in the name of our parent process.  We make use of
+            # this flag during tear down to confirm that we created it.
+            flag = open(os.path.join(d, 'flag'), 'w')
+            flag.write('%s\n' % str(self.pid))
+            flag.close()
 
-                # Create subdirectories for /upgrade and /backup
-                upgradepath = os.path.join(d, UPGRADEDIR)
-                os.mkdir(upgradepath)
-                self.RunCmd('chmod 700 %s' % upgradepath)
+            # Create subdirectories for /upgrade and /backup
+            upgradepath = os.path.join(d, UPGRADEDIR)
+            os.mkdir(upgradepath)
+            self.RunCmd('chmod 700 %s' % upgradepath)
 
-                backuppath = os.path.join(d, BACKUPDIR)
-                os.mkdir(backuppath)
-                self.RunCmd('chmod 700 %s' % backuppath)
+            backuppath = os.path.join(d, BACKUPDIR)
+            os.mkdir(backuppath)
+            self.RunCmd('chmod 700 %s' % backuppath)
                         
+        if (self.cmd == 'MASTER'):
+            # Finally now that we have those directories we'll make a state file
+            self.state = open('%s/state' % self.workdir, 'w')
 
     #------------------------------------------------------------
     def GenerateConfigFiles(self):
@@ -1699,11 +1657,21 @@ class GPUpgrade:
             raise UpgradeError(
                 "Cannot upgrade while there are unreachable hosts")
 
+        # Setup the master filespace dir
+        self.masterfilespace = []
+        for (id, loc) in self.array.master.getSegmentFilespaces().iteritems():
+            self.masterfilespace.append(loc)
+
         # self.primaries and self.mirrors
         dbs = self.array.getSegDbList()
         self.segments = filter(GpDB.isSegmentPrimary, dbs)
         self.mirrors  = filter(GpDB.isSegmentMirror, dbs)
-        
+
+        # We don't support mirror any more in this script.
+        if (self.mirrors):
+            raise UpgradeError(
+                "Please use gpmigrator_with_mirror to upgrade a cluster with mirroring")
+
         # self.config
         config_file = os.path.join(self.workdir, 'gp_config')
         if not os.path.exists(config_file):
@@ -1778,6 +1746,11 @@ class GPUpgrade:
             raise UpgradeError("Cannot upgrade while there are unreachable "
                                "hosts")
 
+        # Setup the master filespace dirs
+        self.masterfilespace = []
+        for (id, loc) in self.array.master.getSegmentFilespaces().iteritems():
+            self.masterfilespace.append(loc)
+        
         master = array.master
         standbymaster = array.standbyMaster
 
@@ -1786,6 +1759,11 @@ class GPUpgrade:
         dbs = array.getSegDbList()
         self.segments = filter(GpDB.isSegmentPrimary, dbs)
         self.mirrors  = filter(GpDB.isSegmentMirror, dbs)
+        
+        # We don't support mirror any more in this script.
+        if (self.mirrors):
+            raise UpgradeError(
+                "Please use gpmigrator_with_mirror to upgrade a cluster with mirroring")
 
         # Internal sanity checking
         if len(self.segments) == 0:
@@ -1793,20 +1771,6 @@ class GPUpgrade:
         if standbymaster > 0:
             raise UpgradeError('Cannot upgrade while standbymaster is running')
 
-        # -- If there is a perfmon database then we must be able to stop the
-        # running perfmonitor, which requires a gpperfmonhome.
-        logger.debug('Checking gpperfmon')
-        for dboid, dbname in self.dbs.iteritems():
-            if dbname == 'gpperfmon':
-                if not self.config['GPPERFMONHOME']:
-                    logger.fatal("  missing option:  "
-                                 "--gpperfmonhome=<path>")
-                    raise UpgradeError("Missing required upgrade options")
-                else:
-                    envsetup = os.path.join(self.config['GPPERFMONHOME'],
-                                            "gpperfmon_path.sh")
-                    if not os.path.exists(envsetup):
-                        raise UpgradeError("%s: No such file or directory" % envsetup)
 
         # To upgrade mirrors from 3.3 format mirrors to 4.0 format mirrors we 
         # must have been provided with the replication ports.
@@ -2096,22 +2060,27 @@ class GPUpgrade:
                     file = open(ident, 'w')
                     file.write('%s %s %s\n' % 
                                (MIGRATIONUSER, self.user, MIGRATIONUSER))
+                    file.write('%s %s %s\n' % 
+                               (self.user, self.user, self.user))
                     file.close()
 
                 self.RunCmd('mv -f %s %s' % (hba, hba+LOCKEXT))
                 file = open(hba, 'w')
                 if os_type == 'sunos':
                     file.write('local all %s trust\n' % MIGRATIONUSER)
+                    file.write('local all %s trust\n' % self.user)                    
                 else:
-                    if self.oldversion < '3.3.0.0':
-                        file.write('local all %s ident %s\n' 
-                                   % (MIGRATIONUSER, MIGRATIONUSER))
-                    else:
-                        file.write('local all %s ident map=%s\n'
-                                   % (MIGRATIONUSER, MIGRATIONUSER))
+                    file.write('local all %s ident map=%s\n'
+                                % (MIGRATIONUSER, MIGRATIONUSER))
+                    file.write('local all %s ident map=%s\n'
+                                % (self.user, self.user))
+
                 for addr in ip:
                     file.write('host all %s %s/32 trust\n'
                                % (MIGRATIONUSER, addr))
+                    file.write('host all %s %s/32 trust\n'
+                               % (self.user, addr))
+
                 file.close()
 
             if env == self.newenv:
@@ -2389,7 +2358,7 @@ class GPUpgrade:
             raise UpgradeError('FATAL', ' DeepLink(%s)!?' % style)            
         
         if self.cmd == 'MASTER':
-            datadirs = [self.masterdir]
+            fsdirs = self.masterfilespace
             if style == 'BACKUP':
                 logger.info('Linking backup')
                 logger.info('... This may take a while')
@@ -2412,12 +2381,12 @@ class GPUpgrade:
             self.CallSlaves('DEEPLINK', style, includeMirrors=includeMirrors)
 
         else:
-            datadirs = self.datadirs
+            fsdirs = self.filespaces
 
-        for dir in datadirs:
+        for dir in fsdirs:
             (location, content) = os.path.split(dir)
             
-            # For Backup datadirs is the source, for INSTALL it's the target
+            # For Backup fsdirs is the source, for INSTALL it's the target
             if style == 'BACKUP':
                 source      = os.path.join(location, content)
                 destination = os.path.join(location, WORKDIR, BACKUPDIR, content)
@@ -2508,56 +2477,133 @@ class GPUpgrade:
 
         # We can do this in utility mode since the master host is the only
         # host that contains gp_configuration information
-        self.Startup(self.newenv, utility=True)
         logger.info('Adjusting configuration')
-        self.Update("""
-           UPDATE pg_filespace_entry SET fselocation =
-              regexp_replace(fselocation, E'/gpmigrator/upgrade/','/')
-        """)
-        self.Update("VACUUM FREEZE pg_filespace_entry")
-        self.Shutdown()
-        self.newenv['MASTER_DATA_DIRECTORY'] = \
-            self.oldenv['MASTER_DATA_DIRECTORY']
+        
+        if self.cmd == 'MASTER':
+            self.Startup(self.newenv, utility=True)
+            self.Update("""
+               UPDATE pg_filespace_entry SET fselocation =
+                  regexp_replace(fselocation, E'/gpmigrator/upgrade/','/')
+            """, forceutility=True, upgradeMode=True)
+            self.Update("VACUUM FREEZE pg_filespace_entry", forceutility=True, upgradeMode=True)
+            
+            self.Shutdown()
+            self.Startup(self.newenv, upgrade=True)
+
+            self.CallSlaves('FIXCONFIG')
+            datadirs = [self.masterdir]
+        else:
+            datadirs = self.datadirs
+
+        # Update the persistent table for each segment
+        for dir in datadirs:                
+            # Find the last line in the conf file that matches our expression
+            conf = os.path.join(dir, 'postgresql.conf')
+            def getconf(x):
+                conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
+                try:
+                    conf_str = self.RunCmd('grep %s %s' % (x, conf))
+                except CmdError:
+                    conf_str = ""     # grep returns errorcode on no match
+                value = None
+                for line in conf_str.split('\n'):
+                    match = conf_re.search(line)
+                    if match:
+                        value = int(match.group(1))
+                return value
+
+            # Find the port for this segment:
+            port = getconf('port')
+            if port == None:
+                raise UpgradeError('Could not determine port from %s/postgresql.conf' % dir)
+
+            self.Update("""
+                UPDATE gp_persistent_filespace_node SET location_1 =
+                   regexp_replace(location_1, E'/gpmigrator/upgrade/','/')||'                   '
+                """, port=port, forceutility=True, upgradeMode=True)
+
+        if self.cmd == 'MASTER':
+            self.Shutdown()
+            self.newenv['MASTER_DATA_DIRECTORY'] = \
+                self.oldenv['MASTER_DATA_DIRECTORY']
+
 
     #------------------------------------------------------------
     def TouchupConfig(self):
         '''
         Touch up the config for a transform method upgrade/downgrade
         '''
-
-        # Before we can start the master we need to tag it with a gp_dbid file.
-        # We will tag all the other segment directories after re-mirroring.
-        GpCreateDBIdFile.local('create master gp_dbid file',
-                               directory=self.newmaster, dbid=1)
-
-        # We can do this in utility mode since the master host is the only
-        # host that contains gp_configuration information
-        self.Startup(self.newenv, utility=True)
         logger.info('Adjusting configuration')
 
-        # Move datadirectory location to gpmigrator/upgrade subdirectories
-        self.Update("""
-            UPDATE pg_filespace_entry SET fselocation =
-               regexp_replace(fselocation, E'(/[^/]*)$', 
-                              E'/gpmigrator/upgrade\\\\1')
-            """)
-        self.Update("VACUUM FREEZE pg_filespace_entry")
+        if self.cmd == 'MASTER':
+            # Before we can start the master we need to tag it with a gp_dbid file.
+            # We will tag all the other segment directories after re-mirroring.
+            GpCreateDBIdFile.local('create master gp_dbid file',
+                                   directory=self.newmaster, dbid=1)
+            self.Startup(self.newenv, utility=True)
 
-        # Update the gp_segment configuration table to correctly fill in
-        # the hostname and replication ports.
-        for db in self.array.getDbList():
-            dbid     = db.getSegmentDbId()
-            hostname = db.getSegmentHostName() or db.getSegmentAddress()
-            rport    = db.getSegmentReplicationPort() or "null"
+            # Move datadirectory location to gpmigrator/upgrade subdirectories
+            self.Update("""
+                UPDATE pg_filespace_entry SET fselocation =
+                   regexp_replace(fselocation, E'(/[^/]*)$', 
+                                  E'/gpmigrator/upgrade\\\\1')
+                """, forceutility=True, upgradeMode=True)
+            self.Update("VACUUM FREEZE pg_filespace_entry", forceutility=True, upgradeMode=True)
+
+            # Update the gp_segment configuration table to correctly fill in
+            # the hostname and replication ports.
+            for db in self.array.getDbList():
+                dbid     = db.getSegmentDbId()
+                hostname = db.getSegmentHostName() or db.getSegmentAddress()
+                rport    = db.getSegmentReplicationPort() or "null"
+
+                self.Update("""
+                   UPDATE gp_segment_configuration 
+                   SET hostname='%s', replication_port=%s
+                   WHERE dbid=%s
+                   """ % (hostname, rport, dbid), forceutility=True, upgradeMode=True)
+                self.Update("VACUUM FREEZE gp_segment_configuration", forceutility=True, upgradeMode=True)
+
+            self.Shutdown()
+            self.Startup(self.newenv, upgrade=True)
+
+            self.CallSlaves('TOUCHUPCONFIG')
+            datadirs = [ self.masterdir ]
+
+        else:
+            datadirs = self.datadirs
+
+        # Update the persistent table for each segment
+        for dir in datadirs:                
+            # Find the last line in the conf file that matches our expression
+            conf = os.path.join(dir, 'postgresql.conf')
+            def getconf(x):
+                conf_re  = re.compile('^\s*%s\s*=\s*(\d+)' % x)
+                try:
+                    conf_str = self.RunCmd('grep %s %s' % (x, conf))
+                except CmdError:
+                    conf_str = ""     # grep returns errorcode on no match
+                value = None
+                for line in conf_str.split('\n'):
+                    match = conf_re.search(line)
+                    if match:
+                        value = int(match.group(1))
+                return value
+
+            # Find the port for this segment:
+            port = getconf('port')
+            if port == None:
+                raise UpgradeError('Could not determine port from %s/postgresql.conf' % dir)
 
             self.Update("""
-               UPDATE gp_segment_configuration 
-               SET hostname='%s', replication_port=%s
-               WHERE dbid=%s
-               """ % (hostname, rport, dbid))
-        self.Update("VACUUM FREEZE gp_segment_configuration")
+                UPDATE gp_persistent_filespace_node SET location_1 =
+                   regexp_replace(location_1, E'(/[^/]*)                   $',
+                   E'/gpmigrator/upgrade\\\\1')
+                """, port=port, forceutility=True, upgradeMode=True)
+            
+        if self.cmd == 'MASTER':
+            self.Shutdown()
 
-        self.Shutdown()
 
     #------------------------------------------------------------
     def ExtractCatFiles(self):
@@ -2615,7 +2661,6 @@ class GPUpgrade:
                SELECT 
                   datname 
                FROM pg_database 
-               WHERE datname != 'template0'
                ORDER BY datname
             ''', port=port)
 
@@ -2624,24 +2669,31 @@ class GPUpgrade:
             for db in databases:
                 l = self.Select(
                 '''
-                   SELECT d.oid as datoid,
-                          c1.relname as rel1, c1.relfilenode as node1,
-                          c2.relname as rel2, c2.relfilenode as node2,
-                          c3.relname as rel3, c3.relfilenode as node3
-                   FROM pg_class c1 
-                      left outer join pg_namespace n
-                        on (c1.relnamespace = n.oid)
-                      left outer join pg_class c2
-                        on (c1.reltoastrelid = c2.oid)
-                     left outer join pg_class c3
-                        on (c2.reltoastidxid = c3.oid),
-                            pg_database d
-                   WHERE d.datname = '%s' and 
-                      (nspname = 'pg_catalog' or
-                       nspname = 'information_schema') and
-                      c1.relkind in ('r', 'i') and 
-                      not c1.relisshared
-                ''' % db, port=port, db=db)
+                    SELECT d.oid as datoid,
+                           ts.spcfsoid,
+                             case when d.dattablespace = 1663
+                                  then '%s/base'
+                                  else rtrim(fse.location_1)||'/'||(d.dattablespace::text)
+                             end || '/'||d.oid as catloc,
+                           c1.relname as rel1, c1.relfilenode as node1,
+                           c2.relname as rel2, c2.relfilenode as node2,
+                           c3.relname as rel3, c3.relfilenode as node3
+                    FROM pg_class c1
+                         left outer join pg_namespace n on (c1.relnamespace = n.oid)
+                         left outer join pg_class c2    on (c1.reltoastrelid = c2.oid)
+                         left outer join pg_class c3    on (c2.reltoastidxid = c3.oid),
+                         pg_database d,
+                         pg_tablespace ts,
+                         pg_filespace fs
+                         left outer join gp_persistent_filespace_node fse on (fs.oid = fse.filespace_oid)
+                    WHERE (nspname = 'pg_catalog' or
+                           nspname = 'information_schema')
+                      and c1.relkind in ('r', 'i')
+                      and not c1.relisshared
+                      and d.dattablespace = ts.oid
+                      and ts.spcfsoid = fs.oid
+                      and d.datname = '%s';
+                ''' % (dir, db), port=port, db='template1')
                 
                 first = True
                 f = []
@@ -2649,28 +2701,20 @@ class GPUpgrade:
                 for row in l:
                     if first:
                         first = False
-                        file = os.path.join('base', str(row['datoid']),
+                        file = os.path.join(row.get("catloc"),
                                             'PG_VERSION')
                         f.append(file)
 
                     for n in nlist:
                         if row.get("rel" + n):
-                            file = os.path.join('base',
-                                                str(row['datoid']),
+                            dfile = os.path.join(row.get("catloc"),
                                                 str(row['node' + n]))
-                            dfile = os.path.join(dir, file)
                             if not os.path.exists(dfile):
                                 raise UpgradeError(
 'found path "%s" for table "%s" but file does not exist' % (dfile, row['rel'+n]))
-                            f.append(file)
+                            f.append(dfile)
                 files[db] = f
-                
-            # add template0
-            r = self.Select("""select oid from pg_database where 
-                               datname = 'template0'""", port=port)
-            if len(r) > 0:
-                files['template0'] = [os.path.join('base', str(r[0]))]
-                
+                                
             # make sure tblspc dir is empty
             pgtblspc = os.path.join(dir, 'pg_tblspc')
             if os.path.exists(pgtblspc):
@@ -2690,7 +2734,7 @@ class GPUpgrade:
             for name, fs in files.iteritems():
                 for f in fs:
                     # Prefix each name with the database it's in
-                    mapfile.write('%s:%s\n' % (name, f))
+                    mapfile.write('db:%s\n' % f)
             for f in meta:
                 mapfile.write('meta:%s\n' % f)
 
@@ -2820,8 +2864,7 @@ class GPUpgrade:
             # It would be nice to avoid having to make a full deep link,
             # but the gp_persistent creation requires reading in a bunch
             # of user tables to handle part of the ao conversion.
-            self.DeepLink('SKELETON')
-
+            #self.DeepLink('SKELETON')
             # Once that is done make a REAL copy (not hardlink) of the
             # actual catalog tables
             self.CallSlaves('BUILDSKEL', self.highestoid, self.gpperfmon)
@@ -2882,25 +2925,14 @@ class GPUpgrade:
                 
             for line in mapfile:
                 line = line[:-1]
-                (dbname, f) = line.split(':')
-                path = os.path.join(src, f)
-                #logger.debug("testing " + path)
-            
-                if os.path.isdir(path):
-                    # will be created in do_copy()
-                    continue
-                else:
-                    dirname = os.path.dirname(f)
-                    path = os.path.join(src, dirname)
-                    if not os.path.isdir(path):
-                        raise UpgradeError("%s should be a directory!" % path)
-                
-                # only add this if the path != src
-                if not os.path.samefile(src, path):
-                    #logger.debug('path = %s, src = %s, adding %s' % 
-                    #             (path, src, f))
-                    dirs.append(dirname)
-                
+                (maptype, f) = line.split(':')
+                # f is in the form of filespace/seg/tablespace/dbid/filenode if maptype is db
+                # destination dir is filespace/WORKDIR/UPGRADEDIR/seg/tablespace/dbid
+                if (maptype=='db'):
+                    (filespace, segid, tablespace, dbid, filenode) = f.rsplit("/", 4)
+                    path = os.path.join(filespace, WORKDIR, UPGRADEDIR, segid, tablespace, dbid)
+                    dirs.append(path)
+
             dirs = list(set(dirs)) # make unique
             logger.debug('dirs = %s' % str(dirs))
                 
@@ -2908,32 +2940,35 @@ class GPUpgrade:
             if not os.path.exists(dst):
                 os.mkdir(dst, 0700)
                 
-            dirs.append('pg_log')
-            dirs.append('pg_changetracking')
+            dirs.append(os.path.join(dst, 'pg_log'))
+            dirs.append(os.path.join(dst, 'pg_changetracking'))
             for dir in dirs:
                 logger.debug("making dir %s" % dir)
-            
-                # equivalent of mkdir -p dst/dir
-                if not os.path.exists(os.path.join(dst, dir)):
-                    os.makedirs(os.path.join(dst, dir), 0700)
-                
+                if not os.path.exists(dir):
+                    os.makedirs(dir, 0700)
+
             logger.debug("copying files")
                 
             # rewind
             mapfile.seek(0)
             for line in mapfile:
-                (dbname, f) = line.split(':')
+                (maptype, f) = line.split(':')
                 f = f[:-1]
-                if dbname == 'link':
+                if maptype == 'link':
                     left = os.path.join(src, f)
                     right = os.path.join(dst, f)
-                    #logger.debug('linking %s to %s' % (left, right))
+                    logger.debug('linking %s to %s' % (left, right))
                     
                     if os.path.exists(right):
                         os.remove(right)
                     os.link(left, right)
-                else:
+                elif maptype == 'meta':
                     do_copy(src, dst, f)
+                else:
+                    (filespace, segid, tablespace, dbid, filenode) = f.rsplit("/", 4)
+                    srcdir = os.path.join(filespace, segid, tablespace, dbid)
+                    dstdir = os.path.join(filespace, WORKDIR, UPGRADEDIR, segid, tablespace, dbid)
+                    do_copy(srcdir, dstdir, filenode)
 
             def overwrite(frm, to):
                 if not os.path.exists(frm): return
@@ -3023,57 +3058,12 @@ class GPUpgrade:
     #------------------------------------------------------------
     def TransformDbs(self):
         '''
-        Transform the local databases. The temporary copy we've made of each
-        segment is transformed by passing a set of transformation scripts
-        (stored in share/postgresql/upgrade/). To do the transformation,
-        we start the backend in --single (non postmaster) mode and send
-        the scripts via stdin.
+        Transform the databases.
         '''
  
-        logger.info('Performing multi-stage catalog transformation')
-        tmpdir = tempfile.mkdtemp()
-        logger.debug("created temporary directory " + tmpdir)
+        logger.info('Performing catalog transformation')
 
-        def get_new_files(procfile, path, dbdir):
-            out = []
-            f = open(procfile, 'r')
-            first = True
-            for line in f:
-                # at this stage skip header
-                if first:
-                    first = False
-                    continue
-
-                # If we find "\." then we are at the end of input
-                if line[0:2] == "\\.":
-                    break
-                
-                # OID is first col and is equal to the relfilenode
-                a = line.split('|')
-                oid = int(a[0])
-                # shared rel ?
-                if a[15] == "t":
-                    dir = "global"
-                else:
-                    dir = dbdir
-                out.append(os.path.join(path, dir, str(oid)))
-
-            f.close()
-            return out
-        
-        def touch_files(files):
-            '''
-            We are creating new tables but since we do not call heap_create()
-            we do not initialized the data file on disk. Creating an empty
-            file is enough to ensure that the storage layer doesn't get
-            confused.
-            '''
-            for f in files:
-                #logger.debug('touching file %s' % f)
-                fp = open(f, 'w')
-                fp.close()
-        
-        def transform(path, dbs, tfile):
+        def transform(dbs, tfile):
 
             # MPP-10166 - because some of our transformations involve creates
             # of views with unstable oids we must make sure that we process 
@@ -3082,49 +3072,28 @@ class GPUpgrade:
             oids = sorted(dbs.keys())
             for dboid in oids:
                 db = dbs[dboid]
-
-                # The shared table upgrade is only run for template0
-                if (os.path.basename(tfile) == 'loadcat34_sh.source' and 
-                    db != 'template0'):
-                    continue
-
+                
                 logger.info('... ' + db)
-                transform_db(path, db, dboid, tfile)
+                transform_db(db, dboid, tfile)
+                # Test failure during transformation
+                if self.faultinjection == 1:
+                    raise UpgradeError("faultinjection=%d" % self.faultinjection)
+
         
-        def transform_db(path, dbname, dboid, tfile):
+        def transform_db(dbname, dboid, tfile):
             '''
-            Transform the specified database for a single segment.
+            Transform the specified database for a single database.
             '''
             logger.debug("transforming db = %s dboid = %s tfile = %s" % \
                      (str(dbname), str(dboid), tfile))
 
-            load = open(tfile, 'r')
-            # create files to back new relations
-            if os.path.basename(tfile) == 'loadcat33.source':
-                cl = os.path.join(os.path.dirname(tfile),
-                                  'upg2_pg_class_toadd32.data')
-                dbdir = os.path.join('base', str(dboid))
-                new_files = get_new_files(cl, path, dbdir)
-                touch_files(new_files)
-            if os.path.basename(tfile) == 'loadcat34.source':
-                cl = os.path.join(os.path.dirname(tfile),
-                                  'upg2_pg_class_toadd33.data')
-                dbdir = os.path.join('base', str(dboid))
-                new_files = get_new_files(cl, path, dbdir)
-                touch_files(new_files)
-        
-            # run postgres in single user mode, feed in scripts
-            cmd = ' '.join(['postgres', '--single', '-O',
-                            '-c', 'gp_session_role=utility',
-                            '-c', 'gp_before_persistence_work=true',
-                            '-c', 'exit_on_error=true',
-                            '-E', '-D', path, dbname])
+            # Execute the upgrade script
+            cmd = ' '.join(["PGOPTIONS='-c gp_upgrade_conn=true'", 'psql', '-f', tfile, dbname, self.user])
             logger.debug('running ' + cmd)
             p = subprocess.Popen(cmd, shell = True,
                                   close_fds = True,
-                                  stdin = load,
-                                  stdout = subprocess.PIPE,
-                                  stderr = subprocess.PIPE,
+                                  stdout=subprocess.PIPE, 
+                                  stderr=subprocess.PIPE, 
                                   env=self.newenv)
             result = p.communicate()
         
@@ -3136,184 +3105,9 @@ class GPUpgrade:
                 logger.debug(result[0])
                 raise CmdError(str(cmd), result[0], result[1])
         
-        
-        def make_files(files, datadir, user):
-            """
-            Take the set of .in files and apply translation to the local
-            environment
-            """
-        
-            out = []
-            # strings to find and the data to replace those strings with
-            transforms = [['@gpupgradeschemaname@', 'pg_catalog'],
-                          ['@gpinfoschemaname@', 'information_schema'],
-                          ['@gpupgradedatadir@', tmpdir],
-                          ['@gpcurusername@', user]
-                         ]
-
-            for file in files:
-
-                if file[-3:] == ".in":
-                    outfilename = os.path.join(tmpdir, file[:-3])
-                else:
-                    outfilename = os.path.join(tmpdir, file)
-        
-                outf = open(outfilename, 'w')
-                inf = open(os.path.join(datadir, file), 'r')
-                # replace the strings
-                for line in inf:
-                    for t in transforms:
-                        line = re.sub(t[0], t[1], line)
-                    outf.write(line)
-                outf.close()
-                inf.close()
-                out.append(outfilename)
-                logger.debug("created %s" % outfilename)
-
-            return out
-        
-        if self.cmd == 'MASTER':
-            datadirs = [ self.masterdir ]
-            dbs = self.dbs
-
-            # convert dbs dictionary to passable parameter
-            # XXX - this will fail for database with a name that includes ':'
-            #       We need a better way of passing this information to the
-            #       segments.
-            t = []
-            for (oid, db) in self.dbs.iteritems():
-                t.append('%s:%s' % (oid, db))
-            t = ':'.join(t)
-            logger.debug('sending database string ' + t)
-
-            self.CallSlaves('TRANSFORMCAT', t)
-        else:
-            datadirs = self.datadirs
-
-            # convert passed dbs to a dict
-            a = self.option.split(':')
-            dbs = {}
-            a.reverse()
-            while a:
-                f = a.pop()
-                g = a.pop()
-                dbs[f] = g
-
-        # files for upgrading from 3.2 to 3.3
-        datafiles = []
-        runfiles = []
-        if self.upgrade:
-            runfiles = []
-            if (self.oldversion <= '3.2' and self.newversion >= '3.3.0.0'):
-                runfiles.extend(["loadcat33.source.in",
-                                 "upg2_conversion32.sql.in"])
-                datafiles.extend(["upg2_pg_class_toadd32.data.in",
-                                  "upg2_pg_attribute_toadd32.data.in",
-                                  "upg2_pg_type_toadd32.data.in",
-                                  "upg2_pg_index_toadd32.data.in",
-                                  "upg2_pg_proc_toadd32.data",
-                                  "upg2_pg_namespace_toadd32.data",
-                                  "upg2_pg_description_toadd32.data",
-                                  "upg2_pg_depend_toadd32.data"])
-
-            if (self.oldversion <= '3.3' and self.newversion >= '3.4.0.0'):
-                runfiles.extend(["loadcat34.source.in",
-                                 "loadcat34_sh.source.in"])
-                datafiles.extend(["upg2_pg_class_toadd33.data.in",
-                                  "upg2_pg_cast_toadd33.data",
-                                  "upg2_pg_aggregate_toadd33.data",
-                                  "upg2_pg_attribute_toadd33.data.in",
-                                  "upg2_pg_type_toadd33.data.in",
-                                  "upg2_pg_index_toadd33.data.in",
-                                  "upg2_pg_proc_toadd33.data",
-                                  "upg2_pg_namespace_toadd33.data",
-                                  "upg2_pg_description_toadd33.data",
-                                  "upg2_pg_depend_toadd33.data",
-                                  "upg2_pg_shdescription_toadd33.data.in",
-                                  "upg2_pg_filespace_toadd33.data",
-                                  "upg2_pg_amproc_toadd33.data",
-                                  "upg2_pg_operator_toadd33.data",
-                                  "upg2_pg_resqueue_toadd33.data",
-                                  "upg2_pg_resourcetype_toadd33.data",
-                                  "upg2_pg_amop_toadd33.data",
-                                  "upg2_pg_opclass_toadd33.data"])
-
-            h = self.newhome
-            
-        else:
-            # need to use self.oldhome here as downgrade_conversion.sql.in
-            # is only available for 3.3
-            h = self.oldhome
-            # Not actually supported, errors out earlier
-            runfiles.extend(["downgrade_conversion.sql.in"])
-
-        make_files(datafiles, 
-                   '%s/share/postgresql/upgrade/' % h,
-                   self.user)
-        rfs = make_files(runfiles,
-                         '%s/share/postgresql/upgrade/' % h,
-                         self.user)
-
-        conf_re = re.compile('^(.*max_resource_queues\s*=\s*)(\d+)(.*)$')
-        for olddir in datadirs:
-            (d, seg) = os.path.split(olddir)
-            phase = 0
-
-            # The directory for this segment
-            dir = os.path.join(d, WORKDIR, UPGRADEDIR, seg)
-            for i in range(len(rfs)):
-                logger.info('Pass %d' % phase)
-                transform(dir, dbs, rfs[i])
-                phase += 1
-
-            # gp_persistent table handling:
-            #    - must populate template1 first
-            logger.info('Pass %d' % phase)
-            phase += 1
-
-            oids = sorted(dbs.keys())
-            for dboid in oids:
-                dbname = dbs[dboid]
-
-                if dbname != 'template1':
-                    continue
-                if self.cmd == 'MASTER':
-                    file = os.path.join(d, WORKDIR, 'persistent_master.sql')
-                else:
-                    file = os.path.join(d, WORKDIR, 'persistent_segment.sql')
-                transform_db(dir, dbname, dboid, file)
-                logger.info('... ' + dbname)
-
-            # Then process all databases besides template1, this may ultimately
-            # need a separate file from this portion of template1.
-            for dboid in oids:
-                dbname = dbs[dboid]
-
-                if dbname == 'template1':
-                    continue
-
-                if self.cmd == 'MASTER':
-                    file = os.path.join(d, WORKDIR, 'persistent_master.sql')
-                else:
-                    file = os.path.join(d, WORKDIR, 'persistent_segment.sql')
-                transform_db(dir, dbname, dboid, file)
-                logger.info('... ' + dbname)      
-
-            # ao file too -- must be last because we
-            # use this file to VACUUM FREEZE template databases
-            for dboid in oids:
-                dbname = dbs[dboid]
-
-                # no need to rewrite AO in template0
-                if dbname == 'template0':
-                    continue
-
-                file = 'aoseg_%s_rewrite.sql' % dbname
-                aofile = os.path.join(d, WORKDIR, file)
-                f = self.RunCmd('cat ' + aofile)
-                logger.debug("ao upgrade %s" % f)
-                transform_db(dir, dbname, dboid, aofile)
-
+        # run the upgrade file
+        runfile = "%s/share/postgresql/upgrade/upg2_catupgrade.sql" % self.newhome
+        transform(self.dbs, runfile)
 
     #------------------------------------------------------------
     def SetCatVersion(self, frm, to):
@@ -3326,7 +3120,7 @@ class GPUpgrade:
                     "3.1": "200712072",
                     "3.2": "200808253",
                     "3.3": "200905011",
-                    "4.0": "201002021"}
+                    "4.0": "201005134"}
         
         self.CheckDown()
 
@@ -3556,7 +3350,7 @@ class GPUpgrade:
                 if db != 'gpperfmon':
                     continue
                 logger.info("Updating gpperfmon")
-                fname = os.path.join(self.newhome, "lib/gpperfmon/gpperfmon4.sql")
+                fname = os.path.join(self.newhome, "lib/gpperfmon/gpperfmon41.sql")
                 sql = open(fname, 'r').read()
                 sql = "SET SESSION AUTHORIZATION %s;\n%s" % (rolname, sql)
                 self.Update(sql, db=db)
@@ -3651,6 +3445,10 @@ class GPUpgrade:
             self.ExtractCatFiles()
         elif self.cmd == 'BUILDSKEL':
             self.BuildSkel()
+        elif self.cmd == 'TOUCHUPCONFIG':
+            self.TouchupConfig()
+        elif self.cmd == 'FIXCONFIG':
+            self.FixConfig()
         elif self.cmd == 'SETCATVERSION':
             self.SetCatVersion(self.oldversion.getVersionRelease(), 
                             self.newversion.getVersionRelease())
@@ -3799,13 +3597,6 @@ class GPUpgrade:
                 self.SetState('BOOTSTRAP: ' + self.RunCmd('date +%Y%m%d:%H:%M:%S'))
                 self.SetState('CREATE_DIRS')
     
-            # Stop gpperfmon, if it is installed
-            for dboid, dbname in self.dbs.iteritems():
-                if dbname == 'gpperfmon':
-                    logger.info("Stopping gpperfmon")
-                    self.oldenv['GPPERFMONHOME'] = self.config['GPPERFMONHOME']
-                    self.oldenv['PATH'] += ":%s/bin" % self.config['GPPERFMONHOME']
-                    self.RunCmd("gpperfmon --stop", env=self.oldenv)
 
             # Check the catalog
             if 'CHECKCAT' not in current_state and self.checkcat:
@@ -3835,9 +3626,9 @@ class GPUpgrade:
                 self.ExtractCatFiles()
                 self.SetState('EXTRACTCATFILES')
     
-            if 'EXTRACTAOSEGS' not in current_state:
-                self.ExtractAosegs()
-                self.SetState('EXTRACTAOSEGS')
+            #if 'EXTRACTAOSEGS' not in current_state:
+            #    self.ExtractAosegs()
+            #    self.SetState('EXTRACTAOSEGS')
 
             # All information collected, shutdown old database
             #  - We can't release the lockdown yet because we rely on copying
@@ -3859,16 +3650,12 @@ class GPUpgrade:
             if 'BUILDSKEL' not in current_state:
                 self.BuildSkel()
                 self.SetState('BUILDSKEL')
-    
+            
             if 'SETCATVERSION' not in current_state:
                 sov = self.oldversion.getVersionRelease()
                 snv = self.newversion.getVersionRelease()
                 self.SetCatVersion(sov, snv)
                 self.SetState('SETCATVERSION')
-    
-            if 'TRANSFORMCAT' not in current_state:
-                self.TransformDbs()
-                self.SetState('TRANSFORMCAT')
     
             # TouchupConfig() performs final modifications to the catalog
             # to get the configuration information in line with the upgrade.
@@ -3878,6 +3665,12 @@ class GPUpgrade:
                 self.TouchupConfig()
                 self.SetState('TOUCHUPCONFIG')
 
+            if 'TRANSFORMCAT' not in current_state:
+                self.Startup(self.newenv, upgrade=True)
+                self.TransformDbs()
+                self.SetState('TRANSFORMCAT')
+                self.Shutdown()
+    
             # Test failure
             #  - unlock database
             if self.faultinjection == 6:
@@ -3920,69 +3713,6 @@ class GPUpgrade:
         # safe to blow away everything under 'upgrade/' and 'backup/'
         # (The only thing to be careful about is that we shutdown the
         #  new db before we remove the storage from under it.)
-
-        # ----
-        # For the 4.0 upgrade we must upgrade from 3.x style logical
-        # mirroring to 4.0 style file replication.
-        #
-        # The first stage of this is to remirror the system while we
-        # are still in a stage that can rollback.
-        if len(self.mirrors) > 0 and 'REMIRRORSYSTEM' not in current_state:
-
-            # If we are resuming an upgrade and we have already started the
-            # mirror upgrade, but did not complete it, then we must pass
-            # --continue to the gpupgrademirrors script.
-            withContinue=False
-            if 'START_REMIRROR' not in current_state:
-                self.SetState('START_REMIRROR: %s' % self.mirrormode)
-            elif current_state['START_REMIRROR'] != self.mirrormode:
-                logger.fatal('unable to continue existing upgrade: '
-                             'old mirror-mode "%s" != "%s"' 
-                             % (current_state['START_REMIRROR'],
-                                self.mirrormode))
-                logger.fatal('retry with old mirror mode or revert using -R')
-                raise UpgradeError('Cannot resume upgrade with different mirror-mode')
-            else:
-                withContinue=True
-
-            try:
-                self.RemirrorSystem(withContinue)
-                self.SetState('REMIRRORSYSTEM')
-            finally:
-                control_data = \
-                    GpControlData.local('Get Control Data', self.masterdir)
-                current_xid = control_data["Latest checkpoint's NextXID"]
-                self.SetState("REMIRROR_XID:%s" % current_xid)
-
-        # And remirror the catalog information for the mirrors
-        if len(self.mirrors) == 0:
-            logger.info("System configured without mirrors, stage 2 skipped")
-        else:
-            if 'UPGRADEMIRRORS' not in current_state:
-
-                withContinue=False
-                if 'START_UPGRADEMIRROR' not in current_state:
-                    self.SetState('START_UPGRADEMIRROR')
-                else:
-                    withContinue=True
-            
-                self.UpgradeMirrors(withContinue)
-                self.SetState('UPGRADEMIRRORS')
-
-                logger.info("--------------------------------------------------")
-                logger.info("Stage 2 complete")
-                logger.info("--------------------------------------------------")
-
-                if self.snapshot and not self.resume:
-                    logger.info("""
-
-gpmigrator has completed remirroring the system.
-It should now be possible to take a zfs snapshot before finalizing the upgrade.
- 1) Take zfs snapshots, if desired
- 2) Complete the upgrade by running:
-      gpmigrator %s %s --resume
-""" % (self.oldhome, self.newhome))
-                    sys.exit(0)
 
         # Test failure after releasing the lockdown
         if self.faultinjection == 8:

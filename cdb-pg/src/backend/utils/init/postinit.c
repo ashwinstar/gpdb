@@ -189,8 +189,12 @@ CheckMyDatabase(const char *name, bool am_superuser)
 	{
 		/*
 		 * Check that the database is currently allowing connections.
+		 * (exception during upgrade_mode)
 		 */
-		if (!dbform->datallowconn)
+		if (gp_upgrade_mode && !dbform->datallowconn)
+	        elog(INFO, "Connecting to no-connection db in upgrade mode.");
+
+		if (!dbform->datallowconn && !gp_upgrade_mode)
 			ereport(FATAL,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 			 errmsg("database \"%s\" is not currently accepting connections",

@@ -18,11 +18,27 @@
 
 
 -- Persistent Table
--- alter table @gpupgradeschemaname@.gp_persistent_relation_node rename reserved to unreserved;
+alter table @gpupgradeschemaname@.gp_persistent_relation_node rename reserved to relation_bufpool_kind;
 
--- Resource Queue 
---   create new function
---   populate pg_resourcetype and pg_resqueuecapability
+create function @gpupgradeschemaname@.gp_persistent_build_all(
+     @gpupgradeschemaname@.bool)
+returns @gpupgradeschemaname@.int4
+language internal AS 'gp_persistent_build_all' volatile
+with (oid = 7179);
+
+create function @gpupgradeschemaname@.gp_persistent_reset_all()
+returns @gpupgradeschemaname@.int4
+language internal AS 'gp_persistent_reset_all' volatile
+with (oid = 7180);
+
+
+--
+-- Ordered Aggregates
+--
+alter table @gpupgradeschemaname@.pg_aggregate add column aggordered boolean;
+update @gpupgradeschemaname@.pg_aggregate set aggordered = 'f';
+select catDML('update @gpupgradeschemaname@.pg_aggregate set aggordered = ''f''') from gp_dist_random('gp_id');
+
 
 --------------------------------
 -- Re-create gp_toolkit
@@ -86,40 +102,40 @@ DROP VIEW if exists @gpupgradetoolkitschema@.gp_size_of_database cascade;
 DROP FUNCTION if exists @gpupgradetoolkitschema@.__gp__seg_locks(segid int) cascade;
 DROP VIEW if exists @gpupgradetoolkitschema@.gp_locks cascade;
 
+select 1/0 from @gpupgradeschemaname@.pg_class where relnamespace = 8001;
+select 1/0 from @gpupgradeschemaname@.pg_proc  where pronamespace = 8001;
+select 1/0 from @gpupgradeschemaname@.pg_type  where typnamespace = 8001;
+select 1/0 from @gpupgradeschemaname@.pg_constraint where connamespace = 8001;
+select 1/0 from @gpupgradeschemaname@.pg_operator where oprnamespace = 8001;
+select 1/0 from @gpupgradeschemaname@.pg_opclass where opcnamespace = 8001;
+select 1/0 from @gpupgradeschemaname@.pg_conversion where connamespace = 8001;
+
 delete from @gpupgradeschemaname@.pg_depend where refobjid=8001;
 select catDML('delete from @gpupgradeschemaname@.pg_depend where refobjid=8001') from gp_dist_random('gp_id');
 
 drop schema if exists @gpupgradetoolkitschema@;
 create schema @gpupgradetoolkitschema@;
 
+--------------------------------
 -- HDFS Privilege
+--   1. add hdfs read/write privl columns to pg_authid
+--   2. set default privl of hdfs read/write to false
+--   3. add new columsn to pg_roles
+--------------------------------
 alter table @gpupgradeschemaname@.pg_authid add column rolcreaterexthdfs bool;
 alter table @gpupgradeschemaname@.pg_authid add column rolcreatewexthdfs bool;
 update @gpupgradeschemaname@.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
 select catDML('update @gpupgradeschemaname@.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random('gp_id');
 
-
 CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_roles AS 
-    SELECT 
-        rolname,
-        rolsuper,
-        rolinherit,
-        rolcreaterole,
-        rolcreatedb,
-        rolcatupdate,
-        rolcanlogin,
-        rolconnlimit,
-        '********'::text as rolpassword,
-        rolvaliduntil,
-        rolconfig,
-		rolresqueue,
-        oid,
-        rolcreaterextgpfd,
-		rolcreaterexthttp,
-		rolcreatewextgpfd,
-		rolcreaterexthdfs,
-		rolcreatewexthdfs   
-    FROM pg_catalog.pg_authid;
+ SELECT pg_authid.rolname, pg_authid.rolsuper, pg_authid.rolinherit,
+  pg_authid.rolcreaterole, pg_authid.rolcreatedb, pg_authid.rolcatupdate,
+  pg_authid.rolcanlogin, pg_authid.rolconnlimit, '********'::text AS rolpassword,
+  pg_authid.rolvaliduntil, pg_authid.rolconfig, pg_authid.rolresqueue, pg_authid.oid, 
+  pg_authid.rolcreaterextgpfd, pg_authid.rolcreaterexthttp, pg_authid.rolcreatewextgpfd, 
+  pg_authid.rolcreaterexthdfs, pg_authid.rolcreatewexthdfs
+   FROM pg_authid;
+
 
 -- MPP-11461, MPP-11127: fix tablespace
 CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_partitions AS
@@ -250,7 +266,6 @@ create aggregate @gpupgradeschemaname@.mregr_pvalues(float8, float8[]) (
     finalfunc = float8_mregr_pvalues,
     oid       = 3266
 );
-
 -- naive bayes probability values
 create function @gpupgradeschemaname@.nb_classify_probabilities(nb_classification) 
     returns float8[]
@@ -277,17 +292,33 @@ create function @gpupgradeschemaname@.pg_resqueue_status_kv()
 
 -- add new resource type in pg_resourcetype. this table is maintained 
 
-insert into @gpupgradeschemaname@.pg_resourcetype values ('memory_limit',6,false,true,true,'-1','-1');
-select catDML('insert into @gpupgradeschemaname@.pg_resourcetype values (''memory_limit'',6,false,true,true,''-1'',''-1'')') from gp_dist_random('gp_id');
+insert into @gpupgradeschemaname@.pg_resourcetype 
+  select 'memory_limit',6,false,true,true,'-1','-1'
+  where (select count(*) from pg_catalog.pg_resourcetype where restypid = 6) = 0;
+select catDML('insert into @gpupgradeschemaname@.pg_resourcetype 
+  select ''memory_limit'',6,false,true,true,''-1'',''-1''
+  where (select count(*) from pg_catalog.pg_resourcetype where restypid = 6) = 0') from gp_dist_random('gp_id');
 
 -- for every existing queue, add default memory_limit of -1. This table is not maintained on the segments, so we don't do this on the segments.
 
 insert into @gpupgradeschemaname@.pg_resqueuecapability
-	select resqueueid, 6, '-1' from (select distinct resqueueid from @gpupgradeschemaname@.pg_resqueuecapability) s;
+	select distinct resqueueid, 6, '-1'
+	from @gpupgradeschemaname@.pg_resqueuecapability
+	where resqueueid not in (select resqueueid from @gpupgradeschemaname@.pg_resqueuecapability where restypid = 6);
 	
 --
 -- pg_stat_activity
 --
+
+create function @gpupgradeschemaname@.pg_stat_get_activity(
+    pid integer, OUT datid oid, OUT procpid integer, OUT usesysid oid, OUT application_name text,
+    OUT current_query text, OUT waiting boolean, OUT xact_start timestamp with time zone, 
+    OUT query_start timestamp with time zone, OUT backend_start timestamp with time zone, 
+    OUT client_addr inet, OUT client_port integer, OUT sess_id integer )
+	returns setof record 
+	language internal AS 'pg_stat_get_activity' stable
+	with (oid = 6071);
+
 
 CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_stat_activity AS 
     SELECT 
@@ -308,13 +339,6 @@ CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_stat_activity AS
     FROM pg_catalog.pg_database D, pg_catalog.pg_stat_get_activity(NULL) AS S, pg_catalog.pg_authid U
     WHERE S.datid = D.oid AND 
             S.usesysid = U.oid;
-
---
--- Ordered Aggregates
---
-alter table @gpupgradeschemaname@.pg_aggregate add column aggordered boolean;
-update @gpupgradeschemaname@.pg_aggregate set aggordered = 'f';
-select catDML('updatae @gpupgradeschemaname@.pg_aggregate set aggordered = ''f''') from gp_dist_random('gp_id');
 
 -- array_agg
 create function @gpupgradeschemaname@.array_agg_transfn(

@@ -179,8 +179,12 @@ ProcedureCreate(const char *procedureName,
 		}
 	}
 
+	/* Normally, we don't allow ANY* return type without an ANY* input type.
+	 * But during upgrade, we're creating "special" function used by aggregate
+	 * and we'll bypass this check for those functions.
+	 */
 	if ((returnType == ANYARRAYOID || returnType == ANYELEMENTOID ||
-		 genericOutParam) && !genericInParam)
+		 genericOutParam) && !genericInParam && !gp_upgrade_mode)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("cannot determine result data type"),
@@ -364,7 +368,7 @@ ProcedureCreate(const char *procedureName,
 		/* Creating a new procedure */
 		tup = heap_form_tuple(tupDesc, values, nulls);
 				
-		if (Gp_role == GP_ROLE_EXECUTE && funcOid != 0)
+		if (funcOid != 0)
 			HeapTupleSetOid(tup, funcOid);
 			
 		simple_heap_insert(rel, tup);

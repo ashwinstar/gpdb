@@ -11,7 +11,7 @@ from gppylib.mainUtils import *
 import os, sys
 
 import time
-from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
+from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE, SUPPRESS_HELP
 
 try:
     import pickle
@@ -42,12 +42,13 @@ logger = get_default_logger()
 class GpStart:
 
     ######
-    def __init__(self, restricted, start_standby, master_datadir,
+    def __init__(self, upgrade, restricted, start_standby, master_datadir,
                  parallel=DEFAULT_NUM_WORKERS,
                  quiet=False,
                  masteronly=False,
                  interactive=False,
                  timeout=SEGMENT_TIMEOUT_DEFAULT):
+        self.upgrade=upgrade
         self.restricted=restricted
         self.start_standby=start_standby
         self.pool = None
@@ -172,7 +173,9 @@ class GpStart:
 
         dir_catversion = gp.GpCatVersionDirectory.local('local GP directory catalog version check', self.master_datadir)
         
-        if bin_catversion != dir_catversion:
+        # If it's in upgrade mode, we don't need to check the cat version because gpmigrator have checked
+        # it already.
+        if (self.upgrade is None and bin_catversion != dir_catversion):
             logger.info("MASTER_DIRECTORY Catalog Version: '%s'" % dir_catversion)
             logger.info("Catalog Version of master directory incompatible with binaries")
             raise ExceptionNoStackTraceNeeded("Catalog Versions are incompatible")
@@ -320,7 +323,7 @@ class GpStart:
         cmd=gp.MasterStart('master in utility mode',self.master_datadir,
                            self.port,dbid,standby_dbid,
                            numContentsInCluster,utilityMode=True,
-                           timeout=self.timeout)
+                           timeout=self.timeout,upgradeMode=self.upgrade)
         cmd.run()
 
         if cmd.get_results().rc != 0:
@@ -367,7 +370,7 @@ class GpStart:
 
         segmentStartResult = StartSegmentsOperation(self.pool,self.quiet,
                 [self.lc_collate,self.lc_monetary,self.lc_numeric], self.gpversion,
-                self.gphome, self.master_datadir, self.timeout
+                self.gphome, self.master_datadir, self.timeout, self.upgrade
                 ).startSegments(self.gparray, segmentsToStart, startMode)
 
         # see if we have at least one segment per content
@@ -626,7 +629,7 @@ class GpStart:
 
         gp.MasterStart.local("Starting Master instance",self.master_datadir,self.port,
                              self.gparray.master.dbid, standby_dbid,
-                             numContentsInCluster, timeout=self.timeout,
+                             numContentsInCluster, timeout=self.timeout, upgradeMode=self.upgrade,
                              restrictedMode=self.restricted,max_connections=self.max_connections,
                              disableMasterMirror=(not self.start_standby) )
 
@@ -693,6 +696,8 @@ class GpStart:
 
         addTo = OptionGroup(parser, 'Database startup options: ')
         parser.add_option_group(addTo)
+        addTo.add_option('-U', '--upgrade_mode', action='store_true',
+                            help=SUPPRESS_HELP)
         addTo.add_option('-m', '--master_only', action='store_true',
                             help='start master instance only in maintenance mode')
         addTo.add_option('-y', '--no_standby', dest="start_standby", action='store_false',default=True,
@@ -721,7 +726,7 @@ class GpStart:
         if args:
             raise ProgramArgumentValidationException("Argument %s is invalid.  Is an option missing a parameter?" % args[-1])
 
-        return GpStart(options.restricted,
+        return GpStart(options.upgrade_mode, options.restricted,
                           options.start_standby,
                           master_datadir=options.masterDataDirectory,
                           parallel=options.parallel,

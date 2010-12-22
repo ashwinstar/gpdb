@@ -64,7 +64,7 @@ class SegStartStatus:
 #-------------------------------------------------------------------------    
 class GpSegStart:
     ######
-    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster, timeout, pickledTransitionData):
+    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster, timeout, pickledTransitionData, upgradeMode):
 
         self.dblist = map(gparray.GpDB.initFromString, dblist)
         self.mirroringMode = mirroringMode
@@ -72,6 +72,7 @@ class GpSegStart:
         self.numContentsInCluster=numContentsInCluster
         self.timeout = timeout
         self.pickledTransitionData = pickledTransitionData
+        self.upgradeMode = upgradeMode
 
         #
         # There was an issue with Linux that required the numWorkers to be 1,
@@ -156,7 +157,8 @@ class GpSegStart:
                                 self.numContentsInCluster,
                                 mirroringModeForStart,
                                 noWait=nowait,
-                                timeout=self.timeout)
+                                timeout=self.timeout,
+                                upgradeMode=self.upgradeMode)
             self.pool.addCommand(cmd)
 
         self.pool.join()
@@ -391,7 +393,9 @@ class GpSegStart:
                           help="number of distinct content ids in cluster")
         parser.add_option("-t", "--timeout", dest="timeout", type="int", default=SEGMENT_TIMEOUT_DEFAULT,
                           help="seconds to wait")
-
+        parser.add_option('-U', '--upgrade_mode', action='store_true',
+                          help='start the instance in upgrade mode')
+        
         return parser
 
     @staticmethod
@@ -402,7 +406,8 @@ class GpSegStart:
                                     options.mirroringMode,
                                     options.numsegments,
                                     options.timeout,
-                                    options.pickledTransitionData)
+                                    options.pickledTransitionData,
+                                    options.upgrade_mode)
 
 #------------------------------------------------------------------------- 
 if __name__ == '__main__':

@@ -72,7 +72,7 @@ class PySync(Command):
 #-----------------------------------------------
 class MasterStart(Command):
     def __init__(self, name, dataDir, port, dbid, standby_dbid,
-                 numContentsInCluster,
+                 numContentsInCluster, upgradeMode=False,
                  restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
                  max_connections=1, disableMasterMirror=False,
                  utilityMode=False, ctxt=LOCAL, remoteHost=None):
@@ -92,6 +92,8 @@ class MasterStart(Command):
         cmdfrags=["$GPHOME/bin/pg_ctl -w -D %s -l %s/pg_log/startup.log -o \" %s %s -i -M master -p %s -b %s -x %s -C -1 -z %s --silent-mode=true" % \
                   (dataDir,dataDir,standby,gp_mode_flags,port,dbid,standby_dbid,numContentsInCluster)]
 
+        if upgradeMode:
+            cmdfrags.append(" -U")
 
         if restrictedMode:
             cmdfrags.append(" -c superuser_reserved_connections=%s" % max_connections)
@@ -104,12 +106,12 @@ class MasterStart(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     @staticmethod
-    def local(name, dataDir, port, dbid, standbydbid, numContentsInCluster,
+    def local(name, dataDir, port, dbid, standbydbid, numContentsInCluster, upgradeMode=False,
               restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
               max_connections=1, disableMasterMirror=False,
               utilityMode=False):
         cmd=MasterStart(name, dataDir, port, dbid, standbydbid, numContentsInCluster,
-                        restrictedMode, timeout,max_connections,
+                        upgradeMode, restrictedMode, timeout,max_connections,
                         disableMasterMirror,utilityMode)
         cmd.run(validateAfter=True)
 
@@ -137,7 +139,8 @@ class SegmentStart(Command):
 
     def __init__(self, name, gpdb, numContentsInCluster, mirroringMode,
                  utilityMode=False, ctxt=LOCAL, remoteHost=None,
-                 noWait=False, timeout=SEGMENT_TIMEOUT_DEFAULT):
+                 noWait=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
+                 upgradeMode=False):
 
         # This is referenced from calling code
         self.segment = gpdb
@@ -165,10 +168,13 @@ class SegmentStart(Command):
         utilityModeStr = ""
         if ( utilityMode ):
             utilityModeStr = "-c gp_role=utility"
+        upgradeModeStr = ""
+        if (upgradeMode):
+            upgradeModeStr = "-U"
 
-        cmdfrags.append("-o '-i %s %s --silent-mode=true -M %s -b %s -C %s "
+        cmdfrags.append("-o '-i %s %s %s --silent-mode=true -M %s -b %s -C %s "
                         "-z %s' start 2>&1" %
-                        (portStr, utilityModeStr, mirroringMode, dbid,
+                        (portStr, upgradeModeStr, utilityModeStr, mirroringMode, dbid,
                          content, numContentsInCluster))
         self.cmdStr=' '.join(cmdfrags)
 
@@ -428,7 +434,8 @@ SEGSTART_ERROR_OTHER = 1000
 class GpSegStartCmd(Command):
     def __init__(self, name, gphome, segments, collatelist, gpversion,
                  mirroringMode, numContentsInCluster, timeout=SEGMENT_TIMEOUT_DEFAULT, 
-                 verbose=False,ctxt=LOCAL, remoteHost=None, pickledTransitionData=None):
+                 verbose=False,ctxt=LOCAL, remoteHost=None, pickledTransitionData=None,
+                 upgradeMode=False):
 
         # Referenced by calling code, create a clone
         self.dblist = [x for x in segments]
@@ -452,6 +459,8 @@ class GpSegStartCmd(Command):
                 "-t %d" % timeout
                 ]
 
+        if upgradeMode:
+            args.append("-U")
         if pickledTransitionData is not None:
             args.append("-p")
             args.append(pickledTransitionData)

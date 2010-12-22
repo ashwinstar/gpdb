@@ -1153,7 +1153,6 @@ func_get_detail(List *funcname,
 			 */
 			value = heap_getattr(ftup, Anum_pg_aggregate_aggordered, aggdesc, 
 								 &isnull);
-			Assert(!isnull);
 			*retordered = (!isnull) && DatumGetBool(value);
 
 			ReleaseSysCache(ftup);

@@ -5132,10 +5132,9 @@ ATAddToastIfNeeded(List **wqueue,
 			Oid reltablespace;
 
 			/*
-			 * For 3.3 upgrade, don't create a toast table for
-			 * pg_appendonly.
+			 * For upgrade, don't create a toast table.
 			 */
-			if (!IsUnderPostmaster && tab->relid == AppendOnlyRelationId)
+			if (gp_upgrade_mode)
 				continue;
 
 			/* 
@@ -6486,6 +6485,12 @@ ATPrepAddColumn(List **wqueue, Relation rel, bool recurse,
 	}
 }
 
+void
+ATAddColumn(Relation rel, ColumnDef *colDef)
+{
+	ATExecAddColumn((AlteredTableInfo*)NULL, rel, colDef);
+}
+
 static void
 ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 				ColumnDef *colDef)
@@ -6740,13 +6745,20 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 		newval->attnum = attribute->attnum;
 		newval->expr = defval;
 
+		/* tab is null if this is called by "create or replace view"
+		 * which can't have any default value.
+		 */
+		Assert(tab);
 		tab->newvals = lappend(tab->newvals, newval);
 	}
 
 	/*
 	 * If the new column is NOT NULL, tell Phase 3 it needs to test that.
+	 * Also, "create or replace view" won't have constraint on the column.
 	 */
-	tab->new_notnull |= colDef->is_not_null;
+	Assert(!colDef->is_not_null || tab);
+	if (tab)
+		tab->new_notnull |= colDef->is_not_null;
 
 	/*
 	 * Add needed dependency entries for the new column.

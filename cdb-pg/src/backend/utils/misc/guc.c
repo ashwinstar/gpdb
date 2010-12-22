@@ -490,6 +490,10 @@ int gp_test_time_slice_interval;
 /* database-lightweight lock hazard detection */
 bool gp_test_deadlock_hazard;
 
+/* Upgrade GUCs */
+bool gp_upgrade_mode;
+bool gp_upgrade_conn;
+
 /* include file/line information to stack traces */
 bool gp_log_stack_trace_lines;
 
@@ -698,6 +702,25 @@ const char *const config_type_names[] =
 
 static struct config_bool ConfigureNamesBool[] =
 {
+	{
+		{"upgrade_mode", PGC_POSTMASTER, CUSTOM_OPTIONS,
+			gettext_noop("Upgrade Mode"),
+			NULL
+		},
+		&gp_upgrade_mode,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_upgrade_conn", PGC_BACKEND, CUSTOM_OPTIONS,
+			gettext_noop("Upgrade Connection"),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_upgrade_conn,
+		false, NULL, NULL
+	},
+
 	{
 		{"enable_seqscan", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of sequential-scan plans."),
