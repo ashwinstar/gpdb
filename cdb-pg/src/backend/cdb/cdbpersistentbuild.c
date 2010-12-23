@@ -906,3 +906,116 @@ gp_persistent_reset_all(PG_FUNCTION_ARGS)
 
 	PG_RETURN_INT32(1);
 }
+
+static void
+PersistentBuild_SetRelationBufpoolKind(
+	Oid			defaultTablespace,
+
+	Oid 		database)
+{
+	DatabaseInfo *info;
+	
+	int	r;
+
+	info = DatabaseInfo_Collect(
+							database,
+							defaultTablespace,
+							/* collectGpRelationNodeInfo */ true,
+							/* collectAppendOnlyCatalogSegmentInfo */ false);
+
+	for (r = 0; r < info->dbInfoRelArrayCount; r++)
+	{
+		DbInfoRel *dbInfoRel = &info->dbInfoRelArray[r];
+		
+		RelFileNode relFileNode;
+
+		PersistentFileSysRelStorageMgr localRelStorageMgr;
+		PersistentFileSysRelBufpoolKind relBufpoolKind;
+
+		int g;
+
+		if (dbInfoRel->reltablespace == GLOBALTABLESPACE_OID &&
+			info->database != TemplateDbOid)
+			continue;
+
+		relFileNode.spcNode = dbInfoRel->reltablespace;
+		relFileNode.dbNode = 
+				(dbInfoRel->reltablespace == GLOBALTABLESPACE_OID ?
+														0 : info->database);
+		relFileNode.relNode = dbInfoRel->relfilenodeOid;
+
+		GpPersistentRelationNode_GetRelationInfo(
+											dbInfoRel->relkind,
+											dbInfoRel->relstorage,
+											dbInfoRel->relam,
+											&localRelStorageMgr,
+											&relBufpoolKind);
+
+		/*
+		 * Update the gp_persistent_relation_node entry for each gp_relation_node entry.
+		 */
+		for (g = 0; g < dbInfoRel->gpRelationNodesCount; g++)
+		{
+			DbInfoGpRelationNode *gpRelationNode = &dbInfoRel->gpRelationNodes[g];
+
+			PersistentFileSysObj_UpdateRelationBufpoolKind(
+												&relFileNode,
+												gpRelationNode->segmentFileNum,
+												&gpRelationNode->persistentTid,
+												gpRelationNode->persistentSerialNum,
+												relBufpoolKind);
+		}
+
+	}
+}
+
+extern Datum gp_persistent_set_relation_bufpool_kind_all(PG_FUNCTION_ARGS);
+
+Datum
+gp_persistent_set_relation_bufpool_kind_all(PG_FUNCTION_ARGS)
+{
+	Relation pg_database;
+	HeapScanDesc scan;
+	HeapTuple tuple;
+
+	// UNDONE: Verify we are in some sort of single-user mode.
+
+	/*
+	 * Special call here to scan the persistent meta-data structures so we are open for 
+	 * business and then we can add information.
+	 */
+	PersistentFileSysObj_BuildInitScan();
+
+	pg_database = heap_open(
+						DatabaseRelationId,
+						AccessShareLock);
+
+	scan = heap_beginscan(pg_database, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Form_pg_database form_pg_database =
+						(Form_pg_database)GETSTRUCT(tuple);
+
+		Oid dbOid;
+		Oid dattablespace;
+		
+		dbOid = HeapTupleGetOid(tuple);
+		dattablespace = form_pg_database->dattablespace;
+
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "gp_persistent_set_relation_bufpool_kind_all: dbOid %u",
+				 dbOid);
+		
+		PersistentBuild_SetRelationBufpoolKind(
+											dattablespace,
+											dbOid);
+	}
+
+	heap_endscan(scan);
+
+	heap_close(pg_database, AccessShareLock);
+
+	PG_RETURN_INT32(1);
+}
+
