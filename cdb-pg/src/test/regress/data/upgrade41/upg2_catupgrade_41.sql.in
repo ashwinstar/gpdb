@@ -39,6 +39,15 @@ alter table @gpupgradeschemaname@.pg_aggregate add column aggordered boolean;
 update @gpupgradeschemaname@.pg_aggregate set aggordered = 'f';
 select catDML('update @gpupgradeschemaname@.pg_aggregate set aggordered = ''f''') from gp_dist_random('gp_id');
 
+---
+--- PL/Java template
+---
+insert into @gpupgradeschemaname@.pg_pltemplate 
+  select 'pljava', false, 'pljava_call_handler', null, '$libdir/pljava', null
+  where (select count(*) from @gpupgradeschemaname@.pg_pltemplate where tmplname='pljava')=0;
+select catDML('insert into @gpupgradeschemaname@.pg_pltemplate 
+  select ''pljava'', false, ''pljava_call_handler'', null, ''$libdir/pljava'', null
+  where (select count(*) from @gpupgradeschemaname@.pg_pltemplate where tmplname=''pljava'')=0') from gp_dist_random('gp_id');
 
 --------------------------------
 -- Re-create gp_toolkit
