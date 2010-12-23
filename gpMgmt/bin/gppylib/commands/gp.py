@@ -36,7 +36,7 @@ def check_passive_standby(name,dir):
         return 0
 
 def getSyncmasterPID(hostname, datadir):
-    cmdStr="ps -ef | grep gpsyncmaster | grep -v grep | awk '{print $2}' | grep `cat %s/postmaster.pid | head -1` || echo -1" % (datadir)
+    cmdStr="ps -ef | grep gpsyncmaster | grep -v grep | awk '{print $2}' | grep \\`cat %s/postmaster.pid | head -1\\` || echo -1" % (datadir)
     name="get gpsyncmaster"
     cmd=Command(name,cmdStr,ctxt=REMOTE,remoteHost=hostname)
     try:
