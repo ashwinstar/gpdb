@@ -77,7 +77,7 @@ def parseargs():
         parser.exit()
 
     if options.remove and (options.value or options.primaryvalue or options.mirrorvalue or options.mastervalue):
-        logger.error("remove action does not take a value or master value parameter")
+        logger.error("remove action does not take a value, primary value, mirror value or master value parameter")
         parser.exit()
 
     if options.change and (not options.value and (not options.mirrorvalue and not options.primaryvalue)):
