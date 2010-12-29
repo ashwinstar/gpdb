@@ -114,7 +114,7 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 	if (fileRepProcessType == FileRepProcessTypePrimaryReceiverAck ||
         fileRepProcessType == FileRepProcessTypeMirrorReceiver)
     {
-			quickdie(PASS_SIGNAL_ARGS);
+			die(PASS_SIGNAL_ARGS);
     }
 
 	if ( FileRepIsBackendSubProcess(fileRepProcessType))
