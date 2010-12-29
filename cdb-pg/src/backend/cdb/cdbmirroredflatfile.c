@@ -1169,6 +1169,20 @@ PgVersionRecoverMirror(void)
 	int						retval = 0;
 	int						status = STATUS_OK;
 
+	/*
+	 * PgVersion is recovered only on mirror segment and not on master standby.
+	 * 
+	 * Attention
+	 * =========
+	 * Remove the check when master mirroring will be replaced with filerep.
+	 */
+	getFileRepRoleAndState(&fileRepRole, NULL, NULL, NULL, NULL);
+	
+	if (fileRepRole != FileRepPrimaryRole)
+	{
+		return status;
+	}
+
 	subDirectoryPrimary = (char*)palloc(MAXPGPATH + 1);
 	subDirectoryMirror = (char*)palloc(MAXPGPATH + 1);
 	
