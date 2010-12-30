@@ -206,6 +206,7 @@ GPLOAD:
              <target_column_name>: <source_column_name> | '<expression>'
    PRELOAD:
     - TRUNCATE: true | false
+    - REUSE_TABLES: true | false
    SQL:
     - BEFORE: "<sql_command>"
     - AFTER: "<sql_command>"
@@ -434,10 +435,17 @@ MAPPING - Optional. If a mapping is specified, it overrides the default
           reference, an operator invocation, a function call, and so on.
 
 PRELOAD - Optional. Specifies operations to run prior to the load operation. 
-          Right now the only preload operation is TRUNCATE.
+          Right now there are 2 preload operations: TRUNCATE and 
+          REUSE_TABLES.
 
 TRUNCATE - Optional. If set to true, gpload will remove all rows in the 
            target table prior to loading it.
+
+REUSE_TABLES: Optional. When set to true gpload will try to reuse existing
+			  external and temp tables for this operation if possible, 
+			  rather then creating new ones. gpload will not drop these 
+			  tables at the end of operation. Recommended for micro-batch 
+			  load environments, aids in avoiding a catalog bloat.
 
 SQL - Optional. Defines SQL commands to run before and/or after the load 
       operation. Commands that contain spaces or special characters must 

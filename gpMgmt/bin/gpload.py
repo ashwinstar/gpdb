@@ -101,6 +101,7 @@ valid_tokens = {
     "mapping": {'parse_children': False, 'parent': "output"},
     "preload": {'parse_children': True, 'parent': 'gpload'},
     "truncate": {'parse_children': False, 'parent': 'preload'},
+    "reuse_tables": {'parse_children': False, 'parent': 'preload'},
     "sql": {'parse_children': True, 'parent': 'gpload'},
     "before": {'parse_children': False, 'parent': 'sql'},
     "after": {'parse_children': False, 'parent': 'sql'}}
@@ -1011,7 +1012,7 @@ class gpload:
         self.WARN = 2
         self.ERROR = 1
         self.options.qv = self.INFO
-
+        
         seenv = False
         seenq = False
 
@@ -1023,8 +1024,11 @@ class gpload:
         self.options.l = os.path.join(self.options.l, 'gpload_' + \
                         datetime.date.today().strftime('%Y%m%d') + '.log')
 
-        self.name = 'gpload%s_%d'%(str(time.time()).replace('.','_'),os.getpid())
-        self.tempTableName = quote_ident('temp_' + self.name)
+        # Create Temp and External table names. However external table name could 
+        # get overwritten with another name later on (see create_external_table_name). 
+        self.unique_suffix = '%s_%d'%(datetime.datetime.today().strftime('%Y%m%d_%H%M%S'),os.getpid())
+        self.tempTableName = quote_ident('temp_gpload' + self.unique_suffix)
+        self.extTableName = 'ext_gpload' + self.unique_suffix
 
         # SQL to run in order to undo our temporary work
         self.cleanupSql = []
@@ -1701,12 +1705,269 @@ class gpload:
                                  '"%s" to output table' % x[0])
         for name,typ,mapto,seq in self.into_columns:
             self.log(self.DEBUG,'%s: %s = %s'%(name,typ,mapto))
+       
+    # In order to find out whether we have an existing external table in the 
+    # catalog which could be reused for this operation we need to make sure
+    # that it has the same column names and types, the same data format, and
+    # location specification, and single row error handling specs.
+    #
+    # This function will return the SQL to run in order to find out whether
+    # such a table exists.
+    # 
+    def get_reuse_exttable_query(self, schemaName, tableName, formatType, formatOpts, limitStr, from_cols):
+        
+        
+        if schemaName == None:
+            schemaName =  'public'
 
+        sql = """select attrelid::regclass
+                 from (
+                        select 
+                            attrelid, 
+                            row_number() over (partition by attrelid order by attnum) as attord, 
+                            attnum,
+                            attname,
+                            atttypid::regtype 
+                        from 
+                            pg_attribute
+                            join
+                            pg_class
+                            on (pg_class.oid = attrelid)
+                        where 
+                            relstorage = 'x' and
+                            relname like 'ext_gpload_reusable_%s_%s_%%' and
+                            attnum > 0 and
+                            not attisdropped
+                    
+                    ) pgattr 
+                    join 
+                    pg_exttable pgext 
+                    on(pgattr.attrelid = pgext.reloid) 
+                    """ % (schemaName, tableName)
+         
+        for i, l in enumerate(self.locations):
+            if i == 0:
+                sql+= "where "
+            else:
+                sql+= "and "
+            sql+=  "pgext.location[%s] = %s\n" % (i + 1, quote(l))
+             
+        sql+= """and pgext.fmttype = %s
+                 and pgext.writable = false
+                 and pgext.fmtopts like %s """ % (quote(formatType[0]),quote(formatOpts +"%"))
+        
+        if limitStr:
+            sql+= "and pgext.rejectlimit = %s " % limitStr         
+                 
+        sql+= "group by attrelid " 
+
+        sql+= """having 
+                    count(*) = %s and 
+                    bool_and(case """ % len(from_cols)
+        
+        for i, c in enumerate(from_cols):
+            name = c[0]
+            typ = c[1]
+            sql+= "when attord = %s then atttypid = %s::regtype and attname = %s\n" % (i+1, quote(typ), quote(quote_unident(name)))
+
+        sql+= """else true 
+                 end)
+                 limit 1;"""
+        
+        self.log(self.DEBUG, "query used to identical reusable external relations: %s" % sql)
+        return sql
+
+    # In order to find out whether we have an existing temp table in the 
+    # catalog which could be reused for this operation we need to make sure
+    # that it has the same column names and types, and same distribution key
+    #
+    # This function will return the SQL to run in order to find out whether
+    # such a table exists.
+    # 
+    def get_reuse_temptable_query(self, schemaName, tableName, from_cols, distcols):
+            
+        if schemaName == None:
+            schemaName =  'public'
+
+        sql = """select attrelid::regclass
+                 from (
+                        select 
+                            attrelid, 
+                            row_number() over (partition by attrelid order by attnum) as attord, 
+                            attnum,
+                            attname,
+                            atttypid::regtype 
+                        from 
+                            pg_attribute
+                            join
+                            pg_class
+                            on (pg_class.oid = attrelid)
+                        where 
+                            relstorage = 'h' and
+                            relkind = 'r' and
+                            relname like 'temp_gpload_reusable_%s_%s_%%' and
+                            pg_class.oid in (select localoid from gp_distribution_policy 
+                                             where attrnums = (select attrnums from gp_distribution_policy 
+                                                               where localoid=%s::regclass)) and
+                            attnum > 0 and
+                            not attisdropped
+                    ) pgattr
+                 group by attrelid
+                 having 
+                    count(*) = %s and 
+                    bool_and(case """ % (schemaName, tableName, quote(self.schemaTable), len(from_cols))
+        
+        for i, c in enumerate(from_cols):
+            name = c[0]
+            typ = c[1]
+            sql+= "when attord = %s then atttypid = %s::regtype and attname = %s\n" % (i+1, quote(typ), quote(quote_unident(name)))
+
+        sql+= """else true 
+                 end)
+                 limit 1;"""
+        
+        self.log(self.DEBUG, "query used to identical reusable temporary relations: %s" % sql)
+        return sql
+    
+    # 
+    # Create a new external table or find a reusable external table to use for this operation
+    #    
     def create_external_table(self):
+        
+
+        # extract all control file information and transform it accordingly
+        # in order to construct a CREATE EXTERNAL TABLE statement if will be
+        # needed later on
+        
         self.error_table = self.getconfig('gpload:input:error_table', unicode,
                                           None)
-        format = self.getconfig('gpload:input:format', unicode, 'text').lower()
-        sql = "create external table ext_%s" % self.name
+        formatType = self.getconfig('gpload:input:format', unicode, 'text').lower()
+        formatOpts = ""
+        locationStr = ','.join(map(quote,self.locations))
+
+        delimiterValue = self.getconfig('gpload:input:delimiter', unicode, False)
+        if isinstance(delimiterValue, bool) and delimiterValue == False:
+            """ implies the DELIMITER option has no value in the yaml file, so use default """
+            pass
+        elif len(delimiterValue) != 1:
+            self.log(self.WARN, "A gpload control file processing warning occurred. A delimiter must have a length of one. Special characters must be quoted. gpload will assume this is a sql escape character sequence.")
+            formatOpts += "delimiter %s" % self.getconfig('gpload:input:delimiter', unicode)
+        else:
+            formatOpts += "delimiter %s" % \
+                quote(self.getconfig('gpload:input:delimiter', unicode))
+
+        nullas = self.getconfig('gpload:input:null_as', unicode, False)
+        self.log(self.DEBUG, "null as " + unicode(nullas))
+        if nullas != False: # could be empty string
+            formatOpts += " null as %s " % quote(nullas)
+
+        if self.getconfig('gpload:input:header',bool,False):
+            formatOpts += "header "
+        if formatType=='csv':
+            formatOpts += "quote as%s" % quote(self.getconfig('gpload:input:quote', 
+                    unicode, extraStuff='for csv formatted data'))
+
+        esc = self.getconfig('gpload:input:escape', None, None)
+        if esc:
+            if type(esc) != unicode and type(esc) != str:
+                self.log(self.ERROR, "A gpload control file processing error occurred. gpload:input:escape must be a string")
+            if esc.lower() == 'off':
+                if formatType == 'csv':
+                    self.log(self.ERROR, "A gpload control file processing error occurred. ESCAPE cannot be set to OFF in CSV mode")
+                formatOpts += "escape 'off'"
+            else:
+                formatOpts += 'escape as ' + quote(esc)
+
+        force_not_null_columns = self.getconfig('gpload:input:force_not_null',list,[])
+        if force_not_null_columns:
+            for i in force_not_null_columns:
+                if type(i) != unicode and type(i) != str:
+                    self.log(self.ERROR,'A gpload control file processing error occurred. gpload:input:force_not_null must be a YAML sequence of strings')
+            formatOpts += "force not null %s " % ','.join(force_not_null_columns)
+
+        encodingStr = self.getconfig('gpload:input:encoding', unicode, None)
+
+        limitStr = self.getconfig('gpload:input:error_limit',int, None)
+        if self.error_table and not limitStr:
+            self.log(self.ERROR, "A gpload control file processing error occurred. gpload:input:error_table requires " +
+                    "gpload:input:error_limit to be specified")
+
+        # get the list of columns to use in the extnernal table
+        if not self.from_cols_from_user:
+            # don't put values serial columns
+            from_cols = filter(lambda a: a[3] != True,
+                               self.from_columns)
+        else:
+            from_cols = self.from_columns
+
+        # If the 'reuse tables' option was specified we now try to find an
+        # already existing external table in the catalog which will match
+        # the one that we need to use. It must have identical attributes,
+        # external location, format, and encoding specifications.
+        if self.reuse_tables == True:
+            
+            schemaName = quote_unident(self.schema)
+            tableName = quote_unident(self.table)
+
+            sql = self.get_reuse_exttable_query(schemaName, tableName, formatType, formatOpts, limitStr, from_cols)
+            
+            resultList = self.db.query(sql.encode('utf-8')).getresult()
+            
+            if len(resultList) > 0:
+                
+                # found an external table to reuse. no need to create one. we're done here.
+                self.extTableName = quote_ident((resultList[0])[0])
+                self.log(self.INFO, "reusing external table %s" % self.extTableName)
+                return
+            
+            # didn't find an existing external table suitable for reuse. Format a reusable
+            # name and issue a CREATE EXTERNAL TABLE on it. Hopefully we can use it next time
+            # around
+            self.extTableName = quote_ident("ext_gpload_reusable_%s_%s_created_on_%s" % (schemaName, tableName, self.unique_suffix))
+            self.log(self.INFO, "did not find an external table to reuse. creating %s" % self.extTableName)
+        
+        
+        # construct a CREATE EXTERNAL TABLE statement and execute it
+        sql = "create external table %s" % self.extTableName
+        sql += "(%s)" % ','.join(map(lambda a:'%s %s' % (a[0], a[1]), from_cols))
+
+        sql += "location(%s) "%locationStr
+        sql += "format%s "% quote(formatType)
+        if len(formatOpts) > 0:
+            sql += "(%s) "% formatOpts
+        if encodingStr:
+            sql += "encoding%s "%quote(encodingStr)
+        if self.error_table:
+            sql += "log errors into %s " % self.error_table
+
+        if limitStr:
+            if limitStr < 2:
+                self.log(self.ERROR, "A gpload control file processing error occurred. error_limit must be 2 or higher")
+            sql += "segment reject limit %s "%limitStr
+        
+        self.log(self.LOG, sql)
+        
+
+        try:
+                self.db.query(sql.encode('utf-8'))
+        except Exception, e:
+            self.log(self.ERROR, 'could not run SQL "%s": %s' % (sql, unicode(e)))
+
+        # set up to drop the external table at the end of operation, unless user
+        # specified the 'reuse_tables' option, in which case we don't drop
+        if self.reuse_tables == False:
+            self.cleanupSql.append('drop external table if exists %s'%self.extTableName)
+
+    # 
+    # Create a new external table or find a reusable external table to use for this operation
+    # (only valid for update/merge operations).
+    #    
+    def create_temp_table(self):
+                
+        # Do some initial work to extract the update_columns and metadata
+        # that may be needed in order to create or reuse a temp table
+            
+        a = self.getconfig('gpload:output:update_columns', list)
 
         if not self.from_cols_from_user:
             # don't put values serial columns
@@ -1715,81 +1976,67 @@ class gpload:
         else:
             from_cols = self.from_columns
 
-        sql += "(%s)" % ','.join(map(lambda a:'%s %s' % (a[0], a[1]), from_cols))
+        # make sure we set the correct distribution policy
+        distcols = self.getconfig('gpload:output:match_columns', list)
 
-        sql += "location(%s)"%','.join(map(quote,self.locations))
-        sql += "format%s("%quote(format)
+        # If the 'reuse tables' option was specified we now try to find an
+        # already existing temp table in the catalog which will match
+        # the one that we need to use. It must have identical attributes
+        # and be called 'temp_gpload_reusable_<ns>_<tbl>_*'
+        if self.reuse_tables == True:
+            
+            schemaName = quote_unident(self.schema)
+            tableName = quote_unident(self.table)
 
-        delimiterValue = self.getconfig('gpload:input:delimiter', unicode, False)
-        if isinstance(delimiterValue, bool) and delimiterValue == False:
-            """ implies the DELIMITER option has no value in the yaml file, so use default """
-            pass
-        elif len(delimiterValue) != 1:
-            self.log(self.WARN, "A gpload control file processing warning occurred. A delimiter must have a length of one. Special characters must be quoted. gpload will assume this is a sql escape character sequence.")
-            sql += "delimiter %s" % self.getconfig('gpload:input:delimiter', unicode)
+            sql = self.get_reuse_temptable_query(schemaName, tableName, from_cols, distcols)
+            
+            resultList = self.db.query(sql.encode('utf-8')).getresult()
+            
+            if len(resultList) > 0:
+                
+                # found a temp table to reuse. no need to create one. we're done here.
+                self.tempTableName = quote_ident((resultList[0])[0])
+                self.log(self.INFO, "reusing temp table %s" % self.tempTableName)
+                return
+        
+            # didn't find an existing temp table suitable for reuse. Format a reusable
+            # name and issue a CREATE TABLE on it (without TEMP!). Hopefully we can use it 
+            # next time around
+            self.tempTableName = quote_ident("temp_gpload_reusable_%s_%s_created_on_%s" % (schemaName, tableName, self.unique_suffix))
+            self.log(self.INFO, "did not find a temp table to reuse. creating %s" % self.tempTableName)
+        
+            # construct a CREATE TABLE statement
+            sql = "create table %s" % self.tempTableName
         else:
-            sql += "delimiter%s" % \
-                quote(self.getconfig('gpload:input:delimiter', unicode))
+            # NOTE: there's no real reason to create a *TEMP* table here, since
+            # we will drop it anyway soon. do it for sake of not changing the
+            # tests. it's harmless.
+            method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
+            
+            if method=='update':
+                
+                # it would be tempting to use LIKE here but we cannot as it
+                # inherits NOT NULL and other constraints from the target table
+                # which might not actually be violated by this update.
+                sql = 'create temp table %s' % self.tempTableName
+                cols = map(lambda a:'%s %s' % (a[0], a[1]), from_cols)
+                sql += "(%s)" % ','.join(cols)
+                sql += " distributed by (%s)" % ', '.join(distcols)
+                self.log(self.LOG, sql)
+            else: # (merge)
+                sql = 'create temp table %s(like %s)' % (self.tempTableName, self.schemaTable)
+                self.log(self.DEBUG, sql)
 
-        nullas = self.getconfig('gpload:input:null_as', unicode, False)
-        self.log(self.DEBUG, "null as " + unicode(nullas))
-        if nullas != False: # could be empty string
-            sql += " null as %s " % quote(nullas)
+        if not self.options.D:
+            self.db.query(sql.encode('utf-8'))
+            if not self.reuse_tables:
+                self.cleanupSql.append('drop table if exists %s' % self.tempTableName)
 
-        if self.getconfig('gpload:input:header',bool,False):
-            sql += "header "
-        if format=='csv':
-            sql += "quote as%s" % quote(self.getconfig('gpload:input:quote', 
-                    unicode, extraStuff='for csv formatted data'))
-
-        esc = self.getconfig('gpload:input:escape', None, None)
-        if esc:
-            if type(esc) != unicode and type(esc) != str:
-                self.log(self.ERROR, "A gpload control file processing error occurred. gpload:input:escape must be a string")
-            if esc.lower() == 'off':
-                if format == 'csv':
-                    self.log(self.ERROR, "A gpload control file processing error occurred. ESCAPE cannot be set to OFF in CSV mode")
-                sql += "escape 'off'"
-            else:
-                sql += 'escape as ' + quote(esc)
-
-        force_not_null_columns = self.getconfig('gpload:input:force_not_null',list,[])
-        if force_not_null_columns:
-            for i in force_not_null_columns:
-                if type(i) != unicode and type(i) != str:
-                    self.log(self.ERROR,'A gpload control file processing error occurred. gpload:input:force_not_null must be a YAML sequence of strings')
-            sql += "force not null %s " % ','.join(force_not_null_columns)
-
-        sql += ")"
-
-        encoding = self.getconfig('gpload:input:encoding', unicode, None)
-        if encoding:
-            sql += "encoding%s"%quote(encoding)
-
-        limit = self.getconfig('gpload:input:error_limit',int, None)
-        if self.error_table and not limit:
-            self.log(self.ERROR, "A gpload control file processing error occurred. gpload:input:error_table requires " +
-                    "gpload:input:error_limit to be specified")
-        if self.error_table:
-            sql += "log errors into %s " % self.error_table
-
-        if limit:
-            if limit < 2:
-                self.log(self.ERROR, "A gpload control file processing error occurred. error_limit must be 2 or higher")
-            sql += "segment reject limit %s "%limit
-        self.log(self.LOG, sql)
-
-        self.cleanupSql.append('drop external table if exists ext_%s'%self.name)
-
-        try:
-                self.db.query(sql.encode('utf-8'))
-        except Exception, e:
-            self.log(self.ERROR, 'could not run SQL "%s": %s' % (sql, unicode(e)))
 
     def count_errors(self):
         if self.error_table and not self.options.D:
             # make sure we only get errors for our own instance
-            queryStr = 'select count(*) from ' + self.error_table + " WHERE relname = 'ext_%s'" % self.name
+            queryStr = 'select count(*) from ' + self.error_table + " WHERE relname = '%s'" % self.extTableName
             results = self.db.query(queryStr.encode('utf-8')).getresult()
             return (results[0])[0]
         return notice_processor(self)
@@ -1818,7 +2065,7 @@ class gpload:
         sql = 'INSERT INTO %s' % dest
         sql += ' (%s)'%','.join(map(lambda a:a[0], cols))
         sql += ' SELECT %s '%','.join(map(lambda a:a[2], cols))
-        sql += ' FROM ext_%s'%self.name
+        sql += ' FROM %s'%self.extTableName
 
         # cktan: progress thread is not reliable. revisit later.
         #progress = Progress(self,self.ports)
@@ -1982,31 +2229,7 @@ class gpload:
         """Load the data in and update an existing table based upon it"""
 
         self.table_supports_update()
-        a = self.getconfig('gpload:output:update_columns', list)
-
-        # it would be tempting to use LIKE here but we cannot as it
-        # inherits NOT NULL and other constraints from the target table
-        # which might not actually be violated by this update 
-        sql = 'create temp table %s' % self.tempTableName
-        if not self.from_cols_from_user:
-            # don't put values serial columns
-            from_cols = filter(lambda a: a[3] != True,
-                               self.from_columns)
-        else:
-            from_cols = self.from_columns
-        
-        cols = map(lambda a:'%s %s' % (a[0], a[1]), from_cols)
-
-        sql += "(%s)" % ','.join(cols)
-        # make sure we set the correct distribution policy
-        distcols = self.getconfig('gpload:output:match_columns', list)
-        sql += " distributed by (%s)" % ', '.join(distcols)
-
-        self.log(self.LOG, sql)
-
-        if not self.options.D:
-            self.cleanupSql.append('drop table if exists %s' % self.tempTableName)
-            self.db.query(sql.encode('utf-8'))
+        self.create_temp_table()            
 
         self.create_external_table()
         self.do_insert(self.tempTableName)
@@ -2018,12 +2241,7 @@ class gpload:
         """insert data not already in the table, update remaining items"""
 
         self.table_supports_update()
-
-        sql = 'create temp table %s(like %s)' % (self.tempTableName, self.schemaTable)
-        self.log(self.DEBUG, sql)
-        if not self.options.D:
-            self.cleanupSql.append('drop table if exists %s' % self.tempTableName)
-            self.db.query(sql.encode('utf-8'))
+        self.create_temp_table()        
         self.create_external_table()
         self.do_insert(self.tempTableName)
         self.do_update(self.tempTableName, 0)
@@ -2047,8 +2265,11 @@ class gpload:
         # Is the table to be truncated before the load?
         preload = self.getconfig('gpload:preload', list, default=None)
         truncate = False
+        self.reuse_tables = False
+        
         if preload:
               truncate = self.getconfig('gpload:preload:truncate',bool,False)
+              self.reuse_tables = self.getconfig('gpload:preload:reuse_tables',bool,False)
         if truncate == True:
             self.log(self.LOG, "Truncate table")
             if not self.options.D:
