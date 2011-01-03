@@ -255,6 +255,7 @@ typedef struct MppGroupContext
 	List *grps_tlist; /* Grouping attributes for prelim_tlist */
 	List *fin_tlist; /* Final tlist cache. */
 	List *fin_hqual; /* Final having qual cache. */
+	Index split_aggref_sortgroupref; /* for TargetEntrys made in split_aggref */
 	Index outer_varno; /* work */
 	Index inner_varno; /* work */
 	int *dqa_offsets; /* work */
@@ -3016,7 +3017,9 @@ void deconstruct_agg_info(MppGroupContext *ctx)
 		Expr *expr;
 		
 		tle = (TargetEntry*)lfirst(lc);
+		ctx->split_aggref_sortgroupref = tle->ressortgroupref; /* for deconstruction subroutines */
 		expr = deconstruct_expr(tle->expr, ctx);
+		ctx->split_aggref_sortgroupref = 0;
 		final_tle = makeTargetEntry(expr,
 									tle->resno,
 									(tle->resname == NULL) ?
@@ -3425,6 +3428,7 @@ Node *split_aggref(Aggref *aggref, MppGroupContext *ctx)
 
 			attrno = 1 + list_length(ctx->prefs_tlist);
 			prelim_tle = makeTargetEntry((Expr*)pref, attrno, NULL, false);
+			prelim_tle->ressortgroupref = ctx->split_aggref_sortgroupref;
 			ctx->prefs_tlist = lappend(ctx->prefs_tlist, prelim_tle);
 			
 			args = makeVar(ctx->final_varno, 
@@ -3447,6 +3451,7 @@ Node *split_aggref(Aggref *aggref, MppGroupContext *ctx)
 				iref->aggstage = AGGSTAGE_INTERMEDIATE;
 				
 				inter_tle =  makeTargetEntry((Expr*)iref, attrno, NULL, false);
+				inter_tle->ressortgroupref = ctx->split_aggref_sortgroupref;
 				ctx->irefs_tlist = lappend(ctx->irefs_tlist, inter_tle);
 			}
 
@@ -3461,6 +3466,7 @@ Node *split_aggref(Aggref *aggref, MppGroupContext *ctx)
 			fref->aggdistinct = false; /* handled in preliminary aggregation */
 			fref->aggstage = AGGSTAGE_FINAL;
 			final_tle = makeTargetEntry((Expr*)fref, attrno, NULL, false);
+			final_tle->ressortgroupref = ctx->split_aggref_sortgroupref;
 			ctx->frefs_tlist = lappend(ctx->frefs_tlist, final_tle);
 		}
 
@@ -3781,7 +3787,7 @@ add_second_stage_agg(PlannerInfo *root,
 	result_plan = add_subqueryscan(root, p_current_pathkeys, 
 								   1, subquery, result_plan);
 
-	/* Add an Agg/Group node */
+	/* Add an Agg node */
 	/* convert current_numGroups to long int */
 	long lNumGroups = (long) Min(numGroups, (double) LONG_MAX);
 
@@ -3801,7 +3807,7 @@ add_second_stage_agg(PlannerInfo *root,
 			result_plan);
 
 	/*
-	 * Agg/Group will not change the sort order unless it is hashed.
+	 * Agg will not change the sort order unless it is hashed.
 	 */
 	agg_node->flow = pull_up_Flow(agg_node, 
 								  agg_node->lefttree, 
