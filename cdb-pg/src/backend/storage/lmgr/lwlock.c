@@ -908,6 +908,8 @@ LWLockHeldExclusiveByMe(LWLockId lockid)
 	return false;
 }
 
+#ifdef USE_TEST_UTILS_X86
+
 /*
  * Return number of locks held by my process
  */
@@ -982,7 +984,6 @@ LWLockHeldLatestCaller()
 const char*
 LWLocksHeldStackTraces()
 {
-#ifdef USE_TEST_UTILS_X86
 	if (num_held_lwlocks == 0)
 	{
 		return NULL;
@@ -1011,7 +1012,6 @@ LWLocksHeldStackTraces()
 
 	Assert(append->len > 0);
 	return append->data;
-#else
-	return NULL;
-#endif /* USE_TEST_UTILS_X86 */
 }
+
+#endif /* USE_TEST_UTILS_X86 */

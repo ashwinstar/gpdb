@@ -112,10 +112,12 @@ extern void LWLockReleaseAll(void);
 extern bool LWLockHeldByMe(LWLockId lockid);
 extern bool LWLockHeldExclusiveByMe(LWLockId lockid);
 
+#ifdef USE_TEST_UTILS_X86
 extern uint32 LWLocksHeld(void);
 extern LWLockId LWLockHeldLatestId(void);
 extern void *LWLockHeldLatestCaller(void);
 extern const char *LWLocksHeldStackTraces(void);
+#endif /* USE_TEST_UTILS_X86 */
 
 extern int	NumLWLocks(void);
 extern Size LWLockShmemSize(void);
