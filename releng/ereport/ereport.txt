@@ -3691,27 +3691,27 @@ caah: cdbgang:00000566:  errmsg("All segment databases are unavailable")));
 caah: cdbgang:00001541:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
 caah: cdbgang:00001542:  errmsg_internal("problem in allocateGang"))); 
 aaaaa GP_IGNORE: caai: cdbgroup - ./backend/cdb/cdbgroup.c
-caai: cdbgroup:00000828:  ereport(ERROR, 
-caai: cdbgroup:00000829:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00000830:  errmsg("no parallel plan for aggregation"))); 
-caai: cdbgroup:00000954:  ereport(ERROR, 
-caai: cdbgroup:00000955:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00000956:  errmsg("no parallel plan for aggregation"))); 
-caai: cdbgroup:00001240:  ereport(ERROR, 
-caai: cdbgroup:00001241:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00001242:  errmsg("unexpected call for two-stage aggregation"))); 
-caai: cdbgroup:00001407:  ereport(ERROR, 
-caai: cdbgroup:00001408:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00001409:  errmsg("unexpected use of 2-stage aggregation"))); 
-caai: cdbgroup:00002012:  ereport(ERROR, 
-caai: cdbgroup:00002013:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00002014:  errmsg("unexpected use of DQA pruned 2-phase aggregation"))); 
-caai: cdbgroup:00004240:  ereport(ERROR, 
-caai: cdbgroup:00004241:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00004242:  errmsg("unexpected call for two-stage aggregation"))); 
-caai: cdbgroup:00004323:  ereport(ERROR, 
-caai: cdbgroup:00004324:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caai: cdbgroup:00004325:  errmsg("unexpected call for two-stage aggregation"))); 
+caai: cdbgroup:00000829:  ereport(ERROR, 
+caai: cdbgroup:00000830:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00000831:  errmsg("no parallel plan for aggregation"))); 
+caai: cdbgroup:00000955:  ereport(ERROR, 
+caai: cdbgroup:00000956:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00000957:  errmsg("no parallel plan for aggregation"))); 
+caai: cdbgroup:00001186:  ereport(ERROR, 
+caai: cdbgroup:00001187:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00001188:  errmsg("unexpected call for two-stage aggregation"))); 
+caai: cdbgroup:00001353:  ereport(ERROR, 
+caai: cdbgroup:00001354:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00001355:  errmsg("unexpected use of 2-stage aggregation"))); 
+caai: cdbgroup:00001958:  ereport(ERROR, 
+caai: cdbgroup:00001959:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00001960:  errmsg("unexpected use of DQA pruned 2-phase aggregation"))); 
+caai: cdbgroup:00004172:  ereport(ERROR, 
+caai: cdbgroup:00004173:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00004174:  errmsg("unexpected call for two-stage aggregation"))); 
+caai: cdbgroup:00004255:  ereport(ERROR, 
+caai: cdbgroup:00004256:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caai: cdbgroup:00004257:  errmsg("unexpected call for two-stage aggregation"))); 
 aaaaa GP_IGNORE: caah: cdbhash - ./backend/cdb/cdbhash.c
 caah: cdbhash:00000588:  ereport(ERROR, 
 caah: cdbhash:00000589:  (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
@@ -3991,31 +3991,31 @@ cabj: cdbmirroredflatfile:00000987:  ereport(ERROR,
 cabj: cdbmirroredflatfile:00000988:  (errcode_for_file_access(), 
 cabj: cdbmirroredflatfile:00000989:  errmsg("could not read from position:%d in file \"%s\" : %m", 
 cabj: cdbmirroredflatfile:00000990:  startOffset, primaryOpen.path))); 
-cabj: cdbmirroredflatfile:00001222:  ereport(WARNING, 
-cabj: cdbmirroredflatfile:00001223:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00001224:  errmsg("mirror failure, " 
-cabj: cdbmirroredflatfile:00001225:  "could not open file '%s' : %m " 
-cabj: cdbmirroredflatfile:00001226:  "failover requested", 
-cabj: cdbmirroredflatfile:00001227:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
-cabj: cdbmirroredflatfile:00001228:  FileRep_errcontext())); 
-cabj: cdbmirroredflatfile:00001241:  ereport(WARNING, 
-cabj: cdbmirroredflatfile:00001242:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00001243:  errmsg("mirror failure, " 
-cabj: cdbmirroredflatfile:00001244:  "could not seek to end of file '%s' : %m " 
-cabj: cdbmirroredflatfile:00001245:  "failover requested", 
-cabj: cdbmirroredflatfile:00001246:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
-cabj: cdbmirroredflatfile:00001247:  FileRep_errcontext())); 
-cabj: cdbmirroredflatfile:00001273:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00001274:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cabj: cdbmirroredflatfile:00001275:  (errmsg("not enough shared memory for mirroring")))); 
-cabj: cdbmirroredflatfile:00001292:  ereport(WARNING, 
-cabj: cdbmirroredflatfile:00001293:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00001294:  errmsg("mirror failure, " 
-cabj: cdbmirroredflatfile:00001295:  "could not read from position '%d' file '%s' : %m " 
-cabj: cdbmirroredflatfile:00001296:  "failover requested", 
-cabj: cdbmirroredflatfile:00001297:  startOffset, 
-cabj: cdbmirroredflatfile:00001298:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
-cabj: cdbmirroredflatfile:00001299:  FileRep_errcontext())); 
+cabj: cdbmirroredflatfile:00001236:  ereport(WARNING, 
+cabj: cdbmirroredflatfile:00001237:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00001238:  errmsg("mirror failure, " 
+cabj: cdbmirroredflatfile:00001239:  "could not open file '%s' : %m " 
+cabj: cdbmirroredflatfile:00001240:  "failover requested", 
+cabj: cdbmirroredflatfile:00001241:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+cabj: cdbmirroredflatfile:00001242:  FileRep_errcontext())); 
+cabj: cdbmirroredflatfile:00001255:  ereport(WARNING, 
+cabj: cdbmirroredflatfile:00001256:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00001257:  errmsg("mirror failure, " 
+cabj: cdbmirroredflatfile:00001258:  "could not seek to end of file '%s' : %m " 
+cabj: cdbmirroredflatfile:00001259:  "failover requested", 
+cabj: cdbmirroredflatfile:00001260:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+cabj: cdbmirroredflatfile:00001261:  FileRep_errcontext())); 
+cabj: cdbmirroredflatfile:00001287:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00001288:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cabj: cdbmirroredflatfile:00001289:  (errmsg("not enough shared memory for mirroring")))); 
+cabj: cdbmirroredflatfile:00001306:  ereport(WARNING, 
+cabj: cdbmirroredflatfile:00001307:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00001308:  errmsg("mirror failure, " 
+cabj: cdbmirroredflatfile:00001309:  "could not read from position '%d' file '%s' : %m " 
+cabj: cdbmirroredflatfile:00001310:  "failover requested", 
+cabj: cdbmirroredflatfile:00001311:  startOffset, 
+cabj: cdbmirroredflatfile:00001312:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+cabj: cdbmirroredflatfile:00001313:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: caaj: cdbmutate - ./backend/cdb/cdbmutate.c
 caaj: cdbmutate:00000412:  ereport(NOTICE, 
 caaj: cdbmutate:00000413:  (errcode(ERRCODE_SUCCESSFUL_COMPLETION), 
@@ -6556,31 +6556,31 @@ saba: schemacmds:00000264:  ereport(NOTICE,
 saba: schemacmds:00000265:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
 saba: schemacmds:00000266:  errmsg("schema \"%s\" does not exist, skipping", 
 saba: schemacmds:00000267:  schemaName))); 
-saba: schemacmds:00000280:  ereport(ERROR, 
-saba: schemacmds:00000281:  (errcode(ERRCODE_RESERVED_NAME), 
-saba: schemacmds:00000282:  errmsg("cannot drop schema %s because it is required by the database system", schemaName))); 
-saba: schemacmds:00000343:  ereport(ERROR, 
-saba: schemacmds:00000344:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-saba: schemacmds:00000345:  errmsg("schema \"%s\" does not exist", oldname))); 
-saba: schemacmds:00000352:  ereport(ERROR, 
-saba: schemacmds:00000353:  (errcode(ERRCODE_DUPLICATE_SCHEMA), 
-saba: schemacmds:00000354:  errmsg("schema \"%s\" already exists", newname))); 
-saba: schemacmds:00000370:  ereport(ERROR, 
-saba: schemacmds:00000371:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saba: schemacmds:00000372:  errmsg("permission denied to ALTER SCHEMA \"%s\"", oldname), 
-saba: schemacmds:00000373:  errdetail("Schema %s is reserved for system use.", oldname))); 
-saba: schemacmds:00000378:  ereport(ERROR, 
-saba: schemacmds:00000379:  (errcode(ERRCODE_RESERVED_NAME), 
-saba: schemacmds:00000380:  errmsg("unacceptable schema name \"%s\"", newname), 
-saba: schemacmds:00000381:  errdetail("The prefix \"%s\" is reserved for system schemas.", 
-saba: schemacmds:00000382:  GetReservedPrefix(newname)))); 
-saba: schemacmds:00000442:  ereport(ERROR, 
-saba: schemacmds:00000443:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
-saba: schemacmds:00000444:  errmsg("schema \"%s\" does not exist", name))); 
-saba: schemacmds:00000448:  ereport(ERROR, 
-saba: schemacmds:00000449:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-saba: schemacmds:00000450:  errmsg("permission denied to ALTER SCHEMA \"%s\"", name), 
-saba: schemacmds:00000451:  errdetail("Schema %s is reserved for system use.", name))); 
+saba: schemacmds:00000281:  ereport(ERROR, 
+saba: schemacmds:00000282:  (errcode(ERRCODE_RESERVED_NAME), 
+saba: schemacmds:00000283:  errmsg("cannot drop schema %s because it is required by the database system", schemaName))); 
+saba: schemacmds:00000344:  ereport(ERROR, 
+saba: schemacmds:00000345:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+saba: schemacmds:00000346:  errmsg("schema \"%s\" does not exist", oldname))); 
+saba: schemacmds:00000353:  ereport(ERROR, 
+saba: schemacmds:00000354:  (errcode(ERRCODE_DUPLICATE_SCHEMA), 
+saba: schemacmds:00000355:  errmsg("schema \"%s\" already exists", newname))); 
+saba: schemacmds:00000371:  ereport(ERROR, 
+saba: schemacmds:00000372:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saba: schemacmds:00000373:  errmsg("permission denied to ALTER SCHEMA \"%s\"", oldname), 
+saba: schemacmds:00000374:  errdetail("Schema %s is reserved for system use.", oldname))); 
+saba: schemacmds:00000379:  ereport(ERROR, 
+saba: schemacmds:00000380:  (errcode(ERRCODE_RESERVED_NAME), 
+saba: schemacmds:00000381:  errmsg("unacceptable schema name \"%s\"", newname), 
+saba: schemacmds:00000382:  errdetail("The prefix \"%s\" is reserved for system schemas.", 
+saba: schemacmds:00000383:  GetReservedPrefix(newname)))); 
+saba: schemacmds:00000443:  ereport(ERROR, 
+saba: schemacmds:00000444:  (errcode(ERRCODE_UNDEFINED_SCHEMA), 
+saba: schemacmds:00000445:  errmsg("schema \"%s\" does not exist", name))); 
+saba: schemacmds:00000449:  ereport(ERROR, 
+saba: schemacmds:00000450:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+saba: schemacmds:00000451:  errmsg("permission denied to ALTER SCHEMA \"%s\"", name), 
+saba: schemacmds:00000452:  errdetail("Schema %s is reserved for system use.", name))); 
 aaaaa GP_IGNORE: saai: sequence - ./backend/commands/sequence.c
 saai: sequence:00000836:  ereport(ERROR, 
 saai: sequence:00000837:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
@@ -9288,14 +9288,14 @@ vaae: view:00000462:  (errmsg("view \"%s\" will be a temporary view",
 vaae: view:00000463:  view->relname), 
 vaae: view:00000464:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: eaah: execami - ./backend/executor/execAmi.c
-eaah: execami:00000289:  ereport(ERROR, ( 
-eaah: execami:00000290:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-eaah: execami:00000291:  errmsg("unsupported call to mark position of Motion operator") 
-eaah: execami:00000292:  )); 
-eaah: execami:00000363:  ereport(ERROR, ( 
-eaah: execami:00000364:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-eaah: execami:00000365:  errmsg("unsupported call to restore position of Motion operator") 
-eaah: execami:00000366:  )); 
+eaah: execami:00000283:  ereport(ERROR, ( 
+eaah: execami:00000284:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+eaah: execami:00000285:  errmsg("unsupported call to mark position of Motion operator") 
+eaah: execami:00000286:  )); 
+eaah: execami:00000357:  ereport(ERROR, ( 
+eaah: execami:00000358:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+eaah: execami:00000359:  errmsg("unsupported call to restore position of Motion operator") 
+eaah: execami:00000360:  )); 
 aaaaa GP_IGNORE: eabc: exechhashagg - ./backend/executor/execHHashagg.c
 eabc: exechhashagg:00000078:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), \ 
 eabc: exechhashagg:00000079:  errmsg("HashAgg: no enough memory for hashagg.")));\ 
@@ -10114,12 +10114,12 @@ raae: read:00000332:  "supported in this version of %s.",
 raae: read:00000333:  tok_len, token, PACKAGE_NAME) 
 raae: read:00000334:  )); 
 aaaaa GP_IGNORE: raaj: readfuncs - ./backend/nodes/readfuncs.c
-raaj: readfuncs:00003775:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-raaj: readfuncs:00003776:  errmsg("This operation involves an internal data item " 
-raaj: readfuncs:00003777:  "of a type called \"%.*s\" which is not " 
-raaj: readfuncs:00003778:  "supported in this version of %s.", 
-raaj: readfuncs:00003779:  length, token, PACKAGE_NAME) 
-raaj: readfuncs:00003780:  )); 
+raaj: readfuncs:00003750:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+raaj: readfuncs:00003751:  errmsg("This operation involves an internal data item " 
+raaj: readfuncs:00003752:  "of a type called \"%.*s\" which is not " 
+raaj: readfuncs:00003753:  "supported in this version of %s.", 
+raaj: readfuncs:00003754:  length, token, PACKAGE_NAME) 
+raaj: readfuncs:00003755:  )); 
 aaaaa GP_IGNORE: aaai: allpaths - ./backend/optimizer/path/allpaths.c
 aaai: allpaths:00000420:  ereport(ERROR, 
 aaai: allpaths:00000421:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -10227,8 +10227,8 @@ paah: planner:00001097:  errmsg("unexpected locus assigned to target inheritance
 paah: planner:00001214:  ereport(ERROR, 
 paah: planner:00001215:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 paah: planner:00001216:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-paah: planner:00001958:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001959:  errmsg("unexpected input locus to distinct"))); 
+paah: planner:00001854:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001855:  errmsg("unexpected input locus to distinct"))); 
 aaaaa GP_IGNORE: paba: planwindow - ./backend/optimizer/plan/planwindow.c
 paba: planwindow:00000386:  ereport(ERROR, 
 paba: planwindow:00000387:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -12584,59 +12584,59 @@ pabd: parsexutilcmd:00000683:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 pabd: parsexutilcmd:00000684:  errmsg("multiple primary keys for table \"%s\" are not allowed", 
 pabd: parsexutilcmd:00000685:  cxt->relation->relname))); 
 aaaaa GP_IGNORE: saae: scan - ./backend/parser/scan.c
-saae: scan:00014625: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
-saae: scan:00014626:  
-saae: scan:00014627: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
-saae: scan:00014628: static char *dolqstart; /* current $foo$ quote start string */ 
-saae: scan:00014629:  
-saae: scan:00014630: /* first part of UTF16 surrogate for unicode escapes */ 
-saae: scan:00014631: static uint32 utf16_top_part; 
-saae: scan:00015276:  ereport(ERROR, 
-saae: scan:00015277:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-saae: scan:00015278:  errmsg("unsafe use of string constant with Unicode escapes"), 
-saae: scan:00015279:  errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."), 
-saae: scan:00015280:  lexer_errposition())); 
-saae: scan:00015404:  ereport(ERROR, 
-saae: scan:00015405:  (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE), 
-saae: scan:00015406:  errmsg("invalid Unicode escape"), 
-saae: scan:00015407:  errhint("Unicode escapes must be full-length: \\uXXXX or \\UXXXXXXXX."), 
-saae: scan:00015408:  lexer_errposition())); 
-saae: scan:00015421:  ereport(ERROR, 
-saae: scan:00015422:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
-saae: scan:00015423:  errmsg("unsafe use of \\' in a string literal"), 
-saae: scan:00015424:  errhint("Use '' to write quotes in strings. \\' is insecure in client-only encodings."), 
-saae: scan:00015425:  errOmitLocation(true), 
-saae: scan:00015426:  lexer_errposition())); 
-saae: scan:00016862:  ereport(ERROR, 
-saae: scan:00016863:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saae: scan:00016864:  /* translator: %s is typically the translation of "syntax error" */ 
-saae: scan:00016865:  errmsg("%s at end of input", _(message)), 
-saae: scan:00016866:  errOmitLocation(true), 
-saae: scan:00016867:  lexer_errposition())); 
-saae: scan:00016871:  ereport(ERROR, 
-saae: scan:00016872:  (errcode(ERRCODE_SYNTAX_ERROR), 
-saae: scan:00016873:  /* translator: first %s is typically the translation of "syntax error" */ 
-saae: scan:00016874:  errmsg("%s at or near \"%s\"", _(message), loc), 
-saae: scan:00016875:  errOmitLocation(true), 
-saae: scan:00016876:  lexer_errposition())); 
-saae: scan:00017119:  ereport(WARNING, 
-saae: scan:00017120:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
-saae: scan:00017121:  errmsg("nonstandard use of \\' in a string literal"), 
-saae: scan:00017122:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
-saae: scan:00017123:  errOmitLocation(true), 
-saae: scan:00017124:  lexer_errposition())); 
-saae: scan:00017130:  ereport(WARNING, 
-saae: scan:00017131:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
-saae: scan:00017132:  errmsg("nonstandard use of \\\\ in a string literal"), 
-saae: scan:00017133:  errhint("Use the escape string syntax for backslashes, e.g., E'\\\\'."), 
-saae: scan:00017134:  errOmitLocation(true), 
-saae: scan:00017135:  lexer_errposition())); 
-saae: scan:00017146:  ereport(WARNING, 
-saae: scan:00017147:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
-saae: scan:00017148:  errmsg("nonstandard use of escape in a string literal"), 
-saae: scan:00017149:  errhint("Use the escape string syntax for escapes, e.g., E'\\r\\n'."), 
-saae: scan:00017150:  errOmitLocation(true), 
-saae: scan:00017151:  lexer_errposition())); 
+saae: scan:00014640: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+saae: scan:00014641:  
+saae: scan:00014642: static int xcdepth = 0; /* depth of nesting in slash-star comments */ 
+saae: scan:00014643: static char *dolqstart; /* current $foo$ quote start string */ 
+saae: scan:00014644:  
+saae: scan:00014645: /* first part of UTF16 surrogate for unicode escapes */ 
+saae: scan:00014646: static uint32 utf16_top_part; 
+saae: scan:00015320:  ereport(ERROR, 
+saae: scan:00015321:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+saae: scan:00015322:  errmsg("unsafe use of string constant with Unicode escapes"), 
+saae: scan:00015323:  errdetail("String constants with Unicode escapes cannot be used when standard_conforming_strings is off."), 
+saae: scan:00015324:  lexer_errposition())); 
+saae: scan:00015448:  ereport(ERROR, 
+saae: scan:00015449:  (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE), 
+saae: scan:00015450:  errmsg("invalid Unicode escape"), 
+saae: scan:00015451:  errhint("Unicode escapes must be full-length: \\uXXXX or \\UXXXXXXXX."), 
+saae: scan:00015452:  lexer_errposition())); 
+saae: scan:00015465:  ereport(ERROR, 
+saae: scan:00015466:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+saae: scan:00015467:  errmsg("unsafe use of \\' in a string literal"), 
+saae: scan:00015468:  errhint("Use '' to write quotes in strings. \\' is insecure in client-only encodings."), 
+saae: scan:00015469:  errOmitLocation(true), 
+saae: scan:00015470:  lexer_errposition())); 
+saae: scan:00016918:  ereport(ERROR, 
+saae: scan:00016919:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saae: scan:00016920:  /* translator: %s is typically the translation of "syntax error" */ 
+saae: scan:00016921:  errmsg("%s at end of input", _(message)), 
+saae: scan:00016922:  errOmitLocation(true), 
+saae: scan:00016923:  lexer_errposition())); 
+saae: scan:00016927:  ereport(ERROR, 
+saae: scan:00016928:  (errcode(ERRCODE_SYNTAX_ERROR), 
+saae: scan:00016929:  /* translator: first %s is typically the translation of "syntax error" */ 
+saae: scan:00016930:  errmsg("%s at or near \"%s\"", _(message), loc), 
+saae: scan:00016931:  errOmitLocation(true), 
+saae: scan:00016932:  lexer_errposition())); 
+saae: scan:00017175:  ereport(WARNING, 
+saae: scan:00017176:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+saae: scan:00017177:  errmsg("nonstandard use of \\' in a string literal"), 
+saae: scan:00017178:  errhint("Use '' to write quotes in strings, or use the escape string syntax (E'...')."), 
+saae: scan:00017179:  errOmitLocation(true), 
+saae: scan:00017180:  lexer_errposition())); 
+saae: scan:00017186:  ereport(WARNING, 
+saae: scan:00017187:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+saae: scan:00017188:  errmsg("nonstandard use of \\\\ in a string literal"), 
+saae: scan:00017189:  errhint("Use the escape string syntax for backslashes, e.g., E'\\\\'."), 
+saae: scan:00017190:  errOmitLocation(true), 
+saae: scan:00017191:  lexer_errposition())); 
+saae: scan:00017202:  ereport(WARNING, 
+saae: scan:00017203:  (errcode(ERRCODE_NONSTANDARD_USE_OF_ESCAPE_CHARACTER), 
+saae: scan:00017204:  errmsg("nonstandard use of escape in a string literal"), 
+saae: scan:00017205:  errhint("Use the escape string syntax for escapes, e.g., E'\\r\\n'."), 
+saae: scan:00017206:  errOmitLocation(true), 
+saae: scan:00017207:  lexer_errposition())); 
 aaaaa GP_IGNORE: saah: scansup - ./backend/parser/scansup.c
 saah: scansup:00000179:  ereport(NOTICE, 
 saah: scansup:00000180:  (errcode(ERRCODE_NAME_TOO_LONG), 
@@ -17328,22 +17328,22 @@ eaae: elog:00001820:  ereport(FATAL,
 eaae: elog:00001821:  (errcode_for_file_access(), 
 eaae: elog:00001822:  errmsg("could not reopen file \"%s\" as stdout: %m", 
 eaae: elog:00001823:  OutputFileName))); 
-eaae: elog:00003991:  ereport(ERROR, 
-eaae: elog:00003992:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00003993:  errmsg("gp_elog(): called with %hd arguments", 
-eaae: elog:00003994:  PG_NARGS()))); 
-eaae: elog:00003996:  ereport(ERROR, 
-eaae: elog:00003997:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00003998:  errmsg("gp_elog(): called with null arguments"))); 
-eaae: elog:00004001:  ereport(ERROR, 
-eaae: elog:00004002:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00004003:  errmsg("gp_elog(): called with null arguments"))); 
-eaae: elog:00004007:  ereport(ERROR, 
-eaae: elog:00004008:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-eaae: elog:00004009:  errmsg("permission denied"), 
-eaae: elog:00004010:  errhint("gp_elog(): requires superuser privileges."))); 
-eaae: elog:00004119:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-eaae: elog:00004120:  errmsg("Failed to get backtrace symbol: out of memory"))); 
+eaae: elog:00004024:  ereport(ERROR, 
+eaae: elog:00004025:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00004026:  errmsg("gp_elog(): called with %hd arguments", 
+eaae: elog:00004027:  PG_NARGS()))); 
+eaae: elog:00004029:  ereport(ERROR, 
+eaae: elog:00004030:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00004031:  errmsg("gp_elog(): called with null arguments"))); 
+eaae: elog:00004034:  ereport(ERROR, 
+eaae: elog:00004035:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00004036:  errmsg("gp_elog(): called with null arguments"))); 
+eaae: elog:00004040:  ereport(ERROR, 
+eaae: elog:00004041:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+eaae: elog:00004042:  errmsg("permission denied"), 
+eaae: elog:00004043:  errhint("gp_elog(): requires superuser privileges."))); 
+eaae: elog:00004152:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+eaae: elog:00004153:  errmsg("Failed to get backtrace symbol: out of memory"))); 
 aaaaa GP_IGNORE: daba: deprecated - ./backend/utils/fmgr/deprecated.c
 daba: deprecated:00000029:  ereport(ERROR, 
 daba: deprecated:00000030:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -17797,118 +17797,99 @@ fabd: faultinjector:00001183:  (errmsg("could not complete fault injection, faul
 fabd: faultinjector:00001184:  FaultInjectorIdentifierEnumToString[identifier], 
 fabd: faultinjector:00001185:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
 aaaaa GP_IGNORE: gaai: gucxfile - ./backend/utils/misc/guc-file.c
-gaai: gucxfile:00000542: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
-gaai: gucxfile:00000543:  
-gaai: gucxfile:00000544: enum { 
-gaai: gucxfile:00000545:  GUC_ID = 1, 
-gaai: gucxfile:00000546:  GUC_STRING = 2, 
-gaai: gucxfile:00000547:  GUC_INTEGER = 3, 
-gaai: gucxfile:00000548:  GUC_REAL = 4, 
-gaai: gucxfile:00000549:  GUC_EQUALS = 5, 
-gaai: gucxfile:00000550:  GUC_UNQUOTED_STRING = 6, 
-gaai: gucxfile:00000551:  GUC_QUALIFIED_ID = 7, 
-gaai: gucxfile:00000552:  GUC_EOL = 99, 
-gaai: gucxfile:00000553:  GUC_ERROR = 100 
-gaai: gucxfile:00000554: }; 
+gaai: gucxfile:00000557: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+gaai: gucxfile:00000558:  
+gaai: gucxfile:00000559: enum { 
+gaai: gucxfile:00000560:  GUC_ID = 1, 
+gaai: gucxfile:00000561:  GUC_STRING = 2, 
+gaai: gucxfile:00000562:  GUC_INTEGER = 3, 
+gaai: gucxfile:00000563:  GUC_REAL = 4, 
+gaai: gucxfile:00000564:  GUC_EQUALS = 5, 
+gaai: gucxfile:00000565:  GUC_UNQUOTED_STRING = 6, 
+gaai: gucxfile:00000566:  GUC_QUALIFIED_ID = 7, 
+gaai: gucxfile:00000567:  GUC_EOL = 99, 
+gaai: gucxfile:00000568:  GUC_ERROR = 100 
+gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00007862:  ereport(ERROR, 
-gaad: guc:00007863:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007864:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007866:  ereport(ERROR, 
-gaad: guc:00007867:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007868:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007902:  ereport(ERROR, 
-gaad: guc:00007903:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007904:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007906:  ereport(ERROR, 
-gaad: guc:00007907:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007908:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007977:  ereport(ERROR, 
-gaad: guc:00007978:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007979:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007986:  ereport(ERROR, 
-gaad: guc:00007987:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00007988:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008159:  ereport(ERROR, 
-gaad: guc:00008160:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008161:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008223:  ereport(ERROR, 
-gaad: guc:00008224:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008225:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008544:  ereport(ERROR, 
-gaad: guc:00008545:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008546:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008548:  ereport(ERROR, 
-gaad: guc:00008549:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008550:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009352:  ereport(FATAL, 
-gaad: guc:00009353:  (errcode_for_file_access(), 
-gaad: guc:00009354:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009355:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009462:  ereport(WARNING, 
-gaad: guc:00009463:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009464:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009658:  ereport(ERROR, 
-gaad: guc:00009659:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009660:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009681:  ereport(ERROR, 
-gaad: guc:00009682:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009683:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009684:  tok))); 
-gaad: guc:00009710:  ereport(ERROR, 
-gaad: guc:00009711:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009712:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009713:  value))); 
-gaad: guc:00010063:  ereport(ERROR, 
-gaad: guc:00010064:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010065:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010139:  ereport(ERROR, 
-gaad: guc:00010140:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010141:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010160:  ereport(ERROR, 
-gaad: guc:00010161:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010162:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010173:  ereport(ERROR, 
-gaad: guc:00010174:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010175:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010190:  ereport(ERROR, 
-gaad: guc:00010191:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010192:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010193:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010194:  "\"log_dispatch_stats\", " 
-gaad: guc:00010195:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010210:  ereport(ERROR, 
-gaad: guc:00010211:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010212:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010213:  "\"log_statement_stats\", " 
-gaad: guc:00010214:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010215:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010230:  ereport(ERROR, 
-gaad: guc:00010231:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010232:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00007908:  ereport(ERROR, 
+gaad: guc:00007909:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007910:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007912:  ereport(ERROR, 
+gaad: guc:00007913:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007914:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007948:  ereport(ERROR, 
+gaad: guc:00007949:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007950:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007952:  ereport(ERROR, 
+gaad: guc:00007953:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007954:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008023:  ereport(ERROR, 
+gaad: guc:00008024:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008025:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008032:  ereport(ERROR, 
+gaad: guc:00008033:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008034:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008205:  ereport(ERROR, 
+gaad: guc:00008206:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008207:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008269:  ereport(ERROR, 
+gaad: guc:00008270:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008271:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008590:  ereport(ERROR, 
+gaad: guc:00008591:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008592:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008594:  ereport(ERROR, 
+gaad: guc:00008595:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008596:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009398:  ereport(FATAL, 
+gaad: guc:00009399:  (errcode_for_file_access(), 
+gaad: guc:00009400:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009401:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009508:  ereport(WARNING, 
+gaad: guc:00009509:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009510:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009704:  ereport(ERROR, 
+gaad: guc:00009705:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009706:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009727:  ereport(ERROR, 
+gaad: guc:00009728:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009729:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009730:  tok))); 
+gaad: guc:00009756:  ereport(ERROR, 
+gaad: guc:00009757:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009758:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009759:  value))); 
+gaad: guc:00010147:  ereport(ERROR, 
+gaad: guc:00010148:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010149:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010223:  ereport(ERROR, 
+gaad: guc:00010224:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010225:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010244:  ereport(ERROR, 
+gaad: guc:00010245:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010246:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010257:  ereport(ERROR, 
+gaad: guc:00010258:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010259:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010274:  ereport(ERROR, 
+gaad: guc:00010275:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010276:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010277:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010278:  "\"log_dispatch_stats\", " 
+gaad: guc:00010279:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010294:  ereport(ERROR, 
+gaad: guc:00010295:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010296:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010297:  "\"log_statement_stats\", " 
+gaad: guc:00010298:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010299:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010314:  ereport(ERROR, 
+gaad: guc:00010315:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010316:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 sabd: syncbitvector:00000069:  (errmsg("Not enough shared memory for SyncBitVector.")))); 
-aaaaa GP_IGNORE: taaj: testutils - ./backend/utils/misc/testutils.c
-taaj: testutils:00000090:  ereport(ERROR, 
-taaj: testutils:00000091:  (errmsg("Time slice of %d ms exceeded at (%s:%d), last CFI before %d ms.\n" 
-taaj: testutils:00000092:  "Stack trace of last CFI:\n%s\n" 
-taaj: testutils:00000093:  "Current stack trace:\n%s\n", 
-taaj: testutils:00000094:  gp_test_time_slice_interval, 
-taaj: testutils:00000095:  file, 
-taaj: testutils:00000096:  line, 
-taaj: testutils:00000097:  elapsedMs, 
-taaj: testutils:00000098:  stackTraceLastCFI, 
-taaj: testutils:00000099:  stackTraceCurrent))); 
-taaj: testutils:00000140:  ereport(ERROR, 
-taaj: testutils:00000141:  (errmsg("Attempt to acquire database lock at (%s:%d) while holding lightweight lock(s).\n" 
-taaj: testutils:00000142:  "Stack trace(s) where lightweight lock(s) got acquired:\n%s\n" 
-taaj: testutils:00000143:  "Current stack trace:\n%s\n", 
-taaj: testutils:00000144:  file, 
-taaj: testutils:00000145:  line, 
-taaj: testutils:00000146:  stackTraces, 
-taaj: testutils:00000147:  stackTraceCurrent))); 
 aaaaa GP_IGNORE: uaaj: uriparser - ./backend/utils/misc/uriparser.c
 uaaj: uriparser:00000063:  ereport(ERROR, 
 uaaj: uriparser:00000064:  (errcode(ERRCODE_SYNTAX_ERROR), 
@@ -18009,10 +17990,10 @@ laah: logtape:00000201:  (errcode_for_file_access(),
 laah: logtape:00000202:  errmsg("could not read block %ld of temporary file: %m", 
 laah: logtape:00000203:  blocknum))); 
 aaaaa GP_IGNORE: taaj: tuplesort - ./backend/utils/sort/tuplesort.c
-taaj: tuplesort:00003074:  ereport(ERROR, 
-taaj: tuplesort:00003075:  (errcode(ERRCODE_UNIQUE_VIOLATION), 
-taaj: tuplesort:00003076:  errmsg("could not create unique index"), 
-taaj: tuplesort:00003077:  errdetail("Table contains duplicated values."))); 
+taaj: tuplesort:00003087:  ereport(ERROR, 
+taaj: tuplesort:00003088:  (errcode(ERRCODE_UNIQUE_VIOLATION), 
+taaj: tuplesort:00003089:  errmsg("could not create unique index"), 
+taaj: tuplesort:00003090:  errdetail("Table contains duplicated values."))); 
 aaaaa GP_IGNORE: tabd: tuplestorenew - ./backend/utils/sort/tuplestorenew.c
 tabd: tuplestorenew:00000357:  ereport(ERROR, 
 tabd: tuplestorenew:00000358:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -18835,35 +18816,35 @@ paba: plxhandler:00000178:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 paba: plxhandler:00000179:  errmsg("PL/pgSQL functions cannot accept type %s", 
 paba: plxhandler:00000180:  format_type_be(argtypes[i])))); 
 aaaaa GP_IGNORE: paah: plxscan - ./pl/plpgsql/src/pl_scan.c
-paah: plxscan:00000858: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
-paah: plxscan:00000859:  
-paah: plxscan:00000860: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
-paah: plxscan:00000861: #if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35) 
-paah: plxscan:00000862: int plpgsql_base_yyget_lineno (void); 
-paah: plxscan:00001587:  ereport(ERROR, 
-paah: plxscan:00001588:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paah: plxscan:00001589:  errmsg("unterminated quoted identifier"))); 
-paah: plxscan:00001638:  ereport(ERROR, 
-paah: plxscan:00001639:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paah: plxscan:00001640:  errmsg("unterminated comment"))); 
-paah: plxscan:00001708:  ereport(ERROR, 
-paah: plxscan:00001709:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paah: plxscan:00001710:  errmsg("unterminated string"))); 
-paah: plxscan:00001764:  ereport(ERROR, 
-paah: plxscan:00001765:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-paah: plxscan:00001766:  errmsg("unterminated dollar-quoted string"))); 
-paah: plxscan:00002784:  ereport(ERROR, 
-paah: plxscan:00002785:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paah: plxscan:00002786:  /* translator: %s is typically "syntax error" */ 
-paah: plxscan:00002787:  errmsg("%s at end of input", message), 
-paah: plxscan:00002788:  internalerrposition(cursorpos), 
-paah: plxscan:00002789:  internalerrquery(scanstr))); 
-paah: plxscan:00002793:  ereport(ERROR, 
-paah: plxscan:00002794:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paah: plxscan:00002795:  /* translator: first %s is typically "syntax error" */ 
-paah: plxscan:00002796:  errmsg("%s at or near \"%s\"", message, loc), 
-paah: plxscan:00002797:  internalerrposition(cursorpos), 
-paah: plxscan:00002798:  internalerrquery(scanstr))); 
+paah: plxscan:00001161: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
+paah: plxscan:00001162:  
+paah: plxscan:00001163: #define unify_version(a,b,c) ((a<<16)+(b<<8)+c) 
+paah: plxscan:00001164: #if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35) 
+paah: plxscan:00001165: int plpgsql_base_yyget_lineno (void); 
+paah: plxscan:00001919:  ereport(ERROR, 
+paah: plxscan:00001920:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paah: plxscan:00001921:  errmsg("unterminated quoted identifier"))); 
+paah: plxscan:00001970:  ereport(ERROR, 
+paah: plxscan:00001971:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paah: plxscan:00001972:  errmsg("unterminated comment"))); 
+paah: plxscan:00002040:  ereport(ERROR, 
+paah: plxscan:00002041:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paah: plxscan:00002042:  errmsg("unterminated string"))); 
+paah: plxscan:00002096:  ereport(ERROR, 
+paah: plxscan:00002097:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+paah: plxscan:00002098:  errmsg("unterminated dollar-quoted string"))); 
+paah: plxscan:00003128:  ereport(ERROR, 
+paah: plxscan:00003129:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paah: plxscan:00003130:  /* translator: %s is typically "syntax error" */ 
+paah: plxscan:00003131:  errmsg("%s at end of input", message), 
+paah: plxscan:00003132:  internalerrposition(cursorpos), 
+paah: plxscan:00003133:  internalerrquery(scanstr))); 
+paah: plxscan:00003137:  ereport(ERROR, 
+paah: plxscan:00003138:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paah: plxscan:00003139:  /* translator: first %s is typically "syntax error" */ 
+paah: plxscan:00003140:  errmsg("%s at or near \"%s\"", message, loc), 
+paah: plxscan:00003141:  internalerrposition(cursorpos), 
+paah: plxscan:00003142:  internalerrquery(scanstr))); 
 aaaaa GP_IGNORE: paai: plpython - ./pl/plpython/plpython.c
 paai: plpython:00000441:  ereport(ERROR, 
 paai: plpython:00000442:  (errcode(ERRCODE_DATA_EXCEPTION), 
