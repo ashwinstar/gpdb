@@ -9,6 +9,7 @@
 #include <sys/resource.h>
 
 #include "postgres.h"
+#include "storage/lock.h"
 #include "storage/lwlock.h"
 #include "utils/elog.h"
 #include "utils/testutils.h"
@@ -30,7 +31,7 @@ static struct timeval userTimeLastCFI;
 
 /* static functions */
 static int32 timeElapsedMs(struct timeval *tvLast, struct timeval *tvFirst);
-
+static bool IsValidReportLevel(int level);
 
 /*
  * Reset time slice
@@ -57,6 +58,7 @@ void
 TimeSliceCheck(const char *file, int line)
 {
 	Assert(gp_test_time_slice);
+	Assert(IsValidReportLevel(gp_test_time_slice_report_level));
 
 	struct rusage ru;
 	int32 elapsedMs = 0;
@@ -87,7 +89,7 @@ TimeSliceCheck(const char *file, int line)
 		char *stackTraceCurrent = gp_stacktrace(stackAddressesCurrent, stackDepthCurrent);
 
 		/* report time slice violation error */
-		ereport(ERROR,
+		ereport(gp_test_time_slice_report_level,
 				(errmsg("Time slice of %d ms exceeded at (%s:%d), last CFI before %d ms.\n"
 						"Stack trace of last CFI:\n%s\n"
 						"Current stack trace:\n%s\n",
@@ -115,6 +117,15 @@ timeElapsedMs(struct timeval *tvLast, struct timeval *tvFirst)
 			(tvLast->tv_usec - tvFirst->tv_usec) / USECS_IN_MSEC;
 }
 
+/*
+ * Check if report level is valid
+ */
+static bool
+IsValidReportLevel(int level)
+{
+	return (level >= NOTICE && level <= PANIC);
+}
+
 
 #ifdef USE_TEST_UTILS_X86
 
@@ -123,11 +134,14 @@ timeElapsedMs(struct timeval *tvLast, struct timeval *tvFirst)
  * print stack trace where lock(s) got acquired and error out;
  */
 void
-LWLockHeldDetect(const char *file, int line)
+LWLockHeldDetect(const void *pv, int lockmode)
 {
 	Assert(gp_test_deadlock_hazard);
+	Assert(IsValidReportLevel(gp_test_deadlock_hazard_report_level));
 
-	if (LWLocksHeld())
+	const LOCKTAG *locktag = (const LOCKTAG *) pv;
+
+	if (0 < LWLocksHeld())
 	{
 		void *stackAddressesCurrent[MAX_FRAME_DEPTH];
 		uint32 stackDepthCurrent = gp_backtrace(stackAddressesCurrent, MAX_FRAME_DEPTH);
@@ -137,12 +151,17 @@ LWLockHeldDetect(const char *file, int line)
 		Assert(NULL != stackTraces);
 
 		/* report time slice violation error */
-		ereport(ERROR,
-				(errmsg("Attempt to acquire database lock at (%s:%d) while holding lightweight lock(s).\n"
+		ereport(gp_test_deadlock_hazard_report_level,
+				(errmsg("Attempting to acquire database lock (%s:%d:%d:%d:%d) while holding lightweight lock (%d:%p).\n"
 						"Stack trace(s) where lightweight lock(s) got acquired:\n%s\n"
 						"Current stack trace:\n%s\n",
-						file,
-						line,
+						GetLockmodeName(locktag->locktag_lockmethodid, lockmode),
+						locktag->locktag_field1,
+						locktag->locktag_field2,
+						locktag->locktag_field3,
+						locktag->locktag_field4,
+						LWLockHeldLatestId(),
+						LWLockHeldLatestCaller(),
 						stackTraces,
 						stackTraceCurrent)));
 	}

@@ -571,7 +571,7 @@ LockAcquire(const LOCKTAG *locktag,
 	if (gp_test_deadlock_hazard && !dontWait)
 	{
 		/* blocking lock request, check if any lightweight lock is already held */
-		CHECK_LW_LOCKS_HELD();
+		LWLockHeldDetect(locktag, lockmode);
 	}
 #endif /* USE_TEST_UTILS_X86 */
 

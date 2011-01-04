@@ -915,7 +915,63 @@ uint32
 LWLocksHeld()
 {
 	Assert(num_held_lwlocks >= 0);
-	return num_held_lwlocks;
+
+	uint32 locks = 0, i = 0;
+
+	for (i = 0; i < num_held_lwlocks; i++)
+	{
+		if (LWLOCK_IS_PREDEFINED(held_lwlocks[i]))
+		{
+			locks++;
+		}
+	}
+
+	return locks;
+}
+
+
+/*
+ * Get lock id of the most lately acquired lwlock
+ */
+LWLockId
+LWLockHeldLatestId()
+{
+	Assert(num_held_lwlocks > 0);
+
+	uint32 i = 0;
+
+	for (i = num_held_lwlocks; i > 0; i--)
+	{
+		if (LWLOCK_IS_PREDEFINED(held_lwlocks[i - 1]))
+		{
+			return held_lwlocks[i - 1];
+		}
+	}
+
+	Assert(!"No predefined lwlock held");
+	return MaxDynamicLWLock;
+}
+
+
+/*
+ * Get caller address for the most lately acquired lwlock
+ */
+void *
+LWLockHeldLatestCaller()
+{
+	Assert(num_held_lwlocks > 0);
+
+	uint32 i = 0;
+
+	for (i = num_held_lwlocks; i > 0; i--)
+	{
+		if (LWLOCK_IS_PREDEFINED(held_lwlocks[i - 1]))
+		{
+			return held_lwlocks_addresses[i - 1][1];
+		}
+	}
+
+	return 0;
 }
 
 
@@ -933,12 +989,17 @@ LWLocksHeldStackTraces()
 	}
 
 	StringInfo append = makeStringInfo();	/* palloc'd */
-	uint32 i = 0;
+	uint32 i = 0, cnt = 1;
 
 	/* append stack trace for each held lock */
 	for (i = 0; i < num_held_lwlocks; i++)
 	{
-		appendStringInfo(append, "%d: LWLock %d:\n", i + 1, held_lwlocks[i] );
+		if (!LWLOCK_IS_PREDEFINED(held_lwlocks[i]))
+		{
+			continue;
+		}
+
+		appendStringInfo(append, "%d: LWLock %d:\n", cnt++, held_lwlocks[i] );
 
 		char *stackTrace =
 				gp_stacktrace(held_lwlocks_addresses[i], held_lwlocks_depth[i]);

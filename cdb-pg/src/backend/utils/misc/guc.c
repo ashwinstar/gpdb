@@ -69,6 +69,7 @@
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/guc_tables.h"
+#include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
 #include "utils/ps_status.h"
@@ -167,6 +168,12 @@ static const char *assign_log_min_messages(const char *newval, bool doit,
 static const char *assign_client_min_messages(const char *newval,
 						   bool doit, GucSource source);
 static const char *assign_min_error_statement(const char *newval, bool doit,
+						   GucSource source);
+static const char *assign_time_slice_report_level(const char *newval, bool doit,
+						   GucSource source);
+static const char *assign_deadlock_hazard_report_level(const char *newval, bool doit,
+						   GucSource source);
+static const char *assign_system_cache_flush_force(const char *newval, bool doit,
 						   GucSource source);
 static const char *assign_msglvl(int *var, const char *newval, bool doit,
 			  GucSource source);
@@ -486,13 +493,21 @@ int gp_simex_rand;
 /* time slice enforcement */
 bool gp_test_time_slice;
 int gp_test_time_slice_interval;
+int gp_test_time_slice_report_level = ERROR;
+static char *gp_test_time_slice_report_level_str;
 
 /* database-lightweight lock hazard detection */
 bool gp_test_deadlock_hazard;
+int gp_test_deadlock_hazard_report_level = ERROR;
+static char *gp_test_deadlock_hazard_report_level_str;
 
 /* Upgrade GUCs */
 bool gp_upgrade_mode;
 bool gp_upgrade_conn;
+
+/* system cache invalidation mode*/
+int gp_test_system_cache_flush_force = SysCacheFlushForce_Off;
+static char *gp_test_system_cache_flush_force_str;
 
 /* include file/line information to stack traces */
 bool gp_log_stack_trace_lines;
@@ -4408,7 +4423,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_test_time_slice_interval", PGC_USERSET, GP_ERROR_HANDLING,
 		 gettext_noop("Maximum interval in ms between successive checks for interrupts."),
 		 NULL,
-		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_test_time_slice_interval,
 		1000, 1, 10000, NULL, NULL
@@ -5521,6 +5536,36 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&gp_resqueue_memory_policy_str,
 		"none", gpvars_assign_gp_resqueue_memory_policy, gpvars_show_gp_resqueue_memory_policy
+	},
+
+	{
+		{"gp_test_time_slice_report_level", PGC_USERSET, LOGGING_WHEN,
+			gettext_noop("Sets the message level for time slice violation reports."),
+			gettext_noop("Valid values are NOTICE, WARNING, ERROR, FATAL and PANIC."),
+		 GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_test_time_slice_report_level_str,
+		"error", assign_time_slice_report_level, NULL
+	},
+
+	{
+		{"gp_test_deadlock_hazard_report_level", PGC_USERSET, LOGGING_WHEN,
+			gettext_noop("Sets the message level for deadlock hazard reports."),
+			gettext_noop("Valid values are NOTICE, WARNING, ERROR, FATAL and PANIC."),
+		 GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_test_deadlock_hazard_report_level_str,
+		"error", assign_deadlock_hazard_report_level, NULL
+	},
+
+	{
+		{"gp_test_system_cache_flush_force", PGC_USERSET, GP_ERROR_HANDLING,
+			gettext_noop("Force invalidation of system caches on each access"),
+			gettext_noop("Valid values are OFF, PLAIN and RECURSIVE."),
+		 GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_test_system_cache_flush_force_str,
+		"off", assign_system_cache_flush_force, NULL
 	},
 
     /* End-of-list marker */
@@ -9841,6 +9886,18 @@ assign_min_error_statement(const char *newval, bool doit, GucSource source)
 }
 
 static const char *
+assign_time_slice_report_level(const char *newval, bool doit, GucSource source)
+{
+	return (assign_msglvl(&gp_test_time_slice_report_level, newval, doit, source));
+}
+
+static const char *
+assign_deadlock_hazard_report_level(const char *newval, bool doit, GucSource source)
+{
+	return (assign_msglvl(&gp_test_deadlock_hazard_report_level, newval, doit, source));
+}
+
+static const char *
 assign_msglvl(int *var, const char *newval, bool doit, GucSource source)
 {
 	if (pg_strcasecmp(newval, "debug") == 0)
@@ -9917,6 +9974,32 @@ assign_msglvl(int *var, const char *newval, bool doit, GucSource source)
 	else
 		return NULL;			/* fail */
 	return newval;				/* OK */
+}
+
+static const char *
+assign_system_cache_flush_force(const char *newval, bool doit, GucSource source)
+{
+	if (pg_strcasecmp(newval, "off") == 0)
+	{
+		if (doit)
+			gp_test_system_cache_flush_force = SysCacheFlushForce_Off;
+	}
+	else if (pg_strcasecmp(newval, "recursive") == 0)
+	{
+		if (doit)
+			gp_test_system_cache_flush_force = SysCacheFlushForce_Recursive;
+	}
+	else if (pg_strcasecmp(newval, "plain") == 0)
+	{
+		if (doit)
+			gp_test_system_cache_flush_force = SysCacheFlushForce_NonRecursive;
+	}
+	else
+	{
+		return NULL;
+	}
+
+	return newval;
 }
 
 

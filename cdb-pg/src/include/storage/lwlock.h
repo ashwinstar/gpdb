@@ -91,6 +91,7 @@ typedef enum LWLockId
 	MaxDynamicLWLock = 1000000000
 } LWLockId;
 
+#define LWLOCK_IS_PREDEFINED(lwlock) (lwlock < NumFixedLWLocks + NUM_LOCK_PARTITIONS)
 
 typedef enum LWLockMode
 {
@@ -110,7 +111,10 @@ extern void LWLockRelease(LWLockId lockid);
 extern void LWLockReleaseAll(void);
 extern bool LWLockHeldByMe(LWLockId lockid);
 extern bool LWLockHeldExclusiveByMe(LWLockId lockid);
+
 extern uint32 LWLocksHeld(void);
+extern LWLockId LWLockHeldLatestId(void);
+extern void *LWLockHeldLatestCaller(void);
 extern const char *LWLocksHeldStackTraces(void);
 
 extern int	NumLWLocks(void);
