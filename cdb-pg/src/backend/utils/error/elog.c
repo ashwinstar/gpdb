@@ -2731,16 +2731,13 @@ append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stacka
 
     for (stack_no = 0; stack_no < stacksize; stack_no++)
     {
+    	/* check if file/line info is available */
+    	char *lineInfo = "";
         if (addr2line_ok && stack_no < STACK_DEPTH_MAX)
         {
-        	symbol_len = snprintf(symbol,
-        			              ARRAY_SIZE(symbol),
-        			              "%-4d %p %s\n",
-        			              stack_no + 1,
-        			              stackarray[stack_no],
-        			              cmdresult[stack_no]);
+        	lineInfo = cmdresult[stack_no];
         }
-        else
+
         if (dladdr(stackarray[stack_no], &dli) != 0)
         {
         	const char *file = dli.dli_fname;
@@ -2768,22 +2765,56 @@ append_stacktrace(PipeProtoChunk *buffer, StringInfo append, void *const *stacka
         		function = "<symbol not found>";
         	}
 
-        	symbol_len = snprintf(symbol,
-        				          ARRAY_SIZE(symbol),
-            		              "%-4d %p %s %s + 0x%x \n",
-                                  stack_no + 1,
-                                  stackarray[stack_no],
-                                  file,
-                                  function,
-                                  (int)((char *)(stackarray[stack_no]) - (char *)(dli.dli_saddr)));
+        	/* check if lineInfo was retrieved */
+        	if (strchr(lineInfo, ':') == NULL)
+        	{
+        		/* no line info, print offset in function */
+        		symbol_len = snprintf(symbol,
+									  ARRAY_SIZE(symbol),
+									  "%-4d %p %s %s + 0x%x\n",
+									  stack_no + 1,
+									  stackarray[stack_no],
+									  file,
+									  function,
+									  (int)((char *)(stackarray[stack_no]) - (char *)(dli.dli_saddr)));
+        	}
+        	else
+        	{
+        		/* keep file:line info; required for atos */
+        		char *parenth = strrchr(lineInfo, '(');
+        		if (parenth != NULL)
+        		{
+        			lineInfo = parenth + 1;
+        			parenth = strrchr(lineInfo, ')');
+        			*parenth = '\0';
+        		}
+
+        		/* line info added, print file and line info */
+				symbol_len = snprintf(symbol,
+									  ARRAY_SIZE(symbol),
+									  "%-4d %p %s %s (%s)\n",
+									  stack_no + 1,
+									  stackarray[stack_no],
+									  file,
+									  function,
+									  lineInfo);
+			}
+
+
         }
         else
         {
+        	if (lineInfo[0] == '\0')
+        	{
+        		lineInfo = "<symbol not found>";
+        	}
+
             symbol_len = snprintf(symbol,
 			                      ARRAY_SIZE(symbol),
-            		              "%-4d %p <symbol not found>\n",
+            		              "%-4d %p %s\n",
                                   stack_no + 1,
-                                  stackarray[stack_no]);
+                                  stackarray[stack_no],
+                                  lineInfo);
         }
 
         if (buffer != NULL)
