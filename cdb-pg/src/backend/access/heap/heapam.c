@@ -2304,6 +2304,31 @@ frozen_heap_insert_directed(
 	return result;
 }
 
+/*
+ * heap_trace_current_tuple
+ *
+ * Log a line showing the current tuple MVCC information.
+ */
+static void
+heap_trace_current_tuple(
+	char		*caller,
+
+	HeapTuple	tuple)
+{
+	TupleVisibilitySummary tupleVisibilitySummary;
+	char *summary;
+
+	GetTupleVisibilitySummary(
+							tuple,
+							&tupleVisibilitySummary);
+	summary = GetTupleVisibilitySummaryString(&tupleVisibilitySummary);
+
+	elog(LOG, "Current tuple for %s: %s",
+		 caller,
+		 summary);
+
+	pfree(summary);
+}
 
 /*
  *	heap_delete - delete a tuple
@@ -2649,41 +2674,10 @@ simple_heap_delete(Relation relation, ItemPointer tid)
 
 }
 
-/*
- *	heap_update - replace a tuple
- *
- * NB: do not call this directly unless you are prepared to deal with
- * concurrent-update conditions.  Use simple_heap_update instead.
- *
- *	relation - table to be modified (caller must hold suitable lock)
- *	otid - TID of old tuple to be replaced
- *	newtup - newly constructed tuple data to store
- *	ctid - output parameter, used only for failure case (see below)
- *	update_xmax - output parameter, used only for failure case (see below)
- *	cid - update command ID (used for visibility test, and stored into
- *		cmax/cmin if successful)
- *	crosscheck - if not InvalidSnapshot, also check old tuple against this
- *	wait - true if should wait for any conflicting update to commit/abort
- *
- * Normal, successful return value is HeapTupleMayBeUpdated, which
- * actually means we *did* update it.  Failure return codes are
- * HeapTupleSelfUpdated, HeapTupleUpdated, or HeapTupleBeingUpdated
- * (the last only possible if wait == false).
- *
- * On success, the header fields of *newtup are updated to match the new
- * stored tuple; in particular, newtup->t_self is set to the TID where the
- * new tuple was inserted.	However, any TOAST changes in the new tuple's
- * data are not reflected into *newtup.
- *
- * In the failure cases, the routine returns the tuple's t_ctid and t_xmax.
- * If t_ctid is the same as otid, the tuple was deleted; if different, the
- * tuple was updated, and t_ctid is the location of the replacement tuple.
- * (t_xmax is needed to verify that the replacement tuple matches.)
- */
-HTSU_Result
-heap_update(Relation relation, ItemPointer otid, HeapTuple newtup,
+static HTSU_Result
+heap_update_internal(Relation relation, ItemPointer otid, HeapTuple newtup,
 			ItemPointer ctid, TransactionId *update_xmax,
-			CommandId cid, Snapshot crosscheck, bool wait)
+			CommandId cid, Snapshot crosscheck, bool wait, bool simple)
 {
 	MIRROREDLOCK_BUFMGR_DECLARE;
 
@@ -2738,6 +2732,9 @@ l2:
 
 	if (result == HeapTupleInvisible)
 	{
+		/* Trace current tuple information before we unlock the buffer */
+		heap_trace_current_tuple("heap_update", &oldtup);
+		
 		UnlockReleaseBuffer(buffer);
 		elog(ERROR, "attempted to update invisible tuple");
 	}
@@ -2866,6 +2863,12 @@ l2:
 		Assert(!(oldtup.t_data->t_infomask & HEAP_XMAX_INVALID));
 		*ctid = oldtup.t_data->t_ctid;
 		*update_xmax = HeapTupleHeaderGetXmax(oldtup.t_data);
+
+		if (simple)
+		{
+			/* Trace current tuple information before we unlock the buffer */
+			heap_trace_current_tuple("heap_update", &oldtup);
+		}
 		UnlockReleaseBuffer(buffer);
 		
 		MIRROREDLOCK_BUFMGR_UNLOCK;
@@ -3114,6 +3117,57 @@ l2:
 }
 
 /*
+ *	heap_update - replace a tuple
+ *
+ * NB: do not call this directly unless you are prepared to deal with
+ * concurrent-update conditions.  Use simple_heap_update instead.
+ *
+ *	relation - table to be modified (caller must hold suitable lock)
+ *	otid - TID of old tuple to be replaced
+ *	newtup - newly constructed tuple data to store
+ *	ctid - output parameter, used only for failure case (see below)
+ *	update_xmax - output parameter, used only for failure case (see below)
+ *	cid - update command ID (used for visibility test, and stored into
+ *		cmax/cmin if successful)
+ *	crosscheck - if not InvalidSnapshot, also check old tuple against this
+ *	wait - true if should wait for any conflicting update to commit/abort
+ *
+ * Normal, successful return value is HeapTupleMayBeUpdated, which
+ * actually means we *did* update it.  Failure return codes are
+ * HeapTupleSelfUpdated, HeapTupleUpdated, or HeapTupleBeingUpdated
+ * (the last only possible if wait == false).
+ *
+ * On success, the header fields of *newtup are updated to match the new
+ * stored tuple; in particular, newtup->t_self is set to the TID where the
+ * new tuple was inserted.	However, any TOAST changes in the new tuple's
+ * data are not reflected into *newtup.
+ *
+ * In the failure cases, the routine returns the tuple's t_ctid and t_xmax.
+ * If t_ctid is the same as otid, the tuple was deleted; if different, the
+ * tuple was updated, and t_ctid is the location of the replacement tuple.
+ * (t_xmax is needed to verify that the replacement tuple matches.)
+ */
+HTSU_Result
+heap_update(Relation relation, ItemPointer otid, HeapTuple newtup,
+			ItemPointer ctid, TransactionId *update_xmax,
+			CommandId cid, Snapshot crosscheck, bool wait)
+{
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_DECLARE;
+
+	HTSU_Result result;
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
+
+	result = heap_update_internal(
+					relation, otid, newtup, ctid, update_xmax,
+					cid, crosscheck, wait, /* simple */ false);
+
+	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_EXIT;
+
+	return result;
+}
+
+/*
  *	simple_heap_update - replace a tuple
  *
  * This routine may be used to update a tuple when concurrent updates of
@@ -3132,10 +3186,12 @@ simple_heap_update(Relation relation, ItemPointer otid, HeapTuple tup)
 
 	MIRROREDLOCK_BUFMGR_VERIFY_NO_LOCK_LEAK_ENTER;
 
-	result = heap_update(relation, otid, tup,
+	result = heap_update_internal(
+						 relation, otid, tup,
 						 &update_ctid, &update_xmax,
 						 GetCurrentCommandId(), InvalidSnapshot,
-						 true /* wait for commit */ );
+						 true /* wait for commit */,
+						 /* simple */ true);
 	switch (result)
 	{
 		case HeapTupleSelfUpdated:

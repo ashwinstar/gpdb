@@ -338,10 +338,12 @@ typedef struct TupleVisibilitySummary
 	ItemPointerData				tid;
 	int16						infomask;
 	int16						infomask2;
+	ItemPointerData				updateTid;
 	TransactionId				xmin;
 	TupleTransactionStatus      xminStatus;
 	TransactionId				xmax;
 	TupleTransactionStatus      xmaxStatus;
+	CommandId					cid;			/* inserting or deleting command ID, or both */
 	TupleVisibilityStatus		visibilityStatus;
 } TupleVisibilitySummary;
 
@@ -380,18 +382,24 @@ extern void GetTupleVisibilitySummary(
 	TupleVisibilitySummary	*tupleVisibilitySummary);
 
 
-// 0 gp_tid                    TIDOID
-// 1 gp_xmin                  INT4OID
-// 2 gp_xmin_status        TEXTOID
-// 3 gp_xmin_distrib_id     TEXTOID
-// 4 gp_xmax		          INT4OID
-// 5 gp_xmax_status       TEXTOID
-// 6 gp_xmax_distrib_id    TEXTOID
-// 7 gp_visibility             TEXTOID
+// 0  gp_tid                    			TIDOID
+// 1  gp_xmin                  			INT4OID
+// 2  gp_xmin_status        			TEXTOID
+// 3  gp_xmin_commit_distrib_id		TEXTOID
+// 4  gp_xmax		          		INT4OID
+// 5  gp_xmax_status       			TEXTOID
+// 6  gp_xmax_distrib_id    			TEXTOID
+// 7  gp_command_id	    			INT4OID
+// 8  gp_infomask    	   			TEXTOID
+// 9  gp_update_tid         			TIDOID
+// 10 gp_visibility             			TEXTOID
 
 extern void GetTupleVisibilitySummaryDatums(
 	Datum		*values,
 	bool		*nulls,
+	TupleVisibilitySummary	*tupleVisibilitySummary);
+
+extern char *GetTupleVisibilitySummaryString(
 	TupleVisibilitySummary	*tupleVisibilitySummary);
 
 #endif   /* TQUAL_H */
