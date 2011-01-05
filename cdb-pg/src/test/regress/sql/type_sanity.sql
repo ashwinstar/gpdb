@@ -140,6 +140,13 @@ WHERE p1.typreceive = p2.oid AND p1.typtype in ('b', 'p') AND
     (p2.oid = 'array_recv'::regproc)
 ORDER BY 1;
 
+-- Array types should have same typdelim as their element types
+SELECT p1.oid, p1.typname, p2.oid, p2.typname
+FROM pg_type p1, pg_type p2
+WHERE p1.typelem = p2.oid and p1.typdelim != p2.typdelim
+  AND p1.typname like E'\\_%';
+
+
 -- Suspicious if typreceive doesn't take same number of args as typinput
 SELECT p1.oid, p1.typname, p2.oid, p2.proname, p3.oid, p3.proname
 FROM pg_type AS p1, pg_proc AS p2, pg_proc AS p3

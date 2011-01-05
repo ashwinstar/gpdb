@@ -151,6 +151,10 @@ set client_min_messages = 'ERROR';
 DROP VIEW upg_catalog.pg_roles;
 DROP VIEW upg_catalog.pg_stat_activity;
 
+--
+-- Create a dummy "CatDML" function
+CREATE FUNCTION CatDML(text) returns setof text as $$select unnest('{}'::text[])$$ language sql;
+
 -- Run the actual upgrade DDL
 --
 -- Note: Calls to catDML will fail since we have not defined the function
@@ -158,7 +162,12 @@ DROP VIEW upg_catalog.pg_stat_activity;
 -- number of rows depending on the number of segments in the system.
 \i @abs_srcdir@/data/upg_catupgrade_41.sql
 
+DROP FUNCTION CatDML(text);
+
 set client_min_messages = 'WARNING';
+
+-- Dummy query to help atmsort figure out how to handle equiv regions
+SELECT 1 as dummy;
 
 -- ===========================================================================
 -- * Compare this the transformed schema to the catalog schema
@@ -596,7 +605,7 @@ SELECT * FROM pg_pltemplate ORDER BY tmplname;
 SELECT oid, * FROM pg_resqueue WHERE oid < 10000 ORDER BY rsqname;
 SELECT oid, * FROM pg_filespace WHERE oid < 10000 ORDER BY fsname;
 SELECT oid, * FROM pg_tablespace WHERE oid < 10000 ORDER BY spcname;
-SELECT oid, datname, datdba, encoding, datistemplate, datallowconn, datconnlimit, datlastsysoid,
+SELECT oid, datname, datdba, encoding, datistemplate, datallowconn, datconnlimit,
        dattablespace, datconfig
 FROM pg_database WHERE oid < 10000 ORDER BY datname;
 SELECT oid, * FROM pg_resourcetype ORDER BY resname;

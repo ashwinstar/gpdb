@@ -124,13 +124,14 @@ DROP VIEW if exists @gpupgradetoolkitschema@.gp_size_of_database cascade;
 DROP FUNCTION if exists @gpupgradetoolkitschema@.__gp__seg_locks(segid int) cascade;
 DROP VIEW if exists @gpupgradetoolkitschema@.gp_locks cascade;
 
-select 1/0 from @gpupgradeschemaname@.pg_class where relnamespace = 8001;
-select 1/0 from @gpupgradeschemaname@.pg_proc  where pronamespace = 8001;
-select 1/0 from @gpupgradeschemaname@.pg_type  where typnamespace = 8001;
-select 1/0 from @gpupgradeschemaname@.pg_constraint where connamespace = 8001;
-select 1/0 from @gpupgradeschemaname@.pg_operator where oprnamespace = 8001;
-select 1/0 from @gpupgradeschemaname@.pg_opclass where opcnamespace = 8001;
-select 1/0 from @gpupgradeschemaname@.pg_conversion where connamespace = 8001;
+-- Verify that we successfully dropped all objects from the toolkit schema
+select 1/0 from pg_catalog.pg_class, pg_catalog.pg_namespace n where relnamespace = n.oid and n.nspname = '@gpupgradetoolkitschema@';
+select 1/0 from pg_catalog.pg_proc, pg_catalog.pg_namespace n where pronamespace = n.oid and n.nspname = '@gpupgradetoolkitschema@';
+select 1/0 from pg_catalog.pg_type, pg_catalog.pg_namespace n where typnamespace = n.oid and n.nspname = '@gpupgradetoolkitschema@';
+select 1/0 from pg_catalog.pg_constraint, pg_catalog.pg_namespace n where connamespace = n.oid and n.nspname = '@gupgradetoolkitschema@';
+select 1/0 from pg_catalog.pg_operator, pg_catalog.pg_namespace n where oprnamespace = n.oid and n.nspname = '@gpupgradetoolkitschema@';
+select 1/0 from pg_catalog.pg_opclass, pg_catalog.pg_namespace n where opcnamespace = n.oid and n.nspname = '@gpupgradetoolkitschema@';
+select 1/0 from pg_catalog.pg_conversion, pg_catalog.pg_namespace n where connamespace = n.oid and n.nspname = '@gpupgradetoolkitschema@';
 
 delete from @gpupgradeschemaname@.pg_depend where refobjid=8001;
 select catDML('delete from @gpupgradeschemaname@.pg_depend where refobjid=8001') from gp_dist_random('gp_id');
