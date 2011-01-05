@@ -209,6 +209,11 @@ extern PersistentFileSysObjStateChangeResult PersistentFileSysObj_StateChange(
 
 	PersistentFileSysObjVerifiedActionCallback verifiedActionCallback);
 
+extern void PersistentFileSysObj_RepairDelete(
+		PersistentFsObjType 		fsObjType,
+	
+		ItemPointer 				persistentTid);
+
 extern void PersistentFileSysObj_Created(
 	PersistentFileSysObjName	*fsObjName,
 

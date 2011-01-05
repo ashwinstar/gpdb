@@ -2093,6 +2093,67 @@ PersistentFileSysObj_AddMirror(PersistentFileSysObjName *fsObjName,
 	pfree(values);
 }
 
+void PersistentFileSysObj_RepairDelete(
+	PersistentFsObjType			fsObjType,
+
+	ItemPointer					persistentTid)
+{
+	PersistentFileSysObjData 		*fileSysObjData;
+	PersistentFileSysObjSharedData 	*fileSysObjSharedData;
+
+	Datum *values;
+
+	HeapTuple tupleCopy;
+
+	PersistentFileSysObjName		fsObjName;
+	PersistentFileSysState			state;
+	
+	MirroredObjectExistenceState	mirrorExistenceState;
+	
+	TransactionId					parentXid;
+	int64							serialNum;
+
+	if (PersistentStore_IsZeroTid(persistentTid))
+		elog(ERROR, "TID for persistent repair delete tuple is invalid (0,0)");
+
+	PersistentFileSysObj_GetDataPtrs(
+								fsObjType,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+	
+	values = (Datum*)palloc(fileSysObjData->storeData.numAttributes * sizeof(Datum));
+
+	PersistentFileSysObj_ReadTuple(
+							fsObjType,
+							persistentTid,
+							values,
+							&tupleCopy);
+
+	GpPersistent_GetCommonValues(
+							fsObjType,
+							values,
+							&fsObjName,
+							&state,
+							&mirrorExistenceState,
+							&parentXid,
+							&serialNum);
+	if (state == PersistentFileSysState_Free)
+		elog(ERROR, 
+		     "Persistent object for TID %s is already free",   
+			 ItemPointerToString(persistentTid));
+
+	heap_freetuple(tupleCopy);
+
+	PersistentFileSysObj_FreeTuple(
+								fileSysObjData,
+								fileSysObjSharedData,
+								fsObjType,
+								persistentTid,
+								/* flushToXLog */ true);
+	
+	pfree(values);
+}
+
 static void 
 PersistentFileSysObj_DoMirrorValidation(
 										PersistentFileSysObjName 	*fsObjName,

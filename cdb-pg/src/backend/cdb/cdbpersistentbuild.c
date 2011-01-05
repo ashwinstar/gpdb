@@ -1019,3 +1019,23 @@ gp_persistent_set_relation_bufpool_kind_all(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(1);
 }
 
+Datum
+gp_persistent_repair_delete(PG_FUNCTION_ARGS)
+{
+	int							 fsObjType;
+	ItemPointerData				 persistentTid;
+
+	fsObjType = PG_GETARG_INT32(0);
+	persistentTid = PG_GETARG_TID(1);
+
+	if (fsObjType < PersistentFsObjType_First || 
+		fsObjType > PersistentFsObjType_Last)
+		elog(ERROR, 
+			 "Persistent object type must be in the range 1..4 "
+		     "(Relation, Database Dir, Tablespace Dir, Filespace Dir)");
+
+	PersistentFileSysObj_RepairDelete(
+								fsObjType,
+								&persistentTid);
+	PG_RETURN_INT32(0);
+}

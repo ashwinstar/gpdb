@@ -235,6 +235,7 @@ extern struct varlena *pg_detoast_datum_packed(struct varlena * datum);
 /* and this if you can handle 1-byte-header datums: */
 #define PG_GETARG_VARLENA_PP(n) PG_DETOAST_DATUM_PACKED(PG_GETARG_DATUM(n))
 /* DatumGetFoo macros for varlena types will typically look like this: */
+#define PG_GETARG_TID(n)	 (*((ItemPointer) DatumGetPointer(PG_GETARG_DATUM(n))))
 #define DatumGetByteaP(X)			((bytea *) PG_DETOAST_DATUM(X))
 #define DatumGetByteaPP(X)			((bytea *) PG_DETOAST_DATUM_PACKED(X))
 #define DatumGetTextP(X)			((text *) PG_DETOAST_DATUM(X))
