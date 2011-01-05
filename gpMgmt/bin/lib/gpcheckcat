@@ -39,16 +39,18 @@ def parse_int(val):
     return val
 
 SUCCESS=0
-ERROR_REPAIR=1
-ERROR_NOREPAIR=2
+ERROR_REMOVE=1
+ERROR_RESYNC=2
+ERROR_NOREPAIR=3
 def setError(level):
     '''
     Increases the error level to the specified level, if specified level is
     lower than the existing level no change is made.
     
     error level 0 => success
-    error level 1 => error, with repair script
-    error level 2 => error, no repair script
+    error level 1 => error, with repair script removes objects
+    error level 2 => error, with repair script that resynchronizes objects
+    error level 3 => error, no repair script
     '''
     GV.retcode = max(level, GV.retcode)
 
@@ -85,6 +87,9 @@ GV = Global()
 
 # array of SQL statements. Key is dbid
 Remove = {}
+
+# array of SQL statements. Key is dbid
+ReSync = {}
 
 # Indexes to rebuild
 Reindex = []
@@ -358,7 +363,7 @@ def checkDistribPolicy():
     if not err:
         logger.info('[OK] randomly distributed tables')
     else:
-        setError(ERROR_REPAIR)
+        setError(ERROR_REMOVE)
         logger.info('[FAIL] randomly distributed tables')
         logger.error('pg_constraint has %d issue(s)' % len(err))
         logger.error(qry)
@@ -394,7 +399,7 @@ def checkDistribPolicy():
     if not err:
         logger.info('[OK] unique constraints')
     else:
-        setError(ERROR_REPAIR)
+        setError(ERROR_REMOVE)
         logger.info('[FAIL] unique constraints')
         logger.error('pg_constraint has %d issue(s)' % len(err))
         logger.error(qry)
@@ -550,7 +555,7 @@ def checkPartitionIntegrity():
     if not err:
         logger.info('[OK] partition distribution policy check')
     else:
-        setError(ERROR_REPAIR)
+        setError(ERROR_REMOVE)
         logger.info('[FAIL] partition distribution policy check')
         logger.error('partition distribution policy check found %d issue(s)' % len(err))
         if len(err) > 100:
@@ -598,7 +603,7 @@ def checkPGClass():
     if not err:
         logger.info('[OK] pg_class')
     else:
-        setError(ERROR_REPAIR)
+        setError(ERROR_REMOVE)
         logger.info('[FAIL] pg_class')
         logger.error('pg_class has %d issue(s)' % len(err))
         logger.error(qry)
@@ -635,7 +640,7 @@ def checkPGAttribute():
     if not err:
         logger.info('[OK] pg_attribute')
     else:
-        setError(ERROR_REPAIR)
+        setError(ERROR_REMOVE)
         logger.info('[FAIL] pg_attribute')
         logger.error('pg_attribute has %d issue(s)' % len(err))
         logger.error(qry)
@@ -674,7 +679,7 @@ def checkPGType():
     if not err:
         logger.info('[OK] pg_type')
     else:
-        setError(ERROR_REPAIR)
+        setError(ERROR_REMOVE)
         logger.info('[FAIL] pg_type')
         logger.error('pg_type has %d issue(s)' % len(err))
         logger.error(qry)
@@ -722,7 +727,7 @@ def checkPGExtTable():
     if not err:
         logger.info('[OK] pg_exttable')
     else:
-        setError(ERROR_REPAIR)
+        setError(ERROR_REMOVE)
         logger.info('[FAIL] pg_exttable')
         logger.error('pg_exttable has %d issue(s)' % len(err))
         logger.error(qry)
@@ -800,7 +805,7 @@ def checkPGNamespace():
     if curs.ntuples() == 0:
         logger.info('[OK] temporary schemas')
     else:
-        setError(ERROR_REPAIR)
+        setError(ERROR_REMOVE)
         logger.info('[FAIL] temporary schemas')
         logger.error('found %d unbound temporary schemas' % curs.ntuples())
         for row in curs.getresult():
@@ -827,7 +832,7 @@ def checkPGNamespace():
     if not err:
         logger.info('[OK] missing schema definitions')
     else:
-        setError(ERROR_REPAIR)
+        setError(ERROR_REMOVE)
         logger.info('[FAIL] missing schema definitons')
         logger.error('found %d references to non-existent schemas' % len(err))
         logger.error(qry)
@@ -852,7 +857,74 @@ def checkPGNamespace():
                 removeSchema(seg, connect2(c), schemaid)
 
 #############
-def checkFKConstraint(db, tables):
+def BuildTableResync(db, dtab, tables, max_content, tname, fktname, fklist):
+
+    fkeydef = {}
+    # look thru all foreign key defs and find the one with tname as pkey table
+    for fkd in fklist:
+        if fkd['fk'].getPkeyTableName() == tname:
+            fkeydef = fkd
+            break
+    #
+    pkey = tables[dtab[tname]].getPrimaryKey()
+    print "%s: %s\nfkt %s: %s"%(tname, pkey, fktname, fklist)
+
+    keyd = {}
+    for row in fkd['rows']:
+        foo = []
+        for c1 in row:
+            foo.append(str(c1))
+        #
+        seg_id = foo.pop(0)
+        kkey = ",".join(foo)
+        if kkey not in keyd:
+            keyd[kkey] = []
+        #
+        vval = {}
+        vval['keys'] = foo
+        vval['segid'] = seg_id
+        keyd[kkey].append(vval)
+    #
+    print keyd
+    print fkeydef['fk'].getColumns()
+    
+    qtmpl = '''
+    SELECT * FROM {tname} WHERE {keycols_expr}
+'''
+
+    for kkey in keyd:
+        vval = keyd[kkey]
+        for rw in vval:
+            kklist = []
+            kkoff  = len(rw['keys']) - len(fkeydef['fk'].getColumns())
+            for colname in fkeydef['fk'].getColumns():
+                kklist.append('''{kk} = '{vv}' '''.format(
+                        kk=colname, 
+                        vv=rw['keys'][kkoff]))
+                kkoff += 1
+
+            qry = qtmpl.format(tname=tname,
+                               keycols_expr=" AND ".join(kklist))
+    
+            print qry                 
+
+    #
+
+                      
+        
+
+
+#############
+def BuildFKResync(db, dtab, tables, badfktables, badpktables, max_content):
+
+    for tname in badpktables:
+        for fktname in badpktables[tname]:
+            BuildTableResync(db, dtab, tables, max_content,
+                             tname, fktname, badfktables[fktname])
+
+
+#############
+def checkFKConstraint(db, tables, max_content):
     logger.info('-----------------------------------')
     logger.info('Checking foreign keys ...')
     
@@ -877,23 +949,32 @@ def checkFKConstraint(db, tables):
     ORDER BY {primary_key_alias}, gp_segment_id
     '''
 
-    tblcnt = 0;
-    qrycnt = 0;
+    tidx   = 0
+    tblcnt = 0
+    qrycnt = 0
 
     fktables = []
-    for cat in sorted(tables):
+    badfktables = {}
+    badpktables = {}
+    dtab = {}
+
+    for cat in tables:
         catname = cat.getTableName()
         fkey    = cat.getForeignKeys()
+        dtab[catname] = tidx
+        tidx += 1
+
         # skip tables without fkey
         if len(fkey) <= 0:
             continue;
         fktables.append(cat)
+
         tblcnt += 1
         qrycnt += len(fkey)
 
     logger.info(' %d tables, %d queries' % (tblcnt, qrycnt))
         
-    for tab in fktables:
+    for tab in sorted(fktables):
         fkeylist = tab.getForeignKeys()
         tname    = tab.getTableName()
 
@@ -905,19 +986,21 @@ def checkFKConstraint(db, tables):
         # build array of catalog primary keys (with aliases) and
         # primary key alias list
         for pk in tab.getPrimaryKey():
-            cat1pkeys.append('cat1.' + pk + ' as PK%s'%aliasidx)
-            pkeys.append('PK%s'%aliasidx)
+            cat1pkeys.append('cat1.' + pk + ' as PK%s'%aliasidx+'_'+pk)
+            pkeys.append('PK%s'%aliasidx+'_'+pk)
             aliasidx += 1
 
         for fkeydef in fkeylist:
             fkeystr     = ', '.join(fkeydef.getColumns())
             cat1fkeystr = 'cat1.' + ', cat1.'.join(fkeydef.getColumns())
+            
+            pkeytabname = fkeydef.getPkeyTableName()
 
             qry = qtempl.format(cat1_dot_primary_key = ', '.join(cat1pkeys) ,
                                 primary_key_alias    = ', '.join(pkeys),
                                 FK1      = fkeystr,
                                 CATALOG1 = tname,
-                                CATALOG2 = fkeydef.getPkeyTableName(),
+                                CATALOG2 = pkeytabname,
                                 PK2      = ', '.join(fkeydef.getPKey())
                                 )
                                 
@@ -933,7 +1016,10 @@ def checkFKConstraint(db, tables):
                     logger.info('[FAIL] Foreign key check for %s(%s)'%
                                 (tname, fkeystr))
                     logger.error('  %s has %d issue(s)' % (tname, nrows))
-
+                    if tname not in badfktables:
+                        badfktables[tname] = []
+                    if pkeytabname not in badpktables:
+                        badpktables[pkeytabname] = []
                     # TODO: smarter handling of output
                     #   - Improved reporting when all segments are different 
                     #     from master
@@ -944,11 +1030,24 @@ def checkFKConstraint(db, tables):
                     print "    " + " | ".join(fields)
                     for row in curs.getresult():
                         print "    " + " | ".join(map(str, row))
+                    #
+                    def1           = {}
+                    def1["fk"]     = fkeydef
+                    def1["qry"]    = qry
+                    def1["fields"] = fields
+                    def1["rows"]   = curs.getresult()
+                    
+                    badfktables[tname].append(def1)
+                    badpktables[pkeytabname].append(tname)
         
             except Exception, e:
                 logger.info('[FAIL] Foreign key check for ' + tname)
                 logger.error('  Execution error: ' + str(e))
                 logger.error(qry)
+
+    # attempt to construct sql to resynchronize foreign key entries on
+    # segments
+    BuildFKResync(db, dtab, tables, badfktables, badpktables, max_content)
 
 
 #############
@@ -1160,56 +1259,8 @@ def row2str(row):
     l = [ "%s: '%s'" % (key, str(row[key])) for key in keys ]
     strout = ', '.join(l)
     return strout
-
-def crossDbCheck():
-    logger.info('-------------------------------------------')
-    logger.info('Performing foreign key and cross database consistency tests')
-    logger.info('-------------------------------------------')
-
-    # Establish a connection to the master
-    db = connect2(GV.cfg[1], utilityMode=False)
-
-    # Find the highest contentid
-    max_content = max([GV.cfg[dbid]['content'] for dbid in GV.cfg])
-
-    # the GPCatalog object looks up information in the catalog:
-    #   - a list of catalog tables defined in the database
-    #   - which tables are "master only"
-    #   - the primary keys for the tables
-    #   - the oid columns for the tables
-    #   - the acl columns for the tables
-    #   - which tables have foreign keys on other tables
-    #   - etc
-    #
-    # Most of this is derived directly from the catalog definition, but
-    # some requires extra hinting.  
-    #
-    # see gppylib.gpcatalog for details
-    #
-    catalog = GPCatalog(db)
-    tables = catalog.getCatalogTables()
-
-    # check foreign key constraints            
-    checkFKConstraint(db, tables)
-
-    logger.info('-----------------------------------')
-    logger.info('Checking cross database consistency ...')
-
-    for cat in sorted(tables):
-        catname = cat.getTableName()
-        pkey    = cat.getPrimaryKey()
-        master  = cat.isMasterOnly()
-        columns = cat.getTableColumns(with_acl=False)
-
-        # Skip master only tables
-        if master:
-            continue
-
-        # Skip catalogs without primary key
-        if pkey == []:
-            logger.warn("[WARN] Skipped cross consistency check for %s" % 
-                        catname)
-            continue
+#############
+def crossDbquery(max_content, catname, pkey, columns):
 
         # Build up the query based on catalog definition
         pkey      = ', '.join(pkey)
@@ -1291,6 +1342,62 @@ def crossDbCheck():
                    schema_join_1 = temp_schema_hack_1,
                    schema_join_2 = temp_schema_hack_2)
 
+        return qry
+
+#############
+def crossDbCheck():
+    fkcdb = 'Performing foreign key and cross database consistency tests';
+    fkcdbdash = '-'*len(fkcdb) # big dashed line
+    logger.info(fkcdbdash)
+    logger.info(fkcdb);
+    logger.info(fkcdbdash)
+
+    # Establish a connection to the master
+    db = connect2(GV.cfg[1], utilityMode=False)
+
+    # Find the highest contentid
+    max_content = max([GV.cfg[dbid]['content'] for dbid in GV.cfg])
+
+    # the GPCatalog object looks up information in the catalog:
+    #   - a list of catalog tables defined in the database
+    #   - which tables are "master only"
+    #   - the primary keys for the tables
+    #   - the oid columns for the tables
+    #   - the acl columns for the tables
+    #   - which tables have foreign keys on other tables
+    #   - etc
+    #
+    # Most of this is derived directly from the catalog definition, but
+    # some requires extra hinting.  
+    #
+    # see gppylib.gpcatalog for details
+    #
+    catalog = GPCatalog(db)
+    tables = catalog.getCatalogTables()
+
+    # check foreign key constraints            
+    checkFKConstraint(db, tables, max_content)
+
+    logger.info('-----------------------------------')
+    logger.info('Checking cross database consistency ...')
+
+    for cat in sorted(tables):
+        catname = cat.getTableName()
+        pkey    = cat.getPrimaryKey()
+        master  = cat.isMasterOnly()
+        columns = cat.getTableColumns(with_acl=False)
+
+        # Skip master only tables
+        if master:
+            continue
+
+        # Skip catalogs without primary key
+        if pkey == []:
+            logger.warn("[WARN] Skipped cross consistency check for %s" % 
+                        catname)
+            continue
+
+        qry = crossDbquery(max_content, catname, pkey, columns)
         
         # Execute the query
         try:
@@ -1564,7 +1671,7 @@ def checkBitmapIndexes():
         setError(ERROR_NOREPAIR)
         logger.info('[FAIL] bitmap indexes')
     elif badinds:
-        setError(ERROR_REPAIR)
+        setError(ERROR_REMOVE)
 
         # unique
         reindex = []
@@ -1642,7 +1749,7 @@ def checkDepend():
         if not err:
             logger.info('[OK] basic object dependencies')
         else:
-            setError(ERROR_REPAIR)
+            setError(ERROR_REMOVE)
             logger.info('[FAIL] basic object dependencies')
             logger.error('  found %d dependencies on dropped objects' % len(err))
             # logger.info(qry)
@@ -1752,7 +1859,7 @@ def checkOwners():
     if len(rows) == 0:
         logger.info('[OK] table ownership')
     else:
-        setError(ERROR_REPAIR)
+        setError(ERROR_REMOVE)
         logger.info('[FAIL] table ownership')
         logger.error('found %d table ownership issue(s)' % len(rows))
         logger.error('%s' % qry)
@@ -2392,6 +2499,7 @@ if __name__ == '__main__':
     logger.info("------------------------------------")
 
     fixes = (len(Remove) > 0 or 
+             len(ReSync) > 0 or 
              len(Reindex) > 0 or 
              len(Constraints) > 0 or
              len(Owners) > 0 or 
@@ -2409,6 +2517,12 @@ if __name__ == '__main__':
         logger.debug('Building catalog repair scripts')
         # build a script to run these files     
         script = '#!/bin/bash\ncd $(dirname $0)\n'
+
+        # don't remove anything if ReSync possible --
+        # comment out the delete statements from the repair scripts
+        maybeRemove = "";
+        if len(ReSync):
+            maybeRemove="# "
 
         for seg in Remove:
             # dbid.host.port.dbname.sql
@@ -2437,10 +2551,16 @@ if __name__ == '__main__':
 
             file.close()
 
-            script += 'echo "Repairing segment %i"\n' % seg
-            script += 'env PGOPTIONS="-c gp_session_role=utility" ' + \
-                    'psql -X -a -h %s -p %i -f %s "%s" > %s.out\n' % \
-                    (c['hostname'], c['port'], filename, GV.dbname, filename)
+            script += '%secho "Repairing segment %i"\n' % (maybeRemove, seg)
+            script += '''
+{maybe}env PGOPTIONS="-c gp_session_role=utility" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out
+
+'''.format(
+                maybe = maybeRemove,
+                hostname = c['hostname'], 
+                port = c['port'], 
+                fname = filename, 
+                dbname = GV.dbname)
 
         if len(Reindex) > 0:
             filename = 'reindex.sql'
