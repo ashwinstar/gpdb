@@ -931,7 +931,7 @@ def testLinuxMounts(host):
         for opt in expectedOptions:
 
             if opt not in mnt.options:
-                printError(host.hostname, "XFS filesystem on device %s has does not have expected XFS mount options '%s' " % (mnt.partition, opt))
+                printError(host.hostname, "XFS filesystem on device %s is missing the recommended mount option '%s'" % (mnt.partition, opt))
                 continue
 
 
