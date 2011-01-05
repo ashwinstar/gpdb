@@ -442,7 +442,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 			   GetUserId(), /* owner's ID */
 			   -1,				/* internal size */
 			   'b',				/* type-type (base type) */
-			   DEFAULT_TYPDELIM,	/* array element delimiter */
+			   delimiter,		/* array element delimiter */
 			   F_ARRAY_IN,		/* input procedure */
 			   F_ARRAY_OUT,		/* output procedure */
 			   F_ARRAY_RECV,	/* receive procedure */
