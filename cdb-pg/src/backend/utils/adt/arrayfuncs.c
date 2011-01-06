@@ -2866,41 +2866,59 @@ construct_md_array(Datum *elems,
 	nbytes = 0;
 
 	/*   fast path for fixed width types */
-	switch (elmtype) {
-			case INT2OID:
-			case INT4OID:
-			case INT8OID:
-			case FLOAT4OID:
-			case FLOAT8OID:
-					fixedwidthtype=true;
-					break;
-			default:
-					fixedwidthtype=false;
+	switch (elmtype) 
+	{
+		case INT2OID:
+		case INT4OID:
+		case INT8OID:
+		case FLOAT4OID:
+		case FLOAT8OID:
+			fixedwidthtype=true;
+			break;
+		default:
+			fixedwidthtype=false;
 	}
 	hasnulls = false;
-	if (fixedwidthtype) {
+	if (fixedwidthtype)
+	{
 		nbytes = nelems * elmlen;
-		nbytes = att_align(nbytes, elmalign);
-	} else {
+
+		/* Still need to handle the possibility of nulls */
+		if (nulls)
+		{
 			for (i = 0; i < nelems; i++)
 			{
-					/* make sure data is not toasted */
-					if (nulls && nulls[i])
-					{
-						hasnulls = true;
-						continue;
-					}
-					else if (elmlen == -1)
-							elems[i] = PointerGetDatum(PG_DETOAST_DATUM(elems[i]));
-					nbytes = att_addlength_datum(nbytes, elmlen, elems[i]);
-		            nbytes = att_align_nominal(nbytes, elmalign);
-					/* check for overflow of total request */
-					if (!AllocSizeIsValid(nbytes))
-							ereport(ERROR,
-											(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-											 errmsg("array size exceeds the maximum allowed (%d)",
-													 (int) MaxAllocSize)));
+				if (nulls[i])
+				{
+					hasnulls = true;
+					nbytes -= elmlen;
+				}
 			}
+		}
+
+		nbytes = att_align(nbytes, elmalign);
+	} 
+	else 
+	{
+		for (i = 0; i < nelems; i++)
+		{
+			/* make sure data is not toasted */
+			if (nulls && nulls[i])
+			{
+				hasnulls = true;
+				continue;
+			}
+			else if (elmlen == -1)
+				elems[i] = PointerGetDatum(PG_DETOAST_DATUM(elems[i]));
+			nbytes = att_addlength_datum(nbytes, elmlen, elems[i]);
+			nbytes = att_align_nominal(nbytes, elmalign);
+			/* check for overflow of total request */
+			if (!AllocSizeIsValid(nbytes))
+				ereport(ERROR,
+						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+						 errmsg("array size exceeds the maximum allowed (%d)",
+								(int) MaxAllocSize)));
+		}
 	}
 
 	/* Allocate and initialize result array */
@@ -2922,13 +2940,16 @@ construct_md_array(Datum *elems,
 	memcpy(ARR_DIMS(result), dims, ndims * sizeof(int));
 	memcpy(ARR_LBOUND(result), lbs, ndims * sizeof(int));
 
-	if (elems==NULL && fixedwidthtype) {
-			/* do nothing */
-	} else {
-			CopyArrayEls(result,
-							elems, nulls, nelems,
-							elmlen, elmbyval, elmalign,
-							false);
+	if (elems==NULL && fixedwidthtype) 
+	{
+		/* do nothing */
+	} 
+	else
+	{
+		CopyArrayEls(result,
+					 elems, nulls, nelems,
+					 elmlen, elmbyval, elmalign,
+					 false);
 	}
 
 	return result;
