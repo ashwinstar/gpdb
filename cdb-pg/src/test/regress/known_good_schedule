@@ -74,7 +74,7 @@ test: partition_pruning_with_fn
 ignore: transactions
 test: distributed_transactions
 test: random
-ignore: arrays
+test: arrays
 test: btree_index
 test: hash_index
 test: update

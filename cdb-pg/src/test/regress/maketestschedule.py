@@ -387,6 +387,8 @@ class TestScheduler:
         addEdges("olap_group", "olap_setup")
         addEdges("olap_window", "olap_setup")
         addEdges("olap_window_seq", "olap_setup")
+        addEdges("arrays", "create_table", "copy")
+        addEdges("transactions", "create_misc")
 
         # these both use (and pkill) gpdist, so keep them separate.
         graph.addDependency("sreh", "exttab1", isOrderingDependencyOnly=True)
