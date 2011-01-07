@@ -1786,6 +1786,7 @@ typedef struct CreateQueueStmt
 	NodeTag		type;
 	char	   *queue;			/* resource queue name */
 	List	   *options;		/* List of DefElem nodes */
+	Oid	   		queueOid;
 } CreateQueueStmt;
 
 typedef struct AlterQueueStmt

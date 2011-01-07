@@ -3360,6 +3360,38 @@ _readCreateTableSpaceStmt(const char ** str)
 	READ_DONE();
 }
 
+
+static CreateQueueStmt *
+_readCreateQueueStmt(const char ** str)
+{
+	READ_LOCALS(CreateQueueStmt);
+
+	READ_STRING_FIELD(queue);
+	READ_NODE_FIELD(options);
+	READ_OID_FIELD(queueOid);
+
+	READ_DONE();
+}
+static AlterQueueStmt *
+_readAlterQueueStmt(const char ** str)
+{
+	READ_LOCALS(AlterQueueStmt);
+
+	READ_STRING_FIELD(queue);
+	READ_NODE_FIELD(options);
+
+	READ_DONE();
+}
+static DropQueueStmt *
+_readDropQueueStmt(const char ** str)
+{
+	READ_LOCALS(DropQueueStmt);
+
+	READ_STRING_FIELD(queue);
+
+	READ_DONE();
+}
+
 static Node *
 _readValue(const char ** str, NodeTag nt)
 {
@@ -4063,6 +4095,16 @@ readNodeBinary(const char ** str)
 
 			case T_CreateTableSpaceStmt:
 				return_value = _readCreateTableSpaceStmt(str);
+				break;
+
+			case T_CreateQueueStmt:
+				return_value = _readCreateQueueStmt(str);
+				break;
+			case T_AlterQueueStmt:
+				return_value = _readAlterQueueStmt(str);
+				break;
+			case T_DropQueueStmt:
+				return_value = _readDropQueueStmt(str);
 				break;
 
 			default:

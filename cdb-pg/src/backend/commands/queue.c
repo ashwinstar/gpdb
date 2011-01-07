@@ -22,6 +22,7 @@
 #include "catalog/pg_resqueue.h"
 #include "nodes/makefuncs.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 #include "commands/comment.h"
 #include "commands/defrem.h"
 #include "commands/queue.h"
@@ -899,10 +900,13 @@ CreateQueue(CreateQueueStmt *stmt)
 	pg_resqueue_rel = heap_open(ResQueueRelationId, RowExclusiveLock);
 	
 	/**
-	 * Get database locks in anticipation that we'll need to access this catalog table later.
+	 * Get database locks in anticipation that we'll need to access
+	 * this catalog table later.
 	 */
-	Relation resqueueCapabilityRel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
-	Relation resqueueCapabilityIndexRel = index_open(ResQueueCapabilityResqueueidIndexId, AccessShareLock);
+	Relation resqueueCapabilityRel = 
+			heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
+	Relation resqueueCapabilityIndexRel = 
+			index_open(ResQueueCapabilityResqueueidIndexId, AccessShareLock);
 	
 	pg_resqueue_dsc = RelationGetDescr(pg_resqueue_rel);
 
@@ -946,6 +950,10 @@ CreateQueue(CreateQueueStmt *stmt)
 
 	tuple = heap_form_tuple(pg_resqueue_dsc, new_record, new_record_nulls);
 
+	/* Keep oids synchonized between master and segments */
+	if (OidIsValid(stmt->queueOid))
+		HeapTupleSetOid(tuple, stmt->queueOid);
+
 	/*
 	 * Insert new record in the pg_resqueue table
 	 */
@@ -959,48 +967,60 @@ CreateQueue(CreateQueueStmt *stmt)
 	 * Create the in-memory resource queue, if resource scheduling is on,
 	 * otherwise don't - and gripe a little about it.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+		if (ResourceScheduler)
+		{
+			LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
-		thresholds[RES_COUNT_LIMIT] = activelimit;
-		thresholds[RES_COST_LIMIT] = costlimit;
-		thresholds[RES_MEMORY_LIMIT] = ResourceQueueGetMemoryLimit(queueid);
-		queueok = ResCreateQueue(queueid, thresholds, overcommit, ignorelimit);
+			thresholds[RES_COUNT_LIMIT]	 = activelimit;
+			thresholds[RES_COST_LIMIT]	 = costlimit;
 
-		/**
-		 * Ensure that the shared data structures are consistent with the catalog table on memory limits.
-		 */
+			thresholds[RES_MEMORY_LIMIT] = 
+					ResourceQueueGetMemoryLimit(queueid);
+			queueok	= ResCreateQueue(queueid, 
+									 thresholds, 
+									 overcommit, 
+									 ignorelimit);
+			
+			/**
+			 * Ensure that the shared data structures are consistent with
+			 * the catalog table on memory limits.
+			 */
 #ifdef USE_ASSERT_CHECKING
-		AssertMemoryLimitsMatch();
+			AssertMemoryLimitsMatch();
 #endif
 		
-		LWLockRelease(ResQueueLock);
+			LWLockRelease(ResQueueLock);
 
-		if (!queueok)
-			ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-					errmsg("insufficient resource queues available"),
-					errhint("Increase max_resource_queues")));
-	}
-	else
-	{
-		ereport(WARNING,
-				(errmsg("resource scheduling is disabled"),
-				 errhint("To enable set resource_scheduler=on")));
+			if (!queueok)
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+						 errmsg("insufficient resource queues available"),
+						 errhint("Increase max_resource_queues")));
+		}
+		else
+		{
+				ereport(WARNING,
+						(errmsg("resource scheduling is disabled"),
+						 errhint("To enable set resource_scheduler=on")));
+		}
 	}
 
 	/* Finish up scan and close resource queue catalog. */
 	systable_endscan(rsqscan);
-
 	
 	/* MPP-6929, MPP-7583: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		stmt->queueOid = queueid;
+		CdbDispatchUtilityStatement((Node *) stmt, "CreateResourceQueue");
 		MetaTrackAddObject(ResQueueRelationId,
 						   queueid,
 						   GetUserId(), /* not ownerid */
 						   "CREATE", "RESOURCE QUEUE"
 				);
+	}
 
 	CatalogUpdateIndexes(pg_resqueue_rel, tuple);
 	
@@ -1382,46 +1402,52 @@ AlterQueue(AlterQueueStmt *stmt)
 	 * for the in-memory queue.
 	 * otherwise don't - and gripe a little about it.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+		if (ResourceScheduler)
+		{
+			LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
-		queueok = ResAlterQueue(queueid, thresholds, overcommit, ignorelimit);
-
-		/**
-		 * Ensure that the shared data structures are consistent with the catalog table on memory limits.
-		 */
+			queueok = ResAlterQueue(queueid, 
+									thresholds, 
+									overcommit, 
+									ignorelimit);
+			
+			/**
+			 * Ensure that the shared data structures are consistent with
+			 * the catalog table on memory limits.
+			 */
 #ifdef USE_ASSERT_CHECKING
-		AssertMemoryLimitsMatch();
+			AssertMemoryLimitsMatch();
 #endif
 
-		LWLockRelease(ResQueueLock);
+			LWLockRelease(ResQueueLock);
+			
+			if (queueok != ALTERQUEUE_OK)
+			{
+				if (queueok == ALTERQUEUE_SMALL_THRESHOLD)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_LIMIT_VALUE),
+							 errmsg("thresholds cannot be less than current values")));
+				else if (queueok == ALTERQUEUE_OVERCOMMITTED)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_LIMIT_VALUE),
+								 errmsg("disabling overcommit cannot leave queue in possibly overcommitted state")));
+				else
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("queue hash table corrupted")));
 
-		if (queueok != ALTERQUEUE_OK)
-		{
-			if (queueok == ALTERQUEUE_SMALL_THRESHOLD)
-				ereport(ERROR,
-					(errcode(ERRCODE_INVALID_LIMIT_VALUE),
-						errmsg("thresholds cannot be less than current values")));
-			else if (queueok == ALTERQUEUE_OVERCOMMITTED)
-				ereport(ERROR,
-					(errcode(ERRCODE_INVALID_LIMIT_VALUE),
-						errmsg("disabling overcommit cannot leave queue in possibly overcommitted state")));
-			else
-				ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("queue hash table corrupted")));
+			}
 
 		}
-
+		else
+		{
+			ereport(WARNING,
+					(errmsg("resource scheduling is disabled"),
+					 errhint("To enable set resource_scheduler=on")));
+		}
 	}
-	else
-	{
-		ereport(WARNING,
-				(errmsg("resource scheduling is disabled"),
-				 errhint("To enable set resource_scheduler=on")));
-	}
-
 	/* Finish up scan and close resource queue catalog. */
 	systable_endscan(rsqscan);
 
@@ -1430,12 +1456,14 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	/* MPP-6929, MPP-7583: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt, "AlterResourceQueue");
 		MetaTrackUpdObject(ResQueueRelationId,
 						   queueid,
 						   GetUserId(), /* not ownerid */
 						   "ALTER", alter_subtype
 				);
-
+	}
 	heap_close(pg_resqueue_rel, NoLock);
 }
 
@@ -1540,31 +1568,35 @@ DropQueue(DropQueueStmt *stmt)
 	 * If resource scheduling is on, see if we can destroy the in-memory queue.
 	 * otherwise don't - and gripe a little about it.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+		if (ResourceScheduler)
+		{
+			LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 
-		queueok = ResDestroyQueue(queueid);
+			queueok = ResDestroyQueue(queueid);
 		
-		/**
-		 * Ensure that the shared data structures are consistent with the catalog table on memory limits.
-		 */
+			/**
+			 * Ensure that the shared data structures are consistent with
+			 * the catalog table on memory limits.
+			 */
 #ifdef USE_ASSERT_CHECKING
-		AssertMemoryLimitsMatch();
+			AssertMemoryLimitsMatch();
 #endif
 
-		LWLockRelease(ResQueueLock);
+			LWLockRelease(ResQueueLock);
 
-		if (!queueok)
-			ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-					errmsg("resource queue cannot be dropped as is in use")));
-	}
-	else
-	{
-		ereport(WARNING,
-				(errmsg("resource scheduling is disabled"),
-				 errhint("To enable set resource_scheduler=on")));
+			if (!queueok)
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+						 errmsg("resource queue cannot be dropped as is in use")));
+		}
+		else
+		{
+			ereport(WARNING,
+					(errmsg("resource scheduling is disabled"),
+					 errhint("To enable set resource_scheduler=on")));
+		}
 	}
 
 	/* Finish up scan and close resource queue catalog. */
@@ -1580,6 +1612,10 @@ DropQueue(DropQueueStmt *stmt)
 	 */
 	DeleteSharedComments(queueid, ResQueueRelationId);
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt, "DropResourceQueue");
+	}
 	/* MPP-6929, MPP-7583: metadata tracking */
 	MetaTrackDropObject(ResQueueRelationId,
 						queueid);

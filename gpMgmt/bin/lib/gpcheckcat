@@ -886,7 +886,8 @@ def BuildTableResync(db, dtab, tables, max_content, tname, fktname, fklist):
         keyd[kkey].append(vval)
     #
     print keyd
-    print fkeydef['fk'].getColumns()
+    print "cols: %s\n"%fkeydef['fk'].getColumns()
+    print "pkey: %s\n"%fkeydef['fk'].getPKey()
     
     qtmpl = '''
     SELECT * FROM {tname} WHERE {keycols_expr}
@@ -896,8 +897,8 @@ def BuildTableResync(db, dtab, tables, max_content, tname, fktname, fklist):
         vval = keyd[kkey]
         for rw in vval:
             kklist = []
-            kkoff  = len(rw['keys']) - len(fkeydef['fk'].getColumns())
-            for colname in fkeydef['fk'].getColumns():
+            kkoff  = len(rw['keys']) - len(fkeydef['fk'].getPKey())
+            for colname in fkeydef['fk'].getPKey():
                 kklist.append('''{kk} = '{vv}' '''.format(
                         kk=colname, 
                         vv=rw['keys'][kkoff]))
