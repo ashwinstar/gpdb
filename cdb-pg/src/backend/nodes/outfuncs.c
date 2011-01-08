@@ -3541,6 +3541,34 @@ _outCreateTableSpaceStmt(StringInfo str, CreateTableSpaceStmt *node)
 }
 
 
+static void
+_outCreateQueueStmt(StringInfo str, CreateQueueStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEQUEUESTMT");
+
+	WRITE_STRING_FIELD(queue);
+	WRITE_NODE_FIELD(options); /* List of DefElem nodes */
+	WRITE_OID_FIELD(queueOid); 
+}
+
+static void
+_outAlterQueueStmt(StringInfo str, AlterQueueStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERQUEUESTMT");
+
+	WRITE_STRING_FIELD(queue);
+	WRITE_NODE_FIELD(options); /* List of DefElem nodes */
+}
+
+static void
+_outDropQueueStmt(StringInfo str, DropQueueStmt *node)
+{
+	WRITE_NODE_TYPE("DROPQUEUESTMT");
+
+	WRITE_STRING_FIELD(queue);
+}
+
+
 /*
  * _outNode -
  *	  converts a Node into ascii string and append it to 'str'
@@ -4265,6 +4293,16 @@ _outNode(StringInfo str, void *obj)
 
 			case T_CreateTableSpaceStmt:
 				_outCreateTableSpaceStmt(str, obj);
+				break;
+
+			case T_CreateQueueStmt:
+				_outCreateQueueStmt(str, obj);
+				break;
+			case T_AlterQueueStmt:
+				_outAlterQueueStmt(str, obj);
+				break;
+			case T_DropQueueStmt:
+				_outDropQueueStmt(str, obj);
 				break;
 
 			default:

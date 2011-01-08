@@ -276,8 +276,6 @@ static bool PolicyAutoAssignWalker(Node *node, PolicyAutoContext *context)
   */
 int ResourceQueueGetMemoryLimitInCatalog(Oid queueId)
 {
-/*	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY); */
-	
 	int memoryLimitKB = -1;
 	
 	Assert(queueId != InvalidOid);
@@ -326,8 +324,6 @@ int ResourceQueueGetMemoryLimitInCatalog(Oid queueId)
  */
 int ResourceQueueGetMemoryLimit(Oid queueId)
 {
-/*	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY); */
-	
 	int memoryLimitBytes = -1;
 	
 	Assert(queueId != InvalidOid);
