@@ -1048,7 +1048,7 @@ def checkFKConstraint(db, tables, max_content):
 
     # attempt to construct sql to resynchronize foreign key entries on
     # segments
-    BuildFKResync(db, dtab, tables, badfktables, badpktables, max_content)
+#    BuildFKResync(db, dtab, tables, badfktables, badpktables, max_content)
 
 
 #############
