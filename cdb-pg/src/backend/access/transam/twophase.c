@@ -117,6 +117,12 @@ typedef struct GlobalTransactionData
 	TransactionId locking_xid;	/* top-level XID of backend working on xact */
 	bool		valid;			/* TRUE if fully prepared */
 	char		gid[GIDSIZE];	/* The GID assigned to the prepared xact */
+
+	int			prepareAppendOnlyIntentCount;
+								/* 
+								 * The Append-Only Resync EOF intent count for
+								 * a non-crashed prepared transaction. 
+								 */
 } GlobalTransactionData;
 
 /*
@@ -315,6 +321,7 @@ MarkAsPreparing(TransactionId xid,
 	gxact->locking_xid = xid;
 	gxact->valid = false;
 	strcpy(gxact->gid, gid);
+	gxact->prepareAppendOnlyIntentCount = 0;
 
 	/* And insert it into the active array */
 	Assert(TwoPhaseState->numPrepXacts < max_prepared_xacts);
@@ -457,6 +464,42 @@ LockGXact(const char *gid, Oid user, bool raiseErrorIfNotFound)
 			 errmsg("prepared transaction with identifier \"%s\" does not exist",
 					gid)));
 	}
+
+	return NULL;
+}
+
+/*
+ * FindCurrentPrepareGXact
+ *		Locate the current prepare transaction.
+ */
+static GlobalTransaction
+FindPrepareGXact(const char *gid)
+{
+	int			i;
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"FindCurrentPrepareGXact called to lock identifier = %s.",gid);
+
+	LWLockAcquire(TwoPhaseStateLock, LW_EXCLUSIVE);
+
+	for (i = 0; i < TwoPhaseState->numPrepXacts; i++)
+	{
+		GlobalTransaction gxact = TwoPhaseState->prepXacts[i];
+
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "FindCurrentPrepareGXact checking identifier = %s.",gxact->gid);
+
+		if (strcmp(gxact->gid, gid) != 0)
+			continue;
+
+		LWLockRelease(TwoPhaseStateLock);
+
+		return gxact;
+	}
+	LWLockRelease(TwoPhaseStateLock);
+
+	ereport(ERROR,
+			(errcode(ERRCODE_UNDEFINED_OBJECT),
+		 errmsg("prepared transaction with identifier \"%s\" does not exist",
+				gid)));
 
 	return NULL;
 }
@@ -1258,12 +1301,21 @@ ReadTwoPhaseFile(TransactionId xid)
 	return buf;
 }
 
+void 
+PrepareIntentAppendOnlyCommitWork(char *gid)
+{
+	GlobalTransaction gxact;
+
+	gxact = FindPrepareGXact(gid);
+
+	gxact->prepareAppendOnlyIntentCount++;
+}
 
 /*
  * FinishPreparedTransaction: execute COMMIT PREPARED or ROLLBACK PREPARED
  */
 bool
-FinishPreparedTransaction(const char *gid, bool isCommit, bool isCrashRecovery, bool raiseErrorIfNotFound)
+FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound)
 {
 	MIRRORED_LOCK_DECLARE;
 
@@ -1277,6 +1329,8 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool isCrashRecovery, 
 
 	PersistentEndXactRecObjects persistentPrepareObjects;
 	int32 deserializeLen;
+
+	int prepareAppendOnlyIntentCount;
 
 	/*
 	 * Validate the GID, and lock the GXACT to ensure that two backends do not
@@ -1370,6 +1424,8 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool isCrashRecovery, 
 									   hdr->nsubxacts, children,
 									   &persistentPrepareObjects);
 
+	prepareAppendOnlyIntentCount = gxact->prepareAppendOnlyIntentCount;
+
 	ProcArrayRemove(&gxact->proc, /* forPrepare */ true, isCommit);
 
 	/*
@@ -1394,7 +1450,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool isCrashRecovery, 
 											gid,
 											&persistentPrepareObjects,
 											isCommit,
-											isCrashRecovery);
+											prepareAppendOnlyIntentCount);
 
 	/* And now do the callbacks */
 	if (isCommit)
@@ -2007,6 +2063,14 @@ RecordTransactionCommitPrepared(TransactionId xid,
 		lastrdata = 2;
 	}
 	rdata[lastrdata].next = NULL;
+	
+#ifdef FAULT_INJECTOR	
+	FaultInjector_InjectFaultIfSet(
+								   TwoPhaseTransactionCommitPrepared,
+								   DDLNotSpecified,
+								   "" /* databaseName */,
+								   "" /* tableName */);
+#endif											
 
 	recptr = XLogInsert(RM_XACT_ID,
 						XLOG_XACT_COMMIT_PREPARED | XLOG_NO_TRAN,
@@ -2143,6 +2207,14 @@ RecordTransactionAbortPrepared(TransactionId xid,
 		lastrdata = 2;
 	}
 	rdata[lastrdata].next = NULL;
+	
+#ifdef FAULT_INJECTOR	
+	FaultInjector_InjectFaultIfSet(
+								   TwoPhaseTransactionAbortPrepared,
+								   DDLNotSpecified,
+								   "" /* databaseName */,
+								   "" /* tableName */);
+#endif											
 
 	recptr = XLogInsert(RM_XACT_ID,
 						XLOG_XACT_ABORT_PREPARED | XLOG_NO_TRAN,

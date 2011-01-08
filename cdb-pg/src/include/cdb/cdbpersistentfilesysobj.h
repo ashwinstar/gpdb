@@ -282,7 +282,7 @@ extern void PersistentFileSysObj_PreparedEndXactAction(
 	
 	bool							isCommit,
 
-	bool							isCrashRecovery);
+	int								prepareAppendOnlyIntentCount);
 
 extern void PersistentFileSysObj_ChangeMirrorState(
 	PersistentFsObjType 			fsObjType,

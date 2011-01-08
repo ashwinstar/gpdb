@@ -3469,7 +3469,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 	
 	bool							isCommit,
 
-	bool							isCrashRecovery)
+	int								prepareAppendOnlyIntentCount)
 {
 	MIRRORED_LOCK_DECLARE;
 
@@ -3479,12 +3479,12 @@ void PersistentFileSysObj_PreparedEndXactAction(
 
 	if (Debug_persistent_print)
 		elog(Persistent_DebugPrintLevel(), 
-			 "PersistentFileSysObj_PreparedEndXactAction (distributed transaction id %s, local prepared xid %u): commit %s, Crash Recovery %s, file-system action count %d, , Append-Only mirror resync EOFs count %d",
+			 "PersistentFileSysObj_PreparedEndXactAction (distributed transaction id %s, local prepared xid %u): commit %s, file-system action count %d, shared-memory Append-Only intent count %d, xlog Append-Only mirror resync EOFs count %d",
 			 gid,
 			 preparedXid,
 			 (isCommit ? "true" : "false"),
-			 (isCrashRecovery ? "true" : "false"),
 			 persistentObjects->typed.fileSysActionInfosCount,
+			 prepareAppendOnlyIntentCount,
 			 persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
 	
 	stateChangeResults = 
@@ -3832,7 +3832,7 @@ void PersistentFileSysObj_PreparedEndXactAction(
 	 * For both COMMIT and ABORT, release our intent to add Append-Only mirror resync EOFs.
 	 */
 	if (persistentObjects->typed.appendOnlyMirrorResyncEofsCount > 0 &&
-		!isCrashRecovery)
+		prepareAppendOnlyIntentCount > 0)
 	{
 		PersistentEndXactAppendOnlyMirrorResyncEofs *eofsExample;
 
@@ -3840,6 +3840,23 @@ void PersistentFileSysObj_PreparedEndXactAction(
 
 		eofsExample = &persistentObjects->typed.appendOnlyMirrorResyncEofs[0];
 		
+		if (persistentObjects->typed.appendOnlyMirrorResyncEofsCount != prepareAppendOnlyIntentCount)
+			elog(ERROR, 
+				 "Append-Only Mirror Resync EOFs intent count mismatch "
+				 "(shared-memory count %d, xlog count %d). "
+				 "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s).  "
+				 "Distributed transaction id %s (local prepared xid %u)",
+				 prepareAppendOnlyIntentCount,
+				 persistentObjects->typed.appendOnlyMirrorResyncEofsCount,
+				 eofsExample->relFileNode.spcNode,
+				 eofsExample->relFileNode.dbNode,
+				 eofsExample->relFileNode.relNode,
+				 eofsExample->segmentFileNum,
+				 eofsExample->persistentSerialNum,
+				 ItemPointerToString(&eofsExample->persistentTid),
+				 gid,
+				 preparedXid);
+
 		currentAppendOnlyCommitWorkCount = FileRepPrimary_GetAppendOnlyCommitWorkCount();
 
 		if (currentAppendOnlyCommitWorkCount - persistentObjects->typed.appendOnlyMirrorResyncEofsCount < 0)
@@ -3877,6 +3894,15 @@ void PersistentFileSysObj_PreparedEndXactAction(
 				 preparedXid);
 
 		FileRepPrimary_FinishedAppendOnlyCommitWork(persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
+	}
+	else if (prepareAppendOnlyIntentCount > 0)
+	{
+		elog(ERROR, 
+			 "Append-Only Mirror Resync EOFs intent count in shared-memory non-zero (%d) and xlog count is zero. "
+			 "Distributed transaction id %s (local prepared xid %u)",
+			 prepareAppendOnlyIntentCount,
+			 gid,
+			 preparedXid);
 	}
 injectfaultexit:
 	

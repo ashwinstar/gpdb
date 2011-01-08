@@ -115,6 +115,10 @@ typedef enum FaultInjectorIdentifier_e {
 	FinishPreparedTransactionAbortPass2AbortingCreateNeeded,	
 		/* abort: create pending => aborting create */
 	
+	TwoPhaseTransactionCommitPrepared,
+	
+	TwoPhaseTransactionAbortPrepared,
+	
         EndPreparedTwoPhaseSleep,
 	       /* sleep after creating two phase files */
 

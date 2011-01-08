@@ -763,7 +763,7 @@ ProcessUtility(Node *parsetree,
 
 						}
 						PreventTransactionChain(stmt, "COMMIT PREPARED");
-						FinishPreparedTransaction(stmt->gid, /* isCommit */ true, /* isCrashRecovery */ false, /* raiseErrorIfNotFound */ true);
+						FinishPreparedTransaction(stmt->gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
 						break;
 
 					case TRANS_STMT_ROLLBACK_PREPARED:
@@ -776,7 +776,7 @@ ProcessUtility(Node *parsetree,
 
 						}
 						PreventTransactionChain(stmt, "ROLLBACK PREPARED");
-						FinishPreparedTransaction(stmt->gid, /* isCommit */ false, /* isCrashRecovery */ false, /* raiseErrorIfNotFound */ true);
+						FinishPreparedTransaction(stmt->gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
 						break;
 
 					case TRANS_STMT_ROLLBACK:

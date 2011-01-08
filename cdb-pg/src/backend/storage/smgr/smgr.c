@@ -50,6 +50,8 @@
 #include "utils/guc.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
+#include "cdb/cdbtm.h"
+#include "access/twophase.h"
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -2752,8 +2754,21 @@ smgrGetAppendOnlyMirrorResyncEofs(
 			rptr++;
 			returned = true;
 
+			START_CRIT_SECTION();
 			FileRepPrimary_IntentAppendOnlyCommitWork();
+			if (endXactRecKind == EndXactRecKind_Prepare)
+			{
+				char gid[TMGIDSIZE];
+				
+				if (!getDistributedTransactionIdentifier(gid))
+					elog(ERROR, "Unable to obtain gid during prepare");
+
+				PrepareIntentAppendOnlyCommitWork(gid);
+			}
+			
 			pendingAppendOnlyMirrorResyncIntentCount++;
+			END_CRIT_SECTION();
+			
 			MIRRORED_UNLOCK;
 		}
 

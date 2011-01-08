@@ -54,7 +54,9 @@ extern void RemoveTwoPhaseFile(TransactionId xid, bool giveWarning);
 
 extern void CheckPointTwoPhase(XLogRecPtr redo_horizon);
 
-extern bool FinishPreparedTransaction(const char *gid, bool isCommit, bool isCrashRecovery, bool raiseErrorIfNotFound);
+extern void PrepareIntentAppendOnlyCommitWork(char *gid);
+
+extern bool FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound);
 
 extern int TwoPhaseRecoverMirror(void);
 
