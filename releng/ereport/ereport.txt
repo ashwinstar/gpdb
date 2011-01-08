@@ -24,16 +24,16 @@ aabc: aocssegfiles:00000728:  ereport(ERROR,
 aabc: aocssegfiles:00000729:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 aabc: aocssegfiles:00000730:  errmsg("'%s' is not an append-only columnar relation", 
 aabc: aocssegfiles:00000731:  RelationGetRelationName(aocsRel)))); 
-aabc: aocssegfiles:00000916:  ereport(ERROR, 
-aabc: aocssegfiles:00000917:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000918:  errmsg("'%s' is not an append-only columnar relation", 
-aabc: aocssegfiles:00000919:  RelationGetRelationName(aocsRel)))); 
-aabc: aocssegfiles:00001054:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00001055:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00001056:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aabc: aocssegfiles:00001220:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00001221:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00001222:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aabc: aocssegfiles:00000922:  ereport(ERROR, 
+aabc: aocssegfiles:00000923:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000924:  errmsg("'%s' is not an append-only columnar relation", 
+aabc: aocssegfiles:00000925:  RelationGetRelationName(aocsRel)))); 
+aabc: aocssegfiles:00001060:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00001061:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00001062:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aabc: aocssegfiles:00001226:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00001227:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00001228:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
 aaaaa GP_IGNORE: aaae: aomd - ./backend/access/appendonly/aomd.c
 aaae: aomd:00000168:  ereport(ERROR, 
 aaae: aomd:00000169:  (errcode_for_file_access(), 
@@ -68,38 +68,38 @@ aaba: aosegfiles:00000653:  errmsg("got invalid pg_aoseg filetupcount value: NUL
 aaba: aosegfiles:00000667:  ereport(ERROR, 
 aaba: aosegfiles:00000668:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 aaba: aosegfiles:00000669:  errmsg("got invalid pg_aoseg varblockcount value: NULL"))); 
-aaba: aosegfiles:00000899:  ereport(ERROR, 
-aaba: aosegfiles:00000900:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00000901:  errmsg("'%s' is not an append-only row relation", 
-aaba: aosegfiles:00000902:  RelationGetRelationName(aocsRel)))); 
-aaba: aosegfiles:00001016:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001017:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001018:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aaba: aosegfiles:00001152:  ereport(ERROR, 
-aaba: aosegfiles:00001153:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001154:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001155:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001268:  ereport(ERROR, 
-aaba: aosegfiles:00001269:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001270:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001271:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001309:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001310:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001311:  errdetail("SPI_connect failed in get_ao_distribution"))); 
-aaba: aosegfiles:00001458:  ereport(ERROR, 
-aaba: aosegfiles:00001459:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001460:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001461:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001487:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001488:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001489:  errdetail("SPI_connect failed in get_ao_distribution"))); 
-aaba: aosegfiles:00001668:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001669:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001670:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
-aaba: aosegfiles:00001764:  ereport(ERROR, 
-aaba: aosegfiles:00001765:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001766:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001767:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00000905:  ereport(ERROR, 
+aaba: aosegfiles:00000906:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00000907:  errmsg("'%s' is not an append-only row relation", 
+aaba: aosegfiles:00000908:  RelationGetRelationName(aocsRel)))); 
+aaba: aosegfiles:00001022:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001023:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001024:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aaba: aosegfiles:00001158:  ereport(ERROR, 
+aaba: aosegfiles:00001159:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001160:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001161:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001274:  ereport(ERROR, 
+aaba: aosegfiles:00001275:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001276:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001277:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001315:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001316:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001317:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+aaba: aosegfiles:00001464:  ereport(ERROR, 
+aaba: aosegfiles:00001465:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001466:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001467:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001493:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001494:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001495:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+aaba: aosegfiles:00001674:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001675:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001676:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aaba: aosegfiles:00001770:  ereport(ERROR, 
+aaba: aosegfiles:00001771:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001772:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001773:  RelationGetRelationName(parentrel)))); 
 aaaaa GP_IGNORE: aabc: appendonlyam - ./backend/access/appendonly/appendonlyam.c
 aabc: appendonlyam:00000610:  ereport(ERROR, 
 aabc: appendonlyam:00000611:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -630,26 +630,26 @@ haag: heapam:00001377:  RelationGetRelationName(r))));
 haag: heapam:00001595:  ereport(ERROR, 
 haag: heapam:00001596:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 haag: heapam:00001597:  errmsg("illegal value in tdatacnt"))); 
-haag: heapam:00002352:  ereport(ERROR, 
-haag: heapam:00002353:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haag: heapam:00002354:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
-haag: heapam:00002355:  errOmitLocation(true))); 
-haag: heapam:00002711:  ereport(ERROR, 
-haag: heapam:00002712:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haag: heapam:00002713:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
-haag: heapam:00002714:  errOmitLocation(true))); 
-haag: heapam:00003329:  ereport(ERROR, 
-haag: heapam:00003330:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003331:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003332:  RelationGetRelationName(relation)))); 
-haag: heapam:00003369:  ereport(ERROR, 
-haag: heapam:00003370:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003371:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003372:  RelationGetRelationName(relation)))); 
-haag: heapam:00003412:  ereport(ERROR, 
-haag: heapam:00003413:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
-haag: heapam:00003414:  errmsg("could not obtain lock on row in relation \"%s\"", 
-haag: heapam:00003415:  RelationGetRelationName(relation)))); 
+haag: heapam:00002377:  ereport(ERROR, 
+haag: heapam:00002378:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haag: heapam:00002379:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
+haag: heapam:00002380:  errOmitLocation(true))); 
+haag: heapam:00002705:  ereport(ERROR, 
+haag: heapam:00002706:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haag: heapam:00002707:  errmsg("Append-only tables are not updatable. Operation not permitted."), 
+haag: heapam:00002708:  errOmitLocation(true))); 
+haag: heapam:00003385:  ereport(ERROR, 
+haag: heapam:00003386:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003387:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003388:  RelationGetRelationName(relation)))); 
+haag: heapam:00003425:  ereport(ERROR, 
+haag: heapam:00003426:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003427:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003428:  RelationGetRelationName(relation)))); 
+haag: heapam:00003468:  ereport(ERROR, 
+haag: heapam:00003469:  (errcode(ERRCODE_LOCK_NOT_AVAILABLE), 
+haag: heapam:00003470:  errmsg("could not obtain lock on row in relation \"%s\"", 
+haag: heapam:00003471:  RelationGetRelationName(relation)))); 
 aaaaa GP_IGNORE: haad: hio - ./backend/access/heap/hio.c
 haad: hio:00000125:  ereport(ERROR, 
 haad: hio:00000126:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -762,96 +762,100 @@ saae: slru:00000821:  errmsg("could not access status of transaction %u", xid),
 saae: slru:00000822:  errdetail("Could not close file \"%s\": %m.", 
 saae: slru:00000823:  path))); 
 aaaaa GP_IGNORE: taai: twophase - ./backend/access/transam/twophase.c
-taai: twophase:00000232:  ereport(ERROR, 
-taai: twophase:00000233:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-taai: twophase:00000234:  errmsg("transaction identifier \"%s\" is too long (%d > %d max)", 
-taai: twophase:00000235:  gid, idlen, GIDSIZE))); 
-taai: twophase:00000266:  ereport(ERROR, 
-taai: twophase:00000267:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taai: twophase:00000268:  errmsg("transaction identifier \"%s\" is already in use", 
-taai: twophase:00000269:  gid))); 
-taai: twophase:00000275:  ereport(ERROR, 
-taai: twophase:00000276:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-taai: twophase:00000277:  errmsg("maximum number of prepared transactions reached"), 
-taai: twophase:00000278:  errhint("Increase max_prepared_transactions (currently %d).", 
-taai: twophase:00000279:  max_prepared_xacts))); 
-taai: twophase:00000407:  ereport(ERROR, 
-taai: twophase:00000408:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-taai: twophase:00000409:  errmsg("prepared transaction with identifier \"%s\" is busy", 
-taai: twophase:00000410:  gid))); 
-taai: twophase:00000419:  ereport(ERROR, 
-taai: twophase:00000420:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-taai: twophase:00000421:  errmsg("permission denied to finish prepared transaction"), 
-taai: twophase:00000422:  errhint("Must be superuser or the user that prepared the transaction."))); 
-taai: twophase:00000434:  ereport(ERROR, 
-taai: twophase:00000435:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taai: twophase:00000436:  errmsg("prepared transaction belongs to another database"), 
-taai: twophase:00000437:  errhint("Connect to the database where the transaction was prepared to finish it."))); 
-taai: twophase:00000455:  ereport(ERROR, 
-taai: twophase:00000456:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taai: twophase:00000457:  errmsg("prepared transaction with identifier \"%s\" does not exist", 
-taai: twophase:00000458:  gid))); 
-taai: twophase:00000947:  ereport(ERROR, 
-taai: twophase:00000948:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-taai: twophase:00000949:  errmsg("two-phase state file maximum length exceeded"))); 
-taai: twophase:00001151:  ereport(WARNING, 
-taai: twophase:00001152:  (errcode_for_file_access(), 
-taai: twophase:00001153:  errmsg("could not open two-phase state file \"%s\": %m", 
-taai: twophase:00001154:  path))); 
-taai: twophase:00001167:  ereport(WARNING, 
-taai: twophase:00001168:  (errcode_for_file_access(), 
-taai: twophase:00001169:  errmsg("could not stat two-phase state file \"%s\": %m", 
-taai: twophase:00001170:  path))); 
-taai: twophase:00001179:  ereport(WARNING, 
-taai: twophase:00001180:  (errmsg("file size less than minimum %d", minimumLen))); 
-taai: twophase:00001187:  ereport(WARNING, 
-taai: twophase:00001188:  (errmsg("two phase commit file larger than memory limit %lu", 
-taai: twophase:00001189:  (long unsigned int)MaxAllocSize))); 
-taai: twophase:00001198:  ereport(WARNING, 
-taai: twophase:00001199:  (errmsg("CRC offset not aligned (offset %d, aligned %d)", 
-taai: twophase:00001200:  crc_offset, alignedOffset))); 
-taai: twophase:00001212:  ereport(WARNING, 
-taai: twophase:00001213:  (errcode_for_file_access(), 
-taai: twophase:00001214:  errmsg("could not read two-phase state file \"%s\": %m", 
-taai: twophase:00001215:  path))); 
-taai: twophase:00001227:  ereport(WARNING, 
-taai: twophase:00001228:  (errmsg("two-phase identifier doesn't match (identifer 0x%X, expected 0x%X)", 
-taai: twophase:00001229:  hdr->magic, twoPhaseMagic))); 
-taai: twophase:00001235:  ereport(WARNING, 
-taai: twophase:00001236:  (errmsg("length field doesn't match length (field %d, actual length %d)", 
-taai: twophase:00001237:  hdr->total_len, (int)stat.st_size))); 
-taai: twophase:00001250:  ereport(WARNING, 
-taai: twophase:00001251:  (errmsg("two phase state file checksum failed: expected 0x%X " 
-taai: twophase:00001252:  "but calculated 0x%X", 
-taai: twophase:00001253:  file_crc, calc_crc))); 
-taai: twophase:00001301:  ereport(ERROR, 
-taai: twophase:00001302:  (errcode(ERRCODE_DATA_CORRUPTED), 
-taai: twophase:00001303:  errmsg("two-phase state file for transaction %u is corrupt", 
-taai: twophase:00001304:  xid), 
-taai: twophase:00001305:  errSendAlert(true))); 
-taai: twophase:00001471:  ereport(WARNING, 
-taai: twophase:00001472:  (errcode_for_file_access(), 
-taai: twophase:00001473:  errmsg("could not remove two-phase state file \"%s\": %m", 
-taai: twophase:00001474:  path))); 
-taai: twophase:00001621:  ereport(ERROR, 
-taai: twophase:00001622:  (errcode_for_file_access(), 
-taai: twophase:00001623:  errmsg("could not open two-phase state file \"%s\": %m", 
-taai: twophase:00001624:  path))); 
-taai: twophase:00001687:  ereport(WARNING, 
-taai: twophase:00001688:  (errmsg("removing future two-phase state file \"%s\"", 
-taai: twophase:00001689:  clde->d_name))); 
-taai: twophase:00001703:  ereport(WARNING, 
-taai: twophase:00001704:  (errmsg("removing corrupt two-phase state file \"%s\"", 
-taai: twophase:00001705:  clde->d_name))); 
-taai: twophase:00001714:  ereport(WARNING, 
-taai: twophase:00001715:  (errmsg("removing corrupt two-phase state file \"%s\"", 
-taai: twophase:00001716:  clde->d_name))); 
-taai: twophase:00001798:  ereport(WARNING, 
-taai: twophase:00001799:  (errmsg("removing stale two-phase state file \"%s\"", 
-taai: twophase:00001800:  clde->d_name))); 
-taai: twophase:00001809:  ereport(WARNING, 
-taai: twophase:00001810:  (errmsg("removing corrupt two-phase state file \"%s\"", 
-taai: twophase:00001811:  clde->d_name))); 
+taai: twophase:00000238:  ereport(ERROR, 
+taai: twophase:00000239:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+taai: twophase:00000240:  errmsg("transaction identifier \"%s\" is too long (%d > %d max)", 
+taai: twophase:00000241:  gid, idlen, GIDSIZE))); 
+taai: twophase:00000272:  ereport(ERROR, 
+taai: twophase:00000273:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taai: twophase:00000274:  errmsg("transaction identifier \"%s\" is already in use", 
+taai: twophase:00000275:  gid))); 
+taai: twophase:00000281:  ereport(ERROR, 
+taai: twophase:00000282:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+taai: twophase:00000283:  errmsg("maximum number of prepared transactions reached"), 
+taai: twophase:00000284:  errhint("Increase max_prepared_transactions (currently %d).", 
+taai: twophase:00000285:  max_prepared_xacts))); 
+taai: twophase:00000414:  ereport(ERROR, 
+taai: twophase:00000415:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+taai: twophase:00000416:  errmsg("prepared transaction with identifier \"%s\" is busy", 
+taai: twophase:00000417:  gid))); 
+taai: twophase:00000426:  ereport(ERROR, 
+taai: twophase:00000427:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+taai: twophase:00000428:  errmsg("permission denied to finish prepared transaction"), 
+taai: twophase:00000429:  errhint("Must be superuser or the user that prepared the transaction."))); 
+taai: twophase:00000441:  ereport(ERROR, 
+taai: twophase:00000442:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taai: twophase:00000443:  errmsg("prepared transaction belongs to another database"), 
+taai: twophase:00000444:  errhint("Connect to the database where the transaction was prepared to finish it."))); 
+taai: twophase:00000462:  ereport(ERROR, 
+taai: twophase:00000463:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taai: twophase:00000464:  errmsg("prepared transaction with identifier \"%s\" does not exist", 
+taai: twophase:00000465:  gid))); 
+taai: twophase:00000499:  ereport(ERROR, 
+taai: twophase:00000500:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taai: twophase:00000501:  errmsg("prepared transaction with identifier \"%s\" does not exist", 
+taai: twophase:00000502:  gid))); 
+taai: twophase:00000990:  ereport(ERROR, 
+taai: twophase:00000991:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+taai: twophase:00000992:  errmsg("two-phase state file maximum length exceeded"))); 
+taai: twophase:00001194:  ereport(WARNING, 
+taai: twophase:00001195:  (errcode_for_file_access(), 
+taai: twophase:00001196:  errmsg("could not open two-phase state file \"%s\": %m", 
+taai: twophase:00001197:  path))); 
+taai: twophase:00001210:  ereport(WARNING, 
+taai: twophase:00001211:  (errcode_for_file_access(), 
+taai: twophase:00001212:  errmsg("could not stat two-phase state file \"%s\": %m", 
+taai: twophase:00001213:  path))); 
+taai: twophase:00001222:  ereport(WARNING, 
+taai: twophase:00001223:  (errmsg("file size less than minimum %d", minimumLen))); 
+taai: twophase:00001230:  ereport(WARNING, 
+taai: twophase:00001231:  (errmsg("two phase commit file larger than memory limit %lu", 
+taai: twophase:00001232:  (long unsigned int)MaxAllocSize))); 
+taai: twophase:00001241:  ereport(WARNING, 
+taai: twophase:00001242:  (errmsg("CRC offset not aligned (offset %d, aligned %d)", 
+taai: twophase:00001243:  crc_offset, alignedOffset))); 
+taai: twophase:00001255:  ereport(WARNING, 
+taai: twophase:00001256:  (errcode_for_file_access(), 
+taai: twophase:00001257:  errmsg("could not read two-phase state file \"%s\": %m", 
+taai: twophase:00001258:  path))); 
+taai: twophase:00001270:  ereport(WARNING, 
+taai: twophase:00001271:  (errmsg("two-phase identifier doesn't match (identifer 0x%X, expected 0x%X)", 
+taai: twophase:00001272:  hdr->magic, twoPhaseMagic))); 
+taai: twophase:00001278:  ereport(WARNING, 
+taai: twophase:00001279:  (errmsg("length field doesn't match length (field %d, actual length %d)", 
+taai: twophase:00001280:  hdr->total_len, (int)stat.st_size))); 
+taai: twophase:00001293:  ereport(WARNING, 
+taai: twophase:00001294:  (errmsg("two phase state file checksum failed: expected 0x%X " 
+taai: twophase:00001295:  "but calculated 0x%X", 
+taai: twophase:00001296:  file_crc, calc_crc))); 
+taai: twophase:00001355:  ereport(ERROR, 
+taai: twophase:00001356:  (errcode(ERRCODE_DATA_CORRUPTED), 
+taai: twophase:00001357:  errmsg("two-phase state file for transaction %u is corrupt", 
+taai: twophase:00001358:  xid), 
+taai: twophase:00001359:  errSendAlert(true))); 
+taai: twophase:00001527:  ereport(WARNING, 
+taai: twophase:00001528:  (errcode_for_file_access(), 
+taai: twophase:00001529:  errmsg("could not remove two-phase state file \"%s\": %m", 
+taai: twophase:00001530:  path))); 
+taai: twophase:00001677:  ereport(ERROR, 
+taai: twophase:00001678:  (errcode_for_file_access(), 
+taai: twophase:00001679:  errmsg("could not open two-phase state file \"%s\": %m", 
+taai: twophase:00001680:  path))); 
+taai: twophase:00001743:  ereport(WARNING, 
+taai: twophase:00001744:  (errmsg("removing future two-phase state file \"%s\"", 
+taai: twophase:00001745:  clde->d_name))); 
+taai: twophase:00001759:  ereport(WARNING, 
+taai: twophase:00001760:  (errmsg("removing corrupt two-phase state file \"%s\"", 
+taai: twophase:00001761:  clde->d_name))); 
+taai: twophase:00001770:  ereport(WARNING, 
+taai: twophase:00001771:  (errmsg("removing corrupt two-phase state file \"%s\"", 
+taai: twophase:00001772:  clde->d_name))); 
+taai: twophase:00001854:  ereport(WARNING, 
+taai: twophase:00001855:  (errmsg("removing stale two-phase state file \"%s\"", 
+taai: twophase:00001856:  clde->d_name))); 
+taai: twophase:00001865:  ereport(WARNING, 
+taai: twophase:00001866:  (errmsg("removing corrupt two-phase state file \"%s\"", 
+taai: twophase:00001867:  clde->d_name))); 
 aaaaa GP_IGNORE: vaag: varsup - ./backend/access/transam/varsup.c
 vaag: varsup:00000089:  ereport(ERROR, 
 vaag: varsup:00000090:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -6361,181 +6365,181 @@ paai: proclang:00000536:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 paai: proclang:00000537:  errmsg("must be superuser to rename procedural language"), 
 paai: proclang:00000538:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: qaaf: queue - ./backend/commands/queue.c
-qaaf: queue:00000132:  ereport(ERROR, 
-qaaf: queue:00000133:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000134:  errmsg("Invalid parameter value \"%s\" for " 
-qaaf: queue:00000135:  "resource type \"%s\". " 
-qaaf: queue:00000136:  "Value must be in kB, MB or GB.", 
-qaaf: queue:00000137:  pResSetting, restyp))); 
-qaaf: queue:00000142:  ereport(ERROR, 
-qaaf: queue:00000143:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000144:  errmsg("Invalid parameter value \"%s\" for " 
-qaaf: queue:00000145:  "resource type \"%s\". " 
-qaaf: queue:00000146:  "Value must be at least %dkB", 
-qaaf: queue:00000147:  pResSetting, restyp, (int) MIN_RESOURCEQUEUE_MEMORY_LIMIT_KB))); 
-qaaf: queue:00000190:  ereport(ERROR, 
-qaaf: queue:00000191:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000192:  errmsg("unknown resource type \"%d\"", 
-qaaf: queue:00000193:  resTypeInt))); 
-qaaf: queue:00000199:  ereport(ERROR, 
-qaaf: queue:00000200:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000201:  errmsg("Invalid parameter value \"%s\" for " 
-qaaf: queue:00000202:  "resource type \"%s\"", 
-qaaf: queue:00000203:  pResSetting, restyp))); 
-qaaf: queue:00000328:  ereport(ERROR, 
-qaaf: queue:00000329:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000330:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00000331:  defel->defname))); 
-qaaf: queue:00000366:  ereport(ERROR, 
-qaaf: queue:00000367:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000368:  errmsg("option \"%s\" cannot be disabled", 
-qaaf: queue:00000369:  defel->defname))); 
-qaaf: queue:00000387:  ereport(ERROR, 
-qaaf: queue:00000388:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000389:  errmsg("required option \"%s\" cannot be disabled", 
-qaaf: queue:00000390:  defel->defname))); 
-qaaf: queue:00000417:  ereport(ERROR, 
-qaaf: queue:00000418:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000419:  errmsg("conflicting or redundant option for \"%s\"", 
-qaaf: queue:00000420:  defel->defname))); 
-qaaf: queue:00000754:  ereport(ERROR, 
-qaaf: queue:00000755:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00000756:  errmsg("must be superuser to create resource queues"))); 
-qaaf: queue:00000777:  ereport(ERROR, 
-qaaf: queue:00000778:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000779:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000785:  ereport(ERROR, 
-qaaf: queue:00000786:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000787:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000793:  ereport(ERROR, 
-qaaf: queue:00000794:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000795:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000801:  ereport(ERROR, 
-qaaf: queue:00000802:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000803:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000810:  ereport(ERROR, 
-qaaf: queue:00000811:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000812:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00000813:  defel->defname))); 
-qaaf: queue:00000835:  ereport(ERROR, 
-qaaf: queue:00000836:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000837:  errmsg("active threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00000838:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00000845:  ereport(ERROR, 
-qaaf: queue:00000846:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000847:  errmsg("cost threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00000848:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00000860:  ereport(ERROR, 
-qaaf: queue:00000861:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000862:  errmsg("min_cost threshold cannot be negative"))); 
-qaaf: queue:00000870:  ereport(ERROR, 
-qaaf: queue:00000871:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000872:  errmsg("at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be specified"), 
-qaaf: queue:00000873:  errOmitLocation(true))); 
-qaaf: queue:00000878:  ereport(ERROR, 
-qaaf: queue:00000879:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000880:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
-qaaf: queue:00000881:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00000882:  errOmitLocation(true))); 
-qaaf: queue:00000889:  ereport(ERROR, 
-qaaf: queue:00000890:  (errcode(ERRCODE_RESERVED_NAME), 
-qaaf: queue:00000891:  errmsg("resource queue name \"%s\" is reserved", 
-qaaf: queue:00000892:  stmt->queue), 
-qaaf: queue:00000893:  errOmitLocation(true))); 
-qaaf: queue:00000920:  ereport(ERROR, 
-qaaf: queue:00000921:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-qaaf: queue:00000922:  errmsg("resource queue \"%s\" already exists", 
-qaaf: queue:00000923:  stmt->queue))); 
-qaaf: queue:00000981:  ereport(ERROR, 
-qaaf: queue:00000982:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-qaaf: queue:00000983:  errmsg("insufficient resource queues available"), 
-qaaf: queue:00000984:  errhint("Increase max_resource_queues"))); 
-qaaf: queue:00000988:  ereport(WARNING, 
-qaaf: queue:00000989:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00000990:  errhint("To enable set resource_scheduler=on"))); 
-qaaf: queue:00001055:  ereport(ERROR, 
-qaaf: queue:00001056:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00001057:  errmsg("must be superuser to alter resource queues"))); 
-qaaf: queue:00001078:  ereport(ERROR, 
-qaaf: queue:00001079:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001080:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001094:  ereport(ERROR, 
-qaaf: queue:00001095:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001096:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001110:  ereport(ERROR, 
-qaaf: queue:00001111:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001112:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001126:  ereport(ERROR, 
-qaaf: queue:00001127:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001128:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001144:  ereport(ERROR, 
-qaaf: queue:00001145:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001146:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00001147:  defel->defname))); 
-qaaf: queue:00001157:  ereport(ERROR, 
-qaaf: queue:00001158:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001159:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00001160:  defel->defname))); 
-qaaf: queue:00001202:  ereport(ERROR, 
-qaaf: queue:00001203:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001204:  errmsg("active threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00001205:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00001206:  errOmitLocation(true))); 
-qaaf: queue:00001213:  ereport(ERROR, 
-qaaf: queue:00001214:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001215:  errmsg("cost threshold must be equal to %d or greater than 0", 
-qaaf: queue:00001216:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00001217:  errOmitLocation(true))); 
-qaaf: queue:00001230:  ereport(ERROR, 
-qaaf: queue:00001231:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001232:  errmsg("min_cost threshold cannot be negative"), 
-qaaf: queue:00001233:  errOmitLocation(true))); 
+qaaf: queue:00000133:  ereport(ERROR, 
+qaaf: queue:00000134:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000135:  errmsg("Invalid parameter value \"%s\" for " 
+qaaf: queue:00000136:  "resource type \"%s\". " 
+qaaf: queue:00000137:  "Value must be in kB, MB or GB.", 
+qaaf: queue:00000138:  pResSetting, restyp))); 
+qaaf: queue:00000143:  ereport(ERROR, 
+qaaf: queue:00000144:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000145:  errmsg("Invalid parameter value \"%s\" for " 
+qaaf: queue:00000146:  "resource type \"%s\". " 
+qaaf: queue:00000147:  "Value must be at least %dkB", 
+qaaf: queue:00000148:  pResSetting, restyp, (int) MIN_RESOURCEQUEUE_MEMORY_LIMIT_KB))); 
+qaaf: queue:00000191:  ereport(ERROR, 
+qaaf: queue:00000192:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000193:  errmsg("unknown resource type \"%d\"", 
+qaaf: queue:00000194:  resTypeInt))); 
+qaaf: queue:00000200:  ereport(ERROR, 
+qaaf: queue:00000201:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000202:  errmsg("Invalid parameter value \"%s\" for " 
+qaaf: queue:00000203:  "resource type \"%s\"", 
+qaaf: queue:00000204:  pResSetting, restyp))); 
+qaaf: queue:00000329:  ereport(ERROR, 
+qaaf: queue:00000330:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000331:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00000332:  defel->defname))); 
+qaaf: queue:00000367:  ereport(ERROR, 
+qaaf: queue:00000368:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000369:  errmsg("option \"%s\" cannot be disabled", 
+qaaf: queue:00000370:  defel->defname))); 
+qaaf: queue:00000388:  ereport(ERROR, 
+qaaf: queue:00000389:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000390:  errmsg("required option \"%s\" cannot be disabled", 
+qaaf: queue:00000391:  defel->defname))); 
+qaaf: queue:00000418:  ereport(ERROR, 
+qaaf: queue:00000419:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000420:  errmsg("conflicting or redundant option for \"%s\"", 
+qaaf: queue:00000421:  defel->defname))); 
+qaaf: queue:00000755:  ereport(ERROR, 
+qaaf: queue:00000756:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00000757:  errmsg("must be superuser to create resource queues"))); 
+qaaf: queue:00000778:  ereport(ERROR, 
+qaaf: queue:00000779:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000780:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000786:  ereport(ERROR, 
+qaaf: queue:00000787:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000788:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000794:  ereport(ERROR, 
+qaaf: queue:00000795:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000796:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000802:  ereport(ERROR, 
+qaaf: queue:00000803:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000804:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000811:  ereport(ERROR, 
+qaaf: queue:00000812:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000813:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00000814:  defel->defname))); 
+qaaf: queue:00000836:  ereport(ERROR, 
+qaaf: queue:00000837:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000838:  errmsg("active threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00000839:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00000846:  ereport(ERROR, 
+qaaf: queue:00000847:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000848:  errmsg("cost threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00000849:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00000861:  ereport(ERROR, 
+qaaf: queue:00000862:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000863:  errmsg("min_cost threshold cannot be negative"))); 
+qaaf: queue:00000871:  ereport(ERROR, 
+qaaf: queue:00000872:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000873:  errmsg("at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be specified"), 
+qaaf: queue:00000874:  errOmitLocation(true))); 
+qaaf: queue:00000879:  ereport(ERROR, 
+qaaf: queue:00000880:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000881:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
+qaaf: queue:00000882:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00000883:  errOmitLocation(true))); 
+qaaf: queue:00000890:  ereport(ERROR, 
+qaaf: queue:00000891:  (errcode(ERRCODE_RESERVED_NAME), 
+qaaf: queue:00000892:  errmsg("resource queue name \"%s\" is reserved", 
+qaaf: queue:00000893:  stmt->queue), 
+qaaf: queue:00000894:  errOmitLocation(true))); 
+qaaf: queue:00000924:  ereport(ERROR, 
+qaaf: queue:00000925:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+qaaf: queue:00000926:  errmsg("resource queue \"%s\" already exists", 
+qaaf: queue:00000927:  stmt->queue))); 
+qaaf: queue:00000997:  ereport(ERROR, 
+qaaf: queue:00000998:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+qaaf: queue:00000999:  errmsg("insufficient resource queues available"), 
+qaaf: queue:00001000:  errhint("Increase max_resource_queues"))); 
+qaaf: queue:00001004:  ereport(WARNING, 
+qaaf: queue:00001005:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001006:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00001075:  ereport(ERROR, 
+qaaf: queue:00001076:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00001077:  errmsg("must be superuser to alter resource queues"))); 
+qaaf: queue:00001098:  ereport(ERROR, 
+qaaf: queue:00001099:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001100:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001114:  ereport(ERROR, 
+qaaf: queue:00001115:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001116:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001130:  ereport(ERROR, 
+qaaf: queue:00001131:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001132:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001146:  ereport(ERROR, 
+qaaf: queue:00001147:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001148:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001164:  ereport(ERROR, 
+qaaf: queue:00001165:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001166:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00001167:  defel->defname))); 
+qaaf: queue:00001177:  ereport(ERROR, 
+qaaf: queue:00001178:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001179:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00001180:  defel->defname))); 
+qaaf: queue:00001222:  ereport(ERROR, 
+qaaf: queue:00001223:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001224:  errmsg("active threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00001225:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00001226:  errOmitLocation(true))); 
+qaaf: queue:00001233:  ereport(ERROR, 
+qaaf: queue:00001234:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001235:  errmsg("cost threshold must be equal to %d or greater than 0", 
+qaaf: queue:00001236:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00001237:  errOmitLocation(true))); 
 qaaf: queue:00001250:  ereport(ERROR, 
-qaaf: queue:00001251:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001252:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
+qaaf: queue:00001251:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001252:  errmsg("min_cost threshold cannot be negative"), 
 qaaf: queue:00001253:  errOmitLocation(true))); 
-qaaf: queue:00001282:  ereport(ERROR, 
-qaaf: queue:00001283:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-qaaf: queue:00001284:  errmsg("resource queue \"%s\" does not exist", 
-qaaf: queue:00001285:  stmt->queue), 
-qaaf: queue:00001286:  errOmitLocation(true))); 
-qaaf: queue:00001356:  ereport(ERROR, 
-qaaf: queue:00001357:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001358:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
-qaaf: queue:00001359:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00001403:  ereport(ERROR, 
-qaaf: queue:00001404:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
-qaaf: queue:00001405:  errmsg("thresholds cannot be less than current values"))); 
-qaaf: queue:00001407:  ereport(ERROR, 
-qaaf: queue:00001408:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
-qaaf: queue:00001409:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
-qaaf: queue:00001411:  ereport(ERROR, 
-qaaf: queue:00001412:  (errcode(ERRCODE_INTERNAL_ERROR), 
-qaaf: queue:00001413:  errmsg("queue hash table corrupted"))); 
-qaaf: queue:00001420:  ereport(WARNING, 
-qaaf: queue:00001421:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001422:  errhint("To enable set resource_scheduler=on"))); 
-qaaf: queue:00001460:  ereport(ERROR, 
-qaaf: queue:00001461:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00001462:  errmsg("must be superuser to drop resource queues"))); 
-qaaf: queue:00001490:  ereport(ERROR, 
-qaaf: queue:00001491:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-qaaf: queue:00001492:  errmsg("resource queue \"%s\" does not exist", 
-qaaf: queue:00001493:  stmt->queue))); 
+qaaf: queue:00001270:  ereport(ERROR, 
+qaaf: queue:00001271:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001272:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
+qaaf: queue:00001273:  errOmitLocation(true))); 
+qaaf: queue:00001302:  ereport(ERROR, 
+qaaf: queue:00001303:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+qaaf: queue:00001304:  errmsg("resource queue \"%s\" does not exist", 
+qaaf: queue:00001305:  stmt->queue), 
+qaaf: queue:00001306:  errOmitLocation(true))); 
+qaaf: queue:00001376:  ereport(ERROR, 
+qaaf: queue:00001377:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001378:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
+qaaf: queue:00001379:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00001429:  ereport(ERROR, 
+qaaf: queue:00001430:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+qaaf: queue:00001431:  errmsg("thresholds cannot be less than current values"))); 
+qaaf: queue:00001433:  ereport(ERROR, 
+qaaf: queue:00001434:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+qaaf: queue:00001435:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
+qaaf: queue:00001437:  ereport(ERROR, 
+qaaf: queue:00001438:  (errcode(ERRCODE_INTERNAL_ERROR), 
+qaaf: queue:00001439:  errmsg("queue hash table corrupted"))); 
+qaaf: queue:00001446:  ereport(WARNING, 
+qaaf: queue:00001447:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001448:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00001488:  ereport(ERROR, 
+qaaf: queue:00001489:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00001490:  errmsg("must be superuser to drop resource queues"))); 
 qaaf: queue:00001518:  ereport(ERROR, 
-qaaf: queue:00001519:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-qaaf: queue:00001520:  errmsg("resource queue \"%s\" is used by at least one role", 
+qaaf: queue:00001519:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+qaaf: queue:00001520:  errmsg("resource queue \"%s\" does not exist", 
 qaaf: queue:00001521:  stmt->queue))); 
-qaaf: queue:00001529:  ereport(ERROR, 
-qaaf: queue:00001530:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-qaaf: queue:00001531:  errmsg("cannot drop default resource queue \"%s\"", 
-qaaf: queue:00001532:  stmt->queue))); 
-qaaf: queue:00001559:  ereport(ERROR, 
-qaaf: queue:00001560:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-qaaf: queue:00001561:  errmsg("resource queue cannot be dropped as is in use"))); 
-qaaf: queue:00001565:  ereport(WARNING, 
-qaaf: queue:00001566:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001567:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00001546:  ereport(ERROR, 
+qaaf: queue:00001547:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+qaaf: queue:00001548:  errmsg("resource queue \"%s\" is used by at least one role", 
+qaaf: queue:00001549:  stmt->queue))); 
+qaaf: queue:00001557:  ereport(ERROR, 
+qaaf: queue:00001558:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+qaaf: queue:00001559:  errmsg("cannot drop default resource queue \"%s\"", 
+qaaf: queue:00001560:  stmt->queue))); 
+qaaf: queue:00001590:  ereport(ERROR, 
+qaaf: queue:00001591:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+qaaf: queue:00001592:  errmsg("resource queue cannot be dropped as is in use"))); 
+qaaf: queue:00001596:  ereport(WARNING, 
+qaaf: queue:00001597:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001598:  errhint("To enable set resource_scheduler=on"))); 
 aaaaa GP_IGNORE: saba: schemacmds - ./backend/commands/schemacmds.c
 saba: schemacmds:00000114:  ereport(ERROR, 
 saba: schemacmds:00000115:  (errcode(ERRCODE_RESERVED_NAME), 
@@ -13791,85 +13795,85 @@ maac: md:00002220:  blkno,
 maac: md:00002221:  strerror(saved_err)), 
 maac: md:00002222:  errdetail_nonexistent_relation(saved_err, &reln->smgr_rnode))); 
 aaaaa GP_IGNORE: saae: smgr - ./backend/storage/smgr/smgr.c
-saae: smgr:00000418:  ereport(ERROR, 
-saae: smgr:00000419:  (errcode_for_file_access(), 
-saae: smgr:00000420:  errmsg("could not close relation %u/%u/%u: %m", 
-saae: smgr:00000421:  reln->smgr_rnode.spcNode, 
-saae: smgr:00000422:  reln->smgr_rnode.dbNode, 
-saae: smgr:00000423:  reln->smgr_rnode.relNode))); 
-saae: smgr:00000999:  ereport(WARNING, 
-saae: smgr:00001000:  (errcode_for_file_access(), 
-saae: smgr:00001001:  errmsg("could not remove relation %u/%u/%u: %m", 
-saae: smgr:00001002:  rnode.spcNode, 
-saae: smgr:00001003:  rnode.dbNode, 
-saae: smgr:00001004:  rnode.relNode))); 
-saae: smgr:00001006:  ereport(WARNING, 
-saae: smgr:00001007:  (errcode_for_file_access(), 
-saae: smgr:00001008:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
-saae: smgr:00001009:  rnode.spcNode, 
-saae: smgr:00001010:  rnode.dbNode, 
-saae: smgr:00001011:  rnode.relNode, 
-saae: smgr:00001012:  relationName))); 
-saae: smgr:00001076:  ereport(WARNING, 
-saae: smgr:00001077:  (errcode_for_file_access(), 
-saae: smgr:00001078:  errmsg("could not remove filespace directory %u: %m", 
-saae: smgr:00001079:  filespaceOid))); 
-saae: smgr:00001161:  ereport(WARNING, 
-saae: smgr:00001162:  (errcode_for_file_access(), 
-saae: smgr:00001163:  errmsg("could not remove tablespace directory %u: %m", 
-saae: smgr:00001164:  tablespaceOid))); 
-saae: smgr:00001189:  ereport(WARNING, 
-saae: smgr:00001190:  (errcode_for_file_access(), 
-saae: smgr:00001191:  errmsg("could not remove database directory %u/%u: %m", 
-saae: smgr:00001192:  dbDirNode->tablespace, 
-saae: smgr:00001193:  dbDirNode->database))); 
-saae: smgr:00001332:  ereport(ERROR, 
-saae: smgr:00001333:  (errcode_for_file_access(), 
-saae: smgr:00001334:  errmsg("could not extend relation %u/%u/%u: %m", 
-saae: smgr:00001335:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001336:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001337:  reln->smgr_rnode.relNode), 
-saae: smgr:00001338:  errhint("Check free disk space."))); 
-saae: smgr:00001353:  ereport(ERROR, 
-saae: smgr:00001354:  (errcode_for_file_access(), 
-saae: smgr:00001355:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
-saae: smgr:00001356:  blocknum, 
-saae: smgr:00001357:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001358:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001359:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001377:  ereport(ERROR, 
-saae: smgr:00001378:  (errcode_for_file_access(), 
-saae: smgr:00001379:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
-saae: smgr:00001380:  blocknum, 
-saae: smgr:00001381:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001382:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001383:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001407:  ereport(ERROR, 
-saae: smgr:00001408:  (errcode_for_file_access(), 
-saae: smgr:00001409:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
-saae: smgr:00001410:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001411:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001412:  reln->smgr_rnode.relNode))); 
-saae: smgr:00001445:  ereport(ERROR, 
-saae: smgr:00001446:  (errcode_for_file_access(), 
-saae: smgr:00001447:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
-saae: smgr:00001448:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001449:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001450:  reln->smgr_rnode.relNode, 
-saae: smgr:00001451:  nblocks))); 
-saae: smgr:00001537:  ereport(ERROR, 
-saae: smgr:00001538:  (errcode_for_file_access(), 
-saae: smgr:00001539:  errmsg("could not sync relation %u/%u/%u: %m", 
-saae: smgr:00001540:  reln->smgr_rnode.spcNode, 
-saae: smgr:00001541:  reln->smgr_rnode.dbNode, 
-saae: smgr:00001542:  reln->smgr_rnode.relNode))); 
-saae: smgr:00003086:  ereport(WARNING, 
-saae: smgr:00003087:  (errcode_for_file_access(), 
-saae: smgr:00003088:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
-saae: smgr:00003089:  reln->smgr_rnode.spcNode, 
-saae: smgr:00003090:  reln->smgr_rnode.dbNode, 
-saae: smgr:00003091:  reln->smgr_rnode.relNode, 
-saae: smgr:00003092:  xlrec->blkno))); 
+saae: smgr:00000420:  ereport(ERROR, 
+saae: smgr:00000421:  (errcode_for_file_access(), 
+saae: smgr:00000422:  errmsg("could not close relation %u/%u/%u: %m", 
+saae: smgr:00000423:  reln->smgr_rnode.spcNode, 
+saae: smgr:00000424:  reln->smgr_rnode.dbNode, 
+saae: smgr:00000425:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001001:  ereport(WARNING, 
+saae: smgr:00001002:  (errcode_for_file_access(), 
+saae: smgr:00001003:  errmsg("could not remove relation %u/%u/%u: %m", 
+saae: smgr:00001004:  rnode.spcNode, 
+saae: smgr:00001005:  rnode.dbNode, 
+saae: smgr:00001006:  rnode.relNode))); 
+saae: smgr:00001008:  ereport(WARNING, 
+saae: smgr:00001009:  (errcode_for_file_access(), 
+saae: smgr:00001010:  errmsg("could not remove relation %u/%u/%u '%s': %m", 
+saae: smgr:00001011:  rnode.spcNode, 
+saae: smgr:00001012:  rnode.dbNode, 
+saae: smgr:00001013:  rnode.relNode, 
+saae: smgr:00001014:  relationName))); 
+saae: smgr:00001078:  ereport(WARNING, 
+saae: smgr:00001079:  (errcode_for_file_access(), 
+saae: smgr:00001080:  errmsg("could not remove filespace directory %u: %m", 
+saae: smgr:00001081:  filespaceOid))); 
+saae: smgr:00001163:  ereport(WARNING, 
+saae: smgr:00001164:  (errcode_for_file_access(), 
+saae: smgr:00001165:  errmsg("could not remove tablespace directory %u: %m", 
+saae: smgr:00001166:  tablespaceOid))); 
+saae: smgr:00001191:  ereport(WARNING, 
+saae: smgr:00001192:  (errcode_for_file_access(), 
+saae: smgr:00001193:  errmsg("could not remove database directory %u/%u: %m", 
+saae: smgr:00001194:  dbDirNode->tablespace, 
+saae: smgr:00001195:  dbDirNode->database))); 
+saae: smgr:00001334:  ereport(ERROR, 
+saae: smgr:00001335:  (errcode_for_file_access(), 
+saae: smgr:00001336:  errmsg("could not extend relation %u/%u/%u: %m", 
+saae: smgr:00001337:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001338:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001339:  reln->smgr_rnode.relNode), 
+saae: smgr:00001340:  errhint("Check free disk space."))); 
+saae: smgr:00001355:  ereport(ERROR, 
+saae: smgr:00001356:  (errcode_for_file_access(), 
+saae: smgr:00001357:  errmsg("could not read block %u of relation %u/%u/%u: %m", 
+saae: smgr:00001358:  blocknum, 
+saae: smgr:00001359:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001360:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001361:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001379:  ereport(ERROR, 
+saae: smgr:00001380:  (errcode_for_file_access(), 
+saae: smgr:00001381:  errmsg("could not write block %u of relation %u/%u/%u: %m", 
+saae: smgr:00001382:  blocknum, 
+saae: smgr:00001383:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001384:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001385:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001409:  ereport(ERROR, 
+saae: smgr:00001410:  (errcode_for_file_access(), 
+saae: smgr:00001411:  errmsg("could not count blocks of relation %u/%u/%u: %m", 
+saae: smgr:00001412:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001413:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001414:  reln->smgr_rnode.relNode))); 
+saae: smgr:00001447:  ereport(ERROR, 
+saae: smgr:00001448:  (errcode_for_file_access(), 
+saae: smgr:00001449:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+saae: smgr:00001450:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001451:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001452:  reln->smgr_rnode.relNode, 
+saae: smgr:00001453:  nblocks))); 
+saae: smgr:00001539:  ereport(ERROR, 
+saae: smgr:00001540:  (errcode_for_file_access(), 
+saae: smgr:00001541:  errmsg("could not sync relation %u/%u/%u: %m", 
+saae: smgr:00001542:  reln->smgr_rnode.spcNode, 
+saae: smgr:00001543:  reln->smgr_rnode.dbNode, 
+saae: smgr:00001544:  reln->smgr_rnode.relNode))); 
+saae: smgr:00003101:  ereport(WARNING, 
+saae: smgr:00003102:  (errcode_for_file_access(), 
+saae: smgr:00003103:  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m", 
+saae: smgr:00003104:  reln->smgr_rnode.spcNode, 
+saae: smgr:00003105:  reln->smgr_rnode.dbNode, 
+saae: smgr:00003106:  reln->smgr_rnode.relNode, 
+saae: smgr:00003107:  xlrec->blkno))); 
 aaaaa GP_IGNORE: faai: fastpath - ./backend/tcop/fastpath.c
 faai: fastpath:00000106:  ereport(FATAL, 
 faai: fastpath:00000107:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
@@ -14561,87 +14565,87 @@ aaba: arrayfuncs:00002854:  ereport(ERROR,
 aaba: arrayfuncs:00002855:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
 aaba: arrayfuncs:00002856:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
 aaba: arrayfuncs:00002857:  ndims, MAXDIM))); 
-aaba: arrayfuncs:00002899:  ereport(ERROR, 
-aaba: arrayfuncs:00002900:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aaba: arrayfuncs:00002901:  errmsg("array size exceeds the maximum allowed (%d)", 
-aaba: arrayfuncs:00002902:  (int) MaxAllocSize))); 
-aaba: arrayfuncs:00003011:  ereport(ERROR, 
-aaba: arrayfuncs:00003012:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-aaba: arrayfuncs:00003013:  errmsg("null array element not allowed in this context"))); 
-aaba: arrayfuncs:00003072:  ereport(ERROR, 
-aaba: arrayfuncs:00003073:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-aaba: arrayfuncs:00003074:  errmsg("cannot compare arrays of different element types"))); 
-aaba: arrayfuncs:00003095:  ereport(ERROR, 
-aaba: arrayfuncs:00003096:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-aaba: arrayfuncs:00003097:  errmsg("could not identify an equality operator for type %s", 
-aaba: arrayfuncs:00003098:  format_type_be(element_type)))); 
-aaba: arrayfuncs:00003279:  ereport(ERROR, 
-aaba: arrayfuncs:00003280:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-aaba: arrayfuncs:00003281:  errmsg("cannot compare arrays of different element types"))); 
-aaba: arrayfuncs:00003296:  ereport(ERROR, 
-aaba: arrayfuncs:00003297:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-aaba: arrayfuncs:00003298:  errmsg("could not identify a comparison function for type %s", 
-aaba: arrayfuncs:00003299:  format_type_be(element_type)))); 
-aaba: arrayfuncs:00003479:  ereport(ERROR, 
-aaba: arrayfuncs:00003480:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-aaba: arrayfuncs:00003481:  errmsg("cannot compare arrays of different element types"))); 
-aaba: arrayfuncs:00003496:  ereport(ERROR, 
-aaba: arrayfuncs:00003497:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-aaba: arrayfuncs:00003498:  errmsg("could not identify an equality operator for type %s", 
-aaba: arrayfuncs:00003499:  format_type_be(element_type)))); 
-aaba: arrayfuncs:00004230:  ereport(ERROR, 
-aaba: arrayfuncs:00004231:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: arrayfuncs:00004232:  errmsg("could not determine target array type"))); 
-aaba: arrayfuncs:00004236:  ereport(ERROR, 
-aaba: arrayfuncs:00004237:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: arrayfuncs:00004238:  errmsg("target type is not an array"))); 
-aaba: arrayfuncs:00004248:  ereport(ERROR, 
-aaba: arrayfuncs:00004249:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaba: arrayfuncs:00004250:  errmsg("array coercion to domain type elements not " 
-aaba: arrayfuncs:00004251:  "currently supported"))); 
-aaba: arrayfuncs:00004646:  ereport(ERROR, 
-aaba: arrayfuncs:00004647:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-aaba: arrayfuncs:00004648:  errmsg("dimension array or low bound array cannot be NULL"))); 
-aaba: arrayfuncs:00004686:  ereport(ERROR, 
-aaba: arrayfuncs:00004687:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-aaba: arrayfuncs:00004688:  errmsg("dimension array or low bound array cannot be NULL"))); 
-aaba: arrayfuncs:00004748:  ereport(ERROR, 
-aaba: arrayfuncs:00004749:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
-aaba: arrayfuncs:00004750:  errmsg("wrong number of array subscripts"), 
-aaba: arrayfuncs:00004751:  errdetail("Dimension array must be one dimensional."))); 
-aaba: arrayfuncs:00004754:  ereport(ERROR, 
-aaba: arrayfuncs:00004755:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
-aaba: arrayfuncs:00004756:  errmsg("wrong range of array subscripts"), 
-aaba: arrayfuncs:00004757:  errdetail("Lower bound of dimension array must be one."))); 
-aaba: arrayfuncs:00004760:  ereport(ERROR, 
-aaba: arrayfuncs:00004761:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-aaba: arrayfuncs:00004762:  errmsg("dimension values cannot be null"))); 
-aaba: arrayfuncs:00004768:  ereport(ERROR, 
-aaba: arrayfuncs:00004769:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: arrayfuncs:00004770:  errmsg("invalid number of dimensions: %d", ndims))); 
-aaba: arrayfuncs:00004772:  ereport(ERROR, 
-aaba: arrayfuncs:00004773:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aaba: arrayfuncs:00004774:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
-aaba: arrayfuncs:00004775:  ndims, MAXDIM))); 
-aaba: arrayfuncs:00004780:  ereport(ERROR, 
-aaba: arrayfuncs:00004781:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
-aaba: arrayfuncs:00004782:  errmsg("wrong number of array subscripts"), 
-aaba: arrayfuncs:00004783:  errdetail("Dimension array must be one dimensional."))); 
-aaba: arrayfuncs:00004786:  ereport(ERROR, 
-aaba: arrayfuncs:00004787:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
-aaba: arrayfuncs:00004788:  errmsg("wrong range of array subscripts"), 
-aaba: arrayfuncs:00004789:  errdetail("Lower bound of dimension array must be one."))); 
-aaba: arrayfuncs:00004792:  ereport(ERROR, 
-aaba: arrayfuncs:00004793:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-aaba: arrayfuncs:00004794:  errmsg("dimension values cannot be null"))); 
-aaba: arrayfuncs:00004797:  ereport(ERROR, 
-aaba: arrayfuncs:00004798:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
-aaba: arrayfuncs:00004799:  errmsg("wrong number of array subscripts"), 
-aaba: arrayfuncs:00004800:  errdetail("Low bound array has different size than dimensions array."))); 
-aaba: arrayfuncs:00004868:  ereport(ERROR, 
-aaba: arrayfuncs:00004869:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aaba: arrayfuncs:00004870:  errmsg("array size exceeds the maximum allowed (%d)", 
-aaba: arrayfuncs:00004871:  (int) MaxAllocSize))); 
+aaba: arrayfuncs:00002917:  ereport(ERROR, 
+aaba: arrayfuncs:00002918:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aaba: arrayfuncs:00002919:  errmsg("array size exceeds the maximum allowed (%d)", 
+aaba: arrayfuncs:00002920:  (int) MaxAllocSize))); 
+aaba: arrayfuncs:00003032:  ereport(ERROR, 
+aaba: arrayfuncs:00003033:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+aaba: arrayfuncs:00003034:  errmsg("null array element not allowed in this context"))); 
+aaba: arrayfuncs:00003093:  ereport(ERROR, 
+aaba: arrayfuncs:00003094:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+aaba: arrayfuncs:00003095:  errmsg("cannot compare arrays of different element types"))); 
+aaba: arrayfuncs:00003116:  ereport(ERROR, 
+aaba: arrayfuncs:00003117:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+aaba: arrayfuncs:00003118:  errmsg("could not identify an equality operator for type %s", 
+aaba: arrayfuncs:00003119:  format_type_be(element_type)))); 
+aaba: arrayfuncs:00003300:  ereport(ERROR, 
+aaba: arrayfuncs:00003301:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+aaba: arrayfuncs:00003302:  errmsg("cannot compare arrays of different element types"))); 
+aaba: arrayfuncs:00003317:  ereport(ERROR, 
+aaba: arrayfuncs:00003318:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+aaba: arrayfuncs:00003319:  errmsg("could not identify a comparison function for type %s", 
+aaba: arrayfuncs:00003320:  format_type_be(element_type)))); 
+aaba: arrayfuncs:00003500:  ereport(ERROR, 
+aaba: arrayfuncs:00003501:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+aaba: arrayfuncs:00003502:  errmsg("cannot compare arrays of different element types"))); 
+aaba: arrayfuncs:00003517:  ereport(ERROR, 
+aaba: arrayfuncs:00003518:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+aaba: arrayfuncs:00003519:  errmsg("could not identify an equality operator for type %s", 
+aaba: arrayfuncs:00003520:  format_type_be(element_type)))); 
+aaba: arrayfuncs:00004251:  ereport(ERROR, 
+aaba: arrayfuncs:00004252:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: arrayfuncs:00004253:  errmsg("could not determine target array type"))); 
+aaba: arrayfuncs:00004257:  ereport(ERROR, 
+aaba: arrayfuncs:00004258:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: arrayfuncs:00004259:  errmsg("target type is not an array"))); 
+aaba: arrayfuncs:00004269:  ereport(ERROR, 
+aaba: arrayfuncs:00004270:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaba: arrayfuncs:00004271:  errmsg("array coercion to domain type elements not " 
+aaba: arrayfuncs:00004272:  "currently supported"))); 
+aaba: arrayfuncs:00004667:  ereport(ERROR, 
+aaba: arrayfuncs:00004668:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+aaba: arrayfuncs:00004669:  errmsg("dimension array or low bound array cannot be NULL"))); 
+aaba: arrayfuncs:00004707:  ereport(ERROR, 
+aaba: arrayfuncs:00004708:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+aaba: arrayfuncs:00004709:  errmsg("dimension array or low bound array cannot be NULL"))); 
+aaba: arrayfuncs:00004769:  ereport(ERROR, 
+aaba: arrayfuncs:00004770:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+aaba: arrayfuncs:00004771:  errmsg("wrong number of array subscripts"), 
+aaba: arrayfuncs:00004772:  errdetail("Dimension array must be one dimensional."))); 
+aaba: arrayfuncs:00004775:  ereport(ERROR, 
+aaba: arrayfuncs:00004776:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+aaba: arrayfuncs:00004777:  errmsg("wrong range of array subscripts"), 
+aaba: arrayfuncs:00004778:  errdetail("Lower bound of dimension array must be one."))); 
+aaba: arrayfuncs:00004781:  ereport(ERROR, 
+aaba: arrayfuncs:00004782:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+aaba: arrayfuncs:00004783:  errmsg("dimension values cannot be null"))); 
+aaba: arrayfuncs:00004789:  ereport(ERROR, 
+aaba: arrayfuncs:00004790:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: arrayfuncs:00004791:  errmsg("invalid number of dimensions: %d", ndims))); 
+aaba: arrayfuncs:00004793:  ereport(ERROR, 
+aaba: arrayfuncs:00004794:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aaba: arrayfuncs:00004795:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
+aaba: arrayfuncs:00004796:  ndims, MAXDIM))); 
+aaba: arrayfuncs:00004801:  ereport(ERROR, 
+aaba: arrayfuncs:00004802:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+aaba: arrayfuncs:00004803:  errmsg("wrong number of array subscripts"), 
+aaba: arrayfuncs:00004804:  errdetail("Dimension array must be one dimensional."))); 
+aaba: arrayfuncs:00004807:  ereport(ERROR, 
+aaba: arrayfuncs:00004808:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+aaba: arrayfuncs:00004809:  errmsg("wrong range of array subscripts"), 
+aaba: arrayfuncs:00004810:  errdetail("Lower bound of dimension array must be one."))); 
+aaba: arrayfuncs:00004813:  ereport(ERROR, 
+aaba: arrayfuncs:00004814:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+aaba: arrayfuncs:00004815:  errmsg("dimension values cannot be null"))); 
+aaba: arrayfuncs:00004818:  ereport(ERROR, 
+aaba: arrayfuncs:00004819:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+aaba: arrayfuncs:00004820:  errmsg("wrong number of array subscripts"), 
+aaba: arrayfuncs:00004821:  errdetail("Low bound array has different size than dimensions array."))); 
+aaba: arrayfuncs:00004889:  ereport(ERROR, 
+aaba: arrayfuncs:00004890:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aaba: arrayfuncs:00004891:  errmsg("array size exceeds the maximum allowed (%d)", 
+aaba: arrayfuncs:00004892:  (int) MaxAllocSize))); 
 aaaaa GP_IGNORE: aaba: arrayutils - ./backend/utils/adt/arrayutils.c
 aaba: arrayutils:00000091:  ereport(ERROR, 
 aaba: arrayutils:00000092:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -17734,68 +17738,68 @@ waaf: wchar:00001642:  buf,
 waaf: wchar:00001643:  pg_enc2name_tbl[src_encoding].name, 
 waaf: wchar:00001644:  pg_enc2name_tbl[dest_encoding].name))); 
 aaaaa GP_IGNORE: fabd: faultinjector - ./backend/utils/misc/faultinjector.c
-fabd: faultinjector:00000328:  ereport(ERROR, 
-fabd: faultinjector:00000329:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000330:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000354:  ereport(ERROR, 
-fabd: faultinjector:00000355:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-fabd: faultinjector:00000356:  (errmsg("not enough shared memory for fault injector")))); 
-fabd: faultinjector:00000484:  ereport(FATAL, 
-fabd: faultinjector:00000485:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000486:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000487:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000506:  ereport(ERROR, 
-fabd: faultinjector:00000507:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000508:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
-fabd: faultinjector:00000509:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000711:  ereport(WARNING, 
-fabd: faultinjector:00000712:  (errmsg("could not insert fault injection, no slots available" 
-fabd: faultinjector:00000713:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000714:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000715:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000748:  ereport(WARNING, 
-fabd: faultinjector:00000749:  (errmsg("could not insert fault injection, fault type not supported" 
-fabd: faultinjector:00000750:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000751:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000752:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000809:  ereport(WARNING, 
-fabd: faultinjector:00000810:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
-fabd: faultinjector:00000811:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000812:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000813:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000833:  ereport(WARNING, 
-fabd: faultinjector:00000834:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000835:  "segment not in primary or mirror role, " 
-fabd: faultinjector:00000836:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000837:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000838:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000852:  ereport(WARNING, 
-fabd: faultinjector:00000853:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000854:  "segment not in master role, " 
-fabd: faultinjector:00000855:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000856:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000857:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000873:  ereport(WARNING, 
-fabd: faultinjector:00000874:  (errmsg("could not insert fault injection entry into table, no memory, " 
-fabd: faultinjector:00000875:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000876:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000877:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000887:  ereport(WARNING, 
-fabd: faultinjector:00000888:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000889:  "entry already exists, " 
-fabd: faultinjector:00000890:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000891:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000892:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000951:  ereport(WARNING, 
-fabd: faultinjector:00000952:  (errmsg("could not update fault injection hash entry with fault injection status, " 
-fabd: faultinjector:00000953:  "no entry found, " 
-fabd: faultinjector:00000954:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000955:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000956:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00001182:  ereport(WARNING, 
-fabd: faultinjector:00001183:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00001184:  FaultInjectorIdentifierEnumToString[identifier], 
-fabd: faultinjector:00001185:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000332:  ereport(ERROR, 
+fabd: faultinjector:00000333:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000334:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000358:  ereport(ERROR, 
+fabd: faultinjector:00000359:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+fabd: faultinjector:00000360:  (errmsg("not enough shared memory for fault injector")))); 
+fabd: faultinjector:00000488:  ereport(FATAL, 
+fabd: faultinjector:00000489:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000490:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000491:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000510:  ereport(ERROR, 
+fabd: faultinjector:00000511:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000512:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
+fabd: faultinjector:00000513:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
+fabd: faultinjector:00000715:  ereport(WARNING, 
+fabd: faultinjector:00000716:  (errmsg("could not insert fault injection, no slots available" 
+fabd: faultinjector:00000717:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000718:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000719:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000752:  ereport(WARNING, 
+fabd: faultinjector:00000753:  (errmsg("could not insert fault injection, fault type not supported" 
+fabd: faultinjector:00000754:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000755:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000756:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000815:  ereport(WARNING, 
+fabd: faultinjector:00000816:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
+fabd: faultinjector:00000817:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000818:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000819:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000839:  ereport(WARNING, 
+fabd: faultinjector:00000840:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000841:  "segment not in primary or mirror role, " 
+fabd: faultinjector:00000842:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000843:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000844:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000858:  ereport(WARNING, 
+fabd: faultinjector:00000859:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000860:  "segment not in master role, " 
+fabd: faultinjector:00000861:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000862:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000863:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000879:  ereport(WARNING, 
+fabd: faultinjector:00000880:  (errmsg("could not insert fault injection entry into table, no memory, " 
+fabd: faultinjector:00000881:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000882:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000883:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000893:  ereport(WARNING, 
+fabd: faultinjector:00000894:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000895:  "entry already exists, " 
+fabd: faultinjector:00000896:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000897:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000898:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000957:  ereport(WARNING, 
+fabd: faultinjector:00000958:  (errmsg("could not update fault injection hash entry with fault injection status, " 
+fabd: faultinjector:00000959:  "no entry found, " 
+fabd: faultinjector:00000960:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000961:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000962:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00001188:  ereport(WARNING, 
+fabd: faultinjector:00001189:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00001190:  FaultInjectorIdentifierEnumToString[identifier], 
+fabd: faultinjector:00001191:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
 aaaaa GP_IGNORE: gaai: gucxfile - ./backend/utils/misc/guc-file.c
 gaai: gucxfile:00000557: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
 gaai: gucxfile:00000558:  
