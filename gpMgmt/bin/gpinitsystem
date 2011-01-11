@@ -1748,11 +1748,17 @@ while getopts ":v'?'aiqe:c:l:-:p:m:h:on:s:b:!DB:SI:O:" opt
 				D ) DEBUG_LEVEL=1 ;;
 				B ) BATCH_DEFAULT=$OPTARG ;;
 				S ) MIRROR_TYPE=1 ;;
-		                I ) INPUT_CONFIG=$OPTARG ;;
-		                O ) OUTPUT_CONFIG=$OPTARG ;;
+				I ) INPUT_CONFIG=$OPTARG ;;
+				O ) OUTPUT_CONFIG=$OPTARG ;;
 				- ) # Long options ...
 					NAME=${OPTARG%%=*}
-					VAL=${OPTARG#*=} 
+					VAL=${OPTARG#*=}
+					# Check if we are missing the long option value.  Currently all
+					# long options require a value so we can just do the check once.
+					if [ x"$NAME" == x"$VAL" ]; then
+						LOG_MSG "[FATAL]:-Missing value for option $NAME" 1;
+						USAGE;
+					fi
 					case $NAME in
 						"max_connections" ) MASTER_MAX_CONNECT=$VAL ;;
 						"shared_buffers"  ) NEW_BUFFERS=$VAL ;;
