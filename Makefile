@@ -363,6 +363,12 @@ define BUILD_STEPS
 endef
 endif
 
+define MAKE_ISO
+	@which mkisofs > /dev/null 2>&1 || \
+	 (echo "cannot find mkisofs in your path, unable to build ISO"; exit 1)
+	mkisofs -r -J -iso-level 4 -f -o $(INSTLOC)/../greenplum-db.iso $(INSTLOC)
+endef
+
 #---------------------------------------------------------------------
 # Miscellaneous special purpose targets
 #---------------------------------------------------------------------
@@ -418,6 +424,11 @@ devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-testutils --enabl
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	$(BUILD_STEPS)
 
+# For Aurora / Chorus
+devel-iso : INSTLOC=$(DEVPATH)
+devel-iso: devel
+	$(MAKE_ISO)
+
 #---------------------------------------------------------------------
 # Release builds
 #---------------------------------------------------------------------
@@ -447,6 +458,11 @@ dist_faultinj : LOADERSINSTLOC=$(LOADERSDISTPATH)
 dist_faultinj : CONFIGFLAGS+= --enable-testutils --enable-debugbreak
 dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	$(BUILD_STEPS)
+
+# ISO build for Chorus / Aurora
+dist-iso : INSTLOC=$(DISTPATH)
+dist-iso: dist
+	$(MAKE_ISO)
 
 #---------------------------------------------------------------------
 # clientTools
