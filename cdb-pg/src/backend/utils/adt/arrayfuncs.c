@@ -882,7 +882,7 @@ CopyArrayEls(ArrayType *array,
 		if (bitmap)
 		{
 			bitmask <<= 1;
-			if (bitmask == 0x100)
+			if (bitmask == 0x100 /* (1<<8) */)
 			{
 				*bitmap++ = bitval;
 				bitval = 0;
@@ -1060,7 +1060,7 @@ array_out(PG_FUNCTION_ARGS)
 		if (bitmap)
 		{
 			bitmask <<= 1;
-			if (bitmask == 0x100)
+			if (bitmask == 0x100 /* (1<<8) */)
 			{
 				bitmap++;
 				bitmask = 1;
@@ -1524,7 +1524,7 @@ array_send(PG_FUNCTION_ARGS)
 		if (bitmap)
 		{
 			bitmask <<= 1;
-			if (bitmask == 0x100)
+			if (bitmask == 0x100 /* (1<<8) */)
 			{
 				bitmap++;
 				bitmask = 1;
@@ -2735,7 +2735,7 @@ array_map(FunctionCallInfo fcinfo, Oid inpType, Oid retType,
 		if (bitmap)
 		{
 			bitmask <<= 1;
-			if (bitmask == 0x100)
+			if (bitmask == 0x100 /* (1<<8) */)
 			{
 				bitmap++;
 				bitmask = 1;
@@ -3046,7 +3046,7 @@ deconstruct_array(ArrayType *array,
 		if (bitmap)
 		{
 			bitmask <<= 1;
-			if (bitmask == 0x100)
+			if (bitmask == 0x100 /* (1<<8) */)
 			{
 				bitmap++;
 				bitmask = 1;
@@ -3174,7 +3174,7 @@ array_eq(PG_FUNCTION_ARGS)
 
 			/* advance bitmap pointers if any */
 			bitmask <<= 1;
-			if (bitmask == 0x100)
+			if (bitmask == 0x100 /* (1<<8) */)
 			{
 				if (bitmap1)
 					bitmap1++;
@@ -3375,7 +3375,7 @@ array_cmp(FunctionCallInfo fcinfo)
 
 		/* advance bitmap pointers if any */
 		bitmask <<= 1;
-		if (bitmask == 0x100)
+		if (bitmask == 0x100 /* (1<<8) */)
 		{
 			if (bitmap1)
 				bitmap1++;
@@ -3565,7 +3565,7 @@ array_contain_compare(ArrayType *array1, ArrayType *array2, bool matchall,
 
 		/* advance bitmap pointer if any */
 		bitmask <<= 1;
-		if (bitmask == 0x100)
+		if (bitmask == 0x100 /* (1<<8) */)
 		{
 			if (bitmap1)
 				bitmap1++;
@@ -3807,7 +3807,7 @@ array_seek(char *ptr, int offset, bits8 *nullbitmap, int nitems,
 				ptr = (char *) att_align_nominal(ptr, typalign);
 			}
 			bitmask <<= 1;
-			if (bitmask == 0x100)
+			if (bitmask == 0x100 /* (1<<8) */)
 			{
 				nullbitmap++;
 				bitmask = 1;
@@ -3910,7 +3910,7 @@ array_bitmap_copy(bits8 *destbitmap, int destoffset,
 			else
 				destbitval &= ~destbitmask;
 			destbitmask <<= 1;
-			if (destbitmask == 0x100)
+			if (destbitmask == 0x100 /* (1<<8) */)
 			{
 				*destbitmap++ = destbitval;
 				destbitmask = 1;
@@ -3918,7 +3918,7 @@ array_bitmap_copy(bits8 *destbitmap, int destoffset,
 					destbitval = *destbitmap;
 			}
 			srcbitmask <<= 1;
-			if (srcbitmask == 0x100)
+			if (srcbitmask == 0x100 /* (1<<8) */)
 			{
 				srcbitmap++;
 				srcbitmask = 1;
@@ -3935,7 +3935,7 @@ array_bitmap_copy(bits8 *destbitmap, int destoffset,
 		{
 			destbitval |= destbitmask;
 			destbitmask <<= 1;
-			if (destbitmask == 0x100)
+			if (destbitmask == 0x100 /* (1<<8) */)
 			{
 				*destbitmap++ = destbitval;
 				destbitmask = 1;

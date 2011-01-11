@@ -2307,6 +2307,17 @@ static void FastPathScalarArrayOp(ScalarArrayOpExpr *opexpr, ScalarArrayOpExprSt
 		}
 		else
 			Assert(!"Wrong optimize_funcoid");
+
+		/* advance bitmap pointer if any */
+		if (bitmap)
+		{
+			bitmask <<= 1;
+			if (bitmask == 0x100 /* 1<<8 */)
+			{
+				bitmap++;
+				bitmask = 1;
+			}
+		}
 	}
 
 	/* Now we are sure we can fast path this */
@@ -2485,7 +2496,7 @@ ExecEvalScalarArrayOp(ScalarArrayOpExprState *sstate,
 		if (bitmap)
 		{
 			bitmask <<= 1;
-			if (bitmask == 0x100)
+			if (bitmask == 0x100 /* 1<<8 */)
 			{
 				bitmap++;
 				bitmask = 1;
