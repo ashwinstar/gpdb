@@ -39,6 +39,10 @@
    create index on pg_partition_rule(parchildrelid, parparentrule, parruleord) with (indexid=5015);
    create index on pg_partition_rule(paroid, parparentrule, parruleord) with (indexid=5026,indexname=pg_partition_rule_paroid_parentrule_ruleord_index);
 
+   alter table pg_partition_rule add fk paroid on pg_partition(oid);
+   alter table pg_partition_rule add fk parchildrelid on pg_class(oid);
+   alter table pg_partition_rule add fk parparentrule on pg_partition_rule(oid);
+
    TIDYCAT_ENDDEF
 */
 

@@ -824,7 +824,7 @@ sub parsecols
 
 sub parsetab
 {
-	my ($alltabs, $bigstr) = @_;
+	my ($alltabs, $bigstr, $filnam) = @_;
 	
 	my $tabdef = $bigstr;
 
@@ -845,7 +845,7 @@ sub parsetab
 	$tname =~ s/\s+$//;
 	$tname = lc($tname);
 
-	$alltabs->{$tname} = {tabdef_text => $tabdef};
+	$alltabs->{$tname} = {tabdef_text => $tabdef, filename => $filnam };
 
 	if ($bigstr =~ m/\s*with\s*\(.*\)/is)
 	{
@@ -1048,7 +1048,7 @@ sub parsetab
 
 sub parsetabdef
 {
-	my ($alltabs, $bigstr) = @_;
+	my ($alltabs, $bigstr, $filnam) = @_;
 	my @keys;
 
 	# NOTE: this gets messed up by semicolons in comments!!
@@ -1060,7 +1060,7 @@ sub parsetabdef
 	{
 		if ($stat =~ m/^\s*create\s+table/is)
 		{
-			push @keys, parsetab($alltabs, $stat);
+			push @keys, parsetab($alltabs, $stat, $filnam);
 		}
 		elsif ($stat =~ m/^\s*create\s+(unique\s+)?index/is)
 		{
@@ -2362,7 +2362,7 @@ if (1)
 			# so we can feed that to formattab and generate the code
 			# for just the current entry.
 
-			my @keys = parsetabdef(\%alltabs, $bigstr);
+			my @keys = parsetabdef(\%alltabs, $bigstr, $filnam);
 
 #	print Data::Dumper->Dump([%alltabs]);
 

@@ -30,6 +30,8 @@
    create index on pg_partition(parrelid) with (indexid=5013);
    create index on pg_partition(parrelid, parlevel, paristemplate) with (indexid=5017,indexname=pg_partition_parrelid_parlevel_istemplate_index);
 
+   alter table pg_partition add fk parrelid on pg_class(oid);
+
    TIDYCAT_ENDDEF
 */
 
