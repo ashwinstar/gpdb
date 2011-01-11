@@ -44,9 +44,6 @@ found_errors = False
 GPCHECK_CONFIGFILE_GPHOME = None
 GPCHECK_CONFIGFILE_DCA = "/home/gpadmin/gpconfigs/gpcheck_dca_config"
 
-brocadeOid = '1.3.6.1.4.1.1588.2.1.1.1.1.6'
-alliedTelesisOid = '1.3.6.1.2.1.1.1'
-
 class GpCheckHost:
     def __init__(self, name):
         self.hostname = name
