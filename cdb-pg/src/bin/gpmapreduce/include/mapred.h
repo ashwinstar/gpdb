@@ -183,6 +183,7 @@ typedef struct {
 	mapred_plist_t      *parameters;     /* points into transition plist */
 	mapred_plist_t      *returns;
 	mapred_clist_t      *keys;
+	mapred_clist_t      *ordering;
 } mapred_reducer_t;
 
 typedef struct {

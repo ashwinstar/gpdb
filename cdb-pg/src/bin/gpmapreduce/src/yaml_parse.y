@@ -42,7 +42,7 @@
   _LANGUAGE_    _LIBRARY_
   _MAP_         _MODE_
   _NAME_        _NULL_
-  _OPTIMIZE_    _OUTPUT_
+  _OPTIMIZE_    _ORDERING_    _OUTPUT_
   _PARAMETERS_  _PORT_ 
   _QUERY_       _QUOTE_
   _REDUCE_      _RETURNS_     _RUN_
@@ -115,7 +115,7 @@ io_keywords:
     ;
 
 misc_keywords:
-    _INITIALIZE_|_KEYS_|_SOURCE_|_TARGET_
+    _INITIALIZE_|_KEYS_|_ORDERING_|_SOURCE_|_TARGET_
     ;
 
 keyword:
@@ -464,6 +464,8 @@ reduce_item:
       | _INITIALIZE_ scalar   { parser_set_initialize(parser, $2); }
       | _KEYS_                { parser_begin_keys(parser); }
            key_list
+      | _ORDERING_            { parser_begin_ordering(parser); }
+           ordering_list
 
     /* Error recovery */
 	  | _INPUT_               { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
@@ -736,6 +738,24 @@ key_list_2:
       /* Error recovery */
 	  | valid_yaml_map        { parser_add_key(parser, 0); }
 	  | valid_yaml_list       { parser_add_key(parser, 0); }
+      ;
+
+
+ordering_list:
+        scalar                { parser_add_ordering(parser, $1); }
+      | START_LIST ordering_list_2 END_LIST
+
+      /* Error recovery */
+	  | valid_yaml_map        { parser_add_ordering(parser, 0); }
+	  ;
+
+ordering_list_2:
+      /* empty */
+      | ordering_list_2 scalar { parser_add_ordering(parser, $2); }
+
+      /* Error recovery */
+	  | valid_yaml_map        { parser_add_ordering(parser, 0); }
+	  | valid_yaml_list       { parser_add_ordering(parser, 0); }
       ;
 
 

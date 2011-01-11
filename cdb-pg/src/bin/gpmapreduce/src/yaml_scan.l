@@ -114,6 +114,7 @@ int     yaml_scalar_yylex_destroy(void);
 <kw>transition   return _TRANSITION_; 
 <kw>user         return _USER_;
 <kw>version      return _VERSION_;
+<kw>ordering     return _ORDERING_;
 
    /* Matching specific fields */
 [a-z_]([a-z0-9_])*       return _ID_;

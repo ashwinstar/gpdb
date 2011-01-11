@@ -3,16 +3,18 @@
 -- s/mapreduce_\d+/mapreduce_DUMMY/
 -- m/\(\w+.\w+:[0-9]+\)$/
 -- s/\(\w+.\w+:[0-9]+\)$/\(file:line\)/
+-- m|file://([^/]*)/|
+-- s|file://([^/]*)/|file://HOSTNAME/|
 -- end_matchsubs
 mapreduce_15202_run_1
-ERROR:  plpython: could not compile function "mapreduce_15202_badpy_map" (plpython.c:2946)  (seg1 slice1 maple:50002 pid=15204)
+ERROR:  PL/Python: could not compile function "mapreduce_15202_badpy_map" (plpython.c:2946)  (seg1 slice1 hostname:50002 pid=15204)
 DETAIL:  
-	 <type 'exceptions.SyntaxError'>: EOL while scanning single-quoted string (mapreduce_15202_badpy_map, line 14)
-	 External table mapreduce_15202_indirectory, line 1 of file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log2: ""
+	 <type 'exceptions.SyntaxError'>: EOL while scanning string literal (mapreduce_15202_badpy_map, line 14)
+	 External table mapreduce_15202_indirectory, line 1 of file://hostname/path/access_log2: ""
 Error: Execution Failure
 mapreduce_15207_run_1
-ERROR:  plpython: function "mapreduce_15207_badpy_map" error fetching next item from iterator (plpython.c:2946)  (seg0 slice1 maple:50001 pid=15208)
+ERROR:  PL/Python: PL/Python function "mapreduce_15207_badpy_map" failed (plpython.c:3170)  (seg0 slice1 hostname:50001 pid=15208)
 DETAIL:  
-	 <type 'exceptions.Exception'>: error at runtime (, line 32)
-	 External table mapreduce_15207_indirectory, line 1 of file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log: ""
+	 <type 'exceptions.Exception'>: error at runtime (mapreduce_15207_badpy_map, line 32)
+	 External table mapreduce_15207_indirectory, line 1 of file://hostname/path/access_log: ""
 Error: Execution Failure

@@ -220,7 +220,7 @@ void parser_set_version(mapred_parser_t *parser, char *value)
 	 * We have already assured that the value matches a good regex,
 	 * but we must still validate that the version itself is supported.
 	 */
-	if (strcmp(value, "1.0.0.1") < 0 || strcmp(value, "1.0.0.2") > 0)
+	if (strcmp(value, "1.0.0.1") < 0 || strcmp(value, "1.0.0.3") > 0)
 	{
 		mapred_parse_error(parser, "Unrecognized VERSION");
 	}
@@ -1121,6 +1121,62 @@ void parser_set_reducer(mapred_parser_t *parser, char *value)
 	}
 }
 
+void parser_begin_ordering(mapred_parser_t *parser)
+{
+	XASSERT(parser->current_doc);
+	XASSERT(parser->current_obj);
+	XASSERT(parser->current_obj->kind == MAPRED_REDUCER);
+
+	/* 
+	 * We will validate that the document version is >= 1.0.0.3
+	 * durring object verification.
+	 */
+	if (parser->current_obj->u.reducer.ordering)
+	{
+		mapred_parse_error(parser, "Duplicate ORDERING for REDUCER");
+		return;
+	}
+}
+
+void parser_add_ordering(mapred_parser_t *parser, char *value)
+{
+	mapred_clist_t *newitem;
+	mapred_clist_t *clist;
+
+	XASSERT(parser->current_doc);
+	XASSERT(parser->current_obj);
+	XASSERT(parser->current_obj->kind == MAPRED_REDUCER);
+
+	/* 
+	 * Validate ordering:
+	 *   In general ordering can be an arbitrary expression so it is
+	 *   difficult to verify easily.  If we need more verification it
+	 *   makes sense to push that verification into the grammar.
+	 */
+	if (!value || strlen(value) == 0)
+	{
+		mapred_parse_error(parser, "Invalid ORDERING");
+		return;
+	}
+
+	/* Allocate the new list item */
+	newitem = malloc(sizeof(mapred_clist_t));
+	newitem->value = copyscalar(value);
+	newitem->next = (mapred_clist_t *) NULL;
+
+	/* Add the new item into the last slot of the list */
+	clist = parser->current_obj->u.reducer.ordering;
+	if (clist == NULL)
+		parser->current_obj->u.reducer.ordering = newitem;
+	else
+	{
+		while (clist && clist->next)
+			clist = clist->next;
+		clist->next = newitem;
+	}
+}
+
+
 /* List functions */
 void parser_begin_files(mapred_parser_t *parser)
 {
@@ -1528,7 +1584,7 @@ void mapred_dump_yaml(mapred_object_t *obj)
 		case MAPRED_DOCUMENT:
 			printf("---\n");
 			/* Dumping the current version */
-			printf("VERSION:          1.0.0.2\n");
+			printf("VERSION:          1.0.0.3\n");
 			if (obj->u.document.database)
 				printf("DATABASE:         %s\n", obj->u.document.database);
 			if (obj->u.document.user)
@@ -1738,6 +1794,20 @@ void mapred_dump_yaml(mapred_object_t *obj)
 			if (obj->u.reducer.initialize)
 				printf("      INITIALIZE: %s\n", 
 					   obj->u.reducer.initialize);
+			if (obj->u.reducer.keys)
+			{
+				mapred_clist_t *clist;
+				printf("      KEYS: |\n");
+				for (clist = obj->u.reducer.keys; clist; clist = clist->next)
+					printf("        - %s\n", clist->value);
+			}
+			if (obj->u.reducer.ordering)
+			{
+				mapred_clist_t *clist;
+				printf("      ORDERING: |\n");
+				for (clist = obj->u.reducer.ordering; clist; clist = clist->next)
+					printf("        - %s\n", clist->value);
+			}
 			break;
 
 		case MAPRED_TASK:
@@ -1901,6 +1971,46 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 						obj->u.function.parameters->next->next = NULL;						
 					}
 				}
+				else
+				{
+					switch (obj->kind)
+					{
+						case MAPRED_TRANSITION:
+							if (!obj->u.function.parameters->next)
+							{
+								error = mapred_obj_error(
+									obj, 
+									"requires at least 2 input parameters [state, arg1, ...]"
+									);
+							}
+							break;
+
+						case MAPRED_COMBINER:
+							if (!obj->u.function.parameters->next ||
+								obj->u.function.parameters->next->next)
+							{
+								error = mapred_obj_error(
+									obj, 
+									"requires exactly 2 input parameters [state1, state2]"
+									);
+							}
+							break;
+
+						case MAPRED_FINALIZER:
+							if (obj->u.function.parameters->next)
+							{
+								error = mapred_obj_error(
+									obj, 
+									"requires exactly 1 input parameter [state]"
+									);
+							}
+							break;
+
+						case MAPRED_MAPPER:
+						default:
+							break;
+					}
+				}
 
 				if (!obj->u.function.returns)
 				{
@@ -1917,6 +2027,17 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 						obj->u.function.returns->next->type = copyscalar("text");
 						obj->u.function.returns->next->name = copyscalar(name);
 						obj->u.function.returns->next->next = NULL;						
+					}
+				}
+				else if (obj->kind == MAPRED_TRANSITION ||
+						 obj->kind == MAPRED_COMBINER)
+				{
+					if (obj->u.function.returns->next)
+					{
+						error = mapred_obj_error(
+							obj,
+							"requires exactly one output parameter [state]"
+							);
 					}
 				}
 
@@ -1946,6 +2067,23 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 			 * Will verify that functions are valid for reducer input after we
 			 * have resolved the pointers.
 			 */
+
+			/*
+			 * It would be good to verify that ORDERING is not used in
+			 * older YAML formats, but that is difficult given the current
+			 * structure of the code.
+			 */
+
+			/*
+			 * ORDERING and COMBINER are incompatible 
+			 */
+			if (obj->u.reducer.ordering != NULL &&
+				obj->u.reducer.combiner.name)
+			{
+				error = mapred_obj_error(obj, 
+										 "REDUCERS cannot specify both a COMBINER "
+										 "function and an ORDERING specification");
+			}
 
 			/* Setup default "keys" */
 			if (!obj->u.reducer.keys)

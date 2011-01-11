@@ -2854,7 +2854,10 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 				XASSERT(plist);          /* state */
 				XASSERT(plist->next);    /* parameters */
 
-				bufcat(&buffer, "CREATE AGGREGATE ");
+				if (obj->u.reducer.ordering)
+					bufcat(&buffer, "CREATE ORDERED AGGREGATE ");
+				else
+					bufcat(&buffer, "CREATE AGGREGATE ");
 				bufcat(&buffer, doc->prefix);
 				bufcat(&buffer, obj->name);
 				bufcat(&buffer, " (");
@@ -3286,6 +3289,18 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 							if (plist->next)
 								bufcat(&buffer, ", ");
 						}
+						
+						/* Handle ORDERING, if specified */
+						clist = reducer->u.reducer.ordering;						
+						if (clist)
+							bufcat(&buffer, " ORDER BY ");
+						for(; clist; clist = clist->next)
+						{
+							bufcat(&buffer, clist->value);
+							if (clist->next)
+								bufcat(&buffer, ", ");
+						}
+
 					}
 					else
 					{

@@ -3,6 +3,8 @@
 -- s/mapreduce_\d+/mapreduce_DUMMY/
 -- m/\(\w+.\w+:[0-9]+\)$/
 -- s/\(\w+.\w+:[0-9]+\)$/\(file:line\)/
+-- m|file://([^/]*)/|
+-- s|file://([^/]*)/|file://HOSTNAME/|
 -- end_matchsubs
 Error: INPUT: Invalid NAME, at line 27
 Error: INPUT: Invalid NAME, at line 34

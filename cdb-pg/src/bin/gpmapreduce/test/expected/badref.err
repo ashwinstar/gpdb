@@ -3,32 +3,34 @@
 -- s/mapreduce_\d+/mapreduce_DUMMY/
 -- m/\(\w+.\w+:[0-9]+\)$/
 -- s/\(\w+.\w+:[0-9]+\)$/\(file:line\)/
+-- m|file://([^/]*)/|
+-- s|file://([^/]*)/|file://HOSTNAME/|
 -- end_matchsubs
-mapreduce_00000_run_1
+mapreduce_71243_run_1
 ERROR:  Could not assign a segment database for "file://invalidhost/path/to/file". There isn't a valid primary segment database on host "invalidhost"
 Error: Execution Failure
-mapreduce_00000_run_1
-ERROR:  could not translate host name "invalidhost", port "8080" to address: nodename nor servname provided, or not known (cdbutil.c:751)  (seg1 slice1 maple:50002 pid=49002) (cdbdisp.c:1460)
+mapreduce_71246_run_1
+ERROR:  could not translate host name "invalidhost", port "8080" to address: nodename nor servname provided, or not known (cdbutil.c:737)  (seg0 slice1 hostname:50000 pid=71247) (cdbdisp.c:1457)
 Error: Execution Failure
-mapreduce_00000_run_1
-NOTICE:  gfile stat /dev/null/badfile failure: Not a directory  (seg0 slice1 maple:50001 pid=49007)
-NOTICE:  fstream unable to open file /dev/null/badfile  (seg0 slice1 maple:50001 pid=49007)
-ERROR:  could not open "file://maple/dev/null/badfile" for reading: 404 file not found  (seg0 slice1 maple:50001 pid=49007)
+mapreduce_71252_run_1
+NOTICE:  gfile stat /dev/null/badfile failure: Not a directory  (seg0 slice1 hostname:50000 pid=71253)
+NOTICE:  fstream unable to open file /dev/null/badfile  (seg0 slice1 hostname:50000 pid=71253)
+ERROR:  could not open "file://hostname/dev/null/badfile" for reading: 404 file not found  (seg0 slice1 hostname:50000 pid=71253)
 Error: Execution Failure
-mapreduce_00000_run_1
-NOTICE:  gfile stat /badfile failure: No such file or directory  (seg0 slice1 maple:50001 pid=49010)
-NOTICE:  fstream unable to open file /badfile  (seg0 slice1 maple:50001 pid=49010)
-ERROR:  could not open "file://maple/badfile" for reading: 404 file not found  (seg0 slice1 maple:50001 pid=49010)
+mapreduce_71255_run_1
+NOTICE:  gfile stat /badfile failure: No such file or directory  (seg0 slice1 hostname:50000 pid=71256)
+NOTICE:  fstream unable to open file /badfile  (seg0 slice1 hostname:50000 pid=71256)
+ERROR:  could not open "file://hostname/badfile" for reading: 404 file not found  (seg0 slice1 hostname:50000 pid=71256)
 Error: Execution Failure
-mapreduce_00000_run_1
-ERROR:  external table mapreduce_00000_input_bad_exec command ended with error. sh: /dev/null: Permission denied  (seg0 slice1 maple:50001 pid=49013)
+mapreduce_71258_run_1
+ERROR:  external table mapreduce_71258_input_bad_exec command ended with error. sh: /dev/null: Permission denied  (seg1 slice1 hostname:60001 pid=71260)
 DETAIL:  Command: execute:/dev/null
 Error: Execution Failure
 Error: INPUT 'input_bad_table': Table 'invalid_table' not found, at line 56
 Error: Object creation Failure
-Error: RUN 'mapreduce_00000_run_1': SOURCE 'map_not_input' is neither an INPUT nor a TASK, at line 70
+Error: RUN 'mapreduce_71268_run_1': SOURCE 'map_not_input' is neither an INPUT nor a TASK, at line 70
 Error: Object Resolution Failure
-Error: RUN 'mapreduce_00000_run_1': TARGET 'map_not_output' is not defined in document, at line 83
+Error: RUN 'mapreduce_71269_run_1': TARGET 'map_not_output' is not defined in document, at line 83
 Error: Object Resolution Failure
 Error: TRANSITION 'invalid_transition': No such function, at line 90
 Error: Object creation Failure
@@ -42,7 +44,7 @@ Error: TASK 'badref_task': SOURCE 'invalid_input' not found in document, at line
 Error: Object Resolution Failure
 Error: MAP 'invalid_map': No such function, at line 131
 Error: Object creation Failure
-Error: RUN 'mapreduce_00000_run_1': SOURCE 'invalid_input' not found in document, at line 142
+Error: RUN 'mapreduce_71276_run_1': SOURCE 'invalid_input' not found in document, at line 142
 Error: Object Resolution Failure
-Error: RUN 'mapreduce_00000_run_1': TARGET 'invalid_output' is not defined in document, at line 152
+Error: RUN 'mapreduce_71277_run_1': TARGET 'invalid_output' is not defined in document, at line 152
 Error: Object Resolution Failure

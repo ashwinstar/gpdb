@@ -3,6 +3,8 @@
 -- s/mapreduce_\d+/mapreduce_DUMMY/
 -- m/\(\w+.\w+:[0-9]+\)$/
 -- s/\(\w+.\w+:[0-9]+\)$/\(file:line\)/
+-- m|file://([^/]*)/|
+-- s|file://([^/]*)/|file://HOSTNAME/|
 -- end_matchsubs
 Error: Greenplum MapReduce document must begin with a YAML MAPPING, at line 8
 Error: DOCUMENT: Missing VERSION, at line 4
@@ -283,42 +285,48 @@ Error: TRANSITION 'transition_mode_mapping': Invalid MODE, at line 644
 Error: TRANSITION 'transition_mode_list': Invalid MODE, at line 649
 Error: TRANSITION 'transition_parameters_empty': Invalid PARAMETERS, at line 673
 Error: TRANSITION 'transition_parameters_mapping': Invalid PARAMETERS, at line 678
-Error: TRANSITION 'transition_returns_empty': Invalid RETURNS, at line 685
-Error: TRANSITION 'transition_returns_mapping': Invalid RETURNS, at line 690
-Error: CONSOLIDATE: Invalid NAME, at line 694
-Error: CONSOLIDATE: Invalid NAME, at line 698
-Error: CONSOLIDATE: Invalid NAME, at line 702
-Error: CONSOLIDATE: Invalid NAME, at line 706
-Error: CONSOLIDATE: Invalid NAME, at line 710
-Error: CONSOLIDATE 'consolidate_language_empty': Invalid LANGUAGE, at line 717
-Error: CONSOLIDATE 'consolidate_language_mapping': Invalid LANGUAGE, at line 721
-Error: CONSOLIDATE 'consolidate_language_list': Invalid LANGUAGE, at line 725
-Error: CONSOLIDATE 'consolidate_function_empty': Invalid FUNCTION, at line 732
-Error: CONSOLIDATE 'consolidate_function_mapping': Invalid FUNCTION, at line 736
-Error: CONSOLIDATE 'consolidate_function_list': Invalid FUNCTION, at line 740
-Error: CONSOLIDATE 'consolidate_mode_empty': Invalid MODE, at line 747
-Error: CONSOLIDATE 'consolidate_mode_mapping': Invalid MODE, at line 752
-Error: CONSOLIDATE 'consolidate_mode_list': Invalid MODE, at line 757
-Error: CONSOLIDATE 'consolidate_parameters_empty': Invalid PARAMETERS, at line 781
-Error: CONSOLIDATE 'consolidate_parameters_mapping': Invalid PARAMETERS, at line 786
-Error: CONSOLIDATE 'consolidate_returns_empty': Invalid RETURNS, at line 793
-Error: CONSOLIDATE 'consolidate_returns_mapping': Invalid RETURNS, at line 798
-Error: FINALIZE: Invalid NAME, at line 802
-Error: FINALIZE: Invalid NAME, at line 806
-Error: FINALIZE: Invalid NAME, at line 810
-Error: FINALIZE: Invalid NAME, at line 814
-Error: FINALIZE: Invalid NAME, at line 818
-Error: FINALIZE 'finalize_language_empty': Invalid LANGUAGE, at line 825
-Error: FINALIZE 'finalize_language_mapping': Invalid LANGUAGE, at line 829
-Error: FINALIZE 'finalize_language_list': Invalid LANGUAGE, at line 833
-Error: FINALIZE 'finalize_function_empty': Invalid FUNCTION, at line 840
-Error: FINALIZE 'finalize_function_mapping': Invalid FUNCTION, at line 844
-Error: FINALIZE 'finalize_function_list': Invalid FUNCTION, at line 848
-Error: FINALIZE 'finalize_mode_empty': Invalid MODE, at line 855
-Error: FINALIZE 'finalize_mode_mapping': Invalid MODE, at line 860
-Error: FINALIZE 'finalize_mode_list': Invalid MODE, at line 865
-Error: FINALIZE 'finalize_parameters_empty': Invalid PARAMETERS, at line 889
-Error: FINALIZE 'finalize_parameters_mapping': Invalid PARAMETERS, at line 894
-Error: FINALIZE 'finalize_returns_empty': Invalid RETURNS, at line 901
-Error: FINALIZE 'finalize_returns_mapping': Invalid RETURNS, at line 906
+Error: TRANSITION 'transition_insufficient_parameters': requires at least 2 input parameters [state, arg1, ...], at line 679
+Error: TRANSITION 'transition_returns_empty': Invalid RETURNS, at line 690
+Error: TRANSITION 'transition_returns_mapping': Invalid RETURNS, at line 695
+Error: TRANSITION 'transition_returns_extra_values': requires exactly one output parameter [state], at line 696
+Error: CONSOLIDATE: Invalid NAME, at line 704
+Error: CONSOLIDATE: Invalid NAME, at line 708
+Error: CONSOLIDATE: Invalid NAME, at line 712
+Error: CONSOLIDATE: Invalid NAME, at line 716
+Error: CONSOLIDATE: Invalid NAME, at line 720
+Error: CONSOLIDATE 'consolidate_language_empty': Invalid LANGUAGE, at line 727
+Error: CONSOLIDATE 'consolidate_language_mapping': Invalid LANGUAGE, at line 731
+Error: CONSOLIDATE 'consolidate_language_list': Invalid LANGUAGE, at line 735
+Error: CONSOLIDATE 'consolidate_function_empty': Invalid FUNCTION, at line 742
+Error: CONSOLIDATE 'consolidate_function_mapping': Invalid FUNCTION, at line 746
+Error: CONSOLIDATE 'consolidate_function_list': Invalid FUNCTION, at line 750
+Error: CONSOLIDATE 'consolidate_mode_empty': Invalid MODE, at line 757
+Error: CONSOLIDATE 'consolidate_mode_mapping': Invalid MODE, at line 762
+Error: CONSOLIDATE 'consolidate_mode_list': Invalid MODE, at line 767
+Error: CONSOLIDATE 'consolidate_parameters_empty': Invalid PARAMETERS, at line 791
+Error: CONSOLIDATE 'consolidate_parameters_mapping': Invalid PARAMETERS, at line 796
+Error: CONSOLIDATE 'consolidate_parameters_insufficient': requires exactly 2 input parameters [state1, state2], at line 797
+Error: CONSOLIDATE 'consolidate_parameters_extra': requires exactly 2 input parameters [state1, state2], at line 802
+Error: CONSOLIDATE 'consolidate_returns_empty': Invalid RETURNS, at line 813
+Error: CONSOLIDATE 'consolidate_returns_mapping': Invalid RETURNS, at line 818
+Error: CONSOLIDATE 'consolidate_returns_extra': requires exactly one output parameter [state], at line 819
+Error: FINALIZE: Invalid NAME, at line 827
+Error: FINALIZE: Invalid NAME, at line 831
+Error: FINALIZE: Invalid NAME, at line 835
+Error: FINALIZE: Invalid NAME, at line 839
+Error: FINALIZE: Invalid NAME, at line 843
+Error: FINALIZE 'finalize_language_empty': Invalid LANGUAGE, at line 850
+Error: FINALIZE 'finalize_language_mapping': Invalid LANGUAGE, at line 854
+Error: FINALIZE 'finalize_language_list': Invalid LANGUAGE, at line 858
+Error: FINALIZE 'finalize_function_empty': Invalid FUNCTION, at line 865
+Error: FINALIZE 'finalize_function_mapping': Invalid FUNCTION, at line 869
+Error: FINALIZE 'finalize_function_list': Invalid FUNCTION, at line 873
+Error: FINALIZE 'finalize_mode_empty': Invalid MODE, at line 880
+Error: FINALIZE 'finalize_mode_mapping': Invalid MODE, at line 885
+Error: FINALIZE 'finalize_mode_list': Invalid MODE, at line 890
+Error: FINALIZE 'finalize_parameters_empty': Invalid PARAMETERS, at line 914
+Error: FINALIZE 'finalize_parameters_mapping': Invalid PARAMETERS, at line 919
+Error: FINALIZE 'finalize_parameters_extra': requires exactly 1 input parameter [state], at line 920
+Error: FINALIZE 'finalize_returns_empty': Invalid RETURNS, at line 931
+Error: FINALIZE 'finalize_returns_mapping': Invalid RETURNS, at line 936
 Error parsing file

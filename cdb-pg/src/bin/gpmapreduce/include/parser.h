@@ -91,12 +91,14 @@ void    parser_begin_columns(mapred_parser_t *parser);
 void parser_begin_parameters(mapred_parser_t *parser);
 void    parser_begin_returns(mapred_parser_t *parser);
 void       parser_begin_keys(mapred_parser_t *parser);
+void   parser_begin_ordering(mapred_parser_t *parser);
 
 void       parser_add_file(mapred_parser_t *parser, char *value);
 void     parser_add_column(mapred_parser_t *parser, char *value);
 void  parser_add_parameter(mapred_parser_t *parser, char *value);
 void     parser_add_return(mapred_parser_t *parser, char *value);
 void        parser_add_key(mapred_parser_t *parser, char *value);
+void   parser_add_ordering(mapred_parser_t *parser, char *value);
 
 /* scalar functions */
 void    parser_set_version(mapred_parser_t *parser, char *value);

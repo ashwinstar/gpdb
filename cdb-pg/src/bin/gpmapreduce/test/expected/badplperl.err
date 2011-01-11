@@ -3,13 +3,15 @@
 -- s/mapreduce_\d+/mapreduce_DUMMY/
 -- m/\(\w+.\w+:[0-9]+\)$/
 -- s/\(\w+.\w+:[0-9]+\)$/\(file:line\)/
+-- m|file://([^/]*)/|
+-- s|file://([^/]*)/|file://HOSTNAME/|
 -- end_matchsubs
 ERROR:  creation of Perl function failed
 DETAIL:  'require' trapped by operation mask at line 10.
 Error: Object creation Failure
-mapreduce_6503_run_1
-ERROR:  Perl function "mapreduce_6503_badpl_map" failed (plperl.c:1175)  (seg1 slice1 maple:50002 pid=6505)
+mapreduce_71099_run_1
+ERROR:  Perl function "mapreduce_71099_badpl_map" failed (plperl.c:1199)  (seg0 slice1 hostname:50000 pid=71100) (cdbdisp.c:1457)
 DETAIL:  
 	 badplmap: die die die at line 27.
-	 External table mapreduce_6503_indirectory, line 1 of file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log2: ""
+	 External table mapreduce_71099_indirectory, line 1 of file://hostname/path/access_log: ""
 Error: Execution Failure

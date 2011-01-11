@@ -568,7 +568,7 @@ DEFINE:
       LANGUAGE:  scalar
       FUNCTION:  scalar
       PARAMETERS:      {mapping: scalar}
-
+      
   # Weird MAP RETURNS      
   - MAP:
       NAME:      map_returns_empty
@@ -676,6 +676,11 @@ DEFINE:
       LANGUAGE:  scalar
       FUNCTION:  scalar
       PARAMETERS:      {mapping: scalar}
+  - TRANSITION:
+      NAME:      transition_insufficient_parameters
+      LANGUAGE:  scalar
+      FUNCTION:  scalar
+      PARAMETERS: [state]
 
   # Weird TRANSITION RETURNS      
   - TRANSITION:
@@ -688,7 +693,12 @@ DEFINE:
       LANGUAGE:  scalar
       FUNCTION:  scalar
       RETURNS:      {mapping: scalar}
-
+  - TRANSITION:
+      NAME:      transition_returns_extra_values
+      LANGUAGE:  scalar
+      FUNCTION:  scalar
+      RETURNS:  [state, extra]
+      
   # Weird CONSOLIDATE NAME
   - CONSOLIDATE:
       NAME:
@@ -784,7 +794,17 @@ DEFINE:
       LANGUAGE:  scalar
       FUNCTION:  scalar
       PARAMETERS:      {mapping: scalar}
-
+  - CONSOLIDATE:
+      NAME:      consolidate_parameters_insufficient
+      LANGUAGE:  scalar
+      FUNCTION:  scalar
+      PARAMETERS: [state]
+  - CONSOLIDATE:
+      NAME:      consolidate_parameters_extra
+      LANGUAGE:  scalar
+      FUNCTION:  scalar
+      PARAMETERS: [state, state2, extra]
+      
   # Weird CONSOLIDATE RETURNS      
   - CONSOLIDATE:
       NAME:      consolidate_returns_empty
@@ -796,7 +816,12 @@ DEFINE:
       LANGUAGE:  scalar
       FUNCTION:  scalar
       RETURNS:      {mapping: scalar}
-
+  - CONSOLIDATE:
+      NAME:      consolidate_returns_extra
+      LANGUAGE:  scalar
+      FUNCTION:  scalar
+      RETURNS:   [state, extra]
+      
   # Weird FINALIZE NAME
   - FINALIZE:
       NAME:
@@ -892,7 +917,12 @@ DEFINE:
       LANGUAGE:  scalar
       FUNCTION:  scalar
       PARAMETERS:      {mapping: scalar}
-
+  - FINALIZE:
+      NAME:      finalize_parameters_extra
+      LANGUAGE:  scalar
+      FUNCTION:  scalar
+      PARAMETERS: [state, extra]
+      
   # Weird FINALIZE RETURNS      
   - FINALIZE:
       NAME:      finalize_returns_empty
