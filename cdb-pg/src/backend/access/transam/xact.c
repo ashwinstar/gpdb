@@ -3024,7 +3024,7 @@ PrepareTransaction(void)
 	gxact = MarkAsPreparing(xid, 
 							&MyProc->localDistribXactRef,
 							prepareGID, prepared_at,
-							GetUserId(), MyDatabaseId);
+				GetUserId(), MyDatabaseId, NULL);
 	prepareGID = NULL;
 
 	/*
@@ -6129,7 +6129,7 @@ xact_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribut
 	{
 		/* the record contents are exactly the 2PC file */
 		RecreateTwoPhaseFile(record->xl_xid,
-							 XLogRecGetData(record), record->xl_len);
+				     XLogRecGetData(record), record->xl_len, &beginLoc);
 	}
 	else if (info == XLOG_XACT_COMMIT_PREPARED)
 	{

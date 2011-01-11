@@ -177,10 +177,12 @@ extern void mmxlog_add_database(
 		dbdir_agg_state **das, int *maxCount,
 		Oid database, Oid tablespace, char *caller);
 
+extern char *mmxlog_get_checkpoint_record_suffix(XLogRecord *checkpointRecord);
+
 extern bool mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel,
 		fspc_agg_state **f,
 		tspc_agg_state **t,
-		dbdir_agg_state **d);
+	        dbdir_agg_state **d);
 extern bool mmxlog_verify_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel);
 extern bool mmxlog_get_checkpoint_counts(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel, int *filespaceCount, int *tablespaceCount, int *databaseCount);
 

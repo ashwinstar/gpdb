@@ -1309,6 +1309,16 @@ FileRepResyncManager_ResyncFlatFiles(void)
 
 		FileRepSubProcess_ProcessSignals();		
 		
+		FileRep_InsertConfigLogEntry("run sync transition, resync pgxlog files");
+
+		status = XLogRecoverMirror();
+        
+		if (status != STATUS_OK) {
+		  break;
+		}
+
+		FileRepSubProcess_ProcessSignals();
+
 		break;
 	}
 

@@ -14,6 +14,7 @@
 
 #include "postgres.h"
 
+#include "access/twophase.h"
 #include "access/xlog.h"
 #include "access/xlogmm.h"
 #include "catalog/gp_segment_config.h"
@@ -855,7 +856,8 @@ mmxlog_log_create_relfilenode(Oid tablespace, Oid database,
 }
 
 /*
- * We need to make sure the memory for these maps doesn't go away.
+ * We need to make sure the memory for these maps doesn't
+ away.
  */
 static void *
 map_alloc(Size sz)
@@ -1476,6 +1478,7 @@ mmxlog_add_database(
 	(*das)->count++;
 }
 
+
 /*
  * Add filespace and tablespace OID => path maps to the checkpoint payload. This
  * is used by the standby to construct a valid picture of the filespace and
@@ -1485,12 +1488,12 @@ mmxlog_add_database(
  * NOTE: You must hold the PersistentObjLock before calling this routine!
  */
 void
-mmxlog_append_checkpoint_data(XLogRecData rdata[5])
+mmxlog_append_checkpoint_data(XLogRecData rdata[6])
 {
 	fspc_agg_state *f;
 	tspc_agg_state *t;
 	dbdir_agg_state *d;
-
+        
 	/* 
 	 * We must make sure no one traverses the rdata chain into uninitialised
 	 * data if we exit early, below.
@@ -1516,32 +1519,44 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[5])
 		return;
 	}
 
-	if (GpIdentity.dbid != MASTER_DBID)
-	{
-		if (Debug_persistent_recovery_print)
-		{
-			SUPPRESS_ERRCONTEXT_DECLARE;
+	if (GpIdentity.dbid != MASTER_DBID && gp_enable_new_two_phase_logic == false)
+	  {
+	    if (Debug_persistent_recovery_print)
+	      {
+		SUPPRESS_ERRCONTEXT_DECLARE;
 		
-			SUPPRESS_ERRCONTEXT_PUSH();
+		SUPPRESS_ERRCONTEXT_PUSH();
 		
-			elog(PersistentRecovery_DebugPrintLevel(), 
-				 "mmxlog_append_checkpoint_data: no tablespace and filespace information for checkpoint because GpIdentity.dbid (%d) is not master (%d)",
-				 GpIdentity.dbid,
-				 MASTER_DBID);
+		elog(PersistentRecovery_DebugPrintLevel(), 
+		     "mmxlog_append_checkpoint_data: no tablespace and filespace information for checkpoint because GpIdentity.dbid (%d) is not master (%d)",
+		     GpIdentity.dbid,
+		     MASTER_DBID);
 		
-			SUPPRESS_ERRCONTEXT_POP();
-		}
-		return;
-	}
+		SUPPRESS_ERRCONTEXT_POP();
+	      }
+	    return;
+	  }
 
-	f = NULL;
-	get_filespace_data(&f, "mmxlog_append_checkpoint_data");
+        if (GpIdentity.dbid != MASTER_DBID)
+	  {
+	    f = (fspc_agg_state  *)palloc0(sizeof(*f));
+            t = (tspc_agg_state  *)palloc0(sizeof(*t));
+            d = (dbdir_agg_state *)palloc0(sizeof(*d));
+            f->count  = 0;
+            t->count  = 0;
+            d-> count = 0;
+	  }
+        else
+	  {
+   	  f = NULL;
+	  get_filespace_data(&f, "mmxlog_append_checkpoint_data");
 	
-	t = NULL;
-	get_tablespace_data(&t, "mmxlog_append_checkpoint_data");
+	  t = NULL;
+	  get_tablespace_data(&t, "mmxlog_append_checkpoint_data");
 
-	d = NULL;
-	get_database_data(&d, "mmxlog_append_checkpoint_data");
+	  d = NULL;
+	  get_database_data(&d, "mmxlog_append_checkpoint_data");
+	  }
 
 	rdata[2].data = (char*)f;
 	rdata[2].buffer = InvalidBuffer;
@@ -1567,16 +1582,52 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[5])
 			 "mmxlog_append_checkpoint_data: %d filespaces, %d tablespaces, %d databases checkpoint information",
 			 f->count,
 			 t->count,
-			 d->count);
+		         d->count);
 	
 		SUPPRESS_ERRCONTEXT_POP();
 	}
 }
 
+
+/*
+ * Return a pointer to the first section following the master/mirror checkpoint information
+ */
+char *
+mmxlog_get_checkpoint_record_suffix(XLogRecord *checkpointRecord)
+{
+  char               *retPtr;
+  TMGXACT_CHECKPOINT *dtxCheckpoint;
+  fspc_agg_state     *f;
+  tspc_agg_state     *t;
+  dbdir_agg_state    *d;
+  int                 dtxCheckpointLen;
+  int                 fLen;
+  int                 tLen;
+  int                 dLen;
+
+  dtxCheckpoint = (TMGXACT_CHECKPOINT *)(XLogRecGetData(checkpointRecord) + sizeof(CheckPoint));
+  dtxCheckpointLen = TMGXACT_CHECKPOINT_BYTES(dtxCheckpoint->committedCount);
+
+  f = (fspc_agg_state *)(((char*)dtxCheckpoint) + dtxCheckpointLen);
+  fLen = FSPC_CHECKPOINT_BYTES(f->count);
+
+  t = (tspc_agg_state *)(((char *)f) + fLen);
+  tLen = TSPC_CHECKPOINT_BYTES(t->count);
+
+  d = (dbdir_agg_state *)(((char *)t) + tLen);
+  dLen = DBDIR_CHECKPOINT_BYTES(d->count);
+
+  retPtr = ((char *)d) + dLen;
+
+  return retPtr;
+
+}  /* end mmxlog_get_checkpoint_record_suffix */
+
+
 bool
 mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel,
-	fspc_agg_state **f,
-	tspc_agg_state **t,
+	fspc_agg_state  **f,
+	tspc_agg_state  **t,
 	dbdir_agg_state **d)
 {
 	int remainderLen;
@@ -1696,24 +1747,30 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 			 remainderLen,
 			 XLogLocationToString(beginLoc));
 	}
-	if (remainderLen != databaseInfoLen)
-	{
-		if (errlevel != -1)
-			ereport(errlevel,
-				 (errmsg("Bad checkpoint record length %u (Master mirroring database directory information: expected length %u, actual length %u, count %d) at location %s",
-						 checkpointLen,
-						 databaseInfoLen,
-						 remainderLen,
-						 (*d)->count,
-						 XLogLocationToString(beginLoc))));
-	
-		SUPPRESS_ERRCONTEXT_POP();
-		return false;
-	}
+
+        if (gp_enable_new_two_phase_logic == true)
+           remainderLen -= databaseInfoLen;
+
+        if ((gp_enable_new_two_phase_logic == true && remainderLen <= 0) ||
+            (gp_enable_new_two_phase_logic == false && remainderLen != databaseInfoLen))
+	  {
+	    if (errlevel != -1)
+	      ereport(errlevel,
+		      (errmsg("Bad checkpoint record length %u (Master mirroring database directory information: expected length %u, actual length %u, count %d) at location %s",
+			      checkpointLen,
+			      databaseInfoLen,
+			      remainderLen,
+			      (*d)->count,
+			      XLogLocationToString(beginLoc))));
+	    
+	    SUPPRESS_ERRCONTEXT_POP();
+	    return false;
+	  }
 
 	SUPPRESS_ERRCONTEXT_POP();
 	return true;
-}
+
+}  /* mmxlog_get_checkpoint_info */
 
 bool
 mmxlog_verify_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointLen, XLogRecPtr *beginLoc, int errlevel)

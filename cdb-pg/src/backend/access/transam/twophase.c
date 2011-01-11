@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * twophase.c
+ * Twophase.c
  *		Two-phase commit support functions.
  *
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
@@ -43,6 +43,7 @@
 #include <unistd.h>
 
 #include "access/heapam.h"
+#include "access/xlogmm.h"
 #include "access/subtrans.h"
 #include "access/transam.h"
 #include "access/twophase.h"
@@ -63,6 +64,7 @@
 
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbpersistentrecovery.h"
 
 #include "cdb/cdbpersistentrelation.h"
 #include "cdb/cdbmirroredflatfile.h"
@@ -108,10 +110,14 @@ int			max_prepared_xacts = 5;
  */
 #define GIDSIZE 200
 
+extern List *expectedTLIs;
+
+
 typedef struct GlobalTransactionData
 {
 	PGPROC		proc;			/* dummy proc */
 	TimestampTz prepared_at;	/* time of preparation */
+        XLogRecPtr  prepare_begin_lsn;  /* XLOG begging offset of prepare record */
 	XLogRecPtr	prepare_lsn;	/* XLOG offset of prepare record */
 	Oid			owner;			/* ID of user that executed the xact */
 	TransactionId locking_xid;	/* top-level XID of backend working on xact */
@@ -147,6 +153,18 @@ typedef struct TwoPhaseStateData
 static TwoPhaseStateData *TwoPhaseState;
 
 
+
+/*
+ * The following list is
+ */
+static HTAB *crashRecoverPostCheckpointPreparedTransactions_map_ht = NULL;
+
+bool gp_enable_new_two_phase_logic = true;
+
+static void add_recover_post_checkpoint_prepared_transactions_map_entry(TransactionId xid, XLogRecPtr *m, char *caller);
+
+static void remove_recover_post_checkpoint_prepared_transactions_map_entry(TransactionId xid, char *caller);
+
 static void RecordTransactionCommitPrepared(TransactionId xid,
 								const char *gid,
 								int nchildren,
@@ -158,6 +176,150 @@ static void RecordTransactionAbortPrepared(TransactionId xid,
 							   PersistentEndXactRecObjects *persistentPrepareObjects);
 static void ProcessRecords(char *bufptr, TransactionId xid,
 			   const TwoPhaseCallback callbacks[]);
+
+static TransactionId PrescanPreparedTransactionsOld(void);
+
+static TransactionId PrescanPreparedTransactionsNew(void);
+
+void EndPrepareOld(GlobalTransaction gxact);
+
+void EndPrepareNew(GlobalTransaction gxact);
+
+void RecoverPreparedTransactionsOld(void);
+
+void RecoverPreparedTransactionsNew(void);
+
+/*
+ * Generic initialisation of hash table.
+ */
+static HTAB *
+init_hash(const char *name, Size keysize, Size entrysize, int initialSize)
+{
+  HASHCTL ctl;
+
+  memset(&ctl, 0, sizeof(ctl));
+  ctl.keysize = keysize;
+  ctl.entrysize = entrysize;
+  ctl.hash = tag_hash;
+  return hash_create(name,
+		     initialSize,
+		     &ctl,
+		     HASH_ELEM | HASH_FUNCTION);
+
+
+}  /* end init_hash */
+
+
+/*
+ * Add a new mapping to the recover post checkpoint pprepared transactions hash table.
+ */
+static void
+add_recover_post_checkpoint_prepared_transactions_map_entry(TransactionId xid, XLogRecPtr *m, char *caller)
+{
+  prpt_map *entry = NULL;
+  bool      found = false;
+
+  if (Debug_persistent_print)
+     elog(Persistent_DebugPrintLevel(),
+          "add_recover_post_checkpoint_prepared_transactions_map_entry: start of function."
+       );
+
+  /*
+   * The table is lazily initialised.
+   */
+  if (crashRecoverPostCheckpointPreparedTransactions_map_ht == NULL)
+    {
+      if (Debug_persistent_print)
+	elog(Persistent_DebugPrintLevel(),
+	     "add_recover_post_checkpoint_prepared_transactions_map_entry: initial setup of global hash table. Caller = %s",
+             caller);
+    crashRecoverPostCheckpointPreparedTransactions_map_ht 
+                     = init_hash("two phase post checkpoint prepared transactions map",
+				 sizeof(TransactionId), /* keysize */
+				 sizeof(prpt_map),
+				 10 /* initialize for 10 entries */);
+    }
+  if (Debug_persistent_print)
+    elog(Persistent_DebugPrintLevel(),
+         "add_recover_post_checkpoint_prepared_transactions_map_entry: add entry xid = %u, XLogRecPtr = %s, caller = %s",
+         xid,
+         XLogLocationToString(m),
+         caller);
+
+  entry = hash_search(crashRecoverPostCheckpointPreparedTransactions_map_ht,
+		      &xid,
+		      HASH_ENTER,
+		      &found);
+
+  /*
+   * KAS should probably put out an error if found == true (i.e. it already exists).
+   */
+
+  if (Debug_persistent_print)
+    elog(Persistent_DebugPrintLevel(),
+       "add_recover_post_checkpoint_prepared_transactions_map_entry: add entry xid = %u, address prpt_map = %p",
+       xid,
+       entry);
+
+  /*
+   * If this is a new entry, we need to add the data, if we found
+   * an entry, we need to update it, so just copy our data
+   * right over the top.
+   */
+  memcpy(&entry->xlogrecptr, m, sizeof(XLogRecPtr));
+
+  if (Debug_persistent_print)
+    elog(Persistent_DebugPrintLevel(),
+           "Transaction id = %u, XLog Rec Ptr = %s, caller = %s",
+	   xid,
+	   XLogLocationToString(m),
+	   caller);
+
+}  /* end add_recover_post_checkpoint_prepared_transactions_map_entry */
+
+
+/*
+ * Remove a mapping from the recover post checkpoint prepared transactions hash table.
+ */
+static void
+remove_recover_post_checkpoint_prepared_transactions_map_entry(TransactionId xid, char *caller)
+{
+  prpt_map *entry = NULL;
+  bool      found = false;;
+
+  if (Debug_persistent_print)
+    elog(Persistent_DebugPrintLevel(),
+       "remove_recover_post_checkpoint_prepared_transactions_map_entry: entering..."
+      );
+
+  if (Debug_persistent_print)
+    elog(Persistent_DebugPrintLevel(),
+         "remove_recover_post_checkpoint_prepared_transactions_map_entry: TransactionId = %u",
+	 xid);
+
+  if (crashRecoverPostCheckpointPreparedTransactions_map_ht != NULL)
+    {
+     entry = hash_search(crashRecoverPostCheckpointPreparedTransactions_map_ht,
+                      &xid,
+                      HASH_REMOVE,
+                      &found);
+    }
+
+  /* KAS should probably put out an error if it is not found.  */
+  if (found == true)
+    {
+    if (Debug_persistent_print)
+      elog(Persistent_DebugPrintLevel(),
+     "remove_recover_post_checkpoint_prepared_transaction_map_entry found = TRUE");
+    }
+  else
+    {
+    if (Debug_persistent_print)
+	elog(Persistent_DebugPrintLevel(),
+         "remove_recover_post_checkpoint_prepared_transaction_map_entry found = FALSE");
+    }
+
+}  /* end remove_recover_post_checkpoint_prepared_transactions_map_entry */
 
 
 /*
@@ -225,10 +387,11 @@ TwoPhaseShmemInit(void)
  * assuming that we can use very much backend context.
  */
 GlobalTransaction
-MarkAsPreparing(TransactionId xid, 
+MarkAsPreparing(TransactionId xid,
 				LocalDistribXactRef *localDistribXactRef,
 				const char *gid,
-				TimestampTz prepared_at, Oid owner, Oid databaseid)
+				TimestampTz prepared_at, Oid owner, Oid databaseid
+		, XLogRecPtr *xlogrecptr)
 {
 	GlobalTransaction gxact;
 	int			i;
@@ -253,6 +416,9 @@ MarkAsPreparing(TransactionId xid,
 		if (!gxact->valid && !TransactionIdIsActive(gxact->locking_xid))
 		{
 			/* It's dead Jim ... remove from the active array */
+		        if (Debug_persistent_print)
+			   elog(Persistent_DebugPrintLevel(),
+                                "MarkAsPreparing: TwoPhaseState->numPrepXacts = %d, subtracting 1", TwoPhaseState->numPrepXacts);
 			TwoPhaseState->numPrepXacts--;
 			TwoPhaseState->prepXacts[i] = TwoPhaseState->prepXacts[TwoPhaseState->numPrepXacts];
 			/* and put it back in the freelist */
@@ -317,14 +483,50 @@ MarkAsPreparing(TransactionId xid,
 	/* initialize LSN to 0 (start of WAL) */
 	gxact->prepare_lsn.xlogid = 0;
 	gxact->prepare_lsn.xrecoff = 0;
+        if (xlogrecptr == NULL)
+	  {
+          gxact->prepare_begin_lsn.xlogid = 0;
+          gxact->prepare_begin_lsn.xrecoff = 0;
+#if 0
+          /* KAS debugging */
+          int temp1 = 0;
+          while (temp1 == 0)
+	    {
+	      sleep(1);
+	    }
+#endif
+          }
+        else
+	  {
+	    gxact->prepare_begin_lsn.xlogid = xlogrecptr->xlogid;
+            gxact->prepare_begin_lsn.xrecoff = xlogrecptr->xrecoff;
+#if 0
+	    /* KAS debugging */
+	    int temp1 = 0;
+	    while(temp1 == 0)
+	      {
+		sleep(1);
+	      }
+#endif
+
+            /* Assert(xlogrecptr->xrecoff > 0 || xlogrecptr->xlogid > 0); */
+	  }
 	gxact->owner = owner;
 	gxact->locking_xid = xid;
+	if (Debug_persistent_print)
+	   elog(Persistent_DebugPrintLevel(),
+              "MarkAsPreparing: gxact->proc.xid = %d, gxact->prepare_begin_lsn = %s, and set valid = false",
+		gxact->proc.xid, 
+		XLogLocationToString(&gxact->prepare_begin_lsn));
 	gxact->valid = false;
 	strcpy(gxact->gid, gid);
 	gxact->prepareAppendOnlyIntentCount = 0;
 
 	/* And insert it into the active array */
 	Assert(TwoPhaseState->numPrepXacts < max_prepared_xacts);
+	if (Debug_persistent_print)
+	  elog(Persistent_DebugPrintLevel(),
+               "MarkAsPreparing: TwoPhaseState->numPrepXacts = %d, adding one", TwoPhaseState->numPrepXacts);
 	TwoPhaseState->prepXacts[TwoPhaseState->numPrepXacts++] = gxact;
 
 	LWLockRelease(TwoPhaseStateLock);
@@ -367,10 +569,13 @@ MarkAsPrepared(GlobalTransaction gxact)
 	/* Lock here may be overkill, but I'm not convinced of that ... */
 	LWLockAcquire(TwoPhaseStateLock, LW_EXCLUSIVE);
 	Assert(!gxact->valid);
+	if (Debug_persistent_print)
+	  elog(Persistent_DebugPrintLevel(),
+               "MarkAsPrepared: gxact->proc.xid = %d  and set valid = true", gxact->proc.xid);
 	gxact->valid = true;
 	LWLockRelease(TwoPhaseStateLock);
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"MarkAsPrepared marking GXACT gid = %s as valid (prepared)", 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"MarkAsPrepared marking GXACT gid = %s as valid (prepared)",
 		gxact->gid);
 
 	/*
@@ -428,13 +633,13 @@ LockGXact(const char *gid, Oid user, bool raiseErrorIfNotFound)
 				  errmsg("permission denied to finish prepared transaction"),
 					 errhint("Must be superuser or the user that prepared the transaction.")));
 		}
-		
+
 		/*
 		 * Note: it probably would be possible to allow committing from another
 		 * database; but at the moment NOTIFY is known not to work and there
 		 * may be some other issues as well.  Hence disallow until someone
 		 * gets motivated to make it work.
-		 */		 
+		 */
 		if (MyDatabaseId != gxact->proc.databaseId &&  (Gp_role != GP_ROLE_EXECUTE))
 		{
 			LWLockRelease(TwoPhaseStateLock);
@@ -443,7 +648,7 @@ LockGXact(const char *gid, Oid user, bool raiseErrorIfNotFound)
 					 errmsg("prepared transaction belongs to another database"),
 					 errhint("Connect to the database where the transaction was prepared to finish it.")));
 		}
-		
+
 
 		/* OK for me to lock it */
 		gxact->locking_xid = GetTopTransactionId();
@@ -515,13 +720,23 @@ RemoveGXact(GlobalTransaction gxact)
 {
 	int			i;
 
+	if (Debug_persistent_print)
+	  elog(Persistent_DebugPrintLevel(),
+               "RemoveGXact: entering...");
+
 	LWLockAcquire(TwoPhaseStateLock, LW_EXCLUSIVE);
 
 	for (i = 0; i < TwoPhaseState->numPrepXacts; i++)
 	{
 		if (gxact == TwoPhaseState->prepXacts[i])
 		{
+		        if (Debug_persistent_print)
+		           elog(Persistent_DebugPrintLevel(),
+  		                "RemoveGXact: about to remove xid = %d", gxact->proc.xid);
 			/* remove from the active array */
+		        if (Debug_persistent_print)
+		           elog(Persistent_DebugPrintLevel(),
+		                "RemoveGXact: TwoPhaseState->numPrepXacts = %d, subtracting 1", TwoPhaseState->numPrepXacts);
 			TwoPhaseState->numPrepXacts--;
 			TwoPhaseState->prepXacts[i] = TwoPhaseState->prepXacts[TwoPhaseState->numPrepXacts];
 
@@ -795,7 +1010,7 @@ typedef struct TwoPhaseFileHeader
 	TimestampTz prepared_at;	/* time of preparation */
 	Oid			owner;			/* user running the transaction */
 	int32		nsubxacts;		/* number of following subxact XIDs */
-	int16		persistentPrepareObjectCount;	
+	int16		persistentPrepareObjectCount;
 								/* number of PersistentEndXactRec style objects */
 	char		gid[GIDSIZE];	/* GID for transaction */
 } TwoPhaseFileHeader;
@@ -918,38 +1133,51 @@ StartPrepare(GlobalTransaction gxact)
 		int16 objectCount;
 
 		Assert(persistentPrepareSerializeLen > 0);
-		persistentPrepareBuffer = 
+		persistentPrepareBuffer =
 					(char*)palloc(persistentPrepareSerializeLen);
-		
+
 		PersistentEndXactRec_Serialize(
 								&persistentPrepareObjects,
 								EndXactRecKind_Prepare,
 								&objectCount,
 								(uint8*)persistentPrepareBuffer,
 								persistentPrepareSerializeLen);
-		
+
 		if (Debug_persistent_print)
 		{
-			elog(Persistent_DebugPrintLevel(), 
+			elog(Persistent_DebugPrintLevel(),
 				 "StartPrepare: persistentPrepareSerializeLen %d",
 				 persistentPrepareSerializeLen);
 			PersistentEndXactRec_Print("StartPrepare", &persistentPrepareObjects);
 		}
-		
+
 		save_state_data(persistentPrepareBuffer, persistentPrepareSerializeLen);
 
 		pfree(persistentPrepareBuffer);
-	}	
-	
-#ifdef FAULT_INJECTOR	
+	}
+
+#ifdef FAULT_INJECTOR
 	FaultInjector_InjectFaultIfSet(
-								   StartPrepareTx, 
+								   StartPrepareTx,
 								   DDLNotSpecified,
 								   "",	// databaseName
 								   ""); // tableName
-#endif		
-	
+#endif
+
 }
+
+/*
+ * EndPrepare(GlobalTransaction gxact)
+ */
+void EndPrepare(GlobalTransaction gxact)
+{
+  if (gp_enable_new_two_phase_logic == false)
+    EndPrepareOld(gxact);
+  else
+    EndPrepareNew(gxact);
+
+}  /* end EndPrepare */
+
 
 /*
  * Finish preparing state file.
@@ -957,7 +1185,7 @@ StartPrepare(GlobalTransaction gxact)
  * Calculates CRC and writes state file to WAL and in pg_twophase directory.
  */
 void
-EndPrepare(GlobalTransaction gxact)
+EndPrepareOld(GlobalTransaction gxact)
 {
 	MIRRORED_LOCK_DECLARE;
 
@@ -972,6 +1200,11 @@ EndPrepare(GlobalTransaction gxact)
 	int32		crcPosition;
 
 	MirroredFlatFileOpen	mirroredOpen;
+
+	if (Debug_persistent_print)
+	  elog(Persistent_DebugPrintLevel(),
+	       "EndPrepareOld: xid = %d",
+	       xid);
 
 	/* Add the end sentinel to the list of 2PC records */
 	RegisterTwoPhaseRecord(TWOPHASE_RM_END_ID, 0,
@@ -990,6 +1223,7 @@ EndPrepare(GlobalTransaction gxact)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("two-phase state file maximum length exceeded")));
+
 
 	/*
 	 * Create the 2PC state file.
@@ -1084,8 +1318,8 @@ EndPrepare(GlobalTransaction gxact)
 	/* If we crash now, we have prepared: WAL replay will fix things */
 
 	if (Debug_persistent_print)
-		elog(Persistent_DebugPrintLevel(), 
-			 "EndPrepare: proc.xid %u, prepare_lsn %s, gid %s",
+		elog(Persistent_DebugPrintLevel(),
+			 "EndPrepareOld: proc.xid %u, prepare_lsn %s, gid %s",
 			 xid,
 			 XLogLocationToString(&gxact->prepare_lsn),
 			 gxact->gid);
@@ -1100,7 +1334,7 @@ EndPrepare(GlobalTransaction gxact)
 	MirroredFlatFile_Write(
 					&mirroredOpen,
 					crcPosition,
-					&statefile_crc, 
+					&statefile_crc,
 					sizeof(pg_crc32),
 					/* suppressError */ false);
 
@@ -1134,18 +1368,133 @@ EndPrepare(GlobalTransaction gxact)
 	 */
 	CHECKPOINT_START_UNLOCK;
 
-	MIRRORED_UNLOCK;
-		
+        MIRRORED_UNLOCK;
+
 #ifdef FAULT_INJECTOR
 	FaultInjector_InjectFaultIfSet(
 				       EndPreparedTwoPhaseSleep,
 				       DDLNotSpecified,
 				       "",    // databaseName
 				       "");   // tableName
-#endif           
+#endif
+
 
 	records.tail = records.head = NULL;
 }
+
+
+/*
+ * Finish preparing state file.
+ *
+ * Writes state file (the prepare record) to WAL.
+ */
+void EndPrepareNew(GlobalTransaction gxact)
+{
+	MIRRORED_LOCK_DECLARE;
+
+	CHECKPOINT_START_LOCK_DECLARE;
+
+	TransactionId       xid = gxact->proc.xid;
+
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), "EndPrepareNew: xid = %d", xid);
+
+	/* Add the end sentinel to the list of 2PC records */
+	RegisterTwoPhaseRecord(TWOPHASE_RM_END_ID, 0, NULL, 0);
+
+        /*
+         * The MirroredLock will cover BOTH mirrored writes to the pg_twophase directory
+         * and the Prepared XLOG record.
+         *
+         * The lock order is: MirroredLock then CheckpointStartLock.
+         */
+        MIRRORED_LOCK;
+
+        /*
+         * We have to lock out checkpoint start here, too; otherwise a checkpoint
+         * starting immediately after the WAL record is inserted could complete
+         * without fsync'ing our state file.  (This is essentially the same kind
+         * of race condition as the COMMIT-to-clog-write case that
+         * RecordTransactionCommit uses CheckpointStartLock for; see notes there.)
+         *
+         * We save the PREPARE record's location in the gxact for later use by
+         * CheckPointTwoPhase.
+         *
+         * NOTE: Critical seciton and CheckpointStartLock were moved up.
+         */
+        CHECKPOINT_START_LOCK;
+
+        START_CRIT_SECTION();
+
+	gxact->prepare_lsn       = XLogInsert(RM_XACT_ID, XLOG_XACT_PREPARE, records.head);
+	gxact->prepare_begin_lsn = XLogLastInsertBeginLoc();
+
+#if 0
+	/* KAS debugging */
+	int temp1 = 0;
+	while (temp1 == 0)
+	  {
+	    sleep(1);
+	  }
+#endif
+
+        /* Add the prepared record to our global list */
+	add_recover_post_checkpoint_prepared_transactions_map_entry(xid, &gxact->prepare_begin_lsn, "EndPrepareNew");
+
+	XLogFlush(gxact->prepare_lsn);
+
+	/* If we crash now, we have prepared: WAL replay will fix things */
+
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(),
+				"EndPrepareNew: proc.xid %u, prepare_lsn %s, gid %s", xid,
+				XLogLocationToString(&gxact->prepare_lsn), gxact->gid);
+
+	if (Debug_abort_after_segment_prepared)
+	{
+		elog(PANIC,
+		     "Raise an error as directed by Debug_abort_after_segment_prepared");
+	}
+
+	/*
+	 * Mark the prepared transaction as valid.	As soon as xact.c marks MyProc
+	 * as not running our XID (which it will do immediately after this
+	 * function returns), others can commit/rollback the xact.
+	 *
+	 * NB: a side effect of this is to make a dummy ProcArray entry for the
+	 * prepared XID.  This must happen before we clear the XID from MyProc,
+	 * else there is a window where the XID is not running according to
+	 * TransactionIdInProgress, and onlookers would be entitled to assume the
+	 * xact crashed.  Instead we have a window where the same XID appears
+	 * twice in ProcArray, which is OK.
+	 */
+	MarkAsPrepared(gxact);
+
+	LocalDistribXact_ChangeState(gxact->proc.xid,
+			&gxact->proc.localDistribXactRef, LOCALDISTRIBXACT_STATE_PREPARED);
+
+
+
+        END_CRIT_SECTION();
+
+        /*
+         * Now we can release the checkpoint start lock: a checkpoint starting
+         * after this will certainly see the gxact as a candidate for fsyncing.
+         */
+        CHECKPOINT_START_UNLOCK;
+
+        MIRRORED_UNLOCK;
+
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+			EndPreparedTwoPhaseSleep,
+			DDLNotSpecified,
+			"", // databaseName
+			""); // tableName
+#endif
+
+	records.tail = records.head = NULL;
+} /* end EndPrepareNew */
 
 /*
  * Register a 2PC record to be written to state file.
@@ -1187,6 +1536,10 @@ ReadTwoPhaseFile(TransactionId xid)
 	int			twoPhaseMagic;
 
 	TwoPhaseFilePath(path, xid);
+
+	if (Debug_persistent_print)
+	  elog(Persistent_DebugPrintLevel(),
+	       "ReadTwoPhaseFile: xid = %u", xid);
 
 	fd = BasicOpenFile(path, O_RDONLY | PG_BINARY, 0);
 	if (fd < 0)
@@ -1239,7 +1592,7 @@ ReadTwoPhaseFile(TransactionId xid)
 	if (crc_offset != alignedOffset)
 	{
 		ereport(WARNING,
-			    (errmsg("CRC offset not aligned (offset %d, aligned %d)", 
+			    (errmsg("CRC offset not aligned (offset %d, aligned %d)",
 			            crc_offset, alignedOffset)));
 		close(fd);
 		return NULL;
@@ -1268,7 +1621,7 @@ ReadTwoPhaseFile(TransactionId xid)
 	if (hdr->magic != twoPhaseMagic)
 	{
 		ereport(WARNING,
-			    (errmsg("two-phase identifier doesn't match (identifer 0x%X, expected 0x%X)", 
+			    (errmsg("two-phase identifier doesn't match (identifer 0x%X, expected 0x%X)",
 			            hdr->magic, twoPhaseMagic)));
 		pfree(buf);
 		return NULL;
@@ -1276,12 +1629,12 @@ ReadTwoPhaseFile(TransactionId xid)
 	if (hdr->total_len != stat.st_size)
 	{
 		ereport(WARNING,
-			    (errmsg("length field doesn't match length (field %d, actual length %d)", 
+			    (errmsg("length field doesn't match length (field %d, actual length %d)",
 			            hdr->total_len, (int)stat.st_size)));
 		pfree(buf);
 		return NULL;
 	}
-	
+
 	INIT_CRC32(calc_crc);
 	COMP_CRC32(calc_crc, buf, crc_offset);
 	FIN_CRC32(calc_crc);
@@ -1292,7 +1645,7 @@ ReadTwoPhaseFile(TransactionId xid)
 	{
 		ereport(WARNING,
 			    (errmsg("two phase state file checksum failed: expected 0x%X "
-						"but calculated 0x%X", 
+						"but calculated 0x%X",
 			            file_crc, calc_crc)));
 		pfree(buf);
 		return NULL;
@@ -1322,7 +1675,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	GlobalTransaction gxact;
 	TransactionId xid;
 	char	   *buf;
-	char	   *bufptr;
+	char	   *bufptr = NULL;
 	char	   *dummy;
 	TwoPhaseFileHeader *hdr;
 	TransactionId *children;
@@ -1331,6 +1684,14 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	int32 deserializeLen;
 
 	int prepareAppendOnlyIntentCount;
+#if 0
+        /* KAS debugging */
+        int temp1 = 0;
+        while (temp1 == 0)
+          {
+            sleep(1);
+          }
+#endif
 
 	/*
 	 * Validate the GID, and lock the GXACT to ensure that two backends do not
@@ -1341,20 +1702,63 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	{
 		return false;
 	}
-	
+
 	xid = gxact->proc.xid;
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
 		 "FinishPreparedTransaction(): got xid %d for gid '%s'", xid, gid);
 
-	/*
-	 * Read and validate the state file
-	 */
-	buf = ReadTwoPhaseFile(xid);
+    /*
+     * Check for recovery control file, and if so set up state for offline
+     * recovery
+     */
+    XLogReadRecoveryCommandFile(DEBUG5);
+
+    /* Now we can determine the list of expected TLIs */
+    expectedTLIs = XLogReadTimeLineHistory(ThisTimeLineID);
+
+    XLogRecPtr   tfXLogRecPtr;
+    XLogRecord  *tfRecord  = NULL;
+
+    if (gp_enable_new_two_phase_logic == true)
+	  {
+ 	  /* get the two phase information from the xlog */
+
+	   LWLockAcquire(TwoPhaseStateLock, LW_SHARED);
+
+           int tfsIndex = 0;
+	   for (tfsIndex = 0; tfsIndex < TwoPhaseState->numPrepXacts; tfsIndex++)
+	     {
+	       GlobalTransaction gxact = TwoPhaseState->prepXacts[tfsIndex];
+
+	       if (gxact->valid && gxact->proc.xid == xid)
+		 {
+		  tfXLogRecPtr = gxact->prepare_begin_lsn;
+		  elog(LOG, "FinishPreparedTransaction: found TwoPhaseState entry for %d", xid);
+                  break;
+		 }
+	     }
+           if (tfsIndex == TwoPhaseState->numPrepXacts)
+	     elog( ERROR, "FinishPreparedTransaction: Did not find xid = %d in TwoPhaseState"
+		 , xid
+                 );
+
+	   LWLockRelease(TwoPhaseStateLock);
+
+           XLogCloseReadRecord();
+           tfRecord = XLogReadRecord(&tfXLogRecPtr, LOG);
+           buf = XLogRecGetData(tfRecord);
+	  }
+	else
+	  {
+	  /* get the two phase information from the two phase file */
+	  buf = ReadTwoPhaseFile(xid);
+	  }
+
 	if (buf == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_CORRUPTED),
-				 errmsg("two-phase state file for transaction %u is corrupt",
+				 errmsg("two-phase state information for transaction %u is corrupt",
 						xid),
 				 errSendAlert(true)));
 
@@ -1385,7 +1789,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 
 	if (Debug_persistent_print)
 	{
-		elog(Persistent_DebugPrintLevel(), 
+  	        elog(Persistent_DebugPrintLevel(),
 			 "FinishPreparedTransaction: deserializedLen %d, persistentPrepareObjectCount %d",
 			 deserializeLen,
 			 hdr->persistentPrepareObjectCount);
@@ -1415,7 +1819,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	 * callbacks will release the locks the transaction held.
 	 */
 	if (isCommit)
-		RecordTransactionCommitPrepared(xid, 
+		RecordTransactionCommitPrepared(xid,
 										gid,
 										hdr->nsubxacts, children,
 										&persistentPrepareObjects);
@@ -1435,6 +1839,9 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	 *
 	 * (We assume it's safe to do this without taking TwoPhaseStateLock.)
 	 */
+	if (Debug_persistent_print)
+	  elog(Persistent_DebugPrintLevel(),
+               "FinishPreparedTransaction: gxact->proc.xid = %d  and set valid = false", gxact->proc.xid);
 	gxact->valid = false;
 
 	/*
@@ -1461,7 +1868,10 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	/*
 	 * And now we can clean up our mess.
 	 */
-	RemoveTwoPhaseFile(xid, true);
+	if (gp_enable_new_two_phase_logic == false)
+  	   RemoveTwoPhaseFile(xid, true);
+        else
+	   remove_recover_post_checkpoint_prepared_transactions_map_entry(xid, "FinishPreparedTransaction");
 
 	RemoveGXact(gxact);
 
@@ -1469,7 +1879,9 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 
 	END_CRIT_SECTION();
 
-	pfree(buf);
+	/* KAS need to figure out the memory allocation and deallocation. For now, just let it leak. */
+	if (gp_enable_new_two_phase_logic == false)
+ 	   pfree(buf);
 
 	return true;
 }
@@ -1506,83 +1918,82 @@ ProcessRecords(char *bufptr, TransactionId xid,
  * If giveWarning is false, do not complain about file-not-present;
  * this is an expected case during WAL replay.
  */
-void
-RemoveTwoPhaseFile(TransactionId xid, bool giveWarning)
+void RemoveTwoPhaseFile(TransactionId xid, bool giveWarning)
 {
-	char		simpleFileName[MAXPGPATH];
+  char simpleFileName[MAXPGPATH];
 
-	TwoPhaseSimpleFileName(simpleFileName, xid);
-	if (MirroredFlatFile_Drop(
-						TWOPHASE_DIR,
-						simpleFileName, 
-						/* suppressError */ true,
-						/*isMirrorRecovery */ false))
-	{
-		if (errno != ENOENT || giveWarning)
-		{
-			char		path[MAXPGPATH];
+  if (gp_enable_new_two_phase_logic == true)
+    remove_recover_post_checkpoint_prepared_transactions_map_entry(xid,
+        "RemoveTwoPhaseFile: Removing from list");
+  else
+  {
+    TwoPhaseSimpleFileName(simpleFileName, xid);
+    if (MirroredFlatFile_Drop(TWOPHASE_DIR, simpleFileName,
+    /* suppressError */true,
+    /*isMirrorRecovery */false))
+    {
+      if (errno != ENOENT || giveWarning)
+      {
+        char path[MAXPGPATH];
 
-			TwoPhaseFilePath(path, xid);
-			
-			ereport(WARNING,
-					(errcode_for_file_access(),
-					 errmsg("could not remove two-phase state file \"%s\": %m",
-							path)));
-		}
-	}
-}
+        TwoPhaseFilePath(path, xid);
+
+        ereport(WARNING, (errcode_for_file_access(), errmsg(
+            "could not remove two-phase state file \"%s\": %m", path)));
+      }
+    }
+  }
+} /* end RemoveTwoPhaseFile */
 
 /*
  * Recreates a state file. This is used in WAL replay.
  *
  * Note: content and len don't include CRC.
  */
-void
-RecreateTwoPhaseFile(TransactionId xid, void *content, int len)
+void RecreateTwoPhaseFile(TransactionId xid, void *content, int len,
+    XLogRecPtr *xlogrecptr)
 {
-	char		simpleFileName[MAXPGPATH];
-	pg_crc32	statefile_crc;
+  char simpleFileName[MAXPGPATH];
+  pg_crc32 statefile_crc;
 
-	MirroredFlatFileOpen	mirroredOpen;
+  MirroredFlatFileOpen mirroredOpen;
 
-	/* Recompute CRC */
-	INIT_CRC32(statefile_crc);
-	COMP_CRC32(statefile_crc, content, len);
-	FIN_CRC32(statefile_crc);
+  if (Debug_persistent_print)
+    elog(Persistent_DebugPrintLevel(), "RecreateTwoPhaseFile: entering...");
 
-	TwoPhaseSimpleFileName(simpleFileName, xid);
+  if (gp_enable_new_two_phase_logic == true)
+    add_recover_post_checkpoint_prepared_transactions_map_entry(xid, xlogrecptr, "RecreateTwoPhaseFile: add entry to hash list");
+  else
+  {
 
-	MirroredFlatFile_Open(
-					&mirroredOpen,
-					TWOPHASE_DIR,
-					simpleFileName,
-					O_CREAT | O_TRUNC | O_WRONLY | PG_BINARY,
-					S_IRUSR | S_IWUSR,
-					/* suppressError */ false,
-					/* atomic operation */ false,
-					/*isMirrorRecovery */ false);
+    /* Recompute CRC */
+    INIT_CRC32(statefile_crc);
+    COMP_CRC32(statefile_crc, content, len);
+    FIN_CRC32(statefile_crc);
 
-	/* Write content and CRC */
-	// UNDONE: Should MirroredFlatFile close the file on error?
-	MirroredFlatFile_Append(
-						&mirroredOpen,
-						content,
-						len,
-						/* suppressError */ false);
-	MirroredFlatFile_Append(
-						&mirroredOpen,
-						&statefile_crc,
-						sizeof(pg_crc32),
-						/* suppressError */ false);
+    TwoPhaseSimpleFileName(simpleFileName, xid);
 
-	/*
-	 * We must fsync the file because the end-of-replay checkpoint will not do
-	 * so, there being no GXACT in shared memory yet to tell it to.
-	 */
-	MirroredFlatFile_Flush(
-					&mirroredOpen,
-					/* suppressError */ false);
-	MirroredFlatFile_Close(&mirroredOpen);
+    MirroredFlatFile_Open(&mirroredOpen, TWOPHASE_DIR, simpleFileName, O_CREAT
+        | O_TRUNC | O_WRONLY | PG_BINARY, S_IRUSR | S_IWUSR,
+    /* suppressError */false,
+    /* atomic operation */false,
+    /*isMirrorRecovery */false);
+
+    /* Write content and CRC */
+    // UNDONE: Should MirroredFlatFile close the file on error?
+    MirroredFlatFile_Append(&mirroredOpen, content, len,
+    /* suppressError */false);
+    MirroredFlatFile_Append(&mirroredOpen, &statefile_crc, sizeof(pg_crc32),
+    /* suppressError */false);
+
+    /*
+     * We must fsync the file because the end-of-replay checkpoint will not do
+     * so, there being no GXACT in shared memory yet to tell it to.
+     */
+    MirroredFlatFile_Flush(&mirroredOpen,
+    /* suppressError */false);
+    MirroredFlatFile_Close(&mirroredOpen);
+  }
 }
 
 /*
@@ -1611,6 +2022,15 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 	int			nxids;
 	char		simpleFileName[MAXPGPATH];
 	int			i;
+
+       /*
+        * KAS I think this is not needed with the new two phase logic. 
+        * We have already attached all the prepared transactions to
+        * the checkpoint record. For now, just return from this.
+        */
+       if (gp_enable_new_two_phase_logic == true)
+          return;
+
 
 	/*
 	 * We don't want to hold the TwoPhaseStateLock while doing I/O, so we grab
@@ -1655,7 +2075,7 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 							&mirroredOpen,
 							TWOPHASE_DIR,
 							simpleFileName,
-							O_RDWR | PG_BINARY, 
+							O_RDWR | PG_BINARY,
 							0,
 							/* suppressError */ true,
 							/* atomic operation */ false,
@@ -1673,7 +2093,7 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 			}
 
 			TwoPhaseFilePath(path, xid);
-			
+
 			ereport(ERROR,
 					(errcode_for_file_access(),
 					 errmsg("could not open two-phase state file \"%s\": %m",
@@ -1692,8 +2112,19 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 	pfree(xids);
 }
 
+
+TransactionId
+PrescanPreparedTransactions(void)
+{
+  if (gp_enable_new_two_phase_logic == false)
+    return PrescanPreparedTransactionsOld();
+  else
+    return PrescanPreparedTransactionsNew();
+}
+
+
 /*
- * PrescanPreparedTransactions
+ * PrescanPreparedTransactionsOld
  *
  * Scan the pg_twophase directory and determine the range of valid XIDs
  * present.  This is run during database startup, after we have completed
@@ -1716,7 +2147,7 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
  * This is needed to synchronize pg_subtrans startup properly.
  */
 TransactionId
-PrescanPreparedTransactions(void)
+PrescanPreparedTransactionsOld(void)
 {
 	TransactionId origNextXid = ShmemVariableCache->nextXid;
 	TransactionId result = origNextXid;
@@ -1807,7 +2238,170 @@ PrescanPreparedTransactions(void)
 	FreeDir(cldir);
 
 	return result;
-}
+}  /* end PrescanPreparedTransactionsOld */
+
+
+/*
+ * PrescanPreparedTransactionsNew
+ *
+ * This function will return the oldest valid XID, and will also set
+ * the ShmemVariableCache->nextXid to the next available XID.
+ *
+ * This function is run during database startup, after we have completed
+ * reading WAL.  ShmemVariableCache->nextXid has been set to one more than
+ * the highest XID for which evidence exists in WAL. The 
+ * crashRecoverPostCheckpointPreparedTransactions_map_ht has already been
+ * populated with all pre and post checkpoint inflight transactions.
+ *
+ * Wwe will advance nextXid beyond any subxact XIDs belonging to valid
+ * prepared xacts.  We need to do this since subxact commit doesn't
+ * write a WAL entry, and so there might be no evidence in WAL of those
+ * subxact XIDs.
+ *
+ * Our other responsibility is to determine and return the oldest valid XID
+ * among the prepared xacts (if none, return ShmemVariableCache->nextXid).
+ * This is needed to synchronize pg_subtrans startup properly.
+ */
+TransactionId
+PrescanPreparedTransactionsNew(void)
+  {
+    prpt_map           *entry        = NULL;
+    TransactionId       origNextXid  = ShmemVariableCache->nextXid;
+    TransactionId       result       = origNextXid;
+    XLogRecPtr         *tfXLogRecPtr = NULL;
+    XLogRecord         *tfRecord     = NULL;
+    HASH_SEQ_STATUS     hsStatus;
+    TwoPhaseFileHeader *hdr          = NULL;
+    TransactionId       xid;
+    TransactionId      *subxids;
+
+    if (crashRecoverPostCheckpointPreparedTransactions_map_ht != NULL)
+      {
+	hash_seq_init(&hsStatus,crashRecoverPostCheckpointPreparedTransactions_map_ht);
+
+	entry = (prpt_map *)hash_seq_search(&hsStatus);
+
+	if (Debug_persistent_print)
+	  elog(Persistent_DebugPrintLevel(),
+	       "PrescanPreparedTransactionsNew:  address entry = %p",
+	       entry);
+
+	if (entry != NULL)
+	  tfXLogRecPtr = (XLogRecPtr *) &entry->xlogrecptr;
+      }
+
+    while (tfXLogRecPtr != NULL) 
+      {
+	if (Debug_persistent_print)
+	  elog(Persistent_DebugPrintLevel(),
+	       "PrescanPreparedTransactionsNew:  XLogRecPtr = %s",
+	       XLogLocationToString(tfXLogRecPtr));
+
+
+	tfRecord = XLogReadRecord(tfXLogRecPtr, LOG);
+	hdr = (TwoPhaseFileHeader *) XLogRecGetData(tfRecord);
+        xid = hdr->xid;
+
+	if (TransactionIdDidCommit(xid) == false && TransactionIdDidAbort(xid) == false)
+	   {
+	   /*
+	    * Incorporate xid into the running-minimum result.
+	    */
+   	   if (TransactionIdPrecedes(xid, result))
+	      result = xid;
+
+	   /*
+	    * Examine subtransaction XIDs ... they should all follow main
+            * XID, and they may force us to advance nextXid.
+            */
+	   subxids = (TransactionId *)((char *)hdr + MAXALIGN(sizeof(TwoPhaseFileHeader)));
+	   for (int i = 0; i < hdr->nsubxacts; i++)
+	       {
+	       TransactionId subxid = subxids[i];
+
+  	       Assert(TransactionIdFollows(subxid, xid));
+	       if (TransactionIdFollowsOrEquals(subxid, ShmemVariableCache->nextXid))
+	          {
+	          ShmemVariableCache->nextXid = subxid;
+	          TransactionIdAdvance(ShmemVariableCache->nextXid);
+	          }
+	       }  /* end for (int i = 0; i < hdr->nsubxacts; i++) */
+	   }  /* end if (TransactionIdDidCommit(xid) == false && TransactionIdDidAbort(xid) == false) */
+
+	/* Get the next entry */
+	entry = (prpt_map *)hash_seq_search(&hsStatus);
+
+	if (Debug_persistent_print)
+	  elog(Persistent_DebugPrintLevel(),
+	       "PrescanPreparedTransactionsNew:  address entry = %p",
+	       entry);
+
+	if (entry != NULL)
+	  tfXLogRecPtr = (XLogRecPtr *) &entry->xlogrecptr;
+	else
+	  tfXLogRecPtr = NULL;
+
+      }  /* end while (tfXLogRecPtr != NULL) */
+
+    return result;
+  }  /* end PrescanPreparedTransactionsNew */
+
+
+/*
+ * Retrieve all the prepared transactions on the checkpoint, and add them to our local list.
+ */
+void
+SetupCheckpointPreparedTransactionList(XLogRecord *record)
+{
+  prepared_transaction_agg_state *ptas         = NULL;
+  XLogRecPtr                     *tfXLogRecPtr = NULL;
+  TransactionId                   xid;
+  prpt_map                       *m            = NULL;
+
+  if (record->xl_len <= sizeof(CheckPoint))
+     {
+     /*
+      * This is an old checkpoint (pre-removal of two phase) or a bad checkpoint record.
+      * Assume it is old and return. 
+      */
+     if (Debug_persistent_print)
+        elog(Persistent_DebugPrintLevel(),
+	     "SetupCheckpointPreparedTransactionList: Looks like an old style checkpoint record, so just return");
+     return;
+     }
+
+  ptas = (prepared_transaction_agg_state *)mmxlog_get_checkpoint_record_suffix(record);
+
+  if (Debug_persistent_print)
+    elog(Persistent_DebugPrintLevel(),
+       "SetupCheckpointPreparedTransactionList: prepared transaciton agg state length = %d",
+       ptas->count);
+
+  m  = ptas->maps;
+
+  for (int iPrep = 0; iPrep < ptas->count; iPrep++)
+    {
+      xid          = m[iPrep].xid;
+      tfXLogRecPtr = &(m[iPrep]).xlogrecptr;
+      add_recover_post_checkpoint_prepared_transactions_map_entry(xid, tfXLogRecPtr, "SetupCheckpointPreparedTransactionList: add entry to hash list");
+    }
+
+}  /* end SetupCheckpointPreparedTransactionList */
+
+/*
+ * RecoverPreparedTransactions
+ *
+ * Reload shared-memory state for each prepared transaction (reacquire locks, etc). 
+ * This is run during database startup.
+ */
+void RecoverPreparedTransactions()
+{
+  if (gp_enable_new_two_phase_logic == true)
+    RecoverPreparedTransactionsNew();
+  else
+    RecoverPreparedTransactionsOld();
+}  /* end RecoverPreparedTransactions */
+
 
 /*
  * RecoverPreparedTransactions
@@ -1816,145 +2410,278 @@ PrescanPreparedTransactions(void)
  * prepared transaction (reacquire locks, etc).  This is run during database
  * startup.
  */
-void
-RecoverPreparedTransactions(void)
+void RecoverPreparedTransactionsOld()
 {
-	char		dir[MAXPGPATH];
-	DIR		   *cldir;
-	struct dirent *clde;
+  char dir[MAXPGPATH];
+  DIR *cldir;
+  struct dirent *clde;
 
+  PersistentEndXactRecObjects persistentPrepareObjects;
+  LocalDistribXactRef localDistribXactRef;
+  snprintf(dir, MAXPGPATH, "%s", TWOPHASE_DIR);
+  cldir = AllocateDir(dir);
+
+  if (Debug_persistent_print)
+    elog(Persistent_DebugPrintLevel(), "Entering RecoverPreparedTransactionsOld");
+
+  while ((clde = ReadDir(cldir, dir)) != NULL)
+  {
+    if (strlen(clde->d_name) == 8 && strspn(clde->d_name, "0123456789ABCDEF")
+        == 8)
+    {
+      TransactionId xid;
+      char *buf;
+      char *bufptr;
+      TwoPhaseFileHeader *hdr;
+      TransactionId *subxids;
+      GlobalTransaction gxact;
+      int i;
+
+      DistributedTransactionTimeStamp distribTimeStamp;
+      DistributedTransactionId distribXid;
+
+      xid = (TransactionId) strtoul(clde->d_name, NULL, 16);
+
+      /* Already processed? */
+      if (TransactionIdDidCommit(xid) || TransactionIdDidAbort(xid))
+      {
+        ereport(WARNING, (errmsg("removing stale two-phase state file \"%s\"",
+            clde->d_name)));
+        RemoveTwoPhaseFile(xid, true);
+        continue;
+      }
+
+      /* Read and validate file */
+      buf = ReadTwoPhaseFile(xid);
+      if (buf == NULL)
+      {
+        ereport(WARNING, (errmsg(
+            "removing corrupt two-phase state file \"%s\"", clde->d_name)));
+        RemoveTwoPhaseFile(xid, true);
+        continue;
+      }
+
+      ereport(LOG, (errmsg("recovering prepared transaction %u", xid)));
+
+      /* Deconstruct header */
+      hdr = (TwoPhaseFileHeader *) buf;
+      Assert(TransactionIdEquals(hdr->xid, xid));
+      bufptr = buf + MAXALIGN(sizeof(TwoPhaseFileHeader));
+      subxids = (TransactionId *) bufptr;
+      bufptr += MAXALIGN(hdr->nsubxacts * sizeof(TransactionId));
+
+      PersistentEndXactRec_Deserialize((uint8*) bufptr,
+          hdr->persistentPrepareObjectCount, &persistentPrepareObjects,
+          (uint8**) &bufptr);
+
+      if (Debug_persistent_print)
+      {
+        elog(
+            Persistent_DebugPrintLevel(),
+            "RecoverPreparedTransactionsOld: deserializeLen %d, persistentPrepareObjectCount %d",
+            PersistentEndXactRec_DeserializeLen((uint8*) bufptr,
+                hdr->persistentPrepareObjectCount),
+            hdr->persistentPrepareObjectCount);
+        PersistentEndXactRec_Print("RecoverPreparedTransactionsOld",
+            &persistentPrepareObjects);
+      }
+
+      /*
+       * Reconstruct subtrans state for the transaction --- needed
+       * because pg_subtrans is not preserved over a restart.  Note that
+       * we are linking all the subtransactions directly to the
+       * top-level XID; there may originally have been a more complex
+       * hierarchy, but there's no need to restore that exactly.
+       */
+      for (i = 0; i < hdr->nsubxacts; i++)
+        SubTransSetParent(subxids[i], xid);
+
+      /*
+       * Crack open the gid to get the DTM start time and distributed
+       * transaction id.
+       */
+      dtxCrackOpenGid(hdr->gid, &distribTimeStamp, &distribXid);
+
+      /*
+       * Recreate its GXACT and dummy PGPROC
+       *
+       * Note: since we don't have the PREPARE record's WAL location at
+       * hand, we leave prepare_lsn zeroes.  This means the GXACT will
+       * be fsync'd on every future checkpoint.  We assume this
+       * situation is infrequent enough that the performance cost is
+       * negligible (especially since we know the state file has already
+       * been fsynced).
+       */
+      elog(
+          LOG,
+          "RecoverPreparedTransactionsOld: Calling MarkAsPreparing on id = %s with distribTimeStamp %u and distribXid %u",
+          hdr->gid, distribTimeStamp, distribXid);
+
+      LocalDistribXact_CreateRedoPrepared(distribTimeStamp, distribXid, xid,
+          &localDistribXactRef);
+      gxact = MarkAsPreparing(xid, &localDistribXactRef, hdr->gid,
+          hdr->prepared_at, hdr->owner, hdr->database, NULL);
+      GXactLoadSubxactData(gxact, hdr->nsubxacts, subxids);
+      MarkAsPrepared(gxact);
+
+      LocalDistribXactRef_Release(&localDistribXactRef);
+
+      /*
+       * Recover other state (notably locks) using resource managers
+       */
+      ProcessRecords(bufptr, xid, twophase_recover_callbacks);
+
+      pfree(buf);
+    }
+  }
+  FreeDir(cldir);
+
+} /* end RecoverPreparedTransactionsOld */
+
+
+
+/*
+ * RecoverPreparedTransactionsNew
+ *
+ * Scan the global list of post checkpoint records  and reload shared-memory state for each
+ * prepared transaction (reacquire locks, etc).  This is run during database
+ * startup.
+ */
+void RecoverPreparedTransactionsNew()
+{
+        prpt_map                   *entry        = NULL;
+	XLogRecPtr                 *tfXLogRecPtr = NULL;
+	XLogRecord                 *tfRecord     = NULL;
 	PersistentEndXactRecObjects persistentPrepareObjects;
+	LocalDistribXactRef         localDistribXactRef;
+	TwoPhaseFileHeader         *hdr          = NULL;
+	HASH_SEQ_STATUS             hsStatus;
 
-	LocalDistribXactRef localDistribXactRef;
+	if (Debug_persistent_print)
+	  elog(Persistent_DebugPrintLevel(), "Entering RecoverPreparedTransactionsNew");
 
-	snprintf(dir, MAXPGPATH, "%s", TWOPHASE_DIR);
+	if (crashRecoverPostCheckpointPreparedTransactions_map_ht != NULL)
+        {
+		hash_seq_init(&hsStatus,crashRecoverPostCheckpointPreparedTransactions_map_ht);
 
-	cldir = AllocateDir(dir);
-	while ((clde = ReadDir(cldir, dir)) != NULL)
-	{
-		if (strlen(clde->d_name) == 8 &&
-			strspn(clde->d_name, "0123456789ABCDEF") == 8)
-		{
-			TransactionId xid;
-			char	   *buf;
-			char	   *bufptr;
-			TwoPhaseFileHeader *hdr;
-			TransactionId *subxids;
-			GlobalTransaction gxact;
-			int			i;
+		entry = (prpt_map *)hash_seq_search(&hsStatus);
 
-			DistributedTransactionTimeStamp	distribTimeStamp;
-			DistributedTransactionId 		distribXid;
+		if (Debug_persistent_print)
+		  elog(Persistent_DebugPrintLevel(),
+                     "RecoverPreparedTransactionsNew:  address entry = %p",
+                     entry);
 
-			xid = (TransactionId) strtoul(clde->d_name, NULL, 16);
-
-			/* Already processed? */
-			if (TransactionIdDidCommit(xid) || TransactionIdDidAbort(xid))
-			{
-				ereport(WARNING,
-						(errmsg("removing stale two-phase state file \"%s\"",
-								clde->d_name)));
-				RemoveTwoPhaseFile(xid, true);
-				continue;
-			}
-
-			/* Read and validate file */
-			buf = ReadTwoPhaseFile(xid);
-			if (buf == NULL)
-			{
-				ereport(WARNING,
-						(errmsg("removing corrupt two-phase state file \"%s\"",
-								clde->d_name)));
-				RemoveTwoPhaseFile(xid, true);
-				continue;
-			}
-
-			ereport(LOG,
-					(errmsg("recovering prepared transaction %u", xid)));
-
-			/* Deconstruct header */
-			hdr = (TwoPhaseFileHeader *) buf;
-			Assert(TransactionIdEquals(hdr->xid, xid));
-			bufptr = buf + MAXALIGN(sizeof(TwoPhaseFileHeader));
-			subxids = (TransactionId *) bufptr;
-			bufptr += MAXALIGN(hdr->nsubxacts * sizeof(TransactionId));
-			
-			PersistentEndXactRec_Deserialize(
-										(uint8*)bufptr,
-										hdr->persistentPrepareObjectCount,
-										&persistentPrepareObjects,
-										(uint8**)&bufptr);
-
-			if (Debug_persistent_print)
-			{
-				elog(Persistent_DebugPrintLevel(), 
-					 "RecoverPreparedTransactions: deserializeLen %d, persistentPrepareObjectCount %d",
-					 PersistentEndXactRec_DeserializeLen(
-												(uint8*)bufptr,
-												hdr->persistentPrepareObjectCount),
-					 hdr->persistentPrepareObjectCount);
-				PersistentEndXactRec_Print("RecoverPreparedTransactions", &persistentPrepareObjects);
-			}
-
-			/*
-			 * Reconstruct subtrans state for the transaction --- needed
-			 * because pg_subtrans is not preserved over a restart.  Note that
-			 * we are linking all the subtransactions directly to the
-			 * top-level XID; there may originally have been a more complex
-			 * hierarchy, but there's no need to restore that exactly.
-			 */
-			for (i = 0; i < hdr->nsubxacts; i++)
-				SubTransSetParent(subxids[i], xid);
-
-			/*
-			 * Crack open the gid to get the DTM start time and distributed
-			 * transaction id.
-			 */
-			dtxCrackOpenGid(
-					hdr->gid,
-					&distribTimeStamp,
-					&distribXid);
-
-			/*
-			 * Recreate its GXACT and dummy PGPROC
-			 *
-			 * Note: since we don't have the PREPARE record's WAL location at
-			 * hand, we leave prepare_lsn zeroes.  This means the GXACT will
-			 * be fsync'd on every future checkpoint.  We assume this
-			 * situation is infrequent enough that the performance cost is
-			 * negligible (especially since we know the state file has already
-			 * been fsynced).
-			 */
-			elog(LOG, 
-			     "RecoverPreparedTransactions: Calling MarkAsPreparing on id = %s with distribTimeStamp %u and distribXid %u",
-			     hdr->gid,
-			     distribTimeStamp,
-			     distribXid);
-
-			LocalDistribXact_CreateRedoPrepared(
-										distribTimeStamp,
-										distribXid,
-										xid,
-										&localDistribXactRef);
-			gxact = MarkAsPreparing(xid,
-									&localDistribXactRef,
-									hdr->gid,
-									hdr->prepared_at,
-									hdr->owner, hdr->database);
-			GXactLoadSubxactData(gxact, hdr->nsubxacts, subxids);
-			MarkAsPrepared(gxact);
-
-			LocalDistribXactRef_Release(&localDistribXactRef);
-
-			/*
-			 * Recover other state (notably locks) using resource managers
-			 */
-			ProcessRecords(bufptr, xid, twophase_recover_callbacks);
-
-			pfree(buf);
-		}
+                if (entry != NULL)
+		  tfXLogRecPtr = (XLogRecPtr *) &entry->xlogrecptr;
 	}
-	FreeDir(cldir);
+
+	while (tfXLogRecPtr != NULL) 
+        {
+		TransactionId                    xid;
+		char                            *bufptr;
+		TransactionId                   *subxids;
+		GlobalTransaction                gxact;
+		DistributedTransactionTimeStamp  distribTimeStamp;
+		DistributedTransactionId         distribXid;
+
+		if (Debug_persistent_print)
+		  elog(Persistent_DebugPrintLevel(),
+                     "RecoverPreparedTransactionsNew:  XLogRecPtr = %s",
+                     XLogLocationToString(tfXLogRecPtr));
+
+
+		tfRecord = XLogReadRecord(tfXLogRecPtr, LOG);
+
+		hdr = (TwoPhaseFileHeader *) XLogRecGetData(tfRecord);
+
+		elog(Persistent_DebugPrintLevel(),
+		     "RecoverPreparedTransactionsNew: prepared twophase record total_len = %u, xid =  %d",
+		     hdr->total_len, hdr->xid);
+
+		xid = hdr->xid;
+		bufptr = (char *) hdr + MAXALIGN(sizeof(TwoPhaseFileHeader));
+		subxids = (TransactionId *) bufptr;
+		bufptr += MAXALIGN(hdr->nsubxacts * sizeof(TransactionId));
+
+		PersistentEndXactRec_Deserialize((uint8*) bufptr,
+				hdr->persistentPrepareObjectCount, &persistentPrepareObjects,
+				(uint8**) &bufptr);
+
+		if (Debug_persistent_print) {
+			elog(
+					Persistent_DebugPrintLevel(),
+					"RecoverPreparedTransactionsNew: deserializeLen %d, persistentPrepareObjectCount %d",
+					PersistentEndXactRec_DeserializeLen((uint8*) bufptr,
+							hdr->persistentPrepareObjectCount),
+					hdr->persistentPrepareObjectCount);
+			PersistentEndXactRec_Print("RecoverPreparedTransactionsNew",
+					&persistentPrepareObjects);
+		}
+		/*
+		 * Reconstruct subtrans state for the transaction --- needed
+		 * because pg_subtrans is not preserved over a restart.  Note that
+		 * we are linking all the subtransactions directly to the
+		 * top-level XID; there may originally have been a more complex
+		 * hierarchy, but there's no need to restore that exactly.
+		 */
+		for (int iSub = 0; iSub < hdr->nsubxacts; iSub++)
+			SubTransSetParent(subxids[iSub], xid);
+
+		/*
+		 * Crack open the gid to get the DTM start time and distributed
+		 * transaction id.
+		 */
+		dtxCrackOpenGid(hdr->gid, &distribTimeStamp, &distribXid);
+
+		/*
+		 * Recreate its GXACT and dummy PGPROC
+		 *
+		 * Note: since we don't have the PREPARE record's WAL location at
+		 * hand, we leave prepare_lsn zeroes.  This means the GXACT will
+		 * be fsync'd on every future checkpoint.  We assume this
+		 * situation is infrequent enough that the performance cost is
+		 * negligible (especially since we know the state file has already
+		 * been fsynced).
+		 */
+		elog(Persistent_DebugPrintLevel(),
+				"RecoverPreparedTransactionsNew: Calling MarkAsPreparing on id = %s with distribTimeStamp %u and distribXid %u",
+				hdr->gid, distribTimeStamp, distribXid);
+
+		LocalDistribXact_CreateRedoPrepared(distribTimeStamp, distribXid, xid,
+				&localDistribXactRef);
+		gxact = MarkAsPreparing( xid
+                                       ,&localDistribXactRef
+                                       , hdr->gid
+				       , hdr->prepared_at
+                                       , hdr->owner
+                                       , hdr->database
+				       , tfXLogRecPtr
+                                       );
+		GXactLoadSubxactData(gxact, hdr->nsubxacts, subxids);
+		MarkAsPrepared(gxact);
+
+		LocalDistribXactRef_Release(&localDistribXactRef);
+
+		/*
+		 * Recover other state (notably locks) using resource managers
+		 */
+		ProcessRecords(bufptr, xid, twophase_recover_callbacks);
+
+                /* Get the next entry */
+                entry = (prpt_map *)hash_seq_search(&hsStatus);
+
+                if (Debug_persistent_print)
+                   elog(Persistent_DebugPrintLevel(),
+	                "RecoverPreparedTransactionsNew:  address entry = %p",
+	                entry);
+
+                if (entry != NULL)
+                   tfXLogRecPtr = (XLogRecPtr *) &entry->xlogrecptr;
+                else 
+ 		   tfXLogRecPtr = NULL;
+
+	}  /* end while (xlogrecptr = (XLogRecPtr *)hash_seq_search(&hsStatus)) */
+
 }
 
 /*
@@ -2021,26 +2748,26 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	{
 		int32 persistentCommitSerializeLen;
 		int16 objectCount;
-		
+
 		persistentCommitSerializeLen =
 				PersistentEndXactRec_SerializeLen(
 										persistentPrepareObjects,
 										EndXactRecKind_Commit);
-		
+
 		Assert(persistentCommitSerializeLen > 0);
-		persistentCommitBuffer = 
+		persistentCommitBuffer =
 					(char*)palloc(persistentCommitSerializeLen);
-		
+
 		PersistentEndXactRec_Serialize(
 								persistentPrepareObjects,
 								EndXactRecKind_Commit,
 								&objectCount,
 								(uint8*)persistentCommitBuffer,
 								persistentCommitSerializeLen);
-		
+
 		if (Debug_persistent_print)
 		{
-			elog(Persistent_DebugPrintLevel(), 
+			elog(Persistent_DebugPrintLevel(),
 				 "RecordTransactionCommitPrepared: persistentCommitSerializeLen %d, objectCount %d",
 				 persistentCommitSerializeLen,
 				 objectCount);
@@ -2089,9 +2816,9 @@ RecordTransactionCommitPrepared(TransactionId xid,
 			gid,
 			&distribTimeStamp,
 			&distribXid);
-	
+
 	/* UNDONE: What are the locking issues here? */
-	/* 
+	/*
 	 * Mark the distributed transaction committed.
 	 */
 	DistributedLog_SetCommitted(
@@ -2102,7 +2829,7 @@ RecordTransactionCommitPrepared(TransactionId xid,
 
 	/* Mark the transaction committed in pg_clog */
 	TransactionIdCommit(xid);
-	
+
 	/* to avoid race conditions, the parent must commit first */
 	TransactionIdCommitTree(nchildren, children);
 
@@ -2166,26 +2893,26 @@ RecordTransactionAbortPrepared(TransactionId xid,
 	{
 		int32 persistentAbortSerializeLen;
 		int16 objectCount;
-		
+
 		persistentAbortSerializeLen =
 				PersistentEndXactRec_SerializeLen(
 										persistentPrepareObjects,
 										EndXactRecKind_Abort);
-		
+
 		Assert(persistentAbortSerializeLen > 0);
-		persistentAbortBuffer = 
+		persistentAbortBuffer =
 					(char*)palloc(persistentAbortSerializeLen);
-		
+
 		PersistentEndXactRec_Serialize(
 								persistentPrepareObjects,
 								EndXactRecKind_Abort,
 								&objectCount,
 								(uint8*)persistentAbortBuffer,
 								persistentAbortSerializeLen);
-		
+
 		if (Debug_persistent_print)
 		{
-			elog(Persistent_DebugPrintLevel(), 
+			elog(Persistent_DebugPrintLevel(),
 				 "RecordTransactionAbortPrepared: persistentAbortSerializeLen %d",
 				 persistentAbortSerializeLen);
 			PersistentEndXactRec_Print("RecordTransactionAbortPrepared", persistentPrepareObjects);
@@ -2242,19 +2969,183 @@ TwoPhaseRecoverMirror(void)
 	struct dirent	*clde;
 	int				retval = 0;
 
+	if (gp_enable_new_two_phase_logic == true)
+	   /* No need to do anything. */
+	   return retval;
+
 	cldir = AllocateDir(TWOPHASE_DIR);
 	while ((clde = ReadDir(cldir, TWOPHASE_DIR)) != NULL) {
 		if (strlen(clde->d_name) == 8 &&
 			strspn(clde->d_name, "0123456789ABCDEF") == 8) {
-			
+
 			retval = MirrorFlatFile(TWOPHASE_DIR, clde->d_name);
-			
+
 			if (retval != 0)
 				break;
-			
+
 		}
 	}
 	FreeDir(cldir);
-	
+
 	return retval;
 }
+
+/*
+ * This function will gather up all the current prepared transaction xlog pointers,
+ * and pass that information back to the caller.
+ */
+void
+getTwoPhasePreparedTransactionData(prepared_transaction_agg_state **ptas, char *caller)
+{
+
+  int                numberOfPrepareXacts     = TwoPhaseState->numPrepXacts;
+  GlobalTransaction *globalTransactionArray   = TwoPhaseState->prepXacts;
+  TransactionId      xid;
+  XLogRecPtr        *recordPtr                = NULL;
+  int                maxCount;
+
+  elog(PersistentRecovery_DebugPrintLevel(),
+       "getTwoPhasePreparedTransactionData: start of function from caller %s",
+       caller);
+
+  Assert(*ptas == NULL);
+
+  TwoPhaseAddPreparedTransactionInit(ptas, &maxCount);
+
+  elog(PersistentRecovery_DebugPrintLevel(),
+       "getTwoPhasePreparedTransactionData: numberOfPrepareXacts = %d",
+       numberOfPrepareXacts);
+
+  for (int i = 0; i < numberOfPrepareXacts; i++)
+    {
+      if ((globalTransactionArray[i])->valid == false)
+        /* Skip any invalid prepared transacitons. */
+	continue;
+      xid       = (globalTransactionArray[i])->proc.xid;
+      recordPtr = &(globalTransactionArray[i])->prepare_begin_lsn;
+
+      elog(PersistentRecovery_DebugPrintLevel(),
+           "getTwoPhasePreparedTransactionData: add entry xid = %u,  XLogRecPtr = %s, caller = %s",
+           xid,
+           XLogLocationToString(recordPtr),
+           caller);
+
+      TwoPhaseAddPreparedTransaction( ptas
+				    ,&maxCount
+				    , xid
+				    , recordPtr
+				    , caller
+                                    );
+    }
+
+
+}  /* end getTwoPhasePreparedTransactionData */
+
+
+/*
+ * This function will allocate enough space to accomidate maxCount values.
+ */
+void
+TwoPhaseAddPreparedTransactionInit(
+				     prepared_transaction_agg_state **ptas, int *maxCount)
+{
+  int len;
+
+  Assert (*ptas == NULL);
+
+  *maxCount = 10;         // Start off with at least this much room.
+  len = PREPARED_TRANSACTION_CHECKPOINT_BYTES(*maxCount);
+  *ptas = (prepared_transaction_agg_state*)palloc0(len);
+
+}  /* end TwoPhaseAddPreparedTransactionInit */
+
+
+/*
+ * This function adds another entry to the list of prepared transactions.
+ */
+void
+TwoPhaseAddPreparedTransaction( prepared_transaction_agg_state **ptas
+			      , int                             *maxCount
+			      , TransactionId                    xid
+			      , XLogRecPtr                      *xlogPtr
+			      , char                            *caller
+			      )
+{
+  int       len;
+  int       count;
+  prpt_map *m;
+
+  Assert(*ptas != NULL);
+  Assert(*maxCount > 0);
+
+  count = (*ptas)->count;
+  Assert(count <= *maxCount);
+
+  if (count == *maxCount)
+    {
+      prepared_transaction_agg_state *oldPtas;
+
+      oldPtas = *ptas;
+
+      (*maxCount) *= 2;               // Double.
+      len = PREPARED_TRANSACTION_CHECKPOINT_BYTES(*maxCount);
+      *ptas = (prepared_transaction_agg_state*)palloc0(len);
+      memcpy(*ptas, oldPtas, PREPARED_TRANSACTION_CHECKPOINT_BYTES(count));
+      pfree(oldPtas);
+    }
+
+  m = &(*ptas)->maps[count];
+  m->xid = xid;
+  m->xlogrecptr.xlogid = xlogPtr->xlogid;
+  m->xlogrecptr.xrecoff = xlogPtr->xrecoff;
+
+  if (Debug_persistent_recovery_print)
+    {
+      SUPPRESS_ERRCONTEXT_DECLARE;
+
+      SUPPRESS_ERRCONTEXT_PUSH();
+
+      elog(PersistentRecovery_DebugPrintLevel(),
+	   "TwoPhaseAddPreparedTransaction: add entry  XLogRecPtr = %s, caller = %s",
+	   XLogLocationToString(xlogPtr),
+	   caller);
+
+      SUPPRESS_ERRCONTEXT_POP();
+    }
+
+  (*ptas)->count++;
+
+
+}  /* end TwoPhaseAddPreparedTransaction */
+
+
+/*
+ * Return a pointer to the oldest XLogRecPtr in the list or NULL if the list is empty.
+ */
+XLogRecPtr *
+getTwoPhaseOldestPreparedTransactionXLogRecPtr(XLogRecData *rdata)
+{
+  prepared_transaction_agg_state *ptas      = (prepared_transaction_agg_state *)rdata->data;
+  int                             map_count = ptas->count;
+  prpt_map                       *m         = ptas->maps;
+  XLogRecPtr                     *oldest    = NULL;
+
+  elog(PersistentRecovery_DebugPrintLevel(),
+       "getTwoPhaseOldestPreparedTransactionXLogRecPtr: map_count = %d", map_count);
+
+  if (map_count > 0)
+    {
+      oldest = &(m[0].xlogrecptr);
+      for (int i = 1; i < map_count; i++)
+	{
+          elog(PersistentRecovery_DebugPrintLevel(),
+	       "getTwoPhaseOldestPreparedTransactionXLogRecPtr: checkpoint prepared pointer %d = %s", i, XLogLocationToString(oldest));
+          if (XLByteLE(m[i].xlogrecptr, *oldest))
+            oldest = &(m[1].xlogrecptr);
+	}
+    }
+
+  return oldest;
+
+}  /* end getTwoPhaseOldestPreparedTransactionXLogRecPtr */
+

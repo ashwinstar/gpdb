@@ -228,6 +228,7 @@ extern void GetNextXidAndEpoch(TransactionId *xid, uint32 *epoch);
 extern void XLogPopulateMasterMirroring(
 	XLogRecPtr		*redoCheckPointLoc);
 
+extern void XLogFileClose(void);
 extern void XLogGetBuffer(int startidx, int npages, char **from, Size *nbytes);
 extern void XLogGetRecoveryStart(char *callerStr, char *reasonStr, XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint);
 extern void XLogScanForStandbyEndLocation(XLogRecPtr *startLoc, XLogRecPtr *endLoc);
@@ -275,5 +276,17 @@ extern void xlog_print_redo_lsn_application(
 		void			*page,
 		XLogRecPtr		lsn,
 		const char		*funcName);
+
+extern XLogRecord *XLogReadRecord(XLogRecPtr *RecPtr, int emode);
+
+extern void XLogCloseReadRecord(void);
+
+extern XLogRecord *ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt);
+
+extern void XLogReadRecoveryCommandFile(int emode);
+
+extern List *XLogReadTimeLineHistory(TimeLineID targetTLI);
+
+extern int XLogRecoverMirror(void);
 
 #endif   /* XLOG_H */
