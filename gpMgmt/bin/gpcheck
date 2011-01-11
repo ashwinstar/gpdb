@@ -22,9 +22,7 @@ class GpCheckInfo:
         self.is_root = False
         self.host_type = HostType.GPCHECK_HOSTTYPE_UNDEFINED
         self.appliance_version = None
-        self.numracks = 1
         self.hosts = dict()
-        self.switches = dict()
         self.collection_start_time = 0 # used in NTPD testing
         self.collection_end_time = 0 # used in NTPD testing
 
@@ -58,17 +56,6 @@ class GpCheckHost:
         self.data = None
     def __str__(self):
         return "%s is_a_master(%s) primary_master(%s) datafile(%s)" % (self.hostname, self.is_a_master, self.primary_master, self.datafile)
-
-class GpCheckSwitch:
-    def __init__(self, name, category, oid):
-        self.hostname = name
-        self.category = category
-        self.versionstring = None
-        self.oid = oid
-        self.version_errormsg = None
-
-    def __str__(self):
-        return "%s Switch: %s\nVersionString: %s\nErrorMsg: %s" % (self.category, self.hostname, self.versionstring, self.version_errormsg)
 
 # True is an error
 def parseargs():
@@ -151,18 +138,7 @@ def createHostList():
 
     else:
 
-        if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
-            if re.match("i-sw-", options.host): 
-                gpcheck_info.switches[options.host] = GpCheckSwitch(options.host, 'Interconnect', brocadeOid)
-
-            elif re.match("a-sw-", options.host):
-                gpcheck_info.switches[options.host] = GpCheckSwitch(options.host, 'Admin', alliedTelesisOid)
-        
-            else:
-                hostlist.append(options.host)
-
-        else:
-            hostlist.append(options.host)
+        hostlist.append(options.host)
 
     try:
         for hostname in hostlist:
@@ -201,61 +177,7 @@ def createHostList():
         logger.error(e.__str__())
         return True
 
-    
-    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
-
-        countHosts = len(gpcheck_info.hosts)
-        if countHosts > 34:
-            logger.warning("2 rack solution is the highest gpcheck can detect, some switches may not be checked")
-        elif countHosts > 18:
-            gpcheck_info.numracks = 2
-        elif countHosts > 1:
-            gpcheck_info.numracks = 1
-        else: # this is a single host only
-            gpcheck_info.numracks = 0 
-
-       
     return False
-
-def collectSwitchData(switch):
-    
-    cmd = "snmpwalk -v 2c -c public %s %s" % (switch.hostname, switch.oid)
-
-    p = subprocess.Popen(cmd, shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
-
-    result = p.communicate()
-
-    output = result[0].strip()
-    words = output.split("STRING:")
-    if len(words) == 2:
-        switch.versionstring = words[1].strip()
-
-    switch.version_errormsg = result[1].strip()
-
- 
-#true is error
-def runCollectionOnSwitches():
-
-    global gpcheck_info
-    if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
-
-        if gpcheck_info.numracks > 0:
-            gpcheck_info.switches['i-sw-1'] = GpCheckSwitch('i-sw-1', 'Interconnect', brocadeOid)
-            gpcheck_info.switches['i-sw-2'] = GpCheckSwitch('i-sw-2', 'Interconnect', brocadeOid)
-            gpcheck_info.switches['a-sw-1'] = GpCheckSwitch('a-sw-1', 'Admin', alliedTelesisOid)
-
-        if gpcheck_info.numracks > 1:
-            gpcheck_info.switches['i-sw-3'] = GpCheckSwitch('i-sw-3', 'Interconnect', brocadeOid)
-            gpcheck_info.switches['i-sw-4'] = GpCheckSwitch('i-sw-4', 'Interconnect', brocadeOid)
-            gpcheck_info.switches['a-sw-2'] = GpCheckSwitch('a-sw-2', 'Admin', alliedTelesisOid)
-            
-
-    for s in gpcheck_info.switches:
-        if options.verbose:
-            logger.info("check switch: %s" % s)
-
-        collectSwitchData(gpcheck_info.switches[s])
-
 
 #true is error
 def runCollectionOnServers():
@@ -1034,21 +956,6 @@ def testUnameConsistency():
             firstUname = uname
             firstHost = host.hostname
 
-def testApplianceSwitches():
-
-    for s in gpcheck_info.switches:
-        switch = gpcheck_info.switches[s]
-    
-        if switch.category == 'Interconnect':
-            expected = '"%s"' % gpcheck_config.brocade_switch_firmware_version
-            if switch.versionstring != expected:
-                printError(switch.hostname, "Interconnect Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
-
-        elif switch.category == 'Admin':
-            expected = "Allied Telesis AT-9924T-EMC - %s" % gpcheck_config.at_switch_firmware_version
-            if switch.versionstring != expected:
-                printError(switch.hostname, "Admin Switch has unexpected firmware version '%s'.  Standard Version is '%s'." % (switch.versionstring, expected))
-
 # return True for error
 def populateGpCheckLinuxConfigParams():
 
@@ -1077,9 +984,7 @@ def populateGpCheckApplianceConfigParams():
                             'cna_firmware_version', 
                             'cna_bios_version', 
                             'dell_bios_version_master', 
-                            'dell_bios_version_segment',
-                            'brocade_switch_firmware_version',
-                            'at_switch_firmware_version'])
+                            'dell_bios_version_segment'])
 
     for option in requiredOptions:
         if not config.has_option(gpcheck_config.gpcheck_config_version, option):
@@ -1093,9 +998,6 @@ def populateGpCheckApplianceConfigParams():
     gpcheck_config.cna_bios_version = config.get(gpcheck_config.gpcheck_config_version, 'cna_bios_version')
     gpcheck_config.dell_bios_version_master = config.get(gpcheck_config.gpcheck_config_version, 'dell_bios_version_master')
     gpcheck_config.dell_bios_version_segment = config.get(gpcheck_config.gpcheck_config_version, 'dell_bios_version_segment')
-    gpcheck_config.brocade_switch_firmware_version = config.get(gpcheck_config.gpcheck_config_version, 'brocade_switch_firmware_version')
-    gpcheck_config.at_switch_firmware_version = config.get(gpcheck_config.gpcheck_config_version, 'at_switch_firmware_version')
-
 
 def testAppliance():
 
@@ -1109,8 +1011,6 @@ def testAppliance():
         testApplianceHost(gpcheck_info.hosts[h])
 
     testUnameConsistency()
-
-    testApplianceSwitches()
 
 def testGenericLinuxCluster():
 
@@ -1239,10 +1139,6 @@ def runCollections():
     if retVal:
         return True
 
-    retVal = runCollectionOnSwitches()
-    if retVal:
-        return True
-
     retVal = copyFilesLocally()
     if retVal:
         return True
@@ -1367,7 +1263,6 @@ def readZip():
         logger.info("read from gpcheck file appliance_version = %s" % gpcheck_info.appliance_version)
     logger.info("read from gpcheck file is_root = %s" % gpcheck_info.is_root)
     logger.info("read from gpcheck file number hosts = %s" % len(gpcheck_info.hosts))
-    logger.info("read from gpcheck file number switches = %s" % len(gpcheck_info.switches))
   
     return False
 
@@ -1426,11 +1321,6 @@ def doPrint():
         print gpcheck_info.hosts[h].data.__str__()
         print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 
-    for s in gpcheck_info.switches:
-        print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-        print gpcheck_info.switches[s].__str__()
-        print "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-
 def checkUser():
 
     global gpcheck_info
@@ -1473,8 +1363,6 @@ else:
     logger.info("Detected platform: %s" % hosttype_str(gpcheck_info.host_type))
     if gpcheck_info.host_type == HostType.GPCHECK_HOSTTYPE_APPLIANCE:
         logger.info("Appliance Version = %s" % gpcheck_info.appliance_version)
-        if gpcheck_info.numracks:
-            logger.info("%d rack configuration detected" % gpcheck_info.numracks)
 
     if (runCollections()):
         earlyExit(True)
