@@ -272,6 +272,16 @@ IDX_TYPE_ARRAY=(btree bitmap hash)
 #******************************************************************************
 # Functions
 #******************************************************************************
+
+IN_ARRAY () {
+    for v in $2; do
+        if [ x"$1" == x"$v" ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
 CHK_DB_QD_SET () {
 		if [ ! $MASTER_DATA_DIRECTORY ]; then
 				ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY parameter not set, update user start-up file [i.e. .bashrc]." 2
