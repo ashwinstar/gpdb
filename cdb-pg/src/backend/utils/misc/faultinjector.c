@@ -192,6 +192,14 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault before transaction commit is recorded in xlog */
 	_("twophase_transaction_abort_prepared"),
 		 /* inject fault before transaction abort is recorded in xlog */
+	_("dtm_broadcast_prepare"),
+		/* inject fault after prepare broadcast */
+	_("dtm_broadcast_commit_prepared"),
+		/* inject fault after commit broadcast */
+	_("dtm_broadcast_abort_prepared"),
+		/* inject fault after abort broadcast */
+	_("dtm_xlog_distributed_commit"),
+		/* inject fault after distributed commit was inserted in xlog */
         _("end_prepare_two_phase_sleep"),
 	        /* inject sleep after creation of two phase file */
 	_("not recognized"),
@@ -582,10 +590,21 @@ FaultInjector_InjectFaultIfSet(
 		}	
 		case FaultInjectorTypeReset:
 		case FaultInjectorTypeStatus:
-
+			
+			ereport(LOG, 
+					(errmsg("unexpected error, fault triggered, fault name:'%s' fault type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
+			
 			Assert(0);
 			break;
 		default:
+			
+			ereport(LOG, 
+					(errmsg("unexpected error, fault triggered, fault name:'%s' fault type:'%s' ",
+							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
+							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
+			
 			Assert(0);
 			break;
 	}
@@ -850,6 +869,10 @@ FaultInjector_NewHashEntry(
 			break;
 			
 		case TransactionAbortAfterDistributedPrepared:
+		case DtmBroadcastPrepare:
+		case DtmBroadcastCommitPrepared:
+		case DtmBroadcastAbortPrepared:
+		case DtmXLogDistributedCommit:			
 			
 			if (fileRepRole != FileRepNoRoleConfigured)
 			{

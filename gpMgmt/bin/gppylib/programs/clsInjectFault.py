@@ -353,6 +353,10 @@ class GpInjectFaultProgram:
 			      "finish_prepared_transaction_abort_pass2_aborting_create_needed, " \
 			      "twophase_transaction_commit_prepared (inject fault before transaction commit is inserted in xlog), " \
 			      "twophase_transaction_abort_prepared (inject fault before transaction abort is inserted in xlog), " \
+			      "dtm_broadcast_prepare (inject fault after prepare broadcast), " \
+			      "dtm_broadcast_commit_prepared (inject fault after commit broadcast), " \
+			      "dtm_broadcast_abort_prepared (inject fault after abort broadcast), " \
+			      "dtm_xlog_distributed_commit (inject fault after distributed commit was inserted in xlog), " \
                               "end_prepare_two_phase_sleep (inject sleep after two phase file creation), " \
 			      "all (affects all faults injected, used for 'status' and 'reset'), ") 
         addTo.add_option("-c", "--ddl_statement", dest="ddlStatement", type="string",

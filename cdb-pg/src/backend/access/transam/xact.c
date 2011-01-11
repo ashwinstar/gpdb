@@ -1116,6 +1116,15 @@ RecordTransactionCommit(void)
 				recptr = XLogInsert(RM_XACT_ID, XLOG_XACT_DISTRIBUTED_COMMIT, rdata);
 
 				insertedDistributedCommitted();
+				
+#ifdef FAULT_INJECTOR	
+				FaultInjector_InjectFaultIfSet(
+											   DtmXLogDistributedCommit, 
+											   DDLNotSpecified,
+											   "",	// databaseName
+											   ""); // tableName
+#endif				
+			
 			}
 			else
 			{

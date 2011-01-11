@@ -34,6 +34,7 @@
 #include "cdb/cdbpersistentrecovery.h"
 
 #include "cdb/cdbllize.h"
+#include "utils/faultinjector.h"
 
 extern bool Test_print_direct_dispatch_info;
 
@@ -625,6 +626,14 @@ doPrepareTransaction(void)
 	setCurrentGxactState( DTX_STATE_PREPARED );
 	releaseTmLock();
 	
+#ifdef FAULT_INJECTOR	
+		FaultInjector_InjectFaultIfSet(
+									   DtmBroadcastPrepare, 
+									   DDLNotSpecified,
+									   "",	// databaseName
+									   ""); // tableName
+#endif			
+	
 	elog(DTM_DEBUG5, "doPrepareTransaction leaving in state = %s", DtxStateToString(currentGxact->state));
 }
 
@@ -721,6 +730,14 @@ doNotifyingCommitPrepared(void)
 		elog(DTM_DEBUG5, "The distributed transaction 'Commit Prepared' broadcast succeeded to all the segments for gid = %s.",
 			 currentGxact->gid);
 	}
+	
+#ifdef FAULT_INJECTOR	
+	FaultInjector_InjectFaultIfSet(
+								   DtmBroadcastCommitPrepared, 
+								   DDLNotSpecified,
+								   "",	// databaseName
+								   ""); // tableName
+#endif				
 
 	/*
 	 * Global locking order: ProcArrayLock then DTM lock since
@@ -854,7 +871,15 @@ doNotifyingAbort(void)
 		elog(DTM_DEBUG5, "The distributed transaction '%s' broadcast succeeded to all the segments for gid = %s.",
 			 abortString, currentGxact->gid);
 	}
-		
+	
+#ifdef FAULT_INJECTOR	
+	FaultInjector_InjectFaultIfSet(
+								   DtmBroadcastAbortPrepared, 
+								   DDLNotSpecified,
+								   "",	// databaseName
+								   ""); // tableName
+#endif				
+	
 	/*
 	 * Global locking order: ProcArrayLock then DTM lock.
 	 */
