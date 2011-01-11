@@ -31,6 +31,13 @@ returns @gpupgradeschemaname@.int4
 language internal AS 'gp_persistent_reset_all' volatile
 with (oid = 7180);
 
+create function @gpupgradeschemaname@.gp_persistent_repair_delete(
+    @gpupgradeschemaname@.int4,
+    @gpupgradeschemaname@.tid)
+returns @gpupgradeschemaname@.int4
+language internal AS 'gp_persistent_repair_delete' volatile
+with (oid = 7181);
+
 \set q1 '\''
 \set ploc `echo $GPHOME/bin/postgres`
 \set quote_ploc :q1 :ploc :q1
