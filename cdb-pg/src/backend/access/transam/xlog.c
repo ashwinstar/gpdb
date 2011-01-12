@@ -8470,6 +8470,8 @@ CreateCheckPoint(bool shutdown, bool force)
         XLogRecPtr *ptrd_oldest_ptr = NULL;
         XLogRecPtr  ptrd_oldest;
 
+	memset(&ptrd_oldest, 0, sizeof(ptrd_oldest));
+
         if (gp_enable_new_two_phase_logic == true)
 	  ptrd_oldest_ptr = getTwoPhaseOldestPreparedTransactionXLogRecPtr(&rdata[5]);
 
