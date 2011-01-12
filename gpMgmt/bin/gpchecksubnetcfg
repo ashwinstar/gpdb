@@ -315,9 +315,11 @@ if __name__ == '__main__':
             sys.exit(2)
     
     except KeyboardInterrupt:
-        logger.info("User canceled")    
+        logger.info("User canceled")
+        sys.exit(4)    
     except Exception, ex:
         logger.exception(ex)
+        sys.exit(5)
     finally:
         if conn:
             conn.close()
