@@ -3592,17 +3592,10 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		{
 			oldContext = MemoryContextSwitchTo(stmt->qdContext);
 		}
-		else /*  */
-		if (CurrentMemoryContext == TopMemoryContext || CurrentMemoryContext == DispatchContext)
+		else /* MPP-8382: memory context of plan tree should not change */
 		{
-			/*
-			 * Make sure the palloc calls from plan_tree_mutator don't happen in 
-			 * topMemory, as this will cause memory leaks
-			 */
-			if (QueryContext != NULL)
-				oldContext = MemoryContextSwitchTo(QueryContext);
-			else
-				oldContext = MemoryContextSwitchTo(MessageContext);
+			MemoryContext mc = GetMemoryChunkContext(stmt->planTree);
+			oldContext = MemoryContextSwitchTo(mc);
 		}
 
 		stmt->planTree = (Plan *) exec_make_plan_constant(stmt, is_SRI);

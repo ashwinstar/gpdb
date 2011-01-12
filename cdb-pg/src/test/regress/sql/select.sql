@@ -146,3 +146,26 @@ INSERT INTO nosort VALUES(1), (2);
 -- using this operator. This query should result in error.
 SELECT * FROM nosort ORDER BY i USING <<;
 DROP TABLE nosort;
+
+-- Test dispatch of recursive functions: MPP-8382
+
+create table select_t (k int, v int) distributed by (k);
+insert into select_t values (0, 1), (1, 2), (2, 4), (3, 8), (4, 16);
+create function select_i(int) returns int as $$
+	select v from select_t where k = $1;
+	$$ language sql;
+create function select_f(int) returns int as $$
+	begin
+		if $1 <= 0 then
+		    return $1;
+		end if;
+		return select_f($1-1) + select_i($1);
+	end;
+	$$ language plpgsql;
+	
+select x, select_f(x) from (values (0), (1), (2), (3), (4), (5), (6)) r(x);
+
+drop table if exists select_t cascade; --ignore
+drop function if exists select_i(int); -- ignore
+drop function if exists select_f(int); -- ignore
+
