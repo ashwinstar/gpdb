@@ -968,6 +968,9 @@ def checkFKConstraint(db, tables, max_content):
         # skip tables without fkey
         if len(fkey) <= 0:
             continue;
+        if len(cat.getPrimaryKey()) <= 0:
+            continue;
+
         fktables.append(cat)
 
         tblcnt += 1
