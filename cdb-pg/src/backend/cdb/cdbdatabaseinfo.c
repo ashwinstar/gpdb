@@ -1357,7 +1357,8 @@ DatabaseInfo_Collect(
 	Oid			database,
 	Oid 		defaultTablespace,
 	bool        collectGpRelationNodeInfo,
-	bool		collectAppendOnlyCatalogSegmentInfo)
+	bool		collectAppendOnlyCatalogSegmentInfo,
+	bool		scanFileSystem)
 {
 	DatabaseInfo		 *info;	
 	HTAB				 *dbInfoRelHashTable;
@@ -1441,9 +1442,12 @@ DatabaseInfo_Collect(
 	 * Files not present in gp_relation_node will not be mirrored and probably
 	 * require removal to maintain database/filesystem consistency.
 	 */
-	for (t = 0; t < info->tablespacesCount; t++)
+	if (scanFileSystem)
 	{
-		DatabaseInfo_Scan(info, dbInfoRelHashTable, info->tablespaces[t], database);
+		for (t = 0; t < info->tablespacesCount; t++)
+		{
+			DatabaseInfo_Scan(info, dbInfoRelHashTable, info->tablespaces[t], database);
+		}
 	}
 
 	/* Convert the dbInfoRelHash into array and sort it. */

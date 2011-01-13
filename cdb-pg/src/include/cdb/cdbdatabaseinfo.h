@@ -215,7 +215,8 @@ extern DatabaseInfo *DatabaseInfo_Collect(
 	Oid 		database,
 	Oid 		defaultTablespace,
 	bool        collectGpRelationNodeInfo,
-	bool		collectAppendOnlyCatalogSegmentInfo);
+	bool		collectAppendOnlyCatalogSegmentInfo,
+	bool		scanFileSystem);
 
 /*
  * DatabaseInfo_AlignAppendOnly()

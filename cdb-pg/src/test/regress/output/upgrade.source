@@ -16758,24 +16758,23 @@ create function upg_catalog.gp_persistent_repair_delete(
 returns upg_catalog.int4
 language internal AS 'gp_persistent_repair_delete' volatile
 with (oid = 7181);
-\set q1 '\''
-\set ploc `echo $GPHOME/bin/postgres`
-\set quote_ploc :q1 :ploc :q1
-create function upg_catalog.pt_tmp_func() 
-  returns int 
-  AS :quote_ploc, 'gp_persistent_set_relation_bufpool_kind_all'
-  LANGUAGE C STRICT;
-select pt_tmp_func();
-psql:@abs_srcdir@/data/upg_catupgrade_41.sql:50: ERROR:  function pt_tmp_func() does not exist
-LINE 1: select pt_tmp_func();
-               ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
-select pt_tmp_func() from gp_dist_random('gp_id');
-psql:@abs_srcdir@/data/upg_catupgrade_41.sql:51: ERROR:  function pt_tmp_func() does not exist
-LINE 1: select pt_tmp_func() from gp_dist_random('gp_id');
-               ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
-drop function upg_catalog.pt_tmp_func();
+create function upg_catalog.gp_persistent_set_relation_bufpool_kind_all()
+returns upg_catalog.int4
+language internal AS 'gp_persistent_set_relation_bufpool_kind_all' volatile
+with (oid = 7182);
+select gp_persistent_set_relation_bufpool_kind_all();
+ gp_persistent_set_relation_bufpool_kind_all 
+---------------------------------------------
+                                           1
+(1 row)
+
+select gp_persistent_set_relation_bufpool_kind_all() from gp_dist_random('gp_id');
+ gp_persistent_set_relation_bufpool_kind_all 
+---------------------------------------------
+                                           1
+                                           1
+(2 rows)
+
 --
 -- Ordered Aggregates
 --
@@ -20592,6 +20591,7 @@ ORDER BY proname, 10;
  gp_persistent_build_db                        | f        | f        | f         | f           | f         | v           | int4                        |        1 | {bool}                                                                                                |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_build_db                        | -
  gp_persistent_relation_node_check             | f        | f        | f         | f           | t         | v           | gp_persistent_relation_node |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_relation_node_check             | -
  gp_persistent_reset_all                       | f        | f        | f         | f           | f         | v           | int4                        |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_reset_all                       | -
+ gp_persistent_set_relation_bufpool_kind_all   | f        | f        | f         | f           | f         | v           | int4                        |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_set_relation_bufpool_kind_all   | -
  gp_pgdatabase                                 | f        | f        | f         | f           | t         | v           | record                      |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_pgdatabase__                               | -
  gp_prep_new_segment                           | f        | f        | f         | f           | f         | v           | bool                        |        1 | {_text}                                                                                               |                                                                                       |                             |                                                                                                                                          | internal | gp_prep_new_segment                           | -
  gp_read_backup_file                           | f        | f        | f         | f           | f         | v           | text                        |        3 | {text,text,regproc}                                                                                   |                                                                                       |                             |                                                                                                                                          | internal | gp_read_backup_file__                         | -
@@ -22661,6 +22661,7 @@ ORDER BY proname, 10;
  gp_persistent_build_db                        | f        | f        | f         | f           | f         | v           | int4                        |        1 | {bool}                                                                                                |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_build_db                        | -
  gp_persistent_relation_node_check             | f        | f        | f         | f           | t         | v           | gp_persistent_relation_node |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_relation_node_check             | -
  gp_persistent_reset_all                       | f        | f        | f         | f           | f         | v           | int4                        |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_reset_all                       | -
+ gp_persistent_set_relation_bufpool_kind_all   | f        | f        | f         | f           | f         | v           | int4                        |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_set_relation_bufpool_kind_all   | -
  gp_pgdatabase                                 | f        | f        | f         | f           | t         | v           | record                      |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_pgdatabase__                               | -
  gp_prep_new_segment                           | f        | f        | f         | f           | f         | v           | bool                        |        1 | {_text}                                                                                               |                                                                                       |                             |                                                                                                                                          | internal | gp_prep_new_segment                           | -
  gp_read_backup_file                           | f        | f        | f         | f           | f         | v           | text                        |        3 | {text,text,regproc}                                                                                   |                                                                                       |                             |                                                                                                                                          | internal | gp_read_backup_file__                         | -

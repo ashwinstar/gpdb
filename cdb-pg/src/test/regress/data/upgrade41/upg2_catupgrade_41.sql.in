@@ -38,19 +38,13 @@ returns @gpupgradeschemaname@.int4
 language internal AS 'gp_persistent_repair_delete' volatile
 with (oid = 7181);
 
-\set q1 '\''
-\set ploc `echo $GPHOME/bin/postgres`
-\set quote_ploc :q1 :ploc :q1
+create function @gpupgradeschemaname@.gp_persistent_set_relation_bufpool_kind_all()
+returns @gpupgradeschemaname@.int4
+language internal AS 'gp_persistent_set_relation_bufpool_kind_all' volatile
+with (oid = 7182);
 
-create function @gpupgradeschemaname@.pt_tmp_func() 
-  returns int 
-  AS :quote_ploc, 'gp_persistent_set_relation_bufpool_kind_all'
-  LANGUAGE C STRICT;
-
-select pt_tmp_func();
-select pt_tmp_func() from gp_dist_random('gp_id');
-
-drop function @gpupgradeschemaname@.pt_tmp_func();
+select gp_persistent_set_relation_bufpool_kind_all();
+select gp_persistent_set_relation_bufpool_kind_all() from gp_dist_random('gp_id');
 
 --
 -- Ordered Aggregates

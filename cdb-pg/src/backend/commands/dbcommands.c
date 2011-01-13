@@ -1074,7 +1074,8 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 							src_dboid, 
 							src_deftablespace,
 							/* collectGpRelationNodeInfo */ true,
-							/* collectAppendOnlyCatalogSegmentInfo */ true);
+							/* collectAppendOnlyCatalogSegmentInfo */ true,
+							/* scanFileSystem */ true);
 		
 		if (Debug_database_command_print)
 			elog(NOTICE, "collect phase: %s",
@@ -1490,7 +1491,8 @@ dropdb(const char *dbname, bool missing_ok)
 								db_id, 
 								defaultTablespace,
 								/* collectGpRelationNodeInfo */ true,
-								/* collectAppendOnlyCatalogSegmentInfo */ false);
+								/* collectAppendOnlyCatalogSegmentInfo */ false,
+								/* scanFileSystem */ true);
 
 //		if (Debug_database_command_print)
 //			DatabaseInfo_Trace(info);

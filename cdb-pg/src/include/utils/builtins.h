@@ -1094,6 +1094,8 @@ Datum gp_persistent_build_db(PG_FUNCTION_ARGS);
 Datum gp_persistent_build_all(PG_FUNCTION_ARGS);
 Datum gp_persistent_reset_all(PG_FUNCTION_ARGS);
 Datum gp_persistent_repair_delete(PG_FUNCTION_ARGS);
+Datum gp_persistent_set_relation_bufpool_kind_all(PG_FUNCTION_ARGS);
+
 
 /* utils/error/elog.c */
 extern Datum gp_elog(PG_FUNCTION_ARGS);

@@ -584,7 +584,8 @@ PersistentBuild_BuildDb(
 							dbOid,
 							defaultTablespace,
 							/* collectGpRelationNodeInfo */ false,
-							/* collectAppendOnlyCatalogSegmentInfo */ true);
+							/* collectAppendOnlyCatalogSegmentInfo */ true,
+							/* scanFileSystem */ true);
 
 	for (t = 0; t < info->tablespacesCount; t++)
 	{
@@ -921,7 +922,8 @@ PersistentBuild_SetRelationBufpoolKind(
 							database,
 							defaultTablespace,
 							/* collectGpRelationNodeInfo */ true,
-							/* collectAppendOnlyCatalogSegmentInfo */ false);
+							/* collectAppendOnlyCatalogSegmentInfo */ false,
+							/* scanFileSystem */ false);
 
 	for (r = 0; r < info->dbInfoRelArrayCount; r++)
 	{
@@ -968,8 +970,6 @@ PersistentBuild_SetRelationBufpoolKind(
 
 	}
 }
-
-extern Datum gp_persistent_set_relation_bufpool_kind_all(PG_FUNCTION_ARGS);
 
 Datum
 gp_persistent_set_relation_bufpool_kind_all(PG_FUNCTION_ARGS)

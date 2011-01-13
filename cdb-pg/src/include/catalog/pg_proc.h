@@ -4933,6 +4933,8 @@ DATA(insert OID = 7180 (  gp_persistent_reset_all    PGNSP PGUID 12 f f f f v 0 
 DESCR("Remove the persistent tables and gp_relation_node for the whole database instance");
 DATA(insert OID = 7181 (  gp_persistent_repair_delete    PGNSP PGUID 12 f f f f v 2 23 f "23 27" _null_ _null_ _null_ gp_persistent_repair_delete  - _null_  ));
 DESCR("Remove an entry specified by TID from a persistent table for the current database instance");
+DATA(insert OID = 7182 (  gp_persistent_set_relation_bufpool_kind_all    PGNSP PGUID 12 f f f f v 0 23 f "" _null_ _null_ _null_ gp_persistent_set_relation_bufpool_kind_all  - _null_  ));
+DESCR("Populate the gp_persistent_relation_node table's relation_bufpool_kind column for the whole database instance for upgrade from 4.0 to 4.1");
 
 /* GIN array support */
 DATA(insert OID = 2743 (  ginarrayextract	 PGNSP PGUID 12 f f t f i 2 2281 f "2277 2281" _null_ _null_ _null_	ginarrayextract - _null_ ));
