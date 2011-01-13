@@ -4052,7 +4052,7 @@ Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query,
 	/* Make the plan. 
 	 */
 	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan, query->rtable);
-	plan->flow = pull_up_Flow(plan, ((SubqueryScan*)plan)->subplan, true);
+	mark_passthru_locus(plan, true, true);
 	
 	/* Make the corresponding Query.
 	 */
@@ -4154,7 +4154,7 @@ Plan *add_join_to_wrapper(
 	/* Make the plan. 
 	 */
 	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan, query->rtable);
-	plan->flow = pull_up_Flow(plan, ((SubqueryScan*)plan)->subplan, true);
+	mark_passthru_locus(plan, true, true);
 
 	
 	/* Add new RTE */

@@ -1382,3 +1382,41 @@ order by 1,2,3;
 
 -- MPP-4840
 explain select n from ( select row_number() over () from (values (0)) as t(x) ) as r(n) group by n;
+-- Test for MPP-11645
+
+create table olap_window_r (a int, b int, x int,  y int,  z int ) distributed by (b);
+
+insert into olap_window_r values
+    ( 1,  17, 419, 291, 2513 ),
+    ( 2,  16, 434, 293, 2513 ),
+    ( 3,  15, 439, 295, 2483 ),
+    ( 4,  14, 445, 297, 2675 ),
+    ( 5,  13, 473, 299, 2730 ),
+    ( 6,  12, 475, 303, 2765 ),
+    ( 7,  11, 479, 305, 2703 ),
+    ( 8,  10, 502, 307, 2749 ),
+    ( 9,   9, 528, 308, 2850 ),
+    ( 10,  8, 532, 309, 2900 ),
+    ( 11,  7, 567, 315, 2970 ),
+    ( 12,  6, 570, 317, 3025 ),
+    ( 13,  5, 635, 319, 3045 ),
+    ( 14,  4, 653, 320, 3093 ),
+    ( 15,  3, 711, 321, 3217 ),
+    ( 16,  2, 770, 325, 3307 ),
+    ( 17,  1, 778, 329, 3490 );
+
+select b, sum(x) over (partition by b), 10*b
+from olap_window_r order by b; --order 3
+
+select sum(x) over (partition by b), 10*b
+from olap_window_r order by b; --order 2
+
+select a, sum(x) over (partition by a), 10*a
+from olap_window_r order by a; --order 3
+
+select sum(x) over (partition by a), 10*a
+from olap_window_r order by a; -- order 2
+
+drop table if exists olap_window_r cascade; --ignore
+
+-- End MPP-11645

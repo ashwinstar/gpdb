@@ -541,18 +541,31 @@ makeFlow(FlowType flotype)
  * NB: At one time this function was called during cdbparallelize(), after
  * transformation of the plan by set_plan_references().  Later, calls were
  * added upstream of set_plan_references(); only these remain at present.
+ *
+ * Don't call on a SubqueryScan plan.  If you are tempted, you probably 
+ * want to use mark_passthru_locus (after make_subqueryscan) instead.
  */
 Flow *
 pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
 {
-	Flow	   *model_flow;
-	Flow	   *new_flow;
+	Flow	   *model_flow = NULL;
+	Flow	   *new_flow = NULL;
 
 	Insist(subplan);
 
 	model_flow = subplan->flow;
 
 	Insist(model_flow);
+	
+	/* SubqueryScan always has manifest Flow, so we shouldn't see one here. */
+	Assert( !IsA(plan, SubqueryScan) );
+		
+	if (IsA(plan, MergeJoin) || IsA(plan, NestLoop) || IsA(plan, HashJoin))
+		Assert(subplan == plan->lefttree || subplan == plan->righttree);
+	else if ( IsA(plan, Append) )
+		Assert(list_member(((Append*)plan)->appendplans, subplan)); 
+	else
+		Assert(subplan == plan->lefttree);
 
 	new_flow = makeFlow(model_flow->flotype);
 
