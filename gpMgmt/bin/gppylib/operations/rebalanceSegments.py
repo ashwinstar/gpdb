@@ -1,7 +1,7 @@
 from gppylib.gparray import GpArray
 from gppylib.db import dbconn
 from gppylib.commands.gp import GpSegStopCmd, GpRecoverseg
-from gppylib.commands.base import WorkerPool
+from gppylib.commands.base import WorkerPool, REMOTE
 from gppylib import gplog
 
 logger = gplog.get_default_logger()
@@ -26,6 +26,7 @@ class GpSegmentRebalanceOperation:
                                self.gpEnv.getGpVersion(),
                                'fast',
                                unbalanced_primary_segs[hostname],
+                               ctxt=REMOTE,
                                remoteHost=hostname,
                                timeout=600)
             pool.addCommand(cmd)
