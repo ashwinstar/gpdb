@@ -499,6 +499,56 @@ CHK_PARAMS () {
 				ULIMIT_WARN=1
 			fi
 		fi
+		
+		# Validate that the different locale settings are available of the system
+		# Note: This check is performed on the master only.  There is an assumption
+		# being made that the locales available on the master are available on the
+		# segment hosts.
+		if [ x"" != x"$REQ_LOCALE_SETTING" ]; then
+			IN_ARRAY $REQ_LOCALE_SETTING "`locale -a`"
+			if [ $? -eq 0 ]; then
+				ERROR_EXIT "[FATAL]-Value $REQ_LOCALE_SETTING is not a valid value for --locale on this system." 2
+			fi
+		fi
+		if [ x"" != x"$LCCOLLATE" ]; then
+			IN_ARRAY $LCCOLLATE "`locale -a`"
+			if [ $? -eq 0 ]; then
+				ERROR_EXIT "[FATAL]-Value $LCCOLLATE is not a valid value for --lc-collate on this system." 2
+			fi	
+		fi
+		if [ x"" != x"$LCCTYPE" ]; then
+			IN_ARRAY $LCCTYPE "`locale -a`"
+			if [ $? -eq 0 ]; then
+				ERROR_EXIT "[FATAL]-Value $LCCTYPE is not a valid value for --lc-ctype on this system." 2
+			fi
+		fi
+		if [ x"" != x"$LCMESSAGES" ]; then
+			IN_ARRAY $LCMESSAGES "`locale -a`"
+			if [ $? -eq 0 ]; then
+				ERROR_EXIT "[FATAL]-Value $LCMESSAGES is not a valid value for --lc-messages on this system." 2
+			fi
+		fi
+		
+		if [ x"" != x"$LCMONETARY" ]; then
+			IN_ARRAY $LCMONETARY "`locale -a`"
+			if [ $? -eq 0 ]; then
+				ERROR_EXIT "[FATAL]-Value $LCMONETARY is not a valid value for --lc-monetary on this system." 2
+			fi
+		fi
+		
+		if [ x"" != x"$LCNUMERIC" ]; then
+			IN_ARRAY $LCNUMERIC "`locale -a`"
+			if [ $? -eq 0 ]; then
+				ERROR_EXIT "[FATAL]-Value $LCNUMERIC is not a valid value for --lc-numeric on this system." 2
+			fi
+		fi
+		
+		if [ x"" != x"$LCTIME" ]; then
+			IN_ARRAY $LCTIME "`locale -a`"
+			if [ $? -eq 0 ]; then
+				ERROR_EXIT "[FATAL]-Value $LCTIME is not a valid value for --lc-time on this system." 2
+			fi
+		fi
 		LOG_MSG "[INFO]:-Checking configuration parameters, Completed" 1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -1780,57 +1830,6 @@ done
 if [ x"$CLUSTER_CONFIG" = x"" ] && [ x"$INPUT_CONFIG" = x"" ]; then
 		USAGE
 fi
-
-# Validate that the different locale settings are available of the system
-# Note: This check is performed on the master only.  There is an assumption
-# being made that the locales available on the master are available on the
-# segment hosts.
-if [ x"" != x"$REQ_LOCALE_SETTING" ]; then
-	IN_ARRAY $REQ_LOCALE_SETTING "`locale -a`"
-	if [ $? -eq 0 ]; then
-		ERROR_EXIT "[FATAL]-Value $REQ_LOCALE_SETTING is not a valid value for --locale on this system." 2
-	fi
-fi
-if [ x"" != x"$LCCOLLATE" ]; then
-	IN_ARRAY $LCCOLLATE "`locale -a`"
-	if [ $? -eq 0 ]; then
-		ERROR_EXIT "[FATAL]-Value $LCCOLLATE is not a valid value for --lc-collate on this system." 2
-	fi	
-fi
-if [ x"" != x"$LCCTYPE" ]; then
-	IN_ARRAY $LCCTYPE "`locale -a`"
-	if [ $? -eq 0 ]; then
-		ERROR_EXIT "[FATAL]-Value $LCCTYPE is not a valid value for --lc-ctype on this system." 2
-	fi
-fi
-if [ x"" != x"$LCMESSAGES" ]; then
-	IN_ARRAY $LCMESSAGES "`locale -a`"
-	if [ $? -eq 0 ]; then
-		ERROR_EXIT "[FATAL]-Value $LCMESSAGES is not a valid value for --lc-messages on this system." 2
-	fi
-fi
-
-if [ x"" != x"$LCMONETARY" ]; then
-	IN_ARRAY $LCMONETARY "`locale -a`"
-	if [ $? -eq 0 ]; then
-		ERROR_EXIT "[FATAL]-Value $LCMONETARY is not a valid value for --lc-monetary on this system." 2
-	fi
-fi
-
-if [ x"" != x"$LCNUMERIC" ]; then
-	IN_ARRAY $LCNUMERIC "`locale -a`"
-	if [ $? -eq 0 ]; then
-		ERROR_EXIT "[FATAL]-Value $LCNUMERIC is not a valid value for --lc-numeric on this system." 2
-	fi
-fi
-
-if [ x"" != x"$LCTIME" ]; then
-	IN_ARRAY $LCTIME "`locale -a`"
-	if [ $? -eq 0 ]; then
-		ERROR_EXIT "[FATAL]-Value $LCTIME is not a valid value for --lc-time on this system." 2
-	fi
-fi
-
 
 if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 	CHK_FILE $PG_CONF_ADD_FILE
