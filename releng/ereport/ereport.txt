@@ -1278,129 +1278,129 @@ xaae: xlog:00007462:  callerStr, XLogLocationToString(&checkPoint.redo))));
 xaae: xlog:00008135:  ereport(LOG, 
 xaae: xlog:00008136:  (errmsg("database system is shut down"), 
 xaae: xlog:00008137:  errSendAlert(true),errOmitLocation(true))); 
-xaae: xlog:00009216:  ereport(ERROR, 
-xaae: xlog:00009217:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009218:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00009221:  ereport(ERROR, 
-xaae: xlog:00009222:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009223:  (errmsg("WAL archiving is not active"), 
-xaae: xlog:00009224:  (errhint("archive_command must be defined before " 
-xaae: xlog:00009225:  "online backups can be made safely."))))); 
-xaae: xlog:00009251:  ereport(ERROR, 
-xaae: xlog:00009252:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009253:  errmsg("a backup is already in progress"), 
-xaae: xlog:00009254:  errhint("Run pg_stop_backup() and try again."))); 
-xaae: xlog:00009299:  ereport(ERROR, 
-xaae: xlog:00009300:  (errcode_for_file_access(), 
-xaae: xlog:00009301:  errmsg("could not stat file \"%s\": %m", 
-xaae: xlog:00009302:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009305:  ereport(ERROR, 
-xaae: xlog:00009306:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009307:  errmsg("a backup is already in progress"), 
-xaae: xlog:00009308:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
-xaae: xlog:00009309:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009316:  ereport(ERROR, 
-xaae: xlog:00009317:  (errcode_for_file_access(), 
-xaae: xlog:00009318:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00009319:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009327:  ereport(ERROR, 
-xaae: xlog:00009328:  (errcode_for_file_access(), 
-xaae: xlog:00009329:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00009330:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009382:  ereport(ERROR, 
-xaae: xlog:00009383:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009384:  (errmsg("must be superuser to run a backup")))); 
-xaae: xlog:00009416:  ereport(ERROR, 
-xaae: xlog:00009417:  (errcode_for_file_access(), 
-xaae: xlog:00009418:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009419:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009420:  ereport(ERROR, 
-xaae: xlog:00009421:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009422:  errmsg("a backup is not in progress"))); 
-xaae: xlog:00009432:  ereport(ERROR, 
-xaae: xlog:00009433:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009434:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009444:  ereport(ERROR, 
-xaae: xlog:00009445:  (errcode_for_file_access(), 
-xaae: xlog:00009446:  errmsg("could not create file \"%s\": %m", 
-xaae: xlog:00009447:  histfilepath))); 
-xaae: xlog:00009457:  ereport(ERROR, 
-xaae: xlog:00009458:  (errcode_for_file_access(), 
-xaae: xlog:00009459:  errmsg("could not write file \"%s\": %m", 
-xaae: xlog:00009460:  histfilepath))); 
-xaae: xlog:00009466:  ereport(ERROR, 
-xaae: xlog:00009467:  (errcode_for_file_access(), 
-xaae: xlog:00009468:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009469:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009471:  ereport(ERROR, 
-xaae: xlog:00009472:  (errcode_for_file_access(), 
-xaae: xlog:00009473:  errmsg("could not remove file \"%s\": %m", 
-xaae: xlog:00009474:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009504:  ereport(ERROR, 
-xaae: xlog:00009505:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-xaae: xlog:00009506:  (errmsg("must be superuser to switch transaction log files")))); 
-xaae: xlog:00009612:  ereport(ERROR, 
-xaae: xlog:00009613:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009614:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009615:  locationstr))); 
-xaae: xlog:00009681:  ereport(ERROR, 
-xaae: xlog:00009682:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-xaae: xlog:00009683:  errmsg("could not parse transaction log location \"%s\"", 
-xaae: xlog:00009684:  locationstr))); 
-xaae: xlog:00009741:  ereport(FATAL, 
-xaae: xlog:00009742:  (errcode_for_file_access(), 
-xaae: xlog:00009743:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009744:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009756:  ereport(FATAL, 
-xaae: xlog:00009757:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009758:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009762:  ereport(FATAL, 
-xaae: xlog:00009763:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009764:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
-xaae: xlog:00009766:  ereport(FATAL, 
-xaae: xlog:00009767:  (errcode_for_file_access(), 
-xaae: xlog:00009768:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009769:  BACKUP_LABEL_FILE))); 
-xaae: xlog:00009793:  ereport(FATAL, 
-xaae: xlog:00009794:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009795:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009799:  ereport(FATAL, 
-xaae: xlog:00009800:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-xaae: xlog:00009801:  errmsg("invalid data in file \"%s\"", histfilename))); 
-xaae: xlog:00009804:  ereport(FATAL, 
-xaae: xlog:00009805:  (errcode_for_file_access(), 
-xaae: xlog:00009806:  errmsg("could not read file \"%s\": %m", 
-xaae: xlog:00009807:  histfilepath))); 
-xaae: xlog:00010154:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-xaae: xlog:00010155:  errmsg("database 'postgres' does not exist"))); 
-xaae: xlog:00010398:  ereport(WARNING, 
-xaae: xlog:00010399:  (errcode_for_file_access(), 
-xaae: xlog:00010400:  errmsg("could not allocate path, path too long \"%s/%s\"", 
-xaae: xlog:00010401:  XLOGDIR, fname))); 
-xaae: xlog:00010407:  ereport(WARNING, 
-xaae: xlog:00010408:  (errcode_for_file_access(), 
-xaae: xlog:00010409:  errmsg("could not open xlog file \"%s\" : %m", 
-xaae: xlog:00010410:  path))); 
-xaae: xlog:00010415:  ereport(WARNING, 
-xaae: xlog:00010416:  (errcode_for_file_access(), 
-xaae: xlog:00010417:  errmsg("could not truncate xlog file \"%s\" to position \"%d\" : %m", 
-xaae: xlog:00010418:  path, startOffset))); 
-xaae: xlog:00010424:  ereport(WARNING, 
-xaae: xlog:00010425:  (errcode_for_file_access(), 
-xaae: xlog:00010426:  errmsg("could not seek xlog file \"%s\" to position \"%d\" : %m", 
-xaae: xlog:00010427:  path, startOffset))); 
-xaae: xlog:00010457:  ereport(WARNING, 
-xaae: xlog:00010458:  (errcode_for_file_access(), 
-xaae: xlog:00010459:  errmsg("could not write to file \"%s\": %m", path))); 
-xaae: xlog:00010470:  ereport(WARNING, 
-xaae: xlog:00010471:  (errcode_for_file_access(), 
-xaae: xlog:00010472:  errmsg("could not fsync file \"%s\": %m", path))); 
-xaae: xlog:00010479:  ereport(WARNING, 
-xaae: xlog:00010480:  (errcode_for_file_access(), 
-xaae: xlog:00010481:  errmsg("could not close file \"%s\": %m", path))); 
-xaae: xlog:00010865:  ereport(ERROR, 
-xaae: xlog:00010866:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-xaae: xlog:00010867:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
+xaae: xlog:00009218:  ereport(ERROR, 
+xaae: xlog:00009219:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009220:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00009223:  ereport(ERROR, 
+xaae: xlog:00009224:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009225:  (errmsg("WAL archiving is not active"), 
+xaae: xlog:00009226:  (errhint("archive_command must be defined before " 
+xaae: xlog:00009227:  "online backups can be made safely."))))); 
+xaae: xlog:00009253:  ereport(ERROR, 
+xaae: xlog:00009254:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009255:  errmsg("a backup is already in progress"), 
+xaae: xlog:00009256:  errhint("Run pg_stop_backup() and try again."))); 
+xaae: xlog:00009301:  ereport(ERROR, 
+xaae: xlog:00009302:  (errcode_for_file_access(), 
+xaae: xlog:00009303:  errmsg("could not stat file \"%s\": %m", 
+xaae: xlog:00009304:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009307:  ereport(ERROR, 
+xaae: xlog:00009308:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009309:  errmsg("a backup is already in progress"), 
+xaae: xlog:00009310:  errhint("If you're sure there is no backup in progress, remove file \"%s\" and try again.", 
+xaae: xlog:00009311:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009318:  ereport(ERROR, 
+xaae: xlog:00009319:  (errcode_for_file_access(), 
+xaae: xlog:00009320:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00009321:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009329:  ereport(ERROR, 
+xaae: xlog:00009330:  (errcode_for_file_access(), 
+xaae: xlog:00009331:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009332:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009384:  ereport(ERROR, 
+xaae: xlog:00009385:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009386:  (errmsg("must be superuser to run a backup")))); 
+xaae: xlog:00009418:  ereport(ERROR, 
+xaae: xlog:00009419:  (errcode_for_file_access(), 
+xaae: xlog:00009420:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009421:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009422:  ereport(ERROR, 
+xaae: xlog:00009423:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009424:  errmsg("a backup is not in progress"))); 
+xaae: xlog:00009434:  ereport(ERROR, 
+xaae: xlog:00009435:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009436:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009446:  ereport(ERROR, 
+xaae: xlog:00009447:  (errcode_for_file_access(), 
+xaae: xlog:00009448:  errmsg("could not create file \"%s\": %m", 
+xaae: xlog:00009449:  histfilepath))); 
+xaae: xlog:00009459:  ereport(ERROR, 
+xaae: xlog:00009460:  (errcode_for_file_access(), 
+xaae: xlog:00009461:  errmsg("could not write file \"%s\": %m", 
+xaae: xlog:00009462:  histfilepath))); 
+xaae: xlog:00009468:  ereport(ERROR, 
+xaae: xlog:00009469:  (errcode_for_file_access(), 
+xaae: xlog:00009470:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009471:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009473:  ereport(ERROR, 
+xaae: xlog:00009474:  (errcode_for_file_access(), 
+xaae: xlog:00009475:  errmsg("could not remove file \"%s\": %m", 
+xaae: xlog:00009476:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009506:  ereport(ERROR, 
+xaae: xlog:00009507:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+xaae: xlog:00009508:  (errmsg("must be superuser to switch transaction log files")))); 
+xaae: xlog:00009614:  ereport(ERROR, 
+xaae: xlog:00009615:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009616:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009617:  locationstr))); 
+xaae: xlog:00009683:  ereport(ERROR, 
+xaae: xlog:00009684:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+xaae: xlog:00009685:  errmsg("could not parse transaction log location \"%s\"", 
+xaae: xlog:00009686:  locationstr))); 
+xaae: xlog:00009743:  ereport(FATAL, 
+xaae: xlog:00009744:  (errcode_for_file_access(), 
+xaae: xlog:00009745:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009746:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009758:  ereport(FATAL, 
+xaae: xlog:00009759:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009760:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009764:  ereport(FATAL, 
+xaae: xlog:00009765:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009766:  errmsg("invalid data in file \"%s\"", BACKUP_LABEL_FILE))); 
+xaae: xlog:00009768:  ereport(FATAL, 
+xaae: xlog:00009769:  (errcode_for_file_access(), 
+xaae: xlog:00009770:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009771:  BACKUP_LABEL_FILE))); 
+xaae: xlog:00009795:  ereport(FATAL, 
+xaae: xlog:00009796:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009797:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009801:  ereport(FATAL, 
+xaae: xlog:00009802:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+xaae: xlog:00009803:  errmsg("invalid data in file \"%s\"", histfilename))); 
+xaae: xlog:00009806:  ereport(FATAL, 
+xaae: xlog:00009807:  (errcode_for_file_access(), 
+xaae: xlog:00009808:  errmsg("could not read file \"%s\": %m", 
+xaae: xlog:00009809:  histfilepath))); 
+xaae: xlog:00010156:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+xaae: xlog:00010157:  errmsg("database 'postgres' does not exist"))); 
+xaae: xlog:00010400:  ereport(WARNING, 
+xaae: xlog:00010401:  (errcode_for_file_access(), 
+xaae: xlog:00010402:  errmsg("could not allocate path, path too long \"%s/%s\"", 
+xaae: xlog:00010403:  XLOGDIR, fname))); 
+xaae: xlog:00010409:  ereport(WARNING, 
+xaae: xlog:00010410:  (errcode_for_file_access(), 
+xaae: xlog:00010411:  errmsg("could not open xlog file \"%s\" : %m", 
+xaae: xlog:00010412:  path))); 
+xaae: xlog:00010417:  ereport(WARNING, 
+xaae: xlog:00010418:  (errcode_for_file_access(), 
+xaae: xlog:00010419:  errmsg("could not truncate xlog file \"%s\" to position \"%d\" : %m", 
+xaae: xlog:00010420:  path, startOffset))); 
+xaae: xlog:00010426:  ereport(WARNING, 
+xaae: xlog:00010427:  (errcode_for_file_access(), 
+xaae: xlog:00010428:  errmsg("could not seek xlog file \"%s\" to position \"%d\" : %m", 
+xaae: xlog:00010429:  path, startOffset))); 
+xaae: xlog:00010459:  ereport(WARNING, 
+xaae: xlog:00010460:  (errcode_for_file_access(), 
+xaae: xlog:00010461:  errmsg("could not write to file \"%s\": %m", path))); 
+xaae: xlog:00010472:  ereport(WARNING, 
+xaae: xlog:00010473:  (errcode_for_file_access(), 
+xaae: xlog:00010474:  errmsg("could not fsync file \"%s\": %m", path))); 
+xaae: xlog:00010481:  ereport(WARNING, 
+xaae: xlog:00010482:  (errcode_for_file_access(), 
+xaae: xlog:00010483:  errmsg("could not close file \"%s\": %m", path))); 
+xaae: xlog:00010867:  ereport(ERROR, 
+xaae: xlog:00010868:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+xaae: xlog:00010869:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -5416,56 +5416,56 @@ daba: dbcommands:00000926:  dbtemplate)));
 daba: dbcommands:00000943:  ereport(ERROR, 
 daba: dbcommands:00000944:  (errcode(ERRCODE_DUPLICATE_DATABASE), 
 daba: dbcommands:00000945:  errmsg("database \"%s\" already exists", dbname))); 
-daba: dbcommands:00001334:  ereport(ERROR, 
-daba: dbcommands:00001335:  (errcode(ERRCODE_OBJECT_IN_USE), 
-daba: dbcommands:00001336:  errmsg("cannot drop the currently open database"))); 
-daba: dbcommands:00001352:  ereport(ERROR, 
-daba: dbcommands:00001353:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
-daba: dbcommands:00001354:  errmsg("database \"%s\" does not exist", dbname))); 
-daba: dbcommands:00001374:  ereport(NOTICE, 
-daba: dbcommands:00001375:  (errmsg("database \"%s\" does not exist, skipping", 
-daba: dbcommands:00001376:  dbname))); 
-daba: dbcommands:00001395:  ereport(ERROR, 
-daba: dbcommands:00001396:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-daba: dbcommands:00001397:  errmsg("cannot drop a template database"))); 
-daba: dbcommands:00001404:  ereport(ERROR, 
-daba: dbcommands:00001405:  (errcode(ERRCODE_OBJECT_IN_USE), 
-daba: dbcommands:00001406:  errmsg("database \"%s\" is being accessed by other users", 
-daba: dbcommands:00001407:  dbname))); 
-daba: dbcommands:00001635:  ereport(ERROR, 
-daba: dbcommands:00001636:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
-daba: dbcommands:00001637:  errmsg("database \"%s\" does not exist", oldname))); 
-daba: dbcommands:00001646:  ereport(ERROR, 
-daba: dbcommands:00001647:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-daba: dbcommands:00001648:  errmsg("current database may not be renamed"))); 
-daba: dbcommands:00001655:  ereport(ERROR, 
-daba: dbcommands:00001656:  (errcode(ERRCODE_OBJECT_IN_USE), 
-daba: dbcommands:00001657:  errmsg("database \"%s\" is being accessed by other users", 
-daba: dbcommands:00001658:  oldname))); 
-daba: dbcommands:00001662:  ereport(ERROR, 
-daba: dbcommands:00001663:  (errcode(ERRCODE_DUPLICATE_DATABASE), 
-daba: dbcommands:00001664:  errmsg("database \"%s\" already exists", newname))); 
-daba: dbcommands:00001673:  ereport(ERROR, 
-daba: dbcommands:00001674:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-daba: dbcommands:00001675:  errmsg("permission denied to rename database"))); 
-daba: dbcommands:00001736:  ereport(ERROR, 
-daba: dbcommands:00001737:  (errcode(ERRCODE_SYNTAX_ERROR), 
-daba: dbcommands:00001738:  errmsg("conflicting or redundant options"))); 
-daba: dbcommands:00001763:  ereport(ERROR, 
-daba: dbcommands:00001764:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
-daba: dbcommands:00001765:  errmsg("database \"%s\" does not exist", stmt->dbname))); 
-daba: dbcommands:00001859:  ereport(ERROR, 
-daba: dbcommands:00001860:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
-daba: dbcommands:00001861:  errmsg("database \"%s\" does not exist", stmt->dbname))); 
-daba: dbcommands:00002017:  ereport(ERROR, 
-daba: dbcommands:00002018:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
-daba: dbcommands:00002019:  errmsg("database \"%s\" does not exist", dbname))); 
-daba: dbcommands:00002058:  ereport(ERROR, 
-daba: dbcommands:00002059:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-daba: dbcommands:00002060:  errmsg("permission denied to change owner of database"))); 
-daba: dbcommands:00002425:  ereport(WARNING, 
-daba: dbcommands:00002426:  (errmsg("could not remove database directory \"%s\"", 
-daba: dbcommands:00002427:  dst_path))); 
+daba: dbcommands:00001335:  ereport(ERROR, 
+daba: dbcommands:00001336:  (errcode(ERRCODE_OBJECT_IN_USE), 
+daba: dbcommands:00001337:  errmsg("cannot drop the currently open database"))); 
+daba: dbcommands:00001353:  ereport(ERROR, 
+daba: dbcommands:00001354:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+daba: dbcommands:00001355:  errmsg("database \"%s\" does not exist", dbname))); 
+daba: dbcommands:00001375:  ereport(NOTICE, 
+daba: dbcommands:00001376:  (errmsg("database \"%s\" does not exist, skipping", 
+daba: dbcommands:00001377:  dbname))); 
+daba: dbcommands:00001396:  ereport(ERROR, 
+daba: dbcommands:00001397:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+daba: dbcommands:00001398:  errmsg("cannot drop a template database"))); 
+daba: dbcommands:00001405:  ereport(ERROR, 
+daba: dbcommands:00001406:  (errcode(ERRCODE_OBJECT_IN_USE), 
+daba: dbcommands:00001407:  errmsg("database \"%s\" is being accessed by other users", 
+daba: dbcommands:00001408:  dbname))); 
+daba: dbcommands:00001637:  ereport(ERROR, 
+daba: dbcommands:00001638:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+daba: dbcommands:00001639:  errmsg("database \"%s\" does not exist", oldname))); 
+daba: dbcommands:00001648:  ereport(ERROR, 
+daba: dbcommands:00001649:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+daba: dbcommands:00001650:  errmsg("current database may not be renamed"))); 
+daba: dbcommands:00001657:  ereport(ERROR, 
+daba: dbcommands:00001658:  (errcode(ERRCODE_OBJECT_IN_USE), 
+daba: dbcommands:00001659:  errmsg("database \"%s\" is being accessed by other users", 
+daba: dbcommands:00001660:  oldname))); 
+daba: dbcommands:00001664:  ereport(ERROR, 
+daba: dbcommands:00001665:  (errcode(ERRCODE_DUPLICATE_DATABASE), 
+daba: dbcommands:00001666:  errmsg("database \"%s\" already exists", newname))); 
+daba: dbcommands:00001675:  ereport(ERROR, 
+daba: dbcommands:00001676:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+daba: dbcommands:00001677:  errmsg("permission denied to rename database"))); 
+daba: dbcommands:00001738:  ereport(ERROR, 
+daba: dbcommands:00001739:  (errcode(ERRCODE_SYNTAX_ERROR), 
+daba: dbcommands:00001740:  errmsg("conflicting or redundant options"))); 
+daba: dbcommands:00001765:  ereport(ERROR, 
+daba: dbcommands:00001766:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+daba: dbcommands:00001767:  errmsg("database \"%s\" does not exist", stmt->dbname))); 
+daba: dbcommands:00001861:  ereport(ERROR, 
+daba: dbcommands:00001862:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+daba: dbcommands:00001863:  errmsg("database \"%s\" does not exist", stmt->dbname))); 
+daba: dbcommands:00002019:  ereport(ERROR, 
+daba: dbcommands:00002020:  (errcode(ERRCODE_UNDEFINED_DATABASE), 
+daba: dbcommands:00002021:  errmsg("database \"%s\" does not exist", dbname))); 
+daba: dbcommands:00002060:  ereport(ERROR, 
+daba: dbcommands:00002061:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+daba: dbcommands:00002062:  errmsg("permission denied to change owner of database"))); 
+daba: dbcommands:00002427:  ereport(WARNING, 
+daba: dbcommands:00002428:  (errmsg("could not remove database directory \"%s\"", 
+daba: dbcommands:00002429:  dst_path))); 
 aaaaa GP_IGNORE: daag: define - ./backend/commands/define.c
 daag: define:00000065:  ereport(ERROR, 
 daag: define:00000066:  (errcode(ERRCODE_SYNTAX_ERROR), 
@@ -9522,60 +9522,60 @@ eaai: execqual:00001822:  (int) rsinfo.returnMode)));
 eaai: execqual:00001964:  ereport(ERROR, 
 eaai: execqual:00001965:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
 eaai: execqual:00001966:  errmsg("IS DISTINCT FROM does not support set arguments"))); 
-eaai: execqual:00002369:  ereport(ERROR, 
-eaai: execqual:00002370:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00002371:  errmsg("op ANY/ALL (array) does not support set arguments"))); 
-eaai: execqual:00002988:  ereport(ERROR, 
-eaai: execqual:00002989:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00002990:  errmsg("cannot merge incompatible arrays"), 
-eaai: execqual:00002991:  errdetail("Array with element type %s cannot be " 
-eaai: execqual:00002992:  "included in ARRAY construct with element type %s.", 
-eaai: execqual:00002993:  format_type_be(ARR_ELEMTYPE(array)), 
-eaai: execqual:00002994:  format_type_be(element_type)))); 
-eaai: execqual:00003010:  ereport(ERROR, 
-eaai: execqual:00003011:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-eaai: execqual:00003012:  errmsg("number of array dimensions (%d) exceeds " \ 
-eaai: execqual:00003013:  "the maximum allowed (%d)", ndims, MAXDIM))); 
-eaai: execqual:00003030:  ereport(ERROR, 
-eaai: execqual:00003031:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
-eaai: execqual:00003032:  errmsg("multidimensional arrays must have array " 
-eaai: execqual:00003033:  "expressions with matching dimensions"))); 
-eaai: execqual:00003057:  ereport(ERROR, 
-eaai: execqual:00003058:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
-eaai: execqual:00003059:  errmsg("multidimensional arrays must have array " 
-eaai: execqual:00003060:  "expressions with matching dimensions"))); 
-eaai: execqual:00003352:  ereport(ERROR, 
-eaai: execqual:00003353:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00003354:  errmsg("NULLIF does not support set arguments"))); 
-eaai: execqual:00003582:  ereport(ERROR, 
-eaai: execqual:00003583:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
-eaai: execqual:00003584:  errmsg("domain %s does not allow null values", 
-eaai: execqual:00003585:  format_type_be(ctest->resulttype)))); 
-eaai: execqual:00003611:  ereport(ERROR, 
-eaai: execqual:00003612:  (errcode(ERRCODE_CHECK_VIOLATION), 
-eaai: execqual:00003613:  errmsg("value for domain %s violates check constraint \"%s\"", 
-eaai: execqual:00003614:  format_type_be(ctest->resulttype), 
-eaai: execqual:00003615:  con->name))); 
-eaai: execqual:00003701:  ereport(ERROR, 
-eaai: execqual:00003702:  (errmsg("attribute %d has wrong type", fieldnum), 
-eaai: execqual:00003703:  errdetail("Table has type %s, but query expects %s.", 
-eaai: execqual:00003704:  format_type_be(attr->atttypid), 
-eaai: execqual:00003705:  format_type_be(fselect->resulttype)))); 
-eaai: execqual:00003946:  ereport(ERROR, 
-eaai: execqual:00003947:  (errcode(ERRCODE_GROUPING_ERROR), 
-eaai: execqual:00003948:  errmsg("aggregate function calls may not be nested"))); 
-eaai: execqual:00004274:  ereport(ERROR, 
-eaai: execqual:00004275:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00004276:  errmsg("ROW() column has type %s instead of type %s", 
-eaai: execqual:00004277:  format_type_be(exprType((Node *) e)), 
-eaai: execqual:00004278:  format_type_be(attrs[i]->atttypid)))); 
-eaai: execqual:00004400:  ereport(ERROR, 
-eaai: execqual:00004401:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-eaai: execqual:00004402:  errmsg("could not identify a comparison function for type %s", 
-eaai: execqual:00004403:  format_type_be(minmaxexpr->minmaxtype)))); 
-eaai: execqual:00004739:  ereport(ERROR, 
-eaai: execqual:00004740:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00004741:  errmsg("set-valued function called in context that cannot accept a set"))); 
+eaai: execqual:00002380:  ereport(ERROR, 
+eaai: execqual:00002381:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00002382:  errmsg("op ANY/ALL (array) does not support set arguments"))); 
+eaai: execqual:00002999:  ereport(ERROR, 
+eaai: execqual:00003000:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00003001:  errmsg("cannot merge incompatible arrays"), 
+eaai: execqual:00003002:  errdetail("Array with element type %s cannot be " 
+eaai: execqual:00003003:  "included in ARRAY construct with element type %s.", 
+eaai: execqual:00003004:  format_type_be(ARR_ELEMTYPE(array)), 
+eaai: execqual:00003005:  format_type_be(element_type)))); 
+eaai: execqual:00003021:  ereport(ERROR, 
+eaai: execqual:00003022:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+eaai: execqual:00003023:  errmsg("number of array dimensions (%d) exceeds " \ 
+eaai: execqual:00003024:  "the maximum allowed (%d)", ndims, MAXDIM))); 
+eaai: execqual:00003041:  ereport(ERROR, 
+eaai: execqual:00003042:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+eaai: execqual:00003043:  errmsg("multidimensional arrays must have array " 
+eaai: execqual:00003044:  "expressions with matching dimensions"))); 
+eaai: execqual:00003068:  ereport(ERROR, 
+eaai: execqual:00003069:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+eaai: execqual:00003070:  errmsg("multidimensional arrays must have array " 
+eaai: execqual:00003071:  "expressions with matching dimensions"))); 
+eaai: execqual:00003363:  ereport(ERROR, 
+eaai: execqual:00003364:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00003365:  errmsg("NULLIF does not support set arguments"))); 
+eaai: execqual:00003593:  ereport(ERROR, 
+eaai: execqual:00003594:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+eaai: execqual:00003595:  errmsg("domain %s does not allow null values", 
+eaai: execqual:00003596:  format_type_be(ctest->resulttype)))); 
+eaai: execqual:00003622:  ereport(ERROR, 
+eaai: execqual:00003623:  (errcode(ERRCODE_CHECK_VIOLATION), 
+eaai: execqual:00003624:  errmsg("value for domain %s violates check constraint \"%s\"", 
+eaai: execqual:00003625:  format_type_be(ctest->resulttype), 
+eaai: execqual:00003626:  con->name))); 
+eaai: execqual:00003712:  ereport(ERROR, 
+eaai: execqual:00003713:  (errmsg("attribute %d has wrong type", fieldnum), 
+eaai: execqual:00003714:  errdetail("Table has type %s, but query expects %s.", 
+eaai: execqual:00003715:  format_type_be(attr->atttypid), 
+eaai: execqual:00003716:  format_type_be(fselect->resulttype)))); 
+eaai: execqual:00003957:  ereport(ERROR, 
+eaai: execqual:00003958:  (errcode(ERRCODE_GROUPING_ERROR), 
+eaai: execqual:00003959:  errmsg("aggregate function calls may not be nested"))); 
+eaai: execqual:00004285:  ereport(ERROR, 
+eaai: execqual:00004286:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00004287:  errmsg("ROW() column has type %s instead of type %s", 
+eaai: execqual:00004288:  format_type_be(exprType((Node *) e)), 
+eaai: execqual:00004289:  format_type_be(attrs[i]->atttypid)))); 
+eaai: execqual:00004411:  ereport(ERROR, 
+eaai: execqual:00004412:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+eaai: execqual:00004413:  errmsg("could not identify a comparison function for type %s", 
+eaai: execqual:00004414:  format_type_be(minmaxexpr->minmaxtype)))); 
+eaai: execqual:00004750:  ereport(ERROR, 
+eaai: execqual:00004751:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00004752:  errmsg("set-valued function called in context that cannot accept a set"))); 
 aaaaa GP_IGNORE: eabc: execworkfile - ./backend/executor/execWorkfile.c
 eabc: execworkfile:00000046:  ereport(ERROR, 
 eabc: execworkfile:00000047:  (errcode(ERRCODE_INTERNAL_ERROR), 
@@ -15764,6 +15764,9 @@ laba: likexmatch:00000289:  ereport(ERROR,
 laba: likexmatch:00000290:  (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE), 
 laba: likexmatch:00000291:  errmsg("invalid escape string"), 
 laba: likexmatch:00000292:  errhint("Escape string must be empty or one character."))); 
+aaaaa GP_IGNORE: laaj: lockfuncs - ./backend/utils/adt/lockfuncs.c
+laaj: lockfuncs:00000205:  ereport(ERROR, (errmsg("pg_lock internal error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
+laaj: lockfuncs:00000206:  errdetail("%s", errbuf.data))); 
 aaaaa GP_IGNORE: maad: mac - ./backend/utils/adt/mac.c
 maad: mac:00000063:  ereport(ERROR, 
 maad: mac:00000064:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
