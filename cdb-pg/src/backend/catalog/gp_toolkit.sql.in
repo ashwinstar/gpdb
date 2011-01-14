@@ -1766,26 +1766,18 @@ GRANT SELECT ON TABLE %%JETPACK_PREFIX%%size_of_database TO public;
 --
 -- @doc:
 --              An array wide view of locks
+--              Obsolete:  pg_locks now shows all locks
 --              
 --------------------------------------------------------------------------------
-CREATE FUNCTION %%JETPACK_PREFIX_AUX%%_seg_locks(segid int) RETURNS SETOF pg_locks AS
-$$
-SELECT * from pg_locks;
-$$ LANGUAGE 'sql' VOLATILE;
 
 CREATE VIEW %%JETPACK_PREFIX%%locks
 AS
-    SELECT
-        gp_segment_id,
-        (%%JETPACK_PREFIX_AUX%%_seg_locks(gp_segment_id)).*
-    FROM
-        gp_dist_random('gp_id')
-UNION ALL
-    SELECT
-        -1  AS gp_segment_id,
-        *
-    FROM
-        pg_locks;
+    SELECT gp_segment_id,
+        locktype, database, relation page, tuple,
+		transactionid, classid, objid , objsubid,
+		transaction, pid , mode , granted, 
+		mppSessionId, mppIsWriter
+        FROM pg_locks;
 
 GRANT SELECT ON %%JETPACK_PREFIX%%locks TO public;
 

@@ -422,5 +422,15 @@ create ordered aggregate @gpupgradeschemaname@.string_agg(
         finalfunc = @gpupgradeschemaname@.string_agg_finalfn,
         oid       = 3538
     );
+    
+-- pg_locks
+
+CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_locks AS
+ SELECT l.locktype, l.database, l.relation, l.page, l.tuple, l.transactionid, 
+        l.classid, l.objid, l.objsubid, l.transaction, l.pid, l.mode, l.granted, 
+        l.mppsessionid, l.mppiswriter, l.gp_segment_id
+   FROM pg_lock_status() l(locktype text, database oid, relation oid, page integer, tuple smallint, transactionid xid, 
+   					classid oid, objid oid, objsubid smallint, transaction xid, pid integer, mode text, granted boolean, 
+   					mppsessionid integer, mppiswriter boolean, gp_segment_id integer);
 
 -- Catalog Upgrade DDL complete

@@ -1016,7 +1016,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key  (seg1 jeffsmac:11002 pid=10878)
+ERROR:  no partition for partitioning key  (seg1 cmcdevitt-suse-vm:50001 pid=25068)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1374,7 +1374,7 @@ alter table hhh add partition cc end ('2010-01-01');
 NOTICE:  CREATE TABLE will create partition "hhh_1_prt_cc" for table "hhh"
 -- works - anonymous partition MPP-3350
 alter table hhh add partition end ('2010-02-01');
-NOTICE:  CREATE TABLE will create partition "hhh_1_prt_r2022787772" for table "hhh"
+NOTICE:  CREATE TABLE will create partition "hhh_1_prt_r507620771" for table "hhh"
 -- MPP-3607 - ADD PARTITION with open intervals
 create table no_end1 (aa int, bb int) partition by range (bb)
 (partition foo start(3));
@@ -1654,11 +1654,11 @@ NOTICE:  dropped partition "boys" for relation "rank" and its children
 select * from rank ;
  id | rank |    year    | gender 
 ----+------+------------+--------
-  7 |    1 | 02-15-2002 | F
- 10 |    1 | 05-15-2005 | F
   6 |    1 | 01-15-2001 | F
   8 |    1 | 03-15-2003 | F
   9 |    1 | 04-15-2004 | F
+  7 |    1 | 02-15-2002 | F
+ 10 |    1 | 05-15-2005 | F
 (5 rows)
 
 -- MPP-3722: complain if for(value) matches the default partition 
@@ -2013,8 +2013,8 @@ insert into foz values(2, '2010-04-01');
 select * from foz;
  i |     d      
 ---+------------
- 2 | 04-01-2010
  1 | 04-01-2003
+ 2 | 04-01-2010
 (2 rows)
 
 select * from foz_1_prt_dsf;
@@ -2036,7 +2036,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key  (seg0 jeffsmac:11001 pid=10877)
+ERROR:  no partition for partitioning key  (seg0 cmcdevitt-suse-vm:50000 pid=25066)
 select * from d;
  i | j  
 ---+----
@@ -2119,7 +2119,7 @@ NOTICE:  CREATE TABLE will create partition "d_1_prt_b" for table "d"
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
-ERROR:  no partition for partitioning key  (seg0 jeffsmac:11001 pid=10877)
+ERROR:  no partition for partitioning key  (seg0 cmcdevitt-suse-vm:50000 pid=25066)
 drop table  d cascade;
 -- allow NULLs into the default partition
 create table d (i int,  j int) partition by range(j)
@@ -2153,10 +2153,10 @@ insert into d values(1, 1, 2);
 insert into d values(1, 3, 4);
 insert into d values(1, 100, 20);
 insert into d values(1, 100, 2000);
-ERROR:  no partition for partitioning key  (seg0 jeffsmac:11001 pid=10877)
+ERROR:  no partition for partitioning key  (seg0 cmcdevitt-suse-vm:50000 pid=25066)
 insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
 insert into d values(1, 100, NULL);
-ERROR:  no partition for partitioning key  (seg0 jeffsmac:11001 pid=10877)
+ERROR:  no partition for partitioning key  (seg0 cmcdevitt-suse-vm:50000 pid=25066)
 select * from d_1_prt_a;
  a | b | c 
 ---+---+---
@@ -2400,7 +2400,7 @@ select * from region where r_regionkey = '7';
 -- tables since we cannot enfoce them. But since this insert maps to a 
 -- single definitive partition, we can detect it.
 insert into region values(7, 'abc', 'def');
-ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 jeffsmac:11001 pid=10877)
+ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 cmcdevitt-suse-vm:50000 pid=25066)
 drop table region;
 -- exchange
 -- 1) test all sanity checking
@@ -2763,7 +2763,7 @@ insert into bar_p values(6);
 insert into bar_p values(100);
 -- should fail
 alter table foo_p exchange partition for(rank(6)) with table bar_p;
-ERROR:  exchange table contains a row which violates the partitioning specification of "foo_p"  (seg1 jeffsmac:11002 pid=10890)
+ERROR:  exchange table contains a row which violates the partitioning specification of "foo_p"  (seg1 cmcdevitt-suse-vm:50001 pid=28855)
 alter table foo_p exchange partition for(rank(6)) with table bar_p without
 validation;
 select * from foo_p;
@@ -2854,10 +2854,10 @@ alter table foo_p exchange partition for(rank(6)) with table bar_p;
 select * from foo_p;
  i | j 
 ---+---
- 1 | 1
- 3 | 1
  2 | 1
  6 | 6
+ 1 | 1
+ 3 | 1
 (4 rows)
 
 drop table bar_p;
@@ -2910,10 +2910,10 @@ alter table foo_p exchange partition for(rank(6)) with table bar_p;
 select * from foo_p;
  i | j 
 ---+---
- 2 | 3
- 6 | 6
  1 | 2
  3 | 4
+ 2 | 3
+ 6 | 6
 (4 rows)
 
 drop table bar_p;
@@ -3230,7 +3230,7 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
 insert into foo_p values(5994400);
 insert into foo_p values(1);
 insert into foo_p values(6000002);
-ERROR:  no partition for partitioning key  (seg1 jeffsmac:11002 pid=10890)
+ERROR:  no partition for partitioning key  (seg1 cmcdevitt-suse-vm:50001 pid=28855)
 insert into foo_p values(5994376);
 drop table foo_p;
 create table foo_p (i int) 
@@ -3299,10 +3299,10 @@ copy foo_p from stdin;
 select * from foo_p;
  i 
 ---
- 2
- 4
  1
  3
+ 2
+ 4
 (4 rows)
 
 select * from foo_p_1_prt_p1;
@@ -3334,18 +3334,18 @@ copy foo_p from stdin;
 select * from foo_p;
  i 
 ---
- 1
- 3
  2
  4
+ 1
+ 3
 (4 rows)
 
 select * from foo_p_1_prt_p1;
  i 
 ---
- 2
  1
  3
+ 2
 (3 rows)
 
 select * from foo_p_1_prt_p2;
@@ -3490,9 +3490,9 @@ tablename = 'i5';
 select pg_get_partition_def('i5'::regclass, true);
                pg_get_partition_def               
 --------------------------------------------------
- PARTITION BY RANGE(i) 
-           (
-           START (1) EXCLUSIVE END (10) INCLUSIVE
+ PARTITION BY RANGE(i)                            
+           (                                      
+           START (1) EXCLUSIVE END (10) INCLUSIVE 
            )
 (1 row)
 
@@ -3577,17 +3577,17 @@ tablename = 'partsupp';
 select pg_get_partition_def('partsupp'::regclass, true);
                                  pg_get_partition_def                                  
 ---------------------------------------------------------------------------------------
- PARTITION BY RANGE(ps_suppkey)
-           SUBPARTITION BY RANGE(ps_partkey)
-                   SUBPARTITION BY RANGE(ps_supplycost) 
-           (
-           PARTITION p1 START (1) END (10001) EVERY (5000) 
-                   (
-                   SUBPARTITION sp1 START (1) END (200001) EVERY (66666) 
-                           (
-                           START (1::numeric) END (1001::numeric) EVERY (500::numeric)
-                           )
-                   )
+ PARTITION BY RANGE(ps_suppkey)                                                        
+           SUBPARTITION BY RANGE(ps_partkey)                                           
+                   SUBPARTITION BY RANGE(ps_supplycost)                                
+           (                                                                           
+           PARTITION p1 START (1) END (10001) EVERY (5000)                             
+                   (                                                                   
+                   SUBPARTITION sp1 START (1) END (200001) EVERY (66666)               
+                           (                                                           
+                           START (1::numeric) END (1001::numeric) EVERY (500::numeric) 
+                           )                                                           
+                   )                                                                   
            )
 (1 row)
 
@@ -3625,15 +3625,15 @@ tablename = 'i5';
 select pg_get_partition_def('i5'::regclass, true);
                 pg_get_partition_def                 
 -----------------------------------------------------
- PARTITION BY LIST(g)
-           SUBPARTITION BY HASH(i) SUBPARTITIONS 3  
-           (
-           PARTITION p1 VALUES('foo', 'bar') 
-                   (
-                   ), 
-           PARTITION p2 VALUES('foz') 
-                   (
-                   )
+ PARTITION BY LIST(g)                                
+           SUBPARTITION BY HASH(i) SUBPARTITIONS 3   
+           (                                         
+           PARTITION p1 VALUES('foo', 'bar')         
+                   (                                 
+                   ),                                
+           PARTITION p2 VALUES('foz')                
+                   (                                 
+                   )                                 
            )
 (1 row)
 
@@ -4631,7 +4631,7 @@ NOTICE:  CREATE TABLE will create partition "j_1_prt_b" for table "j"
 insert into j select i from generate_series(1, 8) i;
 alter table j split partition for(1) at (2, 3) into (partition fa, partition
 fb);
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_209411"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_275306"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_fa" for table "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_fb" for table "j"
@@ -4650,10 +4650,10 @@ select * from j_1_prt_fb;
 (2 rows)
 
 alter table j split partition for(5) at (6);
-NOTICE:  exchanged partition "b" of relation "j" with relation "pg_temp_209411"
+NOTICE:  exchanged partition "b" of relation "j" with relation "pg_temp_275306"
 NOTICE:  dropped partition "b" for relation "j"
-NOTICE:  CREATE TABLE will create partition "j_1_prt_r1678662085" for table "j"
-NOTICE:  CREATE TABLE will create partition "j_1_prt_r1361150757" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_r210339485" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_r208792710" for table "j"
 select * from j;
  i 
 ---
@@ -4701,7 +4701,7 @@ NOTICE:  CREATE TABLE will create partition "k_1_prt_6" for table "k"
 insert into k select i from generate_series(1, 30) i;
 alter table k split default partition start(15) end(20) into
 (partition mydef, partition foo);
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_210081"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_275976"
 NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_foo" for table "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
@@ -4717,20 +4717,20 @@ select * from k_1_prt_foo;
 
 alter table k split default partition start(22) exclusive end(25) inclusive
 into (partition bar, partition mydef);
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_210081"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_275976"
 NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_bar" for table "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
 select * from k_1_prt_bar;
  i  
 ----
+ 24
  23
  25
- 24
 (3 rows)
 
 alter table k split partition bar at (23) into (partition baz, partition foz);
-NOTICE:  exchanged partition "bar" of relation "k" with relation "pg_temp_210081"
+NOTICE:  exchanged partition "bar" of relation "k" with relation "pg_temp_275976"
 NOTICE:  dropped partition "bar" for relation "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_baz" for table "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_foz" for table "k"
@@ -4796,7 +4796,7 @@ insert into v values(1, 1) ;
 update v set j = 2;
 -- should fail
 update v set j = 3;
-ERROR:  moving tuple from partition "v_1_prt_1" to partition "v_1_prt_2" not supported  (seg0 jeffsmac:11001 pid=10889)
+ERROR:  moving tuple from partition "v_1_prt_1" to partition "v_1_prt_2" not supported  (seg0 cmcdevitt-suse-vm:50000 pid=28853)
 drop table v;
 -- test AO seg totals
 --
@@ -5010,7 +5010,7 @@ revoke all on a from public;
 grant insert on a to part_role;
 alter table a split partition for(rank(1)) at (date '2006-01-01')
   into (partition f, partition g);
-NOTICE:  exchanged partition "f_1" of relation "a" with relation "pg_temp_212077"
+NOTICE:  exchanged partition "f_1" of relation "a" with relation "pg_temp_277972"
 NOTICE:  dropped partition "f_1" for relation "a"
 NOTICE:  CREATE TABLE will create partition "a_1_prt_f" for table "a"
 NOTICE:  CREATE TABLE will create partition "a_1_prt_g" for table "a"
@@ -5018,7 +5018,7 @@ alter table a add default partition mydef;
 NOTICE:  CREATE TABLE will create partition "a_1_prt_mydef" for table "a"
 alter table a split default partition start(date '2010-01-01') end(date
 '2011-01-01') into(partition mydef, partition other);
-NOTICE:  exchanged partition "mydef" of relation "a" with relation "pg_temp_212077"
+NOTICE:  exchanged partition "mydef" of relation "a" with relation "pg_temp_277972"
 NOTICE:  dropped partition "mydef" for relation "a"
 NOTICE:  CREATE TABLE will create partition "a_1_prt_other" for table "a"
 NOTICE:  CREATE TABLE will create partition "a_1_prt_mydef" for table "a"
@@ -5076,15 +5076,15 @@ into (partition aa, partition nodate);
 ERROR:  default partition name missing from INTO clause
 alter table k split default partition start ('2009-01-01') end ('2009-02-01')
 into (partition aa, partition default_part);
-NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_212519"
+NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_278414"
 NOTICE:  dropped partition "default_part" for relation "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_aa" for table "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_default_part" for table "k"
 -- check that it works without INTO
 alter table k split default partition start ('2009-02-01') end ('2009-03-01');
-NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_212519"
+NOTICE:  exchanged partition "default_part" of relation "k" with relation "pg_temp_278414"
 NOTICE:  dropped partition "default_part" for relation "k"
-NOTICE:  CREATE TABLE will create partition "k_1_prt_r779009680" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_r1391573400" for table "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_default_part" for table "k"
 drop table k;
 -- List too
@@ -5098,14 +5098,14 @@ NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
 alter table k split partition mydef at (5) into (partition foo, partition bar);
 ERROR:  default partition name missing from INTO clause
 alter table k split partition mydef at (5) into (partition foo, partition mydef);
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_213319"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_279214"
 NOTICE:  dropped partition "mydef" for relation "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_foo" for table "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
 alter table k split partition mydef at (10);
-NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_213319"
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_279214"
 NOTICE:  dropped partition "mydef" for relation "k"
-NOTICE:  CREATE TABLE will create partition "k_1_prt_r1965741451" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_r551643009" for table "k"
 NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
 drop table k;
 -- For LIST, make sure that we reject AT() clauses which match all parameters
@@ -5116,7 +5116,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 NOTICE:  CREATE TABLE will create partition "j_1_prt_a" for table "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_b" for table "j"
 alter table j split partition for(1) at (1,2) into (partition fa, partition fb);
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_213759"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_279654"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_fa" for table "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_fb" for table "j"
@@ -5134,7 +5134,7 @@ NOTICE:  CREATE TABLE will create partition "j_1_prt_b" for table "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_default_part" for table "j"
 alter table j split partition for(1) at (1,2) into (partition f1a, partition
 f1b);
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_214017"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_279912"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_f1a" for table "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_f1b" for table "j"
@@ -5147,7 +5147,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 NOTICE:  CREATE TABLE will create partition "j_1_prt_default_part" for table "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_a" for table "j"
 alter table j split partition for(1) at (5) into (partition f1a, partition f1b);
-NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_214299"
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_280194"
 NOTICE:  dropped partition "a" for relation "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_f1a" for table "j"
 NOTICE:  CREATE TABLE will create partition "j_1_prt_f1b" for table "j"
@@ -5190,7 +5190,7 @@ NOTICE:  CREATE TABLE will create partition "list_test_1_prt_bar" for table "lis
 NOTICE:  CREATE TABLE will create partition "list_test_1_prt_baz" for table "list_test"
 alter table list_test split default partition at ('baz') into (partition bing,
 default partition);
-NOTICE:  exchanged partition "baz" of relation "list_test" with relation "pg_temp_215028"
+NOTICE:  exchanged partition "baz" of relation "list_test" with relation "pg_temp_280923"
 NOTICE:  dropped partition "baz" for relation "list_test"
 NOTICE:  CREATE TABLE will create partition "list_test_1_prt_bing" for table "list_test"
 NOTICE:  CREATE TABLE will create partition "list_test_1_prt_baz" for table "list_test"
@@ -5251,13 +5251,13 @@ insert into rank values(2, 2, 2008, 'M', 3);
 select * from rank;
  id | rank | year | gender | count 
 ----+------+------+--------+-------
-  2 |    2 | 2008 | M      |     3
   1 |    1 | 2007 | M      |     1
+  2 |    2 | 2008 | M      |     3
 (2 rows)
 
 alter table rank alter partition boys split default partition start ('2007')
 end ('2008') into (partition bfuture, partition year7);
-NOTICE:  exchanged partition "bfuture" of partition "boys" of relation "rank" with relation "pg_temp_215444"
+NOTICE:  exchanged partition "bfuture" of partition "boys" of relation "rank" with relation "pg_temp_281339"
 NOTICE:  dropped partition "bfuture" for partition "boys" of relation "rank"
 NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_year7" for table "rank_1_prt_boys"
 NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_bfuture" for table "rank_1_prt_boys"
@@ -5316,7 +5316,7 @@ select * from r;
 -- Split test
 alter table rank alter partition girls split default partition start('2008')
   end('2020') into (partition years, partition gfuture);
-NOTICE:  exchanged partition "gfuture" of partition "girls" of relation "rank" with relation "pg_temp_215444"
+NOTICE:  exchanged partition "gfuture" of partition "girls" of relation "rank" with relation "pg_temp_281339"
 NOTICE:  dropped partition "gfuture" for partition "girls" of relation "rank"
 NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_years" for table "rank_1_prt_girls"
 NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_gfuture" for table "rank_1_prt_girls"
@@ -5362,7 +5362,7 @@ alter table bar_p alter partition for ('5') alter partition for ('5')
   drop partition for ('5');
 insert into bar_p values(1, 1);
 insert into bar_p values(5, 5);
-ERROR:  no partition for partitioning key  (seg0 jeffsmac:11001 pid=10907)
+ERROR:  no partition for partitioning key  (seg0 cmcdevitt-suse-vm:50000 pid=32714)
 drop table bar_p;
 select parrelid::regclass, * from pg_partition;
  parrelid | parrelid | parkind | parlevel | paristemplate | parnatts | paratts | parclass 
@@ -5504,6 +5504,7 @@ select coalesce(
 mode from 
 pg_locks l left outer join pg_class c on (l.relation = c.oid),
 pg_database d where relation is not null and l.database = d.oid and 
+l.gp_segment_id = -1 and
 d.datname = current_database() order by 1, 2;
 -- Partitioned table with toast table
 begin;
@@ -5929,7 +5930,7 @@ ALTER TABLE SG_CAL_EVENT_SILVERTAIL_HOUR SPLIT DEFAULT PARTITION
 START ('2009-04-29 07:00:00'::timestamp) INCLUSIVE END ('2009-04-29
 08:00:00'::timestamp) EXCLUSIVE INTO ( PARTITION P2009042907 ,
 PARTITION st_default );
-NOTICE:  exchanged partition "st_default" of relation "sg_cal_event_silvertail_hour" with relation "pg_temp_221155"
+NOTICE:  exchanged partition "st_default" of relation "sg_cal_event_silvertail_hour" with relation "pg_temp_287050"
 NOTICE:  dropped partition "st_default" for relation "sg_cal_event_silvertail_hour"
 NOTICE:  CREATE TABLE will create partition "sg_cal_event_silvertail_hour_1_prt_p2009042907" for table "sg_cal_event_silvertail_hour"
 NOTICE:  CREATE TABLE will create partition "sg_cal_event_silvertail_hour_1_prt_st_default" for table "sg_cal_event_silvertail_hour"
@@ -5953,7 +5954,7 @@ NOTICE:  CREATE TABLE will create partition "foo_p_1_prt_10" for table "foo_p"
 insert into foo_p select i, i+1, repeat('fooo', 9000) from generate_series(1, 100) i;
 alter table foo_p split default partition start (10) end(20) 
 into (partition p10_20, partition def);
-NOTICE:  exchanged partition "def" of relation "foo_p" with relation "pg_temp_221447"
+NOTICE:  exchanged partition "def" of relation "foo_p" with relation "pg_temp_287342"
 NOTICE:  dropped partition "def" for relation "foo_p"
 NOTICE:  CREATE TABLE will create partition "foo_p_1_prt_p10_20" for table "foo_p"
 NOTICE:  CREATE TABLE will create partition "foo_p_1_prt_def" for table "foo_p"
@@ -5988,7 +5989,7 @@ NOTICE:  CREATE TABLE will create partition "foo_p_1_prt_10" for table "foo_p"
 insert into foo_p select i, i+1, repeat('fooo', 9000) from generate_series(1, 100) i;
 alter table foo_p split default partition start (10) end(20) 
 into (partition p10_20, partition def);
-NOTICE:  exchanged partition "def" of relation "foo_p" with relation "pg_temp_222033"
+NOTICE:  exchanged partition "def" of relation "foo_p" with relation "pg_temp_287928"
 NOTICE:  dropped partition "def" for relation "foo_p"
 NOTICE:  CREATE TABLE will create partition "foo_p_1_prt_p10_20" for table "foo_p"
 NOTICE:  CREATE TABLE will create partition "foo_p_1_prt_def" for table "foo_p"
@@ -6291,7 +6292,7 @@ NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p2" for table "parts
 alter table partsupp split partition p2 at (NULL);
 ERROR:  AT clause parameter is not a member of the target partition specification
 alter table partsupp split default partition start(null) end(200);
-NOTICE:  exchanged partition "def" of relation "partsupp" with relation "pg_temp_224735"
+NOTICE:  exchanged partition "def" of relation "partsupp" with relation "pg_temp_290630"
 NOTICE:  dropped partition "def" for relation "partsupp"
 ERROR:  cannot use NULL with range partition specification
 drop table partsupp;
@@ -6339,17 +6340,17 @@ NOTICE:  CREATE TABLE will create partition "supplier_hybrid_part_1_prt_p1_2_prt
 select pg_get_partition_def('supplier_hybrid_part'::regclass, true);
                                                    pg_get_partition_def                                                    
 ---------------------------------------------------------------------------------------------------------------------------
- PARTITION BY RANGE(s_suppkey)
-           SUBPARTITION BY LIST(s_nationkey) 
-           (
-           PARTITION p1 START (1) END (10001) EVERY (10000) 
-                   (
-                   VALUES(22, 21, 17), 
-                   VALUES(6, 11, 1, 7, 16, 2) WITH (checksum=false, appendonly=true, blocksize=1171456, compresslevel=3), 
-                   VALUES(18, 20), 
-                   VALUES(9, 23, 13) WITH (checksum=true, appendonly=true, blocksize=1335296, compresslevel=7), 
-                   VALUES(0, 3, 12, 15, 14, 8, 4, 24, 19, 10, 5)
-                   )
+ PARTITION BY RANGE(s_suppkey)                                                                                             
+           SUBPARTITION BY LIST(s_nationkey)                                                                               
+           (                                                                                                               
+           PARTITION p1 START (1) END (10001) EVERY (10000)                                                                
+                   (                                                                                                       
+                   VALUES(22, 21, 17),                                                                                     
+                   VALUES(6, 11, 1, 7, 16, 2) WITH (checksum=false, appendonly=true, blocksize=1171456, compresslevel=3),  
+                   VALUES(18, 20),                                                                                         
+                   VALUES(9, 23, 13) WITH (checksum=true, appendonly=true, blocksize=1335296, compresslevel=7),            
+                   VALUES(0, 3, 12, 15, 14, 8, 4, 24, 19, 10, 5)                                                           
+                   )                                                                                                       
            )
 (1 row)
 
@@ -6449,7 +6450,7 @@ select * from pg_indexes where schemaname = 'public' and tablename like 'ti%';
 (8 rows)
 
 alter table ti split partition p3 at (7) into (partition pnew1, partition pnew2);
-NOTICE:  exchanged partition "p3" of relation "ti" with relation "pg_temp_225635"
+NOTICE:  exchanged partition "p3" of relation "ti" with relation "pg_temp_291530"
 NOTICE:  dropped partition "p3" for relation "ti"
 NOTICE:  CREATE TABLE will create partition "ti_1_prt_pnew1" for table "ti"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "ti_1_prt_pnew1_pkey" for table "ti_1_prt_pnew1"
@@ -6606,11 +6607,11 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
                                                pg_get_partition_def                                                
 -------------------------------------------------------------------------------------------------------------------
- PARTITION BY RANGE(l_commitdate) 
-           (
-           PARTITION p1 START ('01-31-1992'::date) END ('02-28-1993'::date) EVERY ('@ 1 year 1 mon'::interval), 
-           PARTITION p1_2 START ('02-28-1993'::date) END ('03-31-1994'::date) EVERY ('@ 1 year 1 mon'::interval), 
-           PARTITION p1_3 START ('03-31-1994'::date) END ('04-30-1995'::date) EVERY ('@ 1 year 1 mon'::interval)
+ PARTITION BY RANGE(l_commitdate)                                                                                  
+           (                                                                                                       
+           PARTITION p1 START ('01-31-1992'::date) END ('02-28-1993'::date) EVERY ('@ 1 year 1 mon'::interval),    
+           PARTITION p1_2 START ('02-28-1993'::date) END ('03-31-1994'::date) EVERY ('@ 1 year 1 mon'::interval),  
+           PARTITION p1_3 START ('03-31-1994'::date) END ('04-30-1995'::date) EVERY ('@ 1 year 1 mon'::interval)   
            )
 (1 row)
 
@@ -6642,9 +6643,9 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
                                              pg_get_partition_def                                              
 ---------------------------------------------------------------------------------------------------------------
- PARTITION BY RANGE(l_commitdate) 
-           (
-           PARTITION p1 START ('01-31-1992'::date) END ('04-30-1995'::date) EVERY ('@ 1 year 1 mon'::interval)
+ PARTITION BY RANGE(l_commitdate)                                                                              
+           (                                                                                                   
+           PARTITION p1 START ('01-31-1992'::date) END ('04-30-1995'::date) EVERY ('@ 1 year 1 mon'::interval) 
            )
 (1 row)
 
@@ -6677,10 +6678,10 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
            pg_get_partition_def           
 ------------------------------------------
- PARTITION BY RANGE(b) 
-           (
-           START (1) END (10) EVERY (1), 
-           START (10) END (11)
+ PARTITION BY RANGE(b)                    
+           (                              
+           START (1) END (10) EVERY (1),  
+           START (10) END (11)            
            )
 (1 row)
 
@@ -6692,11 +6693,11 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
            pg_get_partition_def           
 ------------------------------------------
- PARTITION BY RANGE(b) 
-           (
-           START (1) END (3) EVERY (1), 
-           START (4) END (10) EVERY (1), 
-           START (10) END (11)
+ PARTITION BY RANGE(b)                    
+           (                              
+           START (1) END (3) EVERY (1),   
+           START (4) END (10) EVERY (1),  
+           START (10) END (11)            
            )
 (1 row)
 
@@ -6705,7 +6706,7 @@ alter table mpp6297 add partition start (3) end (4) every (1);
 ERROR:  cannot specify EVERY when adding RANGE partition to relation "mpp6297"
 -- this is legal but it doesn't fix the EVERY clause
 alter table mpp6297 add partition start (3) end (4) ;
-NOTICE:  CREATE TABLE will create partition "mpp6297_1_prt_r1159945543" for table "mpp6297"
+NOTICE:  CREATE TABLE will create partition "mpp6297_1_prt_r1337046675" for table "mpp6297"
 -- note that the every clause is still splits into two parts: 1-3 and
 -- 4-10, because the new partition from 3 to 4 doesn't have an EVERY
 -- attribute
@@ -6715,12 +6716,12 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
            pg_get_partition_def           
 ------------------------------------------
- PARTITION BY RANGE(b) 
-           (
-           START (1) END (3) EVERY (1), 
-           START (3) END (4), 
-           START (4) END (10) EVERY (1), 
-           START (10) END (11)
+ PARTITION BY RANGE(b)                    
+           (                              
+           START (1) END (3) EVERY (1),   
+           START (3) END (4),             
+           START (4) END (10) EVERY (1),  
+           START (10) END (11)            
            )
 (1 row)
 
@@ -6752,9 +6753,9 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
           pg_get_partition_def          
 ----------------------------------------
- PARTITION BY RANGE(b) 
-           (
-           START (1) END (10) EVERY (1)
+ PARTITION BY RANGE(b)                  
+           (                            
+           START (1) END (10) EVERY (1) 
            )
 (1 row)
 
@@ -6786,10 +6787,10 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
                pg_get_partition_def               
 --------------------------------------------------
- PARTITION BY RANGE(b) 
-           (
-           START (1) END (5) EVERY (1), 
-           START (5) EXCLUSIVE END (10) EVERY (1)
+ PARTITION BY RANGE(b)                            
+           (                                      
+           START (1) END (5) EVERY (1),           
+           START (5) EXCLUSIVE END (10) EVERY (1) 
            )
 (1 row)
 
@@ -6821,9 +6822,9 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
           pg_get_partition_def          
 ----------------------------------------
- PARTITION BY RANGE(b) 
-           (
-           START (1) END (10) EVERY (1)
+ PARTITION BY RANGE(b)                  
+           (                            
+           START (1) END (10) EVERY (1) 
            )
 (1 row)
 
@@ -6854,9 +6855,9 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
                     pg_get_partition_def                    
 ------------------------------------------------------------
- PARTITION BY RANGE(b) 
-           (
-           START (1) EXCLUSIVE END (10) INCLUSIVE EVERY (1)
+ PARTITION BY RANGE(b)                                      
+           (                                                
+           START (1) EXCLUSIVE END (10) INCLUSIVE EVERY (1) 
            )
 (1 row)
 
@@ -6869,10 +6870,10 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
                pg_get_partition_def                
 ---------------------------------------------------
- PARTITION BY RANGE(b) 
-           (
-           START (1) EXCLUSIVE END (3) EVERY (1), 
-           START (4) END (10) INCLUSIVE EVERY (1)
+ PARTITION BY RANGE(b)                             
+           (                                       
+           START (1) EXCLUSIVE END (3) EVERY (1),  
+           START (4) END (10) INCLUSIVE EVERY (1)  
            )
 (1 row)
 
@@ -6906,10 +6907,10 @@ pg_get_partition_def(
 where relname='mpp6297')::pg_catalog.oid, true);
                pg_get_partition_def                
 ---------------------------------------------------
- PARTITION BY RANGE(b) 
-           (
-           START (1) END (5) INCLUSIVE EVERY (1), 
-           START (5) EXCLUSIVE END (10) EVERY (1)
+ PARTITION BY RANGE(b)                             
+           (                                       
+           START (1) END (5) INCLUSIVE EVERY (1),  
+           START (5) EXCLUSIVE END (10) EVERY (1)  
            )
 (1 row)
 
@@ -6929,9 +6930,9 @@ NOTICE:  CREATE TABLE will create partition "mpp6589a_1_prt_p20090312" for table
 select pg_get_partition_def('mpp6589a'::regclass,true);
                   pg_get_partition_def                   
 ---------------------------------------------------------
- PARTITION BY RANGE(day_dt) 
-           (
-           PARTITION p20090312  END ('03-12-2009'::date)
+ PARTITION BY RANGE(day_dt)                              
+           (                                             
+           PARTITION p20090312  END ('03-12-2009'::date) 
            )
 (1 row)
 
@@ -6939,17 +6940,17 @@ select pg_get_partition_def('mpp6589a'::regclass,true);
 ALTER TABLE mpp6589a 
 SPLIT PARTITION p20090312 AT( '20090310' ) 
 INTO( PARTITION p20090309, PARTITION p20090312_tmp);
-NOTICE:  exchanged partition "p20090312" of relation "mpp6589a" with relation "pg_temp_229267"
+NOTICE:  exchanged partition "p20090312" of relation "mpp6589a" with relation "pg_temp_295162"
 NOTICE:  dropped partition "p20090312" for relation "mpp6589a"
 NOTICE:  CREATE TABLE will create partition "mpp6589a_1_prt_p20090309" for table "mpp6589a"
 NOTICE:  CREATE TABLE will create partition "mpp6589a_1_prt_p20090312_tmp" for table "mpp6589a"
 select pg_get_partition_def('mpp6589a'::regclass,true);
                                  pg_get_partition_def                                  
 ---------------------------------------------------------------------------------------
- PARTITION BY RANGE(day_dt) 
-           (
-           PARTITION p20090309  END ('03-10-2009'::date), 
-           PARTITION p20090312_tmp START ('03-10-2009'::date) END ('03-12-2009'::date)
+ PARTITION BY RANGE(day_dt)                                                            
+           (                                                                           
+           PARTITION p20090309  END ('03-10-2009'::date),                              
+           PARTITION p20090312_tmp START ('03-10-2009'::date) END ('03-12-2009'::date) 
            )
 (1 row)
 
@@ -6962,9 +6963,9 @@ NOTICE:  CREATE TABLE will create partition "mpp6589i_1_prt_1" for table "mpp658
 select pg_get_partition_def('mpp6589i'::regclass,true);
     pg_get_partition_def     
 -----------------------------
- PARTITION BY RANGE(b) 
-           (
-           START (1) END (3)
+ PARTITION BY RANGE(b)       
+           (                 
+           START (1) END (3) 
            )
 (1 row)
 
@@ -6976,14 +6977,14 @@ ALTER TABLE mpp6589i ADD PARTITION start (3) exclusive;
 ERROR:  new partition overlaps existing partition
 -- should work - make sure can add an open-ended final partition
 ALTER TABLE mpp6589i ADD PARTITION start (3);
-NOTICE:  CREATE TABLE will create partition "mpp6589i_1_prt_r244900387" for table "mpp6589i"
+NOTICE:  CREATE TABLE will create partition "mpp6589i_1_prt_r1310249510" for table "mpp6589i"
 select pg_get_partition_def('mpp6589i'::regclass,true);
      pg_get_partition_def      
 -------------------------------
- PARTITION BY RANGE(b) 
-           (
-           START (1) END (3), 
-           START (3)
+ PARTITION BY RANGE(b)         
+           (                   
+           START (1) END (3),  
+           START (3)           
            )
 (1 row)
 
@@ -7003,9 +7004,9 @@ NOTICE:  CREATE TABLE will create partition "mpp6589b_1_prt_p20090312" for table
 select pg_get_partition_def('mpp6589b'::regclass,true);
                    pg_get_partition_def                   
 ----------------------------------------------------------
- PARTITION BY RANGE(day_dt) 
-           (
-           PARTITION p20090312 START ('03-12-2008'::date)
+ PARTITION BY RANGE(day_dt)                               
+           (                                              
+           PARTITION p20090312 START ('03-12-2008'::date) 
            )
 (1 row)
 
@@ -7013,17 +7014,17 @@ select pg_get_partition_def('mpp6589b'::regclass,true);
 ALTER TABLE mpp6589b 
 SPLIT PARTITION p20090312 AT( '20090310' ) 
 INTO( PARTITION p20090309, PARTITION p20090312_tmp);
-NOTICE:  exchanged partition "p20090312" of relation "mpp6589b" with relation "pg_temp_229607"
+NOTICE:  exchanged partition "p20090312" of relation "mpp6589b" with relation "pg_temp_295502"
 NOTICE:  dropped partition "p20090312" for relation "mpp6589b"
 NOTICE:  CREATE TABLE will create partition "mpp6589b_1_prt_p20090309" for table "mpp6589b"
 NOTICE:  CREATE TABLE will create partition "mpp6589b_1_prt_p20090312_tmp" for table "mpp6589b"
 select pg_get_partition_def('mpp6589b'::regclass,true);
                                 pg_get_partition_def                                 
 -------------------------------------------------------------------------------------
- PARTITION BY RANGE(day_dt) 
-           (
-           PARTITION p20090309 START ('03-12-2008'::date) END ('03-10-2009'::date), 
-           PARTITION p20090312_tmp START ('03-10-2009'::date)
+ PARTITION BY RANGE(day_dt)                                                          
+           (                                                                         
+           PARTITION p20090309 START ('03-12-2008'::date) END ('03-10-2009'::date),  
+           PARTITION p20090312_tmp START ('03-10-2009'::date)                        
            )
 (1 row)
 
@@ -7220,224 +7221,224 @@ NOTICE:  CREATE TABLE will create partition "mpp5992_1_prt_foo3_2_prt_l3_3_prt_l
 select pg_get_partition_def('mpp5992'::regclass,true, true);
                                                                             pg_get_partition_def                                                                             
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- PARTITION BY RANGE(b)
-           SUBPARTITION BY LIST(a)
-                   SUBPARTITION BY LIST(e)
-                           SUBPARTITION BY LIST(c) 
-           (
-           START ('01-01-2007'::date) END ('01-01-2008'::date) EVERY ('@ 1 year'::interval) WITH (tablename='mpp5992_1_prt_1', orientation=column, appendonly=true ) 
-                   (
-                   SUBPARTITION l1 VALUES(1, 2, 3, 4, 5) WITH (tablename='mpp5992_1_prt_1_2_prt_l1', orientation=column, appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll1', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll2', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )
-                                   )
-                           ), 
-                   SUBPARTITION l2 VALUES(6, 7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_1_2_prt_l2', orientation=column, appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll1', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll2', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )
-                                   )
-                           )
-                   ), 
-           START ('01-01-2008'::date) END ('01-01-2009'::date) EVERY ('@ 1 year'::interval) WITH (tablename='mpp5992_1_prt_2', orientation=column, appendonly=true ) 
-                   (
-                   SUBPARTITION l1 VALUES(1, 2, 3, 4, 5) WITH (tablename='mpp5992_1_prt_2_2_prt_l1', orientation=column, appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll1', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll2', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )
-                                   )
-                           ), 
-                   SUBPARTITION l2 VALUES(6, 7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_2_2_prt_l2', orientation=column, appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll1', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll2', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )
-                                   )
-                           )
-                   ), 
-           START ('01-01-2009'::date) END ('01-01-2010'::date) EVERY ('@ 1 year'::interval) WITH (tablename='mpp5992_1_prt_3', orientation=column, appendonly=true ) 
-                   (
-                   SUBPARTITION l1 VALUES(1, 2, 3, 4, 5) WITH (tablename='mpp5992_1_prt_3_2_prt_l1', orientation=column, appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll1', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll2', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )
-                                   )
-                           ), 
-                   SUBPARTITION l2 VALUES(6, 7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_3_2_prt_l2', orientation=column, appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll1', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll2', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )
-                                   )
-                           )
-                   ), 
-           PARTITION foo1 START ('01-01-2011'::date) END ('01-01-2012'::date) WITH (tablename='mpp5992_1_prt_foo1', appendonly=false ) 
-                   (
-                   SUBPARTITION l1 VALUES(1, 2, 3) WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1', appendonly=false ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll1', appendonly=false ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll1_4_prt_lll1', appendonly=false ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll1_4_prt_lll2', appendonly=false )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll2', appendonly=false ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll2_4_prt_lll1', appendonly=false ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll2_4_prt_lll2', appendonly=false )
-                                   )
-                           ), 
-                   SUBPARTITION l2 VALUES(4, 5, 6) WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2', appendonly=false ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll1', appendonly=false ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll1_4_prt_lll1', appendonly=false ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll1_4_prt_lll2', appendonly=false )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll2', appendonly=false ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll2_4_prt_lll1', appendonly=false ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll2_4_prt_lll2', appendonly=false )
-                                   )
-                           ), 
-                   SUBPARTITION l3 VALUES(7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3', appendonly=false ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll1', appendonly=false ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll1_4_prt_lll1', appendonly=false ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll1_4_prt_lll2', appendonly=false )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll2', appendonly=false ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll2_4_prt_lll1', appendonly=false ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll2_4_prt_lll2', appendonly=false )
-                                   )
-                           )
-                   ), 
-           PARTITION foo2 START ('01-01-2012'::date) END ('01-01-2013'::date) WITH (tablename='mpp5992_1_prt_foo2', orientation=column, appendonly=true ) 
-                   (
-                   SUBPARTITION l1 VALUES(1, 2, 3) WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1', orientation=column, appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll1', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll2', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )
-                                   )
-                           ), 
-                   SUBPARTITION l2 VALUES(4, 5, 6) WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2', orientation=column, appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll1', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll2', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )
-                                   )
-                           ), 
-                   SUBPARTITION l3 VALUES(7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3', orientation=column, appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll1', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll2', orientation=column, appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )
-                                   )
-                           )
-                   ), 
-           PARTITION foo3 START ('01-01-2013'::date) END ('01-01-2014'::date) WITH (tablename='mpp5992_1_prt_foo3', orientation=row , appendonly=true ) 
-                   (
-                   SUBPARTITION l1 VALUES(1, 2, 3) WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1', orientation=row , appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll1', orientation=row , appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll1_4_prt_lll1', orientation=row , appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll1_4_prt_lll2', orientation=row , appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll2', orientation=row , appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll2_4_prt_lll1', orientation=row , appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll2_4_prt_lll2', orientation=row , appendonly=true )
-                                   )
-                           ), 
-                   SUBPARTITION l2 VALUES(4, 5, 6) WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2', orientation=row , appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll1', orientation=row , appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll1_4_prt_lll1', orientation=row , appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll1_4_prt_lll2', orientation=row , appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll2', orientation=row , appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll2_4_prt_lll1', orientation=row , appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll2_4_prt_lll2', orientation=row , appendonly=true )
-                                   )
-                           ), 
-                   SUBPARTITION l3 VALUES(7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3', orientation=row , appendonly=true ) 
-                           (
-                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll1', orientation=row , appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll1_4_prt_lll1', orientation=row , appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll1_4_prt_lll2', orientation=row , appendonly=true )
-                                   ), 
-                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll2', orientation=row , appendonly=true ) 
-                                   (
-                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll2_4_prt_lll1', orientation=row , appendonly=true ), 
-                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll2_4_prt_lll2', orientation=row , appendonly=true )
-                                   )
-                           )
-                   )
+ PARTITION BY RANGE(b)                                                                                                                                                       
+           SUBPARTITION BY LIST(a)                                                                                                                                           
+                   SUBPARTITION BY LIST(e)                                                                                                                                   
+                           SUBPARTITION BY LIST(c)                                                                                                                           
+           (                                                                                                                                                                 
+           START ('01-01-2007'::date) END ('01-01-2008'::date) EVERY ('@ 1 year'::interval) WITH (tablename='mpp5992_1_prt_1', orientation=column, appendonly=true )         
+                   (                                                                                                                                                         
+                   SUBPARTITION l1 VALUES(1, 2, 3, 4, 5) WITH (tablename='mpp5992_1_prt_1_2_prt_l1', orientation=column, appendonly=true )                                   
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll1', orientation=column, appendonly=true )                
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )      
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll2', orientation=column, appendonly=true )                         
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_1_2_prt_l1_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )      
+                                   )                                                                                                                                         
+                           ),                                                                                                                                                
+                   SUBPARTITION l2 VALUES(6, 7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_1_2_prt_l2', orientation=column, appendonly=true )                                  
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll1', orientation=column, appendonly=true )                
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )      
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll2', orientation=column, appendonly=true )                         
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_1_2_prt_l2_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )      
+                                   )                                                                                                                                         
+                           )                                                                                                                                                 
+                   ),                                                                                                                                                        
+           START ('01-01-2008'::date) END ('01-01-2009'::date) EVERY ('@ 1 year'::interval) WITH (tablename='mpp5992_1_prt_2', orientation=column, appendonly=true )         
+                   (                                                                                                                                                         
+                   SUBPARTITION l1 VALUES(1, 2, 3, 4, 5) WITH (tablename='mpp5992_1_prt_2_2_prt_l1', orientation=column, appendonly=true )                                   
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll1', orientation=column, appendonly=true )                
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )      
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll2', orientation=column, appendonly=true )                         
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_2_2_prt_l1_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )      
+                                   )                                                                                                                                         
+                           ),                                                                                                                                                
+                   SUBPARTITION l2 VALUES(6, 7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_2_2_prt_l2', orientation=column, appendonly=true )                                  
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll1', orientation=column, appendonly=true )                
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )      
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll2', orientation=column, appendonly=true )                         
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_2_2_prt_l2_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )      
+                                   )                                                                                                                                         
+                           )                                                                                                                                                 
+                   ),                                                                                                                                                        
+           START ('01-01-2009'::date) END ('01-01-2010'::date) EVERY ('@ 1 year'::interval) WITH (tablename='mpp5992_1_prt_3', orientation=column, appendonly=true )         
+                   (                                                                                                                                                         
+                   SUBPARTITION l1 VALUES(1, 2, 3, 4, 5) WITH (tablename='mpp5992_1_prt_3_2_prt_l1', orientation=column, appendonly=true )                                   
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll1', orientation=column, appendonly=true )                
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )      
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll2', orientation=column, appendonly=true )                         
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_3_2_prt_l1_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )      
+                                   )                                                                                                                                         
+                           ),                                                                                                                                                
+                   SUBPARTITION l2 VALUES(6, 7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_3_2_prt_l2', orientation=column, appendonly=true )                                  
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll1', orientation=column, appendonly=true )                
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )      
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll2', orientation=column, appendonly=true )                         
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ),     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_3_2_prt_l2_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )      
+                                   )                                                                                                                                         
+                           )                                                                                                                                                 
+                   ),                                                                                                                                                        
+           PARTITION foo1 START ('01-01-2011'::date) END ('01-01-2012'::date) WITH (tablename='mpp5992_1_prt_foo1', appendonly=false )                                       
+                   (                                                                                                                                                         
+                   SUBPARTITION l1 VALUES(1, 2, 3) WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1', appendonly=false )                                                         
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll1', appendonly=false )                                
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll1_4_prt_lll1', appendonly=false ),                     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll1_4_prt_lll2', appendonly=false )                      
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll2', appendonly=false )                                         
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll2_4_prt_lll1', appendonly=false ),                     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l1_3_prt_ll2_4_prt_lll2', appendonly=false )                      
+                                   )                                                                                                                                         
+                           ),                                                                                                                                                
+                   SUBPARTITION l2 VALUES(4, 5, 6) WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2', appendonly=false )                                                         
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll1', appendonly=false )                                
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll1_4_prt_lll1', appendonly=false ),                     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll1_4_prt_lll2', appendonly=false )                      
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll2', appendonly=false )                                         
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll2_4_prt_lll1', appendonly=false ),                     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l2_3_prt_ll2_4_prt_lll2', appendonly=false )                      
+                                   )                                                                                                                                         
+                           ),                                                                                                                                                
+                   SUBPARTITION l3 VALUES(7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3', appendonly=false )                                                     
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll1', appendonly=false )                                
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll1_4_prt_lll1', appendonly=false ),                     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll1_4_prt_lll2', appendonly=false )                      
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll2', appendonly=false )                                         
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll2_4_prt_lll1', appendonly=false ),                     
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo1_2_prt_l3_3_prt_ll2_4_prt_lll2', appendonly=false )                      
+                                   )                                                                                                                                         
+                           )                                                                                                                                                 
+                   ),                                                                                                                                                        
+           PARTITION foo2 START ('01-01-2012'::date) END ('01-01-2013'::date) WITH (tablename='mpp5992_1_prt_foo2', orientation=column, appendonly=true )                    
+                   (                                                                                                                                                         
+                   SUBPARTITION l1 VALUES(1, 2, 3) WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1', orientation=column, appendonly=true )                                      
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll1', orientation=column, appendonly=true )             
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ),  
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )   
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll2', orientation=column, appendonly=true )                      
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ),  
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l1_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )   
+                                   )                                                                                                                                         
+                           ),                                                                                                                                                
+                   SUBPARTITION l2 VALUES(4, 5, 6) WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2', orientation=column, appendonly=true )                                      
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll1', orientation=column, appendonly=true )             
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ),  
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )   
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll2', orientation=column, appendonly=true )                      
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ),  
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l2_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )   
+                                   )                                                                                                                                         
+                           ),                                                                                                                                                
+                   SUBPARTITION l3 VALUES(7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3', orientation=column, appendonly=true )                                  
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll1', orientation=column, appendonly=true )             
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll1_4_prt_lll1', orientation=column, appendonly=true ),  
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll1_4_prt_lll2', orientation=column, appendonly=true )   
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll2', orientation=column, appendonly=true )                      
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll2_4_prt_lll1', orientation=column, appendonly=true ),  
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo2_2_prt_l3_3_prt_ll2_4_prt_lll2', orientation=column, appendonly=true )   
+                                   )                                                                                                                                         
+                           )                                                                                                                                                 
+                   ),                                                                                                                                                        
+           PARTITION foo3 START ('01-01-2013'::date) END ('01-01-2014'::date) WITH (tablename='mpp5992_1_prt_foo3', orientation=row , appendonly=true )                      
+                   (                                                                                                                                                         
+                   SUBPARTITION l1 VALUES(1, 2, 3) WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1', orientation=row , appendonly=true )                                        
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll1', orientation=row , appendonly=true )               
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll1_4_prt_lll1', orientation=row , appendonly=true ),    
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll1_4_prt_lll2', orientation=row , appendonly=true )     
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll2', orientation=row , appendonly=true )                        
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll2_4_prt_lll1', orientation=row , appendonly=true ),    
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l1_3_prt_ll2_4_prt_lll2', orientation=row , appendonly=true )     
+                                   )                                                                                                                                         
+                           ),                                                                                                                                                
+                   SUBPARTITION l2 VALUES(4, 5, 6) WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2', orientation=row , appendonly=true )                                        
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll1', orientation=row , appendonly=true )               
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll1_4_prt_lll1', orientation=row , appendonly=true ),    
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll1_4_prt_lll2', orientation=row , appendonly=true )     
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll2', orientation=row , appendonly=true )                        
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll2_4_prt_lll1', orientation=row , appendonly=true ),    
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l2_3_prt_ll2_4_prt_lll2', orientation=row , appendonly=true )     
+                                   )                                                                                                                                         
+                           ),                                                                                                                                                
+                   SUBPARTITION l3 VALUES(7, 8, 9, 10) WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3', orientation=row , appendonly=true )                                    
+                           (                                                                                                                                                 
+                           SUBPARTITION ll1 VALUES('Engineering') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll1', orientation=row , appendonly=true )               
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll1_4_prt_lll1', orientation=row , appendonly=true ),    
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll1_4_prt_lll2', orientation=row , appendonly=true )     
+                                   ),                                                                                                                                        
+                           SUBPARTITION ll2 VALUES('QA') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll2', orientation=row , appendonly=true )                        
+                                   (                                                                                                                                         
+                                   SUBPARTITION lll1 VALUES('M') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll2_4_prt_lll1', orientation=row , appendonly=true ),    
+                                   SUBPARTITION lll2 VALUES('F') WITH (tablename='mpp5992_1_prt_foo3_2_prt_l3_3_prt_ll2_4_prt_lll2', orientation=row , appendonly=true )     
+                                   )                                                                                                                                         
+                           )                                                                                                                                                 
+                   )                                                                                                                                                         
            )
 (1 row)
 
@@ -7540,7 +7541,7 @@ ALTER TABLE MPP10223pk
  ALTER PARTITION min15part 
 SPLIT PARTITION  P_FUTURE AT ('2010-06-25') 
 INTO (PARTITION P20010101, PARTITION P_FUTURE);
-NOTICE:  exchanged partition "p_future" of partition "min15part" of relation "mpp10223pk" with relation "pg_temp_234408"
+NOTICE:  exchanged partition "p_future" of partition "min15part" of relation "mpp10223pk" with relation "pg_temp_300303"
 NOTICE:  dropped partition "p_future" for partition "min15part" of relation "mpp10223pk"
 NOTICE:  CREATE TABLE will create partition "mpp10223pk_1_prt_min15part_2_prt_p20010101" for table "mpp10223pk_1_prt_min15part"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "mpp10223pk_1_prt_min15part_2_prt_p20010101_pkey" for table "mpp10223pk_1_prt_min15part_2_prt_p20010101"
@@ -7621,42 +7622,42 @@ ALTER TABLE MPP10223
  ALTER PARTITION min15part 
 SPLIT PARTITION  P_FUTURE AT ('2010-06-25') 
 INTO (PARTITION P20010101, PARTITION P_FUTURE2);
-NOTICE:  exchanged partition "p_future" of partition "min15part" of relation "mpp10223" with relation "pg_temp_235750"
+NOTICE:  exchanged partition "p_future" of partition "min15part" of relation "mpp10223" with relation "pg_temp_301645"
 NOTICE:  dropped partition "p_future" for partition "min15part" of relation "mpp10223"
 NOTICE:  CREATE TABLE will create partition "mpp10223_1_prt_min15part_2_prt_p20010101" for table "mpp10223_1_prt_min15part"
 NOTICE:  CREATE TABLE will create partition "mpp10223_1_prt_min15part_2_prt_p_future2" for table "mpp10223_1_prt_min15part"
 select pg_get_partition_def('mpp10223'::regclass,true);
                                                                             pg_get_partition_def                                                                            
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- PARTITION BY LIST(agg_level)
-           SUBPARTITION BY RANGE(period_start_time) 
-           (
-           PARTITION min15part VALUES('15min') 
-                   (
-                   SUBPARTITION p_future2 START ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone) END ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone), 
-                   SUBPARTITION p20010101 START ('Mon Jan 01 00:00:00 2001 PST'::timestamp with time zone) END ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone), 
-                   SUBPARTITION p_endpart START ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone) END ('Tue Dec 31 00:00:00 2999 PST'::timestamp with time zone)
-                   ), 
-           PARTITION hourpart VALUES('hour ') 
-                   (
-                   SUBPARTITION p_future START ('Mon Jan 01 00:00:00 2001 PST'::timestamp with time zone) END ('Tue Jun 22 00:00:00 2010 PDT'::timestamp with time zone), 
-                   SUBPARTITION p20100622 START ('Tue Jun 22 00:00:00 2010 PDT'::timestamp with time zone) END ('Wed Jun 23 00:00:00 2010 PDT'::timestamp with time zone), 
-                   SUBPARTITION p20100623 START ('Wed Jun 23 00:00:00 2010 PDT'::timestamp with time zone) END ('Thu Jun 24 00:00:00 2010 PDT'::timestamp with time zone), 
-                   SUBPARTITION p20100624 START ('Thu Jun 24 00:00:00 2010 PDT'::timestamp with time zone) END ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone), 
-                   SUBPARTITION p20100625 START ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone) END ('Sat Jun 26 00:00:00 2010 PDT'::timestamp with time zone), 
-                   SUBPARTITION p20100626 START ('Sat Jun 26 00:00:00 2010 PDT'::timestamp with time zone) END ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone), 
-                   SUBPARTITION p_endpart START ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone) END ('Tue Dec 31 00:00:00 2999 PST'::timestamp with time zone)
-                   ), 
-           PARTITION daypart VALUES('day  ') 
-                   (
-                   SUBPARTITION p_future START ('Mon Jan 01 00:00:00 2001 PST'::timestamp with time zone) END ('Tue Jun 22 00:00:00 2010 PDT'::timestamp with time zone), 
-                   SUBPARTITION p20100622 START ('Tue Jun 22 00:00:00 2010 PDT'::timestamp with time zone) END ('Wed Jun 23 00:00:00 2010 PDT'::timestamp with time zone), 
-                   SUBPARTITION p20100623 START ('Wed Jun 23 00:00:00 2010 PDT'::timestamp with time zone) END ('Thu Jun 24 00:00:00 2010 PDT'::timestamp with time zone), 
-                   SUBPARTITION p20100624 START ('Thu Jun 24 00:00:00 2010 PDT'::timestamp with time zone) END ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone), 
-                   SUBPARTITION p20100625 START ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone) END ('Sat Jun 26 00:00:00 2010 PDT'::timestamp with time zone), 
-                   SUBPARTITION p20100626 START ('Sat Jun 26 00:00:00 2010 PDT'::timestamp with time zone) END ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone), 
-                   SUBPARTITION p_endpart START ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone) END ('Tue Dec 31 00:00:00 2999 PST'::timestamp with time zone)
-                   )
+ PARTITION BY LIST(agg_level)                                                                                                                                               
+           SUBPARTITION BY RANGE(period_start_time)                                                                                                                         
+           (                                                                                                                                                                
+           PARTITION min15part VALUES('15min')                                                                                                                              
+                   (                                                                                                                                                        
+                   SUBPARTITION p_future2 START ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone) END ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone),  
+                   SUBPARTITION p20010101 START ('Mon Jan 01 00:00:00 2001 PST'::timestamp with time zone) END ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone),  
+                   SUBPARTITION p_endpart START ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone) END ('Tue Dec 31 00:00:00 2999 PST'::timestamp with time zone)   
+                   ),                                                                                                                                                       
+           PARTITION hourpart VALUES('hour ')                                                                                                                               
+                   (                                                                                                                                                        
+                   SUBPARTITION p_future START ('Mon Jan 01 00:00:00 2001 PST'::timestamp with time zone) END ('Tue Jun 22 00:00:00 2010 PDT'::timestamp with time zone),   
+                   SUBPARTITION p20100622 START ('Tue Jun 22 00:00:00 2010 PDT'::timestamp with time zone) END ('Wed Jun 23 00:00:00 2010 PDT'::timestamp with time zone),  
+                   SUBPARTITION p20100623 START ('Wed Jun 23 00:00:00 2010 PDT'::timestamp with time zone) END ('Thu Jun 24 00:00:00 2010 PDT'::timestamp with time zone),  
+                   SUBPARTITION p20100624 START ('Thu Jun 24 00:00:00 2010 PDT'::timestamp with time zone) END ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone),  
+                   SUBPARTITION p20100625 START ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone) END ('Sat Jun 26 00:00:00 2010 PDT'::timestamp with time zone),  
+                   SUBPARTITION p20100626 START ('Sat Jun 26 00:00:00 2010 PDT'::timestamp with time zone) END ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone),  
+                   SUBPARTITION p_endpart START ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone) END ('Tue Dec 31 00:00:00 2999 PST'::timestamp with time zone)   
+                   ),                                                                                                                                                       
+           PARTITION daypart VALUES('day  ')                                                                                                                                
+                   (                                                                                                                                                        
+                   SUBPARTITION p_future START ('Mon Jan 01 00:00:00 2001 PST'::timestamp with time zone) END ('Tue Jun 22 00:00:00 2010 PDT'::timestamp with time zone),   
+                   SUBPARTITION p20100622 START ('Tue Jun 22 00:00:00 2010 PDT'::timestamp with time zone) END ('Wed Jun 23 00:00:00 2010 PDT'::timestamp with time zone),  
+                   SUBPARTITION p20100623 START ('Wed Jun 23 00:00:00 2010 PDT'::timestamp with time zone) END ('Thu Jun 24 00:00:00 2010 PDT'::timestamp with time zone),  
+                   SUBPARTITION p20100624 START ('Thu Jun 24 00:00:00 2010 PDT'::timestamp with time zone) END ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone),  
+                   SUBPARTITION p20100625 START ('Fri Jun 25 00:00:00 2010 PDT'::timestamp with time zone) END ('Sat Jun 26 00:00:00 2010 PDT'::timestamp with time zone),  
+                   SUBPARTITION p20100626 START ('Sat Jun 26 00:00:00 2010 PDT'::timestamp with time zone) END ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone),  
+                   SUBPARTITION p_endpart START ('Mon Dec 30 00:00:00 2999 PST'::timestamp with time zone) END ('Tue Dec 31 00:00:00 2999 PST'::timestamp with time zone)   
+                   )                                                                                                                                                        
            )
 (1 row)
 
@@ -7675,21 +7676,21 @@ NOTICE:  CREATE TABLE will create partition "mpp10223b_1_prt_p1_2_prt_sp2" for t
 alter table mpp10223b alter partition p1 
 split partition for (rank(1) ) at (25)
 into (partition sp2, partition sp3);
-NOTICE:  exchanged partition "sp2" of partition "p1" of relation "mpp10223b" with relation "pg_temp_236652"
+NOTICE:  exchanged partition "sp2" of partition "p1" of relation "mpp10223b" with relation "pg_temp_302547"
 NOTICE:  dropped partition "sp2" for partition "p1" of relation "mpp10223b"
 NOTICE:  CREATE TABLE will create partition "mpp10223b_1_prt_p1_2_prt_sp2" for table "mpp10223b_1_prt_p1"
 NOTICE:  CREATE TABLE will create partition "mpp10223b_1_prt_p1_2_prt_sp3" for table "mpp10223b_1_prt_p1"
 select pg_get_partition_def('mpp10223b'::regclass,true);
                    pg_get_partition_def                   
 ----------------------------------------------------------
- PARTITION BY RANGE(b)
-           SUBPARTITION BY RANGE(d) 
-           (
-           PARTITION p1 START (1) END (10) 
-                   (
-                   SUBPARTITION sp3 START (25) END (30), 
-                   SUBPARTITION sp2 START (20) END (25)
-                   )
+ PARTITION BY RANGE(b)                                    
+           SUBPARTITION BY RANGE(d)                       
+           (                                              
+           PARTITION p1 START (1) END (10)                
+                   (                                      
+                   SUBPARTITION sp3 START (25) END (30),  
+                   SUBPARTITION sp2 START (20) END (25)   
+                   )                                      
            )
 (1 row)
 
@@ -7805,19 +7806,19 @@ NOTICE:  CREATE TABLE will create partition "mpp10480_1_prt_10_2_prt_9" for tabl
 select pg_get_partition_template_def('MPP10480'::regclass, true, true);
                     pg_get_partition_template_def                    
 ---------------------------------------------------------------------
- ALTER TABLE mpp10480 
- SET SUBPARTITION TEMPLATE  
-           (
-           START (1) END (2) EVERY (1) WITH (tablename='mpp10480'), 
-           START (2) END (3) EVERY (1) WITH (tablename='mpp10480'), 
-           START (3) END (4) EVERY (1) WITH (tablename='mpp10480'), 
-           START (4) END (5) EVERY (1) WITH (tablename='mpp10480'), 
-           START (5) END (6) EVERY (1) WITH (tablename='mpp10480'), 
-           START (6) END (7) EVERY (1) WITH (tablename='mpp10480'), 
-           START (7) END (8) EVERY (1) WITH (tablename='mpp10480'), 
-           START (8) END (9) EVERY (1) WITH (tablename='mpp10480'), 
-           START (9) END (10) EVERY (1) WITH (tablename='mpp10480')
-           )
+ ALTER TABLE mpp10480                                                
+ SET SUBPARTITION TEMPLATE                                           
+           (                                                         
+           START (1) END (2) EVERY (1) WITH (tablename='mpp10480'),  
+           START (2) END (3) EVERY (1) WITH (tablename='mpp10480'),  
+           START (3) END (4) EVERY (1) WITH (tablename='mpp10480'),  
+           START (4) END (5) EVERY (1) WITH (tablename='mpp10480'),  
+           START (5) END (6) EVERY (1) WITH (tablename='mpp10480'),  
+           START (6) END (7) EVERY (1) WITH (tablename='mpp10480'),  
+           START (7) END (8) EVERY (1) WITH (tablename='mpp10480'),  
+           START (8) END (9) EVERY (1) WITH (tablename='mpp10480'),  
+           START (9) END (10) EVERY (1) WITH (tablename='mpp10480')  
+           )                                                         
  
 (1 row)
 
@@ -7873,7 +7874,7 @@ ALTER TABLE mpp10321a
 ALTER PARTITION min15part
 SPLIT PARTITION  P_FUTURE AT ('2010-06-25')
 INTO (PARTITION P20010101, PARTITION P_FUTURE);
-NOTICE:  exchanged partition "p_future" of partition "min15part" of relation "mpp10321a" with relation "pg_temp_240629"
+NOTICE:  exchanged partition "p_future" of partition "min15part" of relation "mpp10321a" with relation "pg_temp_306524"
 NOTICE:  dropped partition "p_future" for partition "min15part" of relation "mpp10321a"
 NOTICE:  CREATE TABLE will create partition "mpp10321a_1_prt_min15part_2_prt_p20010101" for table "mpp10321a_1_prt_min15part"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "mpp10321a_1_prt_min15part_2_prt_p20010101_pkey" for table "mpp10321a_1_prt_min15part_2_prt_p20010101"
@@ -8057,7 +8058,7 @@ ERROR:  AT clause parameter is not a member of the target partition specificatio
 -- good split
 alter table cov1 split partition p1 at (5,6,7) 
 into (partition p1, partition p2);
-NOTICE:  exchanged partition "p1" of relation "cov1" with relation "pg_temp_241683"
+NOTICE:  exchanged partition "p1" of relation "cov1" with relation "pg_temp_307578"
 NOTICE:  dropped partition "p1" for relation "cov1"
 NOTICE:  CREATE TABLE will create partition "cov1_1_prt_p1" for table "cov1"
 NOTICE:  CREATE TABLE will create partition "cov1_1_prt_p2" for table "cov1"
@@ -8121,7 +8122,7 @@ alter table test_table split default partition
         start (3)
 	end (4)
 	into (partition p2, partition default_partition);
-NOTICE:  exchanged partition "default_partition" of relation "test_table" with relation "pg_temp_241905"
+NOTICE:  exchanged partition "default_partition" of relation "test_table" with relation "pg_temp_307800"
 NOTICE:  dropped partition "default_partition" for relation "test_table"
 NOTICE:  CREATE TABLE will create partition "test_table_1_prt_p2" for table "test_table"
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "test_table_1_prt_p2_pkey" for table "test_table_1_prt_p2"

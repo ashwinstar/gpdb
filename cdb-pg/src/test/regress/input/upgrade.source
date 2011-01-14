@@ -150,6 +150,7 @@ set client_min_messages = 'ERROR';
 -- no dependencies on them.
 DROP VIEW upg_catalog.pg_roles;
 DROP VIEW upg_catalog.pg_stat_activity;
+DROP VIEW upg_catalog.pg_locks;
 
 --
 -- Create a dummy "CatDML" function

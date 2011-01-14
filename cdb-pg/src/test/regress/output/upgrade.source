@@ -16715,6 +16715,7 @@ set client_min_messages = 'ERROR';
 -- no dependencies on them.
 DROP VIEW upg_catalog.pg_roles;
 DROP VIEW upg_catalog.pg_stat_activity;
+DROP VIEW upg_catalog.pg_locks;
 --
 -- Create a dummy "CatDML" function
 CREATE FUNCTION CatDML(text) returns setof text as $$select unnest('{}'::text[])$$ language sql;
@@ -17176,6 +17177,15 @@ create ordered aggregate upg_catalog.string_agg(
         finalfunc = upg_catalog.string_agg_finalfn,
         oid       = 3538
     );
+    
+-- pg_locks
+CREATE OR REPLACE VIEW upg_catalog.pg_locks AS
+ SELECT l.locktype, l.database, l.relation, l.page, l.tuple, l.transactionid, 
+        l.classid, l.objid, l.objsubid, l.transaction, l.pid, l.mode, l.granted, 
+        l.mppsessionid, l.mppiswriter, l.gp_segment_id
+   FROM pg_lock_status() l(locktype text, database oid, relation oid, page integer, tuple smallint, transactionid xid, 
+   					classid oid, objid oid, objsubid smallint, transaction xid, pid integer, mode text, granted boolean, 
+   					mppsessionid integer, mppiswriter boolean, gp_segment_id integer);
 -- Catalog Upgrade DDL complete
 DROP FUNCTION CatDML(text);
 set client_min_messages = 'WARNING';
@@ -17767,7 +17777,7 @@ ORDER BY 1;
  pg_language                   | pg_language                   |        | r       | h          |        6
  pg_largeobject                | pg_largeobject                |        | r       | h          |        3
  pg_listener                   | pg_listener                   |        | r       | h          |        3
- pg_locks                      | pg_locks                      |        | v       | v          |       15
+ pg_locks                      | pg_locks                      |        | v       | v          |       16
  pg_max_external_files         | pg_max_external_files         |        | v       | v          |        2
  pg_namespace                  | pg_namespace                  |        | r       | h          |        3
  pg_opclass                    | pg_opclass                    |        | r       | h          |        7
@@ -17905,7 +17915,7 @@ ORDER BY 1;
  pg_language                   | pg_language                   |        | r       | h          |        6
  pg_largeobject                | pg_largeobject                |        | r       | h          |        3
  pg_listener                   | pg_listener                   |        | r       | h          |        3
- pg_locks                      | pg_locks                      |        | v       | v          |       15
+ pg_locks                      | pg_locks                      |        | v       | v          |       16
  pg_max_external_files         | pg_max_external_files         |        | v       | v          |        2
  pg_namespace                  | pg_namespace                  |        | r       | h          |        3
  pg_opclass                    | pg_opclass                    |        | r       | h          |        7
@@ -18393,6 +18403,7 @@ ORDER BY c.relname, a.attnum;
  pg_locks                      |     13 | granted                                           | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_locks                      |     14 | mppsessionid                                      | int4        |        -1 | t        | p          | i        | f         | t          |           0
  pg_locks                      |     15 | mppiswriter                                       | bool        |        -1 | t        | p          | c        | f         | t          |           0
+ pg_locks                      |     16 | gp_segment_id                                     | int4        |        -1 | t        | p          | i        | f         | t          |           0
  pg_max_external_files         |      1 | hostname                                          | name        |        -1 | f        | p          | i        | f         | t          |           0
  pg_max_external_files         |      2 | maxfiles                                          | int8        |        -1 | t        | p          | d        | f         | t          |           0
  pg_namespace                  |      1 | nspname                                           | name        |        -1 | f        | p          | i        | f         | t          |           0
@@ -18919,7 +18930,7 @@ ORDER BY c.relname, a.attnum;
  pg_window                     |      8 | winpretype                                        | oid         |        -1 | t        | p          | i        | f         | t          |           0
  pg_window                     |      9 | winfinfunc                                        | regproc     |        -1 | t        | p          | i        | f         | t          |           0
  pg_window                     |     10 | winkind                                           | char        |        -1 | t        | p          | c        | f         | t          |           0
-(933 rows)
+(934 rows)
 
 SELECT
     c.relname, a.attnum, a.attname, t.typname, a.atttypmod, a.attbyval,
@@ -19343,6 +19354,7 @@ ORDER BY c.relname, a.attnum;
  pg_locks                      |     13 | granted                                           | bool        |        -1 | t        | p          | c        | f         | t          |           0
  pg_locks                      |     14 | mppsessionid                                      | int4        |        -1 | t        | p          | i        | f         | t          |           0
  pg_locks                      |     15 | mppiswriter                                       | bool        |        -1 | t        | p          | c        | f         | t          |           0
+ pg_locks                      |     16 | gp_segment_id                                     | int4        |        -1 | t        | p          | i        | f         | t          |           0
  pg_max_external_files         |      1 | hostname                                          | name        |        -1 | f        | p          | i        | f         | t          |           0
  pg_max_external_files         |      2 | maxfiles                                          | int8        |        -1 | t        | p          | d        | f         | t          |           0
  pg_namespace                  |      1 | nspname                                           | name        |        -1 | f        | p          | i        | f         | t          |           0
@@ -19869,7 +19881,7 @@ ORDER BY c.relname, a.attnum;
  pg_window                     |      8 | winpretype                                        | oid         |        -1 | t        | p          | i        | f         | t          |           0
  pg_window                     |      9 | winfinfunc                                        | regproc     |        -1 | t        | p          | i        | f         | t          |           0
  pg_window                     |     10 | winkind                                           | char        |        -1 | t        | p          | c        | f         | t          |           0
-(933 rows)
+(934 rows)
 
 -- end_equiv
 -- Compare pg_proc (Functions, Aggregates, Window Functions)
@@ -20590,6 +20602,7 @@ ORDER BY proname, 10;
  gp_persistent_build_all                       | f        | f        | f         | f           | f         | v           | int4                        |        1 | {bool}                                                                                                |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_build_all                       | -
  gp_persistent_build_db                        | f        | f        | f         | f           | f         | v           | int4                        |        1 | {bool}                                                                                                |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_build_db                        | -
  gp_persistent_relation_node_check             | f        | f        | f         | f           | t         | v           | gp_persistent_relation_node |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_relation_node_check             | -
+ gp_persistent_repair_delete                   | f        | f        | f         | f           | f         | v           | int4                        |        2 | {int4,tid}                                                                                            |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_repair_delete                   | -
  gp_persistent_reset_all                       | f        | f        | f         | f           | f         | v           | int4                        |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_reset_all                       | -
  gp_persistent_set_relation_bufpool_kind_all   | f        | f        | f         | f           | f         | v           | int4                        |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_set_relation_bufpool_kind_all   | -
  gp_pgdatabase                                 | f        | f        | f         | f           | t         | v           | record                      |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_pgdatabase__                               | -
@@ -21939,7 +21952,7 @@ ORDER BY proname, 10;
  xidout                                        | f        | f        | f         | t           | f         | i           | cstring                     |        1 | {xid}                                                                                                 |                                                                                       |                             |                                                                                                                                          | internal | xidout                                        | -
  xidrecv                                       | f        | f        | f         | t           | f         | i           | xid                         |        1 | {internal}                                                                                            |                                                                                       |                             |                                                                                                                                          | internal | xidrecv                                       | -
  xidsend                                       | f        | f        | f         | t           | f         | i           | bytea                       |        1 | {xid}                                                                                                 |                                                                                       |                             |                                                                                                                                          | internal | xidsend                                       | -
-(2035 rows)
+(2037 rows)
 
 SELECT 
     proname, proisagg, proiswin, prosecdef, proisstrict, proretset, provolatile,
@@ -22660,6 +22673,7 @@ ORDER BY proname, 10;
  gp_persistent_build_all                       | f        | f        | f         | f           | f         | v           | int4                        |        1 | {bool}                                                                                                |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_build_all                       | -
  gp_persistent_build_db                        | f        | f        | f         | f           | f         | v           | int4                        |        1 | {bool}                                                                                                |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_build_db                        | -
  gp_persistent_relation_node_check             | f        | f        | f         | f           | t         | v           | gp_persistent_relation_node |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_relation_node_check             | -
+ gp_persistent_repair_delete                   | f        | f        | f         | f           | f         | v           | int4                        |        2 | {int4,tid}                                                                                            |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_repair_delete                   | -
  gp_persistent_reset_all                       | f        | f        | f         | f           | f         | v           | int4                        |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_reset_all                       | -
  gp_persistent_set_relation_bufpool_kind_all   | f        | f        | f         | f           | f         | v           | int4                        |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_persistent_set_relation_bufpool_kind_all   | -
  gp_pgdatabase                                 | f        | f        | f         | f           | t         | v           | record                      |        0 |                                                                                                       |                                                                                       |                             |                                                                                                                                          | internal | gp_pgdatabase__                               | -
@@ -24009,7 +24023,7 @@ ORDER BY proname, 10;
  xidout                                        | f        | f        | f         | t           | f         | i           | cstring                     |        1 | {xid}                                                                                                 |                                                                                       |                             |                                                                                                                                          | internal | xidout                                        | -
  xidrecv                                       | f        | f        | f         | t           | f         | i           | xid                         |        1 | {internal}                                                                                            |                                                                                       |                             |                                                                                                                                          | internal | xidrecv                                       | -
  xidsend                                       | f        | f        | f         | t           | f         | i           | bytea                       |        1 | {xid}                                                                                                 |                                                                                       |                             |                                                                                                                                          | internal | xidsend                                       | -
-(2035 rows)
+(2037 rows)
 
 -- end_equiv
 -- Compare pg_aggregate (Aggregates, Window Functions)
