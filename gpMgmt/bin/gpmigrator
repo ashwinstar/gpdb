@@ -548,8 +548,6 @@ class GPUpgrade:
             if not os.path.isabs(self.newhome):
                 self.newhome = os.path.abspath(self.newhome)
 
-                options.mirror_replication_port_base
-
 
 
     #------------------------------------------------------------
