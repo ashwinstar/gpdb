@@ -20,7 +20,6 @@ select relname from pg_class where relnamespace in (select oid from pg_namespace
  gp_bloat_diag
  gp_bloat_expected_pages
  gp_disk_free
- gp_locks
  gp_locks_on_relation
  gp_locks_on_resqueue
  gp_log_command_timings
@@ -52,6 +51,6 @@ select relname from pg_class where relnamespace in (select oid from pg_namespace
  gp_skew_idle_fractions
  gp_stats_missing
  gp_table_indexes
-(46 rows)
+(45 rows)
 
 \c regression
