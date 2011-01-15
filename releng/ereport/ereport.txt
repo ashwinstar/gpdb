@@ -4054,6 +4054,11 @@ caah: cdbpath:00001330:  errdetail("Unsupported combination of "
 caah: cdbpath:00001331:  "UNION ALL of joined tables " 
 caah: cdbpath:00001332:  "with subquery.") 
 caah: cdbpath:00001333:  )); 
+aaaaa GP_IGNORE: cabi: cdbpersistentbuild - ./backend/cdb/cdbpersistentbuild.c
+cabi: cdbpersistentbuild:00000982:  ereport(ERROR, 
+cabi: cdbpersistentbuild:00000983:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+cabi: cdbpersistentbuild:00000984:  errmsg("function is not supported"), 
+cabi: cdbpersistentbuild:00000985:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: cacc: cdbpersistentfilespace - ./backend/cdb/cdbpersistentfilespace.c
 cacc: cdbpersistentfilespace:00000621:  ereport(FATAL, 
 cacc: cdbpersistentfilespace:00000622:  (errcode(ERRCODE_INTERNAL_ERROR), 
