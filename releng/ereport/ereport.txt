@@ -167,23 +167,23 @@ aaaaa GP_IGNORE: aabg: appendonlywriter - ./backend/access/appendonly/appendonly
 aabg: appendonlywriter:00000099:  ereport(FATAL, 
 aabg: appendonlywriter:00000100:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 aabg: appendonlywriter:00000101:  errmsg("not enough shared memory for append only writer"))); 
-aabg: appendonlywriter:00000308:  ereport(ERROR, (errmsg("expected an AO hash entry for relid %d but " 
-aabg: appendonlywriter:00000309:  "found none", relid))); 
-aabg: appendonlywriter:00000430:  ereport(ERROR, 
-aabg: appendonlywriter:00000431:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-aabg: appendonlywriter:00000432:  errmsg("int64 out of range"))); 
-aabg: appendonlywriter:00000571:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
-aabg: appendonlywriter:00000572:  "tables open for writing data at the same time. " 
-aabg: appendonlywriter:00000573:  "if tables are heavily partitioned or if your " 
-aabg: appendonlywriter:00000574:  "workload requires, increase the value of " 
-aabg: appendonlywriter:00000575:  "max_appendonly_tables and retry", 
-aabg: appendonlywriter:00000576:  MaxAppendOnlyTables))); 
-aabg: appendonlywriter:00000642:  ereport(ERROR, (errmsg("could not find segment file to use for " 
-aabg: appendonlywriter:00000643:  "inserting into relation %s (%d).", 
-aabg: appendonlywriter:00000644:  get_rel_name(relid), relid))); 
-aabg: appendonlywriter:00000743:  ereport(ERROR, 
-aabg: appendonlywriter:00000744:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-aabg: appendonlywriter:00000745:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
+aabg: appendonlywriter:00000317:  ereport(ERROR, (errmsg("expected an AO hash entry for relid %d but " 
+aabg: appendonlywriter:00000318:  "found none", relid))); 
+aabg: appendonlywriter:00000443:  ereport(ERROR, 
+aabg: appendonlywriter:00000444:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+aabg: appendonlywriter:00000445:  errmsg("int64 out of range"))); 
+aabg: appendonlywriter:00000598:  ereport(ERROR, (errmsg("can't have more than %d different append-only " 
+aabg: appendonlywriter:00000599:  "tables open for writing data at the same time. " 
+aabg: appendonlywriter:00000600:  "if tables are heavily partitioned or if your " 
+aabg: appendonlywriter:00000601:  "workload requires, increase the value of " 
+aabg: appendonlywriter:00000602:  "max_appendonly_tables and retry", 
+aabg: appendonlywriter:00000603:  MaxAppendOnlyTables))); 
+aabg: appendonlywriter:00000673:  ereport(ERROR, (errmsg("could not find segment file to use for " 
+aabg: appendonlywriter:00000674:  "inserting into relation %s (%d).", 
+aabg: appendonlywriter:00000675:  get_rel_name(relid), relid))); 
+aabg: appendonlywriter:00000780:  ereport(ERROR, 
+aabg: appendonlywriter:00000781:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+aabg: appendonlywriter:00000782:  errmsg("int64 out of range (" INT64_FORMAT ")", (int64) tupcount))); 
 aaaaa GP_IGNORE: baag: bitmap - ./backend/access/bitmap/bitmap.c
 baag: bitmap:00000079:  ereport (ERROR, 
 baag: bitmap:00000080:  (errcode(ERRCODE_INDEX_CORRUPTED), 
@@ -12863,12 +12863,16 @@ baah: backoff:00001054:  ereport(ERROR,(
 baah: backoff:00001055:  errmsg("gp_adjust_priority error (gathered %d results from cmd '%s')", 
 baah: backoff:00001056:  resultCount, cmd), errdetail("%s", errbuf.data))); 
 aaaaa GP_IGNORE: baai: bgwriter - ./backend/postmaster/bgwriter.c
-baai: bgwriter:00000576:  ereport(FATAL, 
-baai: bgwriter:00000577:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-baai: bgwriter:00000578:  errmsg("not enough shared memory for background writer"))); 
-baai: bgwriter:00000665:  ereport(ERROR, 
-baai: bgwriter:00000666:  (errmsg("checkpoint request failed"), 
-baai: bgwriter:00000667:  errhint("Consult recent messages in the server log for details."))); 
+baai: bgwriter:00000480:  ereport(FATAL, 
+baai: bgwriter:00000481:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+baai: bgwriter:00000482:  errmsg("not enough shared memory for background writer"))); 
+aaaaa GP_IGNORE: caba: checkpoint - ./backend/postmaster/checkpoint.c
+caba: checkpoint:00000484:  ereport(FATAL, 
+caba: checkpoint:00000485:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: checkpoint:00000486:  errmsg("not enough shared memory for checkpoint server"))); 
+caba: checkpoint:00000572:  ereport(ERROR, 
+caba: checkpoint:00000573:  (errmsg("checkpoint request failed"), 
+caba: checkpoint:00000574:  errhint("Consult recent messages in the server log for details."))); 
 aaaaa GP_IGNORE: daaj: ddaserver - ./backend/postmaster/ddaserver.c
 daaj: ddaserver:00000218:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 daaj: ddaserver:00000219:  errmsg("Error: Could not write() message to ddaserver: %s", 
@@ -12979,183 +12983,183 @@ paag: pgstat:00003840:  ereport(ERROR,
 paag: pgstat:00003841:  (errmsg("database hash table corrupted " 
 paag: pgstat:00003842:  "during cleanup --- abort"))); 
 aaaaa GP_IGNORE: paba: postmaster - ./backend/postmaster/postmaster.c
-paba: postmaster:00001040:  ereport(ERROR, 
-paba: postmaster:00001041:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: postmaster:00001042:  errmsg("--%s requires a value", 
-paba: postmaster:00001043:  optarg))); 
 paba: postmaster:00001045:  ereport(ERROR, 
 paba: postmaster:00001046:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: postmaster:00001047:  errmsg("-c %s requires a value", 
+paba: postmaster:00001047:  errmsg("--%s requires a value", 
 paba: postmaster:00001048:  optarg))); 
-paba: postmaster:00001162:  ereport(FATAL, 
-paba: postmaster:00001163:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001164:  errmsg("dbid (from -b option) is not specified or is invalid. This value must be >= 0, or >= -1 in utility mode. " 
-paba: postmaster:00001165:  "The dbid value to pass can be determined from this server's entry in the segment configuration; it may be -1 if running in utility mode."))); 
-paba: postmaster:00001170:  ereport(FATAL, 
-paba: postmaster:00001171:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001172:  errmsg("contentid (from -C option) is not specified or is invalid. This value must be >= -1. " 
-paba: postmaster:00001173:  "The contentid value to pass can be determined this server's entry in the segment configuration; it may be -1 for a master, or in utility mode." 
-paba: postmaster:00001174:  ))); 
-paba: postmaster:00001179:  ereport(FATAL, 
-paba: postmaster:00001180:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001181:  errmsg("numContentsInCluster (from -z option) is not specified or is invalid. This value must be >= 0. " 
-paba: postmaster:00001182:  "The value to pass can be determined by determining the number of primary segments in the cluster." 
-paba: postmaster:00001183:  ))); 
-paba: postmaster:00001302:  ereport(FATAL, 
-paba: postmaster:00001303:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001304:  errmsg("invalid list syntax for \"listen_addresses\""))); 
-paba: postmaster:00001324:  ereport(WARNING, 
-paba: postmaster:00001325:  (errmsg("could not create listen socket for \"%s\"", 
-paba: postmaster:00001326:  curhost))); 
-paba: postmaster:00001330:  ereport(FATAL, 
-paba: postmaster:00001331:  (errmsg("could not create any TCP/IP sockets"))); 
-paba: postmaster:00001357:  ereport(WARNING, 
-paba: postmaster:00001358:  (errmsg("could not create Unix-domain socket"))); 
-paba: postmaster:00001365:  ereport(FATAL, 
-paba: postmaster:00001366:  (errmsg("no socket created for listening"))); 
-paba: postmaster:00001391:  ereport(FATAL, 
-paba: postmaster:00001392:  (errmsg("could not create I/O completion port for child queue"))); 
-paba: postmaster:00001405:  ereport(FATAL, 
-paba: postmaster:00001406:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
-paba: postmaster:00001407:  (int) GetLastError()))); 
-paba: postmaster:00001492:  ereport(FATAL, 
-paba: postmaster:00001493:  (errmsg("could not load pg_hba.conf"), 
-paba: postmaster:00001494:  errOmitLocation(true))); 
-paba: postmaster:00001633:  ereport(FATAL, 
-paba: postmaster:00001634:  (errmsg("%s: could not locate matching postgres executable", 
-paba: postmaster:00001635:  argv0))); 
-paba: postmaster:00001653:  ereport(ERROR, 
-paba: postmaster:00001654:  (errcode_for_file_access(), 
-paba: postmaster:00001655:  errmsg("could not open directory \"%s\": %m", 
-paba: postmaster:00001656:  pkglib_path), 
-paba: postmaster:00001657:  errSendAlert(true), 
-paba: postmaster:00001658:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file \"%s\" has been moved away from its proper location.", 
-paba: postmaster:00001659:  my_exec_path))); 
-paba: postmaster:00001682:  ereport(FATAL, 
-paba: postmaster:00001683:  (errcode_for_file_access(), 
-paba: postmaster:00001684:  errmsg("data directory \"%s\" does not exist", 
-paba: postmaster:00001685:  DataDir))); 
+paba: postmaster:00001050:  ereport(ERROR, 
+paba: postmaster:00001051:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: postmaster:00001052:  errmsg("-c %s requires a value", 
+paba: postmaster:00001053:  optarg))); 
+paba: postmaster:00001167:  ereport(FATAL, 
+paba: postmaster:00001168:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001169:  errmsg("dbid (from -b option) is not specified or is invalid. This value must be >= 0, or >= -1 in utility mode. " 
+paba: postmaster:00001170:  "The dbid value to pass can be determined from this server's entry in the segment configuration; it may be -1 if running in utility mode."))); 
+paba: postmaster:00001175:  ereport(FATAL, 
+paba: postmaster:00001176:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001177:  errmsg("contentid (from -C option) is not specified or is invalid. This value must be >= -1. " 
+paba: postmaster:00001178:  "The contentid value to pass can be determined this server's entry in the segment configuration; it may be -1 for a master, or in utility mode." 
+paba: postmaster:00001179:  ))); 
+paba: postmaster:00001184:  ereport(FATAL, 
+paba: postmaster:00001185:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001186:  errmsg("numContentsInCluster (from -z option) is not specified or is invalid. This value must be >= 0. " 
+paba: postmaster:00001187:  "The value to pass can be determined by determining the number of primary segments in the cluster." 
+paba: postmaster:00001188:  ))); 
+paba: postmaster:00001307:  ereport(FATAL, 
+paba: postmaster:00001308:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001309:  errmsg("invalid list syntax for \"listen_addresses\""))); 
+paba: postmaster:00001329:  ereport(WARNING, 
+paba: postmaster:00001330:  (errmsg("could not create listen socket for \"%s\"", 
+paba: postmaster:00001331:  curhost))); 
+paba: postmaster:00001335:  ereport(FATAL, 
+paba: postmaster:00001336:  (errmsg("could not create any TCP/IP sockets"))); 
+paba: postmaster:00001362:  ereport(WARNING, 
+paba: postmaster:00001363:  (errmsg("could not create Unix-domain socket"))); 
+paba: postmaster:00001370:  ereport(FATAL, 
+paba: postmaster:00001371:  (errmsg("no socket created for listening"))); 
+paba: postmaster:00001396:  ereport(FATAL, 
+paba: postmaster:00001397:  (errmsg("could not create I/O completion port for child queue"))); 
+paba: postmaster:00001410:  ereport(FATAL, 
+paba: postmaster:00001411:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
+paba: postmaster:00001412:  (int) GetLastError()))); 
+paba: postmaster:00001497:  ereport(FATAL, 
+paba: postmaster:00001498:  (errmsg("could not load pg_hba.conf"), 
+paba: postmaster:00001499:  errOmitLocation(true))); 
+paba: postmaster:00001638:  ereport(FATAL, 
+paba: postmaster:00001639:  (errmsg("%s: could not locate matching postgres executable", 
+paba: postmaster:00001640:  argv0))); 
+paba: postmaster:00001658:  ereport(ERROR, 
+paba: postmaster:00001659:  (errcode_for_file_access(), 
+paba: postmaster:00001660:  errmsg("could not open directory \"%s\": %m", 
+paba: postmaster:00001661:  pkglib_path), 
+paba: postmaster:00001662:  errSendAlert(true), 
+paba: postmaster:00001663:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file \"%s\" has been moved away from its proper location.", 
+paba: postmaster:00001664:  my_exec_path))); 
 paba: postmaster:00001687:  ereport(FATAL, 
 paba: postmaster:00001688:  (errcode_for_file_access(), 
-paba: postmaster:00001689:  errmsg("could not read permissions of directory \"%s\": %m", 
+paba: postmaster:00001689:  errmsg("data directory \"%s\" does not exist", 
 paba: postmaster:00001690:  DataDir))); 
-paba: postmaster:00001695:  ereport(FATAL, 
-paba: postmaster:00001696:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paba: postmaster:00001697:  errmsg("specified data directory \"%s\" is not a directory", 
-paba: postmaster:00001698:  DataDir))); 
-paba: postmaster:00001711:  ereport(FATAL, 
-paba: postmaster:00001712:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paba: postmaster:00001713:  errmsg("data directory \"%s\" has wrong ownership", 
-paba: postmaster:00001714:  DataDir), 
-paba: postmaster:00001715:  errhint("The server must be started by the user that owns the data directory."))); 
-paba: postmaster:00001733:  ereport(FATAL, 
-paba: postmaster:00001734:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paba: postmaster:00001735:  errmsg("data directory \"%s\" has group or world access", 
-paba: postmaster:00001736:  DataDir), 
-paba: postmaster:00001737:  errdetail("Permissions should be u=rwx (0700)."))); 
-paba: postmaster:00002361:  ereport(FATAL, 
-paba: postmaster:00002362:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00002363:  errmsg("invalid value for boolean option \"replication\""))); 
-paba: postmaster:00002482:  ereport(FATAL, 
-paba: postmaster:00002483:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: postmaster:00002484:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
-paba: postmaster:00002485:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
-paba: postmaster:00002486:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
-paba: postmaster:00002487:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
-paba: postmaster:00002488:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
-paba: postmaster:00002539:  ereport(FATAL, 
-paba: postmaster:00002540:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00002541:  errmsg("option not supported: \"replication\""))); 
-paba: postmaster:00002559:  ereport(FATAL, 
-paba: postmaster:00002560:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paba: postmaster:00002561:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
-paba: postmaster:00002587:  ereport(FATAL, 
-paba: postmaster:00002588:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-paba: postmaster:00002589:  errmsg("no PostgreSQL user name specified in startup packet"))); 
-paba: postmaster:00002636:  ereport(FATAL, 
-paba: postmaster:00002637:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002638:  errSendAlert(true), 
-paba: postmaster:00002639:  errOmitLocation(true), 
-paba: postmaster:00002640:  errmsg("GPAgent deprecated."))); 
-paba: postmaster:00002656:  ereport(FATAL, 
-paba: postmaster:00002657:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002658:  errSendAlert(false), 
-paba: postmaster:00002659:  errOmitLocation(true), 
-paba: postmaster:00002660:  errmsg(POSTMASTER_IN_STARTUP_MSG))); 
-paba: postmaster:00002663:  ereport(FATAL, 
-paba: postmaster:00002664:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002665:  errSendAlert(false), 
-paba: postmaster:00002666:  errOmitLocation(true), 
-paba: postmaster:00002667:  errmsg("the database system is shutting down"))); 
-paba: postmaster:00002670:  ereport(FATAL, 
-paba: postmaster:00002671:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002672:  errSendAlert(true), 
-paba: postmaster:00002673:  errOmitLocation(true), 
-paba: postmaster:00002674:  errmsg(POSTMASTER_IN_RECOVERY_MSG))); 
-paba: postmaster:00002677:  ereport(FATAL, 
-paba: postmaster:00002678:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002679:  errSendAlert(true), 
-paba: postmaster:00002680:  errOmitLocation(true), 
-paba: postmaster:00002681:  errmsg("the database system is in mirror or uninitialized mode"))); 
-paba: postmaster:00002684:  ereport(FATAL, 
-paba: postmaster:00002685:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
-paba: postmaster:00002686:  errSendAlert(true), 
-paba: postmaster:00002687:  errOmitLocation(true), 
-paba: postmaster:00002688:  errmsg("sorry, too many clients already"))); 
-paba: postmaster:00003652:  ereport(WARNING, 
-paba: postmaster:00003653:  (errmsg("pg_hba.conf not reloaded"))); 
-paba: postmaster:00003695:  ereport(LOG, 
-paba: postmaster:00003696:  (errmsg("received smart shutdown request"), 
-paba: postmaster:00003697:  errSendAlert(true), 
-paba: postmaster:00003698:  errOmitLocation(true))); 
-paba: postmaster:00003717:  ereport(LOG, 
-paba: postmaster:00003718:  (errmsg("received fast shutdown request"), 
-paba: postmaster:00003719:  errSendAlert(true), 
-paba: postmaster:00003720:  errOmitLocation(true))); 
-paba: postmaster:00003742:  ereport(LOG, 
-paba: postmaster:00003743:  (errmsg("received immediate shutdown request"), 
-paba: postmaster:00003744:  errSendAlert(true), 
-paba: postmaster:00003745:  errOmitLocation(true))); 
-paba: postmaster:00003944:  ereport(LOG, 
-paba: postmaster:00003945:  (errmsg("database system is ready to accept connections"), 
-paba: postmaster:00003946:  errdetail("%s",version), 
-paba: postmaster:00003947:  errSendAlert(true), 
-paba: postmaster:00003948:  errOmitLocation(true))); 
-paba: postmaster:00004368:  ereport(LOG, 
-paba: postmaster:00004369:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00005398:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00005970:  ereport(WARNING, 
-paba: postmaster:00005971:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
-paba: postmaster:00005972:  gai_strerror(ret)))); 
-paba: postmaster:00006014:  ereport(FATAL, 
-paba: postmaster:00006015:  (errmsg("could not load pg_hba.conf"))); 
-paba: postmaster:00006441:  ereport(ERROR, 
-paba: postmaster:00006442:  (errmsg_internal("could not terminate unstarted process: error code %d", 
-paba: postmaster:00006443:  (int) GetLastError()))); 
-paba: postmaster:00006468:  ereport(ERROR, 
-paba: postmaster:00006469:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
-paba: postmaster:00006470:  (int) GetLastError()))); 
-paba: postmaster:00006485:  ereport(ERROR, 
-paba: postmaster:00006486:  (errmsg_internal("could not terminate unstartable process: error code %d", 
-paba: postmaster:00006487:  (int) GetLastError()))); 
-paba: postmaster:00006494:  ereport(ERROR, 
-paba: postmaster:00006495:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
-paba: postmaster:00006496:  (int) GetLastError()))); 
-paba: postmaster:00006510:  ereport(FATAL, 
-paba: postmaster:00006511:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006512:  errmsg("out of memory"))); 
-paba: postmaster:00006523:  ereport(FATAL, 
-paba: postmaster:00006524:  (errmsg_internal("could not register process for wait: error code %d", 
-paba: postmaster:00006525:  (int) GetLastError()))); 
-paba: postmaster:00006596:  ereport(FATAL, 
-paba: postmaster:00006597:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006598:  errmsg("out of memory"))); 
-paba: postmaster:00007347:  ereport(ERROR, 
-paba: postmaster:00007348:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
-paba: postmaster:00007349:  (int) GetLastError()))); 
-paba: postmaster:00007369:  ereport(ERROR, 
-paba: postmaster:00007370:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
-paba: postmaster:00007371:  src, WSAGetLastError()))); 
+paba: postmaster:00001692:  ereport(FATAL, 
+paba: postmaster:00001693:  (errcode_for_file_access(), 
+paba: postmaster:00001694:  errmsg("could not read permissions of directory \"%s\": %m", 
+paba: postmaster:00001695:  DataDir))); 
+paba: postmaster:00001700:  ereport(FATAL, 
+paba: postmaster:00001701:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paba: postmaster:00001702:  errmsg("specified data directory \"%s\" is not a directory", 
+paba: postmaster:00001703:  DataDir))); 
+paba: postmaster:00001716:  ereport(FATAL, 
+paba: postmaster:00001717:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paba: postmaster:00001718:  errmsg("data directory \"%s\" has wrong ownership", 
+paba: postmaster:00001719:  DataDir), 
+paba: postmaster:00001720:  errhint("The server must be started by the user that owns the data directory."))); 
+paba: postmaster:00001738:  ereport(FATAL, 
+paba: postmaster:00001739:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paba: postmaster:00001740:  errmsg("data directory \"%s\" has group or world access", 
+paba: postmaster:00001741:  DataDir), 
+paba: postmaster:00001742:  errdetail("Permissions should be u=rwx (0700)."))); 
+paba: postmaster:00002373:  ereport(FATAL, 
+paba: postmaster:00002374:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00002375:  errmsg("invalid value for boolean option \"replication\""))); 
+paba: postmaster:00002494:  ereport(FATAL, 
+paba: postmaster:00002495:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: postmaster:00002496:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
+paba: postmaster:00002497:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
+paba: postmaster:00002498:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
+paba: postmaster:00002499:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
+paba: postmaster:00002500:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
+paba: postmaster:00002551:  ereport(FATAL, 
+paba: postmaster:00002552:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00002553:  errmsg("option not supported: \"replication\""))); 
+paba: postmaster:00002571:  ereport(FATAL, 
+paba: postmaster:00002572:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paba: postmaster:00002573:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
+paba: postmaster:00002599:  ereport(FATAL, 
+paba: postmaster:00002600:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+paba: postmaster:00002601:  errmsg("no PostgreSQL user name specified in startup packet"))); 
+paba: postmaster:00002648:  ereport(FATAL, 
+paba: postmaster:00002649:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002650:  errSendAlert(true), 
+paba: postmaster:00002651:  errOmitLocation(true), 
+paba: postmaster:00002652:  errmsg("GPAgent deprecated."))); 
+paba: postmaster:00002668:  ereport(FATAL, 
+paba: postmaster:00002669:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002670:  errSendAlert(false), 
+paba: postmaster:00002671:  errOmitLocation(true), 
+paba: postmaster:00002672:  errmsg(POSTMASTER_IN_STARTUP_MSG))); 
+paba: postmaster:00002675:  ereport(FATAL, 
+paba: postmaster:00002676:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002677:  errSendAlert(false), 
+paba: postmaster:00002678:  errOmitLocation(true), 
+paba: postmaster:00002679:  errmsg("the database system is shutting down"))); 
+paba: postmaster:00002682:  ereport(FATAL, 
+paba: postmaster:00002683:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002684:  errSendAlert(true), 
+paba: postmaster:00002685:  errOmitLocation(true), 
+paba: postmaster:00002686:  errmsg(POSTMASTER_IN_RECOVERY_MSG))); 
+paba: postmaster:00002689:  ereport(FATAL, 
+paba: postmaster:00002690:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002691:  errSendAlert(true), 
+paba: postmaster:00002692:  errOmitLocation(true), 
+paba: postmaster:00002693:  errmsg("the database system is in mirror or uninitialized mode"))); 
+paba: postmaster:00002696:  ereport(FATAL, 
+paba: postmaster:00002697:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+paba: postmaster:00002698:  errSendAlert(true), 
+paba: postmaster:00002699:  errOmitLocation(true), 
+paba: postmaster:00002700:  errmsg("sorry, too many clients already"))); 
+paba: postmaster:00003665:  ereport(WARNING, 
+paba: postmaster:00003666:  (errmsg("pg_hba.conf not reloaded"))); 
+paba: postmaster:00003708:  ereport(LOG, 
+paba: postmaster:00003709:  (errmsg("received smart shutdown request"), 
+paba: postmaster:00003710:  errSendAlert(true), 
+paba: postmaster:00003711:  errOmitLocation(true))); 
+paba: postmaster:00003730:  ereport(LOG, 
+paba: postmaster:00003731:  (errmsg("received fast shutdown request"), 
+paba: postmaster:00003732:  errSendAlert(true), 
+paba: postmaster:00003733:  errOmitLocation(true))); 
+paba: postmaster:00003755:  ereport(LOG, 
+paba: postmaster:00003756:  (errmsg("received immediate shutdown request"), 
+paba: postmaster:00003757:  errSendAlert(true), 
+paba: postmaster:00003758:  errOmitLocation(true))); 
+paba: postmaster:00003969:  ereport(LOG, 
+paba: postmaster:00003970:  (errmsg("database system is ready to accept connections"), 
+paba: postmaster:00003971:  errdetail("%s",version), 
+paba: postmaster:00003972:  errSendAlert(true), 
+paba: postmaster:00003973:  errOmitLocation(true))); 
+paba: postmaster:00004390:  ereport(LOG, 
+paba: postmaster:00004391:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00005456:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00006028:  ereport(WARNING, 
+paba: postmaster:00006029:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+paba: postmaster:00006030:  gai_strerror(ret)))); 
+paba: postmaster:00006072:  ereport(FATAL, 
+paba: postmaster:00006073:  (errmsg("could not load pg_hba.conf"))); 
+paba: postmaster:00006499:  ereport(ERROR, 
+paba: postmaster:00006500:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+paba: postmaster:00006501:  (int) GetLastError()))); 
+paba: postmaster:00006526:  ereport(ERROR, 
+paba: postmaster:00006527:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+paba: postmaster:00006528:  (int) GetLastError()))); 
+paba: postmaster:00006543:  ereport(ERROR, 
+paba: postmaster:00006544:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+paba: postmaster:00006545:  (int) GetLastError()))); 
+paba: postmaster:00006552:  ereport(ERROR, 
+paba: postmaster:00006553:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+paba: postmaster:00006554:  (int) GetLastError()))); 
+paba: postmaster:00006568:  ereport(FATAL, 
+paba: postmaster:00006569:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006570:  errmsg("out of memory"))); 
+paba: postmaster:00006581:  ereport(FATAL, 
+paba: postmaster:00006582:  (errmsg_internal("could not register process for wait: error code %d", 
+paba: postmaster:00006583:  (int) GetLastError()))); 
+paba: postmaster:00006654:  ereport(FATAL, 
+paba: postmaster:00006655:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006656:  errmsg("out of memory"))); 
+paba: postmaster:00007410:  ereport(ERROR, 
+paba: postmaster:00007411:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+paba: postmaster:00007412:  (int) GetLastError()))); 
+paba: postmaster:00007432:  ereport(ERROR, 
+paba: postmaster:00007433:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+paba: postmaster:00007434:  src, WSAGetLastError()))); 
 aaaaa GP_IGNORE: saaj: seqserver - ./backend/postmaster/seqserver.c
 saaj: seqserver:00000216:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 saaj: seqserver:00000217:  errmsg("Error: Could not write() message to seqserver: %s", 
@@ -17814,81 +17818,81 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00007918:  ereport(ERROR, 
-gaad: guc:00007919:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007920:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007922:  ereport(ERROR, 
-gaad: guc:00007923:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007924:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00007958:  ereport(ERROR, 
-gaad: guc:00007959:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00007960:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00007962:  ereport(ERROR, 
-gaad: guc:00007963:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00007964:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008033:  ereport(ERROR, 
-gaad: guc:00008034:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008035:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008042:  ereport(ERROR, 
-gaad: guc:00008043:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008044:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008215:  ereport(ERROR, 
-gaad: guc:00008216:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008217:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008279:  ereport(ERROR, 
-gaad: guc:00008280:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008281:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008600:  ereport(ERROR, 
-gaad: guc:00008601:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008602:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008604:  ereport(ERROR, 
-gaad: guc:00008605:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008606:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009408:  ereport(FATAL, 
-gaad: guc:00009409:  (errcode_for_file_access(), 
-gaad: guc:00009410:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009411:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009518:  ereport(WARNING, 
-gaad: guc:00009519:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009520:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009714:  ereport(ERROR, 
-gaad: guc:00009715:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009716:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009737:  ereport(ERROR, 
-gaad: guc:00009738:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009739:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009740:  tok))); 
-gaad: guc:00009766:  ereport(ERROR, 
-gaad: guc:00009767:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009768:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009769:  value))); 
-gaad: guc:00010157:  ereport(ERROR, 
-gaad: guc:00010158:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010159:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010233:  ereport(ERROR, 
-gaad: guc:00010234:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010235:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010254:  ereport(ERROR, 
-gaad: guc:00010255:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010256:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010267:  ereport(ERROR, 
-gaad: guc:00010268:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010269:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010284:  ereport(ERROR, 
-gaad: guc:00010285:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010286:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010287:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010288:  "\"log_dispatch_stats\", " 
-gaad: guc:00010289:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010304:  ereport(ERROR, 
-gaad: guc:00010305:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010306:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010307:  "\"log_statement_stats\", " 
-gaad: guc:00010308:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010309:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010324:  ereport(ERROR, 
-gaad: guc:00010325:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010326:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00007930:  ereport(ERROR, 
+gaad: guc:00007931:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007932:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007934:  ereport(ERROR, 
+gaad: guc:00007935:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007936:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00007970:  ereport(ERROR, 
+gaad: guc:00007971:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00007972:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00007974:  ereport(ERROR, 
+gaad: guc:00007975:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00007976:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008045:  ereport(ERROR, 
+gaad: guc:00008046:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008047:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008054:  ereport(ERROR, 
+gaad: guc:00008055:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008056:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008227:  ereport(ERROR, 
+gaad: guc:00008228:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008229:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008291:  ereport(ERROR, 
+gaad: guc:00008292:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008293:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008612:  ereport(ERROR, 
+gaad: guc:00008613:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008614:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008616:  ereport(ERROR, 
+gaad: guc:00008617:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008618:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009420:  ereport(FATAL, 
+gaad: guc:00009421:  (errcode_for_file_access(), 
+gaad: guc:00009422:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009423:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009530:  ereport(WARNING, 
+gaad: guc:00009531:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009532:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009726:  ereport(ERROR, 
+gaad: guc:00009727:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009728:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009749:  ereport(ERROR, 
+gaad: guc:00009750:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009751:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009752:  tok))); 
+gaad: guc:00009778:  ereport(ERROR, 
+gaad: guc:00009779:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009780:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009781:  value))); 
+gaad: guc:00010169:  ereport(ERROR, 
+gaad: guc:00010170:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010171:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010245:  ereport(ERROR, 
+gaad: guc:00010246:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010247:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010266:  ereport(ERROR, 
+gaad: guc:00010267:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010268:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010279:  ereport(ERROR, 
+gaad: guc:00010280:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010281:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010296:  ereport(ERROR, 
+gaad: guc:00010297:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010298:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010299:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010300:  "\"log_dispatch_stats\", " 
+gaad: guc:00010301:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010316:  ereport(ERROR, 
+gaad: guc:00010317:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010318:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010319:  "\"log_statement_stats\", " 
+gaad: guc:00010320:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010321:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010336:  ereport(ERROR, 
+gaad: guc:00010337:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010338:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
