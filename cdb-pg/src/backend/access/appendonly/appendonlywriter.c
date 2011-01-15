@@ -125,8 +125,11 @@ AOHashTableInit(void)
 	info.hash = tag_hash;
 	hash_flags = (HASH_ELEM | HASH_FUNCTION);
 
-	ereport(DEBUG1, (errmsg("Creating hash table for %d append only tables",
-			MaxAppendOnlyTables)));
+	if (Debug_appendonly_print_segfile_choice)
+	{
+		ereport(LOG, (errmsg("AOHashTableInit: Creating hash table for %d append only tables",
+				MaxAppendOnlyTables)));
+	}
 
 	AppendOnlyHash = ShmemInitHash("Append Only Hash",
 								   MaxAppendOnlyTables,
@@ -233,9 +236,11 @@ AORelCreateHashEntry(Oid relid)
 	if(allfsinfo)
 		pfree(allfsinfo);
 
-	if (Debug_appendonly_print_insert)
-		ereport(LOG, (errmsg("Created a hash entry for append-only "
+	if (Debug_appendonly_print_segfile_choice)
+	{
+		ereport(LOG, (errmsg("AORelCreateHashEntry: Created a hash entry for append-only "
 							 "relation %d ", relid)));
+	}
 
 	return true;
 }
@@ -260,12 +265,16 @@ AORelRemoveHashEntry(Oid relid)
 						  HASH_REMOVE,
 						  &found);
 
-	if (!aoentry)
-		return false;
+	if (Debug_appendonly_print_segfile_choice)
+	{
+		ereport(LOG, (errmsg("AORelRemoveHashEntry: Remove hash entry for inactive append-only "
+							 "relation %d (found %s)", 
+							 relid,
+							 (aoentry != NULL ? "true" : "false"))));
+	}
 
-	if (Debug_appendonly_print_insert)
-		ereport(LOG, (errmsg("Removed hash entry for inactive append-only "
-							 "relation %d ", relid)));
+	if (aoentry == NULL)
+		return false;
 
 	AppendOnlyWriter->num_existing_aorels--;
 
@@ -308,9 +317,11 @@ AORelGetHashEntry(Oid relid)
 		ereport(ERROR, (errmsg("expected an AO hash entry for relid %d but "
 							   "found none", relid)));
 
-	if (Debug_appendonly_print_insert)
-		ereport(LOG, (errmsg("Retrieved hash entry for append-only relation "
+	if (Debug_appendonly_print_segfile_choice)
+	{
+		ereport(LOG, (errmsg("AORelGetHashEntry: Retrieved hash entry for append-only relation "
 							 "%d", relid)));
+	}
 
 	return (AORelHashEntry) aoentry;
 }
@@ -367,11 +378,13 @@ AppendOnlyRelHashNew(Oid relid, bool *exists)
 			{
 				if(hentry->txns_using_rel == 0)
 				{
-					if (Debug_appendonly_print_insert)
-						ereport(LOG, (errmsg("Appendonly Writer removing an "
+					if (Debug_appendonly_print_segfile_choice)
+					{
+						ereport(LOG, (errmsg("AppendOnlyRelHashNew: Appendonly Writer removing an "
 											 "unused entry (rel %d) to make "
 											 "room for a new one (rel %d)",
 											 hentry->relid, relid)));
+					}
 
 					/* remove this unused entry */
 					/* TODO: remove the LRU entry, not just any unused one */
@@ -482,9 +495,9 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat, int segno)
 		snapshot = SerializableSnapshot; 
 	}
 
-	if (Debug_appendonly_print_insert)
+	if (Debug_appendonly_print_segfile_choice)
 	{
-		elog(LOG, "current distributed transaction id=%d, latestWriteXid that uses segno %d=%d",
+		elog(LOG, "usedByConcurrentTransaction: current distributed transaction id=%d, latestWriteXid that uses segno %d=%d",
 			 getDistributedTransactionId(), segno, latestWriteXid);
 		if (SerializableSnapshot->haveDistribSnapshot)
 			LogDistributedSnapshotInfo(SerializableSnapshot, "SerializableSnapshot: ");
@@ -549,7 +562,7 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 	int					i, usesegno = -1;
 	bool				segno_chosen = false;
 	AORelHashEntryData	*aoentry = NULL;
-	TransactionId 		CurrentXid = GetCurrentTransactionId();
+	TransactionId 		CurrentXid = GetTopTransactionId();
 
 
 	switch(Gp_role)
@@ -569,10 +582,12 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 
 			Assert(existingsegno == InvalidFileSegNumber);
 
-			if (Debug_appendonly_print_insert)
-				ereport(LOG, (errmsg("Choosing a segno for append-only "
+			if (Debug_appendonly_print_segfile_choice)
+			{
+				ereport(LOG, (errmsg("SetSegnoForWrite: Choosing a segno for append-only "
 									 "relation \"%s\" (%d) ", 
 									 get_rel_name(relid), relid)));
+			}
 
 			LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
 
@@ -592,11 +607,13 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			aoentry = AORelGetHashEntry(relid);
 			aoentry->txns_using_rel++;
 
-			if (Debug_appendonly_print_insert)
-				ereport(LOG, (errmsg("got the hash entry for relation \"%s\" (%d). "
+			if (Debug_appendonly_print_segfile_choice)
+			{
+				ereport(LOG, (errmsg("SetSegnoForWrite: got the hash entry for relation \"%s\" (%d). "
 									 "setting txns_using_rel to %d",
 									 get_rel_name(relid), relid, 
 									 aoentry->txns_using_rel)));
+			}
 
 			/*
 			 * Now pick a segment that is not in use and is not over the
@@ -634,8 +651,9 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 						segno_chosen = true;
 						aoentry->txns_using_rel--; /* same txn. re-adjust */
 						
-						if (Debug_appendonly_print_insert)
-							ereport(LOG, (errmsg("reusing segno %d for append-"
+						if (Debug_appendonly_print_segfile_choice)
+						{
+							ereport(LOG, (errmsg("SetSegnoForWrite: reusing segno %d for append-"
 									 "only relation "
 									 "%d. there are " INT64_FORMAT " tuples "
 									 "added to it from previous operations "
@@ -644,6 +662,7 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 									 usesegno, relid,
 									 (int64) segfilestat->tupsadded,
 									 aoentry->txns_using_rel)));
+						}
 
 						break;
 					}
@@ -666,9 +685,11 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			Assert(usesegno >= 0);
 			Assert(usesegno != RESERVED_SEGNO);
 
-			if (Debug_appendonly_print_insert)
+			if (Debug_appendonly_print_segfile_choice)
+			{
 				ereport(LOG, (errmsg("Segno chosen for append-only relation \"%s\" (%d)"
 									 "is %d", get_rel_name(relid), relid, usesegno)));
+			}
 
 			return usesegno;
 
@@ -715,10 +736,12 @@ List *assignPerRelSegno(List *all_relids)
 
 			mapping = lappend(mapping, n);
 
-			if (Debug_appendonly_print_insert)
-				ereport(LOG, (errmsg("Appendonly Writer assigned segno %d to "
+			if (Debug_appendonly_print_segfile_choice)
+			{
+				ereport(LOG, (errmsg("assignPerRelSegno: Appendonly Writer assigned segno %d to "
 									"relid %d for this write operation",
 									 n->segno, n->relid)));
+			}
 
 		}
 
@@ -746,10 +769,12 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(segno >= 0);
 
-	if (Debug_appendonly_print_insert)
-		ereport(LOG,(errmsg("Updating aoseg entry for append-only relation %d "
+	if (Debug_appendonly_print_segfile_choice)
+	{
+		ereport(LOG,(errmsg("UpdateMasterAosegTotals: Updating aoseg entry for append-only relation %d "
 							"with " INT64_FORMAT " new tuples for segno %d",
 							RelationGetRelid(parentrel), (int64)tupcount, segno)));
+	}
 
 	if((int64) tupcount < 0)
 		ereport(ERROR,
@@ -811,7 +836,7 @@ AtCommit_AppendOnly(void)
 {
 	HASH_SEQ_STATUS status;
 	AORelHashEntry	aoentry = NULL;
-	TransactionId 	CurrentXid = GetCurrentTransactionId();
+	TransactionId 	CurrentXid = GetTopTransactionId();
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -846,8 +871,9 @@ AtCommit_AppendOnly(void)
 
 					Assert(segfilestat->inuse);
 
-					if (Debug_appendonly_print_insert)
-						ereport(LOG, (errmsg("found a segno that inserted in "
+					if (Debug_appendonly_print_segfile_choice)
+					{
+						ereport(LOG, (errmsg("AtCommit_AppendOnly: found a segno that inserted in "
 								  "our txn for table %d. Updating segno %d "
 								  "tupcount: old count " INT64_FORMAT ", tups "
 								  "added in this txn " INT64_FORMAT " new "
@@ -856,6 +882,7 @@ AtCommit_AppendOnly(void)
 								  (int64)segfilestat->tupsadded,
 								  (int64)segfilestat->tupcount +
 								  (int64)segfilestat->tupsadded )));
+					}
 
 					/* now do the in memory update */
 					segfilestat->tupcount += segfilestat->tupsadded;
@@ -928,8 +955,9 @@ AtAbort_AppendOnly(void)
 
 					Assert(segfilestat->inuse);
 
-					if (Debug_appendonly_print_insert)
-						ereport(LOG, (errmsg("found a segno that inserted in our txn for "
+					if (Debug_appendonly_print_segfile_choice)
+					{
+						ereport(LOG, (errmsg("AtAbort_AppendOnly: found a segno that inserted in our txn for "
 								  "table %d. Cleaning segno %d tupcount: old "
 								  "count " INT64_FORMAT " tups added in this "
 								  "txn " INT64_FORMAT ", count "
@@ -937,6 +965,7 @@ AtAbort_AppendOnly(void)
 								  (int64)segfilestat->tupcount,
 								  (int64)segfilestat->tupsadded,
 								  (int64)segfilestat->tupcount)));
+					}
 
 					/* now do the in memory cleanup. tupcount not touched */
 					segfilestat->tupsadded = 0;
@@ -1003,11 +1032,13 @@ AtEOXact_AppendOnly(void)
 
 					Assert(segfilestat->inuse);
 
-					if (Debug_appendonly_print_insert)
-						ereport(LOG, (errmsg("found a segno that inserted in our txn for "
+					if (Debug_appendonly_print_segfile_choice)
+					{
+						ereport(LOG, (errmsg("AtEOXact_AppendOnly: found a segno that inserted in our txn for "
 								  "table %d. Releasing segno %d. It can now be "
 								  "used by another incoming AO transaction",
 								  aoentry->relid, i)));
+					}
 
 					/* now do the in memory cleanup. tupcount not touched */
 					segfilestat->inuse = false;
@@ -1021,9 +1052,11 @@ AtEOXact_AppendOnly(void)
 			{
 				aoentry->txns_using_rel--;
 				
-				if (Debug_appendonly_print_insert)
-					ereport(LOG, (errmsg("updated txns_using_rel, it is now %d",
-										  aoentry->txns_using_rel)));				
+				if (Debug_appendonly_print_segfile_choice)
+				{
+					ereport(LOG, (errmsg("AtEOXact_AppendOnly: updated txns_using_rel, it is now %d",
+										  aoentry->txns_using_rel)));	
+				}
 			}
 				
 				

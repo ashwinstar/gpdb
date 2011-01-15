@@ -262,6 +262,7 @@ bool		Debug_appendonly_use_no_toast = false;
 bool 		Debug_appendonly_print_blockdirectory = false;
 bool 		Debug_appendonly_print_read_block = false;
 bool 		Debug_appendonly_print_append_block = false;
+bool 		Debug_appendonly_print_segfile_choice = false;
 bool		gp_crash_recovery_abort_suppress_fatal = false;
 bool		gp_persistent_statechange_suppress_error = false;
 bool		Debug_bitmap_print_insert = false;
@@ -2304,7 +2305,17 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_use_no_toast,
 		false, NULL, NULL
 	},
-				
+	
+	{
+		{"debug_appendonly_print_segfile_choice", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only writers about their choice for AO segment file."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_segfile_choice,
+		false, NULL, NULL
+	},
+	
 	{
 		{"debug_xlog_insert_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print XLOG Insert record debugging information."),
