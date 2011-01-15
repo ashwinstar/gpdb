@@ -2472,6 +2472,50 @@ FreeXactSnapshot(void)
 	ActiveSnapshot = NULL;		/* just for cleanliness */
 }
 
+/*
+ * LogDistributedSnapshotInfo
+ *   Log the distributed snapshot info in a given snapshot.
+ *
+ * The 'prefix' is used to prefix the log message.
+ */
+void LogDistributedSnapshotInfo(Snapshot snapshot, const char *prefix)
+{
+	static const int MESSAGE_LEN = 500;
+	
+	if (!IsMVCCSnapshot(snapshot))
+		return;
+
+	DistributedSnapshotWithLocalMapping *mapping =
+		&(snapshot->distribSnapshotWithLocalMapping);
+
+	char message[MESSAGE_LEN];
+	snprintf(message, MESSAGE_LEN, "%s Distributed snapshot info: "
+			 "xminAllDistributedSnapshots=%d, distribSnapshotId=%d"
+			 ", xmin=%d, xmax=%d, count=%d",
+			 prefix,
+			 mapping->header.xminAllDistributedSnapshots,
+			 mapping->header.distribSnapshotId,
+			 mapping->header.xmin,
+			 mapping->header.xmax,
+			 mapping->header.count);
+	
+	snprintf(message, MESSAGE_LEN, "%s, In progress array: {",
+			 message);
+
+	for (int no = 0; no < mapping->header.count; no++)
+	{
+		if (no != 0)
+			snprintf(message, MESSAGE_LEN, "%s, (%d,%d)",
+					 message, mapping->inProgressEntryArray[no].distribXid,
+					 mapping->inProgressEntryArray[no].localXid);
+		else
+			snprintf(message, MESSAGE_LEN, "%s (%d,%d)",
+					 message, mapping->inProgressEntryArray[no].distribXid,
+					 mapping->inProgressEntryArray[no].localXid);
+	}
+
+	elog(LOG, "%s}", message);
+}
 
 struct mpp_xid_map_entry {
 	pid_t				pid;

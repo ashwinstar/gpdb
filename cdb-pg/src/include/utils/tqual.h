@@ -377,6 +377,7 @@ extern Snapshot GetLatestSnapshot(void);
 extern Snapshot CopySnapshot(Snapshot snapshot);
 extern void FreeSnapshot(Snapshot snapshot);
 extern void FreeXactSnapshot(void);
+extern void LogDistributedSnapshotInfo(Snapshot snapshot, const char *prefix);
 extern void GetTupleVisibilitySummary(
 	HeapTuple				tuple,
 	TupleVisibilitySummary	*tupleVisibilitySummary);

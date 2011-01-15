@@ -441,7 +441,7 @@ int64  segfileMaxRowThreshold(void)
  * that are running concurrently with the current transaction.
  */
 static bool
-usedByConcurrentTransaction(AOSegfileStatus *segfilestat)
+usedByConcurrentTransaction(AOSegfileStatus *segfilestat, int segno)
 {
 	DistributedTransactionId latestWriteXid =
 		segfilestat->latestWriteXid;
@@ -482,6 +482,18 @@ usedByConcurrentTransaction(AOSegfileStatus *segfilestat)
 		snapshot = SerializableSnapshot; 
 	}
 
+	if (Debug_appendonly_print_insert)
+	{
+		elog(LOG, "current distributed transaction id=%d, latestWriteXid that uses segno %d=%d",
+			 getDistributedTransactionId(), segno, latestWriteXid);
+		if (SerializableSnapshot->haveDistribSnapshot)
+			LogDistributedSnapshotInfo(SerializableSnapshot, "SerializableSnapshot: ");
+		if (LatestSnapshot->haveDistribSnapshot)
+			LogDistributedSnapshotInfo(LatestSnapshot, "LatestSnapshot: ");
+		if (snapshot->haveDistribSnapshot)
+			LogDistributedSnapshotInfo(snapshot, "Used snapshot: ");
+	}
+	
 	if (!snapshot->haveDistribSnapshot)
 		return false;
 
@@ -601,7 +613,7 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 				if(!segfilestat->isfull)
 				{
 					if(!segfilestat->inuse && !segno_chosen &&
-					   !usedByConcurrentTransaction(segfilestat))
+					   !usedByConcurrentTransaction(segfilestat, i))
 					{
 						/*
 						 * this segno is avaiable and not full. use it.
