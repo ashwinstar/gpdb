@@ -45,7 +45,7 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "pgstat.h"
-#include "postmaster/bgwriter.h"
+#include "postmaster/checkpoint.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
 #include "storage/procarray.h"

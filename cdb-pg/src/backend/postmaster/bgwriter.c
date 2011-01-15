@@ -10,13 +10,9 @@
  * still empowered to issue writes if the bgwriter fails to maintain enough
  * clean shared buffers.
  *
- * The bgwriter is also charged with handling all checkpoints.	It will
- * automatically dispatch a checkpoint after a certain amount of time has
- * elapsed since the last one, and it can be signaled to perform requested
- * checkpoints as well.  (The GUC parameter that mandates a checkpoint every
- * so many WAL segments is implemented by having backends signal the bgwriter
- * when they fill WAL segments; the bgwriter itself doesn't watch for the
- * condition.)
+ * Previously, the background writer use to do this duty.  But we ended up with
+ * a deadlock with the new FileRep functionality, so this functionality was split out into its
+ * own server.
  *
  * The bgwriter is started by the postmaster as soon as the startup subprocess
  * finishes.  It remains alive until the postmaster commands it to terminate.
@@ -68,34 +64,6 @@
 /*----------
  * Shared memory area for communication between bgwriter and backends
  *
- * The ckpt counters allow backends to watch for completion of a checkpoint
- * request they send.  Here's how it works:
- *	* At start of a checkpoint, bgwriter increments ckpt_started.
- *	* On completion of a checkpoint, bgwriter sets ckpt_done to
- *	  equal ckpt_started.
- *	* On failure of a checkpoint, bgwrite first increments ckpt_failed,
- *	  then sets ckpt_done to equal ckpt_started.
- * All three fields are declared sig_atomic_t to ensure they can be read
- * and written without explicit locking.  The algorithm for backends is:
- *	1. Record current values of ckpt_failed and ckpt_started (in that
- *	   order!).
- *	2. Send signal to request checkpoint.
- *	3. Sleep until ckpt_started changes.  Now you know a checkpoint has
- *	   begun since you started this algorithm (although *not* that it was
- *	   specifically initiated by your signal).
- *	4. Record new value of ckpt_started.
- *	5. Sleep until ckpt_done >= saved value of ckpt_started.  (Use modulo
- *	   arithmetic here in case counters wrap around.)  Now you know a
- *	   checkpoint has started and completed, but not whether it was
- *	   successful.
- *	6. If ckpt_failed is different from the originally saved value,
- *	   assume request failed; otherwise it was definitely successful.
- *
- * An additional field is ckpt_time_warn; this is also sig_atomic_t for
- * simplicity, but is only used as a boolean.  If a backend is requesting
- * a checkpoint for which a checkpoints-too-close-together warning is
- * reasonable, it should set this field TRUE just before sending the signal.
- *
  * The requests array holds fsync requests sent by backends and not yet
  * absorbed by the bgwriter.  Unlike the checkpoint fields, the requests
  * fields are protected by BgWriterCommLock.
@@ -112,12 +80,6 @@ typedef struct
 {
 	pid_t		bgwriter_pid;	/* PID of bgwriter (0 if not started) */
 
-	sig_atomic_t ckpt_started;	/* advances when checkpoint starts */
-	sig_atomic_t ckpt_done;		/* advances when checkpoint done */
-	sig_atomic_t ckpt_failed;	/* advances when checkpoint fails */
-
-	sig_atomic_t ckpt_time_warn;	/* warn if too soon since last ckpt? */
-
 	int			num_requests;	/* current # of requests */
 	int			max_requests;	/* allocated array size */
 	BgWriterRequest requests[1];	/* VARIABLE LENGTH ARRAY */
@@ -129,14 +91,12 @@ static BgWriterShmemStruct *BgWriterShmem;
  * GUC parameters
  */
 int			BgWriterDelay = 200;
-int			CheckPointTimeout = 300;
-int			CheckPointWarning = 30;
 
 /*
  * Flags set by interrupt handlers for later service in the main loop.
  */
 static volatile sig_atomic_t got_SIGHUP = false;
-static volatile sig_atomic_t checkpoint_requested = false;
+static volatile sig_atomic_t checkpoint_smgrcloseall_requested = false;
 static volatile sig_atomic_t shutdown_requested = false;
 
 /*
@@ -144,13 +104,10 @@ static volatile sig_atomic_t shutdown_requested = false;
  */
 static bool am_bg_writer = false;
 
-static bool ckpt_active = false;
-
-static time_t last_checkpoint_time;
 static time_t last_xlog_switch_time;
 
 static void BgSigHupHandler(SIGNAL_ARGS);
-static void ReqCheckpointHandler(SIGNAL_ARGS);
+static void ReqCheckpointSmgrCloseHandler(SIGNAL_ARGS);
 static void ReqShutdownHandler(SIGNAL_ARGS);
 
 /*
@@ -192,7 +149,7 @@ BackgroundWriterMain(void)
 	 * process to participate in sinval messaging.
 	 */
 	pqsignal(SIGHUP, BgSigHupHandler);	/* set flag to read config file */
-	pqsignal(SIGINT, ReqCheckpointHandler);		/* request checkpoint */
+	pqsignal(SIGINT, ReqCheckpointSmgrCloseHandler);		/* request checkpoint smgrcloseall */
 	pqsignal(SIGTERM, SIG_IGN); /* ignore SIGTERM */
 	pqsignal(SIGQUIT, quickdie);		/* hard crash time: nothing bg-writer specific, just use the standard */
 	pqsignal(SIGALRM, SIG_IGN);
@@ -219,7 +176,7 @@ BackgroundWriterMain(void)
 	/*
 	 * Initialize so that first time-driven event happens at the correct time.
 	 */
-	last_checkpoint_time = last_xlog_switch_time = time(NULL);
+	last_xlog_switch_time = time(NULL);
 
 	/*
 	 * Create a resource owner to keep track of our resources (currently only
@@ -273,17 +230,6 @@ BackgroundWriterMain(void)
 		AtEOXact_Files();
 		AtEOXact_HashTables(false);
 
-		/* Warn any waiting backends that the checkpoint failed. */
-		if (ckpt_active)
-		{
-			/* use volatile pointer to prevent code rearrangement */
-			volatile BgWriterShmemStruct *bgs = BgWriterShmem;
-
-			bgs->ckpt_failed++;
-			bgs->ckpt_done = bgs->ckpt_started;
-			ckpt_active = false;
-		}
-
 		/*
 		 * Now return to normal top-level context and clear ErrorContext for
 		 * next time.
@@ -325,10 +271,8 @@ BackgroundWriterMain(void)
 	 */
 	for (;;)
 	{
-		bool		do_checkpoint = false;
-		bool		force_checkpoint = false;
+		bool		do_checkpoint_smgrcloseall = false;
 		time_t		now;
-		int			elapsed_secs;
 		long		udelay;
 
 		/*
@@ -348,11 +292,10 @@ BackgroundWriterMain(void)
 			got_SIGHUP = false;
 			ProcessConfigFile(PGC_SIGHUP);
 		}
-		if (checkpoint_requested)
+		if (checkpoint_smgrcloseall_requested)
 		{
-			checkpoint_requested = false;
-			do_checkpoint = true;
-			force_checkpoint = true;
+			checkpoint_smgrcloseall_requested = false;
+			do_checkpoint_smgrcloseall = true;
 		}
 		if (shutdown_requested)
 		{
@@ -364,68 +307,29 @@ BackgroundWriterMain(void)
 			/* Close down the database */
 			ShutdownXLOG(0, 0);
 			DumpFreeSpaceMap(0, 0);
-			/* Normal exit from the bgwriter is here */
-			ereport((Debug_print_qd_mirroring ? LOG : DEBUG5),
-					(errmsg("normal exit from background writer")));
+
+			/* Normal exit from the bgwriter server is here */
+			if (Debug_print_server_processes ||
+				Debug_print_qd_mirroring ||
+				log_min_messages <= DEBUG5)
+			{
+				ereport((log_min_messages > DEBUG5 ? LOG : DEBUG5),
+						(errmsg("normal exit from background writer")));
+			}
 			proc_exit(0);		/* done */
 		}
 
 		/*
-		 * Do an unforced checkpoint if too much time has elapsed since the
-		 * last one.
-		 */
-		now = time(NULL);
-		elapsed_secs = now - last_checkpoint_time;
-		if (elapsed_secs >= CheckPointTimeout)
-			do_checkpoint = true;
-
-		/*
-		 * Do a checkpoint if requested, otherwise do one cycle of
+		 * Do a checkpoint smgrcloseall if requested, otherwise do one cycle of
 		 * dirty-buffer writing.
 		 */
-		if (do_checkpoint)
+		if (do_checkpoint_smgrcloseall)
 		{
-			/*
-			 * We will warn if (a) too soon since last checkpoint (whatever
-			 * caused it) and (b) somebody has set the ckpt_time_warn flag
-			 * since the last checkpoint start.  Note in particular that this
-			 * implementation will not generate warnings caused by
-			 * CheckPointTimeout < CheckPointWarning.
-			 */
-			if (BgWriterShmem->ckpt_time_warn &&
-				elapsed_secs < CheckPointWarning)
-				ereport(LOG,
-						(errmsg("checkpoints are occurring too frequently (%d seconds apart)",
-								elapsed_secs),
-						 errhint("Consider increasing the configuration parameter \"checkpoint_segments\".")));
-			BgWriterShmem->ckpt_time_warn = false;
-
-			/*
-			 * Indicate checkpoint start to any waiting backends.
-			 */
-			ckpt_active = true;
-			BgWriterShmem->ckpt_started++;
-
-			CreateCheckPoint(false, force_checkpoint);
-
 			/*
 			 * After any checkpoint, close all smgr files.	This is so we
 			 * won't hang onto smgr references to deleted files indefinitely.
 			 */
 			smgrcloseall();
-
-			/*
-			 * Indicate checkpoint completion to any waiting backends.
-			 */
-			BgWriterShmem->ckpt_done = BgWriterShmem->ckpt_started;
-			ckpt_active = false;
-
-			/*
-			 * Note we record the checkpoint start time not end time as
-			 * last_checkpoint_time.  This is so that time-driven checkpoints
-			 * happen at a predictable spacing.
-			 */
-			last_checkpoint_time = now;
 		}
 		else
 			BgBufferSync();
@@ -446,7 +350,7 @@ BackgroundWriterMain(void)
 			last_xlog_switch_time = Max(last_xlog_switch_time, last_time);
 
 			/* if we did a checkpoint, 'now' might be stale too */
-			if (do_checkpoint)
+			if (do_checkpoint_smgrcloseall)
 				now = time(NULL);
 
 			/* Now we can do the real check */
@@ -495,14 +399,14 @@ BackgroundWriterMain(void)
 
 		while (udelay > 999999L)
 		{
-			if (got_SIGHUP || checkpoint_requested || shutdown_requested)
+			if (got_SIGHUP || checkpoint_smgrcloseall_requested || shutdown_requested)
 				break;
 			pg_usleep(1000000L);
 			AbsorbFsyncRequests();
 			udelay -= 1000000L;
 		}
 
-		if (!(got_SIGHUP || checkpoint_requested || shutdown_requested))
+		if (!(got_SIGHUP || checkpoint_smgrcloseall_requested || shutdown_requested))
 			pg_usleep(udelay);
 	}
 }
@@ -522,9 +426,9 @@ BgSigHupHandler(SIGNAL_ARGS)
 
 /* SIGINT: set flag to run a normal checkpoint right away */
 static void
-ReqCheckpointHandler(SIGNAL_ARGS)
+ReqCheckpointSmgrCloseHandler(SIGNAL_ARGS)
 {
-	checkpoint_requested = true;
+	checkpoint_smgrcloseall_requested = true;
 }
 
 /* SIGUSR2: set flag to run a shutdown checkpoint and exit */
@@ -584,88 +488,22 @@ BgWriterShmemInit(void)
 }
 
 /*
- * RequestCheckpoint
- *		Called in backend processes to request an immediate checkpoint
- *
- * If waitforit is true, wait until the checkpoint is completed
- * before returning; otherwise, just signal the request and return
- * immediately.
- *
- * If warnontime is true, and it's "too soon" since the last checkpoint,
- * the bgwriter will log a warning.  This should be true only for checkpoints
- * caused due to xlog filling, else the warning will be misleading.
+ * RequestCheckpointSmgrCloseAll
+ *		Called in checkpoint server process to request the background writer do a smgrcloseall.
  */
 void
-RequestCheckpoint(bool waitforit, bool warnontime)
+RequestCheckpointSmgrCloseAll(void)
 {
-	/* use volatile pointer to prevent code rearrangement */
-	volatile BgWriterShmemStruct *bgs = BgWriterShmem;
-	sig_atomic_t old_failed = bgs->ckpt_failed;
-	sig_atomic_t old_started = bgs->ckpt_started;
-
-	/*
-	 * If in a standalone backend, just do it ourselves.
-	 */
-	if (!IsPostmasterEnvironment)
-	{
-		CreateCheckPoint(false, true);
-
-		/*
-		 * After any checkpoint, close all smgr files.	This is so we won't
-		 * hang onto smgr references to deleted files indefinitely.
-		 */
-		smgrcloseall();
-
-		return;
-	}
-
-	/* Set warning request flag if appropriate */
-	if (warnontime)
-		bgs->ckpt_time_warn = true;
-
 	/*
 	 * Send signal to request checkpoint.  When waitforit is false, we
 	 * consider failure to send the signal to be nonfatal.
 	 */
 	if (BgWriterShmem->bgwriter_pid == 0)
-		elog(waitforit ? ERROR : LOG,
-			 "could not request checkpoint because bgwriter not running");
+		elog(LOG,
+			 "could not request checkpoint close all because bgwriter not running");
 	if (kill(BgWriterShmem->bgwriter_pid, SIGINT) != 0)
-		elog(waitforit ? ERROR : LOG,
-			 "could not signal for checkpoint: %m");
-
-	/*
-	 * If requested, wait for completion.  We detect completion according to
-	 * the algorithm given above.
-	 */
-	if (waitforit)
-	{
-		while (bgs->ckpt_started == old_started)
-		{
-			CHECK_FOR_INTERRUPTS();
-			pg_usleep(100000L);
-		}
-		old_started = bgs->ckpt_started;
-
-		/*
-		 * We are waiting for ckpt_done >= old_started, in a modulo sense.
-		 * This is a little tricky since we don't know the width or signedness
-		 * of sig_atomic_t.  We make the lowest common denominator assumption
-		 * that it is only as wide as "char".  This means that this algorithm
-		 * will cope correctly as long as we don't sleep for more than 127
-		 * completed checkpoints.  (If we do, we will get another chance to
-		 * exit after 128 more checkpoints...)
-		 */
-		while (((signed char) (bgs->ckpt_done - old_started)) < 0)
-		{
-			CHECK_FOR_INTERRUPTS();
-			pg_usleep(100000L);
-		}
-		if (bgs->ckpt_failed != old_failed)
-			ereport(ERROR,
-					(errmsg("checkpoint request failed"),
-					 errhint("Consult recent messages in the server log for details.")));
-	}
+		elog(LOG,
+			 "could not signal bgwriter for checkpoint close all: %m");
 }
 
 /*

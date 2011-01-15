@@ -36,6 +36,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "postmaster/bgwriter.h"
+#include "postmaster/checkpoint.h"
 #include "postmaster/primary_mirror_mode.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
@@ -355,6 +356,9 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			case BgWriterProcess:
 				statmsg = "writer process";
 				break;
+			case CheckpointProcess:
+				statmsg = "checkpoint process";
+				break;
 			case FilerepProcess:
 				statmsg = "filerep process";
 				break;
@@ -466,6 +470,12 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			/* don't set signals, bgwriter has its own agenda */
 			InitXLOGAccess();
 			BackgroundWriterMain();
+			proc_exit(1);		/* should never return */
+
+		case CheckpointProcess:
+			/* don't set signals, checkpoint is similar to bgwriter and has its own agenda */
+			InitXLOGAccess();
+			CheckpointMain();
 			proc_exit(1);		/* should never return */
 
 		case FilerepProcess:

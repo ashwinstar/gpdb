@@ -40,7 +40,7 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbfts.h"
 #include "libpq/ip.h"
-#include "postmaster/bgwriter.h"
+#include "postmaster/checkpoint.h"
 #include "catalog/indexing.h"
 #include "utils/faultinjection.h"
 

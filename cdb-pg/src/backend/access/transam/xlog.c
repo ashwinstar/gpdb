@@ -45,7 +45,7 @@
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/postmaster.h"
-#include "postmaster/bgwriter.h"
+#include "postmaster/checkpoint.h"
 #include "postmaster/walsendserver.h"
 #include "storage/proc.h"
 #include "storage/bufpage.h"

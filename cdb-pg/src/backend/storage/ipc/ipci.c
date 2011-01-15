@@ -40,6 +40,7 @@
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgwriter.h"
+#include "postmaster/checkpoint.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/primary_mirror_mode.h"
 #include "postmaster/seqserver.h"
@@ -209,6 +210,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 			 (unsigned long) size);
 
 		size = add_size(size, BgWriterShmemSize());
+		size = add_size(size, CheckpointShmemSize());
 
 		/* freeze the addin request size and include it */
 		addin_request_allowed = false;
@@ -353,6 +355,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	PMSignalShmemInit();
 	primaryMirrorModeShmemInit();
 	BgWriterShmemInit();
+	CheckpointShmemInit();
 	//AutoVacuumShmemInit();
 	SeqServerShmemInit();
 	WalSendServerShmemInit();
