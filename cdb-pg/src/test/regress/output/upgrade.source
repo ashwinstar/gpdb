@@ -16764,18 +16764,9 @@ returns upg_catalog.int4
 language internal AS 'gp_persistent_set_relation_bufpool_kind_all' volatile
 with (oid = 7182);
 select gp_persistent_set_relation_bufpool_kind_all();
- gp_persistent_set_relation_bufpool_kind_all 
----------------------------------------------
-                                           1
-(1 row)
-
+psql:/Users/achoi/dev/cdb2/main/cdb-pg/src/test/regress/data/upg_catupgrade_41.sql:46: ERROR:  function is not supported
 select gp_persistent_set_relation_bufpool_kind_all() from gp_dist_random('gp_id');
- gp_persistent_set_relation_bufpool_kind_all 
----------------------------------------------
-                                           1
-                                           1
-(2 rows)
-
+psql:/Users/achoi/dev/cdb2/main/cdb-pg/src/test/regress/data/upg_catupgrade_41.sql:47: ERROR:  function is not supported
 --
 -- Ordered Aggregates
 --
