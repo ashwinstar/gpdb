@@ -272,7 +272,7 @@ BackgroundWriterMain(void)
 	for (;;)
 	{
 		bool		do_checkpoint_smgrcloseall = false;
-		time_t		now;
+		time_t		now = time(NULL);
 		long		udelay;
 
 		/*
