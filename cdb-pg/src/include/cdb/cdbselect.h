@@ -28,7 +28,11 @@ typedef struct
 #define MPP_FD_WORD(fd) ((fd) >> 5)
 #define MPP_FD_BIT(fd) (1 << ((fd) & 0x1f))
 
-#define MPP_FD_SET(fd, set) ((set)->__fds_bits[MPP_FD_WORD(fd)] = ((set)->__fds_bits[MPP_FD_WORD(fd)]) | MPP_FD_BIT(fd))
+#define MPP_FD_SET(fd, set) do{ \
+	if (fd > 65535) \
+	elog(FATAL,"Internal error:  Using fd > 65535 in MPP_FD_SET"); \
+	((set)->__fds_bits[MPP_FD_WORD(fd)] = ((set)->__fds_bits[MPP_FD_WORD(fd)]) | MPP_FD_BIT(fd)); \
+    } while(0)
 #define MPP_FD_CLR(fd, set) ((set)->__fds_bits[MPP_FD_WORD(fd)] &= ~MPP_FD_BIT(fd))
 
 #define MPP_FD_ISSET(fd, set) (((set)->__fds_bits[MPP_FD_WORD(fd)] & MPP_FD_BIT(fd)) ? 1 : 0)
@@ -38,7 +42,11 @@ typedef struct
 #define mpp_fd_set fd_set
 #define MPP_FD_ZERO(setp) FD_ZERO(setp)
 
-#define MPP_FD_SET(fd, set) FD_SET(fd, set)
+#define MPP_FD_SET(fd, set) do{ \
+	if (fd > FD_SETSIZE) \
+	elog(FATAL,"Internal error:  Using fd > FD_SETSIZE in FD_SET (MPP_FD_SET)"); \
+	FD_SET(fd, set); \
+	} while(0)
 #define MPP_FD_CLR(fd, set) FD_CLR(fd, set)
 
 #define MPP_FD_ISSET(fd, set) FD_ISSET(fd, set)
