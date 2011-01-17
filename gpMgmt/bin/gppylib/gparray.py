@@ -332,7 +332,7 @@ class GpDB:
 
         for entry in fileSpaceDictionary:
             if entry == SYSTEM_FILESPACE and includeSystemFilespace == False:
-               continue
+                continue
             newDir = GpDB.getDataDirPrefix(fileSpaceDictionary[entry])
             newDir = newDir + "/" + suffix
             retValue[entry] = newDir
@@ -373,7 +373,7 @@ class GpDB:
         name = "segcopy filespace get_size"
         for oid in self.__filespaces:
             if oid == SYSTEM_FILESPACE:
-               continue
+                continue
             dir = self.__filespaces[oid]
             size = DiskUsage.get_size(name, "127.0.0.1", dir)
             requiredSize = requiredSize + size 
@@ -382,35 +382,35 @@ class GpDB:
         if dstBytesAvail <= requiredSize:
             raise Exception("Not enough space on directory: '%s'.  Currently %d bytes free but need %d bytes." % (dstDir, int(dstBytesAvail), int(requiredSize)))
 
-        logger.info("Starting copy of segment dbid %d to locaiton %s" % (int(self.getSegmentDbId()), dstDir))
+        logger.info("Starting copy of segment dbid %d to location %s" % (int(self.getSegmentDbId()), dstDir))
 
         cpCmd = LocalDirCopy("Copy system data directory", self.getSegmentDataDirectory(), dstDir)
         cpCmd.run(validateAfter = True)
         res = cpCmd.get_results()
             
         if len(self.__filespaces) > 1:
-           """ Make directory to hold file spaces """
-           fullPathFsDir = dstDir + "/" +  DESTINATION_FILE_SPACES_DIRECTORY
-           cmd = FileDirExists( name = "check for existance of template filespace directory"
-                              , directory = fullPathFsDir
-                              )
-           cmd.run(validateAfter = True)
-           MakeDirectory.local("gpexpand make directory to hold file spaces", fullPathFsDir)
-           for oid in self.__filespaces:
-               MakeDirectory.local("gpexpand make directory to hold file space oid: " + str(oid), fullPathFsDir)
-               dir = self.__filespaces[oid]
-               destDir = fullPathFsDir + "/" + str(oid)
-               MakeDirectory.local("gpexpand make directory to hold file space: " + destDir, destDir)
-               name = "GpSegCopy %s to %s" % (dir, destDir)
-               cpCmd = LocalDirCopy(name, dir, destDir)
-               cpCmd.run(validateAfter = True)
-               res = cpCmd.get_results()
+            """ Make directory to hold file spaces """
+            fullPathFsDir = dstDir + "/" +  DESTINATION_FILE_SPACES_DIRECTORY
+            cmd = FileDirExists( name = "check for existance of template filespace directory"
+                                 , directory = fullPathFsDir
+                                )
+            cmd.run(validateAfter = True)
+            MakeDirectory.local("gpexpand make directory to hold file spaces", fullPathFsDir)
+            for oid in self.__filespaces:
+                MakeDirectory.local("gpexpand make directory to hold file space oid: " + str(oid), fullPathFsDir)
+                dir = self.__filespaces[oid]
+                destDir = fullPathFsDir + "/" + str(oid)
+                MakeDirectory.local("gpexpand make directory to hold file space: " + destDir, destDir)
+                name = "GpSegCopy %s to %s" % (dir, destDir)
+                cpCmd = LocalDirCopy(name, dir, destDir)
+                cpCmd.run(validateAfter = True)
+                res = cpCmd.get_results()
         
-           # Remove the gp_dbid file from the data dir
-           RemoveFiles.local('Remove gp_dbid file', os.path.normpath(dstDir + '/gp_dbid'))
-           logger.info("Cleaning up catalog for schema only copy on destination")
-           # We need 700 permissions or postgres won't start
-           Chmod.local('set template permissions', dstDir, '0700')
+            # Remove the gp_dbid file from the data dir
+            RemoveFiles.local('Remove gp_dbid file', os.path.normpath(dstDir + '/gp_dbid'))
+            logger.info("Cleaning up catalog for schema only copy on destination")
+            # We need 700 permissions or postgres won't start
+            Chmod.local('set template permissions', dstDir, '0700')
 
 
     # --------------------------------------------------------------------
@@ -742,13 +742,13 @@ def createSegmentRows( hostlist
         for pdir in primary_list:
             fulldir = "%s/%s%d" % (pdir,dir_prefix,content)
             if len(interface_list) > 0:
-               interfaceNumber = interface_list[index % len(interface_list)]
-               address = host + '-' + str(interfaceNumber)
+                interfaceNumber = interface_list[index % len(interface_list)]
+                address = host + '-' + str(interfaceNumber)
             else:
-               address = host
+                address = host
             fsDict = {}
             if primary_fs_list != None and len(primary_fs_list) > index:
-               fsDict = primary_fs_list[index]
+                fsDict = primary_fs_list[index]
             fullFsDict = {}
             for oid in fsDict:
                 fullFsDict[oid] = "%s/%s%d" % (fsDict[oid], dir_prefix, content)
@@ -764,7 +764,7 @@ def createSegmentRows( hostlist
                                    ) )
             port += 1
             if prPort != None:
-               prPort += 1
+                prPort += 1
             content += 1
             dbid += 1
             index = index + 1
@@ -797,7 +797,7 @@ def createSegmentRows( hostlist
                 fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
                 fsDict = {}
                 if mirror_fs_list != None and len(mirror_fs_list) > index:
-                   fsDict = mirror_fs_list[index]
+                    fsDict = mirror_fs_list[index]
                 fullFsDict = {}
                 for oid in fsDict:
                     fullFsDict[oid] = "%s/%s%d" % (fsDict[oid], dir_prefix, content)
@@ -806,10 +806,10 @@ def createSegmentRows( hostlist
                     mirror_host_offset += 1
                     mirror_host = hostlist[mirror_host_offset % num_hosts]
                 if len(interface_list) > 0:
-                   interfaceNumber = interface_list[mirror_host_offset % len(interface_list)]
-                   address = mirror_host + '-' + str(interfaceNumber)
+                    interfaceNumber = interface_list[mirror_host_offset % len(interface_list)]
+                    address = mirror_host + '-' + str(interfaceNumber)
                 else:
-                   address = mirror_host
+                    address = mirror_host
                     
                 if not mirror_port.has_key(mirror_host):
                     mirror_port[mirror_host] = mirror_portbase
@@ -855,13 +855,13 @@ def createSegmentRows( hostlist
             for mdir in mirror_list:
                 fulldir = "%s/%s%d" % (mdir,dir_prefix,content)
                 if len(interface_list) > 0:
-                   interfaceNumber = interface_list[(index + 1) % len(interface_list)]
-                   address = mirror_host + '-' + str(interfaceNumber)
+                    interfaceNumber = interface_list[(index + 1) % len(interface_list)]
+                    address = mirror_host + '-' + str(interfaceNumber)
                 else:
-                   address = mirror_host
+                    address = mirror_host
                 fsDict = {}
                 if mirror_fs_list != None and len(mirror_fs_list) > index:
-                   fsDict = mirror_fs_list[index]
+                    fsDict = mirror_fs_list[index]
                 fullFsDict = {}
                 for oid in fsDict:
                     fullFsDict[oid] = "%s/%s%d" % (fsDict[oid], dir_prefix, content)
@@ -914,11 +914,11 @@ def createSegmentRowsFromSegmentList( newHostlist
         index = 0
         for pSeg in primary_segment_list:
             if len(interface_list) > 0:
-               interfaceNumber = interface_list[index % len(interface_list)]
-               address = host + '-' + str(interfaceNumber)
-               interfaceDict[content] = index % len(interface_list)
+                interfaceNumber = interface_list[index % len(interface_list)]
+                address = host + '-' + str(interfaceNumber)
+                interfaceDict[content] = index % len(interface_list)
             else:
-               address = host
+                address = host
             newFulldir = "%s/%s%d" % (GpDB.getDataDirPrefix(pSeg.getSegmentDataDirectory()), dir_prefix, content)
             newFileSpaceDictionary = GpDB.getFileSpaceDirsWithNewSuffix(pSeg.getSegmentFilespaces(), dir_prefix + str(content), includeSystemFilespace = False)
             rows.append( SegmentRow( content = content
@@ -933,7 +933,7 @@ def createSegmentRowsFromSegmentList( newHostlist
                                    ) )
             port += 1
             if prPort != None:
-               prPort += 1
+                prPort += 1
             content += 1
             dbid += 1
             index += 1
@@ -965,10 +965,10 @@ def createSegmentRowsFromSegmentList( newHostlist
                     mirror_host_offset += 1
                     mirror_host = newHostlist[mirror_host_offset % num_hosts]
                 if len(interface_list) > 0:
-                   interfaceNumber = interface_list[(interfaceDict[content] + 1) % len(interface_list)]
-                   address = mirror_host + '-' + str(interfaceNumber)
+                    interfaceNumber = interface_list[(interfaceDict[content] + 1) % len(interface_list)]
+                    address = mirror_host + '-' + str(interfaceNumber)
                 else:
-                   address = mirror_host
+                    address = mirror_host
     
                 if not mirror_port.has_key(mirror_host):
                     mirror_port[mirror_host] = mirror_portbase
@@ -1012,10 +1012,10 @@ def createSegmentRowsFromSegmentList( newHostlist
             index = 0
             for mSeg in mirror_segment_list:
                 if len(interface_list) > 0:
-                   interfaceNumber = interface_list[(interfaceDict[content] + 1) % len(interface_list)]
-                   address = mirror_host + '-' + str(interfaceNumber)
+                    interfaceNumber = interface_list[(interfaceDict[content] + 1) % len(interface_list)]
+                    address = mirror_host + '-' + str(interfaceNumber)
                 else:
-                   address = mirror_host
+                    address = mirror_host
                 newFulldir = "%s/%s%d" % (GpDB.getDataDirPrefix(mSeg.getSegmentDataDirectory()), dir_prefix, content)
                 newFileSpaceDictionary = GpDB.getFileSpaceDirsWithNewSuffix(mSeg.getSegmentFilespaces(), dir_prefix + str(content), includeSystemFilespace = False)                
                 rows.append( SegmentRow( content = content
@@ -1177,69 +1177,69 @@ class GpArray:
         """
 
         try:
-           # Do all the segments contain the same number of primary and mirrors.                                                                 
-           firstNumPrimaries = 0
-           firstNumMirrors   = 0
-           firstHost         = ""
-           first             = True
-           dbList = self.getDbList(includeExpansionSegs = True)
-           gpdbByHost = self.getSegmentsByHostName(dbList)
-           for host in gpdbByHost:
-               gpdbList = gpdbByHost[host]
-               if len(gpdbList) == 1 and gpdbList[0].isSegmentQD() == True:
-                  # This host has one master segment and nothing else
-                  continue
-               if len(gpdbList) == 2 and gpdbList[0].isSegmentQD() and gpdbList[1].isSegmentQD():
-                  # This host has the master segment and its mirror and nothing else
-                  continue
-               numPrimaries = 0
-               numMirrors   = 0
-               for gpdb in gpdbList:
-                   if gpdb.isSegmentQD() == True:
-                      continue
-                   if gpdb.isSegmentPrimary() == True:
-                      numPrimaries = numPrimaries + 1
-                   else:
-                      numMirrors = numMirrors + 1
-               if first == True:
-                  firstNumPrimaries = numPrimaries
-                  firstNumMirrors = numMirrors
-                  firstHost = host
-                  first = False
-               if numPrimaries != firstNumPrimaries:
-                  raise Exception("The number of primary segments is not consistent across all nodes: %s != %s." % (host, firstHost))
-               elif numMirrors != firstNumMirrors:
-                  raise Exception("The number of mirror segments is not consistent across all nodes. %s != %s." % (host, firstHost))
+            # Do all the segments contain the same number of primary and mirrors.                                                                 
+            firstNumPrimaries = 0
+            firstNumMirrors   = 0
+            firstHost         = ""
+            first             = True
+            dbList = self.getDbList(includeExpansionSegs = True)
+            gpdbByHost = self.getSegmentsByHostName(dbList)
+            for host in gpdbByHost:
+                gpdbList = gpdbByHost[host]
+                if len(gpdbList) == 1 and gpdbList[0].isSegmentQD() == True:
+                    # This host has one master segment and nothing else
+                    continue
+                if len(gpdbList) == 2 and gpdbList[0].isSegmentQD() and gpdbList[1].isSegmentQD():
+                    # This host has the master segment and its mirror and nothing else
+                    continue
+                numPrimaries = 0
+                numMirrors   = 0
+                for gpdb in gpdbList:
+                    if gpdb.isSegmentQD() == True:
+                        continue
+                    if gpdb.isSegmentPrimary() == True:
+                        numPrimaries = numPrimaries + 1
+                    else:
+                        numMirrors = numMirrors + 1
+                if first == True:
+                    firstNumPrimaries = numPrimaries
+                    firstNumMirrors = numMirrors
+                    firstHost = host
+                    first = False
+                if numPrimaries != firstNumPrimaries:
+                    raise Exception("The number of primary segments is not consistent across all nodes: %s != %s." % (host, firstHost))
+                elif numMirrors != firstNumMirrors:
+                    raise Exception("The number of mirror segments is not consistent across all nodes. %s != %s." % (host, firstHost))
 
 
-           # Make sure the address all have the same suffix "-<n>" (like -1, -2, -3...)
-           firstSuffixList = []
-           first           = True
-           suffixList      = []
-           for host in gpdbByHost:
-               gpdbList = gpdbByHost[host]
-               for gpdb in gpdbList:
-                   if gpdb.isSegmentMaster() == True:
-                      continue
-                   address = gpdb.getSegmentAddress()
-                   if address == host:
-                      if len(suffixList) == 0:
-                         continue
-                      else:
-                         raise Exception("The address value for %s is the same as the host name, but other addresses on the host are not." % address)
-                   suffix  = address.split('-')[-1]
-                   if suffix.isdigit() == False:
-                      raise Exception("The address value for %s does not correspond to a standard address." % address)
-                   suffixList.append(suffix)
-               suffixList.sort()
-               if first == True:
-                  firstSuffixList = suffixList
-                  first = False
-               if suffixList != firstSuffixList:
-                  raise Exception("The address list for %s doesn't not have the same pattern as %s." % (str(suffixList), str(firstSuffixList)))
+            # Make sure the address all have the same suffix "-<n>" (like -1, -2, -3...)
+            firstSuffixList = []
+            first           = True
+            suffixList      = []
+            for host in gpdbByHost:
+                gpdbList = gpdbByHost[host]
+                for gpdb in gpdbList:
+                    if gpdb.isSegmentMaster() == True:
+                        continue
+                    address = gpdb.getSegmentAddress()
+                    if address == host:
+                        if len(suffixList) == 0:
+                            continue
+                        else:
+                            raise Exception("The address value for %s is the same as the host name, but other addresses on the host are not." % address)
+                    suffix  = address.split('-')[-1]
+                    if suffix.isdigit() == False:
+                        raise Exception("The address value for %s does not correspond to a standard address." % address)
+                    suffixList.append(suffix)
+                suffixList.sort()
+                if first == True:
+                    firstSuffixList = suffixList
+                first = False
+                if suffixList != firstSuffixList:
+                    raise Exception("The address list for %s doesn't not have the same pattern as %s." % (str(suffixList), str(firstSuffixList)))
         except Exception, e:
-           # Assume any exception implies a non-standard array
-           return False, str(e)
+            # Assume any exception implies a non-standard array
+            return False, str(e)
 
         return True, ""
 
@@ -1543,10 +1543,10 @@ class GpArray:
         retValue = None
         
         if self.__filespaceArr != None:
-           for entry in self.__filespaceArr:
-               if entry.getOid() == filespaceOid:
-                  retValue = entry.getName()
-                  break
+            for entry in self.__filespaceArr:
+                if entry.getOid() == filespaceOid:
+                    retValue = entry.getName()
+                    break
         return retValue
 
     # --------------------------------------------------------------
@@ -1554,10 +1554,10 @@ class GpArray:
         retValue = None
         
         if self.__filespaceArr != None:
-           for entry in self.__filespaceArr:
-               if entry.getName() == filespaceName:
-                  retValue = entry.getOid()
-                  break
+            for entry in self.__filespaceArr:
+                if entry.getName() == filespaceName:
+                    retValue = entry.getOid()
+                    break
         return retValue
 
     # --------------------------------------------------------------------
@@ -1589,9 +1589,9 @@ class GpArray:
         dbList = self.getDbList(includeExpansionSegs = includeExpansionSegs)
         for db in dbList:
             if db.getSegmentHostName() in hostList:
-               continue
+                continue
             else:
-               hostList.append(db.getSegmentHostName())
+                hostList.append(db.getSegmentHostName())
         return hostList
            
 
@@ -1626,8 +1626,8 @@ class GpArray:
         for seg in self.segments:
             dbs.extend(seg.get_dbs())
         if includeExpansionSegs:
-           for seg in self.expansionSegments:
-               dbs.extend(seg.get_dbs()) 
+            for seg in self.expansionSegments:
+                dbs.extend(seg.get_dbs()) 
         return dbs
 
 
@@ -1638,7 +1638,7 @@ class GpArray:
         """
         dbsMap = {}
         for db in self.getSegDbList():
-           dbsMap[db.getSegmentDbId()] = db
+            dbsMap[db.getSegmentDbId()] = db
         return dbsMap
 
     # --------------------------------------------------------------------
@@ -1884,17 +1884,17 @@ class GpArray:
         dbList = self.getDbList()
         for db in dbList:
             if db.isSegmentQD() == True:
-               continue
+                continue
             if db.getSegmentHostName() == primary_hostname:
-               if db.getSegmentAddress() not in primary_address_list:
-                  primary_address_list.append(db.getSegmentAddress())
+                if db.getSegmentAddress() not in primary_address_list:
+                    primary_address_list.append(db.getSegmentAddress())
 
         for address in primary_address_list:
             if address.startswith(primary_hostname) == False or len(primary_hostname) + 2 > len(address):
-               return []
+                return []
             suffix = address[len(primary_hostname):]
             if len(suffix) < 2 or suffix[0] != '-' or suffix[1:].isdigit() == False:
-               return []
+                return []
             interface_nums.append(suffix[1:])
 
         return interface_nums
@@ -1915,7 +1915,7 @@ class GpArray:
         
         for db in self.getDbList():
             if db.isSegmentPrimary(False) == True and db.getSegmentHostName() == hostname:
-               retValue.append(db)
+                retValue.append(db)
         return retValue
 
     # --------------------------------------------------------------------
@@ -1924,7 +1924,7 @@ class GpArray:
         
         for db in self.getDbList():
             if db.isSegmentMirror(False) == True and db.getSegmentHostName() == hostname:
-               retValue.append(db)
+                retValue.append(db)
         return retValue
                
     # --------------------------------------------------------------------
@@ -2041,8 +2041,10 @@ class GpArray:
                      replicationPort = replication_port)  # todo: add to parameters
         
         if fileSpaces != None:
-           for fsOid in fileSpaces:
-               segdb.addSegmentFilespace(oid = fsOid, path = fileSpaces[fsOid])
+            for fsOid in fileSpaces:
+                segdb.addSegmentFilespace(oid = fsOid, path = fileSpaces[fsOid])
+        
+        segdb.catdirs = ['']
         
         seglen = len(self.segments)
         expseglen = len(self.expansionSegments)
@@ -2054,7 +2056,7 @@ class GpArray:
             logger.debug('Extending expansion array by %d' % (extendByNum))
             self.expansionSegments.extend([None] * (extendByNum))
         if self.expansionSegments[expseg_index] == None:
-           self.expansionSegments[expseg_index] = Segment()
+            self.expansionSegments[expseg_index] = Segment()
 
         seg = self.expansionSegments[expseg_index]
         if preferred_role == ROLE_PRIMARY:
@@ -2109,9 +2111,9 @@ class GpArray:
             for segdb in seg.get_dbs():
                 dbids.append(segdb.getSegmentDbId())
                 if segdb.getSegmentRole() == ROLE_PRIMARY:
-                   isprimary = True
+                    isprimary = True
                 else:
-                   isprimary = False
+                    isprimary = False
                 content.append((segdb.getSegmentContentId(), isprimary))
             
             # mirror count correct for this content id?
@@ -2178,14 +2180,14 @@ class GpArray:
     
             # Check replication ports
             if replication_port != None:
-               if used_replication_ports.has_key(hostname):
-                   if replication_port in used_replication_ports[hostname]:
-                       raise Exception('Replication Port %d is used multiple times on host %s' % (replication_port, hostname))
-                   else:
-                       used_replication_ports[hostname].append(replication_port)
-               else:
-                   used_replication_ports[hostname] = []
-                   used_replication_ports[hostname].append(replication_port)
+                if used_replication_ports.has_key(hostname):
+                    if replication_port in used_replication_ports[hostname]:
+                        raise Exception('Replication Port %d is used multiple times on host %s' % (replication_port, hostname))
+                    else:
+                        used_replication_ports[hostname].append(replication_port)
+                else:
+                    used_replication_ports[hostname] = []
+                    used_replication_ports[hostname].append(replication_port)
 
         # Check for redefinition of filespace dirs
         dbList = self.getDbList(includeExpansionSegs = True)
@@ -2197,9 +2199,9 @@ class GpArray:
                 dirDict = seg.getSegmentFilespaces()
                 for oid in dirDict:
                     if dirDict[oid] in dirList:
-                       raise Exception('Data directory %s used multiple times on host %s' % (datadir, hostname))
+                        raise Exception('Data directory %s used multiple times on host %s' % (datadir, hostname))
                     else:
-                       dirList.append(dirDict[oid])
+                        dirList.append(dirDict[oid])
 
     # --------------------------------------------------------------------    
     def addExpansionHosts(self, hosts, mirror_type):
@@ -2288,8 +2290,8 @@ class GpArray:
         tempPrimaryRP = None
         tempMirrorRP = None
         if mirror_type != 'none':
-           tempPrimaryRP = max_primary_replication_port + 1
-           tempMirrorRP = max_mirror_replication_port + 1
+            tempPrimaryRP = max_primary_replication_port + 1
+            tempMirrorRP = max_mirror_replication_port + 1
         rows = createSegmentRows( hostlist = hosts
                                 , interface_list = interface_list
                                 , primary_list = datadirs
@@ -2423,7 +2425,7 @@ class GpArray:
         return GpArray.getSegmentsGroupedByValue(segments, GpDB.getSegmentContentId )
 
     def getNumSegmentContents(self):
-         return len(GpArray.getSegmentsByContentId(self.getSegDbList()))
+        return len(GpArray.getSegmentsByContentId(self.getSegDbList()))
 
     def getSegmentsAsLoadedFromDb(self):
         """
