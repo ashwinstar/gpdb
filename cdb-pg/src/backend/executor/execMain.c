@@ -2711,7 +2711,8 @@ ExecInsert(TupleTableSlot *slot,
 		HeapTuple	newtuple;
 
 		/* NYI */
-		Assert(!rel_is_aocols);
+		if(rel_is_aocols)
+			elog(ERROR, "triggers are not supported on tables that use column-oriented storage");
 
 		newtuple = ExecBRInsertTriggers(estate, resultRelInfo, tuple);
 

@@ -4076,8 +4076,11 @@ CopyFrom(CopyState cstate)
 				{
 					HeapTuple	newtuple;
 
-					if(tuple)
+					if(relstorage == RELSTORAGE_AOCOLS)
+					{
+						Assert(!tuple);
 						elog(ERROR, "triggers are not supported on tables that use column-oriented storage");
+					}
 
 					Assert(resultRelInfo->ri_TrigFunctions != NULL);
 					newtuple = ExecBRInsertTriggers(estate, resultRelInfo, tuple);
