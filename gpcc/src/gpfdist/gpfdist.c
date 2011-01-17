@@ -350,6 +350,8 @@ static void parse_command_line(int argc, const char* const argv[],
 {
 	apr_getopt_t* 	os;
 	const char* 	arg;
+	char 			apr_errbuf[256];
+	int				status;
 	int 			ch;
 	int 			e;
 
@@ -373,8 +375,11 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ "version", 256, 0, "print version number" },
 	{ 0 } };
 
-	if (0 != apr_getopt_init(&os, pool, argc, argv))
-		gfatal(FLINE, "apt_getopt_init failed");
+	status = apr_getopt_init(&os, pool, argc, argv);
+	
+	if (status != APR_SUCCESS)
+		gfatal(FLINE, "apt_getopt_init failed: %s", 
+			   apr_strerror(status, apr_errbuf, sizeof(apr_errbuf)));
 
 	while (APR_SUCCESS == (e = apr_getopt_long(os, option, &ch, &arg)))
 	{
@@ -508,7 +513,8 @@ static void parse_command_line(int argc, const char* const argv[],
 		f = fopen(opt.l, "a");
 		if (!f)
 		{
-			fprintf(stderr, "unable to create log file %s\n", opt.l);
+			fprintf(stderr, "unable to create log file %s: %s\n", 
+					opt.l, strerror(errno));
 			exit(1);
 		}
 		fclose(f);
@@ -580,7 +586,7 @@ static apr_status_t http_ok(request_t* r)
 
 	n = apr_snprintf(buf, sizeof(buf), fmt, r->gp_proto);
 	if (n >= sizeof(buf) - 1)
-		gfatal(FLINE, "internal error - buffer overflow");
+		gfatal(FLINE, "internal error - buffer overflow during http_ok");
 
 	m = send(r->sock, buf, n, 0);
 	if (m != n)
@@ -620,7 +626,7 @@ static apr_status_t send_gpfdist_status(request_t* r)
 										gcb.total_sessions);
 
 	if (n >= sizeof buf - 1)
-		gfatal(FLINE, "internal error - buffer overflow");
+		gfatal(FLINE, "internal error - buffer overflow during send_gpfdist_status");
 
 	m = send(r->sock, buf, n, 0);
 
@@ -845,7 +851,7 @@ static void session_detach(request_t* r)
 	if (session)
 	{
 		if (session->nrequest <= 0)
-			gfatal(FLINE, "assert failed");
+			gfatal(FLINE, "internal error - detaching a request from an empty session");
 
 		session->nrequest--;
 		session->mtime = apr_time_now();
@@ -854,7 +860,8 @@ static void session_detach(request_t* r)
 		if (0 == strncmp("auto-tid.", session->tid, 9))
 		{
 			if (session->nrequest != 0)
-				gfatal(FLINE, "assert failed");
+				gfatal(FLINE, "internal error - expected an empty auto-tid session"
+							  "but saw %d requests", session->nrequest);
 
 			session_free(session);
 		}
@@ -891,7 +898,7 @@ static void sessions_cleanup(void)
 		return;
 
 	if (!(session = malloc(sizeof(session_t *) * numses)))
-		gfatal(FLINE, "out of memory");
+		gfatal(FLINE, "out of memory in sessions_cleanup");
 
 	hi = apr_hash_first(gcb.pool, gcb.session.tab);
 
@@ -1021,7 +1028,7 @@ static int session_attach(request_t* r)
 		session = apr_palloc(pool, sizeof(session_t));
 
 		if (session == 0)
-			gfatal(FLINE, "out of memory");
+			gfatal(FLINE, "out of memory in session_attach");
 
 		memset(session, 0, sizeof(*session));
 
@@ -1044,7 +1051,7 @@ static int session_attach(request_t* r)
 		session->maxsegs = r->totalsegs;
 		
 		if (session->tid == 0 || session->path == 0 || session->key == 0)
-			gfatal(FLINE, "out of memory");
+			gfatal(FLINE, "out of memory in session_attach");
 
 		/* insert into hashtable */
 		apr_hash_set(gcb.session.tab, session->key, APR_HASH_KEY_STRING, session);
@@ -1149,7 +1156,8 @@ static void do_write(int fd, short event, void* arg)
 	block_t* 	datablock;
 
 	if (fd != r->sock)
-		gfatal(FLINE, "assert failed");
+		gfatal(FLINE, "internal error - non matching fd (%d) "
+					  "and socket (%d)", fd, r->sock);
 
 	/* Loop at most 3 blocks or until we choke on the socket */
 	for (i = 0; i < 3; i++)
@@ -1455,7 +1463,7 @@ static void do_accept(int fd, short event, void* arg)
 
 	/* create a pool container for this socket */
 	if (apr_pool_create(&pool, gcb.pool))
-		gfatal(FLINE, "out of memory");
+		gfatal(FLINE, "out of memory in do_accept");
 
 	/* create the request in pool */
 	r = apr_pcalloc(pool, sizeof(request_t));
@@ -1494,7 +1502,7 @@ failure: gwarning(FLINE, "accept failed");
 static int setup_write(request_t* r)
 {
 	if (r->sock < 0)
-		gfatal(FLINE, "assert failed");
+		gfatal(FLINE, "internal error in setup_write - no socket to use");
 	event_del(&r->ev);
 	event_set(&r->ev, r->sock, EV_WRITE, do_write, r);
 	return (event_add(&r->ev, 0));
@@ -1517,7 +1525,7 @@ static int setup_write(request_t* r)
 static int setup_read(request_t* r)
 {
 	if (r->sock < 0)
-		gfatal(FLINE, "assert failed");
+		gfatal(FLINE, "internal error in setup_read - no socket to use");
 
 	event_del(&r->ev);
 	event_set(&r->ev, r->sock, EV_READ, do_read_request, r);
@@ -1546,7 +1554,7 @@ static void http_setup(void)
 
 	f = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (f < 0)
-		gfatal(FLINE, "cannot create socket");
+		gfatal(FLINE, "cannot create socket in http_setup: %s", strerror(errno));
 
 #ifndef WIN32
 	if (fcntl(f, F_SETFD, 1) == -1)
@@ -1588,7 +1596,8 @@ static void http_setup(void)
 			break;
 
 		if (opt.p >= opt.last_port)
-			gfatal(FLINE, "cannot create socket on port %d", opt.p);
+			gfatal(FLINE, "cannot create socket on port %d "
+						  "(last port is %d)", opt.p, opt.last_port);
 
 		opt.p++;
 	}
@@ -1613,7 +1622,8 @@ static void http_setup(void)
 
 	/* start watching this event */
 	if (event_add(&gcb.listen_event, 0))
-		gfatal(FLINE, "cannot set up event on listen socket");
+		gfatal(FLINE, "cannot set up event on listen socket: %s", 
+					   strerror(errno));
 
 }
 
