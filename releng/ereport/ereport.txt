@@ -4035,14 +4035,9 @@ caaj: cdbmutate:00000696:  errmsg("Cannot parallelize that INSERT yet")));
 caaj: cdbmutate:00000717:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
 caaj: cdbmutate:00000718:  errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns"), 
 caaj: cdbmutate:00000719:  errOmitLocation(true))); 
-caaj: cdbmutate:00000723:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
-caaj: cdbmutate:00000724:  errmsg("Cannot parallelize that %s yet", 
-caaj: cdbmutate:00000725:  query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE"), 
-caaj: cdbmutate:00000726:  errOmitLocation(true) 
-caaj: cdbmutate:00000727:  )); 
-caaj: cdbmutate:00001192:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caaj: cdbmutate:00001193:  errmsg("no equality operator for typid %d", 
-caaj: cdbmutate:00001194:  typeoid))); 
+caaj: cdbmutate:00001185:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caaj: cdbmutate:00001186:  errmsg("no equality operator for typid %d", 
+caaj: cdbmutate:00001187:  typeoid))); 
 aaaaa GP_IGNORE: caba: cdboidsync - ./backend/cdb/cdboidsync.c
 caba: cdboidsync:00000061:  ereport(ERROR, (errmsg("pg_highest_oid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
 caba: cdboidsync:00000062:  errdetail("%s", errbuf.data))); 
@@ -5248,75 +5243,75 @@ caae: copy:00003864:  errmsg("null OID in COPY data.")));
 caae: copy:00003892:  ereport(ERROR, 
 caae: copy:00003893:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
 caae: copy:00003894:  errmsg("invalid OID in COPY data."))); 
-caae: copy:00004661:  ereport(ERROR, 
-caae: copy:00004662:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004663:  errmsg("data line too long. likely due to invalid csv data"))); 
-caae: copy:00004793:  ereport(ERROR, 
-caae: copy:00004794:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004795:  errmsg("data line too long. likely due to invalid csv data"))); 
-caae: copy:00004954:  ereport(ERROR, 
-caae: copy:00004955:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004956:  errmsg("extra data after last expected column"), 
-caae: copy:00004957:  errOmitLocation(true))); 
-caae: copy:00005004:  ereport(ERROR, 
-caae: copy:00005005:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005006:  errmsg("missing data for column \"%s\"", 
-caae: copy:00005007:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
-caae: copy:00005008:  errOmitLocation(true))); 
-caae: copy:00005011:  ereport(ERROR, 
-caae: copy:00005012:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005013:  errmsg("missing data for column \"%s\", found empty data line", 
-caae: copy:00005014:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
-caae: copy:00005015:  errOmitLocation(true))); 
-caae: copy:00005022:  ereport(ERROR, 
-caae: copy:00005023:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005024:  errmsg("extra data after last expected column"), 
-caae: copy:00005025:  errOmitLocation(true))); 
-caae: copy:00005323:  ereport(ERROR, 
-caae: copy:00005324:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005325:  errmsg("extra data after last expected column"), 
-caae: copy:00005326:  errOmitLocation(true))); 
-caae: copy:00005336:  ereport(ERROR, 
-caae: copy:00005337:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005338:  errmsg("unterminated CSV quoted field"), 
-caae: copy:00005339:  errOmitLocation(true))); 
-caae: copy:00005354:  ereport(ERROR, 
-caae: copy:00005355:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005356:  errmsg("missing data for column \"%s\"", 
-caae: copy:00005357:  NameStr(attr[m + 1]->attname)), 
-caae: copy:00005358:  errOmitLocation(true))); 
-caae: copy:00005361:  ereport(ERROR, 
-caae: copy:00005362:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005363:  errmsg("missing data for column \"%s\", found empty data line", 
-caae: copy:00005364:  NameStr(attr[m + 1]->attname)), 
-caae: copy:00005365:  errOmitLocation(true))); 
-caae: copy:00005396:  ereport(ERROR, 
-caae: copy:00005397:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00005398:  errmsg("extra data after last expected column"), 
-caae: copy:00005399:  errOmitLocation(true))); 
-caae: copy:00005882:  ereport(ERROR, 
-caae: copy:00005883:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00005884:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-caae: copy:00005885:  name, RelationGetRelationName(rel)), 
-caae: copy:00005886:  errOmitLocation(true))); 
-caae: copy:00005888:  ereport(ERROR, 
-caae: copy:00005889:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-caae: copy:00005890:  errmsg("column \"%s\" does not exist", 
-caae: copy:00005891:  name), 
-caae: copy:00005892:  errOmitLocation(true))); 
-caae: copy:00005896:  ereport(ERROR, 
-caae: copy:00005897:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-caae: copy:00005898:  errmsg("column \"%s\" specified more than once", 
-caae: copy:00005899:  name))); 
-caae: copy:00005962:  ereport(ERROR, 
-caae: copy:00005963:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-caae: copy:00005964:  errmsg("COPY metadata not found. This probably means that there is a " 
-caae: copy:00005965:  "mixture of newline types in the data. Use the NEWLINE keyword " 
-caae: copy:00005966:  "in order to resolve this reliably."))); 
-caae: copy:00006648:  ereport(ERROR, 
-caae: copy:00006649:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caae: copy:00006650:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
-caae: copy:00006651:  cstate->eol_str))); 
+caae: copy:00004664:  ereport(ERROR, 
+caae: copy:00004665:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004666:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00004796:  ereport(ERROR, 
+caae: copy:00004797:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004798:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00004957:  ereport(ERROR, 
+caae: copy:00004958:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004959:  errmsg("extra data after last expected column"), 
+caae: copy:00004960:  errOmitLocation(true))); 
+caae: copy:00005007:  ereport(ERROR, 
+caae: copy:00005008:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005009:  errmsg("missing data for column \"%s\"", 
+caae: copy:00005010:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+caae: copy:00005011:  errOmitLocation(true))); 
+caae: copy:00005014:  ereport(ERROR, 
+caae: copy:00005015:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005016:  errmsg("missing data for column \"%s\", found empty data line", 
+caae: copy:00005017:  NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname)), 
+caae: copy:00005018:  errOmitLocation(true))); 
+caae: copy:00005025:  ereport(ERROR, 
+caae: copy:00005026:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005027:  errmsg("extra data after last expected column"), 
+caae: copy:00005028:  errOmitLocation(true))); 
+caae: copy:00005326:  ereport(ERROR, 
+caae: copy:00005327:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005328:  errmsg("extra data after last expected column"), 
+caae: copy:00005329:  errOmitLocation(true))); 
+caae: copy:00005339:  ereport(ERROR, 
+caae: copy:00005340:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005341:  errmsg("unterminated CSV quoted field"), 
+caae: copy:00005342:  errOmitLocation(true))); 
+caae: copy:00005357:  ereport(ERROR, 
+caae: copy:00005358:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005359:  errmsg("missing data for column \"%s\"", 
+caae: copy:00005360:  NameStr(attr[m + 1]->attname)), 
+caae: copy:00005361:  errOmitLocation(true))); 
+caae: copy:00005364:  ereport(ERROR, 
+caae: copy:00005365:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005366:  errmsg("missing data for column \"%s\", found empty data line", 
+caae: copy:00005367:  NameStr(attr[m + 1]->attname)), 
+caae: copy:00005368:  errOmitLocation(true))); 
+caae: copy:00005399:  ereport(ERROR, 
+caae: copy:00005400:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00005401:  errmsg("extra data after last expected column"), 
+caae: copy:00005402:  errOmitLocation(true))); 
+caae: copy:00005885:  ereport(ERROR, 
+caae: copy:00005886:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00005887:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+caae: copy:00005888:  name, RelationGetRelationName(rel)), 
+caae: copy:00005889:  errOmitLocation(true))); 
+caae: copy:00005891:  ereport(ERROR, 
+caae: copy:00005892:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+caae: copy:00005893:  errmsg("column \"%s\" does not exist", 
+caae: copy:00005894:  name), 
+caae: copy:00005895:  errOmitLocation(true))); 
+caae: copy:00005899:  ereport(ERROR, 
+caae: copy:00005900:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+caae: copy:00005901:  errmsg("column \"%s\" specified more than once", 
+caae: copy:00005902:  name))); 
+caae: copy:00005965:  ereport(ERROR, 
+caae: copy:00005966:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+caae: copy:00005967:  errmsg("COPY metadata not found. This probably means that there is a " 
+caae: copy:00005968:  "mixture of newline types in the data. Use the NEWLINE keyword " 
+caae: copy:00005969:  "in order to resolve this reliably."))); 
+caae: copy:00006651:  ereport(ERROR, 
+caae: copy:00006652:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caae: copy:00006653:  errmsg("internal error in CopySetEolType. Trying to set NEWLINE %s", 
+caae: copy:00006654:  cstate->eol_str))); 
 aaaaa GP_IGNORE: daba: dbcommands - ./backend/commands/dbcommands.c
 daba: dbcommands:00000469:  ereport(ERROR, 
 daba: dbcommands:00000470:  (errcode_for_file_access(), 
@@ -9391,73 +9386,73 @@ eaai: execmain:00002259:  errdetail("Query has too few columns.")));
 eaai: execmain:00002454:  ereport(ERROR, 
 eaai: execmain:00002455:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
 eaai: execmain:00002456:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00002925:  ereport(ERROR, 
-eaai: execmain:00002926:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002927:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003065:  ereport(ERROR, 
-eaai: execmain:00003066:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00003067:  errmsg("no partition for partitioning key"))); 
-eaai: execmain:00003071:  ereport(ERROR, 
-eaai: execmain:00003072:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execmain:00003073:  errmsg("moving tuple from partition \"%s\" to " 
-eaai: execmain:00003074:  "partition \"%s\" not supported", 
-eaai: execmain:00003075:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
-eaai: execmain:00003076:  get_rel_name(targetid)), 
-eaai: execmain:00003077:  errOmitLocation(true))); 
-eaai: execmain:00003156:  ereport(ERROR, 
-eaai: execmain:00003157:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00003158:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003315:  ereport(ERROR, 
-eaai: execmain:00003316:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
-eaai: execmain:00003317:  errmsg("null value in column \"%s\" violates not-null constraint", 
-eaai: execmain:00003318:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
-eaai: execmain:00003319:  errOmitLocation(true))); 
-eaai: execmain:00003328:  ereport(ERROR, 
-eaai: execmain:00003329:  (errcode(ERRCODE_CHECK_VIOLATION), 
-eaai: execmain:00003330:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
-eaai: execmain:00003331:  RelationGetRelationName(rel), failed), 
-eaai: execmain:00003332:  errOmitLocation(true))); 
-eaai: execmain:00004057:  ereport(ERROR, 
-eaai: execmain:00004058:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-eaai: execmain:00004059:  errmsg("ON COMMIT can only be used on temporary tables"), 
-eaai: execmain:00004060:  errOmitLocation(true))); 
-eaai: execmain:00004086:  ereport(ERROR, 
-eaai: execmain:00004087:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eaai: execmain:00004088:  errmsg("tablespace \"%s\" does not exist", 
-eaai: execmain:00004089:  intoClause->tableSpaceName))); 
-eaai: execmain:00004497:  ereport(ERROR, 
-eaai: execmain:00004498:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00004499:  errmsg("no partition for partitioning key"), 
-eaai: execmain:00004500:  errOmitLocation(true))); 
-eaai: execmain:00004902:  ereport(ERROR, 
-eaai: execmain:00004903:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004904:  errmsg("relation \"%s\" must have the same " 
-eaai: execmain:00004905:  "column names and column order as \"%s\"", 
-eaai: execmain:00004906:  RelationGetRelationName(part), 
-eaai: execmain:00004907:  RelationGetRelationName(base)), 
-eaai: execmain:00004908:  errOmitLocation(true))); 
-eaai: execmain:00004917:  ereport(ERROR, 
-eaai: execmain:00004918:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004919:  errmsg("type mismatch for attribute \"%s\"", 
-eaai: execmain:00004920:  NameStr((battr->attname))), 
-eaai: execmain:00004921:  errOmitLocation(true))); 
-eaai: execmain:00004930:  ereport(ERROR, 
-eaai: execmain:00004931:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004932:  errmsg("alignment mismatch for attribute \"%s\"", 
-eaai: execmain:00004933:  NameStr((battr->attname))), 
-eaai: execmain:00004934:  errOmitLocation(true))); 
-eaai: execmain:00004969:  ereport(ERROR, 
-eaai: execmain:00004970:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004971:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
-eaai: execmain:00004972:  RelationGetRelationName(part), 
-eaai: execmain:00004973:  RelationGetRelationName(base)), 
-eaai: execmain:00004974:  errOmitLocation(true))); 
-eaai: execmain:00004986:  ereport(ERROR, 
-eaai: execmain:00004987:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004988:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
-eaai: execmain:00004989:  RelationGetRelationName(part), 
-eaai: execmain:00004990:  RelationGetRelationName(base)), 
-eaai: execmain:00004991:  errOmitLocation(true))); 
+eaai: execmain:00002926:  ereport(ERROR, 
+eaai: execmain:00002927:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002928:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003066:  ereport(ERROR, 
+eaai: execmain:00003067:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00003068:  errmsg("no partition for partitioning key"))); 
+eaai: execmain:00003072:  ereport(ERROR, 
+eaai: execmain:00003073:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execmain:00003074:  errmsg("moving tuple from partition \"%s\" to " 
+eaai: execmain:00003075:  "partition \"%s\" not supported", 
+eaai: execmain:00003076:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
+eaai: execmain:00003077:  get_rel_name(targetid)), 
+eaai: execmain:00003078:  errOmitLocation(true))); 
+eaai: execmain:00003157:  ereport(ERROR, 
+eaai: execmain:00003158:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00003159:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003316:  ereport(ERROR, 
+eaai: execmain:00003317:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+eaai: execmain:00003318:  errmsg("null value in column \"%s\" violates not-null constraint", 
+eaai: execmain:00003319:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
+eaai: execmain:00003320:  errOmitLocation(true))); 
+eaai: execmain:00003329:  ereport(ERROR, 
+eaai: execmain:00003330:  (errcode(ERRCODE_CHECK_VIOLATION), 
+eaai: execmain:00003331:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
+eaai: execmain:00003332:  RelationGetRelationName(rel), failed), 
+eaai: execmain:00003333:  errOmitLocation(true))); 
+eaai: execmain:00004058:  ereport(ERROR, 
+eaai: execmain:00004059:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+eaai: execmain:00004060:  errmsg("ON COMMIT can only be used on temporary tables"), 
+eaai: execmain:00004061:  errOmitLocation(true))); 
+eaai: execmain:00004087:  ereport(ERROR, 
+eaai: execmain:00004088:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execmain:00004089:  errmsg("tablespace \"%s\" does not exist", 
+eaai: execmain:00004090:  intoClause->tableSpaceName))); 
+eaai: execmain:00004498:  ereport(ERROR, 
+eaai: execmain:00004499:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00004500:  errmsg("no partition for partitioning key"), 
+eaai: execmain:00004501:  errOmitLocation(true))); 
+eaai: execmain:00004903:  ereport(ERROR, 
+eaai: execmain:00004904:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004905:  errmsg("relation \"%s\" must have the same " 
+eaai: execmain:00004906:  "column names and column order as \"%s\"", 
+eaai: execmain:00004907:  RelationGetRelationName(part), 
+eaai: execmain:00004908:  RelationGetRelationName(base)), 
+eaai: execmain:00004909:  errOmitLocation(true))); 
+eaai: execmain:00004918:  ereport(ERROR, 
+eaai: execmain:00004919:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004920:  errmsg("type mismatch for attribute \"%s\"", 
+eaai: execmain:00004921:  NameStr((battr->attname))), 
+eaai: execmain:00004922:  errOmitLocation(true))); 
+eaai: execmain:00004931:  ereport(ERROR, 
+eaai: execmain:00004932:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004933:  errmsg("alignment mismatch for attribute \"%s\"", 
+eaai: execmain:00004934:  NameStr((battr->attname))), 
+eaai: execmain:00004935:  errOmitLocation(true))); 
+eaai: execmain:00004970:  ereport(ERROR, 
+eaai: execmain:00004971:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004972:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
+eaai: execmain:00004973:  RelationGetRelationName(part), 
+eaai: execmain:00004974:  RelationGetRelationName(base)), 
+eaai: execmain:00004975:  errOmitLocation(true))); 
+eaai: execmain:00004987:  ereport(ERROR, 
+eaai: execmain:00004988:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004989:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
+eaai: execmain:00004990:  RelationGetRelationName(part), 
+eaai: execmain:00004991:  RelationGetRelationName(base)), 
+eaai: execmain:00004992:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: eaai: execqual - ./backend/executor/execQual.c
 eaai: execqual:00000279:  ereport(ERROR, 
 eaai: execqual:00000280:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -17760,54 +17755,54 @@ fabd: faultinjector:00000518:  ereport(ERROR,
 fabd: faultinjector:00000519:  (errmsg("fault triggered, fault name:'%s' fault type:'%s' ", 
 fabd: faultinjector:00000520:  FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier], 
 fabd: faultinjector:00000521:  FaultInjectorTypeEnumToString[entryLocal->faultInjectorType]))); 
-fabd: faultinjector:00000734:  ereport(WARNING, 
-fabd: faultinjector:00000735:  (errmsg("could not insert fault injection, no slots available" 
-fabd: faultinjector:00000736:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000737:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000738:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000771:  ereport(WARNING, 
-fabd: faultinjector:00000772:  (errmsg("could not insert fault injection, fault type not supported" 
-fabd: faultinjector:00000773:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000774:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000775:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000834:  ereport(WARNING, 
-fabd: faultinjector:00000835:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
-fabd: faultinjector:00000836:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000837:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000838:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000858:  ereport(WARNING, 
-fabd: faultinjector:00000859:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000860:  "segment not in primary or mirror role, " 
-fabd: faultinjector:00000861:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000862:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000863:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000881:  ereport(WARNING, 
-fabd: faultinjector:00000882:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000883:  "segment not in master role, " 
-fabd: faultinjector:00000884:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000885:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000886:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000902:  ereport(WARNING, 
-fabd: faultinjector:00000903:  (errmsg("could not insert fault injection entry into table, no memory, " 
-fabd: faultinjector:00000904:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000905:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000906:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000916:  ereport(WARNING, 
-fabd: faultinjector:00000917:  (errmsg("could not insert fault injection entry into table, " 
-fabd: faultinjector:00000918:  "entry already exists, " 
-fabd: faultinjector:00000919:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000920:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000921:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00000980:  ereport(WARNING, 
-fabd: faultinjector:00000981:  (errmsg("could not update fault injection hash entry with fault injection status, " 
-fabd: faultinjector:00000982:  "no entry found, " 
-fabd: faultinjector:00000983:  "fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00000984:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-fabd: faultinjector:00000985:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
-fabd: faultinjector:00001211:  ereport(WARNING, 
-fabd: faultinjector:00001212:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
-fabd: faultinjector:00001213:  FaultInjectorIdentifierEnumToString[identifier], 
-fabd: faultinjector:00001214:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000737:  ereport(WARNING, 
+fabd: faultinjector:00000738:  (errmsg("could not insert fault injection, no slots available" 
+fabd: faultinjector:00000739:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000740:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000741:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000774:  ereport(WARNING, 
+fabd: faultinjector:00000775:  (errmsg("could not insert fault injection, fault type not supported" 
+fabd: faultinjector:00000776:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000777:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000778:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000837:  ereport(WARNING, 
+fabd: faultinjector:00000838:  (errmsg("could not insert fault injection entry into table, segment not in primary role" 
+fabd: faultinjector:00000839:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000840:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000841:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000861:  ereport(WARNING, 
+fabd: faultinjector:00000862:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000863:  "segment not in primary or mirror role, " 
+fabd: faultinjector:00000864:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000865:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000866:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000884:  ereport(WARNING, 
+fabd: faultinjector:00000885:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000886:  "segment not in master role, " 
+fabd: faultinjector:00000887:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000888:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000889:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000905:  ereport(WARNING, 
+fabd: faultinjector:00000906:  (errmsg("could not insert fault injection entry into table, no memory, " 
+fabd: faultinjector:00000907:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000908:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000909:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000919:  ereport(WARNING, 
+fabd: faultinjector:00000920:  (errmsg("could not insert fault injection entry into table, " 
+fabd: faultinjector:00000921:  "entry already exists, " 
+fabd: faultinjector:00000922:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000923:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000924:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00000983:  ereport(WARNING, 
+fabd: faultinjector:00000984:  (errmsg("could not update fault injection hash entry with fault injection status, " 
+fabd: faultinjector:00000985:  "no entry found, " 
+fabd: faultinjector:00000986:  "fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00000987:  FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
+fabd: faultinjector:00000988:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
+fabd: faultinjector:00001214:  ereport(WARNING, 
+fabd: faultinjector:00001215:  (errmsg("could not complete fault injection, fault name:'%s' fault type:'%s' ", 
+fabd: faultinjector:00001216:  FaultInjectorIdentifierEnumToString[identifier], 
+fabd: faultinjector:00001217:  FaultInjectorTypeEnumToString[entry->faultInjectorType]))); 
 aaaaa GP_IGNORE: gaai: gucxfile - ./backend/utils/misc/guc-file.c
 gaai: gucxfile:00000557: #define fprintf(file, fmt, msg) ereport(ERROR, (errmsg_internal("%s", msg))) 
 gaai: gucxfile:00000558:  
