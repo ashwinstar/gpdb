@@ -118,6 +118,13 @@ int     yaml_scalar_yylex_destroy(void);
 
    /* Matching specific fields */
 [a-z_]([a-z0-9_])*       return _ID_;
+
+   /* This is a bit of a hack to support schema qualification, the correct
+    * way to do this would require changing the lexer to be reentrant within
+    * yaml scalar values which would be a lot more work.
+    */
+[a-z_]([a-z0-9_])*\.[a-z_]([a-z0-9_])*       return _ID_;
+
 [0-9]+                   return _INTEGER_;
 [1-9][0-9]*(\.[0-9]){3}  return _VERSION_STRING_;
 

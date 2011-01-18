@@ -16,13 +16,17 @@ DEFINE:
   - INPUT:
       NAME:      network3
       TABLE:     network2
-
+      
   - INPUT:
       NAME:      network4
       EXEC:      'cat @abs_srcdir@/data/www.small.dat'
       COLUMNS:   [key text, value text]
       DELIMITER: '|'
-        
+
+  - Input:
+      NAME:      network5
+      TABLE:     input.qualified
+      
   - OUTPUT:
       NAME:     out_1
       FILE:     @abs_srcdir@/output/input.1
@@ -42,6 +46,10 @@ DEFINE:
       NAME:     out_4
       FILE:     @abs_srcdir@/output/input.4
       DELIMITER: ','
+
+  - OUTPUT:
+      NAME:     out_5
+      TABLE:    output.qualified
       
 EXECUTE:
 
@@ -60,3 +68,7 @@ EXECUTE:
   - RUN:
       SOURCE: network4
       TARGET: out_4
+
+  - RUN:
+      SOURCE: network5
+      TARGET: out_5

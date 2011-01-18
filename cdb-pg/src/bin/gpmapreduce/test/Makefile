@@ -6,7 +6,7 @@ MRDIFF    = bin/mrdiff.pl
 
 DB        = mapreduce_test
 MFLAGS    = $(DB) --key="clar" --file 
-PFLAGS    = $(DB) --file
+PFLAGS    = -X $(DB) --file
 
 INDIR     = input
 DATADIR   = data
@@ -41,13 +41,13 @@ libs:
 
 setup:
 	@printf "============== dropping database \"$(DB)\"     ==============\n"
-	@psql -c "drop database $(DB)" template1 2>/dev/null || echo "DROP DATABASE"
+	@psql -X -c "drop database $(DB)" template1 2>/dev/null || echo "DROP DATABASE"
 	@printf "============== creating database \"$(DB)\"     ==============\n"
-	@psql -c "create database $(DB)" template1
+	@psql -X -c "create database $(DB)" template1
 	@printf "============== installing plperl/plpython             ==============\n"
-	@psql -c "create language plperl" -d $(DB) 
-	@psql -c "create language plperlu" -d $(DB) 
-	@psql -c "create language plpythonu" -d $(DB) 
+	@psql -X -c "create language plperl" -d $(DB) 
+	@psql -X -c "create language plperlu" -d $(DB) 
+	@psql -X -c "create language plpythonu" -d $(DB) 
 	@printf "============== running mapreduce tests                ==============\n"
 	@rm -rf $(OUTDIR)
 
@@ -81,10 +81,10 @@ $(OUTDIR)/%.suc: $(MAPRED) $(YMLDIR)/%.yml $(MASTERDIR)/%.out $(MASTERDIR)/%.err
 	@cp -f $(MASTERDIR)/DEFAULT.out $(OUTDIR)/$*.out
 	@cp -f $(MASTERDIR)/DEFAULT.err $(OUTDIR)/$*.err
 	@if [ -e $(SQLDIR)/$*_init.sql ] ; \
-	 then $(PSQL) $(PFLAGS) $(SQLDIR)/$*_init.sql > $(OUTDIR)/$*_init.out; fi
+	 then $(PSQL) $(PFLAGS) $(SQLDIR)/$*_init.sql > $(OUTDIR)/$*.init.out; fi
 	@$(MAPRED) $(MFLAGS) $(YMLDIR)/$*.yml >>$(OUTDIR)/$*.out 2>>$(OUTDIR)/$*.err
 	@if [ -e $(SQLDIR)/$*_done.sql ] ; \
-	 then $(PSQL) $(PFLAGS) $(SQLDIR)/$*_done.sql > $(OUTDIR)/$*_done.out 2>&1; fi
+	 then $(PSQL) $(PFLAGS) $(SQLDIR)/$*_done.sql > $(OUTDIR)/$*.done.out 2>&1; fi
 	@$(MRDIFF) $(OUTDIR) $(MASTERDIR) $* > $(OUTDIR)/$*.suc
 	@psql -c "\d" $(DB) | \
         perl -e "while (<>) {s/No relations found.\\n$$//; print}" >> $(OUTDIR)/$*.suc
