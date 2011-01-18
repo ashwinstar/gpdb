@@ -598,6 +598,9 @@ FaultInjector_InjectFaultIfSet(
 			
 			Assert(0);
 			break;
+		case FaultInjectorTypeResume:
+			break;
+			
 		default:
 			
 			ereport(LOG, 
