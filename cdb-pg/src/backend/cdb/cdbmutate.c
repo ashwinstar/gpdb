@@ -718,15 +718,8 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 									errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns"),
 									errOmitLocation(true)));
 				}
-				if (plan->flow->flotype != FLOW_PARTITIONED && !is_dummy_plan(plan))
-				{
-					ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									errmsg("Cannot parallelize that %s yet",
-										   query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE"),
-								    errOmitLocation(true)
-								));
-				}
-				else if (IsA(plan, Append))
+				
+				if (IsA(plan, Append))
 				{
 					/* updating a partitioned table */					
 					request_explicit_motion_append((Append *) plan, root->resultRelations, root->glob->finalrtable);
