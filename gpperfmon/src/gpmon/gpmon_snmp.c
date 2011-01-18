@@ -56,12 +56,12 @@ const char* snmp_status_prt(GPDB_SNMP_STATUS status)
 
 typedef void gpdb_snmp_format_function(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars);
 typedef GPDB_SNMP_STATUS gpdb_status_code_conversion_function(int statusCodeIn, char** msgout);
-typedef void gpdb_snmp_device_function(const char* category, const char* hostname);
+typedef void gpdb_snmp_device_function(const char* category, host_t* hostp);
 
 struct SnmpConfigEntry
 {
 	char category[GPMON_SNMP_CONFIG_MAX_STRING_LENGTH];
-	char hostname[GPMON_SNMP_CONFIG_MAX_STRING_LENGTH];
+	host_t* hostp;
 	gpdb_snmp_device_function* function;
 
 	// linked list
@@ -1177,8 +1177,9 @@ BAIL:
 	write_line_in_hostlist_file(categoryname);
 }
 
-void run_snmp_report_for_brocade_switch(const char* categoryname, const char* hostname)
+void run_snmp_report_for_brocade_switch(const char* categoryname, host_t* hostp)
 {
+	char* hostname = hostp->hostname;
 	if (init_host(hostname, NULL))
 		return;
 
@@ -1199,8 +1200,9 @@ BAIL:
 	write_line_in_hostlist_file(categoryname);
 }
 
-void run_snmp_report_for_allied_telesis_switch(const char* categoryname, const char* hostname)
+void run_snmp_report_for_allied_telesis_switch(const char* categoryname, host_t* hostp)
 {
+	char* hostname = hostp->hostname;
 	if (init_host(hostname, NULL))
 		return;
 
@@ -1344,7 +1346,6 @@ int snmp_array_collection(EmcConnectSymptom symptom, EmcConnectDetailedSymptom d
 	char* accessible_hostname;
 
 	accessible_hostname = get_accessible_hostname();
-
 
 	// initialize the display buffer in case no valid objects are found and we need to print an error using the display_buffer
 	if (!displayname_end)
@@ -1736,10 +1737,25 @@ void snmp_close_tmphostlist_file()
 void addSnmpConfigEntry(const char* category, const char* host, gpdb_snmp_device_function* function)
 {
 	struct SnmpConfigEntry* newEntry = NULL;
-	newEntry = malloc(sizeof(struct SnmpConfigEntry));
-	memset(newEntry, 0, sizeof(struct SnmpConfigEntry));
+
+	// use calloc for initialization to 0
+	newEntry = calloc(1, sizeof(struct SnmpConfigEntry));
+	CHECKMEM(newEntry);
+
+	// initialize list of hostnames with only a single hostname for snmp
+	newEntry->hostp = calloc(1, sizeof(struct host_t)); 
+	CHECKMEM(newEntry->hostp);
+	newEntry->hostp->addressinfo_head = newEntry->hostp->addressinfo_tail = calloc(1, sizeof(struct addressinfo_holder_t));
+	CHECKMEM(newEntry->hostp->addressinfo_head);
+	newEntry->hostp->hostname = strdup(host);
+	CHECKMEM(newEntry->hostp->hostname);
+	newEntry->hostp->addressinfo_head->address = strdup(host);
+	CHECKMEM(newEntry->hostp->addressinfo_head->address);
+	newEntry->hostp->snmp_hostname.current = newEntry->hostp->addressinfo_head;
+	newEntry->hostp->snmp_hostname.counter = 1;
+	newEntry->hostp->address_count = 1;
+
 	snprintf(newEntry->category, GPMON_SNMP_CONFIG_MAX_STRING_LENGTH, "%s", category);
-	snprintf(newEntry->hostname, GPMON_SNMP_CONFIG_MAX_STRING_LENGTH, "%s", host);
 	newEntry->function = function;
 
 	if (si.snmpConfigTail)
@@ -1811,7 +1827,7 @@ int snmp_report(host_t* tab, int tabsz)
 	iter = si.snmpConfigHead;
 	while (iter)
 	{
-		iter->function(iter->category, iter->hostname);
+		iter->function(iter->category, iter->hostp);
 		iter = iter->next;
 	}
 
@@ -2033,6 +2049,8 @@ void parse_snmp_config_line(char* line)
 	//Category='Admin Switch'         Device='AdminSwitch0001'   		  Host='a-sw-1-app1'
 	//Category='Interconnect Switch'  Device='InterconnectSwitch0001'     Host='i-sw-1-app1'
 	//Category='Interconnect Switch'  Device='InterconnectSwitch0001'     Host='i-sw-2-app1'
+	//Category='ETL Host'             Device='EtlHost'                    Host='etl1'
+
 	char* host;
 	char* device;
 	char* category;
@@ -2063,6 +2081,10 @@ void parse_snmp_config_line(char* line)
 	{
 		fPtr = run_snmp_report_for_allied_telesis_switch;
 	}
+	else if (strcmp(device, "EtlHost") == 0) // EtlHost
+	{    
+		fPtr = run_snmp_report_for_dell_host;
+	}    
 
 	if (!fPtr)
 	{
@@ -2105,7 +2127,7 @@ void read_snmp_config(const char* configfile)
 	iter = si.snmpConfigHead;
 	while (iter)
 	{
-		TR0(("SNMP COLLECTION CATEGORY: '%s' HOST: '%s' func: '%p'\n", iter->category, iter->hostname, iter->function));
+		TR0(("SNMP COLLECTION CATEGORY: '%s' HOST: '%s' func: '%p'\n", iter->category, iter->hostp->hostname, iter->function));
 		iter = iter->next;
 	}
 }
