@@ -2238,7 +2238,8 @@ ServerLoop(void)
 
 			if (CheckpointPID == 0 &&
 				StartupPidsAllZero() && pmState > PM_STARTUP_PASS4 &&
-				!FatalError && Shutdown == NoShutdown)
+				!FatalError && !SyncMaster &&
+				Shutdown == NoShutdown)
 			{
 				CheckpointPID = StartCheckpointServer();
 				if (Debug_print_server_processes)
