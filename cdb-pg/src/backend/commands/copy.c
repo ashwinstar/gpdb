@@ -3468,7 +3468,7 @@ CopyFromDispatch(CopyState cstate)
 	{
 		cstate->error_on_executor = true;
 		if(cdbCopy->err_context.len > 0)
-			appendStringInfoString(&cstate->executor_err_context, cdbCopy->err_context.data);
+			appendBinaryStringInfo(&cstate->executor_err_context, cdbCopy->err_context.data, cdbCopy->err_context.len);
 	}
 
 	/*
