@@ -4510,9 +4510,9 @@ DATA(insert OID = 3260 (  float8_mregr_r2     PGNSP PGUID 12 f f t f i 1 701 f "
 DATA(insert OID = 3261 (  mregr_coef          PGNSP PGUID 12 t f t f i 2 1022 f "701 1022" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 DATA(insert OID = 3262 (  mregr_r2            PGNSP PGUID 12 t f t f i 2 701 f "701 1022" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 DATA(insert OID = 3263 (  float8_mregr_tstats   PGNSP PGUID 12 f f t f i 1 1022 f "1022" _null_ _null_ _null_ float8_mregr_tstats - _null_ ));
-DATA(insert OID = 3264 (  mregr_tstats          PGNSP PGUID 12 t f t f i 2 1022 f "701 1022" _null_ _null_ _null_ aggregate_dummy - _null_ ));
+DATA(insert OID = 3264 (  mregr_tstats          PGNSP PGUID 12 t f f f i 2 1022 f "701 1022" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 DATA(insert OID = 3265 (  float8_mregr_pvalues   PGNSP PGUID 12 f f t f i 1 1022 f "1022" _null_ _null_ _null_ float8_mregr_pvalues - _null_ ));
-DATA(insert OID = 3266 (  mregr_pvalues          PGNSP PGUID 12 t f t f i 2 1022 f "701 1022" _null_ _null_ _null_ aggregate_dummy - _null_ ));
+DATA(insert OID = 3266 (  mregr_pvalues          PGNSP PGUID 12 t f f f i 2 1022 f "701 1022" _null_ _null_ _null_ aggregate_dummy - _null_ ));
 
 DATA(insert OID =  3302 (  gpaotidin			   PGNSP PGUID 12 f f t f i 1 3300 f "2275" _null_ _null_ _null_ gpaotidin - _null_ ));
 DESCR("I/O");
