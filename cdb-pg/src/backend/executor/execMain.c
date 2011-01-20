@@ -498,6 +498,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		/*
 		 * Initialize the plan state tree
 		 */
+		Assert(CurrentMemoryContext == estate->es_query_cxt);
 		InitPlan(queryDesc, eflags);
 
 		if (Gp_role == GP_ROLE_DISPATCH && 

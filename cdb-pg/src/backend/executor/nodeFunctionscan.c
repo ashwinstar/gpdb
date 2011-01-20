@@ -311,7 +311,10 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 
 	initGpmonPktForFunctionScan((Plan *)node, &scanstate->ss.ps.gpmon_pkt, estate);
 	
-	PushMemoryReservedForFunctionScan(((Plan *)node)->operatorMemKB * 1024L);
+	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+	{
+		PushMemoryReservedForFunctionScan(((Plan *)node)->operatorMemKB * 1024L);
+	}
 	
 	return scanstate;
 }
@@ -374,8 +377,11 @@ ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf __at
 void
 ExecEndFunctionScan(FunctionScanState *node)
 {
-	ExecFunctionScanEndCommon(node);	
-	PopMemoryReservedForFunctionScan();
+	ExecFunctionScanEndCommon(node);
+	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+	{
+		PopMemoryReservedForFunctionScan();
+	}
 }
 
 /* ----------------------------------------------------------------
@@ -534,6 +540,7 @@ static Stack functionScanMemoryReservedStack;
  */
 void InitFunctionScanMemoryReservedStack(void)
 {
+	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO);
 	Init(&functionScanMemoryReservedStack);
 }
 
@@ -545,6 +552,7 @@ void InitFunctionScanMemoryReservedStack(void)
  */
 void PushMemoryReservedForFunctionScan(uint64 mem_reserved)
 {
+	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO);
 	Assert(CurrentMemoryContext);
 	uint64 *mem_reserved_copy = palloc(sizeof(mem_reserved));
 	(* mem_reserved_copy) = mem_reserved;
@@ -563,6 +571,7 @@ void PushMemoryReservedForFunctionScan(uint64 mem_reserved)
  */
 uint64 CurrentFunctionScanMemoryReserved(void)
 {
+	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO);
 	uint64 *mem_reserved = (uint64 *) Peek(&functionScanMemoryReservedStack);
 	return (*mem_reserved);
 }
@@ -572,7 +581,12 @@ uint64 CurrentFunctionScanMemoryReserved(void)
  */
 void PopMemoryReservedForFunctionScan(void)
 {
-	Pop(&functionScanMemoryReservedStack);
+	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO);
+
+	if (!IsEmptyMemoryReservedForFunctionScan())
+	{
+		Pop(&functionScanMemoryReservedStack);
+	}
 }
 
 /**
@@ -580,5 +594,6 @@ void PopMemoryReservedForFunctionScan(void)
  */
 bool IsEmptyMemoryReservedForFunctionScan(void)
 {
+	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO);
 	return IsEmpty(&functionScanMemoryReservedStack);
 }

@@ -49,6 +49,7 @@
 #include "access/appendonlywriter.h"
 #include "catalog/index.h"
 #include "executor/execdebug.h"
+#include "executor/nodeFunctionscan.h"
 #include "parser/parsetree.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
@@ -65,7 +66,7 @@
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbsreh.h"
-
+#include "cdb/memquota.h"
 #include "catalog/catalog.h" // isMasterOnly()
 
 #include "utils/elog.h"
@@ -2137,6 +2138,13 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 		queryDesc->gpmon_pkt = NULL;
 	}
 
+	/**
+	 * Since there was an error, clean up the function scan stack.
+	 */
+	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+	{
+		InitFunctionScanMemoryReservedStack();
+	}
 }
 
 /*
