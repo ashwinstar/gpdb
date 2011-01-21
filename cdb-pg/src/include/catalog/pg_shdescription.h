@@ -41,6 +41,8 @@
    description  text
    );
 
+   alter table pg_shdescription add fk classoid on pg_class(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

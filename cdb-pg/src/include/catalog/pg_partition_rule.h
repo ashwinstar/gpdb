@@ -42,6 +42,7 @@
    alter table pg_partition_rule add fk paroid on pg_partition(oid);
    alter table pg_partition_rule add fk parchildrelid on pg_class(oid);
    alter table pg_partition_rule add fk parparentrule on pg_partition_rule(oid);
+   alter table pg_partition_rule add fk partemplatespace on pg_tablespace(oid);
 
    TIDYCAT_ENDDEF
 */

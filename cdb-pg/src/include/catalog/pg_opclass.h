@@ -54,6 +54,9 @@
    opckeytype    oid     
    );
 
+   alter table pg_opclass add fk opcnamespace on pg_namespace(oid);
+   alter table pg_opclass add fk opcowner on pg_authid(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

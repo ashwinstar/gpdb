@@ -44,6 +44,11 @@
 
    create unique index on pg_window(winfnoid) with (indexid=5005, indexname=pg_window_fnoid_index);
 
+   alter table pg_window add fk winfnoid on pg_proc(oid);
+   alter table pg_window add fk winfunc on pg_proc(oid);
+   alter table pg_window add fk winprefunc on pg_proc(oid);
+   alter table pg_window add fk winfinfunc on pg_proc(oid);
+
    TIDYCAT_ENDDEF
 */
 /* TIDYCAT_BEGIN_CODEGEN 

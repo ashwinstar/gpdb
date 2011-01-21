@@ -56,6 +56,12 @@ typedef struct varlena anyarray;
    stavalues4   text
    );
 
+   alter table pg_statistic add fk starelid on pg_attribute(attrelid);
+   alter table pg_statistic add fk staop1 on pg_operator(oid);
+   alter table pg_statistic add fk staop2 on pg_operator(oid);
+   alter table pg_statistic add fk staop3 on pg_operator(oid);
+   alter table pg_statistic add fk staop4 on pg_operator(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 
@@ -275,6 +281,9 @@ typedef FormData_pg_statistic *Form_pg_statistic;
    statime        timestamp with time zone
    );
 
+   alter table pg_stat_last_operation add fk classid on pg_class(oid);
+   alter table pg_stat_last_operation add fk stasysid on pg_authid(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 /* quoting pg_authid and gp_configuration: */
@@ -346,6 +355,9 @@ typedef FormData_pg_statlastop *Form_pg_statlastop;
    stasubtype     text, 
    statime        timestamp with time zone
    );
+
+   alter table pg_stat_last_shoperation add fk classid on pg_class(oid);
+   alter table pg_stat_last_shoperation add fk stasysid on pg_authid(oid);
 
    TIDYCAT_ENDFAKEDEF
 */

@@ -35,6 +35,9 @@
    deptype      "char"
    );
 
+   alter table pg_depend add fk classid on pg_class(oid);
+   alter table pg_depend add fk refclassid on pg_class(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

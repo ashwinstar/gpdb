@@ -45,6 +45,11 @@
    consrc         text
    );
 
+   alter table pg_constraint add fk connamespace on pg_namespace(oid);
+   alter table pg_constraint add fk conrelid on pg_class(oid);
+   alter table pg_constraint add fk contypid on pg_type(oid);
+   alter table pg_constraint add fk confrelid on pg_class(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

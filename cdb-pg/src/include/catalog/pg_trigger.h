@@ -38,6 +38,10 @@
    tgargs          bytea
    );
 
+   alter table pg_trigger add fk tgrelid on pg_class(oid);
+   alter table pg_trigger add fk tgfoid on pg_proc(oid);
+   alter table pg_trigger add fk tgconstrrelid on pg_class(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

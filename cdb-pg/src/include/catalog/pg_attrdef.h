@@ -32,6 +32,8 @@
    adsrc    text
    );
 
+   alter table pg_attrdef add fk adrelid on pg_attribute(attrelid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

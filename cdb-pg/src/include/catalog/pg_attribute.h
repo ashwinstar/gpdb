@@ -52,6 +52,7 @@
    );
 
    alter table pg_attribute add fk attrelid on pg_class(oid);
+   alter table pg_attribute add fk atttypid on pg_type(oid);
 
    TIDYCAT_ENDFAKEDEF
 */

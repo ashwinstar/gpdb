@@ -55,6 +55,21 @@
    amoptions        regproc
     );
 
+
+   alter table pg_am add fk aminsert on pg_proc(oid);
+   alter table pg_am add fk ambeginscan on pg_proc(oid);
+   alter table pg_am add fk amgettuple on pg_proc(oid);
+   alter table pg_am add fk amgetmulti on pg_proc(oid);
+   alter table pg_am add fk amrescan on pg_proc(oid);
+   alter table pg_am add fk amendscan on pg_proc(oid);
+   alter table pg_am add fk ammarkpos on pg_proc(oid);
+   alter table pg_am add fk amrestrpos on pg_proc(oid);
+   alter table pg_am add fk ambuild on pg_proc(oid);
+   alter table pg_am add fk ambulkdelete on pg_proc(oid);
+   alter table pg_am add fk amvacuumcleanup on pg_proc(oid);
+   alter table pg_am add fk amcostestimate on pg_proc(oid);  
+   alter table pg_am add fk amoptions on pg_proc(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

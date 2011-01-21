@@ -49,6 +49,22 @@
    oprjoin       regproc 
    );
 
+   alter table pg_operator add fk oprnamespace on pg_namespace(oid);
+   alter table pg_operator add fk oprowner on pg_authid(oid);
+   alter table pg_operator add fk oprleft on pg_type(oid);
+   alter table pg_operator add fk oprright on pg_type(oid);
+   alter table pg_operator add fk oprresult on pg_type(oid);
+   alter table pg_operator add fk oprcom on pg_operator(oid);
+   alter table pg_operator add fk oprnegate on pg_operator(oid);
+   alter table pg_operator add fk oprlsortop on pg_operator(oid);
+   alter table pg_operator add fk oprrsortop on pg_operator(oid);
+   alter table pg_operator add fk oprltcmpop on pg_operator(oid);
+   alter table pg_operator add fk oprgtcmpop on pg_operator(oid);
+   alter table pg_operator add fk oprcode on pg_proc(oid);
+   alter table pg_operator add fk oprrest on pg_proc(oid);
+   alter table pg_operator add fk oprjoin on pg_proc(oid);
+
+
    TIDYCAT_ENDFAKEDEF
 */
 

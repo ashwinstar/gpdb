@@ -31,6 +31,9 @@
    inhseqno   integer 
    );
 
+   alter table pg_inherits add fk inhrelid on pg_class(oid);
+   alter table pg_inherits add fk inhparent on pg_class(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

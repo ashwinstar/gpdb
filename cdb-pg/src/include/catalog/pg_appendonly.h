@@ -37,6 +37,8 @@
    version          integer
    );
 
+   alter table pg_appendonly add fk relid on pg_class(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

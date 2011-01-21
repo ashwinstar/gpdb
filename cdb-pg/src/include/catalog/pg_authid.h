@@ -58,6 +58,8 @@
 
    CREATE INDEX on pg_authid(rolresqueue) with (CamelCase=AuthIdRolResQueue,indexid=6029);
 
+   alter table pg_authid add fk rolresqueue on pg_resqueue(oid);
+
    TIDYCAT_ENDDEF
 */
 /* TIDYCAT_BEGIN_CODEGEN 

@@ -43,6 +43,10 @@
    amproc         regproc
    );
 
+   alter table pg_amproc add fk amopclaid on pg_opclass(oid);
+   alter table pg_amproc add fk amprocsubtype on pg_type(oid);
+   alter table pg_amproc add fk amproc on pg_proc(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

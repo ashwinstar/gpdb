@@ -48,6 +48,11 @@
    amopopr       oid
    );
 
+   alter table pg_amop add fk amopclaid on pg_opclass(oid);
+   alter table pg_amop add fk amopsubtype on pg_type(oid);
+   alter table pg_amop add fk amopopr on pg_operator(oid);
+
+
    TIDYCAT_ENDFAKEDEF
 */
 

@@ -39,6 +39,9 @@
    datacl         aclitem[]
    );
 
+   alter table pg_database add fk datdba on pg_authid(oid);
+   alter table pg_database add fk dattablespace on pg_tablespace(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

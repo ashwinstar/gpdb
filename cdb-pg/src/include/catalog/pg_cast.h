@@ -35,6 +35,10 @@
    castcontext  "char"
    );
 
+   alter table pg_cast add fk castsource on pg_type(oid);
+   alter table pg_cast add fk casttarget on pg_type(oid);
+   alter table pg_cast add fk castfunc on pg_proc(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

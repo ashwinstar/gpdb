@@ -59,6 +59,15 @@
 
    create unique index on pg_aggregate(aggfnoid) with (indexid=2650, indexname=pg_aggregate_fnoid_index);
 
+   alter table pg_aggregate add fk aggfnoid on pg_proc(oid);
+   alter table pg_aggregate add fk aggtransfn on pg_proc(oid);
+   alter table pg_aggregate add fk agginvtransfn on pg_proc(oid);
+   alter table pg_aggregate add fk aggprelimfn on pg_proc(oid);
+   alter table pg_aggregate add fk agginvprelimfn on pg_proc(oid);
+   alter table pg_aggregate add fk aggfinalfn on pg_proc(oid);
+   alter table pg_aggregate add fk aggsortop on pg_operator(oid);
+   alter table pg_aggregate add fk aggtranstype on pg_type(oid);
+
    TIDYCAT_ENDDEF
 
 */

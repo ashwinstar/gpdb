@@ -44,6 +44,9 @@
    create unique index on pg_namespace(nspname) with (indexid=2684);
    create unique index on pg_namespace(oid) with (indexid=2685);
 
+   alter table pg_namespace add fk nspowner on pg_authid(oid);
+
+
    TIDYCAT_ENDDEF
 */
 

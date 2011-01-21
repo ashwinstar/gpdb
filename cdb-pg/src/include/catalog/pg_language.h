@@ -34,6 +34,9 @@
    lanacl         aclitem[]
    );
 
+   alter table pg_language add fk lanplcallfoid on pg_proc(oid);
+   alter table pg_language add fk lanvalidator on pg_proc(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 
