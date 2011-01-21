@@ -3141,7 +3141,7 @@ getTwoPhaseOldestPreparedTransactionXLogRecPtr(XLogRecData *rdata)
           elog(PersistentRecovery_DebugPrintLevel(),
 	       "getTwoPhaseOldestPreparedTransactionXLogRecPtr: checkpoint prepared pointer %d = %s", i, XLogLocationToString(oldest));
           if (XLByteLE(m[i].xlogrecptr, *oldest))
-            oldest = &(m[1].xlogrecptr);
+            oldest = &(m[i].xlogrecptr);
 	}
     }
 
