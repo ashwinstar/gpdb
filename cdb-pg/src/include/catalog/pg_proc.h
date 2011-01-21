@@ -52,6 +52,12 @@
    proacl          aclitem[]
    );
 
+
+   alter table pg_proc add fk pronamespace on pg_namespace(oid);
+   alter table pg_proc add fk proowner on pg_authid(oid);
+   alter table pg_proc add fk prolang on pg_language(oid);
+   alter table pg_proc add fk prorettype on pg_type(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 
