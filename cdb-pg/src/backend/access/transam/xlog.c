@@ -8146,6 +8146,8 @@ ShutdownXLOG(int code __attribute__((unused)) , Datum arg __attribute__((unused)
 void
 CreateCheckPoint(bool shutdown, bool force)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	CheckPoint	checkPoint;
 	XLogRecPtr	recptr;
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
@@ -8216,6 +8218,13 @@ CreateCheckPoint(bool shutdown, bool force)
 									   "",	// databaseName
 									   ""); // tableName
 #endif	
+	}
+	else
+	{
+		/*
+		 * Normal case.
+		 */
+		MIRRORED_LOCK;
 	}
 		
 	/*
@@ -8308,6 +8317,13 @@ CreateCheckPoint(bool shutdown, bool force)
 			{
 				LWLockRelease(MirroredLock);
 			}			
+			else
+			{
+				/*
+				 * Normal case.
+				 */
+				MIRRORED_UNLOCK;
+			}
 			LWLockRelease(CheckpointLock);
 			
 			END_CRIT_SECTION();
@@ -8625,7 +8641,14 @@ CreateCheckPoint(bool shutdown, bool force)
 		
 		/* database is resumed */
 		primaryMirrorSetIOSuspended(FALSE);
-	}	
+	}
+	else
+	{
+		/*
+		 * Normal case.
+		 */
+		MIRRORED_UNLOCK;
+	}
 	
 	LWLockRelease(CheckpointLock);
 }
