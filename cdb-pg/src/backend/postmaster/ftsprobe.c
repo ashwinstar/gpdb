@@ -1194,8 +1194,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		/* If connection takes more than the gp_fts_probe_timeout, we fail. */
 		if (elapsed_ms > gp_fts_probe_timeout * 1000)
 		{
-			write_log("FTS: probe elapsed time: " UINT64_FORMAT " ms, exceeded timeout of %d ms",
-			          elapsed_ms, gp_fts_probe_timeout * 1000);
+			write_log("FTS: probe elapsed time: " UINT64_FORMAT " ms, exceeded timeout", elapsed_ms);
 
 			ret = PROBE_DEAD;
 			break;
