@@ -981,6 +981,10 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 						else
 						{
 							/* errors other than signals: assume that the target is down. */
+
+							write_log("FTS: failed to send probe request to segment (dbid %d content %d), errno %d",
+									  dbInfo->dbid, dbInfo->segindex, errno);
+
 							ret = PROBE_DEAD;
 						}
 						break;
@@ -1049,18 +1053,29 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 				if (n == 0)
 				{
 					/* peer gave up on us ? */
+					write_log("FTS: failed to receive data, segment (dbid %d content %d) closed connection unexpectedly",
+							  dbInfo->dbid, dbInfo->segindex);
+
 					ret = PROBE_DEAD;
 					done = true;
 					break;
 				}
 				else if (n < 0)
 				{
-					if (errno == EAGAIN)
+					if (errno == EAGAIN || errno == EINTR)
 					{
+						if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+							write_log("FTS: interrupted while receiving data from segment (dbid %d content %d), errno %d",
+									  dbInfo->dbid, dbInfo->segindex, errno);
+
 						/* need to wait on more data ? (essentially we're rewinding our state) */
 						probe_state = REQUEST_SENT;
 						continue;
 					}
+
+					write_log("FTS: failed to receive data from segment (dbid %d content %d), errno %d",
+							  dbInfo->dbid, dbInfo->segindex, errno);
+
 					ret = PROBE_DEAD;
 					done = true;
 					break;
@@ -1179,6 +1194,9 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		/* If connection takes more than the gp_fts_probe_timeout, we fail. */
 		if (elapsed_ms > gp_fts_probe_timeout * 1000)
 		{
+			write_log("FTS: probe elapsed time: " UINT64_FORMAT " ms, exceeded timeout of %d ms",
+			          elapsed_ms, gp_fts_probe_timeout * 1000);
+
 			ret = PROBE_DEAD;
 			break;
 		}
