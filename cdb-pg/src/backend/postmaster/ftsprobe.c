@@ -1056,7 +1056,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 					write_log("FTS: failed to receive data, segment (dbid %d content %d) closed connection unexpectedly",
 							  dbInfo->dbid, dbInfo->segindex);
 
-					ret = PROBE_DEAD;
+					ret = PROBE_ALIVE;
 					done = true;
 					break;
 				}
@@ -1076,7 +1076,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 					write_log("FTS: failed to receive data from segment (dbid %d content %d), errno %d",
 							  dbInfo->dbid, dbInfo->segindex, errno);
 
-					ret = PROBE_DEAD;
+					ret = PROBE_ALIVE;
 					done = true;
 					break;
 				}
