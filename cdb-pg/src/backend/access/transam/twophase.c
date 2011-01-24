@@ -2358,7 +2358,9 @@ SetupCheckpointPreparedTransactionList(XLogRecord *record)
   TransactionId                   xid;
   prpt_map                       *m            = NULL;
 
-  if (record->xl_len <= sizeof(CheckPoint))
+  /* Under some cercumstances, and old style checkpoint may exist (upgrade switch xlog...).                      */
+  /* Check to see if it looks like an old checkpoin, size of a checkpoint plus size of an empty DTX list or less */
+  if (record->xl_len <= (sizeof(CheckPoint) + TMGXACT_CHECKPOINT_BYTES(0)))
      {
      /*
       * This is an old checkpoint (pre-removal of two phase) or a bad checkpoint record.
