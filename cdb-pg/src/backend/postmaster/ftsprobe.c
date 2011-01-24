@@ -651,8 +651,6 @@ void FtsProbeLoop(void)
 	MemoryContext probeContext = NULL, oldContext = NULL;
 	time_t elapsed,	probe_start_time;
 
-	probe_start_time = time(NULL);
-
 	probeContext = AllocSetContextCreate(TopMemoryContext,
 										 "FtsProbeMemCtxt",
 										 ALLOCSET_DEFAULT_INITSIZE,	/* always have some memory */
@@ -669,6 +667,8 @@ void FtsProbeLoop(void)
 		/* no need to live on if postmaster has died */
 		if (!PostmasterIsAlive(true))
 			exit(1);
+
+		probe_start_time = time(NULL);
 
 		if (ftsProbeInfo->fts_pauseProbes)
 		{
@@ -750,7 +750,6 @@ void FtsProbeLoop(void)
 			if (elapsed < gp_fts_probe_interval)
 			{
 				pg_usleep((gp_fts_probe_interval - elapsed) * USECS_PER_SEC);
-				probe_start_time = time(NULL);
 			}
 		}
 	} /* end server loop */
