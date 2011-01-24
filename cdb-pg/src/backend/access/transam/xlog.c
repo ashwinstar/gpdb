@@ -10620,9 +10620,9 @@ XLogReconcileEofMirror(
 }
 
 /*
- * The routine recovers flat file on mirror side.
- *		a) It drops control file on mirror..
- *		b) It copies control file from primary to mirror.
+ * The routine recovers pg_control flat file on mirror side.
+ *		a) It copies pg_control file from primary to mirror
+ *      b) pg_control file is overwritten on mirror
  *
  * Status is not returned, If an error occurs segmentState will be set to Fault.
  */
@@ -10633,13 +10633,6 @@ XLogRecoverMirrorControlFile(void)
 	int						retval = 0;
 	
 	while (1) {
-		retval = MirroredFlatFile_Drop(
-							  XLOG_CONTROL_FILE_SUBDIR,
-							  XLOG_CONTROL_FILE_SIMPLE,
-							  /* suppressError */ false,
-							  /*isMirrorRecovery */ TRUE);
-		if (retval != 0)
-			break;
 
 		ReadControlFile();
 
@@ -10647,7 +10640,7 @@ XLogRecoverMirrorControlFile(void)
 							  &mirroredOpen,
 							  XLOG_CONTROL_FILE_SUBDIR,
 							  XLOG_CONTROL_FILE_SIMPLE,
-							  O_CREAT | O_EXCL | O_RDWR | PG_BINARY,
+							  O_CREAT | O_RDWR | PG_BINARY,
 							  S_IRUSR | S_IWUSR,
 							  /* suppressError */ false,
 							  /* atomic operation */ false,
