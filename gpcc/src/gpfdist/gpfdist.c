@@ -121,7 +121,8 @@ static struct
 	int 		t; /* timeout in seconds */
 	int 		b;
     int 		m; /* max data line len */
-} opt = { 8080,8080, 0, 0, ".", 0,0, -1, 5, 0, 32768 };
+    int			z; /* listen queue size (hidden option currently for debuging) */
+} opt = { 8080,8080, 0, 0, ".", 0,0, -1, 5, 0, 32768, 256 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -372,6 +373,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ NULL, 't', 5, "timeout in seconds" },
 	{ NULL, 'g', 1, "internal - gp_proto number" },
 	{ NULL, 'm', 1, "max data row length expected" },
+	{ NULL, 'z', 1, "internal - queue size for listen call" },
 	{ "version", 256, 0, "print version number" },
 	{ 0 } };
 
@@ -430,6 +432,9 @@ static void parse_command_line(int argc, const char* const argv[],
 		case 'm': 
 			opt.m = atoi(arg); 
 			break;
+		case 'z':
+			opt.z = atoi(arg);
+			break;
 		case 256:
 			print_version();
 			break;
@@ -453,6 +458,9 @@ static void parse_command_line(int argc, const char* const argv[],
 
     if (! ((32*1024) <= opt.m && opt.m <= (1024*1024)))
     	usage_error("Error: -m max row length must be between 32KB and 1MB", 0);
+
+    if (! (16 <= opt.z && opt.t <= 512) )
+		usage_error("Error: -z listen queue size must be between 16 and 512 (default is 256)", 0);
 
 	/* validate opt.d */
 	{
@@ -1603,8 +1611,13 @@ static void http_setup(void)
 	}
 
 	/* listen with a big queue */
-	if (listen(f, 256))
-		gfatal(FLINE, "listen on socket (%d) failed with error code (%d): %s", (int)f, errno, strerror(errno));
+	if (listen(f, opt.z))
+		gfatal(FLINE, "listen with queue size %d on socket (%d) using port %d failed with error code (%d): %s",
+					  opt.z,
+					  (int)f,
+					  opt.p, 
+					  errno, 
+					  strerror(errno));
 
 	gcb.listen_sock = f;
 
