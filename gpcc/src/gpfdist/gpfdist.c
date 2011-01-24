@@ -1604,7 +1604,7 @@ static void http_setup(void)
 
 	/* listen with a big queue */
 	if (listen(f, 256))
-		gfatal(FLINE, "listen call failed with: %s", strerror(errno));
+		gfatal(FLINE, "listen on socket (%d) failed with error code (%d): %s", (int)f, errno, strerror(errno));
 
 	gcb.listen_sock = f;
 
