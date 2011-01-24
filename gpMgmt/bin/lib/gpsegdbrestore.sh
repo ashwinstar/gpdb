@@ -43,6 +43,7 @@ unset VERBOSE
 GP_USER=$USER_NAME
 EXIT_STATUS=0
 TMP_FILE=/tmp/${PROG_NAME}_dump_file_header.$$
+PYTHON=${GPHOME}/ext/python/bin/python
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -117,38 +118,45 @@ BUILD_RESTORE_FILES () {
 		TAB_TXT="${SQL_NAME[1]}"
 		QUOTED_TAB_TXT="${SQL_NAME[3]}"
 		ESCAPED_QUOTED_TAB_TXT="${QUOTED_TAB_TXT//\"/\\\"}"
-		#Now build the required awk line
-		AWK_LINE="BEGIN {output=0; schema=0; found=0} 
-			/^SET search_path = ${QUOTED_SCHEMA_TXT},/ {
-				print \$0
-				schema=1
-			}
-			/^\\\.$/ {
-				if (output == 1) {
-					print \$0
-					output=0
-					schema=0
-				}
-			}
-			/^COPY ${QUOTED_TAB_TXT} / {
-				if (schema == 1) {
-					found=1
-					output=1
-				}
-			}
-			{
-				if (output == 1 && schema == 1) print \$0
-			}
-			END {
-				# Emit a failing statement if not found
-				if (found == 0) {
-					print \"\\\\echo Selected table not found ${ESCAPED_QUOTED_SCHEMA_TXT}.${ESCAPED_QUOTED_TAB_TXT} \"
-					print \"\\\.\"
-				}
-			}"
+
+		read -d '' PYTHON_CODE <<"END_PYTHON_CODE"
+import sys
+import re
+
+quoted_schema_text = sys.argv[1] 
+quoted_table_text = sys.argv[2]
+
+output = 0
+schema = 0
+found = 0
+
+search_path_re = re.compile(r"^SET search_path = %s," % quoted_schema_text)
+copy_re = re.compile(r"^COPY %s " % quoted_table_text)
+copy_end_re = re.compile(r"^\\\\\\.$")
+
+for line in sys.stdin:
+    if search_path_re.match(line):
+        print line,
+        schema=1
+    elif schema == 1 and copy_re.match(line):
+        found = 1
+        output = 1
+    elif output == 1 and copy_end_re.match(line):
+        print line,
+        output = 0
+        schema = 0
+    if output == 1 and schema == 1:
+        print line,
+
+if found == 0:
+    print "\\\\echo Selected table not found %s.%s" % (quoted_schema_text, quoted_table_text)
+    print "\\\."
+    sys.exit(1)
+END_PYTHON_CODE
+
 		LOG_MSG "[INFO][$INST_COUNT]:-Commencing data extract for $TAB_NAME on $QE_NAME $QE_DIR"
-		$TRUSTED_SHELL $QE_NAME "$CAT_CMD ${QE_DIR}/${GP_RESTORE_DIR}/$DUMP_FILE|$AWK '$AWK_LINE' >> ${QE_DIR}/${GP_RESTORE_DIR}/$TAB_FILE" >> $LOG_FILE 2>&1
-		LOG_MSG "[INFO][$INST_COUNT]:-$CAT_CMD ${QE_DIR}/${GP_RESTORE_DIR}/$DUMP_FILE|$AWK '$AWK_LINE'" >> $LOG_FILE
+		$TRUSTED_SHELL $QE_NAME ". $GPHOME/greenplum_path.sh; $CAT_CMD ${QE_DIR}/${GP_RESTORE_DIR}/$DUMP_FILE|$PYTHON -c '$PYTHON_CODE' ${ESCAPED_QUOTED_SCHEMA_TXT} ${ESCAPED_QUOTED_TAB_TXT} >> ${QE_DIR}/${GP_RESTORE_DIR}/$TAB_FILE" >> $LOG_FILE 2>&1
+		LOG_MSG "[INFO][$INST_COUNT]:-. $GPHOME/greenplum_path.sh; $CAT_CMD ${QE_DIR}/${GP_RESTORE_DIR}/$DUMP_FILE|$PYTHON -c '$PYTHON_CODE' ${ESCAPED_QUOTED_SCHEMA_TXT} ${ESCAPED_QUOTED_TAB_TXT}" >> $LOG_FILE
 		if [ $? -ne 0 ];then
 			LOG_MSG "[FATAL][$INST_COUNT]:-Failed to extract data for $TAB_NAME on $QE_NAME $QE_DIR"
 			$ECHO "FAILED${QE_LINE}:EXTRACT_DATA_FAIL" >> $PARALLEL_STATUS_FILE
