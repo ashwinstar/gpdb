@@ -550,7 +550,7 @@ static bool StopServices(int excludeFlags, int signal);
 static char *GetServerProcessTitle(int pid);
 static void sigusr1_handler(SIGNAL_ARGS);
 static void dummy_handler(SIGNAL_ARGS);
-static void CleanupBackend(int pid, int exitstatus);
+static void CleanupBackend(int pid, int exitstatus, bool resetRequired);
 static void HandleChildCrash(int pid, int exitstatus, const char *procname);
 static void LogChildExit(int lev, const char *procname,
 			 int pid, int exitstatus);
@@ -4006,6 +4006,8 @@ static void do_reaper()
 
         Assert(pid != 0);
 
+		bool resetRequired = freeProcEntryAndReturnReset(pid);
+
 		if (Debug_print_server_processes)
 		{
 			char *procName;
@@ -4326,7 +4328,7 @@ static void do_reaper()
 						if (subProc->cleanupBackend == true)
 						{
 							Assert(subProc->procName && strcmp(subProc->procName, "perfmon process") != 0);
-							CleanupBackend(pid, exitstatus);
+							CleanupBackend(pid, exitstatus, resetRequired);
 						}
 
 						/*
@@ -4462,7 +4464,7 @@ static void do_reaper()
 		{
 			AutoVacPID = 0;
 			autovac_stopped();
-			if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
+			if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus) && resetRequired)
 				HandleChildCrash(pid, exitstatus,
 								 _("autovacuum process"));
 			continue;
@@ -4538,7 +4540,7 @@ static void do_reaper()
 		/*
 		 * Else do standard backend child cleanup.
 		 */
-		CleanupBackend(pid, exitstatus);
+		CleanupBackend(pid, exitstatus, resetRequired);
 	}							/* loop over pending child-death reports */
 
 	/*
@@ -4705,7 +4707,8 @@ GetServerProcessTitle(int pid)
  */
 static void
 CleanupBackend(int pid,
-			   int exitstatus)	/* child's exit status. */
+			   int exitstatus,	/* child's exit status. */
+			   bool resetRequired) /* postmaster reset is required */
 {
 	Dlelem	   *curr;
 
@@ -4730,7 +4733,7 @@ CleanupBackend(int pid,
 	}
 #endif
 
-	if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus))
+	if (!EXIT_STATUS_0(exitstatus) && !EXIT_STATUS_1(exitstatus) && resetRequired)
 	{
 		HandleChildCrash(pid, exitstatus, _("server process"));
 		return;
@@ -5814,6 +5817,7 @@ BackendStartup(Port *port)
 	pid = backend_forkexec(port);
 #else							/* !EXEC_BACKEND */
 	pid = fork_process();
+
 	if (pid == 0)				/* child */
 	{
 		free(bn);

@@ -199,11 +199,13 @@ InitProcGlobal(int mppLocalProcessCounter)
 		procs[i].links.next = ProcGlobal->freeProcs;
 		ProcGlobal->freeProcs = MAKE_OFFSET(&procs[i]);
 	}
+	ProcGlobal->procs = procs;
 
 	MemSet(AuxiliaryProcs, 0, NUM_AUXILIARY_PROCS * sizeof(PGPROC));
 	for (i = 0; i < NUM_AUXILIARY_PROCS; i++)
 	{
 		AuxiliaryProcs[i].pid = 0;		/* marks auxiliary proc as not in use */
+		AuxiliaryProcs[i].postmasterResetRequired = true;
 		PGSemaphoreCreate(&(AuxiliaryProcs[i].sem));
 	}
 
@@ -286,6 +288,7 @@ InitProcess(void)
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
 	MyProc->inVacuum = false;
+	MyProc->postmasterResetRequired = true;
 	MyProc->lwWaiting = false;
 	MyProc->lwExclusive = false;
 	MyProc->lwWaitLink = NULL;
@@ -672,9 +675,10 @@ ProcKill(int code, Datum arg)
     MyProc->mppSessionId = 0;
     MyProc->mppIsWriter = false;
 
-    /* Return PGPROC structure (and semaphore) to freelist */
-	MyProc->links.next = procglobal->freeProcs;
-	procglobal->freeProcs = MAKE_OFFSET(MyProc);
+	if (code == 0 || code == 1)
+	{
+		MyProc->postmasterResetRequired = false;
+	}
 
 	/* PGPROC struct isn't mine anymore */
 	MyProc = NULL;
@@ -708,8 +712,10 @@ AuxiliaryProcKill(int code, Datum arg)
 
 	SpinLockAcquire(ProcStructLock);
 
-	/* Mark auxiliary proc no longer in use */
-	MyProc->pid = 0;
+	if (code == 0 || code == 1)
+	{
+		MyProc->postmasterResetRequired = false;
+	}
 
 	/* PGPROC struct isn't mine anymore */
 	MyProc = NULL;
@@ -1655,3 +1661,61 @@ void ProcNewMppSessionId(int *newSessionId)
 	SpinLockRelease(ProcStructLock);
 }
 
+/*
+ * freeProcEntryAndReturnReset -- put the proc entry for a given pid back to the
+ * PGPROC freelist, and return the postmasterResetRequired value.
+ *
+ * Note that we don't need to hold a lock on PGPROC structure here, since this is
+ * only called by postmaster.
+ */
+bool
+freeProcEntryAndReturnReset(int pid)
+{
+	Assert(ProcGlobal != NULL);
+	bool resetRequired = true;
+	
+	PGPROC *procs = ProcGlobal->procs;
+	
+    /* Return PGPROC structure to freelist */
+	for (int i = 0; i < MaxBackends; i++)
+	{
+		PGPROC *myProc = &procs[i];
+
+		if (myProc->pid == pid)
+		{
+			myProc->links.next = ProcGlobal->freeProcs;
+			ProcGlobal->freeProcs = MAKE_OFFSET(myProc);
+			resetRequired = myProc->postmasterResetRequired;
+
+			myProc->postmasterResetRequired = true;
+
+			elog(DEBUG2, "moving PGPROC entry to freelist: pid=%d (resetRequired=%d)",
+				 pid, resetRequired);
+			
+			return resetRequired;
+		}
+	}
+
+	for (int i=0; i < NUM_AUXILIARY_PROCS; i++)
+	{
+		PGPROC *myProc = &AuxiliaryProcs[i];
+		
+		if (myProc->pid == pid)
+		{
+			resetRequired = myProc->postmasterResetRequired;
+			
+			/* Mark auxiliary proc no longer in use */
+			myProc->pid = 0;
+			myProc->postmasterResetRequired = true;
+
+			elog(DEBUG2, "setting auxiliary proc to free: pid=%d (resetRequired=%d)",
+				 pid, resetRequired);
+			
+			return resetRequired;
+		}
+	}
+
+	elog(DEBUG2, "proc entry not found: pid=%d", pid);
+
+	return resetRequired;
+}

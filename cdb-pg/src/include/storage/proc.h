@@ -92,6 +92,7 @@ struct PGPROC
     int         mppSessionId;   /* serial num of the qDisp process */
     int         mppLocalProcessSerial;  /* this backend's PGPROC serial num */
     bool		mppIsWriter;	/* The writer gang member, holder of locks */
+	bool		postmasterResetRequired; /* Whether postmaster reset is required when this child exits */
 
 	bool		inVacuum;		/* true if current xact is a LAZY VACUUM */
 
@@ -142,6 +143,8 @@ extern PGDLLIMPORT PGPROC *lockHolderProcPtr;
  */
 typedef struct PROC_HDR
 {
+	/* The PGPROC structures */
+	PGPROC *procs;
 	/* Head of list of free PGPROC structures */
 	SHMEM_OFFSET freeProcs;
 	/* Current shared estimate of appropriate spins_per_delay value */
@@ -206,4 +209,5 @@ extern void ResLockWaitCancel(void);
 extern bool ProcGetMppLocalProcessCounter(int *mppLocalProcessCounter);
 extern bool ProcCanSetMppSessionId(void);
 extern void ProcNewMppSessionId(int *newSessionId);
+extern bool freeProcEntryAndReturnReset(int pid);
 #endif   /* PROC_H */

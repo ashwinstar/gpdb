@@ -152,7 +152,12 @@ int64 gp_fault_inject_impl(int32 reason, int64 arg)
             }
             break;
 
-
+		case GP_FAULT_USER_SEGV_CRITICAL:
+			START_CRIT_SECTION();
+			*(int *) 0 = 1234;
+			END_CRIT_SECTION();
+			break;
+ 	
 		case GP_FAULT_USER_MP_CONFIG:
 		case GP_FAULT_USER_MP_ALLOC:
 		case GP_FAULT_USER_MP_HIGHWM:

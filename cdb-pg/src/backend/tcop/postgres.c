@@ -3353,6 +3353,12 @@ StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_AR
                     errmsg("Unexpected internal error: %s received signal %s",
                            processName, signame) ));
 
+	if (CritSectionCount == 0)
+	{
+		Assert(MyProc != NULL);
+		MyProc->postmasterResetRequired = false;
+	}
+
     /* CDB: Control returns here only if gp_reraise_signal is true. */
     raise(postgres_signal_arg);
     abort();                    /* not reached */

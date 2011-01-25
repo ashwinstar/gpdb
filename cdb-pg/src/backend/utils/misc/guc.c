@@ -2000,7 +2000,7 @@ static struct config_bool ConfigureNamesBool[] =
     		GUC_NO_RESET_ALL
     	},
     	&gp_reraise_signal,
-    	false, NULL, NULL
+    	true, NULL, NULL
     },
 
 	{
