@@ -245,14 +245,14 @@ DECLARE c1 CURSOR FOR SELECT * FROM tenk1;
 SELECT rsqname, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
   rsqname  | rsqholders 
 -----------+------------
- reg_costq |          1
+ reg_costq |          2
 (1 row)
 
 DECLARE c2 CURSOR FOR SELECT * FROM tenk1 a NATURAL JOIN tenk1 b;
 SELECT rsqname, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
   rsqname  | rsqholders 
 -----------+------------
- reg_costq |          2
+ reg_costq |          3
 (1 row)
 
 CLOSE c1;
@@ -260,9 +260,10 @@ CLOSE c2;
 END;
 -- rsqcostvalue should go back to 0 when queue is empty (MPP-3578)
 SELECT * FROM pg_resqueue_status where rsqcostvalue != 0 or rsqcountvalue != 0 or rsqholders != 0; -- 0 rows expected
- rsqname | rsqcountlimit | rsqcountvalue | rsqcostlimit | rsqcostvalue | rsqwaiters | rsqholders 
----------+---------------+---------------+--------------+--------------+------------+------------
-(0 rows)
+  rsqname  | rsqcountlimit | rsqcountvalue | rsqcostlimit | rsqcostvalue | rsqwaiters | rsqholders 
+-----------+---------------+---------------+--------------+--------------+------------+------------
+ reg_costq |            -1 |               |        30000 |           27 |          0 |          1
+(1 row)
 
 -- MPP-3796.  When a cursor exceeds the cost limit and the transaction is
 -- aborted, resources which had already been granted to other cursors should
@@ -273,14 +274,14 @@ DECLARE c1 CURSOR FOR SELECT * FROM tenk1;
 SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
   rsqname  | rsqcostlimit | rsqwaiters | rsqholders 
 -----------+--------------+------------+------------
- reg_costq |        30000 |          0 |          1
+ reg_costq |        30000 |          0 |          2
 (1 row)
 
 DECLARE c2 CURSOR FOR SELECT * FROM tenk1;
 SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
   rsqname  | rsqcostlimit | rsqwaiters | rsqholders 
 -----------+--------------+------------+------------
- reg_costq |        30000 |          0 |          2
+ reg_costq |        30000 |          0 |          3
 (1 row)
 
 DECLARE c3 CURSOR FOR SELECT * FROM tenk1 a, tenk1 b;
@@ -293,9 +294,10 @@ SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHE
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 END;
 SELECT * FROM pg_resqueue_status where rsqcostvalue != 0 or rsqcountvalue != 0 or rsqholders != 0; -- 0 rows expected
- rsqname | rsqcountlimit | rsqcountvalue | rsqcostlimit | rsqcostvalue | rsqwaiters | rsqholders 
----------+---------------+---------------+--------------+--------------+------------+------------
-(0 rows)
+  rsqname  | rsqcountlimit | rsqcountvalue | rsqcostlimit | rsqcostvalue | rsqwaiters | rsqholders 
+-----------+---------------+---------------+--------------+--------------+------------+------------
+ reg_costq |            -1 |               |        30000 |           27 |          0 |          1
+(1 row)
 
 -- return to the super user
 RESET SESSION AUTHORIZATION;
