@@ -147,7 +147,7 @@ CLOSE c2;
 END;
 
 -- rsqcostvalue should go back to 0 when queue is empty (MPP-3578)
-SELECT * FROM pg_resqueue_status where rsqcostvalue != 0 or rsqcountvalue != 0 or rsqholders != 0; -- 0 rows expected
+SELECT rsqname, rsqholders FROM pg_resqueue_status where rsqcostvalue != 0 or rsqcountvalue != 0 or rsqholders != 0;
 
 -- MPP-3796.  When a cursor exceeds the cost limit and the transaction is
 -- aborted, resources which had already been granted to other cursors should
@@ -163,7 +163,7 @@ SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHE
 DECLARE c4 CURSOR FOR SELECT * FROM tenk1 a, tenk1 b, tenk1 c;
 SELECT rsqname, rsqcostlimit, rsqwaiters, rsqholders FROM pg_resqueue_status WHERE rsqcostvalue > 0;
 END;
-SELECT * FROM pg_resqueue_status where rsqcostvalue != 0 or rsqcountvalue != 0 or rsqholders != 0; -- 0 rows expected
+SELECT rsqname, rsqholders FROM pg_resqueue_status where rsqcostvalue != 0 or rsqcountvalue != 0 or rsqholders != 0; -- 1 row expected
 
 -- return to the super user
 RESET SESSION AUTHORIZATION;
