@@ -136,54 +136,6 @@ static bool extract_query_dependencies_walker(Node *node,
 #include "cdb/cdbplan.h"
 
 /**
- * These are helpers to retrieve nodes from plans.
- */
-typedef struct extract_context
-{
-	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
-	int  nodeTag;
-	List *nodes;
-} extract_context;
-
-static List *extract_nodes(PlannerGlobal *glob, Node *node, int nodeTag);
-static bool extract_nodes_walker(Node *node, extract_context *context);
-
-
-static List *
-extract_nodes(PlannerGlobal *glob, Node *node, int nodeTag)
-{
-	extract_context context;
-	context.base.node = (Node *) glob;
-	context.nodes = NULL;
-	context.nodeTag = nodeTag;
-	extract_nodes_walker(node, &context);
-	return context.nodes;
-}
-
-static bool
-extract_nodes_walker(Node *node, extract_context *context)
-{
-	if (node == NULL)
-		return false;
-	if (nodeTag(node) == context->nodeTag)
-	{
-		context->nodes = lappend(context->nodes, node);
-	}	
-	if (nodeTag(node) == T_SubPlan)
-	{
-		/* Do not descend into subplans */
-		return false;
-	}
-	if (nodeTag(node) == T_SubqueryScan)
-	{
-		/* Do not descend into subquery scans. */
-		return false; 
-	}
-	return plan_tree_walker(node, extract_nodes_walker,
-								  (void *) context);
-}
-
-/**
  * This method establishes asserts on the inputs to set_plan_references.
  */
 static void set_plan_references_input_asserts(PlannerGlobal *glob, Plan *plan, List *rtable)
@@ -212,6 +164,16 @@ static void set_plan_references_input_asserts(PlannerGlobal *glob, Plan *plan, L
 				|| (var->varno > 0 && var->varno <= list_length(rtable) + list_length(glob->finalrtable)))
 				&& "Plan contains var that refer outside the rtable.");
 		Assert(var->varno == var->varnoold && "Varno and varnoold do not agree!");
+
+		/** If a pseudo column, there should be a corresponding entry in the relation */
+		if (var->varattno <= FirstLowInvalidHeapAttributeNumber)
+		{
+			RangeTblEntry *rte = rt_fetch(var->varno, rtable);
+			Assert(rte);
+			Assert(rte->pseudocols);
+			Assert(list_length(rte->pseudocols) > var->varattno - FirstLowInvalidHeapAttributeNumber);
+		}
+
 	}
 	
 	/* Ensure that all params that the plan refers to has a corresponding subplan */

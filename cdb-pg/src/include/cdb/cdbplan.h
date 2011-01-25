@@ -116,4 +116,8 @@ extern Node * plan_tree_mutator(Node *node, Node *(*mutator) (), void *context);
 
 extern bool set_hasxslice_in_append_walker(Node *node, void *ctx);
 
+#ifdef USE_ASSERT_CHECKING
+extern List *extract_nodes(PlannerGlobal *glob, Node *node, int nodeTag);
+#endif
+
 #endif   /* CDBPLAN_H */

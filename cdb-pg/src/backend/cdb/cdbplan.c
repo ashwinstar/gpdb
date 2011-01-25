@@ -1256,3 +1256,58 @@ set_hasxslice_in_append_walker(Node *node, void *ctx)
 			return plan_tree_walker(node, set_hasxslice_in_append_walker, ctx);
 	}
 }
+
+/**
+ * The following functions are only available on debug builds.
+ */
+
+#ifdef USE_ASSERT_CHECKING
+/**
+ * These are helpers to retrieve nodes from plans.
+ */
+typedef struct extract_context
+{
+	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
+	int  nodeTag;
+	List *nodes;
+} extract_context;
+
+static bool extract_nodes_walker(Node *node, extract_context *context);
+
+/**
+ * Extract nodes with specific tag.
+ */
+List *extract_nodes(PlannerGlobal *glob, Node *node, int nodeTag)
+{
+	extract_context context;
+	context.base.node = (Node *) glob;
+	context.nodes = NULL;
+	context.nodeTag = nodeTag;
+	extract_nodes_walker(node, &context);
+	return context.nodes;
+}
+
+static bool
+extract_nodes_walker(Node *node, extract_context *context)
+{
+	if (node == NULL)
+		return false;
+	if (nodeTag(node) == context->nodeTag)
+	{
+		context->nodes = lappend(context->nodes, node);
+	}
+	if (nodeTag(node) == T_SubPlan)
+	{
+		/* Do not descend into subplans */
+		return false;
+	}
+	if (nodeTag(node) == T_SubqueryScan)
+	{
+		/* Do not descend into subquery scans. */
+		return false;
+	}
+	return plan_tree_walker(node, extract_nodes_walker,
+								  (void *) context);
+}
+
+#endif

@@ -932,7 +932,6 @@ inheritance_planner(PlannerInfo *root)
 	List	   *subplans = NIL;
 	List	   *resultRelations = NIL;
 	List	   *returningLists = NIL;
-	List	   *rtable = NIL;
 	List	   *tlist = NIL;
 	PlannerInfo subroot;
 	ListCell   *l;
@@ -1025,12 +1024,17 @@ inheritance_planner(PlannerInfo *root)
 			}
 		}
 
-		/* Save rtable and tlist from first rel for use below */
+		/* Save tlist from first rel for use below */
 		if (subplans == NIL)
 		{
-			rtable = subroot.parse->rtable;
 			tlist = subplan->targetlist;
 		}
+
+		/**
+		 * The grouping planner scribbles on the rtable e.g. to add pseudo columns.
+		 * We need to keep track of this.
+		 */
+		parse->rtable = subroot.parse->rtable;
 
 		subplans = lappend(subplans, subplan);
 
@@ -1098,25 +1102,48 @@ inheritance_planner(PlannerInfo *root)
 		}
 	}
 	
-	/*
-	 * Planning might have modified the rangetable, due to changes of the
-	 * Query structures inside subquery RTEs.  We have to ensure that this
-	 * gets propagated back to the master copy.  But can't do this until we
-	 * are done planning, because all the calls to grouping_planner need
-	 * virgin sub-Queries to work from.  (We are effectively assuming that
-	 * sub-Queries will get planned identically each time, or at least that
-	 * the impacts on their rangetables will be the same each time.)
-	 *
-	 * XXX should clean this up someday
-	 */
-	parse->rtable = rtable;
-
 	/* Suppress Append if there's only one surviving child rel */
 	if (list_length(subplans) == 1)
 		return (Plan *) linitial(subplans);
 
 	return plan;
 }
+
+#ifdef USE_ASSERT_CHECKING
+
+static void grouping_planner_output_asserts(PlannerInfo *root, Plan *plan);
+/**
+ * Ensure goodness of plans returned by grouping planner
+ */
+void grouping_planner_output_asserts(PlannerInfo *root, Plan *plan)
+{
+	Assert(plan);
+
+	/* Ensure that plan refers to vars that have varlevelsup = 0 AND varno is in the rtable */
+	List *allVars = extract_nodes(root->glob, (Node *) plan, T_Var);
+	ListCell *lc = NULL;
+
+	foreach (lc, allVars)
+	{
+		Var *var = (Var *) lfirst(lc);
+		Assert(var->varlevelsup == 0 && "Plan contains vars that refer to outer plan.");
+		Assert((var->varno == OUTER
+				|| (var->varno > 0 && var->varno <= list_length(root->parse->rtable)))
+				&& "Plan contains var that refer outside the rtable.");
+		Assert(var->varno == var->varnoold && "Varno and varnoold do not agree!");
+
+		/** If a pseudo column, there should be a corresponding entry in the relation */
+		if (var->varattno <= FirstLowInvalidHeapAttributeNumber)
+		{
+			RangeTblEntry *rte = rt_fetch(var->varno, root->parse->rtable);
+			Assert(rte);
+			Assert(rte->pseudocols);
+			Assert(list_length(rte->pseudocols) > var->varattno - FirstLowInvalidHeapAttributeNumber);
+		}
+	}
+}
+#endif
+
 
 /*--------------------
  * grouping_planner
@@ -1963,8 +1990,14 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 */
 	root->query_pathkeys = current_pathkeys;
 
+#ifdef USE_ASSERT_CHECKING
+	grouping_planner_output_asserts(root, result_plan);
+#endif
+
 	return result_plan;
 }
+
+
 
 /*
  * Entry is through is_dummy_plan().
