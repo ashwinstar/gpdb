@@ -128,6 +128,11 @@ int			gp_fts_probe_interval=60;
 int			gp_fts_probe_threadcount=5;
 
 /*
+ * Controls parallel segment transition (failover).
+ */
+bool		gp_fts_transition_parallel = false;
+
+/*
  * When we have certain types of failures during gang creation which indicate
  * that a segment is in recovery mode we may be able to retry.
  */

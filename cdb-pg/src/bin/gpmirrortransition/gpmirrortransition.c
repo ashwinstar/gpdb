@@ -15,11 +15,14 @@
 #include <getopt.h>
 #endif
 
+/* buffer size for message to segment */
+#define SEGMENT_MSG_BUF_SIZE     4096
+
 /**
- * gpmirrortransition takes a message on stdin (or from an input file if -i is specified) and
- *    transmits it to the given server as mirror transition message.  The caller must of course
- *    format the message properly.
+ * gpmirrortransition builds a message from parameters and transmits it to the given server as
+ *    mirror transition message.
  */
+
 
 static inline bool
 isEmpty(char *str)
@@ -124,65 +127,175 @@ readFully(FILE *f, int *msgLenOut)
 	return buf;
 }
 
+
 int
 main(int argc, char **argv)
 {
 	struct addrinfo *addrList = NULL;
+
 	char *host = NULL, *port = NULL, *inputFile = NULL;
+
+	char *mode = NULL;
+	char *status = NULL;
+	char *seg_addr = NULL;
+	char *seg_pm_port = NULL;
+	char *seg_rep_port = NULL;
+	char *peer_addr = NULL;
+	char *peer_pm_port = NULL;
+	char *peer_rep_port = NULL;
+
 	char opt;
-	char *msg;
+
+	char msgBuffer[SEGMENT_MSG_BUF_SIZE];
+	char *msg = NULL;
 	int msgLen = 0;
 
-	while ((opt = getopt(argc, argv, "h:i:p:")) != -1)
+	while ((opt = getopt(argc, argv, "m:s:H:P:R:h:p:r:i:")) != -1)
 	{
 		switch (opt)
 		{
-			case 'h':
-				host = optarg;
-				break;
 			case 'i':
 				inputFile = optarg;
 				break;
-			case 'p':
-				port = optarg;
+			case 'm':
+				mode = optarg;
 				break;
+			case 's':
+				status = optarg;
+				break;
+			case 'H':
+				seg_addr = optarg;
+				break;
+			case 'P':
+				seg_pm_port = optarg;
+				break;
+			case 'R':
+				seg_rep_port = optarg;
+				break;
+			case 'h':
+				host = peer_addr = optarg;
+				break;
+			case 'p':
+				port = peer_pm_port = optarg;
+				break;
+			case 'r':
+				peer_rep_port = optarg;
+				break;
+			case '?':
+				fprintf(stderr, "Unrecognized option: -%c\n", optopt);
 		}
 	}
-	if ( host == NULL)
-	{
-		fprintf(stderr, "Missing host (-h) argument\n");
-		return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
-	}
-	if ( port == NULL )
-	{
-		fprintf(stderr, "Missing port (-p) argument\n");
-		return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
-	}
 
-	/* find the target machine */
-	if ( ! determineTargetHost(&addrList, host, port))
+	/* check if input file parameter is passed */
+	if (seg_addr == NULL)
 	{
-		return TRANS_ERRCODE_ERROR_HOST_LOOKUP_FAILED;
-	}
+		if ( host == NULL)
+		{
+			fprintf(stderr, "Missing host (-h) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
+		}
+		if ( port == NULL )
+		{
+			fprintf(stderr, "Missing port (-p) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
+		}
 
-	/* load the input message into memory */
-	if ( inputFile == NULL)
-	{
-		msg = readFully(stdin, &msgLen);
+		/* find the target machine */
+		if ( ! determineTargetHost(&addrList, host, port))
+		{
+			return TRANS_ERRCODE_ERROR_HOST_LOOKUP_FAILED;
+		}
+
+		/* load the input message into memory */
+		if ( inputFile == NULL)
+		{
+			msg = readFully(stdin, &msgLen);
+		}
+		else
+		{
+
+			FILE *f = fopen(inputFile, "r");
+			if ( f == NULL)
+			{
+				fprintf(stderr, "Unable to open file %s\n", inputFile);
+				return TRANS_ERRCODE_ERROR_READING_INPUT;
+			}
+			msg = readFully(f, &msgLen);
+			fclose(f);
+		}
 	}
 	else
 	{
-		FILE *f = fopen(inputFile, "r");
-		if ( f == NULL)
+		/* build message from passed parameters */
+
+		if (mode == NULL)
 		{
-			fprintf(stderr, "Unable to open file %s\n", inputFile);
-			return TRANS_ERRCODE_ERROR_READING_INPUT;
+			fprintf(stderr, "Missing mode (-m) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
 		}
-		msg = readFully(f, &msgLen);
-		fclose(f);
+		if (status == NULL)
+		{
+			fprintf(stderr, "Missing status (-s) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
+		}
+		if (seg_addr == NULL)
+		{
+			fprintf(stderr, "Missing segment host (-H) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
+		}
+		if (seg_pm_port == NULL)
+		{
+			fprintf(stderr, "Missing segment postmaster port (-P) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
+		}
+		if (seg_rep_port == NULL)
+		{
+			fprintf(stderr, "Missing segment replication port (-R) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
+		}
+		if (peer_addr == NULL)
+		{
+			fprintf(stderr, "Missing peer host (-h) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
+		}
+		if (peer_pm_port == NULL)
+		{
+			fprintf(stderr, "Missing peer postmaster port (-p) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
+		}
+		if (peer_rep_port == NULL)
+		{
+			fprintf(stderr, "Missing peer replication port (-r) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
+		}
+
+		/* build message */
+		msgLen = snprintf(
+			msgBuffer, sizeof(msgBuffer),
+			"%s\n%s\n%s\n%s\n%s\n%s\n%s\n",
+			mode,
+			status,
+			seg_addr,
+			seg_rep_port,
+			peer_addr,
+			peer_rep_port,
+			peer_pm_port
+			);
+
+		msg = msgBuffer;
+
+		/* find the target machine */
+		if (!determineTargetHost(&addrList, seg_addr, seg_pm_port))
+		{
+			return TRANS_ERRCODE_ERROR_HOST_LOOKUP_FAILED;
+		}
 	}
+
+	 /* check for errors while building the message */
 	if ( msg == NULL )
-		return TRANS_ERRCODE_ERROR_READING_INPUT; /* an error will have been logged by readFully */
+	{
+		return TRANS_ERRCODE_ERROR_READING_INPUT;
+	}
 
 	/* send the message */
 	PrimaryMirrorTransitionClientInfo client;

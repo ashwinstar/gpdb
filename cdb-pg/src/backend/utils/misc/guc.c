@@ -1809,10 +1809,20 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_fts_probe_pause", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Stop active probes."),
 			NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_fts_probe_pause,
 		false, gpvars_assign_gp_fts_probe_pause, NULL
+	},
+
+	{
+		{"gp_fts_transition_parallel", PGC_POSTMASTER, GP_ARRAY_TUNING,
+			gettext_noop("Activate parallel segment transition."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_fts_transition_parallel,
+		false, NULL, NULL
 	},
 
 	{

@@ -94,6 +94,9 @@
 /* buffer size for SQL command */
 #define SQL_CMD_BUF_SIZE     1024
 
+/* buffer size for system command */
+#define SYS_CMD_BUF_SIZE     4096
+
 #define GpConfigHistoryRelationName    "gp_configuration_history"
 
 #define MAX_PROBE_RESPONSE_LEN	20
@@ -617,7 +620,6 @@ readCdbComponentInfoAndUpdateStatus(void)
 
 	cdb_component_dbs = getCdbComponentInfo(false);
 
-	ftsLock();
 	for (i=0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
 		CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
@@ -642,7 +644,6 @@ readCdbComponentInfoAndUpdateStatus(void)
 
 		ftsProbeInfo->fts_status[segInfo->dbid] = segStatus;
 	}
-	ftsUnlock();
 }
 
 void FtsProbeLoop(void)
@@ -1946,14 +1947,6 @@ updateConfiguration(struct segmentStatusChange *changes, int changeEntries)
 
 	CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
 
-	/* if we've gotten a pause or shutdown request, we ignore our probe results. */
-	if (ftsProbeInfo->fts_pauseProbes || shutdown_requested)
-	{
-		return;
-	}
-
-	get_timestamp(timestamp_str, sizeof(timestamp_str));
-
 	if (entryDB->dbid != GpIdentity.dbid)
 	{
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
@@ -1961,11 +1954,16 @@ updateConfiguration(struct segmentStatusChange *changes, int changeEntries)
 		entryDB = entryDB + 1;
 	}
 
+	get_timestamp(timestamp_str, sizeof(timestamp_str));
+
+	/* if we've gotten a pause or shutdown request, we ignore our probe results. */
+	if (ftsProbeInfo->fts_pauseProbes || shutdown_requested)
+	{
+		return;
+	}
+
 	entryConn = openSelfConn(entryDB);
 	Assert(entryConn != NULL);
-
-	/* TODO: investigate if lightweight lock is necessary */
-	ftsLock();
 
 	/* update segment configuration */
 	probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
@@ -1991,8 +1989,6 @@ updateConfiguration(struct segmentStatusChange *changes, int changeEntries)
 	{
 		elog(LOG, "probePublishUpdate: finished segment modifications");
 	}
-
-	ftsUnlock();
 }
 
 
@@ -2509,128 +2505,84 @@ Filerep_get_hosts_by_dbid(int dbid, char **hostname_p, int *host_port_p, int *ho
 static void
 Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingEnum logMsgToSend)
 {
-	int f = -1;
-	char tmp_filename[35];
+	char cmd[SYS_CMD_BUF_SIZE];
+	int cmd_status;
 
-	ssize_t res;
-
-	char port_buf[10];
 	char *seg_addr = NULL;
 	char *peer_addr = NULL;
-	int seg_pm_port = -1, seg_rep_port = -1, peer_rep_port = -1, peer_pm_port;
+	int seg_pm_port = -1;
+	int seg_rep_port = -1;
+	int peer_rep_port = -1;
+	int peer_pm_port = -1;
+
+	char runInBg = '&';
 
 	Assert(dbid >= 0);
 	Assert(mode != NULL);
 
 	Filerep_get_hosts_by_dbid(dbid, &seg_addr, &seg_pm_port, &seg_rep_port, &peer_addr, &peer_pm_port, &peer_rep_port);
 
-	snprintf(tmp_filename, sizeof(tmp_filename), "/tmp/ftsprobe_command_XXXXXX");
-	f = mkstemp(tmp_filename);
-	if (f < 0)
-	{
-		elog(FATAL, "Failed to create command file '%s': %m", tmp_filename);
-	}
+	Assert(seg_addr != NULL);
+	Assert(peer_addr != NULL);
+	Assert(seg_pm_port > 0);
+	Assert(seg_rep_port > 0);
+	Assert(peer_pm_port > 0);
+	Assert(peer_rep_port > 0);
 
 	switch (logMsgToSend)
 	{
 		case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
 			ereport(LOG,
-					(errmsg("Mirror segment on %s:%d is taking over as primary in change tracking mode.",
+					(errmsg("mirror segment on %s:%d taking over as primary in change-tracking mode",
 							seg_addr, seg_pm_port ),
 					 errSendAlert(true)));
 			break;
 		case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
 			ereport(LOG,
-					(errmsg("Primary segment on %s:%d is transitioning into change tracking mode (peer marked down).",
+					(errmsg("primary segment on %s:%d transitioning to change-tracking mode (peer marked down)",
 							seg_addr, seg_pm_port ),
 					 errSendAlert(true)));
 			break;
 	}
 
-	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-		elog(LOG, "Filerep_Failover: tmp filename is '%s'", tmp_filename);
-
-	do
+	/* check if parallel segment transition is activated */
+	if (!gp_fts_transition_parallel)
 	{
-#define FILEREP_WRITE(res, f, buf) {int len = strlen(buf); res = write(f, buf, len); if (res != len) break;}
+		runInBg = ' ';
+	}
 
-		FILEREP_WRITE(res, f, mode);
-		FILEREP_WRITE(res, f, "\n");
+	/* issue the command to change modes */
+	(void) snprintf
+		(
+		cmd, sizeof(cmd),
+		"gp_primarymirror -m %s -s %c -H %s -P %d -R %d -h %s -p %d -r %d %c",
+		mode,
+		status,
+		seg_addr,
+		seg_pm_port,
+		seg_rep_port,
+		peer_addr,
+		peer_pm_port,
+		peer_rep_port,
+		runInBg
+		)
+		;
 
-		res = write(f, &status, 1);
-		if (res != 1)
-			break;
+	Assert(strlen(cmd) < sizeof(cmd) - 1);
 
-		FILEREP_WRITE(res, f, "\n");
-		FILEREP_WRITE(res, f, seg_addr);
-		FILEREP_WRITE(res, f, "\n");
+	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
+		elog(LOG, "gp_primarymirror command is [%s]", cmd);
 
-		snprintf(port_buf, sizeof(port_buf), "%d", seg_rep_port);
+	cmd_status = system(cmd);
 
-		FILEREP_WRITE(res, f, port_buf);
-		FILEREP_WRITE(res, f, "\n");
-
-		FILEREP_WRITE(res, f, peer_addr);
-		FILEREP_WRITE(res, f, "\n");
-
-		snprintf(port_buf, sizeof(port_buf), "%d", peer_rep_port);
-		FILEREP_WRITE(res, f, port_buf);
-		FILEREP_WRITE(res, f, "\n");
-
-		snprintf(port_buf, sizeof(port_buf), "%d", peer_pm_port);
-		FILEREP_WRITE(res, f, port_buf);
-		FILEREP_WRITE(res, f, "\n");
-
-		close(f);
-
-		/* issue the command to change modes */
-		{
-			char	cmd[1024];
-			int		cmd_status;
-
-			snprintf(cmd, sizeof(cmd), "gp_primarymirror -h %s -p %d -i %s", seg_addr, seg_pm_port, tmp_filename);
-
-			if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-				elog(LOG, "gp_primarymirror command is [%s]", cmd);
-
-			cmd_status = system(cmd);
-
-			unlink(tmp_filename);
-
-			if (cmd_status == -1)
-			{
-				elog(ERROR, "Could not issue command: %m");
-			}
-			else if (cmd_status != 0)
-			{
-				elog(ERROR, "gp_primarymirror failed!");
-			}
-		}
-
-		switch (logMsgToSend)
-		{
-			case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
-				ereport(LOG,
-						(errmsg("Mirror segment on %s:%d promoted to primary in change tracking mode.",
-								seg_addr, seg_pm_port ),
-						 errSendAlert(true)));
-				break;
-			case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
-				ereport(LOG,
-						(errmsg("Primary segment on %s:%d transitioned to change tracking mode successfully.",
-								seg_addr, seg_pm_port ),
-						 errSendAlert(true)));
-				break;
-		}
-
-		return;
-	} while (0);
-
-	/* An error occurred while writing the command-file */
-
-	close(f);
-	unlink(tmp_filename);
-	elog(FATAL, "Could not write to %s", tmp_filename);
+	if (cmd_status == -1)
+	{
+		elog(ERROR, "failed to execute command: %s (%m)", cmd);
+	}
+	else if (cmd_status != 0)
+	{
+		elog(ERROR, "segment transition failed: %s (exit code %d)", cmd, cmd_status);
+	}
 }
 
 /*
@@ -2690,61 +2642,56 @@ markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *primary, CdbComponent
 		entryDB = entryDB + 1;
 	}
 
+	if (ftsProbeInfo->fts_pauseProbes)
+	{
+		return;
+	}
+
+	uint8	segStatus=0;
+
 	PGconn *entryConn = openSelfConn(entryDB);
 	Assert(entryConn != NULL);
 
-	ftsLock();
+	/* update primary */
+	segStatus = ftsProbeInfo->fts_status[primary->dbid];
+	segStatus |= FTS_STATUS_SYNCHRONIZED;
+	ftsProbeInfo->fts_status[primary->dbid] = segStatus;
 
-	if (ftsProbeInfo->fts_pauseProbes)
-	{
-		/* we've gotten a pause request --> ignore our probe results. */
-	}
-	else
-	{
-		uint8	segStatus=0;
+	/* update mirror */
+	segStatus = ftsProbeInfo->fts_status[mirror->dbid];
+	segStatus |= FTS_STATUS_SYNCHRONIZED;
+	ftsProbeInfo->fts_status[mirror->dbid] = segStatus;
 
-		/* update primary */
-		segStatus = ftsProbeInfo->fts_status[primary->dbid];
-		segStatus |= FTS_STATUS_SYNCHRONIZED;
-		ftsProbeInfo->fts_status[primary->dbid] = segStatus;
+	/* update gp_segment_configuration to insync */
+	snprintf(cmd, sizeof(cmd),
+			 "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
+			 GpSegmentConfigRelationName,
+			 primary->dbid);
+	executeEntrySQL(entryConn, cmd);
 
-		/* update mirror */
-		segStatus = ftsProbeInfo->fts_status[mirror->dbid];
-		segStatus |= FTS_STATUS_SYNCHRONIZED;
-		ftsProbeInfo->fts_status[mirror->dbid] = segStatus;
+	snprintf(cmd, sizeof(cmd),
+			 "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
+			 GpSegmentConfigRelationName,
+			 mirror->dbid);
+	executeEntrySQL(entryConn, cmd);
 
-		/* update gp_segment_configuration to insync */
-		snprintf(cmd, sizeof(cmd),
-				 "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
-				 GpSegmentConfigRelationName,
-				 primary->dbid);
-		executeEntrySQL(entryConn, cmd);
+	/* update configuration history */
+	snprintf(cmd, sizeof(cmd),
+			 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
+			 timestamp_str, primary->dbid);
+	executeEntrySQL(entryConn, cmd);
 
-		snprintf(cmd, sizeof(cmd),
-				 "update %s set mode='s' where dbid=CAST(%d AS SMALLINT)",
-				 GpSegmentConfigRelationName,
-				 mirror->dbid);
-		executeEntrySQL(entryConn, cmd);
+	snprintf(cmd, sizeof(cmd),
+			 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
+			 timestamp_str, mirror->dbid);
+	executeEntrySQL(entryConn, cmd);
 
-		/* update configuration history */
-		snprintf(cmd, sizeof(cmd),
-				 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
-				 timestamp_str, primary->dbid);
-		executeEntrySQL(entryConn, cmd);
-
-		snprintf(cmd, sizeof(cmd),
-				 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
-				 timestamp_str, mirror->dbid);
-		executeEntrySQL(entryConn, cmd);
-
-		ereport(LOG,
-				(errmsg("Resynchronization of mirror segment on %s:%d has completed.",
-						mirror->address, mirror->port ),
-				 errSendAlert(true)));
-	}
+	ereport(LOG,
+			(errmsg("Resynchronization of mirror segment on %s:%d has completed.",
+					mirror->address, mirror->port ),
+			 errSendAlert(true)));
 
 	closeSelfConn(entryConn);
-	ftsUnlock();
 }
 
 static void
