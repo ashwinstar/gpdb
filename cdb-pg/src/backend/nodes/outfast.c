@@ -3272,6 +3272,7 @@ _outCreateQueueStmt(StringInfo str, CreateQueueStmt *node)
 	WRITE_STRING_FIELD(queue);
 	WRITE_NODE_FIELD(options); /* List of DefElem nodes */
 	WRITE_OID_FIELD(queueOid); 
+	WRITE_NODE_FIELD(optids); /* List of oids for nodes */
 }
 
 static void
@@ -3281,6 +3282,7 @@ _outAlterQueueStmt(StringInfo str, AlterQueueStmt *node)
 
 	WRITE_STRING_FIELD(queue);
 	WRITE_NODE_FIELD(options); /* List of DefElem nodes */
+	WRITE_NODE_FIELD(optids); /* List of oids for nodes */
 }
 
 static void

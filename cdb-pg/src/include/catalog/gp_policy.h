@@ -29,6 +29,8 @@
    attrnums  smallint[]
    );
 
+   alter table gp_distribution_policy add fk localoid on pg_class(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

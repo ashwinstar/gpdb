@@ -3369,6 +3369,7 @@ _readCreateQueueStmt(const char ** str)
 	READ_STRING_FIELD(queue);
 	READ_NODE_FIELD(options);
 	READ_OID_FIELD(queueOid);
+	READ_NODE_FIELD(optids);
 
 	READ_DONE();
 }
@@ -3379,6 +3380,7 @@ _readAlterQueueStmt(const char ** str)
 
 	READ_STRING_FIELD(queue);
 	READ_NODE_FIELD(options);
+	READ_NODE_FIELD(optids);
 
 	READ_DONE();
 }

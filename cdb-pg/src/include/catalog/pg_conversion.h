@@ -50,6 +50,10 @@
    condefault      boolean
    );
 
+   alter table pg_conversion add fk connamespace on pg_namespace(oid);
+   alter table pg_conversion add fk conowner on pg_authid(oid);
+   alter table pg_conversion add fk conproc on pg_proc(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

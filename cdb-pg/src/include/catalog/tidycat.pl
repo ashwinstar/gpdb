@@ -646,13 +646,13 @@ sub parseindex
 # parse foreign key definitions
 sub parsefk
 {
-	my ($alltabs, $bigstr) = @_;
+	my ($alltabs, $bigstr, $filnam) = @_;
 
 	my @baz = ($bigstr =~ m/^\s*alter\s+table\s+(\w+)\s+add\s+fk/i);
 
 	my $tname = shift @baz;
 
-	die "bad foreign key - no such table: $tname" unless (exists($alltabs->{$tname}));
+	die "$filnam: bad foreign key - no such table: $tname" unless (exists($alltabs->{$tname}));
 
 	$bigstr =~ s/^\s*alter\s+table\s+\w+\s+add\s+fk//i;
 
@@ -660,7 +660,7 @@ sub parsefk
 
 #	print Data::Dumper->Dump(\@foo), "\n";
 
-	die "bad foreign key for table $tname: $bigstr" unless (2 < scalar(@foo));
+	die "$filnam: bad foreign key for table $tname: $bigstr" unless (2 < scalar(@foo));
 
 	$alltabs->{$tname}->{foreign_keys} = []
 		unless (exists($alltabs->{$tname}->{foreign_keys}));
@@ -670,7 +670,7 @@ sub parsefk
 	my $colnamlist = shift @foo; # the primary key cols
 	my @cols = split(",", $colnamlist);
 
-	die "bad foreign key for table $tname - no such column: $fkname" unless (exists($alltabs->{$tname}->{colh}->{$fkname}));
+	die "$filnam: bad foreign key for table $tname - no such column: $fkname" unless (exists($alltabs->{$tname}->{colh}->{$fkname}));
 
 	push @{$alltabs->{$tname}->{foreign_keys}}, [[$fkname], $pktname, \@cols];
 } # end parsefk
@@ -1069,7 +1069,7 @@ sub parsetabdef
 #		elsif ($stat =~ m/^\s*alter\s+table\s+\w+add\s+fk/is)
 		elsif ($stat =~ m/^\s*alter\s+table/is)
 		{
-			parsefk($alltabs, $stat);
+			parsefk($alltabs, $stat, $filnam);
 		}
 	}
 

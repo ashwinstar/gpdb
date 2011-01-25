@@ -32,6 +32,8 @@
    last_sequence bigint
    );
 
+   alter table gp_fastsequence add fk objid on pg_class(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 #define FastSequenceRelationId 5043

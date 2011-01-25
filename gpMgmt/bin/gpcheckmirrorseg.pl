@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# copyright (c) 2010
+# copyright (c) 2010, 2011
 # Author: Jeffrey I Cohen
 #
 #
@@ -221,7 +221,7 @@ that all Mac is 32-bit aligned.
 
 Jeffrey I Cohen
 
-Copyright (c) 2010 GreenPlum.  All rights reserved.  
+Copyright (c) 2010, 2011 GreenPlum.  All rights reserved.  
 
 Address bug reports and comments to: jcohen@greenplum.com
 

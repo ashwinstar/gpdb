@@ -1786,7 +1786,8 @@ typedef struct CreateQueueStmt
 	NodeTag		type;
 	char	   *queue;			/* resource queue name */
 	List	   *options;		/* List of DefElem nodes */
-	Oid	   		queueOid;
+	Oid	   		queueOid;		/* oid for queue  */
+	List	   *optids;			/* List of oids for nodes */
 } CreateQueueStmt;
 
 typedef struct AlterQueueStmt
@@ -1794,6 +1795,7 @@ typedef struct AlterQueueStmt
 	NodeTag		type;
 	char	   *queue;			/* resource queue  name */
 	List	   *options;		/* List of DefElem nodes */
+	List	   *optids;			/* List of oids for nodes */
 } AlterQueueStmt;
 
 typedef struct DropQueueStmt

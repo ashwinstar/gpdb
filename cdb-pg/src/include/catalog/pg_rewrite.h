@@ -38,6 +38,8 @@
    ev_action   text
    );
 
+   alter table pg_rewrite add fk ev_class on pg_attribute(attrelid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

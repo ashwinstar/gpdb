@@ -215,7 +215,9 @@ void ValidateResqueueCapabilityEntry(int			 resTypeInt,
  *
  */
 static 
-void AddUpdResqueueCapabilityEntryInternal(
+List *
+ AddUpdResqueueCapabilityEntryInternal(
+								  List			*stmtOptIdList,
 								  Oid			 queueid,
 								  int			 resTypeInt,
 								  char			*pResSetting,
@@ -257,7 +259,22 @@ void AddUpdResqueueCapabilityEntryInternal(
 
 		new_tuple = heap_form_tuple(RelationGetDescr(rel), values, isnull);
 
+		/* MPP-11858: synchronize the oids for CREATE/ALTER options... */
+		if ((Gp_role != GP_ROLE_DISPATCH) && list_length(stmtOptIdList))
+		{
+			Oid s2 = list_nth_oid(stmtOptIdList, 0);
+			stmtOptIdList = list_delete_first(stmtOptIdList);
+
+			if (OidIsValid(s2))
+				HeapTupleSetOid(new_tuple, s2);
+		}
+
 		s1 = simple_heap_insert(rel, new_tuple);
+
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			stmtOptIdList = lappend_oid(stmtOptIdList, s1);
+		}
 	}
 	/* keep the system catalog indexes current */
 	CatalogUpdateIndexes(rel, new_tuple);
@@ -265,11 +282,14 @@ void AddUpdResqueueCapabilityEntryInternal(
 	if (HeapTupleIsValid(old_tuple))
 		heap_freetuple(new_tuple);
 
+	return stmtOptIdList;
 } /* end AddUpdResqueueCapabilityEntryInternal */
 				
 /* MPP-6923: */				  
-static 
-void AlterResqueueCapabilityEntry(Node			*stmt,
+static
+List *
+AlterResqueueCapabilityEntry(
+								  List			*stmtOptIdList,
 								  Oid			 queueid,
 								  ListCell		*initcell,
 								  bool			 bCreate)
@@ -570,12 +590,14 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 					((Form_pg_resqueuecapability) GETSTRUCT(tuple))->restypid)
 				{
 					/* found it -- update it */
-					AddUpdResqueueCapabilityEntryInternal(
-							queueid,
-							resTypeInt,
-							pResSetting,
-							rel,
-							tuple);
+					stmtOptIdList = 
+							AddUpdResqueueCapabilityEntryInternal(
+									stmtOptIdList,
+									queueid,
+									resTypeInt,
+									pResSetting,
+									rel,
+									tuple);
 
 					ii++;
 				}
@@ -585,12 +607,14 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 
 		if (!ii)
 			/* does not exist -- add it */
-			AddUpdResqueueCapabilityEntryInternal(
-					queueid,
-					resTypeInt,
-					pResSetting,
-					rel,
-					InvalidOid);
+			stmtOptIdList = 
+					AddUpdResqueueCapabilityEntryInternal(
+							stmtOptIdList,
+							queueid,
+							resTypeInt,
+							pResSetting,
+							rel,
+							InvalidOid);
 
 	} /* end foreach elem */
 
@@ -645,6 +669,8 @@ void AlterResqueueCapabilityEntry(Node			*stmt,
 	} /* end foreach elem */
 
 	heap_close(rel, RowExclusiveLock);
+
+	return stmtOptIdList;
 
 } /* end AlterResqueueCapabilityEntry */
 
@@ -891,7 +917,7 @@ CreateQueue(CreateQueueStmt *stmt)
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("resource queue name \"%s\" is reserved",
 						stmt->queue),
-								   errOmitLocation(true)));
+				 errOmitLocation(true)));
 
 	/*
 	 * Check the pg_resqueue relation to be certain the queue doesn't already
@@ -961,7 +987,9 @@ CreateQueue(CreateQueueStmt *stmt)
 
 	/* process the remainder of the WITH (...) list items */
 	if (bWith)
-		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList, true);
+		stmt->optids =
+				AlterResqueueCapabilityEntry(stmt->optids, 
+											 queueid, pWithList, true);
 
 	/*
 	 * Create the in-memory resource queue, if resource scheduling is on,
@@ -1388,7 +1416,9 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	/* process the remainder of the WITH (...) list items */
 	if (bWith)
-		AlterResqueueCapabilityEntry((Node *)stmt, queueid, pWithList, false);
+		stmt->optids =
+				AlterResqueueCapabilityEntry(stmt->optids, 
+											 queueid, pWithList, false);
 
 	/** Get new memory limit if changed */
 	thresholds[RES_MEMORY_LIMIT] = ResourceQueueGetMemoryLimit(queueid);

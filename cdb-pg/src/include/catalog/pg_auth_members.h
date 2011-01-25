@@ -32,6 +32,10 @@
    admin_option  boolean
    );
 
+   alter table pg_auth_members add fk roleid  on pg_authid(oid);
+   alter table pg_auth_members add fk member  on pg_authid(oid);
+   alter table pg_auth_members add fk grantor on pg_authid(oid);
+
    TIDYCAT_ENDFAKEDEF
 */
 
