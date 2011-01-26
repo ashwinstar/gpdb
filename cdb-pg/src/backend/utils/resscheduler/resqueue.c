@@ -973,7 +973,7 @@ ResCleanUpLock(LOCK *lock, PROCLOCK *proclock, uint32 hashcode, bool wakeupNeede
 	 */
 	if (wakeupNeeded)
 	{
-		ResProcLockWakeup(lock);
+		ResProcLockRemoveSelfAndWakeup(lock);
 	}
 	
 	return;
@@ -1042,14 +1042,15 @@ ResWaitOnLock(LOCALLOCK *locallock, ResourceOwner owner, ResPortalIncrement *inc
 
 
 /*
- * ResProcLockWakeup -- awaken any processses waiting on a resource lock.
+ * ResProcLockRemoveSelfAndWakeup -- awaken any processses waiting on a resource lock.
  *
  * Notes:
+ *  It always remove itself from the waitlist.
  *	Need to only awaken enough as many waiters as the resource controlled by 
  *	the the lock should allow!
  */
 void
-ResProcLockWakeup(LOCK *lock)
+ResProcLockRemoveSelfAndWakeup(LOCK *lock)
 {
 	PROC_QUEUE	*waitQueue = &(lock->waitProcs);
 	int			queue_size = waitQueue->size;

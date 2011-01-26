@@ -248,15 +248,11 @@ DeadLockCheck(PGPROC *proc)
 		PrintLockQueue(lock, "rearranged to:");
 #endif
 
-		/* See if any waiters for the lock can be woken up now */
-		if (lock->tag.locktag_type == LOCKTAG_RESOURCE_QUEUE)
-		{
-			ResProcLockWakeup(lock);
-		}
-		else
-		{
+		/* See if any waiters for the lock can be woken up now.
+		 * Except for resource queue because without release resource
+		 * no one can procced. */
+		if (lock->tag.locktag_type != LOCKTAG_RESOURCE_QUEUE)
 			ProcLockWakeup(GetLocksMethodTable(lock), lock);
-		}
 	}
 	return false;
 }
