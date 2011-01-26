@@ -38,7 +38,6 @@ from gppylib.gphostcache import GpInterfaceToHostNameCache
 
 import gppylib.commands.gp
 
-
 logger = gplog.get_default_logger()
 
 class PortAssigner:
@@ -1008,4 +1007,12 @@ class GpRecoverSegmentProgram:
         return GpRecoverSegmentProgram(options)
     
         
-    
+    @staticmethod
+    def mainOptions():
+        """
+        The dictionary this method returns instructs the simple_main framework 
+        to check for a gprecoverseg.pid file under MASTER_DATA_DIRECTORY to
+        prevent more than one instance of gprecoverseg from running at once.
+        """
+        return {'pidfilename':'gprecoverseg.pid'}
+

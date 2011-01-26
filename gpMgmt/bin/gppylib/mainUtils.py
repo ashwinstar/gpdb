@@ -1,4 +1,25 @@
-import os, sys, traceback
+# Line too long - pylint: disable=C0301
+# Invalid name  - pylint: disable=C0103
+
+"""
+mainUtils.py
+------------
+
+This file provides a rudimentary framework to support top-level option
+parsing, initialization and cleanup logic common to multiple programs.
+
+It also implements workarounds to make other modules we use like
+GpCoverage() work properly.
+
+The primary interface function is 'simple_main'.  For an example of
+how it is expected to be used, see gprecoverseg.
+
+It is anticipated that the functionality of this file will grow as we
+extend common functions of our gp utilities.  Please keep this in mind
+and try to avoid placing logic for a specific utility here.
+"""
+
+import os, sys, signal, errno
 
 gProgramName = os.path.split(sys.argv[0])[-1]
 if sys.version_info < (2, 5, 0):
@@ -7,49 +28,95 @@ if sys.version_info < (2, 5, 0):
 Please upgrade python installed on this machine.''' % gProgramName)
 
 from gppylib import gplog
-from gppylib.commands import unix
+from gppylib.commands import gp, unix
 from gppylib.commands.base import ExecutionError
 from gppylib.system import configurationInterface, configurationImplGpdb, fileSystemInterface, \
         fileSystemImplOs, osInterface, osImplNative, faultProberInterface, faultProberImplGpdb
-from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
+from optparse import OptionGroup
 from gppylib.gpcoverage import GpCoverage
+from lockfile.pidlockfile import PIDLockFile, LockTimeout
 
 
-# Throw this out to main to have the message printed with
+def getProgramName():
+    """
+    Return the name of the current top-level program from sys.argv[0]
+    or the programNameOverride option passed to simple_main via mainOptions.
+    """
+    global gProgramName
+    return gProgramName
+
+
+# tools like gprecoverseg prohibit running multiple instances
+# at the same time using a simple lock file created in the 
+# MASTER_DATA_DIRECTORY
+
+def is_pidfile_stale(pidfile):
+    """
+    Returns true if the specified PIDLockFile argument's pid file contains
+    a process id of a process which no longer exists.  This function should
+    really be part of the lockfile module but it's not.
+    """
+    result = False
+    pidfile_pid = pidfile.read_pid()
+    if pidfile_pid is not None:
+        try:
+            os.kill(pidfile_pid, signal.SIG_DFL)
+        except OSError, exc:
+            if exc.errno == errno.ESRCH:
+                # The specified PID does not exist
+                result = True
+    return result
+
+    
+
+#
+# exceptions we handle specially by the simple_main framework.
+#
+
 class ProgramArgumentValidationException(Exception):
+    """
+    Throw this out to main to have the message possibly
+    printed with a help suggestion.
+    """
     def __init__(self, msg, shouldPrintHelp=False):
         self.__shouldPrintHelp = shouldPrintHelp
         self.__msg = msg
+    def shouldPrintHelp(self): 
+        return self.__shouldPrintHelp
+    def getMessage(self): 
+        return self.__msg
 
-    def shouldPrintHelp(self): return self.__shouldPrintHelp
-    def getMessage(self): return self.__msg
 
 class ExceptionNoStackTraceNeeded(Exception):
+    """
+    Our code throws this exception when we encounter a condition
+    we know can arise which demands immediate termination.
+    """
     pass
 
-#
-# UserAbortedException should be thrown when a user decides to stop the program (at a y/n prompt, for example) 
-#
+
 class UserAbortedException(Exception):
+    """
+    UserAbortedException should be thrown when a user decides to stop the 
+    program (at a y/n prompt, for example).
+    """
     pass
-    
-def getProgramName():
-    global gProgramName
-    return gProgramName
+
 
 def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
     """
      createOptionParserFn : a function that takes no arguments and returns an OptParser
      createCommandFn : a function that takes two argument (the options and the args (those that are not processed into
                        options) and returns an object that has "run" and "cleanup" functions.  Its "run" function must
-                   run and return an exit code.  "cleanup" will be called to clean up before the program exits;
-                   this can be used to clean up, for example, to clean up a worker pool
+                       run and return an exit code.  "cleanup" will be called to clean up before the program exits;
+                       this can be used to clean up, for example, to clean up a worker pool
 
-        mainOptions can include:   forceQuietOutput (map to bool),
-                            programNameOverride (map to string)
-                            suppressStartupLogMessage (map to bool)
-                            useHelperToolLogging (map to bool)
-                            setNonuserOnToolLogger (map to bool, defaults to false)
+     mainOptions can include: forceQuietOutput (map to bool),
+                              programNameOverride (map to string)
+                              suppressStartupLogMessage (map to bool)
+                              useHelperToolLogging (map to bool)
+                              setNonuserOnToolLogger (map to bool, defaults to false)
+                              pidfilename (string)
 
     """
     coverage = GpCoverage()
@@ -60,17 +127,47 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
         coverage.stop()
         coverage.generate_report()
 
+
 def simple_main_internal(createOptionParserFn, createCommandFn, mainOptions):
+    """
+    If caller specifies 'pidfilename' in mainOptions then we manage the
+    specified pid file within the MASTER_DATA_DIRECTORY before proceeding
+    to execute the specified program and we clean up the pid file when
+    we're done.
+    """
+    plf = None
+    if mainOptions:
+        pidfilename = mainOptions.get('pidfilename', None)
+        if pidfilename is not None:
+            ppath = os.path.join(gp.get_masterdatadir(), pidfilename)
+            plf = PIDLockFile( ppath )
+            if is_pidfile_stale(plf):
+                plf.break_lock()
+            try:
+                plf.acquire(1)
+            except LockTimeout:
+                logger = gplog.get_default_logger()
+                logger.error("An instance of %s is running (pid %s)" % (getProgramName(), plf.read_pid()))
+                return
+    try:
+        simple_main_locked(createOptionParserFn, createCommandFn, mainOptions)
+    finally:
+        if plf is not None:
+            plf.release()
+
+
+def simple_main_locked(createOptionParserFn, createCommandFn, mainOptions):
     """
     Not to be called externally -- use simple_main instead
     """
     logger = gplog.get_default_logger()
+
     configurationInterface.registerConfigurationProvider( configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
     fileSystemInterface.registerFileSystemProvider( fileSystemImplOs.GpFileSystemProviderUsingOs())
     osInterface.registerOsProvider( osImplNative.GpOsProviderUsingNative())
     faultProberInterface.registerFaultProber( faultProberImplGpdb.GpFaultProberImplGpdb())
 
-    commandObject=None
+    commandObject = None
     parser = None
 
     forceQuiet = mainOptions is not None and mainOptions.get("forceQuietOutput")
@@ -149,7 +246,12 @@ def simple_main_internal(createOptionParserFn, createCommandFn, mainOptions):
         if commandObject:
             commandObject.cleanup()
 
+
 def addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption, includeUsageOption=False):
+    """
+    Add the standard options for help and logging
+    to the specified parser object.
+    """
     parser.set_usage('%prog [--help] [options] ')
     parser.remove_option('-h')
 
@@ -161,7 +263,7 @@ def addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption, includ
 
     addTo = OptionGroup(parser, "Logging Options")
     parser.add_option_group(addTo)
-    addTo.add_option('-v','--verbose', action='store_true', 
+    addTo.add_option('-v', '--verbose', action='store_true', 
                       help='debug output.')
     addTo.add_option('-q', '--quiet', action='store_true',
                       help='suppress status messages')
@@ -175,9 +277,11 @@ def addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption, includ
 
 def addMasterDirectoryOptionForSingleClusterProgram(addTo):
     """
-    Add the -d master directory option, intended to provide the value of the master data directory
+    Add the -d master directory option to the specified parser object
+    which is intended to provide the value of the master data directory.
 
-    For programs that operate on multiple clusters at once, this function is not appropriate
+    For programs that operate on multiple clusters at once, this function/option
+    is not appropriate.
     """
     addTo.add_option('-d', '--master_data_directory', type='string',
                         dest="masterDataDirectory",

@@ -150,8 +150,7 @@ class GpMirrorListToBuild:
         self.__pool = pool
         self.__quiet = quiet
         self.__parallelDegree = parallelDegree
-        self.__additionalWarnings = additionalWarnings
-        pass
+        self.__additionalWarnings = additionalWarnings or []
 
     def getMirrorsToBuild(self):
         """

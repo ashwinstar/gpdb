@@ -1,6 +1,6 @@
 ################################################################################ 
 # Makefile  Makefile for Python Modules and other utilities
-# Copyright Greenplum 2006, 2007
+# Copyright Greenplum 2006-2011
 ################################################################################
 
 # protect the default target for this file from the targets in Makefile.global
@@ -24,7 +24,7 @@ PYLIB_SRC=$(SRC)/pythonSrc
 LIB_DIR=$(SRC)/lib
 PYLIB_DIR=$(SRC)/ext
 
-all: paramiko pycrypto pygresql stream pychecker psi
+all: lockfile paramiko pycrypto pygresql stream pychecker psi
 
 #
 # Python Libraries
@@ -78,6 +78,24 @@ paramiko:
 	cd $(PYLIB_SRC)/$(PARAMIKO_DIR)/ && python setup.py build
 	cp -r $(PYLIB_SRC)/$(PARAMIKO_DIR)/build/lib/paramiko  $(PYLIB_DIR)/
 
+#
+# LOCKFILE
+#
+# note the awk commands are used to eliminate references to code in __init__.py
+# that we don't use and also to insert a comment to tell pylint not to complain
+# about these files since we are not in a position to correct those warnings.
+#
+LOCKFILE_VERSION=0.9.1
+LOCKFILE_DIR=lockfile-$(LOCKFILE_VERSION)
+LOCKFILE_SRC=$(PYLIB_SRC)/$(LOCKFILE_DIR)/build/lib/lockfile
+LOCKFILE_DST=$(PYLIB_DIR)/lockfile
+lockfile:
+	@echo "--- lockfile"
+	cd $(PYLIB_SRC)/ && $(TAR) xzf $(LOCKFILE_DIR).tar.gz
+	cd $(PYLIB_SRC)/$(LOCKFILE_DIR)/ && python setup.py build
+	mkdir -p $(PYLIB_DIR)/lockfile
+	awk 'BEGIN{print "# pylint: disable-all"} /^if hasattr/ {exit} { print }' < $(LOCKFILE_SRC)/__init__.py    > $(LOCKFILE_DST)/__init__.py
+	awk 'BEGIN{print "# pylint: disable-all"} { print }'                      < $(LOCKFILE_SRC)/pidlockfile.py > $(LOCKFILE_DST)/pidlockfile.py
 
 #
 # PYCRYPTO
@@ -168,6 +186,7 @@ solarisTest:
 	fi
 
 clean :
+	@rm -rf $(PYLIB_SRC)/$(LOCKFILE_DIR)
 	@rm -rf $(PYLIB_SRC)/$(PARAMIKO_DIR)
 	@rm -rf $(PYLIB_SRC)/$(PYCRYPTO_DIR)
 	@rm -rf $(PYLIB_SRC)/$(PYLINT_DIR)
