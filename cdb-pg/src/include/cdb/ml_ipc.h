@@ -207,7 +207,7 @@ extern TupleChunkListItem RecvTupleChunkFrom(ChunkTransportState *transportState
 static inline uint64
 gettime_elapsed_us(GpMonotonicTime *time)
 {
-	Assert(time->endTime.tv_sec != 0 &&
+	Assert(time->endTime.tv_sec != 0 ||
 		   time->endTime.tv_usec != 0);
 
 	gp_get_monotonic_time(time);
