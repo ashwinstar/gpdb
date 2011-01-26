@@ -208,7 +208,7 @@ class GpDB:
             self.replicationPort,
             self.datadir,
             ','.join(filespaces),  # this is rather ugly
-            ','.join(self.catdirs)
+            ','.join(self.catdirs) if self.catdirs else []
             )
 
     # --------------------------------------------------------------------
@@ -2043,8 +2043,6 @@ class GpArray:
         if fileSpaces != None:
             for fsOid in fileSpaces:
                 segdb.addSegmentFilespace(oid = fsOid, path = fileSpaces[fsOid])
-        
-        segdb.catdirs = ['']
         
         seglen = len(self.segments)
         expseglen = len(self.expansionSegments)
