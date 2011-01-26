@@ -25,11 +25,18 @@ create function @gpupgradeschemaname@.gp_persistent_build_all(
 returns @gpupgradeschemaname@.int4
 language internal AS 'gp_persistent_build_all' volatile
 with (oid = 7179);
+select @gpupgradeschemaname@.addProcPIN(7179);
+comment on function @gpupgradeschemaname@.gp_persistent_build_all(
+     @gpupgradeschemaname@.bool)
+is 'populate the persistent tables and gp_relation_node for the whole database instance';
 
 create function @gpupgradeschemaname@.gp_persistent_reset_all()
 returns @gpupgradeschemaname@.int4
 language internal AS 'gp_persistent_reset_all' volatile
 with (oid = 7180);
+select @gpupgradeschemaname@.addProcPIN(7180);
+comment on function @gpupgradeschemaname@.gp_persistent_reset_all()
+is 'Remove the persistent tables and gp_relation_node for the whole database instance';
 
 create function @gpupgradeschemaname@.gp_persistent_repair_delete(
     @gpupgradeschemaname@.int4,
@@ -37,15 +44,25 @@ create function @gpupgradeschemaname@.gp_persistent_repair_delete(
 returns @gpupgradeschemaname@.int4
 language internal AS 'gp_persistent_repair_delete' volatile
 with (oid = 7181);
+select @gpupgradeschemaname@.addProcPIN(7181);
+comment on function @gpupgradeschemaname@.gp_persistent_repair_delete(
+    @gpupgradeschemaname@.int4,
+    @gpupgradeschemaname@.tid)
+is 'Remove an entry specified by TID from a persistent table for the current database instance';
 
 create function @gpupgradeschemaname@.gp_persistent_set_relation_bufpool_kind_all()
 returns @gpupgradeschemaname@.int4
 language internal AS 'gp_persistent_set_relation_bufpool_kind_all' volatile
 with (oid = 7182);
+select @gpupgradeschemaname@.addProcPIN(7182);
+comment on function @gpupgradeschemaname@.gp_persistent_set_relation_bufpool_kind_all()
+is 'Populate the gp_persistent_relation_node table''s relation_bufpool_kind column for the whole database instance for upgrade from 4.0 to 4.1';
 
 select gp_persistent_set_relation_bufpool_kind_all();
 select gp_persistent_set_relation_bufpool_kind_all() from gp_dist_random('gp_id');
 
+update @gpupgradeschemaname@.pg_class set relhaspkey = true where oid = 5094;
+select catDML('update @gpupgradeschemaname@.pg_class set relhaspkey = true where oid = 5094') from gp_dist_random('gp_id');
 --
 -- Ordered Aggregates
 --
@@ -139,26 +156,6 @@ select catDML('delete from @gpupgradeschemaname@.pg_depend where refobjid=8001')
 
 drop schema if exists @gpupgradetoolkitschema@;
 create schema @gpupgradetoolkitschema@;
-
---------------------------------
--- HDFS Privilege
---   1. add hdfs read/write privl columns to pg_authid
---   2. set default privl of hdfs read/write to false
---   3. add new columsn to pg_roles
---------------------------------
-alter table @gpupgradeschemaname@.pg_authid add column rolcreaterexthdfs bool;
-alter table @gpupgradeschemaname@.pg_authid add column rolcreatewexthdfs bool;
-update @gpupgradeschemaname@.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
-select catDML('update @gpupgradeschemaname@.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random('gp_id');
-
-CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_roles AS 
- SELECT pg_authid.rolname, pg_authid.rolsuper, pg_authid.rolinherit,
-  pg_authid.rolcreaterole, pg_authid.rolcreatedb, pg_authid.rolcatupdate,
-  pg_authid.rolcanlogin, pg_authid.rolconnlimit, '********'::text AS rolpassword,
-  pg_authid.rolvaliduntil, pg_authid.rolconfig, pg_authid.rolresqueue, pg_authid.oid, 
-  pg_authid.rolcreaterextgpfd, pg_authid.rolcreaterexthttp, pg_authid.rolcreatewextgpfd, 
-  pg_authid.rolcreaterexthdfs, pg_authid.rolcreatewexthdfs
-   FROM pg_authid;
 
 
 -- MPP-11461, MPP-11127: fix tablespace
@@ -270,6 +267,8 @@ create function @gpupgradeschemaname@.float8_mregr_tstats(float8[])
     returns float8[] 
     language internal AS 'float8_mregr_tstats' strict immutable 
     with (oid = 3263);
+select @gpupgradeschemaname@.addProcPIN(3263);
+
 create aggregate @gpupgradeschemaname@.mregr_tstats(float8, float8[]) (
     stype     = float8[],
     initcond  = '{0}',
@@ -278,10 +277,14 @@ create aggregate @gpupgradeschemaname@.mregr_tstats(float8, float8[]) (
     finalfunc = float8_mregr_tstats,
     oid       = 3264
 );
+select @gpupgradeschemaname@.addProcPIN(3264);
+
 create function @gpupgradeschemaname@.float8_mregr_pvalues(float8[]) 
     returns float8[] 
     language internal AS 'float8_mregr_pvalues' strict immutable 
     with (oid = 3265);
+select @gpupgradeschemaname@.addProcPIN(3265);
+    
 create aggregate @gpupgradeschemaname@.mregr_pvalues(float8, float8[]) (
     stype     = float8[],
     initcond  = '{0}',
@@ -290,11 +293,14 @@ create aggregate @gpupgradeschemaname@.mregr_pvalues(float8, float8[]) (
     finalfunc = float8_mregr_pvalues,
     oid       = 3266
 );
+select @gpupgradeschemaname@.addProcPIN(3266);
+
 -- naive bayes probability values
 create function @gpupgradeschemaname@.nb_classify_probabilities(nb_classification) 
     returns float8[]
     language internal AS 'nb_classify_probabilities' strict immutable
     with (oid = 3267);
+select @gpupgradeschemaname@.addProcPIN(3267);
 create aggregate @gpupgradeschemaname@.nb_probabilities(text[], bigint, bigint[], bigint[]) (
     stype     = nb_classification,
     sfunc     = nb_classify_accum,
@@ -302,6 +308,8 @@ create aggregate @gpupgradeschemaname@.nb_probabilities(text[], bigint, bigint[]
     finalfunc = nb_classify_probabilities,
     oid       = 3268
 );
+select @gpupgradeschemaname@.addProcPIN(3268);
+
 
 --
 -- Memory quota related changes
@@ -313,15 +321,20 @@ create function @gpupgradeschemaname@.pg_resqueue_status_kv()
 	returns setof record 
 	language internal AS 'pg_resqueue_status_kv' strict volatile
 	with (oid = 6069);
+select @gpupgradeschemaname@.addProcPIN(6069);
+comment on  function @gpupgradeschemaname@.pg_resqueue_status_kv()
+is 'Return resource queue information';
 
 -- add new resource type in pg_resourcetype. this table is maintained 
+create external web table @gpupgradeschemaname@.pg_resourcetype_insert(a text)
+  execute 'echo "6459,memory_limit,6,false,true,true,-1,-1">$GP_SEG_DATADIR/gp_tmp;
+           PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_MASTER_PORT --command "copy @gpupgradeschemaname@.pg_resourcetype from ''$GP_SEG_DATADIR/gp_tmp'' with oids csv" template1 $GP_USER;
+           rm -rf $GP_SEG_DATADIR/gp_tmp'
+  on master format 'text';
+select (select * from  @gpupgradeschemaname@.pg_resourcetype_insert)
+  where 6459 not in (select oid from @gpupgradeschemaname@.pg_resourcetype);
+drop external web table @gpupgradeschemaname@.pg_resourcetype_insert;
 
-insert into @gpupgradeschemaname@.pg_resourcetype 
-  select 'memory_limit',6,false,true,true,'-1','-1'
-  where (select count(*) from pg_catalog.pg_resourcetype where restypid = 6) = 0;
-select catDML('insert into @gpupgradeschemaname@.pg_resourcetype 
-  select ''memory_limit'',6,false,true,true,''-1'',''-1''
-  where (select count(*) from pg_catalog.pg_resourcetype where restypid = 6) = 0') from gp_dist_random('gp_id');
 
 -- for every existing queue, add default memory_limit of -1. This table is not maintained on the segments, so we don't do this on the segments.
 
@@ -342,6 +355,13 @@ create function @gpupgradeschemaname@.pg_stat_get_activity(
 	returns setof record 
 	language internal AS 'pg_stat_get_activity' stable
 	with (oid = 6071);
+select @gpupgradeschemaname@.addProcPIN(6071);
+comment on function @gpupgradeschemaname@.pg_stat_get_activity(
+    pid integer, OUT datid oid, OUT procpid integer, OUT usesysid oid, OUT application_name text,
+    OUT current_query text, OUT waiting boolean, OUT xact_start timestamp with time zone, 
+    OUT query_start timestamp with time zone, OUT backend_start timestamp with time zone, 
+    OUT client_addr inet, OUT client_port integer, OUT sess_id integer )
+is 'statistics: information about currently active backends';
 
 
 CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_stat_activity AS 
@@ -371,11 +391,20 @@ create function @gpupgradeschemaname@.array_agg_transfn(
     returns @gpupgradeschemaname@.internal
     language internal AS 'array_agg_transfn' immutable
     with (oid = 2908);
+select @gpupgradeschemaname@.addProcPIN(2908);
+comment on function @gpupgradeschemaname@.array_agg_transfn(
+        @gpupgradeschemaname@.internal, 
+        @gpupgradeschemaname@.anyelement)
+is 'array_agg transition function';
 create function @gpupgradeschemaname@.array_agg_finalfn(
         @gpupgradeschemaname@.internal) 
     returns @gpupgradeschemaname@.anyarray
     language internal AS 'array_agg_finalfn' immutable
     with (oid = 2909);
+select @gpupgradeschemaname@.addProcPIN(2909);
+comment on function @gpupgradeschemaname@.array_agg_finalfn(
+        @gpupgradeschemaname@.internal)
+is 'array_agg final function';
 create ordered aggregate @gpupgradeschemaname@.array_agg(
         @gpupgradeschemaname@.anyelement) 
     (
@@ -384,6 +413,11 @@ create ordered aggregate @gpupgradeschemaname@.array_agg(
         finalfunc = @gpupgradeschemaname@.array_agg_finalfn,
         oid       = 2910
     );
+select @gpupgradeschemaname@.addProcPIN(2910);
+comment on aggregate @gpupgradeschemaname@.array_agg(
+        @gpupgradeschemaname@.anyelement) 
+is 'concatenate aggregate input into an array';
+
 
 -- string_agg
 create function @gpupgradeschemaname@.string_agg_transfn(
@@ -392,6 +426,11 @@ create function @gpupgradeschemaname@.string_agg_transfn(
     returns @gpupgradeschemaname@.internal
     language internal AS 'string_agg_transfn' immutable
     with (oid = 3534);
+select @gpupgradeschemaname@.addProcPIN(3534);
+comment on function @gpupgradeschemaname@.string_agg_transfn(
+        @gpupgradeschemaname@.internal, 
+        @gpupgradeschemaname@.text)
+is 'string_agg(text) transition function';
 create function @gpupgradeschemaname@.string_agg_delim_transfn(
         @gpupgradeschemaname@.internal, 
         @gpupgradeschemaname@.text, 
@@ -399,11 +438,21 @@ create function @gpupgradeschemaname@.string_agg_delim_transfn(
     returns @gpupgradeschemaname@.internal
     language internal AS 'string_agg_delim_transfn' immutable
     with (oid = 3535);
+select @gpupgradeschemaname@.addProcPIN(3535);
+comment on function @gpupgradeschemaname@.string_agg_delim_transfn(
+        @gpupgradeschemaname@.internal, 
+        @gpupgradeschemaname@.text, 
+        @gpupgradeschemaname@.text)
+is 'string_agg(text, text) transition function';
 create function @gpupgradeschemaname@.string_agg_finalfn(
         @gpupgradeschemaname@.internal)
     returns @gpupgradeschemaname@.text
     language internal AS 'string_agg_finalfn' immutable
     with (oid = 3536);
+select @gpupgradeschemaname@.addProcPIN(3536);
+comment on function @gpupgradeschemaname@.string_agg_finalfn(
+        @gpupgradeschemaname@.internal)
+is 'string_agg final function';
 create ordered aggregate @gpupgradeschemaname@.string_agg(
         @gpupgradeschemaname@.text) 
     (
@@ -412,6 +461,10 @@ create ordered aggregate @gpupgradeschemaname@.string_agg(
         finalfunc = @gpupgradeschemaname@.string_agg_finalfn,
         oid       = 3537
     );
+select @gpupgradeschemaname@.addProcPIN(3537);
+comment on aggregate @gpupgradeschemaname@.string_agg(
+        @gpupgradeschemaname@.text)
+is 'concatenate aggregate input into an string';
 
 create ordered aggregate @gpupgradeschemaname@.string_agg(
         @gpupgradeschemaname@.text, 
@@ -422,7 +475,13 @@ create ordered aggregate @gpupgradeschemaname@.string_agg(
         finalfunc = @gpupgradeschemaname@.string_agg_finalfn,
         oid       = 3538
     );
-    
+select @gpupgradeschemaname@.addProcPIN(3538);
+comment on aggregate @gpupgradeschemaname@.string_agg(
+        @gpupgradeschemaname@.text, 
+        @gpupgradeschemaname@.text)
+is 'concatenate aggregate input into an string with delimiter';
+
+
 -- pg_locks
 
 CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_locks AS
@@ -432,5 +491,197 @@ CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_locks AS
    FROM pg_lock_status() l(locktype text, database oid, relation oid, page integer, tuple smallint, transactionid xid, 
    					classid oid, objid oid, objsubid smallint, transaction xid, pid integer, mode text, granted boolean, 
    					mppsessionid integer, mppiswriter boolean, gp_segment_id integer);
+
+
+-- 
+-- Sync pg_resqueue between master and segment
+-- 1. clear pg_resqueue 
+-- 2. create an external table which
+--    i.   remove the tmp file $GP_SEG_DATADIR/gp_tmp
+--    ii.  writes pg_resqueue rows to $GP_SEG_DATADIR/gp_tmp
+--    iii. COPY gp_tmp to pg_resqueue
+--    iv.  remove the tmp file
+-- 3. for every rows in pg_resqueue, insert the row into the external table at every segment
+--
+
+create writable external web table @gpupgradeschemaname@.pg_resqueue_delete (s text)
+  execute 'PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "delete from @gpupgradeschemaname@.pg_resqueue" template1 $GP_USER'
+  format 'csv';
+select catDML('insert into @gpupgradeschemaname@.pg_resqueue_delete values(1)') from gp_dist_random('gp_id');
+drop external web table @gpupgradeschemaname@.pg_resqueue_delete;
+
+create writable external web table @gpupgradeschemaname@.pg_resqueue_rebuilt (
+  rsqoid oid, rsqname name, cnt real, cost real, oc text, icost real)
+  execute 'rm -f $GP_SEG_DATADIR/gp_tmp;
+           tee -a $GP_SEG_DATADIR/gp_tmp;
+           PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "copy @gpupgradeschemaname@.pg_resqueue from ''$GP_SEG_DATADIR/gp_tmp'' with oids csv" template1 $GP_USER;
+           rm -f $GP_SEG_DATADIR/gp_tmp'
+  format 'csv';
+
+create or replace function @gpupgradeschemaname@.insert_gp_tmp(
+  rsqoid oid, rsqname name, cnt real, cost real, oc text, icost real
+) returns int as $$
+begin
+  insert into @gpupgradeschemaname@.pg_resqueue_rebuilt values(rsqoid, rsqname, cnt, cost, oc, icost);
+  return 1;
+end;
+$$ language 'plpgsql';
+
+create or replace function @gpupgradeschemaname@.distributed_insert_gp_tmp(
+  rsqoid oid, rsqname name, cnt real, cost real, oc text, icost real
+) returns int as $$
+begin
+  perform @gpupgradeschemaname@.insert_gp_tmp(rsqoid, rsqname, cnt, cost, oc, icost)
+    from gp_dist_random('gp_id');
+  return 1;
+end;
+$$ language 'plpgsql';
+
+select @gpupgradeschemaname@.distributed_insert_gp_tmp(
+    oid,rsqname,rsqcountlimit,rsqcostlimit,
+    case when rsqovercommit then 'true' else 'false' end,
+    rsqignorecostlimit)
+from @gpupgradeschemaname@.pg_resqueue;
+
+drop external web table @gpupgradeschemaname@.pg_resqueue_rebuilt;
+drop function @gpupgradeschemaname@.insert_gp_tmp(oid, name, real, real, text, real);
+drop function @gpupgradeschemaname@.distributed_insert_gp_tmp(oid, name, real, real, text, real);
+
+
+-- 
+-- Sync pg_resqueuecapability between master and segment
+-- 1. clear pg_resqueuecapability 
+-- 2. create an external table which
+--    i.   remove the tmp file $GP_SEG_DATADIR/gp_tmp
+--    ii.  writes pg_resqueue rows to $GP_SEG_DATADIR/gp_tmp
+--    iii. COPY gp_tmp to pg_resqueuecapability
+--    iv.  remove the tmp file
+-- 3. for every rows in pg_resqueuecapability, insert the row into the external table at every segment
+--
+
+create writable external web table @gpupgradeschemaname@.pg_resqueuecapability_delete (s text)
+  execute 'PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "delete from @gpupgradeschemaname@.pg_resqueuecapability" template1 $GP_USER'
+  format 'csv';
+select catDML('insert into @gpupgradeschemaname@.pg_resqueuecapability_delete values(1)') from gp_dist_random('gp_id');
+drop external web table @gpupgradeschemaname@.pg_resqueuecapability_delete;
+
+create writable external web table @gpupgradeschemaname@.pg_resqueuecapability_rebuilt (
+  rsqoid oid, resqueueid oid, restypid smallint, ressetting text)
+  execute 'rm -f $GP_SEG_DATADIR/gp_tmp;
+           tee -a $GP_SEG_DATADIR/gp_tmp;
+           PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "copy @gpupgradeschemaname@.pg_resqueuecapability from ''$GP_SEG_DATADIR/gp_tmp'' with oids csv" template1 $GP_USER;
+           rm -f $GP_SEG_DATADIR/gp_tmp'
+  format 'csv';
+
+create or replace function @gpupgradeschemaname@.insert_gp_tmp(
+  rsqoid oid, resqueueid oid, restypid smallint, ressetting text)
+returns int as $$
+begin
+  insert into @gpupgradeschemaname@.pg_resqueuecapability_rebuilt values(rsqoid, resqueueid, restypid, ressetting);
+  return 1;
+end;
+$$ language 'plpgsql';
+
+create or replace function @gpupgradeschemaname@.distributed_insert_gp_tmp(
+  rsqoid oid, resqueueid oid, restypid smallint, ressetting text
+) returns int as $$
+begin
+  perform @gpupgradeschemaname@.insert_gp_tmp(rsqoid, resqueueid, restypid, ressetting)
+    from gp_dist_random('gp_id');
+  return 1;
+end;
+$$ language 'plpgsql';
+
+select @gpupgradeschemaname@.distributed_insert_gp_tmp(
+    oid,resqueueid, restypid, ressetting)
+from @gpupgradeschemaname@.pg_resqueuecapability;
+
+drop external web table @gpupgradeschemaname@.pg_resqueuecapability_rebuilt;
+drop function @gpupgradeschemaname@.insert_gp_tmp(rsqoid oid, resqueueid oid, restypid smallint, ressetting text);
+drop function @gpupgradeschemaname@.distributed_insert_gp_tmp(rsqoid oid, resqueueid oid, restypid smallint, ressetting text);
+
+
+-- 
+-- Sync pg_resourcetype between master and segment
+-- 1. clear pg_resourcetype 
+-- 2. create an external table which
+--    i.   remove the tmp file $GP_SEG_DATADIR/gp_tmp
+--    ii.  writes pg_resqueue rows to $GP_SEG_DATADIR/gp_tmp
+--    iii. COPY gp_tmp to pg_resourcetype
+--    iv.  remove the tmp file
+-- 3. for every rows in pg_resourcetype, insert the row into the external table at every segment
+--
+
+create writable external web table @gpupgradeschemaname@.pg_resourcetype_delete (s text)
+  execute 'PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "delete from @gpupgradeschemaname@.pg_resourcetype" template1 $GP_USER'
+  format 'csv';
+select catDML('insert into @gpupgradeschemaname@.pg_resourcetype_delete values(1)') from gp_dist_random('gp_id');
+drop external web table @gpupgradeschemaname@.pg_resourcetype_delete;
+
+create writable external web table @gpupgradeschemaname@.pg_resourcetype_rebuilt (
+  rsqoid oid, resname name, restypid smallint, resrequired boolean, reshasdefault boolean,
+  reshasdisable boolean, resdefaultsetting text, resdisabledsetting text 
+)
+  execute 'rm -f $GP_SEG_DATADIR/gp_tmp;
+           tee -a $GP_SEG_DATADIR/gp_tmp;
+           PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "copy @gpupgradeschemaname@.pg_resourcetype from ''$GP_SEG_DATADIR/gp_tmp'' with oids csv" template1 $GP_USER;
+           rm -f $GP_SEG_DATADIR/gp_tmp'
+  format 'csv';
+
+create or replace function @gpupgradeschemaname@.insert_gp_tmp (
+  rsqoid oid, resname name, restypid smallint, resrequired boolean, reshasdefault boolean,
+  reshasdisable boolean, resdefaultsetting text, resdisabledsetting text 
+)
+returns int as $$
+begin
+  insert into @gpupgradeschemaname@.pg_resourcetype_rebuilt values(rsqoid, resname, restypid, resrequired, reshasdefault,
+  reshasdisable, resdefaultsetting, resdisabledsetting);
+  return 1;
+end;
+$$ language 'plpgsql';
+
+create or replace function @gpupgradeschemaname@.distributed_insert_gp_tmp(
+  rsqoid oid, resname name, restypid smallint, resrequired boolean, reshasdefault boolean,
+  reshasdisable boolean, resdefaultsetting text, resdisabledsetting text 
+) returns int as $$
+begin
+  perform @gpupgradeschemaname@.insert_gp_tmp(rsqoid, resname, restypid, resrequired, reshasdefault,
+  reshasdisable, resdefaultsetting, resdisabledsetting)
+    from gp_dist_random('gp_id');
+  return 1;
+end;
+$$ language 'plpgsql';
+
+select @gpupgradeschemaname@.distributed_insert_gp_tmp(
+    oid,resname, restypid, resrequired, reshasdefault,
+  reshasdisable, resdefaultsetting, resdisabledsetting)
+from @gpupgradeschemaname@.pg_resourcetype;
+
+drop external web table @gpupgradeschemaname@.pg_resourcetype_rebuilt;
+drop function @gpupgradeschemaname@.insert_gp_tmp(rsqoid oid, resname name, restypid smallint, resrequired boolean, reshasdefault boolean,
+  reshasdisable boolean, resdefaultsetting text, resdisabledsetting text);
+drop function @gpupgradeschemaname@.distributed_insert_gp_tmp(rsqoid oid, resname name, restypid smallint, resrequired boolean, reshasdefault boolean,
+  reshasdisable boolean, resdefaultsetting text, resdisabledsetting text);
+
+--------------------------------
+-- HDFS Privilege
+--   1. add hdfs read/write privl columns to pg_authid
+--   2. set default privl of hdfs read/write to false
+--   3. add new columsn to pg_roles
+--------------------------------
+alter table @gpupgradeschemaname@.pg_authid add column rolcreaterexthdfs bool;
+alter table @gpupgradeschemaname@.pg_authid add column rolcreatewexthdfs bool;
+update @gpupgradeschemaname@.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
+select catDML('update @gpupgradeschemaname@.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random('gp_id');
+
+CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_roles AS 
+ SELECT pg_authid.rolname, pg_authid.rolsuper, pg_authid.rolinherit,
+  pg_authid.rolcreaterole, pg_authid.rolcreatedb, pg_authid.rolcatupdate,
+  pg_authid.rolcanlogin, pg_authid.rolconnlimit, '********'::text AS rolpassword,
+  pg_authid.rolvaliduntil, pg_authid.rolconfig, pg_authid.rolresqueue, pg_authid.oid, 
+  pg_authid.rolcreaterextgpfd, pg_authid.rolcreaterexthttp, pg_authid.rolcreatewextgpfd, 
+  pg_authid.rolcreaterexthdfs, pg_authid.rolcreatewexthdfs
+   FROM pg_authid;
+
 
 -- Catalog Upgrade DDL complete

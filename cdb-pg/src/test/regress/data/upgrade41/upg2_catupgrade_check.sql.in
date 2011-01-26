@@ -24,6 +24,14 @@ begin
 end;
 $$ language 'plpgsql';
 
+-- Use this pl/pgsql function to add PIn dependency of the newly created procedure
+create or replace function @gpupgradeschemaname@.addProcPIN(procid oid) returns int as $$
+begin
+  INSERT INTO @gpupgradeschemaname@.pg_depend values(0,0,0, 1255, procid, 0, 'p');
+  PERFORM @gpupgradeschemaname@.catDML('INSERT INTO @gpupgradeschemaname@.pg_depend values(0,0,0, 1255, '||procid||', 0, ''p'')') from gp_dist_random('gp_id');
+  return 1;
+end;
+$$ language 'plpgsql';
 
 -------------------------------------
 -- Execute the main upgrade script
@@ -50,6 +58,7 @@ select @gpupgradeschemaname@.catDML(
 from gp_dist_random('gp_id');
 
 drop function @gpupgradeschemaname@.catDML(stmt text);
+drop function @gpupgradeschemaname@.addProcPIN(procid oid);
 abort;
 
 \unset ON_ERROR_STOP

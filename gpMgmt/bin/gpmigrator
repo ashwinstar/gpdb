@@ -243,7 +243,6 @@ class GPUpgrade:
         '''
         self.cmd        = 'MASTER'      # Command being run
 
-        self.snapshot   = False
         self.resume     = False
         self.mirrormode = None
 
@@ -496,14 +495,6 @@ class GPUpgrade:
         if options.nocheckschema:
             self.checkschema = False
 
-        # On SUNOS (Which has zfs and thus supports zfs snapshots) we will
-        # pause the upgrade after remirroring before we complete the upgrade.
-        # This can be explicitly disabled via passing --nosnapshot
-        if unix.curr_platform == unix.SUNOS and not options.nosnapshot:
-            self.snapshot = True
-        else:
-            self.snapshot = False
-
         if self.cmd != 'MASTER':
             self.oldversion = GpVersion(urllib.unquote(options.oldversion))
             self.newversion = GpVersion(urllib.unquote(options.newversion))
@@ -547,7 +538,6 @@ class GPUpgrade:
                 self.oldhome = os.path.abspath(self.oldhome)
             if not os.path.isabs(self.newhome):
                 self.newhome = os.path.abspath(self.newhome)
-
 
 
     #------------------------------------------------------------

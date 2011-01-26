@@ -1294,12 +1294,6 @@ class GPUpgrade:
             if retcode > 0:
                 raise UpgradeError('Catalog Check Failed - see %s for details' % outfilename)
             
-        # Dry run the upgrade script
-        self.Shutdown()
-        logger.info('Dry running upgrade script')
-        self.Startup(self.newenv, upgrade=True)
-        runfile = "%s/share/postgresql/upgrade/upg2_catupgrade_check.sql" % self.newhome
-        self.ExecuteSQLFileOnAllDBs(runfile)
         self.Shutdown()
 
 
@@ -1701,6 +1695,7 @@ class GPUpgrade:
     def RecoverPrimary(self):
         self.ForceShutDown()
         self.Startup(self.oldenv)
+        logger.info("Running gprecoverseg to recover primary....")
         
         cmd = "$GPHOME/bin/gprecoverseg -a -F"
         p = subprocess.Popen(cmd, shell = True,
@@ -1770,6 +1765,8 @@ class GPUpgrade:
     def RecoverMirror(self):
         self.ForceShutDown()
         self.Startup(self.newenv)
+        logger.info("Running gprecoverseg to recover mirror....")
+
         cmd = ' '.join(["$GPHOME/bin/gprecoverseg", '-a'])
         p = subprocess.Popen(cmd, shell = True,
                             close_fds = True,

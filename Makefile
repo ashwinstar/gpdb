@@ -869,6 +869,7 @@ SET_VERSION_SCRIPTS = \
 	bin/gpload.py \
 	bin/gplogfilter \
 	bin/gpmigrator \
+	bin/gpmigrator_mirror \
 	bin/gprebuildsystem \
 	bin/gprecoverseg \
 	bin/gpscp \

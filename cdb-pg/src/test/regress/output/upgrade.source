@@ -16749,24 +16749,64 @@ create function upg_catalog.gp_persistent_build_all(
 returns upg_catalog.int4
 language internal AS 'gp_persistent_build_all' volatile
 with (oid = 7179);
+select upg_catalog.addProcPIN(7179);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:28: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(7179);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on function upg_catalog.gp_persistent_build_all(
+     upg_catalog.bool)
+is 'populate the persistent tables and gp_relation_node for the whole database instance';
 create function upg_catalog.gp_persistent_reset_all()
 returns upg_catalog.int4
 language internal AS 'gp_persistent_reset_all' volatile
 with (oid = 7180);
+select upg_catalog.addProcPIN(7180);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:37: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(7180);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on function upg_catalog.gp_persistent_reset_all()
+is 'Remove the persistent tables and gp_relation_node for the whole database instance';
 create function upg_catalog.gp_persistent_repair_delete(
     upg_catalog.int4,
     upg_catalog.tid)
 returns upg_catalog.int4
 language internal AS 'gp_persistent_repair_delete' volatile
 with (oid = 7181);
+select upg_catalog.addProcPIN(7181);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:47: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(7181);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on function upg_catalog.gp_persistent_repair_delete(
+    upg_catalog.int4,
+    upg_catalog.tid)
+is 'Remove an entry specified by TID from a persistent table for the current database instance';
 create function upg_catalog.gp_persistent_set_relation_bufpool_kind_all()
 returns upg_catalog.int4
 language internal AS 'gp_persistent_set_relation_bufpool_kind_all' volatile
 with (oid = 7182);
+select upg_catalog.addProcPIN(7182);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:57: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(7182);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on function upg_catalog.gp_persistent_set_relation_bufpool_kind_all()
+is 'Populate the gp_persistent_relation_node table''s relation_bufpool_kind column for the whole database instance for upgrade from 4.0 to 4.1';
 select gp_persistent_set_relation_bufpool_kind_all();
-psql:@abs_srcdir@/data/upg_catupgrade_41.sql:46: ERROR:  function is not supported
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:61: ERROR:  function is not supported
 select gp_persistent_set_relation_bufpool_kind_all() from gp_dist_random('gp_id');
-psql:@abs_srcdir@/data/upg_catupgrade_41.sql:47: ERROR:  function is not supported
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:62: ERROR:  function is not supported  (seg0 slice1 @hostname@:50000 pid=28504)
+update upg_catalog.pg_class set relhaspkey = true where oid = 5094;
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:64: ERROR:  column "oid" does not exist
+LINE 1: ... upg_catalog.pg_class set relhaspkey = true where oid = 5094...
+                                                             ^
+select catDML('update upg_catalog.pg_class set relhaspkey = true where oid = 5094') from gp_dist_random('gp_id');
+ catdml 
+--------
+(0 rows)
+
 --
 -- Ordered Aggregates
 --
@@ -16895,28 +16935,6 @@ select catDML('delete from upg_catalog.pg_depend where refobjid=8001') from gp_d
 
 drop schema if exists upg_toolkit;
 create schema upg_toolkit;
---------------------------------
--- HDFS Privilege
---   1. add hdfs read/write privl columns to pg_authid
---   2. set default privl of hdfs read/write to false
---   3. add new columsn to pg_roles
---------------------------------
-alter table upg_catalog.pg_authid add column rolcreaterexthdfs bool;
-alter table upg_catalog.pg_authid add column rolcreatewexthdfs bool;
-update upg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
-select catDML('update upg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random('gp_id');
- catdml 
---------
-(0 rows)
-
-CREATE OR REPLACE VIEW upg_catalog.pg_roles AS 
- SELECT pg_authid.rolname, pg_authid.rolsuper, pg_authid.rolinherit,
-  pg_authid.rolcreaterole, pg_authid.rolcreatedb, pg_authid.rolcatupdate,
-  pg_authid.rolcanlogin, pg_authid.rolconnlimit, '********'::text AS rolpassword,
-  pg_authid.rolvaliduntil, pg_authid.rolconfig, pg_authid.rolresqueue, pg_authid.oid, 
-  pg_authid.rolcreaterextgpfd, pg_authid.rolcreaterexthttp, pg_authid.rolcreatewextgpfd, 
-  pg_authid.rolcreaterexthdfs, pg_authid.rolcreatewexthdfs
-   FROM pg_authid;
 -- MPP-11461, MPP-11127: fix tablespace
 CREATE OR REPLACE VIEW upg_catalog.pg_partitions AS
   select 
@@ -17025,6 +17043,11 @@ create function upg_catalog.float8_mregr_tstats(float8[])
     returns float8[] 
     language internal AS 'float8_mregr_tstats' strict immutable 
     with (oid = 3263);
+select upg_catalog.addProcPIN(3263);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:270: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(3263);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
 create aggregate upg_catalog.mregr_tstats(float8, float8[]) (
     stype     = float8[],
     initcond  = '{0}',
@@ -17033,10 +17056,21 @@ create aggregate upg_catalog.mregr_tstats(float8, float8[]) (
     finalfunc = float8_mregr_tstats,
     oid       = 3264
 );
+select upg_catalog.addProcPIN(3264);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:280: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(3264);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
 create function upg_catalog.float8_mregr_pvalues(float8[]) 
     returns float8[] 
     language internal AS 'float8_mregr_pvalues' strict immutable 
     with (oid = 3265);
+select upg_catalog.addProcPIN(3265);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:286: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(3265);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+    
 create aggregate upg_catalog.mregr_pvalues(float8, float8[]) (
     stype     = float8[],
     initcond  = '{0}',
@@ -17045,11 +17079,21 @@ create aggregate upg_catalog.mregr_pvalues(float8, float8[]) (
     finalfunc = float8_mregr_pvalues,
     oid       = 3266
 );
+select upg_catalog.addProcPIN(3266);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:296: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(3266);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
 -- naive bayes probability values
 create function upg_catalog.nb_classify_probabilities(nb_classification) 
     returns float8[]
     language internal AS 'nb_classify_probabilities' strict immutable
     with (oid = 3267);
+select upg_catalog.addProcPIN(3267);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:303: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(3267);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
 create aggregate upg_catalog.nb_probabilities(text[], bigint, bigint[], bigint[]) (
     stype     = nb_classification,
     sfunc     = nb_classify_accum,
@@ -17057,6 +17101,11 @@ create aggregate upg_catalog.nb_probabilities(text[], bigint, bigint[], bigint[]
     finalfunc = nb_classify_probabilities,
     oid       = 3268
 );
+select upg_catalog.addProcPIN(3268);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:311: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(3268);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
 --
 -- Memory quota related changes
 --
@@ -17065,17 +17114,25 @@ create function upg_catalog.pg_resqueue_status_kv()
 	returns setof record 
 	language internal AS 'pg_resqueue_status_kv' strict volatile
 	with (oid = 6069);
+select upg_catalog.addProcPIN(6069);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:324: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(6069);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on  function upg_catalog.pg_resqueue_status_kv()
+is 'Return resource queue information';
 -- add new resource type in pg_resourcetype. this table is maintained 
-insert into upg_catalog.pg_resourcetype 
-  select 'memory_limit',6,false,true,true,'-1','-1'
-  where (select count(*) from pg_catalog.pg_resourcetype where restypid = 6) = 0;
-select catDML('insert into upg_catalog.pg_resourcetype 
-  select ''memory_limit'',6,false,true,true,''-1'',''-1''
-  where (select count(*) from pg_catalog.pg_resourcetype where restypid = 6) = 0') from gp_dist_random('gp_id');
- catdml 
---------
-(0 rows)
-
+create external web table upg_catalog.pg_resourcetype_insert(a text)
+  execute 'echo "6459,memory_limit,6,false,true,true,-1,-1">$GP_SEG_DATADIR/gp_tmp;
+           PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_MASTER_PORT --command "copy upg_catalog.pg_resourcetype from ''$GP_SEG_DATADIR/gp_tmp'' with oids csv" template1 $GP_USER;
+           rm -rf $GP_SEG_DATADIR/gp_tmp'
+  on master format 'text';
+select (select * from  upg_catalog.pg_resourcetype_insert)
+  where 6459 not in (select oid from upg_catalog.pg_resourcetype);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:335: ERROR:  column "oid" does not exist
+LINE 2:   where 6459 not in (select oid from upg_catalog.pg_resource...
+                                    ^
+drop external web table upg_catalog.pg_resourcetype_insert;
 -- for every existing queue, add default memory_limit of -1. This table is not maintained on the segments, so we don't do this on the segments.
 insert into upg_catalog.pg_resqueuecapability
 	select distinct resqueueid, 6, '-1'
@@ -17093,6 +17150,17 @@ create function upg_catalog.pg_stat_get_activity(
 	returns setof record 
 	language internal AS 'pg_stat_get_activity' stable
 	with (oid = 6071);
+select upg_catalog.addProcPIN(6071);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:358: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(6071);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on function upg_catalog.pg_stat_get_activity(
+    pid integer, OUT datid oid, OUT procpid integer, OUT usesysid oid, OUT application_name text,
+    OUT current_query text, OUT waiting boolean, OUT xact_start timestamp with time zone, 
+    OUT query_start timestamp with time zone, OUT backend_start timestamp with time zone, 
+    OUT client_addr inet, OUT client_port integer, OUT sess_id integer )
+is 'statistics: information about currently active backends';
 CREATE OR REPLACE VIEW upg_catalog.pg_stat_activity AS 
     SELECT 
             S.datid AS datid,
@@ -17119,11 +17187,28 @@ create function upg_catalog.array_agg_transfn(
     returns upg_catalog.internal
     language internal AS 'array_agg_transfn' immutable
     with (oid = 2908);
+select upg_catalog.addProcPIN(2908);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:394: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(2908);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on function upg_catalog.array_agg_transfn(
+        upg_catalog.internal, 
+        upg_catalog.anyelement)
+is 'array_agg transition function';
 create function upg_catalog.array_agg_finalfn(
         upg_catalog.internal) 
     returns upg_catalog.anyarray
     language internal AS 'array_agg_finalfn' immutable
     with (oid = 2909);
+select upg_catalog.addProcPIN(2909);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:404: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(2909);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on function upg_catalog.array_agg_finalfn(
+        upg_catalog.internal)
+is 'array_agg final function';
 create ordered aggregate upg_catalog.array_agg(
         upg_catalog.anyelement) 
     (
@@ -17132,6 +17217,14 @@ create ordered aggregate upg_catalog.array_agg(
         finalfunc = upg_catalog.array_agg_finalfn,
         oid       = 2910
     );
+select upg_catalog.addProcPIN(2910);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:416: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(2910);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on aggregate upg_catalog.array_agg(
+        upg_catalog.anyelement) 
+is 'concatenate aggregate input into an array';
 -- string_agg
 create function upg_catalog.string_agg_transfn(
         upg_catalog.internal, 
@@ -17139,6 +17232,15 @@ create function upg_catalog.string_agg_transfn(
     returns upg_catalog.internal
     language internal AS 'string_agg_transfn' immutable
     with (oid = 3534);
+select upg_catalog.addProcPIN(3534);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:429: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(3534);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on function upg_catalog.string_agg_transfn(
+        upg_catalog.internal, 
+        upg_catalog.text)
+is 'string_agg(text) transition function';
 create function upg_catalog.string_agg_delim_transfn(
         upg_catalog.internal, 
         upg_catalog.text, 
@@ -17146,11 +17248,29 @@ create function upg_catalog.string_agg_delim_transfn(
     returns upg_catalog.internal
     language internal AS 'string_agg_delim_transfn' immutable
     with (oid = 3535);
+select upg_catalog.addProcPIN(3535);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:441: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(3535);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on function upg_catalog.string_agg_delim_transfn(
+        upg_catalog.internal, 
+        upg_catalog.text, 
+        upg_catalog.text)
+is 'string_agg(text, text) transition function';
 create function upg_catalog.string_agg_finalfn(
         upg_catalog.internal)
     returns upg_catalog.text
     language internal AS 'string_agg_finalfn' immutable
     with (oid = 3536);
+select upg_catalog.addProcPIN(3536);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:452: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(3536);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on function upg_catalog.string_agg_finalfn(
+        upg_catalog.internal)
+is 'string_agg final function';
 create ordered aggregate upg_catalog.string_agg(
         upg_catalog.text) 
     (
@@ -17159,6 +17279,14 @@ create ordered aggregate upg_catalog.string_agg(
         finalfunc = upg_catalog.string_agg_finalfn,
         oid       = 3537
     );
+select upg_catalog.addProcPIN(3537);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:464: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(3537);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on aggregate upg_catalog.string_agg(
+        upg_catalog.text)
+is 'concatenate aggregate input into an string';
 create ordered aggregate upg_catalog.string_agg(
         upg_catalog.text, 
         upg_catalog.text) 
@@ -17168,7 +17296,15 @@ create ordered aggregate upg_catalog.string_agg(
         finalfunc = upg_catalog.string_agg_finalfn,
         oid       = 3538
     );
-    
+select upg_catalog.addProcPIN(3538);
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:478: ERROR:  function upg_catalog.addprocpin(integer) does not exist
+LINE 1: select upg_catalog.addProcPIN(3538);
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+comment on aggregate upg_catalog.string_agg(
+        upg_catalog.text, 
+        upg_catalog.text)
+is 'concatenate aggregate input into an string with delimiter';
 -- pg_locks
 CREATE OR REPLACE VIEW upg_catalog.pg_locks AS
  SELECT l.locktype, l.database, l.relation, l.page, l.tuple, l.transactionid, 
@@ -17177,6 +17313,196 @@ CREATE OR REPLACE VIEW upg_catalog.pg_locks AS
    FROM pg_lock_status() l(locktype text, database oid, relation oid, page integer, tuple smallint, transactionid xid, 
    					classid oid, objid oid, objsubid smallint, transaction xid, pid integer, mode text, granted boolean, 
    					mppsessionid integer, mppiswriter boolean, gp_segment_id integer);
+-- 
+-- Sync pg_resqueue between master and segment
+-- 1. clear pg_resqueue 
+-- 2. create an external table which
+--    i.   remove the tmp file $GP_SEG_DATADIR/gp_tmp
+--    ii.  writes pg_resqueue rows to $GP_SEG_DATADIR/gp_tmp
+--    iii. COPY gp_tmp to pg_resqueue
+--    iv.  remove the tmp file
+-- 3. for every rows in pg_resqueue, insert the row into the external table at every segment
+--
+create writable external web table upg_catalog.pg_resqueue_delete (s text)
+  execute 'PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "delete from upg_catalog.pg_resqueue" template1 $GP_USER'
+  format 'csv';
+select catDML('insert into upg_catalog.pg_resqueue_delete values(1)') from gp_dist_random('gp_id');
+ catdml 
+--------
+(0 rows)
+
+drop external web table upg_catalog.pg_resqueue_delete;
+create writable external web table upg_catalog.pg_resqueue_rebuilt (
+  rsqoid oid, rsqname name, cnt real, cost real, oc text, icost real)
+  execute 'rm -f $GP_SEG_DATADIR/gp_tmp;
+           tee -a $GP_SEG_DATADIR/gp_tmp;
+           PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "copy upg_catalog.pg_resqueue from ''$GP_SEG_DATADIR/gp_tmp'' with oids csv" template1 $GP_USER;
+           rm -f $GP_SEG_DATADIR/gp_tmp'
+  format 'csv';
+create or replace function upg_catalog.insert_gp_tmp(
+  rsqoid oid, rsqname name, cnt real, cost real, oc text, icost real
+) returns int as $$
+begin
+  insert into upg_catalog.pg_resqueue_rebuilt values(rsqoid, rsqname, cnt, cost, oc, icost);
+  return 1;
+end;
+$$ language 'plpgsql';
+create or replace function upg_catalog.distributed_insert_gp_tmp(
+  rsqoid oid, rsqname name, cnt real, cost real, oc text, icost real
+) returns int as $$
+begin
+  perform upg_catalog.insert_gp_tmp(rsqoid, rsqname, cnt, cost, oc, icost)
+    from gp_dist_random('gp_id');
+  return 1;
+end;
+$$ language 'plpgsql';
+select upg_catalog.distributed_insert_gp_tmp(
+    oid,rsqname,rsqcountlimit,rsqcostlimit,
+    case when rsqovercommit then 'true' else 'false' end,
+    rsqignorecostlimit)
+from upg_catalog.pg_resqueue;
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:544: ERROR:  column "oid" does not exist
+LINE 2:     oid,rsqname,rsqcountlimit,rsqcostlimit,
+            ^
+drop external web table upg_catalog.pg_resqueue_rebuilt;
+drop function upg_catalog.insert_gp_tmp(oid, name, real, real, text, real);
+drop function upg_catalog.distributed_insert_gp_tmp(oid, name, real, real, text, real);
+-- 
+-- Sync pg_resqueuecapability between master and segment
+-- 1. clear pg_resqueuecapability 
+-- 2. create an external table which
+--    i.   remove the tmp file $GP_SEG_DATADIR/gp_tmp
+--    ii.  writes pg_resqueue rows to $GP_SEG_DATADIR/gp_tmp
+--    iii. COPY gp_tmp to pg_resqueuecapability
+--    iv.  remove the tmp file
+-- 3. for every rows in pg_resqueuecapability, insert the row into the external table at every segment
+--
+create writable external web table upg_catalog.pg_resqueuecapability_delete (s text)
+  execute 'PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "delete from upg_catalog.pg_resqueuecapability" template1 $GP_USER'
+  format 'csv';
+select catDML('insert into upg_catalog.pg_resqueuecapability_delete values(1)') from gp_dist_random('gp_id');
+ catdml 
+--------
+(0 rows)
+
+drop external web table upg_catalog.pg_resqueuecapability_delete;
+create writable external web table upg_catalog.pg_resqueuecapability_rebuilt (
+  rsqoid oid, resqueueid oid, restypid smallint, ressetting text)
+  execute 'rm -f $GP_SEG_DATADIR/gp_tmp;
+           tee -a $GP_SEG_DATADIR/gp_tmp;
+           PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "copy upg_catalog.pg_resqueuecapability from ''$GP_SEG_DATADIR/gp_tmp'' with oids csv" template1 $GP_USER;
+           rm -f $GP_SEG_DATADIR/gp_tmp'
+  format 'csv';
+create or replace function upg_catalog.insert_gp_tmp(
+  rsqoid oid, resqueueid oid, restypid smallint, ressetting text)
+returns int as $$
+begin
+  insert into upg_catalog.pg_resqueuecapability_rebuilt values(rsqoid, resqueueid, restypid, ressetting);
+  return 1;
+end;
+$$ language 'plpgsql';
+create or replace function upg_catalog.distributed_insert_gp_tmp(
+  rsqoid oid, resqueueid oid, restypid smallint, ressetting text
+) returns int as $$
+begin
+  perform upg_catalog.insert_gp_tmp(rsqoid, resqueueid, restypid, ressetting)
+    from gp_dist_random('gp_id');
+  return 1;
+end;
+$$ language 'plpgsql';
+select upg_catalog.distributed_insert_gp_tmp(
+    oid,resqueueid, restypid, ressetting)
+from upg_catalog.pg_resqueuecapability;
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:597: ERROR:  column "oid" does not exist
+LINE 2:     oid,resqueueid, restypid, ressetting)
+            ^
+drop external web table upg_catalog.pg_resqueuecapability_rebuilt;
+drop function upg_catalog.insert_gp_tmp(rsqoid oid, resqueueid oid, restypid smallint, ressetting text);
+drop function upg_catalog.distributed_insert_gp_tmp(rsqoid oid, resqueueid oid, restypid smallint, ressetting text);
+-- 
+-- Sync pg_resourcetype between master and segment
+-- 1. clear pg_resourcetype 
+-- 2. create an external table which
+--    i.   remove the tmp file $GP_SEG_DATADIR/gp_tmp
+--    ii.  writes pg_resqueue rows to $GP_SEG_DATADIR/gp_tmp
+--    iii. COPY gp_tmp to pg_resourcetype
+--    iv.  remove the tmp file
+-- 3. for every rows in pg_resourcetype, insert the row into the external table at every segment
+--
+create writable external web table upg_catalog.pg_resourcetype_delete (s text)
+  execute 'PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "delete from upg_catalog.pg_resourcetype" template1 $GP_USER'
+  format 'csv';
+select catDML('insert into upg_catalog.pg_resourcetype_delete values(1)') from gp_dist_random('gp_id');
+ catdml 
+--------
+(0 rows)
+
+drop external web table upg_catalog.pg_resourcetype_delete;
+create writable external web table upg_catalog.pg_resourcetype_rebuilt (
+  rsqoid oid, resname name, restypid smallint, resrequired boolean, reshasdefault boolean,
+  reshasdisable boolean, resdefaultsetting text, resdisabledsetting text 
+)
+  execute 'rm -f $GP_SEG_DATADIR/gp_tmp;
+           tee -a $GP_SEG_DATADIR/gp_tmp;
+           PGOPTIONS=''-c gp_session_role=utility'' psql -p $GP_SEG_PORT --command "copy upg_catalog.pg_resourcetype from ''$GP_SEG_DATADIR/gp_tmp'' with oids csv" template1 $GP_USER;
+           rm -f $GP_SEG_DATADIR/gp_tmp'
+  format 'csv';
+create or replace function upg_catalog.insert_gp_tmp (
+  rsqoid oid, resname name, restypid smallint, resrequired boolean, reshasdefault boolean,
+  reshasdisable boolean, resdefaultsetting text, resdisabledsetting text 
+)
+returns int as $$
+begin
+  insert into upg_catalog.pg_resourcetype_rebuilt values(rsqoid, resname, restypid, resrequired, reshasdefault,
+  reshasdisable, resdefaultsetting, resdisabledsetting);
+  return 1;
+end;
+$$ language 'plpgsql';
+create or replace function upg_catalog.distributed_insert_gp_tmp(
+  rsqoid oid, resname name, restypid smallint, resrequired boolean, reshasdefault boolean,
+  reshasdisable boolean, resdefaultsetting text, resdisabledsetting text 
+) returns int as $$
+begin
+  perform upg_catalog.insert_gp_tmp(rsqoid, resname, restypid, resrequired, reshasdefault,
+  reshasdisable, resdefaultsetting, resdisabledsetting)
+    from gp_dist_random('gp_id');
+  return 1;
+end;
+$$ language 'plpgsql';
+select upg_catalog.distributed_insert_gp_tmp(
+    oid,resname, restypid, resrequired, reshasdefault,
+  reshasdisable, resdefaultsetting, resdisabledsetting)
+from upg_catalog.pg_resourcetype;
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:658: ERROR:  column "oid" does not exist
+LINE 2:     oid,resname, restypid, resrequired, reshasdefault,
+            ^
+drop external web table upg_catalog.pg_resourcetype_rebuilt;
+drop function upg_catalog.insert_gp_tmp(rsqoid oid, resname name, restypid smallint, resrequired boolean, reshasdefault boolean,
+  reshasdisable boolean, resdefaultsetting text, resdisabledsetting text);
+drop function upg_catalog.distributed_insert_gp_tmp(rsqoid oid, resname name, restypid smallint, resrequired boolean, reshasdefault boolean,
+  reshasdisable boolean, resdefaultsetting text, resdisabledsetting text);
+--------------------------------
+-- HDFS Privilege
+--   1. add hdfs read/write privl columns to pg_authid
+--   2. set default privl of hdfs read/write to false
+--   3. add new columsn to pg_roles
+--------------------------------
+alter table upg_catalog.pg_authid add column rolcreaterexthdfs bool;
+alter table upg_catalog.pg_authid add column rolcreatewexthdfs bool;
+update upg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
+select catDML('update upg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random('gp_id');
+ catdml 
+--------
+(0 rows)
+
+CREATE OR REPLACE VIEW upg_catalog.pg_roles AS 
+ SELECT pg_authid.rolname, pg_authid.rolsuper, pg_authid.rolinherit,
+  pg_authid.rolcreaterole, pg_authid.rolcreatedb, pg_authid.rolcatupdate,
+  pg_authid.rolcanlogin, pg_authid.rolconnlimit, '********'::text AS rolpassword,
+  pg_authid.rolvaliduntil, pg_authid.rolconfig, pg_authid.rolresqueue, pg_authid.oid, 
+  pg_authid.rolcreaterextgpfd, pg_authid.rolcreaterexthttp, pg_authid.rolcreatewextgpfd, 
+  pg_authid.rolcreaterexthdfs, pg_authid.rolcreatewexthdfs
+   FROM pg_authid;
 -- Catalog Upgrade DDL complete
 DROP FUNCTION CatDML(text);
 set client_min_messages = 'WARNING';
