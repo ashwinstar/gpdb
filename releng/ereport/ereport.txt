@@ -762,96 +762,105 @@ saae: slru:00000821:  errmsg("could not access status of transaction %u", xid),
 saae: slru:00000822:  errdetail("Could not close file \"%s\": %m.", 
 saae: slru:00000823:  path))); 
 aaaaa GP_IGNORE: taai: twophase - ./backend/access/transam/twophase.c
-taai: twophase:00000401:  ereport(ERROR, 
-taai: twophase:00000402:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-taai: twophase:00000403:  errmsg("transaction identifier \"%s\" is too long (%d > %d max)", 
-taai: twophase:00000404:  gid, idlen, GIDSIZE))); 
-taai: twophase:00000438:  ereport(ERROR, 
-taai: twophase:00000439:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taai: twophase:00000440:  errmsg("transaction identifier \"%s\" is already in use", 
-taai: twophase:00000441:  gid))); 
-taai: twophase:00000447:  ereport(ERROR, 
-taai: twophase:00000448:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-taai: twophase:00000449:  errmsg("maximum number of prepared transactions reached"), 
-taai: twophase:00000450:  errhint("Increase max_prepared_transactions (currently %d).", 
-taai: twophase:00000451:  max_prepared_xacts))); 
-taai: twophase:00000619:  ereport(ERROR, 
-taai: twophase:00000620:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-taai: twophase:00000621:  errmsg("prepared transaction with identifier \"%s\" is busy", 
-taai: twophase:00000622:  gid))); 
-taai: twophase:00000631:  ereport(ERROR, 
-taai: twophase:00000632:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-taai: twophase:00000633:  errmsg("permission denied to finish prepared transaction"), 
-taai: twophase:00000634:  errhint("Must be superuser or the user that prepared the transaction."))); 
-taai: twophase:00000646:  ereport(ERROR, 
-taai: twophase:00000647:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taai: twophase:00000648:  errmsg("prepared transaction belongs to another database"), 
-taai: twophase:00000649:  errhint("Connect to the database where the transaction was prepared to finish it."))); 
-taai: twophase:00000667:  ereport(ERROR, 
-taai: twophase:00000668:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taai: twophase:00000669:  errmsg("prepared transaction with identifier \"%s\" does not exist", 
-taai: twophase:00000670:  gid))); 
-taai: twophase:00000704:  ereport(ERROR, 
-taai: twophase:00000705:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taai: twophase:00000706:  errmsg("prepared transaction with identifier \"%s\" does not exist", 
-taai: twophase:00000707:  gid))); 
-taai: twophase:00001223:  ereport(ERROR, 
-taai: twophase:00001224:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-taai: twophase:00001225:  errmsg("two-phase state file maximum length exceeded"))); 
-taai: twophase:00001547:  ereport(WARNING, 
-taai: twophase:00001548:  (errcode_for_file_access(), 
-taai: twophase:00001549:  errmsg("could not open two-phase state file \"%s\": %m", 
-taai: twophase:00001550:  path))); 
-taai: twophase:00001563:  ereport(WARNING, 
-taai: twophase:00001564:  (errcode_for_file_access(), 
-taai: twophase:00001565:  errmsg("could not stat two-phase state file \"%s\": %m", 
-taai: twophase:00001566:  path))); 
-taai: twophase:00001575:  ereport(WARNING, 
-taai: twophase:00001576:  (errmsg("file size less than minimum %d", minimumLen))); 
-taai: twophase:00001583:  ereport(WARNING, 
-taai: twophase:00001584:  (errmsg("two phase commit file larger than memory limit %lu", 
-taai: twophase:00001585:  (long unsigned int)MaxAllocSize))); 
-taai: twophase:00001594:  ereport(WARNING, 
-taai: twophase:00001595:  (errmsg("CRC offset not aligned (offset %d, aligned %d)", 
-taai: twophase:00001596:  crc_offset, alignedOffset))); 
-taai: twophase:00001608:  ereport(WARNING, 
-taai: twophase:00001609:  (errcode_for_file_access(), 
-taai: twophase:00001610:  errmsg("could not read two-phase state file \"%s\": %m", 
-taai: twophase:00001611:  path))); 
-taai: twophase:00001623:  ereport(WARNING, 
-taai: twophase:00001624:  (errmsg("two-phase identifier doesn't match (identifer 0x%X, expected 0x%X)", 
-taai: twophase:00001625:  hdr->magic, twoPhaseMagic))); 
+taai: twophase:00000457:  ereport(ERROR, 
+taai: twophase:00000458:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+taai: twophase:00000459:  errmsg("transaction identifier \"%s\" is too long (%d > %d max)", 
+taai: twophase:00000460:  gid, idlen, GIDSIZE))); 
+taai: twophase:00000494:  ereport(ERROR, 
+taai: twophase:00000495:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taai: twophase:00000496:  errmsg("transaction identifier \"%s\" is already in use", 
+taai: twophase:00000497:  gid))); 
+taai: twophase:00000503:  ereport(ERROR, 
+taai: twophase:00000504:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+taai: twophase:00000505:  errmsg("maximum number of prepared transactions reached"), 
+taai: twophase:00000506:  errhint("Increase max_prepared_transactions (currently %d).", 
+taai: twophase:00000507:  max_prepared_xacts))); 
+taai: twophase:00000675:  ereport(ERROR, 
+taai: twophase:00000676:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+taai: twophase:00000677:  errmsg("prepared transaction with identifier \"%s\" is busy", 
+taai: twophase:00000678:  gid))); 
+taai: twophase:00000687:  ereport(ERROR, 
+taai: twophase:00000688:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+taai: twophase:00000689:  errmsg("permission denied to finish prepared transaction"), 
+taai: twophase:00000690:  errhint("Must be superuser or the user that prepared the transaction."))); 
+taai: twophase:00000702:  ereport(ERROR, 
+taai: twophase:00000703:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taai: twophase:00000704:  errmsg("prepared transaction belongs to another database"), 
+taai: twophase:00000705:  errhint("Connect to the database where the transaction was prepared to finish it."))); 
+taai: twophase:00000723:  ereport(ERROR, 
+taai: twophase:00000724:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taai: twophase:00000725:  errmsg("prepared transaction with identifier \"%s\" does not exist", 
+taai: twophase:00000726:  gid))); 
+taai: twophase:00000760:  ereport(ERROR, 
+taai: twophase:00000761:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taai: twophase:00000762:  errmsg("prepared transaction with identifier \"%s\" does not exist", 
+taai: twophase:00000763:  gid))); 
+taai: twophase:00001279:  ereport(ERROR, 
+taai: twophase:00001280:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+taai: twophase:00001281:  errmsg("two-phase state file maximum length exceeded"))); 
+taai: twophase:00001603:  ereport(WARNING, 
+taai: twophase:00001604:  (errcode_for_file_access(), 
+taai: twophase:00001605:  errmsg("could not open two-phase state file \"%s\": %m", 
+taai: twophase:00001606:  path))); 
+taai: twophase:00001619:  ereport(WARNING, 
+taai: twophase:00001620:  (errcode_for_file_access(), 
+taai: twophase:00001621:  errmsg("could not stat two-phase state file \"%s\": %m", 
+taai: twophase:00001622:  path))); 
 taai: twophase:00001631:  ereport(WARNING, 
-taai: twophase:00001632:  (errmsg("length field doesn't match length (field %d, actual length %d)", 
-taai: twophase:00001633:  hdr->total_len, (int)stat.st_size))); 
-taai: twophase:00001646:  ereport(WARNING, 
-taai: twophase:00001647:  (errmsg("two phase state file checksum failed: expected 0x%X " 
-taai: twophase:00001648:  "but calculated 0x%X", 
-taai: twophase:00001649:  file_crc, calc_crc))); 
-taai: twophase:00001759:  ereport(ERROR, 
-taai: twophase:00001760:  (errcode(ERRCODE_DATA_CORRUPTED), 
-taai: twophase:00001761:  errmsg("two-phase state information for transaction %u is corrupt", 
-taai: twophase:00001762:  xid), 
-taai: twophase:00001763:  errSendAlert(true))); 
-taai: twophase:00001941:  ereport(WARNING, (errcode_for_file_access(), errmsg( 
-taai: twophase:00001942:  "could not remove two-phase state file \"%s\": %m", path))); 
-taai: twophase:00002097:  ereport(ERROR, 
-taai: twophase:00002098:  (errcode_for_file_access(), 
-taai: twophase:00002099:  errmsg("could not open two-phase state file \"%s\": %m", 
-taai: twophase:00002100:  path))); 
-taai: twophase:00002174:  ereport(WARNING, 
-taai: twophase:00002175:  (errmsg("removing future two-phase state file \"%s\"", 
-taai: twophase:00002176:  clde->d_name))); 
-taai: twophase:00002190:  ereport(WARNING, 
-taai: twophase:00002191:  (errmsg("removing corrupt two-phase state file \"%s\"", 
-taai: twophase:00002192:  clde->d_name))); 
-taai: twophase:00002201:  ereport(WARNING, 
-taai: twophase:00002202:  (errmsg("removing corrupt two-phase state file \"%s\"", 
-taai: twophase:00002203:  clde->d_name))); 
-taai: twophase:00002450:  ereport(WARNING, (errmsg("removing stale two-phase state file \"%s\"", 
-taai: twophase:00002451:  clde->d_name))); 
-taai: twophase:00002460:  ereport(WARNING, (errmsg( 
-taai: twophase:00002461:  "removing corrupt two-phase state file \"%s\"", clde->d_name))); 
+taai: twophase:00001632:  (errmsg("file size less than minimum %d", minimumLen))); 
+taai: twophase:00001639:  ereport(WARNING, 
+taai: twophase:00001640:  (errmsg("two phase commit file larger than memory limit %lu", 
+taai: twophase:00001641:  (long unsigned int)MaxAllocSize))); 
+taai: twophase:00001650:  ereport(WARNING, 
+taai: twophase:00001651:  (errmsg("CRC offset not aligned (offset %d, aligned %d)", 
+taai: twophase:00001652:  crc_offset, alignedOffset))); 
+taai: twophase:00001664:  ereport(WARNING, 
+taai: twophase:00001665:  (errcode_for_file_access(), 
+taai: twophase:00001666:  errmsg("could not read two-phase state file \"%s\": %m", 
+taai: twophase:00001667:  path))); 
+taai: twophase:00001679:  ereport(WARNING, 
+taai: twophase:00001680:  (errmsg("two-phase identifier doesn't match (identifer 0x%X, expected 0x%X)", 
+taai: twophase:00001681:  hdr->magic, twoPhaseMagic))); 
+taai: twophase:00001687:  ereport(WARNING, 
+taai: twophase:00001688:  (errmsg("length field doesn't match length (field %d, actual length %d)", 
+taai: twophase:00001689:  hdr->total_len, (int)stat.st_size))); 
+taai: twophase:00001702:  ereport(WARNING, 
+taai: twophase:00001703:  (errmsg("two phase state file checksum failed: expected 0x%X " 
+taai: twophase:00001704:  "but calculated 0x%X", 
+taai: twophase:00001705:  file_crc, calc_crc))); 
+taai: twophase:00001812:  ereport(WARNING, 
+taai: twophase:00001813:  (errmsg("primary failure, " 
+taai: twophase:00001814:  "xlog record is invalid, " 
+taai: twophase:00001815:  "failover requested"), 
+taai: twophase:00001816:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+taai: twophase:00001820:  ereport(ERROR, 
+taai: twophase:00001821:  (errcode(ERRCODE_DATA_CORRUPTED), 
+taai: twophase:00001822:  errmsg("xlog record is invalid"), 
+taai: twophase:00001823:  errSendAlert(true))); 
+taai: twophase:00001835:  ereport(ERROR, 
+taai: twophase:00001836:  (errcode(ERRCODE_DATA_CORRUPTED), 
+taai: twophase:00001837:  errmsg("two-phase state information for transaction %u is corrupt", 
+taai: twophase:00001838:  xid), 
+taai: twophase:00001839:  errSendAlert(true))); 
+taai: twophase:00002017:  ereport(WARNING, (errcode_for_file_access(), errmsg( 
+taai: twophase:00002018:  "could not remove two-phase state file \"%s\": %m", path))); 
+taai: twophase:00002173:  ereport(ERROR, 
+taai: twophase:00002174:  (errcode_for_file_access(), 
+taai: twophase:00002175:  errmsg("could not open two-phase state file \"%s\": %m", 
+taai: twophase:00002176:  path))); 
+taai: twophase:00002250:  ereport(WARNING, 
+taai: twophase:00002251:  (errmsg("removing future two-phase state file \"%s\"", 
+taai: twophase:00002252:  clde->d_name))); 
+taai: twophase:00002266:  ereport(WARNING, 
+taai: twophase:00002267:  (errmsg("removing corrupt two-phase state file \"%s\"", 
+taai: twophase:00002268:  clde->d_name))); 
+taai: twophase:00002277:  ereport(WARNING, 
+taai: twophase:00002278:  (errmsg("removing corrupt two-phase state file \"%s\"", 
+taai: twophase:00002279:  clde->d_name))); 
+taai: twophase:00002526:  ereport(WARNING, (errmsg("removing stale two-phase state file \"%s\"", 
+taai: twophase:00002527:  clde->d_name))); 
+taai: twophase:00002536:  ereport(WARNING, (errmsg( 
+taai: twophase:00002537:  "removing corrupt two-phase state file \"%s\"", clde->d_name))); 
 aaaaa GP_IGNORE: vaag: varsup - ./backend/access/transam/varsup.c
 vaag: varsup:00000089:  ereport(ERROR, 
 vaag: varsup:00000090:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -4062,12 +4071,12 @@ cacc: cdbpersistentfilespace:00001509:  ereport(FATAL,
 cacc: cdbpersistentfilespace:00001510:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 cacc: cdbpersistentfilespace:00001511:  errmsg("Not enough shared memory for persistent filespace hash table"))); 
 aaaaa GP_IGNORE: cacb: cdbpersistentrecovery - ./backend/cdb/cdbpersistentrecovery.c
-cacb: cdbpersistentrecovery:00001927:  ereport(ERROR, 
-cacb: cdbpersistentrecovery:00001928:  (errcode_for_file_access(), 
-cacb: cdbpersistentrecovery:00001929:  errmsg("could not write redo relation file : %m"))); 
-cacb: cdbpersistentrecovery:00002076:  ereport(ERROR, 
-cacb: cdbpersistentrecovery:00002077:  (errcode_for_file_access(), 
-cacb: cdbpersistentrecovery:00002078:  errmsg("error reading redo relation file: %m"))); 
+cacb: cdbpersistentrecovery:00002011:  ereport(ERROR, 
+cacb: cdbpersistentrecovery:00002012:  (errcode_for_file_access(), 
+cacb: cdbpersistentrecovery:00002013:  errmsg("could not write redo relation file : %m"))); 
+cacb: cdbpersistentrecovery:00002160:  ereport(ERROR, 
+cacb: cdbpersistentrecovery:00002161:  (errcode_for_file_access(), 
+cacb: cdbpersistentrecovery:00002162:  errmsg("error reading redo relation file: %m"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistenttablespace - ./backend/cdb/cdbpersistenttablespace.c
 cacd: cdbpersistenttablespace:00000611:  ereport(ERROR, 
 cacd: cdbpersistenttablespace:00000612:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
@@ -4390,12 +4399,12 @@ iaaj: icxcommon:00000707:  errdetail("%m%s sockfd=%d", "fcntl", savedSeqServerFd
 iaaj: icxcommon:00000861:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 iaaj: icxcommon:00000862:  errmsg("Interconnect Error: A HTAB entry for motion node %d already exists.", motNodeID), 
 iaaj: icxcommon:00000863:  errdetail("conns %p numConns %d first sock %d highreadsock %d", pEntry->conns, pEntry->numConns, pEntry->conns[0].sockfd, pEntry->highReadSock))); 
-iaaj: icxcommon:00000923:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaaj: icxcommon:00000924:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. (size %d)", 
-iaaj: icxcommon:00000925:  motNodeID, transportStates->size))); 
-iaaj: icxcommon:00000929:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaaj: icxcommon:00000930:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. State not valid", 
-iaaj: icxcommon:00000931:  motNodeID))); 
+iaaj: icxcommon:00000922:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaaj: icxcommon:00000923:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. (size %d)", 
+iaaj: icxcommon:00000924:  motNodeID, transportStates->size))); 
+iaaj: icxcommon:00000928:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaaj: icxcommon:00000929:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. State not valid", 
+iaaj: icxcommon:00000930:  motNodeID))); 
 aaaaa GP_IGNORE: iaag: icxtcp - ./backend/cdb/motion/ic_tcp.c
 iaag: icxtcp:00000247:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 iaag: icxtcp:00000248:  errmsg("Interconnect Error: Could not set up tcp listener socket."), 
@@ -4533,35 +4542,35 @@ iaag: icxtcp:00001193:  "fcntl(O_NONBLOCK)",
 iaag: icxtcp:00001194:  newsockfd, 
 iaag: icxtcp:00001195:  conn->remoteHostAndPort, 
 iaag: icxtcp:00001196:  conn->localHostAndPort))); 
-iaag: icxtcp:00001461:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxtcp:00001462:  errmsg("Interconnect timeout: Unable to " 
-iaag: icxtcp:00001463:  "complete setup of all connections " 
-iaag: icxtcp:00001464:  "within time limit."), 
-iaag: icxtcp:00001465:  errdetail("Completed %d of %d incoming and " 
-iaag: icxtcp:00001466:  "%d of %d outgoing connections. " 
-iaag: icxtcp:00001467:  "gp_interconnect_setup_timeout = %d " 
-iaag: icxtcp:00001468:  "seconds.", 
-iaag: icxtcp:00001469:  incoming_count, expectedTotalIncoming, 
-iaag: icxtcp:00001470:  outgoing_count, expectedTotalOutgoing, 
-iaag: icxtcp:00001471:  interconnect_setup_timeout) 
-iaag: icxtcp:00001472:  )); 
-iaag: icxtcp:00001586:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxtcp:00001587:  errmsg("Interconnect error: %m%s", "select"))); 
-iaag: icxtcp:00002452:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxtcp:00002453:  errmsg("Interconnect error receiving an incoming packet."), 
-iaag: icxtcp:00002454:  errdetail("%m%s", "select"))); 
-iaag: icxtcp:00002649:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxtcp:00002650:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxtcp:00002651:  errdetail("error during select() call (error:%d).\n" 
-iaag: icxtcp:00002652:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxtcp:00002653:  errno, conn->remoteContentId, 
-iaag: icxtcp:00002654:  conn->remoteHostAndPort))); 
-iaag: icxtcp:00002686:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxtcp:00002687:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxtcp:00002688:  errdetail("error during send() call (error:%d).\n" 
-iaag: icxtcp:00002689:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxtcp:00002690:  errno, conn->remoteContentId, 
-iaag: icxtcp:00002691:  conn->remoteHostAndPort))); 
+iaag: icxtcp:00001462:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxtcp:00001463:  errmsg("Interconnect timeout: Unable to " 
+iaag: icxtcp:00001464:  "complete setup of all connections " 
+iaag: icxtcp:00001465:  "within time limit."), 
+iaag: icxtcp:00001466:  errdetail("Completed %d of %d incoming and " 
+iaag: icxtcp:00001467:  "%d of %d outgoing connections. " 
+iaag: icxtcp:00001468:  "gp_interconnect_setup_timeout = %d " 
+iaag: icxtcp:00001469:  "seconds.", 
+iaag: icxtcp:00001470:  incoming_count, expectedTotalIncoming, 
+iaag: icxtcp:00001471:  outgoing_count, expectedTotalOutgoing, 
+iaag: icxtcp:00001472:  interconnect_setup_timeout) 
+iaag: icxtcp:00001473:  )); 
+iaag: icxtcp:00001587:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxtcp:00001588:  errmsg("Interconnect error: %m%s", "select"))); 
+iaag: icxtcp:00002453:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxtcp:00002454:  errmsg("Interconnect error receiving an incoming packet."), 
+iaag: icxtcp:00002455:  errdetail("%m%s", "select"))); 
+iaag: icxtcp:00002650:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxtcp:00002651:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxtcp:00002652:  errdetail("error during select() call (error:%d).\n" 
+iaag: icxtcp:00002653:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxtcp:00002654:  errno, conn->remoteContentId, 
+iaag: icxtcp:00002655:  conn->remoteHostAndPort))); 
+iaag: icxtcp:00002687:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxtcp:00002688:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxtcp:00002689:  errdetail("error during send() call (error:%d).\n" 
+iaag: icxtcp:00002690:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxtcp:00002691:  errno, conn->remoteContentId, 
+iaag: icxtcp:00002692:  conn->remoteHostAndPort))); 
 aaaaa GP_IGNORE: iaag: icxudp - ./backend/cdb/motion/ic_udp.c
 iaag: icxudp:00000438:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 iaag: icxudp:00000439:  errmsg("Interconnect Error: Could not set up udp listener socket."), 
@@ -4600,56 +4609,56 @@ iaag: icxudp:00001420:  errmsg("Setup UDP interconnect failed: out of memory")))
 iaag: icxudp:00001465:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 iaag: icxudp:00001466:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
 iaag: icxudp:00001467:  errdetail("%m%s", "malloc"))); 
-iaag: icxudp:00001581:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001582:  errmsg("Interconnect error: %m%s", "poll"))); 
-iaag: icxudp:00001607:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001608:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
-iaag: icxudp:00001612:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001613:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
-iaag: icxudp:00001685:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001686:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00001797:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001798:  errmsg("Interconnect timeout: Unable to " 
-iaag: icxudp:00001799:  "complete setup of all connections " 
-iaag: icxudp:00001800:  "within time limit."), 
-iaag: icxudp:00001801:  errdetail("Completed %d of %d incoming and " 
-iaag: icxudp:00001802:  "%d of %d outgoing connections. " 
-iaag: icxudp:00001803:  "gp_interconnect_setup_timeout = %d " 
-iaag: icxudp:00001804:  "seconds.", 
-iaag: icxudp:00001805:  incoming_count, expectedTotalIncoming, 
-iaag: icxudp:00001806:  outgoing_count, expectedTotalOutgoing, 
-iaag: icxudp:00001807:  interconnect_setup_timeout))); 
-iaag: icxudp:00002180:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002181:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
-iaag: icxudp:00002289:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002290:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
-iaag: icxudp:00002292:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002293:  errmsg("Interconnect error master lost contact with client (recv)"))); 
-iaag: icxudp:00002300:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002301:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00002514:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002515:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002516:  errdetail("During recvfrom() call.\n"))); 
-iaag: icxudp:00002529:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002530:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002531:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
-iaag: icxudp:00002704:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002705:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00002706:  errdetail("error during sendto() call (error:%d).\n" 
-iaag: icxudp:00002707:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002708:  errno, conn->remoteContentId, 
-iaag: icxudp:00002709:  conn->remoteHostAndPort))); 
-iaag: icxudp:00002715:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002716:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00002717:  errdetail("short transmit during sendto() call.\n" 
-iaag: icxudp:00002718:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002719:  conn->remoteContentId, 
-iaag: icxudp:00002720:  conn->remoteHostAndPort))); 
-iaag: icxudp:00002779:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002780:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
-iaag: icxudp:00002796:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002797:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002798:  errdetail("During poll() call.\n"))); 
+iaag: icxudp:00001582:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001583:  errmsg("Interconnect error: %m%s", "poll"))); 
+iaag: icxudp:00001608:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001609:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
+iaag: icxudp:00001613:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001614:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
+iaag: icxudp:00001686:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001687:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00001798:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001799:  errmsg("Interconnect timeout: Unable to " 
+iaag: icxudp:00001800:  "complete setup of all connections " 
+iaag: icxudp:00001801:  "within time limit."), 
+iaag: icxudp:00001802:  errdetail("Completed %d of %d incoming and " 
+iaag: icxudp:00001803:  "%d of %d outgoing connections. " 
+iaag: icxudp:00001804:  "gp_interconnect_setup_timeout = %d " 
+iaag: icxudp:00001805:  "seconds.", 
+iaag: icxudp:00001806:  incoming_count, expectedTotalIncoming, 
+iaag: icxudp:00001807:  outgoing_count, expectedTotalOutgoing, 
+iaag: icxudp:00001808:  interconnect_setup_timeout))); 
+iaag: icxudp:00002181:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002182:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
+iaag: icxudp:00002290:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002291:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
+iaag: icxudp:00002293:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002294:  errmsg("Interconnect error master lost contact with client (recv)"))); 
+iaag: icxudp:00002301:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002302:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00002515:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002516:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002517:  errdetail("During recvfrom() call.\n"))); 
+iaag: icxudp:00002530:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002531:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002532:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
+iaag: icxudp:00002706:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002707:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxudp:00002708:  errdetail("error during sendto() call (error:%d).\n" 
+iaag: icxudp:00002709:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00002710:  errno, conn->remoteContentId, 
+iaag: icxudp:00002711:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002717:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002718:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxudp:00002719:  errdetail("short transmit during sendto() call.\n" 
+iaag: icxudp:00002720:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00002721:  conn->remoteContentId, 
+iaag: icxudp:00002722:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002778:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002779:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
+iaag: icxudp:00002795:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002796:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002797:  errdetail("During poll() call.\n"))); 
 aaaaa GP_IGNORE: taag: tupser - ./backend/cdb/motion/tupser.c
 taag: tupser:00000086:  ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION), 
 taag: tupser:00000087:  errmsg("deserialize data underflow"))); 
@@ -6382,160 +6391,160 @@ qaaf: queue:00000201:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 qaaf: queue:00000202:  errmsg("Invalid parameter value \"%s\" for " 
 qaaf: queue:00000203:  "resource type \"%s\"", 
 qaaf: queue:00000204:  pResSetting, restyp))); 
-qaaf: queue:00000329:  ereport(ERROR, 
-qaaf: queue:00000330:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000331:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00000332:  defel->defname))); 
-qaaf: queue:00000367:  ereport(ERROR, 
-qaaf: queue:00000368:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000369:  errmsg("option \"%s\" cannot be disabled", 
-qaaf: queue:00000370:  defel->defname))); 
-qaaf: queue:00000388:  ereport(ERROR, 
-qaaf: queue:00000389:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000390:  errmsg("required option \"%s\" cannot be disabled", 
-qaaf: queue:00000391:  defel->defname))); 
-qaaf: queue:00000418:  ereport(ERROR, 
-qaaf: queue:00000419:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000420:  errmsg("conflicting or redundant option for \"%s\"", 
-qaaf: queue:00000421:  defel->defname))); 
-qaaf: queue:00000755:  ereport(ERROR, 
-qaaf: queue:00000756:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00000757:  errmsg("must be superuser to create resource queues"))); 
-qaaf: queue:00000778:  ereport(ERROR, 
-qaaf: queue:00000779:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000780:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000786:  ereport(ERROR, 
-qaaf: queue:00000787:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000788:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000794:  ereport(ERROR, 
-qaaf: queue:00000795:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000796:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000802:  ereport(ERROR, 
-qaaf: queue:00000803:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000804:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00000811:  ereport(ERROR, 
-qaaf: queue:00000812:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000813:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00000814:  defel->defname))); 
-qaaf: queue:00000836:  ereport(ERROR, 
-qaaf: queue:00000837:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000838:  errmsg("active threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00000839:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00000846:  ereport(ERROR, 
-qaaf: queue:00000847:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000848:  errmsg("cost threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00000849:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00000861:  ereport(ERROR, 
-qaaf: queue:00000862:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00000863:  errmsg("min_cost threshold cannot be negative"))); 
-qaaf: queue:00000871:  ereport(ERROR, 
-qaaf: queue:00000872:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000873:  errmsg("at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be specified"), 
-qaaf: queue:00000874:  errOmitLocation(true))); 
-qaaf: queue:00000879:  ereport(ERROR, 
-qaaf: queue:00000880:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00000881:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
-qaaf: queue:00000882:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00000883:  errOmitLocation(true))); 
-qaaf: queue:00000890:  ereport(ERROR, 
-qaaf: queue:00000891:  (errcode(ERRCODE_RESERVED_NAME), 
-qaaf: queue:00000892:  errmsg("resource queue name \"%s\" is reserved", 
-qaaf: queue:00000893:  stmt->queue), 
-qaaf: queue:00000894:  errOmitLocation(true))); 
-qaaf: queue:00000924:  ereport(ERROR, 
-qaaf: queue:00000925:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-qaaf: queue:00000926:  errmsg("resource queue \"%s\" already exists", 
-qaaf: queue:00000927:  stmt->queue))); 
-qaaf: queue:00000997:  ereport(ERROR, 
-qaaf: queue:00000998:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-qaaf: queue:00000999:  errmsg("insufficient resource queues available"), 
-qaaf: queue:00001000:  errhint("Increase max_resource_queues"))); 
-qaaf: queue:00001004:  ereport(WARNING, 
-qaaf: queue:00001005:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001006:  errhint("To enable set resource_scheduler=on"))); 
-qaaf: queue:00001075:  ereport(ERROR, 
-qaaf: queue:00001076:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00001077:  errmsg("must be superuser to alter resource queues"))); 
-qaaf: queue:00001098:  ereport(ERROR, 
-qaaf: queue:00001099:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001100:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001114:  ereport(ERROR, 
-qaaf: queue:00001115:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001116:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001130:  ereport(ERROR, 
-qaaf: queue:00001131:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001132:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001146:  ereport(ERROR, 
-qaaf: queue:00001147:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001148:  errmsg("conflicting or redundant options"))); 
-qaaf: queue:00001164:  ereport(ERROR, 
-qaaf: queue:00001165:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001166:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00001167:  defel->defname))); 
-qaaf: queue:00001177:  ereport(ERROR, 
-qaaf: queue:00001178:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001179:  errmsg("option \"%s\" is not a valid resource type", 
-qaaf: queue:00001180:  defel->defname))); 
-qaaf: queue:00001222:  ereport(ERROR, 
-qaaf: queue:00001223:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001224:  errmsg("active threshold cannot be less than %d or equal to 0", 
-qaaf: queue:00001225:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00001226:  errOmitLocation(true))); 
-qaaf: queue:00001233:  ereport(ERROR, 
-qaaf: queue:00001234:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001235:  errmsg("cost threshold must be equal to %d or greater than 0", 
-qaaf: queue:00001236:  INVALID_RES_LIMIT_THRESHOLD), 
-qaaf: queue:00001237:  errOmitLocation(true))); 
+qaaf: queue:00000349:  ereport(ERROR, 
+qaaf: queue:00000350:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000351:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00000352:  defel->defname))); 
+qaaf: queue:00000387:  ereport(ERROR, 
+qaaf: queue:00000388:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000389:  errmsg("option \"%s\" cannot be disabled", 
+qaaf: queue:00000390:  defel->defname))); 
+qaaf: queue:00000408:  ereport(ERROR, 
+qaaf: queue:00000409:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000410:  errmsg("required option \"%s\" cannot be disabled", 
+qaaf: queue:00000411:  defel->defname))); 
+qaaf: queue:00000438:  ereport(ERROR, 
+qaaf: queue:00000439:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000440:  errmsg("conflicting or redundant option for \"%s\"", 
+qaaf: queue:00000441:  defel->defname))); 
+qaaf: queue:00000781:  ereport(ERROR, 
+qaaf: queue:00000782:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00000783:  errmsg("must be superuser to create resource queues"))); 
+qaaf: queue:00000804:  ereport(ERROR, 
+qaaf: queue:00000805:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000806:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000812:  ereport(ERROR, 
+qaaf: queue:00000813:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000814:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000820:  ereport(ERROR, 
+qaaf: queue:00000821:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000822:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000828:  ereport(ERROR, 
+qaaf: queue:00000829:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000830:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00000837:  ereport(ERROR, 
+qaaf: queue:00000838:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000839:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00000840:  defel->defname))); 
+qaaf: queue:00000862:  ereport(ERROR, 
+qaaf: queue:00000863:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000864:  errmsg("active threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00000865:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00000872:  ereport(ERROR, 
+qaaf: queue:00000873:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000874:  errmsg("cost threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00000875:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00000887:  ereport(ERROR, 
+qaaf: queue:00000888:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00000889:  errmsg("min_cost threshold cannot be negative"))); 
+qaaf: queue:00000897:  ereport(ERROR, 
+qaaf: queue:00000898:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000899:  errmsg("at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be specified"), 
+qaaf: queue:00000900:  errOmitLocation(true))); 
+qaaf: queue:00000905:  ereport(ERROR, 
+qaaf: queue:00000906:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00000907:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
+qaaf: queue:00000908:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00000909:  errOmitLocation(true))); 
+qaaf: queue:00000916:  ereport(ERROR, 
+qaaf: queue:00000917:  (errcode(ERRCODE_RESERVED_NAME), 
+qaaf: queue:00000918:  errmsg("resource queue name \"%s\" is reserved", 
+qaaf: queue:00000919:  stmt->queue), 
+qaaf: queue:00000920:  errOmitLocation(true))); 
+qaaf: queue:00000950:  ereport(ERROR, 
+qaaf: queue:00000951:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+qaaf: queue:00000952:  errmsg("resource queue \"%s\" already exists", 
+qaaf: queue:00000953:  stmt->queue))); 
+qaaf: queue:00001025:  ereport(ERROR, 
+qaaf: queue:00001026:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+qaaf: queue:00001027:  errmsg("insufficient resource queues available"), 
+qaaf: queue:00001028:  errhint("Increase max_resource_queues"))); 
+qaaf: queue:00001032:  ereport(WARNING, 
+qaaf: queue:00001033:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001034:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00001103:  ereport(ERROR, 
+qaaf: queue:00001104:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00001105:  errmsg("must be superuser to alter resource queues"))); 
+qaaf: queue:00001126:  ereport(ERROR, 
+qaaf: queue:00001127:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001128:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001142:  ereport(ERROR, 
+qaaf: queue:00001143:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001144:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001158:  ereport(ERROR, 
+qaaf: queue:00001159:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001160:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001174:  ereport(ERROR, 
+qaaf: queue:00001175:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001176:  errmsg("conflicting or redundant options"))); 
+qaaf: queue:00001192:  ereport(ERROR, 
+qaaf: queue:00001193:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001194:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00001195:  defel->defname))); 
+qaaf: queue:00001205:  ereport(ERROR, 
+qaaf: queue:00001206:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001207:  errmsg("option \"%s\" is not a valid resource type", 
+qaaf: queue:00001208:  defel->defname))); 
 qaaf: queue:00001250:  ereport(ERROR, 
 qaaf: queue:00001251:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001252:  errmsg("min_cost threshold cannot be negative"), 
-qaaf: queue:00001253:  errOmitLocation(true))); 
-qaaf: queue:00001270:  ereport(ERROR, 
-qaaf: queue:00001271:  (errcode(ERRCODE_SYNTAX_ERROR), 
-qaaf: queue:00001272:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
-qaaf: queue:00001273:  errOmitLocation(true))); 
-qaaf: queue:00001302:  ereport(ERROR, 
-qaaf: queue:00001303:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-qaaf: queue:00001304:  errmsg("resource queue \"%s\" does not exist", 
-qaaf: queue:00001305:  stmt->queue), 
-qaaf: queue:00001306:  errOmitLocation(true))); 
-qaaf: queue:00001376:  ereport(ERROR, 
-qaaf: queue:00001377:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-qaaf: queue:00001378:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
-qaaf: queue:00001379:  INVALID_RES_LIMIT_THRESHOLD))); 
-qaaf: queue:00001429:  ereport(ERROR, 
-qaaf: queue:00001430:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
-qaaf: queue:00001431:  errmsg("thresholds cannot be less than current values"))); 
-qaaf: queue:00001433:  ereport(ERROR, 
-qaaf: queue:00001434:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
-qaaf: queue:00001435:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
-qaaf: queue:00001437:  ereport(ERROR, 
-qaaf: queue:00001438:  (errcode(ERRCODE_INTERNAL_ERROR), 
-qaaf: queue:00001439:  errmsg("queue hash table corrupted"))); 
-qaaf: queue:00001446:  ereport(WARNING, 
-qaaf: queue:00001447:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001448:  errhint("To enable set resource_scheduler=on"))); 
-qaaf: queue:00001488:  ereport(ERROR, 
-qaaf: queue:00001489:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-qaaf: queue:00001490:  errmsg("must be superuser to drop resource queues"))); 
+qaaf: queue:00001252:  errmsg("active threshold cannot be less than %d or equal to 0", 
+qaaf: queue:00001253:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00001254:  errOmitLocation(true))); 
+qaaf: queue:00001261:  ereport(ERROR, 
+qaaf: queue:00001262:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001263:  errmsg("cost threshold must be equal to %d or greater than 0", 
+qaaf: queue:00001264:  INVALID_RES_LIMIT_THRESHOLD), 
+qaaf: queue:00001265:  errOmitLocation(true))); 
+qaaf: queue:00001278:  ereport(ERROR, 
+qaaf: queue:00001279:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001280:  errmsg("min_cost threshold cannot be negative"), 
+qaaf: queue:00001281:  errOmitLocation(true))); 
+qaaf: queue:00001298:  ereport(ERROR, 
+qaaf: queue:00001299:  (errcode(ERRCODE_SYNTAX_ERROR), 
+qaaf: queue:00001300:  errmsg("at least one threshold, overcommit or ignore limit must be specified"), 
+qaaf: queue:00001301:  errOmitLocation(true))); 
+qaaf: queue:00001330:  ereport(ERROR, 
+qaaf: queue:00001331:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+qaaf: queue:00001332:  errmsg("resource queue \"%s\" does not exist", 
+qaaf: queue:00001333:  stmt->queue), 
+qaaf: queue:00001334:  errOmitLocation(true))); 
+qaaf: queue:00001404:  ereport(ERROR, 
+qaaf: queue:00001405:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+qaaf: queue:00001406:  errmsg("the value for at least one threshold (\"ACTIVE_STATEMENTS\", \"MAX_COST\") must be different from no limit (%d)", 
+qaaf: queue:00001407:  INVALID_RES_LIMIT_THRESHOLD))); 
+qaaf: queue:00001459:  ereport(ERROR, 
+qaaf: queue:00001460:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+qaaf: queue:00001461:  errmsg("thresholds cannot be less than current values"))); 
+qaaf: queue:00001463:  ereport(ERROR, 
+qaaf: queue:00001464:  (errcode(ERRCODE_INVALID_LIMIT_VALUE), 
+qaaf: queue:00001465:  errmsg("disabling overcommit cannot leave queue in possibly overcommitted state"))); 
+qaaf: queue:00001467:  ereport(ERROR, 
+qaaf: queue:00001468:  (errcode(ERRCODE_INTERNAL_ERROR), 
+qaaf: queue:00001469:  errmsg("queue hash table corrupted"))); 
+qaaf: queue:00001476:  ereport(WARNING, 
+qaaf: queue:00001477:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001478:  errhint("To enable set resource_scheduler=on"))); 
 qaaf: queue:00001518:  ereport(ERROR, 
-qaaf: queue:00001519:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-qaaf: queue:00001520:  errmsg("resource queue \"%s\" does not exist", 
-qaaf: queue:00001521:  stmt->queue))); 
-qaaf: queue:00001546:  ereport(ERROR, 
-qaaf: queue:00001547:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-qaaf: queue:00001548:  errmsg("resource queue \"%s\" is used by at least one role", 
-qaaf: queue:00001549:  stmt->queue))); 
-qaaf: queue:00001557:  ereport(ERROR, 
-qaaf: queue:00001558:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-qaaf: queue:00001559:  errmsg("cannot drop default resource queue \"%s\"", 
-qaaf: queue:00001560:  stmt->queue))); 
-qaaf: queue:00001590:  ereport(ERROR, 
-qaaf: queue:00001591:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-qaaf: queue:00001592:  errmsg("resource queue cannot be dropped as is in use"))); 
-qaaf: queue:00001596:  ereport(WARNING, 
-qaaf: queue:00001597:  (errmsg("resource scheduling is disabled"), 
-qaaf: queue:00001598:  errhint("To enable set resource_scheduler=on"))); 
+qaaf: queue:00001519:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+qaaf: queue:00001520:  errmsg("must be superuser to drop resource queues"))); 
+qaaf: queue:00001548:  ereport(ERROR, 
+qaaf: queue:00001549:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+qaaf: queue:00001550:  errmsg("resource queue \"%s\" does not exist", 
+qaaf: queue:00001551:  stmt->queue))); 
+qaaf: queue:00001576:  ereport(ERROR, 
+qaaf: queue:00001577:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+qaaf: queue:00001578:  errmsg("resource queue \"%s\" is used by at least one role", 
+qaaf: queue:00001579:  stmt->queue))); 
+qaaf: queue:00001587:  ereport(ERROR, 
+qaaf: queue:00001588:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+qaaf: queue:00001589:  errmsg("cannot drop default resource queue \"%s\"", 
+qaaf: queue:00001590:  stmt->queue))); 
+qaaf: queue:00001620:  ereport(ERROR, 
+qaaf: queue:00001621:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+qaaf: queue:00001622:  errmsg("resource queue cannot be dropped as is in use"))); 
+qaaf: queue:00001626:  ereport(WARNING, 
+qaaf: queue:00001627:  (errmsg("resource scheduling is disabled"), 
+qaaf: queue:00001628:  errhint("To enable set resource_scheduler=on"))); 
 aaaaa GP_IGNORE: saba: schemacmds - ./backend/commands/schemacmds.c
 saba: schemacmds:00000114:  ereport(ERROR, 
 saba: schemacmds:00000115:  (errcode(ERRCODE_RESERVED_NAME), 
@@ -12922,30 +12931,30 @@ daaj: ddaserver:00000974:  ));
 aaaaa GP_IGNORE: faai: ftsprobe - ./backend/postmaster/ftsprobe.c
 faai: ftsprobe:00000552:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
 faai: ftsprobe:00000553:  errmsg("database 'postgres' does not exist"))); 
-faai: ftsprobe:00002043:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00002044:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00002065:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00002066:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00002099:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00002100:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00002535:  ereport(LOG, 
-faai: ftsprobe:00002536:  (errmsg("mirror segment on %s:%d taking over as primary in change-tracking mode", 
-faai: ftsprobe:00002537:  seg_addr, seg_pm_port ), 
-faai: ftsprobe:00002538:  errSendAlert(true))); 
-faai: ftsprobe:00002541:  ereport(LOG, 
-faai: ftsprobe:00002542:  (errmsg("primary segment on %s:%d transitioning to change-tracking mode (peer marked down)", 
-faai: ftsprobe:00002543:  seg_addr, seg_pm_port ), 
-faai: ftsprobe:00002544:  errSendAlert(true))); 
-faai: ftsprobe:00002602:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faai: ftsprobe:00002603:  errmsg("FTS: out of memory"))); 
-faai: ftsprobe:00002689:  ereport(LOG, 
-faai: ftsprobe:00002690:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
-faai: ftsprobe:00002691:  mirror->address, mirror->port ), 
-faai: ftsprobe:00002692:  errSendAlert(true))); 
-faai: ftsprobe:00002964:  ereport(LOG, 
-faai: ftsprobe:00002965:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
-faai: ftsprobe:00002966:  host, port ), 
-faai: ftsprobe:00002967:  errSendAlert(true))); 
+faai: ftsprobe:00002044:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00002045:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00002066:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00002067:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00002100:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00002101:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00002536:  ereport(LOG, 
+faai: ftsprobe:00002537:  (errmsg("mirror segment on %s:%d taking over as primary in change-tracking mode", 
+faai: ftsprobe:00002538:  seg_addr, seg_pm_port ), 
+faai: ftsprobe:00002539:  errSendAlert(true))); 
+faai: ftsprobe:00002542:  ereport(LOG, 
+faai: ftsprobe:00002543:  (errmsg("primary segment on %s:%d transitioning to change-tracking mode (peer marked down)", 
+faai: ftsprobe:00002544:  seg_addr, seg_pm_port ), 
+faai: ftsprobe:00002545:  errSendAlert(true))); 
+faai: ftsprobe:00002603:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faai: ftsprobe:00002604:  errmsg("FTS: out of memory"))); 
+faai: ftsprobe:00002690:  ereport(LOG, 
+faai: ftsprobe:00002691:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
+faai: ftsprobe:00002692:  mirror->address, mirror->port ), 
+faai: ftsprobe:00002693:  errSendAlert(true))); 
+faai: ftsprobe:00002965:  ereport(LOG, 
+faai: ftsprobe:00002966:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
+faai: ftsprobe:00002967:  host, port ), 
+faai: ftsprobe:00002968:  errSendAlert(true))); 
 aaaaa GP_IGNORE: paag: pgarch - ./backend/postmaster/pgarch.c
 paag: pgarch:00000391:  ereport(WARNING, 
 paag: pgarch:00000392:  (errmsg("transaction log file \"%s\" could not be archived: too many failures", 
@@ -13117,41 +13126,41 @@ paba: postmaster:00003971:  (errmsg("database system is ready to accept connecti
 paba: postmaster:00003972:  errdetail("%s",version), 
 paba: postmaster:00003973:  errSendAlert(true), 
 paba: postmaster:00003974:  errOmitLocation(true))); 
-paba: postmaster:00004391:  ereport(LOG, 
-paba: postmaster:00004392:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00005457:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00006029:  ereport(WARNING, 
-paba: postmaster:00006030:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
-paba: postmaster:00006031:  gai_strerror(ret)))); 
-paba: postmaster:00006073:  ereport(FATAL, 
-paba: postmaster:00006074:  (errmsg("could not load pg_hba.conf"))); 
-paba: postmaster:00006500:  ereport(ERROR, 
-paba: postmaster:00006501:  (errmsg_internal("could not terminate unstarted process: error code %d", 
-paba: postmaster:00006502:  (int) GetLastError()))); 
-paba: postmaster:00006527:  ereport(ERROR, 
-paba: postmaster:00006528:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
-paba: postmaster:00006529:  (int) GetLastError()))); 
-paba: postmaster:00006544:  ereport(ERROR, 
-paba: postmaster:00006545:  (errmsg_internal("could not terminate unstartable process: error code %d", 
-paba: postmaster:00006546:  (int) GetLastError()))); 
-paba: postmaster:00006553:  ereport(ERROR, 
-paba: postmaster:00006554:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
-paba: postmaster:00006555:  (int) GetLastError()))); 
-paba: postmaster:00006569:  ereport(FATAL, 
-paba: postmaster:00006570:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006571:  errmsg("out of memory"))); 
-paba: postmaster:00006582:  ereport(FATAL, 
-paba: postmaster:00006583:  (errmsg_internal("could not register process for wait: error code %d", 
-paba: postmaster:00006584:  (int) GetLastError()))); 
-paba: postmaster:00006655:  ereport(FATAL, 
-paba: postmaster:00006656:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006657:  errmsg("out of memory"))); 
-paba: postmaster:00007411:  ereport(ERROR, 
-paba: postmaster:00007412:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
-paba: postmaster:00007413:  (int) GetLastError()))); 
-paba: postmaster:00007433:  ereport(ERROR, 
-paba: postmaster:00007434:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
-paba: postmaster:00007435:  src, WSAGetLastError()))); 
+paba: postmaster:00004393:  ereport(LOG, 
+paba: postmaster:00004394:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00005460:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00006033:  ereport(WARNING, 
+paba: postmaster:00006034:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+paba: postmaster:00006035:  gai_strerror(ret)))); 
+paba: postmaster:00006077:  ereport(FATAL, 
+paba: postmaster:00006078:  (errmsg("could not load pg_hba.conf"))); 
+paba: postmaster:00006504:  ereport(ERROR, 
+paba: postmaster:00006505:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+paba: postmaster:00006506:  (int) GetLastError()))); 
+paba: postmaster:00006531:  ereport(ERROR, 
+paba: postmaster:00006532:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+paba: postmaster:00006533:  (int) GetLastError()))); 
+paba: postmaster:00006548:  ereport(ERROR, 
+paba: postmaster:00006549:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+paba: postmaster:00006550:  (int) GetLastError()))); 
+paba: postmaster:00006557:  ereport(ERROR, 
+paba: postmaster:00006558:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+paba: postmaster:00006559:  (int) GetLastError()))); 
+paba: postmaster:00006573:  ereport(FATAL, 
+paba: postmaster:00006574:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006575:  errmsg("out of memory"))); 
+paba: postmaster:00006586:  ereport(FATAL, 
+paba: postmaster:00006587:  (errmsg_internal("could not register process for wait: error code %d", 
+paba: postmaster:00006588:  (int) GetLastError()))); 
+paba: postmaster:00006659:  ereport(FATAL, 
+paba: postmaster:00006660:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006661:  errmsg("out of memory"))); 
+paba: postmaster:00007415:  ereport(ERROR, 
+paba: postmaster:00007416:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+paba: postmaster:00007417:  (int) GetLastError()))); 
+paba: postmaster:00007437:  ereport(ERROR, 
+paba: postmaster:00007438:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+paba: postmaster:00007439:  src, WSAGetLastError()))); 
 aaaaa GP_IGNORE: saaj: seqserver - ./backend/postmaster/seqserver.c
 saaj: seqserver:00000216:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 saaj: seqserver:00000217:  errmsg("Error: Could not write() message to seqserver: %s", 
@@ -13715,13 +13724,13 @@ aaaaa GP_IGNORE: paae: proc - ./backend/storage/lmgr/proc.c
 paae: proc:00000191:  ereport(FATAL, 
 paae: proc:00000192:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 paae: proc:00000193:  errmsg("out of shared memory"))); 
-paae: proc:00000270:  ereport(FATAL, 
-paae: proc:00000271:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
-paae: proc:00000272:  errmsg("sorry, too many clients already"))); 
-paae: proc:00001552:  ereport(ERROR, 
-paae: proc:00001553:  (errcode(ERRCODE_T_R_DEADLOCK_DETECTED), 
-paae: proc:00001554:  errmsg("deadlock detected, locking against self"), 
-paae: proc:00001555:  errOmitLocation(true))); 
+paae: proc:00000272:  ereport(FATAL, 
+paae: proc:00000273:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+paae: proc:00000274:  errmsg("sorry, too many clients already"))); 
+paae: proc:00001558:  ereport(ERROR, 
+paae: proc:00001559:  (errcode(ERRCODE_T_R_DEADLOCK_DETECTED), 
+paae: proc:00001560:  errmsg("deadlock detected, locking against self"), 
+paae: proc:00001561:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: baah: bufpage - ./backend/storage/page/bufpage.c
 baah: bufpage:00000346:  ereport(ERROR, 
 baah: bufpage:00000347:  (errcode(ERRCODE_DATA_CORRUPTED), 
@@ -14012,136 +14021,136 @@ paai: postgres:00003351:  errFatalReturn(gp_reraise_signal),
 paai: postgres:00003352:  errOmitLocation(true), 
 paai: postgres:00003353:  errmsg("Unexpected internal error: %s received signal %s", 
 paai: postgres:00003354:  processName, signame) )); 
-paai: postgres:00003366:  ereport(ERROR, 
-paai: postgres:00003367:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
-paai: postgres:00003368:  errmsg("floating-point exception"), 
-paai: postgres:00003369:  errdetail("An invalid floating-point operation was signaled. " 
-paai: postgres:00003370:  "This probably means an out-of-range result or an " 
-paai: postgres:00003371:  "invalid operation, such as division by zero."))); 
-paai: postgres:00003428:  ereport(FATAL, 
-paai: postgres:00003429:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
-paai: postgres:00003430:  errmsg("terminating connection due to administrator command"), 
-paai: postgres:00003431:  errSendAlert(false))); 
-paai: postgres:00003442:  ereport(ERROR, 
-paai: postgres:00003443:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
-paai: postgres:00003444:  errmsg("canceling MPP operation"))); 
-paai: postgres:00003446:  ereport(ERROR, 
-paai: postgres:00003447:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003448:  errmsg("canceling statement due to statement timeout"))); 
-paai: postgres:00003450:  ereport(ERROR, 
-paai: postgres:00003451:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003452:  errmsg("canceling statement due to user request"))); 
-paai: postgres:00003533:  ereport(ERROR, 
-paai: postgres:00003534:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
-paai: postgres:00003535:  errmsg("stack depth limit exceeded"), 
-paai: postgres:00003536:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
-paai: postgres:00003537:  "after ensuring the platform's stack depth limit is adequate."))); 
-paai: postgres:00003960:  ereport(ERROR, 
-paai: postgres:00003961:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00003962:  errmsg("--%s requires a value", 
-paai: postgres:00003963:  optarg))); 
-paai: postgres:00003965:  ereport(ERROR, 
-paai: postgres:00003966:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00003967:  errmsg("-c %s requires a value", 
-paai: postgres:00003968:  optarg))); 
-paai: postgres:00004008:  ereport(FATAL, 
-paai: postgres:00004009:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paai: postgres:00004010:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
-paai: postgres:00004128:  ereport(FATAL, 
-paai: postgres:00004129:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004130:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00004131:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004141:  ereport(FATAL, 
-paai: postgres:00004142:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004143:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00004144:  argv[0]), 
-paai: postgres:00004145:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004151:  ereport(FATAL, 
-paai: postgres:00004152:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00004153:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00004154:  argv[0]))); 
-paai: postgres:00004990:  ereport(ERROR, 
-paai: postgres:00004991:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00004992:  errmsg("invalid CLOSE message subtype %d", 
-paai: postgres:00004993:  close_type))); 
-paai: postgres:00005027:  ereport(ERROR, 
-paai: postgres:00005028:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005029:  errmsg("invalid DESCRIBE message subtype %d", 
-paai: postgres:00005030:  describe_type))); 
-paai: postgres:00005084:  ereport(FATAL, 
-paai: postgres:00005085:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005086:  errmsg("invalid frontend message type %d ('%c')", 
-paai: postgres:00005087:  firstchar,firstchar))); 
-paai: postgres:00005587:  ereport(ERROR, 
-paai: postgres:00005588:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005589:  errmsg("--%s requires a value", 
-paai: postgres:00005590:  optarg))); 
-paai: postgres:00005592:  ereport(ERROR, 
-paai: postgres:00005593:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005594:  errmsg("-c %s requires a value", 
-paai: postgres:00005595:  optarg))); 
-paai: postgres:00005708:  ereport(FATAL, 
-paai: postgres:00005709:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005710:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00005711:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005722:  ereport(FATAL, 
-paai: postgres:00005723:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005724:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00005725:  argv[0]), 
-paai: postgres:00005726:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005732:  ereport(FATAL, 
-paai: postgres:00005733:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00005734:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00005735:  argv[0]))); 
-paai: postgres:00006058:  ereport(FATAL, 
-paai: postgres:00006059:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00006060:  errmsg("invalid frontend message type %d", 
-paai: postgres:00006061:  firstchar))); 
+paai: postgres:00003372:  ereport(ERROR, 
+paai: postgres:00003373:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
+paai: postgres:00003374:  errmsg("floating-point exception"), 
+paai: postgres:00003375:  errdetail("An invalid floating-point operation was signaled. " 
+paai: postgres:00003376:  "This probably means an out-of-range result or an " 
+paai: postgres:00003377:  "invalid operation, such as division by zero."))); 
+paai: postgres:00003434:  ereport(FATAL, 
+paai: postgres:00003435:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
+paai: postgres:00003436:  errmsg("terminating connection due to administrator command"), 
+paai: postgres:00003437:  errSendAlert(false))); 
+paai: postgres:00003448:  ereport(ERROR, 
+paai: postgres:00003449:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
+paai: postgres:00003450:  errmsg("canceling MPP operation"))); 
+paai: postgres:00003452:  ereport(ERROR, 
+paai: postgres:00003453:  (errcode(ERRCODE_QUERY_CANCELED), 
+paai: postgres:00003454:  errmsg("canceling statement due to statement timeout"))); 
+paai: postgres:00003456:  ereport(ERROR, 
+paai: postgres:00003457:  (errcode(ERRCODE_QUERY_CANCELED), 
+paai: postgres:00003458:  errmsg("canceling statement due to user request"))); 
+paai: postgres:00003539:  ereport(ERROR, 
+paai: postgres:00003540:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
+paai: postgres:00003541:  errmsg("stack depth limit exceeded"), 
+paai: postgres:00003542:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
+paai: postgres:00003543:  "after ensuring the platform's stack depth limit is adequate."))); 
+paai: postgres:00003966:  ereport(ERROR, 
+paai: postgres:00003967:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00003968:  errmsg("--%s requires a value", 
+paai: postgres:00003969:  optarg))); 
+paai: postgres:00003971:  ereport(ERROR, 
+paai: postgres:00003972:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00003973:  errmsg("-c %s requires a value", 
+paai: postgres:00003974:  optarg))); 
+paai: postgres:00004014:  ereport(FATAL, 
+paai: postgres:00004015:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paai: postgres:00004016:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
+paai: postgres:00004134:  ereport(FATAL, 
+paai: postgres:00004135:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004136:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00004137:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004147:  ereport(FATAL, 
+paai: postgres:00004148:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004149:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00004150:  argv[0]), 
+paai: postgres:00004151:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004157:  ereport(FATAL, 
+paai: postgres:00004158:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00004159:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00004160:  argv[0]))); 
+paai: postgres:00004996:  ereport(ERROR, 
+paai: postgres:00004997:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00004998:  errmsg("invalid CLOSE message subtype %d", 
+paai: postgres:00004999:  close_type))); 
+paai: postgres:00005033:  ereport(ERROR, 
+paai: postgres:00005034:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005035:  errmsg("invalid DESCRIBE message subtype %d", 
+paai: postgres:00005036:  describe_type))); 
+paai: postgres:00005090:  ereport(FATAL, 
+paai: postgres:00005091:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005092:  errmsg("invalid frontend message type %d ('%c')", 
+paai: postgres:00005093:  firstchar,firstchar))); 
+paai: postgres:00005593:  ereport(ERROR, 
+paai: postgres:00005594:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005595:  errmsg("--%s requires a value", 
+paai: postgres:00005596:  optarg))); 
+paai: postgres:00005598:  ereport(ERROR, 
+paai: postgres:00005599:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005600:  errmsg("-c %s requires a value", 
+paai: postgres:00005601:  optarg))); 
+paai: postgres:00005714:  ereport(FATAL, 
+paai: postgres:00005715:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005716:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00005717:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005728:  ereport(FATAL, 
+paai: postgres:00005729:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005730:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00005731:  argv[0]), 
+paai: postgres:00005732:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005738:  ereport(FATAL, 
+paai: postgres:00005739:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00005740:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00005741:  argv[0]))); 
+paai: postgres:00006064:  ereport(FATAL, 
+paai: postgres:00006065:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00006066:  errmsg("invalid frontend message type %d", 
+paai: postgres:00006067:  firstchar))); 
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
-paag: pquery:00000983:  ereport(ERROR, 
-paag: pquery:00000984:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paag: pquery:00000985:  errmsg("bind message has %d result formats but query has %d columns", 
-paag: pquery:00000986:  nFormats, natts), 
-paag: pquery:00000987:  errOmitLocation(true))); 
-paag: pquery:00001059:  ereport(ERROR, 
-paag: pquery:00001060:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001061:  errmsg("portal \"%s\" cannot be run", portal->name), 
-paag: pquery:00001062:  errOmitLocation(true))); 
-paag: pquery:00001302:  ereport(ERROR, 
-paag: pquery:00001303:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001304:  errmsg("cursor can only scan forward"), 
-paag: pquery:00001305:  errhint("Declare it with SCROLL option to enable backward scan."), 
-paag: pquery:00001306:  errOmitLocation(true))); 
-paag: pquery:00001695:  ereport(ERROR, 
-paag: pquery:00001696:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paag: pquery:00001697:  errmsg("portal \"%s\" cannot be run", portal->name))); 
-paag: pquery:00001805:  ereport(ERROR, 
-paag: pquery:00001806:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001807:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001808:  errOmitLocation(true))); 
-paag: pquery:00001821:  ereport(ERROR, 
-paag: pquery:00001822:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001823:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001824:  errOmitLocation(true))); 
-paag: pquery:00001844:  ereport(ERROR, 
-paag: pquery:00001845:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001846:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001847:  errOmitLocation(true))); 
-paag: pquery:00001880:  ereport(ERROR, 
-paag: pquery:00001881:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001882:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001883:  errOmitLocation(true))); 
-paag: pquery:00001895:  ereport(ERROR, 
-paag: pquery:00001896:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001897:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001898:  errOmitLocation(true))); 
-paag: pquery:00001923:  ereport(ERROR, 
-paag: pquery:00001924:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001925:  errmsg("backward scan is not supported in this version of Greenplum Database"))); 
-paag: pquery:00001991:  ereport(ERROR, 
-paag: pquery:00001992:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
-paag: pquery:00001993:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
-paag: pquery:00001994:  errOmitLocation(true))); 
+paag: pquery:00000982:  ereport(ERROR, 
+paag: pquery:00000983:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paag: pquery:00000984:  errmsg("bind message has %d result formats but query has %d columns", 
+paag: pquery:00000985:  nFormats, natts), 
+paag: pquery:00000986:  errOmitLocation(true))); 
+paag: pquery:00001058:  ereport(ERROR, 
+paag: pquery:00001059:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001060:  errmsg("portal \"%s\" cannot be run", portal->name), 
+paag: pquery:00001061:  errOmitLocation(true))); 
+paag: pquery:00001301:  ereport(ERROR, 
+paag: pquery:00001302:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001303:  errmsg("cursor can only scan forward"), 
+paag: pquery:00001304:  errhint("Declare it with SCROLL option to enable backward scan."), 
+paag: pquery:00001305:  errOmitLocation(true))); 
+paag: pquery:00001694:  ereport(ERROR, 
+paag: pquery:00001695:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paag: pquery:00001696:  errmsg("portal \"%s\" cannot be run", portal->name))); 
+paag: pquery:00001804:  ereport(ERROR, 
+paag: pquery:00001805:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001806:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001807:  errOmitLocation(true))); 
+paag: pquery:00001820:  ereport(ERROR, 
+paag: pquery:00001821:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001822:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001823:  errOmitLocation(true))); 
+paag: pquery:00001843:  ereport(ERROR, 
+paag: pquery:00001844:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001845:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001846:  errOmitLocation(true))); 
+paag: pquery:00001879:  ereport(ERROR, 
+paag: pquery:00001880:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001881:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001882:  errOmitLocation(true))); 
+paag: pquery:00001894:  ereport(ERROR, 
+paag: pquery:00001895:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001896:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001897:  errOmitLocation(true))); 
+paag: pquery:00001922:  ereport(ERROR, 
+paag: pquery:00001923:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001924:  errmsg("backward scan is not supported in this version of Greenplum Database"))); 
+paag: pquery:00001990:  ereport(ERROR, 
+paag: pquery:00001991:  (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
+paag: pquery:00001992:  errmsg("backward scan is not supported in this version of Greenplum Database"), 
+paag: pquery:00001993:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: uaah: utility - ./backend/tcop/utility.c
 uaah: utility:00000137:  ereport(ERROR, 
 uaah: utility:00000138:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
