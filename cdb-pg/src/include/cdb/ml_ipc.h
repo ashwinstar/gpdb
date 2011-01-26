@@ -197,49 +197,31 @@ extern TupleChunkListItem RecvTupleChunkFrom(ChunkTransportState *transportState
 											 int16 srcRoute);
 
 /* Some really simple, but handy functions for dealing with time-intervals. */
+
+/*
+ * gettime_elapsed_us -- return the elapsed time in microseconds
+ * after the given time->endTime.
+ *
+ * This function assumes that time->endTime is set (not 0).
+ */
 static inline uint64
-gettime_elapsed_us(struct timeval *beginTime)
+gettime_elapsed_us(GpMonotonicTime *time)
 {
-	struct timeval endTime;
+	Assert(time->endTime.tv_sec != 0 &&
+		   time->endTime.tv_usec != 0);
 
-	gp_get_monotonic_time(&endTime);
+	gp_get_monotonic_time(time);
 
-	/*
-	 * If either endTime or beginTime is 0, simple return 0.
-	 */
-	if ((endTime.tv_sec == 0 && endTime.tv_usec == 0) ||
-		(beginTime->tv_sec == 0 && beginTime->tv_usec == 0))
-	{
-		return 0;
-	}
-
-	bool endTimeIsBigger = 
-		((endTime.tv_sec > beginTime->tv_sec) ||
-		 ((endTime.tv_sec == beginTime->tv_sec) && (endTime.tv_usec >= beginTime->tv_usec)));
+	Assert(timeCmp(&time->beginTime, &time->endTime) < 0);
 	
-#ifdef USE_ASSERT_CHECKING
-#ifdef HAVE_LIBRT
-	Assert(endTimeIsBigger);
-#endif
-#endif
-
-	if (endTimeIsBigger)
-	{
-		return ((endTime.tv_sec - beginTime->tv_sec) * 1000 * 1000 +
-				(endTime.tv_usec - beginTime->tv_usec));
-	}
-
-	/*
-	 * If the current time is earlier than beginTime, we simple return
-	 * 0 here.
-	 */
-	return 0;
+	return ((time->endTime.tv_sec - time->beginTime.tv_sec) * 1000 * 1000 +
+			(time->endTime.tv_usec - time->beginTime.tv_usec));
 }
 
 static inline uint64
-gettime_elapsed_ms(struct timeval *beginTime)
+gettime_elapsed_ms(GpMonotonicTime *time)
 {
-    return gettime_elapsed_us(beginTime) / 1000;
+    return gettime_elapsed_us(time) / 1000;
 }
 
 /* The DeregisterReadInterest() function is used to specify that we are no

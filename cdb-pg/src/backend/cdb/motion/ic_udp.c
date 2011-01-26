@@ -1287,7 +1287,7 @@ SetupUDPInterconnect(EState *estate)
 	int			expectedTotalIncoming = 0;
 	int			expectedTotalOutgoing = 0;
 	int			iteration = 0;
-	struct timeval	startTime;
+	GpMonotonicTime	startTime;
 	uint64			elapsed_ms = 0;
 	uint64		   	elapsed_timeout = 0;
 
@@ -1492,6 +1492,7 @@ SetupUDPInterconnect(EState *estate)
                                 expectedTotalIncoming, expectedTotalOutgoing, gp_interconnect_id,
                                 Gp_listener_port&0x0ffff, (Gp_listener_port>>16)&0x0ffff, UDP_listenerFd)));
 
+	gp_init_monotonic_time(&startTime);
   	gp_get_monotonic_time(&startTime);
 
 	if (interconnect_setup_timeout > 0)
@@ -2668,6 +2669,7 @@ prepareXmit(MotionConn *conn)
 		pkt->crc = local_crc;
 	}
 
+	gp_init_monotonic_time(&conn->activeXmitTime);
 	gp_get_monotonic_time(&conn->activeXmitTime);
 
 	/* set active xmit */
@@ -2753,16 +2755,13 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 			 * this is called.
 			 */
 			if (!retry)
+			{
 				gp_get_monotonic_time(&conn->ackWaitBeginTime);
+			}
 
 			if (timeout)
 			{
-				conn->activeXmitTime.tv_usec += timeout * 1000;
-				if (conn->activeXmitTime.tv_usec > 1000000)
-				{
-					conn->activeXmitTime.tv_usec -= 1000000;
-					conn->activeXmitTime.tv_sec += 1;
-				}
+				gp_get_monotonic_time(&conn->activeXmitTime);
 			}
 
 			if (retry)

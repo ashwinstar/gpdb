@@ -1218,7 +1218,7 @@ SetupTCPInterconnect(EState *estate)
 	int			expectedTotalIncoming = 0;
 	int			expectedTotalOutgoing = 0;
     int         iteration = 0;
-	struct timeval  startTime;
+	GpMonotonicTime startTime;
     StringInfoData  logbuf;
 	uint64          elapsed_ms = 0;
 
@@ -1264,6 +1264,7 @@ SetupTCPInterconnect(EState *estate)
 
 	gp_interconnect_id = estate->interconnect_context->sliceTable->ic_instance_id;
 
+	gp_init_monotonic_time(&startTime);
   	gp_get_monotonic_time(&startTime);
 
     /* Initiate outgoing connections. */

@@ -854,7 +854,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 	int		n, fd;
 	struct sockaddr_in  saddr;
 
-	struct timeval	startTime;
+	GpMonotonicTime startTime;
 	uint64			elapsed_ms = 0;
 
 	char	buf[32]; /* big enough for the message we're expecting */
@@ -908,6 +908,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		return PROBE_DEAD;
 	}
 
+	gp_init_monotonic_time(&startTime);
   	gp_get_monotonic_time(&startTime);
 
 	for (;;)

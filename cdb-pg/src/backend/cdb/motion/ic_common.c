@@ -890,8 +890,7 @@ createChunkTransportState(ChunkTransportState *transportStates,
         conn->wakeup_ms = 0;
         conn->cdbProc = NULL;
 
-		Assert(conn->ackWaitBeginTime.tv_sec == 0 &&
-			   conn->ackWaitBeginTime.tv_usec == 0);
+		gp_init_monotonic_time(&conn->ackWaitBeginTime);
     }
 
 	MPP_FD_ZERO(&pEntry->readSet);

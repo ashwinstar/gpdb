@@ -96,7 +96,7 @@ typedef struct MotionConn
 	uint8	   *ping;
 	uint8	   *pong;
 	uint8	   *activeXmit;
-	struct timeval activeXmitTime;
+	GpMonotonicTime activeXmitTime;
 
 	uint16		route;
 	
@@ -138,7 +138,7 @@ typedef struct MotionConn
 	uint8		**pkt_q;
 
 	/* Statistics info for this connection */
-	struct timeval ackWaitBeginTime;
+	GpMonotonicTime ackWaitBeginTime;
 	
 	uint64 stat_total_ack_time;
 	uint64 stat_count_acks;

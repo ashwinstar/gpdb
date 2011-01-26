@@ -17,45 +17,61 @@
 
 #include "pgtime.h"
 
-
 /*
  * gp_get_monotonic_time
- *    This function makes the best effort to return the time
- * in the monotonic order.
+ *    This function returns the time in the monotonic order.
  *
- * This function returns 0 on success, and -1 on failure.
+ * The new time is stored in time->endTime, which has a larger value than
+ * the original value. The original endTime is copied to beginTime, whose
+ * original value is overwritten.
  *
  * This function is intended for computing elapsed time between two
  * calls. It is not for getting the system time.
- *
- * When the function returns -1, tp is set to 0.
  */
-int
-gp_get_monotonic_time(struct timeval *restrict tp)
+void
+gp_get_monotonic_time(GpMonotonicTime *time)
 {
+	time->beginTime.tv_sec = time->endTime.tv_sec;
+	time->beginTime.tv_usec = time->endTime.tv_usec;
+
+	bool useBeginTime = false;
+
 #if HAVE_LIBRT
 	/* Use clock_gettime to return monotonic time value. */
 	struct timespec ts;
 	int status = clock_gettime(CLOCK_MONOTONIC, &ts);
-	
-	/*
-	 * If the status is -1, we set tp to 0.
-	 */
-	if (status == -1)
+
+	struct timeval newTime;
+	newTime.tv_sec = ts.tv_sec;
+	newTime.tv_usec = ts.tv_nsec / 1000;
+
+	if (status == 0 &&
+		timeCmp(&time->beginTime, &newTime) < 0)
 	{
-		tp->tv_sec = 0;
-		tp->tv_usec = 0;
-	}
-	else
+		time->endTime.tv_sec = newTime.tv_sec;
+		time->endTime.tv_usec = newTime.tv_usec;
+	} else
 	{
-		tp->tv_sec = ts.tv_sec;
-		tp->tv_usec = ts.tv_nsec / 1000;
+		useBeginTime = true;
 	}
 
-	return status;
 #else
 
-	return gettimeofday(tp, NULL);
-	
+	gettimeofday(&time->endTime, NULL);
+
+	if (timeCmp(&time->beginTime, &time->endTime) >= 0)
+	{
+		useBeginTime = true;
+	}
 #endif
+
+	if (useBeginTime)
+	{
+		time->endTime.tv_usec = time->beginTime.tv_usec + 1;
+
+		time->endTime.tv_sec = time->beginTime.tv_sec +
+			(time->endTime.tv_usec / 1000000);
+		time->endTime.tv_usec = time->endTime.tv_usec % 1000000;
+	}
+	
 }

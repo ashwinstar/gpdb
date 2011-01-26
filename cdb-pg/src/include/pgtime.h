@@ -71,14 +71,58 @@ extern pg_tz *gmt_timezone;
 #define TZ_STRLEN_MAX 255
 
 /*
- * gp_get_monotonic_time
- *    This function makes best effort to return the time in the monotonic order.
+ * GpMonotonicTime: used to guarantee that the elapsed time is in
+ * the monotonic order between two gp_get_monotonic_time calls.
+ */
+typedef struct GpMonotonicTime
+{
+	struct timeval beginTime;
+	struct timeval endTime;
+} GpMonotonicTime;
+
+static inline void
+gp_init_monotonic_time(GpMonotonicTime *time)
+{
+	time->beginTime.tv_sec = 0;
+	time->beginTime.tv_usec = 0;
+	time->endTime.tv_sec = 0;
+	time->endTime.tv_usec = 0;
+}
+
+/*
+ * Compare two times.
  *
- * This function returns 0 on success, and -1 on failure.
+ * If t1 > t2, return 1.
+ * If t1 == t2, return 0.
+ * If t1 < t2, return -1;
+ */
+static inline int
+timeCmp(struct timeval *t1, struct timeval *t2)
+{
+	if (t1->tv_sec == t2->tv_sec &&
+		t1->tv_usec == t2->tv_usec)
+		return 0;
+	
+	if (t1->tv_sec > t2->tv_sec ||
+		(t1->tv_sec == t2->tv_sec &&
+		 t1->tv_usec > t2->tv_usec))
+		return 1;
+	
+	return -1;
+}
+
+/*
+ * gp_get_monotonic_time
+ *    This function returns the time in the monotonic order.
+ *
+ * The new time is stored in time->endTime, which has a larger value than
+ * anything stored there when this function is called. The original
+ * endTime is copied to beginTime, and the original beginTime will be
+ * overwritten.
  *
  * This function is intended for computing elapsed time between two
  * calls. It is not for getting the system time.
  */
-extern int gp_get_monotonic_time(struct timeval *restrict tp);
+extern void gp_get_monotonic_time(GpMonotonicTime *time);
 
 #endif   /* _PGTIME_H */
