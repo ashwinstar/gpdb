@@ -211,7 +211,7 @@ init_hash(const char *name, Size keysize, Size entrysize, int initialSize)
 
 
 /*
- * Add a new mapping to the recover post checkpoint pprepared transactions hash table.
+ * Add a new mapping to the recover post checkpoint prepared transactions hash table.
  */
 static void
 add_recover_post_checkpoint_prepared_transactions_map_entry(TransactionId xid, XLogRecPtr *m, char *caller)
@@ -275,6 +275,62 @@ add_recover_post_checkpoint_prepared_transactions_map_entry(TransactionId xid, X
 	   XLogLocationToString(m),
 	   caller);
 
+}  /* end add_recover_post_checkpoint_prepared_transactions_map_entry */
+
+/*
+ * Find a mapping in the recover post checkpoint prepared transactions hash table.
+ */
+bool
+TwoPhaseFindRecoverPostCheckpointPreparedTransactionsMapEntry(TransactionId xid, XLogRecPtr *m, char *caller)
+{
+  prpt_map *entry = NULL;
+  bool      found = false;
+
+  if (Debug_persistent_print)
+     elog(Persistent_DebugPrintLevel(),
+          "find_recover_post_checkpoint_prepared_transactions_map_entry: start of function."
+       );
+  MemSet(m, 0, sizeof(XLogRecPtr));
+
+  /*
+   * The table is lazily initialised.
+   */
+  if (crashRecoverPostCheckpointPreparedTransactions_map_ht == NULL)
+    {
+      if (Debug_persistent_print)
+	elog(Persistent_DebugPrintLevel(),
+	     "find_recover_post_checkpoint_prepared_transactions_map_entry: initial setup of global hash table. Caller = %s",
+             caller);
+    crashRecoverPostCheckpointPreparedTransactions_map_ht 
+                     = init_hash("two phase post checkpoint prepared transactions map",
+				 sizeof(TransactionId), /* keysize */
+				 sizeof(prpt_map),
+				 10 /* initialize for 10 entries */);
+    }
+
+  entry = hash_search(crashRecoverPostCheckpointPreparedTransactions_map_ht,
+		      &xid,
+		      HASH_FIND,
+		      &found);
+  if (entry == NULL)
+  {
+	  if (Debug_persistent_print)
+	    elog(Persistent_DebugPrintLevel(),
+	         "find_recover_post_checkpoint_prepared_transactions_map_entry: did not find entry xid = %u, caller = %s",
+	         xid,
+	         caller);
+	  return false;
+  }
+
+  memcpy(m, &entry->xlogrecptr, sizeof(XLogRecPtr));
+  if (Debug_persistent_print)
+    elog(Persistent_DebugPrintLevel(),
+         "find_recover_post_checkpoint_prepared_transactions_map_entry: found entry xid = %u, XLogRecPtr = %s, caller = %s",
+         xid,
+         XLogLocationToString(m),
+         caller);
+
+  return true;
 }  /* end add_recover_post_checkpoint_prepared_transactions_map_entry */
 
 

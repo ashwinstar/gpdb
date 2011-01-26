@@ -38,6 +38,7 @@
 #include "storage/smgr.h"
 #include "cdb/cdbmirroredfilesysobj.h"
 #include "cdb/cdbresynchronizechangetracking.h"
+#include "access/twophase.h"
 
 static bool
 PersistentRecovery_RedoRelationExists(
@@ -1300,6 +1301,87 @@ static void PersistentRecovery_RecordCrashTransactionAbortRecordErrContext(void 
 		 ItemPointerToString(&firstFileSysActionInfo->persistentTid));
 }
 
+static void
+PersistentRecovery_HandlePrepareBeforeCheckpoint(void)
+{
+	HASH_SEQ_STATUS iterateStatus;
+	XactEntry xactEntry;
+
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+		     "Entering PersistentRecovery_HandlePrepareBeforeCheckpoint");
+	}
+
+	if (xactHashTable == NULL)
+	{
+		if (Debug_persistent_recovery_print)
+		{
+			elog(PersistentRecovery_DebugPrintLevel(), 
+				 "Entering PersistentRecovery_HandlePrepareBeforeCheckpoint -- no entries");
+		}
+		return;
+	}
+	
+	hash_seq_init(&iterateStatus, xactHashTable);
+
+	while (true)
+	{
+		xactEntry = 
+				(XactEntry)
+						hash_seq_search(&iterateStatus);
+		if (xactEntry == NULL)
+			break;
+
+		if (xactEntry->infoKind == XACT_INFOKIND_NONE)
+		{
+			XLogRecPtr preparedLoc;
+
+			if (TwoPhaseFindRecoverPostCheckpointPreparedTransactionsMapEntry(
+																		xactEntry->xid,
+																		&preparedLoc,
+																		"PersistentRecovery_HandlePrepareBeforeCheckpoint"))
+			{
+				xactEntry->infoKind = XACT_INFOKIND_PREPARE;
+
+				if (Debug_persistent_recovery_print)
+				{
+					elog(PersistentRecovery_DebugPrintLevel(), 
+						 "Prepare Before Checkpoint: Transaction %u (None) found and marked prepared (location %s)",
+						 xactEntry->xid,
+						 XLogLocationToString(&preparedLoc));
+				}
+			}
+			else
+			{
+				if (Debug_persistent_recovery_print)
+				{
+					elog(PersistentRecovery_DebugPrintLevel(), 
+						 "Prepare Before Checkpoint: Transaction %u (None) not found in checkpoint prepared list",
+						 xactEntry->xid);
+				}
+			}
+		}
+		else
+		{
+			if (Debug_persistent_recovery_print)
+			{
+				elog(PersistentRecovery_DebugPrintLevel(), 
+					 "Prepare Before Checkpoint: Transaction %u (%s)",
+					 xactEntry->xid,
+					 XactInfoKind_Name(xactEntry->infoKind));
+			}
+		}
+	}
+	
+	if (Debug_persistent_recovery_print)
+	{
+		elog(PersistentRecovery_DebugPrintLevel(), 
+		     "Exiting PersistentRecovery_HandlePrepareBeforeCheckpoint");
+	}
+
+}
+
 void
 PersistentRecovery_CrashAbort(void)
 {
@@ -1325,6 +1407,8 @@ PersistentRecovery_CrashAbort(void)
 			     "Exiting PersistentRecovery_CrashAbort (no relation hash table)");
 		return;
 	}
+
+	PersistentRecovery_HandlePrepareBeforeCheckpoint();
 
 	for (fsObjType = PersistentFsObjType_First; 
 		 fsObjType <= PersistentFsObjType_Last;
