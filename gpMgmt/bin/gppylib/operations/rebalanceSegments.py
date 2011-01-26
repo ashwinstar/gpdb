@@ -3,6 +3,7 @@ from gppylib.db import dbconn
 from gppylib.commands.gp import GpSegStopCmd, GpRecoverseg
 from gppylib.commands.base import WorkerPool, SQLCommand, REMOTE
 from gppylib import gplog
+import signal
 
 logger = gplog.get_default_logger()
 
@@ -34,57 +35,66 @@ class GpSegmentRebalanceOperation:
         pool = WorkerPool()
         
         count = 0
-        logger.info("Stopping unbalanced primary segments...")
-        for hostname in unbalanced_primary_segs.keys():
-            cmd = GpSegStopCmd("stop unbalanced primary segs",
-                               self.gpEnv.getGpHome(),
-                               self.gpEnv.getGpVersion(),
-                               'fast',
-                               unbalanced_primary_segs[hostname],
-                               ctxt=REMOTE,
-                               remoteHost=hostname,
-                               timeout=600)
-            pool.addCommand(cmd)
-            count+=1
+
+        try:        
+            # Disable ctrl-c
+            signal.signal(signal.SIGINT,signal.SIG_IGN)
             
-        pool.wait_and_printdots(count, False)
-        
-        failed_count = 0
-        completed = pool.getCompletedItems()
-        for res in completed:
-            if not res.get_results().wasSuccessful():
-                failed_count+=1
+            logger.info("Stopping unbalanced primary segments...")
+            for hostname in unbalanced_primary_segs.keys():
+                cmd = GpSegStopCmd("stop unbalanced primary segs",
+                                   self.gpEnv.getGpHome(),
+                                   self.gpEnv.getGpVersion(),
+                                   'fast',
+                                   unbalanced_primary_segs[hostname],
+                                   ctxt=REMOTE,
+                                   remoteHost=hostname,
+                                   timeout=600)
+                pool.addCommand(cmd)
+                count+=1
                 
-        if failed_count > 0:
-            logger.warn("%d segments failed to stop.  A full rebalance of the")
-            logger.warn("system is not possible at this time.  Please check the")
-            logger.warn("log files, correct the problem, and run gprecoverseg -r")
-            logger.warn("again.")
-            logger.info("gprecoverseg will continue with a partial rebalance.")
-        
-        pool.empty_completed_items()
-        # issue a distributed query to make sure we pick up the fault
-        # that we just caused by shutting down segments
-        conn = None
-        try:
-            logger.info("Triggering segment reconfiguration")
-            dburl = dbconn.DbURL()
-            conn = dbconn.connect(dburl)
-            cmd = ReconfigDetectionSQLQueryCommand(conn)
+            pool.wait_and_printdots(count, False)
+            
+            failed_count = 0
+            completed = pool.getCompletedItems()
+            for res in completed:
+                if not res.get_results().wasSuccessful():
+                    failed_count+=1
+                    
+            if failed_count > 0:
+                logger.warn("%d segments failed to stop.  A full rebalance of the")
+                logger.warn("system is not possible at this time.  Please check the")
+                logger.warn("log files, correct the problem, and run gprecoverseg -r")
+                logger.warn("again.")
+                logger.info("gprecoverseg will continue with a partial rebalance.")
+            
+            pool.empty_completed_items()
+            # issue a distributed query to make sure we pick up the fault
+            # that we just caused by shutting down segments
+            conn = None
+            try:
+                logger.info("Triggering segment reconfiguration")
+                dburl = dbconn.DbURL()
+                conn = dbconn.connect(dburl)
+                cmd = ReconfigDetectionSQLQueryCommand(conn)
+                pool.addCommand(cmd)
+                pool.wait_and_printdots(1, False)
+            except Exception:
+                # This exception is expected
+                pass
+            finally:
+                if conn:
+                    conn.close()
+
+            # Final step is to issue a recoverseg operation to resync segments
+            logger.info("Starting segment synchronization")
+            cmd = GpRecoverseg("rebalance recoverseg")
             pool.addCommand(cmd)
             pool.wait_and_printdots(1, False)
-        except Exception:
-            # This exception is expected
-            pass
+        except Exception, ex:
+            raise ex
         finally:
-            if conn:
-                conn.close()
-
-        # Final step is to issue a recoverseg operation to resync segments
-        logger.info("Starting segment synchronization")
-        cmd = GpRecoverseg("rebalance recoverseg")
-        pool.addCommand(cmd)
-        pool.wait_and_printdots(1, False)
+            signal.signal(signal.SIGINT,signal.default_int_handler)
         
         # check that recoverseg was successful
         completed = pool.getCompletedItems()
