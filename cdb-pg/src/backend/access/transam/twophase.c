@@ -1801,9 +1801,29 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 
 	   LWLockRelease(TwoPhaseStateLock);
 
-           XLogCloseReadRecord();
-           tfRecord = XLogReadRecord(&tfXLogRecPtr, LOG);
-           buf = XLogRecGetData(tfRecord);
+       XLogCloseReadRecord();
+       tfRecord = XLogReadRecord(&tfXLogRecPtr, LOG);
+	   if (tfRecord == NULL)
+	   {
+		   /*
+			* Invalid XLOG record means record is corrupted.
+			* Failover is required, hopefully mirror is in healthy state.
+			*/
+		   ereport(WARNING,
+				   (errmsg("primary failure, "
+						   "xlog record is invalid, "
+						   "failover requested"), 
+					errhint("run gprecoverseg to re-establish mirror connectivity")));				   
+		   
+		   FileRep_SetSegmentState(SegmentStateFault, FaultTypeIO);
+		   		   
+		   ereport(ERROR,
+				   (errcode(ERRCODE_DATA_CORRUPTED),
+					errmsg("xlog record is invalid"),
+					errSendAlert(true)));		  
+	   }
+		  
+       buf = XLogRecGetData(tfRecord);
 	  }
 	else
 	  {
