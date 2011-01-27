@@ -2275,7 +2275,7 @@ def checkPersistentTables():
     """
     queries.append([qname, qry])
 
-    qname = "gp_persistent_relation_node   <=> pg_persistent_database_node"
+    qname = "gp_persistent_relation_node   <=> pg_database"
     qry = """
     SELECT  datname, oid, count(*)
     FROM (

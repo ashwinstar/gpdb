@@ -304,14 +304,30 @@ class GPCatalog():
         if self._version < '4.1':
             self._tables['pg_namespace']._setKnownDifferences("oid")
 
-        # MPP-11282 : Inconsistent oids for language callback functions
+        # MPP-11282: Inconsistent oids for language callback functions
+        # MPP-12015: Inconsistent oids for operator communtator/negator functions
         self._tables['pg_proc']._setKnownDifferences("oid prolang")
+
+        # MPP-11282: pg_language oids and callback functions
+        self._tables['pg_language']._setKnownDifferences("oid lanplcallfoid lanvalidator")
+
+        # MPP-12015: Inconsistent oids for operator communtator/negator functions
+        self._tables['pg_operator']._setKnownDifferences("oid oprcom oprnegate")
 
         # MPP-11281 : Inconsistent oids for views
         self._tables['pg_rewrite']._setKnownDifferences("oid ev_action")
 
         # MPP-11285 : Inconsistent oids for triggers
         self._tables['pg_trigger']._setKnownDifferences("oid")
+
+        # MPP-11575 : Inconsistent handling of indpred for partial indexes
+        self._tables['pg_index']._setKnownDifferences("indpred")
+
+        # MPP-11858: pg_resqueue/pg_resqueuecapability oid inconsistencies
+        #    Fixed in 4.1
+        if self._version < '4.1':
+            self._tables['pg_resqueue']._setKnownDifferences("oid")
+            self._tables['pg_resqueuecapability']._setKnownDifferences("oid")
 
         # pg_class:
         #   - typowner has its own checks:
