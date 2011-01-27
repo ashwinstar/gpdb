@@ -305,6 +305,8 @@ static uint32 getTransition(bool isPrimaryAlive, bool isMirrorAlive);
 static uint32 getPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror);
 static uint32 getPairStateSAN(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror);
 
+static void requestPostmasterShutdown(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror);
+
 static void
 buildSegmentStateChange(CdbComponentDatabaseInfo *segInfo, struct segmentStatusChange *change, uint8 statusNew);
 
@@ -1612,18 +1614,21 @@ getTransition(bool isPrimaryAlive, bool isMirrorAlive)
 static uint32
 getPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror)
 {
-	Assert(FTS_STATUS_ISALIVE(primary->dbid, ftsProbeInfo->fts_status));
-	Assert(FTS_STATUS_ISPRIMARY(primary->dbid, ftsProbeInfo->fts_status));
-	Assert(!FTS_STATUS_ISPRIMARY(mirror->dbid, ftsProbeInfo->fts_status));
-	Assert(!FTS_STATUS_IS_CHANGELOGGING(mirror->dbid, ftsProbeInfo->fts_status));
+	/* check for inconsistent segment state */
+	if (!FTS_STATUS_ISALIVE(primary->dbid, ftsProbeInfo->fts_status) ||
+	    !FTS_STATUS_ISPRIMARY(primary->dbid, ftsProbeInfo->fts_status) ||
+	    FTS_STATUS_ISPRIMARY(mirror->dbid, ftsProbeInfo->fts_status) ||
+	    FTS_STATUS_IS_CHANGELOGGING(mirror->dbid, ftsProbeInfo->fts_status))
+	{
+		requestPostmasterShutdown(primary, mirror);
+	}
 
-	if (FTS_STATUS_IS_SYNCED(primary->dbid, ftsProbeInfo->fts_status))
+	if (FTS_STATUS_IS_SYNCED(primary->dbid, ftsProbeInfo->fts_status) &&
+	    !FTS_STATUS_IS_CHANGELOGGING(primary->dbid, ftsProbeInfo->fts_status) &&
+	    FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status) &&
+	    FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status))
 	{
 		/* Primary: Up, Sync - Mirror: Up, Sync */
-
-		Assert(!FTS_STATUS_IS_CHANGELOGGING(primary->dbid, ftsProbeInfo->fts_status));
-		Assert(FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status));
-		Assert(FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status));
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
@@ -1633,11 +1638,12 @@ getPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo 
 
 		return FILEREP_PUS_MUS;
 	}
-	else if (FTS_STATUS_IS_CHANGELOGGING(primary->dbid, ftsProbeInfo->fts_status))
+
+	if (!FTS_STATUS_IS_SYNCED(primary->dbid, ftsProbeInfo->fts_status) &&
+	    FTS_STATUS_IS_CHANGELOGGING(primary->dbid, ftsProbeInfo->fts_status) &&
+	    !FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
 	{
 		/* Primary: Up, Changetracking - Mirror: Down */
-
-		Assert(!FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status));
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
@@ -1647,12 +1653,13 @@ getPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo 
 
 		return FILEREP_PUC_MDX;
 	}
-	else
+
+	if (!FTS_STATUS_IS_SYNCED(primary->dbid, ftsProbeInfo->fts_status) &&
+	    !FTS_STATUS_IS_CHANGELOGGING(primary->dbid, ftsProbeInfo->fts_status) &&
+	    FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status) &&
+	    !FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status))
 	{
 		/* Primary: Up, Resync - Mirror: Up, Resync */
-
-		Assert(FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status));
-		Assert(!FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status));
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
@@ -1662,6 +1669,10 @@ getPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo 
 
 		return FILEREP_PUR_MUR;
 	}
+
+	/* segments are in inconsistent state */
+	requestPostmasterShutdown(primary, mirror);
+	return FILEREP_SENTINEL;
 }
 
 
@@ -1700,6 +1711,26 @@ getPairStateSAN(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mir
 	}
 }
 
+/*
+ * Notify postmaster to shut down due to inconsistent segment state
+ */
+void requestPostmasterShutdown(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror)
+{
+	FtsRequestMasterShutdown();
+
+	elog(FATAL, "FTS: detected invalid state for content %d: "
+			    "primary (dbid=%d, mode='%c', status='%c'), "
+			    "mirror (dbid=%d, mode='%c', status='%c'), "
+			    "shutting down master",
+			    primary->segindex,
+			    primary->dbid,
+			    primary->mode,
+			    primary->status,
+			    mirror->dbid,
+			    mirror->mode,
+			    mirror->status
+			    );
+}
 
 /*
  * find new state for primary and mirror
@@ -1780,8 +1811,6 @@ transitionFilerep(uint32 stateOld, uint32 trans)
 	Assert(IS_VALID_OLD_STATE_FILEREP(stateOld));
 
 	int i = 0;
-
-
 
 	/* check state machine for transition */
 	for (i = 0; i < FILEREP_SENTINEL; i++)
@@ -2642,14 +2671,17 @@ executeEntrySQL(PGconn *entryConn, const char *query)
 static void
 markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror)
 {
-	Assert(FTS_STATUS_ISALIVE(primary->dbid, ftsProbeInfo->fts_status));
-	Assert(FTS_STATUS_ISPRIMARY(primary->dbid, ftsProbeInfo->fts_status));
-	Assert(!FTS_STATUS_ISPRIMARY(mirror->dbid, ftsProbeInfo->fts_status));
-	Assert(FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status));
-	Assert(!FTS_STATUS_IS_SYNCED(primary->dbid, ftsProbeInfo->fts_status));
-	Assert(!FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status));
-	Assert(!FTS_STATUS_IS_CHANGELOGGING(primary->dbid, ftsProbeInfo->fts_status));
-	Assert(!FTS_STATUS_IS_CHANGELOGGING(mirror->dbid, ftsProbeInfo->fts_status));
+	if (!FTS_STATUS_ISALIVE(primary->dbid, ftsProbeInfo->fts_status) ||
+	    !FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status) ||
+	    !FTS_STATUS_ISPRIMARY(primary->dbid, ftsProbeInfo->fts_status) ||
+ 	    FTS_STATUS_ISPRIMARY(mirror->dbid, ftsProbeInfo->fts_status) ||
+	    FTS_STATUS_IS_SYNCED(primary->dbid, ftsProbeInfo->fts_status) ||
+	    FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status) ||
+	    FTS_STATUS_IS_CHANGELOGGING(primary->dbid, ftsProbeInfo->fts_status) ||
+	    FTS_STATUS_IS_CHANGELOGGING(mirror->dbid, ftsProbeInfo->fts_status))
+	{
+		requestPostmasterShutdown(primary, mirror);
+	}
 
 	char cmd[SQL_CMD_BUF_SIZE];
 	char timestamp_str[TIMESTAMP_BUF_SIZE];

@@ -114,6 +114,7 @@ typedef struct FtsProbeInfo
 typedef struct FtsControlBlock
 {
 	bool		ftsEnabled;
+	bool		ftsShutdownMaster;
 
 	LWLockId	ControlLock;
 

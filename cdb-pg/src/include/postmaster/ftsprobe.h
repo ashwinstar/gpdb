@@ -18,4 +18,7 @@ extern int ftsprobe_start(void);
 
 extern char *find_superuser_name(bool try_bootstrap);
 
+extern bool FtsMasterShutdownRequested(void);
+extern void FtsRequestMasterShutdown(void);
+
 #endif   /* FTSPROBE_H */

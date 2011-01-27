@@ -3984,6 +3984,18 @@ static void
 reaper(SIGNAL_ARGS)
 {
     need_call_reaper = 1;
+
+    if (FtsMasterShutdownRequested())
+    {
+#ifdef USE_ASSERT_CHECKING
+		PrimaryMirrorMode pm_mode;
+		getPrimaryMirrorStatusCodes(&pm_mode, NULL, NULL, NULL);
+		Assert(pm_mode == PMModeMaster);
+#endif /*USE_ASSERT_CHECKING*/
+
+		elog(LOG, "shutting down master as requested by FTS due to inconsistent segment configuration.");
+		pmdie(SIGQUIT);
+    }
 }
 
 static void do_reaper()
