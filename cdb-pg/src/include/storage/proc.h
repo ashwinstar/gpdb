@@ -209,5 +209,6 @@ extern void ResLockWaitCancel(void);
 extern bool ProcGetMppLocalProcessCounter(int *mppLocalProcessCounter);
 extern bool ProcCanSetMppSessionId(void);
 extern void ProcNewMppSessionId(int *newSessionId);
+extern bool freeAuxiliaryProcEntryAndReturnReset(int pid, bool *inArray);
 extern bool freeProcEntryAndReturnReset(int pid);
 #endif   /* PROC_H */

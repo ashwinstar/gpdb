@@ -43,6 +43,7 @@
 #include "storage/spin.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
+#include "storage/pmsignal.h"
 #include "executor/execdesc.h"
 #include "utils/resscheduler.h"
 #include "utils/timestamp.h"
@@ -715,6 +716,19 @@ AuxiliaryProcKill(int code, Datum arg)
 	if (code == 0 || code == 1)
 	{
 		MyProc->postmasterResetRequired = false;
+	}
+
+	/*
+	 * If the parent process of this auxiliary process does not exist,
+	 * we want to set the proc array entry free here. The postmaster may
+	 * not own this process, so that it can't set the entry free. This
+	 * could happen to the filerep subprocesses when the filerep main
+	 * process dies unexpectedly.
+	 */
+	if (!ParentProcIsAlive())
+	{
+		MyProc->pid = 0;
+		MyProc->postmasterResetRequired = true;
 	}
 
 	/* PGPROC struct isn't mine anymore */
@@ -1662,8 +1676,54 @@ void ProcNewMppSessionId(int *newSessionId)
 }
 
 /*
- * freeProcEntryAndReturnReset -- put the proc entry for a given pid back to the
- * PGPROC freelist, and return the postmasterResetRequired value.
+ * freeAuxiliaryProcEntryAndReturnReset -- free proc entry in AuxiliaryProcs array,
+ * and return the postmasterResetRequired value.
+ *
+ * Note that we don't need to hold a lock on PGPROC structure here, since this is
+ * only called by postmaster or the filerep main process.
+ *
+ * If inArray is not NULL, it will be set to true when the given pid is found
+ * in AuxiliaryProcs array.
+ */
+bool
+freeAuxiliaryProcEntryAndReturnReset(int pid, bool *inArray)
+{
+	bool resetRequired = true;
+	if (inArray != NULL)
+	{
+		*inArray = false;
+	}
+	
+	for (int i=0; i < NUM_AUXILIARY_PROCS; i++)
+	{
+		PGPROC *myProc = &AuxiliaryProcs[i];
+		
+		if (myProc->pid == pid)
+		{
+			resetRequired = myProc->postmasterResetRequired;
+			
+			/* Mark auxiliary proc no longer in use */
+			myProc->pid = 0;
+			myProc->postmasterResetRequired = true;
+
+			elog(DEBUG2, "setting auxiliary proc to free: pid=%d (resetRequired=%d)",
+				 pid, resetRequired);
+
+			if (inArray != NULL)
+			{
+				*inArray = true;
+			}
+			
+			return resetRequired;
+		}
+	}
+
+	return resetRequired;
+}
+
+/*
+ * freeProcEntryAndReturnReset -- free proc entry in PGPROC or AuxiliaryProcs array,
+ * and return the postmasterResetRequired value.
  *
  * Note that we don't need to hold a lock on PGPROC structure here, since this is
  * only called by postmaster.
@@ -1696,24 +1756,11 @@ freeProcEntryAndReturnReset(int pid)
 		}
 	}
 
-	for (int i=0; i < NUM_AUXILIARY_PROCS; i++)
-	{
-		PGPROC *myProc = &AuxiliaryProcs[i];
-		
-		if (myProc->pid == pid)
-		{
-			resetRequired = myProc->postmasterResetRequired;
-			
-			/* Mark auxiliary proc no longer in use */
-			myProc->pid = 0;
-			myProc->postmasterResetRequired = true;
-
-			elog(DEBUG2, "setting auxiliary proc to free: pid=%d (resetRequired=%d)",
-				 pid, resetRequired);
-			
-			return resetRequired;
-		}
-	}
+	bool found = false;
+	resetRequired = freeAuxiliaryProcEntryAndReturnReset(pid, &found);
+	
+	if (found)
+		return resetRequired;
 
 	elog(DEBUG2, "proc entry not found: pid=%d", pid);
 

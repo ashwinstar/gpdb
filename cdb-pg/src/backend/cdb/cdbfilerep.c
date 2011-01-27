@@ -2162,6 +2162,8 @@ FileRep_ProcessSignals()
 			if ( errno == ECHILD)
 				break;
 
+			bool resetRequired = freeAuxiliaryProcEntryAndReturnReset(term_pid, NULL);
+
 			/* NOTE see do_reaper() */
 			for (i=0; i < MaxFileRepSubProc; i++)
 			{
@@ -2211,7 +2213,8 @@ FileRep_ProcessSignals()
 
 					if (! EXIT_STATUS_0(term_status) &&
 					    ! EXIT_STATUS_1(term_status) &&
-					    ! EXIT_STATUS_2(term_status) )
+					    ! EXIT_STATUS_2(term_status) &&
+						resetRequired)
 					{
 					    FileRep_SetPostmasterReset();
 					}

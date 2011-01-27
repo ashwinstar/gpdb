@@ -59,5 +59,6 @@ extern bool ReleasePostmasterChildSlot(int slot);
 extern void MarkPostmasterChildActive(void);
 extern void MarkPostmasterChildInactive(void);
 extern bool PostmasterIsAlive(bool amDirectChild);
+extern bool ParentProcIsAlive(void);
 
 #endif   /* PMSIGNAL_H */
