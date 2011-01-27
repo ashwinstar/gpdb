@@ -433,7 +433,7 @@ CreateRole(CreateRoleStmt *stmt)
 	else
 		new_record_nulls[Anum_pg_authid_rolvaliduntil - 1] = true;
 
-	if (resqueue && (Gp_role == GP_ROLE_DISPATCH))
+	if (resqueue)
 	{
 		Oid		queueid;
 
@@ -962,7 +962,7 @@ AlterRole(AlterRoleStmt *stmt)
 	}
 
 	/* resource queue */
-	if (resqueue && (Gp_role == GP_ROLE_DISPATCH))
+	if (resqueue)
 	{
 		Oid			queueid;
 
@@ -974,12 +974,15 @@ AlterRole(AlterRoleStmt *stmt)
 			/* MPP-7587: don't complain if you ALTER a superuser,
 			 * who doesn't use the queue 
 			 */
-			if (!bWas_super)
-				ereport(NOTICE,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("resource queue required -- "
-								"using default resource queue \"%s\"",
-								GP_DEFAULT_RESOURCE_QUEUE_NAME)));
+			if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				if (!bWas_super)
+						ereport(NOTICE,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("resource queue required -- "
+										"using default resource queue \"%s\"",
+										GP_DEFAULT_RESOURCE_QUEUE_NAME)));
+			}
 			
 			resqueue = pstrdup(GP_DEFAULT_RESOURCE_QUEUE_NAME);
 		}
