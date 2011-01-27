@@ -191,7 +191,7 @@ const uint32 state_machine_filerep[][FILEREP_SENTINEL] =
 {
 /* new: PUS_MUS,   PUR_MUR,               PUC_MDX,   MDX_PUC */
 	{         0,         0,             TRANS_U_D, TRANS_D_U },  /* old: PUS_MUS */
-	{         0,         0, TRANS_U_D | TRANS_D_U,         0 },  /* old: PUR_MUR */
+	{         0,         0,             TRANS_U_D,         0 },  /* old: PUR_MUR */
 	{         0,         0,                     0,         0 },  /* old: PUC_MDX */
 };
 
