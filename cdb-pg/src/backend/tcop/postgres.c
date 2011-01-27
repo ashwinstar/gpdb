@@ -1459,6 +1459,10 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 	bool		was_logged = false;
 	bool		isTopLevel = false;
 	char		msec_str[32];
+
+    if (Gp_role != GP_ROLE_EXECUTE)
+        gp_command_count++;
+
 	/*
 	 * Report query to various monitoring facilities.
 	 */
@@ -2464,6 +2468,9 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	bool		execute_is_fetch = false;
 	bool		was_logged = false;
 	char		msec_str[32];
+
+    if (Gp_role != GP_ROLE_EXECUTE)
+        gp_command_count++;
 
 	/* Adjust destination to tell printtup.c what to do */
 	dest = whereToSendOutput;

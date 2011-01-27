@@ -1034,9 +1034,13 @@ gp_adjust_priority_int(PG_FUNCTION_ARGS)
 			BackoffBackendSharedEntry *se = getBackoffEntryRW(i); 
 			if (equalStatementId(&se->statementId, &sid))
 			{
+				if (gp_debug_resqueue_priority)
+				{
+					elog(WARNING, "changing weight of (%d:%d) from %d to %d", se->statementId.sessionId, se->statementId.commandCount, se->weight, wt);
+				}
+
 				se->weight = wt;
 				numfound++;
-				break;
 			}
 		}
 
@@ -1093,12 +1097,21 @@ gp_adjust_priority_int(PG_FUNCTION_ARGS)
 		for (i = 0; i < backoffSingleton->numEntries; i++)
 		{
 			BackoffBackendSharedEntry *se = getBackoffEntryRW(i); 
+
 			if (equalStatementId(&se->statementId, &sid))
 			{
+				if (gp_debug_resqueue_priority)
+				{
+					elog(WARNING, "changing weight of (%d:%d) from %d to %d", se->statementId.sessionId, se->statementId.commandCount, se->weight, wt);
+				}
 				se->weight = wt;
 				numfound++;
-				break;
 			}
+		}
+
+		if (gp_debug_resqueue_priority && numfound == 0)
+		{
+			elog(WARNING, "did not find any matching backends on segments");
 		}
 	}
 
