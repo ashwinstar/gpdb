@@ -1025,7 +1025,14 @@ gpvars_assign_gp_fts_probe_pause(bool newval, bool doit, GucSource source)
 		 */
 		if (ftsProbeInfo && Gp_segment == -1)
 		{
+			/*
+			 * fts_pauseProbes is externally set/cleared;
+			 * fts_cancelProbes is externally set and cleared by FTS
+			 */
+			ftsLock();
 			ftsProbeInfo->fts_pauseProbes = newval;
+			ftsProbeInfo->fts_discardResults = ftsProbeInfo->fts_discardResults || newval;
+			ftsUnlock();
 
 			/*
 			 * If we're unpausing, we want to force the prober to

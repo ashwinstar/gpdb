@@ -291,6 +291,7 @@ static void retrieveUserAndDb(char **probeUser);
 static void executeEntrySQL(PGconn *entryConn, const char *query);
 
 static bool probeSegments(void);
+static bool isFtsActive(void);
 
 static void *probeSegmentFromThread(void *arg);
 
@@ -350,7 +351,7 @@ typedef enum FilerepModeUpdateLoggingEnum
 static void updateConfiguration(struct segmentStatusChange *changes, int changeEntries);
 
 static PGconn *openSelfConn(CdbComponentDatabaseInfo *entryDB);
-static void closeSelfConn(PGconn *conn);
+static void closeSelfConn(PGconn *conn, bool commit);
 static void probeUpdateConfig(PGconn *entryConn, struct segmentStatusChange *changes, int changeCount, char *time_str);
 
 static void getGpFailover_strategy(char *strategy);
@@ -671,7 +672,15 @@ void FtsProbeLoop(void)
 
 		probe_start_time = time(NULL);
 
-		if (ftsProbeInfo->fts_pauseProbes)
+		ftsLock();
+
+		/* atomically clear cancel flag and check pause flag */
+		bool pauseProbes = ftsProbeInfo->fts_pauseProbes;
+		ftsProbeInfo->fts_discardResults = false;
+
+		ftsUnlock();
+
+		if (pauseProbes)
 		{
 			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 				elog(LOG, "skipping probe, we're paused.");
@@ -711,10 +720,10 @@ void FtsProbeLoop(void)
 		/* free any pallocs we made inside probeSegments() */
 		MemoryContextReset(probeContext);
 
-		if (ftsProbeInfo->fts_pauseProbes)
+		if (!isFtsActive())
 		{
 			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-				elog(LOG, "skipping probe, we're paused.");
+				elog(LOG, "skipping probe, FTS is paused or shutting down");
 			goto prober_sleep;
 		}
 
@@ -748,7 +757,7 @@ void FtsProbeLoop(void)
 		{
 			/* check if we need to sleep before starting next iteration */
 			elapsed = time(NULL) - probe_start_time;
-			if (elapsed < gp_fts_probe_interval)
+			if (elapsed < gp_fts_probe_interval && !shutdown_requested)
 			{
 				pg_usleep((gp_fts_probe_interval - elapsed) * USECS_PER_SEC);
 			}
@@ -757,6 +766,16 @@ void FtsProbeLoop(void)
 
 	return;
 }
+
+/*
+ * Check if FTS is active
+ */
+bool
+isFtsActive(void)
+{
+	return (!ftsProbeInfo->fts_discardResults && !shutdown_requested);
+}
+
 
 /*
  * Wrapper for catalog lookup for a super user appropriate for FTS probing. We
@@ -1374,7 +1393,7 @@ probeSegmentFromThread(void *arg)
 		}
 
 		/* if we've gotten a pause or shutdown request, we ignore probe results. */
-		if (ftsProbeInfo->fts_pauseProbes || shutdown_requested)
+		if (!isFtsActive())
 		{
 			break;
 		}
@@ -1455,7 +1474,7 @@ probePublishUpdate(uint8 *probe_results)
 		CdbComponentDatabaseInfo *segInfo = &cdb_component_dbs->segment_db_info[i];
 
 		/* if we've gotten a pause or shutdown request, we ignore our probe results. */
-		if (ftsProbeInfo->fts_pauseProbes || shutdown_requested)
+		if (!isFtsActive())
 		{
 			return false;
 		}
@@ -1958,7 +1977,7 @@ updateConfiguration(struct segmentStatusChange *changes, int changeEntries)
 	get_timestamp(timestamp_str, sizeof(timestamp_str));
 
 	/* if we've gotten a pause or shutdown request, we ignore our probe results. */
-	if (ftsProbeInfo->fts_pauseProbes || shutdown_requested)
+	if (!isFtsActive())
 	{
 		return;
 	}
@@ -1969,21 +1988,26 @@ updateConfiguration(struct segmentStatusChange *changes, int changeEntries)
 	/* update segment configuration */
 	probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
 
-	if (failover_strategy == 'f')
-	{
-		/* commit our config/history changes */
-		closeSelfConn(entryConn);
+	/* if FTS is not active, we ignore probe results (abort transaction) */
+	ftsLock();
+	bool commit = isFtsActive();
+	ftsUnlock();
 
-		/* FILEREP response */
-		Filerep_Failover(changes, changeEntries);
-	}
-	else if (failover_strategy == 's')
-	{
-		/* SAN response */
-		SAN_Failover(entryConn, changes, changeEntries, timestamp_str);
+	/* commit/abort configuration and history changes */
+	closeSelfConn(entryConn, commit);
 
-		/* commit our config/history changes */
-		closeSelfConn(entryConn);
+	if (commit)
+	{
+		if (failover_strategy == 'f')
+		{
+			/* FILEREP response */
+			Filerep_Failover(changes, changeEntries);
+		}
+		else if (failover_strategy == 's')
+		{
+			/* SAN response */
+			SAN_Failover(entryConn, changes, changeEntries, timestamp_str);
+		}
 	}
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
@@ -2082,11 +2106,12 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
  * Commit and close self-connection to master-DB.
  */
 static void
-closeSelfConn(PGconn *conn)
+closeSelfConn(PGconn *conn, bool commit)
 {
 	PGresult   *rs;
+	const char *stmt = (commit ? "COMMIT" : "ABORT");
 
-	rs = PQexec(conn, "COMMIT");
+	rs = PQexec(conn, stmt);
 	if (PQresultStatus(rs) != PGRES_COMMAND_OK)
 	{
 		/*
@@ -2104,7 +2129,7 @@ closeSelfConn(PGconn *conn)
 		PQfinish(conn);
 		conn = NULL;
 
-		elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);
+		elog(FATAL, "FTS: connection to master failed to %s: %s", stmt, error_message);
 	}
 
 	/* No error, we're ready to go */
@@ -2692,7 +2717,13 @@ markSegmentInSyncInConfiguration(CdbComponentDatabaseInfo *primary, CdbComponent
 					mirror->address, mirror->port ),
 			 errSendAlert(true)));
 
-	closeSelfConn(entryConn);
+	/* if FTS is not active, we ignore probe results (abort transaction) */
+	ftsLock();
+	bool commit = isFtsActive();
+	ftsUnlock();
+
+	/* commit/abort configuration and history changes */
+	closeSelfConn(entryConn, commit);
 }
 
 static void
