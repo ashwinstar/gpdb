@@ -54,7 +54,7 @@ PERSISTENT_TABLES = [
     ]
 
 # Hard coded tables that have different values on every segment
-SPECIAL_TABLES = [
+SEGMENT_LOCAL_TABLES = [
     'gp_id',
     'pg_depend',  # (not if we fix oid inconsistencies)
     'pg_shdepend', # (not if we fix oid inconsistencies)
@@ -200,7 +200,7 @@ class GPCatalog():
             if name in self._tables:
                 self._tables[name]._setMasterOnly()
 
-        for name in SPECIAL_TABLES:
+        for name in SEGMENT_LOCAL_TABLES:
             if name in self._tables:
                 self._tables[name]._setMasterOnly()
 
@@ -277,12 +277,10 @@ class GPCatalog():
            - Bugs (marked with the appropriate jiras)
            - A small number of "special" columns
         """
-        
-        # MPP-11289 : inconsistent OIDS for table "default values"
-        self._tables['pg_attrdef']._setKnownDifferences("oid")
-        
-        # roleresqueue is only set on the master:
-        self._tables['pg_authid']._setKnownDifferences("rolresqueue")
+
+        # -------------
+        # Special cases
+        # -------------
         
         # pg_class:
         #   - relfilenode should generally be consistent, but may not be (jira?)
@@ -293,16 +291,22 @@ class GPCatalog():
         self._tables['pg_class']._setKnownDifferences(
             "relfilenode relpages reltuples relhasindex relowner relfrozenxid")
 
-        # MPP-11284 : inconsistent OIDS for constraints
-        self._tables['pg_constraint']._setKnownDifferences("oid")
+        # pg_type: typowner has its own checks:
+        #       => may want to separate out "owner" columns like acl and oid
+        self._tables['pg_type']._setKnownDifferences("typowner")
 
         # pg_database: datfrozenxid = vacuum related
         self._tables['pg_database']._setKnownDifferences("datfrozenxid")
 
-        # MPP-10286 : inconsistent oids for temporary schemas
-        #   Fixed in 4.1
-        if self._version < '4.1':
-            self._tables['pg_namespace']._setKnownDifferences("oid")
+        # -------------
+        # Issues still present in the product
+        # -------------
+
+        # MPP-11289 : inconsistent OIDS for table "default values"
+        self._tables['pg_attrdef']._setKnownDifferences("oid")
+
+        # MPP-11284 : inconsistent OIDS for constraints
+        self._tables['pg_constraint']._setKnownDifferences("oid")
 
         # MPP-11282: Inconsistent oids for language callback functions
         # MPP-12015: Inconsistent oids for operator communtator/negator functions
@@ -323,16 +327,23 @@ class GPCatalog():
         # MPP-11575 : Inconsistent handling of indpred for partial indexes
         self._tables['pg_index']._setKnownDifferences("indpred")
 
-        # MPP-11858: pg_resqueue/pg_resqueuecapability oid inconsistencies
-        #    Fixed in 4.1
+        # -------------
+        # Historical Issues that have been fixed
+        #
+        # These issues are patched during upgrade, but we must exclude them 
+        # from checks when we are checking older versions of the catalog.
+        # -------------
         if self._version < '4.1':
+
+            # MPP-12057 : roleresqueue is only set on the master:
+            self._tables['pg_authid']._setKnownDifferences("rolresqueue")
+
+            # MPP-10286 : inconsistent oids for temporary schemas
+            self._tables['pg_namespace']._setKnownDifferences("oid")
+            
+            # MPP-11858: pg_resqueue/pg_resqueuecapability oid inconsistencies
             self._tables['pg_resqueue']._setKnownDifferences("oid")
             self._tables['pg_resqueuecapability']._setKnownDifferences("oid")
-
-        # pg_class:
-        #   - typowner has its own checks:
-        #       => may want to separate out "owner" columns like acl and oid
-        self._tables['pg_type']._setKnownDifferences("typowner")
 
 
     def _validate(self):
