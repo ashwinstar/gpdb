@@ -142,6 +142,11 @@ def parseargs():
         logger.error('Log directory %s does not exist.' % options.logfile)
         parser.exit(2, None)
 
+    # -s and -n are exclusive
+    if options.standby_host and options.no_update:
+        logger.error('Options -s and -n cannot be specified together.')
+        parser.exit(2, None)
+
     # -s and -r are exclusive
     if options.standby_host and options.remove:
         logger.error('Options -s and -r cannot be specified together.')
@@ -555,16 +560,12 @@ def validate_standby_init(options, array, standby_filespace_map):
         raise GpInitStandbyException('standby master already configured')
     
     if options.no_update:
-        # some sanity checks
-        if not array.standbyMaster:
+        if array.standbyMaster:
+            options.standby_host = array.standbyMaster.getSegmentHostName()
+        else:
             logger.error('Cannot use -n option when standby master has not yet been configured')
             raise GpInitStandbyException('Standby master not configured')
         
-        if options.standby_host != array.standbyMaster.getSegmentHostName():
-            logger.error('Standby hostname passed in, %s, does not match configured' % options.standby_host)
-            logger.error('standby hostname %s' % array.standbyMaster.getSegmentHostName())
-            raise GpInitStandbyException('Standby hostname mismatch')
-    
     # make sure we have top level dirs
     for fs_name, fs_dir in standby_filespace_map:
         base_dir = os.path.dirname(os.path.normpath(fs_dir))
