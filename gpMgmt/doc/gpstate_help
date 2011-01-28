@@ -8,7 +8,7 @@ SYNOPSIS
 *****************************************************
 
 gpstate [-d master_data_directory] [-B parallel_processes] [-s | -b | -Q] 
-	[-m] [-c] [-p] [-i] [-f] [-v | -q] [-l log_directory] [-D] 
+	[-m] [-c] [-p] [-i] [-f] [-v | -q] [-l log_directory]
 
 gpstate -? | -h | --help
 
@@ -59,11 +59,6 @@ mirror segments.
 
 Optional. The master data directory. If not specified, the value set for 
 $MASTER_DATA_DIRECTORY will be used.
-
-
--D (debug)
-
-Sets logging level to debug.
 
 
 -f (show standby master details)
