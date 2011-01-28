@@ -414,18 +414,21 @@ getTransitionStateLabel(TransitionState state)
  */
 char getRole(PrimaryMirrorMode mode)
 {
-	Assert(mode > PMModeUninitialized && mode < PMMode__EnumerationCount);
+	Assert(mode >= PMModeUninitialized && mode < PMMode__EnumerationCount);
 
 	switch (mode)
 	{
 		case PMModeMaster:
 		case PMModeMirrorlessSegment:
-		case PMModeQuiescentSegment:
 		case PMModePrimarySegment:
 			return 'p';
 
 		case PMModeMirrorSegment:
 			return 'm';
+
+		case PMModeQuiescentSegment:
+		case PMModeUninitialized:
+			return '-';
 
 		default:
 			Assert(!"Invalid role");
@@ -439,7 +442,7 @@ char getRole(PrimaryMirrorMode mode)
  */
 char getMode(DataState_e state)
 {
-	Assert(state > DataStateNotInitialized && state < DataState__EnumerationCount);
+	Assert(state >= DataStateNotInitialized && state < DataState__EnumerationCount);
 
 	switch (state)
 	{
@@ -451,6 +454,9 @@ char getMode(DataState_e state)
 
 		case DataStateInChangeTracking:
 			return 'c';
+
+		case DataStateNotInitialized:
+			return '-';
 
 		default:
 			Assert(!"Invalid mode");
