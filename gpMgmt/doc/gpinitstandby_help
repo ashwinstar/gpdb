@@ -9,7 +9,7 @@ SYNOPSIS
 
 gpinitstandby { -s <standby_hostname> | -r } 
               [-M smart | -M fast] [-n] [-a] [-q] [-D] [-L]
-              [-l <logfile_directory>] [-B <parallel_processes>] 
+              [-l <logfile_directory>]
 
  
 gpinitstandby -? | -v
@@ -114,13 +114,6 @@ but is still written to the log file.
 The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 
--B parallel_processes
-
-The number of segment pg_hba.conf files to edit in parallel. 
-If not specified, the utility will start up to 40 parallel processes 
-depending on how many segment instances it needs to alter.
-
-
 -D (debug)
 
 Sets logging level to debug.
@@ -163,4 +156,3 @@ SEE ALSO
 *****************************************************
 
 gpinitsystem, gpaddmirrors, gpactivatestandby
-
