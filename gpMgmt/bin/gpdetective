@@ -394,10 +394,11 @@ class GPDetective:
         '''
         Establish a connection to the Greenplum database
         '''
-        user = user or self.opt['-U']
-        host = host or self.opt['-h']
-        port = port or self.opt['-p']
-        db   = db   or self.opt['-U']
+        user     = user     or self.opt['-U']
+        password = password or self.opt['-P']
+        host     = host     or self.opt['-h']
+        port     = port     or self.opt['-p']
+        db       = db       or self.opt['-U']
         if utility:
             options = '-c gp_session_role=utility'
         else:
@@ -412,7 +413,7 @@ class GPDetective:
 
 
     #------------------------------------------------------------
-    def writeCmd(self, filename, cmd):
+    def writeCmd(self, filename, cmd, childenv=None):
         '''
         Execute a shell command and dumps the results to the
         specified file.
@@ -438,10 +439,10 @@ class GPDetective:
             file = self.errlog
         try:
             if isinstance(cmd, str):
-               p = subprocess.Popen(cmd, stdout=file, shell=True, stderr=self.errlog)
+               p = subprocess.Popen(cmd, stdout=file, shell=True, stderr=self.errlog, env=childenv)
                p.wait()
             else:
-               subprocess.call(cmd, stdout=file, stderr=self.errlog)
+               subprocess.call(cmd, stdout=file, stderr=self.errlog, env=childenv)
         except Exception, e:
             self.errlog.write("Error: " + str(e) + "\n");
             self.errlog.flush()
@@ -996,15 +997,24 @@ class GPDetective:
         if self.opt['-U']:
            conOpts = conOpts + ' -U ' + str(self.opt['-U'])
 
+        # if -P specified, put password into PGPASSWORD environment
+        # for child pg_dumpall/pg_dump processes.
+        childenv = None
+        if self.opt['-P']:
+            childenv = dict(os.environ)
+            childenv['PGPASSWORD'] = self.opt['-P']
+
         if self.runpg_dumpall == True and self.pg_dump_options == None:
             self.log('pg_dumpall')
-            self.writeCmd('pg_dumpall.log', 
-                          'pg_dumpall' + ' --schema-only' + ' --gp-syntax' + conOpts
+            self.writeCmd( 'pg_dumpall.log', 
+                           'pg_dumpall' + ' --schema-only' + ' --gp-syntax' + conOpts,
+                           childenv
                          );
         if self.pg_dump_options != None:
             self.log('pd_dump')
             self.writeCmd( 'pg_dump.log'
                          , 'pg_dump' + ' --schema-only' + ' --gp-syntax ' + self.pg_dump_options + conOpts
+                         , childenv
                          );
 
         self.writeSelect('catalog_q1.log', 
