@@ -146,6 +146,9 @@ typedef struct PMModuleState
 	volatile DataState_e dataState;
 	volatile FaultType_e faultType;
 
+	/* flag indicating if either primary or mirror has not completed re-synchronizing */
+	volatile bool isResyncRunning;
+
 	/* changeTrackingSessionId starts at zero and is incremented each time the system enters change tracking */
 	volatile int64 changeTrackingSessionId;
 	volatile bool isDatabaseRunning;
@@ -191,6 +194,7 @@ typedef struct PMModuleState
      * Maintained by the filerep code -- has I/O been suspended because of a fault or transition?
      */
     volatile bool isIOSuspended;
+
 } PMModuleState;
 
 static volatile PMModuleState *pmModuleState = NULL;
@@ -346,7 +350,6 @@ getFaultTypeLabel(FaultType_e faultType)
 		"FaultIO", 
 		"FaultDB", 
 		"FaultMirror", 
-		"FaultPostmasterReset"
 	};
 	COMPILE_ASSERT(ARRAY_SIZE(labels) == FaultType__EnumerationCount);
 	
@@ -404,6 +407,57 @@ getTransitionStateLabel(TransitionState state)
 
 	return labels[state];
 }
+
+
+/**
+ * Translate PrimaryMirrorMode to character compatible with 'role', as stored in gp_segment_configuration
+ */
+char getRole(PrimaryMirrorMode mode)
+{
+	Assert(mode > PMModeUninitialized && mode < PMMode__EnumerationCount);
+
+	switch (mode)
+	{
+		case PMModeMaster:
+		case PMModeMirrorlessSegment:
+		case PMModeQuiescentSegment:
+		case PMModePrimarySegment:
+			return 'p';
+
+		case PMModeMirrorSegment:
+			return 'm';
+
+		default:
+			Assert(!"Invalid role");
+			return '\0';
+	}
+}
+
+
+/**
+ * Translate DataState_e to character compatible with 'mode', as stored in gp_segment_configuration
+ */
+char getMode(DataState_e state)
+{
+	Assert(state > DataStateNotInitialized && state < DataState__EnumerationCount);
+
+	switch (state)
+	{
+		case DataStateInSync:
+			return 's';
+
+		case DataStateInResync:
+			return 'r';
+
+		case DataStateInChangeTracking:
+			return 'c';
+
+		default:
+			Assert(!"Invalid mode");
+			return '\0';
+	}
+}
+
 
 /**
  * Convert the given string name for a primary mirror mode to a mode.  Note
@@ -612,6 +666,24 @@ setFullResync(bool isFullResync)
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 }
 	
+bool
+isResyncRunning(void)
+{
+	assertModuleInitialized();
+	
+	return pmModuleState->isResyncRunning;
+}
+
+void
+setResyncCompleted()
+{
+	assertModuleInitialized();
+
+	Assert(pmModuleState->dataState == DataStateInSync);
+
+	pmModuleState->isResyncRunning = false;
+}
+
 bool
 isDatabaseRunning(void)
 {
@@ -832,6 +904,7 @@ primaryMirrorModeShmemInit(void)
 	pmModuleState->isTransitionListenerFinished = true;
 	pmModuleState->transitionState = TSNone;
 	pmModuleState->transitionResult = PMTransitionSuccess;
+	pmModuleState->isResyncRunning = false;
 
 	pmModuleState->hostAddress[0] = '\0';
 	pmModuleState->hostPort = 0;
@@ -882,14 +955,15 @@ setInitialRequestedPrimaryMirrorMode(PrimaryMirrorMode targetMode)
 }
 
 /**
- * Mark that the next postmaster reset (as processed by primaryMirrorHandlePostmasterReset) should
- *   transition to fault
+ * Mark that after postmaster reset (as processed by primaryMirrorHandlePostmasterReset)
+ * segment should transition to mirroring fault state
  */
 void
-primaryMirrorDoNextResetToFault(void)
+setFaultAfterReset(bool val)
 {
-	pmLocalState.doNextResetToFault = true;
+	pmLocalState.doNextResetToFault = val;
 }
+
 
 /**
  * Called on postmaster reset, after all children have been shut down but before starting the children back up.
@@ -1190,8 +1264,14 @@ updateDataStateUnderSpinLock(DataState_e dataState)
 	if (pmModuleState->dataState != dataState)
 	{
 		if (dataState == DataStateInChangeTracking)
+		{
 			pmModuleState->changeTrackingSessionId++;
-		pmModuleState->dataState = dataState;
+		}
+		if (dataState == DataStateInResync)
+		{
+			pmModuleState->isResyncRunning = true;
+		}
+		pmModuleState->dataState = dataState;		
 		return true;
 	}
 	return false;
@@ -1335,7 +1415,7 @@ copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, Segmen
 
 		updateDataStateUnderSpinLock(args->dataState);
 		pmModuleState->segmentState = segmentState;
-
+		
 		pmModuleState->isInFaultFromPostmasterReset = false;
 		pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = false;
 
@@ -1438,14 +1518,12 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 		copyTransitionInputParameters(&requestedTransition, SegmentStateInitialization);
 		
 		/**
-		 * must be after copying the transition input parameters
+		 * must be after copying the transition input parameters;
+		 * report to prober that we failed to reset peer;
 		 */
 		pmModuleState->isInFaultFromPostmasterReset = true;
+		updateSegmentState(SegmentStateFault, FaultTypeMirror);
         
-		if (updateSegmentState(SegmentStateFault, FaultTypePostmasterReset))
-		{
-			NotifyProcessesOfFilerepStateChange();
-		}
 		result = PMTransitionSuccess;
 	}
 	else

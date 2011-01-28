@@ -136,10 +136,7 @@ typedef enum FaultType_e {
 	FaultTypeMirror,
 		/* Network, filerep related Fault between primary and mirror, failover can happen to primary */
 	
-	FaultTypePostmasterReset,
-		/* postmaster reset restart of primary/mirror segment pair */
-		
-    /* The number of elements in this enumeration */
+	/* The number of elements in this enumeration */
 	FaultType__EnumerationCount
 	
 } FaultType_e;
@@ -283,6 +280,10 @@ extern bool isFullResync(void);
 
 extern void setFullResync(bool isFullResync);
 
+extern bool isResyncRunning(void);
+
+extern void setResyncCompleted(void);
+
 extern bool isDatabaseRunning(void);
 
 extern bool updateSegmentState(SegmentState_e segmentState, FaultType_e faultType);
@@ -311,6 +312,10 @@ extern const char *getMirrorModeLabel(PrimaryMirrorMode mode);
 extern const char *getSegmentStateLabel(SegmentState_e state);
 extern const char *getFaultTypeLabel(FaultType_e faultType);
 
+/* converting enums to chars compatible with gp_segment_configuration */
+extern char getRole(PrimaryMirrorMode mode);
+extern char getMode(DataState_e state);
+
 /* transitioning */
 extern PrimaryMirrorModeTransitionResult requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
                         char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO] );
@@ -327,7 +332,7 @@ extern void primaryMirrorGetFilerepArguments(
 				int *mirrorPortOut,
 				bool *fullSyncOut);
 extern void primaryMirrorHandlePostmasterReset(void);
-extern void primaryMirrorDoNextResetToFault(void);
+extern void setFaultAfterReset(bool val);
 extern bool primaryMirrorPostmasterResetShouldRestartPeer(void);
 extern void primaryMirrorRecordSegmentStateToPostmasterLocalMemory(void);
 extern PrimaryMirrorModeTransitionArguments primaryMirrorGetArgumentsFromLocalMemory(void);

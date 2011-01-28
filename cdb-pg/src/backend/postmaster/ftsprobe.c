@@ -114,7 +114,7 @@ enum probe_result_e
 	PROBE_SEGMENT         = 0x10,
 };
 
-#define PROBE_CHECK_FLAG(result, flag) ((result & flag) == flag)
+#define PROBE_CHECK_FLAG(result, flag) (((result) & (flag)) == (flag))
 
 #define PROBE_IS_ALIVE(dbInfo) \
 	PROBE_CHECK_FLAG(probe_results[(dbInfo)->dbid], PROBE_ALIVE)
@@ -1159,6 +1159,15 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 								  getDataStateLabel(d_state),
 								  getFaultTypeLabel(f_type));
 
+					/* check for inconsistent segment state */
+					char probe_role = getRole(pm_mode);
+					char probe_mode = getMode(d_state);
+					if (probe_role != dbInfo->role || probe_mode != dbInfo->mode)
+					{
+						write_log("Segment with dbid %d content %d has not reached new state yet, expected state: ('%c','%c'), reported state: ('%c','%c')",
+						          dbInfo->dbid, dbInfo->segindex, dbInfo->role, dbInfo->mode, probe_role, probe_mode);
+					}
+
 					ret = PROBE_ALIVE;
 
 					if (s_state == SegmentStateFault)
@@ -1172,9 +1181,6 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 							case FaultTypeDB:
 							case FaultTypeIO:
 								ret |= PROBE_FAULT_CRASH;
-								break;
-							case FaultTypePostmasterReset:
-								ret = PROBE_ALIVE;
 								break;
 							default:
 								Assert(!"Unexpected segment fault type");
@@ -1404,24 +1410,30 @@ probeSegmentFromThread(void *arg)
 		probe_result_primary = FtsTestOneSegment(primary);
 		Assert(!PROBE_CHECK_FLAG(probe_result_primary, PROBE_SEGMENT));
 
-		if ((probe_result_primary & PROBE_ALIVE) == 0)
+		if ((probe_result_primary & PROBE_ALIVE) == 0 && gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
-			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-				write_log("Segment %d segment-dbid %d (status 0x%x) was found dead",
-				          primary->segindex, primary->dbid, probe_result_primary);
+			write_log("Primary segment %d segment-dbid %d (status 0x%x) was found dead",
+			          primary->segindex, primary->dbid, probe_result_primary);
 		}
 
-		/* probe mirror */
 		if (mirror != NULL)
 		{
-			probe_result_mirror = FtsTestOneSegment(mirror);
-			Assert(!PROBE_CHECK_FLAG(probe_result_mirror, PROBE_SEGMENT));
+			/* assume mirror is alive */
+			probe_result_mirror = PROBE_ALIVE;
 
-			if ((probe_result_mirror & PROBE_ALIVE) == 0)
+			/* probe mirror only if primary is dead or has a crash fault */
+			if (!PROBE_CHECK_FLAG(probe_result_primary, PROBE_ALIVE) ||
+				PROBE_CHECK_FLAG(probe_result_primary, PROBE_FAULT_CRASH))
 			{
-				if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-					write_log("Segment %d segment-dbid %d (status 0x%x) was found dead",
+				/* probe mirror */
+				probe_result_mirror = FtsTestOneSegment(mirror);
+				Assert(!PROBE_CHECK_FLAG(probe_result_mirror, PROBE_SEGMENT));
+
+				if ((probe_result_mirror & PROBE_ALIVE) == 0 && gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
+				{
+					write_log("Mirror segment %d segment-dbid %d (status 0x%x) was found dead",
 							  mirror->segindex, mirror->dbid, probe_result_mirror);
+				}
 			}
 		}
 
@@ -1531,6 +1543,12 @@ probePublishUpdate(uint8 *probe_results)
 				 (isPrimaryAlive ? "alive" : "dead"), (isMirrorAlive ? "alive" : "dead"), trans);
 		}
 
+		if (trans == TRANS_D_D)
+		{
+			elog(LOG, "FTS: detected double failure for content: %d, primary dbid: %d, mirror dbid: %d",
+			     primary->segindex, primary->dbid, mirror->dbid);
+		}
+
 		if (failover_strategy == 'f')
 		{
 			/* get current state */
@@ -1629,7 +1647,6 @@ getPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo 
 	    FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status))
 	{
 		/* Primary: Up, Sync - Mirror: Up, Sync */
-
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
 			elog(LOG, "probePublishUpdate: last state: primary dbid=%d sync, mirror dbid=%d sync",
@@ -1644,7 +1661,6 @@ getPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo 
 	    !FTS_STATUS_ISALIVE(mirror->dbid, ftsProbeInfo->fts_status))
 	{
 		/* Primary: Up, Changetracking - Mirror: Down */
-
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
 			elog(LOG, "probePublishUpdate: last state: primary dbid=%d change-tracking, mirror dbid=%d dead",
@@ -1660,7 +1676,6 @@ getPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo 
 	    !FTS_STATUS_IS_SYNCED(mirror->dbid, ftsProbeInfo->fts_status))
 	{
 		/* Primary: Up, Resync - Mirror: Up, Resync */
-
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
 			elog(LOG, "probePublishUpdate: last state: primary dbid=%d resync, mirror dbid=%d resync",
@@ -2331,17 +2346,10 @@ Filerep_preprocess_probe_results(uint8 *probe_results)
 		mirror = getMirrorEntryByContent(primary->segindex, primary->dbid);
 		Assert(mirror != NULL && "mirrors should always be there in filerep mode");
 
-		/*
-		 * We've completed resync ? NOTE: we've only completed resync if *both* report completion.
-		 */
-		if (PROBE_IS_RESYNC_COMPLETE(primary) &&
-			PROBE_IS_RESYNC_COMPLETE(mirror))
+		/* peer segments have completed re-sync if primary reports completion */
+		if (PROBE_IS_RESYNC_COMPLETE(primary))
 		{
-			/*
-			 * if primary and mirror are both in-sync then update configuration: because
-			 * they will not necessarily reach in-sync internally at the same point, we
-			 * make sure both are in-sync before updating configuration
-			 */
+			/* update configuration */
 			markSegmentInSyncInConfiguration(primary, mirror);
 		}
 

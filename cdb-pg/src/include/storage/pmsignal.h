@@ -38,8 +38,11 @@ typedef enum
 	PMSIGNAL_PRIMARY_MIRROR_TRANSITION_RECEIVED, /* a primary mirror transition has been received by a backend */
 	PMSIGNAL_PRIMARY_MIRROR_ALL_BACKENDS_SHUTDOWN, /* filerep has shut down all backends */
 
-	/* one of the filerep subprocesses crashed in a way that requires PM reset, or the reset was requested by a peer */
-    PMSIGNAL_FILEREP_POSTMASTER_RESET_REQUIRED,
+	/* a filerep subprocess crashed in a way that requires postmaster reset */
+    PMSIGNAL_POSTMASTER_RESET_FILEREP,
+
+    /* peer segment requested postmaster reset */
+    PMSIGNAL_POSTMASTER_RESET_BY_PEER,
 
 	NUM_PMSIGNALS				/* Must be last value of enum! */
 } PMSignalReason;

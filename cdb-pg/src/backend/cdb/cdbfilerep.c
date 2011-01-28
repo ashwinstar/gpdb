@@ -136,7 +136,7 @@ static void FileRep_IpcSignalAllInternal(int ii);
 
 static pg_crc32 FileRep_CalculateAdler32(unsigned char *buf, int len);
 
-#define MaxFileRepSubProc 17	
+#define MaxFileRepSubProc 17
 
 #define EXIT_STATUS_0(st)  ((st) == 0)
 #define EXIT_STATUS_1(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 1)
@@ -150,12 +150,12 @@ static pg_crc32 FileRep_CalculateAdler32(unsigned char *buf, int len);
 #define FILEREP_PROCESS_LOG_LEVEL DEBUG5
 
 typedef struct FileRepSubProc {
-	
+
 	pid_t					pid;
 	FileRepProcessType_e	fileRepProcessType;
-	
+
 } FileRepSubProc;
-			
+
 static FileRepSubProc FileRepSubProcList[MaxFileRepSubProc] =
 {
 	{0, FileRepProcessTypeNotInitialized},
@@ -2198,7 +2198,7 @@ FileRep_ProcessSignals()
 									FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
 								}	
 								
-								if (dataState == DataStateInChangeTracking && 
+								if (dataState == DataStateInChangeTracking &&
 									(segmentState == SegmentStateInitialization || 
 									 segmentState == SegmentStateInChangeTrackingTransition))
 								{
@@ -2367,7 +2367,7 @@ FileRep_SetSegmentState(SegmentState_e segmentState, FaultType_e faultType)
 void
 FileRep_SetPostmasterReset(void)
 {
-	SendPostmasterSignal(PMSIGNAL_FILEREP_POSTMASTER_RESET_REQUIRED);
+	SendPostmasterSignal(PMSIGNAL_POSTMASTER_RESET_FILEREP);
 
 	FileRep_InsertConfigLogEntry("request postmaster reset");
 }
@@ -4036,3 +4036,4 @@ void FileRepStats_GpmonSend(int sig)
 	 }
 	return;
 }
+

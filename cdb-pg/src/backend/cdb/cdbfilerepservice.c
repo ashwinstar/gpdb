@@ -216,13 +216,10 @@ FileRepSubProcess_ProcessSignals()
 	}
 	
 	/*
-	 * Immediate shutdown if postmaster is not alive to avoid
-	 * manual cleanup.
+	 * Immediate shutdown if postmaster or main filerep process
+	 * (parent) is not alive to avoid manual cleanup.
 	 */
-#if 0
-	if (! PostmasterIsAlive(true)) {
-#endif
-	if (!PostmasterIsAlive(false)) {
+	if (!PostmasterIsAlive(false /*amDirectChild*/) || !ParentProcIsAlive()) {
 		quickdie_impl();
 	}
 	
@@ -701,7 +698,7 @@ FileRepSubProcess_Main()
 	sigjmp_buf		local_sigjmp_buf;
 
 	MyProcPid = getpid();
-	
+
 	MyStartTime = time(NULL);
 	
 	/*
@@ -858,8 +855,4 @@ FileRepSubProcess_Main()
 			break;
 	}
 }
-
-
-
-
 

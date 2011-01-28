@@ -277,7 +277,7 @@ static pid_t StartupPID = 0,
 #define StartupPidsAllZero() (StartupPID == 0 || StartupPass2PID == 0 || StartupPass3PID == 0 || StartupPass4PID == 0)
 
 static volatile sig_atomic_t filerep_has_signaled_state_change = false;
-static volatile sig_atomic_t filerep_has_signaled_postmaster_reset_required = false;
+static volatile sig_atomic_t filerep_requires_postmaster_reset = false;
 static volatile sig_atomic_t filerep_has_signaled_backends_shutdown = false;
 
 /* Startup/shutdown state */
@@ -1771,7 +1771,7 @@ static void checkPgDir(const char *dir)
 		snprintf(buf, ARRAY_SIZE(buf), "%s%s", DataDir, "/pg_log");
 		if (stat(buf, &st) == 0)
 		{
-			elog(LOG, "System file or directory missing (%s), postmaster will shut down", dir);
+			elog(LOG, "System file or directory missing (%s), shutting down segment", dir);
 		}
 
 		/* quit all processes and exit */
@@ -1954,6 +1954,14 @@ BeginResetOfPostmasterAfterChildrenAreShutDown(void)
 {
 	elog(LOG, "BeginResetOfPostmasterAfterChildrenAreShutDown: counter %d", pmResetCounter);
 	pmResetCounter++;
+
+	FaultType_e f_type;
+	getPrimaryMirrorStatusCodes(NULL, NULL, NULL, &f_type);
+
+	/* set flag indicating mirroring fault */
+	bool hasFaultTypeMirror = (f_type == FaultTypeMirror);
+	setFaultAfterReset(hasFaultTypeMirror);
+
 	if (primaryMirrorPostmasterResetShouldRestartPeer())
 	{
 		elog(LOG, "BeginResetOfPostmasterAfterChildrenAreShutDown: should restart peer");
@@ -2067,7 +2075,7 @@ ServerLoop(void)
          */
         if (Shutdown == ImmediateShutdown ||
 			filerep_has_signaled_state_change ||
-			filerep_has_signaled_postmaster_reset_required ||
+			filerep_requires_postmaster_reset ||
 			need_call_reaper)
         {
             /* must set timeout each time; some OSes change it! */
@@ -2145,9 +2153,9 @@ ServerLoop(void)
 		    ImmediateShutdownLoop();
         }
 
-        if (filerep_has_signaled_postmaster_reset_required)
+        if (filerep_requires_postmaster_reset)
         {
-            filerep_has_signaled_postmaster_reset_required = false;
+            filerep_requires_postmaster_reset = false;
             HandleChildCrash(-1, -1, "");
         }
 
@@ -2810,7 +2818,7 @@ processTransitionRequest_beginPostmasterReset(void)
 	else
 	{
 		elog(LOG, "postmaster reset request received from primary/mirror peer");
-		SendPostmasterSignal(PMSIGNAL_FILEREP_POSTMASTER_RESET_REQUIRED);
+		SendPostmasterSignal(PMSIGNAL_POSTMASTER_RESET_BY_PEER);
 		counterToReturn = pmResetCounter + 1;
 	}
 
@@ -3188,15 +3196,9 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 		return;
 	}
 
-
-	/** otherwise: we are asked to do a filerep transition **/
-	if (FatalError)
-	{
-		/* while doing a postmaster reset, can't do a filerep transition */
-		sendPrimaryMirrorTransitionResult("failure: postmaster reset is pending");
-		return;
-	}
-
+	/*
+	 *  otherwise: we are asked to do a filerep transition
+	 */
 	init_ps_display("filerep transition process", "", "", "");
 
 	args->mode = decipherPrimaryMirrorModeArgument(targetModeStr);
@@ -3351,7 +3353,16 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
 	}
 
 	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state, &f_type);
+
+	/* check if resync has completed on both primary and mirror */
+	if (d_state == DataStateInSync && pm_mode == PMModePrimarySegment &&
+	    isResyncRunning())
+	{
+		d_state = DataStateInResync;
+	}
+
 	sendPrimaryMirrorTransitionQuery((uint32)pm_mode, (uint32)s_state, (uint32)d_state, (uint32)f_type);
+
 	return;
 }
 
@@ -4435,6 +4446,20 @@ static void do_reaper()
 			/* filerep has died.  */
 			if (Shutdown == NoShutdown)
 			{
+				PrimaryMirrorMode pm_mode;
+				getPrimaryMirrorStatusCodes(&pm_mode, NULL, NULL, NULL);
+
+				/*
+				 * if filerep exited unexpectedly on the mirror, the mirror
+				 * is no longer usable so it is shut down
+				 */
+				if (!EXIT_STATUS_0(exitstatus) && pm_mode == PMModeMirrorSegment)
+				{
+					elog(LOG, "postmaster reset on mirror, shutting down mirror");
+
+					pmdie(SIGQUIT);
+				}
+
 				/* filerep died, we mark a fault */
 				updateSegmentState(SegmentStateFault, FaultTypeMirror);
 			}
@@ -4565,6 +4590,27 @@ static void do_reaper()
  	 */
 	if (FatalError)
 	{
+		PrimaryMirrorMode pm_mode;
+		SegmentState_e s_state;
+		DataState_e d_state;
+		FaultType_e f_type;
+		getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state, &f_type);
+
+		/*
+		 * if the segment had a severe fault, it is no longer usable;
+		 * we may be able to failover to its peer if it is sync'ed;
+		 * in this case, the segment is shut down instead of resetting;
+		 */
+		if ((pm_mode == PMModePrimarySegment || pm_mode == PMModeMirrorSegment) &&
+	  	    d_state == DataStateInSync &&
+	  	    s_state == SegmentStateFault &&
+	  	    (f_type == FaultTypeIO || f_type == FaultTypeDB))
+		{
+			elog(LOG, "postmaster reset after %s fault, shutting down segment", getFaultTypeLabel(f_type));
+
+			pmdie(SIGQUIT);
+		}
+
 		/*
 		 * Wait for all important children to exit, then reset shmem and
 		 * redo database startup.  (We can ignore the archiver and stats processes
@@ -5228,7 +5274,8 @@ static PMState StateMachineCheck_WaitFilerepPeerReset(void)
 			/* no change */
 			break;
 		case PEER_RESET_FAILED:
-			primaryMirrorDoNextResetToFault();
+			/* set flag indicating failure to reset peer */
+			setFaultAfterReset(true);
 			RestartAfterPostmasterReset();
 			break;
 		case PEER_RESET_SUCCEEDED:
@@ -7019,15 +7066,37 @@ sigusr1_handler(SIGNAL_ARGS)
 		filerep_has_signaled_state_change = true;
 	}
 
-	if (CheckPostmasterSignal(PMSIGNAL_FILEREP_POSTMASTER_RESET_REQUIRED))
+	if (CheckPostmasterSignal(PMSIGNAL_POSTMASTER_RESET_FILEREP))
 	{
-	    /* set a flag that will be handled in the main loop */
-	    /*
-	     * note that this signal can come from both filerep's main process as well as from handling of
-	     *   reset as requested by the primary/mirror peer
-	     */
-	    filerep_has_signaled_postmaster_reset_required = true;
+		/*
+		 * if filerep subprocess requests postmaster reset on the mirror,
+		 * the mirror is no longer usable so it is shut down
+		 */
+		PrimaryMirrorMode pm_mode;
+		getPrimaryMirrorStatusCodes(&pm_mode, NULL, NULL, NULL);
+		if (pm_mode == PMModeMirrorSegment)
+		{
+			elog(LOG, "postmaster reset on mirror, shutting down mirror");
+
+			pmdie(SIGQUIT);
+		}
+
+		/*
+		 * set a flag that will be handled in the main loop;
+		 * this signal comes from filerep's main process;
+		 */
+		filerep_requires_postmaster_reset = true;
     }
+
+	if (CheckPostmasterSignal(PMSIGNAL_POSTMASTER_RESET_BY_PEER))
+	{
+		/*
+		 * set a flag that will be handled in the main loop;
+		 * this signal comes from handling of postmaster
+		 * reset as requested by the primary/mirror peer;
+		 */
+		filerep_requires_postmaster_reset = true;
+	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_PRIMARY_MIRROR_TRANSITION_RECEIVED))
 	{

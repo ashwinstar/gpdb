@@ -1194,6 +1194,11 @@ FileRepResyncManager_InSyncTransition(void)
 
 		ChangeTracking_MarkTransitionToInsyncCompleted();
 		
+		FileRep_InsertConfigLogEntry("run sync transition, mark transition to sync completed on primary and mirror");
+
+		/* primary and mirror have now completed re-sync */
+		setResyncCompleted();
+		
 #ifdef FAULT_INJECTOR	
 		FaultInjector_InjectFaultIfSet(
 									   FileRepTransitionToInSyncMarkCompleted, 

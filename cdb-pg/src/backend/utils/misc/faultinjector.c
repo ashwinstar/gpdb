@@ -473,10 +473,10 @@ FaultInjector_InjectFaultIfSet(
 					break;
 					
 				case FileRepTransitionToChangeTracking:
-					
-					FileRep_SetSegmentState(SegmentStateFault, FaultTypePostmasterReset);
+
+					FileRep_SetPostmasterReset();
 					break;
-										
+
 				default:
 					
 					FileRep_SetSegmentState(SegmentStateFault, FaultTypeIO);
