@@ -46,6 +46,19 @@
 #include "utils/builtins.h"
 
 
+
+AOCSFileSegInfo *
+NewAOCSFileSegInfo(int4 segno, int4 nvp)
+{
+	AOCSFileSegInfo *seginfo;
+
+	seginfo = (AOCSFileSegInfo *) palloc0(aocsfileseginfo_size(nvp));
+	seginfo->segno = segno;
+	seginfo->vpinfo.nEntry = nvp;
+
+	return seginfo;
+}
+
 void InsertInitialAOCSFileSegInfo(Oid segrelid, int4 segno, int4 nvp)
 {
     bool *nulls = palloc0(sizeof(bool) * Natts_pg_aocsseg);
@@ -79,17 +92,25 @@ void InsertInitialAOCSFileSegInfo(Oid segrelid, int4 segno, int4 nvp)
 }
 
 /* 
- * Getting segment file info.
+ * GetAOCSFileSegInfo.
  * 
- * I assume Alon work out the locking sequence right.  The locking order is quite
- * interesting here.  See GetFileSegInfo in aosegfiles.c
+ * Get the catalog entry for an appendonly (column-oriented) relation from the
+ * pg_aocsseg_* relation that belongs to the currently used
+ * AppendOnly table.
+ *
+ * If a caller intends to append to this (logical) file segment entry they must
+ * already hold a relation Append-Only segment file (transaction-scope) lock (tag 
+ * LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE) in order to guarantee
+ * stability of the pg_aoseg information on this segment file and exclusive right
+ * to append data to the segment file.
  */
-static AOCSFileSegInfo *GetAOCSFileSegInfo(Relation prel,
-										   AppendOnlyEntry *aoEntry,
-										   int32 segno,
-										   SegfileLockStrategy lkst)
+AOCSFileSegInfo *
+GetAOCSFileSegInfo(
+	Relation 			prel,
+	AppendOnlyEntry 	*aoEntry,
+	Snapshot 			snapshot,
+	int32 				segno)
 {
-    /* XXX Again, here we took the way too short cut to set nvp to natts. */
     int32 nvp = prel->rd_att->natts;
 
     Relation segrel;
@@ -97,149 +118,38 @@ static AOCSFileSegInfo *GetAOCSFileSegInfo(Relation prel,
     ScanKeyData scankey;
     IndexScanDesc scan;
     HeapTuple segtup;
-    HeapTuple needfree = NULL;
-    HeapTupleData segtupdata;
 
     AOCSFileSegInfo *seginfo;
     Datum *d;
     bool *null;
 
-    bool forupdate = (lkst != SegfileNoLock);
-    LOCKMODE lkmode = (forupdate ? RowExclusiveLock : AccessShareLock);
-    Snapshot usesnapshot = (forupdate ? SnapshotSelf : GetTransactionSnapshot());
-
-    if(forupdate)
-        LWLockAcquire(AOSegFileAddNewEntryLock, LW_EXCLUSIVE);
-
-    segrel = heap_open(aoEntry->segrelid, lkmode);
-    segidx = index_open(aoEntry->segidxid, lkmode);
+    segrel = heap_open(aoEntry->segrelid, AccessShareLock);
+    segidx = index_open(aoEntry->segidxid, AccessShareLock);
 
     ScanKeyInit(&scankey, 1, BTEqualStrategyNumber, F_OIDEQ, Int32GetDatum(segno));
 
-    scan = index_beginscan(segrel, segidx, usesnapshot, 1, &scankey);
+    scan = index_beginscan(segrel, segidx, snapshot, 1, &scankey);
 
     segtup = index_getnext(scan, ForwardScanDirection);
 
     if(!HeapTupleIsValid(segtup))
     {
-        /* this seg does not exist */
+        /* This segment file does not have an entry. */
         index_endscan(scan);
-        index_close(segidx, lkmode);
-        heap_close(segrel, lkmode);
-
-        if(forupdate)
-        {
-#if 0
-            /* XXX Alon Is this the right check?  See aosegfile.c */
-            if(Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
-                elog(ERROR, "AOCS Insert must be executed by writer gang");
-#endif
-            AssertImply(Gp_role == GP_ROLE_EXECUTE, Gp_is_writer);
-
-            InsertInitialAOCSFileSegInfo(aoEntry->segrelid, segno, nvp);
-            LWLockRelease(AOSegFileAddNewEntryLock);
-
-            return GetAOCSFileSegInfo(prel, aoEntry, segno, lkst);
-        }
-        else
-            return NULL;
+        index_close(segidx, AccessShareLock);
+        heap_close(segrel, AccessShareLock);
+        return NULL;
     }
 
 	/* Close the index */
     segtup = heap_copytuple(segtup);
 	
 	index_endscan(scan);
-	index_close(segidx, lkmode);
+	index_close(segidx, AccessShareLock);
 
-    if(forupdate)
-    {
-        HTSU_Result 	test;
-        Buffer buffer;
-        ItemPointerData update_ctid;
-        TransactionId 	update_xmax;
-        LockTupleWaitType waittype;
+	Assert(HeapTupleIsValid(segtup));
 
-        LWLockRelease(AOSegFileAddNewEntryLock);
-lmark:
-        segtupdata = *segtup;
-
-        if(lkst == SegfileForceLock)
-            waittype = LockTupleWait;
-        else
-        {
-            Assert(lkst == SegfileTryLock);
-            waittype = LockTupleIfNotLocked;
-        }
-
-        Assert(ItemPointerIsValid(&segtupdata.t_self));
-        test = heap_lock_tuple(segrel, &segtupdata, &buffer, 
-                &update_ctid, &update_xmax,
-                GetCurrentCommandId(),
-                LockTupleExclusive,
-                waittype);
-
-        ReleaseBuffer(buffer);
-
-        switch(test)
-        {
-            case HeapTupleSelfUpdated:
-                /* treat it as deleted; do not process */
-                Assert(false); /* can this happen? */ 
-                break;
-
-            case HeapTupleMayBeUpdated:
-                break;
-
-            case HeapTupleUpdated:
-                if (IsXactIsoLevelSerializable)
-                    ereport(ERROR,
-                            (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-                             errmsg("could not serialize access due to concurrent update")));
-
-                if (!ItemPointerEquals(&update_ctid, &segtupdata.t_self))
-                {
-                    /* updated, so look at updated version */
-
-                    HeapTuple updatedtup;
-                    updatedtup = GetUpdatedTuple_Int(segrel,
-                            &update_ctid, update_xmax,
-                            GetCurrentCommandId());
-
-                    if (updatedtup)
-                    {
-                        /* 
-                           if(needfree)
-                           pfree(needfree);
-                         */
-                        needfree = updatedtup;
-
-                        segtup = updatedtup;
-                        goto lmark;
-                    }
-                }
-                else
-                {
-                    /* no aoseg tuple should ever get deleted */
-                    Insist(false);
-                }
-
-            case HeapTupleBeingUpdated:
-                /*
-                 * we tried to get a lock but couldn't (can only happen in
-                 * LockTupleIfNotLocked waittype) then just quit and return NULL
-                 */
-                Assert(waittype = LockTupleIfNotLocked);
-                heap_close(segrel, lkmode);
-                return NULL;
-
-            default:
-                elog(ERROR, "unrecognized heap_lock_tuple status: %u", test);
-                return NULL;
-        }
-
-    }
-
-    seginfo = (AOCSFileSegInfo *) palloc(aocsfileseginfo_size(nvp));
+    seginfo = (AOCSFileSegInfo *) palloc0(aocsfileseginfo_size(nvp));
 
     d = (Datum *) palloc(sizeof(Datum) * Natts_pg_aocsseg);
     null = (bool *) palloc(sizeof(bool) * Natts_pg_aocsseg); 
@@ -271,31 +181,11 @@ lmark:
 
     pfree(d);
     pfree(null);
-    /*
-       if(needfree)
-       pfree(needfree);
-     */
 
-    heap_close(segrel, lkmode);
+    heap_close(segrel, AccessShareLock);
 
     return seginfo;
 }
-
-AOCSFileSegInfo *GetAOCSFileSegInfoForRead(Relation prel, AppendOnlyEntry *aoEntry, int segno)
-{
-    return GetAOCSFileSegInfo(prel, aoEntry, segno, SegfileNoLock);
-}
-
-AOCSFileSegInfo *GetAOCSFileSegInfoForWrite(Relation prel, AppendOnlyEntry *aoEntry, int segno)
-{
-    return GetAOCSFileSegInfo(prel, aoEntry, segno, SegfileForceLock);
-}
-
-AOCSFileSegInfo *GetAOCSFileSegInfoForVacuum(Relation prel, AppendOnlyEntry *aoEntry, int segno)
-{
-    return GetAOCSFileSegInfo(prel, aoEntry, segno, SegfileTryLock);
-}
-
 
 AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel,
 										AppendOnlyEntry *aoEntry,
@@ -557,6 +447,8 @@ void UpdateAOCSFileSegInfo(AOCSInsertDesc idesc)
 
 void AOCSFileSegInfoAddCount(Relation prel, AppendOnlyEntry *aoEntry, int32 segno, int64 tupadded, int64 varblockadded)
 {
+	LockAcquireResult acquireResult;
+	
     Relation segrel;
     Relation segidx;
 
@@ -574,6 +466,20 @@ void AOCSFileSegInfoAddCount(Relation prel, AppendOnlyEntry *aoEntry, int32 segn
     Snapshot usesnapshot = SnapshotDirty;
 
 	Assert(aoEntry != NULL);
+
+	/*
+	 * Verify we already have the write-lock!
+	 */
+	acquireResult = LockRelationAppendOnlySegmentFile(
+												&prel->rd_node,
+												segno,
+												AccessExclusiveLock,
+												/* dontWait */ false);
+	if (acquireResult != LOCKACQUIRE_ALREADY_HELD)
+	{
+		elog(ERROR, "Should already have the (transaction-scope) write-lock on Append-Only segment file #%d, "
+					 "relation %s", segno, prel->rd_rel->relname.data);
+	}
 
     segrel = heap_open(aoEntry->segrelid, RowExclusiveLock);
     segidx = index_open(aoEntry->segidxid, RowExclusiveLock);
@@ -613,7 +519,7 @@ void AOCSFileSegInfoAddCount(Relation prel, AppendOnlyEntry *aoEntry, int32 segn
     simple_heap_update(segrel, &oldtup->t_self, newtup);
     CatalogUpdateIndexes(segrel, newtup);
 
-    pfree(newtup);
+    heap_freetuple(newtup);
 
     index_endscan(scan);
     index_close(segidx, RowExclusiveLock);
@@ -1032,6 +938,7 @@ gp_update_aocol_master_stats_internal(Relation parentrel)
 	int 			ret;
 	float8			total_count = 0;
 	MemoryContext 	oldcontext = CurrentMemoryContext;
+    int32 			nvp = parentrel->rd_att->natts;
 	AppendOnlyEntry *aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel));
 
 	Assert(aoEntry != NULL);
@@ -1108,10 +1015,30 @@ gp_update_aocol_master_stats_internal(Relation parentrel)
 				/*
 				 * Get the numbers on the QD for this segment
 				 */
-				aocsfsinfo = GetAOCSFileSegInfoForWrite(parentrel, aoEntry, qe_segno);
+					
+				
+				// CONSIDER: For integrity, we should lock ALL segment files first before 
+				// executing the query.  And, the query of the segments (the SPI_execute)
+				// and the update (UpdateFileSegInfo) should be in the same transaction.
+				//
+				// If there are concurrent Append-Only inserts, we can end up with
+				// the wrong answer...
+				//
+				// NOTE: This is a transaction scope lock that must be held until commit / abort.
+				//
+				LockRelationAppendOnlySegmentFile(
+												&parentrel->rd_node,
+												qe_segno,
+												AccessExclusiveLock,
+												/* dontWait */ false);
+					
+				aocsfsinfo = GetAOCSFileSegInfo(parentrel, aoEntry, ActiveSnapshot, qe_segno);
+				if (aocsfsinfo == NULL)
+				{
+					InsertInitialAOCSFileSegInfo(aoEntry->segrelid, qe_segno, nvp);
 
-				/* since we passed 'true' a segfile record must exist now */
-				Assert(aocsfsinfo);
+					aocsfsinfo = NewAOCSFileSegInfo(qe_segno, nvp);
+				}
 
 				/*
 				 * check if numbers match.

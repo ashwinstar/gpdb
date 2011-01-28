@@ -33,12 +33,6 @@
 #include "utils/numeric.h"
 #include "access/aocssegfiles.h"
 
-static FileSegInfo *GetFileSegInfo(Relation parentrel,
-								   AppendOnlyEntry *aoEntry,
-								   int segno,
-								   SegfileLockStrategy lockstrategy);
-
-
 static Datum ao_compression_ratio_internal(Oid relid);
 
 /* ------------------------------------------------------------------------
@@ -47,6 +41,17 @@ static Datum ao_compression_ratio_internal(Oid relid);
  *
  * ------------------------------------------------------------------------
  */
+
+FileSegInfo *
+NewFileSegInfo(int segno)
+{
+	FileSegInfo *fsinfo;
+
+	fsinfo = (FileSegInfo *) palloc0(sizeof(FileSegInfo));
+	fsinfo->segno = segno;
+
+	return fsinfo;
+}
 
 /*
  * InsertFileSegInfo
@@ -77,11 +82,6 @@ InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry,
 							0,
 							&tid);
 
-	/*
-	 * Open the toast relation and its index.  We can use the index to check
-	 * uniqueness of the OID we assign to the toasted item, even though it has
-	 * additional columns besides OID.
-	 */
 	pg_aoseg_rel = heap_open(aoEntry->segrelid, RowExclusiveLock);
 
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
@@ -115,92 +115,39 @@ InsertInitialSegnoEntry(AppendOnlyEntry *aoEntry,
 }
 
 /*
- * GetFileSegInfoForWrite
- *
- * Wrapper for GetFileSegInfo, called before writing data into the segfile.
- * Forces taking an exclusive lock on the file segment.
- * Returns the fileseg information.
- *
- * Is used by any write operation, such as COPY and INSERT.
- */
-FileSegInfo *
-GetFileSegInfoForWrite(Relation parentrel, AppendOnlyEntry *aoEntry, int segno)
-{
-	return GetFileSegInfo(parentrel, aoEntry, segno, SegfileForceLock);
-}
-
-/*
- * GetFileSegInfoForVacuum
- *
- * Wrapper for GetFileSegInfo, called before truncating data beyond eof.
- * Tries to take an exclusive lock on the file segment.
- * Returns the fileseg information if lock was taken, and NULL otherwise.
- *
- * Is used by VACUUM.
- */
-FileSegInfo *
-GetFileSegInfoForVacuum(Relation parentrel, AppendOnlyEntry *aoEntry, int segno)
-{
-	return GetFileSegInfo(parentrel, aoEntry, segno, SegfileTryLock);
-}
-
-/*
- * Wrapper for GetFileSegInfo, called before reading data from the segfile.
- * Doesn't take any lock.
- *
- * Is used by any reader, such as a scan operator in SELECT.
- */
-FileSegInfo *
-GetFileSegInfoForRead(Relation parentrel, AppendOnlyEntry *aoEntry, int segno)
-{
-	return GetFileSegInfo(parentrel, aoEntry, segno, SegfileNoLock);
-}
-
-/*
  * GetFileSegInfo
  *
- * Get the catalog entry for an appendonly relation from the
+ * Get the catalog entry for an appendonly (row-oriented) relation from the
  * pg_aoseg_* relation that belongs to the currently used
  * AppendOnly table.
  *
- * if a caller intends to update this file segment entry they must
- * pass true for 'forupdate'. Otherwise, pass false for read only. When
- * we intend to update an entry we lock it for the duration of the operation.
+ * If a caller intends to append to this file segment entry they must
+ * already hold a relation Append-Only segment file (transaction-scope) lock (tag 
+ * LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE) in order to guarantee
+ * stability of the pg_aoseg information on this segment file and exclusive right
+ * to append data to the segment file.
  */
-static
 FileSegInfo *
-GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, int segno, SegfileLockStrategy lockstrategy)
+GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, Snapshot snapshot, int segno)
 {
 
 	Relation		pg_aoseg_rel;
 	Relation		pg_aoseg_idx;
 	TupleDesc		pg_aoseg_dsc;
 	HeapTuple		tuple;
-	HeapTupleData 	tupdata;
 	ScanKeyData		key;
 	IndexScanDesc	aoscan;
 	Datum			eof, eof_uncompressed, tupcount, varbcount;
 	bool			isNull;
 	FileSegInfo 	*fsinfo;
-	bool			forupdate = (lockstrategy != SegfileNoLock);
-	LOCKMODE		lockmode = (forupdate ? RowExclusiveLock : AccessShareLock);
-	Snapshot 		usesnapshot = (forupdate ? SnapshotSelf : GetTransactionSnapshot());
-	Buffer			buffer;
-	ItemPointerData update_ctid;
-	TransactionId 	update_xmax;
-	HTSU_Result 	test;
-	LockTupleWaitType waittype;
-
-	if(forupdate)
-		LWLockAcquire(AOSegFileAddNewEntryLock, LW_EXCLUSIVE);
 
 	/*
-	 * Check the pg_aoseg relation to be certain the ao table
+	 * Check the pg_aoseg relation to be certain the ao table segment file
 	 * is there.
 	 */
-	pg_aoseg_rel = heap_open(aoEntry->segrelid, lockmode);
+	pg_aoseg_rel = heap_open(aoEntry->segrelid, AccessShareLock);
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
-	pg_aoseg_idx = index_open(aoEntry->segidxid, lockmode);
+	pg_aoseg_idx = index_open(aoEntry->segidxid, AccessShareLock);
 
 	/*
 	 * Setup a scan key to fetch from the index by segno.
@@ -211,151 +158,28 @@ GetFileSegInfo(Relation parentrel, AppendOnlyEntry *aoEntry, int segno, SegfileL
 				F_OIDEQ,
 				ObjectIdGetDatum(segno));
 
-	aoscan = index_beginscan(pg_aoseg_rel, pg_aoseg_idx, usesnapshot, 1, &key);
+	aoscan = index_beginscan(pg_aoseg_rel, pg_aoseg_idx, snapshot, 1, &key);
 
 	tuple = index_getnext(aoscan, ForwardScanDirection);
 
 	if (!HeapTupleIsValid(tuple))
 	{
-		/* aoseg tuple for this segno doesn't exist */
-
+        /* This segment file does not have an entry. */
 		index_endscan(aoscan);
-		index_close(pg_aoseg_idx, lockmode);
-		heap_close(pg_aoseg_rel, lockmode);
-
-		if(forupdate)
-		{
-			/*
-			 * This operation intends to update the aoseg record for 'segno'.
-			 * But no entry exists yet for 'segno' in the aoseg table. This
-			 * is unacceptable since we want to lock this aoseg entry tuple
-			 * until the end of operation (see lock note below). Therefore we
-			 * must create an empty entry. We insert the blank entry and
-			 * freeze it and recursively call ourselves. The next time around
-			 * the aoseg entry will exist.
-			 */
-			if(Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
-				elog(ERROR,"Internal Error: AO INSERT must be executed by a "
-						"writer gang");
-
-			InsertInitialSegnoEntry(aoEntry, segno);
-			LWLockRelease(AOSegFileAddNewEntryLock);
-			return GetFileSegInfo(parentrel, aoEntry, segno, lockstrategy); /* recurse */
-		}
-		else
-		{
-			return NULL;
-		}
+		index_close(pg_aoseg_idx, AccessShareLock);
+		heap_close(pg_aoseg_rel, AccessShareLock);
+		return NULL;
 	}
 
 	/* Close the index */
 	tuple = heap_copytuple(tuple);
 
 	index_endscan(aoscan);
-	index_close(pg_aoseg_idx, lockmode);
+	index_close(pg_aoseg_idx, AccessShareLock);
 
 	Assert(HeapTupleIsValid(tuple));
 
-	/*
-	 * Lock aoseg tuple for update
-	 *
-	 * The update lock would protect us from 2 situations:
-	 *
-	 * 1) concurrent utility mode writers. Since UTILITY mode always uses the
-	 * same reseved segno and doesn't go through the QD AO concurrency logic,
-	 * we must not allow concurrency in utility mode. serialize the updates.
-	 *
-	 * 2) avoid the situation where a distributed transaction that aborted in
-	 * the master and is being ignored by a segment because it is too busy still
-	 * writing some segment file for that aborted transaction.
-	 *
-	 * Both are obviously very bad and must be prevented or will mix data in
-	 * one segment file and be corrupted.
-	 *
-	 * NOTE: this piece of code is largely borrowed from ExecutePlan() or
-	 * ExecuteUpdate() and is basically identical to SELECT FOR UPDATE.
-	 */
-	if(forupdate)
-	{
-		LWLockRelease(AOSegFileAddNewEntryLock);
-		
-lmark:	;
-		tupdata = *tuple;
-		Assert(ItemPointerIsValid(&tupdata.t_self));
-
-		/* select the proper wait type. should we wait on the lock or not? */
-		if(lockstrategy == SegfileForceLock)
-		{
-			waittype = 	LockTupleWait;
-		}
-		else
-		{
-			Assert(lockstrategy == SegfileTryLock);
-			waittype = LockTupleIfNotLocked;
-		}
-
-		test = heap_lock_tuple(pg_aoseg_rel, &tupdata, &buffer,
-							&update_ctid, &update_xmax,
-							GetCurrentCommandId() /* TODO: is that right? */,
-							LockTupleExclusive,
-							waittype);
-		ReleaseBuffer(buffer);
-
-		switch (test)
-		{
-			case HeapTupleSelfUpdated:
-				/* treat it as deleted; do not process */
-				Assert(false); /* can this happen? */
-				break;
-
-			case HeapTupleMayBeUpdated:
-				break;
-
-			case HeapTupleUpdated:
-				if (IsXactIsoLevelSerializable)
-					ereport(ERROR,
-					(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-					errmsg("could not serialize access due to concurrent update")));
-
-				if (!ItemPointerEquals(&update_ctid, &tupdata.t_self))
-				{
-					/* updated, so look at updated version */
-
-					HeapTuple updatedtup;
-
-					updatedtup = GetUpdatedTuple_Int(pg_aoseg_rel,
-													&update_ctid,
-													update_xmax,
-													GetCurrentCommandId());
-
-					if (updatedtup)
-					{
-						tuple = updatedtup;
-						goto lmark;
-					}
-				}
-				else
-				{
-					/* no aoseg tuple should ever get deleted */
-					Insist(false);
-				}
-
-			case HeapTupleBeingUpdated:
-				/*
-				 * we tried to get a lock but couldn't (can only happen in
-				 * LockTupleIfNotLocked waittype) then just quit and return NULL
-				 */
-				Assert(waittype = LockTupleIfNotLocked);
-				heap_close(pg_aoseg_rel, lockmode);
-				return NULL;
-			default:
-				elog(ERROR, "unrecognized heap_lock_tuple status: %u", test);
-				return NULL;
-		}
-
-	}
-
-	fsinfo = (FileSegInfo *) palloc(sizeof(FileSegInfo));
+	fsinfo = (FileSegInfo *) palloc0(sizeof(FileSegInfo));
 
 	/* get the eof */
 	eof = fastgetattr(tuple, Anum_pg_aoseg_eof, pg_aoseg_dsc, &isNull);
@@ -410,7 +234,7 @@ lmark:	;
 					   fsinfo->eof, NameStr(parentrel->rd_rel->relname))));
 
 	/* Finish up scan and close appendonly catalog. */
-	heap_close(pg_aoseg_rel, lockmode);
+	heap_close(pg_aoseg_rel, AccessShareLock);
 
 	return fsinfo;
 }
@@ -588,13 +412,14 @@ UpdateFileSegInfo(Relation parentrel,
 				  int64 tuples_added,
 				  int64 varblocks_added)
 {
+	LockAcquireResult acquireResult;
+	
 	Relation			pg_aoseg_rel;
 	Relation			pg_aoseg_idx;
 	TupleDesc			pg_aoseg_dsc;
 	ScanKeyData			key;
 	IndexScanDesc		aoscan;
 	HeapTuple			tuple, new_tuple;
-	Snapshot	 		usesnapshot = ActiveSnapshot;
 	Datum				filetupcount;
 	Datum				filevarblockcount;
 	Datum				new_tuple_count;
@@ -612,13 +437,24 @@ UpdateFileSegInfo(Relation parentrel,
 	elog(DEBUG3, "UpdateFileSegInfo called. segno = %d", segno);
 
 	/*
+	 * Verify we already have the write-lock!
+	 */
+	acquireResult = LockRelationAppendOnlySegmentFile(
+												&parentrel->rd_node,
+												segno,
+												AccessExclusiveLock,
+												/* dontWait */ false);
+	if (acquireResult != LOCKACQUIRE_ALREADY_HELD)
+	{
+		elog(ERROR, "Should already have the (transaction-scope) write-lock on Append-Only segment file #%d, "
+					 "relation %s", segno, parentrel->rd_rel->relname.data);
+	}
+
+	/*
 	 * Open the aoseg relation and its index.
 	 */
 	pg_aoseg_rel = heap_open(aoEntry->segrelid, RowExclusiveLock);
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
-	new_record = palloc0(sizeof(Datum) * pg_aoseg_dsc->natts);
-	new_record_nulls = palloc(sizeof(bool) * pg_aoseg_dsc->natts);
-	new_record_repl = palloc(sizeof(bool) * pg_aoseg_dsc->natts);
 	pg_aoseg_idx = index_open(aoEntry->segidxid, RowExclusiveLock);
 
 	/*
@@ -630,7 +466,7 @@ UpdateFileSegInfo(Relation parentrel,
 				F_OIDEQ,
 				ObjectIdGetDatum(segno));
 
-	aoscan = index_beginscan(pg_aoseg_rel, pg_aoseg_idx, usesnapshot, 1, &key);
+	aoscan = index_beginscan(pg_aoseg_rel, pg_aoseg_idx, ActiveSnapshot, 1, &key);
 
 	tuple = index_getnext(aoscan, ForwardScanDirection);
 
@@ -640,6 +476,10 @@ UpdateFileSegInfo(Relation parentrel,
 				errmsg("append-only table \"%s\" file segment \"%d\" entry "
 						"does not exist", RelationGetRelationName(parentrel),
 						segno)));
+
+	new_record = palloc0(sizeof(Datum) * pg_aoseg_dsc->natts);
+	new_record_nulls = palloc0(sizeof(bool) * pg_aoseg_dsc->natts);
+	new_record_repl = palloc0(sizeof(bool) * pg_aoseg_dsc->natts);
 
 	/* get the current tuple count so we can add to it */
 	filetupcount = fastgetattr(tuple,
@@ -677,9 +517,6 @@ UpdateFileSegInfo(Relation parentrel,
 	/*
 	 * Build a tuple to update
 	 */
-	MemSet(new_record_nulls, false, sizeof(char) * pg_aoseg_dsc->natts);
-	MemSet(new_record_repl, false, sizeof(char) * pg_aoseg_dsc->natts);
-
 	new_record[Anum_pg_aoseg_eof - 1] = Float8GetDatum((float8)eof);
 	new_record_repl[Anum_pg_aoseg_eof - 1] = true;
 
@@ -708,6 +545,9 @@ UpdateFileSegInfo(Relation parentrel,
 	index_close(pg_aoseg_idx, RowExclusiveLock);
 	heap_close(pg_aoseg_rel, RowExclusiveLock);
 
+	pfree(new_record);
+	pfree(new_record_nulls);
+	pfree(new_record_repl);
 }
 
 /*
@@ -1070,10 +910,30 @@ gp_update_aorow_master_stats_internal(Relation parentrel)
 				/*
 				 * Get the numbers on the QD for this segment
 				 */
-				fsinfo = GetFileSegInfoForWrite(parentrel, aoEntry, qe_segno);
 
-				/* since we passed 'true' a segfile record must exist now */
-				Assert(fsinfo);
+				
+				// CONSIDER: For integrity, we should lock ALL segment files first before 
+				// executing the query.  And, the query of the segments (the SPI_execute)
+				// and the update (UpdateFileSegInfo) should be in the same transaction.
+				//
+				// If there are concurrent Append-Only inserts, we can end up with
+				// the wrong answer...
+				//
+				// NOTE: This is a transaction scope lock that must be held until commit / abort.
+				//
+				LockRelationAppendOnlySegmentFile(
+												&parentrel->rd_node,
+												qe_segno,
+												AccessExclusiveLock,
+												/* dontWait */ false);
+
+				fsinfo = GetFileSegInfo(parentrel, aoEntry, ActiveSnapshot, qe_segno);
+				if (fsinfo == NULL)
+				{
+					InsertInitialSegnoEntry(aoEntry, qe_segno);
+
+					fsinfo = NewFileSegInfo(qe_segno);
+				}
 
 				/*
 				 * check if numbers match.

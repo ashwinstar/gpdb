@@ -875,6 +875,13 @@ DescribeLockTag(StringInfo buf, const LOCKTAG *lock)
 							 lock->locktag_field2,
 							 lock->locktag_field1);
 			break;
+		case LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE:
+			appendStringInfo(buf,
+							 _("append-only segment file #%d in relation %u of database %u"),
+							 lock->locktag_field3,
+							 lock->locktag_field2,
+							 lock->locktag_field1);
+			break;
 		case LOCKTAG_OBJECT:
 			appendStringInfo(buf,
 							 _("object %u of class %u of database %u"),

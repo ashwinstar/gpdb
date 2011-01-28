@@ -2948,11 +2948,12 @@ select coalesce(
   case when relname like 'pg_toast%index' then 'toast index'
   	   when relname like 'pg_toast%' then 'toast table'
 	   else relname end, 'dropped table'), 
-mode from 
+mode,
+locktype from 
 pg_locks l left outer join pg_class c on (l.relation = c.oid),
 pg_database d where relation is not null and l.database = d.oid and 
 l.gp_segment_id = -1 and
-d.datname = current_database() order by 1, 2;
+d.datname = current_database() order by 1, 3, 2;
 -- Partitioned table with toast table
 begin;
 

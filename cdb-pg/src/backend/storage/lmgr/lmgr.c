@@ -363,6 +363,33 @@ UnlockRelationForResynchronize(RelFileNode *relFileNode, LOCKMODE lockmode)
 	LockRelease(&tag, lockmode, false);
 }
 
+LockAcquireResult
+LockRelationAppendOnlySegmentFile(RelFileNode *relFileNode, int32 segno, LOCKMODE lockmode, bool dontWait)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE(tag,
+						 relFileNode->dbNode,
+						 relFileNode->relNode,
+						 segno);
+
+	return LockAcquire(&tag, lockmode, false, dontWait);
+}
+
+void
+UnlockRelationAppendOnlySegmentFile(RelFileNode *relFileNode, int32 segno, LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE(tag,
+						 relFileNode->dbNode,
+						 relFileNode->relNode,
+						 segno);
+
+	LockRelease(&tag, lockmode, false);
+}
+
+
 /*
  *		LockPage
  *
@@ -679,7 +706,8 @@ LockTagIsTemp(const LOCKTAG *tag)
 		case LOCKTAG_RELATION_EXTEND:
 		case LOCKTAG_PAGE:
 		case LOCKTAG_TUPLE:
-		case LOCKTAG_RELATION_RESYNCHRONIZE:	// UNDONE: Right place?
+		case LOCKTAG_RELATION_RESYNCHRONIZE:
+		case LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE:
 			/* check for lock on a temp relation */
 			/* field1 is dboid, field2 is reloid for all of these */
 			if ((Oid) tag->locktag_field1 == InvalidOid)

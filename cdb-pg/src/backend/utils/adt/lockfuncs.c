@@ -31,6 +31,7 @@ static const char *const LockTagTypeNames[] = {
 	"tuple",
 	"transactionid",
 	"resynchronize",
+	"append-only segment file",
 	"object",
 	"resource queue",
 	"userlock",
@@ -377,6 +378,16 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				nulls[4] = true;
 				nulls[6] = true;
 				nulls[7] = true;
+				nulls[8] = true;
+				break;
+			case LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE:
+				values[1] = ObjectIdGetDatum(lock->tag.locktag_field1);
+				values[2] = ObjectIdGetDatum(lock->tag.locktag_field2);
+				values[7] = ObjectIdGetDatum(lock->tag.locktag_field3);
+				nulls[3] = true;
+				nulls[4] = true;
+				nulls[5] = true;
+				nulls[6] = true;
 				nulls[8] = true;
 				break;
 			case LOCKTAG_RESOURCE_QUEUE:

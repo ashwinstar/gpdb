@@ -2465,6 +2465,7 @@ static const char *const LockTagTypeNames[] = {
 	"tuple",
 	"transactionid",
 	"resynchronize",
+	"append-only segment file",
 	"object",
 	"resource queue",
 	"userlock",
@@ -2577,6 +2578,11 @@ int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData)
 				break;
 			case LOCKTAG_TRANSACTION:
 				lf->lf_transactionid = (lock->tag.locktag_field1);
+				break;
+			case LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE:
+				lf->lf_database = (lock->tag.locktag_field1);
+				lf->lf_relation = (lock->tag.locktag_field2);
+				lf->lf_objid = (lock->tag.locktag_field3);
 				break;
 			case LOCKTAG_RESOURCE_QUEUE:
 				lf->lf_database = (proc->databaseId);

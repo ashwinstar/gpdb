@@ -359,10 +359,34 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 					  aoInsertDesc->appendFilePathName);		
 	Assert(strlen(aoInsertDesc->appendFilePathName) + 1 <= aoInsertDesc->appendFilePathNameMaxLen);
 
-	/* get the information for the file segment we insert into */
-	aoInsertDesc->fsInfo = GetFileSegInfoForWrite(aoInsertDesc->aoi_rel,
-												  aoInsertDesc->aoEntry,
-												  aoInsertDesc->cur_segno);
+	/*
+	* In order to append to this file segment entry we must first
+	* acquire the relation Append-Only segment file (transaction-scope) lock (tag 
+	* LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE) in order to guarantee
+	* stability of the pg_aoseg information on this segment file and exclusive right
+	* to append data to the segment file.
+	*
+	* NOTE: This is a transaction scope lock that must be held until commit / abort.
+	*/
+	LockRelationAppendOnlySegmentFile(
+									&aoInsertDesc->aoi_rel->rd_node,
+									aoInsertDesc->cur_segno,
+									AccessExclusiveLock,
+									/* dontWait */ false);
+
+	/* Now, get the information for the file segment we are going to append to. */
+	aoInsertDesc->fsInfo = GetFileSegInfo(
+									aoInsertDesc->aoi_rel,
+									aoInsertDesc->aoEntry,
+									ActiveSnapshot,
+									aoInsertDesc->cur_segno);
+	if (aoInsertDesc->fsInfo == NULL)
+	{
+		InsertInitialSegnoEntry(aoInsertDesc->aoEntry, aoInsertDesc->cur_segno);
+
+		aoInsertDesc->fsInfo = NewFileSegInfo(aoInsertDesc->cur_segno);
+	}
+	
 	fsinfo = aoInsertDesc->fsInfo;
 	Assert(fsinfo);
 	eof = (int64)fsinfo->eof;

@@ -72,7 +72,6 @@ typedef enum LWLockId
 	TemporarySerializePreparesLock,
 	SeqServerControlLock,
 	AOSegFileLock,
-	AOSegFileAddNewEntryLock,
 	PersistentObjLock,
 	FileRepShmemLock,
 	FileRepAckShmemLock,	

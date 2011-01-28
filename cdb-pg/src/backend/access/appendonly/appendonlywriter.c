@@ -784,25 +784,54 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 	aoEntry = GetAppendOnlyEntry(RelationGetRelid(parentrel));
 	Assert(aoEntry != NULL);
 
+	// CONSIDER: We should probably get this lock even sooner.
+	LockRelationAppendOnlySegmentFile(
+									&parentrel->rd_node,
+									segno,
+									AccessExclusiveLock,
+									/* dontWait */ false);
+
 	if(RelationIsAoRows(parentrel))
 	{
 		FileSegInfo		*fsinfo;
 
 		/* get the information for the file segment we inserted into */
-        fsinfo = GetFileSegInfoForWrite(parentrel, aoEntry, segno);
-        Assert(fsinfo);
 
-        /*
-         * Update the master AO segment info table with correct tuple count total
-         */
+        fsinfo = GetFileSegInfo(parentrel, aoEntry, ActiveSnapshot, segno);
+		if (fsinfo == NULL)
+		{
+			InsertInitialSegnoEntry(aoEntry, segno);
+		}
+		else
+		{
+			pfree(fsinfo);
+		}
+
+		/*
+		 * Update the master AO segment info table with correct tuple count total
+		 */
         UpdateFileSegInfo(parentrel, aoEntry, segno, 0, 0, tupcount, 0);
-        pfree(fsinfo);
 	}
     else
     {
+		AOCSFileSegInfo *seginfo;
+
     	/* AO column store */
     	Assert(RelationIsAoCols(parentrel));
-    	GetAOCSFileSegInfoForWrite(parentrel, aoEntry, segno);
+
+		seginfo = GetAOCSFileSegInfo(
+							parentrel, 
+							aoEntry, 
+							ActiveSnapshot, 
+							segno);
+		if (seginfo == NULL)
+		{
+			InsertInitialAOCSFileSegInfo(aoEntry->segrelid, segno, parentrel->rd_att->natts);
+		}
+		else
+		{
+			pfree(seginfo);
+		}
     	AOCSFileSegInfoAddCount(parentrel, aoEntry, segno, tupcount, 0);
     }
 

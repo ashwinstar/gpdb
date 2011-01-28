@@ -3439,7 +3439,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "objects will need to be locked at any one time.")
 		},
 		&max_locks_per_xact,
-		64, 10, INT_MAX, NULL, NULL
+		128, 10, INT_MAX, NULL, NULL
 	},
 
 	{

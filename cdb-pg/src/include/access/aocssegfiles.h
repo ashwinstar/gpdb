@@ -95,21 +95,41 @@ static inline int aocsfileseginfo_size(int nvp)
 
 static inline AOCSVPInfoEntry *getAOCSVPEntry(AOCSFileSegInfo *psinfo, int vp)
 {
-        Assert(vp < psinfo->vpinfo.nEntry);
+        if (vp >= psinfo->vpinfo.nEntry)
+			elog(ERROR, "Index %d exceed size of vpinfo array size %d",
+			     vp, psinfo->vpinfo.nEntry);
+
         return &(psinfo->vpinfo.entry[vp]);
 }
 
 struct AOCSInsertDescData;
 
-extern AOCSFileSegInfo *GetAOCSFileSegInfoForRead(Relation prel, AppendOnlyEntry *aoEntry, int32 segno);
-extern AOCSFileSegInfo *GetAOCSFileSegInfoForWrite(Relation prel, AppendOnlyEntry *aoEntry, int32 segno);
-extern AOCSFileSegInfo *GetAOCSFileSegInfoForVacuum(Relation prel, AppendOnlyEntry *aoEntry, int32 segno);
+/* 
+ * GetAOCSFileSegInfo.
+ * 
+ * Get the catalog entry for an appendonly (column-oriented) relation from the
+ * pg_aocsseg_* relation that belongs to the currently used
+ * AppendOnly table.
+ *
+ * If a caller intends to append to this (logical) file segment entry they must
+ * already hold a relation Append-Only segment file (transaction-scope) lock (tag 
+ * LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE) in order to guarantee
+ * stability of the pg_aoseg information on this segment file and exclusive right
+ * to append data to the segment file.
+ */
+extern AOCSFileSegInfo *
+GetAOCSFileSegInfo(
+	Relation 			prel,
+	AppendOnlyEntry 	*aoEntry,
+	Snapshot 			snapshot,
+	int32 				segno);
 
 extern AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel, AppendOnlyEntry *aoEntry, Snapshot snapshot, int *totalseg);
 extern AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(int numOfColumsn, char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aocsseg_rel, Snapshot snapshot, int32 *totalseg);
 
 extern int64 GetAOCSTotalBytes(Relation parentrel);
 
+extern AOCSFileSegInfo *NewAOCSFileSegInfo(int4 segno, int4 nvp);
 extern void InsertInitialAOCSFileSegInfo(Oid segrelid, int32 segno, int32 nvp); 
 extern void UpdateAOCSFileSegInfo(struct AOCSInsertDescData *desc);
 extern void AOCSFileSegInfoAddCount(Relation prel, AppendOnlyEntry *aoEntry, int32 segno, int64 tupadded, int64 varblockadded); 

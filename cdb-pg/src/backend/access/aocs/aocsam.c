@@ -470,12 +470,37 @@ static void OpenAOCSDatumStreams(AOCSInsertDesc desc)
     int nvp = tupdesc->natts;
 
     desc->ds = (DatumStream **) palloc0(sizeof(DatumStream *) * nvp);
+
+	/*
+	* In order to append to this file segment entry we must first
+	* acquire the relation Append-Only segment file (transaction-scope) lock (tag 
+	* LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE) in order to guarantee
+	* stability of the pg_aoseg information on this segment file and exclusive right
+	* to append data to the segment file.
+	*
+	* NOTE: This is a transaction scope lock that must be held until commit / abort.
+	*/
+	LockRelationAppendOnlySegmentFile(
+								&desc->aoi_rel->rd_node,
+								desc->cur_segno,
+								AccessExclusiveLock,
+								/* dontWait */ false);
+
     open_ds(desc->aoi_rel, desc->compType, desc->compLevel, desc->blocksz, 
             desc->ds, tupdesc, NULL, desc->aoEntry->version);
 
     /* Now open seg info file and get eof mark. */
-    seginfo = GetAOCSFileSegInfoForWrite(desc->aoi_rel, desc->aoEntry, desc->cur_segno);
-    Assert(seginfo);
+    seginfo = GetAOCSFileSegInfo(
+    					desc->aoi_rel, 
+    					desc->aoEntry, 
+    					ActiveSnapshot, 
+    					desc->cur_segno);
+	if (seginfo == NULL)
+	{
+		InsertInitialAOCSFileSegInfo(desc->aoEntry->segrelid, desc->cur_segno, nvp);
+
+		seginfo = NewAOCSFileSegInfo(desc->cur_segno, nvp);
+	}
 	desc->fsInfo = seginfo;
 	desc->rowCount = seginfo->tupcount;
 

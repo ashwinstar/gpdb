@@ -1054,26 +1054,41 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		 */
 		for(i = 0 ; i < total_segfiles ; i++)
 		{
-			FileSegInfo*	fsinfo;
 			int 			segno;
+
+			LockAcquireResult acquireResult;
+
 			int64 			segeof;
 			char 			filenamepath[MAXPGPATH];
 
 			segno = segfile_array[i]->segno;
 
-			/* get the eof and a lock */
-			fsinfo = GetFileSegInfoForVacuum(aorel, aoEntry, segno);
-
-			if(!fsinfo)
+			/* 
+			 * Try to get the transaction write-lock for the Append-Only segment file.
+			 *
+			 * NOTE: This is a transaction scope lock that must be held until commit / abort.
+			 */
+			acquireResult = LockRelationAppendOnlySegmentFile(
+														&aorel->rd_node,
+														segno,
+														AccessExclusiveLock,
+														/* dontWait */ true);
+			if (acquireResult == LOCKACQUIRE_NOT_AVAIL)
 			{
 				elog(DEBUG5, "vacuum skipping truncate of AO segfile %d, "
 							 "relation %s", segno, relname);
 			}
 			else
 			{
+				FileSegInfo*		   fsinfo;
 				MirroredAppendOnlyOpen mirroredOpened;
-				int32				   fileSegNo;				
-
+				int32				   fileSegNo;		
+				
+				/* Re-fetch under the write lock to get latest committed eof. */
+				fsinfo = GetFileSegInfo(aorel, aoEntry, SnapshotNow, segno);
+				if (fsinfo == NULL)
+					continue;
+				
 				segeof = (int64)fsinfo->eof;
 
 				/* Open and truncate the relation segfile beyond its eof */
@@ -1239,7 +1254,11 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		 */
 		for(i = 0 ; i < totalseg ; i++)
 		{
-                        AOCSFileSegInfo         *fsinfo;
+
+			LockAcquireResult acquireResult;
+
+            AOCSFileSegInfo         *fsinfo;
+
 			int 			segno;
 
 			segno = allseg[i]->segno;
@@ -1253,16 +1272,30 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					 aorel->rd_node.relNode,
 					 segno);
 
-			/* get the eof and a lock */
-			fsinfo = GetAOCSFileSegInfoForVacuum(aorel, aoEntry, segno);
 
-			if(!fsinfo)
+			/*
+			 * Try to get the transaction write-lock for the Append-Only segment file.
+			 *
+			 * NOTE: This is a transaction scope lock that must be held until commit / abort.
+			 */
+			 acquireResult = LockRelationAppendOnlySegmentFile(
+														&aorel->rd_node,
+														segno,
+														AccessExclusiveLock,
+														/* dontWait */ true);
+			if (acquireResult == LOCKACQUIRE_NOT_AVAIL)
 			{
 				elog(DEBUG5, "vacuum skipping truncate of AO segfile %d, "
 							 "relation %s", segno, relname);
 			}
 			else
 			{
+				
+				/* Re-fetch under the write lock to get latest committed eof. */
+				fsinfo = GetAOCSFileSegInfo(aorel, aoEntry, SnapshotNow, segno);
+				if (fsinfo == NULL)
+					continue;
+				
 				for(j=0; j<fsinfo->vpinfo.nEntry; ++j)
 				{
 					int64 			segeof;
