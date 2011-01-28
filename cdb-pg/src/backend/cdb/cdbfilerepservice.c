@@ -111,8 +111,13 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 
 	shutdownRequested = true;
 
+	/* 
+	 * Exit the process if recv() call is hanging or
+	 * compacting is running. Compacting can take many minutes.
+	 */
 	if (fileRepProcessType == FileRepProcessTypePrimaryReceiverAck ||
-        fileRepProcessType == FileRepProcessTypeMirrorReceiver)
+        fileRepProcessType == FileRepProcessTypeMirrorReceiver ||
+		fileRepProcessType == FileRepProcessTypePrimaryRecovery)
     {
 			die(PASS_SIGNAL_ARGS);
     }
