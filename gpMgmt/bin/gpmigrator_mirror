@@ -1730,9 +1730,18 @@ class GPUpgrade:
         
     #------------------------------------------------------------
     def TurnOffMirror(self):
+        # Check that mirror and primary are in sync again..!!!
         # Set the mirror off and put the primary on changetracking
         self.ForceShutDown()
         self.Startup(self.oldenv, True)
+        
+        nonsynccnt = self.Select('''select count(*)
+             from pg_catalog.gp_segment_configuration
+             where status != 'u' or mode != 's' or role != preferred_role
+            ''' )
+        if (nonsynccnt[0] > 0):
+            raise UpgradeError("Mirror or Segments are down or out of sync")
+
         self.Update("""begin;
             update gp_segment_configuration set mode='c' where preferred_role='p' and content >=0;
             update gp_segment_configuration set status='d' where preferred_role='m';
@@ -1863,7 +1872,12 @@ class GPUpgrade:
         faultinject_index = 100
         
         while True:
+            logger.info("  ")
+            logger.info("**************************************************")
+            logger.info("**************************************************")
             logger.info("Executing state:%s"%self.mirror_upgrade_state)
+            logger.info("**************************************************")
+            logger.info("**************************************************")
             if (self.mirror_upgrade_state == "CreateMirrorWorkDir"):
                 self.mirror_upgrade_state = self.CreateMirrorWorkDir()
             elif (self.mirror_upgrade_state == "ExtractInfoAndCopyMaster"):
