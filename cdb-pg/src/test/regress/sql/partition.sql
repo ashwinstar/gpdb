@@ -4226,4 +4226,78 @@ drop table mpp6979dummy.mpp6979tab;
 
 drop schema mpp6979dummy;
 
+-- MPP-7898:
+
+drop table if exists r cascade; --ignore
+drop table if exists s cascade; --ignore
+
+create table s 
+    (a int, b text) 
+    distributed by (a);
+    
+insert into s values 
+    (1, 'one');
+
+-- Try to create a table that mixes inheritance and partitioning.
+-- Correct behavior: ERROR
+
+create table r 
+    ( c int, d int) 
+    inherits (s)
+    partition by range(d) 
+    (
+        start (0) 
+        end (2) 
+        every (1)
+    );
+
+ -- If (incorrectly) the previous statement works, the next one is 
+ -- likely to fail with in unexpected internal error.  This is residual 
+ -- issue MPP-7898.
+insert into r values 
+    (0, 'from r', 0, 0);
+    
+drop table if exists s cascade; --ignore
+drop table if exists r cascade; --ignore
+
+create table r 
+    ( a int, b text, c int, d int ) 
+    distributed by (a)
+    partition by range(d) 
+    (
+        start (0) 
+        end (2) 
+        every (1)
+    );
+ 
+insert into r values 
+    (0, 'from r', 0, 0);
+
+create table s 
+    ( a int, b text, c int, d int ) 
+    distributed by (a);
+    
+insert into s values 
+    (1, 'from s', 555, 555);
+
+create table t
+    ( )
+    inherits (s)
+    distributed by (a);
+
+insert into t values
+    (0, 'from t', 666, 666);
+
+-- Try to exchange in the child and parent.  
+-- Correct behavior: ERROR in both cases.
+
+alter table r exchange partition for (1) with table t;
+alter table r exchange partition for (1) with table s;
+
+drop table t cascade; --ignore
+drop table s cascade; --ignore
+drop table r cascade; --ignore
+
+-- MPP-7898 end.
+
 

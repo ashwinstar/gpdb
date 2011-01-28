@@ -1382,6 +1382,14 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	cxt.hasoids = interpretOidsOption(stmt->options);
 
 	stmt->policy = NULL;
+	
+	/* Disallow inheritance in combination with partitioning. */
+	if (stmt->inhRelations && (stmt->partitionBy || stmt->is_part_child ))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot mix inheritance with partitioning")));
+	}			
 
 	/*
 	 * Run through each primary element in the table creation clause. Separate
