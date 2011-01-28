@@ -1656,12 +1656,13 @@ class GPUpgrade:
                         self.RunCmd('rm -rf ' + dst)
 
         """
-        Delete everthing under the master data, except base and gpmigrator, to gpmigrator/backup
+        Delete everthing under the master data, except base and gpmigrator and mirror_upgrade_state file,
+        to gpmigrator/backup
         Copy things from backup
         """
         backupdir = os.path.join(self.masterdir, WORKDIR, BACKUPDIR)
         for d in os.listdir(self.masterdir):
-            if (d!="base" and d != "gpmigrator"):
+            if (d!="base" and d != "gpmigrator" and d != 'mirror_upgrade_state'):
                 backuploc = os.path.join(self.masterdir, WORKDIR, BACKUPDIR, d)
                 if (os.path.exists(backuploc)):
                     self.do_copy(backupdir, self.masterdir, d)
