@@ -83,7 +83,8 @@ int main (int argc, char *argv[])
 {
 	int                c;
 	char              *procname = argv[0];
-	int                needpass = 0;
+	int                forceprompt = false;
+	int                needpass = false;
 	char              *filename = NULL;
 	char              *username = NULL;
 	char              *database = NULL;
@@ -171,7 +172,7 @@ int main (int argc, char *argv[])
 #endif
 
 			case 'W':  /* --password */
-				needpass = 1;
+				forceprompt = true;
 				break;
      
 			case 'U':  /* --username */
@@ -346,17 +347,23 @@ int main (int argc, char *argv[])
 			tty     = NULL;
 			pwd     = NULL;
 
+			if (forceprompt)
+			{
+				read_password(pwdbuf, sizeof(pwdbuf));
+				pwd = pwdbuf;
+			}
+
 			do {
-				if (needpass)
-				{
-					read_password(pwdbuf, sizeof(pwdbuf));
-					pwd = pwdbuf;
-				}
 				conn = PQsetdbLogin(host, pqport, options, tty, db, user, pwd);
+
+				needpass = false;
 				if (PQstatus(conn) == CONNECTION_BAD &&
 					!strcmp(PQerrorMessage(conn), PQnoPasswordSupplied))
 				{
 					PQfinish(conn);
+
+					read_password(pwdbuf, sizeof(pwdbuf));
+					pwd = pwdbuf;
 					needpass = true;
 				}
 			} while (needpass);
