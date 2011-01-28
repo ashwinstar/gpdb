@@ -674,6 +674,11 @@ alter table @gpupgradeschemaname@.pg_authid add column rolcreatewexthdfs bool;
 update @gpupgradeschemaname@.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
 select catDML('update @gpupgradeschemaname@.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random('gp_id');
 
+-- sync pg_authid.rolsequeue between master and seg
+select catDML('select catDML(''update @gpupgradeschemaname@.pg_authid set rolresqueue ='||rolresqueue||'
+                               where oid = '||oid||''') from gp_dist_random(''gp_id'')')
+from pg_authid;
+
 CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_roles AS 
  SELECT pg_authid.rolname, pg_authid.rolsuper, pg_authid.rolinherit,
   pg_authid.rolcreaterole, pg_authid.rolcreatedb, pg_authid.rolcatupdate,

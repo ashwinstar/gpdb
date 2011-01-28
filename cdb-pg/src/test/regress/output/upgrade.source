@@ -16797,7 +16797,7 @@ is 'Populate the gp_persistent_relation_node table''s relation_bufpool_kind colu
 select gp_persistent_set_relation_bufpool_kind_all();
 psql:@abs_srcdir@/data/upg_catupgrade_41.sql:61: ERROR:  function is not supported
 select gp_persistent_set_relation_bufpool_kind_all() from gp_dist_random('gp_id');
-psql:@abs_srcdir@/data/upg_catupgrade_41.sql:62: ERROR:  function is not supported  (seg0 slice1 @hostname@:50000 pid=28504)
+psql:@abs_srcdir@/data/upg_catupgrade_41.sql:62: ERROR:  function is not supported  (seg1 slice1 @hostname@:50001 pid=89021)
 update upg_catalog.pg_class set relhaspkey = true where oid = 5094;
 psql:@abs_srcdir@/data/upg_catupgrade_41.sql:64: ERROR:  column "oid" does not exist
 LINE 1: ... upg_catalog.pg_class set relhaspkey = true where oid = 5094...
@@ -17491,6 +17491,14 @@ alter table upg_catalog.pg_authid add column rolcreaterexthdfs bool;
 alter table upg_catalog.pg_authid add column rolcreatewexthdfs bool;
 update upg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false;
 select catDML('update upg_catalog.pg_authid set rolcreaterexthdfs = false, rolcreatewexthdfs = false') from gp_dist_random('gp_id');
+ catdml 
+--------
+(0 rows)
+
+-- sync pg_authid.rolsequeue between master and seg
+select catDML('select catDML(''update upg_catalog.pg_authid set rolresqueue ='||rolresqueue||'
+                               where oid = '||oid||''') from gp_dist_random(''gp_id'')')
+from pg_authid;
  catdml 
 --------
 (0 rows)
