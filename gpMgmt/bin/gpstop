@@ -224,7 +224,7 @@ class GpStop:
                     
                     if not unix.check_pid(mypid):
                         # Clean up files
-                        lockfile="/tmp/.s.PGSQL.%s" % port    
+                        lockfile="/tmp/.s.PGSQL.%s" % self.dburl.pgport    
                         if os.path.exists(lockfile):
                             logger.info("Clearing segment instance lock files")        
                             os.remove(lockfile)
