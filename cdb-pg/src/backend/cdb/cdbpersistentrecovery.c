@@ -1408,12 +1408,12 @@ PersistentRecovery_CrashAbort(void)
 		return;
 	}
 
-	PersistentRecovery_HandlePrepareBeforeCheckpoint();
-
 	for (fsObjType = PersistentFsObjType_First; 
 		 fsObjType <= PersistentFsObjType_Last;
 		 fsObjType++)
 		PersistentRecovery_AttachFsObjTypeToXact(fsObjType);
+
+	PersistentRecovery_HandlePrepareBeforeCheckpoint();
 
 	if (Debug_persistent_recovery_print)
 	{
