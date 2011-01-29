@@ -81,6 +81,23 @@ OUTPUT_CONFIG=""
 GPHOSTCACHELOOKUP=$WORKDIR/lib/gphostcachelookup.py
 
 #******************************************************************************
+# DCA Specific Variables
+#******************************************************************************
+DCA_VERSION_FILE="/etc/gpdb-appliance-version"
+
+DCA_RESQUEUE_PRIORITY_NAME="gp_resqueue_priority"
+DCA_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_NAME="gp_resqueue_priority_cpucores_per_segment"
+DCA_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_NAME="gp_resqueue_priority_sweeper_interval"
+
+DCA_MASTER_RESQUEUE_PRIORITY_VAL="on"
+DCA_MASTER_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL=24
+DCA_MASTER_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL=1000
+
+DCA_SEGMENT_RESQUEUE_PRIORITY_VAL="on"
+DCA_SEGMENT_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL=4
+DCA_SEGMENT_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL=1000
+
+#******************************************************************************
 # Functions
 #******************************************************************************
 USAGE () {
@@ -138,22 +155,6 @@ USAGE () {
 		$ECHO
 		exit $EXIT_STATUS
 	fi
-}
-
-# derive proper options for gpstart/gpstop based on VERBOSE and DEBUG_LEVEL.  
-# sample use:
-#     GPSTOP_OPTS=$(OUTPUT_LEVEL_OPTS)
-#
-OUTPUT_LEVEL_OPTS () {
-    if [ $VERBOSE ]; then
-        if [ $DEBUG_LEVEL -eq 1 ]; then
-    	    echo ' -v '
-        else
-    	    echo ''
-        fi
-    else
-        echo ' -q '
-    fi
 }
 
 # Check whether two intervals ($1, $2), ($3, $4) overlap
@@ -1461,25 +1462,28 @@ CREATE_QES_MIRROR () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-
 STOP_QD_PRODUCTION () {
-    LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-    LOG_MSG "[INFO]:-Restarting the Greenplum instance in production mode" 1
-    if [ -f $GPSTOP ]; then
-	GPSTOP_OPTS=$(OUTPUT_LEVEL_OPTS)
-	export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1
-	$GPSTOP -a -i -m -d $MASTER_DATA_DIRECTORY $GPSTOP_OPTS
-	RETVAL=$?
-	case $RETVAL in
-	    0 ) LOG_MSG "[INFO]:-Successfully shutdown the new Greenplum instance" ;;
-	    1 ) LOG_MSG "[WARN]:-Non fatal error from Greenplum instance shutdown, check log files, will continue"
-		EXIT_STATUS=1 ;;
-	    * ) ERROR_EXIT "[FATAL]:-Failed to stop new Greenplum instance, check log file" 2
-	esac
-    else
-	ERROR_EXIT "[FATAL]:-$GPSTOP not located" 2
-    fi
-    LOG_MSG "[INFO]:-End Function $FUNCNAME"
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		LOG_MSG "[INFO]:-Restarting the Greenplum instance in production mode" 1
+		if [ -f $GPSTOP ]; then
+				if [ $DEBUG_LEVEL -eq 1 ]; then
+				    GPSTOP_OPTS=' -v '
+				else
+				    GPSTOP_OPTS=''
+				fi
+				export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1
+				$GPSTOP -a -i -m -d $MASTER_DATA_DIRECTORY $GPSTOP_OPTS
+				RETVAL=$?
+				case $RETVAL in
+				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new Greenplum instance" ;;
+				1 ) LOG_MSG "[WARN]:-Non fatal error from Greenplum instance shutdown, check log files, will continue"
+				    EXIT_STATUS=1 ;;
+				* ) ERROR_EXIT "[FATAL]:-Failed to stop new Greenplum instance, check log file" 2
+				esac
+		else
+				ERROR_EXIT "[FATAL]:-$GPSTOP not located" 2
+		fi
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CREATE_STANDBY_QD () {
@@ -1505,61 +1509,68 @@ CREATE_STANDBY_QD () {
 }
 
 START_QD_PRODUCTION () {
-    LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-    if [ -f $GPSTART ]; then
-	GPSTART_OPTS=$(OUTPUT_LEVEL_OPTS)
-	export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1
-	$GPSTART -a -d $MASTER_DATA_DIRECTORY $GPSTART_OPTS
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		if [ -f $GPSTART ]; then
+			    if [ $DEBUG_LEVEL -eq 1 ]; then
+				    GPSTART_OPTS=' -v '
+				else
+				    GPSTART_OPTS=''
+				fi
+				export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1
+				$GPSTART -a -d $MASTER_DATA_DIRECTORY $GPSTART_OPTS
 
-        if [ $? -eq 0 ];then
-            LOG_MSG "[INFO]:-Successfully started new Greenplum instance"
-        else
+                if [ $? -eq 0 ];then
+                    LOG_MSG "[INFO]:-Successfully started new Greenplum instance"
+                else
 
-            # this text is duplicated below
-            LOG_MSG "[WARN]:" 1
-            LOG_MSG "[WARN]:-Failed to start Greenplum instance; review gpstart output to" 1
-            LOG_MSG "[WARN]:- determine why gpstart failed and reinitialize cluster after resolving" 1
-            LOG_MSG "[WARN]:- issues.  Not all initialization tasks have completed so the cluster" 1
-            LOG_MSG "[WARN]:- should not be used." 1
+                    # this text is duplicated below
+                    LOG_MSG "[WARN]:" 1
+                    LOG_MSG "[WARN]:-Failed to start Greenplum instance; review gpstart output to" 1
+                    LOG_MSG "[WARN]:- determine why gpstart failed and reinitialize cluster after resolving" 1
+                    LOG_MSG "[WARN]:- issues.  Not all initialization tasks have completed so the cluster" 1
+                    LOG_MSG "[WARN]:- should not be used." 1
 
-            LOG_MSG "[WARN]:-gpinitsystem will now try to stop the cluster" 1
-            LOG_MSG "[WARN]:" 1
-            if [ -f $GPSTOP ]; then
-		GPSTOP_OPTS=$(OUTPUT_LEVEL_OPTS)
-                export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1
-                $GPSTOP -a -i -d $MASTER_DATA_DIRECTORY $GPSTOP_OPTS
+                    LOG_MSG "[WARN]:-gpinitsystem will now try to stop the cluster" 1
+                    LOG_MSG "[WARN]:" 1
+                    if [ -f $GPSTOP ]; then
+                        if [ $DEBUG_LEVEL -eq 1 ]; then
+                            GPSTOP_OPTS=' -v '
+                        else
+                            GPSTOP_OPTS=''
+                        fi
+                        export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}-1
+                        $GPSTOP -a -i -d $MASTER_DATA_DIRECTORY $GPSTOP_OPTS
 
-                RETVAL=$?
-                case $RETVAL in
-                    0 ) LOG_MSG "[INFO]:-Successfully shutdown the Greenplum instance" 1;;
-                    1 ) LOG_MSG "[WARN]:-Non fatal error from Greenplum instance shutdown" 1;;
-                    * ) ERROR_EXIT "[WARN]:-Failed to stop new Greenplum instance" 2
-                esac
-            else
-                LOG_MSG "[WARN]:-$GPSTOP not located" 1
-            fi
+                        RETVAL=$?
+                        case $RETVAL in
+                            0 ) LOG_MSG "[INFO]:-Successfully shutdown the Greenplum instance" 1;;
+                            1 ) LOG_MSG "[WARN]:-Non fatal error from Greenplum instance shutdown" 1;;
+                            * ) ERROR_EXIT "[WARN]:-Failed to stop new Greenplum instance" 2
+                        esac
+                    else
+                        LOG_MSG "[WARN]:-$GPSTOP not located" 1
+                    fi
 
-            # this text is duplicated above
-            LOG_MSG "[WARN]:" 1
-            LOG_MSG "[WARN]:-Failed to start Greenplum instance; review gpstart output to" 1
-            LOG_MSG "[WARN]:- determine why gpstart failed and reinitialize cluster after resolving" 1
-            LOG_MSG "[WARN]:- issues.  Not all initialization tasks have completed so the cluster" 1
-            LOG_MSG "[WARN]:- should not be used." 1
-            LOG_MSG "[WARN]:" 1
-            ERROR_EXIT "[FATAL]: starting new instance failed;" 2
-        fi
-    else
-	ERROR_EXIT "[FATAL]:-$GPSTART not located" 2
-    fi
-    LOG_MSG "[INFO]:-Completed restart of Greenplum instance in production mode" 1
-    LOG_MSG "[INFO]:-End Function $FUNCNAME"
+                    # this text is duplicated above
+                    LOG_MSG "[WARN]:" 1
+                    LOG_MSG "[WARN]:-Failed to start Greenplum instance; review gpstart output to" 1
+                    LOG_MSG "[WARN]:- determine why gpstart failed and reinitialize cluster after resolving" 1
+                    LOG_MSG "[WARN]:- issues.  Not all initialization tasks have completed so the cluster" 1
+                    LOG_MSG "[WARN]:- should not be used." 1
+                    LOG_MSG "[WARN]:" 1
+                    ERROR_EXIT "[FATAL]: starting new instance failed;" 2
+                fi
+		else
+				ERROR_EXIT "[FATAL]:-$GPSTART not located" 2
+		fi
+		LOG_MSG "[INFO]:-Completed restart of Greenplum instance in production mode" 1
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
-
 SET_GP_USER_PW () {
-    LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-    $PSQL -p $MASTER_PORT -d "$DEFAULTDB" -c"alter user $USER_NAME password '$GP_PASSWD';" >> $LOG_FILE 2>&1
-    ERROR_CHK $? "update Greenplum superuser password" 1
-    LOG_MSG "[INFO]:-End Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	$PSQL -p $MASTER_PORT -d "$DEFAULTDB" -c"alter user $USER_NAME password '$GP_PASSWD';"
+	ERROR_CHK $? "update Greenplum superuser password" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CREATE_DATABASE () {
@@ -1767,6 +1778,31 @@ LOAD_GP_TOOLKIT () {
 	$RM /tmp/_gp_toolkit_tmp_${CUR_DATE}_$FILE_TIME
 }
 
+SET_DCA_CONFIG_SETTINGS () {
+	LOG_MSG "[INFO]:-Setting DCA specific configuration values..." 1
+
+	LOG_MSG "[INFO]:-$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_VAL" 1
+	$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_VAL
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ]; then
+		LOG_MSG "[WARN]:-Failed to set value for $DCA_RESQUEUE_PRIORITY_NAME" 1
+	fi
+	
+	LOG_MSG "[INFO]:-$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL" 1
+	$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_VAL
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ]; then
+		LOG_MSG "[WARN]:-Failed to set value for $DCA_RESQUEUE_PRIORITY_CPUCORES_PER_SEGMENT_NAME" 1
+	fi
+
+	LOG_MSG "[INFO]:-$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL" 1
+	$GPCONFIG -c $DCA_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_NAME -v $DCA_SEGMENT_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL -m $DCA_MASTER_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_VAL
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ]; then
+		LOG_MSG "[WARN]:-Failed to set value for $DCA_RESQUEUE_PRIORITY_SWEEPER_INTERVAL_NAME" 1
+	fi
+}
+
 #******************************************************************************
 # Main Section
 #******************************************************************************
@@ -1911,7 +1947,13 @@ fi
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
 	CREATE_STANDBY_QD
 fi
+
+if [ -f $DCA_VERSION_FILE ]; then
+	SET_DCA_CONFIG_SETTINGS	
+fi
+
 env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -d "$U_DB" -c "CHECKPOINT;" >> $LOG_FILE 2>&1
+
 STOP_QD_PRODUCTION
 START_QD_PRODUCTION
 
