@@ -129,6 +129,7 @@ MKFIFO=`findCmdInPath mkfifo`
 NETSTAT=`findCmdInPath netstat`
 PING=`findCmdInPath ping`
 PS=`findCmdInPath ps`
+PYTHON=${GPHOME}/ext/python/bin/python
 RM=`findCmdInPath rm`
 SCP=`findCmdInPath scp`
 SED=`findCmdInPath sed`
