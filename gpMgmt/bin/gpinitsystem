@@ -588,7 +588,7 @@ CHK_PARAMS () {
 CHK_MULTI_HOME () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing multi-home checks, please wait..." 1
-	MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE|$SORT`)
+	MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE|LC_ALL=C $SORT -n -s`)
 	M_HOST_ARRAY=()
 	MCOUNT=0
 	for MHOST in ${MACHINE_LIST[@]}
