@@ -1,39 +1,36 @@
 aaaaa GP_IGNORE: aaag: aocsam - ./backend/access/aocs/aocsam.c
-aaag: aocsam:00000577:  ereport(ERROR, 
-aaag: aocsam:00000578:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-aaag: aocsam:00000579:  errmsg("append-only column-oriented tables do not support rows with OIDs"))); 
+aaag: aocsam:00000602:  ereport(ERROR, 
+aaag: aocsam:00000603:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+aaag: aocsam:00000604:  errmsg("append-only column-oriented tables do not support rows with OIDs"))); 
 aaaaa GP_IGNORE: aabc: aocssegfiles - ./backend/access/aocs/aocssegfiles.c
-aabc: aocssegfiles:00000195:  ereport(ERROR, 
-aabc: aocssegfiles:00000196:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-aabc: aocssegfiles:00000197:  errmsg("could not serialize access due to concurrent update"))); 
-aabc: aocssegfiles:00000513:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aabc: aocssegfiles:00000514:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
-aabc: aocssegfiles:00000515:  RelationGetRelationName(prel), idesc->cur_segno) 
-aabc: aocssegfiles:00000516:  )); 
-aabc: aocssegfiles:00000589:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aabc: aocssegfiles:00000590:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
-aabc: aocssegfiles:00000591:  RelationGetRelationName(prel), segno) 
-aabc: aocssegfiles:00000592:  )); 
-aabc: aocssegfiles:00000632:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000633:  errmsg("invalid entry for decoding aocsvpinfo") 
-aabc: aocssegfiles:00000634:  )); 
-aabc: aocssegfiles:00000637:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000638:  errmsg("invalid entry for decoding aocsvpinfo") 
-aabc: aocssegfiles:00000639:  )); 
-aabc: aocssegfiles:00000728:  ereport(ERROR, 
-aabc: aocssegfiles:00000729:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000730:  errmsg("'%s' is not an append-only columnar relation", 
-aabc: aocssegfiles:00000731:  RelationGetRelationName(aocsRel)))); 
-aabc: aocssegfiles:00000922:  ereport(ERROR, 
-aabc: aocssegfiles:00000923:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aabc: aocssegfiles:00000924:  errmsg("'%s' is not an append-only columnar relation", 
-aabc: aocssegfiles:00000925:  RelationGetRelationName(aocsRel)))); 
-aabc: aocssegfiles:00001060:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00001061:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00001062:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aabc: aocssegfiles:00001226:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aabc: aocssegfiles:00001227:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aabc: aocssegfiles:00001228:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aabc: aocssegfiles:00000403:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aabc: aocssegfiles:00000404:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
+aabc: aocssegfiles:00000405:  RelationGetRelationName(prel), idesc->cur_segno) 
+aabc: aocssegfiles:00000406:  )); 
+aabc: aocssegfiles:00000495:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aabc: aocssegfiles:00000496:  errmsg("AOCS table \"%s\" file segment \"%d\" does not exist", 
+aabc: aocssegfiles:00000497:  RelationGetRelationName(prel), segno) 
+aabc: aocssegfiles:00000498:  )); 
+aabc: aocssegfiles:00000538:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000539:  errmsg("invalid entry for decoding aocsvpinfo") 
+aabc: aocssegfiles:00000540:  )); 
+aabc: aocssegfiles:00000543:  ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000544:  errmsg("invalid entry for decoding aocsvpinfo") 
+aabc: aocssegfiles:00000545:  )); 
+aabc: aocssegfiles:00000634:  ereport(ERROR, 
+aabc: aocssegfiles:00000635:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000636:  errmsg("'%s' is not an append-only columnar relation", 
+aabc: aocssegfiles:00000637:  RelationGetRelationName(aocsRel)))); 
+aabc: aocssegfiles:00000828:  ereport(ERROR, 
+aabc: aocssegfiles:00000829:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aabc: aocssegfiles:00000830:  errmsg("'%s' is not an append-only columnar relation", 
+aabc: aocssegfiles:00000831:  RelationGetRelationName(aocsRel)))); 
+aabc: aocssegfiles:00000967:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00000968:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00000969:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aabc: aocssegfiles:00001153:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aabc: aocssegfiles:00001154:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aabc: aocssegfiles:00001155:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
 aaaaa GP_IGNORE: aaae: aomd - ./backend/access/appendonly/aomd.c
 aaae: aomd:00000168:  ereport(ERROR, 
 aaae: aomd:00000169:  (errcode_for_file_access(), 
@@ -41,110 +38,107 @@ aaae: aomd:00000170:  errmsg("Could not open Append-Only segment file '%s': %s",
 aaae: aomd:00000171:  filepathname, 
 aaae: aomd:00000172:  strerror(primaryError)))); 
 aaaaa GP_IGNORE: aaba: aosegfiles - ./backend/access/appendonly/aosegfiles.c
-aaba: aosegfiles:00000316:  ereport(ERROR, 
-aaba: aosegfiles:00000317:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-aaba: aosegfiles:00000318:  errmsg("could not serialize access due to concurrent update"))); 
-aaba: aosegfiles:00000364:  ereport(ERROR, 
-aaba: aosegfiles:00000365:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaba: aosegfiles:00000366:  errmsg("got invalid eof value: NULL"))); 
-aaba: aosegfiles:00000372:  ereport(ERROR, 
-aaba: aosegfiles:00000373:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaba: aosegfiles:00000374:  errmsg("got invalid tupcount value: NULL"))); 
-aaba: aosegfiles:00000380:  ereport(ERROR, 
-aaba: aosegfiles:00000381:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaba: aosegfiles:00000382:  errmsg("got invalid varblockcount value: NULL"))); 
-aaba: aosegfiles:00000407:  ereport(ERROR, 
-aaba: aosegfiles:00000408:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-aaba: aosegfiles:00000409:  errmsg("Invalid eof " INT64_FORMAT " for relation %s", 
-aaba: aosegfiles:00000410:  fsinfo->eof, NameStr(parentrel->rd_rel->relname)))); 
-aaba: aosegfiles:00000638:  ereport(ERROR, 
-aaba: aosegfiles:00000639:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaba: aosegfiles:00000640:  errmsg("append-only table \"%s\" file segment \"%d\" entry " 
-aaba: aosegfiles:00000641:  "does not exist", RelationGetRelationName(parentrel), 
-aaba: aosegfiles:00000642:  segno))); 
-aaba: aosegfiles:00000651:  ereport(ERROR, 
-aaba: aosegfiles:00000652:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaba: aosegfiles:00000653:  errmsg("got invalid pg_aoseg filetupcount value: NULL"))); 
-aaba: aosegfiles:00000667:  ereport(ERROR, 
-aaba: aosegfiles:00000668:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaba: aosegfiles:00000669:  errmsg("got invalid pg_aoseg varblockcount value: NULL"))); 
-aaba: aosegfiles:00000905:  ereport(ERROR, 
-aaba: aosegfiles:00000906:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00000907:  errmsg("'%s' is not an append-only row relation", 
-aaba: aosegfiles:00000908:  RelationGetRelationName(aocsRel)))); 
-aaba: aosegfiles:00001022:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001023:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001024:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
-aaba: aosegfiles:00001158:  ereport(ERROR, 
-aaba: aosegfiles:00001159:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001160:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001161:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001274:  ereport(ERROR, 
-aaba: aosegfiles:00001275:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001276:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001277:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001315:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001316:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001317:  errdetail("SPI_connect failed in get_ao_distribution"))); 
-aaba: aosegfiles:00001464:  ereport(ERROR, 
-aaba: aosegfiles:00001465:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001466:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001467:  RelationGetRelationName(parentrel)))); 
-aaba: aosegfiles:00001493:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001494:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001495:  errdetail("SPI_connect failed in get_ao_distribution"))); 
-aaba: aosegfiles:00001674:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-aaba: aosegfiles:00001675:  errmsg("Unable to obtain AO relation information from segment databases."), 
-aaba: aosegfiles:00001676:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
-aaba: aosegfiles:00001770:  ereport(ERROR, 
-aaba: aosegfiles:00001771:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-aaba: aosegfiles:00001772:  errmsg("'%s' is not an append-only relation", 
-aaba: aosegfiles:00001773:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00000188:  ereport(ERROR, 
+aaba: aosegfiles:00000189:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaba: aosegfiles:00000190:  errmsg("got invalid eof value: NULL"))); 
+aaba: aosegfiles:00000196:  ereport(ERROR, 
+aaba: aosegfiles:00000197:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaba: aosegfiles:00000198:  errmsg("got invalid tupcount value: NULL"))); 
+aaba: aosegfiles:00000204:  ereport(ERROR, 
+aaba: aosegfiles:00000205:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaba: aosegfiles:00000206:  errmsg("got invalid varblockcount value: NULL"))); 
+aaba: aosegfiles:00000231:  ereport(ERROR, 
+aaba: aosegfiles:00000232:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+aaba: aosegfiles:00000233:  errmsg("Invalid eof " INT64_FORMAT " for relation %s", 
+aaba: aosegfiles:00000234:  fsinfo->eof, NameStr(parentrel->rd_rel->relname)))); 
+aaba: aosegfiles:00000474:  ereport(ERROR, 
+aaba: aosegfiles:00000475:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaba: aosegfiles:00000476:  errmsg("append-only table \"%s\" file segment \"%d\" entry " 
+aaba: aosegfiles:00000477:  "does not exist", RelationGetRelationName(parentrel), 
+aaba: aosegfiles:00000478:  segno))); 
+aaba: aosegfiles:00000491:  ereport(ERROR, 
+aaba: aosegfiles:00000492:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaba: aosegfiles:00000493:  errmsg("got invalid pg_aoseg filetupcount value: NULL"))); 
+aaba: aosegfiles:00000507:  ereport(ERROR, 
+aaba: aosegfiles:00000508:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaba: aosegfiles:00000509:  errmsg("got invalid pg_aoseg varblockcount value: NULL"))); 
+aaba: aosegfiles:00000745:  ereport(ERROR, 
+aaba: aosegfiles:00000746:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00000747:  errmsg("'%s' is not an append-only row relation", 
+aaba: aosegfiles:00000748:  RelationGetRelationName(aocsRel)))); 
+aaba: aosegfiles:00000862:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00000863:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00000864:  errdetail("SPI_connect failed in gp_update_ao_master_stats"))); 
+aaba: aosegfiles:00001018:  ereport(ERROR, 
+aaba: aosegfiles:00001019:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001020:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001021:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001134:  ereport(ERROR, 
+aaba: aosegfiles:00001135:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001136:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001137:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001175:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001176:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001177:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+aaba: aosegfiles:00001324:  ereport(ERROR, 
+aaba: aosegfiles:00001325:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001326:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001327:  RelationGetRelationName(parentrel)))); 
+aaba: aosegfiles:00001353:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001354:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001355:  errdetail("SPI_connect failed in get_ao_distribution"))); 
+aaba: aosegfiles:00001534:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+aaba: aosegfiles:00001535:  errmsg("Unable to obtain AO relation information from segment databases."), 
+aaba: aosegfiles:00001536:  errdetail("SPI_connect failed in get_ao_compression_ratio"))); 
+aaba: aosegfiles:00001630:  ereport(ERROR, 
+aaba: aosegfiles:00001631:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+aaba: aosegfiles:00001632:  errmsg("'%s' is not an append-only relation", 
+aaba: aosegfiles:00001633:  RelationGetRelationName(parentrel)))); 
 aaaaa GP_IGNORE: aabc: appendonlyam - ./backend/access/appendonly/appendonlyam.c
-aabc: appendonlyam:00000610:  ereport(ERROR, 
-aabc: appendonlyam:00000611:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-aabc: appendonlyam:00000612:  errmsg("VarBlock is not valid. " 
-aabc: appendonlyam:00000613:  "Valid block check error %d, detail '%s'", 
-aabc: appendonlyam:00000614:  varBlockCheckError, 
-aabc: appendonlyam:00000615:  VarBlockGetCheckErrorStr()), 
-aabc: appendonlyam:00000616:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
-aabc: appendonlyam:00000617:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
-aabc: appendonlyam:00000632:  ereport(ERROR, 
-aabc: appendonlyam:00000633:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-aabc: appendonlyam:00000634:  errmsg("Row count %d in append-only storage header does not match VarBlock item count %d", 
-aabc: appendonlyam:00000635:  executorReadBlock->rowCount, 
-aabc: appendonlyam:00000636:  executorReadBlock->readerItemCount), 
-aabc: appendonlyam:00000637:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
-aabc: appendonlyam:00000638:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
-aabc: appendonlyam:00000653:  ereport(ERROR, 
-aabc: appendonlyam:00000654:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-aabc: appendonlyam:00000655:  errmsg("Row count %d in append-only storage header is not 1 for single row", 
-aabc: appendonlyam:00000656:  executorReadBlock->rowCount), 
-aabc: appendonlyam:00000657:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
-aabc: appendonlyam:00000658:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
-aabc: appendonlyam:00001273:  ereport(ERROR, 
-aabc: appendonlyam:00001274:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-aabc: appendonlyam:00001275:  errmsg("Verify block during write found VarBlock is not valid. " 
-aabc: appendonlyam:00001276:  "Valid block check error %d, detail '%s'", 
-aabc: appendonlyam:00001277:  varBlockCheckError, 
-aabc: appendonlyam:00001278:  VarBlockGetCheckErrorStr()), 
-aabc: appendonlyam:00001279:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
-aabc: appendonlyam:00001280:  errcontext_appendonly_insert_block(aoInsertDesc))); 
-aabc: appendonlyam:00001957:  ereport(WARNING, 
-aabc: appendonlyam:00001958:  (errmsg("Append-only fetch requires scan prior segment file: " 
-aabc: appendonlyam:00001959:  "segmentFileNum %d, rowNum " INT64_FORMAT 
-aabc: appendonlyam:00001960:  ", currentSegmentFileNum %d", 
-aabc: appendonlyam:00001961:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
-aabc: appendonlyam:00002335:  ereport(ERROR, 
-aabc: appendonlyam:00002336:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002337:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002338:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002339:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
-aabc: appendonlyam:00002377:  ereport(ERROR, 
-aabc: appendonlyam:00002378:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-aabc: appendonlyam:00002379:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
-aabc: appendonlyam:00002380:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
-aabc: appendonlyam:00002381:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00000634:  ereport(ERROR, 
+aabc: appendonlyam:00000635:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+aabc: appendonlyam:00000636:  errmsg("VarBlock is not valid. " 
+aabc: appendonlyam:00000637:  "Valid block check error %d, detail '%s'", 
+aabc: appendonlyam:00000638:  varBlockCheckError, 
+aabc: appendonlyam:00000639:  VarBlockGetCheckErrorStr()), 
+aabc: appendonlyam:00000640:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+aabc: appendonlyam:00000641:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
+aabc: appendonlyam:00000656:  ereport(ERROR, 
+aabc: appendonlyam:00000657:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+aabc: appendonlyam:00000658:  errmsg("Row count %d in append-only storage header does not match VarBlock item count %d", 
+aabc: appendonlyam:00000659:  executorReadBlock->rowCount, 
+aabc: appendonlyam:00000660:  executorReadBlock->readerItemCount), 
+aabc: appendonlyam:00000661:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+aabc: appendonlyam:00000662:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
+aabc: appendonlyam:00000677:  ereport(ERROR, 
+aabc: appendonlyam:00000678:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+aabc: appendonlyam:00000679:  errmsg("Row count %d in append-only storage header is not 1 for single row", 
+aabc: appendonlyam:00000680:  executorReadBlock->rowCount), 
+aabc: appendonlyam:00000681:  errdetail_appendonly_read_storage_block_header(executorReadBlock->storageRead), 
+aabc: appendonlyam:00000682:  errcontext_appendonly_read_storage_block(executorReadBlock->storageRead))); 
+aabc: appendonlyam:00001297:  ereport(ERROR, 
+aabc: appendonlyam:00001298:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+aabc: appendonlyam:00001299:  errmsg("Verify block during write found VarBlock is not valid. " 
+aabc: appendonlyam:00001300:  "Valid block check error %d, detail '%s'", 
+aabc: appendonlyam:00001301:  varBlockCheckError, 
+aabc: appendonlyam:00001302:  VarBlockGetCheckErrorStr()), 
+aabc: appendonlyam:00001303:  errdetail_appendonly_insert_block_header(aoInsertDesc), 
+aabc: appendonlyam:00001304:  errcontext_appendonly_insert_block(aoInsertDesc))); 
+aabc: appendonlyam:00001981:  ereport(WARNING, 
+aabc: appendonlyam:00001982:  (errmsg("Append-only fetch requires scan prior segment file: " 
+aabc: appendonlyam:00001983:  "segmentFileNum %d, rowNum " INT64_FORMAT 
+aabc: appendonlyam:00001984:  ", currentSegmentFileNum %d", 
+aabc: appendonlyam:00001985:  segmentFileNum, rowNum, aoFetchDesc->currentSegmentFile.num))); 
+aabc: appendonlyam:00002359:  ereport(ERROR, 
+aabc: appendonlyam:00002360:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002361:  errmsg("Item too long (check #1): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002362:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002363:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
+aabc: appendonlyam:00002401:  ereport(ERROR, 
+aabc: appendonlyam:00002402:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+aabc: appendonlyam:00002403:  errmsg("Item too long (check #2): length %d, maxBufferLen %d", 
+aabc: appendonlyam:00002404:  itemLen, aoInsertDesc->varBlockMaker.maxBufferLen), 
+aabc: appendonlyam:00002405:  errcontext_appendonly_insert_block_user_limit(aoInsertDesc))); 
 aaaaa GP_IGNORE: aace: appendonlyblockdirectory - ./backend/access/appendonly/appendonlyblockdirectory.c
 aace: appendonlyblockdirectory:00000408:  ereport(ERROR, 
 aace: appendonlyblockdirectory:00000409:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
@@ -13699,10 +13693,10 @@ iaah: invxapi:00000727:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 iaah: invxapi:00000728:  errmsg("large object %u was not opened for writing", 
 iaah: invxapi:00000729:  obj_desc->id))); 
 aaaaa GP_IGNORE: daai: deadlock - ./backend/storage/lmgr/deadlock.c
-daai: deadlock:00000955:  ereport(ERROR, 
-daai: deadlock:00000956:  (errcode(ERRCODE_T_R_DEADLOCK_DETECTED), 
-daai: deadlock:00000957:  errmsg("deadlock detected"), 
-daai: deadlock:00000958:  errdetail("%s", buf.data))); 
+daai: deadlock:00000962:  ereport(ERROR, 
+daai: deadlock:00000963:  (errcode(ERRCODE_T_R_DEADLOCK_DETECTED), 
+daai: deadlock:00000964:  errmsg("deadlock detected"), 
+daai: deadlock:00000965:  errdetail("%s", buf.data))); 
 aaaaa GP_IGNORE: laae: lock - ./backend/storage/lmgr/lock.c
 laae: lock:00000648:  ereport(ERROR, 
 laae: lock:00000649:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -13712,14 +13706,14 @@ laae: lock:00000823:  ereport(ERROR,
 laae: lock:00000824:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 laae: lock:00000825:  errmsg("out of shared memory"), 
 laae: lock:00000826:  errhint("You might need to increase max_locks_per_transaction."))); 
-laae: lock:00002769:  ereport(ERROR, 
-laae: lock:00002770:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-laae: lock:00002771:  errmsg("out of shared memory"), 
-laae: lock:00002772:  errhint("You might need to increase max_locks_per_transaction."))); 
-laae: lock:00002834:  ereport(ERROR, 
-laae: lock:00002835:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-laae: lock:00002836:  errmsg("out of shared memory"), 
-laae: lock:00002837:  errhint("You might need to increase max_locks_per_transaction."))); 
+laae: lock:00002775:  ereport(ERROR, 
+laae: lock:00002776:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+laae: lock:00002777:  errmsg("out of shared memory"), 
+laae: lock:00002778:  errhint("You might need to increase max_locks_per_transaction."))); 
+laae: lock:00002840:  ereport(ERROR, 
+laae: lock:00002841:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+laae: lock:00002842:  errmsg("out of shared memory"), 
+laae: lock:00002843:  errhint("You might need to increase max_locks_per_transaction."))); 
 aaaaa GP_IGNORE: laag: lwlock - ./backend/storage/lmgr/lwlock.c
 laag: lwlock:00000416:  ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY), 
 laag: lwlock:00000417:  errmsg("LWLockAcquire failed: out of memory")); 
@@ -15773,8 +15767,8 @@ laba: likexmatch:00000290:  (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE),
 laba: likexmatch:00000291:  errmsg("invalid escape string"), 
 laba: likexmatch:00000292:  errhint("Escape string must be empty or one character."))); 
 aaaaa GP_IGNORE: laaj: lockfuncs - ./backend/utils/adt/lockfuncs.c
-laaj: lockfuncs:00000205:  ereport(ERROR, (errmsg("pg_lock internal error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
-laaj: lockfuncs:00000206:  errdetail("%s", errbuf.data))); 
+laaj: lockfuncs:00000206:  ereport(ERROR, (errmsg("pg_lock internal error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
+laaj: lockfuncs:00000207:  errdetail("%s", errbuf.data))); 
 aaaaa GP_IGNORE: maad: mac - ./backend/utils/adt/mac.c
 maad: mac:00000063:  ereport(ERROR, 
 maad: mac:00000064:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
