@@ -7045,6 +7045,15 @@ StartupXLOG_Pass2(void)
 			 recoveryTargetTLI, 
 			 XLogLocationToString(&XLogCtl->pass1StartLoc));
 
+        if (gp_enable_new_two_phase_logic == true && GpIdentity.dbid != MASTER_DBID)
+          {
+	    if (Debug_persistent_recovery_print)
+	      elog(PersistentRecovery_DebugPrintLevel(),
+		   "Read the checkpoint record location saved from pass1, and setup the prepared transation hash list.");
+            record = XLogReadRecord(&XLogCtl->pass1LastCheckpointLoc, PANIC);
+            SetupCheckpointPreparedTransactionList(record);
+          }
+
 	record = XLogReadRecord(&XLogCtl->pass1StartLoc, PANIC);
 
 	/*
