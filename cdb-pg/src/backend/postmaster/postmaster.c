@@ -3283,6 +3283,17 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 		strcpy(args->peerAddress, peer);
 	}
 
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet
+		(
+		SegmentTransitionRequest,
+		DDLNotSpecified,
+		"",	//databaseName
+		""  // tableName
+		)
+		;
+#endif
+
     char extraResultInfo[MAX_TRANSITION_RESULT_EXTRA_INFO];
 	result = requestTransitionToPrimaryMirrorMode(args, extraResultInfo);
 
@@ -3351,6 +3362,17 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
 				 errmsg("corrupt length value %d in primary mirror query packet", length)));
 		return;
 	}
+
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet
+		(
+		SegmentProbeResponse,
+		DDLNotSpecified,
+		"",	//databaseName
+		""  // tableName
+		)
+		;
+#endif
 
 	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state, &f_type);
 

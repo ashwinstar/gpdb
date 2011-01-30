@@ -202,6 +202,10 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault after distributed commit was inserted in xlog */
         _("end_prepare_two_phase_sleep"),
 	        /* inject sleep after creation of two phase file */
+	_("segment_transition_request"),
+    	/* inject fault after segment receives state transition request */
+	_("segment_probe_response"),
+		/* inject fault after segment is probed by FTS */
 	_("not recognized"),
 };
 
@@ -853,6 +857,8 @@ FaultInjector_NewHashEntry(
 		case Postmaster:
 		case PgControl:
 		case PgXlog:
+		case SegmentTransitionRequest:
+		case SegmentProbeResponse:
 			
 			if (fileRepRole != FileRepPrimaryRole && fileRepRole != FileRepMirrorRole)
 			{

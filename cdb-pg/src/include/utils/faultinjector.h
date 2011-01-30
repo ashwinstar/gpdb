@@ -130,6 +130,10 @@ typedef enum FaultInjectorIdentifier_e {
         EndPreparedTwoPhaseSleep,
 	       /* sleep after creating two phase files */
 
+	SegmentTransitionRequest,
+
+	SegmentProbeResponse,
+
 	/* INSERT has to be done before that line */
 	FaultInjectorIdMax,
 	
