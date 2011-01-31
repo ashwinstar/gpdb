@@ -1012,7 +1012,8 @@ class GpRecoverSegmentProgram:
         """
         The dictionary this method returns instructs the simple_main framework 
         to check for a gprecoverseg.pid file under MASTER_DATA_DIRECTORY to
-        prevent more than one instance of gprecoverseg from running at once.
+        prevent the customer from trying to run more than one instance of
+        gprecoverseg at the same time.
         """
-        return {'pidfilename':'gprecoverseg.pid'}
+        return {'pidfilename':'gprecoverseg.pid', 'parentpidvar':'GPRECOVERPID'}
 

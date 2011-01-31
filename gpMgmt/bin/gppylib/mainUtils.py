@@ -46,28 +46,91 @@ def getProgramName():
     return gProgramName
 
 
-# tools like gprecoverseg prohibit running multiple instances
-# at the same time using a simple lock file created in the 
-# MASTER_DATA_DIRECTORY
+class SimpleMainLock:
+    """
+    Tools like gprecoverseg prohibit running multiple instances at the same time
+    via a simple lock file created in the MASTER_DATA_DIRECTORY.  This class takes
+    care of the work to manage this lock as appropriate based on the mainOptions
+    specified.
 
-def is_pidfile_stale(pidfile):
+    Note that in some cases, the utility may want to recursively invoke
+    itself (e.g. gprecoverseg -r).  To handle this, the caller may specify
+    the name of an environment variable holding the pid already acquired by
+    the parent process.
     """
-    Returns true if the specified PIDLockFile argument's pid file contains
-    a process id of a process which no longer exists.  This function should
-    really be part of the lockfile module but it's not.
-    """
-    result = False
-    pidfile_pid = pidfile.read_pid()
-    if pidfile_pid is not None:
+    def __init__(self, mainOptions):
+        self.pidfilename   = mainOptions.get('pidfilename', None)       # the file we're using for locking
+        self.parentpidvar  = mainOptions.get('parentpidvar', None)      # environment variable holding parent pid
+        self.parentpid     = None                                       # parent pid which already has the lock
+        self.ppath         = None                                       # complete path to the lock file
+        self.pidlockfile   = None                                       # PIDLockFile object
+        self.pidfilepid    = None                                       # pid of the process which has the lock
+        self.locktorelease = None                                       # PIDLockFile object we should release when done
+
+        if self.parentpidvar is not None and self.parentpidvar in os.environ:
+            self.parentpid = int(os.environ[self.parentpidvar])
+
+        if self.pidfilename is not None:
+            self.ppath       = os.path.join(gp.get_masterdatadir(), self.pidfilename)
+            self.pidlockfile = PIDLockFile( self.ppath )
+
+
+    def acquire(self):
+        """
+        Attempts to acquire the lock this process needs to proceed.
+
+        Returns None on successful acquisition of the lock or 
+          the pid of the other process which already has the lock.
+        """
+        # nothing to do if utiliity requires no locking
+        if self.pidlockfile is None:
+            return None
+
+        # look for a lock file
+        self.pidfilepid = self.pidlockfile.read_pid()
+        if self.pidfilepid is not None:
+
+            # we found a lock file
+            # allow the process to proceed if the locker was our parent
+            if self.pidfilepid == self.parentpid:
+                return None
+
+            # cleanup stale locks
+            try:
+                os.kill(self.pidfilepid, signal.SIG_DFL)
+            except OSError, exc:
+                if exc.errno == errno.ESRCH:
+                    self.pidlockfile.break_lock()
+                    self.pidfilepid = None
+
+        # try and acquire the lock
         try:
-            os.kill(pidfile_pid, signal.SIG_DFL)
-        except OSError, exc:
-            if exc.errno == errno.ESRCH:
-                # The specified PID does not exist
-                result = True
-    return result
+            self.pidlockfile.acquire(1)
 
-    
+        except LockTimeout:
+            self.pidfilepid = self.pidlockfile.read_pid()
+            return self.pidfilepid
+
+        # we have the lock
+        # prepare for a later call to release() and take good
+        # care of the process environment for the sake of our children
+        self.locktorelease = self.pidlockfile
+        self.pidfilepid    = self.pidlockfile.read_pid()
+        if self.parentpidvar is not None:
+            os.environ[self.parentpidvar] = str(self.pidfilepid)
+
+        return None
+
+
+    def release(self):
+        """
+        Releases the lock this process acquired.
+        """
+        if self.locktorelease is not None:
+            self.locktorelease.release()
+            self.locktorelease = None
+
+
 
 #
 # exceptions we handle specially by the simple_main framework.
@@ -117,6 +180,7 @@ def simple_main( createOptionParserFn, createCommandFn, mainOptions=None) :
                               useHelperToolLogging (map to bool)
                               setNonuserOnToolLogger (map to bool, defaults to false)
                               pidfilename (string)
+                              parentpidvar (string)
 
     """
     coverage = GpCoverage()
@@ -135,25 +199,21 @@ def simple_main_internal(createOptionParserFn, createCommandFn, mainOptions):
     to execute the specified program and we clean up the pid file when
     we're done.
     """
-    plf = None
-    if mainOptions:
-        pidfilename = mainOptions.get('pidfilename', None)
-        if pidfilename is not None:
-            ppath = os.path.join(gp.get_masterdatadir(), pidfilename)
-            plf = PIDLockFile( ppath )
-            if is_pidfile_stale(plf):
-                plf.break_lock()
-            try:
-                plf.acquire(1)
-            except LockTimeout:
-                logger = gplog.get_default_logger()
-                logger.error("An instance of %s is running (pid %s)" % (getProgramName(), plf.read_pid()))
-                return
+    sml = None
+    if mainOptions is not None and 'pidfilename' in mainOptions:
+        sml      = SimpleMainLock(mainOptions)
+        otherpid = sml.acquire()
+        if otherpid is not None:
+            logger = gplog.get_default_logger()
+            logger.error("An instance of %s is already running (pid %s)" % (getProgramName(), otherpid))
+            return
+
+    # at this point we have whatever lock we require
     try:
         simple_main_locked(createOptionParserFn, createCommandFn, mainOptions)
     finally:
-        if plf is not None:
-            plf.release()
+        if sml is not None:
+            sml.release()
 
 
 def simple_main_locked(createOptionParserFn, createCommandFn, mainOptions):
