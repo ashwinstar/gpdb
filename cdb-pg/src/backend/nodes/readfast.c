@@ -3394,6 +3394,20 @@ _readDropQueueStmt(const char ** str)
 	READ_DONE();
 }
 
+static CommentStmt *
+_readCommentStmt(const char ** str)
+{
+	READ_LOCALS(CommentStmt);
+
+	READ_ENUM_FIELD(objtype, ObjectType);
+	READ_NODE_FIELD(objname);
+	READ_NODE_FIELD(objargs);
+	READ_STRING_FIELD(comment);
+
+	READ_DONE();
+}
+
+
 static Node *
 _readValue(const char ** str, NodeTag nt)
 {
@@ -4107,6 +4121,10 @@ readNodeBinary(const char ** str)
 				break;
 			case T_DropQueueStmt:
 				return_value = _readDropQueueStmt(str);
+				break;
+
+			case T_CommentStmt:
+				return_value = _readCommentStmt(str);
 				break;
 
 			default:

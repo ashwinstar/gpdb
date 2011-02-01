@@ -3569,6 +3569,17 @@ _outDropQueueStmt(StringInfo str, DropQueueStmt *node)
 }
 
 
+static void
+_outCommentStmt(StringInfo str, CommentStmt *node)
+{
+	WRITE_NODE_TYPE("COMMENTSTMT");
+
+	WRITE_ENUM_FIELD(objtype, ObjectType);
+	WRITE_NODE_FIELD(objname);
+	WRITE_NODE_FIELD(objargs);
+	WRITE_STRING_FIELD(comment);
+}
+
 /*
  * _outNode -
  *	  converts a Node into ascii string and append it to 'str'
@@ -4303,6 +4314,10 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_DropQueueStmt:
 				_outDropQueueStmt(str, obj);
+				break;
+
+			case T_CommentStmt:
+				_outCommentStmt(str, obj);
 				break;
 
 			default:

@@ -3293,6 +3293,17 @@ _outDropQueueStmt(StringInfo str, DropQueueStmt *node)
 	WRITE_STRING_FIELD(queue);
 }
 
+static void
+_outCommentStmt(StringInfo str, CommentStmt *node)
+{
+        WRITE_NODE_TYPE("COMMENTSTMT");
+
+        WRITE_ENUM_FIELD(objtype, ObjectType);
+        WRITE_NODE_FIELD(objname);
+        WRITE_NODE_FIELD(objargs);
+        WRITE_STRING_FIELD(comment);
+}
+
 
 /*
  * _outNode -
@@ -4021,6 +4032,11 @@ _outNode(StringInfo str, void *obj)
 			case T_DropQueueStmt:
 				_outDropQueueStmt(str, obj);
 				break;
+
+                        case T_CommentStmt:
+                                _outCommentStmt(str, obj);
+                                break;
+
 
 			default:
 				elog(ERROR, "could not serialize unrecognized node type: %d",
