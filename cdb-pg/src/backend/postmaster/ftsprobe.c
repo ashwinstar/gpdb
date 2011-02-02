@@ -2615,7 +2615,7 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 	(void) snprintf
 		(
 		cmd, sizeof(cmd),
-		"gp_primarymirror -m %s -s %c -H %s -P %d -R %d -h %s -p %d -r %d %c",
+		"gp_primarymirror -m %s -s %c -H %s -P %d -R %d -h %s -p %d -r %d -n %d -t %d %c",
 		mode,
 		status,
 		seg_addr,
@@ -2624,6 +2624,8 @@ Filerep_mode_update(int dbid, char *mode, char status, FilerepModeUpdateLoggingE
 		peer_addr,
 		peer_pm_port,
 		peer_rep_port,
+		gp_fts_transition_retries,
+		gp_fts_transition_timeout,
 		runInBg
 		)
 		;

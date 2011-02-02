@@ -358,6 +358,9 @@ extern bool Gp_write_shared_snapshot;
  */
 extern bool gp_fts_probe_pause;
 
+extern int gp_fts_transition_retries;
+extern int gp_fts_transition_timeout;
+
 extern bool gpvars_assign_gp_fts_probe_pause(bool newval, bool doit, GucSource source);
 
 

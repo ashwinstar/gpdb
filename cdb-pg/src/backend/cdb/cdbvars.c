@@ -132,6 +132,13 @@ int			gp_fts_probe_threadcount=5;
  */
 bool		gp_fts_transition_parallel = false;
 
+/* The number of retries to request a segment state transition. */
+int gp_fts_transition_retries = 5;
+
+/* Timeout to request a segment state transition. */
+int gp_fts_transition_timeout = 3600;
+
+
 /*
  * When we have certain types of failures during gang creation which indicate
  * that a segment is in recovery mode we may be able to retry.
