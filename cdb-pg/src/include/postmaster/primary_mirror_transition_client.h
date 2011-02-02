@@ -27,6 +27,12 @@
 #define TRANS_ERRCODE_INTERRUPT_REQUESTED                 16
 /* NOTE!  These codes above also exist in python code -- gp.py */
 
+/*
+ * The timeout occurs when requesting a segment state transition.
+ * Only used in gpmirrortransition.c.
+ */
+#define TRANS_ERRCODE_ERROR_TIMEOUT                       17
+
 typedef void (*transitionErrorLoggingFunction)(char *str);
 typedef void (*transitionReceivedDataFunction)(char *buf);
 typedef bool (*transitionCheckShouldExitFunction)(void);

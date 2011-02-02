@@ -151,7 +151,7 @@ sendMessageToPeerAndExitIfProblem( struct addrinfo *addrList, char *msgBody,
 	client.errorLogFn = resetPeer_errorLogFunction;
 	client.checkForNeedToExitFn = resetPeer_checkForNeedToExitFunction;
 	int resultCode = sendTransitionMessage(&client, addrList, msgBody, strlen(msgBody),
-							10 /* maxRetries */, 1 /* retrySleepTimeSeconds */);
+							10 /* numRetries */, 3600 /* transition_timeout */);
 
 	if (resultCode != TRANS_ERRCODE_SUCCESS)
 	{

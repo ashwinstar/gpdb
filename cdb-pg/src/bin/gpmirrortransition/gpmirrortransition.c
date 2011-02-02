@@ -144,13 +144,19 @@ main(int argc, char **argv)
 	char *peer_pm_port = NULL;
 	char *peer_rep_port = NULL;
 
+	char *num_retries_str = NULL;
+	char *transition_timeout_str = NULL;
+	
+	int num_retries = 20;
+	int transition_timeout = 3600;  /* 1 hour */
+	
 	char opt;
 
 	char msgBuffer[SEGMENT_MSG_BUF_SIZE];
 	char *msg = NULL;
 	int msgLen = 0;
 
-	while ((opt = getopt(argc, argv, "m:s:H:P:R:h:p:r:i:")) != -1)
+	while ((opt = getopt(argc, argv, "m:s:H:P:R:h:p:r:i:n:t:")) != -1)
 	{
 		switch (opt)
 		{
@@ -181,8 +187,34 @@ main(int argc, char **argv)
 			case 'r':
 				peer_rep_port = optarg;
 				break;
+			case 'n':
+				num_retries_str = optarg;
+				break;
+			case 't':
+				transition_timeout_str = optarg;
+				break;
 			case '?':
 				fprintf(stderr, "Unrecognized option: -%c\n", optopt);
+		}
+	}
+
+	if (num_retries_str != NULL)
+	{
+		num_retries = (int) strtol(num_retries_str, NULL, 10);
+		if (num_retries == 0 || errno == ERANGE)
+		{
+			fprintf(stderr, "Invalid num_retries (-n) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
+		}
+	}
+	
+	if (transition_timeout_str != NULL)
+	{
+		transition_timeout = (int) strtol (transition_timeout_str, NULL, 10);
+		if (transition_timeout == 0 || errno == ERANGE)
+		{
+			fprintf(stderr, "Invalid transition_timeout (-t) argument\n");
+			return TRANS_ERRCODE_ERROR_INVALID_ARGUMENT;
 		}
 	}
 
@@ -302,5 +334,5 @@ main(int argc, char **argv)
 	client.receivedDataCallbackFn = gpMirrorReceivedDataCallbackFunction;
 	client.errorLogFn = gpMirrorErrorLogFunction;
 	client.checkForNeedToExitFn = gpCheckForNeedToExitFn;
-	return sendTransitionMessage(&client, addrList, msg, msgLen, 20 /* maxRetries */, 1 /* retrySleepTimeSeconds */);
+	return sendTransitionMessage(&client, addrList, msg, msgLen, num_retries, transition_timeout);
 }

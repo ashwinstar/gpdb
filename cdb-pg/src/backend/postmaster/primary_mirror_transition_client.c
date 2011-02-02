@@ -5,9 +5,17 @@
  */
 #include "postmaster/primary_mirror_mode.h"
 #include "postmaster/primary_mirror_transition_client.h"
+#include "pgtime.h"
 #include <unistd.h>
 #include "libpq/pqcomm.h"
 #include "libpq/ip.h"
+
+#ifdef HAVE_POLL_H
+#include <poll.h>
+#endif
+#ifdef HAVE_SYS_POLL_H
+#include <sys/poll.h>
+#endif
 
  /*
   * These macros are needed to let error-handling code be portable between
@@ -25,26 +33,264 @@
  #define SOCK_ERRNO_SET(e) (errno = (e))
  #endif
 
-/**
- * Send all dataLength of data to the target socket.
+#define RESULT_BUFFER_SIZE 10000
+#define ERROR_MESSAGE_SIZE 1000
+#define SOCKET_ERROR_MESSAGE_SIZE 256
+
+/*
+ * ConnectionInfo -- define the connection related info.
+ */
+typedef struct ConnectionInfo 
+{
+	struct addrinfo *addr;
+	int resultSock;
+	
+	int resultStatus;
+
+	GpMonotonicTime startTime;
+	uint64 timeout_ms;
+	
+	char resultBuffer[RESULT_BUFFER_SIZE];
+	int32 resultMsgSize;
+
+	char errMessage[ERROR_MESSAGE_SIZE];
+	char sockErrMessage[SOCKET_ERROR_MESSAGE_SIZE];
+	
+} ConnectionInfo;
+
+/*
+ * createSocket -- create the socket.
  *
- * Return false if the data cannot all be set, in which case SOCK_ERRNO will still
- *   be set to the error number from the socket call
+ * Return true if the socket is created. Otherwise, return false.
+ *
+ * On success, the created socket is stored in resultSock in connInfo.
+ *
+ * The resultStatus in connInfo is set accordingly:
+ *
+ *   TRANS_ERRCODE_ERROR_SOCKET on failure on socket().
+ *   TRANS_ERRCODE_SUCCESS when a socket is created.
+ *   TRANS_ERRCODE_INTERRUPT_REQUESTED if an interrupt is requested.
  */
 static bool
-sendFully(PrimaryMirrorTransitionClientInfo *client, int socket, char *data, int dataLength)
+createSocket(ConnectionInfo *connInfo,
+			 PrimaryMirrorTransitionClientInfo *client)
 {
-	while ( dataLength > 0)
+	struct addrinfo *currentAddr = connInfo->addr;
+	
+	connInfo->resultStatus = TRANS_ERRCODE_SUCCESS;
+
+	connInfo->resultSock = -1;
+	while (currentAddr != NULL)
+	{
+ 		if (client->checkForNeedToExitFn())
+		{
+			connInfo->resultStatus = TRANS_ERRCODE_INTERRUPT_REQUESTED;
+			break;
+		}
+
+		connInfo->resultSock = socket(currentAddr->ai_family, SOCK_STREAM, 0);
+		if (connInfo->resultSock >= 0)
+			break;
+		
+		if (currentAddr->ai_next == NULL)
+		{
+			snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
+					 "failed to create socket: %s (errno: %d)\n",
+					 SOCK_STRERROR(SOCK_ERRNO, connInfo->sockErrMessage, sizeof(connInfo->sockErrMessage)),
+					 SOCK_ERRNO);
+			client->errorLogFn(connInfo->errMessage);
+			connInfo->resultStatus = TRANS_ERRCODE_ERROR_SOCKET;
+			break;
+		}
+		
+		currentAddr = currentAddr->ai_next;
+	}
+
+	connInfo->addr = currentAddr;
+
+	if (connInfo->resultStatus != TRANS_ERRCODE_SUCCESS)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+/*
+ * createConnection -- create the connection to a given socket.
+ *
+ * Return true if the connection is created. Otherwise, return false.
+ *
+ * The resultStatus in connInfo is set accordingly:
+ *
+ *   TRANS_ERRCODE_ERROR_SOCKET on failure on connect().
+ *   TRANS_ERRCODE_SUCCESS when a socket is connected.
+ *   TRANS_ERRCODE_INTERRUPT_REQUESTED if an interrupt is requested.
+ */
+static bool
+createConnection(ConnectionInfo *connInfo,
+				 PrimaryMirrorTransitionClientInfo *client)
+{
+	if (connInfo->resultSock < 0 ||
+		connInfo->addr == NULL)
+		return false;
+
+	connInfo->resultStatus = TRANS_ERRCODE_SUCCESS;
+
+	int status = connect(connInfo->resultSock, connInfo->addr->ai_addr, connInfo->addr->ai_addrlen);
+	while (status == -1)
+	{
+ 		if (client->checkForNeedToExitFn())
+		{
+			connInfo->resultStatus = TRANS_ERRCODE_INTERRUPT_REQUESTED;
+			break;
+		}
+
+		if (SOCK_ERRNO != EINTR && SOCK_ERRNO != EAGAIN)
+		{
+			snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
+					 "failed to connect: %s (errno: %d)\n",
+					 SOCK_STRERROR(SOCK_ERRNO, connInfo->sockErrMessage, sizeof(connInfo->sockErrMessage)),
+					 SOCK_ERRNO);
+			client->errorLogFn(connInfo->errMessage);
+			connInfo->resultStatus = TRANS_ERRCODE_ERROR_SOCKET;
+			break;
+		}
+
+		status = connect(connInfo->resultSock, connInfo->addr->ai_addr, connInfo->addr->ai_addrlen);
+	}
+
+	return (connInfo->resultStatus == TRANS_ERRCODE_SUCCESS);
+}
+
+/*
+ * createConnectedSocket -- create a connected socket.
+ */
+static bool
+createConnectedSocket(ConnectionInfo *connInfo,
+					  PrimaryMirrorTransitionClientInfo *client)
+{
+	struct addrinfo *currentAddr = connInfo->addr;
+	connInfo->resultStatus = TRANS_ERRCODE_SUCCESS;
+
+	while (currentAddr != NULL)
+	{
+		if (createSocket(connInfo, client) &&
+			createConnection(connInfo, client))
+		{
+			break;
+		}
+
+		if (connInfo->resultStatus == TRANS_ERRCODE_INTERRUPT_REQUESTED)
+		{
+			break;
+		}
+		
+		if (connInfo->resultSock >= 0)
+		{
+			closesocket(connInfo->resultSock);
+			connInfo->resultSock = -1;
+		}
+
+		currentAddr = currentAddr->ai_next;
+	}
+
+	return (connInfo->resultStatus == TRANS_ERRCODE_SUCCESS);
+}
+
+
+/*
+ * getRemainingTimeout -- return the remaining timeout after subtracting 
+ * the elapsed time since the start time.
+ */
+static uint64
+getRemainingTimeout(GpMonotonicTime *startTime, uint64 timeout_ms)
+{
+	uint64 elapsedTime_ms = gp_get_elapsed_ms(startTime);
+
+	if (elapsedTime_ms > timeout_ms)
+		return 0;
+	
+	return timeout_ms - elapsedTime_ms;
+}
+
+
+/*
+ * sendFully -- send all dataLength of data to the target socket.
+ *
+ * This function returns true if the data is sent successfully.
+ * Otherwise, return false.
+ *
+ * The resultStatus is set accordingly:
+ *   TRANS_ERRCODE_ERROR_SOCKET if the data can not all be sent.
+ *   TRANS_ERRCODE_SUCCESS when the data is sent successfully.
+ *   TRANS_ERRCODE_ERROR_TIMEOUT if the timeout is expired.
+ *   TRANS_ERRCODE_INTERRUPT_REQUESTED if an interrupt is requested.
+ */
+static bool
+sendFully(ConnectionInfo *connInfo,
+		  PrimaryMirrorTransitionClientInfo *client,
+		  char *data,
+		  int dataLength)
+{
+	if (connInfo->resultSock < 0)
+		return false;
+
+	connInfo->resultStatus = TRANS_ERRCODE_SUCCESS;
+	
+	struct pollfd nfd;
+	nfd.fd = connInfo->resultSock;
+	nfd.events = POLLOUT;
+	int nfds = 1;
+
+	while (dataLength > 0)
 	{
 		if (client->checkForNeedToExitFn())
-			return false;
-
-		int numSent = send(socket, data, dataLength, 0);
-		if ( numSent < 0)
 		{
-			if (SOCK_ERRNO != EINTR)
-				return false;
- 			/* else .. Interrupted system call - we'll just try again */
+			connInfo->resultStatus = TRANS_ERRCODE_INTERRUPT_REQUESTED;
+			break;
+		}
+
+		uint64 remainingTimeout = getRemainingTimeout(&connInfo->startTime, connInfo->timeout_ms);
+
+		int status = poll(&nfd, nfds, (int)remainingTimeout);
+		if (status == 0)
+		{
+			connInfo->resultStatus = TRANS_ERRCODE_ERROR_TIMEOUT;
+			break;
+		}
+		
+		if (status == -1)
+		{
+			if (SOCK_ERRNO == EINTR || SOCK_ERRNO == EAGAIN)
+			{
+				continue;
+			}
+
+			snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
+					 "failed to poll: %s (errno: %d)\n",
+					 SOCK_STRERROR(SOCK_ERRNO, connInfo->sockErrMessage, sizeof(connInfo->sockErrMessage)),
+					 SOCK_ERRNO);
+			client->errorLogFn(connInfo->errMessage);
+			connInfo->resultStatus = TRANS_ERRCODE_ERROR_SOCKET;
+			break;
+		}
+
+		int numSent = send(connInfo->resultSock, data, dataLength, 0 /* flags */);
+		if (numSent < 0)
+		{
+			if (SOCK_ERRNO == EINTR || SOCK_ERRNO == EAGAIN)
+			{
+				continue;
+			}
+			
+			snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
+					 "failed to send: %s (errno: %d)\n",
+					 SOCK_STRERROR(SOCK_ERRNO, connInfo->sockErrMessage, sizeof(connInfo->sockErrMessage)),
+					 SOCK_ERRNO);
+			client->errorLogFn(connInfo->errMessage);
+			connInfo->resultStatus = TRANS_ERRCODE_ERROR_SOCKET;
+			break;
 		}
 		else
 		{
@@ -52,9 +298,157 @@ sendFully(PrimaryMirrorTransitionClientInfo *client, int socket, char *data, int
 			dataLength -= numSent;
 		}
 	}
-	return true;
+
+	return (connInfo->resultStatus == TRANS_ERRCODE_SUCCESS);
 }
- 
+
+/*
+ * receiveMessage -- wait to receive results. 
+ *
+ * This function returns true on success. Otherwise, return false.
+ *
+ * The resultStatus is set accordingly:
+ *   TRANS_ERRCODE_SUCCESS when some data has been received.
+ *   TRANS_ERRCODE_ERROR_TIMEOUT if the timeout is expired.
+ *   TRANS_ERRCODE_INTERRUPT_REQUESTED if an interrupt is requested.
+ *   TRANS_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA when no data is received.
+ *   TRANS_ERRCODE_ERROR_PROTOCOL_VIOLATED if there are too much data to be received.
+ */
+static bool
+receiveMessage(ConnectionInfo *connInfo,
+			   PrimaryMirrorTransitionClientInfo *client)
+{
+	if (connInfo->resultSock < 0)
+	{
+		return false;
+	}
+	
+	connInfo->resultMsgSize = 0;
+	
+	struct pollfd nfd;
+	nfd.fd = connInfo->resultSock;
+	nfd.events = POLLIN;
+	int nfds = 1;
+
+	int32 bufferSizeLeft = sizeof(connInfo->resultBuffer);
+
+	connInfo->resultStatus = TRANS_ERRCODE_SUCCESS;
+	
+	while (bufferSizeLeft > 0)
+	{
+ 		if (client->checkForNeedToExitFn())
+		{
+			connInfo->resultStatus = TRANS_ERRCODE_INTERRUPT_REQUESTED;
+			break;
+		}
+
+		uint64 remainingTimeout = getRemainingTimeout(&connInfo->startTime, connInfo->timeout_ms);
+
+		int status = poll(&nfd, nfds, (int)remainingTimeout);
+		if (status == 0)
+		{
+			connInfo->resultStatus = TRANS_ERRCODE_ERROR_TIMEOUT;
+			break;
+		}
+		
+		if (status < 0)
+		{
+			if (SOCK_ERRNO == EINTR || SOCK_ERRNO == EAGAIN)
+			{
+				continue;
+			}
+
+			snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
+					 "failed to poll: %s (errno: %d)\n",
+					 SOCK_STRERROR(SOCK_ERRNO, connInfo->sockErrMessage, sizeof(connInfo->sockErrMessage)),
+					 SOCK_ERRNO);
+			client->errorLogFn(connInfo->errMessage);
+			connInfo->resultStatus = TRANS_ERRCODE_ERROR_SOCKET;
+			break;
+		}
+
+		int numRecv = recv(connInfo->resultSock,
+						   connInfo->resultBuffer + connInfo->resultMsgSize,
+						   bufferSizeLeft,
+						   0 /* flags */);
+		
+		if (numRecv == 0)
+		{
+			/* The peer shuts down, so we are done. */
+			connInfo->resultStatus = TRANS_ERRCODE_SUCCESS;
+			break;
+		}
+
+		if (numRecv < 0)
+		{
+			if (SOCK_ERRNO == EINTR || SOCK_ERRNO == EAGAIN)
+			{
+				continue;
+			}
+
+			connInfo->resultStatus = TRANS_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA;
+			break;
+		}
+		
+		connInfo->resultMsgSize += numRecv;
+		bufferSizeLeft -= numRecv;
+
+		if (bufferSizeLeft == 0)
+		{
+			snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
+					 "failed: response from server is too large\n");
+			client->errorLogFn(connInfo->errMessage);
+			connInfo->resultStatus = TRANS_ERRCODE_ERROR_PROTOCOL_VIOLATED;
+			break;
+		}
+	}
+
+	return (connInfo->resultStatus == TRANS_ERRCODE_SUCCESS);
+}
+
+/*
+ * processResponse -- process the response from the server.
+ */
+static void
+processResponse(ConnectionInfo *connInfo,
+				PrimaryMirrorTransitionClientInfo *client)
+{
+	if (connInfo->resultMsgSize < 4)
+	{
+		snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
+				 "failed: server did not respond with enough data");
+		connInfo->resultStatus = TRANS_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA;
+		return;
+	}
+	
+	int32 expectedMsgSize = htonl(*(int32*)connInfo->resultBuffer);
+	if (expectedMsgSize != connInfo->resultMsgSize)
+	{
+		snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
+				 "failed: sent %d bytes, but received %d bytes",
+				 expectedMsgSize, connInfo->resultMsgSize);
+		connInfo->resultStatus = TRANS_ERRCODE_ERROR_PROTOCOL_VIOLATED;
+		return;
+	}
+	
+	if (connInfo->resultMsgSize == sizeof(connInfo->resultBuffer))
+	{
+		connInfo->resultMsgSize--; /* Make space for trailing '\0' */
+	}
+	
+	connInfo->resultBuffer[connInfo->resultMsgSize] = '\0';
+	char *resultMsg = connInfo->resultBuffer + sizeof(expectedMsgSize);
+	
+	client->receivedDataCallbackFn(resultMsg);
+	
+	/* Anything equal to success or STARTING with success: is considered success */
+	if (strcmp(resultMsg, "Success") != 0 &&
+		strncmp(resultMsg, "Success:", sizeof("Success:") - 1) != 0)
+	{
+		connInfo->resultStatus = TRANS_ERRCODE_ERROR_UNSPECIFIED;
+	}
+}
+
  /**
   * Send the given data to the given address(es).
   *
@@ -65,213 +459,105 @@ sendFully(PrimaryMirrorTransitionClientInfo *client, int socket, char *data, int
   * @return the error code
   */
 int
-sendTransitionMessage(PrimaryMirrorTransitionClientInfo *client, struct addrinfo *addr, void *data, int dataLength,
-			int maxRetries, int retrySleepTimeSeconds)
+sendTransitionMessage(PrimaryMirrorTransitionClientInfo *client,
+					  struct addrinfo *addr,
+					  void *data,
+					  int dataLength,
+					  int maxRetries,
+					  int transitionTimeout)
 {
-
-#define CHECK_FOR_EXIT_REQUEST do { if (client->checkForNeedToExitFn()) goto exitRequestedByClient; } while (0)
-
  	int retry;
  	int save_errno = SOCK_ERRNO;
- 	int tmpsock = -1;
- 	char sebuf[256];
- 	int result = TRANS_ERRCODE_SUCCESS;
- 	char errMessagePrefix[10000];
- 	char errMessage[10000];
+	int retrySleepTimeSeconds = 1;
+
+	ConnectionInfo *connInfo = (ConnectionInfo *)malloc(sizeof(ConnectionInfo));
+	if (connInfo == NULL)
+	{
+		client->errorLogFn("Out of memory\n");
+		return TRANS_ERRCODE_ERROR_UNSPECIFIED;
+	}
+	memset(connInfo, 0, sizeof(ConnectionInfo));
+
+	connInfo->addr = addr;
+	/* convert the transition timeout to milliseconds */
+	connInfo->timeout_ms = transitionTimeout * 1000;
 
  	struct
  	{
  		uint32		packetlen;
  		PrimaryMirrorTransitionPacket payload;
- 	} trp;
+ 	} transitionPacket;
 
- 	errMessagePrefix[0] = '\0';
- 	errMessage[0] = '\0';
+	/* create the transition request packet */
+	transitionPacket.packetlen = htonl((uint32) sizeof(transitionPacket));
+	transitionPacket.payload.protocolCode = (MsgType) htonl(PRIMARY_MIRROR_TRANSITION_REQUEST_CODE);
+	transitionPacket.payload.dataLength = htonl(dataLength);
 
- 	for ( retry = 0; retry >= 0; retry++ )
+ 	for (retry = 0; retry < maxRetries; retry++)
  	{
- 		for ( ;; )
- 		{
- 			/*
- 			 * Open connection to one of the addresses
- 			 */
-			CHECK_FOR_EXIT_REQUEST;
- 			if ((tmpsock = socket(addr->ai_family, SOCK_STREAM, 0)) >= 0)
- 			{
- 				/* got connection! */
- 				break;
- 			}
+		gp_set_monotonic_begin_time(&connInfo->startTime);
 
- 			if ( addr->ai_next == NULL )
- 			{
- 				snprintf(errMessagePrefix, sizeof(errMessagePrefix), "failed to create socket: " );
- 				goto sockErrReturn;
- 			}
- 			else addr = addr->ai_next;
- 		}
+		/* reset the address since it may be modified in createConnectedSocket. */
+		connInfo->addr = addr;
 
- 		/* loop around to retry interrupted system calls */
- 		for ( ;; )
- 		{
- 			CHECK_FOR_EXIT_REQUEST;
- 			int connectVal = connect(tmpsock, addr->ai_addr, addr->ai_addrlen);
- 			if ( connectVal >= 0 )
- 			{
- 				retry = -100; /* success -- break out of outer loop */
- 				break;
- 			}
-
- 			if ( SOCK_ERRNO == ECONNREFUSED &&
- 					retry < maxRetries )
- 			{
-				/* connection refused and we have retries left -- server may not be up yet, so try again later */
-				closesocket(tmpsock);
-				tmpsock = -1;
-				sleep(retrySleepTimeSeconds);
-				break;
- 			}
-
- 			if (SOCK_ERRNO != EINTR)
- 			{
-				/* a real error -- see if there is another address to try.  If so, break out
-				 *   to try it.  Otherwise, error! */
-				addr = addr->ai_next;
-
-				if ( addr == NULL)
-				{
-					/* error */
-					snprintf(errMessagePrefix, sizeof(errMessagePrefix), "failed to connect: ");
-					goto sockErrReturn;
-				 }
-				 else
-				 {
-					 retry--; /* don't lose a retry attempt because of trying a different address */
-					 break;
-				 }
- 			}
- 			/* else ... interrupted system call - we'll just try again */
- 		}
- 	}
-
- 	/*
- 	 * We needn't set nonblocking I/O or NODELAY options here.
- 	 */
-
- 	/* Create and send the transition request packet. */
- 	trp.packetlen = htonl((uint32) sizeof(trp));
- 	trp.payload.protocolCode = (MsgType) htonl( PRIMARY_MIRROR_TRANSITION_REQUEST_CODE );
- 	trp.payload.dataLength = htonl(dataLength);
-
- 	if ( ! sendFully(client, tmpsock, (char *) &trp, sizeof(trp)))
- 	{
- 		CHECK_FOR_EXIT_REQUEST; /* since sendFully may have returned because of a cancel request, check again here */
- 		snprintf(errMessagePrefix, sizeof(errMessagePrefix), "failed sending message: ");
- 		goto sockErrReturn;
- 	}
-
- 	if ( ! sendFully(client, tmpsock, (char *) data, dataLength ))
- 	{
- 		CHECK_FOR_EXIT_REQUEST; /* since sendFully may have returned because of a cancel request, check again here */
- 		snprintf(errMessagePrefix, sizeof(errMessagePrefix), "failed sending message: ");
- 		goto sockErrReturn;
- 	}
-
- 	/*
- 	 * Wait for the postmaster to send the message indicating results
- 	 */
- 	{
- 		char buf[10000];
- 		char *data = buf+4; /* skip the 4 length bytes in the output data */
- 		int offset = 0;
- 		int lengthLeft = sizeof(buf) - 1; /* leave room for trailing '\0 */
-
- 		*data = '\0';
- 		for ( ;;)
- 		{
- 			int numRead;
-
- 			if ( lengthLeft < 1 )
- 			{
- 				snprintf(errMessagePrefix, sizeof(errMessagePrefix), "failed: response from server is too large\n" );
- 				result = TRANS_ERRCODE_ERROR_PROTOCOL_VIOLATED;
- 				goto allDone;
- 			}
- 			CHECK_FOR_EXIT_REQUEST;
- 			numRead = recv(tmpsock, buf + offset, lengthLeft, 0 /* flags */);
- 			if (numRead < 0)
- 			{
- 				if (SOCK_ERRNO == EINTR)
- 				{
- 					/* Interrupted system call - we'll just try again */
- 				}
- 				else
- 				{
- 					goto sockErrReturn;
- 				}
- 			}
- 			else if ( numRead == 0 )
- 			{
- 				break;
- 			}
- 			else
- 			{
- 				lengthLeft -= numRead;
- 				offset += numRead;
- 			}
- 		}
-
-		/* validate length of received message */
-		int32 lengthFromMsg;
-
-		if ( offset < 4)
+		if (retry > 0)
 		{
-			snprintf(errMessage, sizeof(errMessage), "failed: server did not respond with enough data");
-			result = TRANS_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA;
-			goto errReturn;
+			snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
+					 "Retrying no %d\n", retry);
+			client->errorLogFn(connInfo->errMessage);
 		}
 
-		lengthFromMsg = htonl(*(int32*)buf);
-		if ( lengthFromMsg != offset )
+		if (createConnectedSocket(connInfo, client) &&
+			sendFully(connInfo, client, (char *)&transitionPacket, sizeof(transitionPacket)) &&
+			sendFully(connInfo, client, (char *)data, dataLength) &&
+			receiveMessage(connInfo, client))
 		{
-			snprintf(errMessage, sizeof(errMessage),
-				"failed: received %d bytes but server message said %d were sent",
-				(int) offset, (int) lengthFromMsg );
-			result = TRANS_ERRCODE_ERROR_PROTOCOL_VIOLATED;
-			goto errReturn;
+			/*
+			 * Successfully send the transition request packet and receive the
+			 * response from the server.
+			 */
+			processResponse(connInfo, client);
+			break;
 		}
 
- 		buf[offset] = '\0';
- 		client->receivedDataCallbackFn(data);
+		if (connInfo->resultStatus == TRANS_ERRCODE_INTERRUPT_REQUESTED ||
+			connInfo->resultStatus == TRANS_ERRCODE_ERROR_PROTOCOL_VIOLATED ||
+			connInfo->resultStatus == TRANS_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA)
+		{
+			break;
+		}
+		
+		if (connInfo->resultStatus != TRANS_ERRCODE_SUCCESS)
+		{
+			if (connInfo->resultSock >= 0)
+			{
+				closesocket(connInfo->resultSock);
+				connInfo->resultSock = -1;
+			}
+			
+			sleep(retrySleepTimeSeconds);
+			continue;
+		}
+	}
 
- 		/* Anything equal to success or STARTING with success: is considered success */
- 		if ( strcmp(data, "Success") != 0 &&
-		 	strncmp(data, "Success:", 8) != 0 )
- 		{
- 			goto errReturn;
- 		}
- 	}
+	if (connInfo->resultStatus == TRANS_ERRCODE_INTERRUPT_REQUESTED)
+	{
+		snprintf(connInfo->errMessage, sizeof(connInfo->errMessage), "failure: interrupted\n");
+		client->errorLogFn(connInfo->errMessage);
+	}
+	
+	if (connInfo->resultStatus == TRANS_ERRCODE_ERROR_TIMEOUT)
+	{
+		connInfo->resultStatus = TRANS_ERRCODE_ERROR_UNSPECIFIED;
+	}
 
- allDone:
- 	/* All done */
- 	if ( tmpsock >= 0)
- 		closesocket(tmpsock);
+ 	if (connInfo->resultSock >= 0)
+ 		closesocket(connInfo->resultSock);
  	SOCK_ERRNO_SET(save_errno);
- 	return result;
 
- sockErrReturn:
- 	snprintf(errMessage, sizeof(errMessage), "%s%s\n", errMessagePrefix, SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
- 	if ( result == TRANS_ERRCODE_SUCCESS )
-		result = TRANS_ERRCODE_ERROR_SOCKET;
-	goto errReturn;
-
- exitRequestedByClient:
- 	snprintf(errMessage, sizeof(errMessage), "failure: interrupted\n");
- 	result = TRANS_ERRCODE_INTERRUPT_REQUESTED;
- 	goto errReturn;
-
- errReturn:
-	client->errorLogFn(errMessage);
-	if ( result == TRANS_ERRCODE_SUCCESS )
-		result = TRANS_ERRCODE_ERROR_UNSPECIFIED;
- 	goto allDone;
+	int resultStatus = connInfo->resultStatus;
+	
+	free(connInfo);
+	
+	return resultStatus;
 }

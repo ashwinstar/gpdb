@@ -25,11 +25,11 @@ override CPPFLAGS := -Wno-deprecated-declarations -DFRONTEND -I$(libpq_srcdir) $
 
 OBJS=gpmirrortransition.o $(WIN32RES)
 
-EXTRA_OBJS = $(top_builddir)/src/backend/libpq/ip.o $(top_builddir)/src/backend/postmaster/primary_mirror_transition_client.o
+EXTRA_OBJS = $(top_builddir)/src/backend/libpq/ip.o $(top_builddir)/src/backend/postmaster/primary_mirror_transition_client.o $(top_builddir)/src/timezone/gptime.o
 
 all: submake-libpq submake-libpgport submake-backend gp_primarymirror
 
-gp_primarymirror: gpmirrortransition.o $(OBJS) $(libpq_builddir)/libpq.a 
+gp_primarymirror: gpmirrortransition.o $(OBJS) $(EXTRA_OBJS) $(libpq_builddir)/libpq.a 
 	$(CC) $(CFLAGS) $(OBJS) $(EXTRA_OBJS) $(libpq_pgport) $(LDFLAGS) $(LIBS) -o $@$(X)
 
 .PHONY: submake-backend
