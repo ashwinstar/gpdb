@@ -13,6 +13,9 @@
 #ifndef _PGTIME_H
 #define _PGTIME_H
 
+#define USECS_PER_SECOND 1000000
+#define MSECS_PER_SECOND 1000
+
 
 /*
  * The API of this library is generally similar to the corresponding
@@ -90,6 +93,12 @@ gp_init_monotonic_time(GpMonotonicTime *time)
 }
 
 /*
+ * gp_set_monotonic_begin_time: set the beginTime to the current
+ * time.
+ */
+void gp_set_monotonic_begin_time(GpMonotonicTime *time);
+
+/*
  * Compare two times.
  *
  * If t1 > t2, return 1.
@@ -124,5 +133,33 @@ timeCmp(struct timeval *t1, struct timeval *t2)
  * calls. It is not for getting the system time.
  */
 extern void gp_get_monotonic_time(GpMonotonicTime *time);
+
+/*
+ * gp_get_elapsed_us -- return the elapsed time in microseconds
+ * after the given time->beginTime.
+ *
+ * If time->beginTime is not set (0), then return 0.
+ *
+ * Note that the beginTime is not changed, but the endTime is set
+ * to the current time.
+ */
+static inline uint64
+gp_get_elapsed_us(GpMonotonicTime *time)
+{
+	if (time->beginTime.tv_sec == 0 &&
+		time->beginTime.tv_usec == 0)
+		return 0;
+
+	gp_get_monotonic_time(time);
+
+	return ((time->endTime.tv_sec - time->beginTime.tv_sec) * USECS_PER_SECOND +
+			(time->endTime.tv_usec - time->beginTime.tv_usec));
+}
+
+static inline uint64
+gp_get_elapsed_ms(GpMonotonicTime *time)
+{
+    return gp_get_elapsed_us(time) / (USECS_PER_SECOND / MSECS_PER_SECOND);
+}
 
 #endif   /* _PGTIME_H */
