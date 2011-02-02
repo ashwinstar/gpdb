@@ -196,34 +196,6 @@ extern TupleChunkListItem RecvTupleChunkFrom(ChunkTransportState *transportState
 											 int16 motNodeID, 
 											 int16 srcRoute);
 
-/* Some really simple, but handy functions for dealing with time-intervals. */
-
-/*
- * gettime_elapsed_us -- return the elapsed time in microseconds
- * after the given time->endTime.
- *
- * This function assumes that time->endTime is set (not 0).
- */
-static inline uint64
-gettime_elapsed_us(GpMonotonicTime *time)
-{
-	Assert(time->endTime.tv_sec != 0 ||
-		   time->endTime.tv_usec != 0);
-
-	gp_get_monotonic_time(time);
-
-	Assert(timeCmp(&time->beginTime, &time->endTime) < 0);
-	
-	return ((time->endTime.tv_sec - time->beginTime.tv_sec) * 1000 * 1000 +
-			(time->endTime.tv_usec - time->beginTime.tv_usec));
-}
-
-static inline uint64
-gettime_elapsed_ms(GpMonotonicTime *time)
-{
-    return gettime_elapsed_us(time) / 1000;
-}
-
 /* The DeregisterReadInterest() function is used to specify that we are no
  * longer interested in reading from the specified srcRoute. After calling this
  * function, we should no longer ever return TupleChunks from this srcRoute

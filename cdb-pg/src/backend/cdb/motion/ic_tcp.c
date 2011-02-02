@@ -1264,8 +1264,7 @@ SetupTCPInterconnect(EState *estate)
 
 	gp_interconnect_id = estate->interconnect_context->sliceTable->ic_instance_id;
 
-	gp_init_monotonic_time(&startTime);
-  	gp_get_monotonic_time(&startTime);
+  	gp_set_monotonic_begin_time(&startTime);
 
     /* Initiate outgoing connections. */
     if (mySlice->parentIndex != -1)
@@ -1504,7 +1503,7 @@ SetupTCPInterconnect(EState *estate)
             }
 
             /* Back to top of loop and look again. */
-            elapsed_ms = gettime_elapsed_ms(&startTime);
+            elapsed_ms = gp_get_elapsed_ms(&startTime);
             continue;
         }
 
@@ -1532,7 +1531,7 @@ SetupTCPInterconnect(EState *estate)
             format_fd_set(&logbuf, highsock+1, wset, "w={", "} ");
             format_fd_set(&logbuf, highsock+1, eset, "e={", "}");
 
-            elapsed_ms = gettime_elapsed_ms(&startTime);
+            elapsed_ms = gp_get_elapsed_ms(&startTime);
 
             ereport(DEBUG1, (errmsg("SetupInterconnect+" UINT64_FORMAT
 									"ms:   select()  "
@@ -1548,7 +1547,7 @@ SetupTCPInterconnect(EState *estate)
         n = select(highsock + 1, (fd_set *)&rset, (fd_set *)&wset, (fd_set *)&eset, &timeout);
 		ML_CHECK_FOR_INTERRUPTS(estate->interconnect_context->teardownActive);
 
-        elapsed_ms = gettime_elapsed_ms(&startTime);
+        elapsed_ms = gp_get_elapsed_ms(&startTime);
 
         /*
          * Log the select() if requested.
@@ -1752,7 +1751,7 @@ SetupTCPInterconnect(EState *estate)
 
     if (gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
     {
-        elapsed_ms = gettime_elapsed_ms(&startTime);
+        elapsed_ms = gp_get_elapsed_ms(&startTime);
         if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE ||
             elapsed_ms >= 0.1 * 1000 * interconnect_setup_timeout)
             elog(LOG, "SetupInterconnect+" UINT64_FORMAT "ms: Activated %d incoming, "

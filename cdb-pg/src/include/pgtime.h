@@ -83,15 +83,6 @@ typedef struct GpMonotonicTime
 	struct timeval endTime;
 } GpMonotonicTime;
 
-static inline void
-gp_init_monotonic_time(GpMonotonicTime *time)
-{
-	time->beginTime.tv_sec = 0;
-	time->beginTime.tv_usec = 0;
-	time->endTime.tv_sec = 0;
-	time->endTime.tv_usec = 0;
-}
-
 /*
  * gp_set_monotonic_begin_time: set the beginTime to the current
  * time.

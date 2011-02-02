@@ -70,8 +70,6 @@
 #include "executor/spi.h"
 #include "postmaster/primary_mirror_mode.h"
 
-#include "cdb/ml_ipc.h" /* gettime_elapsed_ms */
-
 #include "tcop/tcopprot.h" /* quickdie() */
 
 #ifdef HAVE_POLL_H
@@ -929,8 +927,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 		return PROBE_DEAD;
 	}
 
-	gp_init_monotonic_time(&startTime);
-  	gp_get_monotonic_time(&startTime);
+  	gp_set_monotonic_begin_time(&startTime);
 
 	for (;;)
 	{
@@ -1209,7 +1206,7 @@ FtsTestOneSegment(CdbComponentDatabaseInfo *dbInfo)
 				break;
 		}
 
-		elapsed_ms = gettime_elapsed_ms(&startTime);
+		elapsed_ms = gp_get_elapsed_ms(&startTime);
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 			write_log("Probe elapsed time: " UINT64_FORMAT " milliseconds", elapsed_ms);
