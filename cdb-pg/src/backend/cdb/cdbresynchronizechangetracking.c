@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include "postgres.h"
 #include "miscadmin.h"
+#include "cdb/cdbutil.h"
 
 #include "access/bitmap.h"
 #include "access/htup.h"
@@ -18,7 +19,7 @@
 #include "commands/sequence.h"
 #include "executor/spi.h"
 #include "postmaster/primary_mirror_mode.h"
-#include "postmaster/ftsprobe.h"
+#include "postmaster/fts.h"
 #include "storage/fd.h"
 #include "storage/lock.h"
 #include "storage/relfilenode.h"
@@ -1318,7 +1319,7 @@ ChangeTracking_GetIncrementalChangeList(void)
 		/* must be in a transaction in order to use SPI */
 		StartTransactionCommand();
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-		find_superuser_name(true);
+		FtsFindSuperuser(true);
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
@@ -1604,7 +1605,7 @@ ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest *request)
 		/* must be in a transaction in order to use SPI */
 		StartTransactionCommand();
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-		find_superuser_name(true);
+		FtsFindSuperuser(true);
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
@@ -2565,7 +2566,7 @@ int64 ChangeTracking_GetTotalBlocksToSync(void)
 		/* must be in a transaction in order to use SPI */
 		StartTransactionCommand();
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-		find_superuser_name(true);
+		FtsFindSuperuser(true);
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{
@@ -2903,7 +2904,7 @@ int ChangeTracking_CompactLogFile(CTFType source, CTFType dest, XLogRecPtr*	upto
 		/* must be in a transaction in order to use SPI */
 		StartTransactionCommand();
 		ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
-		find_superuser_name(true);
+		FtsFindSuperuser(true);
 
 		if (SPI_OK_CONNECT != SPI_connect())
 		{

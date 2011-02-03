@@ -112,7 +112,7 @@ typedef FormData_gp_configuration *Form_gp_configuration;
  * with timestamp.
  */
 
-#define GpConfigHistoryRelationName		"gp_configuration_history"
+#define GpConfigHistoryRelName		"gp_configuration_history"
 
 /* TIDYCAT_BEGINDEF
 

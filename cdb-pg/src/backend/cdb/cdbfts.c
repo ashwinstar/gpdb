@@ -31,7 +31,7 @@
 
 #include "postmaster/service.h"
 #include "postmaster/walsendserver.h"
-#include "postmaster/ftsprobe.h"
+#include "postmaster/fts.h"
 #include "postmaster/primary_mirror_mode.h"
 #include "utils/faultinjection.h"
 
