@@ -88,6 +88,21 @@ MODE_LABELS = {
     MODE_RESYNCHRONIZATION: "Resynchronizing"
 }
 
+# These are all the valid states primary/mirror pairs can
+# be in.  Any configuration other than this will cause the
+# FTS Prober to bring down the master postmaster until the
+# configuration is corrected.  Here, primary and mirror refer
+# to the segments current role, not the preferred_role.
+#
+# The format of the tuples are:
+#    (<primary status>, <prmary mode>, <mirror status>, <mirror_mode>)
+VALID_SEGMENT_STATES = [
+    (STATUS_UP, MODE_CHANGELOGGING, STATUS_DOWN, MODE_SYNCHRONIZED),
+    (STATUS_UP, MODE_CHANGELOGGING, STATUS_DOWN, MODE_RESYNCHRONIZATION),
+    (STATUS_UP, MODE_RESYNCHRONIZATION, STATUS_UP, MODE_RESYNCHRONIZATION),
+    (STATUS_UP, MODE_SYNCHRONIZED, STATUS_UP, MODE_SYNCHRONIZED)
+]
+
 def getDataModeLabel(mode):
     return MODE_LABELS[mode]
 
@@ -109,6 +124,15 @@ VALID_FAULT_STRATEGY = FAULT_STRATEGY_LABELS.keys()
 def getFaultStrategyLabel(strategy):
     return FAULT_STRATEGY_LABELS[strategy]
 
+class InvalidSegmentConfiguration(Exception):
+    """Exception raised when an invalid gparray configuration is
+    read from gp_segment_configuration or an attempt to save an 
+    invalid gparray configuration is made."""
+    def __init__(self, array):
+        self.array = array
+        
+    def __str__(self):
+        return "Invalid GpArray: %s" % self.array
 
 # ============================================================================
 # ============================================================================
@@ -158,11 +182,13 @@ class GpDB:
         """
         Construct a printable string representation of a GpDB
         """
-        return "%s:%s:content=%s:dbid=%s" % (
+        return "%s:%s:content=%s:dbid=%s:mode=%s:status=%s" % (
             self.hostname,
             self.datadir,
             self.content,
             self.dbid,
+            self.mode,
+            self.status
             )
 
     #
@@ -661,6 +687,11 @@ class Segment:
         pass
 
     # --------------------------------------------------------------------
+    def __str__(self):
+        return "(Primary: %s, Mirrors: [%s])" % (str(self.primaryDB), 
+                                                 ','.join([str(segdb) for segdb in self.mirrorDBs])) 
+
+    # --------------------------------------------------------------------
     def addPrimary(self,segDB):
         self.primaryDB=segDB
     
@@ -682,7 +713,17 @@ class Segment:
         for m in self.mirrorDBs:
             hosts.append(m.hostname)
         return hosts
-
+    
+    def is_segment_pair_valid(self):
+        """Validates that the primary/mirror pair are in a valid state"""
+        for mirror_db in self.mirrorDBs:
+            prim_status = self.primaryDB.getSegmentStatus()
+            prim_mode = self.primaryDB.getSegmentMode()
+            mirror_status = mirror_db.getSegmentStatus()
+            mirror_role = mirror_db.getSegmentMode()
+            if (prim_status, prim_mode, mirror_status, mirror_role) not in VALID_SEGMENT_STATES:
+                return False
+        return True
 # --------------------------------------------------------------------
 # --------------------------------------------------------------------
 class SegmentRow():
@@ -1153,6 +1194,11 @@ class GpArray:
             logger.error("FATAL - no master dbs defined!")
             raise Exception("Error: GpArray() - no master dbs defined")
 
+    def __str__(self):
+        return "Master: %s\nStandby: %s\nSegments: %s" % (str(self.master),
+                                                          str(self.standbyMaster) if self.standbyMaster else 'Not Configured',
+                                                          "\n".join([str(seg) for seg in self.segments]))
+
     def addSegmentDb(self, segdb):
         content = segdb.getSegmentContentId()
 
@@ -1399,6 +1445,7 @@ class GpArray:
         array.setFaultStrategy(strategy)
         array.setSanConfig(san_rows, san_segs_rows)
         array.setFilespaces(filespaceArr)
+        
         return array
 
     # --------------------------------------------------------------------
@@ -1423,6 +1470,14 @@ class GpArray:
         fp.close()
 
         return GpArray(segdbs)
+
+    # --------------------------------------------------------------------
+    def is_array_valid(self):
+        """Checks that each primary/mirror pair is in a valid state""" 
+        for seg in self.segments:
+            if not seg.is_segment_pair_valid():
+                return False
+        return True
 
     # --------------------------------------------------------------------
     def dumpToFile(self, filename):

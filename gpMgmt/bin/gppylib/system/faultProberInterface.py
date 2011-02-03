@@ -32,6 +32,9 @@ class GpFaultProber:
 
     def isFaultProberPaused(self):
         pass
+    
+    def getFaultProberInterval(self):
+        pass
 
 #
 # Management of registered fault prober.  Right now it

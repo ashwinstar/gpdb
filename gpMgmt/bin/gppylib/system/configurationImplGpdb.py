@@ -11,9 +11,10 @@ import os, copy
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
 from gppylib.system.configurationInterface import *
-from gppylib.gparray import GpArray, GpDB
+from gppylib.gparray import GpArray, GpDB, InvalidSegmentConfiguration
 from gppylib import gparray
 from gppylib.db import dbconn
+from gppylib.commands.gp import get_local_db_mode
 
 logger = get_default_logger()
 
@@ -59,7 +60,14 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
         logger.info("Obtaining Segment details from master...")
 
-        return GpArray.initFromCatalog(self.__masterDbUrl, useUtilityMode)
+        array = GpArray.initFromCatalog(self.__masterDbUrl, useUtilityMode)
+        
+        if get_local_db_mode(array.master.getSegmentDataDirectory()) != 'UTILITY':
+            logger.debug("Validating configuration...")
+            if not array.is_array_valid():
+                raise InvalidSegmentConfiguration(array)
+            
+        return array
 
     def sendPgElogFromMaster( self, msg, sendAlerts):
         """
@@ -94,6 +102,12 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         # ensure initializeProvider() was called
         checkNotNone("masterDbUrl", self.__masterDbUrl) 
 
+        logger.debug("Validating configuration changes...")
+
+        if not gpArray.is_array_valid():
+            logger.critical("Configuration is invalid")
+            raise InvalidSegmentConfiguration(gpArray)
+
         conn = dbconn.connect(self.__masterDbUrl, useUtilityMode)
         dbconn.execSQL(conn, "BEGIN")
 
@@ -106,8 +120,8 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         #   -- to avoid overwriting status if it's unchanged in-memory, for
         #   example
         #
-        # It is assumed that external code has paused the fault prober while
-        # this runs, as necessary
+        # Pausing of the prober is no longer needed as it is impossible to save
+        # an invalid state of a primary/mirror pair.
         #
         for seg in gpArray.getDbList():
             originalSeg = dbIdToOriginal.get(seg.getSegmentDbId())

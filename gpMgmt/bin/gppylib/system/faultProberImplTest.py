@@ -35,3 +35,6 @@ class GpFaultProberImplForTest(GpFaultProber):
 
     def isFaultProberPaused(self):
         return self.__isPaused
+    
+    def getFaultProberInterval(self):
+        return 60

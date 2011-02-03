@@ -10,11 +10,12 @@ Note that this does NOT pay attention to the current pause state in the db.  It 
 """
 import os
 import time
+import re
 
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
 from gppylib.system.faultProberInterface import GpFaultProber
-from gppylib.db import dbconn
+from gppylib.db import dbconn, catalog
 
 logger = get_default_logger()
 
@@ -56,3 +57,25 @@ class GpFaultProberImplGpdb(GpFaultProber):
 
     def isFaultProberPaused(self):
         return self.__isPaused
+
+    def getFaultProberInterval(self):
+        probe_interval_re = re.compile(r'(?P<val>\d+)(?P<unit>[a-zA-Z]*)')
+        probe_interval_secs = 60
+        
+        conn = None
+        
+        try:
+            conn = dbconn.connect(self.__masterDbUrl, True)
+            fts_probe_interval_value = catalog.getSessionGUC(conn, 'gp_fts_probe_interval')
+            m = probe_interval_re.match(fts_probe_interval_value)
+            if m.group('unit') == 'min':
+                probe_interval_secs = int(m.group('val')) * 60
+            else:
+                probe_interval_secs = int(m.group('val'))
+        except:
+            raise
+        finally:
+            if conn:
+                conn.close()
+                
+        return probe_interval_secs

@@ -1,10 +1,12 @@
 import os
 import pickle
 import signal
+import time
 
 from gppylib.mainUtils import *
 
 from gppylib.utils import checkNotNone, appendNewEntriesToHbaFile
+from gppylib.db import dbconn
 from gppylib import gparray, gplog
 from gppylib.gplog import *
 from gppylib.commands import unix
@@ -54,6 +56,19 @@ gDatabaseFiles = [
     "postmaster.pid",
     "gp_dbid"
         ]
+
+def MPP_12038_fault_injection():
+    """This function will check for the environment variable
+    GP_MPP_12038 and if it is set will sleep for 2 * gp_fts_probe_interval.
+    This is used in this module to check interaction with the FTS prober and
+    should only be used for testing.  Note this delay is long enough for a 
+    small test installation but would likely not be long enough for a large
+    cluster."""
+    if os.getenv("GP_MPP_12038_INJECT_DELAY", None):
+        faultProber = faultProberInterface.getFaultProber()
+        probe_interval_secs = faultProber.getFaultProberInterval()
+        logger.info("Sleeping for %d seconds for MPP-12038 test..." % (probe_interval_secs * 2))
+        time.sleep(probe_interval_secs * 2)
 
 #
 # note: it's a little quirky that caller must set up failed/failover so that failover is in gparray but
@@ -188,6 +203,7 @@ class GpMirrorListToBuild:
         #  by cleaning them, if needed, and then copying a basic directory there
         #  the postgresql.conf in that basic directory will need updating (to change the port)
         toStopDirectives = []
+        toEnsureMarkedDown = []
         cleanupDirectives = []
         copyDirectives = []
         for toRecover in self.__mirrorsToBuild:
@@ -195,6 +211,8 @@ class GpMirrorListToBuild:
             if toRecover.getFailedSegment() is not None:
                 # will stop the failed segment.  Note that we do this even if we are recovering to a different location!
                 toStopDirectives.append(GpStopSegmentDirectoryDirective(toRecover.getFailedSegment()))
+                if toRecover.getFailedSegment().getSegmentStatus() == gparray.STATUS_UP:
+                    toEnsureMarkedDown.append(toRecover.getFailedSegment())
 
             if toRecover.isFullSynchronization():
 
@@ -215,6 +233,7 @@ class GpMirrorListToBuild:
                 copyDirectives.append(d)
 
         self.__ensureStopped(gpEnv, toStopDirectives)
+        self.__ensureMarkedDown(gpEnv, toEnsureMarkedDown)
         self.__cleanUpSegmentDirectories(cleanupDirectives)
         self.__copySegmentDirectories(gpEnv, gpArray, copyDirectives)
 
@@ -236,8 +255,6 @@ class GpMirrorListToBuild:
             seg.setSegmentStatus(gparray.STATUS_DOWN) # down initially, we haven't started it yet
             seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
 
-        faultProber = faultProberInterface.getFaultProber()
-
         # figure out what needs to be started or transitioned
         mirrorsToStart = []
         primariesToConvert = []
@@ -248,7 +265,12 @@ class GpMirrorListToBuild:
             if seg is None:
                 seg = toRecover.getFailedSegment() # we are recovering in place
             mirrorsToStart.append(seg)
-            primariesToConvert.append(toRecover.getLiveSegment())
+            primarySeg = toRecover.getLiveSegment()
+            # The change in configuration to of the mirror to down requires
+            # that the primary also be change to change tracking if required.
+            if primarySeg.getSegmentMode() != gparray.MODE_CHANGELOGGING:
+                primarySeg.setSegmentMode(gparray.MODE_CHANGELOGGING)
+            primariesToConvert.append(primarySeg)
             convertPrimaryUsingFullResync.append(toRecover.isFullSynchronization())
 
             if toRecover.isFullSynchronization() and seg.getSegmentDbId() > 0:
@@ -260,34 +282,18 @@ class GpMirrorListToBuild:
         # Disable Ctrl-C, going to save metadata in database and transition segments
         signal.signal(signal.SIGINT,signal.SIG_IGN)
         try:
-
             logger.info("Updating configuration with new mirrors")
             configInterface.getConfigurationProvider().updateSystemConfig(gpArray,
                     "%s: segment config for resync" % programName,
                     fullResyncMirrorDbIds, useUtilityMode=False )
-
+            
+            MPP_12038_fault_injection()
+            
             logger.info("Updating mirrors")
             self.__updateGpIdFile(gpEnv, gpArray, mirrorsToStart)
 
             logger.info("Starting mirrors")
             self.__startAll(gpEnv, gpArray, mirrorsToStart)
-
-            #
-            # Up to this point, the prober will not pay attention to the mirrors being affected
-            #    because they are marked down in configuraiton.  So even if the fault prober
-            #    is restarted before this point, it still won't affect the segments we are touching
-            #
-            # But now, we are going to mark the mirror up and prepare for changing the primary
-            #     to resync; so, pause and unpause the prober around updating the configuration
-            #
-            # Note that we are also assuming here that the primary is NOT in fault; in current cases,
-            #     this can't happen because the primary has to be either in changetracking or mirrorless
-            #     for its mirror to be built so it's not a problem.  The primary won't be able to
-            #     go into fault until after we unpause the prober and 'convert' the primaries to
-            #     talk to the mirrors
-            #
-            logger.info("Pausing prober")
-            faultProber.pauseFaultProber()
             
             logger.info("Updating configuration to mark mirrors up")
             for seg in mirrorsToStart:
@@ -298,8 +304,7 @@ class GpMirrorListToBuild:
                     "%s: segment resync marking mirrors up and primaries resync" % programName,
                     {}, useUtilityMode=True )
 
-            logger.info("Unpausing prober")
-            faultProber.unpauseFaultProber()
+            MPP_12038_fault_injection()
 
             #
             # note: converting the primaries may take a really long time to complete because of initializing
@@ -310,10 +315,6 @@ class GpMirrorListToBuild:
 
             logger.info("Done updating primaries")
         finally:
-            if faultProber.isFaultProberPaused():
-                logger.info("Unpausing prober")
-                faultProber.unpauseFaultProber()
-                
             # Reenable Ctrl-C
             signal.signal(signal.SIGINT,signal.default_int_handler)
 
@@ -556,6 +557,64 @@ class GpMirrorListToBuild:
         #  if it's running?  In that case, we could propagate the error
         #
         self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, "stopping segments", suppressErrorCheck=True)
+
+    def __ensureMarkedDown(self, gpEnv, toEnsureMarkedDown):
+        """Waits for FTS prober to mark segments as down"""
+        
+        wait_time = 60 * 30 # Wait up to 30 minutes to handle very large, busy
+                            # clusters that may have faults.  In most cases the
+                            # actual time to wait will be small and this operation
+                            # is only needed when moving mirrors that are up and
+                            # needed to be stopped, an uncommon operation.
+
+        dburl = dbconn.DbURL(port=gpEnv.getMasterPort(), dbname='template1')
+        
+        time_elapsed = 0
+        seg_up_count = 0
+        initial_seg_up_count = len(toEnsureMarkedDown)
+        last_seg_up_count = initial_seg_up_count
+
+        if initial_seg_up_count == 0:
+            # Nothing to wait on
+            return
+
+        logger.info("Waiting for segments to be marked down.")
+        logger.info("This may take up to %d seconds on large clusters." % wait_time)
+        
+        # wait for all needed segments to be marked down by the prober.  We'll wait
+        # a max time of double the interval 
+        while wait_time > time_elapsed:
+            seg_up_count = 0
+            current_gparray = GpArray.initFromCatalog(dburl, True)
+            seg_db_map = current_gparray.getSegDbMap()
+            
+            # go through and get the status of each segment we need to be marked down
+            for segdb in toEnsureMarkedDown:
+                if segdb.getSegmentDbId() in seg_db_map and seg_db_map[segdb.getSegmentDbId()].isSegmentUp() == True:
+                    seg_up_count += 1
+            if seg_up_count == 0:
+                break
+            else:
+                if last_seg_up_count != seg_up_count:
+                    print "\n",
+                    logger.info("%d of %d segments have been marked down." % 
+                                (initial_seg_up_count - seg_up_count, initial_seg_up_count))
+                    last_seg_up_count = seg_up_count
+                    
+                for _i in range(1,5):
+                    time.sleep(1)
+                    sys.stdout.write(".")
+                    sys.stdout.flush()
+                    
+                time_elapsed += 5
+
+        if seg_up_count == 0:
+            print "\n",
+            logger.info("%d of %d segments have been marked down." % 
+                        (initial_seg_up_count, initial_seg_up_count))
+        else:
+            raise Exception("%d segments were not marked down by FTS" % seg_up_count)
+    
 
     def __cleanUpSegmentDirectories(self, directives):
         if len(directives) == 0:
