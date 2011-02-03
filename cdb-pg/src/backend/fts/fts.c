@@ -873,29 +873,6 @@ transition
 
 
 /*
- * Notify postmaster to shut down due to inconsistent segment state
- */
-static void
-requestPostmasterShutdown(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInfo *mirror)
-{
-	FtsRequestMasterShutdown();
-
-	elog(FATAL, "FTS: detected invalid state for content %d: "
-			    "primary (dbid=%d, mode='%c', status='%c'), "
-			    "mirror (dbid=%d, mode='%c', status='%c'), "
-			    "shutting down master",
-			    primary->segindex,
-			    primary->dbid,
-			    primary->mode,
-			    primary->status,
-			    mirror->dbid,
-			    mirror->mode,
-			    mirror->status
-			    );
-}
-
-
-/*
  * Apply requested segment transitions
  */
 static void
@@ -1134,7 +1111,7 @@ FtsMarkSegmentsInSync(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInf
 	    FTS_STATUS_IS_CHANGELOGGING(primary->dbid, ftsProbeInfo->fts_status) ||
 	    FTS_STATUS_IS_CHANGELOGGING(mirror->dbid, ftsProbeInfo->fts_status))
 	{
-		requestPostmasterShutdown(primary, mirror);
+		FtsRequestPostmasterShutdown(primary, mirror);
 	}
 
 	char cmd[SQL_CMD_BUF_SIZE];
