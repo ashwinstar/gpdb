@@ -221,6 +221,24 @@ class GPUpgrade:
         handling purposes.
         '''
 
+        # GPHOME, PYTHONPATH must be setup properly
+        #    GPHOME must match the location of this file
+        #    The first PYTHONPATH must be based on the proper gphome 
+        gphome_bin = os.path.realpath(os.path.split(__file__)[0])
+        gphome     = os.path.split(gphome_bin)[0]
+        env_GPHOME = os.path.realpath(os.environ.get('GPHOME'))
+        if (env_GPHOME != gphome):
+            logger.fatal(" $GPHOME is set to %s which is not newhome" % env_GPHOME)
+            logger.fatal(' source the greenplum.sh from the newhome to setup env ')
+            raise UpgradeError('Initialization failed')
+
+        pythonpath     = os.path.join(gphome, "lib", "python")
+        env_PYTHONPATH = os.path.realpath(os.environ.get('PYTHONPATH').split(':')[0])
+        if (env_PYTHONPATH != pythonpath):
+            logger.fatal(' $PYTHONPATH is incorrect ')
+            logger.fatal(' source the greenplum.sh from the newhome to setup env ')
+            raise UpgradeError('Initialization failed')
+
         # This is the same path used by gpinitsystem
         self.path = '/usr/kerberos/bin:/usr/sfw/bin:/opt/sfw/bin'
         self.path += ':/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/ucb'
