@@ -1799,10 +1799,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	MemoryContext oldcontext;
 	List	   *parsetree_list;
 	const char *commandTag;
-	List	   *querytree_list,
-			   *stmt_list,
-			   *param_list;
-	List 		*querytree_list_copy = NIL;
+	List		*querytree_list = NIL;
+	List		*param_list = NIL;
 	bool		is_named;
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
@@ -1958,17 +1956,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 
 		querytree_list = pg_rewrite_queries(querytree_list);
 
-		querytree_list_copy = copyObject(querytree_list); /* planner scribbles on query tree :( */
-		
-		/*
-		 * If this is the unnamed statement and it has parameters, defer query
-		 * planning until Bind.  Otherwise do it now.
-		 */
-		if (!is_named && numParams > 0)
-			stmt_list = NIL;
-		else
-			stmt_list = pg_plan_queries(querytree_list_copy, NULL, false);
-				
 		/* Done with the snapshot used for parsing/planning */
 		ActiveSnapshot = NULL;
 		if (mySnapshot)
@@ -1985,7 +1972,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		/* Empty input string.	This is legal. */
 		commandTag = NULL;
 		querytree_list = NIL;
-		stmt_list = NIL;
 		param_list = NIL;
 	}
 
@@ -2092,6 +2078,7 @@ exec_bind_message(StringInfo input_message)
 	MemoryContext qContext = NULL;
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
+
 
 	/* Get the fixed part of the message */
 	portal_name = pq_getmsgstring(input_message);
