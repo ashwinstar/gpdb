@@ -111,6 +111,11 @@ int			gp_snapshotadd_timeout=10;
 
 
 /*
+ * Probe retry count for fts prober.
+ */
+int			gp_fts_probe_retries = 5;
+
+/*
  * Probe timeout for fts prober.
  */
 int			gp_fts_probe_timeout = 180;
