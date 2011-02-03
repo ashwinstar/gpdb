@@ -2695,7 +2695,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&gp_enable_resqueue_priority,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 	{
 		{"gp_hash_index", PGC_SUSET, UNGROUPED,
@@ -4688,7 +4688,7 @@ static struct config_real ConfigureNamesReal[] =
 			NULL
 		},
 		&gp_resqueue_priority_cpucores_per_segment,
-		1.0, 0.1, 25.0, NULL, NULL
+		4.0, 0.1, 25.0, NULL, NULL
 	},
 
 /* End-of-list marker */
