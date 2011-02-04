@@ -202,6 +202,37 @@ class GpDB:
         elif left > right: return 1
         else: return 0
 
+    #
+    # Moved here from system/configurationImplGpdb.py
+    #
+    def equalIgnoringModeAndStatusAndReplicationPort(self, other):
+        """
+        Return true if none of the "core" attributes (e.g. filespace) 
+          of two segments differ, false otherwise.
+
+        This method is used by updateSystemConfig() to know when a catalog
+        change will cause removing and re-adding a mirror segment.
+        """
+        firstMode = self.getSegmentMode()
+        firstStatus = self.getSegmentStatus()
+        firstReplicationPort = self.getSegmentReplicationPort()
+        try:
+
+            # make the elements we don't want to compare match and see if they are then equal
+            self.setSegmentMode(other.getSegmentMode())
+            self.setSegmentStatus(other.getSegmentStatus())
+            self.setSegmentReplicationPort(other.getSegmentReplicationPort())
+
+            return self == other
+        finally:
+            #
+            # restore mode and status after comaprison 
+            #
+            self.setSegmentMode(firstMode)
+            self.setSegmentStatus(firstStatus)
+            self.setSegmentReplicationPort(firstReplicationPort)
+
+
     # --------------------------------------------------------------------
     def __repr__(self):
         """

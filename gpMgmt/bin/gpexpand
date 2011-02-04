@@ -14,19 +14,23 @@ from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRE
 from subprocess import Popen, PIPE
 
 try:
+    from gppylib.mainUtils import *
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
     from gppylib.commands.pg import PgControlData
-    from gppylib.gparray import GpArray
+    from gppylib.gparray import GpArray, MODE_CHANGELOGGING, STATUS_DOWN
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
     from gppylib.db import dbconn
     from gppylib.db import catalog
     from gppylib.userinput import *
     from gppylib.operations.startSegments import *
+    from gppylib.system import configurationInterface, configurationImplGpdb
+    from gppylib.system.environment import GpMasterEnvironment
     from pygresql.pgdb import DatabaseError
     from pygresql import pg
     from gppylib.gpcoverage import GpCoverage
+
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -1553,90 +1557,45 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
     def update_catalog(self):
         """ 
-        Starts the database and calls gp_add_segment() and gp_add_segment_mirror() to setup 
-        the catalog tables and get the actual dbid and content id for the new segments. 
+        Starts the database, calls updateSystemConfig() to setup 
+        the catalog tables and get the actual dbid and content id 
+        for the new segments. 
         """
         self.statusLogger.set_gp_segment_configuration_backup(options.master_data_directory + '/' + SEGMENT_CONFIGURATION_BACKUP_FILE)
         gparray.dumpToFile(self.statusLogger.get_gp_segment_configuration_backup())
         self.statusLogger.set_status('UPDATE_CATALOG_STARTED', self.statusLogger.get_gp_segment_configuration_backup())
 
         self.logger.info('Starting Greenplum Database in restricted mode')
-
         startCmd = GpStart('gpexpand update master start database restricted mode', restricted = True, verbose = True)
         startCmd.run(validateAfter=True)
 
-        self.conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
-
-        gpFSobjList = gparray.getFilespaces(includeSystemFilespace = True)
-
-        # The next steps will generate a new dbid for each new segment.
-        # We will set all new segment dbid's to -1 for now to make sure we don't run into
-        # any conflicts while we are processing the new dbids.
-        for seg in self.gparray.getExpansionSegDbList():
-            seg.setSegmentDbId(-1)
-
-        # For each new primary segment, call the gp_add_segment with its filespaces
-        gpFSobjList = gparray.getFilespaces(includeSystemFilespace = True)
+        # Put expansion segment primaries in change tracking
         for seg in self.gparray.getExpansionSegDbList():
             if seg.isSegmentMirror() == True:
                 continue
-            filespaces = self._construct_filespace_parameter(seg = seg, gpFSobjList = gpFSobjList)
+            if self.gparray.get_mirroring_enabled() == True:
+                seg.setSegmentMode( MODE_CHANGELOGGING )
 
-            sqlStr = """select * from gp_add_segment('%s', '%s', %s, array %s)""" % \
-                    (seg.getSegmentHostName(), seg.getSegmentAddress(), str(seg.getSegmentPort()), filespaces)
-                    
-            curs = dbconn.execSQL(self.conn, sqlStr)
-            row = curs.fetchone()
-            newDbid = int(row[0])
-            seg.setSegmentDbId(newDbid)
-            
-            if gparray.get_mirroring_enabled() == True:
-               # Set primary in change tracking
-               sqlStr = """update pg_catalog.gp_segment_configuration set mode = 'c' where dbid = %s""" % str(newDbid)
-               dbconn.execSQL(self.conn, sqlStr)
-               
-               # Set the primary's replication port
-               sqlStr = """update pg_catalog.gp_segment_configuration set replication_port = %s where dbid = %s""" % (str(seg.getSegmentReplicationPort()), str(newDbid))
-               dbconn.execSQL(self.conn, sqlStr)
-            
-            # Get the new segment's content id.
-            sqlStr = "select content from pg_catalog.gp_segment_configuration where dbid = %s" % str(seg.getSegmentDbId())
-            curs = dbconn.execSQL(self.conn, sqlStr)
-            row = curs.fetchone()
-            newContentID = int(row[0])
-            
-            # Set the new content id for the primary as well as any mirror.
-            segmentPair = gparray.getExpansionSegmentContainingDb(seg)
-            for db in segmentPair.get_dbs():
-                db.setSegmentContentId(newContentID)
-        
-        # For each new mirror segment, call the gp_add_segment_mirror with its filespaces
+        # Set expansion segment mirror state = down
         for seg in self.gparray.getExpansionSegDbList():
             if seg.isSegmentPrimary() == True:
                 continue
-            filespaces = self._construct_filespace_parameter(seg = seg, gpFSobjList = gpFSobjList)
-            sqlStr = """select * from gp_add_segment_mirror(%s::smallint, '%s', '%s', %s, %s, array %s)""" % \
-                    ( str(seg.getSegmentContentId()) 
-                    , str(seg.getSegmentHostName()) 
-                    , str(seg.getSegmentAddress()) 
-                    , str(seg.getSegmentPort()) 
-                    , str(seg.getSegmentReplicationPort())
-                    , str(filespaces)
-                    )
-            curs = dbconn.execSQL(self.conn, sqlStr)
-            row = curs.fetchone()
-            newDbid = int(row[0])
-            seg.setSegmentDbId(newDbid)
-            
-            # Set the mirror state as down
-            sqlStr = """update pg_catalog.gp_segment_configuration set status = 'd' where dbid = %s""" % str(newDbid)
-            dbconn.execSQL(self.conn, sqlStr)
-            
+            seg.setSegmentStatus( STATUS_DOWN )
+
+        # Update the catalog
+        configurationInterface.getConfigurationProvider().updateSystemConfig(
+            self.gparray,
+            "%s: segment config for resync" % getProgramName(),
+            dbIdToForceMirrorRemoveAdd = {},
+            useUtilityMode = True,
+            allowPrimary = True
+        )
+
         # The content IDs may have changed, so we must make sure the array is in proper order.
         self.gparray.reOrderExpansionSegs()
 
-        self.conn.commit()
         # Issue checkpoint due to forced shutdown below
+        self.conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
         dbconn.execSQL(self.conn, "CHECKPOINT")
         self.conn.close()
 
@@ -2871,6 +2830,11 @@ try:
         sys.exit(1)
     else:
         create_pid_file(options.master_data_directory)
+
+    # prepare provider for updateSystemConfig 
+    gpEnv = GpMasterEnvironment(options.master_data_directory, True)
+    configurationInterface.registerConfigurationProvider( configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog() )
+    configurationInterface.getConfigurationProvider().initializeProvider(gpEnv.getMasterPort())
 
     dburl = dbconn.DbURL()
     if options.database:

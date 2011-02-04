@@ -283,9 +283,13 @@ class GpMirrorListToBuild:
         signal.signal(signal.SIGINT,signal.SIG_IGN)
         try:
             logger.info("Updating configuration with new mirrors")
-            configInterface.getConfigurationProvider().updateSystemConfig(gpArray,
-                    "%s: segment config for resync" % programName,
-                    fullResyncMirrorDbIds, useUtilityMode=False )
+            configInterface.getConfigurationProvider().updateSystemConfig(
+                gpArray,
+                "%s: segment config for resync" % programName,
+                dbIdToForceMirrorRemoveAdd = fullResyncMirrorDbIds, 
+                useUtilityMode = False, 
+                allowPrimary = False 
+            )
             
             MPP_12038_fault_injection()
             
@@ -300,9 +304,13 @@ class GpMirrorListToBuild:
                 seg.setSegmentStatus(gparray.STATUS_UP)
             for seg in primariesToConvert:
                 seg.setSegmentMode(gparray.MODE_RESYNCHRONIZATION)
-            configInterface.getConfigurationProvider().updateSystemConfig(gpArray,
-                    "%s: segment resync marking mirrors up and primaries resync" % programName,
-                    {}, useUtilityMode=True )
+            configInterface.getConfigurationProvider().updateSystemConfig(
+                gpArray,
+                "%s: segment resync marking mirrors up and primaries resync" % programName,
+                dbIdToForceMirrorRemoveAdd = {},
+                useUtilityMode = True,
+                allowPrimary = False
+            )
 
             MPP_12038_fault_injection()
 
