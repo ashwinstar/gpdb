@@ -6,7 +6,7 @@ Copies files between multiple hosts at once.
 SYNOPSIS
 *****************************************************
 
-gpscp { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
+gpscp { -f <hostfile_gpssh> | - h <hostname> [-h <hostname> ...] } 
 [-J <character>] [-v] [[<user>@]<hostname>:]<file_to_copy> [...] 
 [[<user>@]<hostname>:]<copy_to_path>
 
@@ -34,9 +34,9 @@ for the hostname in the copy from and to destination strings.
 If -J is not specified, the default substitution character is 
 an equal sign (=). For example, the following command will 
 copy .bashrc from the local host to /home/gpadmin on all hosts 
-named in host_file:
+named in hostfile_gpssh:
 
-    gpscp -f host_file .bashrc =:/home/gpadmin 
+    gpscp -f hostfile_gpssh .bashrc =:/home/gpadmin 
 
 If a user name is not specified in the host list or with 
 user@ in the file path, gpscp will copy files as the currently 
@@ -57,12 +57,12 @@ OPTIONS
 *****************************************************
 
 
--f <host_file>
+-f <hostfile_gpssh>
 
 Specifies the name of a file that contains a list of hosts 
 that will participate in this SCP session. The host name is 
 required, and you can optionally specify an alternate user 
-name and/or SCP port number per host. The syntax of the host 
+name and/or ssh port number per host. The syntax of the host 
 file is one host per line as follows:
 
 [<username>@]<hostname>[:<scp_port>]
@@ -122,10 +122,10 @@ file host_file.
 gpscp -f host_file installer.tar =:/
 
 Copy the file named myfuncs.so to the specified location on 
-the hosts named seg1 and seg2:
+the hosts named sdw1 and sdw2:
 
-gpscp -h seg1 -h seg2 myfuncs.so \
-=:/usr/local/greenplum-db-3.1.0.0/lib
+gpscp -h sdw1 -h sdw2 myfuncs.so \
+=:/usr/local/greenplum-db/lib
 
 
 *****************************************************
@@ -133,4 +133,4 @@ SEE ALSO
 *****************************************************
 
 
-gpssh-exkeys, gpssh
+gpssh-exkeys, gpssh, gpseginstall

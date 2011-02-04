@@ -7,7 +7,7 @@ Provides ssh access to multiple hosts at once.
 SYNOPSIS
 *****************************************************
 
-gpssh { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
+gpssh { -f <hostfile_gpssh> | - h <hostname> [-h <hostname> ...] } 
 [-v] [-e] [<bash_command>]
 
 gpssh -? 
@@ -55,48 +55,50 @@ enter absolute paths.
 OPTIONS
 *****************************************************
 
--f <host_file>
+<bash_command>
 
-Specifies the name of a file that contains a list of hosts that 
-will participate in this SSH session. The host name is required, 
-and you can optionally specify an alternate user name and/or SSH port 
-number per host. The syntax of the host file is one host per line 
-as follows:
-[<username>@]<hostname>[:<ssh_port>]
-
-
--h <hostname>
-
-Specifies a single host name that will participate in this SSH session. 
-You can use the -h option multiple times to specify multiple host names.
-
-
--v (verbose mode)
-
-Optional. Reports additional messages in addition to the command 
-output when running in non-interactive mode.
+ A bash shell command to execute on all hosts involved in this 
+ session (optionally enclosed in quotes). If not specified, gpssh 
+ will start an interactive session.
 
 
 -e (echo)
 
-Optional. Echoes the commands passed to each host and their 
-resulting output while running in non-interactive mode.
+ Optional. Echoes the commands passed to each host and their 
+ resulting output while running in non-interactive mode.
 
 
-<bash_command>
+-f <host_file>
 
-A bash shell command to execute on all hosts involved in this 
-session (optionally enclosed in quotes). If not specified, gpssh 
-will start an interactive session.
+ Specifies the name of a file that contains a list of hosts that 
+ will participate in this SSH session. The host name is required, 
+ and you can optionally specify an alternate user name and/or SSH port 
+ number per host. The syntax of the host file is one host per line 
+ as follows:
+  [<username>@]<hostname>[:<ssh_port>]
+
+
+-h <hostname>
+
+ Specifies a single host name that will participate in this SSH session. 
+ You can use the -h option multiple times to specify multiple host names.
+
+
+-v (verbose mode)
+
+ Optional. Reports additional messages in addition to the command 
+ output when running in non-interactive mode.
+
+
+--version
+
+ Displays the version of this utility.
 
 
 -? (help)
 
-Displays the online help.
+ Displays the online help.
 
---version
-
-Displays the version of this utility.
 
 
 
@@ -105,36 +107,36 @@ EXAMPLES
 *****************************************************
 
 Start an interactive group SSH session with all hosts listed 
-in the file host_file:
+in the file hostfile_gpssh:
 
-gpssh -f host_file
+  $ gpssh -f hostfile_gpssh
 
 
 At the gpssh interactive command prompt, run a shell command 
 on all the hosts involved in this session.
 
-=> ls -a /dbfast1/gpdb-1
+  => ls -a /data/primary/*
 
 Exit an interactive session:
 
-=> exit
+  => exit
 
 
 Start a non-interactive group SSH session with the hosts named 
-thumper1 and thumper2 and pass a file containing several commands 
+sdw1 and sdw2 and pass a file containing several commands 
 named command_file to gpssh:
 
-gpssh -h thumper1 -h thumper2 -v -e < command_file
+  $ gpssh -h sdw1 -h sdw2 -v -e < command_file
 
 
 Execute single commands in non-interactive mode on hosts 
-thumper1 and localhost:
+sdw2 and localhost:
 
-gpssh -h thumper1 -h localhost -v -e ls -a /dbfast1/gpdb-1
+  $ gpssh -h sdw2 -h localhost -v -e 'ls -a /data/primary/*'
 
-gpssh -h thumper1 -h localhost -v -e 'echo "blah,blah,blah"'
+  $ gpssh -h sdw2 -h localhost -v -e 'echo $GPHOME'
 
-gpssh -h thumper1 -h localhost -v -e 'ls -1 | wc -l'
+  $ gpssh -h sdw2 -h localhost -v -e 'ls -1 | wc -l'
 
 
 *****************************************************
