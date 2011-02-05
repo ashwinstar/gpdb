@@ -12,6 +12,7 @@
 """
 import copy
 from gppylib.gplog import *
+from gppylib.gparray import ROLE_PRIMARY, ROLE_MIRROR
 
 logger = get_default_logger()
 
