@@ -466,8 +466,8 @@ void BackoffBackendEntryInit(int sessionid, int commandcount, int weight)
 	init(&mySharedEntry->statementId, sessionid, commandcount);
 	Assert(!isInvalid(&mySharedEntry->statementId));
 	mySharedEntry->targetUsage = 1.0 / numProcsPerSegment(); /* Initially, do not perform any backoffs */
-	mySharedEntry->isActive = true;
-	mySharedEntry->noBackoff = true;
+	mySharedEntry->isActive = false;
+	mySharedEntry->noBackoff = false;
 	mySharedEntry->earlyBackoffExit = false;
 
 	if (gettimeofday(&mySharedEntry->lastCheckTime, NULL) < 0)
@@ -569,13 +569,9 @@ static inline void BackoffBackend()
 		if (le->lastSleepTime < DEFAULT_SLEEP_TIME)
 			le->lastSleepTime = DEFAULT_SLEEP_TIME;
 
-#ifdef BACKOFF_DEBUG
-		elog(WARNING, "thissession = %d, thisProcTime = %f, totalTime = %f, targetusage = %f, cpuRatio = %f, change factor = %f, sleeptime = %f", se->statementId.sessionId, thisProcessTime, totalTime, se->targetUsage, cpuRatio, changeFactor, (double) le->lastSleepTime);
-#endif
-
 		if ( gp_debug_resqueue_priority)
 		{
-			elog(WARNING, "thissession = %d, thisProcTime = %f, totalTime = %f, targetusage = %f, cpuRatio = %f, change factor = %f, sleeptime = %f",
+			elog(LOG, "thissession = %d, thisProcTime = %f, totalTime = %f, targetusage = %f, cpuRatio = %f, change factor = %f, sleeptime = %f",
 					se->statementId.sessionId, thisProcessTime, totalTime, se->targetUsage, cpuRatio, changeFactor, (double) le->lastSleepTime);
 		}
 
@@ -799,10 +795,11 @@ void BackoffSweeper()
 
 		Assert(maxCPU > 0.0);
 		
-#ifdef BACKOFF_DEBUG
-		elog(WARNING, "Number of active backends = %d!", numActiveBackends);
-#endif
-		
+		if ( gp_debug_resqueue_priority)
+		{
+			elog(LOG, "before allocation: active backends = %d, active weight = %f, cpu available = %f", numActiveBackends, activeWeight, CPUAvailable);
+		}
+
 		while(found)
 		{
 			found = false;
@@ -814,7 +811,8 @@ void BackoffSweeper()
 			{
 				BackoffBackendSharedEntry *se = getBackoffEntryRW(i);
 
-				if (se->isActive && !se->noBackoff)
+				if (se->isActive
+						&& !se->noBackoff)
 				{
 					double targetCPU = 0.0;
 					const BackoffBackendSharedEntry *gl = getBackoffEntryRO(se->groupLeaderIndex);
@@ -844,12 +842,11 @@ void BackoffSweeper()
 			Assert(numIterations <= ceil(numProcsPerSegment()));
 		}
 
-		/**
-		 * There exists at least one backend that has not been allocated CPU.
-		 */
-		Assert(CPUAvailable > 0.0);
-		Assert(activeWeight > 0.0);
-		
+		if ( gp_debug_resqueue_priority)
+		{
+			elog(LOG, "after heavy backends: active backends = %d, active weight = %f, cpu available = %f", numActiveBackends, activeWeight, CPUAvailable);
+		}
+
 		/**
 		 * Distribute whatever is the CPU available among the rest.
 		 */
@@ -857,7 +854,8 @@ void BackoffSweeper()
 		{
 			BackoffBackendSharedEntry *se = getBackoffEntryRW(i);
 
-			if (se->isActive && !se->noBackoff)
+			if (se->isActive
+					&& !se->noBackoff)
 			{
 				const BackoffBackendSharedEntry *gl = getBackoffEntryRO(se->groupLeaderIndex);
 				Assert(activeWeight > 0.0);
@@ -872,14 +870,12 @@ void BackoffSweeper()
 	backoffSingleton->lastTotalStatementWeight = totalStatementWeight;
 	backoffSingleton->sweeperInProgress = false;
 	
-#ifdef BACKOFF_DEBUG
-	/*
-	 * Print out target usage. TODO: remove this.
-	 */
+	if ( gp_debug_resqueue_priority)
 	{
 		StringInfoData str;
 		initStringInfo(&str);
-		appendStringInfo(&str, "num active statements: %d", numActiveStatements);
+		appendStringInfo(&str, "num active statements: %d ", numActiveStatements);
+		appendStringInfo(&str, "num active backends: %d ", numActiveBackends);
 		appendStringInfo(&str, "targetusages: ");
 		for (i=0;i<MaxBackends;i++)
 		{
@@ -887,10 +883,9 @@ void BackoffSweeper()
 			if (se->isActive)
 				appendStringInfo(&str, "(%d,%f)", i, se->targetUsage);
 		}
-		elog(WARNING, str.data);
+		elog(LOG, str.data);
 		pfree(str.data);
 	}
-#endif
 
 }
 
@@ -1036,7 +1031,7 @@ gp_adjust_priority_int(PG_FUNCTION_ARGS)
 			{
 				if (gp_debug_resqueue_priority)
 				{
-					elog(WARNING, "changing weight of (%d:%d) from %d to %d", se->statementId.sessionId, se->statementId.commandCount, se->weight, wt);
+					elog(LOG, "changing weight of (%d:%d) from %d to %d", se->statementId.sessionId, se->statementId.commandCount, se->weight, wt);
 				}
 
 				se->weight = wt;
@@ -1102,7 +1097,7 @@ gp_adjust_priority_int(PG_FUNCTION_ARGS)
 			{
 				if (gp_debug_resqueue_priority)
 				{
-					elog(WARNING, "changing weight of (%d:%d) from %d to %d", se->statementId.sessionId, se->statementId.commandCount, se->weight, wt);
+					elog(LOG, "changing weight of (%d:%d) from %d to %d", se->statementId.sessionId, se->statementId.commandCount, se->weight, wt);
 				}
 				se->weight = wt;
 				numfound++;
@@ -1111,7 +1106,7 @@ gp_adjust_priority_int(PG_FUNCTION_ARGS)
 
 		if (gp_debug_resqueue_priority && numfound == 0)
 		{
-			elog(WARNING, "did not find any matching backends on segments");
+			elog(LOG, "did not find any matching backends on segments");
 		}
 	}
 
@@ -1258,10 +1253,6 @@ void BackoffSweeperLoop(void)
 		/* no need to live on if postmaster has died */
 		if (!PostmasterIsAlive(true))
 			exit(1);
-
-#ifdef BACKOFF_DEBUG
-		elog(WARNING, "Performing global action");
-#endif
 
 		if (gp_enable_resqueue_priority)
 			BackoffSweeper();
