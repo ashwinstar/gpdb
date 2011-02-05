@@ -12,7 +12,7 @@
 """
 import copy
 from gppylib.gplog import *
-from gppylib.gparray import ROLE_PRIMARY, ROLE_MIRROR
+from gppylib.gparray import ROLE_PRIMARY, ROLE_MIRROR, MASTER_CONTENT_ID
 
 logger = get_default_logger()
 
@@ -176,7 +176,7 @@ class ComputeCatalogUpdate:
         #
         if len(final[ ROLE_MIRROR ]) > 0:
             for contentId in final[ ROLE_PRIMARY ]:
-                if final[ ROLE_MIRROR ].get( contentId ) is None:
+                if contentId != MASTER_CONTENT_ID and final[ ROLE_MIRROR ].get( contentId ) is None:
                     seg = final[ ROLE_PRIMARY ][ contentId ]
                     raise Exception("Primary must have mirror when mirroring enabled: %s" % repr(seg))
 

@@ -121,6 +121,8 @@ FAULT_STRATEGY_LABELS = {
  }
 VALID_FAULT_STRATEGY = FAULT_STRATEGY_LABELS.keys()
 
+MASTER_CONTENT_ID = -1
+
 def getFaultStrategyLabel(strategy):
     return FAULT_STRATEGY_LABELS[strategy]
 
