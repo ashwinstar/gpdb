@@ -560,7 +560,7 @@ static inline void BackoffBackend()
 
 		cpuRatio = thisProcessTime / totalTime;
 		
-		Assert(cpuRatio < 1.001);
+		cpuRatio = Min(cpuRatio, 1.0);
 		
 		changeFactor = cpuRatio / se->targetUsage;
 		
