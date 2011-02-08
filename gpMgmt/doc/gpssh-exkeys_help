@@ -7,7 +7,7 @@ Exchanges SSH public keys between hosts.
 SYNOPSIS
 *****************************************************
 
-gpssh-exkeys -f <hostfile_exkeys> | - h <hostname> [-h <hostname> ...]
+gpssh-exkeys -f <hostfile_exkeys> | -h <hostname> [-h <hostname> ...]
 
 gpssh-exkeys -e <hostfile_exkeys> -x <hostfile_gpexpand>
 
@@ -53,14 +53,14 @@ The gpssh-exkeys utility performs key exchange using the following steps:
   not already exist.  The public key of this pair is added to the current 
   user’s authorized_keys file.
 
-* Updates the current user’s known_hosts file with the host key of each host 
+* Updates the current user's known_hosts file with the host key of each host 
   specified using the -h, -f, -e, and -x options.
 
 * Connects to each host using ssh and obtains the authorized_keys, 
   known_hosts, and id_rsa.pub files to set up password-free access.
 
 * Adds keys from the id_rsa.pub files obtained from each host to the 
-  current user’s authorized_keys file.
+  current user's authorized_keys file.
 
 * Updates the authorized_keys, known_hosts, and id_rsa.pub files on 
   all hosts with new host information (if any).
