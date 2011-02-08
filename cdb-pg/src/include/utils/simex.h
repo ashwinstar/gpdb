@@ -36,6 +36,7 @@ typedef enum SimExESClass
 	SimExESClass_OOM = SimExESClass_Base,	// out-of-memory
 	SimExESClass_Cancel,					// cancel
 	SimExESClass_CacheInvalidation,         // cache invaldation messages
+	SimExESClass_SysError,				    // system call failure
 	SimExESClass_ProcKill,					// kill process with SIGKILL
 	SimExESClass_Max						// must always be last
 } SimExESClass;
@@ -61,6 +62,7 @@ typedef enum SimExESSubClass
 	SimExESSubClass_Cancel_QueryCancel,
 	SimExESSubClass_Cancel_ProcDie,
 	SimExESSubClass_CacheInvalidation,
+	SimExESSubClass_SysError_Net,
 	SimExESSubClass_ProcKill_BgWriter,
 	SimExESSubClass_Max						// must always be last
 } SimExESSubClass;
@@ -103,5 +105,24 @@ extern double  gp_simex_rand;            // start-up GUC, controls randomized ES
 extern bool gp_simex_run;             // session GUC, starts/stops ES injection
 
 #endif /* USE_TEST_UTILS */
+
+
+/*
+ * Prototypes
+ */
+struct pollfd;
+struct sockaddr;
+
+/*
+ * System call wrappers with integrated ES injection
+ */
+
+/* networking */
+extern int gp_socket(int socket_family, int socket_type, int protocol);
+extern int gp_connect(int socket, const struct sockaddr *address, socklen_t address_len);
+extern int gp_poll(struct pollfd *fds, uint32 nfds, int timeout);
+extern int gp_send(int socket, const void *buffer, size_t length, int flags);
+extern int gp_recv(int socket, void *buffer, size_t length, int flags);
+
 
 #endif /* SIMEX_H_ */

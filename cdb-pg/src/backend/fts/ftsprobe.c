@@ -33,6 +33,10 @@
 #include <sys/poll.h>
 #endif
 
+#ifdef USE_TEST_UTILS
+#include "utils/simex.h"
+#endif /* USE_TEST_UTILS */
+
 /*
  * CONSTANTS
  */
@@ -46,6 +50,7 @@
  */
 
 #define SYS_ERR_TRANSIENT(errno) (errno == EINTR || errno == EAGAIN)
+
 
 /*
  * STRUCTURES
@@ -293,7 +298,7 @@ probeOpenSocket(ProbeConnectionInfo *probeInfo)
 	probeInfo->isSocketOpened = true;
 
 	/* open socket */
-	if ((probeInfo->fd = socket(CONN_PROTOCOL, SOCK_STREAM, 0)) < 0)
+	if ((probeInfo->fd = gp_socket(CONN_PROTOCOL, SOCK_STREAM, 0)) < 0)
 	{
 		write_log("FTS: failed to open socket to connect to segment (content=%d, dbid=%d), errno %d",
 		          probeInfo->segmentId, probeInfo->dbId, errno);
@@ -379,7 +384,7 @@ probeConnect(ProbeConnectionInfo *probeInfo)
 	int res = 0;
 	probeInfo->isConnected = true;
 
-	while ((res = connect(probeInfo->fd, (struct sockaddr *) &probeInfo->saddr, sizeof(probeInfo->saddr))) == -1)
+	while ((res = gp_connect(probeInfo->fd, (struct sockaddr *) &probeInfo->saddr, sizeof(probeInfo->saddr))) == -1)
 	{
 		/* check for transient error */
 		if (SYS_ERR_TRANSIENT(errno) && !probeTimeout(probeInfo) && FtsIsActive())
@@ -426,7 +431,7 @@ probePoll(ProbeConnectionInfo *probeInfo, bool incoming)
 	int res = 0;
 
 	while (FtsIsActive() &&
-	       (res = poll(&nfd, 1, timeoutMs)) <= 0 &&
+	       (res = gp_poll(&nfd, 1, timeoutMs)) <= 0 &&
 		   !probeTimeout(probeInfo))
 	{
 		/* check for transient error */
@@ -468,7 +473,7 @@ probeSend(ProbeConnectionInfo *probeInfo)
 	       !probeTimeout(probeInfo) &&
 	       probePoll(probeInfo, false /*incoming*/))
 	{
-		int res = send(probeInfo->fd, ((char*) &msg) + bytesSent, sizeof(msg) - bytesSent, 0);
+		int res = gp_send(probeInfo->fd, ((char*) &msg) + bytesSent, sizeof(msg) - bytesSent, 0);
 		if (res < 0)
 		{
 			/* check for transient error */
@@ -507,7 +512,7 @@ probeReceive(ProbeConnectionInfo *probeInfo)
 	       !probeTimeout(probeInfo) &&
 	       probePoll(probeInfo, true /*incoming*/))
 	{
-		int res = recv
+		int res = gp_recv
 				(
 				probeInfo->fd,
 				((char*) &probeInfo->response) + bytesReceived,
