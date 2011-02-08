@@ -417,6 +417,7 @@ processResponse(ConnectionInfo *connInfo,
 	{
 		snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
 				 "failed: server did not respond with enough data");
+		client->errorLogFn(connInfo->errMessage);
 		connInfo->resultStatus = TRANS_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA;
 		return;
 	}
@@ -427,6 +428,7 @@ processResponse(ConnectionInfo *connInfo,
 		snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
 				 "failed: sent %d bytes, but received %d bytes",
 				 expectedMsgSize, connInfo->resultMsgSize);
+		client->errorLogFn(connInfo->errMessage);
 		connInfo->resultStatus = TRANS_ERRCODE_ERROR_PROTOCOL_VIOLATED;
 		return;
 	}
@@ -526,6 +528,12 @@ sendTransitionMessage(PrimaryMirrorTransitionClientInfo *client,
 		{
 			break;
 		}
+
+		if (connInfo->resultStatus == TRANS_ERRCODE_ERROR_TIMEOUT)
+		{
+			snprintf(connInfo->errMessage, sizeof(connInfo->errMessage), "failure: timeout\n");
+			client->errorLogFn(connInfo->errMessage);
+		}
 		
 		if (connInfo->resultStatus != TRANS_ERRCODE_SUCCESS)
 		{
@@ -536,7 +544,6 @@ sendTransitionMessage(PrimaryMirrorTransitionClientInfo *client,
 			}
 			
 			sleep(retrySleepTimeSeconds);
-			continue;
 		}
 	}
 
@@ -548,6 +555,8 @@ sendTransitionMessage(PrimaryMirrorTransitionClientInfo *client,
 	
 	if (connInfo->resultStatus == TRANS_ERRCODE_ERROR_TIMEOUT)
 	{
+		snprintf(connInfo->errMessage, sizeof(connInfo->errMessage), "failure: timeout\n");
+		client->errorLogFn(connInfo->errMessage);
 		connInfo->resultStatus = TRANS_ERRCODE_ERROR_UNSPECIFIED;
 	}
 
