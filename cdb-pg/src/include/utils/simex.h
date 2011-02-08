@@ -36,6 +36,7 @@ typedef enum SimExESClass
 	SimExESClass_OOM = SimExESClass_Base,	// out-of-memory
 	SimExESClass_Cancel,					// cancel
 	SimExESClass_CacheInvalidation,         // cache invaldation messages
+	SimExESClass_ProcKill,					// kill process with SIGKILL
 	SimExESClass_Max						// must always be last
 } SimExESClass;
 
@@ -60,6 +61,7 @@ typedef enum SimExESSubClass
 	SimExESSubClass_Cancel_QueryCancel,
 	SimExESSubClass_Cancel_ProcDie,
 	SimExESSubClass_CacheInvalidation,
+	SimExESSubClass_ProcKill_BgWriter,
 	SimExESSubClass_Max						// must always be last
 } SimExESSubClass;
 

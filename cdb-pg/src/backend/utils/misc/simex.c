@@ -51,6 +51,7 @@ const SimExESClassAssociate SimExESClassAssociateTable[] =
 	{SimExESClass_Cancel, SimExESSubClass_Cancel_QueryCancel, "Cancel_QueryCancel"},
 	{SimExESClass_Cancel, SimExESSubClass_Cancel_ProcDie, "Cancel_ProcDie"},
 	{SimExESClass_CacheInvalidation, SimExESSubClass_CacheInvalidation, "Cache_Invalidation"},
+	{SimExESClass_ProcKill, SimExESSubClass_ProcKill_BgWriter, "Send SIGKILL to writer process"},
 };
 #define SimExESClassAssociateTable_Size (sizeof(SimExESClassAssociateTable) / sizeof(SimExESClassAssociate))
 
