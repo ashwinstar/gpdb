@@ -97,7 +97,7 @@ extern SimExESSubClass simex_check(const char *file, int32 line);
 /* GUCs */
 extern bool gp_simex_init;            // start-up GUC, controls SimEx initialization
 extern int  gp_simex_class;           // start-up GUC, sets ES class to be simulated
-extern int  gp_simex_rand;            // start-up GUC, controls randomized ES injection (not implemented)
+extern double  gp_simex_rand;            // start-up GUC, controls randomized ES injection (not implemented)
 extern bool gp_simex_run;             // session GUC, starts/stops ES injection
 
 #endif /* USE_TEST_UTILS */

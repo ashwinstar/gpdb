@@ -61,6 +61,7 @@ const SimExESClassAssociate SimExESClassAssociateTable[] =
 																	 */
 #define OFFSET_NOT_FOUND				-1
 #define PERCENT							100
+#define RAND_ACCURACY					1000 /* percentage with three digits accuracy */
 
 /* SimEx bit vector container */
 static SyncBitvectorContainer bitvectorContainer = NULL;
@@ -76,7 +77,7 @@ static void *SimExStackAddresses[SIMEX_MAX_FRAME_DEPTH];
 static uint32 SimExStackDepth = 0;
 
 /* static functions */
-static bool check_associate_table(void);
+static void check_associate_table(void);
 static uint64 simex_get_fingerprint(void);
 static int32 simex_check_fingerprint(uint64 fingerprint);
 static SimExESSubClass
@@ -92,7 +93,7 @@ simex_log_and_return(int32 associateOffset, const char *file, int32 line, uint64
  */
 void simex_init(void)
 {
-	Assert(check_associate_table() && "ES class/subclass association is not consistent");
+	check_associate_table();
 
 /* check if the build allows SimEx */
 #ifndef USE_TEST_UTILS
@@ -134,22 +135,22 @@ void simex_init(void)
  * are consistent with the enum values for ES class/subclass.
  */
 static
-bool check_associate_table()
+void check_associate_table()
 {
 	/* counts ES subclasses per class */
-	int32 subclassCount[SimExESClass_Max - 1];
+	int32 subclassCount[SimExESClass_Max];
 	int32 i = 0;
 
 	/* true is a subclass is associated to a class */
-	bool subclassAssociated[SimExESSubClass_Max - 1];
+	bool subclassAssociated[SimExESSubClass_Max];
 
 	/* reset */
-	for (i = 0; i < SimExESClass_Max - 1; i++)
+	for (i = 0; i < SimExESClass_Max; i++)
 	{
 		subclassCount[i] = 0;
 	}
 
-	for (i = 0; i < SimExESSubClass_Max - 1; i++)
+	for (i = 0; i < SimExESSubClass_Max; i++)
 	{
 		subclassAssociated[i] = false;
 	}
@@ -158,43 +159,26 @@ bool check_associate_table()
 	for (i = 0; i < SimExESClassAssociateTable_Size; i++)
 	{
 		SimExESClassAssociate associate = SimExESClassAssociateTable[i];
-		if (!SimExESClass_IsValid(associate.class))
-		{
-			return false;
-		}
-		if (!SimExESSubClass_IsValid(associate.subclass))
-		{
-			return false;
-		}
+		Assert(SimExESClass_IsValid(associate.class));
+		Assert(SimExESSubClass_IsValid(associate.subclass));
 
 		subclassCount[associate.class]++;
-		if (subclassCount[associate.class] > SIMEX_ES_SUBCLASS_MAX_COUNT)
-		{
-			return false;
-		}
+		Assert(subclassCount[associate.class] <= SIMEX_ES_SUBCLASS_MAX_COUNT);
 
 		subclassAssociated[associate.subclass] = true;
 	}
 
 	/* check if all classes are associated to subclasses */
-	for (i = 0; i < SimExESClass_Max - 1; i++)
+	for (i = 0; i < SimExESClass_Max; i++)
 	{
-		if (subclassCount[i] == 0)
-		{
-			return false;
-		}
+		Assert(subclassCount[i] > 0);
 	}
 
 	/* check if all subclasses are associated to classes */
-	for (i = 1; i < SimExESSubClass_Max - 1; i++)
+	for (i = 1; i < SimExESSubClass_Max; i++)
 	{
-		if (subclassAssociated[i] == false)
-		{
-			return false;
-		}
+		Assert(subclassAssociated[i]);
 	}
-
-	return true;
 }
 
 /*
@@ -294,10 +278,19 @@ int32 simex_check_fingerprint(uint64 fingerprint)
 	// check for randomized operation
 	if (gp_simex_rand < PERCENT)
 	{
-		if (random() % PERCENT >= gp_simex_rand)
+		Assert(gp_simex_rand * RAND_ACCURACY >= 1);
+
+		uint64_t rand = random();
+
+		/* check if random number between 0.001 and 100 is less than the threshold percentage */
+		if (rand % (PERCENT * RAND_ACCURACY) <	(gp_simex_rand * RAND_ACCURACY))
 		{
-			return OFFSET_NOT_FOUND;
+			/* randomly pick one of the ES subclasses to inject */
+			return SimExESSubclassOffset[rand % SimExESSubclassCount];
 		}
+
+		/* no injection */
+		return OFFSET_NOT_FOUND;
 	}
 
 	int32 i = 0;

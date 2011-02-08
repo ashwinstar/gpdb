@@ -490,7 +490,7 @@ int gp_perfmon_segment_interval;
 bool gp_simex_init;
 bool gp_simex_run;
 int gp_simex_class;
-int gp_simex_rand;
+double gp_simex_rand;
 
 /* time slice enforcement */
 bool gp_test_time_slice;
@@ -4472,16 +4472,6 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"gp_simex_rand", PGC_USERSET, GP_ERROR_HANDLING,
-		 gettext_noop("Propability of injecting an Exceptional Situation in SimEx."),
-		 gettext_noop("Controls randomized ES simulation."),
-		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&gp_simex_rand,
-		100, 0, 100, NULL, NULL
-	},
-
-	{
 		{"gp_test_time_slice_interval", PGC_USERSET, GP_ERROR_HANDLING,
 		 gettext_noop("Maximum interval in ms between successive checks for interrupts."),
 		 NULL,
@@ -4699,6 +4689,16 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&gp_resqueue_priority_cpucores_per_segment,
 		4.0, 0.1, 25.0, NULL, NULL
+	},
+
+	{
+		{"gp_simex_rand", PGC_USERSET, GP_ERROR_HANDLING,
+			gettext_noop("Propability of injecting an Exceptional Situation in SimEx."),
+			gettext_noop("Controls randomized ES simulation."),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_simex_rand,
+		100.0, 0.001, 100.0, NULL, NULL
 	},
 
 /* End-of-list marker */
