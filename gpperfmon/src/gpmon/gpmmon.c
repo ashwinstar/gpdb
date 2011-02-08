@@ -798,6 +798,7 @@ time_t compute_next_dump_to_file()
 static void gpmmon_main(void)
 {
 	int e;
+	apr_status_t retCode;
 	apr_threadattr_t* ta;
 	time_t this_cycle_ts = 0;
 
@@ -879,6 +880,14 @@ static void gpmmon_main(void)
 	ax.signature += rand();
 	if (ax.signature < 0)
 		ax.signature = ~ax.signature;
+
+	/* make sure to update the partition tables once before starting all the threads */
+	retCode = gpdb_check_partitions();
+	if (retCode != APR_SUCCESS)
+	{
+		interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		gpmon_fatalx(FLINE, e, "failed while initializing historical tables with current month partitions");
+	}
 
 	/* get hostlist */
 	gethostlist();

@@ -672,6 +672,7 @@ apr_status_t gpdb_check_partitions(void)
 	apr_status_t r1, r2;
 
 	r1 = check_partition("health", NULL);
+	r1 = check_partition("emcconnect", NULL);
 	
 	r2 = call_for_each_table(check_partition, NULL);
 

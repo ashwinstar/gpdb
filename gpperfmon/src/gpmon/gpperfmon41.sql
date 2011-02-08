@@ -19,7 +19,7 @@
 --   status                   	event status
 --   attempted_transport        is emcconnect transport enabled
 --   message                    text message associated with this event
-create table emcconnect_history (ctime timestamp(0) not null, hostname varchar(64) not null, symptom_code int not null, detailed_symptom_code int, description text not null, snmp_oid text, severity text not null, status text not null, attempted_transport boolean not null, message text not null) distributed by (ctime);
+create table emcconnect_history (ctime timestamp(0) not null, hostname varchar(64) not null, symptom_code int not null, detailed_symptom_code int, description text not null, snmp_oid text, severity text not null, status text not null, attempted_transport boolean not null, message text not null) distributed by (ctime) partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));
 
 -- TABLE: _emcconnect_tail
 --   (like emcconnect_history)
