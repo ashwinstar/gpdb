@@ -1716,7 +1716,7 @@ class GPUpgrade:
         self.Startup(self.oldenv)
         logger.info("Running gprecoverseg to recover primary....")
         
-        cmd = "$GPHOME/bin/gprecoverseg -a -F"
+        cmd = "$GPHOME/bin/gprecoverseg -a -F -l %s" % self.logdir
         p = subprocess.Popen(cmd, shell = True,
                             close_fds = True,
                             stdout = subprocess.PIPE,
@@ -1727,7 +1727,8 @@ class GPUpgrade:
             logger.debug(result[0])
             logger.warn("****************************************************")
             logger.warn("Recovering Primary Failed...!!!!")
-            logger.warn("   Please re-run gprecoverseg to recover the primary")
+            logger.warn("   Please examine the log in %s" % self.logdir)
+            logger.warn("   fix the problem and re-run gpmigrator_mirror to recover the primary")
             logger.warn("****************************************************")
             
         return "AbortMirrorUpgrade"
@@ -1795,7 +1796,7 @@ class GPUpgrade:
         self.Startup(self.newenv)
         logger.info("Running gprecoverseg to recover mirror....")
 
-        cmd = ' '.join(["$GPHOME/bin/gprecoverseg", '-a'])
+        cmd = ' '.join(["$GPHOME/bin/gprecoverseg", '-a', '-l', self.logdir])
         p = subprocess.Popen(cmd, shell = True,
                             close_fds = True,
                             stdout = subprocess.PIPE,
@@ -1807,7 +1808,8 @@ class GPUpgrade:
             logger.debug(result[0])
             logger.warn("****************************************************")
             logger.warn("Recovering Mirror Failed...!!!!")
-            logger.warn("   Please re-run gprecoverseg to recover the mirror")
+            logger.warn("   Please examine the log in %s" % self.logdir)
+            logger.warn("   fix the problem and re-run gpmigrator_mirror to recover the mirror")
             logger.warn("****************************************************")
 
         return "DeleteMasterCatalogCopy"
