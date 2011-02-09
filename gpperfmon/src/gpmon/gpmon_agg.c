@@ -243,7 +243,7 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
 	if (ep && diff == 0) 
 	{
 		ep->qexec = *qexec;
-		ep->cpu_elapsed += qexec->_cpu_elapsed;
+		ep->cpu_elapsed = qexec->_cpu_elapsed;
 	}
 	else 
 	{
@@ -394,7 +394,6 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 		return APR_ENOMEM;
 	    }
 	    x->qexec = ep->qexec;
-	    x->cpu_elapsed = ep->cpu_elapsed;
 	    x->next = 0;
 	    *tail = x;
 	    tail = &x->next;
