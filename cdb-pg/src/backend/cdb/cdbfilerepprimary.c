@@ -1465,7 +1465,7 @@ FileRepPrimary_StartSender(void)
 		if (status != STATUS_OK) 
 		{
 			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
-			FileRepSubProcess_ProcessSignals();
+			FileRepSubProcess_SetState(FileRepStateFault);
 		}
 		
 		while (FileRepSubProcess_GetState() == FileRepStateFault) {

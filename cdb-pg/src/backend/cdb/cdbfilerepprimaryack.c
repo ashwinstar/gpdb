@@ -148,6 +148,7 @@ FileRepAckPrimary_StartReceiver(void)
 				 FileRep_errcontext()));												
 		
 		FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+		FileRepSubProcess_SetState(FileRepStateFault);
 		FileRepSubProcess_ProcessSignals();
 		return;
 	}
@@ -164,7 +165,7 @@ FileRepAckPrimary_StartReceiver(void)
 		if (status != STATUS_OK) 
 		{
 			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
-			FileRepSubProcess_ProcessSignals();
+			FileRepSubProcess_SetState(FileRepStateFault);
 		}
 		
 		while (FileRepSubProcess_GetState() == FileRepStateFault) {
@@ -919,7 +920,7 @@ FileRepAckPrimary_StartConsumer(void)
 		if (status != STATUS_OK) 
 		{
 			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
-			FileRepSubProcess_ProcessSignals();
+			FileRepSubProcess_SetState(FileRepStateFault);
 		}
 		
 		while (FileRepSubProcess_GetState() == FileRepStateFault ||

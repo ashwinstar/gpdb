@@ -217,6 +217,7 @@ FileRepAckMirror_StartSender(void)
 	while (1) {
 		
 		if (status != STATUS_OK) {
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
 			FileRepSubProcess_SetState(FileRepStateFault);
 		}
 		
