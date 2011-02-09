@@ -8,7 +8,7 @@ SYNOPSIS
 *****************************************************
 
 gpstate [-d <master_data_directory>] [-B <parallel_processes>] 
-        [-s | -b | -Q | -e] [-m] [-c] [-p] [-i] [-f] 
+        [-s | -b | -Q | -e] [-m | -c] [-p] [-i] [-f] 
         [-v | -q] [-l <log_directory>]
 
 
@@ -236,7 +236,7 @@ Do a quick check for down segments in the master host system catalog:
 
 Show information about mirror segment instances:
 
-   gpstate -m -c
+   gpstate -m
 
 
 Show information about the standby master configuration:
