@@ -273,6 +273,7 @@ FileRepSubProcess_ProcessSignals()
                 }
                 break;
 
+			case SegmentStateImmediateShutdown:
             case SegmentStateShutdown:
                 processExit = true;
                 FileRepSubProcess_SetState(FileRepStateShutdown);
