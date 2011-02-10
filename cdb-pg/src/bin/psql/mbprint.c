@@ -375,8 +375,7 @@ pg_wcsformat(unsigned char *pwcs, size_t len, int encoding,
 	if (count <= 0)
 		exit(1);				/* Screwup */
 
-	if (count > 1)  /* GPDB only.  Why ? */
-		(lines + 1)->ptr = NULL;	/* terminate line array */
+	(lines + 1)->ptr = NULL;	/* terminate line array */
 }
 
 unsigned char *
