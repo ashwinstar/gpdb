@@ -75,7 +75,7 @@ class HDFSReader
         else
           read = inFile.read(inbuf, 0, (int)remain_len);
         remain_len -= read;
-        System.out.print(new String(inbuf, 0, read));
+        System.out.write(inbuf, 0, read);
       }
 
       // Now, read until we find the next \n
@@ -84,8 +84,8 @@ class HDFSReader
       {
         while((newline=inFile.readByte()) != '\n')
           System.out.print((char)newline);
+        System.out.println();
       } catch (EOFException e) {;}
-      System.out.println();
       fs.close();
     }
   }

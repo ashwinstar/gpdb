@@ -615,9 +615,9 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 		else
 		{
 			if (forwrite)
-				prefix = "source $GPHOME/bin/hadoop_env.sh; java -classpath $CLASSPATH HDFSWriter2 $GP_SEGMENT_ID $GP_XID \0";
+				prefix = "source $GPHOME/bin/hadoop_env.sh; java -classpath $CLASSPATH HDFSWriter $GP_SEGMENT_ID $GP_XID \0";
 			else
-				prefix = "source $GPHOME/bin/hadoop_env.sh; java -classpath $CLASSPATH HDFSReader2 $GP_SEGMENT_ID $GP_SEGMENT_COUNT \0";
+				prefix = "source $GPHOME/bin/hadoop_env.sh; java -classpath $CLASSPATH HDFSReader $GP_SEGMENT_ID $GP_SEGMENT_COUNT \0";
 			cmd = url;
 		}
 		sz     = make_command(prefix, cmd, ev, 0);
