@@ -386,7 +386,7 @@ receiveMessage(ConnectionInfo *connInfo,
 				continue;
 			}
 
-			connInfo->resultStatus = TRANS_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA;
+			connInfo->resultStatus = TRANS_ERRCODE_ERROR_SOCKET;
 			break;
 		}
 		

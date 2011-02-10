@@ -1974,6 +1974,26 @@ ServiceStartable(PMSubProc *subProc)
 static void
 RestartAfterPostmasterReset(void)
 {
+	pmState = PM_INIT;
+	FatalError = false;
+
+	/* done..serverLoop will process startup request */
+}
+
+static void
+BeginResetOfPostmasterAfterChildrenAreShutDown(void)
+{
+	elog(LOG, "BeginResetOfPostmasterAfterChildrenAreShutDown: counter %d", pmResetCounter);
+	pmResetCounter++;
+
+	PrimaryMirrorMode pm_mode;
+	FaultType_e f_type;
+	getPrimaryMirrorStatusCodes(&pm_mode, NULL, NULL, &f_type);
+
+	/* set flag indicating mirroring fault */
+	bool hasFaultTypeMirror = (pm_mode == PMModePrimarySegment && f_type == FaultTypeMirror);
+	setFaultAfterReset(hasFaultTypeMirror);
+
 	/*
 	 * Save the MPP session number from shared-memory before we reset
 	 * everything.  There is some risk here accessing the shared-memory,
@@ -1990,30 +2010,12 @@ RestartAfterPostmasterReset(void)
 	Save_DtxStartTime = getDtxStartTime();
 
 	/*
-	 * it doesn't seem that any shmem handlers use the "code" parameter.
-	 * This call used to occur twice in postmaster.c, once passing 0 and once passing 1.
-	 * I couldn't tell a difference between the two so I arbitrarily chose 0
+	 * reset shared memory and semaphores;
+	 * this happens before forking the filerep peer reset process;
+	 * the latter process should not use information from shared memory;
 	 */
-	shmem_exit(0);
-
-	pmState = PM_INIT;
-	FatalError = false;
-	reset_shared(PostPortNumber, true);
-	/* done..serverLoop will process startup request */
-}
-
-static void
-BeginResetOfPostmasterAfterChildrenAreShutDown(void)
-{
-	elog(LOG, "BeginResetOfPostmasterAfterChildrenAreShutDown: counter %d", pmResetCounter);
-	pmResetCounter++;
-
-	FaultType_e f_type;
-	getPrimaryMirrorStatusCodes(NULL, NULL, NULL, &f_type);
-
-	/* set flag indicating mirroring fault */
-	bool hasFaultTypeMirror = (f_type == FaultTypeMirror);
-	setFaultAfterReset(hasFaultTypeMirror);
+	shmem_exit(0 /*code*/);
+	reset_shared(PostPortNumber, true /*isReset*/);
 
 	if (primaryMirrorPostmasterResetShouldRestartPeer())
 	{
@@ -4572,6 +4574,13 @@ static void do_reaper()
 					elog(WARNING, "filerep peer reset during postmaster reset has failed");
 					peerResetResult = PEER_RESET_FAILED;
 				}
+
+				/*
+				 * reset fatal error flag to ensure we enter the postmaster state machine;
+				 * this is safe since postmaster has already cleaned up all processes
+				 * and reset shared memory and semaphores;
+				 */
+				FatalError = false;
 			}
 
 			/* PostmasterStateMachine logic does the rest */
@@ -5363,6 +5372,10 @@ static PMState StateMachineCheck_WaitFilerepPeerReset(void)
 		case PEER_RESET_FAILED:
 			/* set flag indicating failure to reset peer */
 			setFaultAfterReset(true);
+
+			/* mark fault in shared memory */
+			primaryMirrorHandlePostmasterReset();
+
 			RestartAfterPostmasterReset();
 			break;
 		case PEER_RESET_SUCCEEDED:
@@ -7340,9 +7353,11 @@ StartChildProcess(AuxProcType type)
             Assert(isPrimaryMirrorModeAFullPostmaster(true));
             break;
         case FilerepProcess:
-        case FilerepResetPeerProcess:
             Assert(doesPrimaryMirrorModeRequireFilerepProcess(true));
             break;
+        case FilerepResetPeerProcess:
+        	Assert(pmState == PM_POSTMASTER_RESET_FILEREP_PEER);
+			break;
         case CheckerProcess:
         case BootstrapProcess:
             break;

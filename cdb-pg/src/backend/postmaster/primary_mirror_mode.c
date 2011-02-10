@@ -990,13 +990,8 @@ primaryMirrorPostmasterResetShouldRestartPeer(void)
 
 	PrimaryMirrorMode mode = pmLocalState.mostRecentTransition.mode;
 
-	if (mode == PMModeMirrorSegment)
-	{
-		/* if we're a mirror and panicked, should try to reset the primary */
-		return true;
-	}
-	else if (mode == PMModePrimarySegment &&
-			 pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking)
+	if (mode == PMModePrimarySegment &&
+	    pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking)
 	{
 		/* if we're a primary AND we were in resync/sync then try to restart in that mode */
 		return true;
