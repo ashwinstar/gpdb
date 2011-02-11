@@ -10,8 +10,26 @@ perc_firmware_version = 12.3.0-0032
 perc_driver_version = 00.00.04.29
 cna_firmware_version = 2.2.0.4
 cna_bios_version = FCHBA2.2.0.1
-at_switch_firmware_version = v1.2.0
-brocade_switch_firmware_version = v6.3.2a1
+sysctl.kernel.sem = 250 64000 100 512
+sysctl.kernel.shmmax = 500000000
+sysctl.kernel.shmmni = 4096
+sysctl.kernel.shmall = 4000000000
+sysctl.kernel.sem = 250 512000 100 2048
+sysctl.kernel.sysrq = 1
+sysctl.kernel.core_uses_pid = 1
+sysctl.kernel.msgmnb = 65536
+sysctl.kernel.msgmax = 65536
+sysctl.kernel.msgmni = 2048
+sysctl.net.ipv4.tcp_syncookies = 1
+sysctl.net.ipv4.ip_forward = 0
+sysctl.net.ipv4.conf.default.accept_source_route = 0
+sysctl.net.ipv4.tcp_tw_recycle = 1
+sysctl.net.ipv4.tcp_max_syn_backlog = 4096
+sysctl.net.ipv4.conf.all.arp_filter = 1
+sysctl.net.ipv4.ip_local_port_range = 1025 65535
+sysctl.net.core.netdev_max_backlog = 10000
+sysctl.vm.overcommit_memory = 2
+
 
 [1.0.2.0]
 dell_om_version = 6.3.0

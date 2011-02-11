@@ -29,6 +29,7 @@ class GpCheckInfo:
 class GpCheckConfig:
     def __init__(self):
         self.gpcheck_config_version = None
+        self.expectedSysctlValues = dict()
         
 
 gpcheck_info = None
@@ -659,24 +660,7 @@ def testBlockdev(host):
 
 def testSysctl(host):
 
-    expectedValues = dict()
-    expectedValues['kernel.sem'] = '250 64000 100 512'
-    expectedValues['kernel.shmmax'] = '500000000'
-    expectedValues['kernel.shmmni'] = '4096'
-    expectedValues['kernel.shmall'] = '4000000000'
-    expectedValues['kernel.sem'] = '250 64000 100 512'
-    expectedValues['kernel.sysrq'] = '1'
-    expectedValues['kernel.core_uses_pid'] = '1'
-    expectedValues['kernel.msgmnb'] = '65536'
-    expectedValues['kernel.msgmax'] = '65536'
-    expectedValues['net.ipv4.tcp_syncookies'] = '1'
-    expectedValues['net.ipv4.ip_forward'] = '0'
-    expectedValues['net.ipv4.conf.default.accept_source_route'] = '0'
-    expectedValues['net.ipv4.tcp_tw_recycle'] = '1'
-    expectedValues['net.ipv4.tcp_max_syn_backlog'] = '4096'
-    expectedValues['net.ipv4.conf.all.arp_filter'] = '1'
-    expectedValues['net.core.netdev_max_backlog'] = '10000'
-    expectedValues['vm.overcommit_memory'] = '2'
+    expectedValues = gpcheck_config.expectedSysctlValues
 
     for k in expectedValues.keys():
         if k not in host.data.sysctl.variables:
@@ -995,6 +979,16 @@ def populateGpCheckApplianceConfigParams():
     gpcheck_config.cna_bios_version = config.get(gpcheck_config.gpcheck_config_version, 'cna_bios_version')
     gpcheck_config.dell_bios_version_master = config.get(gpcheck_config.gpcheck_config_version, 'dell_bios_version_master')
     gpcheck_config.dell_bios_version_segment = config.get(gpcheck_config.gpcheck_config_version, 'dell_bios_version_segment')
+
+    for opt in config.options(gpcheck_config.gpcheck_config_version):
+        if re.match('sysctl\.', opt):
+            fields = opt.split("sysctl.")
+            if len(fields) != 2:
+                printError(None, "Bad config line entry: %s" % opt)
+            sysctl = fields[1]
+            gpcheck_config.expectedSysctlValues[sysctl] = config.get(gpcheck_config.gpcheck_config_version, opt)
+    
+    return False
 
 def testAppliance():
 
