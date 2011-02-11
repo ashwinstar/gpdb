@@ -50,7 +50,7 @@
 	<mx:HBox width="100%" height="18" verticalAlign="middle" paddingLeft="4" horizontalGap="0">
 		<mx:Label text="CPU % - "/>
 		<ns1:StatusIndicatorBar id="CPUPercentage"/>
-		<mx:Label text="CPU Total - "/>
+		<mx:Label text="CPU Time - "/>
 		<ns1:StatusIndicatorLED id="CPUTotal"/>
 	</mx:HBox>
 	<mx:HBox width="100%" height="18" verticalAlign="middle" paddingLeft="4" horizontalGap="0">

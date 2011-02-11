@@ -696,7 +696,7 @@ def queryplan_sql(table, tmid, ssid, ccnt, start='', end=''):
        min(tstart) as tstart, avg(tduration) as tduration,
        avg(pmemsize) as pmemsize, avg(pmemmax) as pmemmax,
        avg(memsize) as memsize, avg(memresid) as memresid,
-       avg(memshare) as memshare, sum(cpu_elapsed) as cpu_elapsed,
+       avg(memshare) as memshare, avg(cpu_elapsed) as cpu_elapsed,
        avg(cpu_currpct) as cpu_currpct, array_to_string(iterators_array_accum(distinct phase), ',') as phase, 
        sum(rows_out) as rows_out, sum(rows_out_est) as rows_out_est,
        case when avg(cpu_elapsed) <= 0.001 THEN 0 else

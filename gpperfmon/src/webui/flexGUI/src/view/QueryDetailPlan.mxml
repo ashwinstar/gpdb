@@ -146,7 +146,9 @@
 	{
 		var name:String;
 		var valueArray:Array;
-		
+		var numFormat:NumberFormatter = new NumberFormatter();
+
+		numFormat.precision = 2;
 		extraAttributes = '';
 		for (var i:int = 0; i < attributes.length(); i++)
 		{
@@ -170,8 +172,8 @@
 			{
 				valueArray = attributes[j].split('|');				
 				extraAttributes += '<b>'+valueArray[0]+'</b>: ';
-				extraAttributes += valueArray[2] + ' ' + valueArray[1];
-				extraAttributes += ' (avg) [estimated ' + valueArray[3] + ']\n';
+				extraAttributes += numFormat.format(valueArray[2]) + ' ' + valueArray[1];
+				extraAttributes += ' (avg) [estimated ' + numFormat.format(valueArray[3]) + ']\n';
 			}
 		}			
 	}
@@ -439,28 +441,12 @@
 			<mx:FormItem label="Shared mem" fontWeight="bold">
 				<mx:Label text="{nformat0.format(selectedXML.@memshare) + ' (avg)'}" fontWeight="normal"/>
 			</mx:FormItem>	
-			<mx:FormItem label="CPU total" fontWeight="bold">
-				<mx:Label text="{(Number(selectedXML.@cpu_elapsed)/1000.0).toFixed(2) + ' (avg)'}" fontWeight="normal"/>		
-			</mx:FormItem>	
-			<mx:FormItem label="CPU %" fontWeight="bold">
-				<mx:Label text="{nformat2.format(selectedXML.@cpu_currpct) + ' (avg)'}" fontWeight="normal"/>
-			</mx:FormItem>				
-			<mx:FormItem label="Phase" fontWeight="bold">
-				<mx:Label text="{selectedXML.@phase}" fontWeight="normal"/>
-			</mx:FormItem>	
 			<mx:FormItem label="Rows out" fontWeight="bold">
 				<mx:Label text="{nformat0.format(selectedXML.@rows_out) + ' (sum)'}" fontWeight="normal"/>
 			</mx:FormItem>				
 			<mx:FormItem label="Rows estimate" fontWeight="bold">
 				<mx:Label text="{nformat0.format(selectedXML.@rows_out_est) + ' (sum)'}" fontWeight="normal"/>
 			</mx:FormItem>	
-			<mx:FormItem label="CPU skew" fontWeight="bold">
-				<mx:Label text="{nformat2.format(selectedXML.@skew_cpu)}" fontWeight="normal"/>
-			</mx:FormItem>				
-			<mx:FormItem label="Row skew" fontWeight="bold">
-				<mx:Label text="{nformat2.format(selectedXML.@skew_rows)}" fontWeight="normal"/>
-			</mx:FormItem>	
-			
 		</mx:Form>	
 		
 		<mx:Label text="Additonal attributes:" fontWeight="bold"/>

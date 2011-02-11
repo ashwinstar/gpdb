@@ -207,17 +207,20 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
 	qenode_t* ep;
 	qenode_t** epp;
 	int diff;
-	
+
 	/* find qdnode of this qexec */
 	key.tmid = qexec->key.tmid;
 	key.ssid = qexec->key.ssid;
 	key.ccnt = qexec->key.ccnt;
 	dp = apr_hash_get(agg->qtab, &key, sizeof(key));
+
+	//TR0(("%s %s.%d.%d: %ld\n", (dp? "YES":"NO"), qexec->_hname, qexec->key.pid, qexec->key.nid, qexec->_cpu_elapsed));
 	if (!dp) 
 	{
     		/* not found, internal SPI query.  Ignore. */
     		return 0;
 	}
+
 
 	/* find qexec in qenode_list */
 	diff = 0;
@@ -253,7 +256,7 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
 	    	return APR_ENOMEM;
 
 		x->qexec = *qexec;
-		x->cpu_elapsed = 0;
+		x->cpu_elapsed = qexec->_cpu_elapsed;
 		x->next = ep;
 		*epp = x;
 	}
@@ -261,13 +264,13 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
 	if (0) 
 	{
 		int cnt = 0;
-		TR2(("list now:\n"));
+		TR0(("list now:\n"));
 
 		for (ep = dp->qenode_list; ep; ep = ep->next) 
 		{
-		TR2(("%d: %d.%d.%d\n", ++cnt, ep->qexec.key.segid, ep->qexec.key.nid, ep->qexec.key.pid));
+		TR0(("%d: %s.%d.%d: %ld\n", ++cnt, ep->qexec._hname, ep->qexec.key.nid, ep->qexec.key.pid, ep->cpu_elapsed));
 		}
-		TR2(("  -- \n"));
+		TR0(("  -- \n"));
 	}
 
 	dp->last_updated_generation = generation;
@@ -389,12 +392,12 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	tail = &newdp->qenode_list;
 	for (ep = dp->qenode_list; ep; ep = ep->next) {
 	    qenode_t* x;
-	    if (! (x = apr_palloc(newagg->pool, sizeof(*x)))) {
+	    if (! (x = apr_pcalloc(newagg->pool, sizeof(*x)))) {
 		agg_destroy(newagg);
 		return APR_ENOMEM;
 	    }
 	    x->qexec = ep->qexec;
-	    x->next = 0;
+		x->cpu_elapsed = ep->cpu_elapsed;
 	    *tail = x;
 	    tail = &x->next;
 
