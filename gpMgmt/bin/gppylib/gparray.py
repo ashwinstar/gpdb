@@ -734,7 +734,8 @@ class Segment:
     # --------------------------------------------------------------------    
     def get_dbs(self):
         dbs=[]
-        dbs.append(self.primaryDB)
+        if self.primaryDB is not None: # MPP-10886 don't add None to result list
+            dbs.append(self.primaryDB)
         if len(self.mirrorDBs) > 0:
             dbs.extend(self.mirrorDBs)
         return dbs
