@@ -938,6 +938,20 @@ def testUnameConsistency():
             firstHost = host.hostname
 
 # return True for error
+def getSysCtlFromConfig(section):
+
+    global gpcheck_config
+
+    for opt in config.options(section):
+        if re.match('sysctl\.', opt):
+            fields = opt.split("sysctl.")
+            if len(fields) != 2:
+                printError(None, "Bad config line entry: %s" % opt)
+            sysctl = fields[1]
+            gpcheck_config.expectedSysctlValues[sysctl] = config.get(section, opt)
+
+
+# return True for error
 def populateGpCheckLinuxConfigParams():
 
     if not config.has_section('linux'):
@@ -953,6 +967,12 @@ def populateGpCheckLinuxConfigParams():
 
     global gpcheck_config
     gpcheck_config.xfs_mount_options = config.get('linux', 'xfs_mount_options')
+
+    if getSysCtlFromConfig('linux'):
+        return True
+
+    return False
+
 
 # return True for error
 def populateGpCheckApplianceConfigParams():
@@ -980,14 +1000,9 @@ def populateGpCheckApplianceConfigParams():
     gpcheck_config.dell_bios_version_master = config.get(gpcheck_config.gpcheck_config_version, 'dell_bios_version_master')
     gpcheck_config.dell_bios_version_segment = config.get(gpcheck_config.gpcheck_config_version, 'dell_bios_version_segment')
 
-    for opt in config.options(gpcheck_config.gpcheck_config_version):
-        if re.match('sysctl\.', opt):
-            fields = opt.split("sysctl.")
-            if len(fields) != 2:
-                printError(None, "Bad config line entry: %s" % opt)
-            sysctl = fields[1]
-            gpcheck_config.expectedSysctlValues[sysctl] = config.get(gpcheck_config.gpcheck_config_version, opt)
-    
+    if getSysCtlFromConfig(gpcheck_config.gpcheck_config_version):
+        return True
+
     return False
 
 def testAppliance():
