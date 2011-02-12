@@ -22929,7 +22929,7 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("URI protocols must be the same for all data sources"),
-					 errhint("Available protocols are 'http', 'file' and 'gpfdist'"),
+					 errhint("Available protocols are 'http', 'file', 'gphdfs' and 'gpfdist'"),
 							   errOmitLocation(true)));
 
 		}
@@ -22942,7 +22942,7 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("unsupported URI protocol for \'%s\'", uri_str_final),
-					 errhint("Use 'file', 'http', 'hdfs' or 'gpfdist' protocol instead."),
+					 errhint("Use 'file', 'http', 'gphdfs' or 'gpfdist' protocol instead."),
 							   errOmitLocation(true)));
 		}
 
@@ -22965,7 +22965,7 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("unsupported URI protocol \'%s\' for writable external table", 
 							(uri->protocol == URI_HTTP ? "http" : "file")),
-					 errhint("Writable external tables may use \'gpfdist\' URIs only."),
+					 errhint("Writable external tables may use \'gpfdist\' or \'gphdfs\' URIs only."),
 							   errOmitLocation(true)));
 
 		if(iswritable && strchr(uri->path, '*'))
@@ -22975,10 +22975,10 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 							"\'%s\'", uri_str_final),
 					errhint("Specify the explicit path and file name to write into.")));
 		
-		if(iswritable && uri->path[strlen(uri->path) - 1] == '/')
+		if(iswritable && uri->path[strlen(uri->path) - 1] == '/' && uri->protocol == URI_GPFDIST)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					errmsg("Unsupported use of a directory name in a writable external web table definition: "
+					errmsg("Unsupported use of a directory name in a writable gpfdist external table : "
 							"\'%s\'", uri_str_final),
 					errhint("Specify the explicit path and file name to write into."),
 							   errOmitLocation(true)));
