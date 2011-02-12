@@ -96,6 +96,27 @@ static void ProcKill(int code, Datum arg);
 static void AuxiliaryProcKill(int code, Datum arg);
 static bool CheckStatementTimeout(void);
 
+static int
+countFreeProcs()
+{
+	Assert(ProcGlobal != NULL);
+	
+	SHMEM_OFFSET offset = ProcGlobal->freeProcs;
+	PGPROC *freeProcs;
+
+	int count = 0;
+	while ((count < MaxBackends) && (offset != INVALID_OFFSET))
+	{
+		count++;
+
+		freeProcs = (PGPROC *)MAKE_PTR(offset);
+		offset = freeProcs->links.next;
+	}
+
+	Assert(offset == INVALID_OFFSET);
+
+	return count;
+}
 
 /*
  * Report shared-memory space needed by InitProcGlobal.
@@ -256,10 +277,21 @@ InitProcess(void)
 		MyProc = (PGPROC *) MAKE_PTR(myOffset);
 		procglobal->freeProcs = MyProc->links.next;
 
+		SHMEM_OFFSET newOffset = procglobal->freeProcs;
+
+		/* Set the next pointer to INVALID_OFFSET */
+		MyProc->links.next = INVALID_OFFSET;
+
         mppLocalProcessSerial = ++procglobal->mppLocalProcessCounter;
 
 		SpinLockRelease(ProcStructLock);
 		lockHolderProcPtr = MyProc;
+
+		if (gp_debug_pgproc)
+		{
+			elog(LOG, "allocating PGPROC entry for pid %d, freeProcs (prev offset, new offset): (%ld, %ld)",
+				 MyProcPid, myOffset, newOffset);
+		}
 	}
 	else
 	{
@@ -1679,8 +1711,10 @@ void ProcNewMppSessionId(int *newSessionId)
  * freeAuxiliaryProcEntryAndReturnReset -- free proc entry in AuxiliaryProcs array,
  * and return the postmasterResetRequired value.
  *
- * Note that we don't need to hold a lock on PGPROC structure here, since this is
- * only called by postmaster or the filerep main process.
+ * Note that we still need to hold a lock on PGPROC structure here, even though it is
+ * only called by postmaster or the filerep main process. The child process
+ * may have already been forked, and may call InitAuxiliaryProcess() when this
+ * function is called.
  *
  * If inArray is not NULL, it will be set to true when the given pid is found
  * in AuxiliaryProcs array.
@@ -1689,11 +1723,10 @@ bool
 freeAuxiliaryProcEntryAndReturnReset(int pid, bool *inArray)
 {
 	bool resetRequired = true;
-	if (inArray != NULL)
-	{
-		*inArray = false;
-	}
-	
+	bool myInArray = false;
+
+	SpinLockAcquire(ProcStructLock);
+
 	for (int i=0; i < NUM_AUXILIARY_PROCS; i++)
 	{
 		PGPROC *myProc = &AuxiliaryProcs[i];
@@ -1706,16 +1739,23 @@ freeAuxiliaryProcEntryAndReturnReset(int pid, bool *inArray)
 			myProc->pid = 0;
 			myProc->postmasterResetRequired = true;
 
-			elog(DEBUG2, "setting auxiliary proc to free: pid=%d (resetRequired=%d)",
-				 pid, resetRequired);
-
-			if (inArray != NULL)
-			{
-				*inArray = true;
-			}
-			
-			return resetRequired;
+			myInArray = true;
+						
+			break;
 		}
+	}
+
+	SpinLockRelease(ProcStructLock);
+	
+	if (inArray != NULL)
+	{
+		*inArray = myInArray;
+	}
+
+	if (myInArray && gp_debug_pgproc)
+	{
+		elog(LOG, "setting auxiliary proc to free: pid=%d (resetRequired=%d)",
+			 pid, resetRequired);
 	}
 
 	return resetRequired;
@@ -1725,8 +1765,9 @@ freeAuxiliaryProcEntryAndReturnReset(int pid, bool *inArray)
  * freeProcEntryAndReturnReset -- free proc entry in PGPROC or AuxiliaryProcs array,
  * and return the postmasterResetRequired value.
  *
- * Note that we don't need to hold a lock on PGPROC structure here, since this is
- * only called by postmaster.
+ * Note that we still need to hold a lock on PGPROC structure here, even though this
+ * is only called by the postmaster. The child process may have already been forked,
+ * and may call InitProcess() or InitAuxiliaryProcess() when this function is called.
  */
 bool
 freeProcEntryAndReturnReset(int pid)
@@ -1734,6 +1775,8 @@ freeProcEntryAndReturnReset(int pid)
 	Assert(ProcGlobal != NULL);
 	bool resetRequired = true;
 	
+	SpinLockAcquire(ProcStructLock);
+
 	PGPROC *procs = ProcGlobal->procs;
 	
     /* Return PGPROC structure to freelist */
@@ -1743,18 +1786,43 @@ freeProcEntryAndReturnReset(int pid)
 
 		if (myProc->pid == pid)
 		{
+			SHMEM_OFFSET prevOffset = ProcGlobal->freeProcs;
+			
+			Assert (myProc->links.next == INVALID_OFFSET);
+
 			myProc->links.next = ProcGlobal->freeProcs;
 			ProcGlobal->freeProcs = MAKE_OFFSET(myProc);
 			resetRequired = myProc->postmasterResetRequired;
 
 			myProc->postmasterResetRequired = true;
+			myProc->pid = 0;
 
-			elog(DEBUG2, "moving PGPROC entry to freelist: pid=%d (resetRequired=%d)",
-				 pid, resetRequired);
+			SHMEM_OFFSET newOffset = ProcGlobal->freeProcs;
+			int numFreeProcs = 0;
+			
+			if (gp_debug_pgproc)
+			{
+				numFreeProcs = countFreeProcs();
+			}
+			
+
+			SpinLockRelease(ProcStructLock);
+
+			if (gp_debug_pgproc)
+			{
+				elog(LOG, "moving PGPROC entry to freelist: pid=%d (resetRequired=%d)",
+					 pid, resetRequired);
+				elog(LOG, "freeing PGPROC entry for pid %d, freeProcs (prev offset, new offset): (%ld, %ld)",
+					 pid, prevOffset, newOffset);
+				elog(LOG, "after freeing PGPROC entry for pid %d, number of free PGPROC entries: %d",
+					 pid, numFreeProcs);
+			}
 			
 			return resetRequired;
 		}
 	}
+
+	SpinLockRelease(ProcStructLock);
 
 	bool found = false;
 	resetRequired = freeAuxiliaryProcEntryAndReturnReset(pid, &found);
@@ -1762,7 +1830,11 @@ freeProcEntryAndReturnReset(int pid)
 	if (found)
 		return resetRequired;
 
-	elog(DEBUG2, "proc entry not found: pid=%d", pid);
+	
+	if (gp_debug_pgproc)
+	{
+		elog(LOG, "proc entry not found: pid=%d", pid);
+	}
 
 	return resetRequired;
 }

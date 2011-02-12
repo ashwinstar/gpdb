@@ -62,6 +62,7 @@ unsigned long gp_qd_proc_offset;	/* the proc entry for the original backend on t
 
 int         gp_command_count;          /* num of commands from client */
 
+bool        gp_debug_pgproc;           /* print debug info for PGPROC */
 bool		Debug_print_prelim_plan;	/* Shall we log argument of
 										 * cdbparallelize? */
 

@@ -252,6 +252,13 @@ extern bool gp_eager_hashtable_release;
  */
 extern bool Debug_print_combocid_detail;
 
+/* Parameter gp_debug_pgproc
+ *
+ * This run-time parameter requests to print out detailed info relevant to
+ * PGPROC.
+ */
+extern bool gp_debug_pgproc;
+
 /* Parameter debug_print_prelim_plan
  *
  * This run-time parameter is closely related to the PostgreSQL parameter

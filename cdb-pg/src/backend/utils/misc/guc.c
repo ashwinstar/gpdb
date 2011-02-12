@@ -1826,6 +1826,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_debug_pgproc", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Print debug info relevant to PGPROC."),
+		 	NULL /* long description */,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_debug_pgproc,
+		false, NULL, NULL
+	},
+
+	{
 		{"Debug_print_combocid_detail", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("When running into combocid limit, emit detailed snapshot information."),
 			NULL,
