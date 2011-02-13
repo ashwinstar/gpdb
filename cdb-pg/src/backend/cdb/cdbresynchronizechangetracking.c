@@ -294,6 +294,19 @@ static void ChangeTracking_AddBufferPoolChange(CTFType			ftype,
 	}
 	
 	LWLockRelease(ChangeTrackingWriteLock);
+	
+	if (Debug_filerep_print)
+	{
+		elog(LOG,
+			 "ChangeTracking_AddBufferPoolChange() write buffer status "
+			 "record count '%u' buffer size '%u' max buffer size '%u' "
+			 " next offset " INT64_FORMAT " file seg '%u' ",
+			 bufstat->recordcount,
+			 bufstat->bufsize,
+			 bufstat->maxbufsize,
+			 bufstat->nextwritepos,
+			 bufstat->fileseg);
+	}
 }
 
 /*
@@ -2379,6 +2392,20 @@ ChangeTracking_RecordLastChangeTrackedLoc(void)
 	{
 		if(ChangeTracking_WriteBuffer(file, ftype) < 0)
 			ChangeTracking_HandleWriteError(ftype);
+	}
+
+	{
+			char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+			
+			snprintf(tmpBuf, sizeof(tmpBuf), 
+					 "no ct records to flush count '%u' size '%u' max '%u' offset " INT64_FORMAT " fileseg '%u' ",
+					 CTMainWriteBufStatus->recordcount,
+					 CTMainWriteBufStatus->bufsize,
+					 CTMainWriteBufStatus->maxbufsize,
+					 CTMainWriteBufStatus->nextwritepos,
+					 CTMainWriteBufStatus->fileseg);
+			
+			FileRep_InsertConfigLogEntry(tmpBuf);
 	}
 	
 	if(FileSync(file) < 0)

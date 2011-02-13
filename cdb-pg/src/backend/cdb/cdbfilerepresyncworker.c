@@ -261,11 +261,11 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 						
 						loc = PageGetLSN(page);
 						
+						if (Debug_filerep_print)
 						{
-							char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
-							
-							snprintf(tmpBuf, sizeof(tmpBuf), 
-									 "full resync buffer pool identifier '%u/%u/%u' num blocks '%d' blkno '%d' lsn begin change tracking '%s(%u/%u)' lsn page '%s(%u/%u)' lsn end change tracking '%s(%u/%u)' ",
+							elog(LOG, 
+									 "full resync buffer pool identifier '%u/%u/%u' num blocks '%d' blkno '%d' lsn begin change tracking '%s(%u/%u)' "
+									 "lsn page '%s(%u/%u)' lsn end change tracking '%s(%u/%u)' ",
 									 smgr_relation->smgr_rnode.spcNode,
 									 smgr_relation->smgr_rnode.dbNode,
 									 smgr_relation->smgr_rnode.relNode,		
@@ -280,8 +280,38 @@ FileRepPrimary_ResyncWrite(FileRepResyncHashEntry_s	*entry)
 									 XLogLocationToString(&endResyncLSN),
 									 endResyncLSN.xlogid,
 									 endResyncLSN.xrecoff);
+						}
+						else
+						{
+							char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
+							
+							snprintf(tmpBuf, sizeof(tmpBuf), 
+									 "full resync buffer pool identifier '%u/%u/%u' num blocks '%d' blkno '%d' lsn begin change tracking '%s(%u/%u)' ",
+									 smgr_relation->smgr_rnode.spcNode,
+									 smgr_relation->smgr_rnode.dbNode,
+									 smgr_relation->smgr_rnode.relNode,		
+									 numBlocks,
+									 blkno,
+									 XLogLocationToString(&entry->mirrorBufpoolResyncCkptLoc),
+									 entry->mirrorBufpoolResyncCkptLoc.xlogid,
+									 entry->mirrorBufpoolResyncCkptLoc.xrecoff);
 														
 							FileRep_InsertConfigLogEntry(tmpBuf);
+							
+							snprintf(tmpBuf, sizeof(tmpBuf), 
+									 "full resync buffer pool identifier '%u/%u/%u' lsn page '%s(%u/%u)' lsn end change tracking '%s(%u/%u)' ",
+									 smgr_relation->smgr_rnode.spcNode,
+									 smgr_relation->smgr_rnode.dbNode,
+									 smgr_relation->smgr_rnode.relNode,		
+									 XLogLocationToString(&loc),
+									 loc.xlogid,
+									 loc.xrecoff,
+									 XLogLocationToString(&endResyncLSN),
+									 endResyncLSN.xlogid,
+									 endResyncLSN.xrecoff);
+							
+							FileRep_InsertConfigLogEntry(tmpBuf);
+							
 						}
 						
 						if (XLByteLE(PageGetLSN(page), endResyncLSN) &&
@@ -623,11 +653,29 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 				
 				loc = PageGetLSN(page); 
 				
+				if(Debug_filerep_print)
+				{
+					elog(LOG,	
+							"incremental resync buffer pool identifier '%u/%u/%u' num blocks '%d' blkno '%d' lsn page '%s(%u/%u)' "
+							"lsn end change tracking '%s(%u/%u)' ",
+							smgr_relation->smgr_rnode.spcNode,
+							smgr_relation->smgr_rnode.dbNode,
+							smgr_relation->smgr_rnode.relNode,		
+							numBlocks,
+							result->entries[ii].block_num,
+							XLogLocationToString(&loc),
+							loc.xlogid,
+							loc.xrecoff,
+							XLogLocationToString(&loc1),
+							result->entries[ii].lsn_end.xlogid,
+							result->entries[ii].lsn_end.xrecoff);					
+				}
+				else
 				{
 					char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
 					
 					snprintf(tmpBuf, sizeof(tmpBuf), 
-							 "incremental resync buffer pool identifier '%u/%u/%u' num blocks '%d' blkno '%d' lsn page '%s(%u/%u)' lsn end change tracking '%s(%u/%u)' ",
+							 "incremental resync buffer pool identifier '%u/%u/%u' num blocks '%d' blkno '%d' lsn page '%s(%u/%u)' ",
 							 smgr_relation->smgr_rnode.spcNode,
 							 smgr_relation->smgr_rnode.dbNode,
 							 smgr_relation->smgr_rnode.relNode,		
@@ -635,14 +683,23 @@ FileRepPrimary_ResyncBufferPoolIncrementalWrite(ChangeTrackingRequest *request)
 							 result->entries[ii].block_num,
 							 XLogLocationToString(&loc),
 							 loc.xlogid,
-							 loc.xrecoff,
-							 XLogLocationToString(&loc1),
-							 loc1.xlogid,
-							 loc1.xrecoff);
+							 loc.xrecoff);
 					
 					FileRep_InsertConfigLogEntry(tmpBuf);
+					
+					snprintf(tmpBuf, sizeof(tmpBuf), 
+							 "incremental resync buffer pool identifier '%u/%u/%u' lsn end change tracking '%s(%u/%u)' ",
+							 smgr_relation->smgr_rnode.spcNode,
+							 smgr_relation->smgr_rnode.dbNode,
+							 smgr_relation->smgr_rnode.relNode,		
+							 XLogLocationToString(&loc1),
+							 result->entries[ii].lsn_end.xlogid,
+							 result->entries[ii].lsn_end.xrecoff);
+					
+					FileRep_InsertConfigLogEntry(tmpBuf);
+					
 				}
-				
+								
 				if (XLByteEQ(PageGetLSN(page), result->entries[ii].lsn_end)) 	
 				{
 					smgrwrite(smgr_relation, 

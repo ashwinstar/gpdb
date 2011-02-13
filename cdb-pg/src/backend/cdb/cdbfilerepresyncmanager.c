@@ -860,7 +860,7 @@ FileRepResyncManager_InResyncTransition(void)
 	{
 		goto exit;
 	}	
-		
+
 	FileRepSubProcess_SetState(FileRepStateReady);	
 	
 #ifdef FAULT_INJECTOR	
@@ -1115,25 +1115,52 @@ FileRepPrimary_RunResyncManager(void)
 			}
 		}
 
+		
+		if (Debug_filerep_print)
+		{
+			elog(LOG,
+					  "resync running identifier'%s' index '%d' rel storage mgr '%s(%d)' mirror sync state:'%s(%d)' "
+					  "ao loss eof " INT64_FORMAT " ao new eof " INT64_FORMAT " changed page count " INT64_FORMAT " "
+					  "resync ckpt lsn '%d/%d' resync ckpt blkno '%u' ",
+					  entry.fileName, 
+					  ii++,
+					  PersistentFileSysRelStorageMgr_Name(entry.relStorageMgr),
+					  entry.relStorageMgr,
+					  MirroredRelDataSynchronizationState_Name(entry.mirrorDataSynchronizationState),
+					  entry.mirrorDataSynchronizationState,
+					  entry.mirrorAppendOnlyLossEof,
+					  entry.mirrorAppendOnlyNewEof,
+					  entry.mirrorBufpoolResyncChangedPageCount,
+					  entry.mirrorBufpoolResyncCkptLoc.xlogid,
+					  entry.mirrorBufpoolResyncCkptLoc.xrecoff,
+					  entry.mirrorBufpoolResyncCkptBlockNum);			
+		}
+		else
 		{
 			char	tmpBuf[FILEREP_MAX_LOG_DESCRIPTION_LEN];
 			
 			snprintf(tmpBuf, sizeof(tmpBuf), 
-					 "resync running identifier'%s' index '%d' rel storage mgr '%s(%d)' mirror sync state:'%s(%d)' resync ckpt lsn '%d/%d' resync ckpt blkno '%u' ao loss eof " INT64_FORMAT " ao new eof " INT64_FORMAT " changed page count " INT64_FORMAT " ",
+					 "resync running identifier'%s' index '%d' rel storage mgr '%s(%d)' mirror sync state:'%s(%d)' ",
 					 entry.fileName, 
 					 ii++,
 					 PersistentFileSysRelStorageMgr_Name(entry.relStorageMgr),
 					 entry.relStorageMgr,
 					 MirroredRelDataSynchronizationState_Name(entry.mirrorDataSynchronizationState),
-					 entry.mirrorDataSynchronizationState,
-					 entry.mirrorBufpoolResyncCkptLoc.xlogid,
-					 entry.mirrorBufpoolResyncCkptLoc.xrecoff,
-					 entry.mirrorBufpoolResyncCkptBlockNum,
-					 entry.mirrorAppendOnlyLossEof,
-					 entry.mirrorAppendOnlyNewEof,
-					 entry.mirrorBufpoolResyncChangedPageCount);
+					 entry.mirrorDataSynchronizationState);
 			
 			FileRep_InsertConfigLogEntry(tmpBuf);
+			
+			snprintf(tmpBuf, sizeof(tmpBuf), 
+					 "resync running identifier'%s' ao loss eof " INT64_FORMAT " ao new eof " INT64_FORMAT " changed page count " INT64_FORMAT " resync ckpt lsn '%d/%d' resync ckpt blkno '%u' ",
+					 entry.fileName, 
+					 entry.mirrorAppendOnlyLossEof,
+					 entry.mirrorAppendOnlyNewEof,
+					 entry.mirrorBufpoolResyncChangedPageCount,
+					 entry.mirrorBufpoolResyncCkptLoc.xlogid,
+					 entry.mirrorBufpoolResyncCkptLoc.xrecoff,
+					 entry.mirrorBufpoolResyncCkptBlockNum);
+			
+					 FileRep_InsertConfigLogEntry(tmpBuf);			
 		}		
 	}
 	
