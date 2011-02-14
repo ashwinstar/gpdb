@@ -615,7 +615,7 @@ PROMPT_CONTINUE () {
 		fi
 		SET_VAC_TXT
 		LOG_MSG "[INFO]:-Vacuum mode type                 = $VAC_TXT" 1
-		LOG_MSG "[INFO]:-Disk free percent value          = $FREE_SPACE_PERCENT %" 1
+		LOG_MSG "[INFO]:-Ensure remaining free disk       > $FREE_SPACE_PERCENT %" 1
 		$ECHO
 		$ECHO "Continue with Greenplum Database system dump yY|nN >"
 		read REPLY
