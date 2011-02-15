@@ -995,10 +995,11 @@ GP_RESTORE_TABLE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Create a fake timestamp for restore dump files
 	TABLE_TIMESTAMP=`$DATE +%Y%m%d%H%M%S`
-	BATCH_LIMIT=${#PRIMARY_QE_ARRAY[@]}
 	#Get segment details from the contents of DBID_LIST
 	DBID_TXT=`$ECHO $DBID_LIST|$TR ' ' ','`
 	TAB_ARRAY=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname, datadir, dbid from $CONFIG_TABLE as _gp_config where dbid in (${DBID_TXT}) and content<>-1 order by port;"`)
+	# Set BATCH_LIMIT to the number of segment dbids that will be restored.
+	BATCH_LIMIT=${#TAB_ARRAY[@]}
 	if [ $BATCH_DEFAULT -gt $BATCH_LIMIT ];then
 		RESET_BATCH_VALUE
 	fi
