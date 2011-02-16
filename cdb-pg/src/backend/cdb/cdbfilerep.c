@@ -3315,8 +3315,7 @@ void FileRep_Main(void)
 	FileRep_ShmemReInit();
 	FileRepAck_ShmemReInit();
 	FileRepLog_ShmemReInit();
-	ChangeTrackingShmemReset();
-
+		
 	MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
 	primaryMirrorGetFilerepArguments(&fileRepRole, &segmentState, &dataState, &fileRepPrimaryHostAddress,
 	    &fileRepPrimaryPort, &fileRepMirrorHostAddress, &fileRepMirrorPort, &fileRepFullResync );
@@ -3332,7 +3331,16 @@ void FileRep_Main(void)
 		 FileRep_SetState(FileRepStateFault);
 		goto shutdown;
 	}
-		
+	
+	/*
+	 * Change Tracking shared memory is not re-initialized during transition to resync since
+	 * Change Tracking buffers are flushed during transition to resync under MirroredLock. 
+	 */
+	if (segmentState != SegmentStateInResyncTransition)
+	{
+		ChangeTrackingShmemReset();
+	}
+	
 	snprintf(title, sizeof(title), "%s",
 			 fileRepRole == FileRepPrimaryRole ?
 			 	"primary process" : "mirror process");
