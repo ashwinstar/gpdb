@@ -4654,6 +4654,8 @@ static void PersistentFileSysObj_ScanStateAction(
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
 
 	PersistentStoreScan storeScan;
+
+	HeapTuple tupleCopy;
 	 
 	Datum *values;
 	 
@@ -4665,6 +4667,8 @@ static void PersistentFileSysObj_ScanStateAction(
 	MirroredObjectExistenceState	mirrorExistenceState;
 	TransactionId				 	parentXid;
 	int64						 	serialNum;
+
+	tupleCopy = NULL;
 
 	PersistentFileSysObj_GetDataPtrs(
 								fsObjType,
@@ -4822,16 +4826,20 @@ static void PersistentFileSysObj_ScanStateAction(
 							 ItemPointerToString(&persistentTid));
 				}
 
+				tupleCopy = PersistentStore_GetScanTupleCopy(&storeScan);
+
 				PersistentFileSysObj_UpdateTupleMirrorState(
 														fileSysObjData,
 														fileSysObjSharedData,
 														fsObjType,
-														PersistentStore_GetScanTupleCopy(&storeScan),
+														tupleCopy,
 														&persistentTid,
 														persistentSerialNum,
 														newMirrorExistenceState,
 														MirroredRelDataSynchronizationState_FullCopy,
 														/* flushToXLog */ false);
+
+				heap_freetuple(tupleCopy);
 			}
 			break;
 			
@@ -4973,17 +4981,21 @@ static void PersistentFileSysObj_ScanStateAction(
 						 MirroredObjectExistenceState_Name(newMirrorExistenceState),
 						 serialNum,
 						 ItemPointerToString(&persistentTid));
-				
+
+				tupleCopy = PersistentStore_GetScanTupleCopy(&storeScan);
+
 				PersistentFileSysObj_UpdateTupleMirrorReCreated(
 														fileSysObjData,
 														fileSysObjSharedData,
 														fsObjType,
-														PersistentStore_GetScanTupleCopy(&storeScan),
+														tupleCopy,
 														&persistentTid,
 														persistentSerialNum,
 														relStorageMgr,
 														newMirrorExistenceState,
 														/* flushToXLog */ false);
+
+				heap_freetuple(tupleCopy);
 			}
 			else
 			{
@@ -5069,15 +5081,20 @@ static void PersistentFileSysObj_ScanStateAction(
 			 * Change mirror existence state from 'Not Configured' to 'Mirror Down Before Create'
 			 * to indicate nothing exists on the mirror yet.
 			 */
+
+			tupleCopy = PersistentStore_GetScanTupleCopy(&storeScan);
+
 			PersistentFileSysObj_UpdateTupleMirrorExistenceState(
 													fileSysObjData,
 													fileSysObjSharedData,
 													fsObjType,
-													PersistentStore_GetScanTupleCopy(&storeScan),
+													tupleCopy,
 													&persistentTid,
 													persistentSerialNum,
 													MirroredObjectExistenceState_MirrorDownBeforeCreate,
 													/* flushToXLog */ false);
+			
+			heap_freetuple(tupleCopy);
 			break;
 			
 		default:
@@ -5205,11 +5222,15 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
 
 	PersistentStoreScan storeScan;
+
+	HeapTuple tupleCopy;
 	 
 	Datum values[Natts_gp_persistent_relation_node];
 	 
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
+
+	tupleCopy = NULL;
 
 	PersistentFileSysObj_VerifyInitScan();
 
@@ -5298,14 +5319,18 @@ void PersistentFileSysObj_MarkWholeMirrorScanIncremental(void)
 					 serialNum,
 					 ItemPointerToString(&persistentTid));
 
+			tupleCopy = PersistentStore_GetScanTupleCopy(&storeScan);
+
 			PersistentFileSysObj_UpdateTupleRelDataSynchronizationState(
 													fileSysObjData,
 													fileSysObjSharedData,
-													PersistentStore_GetScanTupleCopy(&storeScan),
+													tupleCopy,
 													&persistentTid,
 													persistentSerialNum,
 													MirroredRelDataSynchronizationState_BufferPoolScanIncremental,
 													/* flushToXLog */ false);
+			
+			heap_freetuple(tupleCopy);
 		}
 		else
 		{
@@ -5342,11 +5367,15 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
 
 	PersistentStoreScan storeScan;
+
+	HeapTuple tupleCopy;
 	 
 	Datum values[Natts_gp_persistent_relation_node];
 	 
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
+
+	tupleCopy = NULL;
 
 	PersistentFileSysObj_VerifyInitScan();
 
@@ -5424,14 +5453,19 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 		 */
 		if (GpPersistent_SkipXLogInfo(relFileNode.relNode))
 		{
+
+			tupleCopy = PersistentStore_GetScanTupleCopy(&storeScan);
+
 			PersistentFileSysObj_UpdateTupleRelDataSynchronizationState(
 													fileSysObjData,
 													fileSysObjSharedData,
-													PersistentStore_GetScanTupleCopy(&storeScan),
+													tupleCopy,
 													&persistentTid,
 													persistentSerialNum,
 													MirroredRelDataSynchronizationState_BufferPoolScanIncremental,
 													/* flushToXLog */ false);
+			
+			heap_freetuple(tupleCopy);
 
 			numOf32kBlocks = 
 					PersistentFileSysObj_GetBufferPoolRelationTotalBlocks(
@@ -5459,10 +5493,13 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 			 * needs be resynchronized with 'Scan Incremental', then mark and examine
 			 * the file EOFs.
 			 */
+			
+			tupleCopy = PersistentStore_GetScanTupleCopy(&storeScan);
+			
 			PersistentFileSysObj_UpdateTupleRelDataSynchronizationState(
 													fileSysObjData,
 													fileSysObjSharedData,
-													PersistentStore_GetScanTupleCopy(&storeScan),
+													tupleCopy,
 													&persistentTid,
 													persistentSerialNum,
 													MirroredRelDataSynchronizationState_BufferPoolScanIncremental,
@@ -5470,11 +5507,13 @@ void PersistentFileSysObj_MarkSpecialScanIncremental(void)
 			PersistentFileSysObj_UpdateTupleMarkBufPoolRelationForScanIncrementalResync(
 													fileSysObjData,
 													fileSysObjSharedData,
-													PersistentStore_GetScanTupleCopy(&storeScan),
+													tupleCopy,
 													&persistentTid,
 													persistentSerialNum,
 													/* newMirrorBufpoolMarkedForScanIncrementalResync */ false,
 													/* flushToXLog */ false);
+			
+			heap_freetuple(tupleCopy);
 
 			numOf32kBlocks = 
 					PersistentFileSysObj_GetBufferPoolRelationTotalBlocks(
@@ -5516,11 +5555,15 @@ void PersistentFileSysObj_MarkAppendOnlyCatchup(void)
 	PersistentFileSysObjSharedData	*fileSysObjSharedData;
 
 	PersistentStoreScan storeScan;
+
+	HeapTuple tupleCopy;
 	 
 	Datum values[Natts_gp_persistent_relation_node];
 	 
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
+
+	tupleCopy = NULL;
 
 	PersistentFileSysObj_VerifyInitScan();
 
@@ -5607,15 +5650,19 @@ void PersistentFileSysObj_MarkAppendOnlyCatchup(void)
 			if (mirrorAppendOnlyLossEof < mirrorAppendOnlyNewEof)
 			{
 				int64 roundedUp32kBlocks;
-
+				
+				tupleCopy = PersistentStore_GetScanTupleCopy(&storeScan);
+				
 				PersistentFileSysObj_UpdateTupleRelDataSynchronizationState(
 														fileSysObjData,
 														fileSysObjSharedData,
-														PersistentStore_GetScanTupleCopy(&storeScan),
+														tupleCopy,
 														&persistentTid,
 														persistentSerialNum,
 														MirroredRelDataSynchronizationState_AppendOnlyCatchup,
 														/* flushToXLog */ false);
+				
+				heap_freetuple(tupleCopy);
 
 				roundedUp32kBlocks = (mirrorAppendOnlyNewEof - mirrorAppendOnlyLossEof + BLCKSZ - 1) / BLCKSZ;
 				
