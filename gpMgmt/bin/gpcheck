@@ -129,7 +129,7 @@ def createHostList():
                 if len(hostname) < 1:
                     continue
                 hostlist.append(hostname)
-        except:
+        except Exception, e:
             logger.error("Error while reading host file: %s" % options.file)
             logger.error(e.__str__())
             return True
