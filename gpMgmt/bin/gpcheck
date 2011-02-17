@@ -393,6 +393,8 @@ def testApplianceOmreportVdisks(host):
     deviceName = 'Device Name'
     vdiskSize = 'Size'
     vdiskStripeSize = 'Stripe Element Size'
+    physicalDiskCachePolicy = 'Disk Cache Policy'
+    expectedPhysicalDiskCachePolicy = 'Disabled'
 
     allDevices = set()
     virtualDisks = dict() # mapping from device name to dict of properties 
@@ -424,6 +426,14 @@ def testApplianceOmreportVdisks(host):
             continue
 
         vdisk = virtualDisks[dev]
+
+        if physicalDiskCachePolicy in vdisk:
+            actualPolicy = vdisk[physicalDiskCachePolicy]
+            if actualPolicy != expectedPhysicalDiskCachePolicy:
+                printError(host.hostname, "virtual disk %s has '%s' setting of '%s' and it should be '%s'" % (dev, physicalDiskCachePolicy,  actualPolicy, expectedPhysicalDiskCachePolicy))
+        else:
+            printError(host.hostname, "virtual disk %s does not have expected attribute: %s" % physicalDiskCachePolicy)
+
 
         if vdiskSize in vdisk:
             size = 0
