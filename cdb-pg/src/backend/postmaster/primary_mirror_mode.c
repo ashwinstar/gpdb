@@ -15,13 +15,6 @@
 #include "utils/guc.h"
 #include <string.h>
 
-/**
- * If set to true then a postmaster reset while in-sync or resync will cause the mirror or primary to try to contact its
- *   peer to execute a coordinated reset.  If the coordinated reset fails, then reset will transition
- *   to a fault state, which will subsequently cause the fault prober to move the segment pair into a
- *   change-tracking/down pair.
- */
-#define USE_PEER_RESET_DURING_POSTMASTER_RESET (true)
 
 /**
  * todo MIRRORING Review setup of signal handlers here --
@@ -972,31 +965,42 @@ setFaultAfterReset(bool val)
 
 
 /**
+ * Update shared memory to transition segment to mirroring fault
+ */
+void
+setTransitionToFault()
+{
+	/* mark mirroring fault if segment is not marked to transition to change-tracking */
+	Assert(pmModuleState->requestedTransition.dataState != DataStateInChangeTracking);
+
+	pmModuleState->requestedTransition.transitionToFault = true;
+}
+
+
+/**
+ * Get flag from shared memory indicating transition to mirroring fault
+ */
+bool
+getTransitionToFault()
+{
+	return pmModuleState->requestedTransition.transitionToFault;
+}
+
+
+/**
  * Called on postmaster reset, after all children have been shut down but before starting the children back up.
  *   Returns true if the postmaster should try to reset the peer before doing a reset.
  */
 bool
 primaryMirrorPostmasterResetShouldRestartPeer(void)
 {
-	if (!USE_PEER_RESET_DURING_POSTMASTER_RESET)
-	{
-		return false;
-	}
+	Assert(pmLocalState.haveSetMostRecentTransition);
 
-	if (!pmLocalState.haveSetMostRecentTransition)
-	{
-		return false;
-	}
-
-	PrimaryMirrorMode mode = pmLocalState.mostRecentTransition.mode;
-
-	if (mode == PMModePrimarySegment &&
-	    pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking)
-	{
-		/* if we're a primary AND we were in resync/sync then try to restart in that mode */
-		return true;
-	}
-    return false;
+	/* if we're a primary AND we were in resync/sync then try to restart in that mode */
+	return (
+		pmLocalState.mostRecentTransition.mode == PMModePrimarySegment &&
+		pmLocalState.mostRecentTransition.dataState != DataStateInChangeTracking &&
+		!getTransitionToFault());
 }
 
 /**
@@ -1012,16 +1016,6 @@ primaryMirrorHandlePostmasterReset(void)
 
 	Assert(pmModuleState->mode == PMModeUninitialized);
 	Assert(pmLocalState.haveSetMostRecentTransition);
-
-	if (!USE_PEER_RESET_DURING_POSTMASTER_RESET)
-	{
-		/*
-		 * if we have not enabled
-		 * USE_PEER_RESET_DURING_POSTMASTER_RESET, then treat it as
-		 * ALWAYS doing a reset to the fault state
-		 */
-		pmLocalState.doNextResetToFault = true;
-	}
 
 	elog(LOG,
 		 "PrimaryMirrorMode: Processing postmaster reset with recent mode of %d",
@@ -1105,17 +1099,8 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 		{
 			args->transitionNumber = pmModuleState->transitionNumberCounter++;
 
-			/**
-			 * we can have one without the other because
-			 *   a) postmaster will finish before listener
-			 *                  (so isTransitionRequested = false, isTransitionListenerFinished = true)
-			 *   OR
-			 *
-			 *   b) listener may die, but postmaster still needs to finish its work
-			 *      (isTransitionRequested = true, isTransitionListenerFinished = false)
-			 */
-			if (pmModuleState->isTransitionRequested ||
-				!pmModuleState->isTransitionListenerFinished)
+			/* check if another transition is currently in progress */
+			if (!pmModuleState->isTransitionListenerFinished)
 			{
 				elog(getPrimaryMirrorModeDebugLogLevel(false),
 					 "PrimaryMirrorTransitionRequest (%d) Result: Cannot transition: modulestate is: %s %s",

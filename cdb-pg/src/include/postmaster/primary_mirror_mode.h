@@ -333,6 +333,9 @@ extern void primaryMirrorGetFilerepArguments(
 				bool *fullSyncOut);
 extern void primaryMirrorHandlePostmasterReset(void);
 extern void setFaultAfterReset(bool val);
+extern void setTransitionToFault(void);
+extern bool getTransitionToFault(void);
+
 extern bool primaryMirrorPostmasterResetShouldRestartPeer(void);
 extern void primaryMirrorRecordSegmentStateToPostmasterLocalMemory(void);
 extern PrimaryMirrorModeTransitionArguments primaryMirrorGetArgumentsFromLocalMemory(void);

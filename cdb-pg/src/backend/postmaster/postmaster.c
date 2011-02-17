@@ -1991,7 +1991,9 @@ BeginResetOfPostmasterAfterChildrenAreShutDown(void)
 	getPrimaryMirrorStatusCodes(&pm_mode, NULL, NULL, &f_type);
 
 	/* set flag indicating mirroring fault */
-	bool hasFaultTypeMirror = (pm_mode == PMModePrimarySegment && f_type == FaultTypeMirror);
+	bool hasFaultTypeMirror =
+			(pm_mode == PMModePrimarySegment && f_type == FaultTypeMirror) ||
+			getTransitionToFault();
 	setFaultAfterReset(hasFaultTypeMirror);
 
 	/*
@@ -5370,11 +5372,9 @@ static PMState StateMachineCheck_WaitFilerepPeerReset(void)
 			/* no change */
 			break;
 		case PEER_RESET_FAILED:
-			/* set flag indicating failure to reset peer */
-			setFaultAfterReset(true);
 
 			/* mark fault in shared memory */
-			primaryMirrorHandlePostmasterReset();
+			setTransitionToFault();
 
 			RestartAfterPostmasterReset();
 			break;

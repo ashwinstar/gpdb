@@ -58,6 +58,10 @@ typedef struct ConnectionInfo
 	
 } ConnectionInfo;
 
+
+static bool completedReceiving(ConnectionInfo *connInfo);
+
+
 /*
  * createSocket -- create the socket.
  *
@@ -374,8 +378,11 @@ receiveMessage(ConnectionInfo *connInfo,
 		
 		if (numRecv == 0)
 		{
-			/* The peer shuts down, so we are done. */
-			connInfo->resultStatus = TRANS_ERRCODE_SUCCESS;
+			snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
+			         "peer shut down connection before response was fully received\n");
+			client->errorLogFn(connInfo->errMessage);
+
+			connInfo->resultStatus = TRANS_ERRCODE_ERROR_SOCKET;
 			break;
 		}
 
@@ -386,12 +393,24 @@ receiveMessage(ConnectionInfo *connInfo,
 				continue;
 			}
 
+			snprintf(connInfo->errMessage, sizeof(connInfo->errMessage),
+			         "failed to receive response: %s (errno: %d)\n",
+			         SOCK_STRERROR(SOCK_ERRNO, connInfo->sockErrMessage, sizeof(connInfo->sockErrMessage)),
+			         SOCK_ERRNO);
+			client->errorLogFn(connInfo->errMessage);
+
 			connInfo->resultStatus = TRANS_ERRCODE_ERROR_SOCKET;
 			break;
 		}
 		
 		connInfo->resultMsgSize += numRecv;
 		bufferSizeLeft -= numRecv;
+
+		/* check if response was fully received */
+		if (completedReceiving(connInfo))
+		{
+			break;
+		}
 
 		if (bufferSizeLeft == 0)
 		{
@@ -405,6 +424,27 @@ receiveMessage(ConnectionInfo *connInfo,
 
 	return (connInfo->resultStatus == TRANS_ERRCODE_SUCCESS);
 }
+
+/*
+ * Check if segment response has been fully received
+ */
+static bool
+completedReceiving(ConnectionInfo *connInfo)
+{
+	/* check if message header was received */
+	if (connInfo->resultMsgSize < 4)
+	{
+		return false;
+	}
+
+	/*
+	 * message header contains message size;
+	 * check if received message size is equal or bigger than expected one
+	 */
+	int32 expectedMsgSize = htonl(*(int32*)connInfo->resultBuffer);
+	return (expectedMsgSize <= connInfo->resultMsgSize);
+}
+
 
 /*
  * processResponse -- process the response from the server.
