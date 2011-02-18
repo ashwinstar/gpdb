@@ -509,6 +509,13 @@ if (1)
 	# ENGINF-200: allow multiple init files
 	if (defined($glob_init_file) && scalar(@{$glob_init_file}))
 	{
+		# MPP-12262: test here, because we don't get status for atmsort call
+		for my $init_file (@{$glob_init_file})
+		{
+			die "no such file: $init_file"
+				unless (-e $init_file);
+		}
+
 		$ATMSORT .= " --init=". join(" --init=", @{$glob_init_file}) . " ";
 	}
 
