@@ -423,6 +423,9 @@ devel : GPPERFMONINSTLOC=$(GPPERFMONDEVPATH)
 devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-testutils --enable-debugbreak --enable-depend
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	$(BUILD_STEPS)
+ifneq "$(BLD_GPDB_BUILDSET)" "partial"
+	@$(MAKE) qautils-tarball INSTLOC=$(INSTLOC)
+endif
 
 # For Aurora / Chorus
 devel-iso : INSTLOC=$(DEVPATH)
@@ -1137,6 +1140,14 @@ HOMEFAIL :
 	@echo "	The HOME environment variable is not set. Please set it to continue."
 	@echo
 	@exit 1
+
+##
+## Create qautils tarball.  This file contains the utils required to
+## support cdbfast runs.
+##
+
+qautils-tarball:
+	@gtar -zcf releng/qautils-$(BLD_ARCH).tar.gz -C $(INSTLOC) $(shell cat releng/QAUTILS_FILES.txt)
 
 #---------------------------------------------------------------------
 # Cleanup
