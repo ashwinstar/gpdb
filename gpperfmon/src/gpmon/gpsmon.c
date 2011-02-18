@@ -536,49 +536,33 @@ static void send_machine_metrics(SOCKET sock)
 			read_bytes = disk->read_bytes;
 			write_bytes = disk->write_bytes;
 
-			if (fsusage.disk.reads < disk->reads)
-			{
-				disk->reads = (GPSMON_METRIC_MAX - disk->reads) + fsusage.disk.reads;
-				reads = disk->reads;
-			}
+			// DISK READS
+			if (fsusage.disk.reads < disk->reads) // new < old
+				reads = (GPSMON_METRIC_MAX - disk->reads) + fsusage.disk.reads; // diff = MAX - OLD + new
 			else
-			{
-				reads = fsusage.disk.reads - disk->reads;
-				disk->reads = fsusage.disk.reads;
-			}
+				reads = fsusage.disk.reads - disk->reads; // diff = new - old
+			disk->reads = fsusage.disk.reads; // old = new
 
-			if (fsusage.disk.writes < disk->writes)
-			{
-				disk->writes = (GPSMON_METRIC_MAX - disk->writes) + fsusage.disk.writes;
-				writes = disk->writes;
-			}
+			// DISK WRITES
+			if (fsusage.disk.writes < disk->writes) // new < old
+				writes = (GPSMON_METRIC_MAX - disk->writes) + fsusage.disk.writes; // diff = MAX - old + new
 			else
-			{
-				writes = fsusage.disk.writes - disk->writes;
-				disk->writes = fsusage.disk.writes;
-			}
+				writes = fsusage.disk.writes - disk->writes; // diff = new - old
+			disk->writes = fsusage.disk.writes; // old = new
 
-			if (fsusage.disk.write_bytes < disk->write_bytes)
-			{
-				disk->write_bytes = (GPSMON_METRIC_MAX - disk->write_bytes) + fsusage.disk.write_bytes;
-				write_bytes = disk->write_bytes;
-			}
+			// WRITE BYTES
+			if (fsusage.disk.write_bytes < disk->write_bytes) // new < old
+				write_bytes = (GPSMON_METRIC_MAX - disk->write_bytes) + fsusage.disk.write_bytes; // diff = MAX - old + new
 			else
-			{
-				write_bytes = fsusage.disk.write_bytes - disk->write_bytes;
-				disk->write_bytes = fsusage.disk.write_bytes;
-			}
+				write_bytes = fsusage.disk.write_bytes - disk->write_bytes; // diff = new - old
+			disk->write_bytes = fsusage.disk.write_bytes; // old = new
 
-			if (fsusage.disk.read_bytes < disk->read_bytes)
-			{
-				disk->read_bytes = (GPSMON_METRIC_MAX - disk->read_bytes) + fsusage.disk.read_bytes;
-				read_bytes = disk->read_bytes;
-			}
+			// READ BYTES
+			if (fsusage.disk.read_bytes < disk->read_bytes) // new < old
+				read_bytes = (GPSMON_METRIC_MAX - disk->read_bytes) + fsusage.disk.read_bytes; // diff = MAX - old + new
 			else
-			{
-				read_bytes = fsusage.disk.read_bytes - disk->read_bytes;
-				disk->read_bytes = fsusage.disk.read_bytes;
-			}
+				read_bytes = fsusage.disk.read_bytes - disk->read_bytes; // diff = new - old
+			disk->read_bytes = fsusage.disk.read_bytes; // old = new
 
 			tdisk.reads += reads;
 			tdisk.writes += writes;
@@ -609,49 +593,36 @@ static void send_machine_metrics(SOCKET sock)
 				apr_hash_set(net_devices, nic->name, APR_HASH_KEY_STRING, nic);
 			}
 
-			if (netstat.rx_packets < nic->rx_packets)
-			{
-				nic->rx_packets = (GPSMON_METRIC_MAX - nic->rx_packets) + netstat.rx_packets;
-				rx_packets = nic->rx_packets;
-			}
+			//////// RECEIVE PACKEtS
+			if (netstat.rx_packets < nic->rx_packets) // new < old
+				rx_packets = (GPSMON_METRIC_MAX - nic->rx_packets) + netstat.rx_packets; // diff  = max - old + new
 			else
-			{
-				rx_packets = netstat.rx_packets - nic->rx_packets;
-				nic->rx_packets = netstat.rx_packets;
-			}
+				rx_packets = netstat.rx_packets - nic->rx_packets; // diff = new - old
+			nic->rx_packets = netstat.rx_packets; // old = new
 
-			if (netstat.rx_bytes < nic->rx_bytes)
-			{
-				nic->rx_bytes = (GPSMON_METRIC_MAX - nic->rx_bytes) + netstat.rx_bytes;
-				rx_bytes = nic->rx_bytes;
-			}
-			else
-			{
-				rx_bytes = netstat.rx_bytes - nic->rx_bytes;
-				nic->rx_bytes = netstat.rx_bytes;
-			}
 
-			if (netstat.tx_packets < nic->tx_packets)
-			{
-				nic->tx_packets = (GPSMON_METRIC_MAX - nic->tx_packets) + netstat.tx_packets;
-				tx_packets = nic->tx_packets;
-			}
+			//////// RECEIVE BYTES
+			if (netstat.rx_bytes < nic->rx_bytes) // new < old
+				rx_bytes = (GPSMON_METRIC_MAX - nic->rx_bytes) + netstat.rx_bytes; // diff  = max - old + new
 			else
-			{
-				tx_packets = netstat.tx_packets - nic->tx_packets;
-				nic->tx_packets = netstat.tx_packets;
-			}
+				rx_bytes = netstat.rx_bytes - nic->rx_bytes; // diff = new - old
+			nic->rx_bytes = netstat.rx_bytes; // old = new
 
-			if (netstat.tx_bytes < nic->tx_bytes)
-			{
-				nic->tx_bytes = (GPSMON_METRIC_MAX - nic->tx_bytes) + netstat.tx_bytes;
-				tx_bytes = nic->tx_bytes;
-			}
+
+			//////// SEND PACKETS
+			if (netstat.tx_packets < nic->tx_packets) // new < old
+				tx_packets = (GPSMON_METRIC_MAX - nic->tx_packets) + netstat.tx_packets; // diff  = max - old + new
 			else
-			{
-				tx_bytes = netstat.tx_bytes - nic->tx_bytes;
-				nic->tx_bytes = netstat.tx_bytes;
-			}
+				tx_packets = netstat.tx_packets - nic->tx_packets; // diff = new - old
+			nic->tx_packets = netstat.tx_packets; // old = new
+
+
+			//////// SEND BYTES
+			if (netstat.tx_bytes < nic->tx_bytes) // new < old
+				tx_bytes = (GPSMON_METRIC_MAX - nic->tx_bytes) + netstat.tx_bytes; // diff = max - old + new
+			else
+				tx_bytes = netstat.tx_bytes - nic->tx_bytes; // diff = new - old
+			nic->tx_bytes = netstat.tx_bytes; // old = new
 
 			tnet.rx_packets += rx_packets;
 			tnet.rx_bytes += rx_bytes;
