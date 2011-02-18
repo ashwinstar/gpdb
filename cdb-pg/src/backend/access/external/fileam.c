@@ -278,7 +278,6 @@ external_rescan(FileScanDesc scan)
 	scan->fs_pstate->raw_buf_done = true;		/* true so we will read data
 												 * in first run */
 	scan->fs_pstate->line_done = true;
-	scan->fs_pstate->no_more_data = false;
 	scan->fs_pstate->bytesread = 0;
 }
 
@@ -864,6 +863,7 @@ externalgettup(FileScanDesc scan,
 {
 	HeapTuple	tuple = NULL;
 	CopyState	pstate = scan->fs_pstate;
+	bool        needData = false;
 
 	Assert(ScanDirectionIsForward(dir));
 
@@ -880,15 +880,15 @@ externalgettup(FileScanDesc scan,
 		/* (set current state...) */
 	}
 
-	/* while didn't finish reading the entire file */
-	while (!pstate->no_more_data)
+	/* If we either got things to read or stuff to process */
+	while (!pstate->fe_eof || !pstate->raw_buf_done)
 	{
 		/* need to fill our buffer with data? */
 		if (pstate->raw_buf_done)
 		{
 		    pstate->bytesread = external_getdata((URL_FILE*)scan->fs_file, pstate, RAW_BUF_SIZE);
 			pstate->begloc = pstate->raw_buf;
-			pstate->raw_buf_done = false;
+			pstate->raw_buf_done = (pstate->bytesread==0);
 			pstate->raw_buf_index = 0;
 
 			/* on first time around just throw the header line away */
@@ -928,50 +928,46 @@ externalgettup(FileScanDesc scan,
 			}
 		}
 
-		if (pstate->bytesread > 0 || !pstate->fe_eof)
+		/* while there is still data in our buffer */
+		while (!pstate->raw_buf_done || needData)
 		{
-			/* while there is still data in our buffer */
-			while (!pstate->raw_buf_done)
+			DataLineStatus ret_mode = parse_next_line(scan);
+
+			if(ret_mode == LINE_OK)
 			{
-				DataLineStatus ret_mode = parse_next_line(scan);
-
-				if(ret_mode == LINE_OK)
-				{
-					/* convert to heap tuple */
-					/* XXX This is bad code.  Planner should be able to
-					 * decide whether we need heaptuple or memtuple upstream,
-					 * so make the right decision here.
-					 */
-					tuple = heap_form_tuple(scan->fs_tupDesc,
-							scan->values, scan->nulls);
-
-					pstate->processed++;
-					MemoryContextReset(pstate->rowcontext);
-					return tuple;
-				}
-				else if(ret_mode == LINE_ERROR)
-				{
-					/* error was handled in parse_next_line. move to the next */
-					continue;
-				}
-				else
-				{
-					/* try to get more data if possible */
-					Assert(ret_mode == NEED_MORE_DATA || ret_mode == END_MARKER);
-					break;
-				}
+				/* convert to heap tuple */
+				/* XXX This is bad code.  Planner should be able to
+				 * decide whether we need heaptuple or memtuple upstream,
+				 * so make the right decision here.
+				 */
+				tuple = heap_form_tuple(scan->fs_tupDesc, scan->values, scan->nulls);
+				pstate->processed++;
+				MemoryContextReset(pstate->rowcontext);
+				return tuple;
 			}
-		}
-		else
-		{
-			pstate->no_more_data = true;
+			else if(ret_mode == LINE_ERROR)
+			{
+				/* error was handled in parse_next_line. move to the next */
+				continue;
+			}
+			else if(ret_mode == END_MARKER)
+			{
+				scan->fs_inited = false;
+				return NULL;
+			}
+			else
+			{
+				/* try to get more data if possible */
+				Assert(ret_mode == NEED_MORE_DATA);
+				needData = true;
+				break;
+			}
 		}
 	}
 
 	/*
 	 * if we got here we finished reading all the data.
 	 */
-	Assert(pstate->no_more_data);
 	scan->fs_inited = false;
 
 	return NULL;
@@ -1003,7 +999,6 @@ initParseState(CopyState pstate, Relation relation,
 	pstate->cur_attname = NULL;
 	pstate->raw_buf_done = true;	/* true so we will read data in first run */
 	pstate->line_done = true;
-	pstate->no_more_data = false;
 	pstate->bytesread = 0;
 	pstate->csv_mode = !isText;
 	pstate->header_line = false;

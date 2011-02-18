@@ -125,7 +125,6 @@ typedef struct CopyStateData
 										server or the other way around */
 	uint64		processed;		/* # of tuples processed */
 	size_t		bytesread;
-	bool		no_more_data;
 
 	/* parameters from the COPY command */
 	Relation	rel;			/* relation to copy to or from */
