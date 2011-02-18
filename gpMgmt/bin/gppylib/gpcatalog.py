@@ -133,7 +133,7 @@ class GPCatalog():
            SELECT version()
         """
         catalog_query = """
-           SELECT relname FROM pg_class 
+           SELECT relname, relisshared FROM pg_class 
            WHERE relnamespace=11 and relkind = 'r' 
         """
 
@@ -151,8 +151,11 @@ class GPCatalog():
             raise GPCatalogException("Error reading catalog: " + str(e))
 
         # Construct our internal representation of the catalog
-        for [relname] in curs.getresult():
+        
+        for [relname, relisshared] in curs.getresult():
             self._tables[relname] = GPCatalogTable(self, relname)
+            # Note: stupid API returns t/f for boolean value
+            self._tables[relname]._setShared(relisshared is 't')
         
         # Which tables are "master only" is not derivable from the catalog
         # so we have to set this manually.
@@ -369,6 +372,7 @@ class GPCatalogTable():
     #   - getTableName()     - Returns the table name (string)
     #   - tableHasOids()     - Returns if the table has oids (boolean)
     #   - isMasterOnly()     - Returns if the table is "master only" (boolean)
+    #   - isShared()         - Returns if the table is shared (boolean)
     #   - getTableAcl()      - Returns name of the acl column (string|None)
     #   - getPrimaryKey()    - Returns the primary key (list)
     #   - getForeignKeys()   - Returns a list of foreign keys (list)
@@ -383,6 +387,9 @@ class GPCatalogTable():
 
     def isMasterOnly(self):
         return self._master
+
+    def isShared(self):
+        return self._isshared
 
     def getTableAcl(self):
         return self._acl
@@ -440,6 +447,7 @@ class GPCatalogTable():
         self._parent    = parent
         self._name      = name
         self._master    = False
+        self._isshared  = False
         self._pkey      = list(pkey or [])
         self._fkey      = []      # foreign key
         self._excluding = set()
@@ -515,6 +523,9 @@ class GPCatalogTable():
 
     def _setMasterOnly(self, value=True):
         self._master = value
+
+    def _setShared(self, value):
+        self._isshared = value
 
     def _setPrimaryKey(self, pkey=None):
         # Split string input

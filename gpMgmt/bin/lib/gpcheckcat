@@ -12,8 +12,11 @@ Usage: gpcheckcat [<option>] [dbname]
     -U uname   : DB User Name
     -v         : verbose
     -T dir     : use <dir> as a temporary working directory
+    -A         : all databases
+    -S option  : shared table options (none, only)
+    -O         : Online 
 '''
-import sys, os, subprocess, tempfile, stat
+import sys, os, subprocess, tempfile, stat, re
 from threading import Thread
 from datetime import datetime
 from time import localtime, strftime
@@ -71,10 +74,39 @@ class Global():
     opt['-g'] = 'gpcheckcat.repair.' + strftime('%Y-%m-%d.%H.%M.%S', localtime())
     opt['-B'] = parallelism
     opt['-T'] = None
+
+    opt['-A'] = False
+    opt['-S'] = None
+    opt['-O'] = False
+
     cfg       = None
     dbname    = None
+    firstdb   = None
+    alldb     = []
     db        = {}
     tmpdir    = None
+
+    # array of SQL statements. Key is dbid
+    Remove = {}
+
+    # array of SQL statements. Key is dbid
+    ReSync = {}
+
+    # Indexes to rebuild
+    Reindex = []
+
+    # constraints which are actually unenforcable
+    Constraints = []
+
+    # ownership fixups
+    Owners = []
+
+    # drop leaked temporary schemas
+    Schemas = []
+
+    # fix distribution policies
+    Policies = []
+
     home      = os.environ.get('HOME')
     if home == None:
         usage('Error: $HOME must be set')
@@ -85,26 +117,6 @@ class Global():
 
 GV = Global()
 
-# array of SQL statements. Key is dbid
-Remove = {}
-
-# array of SQL statements. Key is dbid
-ReSync = {}
-
-# Indexes to rebuild
-Reindex = []
-
-# constraints which are actually uninforcable
-Constraints = []
-
-# ownership fixups
-Owners = []
-
-# drop leaked temporary schemas
-Schemas = []
-
-# fix distribution policies
-Policies = []
 
 
 ###############################
@@ -132,18 +144,28 @@ def getversion():
 
     return version
 
+###############################
+def getalldbs():
+    """
+    get all connectable databases
+    """
+    db = connect()
+    curs = db.query('''
+    select datname from pg_database where datallowconn order by datname ''')
+    row = curs.getresult()
+    return row
 
 ###############################
 def parseCommandLine():
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vog:tT:')
+        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vog:tT:AOS:')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?':      usage(0)
-        elif switch[1] in 'hpBPUgT': GV.opt[switch] = val
-        elif switch[1] in 'vot':   GV.opt[switch] = True
+        elif switch[1] in 'hpBPUgTS': GV.opt[switch] = val
+        elif switch[1] in 'votAO':   GV.opt[switch] = True
 
     def setdef(x, v):
         if not GV.opt[x]:
@@ -178,6 +200,22 @@ def parseCommandLine():
     else:
         GV.dbname = args[0]
     
+    GV.firstdb = GV.dbname
+    GV.alldb.append(GV.firstdb)
+
+    # build list of all connectable databases
+    if GV.opt['-A']:
+        alldb = getalldbs()
+        GV.opt['-T'] = None # clear specified temp directory
+        GV.alldb.pop()
+        for adbname in alldb:
+            GV.alldb.append(adbname[0])
+
+    if GV.opt['-S']:
+        if not re.match("none|only", GV.opt['-S'], re.I):
+            usage('Error: invalid value \'%s\' for shared table option. Legal values are (none, only)'% GV.opt['-S']);
+        GV.opt['-S'] = GV.opt['-S'].lower()
+
     logger.info('master at host %s, port %s, user %s, database %s' % 
            (GV.opt['-h'], GV.opt['-p'], GV.opt['-U'], GV.dbname))
 
@@ -482,11 +520,12 @@ def checkPartitionIntegrity():
         # TODO: add repair script
 
 
-    # MPP-11120: check for child partitions with different distribution policies
-    # The complexity of this query is due to having to account for the possibility
-    # of partitions with "holes" which would make similar distribution policies
-    # appear different in gp_distribution_policy.  This is handled by unnesting
-    # both distribution
+    # MPP-11120: check for child partitions with different
+    # distribution policies The complexity of this query is due to
+    # having to account for the possibility of partitions with "holes"
+    # which would make similar distribution policies appear different
+    # in gp_distribution_policy.  This is handled by unnesting both
+    # distribution
     qry = '''
     select
       parrelid, 
@@ -810,7 +849,7 @@ def checkPGNamespace():
         logger.error('found %d unbound temporary schemas' % curs.ntuples())
         for row in curs.getresult():
             logger.error("  ... %s" % row[0])
-            Schemas.append(row[0])
+            GV.Schemas.append(row[0])
 
     # Check for objects in various catalogs that are in a schema that has
     # been dropped.
@@ -960,8 +999,9 @@ def checkFKConstraint(db, tables, max_content):
     dtab = {}
 
     for cat in tables:
-        catname = cat.getTableName()
-        fkey    = cat.getForeignKeys()
+        isShared = cat.isShared()
+        catname  = cat.getTableName()
+        fkey     = cat.getForeignKeys()
         dtab[catname] = tidx
         tidx += 1
 
@@ -972,6 +1012,14 @@ def checkFKConstraint(db, tables, max_content):
             continue
         if len(cat.getPrimaryKey()) <= 0:
             continue
+
+        # skip shared/non-shared tables
+        if GV.opt['-S']:
+            if re.match("none", GV.opt['-S'], re.I) and isShared:
+                continue
+            if re.match("only", GV.opt['-S'], re.I) and not isShared:
+                continue
+
 
         fktables.append(cat)
 
@@ -1139,11 +1187,11 @@ def removeInheritance(seg, db, reloid, rel):
 
 
 def removeIndexConstraint(nspname, relname, constraint):
-    Constraints.append('ALTER TABLE "%s"."%s" DROP CONSTRAINT "%s";' % \
+    GV.Constraints.append('ALTER TABLE "%s"."%s" DROP CONSTRAINT "%s";' % \
             (nspname, relname, constraint))
 
 def distributeRandomly(rel):
-    Policies.append('ALTER TABLE %s SET DISTRIBUTED RANDOMLY;' % rel)
+    GV.Policies.append('ALTER TABLE %s SET DISTRIBUTED RANDOMLY;' % rel)
 
 def removeStats(seg, db, reloid, rel):
     buildRemove(seg, 'statistics', 'pg_statistic',
@@ -1223,9 +1271,9 @@ def buildRemove(seg, name, table, cols, objname):
     addRemove(seg, fullstr)
 
 def addRemove(seg, line):
-    if not Remove.has_key(seg):
-        Remove[seg] = []
-    Remove[seg].append(line)
+    if not GV.Remove.has_key(seg):
+        GV.Remove[seg] = []
+    GV.Remove[seg].append(line)
 
 class sysCatThread(Thread):
     # Override Thread.__init__ to supply extra info
@@ -1388,14 +1436,22 @@ def crossDbCheck():
     logger.info('Checking cross database consistency ...')
 
     for cat in sorted(tables):
-        catname = cat.getTableName()
-        pkey    = cat.getPrimaryKey()
-        master  = cat.isMasterOnly()
-        columns = cat.getTableColumns(with_acl=False)
+        catname  = cat.getTableName()
+        pkey     = cat.getPrimaryKey()
+        master   = cat.isMasterOnly()
+        isShared = cat.isShared()
+        columns  = cat.getTableColumns(with_acl=False)
 
         # Skip master only tables
         if master:
             continue
+
+        # skip shared/non-shared tables
+        if GV.opt['-S']:
+            if re.match("none", GV.opt['-S'], re.I) and isShared:
+                continue
+            if re.match("only", GV.opt['-S'], re.I) and not isShared:
+                continue
 
         # Skip catalogs without primary key
         if pkey == []:
@@ -1438,10 +1494,11 @@ def crossDbCheck():
     # do correctly, so we break the ACL check into a separate query.
     for cat in sorted(tables):
 
-        catname   = cat.getTableName()
-        pkey      = cat.getPrimaryKey()
-        master    = cat.isMasterOnly()
-        acl       = cat.getTableAcl()
+        catname  = cat.getTableName()
+        pkey     = cat.getPrimaryKey()
+        master   = cat.isMasterOnly()
+        isShared = cat.isShared()
+        acl      = cat.getTableAcl()
 
         # Skip:
         #   - master only tables
@@ -1450,6 +1507,12 @@ def crossDbCheck():
         if master or pkey == [] or acl == None:
             continue
 
+        # skip shared/non-shared tables
+        if GV.opt['-S']:
+            if re.match("none", GV.opt['-S'], re.I) and isShared:
+                continue
+            if re.match("only", GV.opt['-S'], re.I) and not isShared:
+                continue
 
         # Build up the catalog query based on the catalog definition
         #
@@ -1694,7 +1757,7 @@ def checkBitmapIndexes():
 
         # Generate a repair script for all broken indexes
         for index in a:
-            Reindex.append(index)
+            GV.Reindex.append(index)
 
     else:
         logger.info('[OK] bitmap indexes')
@@ -1790,10 +1853,10 @@ def fixupowners(nspname, relname, oldrole, newrole):
     #
     # Note: this means that the Owners list must be run in the order given.
     #
-    Owners.append('-- owner for "%s"."%s"' % (nspname, relname))
-    Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % 
+    GV.Owners.append('-- owner for "%s"."%s"' % (nspname, relname))
+    GV.Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % 
                   (nspname, relname, oldrole))
-    Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % 
+    GV.Owners.append('ALTER TABLE "%s"."%s" OWNER TO "%s";' % 
                   (nspname, relname, newrole))
 
 
@@ -2449,17 +2512,15 @@ def closeDbs():
     for key, conns in GV.db.iteritems():
         db = conns[0]
         db.close()
+    GV.db = {} # remove everything
 
 #############
-if __name__ == '__main__':
+def checkcatfordb(dbname):
+    '''
+    perform catalog check for specified database
+    '''
 
-    parseCommandLine()
-    GV.version = getversion()
-    GV.cfg = getGPConfiguration()
-    
-    # turn on toast table check for 3.2
-    if GV.opt['-o'] == False and not GV.version == "8.2.6":
-        GV.opt['-o'] = True
+    GV.dbname = dbname
 
     try:
         if GV.opt['-T']:
@@ -2483,20 +2544,22 @@ if __name__ == '__main__':
     logger.info('----------------------------------------------')
     logger.info('Performing segment specific consistency checks')
     logger.info('----------------------------------------------')
-    if GV.version < "4.1":
-        # these checks subsumed by foreign key checks in 4.1
-        checkPGClass()
-        checkPGAttribute()
-        checkPGType()
-        checkPGExtTable()
-    checkPGClassToast()
-    checkPGNamespace()
-    checkDistribPolicy()
+    if (not GV.opt['-O']):
+        if GV.version < "4.1":
+            # these checks subsumed by foreign key checks in 4.1
+            checkPGClass()
+            checkPGAttribute()
+            checkPGType()
+            checkPGExtTable()
+        checkPGClassToast()
+        checkPGNamespace()
+        checkDistribPolicy()
     checkOwners()
     checkIndexes()
-    checkBitmapIndexes()
-    checkDepend()
-    checkPersistentTables()
+    if (not GV.opt['-O']):
+        checkBitmapIndexes()
+        checkDepend()
+        checkPersistentTables()
 
     crossDbCheck()
 
@@ -2504,13 +2567,13 @@ if __name__ == '__main__':
     
     logger.info("------------------------------------")
 
-    fixes = (len(Remove) > 0 or 
-             len(ReSync) > 0 or 
-             len(Reindex) > 0 or 
-             len(Constraints) > 0 or
-             len(Owners) > 0 or 
-             len(Schemas) > 0 or
-             len(Policies) > 0)
+    fixes = (len(GV.Remove) > 0 or 
+             len(GV.ReSync) > 0 or 
+             len(GV.Reindex) > 0 or 
+             len(GV.Constraints) > 0 or
+             len(GV.Owners) > 0 or 
+             len(GV.Schemas) > 0 or
+             len(GV.Policies) > 0)
     if GV.opt['-g'] != None and fixes:
         try:
             if not os.path.exists(GV.opt['-g']):
@@ -2527,10 +2590,10 @@ if __name__ == '__main__':
         # don't remove anything if ReSync possible --
         # comment out the delete statements from the repair scripts
         maybeRemove = "";
-        if len(ReSync):
+        if len(GV.ReSync):
             maybeRemove="# "
 
-        for seg in Remove:
+        for seg in GV.Remove:
             # dbid.host.port.dbname.sql
             c = GV.cfg[seg]
             filename = '%i.%s.%i.%s.sql' % (seg, c['hostname'],
@@ -2545,7 +2608,7 @@ if __name__ == '__main__':
                 sys.exit(1)
 
             #unique
-            lines = set(Remove[seg])
+            lines = set(GV.Remove[seg])
 
             # make sure it is sorted
             li = list(lines)
@@ -2568,7 +2631,7 @@ if __name__ == '__main__':
                 fname = filename, 
                 dbname = GV.dbname)
 
-        if len(Reindex) > 0:
+        if len(GV.Reindex) > 0:
             filename = 'reindex.sql'
             fullpath = '%s/%s' % (GV.opt['-g'], filename)
             try:
@@ -2578,7 +2641,7 @@ if __name__ == '__main__':
                              (fullpath, str(e)))
                 sys.exit(1)
 
-            for r in Reindex:
+            for r in GV.Reindex:
                 file.write('REINDEX INDEX %s;\n' % r)
             file.close()
 
@@ -2587,8 +2650,8 @@ if __name__ == '__main__':
             script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
 
-        if len(Constraints) > 0:
-            Constraints = list(set(Constraints))
+        if len(GV.Constraints) > 0:
+            GV.Constraints = list(set(GV.Constraints))
             filename = 'removeconstraints.sql'
             fullpath = '%s/%s' % (GV.opt['-g'], filename)
             try:
@@ -2598,7 +2661,7 @@ if __name__ == '__main__':
                              (fullpath, str(e)))
                 sys.exit(1)
 
-            for r in Constraints:
+            for r in GV.Constraints:
                 file.write('%s\n' % r)
             file.close()
 
@@ -2607,7 +2670,7 @@ if __name__ == '__main__':
             script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
 
-        if len(Owners) > 0:
+        if len(GV.Owners) > 0:
             # Previously we removed duplicate statements from the "Owners" list
             # by casting it through a "list(set(...))", however this does not work
             # since the order of items in the list is important for correct 
@@ -2622,7 +2685,7 @@ if __name__ == '__main__':
                              (fullpath, str(e)))
                 sys.exit(1)
 
-            for r in Owners:
+            for r in GV.Owners:
                 file.write('%s\n' % r)
             file.close()
 
@@ -2631,7 +2694,7 @@ if __name__ == '__main__':
             script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
 
-        if len(Schemas) > 0:
+        if len(GV.Schemas) > 0:
             # Remove leaked temporary schemas
             filename = 'fixnamespace.sql'
             fullpath = '%s/%s' % (GV.opt['-g'], filename)
@@ -2643,7 +2706,7 @@ if __name__ == '__main__':
                              (fullpath, str(e)))
                 sys.exit(1)
 
-            for s in Schemas:
+            for s in GV.Schemas:
                 file.write('DROP SCHEMA IF EXISTS "%s" CASCADE;\n' % s)
             file.close()
 
@@ -2652,7 +2715,7 @@ if __name__ == '__main__':
             script += 'psql -X -a -h %s -p %i -f %s "%s" > %s.out 2>&1\n' % \
                     (c['hostname'], c['port'], filename, GV.dbname, filename)
 
-        if len(Policies) > 0:
+        if len(GV.Policies) > 0:
             # changes to distribution policies
             filename = 'fixdistribution.sql'
             fullpath = '%s/%s' % (GV.opt['-g'], filename)
@@ -2664,7 +2727,7 @@ if __name__ == '__main__':
                              (fullpath, str(e)))
                 sys.exit(1)
 
-            for r in Policies:
+            for r in GV.Policies:
                 file.write('%s\n' % r)
             file.close()
 
@@ -2690,7 +2753,37 @@ if __name__ == '__main__':
     if GV.retcode >= ERROR_NOREPAIR:
         logger.warn('unable to generate repairs for some issues')
     logger.info("Check complete")
+
+
+
+#############
+if __name__ == '__main__':
+
+    parseCommandLine()
+    GV.version = getversion()
+    GV.cfg = getGPConfiguration()
+    
+    # turn on toast table check for 3.2
+    if GV.opt['-o'] == False and not GV.version == "8.2.6":
+        GV.opt['-o'] = True
+
+    for dbname in GV.alldb:
+        logger.info('-----------------------------------')
+        logger.info('-----------------------------------')
+        logger.info("Performing check for database \'%s\', version %s" % (dbname, GV.version ))
+        logger.info('-----------------------------------')
+        checkcatfordb(dbname)
+
+        GV.Remove = {}
+        GV.ReSync = {}
+        GV.Reindex = []
+        GV.Constraints = []
+        GV.Owners = []
+        GV.Schemas = []
+        GV.Policies = []
+
+        # skip shared tables on subsequent passes
+        if not GV.opt['-S']:
+            GV.opt['-S'] = "none"
+
     sys.exit(GV.retcode)
-
-
-
