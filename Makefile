@@ -423,9 +423,6 @@ devel : GPPERFMONINSTLOC=$(GPPERFMONDEVPATH)
 devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-testutils --enable-debugbreak --enable-depend
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	$(BUILD_STEPS)
-ifneq "$(BLD_GPDB_BUILDSET)" "partial"
-	@$(MAKE) qautils-tarball INSTLOC=$(INSTLOC)
-endif
 
 # For Aurora / Chorus
 devel-iso : INSTLOC=$(DEVPATH)
@@ -444,6 +441,9 @@ dist : LOADERSINSTLOC=$(LOADERSDISTPATH)
 dist : GPPERFMONINSTLOC=$(GPPERFMONDISTPATH)
 dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	$(BUILD_STEPS)
+ifneq "$(BLD_GPDB_BUILDSET)" "partial"
+	@$(MAKE) qautils-tarball INSTLOC=$(INSTLOC)
+endif
 
 dist_prof : INSTCFLAGS=$(PROFFLAGS)
 dist_prof : INSTLOC=$(DISTPATH)
