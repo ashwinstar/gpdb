@@ -1160,7 +1160,7 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
 			}
             else
             {
-                tuplesort_limit_insert(state, e); 
+                tuplesort_limit_insert(state, e);
                 return;
             }
 
@@ -3228,9 +3228,12 @@ static void tuplesort_limit_insert(Tuplesortstate_mk *state, MKEntry *e)
 
     if(!state->mkheap)
     {
-        if(state->entry_count < state->mkctxt.limit)
+        if(state->entry_count < state->entry_allocsize &&
+		   state->entry_count < state->mkctxt.limit)
         {
             state->entries[state->entry_count++] = *e;
+			state->numTuplesInMem++;
+
             return;
         }
 
@@ -3244,7 +3247,7 @@ static void tuplesort_limit_insert(Tuplesortstate_mk *state, MKEntry *e)
     }
 
     Assert(state->mkheap && !mkheap_empty(state->mkheap));
-    Assert(state->mkheap->count == state->mkctxt.limit);
+    Assert(state->mkheap->count == state->numTuplesInMem);
     i = mkheap_putAndGet(state->mkheap, e);
 
     Assert(!mke_is_empty(e));
