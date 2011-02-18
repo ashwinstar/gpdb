@@ -607,6 +607,7 @@ rhel4_x86_32_MPP_ARCH=RHEL4-i386
 rhel4_x86_64_MPP_ARCH=RHEL4-x86_64
 rhel5_x86_64_MPP_ARCH=RHEL5-x86_64
 osx10_x86_MPP_ARCH=OSX-i386
+osx105_x86_MPP_ARCH=OSX-i386
 ifneq "$($(BLD_ARCH)_MPP_ARCH)" ""
 export MPP_ARCH=$($(BLD_ARCH)_MPP_ARCH)
 else
@@ -1147,7 +1148,7 @@ HOMEFAIL :
 ##
 
 qautils-tarball:
-	@gtar -zcf releng/qautils-$(BLD_ARCH).tar.gz -C $(INSTLOC) $(shell cat releng/QAUTILS_FILES.txt)
+	@gtar -zcf releng/qautils-$(MPP_ARCH).tar.gz -C $(INSTLOC) $(shell cat releng/QAUTILS_FILES.txt)
 
 #---------------------------------------------------------------------
 # Cleanup
