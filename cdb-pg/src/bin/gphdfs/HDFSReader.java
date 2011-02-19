@@ -56,9 +56,12 @@ class HDFSReader
       inFile.seek(startpos);
       if (segid>0)
       {
-        byte newline;
-        while((newline=inFile.readByte()) != '\n' && remain_len>0)
-          remain_len--;
+        byte newline = 0;
+        while(remain_len > 0 && newline != '\n')
+        {
+        	newline=inFile.readByte();
+        	remain_len--;
+        }
         if (remain_len==0)
         {
           fs.close();
