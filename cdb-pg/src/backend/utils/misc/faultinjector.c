@@ -529,8 +529,19 @@ FaultInjector_InjectFaultIfSet(
 					(errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
 							FaultInjectorIdentifierEnumToString[entryLocal->faultInjectorIdentifier],
 							FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));	
-			for (ii=0; ii < 36; ii++)
-				pg_usleep(100000000L); // sleep for 1 hour (100 sec * 36 = 1 hour)
+			for (ii=0; ii < 3600; ii++)
+			{
+				pg_usleep(1000000L); // sleep for 1 sec (1 sec * 3600 = 1 hour)
+				
+				getFileRepRoleAndState(NULL, &segmentState, NULL, NULL, NULL);
+
+				if (segmentState == SegmentStateShutdownFilerepBackends ||
+					segmentState == SegmentStateImmediateShutdown ||
+					segmentState == SegmentStateShutdown)
+				{
+					break;
+				}
+			}
 			break;
 		case FaultInjectorTypeDataCorruption:
 			ereport(LOG, 
@@ -1011,7 +1022,7 @@ FaultInjector_UpdateHashEntry(
 			(errmsg("LOG(fault injector): update fault injection hash entry "
 					"identifier:'%s' state:'%s' occurrence:'%d' ",
 					FaultInjectorIdentifierEnumToString[entry->faultInjectorIdentifier], 
-					FaultInjectorStateEnumToString[entry->faultInjectorState],
+					FaultInjectorStateEnumToString[entryLocal->faultInjectorState],
 					entry->occurrence)));
 	
 exit:	
