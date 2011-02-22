@@ -198,7 +198,10 @@ def discoverPasswordMap():
         passwordMap = NakedExecutionPasswordMap(hosts.keys())
         passwordMap.discover()
     except Exception, e:
-        logger.error(e.__str__())
+        logger.error("could not successfully access all machines")
+        msg = e.__str__()
+        if msg:
+            logger.error("trace: %s" % msg)
         return True
 
     if passwordMap.complete:
