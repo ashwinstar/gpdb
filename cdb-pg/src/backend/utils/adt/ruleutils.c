@@ -5983,9 +5983,9 @@ partition_rule_def_worker(PartitionRule *rule, Node *start,
 			truncateStringInfo(&sid1, 0);
 
 			/* always quote to make WITH (tablename=...) work correctly */
+			/* MPP-12243: but don't use quote_identifier if already quoted! */
 			appendStringInfo(&sid1, "tablename=\'%s\'", 
-							 quote_identifier(
-									 get_rel_name(rule->parchildrelid)));
+							 get_rel_name(rule->parchildrelid));
 
 			/* MPP-7191, MPP-7193: fully-qualify storage type if not
 			 * specified (and not a template)
