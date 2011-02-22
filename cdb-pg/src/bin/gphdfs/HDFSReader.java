@@ -86,7 +86,7 @@ class HDFSReader
       try
       {
         while((newline=inFile.readByte()) != '\n')
-          System.out.print((char)newline);
+          System.out.write(newline);
         System.out.println();
       } catch (EOFException e) {;}
       fs.close();
