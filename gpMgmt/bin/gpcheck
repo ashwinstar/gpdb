@@ -335,6 +335,7 @@ def testApplianceOmreportBiossetup(host):
         else:
             printError(host.hostname, "can not find Attribute in omreport chassis biossetup '%s'" % (k))
 
+
 def testApplianceOmreportRemoteaccess(host):
 
     expectedKeyValuePairs = dict()
@@ -353,17 +354,31 @@ def testApplianceOmreportRemoteaccess(host):
 
     ipaddressAttribute = "IP Address"
     ipadd_root = "172.28.0"
+    suffix = 0
+
     if host.is_a_master:
         if host.primary_master:
-            expectedIpAddress = "%s.250" % ipadd_root
+            suffix = 250
         else:
-            expectedIpAddress = "%s.251" % ipadd_root
+            suffix = 251
     else:
+        # hostname is sdw[X]
         words = host.hostname.split("sdw")
-        expectedIpAddress = ipadd_root
         if len(words) == 2:
-            expectedIpAddress = "%s.%s" % (expectedIpAddress, words[1])
+            try:
+                suffix = int(words[1])
+            except:
+                pass
 
+        # hostname is etl[X]
+        words = host.hostname.split("etl")
+        if len(words) == 2:
+            try:
+                suffix = int(words[1]) + 200
+            except:
+                pass
+                
+    expectedIpAddress = "%s.%d" % (ipadd_root, suffix)
 
     if ipaddressAttribute in host.data.omreport.remoteaccess:
         ipaddress = host.data.omreport.remoteaccess[ipaddressAttribute]
@@ -371,7 +386,6 @@ def testApplianceOmreportRemoteaccess(host):
             printError(host.hostname, "LOM IP Address %s does not match expected IP Address %s" % (ipaddress, expectedIpAddress))
     else:
         printError(host.hostname, "can not find Attribute in omreport chassis remoteaccess '%s'" % (ipaddressAttribute))
-
 
 
 def testApplianceOmreportController(host):
