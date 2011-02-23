@@ -273,15 +273,15 @@ class GpSegStart:
                         #
                         shouldStop = True
 
-                    elif stderrFromFailure == "failure: Error: MirroringFailure":
+                    elif stderrFromFailure.endswith("failure: Error: MirroringFailure"):
                         reason = "Failure in segment mirroring; check segment logfile"
                         reasonCode = gp.SEGSTART_ERROR_MIRRORING_FAILURE
 
-                    elif stderrFromFailure == "failure: Error: PostmasterDied":
+                    elif stderrFromFailure.endswith("failure: Error: PostmasterDied"):
                         reason = "Segment postmaster has exited; check segment logfile"
                         reasonCode = gp.SEGSTART_ERROR_POSTMASTER_DIED
 
-                    elif stderrFromFailure == "failure: Error: InvalidStateTransition":
+                    elif stderrFromFailure.endswith("failure: Error: InvalidStateTransition"):
                         reason = "Not a valid operation at this time; check segment logfile"
                         reasonCode = gp.SEGSTART_ERROR_INVALID_STATE_TRANSITION
 
@@ -290,7 +290,7 @@ class GpSegStart:
                         #
                         shouldStop = True
 
-                    elif stderrFromFailure == "failure: Error: ServerIsInShutdown":
+                    elif stderrFromFailure.endswith("failure: Error: ServerIsInShutdown"):
                         reason = "System is shutting down"
                         reasonCode = gp.SEGSTART_ERROR_SERVER_IS_IN_SHUTDOWN
 
@@ -371,7 +371,7 @@ class GpSegStart:
     def createParser():
         parser = OptParser(option_class=OptChecker,
                     description=' '.join(description.split()),
-                    version='%prog version $Revision: #12 $')
+                     version='%prog version $Revision: #12 $')
         parser.setHelp(_help)
 
     #
