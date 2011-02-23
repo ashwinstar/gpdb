@@ -2851,17 +2851,18 @@ CopyFromDispatch(CopyState cstate)
 					cstate->last_hash_field = i;
 			}
 
+			if (estate->es_result_partitions)
+			{
+				if (attnum == estate->es_partition_state->max_partition_attr)
+				{
+					if (i > cstate->last_hash_field)
+						cstate->last_hash_field = i;
+				}				
+			}
+
 			i++;
 		}
 	}
-
-	if (estate->es_result_partitions)
-	{
-		/* make sure we parse up to the last partitioning key */
-		cstate->last_hash_field = Max(cstate->last_hash_field,
-						estate->es_partition_state->max_partition_attr);
-	}
-
 
 	/*
 	 * Dispatch the COPY command.
