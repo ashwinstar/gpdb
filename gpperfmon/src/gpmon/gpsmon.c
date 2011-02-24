@@ -787,6 +787,7 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 		void* vptr;
 		apr_hash_index_t* hi;
 		gpmon_packet_t* ppkt = 0;
+ 		gpmon_packet_t localPacketObject;
 		pidrec_t* pidrec;
 		int count = 0;
 		apr_hash_t* query_cpu_table = NULL;
@@ -895,6 +896,7 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 		}
 
 		// reset packet to 0
+ 		ppkt = &localPacketObject;
 		memset(ppkt, 0, sizeof(gpmon_packet_t));
 		ppkt->pkttype = GPMON_PKTTYPE_QUERY_HOST_METRICS;
 		ppkt->magic = GPMON_MAGIC;
