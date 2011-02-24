@@ -203,6 +203,10 @@ typedef struct AppendOnlyMirrorResyncEofs
 	
 	ItemPointerData persistentTid;
 	int64			persistentSerialNum;
+
+	bool			didIncrementCommitCount;
+	bool			isDistributedTransaction;
+	char 			gid[TMGIDSIZE];
 	
 	bool						mirrorCatchupRequired;
 
@@ -1573,7 +1577,8 @@ AppendOnlyMirrorResyncEofs_HashTableInit(void)
 
 	AppendOnlyMirrorResyncEofsTable = hash_create("AO Mirror Resync EOFs", 10, &info, hash_flags);
 
-	if (Debug_persistent_print)
+	if (Debug_persistent_print ||
+		Debug_persistent_appendonly_commit_count_print)
 		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager: Append-Only mirror resync eofs hash-table created");
 }
@@ -1588,7 +1593,8 @@ AppendOnlyMirrorResyncEofs_HashTableRemove(
 	hash_destroy(AppendOnlyMirrorResyncEofsTable);
 	AppendOnlyMirrorResyncEofsTable = NULL;
 
-	if (Debug_persistent_print)
+	if (Debug_persistent_print ||
+		Debug_persistent_appendonly_commit_count_print)
 		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager (%s): Append-Only mirror resync eofs hash-table removed",
 			 procName);
@@ -1658,6 +1664,9 @@ AppendOnlyMirrorResyncEofs_Merge(
 		entry->relationName = MemoryContextStrdup(TopMemoryContext, relationName);
 		entry->persistentSerialNum = persistentSerialNum;
 		entry->persistentTid = *persistentTid;
+		entry->didIncrementCommitCount = false;
+		entry->isDistributedTransaction = false;
+		entry->gid[0] = '\0';
 		entry->mirrorCatchupRequired = mirrorCatchupRequired;
 		entry->mirrorDataLossTrackingState = mirrorDataLossTrackingState;
 		entry->mirrorDataLossTrackingSessionNum = mirrorDataLossTrackingSessionNum;
@@ -1682,7 +1691,8 @@ AppendOnlyMirrorResyncEofs_Merge(
 		entry->mirrorDataLossTrackingSessionNum = mirrorDataLossTrackingSessionNum;
 	}
 
-	if (Debug_persistent_print)
+	if (Debug_persistent_print ||
+		Debug_persistent_appendonly_commit_count_print)
 		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager: %s Append-Only mirror resync eofs entry: %u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", "
 			 "mirror data loss tracking (state '%s', session num " INT64_FORMAT "), "
@@ -1711,7 +1721,8 @@ AppendOnlyMirrorResyncEofs_Remove(
 {
 	Assert(AppendOnlyMirrorResyncEofsTable != NULL);
 
-	if (Debug_persistent_print)
+	if (Debug_persistent_print ||
+		Debug_persistent_appendonly_commit_count_print)
 		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager (%s): Remove Append-Only mirror resync eofs entry: "
 			 "%u/%u/%u, segment file #%d, relation name '%s' (transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s, saved mirror new EOF " INT64_FORMAT ")",
@@ -2147,7 +2158,8 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 	if (AppendOnlyMirrorResyncEofsTable == NULL)
 		return;
 
-	if (Debug_persistent_print)
+	if (Debug_persistent_print ||
+		Debug_persistent_appendonly_commit_count_print)
 		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager: Enter Append-Only mirror resync eofs list entries (Append-Only commit work count %d)",
 			 FileRepPrimary_GetAppendOnlyCommitWorkCount());
@@ -2176,8 +2188,47 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 															/* recovery */ false,
 															/* flushToXLog */ false);
 		}
+		else
+		{
+			/*
+			 * Abort case.
+			 */
+			if (entry->didIncrementCommitCount)
+			{
+				int systemAppendOnlyCommitWorkCount;
 
-		if (Debug_persistent_print)
+				LWLockAcquire(FileRepAppendOnlyCommitCountLock , LW_EXCLUSIVE);
+				
+				systemAppendOnlyCommitWorkCount =
+						FileRepPrimary_FinishedAppendOnlyCommitWork(1);
+								
+				if (entry->isDistributedTransaction)
+				{
+					PrepareDecrAppendOnlyCommitWork(entry->gid);
+				}
+
+				if (Debug_persistent_print ||
+					Debug_persistent_appendonly_commit_count_print)
+					elog(Persistent_DebugPrintLevel(), 
+						 "Storage Manager: Append-Only Mirror Resync EOFs decrementing commit work for aborted transaction "
+						 "(system count %d). "
+						 "Relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s)	",
+						 systemAppendOnlyCommitWorkCount,
+						 entry->key.relFileNode.spcNode,
+						 entry->key.relFileNode.dbNode,
+						 entry->key.relFileNode.relNode,
+						 entry->key.segmentFileNum,
+						 entry->persistentSerialNum,
+						 ItemPointerToString(&entry->persistentTid));
+
+				pendingAppendOnlyMirrorResyncIntentCount--;
+				
+				LWLockRelease(FileRepAppendOnlyCommitCountLock);
+			}
+		}
+
+		if (Debug_persistent_print ||
+			Debug_persistent_appendonly_commit_count_print)
 			elog(Persistent_DebugPrintLevel(), 
 				 "Storage Manager: Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' "
 				 "(forCommit %s, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s,  mirror new EOF " INT64_FORMAT ")",
@@ -2206,6 +2257,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 
 		int oldSystemAppendOnlyCommitWorkCount;
 		int newSystemAppendOnlyCommitWorkCount;
+		int resultSystemAppendOnlyCommitWorkCount;
 
 		if (appendOnlyMirrorResyncEofsCount != pendingAppendOnlyMirrorResyncIntentCount)
 			elog(ERROR, "Pending Append-Only Mirror Resync EOFs intent count mismatch (pending %d, table count %d)",
@@ -2218,7 +2270,9 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 
 		MIRRORED_LOCK;	// NOTE: When we use the MirroredLock for the whole routine, this can go.
 		
-		oldSystemAppendOnlyCommitWorkCount = FileRepPrimary_GetAppendOnlyCommitWorkCount();	// Snapshot.
+		LWLockAcquire(FileRepAppendOnlyCommitCountLock , LW_EXCLUSIVE);
+
+		oldSystemAppendOnlyCommitWorkCount = FileRepPrimary_GetAppendOnlyCommitWorkCount();
 
 		newSystemAppendOnlyCommitWorkCount = 
 						oldSystemAppendOnlyCommitWorkCount - 
@@ -2238,15 +2292,26 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 entryExample->persistentSerialNum,
 				 ItemPointerToString(&entryExample->persistentTid));
 		
-		if (Debug_persistent_print)
+		resultSystemAppendOnlyCommitWorkCount = 
+					FileRepPrimary_FinishedAppendOnlyCommitWork(
+									pendingAppendOnlyMirrorResyncIntentCount);
+		
+		// Should match since we are under FileRepAppendOnlyCommitCountLock EXCLUSIVE.
+		Assert(newSystemAppendOnlyCommitWorkCount == resultSystemAppendOnlyCommitWorkCount);		
+
+		pendingAppendOnlyMirrorResyncIntentCount = 0;
+
+		if (Debug_persistent_print ||
+			Debug_persistent_appendonly_commit_count_print)
 			elog(Persistent_DebugPrintLevel(), 
 				 "Storage Manager: Append-Only Mirror Resync EOFs intent count finishing %s work with system count %d remaining "
-				 "(old system count %d, entry count %d).  "
+				 "(enter system count %d, entry count %d, result system count %d).  "
 				 "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s)",
 				 (forCommit ? "commit" : "abort"),
 				 newSystemAppendOnlyCommitWorkCount,
 				 oldSystemAppendOnlyCommitWorkCount,
 				 pendingAppendOnlyMirrorResyncIntentCount,
+				 resultSystemAppendOnlyCommitWorkCount,
 				 entryExample->key.relFileNode.spcNode,
 				 entryExample->key.relFileNode.dbNode,
 				 entryExample->key.relFileNode.relNode,
@@ -2254,8 +2319,7 @@ smgrDoAppendOnlyResyncEofs(bool forCommit)
 				 entryExample->persistentSerialNum,
 				 ItemPointerToString(&entryExample->persistentTid));
 
-		FileRepPrimary_FinishedAppendOnlyCommitWork(pendingAppendOnlyMirrorResyncIntentCount);
-		pendingAppendOnlyMirrorResyncIntentCount = 0;
+		LWLockRelease(FileRepAppendOnlyCommitCountLock);
 			
 		MIRRORED_UNLOCK;
 	}
@@ -2672,6 +2736,15 @@ smgrGetAppendOnlyMirrorResyncEofs(
 	AppendOnlyMirrorResyncEofs *entry;
 	int			entryIndex;
 
+	if (endXactRecKind == EndXactRecKind_Abort)
+	{
+		/*
+		 * No Append-Only Mirror Resync EOF information needed on abort.
+		 */
+		*ptr = NULL;
+		return 0;
+	}
+
 	nentries = 0;
 
 	if (AppendOnlyMirrorResyncEofsTable !=  NULL)
@@ -2692,7 +2765,8 @@ smgrGetAppendOnlyMirrorResyncEofs(
 		return 0;
 	}
 
-	if (Debug_persistent_print)
+	if (Debug_persistent_print ||
+		Debug_persistent_appendonly_commit_count_print)
 		elog(Persistent_DebugPrintLevel(), 
 			 "Storage Manager: Get Append-Only mirror resync eofs list entries (current transaction nest level %d, Append-Only commit work system count %d)",
 			 nestLevel,
@@ -2708,13 +2782,14 @@ smgrGetAppendOnlyMirrorResyncEofs(
 	
 	while ((entry = hash_seq_search(&iterateStatus)) != NULL)
 	{
+		MIRRORED_LOCK_DECLARE;
+		
 		bool returned;
+		int resultSystemAppendOnlyCommitCount;
 
 		returned = false;
 		if (entry->key.nestLevel >= nestLevel)
 		{
-			MIRRORED_LOCK_DECLARE;
-
 			MIRRORED_LOCK;
 
 			MirroredAppendOnly_EndXactCatchup(
@@ -2755,7 +2830,15 @@ smgrGetAppendOnlyMirrorResyncEofs(
 			returned = true;
 
 			START_CRIT_SECTION();
-			FileRepPrimary_IntentAppendOnlyCommitWork();
+
+			LWLockAcquire(FileRepAppendOnlyCommitCountLock , LW_EXCLUSIVE);
+			
+			resultSystemAppendOnlyCommitCount = 
+							FileRepPrimary_IntentAppendOnlyCommitWork();
+
+			// Set this inside the Critical Section.
+			entry->didIncrementCommitCount = true;
+
 			if (endXactRecKind == EndXactRecKind_Prepare)
 			{
 				char gid[TMGIDSIZE];
@@ -2764,26 +2847,40 @@ smgrGetAppendOnlyMirrorResyncEofs(
 					elog(ERROR, "Unable to obtain gid during prepare");
 
 				PrepareIntentAppendOnlyCommitWork(gid);
+				
+				entry->isDistributedTransaction = true;
+				memcpy(entry->gid, gid, TMGIDSIZE);
 			}
-			
+
 			pendingAppendOnlyMirrorResyncIntentCount++;
-			END_CRIT_SECTION();
+
+		}
+		else
+		{
+			MIRRORED_LOCK;
+
+			START_CRIT_SECTION();
+
+			LWLockAcquire(FileRepAppendOnlyCommitCountLock , LW_EXCLUSIVE);
 			
-			MIRRORED_UNLOCK;
+			resultSystemAppendOnlyCommitCount = 
+							FileRepPrimary_GetAppendOnlyCommitWorkCount();
 		}
 
-		if (Debug_persistent_print)
+		if (Debug_persistent_print ||
+			Debug_persistent_appendonly_commit_count_print)
 		{
 			if (entry->relationName == NULL)
 				elog(Persistent_DebugPrintLevel(), 
 					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d "
-					 "(returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s, mirror new EOF " INT64_FORMAT ")",
+					 "(returned %s, result system Append-Only commit count %d, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s, mirror new EOF " INT64_FORMAT ")",
 					 entryIndex,
 					 entry->key.relFileNode.spcNode,
 					 entry->key.relFileNode.dbNode,
 					 entry->key.relFileNode.relNode,
 					 entry->key.segmentFileNum,
 					 (returned ? "true" : "false"),
+					 resultSystemAppendOnlyCommitCount,
 					 entry->key.nestLevel,
 					 ItemPointerToString(&entry->persistentTid),
 					 entry->persistentSerialNum,
@@ -2792,7 +2889,7 @@ smgrGetAppendOnlyMirrorResyncEofs(
 			else
 				elog(Persistent_DebugPrintLevel(), 
 					 "Storage Manager: Get Append-Only mirror resync eofs list entry #%d: %u/%u/%u, segment file #%d, relation name '%s' "
-					 "(returned %s, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s, mirror new EOF " INT64_FORMAT ")",
+					 "(returned %s, result system Append-Only commit count %d, transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", mirror catchup required %s, mirror new EOF " INT64_FORMAT ")",
 					 entryIndex,
 					 entry->key.relFileNode.spcNode,
 					 entry->key.relFileNode.dbNode,
@@ -2800,12 +2897,20 @@ smgrGetAppendOnlyMirrorResyncEofs(
 					 entry->key.segmentFileNum,
 					 entry->relationName,
 					 (returned ? "true" : "false"),
+					 resultSystemAppendOnlyCommitCount,
 					 entry->key.nestLevel,
 					 ItemPointerToString(&entry->persistentTid),
 					 entry->persistentSerialNum,
 					 (entry->mirrorCatchupRequired ? "true" : "false"),
 					 entry->mirrorNewEof);
 		}
+
+		LWLockRelease(FileRepAppendOnlyCommitCountLock);
+		
+		END_CRIT_SECTION();
+		
+		MIRRORED_UNLOCK;
+
 		entryIndex++;
 	}
 	return nentries;

@@ -133,16 +133,16 @@ FileRepPrimary_IsMirrorDataLossOccurred(void)
 	return ((dataState == DataStateInChangeTracking) ? TRUE : FALSE);
 }
 
-void 
+int 
 FileRepPrimary_IntentAppendOnlyCommitWork(void)
 {
-	FileRepResync_IncAppendOnlyCommitCount();
+	return FileRepResync_IncAppendOnlyCommitCount();
 }
 
-void 
+int 
 FileRepPrimary_FinishedAppendOnlyCommitWork(int count)
 {
-	FileRepResync_DecAppendOnlyCommitCount(count);
+	return FileRepResync_DecAppendOnlyCommitCount(count);
 }
 
 int 

@@ -87,6 +87,8 @@ extern void CheckPointTwoPhase(XLogRecPtr redo_horizon);
 
 extern void PrepareIntentAppendOnlyCommitWork(char *gid);
 
+extern void PrepareDecrAppendOnlyCommitWork(char *gid);
+
 extern bool FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFound);
 
 extern int TwoPhaseRecoverMirror(void);

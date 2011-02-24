@@ -165,7 +165,8 @@
 typedef struct FileRepResyncShmem_s {
 	
 	volatile int	appendOnlyCommitCount;
-	
+		/* This counter is protected by FileRepAppendOnlyCommitCountLock */
+		
 	bool			checkpointRequest;
 	
 	bool			reCreateRequest;
@@ -230,29 +231,42 @@ FileRepResync_LockRelease(void)
 	SpinLockRelease(&fileRepResyncShmem->lock);
 }
 
-void
+int
 FileRepResync_IncAppendOnlyCommitCount(void)
 {
+	// This counter is protected by FileRepAppendOnlyCommitCountLock;
 	if (fileRepResyncShmem != NULL)
 	{
-		fileRepResyncShmem->appendOnlyCommitCount++;
+		return ++(fileRepResyncShmem->appendOnlyCommitCount);
+	}
+	else
+	{
+		return 0;
 	}
 }
 
-void
+int
 FileRepResync_DecAppendOnlyCommitCount(int	count)
 {
+	// This counter is protected by FileRepAppendOnlyCommitCountLock;
 	if (fileRepResyncShmem != NULL)
 	{	
 		fileRepResyncShmem->appendOnlyCommitCount -= count;
 	
 		Assert(fileRepResyncShmem->appendOnlyCommitCount >= 0);
-	}		
+
+		return fileRepResyncShmem->appendOnlyCommitCount;
+	}
+	else
+	{
+		return 0;
+	}
 }
 
 int
 FileRepResync_GetAppendOnlyCommitCount(void)
 {
+	// This counter is protected by FileRepAppendOnlyCommitCountLock;
 	if (fileRepResyncShmem != NULL)
 	{
 		return fileRepResyncShmem->appendOnlyCommitCount;

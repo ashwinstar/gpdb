@@ -30,9 +30,9 @@ FileRepPrimary_GetMirrorDataLossTrackingSessionNum(int64 *sessionNum);
 
 extern bool FileRepPrimary_IsMirrorDataLossOccurred(void);
 
-extern void FileRepPrimary_IntentAppendOnlyCommitWork(void);
+extern int FileRepPrimary_IntentAppendOnlyCommitWork(void);
 
-extern void FileRepPrimary_FinishedAppendOnlyCommitWork(int count);
+extern int FileRepPrimary_FinishedAppendOnlyCommitWork(int count);
 
 extern int FileRepPrimary_GetAppendOnlyCommitWorkCount(void);
 

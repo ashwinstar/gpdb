@@ -295,6 +295,7 @@ bool		Debug_persistent_store_print = false;
 int			Debug_persistent_store_print_level = LOG;
 bool		Debug_persistent_bootstrap_print = false;
 bool		Debug_bulk_load_bypass_wal = true;
+bool		Debug_persistent_appendonly_commit_count_print = false;
 
 bool		Debug_database_command_print = false;
 int			Debug_database_command_print_level = LOG;
@@ -2397,6 +2398,16 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 		
+	{
+		{"debug_persistent_appendonly_commit_count_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print persistent Append-Only resync commit count information."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_persistent_appendonly_commit_count_print,
+		true, NULL, NULL
+	},
+
 	{
 		{"debug_database_command_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print database command debugging information."),

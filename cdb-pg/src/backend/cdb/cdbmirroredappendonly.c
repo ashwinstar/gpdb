@@ -1232,7 +1232,8 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 			/*
 			 * No data loss.  Report new EOFs now.
 			 */
-			if (Debug_persistent_print)
+			if (Debug_persistent_print ||
+				Debug_persistent_appendonly_commit_count_print)
 			{
 				SUPPRESS_ERRCONTEXT_DECLARE;
 
@@ -1273,7 +1274,8 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 			/*
 			 * We were not configured with a mirror or we've dropped the mirror.
 			 */
-			if (Debug_persistent_print)
+			if (Debug_persistent_print ||
+				Debug_persistent_appendonly_commit_count_print)
 			{
 				SUPPRESS_ERRCONTEXT_DECLARE;
 			
@@ -1308,7 +1310,8 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 			/*
 			 * We are not in synchronized state -- report data loss.
 			 */
-			if (Debug_persistent_print)
+			if (Debug_persistent_print ||
+				Debug_persistent_appendonly_commit_count_print)
 			{
 				SUPPRESS_ERRCONTEXT_DECLARE;
 
@@ -1395,7 +1398,8 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 		 * Resynchronize didn't know about us writing more data, so it is our responsibility
 		 * to catch-up the mirror.
 		 */
-		if (Debug_persistent_print)
+		if (Debug_persistent_print ||
+			Debug_persistent_appendonly_commit_count_print)
 		{
 			SUPPRESS_ERRCONTEXT_DECLARE;
 
@@ -1479,7 +1483,8 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 		 */
 		if (flushMirrorCatchupRequired)
 		{
-			if (Debug_persistent_print)
+			if (Debug_persistent_print ||
+				Debug_persistent_appendonly_commit_count_print)
 			{
 				SUPPRESS_ERRCONTEXT_DECLARE;
 
@@ -1502,7 +1507,8 @@ void MirroredAppendOnly_AddMirrorResyncEofs(
 		}
 		else
 		{
-			if (Debug_persistent_print)
+			if (Debug_persistent_print ||
+				Debug_persistent_appendonly_commit_count_print)
 			{
 				SUPPRESS_ERRCONTEXT_DECLARE;
 
@@ -1572,9 +1578,10 @@ void MirroredAppendOnly_EndXactCatchup(
 		FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
 										&currentMirrorDataLossTrackingSessionNum);
 	
-	if (Debug_persistent_recovery_print)
+	if (Debug_persistent_print ||
+		Debug_persistent_appendonly_commit_count_print)
 	{
-		elog(PersistentRecovery_DebugPrintLevel(), 
+		elog(Persistent_DebugPrintLevel(), 
 			 "MirroredAppendOnly_EndXactCatchup: Evaluate Append-Only mirror resync eofs list entry #%d for loss: %u/%u/%u, segment file #%d, relation name '%s' "
 			 "(transaction nest level %d, persistent TID %s, persistent serial number " INT64_FORMAT ", "
 			 "mirror catchup required %s, "
@@ -1653,7 +1660,8 @@ void MirroredAppendOnly_EndXactCatchup(
 			/*
 			 * No data loss.
 			 */
-			if (Debug_persistent_print)
+			if (Debug_persistent_print ||
+				Debug_persistent_appendonly_commit_count_print)
 			{
 				SUPPRESS_ERRCONTEXT_DECLARE;
 
@@ -1680,7 +1688,8 @@ void MirroredAppendOnly_EndXactCatchup(
 			/*
 			 * We were not configured with a mirror or we've dropped the mirror.
 			 */
-			if (Debug_persistent_print)
+			if (Debug_persistent_print ||
+				Debug_persistent_appendonly_commit_count_print)
 			{
 				SUPPRESS_ERRCONTEXT_DECLARE;
 			
@@ -1704,7 +1713,8 @@ void MirroredAppendOnly_EndXactCatchup(
 			/*
 			 * We are not in synchronized state -- let resynchronize catchup.
 			 */
-			if (Debug_persistent_print)
+			if (Debug_persistent_print ||
+				Debug_persistent_appendonly_commit_count_print)
 			{
 				SUPPRESS_ERRCONTEXT_DECLARE;
 
@@ -1780,7 +1790,8 @@ void MirroredAppendOnly_EndXactCatchup(
 		 * Resynchronize didn't know about us writing more data, so it is our responsibility
 		 * to catch-up the mirror.
 		 */
-		if (Debug_persistent_print)
+		if (Debug_persistent_print ||
+			Debug_persistent_appendonly_commit_count_print)
 		{
 			SUPPRESS_ERRCONTEXT_DECLARE;
 
@@ -1864,7 +1875,8 @@ void MirroredAppendOnly_EndXactCatchup(
 		 */
 		if (flushMirrorCatchupRequired)
 		{
-			if (Debug_persistent_print)
+			if (Debug_persistent_print ||
+				Debug_persistent_appendonly_commit_count_print)
 			{
 				SUPPRESS_ERRCONTEXT_DECLARE;
 
@@ -1887,7 +1899,8 @@ void MirroredAppendOnly_EndXactCatchup(
 		}
 		else
 		{
-			if (Debug_persistent_print)
+			if (Debug_persistent_print ||
+				Debug_persistent_appendonly_commit_count_print)
 			{
 				SUPPRESS_ERRCONTEXT_DECLARE;
 

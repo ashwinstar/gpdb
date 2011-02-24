@@ -82,6 +82,7 @@ typedef enum LWLockId
 	ChangeTrackingCompactLock,
 	MirroredLock,
 	ResQueueLock,
+	FileRepAppendOnlyCommitCountLock,
 	FirstBufMappingLock,
 	FirstLockMgrLock = FirstBufMappingLock + NUM_BUFFER_PARTITIONS,
 	

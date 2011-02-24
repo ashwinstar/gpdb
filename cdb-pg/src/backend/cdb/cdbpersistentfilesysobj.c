@@ -3318,7 +3318,8 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 
 		if (mirrorAppendOnlyNewEof == mirrorNewEof)
 		{
-			if (Debug_persistent_print)
+			if (Debug_persistent_print ||
+				Debug_persistent_appendonly_commit_count_print)
 				elog(Persistent_DebugPrintLevel(), 
 					 "Persistent %u/%u/%u, segment file #%d, current new EOF equal to update new EOF for Append-Only mirror resync EOFs recovery (EOF " INT64_FORMAT "), persistent serial num " INT64_FORMAT " at TID %s",
 					 relFileNode->spcNode,
@@ -3356,7 +3357,8 @@ void PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs(
 
 	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 
-	if (Debug_persistent_print)
+	if (Debug_persistent_print ||
+		Debug_persistent_appendonly_commit_count_print)
 		elog(Persistent_DebugPrintLevel(), 
 			 "PersistentFileSysObj_UpdateAppendOnlyMirrorResyncEofs: %u/%u/%u, segment file #%d, Append-Only Mirror Resync EOFs (recovery %s) -- persistent serial num " INT64_FORMAT ", TID %s, " 
 			 "mirror catchup required %s"
@@ -3477,7 +3479,8 @@ void PersistentFileSysObj_PreparedEndXactAction(
 
 	int i;
 
-	if (Debug_persistent_print)
+	if (Debug_persistent_print ||
+		Debug_persistent_appendonly_commit_count_print)
 		elog(Persistent_DebugPrintLevel(), 
 			 "PersistentFileSysObj_PreparedEndXactAction (distributed transaction id %s, local prepared xid %u): commit %s, file-system action count %d, shared-memory Append-Only intent count %d, xlog Append-Only mirror resync EOFs count %d",
 			 gid,
@@ -3836,7 +3839,9 @@ void PersistentFileSysObj_PreparedEndXactAction(
 	{
 		PersistentEndXactAppendOnlyMirrorResyncEofs *eofsExample;
 
-		int currentAppendOnlyCommitWorkCount;
+		int oldSystemAppendOnlyCommitWorkCount;
+		int newSystemAppendOnlyCommitWorkCount;
+		int resultSystemAppendOnlyCommitWorkCount;
 
 		eofsExample = &persistentObjects->typed.appendOnlyMirrorResyncEofs[0];
 		
@@ -3857,32 +3862,21 @@ void PersistentFileSysObj_PreparedEndXactAction(
 				 gid,
 				 preparedXid);
 
-		currentAppendOnlyCommitWorkCount = FileRepPrimary_GetAppendOnlyCommitWorkCount();
+		LWLockAcquire(FileRepAppendOnlyCommitCountLock , LW_EXCLUSIVE);
 
-		if (currentAppendOnlyCommitWorkCount - persistentObjects->typed.appendOnlyMirrorResyncEofsCount < 0)
+		oldSystemAppendOnlyCommitWorkCount = FileRepPrimary_GetAppendOnlyCommitWorkCount();
+
+		newSystemAppendOnlyCommitWorkCount = 
+						oldSystemAppendOnlyCommitWorkCount -
+						persistentObjects->typed.appendOnlyMirrorResyncEofsCount;
+		
+		if (newSystemAppendOnlyCommitWorkCount < 0)
 			elog(ERROR, 
 				 "Append-Only Mirror Resync EOFs intent count would go negative "
-				 "(current count %d, subtract count %d). "
+				 "(enter system count %d, subtract count %d). "
 				 "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s).  "
 				 "Distributed transaction id %s (local prepared xid %u)",
-				 currentAppendOnlyCommitWorkCount,
-				 persistentObjects->typed.appendOnlyMirrorResyncEofsCount,
-				 eofsExample->relFileNode.spcNode,
-				 eofsExample->relFileNode.dbNode,
-				 eofsExample->relFileNode.relNode,
-				 eofsExample->segmentFileNum,
-				 eofsExample->persistentSerialNum,
-				 ItemPointerToString(&eofsExample->persistentTid),
-				 gid,
-				 preparedXid);
-		
-		if (Debug_persistent_print)
-			elog(Persistent_DebugPrintLevel(), 
-				 "PersistentFileSysObj_PreparedEndXactAction: Append-Only Mirror Resync EOFs finishing commit work "
-				 "(current count %d, subtract count %d).  "
-				 "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s)  "
-				 "Distributed transaction id %s (local prepared xid %u)",
-				 currentAppendOnlyCommitWorkCount,
+				 oldSystemAppendOnlyCommitWorkCount,
 				 persistentObjects->typed.appendOnlyMirrorResyncEofsCount,
 				 eofsExample->relFileNode.spcNode,
 				 eofsExample->relFileNode.dbNode,
@@ -3893,7 +3887,33 @@ void PersistentFileSysObj_PreparedEndXactAction(
 				 gid,
 				 preparedXid);
 
-		FileRepPrimary_FinishedAppendOnlyCommitWork(persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
+		resultSystemAppendOnlyCommitWorkCount =
+				FileRepPrimary_FinishedAppendOnlyCommitWork(
+					persistentObjects->typed.appendOnlyMirrorResyncEofsCount);
+		
+		// Should match since we are under FileRepAppendOnlyCommitCountLock EXCLUSIVE.
+		Assert(newSystemAppendOnlyCommitWorkCount == resultSystemAppendOnlyCommitWorkCount);		
+
+		if (Debug_persistent_print ||
+			Debug_persistent_appendonly_commit_count_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "PersistentFileSysObj_PreparedEndXactAction: Append-Only Mirror Resync EOFs finishing commit work "
+				 "(enter system count %d, subtract count %d, result system count %d).  "
+				 "Example relation %u/%u/%u, segment file #%d (persistent serial num " INT64_FORMAT ", TID %s)  "
+				 "Distributed transaction id %s (local prepared xid %u)",
+				 oldSystemAppendOnlyCommitWorkCount,
+				 persistentObjects->typed.appendOnlyMirrorResyncEofsCount,
+				 resultSystemAppendOnlyCommitWorkCount,
+				 eofsExample->relFileNode.spcNode,
+				 eofsExample->relFileNode.dbNode,
+				 eofsExample->relFileNode.relNode,
+				 eofsExample->segmentFileNum,
+				 eofsExample->persistentSerialNum,
+				 ItemPointerToString(&eofsExample->persistentTid),
+				 gid,
+				 preparedXid);
+
+		LWLockRelease(FileRepAppendOnlyCommitCountLock);
 	}
 	else if (prepareAppendOnlyIntentCount > 0)
 	{
@@ -3904,8 +3924,35 @@ void PersistentFileSysObj_PreparedEndXactAction(
 			 gid,
 			 preparedXid);
 	}
-injectfaultexit:
+
+	goto jumpoverinjectfaultexit;
 	
+injectfaultexit:
+
+	if (Debug_persistent_print ||
+		Debug_persistent_appendonly_commit_count_print)
+	{
+		int systemAppendOnlyCommitWorkCount;
+
+		LWLockAcquire(FileRepAppendOnlyCommitCountLock , LW_EXCLUSIVE);
+
+		systemAppendOnlyCommitWorkCount = FileRepPrimary_GetAppendOnlyCommitWorkCount();
+
+		elog(Persistent_DebugPrintLevel(), 
+			 "PersistentFileSysObj_PreparedEndXactAction: Append-Only Mirror Resync EOFs commit count %d at fault-injection "
+			 "(shared-memory count %d, xlog count %d). "
+			 "Distributed transaction id %s (local prepared xid %u)",
+			 systemAppendOnlyCommitWorkCount,
+			 prepareAppendOnlyIntentCount,
+			 persistentObjects->typed.appendOnlyMirrorResyncEofsCount,
+			 gid,
+			 preparedXid);
+		
+		LWLockRelease(FileRepAppendOnlyCommitCountLock);
+	}
+
+jumpoverinjectfaultexit:
+
 	PersistentFileSysObj_FlushXLog();
 
 	MIRRORED_UNLOCK;

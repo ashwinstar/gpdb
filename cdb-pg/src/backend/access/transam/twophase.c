@@ -1717,8 +1717,21 @@ PrepareIntentAppendOnlyCommitWork(char *gid)
 
 	gxact = FindPrepareGXact(gid);
 
+	Assert(gxact->prepareAppendOnlyIntentCount >= 0);
 	gxact->prepareAppendOnlyIntentCount++;
 }
+
+void 
+PrepareDecrAppendOnlyCommitWork(char *gid)
+{
+	GlobalTransaction gxact;
+
+	gxact = FindPrepareGXact(gid);
+
+	Assert(gxact->prepareAppendOnlyIntentCount >= 1);
+	gxact->prepareAppendOnlyIntentCount--;
+}
+
 
 /*
  * FinishPreparedTransaction: execute COMMIT PREPARED or ROLLBACK PREPARED

@@ -79,9 +79,9 @@ extern XLogRecPtr FileRepResync_GetEndFullResyncLSN(void);
 extern void FileRepResyncManager_SetEndResyncLSN(
 												 XLogRecPtr endResyncLSN);
 
-extern void FileRepResync_IncAppendOnlyCommitCount(void);
+extern int FileRepResync_IncAppendOnlyCommitCount(void);
 
-extern void FileRepResync_DecAppendOnlyCommitCount(int	count);
+extern int FileRepResync_DecAppendOnlyCommitCount(int	count);
 
 extern int FileRepResync_GetAppendOnlyCommitCount(void);
 
