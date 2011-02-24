@@ -19,6 +19,7 @@
 #include "postgres.h"
 #include "storage/shmem.h"
 #include "utils/syncbitvector.h"
+#include "utils/atomic.h"
 
 /*
  * bit vector access descriptor.
@@ -38,7 +39,6 @@ typedef struct datumIdx
 /* static functions */
 static inline void *getVector(SyncBitvectorContainer container, int32 vectorOffset);
 static inline datumIdx *getDatumIdx(uint64 offset, datumIdx *idx);
-static inline int32 compare_and_swap(uint32 *dest, uint32 old, uint32 new);
 
 /*
  * Returns the size of the shared memory segment
@@ -147,7 +147,7 @@ bool SyncBitVector_TestTestSetBit(SyncBitvectorContainer container, int32 vector
 		}
 
 		/* test and set */
-		swapped = compare_and_swap(pdatum, datumOld, datumNew);
+		swapped = compare_and_swap_32(pdatum, datumOld, datumNew);
 		if (swapped)
 		{
 			return true;
@@ -197,56 +197,5 @@ datumIdx *getDatumIdx(uint64 offset, datumIdx *idx)
 
 	return idx;
 }
-
-
-/*
- * Implement compare-and-swap (CAS) atomic operation (x86).
- *
- * Algorithm:
- * 		if (*dest == old)
- * 		{
- * 			*dest = new;
- * 			return 1;
- * 		}
- * 		return 0;
- *
- * This is provided by gcc 4.1 or newer through macro
- * __sync_bool_compare_and_swap.
- */
-
-static inline
-int32 compare_and_swap(uint32 *dest, uint32 old, uint32 new)
-{
-	volatile int32 res = 0;
-
-#if defined(__i386)
-	__asm__ __volatile__
-		(
-		"MOVL %1, %%edx 						\n\t"
-		"MOVL %2, %%eax			 				\n\t"
-		"MOVL %3, %%ecx 						\n\t"
-		"LOCK CMPXCHG %%ecx, (%%edx)			\n\t"
-		"SETE %0								\n\t"
-		:"=g"(res),"=m"(dest)
-		:"g"(old),"g"(new)
-		:"%eax","%ecx","%edx"
-		);
-#elif defined(__x86_64__)
-	__asm__ __volatile__
-		(
-		"MOVQ %1, %%rdx		 					\n\t"
-		"MOVL %2, %%eax			 				\n\t"
-		"MOVL %3, %%ecx 						\n\t"
-		"LOCK CMPXCHG %%ecx, (%%rdx)			\n\t"
-		"SETE %0								\n\t"
-		:"=g"(res),"=m"(dest)
-		:"g"(old),"g"(new)
-		:"%eax","%ecx","%rdx"
-		);
-#endif
-
-	return res;
-}
-
 
 // EOF

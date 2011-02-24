@@ -3354,12 +3354,15 @@ StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_AR
 
 	if (CritSectionCount == 0)
 	{
-		Assert(MyProc != NULL);
-		MyProc->postmasterResetRequired = false;
+		/* Some filerep processes may not set MyProc. */
+		if (MyProc != NULL)
+		{
+			MyProc->postmasterResetRequired = false;
+		}
+
 		/* Clean up shared memory by calling callback functions. Do not exit, though. We need to raise signal to get a core. */
 		proc_exit_prepare(0);
-		Assert(MyProc && "MyProc entry disappeared unexpectedly");
-		Assert(!MyProc->postmasterResetRequired && "postmaster reset required flag changed unexpectedly");
+		AssertImply(MyProc != NULL, !MyProc->postmasterResetRequired && "postmaster reset required flag changed unexpectedly");
 	}
 
 
