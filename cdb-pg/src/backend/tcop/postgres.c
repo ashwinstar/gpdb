@@ -3347,11 +3347,21 @@ StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_AR
                     errmsg("Unexpected internal error: %s received signal %s",
                            processName, signame) ));
 
+    /**
+     * We reach this point only if gp_reraise_signal is on.
+     */
+    Assert(gp_reraise_signal);
+
 	if (CritSectionCount == 0)
 	{
 		Assert(MyProc != NULL);
 		MyProc->postmasterResetRequired = false;
+		/* Clean up shared memory by calling callback functions. Do not exit, though. We need to raise signal to get a core. */
+		proc_exit_prepare(0);
+		Assert(MyProc && "MyProc entry disappeared unexpectedly");
+		Assert(!MyProc->postmasterResetRequired && "postmaster reset required flag changed unexpectedly");
 	}
+
 
     /* CDB: Control returns here only if gp_reraise_signal is true. */
     raise(postgres_signal_arg);

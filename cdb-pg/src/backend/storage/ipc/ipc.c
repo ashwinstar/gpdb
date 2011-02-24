@@ -43,8 +43,6 @@ bool		proc_exit_inprogress = false;
  */
 static bool atexit_callback_setup = false;
 
-/* local functions */
-static void proc_exit_prepare(int code);
 
 
 /* ----------------------------------------------------------------
@@ -141,7 +139,7 @@ proc_exit(int code)
  * normal exit through proc_exit, this will actually be called twice ...
  * but the second call will have nothing to do.
  */
-static void
+void
 proc_exit_prepare(int code)
 {
 	/*

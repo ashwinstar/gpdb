@@ -55,20 +55,6 @@ ExceptionalCondition(const char *conditionName,
 		/* Usually this shouldn't be needed, but make sure the msg went out */
 		fflush(stderr);
 		
-		/*
-		 * Force to generate a core dump by sending the current process
-		 * a SIGSEGV signal
-		 *
-		 * TODO  Chuck asks:   Why is this necessary?  abort() should cause a core dump
-		 * to be generated, so there should be no reason to raise the signal.
-		 * And why is this in the if block?
-		 */
-		PG_SETMASK(&BlockSig);
-#ifdef SIGSEGV
-		pqsignal(SIGSEGV, SIG_DFL);
-
-		raise(SIGSEGV);
-#endif
 	}
 	
     abort();
