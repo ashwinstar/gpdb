@@ -4,11 +4,6 @@ information see the 'Greenplum Database Installation Guide'
 and the 'Greenplum Database Administration Guide'
 located in $GPHOME/docs following installation.
 
-For Greenplum Database Single Node Edition (SNE) refer to the 
-Quick Start Guide (GPDB-SingleNodeEdition-QuickStart.pdf) for
-detailed installation and setup of a single-node Greenplum
-Database system.
-
 
 ***********************************************************
 RUNNING THE GREENPLUM DATABASE INSTALLER
@@ -19,13 +14,15 @@ RUNNING THE GREENPLUM DATABASE INSTALLER
 
 2. Execute the installer using bash:
 
-   /bin/bash greenplum-db-4.0.x.x-<PLATFORM>.bin 
+   /bin/bash greenplum-db-4.1.x.x-<PLATFORM>.bin 
 
 3. When prompted, type 'yes' to accept the license agreement.
 
-4. When prompted, provide an installation path. For example:
+4. When prompted, provide an installation path. Make sure you have 
+   permissions to write to the installation directory you specify.
+   For example:
 
-   /usr/local/greenplum-db-4.0.x.x
+   /usr/local/greenplum-db-4.1.x.x
 
 
 ***********************************************************
@@ -45,13 +42,13 @@ Disable IPv6 network addressing.
 
 Add all of the following to /etc/sysctl.conf:
 
-kern.sysv.shmmax=2147483648
-kern.sysv.shmmin=1
-kern.sysv.shmmni=64
-kern.sysv.shmseg=16
-kern.sysv.shmall=524288
-kern.maxfiles=65535
-kern.maxfilesperproc=65535
+kern.sysv.shmmax=2147483648 
+kern.sysv.shmmin=1 
+kern.sysv.shmmni=64 
+kern.sysv.shmseg=16 
+kern.sysv.shmall=524288 
+kern.maxfiles=65535 
+kern.maxfilesperproc=65535 
 net.inet.tcp.msl=60
 
 
@@ -67,41 +64,52 @@ when initializing your Greenplum Database system.
 LINUX
 ----------------
 
-In /etc/sysctl.conf:
+In /etc/sysctl.conf: 
 
-kernel.sem = 250 64000 100 512
-kernel.shmmax = 500000000
-kernel.shmmni = 4096
-kernel.shmall = 4000000000
-kernel.sem = 250 64000 100 512
-kernel.sysrq = 1
-kernel.core_uses_pid = 1
-kernel.msgmnb = 65536
-kernel.msgmax = 65536
-net.ipv4.tcp_syncookies = 1
-net.ipv4.ip_forward = 0
-net.ipv4.conf.default.accept_source_route = 0
-net.ipv4.tcp_tw_recycle=1
-net.ipv4.tcp_max_syn_backlog=4096
-net.ipv4.conf.all.arp_filter = 1
-net.core.netdev_max_backlog=10000
-vm.overcommit_memory=2
+kernel.sem = 250 64000 100 512 
+kernel.shmmax = 500000000 
+kernel.shmmni = 4096 
+kernel.shmall = 4000000000 
+kernel.sem = 250 64000 100 512 
+kernel.sysrq = 1 
+kernel.core_uses_pid = 1 
+kernel.msgmnb = 65536 
+kernel.msgmax = 65536 
+net.ipv4.tcp_syncookies = 1 
+net.ipv4.ip_forward = 0 
+net.ipv4.conf.default.accept_source_route = 0 
+net.ipv4.tcp_tw_recycle=1 
+net.ipv4.tcp_max_syn_backlog=4096 
+net.ipv4.conf.all.arp_filter = 1 
+net.ipv4.conf.default.arp_filter = 1
+net.core.netdev_max_backlog=10000 
+vm.overcommit_memory=2 
 
-In /etc/security/limits.conf:
+In /etc/security/limits.conf: 
 
-* soft nofile 65536 
-* hard nofile 65536 
-* soft nproc 131072
-* hard nproc 131072
+* soft nofile 65536  
+* hard nofile 65536  
+* soft nproc 131072 
+* hard nproc 131072 
+
+In /etc/hosts:
+
+Include the host names and all interface address names for every 
+machine participating in your Greenplum Database system.
+
 
 File system recommendations:
 
-XFS is the preferred file system for data storage. 
-Greenplum recommends the following xfs mount options:
+XFS is the preferred file system on Linux platforms for 
+data storage. Greenplum recommends the following xfs mount 
+options:
 
-noatime,nodiratim,logbufs=8
+rw,noatime,inode64,allocsize=16m
 
-Also, each disk device file should have a read-ahead value of 16384.
+Also, each disk device file should have a read-ahead value of 16384. 
+For example, to verify the read-ahead value of a disk device:
+
+# /sbin/blockdev --getra /dev/sdb
 
 ----------------
 SOLARIS 10
@@ -109,28 +117,35 @@ SOLARIS 10
 
 In /etc/system:
 
-set rlim_fd_cur=65536
-set zfs:zfs_arc_max=0x600000000
-set pcplusmp:apic_panic_on_nmi=1
-set nopanicdebug=1
+set rlim_fd_cur=65536 
+set zfs:zfs_arc_max=0x600000000 
+set pcplusmp:apic_panic_on_nmi=1 
+set nopanicdebug=1 
+
 
 In /etc/project:
 
-Solaris maintains tuning properties in /etc/project starting 
-with Solaris 10 11/08. As a result, some things formerly set 
-in /etc/system are now set in /etc/project. 
+Change the following line: 
 
-Change this line:
+   default:3:::: 
+to: 
+   default:3:default 
 
-default:3::::
+project:::project.max-sem-ids=(priv,1024,deny); 
 
-To:
+process.max-file-descriptor=(priv,252144,deny) 
 
-default:3:default project:::project.max-sem-ids=(priv,1024,deny); process.max-filedescriptor=(priv,252144,deny)
 
 In /etc/user_attr:
 
 gpadmin::::defaultpriv=basic,dtrace_user,dtrace_proc
+
+
+In /etc/hosts:
+
+Include the host names and all interface address names for every 
+machine participating in your Greenplum Database system.
+
 
 
 ***********************************************************
@@ -142,10 +157,6 @@ Greenplum Database instance. For detailed instructions, please
 see the 'Greenplum Database Installation Guide' located in
 $GPHOME/docs. 
 
-For Greenplum Database Single Node Edition (SNE) 
-refer to the Greenplum Database Single Node Edition 
-Quick Start Guide (GPDB-SingleNodeEdition-QuickStart.pdf). 
-
 
 1. Allocate a 'gpadmin' OS user to own and run your installation.
    This user must exist on all Greenplum hosts.
@@ -154,34 +165,24 @@ Quick Start Guide (GPDB-SingleNodeEdition-QuickStart.pdf).
    profile (.bashrc) of your master host. This sets the 
    environment variables needed by Greenplum Database.
 
-3. Create your data directory locations on all Greenplum hosts.
+3. Use the gpseginstall utility to install and configure the
+   Greenplum software on all hosts.
 
-4. Use the gpssh-exkeys utility on the master host to exchange 
-   SSH keys between all hosts in your Greenplum array. Note that 
-   for a single-node configuration you still must exchange 
-   ssh keys between the local host and itself.
+4. Create your data directory locations on all Greenplum hosts.
 
-5. (multi-node configuration only) Use the gpscp and gpssh 
-   utilities on the master host to copy and install the 
-   Greenplum Database software on all segment hosts.
-
-6. Use the gpinitsystem utility on the master host to 
+5. Use the gpinitsystem utility on the master host to 
    initialize and start your Greenplum Database system. This 
-   utility requires a configuration file. For example:
+   utility requires a configuration file and a host file. 
+   For example:
 
-   gpinitsystem -c gp_init_config
+   gpinitsystem -c gpinitsystem_config -h hostfile_gpinitsystem
 
    A sample multi-node initialization configuration file can 
-   be found in $GPHOME/docs/cli_help/gp_init_config_example.
-
-   A sample single-node initialization configuration file can 
-   be found in $GPHOME/docs/cli_help/gp_init_singlenode_example.
+   be found in $GPHOME/docs/cli_help/gpconfigs/gpinitsystem_config.
  
-   Edit the appropriate example file to reflect your desired 
-   Greenplum Database configuration.
-
-   
-   
+   Edit the example files to reflect your desired Greenplum Database 
+   configuration.
+  
 
 
 ************************************************
@@ -233,9 +234,6 @@ for download on http://gpn.greenplum.com.
 
 * GPPerfmonAdminGuide.pdf - Greenplum Performance Monitor Administrator Guide
 
-(Greenplum Database Single Node Edition Only)
-
-* GPDB-SingleNodeEdition-QuickStart.pdf - Greenplum Database Single Node Edition (SNE) Quick Start Guide
 
 Release notes for this version of Greenplum Database are
 available on http://gpn.greenplum.com.
