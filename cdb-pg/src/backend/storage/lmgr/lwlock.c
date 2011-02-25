@@ -799,13 +799,24 @@ LWLockRelease(LWLockId lockid)
 			{
 				while (proc->lwWaitLink != NULL &&
 					   !proc->lwWaitLink->lwExclusive)
+				{
 					proc = proc->lwWaitLink;
+					if (proc->pid != 0)
+					{
+						lock->releaseOK = false;
+					}					
+				}
 			}
 			/* proc is now the last PGPROC to be released */
 			lock->head = proc->lwWaitLink;
 			proc->lwWaitLink = NULL;
-			/* prevent additional wakeups until retryer gets to run */
-			lock->releaseOK = false;
+			
+			/* proc->pid can be 0 if process exited while waiting for lock */
+			if (proc->pid != 0)
+			{
+				/* prevent additional wakeups until retryer gets to run */
+				lock->releaseOK = false;
+			}
 		}
 		else
 		{
