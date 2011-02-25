@@ -1795,8 +1795,6 @@ freeProcEntryAndReturnReset(int pid)
 
 		if (myProc->pid == pid)
 		{
-			Assert (myProc->links.next == INVALID_OFFSET);
-
 			resetRequired = myProc->postmasterResetRequired;
 			myProc->postmasterResetRequired = true;
 
