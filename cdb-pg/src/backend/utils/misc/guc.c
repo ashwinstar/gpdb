@@ -723,7 +723,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"upgrade_mode", PGC_POSTMASTER, CUSTOM_OPTIONS,
 			gettext_noop("Upgrade Mode"),
-			NULL
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_upgrade_mode,
 		false, NULL, NULL
