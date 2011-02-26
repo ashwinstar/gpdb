@@ -20,24 +20,24 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-ALTER RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITH ( queue_attribute=value [, ... ] ) 
 
+ALTER RESOURCE QUEUE name WITH ( queue_attribute=value [, ... ] ) 
 where queue_attribute is:
+   ACTIVE_STATEMENTS=integer
+   MEMORY_LIMIT='memory_units'
+   MAX_COST=float
+   COST_OVERCOMMIT={TRUE|FALSE}
+   MIN_COST=float
+   PRIORITY={MIN|LOW|MEDIUM|HIGH|MAX}
 
-ACTIVE_STATEMENTS=<replaceable class="PARAMETER">integer</replaceable>
-MAX_COST=<replaceable class="PARAMETER">float</replaceable> 
-COST_OVERCOMMIT=<replaceable class="PARAMETER">TRUE</replaceable> | <replaceable class="PARAMETER">FALSE</replaceable>
-MIN_COST=<replaceable class="PARAMETER">float</replaceable>
-PRIORITY={<replaceable class="PARAMETER">MIN</replaceable>|<replaceable class="PARAMETER">LOW</replaceable>|<replaceable class="PARAMETER">MEDIUM</replaceable>|<replaceable class="PARAMETER">HIGH</replaceable>|<replaceable class="PARAMETER">MAX</replaceable>} 
-
-ALTER RESOURCE QUEUE <replaceable class="PARAMETER">name</replaceable> WITHOUT ( queue_attribute=value [, ... ] ) 
-
+ALTER RESOURCE QUEUE name WITHOUT ( queue_attribute=value [, ... ] ) 
 where queue_attribute is:
+   ACTIVE_STATEMENTS=integer
+   MEMORY_LIMIT='memory_units'
+   MAX_COST=float
+   COST_OVERCOMMIT={TRUE|FALSE}
+   MIN_COST=float
 
-ACTIVE_STATEMENTS=<replaceable class="PARAMETER">integer</replaceable>
-MAX_COST=<replaceable class="PARAMETER">float</replaceable> 
-COST_OVERCOMMIT=<replaceable class="PARAMETER">TRUE</replaceable> | <replaceable class="PARAMETER">FALSE</replaceable>
-MIN_COST=<replaceable class="PARAMETER">float</replaceable>
 </synopsis>
  </refsynopsisdiv>
 
