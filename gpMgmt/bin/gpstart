@@ -387,7 +387,10 @@ class GpStart:
 
         hadSegmentFailuresOrInactive = len(segmentStartResult.getFailedSegmentObjs()) > 0 or \
                                        len(invalidSegments ) > 0
-        self._start_final_master(hadSegmentFailuresOrInactive)
+
+        final_result = self._start_final_master(hadSegmentFailuresOrInactive)
+        if not final_result:
+            return False
 
         if len(segmentStartResult.getFailedSegmentObjs()) == 0:
             return True
@@ -643,19 +646,26 @@ class GpStart:
                 ''' we do nothing here since certain fts scenarios will trigger initial connection failures
                     and other goodies.
                 '''
-                logger.debug("Encountered problem while connecting to master: %s" % str(e))
+                logger.warning("Encountered problem while connecting to master: %s" % str(e))
 
             standby_failure=not self.standby_was_started and self.attempt_standby_start
 
             if standby_failure:
                 logger.warning("Standby Master could not be started")
-            if standby_failure or hadSegmentFailuresOrInactive:
+                return False
+
+            if hadSegmentFailuresOrInactive:
                 logger.warning("Database started but warnings generated       <<<<<")
                 logger.info("Check status of database with gpstate utility")
+                return True
+
             else:
                 logger.info("Database successfully started with no errors reported")
+                return True
+
         else:
             logger.warning("Command pg_ctl reports Master %s on port %d not running" % (self.gparray.master.datadir,self.gparray.master.port))
+            return True
 
 
     ######

@@ -571,7 +571,7 @@ class GpStart(Command):
             self.cmdStr += " -m"
         if restricted:
             self.cmdStr += " -R"
-        if verbose:
+        if verbose or logging_is_verbose():
             self.cmdStr += " -v"
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
 
@@ -588,7 +588,7 @@ class NewGpStart(Command):
             self.cmdStr += " -m"
         if restricted:
             self.cmdStr += " -R"
-        if verbose:
+        if verbose or logging_is_verbose():
             self.cmdStr += " -v"
         if nostandby:
             self.cmdStr += " -y"
@@ -610,7 +610,7 @@ class NewGpStop(Command):
         self.cmdStr="$GPHOME/bin/gpstop -a"
         if masterOnly:
             self.cmdStr += " -m"
-        if verbose:
+        if verbose or logging_is_verbose():
             self.cmdStr += " -v"
         if fast:
             self.cmdStr += " -f"
@@ -639,7 +639,7 @@ class GpStop(Command):
             self.cmdStr += " -M immediate"
         if datadir:
             self.cmdStr += " -d %s" % datadir
-        if verbose:
+        if verbose or logging_is_verbose():
             self.cmdStr += " -v"
         if quiet:
             self.cmdStr += " -q"
