@@ -7,11 +7,12 @@ been marked as down (if mirroring is enabled).
 SYNTAX
 ******************************************************
 
-gprecoverseg [ -p <new_recover_host> 
-             | -i <recover_config_file> 
-             | -s <filespace_config_file>] 
+gprecoverseg [-p <new_recover_host> 
+             |-i <recover_config_file> 
+             |-s <filespace_config_file>] 
              [-d <master_data_directory>] [-B <parallel_processes>] 
              [-F] [-a] [-q] [-l <logfile_directory>]
+             [-r]
 
 gprecoverseg -o <output_recover_config_file> 
             | -S <output_filespace_config_file> [-p new_recover_host]
@@ -182,6 +183,15 @@ locations created, ssh keys exchanged, etc.).
 Run in quiet mode. Command output is not displayed on 
 the screen, but is still written to the log file.
 
+-r
+
+-r (rebalance segments)
+
+Rebalances primary and mirror segments by returning them to their 
+preferred roles. After resolving the failure that caused the 
+unbalanced state, run gprecoverseg -r to rebalance. 
+All segments must be running and synchronized before 
+running gprecoverseg -r.
 
 -s <filespace_config_file>
 
