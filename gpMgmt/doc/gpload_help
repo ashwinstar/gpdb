@@ -441,11 +441,11 @@ PRELOAD - Optional. Specifies operations to run prior to the load operation.
 TRUNCATE - Optional. If set to true, gpload will remove all rows in the 
            target table prior to loading it.
 
-REUSE_TABLES: Optional. When set to true gpload will try to reuse existing
-			  external and temp tables for this operation if possible, 
-			  rather then creating new ones. gpload will not drop these 
-			  tables at the end of operation. Recommended for micro-batch 
-			  load environments, aids in avoiding a catalog bloat.
+REUSE_TABLES - Optional. If set to true, gpload will not drop the external 
+               table objects and staging table objects it creates. These objects 
+               will be reused for future load operations that use the same load 
+               specifications. This improves performance of trickle loads 
+               (ongoing small loads to the same target table).
 
 SQL - Optional. Defines SQL commands to run before and/or after the load 
       operation. Commands that contain spaces or special characters must 
