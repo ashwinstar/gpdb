@@ -24,33 +24,34 @@ static char predump_errmsg[1024];
  * name in the format N%s_%d_%d, where the %s is replaced by the CDBDumpKey,
  * and the 2 integers are the contentid and dbid.
  */
-void DoCancelNotifyListen( PGconn* pConn,
-						   bool bListen,
-						   const char* pszCDBDumpKey,
-						   int role_id,
-						   int db_id,
-						   int target_db_id,
-						   const char* pszSuffix)
+void
+DoCancelNotifyListen(PGconn *pConn,
+					 bool bListen,
+					 const char *pszCDBDumpKey,
+					 int role_id,
+					 int db_id,
+					 int target_db_id,
+					 const char *pszSuffix)
 {
-	PGresult* pRes;
+	PGresult   *pRes;
 	PQExpBuffer q = createPQExpBuffer();
-	char* pszCmd = bListen ? "LISTEN" : "NOTIFY";
+	char	   *pszCmd = bListen ? "LISTEN" : "NOTIFY";
 
 	appendPQExpBuffer(q, "%s N%s_%d_%d",
-						pszCmd, pszCDBDumpKey, role_id, db_id );
+					  pszCmd, pszCDBDumpKey, role_id, db_id);
 
 	/* this is valid only for restore operations */
-	if ( target_db_id != -1 )
+	if (target_db_id != -1)
 		appendPQExpBuffer(q, "_T%d", target_db_id);
 
-	if ( pszSuffix != NULL )
-		appendPQExpBuffer(q, "_%s", pszSuffix );
+	if (pszSuffix != NULL)
+		appendPQExpBuffer(q, "_%s", pszSuffix);
 
 	pRes = PQexec(pConn, q->data);
-	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_COMMAND_OK)
+	if (pRes == NULL || PQresultStatus(pRes) != PGRES_COMMAND_OK)
 	{
 		mpp_err_msg_cache("%s command failed for for backup key %s, instid %d, segid %d failed : %s",
-				  pszCmd, pszCDBDumpKey, role_id, db_id, PQerrorMessage(pConn));
+			   pszCmd, pszCDBDumpKey, role_id, db_id, PQerrorMessage(pConn));
 	}
 
 	PQclear(pRes);
@@ -61,60 +62,63 @@ void DoCancelNotifyListen( PGconn* pConn,
  * FreeInputOptions: This function frees all the memory allocated for the fields
  * in an InputOptions struct, but not the pointer to the struct itself
  */
-void FreeInputOptions( InputOptions* pInputOpts )
+void
+FreeInputOptions(InputOptions * pInputOpts)
 {
-	if ( pInputOpts->pszDBName != NULL )
-		free( pInputOpts->pszDBName );
+	if (pInputOpts->pszDBName != NULL)
+		free(pInputOpts->pszDBName);
 
-	if ( pInputOpts->pszPGHost != NULL )
-		free( pInputOpts->pszPGHost );
+	if (pInputOpts->pszPGHost != NULL)
+		free(pInputOpts->pszPGHost);
 
-	if ( pInputOpts->pszPGPort != NULL )
-		free( pInputOpts->pszPGPort );
+	if (pInputOpts->pszPGPort != NULL)
+		free(pInputOpts->pszPGPort);
 
-	if ( pInputOpts->pszUserName != NULL )
-		free( pInputOpts->pszUserName );
+	if (pInputOpts->pszUserName != NULL)
+		free(pInputOpts->pszUserName);
 
-	if ( pInputOpts->pszBackupDirectory != NULL )
-		free( pInputOpts->pszBackupDirectory );
+	if (pInputOpts->pszBackupDirectory != NULL)
+		free(pInputOpts->pszBackupDirectory);
 
-	if ( pInputOpts->pszReportDirectory != NULL )
-		free( pInputOpts->pszReportDirectory );
+	if (pInputOpts->pszReportDirectory != NULL)
+		free(pInputOpts->pszReportDirectory);
 
     /* hard coded as gzip for now, no need to free
 	if ( pInputOpts->pszCompressionProgram != NULL )
-		free( pInputOpts->pszCompressionProgram ); */
+		free( pInputOpts->pszCompressionProgram ); 
+	*/
 
-	if ( pInputOpts->pszPassThroughParms != NULL )
-		free( pInputOpts->pszPassThroughParms );
+	if (pInputOpts->pszPassThroughParms != NULL)
+		free(pInputOpts->pszPassThroughParms);
 
-	if ( pInputOpts->pszCmdLineParms != NULL )
-		free( pInputOpts->pszCmdLineParms );
+	if (pInputOpts->pszCmdLineParms != NULL)
+		free(pInputOpts->pszCmdLineParms);
 
-	if ( pInputOpts->pszKey != NULL )
-		free( pInputOpts->pszKey );
+	if (pInputOpts->pszKey != NULL)
+		free(pInputOpts->pszKey);
 
-	if ( pInputOpts->pszMasterDBName != NULL )
-		free( pInputOpts->pszMasterDBName );
+	if (pInputOpts->pszMasterDBName != NULL)
+		free(pInputOpts->pszMasterDBName);
 
-	/*FreeCDBSet( &pInputOpts->set );*/
+	/* FreeCDBSet( &pInputOpts->set ); */
 }
 
 /*
  * GetMatchInt: This function parses a pMatch objects's result as an integer.
  */
-int GetMatchInt(regmatch_t* pMatch, char* pszInput )
+int
+GetMatchInt(regmatch_t *pMatch, char *pszInput)
 {
-	int start	= pMatch->rm_so;
-	int end		= pMatch->rm_eo;
-	char save;
-	int rtn;
+	int			start = pMatch->rm_so;
+	int			end = pMatch->rm_eo;
+	char		save;
+	int			rtn;
 
-	assert( end >= start );
+	assert(end >= start);
 
 	save = pszInput[end];
 	pszInput[end] = '\0';
-	rtn = atoi( pszInput + start );
+	rtn = atoi(pszInput + start);
 	pszInput[end] = save;
 
 	return rtn;
@@ -122,23 +126,24 @@ int GetMatchInt(regmatch_t* pMatch, char* pszInput )
 
 /*
  * GetMatchString: This function parses a pMatch objects's result as a string.
- * It allocates memory for the string.  This should be freed by the caller.
+ * It allocates memory for the string.	This should be freed by the caller.
  */
-char* GetMatchString(regmatch_t* pMatch, char* pszInput )
+char *
+GetMatchString(regmatch_t *pMatch, char *pszInput)
 {
-	int start	= pMatch->rm_so;
-	int end		= pMatch->rm_eo;
-	char save;
-	char *pszRtn;
+	int			start = pMatch->rm_so;
+	int			end = pMatch->rm_eo;
+	char		save;
+	char	   *pszRtn;
 
-	assert( end >= start );
-	pszRtn = (char *) malloc( end - start + 1 );
-	if ( pszRtn == NULL )
+	assert(end >= start);
+	pszRtn = (char *) malloc(end - start + 1);
+	if (pszRtn == NULL)
 		return NULL;
 
 	save = pszInput[end];
 	pszInput[end] = '\0';
-	strcpy(	pszRtn, pszInput + start );
+	strcpy(pszRtn, pszInput + start);
 	pszInput[end] = save;
 
 	return pszRtn;
@@ -146,22 +151,23 @@ char* GetMatchString(regmatch_t* pMatch, char* pszInput )
 
 /*
  * GetTimeNow: This function formats a string with the current local time
- *  formatted as YYYYMMDD:HH:MM:SS.
+ *	formatted as YYYYMMDD:HH:MM:SS.
  *
- *  Arguments:
- *  	szTimeNow - pointer to a character array of at least 18 bytes
- *  			(inclusive of a terminating NUL).
+ *	Arguments:
+ *		szTimeNow - pointer to a character array of at least 18 bytes
+ *				(inclusive of a terminating NUL).
  *
- *  Returns:
- *  	szTimeNow
+ *	Returns:
+ *		szTimeNow
  */
-char* GetTimeNow(char *szTimeNow)
+char *
+GetTimeNow(char *szTimeNow)
 {
-    struct tm pNow;
-	time_t tNow = time(NULL);
-    char* format = "%Y%m%d:%H:%M:%S";
+	struct tm	pNow;
+	time_t		tNow = time(NULL);
+	char	   *format = "%Y%m%d:%H:%M:%S";
 
-    localtime_r( &tNow, &pNow );
+	localtime_r(&tNow, &pNow);
 	strftime(szTimeNow, 18, format, &pNow);
 
 	return szTimeNow;
@@ -173,18 +179,19 @@ char* GetTimeNow(char *szTimeNow)
  * An interactive password prompt is automatically issued if required.
  * This is a copy of the one in pg_dump.
  */
-PGconn* GetMasterConnection(const char* progName,
-							const char* dbname,
-							const char* pghost,
-							const char* pgport,
-							const char* username,
-							int reqPwd,
-							int ignoreVersion,
-							bool bDispatch)
+PGconn *
+GetMasterConnection(const char *progName,
+					const char *dbname,
+					const char *pghost,
+					const char *pgport,
+					const char *username,
+					int reqPwd,
+					int ignoreVersion,
+					bool bDispatch)
 {
-	char*	pszPassword = NULL;
-	bool	need_pass = false;
-	PGconn*	pConn = NULL;
+	char	   *pszPassword = NULL;
+	bool		need_pass = false;
+	PGconn	   *pConn = NULL;
 	SegmentDatabase masterDB;
 
 	if (reqPwd)
@@ -197,27 +204,27 @@ PGconn* GetMasterConnection(const char* progName,
 		}
 	}
 
-	masterDB.dbid		= 0;
-	masterDB.role		= 0;
-	masterDB.port		= pgport ? atoi(pgport) : 5432;
-	masterDB.pszHost	= (char *)pghost;
-	masterDB.pszDBName	= (char *)dbname;
-	masterDB.pszDBUser	= (char *)username;
-	masterDB.pszDBPswd	= pszPassword;
+	masterDB.dbid = 0;
+	masterDB.role = 0;
+	masterDB.port = pgport ? atoi(pgport) : 5432;
+	masterDB.pszHost = (char *) pghost;
+	masterDB.pszDBName = (char *) dbname;
+	masterDB.pszDBUser = (char *) username;
+	masterDB.pszDBPswd = pszPassword;
 
 	/*
-	 * Start the connection.  Loop until we have a password if requested
-	 * by backend.
+	 * Start the connection.  Loop until we have a password if requested by
+	 * backend.
 	 */
 	do
 	{
 		need_pass = false;
-		pConn = MakeDBConnection( &masterDB, bDispatch );
+		pConn = MakeDBConnection(&masterDB, bDispatch);
 
 		if (pConn == NULL)
 		{
 			mpp_err_msg_cache("ERROR", progName, "failed to connect to database");
-			return(NULL);
+			return (NULL);
 		}
 
 		if (PQstatus(pConn) == CONNECTION_BAD &&
@@ -229,7 +236,7 @@ PGconn* GetMasterConnection(const char* progName,
 			free(pszPassword);
 			pszPassword = NULL;
 			pszPassword = simple_prompt("Password: ", 100, false);
-			masterDB.pszDBPswd	= pszPassword;
+			masterDB.pszDBPswd = pszPassword;
 		}
 	} while (need_pass);
 
@@ -240,8 +247,8 @@ PGconn* GetMasterConnection(const char* progName,
 	if (PQstatus(pConn) == CONNECTION_BAD)
 	{
 		mpp_err_msg_cache("ERROR", progName, "connection to database \"%s\" failed : %s",
-				   PQdb(pConn), PQerrorMessage(pConn));
-		return(NULL);
+						  PQdb(pConn), PQerrorMessage(pConn));
+		return (NULL);
 	}
 
 	return pConn;
@@ -253,64 +260,65 @@ PGconn* GetMasterConnection(const char* progName,
  * The PGconn* is returned.  Y=This must be checked by the calling
  * routine for errors etc.
  */
-PGconn* MakeDBConnection( const SegmentDatabase* pSegDB, bool bDispatch )
+PGconn *
+MakeDBConnection(const SegmentDatabase *pSegDB, bool bDispatch)
 {
-	char* pszOptions;
-	char* pszHost;
-	char* pszDBName;
-	char* pszUser;
-	char* pszDBPswd;
-	char* pszConnInfo;
-	PGconn* pConn;
+	char	   *pszOptions;
+	char	   *pszHost;
+	char	   *pszDBName;
+	char	   *pszUser;
+	char	   *pszDBPswd;
+	char	   *pszConnInfo;
+	PGconn	   *pConn;
 
 
-	if ( bDispatch )
-        pszOptions = NULL;
-    else
-        pszOptions = MakeString( "options='-c gp_session_role=UTILITY'");
-
-    if ( pSegDB->pszHost == NULL || *pSegDB->pszHost == '\0' )
-		pszHost = strdup( "host=''" );
+	if (bDispatch)
+		pszOptions = NULL;
 	else
-		pszHost = MakeString( "host=%s", pSegDB->pszHost );
+		pszOptions = MakeString("options='-c gp_session_role=UTILITY'");
 
-	if ( pSegDB->pszDBName != NULL &&  *pSegDB->pszDBName != '\0' )
-		pszDBName = MakeString("dbname=%s", pSegDB->pszDBName );
+	if (pSegDB->pszHost == NULL || *pSegDB->pszHost == '\0')
+		pszHost = strdup("host=''");
+	else
+		pszHost = MakeString("host=%s", pSegDB->pszHost);
+
+	if (pSegDB->pszDBName != NULL && *pSegDB->pszDBName != '\0')
+		pszDBName = MakeString("dbname=%s", pSegDB->pszDBName);
 	else
 		pszDBName = NULL;
 
-	if ( pSegDB->pszDBUser != NULL &&  *pSegDB->pszDBUser != '\0' )
-		pszUser = MakeString("user=%s", pSegDB->pszDBUser );
+	if (pSegDB->pszDBUser != NULL && *pSegDB->pszDBUser != '\0')
+		pszUser = MakeString("user=%s", pSegDB->pszDBUser);
 	else
 		pszUser = NULL;
 
-	if ( pSegDB->pszDBPswd != NULL && *pSegDB->pszDBPswd != '\0' )
+	if (pSegDB->pszDBPswd != NULL && *pSegDB->pszDBPswd != '\0')
 		pszDBPswd = MakeString("password='%s'", pSegDB->pszDBPswd);
 	else
 		pszDBPswd = NULL;
 
-	pszConnInfo = MakeString( "%s %s port=%u %s %s %s",
-								StringNotNull(pszOptions, "" ),
-								pszHost,
-								pSegDB->port,
-								StringNotNull(pszDBName, ""),
-								StringNotNull(pszUser, ""),
-								StringNotNull(pszDBPswd, "") );
+	pszConnInfo = MakeString("%s %s port=%u %s %s %s",
+							 StringNotNull(pszOptions, ""),
+							 pszHost,
+							 pSegDB->port,
+							 StringNotNull(pszDBName, ""),
+							 StringNotNull(pszUser, ""),
+							 StringNotNull(pszDBPswd, ""));
 
 	pConn = PQconnectdb(pszConnInfo);
 
-	if ( pszOptions != NULL )
-		free( pszOptions );
-	if ( pszHost != NULL )
-		free( pszHost );
-	if ( pszDBName != NULL )
-		free( pszDBName );
-	if ( pszUser != NULL )
-		free( pszUser );
-	if ( pszDBPswd != NULL )
-		free( pszDBPswd );
-	if ( pszConnInfo != NULL )
-		free( pszConnInfo );
+	if (pszOptions != NULL)
+		free(pszOptions);
+	if (pszHost != NULL)
+		free(pszHost);
+	if (pszDBName != NULL)
+		free(pszDBName);
+	if (pszUser != NULL)
+		free(pszUser);
+	if (pszDBPswd != NULL)
+		free(pszDBPswd);
+	if (pszConnInfo != NULL)
+		free(pszConnInfo);
 
 	return pConn;
 }
@@ -321,13 +329,15 @@ PGconn* MakeDBConnection( const SegmentDatabase* pSegDB, bool bDispatch )
  * It uses a PQExpBuffer and is based on the code for appendPQExpBuffer
  * Can't use that directly in the implementation because I want this to have variable args.
  */
-char* MakeString( const char* fmt, ... )
+char *
+MakeString(const char *fmt,...)
 {
-	size_t nBytes = 128;
-    char* pszNew;
+	size_t		nBytes = 128;
+	char	   *pszNew;
 
-	char* pszRtn = (char *)malloc(nBytes);
-	if ( pszRtn == NULL )
+	char	   *pszRtn = (char *) malloc(nBytes);
+
+	if (pszRtn == NULL)
 		return NULL;
 
 	while (true)
@@ -347,15 +357,15 @@ char* MakeString( const char* fmt, ... )
 		 * actually stored, but at least one returns -1 on failure. Be
 		 * conservative about believing whether the print worked.
 		 */
-		if (nprinted >= 0 && nprinted < (int)nBytes )
+		if (nprinted >= 0 && nprinted < (int) nBytes)
 		{
 			/* Success.  Note nprinted does not include trailing null. */
 			break;
 		}
 
 		nBytes *= 2;
-		pszNew = (char *)realloc( pszRtn, nBytes );
-		if ( pszNew == NULL )
+		pszNew = (char *) realloc(pszRtn, nBytes);
+		if (pszNew == NULL)
 		{
 			free(pszRtn);
 			pszRtn = NULL;
@@ -374,49 +384,52 @@ char* MakeString( const char* fmt, ... )
  * into its 4 pieces: the dump key, the contextid, the dbid, and the CDBPassThroughCredentials
  * based on the format convention key_contextid_dbid_credentials
  */
-bool ParseCDBDumpInfo( char *progName, char* pszCDBDumpInfo, char** ppCDBDumpKey, int* pContentID, int* pDbID, char** ppCDBPassThroughCredentials )
+bool
+ParseCDBDumpInfo(const char *progName, char *pszCDBDumpInfo, char **ppCDBDumpKey, int *pContentID, int *pDbID, char **ppCDBPassThroughCredentials)
 {
-	int rtn;
+	int			rtn;
 
-	regmatch_t matches[5];
+	regmatch_t	matches[5];
 
-	regex_t rCDBDumpInfo;
-	if ( 0 != regcomp( &rCDBDumpInfo, "([0-9]+)_([0-9]+)_([0-9]+)_([^[:space:]]*)", REG_EXTENDED ) )
+	regex_t		rCDBDumpInfo;
+
+	if (0 != regcomp(&rCDBDumpInfo, "([0-9]+)_([0-9]+)_([0-9]+)_([^[:space:]]*)", REG_EXTENDED))
 	{
-		mpp_err_msg_cache("ERROR", progName, "Error compiling regular expression for parsing CDB Dump Info\n" );
+		mpp_err_msg_cache("ERROR", progName, "Error compiling regular expression for parsing CDB Dump Info\n");
 		return false;
 	}
 
-	assert( rCDBDumpInfo.re_nsub == 4 );
+	assert(rCDBDumpInfo.re_nsub == 4);
 
 	/* match the pszCDBDumpInfo against the regex. */
-	rtn = regexec( &rCDBDumpInfo, pszCDBDumpInfo, 5, matches, 0 );
-	if ( rtn != 0 )
+	rtn = regexec(&rCDBDumpInfo, pszCDBDumpInfo, 5, matches, 0);
+	if (rtn != 0)
 	{
-		char errbuf[1024];
-		regerror( rtn, &rCDBDumpInfo, errbuf, 1024 );
-		mpp_err_msg_cache( "Error parsing CDBDumpInfo %s: not valid : %s\n", pszCDBDumpInfo, errbuf );
-		regfree( &rCDBDumpInfo );
+		char		errbuf[1024];
+
+		regerror(rtn, &rCDBDumpInfo, errbuf, 1024);
+		mpp_err_msg_cache("Error parsing CDBDumpInfo %s: not valid : %s\n", pszCDBDumpInfo, errbuf);
+		regfree(&rCDBDumpInfo);
 		return false;
 	}
 
-	regfree( &rCDBDumpInfo );
+	regfree(&rCDBDumpInfo);
 
-	*ppCDBDumpKey = GetMatchString( &matches[1], pszCDBDumpInfo );
-	if ( *ppCDBDumpKey == NULL )
+	*ppCDBDumpKey = GetMatchString(&matches[1], pszCDBDumpInfo);
+	if (*ppCDBDumpKey == NULL)
 	{
-		mpp_err_msg_cache("ERROR", progName, "Error parsing CDBDumpInfo %s: CDBDumpKey not valid\n", pszCDBDumpInfo );
+		mpp_err_msg_cache("ERROR", progName, "Error parsing CDBDumpInfo %s: CDBDumpKey not valid\n", pszCDBDumpInfo);
 		return false;
 	}
 
-	*pContentID = GetMatchInt( &matches[2], pszCDBDumpInfo );
+	*pContentID = GetMatchInt(&matches[2], pszCDBDumpInfo);
 
-	*pDbID = GetMatchInt( &matches[3], pszCDBDumpInfo );
+	*pDbID = GetMatchInt(&matches[3], pszCDBDumpInfo);
 
-	*ppCDBPassThroughCredentials = GetMatchString( &matches[4], pszCDBDumpInfo );
-	if ( *ppCDBPassThroughCredentials == NULL )
+	*ppCDBPassThroughCredentials = GetMatchString(&matches[4], pszCDBDumpInfo);
+	if (*ppCDBPassThroughCredentials == NULL)
 	{
-		mpp_err_msg_cache( "ERROR", progName, "Error parsing CDBDumpInfo %s: CDBDumpKey not valid\n", pszCDBDumpInfo );
+		mpp_err_msg_cache("ERROR", progName, "Error parsing CDBDumpInfo %s: CDBDumpKey not valid\n", pszCDBDumpInfo);
 		return false;
 	}
 	return true;
@@ -425,16 +438,17 @@ bool ParseCDBDumpInfo( char *progName, char* pszCDBDumpInfo, char** ppCDBDumpKey
 /*
  * ReadBackendBackupFile: This function calls the backend function gp_read_backup_file
  * which reads the contents out of the appropriate file on the database server.
- * If the call fails, it returns NULL.  The returned pointer must be freed by the caller.
+ * If the call fails, it returns NULL.	The returned pointer must be freed by the caller.
  */
-char* ReadBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, const char* pszKey, BackupFileType fileType, const char *progName )
+char *
+ReadBackendBackupFile(PGconn *pConn, const char *pszBackupDirectory, const char *pszKey, BackupFileType fileType, const char *progName)
 {
-	char* pszRtn = NULL;
-	char* pszFileType;
+	char	   *pszRtn = NULL;
+	char	   *pszFileType;
 	PQExpBuffer Qry;
-	PGresult* pRes;
+	PGresult   *pRes;
 
-	switch ( fileType )
+	switch (fileType)
 	{
 		case BFT_BACKUP:
 			pszFileType = "0";
@@ -446,26 +460,26 @@ char* ReadBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, cons
 			pszFileType = "2";
 			break;
 		default:
-			mpp_err_msg("ERROR", progName, "Unknown file type passed to ReadBackendBackupFile : %d\n", fileType );
+			mpp_err_msg("ERROR", progName, "Unknown file type passed to ReadBackendBackupFile : %d\n", fileType);
 			return NULL;
 	}
 
 	Qry = createPQExpBuffer();
-	appendPQExpBuffer( Qry, "SELECT * FROM gp_read_backup_file('%s', '%s', %s)",
-					StringNotNull( pszBackupDirectory, ""),
-					StringNotNull( pszKey, "" ),
-					pszFileType );
+	appendPQExpBuffer(Qry, "SELECT * FROM gp_read_backup_file('%s', '%s', %s)",
+					  StringNotNull(pszBackupDirectory, ""),
+					  StringNotNull(pszKey, ""),
+					  pszFileType);
 
-	pRes = PQexec(pConn, Qry->data );
-	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
+	pRes = PQexec(pConn, Qry->data);
+	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0)
 	{
 		mpp_err_msg_cache("ERROR", progName, "Error executing query %s : %s\n",
-					Qry->data,
-					PQerrorMessage(pConn) );
+						  Qry->data,
+						  PQerrorMessage(pConn));
 	}
 	else
 	{
-		pszRtn = strdup( PQgetvalue(pRes, 0, 0) );
+		pszRtn = strdup(PQgetvalue(pRes, 0, 0));
 	}
 
 	PQclear(pRes);
@@ -477,12 +491,13 @@ char* ReadBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, cons
 /*
  * Safe_strdup:  returns strdup if not NULL, NULL otherwise
  */
-char* Safe_strdup( const char* s)
+char *
+Safe_strdup(const char *s)
 {
-	if ( s == NULL )
+	if (s == NULL)
 		return NULL;
 
-	return( strdup(s) );
+	return (strdup(s));
 }
 
 /* stringNotNull: This function simply returns either the Input parameter if not NULL, or the
@@ -490,24 +505,27 @@ char* Safe_strdup( const char* s)
  * It is equivalent to the ternary expression
  * pszInput != NULL ? pszInput : pszDefault
  */
-const char* StringNotNull( const char* pszInput, const char* pszDefault )
+const char *
+StringNotNull(const char *pszInput, const char *pszDefault)
 {
-	if ( pszInput == NULL )
+	if (pszInput == NULL)
 		return pszDefault;
 	else
 		return pszInput;
 }
 
-char* get_early_error(void)
+char *
+get_early_error(void)
 {
-    return predump_errmsg;
+	return predump_errmsg;
 }
 
 /* Simple error logging to stderr  */
-void mpp_err_msg(const char *loglevel, const char *prog, const char *fmt,...)
+void
+mpp_err_msg(const char *loglevel, const char *prog, const char *fmt,...)
 {
 	va_list		ap;
-	char 		szTimeNow[18];
+	char		szTimeNow[18];
 
 	va_start(ap, fmt);
 	fprintf(stderr, "%s|%s-[%s]:-", GetTimeNow(szTimeNow), prog, loglevel);
@@ -516,10 +534,11 @@ void mpp_err_msg(const char *loglevel, const char *prog, const char *fmt,...)
 }
 
 /* Simple error logging to stderr with msg caching for later re-use */
-void mpp_err_msg_cache(const char *loglevel, const char *prog, const char *fmt,...)
+void
+mpp_err_msg_cache(const char *loglevel, const char *prog, const char *fmt,...)
 {
 	va_list		ap;
-	char 		szTimeNow[18];
+	char		szTimeNow[18];
 
 	va_start(ap, fmt);
 	fprintf(stderr, "%s|%s-[%s]:-", GetTimeNow(szTimeNow), prog, loglevel);
@@ -533,10 +552,11 @@ void mpp_err_msg_cache(const char *loglevel, const char *prog, const char *fmt,.
 }
 
 /* Simple error logging to stdout  */
-void mpp_msg(const char *loglevel, const char *prog, const char *fmt,...)
+void
+mpp_msg(const char *loglevel, const char *prog, const char *fmt,...)
 {
 	va_list		ap;
-	char 		szTimeNow[18];
+	char		szTimeNow[18];
 
 	va_start(ap, fmt);
 	fprintf(stdout, "%s|%s-[%s]:-", GetTimeNow(szTimeNow), prog, loglevel);
@@ -554,14 +574,14 @@ void mpp_msg(const char *loglevel, const char *prog, const char *fmt,...)
  */
 
 static unsigned
-b64_enc_len(const char* src, unsigned srclen )
+b64_enc_len(const char *src, unsigned srclen)
 {
 	/* 3 bytes will be converted to 4 */
 	return (srclen + 2) * 4 / 3;
 }
 
 static unsigned
-b64_dec_len(const char* src, unsigned srclen)
+b64_dec_len(const char *src, unsigned srclen)
 {
 	return (srclen * 3) >> 2;
 }
@@ -580,20 +600,22 @@ static const char b64lookup[128] = {
 	41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1,
 };
 
-char* DataToBase64(char* pszIn, unsigned int InLen )
+char *
+DataToBase64(char *pszIn, unsigned int InLen)
 {
-	char* 			p;
-	const char*		s;
-	const char* 	end = pszIn + InLen;
-	int				pos = 2;
-	uint32			buf = 0;
+	char	   *p;
+	const char *s;
+	const char *end = pszIn + InLen;
+	int			pos = 2;
+	uint32		buf = 0;
 
 	unsigned int OutLen = b64_enc_len(pszIn, InLen);
-	char*	pszOut = (char*)malloc( OutLen + 1 );
-	if ( pszOut == NULL )
+	char	   *pszOut = (char *) malloc(OutLen + 1);
+
+	if (pszOut == NULL)
 		return NULL;
 
-	memset( pszOut, 0, OutLen + 1 );
+	memset(pszOut, 0, OutLen + 1);
 
 	s = pszIn;
 	p = pszOut;
@@ -627,28 +649,31 @@ char* DataToBase64(char* pszIn, unsigned int InLen )
 	return pszOut;
 }
 
-char* Base64ToData(char* pszIn, unsigned int* pOutLen )
+char *
+Base64ToData(char *pszIn, unsigned int *pOutLen)
 {
-	const char*		srcend;
-	const char*		s;
-	char*			p;
-	unsigned		c;
-	int				b = 0;
-	uint32			buf = 0;
-	int				pos = 0, end = 0;
-	char*	pszOut;
-	unsigned int InLen	= strlen(pszIn);
+	const char *srcend;
+	const char *s;
+	char	   *p;
+	unsigned	c;
+	int			b = 0;
+	uint32		buf = 0;
+	int			pos = 0,
+				end = 0;
+	char	   *pszOut;
+	unsigned int InLen = strlen(pszIn);
 	unsigned int OutLen = b64_dec_len(pszIn, InLen);
+
 	*pOutLen = OutLen;
-	pszOut = (char*)malloc( OutLen );
-	if ( pszOut == NULL )
+	pszOut = (char *) malloc(OutLen);
+	if (pszOut == NULL)
 		return NULL;
 
-	memset( pszOut, 0, OutLen );
+	memset(pszOut, 0, OutLen);
 
-	srcend	= pszIn + InLen;
-	s		= pszIn;
-	p		= pszOut;
+	srcend = pszIn + InLen;
+	s = pszIn;
+	p = pszOut;
 
 
 	while (s < srcend)
@@ -670,7 +695,7 @@ char* Base64ToData(char* pszIn, unsigned int* pOutLen )
 				else
 				{
 					assert(false);
-					free( pszOut );
+					free(pszOut);
 					return NULL;
 				}
 			}
@@ -684,7 +709,7 @@ char* Base64ToData(char* pszIn, unsigned int* pOutLen )
 			if (b < 0)
 			{
 				assert(false);
-				free( pszOut );
+				free(pszOut);
 				return NULL;
 			}
 		}
@@ -706,28 +731,30 @@ char* Base64ToData(char* pszIn, unsigned int* pOutLen )
 	if (pos != 0)
 	{
 		assert(false);
-		free( pszOut );
+		free(pszOut);
 		return NULL;
 	}
 
 	return pszOut;
 }
 
-char* GenerateTimestampKey(void)
+char *
+GenerateTimestampKey(void)
 {
-    struct tm pNow;
-	char sNow[CDB_BACKUP_KEY_LEN+1];
+	struct tm	pNow;
+	char		sNow[CDB_BACKUP_KEY_LEN + 1];
 
-	time_t tNow = time(NULL);
-	localtime_r( &tNow, &pNow );
+	time_t		tNow = time(NULL);
+
+	localtime_r(&tNow, &pNow);
 	sprintf(sNow, "%04d%02d%02d%02d%02d%02d",
-						pNow.tm_year + 1900,
-						pNow.tm_mon + 1,
-						pNow.tm_mday,
-						pNow.tm_hour,
-						pNow.tm_min,
-						pNow.tm_sec);
-	return strdup( sNow );
+			pNow.tm_year + 1900,
+			pNow.tm_mon + 1,
+			pNow.tm_mday,
+			pNow.tm_hour,
+			pNow.tm_min,
+			pNow.tm_sec);
+	return strdup(sNow);
 }
 
 /*
@@ -744,31 +771,32 @@ char* GenerateTimestampKey(void)
 char *
 nextToken(register char **stringp, register const char *delim)
 {
-    register char *s;
-    register const char *spanp;
-    register int c, sc;
-    char *tok;
+	register char *s;
+	register const char *spanp;
+	register int c,
+				sc;
+	char	   *tok;
 
-    if ((s = *stringp) == NULL)
-        return (NULL);
-    for (tok = s;;)
-    {
-        c = *s++;
-        spanp = delim;
-        do
-        {
-            if ((sc = *spanp++) == c)
-            {
-                if (c == 0)
-                    s = NULL;
-                else
-                    s[-1] = 0;
-                *stringp = s;
-                return (tok);
-            }
-        } while (sc != 0);
-    }
-    /* NOTREACHED */
+	if ((s = *stringp) == NULL)
+		return (NULL);
+	for (tok = s;;)
+	{
+		c = *s++;
+		spanp = delim;
+		do
+		{
+			if ((sc = *spanp++) == c)
+			{
+				if (c == 0)
+					s = NULL;
+				else
+					s[-1] = 0;
+				*stringp = s;
+				return (tok);
+			}
+		} while (sc != 0);
+	}
+	/* NOTREACHED */
 }
 
 /*
@@ -778,32 +806,32 @@ nextToken(register char **stringp, register const char *delim)
 int
 parseDbidSet(int *dbidset, char *dump_set)
 {
-	int		len;
-	int		count = 0;
-	char	*dbid_str = NULL;
+	int			len;
+	int			count = 0;
+	char	   *dbid_str = NULL;
 
 	len = strlen(dump_set);
 
 	/* we expect something of the form "i[?,?,?,...]" */
-	if(dump_set[0] != 'i' ||
-	   dump_set[1] != '[' ||
-	   dump_set[len - 1] != ']')
+	if (dump_set[0] != 'i' ||
+		dump_set[1] != '[' ||
+		dump_set[len - 1] != ']')
 	{
 		mpp_err_msg_cache("ERROR", "gp_dump", "invalid dump set format in %s\n", dump_set);
 		return -1;
 	}
 
-	dump_set[len - 1] = '\0'; /* remove ending "]" */
-	dump_set += 2; /* skip 'i' and  '[' */
+	dump_set[len - 1] = '\0';	/* remove ending "]" */
+	dump_set += 2;				/* skip 'i' and  '[' */
 
 	for (; (dbid_str = nextToken(&dump_set, ",")) != NULL;)
 	{
-		int		dbid;
+		int			dbid;
 
 		dbid = atoi(dbid_str);
 
 		/* illigal dbid */
-		if(dbid < 1)
+		if (dbid < 1)
 		{
 			mpp_err_msg_cache("ERROR", "gp_dump", "Invalid dump set entry. Each entry must be separeted by comma and be greater than 0\n");
 			return -1;
@@ -814,4 +842,3 @@ parseDbidSet(int *dbidset, char *dump_set)
 
 	return count;
 }
-

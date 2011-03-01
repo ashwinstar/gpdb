@@ -37,6 +37,13 @@
 #define oidge(x,y) ( (x) >= (y) )
 #define oidzero(x) ( (x) == 0 )
 
+enum trivalue
+{
+	TRI_DEFAULT,
+	TRI_NO,
+	TRI_YES
+};
+
 typedef enum _archiveFormat
 {
 	archUnknown = 0,
@@ -45,6 +52,13 @@ typedef enum _archiveFormat
 	archTar = 3,
 	archNull = 4
 } ArchiveFormat;
+
+typedef enum _archiveMode
+{
+	archModeAppend,
+	archModeWrite,
+	archModeRead
+} ArchiveMode;
 
 /*
  *	We may want to have some more user-readable data, but in the mean
@@ -74,7 +88,7 @@ typedef int (*DataDumperPtr) (Archive *AH, void *userArg);
 
 typedef struct _restoreOptions
 {
-	int			create;			/* Issue commands to create the database */
+	int			createDB;		/* Issue commands to create the database */
 	int			noOwner;		/* Don't try to match original object owner */
 	int			disable_triggers;		/* disable triggers during data-only
 										 * restore */
@@ -108,19 +122,13 @@ typedef struct _restoreOptions
 	char	   *pgport;
 	char	   *pghost;
 	char	   *username;
-	int			ignoreVersion;
 	int			noDataForFailedTables;
-	int			requirePassword;
-	int			oidOrder;
-	int			origOrder;
-	int			rearrange;
+	enum trivalue promptPassword;
 	int			exit_on_error;
 	int			compression;
 	int			suppressDumpWarnings;	/* Suppress output of WARNING entries
 										 * to stderr */
 	bool		single_txn;
-
-	bool		for_gp_migrator;		/* gpmigrator/internal use */
 
 	bool	   *idWanted;		/* array showing which dump IDs to emit */
 } RestoreOptions;
@@ -141,9 +149,7 @@ PGconn *ConnectDatabase(Archive *AH,
 				const char *pghost,
 				const char *pgport,
 				const char *username,
-				const int reqPwd,
-				const int ignoreVersion);
-
+				enum trivalue prompt_password);
 
 /* Called to add a TOC entry */
 extern void ArchiveEntry(Archive *AHX,
@@ -151,7 +157,8 @@ extern void ArchiveEntry(Archive *AHX,
 			 const char *tag,
 			 const char *namespace, const char *tablespace,
 			 const char *owner, bool withOids,
-			 const char *desc, const char *defn,
+			 const char *desc, 
+             const char *defn,
 			 const char *dropStmt, const char *copyStmt,
 			 const DumpId *deps, int nDeps,
 			 DataDumperPtr dumpFn, void *dumpArg);

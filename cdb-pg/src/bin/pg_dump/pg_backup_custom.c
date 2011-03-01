@@ -91,7 +91,7 @@ static void _EndDataCompressor(ArchiveHandle *AH, TocEntry *te);
 static pgoff_t _getFilePos(ArchiveHandle *AH, lclContext *ctx);
 static int	_DoDeflate(ArchiveHandle *AH, lclContext *ctx, int flush);
 
-static char *modulename = gettext_noop("custom archiver");
+static const char *modulename = gettext_noop("custom archiver");
 
 
 
@@ -169,23 +169,38 @@ InitArchiveFmt_Custom(ArchiveHandle *AH)
 	if (AH->mode == archModeWrite)
 	{
 		if (AH->fSpec && strcmp(AH->fSpec, "") != 0)
+		{
 			AH->FH = fopen(AH->fSpec, PG_BINARY_W);
+			if (!AH->FH)
+				die_horribly(AH, modulename, "could not open output file \"%s\": %s\n",
+							 AH->fSpec, strerror(errno));
+		}
 		else
+		{
 			AH->FH = stdout;
-
-		if (!AH->FH)
-			die_horribly(AH, modulename, "could not open output file \"%s\": %s\n", AH->fSpec, strerror(errno));
+			if (!AH->FH)
+				die_horribly(AH, modulename, "could not open output file: %s\n",
+							 strerror(errno));
+		}
 
 		ctx->hasSeek = checkSeek(AH->FH);
 	}
 	else
 	{
 		if (AH->fSpec && strcmp(AH->fSpec, "") != 0)
+		{
 			AH->FH = fopen(AH->fSpec, PG_BINARY_R);
+			if (!AH->FH)
+				die_horribly(AH, modulename, "could not open input file \"%s\": %s\n",
+							 AH->fSpec, strerror(errno));
+		}
 		else
+		{
 			AH->FH = stdin;
-		if (!AH->FH)
-			die_horribly(AH, modulename, "could not open input file \"%s\": %s\n", AH->fSpec, strerror(errno));
+			if (!AH->FH)
+				die_horribly(AH, modulename, "could not open input file: %s\n",
+							 strerror(errno));
+		}
 
 		ctx->hasSeek = checkSeek(AH->FH);
 
@@ -461,7 +476,7 @@ _PrintTocData(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt)
 	}
 	else
 	{
-		/* Grab it */
+		/* We can just seek to the place we need to be. */
 		if (fseeko(AH->FH, tctx->dataPos, SEEK_SET) != 0)
 			die_horribly(AH, modulename, "error during file seek: %s\n", strerror(errno));
 
@@ -842,7 +857,7 @@ _getFilePos(ArchiveHandle *AH, lclContext *ctx)
 
 			/*
 			 * Prior to 1.7 (pg7.3) we relied on the internally maintained
-			 * pointer. Now we rely on pgoff_t always. pos = ctx->filePos;
+			 * pointer. Now we rely on pgoff_t always.
 			 */
 		}
 	}

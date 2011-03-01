@@ -24,20 +24,20 @@
 #include "dumputils.h"
 
 #include <ctype.h>
-
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #ifdef WIN32
 #include <io.h>
 #endif
 
 #include "libpq/libpq-fs.h"
-#include "mb/pg_wchar.h"
 
 
 const char *progname;
 
-static char *modulename = gettext_noop("archiver");
+static const char *modulename = gettext_noop("archiver");
 
 
 static ArchiveHandle *_allocAH(const char *FileSpec, const ArchiveFormat fmt,
@@ -61,7 +61,7 @@ static teReqs _tocEntryRequired(TocEntry *te, RestoreOptions *ropt, bool include
 static void _disableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt);
 static void _enableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt);
 static TocEntry *getTocEntryByDumpId(ArchiveHandle *AH, DumpId id);
-static void _moveAfter(ArchiveHandle *AH, TocEntry *pos, TocEntry *te);
+static void _moveAfter(ArchiveHandle *AH __attribute__((unused)), TocEntry *pos, TocEntry *te);
 static int	_discoverArchiveFormat(ArchiveHandle *AH);
 
 static void dump_lo_buf(ArchiveHandle *AH);
@@ -132,10 +132,10 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	TocEntry   *te;
 	teReqs		reqs;
 	OutputContext sav =
-		{
-		NULL, /*	OF */
-		0, /* gzOut */
-		};
+	{
+		NULL,					/* OF */
+		0,						/* gzOut */
+	};
 
 	bool		defnDumped;
 
@@ -145,19 +145,20 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	/*
 	 * Check for nonsensical option combinations.
 	 *
-	 * NB: create+dropSchema is useless because if you're creating the DB,
+	 * NB: createDB+dropSchema is useless because if you're creating the DB,
 	 * there's no need to drop individual items in it.  Moreover, if we tried
 	 * to do that then we'd issue the drops in the database initially
 	 * connected to, not the one we will create, which is very bad...
 	 */
-	if (ropt->create && ropt->dropSchema)
+	if (ropt->createDB && ropt->dropSchema)
 		die_horribly(AH, modulename, "-C and -c are incompatible options\n");
+
 	/*
-	 * -1 is not compatible with -C, because we can't create a database
-	 *  inside a transaction block.
+	 * -C is not compatible with -1, because we can't create a database inside
+	 * a transaction block.
 	 */
-	if (ropt->create && ropt->single_txn)
-			die_horribly(AH, modulename, "-C and -1 are incompatible options\n");
+	if (ropt->createDB && ropt->single_txn)
+		die_horribly(AH, modulename, "-C and -1 are incompatible options\n");
 
 	/*
 	 * If we're using a DB connection, then connect it.
@@ -174,7 +175,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 
 		ConnectDatabase(AHX, ropt->dbname,
 						ropt->pghost, ropt->pgport, ropt->username,
-						ropt->requirePassword, ropt->ignoreVersion);
+						ropt->promptPassword);
 
 		/*
 		 * If we're talking to the DB directly, don't send comments since they
@@ -221,7 +222,15 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	ahprintf(AH, "--\n-- Greenplum Database database dump\n--\n\n");
 
 	if (AH->public.verbose)
+	{
+		if (AH->archiveRemoteVersion)
+			ahprintf(AH, "-- Dumped from database version %s\n",
+					 AH->archiveRemoteVersion);
+		if (AH->archiveDumpVersion)
+			ahprintf(AH, "-- Dumped by pg_dump version %s\n",
+					 AH->archiveDumpVersion);
 		dumpTimestamp(AH, "Started on", AH->createDate);
+	}
 
 	if (ropt->single_txn)
 	{
@@ -259,6 +268,22 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 				ahprintf(AH, "%s", te->dropStmt);
 			}
 		}
+
+		/*
+		 * _selectOutputSchema may have set currSchema to reflect the effect
+		 * of a "SET search_path" command it emitted.  However, by now we may
+		 * have dropped that schema; or it might not have existed in the first
+		 * place.  In either case the effective value of search_path will not
+		 * be what we think.  Forcibly reset currSchema so that we will
+		 * re-establish the search_path setting when needed (after creating
+		 * the schema).
+		 *
+		 * If we treated users as pg_dump'able objects then we'd need to reset
+		 * currUser here too.
+		 */
+		if (AH->currSchema)
+			free(AH->currSchema);
+		AH->currSchema = NULL;
 	}
 
 	/*
@@ -295,7 +320,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 			 */
 			if (ropt->noDataForFailedTables &&
 				AH->lastErrorTE == te &&
-				(strcmp(te->desc, "TABLE") == 0 || 
+				(strcmp(te->desc, "TABLE") == 0 ||
 				 strcmp(te->desc, "EXTERNAL TABLE") == 0 ||
 				 strcmp(te->desc, "FOREIGN TABLE") == 0))
 			{
@@ -460,7 +485,9 @@ NewRestoreOptions(void)
 
 	opts = (RestoreOptions *) calloc(1, sizeof(RestoreOptions));
 
+	/* set any fields that shouldn't default to zeroes */
 	opts->format = archUnknown;
+	opts->promptPassword = TRI_DEFAULT;
 	opts->suppressDumpWarnings = false;
 	opts->exit_on_error = false;
 
@@ -611,10 +638,10 @@ PrintTOCSummary(Archive *AHX, RestoreOptions *ropt)
 	ArchiveHandle *AH = (ArchiveHandle *) AHX;
 	TocEntry   *te = AH->toc->next;
 	OutputContext sav =
-		{
-		NULL, /* OF */
-		0, /* gzOut */
-		};
+	{
+		NULL,					/* OF */
+		0,						/* gzOut */
+	};
 
 	char	   *fmtName;
 
@@ -847,6 +874,7 @@ SortTocFromFile(Archive *AHX, RestoreOptions *ropt)
 			die_horribly(AH, modulename, "could not find entry for ID %d\n",
 						 id);
 
+		/* Mark it wanted */
 		ropt->idWanted[id - 1] = true;
 
 		_moveAfter(AH, tePrev, te);
@@ -922,7 +950,12 @@ archprintf(Archive *AH, const char *fmt,...)
 static OutputContext
 SetOutput(ArchiveHandle *AH, char *filename, int compression)
 {
-	OutputContext sav;
+	OutputContext sav =
+	{
+		NULL,					/* OF */
+		0,						/* gzOut */
+	};
+
 	int			fn;
 
 	/* Replace the AH output file handle */
@@ -1265,11 +1298,13 @@ warn_or_die_horribly(ArchiveHandle *AH,
 }
 
 static void
-_moveAfter(ArchiveHandle *AH, TocEntry *pos, TocEntry *te)
+			_moveAfter(ArchiveHandle *AH __attribute__((unused)), TocEntry *pos, TocEntry *te)
 {
+	/* Unlink te from list */
 	te->prev->next = te->next;
 	te->next->prev = te->prev;
 
+	/* and insert it after "pos" */
 	te->prev = pos;
 	te->next = pos->next;
 
@@ -1282,9 +1317,11 @@ _moveAfter(ArchiveHandle *AH, TocEntry *pos, TocEntry *te)
 static void
 _moveBefore(ArchiveHandle *AH, TocEntry *pos, TocEntry *te)
 {
+	/* Unlink te from list */
 	te->prev->next = te->next;
 	te->next->prev = te->prev;
 
+	/* and insert it before "pos" */
 	te->prev = pos->prev;
 	te->next = pos;
 	pos->prev->next = te;
@@ -1545,6 +1582,11 @@ _discoverArchiveFormat(ArchiveHandle *AH)
 
 	if (strncmp(sig, "PGDMP", 5) == 0)
 	{
+		/*
+		 * Finish reading (most of) a custom-format header.
+		 *
+		 * NB: this code must agree with ReadHead().
+		 */
 		AH->vmaj = fgetc(fh);
 		AH->vmin = fgetc(fh);
 
@@ -1608,11 +1650,6 @@ _discoverArchiveFormat(ArchiveHandle *AH)
 	else
 		AH->lookaheadLen = 0;	/* Don't bother since we've reset the file */
 
-#if 0
-	write_msg(modulename, "read %lu bytes into lookahead buffer\n",
-			  (unsigned long) AH->lookaheadLen);
-#endif
-
 	/* Close the file */
 	if (wantClose)
 		if (fclose(fh) != 0)
@@ -1632,10 +1669,6 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 {
 	ArchiveHandle *AH;
 
-#if 0
-	write_msg(modulename, "allocating AH for %s, format %d\n", FileSpec, fmt);
-#endif
-
 	AH = (ArchiveHandle *) calloc(1, sizeof(ArchiveHandle));
 	if (!AH)
 		die_horribly(AH, modulename, "out of memory\n");
@@ -1647,7 +1680,7 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 	AH->vrev = K_VERS_REV;
 
 	/* initialize for backwards compatible string processing */
-	AH->public.encoding = PG_SQL_ASCII;
+	AH->public.encoding = 0;	/* PG_SQL_ASCII */
 	AH->public.std_strings = false;
 
 	/* sql error handling */
@@ -1665,8 +1698,9 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 		/*
 		 * Not used; maybe later....
 		 *
-		 * AH->workDir = strdup(FileSpec); for(i=strlen(FileSpec) ; i > 0 ;
-		 * i--) if (AH->workDir[i-1] == '/')
+		 * AH->workDir = strdup(FileSpec);
+		 * for(i=strlen(FileSpec) ; i > 0 ; i--)
+		 *     if (AH->workDir[i-1] == '/')
 		 */
 	}
 	else
@@ -1710,14 +1744,12 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 	}
 #endif
 
-#if 0
-	write_msg(modulename, "archive format is %d\n", fmt);
-#endif
-
 	if (fmt == archUnknown)
 		AH->format = _discoverArchiveFormat(AH);
 	else
 		AH->format = fmt;
+
+	AH->promptPassword = TRI_DEFAULT;
 
 	switch (AH->format)
 	{
@@ -2021,7 +2053,7 @@ _tocEntryRequired(TocEntry *te, RestoreOptions *ropt, bool include_acls)
 	if ((!include_acls || ropt->aclsSkip) && strcmp(te->desc, "ACL") == 0)
 		return 0;
 
-	if (!ropt->create && strcmp(te->desc, "DATABASE") == 0)
+	if (!ropt->createDB && strcmp(te->desc, "DATABASE") == 0)
 		return 0;
 
 	/* Check options for selective dump/restore */
@@ -2118,6 +2150,9 @@ _tocEntryRequired(TocEntry *te, RestoreOptions *ropt, bool include_acls)
 static void
 _doSetFixedOutputState(ArchiveHandle *AH)
 {
+	/* Disable statement_timeout in archive for pg_restore/psql  */
+	ahprintf(AH, "SET statement_timeout = 0;\n");
+
 	/* Select the correct character set encoding */
 	ahprintf(AH, "SET client_encoding = '%s';\n",
 			 pg_encoding_to_char(AH->public.encoding));
@@ -2133,10 +2168,6 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	ahprintf(AH, "SET client_min_messages = warning;\n");
 	if (!AH->public.std_strings)
 		ahprintf(AH, "SET escape_string_warning = off;\n");
-
-	/* Enable extended ALTER TABLE child INHERIT parent syntax for gp_migrator */
-	if (AH->ropt->for_gp_migrator)
-		ahprintf(AH, "SET gp_enable_alter_table_inherit_cols = true;\n");
 
 	ahprintf(AH, "\n");
 }
@@ -2244,13 +2275,15 @@ _reconnectToDB(ArchiveHandle *AH, const char *dbname)
 	 */
 	if (AH->currUser)
 		free(AH->currUser);
+	AH->currUser = NULL;
 
-	AH->currUser = strdup("");
-
-	/* don't assume we still know the output schema */
+	/* don't assume we still know the output schema, tablespace, etc either */
 	if (AH->currSchema)
 		free(AH->currSchema);
-	AH->currSchema = strdup("");
+	AH->currSchema = NULL;
+	if (AH->currTablespace)
+		free(AH->currTablespace);
+	AH->currTablespace = NULL;
 	AH->currWithOids = -1;
 
 	/* re-establish fixed state */
@@ -2284,7 +2317,7 @@ _becomeUser(ArchiveHandle *AH, const char *user)
 }
 
 /*
- * Become the owner of the the given TOC entry object.	If
+ * Become the owner of the given TOC entry object.	If
  * changes in ownership are not allowed, this doesn't do anything.
  */
 static void
@@ -2522,14 +2555,55 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 		strcmp(te->desc, "SCHEMA") == 0 && strcmp(te->tag, "public") == 0)
 		return;
 
+#if 0
+	/*
+	 * Some items, including
+	 * CONSTRAINT, INDEX , RULE, TRIGGER, FK_CONSTRAINT
+	 * and any check constraints (if dumped separately)
+	 * must be created AFTER the data is loaded, and are in that order
+	 *
+	 * if fSpec is null, we are outputting to stdout, so we don't have the ability
+	 * to switch files
+	 */
+	if (AH->fSpec != NULL)
+	{
+		static int	secondfile = 0;
+
+		if ((!secondfile) &&
+		   (strcmp(te->desc, "CONSTRAINT") == 0 ||
+			strcmp(te->desc, "INDEX") == 0 ||
+			strcmp(te->desc, "RULE") == 0 ||
+			strcmp(te->desc, "TRIGGER") == 0 ||
+			strcmp(te->desc, "FK_CONSTRAINT") == 0))
+		{
+			OutputContext dummy =
+			{
+				NULL,			/* OF */
+				0,				/* gzOut */
+			};
+			char *secondfilename = (char *)malloc(strlen(AH->fSpec) + strlen("_after_data"));
+
+			strcpy(secondfilename,AH->fSpec);
+			strcat(secondfilename,"_after_data");
+
+			ResetOutput(AH, dummy);
+			AH->currSchema[0] = '\0';
+			/* Switch to second output file */
+			SetOutput(AH, secondfilename, false);
+			_selectTablespace(AH, "");
+			secondfile = true;
+		}
+	}
+#endif
+
 	/* Select owner, schema, and tablespace as necessary */
 	_becomeOwner(AH, te);
 	_selectOutputSchema(AH, te->namespace);
 	_selectTablespace(AH, te->tablespace);
 
 	/* Set up OID mode too */
-	if (strcmp(te->desc, "TABLE") == 0 || 
-		strcmp(te->desc, "EXTERNAL TABLE") || 
+	if (strcmp(te->desc, "TABLE") == 0 ||
+		strcmp(te->desc, "EXTERNAL TABLE") ||
 		strcmp(te->desc, "FOREIGN TABLE"))
 		_setWithOids(AH, te);
 
@@ -2821,8 +2895,8 @@ dumpTimestamp(ArchiveHandle *AH, const char *msg, time_t tim)
 	/*
 	 * We don't print the timezone on Win32, because the names are long and
 	 * localized, which means they may contain characters in various random
-	 * encodings; this has been seen to cause encoding errors when reading
-	 * the dump script.
+	 * encodings; this has been seen to cause encoding errors when reading the
+	 * dump script.
 	 */
 	if (strftime(buf, sizeof(buf),
 #ifndef WIN32

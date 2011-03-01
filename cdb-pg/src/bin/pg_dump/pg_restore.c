@@ -40,6 +40,7 @@
  */
 
 #include "pg_backup_archiver.h"
+#include "dumputils.h"
 
 #include <ctype.h>
 
@@ -51,6 +52,8 @@
 
 #include "getopt_long.h"
 
+extern char *optarg;
+extern int	optind;
 #ifndef HAVE_INT_OPTRESET
 int			optreset;
 #endif
@@ -69,7 +72,7 @@ main(int argc, char **argv)
 {
 	RestoreOptions *opts;
 	int			c;
-	int			exit_code;
+	int			exit_code = 0;
 	Archive    *AH;
 	char	   *inputFileSpec;
 	extern int	optind;
@@ -137,7 +140,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	while ((c = getopt_long(argc, argv, "acCd:ef:F:h:iI:lL:n:Op:P:RsS:t:T:uU:vWxX:1",
+	while ((c = getopt_long(argc, argv, "acCd:ef:F:h:iI:lL:n:Op:P:RsS:t:T:uU:vwWxX:1",
 							cmdopts, NULL)) != -1)
 	{
 		switch (c)
@@ -149,7 +152,7 @@ main(int argc, char **argv)
 				opts->dropSchema = 1;
 				break;
 			case 'C':
-				opts->create = 1;
+				opts->createDB = 1;
 				break;
 			case 'd':
 				opts->dbname = strdup(optarg);
@@ -169,7 +172,7 @@ main(int argc, char **argv)
 					opts->pghost = strdup(optarg);
 				break;
 			case 'i':
-				opts->ignoreVersion = 1;
+				/* ignored, deprecated option */
 				break;
 
 			case 'l':			/* Dump the TOC summary */
@@ -224,7 +227,7 @@ main(int argc, char **argv)
 				break;
 
 			case 'u':
-				opts->requirePassword = true;
+				opts->promptPassword = TRI_YES;
 				opts->username = simple_prompt("User name: ", 100, true);
 				break;
 
@@ -236,8 +239,12 @@ main(int argc, char **argv)
 				opts->verbose = 1;
 				break;
 
+			case 'w':
+				opts->promptPassword = TRI_NO;
+				break;
+
 			case 'W':
-				opts->requirePassword = true;
+				opts->promptPassword = TRI_YES;
 				break;
 
 			case 'x':			/* skip ACL dump */

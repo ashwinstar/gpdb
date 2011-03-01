@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <assert.h>
 #include <dirent.h>
+#include <sys/wait.h>
 #include "regex/regex.h"
 #include "gp-libpq-fe.h"
 #include "libpq/libpq-be.h"
@@ -29,7 +30,7 @@
 /* static helper functions */
 static bool createBackupDirectory(char *pszPathName);
 static char *findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, int segid);
-static char *formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_compress);
+static char *formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_compress, bool isPostData);
 static char *formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBackup);
 static char *relativeToAbsolute(char *pszRelativeDirectory);
 static void testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram);
@@ -65,6 +66,7 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	char	   *pszDataOption = "";
 	char	   *pszBackupFileName,
 			   *pszStatusFileName;
+	char       *pszSaveBackupfileName;
 	FILE	   *ftest;
 	char	   *pszDBName,
 			   *pszUserName;
@@ -76,9 +78,10 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	int			len;
 	int			instid;			/* dispatch node */
 	bool		is_compress;
+	bool		rsyncable;
 	itimers 	savetimers;
 
-
+	rsyncable = false;
 	verifyGpIdentityIsSet();
 	instid = (GpIdentity.segindex == -1) ? 1 : 0;	/* dispatch node */
 	segid = GpIdentity.dbid;
@@ -125,8 +128,10 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	is_compress = (pszCompressionProgram != NULL && *pszCompressionProgram != '\0' ? true : false);
 
 	/* Form backup file path name */
-	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_compress);
+	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_compress, false);
 	pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, true);
+
+	pszSaveBackupfileName = pszBackupFileName;
 
 	/*
 	 * Make sure we can create this file before we spin off sh cause we don't
@@ -156,8 +161,140 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	if (pszUserName == NULL)
 		pszUserName = "";
 
+	if (strstr(pszPassThroughParameters,"--rsyncable") != NULL)
+	{
+		rsyncable = true;
+		elog(DEBUG1,"--rsyncable found, ptp %s",pszPassThroughParameters);
+		/* Remove from gp_dump_agent parameters, because this parameter is for gzip */
+		strncpy(strstr(pszPassThroughParameters,"--rsyncable"),"            ",strlen("--rsyncable"));
+		elog(DEBUG1,"modified to ptp %s",pszPassThroughParameters);
+		/* If a compression program is set, and doesn't already include the parameter */
+		if (strlen(pszCompressionProgram) > 1 && strstr(pszCompressionProgram, "--rsyncable") == NULL)
+		{
+			/* add the parameter */
+			/*
+			 * You would think we'd add this to pszCompressionProgram, but actually
+			 * testCommandExists() moved it to compPg, where we use it later.
+			 *
+			 * But, much of the code assumes that if pszCompressionProgram is set, we WILL have a compression program,
+			 * and the code will fail if we don't, so why we do this is a mystery.
+			 */
+			char * newComp = palloc(strlen(compPg) + strlen(" --rsyncable") + 1);
+			strcpy(newComp,compPg);
+			strcat(newComp," --rsyncable");
+			compPg = newComp;
+			elog(DEBUG1,"compPG %s",compPg);
+		}
+	}
+
+
+	/* If a compression program is set, and doesn't already include the parameter */
+	if (strlen(pszCompressionProgram) > 1 && strstr(pszCompressionProgram, " -1") == NULL &&
+			pszCompressionProgram[0] == 'g')
+	{
+		/* add the -1 parameter to gzip */
+		/*
+		 * You would think we'd add this to pszCompressionProgram, but actually
+		 * testCommandExists() moved it to compPg, where we use it later.
+		 *
+		 * But, much of the code assumes that if pszCompressionProgram is set, we WILL have a compression program,
+		 * and the code will fail if we don't, so why we do this is a mystery.
+		 */
+		char * newComp = palloc(strlen(compPg) + strlen(" -1") + 1);
+		strcpy(newComp,compPg);
+		strcat(newComp," -1");
+		compPg = newComp;
+		elog(DEBUG1,"new compPG %s",compPg);
+	}
+
+
 	/* Clear process interval timers */
 	resetTimers(&savetimers);
+
+	/* Child Process */
+	port = PostPortNumber;
+
+	/* Create the --gp-k parameter string */
+	pszKeyParm = (char *) palloc(strlen(pszBackupKey) +
+								 strlen(pszPassThroughCredentials) +
+								 3 + 10 + 10 + 1);
+	if (pszKeyParm == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+	}
+
+	/*
+	 * dump schema and data for entry db, and data only for segment db.
+	 * why dump data for entry db? because that will include statements
+	 * to update the sequence tables (last values). As for actual data -
+	 * there isn't any, so we will just dump empty COPY statements...
+	 */
+	pszDataOption = (instid == 1) ? "--pre-data-schema-only" : "-a";
+
+	sprintf(pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials);
+
+	/*
+	 * In the following calc for the number of characters in the
+	 * pszCmdLine, I show each piece as the count of the string for that
+	 * piece  + 1 for the space after that piece, e.g. -p comes out 2 for
+	 * the -p and 1 for the space after the -p	The last 1 is for the
+	 * binary zero at the end.
+	 */
+	len = strlen(bkPg) + 1	/* gp_dump_agent */
+		+ 7 + 1				/* --gp-k */
+		+ strlen(pszKeyParm) + 1
+		+ 7 + 1				/* --gp-d */
+		+ strlen(pszBackupDirectory) + 1
+		+ 2 + 1				/* -p */
+		+ 5 + 1				/* port */
+		+ 2 + 1				/* -U */
+		+ strlen(pszUserName) + 1	/* pszUserName */
+		+ strlen(pszPassThroughParameters) + 1
+		+ 23 + 1			/* " " or "--post-data-schema-only" */
+		+ strlen("_post_data")
+		+ strlen(pszDBName) + 1
+		+ 1 + 1				/* > */
+		+ strlen(pszBackupFileName)
+		+ 2 + 1				/* 2> */
+		+ strlen(pszStatusFileName)
+		+ 1;
+
+	/* if user selected a compression program */
+	if (pszCompressionProgram[0] != '\0')
+	{
+		len += 1 + 1		/* | */
+		+ strlen(compPg) + 1;
+	}
+
+	pszCmdLine = (char *) palloc(len);
+	if (pszCmdLine == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+	}
+
+	/* if user selected a compression program */
+	if (pszCompressionProgram[0] != '\0')
+	{
+		/* gp_dump_agent + options, pipe into compression program, direct
+		 * stdout to backup file and stderr to status file */
+		sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
+				bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
+				pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
+	}
+	else
+	{
+		sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s > %s",
+				bkPg, pszKeyParm, pszBackupDirectory,
+				port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
+				pszStatusFileName, pszBackupFileName);
+	}
+
+	elog(LOG, "gp_dump_agent command line: %s", pszCmdLine),
+
 
 	/* Fork off gp_dump_agent	*/
 #ifdef _WIN32
@@ -173,95 +310,9 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	}
 	else if (newpid == 0)
 	{
-		/* Child Process */
-		port = PostPortNumber;
-
-		/* Create the --gp-k parameter string */
-		pszKeyParm = (char *) palloc(strlen(pszBackupKey) +
-									 strlen(pszPassThroughCredentials) +
-									 3 + 10 + 10 + 1);
-		if (pszKeyParm == NULL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
-		}
-
-		/*
-		 * dump schema and data for entry db, and data only for segment db.
-		 * why dump data for entry db? because that will include statements
-		 * to update the sequence tables (last values). As for actual data -
-		 * there isn't any, so we will just dump empty COPY statements...
-		 */
-		pszDataOption = (instid == 1) ? "  " : "-a";
-
-		sprintf(pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials);
-
-		/*
-		 * In the following calc for the number of characters in the
-		 * pszCmdLine, I show each piece as the count of the string for that
-		 * piece  + 1 for the space after that piece, e.g. -p comes out 2 for
-		 * the -p and 1 for the space after the -p	The last 1 is for the
-		 * binary zero at the end.
-		 */
-		len = strlen(bkPg) + 1	/* gp_dump_agent */
-			+ 7 + 1				/* --gp-k */
-			+ strlen(pszKeyParm) + 1
-			+ 7 + 1				/* --gp-d */
-			+ strlen(pszBackupDirectory) + 1
-			+ 2 + 1				/* -p */
-			+ 5 + 1				/* port */
-			+ 2 + 1				/* -U */
-			+ strlen(pszUserName) + 1	/* pszUserName */
-			+ strlen(pszPassThroughParameters) + 1
-			+ 2 + 1				/* "  " or "-a" */
-			+ strlen(pszDBName) + 1
-			+ 1 + 1				/* > */
-			+ strlen(pszBackupFileName)
-			+ 2 + 1				/* 2> */
-			+ strlen(pszStatusFileName)
-			+ 1;
-
-		/* if user selected a compression program */
-		if (pszCompressionProgram[0] != '\0')
-		{
-			len += 1 + 1		/* | */
-			+ strlen(compPg) + 1;
-
-			pszCmdLine = (char *) palloc(len);
-			if (pszCmdLine == NULL)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_OUT_OF_MEMORY),
-						 errmsg("out of memory")));
-			}
-
-			/* gp_dump_agent + options, pipe into compression program, direct
-			 * stdout to backup file and stderr to status file */
-			//sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s | %s > %s 2> %s",
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
-					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
-					pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
-		}
-		else
-		{
-			pszCmdLine = (char *) palloc(len);
-			if (pszCmdLine == NULL)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_OUT_OF_MEMORY),
-						 errmsg("out of memory")));
-			}
-
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s > %s 2> %s",
-					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					pszBackupFileName, pszStatusFileName);
-		}
-
-		elog(LOG, "gp_dump_agent command line: %s", pszCmdLine),
 
 		/* This execs a shell that runs the gp_dump_agent program	*/
-			execl("/bin/sh", "sh", "-c", pszCmdLine, NULL);
+		execl("/bin/sh", "sh", "-c", pszCmdLine, NULL);
 
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
@@ -270,13 +321,68 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		_exit(127);
 	}
 
+	/*
+	 * If we are the master, we do two calls to gp_dump_agent, one for the pre-schema, one for the post
+	 */
+	if (instid == 1)
+	{
+		int stat;
+		waitpid(newpid, &stat, 0);
+		pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_compress, true);
+		pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, true);
+		pszDataOption = "--post-data-schema-only" ;
+
+		/* if user selected a compression program */
+		if (pszCompressionProgram[0] != '\0')
+		{
+			/* gp_dump_agent + options, pipe into compression program, direct
+			 * stdout to backup file and stderr to status file */
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s | %s > %s",
+					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
+					pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
+		}
+		else
+		{
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s > %s",
+					bkPg, pszKeyParm, pszBackupDirectory,
+					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
+					pszStatusFileName, pszBackupFileName);
+		}
+
+		elog(LOG, "gp_dump_agent command line #2: %s", pszCmdLine),
+
+#ifdef _WIN32
+		exit(1);
+#else
+		newpid = fork();
+#endif
+		if (newpid < 0)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					 errmsg("Could not fork a process for backup of database %s", pszDBName)));
+		}
+		else if (newpid == 0)
+		{
+
+			/* This execs a shell that runs the gp_dump_agent program	*/
+				execl("/bin/sh", "sh", "-c", pszCmdLine, NULL);
+
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					 errmsg("Error in gp_backup_launch - execl of %s with Command Line %s failed",
+							"/bin/sh", pszCmdLine)));
+			_exit(127);
+		}
+
+	}
 
 	/* Restore process interval timers */
 	restoreTimers(&savetimers);
 
-	assert(pszBackupFileName != NULL && pszBackupFileName[0] != '\0');
+	assert(pszSaveBackupfileName != NULL && pszSaveBackupfileName[0] != '\0');
 
-	return DirectFunctionCall1(textin, CStringGetDatum(pszBackupFileName));
+	return DirectFunctionCall1(textin, CStringGetDatum(pszSaveBackupfileName));
 }
 
 /*
@@ -313,8 +419,10 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 				len_name;
 	bool		is_decompress;
 	bool		is_file_compressed; /* is the dump file ending with '.gz'*/
+	bool		postDataSchemaOnly;
 	itimers 	savetimers;
 
+	postDataSchemaOnly = false;
 	verifyGpIdentityIsSet();
 	instid = (GpIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
 	segid = GpIdentity.dbid;
@@ -361,8 +469,11 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 	/* are we going to use a decompression program? */
 	is_decompress = (pszCompressionProgram != NULL && *pszCompressionProgram != '\0' ? true : false);
 
+	/* Post data pass? */
+	postDataSchemaOnly = strstr(pszPassThroughParameters, "--post-data-schema-only") != NULL;
+
 	/* Form backup file path name */
-	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_decompress);
+	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_decompress, postDataSchemaOnly);
 	pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, false);
 
 	/* Make sure pszBackupFileName exists */
@@ -493,9 +604,10 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 			 * de-compress backupfile and pipe into stdin of gp_restore_agent along with its
 			 * options. Redirect both stdout and stderr into the status file.
 			 */
-			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
+			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&1",
 					bkPg, compPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
-					pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName, pszStatusFileName);
+					pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
+					postDataSchemaOnly ? ">>" : ">", pszStatusFileName);
 
 		}
 		else
@@ -511,9 +623,10 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 			}
 
 			/* Format gp_restore_agent with options, and Redirect both stdout and stderr into the status file */
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&1",
 					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
-					pszPassThroughTargetInfo, pszDBName, pszBackupFileName, pszStatusFileName);
+					pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
+					postDataSchemaOnly ? ">>" : ">", pszStatusFileName);
 		}
 
 
@@ -705,7 +818,7 @@ gp_write_backup_file__(PG_FUNCTION_ARGS)
 	validateBackupDirectory(pszBackupDirectory);
 
 	/* Form backup file path name */
-	pszFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, false);
+	pszFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, false, false);
 
 	/* Write file */
 	f = fopen(pszFileName, "w");
@@ -961,7 +1074,7 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
  * based on the naming convention for this.
  */
 char *
-formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_compress)
+formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_compress, bool isPostData)
 {
 #ifndef PATH_MAX
 #define PATH_MAX 1024
@@ -992,6 +1105,9 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_com
 	if(is_compress)
 		len += strlen(".gz");
 
+	if (isPostData)
+		len += strlen("_post_data");
+
 	if (len > PATH_MAX)
 	{
 		ereport(ERROR,
@@ -1013,6 +1129,8 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_com
 
 	strcat(pszBackupFileName, szFileNamePrefix);
 	strcat(pszBackupFileName, pszBackupKey);
+	if (isPostData)
+		strcat(pszBackupFileName, "_post_data");
 
 	/* if gzip/gunzip is used, the suffix is gz */
 	if(is_compress)

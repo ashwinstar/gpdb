@@ -21,12 +21,12 @@
  * Must be set to the program identifier to be used in status and diagnostic
  * messages.
  */
-extern const char *progname;			/* Copied from pg_backup_archiver.h */
+extern const char *progname;	/* Copied from pg_backup_archiver.h */
 
 /*
  * Must be set to an open/active connection.
  */
-extern PGconn	  *g_conn;				/* the database connection */
+extern PGconn *g_conn;			/* the database connection */
 
 /*
  * String designating the mode used to LOCK the tables to be dumped.
@@ -82,12 +82,12 @@ extern SimpleOidList table_exclude_oids;
 
 const char *fmtQualifiedId(const char *schema, const char *id);
 
-void do_sql_command(PGconn *conn, const char *query);
+void		do_sql_command(PGconn *conn, const char *query);
 void check_sql_result(PGresult *res, PGconn *conn, const char *query,
-					  ExecStatusType expected);
+				 ExecStatusType expected);
 
-void selectSourceSchema(const char *schemaName);
+void		selectSourceSchema(const char *schemaName);
 
-void convert_patterns_to_oids(void);
+void		convert_patterns_to_oids(void);
 
 #endif

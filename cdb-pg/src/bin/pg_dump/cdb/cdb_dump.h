@@ -16,23 +16,22 @@
  */
 typedef struct thread_parm
 {
-	pthread_t				thread;
-	SegmentDatabase*		pTargetSegDBData;
-	SegmentDatabase*		pSourceSegDBData; /* used only for restore */
-	InputOptions*			pOptionsData;
-	char*					pszRemoteBackupPath;
-	bool					bSuccess;
-	char*					pszErrorMsg;
-} ThreadParm;
+	pthread_t	thread;
+	SegmentDatabase *pTargetSegDBData;
+	SegmentDatabase *pSourceSegDBData;	/* used only for restore */
+	InputOptions *pOptionsData;
+	char	   *pszRemoteBackupPath;
+	bool		bSuccess;
+	char	   *pszErrorMsg;
+}	ThreadParm;
 
 /* --------------------------------------------------------------------------------------------------
  * Structure for an array of thread parms
  */
-typedef struct thread_parm_array 
+typedef struct thread_parm_array
 {
-    int			count;		// count
-    ThreadParm*	pData;		// array of count ThreadParm
-} ThreadParmArray;
+	int			count; 	  //count
+	ThreadParm *pData;	  //array of count ThreadParm
+}	ThreadParmArray;
 
-#endif /* CDB_DUMP_H */
-
+#endif   /* CDB_DUMP_H */

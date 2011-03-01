@@ -38,6 +38,7 @@ extern void processSQLNamePattern(PGconn *conn, PQExpBuffer buf,
 					  bool have_where, bool force_escape,
 					  const char *schemavar, const char *namevar,
 					  const char *altnamevar, const char *visibilityrule);
+/* GPDB additions */
 extern char *escape_backslashes(const char *src, bool quotes_too);
 extern char *escape_fmtopts_string(const char *src);
 

@@ -24,9 +24,9 @@ static NamespaceInfo *findNamespace(Oid nsoid, Oid objoid);
 static void getDomainConstraints(TypeInfo *tinfo);
 
 static void expand_schema_name_patterns(SimpleStringList *patterns,
-										SimpleOidList *oids);
+							SimpleOidList *oids);
 static void expand_table_name_patterns(SimpleStringList *patterns,
-										SimpleOidList *oids);
+						   SimpleOidList *oids);
 
 
 /*
@@ -45,19 +45,19 @@ const char *table_lock_mode = "ACCESS SHARE";
  * Partitioning is presumed supported by this code level.  The caller
  * of cdb_dump_include functions may declare otherwise.
  */
-bool g_gp_supportsPartitioning = true;
+bool		g_gp_supportsPartitioning = true;
 
 /*
  * MPP-6095: Partition templates are presumed supported by this code
  * level.  The caller of cdb_dump_include functions may declare
  * otherwise.
  */
-bool g_gp_supportsPartitionTemplates = true;
+bool		g_gp_supportsPartitionTemplates = true;
 
 /*
  * When true, indicates that only the MPP schema is being dumped.
  */
-bool g_gp_catalog_only = false;
+bool		g_gp_catalog_only = false;
 
 const CatalogId nilCatalogId = {0, 0};
 
@@ -65,9 +65,9 @@ const CatalogId nilCatalogId = {0, 0};
 /*
  * Constants used for message logging.
  */
-static const char*     logInfo = "INFO";
-static const char*     logWarn = "WARN";
-static const char*     logError = "ERROR";
+static const char *logInfo = "INFO";
+static const char *logWarn = "WARN";
+static const char *logError = "ERROR";
 
 
 /*
@@ -76,15 +76,15 @@ static const char*     logError = "ERROR";
  * The string lists record the patterns given by command-line switches,
  * which we then convert to lists of OIDs of matching objects.
  */
-SimpleStringList schema_include_patterns = { NULL, NULL };
-SimpleOidList schema_include_oids = { NULL, NULL };
-SimpleStringList schema_exclude_patterns = { NULL, NULL };
-SimpleOidList schema_exclude_oids = { NULL, NULL };
+SimpleStringList schema_include_patterns = {NULL, NULL};
+SimpleOidList schema_include_oids = {NULL, NULL};
+SimpleStringList schema_exclude_patterns = {NULL, NULL};
+SimpleOidList schema_exclude_oids = {NULL, NULL};
 
-SimpleStringList table_include_patterns = { NULL, NULL };
-SimpleOidList table_include_oids = { NULL, NULL };
-SimpleStringList table_exclude_patterns = { NULL, NULL };
-SimpleOidList table_exclude_oids = { NULL, NULL };
+SimpleStringList table_include_patterns = {NULL, NULL};
+SimpleOidList table_include_oids = {NULL, NULL};
+SimpleStringList table_exclude_patterns = {NULL, NULL};
+SimpleOidList table_exclude_oids = {NULL, NULL};
 
 
 /* these are to avoid passing around info for findNamespace() */
@@ -159,6 +159,7 @@ selectDumpableNamespace(NamespaceInfo *nsinfo)
 		nsinfo->dobj.dump = false;
 	else
 		nsinfo->dobj.dump = true;
+
 	/*
 	 * In any case, a namespace can be excluded by an exclusion switch
 	 */
@@ -177,14 +178,15 @@ static void
 selectDumpableTable(TableInfo *tbinfo)
 {
 	/*
-	 * If specific tables are being dumped, dump just those tables;
-	 * else, dump according to the parent namespace's dump flag.
+	 * If specific tables are being dumped, dump just those tables; else, dump
+	 * according to the parent namespace's dump flag.
 	 */
 	if (table_include_oids.head != NULL)
 		tbinfo->dobj.dump = simple_oid_list_member(&table_include_oids,
 												   tbinfo->dobj.catId.oid);
 	else
 		tbinfo->dobj.dump = tbinfo->dobj.namespace->dobj.dump;
+
 	/*
 	 * In any case, a table can be excluded by an exclusion switch
 	 */
@@ -194,15 +196,17 @@ selectDumpableTable(TableInfo *tbinfo)
 		tbinfo->dobj.dump = false;
 
 	/* MPP addition */
-	/* if we are dumping the mpp catalog, mark all mpp catalog tables for
-	 * dump and skip the policy table since it has oids and will be populated
+
+	/*
+	 * if we are dumping the mpp catalog, mark all mpp catalog tables for dump
+	 * and skip the policy table since it has oids and will be populated
 	 * automatically when creating the tables.
 	 */
-	if(g_gp_catalog_only)
+	if (g_gp_catalog_only)
 	{
-		if(strncmp(tbinfo->dobj.name, "gp_", 3) == 0 &&
-		   strcmp(tbinfo->dobj.namespace->dobj.name, "pg_catalog") == 0 &&
-		   strcmp(tbinfo->dobj.name, "gp_distribution_policy") != 0)
+		if (strncmp(tbinfo->dobj.name, "gp_", 3) == 0 &&
+			strcmp(tbinfo->dobj.namespace->dobj.name, "pg_catalog") == 0 &&
+			strcmp(tbinfo->dobj.name, "gp_distribution_policy") != 0)
 			tbinfo->dobj.dump = true;
 		else
 			tbinfo->dobj.dump = false;
@@ -302,9 +306,9 @@ getDomainConstraints(TypeInfo *tinfo)
 	PQExpBuffer query;
 	PGresult   *res;
 	int			i_tableoid,
-		i_oid,
-		i_conname,
-		i_consrc;
+				i_oid,
+				i_conname,
+				i_consrc;
 	int			ntups;
 
 	/*
@@ -506,7 +510,7 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 		appendPQExpBuffer(query,
 						  "SELECT c.oid"
 						  "\nFROM pg_catalog.pg_class c"
-						  "\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
+		"\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
 						  "\nWHERE c.relkind in ('%c', '%c', '%c')\n",
 						  RELKIND_RELATION, RELKIND_SEQUENCE, RELKIND_VIEW);
 		processSQLNamePattern(g_conn, query, cell->val, true, false,
@@ -573,7 +577,7 @@ convert_patterns_to_oids(void)
  *
  *	numNamespaces is set to the number of namespaces read in
  */
-// Declared in pg_dump.h
+/*	Declared in pg_dump.h */
 NamespaceInfo *
 getNamespaces(int *numNamespaces)
 {
@@ -630,7 +634,7 @@ getNamespaces(int *numNamespaces)
 
 		if (strlen(nsinfo[i].rolname) == 0)
 			mpp_err_msg(logWarn, progname, "WARNING: owner of schema \"%s\" appears to be invalid\n",
-					  nsinfo[i].dobj.name);
+						nsinfo[i].dobj.name);
 	}
 
 	PQclear(res);
@@ -650,7 +654,7 @@ getNamespaces(int *numNamespaces)
  *
  * numFuncs is set to the number of functions read in
  */
-// Declared in pg_dump.h
+/*	Declared in pg_dump.h */
 FuncInfo *
 getFuncs(int *numFuncs)
 {
@@ -736,8 +740,8 @@ getFuncs(int *numFuncs)
 
 		if (strlen(finfo[i].rolname) == 0)
 			mpp_err_msg(logWarn, progname,
-					  "WARNING: owner of function \"%s\" appears to be invalid\n",
-					  finfo[i].dobj.name);
+				 "WARNING: owner of function \"%s\" appears to be invalid\n",
+						finfo[i].dobj.name);
 	}
 
 	PQclear(res);
@@ -758,7 +762,7 @@ getFuncs(int *numFuncs)
  * NB: this must run after getFuncs() because we assume we can do
  * findFuncByOid().
  */
-// Declared in pg_dump.h
+/*	Declared in pg_dump.h */
 TypeInfo *
 getTypes(int *numTypes)
 {
@@ -843,8 +847,8 @@ getTypes(int *numTypes)
 		/*
 		 * If it's a table's rowtype, use special type code to facilitate
 		 * sorting into the desired order.	(We don't want to consider it an
-											 * ordinary type because that would bring the table up into the
-											 * datatype part of the dump order.)
+		 * ordinary type because that would bring the table up into the
+		 * datatype part of the dump order.)
 		 */
 		if (OidIsValid(tinfo[i].typrelid) &&
 			tinfo[i].typrelkind != RELKIND_COMPOSITE_TYPE)
@@ -905,7 +909,7 @@ getTypes(int *numTypes)
 
 		if (strlen(tinfo[i].rolname) == 0 && tinfo[i].isDefined)
 			mpp_err_msg(logWarn, progname, "WARNING: owner of data type \"%s\" appears to be invalid\n",
-					  tinfo[i].dobj.name);
+						tinfo[i].dobj.name);
 	}
 
 	*numTypes = ntups;
@@ -925,7 +929,7 @@ getTypes(int *numTypes)
  *
  *	numOprs is set to the number of operators read in
  */
-// Declared in pg_dump.h
+/*	Declared in pg_dump.h */
 OprInfo *
 getOperators(int *numOprs)
 {
@@ -988,7 +992,7 @@ getOperators(int *numOprs)
 
 		if (strlen(oprinfo[i].rolname) == 0)
 			mpp_err_msg(logWarn, progname, "WARNING: owner of operator \"%s\" appears to be invalid\n",
-					  oprinfo[i].dobj.name);
+						oprinfo[i].dobj.name);
 	}
 
 	PQclear(res);
@@ -1006,7 +1010,7 @@ getOperators(int *numOprs)
  *
  *	numConversions is set to the number of conversions read in
  */
-// Declared in pg_dump.h
+/*	Declared in pg_dump.h */
 ConvInfo *
 getConversions(int *numConversions)
 {
@@ -1057,7 +1061,7 @@ getConversions(int *numConversions)
 		AssignDumpId(&convinfo[i].dobj);
 		convinfo[i].dobj.name = strdup(PQgetvalue(res, i, i_conname));
 		convinfo[i].dobj.namespace = findNamespace(atooid(PQgetvalue(res, i, i_connamespace)),
-												   convinfo[i].dobj.catId.oid);
+												 convinfo[i].dobj.catId.oid);
 		convinfo[i].rolname = strdup(PQgetvalue(res, i, i_rolname));
 
 		/* Decide whether we want to dump it */
@@ -1079,7 +1083,7 @@ getConversions(int *numConversions)
  *
  *	numOpclasses is set to the number of opclasses read in
  */
-// Declared in pg_dump.h
+/*	Declared in pg_dump.h */
 OpclassInfo *
 getOpclasses(int *numOpclasses)
 {
@@ -1138,7 +1142,7 @@ getOpclasses(int *numOpclasses)
 
 		if (strlen(opcinfo[i].rolname) == 0)
 			mpp_err_msg(logWarn, progname, "WARNING: owner of operator class \"%s\" appears to be invalid\n",
-					  opcinfo[i].dobj.name);
+						opcinfo[i].dobj.name);
 	}
 
 	PQclear(res);
@@ -1156,7 +1160,7 @@ getOpclasses(int *numOpclasses)
  *
  * numAggs is set to the number of aggregates read in
  */
-// Declared in pg_dump.h
+/*	Declared in pg_dump.h */
 AggInfo *
 getAggregates(int *numAggs)
 {
@@ -1187,7 +1191,7 @@ getAggregates(int *numAggs)
 					  "FROM pg_proc "
 					  "WHERE proisagg "
 					  "AND pronamespace != "
-					  "(select oid from pg_namespace where nspname = 'pg_catalog')",
+			   "(select oid from pg_namespace where nspname = 'pg_catalog')",
 					  username_subquery);
 
 	res = PQexec(g_conn, query->data);
@@ -1215,11 +1219,11 @@ getAggregates(int *numAggs)
 		AssignDumpId(&agginfo[i].aggfn.dobj);
 		agginfo[i].aggfn.dobj.name = strdup(PQgetvalue(res, i, i_aggname));
 		agginfo[i].aggfn.dobj.namespace = findNamespace(atooid(PQgetvalue(res, i, i_aggnamespace)),
-														agginfo[i].aggfn.dobj.catId.oid);
+											agginfo[i].aggfn.dobj.catId.oid);
 		agginfo[i].aggfn.rolname = strdup(PQgetvalue(res, i, i_rolname));
 		if (strlen(agginfo[i].aggfn.rolname) == 0)
 			mpp_err_msg(logWarn, progname, "WARNING: owner of aggregate function \"%s\" appears to be invalid\n",
-					  agginfo[i].aggfn.dobj.name);
+						agginfo[i].aggfn.dobj.name);
 		agginfo[i].aggfn.lang = InvalidOid;		/* not currently interesting */
 		agginfo[i].aggfn.prorettype = InvalidOid;		/* not saved */
 		agginfo[i].aggfn.proacl = strdup(PQgetvalue(res, i, i_aggacl));
@@ -1402,7 +1406,7 @@ getForeignServers(int *numForeignServers)
  *
  * numTables is set to the number of tables read in
  */
-// Declared in pg_dump.h
+/*	Declared in pg_dump.h */
 TableInfo *
 getTables(int *numTables)
 {
@@ -1446,7 +1450,7 @@ getTables(int *numTables)
 	 * Composite-type table entries won't be dumped as such, but we have to
 	 * make a DumpableObject for them so that we can track dependencies of the
 	 * composite type (pg_depend entries for columns of the composite type
-					   * link to the pg_class entry not the pg_type entry).
+	 * link to the pg_class entry not the pg_type entry).
 	 *
 	 * Note: in this phase we should collect only a minimal amount of
 	 * information about each table, basically just enough to decide if it is
@@ -1455,8 +1459,8 @@ getTables(int *numTables)
 	 */
 
 	/*
-	 * Left join to pick up dependency info linking sequences to their
-	 * owning column, if any (note this dependency is AUTO as of 8.2)
+	 * Left join to pick up dependency info linking sequences to their owning
+	 * column, if any (note this dependency is AUTO as of 8.2)
 	 */
 	appendPQExpBuffer(query,
 					  "SELECT c.tableoid, c.oid, relname, "
@@ -1481,8 +1485,8 @@ getTables(int *numTables)
 					  RELKIND_RELATION, RELKIND_SEQUENCE,
 					  RELKIND_VIEW, RELKIND_COMPOSITE_TYPE,
 					  g_gp_supportsPartitioning ?
-						  "AND c.oid NOT IN (select parchildrelid from "
-						  "pg_partition_rule)" : "");
+					  "AND c.oid NOT IN (select parchildrelid from "
+					  "pg_partition_rule)" : "");
 
 	res = PQexec(g_conn, query->data);
 	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
@@ -1563,8 +1567,8 @@ getTables(int *numTables)
 		tblinfo[i].interesting = tblinfo[i].dobj.dump;
 
 		/*
-		 * Lock target tables to make sure they aren't DROPPED or altered
-		 * in schema before we get around to dumping them.
+		 * Lock target tables to make sure they aren't DROPPED or altered in
+		 * schema before we get around to dumping them.
 		 *
 		 * Note that we don't explicitly lock parents of the target tables; we
 		 * assume our lock on the child is enough to prevent schema
@@ -1577,15 +1581,15 @@ getTables(int *numTables)
 		{
 			resetPQExpBuffer(lockquery);
 			appendPQExpBuffer(lockquery, "LOCK TABLE %s IN %s MODE",
-					fmtQualifiedId(tblinfo[i].dobj.namespace->dobj.name,
-							tblinfo[i].dobj.name), table_lock_mode);
+						 fmtQualifiedId(tblinfo[i].dobj.namespace->dobj.name,
+									 tblinfo[i].dobj.name), table_lock_mode);
 			do_sql_command(g_conn, lockquery->data);
 		}
 
 		/* Emit notice if join for owner failed */
 		if (strlen(tblinfo[i].rolname) == 0)
 			mpp_err_msg(logWarn, progname, "WARNING: owner of table \"%s\" appears to be invalid\n",
-					  tblinfo[i].dobj.name);
+						tblinfo[i].dobj.name);
 	}
 
 	PQclear(res);
@@ -1634,7 +1638,7 @@ getTables(int *numTables)
  *
  * numInherits is set to the number of pairs read in
  */
-// Declared in pg_dump.h
+/*	Declared in pg_dump.h */
 InhInfo *
 getInherits(int *numInherits)
 {
@@ -1687,7 +1691,7 @@ getInherits(int *numInherits)
  * Note: index data is not returned directly to the caller, but it
  * does get entered into the DumpableObject tables.
  */
-// Declared in pg_dump.h
+/*	Declared in pg_dump.h */
 void
 getIndexes(TableInfo tblinfo[], int numTables)
 {
@@ -1698,18 +1702,18 @@ getIndexes(TableInfo tblinfo[], int numTables)
 	IndxInfo   *indxinfo;
 	ConstraintInfo *constrinfo;
 	int			i_tableoid,
-		i_oid,
-		i_indexname,
-		i_indexdef,
-		i_indnkeys,
-		i_indkey,
-		i_indisclustered,
-		i_contype,
-		i_conname,
-		i_contableoid,
-		i_conoid,
-		i_tablespace,
-		i_options;
+				i_oid,
+				i_indexname,
+				i_indexdef,
+				i_indnkeys,
+				i_indkey,
+				i_indisclustered,
+				i_contype,
+				i_conname,
+				i_contableoid,
+				i_conoid,
+				i_tablespace,
+				i_options;
 	int			ntups;
 
 	for (i = 0; i < numTables; i++)
@@ -1726,7 +1730,7 @@ getIndexes(TableInfo tblinfo[], int numTables)
 
 		if (g_verbose)
 			mpp_err_msg(logInfo, progname, "reading indexes for table \"%s\"\n",
-					  tbinfo->dobj.name);
+						tbinfo->dobj.name);
 
 		/* Make sure we are in proper schema so indexdef is right */
 		selectSourceSchema(tbinfo->dobj.namespace->dobj.name);
@@ -1741,7 +1745,7 @@ getIndexes(TableInfo tblinfo[], int numTables)
 		appendPQExpBuffer(query,
 						  "SELECT t.tableoid, t.oid, "
 						  "t.relname as indexname, "
-						  "pg_catalog.pg_get_indexdef(i.indexrelid) as indexdef, "
+					 "pg_catalog.pg_get_indexdef(i.indexrelid) as indexdef, "
 						  "t.relnatts as indnkeys, "
 						  "i.indkey, i.indisclustered, "
 						  "c.contype, c.conname, "
@@ -1750,7 +1754,7 @@ getIndexes(TableInfo tblinfo[], int numTables)
 						  "(SELECT spcname FROM pg_catalog.pg_tablespace s WHERE s.oid = t.reltablespace) as tablespace, "
 						  "array_to_string(t.reloptions, ', ') as options "
 						  "FROM pg_catalog.pg_index i "
-						  "JOIN pg_catalog.pg_class t ON (t.oid = i.indexrelid) "
+					  "JOIN pg_catalog.pg_class t ON (t.oid = i.indexrelid) "
 						  "LEFT JOIN pg_catalog.pg_depend d "
 						  "ON (d.classid = t.tableoid "
 						  "AND d.objid = t.oid "
@@ -1803,7 +1807,7 @@ getIndexes(TableInfo tblinfo[], int numTables)
 			/*
 			 * In pre-7.4 releases, indkeys may contain more entries than
 			 * indnkeys says (since indnkeys will be 1 for a functional
-							  * index).	We don't actually care about this case since we don't
+			 * index). We don't actually care about this case since we don't
 			 * examine indkeys except for indexes associated with PRIMARY and
 			 * UNIQUE constraints, which are never functional indexes. But we
 			 * have to allocate enough space to keep parseOidArray from
@@ -1867,7 +1871,7 @@ getIndexes(TableInfo tblinfo[], int numTables)
  * Unique and primary key constraints are handled with indexes,
  * while check constraints are processed in getTableAttrs().
  */
-// Declared in pg_dump.h
+/*	Declared in pg_dump.h */
 void
 getConstraints(TableInfo tblinfo[], int numTables)
 {
@@ -1877,9 +1881,9 @@ getConstraints(TableInfo tblinfo[], int numTables)
 	PQExpBuffer query;
 	PGresult   *res;
 	int			i_condef,
-		i_contableoid,
-		i_conoid,
-		i_conname;
+				i_contableoid,
+				i_conoid,
+				i_conname;
 	int			ntups;
 
 	query = createPQExpBuffer();
@@ -1893,7 +1897,7 @@ getConstraints(TableInfo tblinfo[], int numTables)
 
 		if (g_verbose)
 			mpp_err_msg(logInfo, progname, "reading foreign key constraints for table \"%s\"\n",
-					  tbinfo->dobj.name);
+						tbinfo->dobj.name);
 
 		/*
 		 * select table schema to ensure constraint expr is qualified if
@@ -2005,8 +2009,8 @@ getRules(int *numRules)
 		if (ruleinfo[i].ruletable == NULL)
 		{
 			mpp_err_msg(logError, progname, "failed sanity check, parent table OID %u of pg_rewrite entry OID %u not found\n",
-					  ruletableoid,
-					  ruleinfo[i].dobj.catId.oid);
+						ruletableoid,
+						ruleinfo[i].dobj.catId.oid);
 			exit_nicely();
 		}
 		ruleinfo[i].dobj.namespace = ruleinfo[i].ruletable->dobj.namespace;
@@ -2064,19 +2068,19 @@ getTriggers(TableInfo tblinfo[], int numTables)
 	PGresult   *res;
 	TriggerInfo *tginfo;
 	int			i_tableoid,
-		i_oid,
-		i_tgname,
-		i_tgfname,
-		i_tgtype,
-		i_tgnargs,
-		i_tgargs,
-		i_tgisconstraint,
-		i_tgconstrname,
-		i_tgconstrrelid,
-		i_tgconstrrelname,
-		i_tgenabled,
-		i_tgdeferrable,
-		i_tginitdeferred;
+				i_oid,
+				i_tgname,
+				i_tgfname,
+				i_tgtype,
+				i_tgnargs,
+				i_tgargs,
+				i_tgisconstraint,
+				i_tgconstrname,
+				i_tgconstrrelid,
+				i_tgconstrrelname,
+				i_tgenabled,
+				i_tgdeferrable,
+				i_tginitdeferred;
 	int			ntups;
 
 	for (i = 0; i < numTables; i++)
@@ -2088,7 +2092,7 @@ getTriggers(TableInfo tblinfo[], int numTables)
 
 		if (g_verbose)
 			mpp_err_msg(logInfo, progname, "reading triggers for table \"%s\"\n",
-					  tbinfo->dobj.name);
+						tbinfo->dobj.name);
 
 		/*
 		 * select table schema to ensure regproc name is qualified if needed
@@ -2096,6 +2100,7 @@ getTriggers(TableInfo tblinfo[], int numTables)
 		selectSourceSchema(tbinfo->dobj.namespace->dobj.name);
 
 		resetPQExpBuffer(query);
+
 		/*
 		 * We ignore triggers that are tied to a foreign-key constraint
 		 */
@@ -2105,7 +2110,7 @@ getTriggers(TableInfo tblinfo[], int numTables)
 						  "tgtype, tgnargs, tgargs, tgenabled, "
 						  "tgisconstraint, tgconstrname, tgdeferrable, "
 						  "tgconstrrelid, tginitdeferred, tableoid, oid, "
-						  "tgconstrrelid::pg_catalog.regclass as tgconstrrelname "
+					 "tgconstrrelid::pg_catalog.regclass as tgconstrrelname "
 						  "from pg_catalog.pg_trigger t "
 						  "where tgrelid = '%u'::pg_catalog.oid "
 						  "and (not tgisconstraint "
@@ -2127,7 +2132,7 @@ getTriggers(TableInfo tblinfo[], int numTables)
 		if (ntups > tbinfo->ntrig)
 		{
 			mpp_err_msg(logError, progname, "expected %d triggers on table \"%s\" but found %d\n",
-					  tbinfo->ntrig, tbinfo->dobj.name, ntups);
+						tbinfo->ntrig, tbinfo->dobj.name, ntups);
 			exit_nicely();
 		}
 		i_tableoid = PQfnumber(res, "tableoid");
@@ -2174,8 +2179,8 @@ getTriggers(TableInfo tblinfo[], int numTables)
 					if (PQgetisnull(res, j, i_tgconstrrelname))
 					{
 						mpp_err_msg(logError, progname, "query produced null referenced table name for foreign key trigger \"%s\" on table \"%s\" (OID of table: %u)\n",
-								  tginfo[j].dobj.name, tbinfo->dobj.name,
-								  tginfo[j].tgconstrrelid);
+									tginfo[j].dobj.name, tbinfo->dobj.name,
+									tginfo[j].tgconstrrelid);
 						exit_nicely();
 					}
 					tginfo[j].tgconstrrelname = strdup(PQgetvalue(res, j, i_tgconstrrelname));
@@ -2364,7 +2369,7 @@ getCasts(int *numCasts)
 			/*
 			 * We need to make a dependency to ensure the function will be
 			 * dumped first.  (In 7.3 and later the regular dependency
-							   * mechanism will handle this for us.)
+			 * mechanism will handle this for us.)
 			 */
 			FuncInfo   *funcInfo;
 
@@ -2441,20 +2446,20 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 		 * we must read the attribute names in attribute number order! because
 		 * we will use the attnum to index into the attnames array later.  We
 		 * actually ask to order by "attrelid, attnum" because (at least up to
-																* 7.3) the planner is not smart enough to realize it needn't re-sort
+		 * 7.3) the planner is not smart enough to realize it needn't re-sort
 		 * the output of an indexscan on pg_attribute_relid_attnum_index.
 		 */
 		if (g_verbose)
 			mpp_err_msg(logInfo, progname, "finding the columns and types of table \"%s\"\n",
-					  tbinfo->dobj.name);
+						tbinfo->dobj.name);
 
 		resetPQExpBuffer(q);
 
 		/* need left join here to not fail on dropped columns ... */
 		appendPQExpBuffer(q, "SELECT a.attnum, a.attname, a.atttypmod, a.attstattarget, a.attstorage, t.typstorage, "
-						  "a.attnotnull, a.atthasdef, a.attisdropped, a.attislocal, "
-						  "pg_catalog.format_type(t.oid,a.atttypmod) as atttypname "
-						  "from pg_catalog.pg_attribute a left join pg_catalog.pg_type t "
+				  "a.attnotnull, a.atthasdef, a.attisdropped, a.attislocal, "
+				   "pg_catalog.format_type(t.oid,a.atttypmod) as atttypname "
+			 "from pg_catalog.pg_attribute a left join pg_catalog.pg_type t "
 						  "on a.atttypid = t.oid "
 						  "where a.attrelid = '%u'::pg_catalog.oid "
 						  "and a.attnum > 0::pg_catalog.int2 "
@@ -2499,7 +2504,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 			if (j + 1 != atoi(PQgetvalue(res, j, i_attnum)))
 			{
 				mpp_err_msg(logError, progname, "invalid column numbering in table \"%s\"\n",
-						  tbinfo->dobj.name);
+							tbinfo->dobj.name);
 				exit_nicely();
 			}
 			tbinfo->attnames[j] = strdup(PQgetvalue(res, j, i_attname));
@@ -2532,11 +2537,11 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 
 			if (g_verbose)
 				mpp_err_msg(logInfo, progname, "finding default expressions of table \"%s\"\n",
-						  tbinfo->dobj.name);
+							tbinfo->dobj.name);
 
 			resetPQExpBuffer(q);
 			appendPQExpBuffer(q, "SELECT tableoid, oid, adnum, "
-							  "pg_catalog.pg_get_expr(adbin, adrelid) AS adsrc "
+						   "pg_catalog.pg_get_expr(adbin, adrelid) AS adsrc "
 							  "FROM pg_catalog.pg_attrdef "
 							  "WHERE adrelid = '%u'::pg_catalog.oid",
 							  tbinfo->dobj.catId.oid);
@@ -2587,7 +2592,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 				if (adnum <= 0 || adnum > ntups)
 				{
 					mpp_err_msg(logError, progname, "invalid adnum value %d for table \"%s\"\n",
-							  adnum, tbinfo->dobj.name);
+								adnum, tbinfo->dobj.name);
 					exit_nicely();
 				}
 				tbinfo->attrdefs[adnum - 1] = &attrdefs[j];
@@ -2605,11 +2610,11 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 
 			if (g_verbose)
 				mpp_err_msg(logInfo, progname, "finding check constraints for table \"%s\"\n",
-						  tbinfo->dobj.name);
+							tbinfo->dobj.name);
 
 			resetPQExpBuffer(q);
 			appendPQExpBuffer(q, "SELECT tableoid, oid, conname, "
-							  "pg_catalog.pg_get_constraintdef(oid) AS consrc "
+							"pg_catalog.pg_get_constraintdef(oid) AS consrc "
 							  "FROM pg_catalog.pg_constraint "
 							  "WHERE conrelid = '%u'::pg_catalog.oid "
 							  "   AND contype = 'c' "
@@ -2622,7 +2627,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 			if (numConstrs != tbinfo->ncheck)
 			{
 				mpp_err_msg(logError, progname, "expected %d check constraints on table \"%s\" but found %d\n",
-						  tbinfo->ncheck, tbinfo->dobj.name, numConstrs);
+							tbinfo->ncheck, tbinfo->dobj.name, numConstrs);
 				mpp_err_msg(logError, progname, "(The system catalogs might be corrupted.)\n");
 				exit_nicely();
 			}
@@ -2687,7 +2692,7 @@ testSqlMedSupport(void)
 	res = PQexec(g_conn, query->data);
 	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
 
-	isSupported = ( PQntuples(res) == 1 );
+	isSupported = (PQntuples(res) == 1);
 
 	PQclear(res);
 	destroyPQExpBuffer(query);

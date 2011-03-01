@@ -159,7 +159,7 @@ CHK_POST_DUMP () {
 		LOG_MSG "[INFO][$INST_COUNT]:-Located status file in $DIR/$DUMP_SUB_DIR/$DUMP_DATE on $DIR_HOST"
 		LOG_MSG "[INFO][$INST_COUNT]:-Checking for errors"
 		STATUS=`$TRUSTED_SHELL $DIR_HOST "$GREP -c \"Finished successfully\" $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_status_?_${DBID}_$TIMESTAMP_KEY"`
-		if [ $STATUS -eq 1 ];then
+		if [ $STATUS -eq 1 -o $STATUS -eq 2 ];then
 			LOG_MSG "[INFO][$INST_COUNT]:-Status report file indicates dump successful"
 			QE_LINE="${QE_LINE}:STATUS_FILE_OK"
 		else
@@ -170,7 +170,7 @@ CHK_POST_DUMP () {
 		fi
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Checking for dump file in $DIR/$DUMP_SUB_DIR/$DUMP_DATE on $DIR_HOST"
-	EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_?_${DBID}_$TIMESTAMP_KEY*  ];then $ECHO 0;else $ECHO 1;fi"`
+	EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_?_${DBID}_$TIMESTAMP_KEY -o -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_?_${DBID}_${TIMESTAMP_KEY}.gz ];then $ECHO 0;else $ECHO 1;fi"`
 	if [ $EXISTS -eq 1 ];then
 		LOG_MSG "[WARN][$INST_COUNT]:-Could not locate dump file in $DIR/$DUMP_SUB_DIR/$DUMP_DATE on $DIR_HOST"
 		QE_LINE="${QE_LINE}:NO_DUMP_FILE"

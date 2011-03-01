@@ -1,8 +1,9 @@
 /*-------------------------------------------------------------------------
  *
- * pg_dumpall
+ * pg_dumpall.c
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Copyright (c) 2006-2010, Greenplum inc.
+ * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -13,7 +14,9 @@
 
 #include "postgres_fe.h"
 
+#include <time.h>
 #include <unistd.h>
+
 #ifdef ENABLE_NLS
 #include <locale.h>
 #endif
@@ -33,9 +36,10 @@ int			optreset;
 #include "libpq-fe.h"
 #include "pg_backup.h"
 #include "pqexpbuffer.h"
+#include "mb/pg_wchar.h"
 
 
-/* version string we expect back from postgres */
+/* version string we expect back from pg_dump */
 #define PG_VERSIONSTR "pg_dump (PostgreSQL) " PG_VERSION "\n"
 
 
@@ -51,7 +55,7 @@ static void dumpTimestamp(char *msg);
 static PGresult *executeQuery(PGconn *conn, const char *query);
 
 extern const char *progname;
-extern Archive    *g_fout;
+extern Archive *g_fout;
 
 bool		output_clean = false;
 bool		skip_acls = false;

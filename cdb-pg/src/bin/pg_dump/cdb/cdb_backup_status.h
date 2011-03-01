@@ -25,7 +25,7 @@ typedef enum backup_task_id
 	TASK_GOTLOCKS = 2,
 	TASK_FINISH = 3,
 	TASK_CANCEL = 4,
-} BackupTaskID;
+}	BackupTaskID;
 
 /* --------------------------------------------------------------------------------------------------
  * Enum for the values of the task_rc field of the cdb_backup_status table
@@ -37,25 +37,25 @@ typedef enum backup_task_rc
 } BackupTaskRC;
 
 /* --------------------------------------------------------------------------------------------------
- * struct for notification list items 
+ * struct for notification list items
  */
 typedef struct status_op
 {
-	struct status_op*	pNext;
-	int					TaskID;
-	int					TaskRC;
-	char*				pszSuffix;		
-	char*				pszMsg;		
-} StatusOp;
+	struct status_op *pNext;
+	int			TaskID;
+	int			TaskRC;
+	char	   *pszSuffix;
+	char	   *pszMsg;
+}	StatusOp;
 
 /* --------------------------------------------------------------------------------------------------
  * struct for notification list
  */
 typedef struct status_op_list
 {
-	StatusOp*		pHead;
-	pthread_mutex_t	mGuard;
-} StatusOpList;
+	StatusOp   *pHead;
+	pthread_mutex_t mGuard;
+}	StatusOpList;
 
 #define TASK_MSG_SUCCESS "Success"
 #define SUFFIX_START "Start"
@@ -65,20 +65,27 @@ typedef struct status_op_list
 #define SUFFIX_FAIL "Fail"
 
 /* Adds a StatusOp* to the list */
-extern void AddToStatusOpList( StatusOpList* pList, StatusOp* pOp );
-/* Creates a StatusOp*  */
-extern StatusOp* CreateStatusOp( int TaskID, int TaskRC, const char* pszSuffix, const char* pszMsg );
-/* Creates a StatusOpList*  */
-extern StatusOpList* CreateStatusOpList(void);
-/* Frees all the memory associated with a StatusOpList*  */
-extern void DestroyStatusOpList(StatusOpList* pList);
-/* Frees the memory allocated for the fields in a StatusOp*, and also the StatusOp* itself */
-extern void FreeStatusOp( StatusOp* pOp );
-/* Locks the mutex of the StatusOpList.  The mutex is created with the recursive attribute */
-extern void Lock( StatusOpList* pList ); 
-/* Removes the head from the linked list insider the StatusOpList object, and returns it. */
-extern StatusOp* TakeFromStatusOpList(StatusOpList* pList);
-/* Unlocks the mutex of the StatusOpList */
-extern void Unlock( StatusOpList* pList ); 
+extern void AddToStatusOpList(StatusOpList * pList, StatusOp * pOp);
 
-#endif /* CDB_BACKUP_STATUS_H */
+/* Creates a StatusOp*	*/
+extern StatusOp *CreateStatusOp(int TaskID, int TaskRC, const char *pszSuffix, const char *pszMsg);
+
+/* Creates a StatusOpList*	*/
+extern StatusOpList *CreateStatusOpList(void);
+
+/* Frees all the memory associated with a StatusOpList*  */
+extern void DestroyStatusOpList(StatusOpList * pList);
+
+/* Frees the memory allocated for the fields in a StatusOp*, and also the StatusOp* itself */
+extern void FreeStatusOp(StatusOp * pOp);
+
+/* Locks the mutex of the StatusOpList.  The mutex is created with the recursive attribute */
+extern void Lock(StatusOpList * pList);
+
+/* Removes the head from the linked list insider the StatusOpList object, and returns it. */
+extern StatusOp *TakeFromStatusOpList(StatusOpList * pList);
+
+/* Unlocks the mutex of the StatusOpList */
+extern void Unlock(StatusOpList * pList);
+
+#endif   /* CDB_BACKUP_STATUS_H */

@@ -166,6 +166,7 @@ USAGE () {
 		$ECHO "      -w, <BACKUPSET>, backup set indicator. Individual segdb (must be followed with a list of dbid's"
 		$ECHO "          to dump). Master segment is added to the list automatically."
 		$ECHO "          For example, script with option -w 2,3,4 will dump segment 1, 2, 3 and 4."
+		$ECHO "      --rsyncable, pass the --rsyncable option to gzip, if compression is being used."
 		$ECHO
 		$ECHO "      Crontab entry (example):"
 		$ECHO "      SHELL=/bin/bash"
@@ -1073,6 +1074,7 @@ do
 #	--schema-only ) ;;
 	--no-privileges ) ;;
 	--use-set-session-authorization ) ;;
+	--rsyncable ) ;;
 	*) USAGE ;;
     esac
 done

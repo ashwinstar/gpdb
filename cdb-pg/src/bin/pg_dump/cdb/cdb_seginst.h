@@ -20,16 +20,16 @@ typedef enum segment_role
  * pg_database, mpp.listener, and mpp.host.
  *
  */
-typedef struct segment_database 
+typedef struct segment_database
 {
-	int4	dbid;            
-	int4	content;
-    SegRole	role;             /* is it a master database or just any segdb? */        
-    int4	port;             
-    char*	pszHost; 
-	char*	pszDBName;          
-    char*	pszDBUser;        
-    char*	pszDBPswd;         		
+	int4		dbid;
+	int4		content;
+	SegRole		role;			/* is it a master database or just any segdb? */
+	int4		port;
+	char	   *pszHost;
+	char	   *pszDBName;
+	char	   *pszDBUser;
+	char	   *pszDBPswd;
 } SegmentDatabase;
 
 /*----------------------------------------------------------------------------------------------------
@@ -42,48 +42,49 @@ typedef struct segment_database
  */
 typedef struct restore_pair
 {
-	SegmentDatabase		segdb_source; /* segdb where backup file is located at */
-	SegmentDatabase		segdb_target; /* segdb we want to restore. same as source or its mirror */
-	
-} RestorePair;
+	SegmentDatabase segdb_source;	/* segdb where backup file is located at */
+	SegmentDatabase segdb_target;	/* segdb we want to restore. same as source or its mirror */
+
+}	RestorePair;
 
 /* --------------------------------------------------------------------------------------------------
  * Structure for an array of segment database pairs
  */
-typedef struct segment_database_pair_array 
+typedef struct segment_database_pair_array
 {
-    int					count;	
-    SegmentDatabase*	pData;	
+	int			count;
+	SegmentDatabase *pData;
 } SegmentDatabaseArray;
 
-typedef struct segment_database_restore_pair_array 
+typedef struct segment_database_restore_pair_array
 {
-    int				count;	
-    RestorePair*	pData;	
-} RestorePairArray;
+	int			count;
+	RestorePair *pData;
+}	RestorePairArray;
 
 
 /* --------------------------------------------------------------------------------------------------
- * Enum representing the actors of a backup or restore operation. 
+ * Enum representing the actors of a backup or restore operation.
  */
 typedef enum actor_set
 {
 	SET_NO_MIRRORS,
 	SET_INDIVIDUAL
-} ActorSet;
+}	ActorSet;
 
 typedef enum backup_file_location
 {
 	FILE_ON_PRIMARIES,
 	FILE_ON_INDIVIDUAL
-} BackupLoc;
+}	BackupLoc;
 
 
 
-extern void FreeSegmentDatabaseArray( SegmentDatabaseArray* pSegDBAr );
-extern void FreeRestorePairArray( RestorePairArray* restorePairAr );
+extern void FreeSegmentDatabaseArray(SegmentDatabaseArray *pSegDBAr);
+extern void FreeRestorePairArray(RestorePairArray * restorePairAr);
+
 /* Read all the rows in the join */
-extern bool GetDumpSegmentDatabaseArray(PGconn* pConn, int server_version, SegmentDatabaseArray* pSegDBAr, ActorSet actors, char *raw_dump_set, bool dataOnly, bool schemaOnly );
-extern bool GetRestoreSegmentDatabaseArray(PGconn* pConn, RestorePairArray* pSegDBPairAr, BackupLoc backupLocation, char *raw_restore_set, bool dataOnly );
+extern bool GetDumpSegmentDatabaseArray(PGconn *pConn, int server_version, SegmentDatabaseArray *pSegDBAr, ActorSet actors, char *raw_dump_set, bool dataOnly, bool schemaOnly);
+extern bool GetRestoreSegmentDatabaseArray(PGconn *pConn, RestorePairArray * pSegDBPairAr, BackupLoc backupLocation, char *raw_restore_set, bool dataOnly);
 
-#endif /* CDB_SEGINST_H */
+#endif   /* CDB_SEGINST_H */

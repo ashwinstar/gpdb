@@ -65,7 +65,7 @@ typedef struct
 	char	   *filename;
 } lclTocEntry;
 
-static char *modulename = gettext_noop("file archiver");
+static const char *modulename = gettext_noop("file archiver");
 static void _LoadBlobs(ArchiveHandle *AH, RestoreOptions *ropt);
 static void _getBlobTocEntry(ArchiveHandle *AH, Oid *oid, char *fname);
 
@@ -330,17 +330,15 @@ _getBlobTocEntry(ArchiveHandle *AH, Oid *oid, char fname[K_STD_BUF_SIZE])
 
 		fpos = strcspn(blobTe, " ");
 
-		strncpy(fname, &blobTe[fpos + 1], K_STD_BUF_SIZE - 1);
+		strlcpy(fname, &blobTe[fpos + 1], K_STD_BUF_SIZE);
 
 		eos = strlen(fname) - 1;
 
 		if (fname[eos] == '\n')
 			fname[eos] = '\0';
-
 	}
 	else
 	{
-
 		*oid = 0;
 		fname[0] = '\0';
 	}
@@ -508,7 +506,8 @@ _StartBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
 #endif
 
 	if (tctx->FH == NULL)
-		die_horribly(AH, modulename, "could not open large object file for input: %s\n", strerror(errno));
+		die_horribly(AH, modulename, "could not open large object file \"%s\" for input: %s\n",
+					 fname, strerror(errno));
 }
 
 /*

@@ -15,15 +15,15 @@
  *
  *-------------------------------------------------------------------------
  */
-
 #include "postgres_fe.h"
-#include "pg_backup_archiver.h"
-#include "dumputils.h"
 
+#include <ctype.h>
+
+#include "dumputils.h"
 #include "postgres.h"
 #include "catalog/pg_class.h"
 
-#include <ctype.h>
+#include "pg_backup_archiver.h"
 
 
 /*
@@ -61,9 +61,9 @@ static void flagInhAttrs(TableInfo *tbinfo, int numTables,
 static int	DOCatalogIdCompare(const void *p1, const void *p2);
 static void findParentsByOid(TableInfo *self,
 				 InhInfo *inhinfo, int numInherits);
+static int	strInArray(const char *pattern, char **arr, int arr_size);
 
 void		reset(void);
-
 /*
  * getSchemaData
  *	  Collect information about all potentially dumpable objects
@@ -91,7 +91,6 @@ getSchemaData(int *numTablesPtr)
 	int			numConversions;
 	int			numForeignDataWrappers;
 	int			numForeignServers;
-
 
 	if (g_verbose)
 		write_msg(NULL, "reading schemas\n");
@@ -317,10 +316,11 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 					if (inhDef != NULL)
 					{
 						defaultsFound = true;
+
 						/*
 						 * If any parent has a default and the child doesn't,
-						 * we have to emit an explicit DEFAULT NULL clause
-						 * for the child, else the parent's default will win.
+						 * we have to emit an explicit DEFAULT NULL clause for
+						 * the child, else the parent's default will win.
 						 */
 						if (attrDef == NULL)
 						{
@@ -347,6 +347,7 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 						if (strcmp(attrDef->adef_expr, inhDef->adef_expr) != 0)
 						{
 							defaultsMatch = false;
+
 							/*
 							 * Whenever there is a non-matching parent
 							 * default, add a dependency to force the parent
@@ -399,9 +400,9 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 		}
 
 		/*
-		 * Check for inherited CHECK constraints.  We assume a constraint
-		 * is inherited if its name matches the name of any constraint in
-		 * the parent.  Originally this code tried to compare the expression
+		 * Check for inherited CHECK constraints.  We assume a constraint is
+		 * inherited if its name matches the name of any constraint in the
+		 * parent.	Originally this code tried to compare the expression
 		 * texts, but that can fail if the parent and child tables are in
 		 * different schemas, because reverse-listing of function calls may
 		 * produce different text (schema-qualified or not) depending on
@@ -470,7 +471,7 @@ DetectChildConstraintDropped(TableInfo *tbinfo, PQExpBuffer q)
 		{
 			ConstraintInfo *pconstr = &(parent->checkexprs[l]);
 			ConstraintInfo *cconstr;
-			bool			constr_on_child = false;
+			bool		constr_on_child = false;
 
 			/* for each child CHECK constraint */
 			for (j = 0; j < tbinfo->ncheck; j++)
@@ -487,7 +488,7 @@ DetectChildConstraintDropped(TableInfo *tbinfo, PQExpBuffer q)
 			}
 
 			/* this parent constr is not on child, issue a DROP for it */
-			if(!constr_on_child)
+			if (!constr_on_child)
 			{
 				appendPQExpBuffer(q, "ALTER TABLE %s.",
 								  fmtId(tbinfo->dobj.namespace->dobj.name));
@@ -917,7 +918,7 @@ parseOidArray(const char *str, Oid *array, int arraysize)
  *	  returns the index if the string is somewhere in the array, -1 otherwise
  */
 
-int
+static int
 strInArray(const char *pattern, char **arr, int arr_size)
 {
 	int			i;

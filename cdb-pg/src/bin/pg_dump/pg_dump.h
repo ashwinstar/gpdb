@@ -167,7 +167,7 @@ typedef struct _typeInfo
 	Oid			typrelid;
 	char		typrelkind;		/* 'r', 'v', 'c', etc */
 	char		typtype;		/* 'b', 'c', etc */
-	bool		isArray;		/* true if user-defined array type */
+	bool		isArray;		/* true if auto-generated array type */
 	bool		isDefined;		/* true if typisdefined */
 	/* If it's a dumpable base type, we create a "shell type" entry for it */
 	struct _shellTypeInfo *shellType;	/* shell-type entry, or NULL */
@@ -422,7 +422,7 @@ typedef enum _OidOptions
 	zeroAsNone = 8
 } OidOptions;
 
-extern void DetectChildConstraintDropped(TableInfo *tbinfo, PQExpBuffer q);
+extern void DetectChildConstraintDropped(TableInfo *tbinfo, PQExpBuffer q); /* GPDB only */
 extern void AssignDumpId(DumpableObject *dobj);
 extern DumpId createDumpId(void);
 extern DumpId getMaxDumpId(void);
@@ -457,7 +457,6 @@ extern void sortDumpableObjects(DumpableObject **objs, int numObjs);
 extern void sortDumpableObjectsByTypeName(DumpableObject **objs, int numObjs);
 extern void sortDumpableObjectsByTypeOid(DumpableObject **objs, int numObjs);
 
-extern int strInArray(const char *pattern, char **arr, int arr_size);
 
 /*
  * version specific routines
