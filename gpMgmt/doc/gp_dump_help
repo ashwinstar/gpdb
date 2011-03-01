@@ -158,17 +158,36 @@ be restored by any user, but will give that user ownership of all
 the objects, specify -O.
 
 
--t <table>
---table=<table>
+-t table | --table=table
 
-Dump data for the named table only. It is possible for there 
-to be multiple tables with the same name in different schemas; 
-if that is the case, all matching tables will be dumped. Specify 
-both --schema and --table to select just one table.
-Caution: In this mode, gp_dump makes no attempt to dump any other 
-database objects that the selected table may depend upon. 
-Therefore, there is no guarantee that the results of a single-table 
+Dump only tables (or views or sequences) matching the table pattern. 
+Multiple tables can be selected by writing multiple -t switches. 
+Also, the table parameter is interpreted as a pattern according to the 
+same rules used by psql’s \d commands, so multiple tables can also be 
+selected by writing wildcard characters in the pattern. When using 
+wildcards, be careful to quote the pattern if needed to prevent the 
+shell from expanding the wildcards. The -n and -N switches have no 
+effect when -t is used, because tables selected by -t will be dumped 
+regardless of those switches, and non-table objects will not be dumped.
+
+Note: When -t is specified, pg_dump makes no attempt to dump any other 
+database objects that the selected table(s) may depend upon. 
+Therefore, there is no guarantee that the results of a specific-table 
 dump can be successfully restored by themselves into a clean database.
+
+Note: -t cannot be used to specify a child table partition. To dump a 
+partitioned table, you must specify the parent table name.
+
+
+-T table | --exclude-table=table
+
+Do not dump any tables matching the table pattern. The pattern is 
+interpreted according to the same rules as for -t. -T can be given 
+more than once to exclude tables matching any of several patterns. 
+When both -t and -T are given, the behavior is to dump just the tables 
+that match at least one -t switch but no -T switches. If -T appears 
+without -t, then tables matching -T are excluded from what is otherwise 
+a normal dump.
 
 
 -x
