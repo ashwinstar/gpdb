@@ -178,12 +178,6 @@ typedef struct PMModuleState
     volatile bool isInFaultFromPostmasterReset;
 
     /**
-     * if true, someone has set a dataState that we should potentially remember for the next
-     *   postmaster reset
-     */
-    volatile bool shouldTryUpdatePmLocalDataStateFromModuleState;
-
-    /**
      * Maintained by the filerep code -- has I/O been suspended because of a fault or transition?
      */
     volatile bool isIOSuspended;
@@ -917,7 +911,6 @@ primaryMirrorModeShmemInit(void)
 	pmModuleState->bgWriterPID = 0;
 	pmModuleState->transitionNumberCounter = 1;
 	pmModuleState->isInFaultFromPostmasterReset = false;
-	pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = false;
 	pmModuleState->isIOSuspended = false;
 
 	clearTransitionArgs(&pmModuleState->requestedTransition);
@@ -1281,11 +1274,7 @@ updateDataState(DataState_e dataState)
 
 		acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 		{
-			isUpdated = updateDataStateUnderSpinLock(dataState);
-			if (isUpdated)
-			{
-				pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = true;
-			}
+			(void) updateDataStateUnderSpinLock(dataState);
 		}
 		releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 
@@ -1403,7 +1392,6 @@ copyTransitionInputParameters(PrimaryMirrorModeTransitionArguments *args, Segmen
 		pmModuleState->segmentState = segmentState;
 		
 		pmModuleState->isInFaultFromPostmasterReset = false;
-		pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = false;
 
 		pmModuleState->forceFullResync = args->forceFullResync;
 		
@@ -1442,18 +1430,6 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 
 	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 	{
-		/**
-		 * first, do any in-sync changes that were requested
-		 */
-		if (pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState)
-		{
-			if (pmModuleState->dataState == DataStateInSync)
-			{
-				pmLocalState.mostRecentTransition.dataState = DataStateInSync;
-			}
-			pmModuleState->shouldTryUpdatePmLocalDataStateFromModuleState = false;
-		}
-
 		/* grab out values under spin lock */
 		isRequested = pmModuleState->isTransitionRequested;
 		isPrevRequestComplete = pmModuleState->isTransitionListenerFinished;
