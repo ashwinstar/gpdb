@@ -34,13 +34,13 @@ int32 compare_and_swap_32(uint32 *dest, uint32 old, uint32 new)
 #if defined(__i386)
 	__asm__ __volatile__
 		(
-		"MOVL %1, %%edx 						\n\t"
-		"MOVL %2, %%eax			 				\n\t"
-		"MOVL %3, %%ecx 						\n\t"
+		"MOVL 0x8(%%ebp), %%edx 						\n\t"
+		"MOVL 0xc(%%ebp), %%eax			 				\n\t"
+		"MOVL 0x10(%%ebp), %%ecx 						\n\t"
 		"LOCK CMPXCHG %%ecx, (%%edx)			\n\t"
 		"SETE %0								\n\t"
-		:"=g"(res),"=m"(dest)
-		:"g"(old),"g"(new)
+		:"=g"(res)
+		:
 		:"%eax","%ecx","%edx"
 		);
 
