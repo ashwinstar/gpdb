@@ -58,7 +58,8 @@ your remaining live segment hosts (using -s), or by supplying a
 recovery configuration file (using -i) in the format of:
 
 filespaceOrder=[<filespace1_fsname>[:<filespace2_fsname>:...]
-<failed_host_address>:<port>:<fselocation>[:<fselocation>:...] [<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]]
+<failed_host_address>:<port>:<fselocation>[:<fselocation>:...] 
+[<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]]
 
 For example (if recovering to a different host than the failed host, 
 and you do not have additional filespaces configured besides 
@@ -144,7 +145,8 @@ pg_system does not need to be listed in the filespaceOrder line.
 It will always be the first fselocation listed after replication_port.
 
 filespaceOrder=[<filespace1_fsname>[:<filespace2_fsname>:...]
-<failed_host_address>:<port>:<fselocation>[:<fselocation>:...] [<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]]
+<failed_host_address>:<port>:<fselocation>[:<fselocation>:...] 
+[<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]]
 
 You can use the -o option to output a sample recovery 
 configuration file to use as a starting point.
@@ -204,7 +206,11 @@ pg_system=default_fselocation
 filespace1_name=filespace1_fselocation
 filespace2_name=filespace2_fselocation
 ...
-If your system does not have additional filespaces configured, this file will only have one location (for the default filespace, pg_system). These file system locations must exist on all segment hosts in the array and have sufficient disk space to accommodate recovered segments.
+If your system does not have additional filespaces configured, 
+this file will only have one location (for the default filespace, 
+pg_system). These file system locations must exist on all segment 
+hosts in the array and have sufficient disk space to accommodate 
+recovered segments.
 
 
 -S <output_filespace_config_file>
