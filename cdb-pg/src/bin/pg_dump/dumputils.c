@@ -980,7 +980,7 @@ escape_backslashes(const char *src, bool quotes_too)
 
 	for (i = 0, j = 0; i < len; i++)
 	{
-		if ((src[i]) == '\\' || ( (src[i]) == '\'' && quotes_too))
+		if ((src[i]) == '\\' || ((src[i]) == '\'' && quotes_too))
 			result[j++] = '\\';
 		result[j++] = src[i];
 	}
@@ -994,7 +994,7 @@ escape_backslashes(const char *src, bool quotes_too)
  * The fmtopts field of a pg_exttable tuple has an odd encoding -- it is
  * partially parsed and contains "string" values that aren't legal SQL.
  * Each string value is delimited by apostrophes and is usually, but not
- * always, a single character.  The fmtopts field is typically something
+ * always, a single character.	The fmtopts field is typically something
  * like {delimiter '\x09' null '\N' escape '\'} or
  * {delimiter ',' null '' escape '\' quote '''}.  Each backslash and
  * apostrophe in a string must be escaped and each string must be
@@ -1016,28 +1016,29 @@ escape_fmtopts_string(const char *src)
 	{
 		switch (src[i])
 		{
-		case '\'':
-			if (inString)
-			{
-				/*
-				 * Escape apostrophes *within* the string.  If the apostrophe
-				 * is at the end of the source string or is followed by a space,
-				 * it is presumed to be a closing apostrophe and is not escaped.
-				 */
-				if ((i+1) == len || src[i+1] == ' ')
-					inString = false;
+			case '\'':
+				if (inString)
+				{
+					/*
+					 * Escape apostrophes *within* the string.	If the
+					 * apostrophe is at the end of the source string or is
+					 * followed by a space, it is presumed to be a closing
+					 * apostrophe and is not escaped.
+					 */
+					if ((i + 1) == len || src[i + 1] == ' ')
+						inString = false;
+					else
+						result[j++] = '\\';
+				}
 				else
-					result[j++] = '\\';
-			}
-			else
-			{
-				result[j++] = 'E';
-				inString = true;
-			}
-			break;
-		case '\\':
-			result[j++] = '\\';
-			break;
+				{
+					result[j++] = 'E';
+					inString = true;
+				}
+				break;
+			case '\\':
+				result[j++] = '\\';
+				break;
 		}
 
 		result[j++] = src[i];
@@ -1046,4 +1047,3 @@ escape_fmtopts_string(const char *src)
 	result[j] = '\0';
 	return result;
 }
-
