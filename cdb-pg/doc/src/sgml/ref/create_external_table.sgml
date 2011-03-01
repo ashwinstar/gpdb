@@ -19,7 +19,7 @@ PostgreSQL documentation
  </indexterm>
 
  <refsynopsisdiv>
-<synopsis>
+<synopsis> 
 
 CREATE [READABLE] EXTERNAL TABLE table_name 
      ( column_name data_type [, ...] | LIKE other_table )
