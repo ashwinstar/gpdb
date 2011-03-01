@@ -4812,7 +4812,7 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, DEBUG1, "
 			"INFO, NOTICE, WARNING, ERROR, LOG, FATAL, and PANIC. Each level "
 						 "includes all the levels that follow it."),
-			GUC_GPDB_ADDOPT
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL
 		},
 		&Debug_persistent_print_level_str,
 		"debug1", assign_debug_persistent_print_level, NULL
@@ -4824,7 +4824,7 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, DEBUG1, "
 			"INFO, NOTICE, WARNING, ERROR, LOG, FATAL, and PANIC. Each level "
 						 "includes all the levels that follow it."),
-			GUC_GPDB_ADDOPT
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL
 		},
 		&Debug_persistent_recovery_print_level_str,
 		"debug1", assign_debug_persistent_recovery_print_level, NULL
@@ -4836,7 +4836,7 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, DEBUG1, "
 			"INFO, NOTICE, WARNING, ERROR, LOG, FATAL, and PANIC. Each level "
 						 "includes all the levels that follow it."),
-			GUC_GPDB_ADDOPT
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL
 		},
 		&Debug_persistent_store_print_level_str,
 		"debug1", assign_debug_persistent_store_print_level, NULL
@@ -4848,7 +4848,7 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, DEBUG1, "
 			"INFO, NOTICE, WARNING, ERROR, LOG, FATAL, and PANIC. Each level "
 						 "includes all the levels that follow it."),
-			GUC_GPDB_ADDOPT
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL
 		},
 		&Debug_database_command_print_level_str,
 		"log", assign_debug_database_command_print_level, NULL
