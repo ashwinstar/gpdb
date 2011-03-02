@@ -758,6 +758,20 @@ def exchangeKeysAsRootForUser():
     ###################################################################################
     logger.info("exchange ssh keys for user %s" % options.user)
 
+    testCmd = 'su %s -c "cat %s &> /dev/null"' % (options.user, options.file)
+    try:
+        p = subprocess.Popen(testCmd, shell=True, executable="/bin/bash")
+        sts = os.waitpid(p.pid, 0)[1]
+        if sts:
+            logger.error("failed doing a test read of file: %s" % testCmd)
+            logger.error("%s is not accessible as user %s" % (options.file, options.user))
+            return True
+    except Exception, e:
+        logger.error("failed doing a test read of file: %s" % testCmd)
+        logger.error("%s is not accessible as user %s" % (options.file, options.user))
+        logger.error(e.__str__())
+        return True
+ 
     done = False
     badPassword = False
     child = None
@@ -869,48 +883,53 @@ if (parseargs()):
 
 pool = WorkerPool()
 
-if (readHostList()):
+try:
+
+    if (readHostList()):
+        earlyExit(True)
+
+    if (discoverPasswordMap()):
+        earlyExit(True)
+
+    if (dedupeHosts()):
+        earlyExit(True)
+
+    if 'u' in commands:
+        if (checkUsernames()):
+            earlyExit(True)
+    
+        if (addUserIfRequired()):
+            earlyExit(True)
+    
+    if 'c' in commands:
+        if (chownMasterSoftware()):
+            earlyExit(True)
+    
+    if 's' in commands:
+        if (copyOverSoftware()):
+            earlyExit(True)
+    
+    if 'p' in commands:
+        if (changeUserPassword()):
+            earlyExit(True)
+    
+    if 'E' in commands:
+        if (exchangeKeysRoot()):
+            earlyExit(True)
+    
+    if 'e' in commands:
+        if (exchangeKeysUser()):
+            earlyExit(True)
+    
+    if 'l' in commands:
+        if (checkAndFixUserLimits()):
+            earlyExit(True)
+    
+    if 'v' in commands:
+        if (verifySoftware()):
+            earlyExit(True)
+
+except KeyboardInterrupt:
     earlyExit(True)
-
-if (discoverPasswordMap()):
-    earlyExit(True)
-
-if (dedupeHosts()):
-    earlyExit(True)
-
-if 'u' in commands:
-    if (checkUsernames()):
-        earlyExit(True)
-
-    if (addUserIfRequired()):
-        earlyExit(True)
-
-if 'c' in commands:
-    if (chownMasterSoftware()):
-        earlyExit(True)
-
-if 's' in commands:
-    if (copyOverSoftware()):
-        earlyExit(True)
-
-if 'p' in commands:
-    if (changeUserPassword()):
-        earlyExit(True)
-
-if 'E' in commands:
-    if (exchangeKeysRoot()):
-        earlyExit(True)
-
-if 'e' in commands:
-    if (exchangeKeysUser()):
-        earlyExit(True)
-
-if 'l' in commands:
-    if (checkAndFixUserLimits()):
-        earlyExit(True)
-
-if 'v' in commands:
-    if (verifySoftware()):
-        earlyExit(True)
-
+    
 earlyExit(False)
