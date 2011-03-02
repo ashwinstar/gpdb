@@ -29,17 +29,17 @@ extern void PolicyAutoAssignOperatorMemoryKB(PlannedStmt *stmt, uint64 memoryAva
 /**
  * What is the memory limit on a queue per the catalog?
  */
-extern int ResourceQueueGetMemoryLimitInCatalog(Oid queueId);
+extern int64 ResourceQueueGetMemoryLimitInCatalog(Oid queueId);
 
 /**
  * What is the memory limit for a specific queue?
  */
-extern int ResourceQueueGetMemoryLimit(Oid queueId);
+extern int64 ResourceQueueGetMemoryLimit(Oid queueId);
 
 /**
  * What is the memory limit for a query on a specific queue?
  */
-uint64 ResourceQueueGetQueryMemoryLimit(PlannedStmt *stmt, Oid queueId);
+extern uint64 ResourceQueueGetQueryMemoryLimit(PlannedStmt *stmt, Oid queueId);
 
 /**
  * What is the memory reservation for superuser queries?

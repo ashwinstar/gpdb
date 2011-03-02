@@ -274,7 +274,7 @@ static bool PolicyAutoAssignWalker(Node *node, PolicyAutoContext *context)
  /**
   * What is the memory limit on a queue per the catalog in bytes. Returns -1 if not set.
   */
-int ResourceQueueGetMemoryLimitInCatalog(Oid queueId)
+int64 ResourceQueueGetMemoryLimitInCatalog(Oid queueId)
 {
 	int memoryLimitKB = -1;
 	
@@ -311,10 +311,10 @@ int ResourceQueueGetMemoryLimitInCatalog(Oid queueId)
 	
 	if (memoryLimitKB == -1)
 	{
-		return -1;
+		return (int64) -1;
 	}
 	
-	return memoryLimitKB * 1024L;
+	return (int64) memoryLimitKB * 1024;
 
 }
  
@@ -322,9 +322,9 @@ int ResourceQueueGetMemoryLimitInCatalog(Oid queueId)
  * Get memory limit associated with queue in bytes. 
  * Returns -1 if a limit does not exist.
  */
-int ResourceQueueGetMemoryLimit(Oid queueId)
+int64 ResourceQueueGetMemoryLimit(Oid queueId)
 {
-	int memoryLimitBytes = -1;
+	int64 memoryLimitBytes = -1;
 	
 	Assert(queueId != InvalidOid);
 		
@@ -348,11 +348,12 @@ uint64 ResourceQueueGetQueryMemoryLimit(PlannedStmt *stmt, Oid queueId)
 	/** Assert that I do not hold lwlock */
 	Assert(!LWLockHeldExclusiveByMe(ResQueueLock));
 
-	int resqLimitBytes = ResourceQueueGetMemoryLimit(queueId);
+	int64 resqLimitBytes = ResourceQueueGetMemoryLimit(queueId);
 
 	/**
 	 * If there is no memory limit on the queue, simply use statement_mem.
 	 */
+	AssertImply(resqLimitBytes < 0, resqLimitBytes == -1);
 	if (resqLimitBytes == -1)
 	{
 		return (uint64) statement_mem * 1024L;
