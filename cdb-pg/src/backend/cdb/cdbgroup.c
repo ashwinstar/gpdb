@@ -617,19 +617,21 @@ cdb_grouping_planner(PlannerInfo* root,
 		
 		possible_agg = AGG_SINGLEPHASE;
 		
-		switch ( list_length(agg_counts->dqaArgs) )
+		if(gp_hash_safe_grouping(root))
 		{
-		case 0:
-			possible_agg |= AGG_2PHASE;
-			break;
-		case 1:
-			possible_agg |= AGG_2PHASE_DQA | AGG_3PHASE;
-			break;
-		default: /* > 1 */
-			possible_agg |= AGG_3PHASE;
-			break;
+			switch ( list_length(agg_counts->dqaArgs) )
+			{
+			case 0:
+				possible_agg |= AGG_2PHASE;
+				break;
+			case 1:
+				possible_agg |= AGG_2PHASE_DQA | AGG_3PHASE;
+				break;
+			default: /* > 1 */
+				possible_agg |= AGG_3PHASE;
+				break;
+			}
 		}
-		
 		if ( is_grpext )
 			possible_agg &= ~ (AGG_2PHASE_DQA | AGG_3PHASE);
 		

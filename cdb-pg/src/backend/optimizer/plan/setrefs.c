@@ -28,7 +28,7 @@
 #include "parser/parse_expr.h" /* exprType, exprTypmod */
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
-
+#include "cdb/cdbhash.h"
 
 typedef struct
 	{
@@ -269,7 +269,6 @@ static void set_plan_references_output_asserts(PlannerGlobal *glob, Plan *plan)
 		RangeTblEntry *rte = rt_fetch(subQueryScan->scan.scanrelid, glob->finalrtable);
 		Assert(rte->rtekind == RTE_SUBQUERY && "Subquery scan should correspond to a subquery RTE!");
 	}
-		
 }
 
 /* End of debug code */
@@ -836,6 +835,24 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 			motion->hashExpr = (List *)
 			fix_upper_expr(glob, (Node*) motion->hashExpr, childplan_itlist, rtoffset, false);
 			
+			/* 1. Assert that the Motion node has same number of hash data types as that of hash expressions*/
+			/* 2. Motion node must have atleast one hash expression */
+			/* 3. If the Motion node is of type hash_motion: ensure that the expression that it is hashed on is a hashable datatype in gpdb*/
+
+			Assert(list_length(motion->hashExpr) ==  list_length(motion->hashDataTypes)  && "Number of hash expression not equal to number of hash data types!");
+
+			Assert(1 <= list_length(motion->hashExpr) && "Motion node must have atleast one hash expression!");
+
+			if (MOTIONTYPE_HASH == motion->motionType)
+			{
+				ListCell *lcNode = NULL;
+				foreach(lcNode, motion->hashExpr)
+				{
+					Node *nodeExpr = (Node *) lfirst(lcNode);
+					Assert(isGreenplumDbHashable(exprType(nodeExpr))  && "The expression is not GPDB hashable!");
+				}
+			}
+
 			/* no need to fix targetlist and qual */
 			Assert(plan->qual == NIL);
 			set_dummy_tlist_references(plan, rtoffset, true);
