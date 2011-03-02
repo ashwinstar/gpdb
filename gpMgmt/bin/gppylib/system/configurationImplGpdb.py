@@ -120,6 +120,18 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         update = ComputeCatalogUpdate(gpArray, dbIdToForceMirrorRemoveAdd, useUtilityMode, allowPrimary)
         update.validate()
 
+        # put the mirrors in a map by content id so we can update them later
+        mirror_map = {}
+        for seg in update.mirror_to_add:
+            mirror_map[ seg.getSegmentContentId() ] = seg
+
+        # reset dbId of new primary and mirror segments to -1
+        # before invoking the operations which will assign them new ids
+        for seg in update.primary_to_add:
+            seg.setSegmentDbId(-1)
+        for seg in update.mirror_to_add:
+            seg.setSegmentDbId(-1)
+
         # remove mirror segments (e.g. for gpexpand rollback)
         for seg in update.mirror_to_remove:
             self.__updateSystemConfigRemoveMirror(conn, seg, textForConfigTable)
@@ -130,7 +142,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
 
         # add new primary segments
         for seg in update.primary_to_add:
-            self.__updateSystemConfigAddPrimary(conn, gpArray, seg, textForConfigTable)
+            self.__updateSystemConfigAddPrimary(conn, gpArray, seg, textForConfigTable, mirror_map)
 
         # add new mirror segments
         for seg in update.mirror_to_add:
@@ -180,22 +192,43 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         self.__insertConfigHistory(conn, dbId, "%s: removed primary segment configuration" % textForConfigTable)
 
 
-    def __updateSystemConfigAddPrimary(self, conn, gpArray, seg, textForConfigTable):
+    def __updateSystemConfigAddPrimary(self, conn, gpArray, seg, textForConfigTable, mirror_map):
         """
         Add a primary segment specified in our goal configuration but
         which is missing from the current gp_segment_configuration table
         and record our action in gp_configuration_history.
         """
-        (dbId, contentId) = self.__callSegmentAdd(conn, gpArray, seg)
-        seg.setSegmentDbId(dbId)
+        # lookup the mirror (if any) so that we may correct its content id
+        mirrorseg = mirror_map.get( seg.getSegmentContentId() )
 
-        # Set the new content id for the primary as well as any mirror.
-        pair = gpArray.getExpansionSegmentContainingDb(seg)
-        for db in pair.get_dbs():
-            db.setSegmentContentId(contentId)
+        # add the new segment
+        dbId = self.__callSegmentAdd(conn, gpArray, seg)
 
+        # update the segment mode, status and replication port
         self.__updateSegmentModeStatus(conn, seg)
+        if gpArray.get_mirroring_enabled() == True:
+            self.__updateSegmentReplicationPort(conn, seg)
+
+        # get the newly added segment's content id
+        # MPP-12393 et al WARNING: there is an unusual side effect going on here.  
+        # Although gp_add_segment() executed by __callSegmentAdd() above returns 
+        # the dbId of the new row in gp_segment_configuration, the following
+        # select from gp_segment_configuration can return 0 rows if the updates
+        # done by __updateSegmentModeStatus() and/or __updateSegmentReplicationPort()
+        # are not done first.  Don't change the order of these operations unless you 
+        # understand why gp_add_segment() behaves as it does.
+        sql = "select content from pg_catalog.gp_segment_configuration where dbId = %s" % self.__toSqlIntValue(seg.getSegmentDbId())
+        logger.debug(sql)
+        sqlResult = self.__fetchSingleOutputRow(conn, sql)
+        contentId = int(sqlResult[0])
+
+        # Set the new content id for the primary as well the mirror if present.
+        seg.setSegmentContentId(contentId)
+        if mirrorseg is not None:
+            mirrorseg.setSegmentContentId(contentId)
+
         self.__insertConfigHistory(conn, dbId, "%s: inserted primary segment configuration with contentid %s" % (textForConfigTable, contentId))
+
 
     def __updateSystemConfigAddMirror(self, conn, gpArray, seg, textForConfigTable):
         """
@@ -204,7 +237,6 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         and record our action in gp_configuration_history.
         """
         dbId = self.__callSegmentAddMirror(conn, gpArray, seg)
-        seg.setSegmentDbId(dbId)
         self.__updateSegmentModeStatus(conn, seg)
         self.__insertConfigHistory(conn, dbId, "%s: inserted mirror segment configuration" % textForConfigTable)
 
@@ -219,7 +251,6 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         self.__callSegmentRemoveMirror(conn, seg)
 
         dbId = self.__callSegmentAddMirror(conn, gpArray, seg)
-        seg.setSegmentDbId(dbId)
 
         # now update mode/status since this is not done by gp_add_segment_mirror
         self.__updateSegmentModeStatus(conn, seg)
@@ -276,9 +307,9 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
     def __callSegmentAdd(self, conn, gpArray, seg):
         """
         Call gp_add_segment() to add the primary.
-        Select the contentId of the newly added segment.
-        Return a tuple containing the new segment's dbid and contentId.
+        Return the new segment's dbid.
         """
+        logger.debug('callSegmentAdd %s' % repr(seg))
         filespaceMapStr = self.__toSqlFilespaceMapStr(gpArray, seg)
 
         sql = "SELECT gp_add_segment(%s, %s, %s, %s)" \
@@ -289,26 +320,10 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
                 self.__toSqlTextValue(filespaceMapStr)
               )
         logger.debug(sql)
-
         sqlResult = self.__fetchSingleOutputRow(conn, sql)
         dbId = int(sqlResult[0])
-
-        # Get the new segment's content id.
-        sql = "select content from pg_catalog.gp_segment_configuration where dbId = %s" % self.__toSqlIntValue(seg.getSegmentDbId())
-        logger.debug(sql)
-
-        sqlResult = self.__fetchSingleOutputRow(conn, sql)
-        contentId = int(sqlResult[0])
-
-        # We must also set the primary's replication port, as gp_add_segment() doesn't do it
-        sql = "update pg_catalog.gp_segment_configuration set replication_port = %s where dbid = %s" \
-            % (
-                self.__toSqlIntValue( seg.getSegmentReplicationPort() ), 
-                self.__toSqlIntValue( dbId )
-              )
-        logger.debug(sql)
-        dbconn.executeUpdateOrInsert(conn, sql, 1)
-        return (dbId, contentId)
+        seg.setSegmentDbId(dbId)
+        return dbId
 
 
     def __callSegmentAddMirror(self, conn, gpArray, seg):
@@ -316,6 +331,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         Call gp_add_segment_mirror() to add the mirror.
         Return the new segment's dbid.
         """
+        logger.debug('callSegmentAddMirror %s' % repr(seg))
         filespaceMapStr = self.__toSqlFilespaceMapStr(gpArray, seg)
 
         sql = "SELECT gp_add_segment_mirror(%s::int2, %s, %s, %s, %s, %s)" \
@@ -331,6 +347,7 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         logger.debug(sql)
         sqlResult = self.__fetchSingleOutputRow(conn, sql)
         dbId = int(sqlResult[0])
+        seg.setSegmentDbId(dbId)
         return dbId
 
 
@@ -355,17 +372,36 @@ class GpConfigurationProviderUsingGpdbCatalog(GpConfigurationProvider) :
         dbconn.executeUpdateOrInsert(conn, sql, 1)
 
 
-    def __fetchSingleOutputRow(self, conn, sql):
-        cursor = dbconn.execSQL(conn, sql)
-        if cursor.rowcount != 1:
-            raise Exception("SQL did not return expected row:\n%s" % (sql))
-        res = None
+    def __fetchSingleOutputRow(self, conn, sql, retry=False):
+        """
+        Execute specified SQL command and return what we expect to be a single row.
+        Raise an exception when more or fewer than one row is seen and when more
+        than one row is seen display up to 10 rows as logger warnings.
+        """
+        cursor   = dbconn.execSQL(conn, sql)
+        numrows  = cursor.rowcount
+        numshown = 0
+        res      = None
         for row in cursor:
-            assert res is None
-            res = row
-            assert res is not None
+            if numrows != 1:
+                #
+                # if we got back more than one row 
+                # we print a few of the rows first
+                # instead of immediately raising an exception
+                #
+                numshown += 1
+                if numshown > 10:
+                    break
+                logger.warning('>>> %s' % row)
+            else:
+                assert res is None
+                res = row
+                assert res is not None
         cursor.close()
+        if numrows != 1:
+            raise Exception("SQL returned %d rows, not 1 as expected:\n%s" % (numrows, sql))
         return res
+
 
     def __insertConfigHistory(self, conn, dbId, msg ):
         # now update change history
