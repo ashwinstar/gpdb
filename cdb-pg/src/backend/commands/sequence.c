@@ -489,12 +489,6 @@ DefineSequence(CreateSeqStmt *seq)
 
 	stmt->oidInfo.relOid = seq->relOid = seqoid;
 
-	if (shouldDispatch)
-	{
-		seq->comptypeOid = stmt->oidInfo.comptypeOid;
-		CdbDispatchUtilityStatement((Node *)seq, "DefineSequence");
-	}
-
 	/* Initialize first page of relation with special magic number */
 	
 	// -------- MirroredLock ----------
@@ -620,6 +614,14 @@ DefineSequence(CreateSeqStmt *seq)
 		process_owned_by(rel, owned_by);
 
 	heap_close(rel, NoLock);
+
+	
+	/* Dispatch to segments */
+	if (shouldDispatch)
+	{
+		seq->comptypeOid = stmt->oidInfo.comptypeOid;
+		CdbDispatchUtilityStatement((Node *)seq, "DefineSequence");
+	}
 }
 
 /*
