@@ -1896,8 +1896,8 @@ create_bitmap_scan_plan(CreatePlanContext *ctx,
 {
 	Index		baserelid = best_path->path.parent->relid;
 	Plan	   *bitmapqualplan;
-	List	   *bitmapqualorig;
-	List	   *indexquals;
+	List	   *bitmapqualorig = NULL;
+	List	   *indexquals = NULL;
 	List	   *qpqual;
 	ListCell   *l;
 	BitmapHeapScan *scan_plan;
@@ -2007,8 +2007,8 @@ create_bitmap_appendonly_scan_plan(CreatePlanContext *ctx,
 {
 	Index		baserelid = best_path->path.parent->relid;
 	Plan	   *bitmapqualplan;
-	List	   *bitmapqualorig;
-	List	   *indexquals;
+	List	   *bitmapqualorig = NULL;
+	List	   *indexquals = NULL;
 	List	   *qpqual;
 	ListCell   *l;
 	BitmapAppendOnlyScan *scan_plan;
