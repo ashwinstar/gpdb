@@ -128,7 +128,7 @@ def usage(exitarg = None):
 ###############################
 
 def getversion():
-    versions = ["3.2", "3.3", "4.0", "main"]
+    versions = ["3.2", "3.3", "4.0", "4.1", "main"]
     db = connect()
     curs = db.query('''
     select regexp_replace(version(), 
@@ -140,7 +140,7 @@ def getversion():
 
     logger.debug('got version %s' % version)
     if not (version in versions):
-        usage('Error: only Greenplum database versions 3.2, 3.3 and 4.0 are supported')
+        usage('Error: only Greenplum database versions 3.2 - 4.1 are supported')
 
     return version
 
