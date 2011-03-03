@@ -848,8 +848,7 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 				ListCell *lcNode = NULL;
 				foreach(lcNode, motion->hashExpr)
 				{
-					Node *nodeExpr = (Node *) lfirst(lcNode);
-					Assert(isGreenplumDbHashable(exprType(nodeExpr))  && "The expression is not GPDB hashable!");
+					Assert(isGreenplumDbHashable(exprType((Node *) lfirst(lcNode)))  && "The expression is not GPDB hashable!");
 				}
 			}
 
