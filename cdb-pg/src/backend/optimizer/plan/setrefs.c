@@ -834,6 +834,8 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 			
 			motion->hashExpr = (List *)
 			fix_upper_expr(glob, (Node*) motion->hashExpr, childplan_itlist, rtoffset, false);
+
+#ifdef USE_ASSERT_CHECKING
 			
 			/* 1. Assert that the Motion node has same number of hash data types as that of hash expressions*/
 			/* 2. Motion node must have atleast one hash expression */
@@ -841,16 +843,18 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 
 			Assert(list_length(motion->hashExpr) ==  list_length(motion->hashDataTypes)  && "Number of hash expression not equal to number of hash data types!");
 
-			Assert(1 <= list_length(motion->hashExpr) && "Motion node must have atleast one hash expression!");
-
 			if (MOTIONTYPE_HASH == motion->motionType)
 			{
+				Assert(1 <= list_length(motion->hashExpr) && "Motion node must have atleast one hash expression!");
+
 				ListCell *lcNode = NULL;
 				foreach(lcNode, motion->hashExpr)
 				{
 					Assert(isGreenplumDbHashable(exprType((Node *) lfirst(lcNode)))  && "The expression is not GPDB hashable!");
 				}
 			}
+
+#endif			/* USE_ASSERT_CHECKING */
 
 			/* no need to fix targetlist and qual */
 			Assert(plan->qual == NIL);
