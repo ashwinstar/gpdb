@@ -30,6 +30,7 @@ try:
     from pygresql.pgdb import DatabaseError
     from pygresql import pg
     from gppylib.gpcoverage import GpCoverage
+    from gppylib.gpcatalog import MASTER_ONLY_TABLES
 
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -1691,16 +1692,11 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         self.pool.join()
         self.pool.check_results()
         
-        
-        statements = [ 'delete from pg_catalog.gp_configuration', 
-                       'delete from pg_catalog.gp_segment_configuration',
-                       'delete from pg_catalog.gp_distribution_policy',
-                       'delete from pg_catalog.pg_partition',           
-                       'delete from pg_catalog.pg_partition_rule', 
-                       'delete from pg_catalog.gp_master_mirroring',
-                       'delete from pg_catalog.pg_filespace_entry',
-                       "delete from pg_catalog.pg_resqueue where rsqname != 'pg_default'"
-                     ]
+        """
+        Build the list of delete statements based on the MASTER_ONLY_TABLES
+        defined in gpcatalog.py
+        """
+        statements = [ "delete from pg_catalog.%s" % tab for tab in MASTER_ONLY_TABLES ]
        
         """ 
           Connect to each database in the new segments, and clean up the catalog tables.
