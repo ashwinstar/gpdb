@@ -165,6 +165,10 @@ class SyncmasterWatcher:
                 logger.warning(line)
                 return 1
 
+            if line.find('could not bind IPv4 socket') >= 0: # syncmaster used IPv6 by mistake
+                logger.warning(line)
+                return 1
+
             if line.find('QDSYNC: scan forward') >= 0: # syncmaster appears to be working
                 logger.info(line)
                 break
