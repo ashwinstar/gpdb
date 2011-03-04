@@ -2060,8 +2060,11 @@ FileRepMirror_RunConsumer(void)
 			case FileRepOperationInSyncTransition:
 				
 				FileRep_SetDataState(DataStateInSync, TRUE);
-				
-				FileRep_SetSegmentState(SegmentStateReady, FaultTypeNotInitialized);							
+
+				FileRep_SetSegmentState(SegmentStateReady, FaultTypeNotInitialized);
+
+				primaryMirrorSetInSync();
+
 				break;
 				
 			case FileRepOperationHeartBeat:

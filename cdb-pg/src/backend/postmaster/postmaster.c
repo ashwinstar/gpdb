@@ -525,7 +525,6 @@ extern char    *locale_collate;
 static void getInstallationPaths(const char *argv0);
 static void checkDataDir(void);
 static void checkPgDir(const char *dir);
-static bool primaryResyncRunning(PrimaryMirrorMode pm_mode, DataState_e d_state);
 
 #ifdef USE_TEST_UTILS
 static void SimExProcExit(void);
@@ -1785,16 +1784,6 @@ static void checkPgDir(const char *dir)
 	}
 }
 
-/*
- * check if resync has not completed on both primary and mirror
- */
-static bool
-primaryResyncRunning(PrimaryMirrorMode pm_mode, DataState_e d_state)
-{
-	return (pm_mode == PMModePrimarySegment &&
-			((d_state == DataStateInResync) || (d_state == DataStateInSync && isResyncRunning())));
-}
-
 
 #ifdef USE_TEST_UTILS
 /*
@@ -2009,14 +1998,8 @@ BeginResetOfPostmasterAfterChildrenAreShutDown(void)
 			getTransitionToFault();
 	setFaultAfterReset(hasFaultTypeMirror);
 
-	/*
-	 * if primary is in sync and mirror has not completed resyncing,
-	 * transition primary back to resync
-	 */
-	if (primaryResyncRunning(pm_mode, d_state))
-	{
-		(void) updateDataState(DataStateInResync);
-	}
+	/* copy most recent transition request to local memory */
+	copyTransitionParametersToLocalMemory();
 
 	/*
 	 * Save the MPP session number from shared-memory before we reset
@@ -3468,7 +3451,7 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
 	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state, &f_type);
 
 	/* check if resync has completed on both primary and mirror */
-	if (primaryResyncRunning(pm_mode, d_state))
+	if (pm_mode == PMModePrimarySegment && d_state == DataStateInSync && isResyncRunning())
 	{
 		d_state = DataStateInResync;
 	}

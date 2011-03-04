@@ -1239,6 +1239,7 @@ FileRepResyncManager_InSyncTransition(void)
 
 		/* primary and mirror have now completed re-sync */
 		setResyncCompleted();
+		primaryMirrorSetInSync();
 		
 #ifdef FAULT_INJECTOR	
 		FaultInjector_InjectFaultIfSet(

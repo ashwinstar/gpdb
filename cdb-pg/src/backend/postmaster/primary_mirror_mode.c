@@ -981,6 +981,26 @@ getTransitionToFault()
 
 
 /**
+ * Mark completion of transition from resync to sync in shared memory
+ */
+void
+primaryMirrorSetInSync()
+{
+	Assert(pmModuleState->dataState == DataStateInSync);
+
+	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
+	{
+		/* check if the last requested state was resync */
+		if (pmModuleState->requestedTransition.dataState == DataStateInResync)
+		{
+			pmModuleState->requestedTransition.dataState = DataStateInSync;
+		}
+	}
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
+}
+
+
+/**
  * Called on postmaster reset, after all children have been shut down but before starting the children back up.
  *   Returns true if the postmaster should try to reset the peer before doing a reset.
  */
@@ -1370,6 +1390,16 @@ static void copyTransitionParametersToLocalMemoryIfNeeded(PrimaryMirrorModeTrans
 	pmLocalState.haveSetMostRecentTransition = true;
 	pmModuleState->hasPostmasterCopiedTransitionToLocalMemory = true;
 }
+
+/*
+ * Copy most recent transition request from shared memory to local memory
+ */
+void copyTransitionParametersToLocalMemory()
+{
+	/* this is called before resetting shared memory so no locking is required */
+	pmLocalState.mostRecentTransition = pmModuleState->requestedTransition;
+}
+
 
 /**
  * Copy the transition input parameters into shared memory and reset isInFaultFromPostmasterReset

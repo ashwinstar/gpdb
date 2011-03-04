@@ -336,6 +336,9 @@ extern void setFaultAfterReset(bool val);
 extern void setTransitionToFault(void);
 extern bool getTransitionToFault(void);
 
+extern void primaryMirrorSetInSync(void);
+extern void copyTransitionParametersToLocalMemory(void);
+
 extern bool primaryMirrorPostmasterResetShouldRestartPeer(void);
 extern void primaryMirrorRecordSegmentStateToPostmasterLocalMemory(void);
 extern PrimaryMirrorModeTransitionArguments primaryMirrorGetArgumentsFromLocalMemory(void);
