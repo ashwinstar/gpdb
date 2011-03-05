@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys, socket, re, ConfigParser
+import os, sys, socket, re, ConfigParser, types, operator
 import time, datetime, tempfile
 from socket import gethostname
 
@@ -15,6 +15,8 @@ from greenplum import error
 from greenplum import interval
 from greenplum import gplog
 
+refcountglobal = 0
+do_refcount = False
 web.config.session_parameters.timeout = 1800
 MAX_AGGREGATED_SAMPLES = 2000
 MAX_NONAGGREGATED_SAMPLES = 16
@@ -23,7 +25,7 @@ remote = False
 verbose = False
 allow_trust_logon = False
 displayed_server_name = ''
-gpperfmon_version = '$Revision$'
+gpperfmon_version = 'main build dev'
 db_access_last_time = 0
 dbstatus = 'NORMAL' 
 DB_STATE_CHECK_INTERVAL = 30
@@ -189,7 +191,7 @@ class logoff:
 
 class config:
     def __init__(self):
-        global remote, displayed_server_name, allow_trust_logon, verbose
+        global remote, displayed_server_name, allow_trust_logon, verbose, do_refcount
         
         # Holds the complete configuration
         self.gpperfmon_config = {}
@@ -250,6 +252,13 @@ class config:
         except:
             allow_trust_logon = False
 
+        try:
+            do_refcount = cfg.getboolean("WEB APP", "do_refcount")
+            if do_refcount:
+                log.msg("Reference Counting Debugging Enabled")
+        except:
+            do_refcount = False
+
         log.debug("Configuration file: %s" % self.gpperfmon_config)
         log.debug("remote = %s" % remote)
         log.debug("verbose = %s" % verbose)
@@ -299,6 +308,29 @@ class system:
 
         res = None
 
+        ####################################
+        ### DEBUGGING CODE
+        global refcountglobal 
+
+        if do_refcount:
+	        refcountglobal += 1
+	        if refcountglobal == 10:
+	            refcountglobal = 0
+	        elif refcountglobal == 1:
+		        log.msg("REFCOUNTS: ")
+		        d = {}
+		        sys.modules
+		
+		        for m in sys.modules.values():
+		            for sym in dir(m):
+		                 o = getattr (m, sym)
+		                 if type(o) is types.ClassType:
+		                     d[o] = sys.getrefcount (o)
+		
+		        for clss, cnt in sorted(d.iteritems(), key=operator.itemgetter(1), reverse=True)[:50]:
+		            log.msg("CLASS: %s COUNT %d" % (clss, cnt))
+        ####################################
+	
         try:
             if i.start == 'NOW':
                 res = db.system_now(remote)
