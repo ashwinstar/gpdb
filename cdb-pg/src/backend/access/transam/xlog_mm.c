@@ -1519,24 +1519,6 @@ mmxlog_append_checkpoint_data(XLogRecData rdata[6])
 		return;
 	}
 
-	if (GpIdentity.dbid != MASTER_DBID && gp_enable_new_two_phase_logic == false)
-	  {
-	    if (Debug_persistent_recovery_print)
-	      {
-		SUPPRESS_ERRCONTEXT_DECLARE;
-		
-		SUPPRESS_ERRCONTEXT_PUSH();
-		
-		elog(PersistentRecovery_DebugPrintLevel(), 
-		     "mmxlog_append_checkpoint_data: no tablespace and filespace information for checkpoint because GpIdentity.dbid (%d) is not master (%d)",
-		     GpIdentity.dbid,
-		     MASTER_DBID);
-		
-		SUPPRESS_ERRCONTEXT_POP();
-	      }
-	    return;
-	  }
-
         if (GpIdentity.dbid != MASTER_DBID)
 	  {
 	    f = (fspc_agg_state  *)palloc0(sizeof(*f));
@@ -1748,11 +1730,9 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 			 XLogLocationToString(beginLoc));
 	}
 
-        if (gp_enable_new_two_phase_logic == true)
            remainderLen -= databaseInfoLen;
 
-        if ((gp_enable_new_two_phase_logic == true && remainderLen <= 0) ||
-            (gp_enable_new_two_phase_logic == false && remainderLen != databaseInfoLen))
+	   if (remainderLen <= 0)
 	  {
 	    if (errlevel != -1)
 	      ereport(errlevel,

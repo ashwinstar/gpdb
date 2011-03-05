@@ -6364,7 +6364,7 @@ StartupXLOG(void)
 			}
 		}
 	}
-        if (gp_enable_new_two_phase_logic == true && GpIdentity.dbid != MASTER_DBID)
+        if (GpIdentity.dbid != MASTER_DBID)
    	   SetupCheckpointPreparedTransactionList(record);
 
 	XLogCtl->pass1LastCheckpointLoc = checkPointLoc;
@@ -6404,7 +6404,6 @@ StartupXLOG(void)
 					 dtxCheckpointLen,
 					 masterMirroringCheckpointLen,
 				     XLogLocationToString(&checkPointLoc));
-                                if (gp_enable_new_two_phase_logic == true)
 				  elog(PersistentRecovery_DebugPrintLevel(),
                                          "StartupXLOG: Checkpoint record prepared transaction agg state count = %d",
 				       ptas->count);
@@ -7045,7 +7044,7 @@ StartupXLOG_Pass2(void)
 			 recoveryTargetTLI, 
 			 XLogLocationToString(&XLogCtl->pass1StartLoc));
 
-        if (gp_enable_new_two_phase_logic == true && GpIdentity.dbid != MASTER_DBID)
+        if (GpIdentity.dbid != MASTER_DBID)
           {
 	    if (Debug_persistent_recovery_print)
 	      elog(PersistentRecovery_DebugPrintLevel(),
@@ -7176,7 +7175,7 @@ StartupXLOG_Pass3(void)
 	}
 
 
-        if (gp_enable_new_two_phase_logic == true && GpIdentity.dbid != MASTER_DBID)
+        if (GpIdentity.dbid != MASTER_DBID)
           {
             record = XLogReadRecord(&XLogCtl->pass1LastCheckpointLoc, PANIC);
             SetupCheckpointPreparedTransactionList(record);
@@ -7318,7 +7317,6 @@ ngth %u, location %s",
 		     dtxCheckpointLen,
 		     masterMirroringCheckpointLen,
 		     XLogLocationToString(redoCheckPointLoc));
-		if (gp_enable_new_two_phase_logic == true)
 		  elog(PersistentRecovery_DebugPrintLevel(),
 		       "XLogPopulateMasterMirroring: Checkpoint record prepared transaction agg state count = %d",
 		       ptas->count);
@@ -8015,7 +8013,6 @@ UnpackCheckPointRecord(
 				*masterMirroringCheckpointLen = 0;
 			}
 		}
-		if (gp_enable_new_two_phase_logic == true)
 		  *ptas = (prepared_transaction_agg_state *)mmxlog_get_checkpoint_record_suffix(record);
 	}  /* end if (record->xl_len > sizeof(CheckPoint)) */
 }
@@ -8452,8 +8449,6 @@ CreateCheckPoint(bool shutdown, bool force)
 
         prepared_transaction_agg_state *p = NULL;
 
-        if (gp_enable_new_two_phase_logic == true)
-	   {
            getTwoPhasePreparedTransactionData(&p, "CreateCheckPoint");
            elog(PersistentRecovery_DebugPrintLevel(), "CreateCheckPoint: prepared transactions = %d", 
                 p->count);
@@ -8462,7 +8457,6 @@ CreateCheckPoint(bool shutdown, bool force)
            rdata[5].len = PREPARED_TRANSACTION_CHECKPOINT_BYTES(p->count);
            rdata[4].next = &(rdata[5]);
            rdata[5].next = NULL;
-	   }
 
 	if (Debug_persistent_recovery_print)
 	{
@@ -8480,7 +8474,6 @@ CreateCheckPoint(bool shutdown, bool force)
 	       rdata[3].len,
 	       (rdata[3].next == NULL ? "true" : "false"),
 	       rdata[4].len);
-	  if (gp_enable_new_two_phase_logic == true)
              elog(PersistentRecovery_DebugPrintLevel(),
 	   	 "CreateCheckPoint; Prepared Transaction length = %u",
 		  rdata[5].len);
@@ -8488,7 +8481,7 @@ CreateCheckPoint(bool shutdown, bool force)
 
 
         /* 
-         * KAS need to save the oldest prepared transaction XLogRecPtr for use later. 
+         * Need to save the oldest prepared transaction XLogRecPtr for use later. 
          * It is not sufficient to just save the pointer because we may remove the 
          * space after it is written in XLogInsert.
          */
@@ -8497,10 +8490,9 @@ CreateCheckPoint(bool shutdown, bool force)
 
 	memset(&ptrd_oldest, 0, sizeof(ptrd_oldest));
 
-        if (gp_enable_new_two_phase_logic == true)
 	  ptrd_oldest_ptr = getTwoPhaseOldestPreparedTransactionXLogRecPtr(&rdata[5]);
 
-        if (gp_enable_new_two_phase_logic == true && Debug_persistent_recovery_print)
+        if (Debug_persistent_recovery_print)
 	  {
             if (ptrd_oldest_ptr == NULL)
 	      elog(PersistentRecovery_DebugPrintLevel(), "Oldest Prepared Record = NULL");
@@ -8511,7 +8503,7 @@ CreateCheckPoint(bool shutdown, bool force)
 	  }
 
 
-        if (gp_enable_new_two_phase_logic == true && ptrd_oldest_ptr != NULL)
+        if (ptrd_oldest_ptr != NULL)
            memcpy(&ptrd_oldest, ptrd_oldest_ptr, sizeof(ptrd_oldest));        
 
 	recptr = XLogInsert(RM_XLOG_ID,
@@ -8853,7 +8845,6 @@ xlog_redo_print_extended_checkpoint_info(XLogRecPtr beginLoc, XLogRecord *record
 	             dtxCheckpointLen,
 	             masterMirroringCheckpointLen,
 	             XLogLocationToString(&beginLoc));
-                if (gp_enable_new_two_phase_logic == true)
   	            elog(PersistentRecovery_DebugPrintLevel(), 
 		         "xlog_redo_print_extended_checkpoint_info: prepared transaction agg state count = %d",
                           ptas->count);
@@ -9036,7 +9027,6 @@ xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 				 dtxCheckpoint->committedCount,
 				 dtxCheckpointLen,
 				 masterMirroringCheckpointLen);
-	                if (gp_enable_new_two_phase_logic == true)
                            appendStringInfo(buf,
                                      ", prepared transaction agg state count = %d",
 				      ptas->count);

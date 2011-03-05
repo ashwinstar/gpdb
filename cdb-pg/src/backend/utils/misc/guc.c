@@ -2880,16 +2880,6 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_simex_run,
 		false, NULL, NULL
 	},
-        {
-          {"gp_enable_new_two_phase_logic", PGC_SUSET, DEVELOPER_OPTIONS,
-           gettext_noop("Enable 2-phase directory use."),
-           NULL,
-           GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-          },
-          &gp_enable_new_two_phase_logic,
-          true, NULL, NULL
-        },
-
 
 	{
 		{"gp_test_time_slice", PGC_USERSET, GP_ERROR_HANDLING,
