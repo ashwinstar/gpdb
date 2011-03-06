@@ -12,7 +12,10 @@ gprecoverseg [-p <new_recover_host>
              |-s <filespace_config_file>] 
              [-d <master_data_directory>] [-B <parallel_processes>] 
              [-F] [-a] [-q] [-l <logfile_directory>]
-             [-r]
+
+
+gprecoverseg -r
+
 
 gprecoverseg -o <output_recover_config_file> 
             | -S <output_filespace_config_file> [-p new_recover_host]
@@ -185,15 +188,18 @@ locations created, ssh keys exchanged, etc.).
 Run in quiet mode. Command output is not displayed on 
 the screen, but is still written to the log file.
 
--r
 
 -r (rebalance segments)
 
-Rebalances primary and mirror segments by returning them to their 
-preferred roles. After resolving the failure that caused the 
-unbalanced state, run gprecoverseg -r to rebalance. 
-All segments must be running and synchronized before 
-running gprecoverseg -r.
+After a segment recovery, segment instances may not be returned to the 
+preferred role that they were given at system initialization time. This 
+can leave the system in a potentially unbalanced state, as some segment 
+hosts may have more active segments than is optimal for top system performance. 
+This option rebalances primary and mirror segments by returning them to 
+their preferred roles. All segments must be valid and synchronized before 
+running gprecoverseg -r. If there are any in progress queries, they will 
+be cancelled and rolled back.
+
 
 -s <filespace_config_file>
 
@@ -242,18 +248,27 @@ EXAMPLES
 
 Recover any failed segment instances in place:
 
-gprecoverseg
+ $ gprecoverseg
+
+
+Rebalance your Greenplum Database system after a recovery by
+resetting all segments to their preferred role. First check
+that all segments are up and synchronized.
+
+  $ gpstate -m
+
+  $ gprecoverseg -r
 
 
 Recover any failed segment instances to a newly configured 
 spare segment host:
 
-gprecoverseg -i recover_config_file
+  $ gprecoverseg -i recover_config_file
 
 
 Output the default recovery configuration file:
 
-gprecoverseg -o /home/gpadmin/recover_config_file
+  $ gprecoverseg -o /home/gpadmin/recover_config_file
 
 
 ******************************************************
