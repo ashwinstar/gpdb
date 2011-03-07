@@ -266,7 +266,7 @@ static FsObjEntry PersistentRecovery_FindOrCreateFsObjEntry(
 		fsObjEntry->xid = InvalidTransactionId;
 		fsObjEntry->state = -1;
 		fsObjEntry->updateNeeded = false;
-		fsObjEntry->stateChangeResult = PersistentFileSysObjStateChangeResult_None;
+		fsObjEntry->stateChangeResult = PersistentFileSysObjStateChangeResult_StateChangeOk;
 	}
 
 	return fsObjEntry;
