@@ -2013,6 +2013,9 @@ _readCreatePLangStmt(const char ** str)
 	READ_NODE_FIELD(plhandler);
 	READ_NODE_FIELD(plvalidator);
 	READ_BOOL_FIELD(pltrusted);
+	READ_OID_FIELD(plangOid);
+	READ_OID_FIELD(plhandlerOid);
+	READ_OID_FIELD(plvalidatorOid);
 
 	READ_DONE();
 

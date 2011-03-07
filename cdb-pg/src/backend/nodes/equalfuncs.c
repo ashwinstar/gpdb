@@ -1659,6 +1659,9 @@ _equalCreatePLangStmt(CreatePLangStmt *a, CreatePLangStmt *b)
 	COMPARE_NODE_FIELD(plhandler);
 	COMPARE_NODE_FIELD(plvalidator);
 	COMPARE_SCALAR_FIELD(pltrusted);
+	COMPARE_SCALAR_FIELD(plangOid);
+	COMPARE_SCALAR_FIELD(plhandlerOid);
+	COMPARE_SCALAR_FIELD(plvalidatorOid);
 
 	return true;
 }

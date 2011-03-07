@@ -3413,6 +3413,9 @@ _outCreatePLangStmt(StringInfo str, CreatePLangStmt *node)
 	WRITE_NODE_FIELD(plhandler);
 	WRITE_NODE_FIELD(plvalidator);
 	WRITE_BOOL_FIELD(pltrusted);
+	WRITE_OID_FIELD(plangOid);
+	WRITE_OID_FIELD(plhandlerOid);
+	WRITE_OID_FIELD(plvalidatorOid);
 
 }
 

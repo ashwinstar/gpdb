@@ -3432,6 +3432,9 @@ _copyCreatePLangStmt(CreatePLangStmt *from)
 	COPY_NODE_FIELD(plhandler);
 	COPY_NODE_FIELD(plvalidator);
 	COPY_SCALAR_FIELD(pltrusted);
+	COPY_SCALAR_FIELD(plangOid);
+	COPY_SCALAR_FIELD(plhandlerOid);
+	COPY_SCALAR_FIELD(plvalidatorOid);
 
 	return newnode;
 }

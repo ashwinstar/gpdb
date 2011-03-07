@@ -368,7 +368,7 @@ ProcedureCreate(const char *procedureName,
 		/* Creating a new procedure */
 		tup = heap_form_tuple(tupDesc, values, nulls);
 				
-		if (funcOid != 0)
+		if (OidIsValid(funcOid))
 			HeapTupleSetOid(tup, funcOid);
 			
 		simple_heap_insert(rel, tup);

@@ -44,7 +44,7 @@ typedef struct
 } PLTemplate;
 
 static void create_proc_lang(const char *languageName,
-				 Oid handlerOid, Oid valOid, bool trusted);
+				 Oid handlerOid, Oid valOid, bool trusted, Oid *plangOid);
 static PLTemplate *find_language_template(const char *languageName);
 
 
@@ -163,7 +163,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 										 PointerGetDatum(NULL),
 										 PointerGetDatum(NULL),
 										 PointerGetDatum(NULL),
-										 0);
+										 stmt->plhandlerOid);
 		}
 
 		/*
@@ -195,7 +195,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 										 PointerGetDatum(NULL),
 										 PointerGetDatum(NULL),
 										 PointerGetDatum(NULL),
-										 0);
+										 stmt->plvalidatorOid);
 			}
 		}
 		else
@@ -203,7 +203,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 
 		/* ok, create it */
 		create_proc_lang(languageName, handlerOid, valOid,
-						 pltemplate->tmpltrusted);
+						 pltemplate->tmpltrusted, &(stmt->plangOid));
 	}
 	else
 	{
@@ -262,12 +262,14 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 			valOid = InvalidOid;
 
 		/* ok, create it */
-		create_proc_lang(languageName, handlerOid, valOid, stmt->pltrusted);
+		create_proc_lang(languageName, handlerOid, valOid, stmt->pltrusted, &(stmt->plangOid));
 	}
 	
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
+		stmt->plhandlerOid = handlerOid;
+		stmt->plvalidatorOid = valOid;
 		CdbDispatchUtilityStatement((Node *) stmt, "CreateProceduralLanguage");
 	}
 }
@@ -277,7 +279,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
  */
 static void
 create_proc_lang(const char *languageName,
-				 Oid handlerOid, Oid valOid, bool trusted)
+				 Oid handlerOid, Oid valOid, bool trusted, Oid *plangoid)
 {
 	Relation	rel;
 	TupleDesc	tupDesc;
@@ -307,7 +309,11 @@ create_proc_lang(const char *languageName,
 
 	tup = heap_form_tuple(tupDesc, values, nulls);
 
-	simple_heap_insert(rel, tup);
+	/* Keep oids synchronized between master and segments */
+	if (OidIsValid(*plangoid))
+		HeapTupleSetOid(tup, *plangoid);
+
+	*plangoid = simple_heap_insert(rel, tup);
 
 	CatalogUpdateIndexes(rel, tup);
 

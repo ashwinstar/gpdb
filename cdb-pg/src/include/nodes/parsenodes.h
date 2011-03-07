@@ -1767,6 +1767,9 @@ typedef struct CreatePLangStmt
 	List	   *plhandler;		/* PL call handler function (qual. name) */
 	List	   *plvalidator;	/* optional validator function (qual. name) */
 	bool		pltrusted;		/* PL is trusted */
+	Oid	   		plangOid;		/* oid for PL */
+	Oid			plhandlerOid;	/* oid for PL call handler function */
+	Oid			plvalidatorOid;	/* oid for validator function */
 } CreatePLangStmt;
 
 typedef struct DropPLangStmt
