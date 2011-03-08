@@ -172,6 +172,7 @@ extern char *XLogArchiveCommand;
 extern int	XLogArchiveTimeout;
 extern char *XLOG_sync_method;
 extern const char XLOG_sync_method_default[];
+extern bool gp_keep_all_xlog;
 
 #define XLogArchivingActive()	(XLogArchiveCommand[0] != '\0')
 

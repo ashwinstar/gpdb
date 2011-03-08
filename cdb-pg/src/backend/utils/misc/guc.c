@@ -322,6 +322,7 @@ bool		Debug_filerep_memory_log_flush = false;
 bool		filerep_inject_listener_fault = false;
 bool		filerep_inject_change_tracking_recovery_fault = false;
 bool		gp_crash_recovery_supress_ao_eof = false;
+bool            gp_keep_all_xlog = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -2880,6 +2881,16 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_simex_run,
 		false, NULL, NULL
 	},
+
+        {
+          {"gp_keep_all_xlog", PGC_SUSET, DEVELOPER_OPTIONS,
+           gettext_noop("Do not remove old xlog files."),
+           NULL,
+           GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+          },
+          &gp_keep_all_xlog,
+          false, NULL, NULL
+        },
 
 	{
 		{"gp_test_time_slice", PGC_USERSET, GP_ERROR_HANDLING,

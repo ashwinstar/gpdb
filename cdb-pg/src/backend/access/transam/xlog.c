@@ -8593,7 +8593,7 @@ CreateCheckPoint(bool shutdown, bool force)
 	 * Delete offline log files (those no longer needed even for previous
 	 * checkpoint).
 	 */
-	if (_logId || _logSeg)
+	if (gp_keep_all_xlog == false && (_logId || _logSeg))
 	{
 		PrevLogSeg(_logId, _logSeg);
 		MoveOfflineLogs(_logId, _logSeg, recptr,
