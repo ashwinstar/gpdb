@@ -103,10 +103,9 @@ OPTIONS
 
 -f <free_space_percent>
 
- Overestimate the amount of free disk space by this percentage when 
- performing the pre-dump disk space check. This overestimation is 
- how the pre-dump check accounts for the disk space saved when 
- compression is used. The default is 10.
+ When doing the check to ensure that there is enough free disk space to 
+ create the dump files, specifies a percentage of free disk space that 
+ should remain after the dump completes. The default is 10 percent
 
 
 -g (copy config files)
