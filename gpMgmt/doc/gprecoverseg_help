@@ -7,7 +7,7 @@ been marked as down (if mirroring is enabled).
 SYNTAX
 ******************************************************
 
-gprecoverseg [-p <new_recover_host> 
+gprecoverseg [-p <new_recover_hostname> 
              |-i <recover_config_file> 
              |-s <filespace_config_file>] 
              [-d <master_data_directory>] [-B <parallel_processes>] 
@@ -172,15 +172,17 @@ for recovering on a different host. This file can be
 edited to supply alternate recovery locations if needed.
 
 
--p <new_recover_host>
+-p <new_recover_hostname>
 
-Specifies a spare hostname outside of the currently configured 
-Greenplum Database array on which to recover invalid segments. 
-This spare host must have the Greenplum Database software 
-installed and configured, and have the same hardware and 
-OS configuration as the current segment hosts (same OS 
-version, locales, gpadmin user account, data directory 
-locations created, ssh keys exchanged, etc.).
+Specifies a spare host outside of the currently configured 
+Greenplum Database array on which to recover invalid segments. In 
+the case of multiple failed segment hosts, you can specify a 
+comma-separated list. The spare host must have the Greenplum Database 
+software installed and configured, and have the same hardware and OS 
+configuration as the current segment hosts (same OS version, locales, 
+gpadmin user account, data directory locations created, ssh keys 
+exchanged, number of network interfaces, network interface naming 
+convention, and so on.).
 
 
 -q (no screen output)
