@@ -1,6 +1,6 @@
 COMMAND NAME: gpmigrator
 
-Upgrades an existing Greenplum Database 3.3.x.x system to 4.0.x.x.
+Upgrades an existing Greenplum Database 4.0.x system to 4.1.x.
 
 *****************************************************
 SYNOPSIS
