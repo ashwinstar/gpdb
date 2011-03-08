@@ -6,15 +6,9 @@ Upgrades an existing Greenplum Database 3.3.x.x system to 4.0.x.x.
 SYNOPSIS
 *****************************************************
 
-gpmigrator <old_GPHOME_path> <new_GPHOME_path> 
-           --replication_port_base <port> 
-           --mirror_replication_port_base <port>  
-           --mirror-mode {redundant | single}
-           --gpperfmonhome <path>
-           [--nosnapshot] [-d <master_data_directory>] 
+gpmigrator <old_GPHOME_path> <new_GPHOME_path>
+           [-d <master_data_directory>] 
            [-l <logfile_directory>] [-q] [--debug] [-R]
-
-gpmigrator <old_GPHOME_path> <new_GPHOME_path> --resume
 
 gpmigrator --version | -v
 
@@ -25,86 +19,43 @@ gpmigrator --help | -h
 PREREQUISITES
 *****************************************************
 
-The following tasks should be performed prior to executing 
-an upgrade:
+The following tasks should be performed prior to executing an upgrade:
 
-* Make sure you are logged in to the master host as the 
-  Greenplum Database superuser (gpadmin).
-
-* Install the Greenplum Database 4.0 binaries on all 
-  Greenplum hosts.
-
-* Copy any custom modules from your existing installation to 
-  your 4.0 installation on all Greenplum hosts. For example, 
-  shared library files for user-defined functions in $GPHOME/lib 
-  or PostgreSQL add-on modules (such as plr.so or pgcrypto.so) 
-  in $GPHOME/lib/postgresql.
-
-* Copy or preserve any additional folders or files (such as 
-  backup folders) that you have added in the Greenplum data 
-  directories or $GPHOME directory. Only files or folders 
-  strictly related to Greenplum Database operations are 
+* Make sure you are logged in to the master host as the Greenplum Database 
+  superuser (gpadmin).
+* Install the Greenplum Database 4.1 binaries on all Greenplum hosts.
+* Copy any custom modules from your existing installation to your 4.1 
+  installation on all Greenplum hosts. For example, shared library files 
+  for user-defined functions in $GPHOME/lib or PostgreSQL add-on modules 
+  (such as plr.so or pgcrypto.so) in $GPHOME/lib/postgresql.
+* Copy or preserve any additional folders or files (such as backup folders) 
+  that you have added in the Greenplum data directories or $GPHOME directory. 
+  Only files or folders strictly related to Greenplum Database operations are 
   preserved by the migration utility.
-
-* (Optional) Run VACUUM on all databases, and remove old 
-  server log files from pg_log in your master and segment 
-  data directories. This is not required, but will reduce 
-  the size of Greenplum Database files to be backed up and 
-  migrated.
-
-* Remove the gp_jetpack schema from all databases (if it exists). 
-  Also note that gp_ is a reserved prefix for schema names in 
-  Greenplum Database 4.0 (as is pg_). If you have named any 
-  schemas with a gp_ prefix, Greenplum recommends that you 
-  rename them prior to upgrading.
-
-* The use of OIDs (per-row system-generated object identifiers) 
-  has been disabled for partitioned and column-oriented tables 
-  in 4.0. If you have these types of tables that were created 
-  with OIDS=TRUE, you must alter them to be with OIDS=FALSE.
-
-* Check for and recover any failed segments in your current 
-  Greenplum Database system (gpstate, gprecoverseg).
-
-* (Optional) Verify the integrity of your current system catalogs 
-  using the gpcheckcat utility.
-
-* (Optional, but highly recommended) Backup your current databases 
-  (gpcrondump or ZFS snapshots). If you find any issues when testing 
-  your upgraded system, you can restore this backup.
-
-* Remove the standby master from your system configuration 
-  (gpinitstandby -r).
-
+* (Optional) Run VACUUM on all databases, and remove old server log files 
+  from pg_log in your master and segment data directories. This is not required, 
+  but will reduce the size of Greenplum Database files to be backed up and migrated.
+* Check for and recover any failed segments in your current Greenplum Database 
+  system (gpstate, gprecoverseg).
+* (Optional, but highly recommended) Backup your current databases (gpcrondump 
+   or ZFS snapshots). If you find any issues when testing your upgraded system, 
+   you can restore this backup.
+* Remove the standby master from your system configuration (gpinitstandby -r).
 * Do a clean shutdown of your current system (gpstop).
-
-* Update your environment to source the 4.0 installation.
-
-* Inform all database users of the upgrade and lockout time frame. 
-  Once the upgrade is in process, users will not be allowed on 
-  the system until the upgrade is complete.
-
-
-IMPORTANT: Failing to meet any of these prerequisites can result 
-           in an aborted upgrade, placing your system in an unusable 
-           or even unrecoverable state. Make sure you meet all the 
-           prerequisites before running gpmigrator.
+* Update your environment to source the 4.1 installation.
+* Inform all database users of the upgrade and lockout time frame. Once the 
+  upgrade is in process, users will not be allowed on the system until the 
+  upgrade is complete.
 
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The gpmigrator utility upgrades an existing Greenplum Database 
-3.3.x.x system to 4.0. This utility updates the system catalog 
-and internal version number, but not the actual software binaries.
-
-During the migration process, all client connections to the 
-master will be locked out. The migration utility locks all 
-client access to the master, however it does not block direct 
-utility mode access to the segments. To ensure a safe upgrade, 
-make sure users are aware that any connections to a Greenplum 
-segment are not safe during the upgrade time frame.
+The gpmigrator utility upgrades an existing Greenplum Database 4.0.x.x 
+system to 4.1. This utility updates the system catalog and internal 
+version number, but not the actual software binaries. During the migration 
+process, all client connections to Greenplum Database will be locked out.
 
 
 *****************************************************
@@ -113,106 +64,20 @@ OPTIONS
 
 <old_GPHOME_path>
 
- Required. The absolute path to the current version of 
- Greenplum Database software you want to migrate away from.
+ Required. The absolute path to the current version of Greenplum 
+ Database software you want to migrate away from.
 
 
 <new_GPHOME_path>
 
- Required. The absolute path to the new version of Greenplum 
- Database software you want to migrate to.
-
-
---replication_port_base <port>
-
- Required if upgrading a system with mirrors. Specifies the base 
- number by which the port numbers for the primary file replication 
- process are calculated. The first replication port on a host is 
- set as REPLICATION_PORT_BASE, and then incremented by one for 
- each additional primary segment on that host. Valid values range 
- from 1 through 65535 and cannot conflict with other port assignments 
- on a segment host.
-
-
---mirror_replication_port_base <port>
-
- Required if upgrading a system with mirrors. Specifies the base 
- number by which the port numbers for the mirror file replication 
- process are calculated. The first mirror replication port on a 
- host is set as MIRROR_REPLICATION_PORT_BASE, and then incremented 
- by one for each additional mirror segment on that host. Valid 
- values range from 1 through 65535 and cannot conflict with other 
- port assignments on a segment host.
-
-
---mirror-mode {redundant | single}
-
- Required if upgrading a system with mirrors.
- Specifies how to upgrade mirror segments to the new 4.0 format. 
- Redundant mode will keep a copy of the old 3.3 mirror until its 
- new mirror is fully synchronized. Redundant mode always ensures 
- that the system always has a valid mirror copy for every segment, 
- and is the preferred mode provided that your systems have enough 
- available disk space. Single mode removes the old mirror before 
- creating the new mirror on the target node, and can be used on 
- systems where disk space is limited. All segments are upgraded 
- in parallel using the maximum parallelism allowed by the available 
- network, I/O, and CPU bandwidth.
-
-
---gpperfmonhome <path>
-
- Required only if your current system has the Greenplum 
- Performance Monitor installed and enabled. Provide the 
- full path to your 3.3.x Greenplum Performance Monitor 
- installation directory ($GPPERFMONHOME). The upgrade 
- process will stop the monitor data collection agents 
- and web application. You must then upgrade the Greenplum 
- Performance Monitor Web Application to 4.0 after upgrade 
- is complete.
-
-
---nosnapshot
-
- (Solaris only) On systems that support zfs snapshots the default 
- behavior is to pause the upgrade after the mirrors have been 
- synchronized, but before the upgraded catalog has been installed. 
- This allows users to take a zfs snapshot before upgrade progresses 
- beyond the point of no return. The --nosnapshot option runs the 
- complete upgrade as a single step, just as it would do on systems 
- that do not support zfs.
-
-
---resume
-
- (Solaris only) On systems that support zfs snapshots, allows 
- the upgrade process to resume where it left off after it has 
- been paused to allow for a zfs snapshot to be taken.
-
-
--R (revert)
-
- Restores the backup directory in the event of a failed 
- upgrade. This is only available if running in redundant 
- mode (mirror-mode=redundant). If the migration procedure fails 
- and you cannot start the system using the binary files of the 
- prior version, it is probable that gpmigrator was not able 
- to revert automatically. In these cases, you can run 
- gpmigrator -R to attempt to restore the backup directory. 
- Cases in which the migration is not automatically reverted 
- include:
-  * The gpmigrator process is killed with a command such 
-    as kill -9.
-  * The system crashes during the migration procedure.
-  * You are running gpmigrator in mirror-mode=single mode.
- If a ZFS snapshot is available, backing up from those 
- resources is preferred.
+ Required. The absolute path to the new version of Greenplum Database 
+ software you want to migrate to.
 
 
 -d <master_data_directory>
 
- Optional. The current master host data directory. If not 
- specified, the value set for $MASTER_DATA_DIRECTORY is used.
+ Optional. The current master host data directory. If not specified, 
+ the value set for $MASTER_DATA_DIRECTORY will be used.
 
 
 -l <logfile_directory>
@@ -222,51 +87,41 @@ OPTIONS
 
 -q (quiet mode)
 
- Run in quiet mode. Command output is not displayed on 
- the screen, but is still written to the log file.
+ Run in quiet mode. Command output is not displayed on the screen, but is 
+ still written to the log file.
+
+
+-R (revert)
+ 
+ In the event of an error during upgrade, reverts all changes made by gpmigrator.
 
 
 --help | -h
-
- Displays the online help.
+Displays the online help.
 
 
 --debug
-
- Sets logging level to debug.
+Sets logging level to debug.
 
 
 --version | -v
-
- Displays the version of this utility. 
+Displays the version of this utility. 
 
 
 *****************************************************
-EXAMPLES
+EXAMPLE
 *****************************************************
 
-Upgrade to version 4.0 from version 3.3.6.1 (make sure you 
-are using the 4.0 version of gpmigrator): 
+Upgrade to version 4.1 from version 4.0.4.0 (make sure you are using 
+the 4.1 version of gpmigrator):
 
-  /usr/local/greenplum-db-4.0.0.0/bin/gpmigrator \
-    --replication_port_base 53000 \
-    --mirror_replication_port_base 54000 \
-    --mirror-mode redundant \
-    --gpperfmonhome /usr/local/greenplum-perfmon-2.1.0.0 \
-    /usr/local/greenplum-db-3.3.6.0 \
-    /usr/local/greenplum-db-4.0.0.0
-
-
-Resume an upgrade that has been paused for a snapshot 
-(make sure you are using the 4.0 version of gpmigrator):
-
-  /usr/local/greenplum-db-4.0.0.0/bin/gpmigrator \
-    /usr/local/greenplum-db-3.3.6.1 \
-    /usr/local/greenplum-db-4.0.0.0 --resume
+/usr/local/greenplum-db-4.1.x.x/bin/gpmigrator \
+  /usr/local/greenplum-db-4.0.4.0 \
+  /usr/local/greenplum-db-4.1.x.x
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gpstop, gpstate, gprecoverseg, gpcrondump, gpbitmapreindex
+gpstop, gpstate, gprecoverseg, gpcrondump
