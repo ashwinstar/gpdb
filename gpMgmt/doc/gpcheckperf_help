@@ -124,7 +124,7 @@ OPTIONS
 --duration <time>
 
  Specifies the duration of the network test in seconds (s), 
- minutes (m), hours (h), or days (d). The default is 5 seconds.
+ minutes (m), hours (h), or days (d). The default is 15 seconds.
 
 
 -f <hostfile_gpcheckperf>
