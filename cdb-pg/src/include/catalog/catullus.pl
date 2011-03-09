@@ -299,6 +299,7 @@ sub make_opt
 {
 	my $fndef = shift;
 
+	# values from pg_language
 	my $plh = {
 		internal => 12, 
 		c		 => 13,
@@ -329,6 +330,8 @@ sub make_opt
 				die ("conflicting or redundant options: $opt") 
 					if (defined($provolatile));
 				
+				# provolatile is first char of option ([i]mmmutble, [s]table,
+				# [v]olatile).
 				$provolatile = lc(substr($opt, 0, 1));
 			}
 
@@ -347,7 +350,10 @@ sub make_opt
 			{
 				die ("conflicting or redundant options: $opt") 
 					if (defined($func_as));
-				
+
+				# NOTE: we preprocessed dollar-quoted ($$) AS options
+				# to single-quoted strings.  Will fix the string value
+				# later.
 				my @foo = ($opt =~ m/^AS\s+\'(.*)\'$/);
 				die "bad func AS: $opt" unless (scalar(@foo));
 
@@ -410,7 +416,9 @@ sub make_opt
 				$func_as =~ s/^\s*\'//;
 				$func_as =~ s/\'\s*$//;
 
-				# unquurl
+				# NOTE: here is the fixup for the AS option --
+				# retrieve the quoted string.
+				#  [ unquurl ]
 				$func_as =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
 				$tdef->{prosrc} = $func_as;
 			}
@@ -513,7 +521,8 @@ sub make_allargs
 		{
 			if ($func_arg =~ m/^in\s+out\s+/i)
 			{
-				# we want to split by spaces, so convert "in out" to "inout"
+				# NOTE: we want to split by spaces, 
+				# so convert "in out" to "inout"
 				$func_arg =~ s/^in\s+out\s+/inout /i;
 			}
 
@@ -528,11 +537,12 @@ sub make_allargs
 				
 				if ($aclass =~ m/^(in|out)$/i)
 				{
+					# use first char as argclass
 					$argclass[$nargs] = lc(substr($aclass, 0, 1));
 				}
 				else
 				{
-					$argclass[$nargs] = "b";
+					$argclass[$nargs] = "b"; # [b]oth
 				}
 				
 				# drop thru to handle two remaining args
@@ -651,6 +661,7 @@ sub make_allargs
 } # end make_allargs
 
 
+# parse the WITH clause
 sub get_fnwithhash
 {
 	my $funcdef = shift;
@@ -708,7 +719,7 @@ sub get_fnwithhash
 	return \%withh;
 } # end get_fnwithhash
 
-# preserve the original pg_proc order of definitions 
+# old_order: preserve the original pg_proc order of definitions 
 sub old_order
 {
 	my $fh = shift;
@@ -1000,20 +1011,30 @@ sub printfndef
 {
 	my $fndef = shift;
 
-	my $addcomment = 0;
+	my $addcomment = 1;
 
 	die "bad fn" unless (exists($fndef->{with}->{oid}));
 	my $tup = $fndef->{tuple};
 	my $nam = $fndef->{name};
 	
 	$nam =~ s/\"//g;
+
+	if (exists($fndef->{prefix}) &&
+		length($fndef->{prefix}))
+	{
+		print $fndef->{prefix};
+	}
 	
 #		print Data::Dumper->Dump([$tup]);		
 #		print $fndef->{name} . "\n\n";
+
 	print "/* " .
 		$fndef->{name} . "(" . 
-		($fndef->{rawargs} ? $fndef->{rawargs} : "" ) . ") */ \n"
+		($fndef->{rawargs} ? $fndef->{rawargs} : "" ) . ") => " .
+		(exists($fndef->{returntype}) ? $fndef->{returntype} : "()") . " */ \n"
 		if ($addcomment);
+
+
 	print "DATA(insert OID = " . $fndef->{with}->{oid} . " ( " .
 		$nam . "  " . $tup->{pronamespace} . " " .
 		$tup->{proowner} . " " .
@@ -1060,8 +1081,11 @@ if (1)
 	
 	my @allfndef;
 	my $fndefh;
-
-	# preprocess dollar quoted strings for SQL functions:
+	
+	# XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX 
+	# XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX 
+	# NOTE: preprocess dollar quoted strings for SQL functions:
+	if ($whole_file =~  m/\$\$/)
 	{
 		my @ddd = split(/(\$\$)/m, $whole_file);
 
@@ -1091,6 +1115,9 @@ if (1)
 		}
 		$whole_file = join("", @eee);
 	}
+	# XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX 
+	# XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX XXX 
+
 	
 	my @allfuncs = split(/\;\s*$/m, $whole_file);
 	
@@ -1098,6 +1125,49 @@ if (1)
 	
 	for my $funcdef (@allfuncs)
 	{
+		my $funcprefix;
+
+		undef $funcprefix;
+
+		# find "prefix", ie comments or #DEF's, preceding function definition.
+		if ($funcdef =~ m/\s*\-\-.*create func/ims)
+		{
+			my @ppp = ($funcdef =~ m/(^\s*\-\-.*\n)\s*create func/ims);
+
+#			print "ppp: ",Data::Dumper->Dump(\@ppp);
+
+			if (scalar(@ppp))
+			{
+				my @qqq = split(/\n/, $ppp[0]);
+
+				$funcprefix = "";
+
+				for my $l1 (@qqq)
+				{
+					# uncomment #DEF's 
+					if ($l1 =~ m/^\s*\-\- \#define/)
+					{
+						$l1 =~ s|\-\-\s*||;
+					}
+					# convert to c-style comments
+					if ($l1 =~ m/^\s*\-\-/)
+					{
+						$l1 =~ s|\-\-|\/\*|;
+						$l1 .= " */";
+					}
+					$funcprefix .= $l1 . "\n";
+				}
+
+				my $rex2 = quotemeta($ppp[0]);
+
+				# remove the prefix
+				$funcdef =~ s/$rex2//;
+
+#				print $funcprefix;
+			}
+
+		}
+
 		next
 			unless ($funcdef =~ 
 					m/create func(?:tion)*\s+((\w+\.)*(\")*(\w+)(\")*)/i);
@@ -1131,9 +1201,9 @@ if (1)
 			unless ($funcdef =~ m/\s*RETURN/i);
 		
 		$funcdef =~ s/\s+RETURNS\s+//i;
-		
+
 		my $fntdef = get_fntype($funcdef);
-		
+
 		# remove the function arg list tokens
 		@foo = split(/\s+/, $fntdef);
 		for my $ff (@foo)
@@ -1153,6 +1223,10 @@ if (1)
 		$fndefh = { name=> $funcname, rawtxt => $orig, 
 					returntype => $fntdef,
 					rawargs => $fnargs, optlist => $t1, with => $w1 };
+
+		$fndefh->{prefix} = $funcprefix
+			if (defined($funcprefix));
+
 		push @allfndef, $fndefh;
 	}
 
@@ -1168,10 +1242,25 @@ if (1)
 
 #	print Data::Dumper->Dump(\@allfndef);
 
-	print "\n\n";
+    my $verzion = "unknown";
+	
+	if (q$Revision$ =~ /\d+/)
+    {
+        $verzion = do { my @r = (q$Revision$ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
+    }
+
+	$verzion = $0 . " version " . $verzion;
+	my $nnow = localtime;
+	my $gen_hdr_str = "/* TIDYCAT_BEGIN_PG_PROC_GEN \n\n";
+	$gen_hdr_str .= "   WARNING: DO NOT MODIFY THE FOLLOWING SECTION: \n" .
+		"   Generated by " . $verzion . "\n" . 
+		"   on " . $nnow . "\n*/\n\n";
+
+	print $gen_hdr_str;
 
 	if (0)
 	{
+		# build definitions in "old" order
 		my %fh;
 		for my $fndef (@allfndef)
 		{
@@ -1181,9 +1270,12 @@ if (1)
 	}
 	else
 	{
+		# build definitions in same order as input file
 		for my $fndef (@allfndef)
 		{
 			printfndef($fndef);
 		}
 	}
+
+	print "\n\n/* TIDYCAT_END_PG_PROC_GEN */\n";
 }
