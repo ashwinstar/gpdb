@@ -1,6 +1,13 @@
 COMMAND NAME: gpmigrator
 
-Upgrades an existing Greenplum Database 4.0.x system to 4.1.x.
+Upgrades an existing Greenplum Database 4.0.x system 
+without mirrors to 4.1.x.
+
+Use gpmigrator_mirror to upgrade a 4.0.x system that 
+has mirrors.
+
+Note: Using gpmigrator on a system with mirrors causes 
+      an error.
 
 *****************************************************
 SYNOPSIS
@@ -53,9 +60,10 @@ DESCRIPTION
 *****************************************************
 
 The gpmigrator utility upgrades an existing Greenplum Database 4.0.x.x 
-system to 4.1. This utility updates the system catalog and internal 
-version number, but not the actual software binaries. During the migration 
-process, all client connections to Greenplum Database will be locked out.
+system without mirrors to 4.1. This utility updates the system catalog 
+and internal version number, but not the actual software binaries. 
+During the migration process, all client connections to Greenplum 
+Database will be locked out.
 
 
 *****************************************************
@@ -112,8 +120,8 @@ Displays the version of this utility.
 EXAMPLE
 *****************************************************
 
-Upgrade to version 4.1 from version 4.0.4.0 (make sure you are using 
-the 4.1 version of gpmigrator):
+Upgrade to version 4.1 from version 4.0.4.0 without mirrors 
+(make sure you are using the 4.1 version of gpmigrator):
 
 /usr/local/greenplum-db-4.1.x.x/bin/gpmigrator \
   /usr/local/greenplum-db-4.0.4.0 \
@@ -124,4 +132,4 @@ the 4.1 version of gpmigrator):
 SEE ALSO
 *****************************************************
 
-gpstop, gpstate, gprecoverseg, gpcrondump
+gpmigrator_mirror, gpstop, gpstate, gprecoverseg, gpcrondump
