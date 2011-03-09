@@ -638,7 +638,6 @@ typedef struct
 	VariableCache ShmemVariableCache;
 	Backend    *ShmemBackendArray;
 	LWLock	   *LWLockArray;
-	slock_t    *ProcStructLock;
 	PROC_HDR   *ProcGlobal;
 	PGPROC	   *AuxiliaryProcs;
 	PMSignalData *PMSignalState;
@@ -7503,7 +7502,6 @@ MaxLivePostmasterChildren(void)
  */
 extern slock_t *ShmemLock;
 extern LWLock *LWLockArray;
-extern slock_t *ProcStructLock;
 extern PROC_HDR *ProcGlobal;
 extern PGPROC *AuxiliaryProcs;
 extern PMSignalData *PMSignalState;
@@ -7548,7 +7546,6 @@ save_backend_variables(BackendParameters *param, Port *port,
 	param->ShmemBackendArray = ShmemBackendArray;
 
 	param->LWLockArray = LWLockArray;
-	param->ProcStructLock = ProcStructLock;
 	param->ProcGlobal = ProcGlobal;
 	param->AuxiliaryProcs = AuxiliaryProcs;
 	param->PMSignalState = PMSignalState;
@@ -7756,7 +7753,6 @@ restore_backend_variables(BackendParameters *param, Port *port)
 	ShmemBackendArray = param->ShmemBackendArray;
 
 	LWLockArray = param->LWLockArray;
-	ProcStructLock = param->ProcStructLock;
 	ProcGlobal = param->ProcGlobal;
 	AuxiliaryProcs = param->AuxiliaryProcs;
 	PMSignalState = param->PMSignalState;

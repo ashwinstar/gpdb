@@ -67,15 +67,6 @@ PGPROC	   *MyProc = NULL;
 /* Special for MPP reader gangs */
 PGPROC	   *lockHolderProcPtr = NULL;
 
-/*
- * This spinlock protects the freelist of recycled PGPROC structures.
- * We cannot use an LWLock because the LWLock manager depends on already
- * having a PGPROC and a wait semaphore!  But these structures are touched
- * relatively infrequently (only at backend startup or shutdown) and not for
- * very long, so a spinlock is okay.
- */
-NON_EXEC_STATIC slock_t *ProcStructLock = NULL;
-
 /* Pointers to shared-memory structures */
 NON_EXEC_STATIC PROC_HDR *ProcGlobal = NULL;
 NON_EXEC_STATIC PGPROC *AuxiliaryProcs = NULL;
@@ -111,8 +102,6 @@ ProcGlobalShmemSize(void)
 	size = add_size(size, mul_size(NUM_AUXILIARY_PROCS, sizeof(PGPROC)));
 	/* MyProcs, including autovacuum */
 	size = add_size(size, mul_size(MaxBackends, sizeof(PGPROC)));
-	/* ProcStructLock */
-	size = add_size(size, sizeof(slock_t));
 
 	return size;
 }
@@ -201,6 +190,7 @@ InitProcGlobal(int mppLocalProcessCounter)
 		ProcGlobal->freeProcs = MAKE_OFFSET(&procs[i]);
 	}
 	ProcGlobal->procs = procs;
+	ProcGlobal->numFreeProcs = MaxBackends;
 
 	MemSet(AuxiliaryProcs, 0, NUM_AUXILIARY_PROCS * sizeof(PGPROC));
 	for (i = 0; i < NUM_AUXILIARY_PROCS; i++)
@@ -209,10 +199,6 @@ InitProcGlobal(int mppLocalProcessCounter)
 		AuxiliaryProcs[i].postmasterResetRequired = true;
 		PGSemaphoreCreate(&(AuxiliaryProcs[i].sem));
 	}
-
-	/* Create ProcStructLock spinlock, too */
-	ProcStructLock = (slock_t *) ShmemAlloc(sizeof(slock_t));
-	SpinLockInit(ProcStructLock);
 }
 
 /*
@@ -246,6 +232,9 @@ Prepend(PGPROC *myProc)
 		}
 		
 	}
+
+	/* Atomically increment numFreeProcs */
+	gp_atomic_add_32(&ProcGlobal->numFreeProcs, 1);
 }
 
 
@@ -260,6 +249,12 @@ RemoveFirst()
 	volatile PROC_HDR *procglobal = ProcGlobal;
 	SHMEM_OFFSET myOffset;
 	PGPROC *freeProc = NULL;
+
+	/*
+	 * Decrement numFreeProcs before removing the first entry from the
+	 * free list.
+	 */
+	gp_atomic_add_32(&procglobal->numFreeProcs, -1);
 
 	int32 casResult = false;
 	while(!casResult)
@@ -285,9 +280,17 @@ RemoveFirst()
 
 	}
 
+	if (freeProc == NULL)
+	{
+		/*
+		 * Increment numFreeProcs since we didn't remove any entry from
+		 * the free list.
+		 */
+		gp_atomic_add_32(&procglobal->numFreeProcs, 1);
+	}
+
 	return freeProc;
 }
-
 
 /*
  * InitProcess -- initialize a per-process data structure for this backend
@@ -324,12 +327,9 @@ InitProcess(void)
 			 MyProcPid, MAKE_OFFSET(MyProc), MyProc->links.next);
 	}
 
-	int mppLocalProcessSerial = 0;
-
-	SpinLockAcquire(ProcStructLock);
 	set_spins_per_delay(procglobal->spins_per_delay);
-	mppLocalProcessSerial = ++procglobal->mppLocalProcessCounter;
-	SpinLockRelease(ProcStructLock);
+
+	int mppLocalProcessSerial = gp_atomic_add_32(&procglobal->mppLocalProcessCounter, 1);
 
 	lockHolderProcPtr = MyProc;
 
@@ -535,32 +535,13 @@ InitAuxiliaryProcess(void)
 
 /*
  * Check whether there are at least N free PGPROC objects.
- *
- * Note: this is designed on the assumption that N will generally be small.
  */
 bool
 HaveNFreeProcs(int n)
 {
-	SHMEM_OFFSET offset;
-	PGPROC	   *proc;
-
-	/* use volatile pointer to prevent code rearrangement */
-	volatile PROC_HDR *procglobal = ProcGlobal;
-
-	SpinLockAcquire(ProcStructLock);
-
-	offset = procglobal->freeProcs;
-
-	while (n > 0 && offset != INVALID_OFFSET)
-	{
-		proc = (PGPROC *) MAKE_PTR(offset);
-		offset = proc->links.next;
-		n--;
-	}
-
-	SpinLockRelease(ProcStructLock);
-
-	return (n <= 0);
+	Assert(n >= 0);
+	
+	return (ProcGlobal->numFreeProcs >= n);
 }
 
 /*
@@ -671,15 +652,31 @@ RemoveProcFromArray(int code, Datum arg)
 }
 
 /*
+ * update_spins_per_delay
+ *   Update spins_per_delay value in ProcGlobal.
+ */
+static void update_spins_per_delay()
+{
+	volatile PROC_HDR *procglobal = ProcGlobal;
+	bool casResult = false;
+
+	while (!casResult)
+	{
+		int old_spins_per_delay = procglobal->spins_per_delay;
+		int new_spins_per_delay = recompute_spins_per_delay(old_spins_per_delay);
+		casResult = compare_and_swap_32((uint32*)&procglobal->spins_per_delay,
+										old_spins_per_delay,
+										new_spins_per_delay);
+	}
+}
+
+/*
  * ProcKill() -- Destroy the per-proc data structure for
  *		this process. Release any of its held LW locks.
  */
 static void
 ProcKill(int code, Datum arg)
 {
-	/* use volatile pointer to prevent code rearrangement */
-	volatile PROC_HDR *procglobal = ProcGlobal;
-
 	Assert(MyProc != NULL);
 
 	/* 
@@ -720,7 +717,8 @@ ProcKill(int code, Datum arg)
 	 */
 	LWLockReleaseAll();
 
-	SpinLockAcquire(ProcStructLock);
+	/* Update shared estimate of spins_per_delay */
+	update_spins_per_delay();
 
 	LocalDistribXactRef_Release(&MyProc->localDistribXactRef);
     MyProc->mppLocalProcessSerial = 0;
@@ -735,11 +733,6 @@ ProcKill(int code, Datum arg)
 	/* PGPROC struct isn't mine anymore */
 	MyProc = NULL;
 	lockHolderProcPtr = NULL;
-
-	/* Update shared estimate of spins_per_delay */
-	procglobal->spins_per_delay = update_spins_per_delay(procglobal->spins_per_delay);
-
-	SpinLockRelease(ProcStructLock);
 }
 
 /*
@@ -762,7 +755,8 @@ AuxiliaryProcKill(int code, Datum arg)
 	/* Release any LW locks I am holding (see notes above) */
 	LWLockReleaseAll();
 
-	SpinLockAcquire(ProcStructLock);
+	/* Update shared estimate of spins_per_delay */
+	update_spins_per_delay();
 
 	if (code == 0 || code == 1)
 	{
@@ -784,13 +778,7 @@ AuxiliaryProcKill(int code, Datum arg)
 
 	/* PGPROC struct isn't mine anymore */
 	MyProc = NULL;
-	
 	lockHolderProcPtr = NULL;
-
-	/* Update shared estimate of spins_per_delay */
-	ProcGlobal->spins_per_delay = update_spins_per_delay(ProcGlobal->spins_per_delay);
-
-	SpinLockRelease(ProcStructLock);
 }
 
 
@@ -1719,11 +1707,8 @@ void ProcNewMppSessionId(int *newSessionId)
 {
 	Assert(newSessionId != NULL);
 
-	SpinLockAcquire(ProcStructLock);
-
-    *newSessionId = MyProc->mppSessionId = ++ProcGlobal->mppLocalProcessCounter;
-
-	SpinLockRelease(ProcStructLock);
+    *newSessionId = MyProc->mppSessionId =
+		gp_atomic_add_32(&ProcGlobal->mppLocalProcessCounter, 1);
 }
 
 /*

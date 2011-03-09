@@ -62,51 +62,9 @@
 #include "funcapi.h"
 #include "catalog/pg_type.h"
 #include "access/tuptoaster.h"
+#include "utils/atomic.h"
 
 extern bool gp_debug_resqueue_priority;
-
-/* Atomic increment operations
- */
-#if defined(__sparc__)
-
-#include <atomic.h>
-#define AtomicAdd32(ptr, v) atomic_add_32((volatile uint32_t *)ptr, v)
-
-#elif defined(__i386) || defined(__x86_64__)
-
-#define AtomicAdd32(ptr, v) gp_atomic_add_32(ptr, v)
-void gp_atomic_add_32(volatile int *ptr, int inc);
-
-#endif
-
-
-
-
-/* TODO: flw - 12/06/2010: replaced __synch_fetch_and_add with inline
- *				assembler since it isn't available on our build Linux/GCC combination;
- *
- *				Introduced to fix build break; see MPP-7603
- */
-#if defined(__i386) || defined(__x86_64__)
-void gp_atomic_add_32(volatile int *ptr, int inc)
-{
-#if defined(__x86_64__)
-    asm volatile (
-				  "lock xaddl %1, %0\n"
-				  : /* no out */
-				  : "m" (*ptr), "r" (inc)
-				  );
-#elif defined(__i386)
-    asm volatile (
-				  "lock addl %1, %0\n"
-				  : "=m" (*ptr)
-				  : "r" (inc), "m" (*ptr)
-				  );
-#endif
-}
-#endif // __i386 || __x86_64__
-
-
 
 /* Enable for more debug info to be logged */
 /* #define BACKOFF_DEBUG */
@@ -343,8 +301,8 @@ static inline void SwitchGroupLeader(int newLeaderIndex)
 	oldLeaderEntry = &backoffSingleton->backendEntries[myEntry->groupLeaderIndex]; 
 	newLeaderEntry = &backoffSingleton->backendEntries[newLeaderIndex];
 
-	AtomicAdd32( &oldLeaderEntry->numFollowers, -1 );
-	AtomicAdd32( &newLeaderEntry->numFollowers, 1 );
+	gp_atomic_add_32( &oldLeaderEntry->numFollowers, -1 );
+	gp_atomic_add_32( &newLeaderEntry->numFollowers, 1 );
 	myEntry->groupLeaderIndex = newLeaderIndex;
 }
 

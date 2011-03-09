@@ -153,6 +153,17 @@ typedef struct PROC_HDR
     /* Counter for assigning serial numbers to processes */
     int         mppLocalProcessCounter;
 
+	/*
+	 * Number of free PGPROC entries.
+	 *
+	 * Note that this value is not updated synchronously with freeProcs.
+	 * Thus, in some small time window, this value may not reflect
+	 * the real number of free entries in freeProcs. However, since
+	 * this is only used to check whether there are enough free entries
+	 * to be reserved for superusers, it is okay.
+	 */
+	int numFreeProcs;
+
 } PROC_HDR;
 
 /*

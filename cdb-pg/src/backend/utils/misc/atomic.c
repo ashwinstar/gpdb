@@ -5,6 +5,15 @@
  * Copyright (c) 2011 - present, EMC DCD (Greenplum)
  */
 
+#include "postgres.h"
+#include "utils/atomic.h"
+
+#if defined(_AIX)
+#include <sys/atomic_op.h>
+#elif defined(__sparc__)
+#include <atomic.h>
+#endif
+
 /*
  * compare_and_swap_32
  *   Atomic compare and swap operation in a 32-bit address.
@@ -18,15 +27,6 @@
  * 		return 0;
  *
  */
-#include "postgres.h"
-#include "utils/atomic.h"
-
-#if defined(_AIX)
-#include <sys/atomic_op.h>
-#elif defined(__sparc__)
-#include <atomic.h>
-#endif
-
 int32 compare_and_swap_32(uint32 *dest, uint32 old, uint32 new)
 {
 	volatile int32 res = 0;
@@ -50,9 +50,6 @@ int32 compare_and_swap_32(uint32 *dest, uint32 old, uint32 new)
 #elif defined(__sparc__)
 	uint32 returnValue = atomic_cas_32(dest, old, new);
 	res = !(returnValue == *dest);
-
-#elif defined(_AIX)
-	res = compare_and_swap(dest, &old, new);
 
 #else
 #error unsupported platform: requires atomic compare_and_swap_32 operation
@@ -125,3 +122,33 @@ int32 compare_and_swap_ulong(unsigned long *dest,
 	return casResult;
 }
 	
+/* 
+ * gp_atomic_add_32
+ *    Atomic increment in a 32-bit address, and return the incremented value.
+ */
+int32 gp_atomic_add_32(volatile int32 *ptr, int32 inc)
+{
+	volatile int32 newValue = 0;
+	
+#if defined(__x86_64__)
+	int32 oldValue = __sync_fetch_and_add(ptr, inc);
+	newValue = oldValue + inc;
+
+#elif defined(__i386)
+	__asm__ __volatile__ (
+		"lock; xaddl %0, %1"
+		: "=r" (newValue), "=m" (*ptr)
+		: "0" (inc), "m" (*ptr)
+		: "memory");
+
+	newValue += inc;
+
+#elif defined(__sparc__)
+	newValue = atomic_add_32_nv((volatile uint32_t *)ptr, inc);
+
+#else
+#error unsupported platform: requires atomic_add_32 operation
+#endif
+
+	return newValue;
+}

@@ -9,3 +9,4 @@ extern int32 compare_and_swap_64(uint64 *dest, uint64 old, uint64 new);
 extern int32 compare_and_swap_ulong(unsigned long *dest,
 									unsigned long oldval,
 									unsigned long newval);
+extern int32 gp_atomic_add_32(volatile int32 *ptr, int32 inc);
