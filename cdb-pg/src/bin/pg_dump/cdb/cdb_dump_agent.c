@@ -803,7 +803,7 @@ main(int argc, char **argv)
 		ropt->dataOnly = dataOnly;
 
 		if (compressLevel == -1)
-			ropt->compression = 1;
+			ropt->compression = 0;
 		else
 			ropt->compression = compressLevel;
 
