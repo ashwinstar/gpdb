@@ -59,6 +59,23 @@ def validate_password(input, ignore):
         return input
 
 
+def cli_help():
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', EXECNAME + '_help')
+    f = None
+    try:
+        try:
+            f = open(help_path);
+            return f.read(-1)
+        except:
+            return ''
+    finally:
+        if f: f.close()
+
+
+def usage():
+    print cli_help() or __doc__
+    
+
 ###### main()
 if __name__ == '__main__':
 
@@ -86,7 +103,7 @@ if __name__ == '__main__':
     (options, args) = parser.parse_args()
 
     if options.help:
-        print __doc__
+        usage()
         sys.exit(1)
 
     if not options.port: 

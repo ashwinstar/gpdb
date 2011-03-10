@@ -82,6 +82,22 @@ class UniqueHost:
         return "address %s hostname %s userExists %s" % (self.address, self.hostname, self.userExists)
     
 
+def cli_help():
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', EXECNAME + '_help')
+    f = None
+    try:
+        try:
+            f = open(help_path);
+            return f.read(-1)
+        except:
+            return ''
+    finally:
+        if f: f.close()
+
+
+def usage():
+    print cli_help() or __doc__
+
 # True is an error
 def parseargs():
 
@@ -111,7 +127,7 @@ def parseargs():
         isLinux = True
 
     if options.help:
-        print __doc__
+        usage()
         return True
 
     if not options.file:
