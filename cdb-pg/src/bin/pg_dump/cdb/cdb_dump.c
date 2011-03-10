@@ -1218,8 +1218,8 @@ help(const char *progname)
 	printf(("  -s, --schema-only        dump only the schema, no data\n"));
 	printf(("  -S, --superuser=NAME     specify the superuser user name to use in\n"
 			"                           plain text format\n"));
-	printf(("  -t, --table=TABLE        dump the named table only\n"));
-	printf(_("  -T, --exclude-table=TABLE   do NOT dump the named table(s)\n"));
+	printf(("  -t, --table=TABLE        dump only matching table(s) (or views or sequences)\n"));
+	printf(_("  -T, --exclude-table=TABLE   do NOT dump matching table(s) (or views or sequences)\n"));
 	printf(("  -x, --no-privileges      do not dump privileges (grant/revoke)\n"));
 	printf(_("  --disable-triggers          disable triggers during data-only restore\n"));
 	printf(_("  --use-set-session-authorization\n"
