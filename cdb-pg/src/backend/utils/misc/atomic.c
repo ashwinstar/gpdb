@@ -29,6 +29,9 @@
  */
 int32 compare_and_swap_32(uint32 *dest, uint32 old, uint32 new)
 {
+	if (old == new)
+		return true;
+
 	volatile int32 res = 0;
 
 #if defined(__i386)
@@ -66,6 +69,9 @@ int32 compare_and_swap_32(uint32 *dest, uint32 old, uint32 new)
  */
 int32 compare_and_swap_64(uint64 *dest, uint64 old, uint64 new)
 {
+	if (old == new)
+		return true;
+
 	volatile int32 res = 0;
 	
 #if defined(__x86_64__)
