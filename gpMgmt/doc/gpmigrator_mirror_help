@@ -15,7 +15,7 @@ SYNOPSIS
 
 gpmigrator_mirror <old_GPHOME_path> <new_GPHOME_path>
                   [-d <master_data_directory>] 
-                  [-l <logfile_directory>] [-q] [--debug] [-R]
+                  [-l <logfile_directory>] [-q] [--debug]
 
 gpmigrator_mirror  --version | -v
 
@@ -99,12 +99,8 @@ OPTIONS
  still written to the log file.
 
 
--R (revert)
- 
- In the event of an error during upgrade, reverts all changes made by gpmigrator.
-
-
 --help | -h
+
 Displays the online help.
 
 
@@ -121,7 +117,7 @@ EXAMPLE
 *****************************************************
 
 Upgrade to version 4.1 from version 4.0.4.0 with mirrors 
-(make sure you are using the 4.1 version of gpmigrator):
+(make sure you are using the 4.1 version of gpmigrator_mirror):
 
 /usr/local/greenplum-db-4.1.x.x/bin/gpmigrator_mirror \
   /usr/local/greenplum-db-4.0.4.0 \
