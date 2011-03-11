@@ -31,10 +31,9 @@ The following are required prior to running this program:
 * You must be a Greenplum Database superuser to run MapReduce jobs 
   with EXEC and FILE inputs.
 
-* You must be a Greenplum Database superuser to run MapReduce jobs 
-  with GPFDIST input unless the server configuration parameter 
-  gp_external_grant_privileges is set to on.
-
+* Non-superuser roles must be granted external table permissions
+  using CREATE/ALTER ROLE in order to run MapReduce jobs. 
+  
 *****************************************************
 DESCRIPTION
 *****************************************************
