@@ -22,87 +22,87 @@ PostgreSQL documentation
 <synopsis> 
 
 CREATE [READABLE] EXTERNAL TABLE table_name 
-     ( column_name data_type [, ...] | LIKE other_table )
-      LOCATION ('file://seghost[:port]/path/file' [, ...])
-          | ('gpfdist://filehost[:port]/file_pattern' [, ...])
-          | ('gphdfs://hdfs_host[:port]/path/file')
-      FORMAT 'TEXT' 
-            [( [HEADER]
-               [DELIMITER [AS] 'delimiter' | 'OFF']
-               [NULL [AS] 'null string']
-               [ESCAPE [AS] 'escape' | 'OFF']
-               [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
-               [FILL MISSING FIELDS] )]
-           | 'CSV'
-            [( [HEADER]
-               [QUOTE [AS] 'quote'] 
-               [DELIMITER [AS] 'delimiter']
-               [NULL [AS] 'null string']
-               [FORCE NOT NULL column [, ...]]
-               [ESCAPE [AS] 'escape']
-               [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
-               [FILL MISSING FIELDS] )]
-     [ ENCODING 'encoding' ]
-     [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
-       [ROWS | PERCENT] ]
+      ( column_name data_type [, ...] | LIKE other_table )
+      LOCATION ('file://seghost[:port]/path/file' [, ...])
+          | ('gpfdist://filehost[:port]/file_pattern' [, ...])
+          | ('gphdfs://hdfs_host[:port]/path/file')
+      FORMAT 'TEXT' 
+            [( [HEADER]
+               [DELIMITER [AS] 'delimiter' | 'OFF']
+               [NULL [AS] 'null string']
+               [ESCAPE [AS] 'escape' | 'OFF']
+               [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
+               [FILL MISSING FIELDS] )]
+             | 'CSV'
+            [( [HEADER]
+               [QUOTE [AS] 'quote'] 
+               [DELIMITER [AS] 'delimiter']
+               [NULL [AS] 'null string']
+               [FORCE NOT NULL column [, ...]]
+               [ESCAPE [AS] 'escape']
+               [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
+               [FILL MISSING FIELDS] )]
+     [ ENCODING 'encoding' ]
+     [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
+       [ROWS | PERCENT] ]
 CREATE [READABLE] EXTERNAL WEB TABLE table_name 
-     ( column_name data_type [, ...] | LIKE other_table )
-      LOCATION ('http://webhost[:port]/path/file' [, ...])
-    | EXECUTE 'command' [ON ALL 
-                          | MASTER
-                          | number_of_segments 
-                          | HOST ['segment_hostname'] 
-                          | SEGMENT segment_id ]
-      FORMAT 'TEXT' 
-            [( [HEADER]
-               [DELIMITER [AS] 'delimiter' | 'OFF']
-               [NULL [AS] 'null string']
-               [ESCAPE [AS] 'escape' | 'OFF']
-               [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
-               [FILL MISSING FIELDS] )]
-           | 'CSV'
-            [( [HEADER]
-               [QUOTE [AS] 'quote'] 
-               [DELIMITER [AS] 'delimiter']
-               [NULL [AS] 'null string']
-               [FORCE NOT NULL column [, ...]]
-               [ESCAPE [AS] 'escape']
-               [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
-               [FILL MISSING FIELDS] )]
-     [ ENCODING 'encoding' ]
-     [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
-       [ROWS | PERCENT] ]
+    ( column_name data_type [, ...] | LIKE other_table )
+      LOCATION ('http://webhost[:port]/path/file' [, ...])
+    | EXECUTE 'command' [ON ALL 
+                          | MASTER
+                          | number_of_segments 
+                          | HOST ['segment_hostname'] 
+                          | SEGMENT segment_id ]
+      FORMAT 'TEXT' 
+            [( [HEADER]
+               [DELIMITER [AS] 'delimiter' | 'OFF']
+               [NULL [AS] 'null string']
+               [ESCAPE [AS] 'escape' | 'OFF']
+               [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
+               [FILL MISSING FIELDS] )]
+            | 'CSV'
+            [( [HEADER]
+               [QUOTE [AS] 'quote'] 
+               [DELIMITER [AS] 'delimiter']
+               [NULL [AS] 'null string']
+               [FORCE NOT NULL column [, ...]]
+               [ESCAPE [AS] 'escape']
+               [NEWLINE [ AS ] 'LF' | 'CR' | 'CRLF']
+               [FILL MISSING FIELDS] )]
+     [ ENCODING 'encoding' ]
+     [ [LOG ERRORS INTO error_table] SEGMENT REJECT LIMIT count 
+       [ROWS | PERCENT] ]
 CREATE WRITABLE EXTERNAL TABLE table_name
-    ( column_name data_type [, ...] | LIKE other_table )
-      LOCATION ('gpfdist://outputhost[:port]/filename' [, ...])
-          |    ('gphdfs://hdfs_host[:port]/path')
-      FORMAT 'TEXT' 
-               [( [DELIMITER [AS] 'delimiter']
-               [NULL [AS] 'null string']
-               [ESCAPE [AS] 'escape' | 'OFF'] )]
-          | 'CSV'
-               [([QUOTE [AS] 'quote'] 
-               [DELIMITER [AS] 'delimiter']
-               [NULL [AS] 'null string']
-               [FORCE QUOTE column [, ...]] ]
-               [ESCAPE [AS] 'escape'] )]
-    [ ENCODING 'write_encoding' ]
-    [ DISTRIBUTED BY (column, [ ... ] ) | DISTRIBUTED RANDOMLY ]
+    ( column_name data_type [, ...] | LIKE other_table )
+      LOCATION ('gpfdist://outputhost[:port]/filename' [, ...])
+          |    ('gphdfs://hdfs_host[:port]/path')
+      FORMAT 'TEXT' 
+               [( [DELIMITER [AS] 'delimiter']
+               [NULL [AS] 'null string']
+               [ESCAPE [AS] 'escape' | 'OFF'] )]
+           | 'CSV'
+               [([QUOTE [AS] 'quote'] 
+               [DELIMITER [AS] 'delimiter']
+               [NULL [AS] 'null string']
+               [FORCE QUOTE column [, ...]] ]
+               [ESCAPE [AS] 'escape'] )]
+    [ ENCODING 'write_encoding' ]
+    [ DISTRIBUTED BY (column, [ ... ] ) | DISTRIBUTED RANDOMLY ]
 CREATE WRITABLE EXTERNAL WEB TABLE table_name
-    ( column_name data_type [, ...] | LIKE other_table )
-    EXECUTE 'command' [ON ALL]
-    FORMAT 'TEXT' 
-               [( [DELIMITER [AS] 'delimiter']
-               [NULL [AS] 'null string']
-               [ESCAPE [AS] 'escape' | 'OFF'] )]
-          | 'CSV'
-               [([QUOTE [AS] 'quote'] 
-               [DELIMITER [AS] 'delimiter']
-               [NULL [AS] 'null string']
-               [FORCE QUOTE column [, ...]] ]
-               [ESCAPE [AS] 'escape'] )]
-    [ ENCODING 'write_encoding' ]
-    [ DISTRIBUTED BY (column, [ ... ] ) | DISTRIBUTED RANDOMLY ]
+    ( column_name data_type [, ...] | LIKE other_table )
+    EXECUTE 'command' [ON ALL]
+    FORMAT 'TEXT' 
+               [( [DELIMITER [AS] 'delimiter']
+               [NULL [AS] 'null string']
+               [ESCAPE [AS] 'escape' | 'OFF'] )]
+         | 'CSV'
+               [([QUOTE [AS] 'quote'] 
+               [DELIMITER [AS] 'delimiter']
+               [NULL [AS] 'null string']
+               [FORCE QUOTE column [, ...]] ]
+               [ESCAPE [AS] 'escape'] )]
+    [ ENCODING 'write_encoding' ]
+    [ DISTRIBUTED BY (column, [ ... ] ) | DISTRIBUTED RANDOMLY ]
  
 </synopsis>
 
