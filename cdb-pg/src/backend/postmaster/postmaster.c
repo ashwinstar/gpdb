@@ -3455,6 +3455,15 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
 		d_state = DataStateInResync;
 	}
 
+	/* check if segment is mirrorless primary */
+	if (pm_mode == PMModeMirrorlessSegment)
+	{
+		Assert(d_state == DataStateNotInitialized);
+
+		/* report segment as in sync to conform with master's segment configuration */
+		d_state = DataStateInSync;
+	}
+
 	sendPrimaryMirrorTransitionQuery((uint32)pm_mode, (uint32)s_state, (uint32)d_state, (uint32)f_type);
 
 	return;
