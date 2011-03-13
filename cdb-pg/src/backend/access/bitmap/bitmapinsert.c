@@ -1379,6 +1379,11 @@ _bitmap_write_new_bitmapwords(Relation rel,
 								buf->last_tid, InvalidBlockNumber, true, isFirst);
 	}
 
+	if (use_wal && words_written == 0)
+	{
+		_bitmap_log_bitmap_lastwords(rel, lovBuffer, lovOffset, lovItem);
+	}
+	
 	if (Debug_bitmap_print_insert)
 		elog(LOG, "Bitmap Insert: write bitmapwords: words_written=" INT64_FORMAT
 			 ", last_tid=" INT64_FORMAT
