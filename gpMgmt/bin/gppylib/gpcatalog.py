@@ -348,6 +348,10 @@ class GPCatalog():
             self._tables['pg_resqueue']._setKnownDifferences("oid")
             self._tables['pg_resqueuecapability']._setKnownDifferences("oid")
 
+            # pg_resqueue is master only in 4.0
+            self._tables['pg_resqueue']._setMasterOnly()
+            self._tables['pg_resqueuecapability']._setMasterOnly()
+
 
     def _validate(self):
         """
