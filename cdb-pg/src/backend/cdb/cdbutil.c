@@ -687,8 +687,28 @@ getDnsCachedAddress(char *name, int port, int elevel)
 		 */
 		if (e == NULL && addrs->ai_family == AF_INET6)
 		{
+			char		hostinfo[NI_MAXHOST];
+			addr = addrs;
+
+
+
+			pg_getnameinfo_all((struct sockaddr_storage *)addr->ai_addr, addr->ai_addrlen,
+							   hostinfo, sizeof(hostinfo),
+							   NULL, 0,
+							   NI_NUMERICHOST);
+
+			/* INSERT INTO OUR CACHE HTAB HERE */
+
+			e = (struct segment_ip_cache_entry *)hash_search(segment_ip_cache_htab,
+															 name,
+															 HASH_ENTER,
+															 NULL);
+			Assert(e != NULL);
+			memcpy(e->hostinfo, hostinfo, sizeof(hostinfo));
+
 			/* Whatever we do, we can't put an IPv6 address into our host-ip cache */
-			elog(LOG, "host %s only has IPv6 address, not yet supported", name);
+			elog(LOG, "host %s only has IPv6 address %s, not yet supported", name,hostinfo);
+
 		}
 #endif
 			
@@ -766,7 +786,16 @@ getDnsAddress(char *hostname, int port, int elevel)
 	 */
 	if (result == NULL && addrs->ai_family == AF_INET6)
 	{
-		elog(LOG, "host %s only has IPv6 address, not yet supported", hostname);
+		char		hostinfo[NI_MAXHOST];
+		addr = addrs;
+		/* Get a text representation of the IP address */
+					pg_getnameinfo_all((struct sockaddr_storage *) addr->ai_addr, addr->ai_addrlen,
+									   hostinfo, sizeof(hostinfo),
+									   NULL, 0,
+									   NI_NUMERICHOST);
+					result = pstrdup(hostinfo);
+		elog(LOG, "host %s only has IPv6 address %s, not yet supported", hostname, hostinfo);
+
 	}
 #endif
 
