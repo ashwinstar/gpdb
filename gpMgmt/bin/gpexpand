@@ -2022,6 +2022,7 @@ WHERE
     AND p.partitionlevel = (select max(parlevel) FROM pg_partition WHERE parrelid = c.oid)
     AND quote_ident(p.partitionschemaname) = quote_ident(n2.nspname)
     AND quote_ident(p.partitiontablename) = quote_ident(c2.relname)
+    AND c2.relnamespace = n2.oid
 ORDER BY tablename, c2.oid desc;
                   """
         self.logger.debug(sql)
