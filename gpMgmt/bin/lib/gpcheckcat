@@ -1067,6 +1067,7 @@ def checkFKConstraint(db, tables, max_content):
                     logger.info('[OK] Foreign key check for %s(%s)'%
                                 (tname, fkeystr))
                 else:
+                    setError(ERROR_NOREPAIR)
                     logger.info('[FAIL] Foreign key check for %s(%s)'%
                                 (tname, fkeystr))
                     logger.error('  %s has %d issue(s)' % (tname, nrows))
@@ -1095,6 +1096,7 @@ def checkFKConstraint(db, tables, max_content):
                     badpktables[pkeytabname].append(tname)
         
             except Exception, e:
+                setError(ERROR_NOREPAIR)
                 logger.info('[FAIL] Foreign key check for ' + tname)
                 logger.error('  Execution error: ' + str(e))
                 logger.error(qry)
@@ -1469,6 +1471,7 @@ def crossDbCheck():
             if nrows == 0:
                 logger.info('[OK] Cross consistency check for ' + catname)
             else:
+                setError(ERROR_NOREPAIR)
                 logger.info('[FAIL] Cross consistency check for ' + catname)
                 logger.error('  %s has %d issue(s)' % (catname, nrows))
                 # logger.error(qry)
@@ -1485,6 +1488,7 @@ def crossDbCheck():
                     print "    " + " | ".join(map(str, row))
         
         except Exception, e:
+            setError(ERROR_NOREPAIR)
             logger.info('[FAIL] Cross consistency check for ' + catname)
             logger.error('  Execution error: ' + str(e))
             logger.error(qry)
@@ -1545,6 +1549,7 @@ def crossDbCheck():
             if nrows == 0:
                 logger.info('[OK] Cross consistency acl check for ' + catname)
             else:
+                setError(ERROR_NOREPAIR)
                 logger.info('[FAIL] Cross consistency acl check for ' + catname)
                 logger.error('  %s acl check has %d issue(s)' % (catname, nrows))
                 # logger.error(qry)
@@ -1561,6 +1566,7 @@ def crossDbCheck():
                     print "    " + " | ".join(map(str, row))
         
         except Exception, e:
+            setError(ERROR_NOREPAIR)
             logger.info('[FAIL] Cross consistency check for ' + catname)
             logger.error('  Execution error: ' + str(e))
             logger.error(qry)
@@ -1840,6 +1846,7 @@ def checkDepend():
             
 
     except Exception, e:
+        setError(ERROR_NOREPAIR)
         logger.info("[FAIL] basic object dependencies")
         logger.error("  Execution error: " + str(e))
         logger.error(qry)
