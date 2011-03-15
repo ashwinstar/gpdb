@@ -10294,7 +10294,7 @@ ATExecSetTableSpace_AppendOnly(
 		{
 			FileSegInfo *fileSegInfo;
 
-			fileSegInfo = GetFileSegInfo(rel, aoEntry, ActiveSnapshot, segmentFileNum);
+			fileSegInfo = GetFileSegInfo(rel, aoEntry, SnapshotNow, segmentFileNum);
 			if (fileSegInfo == NULL)
 			{
 				/*
@@ -10329,7 +10329,7 @@ ATExecSetTableSpace_AppendOnly(
 
 			actualSegmentNum = segmentFileNum % AOTupleId_MultiplierSegmentFileNum;
 			
-			aocsFileSegInfo = GetAOCSFileSegInfo(rel, aoEntry, ActiveSnapshot, actualSegmentNum);
+			aocsFileSegInfo = GetAOCSFileSegInfo(rel, aoEntry, SnapshotNow, actualSegmentNum);
 			if (aocsFileSegInfo == NULL)
 			{
 				/*
