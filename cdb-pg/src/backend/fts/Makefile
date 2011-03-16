@@ -1,12 +1,12 @@
 #-------------------------------------------------------------------------
 #
 # Makefile--
-#    Makefile for cdb (GPDB specific routines)
+#    Makefile for fts
 #
 #-------------------------------------------------------------------------
 
 
-subdir = src/backend/postmaster/fts
+subdir = src/backend/fts
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I$(top_srcdir)/src/backend/gp_libpq_fe $(CPPFLAGS)
