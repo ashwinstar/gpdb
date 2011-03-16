@@ -1,18 +1,15 @@
 #-------------------------------------------------------------------------
 #
-# Makefile for src/bin/pg_ctl
+# Makefile for src/bin/gpsnmpd
 #
-# Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
-# Portions Copyright (c) 1994, Regents of the University of California
-#
-# $PostgreSQL: pgsql/src/bin/pg_ctl/Makefile,v 1.26 2009/01/01 17:23:54 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
-PGFILEDESC = "pg_ctl - starts/stops/restarts the PostgreSQL server"
-subdir = src/bin/pg_ctl
+PGFILEDESC = "gpsnmpd - SNMP daemon for GPDB"
+subdir = src/bin/gpsnmpd
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
+override CPPFLAGS := -I$(top_srcdir)/src/bin/gpsnmpd -I$(top_srcdir)/src/bin/gpsnmpd/RDBMS-MIB_src $(CPPFLAGS)
 
 # The frontend doesn't need everything that's in LIBS, some are backend only
 LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
