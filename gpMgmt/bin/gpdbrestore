@@ -1022,7 +1022,10 @@ GP_RESTORE_TABLE () {
 		T_SUFFIX=".gz"
 	fi
 	M_DUMP_FILE=${MASTER_DATA_DIRECTORY}/$GP_RESTORE_DIR/gp_dump_1_1_${RESTORE_TIMESTAMP}${T_SUFFIX}
+	M_DUMP_POST_FILE=${MASTER_DATA_DIRECTORY}/$GP_RESTORE_DIR/gp_dump_1_1_${TABLE_TIMESTAMP}_post_data
 	T_DUMP_FILE=${MASTER_DATA_DIRECTORY}/$GP_RESTORE_DIR/gp_dump_1_1_${TABLE_TIMESTAMP}
+	# For single table restore the post_data file is not used, but needs to exist
+	$TOUCH $M_DUMP_POST_FILE
 	$SHOW_CMD $M_DUMP_FILE|$HEAD -20|$AWK 'BEGIN {output=0} {if ($1=="SET") output=1} {if ($1!="SET") output=0} {if (output==1) print $0}' >> $T_DUMP_FILE >> $LOG_FILE 2>&1
 	if [ x"" != x"$COMPRESS" ];then
 		unset COMPRESS
@@ -1068,6 +1071,15 @@ CLEAR_RESTORE_TABLE_DUMP_FILES () {
 	RUN_PARALLEL
 	$RM -f $T_DUMP_FILE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+CLEAR_RESTORE_TABLE_MASTER_POST_FILE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing deletion of temporary master post data file" 1
+	if [ -f "$M_DUMP_POST_FILE" ]; then
+		$RM -f "$M_DUMP_POST_FILE"
+	fi 
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"			
 }
 
 #******************************************************************************
@@ -1162,6 +1174,7 @@ else
 	GP_RESTORE_DATABASE
 	if [ x"" == x"$KEEP_DUMP_FILES" ];then
 		CLEAR_RESTORE_TABLE_DUMP_FILES
+		CLEAR_RESTORE_TABLE_MASTER_POST_FILE
 	fi
 fi
 LOG_MSG "[INFO]:-End Main"
