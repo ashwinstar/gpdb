@@ -569,7 +569,7 @@ main(int argc, char **argv)
 
 	if (dump_inserts && oids)
 	{
-		write_msg(NULL, "ptions --inserts/--column-inserts (-d, -D) and OID (-o) options cannot be used together\n");
+		write_msg(NULL, "options --inserts/--column-inserts (-d, -D) and OID (-o) options cannot be used together\n");
 		write_msg(NULL, "(The INSERT command cannot set OIDs.)\n");
 		exit(1);
 	}
