@@ -79,32 +79,36 @@ class GpStart:
     def run(self):
         self._prepare()
 
-        self._startMaster()
-        logger.info("Master Started...")
+        try:
+            # Disable Ctrl-C
+            signal.signal(signal.SIGINT,signal.SIG_IGN)
 
-        if self.masteronly:
-            return 0
+            self._startMaster()
+            logger.info("Master Started...")
 
-        # Do we have an even-number of recovered segments ?
-        if len(self.gparray.recoveredSegmentDbids) > 0 and len(self.gparray.recoveredSegmentDbids) % 2 == 0:
-            logger.info("Master start noticed recovered segments, updating configuration to rebalance.")
+            if self.masteronly:
+                return 0
 
-            self.gparray.updateRoleForRecoveredSegs(self.dburl)
+            # Do we have an even-number of recovered segments ?
+            if len(self.gparray.recoveredSegmentDbids) > 0 and len(self.gparray.recoveredSegmentDbids) % 2 == 0:
+                logger.info("Master start noticed recovered segments, updating configuration to rebalance.")
+                self.gparray.updateRoleForRecoveredSegs(self.dburl)
+                logger.info("Re-obtaining updated segment details from master...")
+                self.gparray = GpArray.initFromCatalog(self.dburl, utility=True)
 
-            logger.info("Re-obtaining updated segment details from master...")
+            self._check_standby_activated()
 
-            self.gparray = GpArray.initFromCatalog(self.dburl, utility=True)
-
-        self._check_standby_activated()
-
-        logger.info("Shutting down master")
-        cmd=gp.GpStop("Shutting down master", masterOnly=True,
-                      fast=True, quiet=logging_is_quiet(),
-                      verbose=logging_is_verbose(),
-                      datadir=self._get_master_datadir())
-        cmd.run()
-        logger.debug("results of forcing master shutdown: %s" % cmd)
-        #TODO: check results of command.
+            logger.info("Shutting down master")
+            cmd=gp.GpStop("Shutting down master", masterOnly=True,
+                          fast=True, quiet=logging_is_quiet(),
+                          verbose=logging_is_verbose(),
+                          datadir=self._get_master_datadir())
+            cmd.run()
+            logger.debug("results of forcing master shutdown: %s" % cmd)
+            #TODO: check results of command.
+        finally:
+            # Reenable Ctrl-C
+            signal.signal(signal.SIGINT,signal.default_int_handler)
 
         (segmentsToStart, invalidSegments, inactiveSegments) = self._prepare_segment_start()
 
@@ -113,7 +117,14 @@ class GpStart:
             if not userinput.ask_yesno(None, "\nContinue with Greenplum instance startup", 'N'):
                 raise UserAbortedException()
 
-        success=self._start(segmentsToStart, invalidSegments, inactiveSegments)
+        try:
+            # Disable Ctrl-C
+            signal.signal(signal.SIGINT,signal.SIG_IGN)
+
+            success=self._start(segmentsToStart, invalidSegments, inactiveSegments)
+        finally:
+            # Reenable Ctrl-C
+            signal.signal(signal.SIGINT,signal.default_int_handler)
 
         return 0 if success else 1
 
