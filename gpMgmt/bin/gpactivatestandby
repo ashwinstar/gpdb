@@ -58,7 +58,7 @@ def parseargs():
     
     # General options section
     optgrp = OptionGroup(parser, 'General options')
-    optgrp.add_option('-?', '--help', dest='help', action='store_true',
+    optgrp.add_option('-h', '-?', '--help', dest='help', action='store_true',
                       help='display this help message and exit')
     optgrp.add_option('-v', dest='version', action='store_true',
                       help='display version information and exit')
