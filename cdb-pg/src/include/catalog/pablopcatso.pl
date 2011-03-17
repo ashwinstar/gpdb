@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 #
-# $Header: //cdb2/main/cdb-pg/src/include/catalog/tidycat.pl#25 $
+# $Header$
 #
 # copyright (c) 2011
 # Author: Jeffrey I Cohen
@@ -32,6 +32,7 @@ Options:
 	-showfiles       if clustered, label each cluster with header file name
 	-showcolumns     print column definitions for tables
 	-filterunused    filter out unreferenced columns or tables
+	-table           only graph the specified tables
 
 =head1 OPTIONS
 
@@ -90,6 +91,14 @@ Options:
 	Filter the graph to only show the tables and columns 
 	that shared a primary key/foreign key relationship.
 
+=item B<-table>
+
+Specify a table or set of tables to limit the size of the graph.  To
+specify multiple tables, use multiple table arguments, eg:
+
+  -table pg_class -table pg_operator
+
+
 =back
 
 
@@ -123,6 +132,8 @@ my $glob_doclusterfilename;
 my $glob_filterunused;
 my $glob_nocolumns;
 my $glob_docolor;
+
+my $glob_tabs;
 
 my $glob_tmpdir = "/tmp";
 
@@ -210,7 +221,7 @@ BEGIN {
 	my $filterunused	  = 0;
 	my $showcolumns		  = 0;
 	my $nocolor			  = 0;
-
+	my @tabs;
 
     $GV_formats = '^(jpg|bmp|ps|pdf|png)$';
 
@@ -221,7 +232,8 @@ BEGIN {
 		'showfiles' => \$doclusterfilename,
 		'filterunused' => \$filterunused,
 		'showcols|showcolumns' => \$showcolumns,
-		'nocolor' => \$nocolor
+		'nocolor' => \$nocolor,
+		'table:s' => \@tabs
                )
         or pod2usage(2);
 
@@ -243,6 +255,17 @@ BEGIN {
 	$glob_nocolumns = !($showcolumns);
 	$glob_docolor = !($nocolor);
 
+	if (scalar(@tabs))
+	{
+		$glob_filterunused = 1;
+		$glob_tabs = {};
+		for my $t1 (@tabs)
+		{
+			$glob_tabs->{$t1} = 1;
+		}
+
+	}
+
 #    print "loading...\n" ;
 }
 
@@ -256,6 +279,7 @@ sub dograph
 
 	my $refcols = {};
 	my $reftabs = {};
+	my $revreftabs = {};
 
 	my @alledges;
 
@@ -295,6 +319,9 @@ sub dograph
 			$reftabs->{$kk} = {} unless (exists($reftabs->{$kk}));
 			$reftabs->{$kk}->{$t1} = 1 
 				unless (exists($reftabs->{$kk}->{$t1}));
+			$revreftabs->{$t1} = {} unless (exists($revreftabs->{$t1}));
+			$revreftabs->{$t1}->{$kk} = 1 
+				unless (exists($revreftabs->{$t1}->{$kk}));
 		}
 
 	} # end for my kk
@@ -355,11 +382,43 @@ pg_tablespace
 			}
 		}
 
+		my %tab_only; # only print these tables if in glob_tab references
+
 		for my $kk (@{$fildef})
 		{
 			my $vv = $tabh->{$kk};
 
 			my @allcols;
+
+			# check table filtering
+			if ($glob_tabs)
+			{
+				my @checko;
+
+				# find all tables referencing and referenced by this table
+				push @checko, keys(%{$reftabs->{$kk}})
+					if (exists($reftabs->{$kk}));
+				push @checko, keys(%{$revreftabs->{$kk}})
+					if (exists($revreftabs->{$kk}));
+
+				push @checko, $kk;
+
+				my $gotone = 0;
+
+				# check for match in table filter
+				for my $c1 (@checko)
+				{
+					if (exists($glob_tabs->{$c1}))
+					{
+						$gotone = 1;
+						$tab_only{$kk} = 1;
+						$tab_only{$c1} = 1;
+						last;
+					}
+				}
+				next unless ($gotone);
+			}
+
 
 			# put the name of the table as the first label
 #			push @allcols, $kk . '\\n\\n';
@@ -415,13 +474,19 @@ pg_tablespace
 						"\nshape= \"record\"\n  $colspec ];\n";
 				}
 			} # end scalar allcols
-		}
+		} # end for my kk fildef
 
 		for my $kk (@{$fildef})
 		{
 			my $vv = $tabh->{$kk};
 
 			next unless (exists($vv->{foreign_keys}));
+
+			if ($glob_tabs)
+			{
+				# filter by tablename
+				next unless (exists($tab_only{$kk}));
+			}
 
 			if ($nocolumns)
 			{
