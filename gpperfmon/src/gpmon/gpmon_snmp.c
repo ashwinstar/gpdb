@@ -131,6 +131,13 @@ static struct
 	unsigned int map[MAX_POWER_PROBE_MAP_SIZE];
 } power_probe_map = { { 0 } };
 
+static struct
+{
+	int dell_high_critical_temp_threshold;
+	int dell_low_critical_temp_threshold;
+} thermal_thresholds = {600, 0}; // Initialization to some extreme values (in tenths of centigrade)
+
+
 
 void record_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, const char* oidstring, const char* displayname, GPDB_SNMP_STATUS status, const char* message);
 int init_host(const char* hostname, host_t* host);
@@ -824,6 +831,29 @@ void gpmon_format_snmp_int(EmcConnectSymptom symptom, EmcConnectDetailedSymptom 
 	record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, outbuf);
 }
 
+void gpmon_store_thermal_threshold(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
+        snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, oidname, oidlen);
+
+	if (vars->type != ASN_INTEGER)
+        {
+                record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
+                return;
+        }
+	if (dSymptom == EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_HIGH_THRESHOLD_TEMP) {
+		thermal_thresholds.dell_high_critical_temp_threshold = *vars->val.integer;
+		TR2(("Temperature high threshold %d %s\n", thermal_thresholds.dell_high_critical_temp_threshold, get_accessible_hostname()));
+	} else if (dSymptom == EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_LOW_THRESHOLD_TEMP) {
+		thermal_thresholds.dell_low_critical_temp_threshold = *vars->val.integer;
+		TR2(("Temperature low threshold %d %s\n", thermal_thresholds.dell_low_critical_temp_threshold, get_accessible_hostname()));
+	} else {
+
+		record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "SNMP monitoring error : Unexpected symptom type");
+                return;
+	}
+}
+
 #define FORMAT_SNMP_CENT_BUFSIZE 64
 void gpmon_format_dell_tenth_centigrade(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
@@ -831,12 +861,19 @@ void gpmon_format_dell_tenth_centigrade(EmcConnectSymptom symptom, EmcConnectDet
 	snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, oidname, oidlen);
 	char outbuf[FORMAT_SNMP_CENT_BUFSIZE] = { 0 };
 	float farenheit = 0; 
+	int celsius_temp = 0; 
 
 	if (vars->type != ASN_INTEGER)
 	{
 		record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
 		return;
 	}
+	celsius_temp = *vars->val.integer;
+
+	if (celsius_temp <= thermal_thresholds.dell_low_critical_temp_threshold || celsius_temp >= thermal_thresholds.dell_high_critical_temp_threshold) {
+		record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_WARNING, "Temperature not in normal range");
+                return;
+        }
 
 	// normally you multiply by 9/5 however and then add 32
 	// our number is in tenths of degrees celcius ... so we use .18 instead of 9/5
@@ -1140,6 +1177,8 @@ void run_snmp_report_for_dell_host(const char* categoryname, host_t* host)
 
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_NAME, "1.3.6.1.4.1.674.10892.1.700.12.1.8", "Cooling Device", "Name", gpmon_format_snmp_string)) goto BAIL;
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_STATUS, "1.3.6.1.4.1.674.10892.1.700.12.1.5", "Cooling Device", "Status", gpmon_format_dell_status)) goto BAIL;
+	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_HIGH_THRESHOLD_TEMP, "1.3.6.1.4.1.674.10892.1.700.20.1.10", "Cooling Device", "High critical temp", gpmon_store_thermal_threshold)) goto BAIL;
+	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_LOW_THRESHOLD_TEMP, "1.3.6.1.4.1.674.10892.1.700.20.1.13", "Cooling Device", "Low critical temp", gpmon_store_thermal_threshold)) goto BAIL;
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_TEMPERATURE, "1.3.6.1.4.1.674.10892.1.700.20.1.6", "System Temperature", NULL, gpmon_format_dell_tenth_centigrade)) goto BAIL;
 
 	if (dell_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_PROCESSOR_VERSION, "1.3.6.1.4.1.674.10892.1.1100.30.1.16", "Processor Version", NULL, gpmon_format_snmp_string)) goto BAIL;
