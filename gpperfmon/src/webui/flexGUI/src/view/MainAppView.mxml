@@ -63,9 +63,32 @@
   	{
   		aboutKeys += String.fromCharCode(keyEvent.charCode);
   		if (aboutKeys == 'debug')
+		{
   			enableDebugMode();
+			memoryMonitor(true);
+		}
   	}
   	
+	public function memoryMonitor(show:Boolean=true):void
+	{
+		memoryUsedLbl.visible = show;
+		memoryUsedTxt.visible = show;
+		if(show)
+		{
+			addEventListener(Event.ENTER_FRAME, displayMemory);
+		}
+		else
+		{
+			removeEventListener(Event.ENTER_FRAME, displayMemory);
+		}
+	}
+	
+	public function displayMemory(event:Event):void
+	{
+		var memory:String = Number(System.totalMemory/1024/1024).toFixed(2)+" <b>Mb</b>";
+		memoryUsedTxt.htmlText = memory;
+	}
+	
   	private function aboutBox():void 
 	{
 		var str:String = "Greenplum Performance Monitor\n\n" + 
@@ -156,6 +179,8 @@
 		   	</mx:HBox>
 			<mx:Label styleName="mainTitle" text="{mdl.session.databaseName}"/>			
 		   	<mx:HBox width="50%" horizontalAlign="right" verticalAlign="middle">
+				<mx:Label id="memoryUsedLbl" text="Memory:" color="red" fontWeight="bold" visible="false"/>
+				<mx:Text id="memoryUsedTxt" visible="false"/>
 				<mx:Label text="{'Welcome ' + mdl.session.username}" id="greetingLabel" fontSize="9"/>
 				<mx:LinkButton label="Logout" click="tryLogout()" fontSize="9"/>
 				<mx:LinkButton label="About" click="aboutBox()" fontSize="9"/>

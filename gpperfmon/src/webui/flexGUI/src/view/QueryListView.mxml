@@ -195,8 +195,6 @@
 						<mx:DataGridColumn headerText="CPU %" dataField="cpu_currpct" width="50"/>
 						<mx:DataGridColumn headerText="CPU total" dataField="cpu_elapsed"
 							width="60" headerWordWrap="true"/>
-						<mx:DataGridColumn headerText="CPU velocity" dataField="cpu_velocity"
-							width="60" headerWordWrap="true"/>	
 						<mx:DataGridColumn headerText="CPU skew" dataField="skew_cpu"
 							width="55" headerWordWrap="true"/>	
 						<mx:DataGridColumn headerText="Row skew" dataField="skew_rows"

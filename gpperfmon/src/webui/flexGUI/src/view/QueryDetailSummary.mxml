@@ -55,9 +55,6 @@
 				<mx:FormItem label="CPU total" fontWeight="bold">
 					<mx:Label text="{nformat2.format(mdl.nav.detailQuery.cpu_elapsed)}" fontWeight="normal"/>
 				</mx:FormItem>	
-				<mx:FormItem label="CPU velocity" fontWeight="bold">
-					<mx:Label text="{nformat2.format(mdl.nav.detailQuery.cpu_velocity)}" fontWeight="normal"/>
-				</mx:FormItem>	
 				<mx:FormItem label="CPU skew" fontWeight="bold">
 					<mx:Label text="{nformat2.format(mdl.nav.detailQuery.skew_cpu)}" fontWeight="normal"/>
 				</mx:FormItem>				
