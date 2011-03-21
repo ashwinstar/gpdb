@@ -1074,7 +1074,11 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 				char *user;
 
 				p->uid = GetUserId();
+#ifdef GP_VERSION_NUM
+				user = (GetUserNameFromId(p->uid)); 
+#else
 				user = (char*)DirectFunctionCall1(namein, CStringGetDatum(GetUserNameFromId(p->uid)));
+#endif
 				p->creator = ora_sstrcpy(user);
 				pfree(user);
 			}

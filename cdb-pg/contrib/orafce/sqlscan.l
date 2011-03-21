@@ -6,7 +6,9 @@
 #include "postgres.h"
 #include "parser/keywords.h"
 
-
+#ifdef GP_VERSION_NUM
+#define YY_NO_INPUT 1
+#endif
 
 #undef yyparse  /* don't need it now and solve problems with 8.1 */
 
