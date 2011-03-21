@@ -301,11 +301,6 @@ days_of_month(int y, int m)
  *
  ********************************************************************/
 
-/* XXX XXX XXX XXX XXX XXX 
-   FIX THIS
-   XXX XXX XXX XXX XXX XXX 
-*/
-
 Datum
 months_between(PG_FUNCTION_ARGS)
 {
@@ -326,8 +321,8 @@ months_between(PG_FUNCTION_ARGS)
 	else
 		result = (y1 - y2) * 12 + (m1 - m2) + (d1 - d2) / 31.0;
 
-	PG_RETURN_NUMERIC(PG_GETARG_NUMERIC(
-							  DirectFunctionCall1(float8_numeric, Float8GetDatumFast(result)))); 
+	PG_RETURN_NUMERIC(
+		DirectFunctionCall1(float8_numeric, Float8GetDatumFast(result)));
 }
 
 /********************************************************************

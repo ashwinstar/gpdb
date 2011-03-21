@@ -252,7 +252,7 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
 	nspname = text_to_cstring(sname);
-	names = stringToQualifiedNameList(nspname, "dbms");
+	names = stringToQualifiedNameList(nspname);
 	if (list_length(names) != 1)
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
@@ -369,7 +369,7 @@ dbms_assert_object_name(PG_FUNCTION_ARGS)
 
 	object_name = text_to_cstring(str);
 
-	names = stringToQualifiedNameList(object_name, "dbms");
+	names = stringToQualifiedNameList(object_name);
 
 	classId = RangeVarGetRelid(makeRangeVarFromNameList(names), true);
 	if (!OidIsValid(classId))
