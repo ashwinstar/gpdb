@@ -1372,8 +1372,6 @@ FileRep_InsertLogEntry(
 		
 	halfLength = (fileRepLogShmem->logEnd - fileRepLogShmem->logBegin) / 2;
 	
-	SpinLockAcquire(&fileRepLogShmem->logLock);
-
 	gettimeofday(&logTime, NULL);
 	
 	tt = (pg_time_t) logTime.tv_sec;
@@ -1418,6 +1416,8 @@ FileRep_InsertLogEntry(
 			FileRepProcessTypeToString[fileRepProcessType],				
 			getpid());													//29
 		
+	SpinLockAcquire(&fileRepLogShmem->logLock);
+	
 	if ((fileRepLogShmem->logInsert + strlen(buffer)) > fileRepLogShmem->logEnd)
 	{
 		fileRepLogShmem->logInsert = fileRepLogShmem->logBegin;
@@ -2680,6 +2680,10 @@ FileRep_Sleep1ms(int retry)
  * At the beginning of an Adler-32 run, A is initialized to 1, B to 0. The sums are done modulo 65521 
  * (the largest prime number smaller than 216). The bytes are stored in network order (big endian), 
  * B occupying the two most significant bytes.
+ *
+ * NOTE: Adler-32 is not an actual CRC, it is a hash.  It is faster than the normal pg_crc32 routines, but
+ * slower than using the Intel core-i7 "calculate crc" instruction.
+ * How much faster is it than a fast crc32 like the Intel "slicing-by-8" design?
  */
 static pg_crc32 
 FileRep_CalculateAdler32(unsigned char *buf, int len)
@@ -2710,18 +2714,54 @@ FileRep_CalculateAdler32(unsigned char *buf, int len)
  * will be detected as an incorrect checksum. However, an error that affects two bits will not be detected if 
  * those bits lie at the same position in two distinct words. If the affected bits are independently chosen at random, 
  * the probability of a two-bit error being undetected is 1/n.
+ * Also, this cannot detect bytes being out-of-order.
+ *
+ * NOTE: This is not an actual CRC.  But it is faster than any CRC algorithm.
  */
 static pg_crc32 
 FileRep_CalculateParity(unsigned char *buf, int len)
 {
 	uint32 parity = 0;
 	int n;
+	unsigned long long temp = 0;
+	int words = len / 8;
+	int remaining = len % 8;
 	
-	for (n = 0; n < len; n++) 
-	{
-		parity ^= buf[n];
-	}	
-
+	/* Get 64-bits at a time, xor into temp */
+	for (n = 0; n < words; n++)
+		temp ^= ((unsigned long long*)buf)[n];
+	
+	/* Combine each of the 8 bytes from temp into parity, so we get the same answer as byte-by-byte loop */	
+	/*
+	 * NOTE:  A single-byte parity can't tell us if we received the correct bytes but in the wrong order.
+	 * Nor can it tell the case of two bytes being wrong, but the same bit in each byte.
+	 *
+	 * Rather than combine this into a single byte, we could just combine the two 32-bit halfs of the 64-bit
+	 * value (via XOR), and then we would preserve far more information at no extra CPU cost.
+	 *
+	 * But the result would not satisfy the condition mentioned above:  If you compute a new Parity of the
+	 * original message plus 4 bytes of parity, the result would not always be 32-bits of zero (the bad
+	 * case is when the message is not a multiple of 4 bytes in size).
+	 *
+	 * This isn't really a problem if we only compare the Parity of the message with a previously computed parity.
+	 * This really needs to have a code review.
+	 *
+	 * Of course, we could always do it the better way if the message is an even number of 32-bit words.
+	 */
+#if 0
+	/* Combine each of the 8 bytes from temp into parity, so we get the same answer as byte-by-byte loop */
+	parity ^=  ((temp >> 24) & 0xFF) ^ ((temp >> 16) & 0xFF) ^ ((temp >> 8) & 0xFF) ^ (temp & 0xFF);
+	temp = temp >> 32;
+	parity ^=  ((temp >> 24) & 0xFF) ^ ((temp >> 16) & 0xFF) ^ ((temp >> 8) & 0xFF) ^ (temp & 0xFF);
+#else
+	/* Reduce 64 bits to 32 bits. Maybe it would be better to circular shift one of the 32-bit values by 1 bit */
+	parity ^= (temp >> 32) ^ (temp & 0xFFFFFFFF);
+#endif
+	
+	/* If buf wasn't an even number of 64-bit words, we need to pick up the remaining bytes */
+	for (n = 0; n < remaining; n++) 
+		parity ^= (buf + 8*words)[n];
+	
 	return parity;
 }
 
