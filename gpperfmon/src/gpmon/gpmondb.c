@@ -9,21 +9,16 @@
 #include "apr_hash.h"
 #include "time.h"
 
-static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
+#define GPDB_CONNECTION_STRING "dbname='" GPMON_DB "' user='" GPMON_DBUSER "' connect_timeout='30'"
+
+// assumes a valid connection already exists
+static const char* gpdb_exec_only(PGconn* conn, PGresult** pres, const char* query)
 {
-	const char *connstr = "dbname='" GPMON_DB "' user='" GPMON_DBUSER
-	"' connect_timeout='30'";
-	PGconn *conn = NULL;
 	PGresult* res = 0;
 	ExecStatusType status;
 
-	conn = PQconnectdb(connstr);
-	if (PQstatus(conn) != CONNECTION_OK)
-		return PQerrorMessage(conn);
-
 	TR1(("Query: %s\n", query));
 
-	*pconn = conn;
 	res = PQexec(conn, query);
 	status = PQresultStatus(res);
 	if (status != PGRES_COMMAND_OK && status != PGRES_TUPLES_OK)
@@ -33,13 +28,37 @@ static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
 	return 0;
 }
 
-int gpdb_exec_search_for_at_least_one_row(const char* QUERY)
+static const char* gpdb_exec(PGconn** pconn, PGresult** pres, const char* query)
+{
+	const char *connstr = "dbname='" GPMON_DB "' user='" GPMON_DBUSER
+	"' connect_timeout='30'";
+	PGconn *conn = NULL;
+
+	conn = PQconnectdb(connstr);
+	if (PQstatus(conn) != CONNECTION_OK)
+		return PQerrorMessage(conn);
+
+	*pconn = conn;
+
+    return gpdb_exec_only(conn, pres, query);
+}
+
+// persistant_conn is optional if you are already holding an open connectionconn
+// return 1 if more than 0 rows are returned from query
+// return 0 if zero rows are returned from query
+int gpdb_exec_search_for_at_least_one_row(const char* QUERY, PGconn* persistant_conn)
 {
 	PGconn* conn = 0;
 	PGresult* result = 0;
 	int rowcount;
-	const char* errmsg = gpdb_exec(&conn, &result, QUERY);
 	int res = 0;
+	const char* errmsg;
+
+    if (persistant_conn)
+	    errmsg = gpdb_exec_only(persistant_conn, &result, QUERY);
+    else
+	    errmsg = gpdb_exec(&conn, &result, QUERY);
+
 	if (errmsg)
 	{
 		gpmon_warning(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, QUERY);
@@ -52,7 +71,9 @@ int gpdb_exec_search_for_at_least_one_row(const char* QUERY)
 	}
 
 	PQclear(result);
-	PQfinish(conn);
+
+    if (conn)
+	    PQfinish(conn);
 
 	return res;
 }
@@ -94,13 +115,13 @@ int gpdb_gpperfmon_db_exists(void)
 int gpdb_gpperfmon_enabled(void)
 {
 	const char* QUERY = "SELECT 1 FROM pg_settings WHERE name = 'gp_enable_gpperfmon' and setting='on'";
-	return gpdb_exec_search_for_at_least_one_row(QUERY);
+	return gpdb_exec_search_for_at_least_one_row(QUERY, NULL);
 }
 
 int gpdb_validate_ext_table_access(void)
 {
 	const char* QUERY = "select * from master_data_dir";
-	return gpdb_exec_search_for_at_least_one_row(QUERY);
+	return gpdb_exec_search_for_at_least_one_row(QUERY, NULL);
 }
 
 int gpdb_get_gpmon_port(void)
@@ -373,9 +394,8 @@ void gpdb_get_single_string_from_query(const char* QUERY, char** resultstring, a
 }
 
 
-static void check_and_add_partition(const char* tbl, int begin_year, int begin_month, int end_year, int end_month)
+static void check_and_add_partition(PGconn* conn, const char* tbl, int begin_year, int begin_month, int end_year, int end_month)
 {
-	PGconn* conn = 0;
 	PGresult* result = 0;
 	const char* errmsg;
 	const int QRYBUFSIZ = 1024;
@@ -385,23 +405,22 @@ static void check_and_add_partition(const char* tbl, int begin_year, int begin_m
 	const char* ADD_QRYFMT = "alter table %s_history add partition start ('%d-%02d-01 00:00:00'::timestamp without time zone) inclusive end ('%d-%02d-01 00:00:00'::timestamp without time zone) exclusive;";
 
 	snprintf(qry, QRYBUFSIZ, CHK_QRYFMT, tbl, begin_year, begin_month);
-	if (!gpdb_exec_search_for_at_least_one_row(qry))
+	if (!gpdb_exec_search_for_at_least_one_row(qry, conn))
 	{
 		// this partition does not exist, create it
 
 		snprintf(qry, QRYBUFSIZ, ADD_QRYFMT, tbl, begin_year, begin_month, end_year, end_month);
-		errmsg = gpdb_exec(&conn, &result, qry);
+		errmsg = gpdb_exec_only(conn, &result, qry);
 		if (errmsg)
 		{
 			gpmon_warning(FLINE, "partion add response from server: %s\n", errmsg);
 		}
 
 		PQclear(result);
-		PQfinish(conn);
 	}
 }
 
-static apr_status_t check_partition(const char* tbl, apr_pool_t* pool)
+static apr_status_t check_partition(const char* tbl, apr_pool_t* pool, PGconn* conn)
 {
 	struct tm tm;
 	time_t now;
@@ -410,6 +429,9 @@ static apr_status_t check_partition(const char* tbl, apr_pool_t* pool)
 	unsigned char month[3];
 
 	TR0(("check partitions on %s_history\n", tbl));
+
+    if (!conn)
+        return APR_ENOMEM;
 
    	now = time(NULL);
 	if (!localtime_r(&now, &tm))
@@ -452,8 +474,8 @@ static apr_status_t check_partition(const char* tbl, apr_pool_t* pool)
 		year[2] = year[0] + 1;
 	}
 
-	check_and_add_partition(tbl, year[0], month[0], year[1], month[1]);
-	check_and_add_partition(tbl, year[1], month[1], year[2], month[2]);
+	check_and_add_partition(conn, tbl, year[0], month[0], year[1], month[1]);
+	check_and_add_partition(conn, tbl, year[1], month[1], year[2], month[2]);
 
 	TR0(("check partitions on %s_history done\n", tbl));
 	return APR_SUCCESS;
@@ -483,7 +505,7 @@ apr_status_t gpdb_harvest_healthdata()
 	return res;
 }
 
-static apr_status_t harvest(const char* tbl, apr_pool_t* pool)
+static apr_status_t harvest(const char* tbl, apr_pool_t* pool, PGconn* conN)
 {
 	PGconn* conn = 0;
 	PGresult* result = 0;
@@ -513,7 +535,7 @@ static apr_status_t harvest(const char* tbl, apr_pool_t* pool)
 
 apr_status_t gpdb_harvest_one(const char* table)
 {
-	return harvest(table, NULL);
+	return harvest(table, NULL, NULL);
 }
 
 
@@ -545,7 +567,7 @@ apr_status_t truncate_file(char* fn, apr_pool_t* pool)
 
 
 /* rename tail to stage */
-static apr_status_t rename_tail_files(const char* tbl, apr_pool_t* pool)
+static apr_status_t rename_tail_files(const char* tbl, apr_pool_t* pool, PGconn* conn)
 {
 	char srcfn[PATH_MAX];
 	char dstfn[PATH_MAX];
@@ -571,7 +593,7 @@ static apr_status_t rename_tail_files(const char* tbl, apr_pool_t* pool)
 }
 
 /* append stage data to _tail file */
-static apr_status_t append_to_harvest(const char* tbl, apr_pool_t* pool)
+static apr_status_t append_to_harvest(const char* tbl, apr_pool_t* pool, PGconn* conn)
 {
 	char srcfn[PATH_MAX];
 	char dstfn[PATH_MAX];
@@ -595,11 +617,11 @@ static apr_status_t append_to_harvest(const char* tbl, apr_pool_t* pool)
 	return status;
 }
 
-typedef apr_status_t eachtablefunc(const char* tbl, apr_pool_t*);
+typedef apr_status_t eachtablefunc(const char* tbl, apr_pool_t*, PGconn*);
 
 char* all_tables[] = { "system", "queries", "iterators", "database", "segment", "filerep" };
 
-apr_status_t call_for_each_table(eachtablefunc func, apr_pool_t* pool)
+apr_status_t call_for_each_table(eachtablefunc func, apr_pool_t* pool, PGconn* conn)
 { 
  	apr_status_t status = APR_SUCCESS;
 	apr_status_t r;
@@ -608,7 +630,7 @@ apr_status_t call_for_each_table(eachtablefunc func, apr_pool_t* pool)
 
 	for (i = 0; i < num_tables; ++i)
 	{
-		r = func(all_tables[i], pool);
+		r = func(all_tables[i], pool, conn);
 		if (r != APR_SUCCESS)
 		{
 			status = r;
@@ -621,17 +643,17 @@ apr_status_t call_for_each_table(eachtablefunc func, apr_pool_t* pool)
 /* rename tail files to stage files */
 apr_status_t gpdb_rename_tail_files(apr_pool_t* pool)
 {
-	return call_for_each_table(rename_tail_files, pool);
+	return call_for_each_table(rename_tail_files, pool, NULL);
 }
 
 /* copy data from stage files to harvest files */
 apr_status_t gpdb_copy_stage_to_harvest_files(apr_pool_t* pool)
 {
-	return call_for_each_table(append_to_harvest, pool);
+	return call_for_each_table(append_to_harvest, pool, NULL);
 }
 
 /* truncate _tail files */
-apr_status_t empty_harvest_file(const char* tbl, apr_pool_t* pool)
+apr_status_t empty_harvest_file(const char* tbl, apr_pool_t* pool, PGconn* conn)
 {
 	char fn[PATH_MAX];
 	snprintf(fn, PATH_MAX, "%s_%s_tail.dat", GPMON_DIR, tbl);
@@ -639,7 +661,7 @@ apr_status_t empty_harvest_file(const char* tbl, apr_pool_t* pool)
 }
 
 /* truncate tail files */
-apr_status_t truncate_tail_file(const char* tbl, apr_pool_t* pool)
+apr_status_t truncate_tail_file(const char* tbl, apr_pool_t* pool, PGconn* conn)
 {
 	char fn[PATH_MAX];
 	snprintf(fn, PATH_MAX, "%s%s_tail.dat", GPMON_DIR, tbl);
@@ -649,19 +671,19 @@ apr_status_t truncate_tail_file(const char* tbl, apr_pool_t* pool)
 /* truncate _tail files to clear data already loaded into the DB */
 apr_status_t gpdb_truncate_tail_files(apr_pool_t* pool)
 {
-	return call_for_each_table(truncate_tail_file, pool);
+	return call_for_each_table(truncate_tail_file, pool, NULL);
 }
 
 /* truncate _tail files to clear data already loaded into the DB */
 apr_status_t gpdb_empty_harvest_files(apr_pool_t* pool)
 {
-	return call_for_each_table(empty_harvest_file, pool);
+	return call_for_each_table(empty_harvest_file, pool, NULL);
 }
 
 /* insert _tail data into history table */
 apr_status_t gpdb_harvest(void)
 {
-	return call_for_each_table(harvest, NULL);
+	return call_for_each_table(harvest, NULL, NULL);
 }
 
 /* insert _tail data into history table */
@@ -669,18 +691,34 @@ apr_status_t gpdb_check_partitions(void)
 {
 	// health is not a full table and needs to be added to the list
 
-	apr_status_t r1, r2;
+	apr_status_t r1, r2, r3;
 
-	r1 = check_partition("health", NULL);
-	r1 = check_partition("emcconnect", NULL);
+    // open a connection
+    PGconn* conn = NULL;
+	conn = PQconnectdb(GPDB_CONNECTION_STRING);
+
+	if (PQstatus(conn) != CONNECTION_OK)
+    {
+		gpmon_warning(FLINE, "error creating GPDB client connection to dynamically check/create gpperfmon partitions: %s", 
+            PQerrorMessage(conn));
+
+        return APR_EINVAL;
+    }
+
+	r1 = check_partition("health", NULL, conn);
+
+	r2 = check_partition("emcconnect", NULL, conn);
 	
-	r2 = call_for_each_table(check_partition, NULL);
+	r3 = call_for_each_table(check_partition, NULL, conn);
+
+    // close connection
+	PQfinish(conn);
 
 	if (r1  != APR_SUCCESS)
-	{
 		return r1;
-	}	
-
-	return r2;
+    else if (r2 != APR_SUCCESS)
+		return r2;
+    else
+        return r3;
 }
 
