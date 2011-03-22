@@ -1673,7 +1673,7 @@ int alert_status_table_creation()
 	return 0;
 }
 
-apr_status_t snmp_msg_send(const char* hostname, struct snmp_pdu *pdu_to_send, struct snmp_pdu** pdu_response)
+apr_status_t snmp_msg_send(const char* hostname, struct snmp_pdu *pdu_to_send, struct snmp_pdu** pdu_response, char **error_msg)
 {
 	struct snmp_session session, *ss = NULL;
 	apr_status_t retVal = APR_SUCCESS;
@@ -1715,6 +1715,7 @@ apr_status_t snmp_msg_send(const char* hostname, struct snmp_pdu *pdu_to_send, s
 	}
 	else
 	{
+		snmp_error(ss, 0, 0, error_msg);
 		gpmon_warningx(FLINE, 0, "snmp_synch_response error %d from host %s\n", status, hostname);
 		retVal = APR_EPROC_UNKNOWN;
 	}
@@ -1783,6 +1784,7 @@ int snmp_array_collection(EmcConnectSymptom symptom, EmcConnectDetailedSymptom d
 	memmove(nextOID, originalOID, originalOID_comparebytes);
 	nextOID_len = originalOID_len;
 	
+	char *snmp_error_msg = NULL;
 	while (1)
 	{
 		struct snmp_pdu *pdu = NULL;
@@ -1797,7 +1799,7 @@ int snmp_array_collection(EmcConnectSymptom symptom, EmcConnectDetailedSymptom d
 		pdu = snmp_pdu_create(command);
 		snmp_add_null_var(pdu, nextOID, nextOID_len);
 
-		retVal = snmp_msg_send(accessible_hostname, pdu, &response);
+		retVal = snmp_msg_send(accessible_hostname, pdu, &response, &snmp_error_msg);
 	
 		if (retVal == APR_SUCCESS)
 		{
@@ -1856,7 +1858,11 @@ int snmp_array_collection(EmcConnectSymptom symptom, EmcConnectDetailedSymptom d
 			}
 			else
 			{
-				record_status(EMC_CONNECT_SYMPTOM_SNMP, EMC_CONNECT_DETAILED_SYMPTOM_SNMP_UNEXPECTED_ERROR, oidstring, display_buffer, GPDB_SNMP_STATUS_ERROR, "Got unknown error looking for snmp OID");
+				if (snmp_error_msg) {
+					record_status(EMC_CONNECT_SYMPTOM_SNMP, EMC_CONNECT_DETAILED_SYMPTOM_SNMP_UNEXPECTED_ERROR, oidstring, display_buffer, GPDB_SNMP_STATUS_ERROR, snmp_error_msg);
+				} else {
+					record_status(EMC_CONNECT_SYMPTOM_SNMP, EMC_CONNECT_DETAILED_SYMPTOM_SNMP_UNEXPECTED_ERROR, oidstring, display_buffer, GPDB_SNMP_STATUS_ERROR, "Got unknown error looking for snmp OID");
+				}
 			}
 
 			array_counter++; // we did not actually find an item, but we already displayed an error so we can increment to avoid printing error 2 x
@@ -1867,6 +1873,10 @@ int snmp_array_collection(EmcConnectSymptom symptom, EmcConnectDetailedSymptom d
 		{
 			snmp_free_pdu(response);
 		}
+		if (snmp_error_msg) {
+                	free(snmp_error_msg);
+			snmp_error_msg = NULL;
+        	}
 
 		if (last_item_in_subtree)
 		{
