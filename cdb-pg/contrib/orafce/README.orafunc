@@ -8,8 +8,8 @@ comformance. Date ranges from 1960 to 2070 work correctly. Dates before
 1100-03-01 cannot be verified due to a bug in Oracle.
 
 All functions are fully compatible with Oracle and respect all known
-format strings. Detailed description you can find on internet. Find
-keywords oracle round trunc date iyyy.
+format strings. You can find more detailed descriptions on the
+Internet using keywords "oracle round trunc date iyyy".
 
 List of format strings for trunc, round functions
 -------------------------------------------------
@@ -26,8 +26,8 @@ DDD,DD,J					day
 HH,HH12,HH24				hour
 MI							minute
 
-Functions round up. That is, a date of July 1st will be rounded to the next
-year. The 16th of July will be rounded to August.
+Dates are always rounded upwards. That is, a date of July 1st will be
+rounded to the next year. The 16th of July will be rounded to August.
 
 Date Functions
 ==============
@@ -48,7 +48,7 @@ o next_day(date, text) date - Returns the first weekday that is greater
 	next_day(date '2005-05-24', 'monday') -> 2005-05-30
 
 o next_day(date, integer) date - Same as above. The second argument should
-	be 1..7 and interpreted as Sunday..Satday.
+	be 1..7 and interpreted as Sunday..Saturday.
 
 	next_day(date '2005-05-24', 1) -> 2005-05-30
 
@@ -69,16 +69,20 @@ o round(date, text) date - will round dates according to the specified format
 
 Table dual
 ==========
-PostgreSQL does not need Oracle's table 'dual', but since it is intensively
-used by Oracle users, we create it.
+PostgreSQL does not need Oracle's table 'dual', but since it is
+expected by Oracle users, we create it.
 
 Package dbms_output
 ===================
-PostgreSQL sends information to the client via RAISE NOTICE. Oracle uses
-dbms_output.put_line(). This works differently to RAISE NOTICE. Oracle has 
-a session queue, put_line() adds a line to the queue and the function 
-get_line() reads from queue. If flag 'serveroutput' is set, then client
-over all sql statements reads queue. You can use:
+
+$$$ REVIEW
+
+PostgreSQL sends information to the client via RAISE NOTICE, while
+Oracle uses dbms_output.put_line(), which works differently. Oracle
+has a queue per session.  The function put_line() adds a line to the
+queue and the function get_line() reads from the queue. If the flag
+'serveroutput' is set, then client over all sql statements reads
+queue. You can use:
 
     select dbms_output.enable();
     select dbms_output.put_line('first_line');
@@ -96,9 +100,10 @@ The package queue is implemented in the session's local memory.
 
 Package utl_file
 ================
-This package allows PL/pgSQL prgrams read from and write to any files that are
-accessible from server. Every session can open maximaly ten files and max
-line size is 32K. This package contains functions:
+This package lets PL/pgSQL programs read from and write to any files
+that are accessible from the server. Every session can open at most ten
+files and the maximum line size is 32K. This package contains
+the following functions:
 
 * utl_file.fclose(file utl_file.file_type)  - close file
 * utl_file.fclose_all()  - close all files
@@ -117,8 +122,8 @@ line size is 32K. This package contains functions:
 * utl_file.putf(file utl_file.file_type, format buffer [,arg1 text][,arg2 text][..][,arg5 text])  - put formated text into file
 * utl_file.tmpdir() - get path of temp directory
 
-Because PostgreSQL doesn't support call by reference, some function's are gently different:
-fclose and get_line.
+Because PostgreSQL doesn't support call by reference, some functions
+are slighly different: fclose and get_line.
 
   declare f utl_file.file_type;
   begin
@@ -151,9 +156,10 @@ or second (with PostgreSQL specific function get_nextline)
         utl_file.fclose_all();
     end;
 
-Before using package you have to set table utl_file.utl_file_dir. This contains
-all allowed directories without ending symbol ('/' or '\'). On WinNT platform
-you have to put locality parametr with ending symbol '\' everytime.
+Before using this package you have to set table
+utl_file.utl_file_dir. This contains all allowed directories without
+ending symbol ('/' or '\'). On WinNT platform you have to specify the
+locality parameter with a final symbol '\' every time.
 
 Package dbms_pipe
 =================
@@ -209,14 +215,14 @@ select dbms_alert.signal('boo','Nice day');
 					
 Package PLVdate
 ===============
-This module contains some function for working with bussines days from
-package PLVdate. Detailed documentation can be found in PLVision library.
-This package is multicultural, but default configurations are only for
-european countries (see source code).
+This module contains functions for working with business days from
+package PLVdate. Detailed documentation can be found in the PLVision
+library.  This package is multicultural, but default configurations
+are only for European countries (see source code).
 
-You should define your own non-business days (max 50 days) and own 
-holidays (max 30 days). A holiday is any non-business day, which is same every 
-year. For example, Christmas day in Western countries.
+You should define your own non-business days (max 50 days) and own
+holidays (max 30 days). A holiday is any non-business day which is the
+same every year. For example, Christmas day in Western countries.
 
 Functions:
 ----------
@@ -245,13 +251,13 @@ o plvdate.set_nonbizday(day date, repeat bool) - Set day as non bussines day, if
 
 o plvdate.unset_nonbizday(day date, repeat bool) - Unset day as non bussines day, if 'repeat' is true, then day is nonbiz every year
 
-o plvdate.use_easter() - Easter Sunday and easter monday will be holiday
+o plvdate.use_easter() - Easter Sunday and Easter monday will be holiday
 
 o plvdate.unuse_easter();
 
 o plvdate.use_easter(useit boolean);
 
-o plvdate.using_easter() bool - If we use easter then returns true
+o plvdate.using_easter() bool - If we use Easter then returns true
 
 o plvdate.include_start() - Include starting date in bizdays_between calculation
 
@@ -261,9 +267,9 @@ o plvdate.include_start(include boolean);
 
 o plvdate.including_start() bool;
 
-o plvdate.default_holidays(varchar) - load default configurations. You can use
+o plvdate.default_holidays(varchar) - load default configurations. You can currently use
   the following configurations:
-  Czech, German*, Austria, Poland, Slovakia, Russia, GB* and USA at this moment.
+  Czech, German*, Austria, Poland, Slovakia, Russia, GB* and USA.
 
 * configuration contains only common holidays for all regions. You can add
     your own regional holiday with
@@ -305,7 +311,7 @@ plvstr.substr('abcdef',-1,1) -> f
 plvstr.substr('abcde',-2,1) -> d
 
 List of functions:
-o plvstr.normalize(str text) - Normalize string - Replace white chars by space, replace  spaces by space
+o plvstr.normalize(str text) - Normalize string - Replace multiple whitespace chars with single spaces
 
 o plvstr.is_prefix(str text, prefix text, cs bool) - Returns true, if prefix is prefix of str
 
@@ -355,9 +361,9 @@ o plvstr.rvrs(str text, start int)           - Reverse string or part of string
 
 o plvstr.rvrs(str text)                      - Reverse string or part of string
 
-o plvstr.left(str text, n int)  -  Returns firs num_in charaters. You can use negative num_in
+o plvstr.left(str text, n int)  -  Returns first num_in characters. You can use negative num_in
 
-o plvstr.right(str text, n int) - Returns last num_in charaters. You can use negative num_ni
+o plvstr.right(str text, n int) - Returns last num_in characters. You can use negative num_in
 
 o plvstr.swap(str text, replace text, start int, lengh int) - Replace a substring in a string with a specified string
 
@@ -446,8 +452,8 @@ select plvsubst.string('My name is $$ $$.', 'Pavel|Stěhule','|','$$');
 
 Package DBMS_utility
 ====================
-o dms_utility.format_call_stack()  -- return a formatted string with content 
-									  of call stack
+o dms_utility.format_call_stack()  -- return a formatted string with the contents 
+									  of the call stack
 
 postgres=# select foo2();
                foo2               
@@ -487,7 +493,7 @@ o plvlex.tokens(str text, skip_spaces bool, qualified_names bool) - Returns tabl
 
 DBMS_ASSERT
 ===========
-This package protect user input against SQL injection.
+This package can protect user input against SQL injection.
 
 o dbms_assert.enquote_literal(varchar) varchar - Add leading and trailing quotes, 
 						verify that all single quotes are paired with 
@@ -569,7 +575,7 @@ ToDo:
   o alter shared memory structures by temporary tables		     
       only locks are in shmem, (bitmaps), data in tmp tbl
 
-This module is released under BSD licence. 
+This module is released under the BSD licence. 
 
 Pavel Stehule
 stehule@kix.fsv.cvut.cz
@@ -577,4 +583,4 @@ stehule@kix.fsv.cvut.cz
 Prague 2008
 
 p.s.
-If use this library, please, send me mail about it.
+If you use this library, please send me mail about it.
