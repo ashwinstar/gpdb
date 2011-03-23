@@ -66,6 +66,7 @@ test: subselect
 test: union
 test: case
 test: join
+test: indexjoin
 test: aggregates
 test: leastsquares
 test: naivebayes

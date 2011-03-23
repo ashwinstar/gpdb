@@ -58,7 +58,7 @@ typedef struct
 		PlannerGlobal *glob;
 		indexed_tlist *outer_itlist;
 		indexed_tlist *inner_itlist;
-		Index		acceptable_rel;
+		Index		skip_rel;
 		int			rtoffset;
 	} fix_join_expr_context;
 
@@ -94,7 +94,7 @@ static Node *fix_scan_expr_mutator(Node *node, fix_scan_expr_context *context);
 static bool fix_scan_expr_walker(Node *node, fix_scan_expr_context *context);
 static void set_join_references(PlannerGlobal *glob, Join *join, int rtoffset);
 static void set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
-									  indexed_tlist *outer_itlist);
+									  indexed_tlist *outer_itlist, int rtoffset);
 static void set_upper_references(PlannerGlobal *glob, Plan *plan, int rtoffset,
 								 bool use_scan_slot);
 static void set_dummy_tlist_references(Plan *plan, int rtoffset, bool use_child_targets);
@@ -110,7 +110,7 @@ static List *fix_join_expr(PlannerGlobal *glob,
 						   List *clauses,
 						   indexed_tlist *outer_itlist,
 						   indexed_tlist *inner_itlist,
-						   Index acceptable_rel, int rtoffset);
+						   Index skip_rel, int rtoffset);
 static Node *fix_join_expr_mutator(Node *node,
 								   fix_join_expr_context *context);
 static Node *fix_upper_expr(PlannerGlobal *glob,
@@ -761,8 +761,9 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 			 * like a scan node than an upper node.
 			 */
 			if (splan->plan.lefttree != NULL)
+			{
 				set_upper_references(glob, plan, rtoffset, false);
-
+			}
 			splan->plan.targetlist =
 					fix_scan_list(glob, splan->plan.targetlist, rtoffset);
 			splan->plan.qual =
@@ -1154,7 +1155,7 @@ fix_scan_expr_mutator(Node *node, fix_scan_expr_context *context)
 		
 		/*
 		 * We should not see any Vars marked INNER, but in a nestloop inner
-		 * scan there could be OUTER Vars.	Leave them alone.
+		 * scan there could be OUTER Vars.
 		 */
 		Assert(var->varno != INNER);
 		if (var->varno > 0 && var->varno != OUTER)
@@ -1252,7 +1253,7 @@ set_join_references(PlannerGlobal *glob, Join *join, int rtoffset)
 	if (IsA(join, NestLoop))
 	{
 		/* This processing is split out to handle possible recursion */
-		set_inner_join_references(glob, inner_plan, outer_itlist);
+		set_inner_join_references(glob, inner_plan, outer_itlist, rtoffset);
 	}
 	else if (IsA(join, MergeJoin))
 	{
@@ -1297,13 +1298,13 @@ set_join_references(PlannerGlobal *glob, Join *join, int rtoffset)
  * require recursing through Append nodes.	This is split out as a separate
  * function so that it can recurse.
  *
- * Note we do *not* apply any rtoffset for non-join Vars; this is because
+ * Note we do *not* apply any rtoffset for Vars of the inner relation; this is because
  * the quals will be processed again by fix_scan_expr when the set_plan_refs
  * recursion reaches the inner indexscan, and so we'd have done it twice.
  */
 static void
 set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
-						  indexed_tlist *outer_itlist)
+						  indexed_tlist *outer_itlist, int rtoffset)
 {
 	if (IsA(inner_plan, IndexScan))
 	{
@@ -1327,13 +1328,13 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 													 outer_itlist,
 													 NULL,
 													 innerrel,
-													 0);
+													 rtoffset);
 			innerscan->indexqual = fix_join_expr(glob,
 												 innerscan->indexqual,
 												 outer_itlist,
 												 NULL,
 												 innerrel,
-												 0);
+												 rtoffset);
 			
 			/*
 			 * We must fix the inner qpqual too, if it has join clauses (this
@@ -1346,7 +1347,7 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 												 outer_itlist,
 												 NULL,
 												 innerrel,
-												 0);
+												 rtoffset);
 		}
 	}
 	else if (IsA(inner_plan, BitmapIndexScan))
@@ -1368,13 +1369,13 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 													 outer_itlist,
 													 NULL,
 													 innerrel,
-													 0);
+													 rtoffset);
 			innerscan->indexqual = fix_join_expr(glob,
 												 innerscan->indexqual,
 												 outer_itlist,
 												 NULL,
 												 innerrel,
-												 0);
+												 rtoffset);
 			/* no need to fix inner qpqual */
 			Assert(inner_plan->qual == NIL);
 		}
@@ -1413,7 +1414,7 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 											  outer_itlist,
 											  NULL,
 											  innerrel,
-											  0);
+											  rtoffset);
 		
 		/*
 		 * We must fix the inner qpqual too, if it has join clauses (this
@@ -1426,10 +1427,10 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 											 outer_itlist,
 											 NULL,
 											 innerrel,
-											 0);
+											 rtoffset);
 		
 		/* Now recurse */
-		set_inner_join_references(glob, inner_plan->lefttree, outer_itlist);
+		set_inner_join_references(glob, inner_plan->lefttree, outer_itlist, rtoffset);
 	}
 	else if (IsA(inner_plan, BitmapAnd))
 	{
@@ -1439,7 +1440,7 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 		
 		foreach(l, innerscan->bitmapplans)
 		{
-			set_inner_join_references(glob, (Plan *) lfirst(l), outer_itlist);
+			set_inner_join_references(glob, (Plan *) lfirst(l), outer_itlist, rtoffset);
 		}
 	}
 	else if (IsA(inner_plan, BitmapOr))
@@ -1450,7 +1451,7 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 		
 		foreach(l, innerscan->bitmapplans)
 		{
-			set_inner_join_references(glob, (Plan *) lfirst(l), outer_itlist);
+			set_inner_join_references(glob, (Plan *) lfirst(l), outer_itlist, rtoffset);
 		}
 	}
 	else if (IsA(inner_plan, TidScan))
@@ -1463,7 +1464,7 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 											outer_itlist,
 											NULL,
 											innerrel,
-											0);
+											rtoffset);
 	}
 	else if (IsA(inner_plan, Append))
 	{
@@ -1476,7 +1477,7 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 		
 		foreach(l, appendplan->appendplans)
 		{
-			set_inner_join_references(glob, (Plan *) lfirst(l), outer_itlist);
+			set_inner_join_references(glob, (Plan *) lfirst(l), outer_itlist, rtoffset);
 		}
 	}
 	else if (IsA(inner_plan, Result))
@@ -1485,7 +1486,7 @@ set_inner_join_references(PlannerGlobal *glob, Plan *inner_plan,
 		Result	   *result = (Result *) inner_plan;
 		
 		if (result->plan.lefttree)
-			set_inner_join_references(glob, result->plan.lefttree, outer_itlist);
+			set_inner_join_references(glob, result->plan.lefttree, outer_itlist, rtoffset);
 	}
 }
 
@@ -1760,9 +1761,12 @@ search_indexed_tlist_for_var(Var *var, indexed_tlist *itlist,
 			
 			newvar->varno = newvarno;
 			newvar->varattno = vinfo->resno;
-            itlist->cdb_num_times_referenced++;
+			itlist->cdb_num_times_referenced++;
+			
 			if (newvar->varnoold > 0)
+			{
 				newvar->varnoold += rtoffset;
+			}
 			return newvar;
 		}
 		vinfo++;
@@ -1816,21 +1820,22 @@ search_indexed_tlist_for_non_var(Node *node,
  * all the Vars in the clause *must* be replaced by OUTER or INNER references;
  * and an indexscan being used on the inner side of a nestloop join.
  * In the latter case we want to replace the outer-relation Vars by OUTER
- * references, while Vars of the inner relation should be adjusted by rtoffset.
+ * references, while Vars of the inner relation should be returned without change
+ * (those will later be adjusted in fix_scan_list).
  * (We also implement RETURNING clause fixup using this second scenario.)
  *
- * For a normal join, acceptable_rel should be zero so that any failure to
+ * For a normal join, skip_rel should be zero so that any failure to
  * match a Var will be reported as an error.  For the indexscan case,
- * pass inner_itlist = NULL and acceptable_rel = the (not-offseted-yet) ID
+ * pass inner_itlist = NULL and skip_rel = the (not-offseted-yet) ID
  * of the inner relation.
  *
  * 'clauses' is the targetlist or list of join clauses
  * 'outer_itlist' is the indexed target list of the outer join relation
  * 'inner_itlist' is the indexed target list of the inner join relation,
  *		or NULL
- * 'acceptable_rel' is either zero or the rangetable index of a relation
+ * 'skip_rel' is either zero or the rangetable index of a relation
  *		whose Vars may appear in the clause without provoking an error.
- * 'rtoffset' is what to add to varno for Vars of acceptable_rel.
+ * 'rtoffset' is what to add to varno for Vars of relations other than skip_rel.
  *
  * Returns the new expression tree.  The original clause structure is
  * not modified.
@@ -1840,7 +1845,7 @@ fix_join_expr(PlannerGlobal *glob,
 			  List *clauses,
 			  indexed_tlist *outer_itlist,
 			  indexed_tlist *inner_itlist,
-			  Index acceptable_rel,
+			  Index skip_rel,
 			  int rtoffset)
 {
 	fix_join_expr_context context;
@@ -1848,7 +1853,7 @@ fix_join_expr(PlannerGlobal *glob,
 	context.glob = glob;
 	context.outer_itlist = outer_itlist;
 	context.inner_itlist = inner_itlist;
-	context.acceptable_rel = acceptable_rel;
+	context.skip_rel = skip_rel;
 	context.rtoffset = rtoffset;
 	return (List *) fix_join_expr_mutator((Node *) clauses, &context);
 }
@@ -1881,12 +1886,9 @@ fix_join_expr_mutator(Node *node, fix_join_expr_context *context)
 				return (Node *) newvar;
 		}
 		
-		/* If it's for acceptable_rel, adjust and return it */
-		if (var->varno == context->acceptable_rel)
+		/* If it's for an skip_rel (the inner relation in an index nested loop join), return it */	
+		if (var->varno == context->skip_rel)
 		{
-			var = copyVar(var);
-			var->varno += context->rtoffset;
-			var->varnoold += context->rtoffset;
 			return (Node *) var;
 		}
 		

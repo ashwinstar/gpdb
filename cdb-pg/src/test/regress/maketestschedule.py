@@ -99,7 +99,7 @@ class EstimatedDurations:
                 ("drop_if_exists", 0.28), ("vacuum", 3.61), ("create_view", 1.04), ("errors", 0.43),
                 ("select", 1.71), ("select_into", 1.13), ("select_distinct", 0.20), ("select_distinct_on", 0.06),
                 ("select_having", 0.40), ("subselect", 1.67), ("union", 0.21), ("case", 0.41),
-                ("join", 8.86), ("aggregates", 0.98), ("direct_dispatch", 2.29), ("partition_pruning_with_fn", 0.19),
+                ("join", 8.86), ("indexjoin", 2.95), ("aggregates", 0.98), ("direct_dispatch", 2.29), ("partition_pruning_with_fn", 0.19),
                 ("distributed_transactions", 7.57), ("random", 0.24), ("btree_index", 0.13), ("hash_index", 0.27),
                 ("update", 0.68), ("delete", 0.25), ("namespace", 0.29), ("select_views", 0.02),
                 ("portals", 1.32), ("portals_p2", 0.22), ("cluster", 2.04), ("dependency", 0.58),

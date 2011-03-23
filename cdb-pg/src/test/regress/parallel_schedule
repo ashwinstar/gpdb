@@ -29,7 +29,7 @@ ignore: sanity_check
 test: errors
 test: select
 
-test: select_into select_distinct select_distinct_on select_having subselect union case join aggregates random update delete namespace
+test: select_into select_distinct select_distinct_on select_having subselect union case join indexjoin aggregates random update delete namespace
 
 ignore: select_implicit
 ignore: transactions
