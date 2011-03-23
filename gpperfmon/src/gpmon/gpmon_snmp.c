@@ -1005,7 +1005,7 @@ void gpmon_format_twin_squared_expected_cpu_dimm_voltage(EmcConnectSymptom sympt
 
 void gpmon_format_twin_squared_expected_cpu_temperature(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	gpmon_format_snmp_int_expect_range(-4, 74, GPDB_SNMP_STATUS_ERROR, symptom, dSymptom, oidname, oidlen, displayname, vars);
+	gpmon_format_snmp_int_expect_range(0, 90, GPDB_SNMP_STATUS_ERROR, symptom, dSymptom, oidname, oidlen, displayname, vars);
 }
 
 void gpmon_format_twin_squared_expected_system_temperature(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
@@ -1016,6 +1016,31 @@ void gpmon_format_twin_squared_expected_system_temperature(EmcConnectSymptom sym
 void gpmon_format_twin_squared_expected_dimm_temperature(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
 	gpmon_format_snmp_int_expect_range(-4, 74, GPDB_SNMP_STATUS_ERROR, symptom, dSymptom, oidname, oidlen, displayname, vars);
+}
+
+void format_max_temp_60_tenth_celcius(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	gpmon_format_snmp_int_expect_range(0, 600, GPDB_SNMP_STATUS_ERROR, symptom, dSymptom, oidname, oidlen, displayname, vars);
+}
+
+void format_max_temp_65_tenth_celcius(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	gpmon_format_snmp_int_expect_range(0, 650, GPDB_SNMP_STATUS_ERROR, symptom, dSymptom, oidname, oidlen, displayname, vars);
+}
+
+void format_max_temp_75_tenth_celcius(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	gpmon_format_snmp_int_expect_range(0, 750, GPDB_SNMP_STATUS_ERROR, symptom, dSymptom, oidname, oidlen, displayname, vars);
+}
+
+void format_max_temp_115_tenth_celcius(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	gpmon_format_snmp_int_expect_range(0, 1150, GPDB_SNMP_STATUS_ERROR, symptom, dSymptom, oidname, oidlen, displayname, vars);
+}
+
+void format_arista_fan_speed(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	gpmon_format_snmp_int_expect_range(5000, 18000, GPDB_SNMP_STATUS_ERROR, symptom, dSymptom, oidname, oidlen, displayname, vars);
 }
 
 void gpmon_store_thermal_threshold(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
@@ -1478,9 +1503,6 @@ void run_snmp_report_for_dell_host(const char* categoryname, host_t* host)
 	memset(&nic_map, 0, sizeof(nic_map));
 	memset(&power_probe_map, 0, sizeof(power_probe_map));
 
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_OS_NAME, "1.3.6.1.4.1.674.10892.1.400.10.1.6", "OS Name", NULL, gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_OS_VERSION, "1.3.6.1.4.1.674.10892.1.400.10.1.7", "OS Version", NULL, gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
-
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_POWER_SUPPLY, EMC_CONNECT_DETAILED_SYMPTOM_POWER_SUPPLY_STATUS, "1.3.6.1.4.1.674.10892.1.600.12.1.5", "Power Supply", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_POWER_SUPPLY, EMC_CONNECT_DETAILED_SYMPTOM_POWER_PROBE_TYPE, "1.3.6.1.4.1.674.10892.1.600.30.1.7", "Power Probe", "Type", gpmon_format_dell_power_probe_type, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_POWER_SUPPLY, EMC_CONNECT_DETAILED_SYMPTOM_NULL, "1.3.6.1.4.1.674.10892.1.600.30.1.6", "Power Probe", "Value", gpmon_format_dell_power_probe, SNMP_MSG_GETNEXT)) goto BAIL;
@@ -1488,42 +1510,39 @@ void run_snmp_report_for_dell_host(const char* categoryname, host_t* host)
 
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_BATTERY, EMC_CONNECT_DETAILED_SYMPTOM_BATTERY_STATUS, "1.3.6.1.4.1.674.10892.1.600.50.1.5", "Battery", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_NAME, "1.3.6.1.4.1.674.10892.1.700.12.1.8", "Cooling Device", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_NAME, "1.3.6.1.4.1.674.10892.1.700.12.1.8", "Cooling Device", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_STATUS, "1.3.6.1.4.1.674.10892.1.700.12.1.5", "Cooling Device", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_NAME, "1.3.6.1.4.1.674.10892.1.700.12.1.8", "Cooling Device", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_NAME, "1.3.6.1.4.1.674.10892.1.700.12.1.8", "Cooling Device", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_STATUS, "1.3.6.1.4.1.674.10892.1.700.12.1.5", "Cooling Device", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_TEMPERATURE, "1.3.6.1.4.1.674.10892.1.700.20.1.6", "System Temperature", NULL, gpmon_format_dell_tenth_centigrade, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_HIGH_THRESHOLD_TEMP, "1.3.6.1.4.1.674.10892.1.700.20.1.10", "Cooling Device", "High critical temp", gpmon_store_thermal_threshold, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_LOW_THRESHOLD_TEMP, "1.3.6.1.4.1.674.10892.1.700.20.1.13", "Cooling Device", "Low critical temp", gpmon_store_thermal_threshold, SNMP_MSG_GETNEXT)) goto BAIL;
 
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_PROCESSOR_VERSION, "1.3.6.1.4.1.674.10892.1.1100.30.1.16", "Processor Version", NULL, gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_PROCESSOR, EMC_CONNECT_DETAILED_SYMPTOM_PROCESSOR_STATUS, "1.3.6.1.4.1.674.10892.1.1100.30.1.5", "Processor Status", NULL, gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_CACHE_DEVICE_SIZE, "1.3.6.1.4.1.674.10892.1.1100.40.1.13", "Cache Device", "Size", gpmon_format_snmp_int, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_CACHE_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_CACHE_DEVICE_SIZE, "1.3.6.1.4.1.674.10892.1.1100.40.1.13", "Cache Device", "Size", gpmon_format_snmp_int, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_CACHE_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_CACHE_DEVICE_STATUS, "1.3.6.1.4.1.674.10892.1.1100.40.1.5", "Cache Device", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_OS_MEMORY, EMC_CONNECT_DETAILED_SYMPTOM_OS_MEMORY_STATUS, "1.3.6.1.4.1.674.10892.1.400.20.1.4", "OS Memory", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_MEMORY_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_MEMORY_DEVICE_STATUS, "1.3.6.1.4.1.674.10892.1.1100.50.1.5", "Memory Device", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_NETWORK_DEVICE_NAME, "1.3.6.1.4.1.674.10892.1.1100.90.1.5", "Network Device", "Name", gpmon_format_dell_nic_card, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_NETWORK_DEVICE_IP, "1.3.6.1.4.1.674.10892.1.1100.90.1.11", "Network Device", "IP", gpmon_format_snmp_ip, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_NETWORK_DEVICE_SUBNET_MASK, "1.3.6.1.4.1.674.10892.1.1100.90.1.12", "Network Device", "Subnet Mask", gpmon_format_snmp_ip, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NETWORK_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_NETWORK_DEVICE_NAME, "1.3.6.1.4.1.674.10892.1.1100.90.1.5", "Network Device", "Name", gpmon_format_dell_nic_card, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NETWORK_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_NETWORK_DEVICE_STATUS, "1.3.6.1.4.1.674.10892.1.1100.90.1.4", "Network Device", "Status", gpmon_format_dell_network_device_status, SNMP_MSG_GETNEXT)) goto BAIL;
 
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_CONTROLLER_NAME, "1.3.6.1.4.1.674.10893.1.20.130.1.1.2", "Controller", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_IO_CONTROLLER, EMC_CONNECT_DETAILED_SYMPTOM_CONTROLLER_NAME, "1.3.6.1.4.1.674.10893.1.20.130.1.1.2", "Controller", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_IO_CONTROLLER, EMC_CONNECT_DETAILED_SYMPTOM_CONTROLLER_STATUS, "1.3.6.1.4.1.674.10893.1.20.130.1.1.5", "Controller", "Status", format_dell_controller_status, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_IO_CONTROLLER, EMC_CONNECT_DETAILED_SYMPTOM_CONTROLLER_BATTERY_STATUS, "1.3.6.1.4.1.674.10893.1.20.130.15.1.5", "Controller Battery", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_NAME, "1.3.6.1.4.1.674.10893.1.20.140.1.1.2", "Virtual Disk", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_DEVICE_NAME, "1.3.6.1.4.1.674.10893.1.20.140.1.1.3", "Virtual Disk Device", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_NAME, "1.3.6.1.4.1.674.10893.1.20.140.1.1.2", "Virtual Disk", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_DEVICE_NAME, "1.3.6.1.4.1.674.10893.1.20.140.1.1.3", "Virtual Disk Device", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_STATUS, "1.3.6.1.4.1.674.10893.1.20.140.1.1.19", "Virtual Disk", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_LAYOUT, "1.3.6.1.4.1.674.10893.1.20.140.1.1.13", "Virtual Disk", "Layout", format_dell_virtual_disk_layout, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_MB, "1.3.6.1.4.1.674.10893.1.20.140.1.1.6", "Virtual Disk", "MB", gpmon_format_snmp_int, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_LAYOUT, "1.3.6.1.4.1.674.10893.1.20.140.1.1.13", "Virtual Disk", "Layout", format_dell_virtual_disk_layout, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_MB, "1.3.6.1.4.1.674.10893.1.20.140.1.1.6", "Virtual Disk", "MB", gpmon_format_snmp_int, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_WRITE_POLICY, "1.3.6.1.4.1.674.10893.1.20.140.1.1.10", "Virtual Disk", "Write Policy", format_dell_virtual_disk_write_policy, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_READ_POLICY, "1.3.6.1.4.1.674.10893.1.20.140.1.1.11", "Virtual Disk", "Read Policy", format_dell_virtual_disk_read_policy, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_STATE, "1.3.6.1.4.1.674.10893.1.20.140.1.1.4", "Virtual Disk",  "State", format_dell_virtual_disk_state, SNMP_MSG_GETNEXT)) goto BAIL;
 
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_ARRAY_DISK_NAME, "1.3.6.1.4.1.674.10893.1.20.130.4.1.2", "Array Disk", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_PHYSICAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_ARRAY_DISK_NAME, "1.3.6.1.4.1.674.10893.1.20.130.4.1.2", "Array Disk", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_PHYSICAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_ARRAY_DISK_STATUS, "1.3.6.1.4.1.674.10893.1.20.130.4.1.23", "Array Disk", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 
 BAIL:
@@ -1567,7 +1586,7 @@ void run_snmp_report_for_twin_squared_host(const char* categoryname, host_t* hos
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COMPONENT_VOLTAGE, EMC_CONNECT_DETAILED_SYMPTOM_COMPONENT_VOLTAGE_THREE_POINT_THREE_VOLT, ".1.3.6.1.4.1.10876.2.1.1.1.1.4.11", "+3.3V Millivolts", NULL, gpmon_format_twin_squared_expected_three_point_threee_volt, SNMP_MSG_GET)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COMPONENT_VOLTAGE, EMC_CONNECT_DETAILED_SYMPTOM_COMPONENT_VOLTAGE_THREE_POINT_THREE_VOLT_STANDBY, ".1.3.6.1.4.1.10876.2.1.1.1.1.4.12", "+3.3Vsb Millivolts", NULL, gpmon_format_twin_squared_expected_three_point_threee_volt, SNMP_MSG_GET)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COMPONENT_VOLTAGE, EMC_CONNECT_DETAILED_SYMPTOM_COMPONENT_VOLTAGE_VBAT, ".1.3.6.1.4.1.10876.2.1.1.1.1.4.13", "VBAT Millivolts", NULL, gpmon_format_twin_squared_expected_three_point_threee_volt, SNMP_MSG_GET)) goto BAIL;
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_CPU_TEMPERATURE, ".1.3.6.1.4.1.10876.2.1.1.1.1.4.14", "CPU 1 Temperature Celcius", NULL, gpmon_format_twin_squared_expected_cpu_temperature, SNMP_MSG_GET)) goto BAIL;
+	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_CPU_TEMPERATURE, ".1.3.6.1.4.1.10876.2.1.1.1.1.4.14", "CPU 1 Temperature PECI+100", NULL, gpmon_format_twin_squared_expected_cpu_temperature, SNMP_MSG_GET)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_TEMPERATURE, ".1.3.6.1.4.1.10876.2.1.1.1.1.4.16", "System Temperature Celcius", NULL, gpmon_format_twin_squared_expected_system_temperature, SNMP_MSG_GET)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_POWER_SUPPLY, EMC_CONNECT_DETAILED_SYMPTOM_POWER_SUPPLY_STATUS, ".1.3.6.1.4.1.10876.2.1.1.1.1.4.17", "Power Supply Good Status", NULL, gpmon_format_twin_squared_power_supply_status, SNMP_MSG_GET)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_DIMM_TEMPERATURE, ".1.3.6.1.4.1.10876.2.1.1.1.1.4.18", "DIMM Temperature Celcius", NULL, gpmon_format_twin_squared_expected_dimm_temperature, SNMP_MSG_GET)) goto BAIL;
@@ -1598,17 +1617,14 @@ void run_snmp_report_for_brocade_switch(const char* categoryname, host_t* hostp)
 	if (init_host(hostname, NULL))
 		return;
 
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_HOSTNAME, "1.3.6.1.2.1.1.5", "Host Name", NULL, gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_OPERATIONAL_STATUS, "1.3.6.1.4.1.1588.2.1.1.1.1.7", "Operational Status", NULL, format_brocade_switch_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_FIRMWARE_VERSION, "1.3.6.1.4.1.1588.2.1.1.1.1.6", "Firmware Version", NULL, gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_SOFT_SERIAL_NUMBER, "1.3.6.1.4.1.1588.2.1.1.1.1.10", "Soft Serial Number", NULL, gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_OPERATIONAL_STATUS, "1.3.6.1.4.1.1588.2.1.1.1.1.7", "Operational Status", NULL, format_brocade_switch_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
 
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_SENSOR_NAME, "1.3.6.1.3.94.1.8.1.3", "Sensor", "Name", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH_SENSOR, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_SENSOR_STATUS, "1.3.6.1.3.94.1.8.1.4", "Sensor", "Status", format_brocade_switch_sensor_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_SENSOR_MESSAGE, "1.3.6.1.3.94.1.8.1.6", "Sensor", "Message", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_SENSOR_NAME, "1.3.6.1.3.94.1.8.1.3", "Sensor", "Name", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_SENSOR_STATUS, "1.3.6.1.3.94.1.8.1.4", "Sensor", "Status", format_brocade_switch_sensor_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_SENSOR_MESSAGE, "1.3.6.1.3.94.1.8.1.6", "Sensor", "Message", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
 
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_DESCRIPTION, "1.3.6.1.2.1.2.2.1.2", "Interface", "Description", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_STATUS, "1.3.6.1.2.1.2.2.1.8", "Interface", "Status", format_network_interface_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_DESCRIPTION, "1.3.6.1.2.1.2.2.1.2", "Interface", "Description", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_STATUS, "1.3.6.1.2.1.2.2.1.8", "Interface", "Status", format_network_interface_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
 
 BAIL:
 	close_snmp_file_for_host();
@@ -1621,15 +1637,47 @@ void run_snmp_report_for_allied_telesis_switch(const char* categoryname, host_t*
 	if (init_host(hostname, NULL))
 		return;
 
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_HOSTNAME, "1.3.6.1.2.1.1.5", "Host Name", NULL, gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_DESCRIPTION, "1.3.6.1.2.1.1.1", "Description", NULL, gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_DESCRIPTION, "1.3.6.1.2.1.2.2.1.2", "Interface", "Description", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_NULL, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_STATUS, "1.3.6.1.2.1.2.2.1.8", "Interface", "Status", format_network_interface_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_DESCRIPTION, "1.3.6.1.2.1.2.2.1.2", "Interface", "Description", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_STATUS, "1.3.6.1.2.1.2.2.1.8", "Interface", "Status", format_network_interface_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
 
 BAIL:
 	close_snmp_file_for_host();
 	write_line_in_hostlist_file(categoryname);
 }
+
+void run_snmp_report_for_arista_7048_switch(const char* categoryname, host_t* hostp)
+{
+	char* hostname = hostp->hostname;
+	if (init_host(hostname, NULL))
+		return;
+
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_DESCRIPTION, "1.3.6.1.2.1.2.2.1.2", "Interface", "Description", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_STATUS, "1.3.6.1.2.1.2.2.1.8", "Interface", "Status", format_network_interface_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_FRONT_PANEL_SESNSOR, "1.3.6.1.2.1.99.1.1.1.4.100006001", "Front Panel Temp Tenths Degrees Celsius", NULL, format_max_temp_65_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_BOARD_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006002", "Board Temp Tenths Degrees Celsius", NULL, format_max_temp_60_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_PHY_CHIP_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006003", "Phy Chip 1 Temp Tenths Degrees Celsius", NULL, format_max_temp_115_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_PHY_CHIP_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006004", "Phy Chip 2 Temp Tenths Degrees Celsius", NULL, format_max_temp_115_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_PHY_CHIP_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006005", "Phy Chip 3 Temp Tenths Degrees Celsius", NULL, format_max_temp_115_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_PHY_CHIP_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006006", "Phy Chip 4 Temp Tenths Degrees Celsius", NULL, format_max_temp_115_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_PHY_CHIP_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006007", "Phy Chip 5 Temp Tenths Degrees Celsius", NULL, format_max_temp_115_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_PHY_CHIP_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006008", "Phy Chip 6 Temp Tenths Degrees Celsius", NULL, format_max_temp_115_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_FAN_CONTROLLER_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006009", "Fan Controller 1 Temp Tenths Degrees Celsius", NULL, format_max_temp_75_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_FAN_CONTROLLER_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006010", "Fan Controller 2 Temp Tenths Degrees Celsius", NULL, format_max_temp_75_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_BOARD_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006011", "Board Sensor 1 Temp Tenths Degrees Celsius", NULL, format_max_temp_75_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_BOARD_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006012", "Board Sensor 2 Temp Tenths Degrees Celsius", NULL, format_max_temp_75_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_BOARD_SENSOR, "1.3.6.1.2.1.99.1.1.1.4.100006013", "Board Sensor 3 Temp Tenths Degrees Celsius", NULL, format_max_temp_75_tenth_celcius, 0, SNMP_MSG_GET)) goto BAIL;
+
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_FAN_SPEED, "1.3.6.1.2.1.99.1.1.1.4.100601111", "Fan 1 Speed RPM", NULL, format_arista_fan_speed, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_FAN_SPEED, "1.3.6.1.2.1.99.1.1.1.4.100602111", "Fan 2 Speed RPM", NULL, format_arista_fan_speed, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_FAN_SPEED, "1.3.6.1.2.1.99.1.1.1.4.100603111", "Fan 3 Speed RPM", NULL, format_arista_fan_speed, 0, SNMP_MSG_GET)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_FAN_SPEED, "1.3.6.1.2.1.99.1.1.1.4.100604111", "Fan 4 Speed RPM", NULL, format_arista_fan_speed, 0, SNMP_MSG_GET)) goto BAIL;
+
+BAIL:
+	close_snmp_file_for_host();
+	write_line_in_hostlist_file(categoryname);
+}
+
 
 //****************************************************************************************//
 // MAIN FLOW CODE SECTION
@@ -2544,6 +2592,10 @@ void parse_snmp_config_line(char* line)
 	else if (strcmp(device, "AdminSwitch0001") == 0) // Allied Telesis TL
 	{
 		fPtr = run_snmp_report_for_allied_telesis_switch;
+	}
+	else if (strcmp(device, "AdminSwitch0002") == 0) // Arista 7048
+	{
+		fPtr = run_snmp_report_for_arista_7048_switch;
 	}
 	else if (strcmp(device, "EtlHost") == 0) // EtlHost
 	{    
