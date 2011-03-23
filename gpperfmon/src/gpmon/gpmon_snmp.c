@@ -201,7 +201,7 @@ EmcConnectSeverity convert_gpdb_snmp_status_to_emc_connect_severity(GPDB_SNMP_ST
 // conversion functions are of type gpdb_status_code_conversion_function (see gpdb_status_code_conversion_function for parameters)
 //****************************************************************************************//
 
-GPDB_SNMP_STATUS brocade_switch_sensor_status_code_conversion(int statusCodeIn, char** msgout)
+GPDB_SNMP_STATUS brocade_8000_switch_sensor_status_code_conversion(int statusCodeIn, char** msgout)
 {
     // unknown (1) 
     // other (2) 
@@ -245,7 +245,7 @@ GPDB_SNMP_STATUS brocade_switch_sensor_status_code_conversion(int statusCodeIn, 
 	return status;
 }
 
-GPDB_SNMP_STATUS brocade_switch_status_code_conversion(int statusCodeIn, char** msgout)
+GPDB_SNMP_STATUS brocade_8000_switch_status_code_conversion(int statusCodeIn, char** msgout)
 {
 	//1. up
 	//2. down
@@ -1183,14 +1183,14 @@ void format_network_interface_status(EmcConnectSymptom symptom, EmcConnectDetail
 	format_generic_status_code(symptom, dSymptom, oidname, oidlen, displayname, vars, snmp_network_interface_status_code_conversion);
 }
 
-void format_brocade_switch_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void format_brocade_8000_switch_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	format_generic_status_code(symptom, dSymptom, oidname, oidlen, displayname, vars, brocade_switch_status_code_conversion);
+	format_generic_status_code(symptom, dSymptom, oidname, oidlen, displayname, vars, brocade_8000_switch_status_code_conversion);
 }
 
-void format_brocade_switch_sensor_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+void format_brocade_8000_switch_sensor_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
-	format_generic_status_code(symptom, dSymptom, oidname, oidlen, displayname, vars, brocade_switch_sensor_status_code_conversion);
+	format_generic_status_code(symptom, dSymptom, oidname, oidlen, displayname, vars, brocade_8000_switch_sensor_status_code_conversion);
 }
 
 void format_lsi_virtual_disk_state(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
@@ -1611,16 +1611,31 @@ BAIL:
 	write_line_in_hostlist_file(categoryname);
 }
 
-void run_snmp_report_for_brocade_switch(const char* categoryname, host_t* hostp)
+void run_snmp_report_for_brocade_vdx_switch(const char* categoryname, host_t* hostp)
 {
 	char* hostname = hostp->hostname;
 	if (init_host(hostname, NULL))
 		return;
 
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_OPERATIONAL_STATUS, "1.3.6.1.4.1.1588.2.1.1.1.1.7", "Operational Status", NULL, format_brocade_switch_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_DESCRIPTION, "1.3.6.1.2.1.2.2.1.2", "Interface", "Description", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_STATUS, "1.3.6.1.2.1.2.2.1.8", "Interface", "Status", format_network_interface_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+
+BAIL:
+	close_snmp_file_for_host();
+	write_line_in_hostlist_file(categoryname);
+}
+
+
+void run_snmp_report_for_brocade_8000_switch(const char* categoryname, host_t* hostp)
+{
+	char* hostname = hostp->hostname;
+	if (init_host(hostname, NULL))
+		return;
+
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_OPERATIONAL_STATUS, "1.3.6.1.4.1.1588.2.1.1.1.1.7", "Operational Status", NULL, format_brocade_8000_switch_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
 
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_SENSOR_NAME, "1.3.6.1.3.94.1.8.1.3", "Sensor", "Name", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_SENSOR_STATUS, "1.3.6.1.3.94.1.8.1.4", "Sensor", "Status", format_brocade_switch_sensor_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
+	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_SENSOR_STATUS, "1.3.6.1.3.94.1.8.1.4", "Sensor", "Status", format_brocade_8000_switch_sensor_status, 0, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_SENSOR_MESSAGE, "1.3.6.1.3.94.1.8.1.6", "Sensor", "Message", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
 
 	if (snmp_array_collection(EMC_CONNECT_SYMPTOM_SWITCH, EMC_CONNECT_DETAILED_SYMPTOM_SWITCH_INTERFACE_DESCRIPTION, "1.3.6.1.2.1.2.2.1.2", "Interface", "Description", gpmon_format_snmp_string, 0, SNMP_MSG_GETNEXT)) goto BAIL;
@@ -2587,7 +2602,11 @@ void parse_snmp_config_line(char* line)
 
 	if (strcmp(device, "InterconnectSwitch0001") == 0) // Brocade 8000
 	{
-		fPtr = run_snmp_report_for_brocade_switch;
+		fPtr = run_snmp_report_for_brocade_8000_switch;
+	}
+	else if (strcmp(device, "InterconnectSwitch0002") == 0) // Brocade VDX Switch
+	{
+		fPtr = run_snmp_report_for_brocade_vdx_switch;
 	}
 	else if (strcmp(device, "AdminSwitch0001") == 0) // Allied Telesis TL
 	{
