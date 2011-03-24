@@ -1621,6 +1621,9 @@ void run_snmp_report_for_twin_squared_host(const char* categoryname, host_t* hos
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_MB, ".1.3.6.1.4.1.3582.4.1.4.3.1.2.1.2", "Virtual Device", "Size in MB", gpmon_format_snmp_int, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_STATE, ".1.3.6.1.4.1.3582.4.1.4.3.1.2.1.5", "Virtual Device", "State", format_lsi_virtual_disk_state, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_CACHE_MODE, ".1.3.6.1.4.1.3582.4.1.4.3.1.2.1.19", "Virtual Device", "Cache Mode", format_lsi_virtual_disk_cachemode, SNMP_MSG_GETNEXT)) goto BAIL;
+	
+	// Disk space monitoring only for segments
+	if (!si.hostt->is_master && dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_SPACE_USED_PERCENT, "1.3.6.1.4.1.2021.9.1.9.1", "Disk Space Used Percentage on Segment (/data)", "Value", gpmon_format_disk_space, SNMP_MSG_GET)) goto BAIL;
 
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_PHYSICAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_ARRAY_DISK_TOTAL_FAILURE_PREDICTED_COUNT, ".1.3.6.1.4.1.3582.4.1.4.1.2.1.23", "Physical Disks Failure Predicted Count", NULL, gpmon_format_snmp_int_error_not_zero, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_PHYSICAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_ARRAY_DISK_TOTAL_FAILED_COUNT, ".1.3.6.1.4.1.3582.4.1.4.1.2.1.24", "Physical Disks Failure Count", NULL, gpmon_format_snmp_int_warn_not_zero, SNMP_MSG_GETNEXT)) goto BAIL;
