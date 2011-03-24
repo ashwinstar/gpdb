@@ -55,6 +55,8 @@ struct
 	apr_uint64_t tail_buffer_max;
 	int console;
 	int health_harvest_interval;
+	int warning_disk_space_percentage;
+	int error_disk_space_percentage;
 } opt = { 0 };
 
 /* gpmmon host */
@@ -629,6 +631,8 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 	snprintf(snmp_module_params.outdir, PATH_MAX, "%s/gpperfmon/data/snmp", ax.master_data_directory);
 	snprintf(snmp_module_params.externaltable_dir, PATH_MAX, "%s/gpperfmon/data", ax.master_data_directory);
 	snmp_module_params.health_harvest_interval = opt.health_harvest_interval;
+	snmp_module_params.warning_disk_space_percentage = opt.warning_disk_space_percentage;
+	snmp_module_params.error_disk_space_percentage = opt.error_disk_space_percentage;
 
 	// if explicitly turned off in gpperfmon.conf or guc then disable
 	// if set to local only in guc, then set local only
@@ -658,7 +662,7 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 		return NULL;
 	}
 
-	snmp_report(ax.hosttab, ax.hosttabsz);
+	snmp_report(ax.hosttab, ax.hosttabsz); 
 
 	for (loop = 1; !ax.exit; loop++)
 	{
@@ -1161,6 +1165,12 @@ static int read_conf_file(char *conffile)
 			{
 				opt.snmp_interval = atoi(pVal);
 			}
+			else if (apr_strnatcasecmp(pName, "warning_disk_space_percentage") == 0) {
+				opt.warning_disk_space_percentage = atoi(pVal);
+			} 
+			else if (apr_strnatcasecmp(pName, "error_disk_space_percentage") == 0) {
+				opt.error_disk_space_percentage = atoi(pVal);
+			}
 			else
 			{
 				fprintf(stderr, "Unknown option %s\n", pName == NULL ? "(NULL)"
@@ -1218,6 +1228,19 @@ static int read_conf_file(char *conffile)
 		fprintf(stderr, "Performance Monitor - snmp_interval must be either 0 or greater than 0.  Using "
 				"default value 10\n");
 		opt.snmp_interval = 10;
+	}
+
+	if (opt.warning_disk_space_percentage <= 0 || opt.warning_disk_space_percentage >= 100)
+	{
+		fprintf(stderr, "Performance Monitor - warning_disk_space_percentage must be between 0 and 100.  Using 90.\n");
+		opt.warning_disk_space_percentage = 90;
+	}
+
+
+	if (opt.error_disk_space_percentage <= 0 || opt.error_disk_space_percentage >= 100)
+	{
+		fprintf(stderr, "Performance Monitor - error_disk_space_percentage must be between 0 and 100.  Using 95.\n");
+		opt.error_disk_space_percentage = 95;
 	}
 
 	if (opt.tail_buffer_max == 0)

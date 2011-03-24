@@ -951,6 +951,27 @@ void gpmon_format_snmp_int_expect_range(long lowrange, long highrange, GPDB_SNMP
     }
 }
 
+void gpmon_format_disk_space(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
+{
+	int df_value;
+	char oidstring[GPMMON_SNMP_OID_STRING_BUF_SIZE] = { 0 };
+	snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, oidname, oidlen);
+
+	if (vars->type != ASN_INTEGER)
+	{
+        	record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
+	        return;
+	}
+
+	df_value = *vars->val.integer;
+
+	if (df_value >= si.params->error_disk_space_percentage) {
+	        gpmon_format_snmp_int_expect_range(0, si.params->warning_disk_space_percentage - 1, GPDB_SNMP_STATUS_ERROR, symptom, dSymptom, oidname, oidlen, displayname, vars);
+	} else {
+	        gpmon_format_snmp_int_expect_range(0, si.params->warning_disk_space_percentage - 1, GPDB_SNMP_STATUS_WARNING, symptom, dSymptom, oidname, oidlen, displayname, vars);
+	}
+}
+
 
 void gpmon_format_snmp_int_warn_not_zero(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
@@ -1541,6 +1562,10 @@ void run_snmp_report_for_dell_host(const char* categoryname, host_t* host)
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_WRITE_POLICY, "1.3.6.1.4.1.674.10893.1.20.140.1.1.10", "Virtual Disk", "Write Policy", format_dell_virtual_disk_write_policy, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_READ_POLICY, "1.3.6.1.4.1.674.10893.1.20.140.1.1.11", "Virtual Disk", "Read Policy", format_dell_virtual_disk_read_policy, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_STATE, "1.3.6.1.4.1.674.10893.1.20.140.1.1.4", "Virtual Disk",  "State", format_dell_virtual_disk_state, SNMP_MSG_GETNEXT)) goto BAIL;
+        // Disk space usage monitoring
+	if (si.hostt->is_master && dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_SPACE_USED_PERCENT, "1.3.6.1.4.1.2021.9.1.9.1", "Disk Space Used Percentage on Master (/data)", "Value", gpmon_format_disk_space, SNMP_MSG_GET)) goto BAIL;
+	if (!si.hostt->is_master && dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_SPACE_USED_PERCENT, "1.3.6.1.4.1.2021.9.1.9.1", "Disk Space Used Percentage on Segment (/data1)", "Value", gpmon_format_disk_space, SNMP_MSG_GET)) goto BAIL;
+	if (!si.hostt->is_master && dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_SPACE_USED_PERCENT, "1.3.6.1.4.1.2021.9.1.9.2", "Disk Space Used Percentage on Segment (/data2)", "Value", gpmon_format_disk_space, SNMP_MSG_GET)) goto BAIL;
 
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_PHYSICAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_ARRAY_DISK_NAME, "1.3.6.1.4.1.674.10893.1.20.130.4.1.2", "Array Disk", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_PHYSICAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_ARRAY_DISK_STATUS, "1.3.6.1.4.1.674.10893.1.20.130.4.1.23", "Array Disk", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;

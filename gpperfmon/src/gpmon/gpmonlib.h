@@ -139,6 +139,8 @@ struct snmp_module_params_t
 	char externaltable_dir[PATH_MAX];
 	EmcConnectModeType_t emcconnect_mode;
 	int health_harvest_interval;
+	int warning_disk_space_percentage;
+	int error_disk_space_percentage;
 };
 
 double subtractTimeOfDay(struct timeval* begin, struct timeval* end);
