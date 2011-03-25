@@ -72,13 +72,18 @@ class PySync(Command):
 #-----------------------------------------------
 class MasterStart(Command):
     def __init__(self, name, dataDir, port, dbid, standby_dbid,
-                 numContentsInCluster, upgradeMode=False,
+                 numContentsInCluster, 
+                 wrapper, wrapper_args,
+                 upgradeMode=False,
                  restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
                  max_connections=1, disableMasterMirror=False,
-                 utilityMode=False, ctxt=LOCAL, remoteHost=None):
+                 utilityMode=False, ctxt=LOCAL, remoteHost=None
+                 ):
         self.dataDir=dataDir
         self.port=port
         self.utilityMode=utilityMode
+        self.wrapper=wrapper
+        self.wrapper_args=wrapper_args
         if disableMasterMirror:
             standby="-y"
         else:
@@ -88,9 +93,17 @@ class MasterStart(Command):
             gp_mode_flags=" -c gp_role=utility "
         else:
             gp_mode_flags=" -E "
+        
+        wrapper_string = ""
 
-        cmdfrags=["$GPHOME/bin/pg_ctl -w -D %s -l %s/pg_log/startup.log -o \" %s %s -i -M master -p %s -b %s -x %s -C -1 -z %s --silent-mode=true" % \
-                  (dataDir,dataDir,standby,gp_mode_flags,port,dbid,standby_dbid,numContentsInCluster)]
+        if wrapper != None:
+            wrapper_string = "--wrapper=\"%s\"" % wrapper
+
+            if wrapper_args != None:
+                wrapper_string += " --wrapper-args=\"%s\"" % wrapper_args
+
+        cmdfrags=["$GPHOME/bin/pg_ctl %s -w -D %s -l %s/pg_log/startup.log -o \" %s %s -i -M master -p %s -b %s -x %s -C -1 -z %s --silent-mode=true" % \
+                  (wrapper_string, dataDir,dataDir,standby,gp_mode_flags,port,dbid,standby_dbid,numContentsInCluster)]
 
         if upgradeMode:
             cmdfrags.append(" -U")
@@ -106,11 +119,15 @@ class MasterStart(Command):
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
 
     @staticmethod
-    def local(name, dataDir, port, dbid, standbydbid, numContentsInCluster, upgradeMode=False,
+    def local(name, dataDir, port, dbid, standbydbid, numContentsInCluster, 
+              wrapper, wrapper_args,
+              upgradeMode=False,
               restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
               max_connections=1, disableMasterMirror=False,
               utilityMode=False):
-        cmd=MasterStart(name, dataDir, port, dbid, standbydbid, numContentsInCluster,
+        cmd=MasterStart(name, dataDir, port, dbid, standbydbid,
+                        numContentsInCluster,
+                        wrapper, wrapper_args, 
                         upgradeMode, restrictedMode, timeout,max_connections,
                         disableMasterMirror,utilityMode)
         cmd.run(validateAfter=True)
@@ -140,7 +157,7 @@ class SegmentStart(Command):
     def __init__(self, name, gpdb, numContentsInCluster, mirroringMode,
                  utilityMode=False, ctxt=LOCAL, remoteHost=None,
                  noWait=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
-                 upgradeMode=False):
+                 upgradeMode=False, wrapper=None, wrapper_args=None):
 
         # This is referenced from calling code
         self.segment = gpdb
@@ -152,10 +169,19 @@ class SegmentStart(Command):
         datadir = gpdb.getSegmentDataDirectory()
         logfile = os.path.join(datadir, 'pg_log', 'startup.log')
 
+        wrapper_string = ""
+        if wrapper != None:
+            wrapper_string = "--wrapper=\"%s\"" % wrapper
+
+            if wrapper_args != None:
+                wrapper_string += " --wrapper-args=\"%s\"" % wrapper_args
+
 
         cmdfrags=['$GPHOME/bin/pg_ctl']
+        cmdfrags.append(wrapper_string)
         cmdfrags.append('-D %s' % datadir)
         cmdfrags.append('-l %s' % logfile)
+
 
         if not noWait:
             cmdfrags.append('-w')
@@ -435,7 +461,7 @@ class GpSegStartCmd(Command):
     def __init__(self, name, gphome, segments, collatelist, gpversion,
                  mirroringMode, numContentsInCluster, timeout=SEGMENT_TIMEOUT_DEFAULT, 
                  verbose=False,ctxt=LOCAL, remoteHost=None, pickledTransitionData=None,
-                 upgradeMode=False):
+                 upgradeMode=False, wrapper=None, wrapper_args=None):
 
         # Referenced by calling code, create a clone
         self.dblist = [x for x in segments]
@@ -464,6 +490,14 @@ class GpSegStartCmd(Command):
         if pickledTransitionData is not None:
             args.append("-p")
             args.append(pickledTransitionData)
+        
+        wrapper_string = ""
+        if wrapper != None:
+            wrapper_string = "--wrapper=\"%s\"" % wrapper
+
+            if wrapper_args != None:
+                wrapper_string += " --wrapper-args=\"%s\"" % wrapper_args
+        args.append(wrapper_string);
             
         args.append(dirstr)
 

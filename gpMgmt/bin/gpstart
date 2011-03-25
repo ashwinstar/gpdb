@@ -43,11 +43,14 @@ class GpStart:
 
     ######
     def __init__(self, upgrade, restricted, start_standby, master_datadir,
+                 wrapper,
+                 wrapper_args,
                  parallel=DEFAULT_NUM_WORKERS,
                  quiet=False,
                  masteronly=False,
                  interactive=False,
-                 timeout=SEGMENT_TIMEOUT_DEFAULT):
+                 timeout=SEGMENT_TIMEOUT_DEFAULT
+                 ):
         self.upgrade=upgrade
         self.restricted=restricted
         self.start_standby=start_standby
@@ -59,7 +62,9 @@ class GpStart:
         self.master_datadir=master_datadir
         self.interactive=interactive
         self.timeout=timeout
-
+        self.wrapper=wrapper;
+        self.wrapper_args=wrapper_args;
+        
         #
         # Some variables that are set during execution
         #
@@ -333,8 +338,11 @@ class GpStart:
         numContentsInCluster = 0
         cmd=gp.MasterStart('master in utility mode',self.master_datadir,
                            self.port,dbid,standby_dbid,
-                           numContentsInCluster,utilityMode=True,
-                           timeout=self.timeout,upgradeMode=self.upgrade)
+                           numContentsInCluster,
+                           wrapper=self.wrapper, wrapper_args=self.wrapper_args,
+                           utilityMode=True,
+                           timeout=self.timeout,upgradeMode=self.upgrade
+                           );
         cmd.run()
 
         if cmd.get_results().rc != 0:
@@ -381,7 +389,7 @@ class GpStart:
 
         segmentStartResult = StartSegmentsOperation(self.pool,self.quiet,
                 [self.lc_collate,self.lc_monetary,self.lc_numeric], self.gpversion,
-                self.gphome, self.master_datadir, self.timeout, self.upgrade
+                self.gphome, self.master_datadir, self.timeout, self.upgrade, self.wrapper, self.wrapper_args
                 ).startSegments(self.gparray, segmentsToStart, startMode)
 
         # see if we have at least one segment per content
@@ -645,7 +653,7 @@ class GpStart:
                              self.gparray.master.dbid, standby_dbid,
                              numContentsInCluster, timeout=self.timeout, upgradeMode=self.upgrade,
                              restrictedMode=self.restricted,max_connections=self.max_connections,
-                             disableMasterMirror=(not self.start_standby) )
+                             disableMasterMirror=(not self.start_standby), wrapper=self.wrapper, wrapper_args=self.wrapper_args )
 
         if pg.DbStatus.local('master instance',self.gparray.master):
             logger.info("Command pg_ctl reports Master %s instance active" % self.gparray.master.hostname)
@@ -729,7 +737,9 @@ class GpStart:
                             help='start in restricted mode. Only users with superuser privilege are allowed to connect.')
         addTo.add_option('-t', '--timeout', dest='timeout', default=SEGMENT_TIMEOUT_DEFAULT, type='int',
                            help='time to wait for segment startup (in seconds)')
-
+        addTo.add_option('', '--wrapper', dest="wrapper", default=None, type='string');
+        addTo.add_option('', '--wrapper-args', dest="wrapper_args", default=None, type='string');
+        
         parser.set_defaults(verbose=False, filters=[], slice=(None, None))
 
         return parser
@@ -754,7 +764,9 @@ class GpStart:
                           quiet=options.quiet,
                           masteronly=options.master_only,
                           interactive=options.interactive,
-                          timeout=options.timeout)
+                          timeout=options.timeout,
+                          wrapper=options.wrapper,
+                          wrapper_args=options.wrapper_args);
 
 if __name__ == '__main__':
     simple_main( GpStart.createParser, GpStart.createProgram)

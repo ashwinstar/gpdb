@@ -73,7 +73,7 @@ class StartSegmentsOperation:
 
     def __init__(self, workerPool, quiet, localeData, gpVersion, 
                  gpHome, masterDataDirectory, timeout=SEGMENT_TIMEOUT_DEFAULT,
-                 upgradeMode=False):
+                 upgradeMode=False, wrapper=None, wrapper_args=None):
         checkNotNone("workerPool", workerPool)
         self.__workerPool = workerPool
         self.__quiet = quiet
@@ -83,6 +83,8 @@ class StartSegmentsOperation:
         self.__masterDataDirectory = masterDataDirectory
         self.__timeout = timeout
         self.__upgrade = upgradeMode
+        self.__wrapper = wrapper
+        self.__wrapper_args = wrapper_args
 
     def startSegments(self, gpArray, segments, startMethod):
         """
@@ -204,7 +206,9 @@ class StartSegmentsOperation:
                                    ctxt=base.REMOTE,
                                    remoteHost=segments[0].getSegmentAddress(),
                                    pickledTransitionData=pickledTransitionData,
-                                   upgradeMode=self.__upgrade)
+                                   upgradeMode=self.__upgrade,
+                                   wrapper=self.__wrapper,
+                                   wrapper_args=self.__wrapper_args)
             self.__workerPool.addCommand(cmd)
             dispatchCount+=1
 

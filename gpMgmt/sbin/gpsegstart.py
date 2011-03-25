@@ -64,7 +64,7 @@ class SegStartStatus:
 #-------------------------------------------------------------------------    
 class GpSegStart:
     ######
-    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster, timeout, pickledTransitionData, upgradeMode):
+    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster, timeout, pickledTransitionData, upgradeMode, wrapper, wrapper_args):
 
         self.dblist = map(gparray.GpDB.initFromString, dblist)
         self.mirroringMode = mirroringMode
@@ -84,7 +84,8 @@ class GpSegStart:
         self.expected_lc_collate=None
         self.expected_lc_monetary=None
         self.expected_lc_numeric=None
-
+        self.wrapper=wrapper
+        self.wrapper_args=wrapper_args
         self.gphome=os.path.abspath(os.pardir)
         
         self.actual_gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
@@ -158,7 +159,9 @@ class GpSegStart:
                                 mirroringModeForStart,
                                 noWait=nowait,
                                 timeout=self.timeout,
-                                upgradeMode=self.upgradeMode)
+                                upgradeMode=self.upgradeMode,
+                                wrapper=self.wrapper,
+                                wrapper_args=self.wrapper_args)
             self.pool.addCommand(cmd)
 
         self.pool.join()
@@ -395,6 +398,8 @@ class GpSegStart:
                           help="seconds to wait")
         parser.add_option('-U', '--upgrade_mode', action='store_true',
                           help='start the instance in upgrade mode')
+        parser.add_option('', '--wrapper', dest="wrapper", default=None, type='string');
+        parser.add_option('', '--wrapper-args', dest="wrapper_args", default=None, type='string');
         
         return parser
 
@@ -407,7 +412,9 @@ class GpSegStart:
                                     options.numsegments,
                                     options.timeout,
                                     options.pickledTransitionData,
-                                    options.upgrade_mode)
+                                    options.upgrade_mode,
+                                    options.wrapper,
+                                    options.wrapper_args)
 
 #------------------------------------------------------------------------- 
 if __name__ == '__main__':
