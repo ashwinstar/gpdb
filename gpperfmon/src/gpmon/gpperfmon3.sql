@@ -8,7 +8,7 @@ create database gpperfmon;
 
 \c gpperfmon;
 
-create table system_history (
+create table public.system_history (
        ctime timestamp(0) not null, -- record creation time
        hostname varchar(64) not null, -- hostname of system this metric belongs to
        mem_total bigint not null, mem_used bigint not null, -- total system memory
@@ -31,18 +31,18 @@ with (fillfactor=100)
 distributed by (ctime)
 partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));
 
-create external web table system_now (
-       like system_history
+create external web table public.system_now (
+       like public.system_history
 ) execute 'cat gpperfmon/data/system_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
-create external web table system_tail (
-       like system_history
+create external web table public.system_tail (
+       like public.system_history
 ) execute 'cat gpperfmon/data/system_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
-create external web table _system_tail (
-        like system_history
+create external web table public._system_tail (
+        like public.system_history
 ) execute 'cat gpperfmon/data/_system_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
@@ -50,7 +50,7 @@ create external web table _system_tail (
 --  queries
 --
 
-create table queries_history (
+create table public.queries_history (
        ctime timestamp(0), -- record creation time
        tmid int not null,  -- time id
        ssid int not null,    -- session id
@@ -78,11 +78,11 @@ partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVE
 
 
 
-create external web table queries_now (
-        like queries_history
+create external web table public.queries_now (
+        like public.queries_history
 ) execute 'python $GPHOME/sbin/gpmon_catqrynow.py 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
-create external web table queries_now_fast (
+create external web table public.queries_now_fast (
        ctime timestamp(0),
        tmid int,
        ssid int,    -- gp_session_id
@@ -103,13 +103,13 @@ create external web table queries_now_fast (
        -- excluded: query_plan text
 ) execute 'cat gpperfmon/data/queries_now.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
-create external web table queries_tail (
-        like queries_history
+create external web table public.queries_tail (
+        like public.queries_history
 ) execute 'cat gpperfmon/data/queries_tail.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
 
-create external web table _queries_tail (
-        like queries_history
+create external web table public._queries_tail (
+        like public.queries_history
 ) execute 'cat gpperfmon/data/_queries_tail.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
 
@@ -117,7 +117,7 @@ create external web table _queries_tail (
 --  query iterators
 --
 
-create table iterators_history (
+create table public.iterators_history (
        ctime timestamp(0), -- record creation time
        tmid int not null,  -- time id
        ssid int not null,    -- session id
@@ -214,18 +214,18 @@ partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVE
 
 
 
-create external web table iterators_now (
-        like iterators_history
+create external web table public.iterators_now (
+        like public.iterators_history
 ) execute 'cat gpperfmon/data/iterators_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
-create external web table iterators_tail (
-        like iterators_history
+create external web table public.iterators_tail (
+        like public.iterators_history
 ) execute 'cat gpperfmon/data/iterators_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
-create external web table _iterators_tail (
-        like iterators_history
+create external web table public._iterators_tail (
+        like public.iterators_history
 ) execute 'cat gpperfmon/data/_iterators_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
@@ -233,7 +233,7 @@ create external web table _iterators_tail (
 --  database
 --
 
-create table database_history (
+create table public.database_history (
        ctime timestamp(0) not null, -- record creation time
        queries_total int not null, -- total number of queries
        queries_running int not null, -- number of running queries
@@ -243,22 +243,22 @@ with (fillfactor=100)
 distributed by (ctime)
 partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));
 
-create external web table database_now (
-       like database_history
+create external web table public.database_now (
+       like public.database_history
 ) execute 'cat gpperfmon/data/database_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
-create external web table database_tail (
-       like database_history
+create external web table public.database_tail (
+       like public.database_history
 ) execute 'cat gpperfmon/data/database_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
-create external web table _database_tail (
-        like database_history
+create external web table public._database_tail (
+        like public.database_history
 ) execute 'cat gpperfmon/data/_database_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
-create external web table master_data_dir (hostname text, dir text)
+create external web table public.master_data_dir (hostname text, dir text)
 execute E'python -c "import socket, os; print socket.gethostname() + \\"|\\" + os.getcwd()"' on master
 format 'csv' (delimiter '|');
 
