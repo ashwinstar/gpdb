@@ -32,6 +32,7 @@
 #include "access/subtrans.h"
 #include "access/transam.h"
 #include "utils/tqual.h"
+#include "cdb/cdbpersistentstore.h"
 
 
 /*
@@ -71,10 +72,14 @@ static bool SubTransPagePrecedes(int page1, int page2);
 void
 SubTransSetParent(TransactionId xid, TransactionId parent)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	int			pageno = TransactionIdToPage(xid);
 	int			entryno = TransactionIdToEntry(xid);
 	int			slotno;
 	TransactionId *ptr;
+
+	MIRRORED_LOCK;
 
 	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
 
@@ -90,6 +95,8 @@ SubTransSetParent(TransactionId xid, TransactionId parent)
 	SubTransCtl->shared->page_dirty[slotno] = true;
 
 	LWLockRelease(SubtransControlLock);
+
+	MIRRORED_UNLOCK;
 }
 
 /*
@@ -98,6 +105,8 @@ SubTransSetParent(TransactionId xid, TransactionId parent)
 TransactionId
 SubTransGetParent(TransactionId xid)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	int			pageno = TransactionIdToPage(xid);
 	int			entryno = TransactionIdToEntry(xid);
 	int			slotno;
@@ -111,6 +120,8 @@ SubTransGetParent(TransactionId xid)
 	if (!TransactionIdIsNormal(xid))
 		return InvalidTransactionId;
 
+	MIRRORED_LOCK;
+
 	/* lock is acquired by SimpleLruReadPage_ReadOnly */
 
 	slotno = SimpleLruReadPage_ReadOnly(SubTransCtl, pageno, xid);
@@ -120,6 +131,8 @@ SubTransGetParent(TransactionId xid)
 	parent = *ptr;
 
 	LWLockRelease(SubtransControlLock);
+
+	MIRRORED_UNLOCK;
 
 	return parent;
 }
@@ -191,7 +204,11 @@ SUBTRANSShmemInit(void)
 void
 BootStrapSUBTRANS(void)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	int			slotno;
+
+	MIRRORED_LOCK;
 
 	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
 
@@ -203,6 +220,8 @@ BootStrapSUBTRANS(void)
 	Assert(!SubTransCtl->shared->page_dirty[slotno]);
 
 	LWLockRelease(SubtransControlLock);
+
+	MIRRORED_UNLOCK;
 }
 
 /*
@@ -216,7 +235,17 @@ BootStrapSUBTRANS(void)
 static int
 ZeroSUBTRANSPage(int pageno)
 {
-	return SimpleLruZeroPage(SubTransCtl, pageno);
+	MIRRORED_LOCK_DECLARE;
+
+	int result;
+
+	MIRRORED_LOCK;
+
+	result = SimpleLruZeroPage(SubTransCtl, pageno);
+
+	MIRRORED_UNLOCK;
+
+	return result;
 }
 
 /*
@@ -229,6 +258,8 @@ ZeroSUBTRANSPage(int pageno)
 void
 StartupSUBTRANS(TransactionId oldestActiveXID)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	int			startPage;
 	int			endPage;
 
@@ -238,6 +269,9 @@ StartupSUBTRANS(TransactionId oldestActiveXID)
 	 * Whenever we advance into a new page, ExtendSUBTRANS will likewise zero
 	 * the new page without regard to whatever was previously on disk.
 	 */
+
+	MIRRORED_LOCK;
+
 	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
 
 	startPage = TransactionIdToPage(oldestActiveXID);
@@ -251,6 +285,8 @@ StartupSUBTRANS(TransactionId oldestActiveXID)
 	(void) ZeroSUBTRANSPage(startPage);
 
 	LWLockRelease(SubtransControlLock);
+
+	MIRRORED_UNLOCK;
 }
 
 /*
@@ -259,6 +295,10 @@ StartupSUBTRANS(TransactionId oldestActiveXID)
 void
 ShutdownSUBTRANS(void)
 {
+	MIRRORED_LOCK_DECLARE;
+
+	MIRRORED_LOCK;
+
 	/*
 	 * Flush dirty SUBTRANS pages to disk
 	 *
@@ -266,6 +306,8 @@ ShutdownSUBTRANS(void)
 	 * it merely as a debugging aid.
 	 */
 	SimpleLruFlush(SubTransCtl, false);
+
+	MIRRORED_UNLOCK;
 }
 
 /*
@@ -274,6 +316,10 @@ ShutdownSUBTRANS(void)
 void
 CheckPointSUBTRANS(void)
 {
+	MIRRORED_LOCK_DECLARE;
+
+	MIRRORED_LOCK;
+
 	/*
 	 * Flush dirty SUBTRANS pages to disk
 	 *
@@ -282,6 +328,8 @@ CheckPointSUBTRANS(void)
 	 * the checkpoint process and not by backends.
 	 */
 	SimpleLruFlush(SubTransCtl, true);
+
+	MIRRORED_UNLOCK;
 }
 
 
@@ -296,6 +344,8 @@ CheckPointSUBTRANS(void)
 void
 ExtendSUBTRANS(TransactionId newestXact)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	int			pageno;
 
 	/*
@@ -308,12 +358,16 @@ ExtendSUBTRANS(TransactionId newestXact)
 
 	pageno = TransactionIdToPage(newestXact);
 
+	MIRRORED_LOCK;
+
 	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
 
 	/* Zero the page */
 	ZeroSUBTRANSPage(pageno);
 
 	LWLockRelease(SubtransControlLock);
+
+	MIRRORED_UNLOCK;
 }
 
 
@@ -326,6 +380,8 @@ ExtendSUBTRANS(TransactionId newestXact)
 void
 TruncateSUBTRANS(TransactionId oldestXact)
 {
+	MIRRORED_LOCK_DECLARE;
+
 	int			cutoffPage;
 
 	/*
@@ -334,7 +390,11 @@ TruncateSUBTRANS(TransactionId oldestXact)
 	 */
 	cutoffPage = TransactionIdToPage(oldestXact);
 
+	MIRRORED_LOCK;
+
 	SimpleLruTruncate(SubTransCtl, cutoffPage, false);
+
+	MIRRORED_UNLOCK;
 }
 
 
