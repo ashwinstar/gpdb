@@ -64,4 +64,7 @@ MAJORVERSION := $(basename $(VERSION))
 endif
 
 orafunc.sql.in:
-	cat orafunc-common.sql orafunc-$(MAJORVERSION).sql > orafunc.sql.in
+#
+#	cat orafunc-common.sql orafunc-$(MAJORVERSION).sql > orafunc.sql.in
+#
+	cat orafunc-gp.sql > orafunc.sql.in
