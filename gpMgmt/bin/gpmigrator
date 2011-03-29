@@ -2241,6 +2241,9 @@ class GPUpgrade:
                 
             if db == 'template0':
                 continue
+            
+            if db == 'gpperfmon':
+                self.Checkgpperfmon()
 
             cmd = exec_cmd + db
             logger.info('... Checking ' + db)
@@ -2258,6 +2261,22 @@ class GPUpgrade:
                 raise UpgradeError('Catalog Check terminated by signal')
             if retcode > 0:
                 raise UpgradeError('Catalog Check Failed - see %s for details' % outfilename)
+
+    #------------------------------------------------------------
+    def Checkgpperfmon(self):
+        '''
+        Need to make sure that gpperfmon table is in the public schema
+        '''
+        cnt = self.Select("select count(*) from pg_class where relname='system_history' and relnamespace=2200",
+                          'gpperfmon');
+        if (cnt[0]==0):
+            raise UpgradeError('gpperfmon appears not to be installed in the public schema. Please contact support.')
+
+        cnt = self.Select("select count(*) from pg_class where relname='segment_history' and relnamespace=2200",
+                          'gpperfmon');
+        if (cnt[0]==0):
+            raise UpgradeError('gpperfmon appears not to be installed in the public schema. Please contact support.')
+        
 
     #------------------------------------------------------------
     def ResetXLogs(self):
