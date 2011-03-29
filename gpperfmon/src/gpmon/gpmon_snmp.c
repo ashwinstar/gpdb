@@ -1303,7 +1303,8 @@ void gpmon_format_expected_string(char* expected, int length, EmcConnectSymptom 
         }
     }
 
-    if (status != GPDB_SNMP_STATUS_NORMAL)
+    /* Why is status "EmcConnectStatus" but we compare it to GPDB_SNMP_STATUS_T ?? */
+    if ((int)status != (int)GPDB_SNMP_STATUS_NORMAL)
     {
 	    snprintf(buffer_final, FORMAT_DELL_SCALAR_STRING_BUF_SIZE, "CURRENT: '%s' EXPECTED: '%s'", buffer, expected);
 	    record_status(symptom, dSymptom, oidstring, displayname, status, buffer_final);
