@@ -65,6 +65,7 @@ cdbpullup_colIdx(struct Plan   *plan,
      * targetlist), which means expr trees for different contexts are
      * incomparable.
      */
+
     useExecutorVarFormat = cdbpullup_exprHasSubplanRef((Expr *)plan->targetlist);
 
     /*

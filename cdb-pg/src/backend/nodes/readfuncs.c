@@ -3248,17 +3248,16 @@ _readMotion(void)
 	READ_INT_FIELD(motionID);
 	READ_ENUM_FIELD(motionType, MotionType);
 
-	READ_BOOL_FIELD(sendToSecondary);
 	READ_BOOL_FIELD(sendSorted);
-
-	READ_INT_FIELD(numHashSegs);
-	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
 	READ_NODE_FIELD(hashExpr);
 	READ_NODE_FIELD(hashDataTypes);
 
 	READ_INT_FIELD(numOutputSegs);
 	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
+
+	READ_INT_FIELD(numInputSegs);
+	READ_INT_ARRAY(inputSegIdx, numInputSegs, int);
 
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);

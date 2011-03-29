@@ -3675,6 +3675,7 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 
 	copy_plan_costsize(plan, lefttree); /* only care about copying size */
 	plan = add_sort_cost(root, plan, numCols, sortColIdx, sortOperators);
+
 	plan->targetlist = cdbpullup_targetlist(lefttree,
                             cdbpullup_exprHasSubplanRef((Expr *)lefttree->targetlist));
 	plan->qual = NIL;

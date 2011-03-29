@@ -16,7 +16,7 @@
 #define SYNC_BITVECTOR_MAX_COUNT 	(100)								/* max total size = 100 MB */
 
 /* bit vector container */
-struct SyncBitvectorContainer_s
+typedef struct SyncBitvectorContainer_s
 {
 	int64 vectorCount;		// number of vectors stored
 

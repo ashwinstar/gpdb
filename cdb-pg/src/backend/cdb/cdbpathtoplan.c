@@ -130,31 +130,34 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
                 /* Result node might have been added below the Sort */
                 subplan = sort->plan.lefttree; 
                 motion = make_sorted_union_motion(subplan,
-                                                  false,  /* sendToSecondary */
                                                   destSegIndex,
                                                   sort->numCols,
                                                   sort->sortColIdx,
-                                                  sort->sortOperators);
+                                                  sort->sortOperators,
+                                                  false /* useExecutorVarFormat */
+                                                  );
             }
         
             /* Degenerate ordering... build unordered Union Receive */
             else
                 motion = make_union_motion(subplan,
-                                           false,           /* sendToSecondary */
-                                           destSegIndex);
+                                           destSegIndex,
+                                           false /* useExecutorVarFormat */
+                                           );
         }
         
         /* Unordered Union Receive */
         else
             motion = make_union_motion(subplan,
-                                       false,           /* sendToSecondary */
-                                       destSegIndex);
+                                       destSegIndex,
+                                       false /* useExecutorVarFormat */
+                                       );
     }
 
     /* Send all of the tuples to all of the QEs in gang above... */
     else if (CdbPathLocus_IsReplicated(path->path.locus))
             motion = make_broadcast_motion(subplan,
-                                           false       /* sendToSecondary */
+                                           false /* useExecutorVarFormat */
                                            );
 
     /* Hashed redistribution to all QEs in gang above... */
@@ -166,8 +169,8 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
                                                           subplan->targetlist);
         Insist(hashExpr);
         motion = make_hashed_motion(subplan,
-                                    false,              /* sendToSecondary */
-                                    hashExpr);
+                                    hashExpr,
+                                    false /* useExecutorVarFormat */);
     }
     else
         Insist(0);

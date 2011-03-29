@@ -903,19 +903,19 @@ _copyMotion(Motion *from)
 	 */
 	CopyPlanFields((Plan *) from, (Plan *) newnode);
 
-	COPY_SCALAR_FIELD(sendToSecondary);
 	COPY_SCALAR_FIELD(sendSorted);
 	COPY_SCALAR_FIELD(motionID);
 
 	COPY_SCALAR_FIELD(motionType);
 
-	COPY_SCALAR_FIELD(numHashSegs);
-	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
 	COPY_NODE_FIELD(hashExpr);
 	COPY_NODE_FIELD(hashDataTypes);
 
 	COPY_SCALAR_FIELD(numOutputSegs);
 	COPY_POINTER_FIELD(outputSegIdx, from->numOutputSegs * sizeof(int));
+
+	COPY_SCALAR_FIELD(numInputSegs);
+	COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
 
 	COPY_SCALAR_FIELD(numSortCols);
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));

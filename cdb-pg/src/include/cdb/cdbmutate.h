@@ -16,17 +16,17 @@
 
 extern Plan *apply_motion(struct PlannerInfo *root, Plan *plan, Query *query);
 
-extern Motion *make_union_motion(Plan *lefttree, bool sendToSecondary,
-		                                int destSegIndex);
-extern Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary,
+extern Motion *make_union_motion(Plan *lefttree,
+		                                int destSegIndex, bool useExecutorVarFormat);
+extern Motion *make_sorted_union_motion(Plan *lefttree,
                                         int destSegIndex,
-				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
-extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
-				    List *hashExpr);
+				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, bool useExecutorVarFormat);
+extern Motion *make_hashed_motion(Plan *lefttree,
+				    List *hashExpr, bool useExecutorVarFormat);
 
-extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary );
+extern Motion *make_broadcast_motion(Plan *lefttree, bool useExecutorVarFormat);
 
-extern Motion *make_explicit_motion(Plan *lefttree, bool sendToSecondary, AttrNumber segidColIdx);
+extern Motion *make_explicit_motion(Plan *lefttree, AttrNumber segidColIdx, bool useExecutorVarFormat);
 
 void 
 cdbmutate_warn_ctid_without_segid(struct PlannerInfo *root, struct RelOptInfo *rel);

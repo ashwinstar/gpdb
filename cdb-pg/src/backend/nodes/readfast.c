@@ -3110,11 +3110,7 @@ _readMotion(const char ** str)
 
 	Assert(local_node->motionType == MOTIONTYPE_FIXED || local_node->motionType == MOTIONTYPE_HASH || local_node->motionType == MOTIONTYPE_EXPLICIT);
 
-	READ_BOOL_FIELD(sendToSecondary);
 	READ_BOOL_FIELD(sendSorted);
-
-	READ_INT_FIELD(numHashSegs);
-	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
 	READ_NODE_FIELD(hashExpr);
 	READ_NODE_FIELD(hashDataTypes);
@@ -3122,6 +3118,8 @@ _readMotion(const char ** str)
 	READ_INT_FIELD(numOutputSegs);
 	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
 
+	READ_INT_FIELD(numInputSegs);
+	READ_INT_ARRAY(inputSegIdx, numInputSegs, int);
 
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);

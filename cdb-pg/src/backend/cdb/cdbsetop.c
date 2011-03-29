@@ -332,25 +332,25 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 	Assert(subplan->flow != NULL);
 	Assert(subplan->flow->flotype == FLOW_PARTITIONED ||
 		   (subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex == 0));
-	
+
 	if ( keep_ordering && subplan->flow->numSortCols > 0 )
 	{
 		Flow *flow = subplan->flow;
 			
 		motion = make_sorted_union_motion(
 			subplan,
-			false, /* sendToSecondary */
 			segindex,
 			flow->numSortCols, /* Motion and Flow can share arrays. */
 			flow->sortColIdx,
-			flow->sortOperators);
+			flow->sortOperators,
+			false /* useExecutorVarFormat */);
 	}
 	else
 	{
 		motion = make_union_motion(
 			subplan,
-			false, /* sendToSecondary */
-			segindex);
+			segindex,
+			false /* useExecutorVarFormat */);
 	}
 	
 	return motion;
@@ -382,8 +382,8 @@ Motion* make_motion_hash(PlannerInfo *root __attribute__((unused)) , Plan *subpl
 	
 	motion = make_hashed_motion(
 		subplan,
-		false, /* sendToSecondary */
-		hashexprs);
+		hashexprs,
+		false /* useExecutorVarFormat */);
 
 	return motion;
 }

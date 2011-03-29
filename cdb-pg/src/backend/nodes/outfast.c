@@ -757,11 +757,7 @@ _outMotion(StringInfo str, Motion *node)
 
 	WRITE_INT_FIELD(motionID);
 	WRITE_ENUM_FIELD(motionType, MotionType);
-	WRITE_BOOL_FIELD(sendToSecondary);
 	WRITE_BOOL_FIELD(sendSorted);
-
-	WRITE_INT_FIELD(numHashSegs);
-	WRITE_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
 	WRITE_LIST_FIELD(hashExpr);
 	WRITE_LIST_FIELD(hashDataTypes);
@@ -769,6 +765,8 @@ _outMotion(StringInfo str, Motion *node)
 	WRITE_INT_FIELD(numOutputSegs);
 	WRITE_INT_ARRAY(outputSegIdx, numOutputSegs, int);
 
+	WRITE_INT_FIELD(numInputSegs);
+	WRITE_INT_ARRAY(inputSegIdx, numInputSegs, int);
 
 	WRITE_INT_FIELD(numSortCols);
 	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);

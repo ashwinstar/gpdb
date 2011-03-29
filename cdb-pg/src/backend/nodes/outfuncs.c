@@ -792,13 +792,7 @@ _outMotion(StringInfo str, Motion *node)
 	WRITE_INT_FIELD(motionID);
 	WRITE_ENUM_FIELD(motionType, MotionType);
 
-	WRITE_BOOL_FIELD(sendToSecondary);
 	WRITE_BOOL_FIELD(sendSorted);
-
-	WRITE_INT_FIELD(numHashSegs);
-	appendStringInfoLiteral(str, " :hashSegIdx");
-	for (i = 0; i < node->numHashSegs; i++)
-		appendStringInfo(str, " %d", node->hashSegIdx[i]);
 
 	WRITE_NODE_FIELD(hashExpr);
 	WRITE_NODE_FIELD(hashDataTypes);
@@ -808,6 +802,11 @@ _outMotion(StringInfo str, Motion *node)
 	for (i = 0; i < node->numOutputSegs; i++)
 		appendStringInfo(str, " %d", node->outputSegIdx[i]);
 
+	WRITE_INT_FIELD(numInputSegs);
+	appendStringInfoLiteral(str, " :inputSegIdx");
+	for (i = 0; i < node->numInputSegs; i++)
+		appendStringInfo(str, " %d", node->inputSegIdx[i]);
+	
 	WRITE_INT_FIELD(numSortCols);
 	appendStringInfoLiteral(str, " :sortColIdx");
 	for (i = 0; i < node->numSortCols; i++)

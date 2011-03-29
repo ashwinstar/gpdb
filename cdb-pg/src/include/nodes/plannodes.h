@@ -970,24 +970,22 @@ typedef struct Motion
 	Plan		plan;
 
 	MotionType  motionType;
-	bool		sendToSecondary;	/* if true, secondary instances will get sent tuples as well as primary */
 	bool		sendSorted;			/* if true, output should be sorted */
 	int			motionID;			/* required by AMS  */
 
 	/* For Hash */
-	int			numHashSegs;		/* number of segindexes in hashSegIdx array */	
-	int			*hashSegIdx;		/* array of segindex values to hash to */
 	List		*hashExpr;			/* list of hash expressions */
 	List		*hashDataTypes;	    /* list of hash expr data type oids */
 
-	/* For Fixed */
+	/* Output segments */
 	int 	  	numOutputSegs;		/* number of seg indexes in outputSegIdx array, 0 for broadcast */
 	int 	 	*outputSegIdx; 	 	/* array of output segindexes */
 
+	int			numInputSegs;		/* number of seg indexes in inputSegIdx array, 0 for broadcast */
+	int			*inputSegIdx;		/* array of input segindexes */
+	
 	/* For Explicit */
 	AttrNumber segidColIdx;			/* index of the segid column in the target list */
-
-	List       *sliceEntries;       /* for each output slice */
 
 	/* The following field is only used when sendSorted == true */
 	int			numSortCols;		/* number of sort key columns */

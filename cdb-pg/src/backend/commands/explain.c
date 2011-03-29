@@ -1053,7 +1053,7 @@ explain_outNode(StringInfo str,
 				switch (pMotion->motionType)
 				{
 					case MOTIONTYPE_HASH:
-						nReceivers = pMotion->numHashSegs;
+						nReceivers = pMotion->numOutputSegs;
 						pname = "Redistribute Motion";
 						break;
 					case MOTIONTYPE_FIXED:

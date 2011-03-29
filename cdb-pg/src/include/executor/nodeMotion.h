@@ -22,6 +22,13 @@ extern void ExecReScanMotion(MotionState *node, ExprContext *exprCtxt);
 
 extern void ExecStopMotion(MotionState *node);
 
+extern bool isMotionRedistribute(const Motion *m);
+extern bool isMotionGather(const Motion *m);
+extern bool isMotionGatherToMaster(const Motion *m);
+extern bool isMotionGatherToSegment(const Motion *m);
+extern bool isMotionRedistributeFromMaster(const Motion *m);
+
+
 enum 
 {
 	GPMON_MOTION_BYTES_SENT = GPMON_QEXEC_M_NODE_START,

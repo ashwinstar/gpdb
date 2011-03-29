@@ -19,6 +19,7 @@
 #include "utils/relcache.h"     /* RelationGetPartitioningKey() */
 #include "optimizer/tlist.h"	/* get_sortgroupclause_tle() */
 #include "optimizer/predtest.h"
+#include "optimizer/var.h"
 
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
@@ -76,11 +77,11 @@ static int *makeDefaultSegIdxArray(int numSegs);
 
 static Motion *
 make_motion(Plan       *lefttree,
-            bool        sendToSecondary,
             bool        sendSorted,
             int         numSortCols,
             AttrNumber *sortColIdx,
-            Oid        *sortOperators);
+            Oid        *sortOperators,
+            bool		useExecutorVarFormat);
 	
 static Node *apply_motion_mutator(Node *node, ApplyMotionState * context);
 
@@ -432,7 +433,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
                                                      targetPolicy->nattrs,
                                                      targetPolicy->attrs,
                                                      true);
-                if (!repartitionPlan(plan, true, false, false, hashExpr))
+                if (!repartitionPlan(plan, false, false, hashExpr))
                     ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
                                     errmsg("Cannot parallelize that SELECT INTO yet")
 								));
@@ -467,12 +468,12 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
                     if (plan->flow->numSortCols > list_length(query->sortClause))
                         plan->flow->numSortCols = list_length(query->sortClause);
 
-                    Insist(focusPlan(plan, true, true, false));
+                    Insist(focusPlan(plan, true, false));
                 }
 
                 /* Use UNION RECEIVE.  Does not preserve ordering. */
                 else
-                    Insist(focusPlan(plan, true, false, false));
+                    Insist(focusPlan(plan, false, false));
 			}
 			needToAssignDirectDispatchContentIds = gp_enable_direct_dispatch && ! query->intoClause;
 			break;
@@ -674,7 +675,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 															 targetPolicy->attrs,
 															 true);
 			
-					if (!repartitionPlan(plan, true, false, false, hashExpr))
+					if (!repartitionPlan(plan, false, false, hashExpr))
 						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 										errmsg("Cannot parallelize that INSERT yet")));
 					break;
@@ -691,7 +692,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 					 * Ask for motion to a single QE.  Later, apply_motion
 					 * will override that to bring it to the QD instead.
 					 */
-					if (!focusPlan(plan, true, false, false))
+					if (!focusPlan(plan, false, false))
 						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 										errmsg("Cannot parallelize that INSERT yet")));
 					break;
@@ -869,7 +870,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     int     saveNextMotionID;
     int     saveNumInitPlans;
     int     saveSliceDepth;
-    bool    sendToSecondary = false;    /* always for now */
 
 	if (node == NULL)
 		return NULL;
@@ -976,29 +976,29 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
             if (flow->numSortCols > 0)
             {
                 newnode = (Node *)make_sorted_union_motion(plan,
-                                                           sendToSecondary,
                                                            flow->segindex,
                                                            flow->numSortCols,
                                                            flow->sortColIdx,
-                                                           flow->sortOperators);
+                                                           flow->sortOperators,
+                                                           true /* useExecutorVarFormat */);
             }
             else
             {
                 newnode = (Node *)make_union_motion(plan,
-                                                    sendToSecondary,
-                                                    flow->segindex);
+                                                    flow->segindex,
+                                                    true /* useExecutorVarFormat */);
             }
             break;
 
         case MOVEMENT_BROADCAST:
-            newnode = (Node *) make_broadcast_motion(plan, sendToSecondary );
+            newnode = (Node *) make_broadcast_motion(plan, true /* useExecutorVarFormat */);
             break;
 
         case MOVEMENT_REPARTITION:
             newnode = (Node *)make_hashed_motion(plan,
-                                                 sendToSecondary,
-                                                 flow->hashExpr
-				);
+                                                 flow->hashExpr,
+                                                 true /* useExecutorVarFormat */
+												);
             break;
 
         case MOVEMENT_EXPLICIT:
@@ -1009,8 +1009,8 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
         	{
         		/* motion node in child nodes: add a ExplicitRedistribute motion */
 				newnode = (Node *) make_explicit_motion(plan,
-													 	sendToSecondary,
-													 	flow->segidColIdx
+													 	flow->segidColIdx,
+													 	true /* useExecutorVarFormat */
 													 	);
         	}
         	else
@@ -1098,18 +1098,18 @@ assignMotionID(Node *newnode, ApplyMotionState * context, Node *oldnode)
  * make_motion -- creates a Motion node.
  * Caller must have built the pHashDefn, pFixedDefn,
  * and pSortDefn structs already.
- *
+ * useExecutorVarFormat is true if make_motion is called after setrefs
  * This call only make a motion node, without filling in flow info
  * After calling this function, caller need to call add_slice_to_motion
  * --------------------------------------------------------------------
  */
 Motion *
 make_motion(Plan       *lefttree,
-			bool        sendToSecondary,
             bool        sendSorted,
 			int         numSortCols,
             AttrNumber *sortColIdx,
-            Oid        *sortOperators)
+            Oid        *sortOperators,
+            bool        useExecutorVarFormat)
 {
     Motion *node = makeNode(Motion);
     Plan   *plan = &node->plan;
@@ -1123,14 +1123,13 @@ make_motion(Plan       *lefttree,
 	plan->total_cost = lefttree->total_cost;
 	plan->plan_rows = lefttree->plan_rows;
 	plan->plan_width = lefttree->plan_width;
-	plan->targetlist = cdbpullup_targetlist(lefttree,
-                        cdbpullup_exprHasSubplanRef((Expr *)lefttree->targetlist));
+
+	plan->targetlist = cdbpullup_targetlist(lefttree, useExecutorVarFormat);
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
 	plan->dispatch = DISPATCH_PARALLEL;
 
-	node->sendToSecondary = sendToSecondary;
 	node->sendSorted = sendSorted;
 
 	node->numSortCols = numSortCols;
@@ -1142,6 +1141,11 @@ make_motion(Plan       *lefttree,
 
 	plan->flow = NULL;
 
+	node->outputSegIdx = NULL;
+	node->numInputSegs = 0;
+	node->inputSegIdx = NULL;
+	node->numInputSegs = 0;
+	
 	return node;
 }
 
@@ -1152,20 +1156,21 @@ void add_slice_to_motion(Motion *motion,
 	/* sanity checks */
 	/* check numOutputSegs and outputSegIdx are in sync.  */
 	AssertEquivalent(numOutputSegs == 0, outputSegIdx == NULL);
-
+	
 	/* numOutputSegs are either 0, for hash or broadcast, or 1, for focus */
 	Assert(numOutputSegs == 0 || numOutputSegs == 1);
 	AssertImply(motionType == MOTIONTYPE_HASH, numOutputSegs == 0); 
 	AssertImply(numOutputSegs == 1, (outputSegIdx[0] == -1 || outputSegIdx[0] == gp_singleton_segindex));
 
+	
 	motion->motionType = motionType;
 	motion->hashExpr = hashExpr;
 	motion->hashDataTypes = NULL; 
 	motion->numOutputSegs = numOutputSegs;
 	motion->outputSegIdx = outputSegIdx;
-	motion->numHashSegs = 0;
-	motion->hashSegIdx = NULL;
 
+	Assert(motion->plan.lefttree);
+	
 	/* Build list of hash key expression data types. */
     if (hashExpr)
     {
@@ -1199,12 +1204,6 @@ void add_slice_to_motion(Motion *motion,
         list_free_deep(eq);
     }
 
-	/* If hashed redistribution, fill in the receiving segment info. */
-	if(motion->motionType == MOTIONTYPE_HASH)
-	{
-		motion->numHashSegs = getgpsegmentCount();
-		motion->hashSegIdx = makeDefaultSegIdxArray(getgpsegmentCount());
-	}
 
 	/* Attach a descriptive Flow. */
 	switch(motion->motionType)
@@ -1213,6 +1212,9 @@ void add_slice_to_motion(Motion *motion,
 			motion->plan.flow = makeFlow(FLOW_PARTITIONED);
 			motion->plan.flow->locustype = CdbLocusType_Hashed;
 			motion->plan.flow->hashExpr = copyObject(motion->hashExpr);
+			motion->numOutputSegs = getgpsegmentCount();
+			motion->outputSegIdx = makeDefaultSegIdxArray(getgpsegmentCount());
+
 			break;
 		case MOTIONTYPE_FIXED:
 			if (motion->numOutputSegs == 0 )
@@ -1220,6 +1222,7 @@ void add_slice_to_motion(Motion *motion,
 				/* broadcast */
 				motion->plan.flow = makeFlow(FLOW_REPLICATED);
 				motion->plan.flow->locustype = CdbLocusType_Replicated;
+
 			}
 			else if (motion->numOutputSegs == 1 )
 			{
@@ -1229,6 +1232,7 @@ void add_slice_to_motion(Motion *motion,
 				motion->plan.flow->locustype = ( motion->plan.flow->segindex<0 ) ?
 					CdbLocusType_Entry :
 					CdbLocusType_SingleQE;
+
 			}
 			else
 			{
@@ -1266,45 +1270,44 @@ void add_slice_to_motion(Motion *motion,
 }
 
 Motion *
-make_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex)
+make_union_motion(Plan *lefttree, int destSegIndex, bool useExecutorVarFormat)
 {
 	Motion 	*motion;
 	int		*outSegIdx = (int *) palloc(sizeof(int)); 
 	outSegIdx[0] = destSegIndex; 
 
-	motion = make_motion(lefttree, sendToSecondary, false,
-			0, NULL, NULL /* numSortCols, sortColIdx, sortOperators */
-			);
+	motion = make_motion(lefttree, false,
+			0, NULL, NULL, /* numSortCols, sortColIdx, sortOperators */
+			useExecutorVarFormat);
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED, 
 			NULL, 1, outSegIdx);
 	return motion;
 }
 
 Motion *
-make_sorted_union_motion(Plan *lefttree, bool sendToSecondary,
+make_sorted_union_motion(Plan *lefttree,
                          int destSegIndex,
-				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
+				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, bool useExecutorVarFormat)
 {
 	Motion 	*motion;
 	int		*outSegIdx = (int *) palloc(sizeof(int)); 
 	outSegIdx[0] = destSegIndex; 
 
-	motion = make_motion(lefttree, sendToSecondary, true,
-			numSortCols, sortColIdx, sortOperators);
-
+	motion = make_motion(lefttree, true,
+			numSortCols, sortColIdx, sortOperators, useExecutorVarFormat);
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED,
 			NULL, 1, outSegIdx); 
 	return motion;
 }
 
 Motion *
-make_hashed_motion(Plan *lefttree, bool sendToSecondary,
-				   List *hashExpr)
+make_hashed_motion(Plan *lefttree,
+				   List *hashExpr, bool useExecutorVarFormat)
 {
 	Motion *motion;
 
-	motion = make_motion(lefttree, sendToSecondary, false,
-			0, NULL, NULL);
+	motion = make_motion(lefttree, false,
+			0, NULL, NULL, useExecutorVarFormat);
 	add_slice_to_motion(motion, MOTIONTYPE_HASH, 
 			hashExpr,
 			0, NULL);
@@ -1312,12 +1315,12 @@ make_hashed_motion(Plan *lefttree, bool sendToSecondary,
 }
 
 Motion *
-make_broadcast_motion(Plan *lefttree, bool sendToSecondary)
+make_broadcast_motion(Plan *lefttree, bool useExecutorVarFormat)
 {
 	Motion *motion;
 
-	motion = make_motion(lefttree, sendToSecondary, false,
-			0, NULL, NULL);
+	motion = make_motion(lefttree, false,
+			0, NULL, NULL, useExecutorVarFormat);
 
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED,
 			NULL, 0, NULL);
@@ -1325,12 +1328,12 @@ make_broadcast_motion(Plan *lefttree, bool sendToSecondary)
 }
 
 Motion *
-make_explicit_motion(Plan *lefttree, bool sendToSecondary, AttrNumber segidColIdx)
+make_explicit_motion(Plan *lefttree, AttrNumber segidColIdx, bool useExecutorVarFormat)
 {
 	Motion *motion;
 
-	motion = make_motion(lefttree, sendToSecondary, false,
-			0, NULL, NULL); /* numSortCols, sortColIdx, sortOperators */
+	motion = make_motion(lefttree, false,
+			0, NULL, NULL, useExecutorVarFormat); /* numSortCols, sortColIdx, sortOperators */
 
 	Assert(segidColIdx > 0 && segidColIdx <= list_length(lefttree->targetlist));
 	

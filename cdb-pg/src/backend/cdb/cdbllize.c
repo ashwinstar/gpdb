@@ -77,7 +77,6 @@ static bool prescan_walker(Node *node, PlanProfile * context);
 
 static bool
 adjustPlanFlow(Plan        *plan,
-               bool         live,
                bool         stable,
                bool         rescannable,
                Movement     req_move,
@@ -400,7 +399,7 @@ prescan_walker(Node *node, PlanProfile * context)
                  * Ask for motion to a single QE.  Later, apply_motion
                  * will override that to bring it to the QD instead.
                  */
-                Insist(focusPlan(subplan_plan, true, false, false));
+                Insist(focusPlan(subplan_plan, false, false));
 
 				/* Recur into the args list. */
 				return expression_tree_walker((Node *) subplan->args, prescan_walker, context);
@@ -673,7 +672,7 @@ is_plan_node(Node *node)
  * Function: focusPlan
  */
 bool
-focusPlan(Plan *plan, bool live, bool stable, bool rescannable)
+focusPlan(Plan *plan, bool stable, bool rescannable)
 {
     Assert(plan->flow && plan->flow->flotype != FLOW_UNDEFINED);
 
@@ -685,23 +684,7 @@ focusPlan(Plan *plan, bool live, bool stable, bool rescannable)
     if (plan->flow->flotype == FLOW_REPLICATED)
         return false;		
 
-    return adjustPlanFlow(plan, live, stable, rescannable, MOVEMENT_FOCUS, NIL);
-}
-
-
-/*
- * Function: broadcastPlan
- */
-bool
-broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable)
-{
-    Assert(plan->flow && plan->flow->flotype != FLOW_UNDEFINED);
-
-    /* Replicated -> Replicated is a no-op. */
-    if (plan->flow->flotype == FLOW_REPLICATED)
-        return true;
-
-    return adjustPlanFlow(plan, live, stable, rescannable, MOVEMENT_BROADCAST, NIL);
+    return adjustPlanFlow(plan, stable, rescannable, MOVEMENT_FOCUS, NIL);
 }
 
 
@@ -741,11 +724,8 @@ static bool loci_compatible(List *hashExpr1, List *hashExpr2)
  * Function: repartitionPlan
  */
 bool
-repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hashExpr)
+repartitionPlan(Plan *plan, bool stable, bool rescannable, List *hashExpr)
 {
-    Movement    req_move = MOVEMENT_REPARTITION;
-    
-    
     Assert(plan->flow); 
     Assert(plan->flow->flotype == FLOW_PARTITIONED ||
            plan->flow->flotype == FLOW_SINGLETON);
@@ -763,7 +743,7 @@ repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hash
 		   return true;
     }
     
-    return adjustPlanFlow(plan, live, stable, rescannable, req_move, hashExpr);
+    return adjustPlanFlow(plan, stable, rescannable, MOVEMENT_REPARTITION, hashExpr);
 }
 
 
@@ -781,7 +761,6 @@ repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hash
  */
 bool
 adjustPlanFlow(Plan        *plan,
-               bool         live,
                bool         stable,
                bool         rescannable,
                Movement     req_move,
@@ -791,17 +770,10 @@ adjustPlanFlow(Plan        *plan,
     bool        disorder = false;
     bool		recur = false;
     bool        reorder = false;
-
+    
     Assert(flow && flow->flotype != FLOW_UNDEFINED);
-
-    /*
-     * If the Flow was already adjusted due to an earlier motion request,
-     * the original hash/sort key info might have been altered so that we
-     * no longer have a proper description of the flow from the Plan node
-     * into the proposed Motion operator.  Refuse further adjustments.
-     */
-    if (flow->req_move != MOVEMENT_NONE)
-        return false;
+    Assert(flow->req_move == MOVEMENT_NONE);
+    Assert(flow->flow_before_req_move == NULL);
 
     switch (req_move)
 	{
@@ -828,7 +800,7 @@ adjustPlanFlow(Plan        *plan,
 	switch (plan->type)
 	{
 		case T_Sort:
-            if (!stable && live)
+            if (!stable)
             {
                 /*
                  * Q: If order doesn't matter, why is there a Sort here?
@@ -877,7 +849,6 @@ adjustPlanFlow(Plan        *plan,
      */
     if (recur)
 	{
-        Flow   *kidflow;
 
         Assert(plan->lefttree &&
                plan->lefttree->flow &&
@@ -885,19 +856,14 @@ adjustPlanFlow(Plan        *plan,
 
         /* Descend to apply the requested Motion somewhere below this node. */
         if (!adjustPlanFlow(plan->lefttree,
-                            live,
                             stable && !reorder,
                             rescannable,
                             req_move,
                             hashExpr))
             return false;
 
-        /* Return if just window shopping.  Nothing has been changed yet. */
-        if (!live)
-            return true;        /* success; call me again to do it for real */
-
         /* After updating subplan, bubble new distribution back up the tree. */
-        kidflow = plan->lefttree->flow;
+        Flow   *kidflow = plan->lefttree->flow;
         flow->flotype = kidflow->flotype;
         flow->segindex = kidflow->segindex;
         flow->hashExpr = copyObject(kidflow->hashExpr);
@@ -928,15 +894,6 @@ adjustPlanFlow(Plan        *plan,
         return false;
 
     /*
-     * Ok, we have decided it is alright to add Motion above this node.
-     * If just a dry run, return success.  Nothing has been changed.
-     */
-    if (!live)
-        return true;            /* success; call me again to do it for real */
-
-    /*
-     * Now we begin the transformation, if 'live'.
-     *
      * Make our changes to a shallow copy of the original Flow node.
      * Later, after applying the requested motion, apply_motion_mutator()
      * will restore the original Flow ptr and discard the modified copy.
@@ -946,14 +903,15 @@ adjustPlanFlow(Plan        *plan,
      * Motion.   The temporary modified Flow describes the result of the
      * requested Motion: the input to the next operator downstream.
      */
-    if (!flow->flow_before_req_move)
     {
+        Assert(flow->flow_before_req_move == NULL);
+
         plan->flow = (Flow *)palloc(sizeof(*plan->flow));
         *plan->flow = *flow;
         plan->flow->flow_before_req_move = flow;
         flow = plan->flow;
     }
-
+    
     /*
      * Set flag to tell apply_motion() to insert a Motion node
      * immediately above this node (= downstream).  Overwrite the

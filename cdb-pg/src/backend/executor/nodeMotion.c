@@ -148,6 +148,51 @@ formatTuple(StringInfo buf, HeapTuple tup, TupleDesc tupdesc, Oid *outputFunArra
 }
 #endif
 
+/**
+ * Is it a hash distribution motion ?
+ */
+bool isMotionRedistribute(const Motion *m)
+{
+	return (m->motionType == MOTIONTYPE_HASH);
+}
+
+/**
+ * Is it a gather motion?
+ */
+bool isMotionGather(const Motion *m)
+{
+	return (m->motionType == MOTIONTYPE_FIXED 
+			&& m->numOutputSegs == 1);
+}
+
+/**
+ * Is it a gather motion to master?
+ */
+bool isMotionGatherToMaster(const Motion *m)
+{
+	return (m->motionType == MOTIONTYPE_FIXED 
+			&& m->numOutputSegs == 1
+			&& m->outputSegIdx[0] == -1);
+}
+
+/**
+ * Is it a gather motion to segment?
+ */
+bool isMotionGatherToSegment(const Motion *m)
+{
+	return (m->motionType == MOTIONTYPE_FIXED 
+			&& m->numOutputSegs == 1
+			&& m->outputSegIdx[0] > 0);
+}
+
+/**
+ * Is it a redistribute from master?
+ */
+bool isMotionRedistributeFromMaster(const Motion *m)
+{
+	return true;
+}
+
 /*
  * Set the statistic info in gpmon packet.
  */
@@ -1054,11 +1099,8 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	if (motionstate->mstype == MOTIONSTATE_SEND && node->motionType == MOTIONTYPE_HASH) 
 	{
 		int			nkeys;
-		/*
-		 * Get info about the hash functions to be used for each hash key.
-		 */
-		/* Assert(node->hashDataTypes != NULL); */
-		Assert(node->numHashSegs > 0);
+
+		Assert(node->numOutputSegs > 0);
 
 		nkeys = list_length(node->hashDataTypes);
 		
@@ -1069,7 +1111,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 		/*
 		 * Create hash API reference
 		 */
-		motionstate->cdbhash = makeCdbHash(node->numHashSegs, HASH_FNV_1);
+		motionstate->cdbhash = makeCdbHash(node->numOutputSegs, HASH_FNV_1);
 
 #ifdef MEASURE_MOTION_TIME
 		/*
@@ -1517,21 +1559,21 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 	{
 		uint32		hval = 0;
 
-		/*
-		 * hashSegIdx structure doesn't not include support for the QD. so 0
-		 * maps to segID with contentId = 0
-		 */
-		Assert(motion->numHashSegs > 0);
-		Assert(motion->hashSegIdx != NULL);
+		Assert(motion->numOutputSegs > 0);
+		Assert(motion->outputSegIdx != NULL);
 
 		econtext->ecxt_outertuple = outerTupleSlot;
 
+		Assert(node->cdbhash->numsegs == motion->numOutputSegs);
+		
 		hval = evalHashKey(econtext, node->hashExpr,
 				motion->hashDataTypes, node->cdbhash);
 
+		Assert(hval < getgpsegmentCount() && "redistribute destination outside segment array");
+		
 		/* hashSegIdx takes our uint32 and maps it to an int, and here
 		 * we assign it to an int16. See below. */
-		targetRoute = motion->hashSegIdx[hval];
+		targetRoute = motion->outputSegIdx[hval];
 
 		/* see MPP-2099, let's not run into this one again! NOTE: the
 		 * definition of BROADCAST_SEGIDX is key here, it *cannot* be
