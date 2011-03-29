@@ -67,7 +67,7 @@ uninstall:
 	rm -rf $(addprefix '$(DESTDIR)$(includedir_server)'/, $(SUBDIRS) *.h)
 
 checkoids:
-	(cd catalog && ./duplicate_oids) 
+	(cd catalog && $(abs_top_srcdir)/src/include/catalog/duplicate_oids) 
 
 clean:
 	rm -f utils/fmgroids.h parser/parse.h parser/gram.h utils/probes.h
