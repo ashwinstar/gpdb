@@ -4,7 +4,7 @@ This module contains some useful function which can help with porting
 Oracle application to PostgreSQL or can be useful generally. 
 
 Built-in Oracle date functions have been tested against Oracle 10 for
-comformance. Date ranges from 1960 to 2070 work correctly. Dates before
+conformance. Date ranges from 1960 to 2070 work correctly. Dates before
 1100-03-01 cannot be verified due to a bug in Oracle.
 
 All functions are fully compatible with Oracle and respect all known
@@ -123,7 +123,7 @@ the following functions:
 * utl_file.tmpdir() - get path of temp directory
 
 Because PostgreSQL doesn't support call by reference, some functions
-are slighly different: fclose and get_line.
+are slightly different: fclose and get_line.
 
   declare f utl_file.file_type;
   begin
@@ -164,7 +164,7 @@ locality parameter with a final symbol '\' every time.
 Package dbms_pipe
 =================
 This package is an emulation of Oracle's package dbms_pipe. It provides 
-inter-session comunication. You can send and read any message with or without 
+inter-session communication. You can send and read any message with or without 
 waiting; list active pipes; set a pipe as private or public; and, use 
 explicit or implicit pipes. 
 
@@ -239,17 +239,17 @@ o plvdate.prev_bizday(day date) date - Get the previous business date from a giv
 
 o plvdate_isbizday(date) bool - Call this function to determine if a date is a business day
 
-o plvdate.set_nonbizday(dow varchar) - Set day of week as non bussines day
+o plvdate.set_nonbizday(dow varchar) - Set day of week as non-business day
 
-o plvdate.unset_nonbizday(dow varchar) - Unset day of week as non bussines day
+o plvdate.unset_nonbizday(dow varchar) - Unset day of week as non-business day
 
-o plvdate.set_nonbizday(day date) - Set day as non bussines day
+o plvdate.set_nonbizday(day date) - Set day as non-business day
 
-o plvdate.unset_nonbizday(day date) - Unset day as non bussines day
+o plvdate.unset_nonbizday(day date) - Unset day as non-business day
 
-o plvdate.set_nonbizday(day date, repeat bool) - Set day as non bussines day, if 'repeat' is true, then day is nonbiz every year
+o plvdate.set_nonbizday(day date, repeat bool) - Set day as non-business day, if 'repeat' is true, then day is nonbiz every year
 
-o plvdate.unset_nonbizday(day date, repeat bool) - Unset day as non bussines day, if 'repeat' is true, then day is nonbiz every year
+o plvdate.unset_nonbizday(day date, repeat bool) - Unset day as non-business day, if 'repeat' is true, then day is nonbiz every year
 
 o plvdate.use_easter() - Easter Sunday and Easter monday will be holiday
 
@@ -365,7 +365,7 @@ o plvstr.left(str text, n int)  -  Returns first num_in characters. You can use 
 
 o plvstr.right(str text, n int) - Returns last num_in characters. You can use negative num_in
 
-o plvstr.swap(str text, replace text, start int, lengh int) - Replace a substring in a string with a specified string
+o plvstr.swap(str text, replace text, start int, length int) - Replace a substring in a string with a specified string
 
 o plvstr.swap(str text, replace text)                       - Replace a substring in a string with a specified string
 
@@ -571,11 +571,11 @@ because oracle.substr is installed side-by-side with pg_catalog.substr.
 
 ToDo:
   o better documentation                                             
-  o better seralization in dbms_pipe (via _send and _recv functions) 
+  o better serialization in dbms_pipe (via _send and _recv functions) 
   o alter shared memory structures by temporary tables		     
       only locks are in shmem, (bitmaps), data in tmp tbl
 
-This module is released under the BSD licence. 
+This module is released under the BSD license. 
 
 Pavel Stehule
 stehule@kix.fsv.cvut.cz
