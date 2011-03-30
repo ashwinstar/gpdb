@@ -2414,21 +2414,6 @@ class PrepFileSpaces(Command):
     
 
 #-----------------------------------------------
-class GpRecoverSeg(Command):
-   """
-   This command will execute the gprecoverseg utility
-   """
-   def __init__(self, name, options = "", ctxt = LOCAL, remoteHost = None):   
-       self.name = name
-       self.options = options
-       self.ctxt = ctxt
-       self.remoteHost = remoteHost
-       
-       cmdStr = "$GPHOME/bin/gprecoverseg %s" % (options)
-       Command.__init__(self,name,cmdStr,ctxt,remoteHost)
-
-
-#-----------------------------------------------
 class ExecuteSQLStatementsCommand(SQLCommand):
     """
     This class will execute a list of SQL statements.

@@ -1343,3 +1343,20 @@ class GpCreateDBIdFile(Command):
     def remote(name, remoteHost, directory, dbid):
         cmd = GpCreateDBIdFile(name, directory, dbid, ctxt=REMOTE, remoteHost=remoteHost)
         cmd.run(validateAfter=True)
+
+#-------------------------------------------------------------------------
+class GpRecoverSeg(Command):
+   """
+   This command will execute the gprecoverseg utility
+   """
+
+   def __init__(self, name, options = "", ctxt = LOCAL, remoteHost = None):
+       self.name = name
+       self.options = options
+       self.ctxt = ctxt
+       self.remoteHost = remoteHost
+
+       cmdStr = "$GPHOME/bin/gprecoverseg %s" % (options)
+       Command.__init__(self,name,cmdStr,ctxt,remoteHost)
+
+
