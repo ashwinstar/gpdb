@@ -15,7 +15,6 @@ all:
 	$(MAKE) -C contrib/xlogdump all
 	$(MAKE) -C contrib/changetrackingdump all
 	$(MAKE) -C contrib/gp_sparse_vector all
-	$(MAKE) -C contrib/orafce all
 	@echo "All of Greenplum Database successfully made. Ready to install."
 
 install:
@@ -25,7 +24,6 @@ install:
 	$(MAKE) -C contrib/xlogdump $@
 	$(MAKE) -C contrib/changetrackingdump $@
 	$(MAKE) -C contrib/gp_sparse_vector $@
-	$(MAKE) -C contrib/orafce $@
 	@echo "Greenplum Database installation complete."
 
 installdirs uninstall:
@@ -35,7 +33,6 @@ installdirs uninstall:
 	$(MAKE) -C contrib/xlogdump $@
 	$(MAKE) -C contrib/changetrackingdump $@
 	$(MAKE) -C contrib/gp_sparse_vector $@
-	$(MAKE) -C contrib/orafce $@
 
 distprep:
 #	$(MAKE) -C doc $@
@@ -53,7 +50,6 @@ clean:
 	$(MAKE) -C contrib/xlogdump $@
 	$(MAKE) -C contrib/changetrackingdump $@
 	$(MAKE) -C contrib/gp_sparse_vector $@
-	$(MAKE) -C contrib/orface $@
 # Garbage from autoconf:
 	@rm -rf autom4te.cache/
 
