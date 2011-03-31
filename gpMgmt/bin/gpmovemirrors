@@ -56,7 +56,7 @@ _help = ["""
 The input file should be be a plain text file with the format:
 
   filespaceOrder=[<filespace1_fsname>[:<filespace2_fsname>:...]
-  <old_address>:<port>:<fselocation>[:<fselocation>:...] [<new_address:port>:<replication_port>:<fselocation>[:<fselocation>:...]]
+  <old_address>:<port>:<system_filespace_location> [<new_address:port>:<replication_port>:<system_filespace_location>[:<fselocation>:...]]
 
 """,
 """
@@ -174,18 +174,30 @@ def lookupSegmentGpdb(address, port, dataDirectory):
            return gpdb
     return None
    
-
 #-------------------------------------------------------------------------  
-def lookupReplicatonPort(address, port, dataDirectory):
+def lookupReplicatonPort(gpdb):
     """ Look up the segment's replication port associated with the input parameters. """
      
     retValue = None
-    gpdb = lookupSegmentGpdb(address, port, dataDirectory)
     if gpdb != None:
        retValue =  gpdb.getSegmentReplicationPort()
 
     return retValue
-    
+   
+#-------------------------------------------------------------------------
+def  lookupFilespaces(gpdb):
+     """ Look up the segment's filespaces, and return map of filespace name : location. """
+
+     retValue = {}
+     gpFilespaceObjList = gparray.getFilespaces(includeSystemFilespace = False)
+     gpdbFilespaceDict = gpdb.getSegmentFilespaces()
+
+     for oid in gpdbFilespaceDict:
+         name = gparray.getFileSpaceName(oid)
+         location = gpdbFilespaceDict[oid]
+         retValue[name] = location
+     return retValue
+
                            
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------                         
@@ -225,7 +237,7 @@ class Configuration:
         """
         Input file format is:
            filespaceOrder=[filespace1_fsname[:filespace2_fsname:...]
-           old_address:port:fselocation[:fselocation:...] [new_address:port:replication_port:fselocation[:fselocation:...]]
+           old_address:port:system_filespace_location [new_address:port:replication_port:system_filespace_location[:fselocation:...]]
         """
         self.fileData = utils.parseMirroringConfigFile( readAllLinesFromFile(self.inputFile),
                              "Move mirrors config",
@@ -243,8 +255,9 @@ class Configuration:
             oldAddress         = rowMap['oldAddress']
             oldPort            = rowMap['oldPort']
             oldDataDirectory   = rowMap['oldDataDirectory']
-            oldReplicationPort = lookupReplicatonPort(oldAddress, oldPort, oldDataDirectory)
-            oldFilespaces      = row.getFlexibleValuesMap()
+            oldGpdb            = lookupSegmentGpdb(oldAddress, oldPort, oldDataDirectory) 
+            oldReplicationPort = lookupReplicatonPort(oldGpdb)
+            oldFilespaces      = lookupFilespaces(oldGpdb)
             oldMirror = Mirror( address = oldAddress
                               , port = oldPort
                               , replicationPort = oldReplicationPort
@@ -286,12 +299,10 @@ class Configuration:
             oldEntry = firstList[i]
             newEntry = secondList[i]
             line = oldEntry.address + ":" + oldEntry.port + ":" + oldEntry.dataDirectory 
-            for fsName in self.filespaceNames:
-                line = line + ":" + oldEntry.filespaces[fsName]     
             line = line + " "
             line = line + str(newEntry.address) + ":" + str(newEntry.port) + ":" + str(newEntry.replicationPort) + ":" + newEntry.dataDirectory
             for fsName in self.filespaceNames:
-                line = line + ":" + oldEntry.filespaces[fsName]
+                line = line + ":" + newEntry.filespaces[fsName]
             line = line + '\n'
             fp.write(line)
 
@@ -379,7 +390,7 @@ try:
     
     """ Delete old mirror directories. """
     try:
-        fileSpacesObjList = gparray.getFilespaces(includeSystemFilespace = True)
+        fileSpacesObjList = gparray.getFilespaces(includeSystemFilespace = False)
         totalDirsToDelete = len(newConfig.oldMirrorList) + len(fileSpacesObjList)
         numberOfWorkers = min(totalDirsToDelete, options.batch_size)
         pool = WorkerPool(numWorkers = numberOfWorkers)
@@ -391,10 +402,10 @@ try:
                              , remoteHost = mirror.address
                              )
             pool.addCommand(cmd)
-            for filespaceDir in mirror.filespaces:
-                logger.info("About to remove old mirror filespace directory: " + filespaceDir)
+            for filespaceName in mirror.filespaces.keys():
+                logger.info("About to remove old mirror filespace directory: " + filespaceName + " : " + mirror.filespaces[filespaceName])
                 cmd = RemoveFiles("remove old mirror segment directories"
-                                 , filespaceDir
+                                 , mirror.filespaces[filespaceName]
                                  , ctxt = REMOTE
                                  , remoteHost = mirror.address
                                  )
