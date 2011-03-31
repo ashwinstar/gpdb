@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 '''
-USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER]  [-p|--password PASSWORD] [-c|--commands COMMAND_OPTIONS] [--verbose]
+USAGE:   gpseginstall -f|--file HOSTFILE [-u|--user USER] [-g|--group GROUP] [-p|--password PASSWORD] [-c|--commands COMMAND_OPTIONS] [--verbose]
          where HOSTFILE lists all the hosts to install the software on
          where USER will be the user to install the software as. The default is gpadmin. (root only option)
+         where GROUP will be the group to install the software as. The default is gpadmin.
          where PASSWORD will be set for the USER default is changeme (root only option)
 
          where COMMAND_OPTIONS list a subset of commands to be run from the list below.  The default is all commands.
@@ -108,6 +109,7 @@ def parseargs():
     parser.add_option('-h', '-?', '--help', action='store_true')
     parser.add_option('-f', '--file', type='string')
     parser.add_option('-u', '--user', type='string', default='gpadmin')
+    parser.add_option('-g', '--group', type='string')
     parser.add_option('-p', '--password', type='string', default='changeme')
     parser.add_option('-c', '--commands', type='string')
     parser.add_option('--verbose', action='store_true')
@@ -153,6 +155,9 @@ def parseargs():
         if options.user != currentUser:
             logger.error("--user option '%s' does not equal non-root user running this utility '%s'" % (options.user, currentUser))
             return True
+
+    if not options.group:
+        options.group = options.user
 
     global commands
     if options.commands and len(options.commands):
@@ -468,12 +473,12 @@ def chownMasterSoftware():
     ###################################################################################
     if installation_info.install_link_name:
 
-        cmdStr = "chown -R %s:%s %s/%s" % (options.user, options.user, installation_info.install_binary_dir_location, installation_info.install_link_name)
+        cmdStr = "chown -R %s:%s %s/%s" % (options.user, options.group, installation_info.install_binary_dir_location, installation_info.install_link_name)
         if (simpleLocalCommand(cmdStr, True)):
             return True
 
     ###################################################################################
-    cmdStr = "chown -R %s:%s %s" % (options.user, options.user, installation_info.install_binary_path)
+    cmdStr = "chown -R %s:%s %s" % (options.user, options.group, installation_info.install_binary_path)
     if (simpleLocalCommand(cmdStr, True)):
         return True
  
@@ -655,12 +660,12 @@ def copyOverSoftware():
         if (simpleRemoteCommand(cmdStr, True)):
             return True
 
-        cmdStr = "chown -R %s:%s %s/%s" % (options.user, options.user, installation_info.install_binary_dir_location, installation_info.install_link_name)
+        cmdStr = "chown -R %s:%s %s/%s" % (options.user, options.group, installation_info.install_binary_dir_location, installation_info.install_link_name)
         if (simpleRemoteCommand(cmdStr, True)):
             return True
 
     ###################################################################################
-    cmdStr = "chown -R %s:%s %s" % (options.user, options.user, installation_info.install_binary_path)
+    cmdStr = "chown -R %s:%s %s" % (options.user, options.group, installation_info.install_binary_path)
     if (simpleRemoteCommand(cmdStr, True)):
         return True
 
