@@ -500,7 +500,8 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
 
     	if (cmd == CMD_DELETE || cmd == CMD_INSERT || cmd == CMD_UPDATE)
     	{
-    	   	int sliceNum = queryDesc->plannedstmt->nMotionNodes + 1;
+    	   	/* Set sliceNum to the slice number of the outer-most query plan node */
+    	   	int sliceNum = 0;
     	   	int numSegments = getgpsegmentCount();
 	    	char *cmdName = NULL;
 

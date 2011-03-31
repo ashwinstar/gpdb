@@ -144,6 +144,13 @@ preprocess_initplans(QueryDesc *queryDesc)
 			if (sps->planstate->ps_ExprContext == NULL)
 				sps->planstate->ps_ExprContext = CreateExprContext(estate);
 			
+			/* MPP-12048: Set the right slice index before execution. */
+			Assert( (subplan->qDispSliceId > queryDesc->plannedstmt->nMotionNodes)  &&
+					(subplan->qDispSliceId <=
+							(queryDesc->plannedstmt->nMotionNodes
+							+ queryDesc->plannedstmt->nInitPlans) )   );
+		    sps->planstate->state->es_cur_slice_idx = subplan->qDispSliceId;
+
 			ExecSetParamPlan(sps, sps->planstate->ps_ExprContext, queryDesc);
 
 			/*

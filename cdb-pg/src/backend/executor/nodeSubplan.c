@@ -1380,7 +1380,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
     /* If EXPLAIN ANALYZE, collect local execution stats. */
     if (planstate->instrument)
         cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
-   
+
     /* Restore memory high-water mark for root slice of main query. */
     MemoryContextSetPeakSpace(planstate->state->es_query_cxt, savepeakspace);
 
