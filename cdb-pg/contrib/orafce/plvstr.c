@@ -1009,9 +1009,9 @@ is_kind(char c, int kind)
 	switch (kind)
 	{
 		case 1:
-			return isspace(c); /* XXX XXX: need to check is_blank */
+			return c ==' ';
 		case 2:
-			return isdigit(c);
+			return !!(isdigit((unsigned char)c));
 		case 3:
 			return c == '\'';
 		case 4:
@@ -1020,7 +1020,7 @@ is_kind(char c, int kind)
 				(58 <= c && c <= 64) ||
 				(91 <= c && c <= 96) || (123 <= c && c <= 126);
 		case 5:
-			return isalpha(c);
+			return !!(isalpha((unsigned char)c));
 		default:
 			PARAMETER_ERROR("Second parameter isn't in enum {1,2,3,4,5}");
 			return false;
