@@ -427,8 +427,8 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 Datum
 utl_file_get_nextline(PG_FUNCTION_ARGS)
 {
-	int		max_linesize;
-	int		encoding;
+	int		max_linesize = 0;
+	int		encoding = 0;
 	FILE   *f;
 	text   *result;
 	bool	iseof;
@@ -518,8 +518,8 @@ static FILE *
 do_put(PG_FUNCTION_ARGS)
 {
 	FILE   *f;
-	int		max_linesize;
-	int		encoding;
+	int		max_linesize = 0;
+	int		encoding = 0;
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
@@ -605,8 +605,8 @@ utl_file_putf(PG_FUNCTION_ARGS)
 {
 	FILE   *f;
 	char   *format;
-	int		max_linesize;
-	int		encoding;
+	int		max_linesize = 0;
+	int		encoding = 0;
 	int		format_length;
 	char   *fpt;
 	int		cur_par = 0;
