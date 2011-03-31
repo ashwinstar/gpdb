@@ -255,7 +255,14 @@ class Configuration:
             oldAddress         = rowMap['oldAddress']
             oldPort            = rowMap['oldPort']
             oldDataDirectory   = rowMap['oldDataDirectory']
-            oldGpdb            = lookupSegmentGpdb(oldAddress, oldPort, oldDataDirectory) 
+            oldGpdb            = lookupSegmentGpdb(oldAddress, oldPort, oldDataDirectory)
+            if oldGpdb == None or oldGpdb.getSegmentRole() != ROLE_MIRROR:
+               if oldGpdb == None:
+                  raise Exception("Old mirror segment does not exist with given information: address = %s, port = %s, segment data directory = %s"
+                                   % (oldAddress, str(oldPort), oldDataDirectory))
+               else:
+                  raise Exception("Old mirror segment is not currently in a mirror role: address = %s, port = %s, segment data directory = %s"
+                                   % (oldAddress, str(oldPort), oldDirectory))
             oldReplicationPort = lookupReplicatonPort(oldGpdb)
             oldFilespaces      = lookupFilespaces(oldGpdb)
             oldMirror = Mirror( address = oldAddress
