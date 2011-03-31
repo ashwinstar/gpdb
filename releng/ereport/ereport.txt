@@ -4005,10 +4005,13 @@ caah: cdbpath:00001331:  "UNION ALL of joined tables "
 caah: cdbpath:00001332:  "with subquery.") 
 caah: cdbpath:00001333:  )); 
 aaaaa GP_IGNORE: cabi: cdbpersistentbuild - ./backend/cdb/cdbpersistentbuild.c
-cabi: cdbpersistentbuild:00000982:  ereport(ERROR, 
-cabi: cdbpersistentbuild:00000983:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-cabi: cdbpersistentbuild:00000984:  errmsg("function is not supported"), 
-cabi: cdbpersistentbuild:00000985:  errOmitLocation(true))); 
+cabi: cdbpersistentbuild:00000676:  ereport(ERROR, 
+cabi: cdbpersistentbuild:00000677:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+cabi: cdbpersistentbuild:00000678:  errmsg("tablespace tuple is invalid"))); 
+cabi: cdbpersistentbuild:00001048:  ereport(ERROR, 
+cabi: cdbpersistentbuild:00001049:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+cabi: cdbpersistentbuild:00001050:  errmsg("function is not supported"), 
+cabi: cdbpersistentbuild:00001051:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: cacc: cdbpersistentfilespace - ./backend/cdb/cdbpersistentfilespace.c
 cacc: cdbpersistentfilespace:00000621:  ereport(FATAL, 
 cacc: cdbpersistentfilespace:00000622:  (errcode(ERRCODE_INTERNAL_ERROR), 
@@ -4024,18 +4027,18 @@ cacb: cdbpersistentrecovery:00002160:  ereport(ERROR,
 cacb: cdbpersistentrecovery:00002161:  (errcode_for_file_access(), 
 cacb: cdbpersistentrecovery:00002162:  errmsg("error reading redo relation file: %m"))); 
 aaaaa GP_IGNORE: cacd: cdbpersistenttablespace - ./backend/cdb/cdbpersistenttablespace.c
-cacd: cdbpersistenttablespace:00000611:  ereport(ERROR, 
-cacd: cdbpersistenttablespace:00000612:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cacd: cdbpersistenttablespace:00000613:  errmsg("Unable to find entry for tablespace OID = %u when getting filespace directory paths", 
-cacd: cdbpersistenttablespace:00000614:  tablespaceOid))); 
-cacd: cdbpersistenttablespace:00000618:  ereport(ERROR, 
-cacd: cdbpersistenttablespace:00000619:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cacd: cdbpersistenttablespace:00000620:  errmsg("Unable to find entry for filespace OID = %u when forming filespace directory paths for tablespace OID = %u", 
-cacd: cdbpersistenttablespace:00000621:  filespaceOid, 
-cacd: cdbpersistenttablespace:00000622:  tablespaceOid))); 
-cacd: cdbpersistenttablespace:00001351:  ereport(FATAL, 
-cacd: cdbpersistenttablespace:00001352:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cacd: cdbpersistenttablespace:00001353:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
+cacd: cdbpersistenttablespace:00000610:  ereport(ERROR, 
+cacd: cdbpersistenttablespace:00000611:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cacd: cdbpersistenttablespace:00000612:  errmsg("Unable to find entry for tablespace OID = %u when getting filespace directory paths", 
+cacd: cdbpersistenttablespace:00000613:  tablespaceOid))); 
+cacd: cdbpersistenttablespace:00000617:  ereport(ERROR, 
+cacd: cdbpersistenttablespace:00000618:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cacd: cdbpersistenttablespace:00000619:  errmsg("Unable to find entry for filespace OID = %u when forming filespace directory paths for tablespace OID = %u", 
+cacd: cdbpersistenttablespace:00000620:  filespaceOid, 
+cacd: cdbpersistenttablespace:00000621:  tablespaceOid))); 
+cacd: cdbpersistenttablespace:00001420:  ereport(FATAL, 
+cacd: cdbpersistenttablespace:00001421:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cacd: cdbpersistenttablespace:00001422:  errmsg("Not enough shared memory for persistent tablespace hash table"))); 
 aaaaa GP_IGNORE: caba: cdbrelsize - ./backend/cdb/cdbrelsize.c
 caba: cdbrelsize:00000102:  ereport(WARNING, (errmsg("cdbRelSize error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
 caba: cdbrelsize:00000103:  errdetail("%s", errbuf.data))); 
@@ -4168,14 +4171,14 @@ caah: cdbsreh:00000671:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 caah: cdbsreh:00000672:  errmsg("Segment reject limit in PERCENT " 
 caah: cdbsreh:00000673:  "must be between 1 and 100 (got %d)", rejectlimit))); 
 aaaaa GP_IGNORE: caba: cdbsubplan - ./backend/cdb/cdbsubplan.c
-caba: cdbsubplan:00000249:  ereport(ERROR, 
-caba: cdbsubplan:00000250:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caba: cdbsubplan:00000251:  errmsg("no parameter found for initplan subquery"))); 
-caba: cdbsubplan:00000318:  ereport(ERROR, 
-caba: cdbsubplan:00000319:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caba: cdbsubplan:00000320:  errmsg("Failed to locate datatype for paramid %d", 
-caba: cdbsubplan:00000321:  paramid 
-caba: cdbsubplan:00000322:  ))); 
+caba: cdbsubplan:00000256:  ereport(ERROR, 
+caba: cdbsubplan:00000257:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caba: cdbsubplan:00000258:  errmsg("no parameter found for initplan subquery"))); 
+caba: cdbsubplan:00000325:  ereport(ERROR, 
+caba: cdbsubplan:00000326:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caba: cdbsubplan:00000327:  errmsg("Failed to locate datatype for paramid %d", 
+caba: cdbsubplan:00000328:  paramid 
+caba: cdbsubplan:00000329:  ))); 
 aaaaa GP_IGNORE: cabc: cdbsubselect - ./backend/cdb/cdbsubselect.c
 cabc: cdbsubselect:00000222:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
 cabc: cdbsubselect:00000223:  errmsg("Set-returning function in EXISTS subquery: not yet implemented") 
