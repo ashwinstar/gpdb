@@ -385,8 +385,8 @@ get_line(FILE *f, int max_linesize, int encoding, bool *iseof)
 Datum
 utl_file_get_line(PG_FUNCTION_ARGS)
 {
-	int		max_linesize;
-	int		encoding;
+	int		max_linesize = 0;
+	int		encoding = 0;
 	FILE   *f;
 	text   *result;
 	bool	iseof;
