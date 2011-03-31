@@ -24,6 +24,7 @@
 #include "cdb/cdbpersistentstore.h"
 #include "cdb/cdbpersistentfilesysobj.h"
 #include "cdb/cdbpersistentdatabase.h"
+#include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbpersistentrelation.h"
 #include "storage/itemptr.h"
 #include "utils/hsearch.h"
@@ -646,13 +647,73 @@ gp_persistent_build_all(PG_FUNCTION_ARGS)
 {
 	bool mirrored = PG_GETARG_BOOL(0);
 
+	Relation pg_tablespace;
 	Relation pg_database;
 	HeapScanDesc scan;
 	HeapTuple tuple;
-
+	
+	Datum	*d;
+	bool	*null;
+	
 	// UNDONE: Verify we are in some sort of single-user mode.
 
 	/*
+	 * Re-build tablespaces.
+	 */
+	d = (Datum *) palloc(sizeof(Datum) * Natts_pg_tablespace);
+	null = (bool *) palloc(sizeof(bool) * Natts_pg_tablespace);	
+	
+	pg_tablespace = heap_open(
+							  TableSpaceRelationId,
+							  AccessShareLock);
+	
+	scan = heap_beginscan(pg_tablespace, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Oid tablespaceOid;
+		
+		if (!HeapTupleIsValid(tuple))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("tablespace tuple is invalid")));
+		
+		tablespaceOid = HeapTupleGetOid(tuple);
+		
+		heap_deform_tuple(tuple, pg_tablespace->rd_att, d, null);
+						
+		if (tablespaceOid == DEFAULTTABLESPACE_OID ||
+			tablespaceOid == GLOBALTABLESPACE_OID)
+		{
+			if (Debug_persistent_print)
+				elog(Persistent_DebugPrintLevel(), 
+					 "gp_persistent_build_all: skip pg_default and pg_global tablespaceOid %u",
+				tablespaceOid);
+			continue;
+		}
+		
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "gp_persistent_build_all: tablespaceOid %u filespaceOid %u",
+				 tablespaceOid, DatumGetInt32(d[Anum_pg_tablespace_spcfsoid - 1]));
+						
+		PersistentTablespace_AddCreated(
+										DatumGetInt32(d[Anum_pg_tablespace_spcfsoid - 1]),
+										tablespaceOid,
+										mirrored ?
+													MirroredObjectExistenceState_MirrorCreated :
+													MirroredObjectExistenceState_NotMirrored,
+										/* flushToXLog */ false);
+	}
+	
+	heap_endscan(scan);
+	
+	heap_close(pg_tablespace, AccessShareLock);
+	
+	pfree(d);
+	pfree(null);
+	
+	/*
+	 * Re-build databases.
 	 * Do template1 first since it will also populate the shared-object persistent objects.
 	 */	
 	PersistentBuild_BuildDb(
@@ -697,6 +758,8 @@ gp_persistent_build_all(PG_FUNCTION_ARGS)
 	heap_endscan(scan);
 
 	heap_close(pg_database, AccessShareLock);
+	
+	PersistentStore_FlushXLog();
 
 	PG_RETURN_INT32(1);
 }
@@ -884,6 +947,9 @@ gp_persistent_reset_all(PG_FUNCTION_ARGS)
 
 	/*
 	 * Truncate the 4 persistent shared tables.
+	 * 'gp_persistent_filespace_node' persistent table is not dropped 
+	 * since it cannot be re-built. 'pg_filespace' table does not exist
+	 * on segments by design.
 	 */
 	relFileNode.spcNode = GLOBALTABLESPACE_OID;
 	relFileNode.dbNode = 0;

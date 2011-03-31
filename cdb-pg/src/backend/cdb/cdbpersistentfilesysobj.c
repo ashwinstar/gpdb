@@ -613,7 +613,11 @@ void PersistentFileSysObj_Reset(void)
 			break;
 
 		case PersistentFsObjType_FilespaceDir:
-			PersistentFilespace_Reset();
+			/*
+			 * Filespace persistent table is not reset (PersistentFilespace_Reset(); is not called)
+			 * since it cannot be re-built on segments. 
+			 * 'gp_filespace' table does not exist on the segments by design.
+			 */
 			break;
 
 		default:

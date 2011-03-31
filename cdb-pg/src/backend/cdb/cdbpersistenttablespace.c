@@ -557,7 +557,6 @@ PersistentTablespaceGetFilespaces PersistentTablespace_TryGetPrimaryAndMirrorFil
 	}
 	else
 	{
-
 		*filespaceOid = tablespaceDirEntry->filespaceOid;
 
 		if (!PersistentFilespace_TryGetPrimaryAndMirrorUnderLock(
@@ -565,7 +564,7 @@ PersistentTablespaceGetFilespaces PersistentTablespace_TryGetPrimaryAndMirrorFil
 													primaryFilespaceLocation,
 													mirrorFilespaceLocation))
 		{
-			result = PersistentTablespaceGetFilespaces_FilespaceNotFound;
+			result = PersistentTablespaceGetFilespaces_FilespaceNotFound;			
 		}
 		else
 		{
@@ -780,6 +779,76 @@ xlog_persistent_tablespace_create(Oid filespaceoid, Oid tablespaceoid)
 	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 }
 
+// -----------------------------------------------------------------------------
+// Rebuild tablespace persistent table 'gp_persistent_tablespace_node'
+// -----------------------------------------------------------------------------
+
+void PersistentTablespace_AddCreated(
+									  Oid 		filespaceOid,
+									  /* The filespace where the tablespace lives. */
+											
+									  Oid 		tablespaceOid,
+									  /* The tablespace OID to be added. */
+											
+									  MirroredObjectExistenceState mirrorExistenceState,
+											
+									  bool			flushToXLog)
+									  /* When true, the XLOG record for this change will be flushed to disk. */
+
+{
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+	
+	PersistentFileSysObjName fsObjName;
+	
+	ItemPointerData		persistentTid;
+	int64				persistentSerialNum;	
+	TablespaceDirEntry	tablespaceDirEntry;
+	
+	if (Persistent_BeforePersistenceWork())
+	{	
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "Skipping persistent tablespace %u because we are before persistence work",
+				 tablespaceOid);
+		
+		return;	// The initdb process will load the persistent table once we out of bootstrap mode.
+	}
+	
+	PersistentTablespace_VerifyInitScan();
+	
+	PersistentFileSysObjName_SetTablespaceDir(&fsObjName,tablespaceOid);
+	
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
+	
+	tablespaceDirEntry = 
+	PersistentTablespace_CreateEntryUnderLock(
+											  filespaceOid,
+											  tablespaceOid);
+	Assert(tablespaceDirEntry != NULL);
+	
+	tablespaceDirEntry->state = PersistentFileSysState_Created;
+	
+	PersistentTablespace_AddTuple(
+								  tablespaceDirEntry,
+								  /* createMirrorDataLossTrackingSessionNum */ 0,
+								  mirrorExistenceState,
+								  /* reserved */ 0,
+								  InvalidTransactionId,
+								  flushToXLog);
+
+	persistentTid = tablespaceDirEntry->persistentTid;
+	persistentSerialNum = tablespaceDirEntry->persistentSerialNum;
+		
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+	
+	if (Debug_persistent_print)
+		elog(Persistent_DebugPrintLevel(), 
+		     "Persistent tablespace directory: Add '%s' in state 'Created', mirror existence state '%s', serial number " INT64_FORMAT " at TID '%s' ",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 MirroredObjectExistenceState_Name(mirrorExistenceState),
+			 persistentSerialNum,
+			 ItemPointerToString(&persistentTid));
+}
 
 // -----------------------------------------------------------------------------
 // Transaction End  

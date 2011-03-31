@@ -171,6 +171,21 @@ extern void PersistentTablespace_Dropped(
 				/* Serial number for the relation.	Distinquishes the uses of the tuple. */
 	
 // -----------------------------------------------------------------------------
+// Re-build tablespace persistent table 'gp_persistent_tablespace_node'
+// -----------------------------------------------------------------------------
+extern void PersistentTablespace_AddCreated(
+											 Oid 		filespaceOid,
+											 /* The filespace where the tablespace lives. */
+											 
+											 Oid 		tablespaceOid,
+											 /* The tablespace OID for the create. */
+											 
+											 MirroredObjectExistenceState mirrorExistenceState,
+											 											 
+											 bool			flushToXLog);
+											 /* When true, the XLOG record for this change will be flushed to disk. */
+
+// -----------------------------------------------------------------------------
 // Shmem and Startup/Shutdown
 // -----------------------------------------------------------------------------
 				
