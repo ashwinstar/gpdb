@@ -220,6 +220,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	int			flag;
 	AuxProcType auxType = CheckerProcess;
 	char	   *userDoption = NULL;
+	char		stack_base;
 
 	/*
 	 * initialize globals
@@ -227,6 +228,9 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	MyProcPid = getpid();
 
 	MyStartTime = time(NULL);
+
+	/* Set up reference point for stack depth checking */
+	stack_base_ptr = &stack_base;
 
 	/*
 	 * Fire up essential subsystems: error and memory management

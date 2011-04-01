@@ -4203,6 +4203,9 @@ debug_backtrace(void)
 uint32 gp_backtrace(void **stackAddresses, uint32 maxStackDepth)
 {
 #if defined(__i386) || defined(__x86_64__)
+
+	Assert(stack_base_ptr != NULL);
+
 	/* get base pointer of current frame */
 	uint64 framePtrValue = 0;
 	GET_FRAME_POINTER(framePtrValue);
@@ -4210,32 +4213,36 @@ uint32 gp_backtrace(void **stackAddresses, uint32 maxStackDepth)
 	uint32 depth = 0;
 	void **pFramePtr = (void**) GET_PTR_FROM_VALUE(framePtrValue);
 
-	/* check if the stack base pointer has been set and if the frame pointer is valid */
-	if (stack_base_ptr == NULL || pFramePtr == NULL || (void *) &depth >= (void *) pFramePtr)
+	/* check if the frame pointer is valid */
+	if (pFramePtr != NULL && (void *) &depth < (void *) pFramePtr)
 	{
-		return backtrace(stackAddresses, maxStackDepth);
-	}
-
-	/* consider the first maxStackDepth frames only, below the stack base pointer */
-	for (depth = 0; depth < maxStackDepth; depth++)
-	{
-		/* check if next frame is within stack */
-		if (pFramePtr == NULL ||
-		    (void *) pFramePtr > *pFramePtr ||
-			(void *) stack_base_ptr < *pFramePtr)
+		/* consider the first maxStackDepth frames only, below the stack base pointer */
+		for (depth = 0; depth < maxStackDepth; depth++)
 		{
-			break;
+			/* check if next frame is within stack */
+			if (pFramePtr == NULL ||
+				(void *) pFramePtr > *pFramePtr ||
+				(void *) stack_base_ptr < *pFramePtr)
+			{
+				break;
+			}
+
+			/* get return address (one above the frame pointer) */
+			const uintptr_t *returnAddr = (uintptr_t *)(pFramePtr + 1);
+
+			/* store return address */
+			stackAddresses[depth] = (void *) *returnAddr;
+
+			/* move to next frame */
+			pFramePtr = (void**)*pFramePtr;
 		}
-
-		/* get return address (one above the frame pointer) */
-		const uintptr_t *returnAddr = (uintptr_t *)(pFramePtr + 1);
-
-		/* store return address */
-		stackAddresses[depth] = (void *) *returnAddr;
-
-		// move to next frame
-		pFramePtr = (void**)*pFramePtr;
 	}
+	else
+	{
+		depth  = backtrace(stackAddresses, maxStackDepth);
+	}
+
+	Assert(depth > 0);
 
 	return depth;
 

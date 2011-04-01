@@ -489,7 +489,7 @@ extern void debug_backtrace(void);
 extern uint32 gp_backtrace(void **stackAddresses, uint32 maxStackDepth);
 extern char *gp_stacktrace(void **stackAddresses, uint32 stackDepth);
 
-/* stack base pointer, defined in postmaster.c */
+/* stack base pointer, defined in postgres.c */
 extern char *stack_base_ptr;
 
 /* GUCs */
