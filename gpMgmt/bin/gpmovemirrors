@@ -193,6 +193,8 @@ def  lookupFilespaces(gpdb):
      gpdbFilespaceDict = gpdb.getSegmentFilespaces()
 
      for oid in gpdbFilespaceDict:
+         if oid == SYSTEM_FILESPACE:
+            continue
          name = gparray.getFileSpaceName(oid)
          location = gpdbFilespaceDict[oid]
          retValue[name] = location
