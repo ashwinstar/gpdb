@@ -773,10 +773,6 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
 			appendStringInfo(str, " segments: %d)", numSegments);
 			break;
 		}
-		case GANGTYPE_MIRROR_WRITER:
-			/* Shouldn't see this in a slice->gangType. */
-			Assert(FALSE);
-			break;
 	}
 }
 

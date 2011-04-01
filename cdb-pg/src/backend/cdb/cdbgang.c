@@ -176,8 +176,7 @@ segment_failure_due_to_recovery(SegmentDatabaseDescriptor *segdbDesc)
  * Reader gang ids start at 3
  */
 #define PRIMARY_WRITER_GANG_ID 1
-#define MIRROR_WRITER_GANG_ID 2
-static int	gang_id_counter = 3;
+static int	gang_id_counter = 2;
 
 /*
  * creates a new gang by logging on a session to each segDB involved
@@ -222,8 +221,6 @@ create_gang_retry:
 	Assert(size <= getgpsegmentCount());
 
 	Assert(CurrentResourceOwner != NULL);
-
-	Assert(type != GANGTYPE_MIRROR_WRITER);
 
 	if (portal_name != 0)
 	{
@@ -573,19 +570,6 @@ create_gang_retry:
 	{
 		bool		errorOut;
 
-		if (type == GANGTYPE_MIRROR_WRITER)
-		{
-			/*
-			 * MPP-6588: This is a partially created mirror gang. We
-			 * attempted to connect to some number of mirror segments
-			 * and some failed. This may mean that we've detected a
-			 * failure ahead of the FtsProber.
-			 *
-			 * But there isn't anything specific to mirrors to do
-			 * here.
-			 */
-		}
-
 		errorOut = FtsHandleGangConnectionFailure(newGangDefinition->db_descriptors, newGangDefinition->size);
 
 		/*
@@ -624,8 +608,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 
 	Assert(CurrentMemoryContext == GangContext);
 	Assert(size > 0);
-
-	Assert(type != GANGTYPE_MIRROR_WRITER);
 
 	/*
 	 * Get the structure representing the configured segment
@@ -1322,7 +1304,6 @@ static List *availableReaderGangsN = NIL;
 static List *allocatedReaderGangs1 = NIL;
 static List *availableReaderGangs1 = NIL;
 static Gang *primaryWriterGang = NULL;
-static Gang *mirrorWriterGang = NULL;
 
 List *
 getAllReaderGangs()
@@ -1381,10 +1362,8 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	if (Gp_role != GP_ROLE_DISPATCH)
 		elog(FATAL, "allocateGang: called with Gp_role %d", Gp_role);
 
-	Assert(type != GANGTYPE_MIRROR_WRITER);
-
 	if (type == GANGTYPE_PRIMARY_WRITER)
-		return allocateWriterGang(type);
+		return allocateWriterGang();
 
 	if (!IsTransactionOrTransactionBlock())
 	{
@@ -1572,23 +1551,21 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 }
 
 Gang *
-allocateWriterGang(GangType type)
+allocateWriterGang()
 {
 	Gang	   *writer_gang = NULL;
 	MemoryContext oldContext;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
-	Assert(type == GANGTYPE_PRIMARY_WRITER);
 
-	if (type == GANGTYPE_PRIMARY_WRITER)
-		writer_gang = primaryWriterGang;
+	writer_gang = primaryWriterGang;
 
 	/*
 	 * First, we look for an unallocated but created gang of the right type
 	 * if it exists, we return it.
 	 * Else, we create a new gang
 	 */
-	if (type == GANGTYPE_PRIMARY_WRITER && writer_gang == NULL)
+	if (writer_gang == NULL)
 	{
 		int			nsegdb;
 		int			attempts;
@@ -1618,7 +1595,7 @@ allocateWriterGang(GangType type)
 		for (attempts = 0; (attempts < CREATE_GANG_RETRIES && writer_gang == NULL); attempts++)
 		{
 			writer_gang =
-				createGang(type, PRIMARY_WRITER_GANG_ID, nsegdb, -1, NULL);
+				createGang(GANGTYPE_PRIMARY_WRITER, PRIMARY_WRITER_GANG_ID, nsegdb, -1, NULL);
 		}
 
 		MemoryContextSwitchTo(oldContext);
@@ -1631,10 +1608,7 @@ allocateWriterGang(GangType type)
 
 	if (writer_gang == NULL)
 	{
-		if (type == GANGTYPE_PRIMARY_WRITER)
-			elog(ERROR, "No primary gang allocated");
-		else
-			return NULL;
+		elog(ERROR, "No primary gang allocated");
 	}
 
 	Assert(writer_gang != NULL);
@@ -1648,8 +1622,7 @@ allocateWriterGang(GangType type)
 		elog(ERROR, "GPDB performed segment reconfiguration.");
 	}
 
-	if (type == GANGTYPE_PRIMARY_WRITER)
-		primaryWriterGang = writer_gang;
+	primaryWriterGang = writer_gang;
 
 	return writer_gang;
 }
@@ -1669,21 +1642,15 @@ allocateWriterGang(GangType type)
 Gang *
 findGangById(int gang_id)
 {
+	Assert(gang_id >= PRIMARY_WRITER_GANG_ID);
+
 	if (primaryWriterGang && primaryWriterGang->gang_id == gang_id)
 		return primaryWriterGang;
 
-	if (mirrorWriterGang && mirrorWriterGang->gang_id == gang_id)
-		return mirrorWriterGang;
-
-	if (gang_id == 1)
+	if (gang_id == PRIMARY_WRITER_GANG_ID)
 	{
 		elog(LOG, "findGangById: primary writer didn't exist when we expected it to");
-		return allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
-	}
-	else if (gang_id == 2)
-	{
-		elog(LOG, "findGangById: mirror writer didn't exist when we expected it to");
-		return allocateWriterGang(GANGTYPE_MIRROR_WRITER);
+		return allocateWriterGang();
 	}
 
 	/*
@@ -2372,11 +2339,6 @@ disconnectAndDestroyGangById(int gang_id)
 	{
 		disconnectAndDestroyGang(primaryWriterGang);
 		primaryWriterGang = NULL;
-	}
-	else if (mirrorWriterGang && mirrorWriterGang->gang_id == gang_id)
-	{
-		disconnectAndDestroyGang(mirrorWriterGang);
-		mirrorWriterGang = NULL;
 	}
 }
 

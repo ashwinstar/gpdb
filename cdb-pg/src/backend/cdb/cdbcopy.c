@@ -70,7 +70,7 @@ makeCdbCopy(bool is_copy_in)
 	}
 
 	/* init gangs */
-	c->primary_writer = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
+	c->primary_writer = allocateWriterGang();
 	
 	/* init seg list for copy out */
 	if (!c->copy_in)

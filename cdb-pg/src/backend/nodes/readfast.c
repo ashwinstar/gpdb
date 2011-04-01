@@ -3175,7 +3175,8 @@ _readSlice(const char ** str)
 
 	READ_INT_FIELD(sliceIndex);
 	READ_INT_FIELD(rootIndex);
-	READ_ENUM_FIELD(gangType, GangType);  Assert(local_node->gangType <= GANGTYPE_MIRROR_WRITER);
+	READ_ENUM_FIELD(gangType, GangType);
+	Assert(local_node->gangType <= GANGTYPE_PRIMARY_WRITER);
 	READ_INT_FIELD(gangSize);
 	READ_INT_FIELD(numGangMembersToBeActive);
 	READ_BOOL_FIELD(directDispatch.isDirectDispatch);

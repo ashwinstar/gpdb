@@ -1615,7 +1615,7 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		{
 			if (i == 0 && !queryDesc->cursor_query)
 			{
-				inv.vecNgangs[i] = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
+				inv.vecNgangs[i] = allocateWriterGang();
 
 				Assert(inv.vecNgangs[i] != NULL);
 			}
@@ -1741,11 +1741,6 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 				req->numNgangs++;
 			}
 			break;
-
-		case GANGTYPE_MIRROR_WRITER:
-			/* Shouldn't see this in a slice->gangType. */
-			Assert(FALSE);
-			break;
 	}
 
 	foreach(cell, slice->children)
@@ -1779,8 +1774,6 @@ sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
 				return list_length(slice->directDispatch.contentIds);
 			else return getgpsegmentCount();
 
-		case GANGTYPE_MIRROR_WRITER:
-			return 0; /* does not send */
 		default:
 			Insist(false);
 			return -1;
@@ -1865,11 +1858,6 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
                                                         slice->sliceIndex,
                                                         &slice->directDispatch);
 			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->primaryProcesses));
-			break;
-
-		case GANGTYPE_MIRROR_WRITER:
-			/* Shouldn't see this in a slice->gangType. */
-			Assert(FALSE);
 			break;
 	}
 

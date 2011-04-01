@@ -1256,7 +1256,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
-	primaryGang = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
+	primaryGang = allocateWriterGang();
 
 	Assert(primaryGang);
 
@@ -1364,7 +1364,7 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
-	primaryGang = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
+	primaryGang = allocateWriterGang();
 
 	Assert(primaryGang);
 
@@ -1612,7 +1612,7 @@ cdbdisp_dispatchCommandToAllGangs(const char	*strCommand,
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
-	primaryGang = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
+	primaryGang = allocateWriterGang();
 
 	Assert(primaryGang);
 	

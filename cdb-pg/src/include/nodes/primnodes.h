@@ -1267,8 +1267,7 @@ typedef enum GangType
 	GANGTYPE_UNALLOCATED,       /* a root slice executed by the qDisp */
     GANGTYPE_ENTRYDB_READER,    /* a 1-gang with read access to the entry db */	
 	GANGTYPE_PRIMARY_READER,    /* a 1-gang or N-gang to read the segment dbs */
-	GANGTYPE_PRIMARY_WRITER,    /* the N-gang that can update the segment dbs */
-	GANGTYPE_MIRROR_WRITER      /* the N-gang that updates segment mirror dbs */
+	GANGTYPE_PRIMARY_WRITER    /* the N-gang that can update the segment dbs */
 } GangType;
 
 typedef enum GroupingType
