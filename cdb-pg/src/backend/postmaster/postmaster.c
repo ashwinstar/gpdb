@@ -817,6 +817,7 @@ PostmasterMain(int argc, char *argv[])
 	int			status;
 	char       *userDoption = NULL;
 	int			i;
+	char		stack_base;
 
 	COMPILE_ASSERT(ARRAY_SIZE(gPmStateLabels) == PM__ENUMERATION_COUNT);
 
@@ -825,6 +826,9 @@ PostmasterMain(int argc, char *argv[])
 	MyStartTime = time(NULL);
 
 	IsPostmasterEnvironment = true;
+
+	/* Set up reference point for stack depth checking */
+	stack_base_ptr = &stack_base;
 
 	/*
 	 * for security, no dir or file created can be group or other accessible
