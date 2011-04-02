@@ -19,6 +19,21 @@
 #include "parser/scansup.h"      
 #include "mb/pg_wchar.h"
 
+#define unify_version(a,b,c) ((a<<16)+(b<<8)+c)
+#if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35)
+int orafce_sql_yyget_lineno  (void);
+FILE *orafce_sql_yyget_in  (void);
+FILE *orafce_sql_yyget_out  (void);
+int orafce_sql_yyget_leng  (void);
+char *orafce_sql_yyget_text  (void);
+void orafce_sql_yyset_lineno (int  line_number );
+void orafce_sql_yyset_in (FILE *  in_str );
+void orafce_sql_yyset_out (FILE *  out_str );
+int orafce_sql_yyget_debug  (void);
+void orafce_sql_yyset_debug (int  bdebug );
+int orafce_sql_yylex_destroy  (void);
+#endif
+
 #if PG_VERSION_NUM >= 80500
 extern PGDLLIMPORT const ScanKeyword ScanKeywords[];
 extern PGDLLIMPORT const int	NumScanKeywords;
