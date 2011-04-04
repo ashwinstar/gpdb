@@ -663,8 +663,11 @@ def quote_unident(val):
     This method returns a new string replacing "" with ",
     and  removing the " at the start and end of the string.
     """
-    val = val[1:-1]
-    return val.replace('""', '"')
+    if val != None and len(val) > 0:
+       val = val[1:-1]
+       return val.replace('""', '"')
+    else:
+       return val
 
 
 def notice_processor(self):
