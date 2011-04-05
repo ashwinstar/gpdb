@@ -257,65 +257,6 @@ CREATE VIEW public.dual AS SELECT 'X'::varchar AS dummy;
 REVOKE ALL ON public.dual FROM PUBLIC;
 GRANT SELECT, REFERENCES ON public.dual TO PUBLIC;
 
--- this packege is emulation of dbms_output Oracle packege
---
-
-CREATE SCHEMA dbms_output;
-
-CREATE FUNCTION dbms_output.enable(IN buffer_size int4)
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_enable'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION dbms_output.enable(IN int4) IS 'Enable package functionality';
-
-CREATE FUNCTION dbms_output.enable()
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_enable_default'
-LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.enable() IS 'Enable package functionality';
-
-CREATE FUNCTION dbms_output.disable()
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_disable'
-LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.disable() IS 'Disable package functionality';
-
-CREATE FUNCTION dbms_output.serveroutput(IN bool)
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_serveroutput'
-LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.serveroutput(IN bool) IS 'Set drowing output';
-
-CREATE FUNCTION dbms_output.put(IN a text)
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_put'
-LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.put(IN text) IS 'Put some text to output';
-
-CREATE FUNCTION dbms_output.put_line(IN a text)
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_put_line'
-LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.put_line(IN text) IS 'Put line to output';
-
-CREATE FUNCTION dbms_output.new_line()
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_new_line'
-LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.new_line() IS 'Put new line char to output';
-
-CREATE FUNCTION dbms_output.get_line(OUT line text, OUT status int4)
-AS 'MODULE_PATHNAME','dbms_output_get_line'
-LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.get_line(OUT text, OUT int4) IS 'Get line from output buffer';
-
-
-CREATE FUNCTION dbms_output.get_lines(OUT lines text[], INOUT numlines int4)
-AS 'MODULE_PATHNAME','dbms_output_get_lines'
-LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.get_lines(OUT text[], INOUT int4) IS 'Get lines from output buffer';
-
-
 -- others functions
 
 CREATE FUNCTION nvl(anyelement, anyelement)
@@ -1058,64 +999,6 @@ AS $$ SELECT TRANSLATE($1, 'A'||$2, 'A'); $$
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.stripped(text, text) IS 'Strips a string of all instances of the specified characters';
 
--- dbms_alert
-
-CREATE SCHEMA dbms_alert;
-
-CREATE FUNCTION dbms_alert.register(name text)
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_alert_register'
-LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_alert.register(text) IS 'Register session as recipient of alert name';
-
-CREATE FUNCTION dbms_alert.remove(name text)
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_alert_remove'
-LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_alert.remove(text) IS 'Remove session as recipient of alert name';
-
-CREATE FUNCTION dbms_alert.removeall()
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_alert_removeall'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION dbms_alert.removeall() IS 'Remove registration for all alerts';
-
-CREATE FUNCTION dbms_alert._signal(name text, message text)
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_alert_signal'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION dbms_alert._signal(text, text) IS '';
-
-CREATE FUNCTION dbms_alert.waitany(OUT name text, OUT message text, OUT status integer, timeout float8)
-RETURNS record
-AS 'MODULE_PATHNAME','dbms_alert_waitany'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION dbms_alert.waitany(OUT text, OUT text, OUT integer, float8) IS 'Wait for any signal';
-
-CREATE FUNCTION dbms_alert.waitone(name text, OUT message text, OUT status integer, timeout float8)
-RETURNS record
-AS 'MODULE_PATHNAME','dbms_alert_waitone'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION dbms_alert.waitone(text, OUT text, OUT integer, float8) IS 'Wait for specific signal';
-
-CREATE FUNCTION dbms_alert.set_defaults(sensitivity float8)
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_alert_set_defaults'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION dbms_alert.set_defaults(float8) IS '';
-
-CREATE FUNCTION dbms_alert.defered_signal()
-RETURNS trigger
-AS 'MODULE_PATHNAME','dbms_alert_defered_signal'
-LANGUAGE C SECURITY DEFINER;
-REVOKE ALL ON FUNCTION dbms_alert.defered_signal() FROM PUBLIC;
-
-CREATE FUNCTION dbms_alert.signal(_event text, _message text)
-RETURNS void
-AS 'MODULE_PATHNAME','dbms_alert_signal'
-LANGUAGE C SECURITY DEFINER;
-COMMENT ON FUNCTION dbms_alert.signal(text, text) IS 'Emit signal to all recipients';
-
 CREATE SCHEMA plvsubst;
 
 CREATE FUNCTION plvsubst.string(template_in text, values_in text[], subst text)
@@ -1188,190 +1071,6 @@ RETURNS SETOF RECORD
 AS 'MODULE_PATHNAME','plvlex_tokens'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvlex.tokens(text,bool,bool) IS 'Parse SQL string';
-
-CREATE SCHEMA utl_file;
-CREATE DOMAIN utl_file.file_type integer;
-
-CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text, max_linesize integer, encoding name)
-RETURNS utl_file.file_type
-AS 'MODULE_PATHNAME','utl_file_fopen'
-LANGUAGE C VOLATILE SECURITY DEFINER;
-COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer,name) IS 'The FOPEN function open file and return file handle';
-
-CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text, max_linesize integer)
-RETURNS utl_file.file_type
-AS 'MODULE_PATHNAME','utl_file_fopen'
-LANGUAGE C VOLATILE SECURITY DEFINER;
-COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN function open file and return file handle';
-
-CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text)
-RETURNS utl_file.file_type
-AS $$SELECT utl_file.fopen($1, $2, $3, 1024); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN function open file and return file handle';
-
-CREATE FUNCTION utl_file.is_open(file utl_file.file_type)
-RETURNS bool
-AS 'MODULE_PATHNAME','utl_file_is_open'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.is_open(utl_file.file_type) IS 'Functions returns true if handle points to file that is open';
-
-CREATE FUNCTION utl_file.get_line(file utl_file.file_type, OUT buffer text)
-AS 'MODULE_PATHNAME','utl_file_get_line'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.get_line(utl_file.file_type) IS 'Returns one line from file';
-
-CREATE FUNCTION utl_file.get_line(file utl_file.file_type, OUT buffer text, len integer)
-AS 'MODULE_PATHNAME','utl_file_get_line'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.get_line(utl_file.file_type, len integer) IS 'Returns one line from file';
-
-CREATE FUNCTION utl_file.get_nextline(file utl_file.file_type, OUT buffer text)
-AS 'MODULE_PATHNAME','utl_file_get_nextline'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.get_nextline(utl_file.file_type) IS 'Returns one line from file or returns NULL';
-
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer text)
-RETURNS bool
-AS 'MODULE_PATHNAME','utl_file_put'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.put(utl_file.file_type, text) IS 'Puts data to specified file';
-
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer anyelement)
-RETURNS bool
-AS $$SELECT utl_file.put($1, $2::text); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.put(utl_file.file_type, anyelement) IS 'Puts data to specified file';
-
-CREATE FUNCTION utl_file.new_line(file utl_file.file_type)
-RETURNS bool
-AS 'MODULE_PATHNAME','utl_file_new_line'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.new_line(file utl_file.file_type) IS 'Function inserts one ore more newline characters in specified file';
-
-CREATE FUNCTION utl_file.new_line(file utl_file.file_type, lines int)
-RETURNS bool
-AS 'MODULE_PATHNAME','utl_file_new_line'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.new_line(file utl_file.file_type) IS 'Function inserts one ore more newline characters in specified file';
-
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer text)
-RETURNS bool
-AS 'MODULE_PATHNAME','utl_file_put_line'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, text) IS 'Puts data to specified file and append newline character';
-
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer text, autoflush bool)
-RETURNS bool
-AS 'MODULE_PATHNAME','utl_file_put_line'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, text, bool) IS 'Puts data to specified file and append newline character';
-
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text, arg3 text, arg4 text, arg5 text)
-RETURNS bool
-AS 'MODULE_PATHNAME','utl_file_putf'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text, text, text) IS 'Puts formatted data to specified file';
-
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text, arg3 text, arg4 text)
-RETURNS bool
-AS $$SELECT utl_file.putf($1, $2, $3, $4, $5, $6, NULL); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text, text) IS 'Puts formatted data to specified file';
-
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text, arg3 text)
-RETURNS bool
-AS $$SELECT utl_file.putf($1, $2, $3, $4, $5, NULL, NULL); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text) IS 'Puts formatted data to specified file';
-
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text)
-RETURNS bool
-AS $$SELECT utl_file.putf($1, $2, $3, $4, NULL, NULL, NULL); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text) IS 'Puts formatted data to specified file';
-
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text)
-RETURNS bool
-AS $$SELECT utl_file.putf($1, $2, $3, NULL, NULL, NULL, NULL); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text) IS 'Puts formatted data to specified file';
-
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text)
-RETURNS bool
-AS $$SELECT utl_file.putf($1, $2, NULL, NULL, NULL, NULL, NULL); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text) IS 'Puts formatted data to specified file';
-
-CREATE FUNCTION utl_file.fflush(file utl_file.file_type)
-RETURNS void
-AS 'MODULE_PATHNAME','utl_file_fflush'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.fflush(file utl_file.file_type) IS 'This procedure makes sure that all pending data for specified file is written physically out to a file';
-
-CREATE FUNCTION utl_file.fclose(file utl_file.file_type)
-RETURNS utl_file.file_type
-AS 'MODULE_PATHNAME','utl_file_fclose'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.fclose(utl_file.file_type) IS 'Close file';
-
-CREATE FUNCTION utl_file.fclose_all()
-RETURNS void
-AS 'MODULE_PATHNAME','utl_file_fclose_all'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.fclose_all() IS 'Close all open files.';
-
-CREATE FUNCTION utl_file.fremove(location text, filename text)
-RETURNS void
-AS 'MODULE_PATHNAME','utl_file_fremove'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.fremove(text, text) IS 'Remove file.';
-
-CREATE FUNCTION utl_file.frename(location text, filename text, dest_dir text, dest_file text, overwrite boolean)
-RETURNS void
-AS 'MODULE_PATHNAME','utl_file_frename'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.frename(text, text, text, text, boolean) IS 'Rename file.';
-
-CREATE FUNCTION utl_file.frename(location text, filename text, dest_dir text, dest_file text)
-RETURNS void
-AS $$SELECT utl_file.frename($1, $2, $3, $4, false);$$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.frename(text, text, text, text) IS 'Rename file.';
-
-CREATE FUNCTION utl_file.fcopy(src_location text, src_filename text, dest_location text, dest_filename text)
-RETURNS void
-AS 'MODULE_PATHNAME','utl_file_fcopy'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.fcopy(text, text, text, text) IS 'Copy a text file.';
-
-CREATE FUNCTION utl_file.fcopy(src_location text, src_filename text, dest_location text, dest_filename text, start_line integer)
-RETURNS void
-AS 'MODULE_PATHNAME','utl_file_fcopy'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.fcopy(text, text, text, text, integer) IS 'Copy a text file.';
-
-CREATE FUNCTION utl_file.fcopy(src_location text, src_filename text, dest_location text, dest_filename text, start_line integer, end_line integer)
-RETURNS void
-AS 'MODULE_PATHNAME','utl_file_fcopy'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.fcopy(text, text, text, text, integer, integer) IS 'Copy a text file.';
-
-CREATE FUNCTION utl_file.fgetattr(location text, filename text, OUT fexists boolean, OUT file_length bigint, OUT blocksize integer)
-AS 'MODULE_PATHNAME','utl_file_fgetattr'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.fgetattr(text, text) IS 'Get file attributes.';
-
-CREATE FUNCTION utl_file.tmpdir()
-RETURNS text
-AS 'MODULE_PATHNAME','utl_file_tmpdir'
-LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.tmpdir() IS 'Get temp directory path.';
-
-/* carry all safe directories */
-CREATE TABLE utl_file.utl_file_dir(dir text);
-REVOKE ALL ON utl_file.utl_file_dir FROM PUBLIC;
-REVOKE ALL ON FUNCTION utl_file.tmpdir() FROM PUBLIC;
 
 -- dbms_assert
 
@@ -1592,15 +1291,12 @@ AS 'MODULE_PATHNAME','dbms_random_value'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_random.value() IS 'Generate Random number x, where x is greather or equal to 0 and less then 1';
 
-GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
 GRANT USAGE ON SCHEMA plvdate TO PUBLIC;
 GRANT USAGE ON SCHEMA plvstr TO PUBLIC;
 GRANT USAGE ON SCHEMA plvchr TO PUBLIC;
-GRANT USAGE ON SCHEMA dbms_output TO PUBLIC;
 GRANT USAGE ON SCHEMA plvsubst TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_utility TO PUBLIC;
 GRANT USAGE ON SCHEMA plvlex TO PUBLIC;
-GRANT USAGE ON SCHEMA utl_file TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_assert TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_random TO PUBLIC;
 
@@ -1613,22 +1309,5 @@ CREATE FUNCTION dump(text, integer)
 RETURNS varchar
 AS '$libdir/orafunc', 'orafce_dump'
 LANGUAGE C;
-
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer anyelement)
-RETURNS bool
-AS $$SELECT utl_file.put_line($1, $2::text); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION 
-utl_file.put_line(utl_file.file_type, anyelement) IS 
-'Puts data to specified file and append newline character';
-
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer
-anyelement, autoflush bool)
-RETURNS bool
-AS $$SELECT utl_file.put_line($1, $2::text, true); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION 
-utl_file.put_line(utl_file.file_type, anyelement, bool) IS 
-'Puts data to specified file and append newline character';
 
 COMMIT;

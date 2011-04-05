@@ -99,23 +99,6 @@ text *cstring_to_text_with_len(const char *c, int n);
 	)) \
 )
 
-#define att_addlength_pointer(cur_offset, attlen, attptr) \
-( \
-	((attlen) > 0) ? \
-	( \
-		(cur_offset) + (attlen) \
-	) \
-	: (((attlen) == -1) ? \
-	( \
-		(cur_offset) + VARSIZE_ANY(attptr) \
-	) \
-	: \
-	( \
-		AssertMacro((attlen) == -2), \
-		(cur_offset) + (strlen((char *) (attptr)) + 1) \
-	)) \
-)
-
 List *
 stringToQualifiedNameList(const char *string, const char *caller);
 

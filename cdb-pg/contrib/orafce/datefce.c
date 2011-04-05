@@ -320,14 +320,9 @@ months_between(PG_FUNCTION_ARGS)
 		result = (y1 - y2) * 12 + (m1 - m2);
 	else
 		result = (y1 - y2) * 12 + (m1 - m2) + (d1 - d2) / 31.0;
-
-#ifdef GP_VERSION_NUM
+	
 	PG_RETURN_DATUM(
 			DirectFunctionCall1(float8_numeric, Float8GetDatumFast(result))); 
-#else
-	PG_RETURN_NUMERIC(
-		DirectFunctionCall1(float8_numeric, Float8GetDatumFast(result)));
-#endif
 }
 
 /********************************************************************
