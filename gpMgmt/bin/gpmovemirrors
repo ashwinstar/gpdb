@@ -292,9 +292,8 @@ class Configuration:
         fp = open(filename, 'w')
         
         """ Set the first line up for the filespaceOrder entry. """
-        line = "filespaceOrder="
-        for fsName in self.filespaceNames:
-            line = line + fsName
+        fsString = ":".join(self.filespaceNames)
+        line = "filespaceOrder=" + fsString
         line = line + '\n'
         fp.write(line)
         
