@@ -1077,14 +1077,23 @@ GRANT USAGE ON SCHEMA dbms_utility TO PUBLIC;
 GRANT USAGE ON SCHEMA plvlex TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_assert TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_random TO PUBLIC;
-CREATE FUNCTION dump(text) 
-RETURNS varchar
-AS '$libdir/orafunc', 'orafce_dump'
-LANGUAGE C;
-CREATE FUNCTION dump(text, integer) 
-RETURNS varchar
-AS '$libdir/orafunc', 'orafce_dump'
-LANGUAGE C;
+CREATE FUNCTION concat(text, text)
+RETURNS text
+AS '$libdir/orafunc','ora_concat'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION concat(text, text) IS 'Concat two strings';
+CREATE FUNCTION concat(text, anyarray)
+RETURNS text
+AS 'SELECT concat($1, $2::text)'
+LANGUAGE sql IMMUTABLE;
+CREATE FUNCTION concat(anyarray, text)
+RETURNS text
+AS 'SELECT concat($1::text, $2)'
+LANGUAGE sql IMMUTABLE;
+CREATE FUNCTION concat(anyarray, anyarray)
+RETURNS text
+AS 'SELECT concat($1::text, $2::text)'
+LANGUAGE sql IMMUTABLE;
 COMMIT;
 -- end_ignore
 --
@@ -1627,50 +1636,59 @@ select oracle.substr('TechOnTheNet', -8, 2) =  'On';
 (1 row)
 
 select concat('Tech on', ' the Net') =  'Tech on the Net';
-ERROR:  function concat(unknown, unknown) does not exist
-LINE 1: select concat('Tech on', ' the Net') =  'Tech on the Net';
-               ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 select concat('a', 'b') =  'ab';
-ERROR:  function concat(unknown, unknown) does not exist
-LINE 1: select concat('a', 'b') =  'ab';
-               ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 select concat('a', NULL) = 'a';
-ERROR:  function concat(unknown, unknown) does not exist
-LINE 1: select concat('a', NULL) = 'a';
-               ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 select concat(NULL, 'b') = 'b';
-ERROR:  function concat(unknown, unknown) does not exist
-LINE 1: select concat(NULL, 'b') = 'b';
-               ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 select concat('a', 2) = 'a2';
-ERROR:  function concat(unknown, integer) does not exist
-LINE 1: select concat('a', 2) = 'a2';
-               ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 select concat(1, 'b') = '1b';
-ERROR:  function concat(integer, unknown) does not exist
-LINE 1: select concat(1, 'b') = '1b';
-               ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 select concat(1, 2) = '12';
-ERROR:  function concat(integer, integer) does not exist
-LINE 1: select concat(1, 2) = '12';
-               ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 select concat(1, NULL) = '1';
-ERROR:  function concat(integer, unknown) does not exist
-LINE 1: select concat(1, NULL) = '1';
-               ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 select concat(NULL, 2) = '2';
-ERROR:  function concat(unknown, integer) does not exist
-LINE 1: select concat(NULL, 2) = '2';
-               ^
-HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+ ?column? 
+----------
+ t
+(1 row)
+
 select nvl('A'::text, 'B');
  nvl 
 -----
@@ -2110,42 +2128,50 @@ SELECT dump('Yellow dog'::text, 17) ~ E'^Typ=25 Len=(\\d+): .(,.)*$' AS t;
 (1 row)
 
 SELECT dump(10::int2) ~ E'^Typ=21 Len=2: \\d+(,\\d+){1}$' AS t;
-ERROR:  function dump(smallint) is not unique
-LINE 1: SELECT dump(10::int2) ~ E'^Typ=21 Len=2: \\d+(,\\d+){1}$' AS...
-               ^
-HINT:  Could not choose a best candidate function. You may need to add explicit type casts.
+ t 
+---
+ t
+(1 row)
+
 SELECT dump(10::int4) ~ E'^Typ=23 Len=4: \\d+(,\\d+){3}$' AS t;
-ERROR:  function dump(integer) is not unique
-LINE 1: SELECT dump(10::int4) ~ E'^Typ=23 Len=4: \\d+(,\\d+){3}$' AS...
-               ^
-HINT:  Could not choose a best candidate function. You may need to add explicit type casts.
+ t 
+---
+ t
+(1 row)
+
 SELECT dump(10::int8) ~ E'^Typ=20 Len=8: \\d+(,\\d+){7}$' AS t;
-ERROR:  function dump(bigint) is not unique
-LINE 1: SELECT dump(10::int8) ~ E'^Typ=20 Len=8: \\d+(,\\d+){7}$' AS...
-               ^
-HINT:  Could not choose a best candidate function. You may need to add explicit type casts.
+ t 
+---
+ t
+(1 row)
+
 SELECT dump(10.23::float4) ~ E'^Typ=700 Len=4: \\d+(,\\d+){3}$' AS t;
-ERROR:  function dump(real) is not unique
-LINE 1: SELECT dump(10.23::float4) ~ E'^Typ=700 Len=4: \\d+(,\\d+){3...
-               ^
-HINT:  Could not choose a best candidate function. You may need to add explicit type casts.
+ t 
+---
+ t
+(1 row)
+
 SELECT dump(10.23::float8) ~ E'^Typ=701 Len=8: \\d+(,\\d+){7}$' AS t;
-ERROR:  function dump(double precision) is not unique
-LINE 1: SELECT dump(10.23::float8) ~ E'^Typ=701 Len=8: \\d+(,\\d+){7...
-               ^
-HINT:  Could not choose a best candidate function. You may need to add explicit type casts.
+ t 
+---
+ t
+(1 row)
+
 SELECT dump(10.23::numeric) ~ E'^Typ=1700 Len=(\\d+): \\d+(,\\d+)*$' AS t;
-ERROR:  function dump(numeric) is not unique
-LINE 1: SELECT dump(10.23::numeric) ~ E'^Typ=1700 Len=(\\d+): \\d+(,...
-               ^
-HINT:  Could not choose a best candidate function. You may need to add explicit type casts.
+ t 
+---
+ t
+(1 row)
+
 SELECT dump('2008-10-10'::date) ~ E'^Typ=1082 Len=4: \\d+(,\\d+){3}$' AS t;
-ERROR:  function dump(date) is not unique
-LINE 1: SELECT dump('2008-10-10'::date) ~ E'^Typ=1082 Len=4: \\d+(,\...
-               ^
-HINT:  Could not choose a best candidate function. You may need to add explicit type casts.
+ t 
+---
+ t
+(1 row)
+
 SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
-ERROR:  function dump(timestamp without time zone) is not unique
-LINE 1: SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\...
-               ^
-HINT:  Could not choose a best candidate function. You may need to add explicit type casts.
+ t 
+---
+ t
+(1 row)
+

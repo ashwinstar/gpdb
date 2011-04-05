@@ -1300,14 +1300,25 @@ GRANT USAGE ON SCHEMA plvlex TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_assert TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_random TO PUBLIC;
 
-CREATE FUNCTION dump(text) 
-RETURNS varchar
-AS '$libdir/orafunc', 'orafce_dump'
-LANGUAGE C;
+CREATE FUNCTION concat(text, text)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_concat'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION concat(text, text) IS 'Concat two strings';
 
-CREATE FUNCTION dump(text, integer) 
-RETURNS varchar
-AS '$libdir/orafunc', 'orafce_dump'
-LANGUAGE C;
+CREATE FUNCTION concat(text, anyarray)
+RETURNS text
+AS 'SELECT concat($1, $2::text)'
+LANGUAGE sql IMMUTABLE;
+
+CREATE FUNCTION concat(anyarray, text)
+RETURNS text
+AS 'SELECT concat($1::text, $2)'
+LANGUAGE sql IMMUTABLE;
+
+CREATE FUNCTION concat(anyarray, anyarray)
+RETURNS text
+AS 'SELECT concat($1::text, $2::text)'
+LANGUAGE sql IMMUTABLE;
 
 COMMIT;
