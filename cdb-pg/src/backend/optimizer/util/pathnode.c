@@ -2349,6 +2349,9 @@ path_contains_inner_index(Path *path)
     else if (IsA(path, BitmapHeapPath) &&
              ((BitmapHeapPath *)path)->isjoininner)
 		return true;
+	else if (IsA(path, BitmapAppendOnlyPath) &&
+			 ((BitmapAppendOnlyPath *)path)->isjoininner)
+		return true;
 	else if (IsA(path, AppendPath))
 	{
 		/* MPP-2377: Append paths may conceal inner-index scans, if

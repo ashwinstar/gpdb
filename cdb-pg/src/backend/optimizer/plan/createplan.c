@@ -2518,7 +2518,8 @@ create_nestloop_plan(CreatePlanContext *ctx,
 												 IS_OUTER_JOIN(best_path->jpath.jointype));
 		}
 	}
-	else if (IsA(best_path->jpath.innerjoinpath, BitmapHeapPath))
+	else if (IsA(best_path->jpath.innerjoinpath, BitmapHeapPath) ||
+			 IsA(best_path->jpath.innerjoinpath, BitmapAppendOnlyPath))
 	{
 		/*
 		 * Same deal for bitmapped index scans.
@@ -2533,14 +2534,29 @@ create_nestloop_plan(CreatePlanContext *ctx,
 		 * of UPDATE/DELETE/SELECT FOR UPDATE target relations; see notes
 		 * above about EvalPlanQual.)
 		 */
-		BitmapHeapPath *innerpath = (BitmapHeapPath *) best_path->jpath.innerjoinpath;
+		bool isjoininner = false;
+		Path *bitmapqual = NULL;
+		
+		if (IsA(best_path->jpath.innerjoinpath, BitmapHeapPath))
+		{
+			BitmapHeapPath *innerpath = (BitmapHeapPath *) best_path->jpath.innerjoinpath;
+			isjoininner = innerpath->isjoininner;
+			bitmapqual = innerpath->bitmapqual;
+		}
+		else
+		{
+			Assert(IsA(best_path->jpath.innerjoinpath, BitmapAppendOnlyPath));
+			BitmapAppendOnlyPath *innerpath = (BitmapAppendOnlyPath *) best_path->jpath.innerjoinpath;
+			isjoininner = innerpath->isjoininner;
+			bitmapqual = innerpath->bitmapqual;
+		}
 
-		if (innerpath->isjoininner)
+		if (isjoininner)
 		{
 			List	   *bitmapclauses;
 
 			bitmapclauses =
-				make_restrictinfo_from_bitmapqual(innerpath->bitmapqual,
+				make_restrictinfo_from_bitmapqual(bitmapqual,
 												  true,
 												  false);
 			joinrestrictclauses =
