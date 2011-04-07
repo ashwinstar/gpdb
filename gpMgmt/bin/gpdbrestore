@@ -444,10 +444,12 @@ SELECT_MULTI_FILE () {
 	$ECHO "${SPC}--------------------------"
 	for DUMP_LINE in ${DUMP_LIST_ARRAY[@]}
 	do
-		DUMP_DATE=`$ECHO $DUMP_LINE|$CUT -c1-8`
-		DUMP_TIME=`$ECHO $DUMP_LINE|$CUT -c9-14`
-		$ECHO "${SPC}[$OPTION] ...... $DUMP_DATE $DUMP_TIME"
-		((OPTION=$OPTION+1))
+        if [ x"$DUMP_LINE" != x"data" ]; then
+		    DUMP_DATE=`$ECHO $DUMP_LINE|$CUT -c1-8`
+		    DUMP_TIME=`$ECHO $DUMP_LINE|$CUT -c9-14`
+		    $ECHO "${SPC}[$OPTION] ...... $DUMP_DATE $DUMP_TIME"
+		    ((OPTION=$OPTION+1))
+        fi
 	done
 	$ECHO "${SPC}Enter timestamp number to restore >"
 	read REPLY
@@ -542,11 +544,15 @@ RECOVER_REMOTE_DUMP_FILES () {
 		SEG_RECOVERY_DIRECTORY=${SEGMENT_DIR}/${DUMP_DIR}/${REMOTE_DATE}
 		if [ $SEGMENT_DBID -eq -1 ];then
 			SEG_RECOVERY_FILE=${MASTER_DBDUMP_PREFIX}_${RESTORE_TIMESTAMP}
+			SEG_RECOVERY_POST_DATA_FILE="${SEG_RECOVERY_FILE}"_post_data
 		else
 			SEG_RECOVERY_FILE=${DBDUMP_PREFIX}0_${SEGMENT_DBID}_${RESTORE_TIMESTAMP}
 		fi
 		if [ x"" != x"$COMPRESS" ];then
 			SEG_RECOVERY_FILE=${SEG_RECOVERY_FILE}.gz
+			if [ $SEGMENT_DBID -eq -1 ];then
+				SEG_RECOVERY_POST_DATA_FILE=${SEG_RECOVERY_POST_DATA_FILE}.gz
+			fi
 		fi
 		CHK_DIR ${SEGMENT_DIR}/${DUMP_DIR} $SEGMENT_HOST
 		if [ $EXISTS -ne 0 ];then
@@ -565,6 +571,22 @@ RECOVER_REMOTE_DUMP_FILES () {
 			if [ $RETVAL -ne 0 ];then
 				ERROR_EXIT "[FATAL]:-Failed to create directory $SEG_RECOVERY_DIRECTORY on $SEGMENT_HOST" 2
 			fi
+		fi
+		# Copy the post_data file
+		if [ $SEGMENT_DBID -eq -1 ];then
+			LOG_MSG "[INFO]:-Commencing remote copy of post_data file" 1
+			$TRUSTED_SHELL $SEGMENT_HOST "$SCP ${DB_HOST}:${DB_HOST_PATH}/$SEG_RECOVERY_POST_DATA_FILE $SEG_RECOVERY_DIRECTORY" 
+			RETVAL=$?
+			if [ $RETVAL -ne 0 ];then
+				LOG_MSG "[WARN]:-Failed to $SCP ${DB_HOST_PATH}/$SEG_RECOVERY_POST_DATA_FILE to $SEGMENT_HOST" 1
+				LOG_MSG "[WARN]:-This may be due to the dump set being created by an older version of gp_dump" 1
+				LOG_MSG "[WARN]:-If the dump set is a newer format then the post_data file is missing.  This" 1
+				LOG_MSG "[WARN]:-means the tables being restored will be missing indexes and triggers.  These" 1
+				LOG_MSG "[WARN]:-indexes and triggers will need to be manually created after the restore is finished." 1
+				GET_REPLY "Continue with database restore process"
+			else
+				LOG_MSG "[INFO]:-Completed $SEG_RECOVERY_POST_DATA_FILE copy to $SEGMENT_HOST" 1
+			fi			
 		fi
 		LOG_MSG "[INFO]:-Commencing remote copy from $DB_HOST to ${SEGMENT_HOST}:$SEG_RECOVERY_DIRECTORY" 1
 		$TRUSTED_SHELL $SEGMENT_HOST "$SCP ${DB_HOST}:${DB_HOST_PATH}/$SEG_RECOVERY_FILE $SEG_RECOVERY_DIRECTORY" 
