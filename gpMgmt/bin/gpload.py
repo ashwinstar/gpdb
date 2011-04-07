@@ -664,10 +664,11 @@ def quote_unident(val):
     and  removing the " at the start and end of the string.
     """
     if val != None and len(val) > 0:
-       val = val[1:-1]
-       return val.replace('""', '"')
-    else:
-       return val
+       val = val.replace('""', '"')
+       if val != None and len(val) > 1 and val[0] == '"' and val[-1] == '"':  
+           val = val[1:-1]
+    
+    return val
 
 
 def notice_processor(self):
