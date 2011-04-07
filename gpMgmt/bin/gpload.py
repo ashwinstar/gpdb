@@ -1718,12 +1718,8 @@ class gpload:
     # This function will return the SQL to run in order to find out whether
     # such a table exists.
     # 
-    def get_reuse_exttable_query(self, schemaName, tableName, formatType, formatOpts, limitStr, from_cols):
+    def get_reuse_exttable_query(self, tableName, formatType, formatOpts, limitStr, from_cols):
         
-        
-        if schemaName == None:
-            schemaName =  'public'
-
         sql = """select attrelid::regclass
                  from (
                         select 
@@ -1739,7 +1735,7 @@ class gpload:
                             on (pg_class.oid = attrelid)
                         where 
                             relstorage = 'x' and
-                            relname like 'ext_gpload_reusable_%s_%s_%%' and
+                            relname like 'ext_gpload_reusable_%s_%%' and
                             attnum > 0 and
                             not attisdropped
                     
@@ -1747,7 +1743,7 @@ class gpload:
                     join 
                     pg_exttable pgext 
                     on(pgattr.attrelid = pgext.reloid) 
-                    """ % (schemaName, tableName)
+                    """ % (tableName)
          
         for i, l in enumerate(self.locations):
             if i == 0:
@@ -1788,11 +1784,8 @@ class gpload:
     # This function will return the SQL to run in order to find out whether
     # such a table exists.
     # 
-    def get_reuse_temptable_query(self, schemaName, tableName, from_cols, distcols):
+    def get_reuse_temptable_query(self, tableName, from_cols, distcols):
             
-        if schemaName == None:
-            schemaName =  'public'
-
         sql = """select attrelid::regclass
                  from (
                         select 
@@ -1809,7 +1802,7 @@ class gpload:
                         where 
                             relstorage = 'h' and
                             relkind = 'r' and
-                            relname like 'temp_gpload_reusable_%s_%s_%%' and
+                            relname like 'temp_gpload_reusable_%s_%%' and
                             pg_class.oid in (select localoid from gp_distribution_policy 
                                              where attrnums = (select attrnums from gp_distribution_policy 
                                                                where localoid=%s::regclass)) and
@@ -1819,7 +1812,7 @@ class gpload:
                  group by attrelid
                  having 
                     count(*) = %s and 
-                    bool_and(case """ % (schemaName, tableName, quote(self.schemaTable), len(from_cols))
+                    bool_and(case """ % (tableName, quote(self.schemaTable), len(from_cols))
         
         for i, c in enumerate(from_cols):
             name = c[0]
@@ -1910,10 +1903,9 @@ class gpload:
         # external location, format, and encoding specifications.
         if self.reuse_tables == True:
             
-            schemaName = quote_unident(self.schema)
             tableName = quote_unident(self.table)
 
-            sql = self.get_reuse_exttable_query(schemaName, tableName, formatType, formatOpts, limitStr, from_cols)
+            sql = self.get_reuse_exttable_query(tableName, formatType, formatOpts, limitStr, from_cols)
             
             resultList = self.db.query(sql.encode('utf-8')).getresult()
             
@@ -1927,7 +1919,7 @@ class gpload:
             # didn't find an existing external table suitable for reuse. Format a reusable
             # name and issue a CREATE EXTERNAL TABLE on it. Hopefully we can use it next time
             # around
-            self.extTableName = quote_ident("ext_gpload_reusable_%s_%s_created_on_%s" % (schemaName, tableName, self.unique_suffix))
+            self.extTableName = quote_ident("ext_gpload_reusable_%s_created_on_%s" % (tableName, self.unique_suffix))
             self.log(self.INFO, "did not find an external table to reuse. creating %s" % self.extTableName)
         
         
@@ -1986,10 +1978,9 @@ class gpload:
         # If the 'reuse tables' option was specified we now try to find an
         # already existing temp table in the catalog which will match
         # the one that we need to use. It must have identical attributes
-        # and be called 'temp_gpload_reusable_<ns>_<tbl>_*'
+        # and be called 'temp_gpload_reusable_<tbl>_*'
         if self.reuse_tables == True:
             
-            schemaName = quote_unident(self.schema)
             tableName = quote_unident(self.table)
 
             sql = self.get_reuse_temptable_query(schemaName, tableName, from_cols, distcols)
@@ -2006,7 +1997,7 @@ class gpload:
             # didn't find an existing temp table suitable for reuse. Format a reusable
             # name and issue a CREATE TABLE on it (without TEMP!). Hopefully we can use it 
             # next time around
-            self.tempTableName = quote_ident("temp_gpload_reusable_%s_%s_created_on_%s" % (schemaName, tableName, self.unique_suffix))
+            self.tempTableName = quote_ident("temp_gpload_reusable_%s_created_on_%s" % (tableName, self.unique_suffix))
             self.log(self.INFO, "did not find a temp table to reuse. creating %s" % self.tempTableName)
         
             # construct a CREATE TABLE statement
