@@ -42,6 +42,84 @@ static Node *ParseComplexProjection(ParseState *pstate, char *funcname,
 static void unknown_attribute(ParseState *pstate, Node *relref, char *attname,
 				  int location);
 
+static 
+Node*
+TransformDecodeToCase(ParseState *pstate, List *fargs, int location)
+{
+	Assert(fargs &&
+		   (2 < list_length(fargs)));
+
+	if (0)
+	{
+		CaseExpr		*c	   = makeNode(CaseExpr);
+		CaseWhen		*w	   = makeNode(CaseWhen);
+		List			*whenl = list_make1(w);
+		Node			*exp1  = linitial(fargs);
+		List			*l1    = fargs;
+		ListCell		*lc;
+		int				 nElts = 0;
+
+		/* convert DECODE(expression, when_compare_val1, when_result_val1,
+                                      [when_compare_val2, when_result_val2,]...
+									  [default_result]
+									  )
+		*/
+
+		c->casetype	 = InvalidOid;	/* not analyzed yet */
+		c->arg		 = (Expr *)exp1;
+		c->args		 = whenl;
+		c->defresult = NULL;
+		
+		/* l1 has at least 2 elements (Elts) (after we skip the head).
+		   Always consume two at a time for the WHEN clause
+		   compare_val and result.  If 1 elt is left over then make it
+		   the default, else continue with loop.
+		*/
+
+		nElts = list_length(l1);
+		lc	  = list_head(l1);
+		nElts--;
+
+		/* Note: skip the list head (exp1) */
+		lc = lnext(lc);
+		nElts--;
+
+		while (nElts)
+		{
+			Assert(nElts);
+				
+			/* when clause - set the compare_val and result */
+			w->expr = (Expr *)lfirst(lc);
+			
+			lc = lnext(lc);
+			nElts--;
+			
+			w->result = (Expr *)lfirst(lc);
+			
+			lc = lnext(lc);
+			nElts--;
+
+			if (!lc)
+				break;
+
+			if (0 == nElts)
+			{
+				c->defresult = (Expr *)lfirst(lc);
+				break;
+			}
+			
+			/* now at least two left */
+			
+			w = makeNode(CaseWhen);
+			c->args = lappend(c->args, w);
+			
+		} /* end while */
+
+		return (transformCaseExpr(pstate, c));
+	}
+
+	return NULL;
+} /* end TransformDecodeToCase */
 
 /*
  *	Parse a function call
@@ -76,7 +154,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	int			nargs;
 	Oid			actual_arg_types[FUNC_MAX_ARGS];
 	Oid		   *declared_arg_types = NULL;
-	Node	   *retval;
+	Node	   *retval = NULL;
 	bool		retset = false;
 	bool        retstrict = false;
 	bool        retordered = false;
@@ -296,6 +374,19 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 							  location);
 		}
 
+		/* MPP-12670: Oracle Compatibility - transform DECODE to CASE */
+		if ((fdresult == FUNCDETAIL_NOTFOUND) &&
+			(1 == list_length(funcname)) &&
+			(2 <  list_length(fargs)) &&
+			(0 == pg_strcasecmp(strVal(linitial(funcname)), "DECODE"))
+				)
+		{
+			retval = TransformDecodeToCase(pstate,
+										   fargs,
+										   location);
+			if (retval)
+				return retval;
+		}
 		/*
 		 * Else generate a detailed complaint for a function
 		 */
