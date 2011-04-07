@@ -671,6 +671,20 @@ endif
 	# ---- create the installer ----
 	$(warn MPP_ARCH=$(MPP_ARCH))
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
+	
+	if [ -d ${BLD_TOP}/../licenses ] ; then \
+	   if [ -a $(CONNECTIVITYINSTLOC)/GPDB-LICENSE.txt ] ; then \
+	        rm -f $(CONNECTIVITYINSTLOC)/GPDB-LICENSE.txt ; \
+	   fi ; \
+	   if [ -a $(CONNECTIVITYINSTLOC)/LICENSE.thirdparty ] ; then \
+	        rm -f $(CONNECTIVITYINSTLOC)/LICENSE.thirdparty ; \
+	   fi ; \
+	   cp ${BLD_TOP}/../licenses/GPDB-LICENSE.txt $(CONNECTIVITYINSTLOC) ; \
+	   cp ${BLD_TOP}/../licenses/LICENSE.thirdparty $(CONNECTIVITYINSTLOC) ; \
+	else \
+	   echo "Warning: not including LICENSE.thirdparty and GPDB-LICENSE.txt; ${BLD_TOP}/../licenses not found" ; \
+	fi
+	
 	cd client/install/src/unix/ && \
 	  $(MAKE) TAR=$(TAR) PRODUCT=Connectivity PACKAGE=greenplum-connectivity README=GPConnectUnix VERSION=$(VERSION) INSTALL_SRC=$(CONNECTIVITYINSTLOC) INSTALL_DIR=../../../..
 else
@@ -724,6 +738,20 @@ endif
 	# ---- create the installer ----
 	$(warn MPP_ARCH=$(MPP_ARCH))
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
+	
+	if [ -d ${BLD_TOP}/../licenses ] ; then \
+	   if [ -a $(CLIENTINSTLOC)/GPDB-LICENSE.txt ] ; then \
+	        rm -f $(CLIENTINSTLOC)/GPDB-LICENSE.txt ; \
+	   fi ; \
+	   if [ -a $(CLIENTINSTLOC)/LICENSE.thirdparty ] ; then \
+	        rm -f $(CLIENTINSTLOC)/LICENSE.thirdparty ; \
+	   fi ; \
+ 	  cp ${BLD_TOP}/../licenses/GPDB-LICENSE.txt $(CLIENTINSTLOC) ; \
+	  cp ${BLD_TOP}/../licenses/LICENSE.thirdparty $(CLIENTINSTLOC) ; \
+	else \
+	   echo "Warning: not including LICENSE.thirdparty and GPDB-LICENSE.txt; ${BLD_TOP}/../licenses not found" ; \
+	fi
+	
 	cd client/install/src/unix/ && \
 	  $(MAKE) TAR=$(TAR) PRODUCT=Clients PACKAGE=greenplum-clients README=GPClientToolsUnix VERSION=`perl -pe 's, ,-,g' ../../../../VERSION` INSTALL_SRC=$(CLIENTINSTLOC) INSTALL_DIR=../../../..
 else
@@ -790,6 +818,20 @@ endif
 	cp -f client/scripts/greenplum_$@_path$(SCRIPT) $(LOADERSINSTLOC)/
 	# ---- create the installer ----
 ifneq "$(findstring win,$(BLD_ARCH))" "win"
+	
+	if [ -d ${BLD_TOP}/../licenses ] ; then \
+	    if [ -a $(LOADERSINSTLOC)/GPDB-LICENSE.txt ] ; then \
+	        rm -f $(LOADERSINSTLOC)/GPDB-LICENSE.txt ; \
+	    fi ; \
+	    if [ -a $(LOADERSINSTLOC)/LICENSE.thirdparty ] ; then \
+	        rm -f $(LOADERSINSTLOC)/LICENSE.thirdparty ; \
+	    fi ; \
+	    cp ${BLD_TOP}/../licenses/GPDB-LICENSE.txt $(LOADERSINSTLOC) ; \
+	    cp ${BLD_TOP}/../licenses/LICENSE.thirdparty $(LOADERSINSTLOC) ; \
+	else \
+	    echo "Warning: not including LICENSE.thirdparty and GPDB-LICENSE.txt; ${BLD_TOP}/../licenses not found" ; \
+	fi
+	
 	cd client/install/src/unix/ && \
 	  $(MAKE) TAR=$(TAR) PRODUCT=Loaders PACKAGE=greenplum-loaders README=GPLoadToolsUnix VERSION=`perl -pe 's, ,-,g' ../../../../VERSION` INSTALL_SRC=$(LOADERSINSTLOC) INSTALL_DIR=../../../..
 else
