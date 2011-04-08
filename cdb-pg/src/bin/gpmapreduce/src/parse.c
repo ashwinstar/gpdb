@@ -79,9 +79,10 @@ mapred_olist_t* mapred_parse_file(FILE *file)
 
 mapred_olist_t* mapred_parse_yaml(yaml_parser_t *yparser)
 {
-	mapred_parser_t  parser;
-	int              i;
-	int              error = 0;
+	mapred_parser_t		 parser;
+	int					 i;
+	int					 error = 0;
+	mapred_olist_t		*doc_item;
 
 	/* Give us a clean slate */
 	memset(&parser, 0, sizeof(parser));
@@ -96,24 +97,33 @@ mapred_olist_t* mapred_parse_yaml(yaml_parser_t *yparser)
 	for (i = 0; i < MAX_CONTEXT_DEPTH; i++)
 		parser.context[i] = CONTEXT_NONE;
 
-	/* Call into the parser */
+	/* Call into the parser, detects grammar errors */
 	error = yaml_yyparse(&parser);
 
 	/* finalize final document */
 	parser_add_document(&parser);
 
-	if (error)
-	{
-		if (global_verbose_flag)
-			fprintf(stderr, "  - ");
-		fprintf(stderr, "Error parsing file\n");
-	}
-
 	/* Cleanup and return */
 #if USE_FLEX_REENTRANT
 	yaml_scalar_yylex_destroy(parser.yscanner);
 #endif
-		
+
+	/* Check for errors within documents */
+	for (doc_item = parser.doclist; 
+		 doc_item && !error; 
+		 doc_item = doc_item->next)
+	{
+		if (doc_item->object->u.document.flags & mapred_document_error)
+			error = true;
+	}
+
+	/* Cleanup and return */	
+	if (error)
+	{
+		mapred_destroy_olist(&parser.doclist);
+		XRAISE(MAPRED_PARSE_ERROR, "parse failure");
+	}
+	
 	return parser.doclist;
 }
 

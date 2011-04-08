@@ -72,15 +72,12 @@ void usage(char *procname, boolean full)
 
 void showVersion(char *procname)
 {
-#ifdef PRERELEASE
-	printf("%s - %s (%s Pre-release)\n", procname, VERSION, PRERELEASE);
-#else
 	printf("%s - %s\n", procname, VERSION);
-#endif
 }
 
 int main (int argc, char *argv[])
 {
+	volatile int       errcode = 0;
 	int                c;
 	char              *procname = argv[0];
 	int                forceprompt = false;
@@ -235,10 +232,6 @@ int main (int argc, char *argv[])
 		}
 	}
 
-#ifdef PRERELEASE
-	showVersion(procname)
-#endif
-
 	/* open the file */
 	if (!filename)
 	{
@@ -289,6 +282,7 @@ int main (int argc, char *argv[])
 	{
 		fprintf(stderr, "Assertion failure at %s:%d\n",
 				xframe.file, xframe.lineno);	
+		exit(1);
 	}
 	XCATCH_ANY
 	{
@@ -297,6 +291,7 @@ int main (int argc, char *argv[])
 		else
 			fprintf(stderr, "Unknown Error (%d) at %s:%d\n", 
 					xframe.errcode, xframe.file, xframe.lineno);
+		exit(1);
 	}
 	XTRY_END;
 
@@ -380,9 +375,7 @@ int main (int argc, char *argv[])
 					fprintf(stderr, "    PORT: %s\n", PQport(conn));
 					fprintf(stderr, "    USER: %s/%s\n", PQuser(conn), PQdb(conn));
 				}
-#ifndef PRERELEASE
 				check_version(conn);
-#endif
 				
 				/* Prepare to receive interupts */
 				cancelConn = PQgetCancel(conn);
@@ -402,10 +395,14 @@ int main (int argc, char *argv[])
 		{
 			fprintf(stderr, "Assertion failure at %s:%d\n",
 					xframe.file, xframe.lineno);	
+			errcode = 1;
 		}
 		XCATCH(USER_INTERUPT)
 		{
-			/* Nothing to do... just cleanup and exit */
+			if (global_verbose_flag)
+				fprintf(stderr, "  - ");			
+			fprintf(stderr, "Job Cancelled: User Interrupt");
+			exit(2); /* exit immediately */
 		}
 		XCATCH_ANY
 		{
@@ -416,6 +413,7 @@ int main (int argc, char *argv[])
 			else
 				fprintf(stderr, "Unknown Error (%d) at %s:%d\n", 
 						xframe.errcode, xframe.file, xframe.lineno);
+			errcode = 1;
 		}
 		XFINALLY
 		{
@@ -435,7 +433,7 @@ int main (int argc, char *argv[])
 	mapred_destroy_olist(&documents);
 	fclose(file);
 
-	return 0;
+	return errcode;
 }
 
 

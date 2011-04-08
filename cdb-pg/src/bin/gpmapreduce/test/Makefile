@@ -82,7 +82,8 @@ $(OUTDIR)/%.suc: $(MAPRED) $(YMLDIR)/%.yml $(MASTERDIR)/%.out $(MASTERDIR)/%.err
 	@cp -f $(MASTERDIR)/DEFAULT.err $(OUTDIR)/$*.err
 	@if [ -e $(SQLDIR)/$*_init.sql ] ; \
 	 then $(PSQL) $(PFLAGS) $(SQLDIR)/$*_init.sql > $(OUTDIR)/$*.init.out; fi
-	@$(MAPRED) $(MFLAGS) $(YMLDIR)/$*.yml >>$(OUTDIR)/$*.out 2>>$(OUTDIR)/$*.err
+	@$(MAPRED) $(MFLAGS) $(YMLDIR)/$*.yml >>$(OUTDIR)/$*.out 2>>$(OUTDIR)/$*.err; \
+		if [ $$? -ne 0 ]; then echo "gpmapreduce retcode=$$?" >> $(OUTDIR)/$*.err; fi
 	@if [ -e $(SQLDIR)/$*_done.sql ] ; \
 	 then $(PSQL) $(PFLAGS) $(SQLDIR)/$*_done.sql > $(OUTDIR)/$*.done.out 2>&1; fi
 	@$(MRDIFF) $(OUTDIR) $(MASTERDIR) $* > $(OUTDIR)/$*.suc

@@ -9,9 +9,10 @@
 ERROR:  creation of Perl function failed
 DETAIL:  'require' trapped by operation mask at line 10.
 Error: Object creation Failure
-mapreduce_71099_run_1
-ERROR:  Perl function "mapreduce_71099_badpl_map" failed (plperl.c:1199)  (seg0 slice1 hostname:50000 pid=71100) (cdbdisp.c:1457)
+mapreduce_30882_run_1
+ERROR:  Perl function "mapreduce_30882_badpl_map" failed (plperl.c:1199)  (seg1 slice1 maple.local:60001 pid=30884) (cdbdisp.c:1457)
 DETAIL:  
 	 badplmap: die die die at line 27.
-	 External table mapreduce_71099_indirectory, line 1 of file://hostname/path/access_log: ""
+	 External table mapreduce_30882_indirectory, line 1 of file://maple.local/views/dev-full/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log2: ""
 Error: Execution Failure
+gpmapreduce retcode=0

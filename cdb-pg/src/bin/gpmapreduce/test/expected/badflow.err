@@ -20,4 +20,5 @@ Error: DOCUMENT: Missing VERSION, at line 5
 Error: INPUT: Invalid NAME, at line 92
 Error: YAML syntax error - did not find expected key while parsing a block mapping, at line 93
 Error: DOCUMENT: Missing VERSION, at line 79
-Error parsing file
+Error: parse failure
+gpmapreduce retcode=0

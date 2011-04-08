@@ -329,4 +329,5 @@ Error: FINALIZE 'finalize_parameters_mapping': Invalid PARAMETERS, at line 919
 Error: FINALIZE 'finalize_parameters_extra': requires exactly 1 input parameter [state], at line 920
 Error: FINALIZE 'finalize_returns_empty': Invalid RETURNS, at line 931
 Error: FINALIZE 'finalize_returns_mapping': Invalid RETURNS, at line 936
-Error parsing file
+Error: parse failure
+gpmapreduce retcode=0
