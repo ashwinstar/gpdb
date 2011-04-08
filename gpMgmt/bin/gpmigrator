@@ -2244,7 +2244,7 @@ class GPUpgrade:
             
             if db == 'gpperfmon':
                 self.Checkgpperfmon()
-
+                
             cmd = exec_cmd + db
             logger.info('... Checking ' + db)
 
@@ -2277,7 +2277,6 @@ class GPUpgrade:
         if (cnt[0]==0):
             raise UpgradeError('gpperfmon appears not to be installed in the public schema. Please contact support.')
         
-
     #------------------------------------------------------------
     def ResetXLogs(self):
         '''
@@ -2545,6 +2544,7 @@ class GPUpgrade:
             self.Update("""
                 UPDATE gp_persistent_filespace_node SET location_1 =
                    regexp_replace(location_1, E'/gpmigrator/upgrade/','/')||'                   '
+                   where persistent_state = 2
                 """, port=port, forceutility=True, upgradeMode=True)
 
         if self.cmd == 'MASTER':
@@ -2624,6 +2624,7 @@ class GPUpgrade:
                 UPDATE gp_persistent_filespace_node SET location_1 =
                    regexp_replace(location_1, E'(/[^/]*)                   $',
                    E'/gpmigrator/upgrade\\\\1')
+                   where persistent_state = 2
                 """, port=port, forceutility=True, upgradeMode=True)
             
         if self.cmd == 'MASTER':
