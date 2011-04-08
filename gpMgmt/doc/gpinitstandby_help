@@ -148,7 +148,9 @@ Start an existing backup master host and synchronize the data
 with the primary master host - do not add a new Greenplum backup 
 master host to the system catalog:
 
-gpinitstandby -s host09 -n
+gpinitstandby -n
+
+Note: Do not specify the -n and -s options in the same command.
 
 
 *****************************************************
