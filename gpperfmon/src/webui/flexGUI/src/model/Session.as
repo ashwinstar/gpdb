@@ -63,10 +63,6 @@ package model
 				
 				// Setup the quantum timer (and call it once for good measure)
 				initTimeVals();
-				onQuantumTimer(null);
-				quantumTimer = new Timer(monitorQuantum * 1000);
-				quantumTimer.addEventListener(TimerEvent.TIMER, onQuantumTimer);
-				quantumTimer.start();
 				
 				//Issue request to get the last 6hrs of 1min system and db data
 				var oneMinRequestSys:SystemHistoricCommand = new SystemHistoricCommand;
@@ -74,7 +70,13 @@ package model
 				var oneMinRequestDB:DatabaseHistoricCommand = new DatabaseHistoricCommand;
 				oneMinRequestDB.setParameters('1min', timeArray[Session.SIX_HOURS_AGO]);
 				oneMinRequestSys.chainCommand(oneMinRequestDB);
-				oneMinRequestSys.execute();					
+				oneMinRequestSys.execute();
+				
+				onQuantumTimer(null);
+				quantumTimer = new Timer(monitorQuantum * 1000);
+				quantumTimer.addEventListener(TimerEvent.TIMER, onQuantumTimer);
+				quantumTimer.start();
+				
 			}
 			else
 			{
