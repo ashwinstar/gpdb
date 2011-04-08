@@ -20,7 +20,7 @@
 #include "mb/pg_wchar.h"
 
 #define unify_version(a,b,c) ((a<<16)+(b<<8)+c)
-#if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) < unify_version(2,5,35)
+#if unify_version(YY_FLEX_MAJOR_VERSION,YY_FLEX_MINOR_VERSION,YY_FLEX_SUBMINOR_VERSION) <= unify_version(2,5,35)
 int orafce_sql_yyget_lineno  (void);
 FILE *orafce_sql_yyget_in  (void);
 FILE *orafce_sql_yyget_out  (void);
