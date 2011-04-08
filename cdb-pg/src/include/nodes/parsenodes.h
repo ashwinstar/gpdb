@@ -2218,6 +2218,7 @@ typedef struct RuleStmt
 	bool		instead;		/* is a 'do instead'? */
 	List	   *actions;		/* the action statements */
 	bool		replace;		/* OR REPLACE */
+	Oid			ruleOid;		/* rule Oid */
 } RuleStmt;
 
 /* ----------------------

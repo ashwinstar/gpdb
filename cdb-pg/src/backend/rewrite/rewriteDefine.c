@@ -57,7 +57,8 @@ InsertRule(char *rulname,
 		   bool evinstead,
 		   Node *event_qual,
 		   List *action,
-		   bool replace)
+		   bool replace,
+		   Oid ruleOid)
 {
 	char	   *evqual = nodeToString(event_qual);
 	char	   *actiontree = nodeToString((Node *) action);
@@ -134,6 +135,9 @@ InsertRule(char *rulname,
 	{
 		tup = heap_form_tuple(pg_rewrite_desc->rd_att, values, nulls);
 
+		if (OidIsValid(ruleOid))
+			HeapTupleSetOid(tup, ruleOid);
+
 		rewriteObjectId = simple_heap_insert(pg_rewrite_desc, tup);
 	}
 
@@ -195,7 +199,6 @@ DefineQueryRewrite(RuleStmt *stmt)
 	List	   *action = stmt->actions;
 	Relation	event_relation;
 	Oid			ev_relid;
-	Oid			ruleId;
 	int			event_attno;
 	ListCell   *l;
 	Query	   *query;
@@ -418,14 +421,15 @@ DefineQueryRewrite(RuleStmt *stmt)
 	/* discard rule if it's null action and not INSTEAD; it's a no-op */
 	if (action != NIL || is_instead)
 	{
-		ruleId = InsertRule(stmt->rulename,
+		stmt->ruleOid = InsertRule(stmt->rulename,
 							event_type,
 							ev_relid,
 							event_attno,
 							is_instead,
 							event_qual,
 							action,
-							replace);
+							replace,
+							stmt->ruleOid);
 
 		/*
 		 * Set pg_class 'relhasrules' field TRUE for event relation. If

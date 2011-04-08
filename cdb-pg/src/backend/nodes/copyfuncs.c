@@ -2980,6 +2980,7 @@ _copyRuleStmt(RuleStmt *from)
 	COPY_SCALAR_FIELD(instead);
 	COPY_NODE_FIELD(actions);
 	COPY_SCALAR_FIELD(replace);
+	COPY_SCALAR_FIELD(ruleOid);
 
 	return newnode;
 }

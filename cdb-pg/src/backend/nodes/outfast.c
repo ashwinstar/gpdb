@@ -1971,6 +1971,7 @@ _outRuleStmt(StringInfo str, RuleStmt *node)
 	WRITE_BOOL_FIELD(instead);
 	WRITE_NODE_FIELD(actions);
 	WRITE_BOOL_FIELD(replace);
+	WRITE_OID_FIELD(ruleOid);
 }
 
 static void

@@ -1287,6 +1287,7 @@ _equalRuleStmt(RuleStmt *a, RuleStmt *b)
 	COMPARE_SCALAR_FIELD(instead);
 	COMPARE_NODE_FIELD(actions);
 	COMPARE_SCALAR_FIELD(replace);
+	COMPARE_SCALAR_FIELD(ruleOid);
 
 	return true;
 }

@@ -608,6 +608,7 @@ _readRuleStmt(const char ** str)
 	READ_BOOL_FIELD(instead);
 	READ_NODE_FIELD(actions);
 	READ_BOOL_FIELD(replace);
+	READ_OID_FIELD(ruleOid);
 
 	READ_DONE();
 }
