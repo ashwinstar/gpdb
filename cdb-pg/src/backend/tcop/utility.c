@@ -1439,12 +1439,14 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateTrigStmt:
-			CreateTrigger((CreateTrigStmt *) parsetree, false);
-			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
+				Oid trigOid = CreateTrigger((CreateTrigStmt *) parsetree, false);
+				if (Gp_role == GP_ROLE_DISPATCH)
+				{
+					((CreateTrigStmt *) parsetree)->trigOid = trigOid;
+					CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
+				}
 			}
-
 			break;
 
 		case T_DropPropertyStmt:
