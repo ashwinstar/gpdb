@@ -1577,6 +1577,18 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 		}
 
 		/*
+		 * If are connected in utility mode, disallow PREPARE TRANSACTION statements.
+		 */
+                TransactionStmt *transStmt = (TransactionStmt *)parsetree;
+		if (Gp_role == GP_ROLE_UTILITY && IsA(parsetree, TransactionStmt) && transStmt->kind == TRANS_STMT_PREPARE)
+		{
+		  ereport( ERROR
+			   , (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			    errmsg("PREPARE TRANSACTION is not supported in utility mode"))
+			 );
+		}
+
+		/*
 		 * If we are in an aborted transaction, reject all commands except
 		 * COMMIT/ABORT.  It is important that this test occur before we try
 		 * to do parse analysis, rewrite, or planning, since all those phases
