@@ -2190,6 +2190,7 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			dumpRule(fout, (RuleInfo *) dobj);
 			break;
 		case DO_TRIGGER:
+			if (!preDataSchemaOnly)
 			dumpTrigger(fout, (TriggerInfo *) dobj);
 			break;
 		case DO_CONSTRAINT:
