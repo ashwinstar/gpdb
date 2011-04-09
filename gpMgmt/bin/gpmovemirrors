@@ -165,10 +165,10 @@ def sig_handler(sig, arg):
     os.kill(os.getpid(), sig)
     
 #-------------------------------------------------------------------------  
-def lookupSegmentGpdb(address, port, dataDirectory):
+def lookupGpdb(address, port, dataDirectory):
     """ Look up the segment gpdb by address, port, and dataDirectory """
      
-    gpdbList = gparray. getSegDbList()                    
+    gpdbList = gparray. getDbList()                    
     for gpdb in gpdbList:
         if address == str(gpdb.getSegmentAddress()) and port == str(gpdb.getSegmentPort()) and dataDirectory == str(gpdb.getSegmentDataDirectory()):
            return gpdb
@@ -257,7 +257,7 @@ class Configuration:
             oldAddress         = rowMap['oldAddress']
             oldPort            = rowMap['oldPort']
             oldDataDirectory   = rowMap['oldDataDirectory']
-            oldGpdb            = lookupSegmentGpdb(oldAddress, oldPort, oldDataDirectory)
+            oldGpdb            = lookupGpdb(oldAddress, oldPort, oldDataDirectory)
             if oldGpdb == None or oldGpdb.getSegmentRole() != ROLE_MIRROR:
                if oldGpdb == None:
                   raise Exception("Old mirror segment does not exist with given information: address = %s, port = %s, segment data directory = %s"
@@ -375,14 +375,16 @@ try:
     
     """ Do some sanity checks on the input. """
     for mirror in newConfig.oldMirrorList:
-        seg = lookupSegmentGpdb(mirror.address, mirror.port, mirror.dataDirectory)
-        if seg == None or seg.getSegmentRole() != ROLE_MIRROR:
-           if seg == None:
-              raise Exception("Old mirror segment does not exist with given information: address = %s, port = %s, segment data directory = %s"
-                                % (mirror.address, str(mirror.port), mirror.dataDirectory))
-           else:
-              raise Exception("Old mirror segment is not currently in a mirror role: address = %s, port = %s, segment data directory = %s"
-                                % (mirror.address, str(mirror.port), mirror.dataDirectory))
+        seg = lookupGpdb(mirror.address, mirror.port, mirror.dataDirectory)
+        if seg == None:
+           raise Exception("Old mirror segment does not exist with given information: address = %s, port = %s, segment data directory = %s"
+                           % (mirror.address, str(mirror.port), mirror.dataDirectory))
+        if seg.getSegmentContentId() == MASTER_CONTENT_ID:
+           raise Exception("Cannot move master or master mirror segments: address = %s, port = %s, segment data directory = %s"
+                           % (mirror.address, str(mirror.port), mirror.dataDirectory))
+        if seg.getSegmentRole() != ROLE_MIRROR:
+           raise Exception("Old mirror segment is not currently in a mirror role: address = %s, port = %s, segment data directory = %s"
+                           % (mirror.address, str(mirror.port), mirror.dataDirectory))
     
     """ Create a backout file for the user if they choose to go back to the original configuration. """
     backout_filename = options.input_filename + "_backout_" + str(time.strftime("%m%d%y%H%M%S"))
