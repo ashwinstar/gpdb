@@ -43,9 +43,10 @@ int orafce_sql_yylex_destroy  (void);
 #endif
 
 /* before 2.5.35 yyget_leng returns int, after it returns yy_size_t */
-#if YY_FLEX_FULL_VERSION < unify_version(2,5,35)
+#if YY_FLEX_FULL_VERSION <= unify_version(2,5,35)
 int orafce_sql_yyget_leng(void);
-#elif YY_FLEX_FULL_VERSION == unify_version(2,5,35)
+/* XXX: temporarily disable to fix the build */
+#elif YY_FLEX_FULL_VERSION == unify_version(2,5,35) && 0
 yy_size_t orafce_sql_yyget_leng(void);
 #endif
 
