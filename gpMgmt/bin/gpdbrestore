@@ -444,12 +444,10 @@ SELECT_MULTI_FILE () {
 	$ECHO "${SPC}--------------------------"
 	for DUMP_LINE in ${DUMP_LIST_ARRAY[@]}
 	do
-        if [ x"$DUMP_LINE" != x"data" ]; then
-		    DUMP_DATE=`$ECHO $DUMP_LINE|$CUT -c1-8`
-		    DUMP_TIME=`$ECHO $DUMP_LINE|$CUT -c9-14`
-		    $ECHO "${SPC}[$OPTION] ...... $DUMP_DATE $DUMP_TIME"
-		    ((OPTION=$OPTION+1))
-        fi
+		DUMP_DATE=`$ECHO $DUMP_LINE|$CUT -c1-8`
+		DUMP_TIME=`$ECHO $DUMP_LINE|$CUT -c9-14`
+		$ECHO "${SPC}[$OPTION] ...... $DUMP_DATE $DUMP_TIME"
+		((OPTION=$OPTION+1))
 	done
 	$ECHO "${SPC}Enter timestamp number to restore >"
 	read REPLY
@@ -483,7 +481,7 @@ VALIDATE_DB_DATE_DIR () {
 			if [ `ls ${MASTER_DATA_DIRECTORY}/${DUMP_DIR}/$DB_DATE_DIR/$MASTER_DBDUMP_PREFIX*|$WC -l` -gt 1 ];then
 				MULTI_FILE=1
 				LOG_MSG "[INFO]:-Found multiple backup sets for $DB_DATE_DIR" 1
-				DUMP_LIST_ARRAY=(`ls ${MASTER_DATA_DIRECTORY}/${DUMP_DIR}/$DB_DATE_DIR/$MASTER_DBDUMP_PREFIX*|$TR ' ' '\n'|$AWK -F"/" '{print $NF}'|$AWK -F"_" '{print $NF}'|$CUT -d"." -f1|$TR '\n' ' '`)
+				DUMP_LIST_ARRAY=(`ls ${MASTER_DATA_DIRECTORY}/${DUMP_DIR}/$DB_DATE_DIR/$MASTER_DBDUMP_PREFIX*|$GREP -v post_data|$TR ' ' '\n'|$AWK -F"/" '{print $NF}'|$AWK -F"_" '{print $NF}'|$CUT -d"." -f1|$TR '\n' ' '`)
 				SELECT_MULTI_FILE
 			fi
 		fi
@@ -514,7 +512,7 @@ VALIDATE_DB_FILE_HOST () {
 		ERROR_EXIT "[FATAL]:-Could not locate Master database dump file in $DB_HOST_PATH on $DB_HOST" 2
 	else
 		if [ $REMOTE_FILE_COUNT -gt 1 ];then
-			DUMP_LIST_ARRAY=(`$TRUSTED_SHELL $DB_HOST "ls $DB_HOST_PATH/$MASTER_DBDUMP_PREFIX*"|$TR ' ' '\n'|$AWK -F"/" '{print $NF}'|$AWK -F"_" '{print $NF}'|$CUT -d"." -f1|$TR '\n' ' '`)
+			DUMP_LIST_ARRAY=(`$TRUSTED_SHELL $DB_HOST "ls $DB_HOST_PATH/$MASTER_DBDUMP_PREFIX*"|$GREP -v post_data |$TR ' ' '\n'|$AWK -F"/" '{print $NF}'|$AWK -F"_" '{print $NF}'|$CUT -d"." -f1|$TR '\n' ' 'a`)
 			LOG_MSG "[INFO]:-Found multiple backup sets on $DB_HOST" 1
 			SELECT_MULTI_FILE
 			REMOTE_FILE=`$TRUSTED_SHELL $DB_HOST "ls $DB_HOST_PATH/${MASTER_DBDUMP_PREFIX}_$RESTORE_TIMESTAMP*"`	
