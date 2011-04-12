@@ -6404,8 +6404,7 @@ StartupXLOG(void)
 					 dtxCheckpointLen,
 					 masterMirroringCheckpointLen,
 				     XLogLocationToString(&checkPointLoc));
-				if (ptas != NULL)
- 				    elog(PersistentRecovery_DebugPrintLevel(),
+				  elog(PersistentRecovery_DebugPrintLevel(),
                                          "StartupXLOG: Checkpoint record prepared transaction agg state count = %d",
 				       ptas->count);
 			}
@@ -7318,8 +7317,7 @@ ngth %u, location %s",
 		     dtxCheckpointLen,
 		     masterMirroringCheckpointLen,
 		     XLogLocationToString(redoCheckPointLoc));
-		if (ptas != NULL)
-		    elog(PersistentRecovery_DebugPrintLevel(),
+		  elog(PersistentRecovery_DebugPrintLevel(),
 		       "XLogPopulateMasterMirroring: Checkpoint record prepared transaction agg state count = %d",
 		       ptas->count);
 	}
@@ -8015,21 +8013,7 @@ UnpackCheckPointRecord(
 				*masterMirroringCheckpointLen = 0;
 			}
 		}
-
-                remainderLen -= *masterMirroringCheckpointLen;
-
-		/* This is a fix for MPP-12738 "Alibaba - upgrade from 4.0.4.0 to 4.1 failure"                                 */
-		/* Under some circumstances, an old style checkpoint may exist (upgrade switch xlog...).                       */
-		/* Check to see if it looks like a new checkpoint. A new checkpoint contains the prepared transaction section. */
-		if (remainderLen > 0)
-		  {
-		    *ptas = (prepared_transaction_agg_state *)mmxlog_get_checkpoint_record_suffix(record);
-		  }
-		else
-		  {
-		    elog(WARNING,"The checkpoint at %s appears to be a pre-4.1 checkpoint", XLogLocationToString(location));
-		  }
-
+		  *ptas = (prepared_transaction_agg_state *)mmxlog_get_checkpoint_record_suffix(record);
 	}  /* end if (record->xl_len > sizeof(CheckPoint)) */
 }
 
@@ -8861,7 +8845,6 @@ xlog_redo_print_extended_checkpoint_info(XLogRecPtr beginLoc, XLogRecord *record
 	             dtxCheckpointLen,
 	             masterMirroringCheckpointLen,
 	             XLogLocationToString(&beginLoc));
-		if (ptas != NULL)    
   	            elog(PersistentRecovery_DebugPrintLevel(), 
 		         "xlog_redo_print_extended_checkpoint_info: prepared transaction agg state count = %d",
                           ptas->count);
@@ -9044,7 +9027,6 @@ xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 				 dtxCheckpoint->committedCount,
 				 dtxCheckpointLen,
 				 masterMirroringCheckpointLen);
-			if (ptas != NULL)
                            appendStringInfo(buf,
                                      ", prepared transaction agg state count = %d",
 				      ptas->count);
