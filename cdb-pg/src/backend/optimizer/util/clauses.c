@@ -3443,6 +3443,25 @@ expression_tree_mutator(Node *node,
 
 				return (Node *) newnode;
 			}
+		case T_GroupClause: /* same as SortClause for now */
+			{
+				GroupClause *groupcl = (GroupClause *) node;
+				GroupClause *newnode;
+				
+				FLATCOPY(newnode, groupcl, GroupClause);
+				
+				return (Node *) newnode;
+			}
+		case T_GroupingClause:
+			{
+				GroupingClause *grpingcl = (GroupingClause *) node;
+				GroupingClause *newnode;
+				
+				FLATCOPY(newnode, grpingcl, GroupingClause);
+				MUTATE(newnode->groupsets, grpingcl->groupsets, List *);
+				return (Node *)newnode;
+			}
+			break;
 		case T_ArrayRef:
 			{
 				ArrayRef   *arrayref = (ArrayRef *) node;
@@ -3835,6 +3854,7 @@ query_tree_mutator(Query *query,
 	MUTATE(query->returningList, query->returningList, List *);
 	MUTATE(query->jointree, query->jointree, FromExpr *);
 	MUTATE(query->setOperations, query->setOperations, Node *);
+	MUTATE(query->groupClause, query->groupClause, List *);
 	MUTATE(query->havingQual, query->havingQual, Node *);
 	MUTATE(query->windowClause, query->windowClause, List *);
 	MUTATE(query->limitOffset, query->limitOffset, Node *);
