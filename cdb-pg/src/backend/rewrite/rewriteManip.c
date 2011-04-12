@@ -461,9 +461,17 @@ IncrementVarSublevelsUp_walker(Node *node,
 	if (IsA(node, Aggref))
 	{
 		Aggref	   *agg = (Aggref *) node;
-
+		
 		if (agg->agglevelsup >= context->min_sublevels_up)
 			agg->agglevelsup += context->delta_sublevels_up;
+		/* fall through to recurse into argument */
+	}
+	if (IsA(node, WindowRef))
+	{
+		WindowRef	   *wref = (WindowRef *) node;
+		
+		if (wref->winlevelsup >= context->min_sublevels_up)
+			wref->winlevelsup += context->delta_sublevels_up;
 		/* fall through to recurse into argument */
 	}
 	if (IsA(node, Query))
