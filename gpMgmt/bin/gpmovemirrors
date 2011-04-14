@@ -869,6 +869,9 @@ try:
                       , logdir = options.logfile_directory
                       )
 
+    if options.verbose:
+        enable_verbose_logging()
+
     mainOptions = { "pidfilename" : GP_MOVEMIRROS_PID_FILE }
     sml         = SimpleMainLock(mainOptions)
     otherpid = sml.acquire()
