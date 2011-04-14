@@ -6404,8 +6404,9 @@ StartupXLOG(void)
 					 dtxCheckpointLen,
 					 masterMirroringCheckpointLen,
 				     XLogLocationToString(&checkPointLoc));
-				  elog(PersistentRecovery_DebugPrintLevel(),
-                                         "StartupXLOG: Checkpoint record prepared transaction agg state count = %d",
+				if (ptas != NULL)
+				   elog(PersistentRecovery_DebugPrintLevel(),
+					"StartupXLOG: Checkpoint record prepared transaction agg state count = %d",
 				       ptas->count);
 			}
 			redoDtxCheckPoint(dtxCheckpoint);
@@ -7317,6 +7318,7 @@ ngth %u, location %s",
 		     dtxCheckpointLen,
 		     masterMirroringCheckpointLen,
 		     XLogLocationToString(redoCheckPointLoc));
+		if (ptas != NULL)
 		  elog(PersistentRecovery_DebugPrintLevel(),
 		       "XLogPopulateMasterMirroring: Checkpoint record prepared transaction agg state count = %d",
 		       ptas->count);
@@ -7956,6 +7958,34 @@ UnpackCheckPointRecord(
 	*masterMirroringCheckpointLen = 0;
 	*ptas = NULL;
 
+
+	/*********************************************************************************
+	  A checkpoint can have four formats (one special, two 4.0, and one 4.1 and later).
+
+	  Special (for bootstrap, xlog switch, maybe others).
+	    Checkpoint
+
+	  4.0 QD
+	    CheckPoint
+            TMGXACT_CHECKPOINT
+            fspc_agg_state
+            tspc_agg_state 
+            dbdir_agg_state
+
+
+	  4.0 QE
+            CheckPoint
+            TMGXACT_CHECKPOINT
+
+	 4.1 and later
+            CheckPoint
+            TMGXACT_CHECKPOINT
+            fspc_agg_state
+            tspc_agg_state
+            dbdir_agg_state
+            prepared_transaction_agg_state
+	**********************************************************************************/
+
 	if (record->xl_len > sizeof(CheckPoint))
 	{
 		uint32 remainderLen;
@@ -7997,9 +8027,16 @@ UnpackCheckPointRecord(
 
 		remainderLen -= *dtxCheckpointLen;
 
+		int mmInfoLen = 0;
+
 		if (remainderLen > 0)
-		{
+		   {
 			*masterMirroringCheckpoint = ((char*)*dtxCheckpoint) + *dtxCheckpointLen;
+
+			/* TODO, The masterMirrongCheckpointLen actually contains the length of the master/mirroring section, */
+			/* plus the new 4.1 and later prepared transaction section. This value is used else where, and needs  */
+			/* to include the total length of the master/mirror section and anything that follows it.             */
+			/* The code should be re-written to be more understandable.                                           */
 			*masterMirroringCheckpointLen = remainderLen;
 
 			if (!mmxlog_verify_checkpoint_info(
@@ -8008,12 +8045,38 @@ UnpackCheckPointRecord(
 									record->xl_len,
 									location,
 									errlevelMasterMirroring))
-			{
-				*masterMirroringCheckpoint = NULL;
-				*masterMirroringCheckpointLen = 0;
-			}
-		}
-		  *ptas = (prepared_transaction_agg_state *)mmxlog_get_checkpoint_record_suffix(record);
+			   {
+			        *masterMirroringCheckpoint = NULL;
+			        *masterMirroringCheckpointLen = 0;
+			   }
+			else
+			  {
+			    /*
+			      This appears to be either a old checkpoint with master/mirror information attached to it,
+			      or it is a new (4.1) checkpoint that has the master/mirror information and the prepared 
+			      transaction information. In either case, get the location of the next byte past the 
+			      master/mirror section, and use it to determine the section's length.
+			    */
+			    char *nextPos = mmxlog_get_checkpoint_record_suffix(record);
+
+			    mmInfoLen = nextPos - *masterMirroringCheckpoint;
+			  }
+		   }
+
+		remainderLen -= mmInfoLen;
+
+		/* This is a fix for MPP-12738 "Alibaba - upgrade from 4.0.4.0 to 4.1 failure"                                 */
+		/* Under some circumstances, an old style checkpoint may exist (upgrade switch xlog...).                       */
+		/* Check to see if it looks like a new checkpoint. A new checkpoint contains the prepared transaction section. */
+		if (remainderLen > 0)
+		  {
+		    *ptas = (prepared_transaction_agg_state *)mmxlog_get_checkpoint_record_suffix(record);
+		  }
+		else
+		  {
+		    elog(WARNING,"UnpackCheckPointRecord: The checkpoint at %s appears to be a 4.0 checkpoint", XLogLocationToString(location));
+		  }
+
 	}  /* end if (record->xl_len > sizeof(CheckPoint)) */
 }
 
@@ -8845,6 +8908,7 @@ xlog_redo_print_extended_checkpoint_info(XLogRecPtr beginLoc, XLogRecord *record
 	             dtxCheckpointLen,
 	             masterMirroringCheckpointLen,
 	             XLogLocationToString(&beginLoc));
+	        if (ptas != NULL)
   	            elog(PersistentRecovery_DebugPrintLevel(), 
 		         "xlog_redo_print_extended_checkpoint_info: prepared transaction agg state count = %d",
                           ptas->count);
@@ -9027,6 +9091,7 @@ xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 				 dtxCheckpoint->committedCount,
 				 dtxCheckpointLen,
 				 masterMirroringCheckpointLen);
+			if (ptas != NULL)
                            appendStringInfo(buf,
                                      ", prepared transaction agg state count = %d",
 				      ptas->count);

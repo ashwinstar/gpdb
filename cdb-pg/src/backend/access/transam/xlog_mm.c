@@ -1730,22 +1730,24 @@ mmxlog_get_checkpoint_info(char *cpdata, int masterMirroringLen, int checkpointL
 			 XLogLocationToString(beginLoc));
 	}
 
-           remainderLen -= databaseInfoLen;
+	remainderLen -= databaseInfoLen;
 
-	   if (remainderLen <= 0)
-	  {
-	    if (errlevel != -1)
-	      ereport(errlevel,
-		      (errmsg("Bad checkpoint record length %u (Master mirroring database directory information: expected length %u, actual length %u, count %d) at location %s",
-			      checkpointLen,
-			      databaseInfoLen,
-			      remainderLen,
-			      (*d)->count,
-			      XLogLocationToString(beginLoc))));
+	if (remainderLen == 0)
+	   elog(WARNING,"mmxlog_get_checkpoint_info: The checkpoint at %s appears to be a 4.0 checkpoint", XLogLocationToString(beginLoc));
+	else if (remainderLen < 0)
+	{
+	  if (errlevel != -1)
+	     ereport(errlevel,
+		     (errmsg("Bad checkpoint record length %u (Master mirroring database directory information: expected length %u, actual length %u, count %d) at location %s",
+			     checkpointLen,
+			     databaseInfoLen,
+			     remainderLen,
+			     (*d)->count,
+			     XLogLocationToString(beginLoc))));
 	    
-	    SUPPRESS_ERRCONTEXT_POP();
-	    return false;
-	  }
+	  SUPPRESS_ERRCONTEXT_POP();
+	  return false;
+	}
 
 	SUPPRESS_ERRCONTEXT_POP();
 	return true;
