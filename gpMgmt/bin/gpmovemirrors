@@ -74,7 +74,7 @@ def parseargs():
 
     parser.add_option('-i', '--input', dest="input_filename",
                         help="input expansion configuration file.", metavar="FILE")
-    parser.add_option('-o', '--output', default=output,
+    parser.add_option('-o', '--output', 
                       help="Output directory for sample configuration file.", metavar="FILE")
     parser.add_option('-d', '--master-data-directory', dest='master_data_directory',
                       help='The master data directory for the system. If this option is not specified, \
@@ -833,7 +833,7 @@ class MoveMirrorsInterview:
         print "[created]"
         print """
 To modify database mirroring with this configuration, run the command:
-   gpmovemirrors --config %s
+   gpmovemirrors --input %s
 """ % self.filename
 
 
