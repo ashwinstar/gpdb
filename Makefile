@@ -680,7 +680,8 @@ endif
 	   cp ${BLD_TOP}/../licenses/GPDB-LICENSE.txt $(CONNECTIVITYINSTLOC) ; \
 	   cp ${BLD_TOP}/../licenses/LICENSE.thirdparty $(CONNECTIVITYINSTLOC) ; \
 	else \
-	   echo "Warning: not including LICENSE.thirdparty and GPDB-LICENSE.txt; ${BLD_TOP}/../licenses not found" ; \
+	   echo "ERROR:	LICENSE.thirdparty and GPDB-LICENSE.txt; ${BLD_TOP}/../licenses not found" ; \
+	   exit 1; \
 	fi
 
 	# ---- create the installer ----
@@ -749,7 +750,8 @@ endif
 	  cp ${BLD_TOP}/../licenses/GPDB-LICENSE.txt $(CLIENTINSTLOC) ; \
 	  cp ${BLD_TOP}/../licenses/LICENSE.thirdparty $(CLIENTINSTLOC) ; \
 	else \
-	   echo "Warning: not including LICENSE.thirdparty and GPDB-LICENSE.txt; ${BLD_TOP}/../licenses not found" ; \
+	   echo "ERROR: LICENSE.thirdparty and GPDB-LICENSE.txt; ${BLD_TOP}/../licenses not found" ; \
+	   exit 1; \
 	fi
 
 	# ---- create the installer ----
@@ -832,7 +834,8 @@ endif
 	    cp ${BLD_TOP}/../licenses/GPDB-LICENSE.txt $(LOADERSINSTLOC) ; \
 	    cp ${BLD_TOP}/../licenses/LICENSE.thirdparty $(LOADERSINSTLOC) ; \
 	else \
-	    echo "Warning: not including LICENSE.thirdparty and GPDB-LICENSE.txt; ${BLD_TOP}/../licenses not found" ; \
+	    echo "ERROR	 LICENSE.thirdparty and GPDB-LICENSE.txt; ${BLD_TOP}/../licenses not found" ; \
+	    exit 1; \
 	fi
 
 	# ---- create the installer ----
