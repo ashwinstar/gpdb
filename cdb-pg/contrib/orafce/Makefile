@@ -7,7 +7,7 @@ DOCS = README.orafunc COPYRIGHT.orafunc INSTALL.orafunc
 REGRESS = orafunc dbms_output files
 REGRESS_OPTS = --load-language=plpgsql
 
-EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafunc.sql.in
+EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafunc.sql orafunc.sql.in
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
@@ -67,4 +67,4 @@ orafunc.sql.in:
 #
 #	cat orafunc-common.sql orafunc-$(MAJORVERSION).sql > orafunc.sql.in
 #
-	cat orafunc-gp.sql > orafunc.sql.in
+	cat $(srcdir)/orafunc-gp.sql > orafunc.sql.in
