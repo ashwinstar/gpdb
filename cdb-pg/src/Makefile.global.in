@@ -44,6 +44,8 @@ srcdir = $(top_srcdir)/$(subdir)
 VPATH = $(srcdir)
 endif
 
+vpathsearch = `for f in $(addsuffix /$(1),$(subst :, ,. $(VPATH))); do test -r $$f && echo $$f && break; done`
+
 # Saved arguments from configure
 configure_args = @configure_args@
 
@@ -328,7 +330,6 @@ INSTALL_SHLIB	= $(INSTALL_SHLIB_ENV) $(INSTALL) $(INSTALL_SHLIB_OPTS) $(INSTALL_
 # Override in Makefile.port if necessary
 INSTALL_SHLIB_OPTS = -m 755
 
-
 MKDIR_P = @MKDIR_P@
 
 mkinstalldirs	= $(SHELL) $(top_srcdir)/config/mkinstalldirs
@@ -416,7 +417,7 @@ endif
 # This macro is for use by libraries linking to libpq.  (Because libpgport
 # isn't created with the same link flags as libpq, it can't be used.)
 libpq = -L$(libpq_builddir) -lpq
-  
+
 # If doing static linking, shared library dependency info isn't available,
 # so add in the libraries that libpq depends on.
 ifeq ($(enable_shared), no)
@@ -425,9 +426,9 @@ libpq += $(filter -lintl -lssl -lcrypto -lkrb5 -lcrypt, $(LIBS)) \
 endif
 
 # This macro is for use by client executables (not libraries) that use libpq.
-# We force clients to pull symbols from the non-shared library libpgport 
-# rather than pulling some libpgport symbols from libpq just because 
-# libpq uses those functions too.  This makes applications less 
+# We force clients to pull symbols from the non-shared library libpgport
+# rather than pulling some libpgport symbols from libpq just because
+# libpq uses those functions too.  This makes applications less
 # dependent on changes in libpq's usage of pgport.  To do this we link to
 # pgport before libpq.  This does cause duplicate -lpgport's to appear
 # on client link lines.
