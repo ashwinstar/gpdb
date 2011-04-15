@@ -50,7 +50,11 @@ from distutils.extension import Extension
 
 def pg_config(s):
     """Retrieve information about installed version of PostgreSQL."""
-    f = os.popen("../../../../cdb-pg/src/bin/pg_config/pg_config --%s" % s)
+    f = os.popen("find ../../../.. -name pg_config -type f")
+    d = f.readline().strip()
+    f.close()
+
+    f = os.popen("%s --%s" % (d, s))
     d = f.readline().strip()
     if f.close() is not None:
         raise Exception("pg_config tool is not available.")
