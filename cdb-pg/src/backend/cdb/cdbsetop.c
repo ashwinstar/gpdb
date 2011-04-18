@@ -481,12 +481,18 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 			Node *x = (Node*)lfirst(c);
 
             i++;
-			tle = tlist_member(x, subplan->targetlist);
-			
-            Insist(tle 
-                   && (equal(x, tle->expr)
-                       || (IsA(x, RelabelType)
-                           && equal(((RelabelType *)x)->arg, tle->expr) )));
+
+            /* MPP-12273
+             * Addressing the issue when the hashexpr's argument is a RELABELTYPE
+             */
+
+           if (IsA(x, RelabelType))
+           {
+               x = (Node*) ((RelabelType*)x)->arg;
+           }
+           tle = tlist_member(x, subplan->targetlist);
+
+           Insist(tle && equal(x, tle->expr));
 
             hash = lappend(hash, makeVar(varno, i,
 										exprType((Node*)tle->expr),
