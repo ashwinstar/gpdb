@@ -36,7 +36,7 @@ typedef struct {
 
 PG_FUNCTION_INFO_V1(plvlex_tokens);
 
-extern int      orafce_sql_yyparse();
+extern int      orafce_sql_yyparse(void *);
 extern void orafce_sql_yyerror(const char *message);
 extern void orafce_sql_scanner_init(const char *str);
 extern void orafce_sql_scanner_finish(void);
