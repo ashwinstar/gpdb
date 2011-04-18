@@ -50,7 +50,7 @@ from distutils.extension import Extension
 
 def pg_config(s):
     """Retrieve information about installed version of PostgreSQL."""
-    f = os.popen("find ../../../.. -path ./ext -prune -o -name pg_config -type f | grep pg_config")
+    f = os.popen("find ../../../.. -path ./ext -prune -o -name pg_config -type f | grep -v /ext/ | grep pg_config")
     d = f.readline().strip()
     f.close()
 
