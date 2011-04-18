@@ -1,44 +1,48 @@
 #!/usr/bin/env python
-# Line too long - pylint: disable=C0301
-# Invalid name  - pylint: disable=C0103
-
-"""
-  gpmovemirrors
-  Copyright (c) EMC/Greenplum Inc 2011. All Rights Reserved.
-"""
-
+#
+# Copyright (c) EMC Inc 2010. All Rights Reserved.
+#
+import copy
+import datetime
 import os
 import sys
+import socket
 import signal
-import time
-import logging
+from time import strftime, sleep
+
+from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
+from subprocess import Popen, PIPE
 
 try:
-    from gppylib.db import dbconn
-    from gppylib.commands.base import REMOTE, WorkerPool
-    from gppylib.commands.gp import GpError, GpRecoverSeg, get_masterdatadir, get_gphome
-    from gppylib.commands.unix import getLocalHostname, getUserName, RemoveFiles
-    from gppylib.gplog import get_default_logger, setup_tool_logging, enable_verbose_logging
-    from gppylib.gparray import GpArray, ROLE_MIRROR, SYSTEM_FILESPACE
+    from gppylib.commands.unix import *
+    from gppylib.commands.gp import *
+    from gppylib.commands.pg import PgControlData
+    from gppylib.gparray import *
     from gppylib.gpparseopts import OptParser, OptChecker
-    from gppylib.gpcoverage import GpCoverage
-    from gppylib.mainUtils import SimpleMainLock
-    from gppylib.mirrorutils import MirroringDistributions
-    from gppylib.pathutils import pathtree, prefixtree, mirrorfilespaces, pathwalk, pathreplace
-    from gppylib.userinput import ask_yesno, ask_string, ask_list, ask_list_raw
-    from gppylib.utils import readAllLinesFromFile, parseMirroringConfigFile
+    from gppylib.gplog import *
+    from gppylib.db import dbconn
+    from gppylib.db import catalog
+    from gppylib.userinput import *
+    from gppylib.operations.startSegments import *
     from pygresql.pgdb import DatabaseError
+    from pygresql import pg
+    from gppylib.gpcoverage import GpCoverage
+    from gppylib import gparray, gplog, pgconf, userinput, utils 
+    from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, \
+                                PathNormalizationException, normalizeAndValidateInputPath, TableLogger
+    from gppylib.mainUtils import SimpleMainLock
 
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
 
 # constants
+MAX_BATCH_SIZE=128
 
-MAX_BATCH_SIZE = 128
-GPDB_STOPPED   = 1
-GPDB_STARTED   = 2
-GPDB_UTILITY   = 3
+GPDB_STOPPED=1
+GPDB_STARTED=2
+GPDB_UTILITY=3
+
 
 GP_MOVEMIRROS_PID_FILE = "gpmovemirrors.pid"
 
@@ -62,37 +66,31 @@ An input file must be specified.
 
 #----------------------- Command line option parser ----------------------
 def parseargs():
-    """parse command line arguments"""
-
-    output = os.getcwd()
-
     parser = OptParser(option_class=OptChecker,
                 description=' '.join(description.split()),
                 version='%prog version $Revision$')
     parser.setHelp(_help)
     parser.remove_option('-h')
 
-    parser.add_option('-i', '--input', dest="input_filename",
+    parser.add_option('-i','--input', dest="input_filename",
                         help="input expansion configuration file.", metavar="FILE")
-    parser.add_option('-o', '--output', 
-                      help="Output directory for sample configuration file.", metavar="FILE")
-    parser.add_option('-d', '--master-data-directory', dest='master_data_directory',
+    parser.add_option('-d','--master-data-directory', dest='master_data_directory',
                       help='The master data directory for the system. If this option is not specified, \
                             the value is obtained from the $MASTER_DATA_DIRECTORY environment variable.')
     parser.add_option('-B', '--batch-size', dest='batch_size', type='int', default=16, metavar="<batch_size>",
                       help='Expansion configuration batch size. Valid values are 1-%d' % MAX_BATCH_SIZE)
-    parser.add_option('-v', '--verbose', dest="verbose", action='store_true',
+    parser.add_option('-v','--verbose', dest="verbose", action='store_true',
                       help='debug output.')
-    parser.add_option('-l', '--log-file-directory', dest="logfile_directory",
+    parser.add_option('-l','--log-file-directory', dest="logfile_directory",
                       help='The directory where the gpmovemirrors log file should be put. \
                             The default location is ~/gpAdminLogs.')
-    parser.add_option('-C', '--continue', dest='continue_move', action='store_true',
+    parser.add_option('-C','--continue', dest='continue_move', action='store_true',
                       help='Continue moving mirrors')
     parser.add_option('-h', '-?', '--help', action='help',
                         help='show this help message and exit.')
     parser.add_option('--usage', action="briefhelp")
 
-    parser.set_defaults(verbose=False, filters=[], slice=(None, None))
+    parser.set_defaults(verbose=False,filters=[], slice=(None, None))
 
     # Parse the command line arguments
     (options, args) = parser.parse_args()
@@ -106,28 +104,22 @@ def parseargs():
         parser.print_help()
         parser.exit()
 
-    if options.input_filename is None:
-        if options.output is None:
-            logger.error('Missing argument. one of -i, --input or -o, --output is required.')
-            parser.print_help()
-            parser.exit()
-    else:
-        if options.output is not None:
-            logger.error('Invalid argument. Please only specify one of -i, --input or -o, --output.')
-            parser.print_help()
-            parser.exit()
+    if options.input_filename == None:
+        logger.error('Missing argument. -i or --input is a required argument.')
+        parser.print_help()
+        parser.exit()
 
     try:
-        if options.master_data_directory is None:
-            options.master_data_directory = get_masterdatadir()
+        if options.master_data_directory == None:
+           options.master_data_directory = get_masterdatadir()
         options.gphome = get_gphome()
     except GpError, msg:
         logger.error(msg)
         parser.exit()
 
     if not os.path.exists(options.master_data_directory):
-        logger.error('Master data directory does not exist.')
-        parser.exit()
+         logger.error('Master data directory does not exist.')
+         parser.exit()
 
     options.pgport = int(os.getenv('PGPORT', 5432))
 
@@ -136,11 +128,10 @@ def parseargs():
 
 #-------------------------------------------------------------------------
 def logOptionValues(options):
-    """Option values for this invocation of gpmovemirrors """
+    """ """
     logger.info("Option values for this invocation of gpmovemirrors are:")
     logger.info("")
     logger.info("  --input                 = " + str(options.input_filename))
-    logger.info("  --output                = " + str(options.output))
     logger.info("  --master-data-directory = " + str(options.master_data_directory))
     logger.info("  --batch-size            = " + str(options.batch_size))
     if options.verbose != None:
@@ -154,8 +145,8 @@ def shutdown():
     """used if the script is closed abrubtly"""
     logger.info('Shutting down gpmovemirrors...')
     if pool != None:
-        pool.haltWork()
-        pool.joinWorkers()
+       pool.haltWork()
+       pool.joinWorkers()
        
 #-------------------------------------------------------------------------
 def gpmovemirrors_status_file_exists(master_data_directory):
@@ -163,9 +154,7 @@ def gpmovemirrors_status_file_exists(master_data_directory):
     return os.path.exists(master_data_directory + '/gpmovemirrors.status')
 
 #-------------------------------------------------------------------------
-def sig_handler(sig, arg): # Unused argument - pylint: disable=W0613
-
-    """Signal handler setup at the beginning of execution"""
+def sig_handler(sig, arg):
 
     shutdown()
 
@@ -175,17 +164,14 @@ def sig_handler(sig, arg): # Unused argument - pylint: disable=W0613
     # raise sig
     os.kill(os.getpid(), sig)
     
-    
 #-------------------------------------------------------------------------  
 def lookupGpdb(address, port, dataDirectory):
     """ Look up the segment gpdb by address, port, and dataDirectory """
      
     gpdbList = gparray. getDbList()                    
     for gpdb in gpdbList:
-        if address == str(gpdb.getSegmentAddress()) and \
-                port == str(gpdb.getSegmentPort()) and \
-                dataDirectory == str(gpdb.getSegmentDataDirectory()):
-            return gpdb
+        if address == str(gpdb.getSegmentAddress()) and port == str(gpdb.getSegmentPort()) and dataDirectory == str(gpdb.getSegmentDataDirectory()):
+           return gpdb
     return None
    
 #-------------------------------------------------------------------------  
@@ -194,33 +180,32 @@ def lookupReplicatonPort(gpdb):
      
     retValue = None
     if gpdb != None:
-        retValue =  gpdb.getSegmentReplicationPort()
+       retValue =  gpdb.getSegmentReplicationPort()
 
     return retValue
    
 #-------------------------------------------------------------------------
 def  lookupFilespaces(gpdb):
-    """ Look up the segment's filespaces, and return map of filespace name : location. """
+     """ Look up the segment's filespaces, and return map of filespace name : location. """
 
-    retValue = {}
-    gparray.getFilespaces(includeSystemFilespace = False)
-    gpdbFilespaceDict = gpdb.getSegmentFilespaces()
+     retValue = {}
+     gpFilespaceObjList = gparray.getFilespaces(includeSystemFilespace = False)
+     gpdbFilespaceDict = gpdb.getSegmentFilespaces()
 
-    for oid in gpdbFilespaceDict:
-        if oid == SYSTEM_FILESPACE:
+     for oid in gpdbFilespaceDict:
+         if oid == SYSTEM_FILESPACE:
             continue
-        name = gparray.getFileSpaceName(oid)
-        location = gpdbFilespaceDict[oid]
-        retValue[name] = location
-    return retValue
+         name = gparray.getFileSpaceName(oid)
+         location = gpdbFilespaceDict[oid]
+         retValue[name] = location
+     return retValue
 
                            
 #-------------------------------------------------------------------------
 #-------------------------------------------------------------------------                         
-class Mirror:  # Too few public methods - pylint: disable=R0903
+class Mirror:
     """ This class represents information about a mirror. """
 
-    # Too many arguments - pylint: disable=R0913
     def __init__(self, address, port, replicationPort, dataDirectory, filespaces):
         self.address         = address
         self.port            = port
@@ -249,16 +234,14 @@ class Configuration:
         self.oldMirrorList  = []
         self.newMirrorList  = []
         
-    # Too many local variables - pylint: disable=R0914
     def read_input_file(self, inputFile):
+        self.inputFile = inputFile
         """
         Input file format is:
            filespaceOrder=[filespace1_fsname[:filespace2_fsname:...]
            old_address:port:system_filespace_location [new_address:port:replication_port:system_filespace_location[:fselocation:...]]
         """
-
-        self.inputFile = inputFile
-        self.fileData = parseMirroringConfigFile( readAllLinesFromFile(self.inputFile),
+        self.fileData = utils.parseMirroringConfigFile( readAllLinesFromFile(self.inputFile),
                              "Move mirrors config",
                              [
                                     "oldAddress", "oldPort", "oldDataDirectory",
@@ -268,22 +251,20 @@ class Configuration:
                              False, 3)
         self.filespaceNames = self.fileData.getFlexibleHeaders()
         rowList = self.fileData.getRows()
-        for i in range(0, len(rowList)):
+        for i in range(0,len(rowList)):
             row    = rowList[i]
             rowMap = row.getFixedValuesMap()
             oldAddress         = rowMap['oldAddress']
             oldPort            = rowMap['oldPort']
             oldDataDirectory   = rowMap['oldDataDirectory']
             oldGpdb            = lookupGpdb(oldAddress, oldPort, oldDataDirectory)
-            if oldGpdb is None or oldGpdb.getSegmentRole() != ROLE_MIRROR:
-                if oldGpdb is None:
-                    raise Exception("Old mirror segment does not exist with given information:" +
-                                    " address = %s, port = %s, segment data directory = %s"
-                                    % (oldAddress, str(oldPort), oldDataDirectory))
-                else:
-                    raise Exception("Old mirror segment is not currently in a mirror role:" +
-                                    " address = %s, port = %s, segment data directory = %s"
-                                    % (oldAddress, str(oldPort), oldDataDirectory))
+            if oldGpdb == None or oldGpdb.getSegmentRole() != ROLE_MIRROR:
+               if oldGpdb == None:
+                  raise Exception("Old mirror segment does not exist with given information: address = %s, port = %s, segment data directory = %s"
+                                   % (oldAddress, str(oldPort), oldDataDirectory))
+               else:
+                  raise Exception("Old mirror segment is not currently in a mirror role: address = %s, port = %s, segment data directory = %s"
+                                   % (oldAddress, str(oldPort), oldDataDirectory))
             oldReplicationPort = lookupReplicatonPort(oldGpdb)
             oldFilespaces      = lookupFilespaces(oldGpdb)
             oldMirror = Mirror( address = oldAddress
@@ -310,533 +291,28 @@ class Configuration:
         """ Write out the configuration in a format appropriate for use with the -i option. """
         fp = open(filename, 'w')
         
-        #""" Set the first line up for the filespaceOrder entry. """
+        """ Set the first line up for the filespaceOrder entry. """
         fsString = ":".join(self.filespaceNames)
         line = "filespaceOrder=" + fsString
         line = line + '\n'
         fp.write(line)
         
         if oldToNew == True:
-            firstList  = self.oldMirrorList
-            secondList = self.newMirrorList
+           firstList  = self.oldMirrorList
+           secondList = self.newMirrorList
         else:
-            firstList  = self.newMirrorList
-            secondList = self.oldMirrorList 
+           firstList  = self.newMirrorList
+           secondList = self.oldMirrorList 
         for i in range(0, len(firstList)):
             oldEntry = firstList[i]
             newEntry = secondList[i]
             line = oldEntry.address + ":" + oldEntry.port + ":" + oldEntry.dataDirectory 
             line = line + " "
-            line = line + str(newEntry.address) + ":" + str(newEntry.port) + ":" + str(newEntry.replicationPort) \
-                 + ":" + newEntry.dataDirectory
+            line = line + str(newEntry.address) + ":" + str(newEntry.port) + ":" + str(newEntry.replicationPort) + ":" + newEntry.dataDirectory
             for fsName in self.filespaceNames:
                 line = line + ":" + newEntry.filespaces[fsName]
             line = line + '\n'
             fp.write(line)
-
-
-#-------------------------------------------------------------------------
-# Helper methods for use with Mirror and Configuration
-
-
-def compute_new_filespace_location(path, fromto):
-    """
-    Compute the new location of the path using specified directory mapping
-
-    @param path:	 a filespace location
-    @param fromto:       optional oldpath:newpath mapping from move mirrors interview
-    @returns:            the new filespace location
-    """
-    assert path is not None
-    if fromto is not None:
-        for oldpath, newpath, replaced in pathreplace(pathtree( [path] ), fromto):
-            if replaced and path == oldpath:
-                return newpath
-    return path
-
-
-
-def create_filespace_name_location_map(array, db, fromto=None):
-    """
-    Create a map whose keys are filespace names and whose values
-    are directory locations using specified the gparray and db segment.
-    This is the structure expected by the Mirror() and Configuration() classes.
-
-    @param array:        GpArray with cluster state, including GpFilespaceObj list of oid,fsname values
-    @param db            the db segment
-    @param fromto:       optional oldpath:newpath mapping from move mirrors interview
-    @returns:            fsname:location mapping suitable for Configuration.write_output_file()
-    """
-
-    dbfilespaces = db.getSegmentFilespaces()
-    if fromto is not None:
-        spaces = dbfilespaces.copy()
-        for oid, path in dbfilespaces.items():
-            spaces[oid] = compute_new_filespace_location(path, fromto)
-        dbfilespaces = spaces
-    
-    # build map from name to location using this db's filespaces
-    # system filespace is handled separately
-    result = {}
-    for fs in array.getFilespaces(False):
-        result[ fs.getName() ] = dbfilespaces[ fs.getOid() ]
-    return result
-
-
-
-def create_mirror_from_db(array, db, fromto=None):
-    """
-    Construct and return a "Mirror" from a GpArray, 
-    a db segment and mapping information.
-
-    @param array:        GpArray with cluster state, including GpFilespaceObj list of oid,fsname values
-    @param db            the db segment
-    @param fromto:       optional oldpath:newpath mapping from move mirrors interview
-    @returns:            a "Mirror" suitable for use with a "Configuration"
-    """
-    datadir = db.getSegmentDataDirectory()
-    if fromto is None:
-
-        # no location mapping, just create the filespacemap
-        filespacemap = create_filespace_name_location_map(array, db)
-
-    else:
-
-        # map the datadir to its new location and also build
-        # a filespacemap with new locations as well
-        datadir      = compute_new_filespace_location(datadir, fromto)
-        filespacemap = create_filespace_name_location_map(array, db, fromto)
-
-    return Mirror( db.getSegmentAddress(),
-                   str( db.getSegmentPort() ),
-                   str( db.getSegmentReplicationPort() ),
-                   datadir,
-                   filespacemap )
-
-
-def create_mirrors_from_rm(array, rm):
-    """
-    Construct and return a pair of "Mirror" objects from a GpArray
-    and a RedistributeMirror object specifying the location of the
-    corresponding primary and mirror.
-
-    @param array:        GpArray with cluster state
-    @param rm            the RedistributeMirror object
-    @returns:            a pair of (old, new) "Mirror" suitable for use with a "Configuration"
-    """
-
-    old = create_mirror_from_db(array, rm.db)
-    new = Mirror( rm.mirroraddress,
-                  rm.mirrorport,
-                  rm.mirrorreplicationport,
-                  old.dataDirectory,
-                  old.filespaces )
-
-    return (old, new)
-
-
-#-------------------------------------------------------------------------
-
-class MoveDirectoriesDialog:
-    """
-    Handle the interaction with the user for the case that
-    they want to move mirror directory locations on their
-    existing hosts.
-    """
-
-    def __init__(self, options, array):
-        """
-        Setup the interview
-        @param options: command line options
-        @param array: GpArray with current cluster state
-        """
-        self.options    = options
-        self.array      = array
-        self.fromto     = {}
-        self.spaces     = [s for s in mirrorfilespaces( self.array )]
-        self.tree       = prefixtree( self.spaces )
-        self.unmapped   = []
-        self.maxlen     = 0
-        for path in pathwalk(self.tree):
-            self.unmapped.append(path)
-            if len(path) > self.maxlen:
-                self.maxlen = len(path)
-        self.prompt     = "\nEnter a comma separated list of old prefix, new prefix pairs\n"\
-            "describing the old and new mirror directory structure.\n"\
-            "For example: /oldlocation,/newlocation\n"\
-            "Entering only one location will remove it.  For example /oldlocation\n"\
-            "**Enter a blank line when done**"
-        self.response   = None
-        self.raw        = None
-
-
-    def interaction(self):
-        """
-        Handle interaction related to moving data directories.
-
-        @returns: True if we should proceed to generate a configuration.
-                  False if this is not possible or not what the user wants. 
-        """
-
-        if len(self.spaces) < 1:
-            print "No mirror data directories detected."
-            return False
-
-        if not ask_yesno(None, "Do you wish to move mirror data directories?", 'N'):
-            return False
-
-        self.read_mapping_rules()
-
-        return self.move_directory_summary()
-
-
-    def read_mapping_rules(self):
-        """
-        Loop, asking the user for mapping rules until they're done
-        at which time the "fromto" member should contain the final
-        set of mapping rules, e.g.  
-           {
-              "oldpath1": "newpath1", 
-              "oldpath2": "newpath2", 
-           }
-        """
-        while True:
-            self.show_mapping_rules()
-            self.update_mapping_effects()
-            self.show_unmapped_filespaces()
-
-            # ask for the next mapping rule  (e.g. /old/data,/new/data)
-            # a proper response will result in a one or two element list:
-            #
-            # 1. a single path means: 
-            #     remove any mapping rule with old location = response[0]
-            #
-            # 2. a pair of paths means: 
-            #     add a mapping rule with old location = response[0] and 
-            #     new location = response[1]
-            #
-            # an empty response means we're done
-            #
-            self.response, self.raw = ask_list_raw(None, self.prompt, '')
-            if self.response is None:
-                return
-
-            self.prompt = "\nEnter next rule or a blank line if done"
-            if len(self.response) < 1:
-                return
-
-            # clean paths slightly
-            #
-            self.response = [x.strip() for x in self.response]
-
-            # remove the rule if only old location specified
-            #
-            if len(self.response) == 1:
-                if self.response[0] in self.fromto:
-                    del self.fromto[ self.response[0] ]
-                    print "\nRemoved rule: '%s'" % self.raw
-                else:
-                    print "\nNo rule to remove: '%s'" % self.raw
-                continue
-
-            # more checks
-            #
-            if len(self.response) != 2:
-                print "\nInvalid input: '%s'\n" % self.raw
-                continue
-            if not self.response[0].startswith('/'):
-                print "\nOld location must start with a /: '%s'" % self.raw
-                continue
-            if not self.response[1].startswith('/'):
-                print "\nNew location must start with a /: '%s'" % self.raw
-                continue
-            if self.response[0] == self.response[1]:
-                print "\nRule has no effect: '%s'" % self.raw
-                continue
-
-            noeffect = True
-            # Unused variable - pylint: disable=W0612
-            for old, new, replaced in pathreplace(self.tree, {self.response[0]:self.response[1]}):
-                if replaced:
-                    noeffect = False
-                    break
-            if noeffect:
-                print "\nRule has no effect: '%s' (ignored)" % self.raw
-                continue
-
-            # rule is good, add it
-            #
-            self.fromto[ self.response[0] ] = self.response[1]
-
-
-    def move_directory_summary(self):
-        """
-        Display a summary and ask for confirmation if necessary.
-        @returns: True if ok to proceed, False otherwise.
-        """
-        self.show_mapping_rules()
-        self.update_mapping_effects()
-
-        if len(self.unmapped) < 1:
-            print '\nAll filespaces mapped.'
-            return True
-
-        # if we get here it means the user's mappings won't
-        # move all filespaces.  Ask if this is really what they want.
-        #
-        print '\nThe following mirror filespaces will not be moved:'
-        for path in self.unmapped:
-            print path
-
-        return ask_yesno(None, "\nIs that correct?", 'N')
-
-
-    def show_mapping_rules(self):
-        """
-        Show the mapping rules, if any.
-        """
-        if len(self.fromto) > 0:
-            print '\nMappings:'
-            for oldlocation, newlocation in self.fromto.items():
-                print oldlocation.ljust(self.maxlen+1), '>', newlocation
-
-
-    def update_mapping_effects(self):
-        """
-        Display the mapping effects on the filespaces, if any.
-        """
-        cnt = 0
-        self.unmapped = []
-        for old, new, replaced in pathreplace(self.tree, self.fromto):
-            if replaced:
-                cnt += 1
-                if cnt == 1:
-                    print '\nEffect of filespace mappings:'
-                print old.ljust(self.maxlen+1), '>', new
-            else:
-                self.unmapped.append(old)
-
-
-    def show_unmapped_filespaces(self):
-        """
-        Show the unmapped filespaces, if any.
-        """
-        if len(self.unmapped) < 1:
-            print '\nNo unmapped filespaces.'
-        else:
-            print '\nUnmapped filespaces (%d):' % len(self.unmapped)
-            for path in self.unmapped:
-                print path
-
-
-#-------------------------------------------------------------------------
-
-class RedistributeMirrorsDialog:
-    """
-    Handle the interaction with the user for the case that
-    they want to redistribute their mirrors across hosts.
-    """
-
-    def __init__(self, options, array):
-        """
-        Setup the interview
-        @param options: command line options
-        @param array: GpArray with current cluster state
-        """
-
-        self.options       = options
-        self.array         = array
-        self.distributions = MirroringDistributions(self.array)
-        self.result        = None
-
-
-    def interaction(self):
-        """
-        Handle interaction related to redistributing mirrors.
-
-        @returns: True if we should proceed to generate a configuration.
-                  False if this is not possible or not what the user wants. 
-        """
-
-        # group mirroring?
-        #
-        for issue in self.distributions.group_issues:
-            print issue
-
-        if not self.distributions.group_result:
-            print "Failed to construct standard group mirroring scheme."
-        else:
-            if ask_yesno(None, "Do you wish group mirroring?", 'N'):
-                self.result = self.distributions.group_result
-                return True
-
-        # spread mirroring?
-        #
-        for issue in self.distributions.spread_issues:
-            print issue
-
-        if not self.distributions.spread_result:
-            print "Failed to construct standard spread mirroring scheme."
-        else:
-            if ask_yesno(None, "Do you wish spread mirroring?", 'N'):
-                self.result = self.distributions.spread_result
-                return True
-
-        # nothing
-        #
-        return False
-
-
-#-------------------------------------------------------------------------
-
-class MoveMirrorsInterview:
-    """ 
-    This class manages the interactive interview and configuration
-    file generation for gpmovemirrors. 
-    """
-
-    def __init__(self, options, array):
-        """
-        Setup the interview
-        @param options: command line options
-        @param array: GpArray with current cluster state
-        """
-        self.options      = options         # command options
-        self.dir          = options.output  # directory from -o command option
-        self.filename     = None            # output file
-        self.array        = array           # gparray with current configuration
-        self.generate     = None	    # interaction()'s choice to generate output
-        self.movedirs     = None	    # MoveDirectoriesDialog
-        self.redistribute = None            # RedistributeMirrorsDialog
-
-    def interaction(self):
-        """
-        Interactive portion.  Ask a user a series of questions to 
-        determine what they want.  Update our state depending on
-        their choice.  In particular, set the 'generate' member to
-        the appropriate function to generate the final output file.
-
-        Exits the program if unsuccessful.
-        """
-        try:
-            # handle move directories interaction
-            #
-            self.movedirs = MoveDirectoriesDialog(self.options, self.array)
-            if self.movedirs.interaction():
-                self.generate = self.generate_move_configuration
-                return
-
-            # handle redistribute mirrors interaction
-            #
-            self.redistribute = RedistributeMirrorsDialog(self.options, self.array)
-            if self.redistribute.interaction():
-                self.generate = self.generate_redistribute_configuration
-                return
-
-        except EOFError, e:
-            # user hit control-D
-            print "Aborted."
-
-        sys.exit(1)
-
-
-    def generate_move_configuration(self):
-        """
-        Generate a configuration to handle the case where the user wants to
-        move the mirror data directories to new locations on the same hosts.
-
-        @returns: 0 if successful
-        """
-        if not self.movedirs.fromto:
-            return 1
-
-        # create configuration and add filespaces
-        c = Configuration()
-        c.filespaceNames = [ fs.getName() for fs in self.array.getFilespaces(False) ]
-        for db in self.array.getDbList(False):
-            if db.isSegmentMirror():
-
-                # create old and new mirror entries
-                old = create_mirror_from_db( self.array, db )
-                new = create_mirror_from_db( self.array, db, self.movedirs.fromto )
-                
-                # add mirrors to configuration
-                c.oldMirrorList.append( old )
-                c.newMirrorList.append( new )
-
-        # generate the output file
-        c.write_output_file( self.setup_output_file() )
-        self.report_output_file()
-        return 0
-
-
-    def generate_redistribute_configuration(self):
-        """
-        Generate a configuration to handle the case where the user wants to
-        redistribute the mirrors across their hosts.
-
-        @returns: 0 if successful
-        """
-        if not self.redistribute.result:
-            return 1
-
-        # create configuration and add filespaces
-        c = Configuration()
-        c.filespaceNames = [ fs.getName() for fs in self.array.getFilespaces(False) ]
-        for rm in self.redistribute.result:
-
-            # create old and new mirror entries
-            (old, new) = create_mirrors_from_rm( self.array, rm )
-                
-            # add mirrors to configuration
-            c.oldMirrorList.append( old )
-            c.newMirrorList.append( new )
-
-        # generate the output file
-        c.write_output_file( self.setup_output_file() )
-        self.report_output_file()
-        return 0
-
-
-    def setup_output_file(self):
-        """
-        Based on logic of gpfilespace, attempts to construct a temporary
-        file in the specified output directory for the configuration.
-        Exits the program if unsuccessful.
-
-        @returns: the filename
-        """
-        # determine output path location based on input directory.
-        filename = "gpmovemirrors_config_" + time.strftime("%Y%m%d_%H%M%S")
-        if not os.access(self.dir, os.F_OK):
-            (self.dir, filename) = os.path.split(self.dir)
-            if len(self.dir) == 0:
-                self.dir = os.getcwd()
-        if not os.access(self.dir, os.F_OK):
-            logger.error('No such file or directory: "%s"' % self.dir)
-            logger.error('Unable to create config file')
-            sys.exit(1)
-        if not os.access(self.dir, os.W_OK):
-            logger.error('Directory not writeable: "%s"' % self.dir)
-            logger.error('Unable to create config file')
-            sys.exit(1)
-
-        self.filename = os.path.join(self.dir, filename)
-        return self.filename
-
-
-    def report_output_file(self):
-        """
-        Based on logic of gpfilespace, prints a message for the end user.
-        """
-
-        print "[created]"
-        print """
-To modify database mirroring with this configuration, run the command:
-   gpmovemirrors --input %s
-""" % self.filename
-
-
 
 
 #-------------------------------------------------------------------------
@@ -869,15 +345,14 @@ try:
                       , logdir = options.logfile_directory
                       )
 
-    if options.verbose:
-        enable_verbose_logging()
+    enable_verbose_logging()
 
     mainOptions = { "pidfilename" : GP_MOVEMIRROS_PID_FILE }
     sml         = SimpleMainLock(mainOptions)
     otherpid = sml.acquire()
     if otherpid is not None:
-        logger.error("An instance of %s is already running (pid %s)" % ("gpmovemirrors", otherpid))
-        sys.exit(1)
+       logger.error("An instance of %s is already running (pid %s)" % ("gpmovemirrors", otherpid))
+       sys.exit(1)
 
     logger.info("Invocation of gpmovemirrors mirrors")
     logOptionValues(options)
@@ -886,7 +361,7 @@ try:
 
     # Get array configuration
     try:
-        gparray = GpArray.initFromCatalog(dburl, utility=True)
+        gparray = GpArray.initFromCatalog(dburl,utility=True)
     except DatabaseError, ex:
         logger.error('Failed to connect to database.  Make sure the')
         logger.error('Greenplum instance is running, and that')
@@ -894,37 +369,28 @@ try:
         logger.error('gpmovemirrors ' + ' '.join(sys.argv[1:]))
         sys.exit(1)
 
-    #""" if -o specified, handle interactive interview and output file generation """
-    if options.output is not None:
-        interview = MoveMirrorsInterview(options, gparray)
-        interview.interaction()
-        sys.exit( interview.generate() )
-
-    #""" Get the old to new mirror configuration. """
+    """ Get the old to new mirror configuration. """
     newConfig = Configuration()
     newConfig.read_input_file(options.input_filename)
     
-    #""" Do some sanity checks on the input. """
+    """ Do some sanity checks on the input. """
     for mirror in newConfig.oldMirrorList:
         seg = lookupGpdb(mirror.address, mirror.port, mirror.dataDirectory)
-        if seg is None:
-            raise Exception("Old mirror segment does not exist with given information:" +
-                            " address = %s, port = %s, segment data directory = %s"
-                            % (mirror.address, str(mirror.port), mirror.dataDirectory))
+        if seg == None:
+           raise Exception("Old mirror segment does not exist with given information: address = %s, port = %s, segment data directory = %s"
+                           % (mirror.address, str(mirror.port), mirror.dataDirectory))
         if seg.getSegmentContentId() == MASTER_CONTENT_ID:
-            raise Exception("Cannot move master or master mirror segments: " +
-                            " address = %s, port = %s, segment data directory = %s"
-                            % (mirror.address, str(mirror.port), mirror.dataDirectory))
+           raise Exception("Cannot move master or master mirror segments: address = %s, port = %s, segment data directory = %s"
+                           % (mirror.address, str(mirror.port), mirror.dataDirectory))
         if seg.getSegmentRole() != ROLE_MIRROR:
-            raise Exception("Old mirror segment is not currently in a mirror role:" +
-                            " address = %s, port = %s, segment data directory = %s"
-                            % (mirror.address, str(mirror.port), mirror.dataDirectory))
+           raise Exception("Old mirror segment is not currently in a mirror role: address = %s, port = %s, segment data directory = %s"
+                           % (mirror.address, str(mirror.port), mirror.dataDirectory))
     
-    #""" Create a backout file for the user if they choose to go back to the original configuration. """
+    """ Create a backout file for the user if they choose to go back to the original configuration. """
     backout_filename = options.input_filename + "_backout_" + str(time.strftime("%m%d%y%H%M%S"))
     newConfig.write_output_file(backout_filename, False)
 
-    #""" Start gprecoverseg. """
+    """ Start gprecoverseg. """
     recoversegOptions = "-i " + newConfig.inputFile + " -v -a -d " + options.master_data_directory
     if options.logfile_directory != None:
         recoversegOptions = recoversegOptions + " -l " + str(options.logfile_directory)
@@ -932,52 +398,55 @@ try:
     cmd = GpRecoverSeg("Running gprecoverseg", options = recoversegOptions)
     cmd.run(validateAfter = True)
     
-    #""" Delete old mirror directories. """
-    fileSpacesObjList = gparray.getFilespaces(includeSystemFilespace = False)
-    totalDirsToDelete = len(newConfig.oldMirrorList) + len(fileSpacesObjList)
-    numberOfWorkers = min(totalDirsToDelete, options.batch_size)
-    pool = WorkerPool(numWorkers = numberOfWorkers)
-    for mirror in newConfig.oldMirrorList:
-        logger.info("About to remove old mirror segment directory: " + mirror.dataDirectory)
-        cmd = RemoveFiles("remove old mirror segment directories"
-                         , mirror.dataDirectory
-                         , ctxt = REMOTE
-                         , remoteHost = mirror.address
-                         )
-        pool.addCommand(cmd)
-        for filespaceName in mirror.filespaces.keys():
-            logger.info("About to remove old mirror filespace directory: " + filespaceName + " : " +
-                        mirror.filespaces[filespaceName])
+    """ Delete old mirror directories. """
+    try:
+        fileSpacesObjList = gparray.getFilespaces(includeSystemFilespace = False)
+        totalDirsToDelete = len(newConfig.oldMirrorList) + len(fileSpacesObjList)
+        numberOfWorkers = min(totalDirsToDelete, options.batch_size)
+        pool = WorkerPool(numWorkers = numberOfWorkers)
+        for mirror in newConfig.oldMirrorList:
+            logger.info("About to remove old mirror segment directory: " + mirror.dataDirectory)
             cmd = RemoveFiles("remove old mirror segment directories"
-                             , mirror.filespaces[filespaceName]
+                             , mirror.dataDirectory
                              , ctxt = REMOTE
                              , remoteHost = mirror.address
                              )
             pool.addCommand(cmd)
-        
-    # Wait for the segments to finish
-    try:
-        pool.join()
-    except: # No exception type(s) specified - pylint: disable=W0702
+            for filespaceName in mirror.filespaces.keys():
+                logger.info("About to remove old mirror filespace directory: " + filespaceName + " : " + mirror.filespaces[filespaceName])
+                cmd = RemoveFiles("remove old mirror segment directories"
+                                 , mirror.filespaces[filespaceName]
+                                 , ctxt = REMOTE
+                                 , remoteHost = mirror.address
+                                 )
+                pool.addCommand(cmd)
+            
+        # Wait for the segments to finish
+        try:
+           pool.join()
+        except:
+           pool.haltWork()
+           pool.joinWorkers()
+            
+        failure = False
+        results = []
+        for cmd in pool.getCompletedItems():
+            r = cmd.get_results()
+            if not cmd.was_successful():
+               logging.error("Unable to remove old mirror segment directory: " + str(r))
+               failure = True
+
         pool.haltWork()
         pool.joinWorkers()
-        
-    failure = False
-    results = []
-    for cmd in pool.getCompletedItems():
-        r = cmd.get_results()
-        if not cmd.was_successful():
-            logging.error("Unable to remove old mirror segment directory: " + str(r))
-            failure = True
+        if failure:
+           logging.error("Although the system is in the process of recovering the mirrors to their new location,")
+           logging.error("There was an issue removing the old mirror segment directories.")
+           raise Exception("Unable to complete removal of old mirror segment directories.")
+           
+    except Exception, e:
+        raise e
 
-    pool.haltWork()
-    pool.joinWorkers()
-    if failure:
-        logging.error("Although the system is in the process of recovering the mirrors to their new location,")
-        logging.error("There was an issue removing the old mirror segment directories.")
-        raise Exception("Unable to complete removal of old mirror segment directories.")
-
-except Exception, e:
+except Exception,e:
     if options is not None and options.verbose:
         logger.exception("gpmovemirrors failed. exiting...")
     else:
@@ -986,18 +455,18 @@ except Exception, e:
 
 except KeyboardInterrupt:
     # Disable SIGINT while we shutdown.
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGINT,signal.SIG_IGN)
 
     shutdown()
 
     # Re-enabled SIGINT
-    signal.signal(signal.SIGINT, signal.default_int_handler)
+    signal.signal(signal.SIGINT,signal.default_int_handler)
 
     sys.exit('\nUser Interrupted')
 
 finally:
     if sml is not None:
-        sml.release()
+       sml.release()
     
     coverage.stop()
     coverage.generate_report()
