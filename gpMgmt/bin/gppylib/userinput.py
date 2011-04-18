@@ -34,10 +34,6 @@ def ask_list(bg_info,msg,default):
     help=default
     return ask_input(bg_info,msg,help,default,validate_list)    
  
-def ask_list_raw(bg_info,msg,default):
-    help=default
-    return ask_input_raw(bg_info,msg,help,default,validate_list)    
-
 #################
 def validate_int(input,default,min,max):
     if input == '':
@@ -87,23 +83,4 @@ def ask_input(bg_info,msg,help,default,validator, *validator_opts):
         else:
             print "Invalid input: '%s'\n" % val
             
-def ask_input_raw(bg_info,msg,help,default,validator, *validator_opts):
-    """
-    Similar to ask_input(), but presents a slightly smarter prompt
-    and returns both the validated input and the raw input entered 
-    by the user.
-    """
-    if bg_info is not None:             
-        print "%s\n" % bg_info
-    
-    val = None
-    while True:
-        prompt = "%s%s" % (msg,help)
-        if len(prompt) > 0:
-            prompt += ":"
-        val = raw_input(prompt + "\n> ")
-        retval = validator(val,default, *validator_opts)
-        if retval is not None:
-            return retval, val
-        else:
-            print "Invalid input: '%s'\n" % val
+            
