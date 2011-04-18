@@ -19,7 +19,7 @@ try:
     from gppylib.commands.gp import GpError, GpRecoverSeg, get_masterdatadir, get_gphome
     from gppylib.commands.unix import getLocalHostname, getUserName, RemoveFiles
     from gppylib.gplog import get_default_logger, setup_tool_logging, enable_verbose_logging
-    from gppylib.gparray import GpArray, ROLE_MIRROR, SYSTEM_FILESPACE, MASTER_CONTENT_ID
+    from gppylib.gparray import GpArray, ROLE_MIRROR, SYSTEM_FILESPACE
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gpcoverage import GpCoverage
     from gppylib.mainUtils import SimpleMainLock
