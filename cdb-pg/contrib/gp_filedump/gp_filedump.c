@@ -1936,7 +1936,7 @@ FormatItem(unsigned int numBytes, unsigned int startIndex,
 					}
 					strcat(deparsed, "|");
 				}
-				if (deparsed)
+				//if (deparsed)
 					deparsed[strlen(deparsed) - 1] = '\0';
 				printf("Deparsed data: \"%s\"\n", deparsed);
 			}

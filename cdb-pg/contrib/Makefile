@@ -5,10 +5,10 @@ top_builddir = ..
 include $(top_builddir)/src/Makefile.global
 
 WANTED_DIRS = \
-		dblink		\
-		tsearch2	\
 		gp_filedump \
 		xlogdump \
+		pgbench \
+		orafce \
 		changetrackingdump
 
 ifeq ($(with_openssl),yes)
