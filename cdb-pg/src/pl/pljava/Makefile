@@ -30,7 +30,10 @@ subdir = src/pl/pljava
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-export PROJDIR          := $(realpath $(top_builddir)/$(subdir))
+# $(realpath $(top_builddir)/$(subdir)) does what I want, but not all version of gmake support it
+abs_builddir=$(shell (cd $(top_builddir)/$(subdir) && pwd))
+
+export PROJDIR          := $(abs_builddir)
 export TARGETDIR		:= $(PROJDIR)/build
 export SQLDIR           := $(top_srcdir)/$(subdir)/src/sql
 export OBJDIR			:= $(TARGETDIR)/objs
@@ -41,7 +44,7 @@ export PLJAVA_MINOR_VER	:= 4
 export PLJAVA_PATCH_VER	:= 1
 export PLJAVA_VERSION	:= $(PLJAVA_MAJOR_VER).$(PLJAVA_MINOR_VER).$(PLJAVA_PATCH_VER)
 export TAR				:= /bin/tar
-
+$(warning PROJDIR $(PROJDIR))
 OS := $(shell uname -s)
 MACHINE := $(shell uname -m)
 
@@ -93,7 +96,7 @@ pljava_all pljava_javadoc: pljava_%:
 	@echo JAVADOC=$(JAVADOC)
 	@-mkdir -p $(CLASSDIR)/pljava
 	$(MAKE) -r -C $(CLASSDIR)/pljava -f $(PROJDIR)/src/java/pljava/Makefile \
-	MODULEROOT=$(realpath $(PROJDIR))/src/java $*
+	MODULEROOT=$(PROJDIR)/src/java $*
 
 deploy_all deploy_javadoc: deploy_%:
 	@-mkdir -p $(CLASSDIR)/deploy
@@ -103,17 +106,17 @@ deploy_all deploy_javadoc: deploy_%:
 examples_all: examples_%: pljava_all
 	@-mkdir -p $(CLASSDIR)/examples
 	@$(MAKE) -r -C $(CLASSDIR)/examples -f $(PROJDIR)/src/java/examples/Makefile \
-	MODULEROOT=$(realpath $(PROJDIR))/src/java $*
+	MODULEROOT=$(PROJDIR)/src/java $*
 
 test_all: test_%:
 	@-mkdir -p $(CLASSDIR)/test
 	@$(MAKE) -r -C $(CLASSDIR)/test -f $(PROJDIR)/src/java/test/Makefile \
-	MODULEROOT=$(realpath $(PROJDIR))/src/java $*
+	MODULEROOT=$(PROJDIR)/src/java $*
 
 c_all c_install c_uninstall c_depend: c_%:
 	@-mkdir -p $(OBJDIR)
 	@$(MAKE) -r -C $(OBJDIR) -f $(PROJDIR)/src/C/pljava/Makefile \
-	MODULEROOT=$(realpath $(PROJDIR))/src/C build_$*
+	MODULEROOT=$(PROJDIR)/src/C build_$*
 
 release: all docs javadoc
 	@-mkdir -p $(TARGETDIR)/distrib
