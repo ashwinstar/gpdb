@@ -4,11 +4,13 @@
 #
 # @author Thomas Hallgren
 #-------------------------------------------------------------------------
+
 subdir       = src/pl/pljava/src/java/
 top_builddir = $(MODULEROOT)/../../../../..
 include $(top_builddir)/src/Makefile.global
 
-SRCDIR		:= $(MODULEROOT)/$(NAME)
+
+SRCDIR		:= $(top_srcdir)/$(subdir)/$(NAME)
 SRCS		:= $(shell find $(SRCDIR) -name CVS -prune -o -type f -name \*.java -print)
 CLASSES		:= $(shell find . -type f -name \*.class)
 
