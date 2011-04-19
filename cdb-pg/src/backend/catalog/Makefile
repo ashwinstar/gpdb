@@ -2,7 +2,7 @@
 #
 # Makefile for backend/catalog
 #
-# $PostgreSQL: pgsql/src/backend/catalog/Makefile,v 1.60 2006/07/31 01:16:36 tgl Exp $
+# src/backend/catalog/Makefile
 #
 #-------------------------------------------------------------------------
 
@@ -95,15 +95,15 @@ postgres.bki: genbki.sh $(POSTGRES_BKI_SRCS) \
 
 .PHONY: install-data
 install-data: $(BKIFILES) installdirs
-	$(INSTALL_DATA) postgres.bki         '$(DESTDIR)$(datadir)/postgres.bki'
-	$(INSTALL_DATA) postgres.description '$(DESTDIR)$(datadir)/postgres.description'
-	$(INSTALL_DATA) postgres.shdescription '$(DESTDIR)$(datadir)/postgres.shdescription'
+	$(INSTALL_DATA) $(call vpathsearch,postgres.bki) '$(DESTDIR)$(datadir)/postgres.bki'
+	$(INSTALL_DATA) $(call vpathsearch,postgres.description) '$(DESTDIR)$(datadir)/postgres.description'
+	$(INSTALL_DATA) $(call vpathsearch,postgres.shdescription) '$(DESTDIR)$(datadir)/postgres.shdescription'
 	$(INSTALL_DATA) $(srcdir)/system_views.sql '$(DESTDIR)$(datadir)/system_views.sql'
 	$(INSTALL_DATA) $(srcdir)/information_schema.sql '$(DESTDIR)$(datadir)/information_schema.sql'
-	$(INSTALL_DATA) cdb_schema.sql '$(DESTDIR)$(datadir)/cdb_schema.sql'
-	$(INSTALL_DATA) cdb_util.sql '$(DESTDIR)$(datadir)/cdb_util.sql'
+	$(INSTALL_DATA) $(call vpathsearch,cdb_schema.sql) '$(DESTDIR)$(datadir)/cdb_schema.sql'
+	$(INSTALL_DATA) $(call vpathsearch,cdb_util.sql) '$(DESTDIR)$(datadir)/cdb_util.sql'
 	$(INSTALL_DATA) $(srcdir)/sql_features.txt '$(DESTDIR)$(datadir)/sql_features.txt'
-	$(INSTALL_DATA) $(srcdir)/gp_toolkit.sql '$(DESTDIR)$(datadir)/gp_toolkit.sql'
+	$(INSTALL_DATA) $(call vpathsearch,gp_toolkit.sql) '$(DESTDIR)$(datadir)/gp_toolkit.sql'
 
 installdirs:
 	$(mkinstalldirs) '$(DESTDIR)$(datadir)'
@@ -113,4 +113,4 @@ uninstall-data:
 	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, $(BKIFILES) system_views.sql information_schema.sql cdb_schema.sql sql_features.txt)
 
 clean:
-	rm -f SUBSYS.o $(OBJS) $(BKIFILES) cdb_schema.sql gp_toolkit_test.sql gp_toolkit.sql
+	rm -f SUBSYS.o $(OBJS) $(BKIFILES) cdb_schema.sql gp_toolkit_test.sql gp_toolkit.sql cdb_util.sql
