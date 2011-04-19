@@ -286,7 +286,7 @@ BLD_GPDB_BUILDSET=$($(BLD_ARCH)_GPDB_BUILDSET)
 # set default build steps
 define BUILD_STEPS
 	@rm -rf $(INSTLOC)
-	@cd $(BUILDDIR) && $(MAKE) install
+	cd $(BUILDDIR) && $(MAKE) install
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 	@$(MAKE) groupSession INSTLOC=$(INSTLOC)
 	@$(MAKE) mkgpcc INSTCFLAGS=$(INSTCFLAGS)
@@ -424,6 +424,9 @@ devel : CONNECTIVITYINSTLOC=$(CONNECTIVITYDEVPATH)
 devel : LOADERSINSTLOC=$(LOADERSDEVPATH)
 devel : GPPERFMONINSTLOC=$(GPPERFMONDEVPATH)
 devel : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-testutils --enable-debugbreak --enable-depend
+ifdef ENABLE_VPATH_BUILD
+devel : BUILDDIR=Debug
+endif
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	$(BUILD_STEPS)
 
@@ -442,6 +445,9 @@ dist : CLIENTINSTLOC=$(CLIENTDISTPATH)
 dist : CONNECTIVITYINSTLOC=$(CONNECTIVITYDISTPATH)
 dist : LOADERSINSTLOC=$(LOADERSDISTPATH)
 dist : GPPERFMONINSTLOC=$(GPPERFMONDISTPATH)
+ifdef ENABLE_VPATH_BUILD
+dist : BUILDDIR=Release
+endif
 dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	$(BUILD_STEPS)
 ifneq "$(BLD_GPDB_BUILDSET)" "partial"
@@ -455,6 +461,9 @@ dist_prof : CONNECTIVITYINSTLOC=$(CONNECTIVITYDISTPATH)
 dist_prof : LOADERSINSTLOC=$(LOADERSDISTPATH)
 dist_prof : GPPERFMONINSTLOC=$(GPPERFMONDISTPATH)
 dist_prof : CONFIGFLAGS+= --enable-testutils 
+ifdef ENABLE_VPATH_BUILD
+dist_prof : BUILDDIR=Release
+endif
 dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	$(BUILD_STEPS)
 
@@ -462,6 +471,9 @@ dist_faultinj : CLIENTINSTLOC=$(CLIENTDISTPATH)
 dist_faultinj : CONNECTIVITYINSTLOC=$(CONNECTIVITYDISTPATH)
 dist_faultinj : LOADERSINSTLOC=$(LOADERSDISTPATH)
 dist_faultinj : CONFIGFLAGS+= --enable-testutils --enable-debugbreak
+ifdef ENABLE_VPATH_BUILD
+dist_faultinj : BUILDDIR=Release
+endif
 dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	$(BUILD_STEPS)
 
@@ -1215,7 +1227,7 @@ clean :
 	@if [ -d $(GPMGMT)/bin ]; then cd $(GPMGMT)/bin; $(MAKE) clean; fi
 	@if [ -d $(GPCC) ]; then cd $(GPCC); $(MAKE) clean; fi
 	@if [ -d $(GPPERFMON) ]; then cd $(GPPERFMON); $(MAKE) clean; fi
-	@if [ -d client/odbc/src ]; then cd client/odbc/src; $(MAKE) clean; fi
+	@if [ -d client/odbc/src/Makefile ]; then cd client/odbc/src; $(MAKE) clean; fi
 
 distclean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "cdb-pg not configured, no need to clean it"; fi
@@ -1224,7 +1236,7 @@ distclean :
 	@if [ -d $(GPMGMT)/bin ]; then cd $(GPMGMT)/bin; $(MAKE) distclean; fi
 	@if [ -d $(GPCC) ]; then cd $(GPCC); $(MAKE) clean; fi
 	@if [ -d $(GPPERFMON) ]; then cd $(GPPERFMON); $(MAKE) clean; fi
-	@if [ -d client/odbc/src ]; then cd client/odbc/src; $(MAKE) clean; fi
+	@if [ -d client/odbc/src/Makefile ]; then cd client/odbc/src; $(MAKE) clean; fi
 	@rm -f VERSION
 	@rm -f env.sh
 
