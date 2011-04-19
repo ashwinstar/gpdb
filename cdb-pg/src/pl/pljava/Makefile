@@ -101,7 +101,7 @@ pljava_all pljava_javadoc: pljava_%:
 deploy_all deploy_javadoc: deploy_%:
 	@-mkdir -p $(CLASSDIR)/deploy
 	@$(MAKE) -r -C $(CLASSDIR)/deploy -f $(PROJDIR)/src/java/deploy/Makefile \
-	MODULEROOT=$(realpath $(PROJDIR))/src/java $*
+	MODULEROOT=$(PROJDIR)/src/java $*
 
 examples_all: examples_%: pljava_all
 	@-mkdir -p $(CLASSDIR)/examples
