@@ -30,9 +30,9 @@ subdir = src/pl/pljava
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-export PROJDIR          := $(abs_top_srcdir)/$(subdir)
+export PROJDIR          := $(realpath $(top_builddir)/$(subdir))
 export TARGETDIR		:= $(PROJDIR)/build
-export SQLDIR           := $(PROJDIR)/src/sql
+export SQLDIR           := $(top_srcdir)/$(subdir)/src/sql
 export OBJDIR			:= $(TARGETDIR)/objs
 export JNIDIR			:= $(TARGETDIR)/jni
 export CLASSDIR			:= $(TARGETDIR)/classes
@@ -63,7 +63,7 @@ install: all c_install
 	$(INSTALL_DATA) '$(SQLDIR)/examples.sql' '$(datadir)/pljava/.'
 	$(INSTALL_DATA) '$(TARGETDIR)/examples.jar' '$(datadir)/pljava/.'
 	$(INSTALL_DATA) '$(TARGETDIR)/examples.jar' '$(pkglibdir)/java/.'
-	$(INSTALL_DATA) COPYRIGHT '$(datadir)/pljava/.'
+	$(INSTALL_DATA) '$(top_srcdir)/$(subdir)/COPYRIGHT' '$(datadir)/pljava/.'
 
 uninstall: c_uninstall
 	rm -f $(pkglibdir)/pljava.jar
@@ -93,27 +93,27 @@ pljava_all pljava_javadoc: pljava_%:
 	@echo JAVADOC=$(JAVADOC)
 	@-mkdir -p $(CLASSDIR)/pljava
 	$(MAKE) -r -C $(CLASSDIR)/pljava -f $(PROJDIR)/src/java/pljava/Makefile \
-	MODULEROOT=$(PROJDIR)/src/java $*
+	MODULEROOT=$(realpath $(PROJDIR))/src/java $*
 
 deploy_all deploy_javadoc: deploy_%:
 	@-mkdir -p $(CLASSDIR)/deploy
 	@$(MAKE) -r -C $(CLASSDIR)/deploy -f $(PROJDIR)/src/java/deploy/Makefile \
-	MODULEROOT=$(PROJDIR)/src/java $*
+	MODULEROOT=$(realpath $(PROJDIR))/src/java $*
 
 examples_all: examples_%: pljava_all
 	@-mkdir -p $(CLASSDIR)/examples
 	@$(MAKE) -r -C $(CLASSDIR)/examples -f $(PROJDIR)/src/java/examples/Makefile \
-	MODULEROOT=$(PROJDIR)/src/java $*
+	MODULEROOT=$(realpath $(PROJDIR))/src/java $*
 
 test_all: test_%:
 	@-mkdir -p $(CLASSDIR)/test
 	@$(MAKE) -r -C $(CLASSDIR)/test -f $(PROJDIR)/src/java/test/Makefile \
-	MODULEROOT=$(PROJDIR)/src/java $*
+	MODULEROOT=$(realpath $(PROJDIR))/src/java $*
 
 c_all c_install c_uninstall c_depend: c_%:
 	@-mkdir -p $(OBJDIR)
 	@$(MAKE) -r -C $(OBJDIR) -f $(PROJDIR)/src/C/pljava/Makefile \
-	MODULEROOT=$(PROJDIR)/src/C build_$*
+	MODULEROOT=$(realpath $(PROJDIR))/src/C build_$*
 
 release: all docs javadoc
 	@-mkdir -p $(TARGETDIR)/distrib
