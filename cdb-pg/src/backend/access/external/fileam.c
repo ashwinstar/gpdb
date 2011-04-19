@@ -2025,7 +2025,7 @@ static void external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* e
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 	{
-		pg_itoa(qdPostmasterPort, result);
+		pg_ltoa(qdPostmasterPort, result);
 		extvar->GP_MASTER_PORT = result;
 		extvar->GP_MASTER_HOST = qdHostname;
 	}
@@ -2034,7 +2034,7 @@ static void external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* e
 		CdbComponentDatabases *cdb_component_dbs = getCdbComponentDatabases();
 		CdbComponentDatabaseInfo *qdinfo = &cdb_component_dbs->entry_db_info[0];
 		
-		pg_itoa(qdinfo->port, result);
+		pg_ltoa(qdinfo->port, result);
 		extvar->GP_MASTER_PORT = result;
 		
 		if (qdinfo->hostip != NULL)
