@@ -1512,6 +1512,27 @@ reportBackupResults(InputOptions inputopts, ThreadParmArray *pParmAr)
 						  pszMsg,
 						  (strcmp(pszMsg, "") == 0) ? "" : "}"
 			);
+
+		/*
+		 * Ugly kludge to 'fix' MPP-12697. The issue is, the dump agent
+		 * doesn't return any status about the _post_data file because it's
+		 * assumed that it will dump it anyway. If we change that behaviour, we
+		 * must remember to change this code too. See the (terribly named)
+		 * gp_backup_launch__().
+		 */
+		if (pParm->pTargetSegDBData->role == ROLE_MASTER)
+		{
+			appendPQExpBuffer(reportBuf, "\tMaster (dbid %d) Host %s Port %d Database %s BackupFile %s_post_data: %s %s%s\n",
+						  pParm->pTargetSegDBData->dbid,
+				StringNotNull(pParm->pTargetSegDBData->pszHost, "localhost"),
+						  pParm->pTargetSegDBData->port,
+						  pParm->pTargetSegDBData->pszDBName,
+						  StringNotNull(pParm->pszRemoteBackupPath, ""),
+						  pszStatus,
+						  pszMsg,
+						  (strcmp(pszMsg, "") == 0) ? "" : "}"
+			);
+		}
 	}
 
 	if (failCount == 0)
