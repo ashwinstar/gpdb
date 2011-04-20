@@ -13,6 +13,7 @@ include $(PGXS)
 else
 subdir = contrib/pgbench
 top_builddir = ../..
+top_srcdir = top_builddir/../cdb-pg
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
