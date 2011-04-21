@@ -5,10 +5,10 @@ GPMON_SWF=GPPerfMon.swf
 all: gpsmon gpmmon flexGUI installer
 
 gpsmon:
-	$(MAKE) -C src/gpmon gpsmon
+	$(MAKE) -C src/gpmon gpsmon BUILDDIR=$(BUILDDIR)
 
 gpmmon:
-	$(MAKE) -C src/gpmon gpmmon
+	$(MAKE) -C src/gpmon gpmmon BUILDDIR=$(BUILDDIR)
 
 webapi:
 	@echo webapi

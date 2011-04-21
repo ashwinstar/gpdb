@@ -2,10 +2,11 @@ SHELL=/bin/bash
 
 default: all
 
-top_builddir = $(BUILDDIR)
+
 BLD_TOP=$(shell echo `pwd`/../../../)
 include $(BLD_TOP)/Makefile.global
 include $(BLD_TOP)/Makefile.thirdparty
+top_builddir = $(BLD_TOP)/$(BUILDDIR)
 
 EXT_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/
 LIBPQ_DIR=$(BLD_TOP)/cdb-pg/src/interfaces/libpq/
