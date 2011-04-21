@@ -49,7 +49,6 @@
 #include "emcconnect/api.h"
 
 extern int	PostPortNumber;
-extern void pg_itoa(int16 i, char *a);
 
 #if USE_EMAIL
 #if USE_SSL
@@ -274,13 +273,13 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData, const char * 
 		snmp_initialized = true;
 
 		{
-			char portnum[7];
+			char portnum[16];
 			myhostname[0] = '\0';
 
 			if (gethostname(myhostname, sizeof(myhostname)) == 0)
 			{
 				strcat(myhostname,":");
-				pg_itoa(PostPortNumber,portnum);
+				pg_ltoa(PostPortNumber,portnum);
 				strcat(myhostname,portnum);
 			}
 		}
@@ -565,13 +564,13 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 	}
 
 	{
-		char portnum[7];
+		char portnum[16];
 		myhostname[0] = '\0';
 
 		if (gethostname(myhostname, sizeof(myhostname)) == 0)
 		{
 			strcat(myhostname," on port ");
-			pg_itoa(PostPortNumber,portnum);
+			pg_ltoa(PostPortNumber,portnum);
 			strcat(myhostname,portnum);
 		}
 	}
@@ -1258,9 +1257,9 @@ messagebody_cb(void **buf, int *len, void *arg)
 
 	if (alreadyreturned == 0)
 	{
-		char  lineno[12]; /* Big enough for any int32, so safe from overflow */
+		char  lineno[16]; 
 
-		pg_itoa(errorData->fix_fields.error_fileline,lineno);
+		pg_ltoa(errorData->fix_fields.error_fileline,lineno);
 
 		/* Perhaps better to use text/html ? */
 
@@ -1286,7 +1285,7 @@ messagebody_cb(void **buf, int *len, void *arg)
 		strcat(message,"Alert from GPDB system ");
 		{
 			char myhostname[255];	/* gethostname usually is limited to 65 chars out, but make this big to be safe */
-			char portnum[7];
+			char portnum[16];
 			myhostname[0] = '\0';
 
 
@@ -1294,7 +1293,7 @@ messagebody_cb(void **buf, int *len, void *arg)
 			{
 				strcat(message,myhostname);
 				strcat(message," on port ");
-				pg_itoa(PostPortNumber,portnum);
+				pg_ltoa(PostPortNumber,portnum);
 				strcat(message,portnum);
 			}
 		}
@@ -1322,8 +1321,8 @@ messagebody_cb(void **buf, int *len, void *arg)
 		{
 			if (errorData->fix_fields.gp_segment_id != -1)
 			{
-				char segid[7];
-				pg_itoa(errorData->fix_fields.gp_segment_id,segid);
+				char segid[16];
+				pg_ltoa(errorData->fix_fields.gp_segment_id,segid);
 				strcat(message,"Error occurred on segment ");
 				strcat(message,segid);
 			}
