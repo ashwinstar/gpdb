@@ -151,24 +151,24 @@ installcheck: all upg2-setup ugpart-setup
 installcheck-parallel: all upg2-setup ugpart-setup
 	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --srcdir=$(abs_srcdir)
 
-installcheck-good: all $(srcdir)/current_good_schedule upg2-setup ugpart-setup
-	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/current_good_schedule --srcdir=$(abs_srcdir)
+installcheck-good: all ./current_good_schedule upg2-setup ugpart-setup
+	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=./current_good_schedule --srcdir=$(abs_srcdir)
 
-.PHONY: $(srcdir)/current_good_schedule
-$(srcdir)/current_good_schedule: $(srcdir)/known_good_schedule
+.PHONY: ./current_good_schedule
+./current_good_schedule: $(srcdir)/known_good_schedule
 ifneq ($(origin TT), undefined)
-	./maketestschedule.py "$(TT)" > $(srcdir)/current_good_schedule
+	$(srcdir)/maketestschedule.py "$(TT)" > ./current_good_schedule
 else
-	./makeschedule $< $@
+	cd $(srcdir) && ./makeschedule ./known_good_schedule $(abs_builddir)/current_good_schedule
 endif
 
 # Copy and transform all of the upgrade related data files
 upg2-setup:
-	@cp -f data/upgrade41/upg2_catupgrade_41.sql.in data/upg_catupgrade_41.sql
+	@cp -f $(srcdir)/data/upgrade41/upg2_catupgrade_41.sql.in data/upg_catupgrade_41.sql
 	@gpstringsubs.pl data/upg_catupgrade_41.sql
 
 ugpart-setup:
-	@cp -f data/upgrade_pg_partitions.sql.in data/upgrade_pg_partitions.sql
+	@cp -f $(srcdir)/data/upgrade_pg_partitions.sql.in data/upgrade_pg_partitions.sql
 	@gpstringsubs.pl data/upgrade_pg_partitions.sql	
 
 
@@ -200,7 +200,7 @@ clean distclean maintainer-clean: clean-lib
 	$(MAKE) -C $(contribdir)/spi clean
 	rm -f $(output_files) $(input_files) pg_regress_main.o pg_regress.o pg_regress$(X)
 # things created by dynamic configs
-	rm -f current_good_schedule
+	rm -f ./current_good_schedule
 	find sql -type l | xargs rm -f
 	find expected -type l | xargs rm -f
 # things created by various check targets
