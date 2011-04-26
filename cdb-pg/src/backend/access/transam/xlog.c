@@ -2419,6 +2419,27 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 			/* OK to write the page(s) */
 			from = XLogCtl->pages + startidx * (Size) XLOG_BLCKSZ;
 			nbytes = npages * (Size) XLOG_BLCKSZ;
+                        
+			/* The following code is a sanity check to try to catch the issue described in MPP-12611 */
+			if (!IsBootstrapProcessingMode())
+			  {
+			  char   simpleFileName[MAXPGPATH];
+			  XLogFileName(simpleFileName, ThisTimeLineID, openLogId, openLogSeg);
+                          if (strcmp(simpleFileName, mirroredLogFileOpen.simpleFileName) != 0)
+			    {
+			      ereport( PANIC
+				       , (errmsg_internal("Expected Xlog file name does not match current open xlog file name. \
+                                                           Expected file = %s, \
+                                                           open file = %s, \
+                                                           WriteRqst.Write = %s, \
+                                                           WriteRqst.Flush = %s " 
+							 , simpleFileName
+							 , mirroredLogFileOpen.simpleFileName
+							 , XLogLocationToString(&(WriteRqst.Write))
+							 , XLogLocationToString(&(WriteRqst.Flush)))));
+			    }
+			  }
+
 			if (MirroredFlatFile_Write(
 							&mirroredLogFileOpen,
 							openLogOff,
@@ -7319,7 +7340,7 @@ ngth %u, location %s",
 		     masterMirroringCheckpointLen,
 		     XLogLocationToString(redoCheckPointLoc));
 		if (ptas != NULL)
-		  elog(PersistentRecovery_DebugPrintLevel(),
+		    elog(PersistentRecovery_DebugPrintLevel(),
 		       "XLogPopulateMasterMirroring: Checkpoint record prepared transaction agg state count = %d",
 		       ptas->count);
 	}
