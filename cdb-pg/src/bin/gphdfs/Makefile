@@ -19,6 +19,8 @@ install: all installdirs
 	$(INSTALL_PROGRAM) $(top_srcdir)/src/bin/gphdfs/HDFSReader.class$(X) '$(DESTDIR)$(bindir)/HDFSReader.class$(X)'
 	$(INSTALL_PROGRAM) $(top_srcdir)/src/bin/gphdfs/HDFSWriter.class$(X) '$(DESTDIR)$(bindir)/HDFSWriter.class$(X)'
 	$(INSTALL_PROGRAM) $(top_srcdir)/src/bin/gphdfs/hadoop_env.sh$(X) '$(DESTDIR)$(bindir)/hadoop_env.sh$(X)'
+	$(INSTALL_PROGRAM) $(top_srcdir)/src/bin/gphdfs/HDFSReader.class.0.20.1$(X) '$(DESTDIR)$(bindir)/HDFSReader.class.0.20.1$(X)'
+	$(INSTALL_PROGRAM) $(top_srcdir)/src/bin/gphdfs/HDFSWriter.class.0.20.1$(X) '$(DESTDIR)$(bindir)/HDFSWriter.class.0.20.1$(X)'
 
 
 installdirs:
