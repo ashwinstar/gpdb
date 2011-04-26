@@ -34,6 +34,7 @@ OBJS=	command.o common.o help.o input.o stringutils.o mainloop.o copy.o \
 	tab-complete.o mbprint.o dumputils.o keywords.o kwlookup.o \
 	sql_help.o \
 	$(WIN32RES)
+	
 FLEXFLAGS = -Cfe
 
 # The frontend doesn't need everything that's in LIBS, some are backend only
@@ -45,7 +46,6 @@ psql: $(OBJS) $(libpq_builddir)/libpq.a
 	$(CC) $(CFLAGS) $(LDFLAGS) $(LDFLAGS_EX) $(OBJS) $(libpq_pgport) $(LIBS) -o $@$(X)
 
 help.o: sql_help.h
-
 
 dumputils.c keywords.c: % : $(top_srcdir)/src/bin/pg_dump/%
 	rm -f $@ && $(LN_S) $< .
@@ -60,9 +60,9 @@ sql_help.h: create_help.pl $(wildcard $(REFDOCDIR)/*.sgml)
 # psqlscan is compiled as part of mainloop
 mainloop.o: psqlscan.c
 
-psqlscan.c: psqlscan.l
+$(srcdir)/psqlscan.c: psqlscan.l
 ifdef FLEX
-	$(FLEX) $(FLEXFLAGS) -o'$@' $<
+	$(FLEX) $(FLEXFLAGS) -o'$(srcdir)/psqlscan.c' $<
 else
 	@$(missing) flex $< $@
 endif
