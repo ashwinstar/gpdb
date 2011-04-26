@@ -267,7 +267,7 @@ extern void FileRep_IpcWait(PGSemaphoreData sem);
 /*
  * Unblock 
  */
-extern void FileRep_IpcSignal(PGSemaphoreData sem, int refCount);
+extern void FileRep_IpcSignal(PGSemaphoreData sem, int* refCount);
 
 /*
  * Unblock all waiting semaphores

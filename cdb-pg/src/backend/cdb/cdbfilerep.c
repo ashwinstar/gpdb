@@ -50,6 +50,19 @@
 #include "utils/ps_status.h"
 #include "utils/memutils.h"
 
+#ifdef HAVE_SYS_SEM_H
+#include <sys/sem.h>
+#endif
+
+#ifndef HAVE_UNION_SEMUN
+union semun
+{
+    int         val;
+    struct semid_ds *buf;
+    unsigned short *array;
+};
+#endif
+
 extern void quickdie(SIGNAL_ARGS); /* is in tcopprot.h */
 
 /****************************************************************
@@ -542,14 +555,16 @@ FileRep_IpcWait(PGSemaphoreData sem)
 }
 
 void
-FileRep_IpcSignal(PGSemaphoreData sem, int refCount)
+FileRep_IpcSignal(PGSemaphoreData sem, int *refCount)
 {
 	int ii;
 	
-	for (ii=0; ii < refCount; ii++)
+	for (ii=0; ii < *refCount; ii++)
 	{
 		PGSemaphoreUnlock(&sem);
 	}
+	
+	*refCount = 0;
 }
 
 static void
@@ -561,11 +576,15 @@ FileRep_IpcSignalAllInternal(int ii)
 	{
 		PGSemaphoreUnlock(&fileRepIpcArray[ii]->semP);
 	}
+
+	fileRepIpcArray[ii]->refCountSemP = 0;
 	
 	for (jj=0; jj < fileRepIpcArray[ii]->refCountSemC; jj++)
 	{
 		PGSemaphoreUnlock(&fileRepIpcArray[ii]->semC);
-	}		
+	}
+
+	fileRepIpcArray[ii]->refCountSemC = 0;		
 }
 
 void
@@ -877,7 +896,6 @@ FileRepAck_ReserveShmem(
 		
 		if (wait == TRUE)
 		{
-			fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemP--;
 			wait = FALSE;
 		}
 		
@@ -1010,7 +1028,6 @@ FileRep_ReserveShmem(
 		{					
 			if (wait == TRUE)
 			{
-				fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP--;
 				wait = FALSE;
 			}
 		}

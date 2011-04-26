@@ -527,7 +527,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 	
 	LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
 	FileRep_IpcSignal(fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->semC, 
-					  fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->refCountSemC);
+					  &fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->refCountSemC);
 	LWLockRelease(FileRepShmemLock);
 	
 	RESUME_INTERRUPTS();
@@ -969,7 +969,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 			
 			LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
 			FileRep_IpcSignal(fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->semC, 
-							  fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->refCountSemC);
+							  &fileRepIpcArray[fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex]->refCountSemC);
 			LWLockRelease(FileRepShmemLock);
 			
 			/* the order should not be changed. */
@@ -1571,7 +1571,7 @@ FileRepPrimary_RunSender(void)
 			}
 			
 			FileRep_IpcSignal(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP,
-							  fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP);
+							  &fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP);
 		}
 
 		fileRepShmemMessageDescr = 
@@ -1598,8 +1598,6 @@ FileRepPrimary_RunSender(void)
 			//pg_usleep(1000L); /* 1 ms */
 			
 			LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
-			
-			fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemC--;
 			
 			if (fileRepShmem->positionConsume == fileRepShmem->positionWraparound &&
 				fileRepShmem->positionInsert != fileRepShmem->positionWraparound) {	
