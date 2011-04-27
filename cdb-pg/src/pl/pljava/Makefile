@@ -44,7 +44,7 @@ export PLJAVA_MINOR_VER	:= 4
 export PLJAVA_PATCH_VER	:= 1
 export PLJAVA_VERSION	:= $(PLJAVA_MAJOR_VER).$(PLJAVA_MINOR_VER).$(PLJAVA_PATCH_VER)
 export TAR				:= /bin/tar
-$(warning PROJDIR $(PROJDIR))
+
 OS := $(shell uname -s)
 MACHINE := $(shell uname -m)
 
