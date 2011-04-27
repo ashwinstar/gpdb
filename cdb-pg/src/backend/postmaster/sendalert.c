@@ -592,7 +592,7 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 									severity,
 									EMC_CONNECT_ORIGIN_GPDBALERTS,
 									gp_emcconnect_localonly ? 1 : 0,
-									"", // display name 
+									"GPDB notification", // display name 
 									"", // snmpoid
 									myhostname,
 									msg);
