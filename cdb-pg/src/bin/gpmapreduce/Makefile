@@ -16,6 +16,9 @@ else
 INCDIR= include
 SRCDIR= src
 endif
+ifneq ($(PORTNAME), win32)
+override CFLAGS += $(PTHREAD_CFLAGS) -pthread
+endif
 
 override CPPFLAGS += $(BLD_CPPFLAGS_SOLARIS_OLD_VERSIONS) -DFRONTEND -I$(SRCDIR) -I$(INCDIR) -I$(libpq_srcdir)
 override LDFLAGS  += -lyaml

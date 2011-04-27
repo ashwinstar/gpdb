@@ -17,3 +17,7 @@ top_srcdir = $(top_builddir)/../cdb-pg
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
+ifneq ($(PORTNAME), win32)
+override CFLAGS += $(PTHREAD_CFLAGS) -pthread
+endif
+

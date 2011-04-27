@@ -3,8 +3,8 @@
 PROGRAM = xlogdump
 OBJS    = xlogdump.o ../../src/port/sprompt.o ../../src/backend/utils/hash/pg_crc.o
 
-PG_CPPFLAGS = -I$(libpq_srcdir)
-PG_LIBS = $(libpq_pgport)
+PG_CPPFLAGS = -I$(libpq_srcdir) 
+PG_LIBS = $(libpq_pgport) -pthread
 
 ifdef USE_PGXS
 PGXS := $(shell pg_config --pgxs)
