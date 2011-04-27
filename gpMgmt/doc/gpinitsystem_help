@@ -14,10 +14,10 @@ gpinitsystem -c <gpinitsystem_config>
             [-p <postgresql_conf_param_file>]
             [-s <standby_master_host>]
             [--max_connections <number>] [--shared_buffers <size>]
-            [--locale <locale>] [--lc-collate <locale>] 
-            [--lc-ctype <locale>] [--lc-messages <locale>] 
-            [--lc-monetary <locale>] [--lc-numeric <locale>] 
-            [--lc-time <locale>] [--su_password <password>] 
+            [--locale=<locale>] [--lc-collate=<locale>] 
+            [--lc-ctype=<locale>] [--lc-messages=<locale>] 
+            [--lc-monetary=<locale>] [--lc-numeric=<locale>] 
+            [--lc-time=<locale>] [--su_password <password>] 
             [-S] [-a] [-q] [-l <logfile_directory>] [-D]
 
 gpinitsystem -? 
@@ -99,7 +99,7 @@ OPTIONS
  in the gpinitsystem_config file.
 
 
---locale | -n <locale>
+-n <locale> | --locale=<locale> 
 
  Sets the default locale used by Greenplum Database. If not specified, 
  the LC_ALL, LC_COLLATE, or LANG environment variable of the master 
@@ -114,7 +114,7 @@ OPTIONS
  settings and locale -a will show a list of all available locales.
 
 
---lc-collate <locale>
+--lc-collate=<locale>
 
  Similar to --locale, but sets the locale used for collation (sorting data). 
  The sort order cannot be changed after Greenplum Database is initialized, 
@@ -125,7 +125,7 @@ OPTIONS
  character encoding.
 
 
---lc-ctype <locale>
+--lc-ctype=<locale>
 
  Similar to --locale, but sets the locale used for character classification 
  (what character sequences are valid and how they are interpreted). This 
@@ -134,7 +134,7 @@ OPTIONS
  with the data you plan to store in Greenplum Database.
 
 
---lc-messages <locale>
+--lc-messages=<locale>
 
  Similar to --locale, but sets the locale used for messages output by 
  Greenplum Database. The current version of Greenplum Database does not 
@@ -142,17 +142,17 @@ OPTIONS
  so changing this setting will not have any effect.
 
 
---lc-monetary <locale> 
+--lc-monetary=<locale> 
 
  Similar to --locale, but sets the locale used for formatting currency amounts.
 
 
---lc-numeric <locale> 
+--lc-numeric=<locale> 
 
  Similar to --locale, but sets the locale used for formatting numbers.
 
 
---lc-time <locale>
+--lc-time=<locale>
 
  Similar to --locale, but sets the locale used for formatting dates and times.
 
