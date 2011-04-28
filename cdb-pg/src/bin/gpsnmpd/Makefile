@@ -10,9 +10,6 @@ subdir = src/bin/gpsnmpd
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I$(top_srcdir)/src/bin/gpsnmpd -I$(top_srcdir)/src/bin/gpsnmpd/RDBMS-MIB_src $(CPPFLAGS)
-ifneq ($(PORTNAME), win32)
-override CFLAGS += $(PTHREAD_CFLAGS) -pthread
-endif
 
 # The frontend doesn't need everything that's in LIBS, some are backend only
 LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
@@ -20,6 +17,9 @@ LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
 
 CFLAGS += -Wno-error
+ifneq ($(PORTNAME), win32)
+override CFLAGS += $(PTHREAD_CFLAGS) -pthread
+endif
 
 # we pick up the wrong net-snmp-config here  with lots of references to /home/build/hridenour/dev
 #SNMPFLAGS=-I. -I./RDBMS-MIB_src $(shell ../../../../ext/bin/net-snmp-config --cflags) 
