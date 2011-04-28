@@ -1754,7 +1754,7 @@ class gpload:
              
         sql+= """and pgext.fmttype = %s
                  and pgext.writable = false
-                 and pgext.fmtopts like %s """ % (quote(formatType[0]),quote(formatOpts +"%"))
+                 and pgext.fmtopts like %s """ % (quote(formatType[0]),quote("%" + quote_unident(formatOpts.rstrip()) +"%"))
         
         if limitStr:
             sql+= "and pgext.rejectlimit = %s " % limitStr         
@@ -1774,7 +1774,7 @@ class gpload:
                  end)
                  limit 1;"""
         
-        self.log(self.DEBUG, "query used to identical reusable external relations: %s" % sql)
+        self.log(self.DEBUG, "query used to identify reusable external relations: %s" % sql)
         return sql
 
     # In order to find out whether we have an existing temp table in the 
@@ -1823,7 +1823,7 @@ class gpload:
                  end)
                  limit 1;"""
         
-        self.log(self.DEBUG, "query used to identical reusable temporary relations: %s" % sql)
+        self.log(self.DEBUG, "query used to identify reusable temporary relations: %s" % sql)
         return sql
     
     # 
@@ -1845,24 +1845,23 @@ class gpload:
         delimiterValue = self.getconfig('gpload:input:delimiter', unicode, False)
         if isinstance(delimiterValue, bool) and delimiterValue == False:
             """ implies the DELIMITER option has no value in the yaml file, so use default """
-            pass
+            if formatType=='csv':
+                formatOpts += "delimiter ',' "
         elif len(delimiterValue) != 1:
             self.log(self.WARN, "A gpload control file processing warning occurred. A delimiter must have a length of one. Special characters must be quoted. gpload will assume this is a sql escape character sequence.")
-            formatOpts += "delimiter %s" % self.getconfig('gpload:input:delimiter', unicode)
+            formatOpts += "delimiter %s " % self.getconfig('gpload:input:delimiter', unicode)
         else:
-            formatOpts += "delimiter %s" % \
+            formatOpts += "delimiter %s " % \
                 quote(self.getconfig('gpload:input:delimiter', unicode))
 
         nullas = self.getconfig('gpload:input:null_as', unicode, False)
-        self.log(self.DEBUG, "null as " + unicode(nullas))
+        self.log(self.DEBUG, "null " + unicode(nullas))
         if nullas != False: # could be empty string
-            formatOpts += " null as %s " % quote(nullas)
-
-        if self.getconfig('gpload:input:header',bool,False):
-            formatOpts += "header "
-        if formatType=='csv':
-            formatOpts += "quote as%s" % quote(self.getconfig('gpload:input:quote', 
-                    unicode, extraStuff='for csv formatted data'))
+            formatOpts += "null %s " % quote(nullas)
+        elif formatType=='csv':
+            formatOpts += "null '' "
+        else:
+            formatOpts += "null %s " % quote("\N")
 
         esc = self.getconfig('gpload:input:escape', None, None)
         if esc:
@@ -1871,9 +1870,22 @@ class gpload:
             if esc.lower() == 'off':
                 if formatType == 'csv':
                     self.log(self.ERROR, "A gpload control file processing error occurred. ESCAPE cannot be set to OFF in CSV mode")
-                formatOpts += "escape 'off'"
+                formatOpts += "escape 'off' "
             else:
-                formatOpts += 'escape as ' + quote(esc)
+                formatOpts += "escape %s " % quote(esc)
+        else:
+            if formatType=='csv':
+                formatOpts += "escape %s " % quote(self.getconfig('gpload:input:quote', 
+                    unicode, extraStuff='for csv formatted data'))
+            else:
+                formatOpts += "escape %s " % quote("\\")
+
+        if formatType=='csv':
+            formatOpts += "quote %s " % quote(self.getconfig('gpload:input:quote', 
+                    unicode, extraStuff='for csv formatted data'))
+
+        if self.getconfig('gpload:input:header',bool,False):
+            formatOpts += "header "
 
         force_not_null_columns = self.getconfig('gpload:input:force_not_null',list,[])
         if force_not_null_columns:
@@ -1983,7 +1995,7 @@ class gpload:
             
             tableName = quote_unident(self.table)
 
-            sql = self.get_reuse_temptable_query(schemaName, tableName, from_cols, distcols)
+            sql = self.get_reuse_temptable_query(tableName, from_cols, distcols)
             
             resultList = self.db.query(sql.encode('utf-8')).getresult()
             
@@ -2000,8 +2012,8 @@ class gpload:
             self.tempTableName = quote_ident("temp_gpload_reusable_%s_created_on_%s" % (tableName, self.unique_suffix))
             self.log(self.INFO, "did not find a temp table to reuse. creating %s" % self.tempTableName)
         
-            # construct a CREATE TABLE statement
-            sql = "create table %s" % self.tempTableName
+            # construct a CREATE TABLE statement (without TEMP!)
+            sql = "create table %s(like %s)" % (self.tempTableName, self.schemaTable)
         else:
             # NOTE: there's no real reason to create a *TEMP* table here, since
             # we will drop it anyway soon. do it for sake of not changing the
