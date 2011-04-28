@@ -54,7 +54,7 @@ This utility performs the following tasks:
 * Verifies that the parameters in the configuration file are correct.
 * Ensures that a connection can be established to each host address. 
   If a host address cannot be reached, the utility will exit.
-* Verifies that the locale settings.
+* Verifies the locale settings.
 * Displays the configuration that will be used and prompts the 
   user for confirmation.
 * Initializes the master instance.
