@@ -138,6 +138,7 @@ void update_mmonlog_filename()
         tm->tm_sec);
 }
 
+char gpdb_appliance_version[MAXPATHLEN];
 
 /** Gets quantum */
 int gpmmon_quantum(void)
@@ -784,6 +785,13 @@ int is_gpdb_appliance()
 	FILE* fd = fopen(PATH_TO_APPLIANCE_VERSION_FILE, "r");
 	if (fd)
 	{
+		char buffer[MAXPATHLEN+1];
+		buffer[0] = 0;
+		if (!fgets(buffer, 1024, fd)) {
+			strncpy(gpdb_appliance_version, buffer, MAXPATHLEN);
+			buffer[MAXPATHLEN] = 0;
+		}	
+ 
 		fclose(fd);
 		return 1;
 	}

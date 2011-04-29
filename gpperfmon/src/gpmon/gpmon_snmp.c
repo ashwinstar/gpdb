@@ -1,5 +1,8 @@
+#include <sys/param.h>
+
 #include "gpmonlib.h"
 #include "gpmondb.h"
+
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include "apr_hash.h"
@@ -97,6 +100,7 @@ static struct
 	char hostlist_file[PATH_MAX];
 	char hostlist_tmpfile[PATH_MAX];
 	char emcconnect_tailfile[PATH_MAX];
+	int healthmon_running_separately;
 
 	FILE* hostlist_fd;
 	unsigned int emc_connect_events_pending_load;
@@ -161,6 +165,7 @@ char* get_accessible_hostname();
 int mv_gpdb_emcconnect_records_to_perfmon();
 void load_emcconnect_events_history();
 int harvest_health_data_required(int num_dial_homes);
+bool is_healthmon_running_separately();
 
 //****************************************************************************************//
 // EMC CONNECT CONVERSION FUNCTIONS SECTION
@@ -2332,8 +2337,13 @@ int snmp_report(host_t* tab, int tabsz)
 	
 	struct SnmpConfigEntry* iter;
 
+
 	if (!si.snmpInitialized)
 		return 1; // there was a failure in the setup phase ... do not collect data
+
+	if (si.healthmon_running_separately) {
+		goto harvest;
+	}
 
 	snmp_start_report();
 
@@ -2368,6 +2378,8 @@ int snmp_report(host_t* tab, int tabsz)
 
 	snmp_close_hostlist_file();
 
+harvest:
+
 	num_dial_homes = mv_gpdb_emcconnect_records_to_perfmon();
 
 	if (si.emc_connect_events_pending_load)
@@ -2381,7 +2393,10 @@ int snmp_report(host_t* tab, int tabsz)
 		si.last_health_harvest = time(NULL);
 	}
 
-	snmp_done_report();
+	if (!si.healthmon_running_separately) {
+		snmp_done_report();
+	}
+
 	return 0;
 }
 
@@ -2755,5 +2770,132 @@ apr_status_t gpmmon_init_snmp(snmp_module_params_t* params)
 
 	si.snmpInitialized=true;
 
+
+	if (is_healthmon_running_separately()) {
+		TR0(("Not doing regular health monitoring..\n"));
+		si.healthmon_running_separately = 1;
+	} else {
+		TR0(("Performing the regular health monitoring..\n"));
+		si.healthmon_running_separately = 0;
+	}	
+
 	return APR_SUCCESS;
 }
+
+static int
+compare_versions(char *first, char *second)
+{
+        char *p = first;
+        char *q = second;
+
+
+        int num_parts_cmp;
+        int result = 0;
+
+        if (!first || !second) {
+                TR0(("Invalid argumnets to compare_versions"));
+                goto bail;
+        }
+
+        /* Find parts in each version number. Each '.' adds a new part. */
+        int parts_in_first = 1; // We have at least one part to compare in a non null string
+        while (p && *p) {
+                p = strchr(p, '.');
+                if (p) {
+                        p = p + 1;
+                        parts_in_first++;
+                }
+        }
+
+        int parts_in_second = 1;
+        while (q && *q) {
+                q = strchr(q, '.');
+                if (q) {
+                        q = q + 1;
+                        parts_in_second++;
+                }
+        }
+
+        num_parts_cmp = (parts_in_first > parts_in_second) ? parts_in_second : parts_in_first;
+
+        TR0(("Parts to compare are %d\n", num_parts_cmp));
+
+        p = first;
+        q = second;
+
+        int first_num;
+        int second_num;
+        int counter = 0;
+
+        while (counter < num_parts_cmp) {
+
+                first_num = atoi(p);
+                second_num = atoi(q);
+
+                TR0(("Comparing %d and %d\n", first_num, second_num));
+		if (first_num > second_num) {
+                        result = 1;
+                        goto bail;
+                } else if (first_num < second_num) {
+                        result = -1;
+                        goto bail;
+                }
+
+                p = strchr(p, '.');
+                if (p) {
+                        p = p + 1;
+                }
+
+                q = strchr(q, '.');
+                if (q) {
+                        q = q + 1;
+                }
+                counter++;
+        }
+
+
+bail:
+        /* Debugging purposes */
+        if (result == 1) {
+                TR0(("%s is greater than %s\n", first, second));
+        } else if (result == -1) {
+                TR0(("%s is less than %s\n", first, second));
+        } else {
+                TR0(("%s is equal to %s\n", first, second));
+        }
+        return result;
+}
+
+
+
+
+bool
+is_healthmon_running_separately()
+{
+	// New ISO versions have separate healthmond
+	bool new_ver_iso = false;
+	char buffer[MAXPATHLEN+1];
+
+        FILE* fd = fopen(PATH_TO_APPLIANCE_VERSION_FILE, "r");
+	if (!fd) {
+		TR0(("Can't open %s", PATH_TO_APPLIANCE_VERSION_FILE));
+		goto bail;
+	}
+
+	buffer[0] = 0;	
+	if (fgets(buffer, 1024, fd)) {
+		buffer[MAXPATHLEN] = 0;
+	} else {
+		goto bail;
+	}
+
+	// TODO - Place this in some macro
+	if (compare_versions(buffer, "1.0.4") >= 0) {
+		new_ver_iso = true;
+	}
+
+        fclose(fd);
+bail:
+	return new_ver_iso;
+}
+
