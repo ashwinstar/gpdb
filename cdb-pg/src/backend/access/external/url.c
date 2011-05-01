@@ -707,8 +707,10 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 
 		if (sz < 0)
 		{
+			const char* url_cpy = pstrdup(file->url);
+			
 			url_fclose(file, false, pstate->cur_relname);
-			elog(ERROR, "illegal URL: %s", file->url);
+			elog(ERROR, "illegal URL: %s", url_cpy);
 		}
 
 		file->u.curl.curl_url = palloc(sz);
@@ -735,8 +737,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
         if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url)))
 		{
 			url_fclose(file, false, pstate->cur_relname);
-			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL %s error (%d - %s)",
-				 file->u.curl.curl_url,
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
         if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_VERBOSE, FALSE)))
@@ -879,8 +880,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
             if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_POSTFIELDS, "")))
         	{
         		url_fclose(file, false, pstate->cur_relname);
-        		elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)",
-        			 file->u.curl.curl_url,
+        		elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)",
         			 e, curl_easy_strerror(e));
         	}
 
@@ -888,8 +888,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
             if (CURLE_OK != (e = curl_easy_perform(file->u.curl.handle)))
         	{
         		url_fclose(file, false, pstate->cur_relname);
-        		elog(ERROR, "%s error: %s",
-        			 file->u.curl.curl_url,
+        		elog(ERROR, "error: %s",
         			 curl_easy_strerror(e));
         	}
         }
@@ -1348,8 +1347,7 @@ static void gp_proto0_write(URL_FILE *file, CopyState pstate)
     if (CURLE_OK != (e = curl_easy_setopt(curl->handle, CURLOPT_POSTFIELDS, buf)))
 	{
 		url_fclose(file, false, pstate->cur_relname);
-		elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)",
-			 file->u.curl.curl_url,
+		elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)",
 			 e, curl_easy_strerror(e));
 	}
 
@@ -1357,8 +1355,7 @@ static void gp_proto0_write(URL_FILE *file, CopyState pstate)
     if (CURLE_OK != (e = curl_easy_setopt(curl->handle, CURLOPT_POSTFIELDSIZE, nbytes)))
 	{
 		url_fclose(file, false, pstate->cur_relname);
-		elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE %s error (%d - %s)",
-			 file->u.curl.curl_url,
+		elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)",
 			 e, curl_easy_strerror(e));
 	}
 
@@ -1366,8 +1363,7 @@ static void gp_proto0_write(URL_FILE *file, CopyState pstate)
     if (CURLE_OK != (e = curl_easy_perform(curl->handle)))
 	{
 		url_fclose(file, false, pstate->cur_relname);
-		elog(ERROR, "%s error (%d - %s)",
-			 file->u.curl.curl_url,
+		elog(ERROR, "error (%d - %s)",
 			 e, curl_easy_strerror(e));
 	}
     
