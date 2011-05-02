@@ -29,7 +29,7 @@
  * Need to define these prototypes to shut GCC up. Flex fixes this from
  * > 2.5.35
  */
-#if YY_FLEX_FULL_VERSION <= unify_version(2,5,35)
+#if YY_FLEX_FULL_VERSION < unify_version(2,5,35)
 int orafce_sql_yyget_lineno  (void);
 FILE *orafce_sql_yyget_in  (void);
 FILE *orafce_sql_yyget_out  (void);
@@ -40,14 +40,7 @@ void orafce_sql_yyset_out (FILE *  out_str );
 int orafce_sql_yyget_debug  (void);
 void orafce_sql_yyset_debug (int  bdebug );
 int orafce_sql_yylex_destroy  (void);
-#endif
-
-/* before 2.5.35 yyget_leng returns int, after it returns yy_size_t */
-#if YY_FLEX_FULL_VERSION <= unify_version(2,5,35)
 int orafce_sql_yyget_leng(void);
-/* XXX: temporarily disable to fix the build */
-#elif YY_FLEX_FULL_VERSION == unify_version(2,5,35) && 0
-yy_size_t orafce_sql_yyget_leng(void);
 #endif
 
 #if PG_VERSION_NUM >= 80500
