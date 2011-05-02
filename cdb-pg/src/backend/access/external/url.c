@@ -568,6 +568,11 @@ make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
  * checks for URLs or types in the 'url' and basically use the real fopen() for
  * standard files, or if the url happens to be a command to execute it uses
  * popen to execute it.
+ * 
+ * Note that we need to clean up (with url_fclose) upon an error in this function.
+ * This is the only function that should use url_fclose() directly. Run time errors
+ * (e.g in url_fread) will invoke a cleanup via the ABORT handler (AtAbort_ExtTable), 
+ * which will internally call url_fclose().
  */
 URL_FILE *
 url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *response_code, const char **response_string)
@@ -732,7 +737,6 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			elog(ERROR, "internal error: curl_easy_init failed");
 		}
 
-		/* elog(NOTICE, "URL: %s", file->u.curl.curl_url); */
 
         if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url)))
 		{
@@ -1345,34 +1349,24 @@ static void gp_proto0_write(URL_FILE *file, CopyState pstate)
 	
 	/* post binary data */  
     if (CURLE_OK != (e = curl_easy_setopt(curl->handle, CURLOPT_POSTFIELDS, buf)))
-	{
-		url_fclose(file, false, pstate->cur_relname);
 		elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)",
 			 e, curl_easy_strerror(e));
-	}
 
 	 /* set the size of the postfields data */  
     if (CURLE_OK != (e = curl_easy_setopt(curl->handle, CURLOPT_POSTFIELDSIZE, nbytes)))
-	{
-		url_fclose(file, false, pstate->cur_relname);
 		elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)",
 			 e, curl_easy_strerror(e));
-	}
 
     /* post away! */
     if (CURLE_OK != (e = curl_easy_perform(curl->handle)))
-	{
-		url_fclose(file, false, pstate->cur_relname);
-		elog(ERROR, "error (%d - %s)",
+		elog(ERROR, "%s error (%d - %s)",
+			 file->u.curl.curl_url,
 			 e, curl_easy_strerror(e));
-	}
     
 	/* check the response from server */
 	if (check_response(file, &response_code, &response_string))
-	{
-		url_fclose(file, false, pstate->cur_relname);
-		return;
-	}
+		elog(ERROR, "error while writing data to gpfdist on %s (code %d, msg %s)",
+				file->u.curl.curl_url, response_code, response_string);
 
 }
 
