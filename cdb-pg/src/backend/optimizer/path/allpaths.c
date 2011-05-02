@@ -902,9 +902,6 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, 
 	int			lev;
 	RelOptInfo *rel = NULL;
 
-	Assert(NULL == root->join_rel_hash &&
-			NULL == root->join_rel_list);
-
     root->mpp_trying_fallback_plan = fallback;
 
 	/*
