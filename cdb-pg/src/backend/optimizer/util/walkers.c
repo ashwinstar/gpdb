@@ -933,8 +933,18 @@ plan_tree_walker(Node *node,
 			break;
 
 		case T_Limit:
+
 			if (walk_plan_node_fields((Plan *) node, walker, context))
 				return true;
+
+			/* Greenplum Database Limit Count */
+			if (walker((Node *) (((Limit*) node)->limitCount), context))
+					return true;
+
+			/* Greenplum Database Limit Offset */
+			if (walker((Node *) (((Limit*) node)->limitOffset), context))
+					return true;
+
 			/* Other fields are simple items and lists of simple items. */
 			break;
 
