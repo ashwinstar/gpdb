@@ -1039,13 +1039,14 @@ void add_path(PlannerInfo *root, RelOptInfo *parent_rel, Path *new_path)
 		 */
 		if (remove_old)
 		{
-			pathlist = list_delete_cell(pathlist, p1, p1_prev);
+			pathlist = list_delete_cell(pathlist, p1, p1_prev);			
 
 			/*
 			 * Delete the data pointed-to by the deleted cell, if possible
 			 */
 			if (!IsA(old_path, IndexPath))
-				pfree(old_path);
+			          pfree(old_path);
+
 			/* Advance list pointer */
 			if (p1_prev)
 				p1 = lnext(p1_prev);

@@ -872,7 +872,11 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
 		rel = make_one_rel_by_joins(root, levels_needed, initial_rels, false);
 
 		if (rel == NULL && gp_enable_fallback_plan)
+		{
+			root->join_rel_hash = NULL;
+			root->join_rel_list = NULL;
 			rel = make_one_rel_by_joins(root, levels_needed, initial_rels, true);
+		}
 		return rel;
 	}
 }
@@ -894,9 +898,12 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
 static RelOptInfo *
 make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, bool fallback)
 {
-	List	  **joinitems;
+	List	  **joinitems = NULL;
 	int			lev;
-	RelOptInfo *rel;
+	RelOptInfo *rel = NULL;
+
+	Assert(NULL == root->join_rel_hash &&
+			NULL == root->join_rel_list);
 
     root->mpp_trying_fallback_plan = fallback;
 
