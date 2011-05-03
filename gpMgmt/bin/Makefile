@@ -70,11 +70,11 @@ pygresql:
 #
 # PARAMIKO
 #
-PARAMIKO_VERSION=1.6.4.1
+PARAMIKO_VERSION=1.7.6-9
 PARAMIKO_DIR=paramiko-$(PARAMIKO_VERSION)
 paramiko:
 	@echo "--- paramiko"
-	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PARAMIKO_DIR).tgz
+	cd $(PYLIB_SRC)/ && $(TAR) xzf $(PARAMIKO_DIR).tar.gz
 	cd $(PYLIB_SRC)/$(PARAMIKO_DIR)/ && python setup.py build
 	cp -r $(PYLIB_SRC)/$(PARAMIKO_DIR)/build/lib/paramiko  $(PYLIB_DIR)/
 
