@@ -9,7 +9,7 @@ SYNOPSIS
 *****************************************************
 
 gpinitsystem -c <gpinitsystem_config> 
-            [-h <hostfile_gpinitsystem>] [-m]
+            [-h <hostfile_gpinitsystem>]
             [-B <parallel_processes>] 
             [-p <postgresql_conf_param_file>]
             [-s <standby_master_host>]
@@ -160,11 +160,6 @@ OPTIONS
 -l <logfile_directory>
 
  The directory to write the log file. Defaults to ~/gpAdminLogs.
-
-
--m (create master only)
-
- Creates a master instance only. Does not configure any segment hosts.
 
 
 --max_connections=<number> | -m <number>
