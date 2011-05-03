@@ -1027,44 +1027,84 @@ cdbexplain_formatExtraText(StringInfo   str,
 }                               /* cdbexplain_formatExtraText */
 
 
+
 /*
  * cdbexplain_formatMemory
  *    Convert memory size to string from (double) bytes.
+ *
+ * 	  	outbuf:  [output] pointer to a char buffer to be filled
+ * 		bufsize: [input] maximum number of characters to write to outbuf (must be set by the caller)
+ * 		bytes:   [input] a value representing memory size in bytes to be written to outbuf
  */
 static void
-cdbexplain_formatMemory(char *outbuf, double bytes)
+cdbexplain_formatMemory(char *outbuf, int bufsize, double bytes)
 {
-    sprintf(outbuf, "%.0fK bytes", floor((bytes + 1023.0)/1024.0));
-}                               /* cdbexplain_formatMemory */
+	Assert(outbuf != NULL &&  "CDBEXPLAIN: char buffer is null");
+	Assert(bufsize > 0 &&  "CDBEXPLAIN: size of char buffer is zero");
+	/*check if truncation occurs */
+#ifdef USE_ASSERT_CHECKING
+	int nchars_written =
+#endif /* USE_ASSERT_CHECKING */
+	snprintf(outbuf, bufsize, "%.0fK bytes", floor((bytes + 1023.0)/1024.0));
+	Assert(nchars_written < bufsize &&
+		   "CDBEXPLAIN:  size of char buffer is smaller than the required number of chars");
+}                              /* cdbexplain_formatMemory */
+
 
 
 /*
  * cdbexplain_formatSeconds
  *    Convert time in seconds to readable string
+ *
+ *   	outbuf:  [output] pointer to a char buffer to be filled
+ * 		bufsize: [input] maximum number of characters to write to outbuf (must be set by the caller)
+ * 		seconds: [input] a value representing no. of seconds to be written to outbuf
  */
 static void
-cdbexplain_formatSeconds(char* outbuf, double seconds)
+cdbexplain_formatSeconds(char* outbuf, int bufsize, double seconds)
 {
-    double ms = seconds * 1000.0;
-
-    sprintf(outbuf, "%.*f ms",
+	Assert(outbuf != NULL &&  "CDBEXPLAIN: char buffer is null");
+	Assert(bufsize > 0 &&  "CDBEXPLAIN: size of char buffer is zero");
+	double ms = seconds * 1000.0;
+	/*check if truncation occurs */
+#ifdef USE_ASSERT_CHECKING
+	int nchars_written =
+#endif /* USE_ASSERT_CHECKING */
+	snprintf(outbuf, bufsize, "%.*f ms",
             (ms < 10.0 && ms != 0.0 && ms > -10.0) ? 3 : 0,
             ms);
+	Assert(nchars_written < bufsize &&
+		   "CDBEXPLAIN:  size of char buffer is smaller than the required number of chars");
 }                               /* cdbexplain_formatSeconds */
 
 
 /*
  * cdbexplain_formatSeg
- *    Convert segment id to string.
+ *    Convert segment id to string. 
+ *
+ *    	outbuf:  [output] pointer to a char buffer to be filled
+ * 		bufsize: [input] maximum number of characters to write to outbuf (must be set by the caller)
+ * 		segindex:[input] a value representing segment index to be written to outbuf
+ * 		nInst:   [input] no. of stat instances
  */
 static void
-cdbexplain_formatSeg(char *outbuf, int segindex, int nInst)
+cdbexplain_formatSeg(char *outbuf, int bufsize, int segindex, int nInst)
 {
-    if (nInst > 1 &&
-        segindex >= 0)
-        sprintf(outbuf, " (seg%d)", segindex);
-    else
+	Assert(outbuf != NULL &&  "CDBEXPLAIN: char buffer is null");
+	Assert(bufsize > 0 &&  "CDBEXPLAIN: size of char buffer is zero");
+
+    if ( nInst > 1 && segindex >= 0){
+    	/*check if truncation occurs */
+#ifdef USE_ASSERT_CHECKING
+    	int nchars_written =
+#endif /* USE_ASSERT_CHECKING */
+        snprintf(outbuf, bufsize, " (seg%d)", segindex);
+    	Assert(nchars_written < bufsize &&
+    		   "CDBEXPLAIN:  size of char buffer is smaller than the required number of chars");
+    }
+    else{
         outbuf[0] = '\0';
+    }
 }                               /* cdbexplain_formatSeg */
 
 
@@ -1161,7 +1201,7 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
      * Row counts.  Also, timings from the worker with the most output rows.
      */
     appendStringInfoFill(str, 2*indent, ' ');
-    cdbexplain_formatSeg(segbuf, ns->ntuples.imax, ns->ninst);
+    cdbexplain_formatSeg(segbuf, sizeof(segbuf), ns->ntuples.imax, ns->ninst);
     ntuples_avg = cdbexplain_agg_avg(&ns->ntuples);
     switch (planstate->type)
     {
@@ -1231,10 +1271,10 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     }
 
     /* Time from this worker's first InstrStartNode() to its first result row */
-    cdbexplain_formatSeconds(firstbuf, instr->startup);
+    cdbexplain_formatSeconds(firstbuf, sizeof(firstbuf), instr->startup);
 
     /* Time from this worker's first InstrStartNode() to end of its results */
-    cdbexplain_formatSeconds(totalbuf, instr->total);
+    cdbexplain_formatSeconds(totalbuf, sizeof(totalbuf), instr->total);
 
     /* Show elapsed time just once if they are the same. */
     if (strcmp(firstbuf, totalbuf) != 0)
@@ -1257,7 +1297,7 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
 	{
 		INSTR_TIME_SET_ZERO(timediff);
 		INSTR_TIME_ACCUM_DIFF(timediff, instr->firststart, ctx->querystarttime);
-		cdbexplain_formatSeconds(startbuf, INSTR_TIME_GET_DOUBLE(timediff));
+		cdbexplain_formatSeconds(startbuf, sizeof(startbuf), INSTR_TIME_GET_DOUBLE(timediff));
 		appendStringInfo(str, ", start offset by %s", startbuf);
 	}
 
@@ -1270,15 +1310,15 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     if (ns->execmemused.vcnt > 0)
     {
         appendStringInfoFill(str, 2*indent, ' ');
-        cdbexplain_formatMemory(maxbuf, ns->execmemused.vmax);
+        cdbexplain_formatMemory(maxbuf, sizeof(maxbuf), ns->execmemused.vmax);
         if (ns->execmemused.vcnt == 1)
             appendStringInfo(str,
                              "Executor memory:  %s.\n",
                              maxbuf);
         else
         {
-            cdbexplain_formatSeg(segbuf, ns->execmemused.imax, ns->ninst);
-            cdbexplain_formatMemory(avgbuf, cdbexplain_agg_avg(&ns->execmemused));
+            cdbexplain_formatSeg(segbuf, sizeof(segbuf), ns->execmemused.imax, ns->ninst);
+            cdbexplain_formatMemory(avgbuf, sizeof(avgbuf), cdbexplain_agg_avg(&ns->execmemused));
             appendStringInfo(str,
                              "Executor memory:  %s avg, %s max%s.\n",
                              avgbuf,
@@ -1293,15 +1333,15 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     if (ns->workmemused.vcnt > 0)
     {
         appendStringInfoFill(str, 2*indent, ' ');
-        cdbexplain_formatMemory(maxbuf, ns->workmemused.vmax);
+        cdbexplain_formatMemory(maxbuf, sizeof(maxbuf), ns->workmemused.vmax);
         if (ns->workmemused.vcnt == 1)
             appendStringInfo(str,
                              "Work_mem used:  %s.\n",
                              maxbuf);
         else
         {
-            cdbexplain_formatSeg(segbuf, ns->workmemused.imax, ns->ninst);
-            cdbexplain_formatMemory(avgbuf, cdbexplain_agg_avg(&ns->workmemused));
+            cdbexplain_formatSeg(segbuf, sizeof(segbuf), ns->workmemused.imax, ns->ninst);
+            cdbexplain_formatMemory(avgbuf, sizeof(avgbuf), cdbexplain_agg_avg(&ns->workmemused));
             appendStringInfo(str,
                              "Work_mem used:  %s avg, %s max%s.\n",
                              avgbuf,
@@ -1316,15 +1356,15 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     if (ns->workmemwanted.vcnt > 0)
     {
         appendStringInfoFill(str, 2*indent, ' ');
-        cdbexplain_formatMemory(maxbuf, ns->workmemwanted.vmax);
+        cdbexplain_formatMemory(maxbuf, sizeof(maxbuf), ns->workmemwanted.vmax);
         if (ns->ninst == 1)
             appendStringInfo(str,
                 "Work_mem wanted: %s to lessen workfile I/O.\n",
                 maxbuf);
         else
         {
-            cdbexplain_formatMemory(avgbuf, cdbexplain_agg_avg(&ns->workmemwanted));
-            cdbexplain_formatSeg(segbuf, ns->workmemwanted.imax, ns->ninst);
+            cdbexplain_formatMemory(avgbuf, sizeof(avgbuf), cdbexplain_agg_avg(&ns->workmemwanted));
+            cdbexplain_formatSeg(segbuf, sizeof(segbuf), ns->workmemwanted.imax, ns->ninst);
             appendStringInfo(str,
                              "Work_mem wanted: %s avg, %s max%s"
                              " to lessen workfile I/O affecting %d workers.\n",
@@ -1378,8 +1418,8 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
 	        /* Time from start of query on qDisp to worker's first result row */
 			INSTR_TIME_SET_ZERO(timediff);
 	        INSTR_TIME_ACCUM_DIFF(timediff, nsi->firststart, ctx->querystarttime);
-	        cdbexplain_formatSeconds(startbuf, INSTR_TIME_GET_DOUBLE(timediff));
-			cdbexplain_formatSeconds(totalbuf, nsi->total);
+	        cdbexplain_formatSeconds(startbuf, sizeof(startbuf), INSTR_TIME_GET_DOUBLE(timediff));
+			cdbexplain_formatSeconds(totalbuf, sizeof(totalbuf), nsi->total);
 
 			appendStringInfo(str,
                              "/seg%d_%s_%s_%.0f",
@@ -1485,13 +1525,13 @@ cdbexplain_showExecStatsEnd(struct PlannedStmt *stmt,
         }
 
         /* Executor memory high-water mark */
-        cdbexplain_formatMemory(maxbuf, ss->peakmemused.vmax);
+        cdbexplain_formatMemory(maxbuf, sizeof(maxbuf), ss->peakmemused.vmax);
         if (ss->peakmemused.vcnt == 1)
         {
             const char *seg = segbuf;
 
             if (ss->peakmemused.imax >= 0)
-                cdbexplain_formatSeg(segbuf, ss->peakmemused.imax, 999);
+                cdbexplain_formatSeg(segbuf, sizeof(segbuf), ss->peakmemused.imax, 999);
             else if (slice &&
                      slice->gangSize > 0)
                 seg = " (entry db)";
@@ -1504,8 +1544,8 @@ cdbexplain_showExecStatsEnd(struct PlannedStmt *stmt,
         }
         else if (ss->peakmemused.vcnt > 1)
         {
-            cdbexplain_formatMemory(avgbuf, cdbexplain_agg_avg(&ss->peakmemused));
-            cdbexplain_formatSeg(segbuf, ss->peakmemused.imax, ss->nworker);
+            cdbexplain_formatMemory(avgbuf, sizeof(avgbuf), cdbexplain_agg_avg(&ss->peakmemused));
+            cdbexplain_formatSeg(segbuf, sizeof(segbuf), ss->peakmemused.imax, ss->nworker);
             appendStringInfo(str,
                              "Executor memory: %s avg x %d workers, %s max%s.",
                              avgbuf,
@@ -1517,12 +1557,12 @@ cdbexplain_showExecStatsEnd(struct PlannedStmt *stmt,
         /* Work_mem used/wanted (max over all nodes and workers of slice) */
         if (ss->workmemused_max + ss->workmemwanted_max > 0)
         {
-            cdbexplain_formatMemory(maxbuf, ss->workmemused_max);
+            cdbexplain_formatMemory(maxbuf, sizeof(maxbuf), ss->workmemused_max);
             appendStringInfo(str, "  Work_mem: %s max", maxbuf);
             if (ss->workmemwanted_max > 0)
             {
                 str->data[flag] = '*';  /* draw attention to this slice */
-                cdbexplain_formatMemory(maxbuf, ss->workmemwanted_max);
+                cdbexplain_formatMemory(maxbuf, sizeof(maxbuf), ss->workmemwanted_max);
                 appendStringInfo(str, ", %s wanted", maxbuf);
             }
             appendStringInfoChar(str, '.');
