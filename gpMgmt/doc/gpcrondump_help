@@ -182,10 +182,10 @@ OPTIONS
  but is still written to the log file.
 
 
--r (no rollback on failure)
+-r (rollback on failure)
 
- Do not rollback the dump files (delete a partial dump) if a failure 
- is detected. The default is to rollback (delete partial dump files).
+ Rollback the dump files (delete a partial dump) if a failure 
+ is detected. The default is to not rollback.
 
 
 -R <post_dump_script>
