@@ -121,7 +121,7 @@ OPTIONS
  This option is useful in situations where gpstop is executed 
  and there are very large transactions that need to rollback. 
  These large transactions can take over a minute to rollback 
- and surpass the default timeout period of 60 seconds.
+ and surpass the default timeout period of 600 seconds.
 
 
 -u (reload pg_hba.conf and postgresql.conf files only)
