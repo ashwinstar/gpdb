@@ -54,8 +54,22 @@ Options:
 
 =head1 DESCRIPTION
 
-catullus.pl handles all of your stinky catalog problems, leaving a
-fresh, clean scent.
+catullus.pl converts annotated sql CREATE FUNCTION statements into
+pg_proc entries, suitable for inclusion into pg_proc.h.  
+
+The pg_proc definitions are stored in pg_proc.sql.  A manual step is
+required to generate the entries and update pg_proc.h.
+
+=head1 CAVEATS/FUTURE WORK
+
+The aggregate transition functions are constructed from CREATE
+FUNCTION statements.  But we should really use CREATE AGGREGATE
+statements to generate the DATA statements for pg_aggregate and the
+pg_proc entries.  A similar limitation exists for window functions in
+pg_window.  And operators and operator classes?  Access methods? Casts?
+
+The entire process should be more automated to generate edited header
+files directly, similar to tidycat.
 
 =head1 AUTHORS
 
