@@ -382,7 +382,13 @@ class LocalPysync:
         self.destDir = dest[i+1:]
         self.connectAddress = None
         self.sendData = None
-        self.options.host = socket.gethostbyname(self.userAndHost[self.userAndHost.find('@')+1:])
+        
+        addrinfo = socket.getaddrinfo(self.userAndHost[self.userAndHost.find('@')+1:], None)
+        
+        if addrinfo:
+            self.options.addrinfo = addrinfo[0]
+        else:
+            raise Exception("Unable to determine address for %s" % self.userAndHost)
 
     def usage(self,argv):
         sys.stderr.write("""usage:
@@ -587,7 +593,7 @@ class LocalPysync:
             # If the command was a connect order, open a socket to
             # the remote side for data transfer
             if self.connectAddress!=None:
-                self.socket = socket.socket()
+                self.socket = socket.socket(self.options.addrinfo[0])
                 self.socket.connect(self.connectAddress)
                 self.connectAddress = None
                 

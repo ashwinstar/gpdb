@@ -406,11 +406,11 @@ def appendNewEntriesToHbaFile(fileName, segments):
         try:
             for newSeg in segments:
                 address = newSeg.getSegmentAddress()
-                (hostname, aliaslist, ipaddrlist) = socket.gethostbyname_ex(address)
-
+                addrinfo = socket.getaddrinfo(address, None)
+                ipaddrlist = list(set([ (ai[0], ai[4][0]) for ai in addrinfo]))
                 haveWrittenCommentHeader = False
                 for addr in ipaddrlist:
-                    newLine = 'host\tall\tall\t%s/32\ttrust' % addr
+                    newLine = 'host\tall\tall\t%s/%s\ttrust' % (addr[1], '32' if addr[0] == socket.AF_INET else '128')
                     newLineCanonical = lineToCanonical(newLine)
                     if newLineCanonical not in existingLineMap:
                         if not haveWrittenCommentHeader:

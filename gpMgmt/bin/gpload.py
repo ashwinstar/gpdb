@@ -779,8 +779,9 @@ class Progress(threading.Thread):
         Connect to gpfdist and issue an HTTP query. No need to do this with
         httplib as the transaction is extremely simple
         """
-        s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        s.connect(('127.0.0.1',port))
+        addrinfo = socket.getaddrinfo('localhost', port)
+        s = socket.socket(addrinfo[0][0],socket.SOCK_STREAM)
+        s.connect(('localhost',port))
         s.sendall('GET gpfdist/status HTTP/1.0\r\n\r\n')
         f = s.makefile()
         read_bytes = -1

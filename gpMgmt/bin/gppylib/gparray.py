@@ -426,7 +426,7 @@ class GpDB:
         
         # Make sure we have enough room in the dstDir to fit the segment and its filespaces.
         requiredSize = DiskUsage.get_size( name = "srcDir"
-                                         , remote_host = "127.0.0.1"
+                                         , remote_host = "localhost"
                                          , directory = dstDir
                                          )
         name = "segcopy filespace get_size"
@@ -434,7 +434,7 @@ class GpDB:
             if oid == SYSTEM_FILESPACE:
                 continue
             dir = self.__filespaces[oid]
-            size = DiskUsage.get_size(name, "127.0.0.1", dir)
+            size = DiskUsage.get_size(name, "localhost", dir)
             requiredSize = requiredSize + size 
 
         dstBytesAvail = DiskFree.get_size_local(name = "Check for available free space for segment template", directory = dstDir)

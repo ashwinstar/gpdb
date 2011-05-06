@@ -78,6 +78,7 @@ class Options:
         self.progressTimestamp = False
         self.sendProgress = True
         self.sendRawProgress = False
+        self.addrinfo = None
 
 
 
@@ -630,8 +631,8 @@ class RemotePysync:
 
     def getData(self,name,offset,size):
         if not self.socket:
-            ss = socket.socket()
-            ss.bind((self.options.host,0))
+            ss = socket.socket(self.options.addrinfo[0])
+            ss.bind(self.options.addrinfo[4])
             ss.listen(1)
             self.doCommand('connect',ss.getsockname())
             self.socket = ss.accept()[0]

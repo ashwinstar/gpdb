@@ -1588,7 +1588,9 @@ PING_HOST () {
 	if [ x"" == x"$PING_EXIT" ];then PING_EXIT=0;fi
 	case $OS_TYPE in
 		darwin )
-			$PING $PING_TIME $TARGET_HOST > /dev/null 2>&1 ;;
+			$PING $PING_TIME $TARGET_HOST > /dev/null 2>&1 || $PING6 $PING_TIME $TARGET_HOST > /dev/null 2>&1 ;;
+		linux )
+			$PING $TARGET_HOST $PING_TIME > /dev/null 2>&1 || $PING6 $TARGET_HOST $PING_TIME > /dev/null 2>&1 ;;
 		* )
 			$PING $TARGET_HOST $PING_TIME > /dev/null 2>&1
 	esac
@@ -1940,6 +1942,7 @@ case $OS_TYPE in
 		HOST_ARCH_TYPE="uname -i"
 		NOLINE_ECHO="$ECHO -e"
 		DEFAULT_LOCALE_SETTING=en_US.utf8
+		PING6=`findCmdInPath ping6`
 		PING_TIME="-c 1"
 		GTAR=`findCmdInPath tar`
 		DF="`findCmdInPath df` -P"
@@ -1954,6 +1957,7 @@ case $OS_TYPE in
 		HOST_ARCH_TYPE="uname -m"
 		NOLINE_ECHO=$ECHO
 		DEFAULT_LOCALE_SETTING=en_US.utf-8
+        PING6=`findCmdInPath ping6`
 		PING_TIME="-c 1"
 		GTAR=`findCmdInPath gnutar`
 		DF="`findCmdInPath df` -P"

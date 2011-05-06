@@ -441,7 +441,7 @@ class ControlInfo:
         (home, dir, fname) = ctlpath(dbdir, name)
         cmd = ('cd %s && test -d %s && cd %s && test -e %s && cat %s'
                % (home, dir, dir, fname, fname))
-        (rc, out) = ssh('127.0.0.1', cmd)
+        (rc, out) = ssh('localhost', cmd)
         ctl = ControlInfo.parse(out.split('\n'))
         return ctl
         

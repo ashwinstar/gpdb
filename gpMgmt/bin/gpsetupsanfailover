@@ -275,7 +275,7 @@ try:
         # Ignore and use what was picked up in env or default gp port.
         pass
 
-    if getSyncmasterPID('127.0.0.1', opt['-d']) != -1:
+    if getSyncmasterPID('localhost', opt['-d']) != -1:
         logger.fatal('Unable to process requested command')
         sys.exit(2)
 

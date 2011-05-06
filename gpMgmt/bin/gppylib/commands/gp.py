@@ -238,7 +238,7 @@ class SendFilerepTransitionMessage(Command):
     #
     def __init__(self, name, inputFile, port=None,ctxt=LOCAL, remoteHost=None, dataDir=None):
         if not remoteHost:
-            remoteHost = "127.0.0.1"
+            remoteHost = "localhost"
         self.cmdStr='$GPHOME/bin/gp_primarymirror -h %s -p %s -i %s' % (remoteHost,port,inputFile)
         self.dataDir = dataDir
         Command.__init__(self,name,self.cmdStr,ctxt,remoteHost)
@@ -281,7 +281,7 @@ class SendFilerepTransitionMessage(Command):
 class SendFilerepTransitionStatusMessage(Command):
     def __init__(self, name, msg, dataDir=None, port=None,ctxt=LOCAL, remoteHost=None):
         if not remoteHost:
-            remoteHost = "127.0.0.1"
+            remoteHost = "localhost"
         self.cmdStr='$GPHOME/bin/gp_primarymirror -h %s -p %s' % (remoteHost,port)
         self.dataDir = dataDir
 

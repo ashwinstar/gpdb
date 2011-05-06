@@ -20,7 +20,7 @@ class TestDbURL(unittest.TestCase):
             del os.environ['PGHOST']
             
         foo = DbURL()
-        self.assertEqual(foo.pghost,"127.0.0.1")
+        self.assertEqual(foo.pghost,"localhost")
         
         os.environ['PGHOST'] = "foo"
         foo = DbURL()

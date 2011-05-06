@@ -96,7 +96,7 @@ class DbURL:
     def __init__(self,hostname=None,port=0,dbname=None,username=None,password=None):
         
         if hostname is None:
-            self.pghost = os.environ.get('PGHOST', '127.0.0.1')
+            self.pghost = os.environ.get('PGHOST', 'localhost')
         else:
             self.pghost = hostname
             

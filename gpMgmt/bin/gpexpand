@@ -805,10 +805,11 @@ class SegmentTemplate:
             try:
                 for newSeg in self.gparray.getExpansionSegDbList():
                     address = newSeg.getSegmentAddress()
-                    (hostname, aliaslist, ipaddrlist) = socket.gethostbyname_ex(address)
+                    addrinfo = socket.getaddrinfo(address, None)
+                    ipaddrlist = list(set([ (ai[0], ai[4][0]) for ai in addrinfo]))
                     fp.write('# %s\n' % address)
                     for addr in ipaddrlist:
-                        fp.write('host\tall\tall\t%s/32\ttrust\n' % addr)
+                        fp.write('host\tall\tall\t%s/%s\ttrust\n' % (addr[1], '32' if addr[0] == socket.AF_INET else '128'))
             finally:
                 fp.close()
         except IOError, msg:

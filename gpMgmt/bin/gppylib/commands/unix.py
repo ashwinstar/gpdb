@@ -168,6 +168,9 @@ class LinuxPlatform(GenericPlatform):
             
     def getMountDevFirst(self):
         return True
+    
+    def getPing6(self):
+        return findCmdInPath('ping6')
 
 class SolarisPlatform(GenericPlatform):
     
@@ -210,6 +213,8 @@ class DarwinPlatform(GenericPlatform):
     def getMountDevFirst(self):
         return True
     
+    def getPing6(self):
+        return findCmdInPath('ping6')
 
     
 class FreeBsdPlatform(GenericPlatform):
@@ -274,7 +279,16 @@ class Ping(Command):
     def __init__(self,name,hostToPing,ctxt=LOCAL,remoteHost=None,obj=None):        
         self.hostToPing=hostToPing
         self.obj=obj
-        cmdStr = "%s -c 1 %s" % (findCmdInPath('ping'),hostToPing)        
+        pingToUse = findCmdInPath('ping')
+
+        if curr_platform == LINUX or curr_platform == DARWIN:
+            # Get the family of the address we need to ping.  If it's AF_INET6
+            # we must use ping6 to ping it.
+            addrinfo = socket.getaddrinfo(hostToPing, None)
+            if addrinfo and addrinfo[0] and addrinfo[0][0] == socket.AF_INET6:
+                pingToUse = SYSTEM.getPing6()
+                
+        cmdStr = "%s -c 1 %s" % (pingToUse,hostToPing)        
         Command.__init__(self,name,cmdStr,ctxt,remoteHost)
     
     @staticmethod    
