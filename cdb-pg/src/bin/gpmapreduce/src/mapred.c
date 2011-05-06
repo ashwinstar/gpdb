@@ -74,6 +74,7 @@ const char *default_return_names[MAPRED_MAXKIND+1][2] =
  */
 const char *IN_FAILED_SQL_TRANSACTION = "25P02";
 const char *OBJ_DOES_NOT_EXIST        = "42P01";
+const char *SCHEMA_DOES_NOT_EXIST     = "3F000";
 
 const char *DISTRIBUTION_NOTICE = "NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause";
 
@@ -873,6 +874,7 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 									 plist ? plist->name : "unknown",
 									 plist ? plist->type : "-",
 									 plist2 ? plist2->type : "-");
+					XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
 				}
 			}
 			else
@@ -1334,7 +1336,7 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 			{
 				mapred_obj_error(obj, "Infinite recursion detected while "
 								 "trying to resove TASK");
-				XRAISE(MAPRED_PARSE_ERROR, NULL);
+				XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
 			}
 			obj->u.task.flags |= mapred_task_resolving;
 
@@ -1578,7 +1580,8 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 					{
 						mapred_obj_error(obj, "Table '%s' contains no rows", name);
 					}
-					else if (!strcmp(error, OBJ_DOES_NOT_EXIST))
+					else if (!strcmp(error, OBJ_DOES_NOT_EXIST) ||
+							 !strcmp(error, SCHEMA_DOES_NOT_EXIST) )
 					{
 						mapred_obj_error(obj, "Table '%s' not found", name);
 					}
@@ -2188,6 +2191,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 									PQresultErrorField(result, PG_DIAG_MESSAGE_PRIMARY));
 							mapred_obj_error(output, "Table '%s' can't be replaced",
 											 output->u.output.desc);
+							XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
 						}
 						bufreset(buffer);
 						exists = false;
@@ -2216,7 +2220,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 						/* exists, mode is neither replace or append => error */
 						mapred_obj_error(output, "Table '%s' already exists",
 										 output->u.output.desc);
-						continue;
+						XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
 					}
 				}
 				/* Handle Explain for non-table output */
@@ -2316,7 +2320,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 								{
 									mapred_obj_error(output, "file '%s' already exists",
 													 output->u.output.desc);
-									continue;
+									XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
 								}
 								/* Fallthrough */
 
@@ -2336,7 +2340,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 						{
 							mapred_obj_error(output, "could not open file '%s' for write",
 											 output->u.output.desc);
-							continue;
+							XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
 						}
 					}
 					else
@@ -3018,7 +3022,7 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 						mapred_obj_error(obj, "SOURCE '%s' is not an INPUT or "
 										 "TASK object",
 										 obj->u.task.input.name);
-						XRAISE(MAPRED_PARSE_ERROR, "Object Creation Error");
+						XRAISE(MAPRED_PARSE_ERROR, "Object creation Error");
 						break;
 				}
 				XASSERT(columns);

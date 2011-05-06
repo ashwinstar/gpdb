@@ -144,12 +144,6 @@ void parser_add_document(mapred_parser_t *parser)
 	error = mapred_verify_object(parser, parser->current_doc);
 	if (error != NO_ERROR)
 		parser->current_doc->u.document.flags |= mapred_document_error;
-	
-	if (parser->current_doc->u.document.flags & mapred_document_error)
-	{
-		mapred_destroy_object(&parser->current_doc);
-		return;
-	}
 
 	/* Allocate the new list item */
 	newitem = malloc(sizeof(mapred_olist_t));

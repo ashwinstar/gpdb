@@ -286,6 +286,8 @@ int main (int argc, char *argv[])
 	}
 	XCATCH_ANY
 	{
+		if (global_verbose_flag)
+			fprintf(stderr, "  - ");
 		if (xframe.exception)
 			fprintf(stderr, "Error: %s\n", (char *) xframe.exception);
 		else
@@ -364,7 +366,9 @@ int main (int argc, char *argv[])
 			} while (needpass);
 
 			if (PQstatus(conn) == CONNECTION_BAD)
-				fprintf(stderr, "%s", PQerrorMessage(conn));
+			{
+				XRAISE(CONNECTION_ERROR, PQerrorMessage(conn));
+			}
 			else
 			{
 				if (global_verbose_flag)
