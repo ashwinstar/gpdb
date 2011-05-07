@@ -14,21 +14,21 @@ DEFINE:
         
   - OUTPUT:
       NAME:     out_1
-      FILE:     @abs_builddir@/results/fileout_none.out
-      DELIMITER: ':'
-      
-  - OUTPUT:
-      NAME:     out_2
       FILE:     @abs_builddir@/results/fileout_replace.out
       MODE:     replace
       DELIMITER: '|'
       
   - OUTPUT:
-      NAME:     out_3
+      NAME:     out_2
       FILE:     @abs_builddir@/results/fileout_append.out
       MODE:     append
       DELIMITER: ','
-      
+
+  - OUTPUT:
+      NAME:     out_3
+      FILE:     @abs_builddir@/results/fileout_none.out
+      DELIMITER: ':'
+            
 EXECUTE:
   
   - RUN:

@@ -437,9 +437,10 @@ SELECT mapreduce('@abs_srcdir@/yml/fileout.yml') ORDER BY 1;
 mapreduce
 ---------------------
 STDERR> mapreduce_73721_run_1
-STDERR> Error: OUTPUT 'out_1': file '@abs_builddir@/results/fileout_none.out' already exists, at line 15
 STDERR> mapreduce_73721_run_2
 STDERR> mapreduce_73721_run_3
+STDERR> Error: OUTPUT 'out_3': file '@abs_builddir@/results/fileout_none.out' already exists, at line 27
+STDERR> Error: Object creation Failure
 STDERR> 
 STDOUT>
 
