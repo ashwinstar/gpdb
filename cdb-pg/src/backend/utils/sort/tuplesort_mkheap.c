@@ -387,6 +387,40 @@ static void mkheap_prep_siftdown_lv(MKHeap *mkheap, int lv, int cur, MKContext *
     }
 }
 
+/*
+ * Update all lvtops entries. The lvtops entries whose array index is not greater
+ * than the level value stored in the current top element in the heap, update them
+ * with the value from the top element in the heap. This function also cleans up
+ * the remaining lvtops entries.
+ *
+ * This is needed after the current top entry in the heap is removed from the heap, since
+ * some lvtops' ptr may point to the tuple that could be freed when its associated entry
+ * is removed from the heap.
+ */
+static void mkheap_update_lvtops(MKHeap *mkheap)
+{
+	int top_lv = mke_get_lv(mkheap->p);
+
+	for (int lv = 0; lv < mkheap->mkctxt->total_lv; lv++)
+	{
+		MKEntry *lvEntry = mkheap->lvtops + lv;
+		MKEntry *srcEntry = NULL;
+		
+		if (lv <= top_lv)
+		{
+			srcEntry = mkheap->p;
+
+			if ( mkheap->mkctxt->fetchForPrep)
+				tupsort_prepare(mkheap->p, mkheap->mkctxt, lv);
+		}
+
+		(*mkheap->mkctxt->cpfr)(lvEntry, srcEntry, mkheap->mkctxt->lvctxt + lv);
+
+		/* Set the correct level */
+		mke_set_lv(lvEntry, lv);
+	}
+}
+
 /**
  * Save the value for mkheap's current top (at the level entered in the current top) into lvtops.
  */
@@ -615,18 +649,6 @@ static int mkheap_putAndGet_impl(MKHeap *mkheap, MKEntry *e)
 
             	return c;
             }
-            else
-            {
-            	/*
-            	 * new one is larger than current top, but smaller/equal to all others
-            	 *  simply swap them to get the current top returned and *e sitting on top.
-            	 */
-                tmp = *e;
-                *e = mkheap->p[0];
-                mkheap->p[0] = tmp;
-
-                return 1;
-            }
         }
     }
 
@@ -644,6 +666,11 @@ static int mkheap_putAndGet_impl(MKHeap *mkheap, MKEntry *e)
 
     if(mkheap_need_heapify(mkheap))
         mkheap_heapify(mkheap, false);
+
+	if (mkheap->count > 0)
+	{
+		mkheap_update_lvtops(mkheap);
+	}
 
 #ifdef USE_ASSERT_CHECKING
     if(gp_mk_sort_check)

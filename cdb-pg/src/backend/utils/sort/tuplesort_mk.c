@@ -1474,6 +1474,15 @@ tuplesort_gettupleslot_pos_mk(Tuplesortstate_mk *state, TuplesortPos_mk *pos,
         Assert(!mke_is_empty(&e));
         ExecStoreMemTuple(e.ptr, slot, should_free);
 
+#ifdef USE_ASSERT_CHECKING
+		if (should_free && state->mkheap != NULL && state->mkheap->count > 0)
+		{
+			Assert(e.ptr != NULL &&
+				   (e.ptr != state->mkheap->lvtops->ptr));
+		}
+		
+#endif
+
         if(state->gpmon_pkt)
             Gpmon_M_Incr_Rows_Out(state->gpmon_pkt);
 

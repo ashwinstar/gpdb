@@ -127,6 +127,8 @@ static inline void mke_set_empty(MKEntry *e)
 {
     e->compflags = MKE_CF_Empty; 
     e->flags = 0;
+	e->d = 0;
+	e->ptr = 0;
 }
 static inline bool mke_is_empty(MKEntry *e)
 {
