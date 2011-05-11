@@ -7,12 +7,12 @@ SYNOPSIS
 *****************************************************
 
 gpcheckperf -d <test_directory> [-d <test_directory> ...] 
-       {-f <hostfile_gpcheckperf> | - h <hostname> [-h <hostname> ...]} 
+       {-f <hostfile_gpcheckperf> | -h <hostname> [-h <hostname> ...]} 
        [-r ds] [-B <block_size>] [-S <file_size>] [-D] [-v|-V]
 
 
 gpcheckperf -d <temp_directory>
-        {-f <hostfile_gpchecknet> | - h <hostname> [-h <hostname> ...]} 
+        {-f <hostfile_gpchecknet> | -h <hostname> [-h <hostname> ...]} 
         [ -r n|N|M [--duration <time>] [--netperf] ] [-D] [-v|-V]
 
 

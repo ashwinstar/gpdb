@@ -68,7 +68,7 @@ OPTIONS
  resulting output while running in non-interactive mode.
 
 
--f <host_file>
+-f <hostfile_gpssh>
 
  Specifies the name of a file that contains a list of hosts that 
  will participate in this SSH session. The host name is required, 

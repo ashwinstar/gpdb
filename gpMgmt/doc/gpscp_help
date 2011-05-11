@@ -6,7 +6,7 @@ Copies files between multiple hosts at once.
 SYNOPSIS
 *****************************************************
 
-gpscp { -f <hostfile_gpssh> | - h <hostname> [-h <hostname> ...] } 
+gpscp { -f <hostfile_gpssh> | -h <hostname> [-h <hostname> ...] } 
 [-J <character>] [-v] [[<user>@]<hostname>:]<file_to_copy> [...] 
 [[<user>@]<hostname>:]<copy_to_path>
 
