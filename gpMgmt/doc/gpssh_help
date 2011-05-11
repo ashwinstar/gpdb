@@ -7,7 +7,7 @@ Provides ssh access to multiple hosts at once.
 SYNOPSIS
 *****************************************************
 
-gpssh { -f <hostfile_gpssh> | - h <hostname> [-h <hostname> ...] } 
+gpssh { -f <hostfile_gpssh> | -h <hostname> [-h <hostname> ...] } 
 [-v] [-e] [<bash_command>]
 
 gpssh -? 
