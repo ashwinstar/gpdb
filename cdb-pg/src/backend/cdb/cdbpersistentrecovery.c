@@ -76,6 +76,7 @@ PersistentRecovery_XactHashTableInit(void)
 
 	xactHashTable = hash_create("XactEntry", 10, &info, hash_flags);
 }
+
 static XactEntry PersistentRecovery_FindOrCreateXactEntry(
 	TransactionId	xid,
 
@@ -140,6 +141,8 @@ typedef struct FsObjEntryData
 	
 	PersistentFileSysState		state;
 
+	MirroredObjectExistenceState mirrorExistenceState;
+
 	TransactionId				xid;
 
 	bool						updateNeeded;
@@ -161,9 +164,10 @@ FsObjEntryToBuffer(char *buffer, int maxBufferLen, FsObjEntry fsObjEntry)
 			snprintf(
 				buffer,
 				maxBufferLen,
-			    "%s: state '%s', transaction %u, relation storage manager '%s', persistent serial number " INT64_FORMAT ", TID %s",
+				"%s: state '%s' mirrorExistenceState '%s', transaction %u, relation storage manager '%s', persistent serial number " INT64_FORMAT ", TID %s",
 				PersistentFileSysObjName_TypeAndObjectName(&fsObjEntry->fsObjName),
 				PersistentFileSysObjState_Name(fsObjEntry->state),
+				MirroredObjectExistenceState_Name(fsObjEntry->mirrorExistenceState),
 				fsObjEntry->xid,
 				PersistentFileSysRelStorageMgr_Name(fsObjEntry->relStorageMgr),
 				fsObjEntry->persistentSerialNum,
@@ -265,6 +269,7 @@ static FsObjEntry PersistentRecovery_FindOrCreateFsObjEntry(
 		fsObjEntry->relStorageMgr = PersistentFileSysRelStorageMgr_None;
 		fsObjEntry->xid = InvalidTransactionId;
 		fsObjEntry->state = -1;
+		fsObjEntry->mirrorExistenceState = -1;
 		fsObjEntry->updateNeeded = false;
 		fsObjEntry->stateChangeResult = PersistentFileSysObjStateChangeResult_StateChangeOk;
 	}
@@ -991,6 +996,8 @@ PersistentRecovery_AddScanEntry(
 
 	PersistentFileSysState	state,
 	
+	MirroredObjectExistenceState mirrorExistenceState,
+
 	TransactionId			parentXid,
 	
 	int64					persistentSerialNum)
@@ -1042,6 +1049,7 @@ PersistentRecovery_AddScanEntry(
 		fsObjEntry->persistentSerialNum = persistentSerialNum;
 		fsObjEntry->xid = parentXid;
 		fsObjEntry->state = state;
+		fsObjEntry->mirrorExistenceState = mirrorExistenceState;
 		if (Debug_persistent_recovery_print)
 			elog(PersistentRecovery_DebugPrintLevel(), 
 			     "Scan REDO: Add %s", FsObjEntryToString(fsObjEntry));
@@ -1060,6 +1068,7 @@ PersistentRecovery_AddScanEntry(
 					 parentXid);
 
 			fsObjEntry->state = state;
+			fsObjEntry->mirrorExistenceState = mirrorExistenceState;
 			fsObjEntry->xid = parentXid;
 		}
 		else if (fsObjEntry->state > state)
@@ -1073,6 +1082,18 @@ PersistentRecovery_AddScanEntry(
 					 persistentSerialNum);
 
 			fsObjEntry->updateNeeded = true;
+		}
+		else
+		{
+				/*
+				* During crash recovery when we drop objects, we should skip the objects whose
+				* mirror existence state is MirrorDropRemains. It will be dropped during resync
+				*/
+				fsObjEntry->mirrorExistenceState = mirrorExistenceState;
+				if (Debug_persistent_recovery_print)
+					elog(PersistentRecovery_DebugPrintLevel(),
+						"State is same. Update the mirror existence state. Mirror existence state %s",
+						MirroredObjectExistenceState_Name(fsObjEntry->mirrorExistenceState));
 		}
 	}
 	else if (fsObjEntry->persistentSerialNum < persistentSerialNum)
@@ -1090,6 +1111,7 @@ PersistentRecovery_AddScanEntry(
 		fsObjEntry->fsObjName = *fsObjName;
 		fsObjEntry->relStorageMgr = relStorageMgr;
 		fsObjEntry->state = state;
+		fsObjEntry->mirrorExistenceState = mirrorExistenceState;
 		fsObjEntry->xid = parentXid;
 		fsObjEntry->persistentSerialNum = persistentSerialNum;
 	}
@@ -1155,6 +1177,7 @@ static void PersistentRecovery_ScanTuple(
 							&fsObjName,
 							relStorageMgr,
 							state,
+							mirrorExistenceState,
 							parentXid,
 							persistentSerialNum);
 
@@ -1782,6 +1805,15 @@ PersistentRecovery_DropType(
 						 FsObjEntryToString(fsObjEntry),
 						 PersistentFileSysObjStateChangeResult_Name(fsObjEntry->stateChangeResult));
 				}
+				continue;
+			}
+
+			if (fsObjEntry->mirrorExistenceState == MirroredObjectExistenceState_OnlyMirrorDropRemains)
+			{
+				/* This file-system object will be dropped during resync */
+				if(Debug_persistent_recovery_print)
+					elog(PersistentRecovery_DebugPrintLevel(),
+						"Skipping drop for %s as only mirror drop remains", FsObjEntryToString(fsObjEntry));
 				continue;
 			}
 
