@@ -1322,6 +1322,7 @@ plan_append_aggs_with_gather(PlannerInfo *root,
 	/* The common source plan is a Gather merge node on top of the given
 	 * subplan
 	 */
+	gather_subplan = lefttree;
 	Assert(lefttree->flow != NULL);
 	if (lefttree->flow->flotype != FLOW_SINGLETON)
 	{
@@ -1691,6 +1692,8 @@ generate_list_subplans(PlannerInfo *root, int num_subplans,
 	Cost share_cost;
 	Cost copy_cost;
 
+	Assert(context->subplan != NULL);
+	
 	/*
 	 * We consider both input sharing plan and a list of common
 	 * subplan copies, and choose the one which has the cheaper
