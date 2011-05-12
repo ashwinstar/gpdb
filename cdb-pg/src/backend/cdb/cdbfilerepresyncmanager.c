@@ -199,7 +199,7 @@ typedef struct FileRepResyncShmem_s {
 	
 } FileRepResyncShmem_s;
 
-static FileRepResyncShmem_s *fileRepResyncShmem = NULL;
+static volatile FileRepResyncShmem_s *fileRepResyncShmem = NULL;
 
 static void FileRepResync_ShmemReInit(void);
 
@@ -450,8 +450,10 @@ FileRepResync_ShmemSize(void)
 void
 FileRepResync_ShmemInit(void)
 {
-	HASHCTL	hash_ctl;
-	bool	foundPtr;
+	HASHCTL			hash_ctl;
+	bool			foundPtr;
+	struct timeval	resyncTime;
+
 	
 	fileRepResyncShmem = (FileRepResyncShmem_s *) ShmemInitStruct("filerep resync", 
 																  sizeof(FileRepResyncShmem_s),
@@ -478,7 +480,10 @@ FileRepResync_ShmemInit(void)
 	
 	fileRepResyncShmem->blocksSynchronized = 0;
 	
-	gettimeofday(&fileRepResyncShmem->startResyncTime, NULL);
+	gettimeofday(&resyncTime, NULL);
+	
+	fileRepResyncShmem->startResyncTime.tv_sec = resyncTime.tv_sec;
+	fileRepResyncShmem->startResyncTime.tv_usec = resyncTime.tv_usec;
 		
 	SpinLockInit(&fileRepResyncShmem->lock);
 	
@@ -522,6 +527,8 @@ FileRepResync_ShmemReInit(void)
 {
 	HASH_SEQ_STATUS				hash_status;
 	FileRepResyncHashEntry_s	*entry;
+	struct timeval				resyncTime;
+
 	
 	if (fileRepResyncShmem == NULL) {
 		ereport(ERROR,
@@ -541,7 +548,10 @@ FileRepResync_ShmemReInit(void)
 	
 	fileRepResyncShmem->blocksSynchronized = 0;
 	
-	gettimeofday(&fileRepResyncShmem->startResyncTime, NULL);
+	gettimeofday(&resyncTime, NULL);
+	
+	fileRepResyncShmem->startResyncTime.tv_sec = resyncTime.tv_sec;
+	fileRepResyncShmem->startResyncTime.tv_usec = resyncTime.tv_usec;	
 	
 	SpinLockInit(&fileRepResyncShmem->lock);
 	
@@ -933,6 +943,7 @@ FileRepPrimary_RunResyncManager(void)
 	bool	retval;
 	int		ii=0;
 	bool	mirroredLock = FALSE;
+	struct	timeval	resyncTime;
 		
 	FileRepResyncHashEntry_s	entry;
 	ResynchronizeScanToken		token;
@@ -946,7 +957,10 @@ FileRepPrimary_RunResyncManager(void)
 	ResynchronizeScanToken_Init(&token);
 	
 	/* set start resync time required for reporting */
-	gettimeofday(&fileRepResyncShmem->startResyncTime, NULL);
+	gettimeofday(&resyncTime, NULL);
+	
+	fileRepResyncShmem->startResyncTime.tv_sec = resyncTime.tv_sec;
+	fileRepResyncShmem->startResyncTime.tv_usec = resyncTime.tv_usec;
 	
 	while (1) {
 		

@@ -1303,8 +1303,8 @@ typedef struct FileRepLogShmem_s
 		
 } FileRepLogShmem_s;
 
-static	FileRepLogShmem_s *fileRepConfigLogShmem = NULL;
-static	FileRepLogShmem_s *fileRepLogShmem = NULL;
+static	volatile FileRepLogShmem_s *fileRepConfigLogShmem = NULL;
+static	volatile FileRepLogShmem_s *fileRepLogShmem = NULL;
 
 
 static void FileRep_FlushLogActiveSlot(void);
@@ -1317,13 +1317,13 @@ static void FileRep_FlushLog(
 static void FileRepLog_ShmemReInit(void);
 
 static void FileRep_CheckFlushLogs(
-								   FileRepLogShmem_s	*logShmem,
-								   bool					isConfigLog);
+								   volatile FileRepLogShmem_s	*logShmem,
+								   bool							isConfigLog);
 
 static void
 FileRep_CheckFlushLogs(
-					   FileRepLogShmem_s	*logShmem,
-					   bool					isConfigLog)
+					   volatile	FileRepLogShmem_s	*logShmem,
+					   bool							isConfigLog)
 {
 	uint32	dataLength = 0;
 	bool	flushConfigLog = FALSE;
