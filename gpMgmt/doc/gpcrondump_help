@@ -35,6 +35,15 @@ using cron (a scheduling utility for UNIX operating systems). Cron jobs
 that call gpcrondump should be scheduled on the master host.
 
 **********************
+Return Codes
+**********************
+
+The following is a list of the codes that gpcrondump returns.
+   0 – Dump completed with no problems
+   1 – Dump completed, but one or more warnings were generated
+   2 – Dump failed with a fatal error
+
+**********************
 EMAIL NOTIFICATIONS
 **********************
 To have gpcrondump send out status email notifications, you must place 
@@ -58,6 +67,10 @@ OPTIONS
 -b (bypass disk space check)
 
  Bypass disk space check. The default is to check for available disk space.
+
+ Note: Bypassing the disk space check generates a warning message. 
+ With a warning message, the return code for gpcrondump is 1 if the 
+ dump is successful. (If the dump fails, the return code is 2, in all cases.)
 
 
 -B <parallel_processes>
