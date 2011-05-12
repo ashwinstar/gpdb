@@ -1029,9 +1029,6 @@ copydocs :
 	    echo "Copying $(BLD_TOP)/languages/PLJAVA/PLJAVA_README" ; \
 	    cp -p $(BLD_TOP)/languages/PLJAVA/PLJAVA_README $(INSTLOC)/share/postgresql/pljava ; \
 	fi
-	if [ -f BUILD_EDITION -a "`cat BUILD_EDITION`" = "Community Edition" ]; then \
-	    cp $(GPDOCDIR)/pdf/SNE/GP*.pdf $(INSTLOC)/docs/; \
-	fi
 	@if [ -d $(INSTLOC)/doc ] ; then \
 	    echo "Removing $(INSTLOC)/doc" ; \
 	    rm -rf $(INSTLOC)/doc ; \
