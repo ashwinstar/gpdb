@@ -3108,12 +3108,12 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 				conn->conn_info.flags |= UDPIC_FLAGS_STOP;
 				if (!(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6 ))
 				{
-					elog(NOTICE,"trying to send ack when we don't know where to send to %d %s",conn->peer.sin_family, conn->remoteHostAndPort);
+					elog(LOG,"UDP Interconnect bug: trying to send ack when we don't know where to send to %s", conn->remoteHostAndPort);
 				}
 				else
 				{
-				Assert(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6 );
-				sendAck(conn, true);
+					Assert(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6 );
+					sendAck(conn, true);
 				}
 
 				elog(DEBUG4, "sent stop message. node %d route %d seq %d", motNodeID, i, conn->conn_info.seq);
