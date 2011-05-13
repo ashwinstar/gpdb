@@ -21,7 +21,7 @@
 
 #include <pthread.h>
 
-#include "nodes/execnodes.h"            /* Slice, SliceTable */
+#include "nodes/execnodes.h"			/* Slice, SliceTable */
 #include "nodes/pg_list.h"
 #include "nodes/print.h"
 #include "utils/memutils.h"
@@ -71,24 +71,24 @@
 #ifndef POLLIN
 /* Event flag definitions for WSAPoll(). */
 
-#define POLLRDNORM  0x0100
-#define POLLRDBAND  0x0200
-#define POLLIN      (POLLRDNORM | POLLRDBAND)
-#define POLLPRI     0x0400
+#define POLLRDNORM	0x0100
+#define POLLRDBAND	0x0200
+#define POLLIN		(POLLRDNORM | POLLRDBAND)
+#define POLLPRI		0x0400
 
-#define POLLWRNORM  0x0010
-#define POLLOUT     (POLLWRNORM)
-#define POLLWRBAND  0x0020
+#define POLLWRNORM	0x0010
+#define POLLOUT		(POLLWRNORM)
+#define POLLWRBAND	0x0020
 
-#define POLLERR     0x0001
-#define POLLHUP     0x0002
-#define POLLNVAL    0x0004
+#define POLLERR		0x0001
+#define POLLHUP		0x0002
+#define POLLNVAL	0x0004
 
 typedef struct pollfd {
 
-    SOCKET  fd;
-    SHORT   events;
-    SHORT   revents;
+	SOCKET	fd;
+	SHORT	events;
+	SHORT	revents;
 
 } WSAPOLLFD, *PWSAPOLLFD, FAR *LPWSAPOLLFD;
 __control_entrypoint(DllExport)
@@ -96,11 +96,11 @@ WINSOCK_API_LINKAGE
 int
 WSAAPI
 WSAPoll(
-    IN OUT LPWSAPOLLFD fdArray,
-    IN ULONG fds,
-    IN INT timeout
-    );
-#endif 
+	IN OUT LPWSAPOLLFD fdArray,
+	IN ULONG fds,
+	IN INT timeout
+	);
+#endif
 
 #define poll WSAPoll
 
@@ -164,7 +164,7 @@ static volatile bool rx_thread_waiting = false;
 
 static int	rx_buf_maxcount = 1;
 static int	rx_buf_count = 0;
-static char	*rx_buf_freelist = NULL;
+static char *rx_buf_freelist = NULL;
 
 static volatile bool main_thread_waiting = false;
 static volatile int main_thread_waiting_node = -1;
@@ -275,7 +275,7 @@ prune_cursor_ic_entry(uint32 icId)
 		q = NULL;
 		while (p)
 		{
-			/*  remove an entry if it is older than the prune-point */
+			/*	remove an entry if it is older than the prune-point */
 			if (p->icId < icId)
 			{
 				struct cursor_ic_history_entry *trash;
@@ -344,7 +344,7 @@ static void SendEosUDP(MotionLayerState *mlStates, ChunkTransportState *transpor
 static bool SendChunkUDP(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 						 ChunkTransportStateEntry *pEntry, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
 
-static TupleChunkListItem receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry *pEntry, 
+static TupleChunkListItem receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry *pEntry,
 										   int16 motNodeID, int16 *srcRoute, volatile MotionConn *conn, bool inTeardown);
 
 static void doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID);
@@ -359,43 +359,43 @@ static void aggregateStatistics(ChunkTransportStateEntry *pEntry);
 static void
 setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 {
-	struct sockaddr_in  saddr;
-	socklen_t           saddrlen;
-    int                 errnoSave;
-    int                 fd = -1;
-    int                 rcvbuf;
-	socklen_t           rcvbufsize=0;
-    const char         *fun;
+	struct sockaddr_in	saddr;
+	socklen_t			saddrlen;
+	int					errnoSave;
+	int					fd = -1;
+	int					rcvbuf;
+	socklen_t			rcvbufsize=0;
+	const char		   *fun;
 
-    fun = "socket";
+	fun = "socket";
 	fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (fd < 0)
 		goto error;
 
-    fun = "fcntl(O_NONBLOCK)";
-    if (!pg_set_noblock(fd))
-        goto error;
+	fun = "fcntl(O_NONBLOCK)";
+	if (!pg_set_noblock(fd))
+		goto error;
 
 	MemSet(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
 
 	saddr.sin_port = 0;
 
-    fun = "bind";
+	fun = "bind";
 	if (bind(fd, (struct sockaddr *)&saddr, sizeof(saddr)) < 0)
 		goto error;
 
 	MemSet(&saddr, 0, sizeof(saddr));
 	saddrlen = sizeof(saddr);
 
-    fun = "getsockname";
-    if (getsockname(fd, (struct sockaddr *) &saddr, &saddrlen) < 0)
+	fun = "getsockname";
+	if (getsockname(fd, (struct sockaddr *) &saddr, &saddrlen) < 0)
 		goto error;
 
-    *listenerSocketFd = fd;
-    *listenerPort = ntohs(saddr.sin_port);
+	*listenerSocketFd = fd;
+	*listenerPort = ntohs(saddr.sin_port);
 
-    fun = "setsockopt";
+	fun = "setsockopt";
 
 	/*
 	 * the max-size supported by all of our platforms appears to be 128K ?
@@ -409,7 +409,7 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 
 retry:
 	rcvbufsize = sizeof(rcvbuf);
-    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf, rcvbufsize) < 0)
+	if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf, rcvbufsize) < 0)
 	{
 		/* try a smaller buffer ? */
 		if (Gp_udp_bufsize_k == 0 && rcvbuf == 256 * 1024)
@@ -421,9 +421,9 @@ retry:
 		goto error;
 	}
 
-    fun = "getsockopt";
+	fun = "getsockopt";
 	rcvbufsize = sizeof(rcvbuf);
-    if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&rcvbuf, &rcvbufsize) < 0)
+	if (getsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&rcvbuf, &rcvbufsize) < 0)
 		goto error;
 
 	elog(DEBUG2, "setupUDPListeningSocket: rcvbuf size %d", rcvbuf);
@@ -431,13 +431,13 @@ retry:
 	return;
 
 error:
-    errnoSave = errno;
-    if (fd >= 0)
-        closesocket(fd);
-    errno = errnoSave;
-    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+	errnoSave = errno;
+	if (fd >= 0)
+		closesocket(fd);
+	errno = errnoSave;
+	ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 					errmsg("Interconnect Error: Could not set up udp listener socket."),
-			        errdetail("%m%s", fun)));
+					errdetail("%m%s", fun)));
 	return;
 }
 
@@ -573,7 +573,7 @@ wait_on_receiver(int timeout_us)
 
 		gettimeofday(&tv, NULL);
 		ts.tv_sec = tv.tv_sec;
-		/*  leave in ms for this */
+		/*	leave in ms for this */
 		ts.tv_nsec = (tv.tv_usec + timeout_us);
 		if (ts.tv_nsec >= 1000000)
 		{
@@ -584,9 +584,9 @@ wait_on_receiver(int timeout_us)
 	}
 #endif
 
-   	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 	{
-		elog(DEBUG5, "waiting (timed) on route %d %s", main_thread_waiting_route, 
+		elog(DEBUG5, "waiting (timed) on route %d %s", main_thread_waiting_route,
 			 (main_thread_waiting_route == ANY_ROUTE ? "(any route)" : ""));
 	}
 
@@ -785,7 +785,7 @@ conn_rehash(void)
 
 			/* save a reference to this bin */
 			newbin = bin;
-			
+
 			/* advance to the next bin in the old table */
 			bin = bin->next;
 
@@ -959,8 +959,8 @@ get_rx_buffer(void)
  *
  * PARAMETERS
  *
- *	 sendSlice  - Slice that this process is a member of.
- *   pIncIdx - index in the parent slice list of mySlice.
+ *	 sendSlice	- Slice that this process is a member of.
+ *	 pIncIdx - index in the parent slice list of mySlice.
  *
  * RETURNS
  *	 Initialized ChunkTransportState for the Sending Motion Node Id.
@@ -971,57 +971,57 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 							int			*pOutgoingCount)
 {
 	ChunkTransportStateEntry *pEntry;
-    MotionConn *conn;
-    ListCell   *cell;
+	MotionConn *conn;
+	ListCell   *cell;
 	Slice	   *recvSlice;
-    CdbProcess *cdbProc;
+	CdbProcess *cdbProc;
 
-	struct sockaddr_in  saddr;
-	socklen_t           saddrlen;
+	struct sockaddr_in	saddr;
+	socklen_t			saddrlen;
 
-    const char         *fun;
-    int                 i, errnoSave;
+	const char		   *fun;
+	int					i, errnoSave;
 
-    *pOutgoingCount = 0;
+	*pOutgoingCount = 0;
 
 	recvSlice = (Slice *) list_nth(transportStates->sliceTable->slices, sendSlice->parentIndex);
 
 	adjustMasterRouting(recvSlice);
 
-    if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-        elog(DEBUG4, "Interconnect seg%d slice%d setting up sending motion node",
-             Gp_segment, sendSlice->sliceIndex);
+	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+		elog(DEBUG4, "Interconnect seg%d slice%d setting up sending motion node",
+			 Gp_segment, sendSlice->sliceIndex);
 
 	pEntry = createChunkTransportState(transportStates,
 									   sendSlice,
 									   recvSlice,
 									   list_length(recvSlice->primaryProcesses));
-	
+
 	Assert(pEntry && pEntry->valid);
 	/*
 	 * Setup a MotionConn entry for each of our outbound connections.
-     * Request a connection to each receiving backend's listening port.
-     * NB: Some mirrors could be down & have no CdbProcess entry.
+	 * Request a connection to each receiving backend's listening port.
+	 * NB: Some mirrors could be down & have no CdbProcess entry.
 	 */
-    conn = pEntry->conns;
+	conn = pEntry->conns;
 
 	i = 0;
-    foreach(cell, recvSlice->primaryProcesses)
+	foreach(cell, recvSlice->primaryProcesses)
 	{
-        cdbProc = (CdbProcess *)lfirst(cell);
-        if (cdbProc)
+		cdbProc = (CdbProcess *)lfirst(cell);
+		if (cdbProc)
 		{
-            conn->cdbProc = cdbProc;
-            conn->ping = palloc(Gp_max_packet_size);
-            conn->pong = palloc(Gp_max_packet_size);
-            conn->pBuff = conn->ping;
+			conn->cdbProc = cdbProc;
+			conn->ping = palloc(Gp_max_packet_size);
+			conn->pong = palloc(Gp_max_packet_size);
+			conn->pBuff = conn->ping;
 			conn->activeXmit = NULL;
-            conn->state = mcsSetupOutgoingConnection;
+			conn->state = mcsSetupOutgoingConnection;
 			conn->route = i++;
-            (*pOutgoingCount)++;
+			(*pOutgoingCount)++;
 		}
 
-        conn++;
+		conn++;
 	}
 
 	pEntry->txfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -1032,8 +1032,8 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	if (!pg_set_noblock(pEntry->txfd))
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not set udp-tx socket"
-						       "to non-blocking mode."),
-			            errdetail("%m%s sockfd=%d", "fcntl", pEntry->txfd)));
+							   "to non-blocking mode."),
+						errdetail("%m%s sockfd=%d", "fcntl", pEntry->txfd)));
 
 	MemSet(&saddr, 0, sizeof(saddr));
 	saddr.sin_family = AF_INET;
@@ -1048,7 +1048,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	saddrlen = sizeof(saddr);
 
 	fun = "getsockname";
-    if (getsockname(pEntry->txfd, (struct sockaddr *) &saddr, &saddrlen) < 0)
+	if (getsockname(pEntry->txfd, (struct sockaddr *) &saddr, &saddrlen) < 0)
 		goto error;
 
 
@@ -1069,8 +1069,8 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	 */
 
 	{
-		int                 rcvbuf;
-		socklen_t           rcvbufsize=0;
+		int					rcvbuf;
+		socklen_t			rcvbufsize=0;
 
 		fun = "getsockopt";
 		rcvbufsize = sizeof(rcvbuf);
@@ -1093,8 +1093,8 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	}
 
 	{
-		int                 sndbuf;
-		socklen_t           sndbufsize=0;
+		int					sndbuf;
+		socklen_t			sndbufsize=0;
 
 		fun = "getsockopt";
 		sndbufsize = sizeof(sndbuf);
@@ -1121,16 +1121,16 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	}
 
 
-    return pEntry;
+	return pEntry;
 
 error:
-    errnoSave = errno;
-    if (pEntry->txfd >= 0)
-        closesocket(pEntry->txfd);
-    errno = errnoSave;
-    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+	errnoSave = errno;
+	if (pEntry->txfd >= 0)
+		closesocket(pEntry->txfd);
+	errno = errnoSave;
+	ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 					errmsg("Interconnect Error: Could not set up listener socket."),
-			        errdetail("%m%s", fun)));
+					errdetail("%m%s", fun)));
 	return NULL;
 }
 
@@ -1140,67 +1140,67 @@ error:
  * Called by SetupInterconnect when conn->state == mcsSetupOutgoingConnection.
  *
  * On return, state is:
- *      mcsSetupOutgoingConnection if failed and caller should retry.
+ *		mcsSetupOutgoingConnection if failed and caller should retry.
  *		state then transitions to mcsStarted (once connection request is
  * acked by remote peer).
  */
 void
 setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn)
 {
-    CdbProcess         *cdbProc = conn->cdbProc;
-	struct sockaddr_in  saddr;
-	int                 n;
+	CdbProcess		   *cdbProc = conn->cdbProc;
+	struct sockaddr_in	saddr;
+	int					n;
 
-    Assert(conn->state == mcsSetupOutgoingConnection);
-    Assert(conn->cdbProc);
+	Assert(conn->state == mcsSetupOutgoingConnection);
+	Assert(conn->cdbProc);
 
-    conn->wakeup_ms = 0;
-    conn->remoteContentId = cdbProc->contentid;
+	conn->wakeup_ms = 0;
+	conn->remoteContentId = cdbProc->contentid;
 	conn->stat_min_ack_time = ~((uint64)0);
 
-    snprintf(conn->remoteHostAndPort, sizeof(conn->remoteHostAndPort),
-             "%s:%d", cdbProc->listenerAddr, cdbProc->listenerPort);
+	snprintf(conn->remoteHostAndPort, sizeof(conn->remoteHostAndPort),
+			 "%s:%d", cdbProc->listenerAddr, cdbProc->listenerPort);
 
-    /*
-     * Get ipaddr to connect to.
-     */
-    MemSet(&saddr, 0, sizeof(saddr));
-    saddr.sin_family = AF_INET;
+	/*
+	 * Get ipaddr to connect to.
+	 */
+	MemSet(&saddr, 0, sizeof(saddr));
+	saddr.sin_family = AF_INET;
 
-    if ((n = inet_net_pton(AF_INET, cdbProc->listenerAddr, &saddr.sin_addr, sizeof(saddr.sin_addr))) < 1)
-    {
-	    if (n == 0)
-	    {
-		    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+	if ((n = inet_net_pton(AF_INET, cdbProc->listenerAddr, &saddr.sin_addr, sizeof(saddr.sin_addr))) < 1)
+	{
+		if (n == 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect Error: Could not parse remote listener"
 								   "address: '%s'", cdbProc->listenerAddr),
 							errdetail("inet_pton() unable to parse address: '%s'",
 									  cdbProc->listenerAddr)));
-	    }
-	    else
-	    {
-		    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect Error: System error occured during parsing"
 								   " of remote listener address '%s'", cdbProc->listenerAddr),
-						    errdetail("%m%s", "inet_pton")));
-	    }
-    }
+							errdetail("%m%s", "inet_pton")));
+		}
+	}
 
-    saddr.sin_port = htons(cdbProc->listenerPort);
+	saddr.sin_port = htons(cdbProc->listenerPort);
 
-    format_sockaddr((struct sockaddr *) &saddr, conn->remoteHostAndPort,
-                    sizeof(conn->remoteHostAndPort));
+	format_sockaddr((struct sockaddr *) &saddr, conn->remoteHostAndPort,
+					sizeof(conn->remoteHostAndPort));
 
 	memcpy(&conn->peer, &saddr, sizeof(saddr));
 
-    if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-        ereport(DEBUG1, (errmsg("Interconnect connecting to seg%d slice%d %s "
-                                "pid=%d sockfd=%d",
-                                conn->remoteContentId,
-                                pEntry->recvSlice->sliceIndex,
-                                conn->remoteHostAndPort,
-                                conn->cdbProc->pid,
-                                conn->sockfd)));
+	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+		ereport(DEBUG1, (errmsg("Interconnect connecting to seg%d slice%d %s "
+								"pid=%d sockfd=%d",
+								conn->remoteContentId,
+								pEntry->recvSlice->sliceIndex,
+								conn->remoteHostAndPort,
+								conn->cdbProc->pid,
+								conn->sockfd)));
 
 	/* send connection request */
 	MemSet(&conn->conn_info, 0, sizeof(conn->conn_info));
@@ -1233,7 +1233,7 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 	{
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."),
-						errdetail("%m%s", "malloc")));
+						errdetail("%m %s", "malloc")));
 		/* not reached */
 	}
 
@@ -1249,6 +1249,7 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 		conn->msgSize = sizeof(conn->conn_info);
 		conn->stillActive = true;
 		conn->conn_info.seq = 1;
+		Assert(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 );
 		return;
 	}
 
@@ -1265,14 +1266,14 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 
 	if (n != sizeof(conn->conn_info))
 	{
-	    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-			            errmsg("Interconnect error setting up outgoing "
-                               "connection."),
-			            errdetail("%m%s", "sendto")));
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect error setting up outgoing "
+							   "connection."),
+						errdetail("%m%s", "sendto")));
 	}
 
 	return;
-}                               /* setupOutgoingUDPConnection */
+}								/* setupOutgoingUDPConnection */
 
 void
 SetupUDPInterconnect(EState *estate)
@@ -1287,9 +1288,9 @@ SetupUDPInterconnect(EState *estate)
 	int			expectedTotalIncoming = 0;
 	int			expectedTotalOutgoing = 0;
 	int			iteration = 0;
-	GpMonotonicTime	startTime;
+	GpMonotonicTime startTime;
 	uint64			elapsed_ms = 0;
-	uint64		   	elapsed_timeout = 0;
+	uint64			elapsed_timeout = 0;
 
 	ChunkTransportStateEntry *sendingChunkTransportState = NULL;
 
@@ -1329,9 +1330,9 @@ SetupUDPInterconnect(EState *estate)
 
 	mySlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, estate->es_cur_slice_idx);
 
-    Assert(mySlice &&
-           IsA(mySlice, Slice) &&
-           mySlice->sliceIndex == estate->es_cur_slice_idx);
+	Assert(mySlice &&
+		   IsA(mySlice, Slice) &&
+		   mySlice->sliceIndex == estate->es_cur_slice_idx);
 
 #ifdef USE_ASSERT_CHECKING
 	if (gp_udpic_dropseg != UNDEF_SEGMENT ||
@@ -1350,7 +1351,7 @@ SetupUDPInterconnect(EState *estate)
 			uint32 prune_id = gp_interconnect_id - CURSOR_IC_TABLE_SIZE;
 
 			/* only prune if we didn't underflow -- also we want the prune id to be newer than the limit (hysteresis) */
-			if (prune_id < gp_interconnect_id) 
+			if (prune_id < gp_interconnect_id)
 			{
 				prune_cursor_ic_entry(prune_id);
 			}
@@ -1479,20 +1480,20 @@ SetupUDPInterconnect(EState *estate)
 		rx_buf_maxcount += (pEntry->numConns * Gp_interconnect_queue_depth);
 	}
 
-    /* Initiate outgoing connections. */
-    if (mySlice->parentIndex != -1)
+	/* Initiate outgoing connections. */
+	if (mySlice->parentIndex != -1)
 		sendingChunkTransportState = startOutgoingUDPConnections(estate->interconnect_context, mySlice, &expectedTotalOutgoing);
 
 	pthread_mutex_unlock(&rx_thread_mutex);
 
-    if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-        ereport(DEBUG1, (errmsg("SetupUDPInterconnect will activate "
-                                "%d incoming, %d outgoing routes for gp_interconnect_id %d. "
-                                "Listening on ports=%d/%d sockfd=%d.",
-                                expectedTotalIncoming, expectedTotalOutgoing, gp_interconnect_id,
-                                Gp_listener_port&0x0ffff, (Gp_listener_port>>16)&0x0ffff, UDP_listenerFd)));
+	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+		ereport(DEBUG1, (errmsg("SetupUDPInterconnect will activate "
+								"%d incoming, %d outgoing routes for gp_interconnect_id %d. "
+								"Listening on ports=%d/%d sockfd=%d.",
+								expectedTotalIncoming, expectedTotalOutgoing, gp_interconnect_id,
+								Gp_listener_port&0x0ffff, (Gp_listener_port>>16)&0x0ffff, UDP_listenerFd)));
 
-  	gp_set_monotonic_begin_time(&startTime);
+	gp_set_monotonic_begin_time(&startTime);
 
 	if (interconnect_setup_timeout > 0)
 		elapsed_timeout = interconnect_setup_timeout * 1000;
@@ -1522,7 +1523,7 @@ SetupUDPInterconnect(EState *estate)
 		n = sendingChunkTransportState ? sendingChunkTransportState->numConns : 0;
 
 		for (i = 0; i < n; i++)
-		{                       /* loop to set up outgoing connections */
+		{						/* loop to set up outgoing connections */
 			conn = &sendingChunkTransportState->conns[i];
 
 			if (conn->state == mcsStarted)
@@ -1555,7 +1556,7 @@ SetupUDPInterconnect(EState *estate)
 
 			if (conn->wakeup_ms > 0)
 				timeout_ms = Min(timeout_ms, conn->wakeup_ms - elapsed_ms);
-		}     /* loop to set up outgoing connections */
+		}	  /* loop to set up outgoing connections */
 
 		/* if we're not going to wait for incoming; we want to wait on acks. */
 		timeout = Min(timeout_ms, ((interconnect_setup_timeout*1000) - elapsed_ms));
@@ -1631,6 +1632,7 @@ SetupUDPInterconnect(EState *estate)
 						conn->msgSize = sizeof(conn->conn_info);
 						conn->stillActive = true;
 						conn->conn_info.seq++;
+						Assert(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 );
 
 						outgoing_count++;
 					}
@@ -1640,7 +1642,7 @@ SetupUDPInterconnect(EState *estate)
 				}
 				else
 				{
-					char		remoteHostAndPort[64];
+					char		remoteHostAndPort[128];
 
 					format_sockaddr((struct sockaddr *) &peer, remoteHostAndPort, sizeof(remoteHostAndPort));
 
@@ -1652,7 +1654,7 @@ SetupUDPInterconnect(EState *estate)
 				 * we'll wait once we run out of acks */
 			} /* for (;;) */
 		}
-		/* done with outbound (for this iteration) */ 
+		/* done with outbound (for this iteration) */
 
 		/* The UDP interconnect doesn't *do* anything but count
 		 * completed connections for the inbound side. So we can just
@@ -1737,7 +1739,7 @@ SetupUDPInterconnect(EState *estate)
 			break;
 
 		/*
-		 * Been here long?  Bail if gp_interconnect_setup_timeout exceeded.
+		 * Been here long?	Bail if gp_interconnect_setup_timeout exceeded.
 		 */
 		if (interconnect_setup_timeout > 0)
 		{
@@ -1747,13 +1749,13 @@ SetupUDPInterconnect(EState *estate)
 			{
 				/*
 				 * If we're in verbose mode dump out at most one timed
-				 * out connection.  In debug mode, dump out the
+				 * out connection.	In debug mode, dump out the
 				 * details of the interconnect setup failure.
 				 */
 				if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE)
 				{
 					if (outgoing_count != expectedTotalOutgoing)
-					{						
+					{
 						n = sendingChunkTransportState ? sendingChunkTransportState->numConns : 0;
 						for (i = 0; i < n; i++)
 						{
@@ -1814,15 +1816,15 @@ SetupUDPInterconnect(EState *estate)
 
 	estate->interconnect_context->activated = true;
 
-    if (gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
-    {
-        elapsed_ms = gp_get_elapsed_ms(&startTime);
-        if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE ||
-            elapsed_ms >= 0.1 * 1000 * interconnect_setup_timeout)
-            elog(LOG, "SetupUDPInterconnect+" UINT64_FORMAT "ms: Activated %d incoming, "
-                 "%d outgoing routes.",
-                 elapsed_ms, incoming_count, outgoing_count);
-    }
+	if (gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
+	{
+		elapsed_ms = gp_get_elapsed_ms(&startTime);
+		if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE ||
+			elapsed_ms >= 0.1 * 1000 * interconnect_setup_timeout)
+			elog(LOG, "SetupUDPInterconnect+" UINT64_FORMAT "ms: Activated %d incoming, "
+				 "%d outgoing routes.",
+				 elapsed_ms, incoming_count, outgoing_count);
+	}
 }
 
 void
@@ -1847,33 +1849,33 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 	if (forceEOS)
 		HOLD_INTERRUPTS();
 
-    /* Log the start of TeardownInterconnect. */
-    if (gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
-    {
-        int     elevel = 0;
+	/* Log the start of TeardownInterconnect. */
+	if (gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
+	{
+		int		elevel = 0;
 
-        if (forceEOS || !transportStates->activated)
+		if (forceEOS || !transportStates->activated)
 		{
 			if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 				elevel = LOG;
 			else
 				elevel = DEBUG1;
 		}
-        else if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+		else if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 			elevel = DEBUG4;
 
-        if (elevel)
-            ereport(elevel, (errmsg("Interconnect seg%d slice%d cleanup state: "
-                                 "%s; setup was %s",
-                                 Gp_segment, mySlice->sliceIndex,
-                                 forceEOS ? "force" : "normal",
-                                 transportStates->activated ? "completed" : "exited")));
+		if (elevel)
+			ereport(elevel, (errmsg("Interconnect seg%d slice%d cleanup state: "
+								 "%s; setup was %s",
+								 Gp_segment, mySlice->sliceIndex,
+								 forceEOS ? "force" : "normal",
+								 transportStates->activated ? "completed" : "exited")));
 
-	    /* if setup did not complete, log the slicetable */
-        if (!transportStates->activated &&
-            gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-		    elog_node_display(DEBUG3, "local slice table", transportStates->sliceTable, true);
-    }
+		/* if setup did not complete, log the slicetable */
+		if (!transportStates->activated &&
+			gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+			elog_node_display(DEBUG3, "local slice table", transportStates->sliceTable, true);
+	}
 
 	/* remove any "extra" incompleteConns ? (these are only used by
 	 * one thread, no lock required) -- we're removing elements as we
@@ -1924,6 +1926,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		pEntry = removeChunkTransportState(transportStates, mySlice->sliceIndex);
 
 		closesocket(pEntry->txfd);
+		pEntry->txfd = -1;
 
 		for (i = 0; i < pEntry->numConns; i++)
 		{
@@ -1955,7 +1958,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		List *pendingStop = NIL;
 
 		foreach(cell, mySlice->children)
-   		{
+		{
 			Slice	*aSlice;
 			int		childId = lfirst_int(cell);
 
@@ -2055,9 +2058,9 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		getChunkTransportState(transportStates, aSlice->sliceIndex, &pEntry);
 		Assert(pEntry);
 
-        if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-            elog(DEBUG3, "Interconnect closing connections from slice%d",
-                 aSlice->sliceIndex);
+		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+			elog(DEBUG3, "Interconnect closing connections from slice%d",
+				 aSlice->sliceIndex);
 
 		pthread_mutex_lock(&rx_thread_mutex);
 		/*
@@ -2156,15 +2159,15 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 
 #ifdef AMS_VERBOSE_LOGGING
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-        elog(DEBUG4, "TeardownUDPInterconnect successful");
+		elog(DEBUG4, "TeardownUDPInterconnect successful");
 #endif
 }
 
 /**
  * Should be called from receiveChunksUDP, only for the dispatcher
  *
- * Always called with thread mutex locked.  In case of cancel request, will error out after unlocking the mutex.
- *    If no cancel is needed then the mutex state is unchanged.
+ * Always called with thread mutex locked.	In case of cancel request, will error out after unlocking the mutex.
+ *	  If no cancel is needed then the mutex state is unchanged.
  */
 static inline void
 checkForCancelFromInsideReceiveChunks(ChunkTransportState *pTransportStates)
@@ -2185,12 +2188,12 @@ checkForCancelFromInsideReceiveChunks(ChunkTransportState *pTransportStates)
 
 /* ALWAYS CALLED WITH THREAD MUTEX *LOCKED* BEFORE RETURNING, *MUST* UNLOCK. */
 TupleChunkListItem
-receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry *pEntry, 
+receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry *pEntry,
 				 int16 motNodeID, int16 *srcRoute, volatile MotionConn *conn, bool inTeardown)
 {
 	int			retries=0;
 	bool		directed=false;
-	volatile MotionConn	*rxconn = NULL;
+	volatile MotionConn *rxconn = NULL;
 	TupleChunkListItem	tcItem=NULL;
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -2333,7 +2336,7 @@ RecvTupleChunkFromAnyUDP(MotionLayerState *mlStates,
 
 	getChunkTransportState(transportStates, motNodeID, &pEntry);
 
-    index = pEntry->scanStart;
+	index = pEntry->scanStart;
 
 	pthread_mutex_lock(&rx_thread_mutex);
 	for (i = 0; i < pEntry->numConns; i++, index++)
@@ -2457,12 +2460,12 @@ aggregateStatistics(ChunkTransportStateEntry *pEntry)
 	pEntry->stat_count_resent = 0;
 	pEntry->stat_max_resent = 0;
 	pEntry->stat_count_dropped = 0;
-	
+
 	int connNo;
 	for (connNo = 0; connNo < pEntry->numConns; connNo++)
 	{
 		MotionConn *conn = &pEntry->conns[connNo];
-		
+
 		pEntry->stat_total_ack_time += conn->stat_total_ack_time;
 		pEntry->stat_count_acks += conn->stat_count_acks;
 		pEntry->stat_max_ack_time = Max(pEntry->stat_max_ack_time, conn->stat_max_ack_time);
@@ -2634,7 +2637,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 			elog(DEBUG4, "handleAcks: not the ack we're looking for (flags 0x%x)...mot(%d) content(%d:%d) srcpid(%d:%d) dstpid(%d) srcport(%d:%d) dstport(%d) sess(%d:%d) cmd(%d:%d)",
 				 pkt.flags, pkt.motNodeId,
 				 pkt.srcContentId, Gp_segment,
-				 pkt.srcPid, MyProcPid, 
+				 pkt.srcPid, MyProcPid,
 				 pkt.dstPid,
 				 pkt.srcListenerPort, ((Gp_listener_port>>16) & 0x0ffff),
 				 pkt.dstListenerPort,
@@ -2700,9 +2703,9 @@ xmit_retry:
 
 		if (errno == EAGAIN) /* no space ? not an error. */
 			return;
-			
+
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect error writing an outgoing packet"),
+						errmsg("Interconnect error writing an outgoing packet: %m"),
 						errdetail("error during sendto() call (error:%d).\n"
 								  "For Remote Connection: contentId=%d at %s",
 								  errno, conn->remoteContentId,
@@ -2729,7 +2732,7 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 {
 	uint64	retry = 0;
 	int		timeout;
-	uint64  elapsed_ms = 0;
+	uint64	elapsed_ms = 0;
 	bool	got_stops=false;
 	int		n;
 	struct pollfd nfd;
@@ -3001,7 +3004,7 @@ SendEosUDP(MotionLayerState *mlStates,
 
 	/* we want to add our tcItem onto each of the outgoing buffers --
 	 * this is guaranteed to leave things in a state where a flush is
-	 * *required*. 
+	 * *required*.
 	 */
 	doBroadcast(mlStates, transportStates, pEntry, tcItem, NULL);
 
@@ -3103,7 +3106,15 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 			{
 				conn->stopRequested = true;
 				conn->conn_info.flags |= UDPIC_FLAGS_STOP;
+				if (!(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 ))
+				{
+					elog(NOTICE,"trying to send ack when we don't know where to send to %d %s",conn->peer.ss_family, conn->remoteHostAndPort);
+				}
+				else
+				{
+				Assert(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 );
 				sendAck(conn, true);
+				}
 
 				elog(DEBUG4, "sent stop message. node %d route %d seq %d", motNodeID, i, conn->conn_info.seq);
 			}
@@ -3115,50 +3126,54 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 char *
 format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 {
-    /* Save remote host:port string for error messages. */
-    if (sa->sa_family == AF_INET)
-    {
-        struct sockaddr_in *	sin = (struct sockaddr_in *)sa;
-        uint32					saddr = ntohl(sin->sin_addr.s_addr);
+	/* Save remote host:port string for error messages. */
+	if (sa->sa_family == AF_INET)
+	{
+		struct sockaddr_in *	sin = (struct sockaddr_in *)sa;
+		uint32					saddr = ntohl(sin->sin_addr.s_addr);
 
-        snprintf(buf, bufsize, "%d.%d.%d.%d:%d",
-                 (saddr >> 24)&0xff,
-                 (saddr >> 16)&0xff,
-                 (saddr >> 8)&0xff,
-                 saddr&0xff,
-                 ntohs(sin->sin_port));
-    }
+		snprintf(buf, bufsize, "%d.%d.%d.%d:%d",
+				 (saddr >> 24)&0xff,
+				 (saddr >> 16)&0xff,
+				 (saddr >> 8)&0xff,
+				 saddr&0xff,
+				 ntohs(sin->sin_port));
+	}
 #ifdef HAVE_IPV6
-    else if (sa->sa_family == AF_INET6)
-    {
-        struct sockaddr_in6    *sin6 = (struct sockaddr_in6 *)sa;
-		char remote_port[20];
+	else if (sa->sa_family == AF_INET6)
+	{
+		char remote_port[32];
 
-        if (bufsize > 8)
-        {
+		if (bufsize > 10)
+		{
+			buf[0] = '[';
 			/*
 			 * inet_ntop isn't portable.
-             * //inet_ntop(AF_INET6, &sin6->sin6_addr, buf, bufsize - 8);
-			 * 
+			 * //inet_ntop(AF_INET6, &sin6->sin6_addr, buf, bufsize - 8);
+			 *
 			 * postgres has a standard routine for converting addresses to printable format,
 			 * which works for IPv6, IPv4, and Unix domain sockets.  I've changed this 
 			 * routine to use that, but I think the entire format_sockaddr routine could
 			 * be replaced with it.
 			 */
-			pg_getnameinfo_all((const struct sockaddr_storage *)&sin6->sin6_addr, sizeof(sin6->sin6_addr),
-							   buf, bufsize-8,
+			int ret = pg_getnameinfo_all((const struct sockaddr_storage *)sa, sizeof(struct sockaddr_storage),
+							   buf+1, bufsize-10,
 							   remote_port, sizeof(remote_port),
 							   NI_NUMERICHOST | NI_NUMERICSERV);
-            buf += strlen(buf);
-        }
-        snprintf(buf, 8, ":%s", remote_port);
-    }
+			if (ret != 0)
+				elog(WARNING,"getnameinfo returned %s",gai_strerror(ret));
+			buf += strlen(buf);
+			strcat(buf,"]");
+			buf++;
+		}
+		snprintf(buf, 8, ":%s", remote_port);
+	}
 #endif
-    else
-        snprintf(buf, bufsize, "?host?:?port?");
+	else
+		snprintf(buf, bufsize, "?host?:?port?");
 
-    return buf;
-}                               /* format_sockaddr */
+	return buf;
+}								/* format_sockaddr */
 
 /*
  * Check the connection from the dispatcher to verify that it is still
@@ -3237,7 +3252,7 @@ ic_rx_thread_func(void *arg)
 
 				gettimeofday(&tv, NULL);
 				ts.tv_sec = tv.tv_sec;
-				/*  leave in ms for this */
+				/*	leave in ms for this */
 				ts.tv_nsec = (tv.tv_usec + RX_THREAD_COND_TIMEOUT);
 				if (ts.tv_nsec >= 1000000)
 				{
@@ -3407,7 +3422,7 @@ ic_rx_thread_func(void *arg)
 							pthread_cond_signal(&rx_thread_cond);
 						}
 					}
-					else 
+					else
 					{
 						uint32	seq;
 
@@ -3461,7 +3476,7 @@ ic_rx_thread_func(void *arg)
 						continue;
 					}
 
-					/* 
+					/*
 					 * when we're not doing a full-setup on every
 					 * statement, we've got to update the peer info --
 					 * full setups do this at setup-time.
@@ -3688,7 +3703,7 @@ ic_rx_thread_func(void *arg)
 			{
 				/* else, ignore and drop, but we may need to ack it */
 
-				/* 
+				/*
 				 * we want to check to see if this *is* a
 				 * packet from our session (previous command-id ?)
 				 * which still needs some acking ?
@@ -3714,7 +3729,7 @@ ic_rx_thread_func(void *arg)
 /*
  * If the mismatched packet is from an old connection, we may need to
  * send an acknowledgement.
- * 
+ *
  * We are called with the receiver-lock held, and we never release it.
  */
 static void
@@ -3722,9 +3737,9 @@ rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_in *peer)
 {
 	/*
 	 * we want to ack old packets; but *must* avoid acking connection requests:
-	 * 
-	 *   "ACK the past, NAK the future" explicit NAKs aren't necessary, we just don't
-	 *   want to ACK future packets, that confuses everyone.
+	 *
+	 *	 "ACK the past, NAK the future" explicit NAKs aren't necessary, we just don't
+	 *	 want to ACK future packets, that confuses everyone.
 	 */
 	if (pkt->seq > 0 && pkt->sessionId == gp_session_id)
 	{
@@ -3785,6 +3800,8 @@ rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_in *peer)
 		if (need_ack)
 		{
 			MotionConn dummyconn;
+			char buf[128];
+
 
 			memcpy(&dummyconn.conn_info, pkt, sizeof(struct icpkthdr));
 			dummyconn.peer = *peer;
@@ -3796,6 +3813,11 @@ rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_in *peer)
 
 			write_log("ACKING PACKET WITH FLAGS: pkt->seq %d 0x%x pkt->icId %d last-teardown %d interconnect_id %d",
 					  pkt->seq, dummyconn.conn_info.flags, pkt->icId, ic_id_last_teardown, gp_interconnect_id);
+
+			Assert(dummyconn.peer.ss_family == AF_INET || dummyconn.peer.ss_family == AF_INET6);
+
+			format_sockaddr((struct sockaddr *)&dummyconn.peer, buf, sizeof(buf));
+			write_log("ACKING PACKET TO %s", buf);
 
 			/* we're idle ? send an Ack to a fake conn */
 			sendAck(&dummyconn, true);
