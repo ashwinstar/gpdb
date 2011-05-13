@@ -1249,7 +1249,7 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 		conn->msgSize = sizeof(conn->conn_info);
 		conn->stillActive = true;
 		conn->conn_info.seq = 1;
-		Assert(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 );
+		Assert(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6 );
 		return;
 	}
 
@@ -1632,7 +1632,7 @@ SetupUDPInterconnect(EState *estate)
 						conn->msgSize = sizeof(conn->conn_info);
 						conn->stillActive = true;
 						conn->conn_info.seq++;
-						Assert(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 );
+						Assert(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6 );
 
 						outgoing_count++;
 					}
@@ -3106,13 +3106,13 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 			{
 				conn->stopRequested = true;
 				conn->conn_info.flags |= UDPIC_FLAGS_STOP;
-				if (!(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 ))
+				if (!(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6 ))
 				{
-					elog(NOTICE,"trying to send ack when we don't know where to send to %d %s",conn->peer.ss_family, conn->remoteHostAndPort);
+					elog(NOTICE,"trying to send ack when we don't know where to send to %d %s",conn->peer.sin_family, conn->remoteHostAndPort);
 				}
 				else
 				{
-				Assert(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 );
+				Assert(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6 );
 				sendAck(conn, true);
 				}
 
@@ -3814,7 +3814,7 @@ rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_in *peer)
 			write_log("ACKING PACKET WITH FLAGS: pkt->seq %d 0x%x pkt->icId %d last-teardown %d interconnect_id %d",
 					  pkt->seq, dummyconn.conn_info.flags, pkt->icId, ic_id_last_teardown, gp_interconnect_id);
 
-			Assert(dummyconn.peer.ss_family == AF_INET || dummyconn.peer.ss_family == AF_INET6);
+			Assert(dummyconn.peer.sin_family == AF_INET || dummyconn.peer.sin_family == AF_INET6);
 
 			format_sockaddr((struct sockaddr *)&dummyconn.peer, buf, sizeof(buf));
 			write_log("ACKING PACKET TO %s", buf);
