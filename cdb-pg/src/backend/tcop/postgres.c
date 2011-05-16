@@ -3088,16 +3088,14 @@ IsTransactionStmtList(List *nodes)
 {
 	if (list_length(nodes) == 1)
 	{
-		Query	   *query = (Query *) linitial(nodes);
+		Node	   *stmt = (Node *) linitial(nodes);
 
-		if (IsA(query, Query) &&
-			query->commandType == CMD_UTILITY &&
-			query->utilityStmt && IsA(query->utilityStmt, TransactionStmt))
+		if (IsA(stmt, TransactionStmt))
 			return true;
+
 	}
 	return false;
 }
-
 
 /* --------------------------------
  *		signal handler routines used in PostgresMain()
