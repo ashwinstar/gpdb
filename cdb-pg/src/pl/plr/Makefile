@@ -13,7 +13,7 @@ r_home_default = ${R_HOME}
 
 MODULE_big	:= plr
 PG_CPPFLAGS	+= -I$(r_include)
-SRCS		+= plr.c pg_conversion.c pg_backend_support.c pg_userfuncs.c pg_rsupport.c
+SRCS		+= plr.c pg_backend_support.c pg_userfuncs.c pg_rsupport.c pg_conversion.c 
 OBJS		:= $(SRCS:.c=.o)
 SHLIB_LINK	+= -L$(r_libdir1x) -L$(r_libdir2x) -lR
 
@@ -52,8 +52,16 @@ endif
 ifneq (,$(findstring yes, $(shared_libr)$(allow_nonpic_in_shlib)))
 
 override CPPFLAGS := -I$(srcdir) -I$(r_include) $(CPPFLAGS)
-override CPPFLAGS += -DPKGLIBDIR=\"$(pkglibdir)\" -DDLSUFFIX=\"$(DLSUFFIX)\"
+override CPPFLAGS += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -DPKGLIBDIR=\"$(pkglibdir)\" -DDLSUFFIX=\"$(DLSUFFIX)\"
 override CPPFLAGS += -DR_HOME_DEFAULT=\"$(r_home_default)\"
+
+REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=plr
+REGRESS = plr
+
+
+
+
+
 
 else # can't build
 

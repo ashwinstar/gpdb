@@ -2,7 +2,7 @@
  * PL/R - PostgreSQL support for R as a
  *	      procedural language (PL)
  *
- * Copyright (c) 2003-2007 by Joseph E. Conway
+ * Copyright (c) 2003-2010 by Joseph E. Conway
  * ALL RIGHTS RESERVED
  * 
  * Joe Conway <mail@joeconway.com>
@@ -29,27 +29,44 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * plr.h
- *
  */
 #ifndef PLR_H
 #define PLR_H
+
+#include "postgres.h"
+
+#include "fmgr.h"
+#include "funcapi.h"
+#include "miscadmin.h"
+#include "access/heapam.h"
+#include "catalog/catversion.h"
+#include "catalog/pg_language.h"
+#include "catalog/pg_namespace.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
+#include "commands/trigger.h"
+#include "executor/spi.h"
+#include "lib/stringinfo.h"
+#include "nodes/makefuncs.h"
+#include "optimizer/clauses.h"
+#include "parser/parse_type.h"
+#include "storage/ipc.h"
+#include "tcop/tcopprot.h"
+#include "utils/array.h"
+#include "utils/builtins.h"
+#if PG_VERSION_NUM >= 80500
+#include "utils/bytea.h"
+#endif
+#include "utils/lsyscache.h"
+#include "utils/memutils.h"
+#include "utils/syscache.h"
+#include "utils/typcache.h"
 
 #include <unistd.h>
 #include <fcntl.h>
 #include <setjmp.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-
-#include "R.h"
-/* R version is calculated as shown below */
-#if (R_VERSION >= 132096) /* R_VERSION >= 2.4.0 */
-#include "Rembedded.h"
-#endif
-#include "Rinterface.h"
-#include "Rinternals.h"
-#include "Rdefines.h"
-#include "Rdevices.h"
-#include "Rversion.h"
 
 /*
  * The R headers define various symbols that are also defined by the
@@ -63,29 +80,54 @@
 #undef WARNING
 #endif
 
-#ifdef lcons
-#undef lcons
+#include "R.h"
+#include "Rversion.h"
+
+/*
+ * R version is calculated thus:
+ *   Maj * 65536 + Minor * 256 + Build * 1
+ * So:
+ * version 1.8.0 results in:
+ *   (1 * 65536) + (8 * 256) + (0 * 1) == 67584
+ * version 1.9.0 results in:
+ *   (1 * 65536) + (9 * 256) + (0 * 1) == 67840
+ */
+#if (R_VERSION >= 132096) /* R_VERSION >= 2.4.0 */
+#include "Rembedded.h"
+#endif
+#if !defined(WIN32) && !defined(WIN64)
+#include "Rinterface.h"
+#endif
+#include "Rinternals.h"
+#include "Rdefines.h"
+#if (R_VERSION < 133120) /* R_VERSION < 2.8.0 */
+#include "Rdevices.h"
 #endif
 
-#include "postgres.h"
+/* Restore the Postgres headers */
 
-#include "fmgr.h"
-#include "funcapi.h"
-#include "access/heapam.h"
-#include "catalog/catversion.h"
-#include "catalog/pg_language.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_type.h"
-#include "commands/trigger.h"
-#include "executor/spi.h"
-#include "lib/stringinfo.h"
-#include "nodes/makefuncs.h"
-#include "parser/parse_type.h"
-#include "tcop/tcopprot.h"
-#include "utils/array.h"
-#include "utils/builtins.h"
-#include "utils/lsyscache.h"
-#include "utils/syscache.h"
+#ifdef ERROR
+#undef ERROR
+#endif
+
+#ifdef WARNING
+#undef WARNING
+#endif
+
+#define WARNING		19
+#define ERROR		20
+
+/* starting in R-2.7.0 this defn was removed from Rdevices.h */
+#ifndef KillAllDevices
+#define KillAllDevices					Rf_KillAllDevices
+#endif
+
+/* for some reason this is not in any R header files, it is locally defined */
+#define INTEGER_ELT(x,__i__)    INTEGER(x)[__i__]
+
+#ifndef R_HOME_DEFAULT
+#define R_HOME_DEFAULT ""
+#endif
 
 /* working with postgres 7.3 compatible sources */
 #if !defined(PG_VERSION_NUM) || PG_VERSION_NUM < 80200
@@ -123,15 +165,6 @@ extern void pg_unprotect(int n, char *fn, int ln);
 
 #define NEXT_STR_ELEMENT	" %s"
 
-/*
- * R version is calculated thus:
- *   Maj * 65536 + Minor * 256 + Build * 1
- * So:
- * version 1.8.0 results in:
- *   (1 * 65536) + (8 * 256) + (0 * 1) == 67584
- * version 1.9.0 results in:
- *   (1 * 65536) + (9 * 256) + (0 * 1) == 67840
- */
 #if (R_VERSION < 67840) /* R_VERSION < 1.9.0 */
 #define SET_COLUMN_NAMES \
 	do { \
@@ -319,6 +352,7 @@ extern void R_RunExitFinalizers(void);
 		tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod); \
 		tuple->t_len = HeapTupleHeaderGetDatumLength(tuple_hdr); \
 		ItemPointerSetInvalid(&(tuple->t_self)); \
+		/* tuple->t_tableOid = InvalidOid; */\
 		tuple->t_data = tuple_hdr; \
 		PROTECT(el = pg_tuple_get_r_frame(1, &tuple, tupdesc)); \
 		ReleaseTupleDesc(tupdesc); \
@@ -344,11 +378,16 @@ extern void R_RunExitFinalizers(void);
 	} while (0)
 #define PREPARE_PG_TRY \
 	ERRORCONTEXTCALLBACK
+#define SWITCHTO_PLR_SPI_CONTEXT(the_caller_context) \
+	the_caller_context = MemoryContextSwitchTo(plr_SPI_context)
+#define CLEANUP_PLR_SPI_CONTEXT(the_caller_context) \
+	MemoryContextSwitchTo(the_caller_context)
 #define PLR_PG_CATCH() \
 		PG_CATCH(); \
 		{ \
+			MemoryContext temp_context; \
 			ErrorData  *edata; \
-			MemoryContextSwitchTo(plr_SPI_context); \
+			SWITCHTO_PLR_SPI_CONTEXT(temp_context); \
 			edata = CopyErrorData(); \
 			error("error in SQL statement : %s", edata->message); \
 		}
@@ -432,7 +471,7 @@ extern int Rf_initEmbeddedR(int argc, char **argv);
 extern Datum plr_call_handler(PG_FUNCTION_ARGS);
 extern void PLR_CLEANUP;
 extern void plr_init(void);
-extern void plr_load_modules(MemoryContext plr_SPI_context);
+extern void plr_load_modules(void);
 extern void load_r_cmd(const char *cmd);
 extern SEXP call_r_func(SEXP fun, SEXP rargs);
 
@@ -441,7 +480,7 @@ extern SEXP pg_scalar_get_r(Datum dvalue, Oid arg_typid, FmgrInfo arg_out_func);
 extern SEXP pg_array_get_r(Datum dvalue, FmgrInfo out_func, int typlen, bool typbyval, char typalign);
 extern SEXP pg_tuple_get_r_frame(int ntuples, HeapTuple *tuples, TupleDesc tupdesc);
 extern Datum r_get_pg(SEXP rval, plr_function *function, FunctionCallInfo fcinfo);
-extern Datum get_scalar_datum(SEXP rval, FmgrInfo result_in_func, Oid result_elem, bool *isnull);
+extern Datum get_scalar_datum(SEXP rval, Oid result_typ, FmgrInfo result_in_func, bool *isnull);
 
 /* Postgres support functions installed into the R interpreter */
 extern void throw_pg_notice(const char **msg);
@@ -466,6 +505,8 @@ extern Datum plr_array_accum(PG_FUNCTION_ARGS);
 extern Datum plr_environ(PG_FUNCTION_ARGS);
 extern Datum plr_set_rhome(PG_FUNCTION_ARGS);
 extern Datum plr_unset_rhome(PG_FUNCTION_ARGS);
+extern Datum plr_set_display(PG_FUNCTION_ARGS);
+extern Datum plr_get_raw(PG_FUNCTION_ARGS);
 
 /* Postgres backend support functions */
 extern void compute_function_hashkey(FunctionCallInfo fcinfo,

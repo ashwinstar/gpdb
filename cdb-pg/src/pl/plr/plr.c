@@ -2,7 +2,7 @@
  * PL/R - PostgreSQL support for R as a
  *	      procedural language (PL)
  *
- * Copyright (c) 2003-2007 by Joseph E. Conway
+ * Copyright (c) 2003-2010 by Joseph E. Conway
  * ALL RIGHTS RESERVED
  * 
  * Joe Conway <mail@joeconway.com>
@@ -31,18 +31,14 @@
  * plr.c - Language handler and support functions
  */
 #include "plr.h"
-#include "catalog/pg_namespace.h"
-#include "storage/ipc.h"
-#include "utils/memutils.h"
-#include "utils/typcache.h"
 
 PG_MODULE_MAGIC;
 
 /*
  * Global data
  */
-MemoryContext plr_SPI_context;
 MemoryContext plr_caller_context;
+MemoryContext plr_SPI_context = NULL;
 HTAB *plr_HashTable = (HTAB *) NULL;
 char *last_R_error_msg = NULL;
 
@@ -51,6 +47,16 @@ static bool	plr_be_init_done = false;
 
 /* namespace OID for the PL/R language handler function */
 static Oid plr_nspOid = InvalidOid;
+
+/* 
+ * A global variable defined by R runtime that controls whether signals are 
+ * handled by R's handlers or ignored.
+ * By default, R initializes it to FALSE. In PLR, the better option is to 
+ * disable R's handler so that the embedding process can have more control 
+ * over how the signals are processed. 
+ */ 
+extern Rboolean R_interrupts_suspended; 
+
 
 /*
  * defines
@@ -107,6 +113,43 @@ static Oid plr_nspOid = InvalidOid;
 #define SPI_LASTOID_CMD \
 			"pg.spi.lastoid <-function() " \
 			"{.Call(\"plr_SPI_lastoid\")}"
+#define SPI_DBDRIVER_CMD \
+			"dbDriver <-function(db_name)\n" \
+			"{return(NA)}"
+#define SPI_DBCONN_CMD \
+			"dbConnect <- function(drv,user=\"\",password=\"\",host=\"\",dbname=\"\",port=\"\",tty =\"\",options=\"\")\n" \
+			"{return(NA)}"
+#define SPI_DBSENDQUERY_CMD \
+			"dbSendQuery <- function(conn, sql) {\n" \
+			"plan <- pg.spi.prepare(sql)\n" \
+			"cursor_obj <- pg.spi.cursor_open(\"plr_cursor\",plan)\n" \
+			"return(cursor_obj)\n" \
+			"}"
+#define SPI_DBFETCH_CMD \
+			"fetch <- function(rs,n) {\n" \
+			"data <- pg.spi.cursor_fetch(rs, TRUE, as.integer(n))\n" \
+			"return(data)\n" \
+			"}"
+#define SPI_DBCLEARRESULT_CMD \
+			"dbClearResult <- function(rs) {\n" \
+			"pg.spi.cursor_close(rs)\n" \
+			"}"
+#define SPI_DBGETQUERY_CMD \
+			"dbGetQuery <-function(conn, sql) {\n" \
+			"data <- pg.spi.exec(sql)\n" \
+			"return(data)\n" \
+			"}"
+#define SPI_DBREADTABLE_CMD \
+			"dbReadTable <- function(con, name, row.names = \"row_names\", check.names = TRUE) {\n" \
+			"data <- dbGetQuery(con, paste(\"SELECT * from\", name))\n" \
+			"return(data)\n" \
+			"}"
+#define SPI_DBDISCONN_CMD \
+			"dbDisconnect <- function(con)\n" \
+			"{return(NA)}"
+#define SPI_DBUNLOADDRIVER_CMD \
+			"dbUnloadDriver <-function(drv)\n" \
+			"{return(NA)}"
 #define SPI_FACTOR_CMD \
 			"pg.spi.factor <- function(arg1) {\n" \
 			"  for (col in 1:ncol(arg1)) {\n" \
@@ -157,39 +200,25 @@ Datum
 plr_call_handler(PG_FUNCTION_ARGS)
 {
 	Datum			retval;
-	MemoryContext	origcontext = CurrentMemoryContext;
-	/* save caller's SPI context */
-	MemoryContext	plr_SPI_context_save = plr_SPI_context;
+
 	/* save caller's context */
-	plr_caller_context = origcontext;
+	plr_caller_context = CurrentMemoryContext;
 
-	/* Connect to SPI manager */
 	if (SPI_connect() != SPI_OK_CONNECT)
-		ereport(ERROR,
-				(errcode(ERRCODE_CONNECTION_FAILURE),
-				 errmsg("cannot connect to SPI manager")));
-
-	/* switch from SPI back to original call memory context */
-	plr_SPI_context = MemoryContextSwitchTo(origcontext);
+		elog(ERROR, "SPI_connect failed");
+	plr_SPI_context = CurrentMemoryContext;
+	MemoryContextSwitchTo(plr_caller_context);
 
 	/* initialize R if needed */
 	plr_init_all(fcinfo->flinfo->fn_oid);
+
+	/* reset the flag to TRUE to make sure that R's handlers are disabled. */ 
+	R_interrupts_suspended = true; 
 
 	if (CALLED_AS_TRIGGER(fcinfo))
 		retval = plr_trigger_handler(fcinfo);
 	else
 		retval = plr_func_handler(fcinfo);
-
-	/* switch back to SPI memory context */
-	MemoryContextSwitchTo(plr_SPI_context);
-
-	if (SPI_finish() != SPI_OK_FINISH)
-		ereport(ERROR,
-				(errcode(ERRCODE_CONNECTION_EXCEPTION),
-				 errmsg("SPI_finish() failed")));
-
-	/* restore caller's SPI context */
-	plr_SPI_context = plr_SPI_context_save;
 
 	return retval;
 }
@@ -262,6 +291,7 @@ PLR_CLEANUP
 {
 	char   *buf;
 	char   *tmpdir = getenv("R_SESSION_TMPDIR");
+	int		ret;
 
 	R_dot_Last();
 	R_RunExitFinalizers();
@@ -276,7 +306,9 @@ PLR_CLEANUP
 		 */
 		buf = (char *) palloc(9 + 1 + strlen(tmpdir));
 		sprintf(buf, "rm -rf \"%s\"", tmpdir);
-		system(buf);
+
+		/* ignoring return value, but silence the compiler */
+		ret = system(buf);
 	}
 }
 
@@ -305,7 +337,7 @@ plr_init(void)
 {
 	char	   *r_home;
 	int			rargc;
-	char	   *rargv[] = {"PL/R", "--silent", "--no-save"};
+	char	   *rargv[] = {"PL/R", "--silent", "--no-save", "--no-restore"};
 
 	/* refuse to init more than once */
 	if (plr_pm_init_done)
@@ -361,6 +393,7 @@ plr_init(void)
 	/* arrange for automatic cleanup at proc_exit */
 	on_proc_exit(plr_cleanup, 0);
 
+#ifndef WIN32
 	/*
 	 * Force non-interactive mode since R may not do so.
 	 * See comment in Rembedded.c just after R_Interactive = TRUE:
@@ -368,6 +401,12 @@ plr_init(void)
 	 * If Postgres still has the tty attached, R_Interactive remains TRUE
 	 */
 	R_Interactive = false;
+#endif
+
+	/* 
+	 * This will instruct the RVM to bypass its own signal handlers. 
+	 */
+	R_interrupts_suspended = true; 
 
 	plr_pm_init_done = true;
 }
@@ -403,6 +442,15 @@ plr_load_builtins(Oid funcid)
 		SPI_CURSOR_MOVE_CMD,
 		SPI_CURSOR_CLOSE_CMD,
 		SPI_LASTOID_CMD,
+		SPI_DBDRIVER_CMD,
+		SPI_DBCONN_CMD,
+		SPI_DBSENDQUERY_CMD,
+		SPI_DBFETCH_CMD,
+		SPI_DBCLEARRESULT_CMD,
+		SPI_DBGETQUERY_CMD,
+		SPI_DBREADTABLE_CMD,
+		SPI_DBDISCONN_CMD,
+		SPI_DBUNLOADDRIVER_CMD,
 		SPI_FACTOR_CMD,
 
 		/* handy predefined R functions */
@@ -437,7 +485,7 @@ plr_load_builtins(Oid funcid)
  * DO NOT make this static --- it has to be callable by reload_plr_modules()
  */
 void
-plr_load_modules(MemoryContext	plr_SPI_context)
+plr_load_modules(void)
 {
 	int				spi_rc;
 	char		   *cmd;
@@ -447,13 +495,17 @@ plr_load_modules(MemoryContext	plr_SPI_context)
 	char		   *modulesSql;
 
 	/* switch to SPI memory context */
-	oldcontext = MemoryContextSwitchTo(plr_SPI_context);
+	SWITCHTO_PLR_SPI_CONTEXT(oldcontext);
 
 	/*
 	 * Check if table plr_modules exists
 	 */
 	if (!haveModulesTable(plr_nspOid))
+	{
+		/* clean up if SPI was used, and regardless restore caller's context */
+		CLEANUP_PLR_SPI_CONTEXT(oldcontext);
 		return;
+	}
 
 	/* plr_modules table exists -- get SQL code extract table's contents */
 	modulesSql = getModulesSql(plr_nspOid);
@@ -472,6 +524,8 @@ plr_load_modules(MemoryContext	plr_SPI_context)
 	if (SPI_processed == 0)
 	{
 		SPI_freetuptable(SPI_tuptable);
+		/* clean up if SPI was used, and regardless restore caller's context */
+		CLEANUP_PLR_SPI_CONTEXT(oldcontext);
 		return;
 	}
 
@@ -494,8 +548,8 @@ plr_load_modules(MemoryContext	plr_SPI_context)
 	}
 	SPI_freetuptable(SPI_tuptable);
 
-	/* back to caller's memory context */
-	MemoryContextSwitchTo(oldcontext);
+	/* clean up if SPI was used, and regardless restore caller's context */
+	CLEANUP_PLR_SPI_CONTEXT(oldcontext);
 }
 
 static void
@@ -523,7 +577,7 @@ plr_init_all(Oid funcid)
 		plr_nspOid = getNamespaceOidFromFunctionOid(funcid);
 
 		/* try to load procedures from plr_modules */
-		plr_load_modules(plr_SPI_context);
+		plr_load_modules();
 
 		plr_be_init_done = true;
 	}
@@ -544,15 +598,22 @@ plr_trigger_handler(PG_FUNCTION_ARGS)
 	bool			argnull[FUNC_MAX_ARGS];
 	TriggerData	   *trigdata = (TriggerData *) fcinfo->context;
 	TupleDesc		tupdesc = trigdata->tg_relation->rd_att;
-	Datum			dvalues[trigdata->tg_trigger->tgnargs];
+	Datum		   *dvalues;
 	ArrayType	   *array;
-	int				ndims = 1;
-	int				dims[ndims];
-	int				lbs[ndims];
+#define FIXED_NUM_DIMS		1
+	int				ndims = FIXED_NUM_DIMS;
+	int				dims[FIXED_NUM_DIMS];
+	int				lbs[FIXED_NUM_DIMS];
+#undef FIXED_NUM_DIMS
 	TRIGGERTUPLEVARS;
 	ERRORCONTEXTCALLBACK;
 	int				i;
 
+	if (trigdata->tg_trigger->tgnargs > 0)
+		dvalues = palloc(trigdata->tg_trigger->tgnargs * sizeof(Datum));
+	else
+		dvalues = NULL;
+	
 	/* Find or compile the function */
 	function = compile_plr_function(fcinfo);
 
@@ -669,6 +730,8 @@ plr_trigger_handler(PG_FUNCTION_ARGS)
 	 * Convert the return value from an R object to a Datum.
 	 * We expect r_get_pg to do the right thing with missing or empty results.
 	 */
+	if (SPI_finish() != SPI_OK_FINISH)
+		elog(ERROR, "SPI_finish failed");
 	retval = r_get_pg(rvalue, function, fcinfo);
 
 	POP_PLERRCONTEXT;
@@ -705,6 +768,8 @@ plr_func_handler(PG_FUNCTION_ARGS)
 	 * Convert the return value from an R object to a Datum.
 	 * We expect r_get_pg to do the right thing with missing or empty results.
 	 */
+	if (SPI_finish() != SPI_OK_FINISH)
+		elog(ERROR, "SPI_finish failed");
 	retval = r_get_pg(rvalue, function, fcinfo);
 
 	POP_PLERRCONTEXT;
@@ -1092,24 +1157,28 @@ do_compile(FunctionCallInfo fcinfo,
 									 0, 0, 0);
 			if (!HeapTupleIsValid(typeTup))
 			{
+				Oid		arg_typid = function->arg_typid[i];
+
 				xpfree(function->proname);
 				xpfree(function);
 				/* internal error */
-				elog(ERROR, "cache lookup failed for argument type %u",
-					 function->arg_typid[i]);
+				elog(ERROR, "cache lookup failed for argument type %u", arg_typid);
 			}
 			typeStruct = (Form_pg_type) GETSTRUCT(typeTup);
 
-			/* Disallow pseudotype argument */
-			/* (note we already replaced ANYARRAY/ANYELEMENT) */
+			/* Disallow pseudotype argument
+			 * note we already replaced ANYARRAY/ANYELEMENT
+			 */
 			if (typeStruct->typtype == 'p')
 			{
+				Oid		arg_typid = function->arg_typid[i];
+
 				xpfree(function->proname);
 				xpfree(function);
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("plr functions cannot take type %s",
-								format_type_be(function->arg_typid[i]))));
+								format_type_be(arg_typid))));
 			}
 
 			if (typeStruct->typrelid != InvalidOid)
@@ -1435,7 +1504,7 @@ plr_convertargs(plr_function *function, Datum *arg, bool *argnull)
 		else
 		{
 			/* better be a pg array arg, convert to a multi-row vector */
-			Datum		dvalue = PointerGetDatum(PG_DETOAST_DATUM(arg[i]));
+			Datum		dvalue = (Datum) PG_DETOAST_DATUM(arg[i]);
 			FmgrInfo	out_func = function->arg_elem_out_func[i];
 			int			typlen = function->arg_elem_typlen[i];
 			bool		typbyval = function->arg_elem_typbyval[i];

@@ -2,7 +2,7 @@
  * PL/R - PostgreSQL support for R as a
  *	      procedural language (PL)
  *
- * Copyright (c) 2003-2007 by Joseph E. Conway
+ * Copyright (c) 2003-2010 by Joseph E. Conway
  * ALL RIGHTS RESERVED
  * 
  * Joe Conway <mail@joeconway.com>
@@ -31,7 +31,6 @@
  * pg_rsupport.c - Postgres support for use within plr functions
  */
 #include "plr.h"
-#include "utils/memutils.h"
 
 extern MemoryContext plr_SPI_context;
 extern char *last_R_error_msg;
@@ -73,14 +72,14 @@ throw_pg_notice(const char **msg)
 SEXP
 plr_quote_literal(SEXP rval)
 {
-	char	   *value;
+	const char *value;
 	text	   *value_text;
 	text	   *result_text;
 	SEXP		result;
 
 	/* extract the C string */
 	PROTECT(rval =  AS_CHARACTER(rval));
-	value = (char*) CHAR(STRING_ELT(rval, 0));
+	value = CHAR(STRING_ELT(rval, 0));
 
 	/* convert using the pgsql quote_literal function */
 	value_text = PG_STR_GET_TEXT(value);
@@ -101,14 +100,14 @@ plr_quote_literal(SEXP rval)
 SEXP
 plr_quote_ident(SEXP rval)
 {
-	char	   *value;
+	const char *value;
 	text	   *value_text;
 	text	   *result_text;
 	SEXP		result;
 
 	/* extract the C string */
 	PROTECT(rval =  AS_CHARACTER(rval));
-	value = (char*) CHAR(STRING_ELT(rval, 0));
+	value = CHAR(STRING_ELT(rval, 0));
 
 	/* convert using the pgsql quote_literal function */
 	value_text = PG_STR_GET_TEXT(value);
@@ -130,7 +129,7 @@ plr_SPI_exec(SEXP rsql)
 {
 	int				spi_rc = 0;
 	char			buf[64];
-	char		   *sql;
+	const char	   *sql;
 	int				count = 0;
 	int				ntuples;
 	SEXP			result = NULL;
@@ -141,13 +140,13 @@ plr_SPI_exec(SEXP rsql)
 	PUSH_PLERRCONTEXT(rsupport_error_callback, "pg.spi.exec");
 
 	PROTECT(rsql =  AS_CHARACTER(rsql));
-	sql = (char*) CHAR(STRING_ELT(rsql, 0));
+	sql = CHAR(STRING_ELT(rsql, 0));
 	UNPROTECT(1);
 	if (sql == NULL)
 		error("%s", "cannot exec empty query");
 
 	/* switch to SPI memory context */
-	oldcontext = MemoryContextSwitchTo(plr_SPI_context);
+	SWITCHTO_PLR_SPI_CONTEXT(oldcontext);
 
 	/*
 	 * trap elog/ereport so we can let R finish up gracefully
@@ -261,7 +260,7 @@ rpgsql_get_results(int ntuples, SPITupleTable *tuptable)
 SEXP
 plr_SPI_prepare(SEXP rsql, SEXP rargtypes)
 {
-	char			   *sql;
+	const char		   *sql;
 	int					nargs;
 	int					i;
 	Oid				   *typeids = NULL;
@@ -285,7 +284,7 @@ plr_SPI_prepare(SEXP rsql, SEXP rargtypes)
 	MemoryContextSwitchTo(oldcontext);
 
 	PROTECT(rsql =  AS_CHARACTER(rsql));
-	sql = (char*) CHAR(STRING_ELT(rsql, 0));
+	sql = CHAR(STRING_ELT(rsql, 0));
 	UNPROTECT(1);
 	if (sql == NULL)
 		error("%s", "cannot prepare empty query");
@@ -346,7 +345,7 @@ plr_SPI_prepare(SEXP rsql, SEXP rargtypes)
 	UNPROTECT(1);
 
 	/* switch to SPI memory context */
-	oldcontext = MemoryContextSwitchTo(plr_SPI_context);
+	SWITCHTO_PLR_SPI_CONTEXT(oldcontext);
 
 	/*
 	 * trap elog/ereport so we can let R finish up gracefully
@@ -455,7 +454,7 @@ plr_SPI_execp(SEXP rsaved_plan, SEXP rargvalues)
 	saved_plan_desc	   *plan_desc = (saved_plan_desc *) R_ExternalPtrAddr(rsaved_plan);
 	void			   *saved_plan = plan_desc->saved_plan;
 	int					nargs = plan_desc->nargs;
-	Oid				   *typelems = plan_desc->typelems;
+	Oid				   *typeids = plan_desc->typeids;
 	FmgrInfo		   *typinfuncs = plan_desc->typinfuncs;
 	int					i;
 	Datum			   *argvalues = NULL;
@@ -492,7 +491,7 @@ plr_SPI_execp(SEXP rsaved_plan, SEXP rargvalues)
 	{
 		PROTECT(obj = VECTOR_ELT(rargvalues, i));
 
-		argvalues[i] = get_scalar_datum(obj, typinfuncs[i], typelems[i], &isnull);
+		argvalues[i] = get_scalar_datum(obj, typeids[i], typinfuncs[i], &isnull);
 		if (!isnull)
 			nulls[i] = ' ';
 		else
@@ -502,7 +501,7 @@ plr_SPI_execp(SEXP rsaved_plan, SEXP rargvalues)
 	}
 
 	/* switch to SPI memory context */
-	oldcontext = MemoryContextSwitchTo(plr_SPI_context);
+	SWITCHTO_PLR_SPI_CONTEXT(oldcontext);
 
 	/*
 	 * trap elog/ereport so we can let R finish up gracefully
@@ -615,7 +614,7 @@ plr_SPI_cursor_open(SEXP cursor_name_arg,SEXP rsaved_plan, SEXP rargvalues)
 	saved_plan_desc	   *plan_desc = (saved_plan_desc *) R_ExternalPtrAddr(rsaved_plan);
 	void			   *saved_plan = plan_desc->saved_plan;
 	int					nargs = plan_desc->nargs;
-	Oid				   *typelems = plan_desc->typelems;
+	Oid				   *typeids = plan_desc->typeids;
 	FmgrInfo		   *typinfuncs = plan_desc->typinfuncs;
 	int					i;
 	Datum			   *argvalues = NULL;
@@ -649,7 +648,7 @@ plr_SPI_cursor_open(SEXP cursor_name_arg,SEXP rsaved_plan, SEXP rargvalues)
 	{
 		PROTECT(obj = VECTOR_ELT(rargvalues, i));
 
-		argvalues[i] = get_scalar_datum(obj, typinfuncs[i], typelems[i], &isnull);
+		argvalues[i] = get_scalar_datum(obj, typeids[i], typinfuncs[i], &isnull);
 		if (!isnull)
 			nulls[i] = ' ';
 		else
@@ -660,7 +659,7 @@ plr_SPI_cursor_open(SEXP cursor_name_arg,SEXP rsaved_plan, SEXP rargvalues)
 	strncpy(cursor_name, CHAR(STRING_ELT(cursor_name_arg,0)), 64);
 
 	/* switch to SPI memory context */
-	oldcontext = MemoryContextSwitchTo(plr_SPI_context);
+	SWITCHTO_PLR_SPI_CONTEXT(oldcontext);
 
 	/*
 	 * trap elog/ereport so we can let R finish up gracefully
@@ -714,7 +713,7 @@ plr_SPI_cursor_fetch(SEXP cursor_in,SEXP forward_in, SEXP rows_in)
 	rows  = INTEGER_DATA(rows_in)[0];
 
 	/* switch to SPI memory context */
-	oldcontext = MemoryContextSwitchTo(plr_SPI_context);
+	SWITCHTO_PLR_SPI_CONTEXT(oldcontext);
 	PG_TRY();
 	{
 		/* Open the cursor */
@@ -751,7 +750,7 @@ plr_SPI_cursor_close(SEXP cursor_in)
 	portal = R_ExternalPtrAddr(cursor_in);
 
 	/* switch to SPI memory context */
-	oldcontext = MemoryContextSwitchTo(plr_SPI_context);
+	SWITCHTO_PLR_SPI_CONTEXT(oldcontext);
 	PG_TRY();
 	{
 		/* Open the cursor */
@@ -788,7 +787,7 @@ plr_SPI_cursor_move(SEXP cursor_in,SEXP forward_in, SEXP rows_in)
 	rows  = INTEGER(rows_in)[0];
 
 	/* switch to SPI memory context */
-	oldcontext = MemoryContextSwitchTo(plr_SPI_context);
+	SWITCHTO_PLR_SPI_CONTEXT(oldcontext);
 	PG_TRY();
 	{
 		/* Open the cursor */
@@ -819,3 +818,4 @@ rsupport_error_callback(void *arg)
 	if (arg)
 		errcontext("In R support function %s", (char *) arg);
 }
+

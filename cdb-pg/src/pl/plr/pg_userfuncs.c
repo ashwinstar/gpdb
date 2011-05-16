@@ -2,7 +2,7 @@
  * PL/R - PostgreSQL support for R as a
  *	      procedural language (PL)
  *
- * Copyright (c) 2003-2007 by Joseph E. Conway
+ * Copyright (c) 2003-2010 by Joseph E. Conway
  * ALL RIGHTS RESERVED
  * 
  * Joe Conway <mail@joeconway.com>
@@ -32,10 +32,11 @@
  */
 #include "plr.h"
 
-#include "miscadmin.h"
-#include "utils/memutils.h"
+extern MemoryContext plr_SPI_context;
 
+#ifndef WIN32
 extern char **environ;
+#endif
 
 static ArrayType *plr_array_create(FunctionCallInfo fcinfo,
 								   int numelems, int elem_start);
@@ -49,18 +50,17 @@ PG_FUNCTION_INFO_V1(reload_plr_modules);
 Datum
 reload_plr_modules(PG_FUNCTION_ARGS)
 {
-	/* Connect to SPI manager */
-	if (SPI_connect() != SPI_OK_CONNECT)
-		ereport(ERROR,
-				(errcode(ERRCODE_CONNECTION_FAILURE),
-				 errmsg("cannot connect to SPI manager")));
+	MemoryContext	plr_caller_context = CurrentMemoryContext;
 
-	plr_load_modules(CurrentMemoryContext);
+	if (SPI_connect() != SPI_OK_CONNECT)
+		elog(ERROR, "SPI_connect failed");
+	plr_SPI_context = CurrentMemoryContext;
+	MemoryContextSwitchTo(plr_caller_context);
+
+	plr_load_modules();
 
 	if (SPI_finish() != SPI_OK_FINISH)
-		ereport(ERROR,
-				(errcode(ERRCODE_CONNECTION_EXCEPTION),
-				 errmsg("SPI_finish() failed")));
+		elog(ERROR, "SPI_finish failed");
 
 	PG_RETURN_TEXT_P(PG_STR_GET_TEXT("OK"));
 }
@@ -281,10 +281,17 @@ plr_environ(PG_FUNCTION_ARGS)
 	AttInMetadata	   *attinmeta;
 	MemoryContext		per_query_ctx;
 	MemoryContext		oldcontext;
-	char			  **current_env;
 	char			   *var_name;
 	char			   *var_val;
 	char			   *values[2];
+#ifndef WIN32
+	char			  **current_env;
+#else
+	char			   *buf;
+	LPTSTR				envstr;
+    int					count = 0;
+	int					i;
+#endif
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (!rsinfo || !(rsinfo->allowedModes & SFRM_Materialize))
@@ -297,15 +304,7 @@ plr_environ(PG_FUNCTION_ARGS)
 	oldcontext = MemoryContextSwitchTo(per_query_ctx);
 
 	/* get the requested return tuple description */
-#if 0
 	tupdesc = CreateTupleDescCopy(rsinfo->expectedDesc);
-#endif
-	if (get_call_result_type(fcinfo, NULL, &tupdesc)
-		!= TYPEFUNC_COMPOSITE)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("function returning record called in context " 
-						"that cannot accept type record")));
 
 	/*
 	 * Check to make sure we have a reasonable tuple descriptor
@@ -327,6 +326,7 @@ plr_environ(PG_FUNCTION_ARGS)
 	/* initialize our tuplestore */
 	tupstore = TUPLESTORE_BEGIN_HEAP;
 
+#ifndef WIN32
 	for (current_env = environ;
 		 current_env != NULL && *current_env != NULL;
 		 current_env++)
@@ -348,15 +348,56 @@ plr_environ(PG_FUNCTION_ARGS)
 		tuplestore_puttuple(tupstore, tuple);
 		pfree(var_name);
 	}
+#else	
+	buf = GetEnvironmentStrings();
+	envstr = buf;
 
+	while (true)
+	{
+		if (*envstr == 0)
+			break;
+		while (*envstr != 0)
+			envstr++;
+		envstr++;
+		count++;
+	}
+	/* reset pointer to the environment buffer */
+	envstr = buf;
+
+	while(*buf == '=')
+		buf++;
+	for (i = 0; i < count; i++)
+	{
+		Size	name_len;
+
+		var_val = strchr(buf, '=');
+		if (!var_val)
+			continue;
+
+		name_len = var_val - buf;
+		var_name = (char *) palloc0(name_len + 1);
+		memcpy(var_name, buf, name_len);
+
+		values[0] = var_name;
+		values[1] = var_val + 1;
+
+		tuple = BuildTupleFromCStrings(attinmeta, values);
+		tuplestore_puttuple(tupstore, tuple);
+		pfree(var_name);
+		
+		while(*buf != '\0')
+			buf++;
+		buf++;
+	}
+
+	FreeEnvironmentStrings(envstr);
+#endif
+	
 	/*
 	 * no longer need the tuple descriptor reference created by
 	 * TupleDescGetAttInMetadata()
 	 */
-#if 0
-	/* we are returning a pointer to this... we can't free it */
 	ReleaseTupleDesc(tupdesc);
-#endif
 
 	tuplestore_donestoring(tupstore);
 	rsinfo->setResult = tupstore;
@@ -371,7 +412,7 @@ plr_environ(PG_FUNCTION_ARGS)
 	rsinfo->setDesc = tupdesc;
 	MemoryContextSwitchTo(oldcontext);
 
-	PG_RETURN_NULL();
+	return (Datum) 0;
 }
 
 /*-----------------------------------------------------------------------------
@@ -417,4 +458,92 @@ plr_unset_rhome(PG_FUNCTION_ARGS)
 	unsetenv("R_HOME");
 
 	PG_RETURN_TEXT_P(PG_STR_GET_TEXT("OK"));
+}
+
+/*-----------------------------------------------------------------------------
+ * plr_set_display :
+ *		utility function to set the DISPLAY environment variable under
+ *		which the postmaster is running.
+ *----------------------------------------------------------------------------
+ */
+PG_FUNCTION_INFO_V1(plr_set_display);
+Datum
+plr_set_display(PG_FUNCTION_ARGS)
+{
+	char		   *display = PG_TEXT_GET_STR(PG_GETARG_TEXT_P(0));
+	size_t			d_len = strlen(display);
+
+	if (d_len)
+	{
+		char			   *denv;
+		MemoryContext		oldcontext;
+
+		/* Needs to live until/unless we explicitly delete it */
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+		denv = palloc(9 + d_len);
+		MemoryContextSwitchTo(oldcontext);
+
+		sprintf(denv, "DISPLAY=%s", display);
+		putenv(denv);
+	}
+
+	PG_RETURN_TEXT_P(PG_STR_GET_TEXT("OK"));
+}
+
+/*-----------------------------------------------------------------------------
+ * plr_get_raw :
+ *		utility function to ...
+ *----------------------------------------------------------------------------
+ */
+extern char *last_R_error_msg;
+ 
+PG_FUNCTION_INFO_V1(plr_get_raw);
+Datum
+plr_get_raw(PG_FUNCTION_ARGS)
+{
+	SEXP	result;
+	SEXP 	s, t, obj;
+	int		status;
+	bytea  *bvalue = PG_GETARG_BYTEA_P(0);
+	int		len, rsize;
+	bytea  *bresult;
+	char   *brptr;
+
+	PROTECT(obj = NEW_RAW(VARSIZE(bvalue)));
+	memcpy((char *) RAW(obj), VARDATA(bvalue), VARSIZE(bvalue));
+
+	/*
+	 * Need to construct a call to
+	 * unserialize(rval)
+	 */
+	PROTECT(t = s = allocList(2));
+	SET_TYPEOF(s, LANGSXP);
+	SETCAR(t, install("unserialize")); t = CDR(t);
+	SETCAR(t, obj);
+
+	PROTECT(result = R_tryEval(s, R_GlobalEnv, &status));
+	if(status != 0)
+	{
+		if (last_R_error_msg)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_EXCEPTION),
+					 errmsg("R interpreter expression evaluation error"),
+					 errdetail("%s", last_R_error_msg)));
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_EXCEPTION),
+					 errmsg("R interpreter expression evaluation error"),
+					 errdetail("R expression evaluation error caught in \"unserialize\".")));
+	}
+
+	len = LENGTH(result);
+	rsize = VARHDRSZ + len;
+	bresult = (bytea *) palloc(rsize);
+	SET_VARSIZE(bresult, rsize);
+	brptr = VARDATA(bresult);
+	memcpy(brptr, (char *) RAW(result), rsize - VARHDRSZ);
+
+	UNPROTECT(2);
+
+	PG_RETURN_BYTEA_P(bresult);
 }
