@@ -18898,66 +18898,79 @@ paai: plpython:00003261:  ereport(FATAL,
 paai: plpython:00003262:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 paai: plpython:00003263:  errmsg("out of memory"))); 
 aaaaa GP_IGNORE: pabi: pgxbackendxsupport - ./pl/plr/pg_backend_support.c
-pabi: pgxbackendxsupport:00000109:  ereport(ERROR, 
-pabi: pgxbackendxsupport:00000110:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-pabi: pgxbackendxsupport:00000111:  errmsg("could not determine actual argument " 
-pabi: pgxbackendxsupport:00000112:  "type for polymorphic function \"%s\"", 
-pabi: pgxbackendxsupport:00000113:  NameStr(procStruct->proname)))); 
-pabi: pgxbackendxsupport:00000162:  ereport(ERROR, 
-pabi: pgxbackendxsupport:00000163:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-pabi: pgxbackendxsupport:00000164:  errmsg("out of memory"))); 
-pabi: pgxbackendxsupport:00000252:  ereport(ERROR, 
-pabi: pgxbackendxsupport:00000253:  (errcode_for_file_access(), 
-pabi: pgxbackendxsupport:00000254:  errmsg("could not find path to PL/R shared library"))); 
-pabi: pgxbackendxsupport:00000276:  ereport(ERROR, 
-pabi: pgxbackendxsupport:00000277:  (errcode_for_file_access(), 
-pabi: pgxbackendxsupport:00000278:  errmsg("could not access file \"%s\": %m", name))); 
-pabi: pgxbackendxsupport:00000364:  ereport(ERROR, 
-pabi: pgxbackendxsupport:00000365:  (errcode(ERRCODE_INVALID_NAME), 
-pabi: pgxbackendxsupport:00000366:  errmsg("invalid macro name in dynamic library path: %s", name))); 
-pabi: pgxbackendxsupport:00000408:  ereport(ERROR, 
-pabi: pgxbackendxsupport:00000409:  (errcode(ERRCODE_INVALID_NAME), 
-pabi: pgxbackendxsupport:00000410:  errmsg("zero-length component in DYNAMIC_LIBRARY_PATH"))); 
-pabi: pgxbackendxsupport:00000421:  ereport(ERROR, 
-pabi: pgxbackendxsupport:00000422:  (errcode(ERRCODE_INVALID_NAME), 
-pabi: pgxbackendxsupport:00000423:  errmsg("DYNAMIC_LIBRARY_PATH component is not absolute"))); 
+pabi: pgxbackendxsupport:00000101:  ereport(ERROR, 
+pabi: pgxbackendxsupport:00000102:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+pabi: pgxbackendxsupport:00000103:  errmsg("could not determine actual argument " 
+pabi: pgxbackendxsupport:00000104:  "type for polymorphic function \"%s\"", 
+pabi: pgxbackendxsupport:00000105:  NameStr(procStruct->proname)))); 
+pabi: pgxbackendxsupport:00000154:  ereport(ERROR, 
+pabi: pgxbackendxsupport:00000155:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+pabi: pgxbackendxsupport:00000156:  errmsg("out of memory"))); 
+pabi: pgxbackendxsupport:00000264:  ereport(ERROR, 
+pabi: pgxbackendxsupport:00000265:  (errcode_for_file_access(), 
+pabi: pgxbackendxsupport:00000266:  errmsg("could not find path to PL/R shared library"))); 
+pabi: pgxbackendxsupport:00000288:  ereport(ERROR, 
+pabi: pgxbackendxsupport:00000289:  (errcode_for_file_access(), 
+pabi: pgxbackendxsupport:00000290:  errmsg("could not access file \"%s\": %m", name))); 
+pabi: pgxbackendxsupport:00000378:  ereport(ERROR, 
+pabi: pgxbackendxsupport:00000379:  (errcode(ERRCODE_INVALID_NAME), 
+pabi: pgxbackendxsupport:00000380:  errmsg("invalid macro name in dynamic library path: %s", name))); 
+pabi: pgxbackendxsupport:00000423:  ereport(ERROR, 
+pabi: pgxbackendxsupport:00000424:  (errcode(ERRCODE_INVALID_NAME), 
+pabi: pgxbackendxsupport:00000425:  errmsg("zero-length component in DYNAMIC_LIBRARY_PATH"))); 
+pabi: pgxbackendxsupport:00000436:  ereport(ERROR, 
+pabi: pgxbackendxsupport:00000437:  (errcode(ERRCODE_INVALID_NAME), 
+pabi: pgxbackendxsupport:00000438:  errmsg("DYNAMIC_LIBRARY_PATH component is not absolute"))); 
 aaaaa GP_IGNORE: pabd: pgxconversion - ./pl/plr/pg_conversion.c
-pabd: pgxconversion:00000156:  ereport(ERROR, 
-pabd: pgxconversion:00000157:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-pabd: pgxconversion:00000158:  errmsg("greater than 3-dimensional arrays are not yet supported"))); 
-pabd: pgxconversion:00000510:  ereport(ERROR, 
-pabd: pgxconversion:00000511:  (errcode(ERRCODE_DATA_EXCEPTION), 
-pabd: pgxconversion:00000512:  errmsg("incorrect function return type"), 
-pabd: pgxconversion:00000513:  errdetail("function return value cannot have more " \ 
-pabd: pgxconversion:00000514:  "than one row"))); 
-pabd: pgxconversion:00000537:  ereport(ERROR, 
-pabd: pgxconversion:00000538:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-pabd: pgxconversion:00000539:  errmsg("returned tuple structure does not match table " \ 
-pabd: pgxconversion:00000540:  "of trigger event"))); 
-pabd: pgxconversion:00000658:  ereport(ERROR, 
-pabd: pgxconversion:00000659:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabd: pgxconversion:00000660:  errmsg("materialize mode required, but it is not " 
-pabd: pgxconversion:00000661:  "allowed in this context"))); 
-pabd: pgxconversion:00000687:  ereport(ERROR, 
-pabd: pgxconversion:00000688:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabd: pgxconversion:00000689:  errmsg("query-specified return tuple and " 
-pabd: pgxconversion:00000690:  "function returned data.frame are not compatible"))); 
-pabd: pgxconversion:00000962:  ereport(ERROR, 
-pabd: pgxconversion:00000963:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-pabd: pgxconversion:00000964:  errmsg("greater than 3-dimensional arrays are " \ 
-pabd: pgxconversion:00000965:  "not yet supported"))); 
-pabd: pgxconversion:00001116:  ereport(ERROR, 
-pabd: pgxconversion:00001117:  (errcode(ERRCODE_DATA_EXCEPTION), 
-pabd: pgxconversion:00001118:  errmsg("actual and requested return type mismatch"), 
-pabd: pgxconversion:00001119:  errdetail("Actual return type has %d columns, but " \ 
-pabd: pgxconversion:00001120:  "requested return type has %d", nc, tupdesc_nc))); 
+pabd: pgxconversion:00000118:  ereport(ERROR, 
+pabd: pgxconversion:00000119:  (errcode(ERRCODE_DATA_EXCEPTION), 
+pabd: pgxconversion:00000120:  errmsg("R interpreter expression evaluation error"), 
+pabd: pgxconversion:00000121:  errdetail("%s", last_R_error_msg))); 
+pabd: pgxconversion:00000123:  ereport(ERROR, 
+pabd: pgxconversion:00000124:  (errcode(ERRCODE_DATA_EXCEPTION), 
+pabd: pgxconversion:00000125:  errmsg("R interpreter expression evaluation error"), 
+pabd: pgxconversion:00000126:  errdetail("R expression evaluation error caught in \"unserialize\"."))); 
+pabd: pgxconversion:00000212:  ereport(ERROR, 
+pabd: pgxconversion:00000213:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+pabd: pgxconversion:00000214:  errmsg("direct array passthrough attempted for unsupported type"))); 
+pabd: pgxconversion:00000261:  ereport(ERROR, 
+pabd: pgxconversion:00000262:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+pabd: pgxconversion:00000263:  errmsg("greater than 3-dimensional arrays are not yet supported"))); 
+pabd: pgxconversion:00000627:  ereport(ERROR, 
+pabd: pgxconversion:00000628:  (errcode(ERRCODE_DATA_EXCEPTION), 
+pabd: pgxconversion:00000629:  errmsg("incorrect function return type"), 
+pabd: pgxconversion:00000630:  errdetail("function return value cannot have more " \ 
+pabd: pgxconversion:00000631:  "than one row"))); 
+pabd: pgxconversion:00000654:  ereport(ERROR, 
+pabd: pgxconversion:00000655:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+pabd: pgxconversion:00000656:  errmsg("returned tuple structure does not match table " \ 
+pabd: pgxconversion:00000657:  "of trigger event"))); 
+pabd: pgxconversion:00000775:  ereport(ERROR, 
+pabd: pgxconversion:00000776:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabd: pgxconversion:00000777:  errmsg("materialize mode required, but it is not " 
+pabd: pgxconversion:00000778:  "allowed in this context"))); 
+pabd: pgxconversion:00000804:  ereport(ERROR, 
+pabd: pgxconversion:00000805:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabd: pgxconversion:00000806:  errmsg("query-specified return tuple and " 
+pabd: pgxconversion:00000807:  "function returned data.frame are not compatible"))); 
+pabd: pgxconversion:00000898:  ereport(ERROR, 
+pabd: pgxconversion:00000899:  (errcode(ERRCODE_DATA_EXCEPTION), 
+pabd: pgxconversion:00000900:  errmsg("R interpreter expression evaluation error"), 
+pabd: pgxconversion:00000901:  errdetail("%s", last_R_error_msg))); 
+pabd: pgxconversion:00000903:  ereport(ERROR, 
+pabd: pgxconversion:00000904:  (errcode(ERRCODE_DATA_EXCEPTION), 
+pabd: pgxconversion:00000905:  errmsg("R interpreter expression evaluation error"), 
+pabd: pgxconversion:00000906:  errdetail("R expression evaluation error caught in \"serialize\"."))); 
+pabd: pgxconversion:00001142:  ereport(ERROR, 
+pabd: pgxconversion:00001143:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+pabd: pgxconversion:00001144:  errmsg("greater than 3-dimensional arrays are " \ 
+pabd: pgxconversion:00001145:  "not yet supported"))); 
+pabd: pgxconversion:00001373:  ereport(ERROR, 
+pabd: pgxconversion:00001374:  (errcode(ERRCODE_DATA_EXCEPTION), 
+pabd: pgxconversion:00001375:  errmsg("actual and requested return type mismatch"), 
+pabd: pgxconversion:00001376:  errdetail("Actual return type has %d columns, but " \ 
+pabd: pgxconversion:00001377:  "requested return type has %d", nc, tupdesc_nc))); 
 aaaaa GP_IGNORE: pabc: pgxuserfuncs - ./pl/plr/pg_userfuncs.c
-pabc: pgxuserfuncs:00000054:  ereport(ERROR, 
-pabc: pgxuserfuncs:00000055:  (errcode(ERRCODE_CONNECTION_FAILURE), 
-pabc: pgxuserfuncs:00000056:  errmsg("cannot connect to SPI manager"))); 
-pabc: pgxuserfuncs:00000061:  ereport(ERROR, 
-pabc: pgxuserfuncs:00000062:  (errcode(ERRCODE_CONNECTION_EXCEPTION), 
-pabc: pgxuserfuncs:00000063:  errmsg("SPI_finish() failed"))); 
 pabc: pgxuserfuncs:00000133:  ereport(ERROR, 
 pabc: pgxuserfuncs:00000134:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 pabc: pgxuserfuncs:00000135:  errmsg("input must be one-dimensional array"))); 
@@ -18968,91 +18981,89 @@ pabc: pgxuserfuncs:00000251:  ereport(ERROR,
 pabc: pgxuserfuncs:00000252:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
 pabc: pgxuserfuncs:00000253:  errmsg("argument %d datatype not " \ 
 pabc: pgxuserfuncs:00000254:  "compatible with return data type", i + 1))); 
-pabc: pgxuserfuncs:00000291:  ereport(ERROR, 
-pabc: pgxuserfuncs:00000292:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: pgxuserfuncs:00000293:  errmsg("materialize mode required, but it is not " 
-pabc: pgxuserfuncs:00000294:  "allowed in this context"))); 
-pabc: pgxuserfuncs:00000305:  ereport(ERROR, 
-pabc: pgxuserfuncs:00000306:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-pabc: pgxuserfuncs:00000307:  errmsg("function returning record called in context " 
-pabc: pgxuserfuncs:00000308:  "that cannot accept type record"))); 
-pabc: pgxuserfuncs:00000316:  ereport(ERROR, 
-pabc: pgxuserfuncs:00000317:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: pgxuserfuncs:00000318:  errmsg("query-specified return tuple and " 
-pabc: pgxuserfuncs:00000319:  "function return type are not compatible"))); 
+pabc: pgxuserfuncs:00000298:  ereport(ERROR, 
+pabc: pgxuserfuncs:00000299:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: pgxuserfuncs:00000300:  errmsg("materialize mode required, but it is not " 
+pabc: pgxuserfuncs:00000301:  "allowed in this context"))); 
+pabc: pgxuserfuncs:00000315:  ereport(ERROR, 
+pabc: pgxuserfuncs:00000316:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: pgxuserfuncs:00000317:  errmsg("query-specified return tuple and " 
+pabc: pgxuserfuncs:00000318:  "function return type are not compatible"))); 
+pabc: pgxuserfuncs:00000528:  ereport(ERROR, 
+pabc: pgxuserfuncs:00000529:  (errcode(ERRCODE_DATA_EXCEPTION), 
+pabc: pgxuserfuncs:00000530:  errmsg("R interpreter expression evaluation error"), 
+pabc: pgxuserfuncs:00000531:  errdetail("%s", last_R_error_msg))); 
+pabc: pgxuserfuncs:00000533:  ereport(ERROR, 
+pabc: pgxuserfuncs:00000534:  (errcode(ERRCODE_DATA_EXCEPTION), 
+pabc: pgxuserfuncs:00000535:  errmsg("R interpreter expression evaluation error"), 
+pabc: pgxuserfuncs:00000536:  errdetail("R expression evaluation error caught in \"unserialize\"."))); 
 aaaaa GP_IGNORE: paad: plr - ./pl/plr/plr.c
-paad: plr:00000168:  ereport(ERROR, 
-paad: plr:00000169:  (errcode(ERRCODE_CONNECTION_FAILURE), 
-paad: plr:00000170:  errmsg("cannot connect to SPI manager"))); 
-paad: plr:00000187:  ereport(ERROR, 
-paad: plr:00000188:  (errcode(ERRCODE_CONNECTION_EXCEPTION), 
-paad: plr:00000189:  errmsg("SPI_finish() failed"))); 
-paad: plr:00000220:  ereport(ERROR, 
-paad: plr:00000221:  (errcode(ERRCODE_DATA_EXCEPTION), 
-paad: plr:00000222:  errmsg("R interpreter parse error"), 
-paad: plr:00000223:  errdetail("%s", last_R_error_msg))); 
-paad: plr:00000225:  ereport(ERROR, 
-paad: plr:00000226:  (errcode(ERRCODE_DATA_EXCEPTION), 
-paad: plr:00000227:  errmsg("R interpreter parse error"), 
-paad: plr:00000228:  errdetail("R parse error caught in \"%s\".", cmd))); 
-paad: plr:00000238:  ereport(ERROR, 
-paad: plr:00000239:  (errcode(ERRCODE_DATA_EXCEPTION), 
-paad: plr:00000240:  errmsg("R interpreter expression evaluation error"), 
-paad: plr:00000241:  errdetail("%s", last_R_error_msg))); 
-paad: plr:00000243:  ereport(ERROR, 
-paad: plr:00000244:  (errcode(ERRCODE_DATA_EXCEPTION), 
-paad: plr:00000245:  errmsg("R interpreter expression evaluation error"), 
-paad: plr:00000246:  errdetail("R expression evaluation error caught " \ 
-paad: plr:00000247:  "in \"%s\".", cmd))); 
-paad: plr:00000290:  ereport(ERROR, 
-paad: plr:00000291:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paad: plr:00000292:  errmsg("the R interpreter did not initialize"), 
-paad: plr:00000293:  errhint("R_HOME must be correct in the environment " \ 
-paad: plr:00000294:  "of the user that starts the postmaster process."))); 
-paad: plr:00000335:  ereport(ERROR, 
-paad: plr:00000336:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paad: plr:00000337:  errmsg("environment variable R_HOME not defined"), 
-paad: plr:00000338:  errhint("R_HOME must be defined in the environment " \ 
-paad: plr:00000339:  "of the user that starts the postmaster process."))); 
-paad: plr:00000355:  ereport(ERROR, 
-paad: plr:00000356:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paad: plr:00000357:  errmsg("the R interpreter did not initialize"), 
-paad: plr:00000358:  errhint("R_HOME must be correct in the environment " \ 
-paad: plr:00000359:  "of the user that starts the postmaster process."))); 
-paad: plr:00000885:  ereport(ERROR, 
-paad: plr:00000886:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paad: plr:00000887:  errmsg("out of memory"))); 
-paad: plr:00000953:  ereport(ERROR, 
-paad: plr:00000954:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paad: plr:00000955:  errmsg("trigger functions may only be called as triggers"))); 
-paad: plr:00000961:  ereport(ERROR, 
-paad: plr:00000962:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paad: plr:00000963:  errmsg("plr functions cannot return type %s", 
-paad: plr:00000964:  format_type_be(procStruct->prorettype)))); 
-paad: plr:00000989:  ereport(ERROR, 
-paad: plr:00000990:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paad: plr:00000991:  errmsg("materialize mode required, but it is not " 
-paad: plr:00000992:  "allowed in this context"))); 
-paad: plr:00001109:  ereport(ERROR, 
-paad: plr:00001110:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paad: plr:00001111:  errmsg("plr functions cannot take type %s", 
-paad: plr:00001112:  format_type_be(function->arg_typid[i])))); 
-paad: plr:00001330:  ereport(ERROR, 
-paad: plr:00001331:  (errcode(ERRCODE_DATA_EXCEPTION), 
-paad: plr:00001332:  errmsg("R interpreter parse error"), 
-paad: plr:00001333:  errdetail("%s", last_R_error_msg))); 
-paad: plr:00001335:  ereport(ERROR, 
-paad: plr:00001336:  (errcode(ERRCODE_DATA_EXCEPTION), 
-paad: plr:00001337:  errmsg("R interpreter parse error"), 
-paad: plr:00001338:  errdetail("R parse error caught " \ 
-paad: plr:00001339:  "in \"%s\".", body))); 
-paad: plr:00001385:  ereport(ERROR, 
-paad: plr:00001386:  (errcode(ERRCODE_DATA_EXCEPTION), 
-paad: plr:00001387:  errmsg("R interpreter expression evaluation error"), 
-paad: plr:00001388:  errdetail("%s", last_R_error_msg))); 
-paad: plr:00001390:  ereport(ERROR, 
-paad: plr:00001391:  (errcode(ERRCODE_DATA_EXCEPTION), 
-paad: plr:00001392:  errmsg("R interpreter expression evaluation error"))); 
+paad: plr:00000249:  ereport(ERROR, 
+paad: plr:00000250:  (errcode(ERRCODE_DATA_EXCEPTION), 
+paad: plr:00000251:  errmsg("R interpreter parse error"), 
+paad: plr:00000252:  errdetail("%s", last_R_error_msg))); 
+paad: plr:00000254:  ereport(ERROR, 
+paad: plr:00000255:  (errcode(ERRCODE_DATA_EXCEPTION), 
+paad: plr:00000256:  errmsg("R interpreter parse error"), 
+paad: plr:00000257:  errdetail("R parse error caught in \"%s\".", cmd))); 
+paad: plr:00000267:  ereport(ERROR, 
+paad: plr:00000268:  (errcode(ERRCODE_DATA_EXCEPTION), 
+paad: plr:00000269:  errmsg("R interpreter expression evaluation error"), 
+paad: plr:00000270:  errdetail("%s", last_R_error_msg))); 
+paad: plr:00000272:  ereport(ERROR, 
+paad: plr:00000273:  (errcode(ERRCODE_DATA_EXCEPTION), 
+paad: plr:00000274:  errmsg("R interpreter expression evaluation error"), 
+paad: plr:00000275:  errdetail("R expression evaluation error caught " \ 
+paad: plr:00000276:  "in \"%s\".", cmd))); 
+paad: plr:00000322:  ereport(ERROR, 
+paad: plr:00000323:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paad: plr:00000324:  errmsg("the R interpreter did not initialize"), 
+paad: plr:00000325:  errhint("R_HOME must be correct in the environment " \ 
+paad: plr:00000326:  "of the user that starts the postmaster process."))); 
+paad: plr:00000367:  ereport(ERROR, 
+paad: plr:00000368:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paad: plr:00000369:  errmsg("environment variable R_HOME not defined"), 
+paad: plr:00000370:  errhint("R_HOME must be defined in the environment " \ 
+paad: plr:00000371:  "of the user that starts the postmaster process."))); 
+paad: plr:00000387:  ereport(ERROR, 
+paad: plr:00000388:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paad: plr:00000389:  errmsg("the R interpreter did not initialize"), 
+paad: plr:00000390:  errhint("R_HOME must be correct in the environment " \ 
+paad: plr:00000391:  "of the user that starts the postmaster process."))); 
+paad: plr:00000950:  ereport(ERROR, 
+paad: plr:00000951:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paad: plr:00000952:  errmsg("out of memory"))); 
+paad: plr:00001018:  ereport(ERROR, 
+paad: plr:00001019:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paad: plr:00001020:  errmsg("trigger functions may only be called as triggers"))); 
+paad: plr:00001026:  ereport(ERROR, 
+paad: plr:00001027:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paad: plr:00001028:  errmsg("plr functions cannot return type %s", 
+paad: plr:00001029:  format_type_be(procStruct->prorettype)))); 
+paad: plr:00001054:  ereport(ERROR, 
+paad: plr:00001055:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paad: plr:00001056:  errmsg("materialize mode required, but it is not " 
+paad: plr:00001057:  "allowed in this context"))); 
+paad: plr:00001178:  ereport(ERROR, 
+paad: plr:00001179:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paad: plr:00001180:  errmsg("plr functions cannot take type %s", 
+paad: plr:00001181:  format_type_be(arg_typid)))); 
+paad: plr:00001399:  ereport(ERROR, 
+paad: plr:00001400:  (errcode(ERRCODE_DATA_EXCEPTION), 
+paad: plr:00001401:  errmsg("R interpreter parse error"), 
+paad: plr:00001402:  errdetail("%s", last_R_error_msg))); 
+paad: plr:00001404:  ereport(ERROR, 
+paad: plr:00001405:  (errcode(ERRCODE_DATA_EXCEPTION), 
+paad: plr:00001406:  errmsg("R interpreter parse error"), 
+paad: plr:00001407:  errdetail("R parse error caught " \ 
+paad: plr:00001408:  "in \"%s\".", body))); 
+paad: plr:00001454:  ereport(ERROR, 
+paad: plr:00001455:  (errcode(ERRCODE_DATA_EXCEPTION), 
+paad: plr:00001456:  errmsg("R interpreter expression evaluation error"), 
+paad: plr:00001457:  errdetail("%s", last_R_error_msg))); 
+paad: plr:00001459:  ereport(ERROR, 
+paad: plr:00001460:  (errcode(ERRCODE_DATA_EXCEPTION), 
+paad: plr:00001461:  errmsg("R interpreter expression evaluation error"))); 
 aaaaa GP_IGNORE: paaf: pltcl - ./pl/tcl/pltcl.c
 paaf: pltcl:00000933:  ereport(ERROR, 
 paaf: pltcl:00000934:  (errmsg("%s", emsg), 
