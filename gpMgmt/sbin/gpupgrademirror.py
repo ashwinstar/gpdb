@@ -3417,8 +3417,8 @@ try:
      else:
         """  We are in normal phase 1 mode """
         overallStatus.create_status_file()
-  elif options.phase2 == True and overallStatus.get_current_status() == (None, None):
-     overallStatus.create_status_file()
+  elif options.phase2 == True:
+     pass
 
   if options.phase2 == True:
      """
