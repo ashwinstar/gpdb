@@ -1,37 +1,5 @@
 [global]
-max_version = 1.0.3.0
-configfile_version = 2
-
-[1.0.3.0]
-dell_om_version = 6.3.0
-dell_bios_version_master = 2.1.9
-dell_bios_version_segment = 1.3.6
-perc_firmware_version = 12.3.0-0032
-perc_driver_version = 00.00.04.29
-cna_firmware_version = 2.2.0.4
-cna_bios_version = FCHBA2.2.0.1
-
-[1.0.2.0]
-dell_om_version = 6.3.0
-dell_bios_version_master = 2.1.9
-dell_bios_version_segment = 1.3.6
-perc_firmware_version = 12.3.0-0032
-perc_driver_version = 00.00.04.29
-cna_firmware_version = 2.2.0.3
-cna_bios_version = FCHBA2.2.0.1
-at_switch_firmware_version = v1.2.0
-brocade_switch_firmware_version = v6.3.2a1
-
-[1.0.0.1]
-dell_om_version = 6.3.0
-dell_bios_version_master = 2.1.9
-dell_bios_version_segment = 1.3.6
-perc_firmware_version = 12.3.0-0032
-perc_driver_version = 00.00.04.29
-cna_firmware_version = 2.2.0.0
-cna_bios_version = FCHBA2.2.0.1
-at_switch_firmware_version = v1.2.0
-brocade_switch_firmware_version = v6.3.2a1
+configfile_version = 3
 
 [linux]
 xfs_mount_options = rw,noatime,inode64,allocsize=16m
