@@ -1921,6 +1921,7 @@ fi
 OS_TYPE=`uname -s|tr '[A-Z]' '[a-z]'`
 case $OS_TYPE in
 	sunos ) IFCONFIG_TXT="-a inet"
+		IPV6_ADDR_LIST_CMD="$IFCONFIG -a6"
 		PS_TXT="-ef"
 		LIB_TYPE="LD_LIBRARY_PATH"
 		ZCAT=gzcat
@@ -1936,6 +1937,7 @@ case $OS_TYPE in
 		MBTR=/usr/xpg4/bin/tr
 		DU_TXT="-s" ;;
 	linux ) IFCONFIG_TXT=""
+		IPV6_ADDR_LIST_CMD="`findCmdInPath ip` -6 address show"
 		PS_TXT="ax"
 		LIB_TYPE="LD_LIBRARY_PATH"
 		PG_METHOD="ident"
@@ -1949,6 +1951,7 @@ case $OS_TYPE in
 		ID=`whoami`
 		DU_TXT="-c" ;;
 	darwin ) IFCONFIG_TXT=""
+		IPV6_ADDR_LIST_CMD="$IFCONFIG -a inet6"
 		PS_TXT="ax"
 		LIB_TYPE="DYLD_LIBRARY_PATH"
 		# Darwin zcat wants to append ".Z" to the end of the file name; use "gunzip -c" instead
