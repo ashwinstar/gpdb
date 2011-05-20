@@ -48,7 +48,7 @@ SSH_MAX_RETRY=10
 SSH_RETRY_DELAY=.5
 
 
-class WorkerPool:
+class WorkerPool(object):
     """TODO:"""
     
     def __init__(self,numWorkers=16,items=None):        
@@ -147,6 +147,20 @@ class WorkerPool:
         for w in self.workers:
             w.haltWork()    
 
+
+class OperationWorkerPool(WorkerPool):
+    """ TODO: This is a hack! In reality, the WorkerPool should work with Operations, and
+        Command should be a subclass of Operation. Till then, we'll spoof the necessary Command
+        functionality within Operation. """
+    def __init__(self, numWorkers=16, operations=None):
+        if operations is not None:
+            for operation in operations:
+                self._spoof_operation(operation)
+        super(OperationWorkerPool, self).__init__(numWorkers, operations)
+    def check_results(self):
+        raise NotImplementedError("OperationWorkerPool has no means of verifying success.")
+    def _spoof_operation(self, operation):
+        operation.cmdStr = str(operation)
 
 
 class Worker(Thread):

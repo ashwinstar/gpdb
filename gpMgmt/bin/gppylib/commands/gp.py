@@ -693,14 +693,23 @@ class GpRecoverseg(Command):
 
 #-----------------------------------------------
 class Psql(Command):
-    def __init__(self, name, query, database='template1', utilityMode=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, query=None, filename=None, database='template1', utilityMode=False, ctxt=LOCAL, remoteHost=None):
         env = ''
         if utilityMode:
             env = 'PGOPTIONS="-c gp_session_role=utility"'
-        cmdStr = '%s $GPHOME/bin/psql -c "%s" %s' % (env, query, database)
+        cmdStr = '%s $GPHOME/bin/psql ' % env
+        if query is not None and filename is not None:
+            raise Exception('Psql can accept only a query or a filename, not both.')
+        elif query is not None:
+            cmdStr += '-c "%s" ' % query
+        elif filename is not None:
+            cmdStr += '-f %s ' % filename
+        else:
+            raise Exception('Psql must be passed a query or a filename.')    
+        cmdStr += '%s ' % database
         # Need to escape " for REMOTE or it'll interfere with ssh
         if ctxt == REMOTE:
-            cmdStr = cmdStr.replace('"', '\\"')
+             cmdStr = cmdStr.replace('"', '\\"')
         self.cmdStr=cmdStr
         Command.__init__(self, name, self.cmdStr, ctxt, remoteHost)
 

@@ -166,22 +166,40 @@ def connect(dburl, utility=False, verbose=False, encoding=None):
 def execSQL(conn,sql):    
     cursor=conn.cursor()
     cursor.execute(sql)
+    conn.commit()
     return cursor
 
 def execSQLForSingletonRow(conn, sql):
     """
     Run SQL that returns exactly one row, and return that one row
+
+    TODO: Handle like gppylib.system.comfigurationImplGpdb.fetchSingleOutputRow().
+    In the event of the wrong number of rows/columns, some logging would be helpful...
     """
     cursor=conn.cursor()
     cursor.execute(sql)
 
     if cursor.rowcount != 1 :
-        raise Exception("SQL retrieved %s rows but 1 was expected:\n%s" % \
+        raise Exception("SQL retrieved %d rows but 1 was expected:\n%s" % \
                         (cursor.rowcount, sql))
 
     res = cursor.fetchall()[0]
     cursor.close()
     return res
+
+def execSQLForSingleton(conn, sql):
+    """
+    Run SQL that returns exactly one row and one column, and return that cell
+
+    TODO: Handle like gppylib.system.comfigurationImplGpdb.fetchSingleOutputRow().
+    In the event of the wrong number of rows/columns, some logging would be helpful...
+    """
+    row = execSQLForSingletonRow(conn, sql)
+    if len(row) > 1:
+        raise Exception("SQL retrieved %d columns but 1 was expected:\n%s" % \
+                         (len(row), sql))
+    return row[0]
+
 
 def executeUpdateOrInsert(conn, sql, expectedRowUpdatesOrInserts):
     cursor=conn.cursor()
@@ -191,5 +209,3 @@ def executeUpdateOrInsert(conn, sql, expectedRowUpdatesOrInserts):
         raise Exception("SQL affected %s rows but %s were expected:\n%s" % \
                         (cursor.rowcount, expectedRowUpdatesOrInserts, sql))
     return cursor
-
-         
