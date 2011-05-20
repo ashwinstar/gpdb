@@ -546,14 +546,18 @@ class GetDumpTables(Operation):
                 if not line:
                     break
                 if line.startswith("SET search_path = "):
-                    schema = line[18 : line.index(", pg_catalog;")]
+                    line = line[len("SET search_path = ") : ]
+                    if ", pg_catalog;" in line:
+                        schema = line[ : line.index(", pg_catalog;")]
+                    else:
+                        schema = "pg_catalog"
                 elif line.startswith("-- Data for Name: "):
                     owner = line[line.index("; Owner: ") + 9 : ].rstrip()
                 elif line.startswith("COPY "):
                     table = line[5:]
                     if table.rstrip().endswith(") FROM stdin;"):
                         if table.startswith("\""):
-                            table = table[: table.index("\" (")]
+                            table = table[: table.index("\" (") + 1]
                         else:
                             table = table[: table.index(" (")]
                     else:
