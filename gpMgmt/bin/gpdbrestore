@@ -8,6 +8,7 @@
 # import mainUtils FIRST to get python version check
 from gppylib.mainUtils import *
 
+import fnmatch
 from optparse import Option, OptionGroup, OptionParser, OptionValueError
 
 try:
