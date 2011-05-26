@@ -51,6 +51,7 @@ all : devel
 BLD_TOP:=$(shell sh -c pwd)
 include Makefile.global
 include Makefile.thirdparty
+include releng/releng.mk
 
 ifneq "$(BLD_BITS)" ""
 export NO_M64=1
@@ -190,7 +191,7 @@ CONFIGFLAGS+= --with-perl --with-python --with-java
 ifdef TCL_CFG
 CONFIGFLAGS+= --with-tcl-config=${TCL_CFG}
 endif
-ifdef R_HOME
+ifneq "$(wildcard $(R_HOME))" ""
 CONFIGFLAGS+= --with-r
 endif
 endif
@@ -634,7 +635,7 @@ ifeq "$(INSTLOC)" ""
 INSTLOC=$(GPDIR)
 endif
 
-VERSION:=$(shell perl -pe 's, ,-,g' VERSION)
+VERSION:=$(shell [ -f VERSION ] && perl -pe 's, ,-,g' VERSION)
 
 ifeq "$(findstring win,$(BLD_ARCH))" "win"
 BLD_PACKAGING_PID:=$(shell ssh build@harpy 'echo $$$$')
