@@ -67,9 +67,9 @@ opt_write_test:
 	@curl --silent http://releng.sanmateo.greenplum.com/tools/apache-ant.1.8.1.tar.gz -o /tmp/apache-ant.1.8.1.tar.gz
 	@( [ ! -d /opt/releng ] && mkdir -p /opt/releng; \
 	   cd /opt/releng; \
-	   tar zxf /tmp/apache-ant.1.8.1.tar.gz; \
+	   gunzip -qc /tmp/apache-ant.1.8.1.tar.gz | tar xf -; \
 	   rm -f /tmp/apache-ant.1.8.1.tar.gz; \
-	   chmod -R a+w /opt/releng/apache-ant)
+	   chmod -R a+w /opt/releng/apache-ant )
 
 sync_tools: opt_write_test /opt/releng/apache-ant
 	@cd releng/make/dependencies; \
