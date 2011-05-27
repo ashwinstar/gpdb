@@ -661,7 +661,7 @@ check_ntile_argument(List *args, WindowSpec *win_spec, List *tlist)
 			if (tlist_lc == NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("PARTITION BY expression not appear in the targetlist."),
+						 errmsg("PARTITION BY expression does not appear in the targetlist."),
 								   errOmitLocation(true)));
 		}
 	}
