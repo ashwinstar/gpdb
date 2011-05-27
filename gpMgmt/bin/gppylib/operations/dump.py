@@ -72,14 +72,25 @@ class DumpDatabase(Operation):
         if self.encoding is not None:
             logger.info("Adding encoding %s" % self.encoding)
             dump_line += " --encoding=%s" % self.encoding
+
+        """
+        AK: Some ridiculous escaping here. I apologize.
+        These options get passed-through gp_dump to gp_dump_agent.
+        Commented out lines use escaping that would be reasonable, if gp_dump escaped properly.
+        """
         if self.dump_schema is not None:
             logger.info("Adding schema name %s" % self.dump_schema)
-            dump_line += " -n %s" % self.dump_schema
+            dump_line += " -n \"\\\"%s\\\"\"" % self.dump_schema
+            #dump_line += " -n \"%s\"" % self.dump_schema
         dump_line += " %s" % self.dump_database
-        for table in self.include_dump_tables:
-            dump_line += " --table=\"%s\"" % table
-        for table in self.exclude_dump_tables:
-            dump_line += " --exclude-table=\"%s\"" % table
+        for dump_table in self.include_dump_tables:
+            schema, table = dump_table.split('.')
+            dump_line += " --table=\"\\\"%s\\\"\".\"\\\"%s\\\"\"" % (schema, table)
+            #dump_line += " --table=\"%s\".\"%s\"" % (schema, table)
+        for dump_table in self.exclude_dump_tables:
+            schema, table = dump_table.split('.')
+            dump_line += " --exclude-table=\"\\\"%s\\\"\".\"\\\"%s\\\"\"" % (schema, table)
+            #dump_line += " --exclude-table=\"%s\".\"%s\"" % (schema, table)
         for opt in self.output_options:
             dump_line += " %s" % opt
         logger.info("Dump command line %s" % dump_line)
