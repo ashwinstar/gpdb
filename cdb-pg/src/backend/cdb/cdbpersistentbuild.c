@@ -471,7 +471,7 @@ static void PersistentBuild_PopulateGpRelationNode(
 			gp_relation_node,
 			gp_relation_node_index,
 			indexInfo,
-			/* isprimary */ true);
+			false);
 
 	DirectOpen_GpRelationNodeIndexClose(gp_relation_node_index);
 

@@ -712,7 +712,7 @@ DATA(insert OID = 6994 (gp_relation_node PGNSP PGUID -1 f c t \054 5094 0 record
 #define GP_RELATION_NODE_OID 6994
 
 // UNDONE: This is for a index.  Necessary?
-#define GP_RELATION_NODE_INDEX_OID 6995
+#define GP_RELATION_NODE_INDEX_OID 0
 
 /*
  * macros
