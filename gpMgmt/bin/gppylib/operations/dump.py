@@ -365,11 +365,15 @@ class ValidateAllDumpDirs(Operation):
         self.master_datadir = master_datadir
         self.master_port = master_port
     def execute(self):
-        # Check backup target (either master_datadir or backup_dir, if present). Also, check report_dir, if present.
-        master_dirs_to_check = []
-        master_dirs_to_check.append(self.backup_dir if self.backup_dir is not None else self.master_datadir)
-        if self.report_dir is not None:
-            master_dirs_to_check.append(self.report_dir)
+        if self.backup_dir is not None and self.report_dir is not None:
+            master_dirs_to_check = [self.backup_dir, self.report_dir]
+        elif self.backup_dir is not None:
+            master_dirs_to_check = [self.backup_dir, self.master_datadir]
+        elif self.report_dir is not None:
+            master_dirs_to_check = [self.report_dir, self.master_datadir]
+        else:
+            master_dirs_to_check = [self.master_datadir]
+
         for dir in master_dirs_to_check:
             try:
                 ValidateDumpDirs(dir).run()
