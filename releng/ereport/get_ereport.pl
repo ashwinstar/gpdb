@@ -1,7 +1,5 @@
 #!/usr/bin/perl
 #
-# $Header$
-#
 # copyright (c) 2009
 # Author: Jeffrey I Cohen
 #

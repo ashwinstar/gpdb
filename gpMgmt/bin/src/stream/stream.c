@@ -1,6 +1,5 @@
 /*-----------------------------------------------------------------------*/
 /* Program: Stream                                                       */
-/* Revision: $Id$ */
 /* Original code developed by John D. McCalpin                           */
 /* Programmers: John D. McCalpin                                         */
 /*              Joe R. Zagar                                             */

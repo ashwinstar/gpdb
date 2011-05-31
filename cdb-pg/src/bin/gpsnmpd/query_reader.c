@@ -262,6 +262,8 @@ parse_config(const char *filename)
 				return NULL;
 			}
 			break;
+		default:
+			printf("bug in case statement\n");
 		}
 		yaml_event_delete(&event);
 	}

@@ -1,7 +1,5 @@
 #!/bin/bash
 #	Filename:-		gpdbrestore
-#	Version:-		$Revision$
-#	Updated:-		$Date$
 #	Status:-		Released
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com

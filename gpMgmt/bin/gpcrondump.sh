@@ -1,7 +1,5 @@
 #!/bin/bash
 #	Filename:-		gpcrondump
-#	Version:-		$Revision$
-#	Updated:-		$Date$
 #	Status:-		Released
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com

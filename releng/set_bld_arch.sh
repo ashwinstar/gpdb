@@ -1,9 +1,5 @@
 # Define ARCH values
 #
-#         $Id$
-#     $Change$
-#   $DateTime$
-#     $Author$
 #
 case "`uname -s`" in
 
