@@ -523,6 +523,32 @@ select * from ext_mpp6698 order by a; -- should ignore the quotes
 (3 rows)
 
 drop external table ext_mpp6698;
+-- MPP-12839
+create external table ext_mpp12839
+(
+  userguid varchar(36),
+  action_time timestamp without time zone,
+  action_type smallint,
+  object_id integer,
+  general_param character varying(8000),
+  plu_id smallint,
+  page_name character varying(2000),
+  browser integer,
+  platform integer,
+  filtering_data character varying(8000),
+  is_new_user boolean,
+  dummy character varying(1)
+)
+location('gpfdist://@hostname@:7070/mpp12839*.data' )
+format 'text' (delimiter E'\177' null '' newline 'crlf')
+segment reject limit 100 rows;
+select * from ext_mpp12839; -- should not reach reject limit
+NOTICE:  Found 6 data formatting errors (6 or more input rows). Rejected related input data.
+ userguid | action_time | action_type | object_id | general_param | plu_id | page_name | browser | platform | filtering_data | is_new_user | dummy 
+----------+-------------+-------------+-----------+---------------+--------+-----------+---------+----------+----------------+-------------+-------
+(0 rows)
+
+drop external table ext_mpp12839;
 -- --------------------------------------
 -- some negative tests
 -- --------------------------------------

@@ -945,7 +945,7 @@ externalgettup(FileScanDesc scan,
 				MemoryContextReset(pstate->rowcontext);
 				return tuple;
 			}
-			else if(ret_mode == LINE_ERROR)
+			else if(ret_mode == LINE_ERROR && !pstate->raw_buf_done)
 			{
 				/* error was handled in parse_next_line. move to the next */
 				continue;
@@ -958,7 +958,8 @@ externalgettup(FileScanDesc scan,
 			else
 			{
 				/* try to get more data if possible */
-				Assert(ret_mode == NEED_MORE_DATA);
+				Assert((ret_mode == NEED_MORE_DATA) || 
+					   (ret_mode == LINE_ERROR && pstate->raw_buf_done));
 				needData = true;
 				break;
 			}
