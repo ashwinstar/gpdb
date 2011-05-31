@@ -161,9 +161,16 @@ class SyncmasterWatcher:
                 logger.warning(line)
                 return 1
 
-            if line.find('FATAL') >= 0:             # fatal error recorded
-                logger.warning(line)
-                return 1
+            # MPP-13212 - since the syncmaster reports rejected client connections
+            #   as 'FATAL' errors, the presence of a 'FATAL' error need not indicate
+            #   a problem in the syncmaster so we comment out the following logic:
+            #
+            # if line.find('FATAL') >= 0:             # fatal error recorded
+            #     logger.warning(line)
+            #     return 1
+            #
+            # This is especially important for health monitoring clients which may
+            # rely on the difference between a rejected connection and a TCP failure.
 
             if line.find('could not bind IPv4 socket') >= 0: # syncmaster used IPv6 by mistake
                 logger.warning(line)
