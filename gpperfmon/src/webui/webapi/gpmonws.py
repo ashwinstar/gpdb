@@ -8,15 +8,12 @@ datadir = os.getenv('MASTER_DATA_DIRECTORY', None)
 
 sys.path.append(os.path.join(sys.path[0], 'lib'))
 
-import pg8000
 import web
 from greenplum import db
 from greenplum import error
 from greenplum import interval
 from greenplum import gplog
 
-refcountglobal = 0
-do_refcount = False
 web.config.session_parameters.timeout = 1800
 MAX_AGGREGATED_SAMPLES = 2000
 MAX_NONAGGREGATED_SAMPLES = 16
@@ -25,14 +22,14 @@ remote = False
 verbose = False
 allow_trust_logon = False
 displayed_server_name = ''
-gpperfmon_version = 'main build dev'
+gpperfmon_version = '$Revision$'
 db_access_last_time = 0
 dbstatus = 'NORMAL' 
 DB_STATE_CHECK_INTERVAL = 30
 
 log = gplog.GpWebLogger(os.getcwd() + "/../logs/gpmonws.log")
+log.msg("gpmonws started")
 db.set_logger(log)
-db.create_db_conn()
 instance_name = os.path.basename(os.path.abspath(os.path.join(os.getcwd(), '..')))
 
 urls = ('/', 'index',
@@ -55,7 +52,7 @@ urls = ('/', 'index',
 app = web.application(urls, locals())
 session = web.session.Session(app, 
                               web.session.DiskStore(tempfile.mkdtemp(dir=os.path.join(os.getcwd(), '..', 'sessions'))), 
-                              initializer={'user': '', 'role': {}, 
+                              initializer={'user': '', 'password' : '', 'role': {}, 
                                            'loggedin': 0, 'gpperfmon_instance_name': instance_name})
 
 render = web.template.render('./templates/', cache=False)
@@ -83,6 +80,7 @@ def authrole(username, password):
     (valid, issuper, message) = db.get_role(username, password, allow_trust_logon)
     if valid:
         session.user = username
+        session.password = password
         session.role['superuser'] = issuper
         session.role['user'] = True
         session.loggedin = True
@@ -90,9 +88,6 @@ def authrole(username, password):
     else:
         log.msg("Authentication failed user(%s) allow_trust_logon(%s): %s" % (username, allow_trust_logon, message))
     return message
-
-def chkrole(role):
-    return not (role and (not session.user or not session.role[role]))
 
 def mkerr(code, msg):
     return render.error(web.ctx.fullpath, code, msg)
@@ -191,7 +186,7 @@ class logoff:
 
 class config:
     def __init__(self):
-        global remote, displayed_server_name, allow_trust_logon, verbose, do_refcount
+        global remote, displayed_server_name, allow_trust_logon, verbose
         
         # Holds the complete configuration
         self.gpperfmon_config = {}
@@ -226,9 +221,8 @@ class config:
             verbose = False
 
         quantum = 15
-        if remote:
-            quantum = db.get_quantum()
-        else:
+        if not remote:
+            # this logic should really be somewhere else
             try:
                 # parse configuration file
                 filename = os.path.join(datadir, 'gpperfmon', 'conf', 'gpperfmon.conf')
@@ -252,19 +246,12 @@ class config:
         except:
             allow_trust_logon = False
 
-        try:
-            do_refcount = cfg.getboolean("WEB APP", "do_refcount")
-            if do_refcount:
-                log.msg("Reference Counting Debugging Enabled")
-        except:
-            do_refcount = False
-
-        log.debug("Configuration file: %s" % self.gpperfmon_config)
-        log.debug("remote = %s" % remote)
-        log.debug("verbose = %s" % verbose)
-        log.debug("server_name = %s" % displayed_server_name)
-        log.debug("allow_trust_logon = %s" % allow_trust_logon)
-        log.debug("quantum = %s" % quantum)
+        log.msg("Configuration file: %s" % self.gpperfmon_config)
+        log.msg("remote = %s" % remote)
+        log.msg("verbose = %s" % verbose)
+        log.msg("server_name = %s" % displayed_server_name)
+        log.msg("allow_trust_logon = %s" % allow_trust_logon)
+        log.msg("quantum = %s" % quantum)
 
 
     def GET(self):
@@ -289,7 +276,7 @@ class hosts:
         if hosts.nodes == None:
             # retrieve the list of nodes in the GP DB system
             try:
-                hosts.nodes = db.hosts()
+                hosts.nodes = db.hosts(session.user, session.password)
             except db.GPDBError, errorinfo:
                 return mkerr(error.DATA_ACCESS, errorinfo)
 
@@ -308,32 +295,9 @@ class system:
 
         res = None
 
-        ####################################
-        ### DEBUGGING CODE
-        global refcountglobal 
-
-        if do_refcount:
-	        refcountglobal += 1
-	        if refcountglobal == 10:
-	            refcountglobal = 0
-	        elif refcountglobal == 1:
-		        log.msg("REFCOUNTS: ")
-		        d = {}
-		        sys.modules
-		
-		        for m in sys.modules.values():
-		            for sym in dir(m):
-		                 o = getattr (m, sym)
-		                 if type(o) is types.ClassType:
-		                     d[o] = sys.getrefcount (o)
-		
-		        for clss, cnt in sorted(d.iteritems(), key=operator.itemgetter(1), reverse=True)[:50]:
-		            log.msg("CLASS: %s COUNT %d" % (clss, cnt))
-        ####################################
-	
         try:
             if i.start == 'NOW':
-                res = db.system_now(remote)
+                res = db.system_now(remote, session.user, session.password)
                 i.aggregated = 'no'
             else:
                 i.aggregated = i.aggregated.lower()
@@ -353,7 +317,7 @@ class system:
                 elif i.aggregated == 'no' and samples > MAX_NONAGGREGATED_SAMPLES:
                     return mkerr(error.BADREQ, 'Exceeded maximum number of samples for specified interval')
 
-                res = db.system_history(i.start, i.end, interval_code, i.aggregated)
+                res = db.system_history(i.start, i.end, interval_code, i.aggregated, session.user, session.password)
 
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
@@ -430,7 +394,7 @@ class queries:
 
         try:
             if i.start == 'NOW':
-                res = db.queries_now(remote, i.status, i.username, i.db, i.textlength)
+                res = db.queries_now(remote, i.status, i.username, i.db, i.textlength, session.user, session.password)
             else:
                 # check_valid() sanitizes input against SQL injection attacks 
                 try:
@@ -440,7 +404,7 @@ class queries:
                 except ValueError:
                     return mkerr(error.BADREQ, 'Invalid date parameters')
 
-                res = db.queries_history(i.status, i.start, i.end, i.username, i.mintime, i.db, i.textlength, MAX_QUERIES_PER_SEARCH)
+                res = db.queries_history(i.status, i.start, i.end, i.username, i.mintime, i.db, i.textlength, MAX_QUERIES_PER_SEARCH, session.user, session.password)
 
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
@@ -509,9 +473,9 @@ class querydetails:
             
         try:
             if i.realtime == 'yes':
-                res = db.querydetails_now(remote, id_split[0], id_split[1], id_split[2], username)
+                res = db.querydetails_now(remote, id_split[0], id_split[1], id_split[2], username, session.user, session.password)
             else:
-                res = db.querydetails_history(id_split[0], id_split[1], id_split[2], username, i.start, i.end)
+                res = db.querydetails_history(id_split[0], id_split[1], id_split[2], username, i.start, i.end, session.user, session.password)
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
@@ -575,9 +539,9 @@ class queryplan:
 
         try:
             if i.realtime == 'yes':
-                res = db.queryplan_now(id_split[0], id_split[1], id_split[2], username)
+                res = db.queryplan_now(id_split[0], id_split[1], id_split[2], username, session.user, session.password)
             else:
-                res = db.queryplan_history(id_split[0], id_split[1], id_split[2], username, i.start, i.end)
+                res = db.queryplan_history(id_split[0], id_split[1], id_split[2], username, i.start, i.end, session.user, session.password)
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
@@ -615,7 +579,7 @@ class iterator:
             return mkerr(error.BADREQ, 'invalid query ID')
 
         try:
-            (skeys, ckeys, tab) = db.queryiterator(i.tmid, i.ssid, i.ccnt, i.nid)
+            (skeys, ckeys, tab) = db.queryiterator(i.tmid, i.ssid, i.ccnt, i.nid, session.user, session.password)
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)
 
@@ -640,7 +604,7 @@ class database:
         res = None
         try:
             if i.start == 'NOW':
-                res = db.database_now(remote)
+                res = db.database_now(remote, session.user, session.password)
             else:
                 if i.end == 'NOW':
                     i.end = timenow()
@@ -653,10 +617,10 @@ class database:
                 if samples > MAX_AGGREGATED_SAMPLES:
                     return mkerr(error.BADREQ, 'Exceeded maximum number of samples at specified interval')
 
-                res = db.database_history(i.start, i.end, interval_code)
+                res = db.database_history(i.start, i.end, interval_code, session.user, session.password)
             
             if (time.time() - db_access_last_time) > DB_STATE_CHECK_INTERVAL : 
-                dbstatus = db.database_state()
+                dbstatus = db.database_state(session.user, session.password)
                 db_access_last_time = time.time()
         except db.GPDBError, errorinfo:
             return mkerr(error.DATA_ACCESS, errorinfo)

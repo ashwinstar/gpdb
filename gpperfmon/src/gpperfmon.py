@@ -15,6 +15,7 @@ import shutil
 import ConfigParser
 import re
 import psi.process
+import getpass
 from gppylib.db import dbconn
 
 GPPERFMONHOME=os.getenv('GPPERFMONHOME')
@@ -37,6 +38,9 @@ script_version = '$Revision$'
 # consts
 STOPPED = 0
 RUNNING = 1
+STRANDED_GPMONWS = 2
+STRANDED_LIGHT = 3
+ONLY_LIGHT = 4
 
 RESTART_SUCCESS = 1
 RESTART_FAILED = 0
@@ -170,7 +174,7 @@ def lighty_start(instance):
         return 0
     
     instance_info = get_instance_info(instance)
-    if lighty_status(instance) == 0:
+    if lighty_status(instance) == STOPPED:
         # Read in the config so we can set env for remote connections if needed
         try:
             # parse configuration file
@@ -232,17 +236,33 @@ def lighty_start(instance):
 
 #################
 def lighty_stop(instance):
-    instance_info = get_instance_info(instance)
-    if lighty_status(instance) == 1:
-        try:
-            FILE = open(instance_info['lighttpd_pid_file'], 'r')
-            pid = int(FILE.readline())
-            FILE.close()
 
-            pids = psi.process.ProcessTable()
-            if pid in pids:
-                if re.search('light', pids[pid].command):
-                    os.kill(pid, signal.SIGTERM)
+    light_bin = "bin/lighttpd"
+    instance_conf = "instances/%s/conf/lighttpd.conf" % instance
+    instance_info = get_instance_info(instance)
+
+    status = lighty_status(instance)
+    if status == RUNNING or status == STRANDED_LIGHT or status == ONLY_LIGHT:
+        try:
+            ptable = psi.process.ProcessTable()
+            for pid in ptable:
+                process = ptable[pid]
+
+                try:
+                    process_args  = process.args
+                except:
+                    continue
+                    # we do not have privalege to view/kill this process, so skip it
+
+                if len(process_args) < 3:
+                    continue
+                if not re.search(light_bin, process_args[0]):
+                    continue
+                if not re.search(instance_conf, process_args[2]):
+                    continue
+
+                print "killing pid %d" % pid
+                os.kill(pid, signal.SIGTERM)
             
             # lighty shuts down quickly, but give it a little bit of time.
             time.sleep(1)
@@ -263,6 +283,28 @@ def lighty_stop(instance):
         pass
 
     return lighty_status(instance)
+
+
+#################
+def kill_orphaned_cgi_scripts():
+    "Search for any gpmonws.py that are stranded and do not belong to lighttpd"
+
+    ptable = psi.process.ProcessTable()
+    for pid in ptable:
+        process = ptable[pid]
+
+        try:
+            process_args  = process.args
+        except:
+            continue
+            # we do not have privalege to view/kill this process, so skip it
+
+        if len(process_args) >= 2:
+            if process_args[0] == 'python':
+                if re.search("gpmonws.py", process_args[1]):
+                    if process.ppid == 1:
+                        print "Killing stranded gpmonws.py process with pid %d" % pid
+                        os.kill(pid, signal.SIGTERM)
 
 #################
 def lighty_restart(instance):
@@ -287,27 +329,65 @@ def lighty_status(instance):
 
     foundLighthttp = False
     foundGpmonws = False
+    foundStrandedLight = False
+    foundStrandedPython = False
 
+    instance_conf = "instances/%s/conf/lighttpd.conf" % instance
+    instance_mon = "instances/%s/web/gpmonws.py" % instance
     instance_info = get_instance_info(instance)
+    light_bin = "bin/lighttpd"
+    lightpid = 0
+
     try:
         FILE = open(instance_info['lighttpd_pid_file'], 'r')
-        pid = int(FILE.readline())
+        lightpid = int(FILE.readline())
         FILE.close()
-
-        for p in psi.process.ProcessTable().values():
-            if p.pid == pid:
-                if re.search('light', p.command):
-                    foundLighthttp = True
-            if p.ppid == pid:
-                if re.search('gpmonws', p.command):
-                    foundGpmonws = True
-                if re.search('python', p.command):
-                    foundGpmonws = True
     except:
         pass
 
+    try:
+        ptable = psi.process.ProcessTable()
+        for pid in ptable:
+            process = ptable[pid]
+
+            try:
+                process_args  = process.args
+            except:
+                continue
+                # we do not have privalege to view/kill this process, so skip it
+
+            if len(process_args) < 1:
+                continue
+
+            # lighttpd process
+            if re.search(light_bin, process_args[0]):
+                if lightpid != 0 and pid == lightpid:
+                    foundLighthttp = True
+                elif len(process_args) >= 3:
+                    if re.search(instance_conf, process_args[2]):
+                        foundStrandedLight = True
+
+            # gpmonws.py process
+            elif re.search("python", process_args[0]):
+                if len(process_args) < 2:
+                    continue
+                if re.search(instance_mon, process_args[1]):
+                    if lightpid != 0 and process.ppid == lightpid:
+                        foundGpmonws = True
+                    else:
+                        foundStrandedPython = True
+    except:
+        pass
+
+    if foundStrandedLight:
+        return STRANDED_LIGHT
+    if foundStrandedPython:
+        return STRANDED_GPMONWS
+
     if foundLighthttp and foundGpmonws:
         return RUNNING
+    elif foundLighthttp:
+        return ONLY_LIGHT
     else: 
         return STOPPED
 
@@ -707,6 +787,12 @@ def get_instances():
 #################
 # script begin
 
+
+currentUser = getpass.getuser()
+if currentUser == "root":
+    print "This utility can not be run as 'root'"
+    sys.exit(1)
+
 # read in instances that have been configured
 valid_instances = get_instances()
 
@@ -725,6 +811,9 @@ for instance in instances:
 
 try:
     if options.start:
+        # look for stranded gpmonws.py processes
+        kill_orphaned_cgi_scripts()
+ 
         for instance in instances:
             print 'Starting instance %s...' % instance,
             sys.stdout.flush()
@@ -733,7 +822,12 @@ try:
                 print 'Done.'
             else:
                 print 'Failed to start gpperfmon instance %s' % instance
+
     elif options.stop:
+
+        # look for stranded gpmonws.py processes
+        kill_orphaned_cgi_scripts()
+
         for instance in instances:
             print 'Stopping instance %s...' % instance,
             sys.stdout.flush()
@@ -742,7 +836,12 @@ try:
                 print 'Done.'
             else:
                 print 'Failed to stop gpperfmon instance %s' % instance
+
     elif options.restart:
+
+        # look for stranded gpmonws.py processes
+        kill_orphaned_cgi_scripts()
+
         for instance in instances:
             print 'Restarting instance %s...' % instance,
             sys.stdout.flush()
@@ -752,11 +851,20 @@ try:
             else:
                 print 'There was an error restarting instance %s.' % instance
 
+        # look for stranded gpmonws.py processes
+        kill_orphaned_cgi_scripts()
+
     elif options.status:
         for instance in instances:
             status = lighty_status(instance)
             if status == RUNNING:
                 print 'Greenplum Performance Monitor UI for instance \'%s\' - [RUNNING]' % instance
+            elif status == STRANDED_GPMONWS:
+                print 'Greenplum Performance Monitor UI for instance \'%s\' - [INCONSISTENT: Stranded gpmonws.py process found]' % instance
+            elif status == STRANDED_LIGHT:
+                print 'Greenplum Performance Monitor UI for instance \'%s\' - [INCONSISTENT: Stranded lighttpd process found]' % instance
+            elif status == ONLY_LIGHT:
+                print 'Greenplum Performance Monitor UI for instance \'%s\' - [INCONSISTENT: gpmonws.py not found]' % instance
             else:
                 print 'Greenplum Performance Monitor UI for instance \'%s\' - [STOPPED]' % instance
     elif options.setup:

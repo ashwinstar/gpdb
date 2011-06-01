@@ -1,8 +1,7 @@
 import os, sys, datetime, locale, time
 import gplog
 
-sys.path.append(os.path.join(sys.path[0], 'lib'))
-import pg8000
+from pygresql import pg
 
 log = None
 pguser = 'gpmon'
@@ -29,72 +28,33 @@ def set_logger(weblog):
     global log
     log = weblog
 
-def create_db_conn():
-  global conn
-  try:
-      log.debug('connect to database user=%s password=%s host=%s port=%s database=%s' % (pguser,pgpass,pghost,pgport,pgdatabase))
-      conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase)
-  except pg8000.errors.InterfaceError:
-      log.msg('user %s: InterfaceError connecting to database on port %s' % (pguser,pgport))
-      conn = None
-  except pg8000.errors.InternalError:
-      log.msg('user %s: InternalError connecting to database' % pguser)
-      conn = None
-  except pg8000.errors.NotSupportedError:
-      log.msg('user %s: NotSupportedError connecting to database.  Try using trust or md5.' % pguser)
-      conn = None
-  except:
-      log.debug('user %s: Error connecting to database' % pguser)
-      conn = None
-
 def raise_db_error(text):
     raise GPDBError, text
 
-def validate_db_conn(): 
-  global conn
-  if conn == None:
-     create_db_conn()
-  if conn == None:
-     raise_db_error('Unable to connect to the database')
-
-def get_quantum():
-    rows = execute_query('SELECT quantum FROM system_now LIMIT 1')
+def get_quantum(username, password):
+    rows = execute_query('SELECT quantum FROM system_now LIMIT 1', username, password)
     if rows and len(rows) > 0:
         return (rows[0])['quantum']
     else:
         return 15
-    
 
 def get_role(username, password, allow_trust_logon):
-    global conn
-    validate_db_conn()
 
     res = (False, False, 'Incorrect username/password')
 
     # First make sure the login credentials are valid
 
     if not allow_trust_logon:
-        #  Check without password -- and fail if we can login without
-        log.debug('Trust logon not permiited ... checking to see if trust login is working')
-        try:
-            log.debug('connect to database user=%s host=%s port=%s database=%s' % (pguser,pghost,pgport,pgdatabase))
-
-            auth_conn = pg8000.Connection(user=username, host=pghost_logon, port=pgport, database=pgdatabase)
-
-            log.msg('error: trust login is enabled in pg_hba.conf but not allowed in perfmon conf file')
-
-            # If succeeded, then we're not checking password, so disallow logon
+        if password == None or password.strip() == '':
+            log.msg('Trust logon not permiited ... specifify password')
             res = (False, False, "Unprotected 'trust' logon blocked")
-            auth_conn.close()
             return res
-        except:
-            log.debug('success in testing blocked trust login to db')
         
     # Now check with password 
     try:
-        log.debug('connect to database user=%s password=%s host=%s port=%s database=%s' % (pguser,password,pghost,pgport,pgdatabase))
+        log.debug('connect to database user=%s password=%s host=%s port=%s database=%s' % (username,password,pghost,pgport,pgdatabase))
 
-        auth_conn = pg8000.Connection(user=username, password=password, host=pghost_logon, port=pgport, database=pgdatabase)
+        auth_conn = pg.connect(dbname=pgdatabase, host=pghost_logon, port=pgport, user=username, passwd=password)
         auth_conn.close()
 
     except:
@@ -105,30 +65,21 @@ def get_role(username, password, allow_trust_logon):
     while cnt > 0:
         try:
             # Then use our superuser connection to check the user's authorization level
-            check_auth = 'select rolsuper from pg_roles where rolname = \'%s\'' % username
-            conn.execute(check_auth)
-            for r in conn.iterate_dict():
+            check_auth_query = 'select rolsuper from pg_roles where rolname = \'%s\'' % username
+            for r in execute_query(check_auth_query, username, password):
                 res = (True, r['rolsuper'], '')
             break
-        except IOError:
-            log.msg('warning: database connection lost, attempting to reconnect...')
-            conn=None
-            validate_db_conn()
-            cnt -= 1
         except Exception:
-            log.msg('error: checking for superuser with query; %s' % check_auth)
-            raise_db_error('Exception during query: %s ' % check_auth)
+            log.msg('error: checking for superuser with query; %s' % check_auth_query)
+            raise_db_error('Exception during query: %s ' % check_auth_query)
 
     return res
 
-def hosts():
-    validate_db_conn()
-
+def hosts(username, password):
     rows = []
     try:
         query = 'select distinct(hostname) from system_now'
-        conn.execute(query)
-        for r in conn.iterate_dict():
+        for r in execute_query(query, username, password):
             rows.append(r['hostname'])
     except:
         log.msg('error during query: %s' % query)
@@ -290,30 +241,55 @@ def _database_consolidate(rows):
     return (tkeys, ckeys, tab)
 
 
-def execute_query(query):
-    validate_db_conn()
+def execute_query(query, username, password):
 
-    rows = []
     try:
-        conn.execute(query)
-        rows = [r for r in conn.iterate_dict()]
-    except IOError:
-        log.msg('error connection to database lost!')
-        raise IOError
+        conn = pg.connect(dbname=pgdatabase, host=pghost, port=pgport, user=username, passwd=password)
+    except Exception, e:
+        log.msg('error connecting to GPDB: %s for query: %s' % (e.__str__().strip(), query))
+        log.msg("dbname=%s, host=%s, port=%s, user=%s, passwd=%s" % (pgdatabase, pghost, pgport, username, password))
+        raise_db_error('Connection error for query: %s' % query)
+    except:
+        log.msg('error connecting to GPDB for query: %s' % (query))
+        log.msg("dbname=%s, host=%s, port=%s, user=%s, passwd=%s" % (pgdatabase, pghost, pgport, username, password))
+        raise_db_error('Connection error for query: %s' % query)
+
+    try:
+        q = conn.query(query)
+        return q.dictresult()
+    except Exception, e:
+        log.msg('error during query (%s): %s' % (query, e.__str__().strip()))
+        raise_db_error('Exception during query: %s' % query)
     except:
         log.msg('error during query: %s' % query)
         raise_db_error('Exception during query: %s' % query)
 
-    return rows
+    return []
 
+# perform a query that we expect ro return a single row with a single value only
+def execute_single_value_query(query, username, password):
 
+    rows = execute_query(query, username, password)
+    if len(rows) != 1:
+        log.msg('Expected to get one row from query (%s) but got %d rows' % (query, len(rows)))
+        raise_db_error('Expected to get one row from query (%s) but got %d rows' % (query, len(rows)))
+        
+    firstRow = rows[0]
 
-def system_now(remote):
+    if len(firstRow.keys() != 1):
+        log.msg('Expected to get one column from query (%s) but got %d columns' % (query, len(firstRow.keys())))
+        raise_db_error('Expected to get one row from query (%s) but got %d rows' % (query, len(firstRow.keys())))
+
+    key = firstRow.keys()[0]
+    value = firstRow[key]
+    return value
+
+def system_now(remote, username, password):
     if remote:
         nonaggregate = 'no'
         interval_code = 7 # magic number
         query = system_sql('system_now', '', interval_code, nonaggregate)
-        rows = execute_query(query)
+        rows = execute_query(query, username, password)
     else:
         rows = system_file()
 
@@ -429,7 +405,7 @@ def system_sql(table, filter, interval_code, aggregate):
     return query_fragment
 
 
-def system_history(stime, etime, interval_code, aggregate):
+def system_history(stime, etime, interval_code, aggregate, username, password):
     if etime == 'NOW':
         filter = "where ctime >= '%s'" % stime
     else:
@@ -439,7 +415,7 @@ def system_history(stime, etime, interval_code, aggregate):
     query2 = system_sql('system_tail', filter, interval_code, aggregate)
     query = '%s union all %s' % (query1, query2)
 
-    rows = execute_query(query)
+    rows = execute_query(query, username, password)
 
     if aggregate == 'yes':
         return _system_consolidate_aggregate(rows)
@@ -447,7 +423,7 @@ def system_history(stime, etime, interval_code, aggregate):
         return _system_consolidate_nonaggregate(rows)
 
 
-def queries_now(remote, status, username, database, textlength):
+def queries_now(remote, status, username, database, textlength, dbuser, dbpass):
     if remote:
         filter = ''
         if status != '':
@@ -471,7 +447,7 @@ def queries_now(remote, status, username, database, textlength):
         columns = queries_sql(textlength)
 
         query = '%s from queries_now %s' % (columns, filter)
-        rows = queries_db(query, textlength)
+        rows = queries_db(query, textlength, dbuser, dbpass)
     else:
         rows = queries_file(status, username, database, textlength, '', '', '')
 
@@ -591,7 +567,7 @@ def queries_sql(textlength):
     return query_fragment
 
 
-def queries_history(status, stime, etime, username, runtime, database, textlength, max_query_limit):
+def queries_history(status, stime, etime, username, runtime, database, textlength, max_query_limit, dbuser, dbpass):
     if etime == 'NOW':
         filter = "where '%s' <= tfinish" % stime
     else:
@@ -616,17 +592,14 @@ def queries_history(status, stime, etime, username, runtime, database, textlengt
     query2 = '%s from queries_tail %s' % (columns, filter)
     query = "(%s) union all (%s) limit %s" % (query1, query2, max_query_limit)
 
-    rows = queries_db(query, textlength)
+    rows = queries_db(query, textlength, dbuser, dbpass)
     return _queries_consolidate(rows)
 
 
-def queries_db(query, textlength):
-    validate_db_conn()
-
+def queries_db(query, textlength, username, password):
     rows = []
     try:
-        conn.execute(query)
-        for r in conn.iterate_dict():
+        for r in execute_query(query, username, password):
             if textlength != '':
                 if r['length'] > textlength:
                     if textlength > 3:
@@ -639,7 +612,7 @@ def queries_db(query, textlength):
     return rows
 
 
-def querydetails_now(remote, tmid, ssid, ccnt, username):
+def querydetails_now(remote, tmid, ssid, ccnt, username, dbuser, dbpass):
     if remote:
         columns = queries_sql('')
 
@@ -648,14 +621,14 @@ def querydetails_now(remote, tmid, ssid, ccnt, username):
             filter += " and username='%s'" % username
         query = '%s from queries_now %s' % (columns, filter)
 
-        rows = execute_query(query)
+        rows = execute_query(query, dbuser, dbpass)
     else:
         rows = queries_file('', username, '', '', tmid, ssid, ccnt)
 
     return _queries_consolidate(rows)
 
 
-def querydetails_history(tmid, ssid, ccnt, username, start, end):
+def querydetails_history(tmid, ssid, ccnt, username, start, end, dbuser, dbpass):
     columns = queries_sql('')
 
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
@@ -668,21 +641,20 @@ def querydetails_history(tmid, ssid, ccnt, username, start, end):
     query2 = '%s from queries_tail %s' % (columns, filter)
     query = "(%s) union all (%s) limit 1" % (query1, query2)
 
-    rows = execute_query(query)
+    rows = execute_query(query, dbuser, dbpass)
 
     return _queries_consolidate(rows)
 
 
 
-def queryplan_get_username_now(tmid, ssid, ccnt):
+def queryplan_get_username_now(tmid, ssid, ccnt, username, password):
     query_fragment = "select username"
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
     query = "%s from queries_now %s limit 1" % (query_fragment, filter)
     
     result = ''
     try:
-        conn.execute(query)
-        r = conn.read_tuple()
+        r = execute_single_value_query(query, username, password)
         result = '%s' % r
     except:
         log.msg('error during query: %s' % query)
@@ -729,23 +701,23 @@ def queryplan_sql(table, tmid, ssid, ccnt, start='', end=''):
     return query
 
 
-def queryplan_now(tmid, ssid, ccnt, username):
+def queryplan_now(tmid, ssid, ccnt, username, dbuser, dbpass):
     # If not superuser, check that username matches
     if username != '':
-        q_username = queryplan_get_username_now(tmid, ssid, ccnt)
+        q_username = queryplan_get_username_now(tmid, ssid, ccnt, dbuser, dbpass)
         if q_username != username:
             return _queryplan_consolidate(rows)
             
     query1 = queryplan_sql("iterators_now", tmid, ssid, ccnt)
     query = query1 + " order by pnid, nid"
 
-    rows = execute_query(query)
+    rows = execute_query(query, dbuser, dbpass)
 
     return _queryplan_consolidate(rows)
 
 
 
-def queryplan_get_username_history(tmid, ssid, ccnt, start, end):
+def queryplan_get_username_history(tmid, ssid, ccnt, start, end, username, password):
     query_fragment = "select username"
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s'" % (tmid, ssid, ccnt)
     if start != '' and end != '':
@@ -756,8 +728,7 @@ def queryplan_get_username_history(tmid, ssid, ccnt, start, end):
     
     result = ''
     try:
-        conn.execute(query)
-        r = conn.read_tuple()
+        r = execute_single_value_query(query, username, password)
         result = '%s' % r
     except:
         log.msg('error during query: %s' % query)
@@ -765,10 +736,10 @@ def queryplan_get_username_history(tmid, ssid, ccnt, start, end):
     return result
 
 
-def queryplan_history(tmid, ssid, ccnt, username, start, end):
+def queryplan_history(tmid, ssid, ccnt, username, start, end, dbuser, dbpass):
     # If not superuser, check that username matches
     if username != '':
-        q_username = queryplan_get_username_history(tmid, ssid, ccnt, start, end)
+        q_username = queryplan_get_username_history(tmid, ssid, ccnt, start, end, dbuser, dbpass)
         if q_username != username:
             return _queryplan_consolidate(rows)
             
@@ -776,7 +747,7 @@ def queryplan_history(tmid, ssid, ccnt, username, start, end):
     query2 = queryplan_sql("iterators_tail", tmid, ssid, ccnt)
     query = "(%s) union all (%s) order by pnid, nid" % (query1, query2)
 
-    rows = execute_query(query)
+    rows = execute_query(query, dbuser, dbpass)
 
     return _queryplan_consolidate(rows)
 
@@ -890,7 +861,7 @@ def iterator_sql():
 
 
 # returns iterator data across all segments.
-def queryiterator(tmid, ssid, ccnt, nid):
+def queryiterator(tmid, ssid, ccnt, nid, dbuser, dbpass):
     query_fragment = iterator_sql()
     filter = "where tmid='%s' and ssid='%s' and ccnt='%s' and nid='%s'" % (tmid, ssid, ccnt, nid)
 
@@ -898,7 +869,7 @@ def queryiterator(tmid, ssid, ccnt, nid):
     query2 = "%s from iterators_tail %s" % (query_fragment, filter)
     query = "%s\nunion all\n%s" % (query1, query2)
 
-    rows = execute_query(query)
+    rows = execute_query(query, dbuser, dbpass)
 
     # query real-time information.
     segid = ''
@@ -909,11 +880,11 @@ def queryiterator(tmid, ssid, ccnt, nid):
 
 
 
-def database_now(remote):
+def database_now(remote, dbuser, dbpass):
     if remote:
         interval_code = 7
         query = database_sql('database_now', '', interval_code)
-        rows = execute_query(query)
+        rows = execute_query(query, dbuser, dbpass)
     else:
         rows = database_file()
 
@@ -979,7 +950,7 @@ def database_sql(table, filter, interval_code):
     return query_fragment
 
 
-def database_history(stime, etime, interval_code):
+def database_history(stime, etime, interval_code, dbuser, dbpass):
     if etime == 'NOW':
         filter = "where ctime >= '%s'" % stime
     else:
@@ -989,38 +960,48 @@ def database_history(stime, etime, interval_code):
     query2 = database_sql('database_tail', filter, interval_code)
     query = '%s union all %s' % (query1, query2)
 
-    rows = execute_query(query)
+    rows = execute_query(query, dbuser, dbpass)
 
     return _database_consolidate(rows)
 
-def database_state():
+
+def database_state(dbuser, dbpass):
+
+    dbstatus_normal = 'NORMAL'
+    dbstatus_degraded = 'DEGRADED'
+    dbstatus_down = 'DOWN'
+    dbstatus_unbalanced = 'UNBALANCED'
+
     degradeState_query =  "select count(*) from gp_segment_configuration where mode <> 's'"
     unbalancedState_query = "select count(*) from gp_segment_configuration where role <> preferred_role"
-    dbstatus = 'NORMAL'
 
     try:
-        result = execute_query(degradeState_query)
+        result = execute_query(degradeState_query, dbuser, dbpass)
 
         if result[0]['count'] != 0:
-            dbstatus = 'DEGRADED'
-        else:
-            result = execute_query(unbalancedState_query)
-            if result[0]['count'] != 0:
-               dbstatus = 'UNBALANCED'
-    except IOError:
-        log.msg('GPDB down')
+            return dbstatus_degraded
+
+    except Exception, e:
+        log.msg('GPDB error on query (%s) (%s)' % (degradeState_query, e.__str__()))
         dbstatus = 'DOWN'
+        return dbstatus_down
+    except:
+        log.msg('GPDB error on query (%s)' % (degradeState_query))
+        dbstatus = 'DOWN'
+        return dbstatus_down
 
-    # if the DB is down try to re-establish the connection to the DB
-    if dbstatus == 'DOWN':
-        try:
-            global conn
-            conn=None
-            validate_db_conn()
-        except:
-            pass
+    try:
+        result = execute_query(unbalancedState_query, dbuser, dbpass)
+        if result[0]['count'] != 0:
+            return dbstatus_unbalanced
+    except Exception, e:
+        log.msg('GPDB error on query (%s) (%s)' % (unbalancedState_query, e.__str__()))
+        return dbstatus_down
+    except Exception, e:
+        log.msg('GPDB error on query (%s)' % (unbalancedState_query))
+        return dbstatus_down
 
-    return dbstatus
+    return dbstatus_normal
 
 def readLastUpdateTimeForHealthFromDisk():
     retval = 0
