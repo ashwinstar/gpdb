@@ -3106,17 +3106,28 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 			{
 				conn->stopRequested = true;
 				conn->conn_info.flags |= UDPIC_FLAGS_STOP;
-				if (!(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6 ))
-				{
-					elog(LOG,"UDP Interconnect bug: trying to send ack when we don't know where to send to %s", conn->remoteHostAndPort);
-				}
-				else
-				{
-					Assert(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6 );
-					sendAck(conn, true);
-				}
 
-				elog(DEBUG4, "sent stop message. node %d route %d seq %d", motNodeID, i, conn->conn_info.seq);
+				/*
+				 * When gp_interconnect_elide_setup is set, we don't send a handshake message at the setup time
+				 * (except for the case when the query is the first one in the session, i.e.,
+				 * gp_interconnect_id = 1). The peer addresses for incoming connections will not be set until
+				 * the first packet has arrived. However, when the lower slice does not have data to send,
+				 * the corresponding peer address for the incoming connection will never be set.
+				 * We will skip sending ACKs to those connections.
+				 */
+#ifdef USE_ASSERT_CHECKING
+				if (!gp_interconnect_elide_setup || gp_interconnect_id == 1)
+				{
+					Assert(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6);
+				}
+#endif
+
+				if (conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6)
+				{
+					sendAck(conn, true);
+
+					elog(DEBUG4, "sent stop message. node %d route %d seq %d", motNodeID, i, conn->conn_info.seq);
+				}
 			}
 		}
 		pthread_mutex_unlock(&rx_thread_mutex);
