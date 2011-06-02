@@ -264,13 +264,14 @@ class ValidateDumpDatabase(Operation):
                                                        exclude_dump_tables = self.exclude_dump_tables,
                                                        master_port = self.master_port).run()
 
-        if self.free_space_percent is not None:
-            ValidateDiskSpace(free_space_percent = self.free_space_percent,
-                              compress = self.compress,
-                              dump_database = self.dump_database,
-                              include_dump_tables = self.include_dump_tables,
-                              batch_default = self.batch_default,
-                              master_port = self.master_port).run()
+# MPP-13282: we cannot assume that gp_toolkit exists, so unhooking disk checks for now
+#        if self.free_space_percent is not None:
+#            ValidateDiskSpace(free_space_percent = self.free_space_percent,
+#                              compress = self.compress,
+#                              dump_database = self.dump_database,
+#                              include_dump_tables = self.include_dump_tables,
+#                              batch_default = self.batch_default,
+#                              master_port = self.master_port).run()
 
         return  self.exclude_dump_tables
 
