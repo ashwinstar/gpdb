@@ -37,7 +37,7 @@ override CFLAGS += $(PTHREAD_CFLAGS)
 LIBS := $(filter-out -lpgport, $(LIBS))
 
 OBJS= execute.o typename.o descriptor.o data.o error.o prepare.o memory.o \
-	connect.o misc.o path.o pgstrcasecmp.o \
+	connect.o misc.o path.o pgstrcasecmp.o strlcpy.o \
 	$(filter snprintf.o strlcpy.o, $(LIBOBJS))
 
 # thread.c is needed only for non-WIN32 implementation of path.c
