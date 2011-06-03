@@ -420,36 +420,36 @@ faag: fileam:00000744:  */
 faag: fileam:00000745: static DataLineStatus parse_next_line(FileScanDesc scan) 
 faag: fileam:00000746: { 
 faag: fileam:00000747:  CopyState pstate = scan->fs_pstate; 
-faag: fileam:00001050:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
-faag: fileam:00001051:  errmsg("The specified error table for this " 
-faag: fileam:00001052:  "external table doesn't appear to " 
-faag: fileam:00001053:  "exist in the database. It may have " 
-faag: fileam:00001054:  "been dropped."), 
-faag: fileam:00001055:  errhint("Refresh your external table definition."))); 
-faag: fileam:00001250:  ereport(ERROR, 
-faag: fileam:00001251:  (errcode_for_file_access(), 
-faag: fileam:00001252:  errmsg("could not open \"%s\" for reading: %d %s", 
-faag: fileam:00001253:  scan->fs_uri, response_code, response_string), 
-faag: fileam:00001254:  errOmitLocation(true))); 
-faag: fileam:00001301:  ereport(ERROR, 
-faag: fileam:00001302:  (errcode_for_file_access(), 
-faag: fileam:00001303:  errmsg("could not open \"%s\" for writing: %d %s", 
-faag: fileam:00001304:  extInsertDesc->ext_uri, response_code, response_string))); 
-faag: fileam:00001363:  ereport(ERROR, 
-faag: fileam:00001364:  (errcode_for_file_access(), 
-faag: fileam:00001365:  errmsg("could not read from external file: %m"))); 
-faag: fileam:00001383:  ereport(ERROR, 
-faag: fileam:00001384:  (errcode_for_file_access(), 
-faag: fileam:00001385:  errmsg("could not write to external resource: %m"))); 
-faag: fileam:00002003:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002004:  errmsg("external table internal parse error at \"%s\"", 
-faag: fileam:00002005:  token))); 
-faag: fileam:00002007:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002008:  errmsg("external table internal parse error at end of " 
-faag: fileam:00002009:  "line"))); 
-faag: fileam:00002059:  ereport(ERROR, 
-faag: fileam:00002060:  (errcode_for_file_access(), 
-faag: fileam:00002061:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+faag: fileam:00001051:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+faag: fileam:00001052:  errmsg("The specified error table for this " 
+faag: fileam:00001053:  "external table doesn't appear to " 
+faag: fileam:00001054:  "exist in the database. It may have " 
+faag: fileam:00001055:  "been dropped."), 
+faag: fileam:00001056:  errhint("Refresh your external table definition."))); 
+faag: fileam:00001251:  ereport(ERROR, 
+faag: fileam:00001252:  (errcode_for_file_access(), 
+faag: fileam:00001253:  errmsg("could not open \"%s\" for reading: %d %s", 
+faag: fileam:00001254:  scan->fs_uri, response_code, response_string), 
+faag: fileam:00001255:  errOmitLocation(true))); 
+faag: fileam:00001302:  ereport(ERROR, 
+faag: fileam:00001303:  (errcode_for_file_access(), 
+faag: fileam:00001304:  errmsg("could not open \"%s\" for writing: %d %s", 
+faag: fileam:00001305:  extInsertDesc->ext_uri, response_code, response_string))); 
+faag: fileam:00001364:  ereport(ERROR, 
+faag: fileam:00001365:  (errcode_for_file_access(), 
+faag: fileam:00001366:  errmsg("could not read from external file: %m"))); 
+faag: fileam:00001384:  ereport(ERROR, 
+faag: fileam:00001385:  (errcode_for_file_access(), 
+faag: fileam:00001386:  errmsg("could not write to external resource: %m"))); 
+faag: fileam:00002004:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002005:  errmsg("external table internal parse error at \"%s\"", 
+faag: fileam:00002006:  token))); 
+faag: fileam:00002008:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002009:  errmsg("external table internal parse error at end of " 
+faag: fileam:00002010:  "line"))); 
+faag: fileam:00002060:  ereport(ERROR, 
+faag: fileam:00002061:  (errcode_for_file_access(), 
+faag: fileam:00002062:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
 uaad: url:00000264:  ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE), 
 uaad: url:00000265:  errmsg("connection with gpfdist failed for %s. " 
@@ -18088,6 +18088,11 @@ taaf: tqual:00000550:  "and found none. Shared Local Snapshots dump: %s", id,
 taaf: tqual:00000551:  SharedSnapshotDump()), 
 taaf: tqual:00000552:  errhint("Either this %s was created before the %s or the %s died.", 
 taaf: tqual:00000553:  lookerDescription, creatorDescription, creatorDescription))); 
+aaaaa GP_IGNORE: gaai: gpmrdemo - ./bin/gpmapreduce/test/lib/gpmrdemo.c
+gaai: gpmrdemo:00000063:  ereport(ERROR, 
+gaai: gpmrdemo:00000064:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaai: gpmrdemo:00000065:  errmsg("function returning record called in context " 
+gaai: gpmrdemo:00000066:  "that cannot accept type record"))); 
 aaaaa GP_IGNORE: gaai: gpviewcp - ./bin/gpupgrade/gpviewcp.c
 gaai: gpviewcp:00000070:  ereport(ERROR, 
 gaai: gpviewcp:00000071:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
