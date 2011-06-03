@@ -920,7 +920,7 @@ compute_geometry_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 	if ( ! notnull_cnt )
 	{
 		elog(NOTICE, " no notnull values, invalid stats");
-		stats->stats_valid = false;
+		stats->pgstat.stats_valid = false;
 		return;
 	}
 
@@ -1192,7 +1192,7 @@ compute_geometry_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 	if ( ! examinedsamples )
 	{
 		elog(NOTICE, " no examined values, invalid stats");
-		stats->stats_valid = false;
+		stats->pgstat.stats_valid = false;
 
 		POSTGIS_DEBUG(3, " no stats have been gathered");
 
@@ -1232,24 +1232,24 @@ compute_geometry_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 	/*
 	 * Write the statistics data 
 	 */
-	stats->stakind[0] = STATISTIC_KIND_GEOMETRY;
-	stats->staop[0] = InvalidOid;
-	stats->stanumbers[0] = (float4 *)geomstats;
-	stats->numnumbers[0] = geom_stats_size/sizeof(float4);
+	stats->pgstat.stakind[0] = STATISTIC_KIND_GEOMETRY;
+	stats->pgstat.staop[0] = InvalidOid;
+	stats->pgstat.stanumbers[0] = (float4 *)geomstats;
+	stats->pgstat.numnumbers[0] = geom_stats_size/sizeof(float4);
 
-	stats->stanullfrac = (float4)null_cnt/samplerows;
-	stats->stawidth = total_width/notnull_cnt;
-	stats->stadistinct = -1.0;
+	stats->pgstat.stanullfrac = (float4)null_cnt/samplerows;
+	stats->pgstat.stawidth = total_width/notnull_cnt;
+	stats->pgstat.stadistinct = -1.0;
 
 	POSTGIS_DEBUGF(3, " out: slot 0: kind %d (STATISTIC_KIND_GEOMETRY)",
-	               stats->stakind[0]);
-	POSTGIS_DEBUGF(3, " out: slot 0: op %d (InvalidOid)", stats->staop[0]);
-	POSTGIS_DEBUGF(3, " out: slot 0: numnumbers %d", stats->numnumbers[0]);
-	POSTGIS_DEBUGF(3, " out: null fraction: %d/%d=%g", null_cnt, samplerows, stats->stanullfrac);
-	POSTGIS_DEBUGF(3, " out: average width: %d bytes", stats->stawidth);
+	               stats->pgstat.stakind[0]);
+	POSTGIS_DEBUGF(3, " out: slot 0: op %d (InvalidOid)", stats->pgstat.staop[0]);
+	POSTGIS_DEBUGF(3, " out: slot 0: numnumbers %d", stats->pgstat.numnumbers[0]);
+	POSTGIS_DEBUGF(3, " out: null fraction: %d/%d=%g", null_cnt, samplerows, stats->pgstat.stanullfrac);
+	POSTGIS_DEBUGF(3, " out: average width: %d bytes", stats->pgstat.stawidth);
 	POSTGIS_DEBUG(3, " out: distinct values: all (no check done)");
 
-	stats->stats_valid = true;
+	stats->pgstat.stats_valid = true;
 }
 
 /*

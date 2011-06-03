@@ -2234,7 +2234,7 @@ Datum relate_pattern(PG_FUNCTION_ARGS)
 	g2 = (GEOSGeometry *)POSTGIS2GEOS(geom2);
 
 	patt =  DatumGetCString(DirectFunctionCall1(textout,
-	                        PointerGetDatum(PG_GETARG_DATUM(2))));
+	                        PG_GETARG_DATUM(2)));
 
 	/*
 	** Need to make sure 't' and 'f' are upper-case before handing to GEOS

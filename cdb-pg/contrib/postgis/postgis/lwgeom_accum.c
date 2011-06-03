@@ -16,6 +16,7 @@
 #include "access/tupmacs.h"
 #include "utils/array.h"
 #include "utils/lsyscache.h"
+#include "nodes/execnodes.h"
 
 #include "liblwgeom.h"
 #include "lwgeom_pg.h"
@@ -162,7 +163,7 @@ pgis_accum_finalfn(pgis_abs *p, MemoryContext mctx, FunctionCallInfo fcinfo)
 	state = p->a;
 	dims[0] = state->nelems;
 	lbs[0] = 1;
-#if POSTGIS_PGSQL_VERSION < 84
+#if POSTGIS_PGSQL_VERSION < 84 && !defined(GREENPLUM)
 	result = makeMdArrayResult(state, 1, dims, lbs, mctx);
 #else
 	/* Release working state if regular aggregate, but not if window agg */

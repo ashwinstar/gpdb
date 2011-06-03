@@ -83,7 +83,7 @@ static void PreparedCacheInit(MemoryContext context);
 static void PreparedCacheReset(MemoryContext context);
 static void PreparedCacheDelete(MemoryContext context);
 static bool PreparedCacheIsEmpty(MemoryContext context);
-static void PreparedCacheStats(MemoryContext context, int level);
+static void PreparedCacheStats(MemoryContext context, const char* contextName);
 #ifdef MEMORY_CONTEXT_CHECKING
 static void PreparedCacheCheck(MemoryContext context);
 #endif
@@ -157,7 +157,7 @@ PreparedCacheIsEmpty(MemoryContext context)
 }
 
 static void
-PreparedCacheStats(MemoryContext context, int level)
+PreparedCacheStats(MemoryContext context, const char* contextName)
 {
 	/*
 	 * Simple stats display function - we must supply a function since this call is mandatory according to tgl
