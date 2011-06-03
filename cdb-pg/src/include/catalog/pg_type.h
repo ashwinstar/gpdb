@@ -711,8 +711,6 @@ DATA(insert OID = 6993 (gp_persistent_filespace_node PGNSP PGUID -1 f c t \054 5
 DATA(insert OID = 6994 (gp_relation_node PGNSP PGUID -1 f c t \054 5094 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_));
 #define GP_RELATION_NODE_OID 6994
 
-// UNDONE: This is for a index.  Necessary?
-#define GP_RELATION_NODE_INDEX_OID 0
 
 /*
  * macros

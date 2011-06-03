@@ -50,18 +50,6 @@
 #include "utils/ps_status.h"
 #include "utils/memutils.h"
 
-#ifdef HAVE_SYS_SEM_H
-#include <sys/sem.h>
-#endif
-
-#ifndef HAVE_UNION_SEMUN
-union semun
-{
-    int         val;
-    struct semid_ds *buf;
-    unsigned short *array;
-};
-#endif
 
 extern void quickdie(SIGNAL_ARGS); /* is in tcopprot.h */
 

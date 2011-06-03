@@ -239,7 +239,7 @@ typedef FormData_gp_relation_node *Form_gp_relation_node;
  * gp_relation_node_index index values for FormData_pg_class.
  */
 #define Class_gp_relation_node_index \
-  {"gp_relation_node_index"}, PG_CATALOG_NAMESPACE, GP_RELATION_NODE_INDEX_OID, BOOTSTRAP_SUPERUSERID, BTREE_AM_OID, \
+  {"gp_relation_node_index"}, PG_CATALOG_NAMESPACE, 0, BOOTSTRAP_SUPERUSERID, BTREE_AM_OID, \
                GpRelationNodeOidIndexId, DEFAULTTABLESPACE_OID, \
                25, 10000, 0, 0, 0, 0, false, false, RELKIND_INDEX, RELSTORAGE_HEAP, Natts_gp_relation_node_index, \
                0, 0, 0, 0, 0, false, false, false, false, FirstNormalTransactionId, {0}, {{{'\0','\0','\0','\0'},{'\0'}}}
