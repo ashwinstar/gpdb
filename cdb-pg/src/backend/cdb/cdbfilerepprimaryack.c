@@ -635,13 +635,13 @@ FileRepAckPrimary_NewHashEntry(
 			if (FileRep_IsIpcSleep(fileRepOperation))
 			{					
 				FileRep_Sleep1ms(retry);
+				FileRep_IncrementRetry(retry);
 			}
 			else
 			{
 				FileRep_IpcWait(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semC);
 			}	
 			
-			FileRep_IncrementRetry(retry);
 			continue;
 		}
 
@@ -850,15 +850,15 @@ FileRepAckPrimary_IsOperationCompleted(
 								"primary may transition to change tracking",
 								gp_segment_connect_timeout),
 						errhint("increase guc 'gp_segment_connect_timeout' by 'gpconfig' and 'gpstop -u' "),
-						errSendAlert(true)));											
+						errSendAlert(true)));	
+
+				FileRep_IncrementRetry(retry);
 			}
 			else
 			{
 				FileRep_IpcWait(fileRepIpcArray[fileRepAckHashShmem->ipcArrayIndex]->semP);
 			}			
-				
-			FileRep_IncrementRetry(retry);
-
+			
 			/*
 			 * if the message was from the main filerep process then it is a
 			 *   graceful shutdown message to the mirror.  We don't want to stall

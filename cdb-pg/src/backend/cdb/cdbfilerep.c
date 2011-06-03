@@ -1111,21 +1111,15 @@ FileRep_ReserveShmem(
 									"primary may transition to change tracking",
 									gp_segment_connect_timeout),
 							errhint("increase guc 'gp_segment_connect_timeout' by 'gpconfig' and 'gpstop -u' "),
-							errSendAlert(true)));					
+							errSendAlert(true)));		
+
+				FileRep_IncrementRetry(retry);
+
 			}
 			else
 			{
-				FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP);
-				
-				/* that is not nice way of fixing MPP-8875, a temporary solution */ 
-				if (retry > 500)
-				{
-					FileRep_Sleep10ms(retry - 500);
-				}
+				FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP);				
 			}
-
-			FileRep_IncrementRetry(retry);
-			
 		}
 	}
 	
@@ -1137,13 +1131,6 @@ FileRep_ReserveShmem(
 	
 	return (msgPositionInsert);
 }
-
-/*
-ereport(WARNING,
-		(errmsg("mirror is staying behind primary for '%d' seconds"), // 75% *gp_segment_connect_timeout
-		 errSendAlert(true)));
-
-*/
 
 /****************************************************************
  * ERROR REPORTING
