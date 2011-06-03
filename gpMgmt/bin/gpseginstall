@@ -195,7 +195,9 @@ def readHostList():
 
     try:
         for line in open(options.file, "r"):
-            hostname = line.rstrip()
+            hostname = line.strip()
+            if not len(hostname):
+                continue
             hosts[hostname] = HostMapping(hostname)
     except Exception, e:
         logger.error("Error while reading file: %s" % options.file)
@@ -892,13 +894,17 @@ def earlyExit(error = False):
     if error:
         logger.fatal("early exit from gpseginstall")
     if pool:
-        pool.join()
-        pool.haltWork()
-        pool.joinWorkers()
+        try:
+            pool.join()
+            pool.haltWork()
+            pool.joinWorkers()
+        except KeyboardInterrupt:
+            logger.info("Exiting, please wait ...")
 
     if error:
         sys.exit(1)
     else:
+        logger.info("SUCCESS -- Requested commands completed")
         sys.exit(0)
 
 if (parseargs()):
@@ -953,6 +959,7 @@ try:
             earlyExit(True)
 
 except KeyboardInterrupt:
+    logger.info("Job stopped by user")
     earlyExit(True)
     
 earlyExit(False)
