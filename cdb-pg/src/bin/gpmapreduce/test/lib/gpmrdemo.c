@@ -2,26 +2,156 @@
 #include "fmgr.h"
 #include "funcapi.h"
 #include "catalog/pg_type.h"      /* oids of known types */
+#include "utils/builtins.h"       /* Builtin functions, including lower() */
+
+#include <strings.h>
 
 /* Do the module magic dance */
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
+PG_FUNCTION_INFO_V1(wordsplit);
 PG_FUNCTION_INFO_V1(int4_accum);
 PG_FUNCTION_INFO_V1(int8_add);
 
 
 /* Declare the functions as module exports */
+Datum wordsplit(PG_FUNCTION_ARGS);
 Datum int4_accum(PG_FUNCTION_ARGS);
 Datum int8_add(PG_FUNCTION_ARGS);
 
+const char* wordsplit_str = "gpmrdemo:wordsplit()";
 const char* accum_str = "gpmrdemo:int4_accum()";
 const char* add_str   = "gpmrdemo:int8_add()";
 
 
-
+/* 
+ * In this case the state structure is so simple that this is unnecessary,
+ * but frequently a more complex user state is needed, this demonstrates
+ * how that may be accomplished.
+ */
+typedef struct {
+	char *string;
+} wordsplit_state;
 
 /* Define the functions */
+Datum 
+wordsplit(PG_FUNCTION_ARGS)
+{
+	FuncCallContext     *funcctx;
+    TupleDesc            tupdesc;
+	wordsplit_state     *myState;
+	char                *word;
+	HeapTuple            res;
+	Datum                result;
+	Datum                values[2];
+	bool                 nulls[2] = {false, false};
+
+	/* stuff done only on the first call of the function */
+	if (SRF_IS_FIRSTCALL())
+	{
+        MemoryContext   oldcontext;
+		
+        /* create a function context for cross-call persistence */
+        funcctx = SRF_FIRSTCALL_INIT();
+
+        /* switch to memory context appropriate for multiple function calls */
+        oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+        /* Build a tuple descriptor for our result type */
+        if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+            ereport(ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg("function returning record called in context "
+                            "that cannot accept type record")));
+
+        /* Bless the tuple descriptor for later use */
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		/* Allocate a cross call user state */
+		funcctx->user_fctx = palloc0(sizeof(wordsplit_state));
+		myState = (wordsplit_state*) funcctx->user_fctx;
+
+		/* Extract needed information from input parameters */
+		if (PG_ARGISNULL(0))
+		{
+			myState->string = NULL;
+		}
+		else
+		{
+			/* Fetch the input parameter */
+			Datum d = PG_GETARG_DATUM(0);
+
+			/* Use a builtin function definition to convert it to lower case */
+			d = DirectFunctionCall1(lower, d);
+
+			/* Convert the datum into a cstring for our use */
+			myState->string = TextDatumGetCString(d);
+		}
+		
+		/* Restore the per-call memory context */
+        MemoryContextSwitchTo(oldcontext);
+    }
+
+    /* stuff done on every call of the function */
+    funcctx = SRF_PERCALL_SETUP();
+	myState = (wordsplit_state*) funcctx->user_fctx;
+
+
+	/* Handle the case of null input */
+	if (!myState->string)
+	{
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	/*
+	 * Begin messy string handling in "C", this would be so much nicer
+	 * in any more advanced language...
+	 */
+
+	/* Scan forward to the next word character */
+	while (myState->string[0] < 'a' || myState->string[0] > 'z')
+	{
+		/* If we hit the end then we are done */
+		if (myState->string[0] == '\0')
+			SRF_RETURN_DONE(funcctx);
+		myState->string++;
+	}
+
+	/* Find the next word */
+	word = myState->string;
+
+	/* Scan forward until the end of the word */
+	while (myState->string[0] >= 'a' && myState->string[0] <= 'z')
+		myState->string++;
+
+	/* 
+	 * If we terminated on whitespace then advance to the next non-whitespace
+	 * character.
+	 */
+	if (myState->string[0] != '\0')
+	{
+		myState->string[0] = '\0';
+		myState->string++;
+	}
+
+	/*
+	 * We have our word, and now need to construct the return tuple of:
+	 *    (word, 1)
+	 */
+	values[0] = CStringGetTextDatum(word);
+	values[1] = Int32GetDatum(1);
+
+	/* Construct the Tuple */
+	res = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+
+	/* Convert the Tuple into a Datum */
+	result = HeapTupleGetDatum(res);
+
+	/* Return the tuple */
+	SRF_RETURN_NEXT(funcctx, result);
+}
+
 Datum 
 int4_accum(PG_FUNCTION_ARGS)
 {

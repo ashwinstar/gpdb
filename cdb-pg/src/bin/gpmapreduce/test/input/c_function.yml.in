@@ -15,11 +15,9 @@ DEFINE:
   # This is the input used by all our examples
   # ==========================================================================
   - INPUT:
-      NAME:      network
-      FILE:      @hostname@:@abs_srcdir@/data/www.small.dat
-      COLUMNS:   [key int4, value int4]
-      DELIMITER: '|'
-
+      NAME:      smalldoc
+      FILE:      @hostname@:@abs_srcdir@/data/smalldoc.txt
+      COLUMNS:   [line text]
 
   # ==========================================================================
   # For comparison purposes we also show how to do the same thing
@@ -37,6 +35,14 @@ DEFINE:
   # Note: There is an assumption that the gpmrdemo.so has already been installed
   # across the cluster in $GPHOME/lib/postgresql.
   # ==========================================================================
+  - MAP:
+      NAME:        wordsplit
+      PARAMETERS: [line text]
+      RETURNS:    [key text, value int4]
+      LANGUAGE:   C
+      LIBRARY:    $libdir/gpmrdemo.so
+      FUNCTION:   wordsplit
+
   - TRANSITION:
       NAME:       int4_accum
       PARAMETERS: [state int8, value int4]
@@ -62,9 +68,9 @@ DEFINE:
   # the REDUCE in the RUN block below.
   - TASK:
       NAME:        sum_mr_task
-      SOURCE:      network
+      SOURCE:      smalldoc
+      MAP:         wordsplit
       REDUCE:      c_sum
-
 
 
   # ==========================================================================
@@ -74,7 +80,8 @@ DEFINE:
   # ==========================================================================
   - TASK:
       NAME:       sum_builtin_task
-      SOURCE:     network
+      SOURCE:     smalldoc
+      MAP:        wordsplit
       REDUCE:     SUM
 
   # ==========================================================================      
@@ -105,7 +112,8 @@ DEFINE:
 
   - TASK:
       NAME:        sum_bulitin2_task
-      SOURCE:      network
+      SOURCE:      smalldoc
+      MAP:         wordsplit
       REDUCE:      sum_builtin2
 
   # ==========================================================================
@@ -118,7 +126,8 @@ DEFINE:
       NAME:      sum_sql
       QUERY:     |
         SELECT key, sum(value)
-        FROM   network
+        FROM (select regexp_split_to_table(line, ' ') as key, 1 as value from smalldoc) m
+        WHERE key != ''
         GROUP BY key;
 
   # ==========================================================================

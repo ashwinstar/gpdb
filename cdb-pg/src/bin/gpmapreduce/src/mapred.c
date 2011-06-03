@@ -320,14 +320,17 @@ void print_notice_handler(void *arg, const PGresult *res)
 void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc, 
 								mapred_object_t *obj)
 {
-	PGresult        *result = NULL;
-	PGresult        *result2 = NULL;
-	mapred_plist_t  *plist, *plist2;
-	mapred_plist_t  *newitem;
-	mapred_plist_t  *returns;
-	buffer_t        *buffer = NULL;
-	char             str[50];
-	int              i, nargs;
+	PGresult			*result	 = NULL;
+	PGresult			*result2 = NULL;
+	mapred_plist_t		*plist, *plist2;
+	mapred_plist_t		*newitem;
+	mapred_plist_t		*returns;
+	buffer_t			*buffer	 = NULL;
+	char				*tmp1	 = NULL;
+	char				*tmp2	 = NULL;
+	char				*tmp3	 = NULL;
+	char				 str[50];
+	int					 i, nargs;
 	
 	XASSERT(doc);
 	XASSERT(obj);
@@ -462,8 +465,8 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 			nargs = (int) strtol(value, (char **) NULL, 10);
 			
 			/* 
-			 * Arrays are formated as:  "{value, value, ...}" 
-			 * of which we only want "value, value, ..." 
+			 * Arrays are formated as:  "{value,value,...}" 
+			 * of which we only want "value,value, ..." 
 			 * so find the part of the string between the braces
 			 */
 			if (!PQgetisnull(result, 0, 3))   /* Column 3: proargnames */
@@ -523,7 +526,16 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 			plist = NULL;
 			if (!obj->u.function.parameters)
 			{
-				type = strtok_r(argtypes, ",", &typetokens);
+				/* strtok is destructive and we need to preserve the original
+				 * string, so we make some annoying copies prior to strtok.
+				 */
+				tmp1 = copyscalar(argtypes);
+				tmp2 = copyscalar(argnames);
+				tmp3 = copyscalar(argmodes);
+
+				type = strtok_r(tmp1, ",", &typetokens);
+				name = strtok_r(tmp2, ",", &nametokens);
+				mode = strtok_r(tmp3, ",", &modetokens);
 
 				/* 
 				 * Name and mode are used for IN/OUT parameters and may not be 
@@ -542,8 +554,6 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 				 * If argmodes is not defined then all names in proargnames 
 				 * refer to input arguments.  
 				 */
-				name = strtok_r(argnames, ",", &nametokens);
-				mode = strtok_r(argmodes, ",", &modetokens);
 
 				while (mode && strcmp(mode, "i") && strcmp(mode, "b"))
 				{
@@ -565,11 +575,15 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 					 */
 					if (!name)
 					{
+						/* single argument functions always default to "value" */
+						if (i == 1 && nargs == 1)
+							name = (char*) "value";
+
 						/* Base name on default parameter names for the first
 						 * two arguments */
-						if (i <= 2)
+						else if (i <= 2)
 							name = (char*) default_parameter_names[obj->kind][i-1];
-
+						
 						/*
 						 * If we still didn't decide on a name, make up
 						 * something useless.
@@ -608,6 +622,13 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 						mode = strtok_r(NULL, ",", &modetokens);
 					}
 				}
+
+				mapred_free(tmp1);
+				mapred_free(tmp2);
+				mapred_free(tmp3);
+				tmp1 = NULL;
+				tmp2 = NULL;
+				tmp3 = NULL;
 			}
 
 			/* 
@@ -691,18 +712,29 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 			 *  3) Function returns a complex type.
 			 *  4) Return type is void [error]
 			 */
-			returns = plist = NULL;
+			plist = returns = NULL;
 			if (argmodes && strlen(argmodes) > 0)
 			{
-				type = strtok_r(allargtypes, ",", &typetokens);
-				name = strtok_r(argnames, ",", &nametokens);
-				mode = strtok_r(argmodes, ",", &modetokens);
-				
+
+				/* strtok is destructive and we need to preserve the original
+				 * string, so we make some annoying copies prior to strtok.
+				 */
+				tmp1 = copyscalar(allargtypes);
+				tmp2 = copyscalar(argnames);
+				tmp3 = copyscalar(argmodes);
+
+				type = strtok_r(tmp1, ",", &typetokens);
+				name = strtok_r(tmp2, ",", &nametokens);
+				mode = strtok_r(tmp3, ",", &modetokens);
+
 				while (mode)
 				{
-					while (mode && strcmp(mode, "o") && strcmp(mode, "b") && 
+					while (mode && 
+						   strcmp(mode, "o") && 
+						   strcmp(mode, "b") && 
 						   strcmp(mode, "t"))
 					{
+						/* skip input parameters */
 						type = strtok_r(NULL, ",", &typetokens);
 						name = strtok_r(NULL, ",", &nametokens);
 						mode = strtok_r(NULL, ",", &modetokens);
@@ -718,17 +750,27 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 						 * do this after resolution when validating against any
 						 * RETURNS defined in the yaml, if any.
 						 */
-						newitem->name = name;
-						newitem->type = type;
+						newitem->name = copyscalar(name);
+						newitem->type = copyscalar(type);
 						newitem->next = NULL;
 
-						if (!returns)
-							returns = newitem;
-						else
+						if (plist)
 							plist->next = newitem;
+						else
+							returns = newitem;
 						plist = newitem;
 					}
+					type = strtok_r(NULL, ",", &typetokens);
+					name = strtok_r(NULL, ",", &nametokens);
+					mode = strtok_r(NULL, ",", &modetokens);
 				}
+
+				mapred_free(tmp1);
+				mapred_free(tmp2);
+				mapred_free(tmp3);
+				tmp1 = NULL;
+				tmp2 = NULL;
+				tmp3 = NULL;
 			}
 
 			/* 
@@ -759,19 +801,19 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 					mapred_obj_error(obj, "Error resolving function: %s", error);
 					XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
 				}
-				else if (PQntuples(result) > 1)
+				else if (PQntuples(result2) > 0)
 				{
 					/* We have a complex type, build the return list */
-					for (i = 0; i < PQntuples(result); i++)
+					for (i = 0; i < PQntuples(result2); i++)
 					{
-						name = PQgetvalue(result, i, 0);
-						type = PQgetvalue(result, i, 1);
+						name = PQgetvalue(result2, i, 0);
+						type = PQgetvalue(result2, i, 1);
 
 						newitem = mapred_malloc(sizeof(mapred_plist_t));
 						newitem->name = copyscalar(name);
 						newitem->type = copyscalar(type);
 						newitem->next = returns;
-						returns = newitem->next;
+						returns = newitem;
 					}
 				}
 			}
@@ -865,14 +907,17 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 						plist->type = copyscalar(plist2->type);
 					else if (strcmp(plist->type, plist2->type))
 						break;
+					else if (plist2->name && strcmp(plist->name, plist2->name))
+						break;
 					plist  = plist->next;
 					plist2 = plist2->next;
 				}
 				if (plist || plist2)
 				{
-					mapred_obj_error(obj, "RETURN parameter '%s' => '%s' != '%s'",
-									 plist ? plist->name : "unknown",
+					mapred_obj_error(obj, "RETURN parameter '%s %s' != '%s %s'",
+									 plist ? plist->name : "\"\"",
 									 plist ? plist->type : "-",
+									 plist2 ? (plist2->name ? plist2->name : plist->name) : "\"\"",
 									 plist2 ? plist2->type : "-");
 					XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
 				}
@@ -916,6 +961,14 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 			PQclear(result2);
 		if (buffer)
 			mapred_free(buffer);
+
+		if (tmp1)
+			mapred_free(tmp1);
+		if (tmp2)
+			mapred_free(tmp2);
+		if (tmp3)
+			mapred_free(tmp3);
+
 	}
 	XTRY_END;
 }
