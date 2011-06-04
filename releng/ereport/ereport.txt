@@ -2664,68 +2664,65 @@ caba: cdbexplain:00000506:  errhint("Please verify that all instances are using 
 caba: cdbexplain:00000507:  "the correct %s software version.", 
 caba: cdbexplain:00000508:  PACKAGE_NAME))); 
 aaaaa GP_IGNORE: caba: cdbfilerep - ./backend/cdb/cdbfilerep.c
-caba: cdbfilerep:00000502:  ereport(ERROR, 
-caba: cdbfilerep:00000503:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000504:  (errmsg("not enough shared memory for mirroring")))); 
-caba: cdbfilerep:00000528:  ereport(ERROR, 
-caba: cdbfilerep:00000529:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000530:  (errmsg("shared memory for filerep ipc not initialized")))); 
-caba: cdbfilerep:00000661:  ereport(ERROR, 
-caba: cdbfilerep:00000662:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000663:  (errmsg("not enough shared memory for mirroring")))); 
-caba: cdbfilerep:00000804:  ereport(ERROR, 
-caba: cdbfilerep:00000805:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00000806:  (errmsg("shared memory for mirroring not initialized.")))); 
-caba: cdbfilerep:00001120:  ereport(WARNING, 
-caba: cdbfilerep:00001121:  (errmsg("threshold '75' percent of 'gp_segment_connect_timeout=%d' is reached, " 
-caba: cdbfilerep:00001122:  "mirror may not be able to keep up with primary, " 
-caba: cdbfilerep:00001123:  "primary may transition to change tracking", 
-caba: cdbfilerep:00001124:  gp_segment_connect_timeout), 
-caba: cdbfilerep:00001125:  errhint("increase guc 'gp_segment_connect_timeout' by 'gpconfig' and 'gpstop -u' "), 
-caba: cdbfilerep:00001126:  errSendAlert(true))); 
-caba: cdbfilerep:00001154: ereport(WARNING, 
-caba: cdbfilerep:00001155:  (errmsg("mirror is staying behind primary for '%d' seconds"), // 75% *gp_segment_connect_timeout 
-caba: cdbfilerep:00001156:  errSendAlert(true))); 
-caba: cdbfilerep:00001501:  ereport(ERROR, 
-caba: cdbfilerep:00001502:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00001503:  (errmsg("not enough shared memory to log filerep config")))); 
-caba: cdbfilerep:00001535:  ereport(ERROR, 
-caba: cdbfilerep:00001536:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00001537:  (errmsg("not enough shared memory to log filerep config")))); 
-caba: cdbfilerep:00001568:  ereport(ERROR, 
-caba: cdbfilerep:00001569:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00001570:  (errmsg("not enough shared memory to log filerep config")))); 
-caba: cdbfilerep:00001686:  ereport(WARNING, 
-caba: cdbfilerep:00001687:  (errcode_for_file_access(), 
-caba: cdbfilerep:00001688:  errmsg("could not open file '%s' : %m", 
-caba: cdbfilerep:00001689:  path))); 
-caba: cdbfilerep:00001704:  ereport(WARNING, 
-caba: cdbfilerep:00001705:  (errcode_for_file_access(), 
-caba: cdbfilerep:00001706:  errmsg("could not seek in file to position '0' in file '%s' : %m", 
-caba: cdbfilerep:00001707:  path))); 
-caba: cdbfilerep:00001723:  ereport(WARNING, 
-caba: cdbfilerep:00001724:  (errcode_for_file_access(), 
-caba: cdbfilerep:00001725:  errmsg("could not write to file '%s' data '%p' dataLength '%u' : %m", 
-caba: cdbfilerep:00001726:  path, 
-caba: cdbfilerep:00001727:  data, 
-caba: cdbfilerep:00001728:  dataLengthLocal))); 
-caba: cdbfilerep:00001739:  ereport(WARNING, 
-caba: cdbfilerep:00001740:  (errcode_for_file_access(), 
-caba: cdbfilerep:00001741:  errmsg("could not fsync file '%s' : %m", path))); 
-caba: cdbfilerep:00001920:  ereport(WARNING, 
-caba: cdbfilerep:00001921:  (errmsg("signal to children failed pid '%ld' signal '%d' : %m", 
-caba: cdbfilerep:00001922:  (long) subProc->pid, signal))); 
-caba: cdbfilerep:00002605:  ereport(WARNING, 
-caba: cdbfilerep:00002606:  (errmsg("could not fork %s : %m", 
-caba: cdbfilerep:00002607:  FileRepProcessTypeToString[type]))); 
-caba: cdbfilerep:00003382:  ereport(WARNING, 
-caba: cdbfilerep:00003383:  (errmsg("mirror failure, " 
-caba: cdbfilerep:00003384:  "could not retrieve segment configuration, " 
-caba: cdbfilerep:00003385:  "failover requested"), 
-caba: cdbfilerep:00003386:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
-caba: cdbfilerep:00003854:  ereport(ERROR, 
-caba: cdbfilerep:00003855:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-caba: cdbfilerep:00003856:  (errmsg("not enough shared memory for gpmon stats")))); 
+caba: cdbfilerep:00000490:  ereport(ERROR, 
+caba: cdbfilerep:00000491:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000492:  (errmsg("not enough shared memory for mirroring")))); 
+caba: cdbfilerep:00000516:  ereport(ERROR, 
+caba: cdbfilerep:00000517:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000518:  (errmsg("shared memory for filerep ipc not initialized")))); 
+caba: cdbfilerep:00000649:  ereport(ERROR, 
+caba: cdbfilerep:00000650:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000651:  (errmsg("not enough shared memory for mirroring")))); 
+caba: cdbfilerep:00000792:  ereport(ERROR, 
+caba: cdbfilerep:00000793:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00000794:  (errmsg("shared memory for mirroring not initialized.")))); 
+caba: cdbfilerep:00001108:  ereport(WARNING, 
+caba: cdbfilerep:00001109:  (errmsg("threshold '75' percent of 'gp_segment_connect_timeout=%d' is reached, " 
+caba: cdbfilerep:00001110:  "mirror may not be able to keep up with primary, " 
+caba: cdbfilerep:00001111:  "primary may transition to change tracking", 
+caba: cdbfilerep:00001112:  gp_segment_connect_timeout), 
+caba: cdbfilerep:00001113:  errhint("increase guc 'gp_segment_connect_timeout' by 'gpconfig' and 'gpstop -u' "), 
+caba: cdbfilerep:00001114:  errSendAlert(true))); 
+caba: cdbfilerep:00001476:  ereport(ERROR, 
+caba: cdbfilerep:00001477:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00001478:  (errmsg("not enough shared memory to log filerep config")))); 
+caba: cdbfilerep:00001510:  ereport(ERROR, 
+caba: cdbfilerep:00001511:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00001512:  (errmsg("not enough shared memory to log filerep config")))); 
+caba: cdbfilerep:00001543:  ereport(ERROR, 
+caba: cdbfilerep:00001544:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00001545:  (errmsg("not enough shared memory to log filerep config")))); 
+caba: cdbfilerep:00001661:  ereport(WARNING, 
+caba: cdbfilerep:00001662:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001663:  errmsg("could not open file '%s' : %m", 
+caba: cdbfilerep:00001664:  path))); 
+caba: cdbfilerep:00001679:  ereport(WARNING, 
+caba: cdbfilerep:00001680:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001681:  errmsg("could not seek in file to position '0' in file '%s' : %m", 
+caba: cdbfilerep:00001682:  path))); 
+caba: cdbfilerep:00001698:  ereport(WARNING, 
+caba: cdbfilerep:00001699:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001700:  errmsg("could not write to file '%s' data '%p' dataLength '%u' : %m", 
+caba: cdbfilerep:00001701:  path, 
+caba: cdbfilerep:00001702:  data, 
+caba: cdbfilerep:00001703:  dataLengthLocal))); 
+caba: cdbfilerep:00001714:  ereport(WARNING, 
+caba: cdbfilerep:00001715:  (errcode_for_file_access(), 
+caba: cdbfilerep:00001716:  errmsg("could not fsync file '%s' : %m", path))); 
+caba: cdbfilerep:00001895:  ereport(WARNING, 
+caba: cdbfilerep:00001896:  (errmsg("signal to children failed pid '%ld' signal '%d' : %m", 
+caba: cdbfilerep:00001897:  (long) subProc->pid, signal))); 
+caba: cdbfilerep:00002580:  ereport(WARNING, 
+caba: cdbfilerep:00002581:  (errmsg("could not fork %s : %m", 
+caba: cdbfilerep:00002582:  FileRepProcessTypeToString[type]))); 
+caba: cdbfilerep:00003357:  ereport(WARNING, 
+caba: cdbfilerep:00003358:  (errmsg("mirror failure, " 
+caba: cdbfilerep:00003359:  "could not retrieve segment configuration, " 
+caba: cdbfilerep:00003360:  "failover requested"), 
+caba: cdbfilerep:00003361:  errhint("run gprecoverseg to re-establish mirror connectivity"))); 
+caba: cdbfilerep:00003829:  ereport(ERROR, 
+caba: cdbfilerep:00003830:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+caba: cdbfilerep:00003831:  (errmsg("not enough shared memory for gpmon stats")))); 
 aaaaa GP_IGNORE: caca: cdbfilerepconnclient - ./backend/cdb/cdbfilerepconnclient.c
 caca: cdbfilerepconnclient:00000058:  ereport(WARNING, 
 caca: cdbfilerepconnclient:00000059:  (errcode_for_socket_access(), 
