@@ -117,14 +117,6 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		Size		size;
 		int			numSemas;
 
-#if defined(__darwin__)
-		if (MaxBackends > 50)
-		{
-			elog(LOG,"limiting maximum backends to 50 on Mac OS X (was %d)",
-				 MaxBackends);
-			MaxBackends = 50;
-		}
-#endif
 		GPMemoryProtectReset();
 
 		/*
