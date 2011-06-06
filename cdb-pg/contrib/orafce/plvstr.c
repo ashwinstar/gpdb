@@ -203,8 +203,12 @@ ora_substr(Datum str, int start, int len)
 			str, Int32GetDatum(start), Int32GetDatum(len)));
 }
 
-/* simply search algorhitm - can be better */
-
+/* 
+ * Simply search algorithm. Could be greatly improved if we
+ * used KMP. Morris-Boyer would be more efficient but it might
+ * give us head aches in the presence of multibyte. For example, see
+ * `CHINESE STRING SEARCHING USING THE KMP ALGORITHM' by R. Luk.
+ */
 static int
 ora_instr_mb(text *txt, text *pattern, int start, int nth)
 {

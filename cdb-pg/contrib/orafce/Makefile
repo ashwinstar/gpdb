@@ -63,8 +63,7 @@ ifndef MAJORVERSION
 MAJORVERSION := $(basename $(VERSION))
 endif
 
-orafunc.sql.in:
-#
-#	cat orafunc-common.sql orafunc-$(MAJORVERSION).sql > orafunc.sql.in
-#
-	cat $(srcdir)/orafunc-gp.sql > orafunc.sql.in
+$(srcdir)/datefce.c: tdhfunc.c
+
+$(srcdir)/orafunc.sql.in: orafunc-gp.sql
+	cat $< > $@

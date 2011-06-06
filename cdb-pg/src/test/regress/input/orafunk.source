@@ -22,11 +22,14 @@
 \i @abs_srcdir@/../../../contrib/orafce/orafunc.sql
 -- end_ignore
 
+SET DATESTYLE TO ISO;
+
 select nvl('A'::text, 'B');
 select nvl(NULL::text, 'B');
 select nvl(NULL::text, NULL);
 select nvl(1, 2);
 select nvl(NULL, 2);
+
 select decode(1, 1, 100, 2, 200);
 select decode(2, 1, 100, 2, 200);
 select decode(3, 1, 100, 2, 200);
@@ -36,4 +39,88 @@ select decode('1'::text, '1', 100, '2', 200);
 select decode(2, 1, 'ABC', 2, 'DEF');
 select decode('2009-02-05'::date, '2009-02-05', 'ok');
 select decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok');
+
+SELECT add_months ('2003-08-01', 3);
+SELECT add_months ('2003-08-01', -3);
+SELECT add_months ('2003-08-21', -3);
+SELECT add_months ('2003-01-31', 1);
+SELECT add_months ('2008-02-28', 1);
+SELECT add_months ('2008-02-29', 1);
+SELECT add_months ('2008-01-31', 12);
+SELECT add_months ('2008-01-31', -12);
+SELECT add_months ('2008-01-31', 95903);
+SELECT add_months ('2008-01-31', -80640);
+
+SELECT last_day(to_date('2003/03/15', 'yyyy/mm/dd'));
+SELECT last_day(to_date('2003/02/03', 'yyyy/mm/dd'));
+SELECT last_day(to_date('2004/02/03', 'yyyy/mm/dd'));
+SELECT last_day('1900-02-01');
+SELECT last_day('2000-02-01');
+SELECT last_day('2007-02-01');
+SELECT last_day('2008-02-01');
+
+SELECT next_day ('2003-08-01', 'TUESDAY');
+SELECT next_day ('2003-08-06', 'WEDNESDAY');
+SELECT next_day ('2003-08-06', 'SUNDAY');
+SELECT next_day ('2008-01-01', 'sun');
+SELECT next_day ('2008-01-01', 'sunAAA');
+SELECT next_day ('2008-01-01', 1);
+SELECT next_day ('2008-01-01', 7);
+
+SELECT months_between (to_date ('2003/01/01', 'yyyy/mm/dd'),
+					   to_date ('2003/03/14 ', 'yyyy/mm/dd'));
+SELECT months_between (to_date ('2003/07/01', 'yyyy/mm/dd'),
+					   to_date ('2003/03/14', 'yyyy/mm/dd'));
+SELECT months_between (to_date ('2003/07/02', 'yyyy/mm/dd'),
+					   to_date ('2003/07/02', 'yyyy/mm/dd'));
+SELECT months_between (to_date ('2003/08/02', 'yyyy/mm/dd'),
+					   to_date ('2003/06/02', 'yyyy/mm/dd'));
+SELECT months_between ('2007-02-28', '2007-04-30');
+SELECT months_between ('2008-01-31', '2008-02-29');
+SELECT months_between ('2008-02-29', '2008-03-31');
+SELECT months_between ('2008-02-29', '2008-04-30');
+
+SELECT trunc(months_between('21-feb-2008', '2008-02-29'));
+
+
+select round(to_date ('22-AUG-03', 'DD-MON-YY'),'YEAR')  =  to_date ('01-JAN-04', 'DD-MON-YY');
+select round(to_date ('22-AUG-03', 'DD-MON-YY'),'Q')  =  to_date ('01-OCT-03', 'DD-MON-YY');
+select round(to_date ('22-AUG-03', 'DD-MON-YY'),'MONTH') =  to_date ('01-SEP-03', 'DD-MON-YY');
+select round(to_date ('22-AUG-03', 'DD-MON-YY'),'DDD')  =  to_date ('22-AUG-03', 'DD-MON-YY');
+select round(to_date ('22-AUG-03', 'DD-MON-YY'),'DAY')  =  to_date ('24-AUG-03', 'DD-MON-YY');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'YEAR')  =  to_date ('01-JAN-03', 'DD-MON-YY');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'Q')  =  to_date ('01-JUL-03', 'DD-MON-YY');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'MONTH') =  to_date ('01-AUG-03', 'DD-MON-YY');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DDD')  =  to_date ('22-AUG-03', 'DD-MON-YY');
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DAY')  =  to_date ('17-AUG-03', 'DD-MON-YY');
+select next_day(to_date('01-Aug-03', 'DD-MON-YY'), 'TUESDAY')  =  to_date ('05-Aug-03', 'DD-MON-YY');
+select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'WEDNESDAY') =  to_date ('13-Aug-03', 'DD-MON-YY');
+select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'SUNDAY')  =  to_date ('10-Aug-03', 'DD-MON-YY');
+select instr('Tech on the net', 'e') =2;
+select instr('Tech on the net', 'e', 1, 1) = 2;
+select instr('Tech on the net', 'e', 1, 2) = 11;
+select instr('Tech on the net', 'e', 1, 3) = 14;
+select instr('Tech on the net', 'e', -3, 2) = 2;
+select instr('abc', NULL) IS NULL;
+select 1 = instr('abc', '');
+select 1 = instr('abc', 'a');
+select 3 = instr('abc', 'c');
+select 0 = instr('abc', 'z');
+select 1 = instr('abcabcabc', 'abca', 1);
+select 4 = instr('abcabcabc', 'abca', 2);
+select 0 = instr('abcabcabc', 'abca', 7);
+select 0 = instr('abcabcabc', 'abca', 9);
+select 4 = instr('abcabcabc', 'abca', -1);
+select 1 = instr('abcabcabc', 'abca', -8);
+select 1 = instr('abcabcabc', 'abca', -9);
+select 0 = instr('abcabcabc', 'abca', -10);
+select 1 = instr('abcabcabc', 'abca', 1, 1);
+select 4 = instr('abcabcabc', 'abca', 1, 2);
+select 0 = instr('abcabcabc', 'abca', 1, 3);
+
+RESET DATESTYLE;
+
+-- start_ignore
+\i @abs_srcdir@/../../../contrib/orafce/uninstall_orafunc.sql
+-- end_ignore
 
