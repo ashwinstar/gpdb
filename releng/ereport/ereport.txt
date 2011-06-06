@@ -3639,7 +3639,7 @@ caah: cdbgang:00000359:  errmsg("CreateGang: failed to create thread %d of %d", 
 caah: cdbgang:00000360:  errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread), 
 caah: cdbgang:00000361:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
 caah: cdbgang:00000562:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caah: cdbgang:00000563:  errmsg("All segment databases are unavailable"))); 
+caah: cdbgang:00000563:  errmsg("failed to acquire resources on one or more segments"))); 
 caah: cdbgang:00001520:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
 caah: cdbgang:00001521:  errmsg_internal("problem in allocateGang"))); 
 aaaaa GP_IGNORE: caai: cdbgroup - ./backend/cdb/cdbgroup.c
