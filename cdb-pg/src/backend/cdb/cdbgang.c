@@ -560,7 +560,7 @@ create_gang_retry:
 			disconnectAndDestroyGang(newGangDefinition);
 
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("All segment databases are unavailable")));
+					errmsg("failed to acquire resources on one or more segments")));
 		}
 	}
 
