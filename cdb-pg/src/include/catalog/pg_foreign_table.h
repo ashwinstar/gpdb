@@ -29,6 +29,8 @@
    tbloptions    text[] -- foreign table-specific options
    );
 
+   create unique index on pg_foreign_table(reloid) with (indexid=3049, CamelCase=ForeignTableRelOid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

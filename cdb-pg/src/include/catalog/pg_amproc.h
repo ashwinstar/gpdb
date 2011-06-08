@@ -43,6 +43,8 @@
    amproc         regproc
    );
 
+   create unique index on pg_amproc(amopclaid, amprocsubtype, amprocnum) with (indexid=2655, CamelCase=AccessMethodProcedure);
+
    alter table pg_amproc add fk amopclaid on pg_opclass(oid);
    alter table pg_amproc add fk amprocsubtype on pg_type(oid);
    alter table pg_amproc add fk amproc on pg_proc(oid);

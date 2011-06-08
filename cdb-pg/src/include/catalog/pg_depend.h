@@ -35,6 +35,9 @@
    deptype      "char"
    );
 
+   create index on pg_depend(classid, objid, objsubid) with (indexid=2673, CamelCase=DependDepender);
+   create index on pg_depend(refclassid, refobjid, refobjsubid) with (indexid=2674, CamelCase=DependReference);
+
    alter table pg_depend add fk classid on pg_class(oid);
    alter table pg_depend add fk refclassid on pg_class(oid);
 

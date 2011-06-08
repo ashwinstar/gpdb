@@ -38,6 +38,11 @@
    tgargs          bytea
    );
 
+   create index on pg_trigger(tgconstrname) with (indexid=2699, CamelCase=TriggerConstrName);
+   create index on pg_trigger(tgconstrrelid) with (indexid=2700, CamelCase=TriggerConstrRelid);
+   create unique index on pg_trigger(tgrelid, tgname) with (indexid=2701, CamelCase=TriggerRelidName);
+   create unique index on pg_trigger(oid) with (indexid=2702, CamelCase=TriggerOid);
+
    alter table pg_trigger add fk tgrelid on pg_class(oid);
    alter table pg_trigger add fk tgfoid on pg_proc(oid);
    alter table pg_trigger add fk tgconstrrelid on pg_class(oid);

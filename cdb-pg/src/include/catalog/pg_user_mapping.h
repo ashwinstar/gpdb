@@ -29,6 +29,9 @@
    umoptions  text[]
    );
 
+   create unique index on pg_user_mapping(oid) with (indexid=3316, CamelCase=UserMappingOid);
+   create unique index on pg_user_mapping(umuser, umserver) with (indexid=3317, CamelCase=UserMappingUserServer);
+
    TIDYCAT_ENDFAKEDEF
 */
 

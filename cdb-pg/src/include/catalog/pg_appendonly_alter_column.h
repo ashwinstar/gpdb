@@ -25,6 +25,8 @@
    highwaterrownums  bytea
    );
 
+   create unique index on pg_appendonly_alter_column(relid, changenum) with (indexid=5031, CamelCase=AppendOnlyAlterColumnRelid);
+
    alter table pg_appendonly_alter_column add fk relid on pg_class(oid);
 
    TIDYCAT_ENDFAKEDEF

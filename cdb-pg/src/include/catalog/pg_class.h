@@ -66,6 +66,9 @@
    reloptions      text[]    
    );
 
+   create unique index on pg_class(oid) with (indexid=2662, CamelCase=ClassOid);
+   create unique index on pg_class(relname, relnamespace) with (indexid=2663, CamelCase=ClassNameNsp);
+
    alter table pg_class add fk relnamespace on pg_namespace(oid);
    alter table pg_class add fk reltype on pg_type(oid);
    alter table pg_class add fk relowner on pg_authid(oid);

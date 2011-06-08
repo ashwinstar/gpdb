@@ -35,6 +35,9 @@
    castcontext  "char"
    );
 
+   create unique index on pg_cast(oid) with (indexid=2660, CamelCase=CastOid);
+   create unique index on pg_cast(castsource, casttarget) with (indexid=2661, CamelCase=CastSourceTarget);
+
    alter table pg_cast add fk castsource on pg_type(oid);
    alter table pg_cast add fk casttarget on pg_type(oid);
    alter table pg_cast add fk castfunc on pg_proc(oid);

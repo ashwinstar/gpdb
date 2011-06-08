@@ -55,6 +55,8 @@
    amoptions        regproc
     );
 
+	create unique index on pg_am(amname) with (indexid=2651, CamelCase=AmName);
+	create unique index on pg_am(oid) with (indexid=2652, CamelCase=AmOid);
 
    alter table pg_am add fk aminsert on pg_proc(oid);
    alter table pg_am add fk ambeginscan on pg_proc(oid);

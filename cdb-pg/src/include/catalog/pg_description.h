@@ -49,6 +49,8 @@
    description  text
    );
 
+   create unique index on pg_description(objoid, classoid, objsubid) with (indexid=2675, CamelCase=DescriptionObj);
+
    alter table pg_description add fk classoid on pg_class(oid);
 
    TIDYCAT_ENDFAKEDEF

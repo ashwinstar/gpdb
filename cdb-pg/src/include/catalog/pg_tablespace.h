@@ -45,6 +45,9 @@
    spcfsoid         oid
    );
 
+   create unique index on pg_tablespace(oid) with (indexid=2697, CamelCase=TablespaceOid);
+   create unique index on pg_tablespace(spcname) with (indexid=2698, CamelCase=TablespaceName);
+
    alter table pg_tablespace add fk spcowner on pg_authid(oid);
    alter table pg_tablespace add fk spcfsoid on pg_filespace(oid);
 

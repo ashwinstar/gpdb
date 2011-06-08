@@ -37,6 +37,9 @@
    fdwoptions    text[] -- FDW options
    );
 
+   create unique index on pg_foreign_data_wrapper(oid) with (indexid=3306, CamelCase=ForeignDataWrapperOid);
+   create unique index on pg_foreign_data_wrapper(fdwname) with (indexid=3307, CamelCase=ForeignDataWrapperName);
+
    TIDYCAT_ENDFAKEDEF
 */
 

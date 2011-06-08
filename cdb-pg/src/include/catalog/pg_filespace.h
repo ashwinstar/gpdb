@@ -38,6 +38,10 @@
    fsowner oid -- owner of filespace
    );
 
+   create unique index on pg_filespace(oid) with (indexid=2858);
+   create unique index on pg_filespace(fsname) with (indexid=2859, CamelCase=FilespaceName);
+
+
    TIDYCAT_ENDFAKEDEF
 */
 

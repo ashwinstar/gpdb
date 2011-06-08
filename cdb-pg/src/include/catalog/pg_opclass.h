@@ -54,6 +54,9 @@
    opckeytype    oid     
    );
 
+   create unique index on pg_opclass(opcamid, opcname, opcnamespace) with (indexid=2686, CamelCase=OpclassAmNameNsp);
+   create unique index on pg_opclass(oid) with (indexid=2687, CamelCase=OpclassOid);
+
    alter table pg_opclass add fk opcnamespace on pg_namespace(oid);
    alter table pg_opclass add fk opcowner on pg_authid(oid);
 

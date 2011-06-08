@@ -45,6 +45,11 @@
    consrc         text
    );
 
+   create unique index on pg_constraint(oid) with (indexid=2667, CamelCase=ConstraintOid);
+   create index on pg_constraint(conname, connamespace) with (indexid=2664, CamelCase=ConstraintNameNsp);
+   create index on pg_constraint(conrelid) with (indexid=2665, CamelCase=ConstraintRelid);
+   create index on pg_constraint(contypid) with (indexid=2666, CamelCase=ConstraintTypid);
+
    alter table pg_constraint add fk connamespace on pg_namespace(oid);
    alter table pg_constraint add fk conrelid on pg_class(oid);
    alter table pg_constraint add fk contypid on pg_type(oid);

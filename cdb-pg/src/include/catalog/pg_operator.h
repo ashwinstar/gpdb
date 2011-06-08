@@ -49,6 +49,9 @@
    oprjoin       regproc 
    );
 
+   create unique index on pg_operator(oid) with (indexid=2688, CamelCase=OperatorOid);
+   create unique index on pg_operator(oprname, oprleft, oprright, oprnamespace) with (indexid=2689, CamelCase=OperatorNameNsp);
+
    alter table pg_operator add fk oprnamespace on pg_namespace(oid);
    alter table pg_operator add fk oprowner on pg_authid(oid);
    alter table pg_operator add fk oprleft on pg_type(oid);

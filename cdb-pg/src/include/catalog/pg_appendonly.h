@@ -37,6 +37,8 @@
    version          integer
    );
 
+   create unique index on pg_appendonly(relid) with (indexid=5007, CamelCase=AppendOnlyRelid);
+
    alter table pg_appendonly add fk relid on pg_class(oid);
 
    TIDYCAT_ENDFAKEDEF

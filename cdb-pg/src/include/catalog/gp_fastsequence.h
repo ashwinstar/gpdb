@@ -32,6 +32,8 @@
    last_sequence bigint
    );
 
+   create unique index on gp_fastsequence(objid, objmod) with (indexid=6067);
+
    alter table gp_fastsequence add fk objid on pg_class(oid);
 
    TIDYCAT_ENDFAKEDEF

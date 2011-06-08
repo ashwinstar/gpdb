@@ -39,6 +39,9 @@
    indpred         text       
    );
 
+   create index on pg_index(indrelid) with (indexid=2678, CamelCase=IndexIndrelid);
+   create unique index on pg_index(indexrelid) with (indexid=2679, CamelCase=IndexRelid);
+
    alter table pg_index add fk indexrelid on pg_class(oid);
    alter table pg_index add fk indrelid on pg_class(oid);
 

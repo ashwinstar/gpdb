@@ -53,6 +53,9 @@
    );
 
 
+   create unique index on pg_proc(oid) with (indexid=2690, CamelCase=ProcedureOid);
+   create unique index on pg_proc(proname, proargtypes, pronamespace) with (indexid=2691, CamelCase=ProcedureNameArgsNsp);
+
    alter table pg_proc add fk pronamespace on pg_namespace(oid);
    alter table pg_proc add fk proowner on pg_authid(oid);
    alter table pg_proc add fk prolang on pg_language(oid);

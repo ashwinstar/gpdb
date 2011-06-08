@@ -75,6 +75,9 @@
    typdefault     text     
    );
 
+   create unique index on pg_type(oid) with (indexid=2703, CamelCase=TypeOid);
+   create unique index on pg_type(typname, typnamespace) with (indexid=2704, CamelCase=TypeNameNsp);
+
    alter table pg_type add fk typnamespace on pg_namespace(oid);
    alter table pg_type add fk typowner on pg_authid(oid);
    alter table pg_type add fk typrelid on pg_class(oid);

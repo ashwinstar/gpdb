@@ -29,6 +29,8 @@
    attrnums  smallint[]
    );
 
+   create unique index on gp_distribution_policy(localoid) with (indexid=6103, CamelCase=GpPolicyLocalOid);
+
    alter table gp_distribution_policy add fk localoid on pg_class(oid);
 
    TIDYCAT_ENDFAKEDEF

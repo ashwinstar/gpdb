@@ -34,6 +34,9 @@
    deptype     "char"
    );
 
+   create index on pg_shdepend(dbid, classid, objid) with (indexid=1232, CamelCase=SharedDependDepender);
+   create index on pg_shdepend(refclassid, refobjid) with (indexid=1233, CamelCase=SharedDependReference);
+
    alter table pg_shdepend add fk dbid on pg_database(oid);
    alter table pg_shdepend add fk classid on pg_class(oid);
    alter table pg_shdepend add fk refclassid on pg_class(oid);

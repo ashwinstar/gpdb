@@ -38,6 +38,8 @@
    tmpllibrary    text, 
    tmplacl        aclitem[]
    );
+   
+   create unique index on pg_pltemplate(tmplname) with (indexid=1137, CamelCase=PLTemplateName);
 
    TIDYCAT_ENDFAKEDEF
 */

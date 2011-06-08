@@ -56,6 +56,8 @@ typedef struct varlena anyarray;
    stavalues4   text
    );
 
+   create unique index on pg_statistic(starelid, staattnum) with (indexid=2696, CamelCase=StatisticRelidAttnum);
+
    alter table pg_statistic add fk starelid on pg_attribute(attrelid);
    alter table pg_statistic add fk staop1 on pg_operator(oid);
    alter table pg_statistic add fk staop2 on pg_operator(oid);
@@ -281,6 +283,9 @@ typedef FormData_pg_statistic *Form_pg_statistic;
    statime        timestamp with time zone
    );
 
+   create index on pg_stat_last_operation(classid, objid) with (indexid=6053, CamelCase=StatLastOpClassidObjid);
+   create unique index on pg_stat_last_operation(classid, objid, staactionname) with (indexid=6054, CamelCase=StatLastOpClassidObjidStaactionname);
+
    alter table pg_stat_last_operation add fk classid on pg_class(oid);
    alter table pg_stat_last_operation add fk stasysid on pg_authid(oid);
 
@@ -355,6 +360,9 @@ typedef FormData_pg_statlastop *Form_pg_statlastop;
    stasubtype     text, 
    statime        timestamp with time zone
    );
+
+   create index on pg_stat_last_shoperation(classid, objid) with (indexid=6057, CamelCase=StatLastShOpClassidObjid);
+   create unique index on pg_stat_last_shoperation(classid, objid, staactionname) with (indexid=6058, CamelCase=StatLastShOpClassidObjidStaactionname);
 
    alter table pg_stat_last_shoperation add fk classid on pg_class(oid);
    alter table pg_stat_last_shoperation add fk stasysid on pg_authid(oid);

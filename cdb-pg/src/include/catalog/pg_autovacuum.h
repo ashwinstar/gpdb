@@ -32,6 +32,8 @@
    freeze_max_age    integer
    );
 
+   create unique index on pg_autovacuum(vacrelid) with (indexid=1250, CamelCase=AutovacuumRelid);
+
    TIDYCAT_ENDFAKEDEF
 */
 

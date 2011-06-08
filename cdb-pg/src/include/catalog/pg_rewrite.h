@@ -38,6 +38,9 @@
    ev_action   text
    );
 
+   create unique index on pg_rewrite(oid) with (indexid=2692, CamelCase=RewriteOid);
+   create unique index on pg_rewrite(ev_class, rulename) with (indexid=2693, CamelCase=RewriteRelRulename);
+
    alter table pg_rewrite add fk ev_class on pg_attribute(attrelid);
 
    TIDYCAT_ENDFAKEDEF

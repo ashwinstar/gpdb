@@ -51,6 +51,9 @@
    attinhcount    integer
    );
 
+   create unique index on pg_attribute(attrelid, attname) with (indexid=2658, CamelCase=AttributeRelidName);
+   create unique index on pg_attribute(attrelid, attnum) with (indexid=2659, CamelCase=AttributeRelidNum);
+
    alter table pg_attribute add fk attrelid on pg_class(oid);
    alter table pg_attribute add fk atttypid on pg_type(oid);
 
