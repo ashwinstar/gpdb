@@ -82,10 +82,10 @@ extern PGDLLIMPORT MemoryContext CurrentMemoryContext;
 /*
  * Fundamental memory-allocation operations (more are in utils/memutils.h)
  */
-extern void *MemoryContextAllocImpl(MemoryContext context, Size size, const char* file, const char *func, int line);
-extern void *MemoryContextAllocZeroImpl(MemoryContext context, Size size, const char* file, const char *func, int line);
-extern void *MemoryContextAllocZeroAlignedImpl(MemoryContext context, Size size, const char* file, const char *func, int line);
-extern void *MemoryContextReallocImpl(void *pointer, Size size, const char* file, const char *func, int line);
+extern void * __attribute__((malloc)) MemoryContextAllocImpl(MemoryContext context, Size size, const char* file, const char *func, int line);
+extern void * __attribute__((malloc)) MemoryContextAllocZeroImpl(MemoryContext context, Size size, const char* file, const char *func, int line);
+extern void * __attribute__((malloc)) MemoryContextAllocZeroAlignedImpl(MemoryContext context, Size size, const char* file, const char *func, int line);
+extern void * __attribute__((malloc)) MemoryContextReallocImpl(void *pointer, Size size, const char* file, const char *func, int line);
 extern void MemoryContextFreeImpl(void *pointer, const char* file, const char *func, int sline);
 
 #define MemoryContextAlloc(ctxt, sz) MemoryContextAllocImpl((ctxt), (sz), __FILE__, PG_FUNCNAME_MACRO, __LINE__)
@@ -128,7 +128,7 @@ MemoryContextSwitchTo(MemoryContext context)
  * These are like standard strdup() except the copied string is
  * allocated in a context, not with malloc().
  */
-extern char *MemoryContextStrdup(MemoryContext context, const char *string);
+extern char * __attribute__((malloc)) MemoryContextStrdup(MemoryContext context, const char *string);
 
 #define pstrdup(str)  MemoryContextStrdup(CurrentMemoryContext, (str))
 
