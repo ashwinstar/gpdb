@@ -163,7 +163,7 @@ pgis_accum_finalfn(pgis_abs *p, MemoryContext mctx, FunctionCallInfo fcinfo)
 	state = p->a;
 	dims[0] = state->nelems;
 	lbs[0] = 1;
-#if POSTGIS_PGSQL_VERSION < 84 && !defined(GREENPLUM)
+#if POSTGIS_PGSQL_VERSION < 84 && !defined(GP_VERSION)
 	result = makeMdArrayResult(state, 1, dims, lbs, mctx);
 #else
 	/* Release working state if regular aggregate, but not if window agg */
