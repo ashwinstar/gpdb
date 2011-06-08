@@ -30,6 +30,18 @@
 #include "utils/memutils.h"
 #include "utils/tzparser.h"
 
+/*
+ * We don't support locale-aware month names or day-of-week names, or non-arabic numbers,
+ * and we know the only alpha or numeric chars we can handle are in the ASCII7 set.
+ * So we can use these replacements for the standard versions.
+ * I think these are faster.
+ */
+#undef isdigit
+#define isdigit(x) ((x) >= '0' && (x) <= '9')
+#undef isalpha
+#define isalpha(x) (((x) >= 'a' && (x) <= 'z') || ((x) >= 'A' && (x) <= 'Z'))
+#undef isalnum
+#define isalnum(x) (isalpha(x) || isdigit(x))
 
 static int DecodeNumber(int flen, char *field, bool haveTextMonth,
 			 int fmask, int *tmask,
@@ -264,19 +276,61 @@ static const datetkn *deltacache[MAXDATEFIELDS] = {NULL};
 /*
  * strtoi --- just like strtol, but returns int not long
  */
-static int
-strtoi(const char *nptr, char **endptr, int base)
+
+static inline int strtoi(const char *nptr, char **endptr, __attribute__((unused)) int base)
 {
-	long	val;
+	/* Assume base = 10 */
+	/* Assume number will not be larger than int32 */
+	/* Assume number isn't hex with 0x prefix */
+	/* Assume leading whitespace can only be an ASCII space */
+	/* Ignores `locale' stuff.  Assumes that the upper and lower case alphabets and digits are each contiguous. */
+	const char *s = nptr;
+	unsigned long acc;
+	unsigned char c;
 
-	val = strtol(nptr, endptr, base);
-#ifdef HAVE_LONG_INT_64
-	if (val != (long) ((int32) val))
+	int			neg = 0,
+				any;
+
+	if (*s != ' ' && isspace(*s))
+		Assert("bug ");
+	/*
+	 * Skip white space and pick up leading +/- sign if any.
+	 * Do we need this for DATE?
+	 */
+	do
+	{
+		c = *s++;
+	} while (c == ' ');
+	if (c == '-')
+	{
+		neg = 1;
+		c = *s++;
+	}
+	else if (c == '+')
+		c = *s++;
+
+	for (acc = 0, any = 0;; c = *s++)
+	{
+		if (c >= '0' && c <= '9')
+			c -= '0';
+		else
+			break;
+		any = 1;
+		acc *= 10;
+		acc += c;
+	}
+
+	if (acc > 2147483647)
 		errno = ERANGE;
-#endif
-	return (int) val;
-}
 
+	if (neg)
+		acc = -acc;
+
+	if (endptr != 0)
+		*endptr = any ? (char *)(s - 1) : (char *) nptr;
+		
+	return acc;
+}
 
 /*
  * Calendar time to Julian date conversions.
@@ -2177,6 +2231,7 @@ DecodeDate(char *str, int fmask, int *tmask, bool *is2digits,
 				val,
 				dmask = 0;
 	char	   *field[MAXDATEFIELDS];
+	int			fieldlens[MAXDATEFIELDS];
 
 	*tmask = 0;
 
@@ -2199,6 +2254,7 @@ DecodeDate(char *str, int fmask, int *tmask, bool *is2digits,
 				str++;
 		}
 
+		fieldlens[nf] = str - field[nf];
 		/* Just get rid of any non-digit, non-alpha characters... */
 		if (*str != '\0')
 			*str++ = '\0';
@@ -2242,7 +2298,7 @@ DecodeDate(char *str, int fmask, int *tmask, bool *is2digits,
 		if (field[i] == NULL)
 			continue;
 
-		if ((len = strlen(field[i])) <= 0)
+		if ((len = fieldlens[i]) <= 0)
 			return DTERR_BAD_FORMAT;
 
 		dterr = DecodeNumber(len, field[i], haveTextMonth, fmask,
@@ -3856,6 +3912,12 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 
 			AppendTimestampSeconds(str + strlen(str), tm, fsec);
 
+			/*
+			 * Note: the uses of %.*s in this function would be risky if the
+			 * timezone names ever contain non-ASCII characters.  However, all
+			 * TZ abbreviations in the Olson database are plain ASCII.
+			 */
+
 			if (tzp != NULL && tm->tm_isdst >= 0)
 			{
 				if (*tzn != NULL)
@@ -4207,6 +4269,7 @@ CheckDateTokenTable(const char *tablename, const datetkn *base, int nel)
 	{
 		if (strncmp(base[i - 1].token, base[i].token, TOKMAXLEN) >= 0)
 		{
+			/* %.*s is safe since all our tokens are ASCII */
 			elog(LOG, "ordering error in %s table: \"%.*s\" >= \"%.*s\"",
 				 tablename,
 				 TOKMAXLEN, base[i - 1].token,
