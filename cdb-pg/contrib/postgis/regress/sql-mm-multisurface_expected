@@ -14,6 +14,8 @@ ndims03|3
 geometrytype03|MULTISURFACEM
 ndims04|2
 geometrytype04|MULTISURFACE
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'id' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 public.multisurface.the_geom_2d SRID:-1 TYPE:MULTISURFACE DIMS:2 
 public.multisurface.the_geom_3dm SRID:-1 TYPE:MULTISURFACEM DIMS:3 
 public.multisurface.the_geom_3dz SRID:-1 TYPE:MULTISURFACE DIMS:3 
@@ -46,10 +48,10 @@ box3d01|BOX3D(-2 0 0,10 14 0)
 box3d02|BOX3D(-2 0 0,10 14 0)
 box3d03|BOX3D(-2 0 0,10 14 7)
 box3d04|BOX3D(-2 0 0,10 14 7)
-ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported.
-ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported.
-ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported.
-ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported.
+ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported. (lwgeom_pg.c:112)  (seg0 slice1 ussayangb7d1c.corp.emc.com:40000 pid=9904) (cdbdisp.c:1457)
+ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported. (lwgeom_pg.c:112)  (seg0 slice1 ussayangb7d1c.corp.emc.com:40000 pid=9904) (cdbdisp.c:1457)
+ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported. (lwgeom_pg.c:112)  (seg0 slice1 ussayangb7d1c.corp.emc.com:40000 pid=9904) (cdbdisp.c:1457)
+ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported. (lwgeom_pg.c:112)  (seg0 slice1 ussayangb7d1c.corp.emc.com:40000 pid=9904) (cdbdisp.c:1457)
 dimension01|2
 dimension02|2
 dimension03|2
@@ -82,10 +84,10 @@ box3d01|BOX3D(-2 0 0,10 14 0)
 box3d02|BOX3D(-2 0 0,10 14 0)
 box3d03|BOX3D(-2 0 0,10 14 7)
 box3d04|BOX3D(-2 0 0,10 14 7)
-ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported.
-ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported.
-ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported.
-ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported.
+ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported. (lwgeom_pg.c:112)  (seg0 slice1 ussayangb7d1c.corp.emc.com:40000 pid=9904) (cdbdisp.c:1457)
+ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported. (lwgeom_pg.c:112)  (seg0 slice1 ussayangb7d1c.corp.emc.com:40000 pid=9904) (cdbdisp.c:1457)
+ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported. (lwgeom_pg.c:112)  (seg0 slice1 ussayangb7d1c.corp.emc.com:40000 pid=9904) (cdbdisp.c:1457)
+ERROR:  Exception in LWGEOM2GEOS: curved geometry not supported. (lwgeom_pg.c:112)  (seg0 slice1 ussayangb7d1c.corp.emc.com:40000 pid=9904) (cdbdisp.c:1457)
 dimension01|2
 dimension02|2
 dimension03|2

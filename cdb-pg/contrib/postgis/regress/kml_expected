@@ -1,13 +1,13 @@
-ERROR:  AddToPROJ4SRSCache: Cannot find SRID (4326) in spatial_ref_sys
-ERROR:  Input geometry has unknown (-1) SRID
-ERROR:  geometry_to_kml: 'CircularString' geometry type not supported by Google Earth
-ERROR:  geometry_to_kml: 'CompoundString' geometry type not supported by Google Earth
-ERROR:  geometry_to_kml: 'CurvePolygon' geometry type not supported by Google Earth
-ERROR:  geometry_to_kml: 'MultiCurve' geometry type not supported by Google Earth
-ERROR:  geometry_to_kml: 'MultiSurface' geometry type not supported by Google Earth
+ERROR:  AddToPROJ4SRSCache: Cannot find SRID (4326) in spatial_ref_sys (lwgeom_transform.c:453)
+ERROR:  Input geometry has unknown (-1) SRID (lwgeom_transform.c:722)
+ERROR:  geometry_to_kml: 'CircularString' geometry type not supported by Google Earth (lwgeom_pg.c:112)
+ERROR:  geometry_to_kml: 'CompoundString' geometry type not supported by Google Earth (lwgeom_pg.c:112)
+ERROR:  geometry_to_kml: 'CurvePolygon' geometry type not supported by Google Earth (lwgeom_pg.c:112)
+ERROR:  geometry_to_kml: 'MultiCurve' geometry type not supported by Google Earth (lwgeom_pg.c:112)
+ERROR:  geometry_to_kml: 'MultiSurface' geometry type not supported by Google Earth (lwgeom_pg.c:112)
 parameter_01|<Point><coordinates>1,1</coordinates></Point>
 parameter_02|<Point><coordinates>1.111111111111111,1.111111111111111</coordinates></Point>
-ERROR:  Only KML 2 is supported
+ERROR:  Only KML 2 is supported (lwgeom_kml.c:68)
 point_01|<Point><coordinates>-75.552,10.42</coordinates></Point>
 point_02|<Point><coordinates>-75.55217298,10.42033663</coordinates></Point>
 linestring_01|<LineString><coordinates>-75.588,6.231 -75.593,6.209</coordinates></LineString>
@@ -19,15 +19,15 @@ multipoint_02|<MultiGeometry><Point><coordinates>-74.04603458,4.75468701</coordi
 projection_01|<Point><coordinates>-73,7</coordinates></Point>
 projection_02|<Point><coordinates>-73,7</coordinates></Point>
 projection_03|<Point><coordinates>-74,5</coordinates></Point>
-ERROR:  Input geometry has unknown (-1) SRID
-ERROR:  geometry_to_kml: 'CircularString' geometry type not supported by Google Earth
-ERROR:  geometry_to_kml: 'CompoundString' geometry type not supported by Google Earth
-ERROR:  geometry_to_kml: 'CurvePolygon' geometry type not supported by Google Earth
-ERROR:  geometry_to_kml: 'MultiCurve' geometry type not supported by Google Earth
-ERROR:  geometry_to_kml: 'MultiSurface' geometry type not supported by Google Earth
+ERROR:  Input geometry has unknown (-1) SRID (lwgeom_transform.c:722)
+ERROR:  geometry_to_kml: 'CircularString' geometry type not supported by Google Earth (lwgeom_pg.c:112)
+ERROR:  geometry_to_kml: 'CompoundString' geometry type not supported by Google Earth (lwgeom_pg.c:112)
+ERROR:  geometry_to_kml: 'CurvePolygon' geometry type not supported by Google Earth (lwgeom_pg.c:112)
+ERROR:  geometry_to_kml: 'MultiCurve' geometry type not supported by Google Earth (lwgeom_pg.c:112)
+ERROR:  geometry_to_kml: 'MultiSurface' geometry type not supported by Google Earth (lwgeom_pg.c:112)
 parameter_04|<Point><coordinates>1,1</coordinates></Point>
 parameter_05|<Point><coordinates>1.111111111111111,1.111111111111111</coordinates></Point>
-ERROR:  Only KML 2 is supported
+ERROR:  Only KML 2 is supported (lwgeom_kml.c:68)
 point_03|<Point><coordinates>-75.552172977574884,10.420336634530541</coordinates></Point>
 point_04|<Point><coordinates>-75.55217298,10.42033663</coordinates></Point>
 linestring_03|<LineString><coordinates>-75.588,6.231 -75.593,6.209</coordinates></LineString>
