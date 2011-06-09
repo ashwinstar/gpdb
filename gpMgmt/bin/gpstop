@@ -404,8 +404,7 @@ class GpStop:
                                 else:
                                     #dbs that are marked invalid are 'skipped' but we dispatch to them
                                     #anyway since we want to try and shutdown any runaway pg processes.
-                                    if db.valid:
-                                        failed_seg_status.append( SegStopStatus(db,stopped=False,reason=reasonStr,failedCmd=cmd) )
+                                    failed_seg_status.append( SegStopStatus(db,stopped=False,reason=reasonStr,failedCmd=cmd) )
                     elif line.strip().startswith('stderr: pg_ctl: server does not shut down'):
                         failed_seg_status[-1].timedOut=True
             else:
@@ -422,7 +421,7 @@ class GpStop:
     ######
     def _print_segment_stop(self, segs, failed_seg_status, success_seg_status):
         stopped = len(segs) - len(failed_seg_status)         
-        failed = len(failed_seg_status)
+        failed = len([x for x in failed_seg_status if x.db.valid])
         invalid = self.gparray.get_invalid_segdbs()
         inactive = self.gparray.get_inactive_mirrors_segdbs()
         total_segs = len(self.gparray.getSegDbList())
