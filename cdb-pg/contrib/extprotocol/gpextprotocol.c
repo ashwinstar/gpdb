@@ -33,6 +33,9 @@ typedef struct {
 	FILE	  *file;
 } extprotocol_t;
 
+/*
+ * Import data into GPDB.
+ */
 Datum 
 demoprot_import(PG_FUNCTION_ARGS)
 {
@@ -50,7 +53,7 @@ demoprot_import(PG_FUNCTION_ARGS)
 
 	if(EXTPROTOCOL_IS_LAST_CALL(fcinfo))
 	{
-		/* we're done sending data. clean up */
+		/* we're done receiving data. close our connection */
 		if(myData && myData->file)
 			if(fclose(myData->file))
 				ereport(ERROR,
@@ -87,7 +90,7 @@ demoprot_import(PG_FUNCTION_ARGS)
 		if (myData->file == NULL)
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("demoprot_export: could not open file \"%s\" for reading: %m",
+					 errmsg("demoprot_import: could not open file \"%s\" for reading: %m",
 							 myData->filename),
 					 errOmitLocation(true)));
 		
@@ -95,7 +98,7 @@ demoprot_import(PG_FUNCTION_ARGS)
 	}
 
 	/* =======================================================================
-	 *                            DO THE EXPORT
+	 *                            DO THE IMPORT
 	 * ======================================================================= */
 	
 	data 	= EXTPROTOCOL_GET_DATABUF(fcinfo);
@@ -107,7 +110,7 @@ demoprot_import(PG_FUNCTION_ARGS)
 		if (ferror(myData->file))
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("demoprot_export: could not write to file \"%s\": %m",
+					 errmsg("demoprot_import: could not write to file \"%s\": %m",
 							 myData->filename)));		
 	}
 
@@ -115,7 +118,9 @@ demoprot_import(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32((int)nread);
 }
 
-
+/*
+ * Export data out of GPDB.
+ */
 Datum 
 demoprot_export(PG_FUNCTION_ARGS)
 {
@@ -133,7 +138,7 @@ demoprot_export(PG_FUNCTION_ARGS)
 
 	if(EXTPROTOCOL_IS_LAST_CALL(fcinfo))
 	{
-		/* we're done sending data. clean up */
+		/* we're done sending data. close our connection */
 		if(myData && myData->file)
 			if(fclose(myData->file))
 				ereport(ERROR,
@@ -178,7 +183,7 @@ demoprot_export(PG_FUNCTION_ARGS)
 	}
 
 	/* =======================================================================
-	 *                            DO THE IMPORT
+	 *                            DO THE EXPORT
 	 * ======================================================================= */
 	
 	data 	= EXTPROTOCOL_GET_DATABUF(fcinfo);
