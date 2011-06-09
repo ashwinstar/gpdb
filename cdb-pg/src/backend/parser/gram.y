@@ -481,7 +481,7 @@ static TypeName *TableFuncTypeName(List *columns);
 	EXCHANGE EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
 	FALSE_P FETCH FIELDS FILESPACE FILL FILTER FIRST_P FLOAT_P FOLLOWING FOR 
-    FORCE FOREIGN FORMAT FORWARD FREEZE FROM FULL FUNCTION
+    FORCE FOREIGN FORMAT FORMATTER FORWARD FREEZE FROM FULL FUNCTION
 
 	GLOBAL GRANT GRANTED GREATEST GROUP_P GROUP_ID GROUPING
 
@@ -514,7 +514,7 @@ static TypeName *TableFuncTypeName(List *columns);
 
 	PARTIAL PARTITION PARTITIONS PASSWORD PERCENT PLACING POSITION
 	PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
-	PRIOR PRIVILEGES PROCEDURAL PROCEDURE
+	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROTOCOL
 
 	QUEUE QUOTE
 
@@ -670,6 +670,7 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc FIRST_P
 			%nonassoc FORCE
 			%nonassoc FORMAT
+			%nonassoc FORMATTER
 			%nonassoc FORWARD
 			%nonassoc FUNCTION
 			%nonassoc GLOBAL
@@ -762,6 +763,7 @@ static TypeName *TableFuncTypeName(List *columns);
 			%nonassoc PRIVILEGES
 			%nonassoc PROCEDURAL
 			%nonassoc PROCEDURE
+			%nonassoc PROTOCOL
 			%nonassoc QUEUE
 			%nonassoc QUOTE
 			%nonassoc RANDOMLY
@@ -3126,7 +3128,7 @@ copy_opt_item:
 			| NEWLINE opt_as Sconst
 				{
 					$$ = makeDefElem("newline", (Node *)makeString($3));
-				}			
+				}	
 		;
 
 /* The following exist for backward compatibility */
@@ -4550,9 +4552,11 @@ format_opt_item:
 			{
 				$$ = makeDefElem("newline", (Node *)makeString($3));
 			}
-			
-			
-		;
+			| FORMATTER opt_as Sconst
+			{
+				$$ = makeDefElem("formatter", (Node *)makeString($3));
+			}
+			;
 
 OptExtTableElementList:
 			ExtTableElementList				{ $$ = $1; }
@@ -5611,6 +5615,18 @@ DefineStmt:
 					n->comptypeOid = 0;
 					$$ = (Node *)n;
 				}
+			| CREATE PROTOCOL any_name definition
+				{
+					DefineStmt *n = makeNode(DefineStmt);
+					n->kind = OBJECT_EXTPROTOCOL;
+					n->oldstyle = false;
+					n->defnames = $3;
+					n->args = NIL;
+					n->newOid = 0;
+					n->definition = $4;
+					n->ordered = false;
+					$$ = (Node *)n;
+				}
 		;
 
 opt_ordered:	ORDERED	{ $$ = TRUE; }
@@ -5840,6 +5856,7 @@ drop_type:	TABLE									{ $$ = OBJECT_TABLE; }
 			| FILESPACE								{ $$ = OBJECT_FILESPACE; }
 			| TABLESPACE							{ $$ = OBJECT_TABLESPACE; }
 			| FOREIGN TABLE							{ $$ = OBJECT_FOREIGNTABLE; }
+			| PROTOCOL								{ $$ = OBJECT_EXTPROTOCOL; }
 		;
 
 any_name_list:
@@ -6337,6 +6354,13 @@ privilege_target:
 					n->objs = $2;
 					$$ = n;
 				}
+			| PROTOCOL name_list
+				{
+					PrivTarget *n = makeNode(PrivTarget);
+					n->objtype = ACL_OBJECT_EXTPROTOCOL;
+					n->objs = $2;
+					$$ = n;
+				}			
 		;
 
 
@@ -7371,6 +7395,14 @@ AlterOwnerStmt: ALTER AGGREGATE func_name aggr_args OWNER TO RoleId
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
 					n->objectType = OBJECT_FOREIGN_SERVER;
 					n->object = list_make1(makeString($3));
+					n->newowner = $6;
+					$$ = (Node *)n;
+				}
+			| ALTER PROTOCOL any_name OWNER TO RoleId
+				{
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_EXTPROTOCOL;
+					n->object = $3;
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}
@@ -12060,6 +12092,7 @@ unreserved_keyword:
 			| FIRST_P
 			| FORCE
 			| FORMAT
+			| FORMATTER
 			| FORWARD
 			| FUNCTION
 			| GLOBAL
@@ -12154,6 +12187,7 @@ unreserved_keyword:
 			| PRIVILEGES
 			| PROCEDURAL
 			| PROCEDURE
+			| PROTOCOL
 			| QUEUE
 			| QUOTE
 			| RANDOMLY /* gp */
@@ -12342,6 +12376,7 @@ PartitionIdentKeyword: ABORT_P
 			| FIRST_P
 			| FORCE
 			| FORMAT
+			| FORMATTER
 			| FORWARD
 			| FUNCTION
 			| GLOBAL
@@ -12425,6 +12460,7 @@ PartitionIdentKeyword: ABORT_P
 			| PRIVILEGES
 			| PROCEDURAL
 			| PROCEDURE
+			| PROTOCOL
 			| QUEUE
 			| QUOTE
 			| READ

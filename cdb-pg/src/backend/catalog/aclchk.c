@@ -29,6 +29,7 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_extprotocol.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_language.h"
@@ -63,6 +64,7 @@ static void ExecGrant_Function(InternalGrant *grantStmt);
 static void ExecGrant_Language(InternalGrant *grantStmt);
 static void ExecGrant_Namespace(InternalGrant *grantStmt);
 static void ExecGrant_Tablespace(InternalGrant *grantStmt);
+static void ExecGrant_ExtProtocol(InternalGrant *grantstmt);
 
 static List *objectNamesToOids(GrantObjectType objtype, List *objnames);
 static AclMode string_to_privilege(const char *privname);
@@ -202,6 +204,9 @@ restrict_and_check_grant(bool is_grant, AclMode avail_goptions, bool all_privs,
 			break;
 		case ACL_KIND_FOREIGN_SERVER:
 			whole_mask = ACL_ALL_RIGHTS_FOREIGN_SERVER;
+			break;
+		case ACL_KIND_EXTPROTOCOL:
+			whole_mask = ACL_ALL_RIGHTS_EXTPROTOCOL;
 			break;
 		default:
 			elog(ERROR, "unrecognized object kind: %d", objkind);
@@ -431,6 +436,10 @@ ExecuteGrantStmt(GrantStmt *stmt)
 				all_privileges = ACL_ALL_RIGHTS_FOREIGN_SERVER;
 				errormsg = _("invalid privilege type %s for foreign server");
 				break;
+			case ACL_OBJECT_EXTPROTOCOL:
+				all_privileges = ACL_ALL_RIGHTS_EXTPROTOCOL;
+				errormsg = _("invalid privilege type %s for external protocol");
+				break;
 			default:
 				/* keep compiler quiet */
 				all_privileges = ACL_NO_RIGHTS;
@@ -516,6 +525,9 @@ ExecGrantStmt_oids(InternalGrant *istmt)
 			break;
 		case ACL_OBJECT_TABLESPACE:
 			ExecGrant_Tablespace(istmt);
+			break;
+		case ACL_OBJECT_EXTPROTOCOL:
+			ExecGrant_ExtProtocol(istmt);
 			break;
 		default:
 			elog(ERROR, "unrecognized GrantStmt.objtype: %d",
@@ -663,6 +675,15 @@ objectNamesToOids(GrantObjectType objtype, List *objnames)
 				objects = lappend_oid(objects, srvid);
 			}
 			break;
+		case ACL_OBJECT_EXTPROTOCOL:
+			foreach(cell, objnames)
+			{
+				char	   *ptcname = strVal(lfirst(cell));
+				Oid			ptcid = LookupExtProtocolOid(ptcname, false);
+
+				objects = lappend_oid(objects, ptcid);
+			}
+			break;			
 		default:
 			elog(ERROR, "unrecognized GrantStmt.objtype: %d",
 				 (int) objtype);
@@ -1794,6 +1815,162 @@ ExecGrant_Tablespace(InternalGrant *istmt)
 	heap_close(relation, RowExclusiveLock);
 }
 
+static void
+ExecGrant_ExtProtocol(InternalGrant *istmt)
+{
+	Relation	relation;
+	ListCell   *cell;
+
+	if (istmt->all_privs && istmt->privileges == ACL_NO_RIGHTS)
+		istmt->privileges = ACL_ALL_RIGHTS_EXTPROTOCOL;
+
+	relation = heap_open(ExtprotocolRelationId, RowExclusiveLock);
+
+	foreach(cell, istmt->objects)
+	{
+		Oid			ptcid = lfirst_oid(cell);
+		bool		isNull;
+		AclMode		avail_goptions;
+		AclMode		this_privileges;
+		Acl		   *old_acl;
+		Acl		   *new_acl;
+		Oid			grantorId;
+		Oid			ownerId;
+		Name	    ptcname;
+		HeapTuple	tuple;
+		HeapTuple	newtuple;
+		Datum		values[Natts_pg_extprotocol];
+		bool		nulls[Natts_pg_extprotocol];
+		bool		replaces[Natts_pg_extprotocol];
+		int			noldmembers;
+		int			nnewmembers;
+		Oid		   *oldmembers;
+		Oid		   *newmembers;
+		Datum		ownerDatum;
+		Datum		aclDatum;
+		Datum		ptcnameDatum;
+		HeapScanDesc scandesc;
+		ScanKeyData entry[1];
+		TupleDesc	reldsc = RelationGetDescr(relation);
+
+		/*
+		 * Search pg_extprotocol.  We use a heapscan here even though there is an
+		 * index on oid, on the theory that pg_extprotocol will usually have just a
+		 * few entries and so an indexed lookup is a waste of effort.
+		 */
+		ScanKeyInit(&entry[0],
+					ObjectIdAttributeNumber,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(ptcid));
+		scandesc = heap_beginscan(relation, SnapshotNow, 1, entry);
+		tuple = heap_getnext(scandesc, ForwardScanDirection);
+
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "lookup failed for external protocol %u", ptcid);
+		
+		ownerDatum = heap_getattr(tuple, 
+								  Anum_pg_extprotocol_ptcowner,
+								  reldsc, 
+								  &isNull);
+		
+		if(isNull)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("protocol '%u' has no owner defined",
+							 ptcid)));	
+
+		/*
+		 * Get owner ID and working copy of existing ACL. If there's no ACL,
+		 * substitute the proper default.
+		 */
+		ownerId = DatumGetObjectId(ownerDatum);
+		
+		aclDatum = heap_getattr(tuple, 
+								Anum_pg_extprotocol_ptcacl,
+								reldsc, 
+								&isNull);
+		
+		if (isNull)
+			old_acl = acldefault(ACL_OBJECT_EXTPROTOCOL, ownerId);
+		else
+			old_acl = DatumGetAclPCopy(aclDatum);
+
+		ptcnameDatum = heap_getattr(tuple, 
+									Anum_pg_extprotocol_ptcname,
+									reldsc, 
+									&isNull);
+
+		ptcname = DatumGetName(ptcnameDatum);
+		
+		if(isNull)
+			ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("internal error: protocol '%u' has no name defined",
+						 ptcid)));
+		
+		/* Determine ID to do the grant as, and available grant options */
+		select_best_grantor(GetUserId(), istmt->privileges,
+							old_acl, ownerId,
+							&grantorId, &avail_goptions);
+
+		/*
+		 * Restrict the privileges to what we can actually grant, and emit the
+		 * standards-mandated warning and error messages.
+		 */
+		this_privileges =
+			restrict_and_check_grant(istmt->is_grant, avail_goptions,
+									 istmt->all_privs, istmt->privileges,
+									 ptcid, grantorId, ACL_KIND_EXTPROTOCOL,
+									 NameStr(*ptcname));
+
+		/*
+		 * Generate new ACL.
+		 *
+		 * We need the members of both old and new ACLs so we can correct the
+		 * shared dependency information.
+		 */
+		noldmembers = aclmembers(old_acl, &oldmembers);
+
+		new_acl = merge_acl_with_grant(old_acl, istmt->is_grant,
+									   istmt->grant_option, istmt->behavior,
+									   istmt->grantees, this_privileges,
+									   grantorId, ownerId);
+
+		nnewmembers = aclmembers(new_acl, &newmembers);
+
+		/* finished building new ACL value, now insert it */
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+		MemSet(replaces, false, sizeof(replaces));
+
+		replaces[Anum_pg_extprotocol_ptcacl - 1] = true;
+		values[Anum_pg_extprotocol_ptcacl - 1] = PointerGetDatum(new_acl);
+
+		newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation), values,
+									 nulls, replaces);
+
+		simple_heap_update(relation, &newtuple->t_self, newtuple);
+
+		/* keep the catalog indexes up to date */
+		CatalogUpdateIndexes(relation, newtuple);
+
+		/* Update the shared dependency ACL info */
+		updateAclDependencies(ExtprotocolRelationId,
+							  HeapTupleGetOid(tuple),
+							  ownerId, istmt->is_grant,
+							  noldmembers, oldmembers,
+							  nnewmembers, newmembers);
+
+		heap_endscan(scandesc);
+
+		pfree(new_acl);
+
+		/* prevent error when processing duplicate objects */
+		CommandCounterIncrement();
+	}
+
+	heap_close(relation, RowExclusiveLock);
+}
 
 static AclMode
 string_to_privilege(const char *privname)
@@ -1899,7 +2076,9 @@ static const char *const no_priv_msg[MAX_ACL_KIND] =
 	/* ACL_KIND_FDW */
 	gettext_noop("permission denied for foreign-data wrapper %s"),
 	/* ACL_KIND_FOREIGN_SERVER */
-	gettext_noop("permission denied for foreign server %s")
+	gettext_noop("permission denied for foreign server %s"),
+	/* ACL_KIND_EXTPROTOCOL */
+	gettext_noop("permission denied for external protocol %s")	
 };
 
 static const char *const not_owner_msg[MAX_ACL_KIND] =
@@ -1931,7 +2110,9 @@ static const char *const not_owner_msg[MAX_ACL_KIND] =
 	/* ACL_KIND_FDW */
 	gettext_noop("must be owner of foreign-data wrapper %s"),
 	/* ACL_KIND_FOREIGN_SERVER */
-	gettext_noop("must be owner of foreign server %s")
+	gettext_noop("must be owner of foreign server %s"),
+	/* ACL_KIND_EXTPROTOCOL */
+	gettext_noop("must be owner of external protocol %s")
 };
 
 
@@ -2011,6 +2192,8 @@ pg_aclmask(AclObjectKind objkind, Oid table_oid, Oid roleid,
 			return pg_foreign_data_wrapper_aclmask(table_oid, roleid, mask, how);
 		case ACL_KIND_FOREIGN_SERVER:
 			return pg_foreign_server_aclmask(table_oid, roleid, mask, how);
+		case ACL_KIND_EXTPROTOCOL:
+			return pg_extprotocol_aclmask(table_oid, roleid, mask, how);
 		default:
 			elog(ERROR, "unrecognized objkind: %d",
 				 (int) objkind);
@@ -2619,6 +2802,90 @@ pg_foreign_server_aclmask(Oid srv_oid, Oid roleid,
 }
 
 /*
+ * Exported routine for examining a user's privileges for a foreign
+ * server.
+ */
+AclMode
+pg_extprotocol_aclmask(Oid ptcOid, Oid roleid,
+					   AclMode mask, AclMaskHow how)
+{
+	AclMode		result;
+	HeapTuple	tuple;
+	Datum		aclDatum;
+	Datum		ownerDatum;
+	bool		isNull;
+	Acl		   *acl;
+	Oid			ownerId;
+	Relation	rel;
+	HeapScanDesc scandesc;
+	ScanKeyData entry[1];
+
+
+	/* Bypass permission checks for superusers */
+	if (superuser_arg(roleid))
+		return mask;
+	
+	/*
+	 * Search pg_extprotocol.  We use a heapscan here even though there is an
+	 * index on oid, on the theory that pg_extprotocol will usually have just a
+	 * few entries and so an indexed lookup is a waste of effort.
+	 */
+	rel = heap_open(ExtprotocolRelationId, AccessShareLock);
+	ScanKeyInit(&entry[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(ptcOid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
+
+	/* We assume that there can be at most one matching tuple */
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "protocol %u could not be found", ptcOid);
+
+	ownerDatum = heap_getattr(tuple, 
+							  Anum_pg_extprotocol_ptcowner, 
+							  rel->rd_att, 
+							  &isNull);
+	
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid extprotocol owner value: NULL")));	
+
+	ownerId = DatumGetObjectId(ownerDatum);
+
+	aclDatum = heap_getattr(tuple, 
+							Anum_pg_extprotocol_ptcacl, 
+							rel->rd_att, 
+						    &isNull);
+	
+	if (isNull)
+	{
+		/* No ACL, so build default ACL */
+		acl = acldefault(ACL_OBJECT_EXTPROTOCOL, ownerId);
+		aclDatum = (Datum) 0;
+	}
+	else
+	{
+		/* detoast rel's ACL if necessary */
+		acl = DatumGetAclP(aclDatum);
+	}
+
+	result = aclmask(acl, roleid, ownerId, mask, how);
+
+	/* if we have a detoasted copy, free it */
+	if (acl && (Pointer) acl != DatumGetPointer(aclDatum))
+		pfree(acl);
+
+	/* Finish up scan and close pg_extprotocol catalog. */
+	heap_endscan(scandesc);
+	
+	heap_close(rel, AccessShareLock);
+
+	return result;
+}
+
+/*
  * Exported routine for checking a user's access privileges to a table
  *
  * Returns ACLCHECK_OK if the user has any of the privileges identified by
@@ -2715,6 +2982,19 @@ AclResult
 pg_foreign_server_aclcheck(Oid srv_oid, Oid roleid, AclMode mode)
 {
 	if (pg_foreign_server_aclmask(srv_oid, roleid, mode, ACLMASK_ANY) != 0)
+		return ACLCHECK_OK;
+	else
+		return ACLCHECK_NO_PRIV;
+}
+
+/*
+ * Exported routine for checking a user's access privileges to an
+ * external protocol
+ */
+AclResult
+pg_extprotocol_aclcheck(Oid ptcid, Oid roleid, AclMode mode)
+{
+	if (pg_extprotocol_aclmask(ptcid, roleid, mode, ACLMASK_ANY) != 0)
 		return ACLCHECK_OK;
 	else
 		return ACLCHECK_NO_PRIV;
@@ -3051,6 +3331,61 @@ pg_conversion_ownercheck(Oid conv_oid, Oid roleid)
 	ownerId = ((Form_pg_conversion) GETSTRUCT(tuple))->conowner;
 
 	ReleaseSysCache(tuple);
+
+	return has_privs_of_role(roleid, ownerId);
+}
+
+/*
+ * Ownership check for a foreign server (specified by OID).
+ */
+bool
+pg_extprotocol_ownercheck(Oid protOid, Oid roleid)
+{
+	Relation	rel;
+	HeapTuple	tuple;
+	Oid			ownerId;
+	Datum		ownerDatum;
+	bool		isNull;
+	HeapScanDesc scandesc;
+	ScanKeyData entry[1];
+
+	/* Superusers bypass all permission checking. */
+	if (superuser_arg(roleid))
+		return true;
+
+	/*
+	 * Search pg_extprotocol.  We use a heapscan here even though there is an
+	 * index on oid, on the theory that pg_extprotocol will usually have just a
+	 * few entries and so an indexed lookup is a waste of effort.
+	 */
+	rel = heap_open(ExtprotocolRelationId, AccessShareLock);
+	ScanKeyInit(&entry[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(protOid));
+	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
+
+	/* We assume that there can be at most one matching tuple */
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "protocol %u could not be found", protOid);
+
+	ownerDatum = heap_getattr(tuple, 
+							  Anum_pg_extprotocol_ptcowner, 
+							  rel->rd_att, 
+							  &isNull);
+
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid extprotocol owner value: NULL")));	
+
+	ownerId = DatumGetObjectId(ownerDatum);
+
+	/* Finish up scan and close pg_extprotocol catalog. */
+	heap_endscan(scandesc);
+	
+	heap_close(rel, AccessShareLock);
 
 	return has_privs_of_role(roleid, ownerId);
 }

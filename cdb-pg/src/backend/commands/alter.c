@@ -19,6 +19,7 @@
 #include "commands/conversioncmds.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/extprotocolcmds.h"
 #include "commands/filespace.h"
 #include "commands/proclang.h"
 #include "commands/schemacmds.h"
@@ -253,7 +254,11 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 		case OBJECT_FOREIGN_SERVER:
 			AlterForeignServerOwner(strVal(linitial(stmt->object)), newowner);
 			break;
-
+		
+		case OBJECT_EXTPROTOCOL:
+			AlterExtProtocolOwner(strVal(linitial(stmt->object)), newowner);
+			break;
+			
 		default:
 			elog(ERROR, "unrecognized AlterOwnerStmt type: %d",
 				 (int) stmt->objectType);

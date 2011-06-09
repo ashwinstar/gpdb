@@ -11,6 +11,7 @@
 #define FILEAM_H
 
 #include "c.h"
+#include "access/formatter.h"
 #include "access/htup.h"
 #include "access/relscan.h"
 #include "access/sdir.h"
@@ -35,6 +36,8 @@ typedef struct ExternalInsertDescData
 	TupleDesc		ext_tupDesc;
 	Datum*			ext_values;
 	bool*			ext_nulls;
+	
+	FormatterData*  ext_formatter_data;
 
 	struct CopyStateData *ext_pstate; 	/* data parser control chars and state */
 
@@ -52,7 +55,7 @@ typedef enum DataLineStatus
 
 extern FileScanDesc external_beginscan(Relation relation, Index scanrelid,
 								   uint32 scancounter, List *uriList,
-								   List *fmtOpts, bool isText, bool isMasterOnly,
+								   List *fmtOpts, char fmtType, bool isMasterOnly,
 								   int rejLimit, bool rejLimitInRows,
 								   Oid fmterrtbl, int encoding);
 extern void external_rescan(FileScanDesc scan);

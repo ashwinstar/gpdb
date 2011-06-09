@@ -39,6 +39,7 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_exttable.h"
+#include "catalog/pg_extprotocol.h"
 #include "catalog/pg_foreign_table.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_inherits.h"
@@ -425,7 +426,7 @@ static void update_ri_trigger_args(Oid relid,
 					   const char *newname,
 					   bool fk_scan,
 					   bool update_relname);
-static Datum transformLocationUris(List *locs, bool isweb, bool iswritable);
+static Datum transformLocationUris(List *locs, bool isweb, bool iswritable, char *fmtname);
 static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
 static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols, bool iswritable);
@@ -950,6 +951,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	Datum					  locationUris = 0;
 	Datum					  locationExec = 0;
 	char*					  commandString = NULL;
+	char*					  customProtName = NULL;
 	char					  rejectlimittype = '\0';
 	char					  formattype;
 	int						  rejectlimit = -1;
@@ -980,7 +982,9 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 
 			/* Parse and validate URI strings (LOCATION clause) */
 			locationUris = transformLocationUris(exttypeDesc->location_list,
-												 isweb, iswritable);
+												 isweb, iswritable,
+												 createExtStmt->format);
+			
 			break;
 
 		case EXTTBL_TYPE_EXECUTE:
@@ -1025,7 +1029,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 			ListCell   *first_uri = list_head(exttypeDesc->location_list);
 			Value		*v = lfirst(first_uri);
 			char		*uri_str = pstrdup(v->val.str);
-			Uri			*uri = ParseUriString(uri_str);
+			Uri			*uri = ParseExternalTableUri(uri_str);
 
 			Assert(exttypeDesc->exttabletype == EXTTBL_TYPE_LOCATION);
 
@@ -1114,6 +1118,21 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 								errmsg("permission denied: no privilege to create an http external table"),
 										errOmitLocation(true)));
 				}
+				else if (uri->protocol == URI_CUSTOM)
+				{
+					Oid			ownerId = GetUserId();
+					char*		protname = uri->customprotocol;
+					Oid			ptcId = LookupExtProtocolOid(protname, false);
+					AclResult	aclresult;
+					
+					/* Check we have USAGE permissions on this protocol */
+					if (!pg_extprotocol_ownercheck(ptcId, ownerId))
+					{
+						aclresult = pg_extprotocol_aclcheck(ptcId, ownerId, ACL_USAGE);
+						if (aclresult != ACLCHECK_OK)
+							aclcheck_error(aclresult, ACL_KIND_EXTPROTOCOL, protname);
+					}
+				}
 				else
 				{
 					ereport(ERROR,
@@ -1126,7 +1145,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 				ReleaseSysCache(tuple);
 				heap_close(pg_authid_rel, RowExclusiveLock);
 			}
-			pfree(uri);
+			FreeExternalTableUri(uri);
 			pfree(uri_str);
 		}
 	}
@@ -1135,6 +1154,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 * Parse and validate FORMAT clause.
 	 */
 	formattype = transformFormatType(createExtStmt->format);
+	
 	formatOptStr = transformFormatOpts(formattype,
 									   createExtStmt->formatOpts,
 									   list_length(createExtStmt->tableElts),
@@ -1320,6 +1340,10 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 * via ereport(ERROR,...) if unsuccessful.
 	 */
 	cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, NULL, NULL);
+	
+	if(customProtName)
+		pfree(customProtName);
+	
 }
 
 extern void
@@ -22803,14 +22827,15 @@ AtEOSubXact_on_commit_actions(bool isCommit, SubTransactionId mySubid,
  * The result is a text array but we declare it as Datum to avoid
  * including array.h in analyze.h.
  */
-static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
+static Datum transformLocationUris(List *locs, bool isweb, bool iswritable, char *fmtname)
 {
 	ListCell   *cell;
 	ArrayBuildState *astate;
 	Datum		result;
 	UriProtocol first_protocol = URI_FILE; /* initialize to keep gcc quiet */
 	bool		first_uri = true;
-
+	bool		custom_format = (pg_strcasecmp(fmtname, "custom") == 0);
+	
 #define FDIST_DEF_PORT 8080
 #define HDFS_DEF_PORT  9000
 
@@ -22854,12 +22879,13 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 		char		*uri_str_final;
 		Size		len;
 		Value		*v = lfirst(cell);
-
+		Oid			protFuncOid = InvalidOid;
+		
 		/* get the current URI string from the command */
 		uri_str_orig = pstrdup(v->val.str);
 
 		/* parse it to its components */
-		uri = ParseUriString(uri_str_orig);
+		uri = ParseExternalTableUri(uri_str_orig);
 
 		/* allocate memory for a modified URI string (if needs modification) */
 		uri_str_final = (char *) palloc(strlen(uri_str_orig) *
@@ -22918,11 +22944,19 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 					errOmitLocation(true)));
 
 
+		/* 
+		 * If a custom protocol is used, validate its existance 
+		 */
+		if (first_uri && uri->protocol == URI_CUSTOM)
+			protFuncOid = LookupExtProtocolFunction(uri->customprotocol, iswritable);
+		
+		
 		if(first_uri)
 		{
 		    first_protocol = uri->protocol;
 		    first_uri = false;
-		}
+		} 
+		    	
 
 		if(uri->protocol != first_protocol)
 		{
@@ -22934,18 +22968,16 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 
 		}
 
-		if(uri->protocol != URI_FILE &&
-		   uri->protocol != URI_HTTP &&
-		   uri->protocol != URI_GPHDFS &&
-		   uri->protocol != URI_GPFDIST)
+		if(custom_format)
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("unsupported URI protocol for \'%s\'", uri_str_final),
-					 errhint("Use 'file', 'http', 'gphdfs' or 'gpfdist' protocol instead."),
-							   errOmitLocation(true)));
+			if(uri->protocol == URI_HTTP || uri->protocol == URI_GPFDIST)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("unsupported URI protocol for custom data format"),
+						 errhint("Use EXECUTE or 'file' instead ('file' is for read only)."),
+								   errOmitLocation(true)));
 		}
-
+		
 		if(uri->protocol != URI_HTTP && isweb)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -22968,14 +23000,14 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 					 errhint("Writable external tables may use \'gpfdist\' or \'gphdfs\' URIs only."),
 							   errOmitLocation(true)));
 
-		if(iswritable && strchr(uri->path, '*'))
+		if(uri->protocol != URI_CUSTOM && iswritable && strchr(uri->path, '*'))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					errmsg("Unsupported use of wildcard in a writable external web table definition: "
 							"\'%s\'", uri_str_final),
 					errhint("Specify the explicit path and file name to write into.")));
 		
-		if(iswritable && uri->path[strlen(uri->path) - 1] == '/' && uri->protocol == URI_GPFDIST)
+		if(uri->protocol == URI_GPFDIST && iswritable && uri->path[strlen(uri->path) - 1] == '/')
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					errmsg("Unsupported use of a directory name in a writable gpfdist external table : "
@@ -22995,7 +23027,7 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 								  false, TEXTOID,
 								  CurrentMemoryContext);
 
-		pfree(uri);
+		FreeExternalTableUri(uri);
 		pfree(uri_str_final);
 	}
 
@@ -23108,7 +23140,7 @@ static Datum transformExecOnClause(List	*on_clause)
 /*
  * transform format name to format code and validate that
  * the format is supported. Currently the only supported formats
- * are "text" (type 't') and "csv" (type 'c')
+ * are "text" (type 't') ,"csv" (type 'c') and "custom" (type 'b')
  */
 static char transformFormatType(char *formatname)
 {
@@ -23118,11 +23150,13 @@ static char transformFormatType(char *formatname)
 		result = 't';
 	else if(pg_strcasecmp(formatname, "csv") == 0)
 		result = 'c';
+	else if(pg_strcasecmp(formatname, "custom") == 0)
+		result = 'b';
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("unsupported format '%s'", formatname),
-				 errhint("available formats are \"text\" or \"csv\""),
+				 errhint("available formats are \"text\", \"csv\", or \"custom\""),
 						   errOmitLocation(true)));
 
 	return result;
@@ -23132,12 +23166,6 @@ static char transformFormatType(char *formatname)
 /*
  * Transform the FORMAT options into a text field. Parse the
  * options and validate them for their respective format type.
- *
- * NOTE: Lot's of code here is duplicated with parts of DoCopy (copy.c).
- * However, when we switch over to user defined formats this function
- * won't be necessary anymore, as the SQL parser will not parse
- * the format options at all but instead will already treat them
- * as one string.
  *
  * The result is a text field that includes the format string.
  */
@@ -23151,18 +23179,18 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 	char *quote = NULL;
 	char *escape = NULL;
 	char *eol_str = NULL;
+	char *formatter = NULL;
 	bool header_line = false;
-	bool csv_mode;
 	bool fill_missing = false;
 	List *force_notnull = NIL;
 	List *force_quote = NIL;
 	Size len;
 	StringInfoData fnn, fq, nl;
 
-	Assert(formattype == 'c' || formattype == 't');
-
-	csv_mode = (formattype == 'c' ? true : false);
-
+	Assert(fmttype_is_custom(formattype) || 
+		   fmttype_is_text(formattype) ||
+		   fmttype_is_csv(formattype));
+	
 	/* Extract options from the statement node tree */
 	foreach(option, formatOpts)
 	{
@@ -23251,7 +23279,30 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 								   errOmitLocation(true)));
 			eol_str = strVal(defel->arg);
 		}
-
+		else if (strcmp(defel->defname, "formatter") == 0)
+		{
+			if (formatter)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options"),
+								   errOmitLocation(true)));
+			if (eol_str || fill_missing || force_quote || force_notnull || 
+				escape || quote || header_line || delim || null_print)
+			{
+				if(fmttype_is_custom(formattype))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("formatter is the only allowed option in custom format"),
+									   errOmitLocation(true)));
+				else
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("formatter option is not allowed in text formats"),
+									   errOmitLocation(true)));					
+			}
+				
+			formatter = strVal(defel->arg);
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -23261,12 +23312,12 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 	 * Set defaults
 	 */
 	if (!delim)
-		delim = csv_mode ? "," : "\t";
+		delim = fmttype_is_csv(formattype) ? "," : "\t";
 
 	if (!null_print)
-		null_print = csv_mode ? "" : "\\N";
+		null_print = fmttype_is_csv(formattype) ? "" : "\\N";
 
-	if (csv_mode)
+	if (fmttype_is_csv(formattype))
 	{
 		if (!quote)
 			quote = "\"";
@@ -23274,7 +23325,7 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 			escape = quote;
 	}
 
-	if (!csv_mode && !escape)
+	if (!fmttype_is_csv(formattype) && !escape)
 		escape = "\\";			/* default escape for text mode */
 
 	/*
@@ -23326,65 +23377,81 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 		appendStringInfo(&nl, " newline '%s'", eol_str);
 	}
 	
-	/* verify all user supplied control char combinations are legal */
-	ValidateControlChars(false,
-						 !iswritable,
-						 csv_mode,
-						 delim,
-						 null_print,
-						 quote,
-						 escape,
-						 force_quote,
-						 force_notnull,
-						 header_line,
-						 fill_missing,
-						 eol_str,
-						 numcols);
-
-	/*
-	 * build the format option string that will get stored in the catalog.
-	 */
-
-	len = 9 + 1 + 1 + strlen(delim) + 1 +		/* "delimiter 'x' of 'off'" */
-		  1 +									/* space					*/
-		  4 + 1 + 1 + strlen(null_print) + 1 +	/* "null 'str'"				*/
-		  1 +									/* space					*/
-		  6 + 1 + 1 + strlen(escape) + 1;		/* "escape 'c' or 'off' 	*/
-
-	if (formattype == 'c')
-		len +=	1 +								/* space					*/
-				5 + 1 + 3;						/* "quote 'x'"				*/
-
-	len += header_line ? strlen(" header") : 0;
-	len += fill_missing ? strlen(" fill missing fields") : 0;
-	len += force_notnull ? strlen(fnn.data) : 0;
-	len += force_quote ? strlen(fq.data) : 0;
-	len += (eol_str ? (1 + 7 + 1 + 1 + strlen(eol_str) + 1) : 0); /* space x 2, newline 'xx/xxxx' */
-
-	/* +1 leaves room for sprintf's trailing null */
-	format_str = (char *) palloc(len + 1);
-
-	switch(formattype)
+	if(!fmttype_is_custom(formattype))
 	{
-		case 't':
+		
+		/* verify all user supplied control char combinations are legal */
+		ValidateControlChars(false,
+							 !iswritable,
+							 fmttype_is_csv(formattype),
+							 delim,
+							 null_print,
+							 quote,
+							 escape,
+							 force_quote,
+							 force_notnull,
+							 header_line,
+							 fill_missing,
+							 eol_str,
+							 numcols);
+	
+		/*
+		 * build the format option string that will get stored in the catalog.
+		 */
+	
+		len = 9 + 1 + 1 + strlen(delim) + 1 +		/* "delimiter 'x' of 'off'" */
+			  1 +									/* space					*/
+			  4 + 1 + 1 + strlen(null_print) + 1 +	/* "null 'str'"				*/
+			  1 +									/* space					*/
+			  6 + 1 + 1 + strlen(escape) + 1;		/* "escape 'c' or 'off' 	*/
+	
+		if (fmttype_is_csv(formattype))
+			len +=	1 +								/* space					*/
+					5 + 1 + 3;						/* "quote 'x'"				*/
+	
+		len += header_line ? strlen(" header") : 0;
+		len += fill_missing ? strlen(" fill missing fields") : 0;
+		len += force_notnull ? strlen(fnn.data) : 0;
+		len += force_quote ? strlen(fq.data) : 0;
+		len += (eol_str ? (1 + 7 + 1 + 1 + strlen(eol_str) + 1) : 0); /* space x 2, newline 'xx/xxxx' */
+	
+		/* +1 leaves room for sprintf's trailing null */
+		format_str = (char *) palloc(len + 1);
+	
+		if(fmttype_is_text(formattype))
+		{
 			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s'%s%s%s",
 					delim, null_print, escape, (header_line ? " header":""),
 					(fill_missing ? " fill missing fields":""), (eol_str ?  nl.data : ""));
-			break;
-
-		case 'c':
+		}
+		else if (fmttype_is_csv(formattype))
+		{
+			
 			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s' quote '%s'%s%s%s%s%s",
 					delim, null_print, escape, quote, (header_line ? " header" : ""),
 					(fill_missing ? " fill missing fields":""),
 					(force_notnull ? fnn.data :""), (force_quote ? fq.data :""),
 					(eol_str ?  nl.data : ""));
-			break;
-
-		default:
+		}
+		else
+		{
 			/* should never happen */
 			Assert(false);
+		}
 	}
-
+	else
+	{
+		/* custom format*/
+		if(!formatter)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("no formatter function specified"),
+							   errOmitLocation(true)));		
+		
+		format_str = (char *) palloc(12 + strlen(formatter) + 1);
+		sprintf((char *) format_str, "formatter '%s'", formatter);
+	}
+	
 	/* convert c string to text datum */
 	result = DirectFunctionCall1(textin, CStringGetDatum(format_str));
 
@@ -23396,6 +23463,7 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 	return result;
 
 }
+
 
 /* Determine the status of the given table with respect to partitioning.
  *

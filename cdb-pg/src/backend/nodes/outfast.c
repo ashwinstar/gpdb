@@ -456,7 +456,7 @@ _outExternalScan(StringInfo str, ExternalScan *node)
 
 	WRITE_NODE_FIELD(uriList);
 	WRITE_NODE_FIELD(fmtOpts);
-	WRITE_BOOL_FIELD(isText);
+	WRITE_CHAR_FIELD(fmtType);
 	WRITE_BOOL_FIELD(isMasterOnly);
 	WRITE_INT_FIELD(rejLimit);
 	WRITE_BOOL_FIELD(rejLimitInRows);

@@ -359,6 +359,13 @@ DECLARE_UNIQUE_INDEX(gp_segment_config_content_preferred_role_index, 6106, on gp
 /* relation id: 5036 - gp_segment_configuration 20101122 */
 DECLARE_UNIQUE_INDEX(gp_segment_config_dbid_index, 6107, on gp_segment_configuration using btree(dbid int2_ops));
 #define GpSegmentConfigDbidIndexId	6107
+/* relation id: 7175 - pg_extprotocol 20110526 */
+DECLARE_UNIQUE_INDEX(pg_extprotocol_oid_index, 7156, on pg_extprotocol using btree(oid oid_ops));
+#define ExtprotocolOidIndexId	7156
+
+/* relation id: 7175 - pg_extprotocol 20110526 */
+DECLARE_UNIQUE_INDEX(pg_extprotocol_ptcname_index, 7177, on pg_extprotocol using btree(ptcname name_ops));
+#define ExtprotocolPtcnameIndexId	7177
 
 /* relation id: 2612 - pg_language 20110607 */
 DECLARE_UNIQUE_INDEX(pg_language_lanname_index, 2681, on pg_language using btree(lanname name_ops));

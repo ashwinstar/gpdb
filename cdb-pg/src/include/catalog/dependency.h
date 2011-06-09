@@ -141,6 +141,7 @@ typedef enum ObjectClass
 	OCLASS_FDW,					/* pg_foreign_data_wrapper */
 	OCLASS_FOREIGN_SERVER,		/* pg_foreign_server */
 	OCLASS_USER_MAPPING,		/* pg_user_mapping */
+	OCLASS_EXTPROTOCOL,			/* pg_extprotocol */
 	MAX_OCLASS					/* MUST BE LAST */
 } ObjectClass;
 

@@ -2491,7 +2491,8 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te, ArchiveHandle *AH)
 	if (strcmp(type, "AGGREGATE") == 0 ||
 		strcmp(type, "FUNCTION") == 0 ||
 		strcmp(type, "OPERATOR") == 0 ||
-		strcmp(type, "OPERATOR CLASS") == 0)
+		strcmp(type, "OPERATOR CLASS") == 0 ||
+		strcmp(type, "PROTOCOL") == 0)
 	{
 		/* Chop "DROP " off the front and make a modifiable copy */
 		char	   *first = strdup(te->dropStmt + 5);
@@ -2670,7 +2671,8 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 			strcmp(te->desc, "VIEW") == 0 ||
 			strcmp(te->desc, "SEQUENCE") == 0 ||
 			strcmp(te->desc, "FOREIGN DATA WRAPPER") == 0 ||
-			strcmp(te->desc, "SERVER") == 0)
+			strcmp(te->desc, "SERVER") == 0 ||
+			strcmp(te->desc, "PROTOCOL") == 0)
 		{
 			PQExpBuffer temp = createPQExpBuffer();
 

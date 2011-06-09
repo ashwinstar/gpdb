@@ -13,7 +13,7 @@ include $(top_builddir)/src/Makefile.global
 OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
        gp_global_sequence.o gp_persistent.o \
        pg_aggregate.o pg_appendonly.o pg_constraint.o pg_conversion.o pg_depend.o \
-       pg_exttable.o pg_largeobject.o pg_namespace.o pg_operator.o pg_proc.o pg_shdepend.o \
+       pg_exttable.o pg_extprotocol.o pg_largeobject.o pg_namespace.o pg_operator.o pg_proc.o pg_shdepend.o \
        pg_type.o toasting.o aoseg.o aoblkdir.o gp_fastsequence.o
 
 BKIFILES = postgres.bki postgres.description postgres.shdescription
@@ -75,7 +75,7 @@ POSTGRES_BKI_SRCS := $(addprefix $(top_srcdir)/src/include/catalog/,\
 	gp_segment_config.h gp_san_config.h \
 	pg_window.h \
 	pg_exttable.h pg_appendonly.h pg_appendonly_alter_column.h gp_master_mirroring.h aoseg.h \
-	gp_fastsequence.h \
+	gp_fastsequence.h pg_extprotocol.h \
 	pg_partition.h pg_partition_rule.h pg_filespace.h pg_filespace_entry.h \
 	gp_global_sequence.h gp_persistent.h \
 	pg_foreign_data_wrapper.h pg_foreign_table.h pg_foreign_server.h \

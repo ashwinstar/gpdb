@@ -148,6 +148,7 @@ typedef ArrayType Acl;
 #define ACL_ALL_RIGHTS_DATABASE		(ACL_CREATE|ACL_CREATE_TEMP|ACL_CONNECT)
 #define ACL_ALL_RIGHTS_FDW			(ACL_USAGE)
 #define ACL_ALL_RIGHTS_FOREIGN_SERVER (ACL_USAGE)
+#define ACL_ALL_RIGHTS_EXTPROTOCOL  (ACL_USAGE)
 #define ACL_ALL_RIGHTS_FUNCTION		(ACL_EXECUTE)
 #define ACL_ALL_RIGHTS_LANGUAGE		(ACL_USAGE)
 #define ACL_ALL_RIGHTS_NAMESPACE	(ACL_USAGE|ACL_CREATE)
@@ -186,6 +187,7 @@ typedef enum AclObjectKind
 	ACL_KIND_FILESPACE,         /* pg_filespace */
 	ACL_KIND_FDW,				/* pg_foreign_data_wrapper */
 	ACL_KIND_FOREIGN_SERVER,	/* pg_foreign_server */
+	ACL_KIND_EXTPROTOCOL,		/* pg_extprotocol */
 	MAX_ACL_KIND				/* MUST BE LAST */
 } AclObjectKind;
 
@@ -268,6 +270,8 @@ extern AclMode pg_foreign_data_wrapper_aclmask(Oid fdw_oid, Oid roleid,
 								AclMode mask, AclMaskHow how);
 extern AclMode pg_foreign_server_aclmask(Oid srv_oid, Oid roleid,
 						  AclMode mask, AclMaskHow how);
+extern AclMode pg_extprotocol_aclmask(Oid ptc_oid, Oid roleid,
+					   AclMode mask, AclMaskHow how);
 
 extern AclResult pg_class_aclcheck(Oid table_oid, Oid roleid, AclMode mode);
 extern AclResult pg_database_aclcheck(Oid db_oid, Oid roleid, AclMode mode);
@@ -277,6 +281,7 @@ extern AclResult pg_namespace_aclcheck(Oid nsp_oid, Oid roleid, AclMode mode);
 extern AclResult pg_tablespace_aclcheck(Oid spc_oid, Oid roleid, AclMode mode);
 extern AclResult pg_foreign_data_wrapper_aclcheck(Oid fdw_oid, Oid roleid, AclMode mode);
 extern AclResult pg_foreign_server_aclcheck(Oid srv_oid, Oid roleid, AclMode mode);
+extern AclResult pg_extprotocol_aclcheck(Oid ptc_oid, Oid roleid, AclMode mode);
 
 extern void aclcheck_error(AclResult aclerr, AclObjectKind objectkind,
 			   const char *objectname);
@@ -293,5 +298,7 @@ extern bool pg_opclass_ownercheck(Oid opc_oid, Oid roleid);
 extern bool pg_database_ownercheck(Oid db_oid, Oid roleid);
 extern bool pg_conversion_ownercheck(Oid conv_oid, Oid roleid);
 extern bool pg_foreign_server_ownercheck(Oid srv_oid, Oid roleid);
+extern bool pg_extprotocol_ownercheck(Oid ptc_oid, Oid roleid);
+
 
 #endif   /* ACL_H */

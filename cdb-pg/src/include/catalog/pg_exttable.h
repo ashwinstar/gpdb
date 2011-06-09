@@ -148,4 +148,8 @@ GetExtTableEntry(Oid relid);
 extern void
 RemoveExtTableEntry(Oid relid);
 
+#define fmttype_is_custom(c) (c == 'b')
+#define fmttype_is_text(c)   (c == 't')
+#define fmttype_is_csv(c)    (c == 'c')
+
 #endif /* PG_EXTTABLE_H */

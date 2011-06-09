@@ -9,7 +9,9 @@ WANTED_DIRS = \
 		xlogdump \
 		pgbench \
 		orafce \
-		changetrackingdump
+		changetrackingdump \
+		formatter \
+		extprotocol
 
 ifeq ($(with_openssl),yes)
 WANTED_DIRS += sslinfo

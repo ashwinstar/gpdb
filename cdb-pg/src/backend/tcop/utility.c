@@ -32,6 +32,7 @@
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
+#include "commands/extprotocolcmds.h"
 #include "commands/filespace.h"
 #include "commands/lockcmds.h"
 #include "commands/portalcmds.h"
@@ -632,6 +633,14 @@ ProcessDropStatement(DropStmt *stmt)
 				RemoveTableSpace(names, stmt->behavior, stmt->missing_ok);
 				break;
 
+			case OBJECT_EXTPROTOCOL:
+				
+				/*
+				 * RemoveExtProtocol does its own permissions checks
+				 */
+				RemoveExtProtocol(names, stmt->behavior, stmt->missing_ok);
+				break;
+
 			default:
 				elog(ERROR, "unrecognized drop object type: %d",
 					 (int) stmt->removeType);
@@ -1161,6 +1170,10 @@ ProcessUtility(Node *parsetree,
 						Assert(stmt->args == NIL);
 						DefineType(stmt->defnames, stmt->definition, stmt->newOid, stmt->shadowOid);
 						break;
+					case OBJECT_EXTPROTOCOL:
+						Assert(stmt->args == NIL);
+						DefineExtProtocol(stmt->defnames, stmt->definition, stmt->newOid);
+						break;						
 					default:
 						elog(ERROR, "unrecognized define stmt type: %d",
 							 (int) stmt->kind);
@@ -1988,7 +2001,9 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_TABLESPACE:
 					tag = "DROP TABLESPACE";
 					break;
-
+				case OBJECT_EXTPROTOCOL:
+					tag = "DROP PROTOCOL";
+					break;					
 				default:
 					tag = "???";
 			}
@@ -2124,6 +2139,9 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_FOREIGN_SERVER:
 					tag = "ALTER SERVER";
 					break;
+				case OBJECT_EXTPROTOCOL:
+					tag = "ALTER PROTOCOL";
+					break;
 				default:
 					tag = "???";
 					break;
@@ -2186,6 +2204,9 @@ CreateCommandTag(Node *parsetree)
 					break;
 				case OBJECT_TYPE:
 					tag = "CREATE TYPE";
+					break;
+				case OBJECT_EXTPROTOCOL:
+					tag = "CREATE PROTOCOL";
 					break;
 				default:
 					tag = "???";

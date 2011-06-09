@@ -599,7 +599,7 @@ drop external table badt1;
 create external table badt2 (x text) 
 location ('bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/badt2.tbl' )
 format 'text' (delimiter '|');
-ERROR:  invalid URI 'bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/badt2.tbl' : undefined protocol
+ERROR:  protocol "bad_protocol" does not exist
 --
 -- ALTER (partial support)
 --
@@ -637,6 +637,46 @@ drop foreign table ext; -- should fail (wrong object)
 ERROR:  "ext" is not a foreign table
 HINT:  Use DROP EXTERNAL TABLE to remove an external table
 drop external table ext;
+----------------------------------------------------------------------
+-- CUSTOM PROTOCOLS
+----------------------------------------------------------------------
+DROP EXTERNAL TABLE IF EXISTS ext_w;
+NOTICE:  table "ext_w" does not exist, skipping
+DROP EXTERNAL TABLE IF EXISTS ext_r;
+NOTICE:  table "ext_r" does not exist, skipping
+DROP ROLE IF EXISTS extprotu;
+CREATE OR REPLACE FUNCTION write_to_file() RETURNS integer as '$libdir/gpextprotocol.so', 'demoprot_export' LANGUAGE C STABLE;
+CREATE OR REPLACE FUNCTION read_from_file() RETURNS integer as '$libdir/gpextprotocol.so', 'demoprot_import' LANGUAGE C STABLE;
+DROP PROTOCOL IF EXISTS demoprot;
+NOTICE:  protocol "demoprot" does not exist, skipping
+CREATE PROTOCOL demoprot (readfunc = 'nosuchfunc'); -- should fail
+ERROR:  function nosuchfunc() does not exist or can't be used as a protocol
+CREATE PROTOCOL demoprot (readfunc = 'boolin'); -- should fail
+ERROR:  function boolin() does not exist or can't be used as a protocol
+CREATE PROTOCOL demoprot (readfunc = 'read_from_file', writefunc = 'write_to_file'); -- should succeed
+CREATE ROLE extprotu NOSUPERUSER;
+NOTICE:  resource queue required -- using default resource queue "pg_default"
+SET SESSION AUTHORIZATION extprotu;
+CREATE WRITABLE EXTERNAL TABLE ext_w(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should fail
+ERROR:  permission denied for external protocol demoprot
+CREATE READABLE EXTERNAL TABLE ext_r(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should fail
+ERROR:  permission denied for external protocol demoprot
+RESET SESSION AUTHORIZATION;
+GRANT USAGE ON PROTOCOL demoprot TO extprotu;
+SET SESSION AUTHORIZATION extprotu;
+CREATE WRITABLE EXTERNAL TABLE ext_w(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should succeed
+CREATE READABLE EXTERNAL TABLE ext_r(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should succeed
+DROP EXTERNAL TABLE IF EXISTS ext_w;
+DROP EXTERNAL TABLE IF EXISTS ext_r;
+RESET SESSION AUTHORIZATION;
+REVOKE USAGE ON PROTOCOL demoprot FROM extprotu;
+SET SESSION AUTHORIZATION extprotu;
+CREATE WRITABLE EXTERNAL TABLE ext_w(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should fail
+ERROR:  permission denied for external protocol demoprot
+CREATE READABLE EXTERNAL TABLE ext_r(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should fail
+ERROR:  permission denied for external protocol demoprot
+RESET SESSION AUTHORIZATION;
+DROP ROLE IF EXISTS extprotu;
 --
 -- WET tests
 --

@@ -685,6 +685,8 @@ do { \
 		CONVERT_PRIV('U', "USAGE");
 	else if (strcmp(type, "SERVER") == 0)
 		CONVERT_PRIV('U', "USAGE");
+	else if (strcmp(type, "PROTOCOL") == 0)
+		CONVERT_PRIV('U', "USAGE");	
 	else
 		abort();
 

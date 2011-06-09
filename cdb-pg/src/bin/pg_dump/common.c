@@ -80,6 +80,7 @@ getSchemaData(int *numTablesPtr)
 	OpclassInfo *opcinfo;
 	ConvInfo   *convinfo;
 	FdwInfo    *fdwinfo;
+	ExtProtInfo *ptcinfo;
 	ForeignServerInfo *srvinfo;
 	int			numNamespaces;
 	int			numAggregates;
@@ -91,6 +92,7 @@ getSchemaData(int *numTablesPtr)
 	int			numConversions;
 	int			numForeignDataWrappers;
 	int			numForeignServers;
+	int			numExtProtocols;
 
 	if (g_verbose)
 		write_msg(NULL, "reading schemas\n");
@@ -118,6 +120,13 @@ getSchemaData(int *numTablesPtr)
 		write_msg(NULL, "reading user-defined operators\n");
 	oprinfo = getOperators(&numOperators);
 
+	if (testExtProtocolSupport())
+	{
+		if (g_verbose)
+			write_msg(NULL, "reading user-defined external protocols\n");
+		ptcinfo = getExtProtocols(&numExtProtocols);
+	}
+	
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined operator classes\n");
 	opcinfo = getOpclasses(&numOpclasses);

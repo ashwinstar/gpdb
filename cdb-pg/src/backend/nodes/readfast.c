@@ -2685,7 +2685,7 @@ _readExternalScan(const char ** str)
 
 	READ_NODE_FIELD(uriList);
 	READ_NODE_FIELD(fmtOpts);
-	READ_BOOL_FIELD(isText);
+	READ_CHAR_FIELD(fmtType);
 	READ_BOOL_FIELD(isMasterOnly);
 	READ_INT_FIELD(rejLimit);
 	READ_BOOL_FIELD(rejLimitInRows);

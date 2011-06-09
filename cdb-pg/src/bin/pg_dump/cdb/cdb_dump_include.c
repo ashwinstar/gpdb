@@ -1250,6 +1250,101 @@ getAggregates(int *numAggs)
 }
 
 /*
+ * getExtProtocols:
+ *	  read all the user-defined protocols in the system catalogs and
+ * return them in the ExtProtInfo* structure
+ *
+ * numExtProtocols is set to the number of protocols read in
+ */
+/*	Declared in pg_dump.h */
+ExtProtInfo *
+getExtProtocols(int *numExtProtocols)
+{
+	PGresult   *res;
+	int			ntups;
+	int			i;
+	PQExpBuffer query = createPQExpBuffer();
+	ExtProtInfo *ptcinfo;
+	int			i_oid;
+	int			i_tableoid;
+	int			i_ptcname;
+	int			i_ptcreadfn;
+	int			i_ptcwritefn;
+	int			i_rolname;
+	int			i_ptcacl;
+
+	/* Make sure we are in proper schema */
+	selectSourceSchema("pg_catalog");
+
+	/* find all user-defined aggregates */
+
+	appendPQExpBuffer(query, "SELECT ptc.tableoid as tableoid, "
+							 "       ptc.oid as oid, "
+							 "       ptc.ptcname as ptcname, "
+							 "       pro1.proname as ptcread, "
+							 "       pro2.proname as ptcwrite, "
+							 "       (%s ptc.ptcowner) as rolname, "
+							 "       ptc.ptcacl as ptcacl "
+							 "FROM   pg_extprotocol ptc, "
+							 "       pg_proc pro1, "
+							 "       pg_proc pro2  "
+							 "WHERE  ptc.ptcreadfn = pro1.oid "
+							 "AND    ptc.ptcwritefn = pro2.oid",
+					  username_subquery);
+
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	ntups = PQntuples(res);
+	*numExtProtocols = ntups;
+	
+	ptcinfo = (ExtProtInfo *) malloc(ntups * sizeof(ExtProtInfo));
+
+	i_tableoid = PQfnumber(res, "tableoid");
+	i_oid = PQfnumber(res, "oid");
+	i_ptcname = PQfnumber(res, "ptcname");
+	i_ptcreadfn = PQfnumber(res, "ptcread");
+	i_ptcwritefn = PQfnumber(res, "ptcwrite");
+	i_rolname = PQfnumber(res, "rolname");
+	i_ptcacl = PQfnumber(res, "ptcacl");
+
+	for (i = 0; i < ntups; i++)
+	{
+		ptcinfo[i].dobj.objType = DO_EXTPROTOCOL;
+		ptcinfo[i].dobj.catId.tableoid = atooid(PQgetvalue(res, i, i_tableoid));
+		ptcinfo[i].dobj.catId.oid = atooid(PQgetvalue(res, i, i_oid));
+		AssignDumpId(&ptcinfo[i].dobj);
+		ptcinfo[i].dobj.name = strdup(PQgetvalue(res, i, i_ptcname));
+		ptcinfo[i].dobj.namespace = NULL;
+		ptcinfo[i].ptcowner = strdup(PQgetvalue(res, i, i_rolname));
+		if (strlen(ptcinfo[i].ptcowner) == 0)
+			mpp_err_msg(logWarn, progname, "WARNING: owner of external protocol \"%s\" appears to be invalid\n",
+						ptcinfo[i].dobj.name);
+		
+		if (PQgetisnull(res, i, i_ptcreadfn))
+			ptcinfo[i].ptcreadfn = NULL;
+		else
+			ptcinfo[i].ptcreadfn = strdup(PQgetvalue(res, i, i_ptcreadfn));
+
+		if (PQgetisnull(res, i, i_ptcwritefn))
+			ptcinfo[i].ptcwritefn = NULL;
+		else
+			ptcinfo[i].ptcwritefn = strdup(PQgetvalue(res, i, i_ptcwritefn));
+		
+		ptcinfo[i].ptcacl = strdup(PQgetvalue(res, i, i_ptcacl));
+
+		/* Decide whether we want to dump it */
+		selectDumpableObject(&(ptcinfo[i].dobj));
+	}
+
+	PQclear(res);
+
+	destroyPQExpBuffer(query);
+
+	return ptcinfo;
+}
+
+/*
  * getForeignDataWrappers:
  *	  read all foreign-data wrappers in the system catalogs and return
  *	  them in the FdwInfo* structure
@@ -2689,6 +2784,27 @@ testSqlMedSupport(void)
 	query = createPQExpBuffer();
 
 	appendPQExpBuffer(query, "SELECT 1 FROM pg_class WHERE relname = 'pg_foreign_server' and relnamespace = 11;");
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	isSupported = (PQntuples(res) == 1);
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+
+	return isSupported;
+}
+
+bool
+testExtProtocolSupport(void)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	bool		isSupported;
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query, "SELECT 1 FROM pg_class WHERE relname = 'pg_extprotocol' and relnamespace = 11;");
 	res = PQexec(g_conn, query->data);
 	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
 

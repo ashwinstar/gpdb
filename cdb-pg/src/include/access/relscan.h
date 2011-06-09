@@ -14,6 +14,7 @@
 #ifndef RELSCAN_H
 #define RELSCAN_H
 
+#include "access/formatter.h"
 #include "access/skey.h"
 #include "access/memtup.h"
 #include "access/aosegfiles.h"
@@ -121,7 +122,7 @@ typedef struct FileScanDescData
 	
 	/* current file parse state */
 	struct CopyStateData *fs_pstate;
-	
+
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs;
 	Datum	   *values;
@@ -137,6 +138,9 @@ typedef struct FileScanDescData
 	TupleDesc	fs_tupDesc;
 	HeapTupleData fs_ctup;		/* current tuple in scan, if any */
 	Buffer		fs_cbuf;		/* always invalid buffer */
+
+	/* custom data formatter */
+	FormatterData *fs_formatter;
 	
 }	FileScanDescData;
 

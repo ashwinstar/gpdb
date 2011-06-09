@@ -187,6 +187,7 @@ static void dumpOpclass(Archive *fout, OpclassInfo *opcinfo);
 static void dumpConversion(Archive *fout, ConvInfo *convinfo);
 static void dumpRule(Archive *fout, RuleInfo *rinfo);
 static void dumpAgg(Archive *fout, AggInfo *agginfo);
+static void dumpExtProtocol(Archive *fout, ExtProtInfo *protinfo);
 static void dumpTrigger(Archive *fout, TriggerInfo *tginfo);
 static void dumpTable(Archive *fout, TableInfo *tbinfo);
 static void dumpTableSchema(Archive *fout, TableInfo *tbinfo);
@@ -2164,6 +2165,10 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 		case DO_OPERATOR:
 			if (!postDataSchemaOnly)
 			dumpOpr(fout, (OprInfo *) dobj);
+			break;
+		case DO_EXTPROTOCOL:
+			if (!postDataSchemaOnly)
+			dumpExtProtocol(fout, (ExtProtInfo *) dobj);
 			break;
 		case DO_OPCLASS:
 			if (!postDataSchemaOnly)
@@ -4433,6 +4438,66 @@ dumpAgg(Archive *fout, AggInfo *agginfo)
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(details);
+}
+
+/*
+ * dumpExtProtocol
+ *	  write out a single external protocol definition
+ */
+static void
+dumpExtProtocol(Archive *fout, ExtProtInfo *ptcinfo)
+{
+	PQExpBuffer q;
+	PQExpBuffer delq;
+	char	   *namecopy;
+
+	/* Skip if not to be dumped */
+	if (!ptcinfo->dobj.dump || dataOnly)
+		return;
+
+	q = createPQExpBuffer();
+	delq = createPQExpBuffer();
+
+	appendPQExpBuffer(q, "CREATE PROTOCOL %s (",
+					  fmtId(ptcinfo->dobj.name));
+
+	if (ptcinfo->ptcreadfn)
+	{
+		appendPQExpBuffer(q, " readfunc = '%s'%s",
+						  ptcinfo->ptcreadfn,
+						  (ptcinfo->ptcwritefn == NULL ? "" : ","));
+	}
+
+	if (ptcinfo->ptcwritefn)
+		appendPQExpBuffer(q, " writefunc = '%s'",
+						  ptcinfo->ptcwritefn);
+
+	appendPQExpBuffer(q, ");\n");
+
+	appendPQExpBuffer(delq, "DROP PROTOCOL %s;\n",
+					  fmtId(ptcinfo->dobj.name));
+
+	ArchiveEntry(fout, ptcinfo->dobj.catId, ptcinfo->dobj.dumpId,
+				 ptcinfo->dobj.name,
+				 NULL,
+				 NULL,
+				 ptcinfo->ptcowner,
+				 false, "PROTOCOL",
+				 q->data, delq->data, NULL,
+				 ptcinfo->dobj.dependencies, ptcinfo->dobj.nDeps,
+				 NULL, NULL);
+
+	/* Handle the ACL */
+	namecopy = strdup(fmtId(ptcinfo->dobj.name));
+	dumpACL(fout, ptcinfo->dobj.catId, ptcinfo->dobj.dumpId,
+			"PROTOCOL",
+			namecopy, ptcinfo->dobj.name,
+			NULL, ptcinfo->ptcowner,
+			ptcinfo->ptcacl);
+	free(namecopy);
+
+	destroyPQExpBuffer(q);
+	destroyPQExpBuffer(delq);
 }
 
 /*

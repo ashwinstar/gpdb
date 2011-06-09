@@ -17,6 +17,7 @@ typedef enum UriProtocol
 	URI_HTTP,
 	URI_GPFDIST,
 	URI_GPHDFS,
+	URI_CUSTOM
 }	UriProtocol;
 
 #define PROTOCOL_FILE	"file://"
@@ -42,8 +43,10 @@ typedef struct Uri
 	char	   *hostname;
 	int         port;
 	char	   *path;
+	char	   *customprotocol;
 }	Uri;
 
-extern Uri *ParseUriString(const char *uri);
+extern Uri *ParseExternalTableUri(const char *uri);
+extern void FreeExternalTableUri(Uri *uri);
 
 #endif   /* URI_H */

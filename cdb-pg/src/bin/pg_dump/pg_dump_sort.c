@@ -48,7 +48,8 @@ static const int oldObjectTypePriority[] =
 	3,							/* DO_FDW */
 	4,							/* DO_FOREIGN_SERVER */
 	10,							/* DO_BLOBS */
-	11							/* DO_BLOB_COMMENTS */
+	11,							/* DO_BLOB_COMMENTS */
+	3,							/* DO_EXTPROTOCOL */
 };
 
 /*
@@ -79,7 +80,8 @@ static const int newObjectTypePriority[] =
 	14,							/* DO_FDW */
 	15,							/* DO_FOREIGN_SERVER */
 	14,							/* DO_BLOBS */
-	15							/* DO_BLOB_COMMENTS */
+	15,							/* DO_BLOB_COMMENTS */
+	8,							/* DO_EXTPROTOCOL */
 };
 
 
@@ -988,6 +990,11 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 		case DO_AGG:
 			snprintf(buf, bufsize,
 					 "AGGREGATE %s  (ID %d OID %u)",
+					 obj->name, obj->dumpId, obj->catId.oid);
+			return;
+		case DO_EXTPROTOCOL:
+			snprintf(buf, bufsize,
+					 "PROTOCOL %s  (ID %d OID %u)",
 					 obj->name, obj->dumpId, obj->catId.oid);
 			return;
 		case DO_OPERATOR:

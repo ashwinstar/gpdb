@@ -123,6 +123,9 @@ typedef struct CopyStateData
 	bool		encoding_embeds_ascii;	/* ASCII can be non-first byte? */
 	FmgrInfo   *enc_conversion_proc; /* conv proc from exttbl encoding to 
 										server or the other way around */
+	FmgrInfo   *custom_formatter_func; /* function to convert to custom format */
+	char	   *custom_formatter_name; /* name of function to convert to custom format */
+
 	uint64		processed;		/* # of tuples processed */
 	size_t		bytesread;
 
@@ -134,7 +137,7 @@ typedef struct CopyStateData
 	List	   *force_quote;	/* the raw fc column name list */
 	List	   *force_notnull;  /* the raw fnn column name list */
 	char	   *filename;		/* filename, or NULL for STDIN/STDOUT */
-	bool		binary;			/* binary format? */
+	bool		custom;			/* custom format? */
 	bool		oids;			/* include OIDs? */
 	bool		csv_mode;		/* Comma Separated Value format? */
 	bool		header_line;	/* CSV header line? */
@@ -264,6 +267,7 @@ extern void CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offse
 					  int num_phys_attrs, Form_pg_attribute *attr);
 extern void CopyOneRowTo(CopyState cstate, Oid tupleOid,
 						 Datum *values, bool *nulls);
+extern void CopyOneCustomRowTo(CopyState cstate, bytea *value);
 extern void CopySendEndOfRow(CopyState cstate);
 extern void limit_printout_length(StringInfo buf);
 extern void truncateEol(StringInfo buf, EolType	eol_type);

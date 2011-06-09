@@ -1636,6 +1636,11 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		auto_stats(AUTOSTATS_CMDTYPE_COPY, relationOid, processed);
 	} /*end auto-stats block*/
 
+	if(cstate->force_quote_flags)
+		pfree(cstate->force_quote_flags);
+	if(cstate->force_notnull_flags)
+		pfree(cstate->force_notnull_flags);
+		
 	pfree(cstate->attribute_buf.data);
 	pfree(cstate->line_buf.data);
 	pfree(cstate);
@@ -2224,6 +2229,14 @@ CopyTo(CopyState cstate)
 	}
 
 	MemoryContextDelete(cstate->rowcontext);
+}
+
+void
+CopyOneCustomRowTo(CopyState cstate, bytea *value)
+{	
+	appendBinaryStringInfo(cstate->fe_msgbuf, 
+						   VARDATA_ANY((void *) value), 
+						   VARSIZE_ANY_EXHDR((void *) value));
 }
 
 /*

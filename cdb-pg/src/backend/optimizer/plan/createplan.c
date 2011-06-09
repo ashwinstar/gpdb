@@ -1069,7 +1069,6 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	ListCell		*c = NULL;
 	char			**segdb_file_map = NULL;
 	char			*first_uri_str = NULL;
-	bool			istext = false;
 	bool			ismasteronly = false;
 	bool			islimitinrows = false;
 	int				rejectlimit = -1;
@@ -1172,7 +1171,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	if(!using_execute)
 	{
 		first_uri_str = (char *) strVal(lfirst(list_head(rel->locationlist)));
-		uri = ParseUriString(first_uri_str);		
+		uri = ParseExternalTableUri(first_uri_str);		
 	}
 
 
@@ -1193,7 +1192,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	 * relationship. The only difference between them is that file:// URI must 
 	 * be assigned to a segdb on a host that is local to that URI.
 	 *
-	 * 2) segment mapping for tables with LOCATION gpfdist://
+	 * 2) segment mapping for tables with LOCATION gpfdist:// or custom protocol
 	 *
 	 * This protocol is more complicated - in here we usually duplicate the user
 	 * supplied gpfdist:// URIs until there is one available to every segdb. 
@@ -1225,7 +1224,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		{
 			const char	*uri_str = (char *) strVal(lfirst(c));
 
-			uri = ParseUriString(uri_str);
+			uri = ParseExternalTableUri(uri_str);
 
 			found_candidate = false;
 			found_match = false;
@@ -1314,7 +1313,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 
 	}
 	/* (2) */
-	else if(using_location && uri->protocol == URI_GPFDIST)
+	else if(using_location && (uri->protocol == URI_GPFDIST || uri->protocol == URI_CUSTOM))
 	{
 		/*
 		 * Re-write the location list for GPFDIST before mapping to segments.
@@ -1356,8 +1355,10 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 			num_segs_participating = max_participants_allowed;
 			should_skip_randomly = true;
 
-			elog(NOTICE, "External scan from gpfdist client will utilize %d out "
-				 "of %d segment databases", num_segs_participating,
+			elog(NOTICE, "External scan %s will utilize %d out "
+				 "of %d segment databases", 
+				 (uri->protocol == URI_GPFDIST ? "from gpfdist server" : "using custom protocol"),
+				 num_segs_participating,
 				 total_primaries);
 		}
 
@@ -1408,7 +1409,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		{
 			const char	*uri_str = (char *) strVal(lfirst(c));
 
-			uri = ParseUriString(uri_str);
+			uri = ParseExternalTableUri(uri_str);
 
 			found_candidate = false;
 			found_match = false;
@@ -1701,7 +1702,6 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	}
 
 	/* data format description */
-	istext = (rel->fmttype == 't' ? true : false);	
 	Assert(rel->fmtopts);
 	fmtopts = lappend(fmtopts, makeString(pstrdup(rel->fmtopts)));
 
@@ -1721,7 +1721,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 								  scan_relid,
 								  filenames,
 								  fmtopts,
-								  istext,
+								  rel->fmttype,
 								  ismasteronly,
 								  rejectlimit,
 								  islimitinrows,
@@ -3287,7 +3287,7 @@ make_externalscan(List *qptlist,
 				  Index scanrelid,
 				  List *urilist,
 				  List *fmtopts,
-				  bool istext,
+				  char fmttype,
 				  bool ismasteronly,
 				  int rejectlimit,
 				  bool rejectlimitinrows,
@@ -3308,7 +3308,7 @@ make_externalscan(List *qptlist,
 	/* external specifictions */
 	node->uriList = urilist;
 	node->fmtOpts = fmtopts;
-	node->isText = istext;
+	node->fmtType = fmttype;
 	node->isMasterOnly = ismasteronly;
 	node->rejLimit = rejectlimit;
 	node->rejLimitInRows = rejectlimitinrows;

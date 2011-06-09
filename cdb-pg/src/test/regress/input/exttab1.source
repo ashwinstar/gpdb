@@ -400,6 +400,45 @@ drop table ext; -- should fail (wrong object)
 drop foreign table ext; -- should fail (wrong object)
 drop external table ext;
 
+----------------------------------------------------------------------
+-- CUSTOM PROTOCOLS
+----------------------------------------------------------------------
+DROP EXTERNAL TABLE IF EXISTS ext_w;
+DROP EXTERNAL TABLE IF EXISTS ext_r;
+DROP ROLE IF EXISTS extprotu;
+CREATE OR REPLACE FUNCTION write_to_file() RETURNS integer as '$libdir/gpextprotocol.so', 'demoprot_export' LANGUAGE C STABLE;
+CREATE OR REPLACE FUNCTION read_from_file() RETURNS integer as '$libdir/gpextprotocol.so', 'demoprot_import' LANGUAGE C STABLE;
+
+DROP PROTOCOL IF EXISTS demoprot;
+CREATE PROTOCOL demoprot (readfunc = 'nosuchfunc'); -- should fail
+CREATE PROTOCOL demoprot (readfunc = 'boolin'); -- should fail
+CREATE PROTOCOL demoprot (readfunc = 'read_from_file', writefunc = 'write_to_file'); -- should succeed
+
+CREATE ROLE extprotu NOSUPERUSER;
+SET SESSION AUTHORIZATION extprotu;
+
+CREATE WRITABLE EXTERNAL TABLE ext_w(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should fail
+CREATE READABLE EXTERNAL TABLE ext_r(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should fail
+
+RESET SESSION AUTHORIZATION;
+GRANT USAGE ON PROTOCOL demoprot TO extprotu;
+SET SESSION AUTHORIZATION extprotu;
+
+CREATE WRITABLE EXTERNAL TABLE ext_w(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should succeed
+CREATE READABLE EXTERNAL TABLE ext_r(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should succeed
+DROP EXTERNAL TABLE IF EXISTS ext_w;
+DROP EXTERNAL TABLE IF EXISTS ext_r;
+
+RESET SESSION AUTHORIZATION;
+REVOKE USAGE ON PROTOCOL demoprot FROM extprotu;
+SET SESSION AUTHORIZATION extprotu;
+
+CREATE WRITABLE EXTERNAL TABLE ext_w(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should fail
+CREATE READABLE EXTERNAL TABLE ext_r(a int) location('demoprot://demoprotfile.txt') format 'text'; -- should fail
+
+RESET SESSION AUTHORIZATION;
+DROP ROLE IF EXISTS extprotu;
+
 --
 -- WET tests
 --

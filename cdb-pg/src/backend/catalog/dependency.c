@@ -30,6 +30,7 @@
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_depend.h"
+#include "catalog/pg_extprotocol.h"
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
@@ -46,6 +47,7 @@
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/extprotocolcmds.h"
 #include "commands/filespace.h"
 #include "commands/proclang.h"
 #include "commands/schemacmds.h"
@@ -1041,6 +1043,10 @@ doDeletion(const ObjectAddress *object)
 			RemoveUserMappingById(object->objectId);
 			break;
 
+		case OCLASS_EXTPROTOCOL:
+			RemoveExtProtocolById(object->objectId);
+			break;
+			
 		default:
 			elog(ERROR, "unrecognized object class: %u",
 				 object->classId);
@@ -1746,6 +1752,9 @@ getObjectClass(const ObjectAddress *object)
 			Assert(object->objectSubId == 0);
 			return OCLASS_USER_MAPPING;
 
+		case ExtprotocolRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_EXTPROTOCOL;
 	}
 
 	/* shouldn't get here */
@@ -2148,7 +2157,11 @@ getObjectDescription(const ObjectAddress *object)
 				break;
 			}
 
-
+		case OCLASS_EXTPROTOCOL:
+			{
+				appendStringInfo(&buffer, _("protocol %s"), ExtProtocolGetNameByOid(object->objectId));
+				break;
+			}
 		default:
 			appendStringInfo(&buffer, "unrecognized object %u %u %d",
 							 object->classId,

@@ -131,7 +131,8 @@ typedef enum
 	DO_FDW,
 	DO_FOREIGN_SERVER,
 	DO_BLOBS,
-	DO_BLOB_COMMENTS
+	DO_BLOB_COMMENTS,
+	DO_EXTPROTOCOL
 } DumpableObjectType;
 
 typedef struct _dumpableObject
@@ -200,6 +201,15 @@ typedef struct _aggInfo
 	FuncInfo	aggfn;
 	/* we don't require any other fields at the moment */
 } AggInfo;
+
+typedef struct _ptcInfo
+{
+	DumpableObject dobj;
+	char	   *ptcreadfn;
+	char	   *ptcwritefn;
+	char	   *ptcowner;
+	char	   *ptcacl;
+} ExtProtInfo;
 
 typedef struct _oprInfo
 {
@@ -465,6 +475,7 @@ extern NamespaceInfo *getNamespaces(int *numNamespaces);
 extern TypeInfo *getTypes(int *numTypes);
 extern FuncInfo *getFuncs(int *numFuncs);
 extern AggInfo *getAggregates(int *numAggregates);
+extern ExtProtInfo *getExtProtocols(int *numExtProtocols);
 extern OprInfo *getOperators(int *numOperators);
 extern OpclassInfo *getOpclasses(int *numOpclasses);
 extern ConvInfo *getConversions(int *numConversions);
@@ -481,7 +492,7 @@ extern FdwInfo *getForeignDataWrappers(int *numForeignDataWrappers);
 extern ForeignServerInfo *getForeignServers(int *numForeignServers);
 
 extern bool testSqlMedSupport(void);
-
+extern bool	testExtProtocolSupport(void);
 
 
 #endif   /* PG_DUMP_H */

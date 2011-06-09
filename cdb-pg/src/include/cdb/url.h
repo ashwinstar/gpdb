@@ -24,6 +24,9 @@
 #include <curl/curl.h>
 
 #include <fstream/fstream.h>
+
+#include "access/extprotocol.h"
+
 #ifndef FALSE
 #define FALSE 0
 #endif
@@ -32,7 +35,14 @@
 #define TRUE 1
 #endif
 
-enum fcurl_type_e { CFTYPE_NONE=0, CFTYPE_FILE=1, CFTYPE_CURL=2, CFTYPE_EXEC=3 };
+enum fcurl_type_e 
+{ 
+	CFTYPE_NONE = 0, 
+	CFTYPE_FILE = 1, 
+	CFTYPE_CURL = 2, 
+	CFTYPE_EXEC = 3, 
+	CFTYPE_CUSTOM = 4 
+};
 
 #if BYTE_ORDER == BIG_ENDIAN
 #define local_htonll(n)  (n)
@@ -84,7 +94,8 @@ typedef struct URL_FILE
 	char *url;
 
     union {
-		struct {
+		
+    	struct {
 			fstream_t*fp;
 		} file;
 
@@ -95,6 +106,12 @@ typedef struct URL_FILE
 			int 	pipes[2]; /* only out and err needed */
 			char*	shexec;
 		} exec;
+		
+		struct {
+			FmgrInfo   *protocol_udf;
+			ExtProtocol extprotocol;
+		} custom;
+		
 	} u;
 } URL_FILE;
 

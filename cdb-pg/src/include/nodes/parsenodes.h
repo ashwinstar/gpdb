@@ -72,8 +72,8 @@ typedef uint32 AclMode;			/* a bitmask of privilege bits */
 #define ACL_REFERENCES	(1<<5)
 #define ACL_TRIGGER		(1<<6)
 #define ACL_EXECUTE		(1<<7)	/* for functions */
-#define ACL_USAGE		(1<<8)	/* for languages, namespaces, FDWs, and
-								 * servers */
+#define ACL_USAGE		(1<<8)	/* for languages, namespaces, FDWs, servers
+								 * and external protocols */
 #define ACL_CREATE		(1<<9)	/* for namespaces and databases */
 #define ACL_CREATE_TEMP (1<<10) /* for databases */
 #define ACL_CONNECT		(1<<11) /* for databases */
@@ -1027,6 +1027,7 @@ typedef enum ObjectType
 	OBJECT_SEQUENCE,
 	OBJECT_TABLE,
 	OBJECT_EXTTABLE,
+	OBJECT_EXTPROTOCOL,
 	OBJECT_FILESPACE,
 	OBJECT_TABLESPACE,
 	OBJECT_TRIGGER,
@@ -1212,6 +1213,7 @@ typedef enum GrantObjectType
 	ACL_OBJECT_RELATION,		/* table, view */
 	ACL_OBJECT_SEQUENCE,		/* sequence */
 	ACL_OBJECT_DATABASE,		/* database */
+	ACL_OBJECT_EXTPROTOCOL,		/* external table protocol */
 	ACL_OBJECT_FDW,				/* foreign-data wrapper */
 	ACL_OBJECT_FOREIGN_SERVER,	/* foreign server */
 	ACL_OBJECT_FUNCTION,		/* function */
@@ -1877,13 +1879,13 @@ typedef struct AlterSeqStmt
 } AlterSeqStmt;
 
 /* ----------------------
- *		Create {Aggregate|Operator|Type} Statement
+ *		Create {Aggregate|Operator|Type|Protocol} Statement
  * ----------------------
  */
 typedef struct DefineStmt
 {
 	NodeTag		type;
-	ObjectType	kind;			/* aggregate, operator, type */
+	ObjectType	kind;			/* aggregate, operator, type, protocol */
 	bool		oldstyle;		/* hack to signal old CREATE AGG syntax */
 	List	   *defnames;		/* qualified name (list of Value strings) */
 	List	   *args;			/* a list of TypeName (if needed) */

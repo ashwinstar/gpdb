@@ -11,6 +11,7 @@
 #include "access/fileam.h"
 #include "access/heapam.h"
 #include "access/valid.h"
+#include "catalog/pg_extprotocol.h"
 #include "catalog/namespace.h"
 #include "commands/copy.h"
 #include "commands/dbcommands.h"
@@ -62,7 +63,11 @@ static const char *getSignalNameFromCode(int signo);
 static int popen_with_stderr(int *rwepipe, const char *exe, bool forwrite);
 static int pclose_with_stderr(int pid, int *rwepipe, char *buf, int len);
 static void gp_proto0_write_done(URL_FILE *file);
-
+static int32  InvokeExtProtocol(void		*ptr, 
+								size_t 		nbytes, 
+								URL_FILE 	*file, 
+								CopyState 	pstate,
+								bool		last_call);
 
 /* we use a global one for convenience */
 CURLM *multi_handle = 0;
@@ -905,13 +910,52 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 		}
 
     }
+    else
+    {
+    	/* we're using a custom protocol */
+
+		Oid		procOid;
+    	char   *prot_name 	= pstrdup(file->url);
+    	int		url_len 	= strlen(file->url); 
+    	int		i 			= 0;
+
+    	file->type = CFTYPE_CUSTOM;
+    	
+    	/* extract protocol name from url string */    	
+    	while (file->url[i] != ':' && i < url_len - 1)
+    		i++;
+    	
+    	prot_name[i] = '\0';
+    	procOid = LookupExtProtocolFunction(prot_name, forwrite);
+
+		/* 
+		 * allocate space for our protocol handlers. Note that we use
+		 * alloc and not palloc, similarly to the parent 'file' handler
+		 * since we much ensure that it persists during Abort, so that
+		 * the UDF has a chance to clean up open resource/connections.
+		 */
+		file->u.custom.protocol_udf = malloc(sizeof(FmgrInfo));
+		file->u.custom.extprotocol = (ExtProtocolData *) malloc (sizeof(ExtProtocolData));
+
+		/* we found our function. set it in custom file handler */
+		fmgr_info(procOid, file->u.custom.protocol_udf);
+
+		file->u.custom.extprotocol->prot_user_ctx = NULL;
+		file->u.custom.extprotocol->prot_last_call = false;
+		file->u.custom.extprotocol->prot_url = NULL;
+		file->u.custom.extprotocol->prot_databuf = NULL;
+		
+		
+		pfree(prot_name);
+    }
+	
     return file;
 }
 
 /*
  * url_fclose: Disposes of resources associated with this external web table.
  *
- * If failOnClose is true, errors encountered while closing the resource results
+ * If failOnError is true, errors encountered while closing the resource results
  * in raising an ERROR.  This is particularly true for "execute:" resources where
  * command termination is not reflected until close is called.  If failOnClose is
  * false, close errors are just logged.  failOnClose should be false when closure
@@ -1018,6 +1062,18 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 			memset(&file->u.curl.block, 0, sizeof(file->u.curl.block));
 			break;
 
+		case CFTYPE_CUSTOM:
+			
+			if(file->u.custom.protocol_udf)
+				(void) InvokeExtProtocol(NULL, 0, file, NULL, true);
+
+			if(file->u.custom.protocol_udf)
+				free(file->u.custom.protocol_udf);
+			if(file->u.custom.extprotocol)
+				free(file->u.custom.extprotocol);
+
+			break;
+			
 		default: /* unknown or supported type - oh dear */
 			free(file);
 			ereport(ERROR,
@@ -1051,6 +1107,10 @@ url_feof(URL_FILE *file, int bytesread)
 			ret = (file->u.curl.eof != 0);
 			break;
 
+		case CFTYPE_CUSTOM:
+			ret = (bytesread == 0);
+			break;
+			
 		default: /* unknown or supported type - oh dear */
 			ret = true;
 			errno = EBADF;
@@ -1076,6 +1136,10 @@ bool url_ferror(URL_FILE *file, int bytesread)
 
 		case CFTYPE_CURL:
 			ret = (file->u.curl.error != 0);
+			break;
+
+		case CFTYPE_CUSTOM:
+			ret = (bytesread == -1);
 			break;
 
 		default: /* unknown or supported type - oh dear */
@@ -1541,6 +1605,11 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate
 			/*printf("(fread) return %d bytes %d left\n", want,file->u.curl.buffer_pos);*/
 			break;
 
+		case CFTYPE_CUSTOM:
+			
+			want = (size_t) InvokeExtProtocol(ptr, nmemb * size, file, pstate, false);
+			break;
+				
 		default: /* unknown or supported type */
 			want = 0;
 			errno = EBADF;
@@ -1558,11 +1627,12 @@ url_fwrite(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstat
     switch (file->type)
     {
 		case CFTYPE_FILE:
-		{
+
 			elog(ERROR, "CFTYPE_FILE not yet supported in url.c");
 			break;
-		}
+
 		case CFTYPE_EXEC:
+			
 			want = pipewrite(file->u.exec.pipes[EXEC_DATA_P], ptr, nmemb * size);
 			break;
 
@@ -1572,7 +1642,12 @@ url_fwrite(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstat
 			n = curl_fwrite(ptr, nmemb * size, file, pstate);
 			want = n / size;
 			break;
-
+		
+		case CFTYPE_CUSTOM:
+						
+			want = (size_t) InvokeExtProtocol(ptr, nmemb * size, file, pstate, false);
+			break;
+			
 		default: /* unknown or unsupported type */
 			want = 0;
 			errno = EBADF;
@@ -1597,6 +1672,7 @@ url_fflush(URL_FILE *file, CopyState pstate)
 			break;
 		}
 		case CFTYPE_EXEC:
+		case CFTYPE_CUSTOM:
 			/* data isn't buffered on app level. no op */
 			break;
 
@@ -1645,6 +1721,10 @@ url_rewind(URL_FILE *file, const char *relname)
 			memset(&file->u.curl.block, 0, sizeof(file->u.curl.block));
 			break;
 
+		case CFTYPE_CUSTOM:
+			elog(ERROR, "rewind support not yet implemented in custom protocol");
+			break;
+			
 		default: /* unknown or supported type - oh dear */
 			break;
 
@@ -1995,5 +2075,43 @@ static int pclose_with_stderr(int pid, int *pipes, char *buf, int len)
 #endif 
 
 	return status;
+}
+
+static int32 
+InvokeExtProtocol(void 	   		*ptr, 
+				  size_t 		 nbytes, 
+				  URL_FILE 		*file, 
+				  CopyState 	 pstate,
+				  bool			 last_call)
+{
+	FunctionCallInfoData	fcinfo;
+	ExtProtocolData*		extprotocol = file->u.custom.extprotocol;
+	FmgrInfo*				extprotocol_udf = file->u.custom.protocol_udf;
+	Datum					d;
+	
+	/* must have been created during url_fopen() */
+	Assert(extprotocol);
+	
+	extprotocol->type = T_ExtProtocolData;
+	extprotocol->prot_url = file->url;
+	extprotocol->prot_relation = (last_call ? NULL : pstate->rel);
+	extprotocol->prot_databuf  = (last_call ? NULL : (char *)ptr);
+	extprotocol->prot_maxbytes = nbytes;
+	extprotocol->prot_last_call = last_call;
+	
+	InitFunctionCallInfoData(/* FunctionCallInfoData */ fcinfo, 
+							 /* FmgrInfo */ extprotocol_udf, 
+							 /* nArgs */ 0, 
+							 /* Call Context */ (Node *) extprotocol, 
+							 /* ResultSetInfo */ NULL);
+	
+
+	d = FunctionCallInvoke(&fcinfo);
+
+	/* We do not expect a null result */
+	if (fcinfo.isnull)
+		elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid);
+
+	return DatumGetInt32(d);
 }
 

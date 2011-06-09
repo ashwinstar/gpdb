@@ -435,8 +435,10 @@ typedef enum NodeTag
 	 */
 	T_TriggerData = 900,		/* in commands/trigger.h */
 	T_ReturnSetInfo,			/* in nodes/execnodes.h */
-    T_HashBitmap,                           /* in nodes/tidbitmap.h */
-    T_StreamBitmap,                         /* in nodes/tidbitmap.h */
+    T_HashBitmap,               /* in nodes/tidbitmap.h */
+    T_StreamBitmap,             /* in nodes/tidbitmap.h */
+	T_FormatterData,            /* in access/formatter.h */
+	T_ExtProtocolData,          /* in access/extprotocol.h */
 
     /* CDB: tags for random other stuff */
     T_CdbExplain_StatHdr = 950,             /* in cdb/cdbexplain.c */

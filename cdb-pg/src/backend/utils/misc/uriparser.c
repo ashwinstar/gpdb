@@ -15,20 +15,25 @@
 #include <arpa/inet.h>	 /* inet_ntoa() */ 
 
 /*
- * This routines converts a string to URI object.
- * It is also used to validate the URI format.
+ * ParseExternalTableUri
+ * 
+ * This routines converts a string to a supported external 
+ * table URI object. It is also used to validate the URI format.
  */
 Uri *
-ParseUriString(const char *uri_str)
+ParseExternalTableUri(const char *uri_str)
 {
-	Uri		   *uri = (Uri *) palloc(sizeof(Uri));
+	Uri		   *uri = (Uri *) palloc0(sizeof(Uri));
 	char	   *start,
 			   *end;
 	int			protocol_len,
 				len;
 
  	uri->port = -1;
-
+ 	uri->hostname = NULL;
+ 	uri->path = NULL;
+ 	uri->customprotocol = NULL;
+ 	
 	/*
 	 * parse protocol
 	 */
@@ -57,8 +62,29 @@ ParseUriString(const char *uri_str)
 		uri->protocol = URI_GPHDFS;
 		protocol_len = strlen(PROTOCOL_GPHDFS);
 	}
-	else
+	else /* not recognized. treat it as a custom protocol */
 	{
+		char *post_protocol = strstr(uri_str, "://");
+		
+		if(!post_protocol)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("invalid URI \'%s\' : undefined structure", uri_str),
+					 errOmitLocation(true)));
+		}
+		else
+		{
+			protocol_len = post_protocol - uri_str;
+			uri->customprotocol = (char *) palloc (protocol_len + 1);
+			strncpy(uri->customprotocol, uri_str, protocol_len);
+			uri->customprotocol[protocol_len] = '\0';
+			uri->protocol = URI_CUSTOM;
+			return uri; /* we let the user parse it himself later on */
+		}
+		
+		/* this is a non existing protocol */
+		
 		protocol_len = 0; /* shut compiler up */
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
@@ -161,4 +187,16 @@ ParseUriString(const char *uri_str)
 	uri->path[len] = '\0';
 
 	return uri;
+}
+
+void FreeExternalTableUri(Uri *uri)
+{
+	if (uri->hostname)
+		pfree(uri->hostname);
+	if (uri->path)
+		pfree(uri->path);
+	if (uri->customprotocol)
+		pfree(uri->customprotocol);
+	
+	pfree(uri);
 }
