@@ -2335,11 +2335,10 @@ CopyOneRowTo(CopyState cstate, Oid tupleOid, Datum *values, bool *isnulls)
 	if(cstate->copy_dest != COPY_EXTERNAL_SOURCE)
 	{
 		CopySendEndOfRow(cstate);
-
-		MemoryContextSwitchTo(oldcontext);
-
 		cstate->processed++;
 	}
+	
+	MemoryContextSwitchTo(oldcontext);
 }
 
 

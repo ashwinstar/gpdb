@@ -590,8 +590,7 @@ external_insert(ExternalInsertDesc extInsertDesc, HeapTuple instup)
 	Datum*			values = extInsertDesc->ext_values;
 	bool*			nulls = extInsertDesc->ext_nulls;
 	CopyStateData*  pstate = extInsertDesc->ext_pstate;
-	MemoryContext 	oldcontext = CurrentMemoryContext;
-	bool			custom = extInsertDesc->ext_pstate->custom;
+	bool			customFormat = extInsertDesc->ext_pstate->custom;
 	
 	
 	if(extInsertDesc->ext_noop)
@@ -602,20 +601,19 @@ external_insert(ExternalInsertDesc extInsertDesc, HeapTuple instup)
 	if(!extInsertDesc->ext_file && !extInsertDesc->ext_noop)
 		open_external_writable_source(extInsertDesc);
 
-	if(!custom)
+	/*
+	 * deconstruct the tuple and format it into text
+	 */
+	if(!customFormat)
 	{
-		/*
-		 * TEXT or CSV. deconstruct the tuple and format it into text
-		 */
+		/* TEXT or CSV */ 
 		heap_deform_tuple(instup, tupDesc, values, nulls);		
 		CopyOneRowTo(pstate, HeapTupleGetOid(instup), values, nulls);
 		CopySendEndOfRow(pstate);
 	}
 	else
 	{
-		/* 
-		 * special custom format. convert tuple to custom using given formatter 
-		 */
+		/* custom format. convert tuple using user formatter */
 		Datum					d;
 		bytea*					b;
 		FunctionCallInfoData	fcinfo;
@@ -661,11 +659,6 @@ external_insert(ExternalInsertDesc extInsertDesc, HeapTuple instup)
 	/* Reset our buffer to start clean next round */
 	pstate->fe_msgbuf->len = 0;
 	pstate->fe_msgbuf->data[0] = '\0';
-
-	/* CopyOneRowTo() changed to our memcxt. revert to old one */
-	if(!custom)
-		MemoryContextSwitchTo(oldcontext);
-
 	pstate->processed++;
 
 	return HeapTupleGetOid(instup);
