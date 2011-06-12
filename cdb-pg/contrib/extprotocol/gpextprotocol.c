@@ -170,7 +170,7 @@ demoprot_export(PG_FUNCTION_ARGS)
 		FreeDemoUri(parsed_url);
 		
 		/* open the destination file (or connect to remote server in other cases) */
-		myData->file = fopen(myData->filename, "w");
+		myData->file = fopen(myData->filename, "a");
 		
 		if (myData->file == NULL)
 			ereport(ERROR,
