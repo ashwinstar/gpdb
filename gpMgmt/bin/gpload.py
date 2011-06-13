@@ -991,6 +991,81 @@ def dictKeyToLower(a):
         a = unicode(a)
     return a
 
+#
+# MPP-13348
+#
+
+'''Jenkins hash - http://burtleburtle.net/bob/hash/doobs.html'''
+
+def jenkinsmix(a, b, c):
+    a &= 0xffffffff; b &= 0xffffffff; c &= 0xffffffff
+    a -= b; a -= c; a ^= (c>>13); a &= 0xffffffff
+    b -= c; b -= a; b ^= (a<<8); b &= 0xffffffff
+    c -= a; c -= b; c ^= (b>>13); c &= 0xffffffff
+    a -= b; a -= c; a ^= (c>>12); a &= 0xffffffff
+    b -= c; b -= a; b ^= (a<<16); b &= 0xffffffff
+    c -= a; c -= b; c ^= (b>>5); c &= 0xffffffff
+    a -= b; a -= c; a ^= (c>>3); a &= 0xffffffff
+    b -= c; b -= a; b ^= (a<<10); b &= 0xffffffff
+    c -= a; c -= b; c ^= (b>>15); c &= 0xffffffff
+    return a, b, c
+
+
+def jenkins(data, initval = 0):
+    length = lenpos = len(data)
+    if length == 0:
+        return 0
+    a = b = 0x9e3779b9
+    c = initval
+    p = 0
+    while lenpos >= 12:
+        a += (ord(data[p+0]) + (ord(data[p+1])<<8) + (ord(data[p+2])<<16) + (ord(data[p+3])<<24))
+        b += (ord(data[p+4]) + (ord(data[p+5])<<8) + (ord(data[p+6])<<16) + (ord(data[p+7])<<24))
+        c += (ord(data[p+8]) + (ord(data[p+9])<<8) + (ord(data[p+10])<<16) + (ord(data[p+11])<<24))
+        a, b, c = jenkinsmix(a, b, c)
+        p += 12
+        lenpos -= 12
+    c += length
+    if lenpos >= 11: c += ord(data[p+10])<<24
+    if lenpos >= 10: c += ord(data[p+9])<<16
+    if lenpos >= 9:  c += ord(data[p+8])<<8
+    if lenpos >= 8:  b += ord(data[p+7])<<24
+    if lenpos >= 7:  b += ord(data[p+6])<<16
+    if lenpos >= 6:  b += ord(data[p+5])<<8
+    if lenpos >= 5:  b += ord(data[p+4])
+    if lenpos >= 4:  a += ord(data[p+3])<<24
+    if lenpos >= 3:  a += ord(data[p+2])<<16
+    if lenpos >= 2:  a += ord(data[p+1])<<8
+    if lenpos >= 1:  a += ord(data[p+0])
+    a, b, c = jenkinsmix(a, b, c)
+    return c
+
+
+def shortname(name):
+    """
+    Examines the length of the given table name.  If the length is 10 characters
+    or less we return the name.  Otherwise we return a 10 character string 
+    formed by concatenating the first two characters of the name with another
+    8 character string computed using the Jenkins hash function of the table name.
+    For example:
+
+    >>> shortname('four')
+    'four'
+    >>> shortname('ten_chars_')
+    'ten_chars_'
+    >>> shortname('nineteen_characters')
+    'ni9ae4640a'
+
+    @param name: the input tablename
+    @returns:    a string 10 characters or less built from the table name
+    """
+    l = len(name)
+    if l <= 10:
+        return name
+    j = jenkins(name)
+    return '%2s%08x' % (name[0:2], j)
+
+
 class options:
     pass
 
@@ -1721,6 +1796,10 @@ class gpload:
     # 
     def get_reuse_exttable_query(self, tableName, formatType, formatOpts, limitStr, from_cols):
         
+        # MPP-13348
+        shortTableName = shortname(tableName)
+        self.log(self.DEBUG, "get_reuse_exttable_query: %s shortTableName: %s" % (tableName, shortTableName))
+
         sql = """select attrelid::regclass
                  from (
                         select 
@@ -1744,7 +1823,7 @@ class gpload:
                     join 
                     pg_exttable pgext 
                     on(pgattr.attrelid = pgext.reloid) 
-                    """ % (tableName)
+                    """ % (shortTableName)
          
         for i, l in enumerate(self.locations):
             if i == 0:
@@ -1787,6 +1866,10 @@ class gpload:
     # 
     def get_reuse_temptable_query(self, tableName, from_cols, distcols):
             
+        # MPP-13348
+        shortTableName = shortname(tableName)
+        self.log(self.DEBUG, "get_reuse_temptable_query: %s shortTableName: %s" % (tableName, shortTableName))
+
         sql = """select attrelid::regclass
                  from (
                         select 
@@ -1813,7 +1896,7 @@ class gpload:
                  group by attrelid
                  having 
                     count(*) = %s and 
-                    bool_and(case """ % (tableName, quote(self.schemaTable), len(from_cols))
+                    bool_and(case """ % (shortTableName, quote(self.schemaTable), len(from_cols))
         
         for i, c in enumerate(from_cols):
             name = c[0]
@@ -1932,7 +2015,12 @@ class gpload:
             # didn't find an existing external table suitable for reuse. Format a reusable
             # name and issue a CREATE EXTERNAL TABLE on it. Hopefully we can use it next time
             # around
-            self.extTableName = quote_ident("ext_gpload_reusable_%s_created_on_%s" % (tableName, self.unique_suffix))
+
+            # MPP-13348
+            shortTableName = shortname(tableName)
+            self.log(self.DEBUG, "create_external_table: %s shortTableName: %s" % (tableName, shortTableName))
+
+            self.extTableName = quote_ident("ext_gpload_reusable_%s_created_on_%s" % (shortTableName, self.unique_suffix))
             self.log(self.INFO, "did not find an external table to reuse. creating %s" % self.extTableName)
         
         
@@ -2010,7 +2098,12 @@ class gpload:
             # didn't find an existing temp table suitable for reuse. Format a reusable
             # name and issue a CREATE TABLE on it (without TEMP!). Hopefully we can use it 
             # next time around
-            self.tempTableName = quote_ident("temp_gpload_reusable_%s_created_on_%s" % (tableName, self.unique_suffix))
+
+            # MPP-13348
+            shortTableName = shortname(tableName)
+            self.log(self.DEBUG, "create_temp_table: %s shortTableName: %s" % (tableName, shortTableName))
+
+            self.tempTableName = quote_ident("temp_gpload_reusable_%s_created_on_%s" % (shortTableName, self.unique_suffix))
             self.log(self.INFO, "did not find a temp table to reuse. creating %s" % self.tempTableName)
         
             # construct a CREATE TABLE statement (without TEMP!)
