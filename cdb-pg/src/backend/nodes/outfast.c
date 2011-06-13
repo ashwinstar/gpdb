@@ -1957,6 +1957,7 @@ _outViewStmt(StringInfo str, ViewStmt *node)
 	WRITE_BOOL_FIELD(replace);
 	WRITE_OID_FIELD(relOid);
 	WRITE_OID_FIELD(comptypeOid);
+	WRITE_OID_FIELD(rewriteOid);
 }
 
 static void

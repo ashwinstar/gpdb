@@ -592,6 +592,7 @@ _readViewStmt(const char ** str)
 	READ_BOOL_FIELD(replace);
 	READ_OID_FIELD(relOid);
 	READ_OID_FIELD(comptypeOid);
+	READ_OID_FIELD(rewriteOid);
 
 	READ_DONE();
 }

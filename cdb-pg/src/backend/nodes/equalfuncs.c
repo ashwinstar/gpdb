@@ -1342,6 +1342,9 @@ _equalViewStmt(ViewStmt *a, ViewStmt *b)
 	COMPARE_NODE_FIELD(aliases);
 	COMPARE_NODE_FIELD(query);
 	COMPARE_SCALAR_FIELD(replace);
+	COMPARE_SCALAR_FIELD(relOid);
+	COMPARE_SCALAR_FIELD(comptypeOid);
+	COMPARE_SCALAR_FIELD(rewriteOid);
 
 	return true;
 }

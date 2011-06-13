@@ -846,6 +846,7 @@ _readViewStmt(void)
 	READ_BOOL_FIELD(replace);
 	READ_OID_FIELD(relOid);
 	READ_OID_FIELD(comptypeOid);
+	READ_OID_FIELD(rewriteOid);
 
 	READ_DONE();
 }

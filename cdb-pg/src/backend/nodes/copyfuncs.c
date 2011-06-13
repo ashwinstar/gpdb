@@ -3051,6 +3051,7 @@ _copyViewStmt(ViewStmt *from)
 	COPY_SCALAR_FIELD(replace);
 	COPY_SCALAR_FIELD(relOid);
 	COPY_SCALAR_FIELD(comptypeOid);
+	COPY_SCALAR_FIELD(rewriteOid);
 
 	return newnode;
 }

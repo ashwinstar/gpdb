@@ -311,7 +311,7 @@ checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc)
 }
 
 static RuleStmt *
-FormViewRetrieveRule(const RangeVar *view, Query *viewParse, bool replace)
+FormViewRetrieveRule(const RangeVar *view, Query *viewParse, bool replace, Oid rewriteOid)
 {
 	RuleStmt   *rule;
 
@@ -327,12 +327,13 @@ FormViewRetrieveRule(const RangeVar *view, Query *viewParse, bool replace)
 	rule->instead = true;
 	rule->actions = list_make1(viewParse);
 	rule->replace = replace;
+	rule->ruleOid = rewriteOid;
 
 	return rule;
 }
 
 static void
-DefineViewRules(const RangeVar *view, Query *viewParse, bool replace)
+DefineViewRules(const RangeVar *view, Query *viewParse, bool replace, Oid* rewriteOid)
 {
 	RuleStmt   *retrieve_rule;
 
@@ -342,8 +343,7 @@ DefineViewRules(const RangeVar *view, Query *viewParse, bool replace)
 	RuleStmt   *delete_rule;
 #endif
 
-
-	retrieve_rule = FormViewRetrieveRule(view, viewParse, replace);
+	retrieve_rule = FormViewRetrieveRule(view, viewParse, replace, *rewriteOid);
 
 #ifdef NOTYET
 	replace_rule = FormViewReplaceRule(view, viewParse);
@@ -352,6 +352,7 @@ DefineViewRules(const RangeVar *view, Query *viewParse, bool replace)
 #endif
 
 	DefineQueryRewrite(retrieve_rule);
+	*rewriteOid = retrieve_rule->ruleOid;
 
 #ifdef NOTYET
 	DefineQueryRewrite(replace_rule);
@@ -490,7 +491,7 @@ DefineView(ViewStmt *stmt)
 	/*
 	 * Now create the rules associated with the view.
 	 */
-	DefineViewRules(view, viewParse, replace);
+	DefineViewRules(view, viewParse, replace, &stmt->rewriteOid);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
