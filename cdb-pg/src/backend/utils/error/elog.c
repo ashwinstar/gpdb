@@ -2582,55 +2582,51 @@ gp_write_pipe_chunk(const char *buffer, int len)
 static inline void
 append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
 {
-    int len = 0;
-
-    char *data = buffer->data + buffer->hdr.len;
-
     if(am_syslogger)
         return;
 
-    if (input)
-        len = strlen(input);
+	int len = 0;
+	if (input != NULL)
+	{
+		len = strlen(input);
+	}
 
-    if (buffer->hdr.len == PIPE_MAX_PAYLOAD)
-    {
-        gp_write_pipe_chunk((char *)buffer, PIPE_CHUNK_SIZE);
-        buffer->hdr.len = 0;
-        buffer->hdr.chunk_no++;
-        data = buffer->data;
+	/*
+	 * If this is a really long message, it does not really
+	 * make lots of sense to print them all.  Truncate it.
+	 */
+	if (len >= PIPE_MAX_PAYLOAD * 20)
+	{
+		len = PIPE_MAX_PAYLOAD * 20 - 1;
+	}
 
-        /*
-         * If this is a really long message, it does not really
-         * make lots of sense to print them all.  Truncate it.
-         * Besides really huge, useless, slow log message, this
-         * actually fix a sever crash.  Later in this function,
-         * we will recurse, without tail call optimization, a
-         * huge string can drive us out of stack space.
-         *
-         * MPP-6682
-         */
-        if (len > PIPE_MAX_PAYLOAD * 20)
-        {
-            /* Leave space for \0 */
-            len = PIPE_MAX_PAYLOAD-1;
-        }
-    }
+    char *data = buffer->data + buffer->hdr.len;
+	int offset = 0;
 
-    if (buffer->hdr.len + len >= PIPE_MAX_PAYLOAD)
-    {
-        int bytes = PIPE_MAX_PAYLOAD - buffer->hdr.len;
+	while (buffer->hdr.len + len >= PIPE_MAX_PAYLOAD)
+	{
+		int bytes = PIPE_MAX_PAYLOAD - buffer->hdr.len;
+		memcpy(data, input + offset, bytes);
 
-        memcpy(data, input, bytes);
-        buffer->hdr.len += bytes;
+		Assert(bytes + buffer->hdr.len == PIPE_MAX_PAYLOAD);
+		buffer->hdr.len = PIPE_MAX_PAYLOAD;
+		
+		gp_write_pipe_chunk((char *)buffer, PIPE_CHUNK_SIZE);
 
-        append_string_to_pipe_chunk(buffer, (input + bytes));
-    }
-    else
-    {
-        memcpy(data, input, len);
-        data[len] = 0;
-        buffer->hdr.len += len+1;
-    }
+		buffer->hdr.len = 0;
+		buffer->hdr.chunk_no++;
+		data = buffer->data;
+
+		len -= bytes;
+		offset += bytes;
+	}
+
+	/* Copy the remaining data, and add '\0' at the end */
+	memcpy(data, input + offset, len);
+	data[len] = 0;
+	buffer->hdr.len += len+1;
+
+	Assert(buffer->hdr.len > 0 && buffer->hdr.len <= PIPE_MAX_PAYLOAD);
 }
 
 /*
@@ -3019,6 +3015,7 @@ write_message_to_server_log(int elevel,
                             const char *message,
                             const char *detail,
                             const char *hint,
+							const char *query_text,
                             int cursorpos,
                             int internalpos,
                             const char *internalquery,
@@ -3128,7 +3125,7 @@ write_message_to_server_log(int elevel,
     append_string_to_pipe_chunk(&buffer, context);
 
     /* debug_query_string */
-    append_string_to_pipe_chunk(&buffer, debug_query_string);
+    append_string_to_pipe_chunk(&buffer, query_text);
 
     /* error_func_name */
     if (show_funcname)
@@ -3168,6 +3165,8 @@ send_message_to_server_log(ErrorData *edata)
     StringInfoData  prefix;
     int             nc;
 
+	AssertImply(mainthread() != 0, mythread() == mainthread());
+
     if (Log_destination & LOG_DESTINATION_STDERR)
     {
         if (Redirect_stderr && gp_log_format == 1)
@@ -3180,6 +3179,7 @@ send_message_to_server_log(ErrorData *edata)
                                                 edata->message,
                                                 edata->detail_log != NULL ? edata->detail_log : edata->detail,
                                                 edata->hint,
+												debug_query_string,
                                                 edata->cursorpos,
                                                 edata->internalpos,
                                                 edata->internalquery,
@@ -3859,6 +3859,7 @@ write_stderr(const char *fmt,...)
                                         errbuf,
                                         NULL,
                                         NULL,
+										NULL,
                                         0,
                                         0,
                                         NULL,

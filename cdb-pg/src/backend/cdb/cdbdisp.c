@@ -291,6 +291,7 @@ write_log(const char *fmt,...)
 									errbuf,
 									NULL,
 									NULL,
+									NULL,
 									0,
 									0,
 									NULL,

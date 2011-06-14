@@ -3279,7 +3279,20 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
 		if (!in_quickdie)
 			pthread_kill(main_tid, postgres_signal_arg);
 
-		pthread_exit(NULL);
+		/*
+		 * Don't exit the thread when we reraise SEGV/BUS/ILL signals to the OS.
+		 * This thread will die together with the main thread after the OS reraises
+		 * the signal. This is to ensure that the dumped core file contains the call
+		 * stack on this thread for later debugging.
+		 */
+		if (!(gp_reraise_signal &&
+			  (postgres_signal_arg == SIGSEGV ||
+			   postgres_signal_arg == SIGILL ||
+			   postgres_signal_arg == SIGBUS)))
+		{
+			pthread_exit(NULL);
+		}
+		
 		return;
 	}
 
