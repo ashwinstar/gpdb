@@ -259,8 +259,8 @@ DISTRIB_TABLE=gp_distribution_policy
 CHILD_TABLE_ID="_c_d_"
 DEFAULT_CHK_PT_SEG=8
 #DEFAULT_IP_ALLOW="0.0.0.0/0"
-DEFAULT_QD_MAX_CONNECT=25
-QE_CONNECT_FACTOR=5
+DEFAULT_QD_MAX_CONNECT=250
+QE_CONNECT_FACTOR=3
 # DEFAULT_BUFFERS sets the default shared_buffers unless overridden by '-b'.
 # It applies to the master db and segment dbs.  Specify either the number of
 # buffers (without suffix) or the amount of memory to use for buffers (with
