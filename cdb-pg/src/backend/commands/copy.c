@@ -4898,8 +4898,8 @@ int GetDecimalFromHex(char hex)
  * attribute buffer that indicates where the current attribute begins.
  */
 void
-CopyReadAttributesText(CopyState cstate, bool *nulls,
-					   int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr)
+CopyReadAttributesText(CopyState cstate, bool * __restrict nulls,
+					   int * __restrict attr_offsets, int num_phys_attrs, Form_pg_attribute * __restrict attr)
 {
 	char		delimc = cstate->delim[0];		/* delimiter character */
 	char		escapec = cstate->escape[0];	/* escape character    */
@@ -4956,7 +4956,8 @@ CopyReadAttributesText(CopyState cstate, bool *nulls,
 	{
 		bytes_remaining = cstate->line_buf.len - cstate->line_buf.cursor;
 		stop = scan_start + bytes_remaining;
-
+		
+		/* Find the next of: delimiter, or escape, or end of buffer */
 		for (scanner = scan_start; *scanner != delimc && *scanner != escapec && scanner < stop; scanner++)
 			;
 
