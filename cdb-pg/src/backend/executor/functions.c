@@ -426,17 +426,36 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 	}
 
 	if (IsA(es->stmt, PlannedStmt))
+	{
 		es->qd = CreateQueryDesc((PlannedStmt *) es->stmt,
 								 fcache->src,
 								 snapshot, InvalidSnapshot,
 								 None_Receiver,
 								 fcache->paramLI, false);
+
+		if (gp_enable_gpperfmon 
+			&& Gp_role == GP_ROLE_DISPATCH 
+			&& log_min_messages < DEBUG4)
+		{
+			/* For log level of DEBUG4, gpmon is sent information about queries inside SQL functions as well */
+			Assert(fcache->src);
+			gpmon_qlog_query_text(es->qd->gpmon_pkt, fcache->src);
+		}
+		else
+		{
+			/* Otherwise, we do not record information about internal queries. */
+			es->qd->gpmon_pkt = NULL;
+		}
+	}
+	
 	else
+	{
 		es->qd = CreateUtilityQueryDesc(es->stmt,
 										fcache->src,
 										snapshot,
 										None_Receiver,
 										fcache->paramLI);
+	}
 
 	/* We assume we don't need to set up ActiveSnapshot for ExecutorStart */
 
@@ -768,17 +787,39 @@ fmgr_sql(PG_FUNCTION_ARGS)
 	while (es && es->status == F_EXEC_DONE)
 		es = es->next;
 
-	/*
-	 * Execute each command in the function one after another until we're
-	 * executing the final command and get a result or we run out of commands.
-	 */
-	while (es)
+	bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
+
+	PG_TRY();
 	{
-		result = postquel_execute(es, fcinfo, fcache, oldcontext);
-		if (es->status != F_EXEC_DONE)
-			break;
-		es = es->next;
+		/*
+		 * Temporarily disable gpperfmon since we don't send information for internal queries in
+		 * most cases, except when the debugging level is set to DEBUG4 or DEBUG5.
+		 */
+		if (log_min_messages > DEBUG4)
+		{
+			gp_enable_gpperfmon = false;
+		}
+
+		/*
+		 * Execute each command in the function one after another until we're
+		 * executing the final command and get a result or we run out of commands.
+		 */
+		while (es)
+		{
+			result = postquel_execute(es, fcinfo, fcache, oldcontext);
+			if (es->status != F_EXEC_DONE)
+				break;
+			es = es->next;
+		}
+
+		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
 	}
+	PG_CATCH();
+	{
+		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	/*
 	 * If we've gone through every command in this function, we are done.

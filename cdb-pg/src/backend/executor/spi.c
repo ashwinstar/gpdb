@@ -1767,7 +1767,7 @@ _SPI_execute_plan(_SPI_plan * plan, Datum *Values, const char *Nulls,
                     else
                     {
                     	/* Otherwise, we do not record information about internal queries */
-                    	qdesc->gpmon_pkt=NULL;
+                    	qdesc->gpmon_pkt = NULL;
                     }
 
 					res = _SPI_pquery(qdesc, fire_triggers,
@@ -2013,26 +2013,48 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 	if (!cdbpathlocus_querysegmentcatalogs && fire_triggers)
 		AfterTriggerBeginQuery();
 
-	ExecutorStart(queryDesc, 0);
+	bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
 
-	ExecutorRun(queryDesc, ForwardScanDirection, tcount);
-
-	_SPI_current->processed = queryDesc->estate->es_processed;
-	_SPI_current->lastoid = queryDesc->estate->es_lastoid;
-	
-	if ((res == SPI_OK_SELECT || queryDesc->plannedstmt->returningLists) &&
-		queryDesc->dest->mydest == DestSPI)
+	PG_TRY();
 	{
-		if (_SPI_checktuples())
-			elog(ERROR, "consistency check on SPI tuple count failed");
+		/*
+		 * Temporarily disable gpperfmon since we don't send information for internal queries in
+		 * most cases, except when the debugging level is set to DEBUG4 or DEBUG5.
+		 */
+		if (log_min_messages > DEBUG4)
+		{
+			gp_enable_gpperfmon = false;
+		}
+
+		ExecutorStart(queryDesc, 0);
+
+		ExecutorRun(queryDesc, ForwardScanDirection, tcount);
+		
+		_SPI_current->processed = queryDesc->estate->es_processed;
+		_SPI_current->lastoid = queryDesc->estate->es_lastoid;
+		
+		if ((res == SPI_OK_SELECT || queryDesc->plannedstmt->returningLists) &&
+			queryDesc->dest->mydest == DestSPI)
+		{
+			if (_SPI_checktuples())
+				elog(ERROR, "consistency check on SPI tuple count failed");
+		}
+		
+		if (!cdbpathlocus_querysegmentcatalogs)
+			/* Take care of any queued AFTER triggers */
+			if (fire_triggers)
+				AfterTriggerEndQuery(queryDesc->estate);
+
+		ExecutorEnd(queryDesc);
+
+		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
 	}
-
-	if (!cdbpathlocus_querysegmentcatalogs)
-		/* Take care of any queued AFTER triggers */
-		if (fire_triggers)
-			AfterTriggerEndQuery(queryDesc->estate);
-
-	ExecutorEnd(queryDesc);
+	PG_CATCH();
+	{
+		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	_SPI_current->processed = queryDesc->es_processed;	/* Mpp: Dispatched
 														 * queries fill in this
