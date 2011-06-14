@@ -23,6 +23,7 @@ GPFDIST_LIBS=-L$(CURDIR)/../cdb-pg/src/port -lpgport -lws2_32
 EXT_EXE=.exe
 else
 GPFDISTFILES=fstream.c gfile.c gpfdist.c
+GPFDISTOBJSFILES=$(subst .c,.o,$(GPFDISTFILES))
 GPFDIST_LIBS=-lz -lbz2
 endif
 
@@ -82,10 +83,18 @@ ifeq "$(BLD_ARCH)" "win32"
 	cd src/gpfdist/ && \
 	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(GPFDIST_CPPFLAGS_EXTRA) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -c \
 	  $(GPFDISTFILES_EXTRA)
-endif
 	cd src/gpfdist/ && \
 	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(GPFDIST_CPPFLAGS) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist$(EXT_EXE) \
 	  $(GPFDISTFILES) $(GPFDISTOBJS_EXTRA) $(APRLIBS) -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
+else
+	for file in $(GPFDISTFILES); do \
+	    (cd src/gpfdist/ && \
+	      $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(GPFDIST_CPPFLAGS) $(CFLAGS) -Werror -c $${file}); \
+	done
+	cd src/gpfdist/ && \
+	  $(CC) $(INCLUDES) $(GPFDIST_INCLUDES) $(CDBINCL) $(GPFDIST_CPPFLAGS) $(CFLAGS) $(GPFDIST_LDFLAGS) -Werror -o gpfdist$(EXT_EXE) \
+	  $(GPFDISTOBJSFILES) $(GPFDISTOBJS_EXTRA) $(APRLIBS) -levent -L$(BLD_THIRDPARTY_LIB_DIR) $(GPFDIST_LIBS)
+endif
 	mkdir -p build/bin
 	cp -f src/gpfdist/gpfdist$(EXT_EXE) build/bin/
 
