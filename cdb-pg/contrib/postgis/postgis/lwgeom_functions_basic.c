@@ -1824,7 +1824,7 @@ Datum LWGEOM_accum(PG_FUNCTION_ARGS)
 	POSTGIS_DEBUG(2, "LWGEOM_accum called");
 
 	datum = PG_GETARG_DATUM(0);
-	if ( (Pointer *)datum == NULL )
+	if ( DatumGetPointer(datum) == NULL )
 	{
 		array = NULL;
 		nelems = 0;
@@ -1842,7 +1842,7 @@ Datum LWGEOM_accum(PG_FUNCTION_ARGS)
 
 	datum = PG_GETARG_DATUM(1);
 	/* Do nothing, return state array */
-	if ( (Pointer *)datum == NULL )
+	if ( DatumGetPointer(datum) == NULL )
 	{
 		POSTGIS_DEBUGF(3, "geom_accum: NULL geom, nelems=%d", nelems);
 
@@ -1957,7 +1957,7 @@ Datum LWGEOM_collect_garray(PG_FUNCTION_ARGS)
 	datum = PG_GETARG_DATUM(0);
 
 	/* Return null on null input */
-	if ( (Pointer *)datum == NULL )
+	if ( DatumGetPointer(datum) == NULL )
 	{
 		elog(NOTICE, "NULL input");
 		PG_RETURN_NULL();
@@ -2165,7 +2165,7 @@ Datum LWGEOM_makeline_garray(PG_FUNCTION_ARGS)
 	datum = PG_GETARG_DATUM(0);
 
 	/* Return null on null input */
-	if ( (Pointer *)datum == NULL )
+	if ( DatumGetPointer(datum) == NULL )
 	{
 		elog(NOTICE, "NULL input");
 		PG_RETURN_NULL();

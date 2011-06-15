@@ -406,7 +406,7 @@ Datum BOX3D_combine(PG_FUNCTION_ARGS)
 	/* combine_bbox(BOX3D, null) => BOX3D */
 	if (geom_ptr == NULL)
 	{
-		memcpy(result, (char *)PG_GETARG_DATUM(0), sizeof(BOX3D));
+		memcpy(result, DatumGetPointer(PG_GETARG_DATUM(0)), sizeof(BOX3D));
 		PG_RETURN_POINTER(result);
 	}
 
@@ -415,11 +415,11 @@ Datum BOX3D_combine(PG_FUNCTION_ARGS)
 	if ( ! box ) /* must be the empty geom */
 	{
 		PG_FREE_IF_COPY(lwgeom, 1);
-		memcpy(result, (char *)PG_GETARG_DATUM(0), sizeof(BOX3D));
+		memcpy(result, DatumGetPointer(PG_GETARG_DATUM(0)), sizeof(BOX3D));
 		PG_RETURN_POINTER(result);
 	}
 
-	a = (BOX3D *)PG_GETARG_DATUM(0);
+	a = (BOX3D *)DatumGetPointer(PG_GETARG_DATUM(0));
 	b = box;
 
 	result->xmax = LWGEOM_Maxd(a->xmax, b->xmax);

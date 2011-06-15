@@ -19,6 +19,8 @@
 --
 -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
+#include "pg_config.h"
+
 #include "sqldefines.h"
 
 -- INSTALL VERSION: POSTGIS_LIB_VERSION
@@ -2113,6 +2115,7 @@ CREATE AGGREGATE ST_Extent3d(
 	stype = box3d
 	);
 
+#ifndef GP_VERSION
 -----------------------------------------------------------------------
 -- ESTIMATED_EXTENT( <schema name>, <table name>, <column name> )
 -----------------------------------------------------------------------
@@ -2138,6 +2141,32 @@ CREATE OR REPLACE FUNCTION estimated_extent(text,text) RETURNS box2d AS
 CREATE OR REPLACE FUNCTION ST_estimated_extent(text,text) RETURNS box2d AS
 	'MODULE_PATHNAME', 'LWGEOM_estimated_extent'
 	LANGUAGE 'C' IMMUTABLE STRICT SECURITY DEFINER; 
+#else
+CREATE OR REPLACE FUNCTION estimated_extent(text,text,text) RETURNS box2d AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support estimated_extent.';
+END;
+$$ LANGUAGE 'plpgsql'; 
+
+
+CREATE OR REPLACE FUNCTION ST_estimated_extent(text,text,text) RETURNS box2d AS $$ 
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support estimated_extent.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION estimated_extent(text,text) RETURNS box2d AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support estimated_extent.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION ST_estimated_extent(text,text) RETURNS box2d AS $$ 
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support estimated_extent.';
+END;
+$$ LANGUAGE 'plpgsql';
+#endif
 
 -----------------------------------------------------------------------
 -- FIND_EXTENT( <schema name>, <table name>, <column name> )

@@ -125,7 +125,7 @@ Datum pgis_union_geometry_array(PG_FUNCTION_ARGS)
 	datum = PG_GETARG_DATUM(0);
 
 	/* Null array, null geometry (should be empty?) */
-	if ( (Pointer *)datum == NULL ) PG_RETURN_NULL();
+	if ( DatumGetPointer(datum) == NULL ) PG_RETURN_NULL();
 
 	array = DatumGetArrayTypeP(datum);
 
@@ -2865,7 +2865,7 @@ Datum polygonize_garray(PG_FUNCTION_ARGS)
 	datum = PG_GETARG_DATUM(0);
 
 	/* Null array, null geometry (should be empty?) */
-	if ( (Pointer *)datum == NULL ) PG_RETURN_NULL();
+	if ( DatumGetPointer(datum) == NULL ) PG_RETURN_NULL();
 
 	array = DatumGetArrayTypeP(datum);
 

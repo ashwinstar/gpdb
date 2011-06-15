@@ -1,4 +1,25 @@
-Gotchas - Greenplum v. Postgres
+Building
+
+The source here is pre-configured and meant to be built within the full GPDB source tree. Run configure if you intend
+to build/install for a different target location. (Or, to discover more appropriate commands for the various Makefiles.)
+
+postgis/Makefile currently assumes that /opt/geos and /opt/proj contain //tools/geos/3.2.2/ARCH/... and //tools/proj/4.7.0/ARCH...,
+respectively. A fancier mechanism will be needed to pull down these packages upon a 'make' of the postgis source. I'd
+rather not use Makefile.thirdparty to shove these dependencies into ext/, as this will cause libproj and libgeos to be
+shipped with GPDB, unnecessarily.
+
+Ultimately, pending a new package management solution for GPDB, postgis, libxml2, geos, and proj will need to be packaged
+together into one file at the end of this process.
+
+osx105_x86 - geos, proj, postgis functional
+rhel5_x86_64 - geos, proj, postgis functional
+rhel5_x86_32 - could not reach build server
+suse10_x86_64 - geos, proj verified, but not postgis
+sol10_* - could not build geos, proj; threw ELF errors; more lib flags? see other Makefiles
+
+
+
+Caveats - Greenplum v. Postgres
 
 1. Analyze
 

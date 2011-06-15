@@ -11,9 +11,114 @@
 --  
 -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
+#include "pg_config.h"
 
+#ifdef GP_VERSION
+CREATE OR REPLACE FUNCTION UnlockRows(text)
+    RETURNS int
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION LockRow(text, text, text, text, timestamp)
+    RETURNS int
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION LockRow(text, text, text, text)
+    RETURNS int
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION LockRow(text, text, text)
+    RETURNS int
+    AS $$ 
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION LockRow(text, text, text, timestamp)
+    RETURNS int
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION AddAuth(text)
+    RETURNS BOOLEAN
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION CheckAuth(text, text, text)
+    RETURNS INT
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+-- CheckAuth(<table>, <ridcolumn>)
+CREATE OR REPLACE FUNCTION CheckAuth(text, text)
+    RETURNS INT
+    AS $$ 
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION CheckAuthTrigger()
+    RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION GetTransactionID()
+    RETURNS xid AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION EnableLongTransactions()
+    RETURNS TEXT
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION LongTransactionsEnabled()
+    RETURNS bool
+AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+CREATE OR REPLACE FUNCTION DisableLongTransactions()
+    RETURNS TEXT
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'Greenplum does not support PostGIS long transactions.';
+END;
+$$ LANGUAGE 'plpgsql';
+
+#else
 #include "sqldefines.h"
-
 
 -----------------------------------------------------------------------
 -- LONG TERM LOCKING
@@ -324,4 +429,4 @@ LANGUAGE 'plpgsql';
 ---------------------------------------------------------------
 -- END
 ---------------------------------------------------------------
-
+#endif
