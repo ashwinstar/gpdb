@@ -111,6 +111,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		 *		*) file operation is issued to file system (if mirror)
 		 *		*) file operation performed on mirror is acknowledged to backend processes (if primary)
 		 */
+	_("filerep_change_tracking_compacting"),
+		/* Ashwin - inject fault during compacting change tracking */
 	_("filerep_sender"),
 		/* inject fault before data are sent to network */
 	_("filerep_receiver"),
@@ -844,6 +846,8 @@ FaultInjector_NewHashEntry(
 		case FinishPreparedTransactionAbortPass2AbortingCreateNeeded:
 		case TwoPhaseTransactionCommitPrepared:
 		case TwoPhaseTransactionAbortPrepared:
+		/* Ashwin */
+		case FileRepChangeTrackingCompacting:
 			
 			if (fileRepRole != FileRepPrimaryRole)
 			{
