@@ -36,6 +36,8 @@ typedef enum FaultInjectorIdentifier_e {
 	FileRepConsumer,
 	
 	FileRepSender,
+
+	FileRepChangeTrackingCompacting,
 	
 	FileRepReceiver,
 	
