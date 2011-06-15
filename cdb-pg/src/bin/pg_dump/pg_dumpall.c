@@ -883,7 +883,7 @@ dumpRoles(PGconn *conn)
 
 				if (!PQgetisnull(res, i, i_rolcreatewexthdfs) &&
 					strcmp(PQgetvalue(res, i, i_rolcreatewexthdfs), "t") == 0)
-					appendPQExpBuffer(buf, " CREATEEXTTABLE (protocol='gpfhdfs', type='writable')");
+					appendPQExpBuffer(buf, " CREATEEXTTABLE (protocol='gphdfs', type='writable')");
 			}
 		}
 
