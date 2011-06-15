@@ -399,71 +399,71 @@ faag: fileam:00000532:  ereport(ERROR,
 faag: fileam:00000533:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
 faag: fileam:00000534:  errmsg("External table has more URLs then available primary " 
 faag: fileam:00000535:  "segments that can write into them"))); 
-faag: fileam:00000822:  ereport(ERROR, \ 
-faag: fileam:00000823:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
-faag: fileam:00000824:  (errmsg("%s", finalmsg) \ 
-faag: fileam:00000825:  ),errOmitLocation(true))); \ 
-faag: fileam:00000826: } 
-faag: fileam:00000827:  
-faag: fileam:00000828: /* 
-faag: fileam:00000829:  * parse_next_line 
-faag: fileam:00000830:  * 
-faag: fileam:00000831:  * Given a buffer of data, extract the next data line from it and parse it 
-faag: fileam:00000832:  * to attributes according to the data format specifications. 
-faag: fileam:00000833:  * 
-faag: fileam:00000834:  * Returns: 
-faag: fileam:00000835:  * LINE_OK - line parsed successfully. 
-faag: fileam:00000836:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
-faag: fileam:00000837:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
-faag: fileam:00000838:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
-faag: fileam:00000839:  */ 
-faag: fileam:00000840: static DataLineStatus parse_next_line(FileScanDesc scan) 
-faag: fileam:00000841: { 
-faag: fileam:00000842:  CopyState pstate = scan->fs_pstate; 
-faag: fileam:00001224:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-faag: fileam:00001225:  errmsg("formatter function %s of type %s was not found.", 
-faag: fileam:00001226:  formatter_name, 
-faag: fileam:00001227:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001228:  errhint("Create it with CREATE FUNCTION."), 
-faag: fileam:00001229:  errOmitLocation(true))); 
-faag: fileam:00001233:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faag: fileam:00001234:  errmsg("formatter function %s of type %s has an incorrect return type", 
-faag: fileam:00001235:  formatter_name, 
-faag: fileam:00001236:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001237:  errOmitLocation(true))); 
-faag: fileam:00001321:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
-faag: fileam:00001322:  errmsg("The specified error table for this " 
-faag: fileam:00001323:  "external table doesn't appear to " 
-faag: fileam:00001324:  "exist in the database. It may have " 
-faag: fileam:00001325:  "been dropped."), 
-faag: fileam:00001326:  errhint("Refresh your external table definition."))); 
-faag: fileam:00001387:  ereport(ERROR, 
-faag: fileam:00001388:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00001389:  errmsg("No formatter function defined for this external table."))); 
-faag: fileam:00001567:  ereport(ERROR, 
-faag: fileam:00001568:  (errcode_for_file_access(), 
-faag: fileam:00001569:  errmsg("could not open \"%s\" for reading: %d %s", 
-faag: fileam:00001570:  scan->fs_uri, response_code, response_string), 
-faag: fileam:00001571:  errOmitLocation(true))); 
-faag: fileam:00001618:  ereport(ERROR, 
-faag: fileam:00001619:  (errcode_for_file_access(), 
-faag: fileam:00001620:  errmsg("could not open \"%s\" for writing: %d %s", 
-faag: fileam:00001621:  extInsertDesc->ext_uri, response_code, response_string))); 
-faag: fileam:00001680:  ereport(ERROR, 
-faag: fileam:00001681:  (errcode_for_file_access(), 
-faag: fileam:00001682:  errmsg("could not read from external file: %m"))); 
-faag: fileam:00001700:  ereport(ERROR, 
-faag: fileam:00001701:  (errcode_for_file_access(), 
-faag: fileam:00001702:  errmsg("could not write to external resource: %m"))); 
-faag: fileam:00002383:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002384:  errmsg("external table internal parse error at \"%s\"", 
-faag: fileam:00002385:  token))); 
-faag: fileam:00002387:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002388:  errmsg("external table internal parse error at end of " 
-faag: fileam:00002389:  "line"))); 
-faag: fileam:00002439:  ereport(ERROR, 
-faag: fileam:00002440:  (errcode_for_file_access(), 
-faag: fileam:00002441:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+faag: fileam:00000815:  ereport(ERROR, \ 
+faag: fileam:00000816:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
+faag: fileam:00000817:  (errmsg("%s", finalmsg) \ 
+faag: fileam:00000818:  ),errOmitLocation(true))); \ 
+faag: fileam:00000819: } 
+faag: fileam:00000820:  
+faag: fileam:00000821: /* 
+faag: fileam:00000822:  * parse_next_line 
+faag: fileam:00000823:  * 
+faag: fileam:00000824:  * Given a buffer of data, extract the next data line from it and parse it 
+faag: fileam:00000825:  * to attributes according to the data format specifications. 
+faag: fileam:00000826:  * 
+faag: fileam:00000827:  * Returns: 
+faag: fileam:00000828:  * LINE_OK - line parsed successfully. 
+faag: fileam:00000829:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
+faag: fileam:00000830:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
+faag: fileam:00000831:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
+faag: fileam:00000832:  */ 
+faag: fileam:00000833: static DataLineStatus parse_next_line(FileScanDesc scan) 
+faag: fileam:00000834: { 
+faag: fileam:00000835:  CopyState pstate = scan->fs_pstate; 
+faag: fileam:00001217:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+faag: fileam:00001218:  errmsg("formatter function %s of type %s was not found.", 
+faag: fileam:00001219:  formatter_name, 
+faag: fileam:00001220:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001221:  errhint("Create it with CREATE FUNCTION."), 
+faag: fileam:00001222:  errOmitLocation(true))); 
+faag: fileam:00001226:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faag: fileam:00001227:  errmsg("formatter function %s of type %s has an incorrect return type", 
+faag: fileam:00001228:  formatter_name, 
+faag: fileam:00001229:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001230:  errOmitLocation(true))); 
+faag: fileam:00001314:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+faag: fileam:00001315:  errmsg("The specified error table for this " 
+faag: fileam:00001316:  "external table doesn't appear to " 
+faag: fileam:00001317:  "exist in the database. It may have " 
+faag: fileam:00001318:  "been dropped."), 
+faag: fileam:00001319:  errhint("Refresh your external table definition."))); 
+faag: fileam:00001380:  ereport(ERROR, 
+faag: fileam:00001381:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00001382:  errmsg("No formatter function defined for this external table."))); 
+faag: fileam:00001560:  ereport(ERROR, 
+faag: fileam:00001561:  (errcode_for_file_access(), 
+faag: fileam:00001562:  errmsg("could not open \"%s\" for reading: %d %s", 
+faag: fileam:00001563:  scan->fs_uri, response_code, response_string), 
+faag: fileam:00001564:  errOmitLocation(true))); 
+faag: fileam:00001611:  ereport(ERROR, 
+faag: fileam:00001612:  (errcode_for_file_access(), 
+faag: fileam:00001613:  errmsg("could not open \"%s\" for writing: %d %s", 
+faag: fileam:00001614:  extInsertDesc->ext_uri, response_code, response_string))); 
+faag: fileam:00001673:  ereport(ERROR, 
+faag: fileam:00001674:  (errcode_for_file_access(), 
+faag: fileam:00001675:  errmsg("could not read from external file: %m"))); 
+faag: fileam:00001693:  ereport(ERROR, 
+faag: fileam:00001694:  (errcode_for_file_access(), 
+faag: fileam:00001695:  errmsg("could not write to external resource: %m"))); 
+faag: fileam:00002376:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002377:  errmsg("external table internal parse error at \"%s\"", 
+faag: fileam:00002378:  token))); 
+faag: fileam:00002380:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002381:  errmsg("external table internal parse error at end of " 
+faag: fileam:00002382:  "line"))); 
+faag: fileam:00002432:  ereport(ERROR, 
+faag: fileam:00002433:  (errcode_for_file_access(), 
+faag: fileam:00002434:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
 uaad: url:00000269:  ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE), 
 uaad: url:00000270:  errmsg("connection with gpfdist failed for %s. " 
@@ -1363,9 +1363,9 @@ xaae: xlog:00010582:  errmsg("could not fsync file \"%s\": %m", path)));
 xaae: xlog:00010589:  ereport(WARNING, 
 xaae: xlog:00010590:  (errcode_for_file_access(), 
 xaae: xlog:00010591:  errmsg("could not close file \"%s\": %m", path))); 
-xaae: xlog:00010968:  ereport(ERROR, 
-xaae: xlog:00010969:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-xaae: xlog:00010970:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
+xaae: xlog:00010982:  ereport(ERROR, 
+xaae: xlog:00010983:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+xaae: xlog:00010984:  (errmsg("could not allocate memory for mirrored aligned buffer")))); 
 aaaaa GP_IGNORE: xaah: xlogloc - ./backend/access/transam/xlogloc.c
 xaah: xlogloc:00000060:  ereport(ERROR, 
 xaah: xlogloc:00000061:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
@@ -2642,73 +2642,73 @@ cabf: cdbdatabaseinfo:00000830:  ereport(ERROR,
 cabf: cdbdatabaseinfo:00000831:  (errcode_for_file_access(), 
 cabf: cdbdatabaseinfo:00000832:  errmsg("could not stat file \"%s\": %m", fromfile))); 
 aaaaa GP_IGNORE: caah: cdbdisp - ./backend/cdb/cdbdisp.c
-caah: cdbdisp:00000426:  * It should not longjmp out via elog(ERROR, ...), ereport(ERROR, ...), 
-caah: cdbdisp:00000427:  * PG_THROW, CHECK_FOR_INTERRUPTS, etc. 
-caah: cdbdisp:00000428:  * 
-caah: cdbdisp:00000429:  * Note: the maxSlices argument is used to allocate the parameter 
-caah: cdbdisp:00000430:  * blocks for dispatch, it should be set to the maximum number of 
-caah: cdbdisp:00000431:  * slices in a plan. For dispatch of single commands (ie most uses of 
-caah: cdbdisp:00000432:  * cdbdisp_dispatchToGang()), setting it to 1 is fine. 
-caah: cdbdisp:00000433:  */ 
-caah: cdbdisp:00000434: void 
-caah: cdbdisp:00000435: cdbdisp_dispatchToGang(struct CdbDispatcherState *ds, 
-caah: cdbdisp:00000436:  GpDispatchCommandType mppDispatchCommandType, 
-caah: cdbdisp:00000437:  void *commandTypeParms, 
-caah: cdbdisp:00000438:  struct Gang *gp, 
-caah: cdbdisp:00000439:  int sliceIndex, 
-caah: cdbdisp:00000440:  unsigned int maxSlices, 
-caah: cdbdisp:00000441:  CdbDispatchDirectDesc *disp_direct) 
-caah: cdbdisp:00000442: { 
-caah: cdbdisp:00000443:  struct CdbDispatchResults *dispatchResults = ds->primaryResults; 
-caah: cdbdisp:00000709:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: cdbdisp:00000710:  errmsg("dispatchToGang: failed to create thread %d of %d", i + 1, newThreads), 
-caah: cdbdisp:00000711:  errdetail("pthread_create() failed with err %d", pthread_err), 
-caah: cdbdisp:00000712:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
-caah: cdbdisp:00001112:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-caah: cdbdisp:00001113:  errmsg("cdbdisp_returnResults failed: out of memory"))); 
-caah: cdbdisp:00001455:  ereport(ERROR, (errcode(errorcode), 
-caah: cdbdisp:00001456:  errOmitLocation(true), 
-caah: cdbdisp:00001457:  errmsg("%s", buf.data))); 
-caah: cdbdisp:00003422:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: cdbdisp:00003423:  errmsg_internal("Unable to dispatch plan."))); 
-caah: cdbdisp:00003476:  * the caller's error catcher via ereport(ERROR,...). Otherwise this 
-caah: cdbdisp:00003477:  * function returns normally and errors are not reported until later. 
-caah: cdbdisp:00003478:  * 
-caah: cdbdisp:00003479:  * If cancelOnError is false, the plan is to be dispatched as fully as 
-caah: cdbdisp:00003480:  * possible and the QEs allowed to proceed regardless of cancellation 
-caah: cdbdisp:00003481:  * requests, errors or connection failures from other QEs, etc. 
-caah: cdbdisp:00003482:  * 
-caah: cdbdisp:00003483:  * The CdbDispatchResults objects allocated for the plan are returned 
-caah: cdbdisp:00003484:  * in *pPrimaryResults. The caller, after calling 
-caah: cdbdisp:00003485:  * CdbCheckDispatchResult(), can examine the CdbDispatchResults 
-caah: cdbdisp:00003486:  * objects, can keep them as long as needed, and ultimately must free 
-caah: cdbdisp:00003487:  * them with cdbdisp_destroyDispatchResults() prior to deallocation of 
-caah: cdbdisp:00003488:  * the caller's memory context. Callers should use PG_TRY/PG_CATCH to 
-caah: cdbdisp:00003489:  * ensure proper cleanup. 
-caah: cdbdisp:00003490:  * 
-caah: cdbdisp:00003491:  * To wait for completion, check for errors, and clean up, it is 
-caah: cdbdisp:00003492:  * suggested that the caller use cdbdisp_finishCommand(). 
-caah: cdbdisp:00003493:  * 
-caah: cdbdisp:00003494:  * Note that the slice tree dispatched is the one specified in the EState 
-caah: cdbdisp:00003495:  * of the argument QueryDesc as es_cur__slice. 
-caah: cdbdisp:00003496:  * 
-caah: cdbdisp:00003497:  * Note that the QueryDesc params must include PARAM_EXEC_REMOTE parameters 
-caah: cdbdisp:00003498:  * containing the values of any initplans required by the slice to be run. 
-caah: cdbdisp:00003499:  * (This is handled by calls to addRemoteExecParamsToParamList() from the 
-caah: cdbdisp:00003500:  * functions preprocess_initplans() and ExecutorRun().) 
-caah: cdbdisp:00003501:  * 
-caah: cdbdisp:00003502:  * Each QE receives its assignment as a message of type 'M' in PostgresMain(). 
-caah: cdbdisp:00003503:  * The message is deserialized and processed by exec_mpp_query() in postgres.c. 
-caah: cdbdisp:00003504:  */ 
-caah: cdbdisp:00003505: void 
-caah: cdbdisp:00003506: cdbdisp_dispatchPlan(struct QueryDesc *queryDesc, 
-caah: cdbdisp:00003507:  bool planRequiresTxn, 
-caah: cdbdisp:00003508:  bool cancelOnError, 
-caah: cdbdisp:00003509:  struct CdbDispatcherState *ds) 
-caah: cdbdisp:00003510: { 
-caah: cdbdisp:00003511:  char *splan, 
-caah: cdbdisp:00003512:  *ssliceinfo, 
-caah: cdbdisp:00003513:  *sparams; 
+caah: cdbdisp:00000427:  * It should not longjmp out via elog(ERROR, ...), ereport(ERROR, ...), 
+caah: cdbdisp:00000428:  * PG_THROW, CHECK_FOR_INTERRUPTS, etc. 
+caah: cdbdisp:00000429:  * 
+caah: cdbdisp:00000430:  * Note: the maxSlices argument is used to allocate the parameter 
+caah: cdbdisp:00000431:  * blocks for dispatch, it should be set to the maximum number of 
+caah: cdbdisp:00000432:  * slices in a plan. For dispatch of single commands (ie most uses of 
+caah: cdbdisp:00000433:  * cdbdisp_dispatchToGang()), setting it to 1 is fine. 
+caah: cdbdisp:00000434:  */ 
+caah: cdbdisp:00000435: void 
+caah: cdbdisp:00000436: cdbdisp_dispatchToGang(struct CdbDispatcherState *ds, 
+caah: cdbdisp:00000437:  GpDispatchCommandType mppDispatchCommandType, 
+caah: cdbdisp:00000438:  void *commandTypeParms, 
+caah: cdbdisp:00000439:  struct Gang *gp, 
+caah: cdbdisp:00000440:  int sliceIndex, 
+caah: cdbdisp:00000441:  unsigned int maxSlices, 
+caah: cdbdisp:00000442:  CdbDispatchDirectDesc *disp_direct) 
+caah: cdbdisp:00000443: { 
+caah: cdbdisp:00000444:  struct CdbDispatchResults *dispatchResults = ds->primaryResults; 
+caah: cdbdisp:00000710:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+caah: cdbdisp:00000711:  errmsg("dispatchToGang: failed to create thread %d of %d", i + 1, newThreads), 
+caah: cdbdisp:00000712:  errdetail("pthread_create() failed with err %d", pthread_err), 
+caah: cdbdisp:00000713:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
+caah: cdbdisp:00001113:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+caah: cdbdisp:00001114:  errmsg("cdbdisp_returnResults failed: out of memory"))); 
+caah: cdbdisp:00001456:  ereport(ERROR, (errcode(errorcode), 
+caah: cdbdisp:00001457:  errOmitLocation(true), 
+caah: cdbdisp:00001458:  errmsg("%s", buf.data))); 
+caah: cdbdisp:00003423:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caah: cdbdisp:00003424:  errmsg_internal("Unable to dispatch plan."))); 
+caah: cdbdisp:00003477:  * the caller's error catcher via ereport(ERROR,...). Otherwise this 
+caah: cdbdisp:00003478:  * function returns normally and errors are not reported until later. 
+caah: cdbdisp:00003479:  * 
+caah: cdbdisp:00003480:  * If cancelOnError is false, the plan is to be dispatched as fully as 
+caah: cdbdisp:00003481:  * possible and the QEs allowed to proceed regardless of cancellation 
+caah: cdbdisp:00003482:  * requests, errors or connection failures from other QEs, etc. 
+caah: cdbdisp:00003483:  * 
+caah: cdbdisp:00003484:  * The CdbDispatchResults objects allocated for the plan are returned 
+caah: cdbdisp:00003485:  * in *pPrimaryResults. The caller, after calling 
+caah: cdbdisp:00003486:  * CdbCheckDispatchResult(), can examine the CdbDispatchResults 
+caah: cdbdisp:00003487:  * objects, can keep them as long as needed, and ultimately must free 
+caah: cdbdisp:00003488:  * them with cdbdisp_destroyDispatchResults() prior to deallocation of 
+caah: cdbdisp:00003489:  * the caller's memory context. Callers should use PG_TRY/PG_CATCH to 
+caah: cdbdisp:00003490:  * ensure proper cleanup. 
+caah: cdbdisp:00003491:  * 
+caah: cdbdisp:00003492:  * To wait for completion, check for errors, and clean up, it is 
+caah: cdbdisp:00003493:  * suggested that the caller use cdbdisp_finishCommand(). 
+caah: cdbdisp:00003494:  * 
+caah: cdbdisp:00003495:  * Note that the slice tree dispatched is the one specified in the EState 
+caah: cdbdisp:00003496:  * of the argument QueryDesc as es_cur__slice. 
+caah: cdbdisp:00003497:  * 
+caah: cdbdisp:00003498:  * Note that the QueryDesc params must include PARAM_EXEC_REMOTE parameters 
+caah: cdbdisp:00003499:  * containing the values of any initplans required by the slice to be run. 
+caah: cdbdisp:00003500:  * (This is handled by calls to addRemoteExecParamsToParamList() from the 
+caah: cdbdisp:00003501:  * functions preprocess_initplans() and ExecutorRun().) 
+caah: cdbdisp:00003502:  * 
+caah: cdbdisp:00003503:  * Each QE receives its assignment as a message of type 'M' in PostgresMain(). 
+caah: cdbdisp:00003504:  * The message is deserialized and processed by exec_mpp_query() in postgres.c. 
+caah: cdbdisp:00003505:  */ 
+caah: cdbdisp:00003506: void 
+caah: cdbdisp:00003507: cdbdisp_dispatchPlan(struct QueryDesc *queryDesc, 
+caah: cdbdisp:00003508:  bool planRequiresTxn, 
+caah: cdbdisp:00003509:  bool cancelOnError, 
+caah: cdbdisp:00003510:  struct CdbDispatcherState *ds) 
+caah: cdbdisp:00003511: { 
+caah: cdbdisp:00003512:  char *splan, 
+caah: cdbdisp:00003513:  *ssliceinfo, 
+caah: cdbdisp:00003514:  *sparams; 
 aaaaa GP_IGNORE: cacc: cdbdistributedsnapshot - ./backend/cdb/cdbdistributedsnapshot.c
 cacc: cdbdistributedsnapshot:00000298:  ereport(ERROR, 
 cacc: cdbdistributedsnapshot:00000299:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -4114,46 +4114,82 @@ aaaaa GP_IGNORE: caba: cdbrelsize - ./backend/cdb/cdbrelsize.c
 caba: cdbrelsize:00000102:  ereport(WARNING, (errmsg("cdbRelSize error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
 caba: cdbrelsize:00000103:  errdetail("%s", errbuf.data))); 
 aaaaa GP_IGNORE: cada: cdbresynchronizechangetracking - ./backend/cdb/cdbresynchronizechangetracking.c
-cada: cdbresynchronizechangetracking:00001339:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00001340:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00001341:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
-cada: cdbresynchronizechangetracking:00001625:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00001626:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00001627:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
-cada: cdbresynchronizechangetracking:00001817:  ereport(ERROR, 
-cada: cdbresynchronizechangetracking:00001818:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00001819:  errmsg("change tracking failure, " 
-cada: cdbresynchronizechangetracking:00001820:  "could not create '%s' directory : %m", 
-cada: cdbresynchronizechangetracking:00001821:  CHANGETRACKINGDIR), 
-cada: cdbresynchronizechangetracking:00001822:  errhint("create directory and re-start the cluster"))); 
-cada: cdbresynchronizechangetracking:00001906:  ereport(ERROR, 
-cada: cdbresynchronizechangetracking:00001907:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00001908:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
-cada: cdbresynchronizechangetracking:00001909:  fn1, fn2))); 
-cada: cdbresynchronizechangetracking:00002138:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002139:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002140:  errmsg("unable to read change tracking meta file \"%s\", " 
-cada: cdbresynchronizechangetracking:00002141:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00002142:  path), 
-cada: cdbresynchronizechangetracking:00002143:  errSendAlert(true))); 
-cada: cdbresynchronizechangetracking:00002228:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00002229:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00002230:  errmsg("write error for change tracking meta file in " 
-cada: cdbresynchronizechangetracking:00002231:  "ChangeTracking_MarkFullResyncLockAcquired. " 
-cada: cdbresynchronizechangetracking:00002232:  "Change Tracking disabled : %m"), 
-cada: cdbresynchronizechangetracking:00002233:  errSendAlert(true))); 
-cada: cdbresynchronizechangetracking:00002600:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002601:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002602:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
-cada: cdbresynchronizechangetracking:00002938:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-cada: cdbresynchronizechangetracking:00002939:  errmsg("Unable to obtain change tracking information from segment database."), 
-cada: cdbresynchronizechangetracking:00002940:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
-cada: cdbresynchronizechangetracking:00003065:  ereport(WARNING, 
-cada: cdbresynchronizechangetracking:00003066:  (errcode_for_file_access(), 
-cada: cdbresynchronizechangetracking:00003067:  errmsg("write error for change tracking %s file, " 
-cada: cdbresynchronizechangetracking:00003068:  "change tracking disabled : %m", 
-cada: cdbresynchronizechangetracking:00003069:  ChangeTracking_FtypeToString(ft)), 
-cada: cdbresynchronizechangetracking:00003070:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00001341:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00001342:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00001343:  errdetail("SPI_connect failed in ChangeTracking_GetIncrementalChangeList()"))); 
+cada: cdbresynchronizechangetracking:00001627:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00001628:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00001629:  errdetail("SPI_connect failed in ChangeTracking_GetChanges()"))); 
+cada: cdbresynchronizechangetracking:00001819:  ereport(ERROR, 
+cada: cdbresynchronizechangetracking:00001820:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00001821:  errmsg("change tracking failure, " 
+cada: cdbresynchronizechangetracking:00001822:  "could not create '%s' directory : %m", 
+cada: cdbresynchronizechangetracking:00001823:  CHANGETRACKINGDIR), 
+cada: cdbresynchronizechangetracking:00001824:  errhint("create directory and re-start the cluster"))); 
+cada: cdbresynchronizechangetracking:00001908:  ereport(ERROR, 
+cada: cdbresynchronizechangetracking:00001909:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00001910:  errmsg("could not rename file \"%s\" to \"%s\": %m", 
+cada: cdbresynchronizechangetracking:00001911:  fn1, fn2))); 
+cada: cdbresynchronizechangetracking:00002140:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002141:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002142:  errmsg("unable to read change tracking meta file \"%s\", " 
+cada: cdbresynchronizechangetracking:00002143:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00002144:  path), 
+cada: cdbresynchronizechangetracking:00002145:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002230:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002231:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002232:  errmsg("write error for change tracking meta file in " 
+cada: cdbresynchronizechangetracking:00002233:  "ChangeTracking_MarkFullResyncLockAcquired. " 
+cada: cdbresynchronizechangetracking:00002234:  "Change Tracking disabled : %m"), 
+cada: cdbresynchronizechangetracking:00002235:  errSendAlert(true))); 
+cada: cdbresynchronizechangetracking:00002602:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00002603:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00002604:  errdetail("SPI_connect failed in ChangeTracking_GetTotalBlocksToSync()"))); 
+cada: cdbresynchronizechangetracking:00002773:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002774:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002775:  errmsg("unable to seek to begin " INT64_FORMAT " or end " INT64_FORMAT " in change tracking '%s' file : %m", 
+cada: cdbresynchronizechangetracking:00002776:  positionFull, 
+cada: cdbresynchronizechangetracking:00002777:  positionFullEnd, 
+cada: cdbresynchronizechangetracking:00002778:  ChangeTracking_FtypeToString(ftype)))); 
+cada: cdbresynchronizechangetracking:00002784:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002785:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002786:  errmsg("unable to open change tracking '%s' file : %m", 
+cada: cdbresynchronizechangetracking:00002787:  ChangeTracking_FtypeToString(ftype)))); 
+cada: cdbresynchronizechangetracking:00002801:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002802:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002803:  errmsg("unable to seek to end in change tracking '%s' file : %m", 
+cada: cdbresynchronizechangetracking:00002804:  ChangeTracking_FtypeToString(ftype)))); 
+cada: cdbresynchronizechangetracking:00002810:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00002811:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00002812:  errmsg("unable to open change tracking '%s' file : %m", 
+cada: cdbresynchronizechangetracking:00002813:  ChangeTracking_FtypeToString(ftype)))); 
+cada: cdbresynchronizechangetracking:00002826:  ereport(ERROR, 
+cada: cdbresynchronizechangetracking:00002827:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cada: cdbresynchronizechangetracking:00002828:  (errmsg("could not allocate memory for change tracking log buffer")))); 
+cada: cdbresynchronizechangetracking:00003136:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+cada: cdbresynchronizechangetracking:00003137:  errmsg("Unable to obtain change tracking information from segment database."), 
+cada: cdbresynchronizechangetracking:00003138:  errdetail("SPI_connect failed in ChangeTracking_CreateCompactLogFromFull()"))); 
+cada: cdbresynchronizechangetracking:00003265:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00003266:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00003267:  errmsg("unable to seek to end in change tracking '%s' file : %m", 
+cada: cdbresynchronizechangetracking:00003268:  ChangeTracking_FtypeToString(ftype)))); 
+cada: cdbresynchronizechangetracking:00003287:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00003288:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00003289:  errmsg("unable to open change tracking '%s' file : %m", 
+cada: cdbresynchronizechangetracking:00003290:  ChangeTracking_FtypeToString(ftype)))); 
+cada: cdbresynchronizechangetracking:00003300:  ereport(ERROR, 
+cada: cdbresynchronizechangetracking:00003301:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cada: cdbresynchronizechangetracking:00003302:  (errmsg("could not allocate memory for change tracking log buffer")))); 
+cada: cdbresynchronizechangetracking:00003324:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00003325:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00003326:  errmsg("unable to read change tracking '%s' file : %m", 
+cada: cdbresynchronizechangetracking:00003327:  ChangeTracking_FtypeToString(ftype)))); 
+cada: cdbresynchronizechangetracking:00003369:  ereport(WARNING, 
+cada: cdbresynchronizechangetracking:00003370:  (errcode_for_file_access(), 
+cada: cdbresynchronizechangetracking:00003371:  errmsg("write error for change tracking %s file, " 
+cada: cdbresynchronizechangetracking:00003372:  "change tracking disabled : %m", 
+cada: cdbresynchronizechangetracking:00003373:  ChangeTracking_FtypeToString(ft)), 
+cada: cdbresynchronizechangetracking:00003374:  errSendAlert(true))); 
 aaaaa GP_IGNORE: caai: cdbsetop - ./backend/cdb/cdbsetop.c
 caai: cdbsetop:00000152:  ereport(ERROR, ( 
 caai: cdbsetop:00000153:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
@@ -5252,32 +5288,32 @@ caae: copy:00001969:  errmsg("%s", cdbcopy_err.data)));
 caae: copy:00001971:  ereport(ERROR, 
 caae: copy:00001972:  (errcode(ERRCODE_IO_ERROR), 
 caae: copy:00001973:  errmsg("%s", cdbcopy_err.data))); 
-caae: copy:00003108:  ereport(ERROR, 
-caae: copy:00003109:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003110:  errmsg("null OID in COPY data."))); 
-caae: copy:00003142:  ereport(ERROR, 
-caae: copy:00003143:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003144:  errmsg("invalid OID in COPY data."))); 
-caae: copy:00003494:  ereport(ERROR, 
-caae: copy:00003495:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003496:  errmsg("%s", cdbcopy_err.data), 
-caae: copy:00003497:  errOmitLocation(true))); 
-caae: copy:00003499:  ereport(ERROR, 
-caae: copy:00003500:  (errcode(ERRCODE_IO_ERROR), 
-caae: copy:00003501:  errmsg("%s", cdbcopy_err.data), 
-caae: copy:00003502:  errOmitLocation(true))); 
-caae: copy:00003876:  ereport(ERROR, 
-caae: copy:00003877:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003878:  errmsg("null OID in COPY data."))); 
-caae: copy:00003906:  ereport(ERROR, 
-caae: copy:00003907:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00003908:  errmsg("invalid OID in COPY data."))); 
-caae: copy:00004678:  ereport(ERROR, 
-caae: copy:00004679:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004680:  errmsg("data line too long. likely due to invalid csv data"))); 
-caae: copy:00004810:  ereport(ERROR, 
-caae: copy:00004811:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
-caae: copy:00004812:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00003107:  ereport(ERROR, 
+caae: copy:00003108:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003109:  errmsg("null OID in COPY data."))); 
+caae: copy:00003141:  ereport(ERROR, 
+caae: copy:00003142:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003143:  errmsg("invalid OID in COPY data."))); 
+caae: copy:00003493:  ereport(ERROR, 
+caae: copy:00003494:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003495:  errmsg("%s", cdbcopy_err.data), 
+caae: copy:00003496:  errOmitLocation(true))); 
+caae: copy:00003498:  ereport(ERROR, 
+caae: copy:00003499:  (errcode(ERRCODE_IO_ERROR), 
+caae: copy:00003500:  errmsg("%s", cdbcopy_err.data), 
+caae: copy:00003501:  errOmitLocation(true))); 
+caae: copy:00003875:  ereport(ERROR, 
+caae: copy:00003876:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003877:  errmsg("null OID in COPY data."))); 
+caae: copy:00003905:  ereport(ERROR, 
+caae: copy:00003906:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00003907:  errmsg("invalid OID in COPY data."))); 
+caae: copy:00004677:  ereport(ERROR, 
+caae: copy:00004678:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004679:  errmsg("data line too long. likely due to invalid csv data"))); 
+caae: copy:00004809:  ereport(ERROR, 
+caae: copy:00004810:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
+caae: copy:00004811:  errmsg("data line too long. likely due to invalid csv data"))); 
 caae: copy:00004971:  ereport(ERROR, 
 caae: copy:00004972:  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT), 
 caae: copy:00004973:  errmsg("extra data after last expected column"), 
@@ -9355,10 +9391,10 @@ vaae: view:00000299:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 vaae: view:00000300:  errmsg("cannot change data type of view column \"%s\"", 
 vaae: view:00000301:  NameStr(oldattr->attname)), 
 vaae: view:00000302:  errOmitLocation(true))); 
-vaae: view:00000461:  ereport(NOTICE, 
-vaae: view:00000462:  (errmsg("view \"%s\" will be a temporary view", 
-vaae: view:00000463:  view->relname), 
-vaae: view:00000464:  errOmitLocation(true))); 
+vaae: view:00000462:  ereport(NOTICE, 
+vaae: view:00000463:  (errmsg("view \"%s\" will be a temporary view", 
+vaae: view:00000464:  view->relname), 
+vaae: view:00000465:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: eaah: execami - ./backend/executor/execAmi.c
 eaah: execami:00000283:  ereport(ERROR, ( 
 eaah: execami:00000284:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
@@ -9688,70 +9724,70 @@ faaj: functions:00000306:  (errcode(ERRCODE_DATATYPE_MISMATCH),
 faaj: functions:00000307:  errmsg("could not determine actual type of argument declared %s", 
 faaj: functions:00000308:  format_type_be(argOidVect[argnum])), 
 faaj: functions:00000309:  errOmitLocation(true))); 
-faaj: functions:00000808:  ereport(ERROR, 
-faaj: functions:00000809:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-faaj: functions:00000810:  errmsg("set-valued function called in context that cannot accept a set"), 
-faaj: functions:00000811:  errOmitLocation(true))); 
-faaj: functions:00000848:  ereport(ERROR, 
-faaj: functions:00000849:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-faaj: functions:00000850:  errmsg("set-valued function called in context that cannot accept a set"), 
-faaj: functions:00000851:  errOmitLocation(true))); 
-faaj: functions:00001026:  ereport(ERROR, 
-faaj: functions:00001027:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001028:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001029:  format_type_be(rettype)), 
-faaj: functions:00001030:  errdetail("Function's final statement must be a SELECT."), 
-faaj: functions:00001031:  errOmitLocation(true))); 
-faaj: functions:00001049:  ereport(ERROR, 
-faaj: functions:00001050:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001051:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001052:  format_type_be(rettype)), 
-faaj: functions:00001053:  errdetail("Function's final statement must be a SELECT."), 
-faaj: functions:00001054:  errOmitLocation(true))); 
-faaj: functions:00001084:  ereport(ERROR, 
-faaj: functions:00001085:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001086:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001087:  format_type_be(rettype)), 
-faaj: functions:00001088:  errdetail("Final SELECT must return exactly one column."), 
-faaj: functions:00001089:  errOmitLocation(true))); 
-faaj: functions:00001093:  ereport(ERROR, 
-faaj: functions:00001094:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001095:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001096:  format_type_be(rettype)), 
-faaj: functions:00001097:  errdetail("Actual return type is %s.", 
-faaj: functions:00001098:  format_type_be(restype)), 
-faaj: functions:00001099:  errOmitLocation(true))); 
-faaj: functions:00001159:  ereport(ERROR, 
-faaj: functions:00001160:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001161:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001162:  format_type_be(rettype)), 
-faaj: functions:00001163:  errdetail("Final SELECT returns too many columns."), 
-faaj: functions:00001164:  errOmitLocation(true))); 
-faaj: functions:00001172:  ereport(ERROR, 
-faaj: functions:00001173:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001174:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001175:  format_type_be(rettype)), 
-faaj: functions:00001176:  errdetail("Final SELECT returns %s instead of %s at column %d.", 
-faaj: functions:00001177:  format_type_be(tletype), 
-faaj: functions:00001178:  format_type_be(atttype), 
-faaj: functions:00001179:  tuplogcols), 
-faaj: functions:00001180:  errOmitLocation(true))); 
-faaj: functions:00001193:  ereport(ERROR, 
-faaj: functions:00001194:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001195:  errmsg("return type mismatch in function declared to return %s", 
-faaj: functions:00001196:  format_type_be(rettype)), 
-faaj: functions:00001197:  errdetail("Final SELECT returns too few columns."), 
-faaj: functions:00001198:  errOmitLocation(true))); 
-faaj: functions:00001212:  ereport(ERROR, 
-faaj: functions:00001213:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001214:  errmsg("cannot determine result data type"), 
-faaj: functions:00001215:  errdetail("A function returning \"anyarray\" or \"anyelement\" must have at least one argument of either type."), 
-faaj: functions:00001216:  errOmitLocation(true))); 
-faaj: functions:00001219:  ereport(ERROR, 
-faaj: functions:00001220:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-faaj: functions:00001221:  errmsg("return type %s is not supported for SQL functions", 
-faaj: functions:00001222:  format_type_be(rettype)), 
-faaj: functions:00001223:  errOmitLocation(true))); 
+faaj: functions:00000849:  ereport(ERROR, 
+faaj: functions:00000850:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+faaj: functions:00000851:  errmsg("set-valued function called in context that cannot accept a set"), 
+faaj: functions:00000852:  errOmitLocation(true))); 
+faaj: functions:00000889:  ereport(ERROR, 
+faaj: functions:00000890:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+faaj: functions:00000891:  errmsg("set-valued function called in context that cannot accept a set"), 
+faaj: functions:00000892:  errOmitLocation(true))); 
+faaj: functions:00001067:  ereport(ERROR, 
+faaj: functions:00001068:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001069:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001070:  format_type_be(rettype)), 
+faaj: functions:00001071:  errdetail("Function's final statement must be a SELECT."), 
+faaj: functions:00001072:  errOmitLocation(true))); 
+faaj: functions:00001090:  ereport(ERROR, 
+faaj: functions:00001091:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001092:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001093:  format_type_be(rettype)), 
+faaj: functions:00001094:  errdetail("Function's final statement must be a SELECT."), 
+faaj: functions:00001095:  errOmitLocation(true))); 
+faaj: functions:00001125:  ereport(ERROR, 
+faaj: functions:00001126:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001127:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001128:  format_type_be(rettype)), 
+faaj: functions:00001129:  errdetail("Final SELECT must return exactly one column."), 
+faaj: functions:00001130:  errOmitLocation(true))); 
+faaj: functions:00001134:  ereport(ERROR, 
+faaj: functions:00001135:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001136:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001137:  format_type_be(rettype)), 
+faaj: functions:00001138:  errdetail("Actual return type is %s.", 
+faaj: functions:00001139:  format_type_be(restype)), 
+faaj: functions:00001140:  errOmitLocation(true))); 
+faaj: functions:00001200:  ereport(ERROR, 
+faaj: functions:00001201:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001202:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001203:  format_type_be(rettype)), 
+faaj: functions:00001204:  errdetail("Final SELECT returns too many columns."), 
+faaj: functions:00001205:  errOmitLocation(true))); 
+faaj: functions:00001213:  ereport(ERROR, 
+faaj: functions:00001214:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001215:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001216:  format_type_be(rettype)), 
+faaj: functions:00001217:  errdetail("Final SELECT returns %s instead of %s at column %d.", 
+faaj: functions:00001218:  format_type_be(tletype), 
+faaj: functions:00001219:  format_type_be(atttype), 
+faaj: functions:00001220:  tuplogcols), 
+faaj: functions:00001221:  errOmitLocation(true))); 
+faaj: functions:00001234:  ereport(ERROR, 
+faaj: functions:00001235:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001236:  errmsg("return type mismatch in function declared to return %s", 
+faaj: functions:00001237:  format_type_be(rettype)), 
+faaj: functions:00001238:  errdetail("Final SELECT returns too few columns."), 
+faaj: functions:00001239:  errOmitLocation(true))); 
+faaj: functions:00001253:  ereport(ERROR, 
+faaj: functions:00001254:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001255:  errmsg("cannot determine result data type"), 
+faaj: functions:00001256:  errdetail("A function returning \"anyarray\" or \"anyelement\" must have at least one argument of either type."), 
+faaj: functions:00001257:  errOmitLocation(true))); 
+faaj: functions:00001260:  ereport(ERROR, 
+faaj: functions:00001261:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faaj: functions:00001262:  errmsg("return type %s is not supported for SQL functions", 
+faaj: functions:00001263:  format_type_be(rettype)), 
+faaj: functions:00001264:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: naah: nodeagg - ./backend/executor/nodeAgg.c
 naah: nodeagg:00002059:  ereport(ERROR, 
 naah: nodeagg:00002060:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
@@ -10215,12 +10251,12 @@ raae: read:00000332:  "supported in this version of %s.",
 raae: read:00000333:  tok_len, token, PACKAGE_NAME) 
 raae: read:00000334:  )); 
 aaaaa GP_IGNORE: raaj: readfuncs - ./backend/nodes/readfuncs.c
-raaj: readfuncs:00003007:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-raaj: readfuncs:00003008:  errmsg("This operation involves an internal data item " 
-raaj: readfuncs:00003009:  "of a type called \"%.*s\" which is not " 
-raaj: readfuncs:00003010:  "supported in this version of %s.", 
-raaj: readfuncs:00003011:  length, token, PACKAGE_NAME) 
-raaj: readfuncs:00003012:  )); 
+raaj: readfuncs:00003008:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+raaj: readfuncs:00003009:  errmsg("This operation involves an internal data item " 
+raaj: readfuncs:00003010:  "of a type called \"%.*s\" which is not " 
+raaj: readfuncs:00003011:  "supported in this version of %s.", 
+raaj: readfuncs:00003012:  length, token, PACKAGE_NAME) 
+raaj: readfuncs:00003013:  )); 
 aaaaa GP_IGNORE: aaai: allpaths - ./backend/optimizer/path/allpaths.c
 aaai: allpaths:00000420:  ereport(ERROR, 
 aaai: allpaths:00000421:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -14085,96 +14121,96 @@ paai: postgres:00002969:  ereport(ERROR,
 paai: postgres:00002970:  (errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION), 
 paai: postgres:00002971:  errmsg("current transaction is aborted, " 
 paai: postgres:00002972:  "commands ignored until end of transaction block"))); 
-paai: postgres:00003354:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
-paai: postgres:00003355:  errFatalReturn(gp_reraise_signal), 
-paai: postgres:00003356:  errOmitLocation(true), 
-paai: postgres:00003357:  errmsg("Unexpected internal error: %s received signal %s", 
-paai: postgres:00003358:  processName, signame) )); 
-paai: postgres:00003389:  ereport(ERROR, 
-paai: postgres:00003390:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
-paai: postgres:00003391:  errmsg("floating-point exception"), 
-paai: postgres:00003392:  errdetail("An invalid floating-point operation was signaled. " 
-paai: postgres:00003393:  "This probably means an out-of-range result or an " 
-paai: postgres:00003394:  "invalid operation, such as division by zero."))); 
-paai: postgres:00003451:  ereport(FATAL, 
-paai: postgres:00003452:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
-paai: postgres:00003453:  errmsg("terminating connection due to administrator command"), 
-paai: postgres:00003454:  errSendAlert(false))); 
-paai: postgres:00003465:  ereport(ERROR, 
-paai: postgres:00003466:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
-paai: postgres:00003467:  errmsg("canceling MPP operation"))); 
-paai: postgres:00003469:  ereport(ERROR, 
-paai: postgres:00003470:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003471:  errmsg("canceling statement due to statement timeout"))); 
-paai: postgres:00003473:  ereport(ERROR, 
-paai: postgres:00003474:  (errcode(ERRCODE_QUERY_CANCELED), 
-paai: postgres:00003475:  errmsg("canceling statement due to user request"))); 
-paai: postgres:00003556:  ereport(ERROR, 
-paai: postgres:00003557:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
-paai: postgres:00003558:  errmsg("stack depth limit exceeded"), 
-paai: postgres:00003559:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
-paai: postgres:00003560:  "after ensuring the platform's stack depth limit is adequate."))); 
-paai: postgres:00003983:  ereport(ERROR, 
-paai: postgres:00003984:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00003985:  errmsg("--%s requires a value", 
-paai: postgres:00003986:  optarg))); 
-paai: postgres:00003988:  ereport(ERROR, 
-paai: postgres:00003989:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00003990:  errmsg("-c %s requires a value", 
-paai: postgres:00003991:  optarg))); 
-paai: postgres:00004031:  ereport(FATAL, 
-paai: postgres:00004032:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paai: postgres:00004033:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
-paai: postgres:00004151:  ereport(FATAL, 
-paai: postgres:00004152:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004153:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00004154:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00003367:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+paai: postgres:00003368:  errFatalReturn(gp_reraise_signal), 
+paai: postgres:00003369:  errOmitLocation(true), 
+paai: postgres:00003370:  errmsg("Unexpected internal error: %s received signal %s", 
+paai: postgres:00003371:  processName, signame) )); 
+paai: postgres:00003402:  ereport(ERROR, 
+paai: postgres:00003403:  (errcode(ERRCODE_FLOATING_POINT_EXCEPTION), 
+paai: postgres:00003404:  errmsg("floating-point exception"), 
+paai: postgres:00003405:  errdetail("An invalid floating-point operation was signaled. " 
+paai: postgres:00003406:  "This probably means an out-of-range result or an " 
+paai: postgres:00003407:  "invalid operation, such as division by zero."))); 
+paai: postgres:00003464:  ereport(FATAL, 
+paai: postgres:00003465:  (errcode(ERRCODE_ADMIN_SHUTDOWN), 
+paai: postgres:00003466:  errmsg("terminating connection due to administrator command"), 
+paai: postgres:00003467:  errSendAlert(false))); 
+paai: postgres:00003478:  ereport(ERROR, 
+paai: postgres:00003479:  (errcode(ERRCODE_GP_OPERATION_CANCELED), 
+paai: postgres:00003480:  errmsg("canceling MPP operation"))); 
+paai: postgres:00003482:  ereport(ERROR, 
+paai: postgres:00003483:  (errcode(ERRCODE_QUERY_CANCELED), 
+paai: postgres:00003484:  errmsg("canceling statement due to statement timeout"))); 
+paai: postgres:00003486:  ereport(ERROR, 
+paai: postgres:00003487:  (errcode(ERRCODE_QUERY_CANCELED), 
+paai: postgres:00003488:  errmsg("canceling statement due to user request"))); 
+paai: postgres:00003569:  ereport(ERROR, 
+paai: postgres:00003570:  (errcode(ERRCODE_STATEMENT_TOO_COMPLEX), 
+paai: postgres:00003571:  errmsg("stack depth limit exceeded"), 
+paai: postgres:00003572:  errhint("Increase the configuration parameter \"max_stack_depth\", " 
+paai: postgres:00003573:  "after ensuring the platform's stack depth limit is adequate."))); 
+paai: postgres:00003996:  ereport(ERROR, 
+paai: postgres:00003997:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00003998:  errmsg("--%s requires a value", 
+paai: postgres:00003999:  optarg))); 
+paai: postgres:00004001:  ereport(ERROR, 
+paai: postgres:00004002:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004003:  errmsg("-c %s requires a value", 
+paai: postgres:00004004:  optarg))); 
+paai: postgres:00004044:  ereport(FATAL, 
+paai: postgres:00004045:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paai: postgres:00004046:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
 paai: postgres:00004164:  ereport(FATAL, 
 paai: postgres:00004165:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004166:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00004167:  argv[0]), 
-paai: postgres:00004168:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004174:  ereport(FATAL, 
-paai: postgres:00004175:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00004176:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00004177:  argv[0]))); 
-paai: postgres:00005013:  ereport(ERROR, 
-paai: postgres:00005014:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005015:  errmsg("invalid CLOSE message subtype %d", 
-paai: postgres:00005016:  close_type))); 
-paai: postgres:00005050:  ereport(ERROR, 
-paai: postgres:00005051:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005052:  errmsg("invalid DESCRIBE message subtype %d", 
-paai: postgres:00005053:  describe_type))); 
-paai: postgres:00005107:  ereport(FATAL, 
-paai: postgres:00005108:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005109:  errmsg("invalid frontend message type %d ('%c')", 
-paai: postgres:00005110:  firstchar,firstchar))); 
-paai: postgres:00005610:  ereport(ERROR, 
-paai: postgres:00005611:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005612:  errmsg("--%s requires a value", 
-paai: postgres:00005613:  optarg))); 
-paai: postgres:00005615:  ereport(ERROR, 
-paai: postgres:00005616:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005617:  errmsg("-c %s requires a value", 
-paai: postgres:00005618:  optarg))); 
-paai: postgres:00005731:  ereport(FATAL, 
-paai: postgres:00005732:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005733:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00005734:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005745:  ereport(FATAL, 
-paai: postgres:00005746:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005747:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00005748:  argv[0]), 
-paai: postgres:00005749:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005755:  ereport(FATAL, 
-paai: postgres:00005756:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00005757:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00005758:  argv[0]))); 
-paai: postgres:00006081:  ereport(FATAL, 
-paai: postgres:00006082:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00006083:  errmsg("invalid frontend message type %d", 
-paai: postgres:00006084:  firstchar))); 
+paai: postgres:00004166:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00004167:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004177:  ereport(FATAL, 
+paai: postgres:00004178:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004179:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00004180:  argv[0]), 
+paai: postgres:00004181:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004187:  ereport(FATAL, 
+paai: postgres:00004188:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00004189:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00004190:  argv[0]))); 
+paai: postgres:00005026:  ereport(ERROR, 
+paai: postgres:00005027:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005028:  errmsg("invalid CLOSE message subtype %d", 
+paai: postgres:00005029:  close_type))); 
+paai: postgres:00005063:  ereport(ERROR, 
+paai: postgres:00005064:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005065:  errmsg("invalid DESCRIBE message subtype %d", 
+paai: postgres:00005066:  describe_type))); 
+paai: postgres:00005120:  ereport(FATAL, 
+paai: postgres:00005121:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005122:  errmsg("invalid frontend message type %d ('%c')", 
+paai: postgres:00005123:  firstchar,firstchar))); 
+paai: postgres:00005623:  ereport(ERROR, 
+paai: postgres:00005624:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005625:  errmsg("--%s requires a value", 
+paai: postgres:00005626:  optarg))); 
+paai: postgres:00005628:  ereport(ERROR, 
+paai: postgres:00005629:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005630:  errmsg("-c %s requires a value", 
+paai: postgres:00005631:  optarg))); 
+paai: postgres:00005744:  ereport(FATAL, 
+paai: postgres:00005745:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005746:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00005747:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005758:  ereport(FATAL, 
+paai: postgres:00005759:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005760:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00005761:  argv[0]), 
+paai: postgres:00005762:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005768:  ereport(FATAL, 
+paai: postgres:00005769:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00005770:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00005771:  argv[0]))); 
+paai: postgres:00006094:  ereport(FATAL, 
+paai: postgres:00006095:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00006096:  errmsg("invalid frontend message type %d", 
+paai: postgres:00006097:  firstchar))); 
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
 paag: pquery:00000982:  ereport(ERROR, 
 paag: pquery:00000983:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
@@ -17405,22 +17441,22 @@ eaae: elog:00001820:  ereport(FATAL,
 eaae: elog:00001821:  (errcode_for_file_access(), 
 eaae: elog:00001822:  errmsg("could not reopen file \"%s\" as stdout: %m", 
 eaae: elog:00001823:  OutputFileName))); 
-eaae: elog:00004024:  ereport(ERROR, 
-eaae: elog:00004025:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00004026:  errmsg("gp_elog(): called with %hd arguments", 
-eaae: elog:00004027:  PG_NARGS()))); 
-eaae: elog:00004029:  ereport(ERROR, 
-eaae: elog:00004030:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00004031:  errmsg("gp_elog(): called with null arguments"))); 
-eaae: elog:00004034:  ereport(ERROR, 
-eaae: elog:00004035:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-eaae: elog:00004036:  errmsg("gp_elog(): called with null arguments"))); 
-eaae: elog:00004040:  ereport(ERROR, 
-eaae: elog:00004041:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-eaae: elog:00004042:  errmsg("permission denied"), 
-eaae: elog:00004043:  errhint("gp_elog(): requires superuser privileges."))); 
-eaae: elog:00004152:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-eaae: elog:00004153:  errmsg("Failed to get backtrace symbol: out of memory"))); 
+eaae: elog:00004025:  ereport(ERROR, 
+eaae: elog:00004026:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00004027:  errmsg("gp_elog(): called with %hd arguments", 
+eaae: elog:00004028:  PG_NARGS()))); 
+eaae: elog:00004030:  ereport(ERROR, 
+eaae: elog:00004031:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00004032:  errmsg("gp_elog(): called with null arguments"))); 
+eaae: elog:00004035:  ereport(ERROR, 
+eaae: elog:00004036:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+eaae: elog:00004037:  errmsg("gp_elog(): called with null arguments"))); 
+eaae: elog:00004041:  ereport(ERROR, 
+eaae: elog:00004042:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+eaae: elog:00004043:  errmsg("permission denied"), 
+eaae: elog:00004044:  errhint("gp_elog(): requires superuser privileges."))); 
+eaae: elog:00004153:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+eaae: elog:00004154:  errmsg("Failed to get backtrace symbol: out of memory"))); 
 aaaaa GP_IGNORE: daba: deprecated - ./backend/utils/fmgr/deprecated.c
 daba: deprecated:00000029:  ereport(ERROR, 
 daba: deprecated:00000030:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
