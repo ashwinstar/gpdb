@@ -1050,8 +1050,8 @@ FileUnlink(File file)
 {
 	Assert(FileIsValid(file));
 
-	elog(LOG, "FileUnlink: %d (%s)",
-	     file, VfdCache[file].fileName);
+	DO_DB(elog(LOG, "FileUnlink: %d (%s)",
+	     file, VfdCache[file].fileName));
 
 	/* force FileClose to delete it */
 	VfdCache[file].fdstate |= FD_TEMPORARY;

@@ -298,8 +298,35 @@ FileRepPrimary_RunChangeTrackingCompacting(void)
 {
 	int		retry = 0;
 	
-	FileRep_InsertConfigLogEntry("run change tracking compacting");
+	FileRep_InsertConfigLogEntry("run change tracking compacting if records has to be discarded");
 	
+	/*
+	 * We have to check if any records have to be discarded from Change Tracking log file.
+	 * Due to crash it can happen that the highest change tracking log lsn > the highest xlog lsn.
+	 *
+	 * Records from change tracking log file can be discarded only after database is started. 
+	 * Full environhment has to be set up in order to run queries over SPI.
+	 */
+	while (FileRepSubProcess_GetState() != FileRepStateShutdown &&
+		   FileRepSubProcess_GetState() != FileRepStateShutdownBackends &&
+		   isDatabaseRunning() == FALSE) 
+	{
+		
+		FileRepSubProcess_ProcessSignals();
+		
+		pg_usleep(50000L); /* 50 ms */	
+	}		
+
+	ChangeTracking_DoFullCompactingRoundIfNeeded();
+
+	
+	/*
+	 * Periodically check if compacting is required. 
+	 * Periodic compacting is required in order to
+	 *		a) reduce space for change tracking log file
+	 *		b) reduce time for transition from Change Tracking to Resync
+	 */
+	FileRep_InsertConfigLogEntry("run change tracking compacting");
 	while (1) {
 		
 		FileRepSubProcess_ProcessSignals();
@@ -319,7 +346,7 @@ FileRepPrimary_RunChangeTrackingCompacting(void)
 		Insist(dataState == DataStateInChangeTracking);		
 		Insist(FileRepSubProcess_GetState() == FileRepStateReady);
 		
-		/* retry compacting of chnage tracking log files once per minute */
+		/* retry compacting of change tracking log files once per minute */
 		pg_usleep(50000L); /* 50 ms */
 		
 		if (++retry == 1200)

@@ -11,6 +11,7 @@
 #include "postgres.h"
 #include "miscadmin.h"
 #include "cdb/cdbutil.h"
+#include <unistd.h>
 
 #include "access/bitmap.h"
 #include "access/htup.h"
@@ -24,6 +25,7 @@
 #include "storage/lock.h"
 #include "storage/relfilenode.h"
 #include "storage/shmem.h"
+#include "utils/memutils.h"
 #include "utils/palloc.h"
 
 #include "cdb/cdbfilerep.h"
@@ -2722,6 +2724,177 @@ static void ChangeTracking_CreateTransientLogIfNeeded(void)
 }
 
 /*
+ * During crash recovery append records from CT_LOG_FULL to CT_LOG_TRANSIENT in order to run compacting
+ * that will discard records that have higher lsn than the highest lsn in xlog.
+ */
+void 
+ChangeTracking_CreateTransientLog(void)
+{
+	LWLockAcquire(ChangeTrackingCompactLock, LW_EXCLUSIVE);
+	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE); 
+	
+	if (ChangeTracking_DoesFileExist(CTF_LOG_TRANSIENT) == false) 	
+	{
+		FileRep_InsertConfigLogEntry("rename full to transient change tracking log file");
+		ChangeTracking_RenameLogFile(CTF_LOG_FULL, CTF_LOG_TRANSIENT);		
+		
+		/* we must now reset our full log write as we'll start a new file */
+		ChangeTracking_ResetBufStatus(CTMainWriteBufStatus);
+		
+		changeTrackingCompState->ctfull_bufs_added = 0;			
+	}
+	else 
+	{
+		File		fileTransient = 0;
+		File		fileFull = 0;
+
+		CTFType		ftype = CTF_LOG_FULL;
+		int64		position = 0;
+		int64		positionFull = 0;
+		int64		positionFullEnd = 0;
+
+		int			nbytes = 0;
+		char		*buf = NULL;
+		
+		FileRep_InsertConfigLogEntry("append records from full to transient change tracking log file");
+
+		while (1)
+		{
+			errno = 0;
+			fileFull = ChangeTracking_OpenFile(ftype);
+			
+			if (fileFull > 0)
+			{
+				positionFullEnd = FileSeek(fileFull, 0, SEEK_END);
+				positionFull = FileSeek(fileFull, 0, SEEK_SET); 
+				
+				if (positionFullEnd < 0 || positionFull < 0)
+				{
+					ereport(WARNING,
+							(errcode_for_file_access(),
+							 errmsg("unable to seek to begin " INT64_FORMAT " or end " INT64_FORMAT " in change tracking '%s' file : %m",
+									positionFull,
+									positionFullEnd,
+									ChangeTracking_FtypeToString(ftype))));			
+					break;
+				}			
+			}
+			else
+			{
+				ereport(WARNING,
+						(errcode_for_file_access(),
+						 errmsg("unable to open change tracking '%s' file : %m",
+								ChangeTracking_FtypeToString(ftype))));			
+				break;
+			}
+						
+			ftype = CTF_LOG_TRANSIENT;
+			errno = 0;
+			fileTransient = ChangeTracking_OpenFile(ftype);
+			
+			if (fileTransient > 0)
+			{
+				position = FileSeek(fileTransient, 0, SEEK_END); 
+				
+				if (position < 0)
+				{
+					ereport(WARNING,
+							(errcode_for_file_access(),
+							 errmsg("unable to seek to end in change tracking '%s' file : %m",
+									ChangeTracking_FtypeToString(ftype))));			
+					break;
+				}			
+			}
+			else
+			{
+				ereport(WARNING,
+						(errcode_for_file_access(),
+						 errmsg("unable to open change tracking '%s' file : %m",
+								ChangeTracking_FtypeToString(ftype))));			
+				break;
+			}
+						
+			buf = MemoryContextAlloc(TopMemoryContext, CHANGETRACKING_BLCKSZ);
+			if (buf == NULL)
+			{
+				ChangeTracking_CloseFile(fileTransient);
+				ChangeTracking_CloseFile(fileFull);
+
+				LWLockRelease(ChangeTrackingWriteLock);
+				LWLockRelease(ChangeTrackingCompactLock);
+				
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 (errmsg("could not allocate memory for change tracking log buffer"))));
+			}
+			
+			MemSet(buf, 0, CHANGETRACKING_BLCKSZ);
+			
+			while (positionFull < positionFullEnd)
+			{
+				errno = 0;
+				nbytes = FileRead(fileFull, buf, CHANGETRACKING_BLCKSZ);
+				
+				if (nbytes == CHANGETRACKING_BLCKSZ)
+				{ 
+					nbytes = FileWrite(fileTransient, buf, CHANGETRACKING_BLCKSZ);
+					
+					if (nbytes < CHANGETRACKING_BLCKSZ)
+					{
+						ChangeTracking_HandleWriteError(ftype);	
+						break;
+					}
+				}
+				else
+				{
+					ChangeTracking_HandleWriteError(CTF_LOG_FULL);		
+					break;
+				}
+				positionFull += CHANGETRACKING_BLCKSZ;
+			}
+			
+			if (positionFull < positionFullEnd)
+			{
+				break;
+			}
+		
+			errno = 0;
+			if (FileSync(fileTransient) < 0)
+			{
+                ChangeTracking_HandleWriteError(ftype);		
+			}
+			
+			ChangeTracking_DropLogFile(CTF_LOG_FULL);
+			
+			/* we must now reset our full log write as we'll start a new file */
+			ChangeTracking_ResetBufStatus(CTMainWriteBufStatus);
+			
+			changeTrackingCompState->ctfull_bufs_added = 0;	
+			
+			break;
+		} // while(1)
+		
+		if (fileTransient)
+		{
+			ChangeTracking_CloseFile(fileTransient);
+		}
+		
+		if (fileFull)
+		{
+			ChangeTracking_CloseFile(fileFull);
+		}
+				
+		if (buf)
+		{
+			pfree(buf);
+		}
+	}
+	
+	LWLockRelease(ChangeTrackingWriteLock);
+	LWLockRelease(ChangeTrackingCompactLock);
+}
+
+/*
  * This routine will normally be called by an external process.
  * 
  * It will do the following:
@@ -2801,7 +2974,28 @@ ChangeTrackingIsCompactingInProgress(void)
 	 */
 	return changeTrackingCompState->in_progress;
 }
+
+void
+ChangeTrackingSetXLogEndLocation(XLogRecPtr upto_lsn)
+{
+	LWLockAcquire(ChangeTrackingCompactLock, LW_EXCLUSIVE);
+
+	changeTrackingCompState->xlog_end_location = upto_lsn;
 	
+	LWLockRelease(ChangeTrackingCompactLock);
+}
+
+
+void 
+ChangeTracking_DoFullCompactingRoundIfNeeded(void)
+{
+	if (! (changeTrackingCompState->xlog_end_location.xlogid == 0 &&
+		   changeTrackingCompState->xlog_end_location.xrecoff == 0))
+	{
+		ChangeTracking_DoFullCompactingRound(&changeTrackingCompState->xlog_end_location);
+	}
+}
+
 /*
  * This routine must be called before resync is started
  * and after the last call to ChangeTracking_CompactLogsIfPossible(),
@@ -2863,6 +3057,10 @@ void ChangeTracking_DoFullCompactingRound(XLogRecPtr* upto_lsn)
 		ChangeTracking_ResetBufStatus(CTCompactWriteBufStatus);
 		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT, upto_lsn);
 		ChangeTracking_DropLogFile(CTF_LOG_TRANSIENT);
+		
+		upto_lsn = NULL;
+		changeTrackingCompState->xlog_end_location.xlogid = 0;
+		changeTrackingCompState->xlog_end_location.xrecoff = 0;
 	}
 
 	/* step (2) */
@@ -3038,6 +3236,112 @@ int ChangeTracking_CompactLogFile(CTFType source, CTFType dest, XLogRecPtr*	upto
 	return 0;
 }
 
+/* 
+ * find last LSN recorded in Change Tracking Full Log file
+ */
+void
+ChangeTracking_GetLastChangeTrackingLogEndLoc(XLogRecPtr *lastChangeTrackingLogEndLoc)
+{
+	File		file;
+	CTFType		ftype = CTF_LOG_FULL;
+	int64		position = 0;
+	int64		numBlocks = 0;
+	int			nbytes = 0;
+	char		*buf = NULL;
+
+	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
+
+	while (1)
+	{
+		errno = 0;
+		file = ChangeTracking_OpenFile(ftype);	
+		
+		if (file > 0)
+		{
+			position = FileSeek(file, 0, SEEK_END); 
+			
+			if (position < 0)
+			{
+				ereport(WARNING,
+						(errcode_for_file_access(),
+						 errmsg("unable to seek to end in change tracking '%s' file : %m",
+								ChangeTracking_FtypeToString(ftype))));			
+				break;
+			}			
+			
+			numBlocks = position / CHANGETRACKING_BLCKSZ;
+			
+			if (numBlocks == 0)
+			{
+				position = 0;
+			}
+			else
+			{ 
+				position = (numBlocks - 1) * CHANGETRACKING_BLCKSZ;
+			}
+			
+			FileSeek(file, position, SEEK_SET); 		
+		}
+		else
+		{
+			ereport(WARNING,
+					(errcode_for_file_access(),
+					 errmsg("unable to open change tracking '%s' file : %m",
+							ChangeTracking_FtypeToString(ftype))));			
+			break;
+		}
+		
+		buf = MemoryContextAlloc(TopMemoryContext, CHANGETRACKING_BLCKSZ);
+		if (buf == NULL)
+		{
+			ChangeTracking_CloseFile(file);
+			LWLockRelease(ChangeTrackingWriteLock);
+			
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 (errmsg("could not allocate memory for change tracking log buffer"))));
+		}
+				
+		MemSet(buf, 0, CHANGETRACKING_BLCKSZ);
+		
+		errno = 0;
+		nbytes = FileRead(file, buf, CHANGETRACKING_BLCKSZ);
+		
+		if (nbytes == CHANGETRACKING_BLCKSZ)
+		{ 
+			ChangeTrackingPageHeader	*header;
+			ChangeTrackingRecord		*record;
+			char						*bufTemp = buf;
+
+			header = (ChangeTrackingPageHeader *) bufTemp;
+			bufTemp += sizeof(ChangeTrackingPageHeader) + sizeof(ChangeTrackingRecord) * (header->numrecords - 1);
+			record = (ChangeTrackingRecord *) bufTemp;
+			
+			*lastChangeTrackingLogEndLoc = record->xlogLocation;
+		}
+		else
+		{
+			ereport(WARNING,
+					(errcode_for_file_access(),
+					 errmsg("unable to read change tracking '%s' file : %m",
+							ChangeTracking_FtypeToString(ftype))));		
+		}
+		
+		break;
+	}
+	
+	if (file)
+	{
+		ChangeTracking_CloseFile(file);
+	}
+	
+	LWLockRelease(ChangeTrackingWriteLock);
+
+	if (buf)
+	{
+		pfree(buf);
+	}
+}	
 
 /*
  * Any RM will not change more than 5 blocks per xlog record. The only exception

@@ -10775,6 +10775,7 @@ int XLogAddRecordsToChangeTracking(
 	CheckPoint	redoCheckpoint;
 	XLogRecPtr	startLoc;	
 	XLogRecPtr	lastEndLoc;	
+	XLogRecPtr	lastChangeTrackingLogEndLoc = {0, 0};
 	int count = 0;
 	
 	
@@ -10907,29 +10908,42 @@ int XLogAddRecordsToChangeTracking(
 			}
 		}
 	}
-	
-
+		
 	/*
 	 * We now need to make sure that (in the case of crash recovery) there are no
-	 * records in the CT logs that have (lsn > highest lsn in xlog). In order to
-	 * do so we need to find out the last xlog lsn
+	 * records in the change tracking logs that have lsn higher than the highest lsn in xlog. 
+	 *
+	 *			a) Find the highest lsn in xlog
+	 *			b) Find the highest lsn in change tracking log files
+	 *			c) if the highest lsn in change tracking > the highest lsn in xlog then 
+	 *					i) store in compacting shared memory the highest lsn in xlog
+	 *					ii) Flush all data into CT_LOG_FULL
+	 *					iii) Rename CT_LOG_FULL to CT_LOG_TRANSIENT 
+	 *			d) after database is started the compacting (CT_LOG_TRANSIENT) will discard all records from 
+	 *			   change tracking log file that are higher than the highest lsn in xlog
 	 */
-	if (lastChangeTrackingEndLoc != NULL)
+	if (lastChangeTrackingEndLoc == NULL)
 	{
 		/* read xlog till the end to get last lsn on disk (EndRecPtr) */
 		while(record != NULL)
 			record = XLogReadRecord(NULL, LOG);
+		
+		ChangeTracking_GetLastChangeTrackingLogEndLoc(&lastChangeTrackingLogEndLoc);
 
-		/* ChangeTracking_DoFullCompactingRound(endlsn) will discard CT recs with lsn < endlsn */
-		if(XLByteLT(EndRecPtr, *lastChangeTrackingEndLoc))
+		if (! (lastChangeTrackingLogEndLoc.xlogid == 0 && lastChangeTrackingLogEndLoc.xrecoff == 0) &&
+			XLByteLT(EndRecPtr, lastChangeTrackingLogEndLoc))
 		{
-			elog(LOG, "changetracking: found last changetracking LSN (%s) higher than xlog LSN (%s). "
-					  "Cleaning up invalid records", 
-					  XLogLocationToString(lastChangeTrackingEndLoc),
-					  XLogLocationToString(&EndRecPtr));
-
+			elog(LOG, 
+				 "changetracking: "
+				 "found last changetracking log LSN (%s) higher than last xlog LSN, "
+				 "invalid records will be discarded", 
+				 XLogLocationToString(&lastChangeTrackingLogEndLoc));
+			
+			elog(LOG, "xlog LSN (%s)", XLogLocationToString(&EndRecPtr));
+			
 			ChangeTracking_FsyncDataIntoLog(CTF_LOG_FULL);
-			ChangeTracking_DoFullCompactingRound(&EndRecPtr);
+			ChangeTrackingSetXLogEndLocation(EndRecPtr);
+			ChangeTracking_CreateTransientLog();
 		}
 	}
 	

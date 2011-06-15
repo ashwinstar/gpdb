@@ -346,6 +346,8 @@ extern ChangeTrackingResult* ChangeTracking_GetChanges(ChangeTrackingRequest* re
 extern void ChangeTracking_FreeRequest(ChangeTrackingRequest* request);
 extern void ChangeTracking_FreeResult(ChangeTrackingResult* result);
 
+extern void ChangeTracking_GetLastChangeTrackingLogEndLoc(XLogRecPtr *lastChangeTrackingLogEndLoc);
+
 // -----------------------------------------------------------------------------
 // Shmem
 // -----------------------------------------------------------------------------
@@ -375,6 +377,12 @@ typedef struct ChangeTrackingLogCompactingStateData
 	uint32			ctfull_bufs_added;    /* num bufs added to LOG_FULL since last time ran compacting */
 	uint32			ctcompact_bufs_added; /* num bufs added to LOG_COMPACT since last time ran compacting */
 	bool			in_progress;
+	XLogRecPtr		xlog_end_location;	
+		/* 
+		 * Populated during crash recovery 
+		 * if Change Tracking log lsn is higher than XLOG lsn. 
+		 * All records with higher lsn will be discarded from Change Tracking log file.
+		 */
 	
 } ChangeTrackingLogCompactingStateData;
 
@@ -393,6 +401,11 @@ extern void ChangeTrackingShmemInit(void);
  */
 extern void ChangeTrackingShmemReset(void);
 
+extern void ChangeTrackingSetXLogEndLocation(XLogRecPtr upto_lsn);
+
+extern void ChangeTracking_DoFullCompactingRoundIfNeeded(void);
+
+extern void ChangeTracking_CreateTransientLog(void);
 
 #endif   /* CDBRESYNCHRONIZECHANGETRACKING_H */
 
