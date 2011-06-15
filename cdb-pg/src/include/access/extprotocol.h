@@ -10,10 +10,8 @@
 #ifndef EXTPROTOCOL_H
 #define EXTPROTOCOL_H
 
-//#include "lib/stringinfo.h"
-//#include "nodes/nodes.h"
-//#include "utils/rel.h"
-
+#include "nodes/nodes.h"
+#include "utils/rel.h"
 
 /*
  * ExtProtocolData is the node type that is passed as fmgr "context" info
