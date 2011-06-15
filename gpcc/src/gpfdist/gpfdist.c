@@ -2228,40 +2228,43 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
  * 5) create the gpfdist log file and handle stderr/out redirection.
  * 6) sit and wait for an event.
  */
-int main(int argc, const char* const argv[])
+int gpfdist_init(int argc, const char* const argv[])
 {
+	/*
+	 * Comment
+	 */
 	if (0 != apr_app_initialize(&argc, &argv, 0))
 		gfatal(FLINE, "apr_app_initialize failed");
 	atexit(apr_terminate);
-
+	
 	if (0 != apr_pool_create(&gcb.pool, 0))
 		gfatal(FLINE, "apr_app_initialize failed");
-
+	
 	apr_signal_init(gcb.pool);
-
+	
 	gcb.session.tab = apr_hash_make(gcb.pool);
-
+	
 	parse_command_line(argc, argv, gcb.pool);
-
+	
 #ifndef WIN32
 #ifdef SIGPIPE
 	signal(SIGPIPE, SIG_IGN);
 #endif
 #endif
 	/*
-	 apr_signal(SIGINT, process_signal);
+	 * apr_signal(SIGINT, process_signal);
 	 */
 	apr_signal(SIGTERM, process_signal);
 	if (opt.V)
 		putenv("EVENT_SHOW_METHOD=1");
 	putenv("EVENT_NOKQUEUE=1");
-
+	
 	event_init();
 	http_setup();
-
+	
 	printf("Serving HTTP on port %d, directory %s\n", opt.p, opt.d);
 	fflush(stdout);
-
+	
 	/* redirect stderr and stdout to log */
 	if (opt.l)
 	{
@@ -2274,6 +2277,301 @@ int main(int argc, const char* const argv[])
 		setlinebuf(stdout);
 #endif
 	}
+	
+	/* 
+	 * must identify errors in calls above and return non-zero for them
+	 * behaviour required for the Windows service case
+	 */
+	return 0;
+}
 
+int gpfdist_run()
+{
 	return event_dispatch();
 }
+
+#ifndef WIN32
+
+int main(int argc, const char* const argv[])
+{
+	gpfdist_init(argc, argv);
+	return gpfdist_run();
+}
+
+
+#else   /* in Windows gpfdist may run as a Windows service or a console application  */
+
+
+SERVICE_STATUS          ServiceStatus; 
+SERVICE_STATUS_HANDLE   hStatus;
+
+#define CMD_LINE_ARG_MAX_SIZE 1000
+#define CMD_LINE_ARG_SIZE 500
+#define CMD_LINE_ARG_NUM 40
+char* cmd_line_buffer[CMD_LINE_ARG_NUM];
+int cmd_line_args;
+
+void  ServiceMain(int argc, char** argv); 
+void  ControlHandler(DWORD request); 
+
+
+/* gpfdist service registration on the WINDOWS command line
+ * sc create gpfdist binpath= "c:\temp\gpfdist.exe param1 param2 param3"
+ * sc delete gpfdist
+ */
+
+/* HELPERS - START */
+void report_event(LPCTSTR _error_msg) 
+{ 
+	HANDLE hEventSource;
+	LPCTSTR lpszStrings[2];
+	TCHAR Buffer[100];
+	
+	hEventSource = RegisterEventSource(NULL, TEXT("gpfdist"));
+	
+	if( NULL != hEventSource )
+	{
+		memcpy(Buffer, _error_msg, 100);
+		
+		lpszStrings[0] = TEXT("gpfdist");
+		lpszStrings[1] = Buffer;
+		
+		ReportEvent(hEventSource,        /* event log handle */
+					EVENTLOG_ERROR_TYPE, /* event type */
+					0,                   /* event category */
+					((DWORD)0xC0020100L),           /* event identifier */
+					NULL,                /* no security identifier */
+					2,                   /* size of lpszStrings array */
+					0,                   /* no binary data */
+					lpszStrings,         /* array of strings */
+					NULL);               /* no binary data */
+		
+		DeregisterEventSource(hEventSource);
+	}
+}
+
+int verify_buf_size(char** pBuf, const char* _in_val)
+{
+	int val_len, new_len;
+	
+	val_len = (int)strlen(_in_val);
+	if (val_len >= CMD_LINE_ARG_SIZE)
+	{
+		new_len = ((val_len+1) >= CMD_LINE_ARG_MAX_SIZE) ? CMD_LINE_ARG_MAX_SIZE : (val_len+1);
+		free(*pBuf);
+		*pBuf = (char*)malloc(new_len);
+		memset(*pBuf, 0, new_len);
+	}
+	else 
+	{
+		new_len = val_len;
+	}
+
+	
+	return new_len;
+}
+
+void init_cmd_buffer(int argc, const char* const argv[])
+{
+	int i;
+	/* 1. initialize command line params buffer*/
+	for (i = 0; i < CMD_LINE_ARG_NUM; i++)
+	{
+		cmd_line_buffer[i] = (char*)malloc(CMD_LINE_ARG_SIZE);
+		memset(cmd_line_buffer[i], 0, CMD_LINE_ARG_SIZE);
+	}
+	
+	/* 2. the number of variables cannot be higher than a
+	 *    a predifined const, that is because - down the line
+	 *    this values get to a const buffer whose size is 
+	 *    defined at compile time
+	 */
+	cmd_line_args = (argc <= CMD_LINE_ARG_NUM) ? argc : CMD_LINE_ARG_NUM;
+	if (argc > CMD_LINE_ARG_NUM)
+	{
+		char msg[200] = {0};
+		sprintf(msg, "too many parameters - maximum allowed: %d.", CMD_LINE_ARG_NUM);
+		report_event(TEXT("msg"));
+	}
+	
+	
+	for (i = 0; i < cmd_line_args; i++)
+	{
+		int len;
+		len = verify_buf_size(&cmd_line_buffer[i], argv[i]);
+		memcpy(cmd_line_buffer[i], argv[i], len);
+	}
+}
+
+void clean_cmd_buffer()
+{
+	int i;
+	for (i = 0; i < CMD_LINE_ARG_NUM; i++)
+	{
+		free(cmd_line_buffer[i]);
+	}
+}
+
+void init_service_status()
+{
+	ServiceStatus.dwServiceType = SERVICE_WIN32; 
+	ServiceStatus.dwCurrentState = SERVICE_START_PENDING; 
+	ServiceStatus.dwControlsAccepted   =  SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
+	ServiceStatus.dwWin32ExitCode = 0; 
+	ServiceStatus.dwServiceSpecificExitCode = 0; 
+	ServiceStatus.dwCheckPoint = 0; 
+	ServiceStatus.dwWaitHint = 0; 
+}
+
+void do_set_srv_status(DWORD _currentState, DWORD _exitCode)
+{
+	ServiceStatus.dwCurrentState = _currentState; 
+	ServiceStatus.dwWin32ExitCode = _exitCode; 
+	SetServiceStatus(hStatus, &ServiceStatus); 
+}
+
+void init_services_table(SERVICE_TABLE_ENTRY* ServiceTable)
+{
+	ServiceTable[0].lpServiceName = (LPSTR)"gpfdist";
+	ServiceTable[0].lpServiceProc = (LPSERVICE_MAIN_FUNCTIONA)ServiceMain;
+	ServiceTable[1].lpServiceName = (LPSTR)NULL;
+	ServiceTable[1].lpServiceProc = (LPSERVICE_MAIN_FUNCTIONA)NULL;
+	
+}
+/* HELPERS - STOP */
+
+int main(int argc, const char* const argv[])
+{
+	int main_ret = 0, srv_ret;
+	
+	/*
+	 * 1. command line parameters transfer to a global buffer - for ServiceMain
+	 */
+	init_cmd_buffer(argc, argv);		
+
+	/*
+	 * 2. services table init
+	 */
+	SERVICE_TABLE_ENTRY ServiceTable[2];
+	init_services_table(ServiceTable);
+	
+	/*
+	 * 3. Start the control dispatcher thread for our service
+	 */
+	srv_ret = StartServiceCtrlDispatcher(ServiceTable);
+	if (0 == srv_ret) /* program is being run as a Windows console application */
+	{
+		gpfdist_init(argc, argv);
+		main_ret = gpfdist_run();
+	}
+
+	
+	return main_ret;
+}
+
+void ServiceMain(int argc, char** argv) 
+{ 	
+	int error = 0; 
+	init_service_status();
+	
+	hStatus = RegisterServiceCtrlHandler((LPCSTR)"gpfdist", (LPHANDLER_FUNCTION)ControlHandler); 
+	if (hStatus == (SERVICE_STATUS_HANDLE)0) 
+	{
+		/*
+		 * Registering Control Handler failed
+		 */
+		return; 
+	}  
+	/* 
+	 * Initialize Service
+	 * If we don't pass a const char* const [], to gpfdist_init
+	 * we will get a warning that will fail the build
+	 */
+	const char* const buf[CMD_LINE_ARG_NUM] = {
+		cmd_line_buffer[0], 
+		cmd_line_buffer[1],
+		cmd_line_buffer[2], 
+		cmd_line_buffer[3],
+		cmd_line_buffer[4], 
+		cmd_line_buffer[5],
+		cmd_line_buffer[6], 
+		cmd_line_buffer[7],
+		cmd_line_buffer[8], 
+		cmd_line_buffer[9],
+		cmd_line_buffer[10], 
+		cmd_line_buffer[11],
+		cmd_line_buffer[12], 
+		cmd_line_buffer[13],
+		cmd_line_buffer[14], 
+		cmd_line_buffer[15],
+		cmd_line_buffer[16], 
+		cmd_line_buffer[17],
+		cmd_line_buffer[18], 
+		cmd_line_buffer[19],
+		cmd_line_buffer[20], 
+		cmd_line_buffer[21],
+		cmd_line_buffer[22], 
+		cmd_line_buffer[23],
+		cmd_line_buffer[24], 
+		cmd_line_buffer[25],
+		cmd_line_buffer[26], 
+		cmd_line_buffer[27],
+		cmd_line_buffer[28], 
+		cmd_line_buffer[29],
+		cmd_line_buffer[30],
+		cmd_line_buffer[31], 
+		cmd_line_buffer[32],
+		cmd_line_buffer[33], 
+		cmd_line_buffer[34],
+		cmd_line_buffer[35], 
+		cmd_line_buffer[36],
+		cmd_line_buffer[37], 
+		cmd_line_buffer[38],
+		cmd_line_buffer[39]
+	};	
+	error = gpfdist_init(cmd_line_args, buf); 
+	if (error != 0) 
+	{
+		/*
+		 * Initialization failed
+		 */
+		do_set_srv_status(SERVICE_STOPPED, -1);
+		return; 
+	} 
+	else
+	{
+		do_set_srv_status(SERVICE_RUNNING, 0);
+	}
+	
+	/*
+	 * free the command line arguments buffer - it's not used anymore
+	 */
+	clean_cmd_buffer();
+	
+	/*
+	 * actual service work
+	 */
+	gpfdist_run();
+} 
+
+void ControlHandler(DWORD request) 
+{ 
+	switch(request) 
+	{ 
+		case SERVICE_CONTROL_STOP: 
+		case SERVICE_CONTROL_SHUTDOWN:
+		{
+			do_set_srv_status(SERVICE_STOPPED, 0);
+			return;
+		}
+			
+		default:
+			break;
+	} 
+	
+	/*
+	 * Report current status
+	 */
+	do_set_srv_status(SERVICE_RUNNING, 0);
+}
+#endif
