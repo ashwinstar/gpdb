@@ -12,10 +12,13 @@ endif
 ifdef srcdir
 INCDIR= $(srcdir)/include
 SRCDIR= $(srcdir)/src
+BUILDDIR= ./src
 else
 INCDIR= include
 SRCDIR= src
+BUILDDIR= src
 endif
+
 ifneq ($(PORTNAME), win32)
 override CFLAGS += $(PTHREAD_CFLAGS) -pthread
 endif
@@ -26,7 +29,7 @@ override LDFLAGS  += -lyaml
 FILES     = main.o mapred.o parse.o yaml_scan.o yaml_parse.o 
 GENFILES  = yaml_parse.h yaml_parse.c yaml_scan.c yaml_scan.h
 
-OBJS      = $(addprefix $(SRCDIR)/, $(FILES))
+OBJS      = $(addprefix $(BUILDDIR)/, $(FILES))
 GENOBJS   = $(addprefix $(SRCDIR)/, $(GENFILES))
 
 FLEXFLAGS = -i
@@ -44,8 +47,9 @@ internal:
 check:
 	$(MAKE) -C test
 
-$(srcdir)/yaml_scan.c: yaml_scan.l
+$(SRCDIR)/yaml_scan.c: $(SRCDIR)/yaml_scan.l
 ifdef FLEX
+	cd $(SRCDIR) ; \
 	$(FLEX) $(FLEXFLAGS) -o'$@' $<
 else
 	@$(missing) flex $< $@
@@ -83,8 +87,8 @@ clean distclean maintainer-clean:
 # Other dependencies
 $(SRCDIR)/yaml_parse.c  : $(INCDIR)/parser.h $(INCDIR)/mapred.h
 $(SRCDIR)/yaml_scan.c   : $(INCDIR)/parser.h $(INCDIR)/mapred.h
-$(SRCDIR)/parse.o       : $(SRCDIR)/yaml_parse.h
-$(SRCDIR)/parse.o       : $(INCDIR)/parser.h $(INCDIR)/mapred.h
-$(SRCDIR)/mapred.o      : $(INCDIR)/parser.h $(INCDIR)/mapred.h
-$(SRCDIR)/main.o        : $(INCDIR)/mapred.h
+$(BUILDDIR)/parse.o       : $(SRCDIR)/yaml_parse.h
+$(BUILDDIR)/parse.o       : $(INCDIR)/parser.h $(INCDIR)/mapred.h
+$(BUILDDIR)/mapred.o      : $(INCDIR)/parser.h $(INCDIR)/mapred.h
+$(BUILDDIR)/main.o        : $(INCDIR)/mapred.h
 
