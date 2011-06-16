@@ -573,7 +573,7 @@ Datum LWGEOM_gist_consistent(PG_FUNCTION_ARGS)
 
 	POSTGIS_DEBUG(2, "GIST: LWGEOM_gist_consistent called");
 
-	if ( DatumGetPointer(PG_GETARG_DATUM(1)) == NULL )
+	if ( PG_GETARG_POINTER(1) == NULL )
 	{
 		/*elog(NOTICE,"LWGEOM_gist_consistent:: got null query!"); */
 		PG_RETURN_BOOL(false); /* null query - this is screwy! */
