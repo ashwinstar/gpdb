@@ -424,7 +424,7 @@ Datum BOX2DFLOAT4_combine(PG_FUNCTION_ARGS)
 	/* combine_bbox(BOX3D, null) => BOX3D */
 	if (geom_ptr == NULL)
 	{
-		memcpy(result, DatumGetPointer(PG_GETARG_DATUM(0)), sizeof(BOX2DFLOAT4));
+		memcpy(result, PG_GETARG_POINTER(0), sizeof(BOX2DFLOAT4));
 		PG_RETURN_POINTER(result);
 	}
 
@@ -434,11 +434,11 @@ Datum BOX2DFLOAT4_combine(PG_FUNCTION_ARGS)
 	if ( ! getbox2d_p(SERIALIZED_FORM(lwgeom), &box) )
 	{
 		/* must be the empty geom */
-		memcpy(result, DatumGetPointer(PG_GETARG_DATUM(0)), sizeof(BOX2DFLOAT4));
+		memcpy(result, PG_GETARG_POINTER(0), sizeof(BOX2DFLOAT4));
 		PG_RETURN_POINTER(result);
 	}
 
-	a = (BOX2DFLOAT4 *)DatumGetPointer(PG_GETARG_DATUM(0));
+	a = (BOX2DFLOAT4 *)PG_GETARG_POINTER(0);
 	b = &box;
 
 	result->xmax = LWGEOM_Maxf(a->xmax, b->xmax);
