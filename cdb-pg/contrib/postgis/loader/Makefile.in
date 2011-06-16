@@ -16,9 +16,16 @@
 # the INSTALL and DESTDIR variables so we can get the correct install paths. 
 # Hence we include the PGXS Makefile here, but ensure that we override the
 # 'all' and 'install' targets with the ones we really want to use below.
+ifdef USE_PGXS
 PG_CONFIG = @PGCONFIG@
-PGXS := @PGXS@
+PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
+else
+subdir = contrib/postgis/loader
+top_builddir = ../../..
+include $(top_builddir)/src/Makefile.global
+include $(top_srcdir)/contrib/contrib-global.mk
+endif
 
 # Set CFLAGS afer PGXS, otherwise it will get overwritten with the PGXS
 # version which is not what we want. 

@@ -41,9 +41,18 @@ DBLATEX = @DBLATEX@
 IMAGEMAGICK = @IMAGEMAGICK@
 
 # Directories for postgresql subdirectories
-PGSQL_DOCDIR=@PGSQL_DOCDIR@
-PGSQL_MANDIR=@PGSQL_MANDIR@
-PGSQL_SHAREDIR=@PGSQL_SHAREDIR@
+ifdef USE_PGXS
+PG_CONFIG = @PGCONFIG@
+PGSQL_DOCDIR = $(shell $(PG_CONFIG) --docdir)
+PGSQL_MANDIR = $(shell $(PG_CONFIG) --mandir)
+PGSQL_SHAREDIR = $(shell $(PG_CONFIG) --sharedir)
+else
+top_builddir = ../../..
+include $(top_builddir)/src/Makefile.global
+PGSQL_DOCDIR = $(docdir)
+PGSQL_MANDIR = $(mandir)
+PGSQL_SHAREDIR = $(datadir)
+endif
 
 # If XSLTPROC or XSLBASE were not found during configure, we cannot
 # build the documentation

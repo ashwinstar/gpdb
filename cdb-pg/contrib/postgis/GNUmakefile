@@ -4,7 +4,7 @@
 #
 #-----------------------------------------------------
 
-all: postgis loaderdumper utils
+all: config.status postgis loaderdumper utils
 	@echo "PostGIS was built successfully. Ready to install." 
 
 install: all postgis-install loaderdumper-install
@@ -44,16 +44,18 @@ liblwgeom-clean:
 	$(MAKE) -C liblwgeom clean
 
 postgis: liblwgeom
-	$(MAKE) -C postgis 
+	$(MAKE) -C postgis all
 
 postgis-clean:
 	$(MAKE) -C postgis clean
 
 postgis-install:
+	$(MAKE) -C postgis deps-install
 	$(MAKE) -C postgis install
 
 postgis-uninstall:
 	$(MAKE) -C postgis uninstall
+	$(MAKE) -C postgis deps-uninstall
 
 loaderdumper:
 	$(MAKE) -C loader
@@ -103,10 +105,13 @@ docs-uninstall:
 utils:
 	$(MAKE) -C utils
 
-configure: configure.in
-	./autogen.sh
+BLD_TOP=../../..
+include $(BLD_TOP)/Makefile.global     # for BLD_ARCH
+GEOS_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/geos-3.2.2
+GEOS_CONFIG=$(GEOS_DIR)/bin/geos-config
+PROJ_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/proj-4.7.0
 
-config.status: configure
-	./configure
+config.status:
+	GEOS_PREFIX=$(GEOS_DIR) ./configure --with-geosconfig=$(GEOS_CONFIG) --with-projdir=$(PROJ_DIR)
 
 .PHONY: utils liblwgeom

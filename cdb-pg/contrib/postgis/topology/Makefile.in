@@ -12,9 +12,16 @@ SQL_OBJS=topology.sql.in
 EXTRA_CLEAN=$(SQL_OBJS)
 
 # PGXS information
-PG_CONFIG = @PGCONFIG@ 
-PGXS := @PGXS@
+ifdef USE_PGXS
+PG_CONFIG = @PGCONFIG@
+PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
+else
+subdir = contrib/postgis/topology
+top_builddir = ../../..
+include $(top_builddir)/src/Makefile.global
+include $(top_srcdir)/contrib/contrib-global.mk
+endif
 
 
 # Unfortunately we have to copy this from the PGXS Makefile as it only gets picked up

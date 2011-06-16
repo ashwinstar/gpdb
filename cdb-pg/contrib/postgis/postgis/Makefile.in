@@ -59,17 +59,29 @@ OBJS=$(PG_OBJS)
 # to an existing liblwgeom.so in the PostgreSQL $libdir supplied by an
 # older version of PostGIS, rather than with the static liblwgeom.a 
 # supplied with newer versions of PostGIS
-PG_CPPFLAGS+=@CPPFLAGS@ -I../liblwgeom
-SHLIB_LINK+=@SHLIB_LINK@ ../liblwgeom/liblwgeom.a
+BLD_TOP=../../../..
+include $(BLD_TOP)/Makefile.global     # for BLD_ARCH
+GEOS_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/geos-3.2.2
+GEOS_CONFIG=$(GEOS_DIR)/bin/geos-config
+PROJ_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/proj-4.7.0
+
+PG_CPPFLAGS+= -I$(GEOS_DIR)/include -I$(PROJ_DIR)/include -I../liblwgeom
+SHLIB_LINK+= -L$(GEOS_DIR)/lib -L$(PROJ_DIR)/lib -lgeos_c -lproj ../liblwgeom/liblwgeom.a
 
 # Extra files to remove during 'make clean'
 EXTRA_CLEAN=$(SQL_OBJS)
 
-# PGXS information
-PG_CONFIG = @PGCONFIG@ 
-PGXS := @PGXS@
+ifdef USE_PGXS
+PG_CONFIG = @PGCONFIG@
+PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
-
+libdir = $(shell $(PG_CONFIG) --libdir)
+else
+subdir = contrib/postgis/postgis
+top_builddir = ../../..
+include $(top_builddir)/src/Makefile.global
+include $(top_srcdir)/contrib/contrib-global.mk
+endif
 
 # Borrow the $libdir substitution from PGXS but customise by adding the version number
 %.sql: %.sql.in
@@ -88,3 +100,10 @@ postgis_upgrade_12_to_14.sql: postgis.sql
 $(SQL_OBJS): %.in: %.in.c
 	$(CPP) -traditional-cpp $< | grep -v '^#' > $@
 
+deps-install:
+	cp $(GEOS_DIR)/lib/libgeos* $(libdir)
+	cp $(PROJ_DIR)/lib/libproj* $(libdir)
+
+deps-uninstall:
+	rm -f $(libdir)/libgeos*
+	rm -f $(libdir)/libproj*
