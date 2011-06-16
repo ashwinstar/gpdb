@@ -24,7 +24,7 @@ PYLIB_SRC=$(SRC)/pythonSrc
 LIB_DIR=$(SRC)/lib
 PYLIB_DIR=$(SRC)/ext
 
-all: lockfile paramiko pycrypto pygresql stream pychecker psi
+all: lockfile paramiko pycrypto pygresql stream pychecker psi unittest2
 
 #
 # Python Libraries
@@ -167,6 +167,14 @@ pylint:
 	@cp -r $(PYLIB_SRC)/$(LOGILAB_ASTNG_DIR)/build/lib/logilab $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/
 	@touch $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/__init__.py
 	@touch $(PYLIB_SRC)/$(PYLINT_DIR)/build/lib/logilab/__init__.py
+
+UNITTEST2_VERSION=0.5.1
+UNITTEST2_DIR=unittest2-${UNITTEST2_VERSION}
+unittest2:
+	@echo "--- unittest2"
+	cd $(PYLIB_SRC)/ && $(TAR) xzf $(UNITTEST2_DIR).tar.gz
+	cd $(PYLIB_SRC)/$(UNITTEST2_DIR)/ && python setup.py build
+	cp -r $(PYLIB_SRC)/$(UNITTEST2_DIR)/build/lib/unittest2  $(PYLIB_DIR)/
 
 
 PYTHON_FILES=`grep -l --exclude=Makefile "/bin/env python" *`\
