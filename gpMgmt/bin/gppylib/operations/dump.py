@@ -660,14 +660,18 @@ class DumpGlobal(Operation):
 class DumpConfig(Operation):
     # TODO: Should we really just give up if one of the tars fails? 
     # TODO: WorkerPool
-    def __init__(self, timestamp, master_datadir, master_port):
+    def __init__(self, timestamp, backup_dir, master_datadir, master_port):
         self.timestamp = timestamp
+        self.backup_dir = backup_dir
         self.master_datadir = master_datadir
         self.master_port = master_port
     def execute(self):
         dump_date = self.timestamp[0:8]
         config_backup_file = "gp_master_config_files_%s.tar" % self.timestamp
-        path = os.path.join(self.master_datadir, DUMP_DIR, dump_date, config_backup_file)
+        if self.backup_dir is not None:
+            path = os.path.join(self.backup_dir, DUMP_DIR, dump_date, config_backup_file)
+        else:
+            path = os.path.join(self.master_datadir, DUMP_DIR, dump_date, config_backup_file)
         logger.info("Dumping master config files")
         Command("Dumping master configuration files",
                 "tar cf %s %s/*.conf" % (path, self.master_datadir)).run(validateAfter=True)
@@ -677,7 +681,10 @@ class DumpConfig(Operation):
         primaries = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
         for seg in primaries:
             config_backup_file = "gp_segment_config_files_0_%d_%s.tar" % (seg.getSegmentDbId(), self.timestamp)
-            path = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, dump_date, config_backup_file)
+            if self.backup_dir is not None:
+                path = os.path.join(self.backup_dir, DUMP_DIR, dump_date, config_backup_file)
+            else:
+                path = os.path.join(seg.getSegmentDataDirectory(), DUMP_DIR, dump_date, config_backup_file)
             host = seg.getSegmentHostName()
             Command("Dumping segment config files",
                     "tar cf %s %s/*.conf" % (path, seg.getSegmentDataDirectory()),

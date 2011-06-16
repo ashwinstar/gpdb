@@ -181,6 +181,7 @@ class GpCronDump(Operation):
         if self.dump_config:
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
             DumpConfig(timestamp = timestamp,
+                       backup_dir = self.backup_dir,
                        master_datadir = self.master_datadir,
                        master_port = self.master_port).run()
         
