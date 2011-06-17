@@ -67,13 +67,14 @@ class GpCronDump(Operation):
         if self.exclude_dump_tables is None: self.exclude_dump_tables = []  
         if self.output_options is None: self.output_options = []
 
-        if self.dump_databases is not None:
-            self.dump_databases = self.dump_databases.split(",")
-        elif 'PGDATABASE' in os.environ:
-            self.dump_databases = [os.environ['PGDATABASE']]
-            logger.info("Setting dump database to value  of $PGDATABASE which is %s" % self.dump_database)
-        else:
-             raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
+        if not self.clear_dumps_only:
+            if self.dump_databases is not None:
+                self.dump_databases = self.dump_databases.split(",")
+            elif 'PGDATABASE' in os.environ:
+                self.dump_databases = [os.environ['PGDATABASE']]
+                logger.info("Setting dump database to value  of $PGDATABASE which is %s" % self.dump_database)
+            else:
+                 raise ExceptionNoStackTraceNeeded("Must supply -x <database name> because $PGDATABASE is not set")
 
         if options.bypass_disk_check:
             self.free_space_percent = None    
@@ -83,8 +84,9 @@ class GpCronDump(Operation):
 
     def execute(self):
         if self.clear_dumps_only:
-            return DeleteOldestDumps(master_datadir = self.master_datadir,
-                                     master_port = self.master_port).run()
+            DeleteOldestDumps(master_datadir = self.master_datadir,
+                              master_port = self.master_port).run()
+            return
 
         if self.post_script is not None:
             self._validate_run_program()
