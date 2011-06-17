@@ -1,4 +1,8 @@
-#!/bin/sh
+#!/bin/bash
+if [ -z $BASH ]; then
+        echo "[FATAL]:-gpcrondump must be invoked with bash"
+        exit 2
+fi
 if [ -f "$GPHOME/greenplum_path.sh" ]; then
         . $GPHOME/greenplum_path.sh
 else
