@@ -920,6 +920,7 @@ aocs_fetch_init(Relation relation,
 
 	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
     Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
+	aocsFetchDesc->aoEntry = aoentry;
 
 	attr = &aocsFetchDesc->storageAttributes;
 	attr->compress = (aoentry->compresslevel > 0) ? true : false;
@@ -1156,15 +1157,19 @@ aocs_fetch_finish(AOCSFetchDesc aocsFetchDesc)
 			pfree(datumStreamFetchDesc);
 		}
 	}
+	pfree(aocsFetchDesc->datumStreamFetchDesc);
 
 	AppendOnlyBlockDirectory_End_forSearch(&aocsFetchDesc->blockDirectory);
+
+	FreeAllAOCSSegFileInfo(aocsFetchDesc->segmentFileInfo, aocsFetchDesc->totalSegfiles);
+	pfree(aocsFetchDesc->segmentFileInfo);
+	aocsFetchDesc->segmentFileInfo = NULL;
+
 
 	RelationDecrementReferenceCount(aocsFetchDesc->relation);
 
 	pfree(aocsFetchDesc->segmentFileName);
 	pfree(aocsFetchDesc->basepath);
-	
-	// UNDONE: More?
 
-	pfree(aocsFetchDesc);
+	pfree(aocsFetchDesc->aoEntry);
 }

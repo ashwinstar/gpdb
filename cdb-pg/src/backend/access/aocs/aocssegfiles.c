@@ -1242,4 +1242,19 @@ aocol_compression_ratio_internal(Relation parentrel)
 	PG_RETURN_FLOAT8(compress_ratio);
 }
 
+/**
+ * Free up seginfo array.
+ */
+void
+FreeAllAOCSSegFileInfo(AOCSFileSegInfo **allAOCSSegInfo, int totalSegFiles)
+{
+	Assert(allAOCSSegInfo);
+
+	for(int file_no = 0; file_no < totalSegFiles; file_no++)
+	{
+		Assert(allAOCSSegInfo[file_no] != NULL);
+
+		pfree(allAOCSSegInfo[file_no]);
+	}
+}
 

@@ -234,6 +234,8 @@ typedef struct AppendOnlyFetchDescData
 	int				totalSegfiles;
 	FileSegInfo 	**segmentFileInfo;
 
+	AppendOnlyEntry *aoEntry;
+
 	char			*segmentFileName;
 	int				segmentFileNameMaxLen;
 

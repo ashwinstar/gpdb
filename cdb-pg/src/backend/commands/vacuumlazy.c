@@ -1138,6 +1138,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 
 		pfree(aoEntry);
 		FreeAllSegFileInfo(segfile_array, total_segfiles);
+		pfree(segfile_array);
 	}
 	
 	ereport(elevel,

@@ -129,6 +129,8 @@ typedef struct AOCSFetchDescData
 	AppendOnlyBlockDirectory	blockDirectory;
 
 	DatumStreamFetchDesc *datumStreamFetchDesc;
+	
+	AppendOnlyEntry *aoEntry;
 
 	int64	skipBlockCount;
 

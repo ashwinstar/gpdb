@@ -107,6 +107,7 @@ freeFetchDesc(BitmapAppendOnlyScanState *scanstate)
 	{
 		Assert(((BitmapAppendOnlyScan *)(scanstate->ss.ps.plan))->isAORow);
 		appendonly_fetch_finish(scanstate->baos_currentAOFetchDesc);
+		pfree(scanstate->baos_currentAOFetchDesc);
 		scanstate->baos_currentAOFetchDesc = NULL;
 	}
 
@@ -115,6 +116,7 @@ freeFetchDesc(BitmapAppendOnlyScanState *scanstate)
 		Assert(!((BitmapAppendOnlyScan *)(scanstate->ss.ps.plan))->isAORow);
 		pfree(scanstate->baos_currentAOCSFetchDesc->proj);
 		aocs_fetch_finish(scanstate->baos_currentAOCSFetchDesc);
+		pfree(scanstate->baos_currentAOCSFetchDesc);
 		scanstate->baos_currentAOCSFetchDesc = NULL;
 	}
 }

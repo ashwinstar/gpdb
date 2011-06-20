@@ -196,6 +196,7 @@ _bt_ao_check_unique(Relation rel, Relation aoRel, ItemPointer tid)
 		}
 	
 		appendonly_fetch_finish(aoFetchDesc);
+		pfree(aoFetchDesc);
 	}
 	else
 	{
@@ -227,6 +228,7 @@ _bt_ao_check_unique(Relation rel, Relation aoRel, ItemPointer tid)
 	
 		pfree(proj);
 		aocs_fetch_finish(aocsFetchDesc);
+		pfree(aocsFetchDesc);
 	}
 
 	return xwait;

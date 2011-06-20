@@ -103,6 +103,10 @@ AppendOnlyExecutorReadBlock_Init(
 	int32							usableBlockSize);
 
 static void
+AppendOnlyExecutorReadBlock_Finish(
+	AppendOnlyExecutorReadBlock		*executorReadBlock);
+
+static void
 AppendOnlyExecutorReadBlock_ResetCounts(
 	AppendOnlyExecutorReadBlock		*executorReadBlock);
 
@@ -787,6 +791,20 @@ AppendOnlyExecutorReadBlock_Init(
 
 }
 
+/*
+ * Free the space allocated inside ExexcutorReadBlock.
+ */
+static void
+AppendOnlyExecutorReadBlock_Finish(
+	AppendOnlyExecutorReadBlock *executorReadBlock)
+{
+	pfree(executorReadBlock->uncompressedBuffer);
+	executorReadBlock->uncompressedBuffer = NULL;
+	
+	destroy_memtuple_binding(executorReadBlock->mt_bind);
+	executorReadBlock->mt_bind = NULL;
+}
+
 static void
 AppendOnlyExecutorReadBlock_ResetCounts(
 	AppendOnlyExecutorReadBlock		*executorReadBlock)
@@ -1457,11 +1475,7 @@ appendonly_rescan(AppendOnlyScanDesc scan,
 	
 	scan->initedStorageRoutines = false;
 
-	if(scan->executorReadBlock.uncompressedBuffer)
-	{
-		pfree(scan->executorReadBlock.uncompressedBuffer);
-		scan->executorReadBlock.uncompressedBuffer = NULL;
-	}
+	AppendOnlyExecutorReadBlock_Finish(&scan->executorReadBlock);
 	
 	scan->aos_need_new_segfile = true;
 
@@ -1483,6 +1497,16 @@ appendonly_endscan(AppendOnlyScanDesc scan)
 
 	if (scan->aos_key)
 		pfree(scan->aos_key);
+
+	if (scan->aos_segfile_arr)
+	{
+		for (int seginfo_no = 0; seginfo_no < scan->aos_total_segfiles; seginfo_no++)
+		{
+			pfree(scan->aos_segfile_arr[seginfo_no]);
+		}
+				
+		pfree(scan->aos_segfile_arr);
+	}
 	
 	CloseScannedFileSeg(scan);	
 
@@ -1490,11 +1514,7 @@ appendonly_endscan(AppendOnlyScanDesc scan)
 	
 	scan->initedStorageRoutines = false;
 
-	if(scan->executorReadBlock.uncompressedBuffer)
-	{
-		pfree(scan->executorReadBlock.uncompressedBuffer);
-		scan->executorReadBlock.uncompressedBuffer = NULL;
-	}
+	AppendOnlyExecutorReadBlock_Finish(&scan->executorReadBlock);
 
 	pfree(scan->aos_filenamepath);
 
@@ -1822,6 +1842,7 @@ appendonly_fetch_init(
 	 * Get the pg_appendonly information for this table
 	 */
 	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
+	aoFetchDesc->aoEntry = aoentry;
 
 	/*
 	 * Fill in Append-Only Storage layer attributes.
@@ -2065,13 +2086,20 @@ appendonly_fetch_finish(AppendOnlyFetchDesc aoFetchDesc)
 
 	AppendOnlyStorageRead_FinishSession(&aoFetchDesc->storageRead);
 
+	AppendOnlyExecutorReadBlock_Finish(&aoFetchDesc->executorReadBlock);
+
 	AppendOnlyBlockDirectory_End_forSearch(&aoFetchDesc->blockDirectory);
+
+	FreeAllSegFileInfo(aoFetchDesc->segmentFileInfo, aoFetchDesc->totalSegfiles);
+	pfree(aoFetchDesc->segmentFileInfo);
+	aoFetchDesc->segmentFileInfo = NULL;
+
+	pfree(aoFetchDesc->aoEntry);
+	aoFetchDesc->aoEntry = NULL;
 	
 	pfree(aoFetchDesc->segmentFileName);
-	
-	// UNDONE: More?
+	aoFetchDesc->segmentFileName = NULL;
 
-	pfree(aoFetchDesc);
 }
 
 /*

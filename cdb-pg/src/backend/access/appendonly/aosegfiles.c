@@ -1649,13 +1649,12 @@ ao_compression_ratio_internal(Oid relid)
 void
 FreeAllSegFileInfo(FileSegInfo **allSegInfo, int totalSegFiles)
 {
-	int file_no;
-	for(file_no = 0; file_no < totalSegFiles; file_no++)
+	Assert(allSegInfo);
+
+	for(int file_no = 0; file_no < totalSegFiles; file_no++)
 	{
 		Assert(allSegInfo[file_no] != NULL);
 		
 		pfree(allSegInfo[file_no]);
 	}
-	if (allSegInfo)
-		pfree(allSegInfo);
 }

@@ -126,6 +126,7 @@ GetAOCSFileSegInfo(
 
 extern AOCSFileSegInfo **GetAllAOCSFileSegInfo(Relation prel, AppendOnlyEntry *aoEntry, Snapshot snapshot, int *totalseg);
 extern AOCSFileSegInfo **GetAllAOCSFileSegInfo_pg_aocsseg_rel(int numOfColumsn, char *relationName, AppendOnlyEntry *aoEntry, Relation pg_aocsseg_rel, Snapshot snapshot, int32 *totalseg);
+extern void FreeAllAOCSSegFileInfo(AOCSFileSegInfo **allAOCSSegInfo, int totalSegFiles);
 
 extern int64 GetAOCSTotalBytes(Relation parentrel);
 
