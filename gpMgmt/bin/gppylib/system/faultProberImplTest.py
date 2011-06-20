@@ -6,7 +6,7 @@
 """
 import os
 
-from gppylib.test.testUtils import *
+from gppylib.testold.testUtils import *
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
 from gppylib.system.faultProberInterface import GpFaultProber

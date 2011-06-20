@@ -13,7 +13,7 @@ import os
 
 from gppylib.gplog import *
 from gppylib.utils import checkNotNone
-from gppylib.test.testUtils import testOutput
+from gppylib.testold.testUtils import testOutput
 from gppylib.system.osInterface import GpOsProvider
 
 logger = get_default_logger()

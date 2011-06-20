@@ -26,7 +26,7 @@ from gppylib.db import catalog
 from gppylib.db import dbconn
 from gppylib.system import configurationInterface, fileSystemInterface, osInterface
 from gppylib import pgconf
-from gppylib.test.testUtils import testOutput
+from gppylib.testold.testUtils import testOutput
 from gppylib.system.environment import GpMasterEnvironment
 
 logger = gplog.get_default_logger()

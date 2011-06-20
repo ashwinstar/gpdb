@@ -20,7 +20,7 @@ from gppylib.gplog import *
 from gppylib.utils import checkNotNone
 from gppylib.system.configurationInterface import *
 from gppylib.db import dbconn
-from gppylib.test.testUtils import testOutput
+from gppylib.testold.testUtils import testOutput
 
 logger = get_default_logger()
 

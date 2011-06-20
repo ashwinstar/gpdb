@@ -19,7 +19,7 @@ from gppylib.operations.buildMirrorSegments import *
 from gppylib.programs import programIoUtils
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
-from gppylib.test.testUtils import *
+from gppylib.testold.testUtils import *
 from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, TableLogger
 
 logger = gplog.get_default_logger()

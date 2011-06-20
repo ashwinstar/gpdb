@@ -14,7 +14,7 @@ from gppylib.commands import gp
 from gppylib.commands import base
 from gppylib.gparray import GpArray
 from gppylib import gphostcache
-from gppylib.test.testUtils import *
+from gppylib.testold.testUtils import *
 from gppylib.operations import startSegments
 
 logger = get_default_logger()

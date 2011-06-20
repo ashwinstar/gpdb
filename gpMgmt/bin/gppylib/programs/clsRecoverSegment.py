@@ -31,7 +31,7 @@ from gppylib.programs import programIoUtils
 from gppylib.programs.clsAddMirrors import validateFlexibleHeadersListAllFilespaces
 from gppylib.system import configurationInterface as configInterface
 from gppylib.system.environment import GpMasterEnvironment
-from gppylib.test.testUtils import *
+from gppylib.testold.testUtils import *
 from gppylib.utils import toNonNoneString, checkNotNone, readAllLinesFromFile, writeLinesToFile, \
                                 PathNormalizationException, normalizeAndValidateInputPath, TableLogger
 from gppylib.gphostcache import GpInterfaceToHostNameCache

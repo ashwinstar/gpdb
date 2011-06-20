@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 #
 #
-from gppylib.test.testDriver import TestDriver
+from gppylib.testold.testDriver import TestDriver
 from gppylib.programs.clsSystemState import *
 from gppylib.mainUtils import *
-from gppylib.test.testUtils import *
+from gppylib.testold.testUtils import *
 from gppylib.system import fileSystemImplTest, fileSystemInterface
 from gppylib.gplog import get_default_logger
 
