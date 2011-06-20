@@ -685,9 +685,9 @@ def notice_processor(self):
        aNotice = theNotices[messageNumber]
        m = r.match(aNotice)
        messageNumber = messageNumber + 1
-    if m:
-        global NUM_WARN_ROWS
-        NUM_WARN_ROWS = int(m.group(1))
+       if m:
+           global NUM_WARN_ROWS
+           NUM_WARN_ROWS = int(m.group(1))
 
 def handle_kill(signum, frame):
     # already dying?
@@ -2135,13 +2135,14 @@ class gpload:
 
 
     def count_errors(self):
-        if self.error_table and not self.options.D:
+        notice_processor(self)
+        if self.error_table and not self.options.D and not self.reuse_tables:
             # make sure we only get errors for our own instance
             queryStr = 'select count(*) from ' + self.error_table + " WHERE relname = '%s'" % self.extTableName
             results = self.db.query(queryStr.encode('utf-8')).getresult()
             return (results[0])[0]
-        return notice_processor(self)
-
+        return
+    
     def report_errors(self):
         errors = self.count_errors()
         if errors==1:
