@@ -1275,7 +1275,7 @@ distprep : $(ISCONFIG)
 
 installcheck-good :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
-	@cd $(BUILDIR)/src/test/regress && $(MAKE) installcheck-good
+	@cd $(BUILDDIR)/src/test/regress && $(MAKE) installcheck-good
 
 installcheck-parallel :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
