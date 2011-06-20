@@ -37,6 +37,7 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_statistic.h"
+#include "catalog/pg_tidycat.h"
 
 #include "catalog/gp_configuration.h"
 #include "catalog/gp_configuration.h"

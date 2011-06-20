@@ -52,8 +52,6 @@ TransformDecodeToCase(ParseState *pstate, List *fargs, int location)
 	if (0)
 	{
 		CaseExpr		*c	   = makeNode(CaseExpr);
-		CaseWhen		*w	   = makeNode(CaseWhen);
-		List			*whenl = list_make1(w);
 		Node			*exp1  = linitial(fargs);
 		List			*l1    = fargs;
 		ListCell		*lc;
@@ -67,7 +65,7 @@ TransformDecodeToCase(ParseState *pstate, List *fargs, int location)
 
 		c->casetype	 = InvalidOid;	/* not analyzed yet */
 		c->arg		 = (Expr *)exp1;
-		c->args		 = whenl;
+		c->args		 = NIL;
 		c->defresult = NULL;
 		
 		/* l1 has at least 2 elements (Elts) (after we skip the head).
@@ -84,9 +82,15 @@ TransformDecodeToCase(ParseState *pstate, List *fargs, int location)
 		lc = lnext(lc);
 		nElts--;
 
+		Assert(nElts);
+
 		while (nElts)
 		{
-			Assert(nElts);
+			CaseWhen *w;
+
+			w = makeNode(CaseWhen);
+
+			c->args = lappend(c->args, w);
 				
 			/* when clause - set the compare_val and result */
 			w->expr = (Expr *)lfirst(lc);
@@ -108,10 +112,8 @@ TransformDecodeToCase(ParseState *pstate, List *fargs, int location)
 				break;
 			}
 			
-			/* now at least two left */
+			/* now at least two left -- continue */
 			
-			w = makeNode(CaseWhen);
-			c->args = lappend(c->args, w);
 			
 		} /* end while */
 

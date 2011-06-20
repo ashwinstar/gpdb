@@ -56,7 +56,12 @@ gp_toolkit_test.sql: gp_toolkit_test.sql.in
 	-e 's/	/    /g' \
 	$< > $@
 
-
+# TIDYCAT_BEGIN_CODEGEN 
+TIDYCAT_BKI_SRCS := \
+	pg_foreign_data_wrapper.h \
+	pg_foreign_server.h \
+	pg_foreign_table.h 
+# TIDYCAT_END_CODEGEN 
 
 # Note: there are some undocumented dependencies on the ordering in which
 # the catalog header files are assembled into postgres.bki.  In particular,
@@ -78,7 +83,7 @@ POSTGRES_BKI_SRCS := $(addprefix $(top_srcdir)/src/include/catalog/,\
 	gp_fastsequence.h pg_extprotocol.h \
 	pg_partition.h pg_partition_rule.h pg_filespace.h pg_filespace_entry.h \
 	gp_global_sequence.h gp_persistent.h \
-	pg_foreign_data_wrapper.h pg_foreign_table.h pg_foreign_server.h \
+	$(TIDYCAT_BKI_SRCS) \
 	pg_user_mapping.h toasting.h indexing.h \
     )
 
