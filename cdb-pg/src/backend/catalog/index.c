@@ -568,15 +568,10 @@ index_create(Oid heapRelationId,
 
 	/*
 	 * We cannot allow indexing a shared relation after initdb (because
-	 * there's no way to make the entry in other databases' pg_class).
+	 * there's no way to make the entry in other databases' pg_class),
+	 * except during upgrade.
 	 */
-	if (shared_relation &&  !IsBootstrapProcessingMode())
-		/*
-		 * Special test for allowing upgrade from Greenplum Database 2.2 to 2.3.
-		 */
-		if (indexRelationId != ResQueueOidIndexId &&
-			indexRelationId != ResQueueRsqnameIndexId &&
-			indexRelationId != AuthIdRolResQueueIndexId)
+	if (shared_relation &&  !(IsBootstrapProcessingMode() || gp_upgrade_mode))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("shared indexes cannot be created after initdb")));
@@ -887,19 +882,11 @@ index_create(Oid heapRelationId,
 		Assert(indexRelation->rd_indexcxt != NULL);
 
 	/*
-	 * If we are playing tricks to upgrade Greenplum Database 2.2 to 2.3, we might be doing a CREATE INDEX
-	 * on a shared index that already exists.  If so, we don't need or want to recreate it.
-	 *
-	 * Does the index data already exist?
-
-	 if (indexRelationId == ResQueueOidIndexId ||
-			indexRelationId == ResQueueRsqnameIndexId ||
-			indexRelationId == AuthIdRolResQueueIndexId)
-	 {
-	 	if (RelationGetNumberOfBlocks(indexRelation) > 0)
-	 		skip_build = true;
-	 }
+	 * For upgrade, if we've already created the index in another database,
+	 * we don't need or want to recreate it.
 	 */
+	 if (gp_upgrade_mode && (RelationGetNumberOfBlocks(indexRelation) > 0))
+	 	skip_build = true;
 
 	/*
 	 * If this is bootstrap (initdb) time, then we don't actually fill in the

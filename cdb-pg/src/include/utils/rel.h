@@ -248,6 +248,21 @@ typedef struct StdRdOptions
 #define HEAP_MIN_FILLFACTOR			10
 #define HEAP_DEFAULT_FILLFACTOR		100
 
+typedef struct TidycatOptions
+{
+	/*
+	 *  Options only allowed during upgrade (tidycat option)
+	 *  Not all tidycat option are of interest to us:
+	 *    "shared" is not needed because it's derived from tablespace
+	 */
+	Oid         relid;          /* relid of the table in pg_class */
+	Oid         reltype_oid;    /* static reltype in pg_type */
+	Oid         toast_oid;      /* oid of the toast table */
+	Oid         toast_index;    /* oid of the toast index */
+	Oid         toast_reltype;  /* static reltype of the toast table in pg_type */
+	Oid         indexid;
+} TidycatOptions;
+
 /*
  * RelationGetFillFactor
  *		Returns the relation's fillfactor.  Note multiple eval of argument!

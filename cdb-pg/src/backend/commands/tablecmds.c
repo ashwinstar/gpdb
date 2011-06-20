@@ -532,7 +532,7 @@ DefineRelation_int(CreateStmt *stmt,
 	Datum		reloptions;
 	ListCell   *listptr;
 	AttrNumber	attnum;
-	bool		shared_relation = false;
+	TidycatOptions *tidycatOptions = NULL;
 
 	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH &&
                                  IsNormalProcessingMode() &&
@@ -634,6 +634,23 @@ DefineRelation_int(CreateStmt *stmt,
 	 */
 	reloptions = transformRelOptions((Datum) 0, stmt->options, true, false);
 
+	/*
+	 * Accept and only accept tidycat option during upgrade.
+	 *
+	 * All other storage option will be discarded during upgrade.
+	 * During bootstrap, we don't have any storage option. So, during
+	 * upgrade, we don't need it as well because we're just creating
+	 * catalog objects. Further, we overload the WITH clause to pass-in
+	 * the index oid. So, if we don't strip it out, it'll appear in
+	 * the pg_class.reloptions, and we don't want that.
+	 *
+	 */
+	if (gp_upgrade_mode)
+	{
+		tidycatOptions = tidycat_reloptions(reloptions);
+		reloptions = 0;
+	}
+
 	/* Check permissions except when using database's default */
 	if (OidIsValid(tablespaceId) && tablespaceId != MyDatabaseTableSpace)
 	{
@@ -714,6 +731,7 @@ DefineRelation_int(CreateStmt *stmt,
 	if (shouldDispatch)
 	{
 		Oid			toastRelationId = InvalidOid;
+		Oid         toastComptypeOid = InvalidOid;
 		Oid			aosegRelationId = InvalidOid;
 		Oid			aoblkdirRelationId = InvalidOid;
 		Relation	pg_class_desc;
@@ -722,6 +740,8 @@ DefineRelation_int(CreateStmt *stmt,
 		Oid			toastIndexId = InvalidOid;
 		Oid			aosegIndexId = InvalidOid;
 		Oid			aoblkdirIndexId = InvalidOid;
+		Oid         aosegComptypeOid = InvalidOid;
+		Oid         aoblkdirComptypeOid = InvalidOid;
 
 		MemoryContext oldContext;
 
@@ -742,15 +762,31 @@ DefineRelation_int(CreateStmt *stmt,
 		 *
 		 * The OID will be the relfilenode as well, so make sure it doesn't collide
 		 * with either pg_class OIDs or existing physical files.
+		 *
+		 * For upgrade, use the specified OIDs.
 		 */
-		relationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
-		comptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
-		toastRelationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
-		toastIndexId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
-		aosegRelationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
-		aosegIndexId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
-		aoblkdirRelationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
-		aoblkdirIndexId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+		if (gp_upgrade_mode && (tidycatOptions->relid != InvalidOid))
+		{
+			relationId       = tidycatOptions->relid;
+			comptypeOid      = tidycatOptions->reltype_oid;
+			toastRelationId  = tidycatOptions->toast_oid;
+			toastIndexId     = tidycatOptions->toast_index;
+			toastComptypeOid = tidycatOptions->toast_reltype;
+		}
+		else
+		{
+			relationId          = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+			comptypeOid         = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
+			toastRelationId     = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+			toastIndexId        = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+			toastComptypeOid    = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
+			aosegRelationId     = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+			aosegIndexId        = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+			aoblkdirRelationId  = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+			aoblkdirIndexId     = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+			aosegComptypeOid    = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
+			aoblkdirComptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
+		}
 
 		heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
 
@@ -758,13 +794,13 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->oidInfo.comptypeOid = comptypeOid;
 		stmt->oidInfo.toastOid = toastRelationId;
 		stmt->oidInfo.toastIndexOid = toastIndexId;
-		stmt->oidInfo.toastComptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
+		stmt->oidInfo.toastComptypeOid = toastComptypeOid;
 		stmt->oidInfo.aosegOid = aosegRelationId;
 		stmt->oidInfo.aosegIndexOid = aosegIndexId;
-		stmt->oidInfo.aosegComptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
+		stmt->oidInfo.aosegComptypeOid = aosegComptypeOid;
 		stmt->oidInfo.aoblkdirOid = aoblkdirRelationId;
 		stmt->oidInfo.aoblkdirIndexOid = aoblkdirIndexId;
-		stmt->oidInfo.aoblkdirComptypeOid = GetNewRelFileNode(tablespaceId, false,  pg_type_desc);
+		stmt->oidInfo.aoblkdirComptypeOid = aoblkdirComptypeOid;
 
 		stmt->relKind = relkind;
 		stmt->relStorage = relstorage;
@@ -823,7 +859,7 @@ DefineRelation_int(CreateStmt *stmt,
 										  /* relam */ InvalidOid,
 										  relkind,
 										  relstorage,
-										  shared_relation,
+										  tablespaceId==GLOBALTABLESPACE_OID,
 										  localHasOids,
 										  /* bufferPoolBulkLoad */ false,
 										  parentOidCount,

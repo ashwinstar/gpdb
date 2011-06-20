@@ -179,18 +179,6 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 				toastobject;
 
 	/*
-	 * Toast table is shared if and only if its parent is.
-	 *
-	 * We cannot allow toasting a shared relation after initdb (because
-	 * there's no way to mark it toasted in other databases' pg_class).
-	 */
-	shared_relation = rel->rd_rel->relisshared;
-	if (shared_relation && !IsBootstrapProcessingMode())
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("shared tables cannot be toasted after initdb")));
-
-	/*
 	 * Is it already toasted?
 	 */
 	if (rel->rd_rel->reltoastrelid != InvalidOid)
@@ -201,6 +189,18 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	 */
 	if (!RelationNeedsToastTable(rel))
 		return false;
+
+	/*
+	 * Toast table is shared if and only if its parent is.
+	 *
+	 * We cannot allow toasting a shared relation after initdb (because
+	 * there's no way to mark it toasted in other databases' pg_class).
+	 */
+	shared_relation = rel->rd_rel->relisshared;
+	if (shared_relation && !IsBootstrapProcessingMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("shared tables cannot be toasted after initdb")));
 
 	/*
 	 * Create the toast table and its index

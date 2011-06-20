@@ -148,7 +148,6 @@ DefineIndex(RangeVar *heapRelation,
 	Form_pg_index indexForm;
 	LOCKMODE	heap_lockmode;
 	bool		need_longlock = true;
-
 	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 
@@ -487,11 +486,24 @@ DefineIndex(RangeVar *heapRelation,
 	}
 
   	/*
- 	 * Parse AM-specific options, convert to text array form, validate.
-  	 */
+ 	 * Parse AM-specific options, convert to text array form, validate
+ 	 *
+	 * However, accept and only accept tidycat option during upgrade.
+	 * During bootstrap, we don't have any storage option. So, during
+	 * upgrade, we don't need it as well because we're just creating
+	 * catalog objects. Further, we overload the WITH clause to pass-in
+	 * the index oid. So, if we don't strip it out, it'll appear in
+	 * the pg_class.reloptions, and we don't want that.
+	 */
  	reloptions = transformRelOptions((Datum) 0, options, false, false);
-
-	(void) index_reloptions(amoptions, reloptions, true);
+	if (gp_upgrade_mode)
+ 	{
+ 		TidycatOptions *tidycatoptions = (TidycatOptions*) tidycat_reloptions(reloptions);
+ 		indexRelationId = tidycatoptions->indexid;
+ 		reloptions = 0;
+ 	}
+ 	else
+ 		(void) index_reloptions(amoptions, reloptions, true);
 
 	/*
 	 * Prepare arguments for index_create, primarily an IndexInfo structure.
@@ -518,8 +530,6 @@ DefineIndex(RangeVar *heapRelation,
 		{
 			Assert(stmt->idxOids == 0);
 			stmt->idxOids = NIL;
-			if (OidIsValid(indexRelationId))
-				stmt->idxOids = lappend_oid(stmt->idxOids, indexRelationId);
 		}
 
 		if ((primary || unique) && rel->rd_cdbpolicy)
@@ -542,25 +552,33 @@ DefineIndex(RangeVar *heapRelation,
 			Assert(list_length(stmt->idxOids) == 7);
 
  			indexRelationId = linitial_oid(stmt->idxOids);
- 			Assert(OidIsValid(indexRelationId));
-
  			iio->comptypeOid = lsecond_oid(stmt->idxOids);
- 			Assert(OidIsValid(iio->comptypeOid));
-
  			iio->heapOid = lthird_oid(stmt->idxOids);
- 			Assert(OidIsValid(iio->heapOid));
-
  			iio->indexOid = lfourth_oid(stmt->idxOids);
- 			Assert(OidIsValid(iio->indexOid));
-
 			iio->blkdirRelOid = lfifth_oid(stmt->idxOids);
-			Assert(OidIsValid(iio->blkdirRelOid));
-			
 			iio->blkdirIdxOid = lfirst_oid(lnext(lcfifth(stmt->idxOids)));
-			Assert(OidIsValid(iio->blkdirIdxOid));
-
 			iio->blkdirComptypeOid = lfirst_oid(lnext(lnext(lcfifth(stmt->idxOids))));
-			Assert(OidIsValid(iio->blkdirComptypeOid));
+
+
+			/* Not all Oids are used (and therefore unset) during upgrade index
+			 * creation. So, skip the Oid assert during upgrade.
+			 *
+			 * In normal operations we proactively allocate a bunch of oids to support
+			 * bitmap indexes and ao indexes, however in bootstrap/upgrade mode when we
+			 * create an index using a supplied oid we do not allocate all these
+			 * additional oids. (See the "ShouldDispatch" block below). This implies that
+			 * we cannot currently support bitmap indexes or ao indexes as part of the catalog.
+			 */
+			Insist(OidIsValid(indexRelationId));
+			if (!gp_upgrade_mode)
+			{
+	 			Insist(OidIsValid(iio->comptypeOid));
+	 			Insist(OidIsValid(iio->heapOid));
+	 			Insist(OidIsValid(iio->indexOid));
+	 			Insist(OidIsValid(iio->blkdirRelOid));
+	 			Insist(OidIsValid(iio->blkdirIdxOid));
+	 			Insist(OidIsValid(iio->blkdirComptypeOid));
+			}
 
 			quiet = true;
 		}

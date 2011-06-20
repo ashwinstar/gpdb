@@ -2619,9 +2619,9 @@ pg_tablespace_aclmask(Oid spc_oid, Oid roleid,
 
 	/*
 	 * Only shared relations can be stored in global space; don't let even
-	 * superusers override this
+	 * superusers override this, except during bootstrap and upgrade.
 	 */
-	if (spc_oid == GLOBALTABLESPACE_OID && !IsBootstrapProcessingMode())
+	if (spc_oid == GLOBALTABLESPACE_OID && !(IsBootstrapProcessingMode()||gp_upgrade_mode))
 		return 0;
 
 	/* Otherwise, superusers bypass all permission checking. */
