@@ -2093,6 +2093,10 @@ class gpload:
                 # found a temp table to reuse. no need to create one. we're done here.
                 self.tempTableName = quote_ident((resultList[0])[0])
                 self.log(self.INFO, "reusing temp table %s" % self.tempTableName)
+                
+                # truncate it so we don't use old data
+                self.do_truncate(self.tempTableName)
+                
                 return
         
             # didn't find an existing temp table suitable for reuse. Format a reusable
@@ -2341,11 +2345,12 @@ class gpload:
 
     def do_method_merge(self):
         """insert data not already in the table, update remaining items"""
-
+        
         self.table_supports_update()
         self.create_temp_table()        
         self.create_external_table()
         self.do_insert(self.tempTableName)
+        self.rowsInserted = 0 # MPP-13024. No rows inserted yet (only to temp table).
         self.do_update(self.tempTableName, 0)
         sql = 'insert into %s(' % self.schemaTable
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
@@ -2363,6 +2368,15 @@ class gpload:
         if not self.options.D:
             self.rowsInserted = self.db.query(sql.encode('utf-8'))
 
+    def do_truncate(self, tblname):
+        self.log(self.LOG, "Truncate table")
+        if not self.options.D:
+            try:
+                truncateSQLtext = "truncate %s" % tblname
+                self.db.query(truncateSQLtext.encode('utf-8'))
+            except Exception, e:
+                self.log(self.ERROR, 'could not execute truncate target %s: %s' % (tblname, str(e)))
+
     def do_method(self):
         # Is the table to be truncated before the load?
         preload = self.getconfig('gpload:preload', list, default=None)
@@ -2373,14 +2387,8 @@ class gpload:
               truncate = self.getconfig('gpload:preload:truncate',bool,False)
               self.reuse_tables = self.getconfig('gpload:preload:reuse_tables',bool,False)
         if truncate == True:
-            self.log(self.LOG, "Truncate table")
-            if not self.options.D:
-                try:
-                    truncateSQLtext = "truncate %s" % self.schemaTable
-                    self.db.query(truncateSQLtext.encode('utf-8'))
-                except Exception, e:
-                    self.log(self.ERROR, 'could not execute truncate target %s: %s' % (self.schemaTable, str(e)))
-
+              self.do_truncate(self.schemaTable)
+              
         # sql pre or post processing?
         sql = self.getconfig('gpload:sql', list, default=None)
         before   = None
