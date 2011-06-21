@@ -699,6 +699,19 @@ sub sleazify_long_strings
 		}
 	}
 
+	while (my ($kk, $vv) = each(%{$all_long_str}))
+	{
+		$all_long_str->{$kk} = doformat($vv,
+										{
+											HEAD1 => "=head1",
+											PODOVER8 => "=over 8",
+											PODBACK => "=back",
+											PODCUT => "=cut",
+											ITEM => "=item",
+										});
+	}
+
+
 	$bigh->{all_long_strings} = $all_long_str;
 
 	# see if "long" description is just a "$token" for a matching long string
@@ -857,6 +870,7 @@ sub sleazify_podhdr
 					 PODOVER8 => "=over 8",
 					 PODBACK => "=back",
 					 PODCUT => "=cut",
+					 ITEM => "=item",
 
 					 OPTIONS => join("\n", @{$itmlst}),
 					 PODITEMS => join("\n", @{$longoptlist}),

@@ -23,7 +23,7 @@ B<tidycat.pl> - generate catalog entries
 =head1 VERSION
 
  This document describes version 28 of tidycat.pl, released
- Fri Jun 17 19:03:21 2011.
+ Mon Jun 20 18:05:46 2011.
 
 =head1 SYNOPSIS
 
@@ -77,9 +77,12 @@ fresh, clean scent.  Catalog tables require several sets of
 co-ordinated modifications to multiple source files to define the
 table and indexes, and (under some circumstances) the toast tables and
 indexes (in toasting.h and toasting.c), as well as some special code
-in catalog.c and bootparse.y to aid in bootstrap and upgrade.
-tidycat.pl uses a single definition statement to generate the code
-associated with the table in multiple source files.  A sample
+in catalog.c and bootparse.y to aid in bootstrap and upgrade.  tidycat
+also updates a generated list of headers in pg_tidycat.h and the
+catalog Makefile.  The original files are copied to a special
+tidycat_backup directory in /tmp, and all generated files are written
+to /tmp.  tidycat.pl uses a single definition statement to generate
+the code associated with the table in multiple source files.  A sample
 definition for the fictional pg_foobar.h follows:
 
   /* TIDYCAT_BEGINDEF
@@ -263,6 +266,17 @@ And pg_type.h:
        _null_ _null_ ));
   #define PG_FOOBAR_RELTYPE_OID 9992
 
+=head1 CAVEATS
+
+tidycat does not modify the original files -- it writes modified
+versions of the files to /tmp.  You need to copy over the originals
+with the generated files manually.  If you need to restore the
+originals you can use the copies from the tidycat_backup directory.
+Multiple cycles of tidycat with changing definitions can leave junk in
+/tmp, and you might copy that junk into you source tree.  Do not copy
+over any generated files that are older than your latest backup
+directory.
+
 
 =head1 AUTHORS
 
@@ -336,7 +350,7 @@ BEGIN {
 	$glob_glob->{_sleazy_properties} = {};
 	$glob_glob->{_sleazy_properties}->{version} = '28';
 	$glob_glob->{_sleazy_properties}->{COPYDATES} = '2009-2011';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1308362601';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1308618346';
 	
 	$glob_glob->{dumpdef}        =  $s_dumpdef      if (defined($s_dumpdef));
 	$glob_glob->{dumpformat}     =  $s_dumpformat   if (defined($s_dumpformat));
@@ -2964,10 +2978,10 @@ if (0)
    "long" : "$toplong",
    "properties" : {
       "COPYDATES" : "2009-2011",
-      "slzy_date" : 1308362601
+      "slzy_date" : 1308618346
    },
    "short" : "generate catalog entries",
-   "version" : 28
+   "version" : "28"
 }
 
 EOF_bigstr
@@ -2997,9 +3011,12 @@ fresh, clean scent.  Catalog tables require several sets of
 co-ordinated modifications to multiple source files to define the
 table and indexes, and (under some circumstances) the toast tables and
 indexes (in toasting.h and toasting.c), as well as some special code
-in catalog.c and bootparse.y to aid in bootstrap and upgrade.
-tidycat.pl uses a single definition statement to generate the code
-associated with the table in multiple source files.  A sample
+in catalog.c and bootparse.y to aid in bootstrap and upgrade.  tidycat
+also updates a generated list of headers in pg_tidycat.h and the
+catalog Makefile.  The original files are copied to a special
+tidycat_backup directory in /tmp, and all generated files are written
+to /tmp.  tidycat.pl uses a single definition statement to generate
+the code associated with the table in multiple source files.  A sample
 definition for the fictional pg_foobar.h follows:
 
   /* TIDYCAT_BEGINDEF
@@ -3025,49 +3042,49 @@ special WITH clause for implementation-specific features of the
 catalog entry.  Currently, the relid and reltype_oid must be specified
 using unassigned oids from the unused_oids script.  The options are:
 
-=over 8
+{PODOVER8}
 
-=item CamelCase: (optional)
+{ITEM} CamelCase: (optional)
 
 If your tablename is a compound name, the index definitions look a
 little nicer if you define an appropriate camelcase name.  Otherwise,
 the default version of the name is the tablename, minus the "pg_" prefix, 
 initial letter capitalized.
 
-=item shared: (false by default)
+{ITEM} shared: (false by default)
 
 Whether the table is local to each database or shared by all.
 
-=item oid: (true by default)
+{ITEM} oid: (true by default)
 
 Whether the table has an auto-generated oid column.
 
-=item relid: (required)
+{ITEM} relid: (required)
 
 The relid of the table in pg_class.  Use unused_oids to find one.
 
-=item reltype_oid: (required for all post-3.3 tables)
+{ITEM} reltype_oid: (required for all post-3.3 tables)
 
 The static reltype in pg_type (necessary for upgrade).  Use
 unused_oids to find one.
 
-=item toast_oid: (required for all tables with text or array columns)
+{ITEM} toast_oid: (required for all tables with text or array columns)
 
 The oid of the toast table (see toasting.h).  Use unused_oids to find
 one.  tidycat will automatically detect if the table definition
 requires a toast table and return an error if it is not specified.
 
-=item toast_index: (required for all tables with toast_oid)
+{ITEM} toast_index: (required for all tables with toast_oid)
 
 The oid of the index of the toast table (see toasting.h).  Use
 unused_oids to find one.
 
-=item toast_reltype: (required for all toast tables post-3.3)
+{ITEM} toast_reltype: (required for all toast tables post-3.3)
 
 The static reltype of the toast table in pg_type (necessary for
 upgrade). Use unused_oids to find one.
 
-=item content: (optional)
+{ITEM} content: (optional)
 
 The "content" is only for catalog tables with non-standard content
 management.  "Normal" catalog tables are replicated from the master to
@@ -3077,7 +3094,7 @@ non-standard tables.  Please.  Note that this flag controls the
 generation of validation logic for checkcat; it does not control the
 catalog table tuple replication mechanisms.
 
-=back
+{PODBACK}
 
 Similarly, index definitions are unique or non-unique, and require an
 indexid (and an optional indexname).
@@ -3182,6 +3199,17 @@ And pg_type.h:
 	   record_in record_out record_recv record_send - d x f 0 -1 0 
        _null_ _null_ ));
   #define PG_FOOBAR_RELTYPE_OID 9992
+
+{HEAD1} CAVEATS
+
+tidycat does not modify the original files -- it writes modified
+versions of the files to /tmp.  You need to copy over the originals
+with the generated files manually.  If you need to restore the
+originals you can use the copies from the tidycat_backup directory.
+Multiple cycles of tidycat with changing definitions can leave junk in
+/tmp, and you might copy that junk into you source tree.  Do not copy
+over any generated files that are older than your latest backup
+directory.
 
 EOF_longstr
 
