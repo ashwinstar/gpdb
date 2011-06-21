@@ -129,7 +129,7 @@
 #define	M_ASCII		0x00ff
 
 #ifdef WIN32
-typedef char Char;
+typedef unsigned short Char;
 typedef unsigned int u_int;
 typedef unsigned char u_char;
 #define ARG_MAX (256 * 1024)
