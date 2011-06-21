@@ -6,6 +6,7 @@ from gppylib import gplog
 from gppylib.db import dbconn
 from gppylib.db.dbconn import execSQL, execSQLForSingleton
 from gppylib.commands.base import Command, REMOTE, ExecutionError
+from gppylib.commands.gp import Psql
 from gppylib.commands.unix import getUserName, findCmdInPath, curr_platform, SUNOS
 from gppylib.gparray import GpArray
 from gppylib.mainUtils import ExceptionNoStackTraceNeeded
@@ -264,16 +265,15 @@ class ValidateDumpDatabase(Operation):
                                                        exclude_dump_tables = self.exclude_dump_tables,
                                                        master_port = self.master_port).run()
 
-# MPP-13282: we cannot assume that gp_toolkit exists, so unhooking disk checks for now
-#        if self.free_space_percent is not None:
-#            ValidateDiskSpace(free_space_percent = self.free_space_percent,
-#                              compress = self.compress,
-#                              dump_database = self.dump_database,
-#                              include_dump_tables = self.include_dump_tables,
-#                              batch_default = self.batch_default,
-#                              master_port = self.master_port).run()
+        if self.free_space_percent is not None:
+            ValidateDiskSpace(free_space_percent = self.free_space_percent,
+                              compress = self.compress,
+                              dump_database = self.dump_database,
+                              include_dump_tables = self.include_dump_tables,
+                              batch_default = self.batch_default,
+                              master_port = self.master_port).run()
 
-        return  self.exclude_dump_tables
+        return self.exclude_dump_tables
 
 
 
@@ -287,6 +287,9 @@ class ValidateDiskSpace(Operation):
         self.batch_default = batch_default
         self.master_port = master_port
     def execute(self):
+        ValidateGpToolkit(database = self.dump_database,
+                          master_port = self.master_port).run()
+
         operations = []
         gparray = GpArray.initFromCatalog(dbconn.DbURL(port = self.master_port), utility=True)
         segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
@@ -348,9 +351,11 @@ class ValidateSegDiskSpace(Operation):
         lines = cmd.get_results().stdout.split('\n')
         columns = lines[1].split()
         free_space = int(columns[3])
-        
+
         if free_space == 0 or (free_space - needed_space) / free_space < self.free_space_percent / 100:
+            logger.error("Disk space: [Need: %dK, Free %dK]" % (needed_space, free_space))
             raise NotEnoughDiskSpace(free_space, needed_space)
+        logger.info("Disk space: [Need: %dK, Free %dK]" % (needed_space, free_space))
 class NotEnoughDiskSpace(Exception): 
     def __init__(self, free_space, needed_space):
         self.free_space, self.needed_space = free_space, needed_space
@@ -358,6 +363,30 @@ class NotEnoughDiskSpace(Exception):
 
 
 
+class ValidateGpToolkit(Operation):
+    def __init__(self, database, master_port):
+        self.database = database
+        self.master_port = master_port
+    def execute(self):
+        dburl = dbconn.DbURL(dbname=self.database, port=self.master_port)
+        conn = None
+        try:
+            conn = dbconn.connect(dburl)
+            count = execSQLForSingleton(conn, "select count(*) from pg_class, pg_namespace where pg_namespace.nspname = 'gp_toolkit' and pg_class.relnamespace = pg_namespace.oid")
+        finally:
+            if conn is not None:
+                conn.close()
+        if count > 0:
+            logger.debug("gp_toolkit exists within database %s." % self.database)
+            return
+        logger.info("gp_toolkit not found. Installing...")
+        Psql('Installing gp_toolkit', 
+             filename='$GPHOME/share/postgresql/gp_toolkit.sql',
+             database=self.database,
+             port=self.master_port).run(validateAfter=True)
+
+
+        
 class ValidateAllDumpDirs(Operation):
     def __init__(self, backup_dir, report_dir, batch_default, master_datadir, master_port):
         self.backup_dir = backup_dir
@@ -468,6 +497,8 @@ class ValidateDumpTargets(Operation):
         else:
             logger.info("Configuring for single database dump")
         return self.exclude_dump_tables
+
+
 
 class ValidateIncludeTargets(Operation):
     def __init__(self, dump_database, dump_schema, include_dump_tables, master_port):

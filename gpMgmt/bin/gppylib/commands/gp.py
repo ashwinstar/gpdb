@@ -693,11 +693,13 @@ class GpRecoverseg(Command):
 
 #-----------------------------------------------
 class Psql(Command):
-    def __init__(self, name, query=None, filename=None, database='template1', utilityMode=False, ctxt=LOCAL, remoteHost=None):
+    def __init__(self, name, query=None, filename=None, database='template1', port=None, utilityMode=False, ctxt=LOCAL, remoteHost=None):
         env = ''
         if utilityMode:
             env = 'PGOPTIONS="-c gp_session_role=utility"'
         cmdStr = '%s $GPHOME/bin/psql ' % env
+        if port is not None:
+            cmdStr += '-p %d ' % port
         if query is not None and filename is not None:
             raise Exception('Psql can accept only a query or a filename, not both.')
         elif query is not None:
