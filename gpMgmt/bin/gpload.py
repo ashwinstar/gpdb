@@ -2145,7 +2145,7 @@ class gpload:
             queryStr = 'select count(*) from ' + self.error_table + " WHERE relname = '%s'" % self.extTableName
             results = self.db.query(queryStr.encode('utf-8')).getresult()
             return (results[0])[0]
-        return
+        return 0
     
     def report_errors(self):
         errors = self.count_errors()
