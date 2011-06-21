@@ -187,6 +187,10 @@ def parseargs():
     elif options.duration:
         options.end = datetime.datetime.now() + options.duration
 
+    if options.duration and options.duration == datetime.timedelta(0):
+        logger.error('Please specify duration > 0')
+        parser.exit()
+
     # -c and -r options are mutually exclusive
     if options.rollback and options.clean:
         rollbackOpt = "--rollback" if "--rollback" in sys.argv else "-r"
