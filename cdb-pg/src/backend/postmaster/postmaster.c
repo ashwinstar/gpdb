@@ -3717,7 +3717,8 @@ reset_shared(int port, bool isReset)
 	}
 	else
 	{
-		ereport(LOG,
+		/* On startup, we get here before we know what file we should be using for logging */
+		ereport(DEBUG1,
 			(errmsg("setting up shared memory")));
 	}
 

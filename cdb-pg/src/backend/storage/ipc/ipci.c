@@ -199,7 +199,8 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		}
 #endif
 
-		elog(LOG, "Size not including the buffer pool %lu",
+		/* This elog happens before we know the name of the log file we are supposed to use */
+		elog(DEBUG1, "Size not including the buffer pool %lu",
 			 (unsigned long) size);
 
 		size = add_size(size, BgWriterShmemSize());
