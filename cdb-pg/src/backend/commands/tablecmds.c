@@ -12486,7 +12486,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
 					if (pg_strcasecmp(def->defname, "appendonly") == 0)
 					{
-						if (pg_strcasecmp(strVal(def->arg), "true") == 0)
+						if (IsA(def->arg, String) && pg_strcasecmp(strVal(def->arg), "true") == 0)
                         {
 							is_ao = true;
                             relstorage = RELSTORAGE_AOROWS;
@@ -12497,17 +12497,18 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 
                     if (pg_strcasecmp(def->defname, "orientation") == 0)
                     {
-						if (pg_strcasecmp(strVal(def->arg), "column") == 0)
+						if (IsA(def->arg, String) && pg_strcasecmp(strVal(def->arg), "column") == 0)
                         {
                             is_aocs = true;
                             relstorage = RELSTORAGE_AOCOLS;
                         }
                         else
                         {
-                            if (pg_strcasecmp(strVal(def->arg), "row") != 0)
+                            if (!IsA(def->arg, String) || pg_strcasecmp(strVal(def->arg), "row") != 0)
                                 ereport(ERROR,
                                         (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                         errmsg("valid orientation option is \"column\" or \"row\""),
+                                         errmsg("invalid orientation option"),
+                                         errhint("valid orientation option is \"column\" or \"row\""),
                                   			   errOmitLocation(true)));
                         }
                     }
@@ -12529,16 +12530,16 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 						force_reorg = true;
 					else
 					{
-						if (pg_strcasecmp("TRUE", strVal(def->arg)) == 0)
+						if (IsA(def->arg, String) && pg_strcasecmp("TRUE", strVal(def->arg)) == 0)
 							force_reorg = true;
-						else if (pg_strcasecmp("FALSE", strVal(def->arg)) == 0)
+						else if (IsA(def->arg, String) && pg_strcasecmp("FALSE", strVal(def->arg)) == 0)
 							force_reorg = false;
 						else
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-									 errmsg("invalid %s option \"%s\"",
-											reorg_str, strVal(def->arg)),
-													   errOmitLocation(true)));
+                            ereport(ERROR,
+                                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                     errmsg("Invalid REORGANIZE option"),
+                                     errhint("valid REORGANIZE option is \"true\" or \"false\""),
+                              			   errOmitLocation(true)));
 					}
 				}
 			}
