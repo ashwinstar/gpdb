@@ -198,7 +198,7 @@ def parseDuration(val):
 
 #############
 def print_version():
-    print '%s version 4.0.2.0 build 3' % GV.script_name
+    print '%s version $Revision$' % GV.script_name
     sys.exit(0)
 
 #############
