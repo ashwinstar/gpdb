@@ -2090,9 +2090,12 @@ appendonly_fetch_finish(AppendOnlyFetchDesc aoFetchDesc)
 
 	AppendOnlyBlockDirectory_End_forSearch(&aoFetchDesc->blockDirectory);
 
-	FreeAllSegFileInfo(aoFetchDesc->segmentFileInfo, aoFetchDesc->totalSegfiles);
-	pfree(aoFetchDesc->segmentFileInfo);
-	aoFetchDesc->segmentFileInfo = NULL;
+	if (aoFetchDesc->segmentFileInfo)
+	{
+		FreeAllSegFileInfo(aoFetchDesc->segmentFileInfo, aoFetchDesc->totalSegfiles);
+		pfree(aoFetchDesc->segmentFileInfo);
+		aoFetchDesc->segmentFileInfo = NULL;
+	}
 
 	pfree(aoFetchDesc->aoEntry);
 	aoFetchDesc->aoEntry = NULL;

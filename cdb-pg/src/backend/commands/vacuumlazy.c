@@ -1137,8 +1137,12 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		}
 
 		pfree(aoEntry);
-		FreeAllSegFileInfo(segfile_array, total_segfiles);
-		pfree(segfile_array);
+
+		if (segfile_array)
+		{
+			FreeAllSegFileInfo(segfile_array, total_segfiles);
+			pfree(segfile_array);
+		}
 	}
 	
 	ereport(elevel,
@@ -1370,10 +1374,9 @@ vacuum_aocs_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 
 	pfree(aoEntry);
 
-	if(allseg)
+	if (allseg)
 	{
-		for(i = 0; i<totalseg; ++i) 
-			pfree(allseg[i]);
+		FreeAllAOCSSegFileInfo(allseg, totalseg);
 		pfree(allseg);
 	}
 }

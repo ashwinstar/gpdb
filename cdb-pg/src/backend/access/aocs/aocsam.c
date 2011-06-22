@@ -1161,10 +1161,12 @@ aocs_fetch_finish(AOCSFetchDesc aocsFetchDesc)
 
 	AppendOnlyBlockDirectory_End_forSearch(&aocsFetchDesc->blockDirectory);
 
-	FreeAllAOCSSegFileInfo(aocsFetchDesc->segmentFileInfo, aocsFetchDesc->totalSegfiles);
-	pfree(aocsFetchDesc->segmentFileInfo);
-	aocsFetchDesc->segmentFileInfo = NULL;
-
+	if (aocsFetchDesc->segmentFileInfo)
+	{
+		FreeAllAOCSSegFileInfo(aocsFetchDesc->segmentFileInfo, aocsFetchDesc->totalSegfiles);
+		pfree(aocsFetchDesc->segmentFileInfo);
+		aocsFetchDesc->segmentFileInfo = NULL;
+	}
 
 	RelationDecrementReferenceCount(aocsFetchDesc->relation);
 
