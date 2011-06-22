@@ -7442,11 +7442,11 @@ from sale group by rollup(cn,dt);
  dt     | date   | 
  sum    | bigint | 
 View definition:
- SELECT "Window".dt, sum("Window".att_2) OVER(
+ SELECT "Window".dt, sum("Window".cn) OVER(
   ORDER BY "Window".att_3 RANGE "Window".att_3 PRECEDING) AS sum
-   FROM ( SELECT sale.dt, sale.cn AS att_2, grouping(sale.cn) AS att_3
+   FROM ( SELECT sale.cn, sale.dt, grouping(sale.cn) AS att_3
            FROM sale
-          GROUP BY ROLLUP (sale.cn, sale.dt)) "Window"(dt, att_2, att_3);
+          GROUP BY ROLLUP (sale.cn, sale.dt)) "Window"(cn, dt, att_3);
 
 drop view v1;
 -- MPP-2194, MPP-2236
@@ -7895,3 +7895,67 @@ from olap_window_r order by a; -- order 2
 
 drop table if exists olap_window_r cascade; --ignore
 -- End MPP-11645
+-- MPP-12082
+select 
+    f, 
+    sum(g) over (partition by f)
+from
+    (select 'A', 1) b(j, g)
+    join 
+    (select 'A', 'B') c(j, f)
+    using(j)
+group by 
+    1,
+    b.g;
+ f | sum 
+---+-----
+ B |   1
+(1 row)
+
+select 
+    f, 
+    sum(b.g) over (partition by f)
+from
+    (select 'A', 1) b(j, g)
+    join 
+    (select 'A', 'B') c(j, f)
+    using(j)
+group by 
+    1,
+    g;
+ f | sum 
+---+-----
+ B |   1
+(1 row)
+
+select 
+    2*b.g,
+    lower(c.f),
+    sum(2*b.g) over (partition by lower(c.f))
+from
+    (select 'A', 1) b(j, g)
+    join 
+    (select 'A', 'B') c(j, f)
+    using(j)
+group by 
+    2*b.g,
+    lower(c.f);
+ ?column? | lower | sum 
+----------+-------+-----
+        2 | b     |   2
+(1 row)
+
+select 
+    2*g,
+    lower(c.f),
+    sum(2*g) over (partition by lower(c.f))
+from
+    (select 'A', 1) b(j, g)
+    join 
+    (select 'A', 'B') c(j, f)
+    using(j)
+group by 
+    2*b.g,
+    lower(f);
+ERROR:  unresolved grouping key in window query
+HINT:  You may need to use explicit aliases and/or to refer to grouping keys in the same way throughout the query.

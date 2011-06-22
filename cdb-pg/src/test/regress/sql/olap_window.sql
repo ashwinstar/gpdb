@@ -1448,3 +1448,57 @@ from olap_window_r order by a; -- order 2
 drop table if exists olap_window_r cascade; --ignore
 
 -- End MPP-11645
+
+-- MPP-12082
+
+select 
+    f, 
+    sum(g) over (partition by f)
+from
+    (select 'A', 1) b(j, g)
+    join 
+    (select 'A', 'B') c(j, f)
+    using(j)
+group by 
+    1,
+    b.g;
+
+
+select 
+    f, 
+    sum(b.g) over (partition by f)
+from
+    (select 'A', 1) b(j, g)
+    join 
+    (select 'A', 'B') c(j, f)
+    using(j)
+group by 
+    1,
+    g;
+
+select 
+    2*b.g,
+    lower(c.f),
+    sum(2*b.g) over (partition by lower(c.f))
+from
+    (select 'A', 1) b(j, g)
+    join 
+    (select 'A', 'B') c(j, f)
+    using(j)
+group by 
+    2*b.g,
+    lower(c.f);
+
+select 
+    2*g,
+    lower(c.f),
+    sum(2*g) over (partition by lower(c.f))
+from
+    (select 'A', 1) b(j, g)
+    join 
+    (select 'A', 'B') c(j, f)
+    using(j)
+group by 
+    2*b.g,
+    lower(f);
+
