@@ -7746,784 +7746,785 @@ taaj: tablecmds:00012484:  def->defname),
 taaj: tablecmds:00012485:  errOmitLocation(true))); 
 taaj: tablecmds:00012508:  ereport(ERROR, 
 taaj: tablecmds:00012509:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-taaj: tablecmds:00012510:  errmsg("valid orientation option is \"column\" or \"row\""), 
-taaj: tablecmds:00012511:  errOmitLocation(true))); 
-taaj: tablecmds:00012521:  ereport(ERROR, 
-taaj: tablecmds:00012522:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-taaj: tablecmds:00012523:  errmsg("\"%s\" specified more than once", 
-taaj: tablecmds:00012524:  reorg_str), 
-taaj: tablecmds:00012525:  errOmitLocation(true))); 
-taaj: tablecmds:00012537:  ereport(ERROR, 
-taaj: tablecmds:00012538:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-taaj: tablecmds:00012539:  errmsg("invalid %s option \"%s\"", 
-taaj: tablecmds:00012540:  reorg_str, strVal(def->arg)), 
-taaj: tablecmds:00012541:  errOmitLocation(true))); 
-taaj: tablecmds:00012548:  ereport(ERROR, 
-taaj: tablecmds:00012549:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-taaj: tablecmds:00012550:  errmsg("specify orientation requires appendonly"), 
-taaj: tablecmds:00012551:  errOmitLocation(true))); 
-taaj: tablecmds:00012568:  ereport(ERROR, 
-taaj: tablecmds:00012569:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-taaj: tablecmds:00012570:  errmsg("%s must be set to true when changing storage " 
-taaj: tablecmds:00012571:  "type", reorg_str), 
-taaj: tablecmds:00012572:  errOmitLocation(true))); 
-taaj: tablecmds:00012593:  ereport(WARNING, 
-taaj: tablecmds:00012594:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taaj: tablecmds:00012595:  errmsg("distribution policy of relation \"%s\" " 
-taaj: tablecmds:00012596:  "already set to DISTRIBUTED RANDOMLY", 
-taaj: tablecmds:00012597:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00012598:  errhint("Use ALTER TABLE \"%s\" " 
-taaj: tablecmds:00012599:  "SET WITH (REORGANIZE=TRUE) " 
-taaj: tablecmds:00012600:  "DISTRIBUTED RANDOMLY " 
-taaj: tablecmds:00012601:  "to force a random redistribution", 
-taaj: tablecmds:00012602:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00012603:  errOmitLocation(true))); 
-taaj: tablecmds:00012666:  ereport(ERROR, 
-taaj: tablecmds:00012667:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taaj: tablecmds:00012668:  errmsg("distribution policy must be a " 
-taaj: tablecmds:00012669:  "unique set of columns"), 
-taaj: tablecmds:00012670:  errhint("Column \"%s\" appears " 
-taaj: tablecmds:00012671:  "more than once", colName), 
-taaj: tablecmds:00012672:  errOmitLocation(true))); 
-taaj: tablecmds:00012674:  ereport(ERROR, 
-taaj: tablecmds:00012675:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-taaj: tablecmds:00012676:  errmsg("column \"%s\" of " 
-taaj: tablecmds:00012677:  "relation \"%s\" does not exist", 
-taaj: tablecmds:00012678:  colName, 
-taaj: tablecmds:00012679:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00012680:  errOmitLocation(true))); 
-taaj: tablecmds:00012686:  ereport(ERROR, 
-taaj: tablecmds:00012687:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00012688:  errmsg("cannot distribute by system column \"%s\"", 
-taaj: tablecmds:00012689:  colName), 
-taaj: tablecmds:00012690:  errOmitLocation(true))); 
-taaj: tablecmds:00012731:  ereport(WARNING, 
-taaj: tablecmds:00012732:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taaj: tablecmds:00012733:  errmsg("distribution policy of relation \"%s\" " 
-taaj: tablecmds:00012734:  "already set to (%s)", 
-taaj: tablecmds:00012735:  RelationGetRelationName(rel), 
-taaj: tablecmds:00012736:  dist), 
-taaj: tablecmds:00012737:  errhint("Use ALTER TABLE \"%s\" " 
-taaj: tablecmds:00012738:  "SET WITH (REORGANIZE=TRUE) " 
-taaj: tablecmds:00012739:  "DISTRIBUTED BY (%s) " 
-taaj: tablecmds:00012740:  "to force redistribution", 
-taaj: tablecmds:00012741:  RelationGetRelationName(rel), 
-taaj: tablecmds:00012742:  dist), 
-taaj: tablecmds:00012743:  errOmitLocation(true))); 
-taaj: tablecmds:00015076:  ereport(ERROR, 
-taaj: tablecmds:00015077:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-taaj: tablecmds:00015078:  errmsg("too many columns in boundary specification (%d > %d)", 
-taaj: tablecmds:00015079:  jj, ii))); 
-taaj: tablecmds:00015082:  ereport(ERROR, 
-taaj: tablecmds:00015083:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-taaj: tablecmds:00015084:  errmsg("too many columns in boundary specification (%d > %d)", 
-taaj: tablecmds:00015085:  jj, part->parnatts))); 
-taaj: tablecmds:00015100:  ereport(ERROR, 
-taaj: tablecmds:00015101:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-taaj: tablecmds:00015102:  errmsg("Not a constant expression"))); 
-taaj: tablecmds:00015114:  ereport(ERROR, 
-taaj: tablecmds:00015115:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-taaj: tablecmds:00015116:  errmsg("cannot coerce column type (%s versus %s)", 
-taaj: tablecmds:00015117:  format_type_be(c1->consttype), 
-taaj: tablecmds:00015118:  format_type_be(lhsid)))); 
-taaj: tablecmds:00015907:  ereport(ERROR, 
-taaj: tablecmds:00015908:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00015909:  errmsg("No partition id specified for %s", 
-taaj: tablecmds:00015910:  relname), 
-taaj: tablecmds:00015911:  errOmitLocation(true))); 
-taaj: tablecmds:00015979:  ereport(ERROR, 
-taaj: tablecmds:00015980:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00015981:  errmsg("%s is not partitioned", 
-taaj: tablecmds:00015982:  relname), 
-taaj: tablecmds:00015983:  errOmitLocation(true))); 
-taaj: tablecmds:00016049:  ereport(ERROR, 
-taaj: tablecmds:00016050:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00016051:  errmsg("cannot find partition by RANK -- " 
-taaj: tablecmds:00016052:  "%s is %s partitioned", 
-taaj: tablecmds:00016053:  relname, 
-taaj: tablecmds:00016054:  parTypName), 
-taaj: tablecmds:00016055:  errOmitLocation(true))); 
-taaj: tablecmds:00016177:  ereport(ERROR, 
-taaj: tablecmds:00016178:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00016179:  errmsg("FOR expression matches " 
-taaj: tablecmds:00016180:  "DEFAULT partition%s of %s", 
-taaj: tablecmds:00016181:  prule->isName ? 
-taaj: tablecmds:00016182:  partIdStr : "", 
-taaj: tablecmds:00016183:  relname), 
-taaj: tablecmds:00016184:  errhint("FOR expression may only specify " 
-taaj: tablecmds:00016185:  "a non-default partition in this context."), 
-taaj: tablecmds:00016186:  errOmitLocation(true))); 
-taaj: tablecmds:00016202:  ereport(ERROR, 
-taaj: tablecmds:00016203:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00016204:  errmsg("partition%s of %s does not exist", 
-taaj: tablecmds:00016205:  partIdStr, 
-taaj: tablecmds:00016206:  relname), 
-taaj: tablecmds:00016207:  errOmitLocation(true))); 
-taaj: tablecmds:00016210:  ereport(ERROR, 
-taaj: tablecmds:00016211:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00016212:  errmsg("DEFAULT partition of %s does not exist", 
-taaj: tablecmds:00016213:  relname), 
-taaj: tablecmds:00016214:  errOmitLocation(true))); 
-taaj: tablecmds:00016233:  ereport(ERROR, 
-taaj: tablecmds:00016234:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taaj: tablecmds:00016235:  errmsg("partition%s of %s already exists", 
-taaj: tablecmds:00016236:  partIdStr, 
-taaj: tablecmds:00016237:  relname), 
-taaj: tablecmds:00016238:  errOmitLocation(true))); 
-taaj: tablecmds:00016241:  ereport(ERROR, 
-taaj: tablecmds:00016242:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taaj: tablecmds:00016243:  errmsg("DEFAULT partition%s of %s already exists", 
-taaj: tablecmds:00016244:  prule->isName ? 
-taaj: tablecmds:00016245:  partIdStr : "", 
-taaj: tablecmds:00016246:  relname), 
-taaj: tablecmds:00016247:  errOmitLocation(true))); 
-taaj: tablecmds:00016460:  ereport(ERROR, 
-taaj: tablecmds:00016461:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00016462:  errmsg("%s is not partitioned", 
-taaj: tablecmds:00016463:  lrelname), 
-taaj: tablecmds:00016464:  errOmitLocation(true))); 
-taaj: tablecmds:00016492:  ereport(ERROR, 
-taaj: tablecmds:00016493:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00016494:  errmsg("cannot add HASH partition%s to %s", 
-taaj: tablecmds:00016495:  namBuf, 
-taaj: tablecmds:00016496:  lrelname), 
-taaj: tablecmds:00016497:  errhint("recreate the table to increase the " 
-taaj: tablecmds:00016498:  "number of partitions"), 
-taaj: tablecmds:00016499:  errOmitLocation(true))); 
-taaj: tablecmds:00016505:  ereport(ERROR, 
-taaj: tablecmds:00016506:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00016507:  errmsg("cannot ADD partition%s to %s by rank or value", 
-taaj: tablecmds:00016508:  namBuf, 
-taaj: tablecmds:00016509:  lrelname), 
-taaj: tablecmds:00016510:  errhint("use a named partition"), 
-taaj: tablecmds:00016511:  errOmitLocation(true))); 
-taaj: tablecmds:00016527:  ereport(ERROR, 
-taaj: tablecmds:00016528:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00016529:  errmsg("cannot add %s partition%s to " 
-taaj: tablecmds:00016530:  "%s with DEFAULT partition \"%s\"", 
-taaj: tablecmds:00016531:  parTypName, 
-taaj: tablecmds:00016532:  namBuf, 
-taaj: tablecmds:00016533:  lrelname, 
-taaj: tablecmds:00016534:  pNode->default_part->parname), 
-taaj: tablecmds:00016535:  errhint("need to SPLIT partition \"%s\"", 
-taaj: tablecmds:00016536:  pNode->default_part->parname), 
-taaj: tablecmds:00016537:  errOmitLocation(true))); 
-taaj: tablecmds:00016542:  ereport(ERROR, 
-taaj: tablecmds:00016543:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00016544:  errmsg("cannot add a DEFAULT partition%s " 
-taaj: tablecmds:00016545:  "to %s of type HASH", 
-taaj: tablecmds:00016546:  namBuf, 
-taaj: tablecmds:00016547:  lrelname), 
-taaj: tablecmds:00016548:  errOmitLocation(true))); 
-taaj: tablecmds:00016552:  ereport(ERROR, 
-taaj: tablecmds:00016553:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taaj: tablecmds:00016554:  errmsg("DEFAULT partition \"%s\" for " 
-taaj: tablecmds:00016555:  "%s already exists", 
-taaj: tablecmds:00016556:  pNode->default_part->parname, 
-taaj: tablecmds:00016557:  lrelname), 
-taaj: tablecmds:00016558:  errOmitLocation(true))); 
-taaj: tablecmds:00016566:  ereport(ERROR, 
-taaj: tablecmds:00016567:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00016568:  errmsg("invalid use of boundary specification " 
-taaj: tablecmds:00016569:  "for DEFAULT partition%s of %s", 
-taaj: tablecmds:00016570:  namBuf, 
-taaj: tablecmds:00016571:  lrelname), 
-taaj: tablecmds:00016572:  errOmitLocation(true))); 
-taaj: tablecmds:00017067:  ereport(ERROR, 
-taaj: tablecmds:00017068:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00017069:  errmsg("cannot specify EVERY when adding " 
-taaj: tablecmds:00017070:  "RANGE partition to %s", 
-taaj: tablecmds:00017071:  lrelname), 
-taaj: tablecmds:00017072:  errOmitLocation(true))); 
-taaj: tablecmds:00017075:  ereport(ERROR, 
-taaj: tablecmds:00017076:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00017077:  errmsg("Need START or END when adding " 
-taaj: tablecmds:00017078:  "RANGE partition to %s", 
-taaj: tablecmds:00017079:  lrelname), 
-taaj: tablecmds:00017080:  errOmitLocation(true))); 
-taaj: tablecmds:00017177:  ereport(ERROR, 
-taaj: tablecmds:00017178:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00017179:  errmsg("new partition overlaps existing " 
-taaj: tablecmds:00017180:  "partition"), 
-taaj: tablecmds:00017181:  errOmitLocation(true))); 
-taaj: tablecmds:00017201:  ereport(ERROR, 
-taaj: tablecmds:00017202:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00017203:  errmsg("new partition overlaps existing " 
-taaj: tablecmds:00017204:  "partition"), 
-taaj: tablecmds:00017205:  errOmitLocation(true))); 
-taaj: tablecmds:00017316:  ereport(ERROR, 
-taaj: tablecmds:00017317:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00017318:  errmsg("new partition overlaps existing " 
-taaj: tablecmds:00017319:  "partition"), 
-taaj: tablecmds:00017320:  errOmitLocation(true))); 
-taaj: tablecmds:00017358:  ereport(ERROR, 
-taaj: tablecmds:00017359:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00017360:  errmsg("new partition overlaps existing " 
-taaj: tablecmds:00017361:  "partition"), 
-taaj: tablecmds:00017362:  errOmitLocation(true))); 
-taaj: tablecmds:00018023:  ereport(ERROR, 
-taaj: tablecmds:00018024:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00018025:  errmsg("new partition overlaps existing " 
-taaj: tablecmds:00018026:  "partition%s", 
-taaj: tablecmds:00018027:  (prule && prule->isName) ? 
-taaj: tablecmds:00018028:  prule->partIdStr : ""), 
-taaj: tablecmds:00018029:  errOmitLocation(true))); 
-taaj: tablecmds:00018082:  ereport(ERROR, 
-taaj: tablecmds:00018083:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00018084:  errmsg("new partition definition overlaps " 
-taaj: tablecmds:00018085:  "existing partition%s of %s", 
-taaj: tablecmds:00018086:  prule->partIdStr, 
-taaj: tablecmds:00018087:  lrelname), 
-taaj: tablecmds:00018088:  errOmitLocation(true))); 
-taaj: tablecmds:00018481:  ereport(ERROR, 
-taaj: tablecmds:00018482:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00018483:  errmsg("cannot ALTER PARTITION for relation \"%s\"", 
-taaj: tablecmds:00018484:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00018485:  errOmitLocation(true))); 
-taaj: tablecmds:00018499:  ereport(ERROR, 
-taaj: tablecmds:00018500:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00018501:  errmsg("cannot ALTER PARTITION for relation \"%s\"", 
-taaj: tablecmds:00018502:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00018503:  errOmitLocation(true))); 
-taaj: tablecmds:00018546:  ereport(ERROR, 
-taaj: tablecmds:00018547:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00018548:  errmsg("cannot ALTER PARTITION ... SET " 
-taaj: tablecmds:00018549:  "DISTRIBUTED BY for %s", 
-taaj: tablecmds:00018550:  prule->relname), 
-taaj: tablecmds:00018551:  errhint("distribution policy of " 
-taaj: tablecmds:00018552:  "partition must match parent"), 
-taaj: tablecmds:00018553:  errOmitLocation(true) 
-taaj: tablecmds:00018554:  )); 
-taaj: tablecmds:00018563:  ereport(NOTICE, 
-taaj: tablecmds:00018564:  (errmsg("altering table \"%s\" " 
-taaj: tablecmds:00018565:  "(%s)", 
-taaj: tablecmds:00018566:  RelationGetRelationName(rel2), 
-taaj: tablecmds:00018567:  prule->relname))); 
-taaj: tablecmds:00018625:  ereport(ERROR, 
-taaj: tablecmds:00018626:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00018627:  errmsg("cannot COALESCE PARTITION for relation \"%s\"", 
-taaj: tablecmds:00018628:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00018629:  errOmitLocation(true))); 
-taaj: tablecmds:00018775:  ereport(ERROR, 
-taaj: tablecmds:00018776:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00018777:  errmsg("missing name or value for DROP for %s", 
-taaj: tablecmds:00018778:  lrelname), 
-taaj: tablecmds:00018779:  errOmitLocation(true))); 
-taaj: tablecmds:00018781:  ereport(ERROR, 
-taaj: tablecmds:00018782:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00018783:  errmsg("missing name or value for DROP"), 
-taaj: tablecmds:00018784:  errOmitLocation(true))); 
-taaj: tablecmds:00018799:  ereport(ERROR, 
-taaj: tablecmds:00018800:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00018801:  errmsg("FOR expression matches " 
-taaj: tablecmds:00018802:  "DEFAULT partition%s of %s", 
-taaj: tablecmds:00018803:  prule->partIdStr, 
-taaj: tablecmds:00018804:  prule->relname), 
-taaj: tablecmds:00018805:  errhint("FOR expression may only specify " 
-taaj: tablecmds:00018806:  "a non-default partition in this context."), 
-taaj: tablecmds:00018807:  errOmitLocation(true))); 
-taaj: tablecmds:00018819:  ereport(NOTICE, 
-taaj: tablecmds:00018820:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00018821:  errmsg("partition \"%s\" of %s does not " 
-taaj: tablecmds:00018822:  "exist, skipping", 
-taaj: tablecmds:00018823:  strVal(locPid->partiddef), 
-taaj: tablecmds:00018824:  lrelname 
-taaj: tablecmds:00018825:  ), 
-taaj: tablecmds:00018826:  errOmitLocation(true))); 
-taaj: tablecmds:00018830:  ereport(NOTICE, 
-taaj: tablecmds:00018831:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00018832:  errmsg("partition for specified value of " 
-taaj: tablecmds:00018833:  "%s does not exist, skipping", 
-taaj: tablecmds:00018834:  lrelname 
-taaj: tablecmds:00018835:  ), 
-taaj: tablecmds:00018836:  errOmitLocation(true))); 
-taaj: tablecmds:00018840:  ereport(NOTICE, 
-taaj: tablecmds:00018841:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00018842:  errmsg("partition for specified rank of " 
-taaj: tablecmds:00018843:  "%s does not exist, skipping", 
-taaj: tablecmds:00018844:  lrelname 
-taaj: tablecmds:00018845:  ), 
-taaj: tablecmds:00018846:  errOmitLocation(true))); 
-taaj: tablecmds:00018850:  ereport(NOTICE, 
-taaj: tablecmds:00018851:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00018852:  errmsg("partition for specified oid of " 
-taaj: tablecmds:00018853:  "%s does not exist, skipping", 
-taaj: tablecmds:00018854:  lrelname 
-taaj: tablecmds:00018855:  ), 
-taaj: tablecmds:00018856:  errOmitLocation(true))); 
-taaj: tablecmds:00018859:  ereport(NOTICE, 
-taaj: tablecmds:00018860:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00018861:  errmsg("DEFAULT partition for " 
-taaj: tablecmds:00018862:  "%s does not exist, skipping", 
-taaj: tablecmds:00018863:  lrelname 
-taaj: tablecmds:00018864:  ), 
-taaj: tablecmds:00018865:  errOmitLocation(true))); 
-taaj: tablecmds:00018889:  ereport(ERROR, 
-taaj: tablecmds:00018890:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-taaj: tablecmds:00018891:  errmsg("cannot drop HASH partition%s of %s", 
-taaj: tablecmds:00018892:  prule->partIdStr, 
-taaj: tablecmds:00018893:  prule->relname), 
-taaj: tablecmds:00018894:  errhint("recreate the table to reduce the " 
-taaj: tablecmds:00018895:  "number of partitions"), 
-taaj: tablecmds:00018896:  errOmitLocation(true))); 
-taaj: tablecmds:00018902:  ereport(ERROR, 
-taaj: tablecmds:00018903:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-taaj: tablecmds:00018904:  errmsg("cannot drop partition%s of " 
-taaj: tablecmds:00018905:  "%s -- only one remains", 
-taaj: tablecmds:00018906:  prule->partIdStr, 
-taaj: tablecmds:00018907:  prule->relname), 
-taaj: tablecmds:00018908:  errhint("Use DROP TABLE \"%s\" to remove the " 
-taaj: tablecmds:00018909:  "table and the final partition ", 
-taaj: tablecmds:00018910:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00018911:  errOmitLocation(true))); 
-taaj: tablecmds:00018913:  ereport(ERROR, 
-taaj: tablecmds:00018914:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-taaj: tablecmds:00018915:  errmsg("cannot drop partition%s of " 
-taaj: tablecmds:00018916:  "%s -- only one remains", 
-taaj: tablecmds:00018917:  prule->partIdStr, 
-taaj: tablecmds:00018918:  prule->relname), 
-taaj: tablecmds:00018919:  errhint("DROP the parent partition to remove the " 
-taaj: tablecmds:00018920:  "final partition "), 
-taaj: tablecmds:00018921:  errOmitLocation(true))); 
-taaj: tablecmds:00018962:  ereport(NOTICE, 
-taaj: tablecmds:00018963:  (errmsg("dropped partition%s for %s and its children", 
-taaj: tablecmds:00018964:  prule->partIdStr, 
-taaj: tablecmds:00018965:  prule->relname))); 
-taaj: tablecmds:00018969:  ereport(NOTICE, 
-taaj: tablecmds:00018970:  (errmsg("dropped partition%s for %s", 
-taaj: tablecmds:00018971:  prule->partIdStr, 
-taaj: tablecmds:00018972:  prule->relname))); 
-taaj: tablecmds:00019193:  ereport(ERROR, 
-taaj: tablecmds:00019194:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00019195:  errmsg("constraint \"%s\" on table \"%s\" " 
-taaj: tablecmds:00019196:  "conflicts with partitioning rule", 
-taaj: tablecmds:00019197:  NameStr(con->conname), 
-taaj: tablecmds:00019198:  RelationGetRelationName(newrel)), 
-taaj: tablecmds:00019199:  errOmitLocation(true))); 
-taaj: tablecmds:00019473:  ereport(ERROR, 
-taaj: tablecmds:00019474:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00019475:  errmsg("cannot EXCHANGE PARTITION for " 
-taaj: tablecmds:00019476:  "%s -- partition has children", 
-taaj: tablecmds:00019477:  prule->relname 
-taaj: tablecmds:00019478:  ), 
-taaj: tablecmds:00019479:  errOmitLocation(true))); 
-taaj: tablecmds:00019659:  ereport(NOTICE, 
-taaj: tablecmds:00019660:  (errmsg("exchanged partition%s of " 
-taaj: tablecmds:00019661:  "%s with relation \"%s\"", 
-taaj: tablecmds:00019662:  orig_prule->partIdStr, 
-taaj: tablecmds:00019663:  orig_prule->relname, 
-taaj: tablecmds:00019664:  newname), 
-taaj: tablecmds:00019665:  errOmitLocation(true))); 
-taaj: tablecmds:00019740:  ereport(ERROR, 
-taaj: tablecmds:00019741:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00019742:  errmsg("target of MERGE must be either \"%s\" or " 
-taaj: tablecmds:00019743:  "\"%s\"", 
-taaj: tablecmds:00019744:  get_rel_name(prule1->topRule->parchildrelid), 
-taaj: tablecmds:00019745:  get_rel_name(prule2->topRule->parchildrelid)), 
-taaj: tablecmds:00019746:  errOmitLocation(true))); 
-taaj: tablecmds:00019784:  ereport(ERROR, 
-taaj: tablecmds:00019785:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00019786:  errmsg("cannot MERGE PARTITION for relation \"%s\"", 
-taaj: tablecmds:00019787:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00019788:  errOmitLocation(true))); 
-taaj: tablecmds:00019800:  ereport(ERROR, 
-taaj: tablecmds:00019801:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00019802:  errmsg("cannot MODIFY %s partition%s for " 
-taaj: tablecmds:00019803:  "relation \"%s\" to ADD values -- would " 
-taaj: tablecmds:00019804:  "overlap DEFAULT partition \"%s\"", 
-taaj: tablecmds:00019805:  "LIST", 
-taaj: tablecmds:00019806:  prule->partIdStr, 
-taaj: tablecmds:00019807:  RelationGetRelationName(rel), 
-taaj: tablecmds:00019808:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00019809:  errhint("need to SPLIT partition \"%s\"", 
-taaj: tablecmds:00019810:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00019811:  errOmitLocation(true))); 
-taaj: tablecmds:00019861:  ereport(ERROR, 
-taaj: tablecmds:00019862:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00019863:  errmsg("cannot MODIFY LIST partition%s for " 
-taaj: tablecmds:00019864:  "relation \"%s\" -- " 
-taaj: tablecmds:00019865:  "would overlap " 
-taaj: tablecmds:00019866:  "existing partition%s", 
-taaj: tablecmds:00019867:  prule->partIdStr, 
-taaj: tablecmds:00019868:  RelationGetRelationName(rel), 
-taaj: tablecmds:00019869:  prule2->isName ? 
-taaj: tablecmds:00019870:  prule2->partIdStr : ""), 
-taaj: tablecmds:00019871:  errOmitLocation(true))); 
-taaj: tablecmds:00019873:  ereport(ERROR, 
-taaj: tablecmds:00019874:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00019875:  errmsg("cannot MODIFY LIST partition%s for " 
-taaj: tablecmds:00019876:  "relation \"%s\" -- " 
-taaj: tablecmds:00019877:  "ADD value has duplicate in " 
-taaj: tablecmds:00019878:  "existing partition", 
-taaj: tablecmds:00019879:  prule->partIdStr, 
-taaj: tablecmds:00019880:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00019881:  errOmitLocation(true))); 
-taaj: tablecmds:00019892:  ereport(ERROR, 
-taaj: tablecmds:00019893:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00019894:  errmsg("cannot MODIFY LIST partition%s for " 
-taaj: tablecmds:00019895:  "relation \"%s\" -- DROP value not found", 
-taaj: tablecmds:00019896:  prule->partIdStr, 
-taaj: tablecmds:00019897:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00019898:  errOmitLocation(true))); 
-taaj: tablecmds:00019903:  ereport(ERROR, 
-taaj: tablecmds:00019904:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00019905:  errmsg("cannot MODIFY LIST partition%s for " 
-taaj: tablecmds:00019906:  "relation \"%s\" -- " 
-taaj: tablecmds:00019907:  "found DROP value in%s partition%s", 
-taaj: tablecmds:00019908:  prule->partIdStr, 
-taaj: tablecmds:00019909:  RelationGetRelationName(rel), 
-taaj: tablecmds:00019910:  prule2->isName ? "" : "other", 
-taaj: tablecmds:00019911:  prule2->isName ? prule2->partIdStr : ""), 
-taaj: tablecmds:00019912:  errOmitLocation(true))); 
-taaj: tablecmds:00020024:  ereport(ERROR, 
-taaj: tablecmds:00020025:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020026:  errmsg("cannot MODIFY %s partition%s for " 
-taaj: tablecmds:00020027:  "relation \"%s\" to extend range -- would " 
-taaj: tablecmds:00020028:  "overlap DEFAULT partition \"%s\"", 
-taaj: tablecmds:00020029:  "RANGE", 
-taaj: tablecmds:00020030:  prule->partIdStr, 
-taaj: tablecmds:00020031:  RelationGetRelationName(rel), 
-taaj: tablecmds:00020032:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00020033:  errhint("need to SPLIT partition \"%s\"", 
-taaj: tablecmds:00020034:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00020035:  errOmitLocation(true))); 
-taaj: tablecmds:00020179:  ereport(ERROR, 
-taaj: tablecmds:00020180:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020181:  errmsg("cannot MODIFY %s partition%s for " 
-taaj: tablecmds:00020182:  "relation \"%s\" to extend range -- would " 
-taaj: tablecmds:00020183:  "overlap DEFAULT partition \"%s\"", 
-taaj: tablecmds:00020184:  "RANGE", 
-taaj: tablecmds:00020185:  prule->partIdStr, 
-taaj: tablecmds:00020186:  RelationGetRelationName(rel), 
-taaj: tablecmds:00020187:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00020188:  errhint("need to SPLIT partition \"%s\"", 
-taaj: tablecmds:00020189:  prule->pNode->default_part->parname), 
-taaj: tablecmds:00020190:  errOmitLocation(true))); 
-taaj: tablecmds:00020319:  ereport(ERROR, 
-taaj: tablecmds:00020320:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00020321:  errmsg("cannot MODIFY RANGE partition%s for " 
-taaj: tablecmds:00020322:  "relation \"%s\" -- " 
-taaj: tablecmds:00020323:  "would overlap " 
-taaj: tablecmds:00020324:  "existing partition%s", 
-taaj: tablecmds:00020325:  prule->partIdStr, 
-taaj: tablecmds:00020326:  RelationGetRelationName(rel), 
-taaj: tablecmds:00020327:  (prule2 && prule2->isName) ? 
-taaj: tablecmds:00020328:  prule2->partIdStr : ""), 
-taaj: tablecmds:00020329:  errOmitLocation(true))); 
-taaj: tablecmds:00020411:  ereport(ERROR, 
-taaj: tablecmds:00020412:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020413:  errmsg("cannot MODIFY DEFAULT %s partition%s " 
-taaj: tablecmds:00020414:  "for relation \"%s\"", 
-taaj: tablecmds:00020415:  parTypName, 
-taaj: tablecmds:00020416:  ((prule && prule->isName) ? prule->partIdStr : ""), 
-taaj: tablecmds:00020417:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00020418:  errOmitLocation(true))); 
-taaj: tablecmds:00020421:  ereport(ERROR, 
-taaj: tablecmds:00020422:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020423:  errmsg("invalid use of %s boundary specification " 
-taaj: tablecmds:00020424:  "in partition%s of type %s", 
-taaj: tablecmds:00020425:  "RANGE", 
-taaj: tablecmds:00020426:  ((prule && prule->isName) ? prule->partIdStr : ""), 
-taaj: tablecmds:00020427:  parTypName 
-taaj: tablecmds:00020428:  ), 
-taaj: tablecmds:00020429:  errOmitLocation(true))); 
-taaj: tablecmds:00020432:  ereport(ERROR, 
-taaj: tablecmds:00020433:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020434:  errmsg("invalid use of %s boundary specification " 
-taaj: tablecmds:00020435:  "in partition%s of type %s", 
-taaj: tablecmds:00020436:  "LIST", 
-taaj: tablecmds:00020437:  ((prule && prule->isName) ? prule->partIdStr : ""), 
-taaj: tablecmds:00020438:  parTypName 
-taaj: tablecmds:00020439:  ), 
-taaj: tablecmds:00020440:  errOmitLocation(true))); 
-taaj: tablecmds:00020474:  ereport(ERROR, 
-taaj: tablecmds:00020475:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00020476:  errmsg("cannot MODIFY PARTITION for relation \"%s\"", 
-taaj: tablecmds:00020477:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00020478:  errOmitLocation(true))); 
-taaj: tablecmds:00020563:  ereport(ERROR, 
-taaj: tablecmds:00020564:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020565:  errmsg("relation name \"%s\" for child partition " 
-taaj: tablecmds:00020566:  "is too long", 
-taaj: tablecmds:00020567:  newRelNameBuf))); 
-taaj: tablecmds:00020718:  ereport(ERROR, 
-taaj: tablecmds:00020719:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00020720:  errmsg("name \"%s\" for child partition " 
-taaj: tablecmds:00020721:  "is too long", 
-taaj: tablecmds:00020722:  newpartname))); 
-taaj: tablecmds:00020814:  ereport(NOTICE, 
-taaj: tablecmds:00020815:  (errmsg("renamed partition%s to \"%s\" for %s", 
-taaj: tablecmds:00020816:  prule->partIdStr, 
-taaj: tablecmds:00020817:  newpartname, 
-taaj: tablecmds:00020818:  prule->relname))); 
-taaj: tablecmds:00020823:  ereport(WARNING, 
-taaj: tablecmds:00020824:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-taaj: tablecmds:00020825:  errmsg("renamed %d partitions, skipped %d child partitions due to name truncation", 
-taaj: tablecmds:00020826:  renamed, skipped), 
-taaj: tablecmds:00020827:  errOmitLocation(true))); 
-taaj: tablecmds:00020877:  ereport(NOTICE, 
-taaj: tablecmds:00020878:  (errmsg("%s level %d " 
-taaj: tablecmds:00020879:  "subpartition template specification " 
-taaj: tablecmds:00020880:  "for relation \"%s\"", 
-taaj: tablecmds:00020881:  "adding", 
-taaj: tablecmds:00020882:  lvl, 
-taaj: tablecmds:00020883:  RelationGetRelationName(rel)))); 
-taaj: tablecmds:00020888:  ereport(ERROR, 
-taaj: tablecmds:00020889:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00020890:  errmsg("relation \"%s\" does not have a " 
-taaj: tablecmds:00020891:  "level %d " 
-taaj: tablecmds:00020892:  "subpartition template specification", 
-taaj: tablecmds:00020893:  RelationGetRelationName(rel), 
-taaj: tablecmds:00020894:  lvl), 
-taaj: tablecmds:00020895:  errOmitLocation(true))); 
-taaj: tablecmds:00020903:  ereport(NOTICE, 
-taaj: tablecmds:00020904:  (errmsg("%s level %d " 
-taaj: tablecmds:00020905:  "subpartition template specification " 
-taaj: tablecmds:00020906:  "for relation \"%s\"", 
-taaj: tablecmds:00020907:  (pc->arg1) ? "replacing" : "dropped", 
-taaj: tablecmds:00020908:  lvl, 
-taaj: tablecmds:00020909:  RelationGetRelationName(rel)))); 
-taaj: tablecmds:00021416:  ereport(ERROR, 
-taaj: tablecmds:00021417:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00021418:  errmsg("relation \"%s\" does not have a " 
-taaj: tablecmds:00021419:  "default partition", 
-taaj: tablecmds:00021420:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00021421:  errOmitLocation(true))); 
-taaj: tablecmds:00021503:  ereport(ERROR, 
-taaj: tablecmds:00021504:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-taaj: tablecmds:00021505:  errmsg("relation \"%s\" does not have a " 
-taaj: tablecmds:00021506:  "default partition", 
-taaj: tablecmds:00021507:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00021508:  errOmitLocation(true))); 
-taaj: tablecmds:00021554:  ereport(ERROR, 
-taaj: tablecmds:00021555:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-taaj: tablecmds:00021556:  errmsg("both INTO partitions " 
-taaj: tablecmds:00021557:  "already exist"), 
-taaj: tablecmds:00021558:  errOmitLocation(true))); 
-taaj: tablecmds:00022344:  ereport(NOTICE, 
-taaj: tablecmds:00022345:  (errmsg("truncated partition%s for %s and its children", 
-taaj: tablecmds:00022346:  prule->partIdStr, 
-taaj: tablecmds:00022347:  prule->relname), 
-taaj: tablecmds:00022348:  errOmitLocation(true))); 
-taaj: tablecmds:00022352:  ereport(NOTICE, 
-taaj: tablecmds:00022353:  (errmsg("truncated partition%s for %s", 
-taaj: tablecmds:00022354:  prule->partIdStr, 
-taaj: tablecmds:00022355:  prule->relname), 
-taaj: tablecmds:00022356:  errOmitLocation(true))); 
-taaj: tablecmds:00022381:  ereport(ERROR, 
-taaj: tablecmds:00022382:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00022383:  errmsg("\"%s\" is a TOAST relation", 
-taaj: tablecmds:00022384:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00022385:  errOmitLocation(true))); 
-taaj: tablecmds:00022388:  ereport(ERROR, 
-taaj: tablecmds:00022389:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00022390:  errmsg("\"%s\" is an Append Only segment listing relation", 
-taaj: tablecmds:00022391:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00022392:  errOmitLocation(true))); 
-taaj: tablecmds:00022395:  ereport(ERROR, 
-taaj: tablecmds:00022396:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-taaj: tablecmds:00022397:  errmsg("\"%s\" is an Append Only block directory relation", 
-taaj: tablecmds:00022398:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00022399:  errOmitLocation(true))); 
-taaj: tablecmds:00022408:  ereport(ERROR, 
-taaj: tablecmds:00022409:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00022410:  errmsg("cannot move an owned sequence into another schema"), 
-taaj: tablecmds:00022411:  errdetail("Sequence \"%s\" is linked to table \"%s\".", 
-taaj: tablecmds:00022412:  RelationGetRelationName(rel), 
-taaj: tablecmds:00022413:  get_rel_name(tableId)), 
-taaj: tablecmds:00022414:  errOmitLocation(true))); 
-taaj: tablecmds:00022421:  ereport(ERROR, 
-taaj: tablecmds:00022422:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-taaj: tablecmds:00022423:  errmsg("relation \"%s\" is already in schema \"%s\"", 
-taaj: tablecmds:00022424:  RelationGetRelationName(rel), 
-taaj: tablecmds:00022425:  newschema), 
-taaj: tablecmds:00022426:  errOmitLocation(true))); 
-taaj: tablecmds:00022430:  ereport(ERROR, 
-taaj: tablecmds:00022431:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00022432:  errmsg("cannot move objects into or out of temporary schemas"), 
-taaj: tablecmds:00022433:  errOmitLocation(true))); 
-taaj: tablecmds:00022437:  ereport(ERROR, 
-taaj: tablecmds:00022438:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00022439:  errmsg("cannot move objects into or out of TOAST schema"), 
-taaj: tablecmds:00022440:  errOmitLocation(true))); 
-taaj: tablecmds:00022444:  ereport(ERROR, 
-taaj: tablecmds:00022445:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00022446:  errmsg("cannot move objects into or out of AO SEGMENT schema"), 
-taaj: tablecmds:00022447:  errOmitLocation(true))); 
-taaj: tablecmds:00022521:  ereport(ERROR, 
-taaj: tablecmds:00022522:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-taaj: tablecmds:00022523:  errmsg("relation \"%s\" already exists in schema \"%s\"", 
-taaj: tablecmds:00022524:  NameStr(classForm->relname), 
-taaj: tablecmds:00022525:  get_namespace_name(newNspOid)), 
-taaj: tablecmds:00022526:  errOmitLocation(true))); 
-taaj: tablecmds:00022899:  ereport(ERROR, 
-taaj: tablecmds:00022900:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-taaj: tablecmds:00022901:  errmsg("location uri \"%s\" appears more than once", 
-taaj: tablecmds:00022902:  uri1), 
-taaj: tablecmds:00022903:  errOmitLocation(true))); 
-taaj: tablecmds:00022976:  ereport(ERROR, 
-taaj: tablecmds:00022977:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00022978:  errmsg("GPHDFS can only have one location list"), 
-taaj: tablecmds:00022979:  errhint("Combine multiple HDFS files into a single file"), 
-taaj: tablecmds:00022980:  errOmitLocation(true))); 
-taaj: tablecmds:00022999:  ereport(ERROR, 
-taaj: tablecmds:00023000:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00023001:  errmsg("URI protocols must be the same for all data sources"), 
-taaj: tablecmds:00023002:  errhint("Available protocols are 'http', 'file', 'gphdfs' and 'gpfdist'"), 
-taaj: tablecmds:00023003:  errOmitLocation(true))); 
-taaj: tablecmds:00023010:  ereport(ERROR, 
-taaj: tablecmds:00023011:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00023012:  errmsg("unsupported URI protocol for custom data format"), 
-taaj: tablecmds:00023013:  errhint("Use EXECUTE or 'file' instead ('file' is for read only)."), 
-taaj: tablecmds:00023014:  errOmitLocation(true))); 
-taaj: tablecmds:00023018:  ereport(ERROR, 
-taaj: tablecmds:00023019:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023020:  errmsg("an EXTERNAL WEB TABLE may only use http URI\'s, problem in: \'%s\'", uri_str_final), 
-taaj: tablecmds:00023021:  errhint("Use CREATE EXTERNAL TABLE instead."), 
-taaj: tablecmds:00023022:  errOmitLocation(true))); 
-taaj: tablecmds:00023025:  ereport(ERROR, 
-taaj: tablecmds:00023026:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023027:  errmsg("http URI\'s can only be used in an external web table"), 
-taaj: tablecmds:00023028:  errhint("Use CREATE EXTERNAL WEB TABLE instead."), 
-taaj: tablecmds:00023029:  errOmitLocation(true))); 
-taaj: tablecmds:00023032:  ereport(ERROR, 
-taaj: tablecmds:00023033:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-taaj: tablecmds:00023034:  errmsg("unsupported URI protocol \'%s\' for writable external table", 
-taaj: tablecmds:00023035:  (uri->protocol == URI_HTTP ? "http" : "file")), 
-taaj: tablecmds:00023036:  errhint("Writable external tables may use \'gpfdist\' or \'gphdfs\' URIs only."), 
-taaj: tablecmds:00023037:  errOmitLocation(true))); 
-taaj: tablecmds:00023040:  ereport(ERROR, 
-taaj: tablecmds:00023041:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023042:  errmsg("Unsupported use of wildcard in a writable external web table definition: " 
-taaj: tablecmds:00023043:  "\'%s\'", uri_str_final), 
-taaj: tablecmds:00023044:  errhint("Specify the explicit path and file name to write into."))); 
-taaj: tablecmds:00023047:  ereport(ERROR, 
-taaj: tablecmds:00023048:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023049:  errmsg("Unsupported use of a directory name in a writable gpfdist external table : " 
-taaj: tablecmds:00023050:  "\'%s\'", uri_str_final), 
-taaj: tablecmds:00023051:  errhint("Specify the explicit path and file name to write into."), 
-taaj: tablecmds:00023052:  errOmitLocation(true))); 
-taaj: tablecmds:00023103:  ereport(ERROR, 
-taaj: tablecmds:00023104:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023105:  errmsg("ON clause must not have more than one element."), 
-taaj: tablecmds:00023106:  errOmitLocation(true))); 
-taaj: tablecmds:00023149:  ereport(ERROR, 
-taaj: tablecmds:00023150:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-taaj: tablecmds:00023151:  errmsg("Unknown location code for EXECUTE in tablecmds."), 
-taaj: tablecmds:00023152:  errOmitLocation(true))); 
-taaj: tablecmds:00023192:  ereport(ERROR, 
-taaj: tablecmds:00023193:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023194:  errmsg("unsupported format '%s'", formatname), 
-taaj: tablecmds:00023195:  errhint("available formats are \"text\", \"csv\", or \"custom\""), 
-taaj: tablecmds:00023196:  errOmitLocation(true))); 
-taaj: tablecmds:00023238:  ereport(ERROR, 
-taaj: tablecmds:00023239:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023240:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00023241:  errOmitLocation(true))); 
-taaj: tablecmds:00023247:  ereport(ERROR, 
-taaj: tablecmds:00023248:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023249:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00023250:  errOmitLocation(true))); 
-taaj: tablecmds:00023256:  ereport(ERROR, 
-taaj: tablecmds:00023257:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023258:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00023259:  errOmitLocation(true))); 
-taaj: tablecmds:00023265:  ereport(ERROR, 
-taaj: tablecmds:00023266:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023267:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00023268:  errOmitLocation(true))); 
-taaj: tablecmds:00023274:  ereport(ERROR, 
-taaj: tablecmds:00023275:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023276:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00023277:  errOmitLocation(true))); 
-taaj: tablecmds:00023283:  ereport(ERROR, 
-taaj: tablecmds:00023284:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023285:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00023286:  errOmitLocation(true))); 
-taaj: tablecmds:00023293:  ereport(ERROR, 
-taaj: tablecmds:00023294:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023295:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00023296:  errOmitLocation(true))); 
-taaj: tablecmds:00023303:  ereport(ERROR, 
-taaj: tablecmds:00023304:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023305:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00023306:  errOmitLocation(true))); 
-taaj: tablecmds:00023312:  ereport(ERROR, 
-taaj: tablecmds:00023313:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023314:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00023315:  errOmitLocation(true))); 
-taaj: tablecmds:00023321:  ereport(ERROR, 
-taaj: tablecmds:00023322:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023323:  errmsg("conflicting or redundant options"), 
-taaj: tablecmds:00023324:  errOmitLocation(true))); 
-taaj: tablecmds:00023329:  ereport(ERROR, 
-taaj: tablecmds:00023330:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023331:  errmsg("formatter is the only allowed option in custom format"), 
-taaj: tablecmds:00023332:  errOmitLocation(true))); 
-taaj: tablecmds:00023334:  ereport(ERROR, 
-taaj: tablecmds:00023335:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023336:  errmsg("formatter option is not allowed in text formats"), 
-taaj: tablecmds:00023337:  errOmitLocation(true))); 
-taaj: tablecmds:00023482:  ereport(ERROR, 
-taaj: tablecmds:00023483:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023484:  errmsg("no formatter function specified"), 
-taaj: tablecmds:00023485:  errOmitLocation(true))); 
-taaj: tablecmds:00023576:  ereport(ERROR, 
-taaj: tablecmds:00023577:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-taaj: tablecmds:00023578:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-taaj: tablecmds:00023579:  cname, 
-taaj: tablecmds:00023580:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00023581:  errOmitLocation(true))); 
-taaj: tablecmds:00023620:  ereport(ERROR, 
-taaj: tablecmds:00023621:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-taaj: tablecmds:00023622:  errmsg("cannot exchange HASH partition%s " 
-taaj: tablecmds:00023623:  "of relation \"%s\"", prule->partIdStr, 
-taaj: tablecmds:00023624:  RelationGetRelationName(rel)))); 
-taaj: tablecmds:00023671:  ereport(ERROR, 
-taaj: tablecmds:00023672:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023673:  errmsg("cannot exchange relation " 
-taaj: tablecmds:00023674:  "which is not a table"))); 
-taaj: tablecmds:00023705:  ereport(ERROR, 
-taaj: tablecmds:00023706:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023707:  errmsg("owner of \"%s\" must be the same as that " 
-taaj: tablecmds:00023708:  "of \"%s\"", 
-taaj: tablecmds:00023709:  RelationGetRelationName(newrel), 
-taaj: tablecmds:00023710:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00023711:  errOmitLocation(true))); 
-taaj: tablecmds:00023719:  ereport(ERROR, 
-taaj: tablecmds:00023720:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023721:  errmsg("\"%s\" and \"%s\" must have same OIDs setting", 
-taaj: tablecmds:00023722:  RelationGetRelationName(rel), 
-taaj: tablecmds:00023723:  RelationGetRelationName(newrel)), 
-taaj: tablecmds:00023724:  errOmitLocation(true))); 
-taaj: tablecmds:00023732:  ereport(ERROR, 
-taaj: tablecmds:00023733:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023734:  errmsg("cannot EXCHANGE table \"%s\" as it has " 
-taaj: tablecmds:00023735:  "child table(s)", 
-taaj: tablecmds:00023736:  RelationGetRelationName(newrel)), 
-taaj: tablecmds:00023737:  errOmitLocation(true))); 
-taaj: tablecmds:00023744:  ereport(ERROR, 
-taaj: tablecmds:00023745:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023746:  errmsg("cannot exchange table \"%s\" as it " 
-taaj: tablecmds:00023747:  "inherits other table(s)", 
-taaj: tablecmds:00023748:  RelationGetRelationName(newrel)), 
-taaj: tablecmds:00023749:  errOmitLocation(true))); 
-taaj: tablecmds:00023757:  ereport(ERROR, 
-taaj: tablecmds:00023758:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023759:  errmsg("cannot exchange table which has rules " 
-taaj: tablecmds:00023760:  "defined on it"), 
-taaj: tablecmds:00023761:  errOmitLocation(true))); 
-taaj: tablecmds:00023823:  ereport(ERROR, 
-taaj: tablecmds:00023824:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023825:  errmsg("distribution policy for \"%s\" " 
-taaj: tablecmds:00023826:  "must be the same as that for \"%s\"", 
-taaj: tablecmds:00023827:  RelationGetRelationName(newrel), 
-taaj: tablecmds:00023828:  RelationGetRelationName(rel)), 
-taaj: tablecmds:00023829:  errOmitLocation(true))); 
-taaj: tablecmds:00023836:  ereport(ERROR, 
-taaj: tablecmds:00023837:  (errcode(ERRCODE_SYNTAX_ERROR), 
-taaj: tablecmds:00023838:  errmsg("distribution policy matches but implementation lags"), 
-taaj: tablecmds:00023839:  errOmitLocation(true))); 
+taaj: tablecmds:00012510:  errmsg("invalid orientation option"), 
+taaj: tablecmds:00012511:  errhint("valid orientation option is \"column\" or \"row\""), 
+taaj: tablecmds:00012512:  errOmitLocation(true))); 
+taaj: tablecmds:00012522:  ereport(ERROR, 
+taaj: tablecmds:00012523:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+taaj: tablecmds:00012524:  errmsg("\"%s\" specified more than once", 
+taaj: tablecmds:00012525:  reorg_str), 
+taaj: tablecmds:00012526:  errOmitLocation(true))); 
+taaj: tablecmds:00012538:  ereport(ERROR, 
+taaj: tablecmds:00012539:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+taaj: tablecmds:00012540:  errmsg("Invalid REORGANIZE option"), 
+taaj: tablecmds:00012541:  errhint("valid REORGANIZE option is \"true\" or \"false\""), 
+taaj: tablecmds:00012542:  errOmitLocation(true))); 
+taaj: tablecmds:00012549:  ereport(ERROR, 
+taaj: tablecmds:00012550:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+taaj: tablecmds:00012551:  errmsg("specify orientation requires appendonly"), 
+taaj: tablecmds:00012552:  errOmitLocation(true))); 
+taaj: tablecmds:00012569:  ereport(ERROR, 
+taaj: tablecmds:00012570:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+taaj: tablecmds:00012571:  errmsg("%s must be set to true when changing storage " 
+taaj: tablecmds:00012572:  "type", reorg_str), 
+taaj: tablecmds:00012573:  errOmitLocation(true))); 
+taaj: tablecmds:00012594:  ereport(WARNING, 
+taaj: tablecmds:00012595:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taaj: tablecmds:00012596:  errmsg("distribution policy of relation \"%s\" " 
+taaj: tablecmds:00012597:  "already set to DISTRIBUTED RANDOMLY", 
+taaj: tablecmds:00012598:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00012599:  errhint("Use ALTER TABLE \"%s\" " 
+taaj: tablecmds:00012600:  "SET WITH (REORGANIZE=TRUE) " 
+taaj: tablecmds:00012601:  "DISTRIBUTED RANDOMLY " 
+taaj: tablecmds:00012602:  "to force a random redistribution", 
+taaj: tablecmds:00012603:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00012604:  errOmitLocation(true))); 
+taaj: tablecmds:00012667:  ereport(ERROR, 
+taaj: tablecmds:00012668:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taaj: tablecmds:00012669:  errmsg("distribution policy must be a " 
+taaj: tablecmds:00012670:  "unique set of columns"), 
+taaj: tablecmds:00012671:  errhint("Column \"%s\" appears " 
+taaj: tablecmds:00012672:  "more than once", colName), 
+taaj: tablecmds:00012673:  errOmitLocation(true))); 
+taaj: tablecmds:00012675:  ereport(ERROR, 
+taaj: tablecmds:00012676:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+taaj: tablecmds:00012677:  errmsg("column \"%s\" of " 
+taaj: tablecmds:00012678:  "relation \"%s\" does not exist", 
+taaj: tablecmds:00012679:  colName, 
+taaj: tablecmds:00012680:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00012681:  errOmitLocation(true))); 
+taaj: tablecmds:00012687:  ereport(ERROR, 
+taaj: tablecmds:00012688:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00012689:  errmsg("cannot distribute by system column \"%s\"", 
+taaj: tablecmds:00012690:  colName), 
+taaj: tablecmds:00012691:  errOmitLocation(true))); 
+taaj: tablecmds:00012732:  ereport(WARNING, 
+taaj: tablecmds:00012733:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taaj: tablecmds:00012734:  errmsg("distribution policy of relation \"%s\" " 
+taaj: tablecmds:00012735:  "already set to (%s)", 
+taaj: tablecmds:00012736:  RelationGetRelationName(rel), 
+taaj: tablecmds:00012737:  dist), 
+taaj: tablecmds:00012738:  errhint("Use ALTER TABLE \"%s\" " 
+taaj: tablecmds:00012739:  "SET WITH (REORGANIZE=TRUE) " 
+taaj: tablecmds:00012740:  "DISTRIBUTED BY (%s) " 
+taaj: tablecmds:00012741:  "to force redistribution", 
+taaj: tablecmds:00012742:  RelationGetRelationName(rel), 
+taaj: tablecmds:00012743:  dist), 
+taaj: tablecmds:00012744:  errOmitLocation(true))); 
+taaj: tablecmds:00015077:  ereport(ERROR, 
+taaj: tablecmds:00015078:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+taaj: tablecmds:00015079:  errmsg("too many columns in boundary specification (%d > %d)", 
+taaj: tablecmds:00015080:  jj, ii))); 
+taaj: tablecmds:00015083:  ereport(ERROR, 
+taaj: tablecmds:00015084:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+taaj: tablecmds:00015085:  errmsg("too many columns in boundary specification (%d > %d)", 
+taaj: tablecmds:00015086:  jj, part->parnatts))); 
+taaj: tablecmds:00015101:  ereport(ERROR, 
+taaj: tablecmds:00015102:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+taaj: tablecmds:00015103:  errmsg("Not a constant expression"))); 
+taaj: tablecmds:00015115:  ereport(ERROR, 
+taaj: tablecmds:00015116:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+taaj: tablecmds:00015117:  errmsg("cannot coerce column type (%s versus %s)", 
+taaj: tablecmds:00015118:  format_type_be(c1->consttype), 
+taaj: tablecmds:00015119:  format_type_be(lhsid)))); 
+taaj: tablecmds:00015908:  ereport(ERROR, 
+taaj: tablecmds:00015909:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00015910:  errmsg("No partition id specified for %s", 
+taaj: tablecmds:00015911:  relname), 
+taaj: tablecmds:00015912:  errOmitLocation(true))); 
+taaj: tablecmds:00015980:  ereport(ERROR, 
+taaj: tablecmds:00015981:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00015982:  errmsg("%s is not partitioned", 
+taaj: tablecmds:00015983:  relname), 
+taaj: tablecmds:00015984:  errOmitLocation(true))); 
+taaj: tablecmds:00016050:  ereport(ERROR, 
+taaj: tablecmds:00016051:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00016052:  errmsg("cannot find partition by RANK -- " 
+taaj: tablecmds:00016053:  "%s is %s partitioned", 
+taaj: tablecmds:00016054:  relname, 
+taaj: tablecmds:00016055:  parTypName), 
+taaj: tablecmds:00016056:  errOmitLocation(true))); 
+taaj: tablecmds:00016178:  ereport(ERROR, 
+taaj: tablecmds:00016179:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00016180:  errmsg("FOR expression matches " 
+taaj: tablecmds:00016181:  "DEFAULT partition%s of %s", 
+taaj: tablecmds:00016182:  prule->isName ? 
+taaj: tablecmds:00016183:  partIdStr : "", 
+taaj: tablecmds:00016184:  relname), 
+taaj: tablecmds:00016185:  errhint("FOR expression may only specify " 
+taaj: tablecmds:00016186:  "a non-default partition in this context."), 
+taaj: tablecmds:00016187:  errOmitLocation(true))); 
+taaj: tablecmds:00016203:  ereport(ERROR, 
+taaj: tablecmds:00016204:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00016205:  errmsg("partition%s of %s does not exist", 
+taaj: tablecmds:00016206:  partIdStr, 
+taaj: tablecmds:00016207:  relname), 
+taaj: tablecmds:00016208:  errOmitLocation(true))); 
+taaj: tablecmds:00016211:  ereport(ERROR, 
+taaj: tablecmds:00016212:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00016213:  errmsg("DEFAULT partition of %s does not exist", 
+taaj: tablecmds:00016214:  relname), 
+taaj: tablecmds:00016215:  errOmitLocation(true))); 
+taaj: tablecmds:00016234:  ereport(ERROR, 
+taaj: tablecmds:00016235:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taaj: tablecmds:00016236:  errmsg("partition%s of %s already exists", 
+taaj: tablecmds:00016237:  partIdStr, 
+taaj: tablecmds:00016238:  relname), 
+taaj: tablecmds:00016239:  errOmitLocation(true))); 
+taaj: tablecmds:00016242:  ereport(ERROR, 
+taaj: tablecmds:00016243:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taaj: tablecmds:00016244:  errmsg("DEFAULT partition%s of %s already exists", 
+taaj: tablecmds:00016245:  prule->isName ? 
+taaj: tablecmds:00016246:  partIdStr : "", 
+taaj: tablecmds:00016247:  relname), 
+taaj: tablecmds:00016248:  errOmitLocation(true))); 
+taaj: tablecmds:00016461:  ereport(ERROR, 
+taaj: tablecmds:00016462:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00016463:  errmsg("%s is not partitioned", 
+taaj: tablecmds:00016464:  lrelname), 
+taaj: tablecmds:00016465:  errOmitLocation(true))); 
+taaj: tablecmds:00016493:  ereport(ERROR, 
+taaj: tablecmds:00016494:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00016495:  errmsg("cannot add HASH partition%s to %s", 
+taaj: tablecmds:00016496:  namBuf, 
+taaj: tablecmds:00016497:  lrelname), 
+taaj: tablecmds:00016498:  errhint("recreate the table to increase the " 
+taaj: tablecmds:00016499:  "number of partitions"), 
+taaj: tablecmds:00016500:  errOmitLocation(true))); 
+taaj: tablecmds:00016506:  ereport(ERROR, 
+taaj: tablecmds:00016507:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00016508:  errmsg("cannot ADD partition%s to %s by rank or value", 
+taaj: tablecmds:00016509:  namBuf, 
+taaj: tablecmds:00016510:  lrelname), 
+taaj: tablecmds:00016511:  errhint("use a named partition"), 
+taaj: tablecmds:00016512:  errOmitLocation(true))); 
+taaj: tablecmds:00016528:  ereport(ERROR, 
+taaj: tablecmds:00016529:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00016530:  errmsg("cannot add %s partition%s to " 
+taaj: tablecmds:00016531:  "%s with DEFAULT partition \"%s\"", 
+taaj: tablecmds:00016532:  parTypName, 
+taaj: tablecmds:00016533:  namBuf, 
+taaj: tablecmds:00016534:  lrelname, 
+taaj: tablecmds:00016535:  pNode->default_part->parname), 
+taaj: tablecmds:00016536:  errhint("need to SPLIT partition \"%s\"", 
+taaj: tablecmds:00016537:  pNode->default_part->parname), 
+taaj: tablecmds:00016538:  errOmitLocation(true))); 
+taaj: tablecmds:00016543:  ereport(ERROR, 
+taaj: tablecmds:00016544:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00016545:  errmsg("cannot add a DEFAULT partition%s " 
+taaj: tablecmds:00016546:  "to %s of type HASH", 
+taaj: tablecmds:00016547:  namBuf, 
+taaj: tablecmds:00016548:  lrelname), 
+taaj: tablecmds:00016549:  errOmitLocation(true))); 
+taaj: tablecmds:00016553:  ereport(ERROR, 
+taaj: tablecmds:00016554:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taaj: tablecmds:00016555:  errmsg("DEFAULT partition \"%s\" for " 
+taaj: tablecmds:00016556:  "%s already exists", 
+taaj: tablecmds:00016557:  pNode->default_part->parname, 
+taaj: tablecmds:00016558:  lrelname), 
+taaj: tablecmds:00016559:  errOmitLocation(true))); 
+taaj: tablecmds:00016567:  ereport(ERROR, 
+taaj: tablecmds:00016568:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00016569:  errmsg("invalid use of boundary specification " 
+taaj: tablecmds:00016570:  "for DEFAULT partition%s of %s", 
+taaj: tablecmds:00016571:  namBuf, 
+taaj: tablecmds:00016572:  lrelname), 
+taaj: tablecmds:00016573:  errOmitLocation(true))); 
+taaj: tablecmds:00017068:  ereport(ERROR, 
+taaj: tablecmds:00017069:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00017070:  errmsg("cannot specify EVERY when adding " 
+taaj: tablecmds:00017071:  "RANGE partition to %s", 
+taaj: tablecmds:00017072:  lrelname), 
+taaj: tablecmds:00017073:  errOmitLocation(true))); 
+taaj: tablecmds:00017076:  ereport(ERROR, 
+taaj: tablecmds:00017077:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00017078:  errmsg("Need START or END when adding " 
+taaj: tablecmds:00017079:  "RANGE partition to %s", 
+taaj: tablecmds:00017080:  lrelname), 
+taaj: tablecmds:00017081:  errOmitLocation(true))); 
+taaj: tablecmds:00017178:  ereport(ERROR, 
+taaj: tablecmds:00017179:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00017180:  errmsg("new partition overlaps existing " 
+taaj: tablecmds:00017181:  "partition"), 
+taaj: tablecmds:00017182:  errOmitLocation(true))); 
+taaj: tablecmds:00017202:  ereport(ERROR, 
+taaj: tablecmds:00017203:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00017204:  errmsg("new partition overlaps existing " 
+taaj: tablecmds:00017205:  "partition"), 
+taaj: tablecmds:00017206:  errOmitLocation(true))); 
+taaj: tablecmds:00017317:  ereport(ERROR, 
+taaj: tablecmds:00017318:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00017319:  errmsg("new partition overlaps existing " 
+taaj: tablecmds:00017320:  "partition"), 
+taaj: tablecmds:00017321:  errOmitLocation(true))); 
+taaj: tablecmds:00017359:  ereport(ERROR, 
+taaj: tablecmds:00017360:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00017361:  errmsg("new partition overlaps existing " 
+taaj: tablecmds:00017362:  "partition"), 
+taaj: tablecmds:00017363:  errOmitLocation(true))); 
+taaj: tablecmds:00018024:  ereport(ERROR, 
+taaj: tablecmds:00018025:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00018026:  errmsg("new partition overlaps existing " 
+taaj: tablecmds:00018027:  "partition%s", 
+taaj: tablecmds:00018028:  (prule && prule->isName) ? 
+taaj: tablecmds:00018029:  prule->partIdStr : ""), 
+taaj: tablecmds:00018030:  errOmitLocation(true))); 
+taaj: tablecmds:00018083:  ereport(ERROR, 
+taaj: tablecmds:00018084:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00018085:  errmsg("new partition definition overlaps " 
+taaj: tablecmds:00018086:  "existing partition%s of %s", 
+taaj: tablecmds:00018087:  prule->partIdStr, 
+taaj: tablecmds:00018088:  lrelname), 
+taaj: tablecmds:00018089:  errOmitLocation(true))); 
+taaj: tablecmds:00018482:  ereport(ERROR, 
+taaj: tablecmds:00018483:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00018484:  errmsg("cannot ALTER PARTITION for relation \"%s\"", 
+taaj: tablecmds:00018485:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00018486:  errOmitLocation(true))); 
+taaj: tablecmds:00018500:  ereport(ERROR, 
+taaj: tablecmds:00018501:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00018502:  errmsg("cannot ALTER PARTITION for relation \"%s\"", 
+taaj: tablecmds:00018503:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00018504:  errOmitLocation(true))); 
+taaj: tablecmds:00018547:  ereport(ERROR, 
+taaj: tablecmds:00018548:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00018549:  errmsg("cannot ALTER PARTITION ... SET " 
+taaj: tablecmds:00018550:  "DISTRIBUTED BY for %s", 
+taaj: tablecmds:00018551:  prule->relname), 
+taaj: tablecmds:00018552:  errhint("distribution policy of " 
+taaj: tablecmds:00018553:  "partition must match parent"), 
+taaj: tablecmds:00018554:  errOmitLocation(true) 
+taaj: tablecmds:00018555:  )); 
+taaj: tablecmds:00018564:  ereport(NOTICE, 
+taaj: tablecmds:00018565:  (errmsg("altering table \"%s\" " 
+taaj: tablecmds:00018566:  "(%s)", 
+taaj: tablecmds:00018567:  RelationGetRelationName(rel2), 
+taaj: tablecmds:00018568:  prule->relname))); 
+taaj: tablecmds:00018626:  ereport(ERROR, 
+taaj: tablecmds:00018627:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00018628:  errmsg("cannot COALESCE PARTITION for relation \"%s\"", 
+taaj: tablecmds:00018629:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00018630:  errOmitLocation(true))); 
+taaj: tablecmds:00018776:  ereport(ERROR, 
+taaj: tablecmds:00018777:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00018778:  errmsg("missing name or value for DROP for %s", 
+taaj: tablecmds:00018779:  lrelname), 
+taaj: tablecmds:00018780:  errOmitLocation(true))); 
+taaj: tablecmds:00018782:  ereport(ERROR, 
+taaj: tablecmds:00018783:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00018784:  errmsg("missing name or value for DROP"), 
+taaj: tablecmds:00018785:  errOmitLocation(true))); 
+taaj: tablecmds:00018800:  ereport(ERROR, 
+taaj: tablecmds:00018801:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00018802:  errmsg("FOR expression matches " 
+taaj: tablecmds:00018803:  "DEFAULT partition%s of %s", 
+taaj: tablecmds:00018804:  prule->partIdStr, 
+taaj: tablecmds:00018805:  prule->relname), 
+taaj: tablecmds:00018806:  errhint("FOR expression may only specify " 
+taaj: tablecmds:00018807:  "a non-default partition in this context."), 
+taaj: tablecmds:00018808:  errOmitLocation(true))); 
+taaj: tablecmds:00018820:  ereport(NOTICE, 
+taaj: tablecmds:00018821:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00018822:  errmsg("partition \"%s\" of %s does not " 
+taaj: tablecmds:00018823:  "exist, skipping", 
+taaj: tablecmds:00018824:  strVal(locPid->partiddef), 
+taaj: tablecmds:00018825:  lrelname 
+taaj: tablecmds:00018826:  ), 
+taaj: tablecmds:00018827:  errOmitLocation(true))); 
+taaj: tablecmds:00018831:  ereport(NOTICE, 
+taaj: tablecmds:00018832:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00018833:  errmsg("partition for specified value of " 
+taaj: tablecmds:00018834:  "%s does not exist, skipping", 
+taaj: tablecmds:00018835:  lrelname 
+taaj: tablecmds:00018836:  ), 
+taaj: tablecmds:00018837:  errOmitLocation(true))); 
+taaj: tablecmds:00018841:  ereport(NOTICE, 
+taaj: tablecmds:00018842:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00018843:  errmsg("partition for specified rank of " 
+taaj: tablecmds:00018844:  "%s does not exist, skipping", 
+taaj: tablecmds:00018845:  lrelname 
+taaj: tablecmds:00018846:  ), 
+taaj: tablecmds:00018847:  errOmitLocation(true))); 
+taaj: tablecmds:00018851:  ereport(NOTICE, 
+taaj: tablecmds:00018852:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00018853:  errmsg("partition for specified oid of " 
+taaj: tablecmds:00018854:  "%s does not exist, skipping", 
+taaj: tablecmds:00018855:  lrelname 
+taaj: tablecmds:00018856:  ), 
+taaj: tablecmds:00018857:  errOmitLocation(true))); 
+taaj: tablecmds:00018860:  ereport(NOTICE, 
+taaj: tablecmds:00018861:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00018862:  errmsg("DEFAULT partition for " 
+taaj: tablecmds:00018863:  "%s does not exist, skipping", 
+taaj: tablecmds:00018864:  lrelname 
+taaj: tablecmds:00018865:  ), 
+taaj: tablecmds:00018866:  errOmitLocation(true))); 
+taaj: tablecmds:00018890:  ereport(ERROR, 
+taaj: tablecmds:00018891:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+taaj: tablecmds:00018892:  errmsg("cannot drop HASH partition%s of %s", 
+taaj: tablecmds:00018893:  prule->partIdStr, 
+taaj: tablecmds:00018894:  prule->relname), 
+taaj: tablecmds:00018895:  errhint("recreate the table to reduce the " 
+taaj: tablecmds:00018896:  "number of partitions"), 
+taaj: tablecmds:00018897:  errOmitLocation(true))); 
+taaj: tablecmds:00018903:  ereport(ERROR, 
+taaj: tablecmds:00018904:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+taaj: tablecmds:00018905:  errmsg("cannot drop partition%s of " 
+taaj: tablecmds:00018906:  "%s -- only one remains", 
+taaj: tablecmds:00018907:  prule->partIdStr, 
+taaj: tablecmds:00018908:  prule->relname), 
+taaj: tablecmds:00018909:  errhint("Use DROP TABLE \"%s\" to remove the " 
+taaj: tablecmds:00018910:  "table and the final partition ", 
+taaj: tablecmds:00018911:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00018912:  errOmitLocation(true))); 
+taaj: tablecmds:00018914:  ereport(ERROR, 
+taaj: tablecmds:00018915:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+taaj: tablecmds:00018916:  errmsg("cannot drop partition%s of " 
+taaj: tablecmds:00018917:  "%s -- only one remains", 
+taaj: tablecmds:00018918:  prule->partIdStr, 
+taaj: tablecmds:00018919:  prule->relname), 
+taaj: tablecmds:00018920:  errhint("DROP the parent partition to remove the " 
+taaj: tablecmds:00018921:  "final partition "), 
+taaj: tablecmds:00018922:  errOmitLocation(true))); 
+taaj: tablecmds:00018963:  ereport(NOTICE, 
+taaj: tablecmds:00018964:  (errmsg("dropped partition%s for %s and its children", 
+taaj: tablecmds:00018965:  prule->partIdStr, 
+taaj: tablecmds:00018966:  prule->relname))); 
+taaj: tablecmds:00018970:  ereport(NOTICE, 
+taaj: tablecmds:00018971:  (errmsg("dropped partition%s for %s", 
+taaj: tablecmds:00018972:  prule->partIdStr, 
+taaj: tablecmds:00018973:  prule->relname))); 
+taaj: tablecmds:00019194:  ereport(ERROR, 
+taaj: tablecmds:00019195:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00019196:  errmsg("constraint \"%s\" on table \"%s\" " 
+taaj: tablecmds:00019197:  "conflicts with partitioning rule", 
+taaj: tablecmds:00019198:  NameStr(con->conname), 
+taaj: tablecmds:00019199:  RelationGetRelationName(newrel)), 
+taaj: tablecmds:00019200:  errOmitLocation(true))); 
+taaj: tablecmds:00019474:  ereport(ERROR, 
+taaj: tablecmds:00019475:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00019476:  errmsg("cannot EXCHANGE PARTITION for " 
+taaj: tablecmds:00019477:  "%s -- partition has children", 
+taaj: tablecmds:00019478:  prule->relname 
+taaj: tablecmds:00019479:  ), 
+taaj: tablecmds:00019480:  errOmitLocation(true))); 
+taaj: tablecmds:00019660:  ereport(NOTICE, 
+taaj: tablecmds:00019661:  (errmsg("exchanged partition%s of " 
+taaj: tablecmds:00019662:  "%s with relation \"%s\"", 
+taaj: tablecmds:00019663:  orig_prule->partIdStr, 
+taaj: tablecmds:00019664:  orig_prule->relname, 
+taaj: tablecmds:00019665:  newname), 
+taaj: tablecmds:00019666:  errOmitLocation(true))); 
+taaj: tablecmds:00019741:  ereport(ERROR, 
+taaj: tablecmds:00019742:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00019743:  errmsg("target of MERGE must be either \"%s\" or " 
+taaj: tablecmds:00019744:  "\"%s\"", 
+taaj: tablecmds:00019745:  get_rel_name(prule1->topRule->parchildrelid), 
+taaj: tablecmds:00019746:  get_rel_name(prule2->topRule->parchildrelid)), 
+taaj: tablecmds:00019747:  errOmitLocation(true))); 
+taaj: tablecmds:00019785:  ereport(ERROR, 
+taaj: tablecmds:00019786:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00019787:  errmsg("cannot MERGE PARTITION for relation \"%s\"", 
+taaj: tablecmds:00019788:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00019789:  errOmitLocation(true))); 
+taaj: tablecmds:00019801:  ereport(ERROR, 
+taaj: tablecmds:00019802:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00019803:  errmsg("cannot MODIFY %s partition%s for " 
+taaj: tablecmds:00019804:  "relation \"%s\" to ADD values -- would " 
+taaj: tablecmds:00019805:  "overlap DEFAULT partition \"%s\"", 
+taaj: tablecmds:00019806:  "LIST", 
+taaj: tablecmds:00019807:  prule->partIdStr, 
+taaj: tablecmds:00019808:  RelationGetRelationName(rel), 
+taaj: tablecmds:00019809:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00019810:  errhint("need to SPLIT partition \"%s\"", 
+taaj: tablecmds:00019811:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00019812:  errOmitLocation(true))); 
+taaj: tablecmds:00019862:  ereport(ERROR, 
+taaj: tablecmds:00019863:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00019864:  errmsg("cannot MODIFY LIST partition%s for " 
+taaj: tablecmds:00019865:  "relation \"%s\" -- " 
+taaj: tablecmds:00019866:  "would overlap " 
+taaj: tablecmds:00019867:  "existing partition%s", 
+taaj: tablecmds:00019868:  prule->partIdStr, 
+taaj: tablecmds:00019869:  RelationGetRelationName(rel), 
+taaj: tablecmds:00019870:  prule2->isName ? 
+taaj: tablecmds:00019871:  prule2->partIdStr : ""), 
+taaj: tablecmds:00019872:  errOmitLocation(true))); 
+taaj: tablecmds:00019874:  ereport(ERROR, 
+taaj: tablecmds:00019875:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00019876:  errmsg("cannot MODIFY LIST partition%s for " 
+taaj: tablecmds:00019877:  "relation \"%s\" -- " 
+taaj: tablecmds:00019878:  "ADD value has duplicate in " 
+taaj: tablecmds:00019879:  "existing partition", 
+taaj: tablecmds:00019880:  prule->partIdStr, 
+taaj: tablecmds:00019881:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00019882:  errOmitLocation(true))); 
+taaj: tablecmds:00019893:  ereport(ERROR, 
+taaj: tablecmds:00019894:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00019895:  errmsg("cannot MODIFY LIST partition%s for " 
+taaj: tablecmds:00019896:  "relation \"%s\" -- DROP value not found", 
+taaj: tablecmds:00019897:  prule->partIdStr, 
+taaj: tablecmds:00019898:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00019899:  errOmitLocation(true))); 
+taaj: tablecmds:00019904:  ereport(ERROR, 
+taaj: tablecmds:00019905:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00019906:  errmsg("cannot MODIFY LIST partition%s for " 
+taaj: tablecmds:00019907:  "relation \"%s\" -- " 
+taaj: tablecmds:00019908:  "found DROP value in%s partition%s", 
+taaj: tablecmds:00019909:  prule->partIdStr, 
+taaj: tablecmds:00019910:  RelationGetRelationName(rel), 
+taaj: tablecmds:00019911:  prule2->isName ? "" : "other", 
+taaj: tablecmds:00019912:  prule2->isName ? prule2->partIdStr : ""), 
+taaj: tablecmds:00019913:  errOmitLocation(true))); 
+taaj: tablecmds:00020025:  ereport(ERROR, 
+taaj: tablecmds:00020026:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020027:  errmsg("cannot MODIFY %s partition%s for " 
+taaj: tablecmds:00020028:  "relation \"%s\" to extend range -- would " 
+taaj: tablecmds:00020029:  "overlap DEFAULT partition \"%s\"", 
+taaj: tablecmds:00020030:  "RANGE", 
+taaj: tablecmds:00020031:  prule->partIdStr, 
+taaj: tablecmds:00020032:  RelationGetRelationName(rel), 
+taaj: tablecmds:00020033:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00020034:  errhint("need to SPLIT partition \"%s\"", 
+taaj: tablecmds:00020035:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00020036:  errOmitLocation(true))); 
+taaj: tablecmds:00020180:  ereport(ERROR, 
+taaj: tablecmds:00020181:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020182:  errmsg("cannot MODIFY %s partition%s for " 
+taaj: tablecmds:00020183:  "relation \"%s\" to extend range -- would " 
+taaj: tablecmds:00020184:  "overlap DEFAULT partition \"%s\"", 
+taaj: tablecmds:00020185:  "RANGE", 
+taaj: tablecmds:00020186:  prule->partIdStr, 
+taaj: tablecmds:00020187:  RelationGetRelationName(rel), 
+taaj: tablecmds:00020188:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00020189:  errhint("need to SPLIT partition \"%s\"", 
+taaj: tablecmds:00020190:  prule->pNode->default_part->parname), 
+taaj: tablecmds:00020191:  errOmitLocation(true))); 
+taaj: tablecmds:00020320:  ereport(ERROR, 
+taaj: tablecmds:00020321:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00020322:  errmsg("cannot MODIFY RANGE partition%s for " 
+taaj: tablecmds:00020323:  "relation \"%s\" -- " 
+taaj: tablecmds:00020324:  "would overlap " 
+taaj: tablecmds:00020325:  "existing partition%s", 
+taaj: tablecmds:00020326:  prule->partIdStr, 
+taaj: tablecmds:00020327:  RelationGetRelationName(rel), 
+taaj: tablecmds:00020328:  (prule2 && prule2->isName) ? 
+taaj: tablecmds:00020329:  prule2->partIdStr : ""), 
+taaj: tablecmds:00020330:  errOmitLocation(true))); 
+taaj: tablecmds:00020412:  ereport(ERROR, 
+taaj: tablecmds:00020413:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020414:  errmsg("cannot MODIFY DEFAULT %s partition%s " 
+taaj: tablecmds:00020415:  "for relation \"%s\"", 
+taaj: tablecmds:00020416:  parTypName, 
+taaj: tablecmds:00020417:  ((prule && prule->isName) ? prule->partIdStr : ""), 
+taaj: tablecmds:00020418:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00020419:  errOmitLocation(true))); 
+taaj: tablecmds:00020422:  ereport(ERROR, 
+taaj: tablecmds:00020423:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020424:  errmsg("invalid use of %s boundary specification " 
+taaj: tablecmds:00020425:  "in partition%s of type %s", 
+taaj: tablecmds:00020426:  "RANGE", 
+taaj: tablecmds:00020427:  ((prule && prule->isName) ? prule->partIdStr : ""), 
+taaj: tablecmds:00020428:  parTypName 
+taaj: tablecmds:00020429:  ), 
+taaj: tablecmds:00020430:  errOmitLocation(true))); 
+taaj: tablecmds:00020433:  ereport(ERROR, 
+taaj: tablecmds:00020434:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020435:  errmsg("invalid use of %s boundary specification " 
+taaj: tablecmds:00020436:  "in partition%s of type %s", 
+taaj: tablecmds:00020437:  "LIST", 
+taaj: tablecmds:00020438:  ((prule && prule->isName) ? prule->partIdStr : ""), 
+taaj: tablecmds:00020439:  parTypName 
+taaj: tablecmds:00020440:  ), 
+taaj: tablecmds:00020441:  errOmitLocation(true))); 
+taaj: tablecmds:00020475:  ereport(ERROR, 
+taaj: tablecmds:00020476:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00020477:  errmsg("cannot MODIFY PARTITION for relation \"%s\"", 
+taaj: tablecmds:00020478:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00020479:  errOmitLocation(true))); 
+taaj: tablecmds:00020564:  ereport(ERROR, 
+taaj: tablecmds:00020565:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020566:  errmsg("relation name \"%s\" for child partition " 
+taaj: tablecmds:00020567:  "is too long", 
+taaj: tablecmds:00020568:  newRelNameBuf))); 
+taaj: tablecmds:00020719:  ereport(ERROR, 
+taaj: tablecmds:00020720:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00020721:  errmsg("name \"%s\" for child partition " 
+taaj: tablecmds:00020722:  "is too long", 
+taaj: tablecmds:00020723:  newpartname))); 
+taaj: tablecmds:00020815:  ereport(NOTICE, 
+taaj: tablecmds:00020816:  (errmsg("renamed partition%s to \"%s\" for %s", 
+taaj: tablecmds:00020817:  prule->partIdStr, 
+taaj: tablecmds:00020818:  newpartname, 
+taaj: tablecmds:00020819:  prule->relname))); 
+taaj: tablecmds:00020824:  ereport(WARNING, 
+taaj: tablecmds:00020825:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+taaj: tablecmds:00020826:  errmsg("renamed %d partitions, skipped %d child partitions due to name truncation", 
+taaj: tablecmds:00020827:  renamed, skipped), 
+taaj: tablecmds:00020828:  errOmitLocation(true))); 
+taaj: tablecmds:00020878:  ereport(NOTICE, 
+taaj: tablecmds:00020879:  (errmsg("%s level %d " 
+taaj: tablecmds:00020880:  "subpartition template specification " 
+taaj: tablecmds:00020881:  "for relation \"%s\"", 
+taaj: tablecmds:00020882:  "adding", 
+taaj: tablecmds:00020883:  lvl, 
+taaj: tablecmds:00020884:  RelationGetRelationName(rel)))); 
+taaj: tablecmds:00020889:  ereport(ERROR, 
+taaj: tablecmds:00020890:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00020891:  errmsg("relation \"%s\" does not have a " 
+taaj: tablecmds:00020892:  "level %d " 
+taaj: tablecmds:00020893:  "subpartition template specification", 
+taaj: tablecmds:00020894:  RelationGetRelationName(rel), 
+taaj: tablecmds:00020895:  lvl), 
+taaj: tablecmds:00020896:  errOmitLocation(true))); 
+taaj: tablecmds:00020904:  ereport(NOTICE, 
+taaj: tablecmds:00020905:  (errmsg("%s level %d " 
+taaj: tablecmds:00020906:  "subpartition template specification " 
+taaj: tablecmds:00020907:  "for relation \"%s\"", 
+taaj: tablecmds:00020908:  (pc->arg1) ? "replacing" : "dropped", 
+taaj: tablecmds:00020909:  lvl, 
+taaj: tablecmds:00020910:  RelationGetRelationName(rel)))); 
+taaj: tablecmds:00021417:  ereport(ERROR, 
+taaj: tablecmds:00021418:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00021419:  errmsg("relation \"%s\" does not have a " 
+taaj: tablecmds:00021420:  "default partition", 
+taaj: tablecmds:00021421:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00021422:  errOmitLocation(true))); 
+taaj: tablecmds:00021504:  ereport(ERROR, 
+taaj: tablecmds:00021505:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+taaj: tablecmds:00021506:  errmsg("relation \"%s\" does not have a " 
+taaj: tablecmds:00021507:  "default partition", 
+taaj: tablecmds:00021508:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00021509:  errOmitLocation(true))); 
+taaj: tablecmds:00021555:  ereport(ERROR, 
+taaj: tablecmds:00021556:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+taaj: tablecmds:00021557:  errmsg("both INTO partitions " 
+taaj: tablecmds:00021558:  "already exist"), 
+taaj: tablecmds:00021559:  errOmitLocation(true))); 
+taaj: tablecmds:00022345:  ereport(NOTICE, 
+taaj: tablecmds:00022346:  (errmsg("truncated partition%s for %s and its children", 
+taaj: tablecmds:00022347:  prule->partIdStr, 
+taaj: tablecmds:00022348:  prule->relname), 
+taaj: tablecmds:00022349:  errOmitLocation(true))); 
+taaj: tablecmds:00022353:  ereport(NOTICE, 
+taaj: tablecmds:00022354:  (errmsg("truncated partition%s for %s", 
+taaj: tablecmds:00022355:  prule->partIdStr, 
+taaj: tablecmds:00022356:  prule->relname), 
+taaj: tablecmds:00022357:  errOmitLocation(true))); 
+taaj: tablecmds:00022382:  ereport(ERROR, 
+taaj: tablecmds:00022383:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00022384:  errmsg("\"%s\" is a TOAST relation", 
+taaj: tablecmds:00022385:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00022386:  errOmitLocation(true))); 
+taaj: tablecmds:00022389:  ereport(ERROR, 
+taaj: tablecmds:00022390:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00022391:  errmsg("\"%s\" is an Append Only segment listing relation", 
+taaj: tablecmds:00022392:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00022393:  errOmitLocation(true))); 
+taaj: tablecmds:00022396:  ereport(ERROR, 
+taaj: tablecmds:00022397:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+taaj: tablecmds:00022398:  errmsg("\"%s\" is an Append Only block directory relation", 
+taaj: tablecmds:00022399:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00022400:  errOmitLocation(true))); 
+taaj: tablecmds:00022409:  ereport(ERROR, 
+taaj: tablecmds:00022410:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00022411:  errmsg("cannot move an owned sequence into another schema"), 
+taaj: tablecmds:00022412:  errdetail("Sequence \"%s\" is linked to table \"%s\".", 
+taaj: tablecmds:00022413:  RelationGetRelationName(rel), 
+taaj: tablecmds:00022414:  get_rel_name(tableId)), 
+taaj: tablecmds:00022415:  errOmitLocation(true))); 
+taaj: tablecmds:00022422:  ereport(ERROR, 
+taaj: tablecmds:00022423:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+taaj: tablecmds:00022424:  errmsg("relation \"%s\" is already in schema \"%s\"", 
+taaj: tablecmds:00022425:  RelationGetRelationName(rel), 
+taaj: tablecmds:00022426:  newschema), 
+taaj: tablecmds:00022427:  errOmitLocation(true))); 
+taaj: tablecmds:00022431:  ereport(ERROR, 
+taaj: tablecmds:00022432:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00022433:  errmsg("cannot move objects into or out of temporary schemas"), 
+taaj: tablecmds:00022434:  errOmitLocation(true))); 
+taaj: tablecmds:00022438:  ereport(ERROR, 
+taaj: tablecmds:00022439:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00022440:  errmsg("cannot move objects into or out of TOAST schema"), 
+taaj: tablecmds:00022441:  errOmitLocation(true))); 
+taaj: tablecmds:00022445:  ereport(ERROR, 
+taaj: tablecmds:00022446:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00022447:  errmsg("cannot move objects into or out of AO SEGMENT schema"), 
+taaj: tablecmds:00022448:  errOmitLocation(true))); 
+taaj: tablecmds:00022522:  ereport(ERROR, 
+taaj: tablecmds:00022523:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+taaj: tablecmds:00022524:  errmsg("relation \"%s\" already exists in schema \"%s\"", 
+taaj: tablecmds:00022525:  NameStr(classForm->relname), 
+taaj: tablecmds:00022526:  get_namespace_name(newNspOid)), 
+taaj: tablecmds:00022527:  errOmitLocation(true))); 
+taaj: tablecmds:00022900:  ereport(ERROR, 
+taaj: tablecmds:00022901:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+taaj: tablecmds:00022902:  errmsg("location uri \"%s\" appears more than once", 
+taaj: tablecmds:00022903:  uri1), 
+taaj: tablecmds:00022904:  errOmitLocation(true))); 
+taaj: tablecmds:00022977:  ereport(ERROR, 
+taaj: tablecmds:00022978:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00022979:  errmsg("GPHDFS can only have one location list"), 
+taaj: tablecmds:00022980:  errhint("Combine multiple HDFS files into a single file"), 
+taaj: tablecmds:00022981:  errOmitLocation(true))); 
+taaj: tablecmds:00023000:  ereport(ERROR, 
+taaj: tablecmds:00023001:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00023002:  errmsg("URI protocols must be the same for all data sources"), 
+taaj: tablecmds:00023003:  errhint("Available protocols are 'http', 'file', 'gphdfs' and 'gpfdist'"), 
+taaj: tablecmds:00023004:  errOmitLocation(true))); 
+taaj: tablecmds:00023011:  ereport(ERROR, 
+taaj: tablecmds:00023012:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00023013:  errmsg("unsupported URI protocol for custom data format"), 
+taaj: tablecmds:00023014:  errhint("Use EXECUTE or 'file' instead ('file' is for read only)."), 
+taaj: tablecmds:00023015:  errOmitLocation(true))); 
+taaj: tablecmds:00023019:  ereport(ERROR, 
+taaj: tablecmds:00023020:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023021:  errmsg("an EXTERNAL WEB TABLE may only use http URI\'s, problem in: \'%s\'", uri_str_final), 
+taaj: tablecmds:00023022:  errhint("Use CREATE EXTERNAL TABLE instead."), 
+taaj: tablecmds:00023023:  errOmitLocation(true))); 
+taaj: tablecmds:00023026:  ereport(ERROR, 
+taaj: tablecmds:00023027:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023028:  errmsg("http URI\'s can only be used in an external web table"), 
+taaj: tablecmds:00023029:  errhint("Use CREATE EXTERNAL WEB TABLE instead."), 
+taaj: tablecmds:00023030:  errOmitLocation(true))); 
+taaj: tablecmds:00023033:  ereport(ERROR, 
+taaj: tablecmds:00023034:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+taaj: tablecmds:00023035:  errmsg("unsupported URI protocol \'%s\' for writable external table", 
+taaj: tablecmds:00023036:  (uri->protocol == URI_HTTP ? "http" : "file")), 
+taaj: tablecmds:00023037:  errhint("Writable external tables may use \'gpfdist\' or \'gphdfs\' URIs only."), 
+taaj: tablecmds:00023038:  errOmitLocation(true))); 
+taaj: tablecmds:00023041:  ereport(ERROR, 
+taaj: tablecmds:00023042:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023043:  errmsg("Unsupported use of wildcard in a writable external web table definition: " 
+taaj: tablecmds:00023044:  "\'%s\'", uri_str_final), 
+taaj: tablecmds:00023045:  errhint("Specify the explicit path and file name to write into."))); 
+taaj: tablecmds:00023048:  ereport(ERROR, 
+taaj: tablecmds:00023049:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023050:  errmsg("Unsupported use of a directory name in a writable gpfdist external table : " 
+taaj: tablecmds:00023051:  "\'%s\'", uri_str_final), 
+taaj: tablecmds:00023052:  errhint("Specify the explicit path and file name to write into."), 
+taaj: tablecmds:00023053:  errOmitLocation(true))); 
+taaj: tablecmds:00023104:  ereport(ERROR, 
+taaj: tablecmds:00023105:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023106:  errmsg("ON clause must not have more than one element."), 
+taaj: tablecmds:00023107:  errOmitLocation(true))); 
+taaj: tablecmds:00023150:  ereport(ERROR, 
+taaj: tablecmds:00023151:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+taaj: tablecmds:00023152:  errmsg("Unknown location code for EXECUTE in tablecmds."), 
+taaj: tablecmds:00023153:  errOmitLocation(true))); 
+taaj: tablecmds:00023193:  ereport(ERROR, 
+taaj: tablecmds:00023194:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023195:  errmsg("unsupported format '%s'", formatname), 
+taaj: tablecmds:00023196:  errhint("available formats are \"text\", \"csv\", or \"custom\""), 
+taaj: tablecmds:00023197:  errOmitLocation(true))); 
+taaj: tablecmds:00023239:  ereport(ERROR, 
+taaj: tablecmds:00023240:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023241:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023242:  errOmitLocation(true))); 
+taaj: tablecmds:00023248:  ereport(ERROR, 
+taaj: tablecmds:00023249:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023250:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023251:  errOmitLocation(true))); 
+taaj: tablecmds:00023257:  ereport(ERROR, 
+taaj: tablecmds:00023258:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023259:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023260:  errOmitLocation(true))); 
+taaj: tablecmds:00023266:  ereport(ERROR, 
+taaj: tablecmds:00023267:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023268:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023269:  errOmitLocation(true))); 
+taaj: tablecmds:00023275:  ereport(ERROR, 
+taaj: tablecmds:00023276:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023277:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023278:  errOmitLocation(true))); 
+taaj: tablecmds:00023284:  ereport(ERROR, 
+taaj: tablecmds:00023285:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023286:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023287:  errOmitLocation(true))); 
+taaj: tablecmds:00023294:  ereport(ERROR, 
+taaj: tablecmds:00023295:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023296:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023297:  errOmitLocation(true))); 
+taaj: tablecmds:00023304:  ereport(ERROR, 
+taaj: tablecmds:00023305:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023306:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023307:  errOmitLocation(true))); 
+taaj: tablecmds:00023313:  ereport(ERROR, 
+taaj: tablecmds:00023314:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023315:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023316:  errOmitLocation(true))); 
+taaj: tablecmds:00023322:  ereport(ERROR, 
+taaj: tablecmds:00023323:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023324:  errmsg("conflicting or redundant options"), 
+taaj: tablecmds:00023325:  errOmitLocation(true))); 
+taaj: tablecmds:00023330:  ereport(ERROR, 
+taaj: tablecmds:00023331:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023332:  errmsg("formatter is the only allowed option in custom format"), 
+taaj: tablecmds:00023333:  errOmitLocation(true))); 
+taaj: tablecmds:00023335:  ereport(ERROR, 
+taaj: tablecmds:00023336:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023337:  errmsg("formatter option is not allowed in text formats"), 
+taaj: tablecmds:00023338:  errOmitLocation(true))); 
+taaj: tablecmds:00023483:  ereport(ERROR, 
+taaj: tablecmds:00023484:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023485:  errmsg("no formatter function specified"), 
+taaj: tablecmds:00023486:  errOmitLocation(true))); 
+taaj: tablecmds:00023577:  ereport(ERROR, 
+taaj: tablecmds:00023578:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+taaj: tablecmds:00023579:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+taaj: tablecmds:00023580:  cname, 
+taaj: tablecmds:00023581:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00023582:  errOmitLocation(true))); 
+taaj: tablecmds:00023621:  ereport(ERROR, 
+taaj: tablecmds:00023622:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+taaj: tablecmds:00023623:  errmsg("cannot exchange HASH partition%s " 
+taaj: tablecmds:00023624:  "of relation \"%s\"", prule->partIdStr, 
+taaj: tablecmds:00023625:  RelationGetRelationName(rel)))); 
+taaj: tablecmds:00023672:  ereport(ERROR, 
+taaj: tablecmds:00023673:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023674:  errmsg("cannot exchange relation " 
+taaj: tablecmds:00023675:  "which is not a table"))); 
+taaj: tablecmds:00023706:  ereport(ERROR, 
+taaj: tablecmds:00023707:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023708:  errmsg("owner of \"%s\" must be the same as that " 
+taaj: tablecmds:00023709:  "of \"%s\"", 
+taaj: tablecmds:00023710:  RelationGetRelationName(newrel), 
+taaj: tablecmds:00023711:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00023712:  errOmitLocation(true))); 
+taaj: tablecmds:00023720:  ereport(ERROR, 
+taaj: tablecmds:00023721:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023722:  errmsg("\"%s\" and \"%s\" must have same OIDs setting", 
+taaj: tablecmds:00023723:  RelationGetRelationName(rel), 
+taaj: tablecmds:00023724:  RelationGetRelationName(newrel)), 
+taaj: tablecmds:00023725:  errOmitLocation(true))); 
+taaj: tablecmds:00023733:  ereport(ERROR, 
+taaj: tablecmds:00023734:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023735:  errmsg("cannot EXCHANGE table \"%s\" as it has " 
+taaj: tablecmds:00023736:  "child table(s)", 
+taaj: tablecmds:00023737:  RelationGetRelationName(newrel)), 
+taaj: tablecmds:00023738:  errOmitLocation(true))); 
+taaj: tablecmds:00023745:  ereport(ERROR, 
+taaj: tablecmds:00023746:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023747:  errmsg("cannot exchange table \"%s\" as it " 
+taaj: tablecmds:00023748:  "inherits other table(s)", 
+taaj: tablecmds:00023749:  RelationGetRelationName(newrel)), 
+taaj: tablecmds:00023750:  errOmitLocation(true))); 
+taaj: tablecmds:00023758:  ereport(ERROR, 
+taaj: tablecmds:00023759:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023760:  errmsg("cannot exchange table which has rules " 
+taaj: tablecmds:00023761:  "defined on it"), 
+taaj: tablecmds:00023762:  errOmitLocation(true))); 
+taaj: tablecmds:00023824:  ereport(ERROR, 
+taaj: tablecmds:00023825:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023826:  errmsg("distribution policy for \"%s\" " 
+taaj: tablecmds:00023827:  "must be the same as that for \"%s\"", 
+taaj: tablecmds:00023828:  RelationGetRelationName(newrel), 
+taaj: tablecmds:00023829:  RelationGetRelationName(rel)), 
+taaj: tablecmds:00023830:  errOmitLocation(true))); 
+taaj: tablecmds:00023837:  ereport(ERROR, 
+taaj: tablecmds:00023838:  (errcode(ERRCODE_SYNTAX_ERROR), 
+taaj: tablecmds:00023839:  errmsg("distribution policy matches but implementation lags"), 
+taaj: tablecmds:00023840:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: taba: tablespace - ./backend/commands/tablespace.c
 taba: tablespace:00000117:  ereport(ERROR, 
 taba: tablespace:00000118:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
@@ -11060,232 +11061,232 @@ aaah: analyze:00008088:  ereport(ERROR,
 aaah: analyze:00008089:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 aaah: analyze:00008090:  errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented"), 
 aaah: analyze:00008091:  errOmitLocation(true))); 
-aaah: analyze:00008566:  ereport(ERROR, 
-aaah: analyze:00008567:  (errcode(ERRCODE_WINDOWING_ERROR), 
-aaah: analyze:00008568:  errmsg("unresolved grouping key in window query"), 
-aaah: analyze:00008569:  errhint("You may need to use explicit aliases and/or to refer to grouping " 
-aaah: analyze:00008570:  "keys in the same way throughout the query."), 
-aaah: analyze:00008571:  errOmitLocation(true))); 
-aaah: analyze:00008651:  ereport(ERROR, 
-aaah: analyze:00008652:  (errcode(ERRCODE_INTERNAL_ERROR), 
-aaah: analyze:00008653:  errmsg("can't generate internal attribute name"), 
-aaah: analyze:00008654:  errOmitLocation(true))); 
-aaah: analyze:00008941:  ereport(ERROR, 
-aaah: analyze:00008942:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00008943:  errmsg("VALUES lists must all be the same length"), 
-aaah: analyze:00008944:  errOmitLocation(true))); 
-aaah: analyze:00008955:  ereport(ERROR, 
-aaah: analyze:00008956:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00008957:  errmsg("DEFAULT can only appear in a VALUES list within INSERT"), 
-aaah: analyze:00008958:  errOmitLocation(true))); 
-aaah: analyze:00009028:  ereport(ERROR, 
-aaah: analyze:00009029:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009030:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"), 
-aaah: analyze:00009031:  errOmitLocation(true))); 
-aaah: analyze:00009052:  ereport(ERROR, 
-aaah: analyze:00009053:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009054:  errmsg("VALUES must not contain table references"), 
-aaah: analyze:00009055:  errOmitLocation(true))); 
-aaah: analyze:00009065:  ereport(ERROR, 
-aaah: analyze:00009066:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009067:  errmsg("VALUES must not contain OLD or NEW references"), 
-aaah: analyze:00009068:  errhint("Use SELECT ... UNION ALL ... instead."), 
-aaah: analyze:00009069:  errOmitLocation(true))); 
-aaah: analyze:00009077:  ereport(ERROR, 
-aaah: analyze:00009078:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00009079:  errmsg("cannot use aggregate function in VALUES"), 
-aaah: analyze:00009080:  errOmitLocation(true))); 
-aaah: analyze:00009083:  ereport(ERROR, 
-aaah: analyze:00009084:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009085:  errmsg("cannot use window function in VALUES"), 
-aaah: analyze:00009086:  errOmitLocation(true))); 
-aaah: analyze:00009168:  ereport(ERROR, 
-aaah: analyze:00009169:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009170:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
-aaah: analyze:00009171:  errOmitLocation(true))); 
-aaah: analyze:00009287:  ereport(ERROR, 
-aaah: analyze:00009288:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009289:  errmsg("ORDER BY on a UNION/INTERSECT/EXCEPT result must be on one of the result columns"), 
-aaah: analyze:00009290:  errOmitLocation(true))); 
-aaah: analyze:00009344:  ereport(ERROR, 
-aaah: analyze:00009345:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009346:  errmsg("INTO is only allowed on first SELECT of UNION/INTERSECT/EXCEPT"), 
-aaah: analyze:00009347:  errOmitLocation(true))); 
-aaah: analyze:00009350:  ereport(ERROR, 
-aaah: analyze:00009351:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009352:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
-aaah: analyze:00009353:  errOmitLocation(true))); 
-aaah: analyze:00009407:  ereport(ERROR, 
-aaah: analyze:00009408:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-aaah: analyze:00009409:  errmsg("UNION/INTERSECT/EXCEPT member statement may not refer to other relations of same query level"), 
-aaah: analyze:00009410:  errOmitLocation(true))); 
-aaah: analyze:00009466:  ereport(ERROR, 
-aaah: analyze:00009467:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009468:  errmsg("each %s query must have the same number of columns", 
-aaah: analyze:00009469:  context), 
-aaah: analyze:00009470:  errOmitLocation(true))); 
-aaah: analyze:00009581:  ereport(ERROR, 
-aaah: analyze:00009582:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009583:  errmsg("CREATE TABLE AS specifies too many column names"), 
-aaah: analyze:00009584:  errOmitLocation(true))); 
-aaah: analyze:00009626:  ereport(ERROR, 
-aaah: analyze:00009627:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009628:  errmsg("The RETURNING clause of the UPDATE statement is not " 
-aaah: analyze:00009629:  "supported in this version of Greenplum Database."), 
-aaah: analyze:00009630:  errOmitLocation(true))); 
-aaah: analyze:00009661:  ereport(ERROR, 
-aaah: analyze:00009662:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00009663:  errmsg("cannot use aggregate function in UPDATE"), 
-aaah: analyze:00009664:  errOmitLocation(true))); 
-aaah: analyze:00009667:  ereport(ERROR, 
-aaah: analyze:00009668:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009669:  errmsg("cannot use window function in UPDATE"), 
-aaah: analyze:00009670:  errOmitLocation(true))); 
-aaah: analyze:00009713:  ereport(ERROR, 
-aaah: analyze:00009714:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00009715:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
-aaah: analyze:00009716:  origTarget->name, 
-aaah: analyze:00009717:  RelationGetRelationName(pstate->p_target_relation)), 
-aaah: analyze:00009718:  errOmitLocation(true), 
-aaah: analyze:00009719:  parser_errposition(pstate, origTarget->location))); 
-aaah: analyze:00009779:  ereport(ERROR, 
-aaah: analyze:00009780:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00009781:  errmsg("cannot use aggregate function in RETURNING"))); 
-aaah: analyze:00009784:  ereport(ERROR, 
-aaah: analyze:00009785:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00009786:  errmsg("cannot use window function in RETURNING"))); 
-aaah: analyze:00009791:  ereport(ERROR, 
-aaah: analyze:00009792:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00009793:  errmsg("RETURNING may not contain references to other relations"))); 
-aaah: analyze:00009847:  ereport(ERROR, 
-aaah: analyze:00009848:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-aaah: analyze:00009849:  errmsg("%s is not partitioned", 
-aaah: analyze:00009850:  lrelname))); 
-aaah: analyze:00010231:  ereport(ERROR, 
-aaah: analyze:00010232:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
-aaah: analyze:00010233:  errmsg("cannot specify both SCROLL and NO SCROLL"))); 
-aaah: analyze:00010250:  ereport(ERROR, 
-aaah: analyze:00010251:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
-aaah: analyze:00010252:  errmsg("DECLARE CURSOR cannot specify INTO"))); 
-aaah: analyze:00010321:  ereport(ERROR, 
-aaah: analyze:00010322:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
-aaah: analyze:00010323:  errmsg("could not determine data type of parameter $%d", 
-aaah: analyze:00010324:  i + 1))); 
-aaah: analyze:00010354:  ereport(ERROR, 
-aaah: analyze:00010355:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010356:  errmsg("wrong number of parameters for prepared statement \"%s\"", 
-aaah: analyze:00010357:  stmt->name), 
-aaah: analyze:00010358:  errdetail("Expected %d parameters but got %d.", 
-aaah: analyze:00010359:  nexpected, nparams), 
-aaah: analyze:00010360:  errOmitLocation(true))); 
-aaah: analyze:00010372:  ereport(ERROR, 
-aaah: analyze:00010373:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010374:  errmsg("cannot use subquery in EXECUTE parameter"))); 
-aaah: analyze:00010376:  ereport(ERROR, 
-aaah: analyze:00010377:  (errcode(ERRCODE_GROUPING_ERROR), 
-aaah: analyze:00010378:  errmsg("cannot use aggregate function in EXECUTE parameter"))); 
-aaah: analyze:00010380:  ereport(ERROR, 
-aaah: analyze:00010381:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010382:  errmsg("cannot use window function in EXECUTE parameter"))); 
-aaah: analyze:00010394:  ereport(ERROR, 
-aaah: analyze:00010395:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-aaah: analyze:00010396:  errmsg("parameter $%d of type %s cannot be coerced to the expected type %s", 
-aaah: analyze:00010397:  i, 
-aaah: analyze:00010398:  format_type_be(given_type_id), 
-aaah: analyze:00010399:  format_type_be(expected_type_id)), 
-aaah: analyze:00010400:  errhint("You will need to rewrite or cast the expression."), 
-aaah: analyze:00010401:  errOmitLocation(true))); 
-aaah: analyze:00010416:  ereport(ERROR, 
-aaah: analyze:00010417:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010418:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-aaah: analyze:00010420:  ereport(ERROR, 
-aaah: analyze:00010421:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010422:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with DISTINCT clause"))); 
-aaah: analyze:00010424:  ereport(ERROR, 
-aaah: analyze:00010425:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010426:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with GROUP BY clause"))); 
-aaah: analyze:00010428:  ereport(ERROR, 
-aaah: analyze:00010429:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010430:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with HAVING clause"))); 
-aaah: analyze:00010432:  ereport(ERROR, 
-aaah: analyze:00010433:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010434:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with aggregate functions"))); 
-aaah: analyze:00010436:  ereport(ERROR, 
-aaah: analyze:00010437:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010438:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with window functions"))); 
-aaah: analyze:00010479:  ereport(ERROR, 
-aaah: analyze:00010480:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010481:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
-aaah: analyze:00010519:  ereport(ERROR, 
-aaah: analyze:00010520:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010521:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
-aaah: analyze:00010536:  ereport(ERROR, 
-aaah: analyze:00010537:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010538:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a join"))); 
-aaah: analyze:00010541:  ereport(ERROR, 
-aaah: analyze:00010542:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010543:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to NEW or OLD"))); 
-aaah: analyze:00010546:  ereport(ERROR, 
-aaah: analyze:00010547:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010548:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a function"))); 
-aaah: analyze:00010551:  ereport(ERROR, 
-aaah: analyze:00010552:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaah: analyze:00010553:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"))); 
-aaah: analyze:00010564:  ereport(ERROR, 
-aaah: analyze:00010565:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-aaah: analyze:00010566:  errmsg("relation \"%s\" in FOR UPDATE/SHARE clause not found in FROM clause", 
-aaah: analyze:00010567:  relname))); 
-aaah: analyze:00010644:  ereport(ERROR, 
-aaah: analyze:00010645:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010646:  errmsg("misplaced DEFERRABLE clause"))); 
-aaah: analyze:00010648:  ereport(ERROR, 
-aaah: analyze:00010649:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010650:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
-aaah: analyze:00010657:  ereport(ERROR, 
-aaah: analyze:00010658:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010659:  errmsg("misplaced NOT DEFERRABLE clause"))); 
-aaah: analyze:00010661:  ereport(ERROR, 
-aaah: analyze:00010662:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010663:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
-aaah: analyze:00010668:  ereport(ERROR, 
-aaah: analyze:00010669:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010670:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
-aaah: analyze:00010675:  ereport(ERROR, 
-aaah: analyze:00010676:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010677:  errmsg("misplaced INITIALLY DEFERRED clause"))); 
-aaah: analyze:00010679:  ereport(ERROR, 
-aaah: analyze:00010680:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010681:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
-aaah: analyze:00010691:  ereport(ERROR, 
-aaah: analyze:00010692:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010693:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
-aaah: analyze:00010698:  ereport(ERROR, 
-aaah: analyze:00010699:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010700:  errmsg("misplaced INITIALLY IMMEDIATE clause"))); 
-aaah: analyze:00010702:  ereport(ERROR, 
-aaah: analyze:00010703:  (errcode(ERRCODE_SYNTAX_ERROR), 
-aaah: analyze:00010704:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
-aaah: analyze:00010751:  ereport(ERROR, 
-aaah: analyze:00010752:  (errcode(ERRCODE_INVALID_SCHEMA_DEFINITION), 
-aaah: analyze:00010753:  errmsg("CREATE specifies a schema (%s) " 
-aaah: analyze:00010754:  "different from the one being created (%s)", 
-aaah: analyze:00010755:  *stmt_schema_name, context_schema))); 
-aaah: analyze:00010925:  ereport(ERROR, 
-aaah: analyze:00010926:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
-aaah: analyze:00010927:  errmsg("there is no parameter $%d", paramno))); 
-aaah: analyze:00010930:  ereport(ERROR, 
-aaah: analyze:00010931:  (errcode(ERRCODE_AMBIGUOUS_PARAMETER), 
-aaah: analyze:00010932:  errmsg("could not determine data type of parameter $%d", 
-aaah: analyze:00010933:  paramno))); 
-aaah: analyze:00011005:  ereport(ERROR, 
-aaah: analyze:00011006:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-aaah: analyze:00011007:  errmsg("column \"%s\" named in DISTRIBUTED BY " 
-aaah: analyze:00011008:  "clause does not exist", 
-aaah: analyze:00011009:  key), 
-aaah: analyze:00011010:  errOmitLocation(true))); 
-aaah: analyze:00011111:  ereport(NOTICE, 
-aaah: analyze:00011112:  (errmsg("Error table \"%s\" does not exist. Auto generating an " 
-aaah: analyze:00011113:  "error table with the same name", sreh->errtable->relname))); 
+aaah: analyze:00008568:  ereport(ERROR, 
+aaah: analyze:00008569:  (errcode(ERRCODE_WINDOWING_ERROR), 
+aaah: analyze:00008570:  errmsg("unresolved grouping key in window query"), 
+aaah: analyze:00008571:  errhint("You may need to use explicit aliases and/or to refer to grouping " 
+aaah: analyze:00008572:  "keys in the same way throughout the query."), 
+aaah: analyze:00008573:  errOmitLocation(true))); 
+aaah: analyze:00008653:  ereport(ERROR, 
+aaah: analyze:00008654:  (errcode(ERRCODE_INTERNAL_ERROR), 
+aaah: analyze:00008655:  errmsg("can't generate internal attribute name"), 
+aaah: analyze:00008656:  errOmitLocation(true))); 
+aaah: analyze:00008943:  ereport(ERROR, 
+aaah: analyze:00008944:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00008945:  errmsg("VALUES lists must all be the same length"), 
+aaah: analyze:00008946:  errOmitLocation(true))); 
+aaah: analyze:00008957:  ereport(ERROR, 
+aaah: analyze:00008958:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00008959:  errmsg("DEFAULT can only appear in a VALUES list within INSERT"), 
+aaah: analyze:00008960:  errOmitLocation(true))); 
+aaah: analyze:00009030:  ereport(ERROR, 
+aaah: analyze:00009031:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009032:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"), 
+aaah: analyze:00009033:  errOmitLocation(true))); 
+aaah: analyze:00009054:  ereport(ERROR, 
+aaah: analyze:00009055:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009056:  errmsg("VALUES must not contain table references"), 
+aaah: analyze:00009057:  errOmitLocation(true))); 
+aaah: analyze:00009067:  ereport(ERROR, 
+aaah: analyze:00009068:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009069:  errmsg("VALUES must not contain OLD or NEW references"), 
+aaah: analyze:00009070:  errhint("Use SELECT ... UNION ALL ... instead."), 
+aaah: analyze:00009071:  errOmitLocation(true))); 
+aaah: analyze:00009079:  ereport(ERROR, 
+aaah: analyze:00009080:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00009081:  errmsg("cannot use aggregate function in VALUES"), 
+aaah: analyze:00009082:  errOmitLocation(true))); 
+aaah: analyze:00009085:  ereport(ERROR, 
+aaah: analyze:00009086:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009087:  errmsg("cannot use window function in VALUES"), 
+aaah: analyze:00009088:  errOmitLocation(true))); 
+aaah: analyze:00009170:  ereport(ERROR, 
+aaah: analyze:00009171:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009172:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
+aaah: analyze:00009173:  errOmitLocation(true))); 
+aaah: analyze:00009289:  ereport(ERROR, 
+aaah: analyze:00009290:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009291:  errmsg("ORDER BY on a UNION/INTERSECT/EXCEPT result must be on one of the result columns"), 
+aaah: analyze:00009292:  errOmitLocation(true))); 
+aaah: analyze:00009346:  ereport(ERROR, 
+aaah: analyze:00009347:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009348:  errmsg("INTO is only allowed on first SELECT of UNION/INTERSECT/EXCEPT"), 
+aaah: analyze:00009349:  errOmitLocation(true))); 
+aaah: analyze:00009352:  ereport(ERROR, 
+aaah: analyze:00009353:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009354:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"), 
+aaah: analyze:00009355:  errOmitLocation(true))); 
+aaah: analyze:00009409:  ereport(ERROR, 
+aaah: analyze:00009410:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+aaah: analyze:00009411:  errmsg("UNION/INTERSECT/EXCEPT member statement may not refer to other relations of same query level"), 
+aaah: analyze:00009412:  errOmitLocation(true))); 
+aaah: analyze:00009468:  ereport(ERROR, 
+aaah: analyze:00009469:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009470:  errmsg("each %s query must have the same number of columns", 
+aaah: analyze:00009471:  context), 
+aaah: analyze:00009472:  errOmitLocation(true))); 
+aaah: analyze:00009583:  ereport(ERROR, 
+aaah: analyze:00009584:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009585:  errmsg("CREATE TABLE AS specifies too many column names"), 
+aaah: analyze:00009586:  errOmitLocation(true))); 
+aaah: analyze:00009628:  ereport(ERROR, 
+aaah: analyze:00009629:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009630:  errmsg("The RETURNING clause of the UPDATE statement is not " 
+aaah: analyze:00009631:  "supported in this version of Greenplum Database."), 
+aaah: analyze:00009632:  errOmitLocation(true))); 
+aaah: analyze:00009663:  ereport(ERROR, 
+aaah: analyze:00009664:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00009665:  errmsg("cannot use aggregate function in UPDATE"), 
+aaah: analyze:00009666:  errOmitLocation(true))); 
+aaah: analyze:00009669:  ereport(ERROR, 
+aaah: analyze:00009670:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009671:  errmsg("cannot use window function in UPDATE"), 
+aaah: analyze:00009672:  errOmitLocation(true))); 
+aaah: analyze:00009715:  ereport(ERROR, 
+aaah: analyze:00009716:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00009717:  errmsg("column \"%s\" of relation \"%s\" does not exist", 
+aaah: analyze:00009718:  origTarget->name, 
+aaah: analyze:00009719:  RelationGetRelationName(pstate->p_target_relation)), 
+aaah: analyze:00009720:  errOmitLocation(true), 
+aaah: analyze:00009721:  parser_errposition(pstate, origTarget->location))); 
+aaah: analyze:00009781:  ereport(ERROR, 
+aaah: analyze:00009782:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00009783:  errmsg("cannot use aggregate function in RETURNING"))); 
+aaah: analyze:00009786:  ereport(ERROR, 
+aaah: analyze:00009787:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00009788:  errmsg("cannot use window function in RETURNING"))); 
+aaah: analyze:00009793:  ereport(ERROR, 
+aaah: analyze:00009794:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00009795:  errmsg("RETURNING may not contain references to other relations"))); 
+aaah: analyze:00009849:  ereport(ERROR, 
+aaah: analyze:00009850:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+aaah: analyze:00009851:  errmsg("%s is not partitioned", 
+aaah: analyze:00009852:  lrelname))); 
+aaah: analyze:00010233:  ereport(ERROR, 
+aaah: analyze:00010234:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+aaah: analyze:00010235:  errmsg("cannot specify both SCROLL and NO SCROLL"))); 
+aaah: analyze:00010252:  ereport(ERROR, 
+aaah: analyze:00010253:  (errcode(ERRCODE_INVALID_CURSOR_DEFINITION), 
+aaah: analyze:00010254:  errmsg("DECLARE CURSOR cannot specify INTO"))); 
+aaah: analyze:00010323:  ereport(ERROR, 
+aaah: analyze:00010324:  (errcode(ERRCODE_INDETERMINATE_DATATYPE), 
+aaah: analyze:00010325:  errmsg("could not determine data type of parameter $%d", 
+aaah: analyze:00010326:  i + 1))); 
+aaah: analyze:00010356:  ereport(ERROR, 
+aaah: analyze:00010357:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010358:  errmsg("wrong number of parameters for prepared statement \"%s\"", 
+aaah: analyze:00010359:  stmt->name), 
+aaah: analyze:00010360:  errdetail("Expected %d parameters but got %d.", 
+aaah: analyze:00010361:  nexpected, nparams), 
+aaah: analyze:00010362:  errOmitLocation(true))); 
+aaah: analyze:00010374:  ereport(ERROR, 
+aaah: analyze:00010375:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010376:  errmsg("cannot use subquery in EXECUTE parameter"))); 
+aaah: analyze:00010378:  ereport(ERROR, 
+aaah: analyze:00010379:  (errcode(ERRCODE_GROUPING_ERROR), 
+aaah: analyze:00010380:  errmsg("cannot use aggregate function in EXECUTE parameter"))); 
+aaah: analyze:00010382:  ereport(ERROR, 
+aaah: analyze:00010383:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010384:  errmsg("cannot use window function in EXECUTE parameter"))); 
+aaah: analyze:00010396:  ereport(ERROR, 
+aaah: analyze:00010397:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+aaah: analyze:00010398:  errmsg("parameter $%d of type %s cannot be coerced to the expected type %s", 
+aaah: analyze:00010399:  i, 
+aaah: analyze:00010400:  format_type_be(given_type_id), 
+aaah: analyze:00010401:  format_type_be(expected_type_id)), 
+aaah: analyze:00010402:  errhint("You will need to rewrite or cast the expression."), 
+aaah: analyze:00010403:  errOmitLocation(true))); 
+aaah: analyze:00010418:  ereport(ERROR, 
+aaah: analyze:00010419:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010420:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
+aaah: analyze:00010422:  ereport(ERROR, 
+aaah: analyze:00010423:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010424:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with DISTINCT clause"))); 
+aaah: analyze:00010426:  ereport(ERROR, 
+aaah: analyze:00010427:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010428:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with GROUP BY clause"))); 
+aaah: analyze:00010430:  ereport(ERROR, 
+aaah: analyze:00010431:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010432:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with HAVING clause"))); 
+aaah: analyze:00010434:  ereport(ERROR, 
+aaah: analyze:00010435:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010436:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with aggregate functions"))); 
+aaah: analyze:00010438:  ereport(ERROR, 
+aaah: analyze:00010439:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010440:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with window functions"))); 
+aaah: analyze:00010481:  ereport(ERROR, 
+aaah: analyze:00010482:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010483:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
+aaah: analyze:00010521:  ereport(ERROR, 
+aaah: analyze:00010522:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010523:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to external tables"))); 
+aaah: analyze:00010538:  ereport(ERROR, 
+aaah: analyze:00010539:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010540:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a join"))); 
+aaah: analyze:00010543:  ereport(ERROR, 
+aaah: analyze:00010544:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010545:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to NEW or OLD"))); 
+aaah: analyze:00010548:  ereport(ERROR, 
+aaah: analyze:00010549:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010550:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a function"))); 
+aaah: analyze:00010553:  ereport(ERROR, 
+aaah: analyze:00010554:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaah: analyze:00010555:  errmsg("SELECT FOR UPDATE/SHARE cannot be applied to VALUES"))); 
+aaah: analyze:00010566:  ereport(ERROR, 
+aaah: analyze:00010567:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+aaah: analyze:00010568:  errmsg("relation \"%s\" in FOR UPDATE/SHARE clause not found in FROM clause", 
+aaah: analyze:00010569:  relname))); 
+aaah: analyze:00010646:  ereport(ERROR, 
+aaah: analyze:00010647:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010648:  errmsg("misplaced DEFERRABLE clause"))); 
+aaah: analyze:00010650:  ereport(ERROR, 
+aaah: analyze:00010651:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010652:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
+aaah: analyze:00010659:  ereport(ERROR, 
+aaah: analyze:00010660:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010661:  errmsg("misplaced NOT DEFERRABLE clause"))); 
+aaah: analyze:00010663:  ereport(ERROR, 
+aaah: analyze:00010664:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010665:  errmsg("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"))); 
+aaah: analyze:00010670:  ereport(ERROR, 
+aaah: analyze:00010671:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010672:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+aaah: analyze:00010677:  ereport(ERROR, 
+aaah: analyze:00010678:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010679:  errmsg("misplaced INITIALLY DEFERRED clause"))); 
+aaah: analyze:00010681:  ereport(ERROR, 
+aaah: analyze:00010682:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010683:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
+aaah: analyze:00010693:  ereport(ERROR, 
+aaah: analyze:00010694:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010695:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"))); 
+aaah: analyze:00010700:  ereport(ERROR, 
+aaah: analyze:00010701:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010702:  errmsg("misplaced INITIALLY IMMEDIATE clause"))); 
+aaah: analyze:00010704:  ereport(ERROR, 
+aaah: analyze:00010705:  (errcode(ERRCODE_SYNTAX_ERROR), 
+aaah: analyze:00010706:  errmsg("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"))); 
+aaah: analyze:00010753:  ereport(ERROR, 
+aaah: analyze:00010754:  (errcode(ERRCODE_INVALID_SCHEMA_DEFINITION), 
+aaah: analyze:00010755:  errmsg("CREATE specifies a schema (%s) " 
+aaah: analyze:00010756:  "different from the one being created (%s)", 
+aaah: analyze:00010757:  *stmt_schema_name, context_schema))); 
+aaah: analyze:00010927:  ereport(ERROR, 
+aaah: analyze:00010928:  (errcode(ERRCODE_UNDEFINED_PARAMETER), 
+aaah: analyze:00010929:  errmsg("there is no parameter $%d", paramno))); 
+aaah: analyze:00010932:  ereport(ERROR, 
+aaah: analyze:00010933:  (errcode(ERRCODE_AMBIGUOUS_PARAMETER), 
+aaah: analyze:00010934:  errmsg("could not determine data type of parameter $%d", 
+aaah: analyze:00010935:  paramno))); 
+aaah: analyze:00011007:  ereport(ERROR, 
+aaah: analyze:00011008:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+aaah: analyze:00011009:  errmsg("column \"%s\" named in DISTRIBUTED BY " 
+aaah: analyze:00011010:  "clause does not exist", 
+aaah: analyze:00011011:  key), 
+aaah: analyze:00011012:  errOmitLocation(true))); 
+aaah: analyze:00011113:  ereport(NOTICE, 
+aaah: analyze:00011114:  (errmsg("Error table \"%s\" does not exist. Auto generating an " 
+aaah: analyze:00011115:  "error table with the same name", sreh->errtable->relname))); 
 aaaaa GP_IGNORE: gaae: gram - ./backend/parser/gram.c
 gaae: gram:00018950:  ereport(ERROR, 
 gaae: gram:00018951:  (errcode(ERRCODE_SYNTAX_ERROR), 
