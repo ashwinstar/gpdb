@@ -34,10 +34,10 @@ typedef enum FaultInjectorIdentifier_e {
 	StartPrepareTx,
 	
 	FileRepConsumer,
-	
-	FileRepSender,
 
 	FileRepChangeTrackingCompacting,
+	
+	FileRepSender,
 	
 	FileRepReceiver,
 	

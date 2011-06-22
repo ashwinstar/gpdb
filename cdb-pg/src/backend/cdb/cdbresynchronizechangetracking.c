@@ -27,6 +27,7 @@
 #include "storage/shmem.h"
 #include "utils/memutils.h"
 #include "utils/palloc.h"
+#include "utils/faultinjector.h"
 
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepresyncmanager.h"
@@ -1232,6 +1233,8 @@ void ChangeTracking_FsyncDataIntoLog(CTFType ftype)
 	}
 		
 	errno = 0;
+
+
 	/* time to fsync change log to disk */
 	if(FileSync(file) < 0)
 		ChangeTracking_HandleWriteError(ftype);
@@ -2935,7 +2938,9 @@ void ChangeTracking_CompactLogsIfPossible(void)
 
 		ChangeTracking_ResetBufStatus(CTCompactWriteBufStatus);
 		ChangeTracking_CompactLogFile(CTF_LOG_TRANSIENT, CTF_LOG_COMPACT, NULL);
+	
 		ChangeTracking_DropLogFile(CTF_LOG_TRANSIENT);
+	
 	}
 		
 	/* -- compact log -- */
@@ -3049,6 +3054,8 @@ void ChangeTracking_DoFullCompactingRound(XLogRecPtr* upto_lsn)
 			
 	/* compacting state is no longer needed. reset it to be safe */
 	ChangeTracking_ResetCompactingStatus(changeTrackingCompState);
+
+	
 	
 	/* step (1) */
 	if (ChangeTracking_DoesFileExist(CTF_LOG_TRANSIENT))
@@ -3067,7 +3074,6 @@ void ChangeTracking_DoFullCompactingRound(XLogRecPtr* upto_lsn)
 	if (ChangeTracking_DoesFileExist(CTF_LOG_FULL))
 	{
 		ChangeTracking_RenameLogFile(CTF_LOG_FULL, CTF_LOG_TRANSIENT);
-
 		/* must reset buf status in case a new full file will be created later */
 		ChangeTracking_ResetBufStatus(CTMainWriteBufStatus);
 
@@ -3189,6 +3195,15 @@ int ChangeTracking_CompactLogFile(CTFType source, CTFType dest, XLogRecPtr*	upto
 				endlsn = (XLogRecPtr*) DatumGetPointer(DirectFunctionCall1(gpxloglocin, CStringGetDatum(str_endlsn)));
 				persistentTid = DatumGetPointer(DirectFunctionCall1(tidin, CStringGetDatum(str_tid)));
 				persistentSerialNum = DatumGetInt64(DirectFunctionCall1(int8in, CStringGetDatum(str_sn)));
+
+				
+				#ifdef FAULT_INJECTOR	
+						FaultInjector_InjectFaultIfSet(
+									  FileRepChangeTrackingCompacting, 
+									   DDLNotSpecified,
+									   "",	// databaseName
+									   ""); // tableName
+				#endif
 	
 				/* write this record to the compact file */
 				ChangeTracking_AddBufferPoolChange(dest,
