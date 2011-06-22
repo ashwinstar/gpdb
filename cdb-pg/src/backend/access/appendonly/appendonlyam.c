@@ -798,11 +798,17 @@ static void
 AppendOnlyExecutorReadBlock_Finish(
 	AppendOnlyExecutorReadBlock *executorReadBlock)
 {
-	pfree(executorReadBlock->uncompressedBuffer);
-	executorReadBlock->uncompressedBuffer = NULL;
+	if (executorReadBlock->uncompressedBuffer)
+	{
+		pfree(executorReadBlock->uncompressedBuffer);
+		executorReadBlock->uncompressedBuffer = NULL;
+	}
 	
-	destroy_memtuple_binding(executorReadBlock->mt_bind);
-	executorReadBlock->mt_bind = NULL;
+	if (executorReadBlock->mt_bind)
+	{
+		destroy_memtuple_binding(executorReadBlock->mt_bind);
+		executorReadBlock->mt_bind = NULL;
+	}
 }
 
 static void
