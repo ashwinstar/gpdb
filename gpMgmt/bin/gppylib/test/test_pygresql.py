@@ -93,6 +93,7 @@ class pygresqlTestCase(unittest.TestCase):
         
         
     def test_createdb(self):
+        db = None
         try:
             db = self.setupConnection("test_createdb")
             curs=db.cursor()        
@@ -101,7 +102,8 @@ class pygresqlTestCase(unittest.TestCase):
             curs.execute("CREATE DATABASE test")
             curs.execute("DROP DATABASE test")
         finally:
-            db.close()
+            if db is not None:
+                db.close()
             
 
     def test_vacuum(self):

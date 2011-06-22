@@ -76,13 +76,13 @@ class TestDbURL(unittest.TestCase):
             
         
     def testConstructorPass(self):
-        if 'PGPASS' in os.environ:
-            del os.environ['PGPASS']
+        if 'PGPASSWORD' in os.environ:
+            del os.environ['PGPASSWORD']
 
         foo = DbURL()
         self.assertEqual(foo.pgpass,None)
 
-        os.environ['PGPASS'] = 'testpass'
+        os.environ['PGPASSWORD'] = 'testpass'
         foo = DbURL()
         self.assertEqual(foo.pgpass,'testpass')    
 

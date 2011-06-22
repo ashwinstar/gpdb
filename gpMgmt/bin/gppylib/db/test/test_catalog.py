@@ -10,8 +10,8 @@ import unittest
 
 
 from gppylib import gplog
-import dbconn
-import catalog
+from gppylib.db import dbconn
+from gppylib.db import catalog
 
 
 logger=gplog.get_default_logger()
