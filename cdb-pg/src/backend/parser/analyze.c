@@ -8263,7 +8263,9 @@ transformGroupedWindows(Query *qry)
 	
 	Assert(PointerIsValid(qry->targetList));
 	Assert(IsA(qry->targetList, List));
-	Assert(hadSubLinks == (qry->hasSubLinks || subq->hasSubLinks));
+	/* Use error instead of assertion to "use" hadSubLinks and keep compiler happy. */
+	if (hadSubLinks != (qry->hasSubLinks || subq->hasSubLinks))
+		elog(ERROR, "inconsistency detected in internal grouped windows transformation");
 	
 	discard_grouped_window_context(&ctx);
 	
