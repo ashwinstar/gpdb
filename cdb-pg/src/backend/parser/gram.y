@@ -12088,6 +12088,7 @@ unreserved_keyword:
 			| EXPLAIN
 			| EXTERNAL
 			| FIELDS
+			| FILESPACE
 			| FILL
 			| FIRST_P
 			| FORCE
@@ -12103,7 +12104,9 @@ unreserved_keyword:
 			| HOLD
 			| HOST
 			| HOUR_P
+			| IDENTITY_P
 			| IF_P
+			| IGNORE_P
 			| IMMEDIATE
 			| IMMUTABLE
 			| IMPLICIT_P
@@ -12687,6 +12690,7 @@ reserved_keyword:
 			| AS
 			| ASC
 			| ASYMMETRIC
+			| BETWEEN
 			| BOTH
 			| CASE
 			| CAST
@@ -12713,6 +12717,7 @@ reserved_keyword:
 			| EXCLUDE 
 			| FALSE_P
 			| FETCH
+			| FILTER
 			| FOLLOWING
 			| FOR
 			| FOREIGN
