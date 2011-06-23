@@ -8,7 +8,7 @@ Standard set of helper functions for gp utilities for parsing command line optio
 
 
 """
-from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
+from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE, SUPPRESS_HELP
 import os
 import os.path
 import re

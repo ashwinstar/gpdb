@@ -1,8 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Line too long - pylint: disable=C0301
+# Invalid name  - pylint: disable=C0103
 #
-# Copyright (c) Greenplum Inc 2010. All Rights Reserved. 
+# Copyright (c) EMC 2011
+# Copyright (c) Greenplum Inc 2010
+# All Rights Reserved. 
 #
+"""
+Activates a standby master instance when the primary master instance has 
+failed.  Will stop the gpsyncmaster process, update the system catalog 
+tables and start the instance with the standby master instance as the 
+new master.
+"""
 
 import os
 import sys
@@ -13,36 +23,28 @@ from datetime import datetime, timedelta
 
 # import GPDB modules
 try:
-    from gppylib.commands import unix, base, gp, pg
+    from gppylib.commands import unix, gp, pg
     from gppylib.db import dbconn
-    from gppylib.db import catalog
-    from gppylib.gpparseopts import *
-    from gppylib.gplog import *
-    from gppylib import pgconf
+    from gppylib.gpparseopts import OptParser, OptChecker, OptionGroup, SUPPRESS_HELP
+    from gppylib.gplog import get_default_logger, setup_tool_logging, enable_verbose_logging
     from gppylib import gparray
-    from gppylib.userinput import *
-except ImportError, e:
+    from gppylib.userinput import ask_yesno
+except ImportError, e_:
     sys.exit('ERROR: Cannot import modules.  Please check that you '
-             'have sourced greenplum_path.sh.  Detail: ' + str(e))
+             'have sourced greenplum_path.sh.  Detail: ' + str(e_))
 
 EXECNAME = os.path.split(__file__)[-1]
 
 # Threshold values
-LOG_TIME_THRESHOLD_MINS=120
+LOG_TIME_THRESHOLD_MINS = 120
 
 
-_description = """
-Activates a standby master instance when the primary master instance has 
-failed.  Will stop the gpsyncmaster process, update the system catalog 
-tables and start the instance with the standby master instance as the 
-new master.
-"""
+_description = sys.modules[__name__].__doc__
+_usage = "\n"
 
-_usage = """
-"""
 
-# Generic exception for all things activatestandby
 class GpActivateStandbyException(Exception):
+    "Generic exception for all things activatestandby"
     pass
 
 
@@ -83,6 +85,7 @@ def parseargs():
     optgrp.add_option('-c', '--create-new-standby', type='string', dest='new_standby',
                       help='create a new standby master instance following successful '
                       'activation of the standby master instance', metavar='HOSTNAME')
+    optgrp.add_option('--ignore', dest='ignore', type='string', help=SUPPRESS_HELP)
     parser.add_option_group(optgrp)
     
     parser.set_defaults(quiet=False, force=False)
@@ -147,7 +150,7 @@ def parseargs():
     if len(args) > 0:
         logger.error('Unknown arguments:')
         for arg in args:
-            logger.error('  %s' % args)
+            logger.error('  %s' % arg)
         parser.exit(2, None)
         
     return options, args
@@ -184,18 +187,19 @@ def print_results(array, hostname, options):
 
 
 #-------------------------------------------------------------------------
-def print_summary(hostname, options, warnings_errors, last_entry_time):
+def print_summary(options, warnings_errors, last_entry_time):
+    # Too many statements - pylint: disable=R0915
+
     """Print summary of the action and asks user if they want to
     continue with the activation."""
     
     last_entry_ago = None
-    require_force=False
-    warnings_generated=False
+    require_force = False
+    warnings_generated = False
     
     # calculate the timedelta of last log message
     if last_entry_time:
-        last_entry_ago = datetime.datetime.now() - \
-                            datetime.datetime.strptime(last_entry_time, '%Y-%m-%d %H:%M:%S.%f %Z')
+        last_entry_ago = datetime.now() - datetime.strptime(last_entry_time, '%Y-%m-%d %H:%M:%S.%f %Z')
         
     # check the syncmaster
     gpsyncmaster_running = check_gpsync_running(options)
@@ -218,8 +222,8 @@ def print_summary(hostname, options, warnings_errors, last_entry_time):
     if last_entry_ago > timedelta(minutes=LOG_TIME_THRESHOLD_MINS):
         logger.warning('The last log entry timestamp was over %d minutes ago.' % LOG_TIME_THRESHOLD_MINS)
         logger.warning('This indicates that the standby master is likely out of date.')
-        require_force=True
-        warnings_generated=True
+        require_force = True
+        warnings_generated = True
     if len(warnings_errors) > 0:
         logger.warning('The following warnings/errors were found in the most recent log file:')
         for log_msg in warnings_errors:
@@ -239,13 +243,13 @@ def print_summary(hostname, options, warnings_errors, last_entry_time):
         logger.warning('It is also recommended that you make a backup of the standby master')
         logger.warning('data directory (%s) before continuing.' % options.master_data_dir)
         
-        require_force=True
-        warnings_generated=True
+        require_force = True
+        warnings_generated = True
     # Check if we require a force
     if require_force and not options.force:
         logger.warning('If you wish to continue you must use the -f option to force')
         logger.warning('the activation process.')
-        warnings_generated=True
+        warnings_generated = True
         raise GpActivateStandbyException('Force activation required')
     if options.confirm:
         yn = ask_yesno(None, 'Do you want to continue with standby master activation?', 'N')
@@ -257,41 +261,76 @@ def print_summary(hostname, options, warnings_errors, last_entry_time):
 
 #-------------------------------------------------------------------------
 def get_most_recent_log(options):
-    """Gets the file name of the most recent log file."""
-    
-    file_list = []
-    for file in glob.glob(options.master_data_dir + '/pg_log/gpdb*.csv'):
-        fstats = os.stat(file)
-        file_list.append([time.localtime(fstats[8]), file])
-    file_list.sort()
+    """
+    Returns the file name of the most recent log file.
+    """
+    file_pattern = options.master_data_dir + '/pg_log/gpdb*.csv'
+    file_pair    = lambda f: (time.localtime(os.stat(f)[8]), f)
+    file_list    = sorted([file_pair(f) for f in glob.glob(file_pattern)])
     if len(file_list) == 0:
         return None
-    else:
-        return file_list[-1][1]
+    return file_list[-1][1]
+
+
+#-------------------------------------------------------------------------
+def setup_ignore_filter(options):
+    """
+    Returns ignore_filter function found in python file specified by options.ignore.
+    """
+    if not options.ignore:
+        return None
+
+    # load the filter from the file, giving it access to the logger
+    #
+    gdict = { 'logger':logger }
+    try:
+        execfile(options.ignore, gdict)
+    except (OSError, IOError), e:
+        logger.info('Could not read ignore_filter file: %s' % str(e))
+
+    return gdict.get('ignore_filter')
 
 
 #-------------------------------------------------------------------------
 def check_recent_log(options):
-    """Checks the most recent GPDB log file for warnings and errors related
-    to standby master."""
-    
-    recent_log = get_most_recent_log(options)
+    """
+    Checks the most recent GPDB log file for warnings and errors related to standby master.
+    Returns a tuple containing the warnings and the time of the last log entry.
+    """
     warnings_errors = []
-    logger.info('Examining log file %s for warnings and errors...' % recent_log)
+    recent_log      = get_most_recent_log(options)
+    ignore_filter   = setup_ignore_filter(options)
+    ignore_count    = 0
+    how             = "Filtering" if ignore_filter is not None else "Examining"
+
+    logger.info('%s log file %s for warnings and errors...' % (how, recent_log))
+
     lines = gp.GpLogFilter.local('log search', recent_log, trouble=True)
     for line in lines:
+
+        # filter out lines matched by the ignore_filter
+        if ignore_filter is not None and ignore_filter(line):
+            ignore_count += 1
+            continue
+
+        # collect errors
         try:
             warnings_errors.append(line.split('|')[18])
-        except:
-            pass # badly formatted log entry or empty line??
+        except Exception, e:
+            # badly formatted log entry or empty line??
+            logger.info(str(e))
+            logger.info(line)
         
-    # get last date
+    # report lines ignored
+    if ignore_filter is not None and ignore_count > 0:
+        logger.info("Note: %d line(s) ignored by %s's ignore_filter" % (ignore_count, options.ignore))
+
+    # get date from last line in log file
+    last_entry_time = None
     last_line = gp.GpLogFilter.local('last log msg', recent_log, count=1)
-    
     if last_line:
         last_entry_time = last_line[0].split('|')[0]
-    else:
-        last_entry_time = None
+
     return (warnings_errors, last_entry_time)
 
 
@@ -306,7 +345,7 @@ def check_standby_master_activation(options):
 
 
 #-------------------------------------------------------------------------
-def get_config(options):
+def get_config():
     """Retrieves configuration information from the catalog."""
     
     logger.info('Reading current configuration...')
@@ -317,7 +356,7 @@ def get_config(options):
     master_port = array.master.getSegmentPort()
     
     cmd = pg.ReadPostmasterTempFile.remote('Read postmaster file', master_port, master_hostname)
-    (file_exists, pid, datadir) = cmd.getResults()
+    (file_exists, _, _) = cmd.getResults()
     if file_exists:
         logger.warn('Appears that there is an active postgres process on %s port=%d' % (master_hostname, master_port))
         logger.info('This may have been caused by a kill -9 of the master postgres process.')
@@ -325,14 +364,14 @@ def get_config(options):
         logger.info('1. Delete the /tmp/.s.PGSQL.%d and /tmp/.s.PGSQL.%d.* files on %s' % (master_port, master_port, master_hostname))
         logger.info('2. Remove the %s/postmaster.pid file on %s' % (array.master.getSegmentDataDirectory(), master_hostname))
         logger.info('3. Then call this utility again.')
-        stop_master(options)
+        stop_master()
         raise GpActivateStandbyException('Active postgres process on master')
     
     return array
 
 
 #-------------------------------------------------------------------------
-def update_config(array, hostname, options):
+def update_config():
     """Updates the configuration information in the catalog."""
     
     dburl = dbconn.DbURL()
@@ -340,7 +379,7 @@ def update_config(array, hostname, options):
     
     logger.info('Updating catalog...')
     sql = "SELECT gp_activate_standby()"
-    curr = dbconn.execSQL(conn, sql)
+    dbconn.execSQL(conn, sql)
 
     conn.commit()
     conn.close()
@@ -348,7 +387,7 @@ def update_config(array, hostname, options):
     logger.info('Database catalog updated successful')
 
 #-------------------------------------------------------------------------
-def update_gpdbid_file(options, array):
+def update_gpdbid_file(array):
     """Updates to gp_dbid file in the data directory to reflect the standby
     masters dbid."""
     
@@ -374,9 +413,6 @@ def create_new_standby_master(options):
     rc = os.system("%s/bin/gpinitstandby -s %s" % (gphome, options.new_standby))
     if rc != 0:
         logger.warning('Failed to create the new standby master on %s' % options.new_standby)
-        logger.warning('You will need to manually run \'gpinitstandby -s %s\' to create the new standby master.' % options.new_standby)
-        logger.warning('There was a problem creating the new standby master on host %s.' % options.new_standby)
-        logger.warning('The error was: %s' % e)
         logger.warning('You will need to manually run \'gpinitstandby -s %s\' to create the new standby master.' % options.new_standby)
         raise GpActivateStandbyException('Failed to create new standby')
 
@@ -426,7 +462,7 @@ def stop_gpsync_process(options):
 
 
 #-------------------------------------------------------------------------
-def start_master(options):
+def start_master():
     """Starts the master."""
     
     logger.info('Starting standby master database in utility mode...')
@@ -434,7 +470,7 @@ def start_master(options):
 
 
 #-------------------------------------------------------------------------
-def stop_master(options):
+def stop_master():
     """Stops the master."""
     
     logger.info('Stopping standby master...')
@@ -463,38 +499,40 @@ def stop_database():
 
 # setup logging
 logger = get_default_logger()
-setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName())
+setup_tool_logging(EXECNAME, unix.getLocalHostname(), unix.getUserName())
 
 # parse args and options
-(options, args) = parseargs()
+(options_, args_) = parseargs()
 
 # if we got a new log dir, we can now set it up.
-if options.logfile:
-    setup_tool_logging(EXECNAME,unix.getLocalHostname(),unix.getUserName(),logdir=options.logfile)
+if options_.logfile:
+    setup_tool_logging(EXECNAME, unix.getLocalHostname(), unix.getUserName(), logdir=options_.logfile)
 
 try:
-    hostname = unix.getLocalHostname()
-    (warnings_errors, last_entry_time) = check_standby_master_activation(options)
+    (warnings_errors_, last_entry_time_) = check_standby_master_activation(options_)
 
-    warnings_generated = print_summary(hostname, options, warnings_errors, last_entry_time)
+    warnings_generated_ = print_summary(options_, warnings_errors_, last_entry_time_)
+
     # disable keyboard interrupt to prevent users from canceling
     # out of the process at a very bad time.  If there is a partial
     # update to the gp_configuration catalog and the user cancels
     # you get stuck where you can't go forward and you can't go
     # backwards.
-    signal.signal(signal.SIGINT,signal.SIG_IGN)
-    stop_gpsync_process(options)
-    start_master(options)
-    array = get_config(options)
-    update_config(array, hostname, options)
-    update_gpdbid_file(options, array)
-    # XXX: This should be stop_master, but due to filerep issue (MPP-9559)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    stop_gpsync_process(options_)
+    start_master()
+    array_ = get_config()
+    update_config()
+    update_gpdbid_file(array_)
+
+    # This should be stop_master, but due to filerep issue (MPP-9559)
     # we need to stop all the segments too.
     # Catch the exception that can be thrown if some segments are already down.
     try:
         stop_database()
-    except:
-        pass # ignore
+    except Exception, e_:
+        logger.info('Exception observed while stopping database')
+        logger.info(str(e_))
     
     start_database()
     
@@ -502,20 +540,20 @@ try:
     # keyboard interrupt.  They may cancel out of the creating
     # of a new standby, but gpinitstandby can be used to 
     # create one at a later point.
-    signal.signal(signal.SIGINT,signal.default_int_handler)
+    signal.signal(signal.SIGINT, signal.default_int_handler)
     
-    if options.new_standby:
-        create_new_standby_master(options)
+    if options_.new_standby:
+        create_new_standby_master(options_)
         
-    print_results(array, hostname, options)
+    print_results(array_, unix.getLocalHostname(), options_)
     
-    if warnings_generated:
+    if warnings_generated_:
         sys.exit(1)
     else:
         sys.exit(0)
     
-except Exception, e:
-    logger.fatal('Error activating standby master: %s' % str(e))
+except Exception, e_:
+    logger.fatal('Error activating standby master: %s' % str(e_))
     sys.exit(2)
 
 
