@@ -393,7 +393,8 @@ if test -z "$db_exists"; then
 		echo "Creating spatial db ${DB} " 
 
 		createdb "${DB}" > ${TMPDIR}/regress_log
-		createlang plpgsql "${DB}" >> ${TMPDIR}/regress_log
+		# "plpgsql" is already installed in Greenplum databases
+		#createlang plpgsql "${DB}" >> ${TMPDIR}/regress_log
 		${PSQL} -f postgis.sql "${DB}" >> ${TMPDIR}/regress_log 2>&1
 	else
 
