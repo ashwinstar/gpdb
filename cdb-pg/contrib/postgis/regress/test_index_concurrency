@@ -18,7 +18,8 @@ if [ "$1" = "prepare" ]; then
 	echo ""
 
 	createdb > /dev/null
-	createlang plpgsql > /dev/null
+	# "plpgsql" is already installed in Greenplum databases
+	#createlang plpgsql > /dev/null
 	psql -f ../lwpostgis.sql > /dev/null 2>&1
 
 	psql -f regress_lots_of_points.sql 
