@@ -93,9 +93,9 @@ OPTIONS
 
 -B <block_size>
 
- Specifies the block size to be used for disk I/O test. The default 
- is 32KB, which is the same as the Greenplum Database page size. 
- You can specify sizing in KB, MB, or GB.
+Specifies the block size (in KB or MB) to use for disk I/O test. 
+The default is 32KB, which is the same as the Greenplum Database 
+page size. The maximum block size is 1 MB.
 
 
 -d <test_directory>
