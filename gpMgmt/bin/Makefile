@@ -177,14 +177,14 @@ unittest2:
 	cp -r $(PYLIB_SRC)/$(UNITTEST2_DIR)/build/lib/unittest2  $(PYLIB_DIR)/
 
 
-PYTHON_FILES=`grep -l --exclude=Makefile "/bin/env python" *`\
-			 `grep "/bin/env python" $(SRC)/../sbin/*`\
+PYTHON_FILES=`grep -l --exclude=Makefile --exclude=gplogfilter "/bin/env python" *`\
+			 `grep -l "/bin/env python" $(SRC)/../sbin/*`\
 			 `find ./gppylib -name "*.py"`\
-			 `find $(SRC)/../sbin/ -name "*.py"`
+			 `find $(SRC)/../sbin -name "*.py"`
 
 checkcode: pylint
 	@echo "Running pylint on management scripts..."
-	@PYTHONPATH=$(PYTHONPATH):$(PYLINT_PYTHONPATH) $(PYLIB_SRC)/$(PYLINT_DIR)/bin/pylint -i y -E $(PYTHON_FILES) > $(SRC)/../pylint.txt || true
+	@PYTHONPATH=$(PYTHONPATH):$(PYLINT_PYTHONPATH) $(PYLIB_SRC)/$(PYLINT_DIR)/bin/pylint -i y $(PYTHON_FILES) > $(SRC)/../pylint.txt || true
 
 
 
