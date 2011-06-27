@@ -2380,22 +2380,27 @@ class gpload:
     def do_method(self):
         # Is the table to be truncated before the load?
         preload = self.getconfig('gpload:preload', list, default=None)
+        method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
         truncate = False
         self.reuse_tables = False
         
         if preload:
-              truncate = self.getconfig('gpload:preload:truncate',bool,False)
-              self.reuse_tables = self.getconfig('gpload:preload:reuse_tables',bool,False)
+            truncate = self.getconfig('gpload:preload:truncate',bool,False)
+            self.reuse_tables = self.getconfig('gpload:preload:reuse_tables',bool,False)
         if truncate == True:
-              self.do_truncate(self.schemaTable)
+            if method=='insert':      
+                self.do_truncate(self.schemaTable)
+            else:
+                self.log(self.ERROR, 'preload truncate operation should be used with insert ' +
+                                     'operation only. used with %s' % method)
               
         # sql pre or post processing?
         sql = self.getconfig('gpload:sql', list, default=None)
         before   = None
         after    = None
         if sql:
-             before   = self.getconfig('gpload:sql:before', unicode, default=None)
-             after    = self.getconfig('gpload:sql:after', unicode, default=None)
+            before   = self.getconfig('gpload:sql:before', unicode, default=None)
+            after    = self.getconfig('gpload:sql:after', unicode, default=None)
         if before:
             self.log(self.LOG, "Pre-SQL from user: %s" % before)
             if not self.options.D:
@@ -2405,7 +2410,7 @@ class gpload:
                     self.log(self.ERROR, 'could not execute SQL in sql:before "%s": %s' %
                              (before, str(e)))
 
-        method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
+        
         if method=='insert':
             self.do_method_insert()
         elif method=='update':
