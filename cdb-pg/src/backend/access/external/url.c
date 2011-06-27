@@ -58,6 +58,8 @@
 #define TRUE 1
 #endif
 
+#define HOST_NAME_SIZE 100
+
 static char *interpretError(int exitCode, char *buf, size_t buflen, char *err, size_t errlen);
 static const char *getSignalNameFromCode(int signo);
 static int popen_with_stderr(int *rwepipe, const char *exe, bool forwrite);
@@ -68,6 +70,8 @@ static int32  InvokeExtProtocol(void		*ptr,
 								URL_FILE 	*file, 
 								CopyState 	pstate,
 								bool		last_call);
+void extract_http_domain(char* i_path, char* o_domain, int dlen);
+
 
 /* we use a global one for convenience */
 CURLM *multi_handle = 0;
@@ -473,7 +477,7 @@ make_command(const char* prefix, const char *cmd, extvar_t * ev, char *buf)
 
 static char *
 local_strstr(const char *str1, const char *str2)
-{
+{	
 	char *cp = (char *) str1;
 	char *s1, *s2;
 
@@ -504,7 +508,7 @@ make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
 	char *authority_end;
 	char *hostname_start;
 	char *hostname_end;
-	char hostname[100];
+	char hostname[HOST_NAME_SIZE];
 	char *hostip = NULL;
 	char portstr[8];
 	int len;
@@ -564,6 +568,23 @@ make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
 
 	strcpy(p, url);
 	return p - buf;
+}
+
+/*
+ * extract_http_domain
+ *
+ * extracts the domain string from a http url
+ */
+void extract_http_domain(char* i_path, char* o_domain, int dlen)
+{
+	int domsz, cpsz;
+	char* p_st = (char*)local_strstr(i_path, "//");
+	p_st = p_st + 2;
+	char* p_en = strchr(p_st, '/');
+	
+	domsz = p_en - p_st;
+	cpsz = ( domsz < dlen ) ? domsz : dlen;
+	memcpy(o_domain, p_st, cpsz);
 }
 
 
@@ -796,7 +817,21 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 		 * needed for read and write operations, and continue below with 
 		 * more specifics
 		 */
+		
+		
 		file->u.curl.x_httpheader = NULL;
+		
+		/*
+		 * support multihomed http use cases. see MPP-11874
+		 */
+		if (IS_HTTP_URI(url))
+		{
+			char domain[HOST_NAME_SIZE] = {0};
+			extract_http_domain(file->url, domain, HOST_NAME_SIZE);
+			set_httpheader(file, "Host", domain);
+		}
+		
+		
 		if (set_httpheader(file, "X-GP-XID", ev->GP_XID) ||
 			set_httpheader(file, "X-GP-CID", ev->GP_CID) ||
 			set_httpheader(file, "X-GP-SN", ev->GP_SN) ||
@@ -835,7 +870,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 				elog(ERROR, "internal error: some header value is too long");
 			}
 		}
-
+		
 		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HTTPHEADER, file->u.curl.x_httpheader)))
 		{
 			url_fclose(file, false, pstate->cur_relname);

@@ -1157,6 +1157,8 @@ static int session_active_segs_isempty(session_t* session)
  *
  * Callback when the socket is ready to be written
  */
+void gfile_printf_then_putc_newline(const char *format, ...);
+
 static void do_write(int fd, short event, void* arg)
 {
 	request_t* 	r = (request_t*) arg;
@@ -1178,6 +1180,7 @@ static void do_write(int fd, short event, void* arg)
 			if (ferror)
 			{
 				request_end(r, 1, ferror);
+				gfile_printf_then_putc_newline("%s", ferror);
 				return;
 			}
 			if (!r->outblock.top)

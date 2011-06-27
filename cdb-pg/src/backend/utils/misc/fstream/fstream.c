@@ -13,6 +13,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define FILE_ERROR_SZ 200
+char* format_error(char* c1, char* c2);
+
 typedef struct
 {
 	int 	gl_pathc;
@@ -431,6 +434,37 @@ static int nextFile(fstream_t*fs)
 }
 
 /*
+ * format_error
+ * enables addition of string parameters to the const char* error message in fstream_t
+ * while enabling the calling functions not to worry about freeing memory - which is 
+ * the present behaviour
+ */
+char* format_error(char* c1, char* c2)
+{
+	int len1, len2;
+	
+	static char err_msg[FILE_ERROR_SZ];
+	memset(err_msg, 0, FILE_ERROR_SZ);
+	
+	len1 = strlen(c1);
+	len2 = strlen(c2);
+	if ( (len1 + len2) > FILE_ERROR_SZ )
+	{
+		gfile_printf_then_putc_newline("cannot read file");
+		return "cannot read file";
+	}
+	
+	char* targ = err_msg;
+	memcpy(targ, c1, len1);
+	targ += len1;
+	memcpy(targ, c2, len2);
+	
+	gfile_printf_then_putc_newline("%s", err_msg);
+	
+	return err_msg;
+}
+
+/*
  * fstream_read
  *
  * Read 'size' bytes of data from the filestream into 'buffer'.
@@ -477,7 +511,7 @@ int fstream_read(fstream_t *fs,
 
 			if (bytesread < 0)
 			{
-				fs->ferror = "cannot read file";
+				fs->ferror = format_error("cannot read file - ", fs->glob.gl_pathv[fs->fidx]);
 				return -1;
 			}
 
@@ -553,7 +587,7 @@ int fstream_read(fstream_t *fs,
 
 			if (bytesread2 < 0)
 			{
-				fs->ferror = "cannot read file";
+				fs->ferror = format_error("cannot read file - ", fs->glob.gl_pathv[fs->fidx]);
 				return -1;
 			}
 
@@ -657,7 +691,8 @@ int fstream_read(fstream_t *fs,
 
 		if (bytesread < 0)
 		{
-			fs->ferror = "cannot read file";
+			fs->ferror = format_error("cannot read file - ", fs->glob.gl_pathv[fs->fidx]);
+			
 			return -1;
 		}
 
