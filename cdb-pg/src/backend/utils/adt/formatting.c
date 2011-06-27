@@ -1836,7 +1836,7 @@ from_char_set_int(int *dest, const int value, const FormatNode *node)
  * 'dest'. If 'dest' is NULL, the result is discarded.
  *
  * In fixed-width mode (the node does not have the FM suffix), consume at most
- * 'len' characters.
+ * 'len' characters. However, any leading whitespace isn't counted in 'len'.
  *
  * We use strtol() to recover the integer value from the source string, in
  * accordance with the given FormatNode.
@@ -1858,6 +1858,11 @@ from_char_parse_int_len(int *dest, char **src, const int len, FormatNode *node)
 	char		copy[DCH_MAX_ITEM_SIZ + 1];
 	char	   *init = *src;
 	int			used;
+
+	/*
+	 * Skip any whitespace before parsing the integer.
+	 */
+	*src += strspace_len(*src);
 
 	Assert(len <= DCH_MAX_ITEM_SIZ);
 	used = (int) strlcpy(copy, *src, len + 1);
@@ -1926,7 +1931,7 @@ from_char_parse_int_len(int *dest, char **src, const int len, FormatNode *node)
 	if (dest != NULL)
 		from_char_set_int(dest, (int) result, node);
 	return *src - init;
-		}
+}
 
 /*
  * Call from_char_parse_int_len(), using the length of the format keyword as
