@@ -2,10 +2,30 @@ import os
 import fnmatch
 import pickle
 import shutil
+import errno
 
 from gppylib.commands.base import Command, REMOTE
 from gppylib.operations import Operation
 from gppylib.operations.utils import RemoteOperation
+
+# TODO: Improve RawRemoteOperation
+"""
+Requirements:
+1. Clean Code: Remove python -c "lots of inline stuff".
+2. Eliminate redundancy: Remove having to create a FooRemote operation to accompany Foo.
+
+Proposal:
+1. Create module gppylib.operations.raw
+2. Put RawRemoteOperation in gppylib.operations.raw.__init__
+3. Put each core operation here in its own file, i.e. gppylib.operations.raw.list_files.ListFiles
+4. Require each such file to only import built-in modules
+5. Reimplement RawRemoteOperation to do the following:
+    a. Determine file of nested operation via inspect.getsourcefile(operation.__class__)
+    b. Scp this file to remote:/tmp/<random>
+    c. Scp gppylib/operations/__init__.py to remote:/tmp/<random>
+    d. Scp rawoperation.py to remote:/tmp/<random> (to behave like gpoperation.py)
+    e. Invoke rawoperation.py with pickled IO, much like RemoteOperation
+"""
 
 class RawRemoteOperation(Operation):
     """
@@ -82,7 +102,11 @@ class MakeDir(Operation):
     def __init__(self, path):
         self.path = path
     def execute(self):
-        return os.makedirs(self.path)
+         try:
+             return os.makedirs(self.path)
+         except OSError, e:
+             if e.errno != errno.EEXIST:
+                 raise
     def __str__(self):
         return "MakeDir(%s)" % self.path
 
