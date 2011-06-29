@@ -140,6 +140,10 @@ class Guc:
             except:
                 return "invalid value for max_connections"
 
+        if self.name == 'unix_socket_permissions':
+            if newval[0] != '0':
+                logger.warn('Permission not entered in octal format.It was interpreted as Decimal.  %s in Octal = 0%s' % (newval, int(newval, 8)))
+
         return "ok"
 
     def Print(self):
