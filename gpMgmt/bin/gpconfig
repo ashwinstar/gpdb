@@ -236,7 +236,7 @@ def doAddConfigScript(pool, hostname, segs, value):
     directory_string = None
     
     for seg in segs:
-    
+   
         if directory_string:
             directory_string = directory_string + "\n" + seg.datadir
         else:
@@ -295,7 +295,6 @@ try:
             if msg != "ok":
                 logger.fatal("new GUC value failed validation: " + msg )
                 sys.exit(1)
-
 except DatabaseError, ex:
     logger.error(ex.__str__())
     logger.error('Failed to connect to database, exiting without action. This script can only be run when the database is up.')
@@ -327,7 +326,7 @@ try:
                 doAddConfigScript(pool, h.hostname, h.dbs, options.value)
     
     # do the master
-    if options.mastervalue:
+    if options.mastervalue or options.remove:
         verbosePrint(options, gparray.master.hostname, gparray.master.hostname, gparray.master.datadir)
         cmd = GpAddConfigScript("master", gparray.master.datadir, options.entry, options.mastervalue, options.remove, ctxt=REMOTE, remoteHost=gparray.master.hostname)
         pool.addCommand(cmd)
@@ -347,7 +346,6 @@ try:
             failure = True
         
     pool.check_results()
-
 except Exception, e:
     logger.error('errors in job:')
     logger.error(e.__str__())
