@@ -33,6 +33,7 @@ AppendOnlyStorageFormat_ComputeHeaderChecksum(
 	           headerPtr, 
 	           headerLen);
 
+	/* BUG: This routine does not return a correct CRC32, since it never calls FIN_CRC32 */
 	return crc;
 }
 
@@ -60,6 +61,7 @@ AppendOnlyStorageFormat_ComputeBlockChecksum(
 	           headerPtr + dataOffset, 
 	           overallBlockLen - dataOffset);
 
+	/* BUG: This routine does not return a correct CRC32, since it never calls FIN_CRC32 */
 	return crc;
 }
 

@@ -261,8 +261,8 @@ extern DestReceiver *CreateCopyDestReceiver(void);
 extern List *CopyGetAttnums(TupleDesc tupDesc, Relation rel, List *attnamelist);
 extern bool CopyReadLineText(CopyState cstate, size_t bytesread);
 extern bool CopyReadLineCSV(CopyState cstate, size_t bytesread);
-extern void CopyReadAttributesText(CopyState cstate, char *nulls,
-			 int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr);
+extern void CopyReadAttributesText(CopyState cstate, char * __restrict nulls,
+			 int * __restrict attr_offsets, int num_phys_attrs, Form_pg_attribute * __restrict attr);
 extern void CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 					  int num_phys_attrs, Form_pg_attribute *attr);
 extern void CopyOneRowTo(CopyState cstate, Oid tupleOid,
