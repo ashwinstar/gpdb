@@ -582,7 +582,7 @@ create_gang_retry:
 		disconnectAndDestroyGang(newGangDefinition);
 		CheckForResetSession();
 
-		elog((errorOut ? ERROR : WARNING), "Greenplum Database detected segment failure(s), system is reconnected");
+		elog((errorOut ? ERROR : DEBUG2), "Greenplum Database detected segment failure(s), system is reconnected");
 
 		newGangDefinition = NULL;
 	}
@@ -1433,10 +1433,16 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				{
 					if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 						elog(DEBUG4, "Creating a new reader N-gang for %s", (portal_name ? portal_name : "unnamed portal"));
-					gp = createGang(type, gang_id_counter++, size, content, portal_name);
-					/* try again */
-					if (gp == NULL)
+
+					for (int attempts = 0; (attempts < gp_gang_creation_retry_count && gp == NULL); attempts++)
+					{
 						gp = createGang(type, gang_id_counter++, size, content, portal_name);
+						if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG
+								&& gp == NULL)
+						{
+							elog(LOG, "Could not create reader gang. Retry count = %d", (attempts + 1));
+						}
+					}
 				}
 				if (gp == NULL)
 					elog(ERROR, "No reader gang allocated");
@@ -1568,7 +1574,6 @@ allocateWriterGang()
 	if (writer_gang == NULL)
 	{
 		int			nsegdb;
-		int			attempts;
 
 		if (!IsTransactionOrTransactionBlock())
 		{
@@ -1588,14 +1593,18 @@ allocateWriterGang()
 		oldContext = MemoryContextSwitchTo(GangContext);
 
 		nsegdb = getgpsegmentCount();
-		/*
-		 * try twice for creating gang
-		 */
-#define CREATE_GANG_RETRIES 2
-		for (attempts = 0; (attempts < CREATE_GANG_RETRIES && writer_gang == NULL); attempts++)
+
+		for (int attempts = 0; (attempts < gp_gang_creation_retry_count && writer_gang == NULL); attempts++)
 		{
 			writer_gang =
 				createGang(GANGTYPE_PRIMARY_WRITER, PRIMARY_WRITER_GANG_ID, nsegdb, -1, NULL);
+
+			if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG
+					&& writer_gang == NULL)
+			{
+				elog(LOG, "Could not create writer gang. Retry count = %d", (attempts + 1));
+			}
+
 		}
 
 		MemoryContextSwitchTo(oldContext);
