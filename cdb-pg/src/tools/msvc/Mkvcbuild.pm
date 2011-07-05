@@ -3,7 +3,7 @@ package Mkvcbuild;
 #
 # Package that generates build files for msvc build
 #
-# $PostgreSQL: pgsql/src/tools/msvc/Mkvcbuild.pm,v 1.39 2009/04/07 19:35:57 mha Exp $
+# src/tools/msvc/Mkvcbuild.pm
 #
 use Carp;
 use Win32;

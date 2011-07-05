@@ -1,7 +1,6 @@
-
 # -*-perl-*- hey - emacs - this is a perl file
 
-# $PostgreSQL: pgsql/src/tools/msvc/vcregress.pl,v 1.10 2008/12/01 13:39:45 tgl Exp $
+# src/tools/msvc/vcregress.pl
 
 use strict;
 
@@ -13,6 +12,9 @@ use File::Copy;
 my $startdir = getcwd();
 
 chdir "../../.." if (-d "../../../src/tools/msvc");
+
+require 'src/tools/msvc/config_default.pl';
+require 'src/tools/msvc/config.pl' if (-f 'src/tools/msvc/config.pl');
 
 # buildenv.pl is for specifying the build environment settings
 # it should contian lines like:

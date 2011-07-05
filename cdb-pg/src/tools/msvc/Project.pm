@@ -3,7 +3,7 @@ package Project;
 #
 # Package that encapsulates a Visual C++ project file generation
 #
-# $PostgreSQL: pgsql/src/tools/msvc/Project.pm,v 1.26 2010/04/09 13:05:58 mha Exp $
+# src/tools/msvc/Project.pm
 #
 use Carp;
 use strict;
@@ -107,8 +107,8 @@ sub RelocateFiles
         my $r = &$proc($f);
         if ($r)
         {
-           $self->RemoveFile($f);
-           $self->AddFile($targetdir . '\\' . basename($f));
+            $self->RemoveFile($f);
+            $self->AddFile($targetdir . '\\' . basename($f));
         }
     }
 }
@@ -127,10 +127,10 @@ sub AddReference
 sub AddLibrary
 {
     my ($self, $lib, $dbgsuffix) = @_;
-    
+
     if ($lib =~ m/\s/)
     {
-    	$lib = '&quot;' . $lib . "&quot;";
+        $lib = '&quot;' . $lib . "&quot;";
     }
 
     push @{$self->{libraries}}, $lib;
@@ -264,7 +264,7 @@ sub AddDir
 
     # Match rules that pull in source files from different directories
     # example: pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
-    my $replace_re = qr{^([^:\n\$]+\.c)\s*:\s*(?:%\s*: )?\$(\([^\)]+\))\/(.*)\/[^\/]+\s*$}m;
+    my $replace_re = qr{^([^:\n\$]+\.c)\s*:\s*(?:%\s*: )?\$(\([^\)]+\))\/(.*)\/[^\/]+$}m;
     while ($mf =~ m{$replace_re}m)
     {
         my $match = $1;
@@ -406,7 +406,6 @@ EOF
         {
             my $of = $f;
             $of =~ s/\.l$/.c/;
-            #$of =~ s{^src\\pl\\plpgsql\\src\\scan.c$}{src\\pl\\plpgsql\\src\\pl_scan.c};
             print F '>'
               . $self->GenerateCustomTool('Running flex on ' . $f,
                 'src\tools\msvc\pgflex.bat ' . $f,$of)
@@ -521,7 +520,7 @@ EOF
 		WarningLevel="3" SuppressStartupBanner="TRUE" DebugInformationFormat="3" CompileAs="0"/>
 	<Tool Name="VCLinkerTool" OutputFile=".\\$cfgname\\$self->{name}\\$self->{name}.$self->{type}"
 		AdditionalDependencies="$libs"
-		LinkIncremental="0" SuppressStartupBanner="TRUE" AdditionalLibraryDirectories=" " IgnoreDefaultLibraryNames="libc"
+		LinkIncremental="0" SuppressStartupBanner="TRUE" AdditionalLibraryDirectories="" IgnoreDefaultLibraryNames="libc"
 		StackReserveSize="4194304" DisableSpecificWarnings="$self->{disablewarnings}"
 		GenerateDebugInformation="TRUE" ProgramDatabaseFile=".\\$cfgname\\$self->{name}\\$self->{name}.pdb"
 		GenerateMapFile="FALSE" MapFileName=".\\$cfgname\\$self->{name}\\$self->{name}.map"
