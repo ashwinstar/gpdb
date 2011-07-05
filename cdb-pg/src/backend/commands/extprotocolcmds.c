@@ -246,9 +246,9 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 	if (ownerId != newOwnerId)
 	{
 		Acl		   *newAcl;
-		Datum		values[Anum_pg_extprotocol_ptcname];
-		bool		nulls[Anum_pg_extprotocol_ptcname];
-		bool		replaces[Anum_pg_extprotocol_ptcname];
+		Datum		values[Natts_pg_extprotocol];
+		bool		nulls[Natts_pg_extprotocol];
+		bool		replaces[Natts_pg_extprotocol];
 		HeapTuple	newtuple;
 		Datum		aclDatum;
 
@@ -286,8 +286,8 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 		{
 			newAcl = aclnewowner(DatumGetAclP(aclDatum),
 								 ownerId, newOwnerId);
-			replaces[Anum_pg_proc_proacl - 1] = true;
-			values[Anum_pg_proc_proacl - 1] = PointerGetDatum(newAcl);
+			replaces[Anum_pg_extprotocol_ptcacl - 1] = true;
+			values[Anum_pg_extprotocol_ptcacl - 1] = PointerGetDatum(newAcl);
 		}
 
 		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values,
