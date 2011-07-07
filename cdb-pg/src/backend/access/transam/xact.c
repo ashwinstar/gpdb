@@ -1616,27 +1616,37 @@ bool RecordCrashTransactionAbortRecord(
 	int			lastrdata = 0;
 	xl_xact_abort xlrec;
 	XLogRecPtr	recptr;
-	XidStatus 	status;
+	XidStatus status;
+	bool           validStatus;
 
-	status = TransactionIdGetStatus(xid);
-	if (status != 0 &&
-		status != TRANSACTION_STATUS_ABORTED)
-	{
-		int elevel;
+	/* Fix for MPP-12614. The call to TransactionIdGetStatus() has been removed since    */
+	/* The clog many not have the the referenced transation as of crash recovery         */
+	/* pass 2. The clog will be fully built in pass 3 of crash recovery.                 */
+	/* The new call "InRecoveryTansactionIdGetStatus will return TRUE or FALSE in the    */
+	/* validStatus parameter, which indicates whether or not the returned value is good. */
 
-		if (gp_crash_recovery_abort_suppress_fatal)
-			elevel = WARNING;
-		else
-			elevel = FATAL;
+	validStatus = false;
 
-		elog(elevel,"Crash recovery abort invalid for transaction %u current status '%s' (0x%x) and new status '%s' (0x%x)",
-			 xid, 
-			 XidStatus_Name(status),
-			 status,
-			 XidStatus_Name(TRANSACTION_STATUS_ABORTED),
-			 TRANSACTION_STATUS_ABORTED);
-		return false;
-	}
+	status = InRecoveryTransactionIdGetStatus(xid, &validStatus);
+	if (validStatus == true && status != 0 &&
+	    status != TRANSACTION_STATUS_ABORTED)
+	    {
+	    int elevel;
+
+	    if (gp_crash_recovery_abort_suppress_fatal)
+	      elevel = WARNING;
+	    else
+	      elevel = FATAL;
+
+	    elog( elevel,"Crash recovery abort invalid for transaction %u current status '%s' (0x%x) and new status '%s' (0x%x)",
+		  xid,
+		  XidStatus_Name(status),
+		  status,
+		  XidStatus_Name(TRANSACTION_STATUS_ABORTED),
+		  TRANSACTION_STATUS_ABORTED
+		  );
+	    return false;
+	    }
 
 	persistentAbortObjectCount = 
 				PersistentEndXactRec_ObjectCount(
@@ -1712,7 +1722,12 @@ bool RecordCrashTransactionAbortRecord(
 	 * subtransactions to aborted state from the point of view of
 	 * concurrent TransactionIdDidAbort calls.
 	 */
-	TransactionIdAbort(xid);
+
+	/* Fix for MPP-12614. Only set the clog status for the transaciton if the returned */
+	/* value for TransactionIdGetStatus() was good.                                    */
+
+	if (validStatus == true)
+	  TransactionIdAbort(xid);
 
 	END_CRIT_SECTION();
 

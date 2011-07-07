@@ -124,7 +124,7 @@ SubTransGetParent(TransactionId xid)
 
 	/* lock is acquired by SimpleLruReadPage_ReadOnly */
 
-	slotno = SimpleLruReadPage_ReadOnly(SubTransCtl, pageno, xid);
+	slotno = SimpleLruReadPage_ReadOnly(SubTransCtl, pageno, xid, NULL);
 	ptr = (TransactionId *) SubTransCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 

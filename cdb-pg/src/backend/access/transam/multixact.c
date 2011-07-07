@@ -1829,7 +1829,7 @@ TruncateMultiXact(void)
 		pageno = MultiXactIdToOffsetPage(oldestMXact);
 		entryno = MultiXactIdToOffsetEntry(oldestMXact);
 
-		slotno = SimpleLruReadPage_ReadOnly(MultiXactOffsetCtl, pageno, oldestMXact);
+		slotno = SimpleLruReadPage_ReadOnly(MultiXactOffsetCtl, pageno, oldestMXact, NULL);
 		offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
 		offptr += entryno;
 		oldestOffset = *offptr;

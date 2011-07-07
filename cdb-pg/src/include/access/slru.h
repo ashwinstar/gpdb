@@ -117,8 +117,9 @@ extern void SimpleLruInit(SlruCtl ctl, const char *name, int nslots,
 			  LWLockId ctllock, const char *subdir);
 extern int	SimpleLruZeroPage(SlruCtl ctl, int pageno);
 extern int	SimpleLruReadPage(SlruCtl ctl, int pageno, TransactionId xid);
+extern int      SimpleLruReadPage_Internal(SlruCtl ctl, int pageno, TransactionId xid, bool *valid);
 extern int SimpleLruReadPage_ReadOnly(SlruCtl ctl, int pageno,
-						   TransactionId xid);
+				      TransactionId xid, bool *valid);
 extern void SimpleLruWritePage(SlruCtl ctl, int slotno, SlruFlush fdata);
 extern void SimpleLruFlush(SlruCtl ctl, bool checkpoint);
 extern void SimpleLruTruncate(SlruCtl ctl, int cutoffPage, bool lockHeld);

@@ -33,7 +33,9 @@ typedef int XidStatus;
 
 
 extern void TransactionIdSetStatus(TransactionId xid, XidStatus status);
+
 extern XidStatus TransactionIdGetStatus(TransactionId xid);
+extern XidStatus InRecoveryTransactionIdGetStatus(TransactionId xid, bool *valid);
 
 extern char *XidStatus_Name(XidStatus status);
 

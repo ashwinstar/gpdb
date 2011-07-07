@@ -264,7 +264,7 @@ bool 		Debug_appendonly_print_blockdirectory = false;
 bool 		Debug_appendonly_print_read_block = false;
 bool 		Debug_appendonly_print_append_block = false;
 bool 		Debug_appendonly_print_segfile_choice = false;
-bool		gp_crash_recovery_abort_suppress_fatal = false;
+bool        gp_crash_recovery_abort_suppress_fatal = false;
 bool		gp_persistent_statechange_suppress_error = false;
 bool		Debug_bitmap_print_insert = false;
 bool 		Test_appendonly_override = false;
@@ -1761,14 +1761,14 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 	{
-		{"gp_crash_recovery_abort_suppress_fatal", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Warning about crash recovery abort transaction issue"),
-			NULL,
-			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
-		},
-		&gp_crash_recovery_abort_suppress_fatal,
-		false, NULL, NULL
-	},
+	    {"gp_crash_recovery_abort_suppress_fatal", PGC_SUSET, DEVELOPER_OPTIONS,
+	            gettext_noop("Warning about crash recovery abort transaction issue"),
+	            NULL,
+	            GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+	    },
+	    &gp_crash_recovery_abort_suppress_fatal,
+	    false, NULL, NULL
+    },
 	{
 		{"gp_persistent_statechange_suppress_error", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Warning about persistent state-change issue"),
