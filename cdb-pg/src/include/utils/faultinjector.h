@@ -71,6 +71,8 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	ChangeTrackingCompactingReport,
 	
+	ChangeTrackingDisable,
+	
 	TransactionAbortAfterDistributedPrepared,
 	
 	TransactionCommitPass1FromCreatePendingToCreated,

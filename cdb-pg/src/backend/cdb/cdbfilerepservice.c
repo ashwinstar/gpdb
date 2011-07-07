@@ -173,7 +173,7 @@ FileRepSubProcess_ShutdownHandler(SIGNAL_ARGS)
 static void 
 FileRepSubProcess_FileRepStateHandler(SIGNAL_ARGS)
 {
-	++stateChangeRequestCounter;
+	++stateChangeRequestCounter;	
 }
 
 /*
@@ -519,7 +519,10 @@ FileRepSubProcess_SetState(FileRepState_e fileRepStateLocal)
     /* now update in shared memory if needed */
 	switch (fileRepState) {
 		case FileRepStateReady:
-			FileRep_SetSegmentState(SegmentStateReady, FaultTypeNotInitialized);
+			if (segmentState != SegmentStateChangeTrackingDisabled)
+			{
+				FileRep_SetSegmentState(SegmentStateReady, FaultTypeNotInitialized);
+			}
 			break;
 			
 		case FileRepStateFault:

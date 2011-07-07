@@ -834,7 +834,7 @@ class GpRecoverSegmentProgram:
                 raise Exception("Inconsistency in catalog and segment Role/Mode. Catalog Role = %s. Segment Mode = %s." % (db.getSegmentRole(), mode))
             if gparray.MODE_TO_DATA_STATE_MAP[db.getSegmentMode()] != dataState:
                 raise Exception("Inconsistency in catalog and segment Mode/DataState. Catalog Mode = %s. Segment DataState = %s." % (db.getSegmentMode(), dataState))
-            if segmentState != gparray.SEGMENT_STATE_READY:
+            if segmentState != gparray.SEGMENT_STATE_READY and segmentState != gparray.SEGMENT_STATE_CHANGE_TRACKING_DISABLED:
                 if segmentState == gparray.SEGMENT_STATE_INITIALIZATION or segmentState == gparray.SEGMENT_STATE_IN_CHANGE_TRACKING_TRANSITION:
                     raise Exception("Segment is not ready for recovery dbid = %s, segmentState = %s. Retry recovery in a few moments" % (str(db.getSegmentDbId()), segmentState))
                 else:

@@ -25,6 +25,7 @@
 #include "storage/lock.h"
 #include "storage/relfilenode.h"
 #include "storage/shmem.h"
+#include "utils/faultinjector.h"
 #include "utils/memutils.h"
 #include "utils/palloc.h"
 #include "utils/faultinjector.h"
@@ -1231,7 +1232,16 @@ void ChangeTracking_FsyncDataIntoLog(CTFType ftype)
 		if(ChangeTracking_WriteBuffer(file, ftype) < 0)
 			ChangeTracking_HandleWriteError(ftype);
 	}
-		
+	
+#ifdef FAULT_INJECTOR
+	if (FaultInjector_InjectFaultIfSet(
+										   ChangeTrackingDisable,
+										   DDLNotSpecified,
+										   "" /* databaseName */,
+										   "" /* tableName */) == FaultInjectorTypeSkip)
+			ChangeTracking_HandleWriteError(ftype);		// disable Change Tracking
+#endif	
+	
 	errno = 0;
 
 
@@ -2359,6 +2369,11 @@ ChangeTracking_RecordLastChangeTrackedLoc(void)
 	XLogRecPtr 	endResyncLSN;
 	
 	LWLockAcquire(ChangeTrackingWriteLock, LW_EXCLUSIVE);
+	
+	if (! isFullResync())
+	{
+		setFullResync(changeTrackingResyncMeta->resync_mode_full);
+	}
 
 	endResyncLSN = XLogLastChangeTrackedLoc();
 	

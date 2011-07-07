@@ -332,6 +332,8 @@ class GpInjectFaultProgram:
 			      "filerep_transition_to_sync_mark_completed (inject fault during transition to InSync before marking completed), " \
 			      "filerep_transition_to_change_tracking (inject fault during transition to InChangeTracking), " \
 			      "checkpoint (inject fault before checkpoint is taken), " \
+			      "change_tracking_compacting_report (report if compacting is in progress), " \
+			      "change_tracking_disable (inject fault before fsync to Change Tracking log files), " \
 			      "transaction_abort_after_distributed_prepared (abort prepared transaction), " \
 			      "transaction_commit_pass1_from_create_pending_to_created, " \
 			      "transaction_commit_pass1_from_drop_in_memory_to_drop_pending, " \

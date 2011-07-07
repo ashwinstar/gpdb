@@ -265,6 +265,15 @@ FileRepPrimary_StartRecoveryInChangeTracking(void)
 			{
 				ChangeTracking_MarkFullResync();
 				/* segmentState == SegmentStateChangeTrackingDisabled */
+				getFileRepRoleAndState(&fileRepRole, &segmentState, &dataState, NULL, NULL);
+				Assert(segmentState == SegmentStateChangeTrackingDisabled);
+				
+				/* database is resumed */
+				primaryMirrorSetIOSuspended(FALSE);
+				
+				FileRep_InsertConfigLogEntry("change tracking recovery completed");
+				
+				break;				
 			}
 			else
 			{
@@ -331,7 +340,9 @@ FileRepPrimary_RunChangeTrackingCompacting(void)
 		
 		FileRepSubProcess_ProcessSignals();
 		
-		while (FileRepSubProcess_GetState() == FileRepStateFault) {			
+		while (FileRepSubProcess_GetState() == FileRepStateFault ||
+			   segmentState == SegmentStateChangeTrackingDisabled) 
+		{			
 			FileRepSubProcess_ProcessSignals();
 			pg_usleep(50000L); /* 50 ms */	
 		}

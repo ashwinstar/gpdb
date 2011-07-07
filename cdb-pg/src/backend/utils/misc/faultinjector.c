@@ -150,6 +150,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault before checkpoint is taken */
 	_("change_tracking_compacting_report"),
 		/* report if compacting is in progress */
+	_("change_tracking_disable"),
+		/* inject fault during fsync to Change Tracking log */
 	_("transaction_abort_after_distributed_prepared"),
 		/* inject fault after transaction is prepared */
 	_("transaction_commit_pass1_from_create_pending_to_created"),
@@ -768,6 +770,7 @@ FaultInjector_NewHashEntry(
 		switch (entry->faultInjectorIdentifier)
 		{
 			case Checkpoint:
+			case ChangeTrackingDisable:
 			case FinishPreparedTransactionCommitPass1FromCreatePendingToCreated:
 			case FinishPreparedTransactionCommitPass2FromCreatePendingToCreated:
 				
@@ -806,6 +809,7 @@ FaultInjector_NewHashEntry(
 	
 	switch (entry->faultInjectorIdentifier)
 	{
+		case ChangeTrackingDisable:
 		case StartPrepareTx:
 		case FileRepResync:
 		case FileRepResyncInProgress:
