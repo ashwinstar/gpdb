@@ -14,7 +14,7 @@ RUNNING THE GREENPLUM DATABASE INSTALLER
 
 2. Execute the installer using bash:
 
-   /bin/bash greenplum-db-4.1.x.x-<PLATFORM>.bin 
+   /bin/bash greenplum-db-4.2.x.x-<PLATFORM>.bin 
 
 3. When prompted, type 'yes' to accept the license agreement.
 
@@ -22,7 +22,7 @@ RUNNING THE GREENPLUM DATABASE INSTALLER
    permissions to write to the installation directory you specify.
    For example:
 
-   /usr/local/greenplum-db-4.1.x.x
+   /usr/local/greenplum-db-4.2.x.x
 
 
 ***********************************************************
@@ -66,25 +66,24 @@ LINUX
 
 In /etc/sysctl.conf: 
 
-kernel.sem = 250 64000 100 512 
-kernel.shmmax = 500000000 
-kernel.shmmni = 4096 
-kernel.shmall = 4000000000 
-kernel.sem = 250 64000 100 512 
-kernel.sysrq = 1 
-kernel.core_uses_pid = 1 
-kernel.msgmnb = 65536 
-kernel.msgmax = 65536 
-net.ipv4.tcp_syncookies = 1 
-net.ipv4.ip_forward = 0 
-net.ipv4.conf.default.accept_source_route = 0 
-net.ipv4.tcp_tw_recycle=1 
-net.ipv4.tcp_max_syn_backlog=4096 
-net.ipv4.conf.all.arp_filter = 1 
-net.ipv4.conf.default.arp_filter = 1
-net.core.netdev_max_backlog=10000 
-vm.overcommit_memory=2 
-
+sysctl.kernel.shmmax = 500000000
+sysctl.kernel.shmmni = 4096
+sysctl.kernel.shmall = 4000000000
+sysctl.kernel.sem = 250 512000 100 2048
+sysctl.kernel.sysrq = 1
+sysctl.kernel.core_uses_pid = 1
+sysctl.kernel.msgmnb = 65536
+sysctl.kernel.msgmax = 65536
+sysctl.kernel.msgmni = 2048
+sysctl.net.ipv4.tcp_syncookies = 1
+sysctl.net.ipv4.ip_forward = 0
+sysctl.net.ipv4.conf.default.accept_source_route = 0
+sysctl.net.ipv4.tcp_tw_recycle = 1
+sysctl.net.ipv4.tcp_max_syn_backlog = 4096
+sysctl.net.ipv4.conf.all.arp_filter = 1
+sysctl.net.ipv4.ip_local_port_range = 1025 65535
+sysctl.net.core.netdev_max_backlog = 10000
+sysctl.vm.overcommit_memory = 2
 In /etc/security/limits.conf: 
 
 * soft nofile 65536  
@@ -154,8 +153,8 @@ POST INSTALLATION STEPS
 
 These are the high-level steps to configure and initialize a new 
 Greenplum Database instance. For detailed instructions, please 
-see the 'Greenplum Database Installation Guide' located in
-$GPHOME/docs. 
+see the 'Greenplum Database Installation Guide' available for
+download from http://powerlink.emc.com
 
 
 1. Allocate a 'gpadmin' OS user to own and run your installation.
@@ -199,7 +198,7 @@ directories:
 * bin - Greenplum Database server programs, client programs, and 
         management tools.
 
-* demo - Greenplum Database demonstration programs. 
+* demo - Greenplum Database demonstration programs.
 
 * docs - Greenplum Database documentation.
 
@@ -222,24 +221,20 @@ directories:
 GREENPLUM DATABASE DOCUMENTATION
 ************************************************
 
-The following documentation is available in the $GPHOME/docs 
-directory of your Greenplum installation and is also available 
-for download on http://gpn.greenplum.com.
+The following documentation is available for
+download from http://powerlink.emc.com:
 
 (All Greenplum Database Installations)
+
+* GPDB-<version>-README.pdf - Release notes for this version of 
+  Greenplum Database
 
 * GPInstallGuide.pdf - Greenplum Database Installation Guide
 
 * GPAdminGuide.pdf - Greenplum Database Administrator Guide
 
-* GPPerfmonAdminGuide.pdf - Greenplum Performance Monitor Administrator Guide
-
-
-Release notes for this version of Greenplum Database are
-available on http://gpn.greenplum.com.
-
-* GPDB-<version>-README.pdf
-
+* GPPerfmonAdminGuide.pdf - Greenplum Performance Monitor Administrator 
+  Guide
 
 
 
