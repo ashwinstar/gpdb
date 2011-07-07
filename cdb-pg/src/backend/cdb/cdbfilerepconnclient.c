@@ -21,6 +21,7 @@
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
 #include "pqexpbuffer.h"
+#include "cdb/cdbfilerepservice.h"
 
 static PGconn	*conn = NULL;
 /*
@@ -167,11 +168,31 @@ FileRepConnClient_SendMessage(
 	 */
 	 if (messageSynchronous || conn->outCount >= file_rep_min_data_before_flush )
 	{
+		int result = 0;
 		while ((status = pqFlush(conn)) > 0)
 		{
-			if (pqWait(FALSE, TRUE, conn))
+			/* retry on timeout */
+			while (!(result = pqWaitTimeout(FALSE, TRUE, conn, time(NULL) + file_rep_socket_timeout)))
 			{
+				if (FileRepSubProcess_IsStateTransitionRequested())
+				{
+					elog(WARNING, "segment state transition requested while waiting to write data to socket");
+					status = -1;
+					break;
+				}
+			}
+			
+			if (result < 0)
+			{
+				ereport(WARNING,
+						(errcode_for_socket_access(),
+					 	 errmsg("could not write data to socket, failure detected : %m")));
 				status = -1;
+				break;
+			}
+
+			if (status == -1)
+			{
 				break;
 			}
 		}

@@ -73,6 +73,7 @@ extern int file_rep_buffer_size;
 extern int file_rep_ack_buffer_size;
 extern int file_rep_retry;
 extern int file_rep_min_data_before_flush;
+extern int file_rep_socket_timeout;
 extern int file_rep_mirror_consumer_process_count;
 
 extern FileRepRole_e		fileRepRole;

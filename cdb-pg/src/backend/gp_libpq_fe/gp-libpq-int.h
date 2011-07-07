@@ -536,6 +536,8 @@ extern int	pqFlush(PGconn *conn);
 extern int	pqWait(int forRead, int forWrite, PGconn *conn);
 extern int pqWaitTimed(int forRead, int forWrite, PGconn *conn,
 			time_t finish_time);
+extern int pqWaitTimeout(int forRead, int forWrite, PGconn *conn,
+			time_t finish_time);
 extern int	pqReadReady(PGconn *conn);
 extern int	pqWriteReady(PGconn *conn);
 

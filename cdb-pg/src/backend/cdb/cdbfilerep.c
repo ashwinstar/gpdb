@@ -407,6 +407,15 @@ int		file_rep_retry = 2000;  // 186 seconds
  */
 int file_rep_min_data_before_flush = 128 * 1024;
 
+/**
+ * GUC parameter
+ *     	    file_rep_socket_timeout
+ *
+ * Timeout (in seconds) if we cannot write to socket (the socket is blocking)
+ */
+int file_rep_socket_timeout = 10;
+
+
 int fileRepShmemArrayCount = 4;
 
 /*

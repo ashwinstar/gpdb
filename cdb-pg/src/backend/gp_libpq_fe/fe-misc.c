@@ -1019,6 +1019,28 @@ pqWaitTimed(int forRead, int forWrite, PGconn *conn, time_t finish_time)
 }
 
 /*
+ * pgWaitTimeout: wait, but not past finish_time.
+ * wrapper for pqSocketCheck.
+ *
+ * finish_time = ((time_t) -1) disables the wait limit.
+ */
+int
+pqWaitTimeout(int forRead, int forWrite, PGconn *conn, time_t finish_time)
+{
+	int			result;
+
+	result = pqSocketCheck(conn, forRead, forWrite, finish_time);
+
+	if (result == 0)
+	{
+		printfPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("timeout expired\n"));
+	}
+
+	return result;
+}
+
+/*
  * pqReadReady: is select() saying the file is ready to read?
  * Returns -1 on failure, 0 if not ready, 1 if ready.
  */

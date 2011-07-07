@@ -4430,6 +4430,16 @@ static struct config_int ConfigureNamesInt[] =
 		128*1024, 8*1024, 16*1024*1024, NULL, NULL
 	},
 
+    {
+        {"filerep_socket_timeout", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+            gettext_noop("Timeout (in seconds) if we cannot write to socket (the socket is blocking)"),
+            NULL,
+            GUC_NO_SHOW_ALL
+        },
+        &file_rep_socket_timeout,
+        10, 0, 300, NULL, NULL
+    },
+
 	{
 		{"gp_blockdirectory_entry_min_range", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Minimal range in bytes one block directory entry covers."),
