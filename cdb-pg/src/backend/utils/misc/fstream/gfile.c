@@ -23,6 +23,7 @@
 
 #define COMPRESSION_BUFFER_SIZE		4096
 
+
 static int
 nothing_close(gfile_t *fd)
 {
@@ -318,10 +319,94 @@ gz_file_read(gfile_t* fd, void* ptr, size_t len)
 	}
 }
 
+static int 
+gz_file_write_one_chunk(gfile_t *fd, int do_flush)
+{
+	/*
+	 * 0 - means we are ok
+	 */
+	int ret = 0, have;
+	struct zlib_stuff* z = fd->u.z;
+	
+	do 
+	{
+		int ret1;
+		
+		z->s.avail_out = COMPRESSION_BUFFER_SIZE;
+		z->s.next_out = z->out;
+		ret1 = deflate(&(z->s), do_flush);    /* no bad return value */
+		assert(ret1 != Z_STREAM_ERROR);  /* state not clobbered */
+		have = COMPRESSION_BUFFER_SIZE - z->s.avail_out;
+		
+		if ( write_and_retry(fd, z->out, have) != have ) 
+		{
+			/*
+			 * presently gfile_close calls gz_file_close only for the on_write case so we don't need
+			 * to handle inflateEnd here
+			 */
+			(void)deflateEnd(&(z->s));
+			ret = -1;
+			break;
+		}
+		
+	} while (COMPRESSION_BUFFER_SIZE == have);	
+	/*
+	 * if the deflate engine filled all the output buffer, it may have more data, so we must try again
+	 */
+	
+	return ret;
+}
+
+static ssize_t
+gz_file_write(gfile_t *fd, void *ptr, size_t size)
+{
+	int ret;
+	
+	
+	size_t left_to_compress = size;
+	size_t one_iter_compress;
+	struct zlib_stuff* z = fd->u.z;
+		
+	do
+	{
+		/*
+		 * we do not wish that the size of the input buffer to  the deflate engine, will be greater
+		 * than the recomended COMPRESSION_BUFFER_SIZE.
+		 */
+		one_iter_compress = (left_to_compress > COMPRESSION_BUFFER_SIZE) ? COMPRESSION_BUFFER_SIZE : left_to_compress;
+			
+		z->s.avail_in = one_iter_compress;
+		z->s.next_in = (Byte*)((Byte*)ptr + (size - left_to_compress));
+		
+		ret = gz_file_write_one_chunk(fd, Z_NO_FLUSH);
+		if (0 != ret)
+		{
+			return ret;
+		}
+				
+		left_to_compress -= one_iter_compress; 
+	} while( left_to_compress > 0 );
+
+		
+	return size;
+}
+
 static int
 gz_file_close(gfile_t *fd)
 {
-	int e = inflateEnd(&fd->u.z->s);
+	int ret;
+	
+	ret = gz_file_write_one_chunk(fd, Z_FINISH);
+	if (0 != ret)
+	{
+		return ret;
+	}
+	
+	/*
+	 * presently gfile_close calls gz_file_close only for the on_write case so we don't need
+	 * to handle inflateEnd here
+	 */	
+	int e = deflateEnd(&fd->u.z->s);
 	
 	gfile_free(fd->u.z);
 	
@@ -339,7 +424,7 @@ static void z_free(voidpf a, voidpf b)
 	gfile_free(b);
 }
 
-static int gz_file_open(gfile_t *fd)
+static int gz_file_open(gfile_t *fd, int _for_write)
 {
 	if (!(fd->u.z = gfile_malloc(sizeof *fd->u.z)))
 	{
@@ -350,18 +435,40 @@ static int gz_file_open(gfile_t *fd)
 	memset(fd->u.z, 0, sizeof *fd->u.z);
 	fd->u.z->s.zalloc = z_alloc;
 	fd->u.z->s.zfree = z_free;
-	
-	if (inflateInit2(&fd->u.z->s,31))
-	{
-		gfile_printf_then_putc_newline("inflateInit2 failed");
-		return 1;
-	}
-	
+	fd->u.z->s.opaque = Z_NULL;
+
 	fd->u.z->s.next_out = fd->u.z->out;
 	fd->u.z->s.next_in = fd->u.z->in;
 	fd->read = gz_file_read;
+	fd->write = gz_file_write;
 	fd->close = gz_file_close;
 	
+	
+	if ( 0 == _for_write ) 
+	{
+		/*
+		 * reading a compressed file
+		 */		
+		if (inflateInit2(&fd->u.z->s,31))
+		{
+			gfile_printf_then_putc_newline("inflateInit2 failed");
+			return 1;
+		}
+	}
+	else 
+	{
+		/*
+		 * writing a compressed file
+		 */
+		if ( Z_OK !=
+			 deflateInit2(&fd->u.z->s, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 31, 8, Z_DEFAULT_STRATEGY) )
+		{
+			gfile_printf_then_putc_newline("deflateInit2 failed");
+			return 1;			
+		}
+		 
+	}
+
 	return 0;
 }
 #endif
@@ -545,10 +652,14 @@ gfile_open(gfile_t *fd, const char *fpath, int for_write, int *response_code,
 #ifdef WIN32
 		gfile_printf_then_putc_newline(".gz not supported");
 #else
+		/*
+		 * flag for gfile close
+		 */
 		if (for_write)
-			gfile_printf_then_putc_newline(".gz not yet supported for writable tables");
-		
-		return gz_file_open(fd);
+		{
+			fd->is_gz_write = 1;
+		}
+		return gz_file_open(fd, for_write);
 #endif
 	}
 	else if (s && strcasecmp(s,".bz2")==0)
@@ -582,6 +693,10 @@ gfile_close(gfile_t*fd)
 
 	if (fd->close)
 	{
+		if ( fd->is_gz_write )
+		{
+			fd->close(fd);
+		}
 		if (!fd->is_win_pipe)
 		{
 			int i;

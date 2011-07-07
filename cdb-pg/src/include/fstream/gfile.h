@@ -48,6 +48,7 @@ typedef struct gfile_t
 	struct bzlib_stuff*bz;
 #endif
     }u;
+	int is_gz_write;
 }gfile_t;
 
 int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code, const char** response_string);
