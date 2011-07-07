@@ -9,6 +9,7 @@
 from gppylib.mainUtils import *
 
 from datetime import datetime
+import sys
 import socket
 from optparse import Option, OptionGroup, OptionParser, OptionValueError
 
@@ -24,6 +25,7 @@ try:
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
+EXECNAME = 'gpcrondump'
 GPCRONDUMP_PID_FILE = 'gpcrondump.pid'
 FREE_SPACE_PERCENT = 10
 
@@ -448,4 +450,6 @@ will be displayed.
     return parser
 
 if __name__ == '__main__':
-    simple_main(create_parser, GpCronDump, { "pidfilename" : GPCRONDUMP_PID_FILE })
+    sys.argv[0] = EXECNAME                                                              # for cli_help
+    simple_main(create_parser, GpCronDump, { "pidfilename" : GPCRONDUMP_PID_FILE,
+                                             "programNameOverride" : EXECNAME })        # for logger
