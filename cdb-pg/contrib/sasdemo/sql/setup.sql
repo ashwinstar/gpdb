@@ -36,14 +36,14 @@ LANGUAGE C IMMUTABLE;
 --
 DROP EXTERNAL TABLE IF EXISTS example_out;
 CREATE WRITABLE EXTERNAL WEB TABLE example_out(like example)
-EXECUTE '$GPHOME/bin/sassender localhost 2000' FORMAT 'CUSTOM' DISTRIBUTED BY (id);
+EXECUTE '$GPHOME/bin/sassender localhost 2000' FORMAT 'CUSTOM' (FORMATTER ‘formatter_export’) DISTRIBUTED BY (id);
 
 --
 -- Setup an external table to write into the table (e.g. have the database read in new rows)
 --
 DROP EXTERNAL TABLE IF EXISTS example_in;
 CREATE EXTERNAL WEB TABLE example_in(like example)
-EXECUTE '$GPHOME/bin/sasreceiver localhost 2000' ON ALL FORMAT 'CUSTOM';
+EXECUTE '$GPHOME/bin/sasreceiver localhost 2000' ON ALL FORMAT 'CUSTOM' (FORMATTER ‘formatter_import’);
 
 
 ---
