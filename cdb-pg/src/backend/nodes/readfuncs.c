@@ -801,6 +801,7 @@ _readIndexStmt(void)
 	READ_BOOL_FIELD(unique);
 	READ_BOOL_FIELD(primary);
 	READ_BOOL_FIELD(isconstraint);
+	READ_STRING_FIELD(altconname);
 	READ_BOOL_FIELD(concurrent);
 	READ_NODE_FIELD(idxOids);
 
@@ -2000,6 +2001,7 @@ _readCreateStmt(void)
 	READ_ENUM_FIELD(oncommit,OnCommitAction);
 	READ_STRING_FIELD(tablespacename);
 	READ_NODE_FIELD(distributedBy);
+	READ_NODE_FIELD(partitionBy);
 	READ_OID_FIELD(oidInfo.relOid);
 	READ_OID_FIELD(oidInfo.comptypeOid);
 	READ_OID_FIELD(oidInfo.toastOid);

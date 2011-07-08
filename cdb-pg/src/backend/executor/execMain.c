@@ -48,6 +48,7 @@
 #include "catalog/aoblkdir.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbpartition.h"
 #include "commands/tablecmds.h" /* XXX: temp for get_parts() */
 #include "commands/tablespace.h"
 #include "commands/trigger.h"

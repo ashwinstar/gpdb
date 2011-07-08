@@ -508,7 +508,8 @@ index_create(Oid heapRelationId,
 			 bool isconstraint,
 			 bool allow_system_table_mods,
 			 bool skip_build,
-			 bool concurrent)
+			 bool concurrent,
+			 const char *altConName)
 {
 	Relation	pg_class;
 	Relation	gp_relation_node;
@@ -753,6 +754,12 @@ index_create(Oid heapRelationId,
 		{
 			char		constraintType;
 			Oid			conOid;
+			const char *constraintName = indexRelationName;
+			
+			if ( altConName )
+			{
+				constraintName = altConName;
+			}
 
 			if (isprimary)
 				constraintType = CONSTRAINT_PRIMARY;
@@ -768,7 +775,7 @@ index_create(Oid heapRelationId,
 			if (indexInfo->ii_Expressions)
 				elog(ERROR, "constraints can't have index expressions");
 
-			conOid = CreateConstraintEntry(indexRelationName,
+			conOid = CreateConstraintEntry(constraintName,
 										   namespaceId,
 										   constraintType,
 										   false,		/* isDeferrable */

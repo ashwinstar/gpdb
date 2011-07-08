@@ -103,6 +103,11 @@ bool gp_hash_index = false; /* hash index phase out. */
  *		it will be filled later.
  * 'quiet': suppress the NOTICE chatter ordinarily provided for constraints.
  * 'concurrent': avoid blocking writers to the table while building.
+ * 'part_expanded': is this a lower-level call to index a branch or part of
+ *		a partitioned table?
+ * 'stmt': the IndexStmt for this index.  Many other arguments are just values
+ *		of fields in here.  
+ *		XXX One day it might pay to eliminate the redundancy.
  */
 void
 DefineIndex(RangeVar *heapRelation,
@@ -149,6 +154,7 @@ DefineIndex(RangeVar *heapRelation,
 	LOCKMODE	heap_lockmode;
 	bool		need_longlock = true;
 	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+	char	   *altconname = stmt ? stmt->altconname : NULL;
 
 
 	/*
@@ -670,7 +676,7 @@ DefineIndex(RangeVar *heapRelation,
 			index_create(relationId, indexRelationName, indexRelationId,
 						 indexInfo, accessMethodId, tablespaceId, classObjectId,
 						 reloptions, primary, isconstraint,
-						 allowSystemTableMods, skip_build, concurrent);
+						 allowSystemTableMods, skip_build, concurrent, altconname);
 
         /*
          * Dispatch the command to all primary and mirror segment dbs.
@@ -727,7 +733,7 @@ DefineIndex(RangeVar *heapRelation,
 			index_create(relationId, indexRelationName, indexRelationId,
 						 indexInfo, accessMethodId, tablespaceId, classObjectId,
 						 reloptions, primary, isconstraint,
-						 allowSystemTableMods, skip_build, concurrent);
+						 allowSystemTableMods, skip_build, concurrent, altconname);
 	}
 
 	if (!concurrent)

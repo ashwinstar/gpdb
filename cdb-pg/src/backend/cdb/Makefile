@@ -44,6 +44,7 @@ OBJS = cdbanalyze.o \
 	   cdbmirroredappendonly.o \
 	   cdbmutate.o \
 	   cdboidsync.o \
+	   cdbpartition.o \
 	   cdbpath.o cdbpathlocus.o cdbpathtoplan.o \
 	   cdbpersistentbuild.o cdbpersistentfilespace.o \
 	   cdbpersistentrelation.o cdbpersistentdatabase.o cdbpersistenttablespace.o \

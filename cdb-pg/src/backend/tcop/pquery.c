@@ -19,6 +19,7 @@
 #include "access/xact.h"
 #include "commands/prepare.h"
 #include "commands/trigger.h"
+#include "cdb/cdbpartition.h"
 #include "cdb/cdbvars.h"
 #include "executor/executor.h"          /* ExecutorStart, ExecutorRun, etc */
 #include "miscadmin.h"

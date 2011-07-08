@@ -34,6 +34,7 @@
 #include "catalog/pg_partition_rule.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbpartition.h"
 #include "commands/defrem.h"
 #include "commands/prepare.h"
 #include "commands/tablecmds.h"
@@ -488,7 +489,7 @@ do_parse_analyze(Node *parseTree, ParseState *pstate)
 	 * hierarchy before the root, which means we cannot get the parent
 	 * oid of rules.
 	 *
-	 * nefarious: special KeepMe case in tablecmds.c:atpxPart_validate_spec
+	 * nefarious: special KeepMe case in cdbpartition.c:atpxPart_validate_spec
 	 */
 	if (pstate->parentParseState == NULL && query->utilityStmt &&
 		IsA(query->utilityStmt, CreateStmt) &&
@@ -1406,7 +1407,13 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot mix inheritance with partitioning")));
-	}			
+	}	
+	
+	/* Only on top-most partitioned tables. */
+	if ( stmt->partitionBy && !stmt->is_part_child )
+	{
+		fixCreateStmtForPartitionedTable(stmt);
+	}
 
 	/*
 	 * Run through each primary element in the table creation clause. Separate
@@ -6601,7 +6608,6 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	RangeVar *parent_tab_name = makeNode(RangeVar);
 	RangeVar *child_tab_name = makeNode(RangeVar);
 	CreateStmt *child_tab_stmt = makeNode(CreateStmt);
-	ListCell *lc;
 
 	parent_tab_name->catalogname = cxt->relation->catalogname;
 	parent_tab_name->schemaname  = cxt->relation->schemaname;
@@ -6627,43 +6633,21 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	child_tab_stmt->postCreate = pPostCreate;
 
 	/*
-	 * Deep copy the parent's table elements. We must deep copy to handle
-	 * issues with constraints and foreign keys.
+	 * Deep copy the parent's table elements. 
+	 *
+	 * XXX The copy may be unnecessary, but it is safe.
+	 *
+	 * Previously, some following code updated constraint names 
+	 * in the tableElts to assure uniqueness and handle issues
+	 * with FKs (?).  This required a copy.
+	 *
+	 * However, forcing a name change at this level overrides any
+	 * user-specified constraint names, so we don't do one here
+	 * any more.
 	 */
 	child_tab_stmt->tableElts = copyObject(stmt->tableElts);
 
-	/* update constraint names to have an extension after them for uniqueness */
-	foreach(lc, child_tab_stmt->tableElts)
-	{
-		Node *n = lfirst(lc);
-
-		if (IsA(n, Constraint) || IsA(n, FkConstraint))
-		{
-			/* Only do it for table constraints */
-			if (IsA(n, Constraint))
-			{
-				Constraint *c = (Constraint *)n;
-
-				/*
-				 * Only do it for table constraints which generate pg_class
-				 * entries.
-				 */
-				if (c->name && (c->contype == CONSTR_PRIMARY ||
-								c->contype == CONSTR_UNIQUE))
-				{
-					/* extra 1 char for _ */
-					int len = (strlen(c->name) + strlen(prtstr) + 1 + 1) *
-								sizeof(char);
-					char *buf = palloc(len);
-
-					snprintf(buf, len, "%s_%s", c->name, prtstr);
-
-					c->name = buf;
-				}
-			}
-		}
-	}
-
+	/* Hash partitioning special case. */
 	if (pConstraint && ((enable_partition_rules &&
 						 curPby->partType == PARTTYP_HASH) ||
 						 curPby->partType != PARTTYP_HASH))
@@ -7526,7 +7510,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	 * partition by statement because
 	 * analyze.c:do_parse_analyze needs to find
 	 * it to re-order the ALTER statements.
-	 * (see tablecmds.c:atpxPart_validate_spec)
+	 * (see cdbpartition.c:atpxPart_validate_spec)
 	 */
 	if ((pBy->partDepth > 0) && (pBy->bKeepMe != true))
 	{

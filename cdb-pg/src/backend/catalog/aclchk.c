@@ -40,6 +40,7 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_filespace.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbpartition.h"
 #include "commands/dbcommands.h"
 #include "foreign/foreign.h"
 #include "commands/tablecmds.h"

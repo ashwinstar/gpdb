@@ -22,6 +22,7 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_trigger.h"
+#include "cdb/cdbpartition.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "executor/spi.h"

@@ -207,7 +207,7 @@ _bitmap_create_lov_heapandindex(Relation rel,
 						 indexInfo, BTREE_AM_OID,
 						 rel->rd_rel->reltablespace,
 						 classObjectId, 0, false, false, true,
-						 false, false);
+						 false, false, NULL);
 	Assert(idxid == *lovIndexOid);
 }
 

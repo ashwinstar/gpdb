@@ -213,7 +213,7 @@ create_aoblkdir_table(Relation rel, Oid aoblkdirOid,
 								  BTREE_AM_OID,
 								  rel->rd_rel->reltablespace,
 								  classObjectId, (Datum) 0,
-								  true, false, true, false, false);
+								  true, false, true, false, false, NULL);
 	
 	/* Unlock target table -- no one can see it */
 	UnlockRelationOid(aoblkdirOid, ShareLock);

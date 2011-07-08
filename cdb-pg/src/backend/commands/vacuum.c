@@ -40,6 +40,7 @@
 #include "commands/vacuum.h"
 #include "cdb/cdbanalyze.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbpartition.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbrelsize.h"

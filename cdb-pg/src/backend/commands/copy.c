@@ -33,6 +33,7 @@
 #include "catalog/catalog.h"
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbaocsam.h"
+#include "cdb/cdbpartition.h"
 #include "commands/copy.h"
 #include "commands/tablecmds.h"
 #include "commands/trigger.h"

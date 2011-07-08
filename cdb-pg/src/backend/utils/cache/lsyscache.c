@@ -27,6 +27,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbpartition.h"
 #include "commands/tablecmds.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"

@@ -16,11 +16,31 @@
 
 #include "access/attnum.h"
 #include "catalog/gp_policy.h"
+#include "executor/executor.h"
 #include "executor/tuptable.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/relation.h"
 #include "parser/parse_node.h"
+
+/* Struct describing one new constraint to check in ALTER Phase 3 scan.
+ *
+ * Note: new NOT NULL constraints are handled differently.
+ * Also note: This structure is shared only to allow colloboration with
+ * partitioning-related functions in cdbpartition.c.  Most items like this
+ * are local to tablecmds.c.
+ */
+typedef struct NewConstraint
+{
+	char	   *name;			/* Constraint name, or NULL if none */
+	ConstrType	contype;		/* CHECK or FOREIGN */
+	Oid			refrelid;		/* PK rel, if FOREIGN */
+	Node	   *qual;			/* Check expr or FkConstraint struct */
+	List	   *qualstate;		/* Execution state for CHECK */
+} NewConstraint;
+
+
+extern const char *synthetic_sql;
 
 extern Oid	DefineRelation(CreateStmt *stmt, char relkind, char relstorage);
 
@@ -79,46 +99,22 @@ extern void AtEOXact_on_commit_actions(bool isCommit);
 extern void AtEOSubXact_on_commit_actions(bool isCommit,
 							  SubTransactionId mySubid,
 							  SubTransactionId parentSubid);
-extern Oid selectPartition(PartitionNode *partnode, Datum *values,
-						   bool *isnull, TupleDesc tupdesc,
-						   PartitionState *pstate);
 extern PartitionNode *RelationBuildPartitionDesc(Relation rel,
 												 bool inctemplate);
 
-/* RelationBuildPartitionDesc is built from get_parts */
-extern PartitionNode *
-get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
-		  MemoryContext mcxt);
-
-extern AttrNumber max_partition_attr(PartitionNode *pn);
-extern List *get_partition_attrs(PartitionNode *pn);
-extern int num_partition_levels(PartitionNode *pn);
-extern bool rel_is_child_partition(Oid relid);
-extern PartitionRule *ruleMakePartitionRule(HeapTuple tuple,
-											TupleDesc tupdesc,
-											MemoryContext mcxt);
-extern Partition *partMakePartition(HeapTuple tuple,
-									TupleDesc tupdesc,
-									MemoryContext mcxt);
-extern List *all_partition_relids(PartitionNode *pn);
-extern bool rel_is_partitioned(Oid relid);
-extern PgPartRule *get_part_rule1(Relation rel, AlterPartitionId *pid,
-								  bool bExistError, bool bMustExist,
-								  MemoryContext mcxt, int *pSearch,
-								  PartitionNode *pNode,
-								  char *relname, PartitionNode **ppNode);
-extern PgPartRule *get_part_rule(Relation rel, AlterPartitionId *pid,
-								 bool bExistError, bool bMustExist,
-								 MemoryContext mcxt, int *pSearch,
-								 bool inctemplate);
-extern bool rel_is_child_partition(Oid relid);
-extern bool partition_policies_equal(GpPolicy *p, PartitionNode *pn);
-extern void partition_get_policies_attrs(PartitionNode *pn,
-										 GpPolicy *master_policy,
-							             List **cols);
 extern bool rel_needs_long_lock(Oid relid);
-extern bool rel_is_leaf_partition(Oid relid);
 extern Oid  rel_partition_get_master(Oid relid);
 
 extern void PartitionRangeItemIsValid(ParseState *pstate, PartitionRangeItem *pri);
+
+extern Oid get_settable_tablespace_oid(char *tablespacename);
+
+extern List *
+MergeAttributes(List *schema, List *supers, bool istemp,
+				List **supOids, List **supconstr, int *supOidCount, GpPolicy *policy);
+extern List *make_dist_clause(Relation rel);
+
+extern Oid transformFkeyCheckAttrs(Relation pkrel,
+								   int numattrs, int16 *attnums,
+								   Oid *opclasses);
 #endif   /* TABLECMDS_H */

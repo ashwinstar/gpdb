@@ -37,6 +37,7 @@
 #include "catalog/catalog.h"
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbaocsam.h"
+#include "cdb/cdbpartition.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
 #include "lib/stringinfo.h"

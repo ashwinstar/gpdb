@@ -291,10 +291,13 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 	}
 	index->isconstraint = true;
 
-	if (constraint->name != NULL)
-		index->idxname = pstrdup(constraint->name);
-	else
-		index->idxname = NULL;	/* DefineIndex will choose name */
+	/* We used to force the index name to be the constraint name, but they are 
+	 * in different namespaces and so have different  requirements for uniqueness.  
+	 * Here we leave the index name alone and put the constaint name in the IndexStmt 
+	 * for use at a lower level.
+	 */
+	index->idxname = NULL;	/* DefineIndex will choose name */
+	index->altconname = constraint->name; /* User may have picked the name. */	
 
 	index->relation = cxt->relation;
 	index->accessMethod = DEFAULT_INDEX_TYPE;

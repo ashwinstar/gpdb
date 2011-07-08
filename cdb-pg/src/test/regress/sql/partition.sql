@@ -206,7 +206,7 @@ partition aa start (2007,1) end (2008,2+2),
 partition bb start (2008,2) end (2009,3)
 );
 
--- should work
+-- too many columns for RANGE partition
 create table ggg (a char(1), b numeric, d numeric)
 distributed by (a)
 partition by range (b,d)
@@ -1552,9 +1552,12 @@ create rule bar_baz as on insert to bar_p do instead insert into baz_p
 alter table foo_p exchange partition for(rank(2)) with table bar_p;
 drop table foo_p, bar_p, baz_p;
 
--- not yet: constraints on non-partition table
--- should fail, can't have constraints which would conflict with the
--- partitioning constraints
+-- Should fail: A constraint on bar_p isn't shared by all the parts.  
+-- Allowing this would make an inconsistent partitioned table.  Note
+-- that it is possible to have a constraint that prevents rows from 
+-- going into one or more parts.  This isn't a conflict, though prior
+-- versions would fail because "a constraint on bar_p conflicts with
+-- partitioning rule". 
 create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
@@ -1563,22 +1566,25 @@ create table bar_p(i int, j int check (j > 1000)) distributed by (i);
 alter table foo_p exchange partition for(rank(2)) with table bar_p;
 drop table foo_p, bar_p;
 
--- shouldn't fail: it's fine to have constraints on columns which are not
--- the subject of partitioning.
+-- Should fail: A constraint on bar_p isn't shared by all the parts.
+-- Allowing this would make an inconsistent partitioned table. 
+-- Prior versions allowed this, so parts could have differing constraints
+-- as long as they avoided the partition columns.
 create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
-
 create table bar_p(i int check (i > 1000), j int) distributed by (i);
 alter table foo_p exchange partition for(rank(2)) with table bar_p;
 drop table foo_p, bar_p;
 
--- shouldn't fail: check constraint matches rule
+-- Shouldn't fail: check constraint matches partition rule.
+-- Note this test is slightly different from prior versions to get
+-- in line with constraint consistency requirement.
 create table foo_p (i int, j int) distributed by (i)
 partition by range(j)
 (start(1) end(10) every(1));
 
-create table bar_p(i int check (i > 1000), j int check (j >= 2 and j < 3 ))
+create table bar_p(i int, j int check (j >= 2 and j < 3 ))
 distributed by (i);
 insert into bar_p values(100000, 2);
 alter table foo_p exchange partition for(rank(2)) with table bar_p;
@@ -1637,8 +1643,14 @@ create table bar_p(i int, j int) distributed by (i);
 
 insert into bar_p values(6, 6);
 alter table foo_p exchange partition for(rank(6)) with table bar_p;
+-- Should fail.  Prior releases didn't convey constraints out via exchange
+-- but we do now, so the following tries to insert a value that can't go
+-- in part 6.
 insert into bar_p values(10, 10);
 drop table foo_p;
+select * from bar_p;
+-- Should succeed.  Conveyed constraint matches.
+insert into bar_p values(6, 6);
 select * from bar_p;
 drop table bar_p;
 

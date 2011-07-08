@@ -33,6 +33,7 @@
 #include "access/heapam.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbpartition.h"
 #include "commands/tablecmds.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"

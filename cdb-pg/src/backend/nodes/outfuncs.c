@@ -1863,6 +1863,7 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_ENUM_FIELD(oncommit, OnCommitAction);
 	WRITE_STRING_FIELD(tablespacename);
 	WRITE_NODE_FIELD(distributedBy);
+	WRITE_NODE_FIELD(partitionBy);
 	WRITE_OID_FIELD(oidInfo.relOid);
 	WRITE_OID_FIELD(oidInfo.comptypeOid);
 	WRITE_OID_FIELD(oidInfo.toastOid);
@@ -1937,6 +1938,7 @@ _outIndexStmt(StringInfo str, IndexStmt *node)
 	WRITE_BOOL_FIELD(unique);
 	WRITE_BOOL_FIELD(primary);
 	WRITE_BOOL_FIELD(isconstraint);
+	WRITE_STRING_FIELD(altconname);
 	WRITE_BOOL_FIELD(concurrent);
 	WRITE_NODE_FIELD(idxOids);
 }

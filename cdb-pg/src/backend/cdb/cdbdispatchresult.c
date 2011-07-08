@@ -19,6 +19,7 @@
 #include "utils/guc.h"              /* log_min_messages */
 
 #include "cdb/cdbconn.h"            /* SegmentDatabaseDescriptor */
+#include "cdb/cdbpartition.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbdispatchresult.h"  /* me */
