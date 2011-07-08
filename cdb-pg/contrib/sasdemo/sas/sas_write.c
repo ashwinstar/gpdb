@@ -19,6 +19,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <errno.h>
+#include <signal.h>
 
 /* Define a 1K buffer, probably should be larger in practice */
 #define BUFFER_SIZE 1024
