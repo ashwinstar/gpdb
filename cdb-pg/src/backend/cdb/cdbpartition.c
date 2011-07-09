@@ -758,9 +758,10 @@ cdb_exchange_part_constraints(Relation table,
 			 */
 			AttrMap *map;
 			struct NewConstraint *nc;
-			Form_pg_constraint con = (Form_pg_constraint)GETSTRUCT(missing_part_constraint);
+			Form_pg_constraint mcon = (Form_pg_constraint)GETSTRUCT(missing_part_constraint);
 			
-			Assert( con->contype == CONSTRAINT_CHECK );
+			if ( mcon->contype != CONSTRAINT_CHECK )
+				elog(ERROR,"Invalid partition constration, not CHECK type");
 			
 			map_part_attrs(part, cand, &map, TRUE);
 			nc = constraint_apply_mapped(missing_part_constraint, map, cand,
@@ -785,13 +786,13 @@ cdb_exchange_part_constraints(Relation table,
 		foreach(lc, missing_constraints)
 		{
 			HeapTuple tuple = (HeapTuple)lfirst(lc);
-			Form_pg_constraint con = (Form_pg_constraint)GETSTRUCT(tuple);
+			Form_pg_constraint mcon = (Form_pg_constraint)GETSTRUCT(tuple);
 			nc = constraint_apply_mapped(tuple, map, cand, 
 										 validate, pgcon);
 			if ( nc )
 				validation_list = lappend(validation_list, nc);
 			
-			if ( con->contype == CONSTRAINT_CHECK )
+			if ( mcon->contype == CONSTRAINT_CHECK )
 				delta_checks++;
 		}
 	}
