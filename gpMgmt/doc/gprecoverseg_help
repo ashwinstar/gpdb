@@ -61,7 +61,7 @@ new host (using -p), on an alternative data directory location on
 your remaining live segment hosts (using -s), or by supplying a 
 recovery configuration file (using -i) in the format of:
 
-filespaceOrder=[<filespace1_fsname>[:<filespace2_fsname>:...]
+filespaceOrder=[filespace1_fsname[, filespace2_fsname[, ...]]
 <failed_host_address>:<port>:<fselocation>[:<fselocation>:...] 
 [<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]]
 
@@ -148,7 +148,7 @@ filespace, this file will only have one location per segment
 pg_system does not need to be listed in the filespaceOrder line. 
 It will always be the first fselocation listed after replication_port.
 
-filespaceOrder=[<filespace1_fsname>[:<filespace2_fsname>:...]
+filespaceOrder=[filespace1_fsname[, filespace2_fsname[, ...]]
 <failed_host_address>:<port>:<fselocation>[:<fselocation>:...] 
 [<recovery_host_address>:<port>:<replication_port>:<fselocation>[:<fselocation>:...]]
 
