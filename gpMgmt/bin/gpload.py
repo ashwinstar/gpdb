@@ -1043,28 +1043,39 @@ def jenkins(data, initval = 0):
 
 def shortname(name):
     """
-    Examines the length of the given table name.  If the length is 10 characters
-    or less we return the name.  Otherwise we return a 10 character string 
-    formed by concatenating the first two characters of the name with another
-    8 character string computed using the Jenkins hash function of the table name.
+    Returns a 10 character string formed by concatenating the first two characters 
+    of the name with another 8 character string computed using the Jenkins hash 
+    function of the table name. When the original name has only a single non-space
+    ascii character, we return '00' followed by 8 char hash.
+    
     For example:
 
-    >>> shortname('four')
-    'four'
-    >>> shortname('ten_chars_')
-    'ten_chars_'
-    >>> shortname('nineteen_characters')
-    'ni9ae4640a'
-
+    >>> shortname('mytable')
+    'my3cbb7ba8'
+    >>> shortname('some_pretty_long_test_table_name')
+    'so9068664a'
+    >>> shortname('t')
+    '006742be70'
+    
     @param name: the input tablename
     @returns:    a string 10 characters or less built from the table name
     """
-    l = len(name)
-    if l <= 10:
-        return name
+    
+    # Remove spaces from original name
+    name = re.sub(r' ', '', name)
+    
+    # Run the hash function 
     j = jenkins(name)
-    return '%2s%08x' % (name[0:2], j)
-
+    
+    # Now also remove non ascii chars from original name.
+    # We do this after jenkins so that we exclude the 
+    # (very rare) case of passing an empty string to jenkins
+    name = "".join(i for i in name if ord(i) < 128)
+    
+    if len(name) > 1:
+        return '%2s%08x' % (name[0:2], j)
+    else:
+        return '00%08x' % (j) # could be len 0 or 1    
 
 class options:
     pass
@@ -1262,6 +1273,7 @@ class gpload:
                         self.elevel2str(level), a]) + '\n'
 
         str = str.encode('utf-8')
+
         if level <= self.options.qv:
             sys.stdout.write(str)
 
@@ -1794,12 +1806,8 @@ class gpload:
     # This function will return the SQL to run in order to find out whether
     # such a table exists.
     # 
-    def get_reuse_exttable_query(self, tableName, formatType, formatOpts, limitStr, from_cols):
+    def get_reuse_exttable_query(self, shortTableName, formatType, formatOpts, limitStr, from_cols):
         
-        # MPP-13348
-        shortTableName = shortname(tableName)
-        self.log(self.DEBUG, "get_reuse_exttable_query: %s shortTableName: %s" % (tableName, shortTableName))
-
         sql = """select attrelid::regclass
                  from (
                         select 
@@ -1864,11 +1872,7 @@ class gpload:
     # This function will return the SQL to run in order to find out whether
     # such a table exists.
     # 
-    def get_reuse_temptable_query(self, tableName, from_cols, distcols):
-            
-        # MPP-13348
-        shortTableName = shortname(tableName)
-        self.log(self.DEBUG, "get_reuse_temptable_query: %s shortTableName: %s" % (tableName, shortTableName))
+    def get_reuse_temptable_query(self, shortTableName, from_cols, distcols):
 
         sql = """select attrelid::regclass
                  from (
@@ -2001,7 +2005,11 @@ class gpload:
             
             tableName = quote_unident(self.table)
 
-            sql = self.get_reuse_exttable_query(tableName, formatType, formatOpts, limitStr, from_cols)
+            # MPP-13348
+            shortTableName = shortname(tableName)
+            self.log(self.DEBUG, "create_external_table: %s shortTableName: %s" % (tableName, shortTableName))
+
+            sql = self.get_reuse_exttable_query(shortTableName, formatType, formatOpts, limitStr, from_cols)
             
             resultList = self.db.query(sql.encode('utf-8')).getresult()
             
@@ -2015,10 +2023,6 @@ class gpload:
             # didn't find an existing external table suitable for reuse. Format a reusable
             # name and issue a CREATE EXTERNAL TABLE on it. Hopefully we can use it next time
             # around
-
-            # MPP-13348
-            shortTableName = shortname(tableName)
-            self.log(self.DEBUG, "create_external_table: %s shortTableName: %s" % (tableName, shortTableName))
 
             self.extTableName = quote_ident("ext_gpload_reusable_%s_created_on_%s" % (shortTableName, self.unique_suffix))
             self.log(self.INFO, "did not find an external table to reuse. creating %s" % self.extTableName)
@@ -2084,6 +2088,10 @@ class gpload:
             
             tableName = quote_unident(self.table)
 
+            # MPP-13348
+            shortTableName = shortname(tableName)
+            self.log(self.DEBUG, "create_temp_table: %s shortTableName: %s" % (tableName, shortTableName))
+
             sql = self.get_reuse_temptable_query(tableName, from_cols, distcols)
             
             resultList = self.db.query(sql.encode('utf-8')).getresult()
@@ -2102,10 +2110,6 @@ class gpload:
             # didn't find an existing temp table suitable for reuse. Format a reusable
             # name and issue a CREATE TABLE on it (without TEMP!). Hopefully we can use it 
             # next time around
-
-            # MPP-13348
-            shortTableName = shortname(tableName)
-            self.log(self.DEBUG, "create_temp_table: %s shortTableName: %s" % (tableName, shortTableName))
 
             self.tempTableName = quote_ident("temp_gpload_reusable_%s_created_on_%s" % (shortTableName, self.unique_suffix))
             self.log(self.INFO, "did not find a temp table to reuse. creating %s" % self.tempTableName)
@@ -2168,7 +2172,7 @@ class gpload:
         if not self.from_cols_from_user:
             cols = filter(lambda a:a[3] == False, cols)
 
-        sql = 'INSERT INTO %s' % dest
+        sql = 'INSERT INTO %s' % quote_ident(dest)
         sql += ' (%s)'%','.join(map(lambda a:a[0], cols))
         sql += ' SELECT %s '%','.join(map(lambda a:a[2], cols))
         sql += ' FROM %s'%self.extTableName
