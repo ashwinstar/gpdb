@@ -4,8 +4,10 @@
 
 #include "access/extprotocol.h"
 #include "catalog/pg_proc.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
+
 
 typedef struct DemoUri
 {
@@ -22,9 +24,11 @@ static void FreeDemoUri(DemoUri* uri);
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(demoprot_export);
 PG_FUNCTION_INFO_V1(demoprot_import);
+PG_FUNCTION_INFO_V1(demoprot_validate_urls);
 
 Datum demoprot_export(PG_FUNCTION_ARGS);
 Datum demoprot_import(PG_FUNCTION_ARGS);
+Datum demoprot_validate_urls(PG_FUNCTION_ARGS);
 
 
 typedef struct {
@@ -200,6 +204,54 @@ demoprot_export(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_INT32((int)wrote);
+}
+
+Datum 
+demoprot_validate_urls(PG_FUNCTION_ARGS)
+{
+	List			   *urls;
+	int					nurls;
+	int					i;
+	ValidatorDirection	direction;
+	
+	/* Must be called via the external table format manager */
+	if (!CALLED_AS_EXTPROTOCOL_VALIDATOR(fcinfo))
+		elog(ERROR, "demoprot_validate_urls: not called by external protocol manager");
+
+	nurls 		= EXTPROTOCOL_VALIDATOR_GET_NUM_URLS(fcinfo);
+	urls  		= EXTPROTOCOL_VALIDATOR_GET_URL_LIST(fcinfo);
+	direction 	= EXTPROTOCOL_VALIDATOR_GET_DIRECTION(fcinfo);
+	
+	/*
+	 * Dumb example 1: search each url for a substring 
+	 * we don't want to be used in a url. in this example
+	 * it's 'secured_directory'.
+	 */
+	for (i = 0 ; i < nurls ; i++)
+	{
+		char *url = EXTPROTOCOL_VALIDATOR_GET_NTH_URL(fcinfo, i);
+		
+		if (strstr(url, "secured_directory") != 0)
+		{
+            ereport(ERROR,
+                    (errcode(ERRCODE_PROTOCOL_VIOLATION),
+                     errmsg("using 'secured_directory' in a url isn't allowed ")));
+		}
+	}
+	
+	/*
+	 * Dumb example 2: set a limit on the number of urls 
+	 * used. In this example we limit readable external
+	 * tables that use our protocol to 2 urls max.
+	 */
+	if(direction == EXT_VALIDATE_READ && nurls > 2)
+	{
+        ereport(ERROR,
+                (errcode(ERRCODE_PROTOCOL_VIOLATION),
+                 errmsg("more than 2 urls aren't allowed in this protocol ")));
+	}
+	
+	PG_RETURN_VOID();
 }
 
 /* --- utility functions --- */

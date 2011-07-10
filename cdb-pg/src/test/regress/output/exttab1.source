@@ -650,9 +650,9 @@ CREATE OR REPLACE FUNCTION read_from_file() RETURNS integer as '$libdir/gpextpro
 DROP PROTOCOL IF EXISTS demoprot;
 NOTICE:  protocol "demoprot" does not exist, skipping
 CREATE PROTOCOL demoprot (readfunc = 'nosuchfunc'); -- should fail
-ERROR:  function nosuchfunc() does not exist or can't be used as a protocol
+ERROR:  function nosuchfunc() does not exist
 CREATE PROTOCOL demoprot (readfunc = 'boolin'); -- should fail
-ERROR:  function boolin() does not exist or can't be used as a protocol
+ERROR:  function boolin() does not exist
 CREATE PROTOCOL demoprot (readfunc = 'read_from_file', writefunc = 'write_to_file'); -- should succeed
 CREATE ROLE extprotu NOSUPERUSER;
 NOTICE:  resource queue required -- using default resource queue "pg_default"

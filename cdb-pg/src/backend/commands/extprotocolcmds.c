@@ -44,6 +44,7 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid)
 	AclResult	aclresult;
 	List	   *readfuncName = NIL;
 	List	   *writefuncName = NIL;
+	List	   *validatorfuncName = NIL;
 	ListCell   *pl;
 	Oid			protOid;
 
@@ -64,6 +65,8 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid)
 			readfuncName = defGetQualifiedName(defel);
 		else if (pg_strcasecmp(defel->defname, "writefunc") == 0)
 			writefuncName = defGetQualifiedName(defel);
+		else if (pg_strcasecmp(defel->defname, "validatorfunc") == 0)
+			validatorfuncName = defGetQualifiedName(defel);
 		else if (gp_upgrade_mode && pg_strcasecmp(defel->defname, "oid") == 0) /* OID */
 		{
 			int64 oid = defGetInt64(defel);
@@ -71,7 +74,7 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid)
 			newOid = (Oid)oid;
 		}
 		else
-			ereport(WARNING,
+			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("protocol attribute \"%s\" not recognized",
 							defel->defname)));
@@ -89,10 +92,11 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid)
 	/*
 	 * Most of the argument-checking is done inside of ExtProtocolCreate
 	 */
-	protOid = ExtProtocolCreateWithOid(protName,		/* protocol name */
-									   protNamespace,	/* namespace */
-									   readfuncName,	/* read function name */
-									   writefuncName,	/* write function name */
+	protOid = ExtProtocolCreateWithOid(protName,			/* protocol name */
+									   protNamespace,		/* namespace */
+									   readfuncName,		/* read function name */
+									   writefuncName,		/* write function name */
+									   validatorfuncName, 	/* validator function name */
 									   newOid);
 					
 	if (Gp_role == GP_ROLE_DISPATCH)

@@ -31,21 +31,20 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-
-static Oid 
-ValidateProtocolFunction(List *fnName, int nargs, Oid *input_types,
-					   Oid *rettype);
-
+static Oid ValidateProtocolFunction(List *fnName, ExtPtcFuncType fntype);
+static char *func_type_to_name(ExtPtcFuncType ftype);
+static int func_type_to_attnum(ExtPtcFuncType ftype);
 
 /*
  * ExtProtocolCreateWithOid
  */
 Oid
 ExtProtocolCreateWithOid(const char		*protocolName,
-					   Oid				 protNamespace,
-					   List				*readfuncName,
-					   List				*writefuncName,
-					   Oid				 protOid)
+					     Oid			 protNamespace,
+					     List			*readfuncName,
+					     List			*writefuncName,
+					     List			*validatorfuncName,					   
+					     Oid			 protOid)
 {
 	Relation	protdesc;
 	HeapTuple	tup;
@@ -53,8 +52,7 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 	Datum		values[Natts_pg_extprotocol];
 	Oid			readfn = InvalidOid;
 	Oid			writefn = InvalidOid;
-	Oid			rettype;
-	Oid			rettype_needed = INT4OID;
+	Oid			validatorfn = InvalidOid;
 	NameData	prtname;
 	TupleDesc	tupDesc;
 	int			i;
@@ -82,52 +80,22 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("protocol \"%s\" already exists",
-						 protocolName)));
+						 protocolName),
+				 errhint("pick a different protocol name")));
 	}
 
+	/* 
+	 * function checks: if supplied, check existence and correct signature in the catalog
+	 */
 	
-	/* handle readfunc, if supplied */
 	if (readfuncName)
-	{
-		Oid inputTypes[1] = {InvalidOid}; /* dummy */
-		
-		/*
-		 * Check that such a function name and prototype exists in the catalog.
-		 */		
-		readfn = ValidateProtocolFunction(readfuncName, 0, inputTypes, &rettype);
-				
-		Assert(OidIsValid(rettype));
-		
-		if (rettype != rettype_needed)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("return type of read function %s is not %s",
-							NameListToString(readfuncName),
-							format_type_be(rettype_needed))));		
-	}
+		readfn = ValidateProtocolFunction(readfuncName, EXTPTC_FUNC_READER);
 
-	/* handle readfunc, if supplied */
 	if (writefuncName)
-	{
-		
-		Oid inputTypes[1] = {InvalidOid}; /* dummy */
-		
-		/*
-		 * Check that such a function name and prototype exists in the catalog.
-		 */		
-		writefn = ValidateProtocolFunction(writefuncName, 0, inputTypes, &rettype);
-				
-		Assert(OidIsValid(rettype));
-		
-		if (rettype != rettype_needed)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("return type of write function %s is not %s",
-							NameListToString(writefuncName),
-							format_type_be(rettype_needed))));		
-	}
+		writefn = ValidateProtocolFunction(writefuncName, EXTPTC_FUNC_WRITER);				
 
-
+	if (validatorfuncName)
+		validatorfn = ValidateProtocolFunction(validatorfuncName, EXTPTC_FUNC_VALIDATOR);
 
 	/*
 	 * Everything looks okay.  Try to create the pg_extprotocol entry for the
@@ -153,6 +121,11 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 	else
 		nulls[Anum_pg_extprotocol_ptcwritefn - 1] = true;
 	
+	if (validatorfn)
+		values[Anum_pg_extprotocol_ptcvalidatorfn - 1] = ObjectIdGetDatum(validatorfn); 
+	else
+		nulls[Anum_pg_extprotocol_ptcvalidatorfn - 1] = true;
+
 	values[Anum_pg_extprotocol_ptcowner - 1] = ObjectIdGetDatum(ownerId);
 	nulls[Anum_pg_extprotocol_ptcacl - 1] = true;
 	
@@ -235,21 +208,27 @@ ExtProtocolDeleteByOid(Oid	protOid)
 }
 
 /*
- * ValidateProtocolFunction -- common code for finding readfn and writefn
+ * ValidateProtocolFunction -- common code for finding readfn, writefn or validatorfn
  */
 static Oid
-ValidateProtocolFunction(List *fnName,
-						 int nargs,
-						 Oid *input_types,
-						 Oid *rettype)
+ValidateProtocolFunction(List *fnName, ExtPtcFuncType fntype)
 {
 	Oid			fnOid;
 	bool		retset;
 	bool        retstrict;
 	bool        retordered;
 	Oid		   *true_oid_array;
+	Oid 	    actual_rettype;
+	Oid			desired_rettype;
 	FuncDetailCode fdresult;
 	AclResult	aclresult;
+	Oid 		inputTypes[1] = {InvalidOid}; /* dummy */
+	int			nargs = 0; /* true for all 3 function types at the moment */
+	
+	if (fntype == EXTPTC_FUNC_VALIDATOR)
+		desired_rettype = VOIDOID;
+	else
+		desired_rettype = INT4OID;
 
 	/*
 	 * func_get_detail looks up the function in the catalogs, does
@@ -258,29 +237,32 @@ ValidateProtocolFunction(List *fnName,
 	 * function's return value.  it also returns the true argument types to
 	 * the function.
 	 */
-	fdresult = func_get_detail(fnName, NIL, nargs, input_types,
-							   &fnOid, rettype, &retset, &retstrict,
+	fdresult = func_get_detail(fnName, NIL, nargs, inputTypes,
+							   &fnOid, &actual_rettype, &retset, &retstrict,
 							   &retordered, &true_oid_array);
 
 	/* only valid case is a normal function not returning a set */
 	if (fdresult != FUNCDETAIL_NORMAL || !OidIsValid(fnOid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
-				 errmsg("function %s does not exist or can't be used as a protocol",
-						func_signature_string(fnName, nargs, input_types)),
+				 errmsg("function %s does not exist",
+						func_signature_string(fnName, nargs, inputTypes)),
 				 errOmitLocation(true)));
+	
 	if (retset)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("function %s returns a set",
-						func_signature_string(fnName, nargs, input_types)),
-				 errOmitLocation(true)));
+				 errmsg("Invalid protocol function"),
+				 errdetail("Protocol functions cannot return sets."),
+				 errOmitLocation(true)));		
 
-	if (*rettype != INT4OID)
+	if (actual_rettype != desired_rettype)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("protocol function %s needs to return an integer",
-						func_signature_string(fnName, nargs, input_types)),
+				 errmsg("%s protocol function %s must return %s",
+						func_type_to_name(fntype),
+						func_signature_string(fnName, nargs, inputTypes),
+						(fntype == EXTPTC_FUNC_VALIDATOR ? "void" : "an integer")),
 				 errOmitLocation(true)));
 	
 	/* TODO: check func type (STABLE, etc... ) */
@@ -293,6 +275,7 @@ ValidateProtocolFunction(List *fnName,
 	return fnOid;
 }
 
+
 /*
  * Finds an external protocol by passed in protocol name.
  * Errors if no such protocol exist, or if no function to
@@ -301,7 +284,9 @@ ValidateProtocolFunction(List *fnName,
  * Returns the protocol function to use.
  */
 Oid
-LookupExtProtocolFunction(const char *prot_name, bool forwrite)
+LookupExtProtocolFunction(const char *prot_name, 
+						  ExtPtcFuncType prot_type,
+						  bool error)
 {
 		
 	Relation	pg_extprotocol_rel;
@@ -310,7 +295,7 @@ LookupExtProtocolFunction(const char *prot_name, bool forwrite)
 	bool		isNull;
 	ScanKeyData	key;
 	SysScanDesc	scan;
-	Oid			funcOid;
+	Oid			funcOid = InvalidOid;
 	Datum		funcDatum;
 	
 	/*
@@ -339,20 +324,24 @@ LookupExtProtocolFunction(const char *prot_name, bool forwrite)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("protocol \"%s\" does not exist",
 						prot_name)));
-
+	
 	funcDatum = heap_getattr(tuple, 
-							 (forwrite ? Anum_pg_extprotocol_ptcwritefn : 
-										 Anum_pg_extprotocol_ptcreadfn),
+							 func_type_to_attnum(prot_type),
 							 pg_extprotocol_dsc, 
 							 &isNull);
 	
-	if(isNull)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("protocol '%s' has no %s function defined",
-						 prot_name, (forwrite ? "writable" : "readable"))));	
-
-	funcOid = DatumGetObjectId(funcDatum);
+	if (isNull)
+	{
+		if (error)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("protocol '%s' has no %s function defined",
+							 prot_name, func_type_to_name(prot_type))));	
+	}
+	else
+	{
+		funcOid = DatumGetObjectId(funcDatum);
+	}
 	
 	/* Finish up scan and close pg_extprotocol catalog. */
 	systable_endscan(scan);
@@ -469,4 +458,38 @@ ExtProtocolGetNameByOid(Oid	protOid)
 	
 	return ptcnamestr;
 }
+
+static char *func_type_to_name(ExtPtcFuncType ftype)
+{
+	switch (ftype)
+	{
+		case EXTPTC_FUNC_READER:
+			return "read";
+		case EXTPTC_FUNC_WRITER:
+			return "write";
+		case EXTPTC_FUNC_VALIDATOR:
+			return "validator";
+		default:
+			elog(ERROR, "internal error in pg_extprotocol:func_type_to_name");
+			return "undefined";
+	}
+}
+
+static int func_type_to_attnum(ExtPtcFuncType ftype)
+{
+	switch (ftype)
+	{
+		case EXTPTC_FUNC_READER:
+			return Anum_pg_extprotocol_ptcreadfn;
+		case EXTPTC_FUNC_WRITER:
+			return Anum_pg_extprotocol_ptcwritefn;
+		case EXTPTC_FUNC_VALIDATOR:
+			return Anum_pg_extprotocol_ptcvalidatorfn;
+		default:
+			elog(ERROR, "internal error in pg_extprotocol:func_type_to_attnum");
+			return -1;
+	}
+}
+
+
 

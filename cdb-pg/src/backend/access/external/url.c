@@ -948,20 +948,22 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
     else
     {
     	/* we're using a custom protocol */
-
-		Oid		procOid;
-    	char   *prot_name 	= pstrdup(file->url);
-    	int		url_len 	= strlen(file->url); 
-    	int		i 			= 0;
-
+    	
+    	ExtPtcFuncType	ftype;
+		Oid				procOid;
+    	char   		   *prot_name 	= pstrdup(file->url);
+    	int				url_len 	= strlen(file->url); 
+    	int				i 			= 0;
+    	
     	file->type = CFTYPE_CUSTOM;
+    	ftype = (forwrite ? EXTPTC_FUNC_WRITER : EXTPTC_FUNC_READER);
     	
     	/* extract protocol name from url string */    	
     	while (file->url[i] != ':' && i < url_len - 1)
     		i++;
     	
     	prot_name[i] = '\0';
-    	procOid = LookupExtProtocolFunction(prot_name, forwrite);
+    	procOid = LookupExtProtocolFunction(prot_name, ftype, true);
 
 		/* 
 		 * allocate space for our protocol handlers. Note that we use

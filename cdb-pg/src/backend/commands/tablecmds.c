@@ -25,6 +25,7 @@
 #include "access/genam.h"
 #include "access/hash.h"
 #include "access/heapam.h"
+#include "access/extprotocol.h"
 #include "access/nbtree.h"
 #include "access/reloptions.h"
 #include "access/xact.h"
@@ -375,6 +376,7 @@ static RangeVar *make_temp_table_name(Relation rel, BackendId id);
 static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
 								List *opts, List **hidden_types, bool isTmpTableAo);
 static void ATPartitionCheck(AlterTableType subtype, Relation rel, bool rejectroot, bool recursing);
+static void InvokeProtocolValidation(Oid procOid, char *procName, bool iswritable, List *locs);
 
 static char *alterTableCmdString(AlterTableType subtype);
 
@@ -16490,7 +16492,6 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable, char
 		char		*uri_str_final;
 		Size		len;
 		Value		*v = lfirst(cell);
-		Oid			protFuncOid = InvalidOid;
 		
 		/* get the current URI string from the command */
 		uri_str_orig = pstrdup(v->val.str);
@@ -16556,11 +16557,24 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable, char
 
 
 		/* 
-		 * If a custom protocol is used, validate its existance 
+		 * If a custom protocol is used, validate its existence.
+		 * If it exists, and a custom protocol url validator exists
+		 * as well, invoke it now.
 		 */
 		if (first_uri && uri->protocol == URI_CUSTOM)
-			protFuncOid = LookupExtProtocolFunction(uri->customprotocol, iswritable);
-		
+		{
+			Oid		procOid = InvalidOid;
+			
+			procOid = LookupExtProtocolFunction(uri->customprotocol, 
+												EXTPTC_FUNC_VALIDATOR, 
+												false);
+
+			if (OidIsValid(procOid) && Gp_role == GP_ROLE_DISPATCH)
+				InvokeProtocolValidation(procOid, 
+										 uri->customprotocol, 
+										 iswritable, 
+										 locs);
+		}
 		
 		if(first_uri)
 		{
@@ -17258,4 +17272,40 @@ char *alterTableCmdString(AlterTableType subtype)
 	}
 	
 	return cmdstring;
+}
+
+static void 
+InvokeProtocolValidation(Oid procOid, char *procName, bool iswritable, List *locs)
+{
+	
+	ExtProtocolValidatorData   *validator_data;
+	FmgrInfo				   *validator_udf;
+	FunctionCallInfoData		fcinfo;
+	
+	validator_data = (ExtProtocolValidatorData *) palloc0 (sizeof(ExtProtocolValidatorData));
+	validator_udf = palloc(sizeof(FmgrInfo));
+	fmgr_info(procOid, validator_udf);
+	
+	validator_data->type 		= T_ExtProtocolValidatorData;
+	validator_data->url_list 	= locs;
+	validator_data->errmsg		= NULL;
+	validator_data->direction 	= (iswritable ? EXT_VALIDATE_WRITE :
+											    EXT_VALIDATE_READ);
+	
+	InitFunctionCallInfoData(/* FunctionCallInfoData */ fcinfo, 
+							 /* FmgrInfo */ validator_udf, 
+							 /* nArgs */ 0, 
+							 /* Call Context */ (Node *) validator_data, 
+							 /* ResultSetInfo */ NULL);
+	
+	/* invoke validator. if this function returns - validation passed */
+	FunctionCallInvoke(&fcinfo);
+
+	/* We do not expect a null result */
+	if (fcinfo.isnull)
+		elog(ERROR, "validator function %u returned NULL", 
+					fcinfo.flinfo->fn_oid);
+
+	pfree(validator_data);
+	pfree(validator_udf);
 }

@@ -439,7 +439,8 @@ typedef enum NodeTag
     T_StreamBitmap,             /* in nodes/tidbitmap.h */
 	T_FormatterData,            /* in access/formatter.h */
 	T_ExtProtocolData,          /* in access/extprotocol.h */
-
+	T_ExtProtocolValidatorData, /* in access/extprotocol.h */
+	
     /* CDB: tags for random other stuff */
     T_CdbExplain_StatHdr = 950,             /* in cdb/cdbexplain.c */
 } NodeTag;
