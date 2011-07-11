@@ -252,7 +252,7 @@ OPTIONS
 -w <dbid>[,...] (backup certain segments only)
  
  Specifies a set of active segment instances to back up as a 
- comma-separated list of the dbid of the segments. The master is 
+ comma-separated list of the dbids of the segments. The master is 
  added to the list automatically. The default is to backup 
  all active segment instances.
 
