@@ -469,7 +469,6 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		ListCell *c;
 		TargetEntry *tle;
 		List *hash = NIL;
-		AttrNumber i = 0;
 		Index varno = ((Scan*)plan)->scanrelid;
 		Flow *subplanflow = subplan->flow; 
 		
@@ -479,8 +478,6 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		foreach( c, subplanflow->hashExpr )
 		{
 			Node *x = (Node*)lfirst(c);
-
-			i++;
 
 			/* MPP-12273 && MPP-12928
 			 * Addressing the issue when the hashexpr's argument is a RELABELTYPE
@@ -497,7 +494,7 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 
 			Insist(tle && equal(x, tle->expr));
 
-			hash = lappend(hash, makeVar(varno, i,
+			hash = lappend(hash, makeVar(varno, tle->resno,
 					exprType((Node*)tle->expr),
 					exprTypmod((Node*)tle->expr), 0));
 		}
