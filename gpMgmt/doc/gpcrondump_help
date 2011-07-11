@@ -174,7 +174,7 @@ OPTIONS
 -o (clear old dump files only)
 
  Clear out old dump files only, but do not run a dump. This will remove 
- the oldest dump directory except the current date’s dump directory. 
+ the oldest dump directory except the current date's dump directory. 
  All dump sets within that directory will be removed.
 
 
@@ -252,7 +252,7 @@ OPTIONS
 -w <dbid>[,...] (backup certain segments only)
  
  Specifies a set of active segment instances to back up as a 
- comma-separated list of the segments’ dbid. The master is 
+ comma-separated list of the dbid of the segments. The master is 
  added to the list automatically. The default is to backup 
  all active segment instances.
 
