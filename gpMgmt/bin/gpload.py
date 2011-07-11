@@ -99,6 +99,7 @@ valid_tokens = {
     "update_columns": {'parse_children': False, 'parent': "output"},
     "update_condition": {'parse_children': True, 'parent': "output"}, 
     "mapping": {'parse_children': False, 'parent': "output"},
+    "including_defaults": {'parse_children': False, 'parent': 'output'},
     "preload": {'parse_children': True, 'parent': 'gpload'},
     "truncate": {'parse_children': False, 'parent': 'preload'},
     "reuse_tables": {'parse_children': False, 'parent': 'preload'},
@@ -2080,6 +2081,11 @@ class gpload:
         # make sure we set the correct distribution policy
         distcols = self.getconfig('gpload:output:match_columns', list)
 
+        # MPP-13399, CR-2227
+        including_defaults = ""
+        if self.getconfig('gpload:output:including_defaults',bool,True):
+            including_defaults = " including defaults"
+
         # If the 'reuse tables' option was specified we now try to find an
         # already existing temp table in the catalog which will match
         # the one that we need to use. It must have identical attributes
@@ -2115,7 +2121,7 @@ class gpload:
             self.log(self.INFO, "did not find a temp table to reuse. creating %s" % self.tempTableName)
         
             # construct a CREATE TABLE statement (without TEMP!)
-            sql = "create table %s(like %s)" % (self.tempTableName, self.schemaTable)
+            sql = "create table %s(like %s%s)" % (self.tempTableName, self.schemaTable, including_defaults)
         else:
             # NOTE: there's no real reason to create a *TEMP* table here, since
             # we will drop it anyway soon. do it for sake of not changing the
@@ -2133,7 +2139,7 @@ class gpload:
                 sql += " distributed by (%s)" % ', '.join(distcols)
                 self.log(self.LOG, sql)
             else: # (merge)
-                sql = 'create temp table %s(like %s)' % (self.tempTableName, self.schemaTable)
+                sql = 'create temp table %s(like %s%s)' % (self.tempTableName, self.schemaTable, including_defaults)
                 self.log(self.DEBUG, sql)
 
         if not self.options.D:
