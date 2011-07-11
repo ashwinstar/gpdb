@@ -860,6 +860,7 @@ class MailEvent(Operation):
         self.message = message
         self.to_addrs = to_addrs
     def execute(self):
+        logger.info("Sending mail to %s" % ",".join(self.to_addrs))
         cmd = "/bin/mailx" if curr_platform == SUNOS else findCmdInPath('mail')
         Command('Sending email', 
                 'echo "%s" | %s -s "%s" %s' % (self.message, cmd, self.subject, " ".join(self.to_addrs))).run(validateAfter=True)
