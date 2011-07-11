@@ -30,9 +30,9 @@ class RemoteOperation(Operation):
        gppylib namespace. Thus, pickling such objects over ssh to gpoperation.py will succeed, because such objects
        will be immediately importable on the remote end.
 
-        However, there is exactly one edge case: unit testing. If a unit test is invoked directly through CLI, its objects
-        reside in the __main__ module as opposed to gppylib.test_something. Again, this can be circumvented by invoking unit tests
-        through PyUnit or python -m unittest, etc. 
+       However, there is exactly one edge case: unit testing. If a unit test is invoked directly through CLI, its objects
+       reside in the __main__ module as opposed to gppylib.test_something. Again, this can be circumvented by invoking unit tests
+       through PyUnit or python -m unittest, etc. 
     """
     def __init__(self, operation, host):
         super(RemoteOperation, self).__init__()
