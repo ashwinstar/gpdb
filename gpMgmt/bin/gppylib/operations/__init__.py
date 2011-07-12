@@ -1,7 +1,9 @@
 # Make sure Python loads the modules of this package via absolute paths.
 from os.path import abspath as _abspath
+from gppylib import gplog
 __path__[0] = _abspath(__path__[0])
 
+logger = gplog.get_default_logger()
 class Operation(object):
     """
     An Operation (abstract class) is one atomic unit of work.
@@ -41,8 +43,8 @@ class Operation(object):
         pass
     def run(self):
         # TODO: logging, just like Program.run
-        # TODO: logging.debug("Starting " + [name of this operation]) - check MRO
         # TODO: async argument to allow caller to monitor or to provide progress updates
+        logger.debug('Starting %s' % self.__class__.__name__)
         try:
             self.ret = self.execute()
             return self.ret
@@ -51,6 +53,7 @@ class Operation(object):
             raise
         finally:
             self.cleanup()
+            logger.debug('Ending %s' % self.__class__.__name__)
     def __str__(self):
         return self.__class__.__name__
     def get_ret(self):
