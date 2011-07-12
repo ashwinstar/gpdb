@@ -32,6 +32,8 @@ shared_libpython = yes
 override python_libspec = -L$(shell ${PYTHON} -c "import sys, os; print os.path.join(sys.prefix, 'lib')") -lpython${python_version}
 endif
 
+override python_libspec := -L${python_configdir}/../.. ${python_libspec}
+
 # If we don't have a shared library and the platform doesn't allow it
 # to work without, we have to skip it.
 ifneq (,$(findstring yes, $(shared_libpython)$(allow_nonpic_in_shlib)))
