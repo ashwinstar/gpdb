@@ -58,9 +58,9 @@ and return types).
 pablopcatso - graphing table dependencies
 =========================================
 
-The pablopcatso.pl tool reads the JSON document and generates Graphviz
-.dot file of the table relationships.  A variety of tools can process
-the .dot file to produce JPEG or PDF output for documentation.
+The pablopcatso.pl tool reads the JSON document and generates a
+Graphviz .dot file of the table relationships.  A variety of tools can
+process the .dot file to produce JPEG or PDF output for documentation.
 
 tidycat - table definitions
 ===========================
