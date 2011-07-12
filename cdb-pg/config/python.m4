@@ -65,6 +65,11 @@ if test x"${python_libdir}" != x"" -a x"${python_ldlibrary}" != x"" -a x"${pytho
 then
 	# New way: use the official shared library
 	ldlibrary=`echo "${ldlibrary}" | sed "s/^lib//"`
+	# special for greenplum... python was built in /opt/, but resides in the ext directory
+	if test ! -d "${python_libdir}"
+	then
+		python_libdir=`echo "${python_configdir}" | sed "s/\/python2.6\/config//"`
+	fi
 	python_libspec="-L${python_libdir} -l${ldlibrary}"
 else
 	# Old way: use libpython from python_configdir
