@@ -6953,6 +6953,11 @@ if test x"${python_libdir}" != x"" -a x"${python_ldlibrary}" != x"" -a x"${pytho
 then
 	# New way: use the official shared library
 	ldlibrary=`echo "${ldlibrary}" | sed "s/^lib//"`
+	# special for greenplum... python was built in /opt/, but resides in the ext directory
+	if test ! -d "${python_libdir}"
+	then
+		python_libdir=`echo "${python_configdir}" | sed "s/\/python2.6\/config//"`
+	fi
 	python_libspec="-L${python_libdir} -l${ldlibrary}"
 else
 	# Old way: use libpython from python_configdir
@@ -12198,7 +12203,8 @@ main (int argc, char **argv)
 }
 _ACEOF
             rm -f conftest.$ac_objext conftest$ac_exeext
-            if test "`(eval $ac_link 2>&1 1>&5)`" = ""; then
+            # Check both linking and compiling, because they might tolerate different options.
+            if test "`(eval $ac_link 2>&1 1>&5)`" = "" && test "`(eval $ac_compile 2>&1 1>&5)`" = ""; then
                 # we continue with more flags because Linux needs -lpthread
                 # for libpq builds on PostgreSQL.  The test above only
                 # tests for building binaries, not shared libraries.
