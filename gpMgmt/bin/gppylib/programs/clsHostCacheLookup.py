@@ -54,6 +54,8 @@ class GpHostCacheLookup:
     def cleanup(self):
         if self.__pool:
             self.__pool.haltWork()
+            self.__pool.joinWorkers()
+            self.__pool.join()
 
     #-------------------------------------------------------------------------
     @staticmethod
@@ -68,7 +70,7 @@ class GpHostCacheLookup:
 
         parser = OptParser(option_class=OptChecker,
                     description='  '.join(description.split()),
-                    version='%prog version $Revision$')
+                    version='%prog version main build 25763')
 
         addStandardLoggingAndHelpOptions(parser, False)
 
