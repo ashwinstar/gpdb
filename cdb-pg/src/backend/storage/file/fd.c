@@ -132,7 +132,7 @@ static int	max_safe_fds = 32;	/* default if not changed */
 
 typedef struct vfd
 {
-	signed short fd;			/* current FD, or VFD_CLOSED if none */
+	int fd;			/* current FD, or VFD_CLOSED if none */
 	unsigned short fdstate;		/* bitflags for VFD's state */
 	SubTransactionId create_subid;		/* for TEMPORARY fds, creating subxact */
 	File		nextFree;		/* link to next free VFD, if in freelist */
