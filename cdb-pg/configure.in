@@ -512,6 +512,14 @@ AC_MSG_RESULT([$enable_email])
 AC_SUBST(enable_email)
 
 #
+# --enable-connectemc enables connect emc support
+#
+PGAC_ARG_BOOL(enable, connectemc, no,  [  --enable-connectemc     enable connect emc support],
+              [AC_DEFINE([USE_CONNECTEMC], 1,
+                         [Define to 1 to build with connect emc alert capabilities. (--enable-connectemc)])])
+AC_MSG_RESULT([$enable_connectemc])
+AC_SUBST(enable_connectemc)
+#
 # Include directories
 #
 ac_save_IFS=$IFS

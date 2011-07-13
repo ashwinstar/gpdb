@@ -621,12 +621,14 @@ static void* conm_main(apr_thread_t* thread_, void* arg_)
 	return 0;
 }
 
+#ifdef USE_CONNECTEMC
 /* seperate thread for snmp */
 static void* snmp_main(apr_thread_t* thread_, void* arg_)
 {
 	unsigned int loop;
 	int ticks_since_last_snmp_report = 0;
 	int retVal = 0;
+	int sleep_interval;
 
 	snprintf(snmp_module_params.configfile, PATH_MAX, "%s/gpperfmon/conf/snmp.conf", ax.master_data_directory);
 	snprintf(snmp_module_params.outdir, PATH_MAX, "%s/gpperfmon/data/snmp", ax.master_data_directory);
@@ -634,6 +636,16 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 	snmp_module_params.health_harvest_interval = opt.health_harvest_interval;
 	snmp_module_params.warning_disk_space_percentage = opt.warning_disk_space_percentage;
 	snmp_module_params.error_disk_space_percentage = opt.error_disk_space_percentage;
+
+	if (arg_ && *((int*)arg_) == 1) {
+		snmp_module_params.healthmon_running_separately = 1;
+	} else {
+		snmp_module_params.healthmon_running_separately = 0;
+	}
+
+	if (snmp_module_params.healthmon_running_separately && snmp_module_params.health_harvest_interval < 30) {
+		snmp_module_params.health_harvest_interval = 30;
+	}
 
 	// if explicitly turned off in gpperfmon.conf or guc then disable
 	// if set to local only in guc, then set local only
@@ -665,12 +677,18 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 
 	snmp_report(ax.hosttab, ax.hosttabsz); 
 
+	if (snmp_module_params.healthmon_running_separately) {
+		sleep_interval = snmp_module_params.health_harvest_interval;
+	} else {
+		sleep_interval = opt.snmp_interval;
+	}
+	
 	for (loop = 1; !ax.exit; loop++)
 	{
 		apr_sleep(apr_time_from_sec(1));
 		ticks_since_last_snmp_report++;
 
-		if (ticks_since_last_snmp_report >= opt.snmp_interval)
+		if (ticks_since_last_snmp_report >= sleep_interval)
 		{
 			retVal = snmp_report(ax.hosttab, ax.hosttabsz);
 			if (retVal)
@@ -690,6 +708,7 @@ static void* snmp_main(apr_thread_t* thread_, void* arg_)
 
 	return NULL;
 }
+#endif
 
 /* seperate thread for harvest */
 static void* harvest_main(apr_thread_t* thread_, void* arg_)
@@ -813,7 +832,9 @@ static void gpmmon_main(void)
 	apr_status_t retCode;
 	apr_threadattr_t* ta;
 	time_t this_cycle_ts = 0;
-
+#ifdef USE_CONNECTEMC
+	int healthmon_running_separately;
+#endif
 	/* log check is not exact. do it every X loops */
 	int ticks_since_last_log_check = 0;
 	const unsigned int log_check_interval = 60;
@@ -932,12 +953,14 @@ static void gpmmon_main(void)
 		gpmon_fatalx(FLINE, e, "apr_thread_create failed");
 	}
 
+#ifdef USE_CONNECTEMC
+	healthmon_running_separately = is_healthmon_running_separately();
 	/* spawn snmp thread if enabled */
-	if (opt.snmp_interval)
+	if (opt.snmp_interval || healthmon_running_separately)
 	{
 		if (is_gpdb_appliance())
 		{
-			if (0 != (e = apr_thread_create(&snmp_th, ta, snmp_main, 0, ax.pool)))
+			if (0 != (e = apr_thread_create(&snmp_th, ta, snmp_main, &healthmon_running_separately, ax.pool)))
 			{
 				interuptable_sleep(30); // sleep to prevent loop of forking process and failing
 				gpmon_fatalx(FLINE, e, "apr_thread_create failed");
@@ -948,6 +971,7 @@ static void gpmmon_main(void)
 			gpmon_warningx(FLINE, e, "snmp_inteval but this host is not detected as part of Greenplum Appliance.  snmp monitoring is only enabled on the Greenplum Appliance.");
 		}
 	}
+#endif
 
 	/* main loop */
 	while (!ax.exit)

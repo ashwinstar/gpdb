@@ -17,6 +17,10 @@
 #include "tcop/dest.h"
 #include "utils/array.h"
 
+#ifdef USE_CONNECTEMC
+#include "emcconnect/api.h"
+#endif
+
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 
 
@@ -281,9 +285,9 @@ extern char   *gp_snmp_use_inform_or_trap;
 extern char   *gp_snmp_debug_log;
 #endif
 
-extern bool   gp_emcconnect_allowed;
-extern bool   gp_emcconnect_localonly;
-
+#ifdef USE_CONNECTEMC
+extern EmcConnectModeType_t gp_emcconnect_transport;
+#endif
 
 extern void SetConfigOption(const char *name, const char *value,
 				GucContext context, GucSource source);

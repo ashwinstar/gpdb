@@ -166,7 +166,7 @@ DEBUGFLAGS="$(strip $(CFLAGS_INLINE) $(CFLAGS_OPT) $(DEBUG_CFLAGS_OPT) $(TRACE_G
 
 DEFPORT=5432
 rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email --enable-snmp
-rhel5_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
+rhel5_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc
 sol10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
 sol_x86_64_CONFIGFLAGS=--enable-email
 suse10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp

@@ -38,7 +38,6 @@
 #include "utils/guc.h"
 #include "utils/elog.h"
 #include "utils/builtins.h"
-#include "emcconnect/api.h"
 
 
 
@@ -153,9 +152,11 @@ int set_alert_severity(const GpErrorData * errorData,
 	{
 		snmp_severity[0] = '1';  // sev Ok -- Nothing is wrong
 		email_priority[0] = '5'; // 1 == highest priority
+#ifdef USE_CONNECTEMC
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_INFO;
 		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_DATABASEUP;
+#endif
 	}
 
 	else if (strstr(errorData->error_message, gettext("could not access status of transaction"))  != NULL)
@@ -163,9 +164,11 @@ int set_alert_severity(const GpErrorData * errorData,
 		/* This error usually means a table has been corrupted.  Should it be a 4? 5? 6? 7?*/
 		snmp_severity[0] = '7';  //gpdbSevSystemDown
 		email_priority[0] = '1'; /// 1 == highest priority
+#ifdef USE_CONNECTEMC
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
 		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_COULD_NOT_ACCESS_STATUS_OF_TRANS;
+#endif
 	}
 
 	else if (strstr(errorData->error_message, gettext("database system was interrupted while in recovery"))  != NULL)
@@ -173,9 +176,11 @@ int set_alert_severity(const GpErrorData * errorData,
 		/* This error usually means the entire database is questionable, and should be restored from backup  */
 		snmp_severity[0] = '7';  //gpdbSevSystemDown
 		email_priority[0] = '1'; // 1 == highest priority
+#ifdef USE_CONNECTEMC
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
 		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_INTERUPTED_IN_RECOVERY;
+#endif
 	}
 
 	else if (strstr(errorData->error_message, gettext("two-phase state file for transaction"))  != NULL &&
@@ -183,27 +188,33 @@ int set_alert_severity(const GpErrorData * errorData,
 	{
 		snmp_severity[0] = '4';  //gpdbSevSystemDown
 		email_priority[0] = '1'; // 1 == highest priority
+#ifdef USE_CONNECTEMC
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
 		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_CORRUPT_2PHASE_FILE;
+#endif
 	}
 
 	else if (strstr(errorData->error_message, "Test message for Connect EMC")  != NULL)
 	{
 		snmp_severity[0] = '1';  // sev Ok -- Nothing is wrong
 		email_priority[0] = '5'; // 5  == lowest priority
+#ifdef USE_CONNECTEMC
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_INFO;
 		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_TEST_MESSAGE;
+#endif
 	}
 
 	else if (strcmp(errorData->error_severity,gettext("PANIC")) == 0)
 	{
 		snmp_severity[0] = '5';
 		email_priority[0] = '1'; // 1 == highest priority
+#ifdef USE_CONNECTEMC
 		*send_via_connectemc = true;
 		*connectemc_severity = EMC_CONNECT_SEVERITY_ERROR;
 		*connectemc_symptom = EMC_CONNECT_DETAILED_SYMPTOM_GPDB_PANIC;
+#endif
 	}
 
 	else if (strcmp(errorData->error_severity,gettext("FATAL")) == 0)
@@ -217,10 +228,6 @@ int set_alert_severity(const GpErrorData * errorData,
 
 	else
 		snmp_severity[0] = '0';  /* Informational, Log, or just plain unknown (might be serious) */
-
-#if !defined(__linux__)
-	*send_via_connectemc = false;	/* Connect EMC is only available on Linux systems, so don't try to use it otherwise */
-#endif
 
 	return 0;
 }

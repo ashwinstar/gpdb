@@ -46,7 +46,9 @@
 #include "utils/guc.h"
 #include "utils/elog.h"
 #include "utils/builtins.h"
+#if USE_CONNECTEMC
 #include "emcconnect/api.h"
+#endif
 
 extern int	PostPortNumber;
 
@@ -113,7 +115,7 @@ extern pg_time_t	MyStartTime;
 
 
 
-#if defined(__linux__)
+#if USE_CONNECTEMC
 static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity, EmcConnectDetailedSymptom symptom);
 #endif
 
@@ -540,7 +542,7 @@ static int send_snmp_inform_or_trap(const GpErrorData * errorData, const char * 
 }
 #endif
 
-#if defined(__linux__)
+#if USE_CONNECTEMC
 static int send_alert_via_connect_emc(const GpErrorData * errorData, const char * subject, EmcConnectSeverity severity, EmcConnectDetailedSymptom symptom)
 {
 	int retVal = 0;
@@ -550,8 +552,7 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 	char myhostname[255];	/* gethostname usually is limited to 65 chars out, but make this big to be safe */
 	struct stat statbuf;
 
-	if (!gp_emcconnect_allowed)
-	{
+	if (gp_emcconnect_transport == EMCCONNECT_MODE_TYPE_OFF) {
 		return retVal;
 	}
 
@@ -591,7 +592,8 @@ static int send_alert_via_connect_emc(const GpErrorData * errorData, const char 
 									status,
 									severity,
 									EMC_CONNECT_ORIGIN_GPDBALERTS,
-									gp_emcconnect_localonly ? 1 : 0,
+									gp_emcconnect_transport,
+									GP_VERSION,
 									"GPDB notification", // display name 
 									"", // snmpoid
 									myhostname,
@@ -1042,8 +1044,8 @@ int send_alert(const GpErrorData * errorData)
 
 #endif
 
-#if defined(__linux__)
-	/* Connect EMC is only available on Linux systems */
+#if USE_CONNECTEMC
+	/* Connect EMC is only available on RHEL5 64 systems */
 
 	if (send_via_connectemc)
 		send_alert_via_connect_emc(errorData, subject, connectemc_severity, connectemc_symptom);

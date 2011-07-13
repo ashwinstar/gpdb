@@ -310,6 +310,9 @@
 /* Define if you have a function readline library */
 #undef HAVE_LIBREADLINE
 
+/* Define to 1 if you have the `rt' library (-lrt). */
+#undef HAVE_LIBRT
+
 /* Define to 1 if you have the `ssl' library (-lssl). */
 #undef HAVE_LIBSSL
 
@@ -321,9 +324,6 @@
 
 /* Define to 1 if you have the `z' library (-lz). */
 #undef HAVE_LIBZ
-
-/* Define to 1 if you have the `rt' library (-lrt). */
-#undef HAVE_LIBRT
 
 /* Define to 1 if constants of type 'long long int' should have the suffix LL.
    */
@@ -594,6 +594,9 @@
 /* Define to 1 if you have the <termios.h> header file. */
 #undef HAVE_TERMIOS_H
 
+/* Define to 1 if you have the <time.h> header file. */
+#undef HAVE_TIME_H
+
 /* Define to 1 if your `struct tm' has `tm_zone'. Deprecated, use
    `HAVE_STRUCT_TM_TM_ZONE' instead. */
 #undef HAVE_TM_ZONE
@@ -740,6 +743,10 @@
 /* Define to 1 to build with Bonjour support. (--with-bonjour) */
 #undef USE_BONJOUR
 
+/* Define to 1 to build with connect emc alert capabilities.
+   (--enable-connectemc) */
+#undef USE_CONNECTEMC
+
 /* Define to 1 to build with debug_break capabilities. (--enable-debugbreak)
    */
 #undef USE_DEBUG_BREAK
@@ -749,9 +756,6 @@
 
 /* Define to 1 to build with email alert capabilities. (--enable-email) */
 #undef USE_EMAIL
-
-/* Define to 1 to build with testing utilities. (--enable-testutils) */
-#undef USE_TEST_UTILS
 
 /* Define to 1 to build with plan forcing capabilities. (--enable-forceplan)
    */
@@ -784,6 +788,9 @@
 
 /* Define to select SysV-style shared memory. */
 #undef USE_SYSV_SHARED_MEMORY
+
+/* Define to 1 to build with testing utilities. (--enable-testutils) */
+#undef USE_TEST_UTILS
 
 /* Define to select unnamed POSIX semaphores. */
 #undef USE_UNNAMED_POSIX_SEMAPHORES

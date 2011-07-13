@@ -218,7 +218,9 @@ static const char *assign_debug_dtm_action_protocol(const char *newval,
 static const char *assign_gp_log_format(const char *value, bool doit,
 										GucSource source);
 
+#ifdef USE_CONNECTEMC
 static const char *assign_connectemc_mode(const char *newval, bool doit, GucSource source);
+#endif
 
 static bool dummy_autovac=false;
 static bool assign_autovacuum_warning(bool newval, bool doit, GucSource source);
@@ -412,9 +414,9 @@ char       *gp_snmp_debug_log;
 #endif
 
 char	   *gp_connectemc_mode;
-bool        gp_emcconnect_allowed = true;
-bool        gp_emcconnect_localonly = false;
-
+#ifdef USE_CONNECTEMC
+EmcConnectModeType_t gp_emcconnect_transport;
+#endif
 
 /* The following GUC holds the default version for append-only tables */
 int	test_appendonly_version_default = AORelationVersion_GetLatest();
@@ -5594,15 +5596,18 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 #endif
+
+#ifdef USE_CONNECTEMC
 	{
 		{"gp_connectemc_mode", PGC_POSTMASTER, LOGGING,
 			gettext_noop("control connectemc functionality"),
-			gettext_noop("If 'on' send connectemc messages and log them locally, if 'local' log connectemc message locally only, if 'off', no connectemc messages"),
+			gettext_noop("If 'on' send connectemc messages and log them locally, if 'local' log connectemc message locally only, if 'remote' send connectemc messages only, if 'off', no connectemc messages"),
 			GUC_SUPERUSER_ONLY
 		},
 		&gp_connectemc_mode,
 		"on", assign_connectemc_mode, NULL
 	},
+#endif
 
 	/* for pljava */
 	{
@@ -10567,6 +10572,7 @@ show_tcp_keepalives_count(void)
 	return nbuf;
 }
 
+#ifdef USE_CONNECTEMC
 static const char *
 assign_connectemc_mode(const char *newval, bool doit, GucSource source)
 {
@@ -10574,30 +10580,35 @@ assign_connectemc_mode(const char *newval, bool doit, GucSource source)
 	{
 		if (doit)
 		{
-			gp_emcconnect_allowed = true;
-			gp_emcconnect_localonly = false;
+			gp_emcconnect_transport = EMCCONNECT_MODE_TYPE_ON;
 		}
 	}
 	else if (pg_strcasecmp(newval, "local") == 0)
 	{
 		if (doit)
 		{
-			gp_emcconnect_allowed = true;
-			gp_emcconnect_localonly = true;
+			gp_emcconnect_transport = EMCCONNECT_MODE_TYPE_LOCAL;
+		}
+	}
+	else if (pg_strcasecmp(newval, "remote") == 0)
+	{
+		if (doit)
+		{
+			gp_emcconnect_transport = EMCCONNECT_MODE_TYPE_REMOTE;
 		}
 	}
 	else if (pg_strcasecmp(newval, "off") == 0)
 	{
 		if (doit)
 		{
-			gp_emcconnect_allowed = false;
-			gp_emcconnect_localonly = false;
+			gp_emcconnect_transport = EMCCONNECT_MODE_TYPE_OFF;
 		}
 	}
 	else
 		return NULL;			/* fail */
 	return newval;				/* OK */
 }
+#endif
 
 
 static const char *

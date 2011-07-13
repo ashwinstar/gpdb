@@ -172,6 +172,7 @@ enable_thread_safety	= @enable_thread_safety@
 enable_largefile	= @enable_largefile@
 enable_snmp			= @enable_snmp@
 enable_email		= @enable_email@
+enable_connectemc	= @enable_connectemc@
 
 python_includespec	= @python_includespec@
 python_libdir		= @python_libdir@

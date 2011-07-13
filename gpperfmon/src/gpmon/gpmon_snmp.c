@@ -100,7 +100,6 @@ static struct
 	char hostlist_file[PATH_MAX];
 	char hostlist_tmpfile[PATH_MAX];
 	char emcconnect_tailfile[PATH_MAX];
-	int healthmon_running_separately;
 
 	FILE* hostlist_fd;
 	unsigned int emc_connect_events_pending_load;
@@ -165,7 +164,6 @@ char* get_accessible_hostname();
 int mv_gpdb_emcconnect_records_to_perfmon();
 void load_emcconnect_events_history();
 int harvest_health_data_required(int num_dial_homes);
-bool is_healthmon_running_separately();
 
 //****************************************************************************************//
 // EMC CONNECT CONVERSION FUNCTIONS SECTION
@@ -1099,19 +1097,12 @@ void gpmon_format_dell_tenth_centigrade(EmcConnectSymptom symptom, EmcConnectDet
 	snprint_objid(oidstring, GPMMON_SNMP_OID_STRING_BUF_SIZE, oidname, oidlen);
 	char outbuf[FORMAT_SNMP_CENT_BUFSIZE] = { 0 };
 	float farenheit = 0; 
-	int celsius_temp = 0; 
 
 	if (vars->type != ASN_INTEGER)
 	{
 		record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_UNKNOWN, "wrong var type");
 		return;
 	}
-	celsius_temp = *vars->val.integer;
-
-	if (celsius_temp <= thermal_thresholds.dell_low_critical_temp_threshold || celsius_temp >= thermal_thresholds.dell_high_critical_temp_threshold) {
-		record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_WARNING, "Temperature not in normal range");
-                return;
-        }
 
 	// normally you multiply by 9/5 however and then add 32
 	// our number is in tenths of degrees celcius ... so we use .18 instead of 9/5
@@ -1120,6 +1111,7 @@ void gpmon_format_dell_tenth_centigrade(EmcConnectSymptom symptom, EmcConnectDet
 	snprintf(outbuf, FORMAT_SNMP_CENT_BUFSIZE, "%0.2f", farenheit);
 	record_status(symptom, dSymptom, oidstring, displayname, GPDB_SNMP_STATUS_NORMAL, outbuf);
 }
+
 void gpmon_format_dell_network_device_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom, oid oidname[], size_t oidlen, const char* displayname, struct variable_list *vars)
 {
 	char* msg;
@@ -1542,8 +1534,6 @@ void run_snmp_report_for_dell_host(const char* categoryname, host_t* host)
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_NAME, "1.3.6.1.4.1.674.10892.1.700.12.1.8", "Cooling Device", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_STATUS, "1.3.6.1.4.1.674.10892.1.700.12.1.5", "Cooling Device", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_TEMPERATURE, "1.3.6.1.4.1.674.10892.1.700.20.1.6", "System Temperature", NULL, gpmon_format_dell_tenth_centigrade, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_HIGH_THRESHOLD_TEMP, "1.3.6.1.4.1.674.10892.1.700.20.1.10", "System High critical temp", NULL, gpmon_store_thermal_threshold, SNMP_MSG_GETNEXT)) goto BAIL;
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_COOLING_DEVICE, EMC_CONNECT_DETAILED_SYMPTOM_COOLING_DEVICE_SYSTEM_LOW_THRESHOLD_TEMP, "1.3.6.1.4.1.674.10892.1.700.20.1.13", "System Low critical temp", NULL, gpmon_store_thermal_threshold, SNMP_MSG_GETNEXT)) goto BAIL;
 
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_PROCESSOR, EMC_CONNECT_DETAILED_SYMPTOM_PROCESSOR_STATUS, "1.3.6.1.4.1.674.10892.1.1100.30.1.5", "Processor Status", NULL, gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 
@@ -1568,12 +1558,8 @@ void run_snmp_report_for_dell_host(const char* categoryname, host_t* host)
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_WRITE_POLICY, "1.3.6.1.4.1.674.10893.1.20.140.1.1.10", "Virtual Disk", "Write Policy", format_dell_virtual_disk_write_policy, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_READ_POLICY, "1.3.6.1.4.1.674.10893.1.20.140.1.1.11", "Virtual Disk", "Read Policy", format_dell_virtual_disk_read_policy, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_STATE, "1.3.6.1.4.1.674.10893.1.20.140.1.1.4", "Virtual Disk",  "State", format_dell_virtual_disk_state, SNMP_MSG_GETNEXT)) goto BAIL;
-        // Disk space usage monitoring
-	if (si.hostt->is_master && dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_SPACE_USED_PERCENT, "1.3.6.1.4.1.2021.9.1.9.1", "Disk Space Used Percentage on Master (/data)", "Value", gpmon_format_disk_space, SNMP_MSG_GET)) goto BAIL;
-	if (!si.hostt->is_master && dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_SPACE_USED_PERCENT, "1.3.6.1.4.1.2021.9.1.9.1", "Disk Space Used Percentage on Segment (/data1)", "Value", gpmon_format_disk_space, SNMP_MSG_GET)) goto BAIL;
-	if (!si.hostt->is_master && dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_VIRTUAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_VIRTUAL_DISK_SPACE_USED_PERCENT, "1.3.6.1.4.1.2021.9.1.9.2", "Disk Space Used Percentage on Segment (/data2)", "Value", gpmon_format_disk_space, SNMP_MSG_GET)) goto BAIL;
 
-	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_PHYSICAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_ARRAY_DISK_NAME, "1.3.6.1.4.1.674.10893.1.20.130.4.1.2", "Array Disk", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
+    if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_PHYSICAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_ARRAY_DISK_NAME, "1.3.6.1.4.1.674.10893.1.20.130.4.1.2", "Array Disk", "Name", gpmon_format_snmp_string, SNMP_MSG_GETNEXT)) goto BAIL;
 	if (dual_port_host_snmp_array_collection(EMC_CONNECT_SYMPTOM_PHYSICAL_DISK, EMC_CONNECT_DETAILED_SYMPTOM_ARRAY_DISK_STATUS, "1.3.6.1.4.1.674.10893.1.20.130.4.1.23", "Array Disk", "Status", gpmon_format_dell_status, SNMP_MSG_GETNEXT)) goto BAIL;
 
 BAIL:
@@ -2099,7 +2085,8 @@ void record_status(EmcConnectSymptom symptom, EmcConnectDetailedSymptom dSymptom
 								convert_gpdb_snmp_status_to_emc_connect_status(status),
 								convert_gpdb_snmp_status_to_emc_connect_severity(status),
 								EMC_CONNECT_ORIGIN_GPMMON,
-								(si.params->emcconnect_mode == EMCCONNECT_MODE_TYPE_LOCAL) ? 1 : 0,
+								si.params->emcconnect_mode,
+								GP_VERSION,
 								(char*)displayname, 
 								(char*)oidstring,
 								si.key.hostname,  
@@ -2135,7 +2122,8 @@ void process_connect_emc_test_alert()
 								EMC_CONNECT_STATUS_OK,
 								EMC_CONNECT_SEVERITY_INFO,
 								EMC_CONNECT_ORIGIN_GPMMON,
-								(si.params->emcconnect_mode == EMCCONNECT_MODE_TYPE_LOCAL) ? 1 : 0,
+								si.params->emcconnect_mode,
+								GP_VERSION,
 								"EMC Connect Test",
 								(char*)"",
 								"mdw",
@@ -2159,7 +2147,8 @@ void process_connect_emc_test_alert()
 								EMC_CONNECT_STATUS_OK,
 								EMC_CONNECT_SEVERITY_ERROR,
 								EMC_CONNECT_ORIGIN_GPMMON,
-								(si.params->emcconnect_mode == EMCCONNECT_MODE_TYPE_LOCAL) ? 1 : 0,
+								si.params->emcconnect_mode,
+								GP_VERSION,
 								"EMC Connect Test",
 								(char*)"",
 								"mdw",
@@ -2341,7 +2330,7 @@ int snmp_report(host_t* tab, int tabsz)
 	if (!si.snmpInitialized)
 		return 1; // there was a failure in the setup phase ... do not collect data
 
-	if (si.healthmon_running_separately) {
+	if (si.params->healthmon_running_separately) {
 		goto harvest;
 	}
 
@@ -2393,7 +2382,7 @@ harvest:
 		si.last_health_harvest = time(NULL);
 	}
 
-	if (!si.healthmon_running_separately) {
+	if (!si.params->healthmon_running_separately) {
 		snmp_done_report();
 	}
 
@@ -2586,16 +2575,11 @@ void parse_snmp_config_line(char* line)
 	//Category='Admin Switch'         Device='AdminSwitch0001'   		  Host='a-sw-1-app1'
 	//Category='Interconnect Switch'  Device='InterconnectSwitch0001'     Host='i-sw-1-app1'
 	//Category='Interconnect Switch'  Device='InterconnectSwitch0001'     Host='i-sw-2-app1'
-	//Category='GPDB Masters'         Device='Hornet0001'                 Host=''
-	//Category='GPDB Segments'        Device='Flash0001'                  Host=''
 	//Category='ETL Host'             Device='EtlHost'                    Host='etl1'
 
 	char* host;
 	char* device;
 	char* category;
-    gpdb_snmp_device_function* server_function_tmp;
-    bool isSegment = false;
-    bool isMaster = false;
 
 	if (!line)
 		return;
@@ -2613,35 +2597,6 @@ void parse_snmp_config_line(char* line)
 	if (find_token_in_config_string(line, &category, "Category"))
 		return;
 
-	if (strcmp(category, "GPDB Segments") == 0)
-        isSegment = true;
-	else if (strcmp(category, "GPDB Masters") == 0)
-        isMaster = true;
-    
-
-	if (isSegment || isMaster)
-    {
-		if (strcmp(device, "Hornet0001") == 0) 
-		{
-			server_function_tmp = run_snmp_report_for_dell_host;
-		}
-		else if (strcmp(device, "Flash0001") == 0) 
-		{
-			server_function_tmp = run_snmp_report_for_twin_squared_host;
-		}
-        else
-        {
-			server_function_tmp = run_snmp_report_for_dell_host; // default
-        }
-        
-        if (isSegment)
-            si.segment_function = server_function_tmp;
-        else if (isMaster)
-            si.master_function = server_function_tmp;
-
-		return;
-	}
-
 	gpdb_snmp_device_function* fPtr = NULL;
 
 	if (strcmp(device, "InterconnectSwitch0001") == 0) // Brocade 8000
@@ -2655,10 +2610,6 @@ void parse_snmp_config_line(char* line)
 	else if (strcmp(device, "AdminSwitch0001") == 0) // Allied Telesis TL
 	{
 		fPtr = run_snmp_report_for_allied_telesis_switch;
-	}
-	else if (strcmp(device, "AdminSwitch0002") == 0) // Arista 7048
-	{
-		fPtr = run_snmp_report_for_arista_7048_switch;
 	}
 	else if (strcmp(device, "EtlHost") == 0) // EtlHost
 	{    
@@ -2771,12 +2722,10 @@ apr_status_t gpmmon_init_snmp(snmp_module_params_t* params)
 	si.snmpInitialized=true;
 
 
-	if (is_healthmon_running_separately()) {
+	if (si.params->healthmon_running_separately) {
 		TR0(("Not doing regular health monitoring..\n"));
-		si.healthmon_running_separately = 1;
 	} else {
 		TR0(("Performing the regular health monitoring..\n"));
-		si.healthmon_running_separately = 0;
 	}	
 
 	return APR_SUCCESS;
@@ -2875,6 +2824,7 @@ is_healthmon_running_separately()
 	// New ISO versions have separate healthmond
 	bool new_ver_iso = false;
 	char buffer[MAXPATHLEN+1];
+	char *newline;
 
         FILE* fd = fopen(PATH_TO_APPLIANCE_VERSION_FILE, "r");
 	if (!fd) {
@@ -2889,8 +2839,13 @@ is_healthmon_running_separately()
 		goto bail;
 	}
 
+	newline = strchr(buffer, '\n');
+	if (newline) {
+		*newline = 0;
+	}
+
 	// TODO - Place this in some macro
-	if (compare_versions(buffer, "1.0.4") >= 0) {
+	if (compare_versions(buffer, "1.1") >= 0) {
 		new_ver_iso = true;
 	}
 

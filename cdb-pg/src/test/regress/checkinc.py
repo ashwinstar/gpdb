@@ -31,6 +31,7 @@ fileset = {
     'cygwin/version.h':  [],
     'direct.h':          [],
     'err.h':             [],
+    'emcconnect/api.h':  [],
     'float.h':           [],
     'getopt.h':          [],
     'gssapi.h':	       	 [],

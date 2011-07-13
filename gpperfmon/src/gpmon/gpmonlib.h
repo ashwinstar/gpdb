@@ -9,6 +9,25 @@
 #include "event.h"
 #include "gpmon/gpmon.h"
 
+#ifdef USE_CONNECTEMC
+#include "emcconnect/api.h"
+#else
+typedef enum EmcConnectSeverity
+{
+	EMC_CONNECT_SEVERITY_UNKNOWN = 0,
+} EmcConnectSeverity;
+
+typedef enum EmcConnectDetailedSymptom
+{
+	EMC_CONNECT_DETAILED_SYMPTOM_NULL = 0,
+} EmcConnectDetailedSymptom;
+typedef enum EmcConnectModeType_t
+{
+    EMCCONNECT_MODE_TYPE_OFF = 0,
+} EmcConnectModeType_t;
+
+#endif
+
 #define BATCH 8
 #define DEFAULT_GPMMON_LOGDIR "gpperfmon/logs"
 
@@ -117,14 +136,6 @@ struct host_t
 	char ever_connected; /* set to non-zero after first connection attempt */
 };
 
-typedef enum EmcConnectModeType_t
-{
-	EMCCONNECT_MODE_TYPE_OFF = 0,
-	EMCCONNECT_MODE_TYPE_LOCAL,
-	EMCCONNECT_MODE_TYPE_ON
-} EmcConnectModeType_t;
-
-
 char* get_connection_hostname(host_t* host);
 char* get_connection_ip(host_t* host);
 char* get_snmp_hostname(host_t* host);
@@ -141,6 +152,7 @@ struct snmp_module_params_t
 	int health_harvest_interval;
 	int warning_disk_space_percentage;
 	int error_disk_space_percentage;
+	int healthmon_running_separately;
 };
 
 double subtractTimeOfDay(struct timeval* begin, struct timeval* end);
@@ -153,4 +165,5 @@ extern apr_status_t gpdb_debug_string_lookup_table();
 extern void gpdb_get_single_string_from_query(const char* QUERY, char** resultstring, apr_pool_t* pool);
 extern int snmp_report(host_t* tab, int tabsz);
 extern apr_status_t gpmmon_init_snmp(snmp_module_params_t* params);
+extern bool is_healthmon_running_separately();
 #endif /* GPMONLIB_H */

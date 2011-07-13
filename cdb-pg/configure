@@ -699,6 +699,7 @@ with_perl
 with_tcl
 enable_thread_safety
 INCLUDES
+enable_connectemc
 enable_email
 enable_snmp
 autodepend
@@ -804,6 +805,7 @@ enable_debugntuplestore
 enable_testutils
 enable_snmp
 enable_email
+enable_connectemc
 enable_thread_safety
 enable_thread_safety_force
 with_tcl
@@ -1472,6 +1474,7 @@ build with coverage testing instrumentation
   --enable-testutils        enable testing utilities
   --enable-snmp        enable snmp for MIB and alerts via TRAP/INFORM
   --enable-email        enable email alerts
+  --enable-connectemc     enable connect emc support
   --disable-thread-safety  Do not make client libraries thread-safe
   --enable-thread-safety-force  force thread-safety despite thread test failure
   --disable-largefile     omit support for large files
@@ -4892,6 +4895,38 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $enable_email" >&5
 $as_echo "$enable_email" >&6; }
 
+
+#
+# --enable-connectemc enables connect emc support
+#
+
+pgac_args="$pgac_args enable_connectemc"
+
+# Check whether --enable-connectemc was given.
+if test "${enable_connectemc+set}" = set; then :
+  enableval=$enable_connectemc;
+  case $enableval in
+    yes)
+
+$as_echo "#define USE_CONNECTEMC 1" >>confdefs.h
+
+      ;;
+    no)
+      :
+      ;;
+    *)
+      as_fn_error $? "no argument expected for --enable-connectemc option" "$LINENO" 5
+      ;;
+  esac
+
+else
+  enable_connectemc=no
+
+fi
+
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $enable_connectemc" >&5
+$as_echo "$enable_connectemc" >&6; }
 
 #
 # Include directories

@@ -2,7 +2,21 @@
 #define _SENDALERT_H
 
 #include "postmaster/syslogger.h"
+
+#ifdef USE_CONNECTEMC
 #include "emcconnect/api.h"
+#else
+typedef enum EmcConnectSeverity
+{
+    EMC_CONNECT_SEVERITY_UNKNOWN = 0,
+} EmcConnectSeverity;
+
+typedef enum EmcConnectDetailedSymptom
+{
+    EMC_CONNECT_DETAILED_SYMPTOM_NULL = 0,
+
+} EmcConnectDetailedSymptom;
+#endif
 
 #define MAX_ALERT_STRING 127
 
