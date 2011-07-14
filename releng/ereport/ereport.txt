@@ -740,35 +740,35 @@ gacb: gpxchangetrackingxlog:00000162:  (errcode_for_file_access(),
 gacb: gpxchangetrackingxlog:00000163:  errmsg("gp_changetracking_log couldn't open %s file on segment %d dbid %d", 
 gacb: gpxchangetrackingxlog:00000164:  ChangeTracking_FtypeToString(ftype), Gp_segment, GpIdentity.dbid))); 
 aaaaa GP_IGNORE: saae: slru - ./backend/access/transam/slru.c
-saae: slru:00000810:  ereport(ERROR, 
-saae: slru:00000811:  (errcode_for_file_access(), 
-saae: slru:00000812:  errmsg("could not access status of transaction %u", xid), 
-saae: slru:00000813:  errdetail("Could not open file \"%s\": %m.", path))); 
-saae: slru:00000816:  ereport(ERROR, 
-saae: slru:00000817:  (errcode_for_file_access(), 
-saae: slru:00000818:  errmsg("could not access status of transaction %u", xid), 
-saae: slru:00000819:  errdetail("Could not seek in file \"%s\" to offset %u: %m.", 
-saae: slru:00000820:  path, offset))); 
-saae: slru:00000823:  ereport(ERROR, 
-saae: slru:00000824:  (errcode_for_file_access(), 
-saae: slru:00000825:  errmsg("could not access status of transaction %u", xid), 
-saae: slru:00000826:  errdetail("Could not read from file \"%s\" at offset %u: %m.", 
-saae: slru:00000827:  path, offset))); 
-saae: slru:00000830:  ereport(ERROR, 
-saae: slru:00000831:  (errcode_for_file_access(), 
-saae: slru:00000832:  errmsg("could not access status of transaction %u", xid), 
-saae: slru:00000833:  errdetail("Could not write to file \"%s\" at offset %u: %m.", 
-saae: slru:00000834:  path, offset))); 
-saae: slru:00000837:  ereport(ERROR, 
-saae: slru:00000838:  (errcode_for_file_access(), 
-saae: slru:00000839:  errmsg("could not access status of transaction %u", xid), 
-saae: slru:00000840:  errdetail("Could not fsync file \"%s\": %m.", 
-saae: slru:00000841:  path))); 
-saae: slru:00000844:  ereport(ERROR, 
-saae: slru:00000845:  (errcode_for_file_access(), 
-saae: slru:00000846:  errmsg("could not access status of transaction %u", xid), 
-saae: slru:00000847:  errdetail("Could not close file \"%s\": %m.", 
-saae: slru:00000848:  path))); 
+saae: slru:00000814:  ereport(ERROR, 
+saae: slru:00000815:  (errcode_for_file_access(), 
+saae: slru:00000816:  errmsg("could not access status of transaction %u", xid), 
+saae: slru:00000817:  errdetail("Could not open file \"%s\": %m.", path))); 
+saae: slru:00000820:  ereport(ERROR, 
+saae: slru:00000821:  (errcode_for_file_access(), 
+saae: slru:00000822:  errmsg("could not access status of transaction %u", xid), 
+saae: slru:00000823:  errdetail("Could not seek in file \"%s\" to offset %u: %m.", 
+saae: slru:00000824:  path, offset))); 
+saae: slru:00000827:  ereport(ERROR, 
+saae: slru:00000828:  (errcode_for_file_access(), 
+saae: slru:00000829:  errmsg("could not access status of transaction %u", xid), 
+saae: slru:00000830:  errdetail("Could not read from file \"%s\" at offset %u: %m.", 
+saae: slru:00000831:  path, offset))); 
+saae: slru:00000834:  ereport(ERROR, 
+saae: slru:00000835:  (errcode_for_file_access(), 
+saae: slru:00000836:  errmsg("could not access status of transaction %u", xid), 
+saae: slru:00000837:  errdetail("Could not write to file \"%s\" at offset %u: %m.", 
+saae: slru:00000838:  path, offset))); 
+saae: slru:00000841:  ereport(ERROR, 
+saae: slru:00000842:  (errcode_for_file_access(), 
+saae: slru:00000843:  errmsg("could not access status of transaction %u", xid), 
+saae: slru:00000844:  errdetail("Could not fsync file \"%s\": %m.", 
+saae: slru:00000845:  path))); 
+saae: slru:00000848:  ereport(ERROR, 
+saae: slru:00000849:  (errcode_for_file_access(), 
+saae: slru:00000850:  errmsg("could not access status of transaction %u", xid), 
+saae: slru:00000851:  errdetail("Could not close file \"%s\": %m.", 
+saae: slru:00000852:  path))); 
 aaaaa GP_IGNORE: taai: twophase - ./backend/access/transam/twophase.c
 taai: twophase:00000443:  ereport(ERROR, 
 taai: twophase:00000444:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
@@ -2153,259 +2153,259 @@ taai: toasting:00000201:  ereport(ERROR,
 taai: toasting:00000202:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
 taai: toasting:00000203:  errmsg("shared tables cannot be toasted after initdb"))); 
 aaaaa GP_IGNORE: cace: cdbappendonlystorageread - ./backend/cdb/cdbappendonlystorageread.c
-cace: cdbappendonlystorageread:00000311:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00000312:  (errcode(ERRCODE_IO_ERROR), 
-cace: cdbappendonlystorageread:00000313:  errmsg("Append-only Storage Read error on segment file '%s' for relation '%s'. FileSeek offset = 0. Error code = %d (%s)", 
-cace: cdbappendonlystorageread:00000314:  filePathName, 
-cace: cdbappendonlystorageread:00000315:  storageRead->relationName, 
-cace: cdbappendonlystorageread:00000316:  (int)seekResult, 
-cace: cdbappendonlystorageread:00000317:  strerror((int)seekResult)))); 
-cace: cdbappendonlystorageread:00000377:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00000378:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00000379:  errmsg("Append-only Storage Read segment file '%s' EOF must be > 0 for relation '%s'", 
-cace: cdbappendonlystorageread:00000380:  filePathName, 
-cace: cdbappendonlystorageread:00000381:  storageRead->relationName))); 
-cace: cdbappendonlystorageread:00000388:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00000389:  (errcode_for_file_access(), 
-cace: cdbappendonlystorageread:00000390:  errmsg("Append-Only Storage Read could not open segment file '%s' for relation '%s'", 
-cace: cdbappendonlystorageread:00000391:  filePathName, 
-cace: cdbappendonlystorageread:00000392:  storageRead->relationName))); 
-cace: cdbappendonlystorageread:00000561:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00000562:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00000563:  errmsg("Unexpected end of file. Expected to read %d bytes after position " INT64_FORMAT " but found %d bytes (bufferCount " INT64_FORMAT ")\n", 
-cace: cdbappendonlystorageread:00000564:  safeWriteRemainder, 
-cace: cdbappendonlystorageread:00000565:  nextReadPosition, 
-cace: cdbappendonlystorageread:00000566:  availableLen, 
-cace: cdbappendonlystorageread:00000567:  storageRead->bufferCount))); 
-cace: cdbappendonlystorageread:00000627:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00000628:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00000629:  errmsg("Expected %d bytes and got %d bytes in table %s " 
-cace: cdbappendonlystorageread:00000630:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")\n", 
-cace: cdbappendonlystorageread:00000631:  storageRead->minimumHeaderLen, 
-cace: cdbappendonlystorageread:00000632:  availableLen, 
-cace: cdbappendonlystorageread:00000633:  storageRead->relationName, 
-cace: cdbappendonlystorageread:00000634:  storageRead->segmentFileName, 
-cace: cdbappendonlystorageread:00000635:  *headerOffsetInFile, 
-cace: cdbappendonlystorageread:00000636:  storageRead->bufferCount))); 
-cace: cdbappendonlystorageread:00000672:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00000673:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00000674:  errmsg("Expected %d bytes and found %d bytes in table %s " 
-cace: cdbappendonlystorageread:00000675:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")", 
-cace: cdbappendonlystorageread:00000676:  storageRead->minimumHeaderLen, 
-cace: cdbappendonlystorageread:00000677:  availableLen, 
-cace: cdbappendonlystorageread:00000678:  storageRead->relationName, 
-cace: cdbappendonlystorageread:00000679:  storageRead->segmentFileName, 
-cace: cdbappendonlystorageread:00000680:  *headerOffsetInFile, 
-cace: cdbappendonlystorageread:00000681:  storageRead->bufferCount))); 
-cace: cdbappendonlystorageread:00000843:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00000844:  (errmsg("Header checksum does not match. Expected 0x%X and found 0x%X ", 
-cace: cdbappendonlystorageread:00000845:  storedChecksum, 
-cace: cdbappendonlystorageread:00000846:  computedChecksum), 
-cace: cdbappendonlystorageread:00000847:  errdetail_appendonly_read_storage_block_header(storageRead), 
-cace: cdbappendonlystorageread:00000848:  errcontext_appendonly_read_storage_block(storageRead))); 
-cace: cdbappendonlystorageread:00000860:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00000861:  (errmsg("Bad append-only storage header. Header check error %d, detail '%s'", 
-cace: cdbappendonlystorageread:00000862:  (int)checkError, 
-cace: cdbappendonlystorageread:00000863:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
-cace: cdbappendonlystorageread:00000864:  errdetail_appendonly_read_storage_block_header(storageRead), 
-cace: cdbappendonlystorageread:00000865:  errcontext_appendonly_read_storage_block(storageRead))); 
-cace: cdbappendonlystorageread:00000880:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00000881:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00000882:  errmsg("Expected %d bytes and found %d bytes in table %s " 
-cace: cdbappendonlystorageread:00000883:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")", 
-cace: cdbappendonlystorageread:00000884:  storageRead->current.actualHeaderLen, 
-cace: cdbappendonlystorageread:00000885:  availableLen, 
-cace: cdbappendonlystorageread:00000886:  storageRead->relationName, 
-cace: cdbappendonlystorageread:00000887:  storageRead->segmentFileName, 
-cace: cdbappendonlystorageread:00000888:  storageRead->current.headerOffsetInFile, 
-cace: cdbappendonlystorageread:00000889:  storageRead->bufferCount))); 
-cace: cdbappendonlystorageread:00000918:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00000919:  (errmsg("Bad append-only storage header of type Block. Header check error %d, detail '%s'", 
-cace: cdbappendonlystorageread:00000920:  (int)checkError, 
-cace: cdbappendonlystorageread:00000921:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
-cace: cdbappendonlystorageread:00000922:  errdetail_appendonly_read_smallcontent_header(storageRead), 
-cace: cdbappendonlystorageread:00000923:  errcontext_appendonly_read_storage_block(storageRead))); 
-cace: cdbappendonlystorageread:00000940:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00000941:  (errmsg("Bad append-only storage header of type LargeContentMetadata. Header check error %d, detail '%s'", 
-cace: cdbappendonlystorageread:00000942:  (int)checkError, 
-cace: cdbappendonlystorageread:00000943:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
-cace: cdbappendonlystorageread:00000944:  errdetail_appendonly_read_largecontent_header(storageRead), 
-cace: cdbappendonlystorageread:00000945:  errcontext_appendonly_read_storage_block(storageRead))); 
-cace: cdbappendonlystorageread:00001122:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00001123:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00001124:  errmsg("Wrong buffer length. Expected %d byte length buffer and got %d ", 
-cace: cdbappendonlystorageread:00001125:  storageRead->current.overallBlockLen, 
-cace: cdbappendonlystorageread:00001126:  availableLen), 
-cace: cdbappendonlystorageread:00001127:  errdetail_appendonly_read_smallcontent_header(storageRead), 
-cace: cdbappendonlystorageread:00001128:  errcontext_appendonly_read_storage_block(storageRead))); 
-cace: cdbappendonlystorageread:00001142:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00001143:  (errmsg("Block checksum does not match. Expected 0x%X and found 0x%X", 
-cace: cdbappendonlystorageread:00001144:  storedChecksum, 
-cace: cdbappendonlystorageread:00001145:  computedChecksum), 
-cace: cdbappendonlystorageread:00001146:  errdetail_appendonly_read_smallcontent_header(storageRead), 
-cace: cdbappendonlystorageread:00001147:  errcontext_appendonly_read_storage_block(storageRead))); 
-cace: cdbappendonlystorageread:00001260:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00001261:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00001262:  errmsg("Unexpected end of file trying to read block %d of large content in segment file '%s' of table '%s'. " 
-cace: cdbappendonlystorageread:00001263:  "Large content metadata block is at position " INT64_FORMAT " " 
-cace: cdbappendonlystorageread:00001264:  "Large content length %d", 
-cace: cdbappendonlystorageread:00001265:  regularBlockReadCount, 
-cace: cdbappendonlystorageread:00001266:  storageRead->segmentFileName, 
-cace: cdbappendonlystorageread:00001267:  storageRead->relationName, 
-cace: cdbappendonlystorageread:00001268:  largeContentPosition, 
-cace: cdbappendonlystorageread:00001269:  largeContentLen))); 
-cace: cdbappendonlystorageread:00001276:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00001277:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00001278:  errmsg("Expected header kind 'Block' for block %d of large content in segment file '%s' of table '%s'. " 
-cace: cdbappendonlystorageread:00001279:  "Large content metadata block is at position " INT64_FORMAT " " 
-cace: cdbappendonlystorageread:00001280:  "Large content length %d", 
-cace: cdbappendonlystorageread:00001281:  regularBlockReadCount, 
-cace: cdbappendonlystorageread:00001282:  storageRead->segmentFileName, 
-cace: cdbappendonlystorageread:00001283:  storageRead->relationName, 
-cace: cdbappendonlystorageread:00001284:  largeContentPosition, 
-cace: cdbappendonlystorageread:00001285:  largeContentLen))); 
-cace: cdbappendonlystorageread:00001296:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00001297:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00001298:  errmsg("Too much data found after reading %d blocks for large content in segment file '%s' of table '%s'. " 
-cace: cdbappendonlystorageread:00001299:  "Large content metadata block is at position " INT64_FORMAT " " 
-cace: cdbappendonlystorageread:00001300:  "Large content length %d; extra data length %d", 
-cace: cdbappendonlystorageread:00001301:  regularBlockReadCount, 
-cace: cdbappendonlystorageread:00001302:  storageRead->segmentFileName, 
-cace: cdbappendonlystorageread:00001303:  storageRead->relationName, 
-cace: cdbappendonlystorageread:00001304:  largeContentPosition, 
-cace: cdbappendonlystorageread:00001305:  largeContentLen, 
-cace: cdbappendonlystorageread:00001306:  -remainingLargeContentLen))); 
-cace: cdbappendonlystorageread:00001459:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00001460:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00001461:  errmsg("Unexpected end of file trying to read block %d of large content in segment file '%s' of table '%s'. " 
-cace: cdbappendonlystorageread:00001462:  "Large content metadata block is at position " INT64_FORMAT " " 
-cace: cdbappendonlystorageread:00001463:  "Large content length %d", 
-cace: cdbappendonlystorageread:00001464:  regularBlockReadCount, 
-cace: cdbappendonlystorageread:00001465:  storageRead->segmentFileName, 
-cace: cdbappendonlystorageread:00001466:  storageRead->relationName, 
-cace: cdbappendonlystorageread:00001467:  largeContentPosition, 
-cace: cdbappendonlystorageread:00001468:  largeContentLen))); 
-cace: cdbappendonlystorageread:00001475:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00001476:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00001477:  errmsg("Expected header kind 'Block' for block %d of large content in segment file '%s' of table '%s'. " 
-cace: cdbappendonlystorageread:00001478:  "Large content metadata block is at position " INT64_FORMAT " " 
-cace: cdbappendonlystorageread:00001479:  "Large content length %d", 
-cace: cdbappendonlystorageread:00001480:  regularBlockReadCount, 
-cace: cdbappendonlystorageread:00001481:  storageRead->segmentFileName, 
-cace: cdbappendonlystorageread:00001482:  storageRead->relationName, 
-cace: cdbappendonlystorageread:00001483:  largeContentPosition, 
-cace: cdbappendonlystorageread:00001484:  largeContentLen))); 
-cace: cdbappendonlystorageread:00001495:  ereport(ERROR, 
-cace: cdbappendonlystorageread:00001496:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cace: cdbappendonlystorageread:00001497:  errmsg("Too much data found after reading %d blocks for large content in segment file '%s' of table '%s'. " 
-cace: cdbappendonlystorageread:00001498:  "Large content metadata block is at position " INT64_FORMAT " " 
-cace: cdbappendonlystorageread:00001499:  "Large content length %d; extra data length %d", 
-cace: cdbappendonlystorageread:00001500:  regularBlockReadCount, 
-cace: cdbappendonlystorageread:00001501:  storageRead->segmentFileName, 
-cace: cdbappendonlystorageread:00001502:  storageRead->relationName, 
-cace: cdbappendonlystorageread:00001503:  largeContentPosition, 
-cace: cdbappendonlystorageread:00001504:  largeContentLen, 
-cace: cdbappendonlystorageread:00001505:  -remainingLargeContentLen))); 
+cace: cdbappendonlystorageread:00000313:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00000314:  (errcode(ERRCODE_IO_ERROR), 
+cace: cdbappendonlystorageread:00000315:  errmsg("Append-only Storage Read error on segment file '%s' for relation '%s'. FileSeek offset = 0. Error code = %d (%s)", 
+cace: cdbappendonlystorageread:00000316:  filePathName, 
+cace: cdbappendonlystorageread:00000317:  storageRead->relationName, 
+cace: cdbappendonlystorageread:00000318:  (int)seekResult, 
+cace: cdbappendonlystorageread:00000319:  strerror((int)seekResult)))); 
+cace: cdbappendonlystorageread:00000379:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00000380:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00000381:  errmsg("Append-only Storage Read segment file '%s' EOF must be > 0 for relation '%s'", 
+cace: cdbappendonlystorageread:00000382:  filePathName, 
+cace: cdbappendonlystorageread:00000383:  storageRead->relationName))); 
+cace: cdbappendonlystorageread:00000390:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00000391:  (errcode_for_file_access(), 
+cace: cdbappendonlystorageread:00000392:  errmsg("Append-Only Storage Read could not open segment file '%s' for relation '%s'", 
+cace: cdbappendonlystorageread:00000393:  filePathName, 
+cace: cdbappendonlystorageread:00000394:  storageRead->relationName))); 
+cace: cdbappendonlystorageread:00000563:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00000564:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00000565:  errmsg("Unexpected end of file. Expected to read %d bytes after position " INT64_FORMAT " but found %d bytes (bufferCount " INT64_FORMAT ")\n", 
+cace: cdbappendonlystorageread:00000566:  safeWriteRemainder, 
+cace: cdbappendonlystorageread:00000567:  nextReadPosition, 
+cace: cdbappendonlystorageread:00000568:  availableLen, 
+cace: cdbappendonlystorageread:00000569:  storageRead->bufferCount))); 
+cace: cdbappendonlystorageread:00000629:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00000630:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00000631:  errmsg("Expected %d bytes and got %d bytes in table %s " 
+cace: cdbappendonlystorageread:00000632:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")\n", 
+cace: cdbappendonlystorageread:00000633:  storageRead->minimumHeaderLen, 
+cace: cdbappendonlystorageread:00000634:  availableLen, 
+cace: cdbappendonlystorageread:00000635:  storageRead->relationName, 
+cace: cdbappendonlystorageread:00000636:  storageRead->segmentFileName, 
+cace: cdbappendonlystorageread:00000637:  *headerOffsetInFile, 
+cace: cdbappendonlystorageread:00000638:  storageRead->bufferCount))); 
+cace: cdbappendonlystorageread:00000674:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00000675:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00000676:  errmsg("Expected %d bytes and found %d bytes in table %s " 
+cace: cdbappendonlystorageread:00000677:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")", 
+cace: cdbappendonlystorageread:00000678:  storageRead->minimumHeaderLen, 
+cace: cdbappendonlystorageread:00000679:  availableLen, 
+cace: cdbappendonlystorageread:00000680:  storageRead->relationName, 
+cace: cdbappendonlystorageread:00000681:  storageRead->segmentFileName, 
+cace: cdbappendonlystorageread:00000682:  *headerOffsetInFile, 
+cace: cdbappendonlystorageread:00000683:  storageRead->bufferCount))); 
+cace: cdbappendonlystorageread:00000845:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00000846:  (errmsg("Header checksum does not match. Expected 0x%X and found 0x%X ", 
+cace: cdbappendonlystorageread:00000847:  storedChecksum, 
+cace: cdbappendonlystorageread:00000848:  computedChecksum), 
+cace: cdbappendonlystorageread:00000849:  errdetail_appendonly_read_storage_block_header(storageRead), 
+cace: cdbappendonlystorageread:00000850:  errcontext_appendonly_read_storage_block(storageRead))); 
+cace: cdbappendonlystorageread:00000862:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00000863:  (errmsg("Bad append-only storage header. Header check error %d, detail '%s'", 
+cace: cdbappendonlystorageread:00000864:  (int)checkError, 
+cace: cdbappendonlystorageread:00000865:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+cace: cdbappendonlystorageread:00000866:  errdetail_appendonly_read_storage_block_header(storageRead), 
+cace: cdbappendonlystorageread:00000867:  errcontext_appendonly_read_storage_block(storageRead))); 
+cace: cdbappendonlystorageread:00000882:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00000883:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00000884:  errmsg("Expected %d bytes and found %d bytes in table %s " 
+cace: cdbappendonlystorageread:00000885:  "(segment file '%s', header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")", 
+cace: cdbappendonlystorageread:00000886:  storageRead->current.actualHeaderLen, 
+cace: cdbappendonlystorageread:00000887:  availableLen, 
+cace: cdbappendonlystorageread:00000888:  storageRead->relationName, 
+cace: cdbappendonlystorageread:00000889:  storageRead->segmentFileName, 
+cace: cdbappendonlystorageread:00000890:  storageRead->current.headerOffsetInFile, 
+cace: cdbappendonlystorageread:00000891:  storageRead->bufferCount))); 
+cace: cdbappendonlystorageread:00000920:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00000921:  (errmsg("Bad append-only storage header of type Block. Header check error %d, detail '%s'", 
+cace: cdbappendonlystorageread:00000922:  (int)checkError, 
+cace: cdbappendonlystorageread:00000923:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+cace: cdbappendonlystorageread:00000924:  errdetail_appendonly_read_smallcontent_header(storageRead), 
+cace: cdbappendonlystorageread:00000925:  errcontext_appendonly_read_storage_block(storageRead))); 
+cace: cdbappendonlystorageread:00000942:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00000943:  (errmsg("Bad append-only storage header of type LargeContentMetadata. Header check error %d, detail '%s'", 
+cace: cdbappendonlystorageread:00000944:  (int)checkError, 
+cace: cdbappendonlystorageread:00000945:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+cace: cdbappendonlystorageread:00000946:  errdetail_appendonly_read_largecontent_header(storageRead), 
+cace: cdbappendonlystorageread:00000947:  errcontext_appendonly_read_storage_block(storageRead))); 
+cace: cdbappendonlystorageread:00001124:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00001125:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00001126:  errmsg("Wrong buffer length. Expected %d byte length buffer and got %d ", 
+cace: cdbappendonlystorageread:00001127:  storageRead->current.overallBlockLen, 
+cace: cdbappendonlystorageread:00001128:  availableLen), 
+cace: cdbappendonlystorageread:00001129:  errdetail_appendonly_read_smallcontent_header(storageRead), 
+cace: cdbappendonlystorageread:00001130:  errcontext_appendonly_read_storage_block(storageRead))); 
+cace: cdbappendonlystorageread:00001144:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00001145:  (errmsg("Block checksum does not match. Expected 0x%X and found 0x%X", 
+cace: cdbappendonlystorageread:00001146:  storedChecksum, 
+cace: cdbappendonlystorageread:00001147:  computedChecksum), 
+cace: cdbappendonlystorageread:00001148:  errdetail_appendonly_read_smallcontent_header(storageRead), 
+cace: cdbappendonlystorageread:00001149:  errcontext_appendonly_read_storage_block(storageRead))); 
+cace: cdbappendonlystorageread:00001262:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00001263:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00001264:  errmsg("Unexpected end of file trying to read block %d of large content in segment file '%s' of table '%s'. " 
+cace: cdbappendonlystorageread:00001265:  "Large content metadata block is at position " INT64_FORMAT " " 
+cace: cdbappendonlystorageread:00001266:  "Large content length %d", 
+cace: cdbappendonlystorageread:00001267:  regularBlockReadCount, 
+cace: cdbappendonlystorageread:00001268:  storageRead->segmentFileName, 
+cace: cdbappendonlystorageread:00001269:  storageRead->relationName, 
+cace: cdbappendonlystorageread:00001270:  largeContentPosition, 
+cace: cdbappendonlystorageread:00001271:  largeContentLen))); 
+cace: cdbappendonlystorageread:00001278:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00001279:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00001280:  errmsg("Expected header kind 'Block' for block %d of large content in segment file '%s' of table '%s'. " 
+cace: cdbappendonlystorageread:00001281:  "Large content metadata block is at position " INT64_FORMAT " " 
+cace: cdbappendonlystorageread:00001282:  "Large content length %d", 
+cace: cdbappendonlystorageread:00001283:  regularBlockReadCount, 
+cace: cdbappendonlystorageread:00001284:  storageRead->segmentFileName, 
+cace: cdbappendonlystorageread:00001285:  storageRead->relationName, 
+cace: cdbappendonlystorageread:00001286:  largeContentPosition, 
+cace: cdbappendonlystorageread:00001287:  largeContentLen))); 
+cace: cdbappendonlystorageread:00001298:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00001299:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00001300:  errmsg("Too much data found after reading %d blocks for large content in segment file '%s' of table '%s'. " 
+cace: cdbappendonlystorageread:00001301:  "Large content metadata block is at position " INT64_FORMAT " " 
+cace: cdbappendonlystorageread:00001302:  "Large content length %d; extra data length %d", 
+cace: cdbappendonlystorageread:00001303:  regularBlockReadCount, 
+cace: cdbappendonlystorageread:00001304:  storageRead->segmentFileName, 
+cace: cdbappendonlystorageread:00001305:  storageRead->relationName, 
+cace: cdbappendonlystorageread:00001306:  largeContentPosition, 
+cace: cdbappendonlystorageread:00001307:  largeContentLen, 
+cace: cdbappendonlystorageread:00001308:  -remainingLargeContentLen))); 
+cace: cdbappendonlystorageread:00001460:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00001461:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00001462:  errmsg("Unexpected end of file trying to read block %d of large content in segment file '%s' of table '%s'. " 
+cace: cdbappendonlystorageread:00001463:  "Large content metadata block is at position " INT64_FORMAT " " 
+cace: cdbappendonlystorageread:00001464:  "Large content length %d", 
+cace: cdbappendonlystorageread:00001465:  regularBlockReadCount, 
+cace: cdbappendonlystorageread:00001466:  storageRead->segmentFileName, 
+cace: cdbappendonlystorageread:00001467:  storageRead->relationName, 
+cace: cdbappendonlystorageread:00001468:  largeContentPosition, 
+cace: cdbappendonlystorageread:00001469:  largeContentLen))); 
+cace: cdbappendonlystorageread:00001476:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00001477:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00001478:  errmsg("Expected header kind 'Block' for block %d of large content in segment file '%s' of table '%s'. " 
+cace: cdbappendonlystorageread:00001479:  "Large content metadata block is at position " INT64_FORMAT " " 
+cace: cdbappendonlystorageread:00001480:  "Large content length %d", 
+cace: cdbappendonlystorageread:00001481:  regularBlockReadCount, 
+cace: cdbappendonlystorageread:00001482:  storageRead->segmentFileName, 
+cace: cdbappendonlystorageread:00001483:  storageRead->relationName, 
+cace: cdbappendonlystorageread:00001484:  largeContentPosition, 
+cace: cdbappendonlystorageread:00001485:  largeContentLen))); 
+cace: cdbappendonlystorageread:00001496:  ereport(ERROR, 
+cace: cdbappendonlystorageread:00001497:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cace: cdbappendonlystorageread:00001498:  errmsg("Too much data found after reading %d blocks for large content in segment file '%s' of table '%s'. " 
+cace: cdbappendonlystorageread:00001499:  "Large content metadata block is at position " INT64_FORMAT " " 
+cace: cdbappendonlystorageread:00001500:  "Large content length %d; extra data length %d", 
+cace: cdbappendonlystorageread:00001501:  regularBlockReadCount, 
+cace: cdbappendonlystorageread:00001502:  storageRead->segmentFileName, 
+cace: cdbappendonlystorageread:00001503:  storageRead->relationName, 
+cace: cdbappendonlystorageread:00001504:  largeContentPosition, 
+cace: cdbappendonlystorageread:00001505:  largeContentLen, 
+cace: cdbappendonlystorageread:00001506:  -remainingLargeContentLen))); 
 aaaaa GP_IGNORE: cacf: cdbappendonlystoragewrite - ./backend/cdb/cdbappendonlystoragewrite.c
-cacf: cdbappendonlystoragewrite:00000422:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000423:  (errcode_for_file_access(), 
-cacf: cdbappendonlystoragewrite:00000424:  errmsg("Append-only Storage Write could not open segment file '%s' for relation '%s': %s", 
-cacf: cdbappendonlystoragewrite:00000425:  filePathName, 
-cacf: cdbappendonlystoragewrite:00000426:  storageWrite->relationName, 
-cacf: cdbappendonlystoragewrite:00000427:  strerror(primaryError)))); 
-cacf: cdbappendonlystoragewrite:00000443:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000444:  (errcode(ERRCODE_IO_ERROR), 
-cacf: cdbappendonlystoragewrite:00000445:  errmsg("Append-only Storage Write error on segment file '%s' for relation '%s'. FileSeek offset = " INT64_FORMAT ". Error code = %d (%s)", 
-cacf: cdbappendonlystoragewrite:00000446:  filePathName, 
-cacf: cdbappendonlystoragewrite:00000447:  storageWrite->relationName, 
-cacf: cdbappendonlystoragewrite:00000448:  logicalEof, 
-cacf: cdbappendonlystoragewrite:00000449:  (int)seekResult, 
-cacf: cdbappendonlystoragewrite:00000450:  strerror((int)seekResult)))); 
-cacf: cdbappendonlystoragewrite:00000539:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000540:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cacf: cdbappendonlystoragewrite:00000541:  errmsg("We do not expect files to be have a maximum length"))); 
-cacf: cdbappendonlystoragewrite:00000621:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00000622:  (errcode_for_file_access(), 
-cacf: cdbappendonlystoragewrite:00000623:  errmsg("Could not flush (fsync) Append-Only segment file '%s' to disk for relation '%s': %s", 
-cacf: cdbappendonlystoragewrite:00000624:  storageWrite->segmentFileName, 
-cacf: cdbappendonlystoragewrite:00000625:  storageWrite->relationName, 
-cacf: cdbappendonlystoragewrite:00000626:  strerror(primaryError)))); 
-cacf: cdbappendonlystoragewrite:00000999:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001000:  (errmsg("Verify block during write found header checksum does not match. Expected 0x%X and found 0x%X", 
-cacf: cdbappendonlystoragewrite:00001001:  storedChecksum, 
-cacf: cdbappendonlystoragewrite:00001002:  computedChecksum), 
-cacf: cdbappendonlystoragewrite:00001003:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001004:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001016:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001017:  (errmsg("Verify block during write found bad append-only storage header. Header check error %d, detail '%s'", 
-cacf: cdbappendonlystoragewrite:00001018:  (int)checkError, 
-cacf: cdbappendonlystoragewrite:00001019:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
-cacf: cdbappendonlystoragewrite:00001020:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001021:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001046:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001047:  (errmsg("Verify block during write found bad append-only storage block header. " 
-cacf: cdbappendonlystoragewrite:00001048:  "Header check error %d, detail '%s'", 
-cacf: cdbappendonlystoragewrite:00001049:  (int)checkError, 
-cacf: cdbappendonlystoragewrite:00001050:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
-cacf: cdbappendonlystoragewrite:00001051:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001052:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001055:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001056:  (errmsg("Verify block during write found append-only storage block header. " 
-cacf: cdbappendonlystoragewrite:00001057:  "DataLen %d does not equal expected length %d, ", 
-cacf: cdbappendonlystoragewrite:00001058:  uncompressedLen, 
-cacf: cdbappendonlystoragewrite:00001059:  expectedUncompressedLen), 
-cacf: cdbappendonlystoragewrite:00001060:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001061:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001065:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001066:  (errmsg("Verify block during write found append-only storage block header. " 
-cacf: cdbappendonlystoragewrite:00001067:  "CompressedLen %d does not equal expected length %d", 
-cacf: cdbappendonlystoragewrite:00001068:  compressedLen, 
-cacf: cdbappendonlystoragewrite:00001069:  expectedCompressedLen), 
-cacf: cdbappendonlystoragewrite:00001070:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001071:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001078:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001079:  (errmsg("Verify block during write found append-only storage block header. " 
-cacf: cdbappendonlystoragewrite:00001080:  "ExecutorBlockKind %d does not equal expected value %d.", 
-cacf: cdbappendonlystoragewrite:00001081:  executorBlockKind, 
-cacf: cdbappendonlystoragewrite:00001082:  expectedExecutorBlockKind), 
-cacf: cdbappendonlystoragewrite:00001083:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001084:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00000433:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000434:  (errcode_for_file_access(), 
+cacf: cdbappendonlystoragewrite:00000435:  errmsg("Append-only Storage Write could not open segment file '%s' for relation '%s': %s", 
+cacf: cdbappendonlystoragewrite:00000436:  filePathName, 
+cacf: cdbappendonlystoragewrite:00000437:  storageWrite->relationName, 
+cacf: cdbappendonlystoragewrite:00000438:  strerror(primaryError)))); 
+cacf: cdbappendonlystoragewrite:00000454:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000455:  (errcode(ERRCODE_IO_ERROR), 
+cacf: cdbappendonlystoragewrite:00000456:  errmsg("Append-only Storage Write error on segment file '%s' for relation '%s'. FileSeek offset = " INT64_FORMAT ". Error code = %d (%s)", 
+cacf: cdbappendonlystoragewrite:00000457:  filePathName, 
+cacf: cdbappendonlystoragewrite:00000458:  storageWrite->relationName, 
+cacf: cdbappendonlystoragewrite:00000459:  logicalEof, 
+cacf: cdbappendonlystoragewrite:00000460:  (int)seekResult, 
+cacf: cdbappendonlystoragewrite:00000461:  strerror((int)seekResult)))); 
+cacf: cdbappendonlystoragewrite:00000550:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000551:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cacf: cdbappendonlystoragewrite:00000552:  errmsg("We do not expect files to be have a maximum length"))); 
+cacf: cdbappendonlystoragewrite:00000632:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00000633:  (errcode_for_file_access(), 
+cacf: cdbappendonlystoragewrite:00000634:  errmsg("Could not flush (fsync) Append-Only segment file '%s' to disk for relation '%s': %s", 
+cacf: cdbappendonlystoragewrite:00000635:  storageWrite->segmentFileName, 
+cacf: cdbappendonlystoragewrite:00000636:  storageWrite->relationName, 
+cacf: cdbappendonlystoragewrite:00000637:  strerror(primaryError)))); 
+cacf: cdbappendonlystoragewrite:00001010:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001011:  (errmsg("Verify block during write found header checksum does not match. Expected 0x%X and found 0x%X", 
+cacf: cdbappendonlystoragewrite:00001012:  storedChecksum, 
+cacf: cdbappendonlystoragewrite:00001013:  computedChecksum), 
+cacf: cdbappendonlystoragewrite:00001014:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001015:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001027:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001028:  (errmsg("Verify block during write found bad append-only storage header. Header check error %d, detail '%s'", 
+cacf: cdbappendonlystoragewrite:00001029:  (int)checkError, 
+cacf: cdbappendonlystoragewrite:00001030:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+cacf: cdbappendonlystoragewrite:00001031:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001032:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001057:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001058:  (errmsg("Verify block during write found bad append-only storage block header. " 
+cacf: cdbappendonlystoragewrite:00001059:  "Header check error %d, detail '%s'", 
+cacf: cdbappendonlystoragewrite:00001060:  (int)checkError, 
+cacf: cdbappendonlystoragewrite:00001061:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+cacf: cdbappendonlystoragewrite:00001062:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001063:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001066:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001067:  (errmsg("Verify block during write found append-only storage block header. " 
+cacf: cdbappendonlystoragewrite:00001068:  "DataLen %d does not equal expected length %d, ", 
+cacf: cdbappendonlystoragewrite:00001069:  uncompressedLen, 
+cacf: cdbappendonlystoragewrite:00001070:  expectedUncompressedLen), 
+cacf: cdbappendonlystoragewrite:00001071:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001072:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001076:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001077:  (errmsg("Verify block during write found append-only storage block header. " 
+cacf: cdbappendonlystoragewrite:00001078:  "CompressedLen %d does not equal expected length %d", 
+cacf: cdbappendonlystoragewrite:00001079:  compressedLen, 
+cacf: cdbappendonlystoragewrite:00001080:  expectedCompressedLen), 
+cacf: cdbappendonlystoragewrite:00001081:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001082:  errcontext_appendonly_write_storage_block(storageWrite))); 
 cacf: cdbappendonlystoragewrite:00001089:  ereport(ERROR, 
 cacf: cdbappendonlystoragewrite:00001090:  (errmsg("Verify block during write found append-only storage block header. " 
-cacf: cdbappendonlystoragewrite:00001091:  "RowCount %d does not equal expected value %d", 
-cacf: cdbappendonlystoragewrite:00001092:  rowCount, 
-cacf: cdbappendonlystoragewrite:00001093:  expectedRowCount), 
+cacf: cdbappendonlystoragewrite:00001091:  "ExecutorBlockKind %d does not equal expected value %d.", 
+cacf: cdbappendonlystoragewrite:00001092:  executorBlockKind, 
+cacf: cdbappendonlystoragewrite:00001093:  expectedExecutorBlockKind), 
 cacf: cdbappendonlystoragewrite:00001094:  errdetail_appendonly_write_storage_block_header(storageWrite), 
 cacf: cdbappendonlystoragewrite:00001095:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001127:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001128:  (errmsg("Verify block during write found decompress did not produce the exact same bits passed to compress! " 
-cacf: cdbappendonlystoragewrite:00001129:  "Memcmp result %d", 
-cacf: cdbappendonlystoragewrite:00001130:  test), 
-cacf: cdbappendonlystoragewrite:00001131:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001132:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001157:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001158:  (errmsg("Bad append-only storage header of type LargeContent. Header check error %d, detail '%s'", 
-cacf: cdbappendonlystoragewrite:00001159:  (int)checkError, 
-cacf: cdbappendonlystoragewrite:00001160:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
-cacf: cdbappendonlystoragewrite:00001161:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001162:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001184:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001185:  (errmsg("Verify block during write found VarBlock is not valid " 
-cacf: cdbappendonlystoragewrite:00001186:  "Valid block check error %d, detail '%s'", 
-cacf: cdbappendonlystoragewrite:00001187:  varBlockCheckError, 
-cacf: cdbappendonlystoragewrite:00001188:  VarBlockGetCheckErrorStr()), 
-cacf: cdbappendonlystoragewrite:00001189:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001190:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001203:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001204:  (errmsg("Verify block during write found row count %d in append-only storage header does not match VarBlock item count %d", 
-cacf: cdbappendonlystoragewrite:00001205:  rowCount, 
-cacf: cdbappendonlystoragewrite:00001206:  readerItemCount), 
-cacf: cdbappendonlystoragewrite:00001207:  errdetail_appendonly_write_storage_block_header(storageWrite), 
-cacf: cdbappendonlystoragewrite:00001208:  errcontext_appendonly_write_storage_block(storageWrite))); 
-cacf: cdbappendonlystoragewrite:00001236:  ereport(ERROR, 
-cacf: cdbappendonlystoragewrite:00001237:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-cacf: cdbappendonlystoragewrite:00001238:  errmsg("We do not expect files to be have a maximum length"), 
-cacf: cdbappendonlystoragewrite:00001239:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001100:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001101:  (errmsg("Verify block during write found append-only storage block header. " 
+cacf: cdbappendonlystoragewrite:00001102:  "RowCount %d does not equal expected value %d", 
+cacf: cdbappendonlystoragewrite:00001103:  rowCount, 
+cacf: cdbappendonlystoragewrite:00001104:  expectedRowCount), 
+cacf: cdbappendonlystoragewrite:00001105:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001106:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001137:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001138:  (errmsg("Verify block during write found decompress did not produce the exact same bits passed to compress! " 
+cacf: cdbappendonlystoragewrite:00001139:  "Memcmp result %d", 
+cacf: cdbappendonlystoragewrite:00001140:  test), 
+cacf: cdbappendonlystoragewrite:00001141:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001142:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001167:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001168:  (errmsg("Bad append-only storage header of type LargeContent. Header check error %d, detail '%s'", 
+cacf: cdbappendonlystoragewrite:00001169:  (int)checkError, 
+cacf: cdbappendonlystoragewrite:00001170:  AppendOnlyStorageFormat_GetHeaderCheckErrorStr()), 
+cacf: cdbappendonlystoragewrite:00001171:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001172:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001194:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001195:  (errmsg("Verify block during write found VarBlock is not valid " 
+cacf: cdbappendonlystoragewrite:00001196:  "Valid block check error %d, detail '%s'", 
+cacf: cdbappendonlystoragewrite:00001197:  varBlockCheckError, 
+cacf: cdbappendonlystoragewrite:00001198:  VarBlockGetCheckErrorStr()), 
+cacf: cdbappendonlystoragewrite:00001199:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001200:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001213:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001214:  (errmsg("Verify block during write found row count %d in append-only storage header does not match VarBlock item count %d", 
+cacf: cdbappendonlystoragewrite:00001215:  rowCount, 
+cacf: cdbappendonlystoragewrite:00001216:  readerItemCount), 
+cacf: cdbappendonlystoragewrite:00001217:  errdetail_appendonly_write_storage_block_header(storageWrite), 
+cacf: cdbappendonlystoragewrite:00001218:  errcontext_appendonly_write_storage_block(storageWrite))); 
+cacf: cdbappendonlystoragewrite:00001246:  ereport(ERROR, 
+cacf: cdbappendonlystoragewrite:00001247:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+cacf: cdbappendonlystoragewrite:00001248:  errmsg("We do not expect files to be have a maximum length"), 
+cacf: cdbappendonlystoragewrite:00001249:  errcontext_appendonly_write_storage_block(storageWrite))); 
 aaaaa GP_IGNORE: caaj: cdbbackup - ./backend/cdb/cdbbackup.c
 caaj: cdbbackup:00000143:  ereport(ERROR, 
 caaj: cdbbackup:00000144:  (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
@@ -3762,13 +3762,13 @@ caai: cdbllize:00000229:  "statement is not yet supported in "
 caai: cdbllize:00000230:  "this version of " PACKAGE_NAME ".", 
 caai: cdbllize:00000231:  cmd) 
 caai: cdbllize:00000232:  )); 
-caai: cdbllize:00000680:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
-caai: cdbllize:00000681:  errmsg("Cannot parallelize that query yet."), 
-caai: cdbllize:00000682:  errdetail("In a subquery FROM clause, a " 
-caai: cdbllize:00000683:  "function invocation cannot contain " 
-caai: cdbllize:00000684:  "a correlated reference."), 
-caai: cdbllize:00000685:  errOmitLocation(true) 
-caai: cdbllize:00000686:  )); 
+caai: cdbllize:00000714:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+caai: cdbllize:00000715:  errmsg("Cannot parallelize that query yet."), 
+caai: cdbllize:00000716:  errdetail("In a subquery FROM clause, a " 
+caai: cdbllize:00000717:  "function invocation cannot contain " 
+caai: cdbllize:00000718:  "a correlated reference."), 
+caai: cdbllize:00000719:  errOmitLocation(true) 
+caai: cdbllize:00000720:  )); 
 aaaaa GP_IGNORE: caba: cdblogsync - ./backend/cdb/cdblogsync.c
 caba: cdblogsync:00000081:  ereport(ERROR, 
 caba: cdblogsync:00000082:  (errcode_for_file_access(), 
@@ -13696,20 +13696,12 @@ gabb: gpxcompress:00000038:  "level %d", comp_level)));
 gabb: gpxcompress:00000043:  ereport(ERROR, 
 gabb: gpxcompress:00000044:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 gabb: gpxcompress:00000045:  errmsg("Found undefined compressor %s", comp_str))); 
-gabb: gpxcompress:00000200:  ereport(ERROR, 
-gabb: gpxcompress:00000201:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-gabb: gpxcompress:00000202:  errmsg("Don't have ZLIB on the system!"))); 
+gabb: gpxcompress:00000201:  ereport(ERROR, 
+gabb: gpxcompress:00000202:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+gabb: gpxcompress:00000203:  errmsg("Don't have ZLIB on the system!"))); 
 gabb: gpxcompress:00000327:  ereport(ERROR, 
 gabb: gpxcompress:00000328:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 gabb: gpxcompress:00000329:  errmsg("Don't have ZLIB on the system!"))); 
-aaaaa GP_IGNORE: qaba: quicklzone - ./backend/storage/file/quicklz1.c
-qaba: quicklzone:00000015:  ereport(ERROR, 
-qaba: quicklzone:00000016:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-qaba: quicklzone:00000017:  errmsg("quicklz1.c and quicklz1.h have different versions"))); 
-aaaaa GP_IGNORE: qabc: quicklzthree - ./backend/storage/file/quicklz3.c
-qabc: quicklzthree:00000015:  ereport(ERROR, 
-qabc: quicklzthree:00000016:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-qabc: quicklzthree:00000017:  errmsg("quicklz3.c and quicklz3.h have different versions"))); 
 aaaaa GP_IGNORE: faaj: freespace - ./backend/storage/freespace/freespace.c
 faaj: freespace:00000188:  ereport(FATAL, 
 faaj: freespace:00000189:  (errcode(ERRCODE_OUT_OF_MEMORY), 
