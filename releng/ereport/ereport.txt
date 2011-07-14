@@ -2714,22 +2714,22 @@ cabh: cdbdtxcontextinfo:00000524:  ereport(ERROR,
 cabh: cdbdtxcontextinfo:00000525:  (errcode(ERRCODE_OUT_OF_MEMORY), 
 cabh: cdbdtxcontextinfo:00000526:  errmsg("out of memory"))); 
 aaaaa GP_IGNORE: caba: cdbexplain - ./backend/cdb/cdbexplain.c
-caba: cdbexplain:00000484:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caba: cdbexplain:00000485:  errmsg_internal("Invalid execution statistics " 
-caba: cdbexplain:00000486:  "response returned from seg%d. " 
-caba: cdbexplain:00000487:  "length=%d", 
-caba: cdbexplain:00000488:  hdr->segindex, 
-caba: cdbexplain:00000489:  statcell->len), 
-caba: cdbexplain:00000490:  errhint("Please verify that all instances are using " 
-caba: cdbexplain:00000491:  "the correct %s software version.", 
-caba: cdbexplain:00000492:  PACKAGE_NAME) 
-caba: cdbexplain:00000493:  )); 
-caba: cdbexplain:00000503:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caba: cdbexplain:00000504:  errmsg("Invalid execution statistics " 
-caba: cdbexplain:00000505:  "received stats node-count mismatch: cdbexplain_recvExecStats() ctx.nStatInst %d hdr->nInst %d", ctx.nStatInst, hdr->nInst), 
-caba: cdbexplain:00000506:  errhint("Please verify that all instances are using " 
-caba: cdbexplain:00000507:  "the correct %s software version.", 
-caba: cdbexplain:00000508:  PACKAGE_NAME))); 
+caba: cdbexplain:00000485:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caba: cdbexplain:00000486:  errmsg_internal("Invalid execution statistics " 
+caba: cdbexplain:00000487:  "response returned from seg%d. " 
+caba: cdbexplain:00000488:  "length=%d", 
+caba: cdbexplain:00000489:  hdr->segindex, 
+caba: cdbexplain:00000490:  statcell->len), 
+caba: cdbexplain:00000491:  errhint("Please verify that all instances are using " 
+caba: cdbexplain:00000492:  "the correct %s software version.", 
+caba: cdbexplain:00000493:  PACKAGE_NAME) 
+caba: cdbexplain:00000494:  )); 
+caba: cdbexplain:00000504:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caba: cdbexplain:00000505:  errmsg("Invalid execution statistics " 
+caba: cdbexplain:00000506:  "received stats node-count mismatch: cdbexplain_recvExecStats() ctx.nStatInst %d hdr->nInst %d", ctx.nStatInst, hdr->nInst), 
+caba: cdbexplain:00000507:  errhint("Please verify that all instances are using " 
+caba: cdbexplain:00000508:  "the correct %s software version.", 
+caba: cdbexplain:00000509:  PACKAGE_NAME))); 
 aaaaa GP_IGNORE: caba: cdbfilerep - ./backend/cdb/cdbfilerep.c
 caba: cdbfilerep:00000499:  ereport(ERROR, 
 caba: cdbfilerep:00000500:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -3704,14 +3704,14 @@ caag: cdbfts:00001317:  QDMirroringStateToString(state))));
 caag: cdbfts:00001412:  ereport(ERROR, (errmsg_internal("Unexpected master mirror state '%s'", 
 caag: cdbfts:00001413:  QDMirroringStateToString(state)))); 
 aaaaa GP_IGNORE: caah: cdbgang - ./backend/cdb/cdbgang.c
-caah: cdbgang:00000358:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: cdbgang:00000359:  errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount), 
-caah: cdbgang:00000360:  errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread), 
-caah: cdbgang:00000361:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
-caah: cdbgang:00000562:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caah: cdbgang:00000563:  errmsg("failed to acquire resources on one or more segments"))); 
-caah: cdbgang:00001526:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: cdbgang:00001527:  errmsg_internal("problem in allocateGang"))); 
+caah: cdbgang:00000360:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
+caah: cdbgang:00000361:  errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount), 
+caah: cdbgang:00000362:  errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread), 
+caah: cdbgang:00000363:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
+caah: cdbgang:00000564:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caah: cdbgang:00000565:  errmsg("failed to acquire resources on one or more segments"))); 
+caah: cdbgang:00001515:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caah: cdbgang:00001516:  errmsg_internal("problem in allocateGang"))); 
 aaaaa GP_IGNORE: caai: cdbgroup - ./backend/cdb/cdbgroup.c
 caai: cdbgroup:00000831:  ereport(ERROR, 
 caai: cdbgroup:00000832:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
@@ -3754,31 +3754,19 @@ caah: cdblink:00000402:  errSendAlert(true),
 caah: cdblink:00000403:  errmsg("error received sending data to standby master: %s", msg), 
 caah: cdblink:00000404:  errdetail("The Greenplum Database is no longer highly available"))); 
 aaaaa GP_IGNORE: caai: cdbllize - ./backend/cdb/cdbllize.c
-caai: cdbllize:00000232:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED), 
-caai: cdbllize:00000233:  errmsg("The RETURNING clause of the %s " 
-caai: cdbllize:00000234:  "statement is not yet supported in " 
-caai: cdbllize:00000235:  "this version of " PACKAGE_NAME ".", 
-caai: cdbllize:00000236:  cmd) 
-caai: cdbllize:00000237:  )); 
-caai: cdbllize:00000267:  ereport(ERROR, ( 
-caai: cdbllize:00000268:  errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED), 
-caai: cdbllize:00000269:  errmsg("%s", notyet), 
-caai: cdbllize:00000270:  errdetail("The query contains a correlated subquery."), 
-caai: cdbllize:00000271:  errOmitLocation(true) 
-caai: cdbllize:00000272:  )); 
-caai: cdbllize:00000276:  ereport(ERROR, ( 
-caai: cdbllize:00000277:  errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED), 
-caai: cdbllize:00000278:  errmsg("%s", notyet), 
-caai: cdbllize:00000279:  errdetail("The query contains a multi-row subquery."), 
-caai: cdbllize:00000280:  errOmitLocation(true) 
-caai: cdbllize:00000281:  )); 
-caai: cdbllize:00000447:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
-caai: cdbllize:00000448:  errmsg("Cannot parallelize that query yet."), 
-caai: cdbllize:00000449:  errdetail("In a subquery FROM clause, a " 
-caai: cdbllize:00000450:  "function invocation cannot contain " 
-caai: cdbllize:00000451:  "a correlated reference."), 
-caai: cdbllize:00000452:  errOmitLocation(true) 
-caai: cdbllize:00000453:  )); 
+caai: cdbllize:00000227:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED), 
+caai: cdbllize:00000228:  errmsg("The RETURNING clause of the %s " 
+caai: cdbllize:00000229:  "statement is not yet supported in " 
+caai: cdbllize:00000230:  "this version of " PACKAGE_NAME ".", 
+caai: cdbllize:00000231:  cmd) 
+caai: cdbllize:00000232:  )); 
+caai: cdbllize:00000680:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+caai: cdbllize:00000681:  errmsg("Cannot parallelize that query yet."), 
+caai: cdbllize:00000682:  errdetail("In a subquery FROM clause, a " 
+caai: cdbllize:00000683:  "function invocation cannot contain " 
+caai: cdbllize:00000684:  "a correlated reference."), 
+caai: cdbllize:00000685:  errOmitLocation(true) 
+caai: cdbllize:00000686:  )); 
 aaaaa GP_IGNORE: caba: cdblogsync - ./backend/cdb/cdblogsync.c
 caba: cdblogsync:00000081:  ereport(ERROR, 
 caba: cdblogsync:00000082:  (errcode_for_file_access(), 
@@ -4039,27 +4027,27 @@ cabj: cdbmirroredflatfile:00001311:  startOffset,
 cabj: cdbmirroredflatfile:00001312:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
 cabj: cdbmirroredflatfile:00001313:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: caaj: cdbmutate - ./backend/cdb/cdbmutate.c
-caaj: cdbmutate:00000414:  ereport(NOTICE, 
-caaj: cdbmutate:00000415:  (errcode(ERRCODE_SUCCESSFUL_COMPLETION), 
-caaj: cdbmutate:00000416:  errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) " 
-caaj: cdbmutate:00000417:  "named '%s' as the Greenplum Database data distribution key for this " 
-caaj: cdbmutate:00000418:  "table. ", columns), 
-caaj: cdbmutate:00000419:  errhint("The 'DISTRIBUTED BY' clause determines the distribution of data." 
-caaj: cdbmutate:00000420:  " Make sure column(s) chosen are the optimal data distribution key to minimize skew."), 
-caaj: cdbmutate:00000421:  errOmitLocation(true))); 
-caaj: cdbmutate:00000438:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
-caaj: cdbmutate:00000439:  errmsg("Cannot parallelize that SELECT INTO yet") 
-caaj: cdbmutate:00000440:  )); 
-caaj: cdbmutate:00000680:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
-caaj: cdbmutate:00000681:  errmsg("Cannot parallelize that INSERT yet"))); 
-caaj: cdbmutate:00000697:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
-caaj: cdbmutate:00000698:  errmsg("Cannot parallelize that INSERT yet"))); 
-caaj: cdbmutate:00000719:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
-caaj: cdbmutate:00000720:  errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns"), 
-caaj: cdbmutate:00000721:  errOmitLocation(true))); 
-caaj: cdbmutate:00001191:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caaj: cdbmutate:00001192:  errmsg("no equality operator for typid %d", 
-caaj: cdbmutate:00001193:  typeoid))); 
+caaj: cdbmutate:00000407:  ereport(NOTICE, 
+caaj: cdbmutate:00000408:  (errcode(ERRCODE_SUCCESSFUL_COMPLETION), 
+caaj: cdbmutate:00000409:  errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) " 
+caaj: cdbmutate:00000410:  "named '%s' as the Greenplum Database data distribution key for this " 
+caaj: cdbmutate:00000411:  "table. ", columns), 
+caaj: cdbmutate:00000412:  errhint("The 'DISTRIBUTED BY' clause determines the distribution of data." 
+caaj: cdbmutate:00000413:  " Make sure column(s) chosen are the optimal data distribution key to minimize skew."), 
+caaj: cdbmutate:00000414:  errOmitLocation(true))); 
+caaj: cdbmutate:00000431:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+caaj: cdbmutate:00000432:  errmsg("Cannot parallelize that SELECT INTO yet") 
+caaj: cdbmutate:00000433:  )); 
+caaj: cdbmutate:00000673:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+caaj: cdbmutate:00000674:  errmsg("Cannot parallelize that INSERT yet"))); 
+caaj: cdbmutate:00000690:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+caaj: cdbmutate:00000691:  errmsg("Cannot parallelize that INSERT yet"))); 
+caaj: cdbmutate:00000712:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+caaj: cdbmutate:00000713:  errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns"), 
+caaj: cdbmutate:00000714:  errOmitLocation(true))); 
+caaj: cdbmutate:00001181:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caaj: cdbmutate:00001182:  errmsg("no equality operator for typid %d", 
+caaj: cdbmutate:00001183:  typeoid))); 
 aaaaa GP_IGNORE: caba: cdboidsync - ./backend/cdb/cdboidsync.c
 caba: cdboidsync:00000061:  ereport(ERROR, (errmsg("pg_highest_oid error (gathered %d results from cmd '%s')", resultCount, buffer.data), 
 caba: cdboidsync:00000062:  errdetail("%s", errbuf.data))); 
@@ -4544,14 +4532,14 @@ caah: cdbsreh:00000671:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 caah: cdbsreh:00000672:  errmsg("Segment reject limit in PERCENT " 
 caah: cdbsreh:00000673:  "must be between 1 and 100 (got %d)", rejectlimit))); 
 aaaaa GP_IGNORE: caba: cdbsubplan - ./backend/cdb/cdbsubplan.c
-caba: cdbsubplan:00000256:  ereport(ERROR, 
-caba: cdbsubplan:00000257:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caba: cdbsubplan:00000258:  errmsg("no parameter found for initplan subquery"))); 
-caba: cdbsubplan:00000325:  ereport(ERROR, 
-caba: cdbsubplan:00000326:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-caba: cdbsubplan:00000327:  errmsg("Failed to locate datatype for paramid %d", 
-caba: cdbsubplan:00000328:  paramid 
-caba: cdbsubplan:00000329:  ))); 
+caba: cdbsubplan:00000254:  ereport(ERROR, 
+caba: cdbsubplan:00000255:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caba: cdbsubplan:00000256:  errmsg("no parameter found for initplan subquery"))); 
+caba: cdbsubplan:00000323:  ereport(ERROR, 
+caba: cdbsubplan:00000324:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+caba: cdbsubplan:00000325:  errmsg("Failed to locate datatype for paramid %d", 
+caba: cdbsubplan:00000326:  paramid 
+caba: cdbsubplan:00000327:  ))); 
 aaaaa GP_IGNORE: cabc: cdbsubselect - ./backend/cdb/cdbsubselect.c
 cabc: cdbsubselect:00000222:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET), 
 cabc: cdbsubselect:00000223:  errmsg("Set-returning function in EXISTS subquery: not yet implemented") 
@@ -4623,15 +4611,15 @@ caah: cdbutil:00000362:  (errcode(ERRCODE_DATA_EXCEPTION),
 caah: cdbutil:00000363:  errmsg("Content values not valid in %s table. They must be in the range 0 to %d inclusive", 
 caah: cdbutil:00000364:  GpSegmentConfigRelationName, getgpsegmentCount() - 1))); 
 aaaaa GP_IGNORE: caah: cdbvars - ./backend/cdb/cdbvars.c
-caah: cdbvars:00000994:  ereport(ERROR, 
-caah: cdbvars:00000995:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-caah: cdbvars:00000996:  errmsg("must be superuser to set gp_enable_gpperfmon"))); 
-caah: cdbvars:00001014:  ereport(ERROR, 
-caah: cdbvars:00001015:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-caah: cdbvars:00001016:  errmsg("must be superuser to set gp_gpperfmon_send_interval"))); 
-caah: cdbvars:00001071:  ereport(WARNING, 
-caah: cdbvars:00001072:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-caah: cdbvars:00001073:  errmsg("gp_hash_index is deprecated and has no effect"))); 
+caah: cdbvars:00000978:  ereport(ERROR, 
+caah: cdbvars:00000979:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caah: cdbvars:00000980:  errmsg("must be superuser to set gp_enable_gpperfmon"))); 
+caah: cdbvars:00000998:  ereport(ERROR, 
+caah: cdbvars:00000999:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caah: cdbvars:00001000:  errmsg("must be superuser to set gp_gpperfmon_send_interval"))); 
+caah: cdbvars:00001055:  ereport(WARNING, 
+caah: cdbvars:00001056:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+caah: cdbvars:00001057:  errmsg("gp_hash_index is deprecated and has no effect"))); 
 aaaaa GP_IGNORE: cabb: cdbworkfile - ./backend/cdb/cdbworkfile.c
 cabb: cdbworkfile:00000113:  ereport(ERROR, (errmsg("Workfile I/O error: %m."), 
 cabb: cdbworkfile:00000114:  errdetail("Failed to seek to offset " UINT64_FORMAT 
@@ -4718,15 +4706,15 @@ iaaj: icxcommon:00000704:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ER
 iaaj: icxcommon:00000705:  errmsg("Interconnect Error: Could not set seqserver socket" 
 iaaj: icxcommon:00000706:  "to non-blocking mode."), 
 iaaj: icxcommon:00000707:  errdetail("%m%s sockfd=%d", "fcntl", savedSeqServerFd))); 
-iaaj: icxcommon:00000861:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaaj: icxcommon:00000862:  errmsg("Interconnect Error: A HTAB entry for motion node %d already exists.", motNodeID), 
-iaaj: icxcommon:00000863:  errdetail("conns %p numConns %d first sock %d highreadsock %d", pEntry->conns, pEntry->numConns, pEntry->conns[0].sockfd, pEntry->highReadSock))); 
-iaaj: icxcommon:00000920:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaaj: icxcommon:00000921:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. (size %d)", 
-iaaj: icxcommon:00000922:  motNodeID, transportStates->size))); 
-iaaj: icxcommon:00000926:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaaj: icxcommon:00000927:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. State not valid", 
-iaaj: icxcommon:00000928:  motNodeID))); 
+iaaj: icxcommon:00000862:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaaj: icxcommon:00000863:  errmsg("Interconnect Error: A HTAB entry for motion node %d already exists.", motNodeID), 
+iaaj: icxcommon:00000864:  errdetail("conns %p numConns %d first sock %d highreadsock %d", pEntry->conns, pEntry->numConns, pEntry->conns[0].sockfd, pEntry->highReadSock))); 
+iaaj: icxcommon:00000921:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaaj: icxcommon:00000922:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. (size %d)", 
+iaaj: icxcommon:00000923:  motNodeID, transportStates->size))); 
+iaaj: icxcommon:00000927:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaaj: icxcommon:00000928:  errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. State not valid", 
+iaaj: icxcommon:00000929:  motNodeID))); 
 aaaaa GP_IGNORE: iaag: icxtcp - ./backend/cdb/motion/ic_tcp.c
 iaag: icxtcp:00000247:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 iaag: icxtcp:00000248:  errmsg("Interconnect Error: Could not set up tcp listener socket."), 
@@ -4864,35 +4852,35 @@ iaag: icxtcp:00001193:  "fcntl(O_NONBLOCK)",
 iaag: icxtcp:00001194:  newsockfd, 
 iaag: icxtcp:00001195:  conn->remoteHostAndPort, 
 iaag: icxtcp:00001196:  conn->localHostAndPort))); 
-iaag: icxtcp:00001461:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxtcp:00001462:  errmsg("Interconnect timeout: Unable to " 
-iaag: icxtcp:00001463:  "complete setup of all connections " 
-iaag: icxtcp:00001464:  "within time limit."), 
-iaag: icxtcp:00001465:  errdetail("Completed %d of %d incoming and " 
-iaag: icxtcp:00001466:  "%d of %d outgoing connections. " 
-iaag: icxtcp:00001467:  "gp_interconnect_setup_timeout = %d " 
-iaag: icxtcp:00001468:  "seconds.", 
-iaag: icxtcp:00001469:  incoming_count, expectedTotalIncoming, 
-iaag: icxtcp:00001470:  outgoing_count, expectedTotalOutgoing, 
-iaag: icxtcp:00001471:  interconnect_setup_timeout) 
-iaag: icxtcp:00001472:  )); 
-iaag: icxtcp:00001586:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxtcp:00001587:  errmsg("Interconnect error: %m%s", "select"))); 
-iaag: icxtcp:00002452:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxtcp:00002453:  errmsg("Interconnect error receiving an incoming packet."), 
-iaag: icxtcp:00002454:  errdetail("%m%s", "select"))); 
-iaag: icxtcp:00002649:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxtcp:00002650:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxtcp:00002651:  errdetail("error during select() call (error:%d).\n" 
-iaag: icxtcp:00002652:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxtcp:00002653:  errno, conn->remoteContentId, 
-iaag: icxtcp:00002654:  conn->remoteHostAndPort))); 
-iaag: icxtcp:00002686:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxtcp:00002687:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxtcp:00002688:  errdetail("error during send() call (error:%d).\n" 
-iaag: icxtcp:00002689:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxtcp:00002690:  errno, conn->remoteContentId, 
-iaag: icxtcp:00002691:  conn->remoteHostAndPort))); 
+iaag: icxtcp:00001462:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxtcp:00001463:  errmsg("Interconnect timeout: Unable to " 
+iaag: icxtcp:00001464:  "complete setup of all connections " 
+iaag: icxtcp:00001465:  "within time limit."), 
+iaag: icxtcp:00001466:  errdetail("Completed %d of %d incoming and " 
+iaag: icxtcp:00001467:  "%d of %d outgoing connections. " 
+iaag: icxtcp:00001468:  "gp_interconnect_setup_timeout = %d " 
+iaag: icxtcp:00001469:  "seconds.", 
+iaag: icxtcp:00001470:  incoming_count, expectedTotalIncoming, 
+iaag: icxtcp:00001471:  outgoing_count, expectedTotalOutgoing, 
+iaag: icxtcp:00001472:  interconnect_setup_timeout) 
+iaag: icxtcp:00001473:  )); 
+iaag: icxtcp:00001587:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxtcp:00001588:  errmsg("Interconnect error: %m%s", "select"))); 
+iaag: icxtcp:00002453:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxtcp:00002454:  errmsg("Interconnect error receiving an incoming packet."), 
+iaag: icxtcp:00002455:  errdetail("%m%s", "select"))); 
+iaag: icxtcp:00002650:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxtcp:00002651:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxtcp:00002652:  errdetail("error during select() call (error:%d).\n" 
+iaag: icxtcp:00002653:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxtcp:00002654:  errno, conn->remoteContentId, 
+iaag: icxtcp:00002655:  conn->remoteHostAndPort))); 
+iaag: icxtcp:00002687:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxtcp:00002688:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxtcp:00002689:  errdetail("error during send() call (error:%d).\n" 
+iaag: icxtcp:00002690:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxtcp:00002691:  errno, conn->remoteContentId, 
+iaag: icxtcp:00002692:  conn->remoteHostAndPort))); 
 aaaaa GP_IGNORE: iaag: icxudp - ./backend/cdb/motion/ic_udp.c
 iaag: icxudp:00000438:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 iaag: icxudp:00000439:  errmsg("Interconnect Error: Could not set up udp listener socket."), 
@@ -4926,61 +4914,61 @@ iaag: icxudp:00001269:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR
 iaag: icxudp:00001270:  errmsg("Interconnect error setting up outgoing " 
 iaag: icxudp:00001271:  "connection."), 
 iaag: icxudp:00001272:  errdetail("%m%s", "sendto"))); 
-iaag: icxudp:00001420:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-iaag: icxudp:00001421:  errmsg("Setup UDP interconnect failed: out of memory"))); 
-iaag: icxudp:00001466:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001467:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
-iaag: icxudp:00001468:  errdetail("%m%s", "malloc"))); 
-iaag: icxudp:00001582:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001583:  errmsg("Interconnect error: %m%s", "poll"))); 
-iaag: icxudp:00001608:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001609:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
-iaag: icxudp:00001613:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001614:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
-iaag: icxudp:00001687:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001688:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00001799:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001800:  errmsg("Interconnect timeout: Unable to " 
-iaag: icxudp:00001801:  "complete setup of all connections " 
-iaag: icxudp:00001802:  "within time limit."), 
-iaag: icxudp:00001803:  errdetail("Completed %d of %d incoming and " 
-iaag: icxudp:00001804:  "%d of %d outgoing connections. " 
-iaag: icxudp:00001805:  "gp_interconnect_setup_timeout = %d " 
-iaag: icxudp:00001806:  "seconds.", 
-iaag: icxudp:00001807:  incoming_count, expectedTotalIncoming, 
-iaag: icxudp:00001808:  outgoing_count, expectedTotalOutgoing, 
-iaag: icxudp:00001809:  interconnect_setup_timeout))); 
-iaag: icxudp:00002183:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002184:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
-iaag: icxudp:00002292:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002293:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
-iaag: icxudp:00002295:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002296:  errmsg("Interconnect error master lost contact with client (recv)"))); 
-iaag: icxudp:00002303:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002304:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00002517:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002518:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002519:  errdetail("During recvfrom() call.\n"))); 
-iaag: icxudp:00002532:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002533:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002534:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
-iaag: icxudp:00002707:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002708:  errmsg("Interconnect error writing an outgoing packet: %m"), 
-iaag: icxudp:00002709:  errdetail("error during sendto() call (error:%d).\n" 
-iaag: icxudp:00002710:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002711:  errno, conn->remoteContentId, 
-iaag: icxudp:00002712:  conn->remoteHostAndPort))); 
-iaag: icxudp:00002718:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002719:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00002720:  errdetail("short transmit during sendto() call.\n" 
-iaag: icxudp:00002721:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00002722:  conn->remoteContentId, 
-iaag: icxudp:00002723:  conn->remoteHostAndPort))); 
-iaag: icxudp:00002779:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002780:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
-iaag: icxudp:00002796:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002797:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002798:  errdetail("During poll() call.\n"))); 
+iaag: icxudp:00001421:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+iaag: icxudp:00001422:  errmsg("Setup UDP interconnect failed: out of memory"))); 
+iaag: icxudp:00001467:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001468:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
+iaag: icxudp:00001469:  errdetail("%m%s", "malloc"))); 
+iaag: icxudp:00001583:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001584:  errmsg("Interconnect error: %m%s", "poll"))); 
+iaag: icxudp:00001609:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001610:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
+iaag: icxudp:00001614:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001615:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
+iaag: icxudp:00001688:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001689:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00001800:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001801:  errmsg("Interconnect timeout: Unable to " 
+iaag: icxudp:00001802:  "complete setup of all connections " 
+iaag: icxudp:00001803:  "within time limit."), 
+iaag: icxudp:00001804:  errdetail("Completed %d of %d incoming and " 
+iaag: icxudp:00001805:  "%d of %d outgoing connections. " 
+iaag: icxudp:00001806:  "gp_interconnect_setup_timeout = %d " 
+iaag: icxudp:00001807:  "seconds.", 
+iaag: icxudp:00001808:  incoming_count, expectedTotalIncoming, 
+iaag: icxudp:00001809:  outgoing_count, expectedTotalOutgoing, 
+iaag: icxudp:00001810:  interconnect_setup_timeout))); 
+iaag: icxudp:00002184:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002185:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
+iaag: icxudp:00002293:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002294:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
+iaag: icxudp:00002296:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002297:  errmsg("Interconnect error master lost contact with client (recv)"))); 
+iaag: icxudp:00002304:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002305:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00002518:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002519:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002520:  errdetail("During recvfrom() call.\n"))); 
+iaag: icxudp:00002533:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002534:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002535:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
+iaag: icxudp:00002708:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002709:  errmsg("Interconnect error writing an outgoing packet: %m"), 
+iaag: icxudp:00002710:  errdetail("error during sendto() call (error:%d).\n" 
+iaag: icxudp:00002711:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00002712:  errno, conn->remoteContentId, 
+iaag: icxudp:00002713:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002719:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002720:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxudp:00002721:  errdetail("short transmit during sendto() call.\n" 
+iaag: icxudp:00002722:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00002723:  conn->remoteContentId, 
+iaag: icxudp:00002724:  conn->remoteHostAndPort))); 
+iaag: icxudp:00002780:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002781:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
+iaag: icxudp:00002797:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002798:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002799:  errdetail("During poll() call.\n"))); 
 aaaaa GP_IGNORE: taag: tupser - ./backend/cdb/motion/tupser.c
 taag: tupser:00000086:  ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION), 
 taag: tupser:00000087:  errmsg("deserialize data underflow"))); 
@@ -9445,129 +9433,129 @@ eabc: exechhashagg:00001580:  errmsg("HashAgg: work_mem is too small to hold *on
 eabc: exechhashagg:00001724:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 eabc: exechhashagg:00001725:  errmsg("HashAgg: no enough memory for hashagg."))); 
 aaaaa GP_IGNORE: eaai: execmain - ./backend/executor/execMain.c
-eaai: execmain:00000391:  ereport(ERROR, 
-eaai: execmain:00000392:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eaai: execmain:00000393:  errmsg("tablespace \"%s\" does not exist", 
-eaai: execmain:00000394:  intoClause->tableSpaceName))); 
-eaai: execmain:00000672:  ereport(ERROR, 
-eaai: execmain:00000673:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eaai: execmain:00000674:  errmsg("Unsupported Greeplum parallel execution strategy"))); 
-eaai: execmain:00000853:  ereport(ERROR, 
-eaai: execmain:00000854:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-eaai: execmain:00000855:  errmsg("Undefined Greenplum parallel execution strategy"))); 
-eaai: execmain:00001237:  ereport(ERROR, 
-eaai: execmain:00001238:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
-eaai: execmain:00001239:  errmsg("transaction is read-only"))); 
-eaai: execmain:00001839:  ereport(ERROR, 
-eaai: execmain:00001840:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001841:  errmsg("cannot change sequence \"%s\"", 
-eaai: execmain:00001842:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001845:  ereport(ERROR, 
-eaai: execmain:00001846:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001847:  errmsg("cannot change TOAST relation \"%s\"", 
-eaai: execmain:00001848:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001851:  ereport(ERROR, 
-eaai: execmain:00001852:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001853:  errmsg("cannot change AO segment listing relation \"%s\"", 
-eaai: execmain:00001854:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001857:  ereport(ERROR, 
-eaai: execmain:00001858:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001859:  errmsg("cannot change AO block directory relation \"%s\"", 
-eaai: execmain:00001860:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001863:  ereport(ERROR, 
-eaai: execmain:00001864:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001865:  errmsg("cannot change view \"%s\"", 
-eaai: execmain:00001866:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00002223:  ereport(ERROR, 
-eaai: execmain:00002224:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002225:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002226:  errdetail("Query has too many columns."))); 
-eaai: execmain:00002233:  ereport(ERROR, 
-eaai: execmain:00002234:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002235:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002236:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
-eaai: execmain:00002237:  format_type_be(attr->atttypid), 
-eaai: execmain:00002238:  attno, 
-eaai: execmain:00002239:  format_type_be(exprType((Node *) tle->expr))))); 
-eaai: execmain:00002250:  ereport(ERROR, 
-eaai: execmain:00002251:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002252:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002253:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
-eaai: execmain:00002254:  attno))); 
-eaai: execmain:00002258:  ereport(ERROR, 
-eaai: execmain:00002259:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002260:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002261:  errdetail("Query has too few columns."))); 
-eaai: execmain:00002456:  ereport(ERROR, 
-eaai: execmain:00002457:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002458:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00002928:  ereport(ERROR, 
-eaai: execmain:00002929:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002930:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003068:  ereport(ERROR, 
-eaai: execmain:00003069:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00003070:  errmsg("no partition for partitioning key"))); 
-eaai: execmain:00003074:  ereport(ERROR, 
-eaai: execmain:00003075:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execmain:00003076:  errmsg("moving tuple from partition \"%s\" to " 
-eaai: execmain:00003077:  "partition \"%s\" not supported", 
-eaai: execmain:00003078:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
-eaai: execmain:00003079:  get_rel_name(targetid)), 
-eaai: execmain:00003080:  errOmitLocation(true))); 
-eaai: execmain:00003159:  ereport(ERROR, 
-eaai: execmain:00003160:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00003161:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003318:  ereport(ERROR, 
-eaai: execmain:00003319:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
-eaai: execmain:00003320:  errmsg("null value in column \"%s\" violates not-null constraint", 
-eaai: execmain:00003321:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
-eaai: execmain:00003322:  errOmitLocation(true))); 
-eaai: execmain:00003331:  ereport(ERROR, 
-eaai: execmain:00003332:  (errcode(ERRCODE_CHECK_VIOLATION), 
-eaai: execmain:00003333:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
-eaai: execmain:00003334:  RelationGetRelationName(rel), failed), 
-eaai: execmain:00003335:  errOmitLocation(true))); 
-eaai: execmain:00004060:  ereport(ERROR, 
-eaai: execmain:00004061:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-eaai: execmain:00004062:  errmsg("ON COMMIT can only be used on temporary tables"), 
-eaai: execmain:00004063:  errOmitLocation(true))); 
-eaai: execmain:00004089:  ereport(ERROR, 
-eaai: execmain:00004090:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eaai: execmain:00004091:  errmsg("tablespace \"%s\" does not exist", 
-eaai: execmain:00004092:  intoClause->tableSpaceName))); 
-eaai: execmain:00004500:  ereport(ERROR, 
-eaai: execmain:00004501:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00004502:  errmsg("no partition for partitioning key"), 
-eaai: execmain:00004503:  errOmitLocation(true))); 
-eaai: execmain:00004905:  ereport(ERROR, 
-eaai: execmain:00004906:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004907:  errmsg("relation \"%s\" must have the same " 
-eaai: execmain:00004908:  "column names and column order as \"%s\"", 
-eaai: execmain:00004909:  RelationGetRelationName(part), 
-eaai: execmain:00004910:  RelationGetRelationName(base)), 
-eaai: execmain:00004911:  errOmitLocation(true))); 
-eaai: execmain:00004920:  ereport(ERROR, 
-eaai: execmain:00004921:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004922:  errmsg("type mismatch for attribute \"%s\"", 
-eaai: execmain:00004923:  NameStr((battr->attname))), 
-eaai: execmain:00004924:  errOmitLocation(true))); 
-eaai: execmain:00004933:  ereport(ERROR, 
-eaai: execmain:00004934:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004935:  errmsg("alignment mismatch for attribute \"%s\"", 
-eaai: execmain:00004936:  NameStr((battr->attname))), 
-eaai: execmain:00004937:  errOmitLocation(true))); 
-eaai: execmain:00004972:  ereport(ERROR, 
-eaai: execmain:00004973:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004974:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
-eaai: execmain:00004975:  RelationGetRelationName(part), 
-eaai: execmain:00004976:  RelationGetRelationName(base)), 
-eaai: execmain:00004977:  errOmitLocation(true))); 
-eaai: execmain:00004989:  ereport(ERROR, 
-eaai: execmain:00004990:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004991:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
-eaai: execmain:00004992:  RelationGetRelationName(part), 
-eaai: execmain:00004993:  RelationGetRelationName(base)), 
-eaai: execmain:00004994:  errOmitLocation(true))); 
+eaai: execmain:00000398:  ereport(ERROR, 
+eaai: execmain:00000399:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execmain:00000400:  errmsg("tablespace \"%s\" does not exist", 
+eaai: execmain:00000401:  intoClause->tableSpaceName))); 
+eaai: execmain:00000681:  ereport(ERROR, 
+eaai: execmain:00000682:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eaai: execmain:00000683:  errmsg("Unsupported Greeplum parallel execution strategy"))); 
+eaai: execmain:00000865:  ereport(ERROR, 
+eaai: execmain:00000866:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+eaai: execmain:00000867:  errmsg("Undefined Greenplum parallel execution strategy"))); 
+eaai: execmain:00001249:  ereport(ERROR, 
+eaai: execmain:00001250:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+eaai: execmain:00001251:  errmsg("transaction is read-only"))); 
+eaai: execmain:00001854:  ereport(ERROR, 
+eaai: execmain:00001855:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001856:  errmsg("cannot change sequence \"%s\"", 
+eaai: execmain:00001857:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001860:  ereport(ERROR, 
+eaai: execmain:00001861:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001862:  errmsg("cannot change TOAST relation \"%s\"", 
+eaai: execmain:00001863:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001866:  ereport(ERROR, 
+eaai: execmain:00001867:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001868:  errmsg("cannot change AO segment listing relation \"%s\"", 
+eaai: execmain:00001869:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001872:  ereport(ERROR, 
+eaai: execmain:00001873:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001874:  errmsg("cannot change AO block directory relation \"%s\"", 
+eaai: execmain:00001875:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001878:  ereport(ERROR, 
+eaai: execmain:00001879:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001880:  errmsg("cannot change view \"%s\"", 
+eaai: execmain:00001881:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00002202:  ereport(ERROR, 
+eaai: execmain:00002203:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002204:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002205:  errdetail("Query has too many columns."))); 
+eaai: execmain:00002212:  ereport(ERROR, 
+eaai: execmain:00002213:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002214:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002215:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
+eaai: execmain:00002216:  format_type_be(attr->atttypid), 
+eaai: execmain:00002217:  attno, 
+eaai: execmain:00002218:  format_type_be(exprType((Node *) tle->expr))))); 
+eaai: execmain:00002229:  ereport(ERROR, 
+eaai: execmain:00002230:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002231:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002232:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
+eaai: execmain:00002233:  attno))); 
+eaai: execmain:00002237:  ereport(ERROR, 
+eaai: execmain:00002238:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002239:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002240:  errdetail("Query has too few columns."))); 
+eaai: execmain:00002435:  ereport(ERROR, 
+eaai: execmain:00002436:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002437:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00002907:  ereport(ERROR, 
+eaai: execmain:00002908:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002909:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003047:  ereport(ERROR, 
+eaai: execmain:00003048:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00003049:  errmsg("no partition for partitioning key"))); 
+eaai: execmain:00003053:  ereport(ERROR, 
+eaai: execmain:00003054:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execmain:00003055:  errmsg("moving tuple from partition \"%s\" to " 
+eaai: execmain:00003056:  "partition \"%s\" not supported", 
+eaai: execmain:00003057:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
+eaai: execmain:00003058:  get_rel_name(targetid)), 
+eaai: execmain:00003059:  errOmitLocation(true))); 
+eaai: execmain:00003138:  ereport(ERROR, 
+eaai: execmain:00003139:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00003140:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003297:  ereport(ERROR, 
+eaai: execmain:00003298:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+eaai: execmain:00003299:  errmsg("null value in column \"%s\" violates not-null constraint", 
+eaai: execmain:00003300:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
+eaai: execmain:00003301:  errOmitLocation(true))); 
+eaai: execmain:00003310:  ereport(ERROR, 
+eaai: execmain:00003311:  (errcode(ERRCODE_CHECK_VIOLATION), 
+eaai: execmain:00003312:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
+eaai: execmain:00003313:  RelationGetRelationName(rel), failed), 
+eaai: execmain:00003314:  errOmitLocation(true))); 
+eaai: execmain:00004039:  ereport(ERROR, 
+eaai: execmain:00004040:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+eaai: execmain:00004041:  errmsg("ON COMMIT can only be used on temporary tables"), 
+eaai: execmain:00004042:  errOmitLocation(true))); 
+eaai: execmain:00004068:  ereport(ERROR, 
+eaai: execmain:00004069:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execmain:00004070:  errmsg("tablespace \"%s\" does not exist", 
+eaai: execmain:00004071:  intoClause->tableSpaceName))); 
+eaai: execmain:00004479:  ereport(ERROR, 
+eaai: execmain:00004480:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00004481:  errmsg("no partition for partitioning key"), 
+eaai: execmain:00004482:  errOmitLocation(true))); 
+eaai: execmain:00004884:  ereport(ERROR, 
+eaai: execmain:00004885:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004886:  errmsg("relation \"%s\" must have the same " 
+eaai: execmain:00004887:  "column names and column order as \"%s\"", 
+eaai: execmain:00004888:  RelationGetRelationName(part), 
+eaai: execmain:00004889:  RelationGetRelationName(base)), 
+eaai: execmain:00004890:  errOmitLocation(true))); 
+eaai: execmain:00004899:  ereport(ERROR, 
+eaai: execmain:00004900:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004901:  errmsg("type mismatch for attribute \"%s\"", 
+eaai: execmain:00004902:  NameStr((battr->attname))), 
+eaai: execmain:00004903:  errOmitLocation(true))); 
+eaai: execmain:00004912:  ereport(ERROR, 
+eaai: execmain:00004913:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004914:  errmsg("alignment mismatch for attribute \"%s\"", 
+eaai: execmain:00004915:  NameStr((battr->attname))), 
+eaai: execmain:00004916:  errOmitLocation(true))); 
+eaai: execmain:00004951:  ereport(ERROR, 
+eaai: execmain:00004952:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004953:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
+eaai: execmain:00004954:  RelationGetRelationName(part), 
+eaai: execmain:00004955:  RelationGetRelationName(base)), 
+eaai: execmain:00004956:  errOmitLocation(true))); 
+eaai: execmain:00004968:  ereport(ERROR, 
+eaai: execmain:00004969:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004970:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
+eaai: execmain:00004971:  RelationGetRelationName(part), 
+eaai: execmain:00004972:  RelationGetRelationName(base)), 
+eaai: execmain:00004973:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: eaai: execqual - ./backend/executor/execQual.c
 eaai: execqual:00000279:  ereport(ERROR, 
 eaai: execqual:00000280:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -9796,67 +9784,67 @@ faaj: functions:00001262:  errmsg("return type %s is not supported for SQL funct
 faaj: functions:00001263:  format_type_be(rettype)), 
 faaj: functions:00001264:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: naah: nodeagg - ./backend/executor/nodeAgg.c
-naah: nodeagg:00002059:  ereport(ERROR, 
-naah: nodeagg:00002060:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-naah: nodeagg:00002061:  errmsg("aggregate %u needs to have compatible input type and transition type", 
-naah: nodeagg:00002062:  aggref->aggfnoid))); 
-naah: nodeagg:00002109:  ereport(ERROR, 
-naah: nodeagg:00002110:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-naah: nodeagg:00002111:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
+naah: nodeagg:00002050:  ereport(ERROR, 
+naah: nodeagg:00002051:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+naah: nodeagg:00002052:  errmsg("aggregate %u needs to have compatible input type and transition type", 
+naah: nodeagg:00002053:  aggref->aggfnoid))); 
+naah: nodeagg:00002100:  ereport(ERROR, 
+naah: nodeagg:00002101:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+naah: nodeagg:00002102:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
 aaaaa GP_IGNORE: nabj: nodebitmapindexscan - ./backend/executor/nodeBitmapIndexscan.c
 nabj: nodebitmapindexscan:00000163:  ereport(ERROR, 
 nabj: nodebitmapindexscan:00000164:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 nabj: nodebitmapindexscan:00000165:  errmsg("the returning bitmap in nodeBitmapIndexScan is corrupted."))); 
 aaaaa GP_IGNORE: nabg: nodefunctionscan - ./backend/executor/nodeFunctionscan.c
-nabg: nodefunctionscan:00000478:  ereport(ERROR, 
-nabg: nodefunctionscan:00000479:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-nabg: nodefunctionscan:00000480:  errmsg("function return row and query-specified return row do not match"), 
-nabg: nodefunctionscan:00000481:  errdetail("Returned row contains %d attributes, but query expects %d.", 
-nabg: nodefunctionscan:00000482:  src_tupdesc->natts, dst_tupdesc->natts))); 
-nabg: nodefunctionscan:00000492:  ereport(ERROR, 
-nabg: nodefunctionscan:00000493:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-nabg: nodefunctionscan:00000494:  errmsg("function return row and query-specified return row do not match"), 
-nabg: nodefunctionscan:00000495:  errdetail("Returned type %s at ordinal position %d, but query expects %s.", 
-nabg: nodefunctionscan:00000496:  format_type_be(sattr->atttypid), 
-nabg: nodefunctionscan:00000497:  i + 1, 
-nabg: nodefunctionscan:00000498:  format_type_be(dattr->atttypid)))); 
-nabg: nodefunctionscan:00000502:  ereport(ERROR, 
-nabg: nodefunctionscan:00000503:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-nabg: nodefunctionscan:00000504:  errmsg("function return row and query-specified return row do not match"), 
-nabg: nodefunctionscan:00000505:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
-nabg: nodefunctionscan:00000506:  i + 1))); 
+nabg: nodefunctionscan:00000473:  ereport(ERROR, 
+nabg: nodefunctionscan:00000474:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+nabg: nodefunctionscan:00000475:  errmsg("function return row and query-specified return row do not match"), 
+nabg: nodefunctionscan:00000476:  errdetail("Returned row contains %d attributes, but query expects %d.", 
+nabg: nodefunctionscan:00000477:  src_tupdesc->natts, dst_tupdesc->natts))); 
+nabg: nodefunctionscan:00000487:  ereport(ERROR, 
+nabg: nodefunctionscan:00000488:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+nabg: nodefunctionscan:00000489:  errmsg("function return row and query-specified return row do not match"), 
+nabg: nodefunctionscan:00000490:  errdetail("Returned type %s at ordinal position %d, but query expects %s.", 
+nabg: nodefunctionscan:00000491:  format_type_be(sattr->atttypid), 
+nabg: nodefunctionscan:00000492:  i + 1, 
+nabg: nodefunctionscan:00000493:  format_type_be(dattr->atttypid)))); 
+nabg: nodefunctionscan:00000497:  ereport(ERROR, 
+nabg: nodefunctionscan:00000498:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+nabg: nodefunctionscan:00000499:  errmsg("function return row and query-specified return row do not match"), 
+nabg: nodefunctionscan:00000500:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
+nabg: nodefunctionscan:00000501:  i + 1))); 
 aaaaa GP_IGNORE: nabc: nodehashjoin - ./backend/executor/nodeHashjoin.c
-nabc: nodehashjoin:00000824:  ereport(ERROR, (errcode_for_file_access(), 
-nabc: nodehashjoin:00000825:  errmsg("Cound not rewind hash join tmp file"))); 
-nabc: nodehashjoin:00000862:  ereport(ERROR, (errcode_for_file_access(), 
-nabc: nodehashjoin:00000863:  errmsg("Cound not rewind hash join tmp file"))); 
-nabc: nodehashjoin:00000902:  ereport(ERROR, (errcode_for_file_access(), 
-nabc: nodehashjoin:00000903:  errmsg("Hashjoin write error"))); 
-nabc: nodehashjoin:00000906:  ereport(ERROR, (errcode_for_file_access(), 
-nabc: nodehashjoin:00000907:  errmsg("Hashjoin write error"))); 
-nabc: nodehashjoin:00000954:  ereport(ERROR, 
-nabc: nodehashjoin:00000955:  (errcode_for_file_access(), 
-nabc: nodehashjoin:00000956:  errmsg("could not read from hash-join temporary file: %m"))); 
+nabc: nodehashjoin:00000817:  ereport(ERROR, (errcode_for_file_access(), 
+nabc: nodehashjoin:00000818:  errmsg("Cound not rewind hash join tmp file"))); 
+nabc: nodehashjoin:00000855:  ereport(ERROR, (errcode_for_file_access(), 
+nabc: nodehashjoin:00000856:  errmsg("Cound not rewind hash join tmp file"))); 
+nabc: nodehashjoin:00000895:  ereport(ERROR, (errcode_for_file_access(), 
+nabc: nodehashjoin:00000896:  errmsg("Hashjoin write error"))); 
+nabc: nodehashjoin:00000899:  ereport(ERROR, (errcode_for_file_access(), 
+nabc: nodehashjoin:00000900:  errmsg("Hashjoin write error"))); 
+nabc: nodehashjoin:00000947:  ereport(ERROR, 
+nabc: nodehashjoin:00000948:  (errcode_for_file_access(), 
+nabc: nodehashjoin:00000949:  errmsg("could not read from hash-join temporary file: %m"))); 
 aaaaa GP_IGNORE: nabd: nodemergejoin - ./backend/executor/nodeMergejoin.c
 nabd: nodemergejoin:00001263:  ereport(ERROR, 
 nabd: nodemergejoin:00001264:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 nabd: nodemergejoin:00001265:  errmsg("Mergejoin: compareResult > 0, bad plan ?"))); 
-nabd: nodemergejoin:00001761:  ereport(ERROR, 
-nabd: nodemergejoin:00001762:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-nabd: nodemergejoin:00001763:  errmsg("RIGHT JOIN is only supported with merge-joinable join conditions"))); 
-nabd: nodemergejoin:00001779:  ereport(ERROR, 
-nabd: nodemergejoin:00001780:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-nabd: nodemergejoin:00001781:  errmsg("FULL JOIN is only supported with merge-joinable join conditions"))); 
+nabd: nodemergejoin:00001753:  ereport(ERROR, 
+nabd: nodemergejoin:00001754:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+nabd: nodemergejoin:00001755:  errmsg("RIGHT JOIN is only supported with merge-joinable join conditions"))); 
+nabd: nodemergejoin:00001771:  ereport(ERROR, 
+nabd: nodemergejoin:00001772:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+nabd: nodemergejoin:00001773:  errmsg("FULL JOIN is only supported with merge-joinable join conditions"))); 
 aaaaa GP_IGNORE: naba: nodemotion - ./backend/executor/nodeMotion.c
-naba: nodemotion:00001653:  ereport(ERROR, 
-naba: nodemotion:00001654:  (errcode(ERRCODE_INTERNAL_ERROR), 
-naba: nodemotion:00001655:  errmsg("Illegal rescan of motion node: invalid plan."), 
-naba: nodemotion:00001656:  errhint("likely caused by bad NL-join, try setting enable_nestloop off"))); 
+naba: nodemotion:00001634:  ereport(ERROR, 
+naba: nodemotion:00001635:  (errcode(ERRCODE_INTERNAL_ERROR), 
+naba: nodemotion:00001636:  errmsg("Illegal rescan of motion node: invalid plan."), 
+naba: nodemotion:00001637:  errhint("likely caused by bad NL-join, try setting enable_nestloop off"))); 
 aaaaa GP_IGNORE: nabi: nodeshareinputscan - ./backend/executor/nodeShareInputScan.c
-nabi: nodeshareinputscan:00000622:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-nabi: nodeshareinputscan:00000623:  errmsg("Share input reader failed: out of memory"))); 
-nabi: nodeshareinputscan:00000694:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-nabi: nodeshareinputscan:00000695:  errmsg("Shareinput Writer failed: out of memory"))); 
+nabi: nodeshareinputscan:00000615:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+nabi: nodeshareinputscan:00000616:  errmsg("Share input reader failed: out of memory"))); 
+nabi: nodeshareinputscan:00000687:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+nabi: nodeshareinputscan:00000688:  errmsg("Shareinput Writer failed: out of memory"))); 
 aaaaa GP_IGNORE: nabb: nodesubplan - ./backend/executor/nodeSubplan.c
 nabb: nodesubplan:00000295:  ereport(ERROR, 
 nabb: nodesubplan:00000296:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
@@ -9864,9 +9852,9 @@ nabb: nodesubplan:00000297:  errmsg("more than one row returned by a subquery us
 nabb: nodesubplan:00000338:  ereport(ERROR, 
 nabb: nodesubplan:00000339:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
 nabb: nodesubplan:00000340:  errmsg("more than one row returned by a subquery used as an expression"))); 
-nabb: nodesubplan:00001213:  ereport(ERROR, 
-nabb: nodesubplan:00001214:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
-nabb: nodesubplan:00001215:  errmsg("more than one row returned by a subquery used as an expression"))); 
+nabb: nodesubplan:00001194:  ereport(ERROR, 
+nabb: nodesubplan:00001195:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
+nabb: nodesubplan:00001196:  errmsg("more than one row returned by a subquery used as an expression"))); 
 aaaaa GP_IGNORE: naba: nodewindow - ./backend/executor/nodeWindow.c
 naba: nodewindow:00002560:  ereport(ERROR, 
 naba: nodewindow:00002561:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
@@ -9909,38 +9897,38 @@ naba: nodewindow:00005549:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 naba: nodewindow:00005550:  errmsg("aggregate functions with no prelimfn or " 
 naba: nodewindow:00005551:  "invprelimfn are not yet supported as window functions"), 
 naba: nodewindow:00005552:  errOmitLocation(true))); 
-naba: nodewindow:00005787:  ereport(ERROR, 
-naba: nodewindow:00005788:  (errcode(ERRCODE_SYNTAX_ERROR), 
-naba: nodewindow:00005789:  errmsg("function %s may only be called as a window function", 
-naba: nodewindow:00005790:  format_procedure(fcinfo->flinfo->fn_oid)), 
-naba: nodewindow:00005791:  errhint("To call a function as a window function use an OVER clause."), 
-naba: nodewindow:00005792:  errOmitLocation(true)) 
-naba: nodewindow:00005793:  ); 
-naba: nodewindow:00005901:  ereport(ERROR, 
-naba: nodewindow:00005902:  (errcode(ERRCODE_DATA_EXCEPTION), 
-naba: nodewindow:00005903:  errmsg("arguments invalid or inconsistent"), 
-naba: nodewindow:00005904:  errhint("inappropriate call to window function implementation"), 
-naba: nodewindow:00005905:  errOmitLocation(true))); 
-naba: nodewindow:00005918:  ereport(ERROR, 
-naba: nodewindow:00005919:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naba: nodewindow:00005920:  errmsg("value out of range: overflow"), 
-naba: nodewindow:00005921:  errOmitLocation(true))); 
-naba: nodewindow:00005960:  ereport(ERROR, 
-naba: nodewindow:00005961:  (errcode(ERRCODE_DATA_EXCEPTION), 
-naba: nodewindow:00005962:  errmsg("arguments invalid or inconsistent"), 
-naba: nodewindow:00005963:  errhint("inappropriate call to window function implementation"))); 
-naba: nodewindow:00005976:  ereport(ERROR, 
-naba: nodewindow:00005977:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naba: nodewindow:00005978:  errmsg("value out of range: overflow"))); 
-naba: nodewindow:00006015:  ereport(ERROR, 
-naba: nodewindow:00006016:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naba: nodewindow:00006017:  errmsg("argument value out of range"), 
-naba: nodewindow:00006018:  errhint("NTILE expects a positive integer argument."))); 
-naba: nodewindow:00006156:  ereport(ERROR, 
-naba: nodewindow:00006157:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-naba: nodewindow:00006158:  errmsg("%s offset cannot be negative", 
-naba: nodewindow:00006159:  is_lead ? "LEAD" : "LAG"), 
-naba: nodewindow:00006160:  errOmitLocation(true))); 
+naba: nodewindow:00005781:  ereport(ERROR, 
+naba: nodewindow:00005782:  (errcode(ERRCODE_SYNTAX_ERROR), 
+naba: nodewindow:00005783:  errmsg("function %s may only be called as a window function", 
+naba: nodewindow:00005784:  format_procedure(fcinfo->flinfo->fn_oid)), 
+naba: nodewindow:00005785:  errhint("To call a function as a window function use an OVER clause."), 
+naba: nodewindow:00005786:  errOmitLocation(true)) 
+naba: nodewindow:00005787:  ); 
+naba: nodewindow:00005895:  ereport(ERROR, 
+naba: nodewindow:00005896:  (errcode(ERRCODE_DATA_EXCEPTION), 
+naba: nodewindow:00005897:  errmsg("arguments invalid or inconsistent"), 
+naba: nodewindow:00005898:  errhint("inappropriate call to window function implementation"), 
+naba: nodewindow:00005899:  errOmitLocation(true))); 
+naba: nodewindow:00005912:  ereport(ERROR, 
+naba: nodewindow:00005913:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naba: nodewindow:00005914:  errmsg("value out of range: overflow"), 
+naba: nodewindow:00005915:  errOmitLocation(true))); 
+naba: nodewindow:00005954:  ereport(ERROR, 
+naba: nodewindow:00005955:  (errcode(ERRCODE_DATA_EXCEPTION), 
+naba: nodewindow:00005956:  errmsg("arguments invalid or inconsistent"), 
+naba: nodewindow:00005957:  errhint("inappropriate call to window function implementation"))); 
+naba: nodewindow:00005970:  ereport(ERROR, 
+naba: nodewindow:00005971:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naba: nodewindow:00005972:  errmsg("value out of range: overflow"))); 
+naba: nodewindow:00006009:  ereport(ERROR, 
+naba: nodewindow:00006010:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naba: nodewindow:00006011:  errmsg("argument value out of range"), 
+naba: nodewindow:00006012:  errhint("NTILE expects a positive integer argument."))); 
+naba: nodewindow:00006150:  ereport(ERROR, 
+naba: nodewindow:00006151:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+naba: nodewindow:00006152:  errmsg("%s offset cannot be negative", 
+naba: nodewindow:00006153:  is_lead ? "LEAD" : "LAG"), 
+naba: nodewindow:00006154:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: saad: spi - ./backend/executor/spi.c
 saad: spi:00000241:  ereport(WARNING, 
 saad: spi:00000242:  (errcode(ERRCODE_WARNING), 
@@ -10258,93 +10246,93 @@ raae: read:00000332:  "supported in this version of %s.",
 raae: read:00000333:  tok_len, token, PACKAGE_NAME) 
 raae: read:00000334:  )); 
 aaaaa GP_IGNORE: raaj: readfuncs - ./backend/nodes/readfuncs.c
-raaj: readfuncs:00003010:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-raaj: readfuncs:00003011:  errmsg("This operation involves an internal data item " 
-raaj: readfuncs:00003012:  "of a type called \"%.*s\" which is not " 
-raaj: readfuncs:00003013:  "supported in this version of %s.", 
-raaj: readfuncs:00003014:  length, token, PACKAGE_NAME) 
-raaj: readfuncs:00003015:  )); 
+raaj: readfuncs:00003007:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+raaj: readfuncs:00003008:  errmsg("This operation involves an internal data item " 
+raaj: readfuncs:00003009:  "of a type called \"%.*s\" which is not " 
+raaj: readfuncs:00003010:  "supported in this version of %s.", 
+raaj: readfuncs:00003011:  length, token, PACKAGE_NAME) 
+raaj: readfuncs:00003012:  )); 
 aaaaa GP_IGNORE: aaai: allpaths - ./backend/optimizer/path/allpaths.c
-aaai: allpaths:00000420:  ereport(ERROR, 
-aaai: allpaths:00000421:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaai: allpaths:00000422:  errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries"))); 
-aaai: allpaths:00001336:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), 
-aaai: allpaths:00001337:  errmsg("Query requires a feature that has been disabled " 
-aaai: allpaths:00001338:  "by a configuration setting."), 
-aaai: allpaths:00001339:  errdetail("Could not devise a query plan for the given query."), 
-aaai: allpaths:00001340:  errhint("Current settings: %s", buf.data) 
-aaai: allpaths:00001341:  )); 
+aaai: allpaths:00000412:  ereport(ERROR, 
+aaai: allpaths:00000413:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaai: allpaths:00000414:  errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries"))); 
+aaai: allpaths:00001331:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), 
+aaai: allpaths:00001332:  errmsg("Query requires a feature that has been disabled " 
+aaai: allpaths:00001333:  "by a configuration setting."), 
+aaai: allpaths:00001334:  errdetail("Could not devise a query plan for the given query."), 
+aaai: allpaths:00001335:  errhint("Current settings: %s", buf.data) 
+aaai: allpaths:00001336:  )); 
 aaaaa GP_IGNORE: jaai: joinpath - ./backend/optimizer/path/joinpath.c
-jaai: joinpath:00000992:  ereport(ERROR, 
-jaai: joinpath:00000993:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-jaai: joinpath:00000994:  errmsg("FULL JOIN is only supported with merge-joinable join conditions"))); 
+jaai: joinpath:00000996:  ereport(ERROR, 
+jaai: joinpath:00000997:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+jaai: joinpath:00000998:  errmsg("FULL JOIN is only supported with merge-joinable join conditions"))); 
 aaaaa GP_IGNORE: caba: createplan - ./backend/optimizer/plan/createplan.c
-caba: createplan:00001141:  ereport(ERROR, 
-caba: createplan:00001142:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-caba: createplan:00001143:  errmsg("it is not possible to read from a WRITABLE external table."), 
-caba: createplan:00001144:  errhint("Create the table as READABLE instead"), 
-caba: createplan:00001145:  errOmitLocation(true))); 
-caba: createplan:00001161:  ereport(ERROR, 
-caba: createplan:00001162:  (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), /* any better errcode? */ 
-caba: createplan:00001163:  errmsg("Using external tables with OS level commands " 
-caba: createplan:00001164:  "(EXECUTE clause) is disabled"), 
-caba: createplan:00001165:  errhint("To enable set gp_external_enable_exec=on"), 
-caba: createplan:00001166:  errOmitLocation(true))); 
-caba: createplan:00001284:  ereport(ERROR, 
-caba: createplan:00001285:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001286:  errmsg("Could not assign a segment database for \"%s\". " 
-caba: createplan:00001287:  "There are more external files than primary segment " 
-caba: createplan:00001288:  "databases on host \"%s\"", uri_str, uri->hostname), 
-caba: createplan:00001289:  errOmitLocation(true))); 
+caba: createplan:00001150:  ereport(ERROR, 
+caba: createplan:00001151:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+caba: createplan:00001152:  errmsg("it is not possible to read from a WRITABLE external table."), 
+caba: createplan:00001153:  errhint("Create the table as READABLE instead"), 
+caba: createplan:00001154:  errOmitLocation(true))); 
+caba: createplan:00001170:  ereport(ERROR, 
+caba: createplan:00001171:  (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), /* any better errcode? */ 
+caba: createplan:00001172:  errmsg("Using external tables with OS level commands " 
+caba: createplan:00001173:  "(EXECUTE clause) is disabled"), 
+caba: createplan:00001174:  errhint("To enable set gp_external_enable_exec=on"), 
+caba: createplan:00001175:  errOmitLocation(true))); 
 caba: createplan:00001293:  ereport(ERROR, 
 caba: createplan:00001294:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
 caba: createplan:00001295:  errmsg("Could not assign a segment database for \"%s\". " 
-caba: createplan:00001296:  "There isn't a valid primary segment database " 
-caba: createplan:00001297:  "on host \"%s\"", uri_str, uri->hostname), 
+caba: createplan:00001296:  "There are more external files than primary segment " 
+caba: createplan:00001297:  "databases on host \"%s\"", uri_str, uri->hostname), 
 caba: createplan:00001298:  errOmitLocation(true))); 
-caba: createplan:00001303:  ereport(ERROR, 
-caba: createplan:00001304:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001305:  errmsg("Could not assign a segment database for \"%s\". " 
-caba: createplan:00001306:  "There are more URIs than total primary segment " 
-caba: createplan:00001307:  "databases", uri_str), 
-caba: createplan:00001308:  errOmitLocation(true))); 
-caba: createplan:00001366:  ereport(ERROR, 
-caba: createplan:00001367:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001368:  errmsg("There are more external files (URLs) than primary " 
-caba: createplan:00001369:  "segments that can read them. Found %d URLs and " 
-caba: createplan:00001370:  "%d primary segments.",list_length(rel->locationlist), 
-caba: createplan:00001371:  num_segs_participating), 
-caba: createplan:00001372:  errOmitLocation(true))); 
-caba: createplan:00001469:  ereport(ERROR, 
-caba: createplan:00001470:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-caba: createplan:00001471:  errmsg("Internal error in createplan for external tables" 
-caba: createplan:00001472:  " when trying to assign segments for gpfdist"))); 
-caba: createplan:00001583:  ereport(ERROR, 
-caba: createplan:00001584:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001585:  errmsg("Could not assign a segment database for " 
-caba: createplan:00001586:  "command \"%s\". No valid primary segment was " 
-caba: createplan:00001587:  "found in the requested host name \"%s\" ", 
-caba: createplan:00001588:  command, hostname), 
-caba: createplan:00001589:  errOmitLocation(true))); 
-caba: createplan:00001610:  ereport(ERROR, 
-caba: createplan:00001611:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001612:  errmsg("Could not assign a segment database for " 
-caba: createplan:00001613:  "command \"%s\". The requested segment id " 
-caba: createplan:00001614:  "%d is not a valid primary segment or doesn't " 
-caba: createplan:00001615:  "exist in the database", command, target_segid), 
-caba: createplan:00001616:  errOmitLocation(true))); 
-caba: createplan:00001625:  ereport(ERROR, 
-caba: createplan:00001626:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-caba: createplan:00001627:  errmsg("Table defined with EXECUTE ON %d but there " 
-caba: createplan:00001628:  "are only %d valid primary segments in the " 
-caba: createplan:00001629:  "database.", num_segs_to_use, total_primaries))); 
-caba: createplan:00001660:  ereport(ERROR, 
-caba: createplan:00001661:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-caba: createplan:00001662:  errmsg("Internal error in createplan for external tables: " 
-caba: createplan:00001663:  "got invalid ON clause code %s", on_clause))); 
-caba: createplan:00001682:  ereport(ERROR, 
-caba: createplan:00001683:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-caba: createplan:00001684:  errmsg("Internal error in createplan for external tables"))); 
+caba: createplan:00001302:  ereport(ERROR, 
+caba: createplan:00001303:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001304:  errmsg("Could not assign a segment database for \"%s\". " 
+caba: createplan:00001305:  "There isn't a valid primary segment database " 
+caba: createplan:00001306:  "on host \"%s\"", uri_str, uri->hostname), 
+caba: createplan:00001307:  errOmitLocation(true))); 
+caba: createplan:00001312:  ereport(ERROR, 
+caba: createplan:00001313:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001314:  errmsg("Could not assign a segment database for \"%s\". " 
+caba: createplan:00001315:  "There are more URIs than total primary segment " 
+caba: createplan:00001316:  "databases", uri_str), 
+caba: createplan:00001317:  errOmitLocation(true))); 
+caba: createplan:00001375:  ereport(ERROR, 
+caba: createplan:00001376:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001377:  errmsg("There are more external files (URLs) than primary " 
+caba: createplan:00001378:  "segments that can read them. Found %d URLs and " 
+caba: createplan:00001379:  "%d primary segments.",list_length(rel->locationlist), 
+caba: createplan:00001380:  num_segs_participating), 
+caba: createplan:00001381:  errOmitLocation(true))); 
+caba: createplan:00001478:  ereport(ERROR, 
+caba: createplan:00001479:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+caba: createplan:00001480:  errmsg("Internal error in createplan for external tables" 
+caba: createplan:00001481:  " when trying to assign segments for gpfdist"))); 
+caba: createplan:00001592:  ereport(ERROR, 
+caba: createplan:00001593:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001594:  errmsg("Could not assign a segment database for " 
+caba: createplan:00001595:  "command \"%s\". No valid primary segment was " 
+caba: createplan:00001596:  "found in the requested host name \"%s\" ", 
+caba: createplan:00001597:  command, hostname), 
+caba: createplan:00001598:  errOmitLocation(true))); 
+caba: createplan:00001619:  ereport(ERROR, 
+caba: createplan:00001620:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001621:  errmsg("Could not assign a segment database for " 
+caba: createplan:00001622:  "command \"%s\". The requested segment id " 
+caba: createplan:00001623:  "%d is not a valid primary segment or doesn't " 
+caba: createplan:00001624:  "exist in the database", command, target_segid), 
+caba: createplan:00001625:  errOmitLocation(true))); 
+caba: createplan:00001634:  ereport(ERROR, 
+caba: createplan:00001635:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+caba: createplan:00001636:  errmsg("Table defined with EXECUTE ON %d but there " 
+caba: createplan:00001637:  "are only %d valid primary segments in the " 
+caba: createplan:00001638:  "database.", num_segs_to_use, total_primaries))); 
+caba: createplan:00001669:  ereport(ERROR, 
+caba: createplan:00001670:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+caba: createplan:00001671:  errmsg("Internal error in createplan for external tables: " 
+caba: createplan:00001672:  "got invalid ON clause code %s", on_clause))); 
+caba: createplan:00001691:  ereport(ERROR, 
+caba: createplan:00001692:  (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+caba: createplan:00001693:  errmsg("Internal error in createplan for external tables"))); 
 aaaaa GP_IGNORE: iaaj: initsplan - ./backend/optimizer/plan/initsplan.c
 iaaj: initsplan:00000610:  ereport(ERROR, 
 iaaj: initsplan:00000611:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -10362,17 +10350,17 @@ pabc: plangroupext:00000279:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YE
 pabc: plangroupext:00000280:  errmsg("GROUPING SETS / ROLLUP / CUBE columns ambiguous.") 
 pabc: plangroupext:00000281:  )); 
 aaaaa GP_IGNORE: paah: planner - ./backend/optimizer/plan/planner.c
-paah: planner:00001021:  ereport(ERROR, ( 
-paah: planner:00001022:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001023:  errmsg("incompatible loci in target inheritance set") )); 
-paah: planner:00001099:  ereport(ERROR, ( 
-paah: planner:00001100:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001101:  errmsg("unexpected locus assigned to target inheritance set") )); 
-paah: planner:00001241:  ereport(ERROR, 
-paah: planner:00001242:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: planner:00001243:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
-paah: planner:00001881:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
-paah: planner:00001882:  errmsg("unexpected input locus to distinct"))); 
+paah: planner:00001022:  ereport(ERROR, ( 
+paah: planner:00001023:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001024:  errmsg("incompatible loci in target inheritance set") )); 
+paah: planner:00001100:  ereport(ERROR, ( 
+paah: planner:00001101:  errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001102:  errmsg("unexpected locus assigned to target inheritance set") )); 
+paah: planner:00001242:  ereport(ERROR, 
+paah: planner:00001243:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: planner:00001244:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
+paah: planner:00001882:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
+paah: planner:00001883:  errmsg("unexpected input locus to distinct"))); 
 aaaaa GP_IGNORE: paba: planwindow - ./backend/optimizer/plan/planwindow.c
 paba: planwindow:00000386:  ereport(ERROR, 
 paba: planwindow:00000387:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
@@ -10429,20 +10417,20 @@ paai: pathnode:00001596:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORT
 paai: pathnode:00001597:  errmsg_internal("Cannot append paths with " 
 paai: pathnode:00001598:  "incompatible distribution"))); 
 aaaaa GP_IGNORE: paah: plancat - ./backend/optimizer/util/plancat.c
-paah: plancat:00001249:  ereport(NOTICE, 
-paah: plancat:00001250:  (errmsg("Query planner will use default statistics for index \"%s\" " 
-paah: plancat:00001251:  "on table \"%s\"", 
-paah: plancat:00001252:  indexname ? indexname : "??", 
-paah: plancat:00001253:  relname ? relname : "??"), 
-paah: plancat:00001254:  errhint("To cache a sample of the table's actual statistics for " 
-paah: plancat:00001255:  "optimization, use the ANALYZE or VACUUM ANALYZE command.") 
-paah: plancat:00001256:  )); 
-paah: plancat:00001279:  ereport(NOTICE, 
-paah: plancat:00001280:  (errmsg("Query planner will use default statistics for table \"%s\"", 
-paah: plancat:00001281:  relname ? relname : "??"), 
-paah: plancat:00001282:  errhint("To cache a sample of the table's actual statistics for " 
-paah: plancat:00001283:  "optimization, use the ANALYZE or VACUUM ANALYZE command.") 
-paah: plancat:00001284:  )); 
+paah: plancat:00001248:  ereport(NOTICE, 
+paah: plancat:00001249:  (errmsg("Query planner will use default statistics for index \"%s\" " 
+paah: plancat:00001250:  "on table \"%s\"", 
+paah: plancat:00001251:  indexname ? indexname : "??", 
+paah: plancat:00001252:  relname ? relname : "??"), 
+paah: plancat:00001253:  errhint("To cache a sample of the table's actual statistics for " 
+paah: plancat:00001254:  "optimization, use the ANALYZE or VACUUM ANALYZE command.") 
+paah: plancat:00001255:  )); 
+paah: plancat:00001278:  ereport(NOTICE, 
+paah: plancat:00001279:  (errmsg("Query planner will use default statistics for table \"%s\"", 
+paah: plancat:00001280:  relname ? relname : "??"), 
+paah: plancat:00001281:  errhint("To cache a sample of the table's actual statistics for " 
+paah: plancat:00001282:  "optimization, use the ANALYZE or VACUUM ANALYZE command.") 
+paah: plancat:00001283:  )); 
 aaaaa GP_IGNORE: paai: predtest - ./backend/optimizer/util/predtest.c
 paai: predtest:00001925:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), errmsg("out of memory"))); 
 aaaaa GP_IGNORE: raah: relnode - ./backend/optimizer/util/relnode.c
@@ -17925,81 +17913,81 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00008003:  ereport(ERROR, 
-gaad: guc:00008004:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008005:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008007:  ereport(ERROR, 
-gaad: guc:00008008:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008009:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008043:  ereport(ERROR, 
-gaad: guc:00008044:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008045:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008047:  ereport(ERROR, 
-gaad: guc:00008048:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008049:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008118:  ereport(ERROR, 
-gaad: guc:00008119:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008120:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008127:  ereport(ERROR, 
-gaad: guc:00008128:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008129:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008300:  ereport(ERROR, 
-gaad: guc:00008301:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008302:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008364:  ereport(ERROR, 
-gaad: guc:00008365:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008366:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008685:  ereport(ERROR, 
-gaad: guc:00008686:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008687:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008689:  ereport(ERROR, 
-gaad: guc:00008690:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008691:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009493:  ereport(FATAL, 
-gaad: guc:00009494:  (errcode_for_file_access(), 
-gaad: guc:00009495:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009496:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009603:  ereport(WARNING, 
-gaad: guc:00009604:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009605:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009799:  ereport(ERROR, 
-gaad: guc:00009800:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009801:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009822:  ereport(ERROR, 
-gaad: guc:00009823:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009824:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009825:  tok))); 
-gaad: guc:00009851:  ereport(ERROR, 
-gaad: guc:00009852:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009853:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009854:  value))); 
-gaad: guc:00010242:  ereport(ERROR, 
-gaad: guc:00010243:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010244:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010318:  ereport(ERROR, 
-gaad: guc:00010319:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010320:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010339:  ereport(ERROR, 
-gaad: guc:00010340:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010341:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010352:  ereport(ERROR, 
-gaad: guc:00010353:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010354:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010369:  ereport(ERROR, 
-gaad: guc:00010370:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010371:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010372:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010373:  "\"log_dispatch_stats\", " 
-gaad: guc:00010374:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010389:  ereport(ERROR, 
-gaad: guc:00010390:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010391:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010392:  "\"log_statement_stats\", " 
-gaad: guc:00010393:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010394:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010409:  ereport(ERROR, 
-gaad: guc:00010410:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010411:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00008036:  ereport(ERROR, 
+gaad: guc:00008037:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008038:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008040:  ereport(ERROR, 
+gaad: guc:00008041:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008042:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008076:  ereport(ERROR, 
+gaad: guc:00008077:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008078:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008080:  ereport(ERROR, 
+gaad: guc:00008081:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008082:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008151:  ereport(ERROR, 
+gaad: guc:00008152:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008153:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008160:  ereport(ERROR, 
+gaad: guc:00008161:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008162:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008333:  ereport(ERROR, 
+gaad: guc:00008334:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008335:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008397:  ereport(ERROR, 
+gaad: guc:00008398:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008399:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008718:  ereport(ERROR, 
+gaad: guc:00008719:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008720:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008722:  ereport(ERROR, 
+gaad: guc:00008723:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008724:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009526:  ereport(FATAL, 
+gaad: guc:00009527:  (errcode_for_file_access(), 
+gaad: guc:00009528:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009529:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009636:  ereport(WARNING, 
+gaad: guc:00009637:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009638:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009832:  ereport(ERROR, 
+gaad: guc:00009833:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009834:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009855:  ereport(ERROR, 
+gaad: guc:00009856:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009857:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009858:  tok))); 
+gaad: guc:00009884:  ereport(ERROR, 
+gaad: guc:00009885:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009886:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009887:  value))); 
+gaad: guc:00010275:  ereport(ERROR, 
+gaad: guc:00010276:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010277:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010351:  ereport(ERROR, 
+gaad: guc:00010352:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010353:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010372:  ereport(ERROR, 
+gaad: guc:00010373:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010374:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010385:  ereport(ERROR, 
+gaad: guc:00010386:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010387:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010402:  ereport(ERROR, 
+gaad: guc:00010403:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010404:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010405:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010406:  "\"log_dispatch_stats\", " 
+gaad: guc:00010407:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010422:  ereport(ERROR, 
+gaad: guc:00010423:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010424:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010425:  "\"log_statement_stats\", " 
+gaad: guc:00010426:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010427:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010442:  ereport(ERROR, 
+gaad: guc:00010443:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010444:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
