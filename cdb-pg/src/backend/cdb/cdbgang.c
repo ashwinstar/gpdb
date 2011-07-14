@@ -430,8 +430,11 @@ create_gang_retry:
 			 * Log failed connections.	Complete failures
 			 * are taken care of later.
 			 */
-			ereport(LOG, (errcode(segdbDesc->errcode),
-						  errmsg("Warning: %s", segdbDesc->error_message.data)));
+			if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+			{
+				ereport(LOG, (errcode(segdbDesc->errcode),
+						  errmsg("%s", segdbDesc->error_message.data)));
+			}
 
 			if (segdbDesc->errcode == 0 && segdbDesc->error_message.len == 0)
 				elog(ERROR, "Connection is null, but no error code or error message, for segDB %d", i);
@@ -484,12 +487,18 @@ create_gang_retry:
 		 * We're going to see if *all* of the connect-failures we've got look
 		 * like a simple-retry will help.
 		 */
-		elog(LOG, "createGang: %d processes requested; %d segments online; %d successful connections %d in recovery",
-			 size, newGangDefinition->size, successful_connections, in_recovery_mode_count);
+		if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+		{
+			elog(LOG, "createGang: %d processes requested; %d segments online; %d successful connections %d in recovery",
+					size, newGangDefinition->size, successful_connections, in_recovery_mode_count);
+		}
 
 		if (successful_connections + in_recovery_mode_count == size)
 		{
-			elog(LOG, "createGang: gang creation failed, but retryable.");
+			if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+			{
+				elog(DEBUG1, "createGang: gang creation failed, but retryable.");
+			}
 
 			if (gp_gang_creation_retry_count)
 			{
@@ -584,7 +593,12 @@ create_gang_retry:
 		disconnectAndDestroyGang(newGangDefinition);
 		CheckForResetSession();
 
-		elog((errorOut ? ERROR : DEBUG2), "Greenplum Database detected segment failure(s), system is reconnected");
+		if (errorOut)
+		{
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+					errmsg("failed to acquire resources on one or more segments")));
+
+		}
 
 		newGangDefinition = NULL;
 	}
@@ -1493,10 +1507,16 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				{
 					if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 						elog(DEBUG4, "creating a new reader 1-gang for seg%d, portal: %s", content, (portal_name ? portal_name : "unnamed"));
-					gp = createGang(type, gang_id_counter++, size, content, portal_name);
-					/* try again */
-					if (gp == NULL || gp->size != size)
+					for (int attempts = 0; (attempts < gp_gang_creation_retry_count && (gp == NULL || gp->size !=size)); attempts++)
+					{
 						gp = createGang(type, gang_id_counter++, size, content, portal_name);
+						if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG
+								&& (gp == NULL || gp->size !=size))
+						{
+							elog(LOG, "Could not create 1-reader gang. Retry count = %d", (attempts + 1));
+						}
+
+					}
 				}
 				if (gp == NULL || gp->size != size)
 				{
