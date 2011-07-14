@@ -20,6 +20,7 @@
 #include "optimizer/var.h"
 #include "optimizer/clauses.h"
 #include "parser/parse_expr.h"
+#include "utils/lsyscache.h"
 
 typedef struct maxSortGroupRef_context
 {
@@ -437,3 +438,27 @@ bool maxSortGroupRef_walker(Node *node, maxSortGroupRef_context *cxt)
 	return expression_tree_walker(node, maxSortGroupRef_walker, cxt);
 }
 	
+/**
+ * Returns the width of the row by traversing through the
+ * target list and adding up the width of each target entry.
+ */
+int get_row_width(List *tlist)
+{
+	int width = 0;
+	ListCell *plc = NULL;
+
+    foreach(plc, tlist)
+    {
+    	TargetEntry *pte = (TargetEntry*) lfirst(plc);
+	    Expr *pexpr = pte->expr;
+
+	    Assert(NULL != pexpr);
+
+	    Oid oidType = exprType( (Node *) pexpr);
+	    int32 iTypmod = exprTypmod( (Node *) pexpr);
+
+	    width += get_typavgwidth(oidType, iTypmod);
+	}
+
+    return width;
+}

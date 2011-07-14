@@ -4310,6 +4310,19 @@ Plan *add_agg_cost(PlannerInfo *root, Plan *plan,
     UnusedArg(grpColIdx);
     UnusedArg(num_nullcols);
 
+    /* Solution for MPP-11942
+     * Before this fix, we calculated the width from the sub_tlist which
+     * only contains a subset of the tlist. For example, for the query
+     * select a, min(b), max(b), min(c), max(c) from s group by a;
+     * the sub_tlist has the columns {a,b,c} while the tlist
+     * is {a, min(b), max(b), min(c), max(c)}. Therefore, the plan_width
+     * for the above query is calculated to be 12 instead of 20.
+     *
+     * In this fix, we calculate the actual row width from the tlist.
+     */
+
+    plan->plan_width = get_row_width(tlist);
+
 	if (aggstrategy == AGG_HASHED)
 	{
 		if (!calcHashAggTableSizes(global_work_mem(root),
@@ -4340,6 +4353,7 @@ Plan *add_agg_cost(PlannerInfo *root, Plan *plan,
 				 plan->total_cost,
 				 plan->plan_rows, 0.0, 0.0,
 				 0.0, false);
+
 
 	plan->startup_cost = agg_path.startup_cost;
 	plan->total_cost = agg_path.total_cost;
