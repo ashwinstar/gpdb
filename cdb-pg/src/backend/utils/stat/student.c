@@ -194,7 +194,7 @@ static inline float8 normal_cdf(float8 t)
 
 static inline float8 studentT_cdf_approx(int64 nu, float8 t)
 {
-	int64	g = (nu - 1.5) / ((nu - 1) * (nu - 1)),
+	float8	g = (nu - 1.5) / ((nu - 1) * (nu - 1)),
 			z = sqrt( log(1. + t * t / nu) / g );
 
 	if (t < 0)
