@@ -2869,43 +2869,49 @@ processTransitionRequest_beginPostmasterReset(void)
  	int counterToReturn;
 	PrimaryMirrorModeTransitionArguments args = primaryMirrorGetArgumentsFromLocalMemory();
 
-	if (args.mode != PMModePrimarySegment && args.mode != PMModeMirrorSegment)
+	if (args.mode == PMModeMaster)
 	{
-		elog(ERROR, "Can only cause postmaster reset on a primary or mirror segment");
+		elog(LOG, "request to reset is ignored by the master");
+		snprintf(statusBuf, sizeof(statusBuf), "Failure: attempt to reset the master");
 	}
-
- 	/* note: this uses the FatalError and pmResetCounter values inherited at the time of forking
- 	 * the process to satisfy the request.
- 	 *
- 	 * This _should_ be okay because FatalError and pmResetCounter will at least be in sync -- that is,
- 	 *      we won't inherit a state with FatalError not set but pmResetCounter already incremented --
- 	 *      and so it's safe to tell the caller to wait for pmResetCounter + 1.
- 	 */
-	if (FatalError)
+	else if (args.mode == PMModePrimarySegment)
 	{
-		/** a reset is already in progress or completed, just return the reset counter */
-		if (pmState == PM_POSTMASTER_RESET_FILEREP_PEER)
-		{
-			counterToReturn = pmResetCounter;
-		}
-		else
-		{
-			counterToReturn = pmResetCounter + 1;
-		}
+		Assert(args.dataState == DataStateInChangeTracking);
+
+		elog(LOG, "request to reset is ignored since segment is a primary");
+		snprintf(statusBuf, sizeof(statusBuf), "Failure: attempt to reset a primary segment");
 	}
 	else
 	{
-		elog(LOG, "postmaster reset request received from primary/mirror peer");
-		SendPostmasterSignal(PMSIGNAL_POSTMASTER_RESET_BY_PEER);
-		counterToReturn = pmResetCounter + 1;
+		Assert(args.mode == PMModeMirrorSegment || args.mode == PMModeQuiescentSegment);
+
+		/*
+		 * this uses the error and reset counter values inherited at the time of forking
+		 * the process to satisfy the request.
+		 */
+		if (FatalError)
+		{
+			/* check if FileRep has already requested a reset */
+			if (pmState == PM_POSTMASTER_RESET_FILEREP_PEER)
+			{
+				counterToReturn = pmResetCounter;
+			}
+			else
+			{
+				counterToReturn = pmResetCounter + 1;
+			}
+		}
+		else
+		{
+			elog(LOG, "postmaster reset request received from primary");
+			SendPostmasterSignal(PMSIGNAL_POSTMASTER_RESET_BY_PEER);
+			counterToReturn = pmResetCounter + 1;
+		}
+
+		/* report success along with target reset counter value */
+		snprintf(statusBuf, sizeof(statusBuf), "Success:\n\n%09d", counterToReturn);
 	}
 
-	/* return the result, which will be:
-	 *        Success:    on the first line (to satisfy client protocol)
-	 *        <empty second line>
-	 *        reset counter (left-padded with zeros): to tell the peer to wait for the reset counter to reach this level before continuing)
-	 */
-	snprintf(statusBuf, sizeof(statusBuf), "Success:\n\n%09d", counterToReturn);
 	sendPrimaryMirrorTransitionResult(statusBuf);
 }
 

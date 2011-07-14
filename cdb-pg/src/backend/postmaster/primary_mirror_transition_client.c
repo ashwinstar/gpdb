@@ -488,6 +488,7 @@ processResponse(ConnectionInfo *connInfo,
 		strncmp(resultMsg, "Success:", sizeof("Success:") - 1) != 0)
 	{
 		connInfo->resultStatus = TRANS_ERRCODE_ERROR_UNSPECIFIED;
+		client->errorLogFn(resultMsg);
 	}
 }
 
