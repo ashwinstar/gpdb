@@ -1568,45 +1568,45 @@ planstate_walk_kids(PlanState      *planstate,
 	        /* Right subtree */
             if (v == CdbVisit_Walk)
                 v = planstate_walk_node(planstate->righttree, walker, context);
+            break;
+	}
 
-
-            /* Init plan subtree */
-            if (v == CdbVisit_Walk)
-            {
-            	ListCell *lc = NULL;
-            	CdbVisitOpt v1 = v;
-            	foreach (lc, planstate->initPlan)
-            	{
-            		SubPlanState *sps = (SubPlanState *) lfirst(lc);
-            		PlanState *ips = sps->planstate;
-            		Assert(ips);
-            		if (v1 == CdbVisit_Walk)
-            		{
-            			v1 = planstate_walk_node(ips, walker, context);
-            		}
-            	}
-
-            }
-
-
-            /* Sub plan subtree */
-            if (v == CdbVisit_Walk)
-            {
-            	ListCell *lc = NULL;
-            	CdbVisitOpt v1 = v;
-            	foreach (lc, planstate->subPlan)
-            	{
-            		SubPlanState *sps = (SubPlanState *) lfirst(lc);
-            		PlanState *ips = sps->planstate;
-            		Assert(ips);
-            		if (v1 == CdbVisit_Walk)
-            		{
-            			v1 = planstate_walk_node(ips, walker, context);
-            		}
-            	}
-
-            }
+	/* Init plan subtree */
+	if (v == CdbVisit_Walk)
+	{
+		ListCell *lc = NULL;
+		CdbVisitOpt v1 = v;
+		foreach (lc, planstate->initPlan)
+		{
+			SubPlanState *sps = (SubPlanState *) lfirst(lc);
+			PlanState *ips = sps->planstate;
+			Assert(ips);
+			if (v1 == CdbVisit_Walk)
+			{
+				v1 = planstate_walk_node(ips, walker, context);
+			}
+		}
 
 	}
+
+
+	/* Sub plan subtree */
+	if (v == CdbVisit_Walk)
+	{
+		ListCell *lc = NULL;
+		CdbVisitOpt v1 = v;
+		foreach (lc, planstate->subPlan)
+		{
+			SubPlanState *sps = (SubPlanState *) lfirst(lc);
+			PlanState *ips = sps->planstate;
+			Assert(ips);
+			if (v1 == CdbVisit_Walk)
+			{
+				v1 = planstate_walk_node(ips, walker, context);
+			}
+		}
+
+	}
+
     return v;
 }	                            /* planstate_walk_kids */

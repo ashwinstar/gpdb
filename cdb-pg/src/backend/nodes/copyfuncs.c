@@ -1245,10 +1245,11 @@ _copySubPlan(SubPlan *from)
 	SubPlan    *newnode = makeNode(SubPlan);
 
 	COPY_SCALAR_FIELD(subLinkType);
-    COPY_SCALAR_FIELD(qDispSliceId);    /*CDB*/
+	COPY_SCALAR_FIELD(qDispSliceId);    /*CDB*/
 	COPY_NODE_FIELD(testexpr);
 	COPY_NODE_FIELD(paramIds);
 	COPY_SCALAR_FIELD(plan_id);
+	COPY_STRING_FIELD(plan_name);
 	COPY_SCALAR_FIELD(firstColType);
 	COPY_SCALAR_FIELD(firstColTypmod);
 	COPY_SCALAR_FIELD(useHashTable);
