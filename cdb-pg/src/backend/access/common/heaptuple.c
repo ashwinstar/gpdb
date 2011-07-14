@@ -220,7 +220,7 @@ heap_fill_tuple(TupleDesc tupleDesc,
 				/* convert to short varlena -- no alignment */
 				data_length = VARSIZE_D(values[i]) - VARHDRSZ + VARHDRSZ_SHORT;
 				*data = VARSIZE_TO_SHORT_D(values[i]);
-				memcpy(data+1, 
+				memcpy(data+1,
 					   VARDATA_D(values[i]),
 					   data_length-1);
 			}

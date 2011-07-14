@@ -704,7 +704,7 @@ MemTuple memtuple_form_to_align(
 		varlen_start += pbind->null_bitmap_extra_size;
 
 		/* clear null bitmap. */
-		memset(nullp, 0, memtuple_get_nullp_len(mtup, pbind)); 
+		memset(nullp, 0, memtuple_get_nullp_len(mtup, pbind));
 	}
 
 	/* It is very important to setup the null bitmap first before we 
