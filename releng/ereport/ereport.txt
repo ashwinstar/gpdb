@@ -3708,10 +3708,12 @@ caah: cdbgang:00000360:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
 caah: cdbgang:00000361:  errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount), 
 caah: cdbgang:00000362:  errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread), 
 caah: cdbgang:00000363:  errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread))); 
-caah: cdbgang:00000564:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caah: cdbgang:00000565:  errmsg("failed to acquire resources on one or more segments"))); 
-caah: cdbgang:00001515:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caah: cdbgang:00001516:  errmsg_internal("problem in allocateGang"))); 
+caah: cdbgang:00000573:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caah: cdbgang:00000574:  errmsg("failed to acquire resources on one or more segments"))); 
+caah: cdbgang:00000598:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caah: cdbgang:00000599:  errmsg("failed to acquire resources on one or more segments"))); 
+caah: cdbgang:00001535:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caah: cdbgang:00001536:  errmsg_internal("problem in allocateGang"))); 
 aaaaa GP_IGNORE: caai: cdbgroup - ./backend/cdb/cdbgroup.c
 caai: cdbgroup:00000831:  ereport(ERROR, 
 caai: cdbgroup:00000832:  (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
@@ -13201,60 +13203,60 @@ paba: postmaster:00002784:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 paba: postmaster:00002785:  errSendAlert(true), 
 paba: postmaster:00002786:  errOmitLocation(true), 
 paba: postmaster:00002787:  errmsg("sorry, too many clients already"))); 
-paba: postmaster:00003786:  ereport(WARNING, 
-paba: postmaster:00003787:  (errmsg("pg_hba.conf not reloaded"))); 
-paba: postmaster:00003829:  ereport(LOG, 
-paba: postmaster:00003830:  (errmsg("received smart shutdown request"), 
-paba: postmaster:00003831:  errSendAlert(true), 
-paba: postmaster:00003832:  errOmitLocation(true))); 
-paba: postmaster:00003851:  ereport(LOG, 
-paba: postmaster:00003852:  (errmsg("received fast shutdown request"), 
-paba: postmaster:00003853:  errSendAlert(true), 
-paba: postmaster:00003854:  errOmitLocation(true))); 
-paba: postmaster:00003876:  ereport(LOG, 
-paba: postmaster:00003877:  (errmsg("received immediate shutdown request"), 
-paba: postmaster:00003878:  errSendAlert(true), 
-paba: postmaster:00003879:  errOmitLocation(true))); 
-paba: postmaster:00004090:  ereport(LOG, 
-paba: postmaster:00004091:  (errmsg("database system is ready to accept connections"), 
-paba: postmaster:00004092:  errdetail("%s",version), 
-paba: postmaster:00004093:  errSendAlert(true), 
-paba: postmaster:00004094:  errOmitLocation(true))); 
-paba: postmaster:00004525:  ereport(LOG, 
-paba: postmaster:00004526:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00005637:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00006210:  ereport(WARNING, 
-paba: postmaster:00006211:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
-paba: postmaster:00006212:  gai_strerror(ret)))); 
-paba: postmaster:00006254:  ereport(FATAL, 
-paba: postmaster:00006255:  (errmsg("could not load pg_hba.conf"))); 
-paba: postmaster:00006693:  ereport(ERROR, 
-paba: postmaster:00006694:  (errmsg_internal("could not terminate unstarted process: error code %d", 
-paba: postmaster:00006695:  (int) GetLastError()))); 
-paba: postmaster:00006720:  ereport(ERROR, 
-paba: postmaster:00006721:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
-paba: postmaster:00006722:  (int) GetLastError()))); 
-paba: postmaster:00006737:  ereport(ERROR, 
-paba: postmaster:00006738:  (errmsg_internal("could not terminate unstartable process: error code %d", 
-paba: postmaster:00006739:  (int) GetLastError()))); 
-paba: postmaster:00006746:  ereport(ERROR, 
-paba: postmaster:00006747:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
-paba: postmaster:00006748:  (int) GetLastError()))); 
-paba: postmaster:00006762:  ereport(FATAL, 
-paba: postmaster:00006763:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006764:  errmsg("out of memory"))); 
-paba: postmaster:00006775:  ereport(FATAL, 
-paba: postmaster:00006776:  (errmsg_internal("could not register process for wait: error code %d", 
-paba: postmaster:00006777:  (int) GetLastError()))); 
-paba: postmaster:00006848:  ereport(FATAL, 
-paba: postmaster:00006849:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006850:  errmsg("out of memory"))); 
-paba: postmaster:00007626:  ereport(ERROR, 
-paba: postmaster:00007627:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
-paba: postmaster:00007628:  (int) GetLastError()))); 
-paba: postmaster:00007648:  ereport(ERROR, 
-paba: postmaster:00007649:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
-paba: postmaster:00007650:  src, WSAGetLastError()))); 
+paba: postmaster:00003792:  ereport(WARNING, 
+paba: postmaster:00003793:  (errmsg("pg_hba.conf not reloaded"))); 
+paba: postmaster:00003835:  ereport(LOG, 
+paba: postmaster:00003836:  (errmsg("received smart shutdown request"), 
+paba: postmaster:00003837:  errSendAlert(true), 
+paba: postmaster:00003838:  errOmitLocation(true))); 
+paba: postmaster:00003857:  ereport(LOG, 
+paba: postmaster:00003858:  (errmsg("received fast shutdown request"), 
+paba: postmaster:00003859:  errSendAlert(true), 
+paba: postmaster:00003860:  errOmitLocation(true))); 
+paba: postmaster:00003882:  ereport(LOG, 
+paba: postmaster:00003883:  (errmsg("received immediate shutdown request"), 
+paba: postmaster:00003884:  errSendAlert(true), 
+paba: postmaster:00003885:  errOmitLocation(true))); 
+paba: postmaster:00004096:  ereport(LOG, 
+paba: postmaster:00004097:  (errmsg("database system is ready to accept connections"), 
+paba: postmaster:00004098:  errdetail("%s",version), 
+paba: postmaster:00004099:  errSendAlert(true), 
+paba: postmaster:00004100:  errOmitLocation(true))); 
+paba: postmaster:00004531:  ereport(LOG, 
+paba: postmaster:00004532:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00005643:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00006216:  ereport(WARNING, 
+paba: postmaster:00006217:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+paba: postmaster:00006218:  gai_strerror(ret)))); 
+paba: postmaster:00006260:  ereport(FATAL, 
+paba: postmaster:00006261:  (errmsg("could not load pg_hba.conf"))); 
+paba: postmaster:00006699:  ereport(ERROR, 
+paba: postmaster:00006700:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+paba: postmaster:00006701:  (int) GetLastError()))); 
+paba: postmaster:00006726:  ereport(ERROR, 
+paba: postmaster:00006727:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+paba: postmaster:00006728:  (int) GetLastError()))); 
+paba: postmaster:00006743:  ereport(ERROR, 
+paba: postmaster:00006744:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+paba: postmaster:00006745:  (int) GetLastError()))); 
+paba: postmaster:00006752:  ereport(ERROR, 
+paba: postmaster:00006753:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+paba: postmaster:00006754:  (int) GetLastError()))); 
+paba: postmaster:00006768:  ereport(FATAL, 
+paba: postmaster:00006769:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006770:  errmsg("out of memory"))); 
+paba: postmaster:00006781:  ereport(FATAL, 
+paba: postmaster:00006782:  (errmsg_internal("could not register process for wait: error code %d", 
+paba: postmaster:00006783:  (int) GetLastError()))); 
+paba: postmaster:00006854:  ereport(FATAL, 
+paba: postmaster:00006855:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006856:  errmsg("out of memory"))); 
+paba: postmaster:00007632:  ereport(ERROR, 
+paba: postmaster:00007633:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+paba: postmaster:00007634:  (int) GetLastError()))); 
+paba: postmaster:00007654:  ereport(ERROR, 
+paba: postmaster:00007655:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+paba: postmaster:00007656:  src, WSAGetLastError()))); 
 aaaaa GP_IGNORE: saaj: seqserver - ./backend/postmaster/seqserver.c
 saaj: seqserver:00000216:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 saaj: seqserver:00000217:  errmsg("Error: Could not write() message to seqserver: %s", 
