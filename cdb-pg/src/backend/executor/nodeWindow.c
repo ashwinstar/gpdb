@@ -5613,12 +5613,6 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	/* Check for unsupported flags. */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		ExecInitNode(outerPlan(node), estate, eflags);
-		return NULL;
-	}
-	
 	/* Create state structure. */
 	wstate = makeWindowState(node, estate);
 

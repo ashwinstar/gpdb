@@ -390,13 +390,6 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		ExecInitNode(innerPlan(node), estate, eflags);
-		ExecInitNode(outerPlan(node), estate, eflags);
-		return NULL;
-	}
-
 	/*
 	 * create state structure
 	 */

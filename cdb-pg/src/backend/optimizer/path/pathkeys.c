@@ -581,7 +581,7 @@ generate_implied_quals(PlannerInfo *root)
     int i;
     int *initialNumRestrictionsByRelId;
 
-    if ( ! gp_enable_predicate_propagation )
+    if ( ! root->config->gp_enable_predicate_propagation )
         return;
 
     /* get the initial number of restrictions per relation id */

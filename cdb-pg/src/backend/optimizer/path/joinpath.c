@@ -92,8 +92,8 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * 1. Consider mergejoin paths where both relations must be explicitly
 	 * sorted.
 	 */
-	if (enable_mergejoin ||
-        root->mpp_trying_fallback_plan ||
+	if (root->config->enable_mergejoin ||
+        root->config->mpp_trying_fallback_plan ||
         jointype == JOIN_FULL)
 	    sort_inner_and_outer(root, joinrel, outerrel, innerrel,
 						     restrictlist, mergeclause_list, jointype);
@@ -131,7 +131,8 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * outer paths.  There's no need to consider any but the
 	 * cheapest-total-cost inner path, however.
 	 */
-	if (enable_hashjoin || root->mpp_trying_fallback_plan)
+	if (root->config->enable_hashjoin
+			|| root->config->mpp_trying_fallback_plan)
     {
 	    hashclause_list = hashclauses_for_join(restrictlist,
                                                outerrel,
@@ -396,7 +397,8 @@ match_unsorted_outer(PlannerInfo *root,
 			break;
 	}
 
-    if (!enable_nestloop && !root->mpp_trying_fallback_plan)
+    if (!root->config->enable_nestloop
+    		&& !root->config->mpp_trying_fallback_plan)
         nestjoinOK = false;
 
     /*
@@ -542,8 +544,10 @@ match_unsorted_outer(PlannerInfo *root,
 		 * supports FULL JOIN, it's necessary to generate a clauseless
 		 * mergejoin path instead.
 		 */
-		if (mergeclauses == NIL ||
-            (!enable_mergejoin && !root->mpp_trying_fallback_plan))
+		if (mergeclauses == NIL
+				|| (!root->config->enable_mergejoin
+						&& !root->config->mpp_trying_fallback_plan)
+			)
 		{
 			if (jointype == JOIN_FULL)
 				 /* okay to try for mergejoin */ ;
@@ -824,8 +828,8 @@ hash_inner_and_outer(PlannerInfo *root,
      * (in case Broadcast Motion is inserted above an input path).
      */
     if (hjpath->jpath.jointype == JOIN_INNER &&
-        gp_enable_hashjoin_size_heuristic &&
-        !root->mpp_trying_fallback_plan)
+    		root->config->gp_enable_hashjoin_size_heuristic &&
+        !root->config->mpp_trying_fallback_plan)
     {
         double  outersize = ExecHashRowSize(outerpath->parent->width) *
                                 cdbpath_rows(root, hjpath->jpath.outerjoinpath);

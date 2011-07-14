@@ -77,10 +77,10 @@ preprocess_initplans(QueryDesc *queryDesc)
 		return;
 
 	originalPli = queryDesc->params;
-	originalRoot = queryDesc->estate->es_cur_root_idx;
-    originalSlice = queryDesc->estate->es_cur_slice_idx;
-	Assert(originalSlice == 0 &&
-           queryDesc->estate->es_sliceTable->localSlice == originalSlice);
+	originalRoot = RootSliceIndex(queryDesc->estate);
+
+    originalSlice = LocallyExecutingSliceIndex(queryDesc->estate);
+	Assert(originalSlice == 0); /* Original slice being executed is slice 0 */
 
 	/*
 	 * Loop through the estate->es_param_exec_vals. This array has an element
@@ -125,8 +125,6 @@ preprocess_initplans(QueryDesc *queryDesc)
 			 * Adjust for the slice to execute on the QD.
 			 */
 			rootIndex = subplan->qDispSliceId;
-			queryDesc->estate->es_cur_root_idx = rootIndex;		/* ! */
-            queryDesc->estate->es_cur_slice_idx = rootIndex;
 			queryDesc->estate->es_sliceTable->localSlice = rootIndex;
 
 			/* set our global sliceid variable for elog. */
@@ -149,7 +147,9 @@ preprocess_initplans(QueryDesc *queryDesc)
 					(subplan->qDispSliceId <=
 							(queryDesc->plannedstmt->nMotionNodes
 							+ queryDesc->plannedstmt->nInitPlans) )   );
-		    sps->planstate->state->es_cur_slice_idx = subplan->qDispSliceId;
+
+			Assert(LocallyExecutingSliceIndex(sps->planstate->state) == subplan->qDispSliceId);
+		    //sps->planstate->state->es_cur_slice_idx = subplan->qDispSliceId;
 
 			ExecSetParamPlan(sps, sps->planstate->ps_ExprContext, queryDesc);
 
@@ -161,8 +161,6 @@ preprocess_initplans(QueryDesc *queryDesc)
 		}
 
 		queryDesc->params = originalPli;
-		queryDesc->estate->es_cur_root_idx = originalRoot;
-		queryDesc->estate->es_cur_slice_idx = originalSlice;
 		queryDesc->estate->es_sliceTable->localSlice = originalSlice;
 		currentSliceId = originalSlice;
 

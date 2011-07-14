@@ -275,10 +275,7 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->es_evTuple = NULL;
 	estate->es_useEvalPlan = false;
 
-	estate->es_cur_slice_idx = 0;
-	estate->es_cur_root_idx = 0;
 	estate->es_sliceTable = NULL;
-	estate->es_slice_map = NULL;
 	estate->interconnect_context = NULL;
 	estate->motionlayer_context = NULL;
 	estate->es_interconnect_is_setup = false;
@@ -289,7 +286,6 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->dispatcherState = palloc0(sizeof(struct CdbDispatcherState));
 
 	estate->current_slice_no = 0;
-	estate->slice_estates = NULL;
 
 	/*
 	 * Return the executor state structure
@@ -1377,6 +1373,12 @@ ExecGetShareNodeEntry(EState* estate, int shareidx, bool fCreate)
  * ----------------------------------------------------------------
  */
 
+static bool
+is1GangSlice(Slice *slice)
+{
+	return slice->gangSize == 1 && getgpsegmentCount() != 1;
+}
+
 /* Attach a slice table to the given Estate structure.	It should
  * consist of blank slices, one for the root plan, one for each
  * Motion node (which roots a slice with a send node), and one for
@@ -1395,7 +1397,7 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 
 	table = makeNode(SliceTable);
 	table->nMotions = nMotions;
-	table->nSubplans = nSubplans;
+	table->nInitPlans = nSubplans;
 	table->slices = NIL;
     table->doInstrument = false;
 
@@ -1424,12 +1426,76 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 	}
 
 	estate->es_sliceTable = table;
-	estate->es_cur_root_idx = 0;
-	estate->es_cur_slice_idx = 0;
 
 	MemoryContextSwitchTo(oldcontext);
 }
 
+/*
+ * A forgiving slice table indexer that returns the indexed Slice* or NULL
+ */
+Slice *
+getCurrentSlice(EState *estate, int sliceIndex)
+{
+	SliceTable *sliceTable = estate->es_sliceTable;
+
+    if (sliceTable &&
+        sliceIndex >= 0 &&
+        sliceIndex < list_length(sliceTable->slices))
+	    return (Slice *)list_nth(sliceTable->slices, sliceIndex);
+
+    return NULL;
+}
+
+/* Should the slice run on the QD?
+ *
+ * N.B. Not the same as !sliceRunsOnQE(slice), when slice is NULL.
+ */
+bool
+sliceRunsOnQD(Slice * slice)
+{
+	return (slice != NULL && slice->gangType == GANGTYPE_UNALLOCATED);
+}
+
+
+/* Should the slice run on a QE?
+ *
+ * N.B. Not the same as !sliceRunsOnQD(slice), when slice is NULL.
+ */
+bool
+sliceRunsOnQE(Slice * slice)
+{
+	return (slice != NULL && slice->gangType != GANGTYPE_UNALLOCATED);
+}
+
+/**
+ * Calculate the number of sending processes that should in be a slice.
+ */
+int
+sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
+{
+	switch(slice->gangType)
+	{
+		case GANGTYPE_UNALLOCATED:
+			return 0; /* does not send */
+
+		case GANGTYPE_ENTRYDB_READER:
+			return 1; /* on master */
+
+		case GANGTYPE_PRIMARY_WRITER:
+			return 0; /* writers don't send */
+
+		case GANGTYPE_PRIMARY_READER:
+			if ( is1GangSlice(slice))
+				return 1;
+			else if ( slice->directDispatch.isDirectDispatch)
+				return list_length(slice->directDispatch.contentIds);
+			else return getgpsegmentCount();
+
+		default:
+			Insist(false);
+			return -1;
+	}
+}
 
 /* Assign gang descriptions to the root slices of the slice forest.
  *
@@ -1480,7 +1546,7 @@ InitRootSlices(QueryDesc *queryDesc)
 				case CMD_DELETE:
 				{
 					/* if updating a master-only table: do not dispatch to segments */
-					List *resultRelations = queryDesc->plannedstmt->resultRelations; 
+					List *resultRelations = queryDesc->plannedstmt->resultRelations;
 					Assert(list_length(resultRelations) > 0);
 					int idx = list_nth_int(resultRelations, 0);
 					Assert (idx > 0);
@@ -1510,9 +1576,6 @@ InitRootSlices(QueryDesc *queryDesc)
 		}
 	}
 }
-
-
-
 
 /*
  * Context for AssignGangs() and helper functions.
@@ -1698,11 +1761,6 @@ AccumSliceReq(SliceReq * inv, SliceReq * req)
 	inv->writer = (inv->writer || req->writer);
 }
 
-static bool
-is1GangSlice(Slice *slice)
-{
-	return slice->gangSize == 1 && getgpsegmentCount() != 1;
-}
 
 /*
  * Helper for AssignGangs takes a simple inventory of the gangs required
@@ -1750,35 +1808,7 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 	}
 }
 
-/**
- * Calculate the number of sending processes that should in be a slice.
- */
-int
-sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
-{
-	switch(slice->gangType)
-	{
-		case GANGTYPE_UNALLOCATED:
-			return 0; /* does not send */
 
-		case GANGTYPE_ENTRYDB_READER:
-			return 1; /* on master */
-
-		case GANGTYPE_PRIMARY_WRITER:
-			return 0; /* writers don't send */
-
-		case GANGTYPE_PRIMARY_READER:
-			if ( is1GangSlice(slice))
-				return 1;
-			else if ( slice->directDispatch.isDirectDispatch)
-				return list_length(slice->directDispatch.contentIds);
-			else return getgpsegmentCount();
-
-		default:
-			Insist(false);
-			return -1;
-	}
-}
 
 #ifdef USE_ASSERT_CHECKING
 static int
@@ -1868,42 +1898,6 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 	}
 }
 
-/*
- * A forgiving slice table indexer that returns the indexed Slice* or NULL
- */
-Slice *
-getCurrentSlice(EState *estate, int sliceIndex)
-{
-	SliceTable *sliceTable = estate->es_sliceTable;
-
-    if (sliceTable &&
-        sliceIndex >= 0 &&
-        sliceIndex < list_length(sliceTable->slices))
-	    return (Slice *)list_nth(sliceTable->slices, sliceIndex);
-
-    return NULL;
-}
-
-/* Should the slice run on the QD?
- *
- * N.B. Not the same as !sliceRunsOnQE(slice), when slice is NULL.
- */
-bool
-sliceRunsOnQD(Slice * slice)
-{
-	return (slice != NULL && slice->gangType == GANGTYPE_UNALLOCATED);
-}
-
-
-/* Should the slice run on a QE?
- *
- * N.B. Not the same as !sliceRunsOnQD(slice), when slice is NULL.
- */
-bool
-sliceRunsOnQE(Slice * slice)
-{
-	return (slice != NULL && slice->gangType != GANGTYPE_UNALLOCATED);
-}
 
 /*
  * Choose the execution identity (who does this executor serve?).
@@ -1934,7 +1928,7 @@ getGpExecIdentity(QueryDesc *queryDesc,
 {
 	Slice *currentSlice;
 
-	currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
+	currentSlice = getCurrentSlice(estate, LocallyExecutingSliceIndex(estate));
 	if (currentSlice)
     {
         if (Gp_role == GP_ROLE_EXECUTE ||
@@ -1951,7 +1945,7 @@ getGpExecIdentity(QueryDesc *queryDesc,
 	{
 		return GP_IGNORE;
 	}
-	else if (Gp_role == GP_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx)
+	else if (Gp_role == GP_ROLE_EXECUTE && LocallyExecutingSliceIndex(estate) != RootSliceIndex(estate))
 	{
 		return GP_NON_ROOT_ON_QE;
 	}
@@ -1975,7 +1969,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	/* caller must have switched into per-query memory context already */
 	estate = queryDesc->estate;
 
-	currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
+	currentSlice = getCurrentSlice(estate, LocallyExecutingSliceIndex(estate));
 
 	/*
 	 * If QD, wait for QEs to finish and check their results.
@@ -2005,9 +1999,9 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		if (sliceRunsOnQE(currentSlice))
 		{
 			estate->es_processed +=
-				cdbdisp_sumCmdTuples(pr, estate->es_cur_slice_idx);
+				cdbdisp_sumCmdTuples(pr, LocallyExecutingSliceIndex(estate));
 			estate->es_lastoid =
-				cdbdisp_maxLastOid(pr, estate->es_cur_slice_idx);
+				cdbdisp_maxLastOid(pr, LocallyExecutingSliceIndex(estate));
 			aopartcounts = cdbdisp_sumAoPartTupCount(estate->es_result_partitions, pr);
 		}
 
@@ -2360,4 +2354,81 @@ uint64 PlanStateOperatorMemKB(const PlanState *ps)
 	return result;
 }
 
+/**
+ * Methods to find motionstate object within a planstate tree given a motion id (which is the same as slice index)
+ */
+typedef struct MotionStateFinderContext
+{
+	int motionId; /* Input */
+	MotionState *motionState; /* Output */
+} MotionStateFinderContext;
+
+/**
+ * Walker method that finds motion state node within a planstate tree.
+ */
+static CdbVisitOpt
+MotionStateFinderWalker(PlanState *node,
+				  void *context)
+{
+	Assert(context);
+	MotionStateFinderContext *ctx = (MotionStateFinderContext *) context;
+
+	if (IsA(node, MotionState))
+	{
+		MotionState *ms = (MotionState *) node;
+		Motion *m = (Motion *) ms->ps.plan;
+		if (m->motionID == ctx->motionId)
+		{
+			Assert(ctx->motionState == NULL);
+			ctx->motionState = ms;
+			return CdbVisit_Skip;	/* don't visit subtree */
+		}
+	}
+
+	/* Continue walking */
+	return CdbVisit_Walk;
+}
+
+/**
+ * Given a slice index, find the motionstate that corresponds to this slice index. This will iterate over the planstate tree
+ * to get the right node.
+ */
+MotionState *getMotionState(struct PlanState *ps, int sliceIndex)
+{
+	Assert(ps);
+	Assert(sliceIndex > -1);
+
+	MotionStateFinderContext ctx;
+	ctx.motionId = sliceIndex;
+	ctx.motionState = NULL;
+	planstate_walk_node(ps, MotionStateFinderWalker, &ctx);
+	Assert(ctx.motionState != NULL);
+	return ctx.motionState;
+}
+
+/**
+ * Provide index of locally executing slice
+ */
+int LocallyExecutingSliceIndex(EState *estate)
+{
+	Assert(estate);
+	return (!estate->es_sliceTable ? 0 : estate->es_sliceTable->localSlice);
+}
+
+/**
+ * Provide root slice of locally executing slice.
+ */
+int RootSliceIndex(EState *estate)
+{
+	Assert(estate);
+	int result = 0;
+
+	if (estate->es_sliceTable)
+	{
+		Slice *localSlice = list_nth(estate->es_sliceTable->slices, LocallyExecutingSliceIndex(estate));
+		result = localSlice->rootIndex;
+	}
+
+	return result;
+}
 

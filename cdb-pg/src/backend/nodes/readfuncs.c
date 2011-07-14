@@ -27,14 +27,12 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-
 #include <math.h>
-
 #include "nodes/parsenodes.h"
-
 #include "nodes/execnodes.h" /* Just for Slice and SliceTable */
 #include "nodes/readfuncs.h"
 #include "utils/lsyscache.h"  /* For get_typlenbyval */
+#include "cdb/cdbgang.h"
 
 
 /*
@@ -2703,7 +2701,6 @@ _readCdbProcess(void)
 	READ_INT_FIELD(listenerPort);
 	READ_INT_FIELD(pid);
 	READ_INT_FIELD(contentid);
-	READ_INT_FIELD(routeid);
 
 	READ_DONE();
 }
@@ -2735,7 +2732,7 @@ _readSliceTable(void)
 	READ_LOCALS(SliceTable);
 
 	READ_INT_FIELD(nMotions);
-	READ_INT_FIELD(nSubplans);
+	READ_INT_FIELD(nInitPlans);
 	READ_INT_FIELD(localSlice);
 	READ_NODE_FIELD(slices); /* List of Slice* */
     READ_BOOL_FIELD(doInstrument);

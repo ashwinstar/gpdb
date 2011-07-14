@@ -941,8 +941,8 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	root->group_pathkeys = canonicalize_pathkeys(root, root->group_pathkeys);
 
 	/* Plan a list of plans, one for each rollup level. */
-	if (gp_enable_groupext_distinct_gather ||
-		!gp_enable_groupext_distinct_pruning ||
+	if (root->config->gp_enable_groupext_distinct_gather ||
+		!root->config->gp_enable_groupext_distinct_pruning ||
 		has_ordered_aggs )
 	{
 		memcpy(&context_copy, context, sizeof(GroupExtContext));
@@ -972,11 +972,16 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	else if (rewrite_agg_plan != NULL)
 	{
 		/* Choose a cheaper plan */
-		if (!enable_groupagg || rewrite_agg_plan->total_cost < gather_agg_plan->total_cost)
+		if (!root->config->enable_groupagg
+				|| rewrite_agg_plan->total_cost < gather_agg_plan->total_cost)
+		{
 			result_plan = rewrite_agg_plan;
-		else if (rewrite_agg_plan->total_cost == gather_agg_plan->total_cost &&
-				 rewrite_agg_plan->startup_cost < rewrite_agg_plan->startup_cost)
+		}
+		else if (rewrite_agg_plan->total_cost == gather_agg_plan->total_cost
+				&& rewrite_agg_plan->startup_cost < rewrite_agg_plan->startup_cost)
+		{
 			result_plan = rewrite_agg_plan;
+		}
 	}
 
 	if (result_plan == gather_agg_plan &&
@@ -2047,7 +2052,7 @@ plan_list_rollup_plans(PlannerInfo *root,
 	Query *orig_query = root->parse;
 	Query *final_query = NULL;
 	List *pathkeys = NIL;
-	bool orig_gp_enable_groupext_distinct_pruning = gp_enable_groupext_distinct_pruning;
+	bool orig_gp_enable_groupext_distinct_pruning = root->config->gp_enable_groupext_distinct_pruning;
 
 	/*
 	 * Augment the targetlist of lefttree with DQA arguments if

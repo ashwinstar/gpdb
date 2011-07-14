@@ -329,26 +329,6 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		if (node->join.prefetch_inner)
-		{
-			ExecInitNode(innerPlan(node), estate,
-						 eflags | EXEC_FLAG_REWIND);
-			if (!node->shared_outer)
-				ExecInitNode(outerPlan(node), estate, eflags);
-		}
-		else
-		{
-			if (!node->shared_outer)
-				ExecInitNode(outerPlan(node), estate, eflags);
-			ExecInitNode(innerPlan(node), estate,
-						 eflags | EXEC_FLAG_REWIND);
-		}
-		
-		return NULL;
-	}
-
 	NL1_printf("ExecInitNestLoop: %s\n",
 			   "initializing node");
 

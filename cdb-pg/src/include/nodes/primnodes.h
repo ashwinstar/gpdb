@@ -650,6 +650,7 @@ typedef struct SubPlan
 								 * initplan? */
 	bool		is_multirow;	/* CDB: May the subplan return more than
 								 * one row? */
+	bool		is_parallelized; /* Has subplan been processed to be executed in parallel setting */
 	/* Information for passing params into and out of the subselect: */
 	/* setParam and parParam are lists of integers (param IDs) */
 	List	   *setParam;		/* initplan subqueries have to set these
@@ -1256,19 +1257,6 @@ typedef struct Flow
     struct Flow    *flow_before_req_move;
 	
 } Flow;
-
-
-
-/* GangType enumeration is used in several structures related to CDB
- * slice plan support.
- */
-typedef enum GangType
-{
-	GANGTYPE_UNALLOCATED,       /* a root slice executed by the qDisp */
-    GANGTYPE_ENTRYDB_READER,    /* a 1-gang with read access to the entry db */	
-	GANGTYPE_PRIMARY_READER,    /* a 1-gang or N-gang to read the segment dbs */
-	GANGTYPE_PRIMARY_WRITER    /* the N-gang that can update the segment dbs */
-} GangType;
 
 typedef enum GroupingType
 {

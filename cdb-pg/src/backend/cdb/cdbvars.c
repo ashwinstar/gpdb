@@ -252,16 +252,9 @@ double gp_hashagg_respill_bias = 1;
 bool        enable_adaptive_nestloop = true;
 double      gp_motion_cost_per_row = 0;
 int         gp_segments_for_planner = 0;
-bool		enable_agg_restruct = true;
-bool		gp_enable_preunique = TRUE;
-bool		gp_eager_preunique = FALSE;
-bool		gp_enable_sequential_window_plans = FALSE;
-double		gp_hashagg_rewrite_limit = 1;
-bool		gp_hashagg_recalc_density = true;
-bool 		gp_hashagg_streambottom = true;
+
 int         gp_hashagg_default_nbatches = 32;
 
-bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
 bool		gp_adjust_selectivity_for_outerjoins = TRUE;
 bool		gp_selectivity_damping_for_scans = false;
 bool		gp_selectivity_damping_for_joins = false;
@@ -288,19 +281,10 @@ int 		gp_ltrace_flag = 0;
 bool		gp_enable_alter_table_inherit_cols = false;
 
 /* Greenplum Database Experimental Feature GUCs */
-bool		gp_enable_agg_distinct = true;
-bool		gp_enable_dqa_pruning = true;
-bool		gp_eager_dqa_pruning = FALSE;
-bool		gp_eager_one_phase_agg = FALSE;
-bool		gp_eager_two_phase_agg = FALSE;
-bool        gp_enable_groupext_distinct_pruning = true;
-bool        gp_enable_groupext_distinct_gather = true;
 int         gp_distinct_grouping_sets_threshold = 32;
 bool		gp_enable_explain_allstat = FALSE;
-bool		gp_enable_sort_limit = FALSE;
-bool		gp_enable_sort_distinct = FALSE;
-bool		gp_enable_mk_sort = true;
-bool		gp_enable_motion_mk_sort = true;
+bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
+
 #ifdef USE_ASSERT_CHECKING
 bool		gp_mk_sort_check = false;
 #endif

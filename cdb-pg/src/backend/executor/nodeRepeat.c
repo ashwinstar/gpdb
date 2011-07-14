@@ -142,13 +142,6 @@ ExecInitRepeat(Repeat *node, EState *estate, int eflags)
 	Assert(!(eflags & (EXEC_FLAG_MARK | EXEC_FLAG_BACKWARD)) ||
 		   outerPlan(node) != NULL);
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		ExecInitNode(outerPlan(node), estate, eflags);
-
-		return NULL;
-	}
-
 	/*
 	 * Create state structure.
 	 */

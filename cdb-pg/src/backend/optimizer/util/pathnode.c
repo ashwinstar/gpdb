@@ -1781,7 +1781,11 @@ create_unique_path(PlannerInfo *root,
         hashable = true;
     if (distinct_on_rowid_relids)
         hashable = true;
-	if (hashable && (enable_hashagg || root->mpp_trying_fallback_plan))
+    if (hashable
+    		&& (root->config->enable_hashagg
+    				|| root->config->mpp_trying_fallback_plan
+    		)
+    )
 	{
 		/*
 		 * Estimate the overhead per hashtable entry at 64 bytes (same as in
@@ -1801,7 +1805,7 @@ create_unique_path(PlannerInfo *root,
 					 subpath->total_cost,
 					 rel->rows, 0.0, 0.0, hashentrysize, false);
 			if (agg_path.total_cost < sort_path.total_cost || 
-                (!enable_sort && !root->mpp_trying_fallback_plan))
+                (!root->config->enable_sort && !root->config->mpp_trying_fallback_plan))
             {
                 pathnode->umethod = UNIQUE_PATH_HASH;
 		        pathnode->path.startup_cost = agg_path.startup_cost;
@@ -2561,8 +2565,8 @@ create_mergejoin_path(PlannerInfo *root,
 		innersortkeys = NIL;
 
     /* If user doesn't want sort, but this MJ requires a sort, fail. */
-    if (!enable_sort &&
-        !root->mpp_trying_fallback_plan)
+    if (!root->config->enable_sort &&
+        !root->config->mpp_trying_fallback_plan)
     {
         if (outersortkeys || innersortkeys)
             return NULL;

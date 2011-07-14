@@ -118,12 +118,6 @@ ExecInitUnique(Unique *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		ExecInitNode(outerPlan(node), estate, eflags);
-		return NULL;
-	}
-	
 	/*
 	 * create state structure
 	 */

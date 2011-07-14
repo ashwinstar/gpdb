@@ -1104,7 +1104,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 			 * purposes such as detecting redundant clauses.
 			 */
 			check_mergejoinable(restrictinfo);
-			if (enable_hashjoin)
+			if (root->config->enable_hashjoin)
 				check_hashjoinable(restrictinfo);
 
 			/*

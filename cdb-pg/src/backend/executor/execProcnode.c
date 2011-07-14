@@ -340,16 +340,22 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		SubPlan    *subplan = (SubPlan *) lfirst(l);
 		SubPlanState *sstate;
 
-		Assert(Gp_role != GP_ROLE_EXECUTE ||
-			   (estate->es_cur_slice_idx == estate->current_slice_no && result != NULL) ||
-			   (estate->es_cur_slice_idx != estate->current_slice_no && result == NULL));
 		Assert(IsA(subplan, SubPlan));
+
+		estate->current_slice_no = subplan->qDispSliceId;
+
 		sstate = ExecInitExprInitPlan(subplan, result);
 		ExecInitSubPlan(sstate, estate, eflags);
+
+
+		estate->current_slice_no = current_slice_no;
+
 		subps = lappend(subps, sstate);
 	}
 	if (result != NULL)
 		result->initPlan = subps;
+
+	estate->current_slice_no = current_slice_no;
 
 	/*
 	 * Initialize any subPlans present in this node.  These were found by
@@ -364,7 +370,14 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			SubPlanState *sstate = (SubPlanState *) lfirst(l);
 			
 			Assert(IsA(sstate, SubPlanState));
-			ExecInitSubPlan(sstate, estate, eflags);
+
+			/**
+			 * Check if this subplan is an initplan. If so, we shouldn't initialize it again.
+			 */
+			if (sstate->planstate == NULL)
+			{
+				ExecInitSubPlan(sstate, estate, eflags);
+			}
 		}
 	}
 
@@ -991,6 +1004,8 @@ transportUpdateNodeWalker(PlanState *node, void *context)
 void
 ExecUpdateTransportState(PlanState *node, ChunkTransportState *state)
 {
+	Assert(node);
+	Assert(state);
 	planstate_walk_node(node, transportUpdateNodeWalker, state);
 }	                            /* ExecUpdateTransportState */
 
@@ -1553,6 +1568,45 @@ planstate_walk_kids(PlanState      *planstate,
 	        /* Right subtree */
             if (v == CdbVisit_Walk)
                 v = planstate_walk_node(planstate->righttree, walker, context);
+
+
+            /* Init plan subtree */
+            if (v == CdbVisit_Walk)
+            {
+            	ListCell *lc = NULL;
+            	CdbVisitOpt v1 = v;
+            	foreach (lc, planstate->initPlan)
+            	{
+            		SubPlanState *sps = (SubPlanState *) lfirst(lc);
+            		PlanState *ips = sps->planstate;
+            		Assert(ips);
+            		if (v1 == CdbVisit_Walk)
+            		{
+            			v1 = planstate_walk_node(ips, walker, context);
+            		}
+            	}
+
+            }
+
+
+            /* Sub plan subtree */
+            if (v == CdbVisit_Walk)
+            {
+            	ListCell *lc = NULL;
+            	CdbVisitOpt v1 = v;
+            	foreach (lc, planstate->subPlan)
+            	{
+            		SubPlanState *sps = (SubPlanState *) lfirst(lc);
+            		PlanState *ips = sps->planstate;
+            		Assert(ips);
+            		if (v1 == CdbVisit_Walk)
+            		{
+            			v1 = planstate_walk_node(ips, walker, context);
+            		}
+            	}
+
+            }
+
 	}
     return v;
 }	                            /* planstate_walk_kids */

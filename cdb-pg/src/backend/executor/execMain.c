@@ -94,6 +94,7 @@
 #include "cdb/cdbpersistentfilesysobj.h"
 #include "cdb/cdbllize.h"
 #include "cdb/memquota.h"
+#include "cdb/cdbtargeteddispatch.h"
 
 extern bool cdbpathlocus_querysegmentcatalogs;
 
@@ -363,15 +364,21 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		/* Set up blank slice table to be filled in during InitPlan. */
 		InitSliceTable(estate, queryDesc->plannedstmt->nMotionNodes, queryDesc->plannedstmt->nInitPlans);
 
-		/* Copy direct dispatch decisions out of the plan and into the slice table.  Must be done after slice table is built */
+		/**
+		 * Copy direct dispatch decisions out of the plan and into the slice table.  Must be done after slice table is built.
+		 * Note that this needs to happen whether or not the plan contains direct dispatch decisions. This
+		 * is because the direct dispatch partially forgets some of the decisions it has taken.
+		 **/
 		if (gp_enable_direct_dispatch)
+		{
 			CopyDirectDispatchFromPlanToSliceTable(queryDesc->plannedstmt, estate );
+		}
 
         /* Pass EXPLAIN ANALYZE flag to qExecs. */
         estate->es_sliceTable->doInstrument = queryDesc->doInstrument;
 
 		/* set our global sliceid variable for elog. */
-		currentSliceId = estate->es_cur_slice_idx;
+		currentSliceId = LocallyExecutingSliceIndex(estate);
 
 		/* Determin OIDs for into relation, if any */
 		if (queryDesc->plannedstmt->intoClause != NULL)
@@ -430,13 +437,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		/*
-		 * Set up blank map (motionID -> MotionState*) to be filled in during
-		 * InitPlan
-		 */
-		estate->es_slice_map = (MotionState **) palloc0((1 + queryDesc->plannedstmt->nMotionNodes) * sizeof(MotionState *));
-		estate->slice_estates = (EState **) palloc0((1 + queryDesc->plannedstmt->nMotionNodes) * sizeof(EState *));
-
 		estate->es_sharenode = (List **) palloc0(sizeof(List *));
 
         /* qDisp should have sent us a slice table via MPPEXEC */
@@ -451,12 +451,11 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
             Assert(IsA(slice, Slice));
 
 			estate->es_sliceTable = sliceTable;
-			estate->es_cur_slice_idx = sliceTable->localSlice;
-			estate->es_cur_root_idx = slice->rootIndex;
+
 			estate->current_slice_no = slice->rootIndex;
 
 			/* set our global sliceid variable for elog. */
-			currentSliceId = estate->es_cur_slice_idx;
+			currentSliceId = LocallyExecutingSliceIndex(estate);
 
             /* Should we collect statistics for EXPLAIN ANALYZE? */
             estate->es_instrument = sliceTable->doInstrument;
@@ -502,6 +501,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		Assert(CurrentMemoryContext == estate->es_query_cxt);
 		InitPlan(queryDesc, eflags);
 
+		Assert(queryDesc->planstate);
+
 		if (Gp_role == GP_ROLE_DISPATCH && 
 			queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
 		{
@@ -522,7 +523,12 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				 */
 				AssignGangs(queryDesc, gp_singleton_segindex);
 			}
+
 		}
+
+#ifdef USE_ASSERT_CHECKING
+		AssertSliceTableIsValid((struct SliceTable *) estate->es_sliceTable, queryDesc->plannedstmt);
+#endif
 
 		if (Debug_print_slice_table && Gp_role == GP_ROLE_DISPATCH)
 			elog_node_display(DEBUG3, "slice table", estate->es_sliceTable, true);
@@ -545,14 +551,14 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 * If responsible for a non-root slice, arrange to enter the plan at the
 			 * slice's sending Motion node rather than at the top.
 			 */
-			if (estate->es_cur_slice_idx != estate->es_cur_root_idx)
+			if (LocallyExecutingSliceIndex(estate) != RootSliceIndex(estate))
 			{
-				motionstate = estate->es_slice_map[estate->es_cur_slice_idx];
+				motionstate = getMotionState(queryDesc->planstate, LocallyExecutingSliceIndex(estate));
 				Assert(motionstate != NULL && IsA(motionstate, MotionState));
 
 				/* Patch Motion node so it looks like a top node. */
 				motionstate->ps.plan->nMotionNodes = estate->es_sliceTable->nMotions;
-				motionstate->ps.plan->nParamExec = estate->es_sliceTable->nSubplans;
+				motionstate->ps.plan->nParamExec = estate->es_sliceTable->nInitPlans;
 			}
 
 			if (Debug_print_slice_table)
@@ -561,8 +567,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 				elog(DEBUG1, "seg%d executing slice%d under root slice%d",
 					 Gp_segment,
-					 estate->es_cur_slice_idx,
-					 estate->es_cur_root_idx);
+					 LocallyExecutingSliceIndex(estate),
+					 RootSliceIndex(estate));
 		}
 
 		/*
@@ -637,7 +643,10 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		/* non-root on QE */
 		if (exec_identity == GP_NON_ROOT_ON_QE)
 		{
-			MotionState *motionState = (estate->es_slice_map[estate->es_cur_slice_idx]);
+
+			MotionState *motionState = getMotionState(queryDesc->planstate, LocallyExecutingSliceIndex(estate));
+
+			Assert(motionState);
 
 			Assert(IsA(motionState->ps.plan, Motion));
 
@@ -754,7 +763,7 @@ ExecutorRun(QueryDesc *queryDesc,
 	/*
      * CDB: Update global slice id for log messages.
      */
-    currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
+    currentSlice = getCurrentSlice(estate, LocallyExecutingSliceIndex(estate));
     if (currentSlice)
     {
         if (Gp_role == GP_ROLE_EXECUTE ||
@@ -822,7 +831,10 @@ ExecutorRun(QueryDesc *queryDesc,
 			 * blunder into the middle of the plan rather than entering at the
 			 * root.
 			 */
-			MotionState *motionState = (estate->es_slice_map[estate->es_cur_slice_idx]);
+
+			MotionState *motionState = getMotionState(queryDesc->planstate, LocallyExecutingSliceIndex(estate));
+
+			Assert(motionState);
 
 			result = ExecutePlan(estate,
 								 (PlanState *) motionState,
@@ -1563,7 +1575,11 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 */
 	planstate = ExecInitNode(plannedstmt->planTree, estate, eflags);
 
-	if (estate->es_cur_root_idx != estate->es_cur_slice_idx)
+	queryDesc->planstate = planstate;
+
+	Assert(queryDesc->planstate);
+
+	if (RootSliceIndex(estate) != LocallyExecutingSliceIndex(estate))
 		return;
 	
 	/*
@@ -1748,7 +1764,6 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	}
 
 	queryDesc->tupDesc = tupType;
-	queryDesc->planstate = planstate;
 
 	/*
 	 * If doing SELECT INTO, initialize the "into" relation.  We must wait
@@ -2103,47 +2118,11 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 	if (estate->es_evalPlanQual != NULL)
 		EndEvalPlanQual(estate);
 
-	/*
-	 * shut down the node-type-specific query processing
-	 */
-	if (estate->es_is_subquery || estate->es_cur_slice_idx == estate->es_cur_root_idx)
-	{
-		if (planstate != NULL)
-			ExecEndNode(planstate);
+	if (planstate != NULL)
+		ExecEndNode(planstate);
 
-		/*
-		 * destroy the executor "tuple" table.
-		 */
-		ExecDropTupleTable(estate->es_tupleTable, true);
-		estate->es_tupleTable = NULL;
-	}
-	else
-	{
-		EState *currentEState;
-		Assert(estate->es_slice_map[estate->es_cur_slice_idx] != NULL);
-		ExecEndNode((PlanState *)estate->es_slice_map[estate->es_cur_slice_idx]);
-
-		/*
-		 * destroy the executor "tuple" table.
-		 */
-		Assert(estate->slice_estates != NULL &&
-			   estate->slice_estates[estate->es_cur_slice_idx] != NULL);
-		currentEState =	estate->slice_estates[estate->es_cur_slice_idx];
-		ExecDropTupleTable(currentEState->es_tupleTable, true);
-		currentEState->es_tupleTable = NULL;
-
-		/*
-		 * Explicitly free the executor state if the estate is created by the
-		 * subquery node or subplan node. Currently, since each QE process
-		 * only initializes the nodes for the active slices, we do
-		 * not call ExecEndSubqueryScan() or ExecEndSubPlan() anymore.
-		 */
-		if (currentEState->es_is_subquery)
-		{
-			FreeExecutorState(currentEState);
-			estate->slice_estates[estate->es_cur_slice_idx] = NULL;
-		}
-	}
+	ExecDropTupleTable(estate->es_tupleTable, true);
+	estate->es_tupleTable = NULL;
 
 	/* Report how many tuples we may have inserted into AO tables */
 	SendAOTupCounts(estate);

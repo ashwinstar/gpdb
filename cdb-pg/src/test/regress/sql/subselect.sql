@@ -251,3 +251,118 @@ select * from (
   select min(unique1) from tenk1 as a
   where not exists (select 1 from tenk1 as b where b.unique2 = 10000)
 ) ss;
+
+--
+-- Base tables for CSQ tests
+--
+
+drop table if exists csq_t1_base;
+create table csq_t1_base(x int, y int) distributed by (x);
+
+insert into csq_t1_base values(1,2);
+insert into csq_t1_base values(2,1);
+insert into csq_t1_base values(4,2);
+
+drop table if exists csq_t2_base;
+create table csq_t2_base(x int, y int) distributed by (x);
+
+insert into csq_t2_base values(3,2);
+insert into csq_t2_base values(3,2);
+insert into csq_t2_base values(3,2);
+insert into csq_t2_base values(3,2);
+insert into csq_t2_base values(3,1);
+
+
+--
+-- Correlated subqueries
+--
+
+drop table if exists csq_t1;
+drop table if exists csq_t2;
+
+create table csq_t1(x int, y int) distributed by (x);
+create table csq_t2(x int, y int) distributed by (x);
+
+insert into csq_t1 select * from csq_t1_base;
+insert into csq_t2 select * from csq_t2_base;
+
+select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 where csq_t2.y=csq_t1.y) order by 1; -- expected (4,2)
+
+--
+-- correlations in the targetlist
+--
+
+select csq_t1.x, (select sum(bar.x) from csq_t1 bar where bar.x >= csq_t1.x) as sum from csq_t1 order by csq_t1.x;
+
+select csq_t1.x, (select sum(bar.x) from csq_t1 bar where bar.x = csq_t1.x) as sum from csq_t1 order by csq_t1.x;
+
+select csq_t1.x, (select bar.x from csq_t1 bar where bar.x = csq_t1.x) as sum from csq_t1 order by csq_t1.x;
+
+--
+-- CSQs with partitioned tables
+--
+
+drop table if exists csq_t1;
+drop table if exists csq_t2;
+
+create table csq_t1(x int, y int) 
+distributed by (x)
+partition by range (y) ( start (0) end (4) every (1))
+;
+
+create table csq_t2(x int, y int) 
+distributed by (x)
+partition by range (y) ( start (0) end (4) every (1))
+;
+
+insert into csq_t1 select * from csq_t1_base;
+insert into csq_t2 select * from csq_t2_base;
+
+explain select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 where csq_t2.y=csq_t1.y) order by 1;
+
+select * from csq_t1 where csq_t1.x >ALL (select csq_t2.x from csq_t2 where csq_t2.y=csq_t1.y) order by 1; -- expected (4,2)
+
+drop table if exists csq_t1;
+drop table if exists csq_t2;
+drop table if exists csq_t1_base;
+drop table if exists csq_t2_base;
+
+--
+-- Multi-row subqueries
+--
+
+drop table if exists mrs_t1;
+create table mrs_t1(x int) distributed by (x);
+
+insert into mrs_t1 select generate_series(1,20);
+
+explain select * from mrs_t1 where exists (select x from mrs_t1 where x < -1);
+select * from mrs_t1 where exists (select x from mrs_t1 where x < -1) order by 1;
+
+explain select * from mrs_t1 where exists (select x from mrs_t1 where x = 1);
+select * from mrs_t1 where exists (select x from mrs_t1 where x = 1) order by 1;
+
+explain select * from mrs_t1 where x in (select x-95 from mrs_t1) or x < 5;
+select * from mrs_t1 where x in (select x-95 from mrs_t1) or x < 5 order by 1;
+
+explain select 1 as mrs_t1 where 1 <= ALL (Select x from mrs_t1);
+select 1 as mrs_t1 where 1 <= ALL (Select x from mrs_t1) order by 1;
+
+drop table if exists mrs_t1;
+
+--
+-- Multi-row subquery from MSTR
+--
+drop table if exists mrs_u1;
+drop table if exists mrs_u2;
+
+create TABLE mrs_u1 (a int, b int);
+create TABLE mrs_u2 (a int, b int);
+
+insert into mrs_u1 values (1,2),(11,22);
+insert into mrs_u2 values (1,2),(11,22),(33,44);
+
+select * from mrs_u1 join mrs_u2 on mrs_u1.a=mrs_u2.a where mrs_u1.a in (1,11) or mrs_u2.a in (select a from mrs_u1 where a=1) order by 1;
+
+drop table if exists mrs_u1;
+drop table if exists mrs_u2;

@@ -21,6 +21,7 @@
 #include "nodes/readfuncs.h"
 #include "nodes/relation.h"
 #include "catalog/pg_class.h"
+#include "cdb/cdbgang.h"
 
 
 /*
@@ -3121,9 +3122,6 @@ _readMotion(const char ** str)
 	READ_INT_FIELD(numOutputSegs);
 	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
 
-	READ_INT_FIELD(numInputSegs);
-	READ_INT_ARRAY(inputSegIdx, numInputSegs, int);
-
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	READ_OID_ARRAY(sortOperators, numSortCols);
@@ -3166,7 +3164,6 @@ _readCdbProcess(const char ** str)
 	READ_INT_FIELD(listenerPort);
 	READ_INT_FIELD(pid);
 	READ_INT_FIELD(contentid);
-	READ_INT_FIELD(routeid);
 
 	READ_DONE();
 }
@@ -3199,7 +3196,7 @@ _readSliceTable(const char ** str)
 	READ_LOCALS(SliceTable);
 
 	READ_INT_FIELD(nMotions);
-	READ_INT_FIELD(nSubplans);
+	READ_INT_FIELD(nInitPlans);
 	READ_INT_FIELD(localSlice);
 	READ_NODE_FIELD(slices); /* List of Slice* */
     READ_BOOL_FIELD(doInstrument);

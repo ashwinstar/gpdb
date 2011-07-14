@@ -203,14 +203,11 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 
 #define SUBQUERYSCAN_NSLOTS 2
 
-	if (NodeInCurrentSlice(estate))
-	{
-		/*
-		 * tuple table initialization
-		 */
-		ExecInitResultTupleSlot(estate, &subquerystate->ss.ps);
-		ExecInitScanTupleSlot(estate, &subquerystate->ss);
-	}
+	/*
+	 * tuple table initialization
+	 */
+	ExecInitResultTupleSlot(estate, &subquerystate->ss.ps);
+	ExecInitScanTupleSlot(estate, &subquerystate->ss);
 
 	/*
 	 * initialize subquery
@@ -239,12 +236,8 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	 * "Loan" the global slice table and map to the subplan EState.  The
 	 * global state is already set up by the code that called us.
 	 */
-	sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
-	sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
 	sp_estate->es_sliceTable = estate->es_sliceTable;
-	sp_estate->es_slice_map = estate->es_slice_map;
 	sp_estate->current_slice_no = estate->current_slice_no;
-	sp_estate->slice_estates = estate->slice_estates;
 	
 	/* 
 	 * also load shared nodes list 
@@ -266,23 +259,20 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	/* return borrowed share node list */
 	estate->es_sharenode = sp_estate->es_sharenode;
 
-	if (NodeInCurrentSlice(estate))
-	{
-		/*
-		 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo).
-		 * Because the subplan is in its own memory context, we need to copy its
-		 * result tuple type not just link to it; else the tupdesc will disappear
-		 * too soon during shutdown.
-		 */
-		ExecAssignScanType(&subquerystate->ss,
-						   CreateTupleDescCopy(ExecGetResultType(subquerystate->subplan)));
-	
-		/*
-		 * Initialize result tuple type and projection info.
-		 */
-		ExecAssignResultTypeFromTL(&subquerystate->ss.ps);
-		ExecAssignScanProjectionInfo(&subquerystate->ss);
-	}
+	/*
+	 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo).
+	 * Because the subplan is in its own memory context, we need to copy its
+	 * result tuple type not just link to it; else the tupdesc will disappear
+	 * too soon during shutdown.
+	 */
+	ExecAssignScanType(&subquerystate->ss,
+			CreateTupleDescCopy(ExecGetResultType(subquerystate->subplan)));
+
+	/*
+	 * Initialize result tuple type and projection info.
+	 */
+	ExecAssignResultTypeFromTL(&subquerystate->ss.ps);
+	ExecAssignScanProjectionInfo(&subquerystate->ss);
 
 	initGpmonPktForSubqueryScan((Plan *)node, &subquerystate->ss.ps.gpmon_pkt, estate);
 

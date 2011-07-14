@@ -688,33 +688,11 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	sp_estate->es_crosscheck_snapshot = estate->es_crosscheck_snapshot;
 	sp_estate->es_instrument = estate->es_instrument;
 
-	/*
-     * "Loan" the global slice table and map to the subplan EState.  The
-	 * global state is already set up by the code that called up, e.g., if
-	 * this is an initPlan subplan, then the current slice will be a root.
-	 */
-    if (subplan->qDispSliceId > 0)
-    {
-        sp_estate->es_cur_root_idx = subplan->qDispSliceId;
-	    sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
-
-        Assert(estate->es_sliceTable != NULL &&
-               subplan->qDispSliceId > estate->es_sliceTable->nMotions &&
-               subplan->qDispSliceId <= estate->es_sliceTable->nMotions +
-                                            estate->es_sliceTable->nSubplans);
-    }
-    else
-    {
-	    sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
-	    sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
-    }
-	sp_estate->es_sliceTable = estate->es_sliceTable;
-	sp_estate->es_slice_map = estate->es_slice_map;
-	sp_estate->current_slice_no = sp_estate->es_cur_root_idx;
-	sp_estate->slice_estates = estate->slice_estates;
-
+    sp_estate->es_sliceTable = estate->es_sliceTable;
+	sp_estate->current_slice_no = estate->current_slice_no;
 	sp_estate->motionlayer_context = estate->motionlayer_context;
 	
+
 	/*
 	 * Start up the subplan (this is a very cut-down form of InitPlan())
 	 *
@@ -726,7 +704,12 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	if (subplan->parParam == NIL && subplan->setParam == NIL)
 		eflags |= EXEC_FLAG_REWIND;
 
-	node->planstate = ExecInitNode(exec_subplan_get_plan(estate->es_plannedstmt, subplan), sp_estate, eflags);
+	Plan *subplanplan = exec_subplan_get_plan(estate->es_plannedstmt, subplan);
+	Assert(subplanplan);
+
+	Assert(node->planstate == NULL);
+
+	node->planstate = ExecInitNode(subplanplan, sp_estate, eflags);
 
 	node->needShutdown = true;	/* now we need to shutdown the subplan */
 
@@ -1098,8 +1081,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         queryDesc->showstatctx = gbl_queryDesc->showstatctx;
         queryDesc->estate->showstatctx = gbl_queryDesc->showstatctx;
 		queryDesc->estate->es_sliceTable = gbl_queryDesc->estate->es_sliceTable;
-		queryDesc->estate->es_cur_root_idx = gbl_queryDesc->estate->es_cur_root_idx;
-		queryDesc->estate->es_cur_slice_idx = gbl_queryDesc->estate->es_cur_slice_idx;
 		queryDesc->estate->es_param_exec_vals = gbl_queryDesc->estate->es_param_exec_vals;
 		queryDesc->estate->motionlayer_context = gbl_queryDesc->estate->motionlayer_context;
 
@@ -1306,7 +1287,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
                 explainRecvStats = true;
                 cdbexplain_recvExecStats(planstate,
                                          queryDesc->estate->dispatcherState->primaryResults,
-                                         queryDesc->estate->es_cur_slice_idx,
+                                         LocallyExecutingSliceIndex(queryDesc->estate),
                                          econtext->ecxt_estate->showstatctx);
             }
 
@@ -1346,7 +1327,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
                 cdbexplain_recvExecStats(planstate,
                                          queryDesc->estate->dispatcherState->primaryResults,
-                                         queryDesc->estate->es_cur_slice_idx,
+                                         LocallyExecutingSliceIndex(queryDesc->estate),
                                          econtext->ecxt_estate->showstatctx);
             }
         }

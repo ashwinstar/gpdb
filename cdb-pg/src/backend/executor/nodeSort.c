@@ -316,14 +316,6 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 {
 	SortState  *sortstate;
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		eflags &= ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
-		ExecInitNode(outerPlan(node), estate, eflags);
-
-		return NULL;
-	}
-	
 	SO1_printf("ExecInitSort: %s\n",
 			   "initializing sort node");
 

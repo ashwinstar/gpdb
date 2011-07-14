@@ -670,10 +670,10 @@ extern int      gp_segments_for_planner;
 /*
  * "gp_enable_multiphase_agg"
  *
- * Unlike some other enable... vars, enable_agg_restruct is not cost based.
+ * Unlike some other enable... vars, gp_enable_multiphase_agg is not cost based.
  * When set to false, the planner will not use multi-phase aggregation.
  */
-extern bool enable_agg_restruct;
+extern bool gp_enable_multiphase_agg;
 
 extern bool fast_path_expressions;
 

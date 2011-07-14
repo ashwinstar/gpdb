@@ -1657,14 +1657,6 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		ExecInitNode(outerPlan(node), estate, eflags);
-		ExecInitNode(innerPlan(node), estate,
-					 eflags | (node->unique_outer ? 0 : EXEC_FLAG_MARK));
-		return NULL;
-	}
-
 	MJ1_printf("ExecInitMergeJoin: %s\n",
 			   "initializing node");
 

@@ -458,3 +458,63 @@ num_distcols_in_grouplist(List *gc)
 
 	return num_cols;
 }
+
+/**
+ * Planner configuration related
+ */
+
+/**
+ * Default configuration information
+ */
+PlannerConfig *DefaultPlannerConfig(void)
+{
+	PlannerConfig *c1 = (PlannerConfig *) palloc(sizeof(PlannerConfig));
+	c1->cdbpath_segments = planner_segment_count();
+	c1->enable_seqscan = enable_seqscan;
+	c1->enable_indexscan = enable_indexscan;
+	c1->enable_bitmapscan = enable_bitmapscan;
+	c1->enable_tidscan = enable_tidscan;
+	c1->enable_sort = enable_sort;
+	c1->enable_hashagg = enable_hashagg;
+	c1->enable_groupagg = enable_groupagg;
+	c1->enable_nestloop = enable_nestloop;
+	c1->enable_mergejoin = enable_mergejoin;
+	c1->enable_hashjoin = enable_hashjoin;
+	c1->gp_enable_hashjoin_size_heuristic = gp_enable_hashjoin_size_heuristic;
+	c1->gp_enable_fallback_plan = gp_enable_fallback_plan;
+	c1->gp_enable_predicate_propagation = gp_enable_predicate_propagation;
+	c1->mpp_trying_fallback_plan = false;
+	c1->constraint_exclusion = constraint_exclusion;
+
+	c1->gp_enable_multiphase_agg = gp_enable_multiphase_agg;
+	c1->gp_enable_preunique = gp_enable_preunique;
+	c1->gp_eager_preunique = gp_eager_preunique;
+	c1->gp_enable_sequential_window_plans = gp_enable_sequential_window_plans;
+	c1->gp_hashagg_streambottom = gp_hashagg_streambottom;
+	c1->gp_enable_agg_distinct = gp_enable_agg_distinct;
+	c1->gp_enable_dqa_pruning = gp_enable_dqa_pruning;
+	c1->gp_eager_dqa_pruning = gp_eager_dqa_pruning;
+	c1->gp_eager_one_phase_agg = gp_eager_one_phase_agg;
+	c1->gp_eager_two_phase_agg = gp_eager_two_phase_agg;
+	c1->gp_enable_groupext_distinct_pruning = gp_enable_groupext_distinct_pruning;
+	c1->gp_enable_groupext_distinct_gather = gp_enable_groupext_distinct_gather;
+	c1->gp_enable_sort_limit = gp_enable_sort_limit;
+	c1->gp_enable_sort_distinct = gp_enable_sort_distinct;
+	c1->gp_enable_mk_sort = gp_enable_mk_sort;
+	c1->gp_enable_motion_mk_sort = gp_enable_motion_mk_sort;
+
+	c1->gp_enable_direct_dispatch = gp_enable_direct_dispatch;
+
+	return c1;
+}
+
+/**
+ * Copy configuration information
+ */
+PlannerConfig *CopyPlannerConfig(const PlannerConfig *c1)
+{
+	Assert(c1);
+	PlannerConfig *c2 = (PlannerConfig *) palloc(sizeof(PlannerConfig));
+	memcpy(c2, c1, sizeof(PlannerConfig));
+	return c2;
+}

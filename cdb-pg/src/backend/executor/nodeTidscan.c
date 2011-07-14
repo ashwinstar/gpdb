@@ -478,11 +478,6 @@ ExecInitTidScan(TidScan *node, EState *estate, int eflags)
 	TidScanState *tidstate;
 	Relation	currentRelation;
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		return NULL;
-	}
-
 	/*
 	 * create state structure
 	 */

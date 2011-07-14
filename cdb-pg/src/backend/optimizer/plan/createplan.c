@@ -57,7 +57,8 @@ typedef struct CreatePlanContext
 
 static Plan *create_subplan(CreatePlanContext *ctx, Path *best_path);   /*CDB*/
 static Plan *create_scan_plan(CreatePlanContext *ctx, Path *best_path);
-static List *build_relation_tlist(RelOptInfo *rel);
+
+List *build_relation_tlist(RelOptInfo *rel);
 static bool use_physical_tlist(CreatePlanContext *ctx, RelOptInfo *rel);
 static void disuse_physical_tlist(Plan *plan, Path *path);
 static Plan *create_gating_plan(CreatePlanContext *ctx, Plan *plan, List *quals);
@@ -394,13 +395,21 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 	if (ctx->root->hasPseudoConstantQuals)
 		plan = create_gating_plan(ctx, plan, scan_clauses);
 
+	/* Decorate the top node of the plan with a Flow node. */
+	plan->flow = cdbpathtoplan_create_flow(ctx->root,
+			best_path->locus,
+			best_path->parent ? best_path->parent->relids
+					: NULL,
+					  best_path->pathkeys,
+					  plan);
+
 	return plan;
 }
 
 /*
  * Build a target list (ie, a list of TargetEntry) for a relation.
  */
-static List *
+List *
 build_relation_tlist(RelOptInfo *rel)
 {
 	List	   *tlist = NIL;

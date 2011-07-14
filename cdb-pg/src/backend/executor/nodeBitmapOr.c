@@ -55,17 +55,6 @@ ExecInitBitmapOr(BitmapOr *node, EState *estate, int eflags)
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		foreach (l, node->bitmapplans)
-		{
-			initNode = (Plan *) lfirst(l);
-			ExecInitNode(initNode, estate, eflags);
-		}
-
-		return NULL;
-	}
-
 	bitmaporstate = makeNode(BitmapOrState);
 
 	/*

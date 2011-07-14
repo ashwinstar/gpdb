@@ -309,9 +309,9 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
     /* Ensure that jointree has been normalized. See normalize_query_jointree_mutator() */
     AssertImply(subquery->jointree->fromlist, list_length(subquery->jointree->fromlist) == 1);
     
-	/* CDB: Clear fallback, but just use segment count from parent. */
-	subroot->mpp_trying_fallback_plan = false;
-	subroot->cdbpath_segments = root->cdbpath_segments;
+    subroot->config = CopyPlannerConfig(root->config);
+	/* CDB: Clear fallback */
+	subroot->config->mpp_trying_fallback_plan = false;
 
 	/*
 	 * Pull up any IN clauses within the subquery's WHERE, so that we don't

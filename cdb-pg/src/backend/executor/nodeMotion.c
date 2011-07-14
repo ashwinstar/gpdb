@@ -919,11 +919,8 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	TupleDesc	tupDesc;
 	Slice	   *sendSlice = NULL;
     Slice      *recvSlice = NULL;
-    Slice      *thisSlice = NULL;
-    Slice      *thatSlice = NULL;
     SliceTable *sliceTable = estate->es_sliceTable;
-	int			prior_es_cur_slice_idx = estate->es_cur_slice_idx;	/* save */
-	int			prior_es_cur_root_idx = estate->es_cur_root_idx;	/* save */
+
 	int			parentSliceIndex = estate->current_slice_no;
 
 #ifdef CDB_MOTION_DEBUG
@@ -1001,8 +998,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 			if (recvSlice->sliceIndex == recvSlice->rootIndex)
 			{
 				motionstate->mstype = MOTIONSTATE_RECV; 
-				thisSlice = recvSlice;
-				thatSlice = sendSlice;
 				Assert(recvSlice->gangType == GANGTYPE_UNALLOCATED);
 			}
 			else
@@ -1022,27 +1017,18 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	else
 	{
         Insist(Gp_role == GP_ROLE_EXECUTE);
-		Assert(estate->es_slice_map != NULL);
-		Assert(estate->es_slice_map[0] == NULL);
-		Assert(estate->slice_estates != NULL);
 
-		estate->es_slice_map[node->motionID] = motionstate;
-		estate->slice_estates[node->motionID] = estate;
 		recvSlice = (Slice *)list_nth(sliceTable->slices, sendSlice->parentIndex);
 
-		if(recvSlice->sliceIndex == sliceTable->localSlice)
+		if (LocallyExecutingSliceIndex(estate) == recvSlice->sliceIndex)
 		{
 			/* this is recv */
 			motionstate->mstype = MOTIONSTATE_RECV;
-			thisSlice = recvSlice;
-			thatSlice = sendSlice;
 		}
-		else if (sendSlice->sliceIndex == sliceTable->localSlice)
+		else if (LocallyExecutingSliceIndex(estate) == sendSlice->sliceIndex)
 		{
 			/* this is send */
 			motionstate->mstype = MOTIONSTATE_SEND;
-            thisSlice = sendSlice;
-            thatSlice = recvSlice;
         }
 		/* TODO: If neither sending nor receiving, don't bother to initialize. */
 	}
@@ -1079,13 +1065,6 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	 * initializes child nodes.
 	 */
 	outerPlanState(motionstate) = ExecInitNode(outerPlan(node), estate, eflags);
-
-	/*
-	 * restore state that might have changed in recursion for our caller
-	 * (and for ourself).
-	 */
-	estate->es_cur_slice_idx = prior_es_cur_slice_idx;
-	estate->es_cur_root_idx = prior_es_cur_root_idx;
 
 	/*
 	 * initialize tuple type.  no need to initialize projection info
@@ -1647,14 +1626,17 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 void
 ExecReScanMotion(MotionState *node, ExprContext *exprCtxt)
 {
-	if (node->mstype != MOTIONSTATE_RECV || 
-		node->numTuplesToParent != 0)
+	if (node->ps.chgParam != NULL
+			&& (node->mstype != MOTIONSTATE_RECV ||
+					node->numTuplesToParent != 0)
+		)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("Illegal rescan of motion node: invalid plan."),
 				 errhint("likely caused by bad NL-join, try setting enable_nestloop off")));
 	}
+	return;
 }
 
 

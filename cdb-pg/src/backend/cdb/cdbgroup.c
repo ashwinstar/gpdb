@@ -582,7 +582,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		
 		allowed_agg = AGG_ALL;
 		
-		if ( ! enable_agg_restruct )
+		if ( ! root->config->gp_enable_multiphase_agg )
 			allowed_agg &= AGG_SINGLEPHASE;
 		
 		/* This prohibition could be relaxed if we tracked missing
@@ -609,10 +609,10 @@ cdb_grouping_planner(PlannerInfo* root,
 			allowed_agg &= AGG_SINGLEPHASE;
 		
 		
-		if ( ! gp_enable_agg_distinct )
+		if ( ! root->config->gp_enable_agg_distinct )
 			allowed_agg &= ~ AGG_2PHASE_DQA;
 		
-		if ( ! gp_enable_dqa_pruning )
+		if ( ! root->config->gp_enable_dqa_pruning )
 			allowed_agg &= ~ AGG_3PHASE;
 		
 		possible_agg = AGG_SINGLEPHASE;
@@ -942,14 +942,14 @@ make_one_stage_agg_plan(PlannerInfo *root,
 			result_plan = (Plan*)make_motion_gather_to_QE(result_plan, (current_pathkeys != NIL));
 			result_plan->total_cost += 
 				incremental_motion_cost(result_plan->plan_rows, 
-										result_plan->plan_rows * root->cdbpath_segments);
+										result_plan->plan_rows * root->config->cdbpath_segments);
 			break;
 			
 	case MPP_GRP_PREP_FOCUS_QD:
 			result_plan = (Plan*)make_motion_gather_to_QD(result_plan, (current_pathkeys != NIL));	
 			result_plan->total_cost += 
 				incremental_motion_cost(result_plan->plan_rows, 
-										result_plan->plan_rows * root->cdbpath_segments);
+										result_plan->plan_rows * root->config->cdbpath_segments);
 			break;
 		
 	case MPP_GRP_PREP_HASH_DISTINCT:
@@ -1270,7 +1270,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		result_plan = (Plan *) make_agg(root,
 										prelim_tlist,
 										NIL, /* no havingQual */
-										aggstrategy, gp_hashagg_streambottom,
+										aggstrategy, root->config->gp_hashagg_streambottom,
 										numGroupCols,
 										groupColIdx,
 										numGroups,
@@ -1345,7 +1345,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		result_plan = (Plan*)make_motion_gather_to_QE(result_plan, false);
 		result_plan->total_cost += 
 			incremental_motion_cost(result_plan->plan_rows,
-									result_plan->plan_rows * root->cdbpath_segments);
+									result_plan->plan_rows * root->config->cdbpath_segments);
 		break;
 	
 	case MPP_GRP_TYPE_NONE:
@@ -1764,7 +1764,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 	bool groupkeys_collocate = cdbpathlocus_collocates(ctx->input_locus, root->group_pathkeys);
 	bool need_inter_agg = false;
 	bool dqaduphazard = false;
-	bool stream_bottom_agg = gp_hashagg_streambottom; /* Take hint */
+	bool stream_bottom_agg = root->config->gp_hashagg_streambottom; /* Take hint */
 	
 	/* Planning will perturb root->parse, so we copy it's content aside
 	 * so we can restore it later.  We flat copy instead of resetting
@@ -2083,7 +2083,7 @@ make_plan_for_one_dqa(PlannerInfo *root, MppGroupContext *ctx, int dqa_index,
 		result_plan = (Plan*)make_motion_gather_to_QE(result_plan, false);
 		result_plan->total_cost += 
 				incremental_motion_cost(result_plan->plan_rows,
-						result_plan->plan_rows * root->cdbpath_segments);
+						result_plan->plan_rows * root->config->cdbpath_segments);
 	}
 	
 	result_plan = add_second_stage_agg(root,
@@ -4064,8 +4064,8 @@ Cost cost_1phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 	case MPP_GRP_PREP_FOCUS_QD:
 		input_dummy.total_cost += 
 			incremental_motion_cost(input_dummy.plan_rows,
-									input_dummy.plan_rows * root->cdbpath_segments);
-		input_dummy.plan_rows = input_dummy.plan_rows * root->cdbpath_segments;
+									input_dummy.plan_rows * root->config->cdbpath_segments);
+		input_dummy.plan_rows = input_dummy.plan_rows * root->config->cdbpath_segments;
 		break;
 	default:	
 		break;
@@ -4127,7 +4127,7 @@ Cost cost_1phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 			input_dummy.total_cost += nsorts * path_dummy.total_cost;
 		}
 	}
-	info->plan_cost = gp_eager_one_phase_agg ? (Cost)0.0 : input_dummy.total_cost;
+	info->plan_cost = root->config->gp_eager_one_phase_agg ? (Cost)0.0 : input_dummy.total_cost;
 	info->valid = true;
 	info->join_strategy = DqaJoinNone;
 	info->use_sharing = false;
@@ -4184,7 +4184,7 @@ Cost cost_2phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 		/* Preliminary HashAgg*/
 		add_agg_cost(NULL, &input_dummy, 
 					 NIL, NIL, /* Don't know preliminary tlist, qual IS NIL */
-					 AGG_HASHED, gp_hashagg_streambottom, 
+					 AGG_HASHED, root->config->gp_hashagg_streambottom,
 					 ctx->numGroupCols, ctx->groupColIdx,
 					 numGroups, 0, ctx->agg_counts->numAggs,
 					 ctx->agg_counts->transitionSpace);
@@ -4251,7 +4251,7 @@ Cost cost_2phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 		case MPP_GRP_TYPE_PLAIN_2STAGE: /* Gather */
 			input_dummy.total_cost += 
 				incremental_motion_cost(input_dummy.plan_rows,
-										input_dummy.plan_rows *root->cdbpath_segments);
+										input_dummy.plan_rows *root->config->cdbpath_segments);
 			break;
 		default:
 		ereport(ERROR,
@@ -4297,7 +4297,7 @@ Cost cost_2phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 		}
 	}
 
-	info->plan_cost = gp_eager_two_phase_agg ? (Cost)0.0 : input_dummy.total_cost;
+	info->plan_cost = root->config->gp_eager_two_phase_agg ? (Cost)0.0 : input_dummy.total_cost;
 	info->valid = true;
 	info->join_strategy = DqaJoinNone;
 	info->use_sharing = false;
@@ -4448,7 +4448,7 @@ Cost cost_3phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 		elog(ERROR, "unexpected join strategy during DQA planning");
 	}
 	
-	info->plan_cost = gp_eager_dqa_pruning ? (Cost)0.0 : total_cost;
+	info->plan_cost = root->config->gp_eager_dqa_pruning ? (Cost)0.0 : total_cost;
 	info->valid = true;
 	info->join_strategy = join_strategy;
 	info->use_sharing = use_sharing;

@@ -368,7 +368,7 @@ window_planner(PlannerInfo *root, double tuple_fraction, List **pathkeys_ptr)
 	}
 	else
 	{
-		if ( gp_enable_sequential_window_plans )
+		if ( root->config->gp_enable_sequential_window_plans )
 			return plan_sequential_window_query(root, context, pathkeys_ptr);
 		else
 			return plan_parallel_window_query(root, context, pathkeys_ptr);

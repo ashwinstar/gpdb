@@ -1556,7 +1556,7 @@ cdbdisp_handleError(struct CdbDispatcherState *ds)
 }                               /* cdbdisp_handleError */
 
 bool
-cdbdisp_check_estate_for_cancel(EState *estate)
+cdbdisp_check_estate_for_cancel(struct EState *estate)
 {
 	struct CdbDispatchResults  *meleeResults;
 
@@ -3198,7 +3198,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  bool cancelOnError,
-				  SliceTable *sliceTbl,
+				  struct SliceTable *sliceTbl,
 				  struct CdbDispatcherState *ds)
 {
 	int			oldLocalSlice = 0;
@@ -3220,7 +3220,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	{
 		Assert(rootIdx == 0 ||
 			   (rootIdx > sliceTbl->nMotions &&
-				rootIdx <= sliceTbl->nMotions + sliceTbl->nSubplans));
+				rootIdx <= sliceTbl->nMotions + sliceTbl->nInitPlans));
 	
 		/*
 		 * Keep old value so we can restore it.  We use this field as a parameter.
@@ -3442,25 +3442,25 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
  * Evaluate functions to constants.
  */
 Node *
-exec_make_plan_constant(PlannedStmt *stmt, bool is_SRI)
+exec_make_plan_constant(struct PlannedStmt *stmt, bool is_SRI)
 {
 	pre_dispatch_function_evaluation_context pcontext;
-	
+
 	Assert(stmt);
 	exec_init_plan_tree_base(&pcontext.base, stmt);
 	pcontext.single_row_insert = is_SRI;
-	
+
 	return plan_tree_mutator((Node *)stmt->planTree, pre_dispatch_function_evaluation_mutator, &pcontext);
 }
 
 Node *
-planner_make_plan_constant(PlannerInfo *root, Node *n, bool is_SRI)
+planner_make_plan_constant(struct PlannerInfo *root, Node *n, bool is_SRI)
 {
 	pre_dispatch_function_evaluation_context pcontext;
-	
+
 	planner_init_plan_tree_base(&pcontext.base, root);
 	pcontext.single_row_insert = is_SRI;
-	
+
 	return plan_tree_mutator(n, pre_dispatch_function_evaluation_mutator, &pcontext);
 }
 
@@ -3538,11 +3538,11 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * locally and assert our expectations about it.
 	 */
 	sliceTbl = queryDesc->estate->es_sliceTable;
-	rootIdx = queryDesc->estate->es_cur_root_idx;
+	rootIdx = RootSliceIndex(queryDesc->estate);
 
 	Assert(sliceTbl != NULL);
 	Assert(rootIdx == 0 ||
-		   (rootIdx > sliceTbl->nMotions && rootIdx <= sliceTbl->nMotions + sliceTbl->nSubplans));
+		   (rootIdx > sliceTbl->nMotions && rootIdx <= sliceTbl->nMotions + sliceTbl->nInitPlans));
 
 	/*
 	 * Keep old value so we can restore it.  We use this field as a parameter.

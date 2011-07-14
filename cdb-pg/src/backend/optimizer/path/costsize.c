@@ -2850,8 +2850,8 @@ double global_work_mem(PlannerInfo *root)
 	int segment_count;
 	if (root)
 	{
-		Assert(root->cdbpath_segments > 0);
-		segment_count = root->cdbpath_segments;	
+		Assert(root->config->cdbpath_segments > 0);
+		segment_count = root->config->cdbpath_segments;
 	}
 	else
 		segment_count = planner_segment_count();

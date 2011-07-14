@@ -745,7 +745,8 @@ SetupInterconnect(EState *estate)
 		estate->interconnect_context->sliceId = -1;
 
 		estate->interconnect_context->sliceTable = estate->es_sliceTable;
-		estate->interconnect_context->sliceId = estate->es_cur_slice_idx;
+
+		estate->interconnect_context->sliceId = LocallyExecutingSliceIndex(estate);
 	}
 
 	return;

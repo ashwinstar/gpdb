@@ -330,12 +330,13 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 	
 	if (expression_returns_set((Node *) subselect->targetList))
 		return (Node *) sublink;
-	
-	/*
-	 * If the subquery contains a set returning function in the targetlist,
-	 * we don't attempt to pull up 
+
+	/**
+	 * If deeply correlated, then don't pull it up
 	 */
-	
+	if (contain_vars_of_level_or_above(sublink->subselect, 2))
+		return (Node *) sublink;
+
     /*
      * If uncorrelated, and no Var nodes on lhs, the subquery will be executed
      * only once.  It should become an InitPlan, but make_subplan() doesn't

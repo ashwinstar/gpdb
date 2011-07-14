@@ -275,11 +275,6 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	Assert(outerPlan(node) == NULL);
 	Assert(innerPlan(node) == NULL);
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		return NULL;
-	}
-	
 	/*
 	 * create state structure
 	 */
@@ -497,7 +492,7 @@ void CheckSendPlanStateGpmonPkt(PlanState *ps)
 	{
 		if(!ps->fHadSentGpmon || ps->gpmon_plan_tick != gpmon_tick)
 		{
-			if(ps->state && ps->state->es_cur_slice_idx == currentSliceId)
+			if(ps->state && LocallyExecutingSliceIndex(ps->state) == currentSliceId)
 				gpmon_send(&ps->gpmon_pkt);
 			ps->fHadSentGpmon = true;
 		}
@@ -515,7 +510,7 @@ void EndPlanStateGpmonPkt(PlanState *ps)
 
 	if(gp_enable_gpperfmon)
 	{
-		if(ps->state && ps->state->es_cur_slice_idx == currentSliceId)
+		if(ps->state && LocallyExecutingSliceIndex(ps->state) == currentSliceId)
 			gpmon_send(&ps->gpmon_pkt);
 	}
 }

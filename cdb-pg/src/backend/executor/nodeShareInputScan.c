@@ -188,13 +188,6 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 
 	Assert(innerPlan(node) == NULL);
 	
-	if (!NodeInCurrentSlice(estate))
-	{
-		ExecInitNode(outerPlan(node), estate, eflags);
-
-		return NULL;
-	}
-	
 	/* create state data structure */
 	sisstate = makeNode(ShareInputScanState);
 	sisstate->ss.ps.plan = (Plan *) node;

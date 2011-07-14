@@ -531,11 +531,6 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	Relation	currentRelation;
 	bool		relistarget;
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		return NULL;
-	}
-
 	/*
 	 * create state structure
 	 */

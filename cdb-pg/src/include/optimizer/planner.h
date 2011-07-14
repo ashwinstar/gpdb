@@ -41,7 +41,8 @@ extern Plan *subquery_planner(PlannerGlobal *glob,
 							  Query *parse,
 							  PlannerInfo *parent_root,
 							  double tuple_fraction,
-							  PlannerInfo **subroot);
+							  PlannerInfo **subroot,
+							  PlannerConfig *config);
 
 extern bool choose_hashed_grouping(PlannerInfo *root, 
 								   double tuple_fraction,

@@ -231,8 +231,10 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	
 	parse = (Query *) normalize_query_jointree_mutator((Node *) parse, NULL);
 
+	PlannerConfig *config = DefaultPlannerConfig();
+
 	/* primary planning entry point (may recurse for subqueries) */
-	top_plan = subquery_planner(glob, parse, NULL, tuple_fraction, &root);
+	top_plan = subquery_planner(glob, parse, NULL, tuple_fraction, &root, config);
 
 	/*
 	 * If creating a plan for a scrollable cursor, make sure it can run
@@ -274,12 +276,11 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 
 	if ( Gp_role == GP_ROLE_DISPATCH )
 	{
-		bool uses_correlation = has_correlation_params(glob->paramlist);
 		XsliceInAppendContext append_context;
 		
 		top_plan = cdbparallelize(root, top_plan, parse,
 									cursorOptions,
-									boundParams, uses_correlation);
+									boundParams);
 
 		/* cdbparallelize may create additional slices that may affect share input.
 		 * need to mark material nodes that are split acrossed multi slices.
@@ -498,7 +499,8 @@ subquery_planner(PlannerGlobal *glob,
 				 Query *parse, 
 				 PlannerInfo *parent_root,
 				 double tuple_fraction,
-				 PlannerInfo **subroot)
+				 PlannerInfo **subroot,
+				 PlannerConfig *config)
 {
 	int			num_old_subplans = list_length(glob->subplans);
 	PlannerInfo *root;
@@ -518,14 +520,13 @@ subquery_planner(PlannerGlobal *glob,
 	root->in_info_list = NIL;
 	root->append_rel_list = NIL;
 
-	/* CDB: Initialize globals */
-	root->mpp_trying_fallback_plan = false;
-	root->cdbpath_segments = planner_segment_count();
-	
-	if (Gp_role != GP_ROLE_DISPATCH && root->cdbpath_segments > 0)
+	Assert(config);
+	root->config = config;
+
+	if (Gp_role != GP_ROLE_DISPATCH && root->config->cdbpath_segments > 0)
 	{
 		/* Choose a segdb to which our singleton gangs should be dispatched. */
-		gp_singleton_segindex = gp_session_id % root->cdbpath_segments;
+		gp_singleton_segindex = gp_session_id % root->config->cdbpath_segments;
     }
 
     /* Ensure that jointree has been normalized. See normalize_query_jointree_mutator() */
@@ -821,7 +822,7 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 			 *   by only doing the simplification for the distribution
 			 *   key columns.
 			 */
-			(gp_enable_direct_dispatch && kind == EXPRKIND_TARGET ) ||
+			(root->config->gp_enable_direct_dispatch && kind == EXPRKIND_TARGET ) ||
 			root->query_level > 1))
 	{
 		expr = eval_const_expressions(root, expr);
@@ -957,12 +958,12 @@ inheritance_planner(PlannerInfo *root)
 		 */
 		memcpy(&subroot, root, sizeof(PlannerInfo));
 		subroot.parse = (Query *)
-			adjust_appendrel_attrs((Node *) parse,
+			adjust_appendrel_attrs(&subroot, (Node *) parse,
 								   appinfo);
 		subroot.returningLists = NIL;
 		subroot.init_plans = NIL;
 		subroot.in_info_list = (List *)
-			adjust_appendrel_attrs((Node *) root->in_info_list,
+			adjust_appendrel_attrs(&subroot, (Node *) root->in_info_list,
 								   appinfo);
 		/* There shouldn't be any OJ info to translate, as yet */
 		Assert(subroot.oj_info_list == NIL);
@@ -1808,7 +1809,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			bool needMotion = !cdbpathlocus_collocates(current_locus, distinct_pathkeys);
 			
 			/* Apply the preunique optimization, if enabled and worthwhile. */
-			if ( gp_enable_preunique && needMotion )
+			if ( root->config->gp_enable_preunique && needMotion )
 			{
 				double base_cost, alt_cost;
 				Path sort_path;	 /* dummy for result of cost_sort */
@@ -1821,7 +1822,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 				alt_cost += cpu_operator_cost * numDistinct 
 							* list_length(parse->distinctClause);
 					  
-				if ( alt_cost < base_cost || gp_eager_preunique )
+				if ( alt_cost < base_cost || root->config->gp_eager_preunique )
 				{
 					/* Reduce the number of rows to move by adding a [Sort and]
 					 * Unique prior to the redistribute Motion. */
@@ -2372,7 +2373,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	 * CDB: The parallel groupping planner cannot use hashed aggregation
 	 * for ordered aggregates.
 	 */
-	hash_ok = enable_hashagg && hash_safe_grouping(root) && 
+	hash_ok = root->config->enable_hashagg && hash_safe_grouping(root) &&
 		agg_counts->aggOrder == NIL;
 	
 	has_dqa = agg_counts->numDistinctAggs != 0;
@@ -2487,7 +2488,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 		if (tuple_fraction >= 1.0)
 			tuple_fraction /= dNumGroups;
 
-		if (!enable_groupagg)
+		if (!root->config->enable_groupagg)
 			hash_cheaper = true;
 		else
 			hash_cheaper = 0 > compare_fractional_path_costs(&hashed_p, 

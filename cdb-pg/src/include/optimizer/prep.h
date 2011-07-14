@@ -49,7 +49,7 @@ extern List *find_all_inheritors(Oid parentrel);
 
 extern void expand_inherited_tables(PlannerInfo *root);
 
-extern Node *adjust_appendrel_attrs(Node *node, AppendRelInfo *appinfo);
+extern Node *adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo);
 
 extern Relids *adjust_appendrel_attr_needed(PlannerInfo *root, RelOptInfo *oldrel,
 							 AppendRelInfo *appinfo,

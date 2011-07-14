@@ -54,7 +54,6 @@
 
 
 /* GUC parameter */
-bool		constraint_exclusion = false;
 
 
 static void estimate_rel_size(Relation rel, int32 *attr_widths,
@@ -805,7 +804,7 @@ relation_excluded_by_constraints(PlannerInfo *root, RelOptInfo *rel, RangeTblEnt
 	ListCell   *lc;
 
 	/* Skip the test if constraint exclusion is disabled */
-	if (!constraint_exclusion)
+	if (!root->config->constraint_exclusion)
 		return false;
 
 	/*

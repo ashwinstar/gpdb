@@ -22,6 +22,7 @@
 #include "libpq/pqformat.h"             /* pq_beginmessage() etc. */
 #include "utils/memutils.h"             /* MemoryContextGetPeakSpace() */
 #include "cdb/memquota.h"
+#include "cdb/cdbgang.h"
 
 /* EXPLAIN ANALYZE statistics for one plan node of a slice */
 typedef struct CdbExplain_StatInst
@@ -234,7 +235,8 @@ cdbexplain_localExecStats(struct PlanState                 *planstate,
     /* Set up receive context area referencing our temp StatHdr. */
     ctx.recv.nStatInst = ctx.send.hdr.nInst;
     ctx.recv.segindexMin = ctx.recv.segindexMax = ctx.send.hdr.segindex;
-    ctx.recv.sliceIndex = planstate->state->es_cur_slice_idx;
+
+    ctx.recv.sliceIndex = LocallyExecutingSliceIndex(planstate->state);
     ctx.recv.msgptrs = ctx.msgptrs;
     ctx.recv.nmsgptr = 1;
     ctx.recv.dispatchResults = NULL;
@@ -296,19 +298,18 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
     Assert(Gp_role == GP_ROLE_EXECUTE);
 
     if (!queryDesc ||
-        !queryDesc->estate ||
-        !queryDesc->estate->es_slice_map)
+        !queryDesc->estate)
         return;
 
     /* If executing a root slice (UPD/DEL/INS), start at top of plan tree. */
     estate = queryDesc->estate;
-    if (estate->es_cur_slice_idx == estate->es_cur_root_idx)
+    if (LocallyExecutingSliceIndex(estate) == RootSliceIndex(estate))
         planstate = queryDesc->planstate;
 
     /* Non-root slice: Start at child of our sending Motion node. */
     else
     {
-        planstate = &estate->es_slice_map[estate->es_cur_slice_idx]->ps;
+    	planstate = &(getMotionState(queryDesc->planstate, LocallyExecutingSliceIndex(estate))->ps);
         Assert(planstate &&
                IsA(planstate, MotionState) &&
                planstate->lefttree);

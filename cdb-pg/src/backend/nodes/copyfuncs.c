@@ -29,7 +29,7 @@
 #include "nodes/execnodes.h" /* CdbProcess, Slice, and SliceTable. */
 #include "nodes/relation.h"
 #include "utils/datum.h"
-
+#include "cdb/cdbgang.h"
 
 /*
  * Macros to simplify copying of different kinds of fields.  Use these
@@ -913,9 +913,6 @@ _copyMotion(Motion *from)
 
 	COPY_SCALAR_FIELD(numOutputSegs);
 	COPY_POINTER_FIELD(outputSegIdx, from->numOutputSegs * sizeof(int));
-
-	COPY_SCALAR_FIELD(numInputSegs);
-	COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
 
 	COPY_SCALAR_FIELD(numSortCols);
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
@@ -3662,7 +3659,6 @@ _copyCdbProcess(CdbProcess *from)
 	COPY_SCALAR_FIELD(listenerPort);
 	COPY_SCALAR_FIELD(pid);
 	COPY_SCALAR_FIELD(contentid);
-	COPY_SCALAR_FIELD(routeid);
 
 	return newnode;
 }
@@ -3695,7 +3691,7 @@ _copySliceTable(SliceTable *from)
 	SliceTable *newnode = makeNode(SliceTable);
 
 	COPY_SCALAR_FIELD(nMotions);
-	COPY_SCALAR_FIELD(nSubplans);
+	COPY_SCALAR_FIELD(nInitPlans);
 	COPY_SCALAR_FIELD(localSlice);
 	COPY_NODE_FIELD(slices);
     COPY_SCALAR_FIELD(doInstrument);

@@ -541,12 +541,6 @@ ExecInitBitmapAppendOnlyScan(BitmapAppendOnlyScan *node, EState *estate, int efl
 	 */
 	Assert(IsMVCCSnapshot(estate->es_snapshot) || gp_select_invisible);
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		ExecInitNode(outerPlan(node), estate, eflags);
-		return NULL;
-	}
-
 	/*
 	 * create state structure
 	 */

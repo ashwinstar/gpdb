@@ -240,7 +240,7 @@ create_index_paths(PlannerInfo *root, RelOptInfo *rel,
         /* Add index path to caller's list. */
         *pindexpathlist = lappend(*pindexpathlist, ipath);
 
-		if (!enable_seqscan ||
+		if (!root->config->enable_seqscan ||
 			(ipath->indexselectivity < 1.0 &&
 			 !ScanDirectionIsBackward(ipath->indexscandir)))
 			bitindexpaths = lappend(bitindexpaths, ipath);
@@ -1753,7 +1753,7 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	Assert(relstorage != '\0');
 
     /* Exclude plain index paths if user doesn't want them. */
-    if (!enable_indexscan && !root->mpp_trying_fallback_plan)
+    if (!root->config->enable_indexscan && !root->config->mpp_trying_fallback_plan)
         indexpaths = NIL;
 
 	/* Exclude plain index paths if the relation is an append-only relation. */
@@ -1766,7 +1766,7 @@ best_inner_indexscan(PlannerInfo *root, RelOptInfo *rel,
 	 * promising combination of bitmap index paths.
 	 */
 	if (bitindexpaths != NIL &&
-        (enable_bitmapscan || root->mpp_trying_fallback_plan))
+        (root->config->enable_bitmapscan || root->config->mpp_trying_fallback_plan))
 	{
 		Path *bitmapqual;
 		Path *bpath;

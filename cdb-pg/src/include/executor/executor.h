@@ -76,9 +76,6 @@ struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
  *
  * If this is called in QD or utility mode, this will return true.
  */
-#define NodeInCurrentSlice(estate) \
-	((Gp_role != GP_ROLE_EXECUTE ||	 \
-	  estate->current_slice_no == estate->es_cur_slice_idx))
 
 /*
  * prototypes from functions in execAmi.c
@@ -395,20 +392,12 @@ extern ShareNodeEntry * ExecGetShareNodeEntry(EState *estate, int shareid, bool 
 void ResultRelInfoSetSegno(ResultRelInfo *resultRelInfo, List *mapping);
 
 /* Additions for MPP Slice table utilities defined in execUtils.c */
-extern void InitSliceTable(EState *estate, int nMotions, int nSubplans);
-extern void InitRootSlices(QueryDesc *queryDesc);
-extern void AssignGangs(QueryDesc *queryDesc, int utility_segment_index);
-extern void ReleaseGangs(QueryDesc *queryDesc);
 extern GpExecIdentity getGpExecIdentity(QueryDesc *queryDesc,
 										  ScanDirection direction,
 										  EState	   *estate);
 extern void mppExecutorFinishup(QueryDesc *queryDesc);
 extern void mppExecutorCleanup(QueryDesc *queryDesc);
 
-extern Slice *getCurrentSlice(EState* estate, int sliceIndex);
-extern bool sliceRunsOnQD(Slice *slice);
-extern bool sliceRunsOnQE(Slice *slice);
-extern int sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster);
 
 /* prototypes defined in nodeAgg.c for rollup-aware Agg/Group nodes. */
 extern int64 tuple_grouping(TupleTableSlot *outerslot, int numGroupCols,

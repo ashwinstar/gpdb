@@ -65,6 +65,8 @@ static bool isTargetPortal(const char *p1, const char *p2);
 
 static int	addOptions(PQExpBufferData *buffer, bool iswriter, int segindex, bool i_am_superuser);
 
+static bool cleanupGang(Gang * gp);
+
 extern void resetSessionForPrimaryGangLoss(void);
 
 /*
@@ -699,7 +701,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 		cdbconn_initSegmentDescriptor(segdbDesc, cdbinfo);
 
 		newGangDefinition->size = 1;
-		newGangDefinition->segdb_count = 1;
 		newGangDefinition->db_descriptors = segdbDesc;
 
 		return newGangDefinition;
@@ -712,18 +713,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 		disableFTS();
 		mirroringNotConfigured = true;
 	}
-
-	newGangDefinition->segdb_count = cdb_component_dbs->total_segments;
-	/*
-	 * if (type == GANGTYPE_READER && size == 1)
-	 * newGangDefinition->size = size;
-	 * else
-	 * {
-	 * Assert(size == newGangDefinition->segdb_count);
-	 * }
-	 */
-	Assert(newGangDefinition->segdb_count > 0);
-
 
 	newGangDefinition->db_descriptors =
 		(SegmentDatabaseDescriptor *) palloc0(cdb_component_dbs->total_segments *
@@ -1771,7 +1760,6 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 	if (gang != NULL && gang->type != GANGTYPE_UNALLOCATED)
 	{
 		CdbComponentDatabaseInfo *qeinfo;
-		int			k = 0;
 		int			listsize = 0;
 
 		for (i = 0; i < gang->size; i++)
@@ -1845,7 +1833,6 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 
 			process->pid = segdbDesc->backendPid;
 			process->contentid = segdbDesc->segindex;
-			process->routeid = k++;
 
 			if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE || DEBUG4 >= log_min_messages)
 				elog(DEBUG1, "Gang assignment (gang_id %d): slice%d seg%d %s:%d pid=%d",
@@ -1926,7 +1913,6 @@ getCdbProcessesForQD(int isPrimary)
 		proc->listenerPort = (Gp_listener_port & 0x0ffff);
 	proc->pid = MyProcPid;
 	proc->contentid = -1;
-	proc->routeid = 0;
 
 	/*
 	 * freeCdbComponentDatabases(cdb_component_dbs);
@@ -2257,98 +2243,6 @@ cleanupPortalGangs(Portal portal)
 	 list_length(allocatedReaderGangs1), list_length(availableReaderGangs1));
 
 	MemoryContextSwitchTo(oldContext);
-}
-
-/*
- * This not only disconnects and destroys the gang, it also first removes the gang from
- * the available lists (if it exists in those lists).
- */
-
-void
-disconnectAndDestroyGangById(int gang_id)
-{
-	MemoryContext oldContext;
-
-	Assert(GangContext != NULL);
-	oldContext = MemoryContextSwitchTo(GangContext);
-
-	/*
-	 * Now we iterate through the list of available reader gangs
-	 * and we destroy the gang that was specified.
-	 */
-	if (availableReaderGangsN != NIL)
-	{
-		ListCell   *cur_item;
-		ListCell   *prev_item = NULL;
-
-		cur_item = list_head(availableReaderGangsN);
-
-		while (cur_item != NULL)
-		{
-			Gang	   *gp = (Gang *) lfirst(cur_item);
-
-			if (gp->gang_id == gang_id)
-			{
-
-				/* cur_item must be removed */
-				availableReaderGangsN = list_delete_cell(availableReaderGangsN, cur_item, prev_item);
-
-				disconnectAndDestroyGang(gp);
-
-				if (prev_item)
-					cur_item = lnext(prev_item);
-				else
-					cur_item = list_head(availableReaderGangsN);
-			}
-			else
-			{
-
-				/* cur_item must be preserved */
-				prev_item = cur_item;
-				cur_item = lnext(prev_item);
-			}
-		}
-	}
-
-	if (availableReaderGangs1 != NIL)
-	{
-		ListCell   *cur_item;
-		ListCell   *prev_item = NULL;
-
-		cur_item = list_head(availableReaderGangs1);
-
-		while (cur_item != NULL)
-		{
-			Gang	   *gp = (Gang *) lfirst(cur_item);
-
-			if (gp->gang_id == gang_id)
-			{
-
-				/* cur_item must be removed */
-				availableReaderGangs1 = list_delete_cell(availableReaderGangs1, cur_item, prev_item);
-
-				disconnectAndDestroyGang(gp);
-
-				if (prev_item)
-					cur_item = lnext(prev_item);
-				else
-					cur_item = list_head(availableReaderGangs1);
-			}
-			else
-			{
-				prev_item = cur_item;
-				cur_item = lnext(prev_item);
-			}
-		}
-	}
-
-	MemoryContextSwitchTo(oldContext);
-
-	if (primaryWriterGang && primaryWriterGang->gang_id == gang_id)
-	{
-		disconnectAndDestroyGang(primaryWriterGang);
-		primaryWriterGang = NULL;
-	}
 }
 
 void
@@ -2867,84 +2761,6 @@ gangOK(Gang *gp)
 	return true;
 }
 
-bool
-reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
-{
-	int			segdbs_in_thread_pool = 0;
-	DoConnectParms *doConnectParmsAr;
-
-	/*
-	 * Someone has probably already taken care of any error info from the
-	 * original connection attempt, but let's make sure.
-	 */
-	if (failedDB->error_message.len > 0)
-	{
-		ereport(LOG, (errcode(failedDB->errcode),
-					  errmsg("Segment db connection error: %s",
-							 failedDB->error_message.data)));
-		failedDB->errcode = 0;
-		resetPQExpBuffer(&failedDB->error_message);
-	}
-
-	/* The old PGconn object should have been freed already.  Just make sure. */
-	if (failedDB->conn)
-	{
-		elog(DEBUG3, "reconnectSegDB calling PQfinish for %s", failedDB->whoami);
-		PQfinish(failedDB->conn);
-		failedDB->conn = NULL;
-	}
-
-	/**
-	 ** Reconnect.
-	 **/
-	elog(LOG, "Attempting to reconnect to %s", failedDB->whoami);
-
-	doConnectParmsAr = (DoConnectParms *) palloc0(sizeof(*doConnectParmsAr));
-
-	addSegDBToConnThreadPool(doConnectParmsAr, &segdbs_in_thread_pool,
-							 failedDB);
-
-	thread_DoConnect((void *) doConnectParmsAr);
-
-	pfree(doConnectParmsAr->segdbDescPtrArray);
-	pfree(doConnectParmsAr);
-
-	/*
-	 * Check new connection.
-	 * If unsuccessful, thread_DoConnect() has already stored an
-	 * error message and freed the PGconn object.
-	 */
-	if (!failedDB->conn)
-	{
-		ereport(LOG, (errcode(failedDB->errcode),
-					  errmsg("Could not reconnect to segment db.  %s",
-							 failedDB->error_message.data)));
-		failedDB->errcode = 0;
-		resetPQExpBuffer(&failedDB->error_message);
-		return false;
-	}
-
-	elog(LOG, "Reconnected to segment db: %s", failedDB->whoami);
-
-	Assert(PQstatus(failedDB->conn) != CONNECTION_BAD);
-
-
-	/*
-	 * If we've made it this far, then that means our re-connection attempts
-	 * are successful.	now, we need to blow away all of the reader gangs in
-	 * case this is a writer gang member.  The reason we need to do this is
-	 * because of shared snapshots.  A reader qExec can't be used after its
-	 * writer qExec dies.
-	 *
-	 * TODO: try and determine if we are a member of a reader or writer gang.
-	 * then we'd only have to do the following if we were a writer gang.
-	 *
-	 */
-	disconnectAndDestroyAllReaderGangs(true);
-
-	return true;
-}
-
 /*
  * Set segdb states, called by FtsReConfigureMPP.
  */
@@ -3014,3 +2830,91 @@ isTargetPortal(const char *p1, const char *p2)
 
 	return false;
 }
+
+#ifdef USE_ASSERT_CHECKING
+/**
+ * Assert that slicetable is valid. Must be called after ExecInitMotion, which sets up the slice table
+ */
+void
+AssertSliceTableIsValid(SliceTable *st, struct PlannedStmt *pstmt)
+{
+	if (!st)
+	{
+		return;
+	}
+
+	Assert(st);
+	Assert(pstmt);
+
+	Assert(pstmt->nMotionNodes == st->nMotions);
+	Assert(pstmt->nInitPlans == st->nInitPlans);
+
+	ListCell *lc = NULL;
+	int i = 0;
+
+	int maxIndex = st->nMotions + st->nInitPlans + 1;
+
+	Assert(maxIndex == list_length(st->slices));
+
+	foreach (lc, st->slices)
+	{
+		Slice *s = (Slice *) lfirst(lc);
+
+		/* The n-th slice entry has sliceIndex of n */
+		Assert(s->sliceIndex == i && "slice index incorrect");
+
+		/* The root index of a slice is either 0 or is a slice corresponding to an init plan */
+		Assert((s->rootIndex == 0)
+				|| (s->rootIndex > st->nMotions && s->rootIndex < maxIndex));
+
+		/* Parent slice index */
+		if (s->sliceIndex == s->rootIndex )
+		{
+			/* Current slice is a root slice. It will have parent index -1.*/
+			Assert(s->parentIndex == -1 && "expecting parent index of -1");
+		}
+		else
+		{
+			/* All other slices must have a valid parent index */
+			Assert(s->parentIndex >= 0 && s->parentIndex < maxIndex && "slice's parent index out of range");
+		}
+
+		/* Current slice's children must consider it the parent */
+		ListCell *lc1 = NULL;
+		foreach (lc1, s->children)
+		{
+			int childIndex = lfirst_int(lc1);
+			Assert(childIndex >= 0 && childIndex < maxIndex && "invalid child slice");
+			Slice *sc = (Slice *) list_nth(st->slices, childIndex);
+			Assert(sc->parentIndex == s->sliceIndex && "slice's child does not consider it the parent");
+		}
+
+		/* Current slice must be in its parent's children list */
+		if (s->parentIndex >= 0)
+		{
+			Slice *sp = (Slice *) list_nth(st->slices, s->parentIndex);
+
+			bool found = false;
+			foreach (lc1, sp->children)
+			{
+				int childIndex = lfirst_int(lc1);
+				Assert(childIndex >= 0 && childIndex < maxIndex && "invalid child slice");
+				Slice *sc = (Slice *) list_nth(st->slices, childIndex);
+
+				if (sc->sliceIndex == s->sliceIndex)
+				{
+					found = true;
+					break;
+				}
+			}
+
+			Assert(found && "slice's parent does not consider it a child");
+		}
+
+
+
+		i++;
+	}
+}
+
+#endif

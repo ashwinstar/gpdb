@@ -1320,7 +1320,8 @@ SetupUDPInterconnect(EState *estate)
 	estate->interconnect_context->sliceId = -1;
 
 	estate->interconnect_context->sliceTable = estate->es_sliceTable;
-	estate->interconnect_context->sliceId = estate->es_cur_slice_idx;
+
+	estate->interconnect_context->sliceId = LocallyExecutingSliceIndex(estate);
 
 	estate->interconnect_context->RecvTupleChunkFrom = RecvTupleChunkFromUDP;
 	estate->interconnect_context->RecvTupleChunkFromAny = RecvTupleChunkFromAnyUDP;
@@ -1328,11 +1329,11 @@ SetupUDPInterconnect(EState *estate)
 	estate->interconnect_context->SendChunk = SendChunkUDP;
 	estate->interconnect_context->doSendStopMessage = doSendStopMessageUDP;
 
-	mySlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, estate->es_cur_slice_idx);
+	mySlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, LocallyExecutingSliceIndex(estate));
 
 	Assert(mySlice &&
 		   IsA(mySlice, Slice) &&
-		   mySlice->sliceIndex == estate->es_cur_slice_idx);
+		   mySlice->sliceIndex == LocallyExecutingSliceIndex(estate));
 
 #ifdef USE_ASSERT_CHECKING
 	if (gp_udpic_dropseg != UNDEF_SEGMENT ||

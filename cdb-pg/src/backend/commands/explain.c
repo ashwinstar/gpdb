@@ -41,6 +41,7 @@
 #include "cdb/cdbpathlocus.h"
 #include "cdb/memquota.h"
 #include "miscadmin.h"
+#include "cdb/cdbgang.h"
 
 typedef struct ExplainState
 {
@@ -394,7 +395,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
     estate = queryDesc->estate;
 
     /* CDB: Find slice table entry for the root slice. */
-    es->currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
+    es->currentSlice = getCurrentSlice(estate, LocallyExecutingSliceIndex(estate));
 
     /*
      * Execute the plan for statistics if asked for.  Attempt to proceed
@@ -439,7 +440,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
         if (estate->dispatcherState && estate->dispatcherState->primaryResults)
             cdbexplain_recvExecStats(queryDesc->planstate,
                                      estate->dispatcherState->primaryResults,
-                                     estate->es_cur_slice_idx,
+                                     LocallyExecutingSliceIndex(estate),
                                      es->showstatctx);
 	}
 
@@ -460,12 +461,12 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
 			/* Little two-step to get EXPLAIN VERBOSE to show slice table. */
 			saved_es_sliceTable = queryDesc->plannedstmt->planTree->sliceTable;		/* probably NULL */
 			queryDesc->plannedstmt->planTree->sliceTable = (Node *) queryDesc->estate->es_sliceTable;
-			s = nodeToString(queryDesc->plannedstmt->planTree);
+			s = nodeToString(queryDesc->plannedstmt);
 			queryDesc->plannedstmt->planTree->sliceTable = saved_es_sliceTable;
 		}
 		else
 		{
-			s = nodeToString(queryDesc->plannedstmt->planTree);
+			s = nodeToString(queryDesc->plannedstmt);
 		}
 
 		if (s)

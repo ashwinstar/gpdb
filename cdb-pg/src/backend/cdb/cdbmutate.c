@@ -264,16 +264,10 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	 */
     if (query->resultRelation > 0)
     {
-	    RangeTblEntry	*rte;
-        Relation		relation;
-		
-        rte = rt_fetch(query->resultRelation, query->rtable);
+	    RangeTblEntry	*rte = rt_fetch(query->resultRelation, query->rtable);
 	    Assert(rte->rtekind == RTE_RELATION);
 
-        /* Get a copy of the rel's GpPolicy from the relcache. */
-        relation = relation_open(rte->relid, NoLock);
-        targetPolicy = RelationGetPartitioningKey(relation);
-        relation_close(relation, NoLock);
+	    targetPolicy = GpPolicyFetch(CurrentMemoryContext, rte->relid);
 
         if (targetPolicy)
             targetPolicyType = targetPolicy->ptype;
@@ -336,7 +330,6 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 									if (IsA(target->expr, Var))
 									{
 										new_var = copyObject(target->expr);
-										new_var->varno = OUTER;
 										new_var->varattno = n;
 									}
 					
@@ -476,7 +469,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
                 else
                     Insist(focusPlan(plan, false, false));
 			}
-			needToAssignDirectDispatchContentIds = gp_enable_direct_dispatch && ! query->intoClause;
+			needToAssignDirectDispatchContentIds = root->config->gp_enable_direct_dispatch && ! query->intoClause;
 			break;
 
 		case CMD_INSERT:
@@ -654,7 +647,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 								hList = lappend_int(hList, targetPolicy->attrs[i]);
 							}
 
-							if (gp_enable_direct_dispatch)
+							if (root->config->gp_enable_direct_dispatch)
 							{
 								directDispatchCalculateHash(plan, targetPolicy);
 								/* we now either have a hash-code, or we've marked the plan non-directed. */
@@ -735,8 +728,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 					request_explicit_motion(plan, relid, root->glob->finalrtable);
 				}
 				
-
-				needToAssignDirectDispatchContentIds = gp_enable_direct_dispatch;
+				needToAssignDirectDispatchContentIds = root->config->gp_enable_direct_dispatch;
 			}
 
 			/* Target table is not distributed.  Must be in entry db. */
@@ -1143,9 +1135,7 @@ make_motion(Plan       *lefttree,
 	plan->flow = NULL;
 
 	node->outputSegIdx = NULL;
-	node->numInputSegs = 0;
-	node->inputSegIdx = NULL;
-	node->numInputSegs = 0;
+	node->numOutputSegs = 0;
 	
 	return node;
 }

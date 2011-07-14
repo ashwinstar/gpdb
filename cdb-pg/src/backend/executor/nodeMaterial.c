@@ -332,13 +332,6 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	MaterialState *matstate;
 	Plan	   *outerPlan;
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		ExecInitNode(outerPlan(node), estate, eflags);
-
-		return NULL;
-	}
-	
 	/*
 	 * create state structure
 	 */
@@ -352,7 +345,8 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	 * might be called on to rewind and replay it many times. However, if none
 	 * of these cases apply, we can skip storing the data.
 	 */
-	matstate->randomAccess = (eflags & (EXEC_FLAG_REWIND |
+	matstate->randomAccess = node->cdb_strict ||
+							(eflags & (EXEC_FLAG_REWIND |
 										EXEC_FLAG_BACKWARD |
 										EXEC_FLAG_MARK)) != 0;
 

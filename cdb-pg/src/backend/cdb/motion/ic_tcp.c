@@ -1248,7 +1248,8 @@ SetupTCPInterconnect(EState *estate)
 	estate->interconnect_context->sliceId = -1;
 
 	estate->interconnect_context->sliceTable = estate->es_sliceTable;
-	estate->interconnect_context->sliceId = estate->es_cur_slice_idx;
+
+	estate->interconnect_context->sliceId = LocallyExecutingSliceIndex(estate);
 
 	estate->interconnect_context->RecvTupleChunkFrom = RecvTupleChunkFromTCP;
 	estate->interconnect_context->RecvTupleChunkFromAny = RecvTupleChunkFromAnyTCP;
@@ -1256,11 +1257,11 @@ SetupTCPInterconnect(EState *estate)
 	estate->interconnect_context->SendChunk = SendChunkTCP;
 	estate->interconnect_context->doSendStopMessage = doSendStopMessageTCP;
 
-	mySlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, estate->es_cur_slice_idx);
+	mySlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, LocallyExecutingSliceIndex(estate));
 
     Assert(estate->es_sliceTable &&
            IsA(mySlice, Slice) &&
-           mySlice->sliceIndex == estate->es_cur_slice_idx);
+           mySlice->sliceIndex == LocallyExecutingSliceIndex(estate));
 
 	gp_interconnect_id = estate->interconnect_context->sliceTable->ic_instance_id;
 

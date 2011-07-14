@@ -376,12 +376,12 @@ void
 CdbDoCommandOnAllGangs(const char *strCommand, bool cancelOnError, bool needTwoPhase);
 
 /*--------------------------------------------------------------------*/
-#include "nodes/execnodes.h"	/* SliceTable */
+struct SliceTable;
 
 void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  bool cancelOnError,
-				  SliceTable *sliceTbl,
+				  struct SliceTable *sliceTbl,
 				  struct CdbDispatcherState *ds); /* OUT: fields filled in */
 
 /* Compose and dispatch the MPPEXEC commands corresponding to a plan tree
@@ -464,16 +464,20 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, bool inCursor, int txnO
 void
 CdbShutdownPortals(void);
 
+struct EState;
+struct PlannedStmt;
+struct PlannerInfo;
+
 /* used in the interconnect on the dispatcher to avoid error-cleanup deadlocks. */
 bool
-cdbdisp_check_estate_for_cancel(EState *estate);
+cdbdisp_check_estate_for_cancel(struct EState *estate);
 
 /* 
  * make a plan constant, if possible. Call must say if we're doing single row
  * inserts.
  */
-extern Node *exec_make_plan_constant(PlannedStmt *stmt, bool is_SRI);
-extern Node *planner_make_plan_constant(PlannerInfo *root, Node *n, bool is_SRI);
+extern Node *exec_make_plan_constant(struct PlannedStmt *stmt, bool is_SRI);
+extern Node *planner_make_plan_constant(struct PlannerInfo *root, Node *n, bool is_SRI);
 
 /*--------------------------------------------------------------------*/
 

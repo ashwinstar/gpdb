@@ -12,6 +12,7 @@
 #include "cdb/cdbinterconnect.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbgang.h"
 
 #define IC_SHORT_PACKET_LIMIT (10) /* MPP-10351: treat some short-packets as drops */
 

@@ -36,6 +36,7 @@
 #include "nodes/plannodes.h"
 #include "nodes/relation.h"
 #include "utils/datum.h"
+#include "cdb/cdbgang.h"
 
 /*
  * Macros to simplify output of different kinds of fields.	Use these
@@ -764,9 +765,6 @@ _outMotion(StringInfo str, Motion *node)
 
 	WRITE_INT_FIELD(numOutputSegs);
 	WRITE_INT_ARRAY(outputSegIdx, numOutputSegs, int);
-
-	WRITE_INT_FIELD(numInputSegs);
-	WRITE_INT_ARRAY(inputSegIdx, numInputSegs, int);
 
 	WRITE_INT_FIELD(numSortCols);
 	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
@@ -3181,7 +3179,6 @@ _outCdbProcess(StringInfo str, CdbProcess *node)
 	WRITE_INT_FIELD(listenerPort);
 	WRITE_INT_FIELD(pid);
 	WRITE_INT_FIELD(contentid);
-	WRITE_INT_FIELD(routeid);
 }
 
 static void
@@ -3207,7 +3204,7 @@ _outSliceTable(StringInfo str, SliceTable *node)
 {
 	WRITE_NODE_TYPE("SLICETABLE");
 	WRITE_INT_FIELD(nMotions);
-	WRITE_INT_FIELD(nSubplans);
+	WRITE_INT_FIELD(nInitPlans);
 	WRITE_INT_FIELD(localSlice);
 	WRITE_NODE_FIELD(slices); /* List of int */
     WRITE_BOOL_FIELD(doInstrument);

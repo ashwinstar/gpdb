@@ -22,7 +22,7 @@
 
 extern Plan *cdbparallelize(struct PlannerInfo *root, Plan *plan, Query *query,
 							int cursorOptions, 
-							ParamListInfo boundParams, bool uses_correlation);
+							ParamListInfo boundParams);
 
 extern bool is_plan_node(Node *node);
 
@@ -30,8 +30,8 @@ extern Flow *makeFlow(FlowType flotype);
 
 extern Flow *pull_up_Flow(Plan *plan, Plan *subplan, bool withSort);
 
-bool focusPlan(Plan *plan, bool stable, bool rescannable);
-bool repartitionPlan(Plan *plan, bool stable, bool rescannable, List *hashExpr);
-
+extern bool focusPlan(Plan *plan, bool stable, bool rescannable);
+extern bool repartitionPlan(Plan *plan, bool stable, bool rescannable, List *hashExpr);
+extern bool broadcastPlan(Plan *plan, bool stable, bool rescannable);
 
 #endif   /* CDBLLIZE_H */

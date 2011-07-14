@@ -119,11 +119,6 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 	Assert(outerPlan(node) == NULL);
 	Assert(innerPlan(node) == NULL);
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		return NULL;
-	}
-
 	/*
 	 * create state structure
 	 */

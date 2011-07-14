@@ -808,7 +808,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
 
         /* Replicate single rel if cheaper than redistributing both rels. */
         else if (single->ok_to_replicate &&
-                 single->bytes * root->cdbpath_segments < single->bytes + other->bytes)
+                 single->bytes * root->config->cdbpath_segments < single->bytes + other->bytes)
             CdbPathLocus_MakeReplicated(&single->move_to);
 
         /* Redistribute both rels on equijoin cols. */
@@ -884,7 +884,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
          */
         else if (!small->require_existing_order &&
                  small->ok_to_replicate &&
-                 small->bytes * root->cdbpath_segments < large->bytes)
+                 small->bytes * root->config->cdbpath_segments < large->bytes)
             CdbPathLocus_MakeReplicated(&small->move_to);
 
         /* If joining on smaller rel's partitioning key, redistribute larger. */
@@ -898,7 +898,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
         /* Replicate smaller rel if cheaper than redistributing both rels. */
         else if (!small->require_existing_order &&
                  small->ok_to_replicate &&
-                 small->bytes * root->cdbpath_segments < large->bytes + small->bytes)
+                 small->bytes * root->config->cdbpath_segments < large->bytes + small->bytes)
             CdbPathLocus_MakeReplicated(&small->move_to);
 
         /* Redistribute both rels on equijoin cols. */

@@ -181,28 +181,6 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 
 	nplans = list_length(node->appendplans);
 
-	if (!NodeInCurrentSlice(estate))
-	{
-		int first_plan = 0;
-		int last_plan = nplans - 1;
-
-		if (node->isTarget && estate->es_evTuple != NULL)
-		{
-			first_plan = estate->es_result_relation_info - estate->es_result_relations;
-			Assert(first_plan >= 0 && first_plan < nplans);
-			last_plan = first_plan;
-		}
-		
-		for (; first_plan <= last_plan; first_plan++)
-		{
-			Plan *initNode = (Plan *)list_nth(node->appendplans, first_plan);
-			
-			ExecInitNode(initNode, estate, eflags);
-		}
-
-		return NULL;
-	}
-
 	appendstate = makeNode(AppendState);
 
 	appendstate->eflags = eflags;

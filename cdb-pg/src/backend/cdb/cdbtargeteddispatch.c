@@ -620,3 +620,4 @@ AssignContentIdsToPlanData(Query *query, Plan *plan, PlannerInfo *root)
 
 	DeleteAndRestoreSwitchedMemoryContext(mem);
 }
+

@@ -22,7 +22,7 @@
 #include "nodes/plannodes.h"
 #include "nodes/primnodes.h"
 #include "storage/block.h"
-
+#include "nodes/plannerconfig.h"
 #include "cdb/cdbpathlocus.h"
 
 /*
@@ -106,7 +106,6 @@ typedef struct PlannerGlobal
 	ApplyShareInputContext share;	/* workspace for GPDB plan sharing */
 	
 } PlannerGlobal;
-
 
 /*----------
  * PlannerInfo
@@ -217,9 +216,8 @@ typedef struct PlannerInfo
 	/* At the end to avoid breaking existing 8.2 add-ons */
 	List	   *initial_rels;	/* RelOptInfos we are now trying to join */
 	
-	/* GPDB "globals": */
-	bool		mpp_trying_fallback_plan;
-	int			cdbpath_segments;
+	PlannerConfig *config;		/* Planner configuration */
+
 } PlannerInfo;
 
 
@@ -239,6 +237,14 @@ typedef struct PlannerInfo
 static inline struct Plan *planner_subplan_get_plan(struct PlannerInfo *root, SubPlan *subplan) 
 {
 	return (Plan *) list_nth(root->glob->subplans, subplan->plan_id - 1);
+}
+
+/**
+ * Fetch the rtable list for a subplan
+ */
+static inline struct List *planner_subplan_get_rtable(struct PlannerInfo *root, SubPlan *subplan)
+{
+	return (List *) list_nth(root->glob->subrtables, subplan->plan_id - 1);
 }
 
 /* 

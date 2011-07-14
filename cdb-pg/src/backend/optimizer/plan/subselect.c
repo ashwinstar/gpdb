@@ -14,8 +14,10 @@
  */
 #include "postgres.h"
 
+#include "catalog/catalog.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
+#include "catalog/gp_policy.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/relation.h"
@@ -32,6 +34,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbmutate.h"
 
 typedef struct convert_testexpr_context
 {
@@ -238,6 +241,95 @@ get_first_col_type(Plan *plan, Oid *coltype, int32 *coltypmod)
 	*coltypmod = -1;
 }
 
+/**
+ * Returns true if query refers to a distributed table.
+ */
+static bool QueryHasDistributedRelation(Query *q)
+{
+	ListCell   *rt = NULL;
+
+	foreach(rt, q->rtable)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(rt);
+
+		if (rte->relid != InvalidOid
+				&& rte->rtekind == RTE_RELATION)
+		{
+			GpPolicy *policy = GpPolicyFetch(CurrentMemoryContext, rte->relid);
+			bool result = (policy->ptype == POLICYTYPE_PARTITIONED);
+			pfree(policy);
+			if (result)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+typedef struct CorrelatedVarWalkerContext
+{
+	int maxLevelsUp;
+} CorrelatedVarWalkerContext;
+
+/**
+ *  Walker finds the deepest correlation nesting i.e. maximum levelsup among all
+ *  vars in subquery.
+ */
+static bool CorrelatedVarWalker(Node *node, CorrelatedVarWalkerContext *ctx)
+{
+	Assert(ctx);
+
+	if (node == NULL)
+	{
+		return false;
+	}
+	else if (IsA(node, Var))
+	{
+		Var * v = (Var *) node;
+		if (v->varlevelsup > ctx->maxLevelsUp)
+		{
+			ctx->maxLevelsUp = v->varlevelsup;
+		}
+		return false;
+	}
+	else if (IsA(node, Query))
+	{
+		return query_tree_walker((Query *) node, CorrelatedVarWalker, ctx, 0 /* flags */);
+	}
+
+	return expression_tree_walker(node, CorrelatedVarWalker, ctx);
+}
+
+
+
+static bool IsSubqueryCorrelated(Query *sq);
+static bool IsSubqueryMultiLevelCorrelated(Query *sq);
+
+/**
+ * Returns true if subquery is correlated
+ */
+bool IsSubqueryCorrelated(Query *sq)
+{
+	Assert(sq);
+	CorrelatedVarWalkerContext ctx;
+	ctx.maxLevelsUp = 0;
+	CorrelatedVarWalker((Node *) sq, &ctx);
+	return (ctx.maxLevelsUp > 0);
+}
+
+/**
+ * Returns true if subquery contains references to more than its immediate outer query.
+ */
+bool IsSubqueryMultiLevelCorrelated(Query *sq)
+{
+	Assert(sq);
+	CorrelatedVarWalkerContext ctx;
+	ctx.maxLevelsUp = 0;
+	CorrelatedVarWalker((Node *) sq, &ctx);
+	return (ctx.maxLevelsUp > 1);
+}
+
 /*
  * Convert a SubLink (as created by the parser) into a SubPlan.
  *
@@ -259,11 +351,8 @@ static Node *
 make_subplan(PlannerInfo *root, Query *orig_subquery, SubLinkType subLinkType,
 			 Node *testexpr, bool isTopQual)
 {
-	Query	   *subquery;
-	double		tuple_fraction;
-	Plan	   *plan;
-	PlannerInfo *subroot;
-	Node	   *result;
+	Query	   *subquery = NULL;
+	double		tuple_fraction = 1.0;
 
 	/*
 	 * Copy the source Query node.	This is a quick and dirty kluge to resolve
@@ -301,18 +390,52 @@ make_subplan(PlannerInfo *root, Query *orig_subquery, SubLinkType subLinkType,
 	else
 		tuple_fraction = 0.0;	/* default behavior */
 
-	/*
-	 * Generate the plan for the subquery.
-	 */
-	plan = subquery_planner(root->glob, subquery,
-							root,
-							tuple_fraction,
-							&subroot);
-	
+	PlannerConfig *config = CopyPlannerConfig(root->config);
+
+	if ((Gp_role == GP_ROLE_DISPATCH)
+			&& IsSubqueryMultiLevelCorrelated(subquery)
+			&& QueryHasDistributedRelation(subquery))
+	{
+		elog(ERROR, "correlated subquery with skip-level correlations is not supported");
+	}
+
+	if ((Gp_role == GP_ROLE_DISPATCH)
+			&& IsSubqueryCorrelated(subquery)
+			&& QueryHasDistributedRelation(subquery))
+	{
+		/*
+		 * Generate the plan for the subquery with certain options disabled.
+		 */
+		config->gp_enable_direct_dispatch = false;
+		config->gp_enable_multiphase_agg = false;
+
+		/*
+		 * Only create subplans with sequential scans
+		 */
+		config->enable_indexscan = false;
+		config->enable_bitmapscan = false;
+		config->enable_tidscan = false;
+		config->enable_seqscan = true;
+	}
+
+
+	PlannerInfo *subroot = NULL;
+
+	Plan *plan = subquery_planner(root->glob, subquery,
+			root,
+			tuple_fraction,
+			&subroot,
+			config);
+
 	/* And convert to SubPlan or InitPlan format. */
-	result = build_subplan(root, plan, subroot->parse->rtable,
-						   subLinkType, testexpr, isTopQual);
-	
+	Node	   *result = build_subplan(root,
+										plan,
+										subroot->parse->rtable,
+										subLinkType,
+										testexpr,
+										isTopQual);
+
+
 	return result;
 }
 
@@ -346,6 +469,7 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 	splan->unknownEqFalse = unknownEqFalse;
 	splan->is_initplan = false;
 	splan->is_multirow = false;
+	splan->is_parallelized = false;
 	splan->setParam = NIL;
 	splan->parParam = NIL;
 	splan->args = NIL;
@@ -380,6 +504,7 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 	 * PARAM_EXEC Params instead of the PARAM_SUBLINK Params emitted by the
 	 * parser.
 	 */
+
 	if (splan->parParam == NIL && subLinkType == EXISTS_SUBLINK && Gp_role == GP_ROLE_DISPATCH)
 	{
 		Param	   *prm;
@@ -440,9 +565,24 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 		 */
 	}
 	else
-	{		
+	{
 		splan->is_multirow = true; /* CDB: take note. */
-		
+
+		/*
+		 * We can't convert subplans of ALL_SUBLINK or ANY_SUBLINK types to
+		 * initPlans, even when they are uncorrelated or undirect correlated,
+		 * because we need to scan the output of the subplan for each outer
+		 * tuple.  But if it's a not-direct-correlated IN (= ANY) test, we
+		 * might be able to use a hashtable to avoid comparing all the tuples.
+		 * TODO siva - I believe we should've pulled these up to be NL joins.
+		 * We may want to assert that this is never exercised.
+		 */
+		if (subLinkType == ANY_SUBLINK &&
+			splan->parParam == NIL &&
+			subplan_is_hashable(plan, root) &&
+			testexpr_is_hashable(splan->testexpr))
+			splan->useHashTable = true;
+
 		/*
 		 * Adjust the Params in the testexpr.
 		 */
@@ -451,50 +591,14 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 										   0,
 										   &splan->paramIds,
 										   NIL);
-		
-		/*
-		 * We can't convert subplans of ALL_SUBLINK or ANY_SUBLINK types to
-		 * initPlans, even when they are uncorrelated or undirect correlated,
-		 * because we need to scan the output of the subplan for each outer
-		 * tuple.  But if it's a not-direct-correlated IN (= ANY) test, we
-		 * might be able to use a hashtable to avoid comparing all the tuples.
-		 */
-		if (subLinkType == ANY_SUBLINK &&
-			splan->parParam == NIL &&
-			subplan_is_hashable(plan, root) &&
-			testexpr_is_hashable(splan->testexpr))
-			splan->useHashTable = true;
-		
-		/*
-		 * Otherwise, we have the option to tack a MATERIAL node onto the top
-		 * of the subplan, to reduce the cost of reading it repeatedly.  This
-		 * is pointless for a direct-correlated subplan, since we'd have to
-		 * recompute its results each time anyway.	For uncorrelated/undirect
-		 * correlated subplans, we add MATERIAL unless the subplan's top plan
-		 * node would materialize its output anyway.
-		 */
-		else if (splan->parParam == NIL)
-		{
-			bool		use_material;
 
-			switch (nodeTag(plan))
-			{
-				case T_Material:
-				case T_FunctionScan:
-				case T_Sort:
-					use_material = false;
-					break;
-				default:
-					use_material = true;
-					break;
-			}
-			if (use_material)
-				plan = materialize_finished_plan(root, plan);
-		}
-		
 		result = (Node *) splan;
+
+		/* This cannot be an initplan because it is multi-row */
 		splan->is_initplan = false;
 	}
+
+	AssertEquivalent(splan->is_initplan, !splan->is_multirow && splan->parParam == NIL);
 
 	/*
 	 * Add the subplan and its rtable to the global lists.
@@ -653,7 +757,6 @@ convert_testexpr_mutator(Node *node,
 								   (void *) context);
 }
 
-
 /*
  * subplan_is_hashable: can we implement an ANY subplan by hashing?
  */
@@ -701,11 +804,11 @@ testexpr_is_hashable(Node *testexpr)
 	else if (and_clause(testexpr))
 	{
 		ListCell   *l;
-		
+
 		foreach(l, ((BoolExpr *) testexpr)->args)
 		{
 			Node	   *andarg = (Node *) lfirst(l);
-			
+
 			if (!IsA(andarg, OpExpr))
 				return false;
 			if (!hash_ok_operator((OpExpr *) andarg))
@@ -713,7 +816,7 @@ testexpr_is_hashable(Node *testexpr)
 		}
 		return true;
 	}
-	
+
 	return false;
 }
 
@@ -1370,16 +1473,3 @@ SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 	return prm;
 }
 
-/* MPP */
-bool has_correlation_params(List *planner_param_items)
-{
-	ListCell *c;
-	
-	foreach (c, planner_param_items)
-	{
-		PlannerParamItem *pli = (PlannerParamItem*)lfirst(c);
-		if ( IsA(pli->item,Var) || IsA(pli->item,Aggref) )
-			return TRUE;
-	}
-	return FALSE;
-}

@@ -38,20 +38,12 @@
 #include "cdb/cdbmutate.h"                  /* cdbmutate_warn_ctid_without_segid */
 #include "cdb/cdbpath.h"                    /* cdbpath_rows() */
 
-/* These parameters are set by GUC */
-bool		enable_seqscan = true;
-bool		enable_indexscan = true;
-bool		enable_bitmapscan = true;
-bool		enable_tidscan = true;
-bool		enable_sort = true;
-bool		enable_hashagg = true;
-bool		enable_groupagg = true;
-bool		enable_nestloop = false;
-bool		enable_mergejoin = false;
-bool		enable_hashjoin = true;
-bool        gp_enable_hashjoin_size_heuristic = false;  /*CDB*/
-bool		gp_enable_fallback_plan = true;
-bool        gp_enable_predicate_propagation = false;
+// TODO: these planner/executor gucs need to be refactored into PlannerConfig.
+bool		gp_enable_sort_limit = FALSE;
+bool		gp_enable_sort_distinct = FALSE;
+bool		gp_enable_mk_sort = true;
+bool		gp_enable_motion_mk_sort = true;
+
 
 static void set_base_rel_pathlists(PlannerInfo *root);
 static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti);
@@ -334,7 +326,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	}
 
 	/* Consider sequential scan. */
-    if (enable_seqscan)
+    if (root->config->enable_seqscan)
         pathlist = lappend(pathlist, seqpath);
 
 	/* Consider index and bitmap scans */
@@ -352,9 +344,9 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		relstorage == RELSTORAGE_AOCOLS)
 		indexpathlist = NIL;
 
-    if (indexpathlist && enable_indexscan)
+    if (indexpathlist && root->config->enable_indexscan)
         pathlist = list_concat(pathlist, indexpathlist);
-    if (bitmappathlist && enable_bitmapscan)
+    if (bitmappathlist && root->config->enable_bitmapscan)
         pathlist = list_concat(pathlist, bitmappathlist);
 
 	/* Consider TID scans */
@@ -365,14 +357,14 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		relstorage == RELSTORAGE_AOCOLS)
 		tidpathlist = NIL;
     
-    if (tidpathlist && enable_tidscan)
+    if (tidpathlist && root->config->enable_tidscan)
         pathlist = list_concat(pathlist, tidpathlist);
 
     /* If no enabled path was found, consider disabled paths. */
     if (!pathlist)
     {
         pathlist = lappend(pathlist, seqpath);
-        if (gp_enable_fallback_plan)
+        if (root->config->gp_enable_fallback_plan)
         {
             pathlist = list_concat(pathlist, indexpathlist);
             pathlist = list_concat(pathlist, bitmappathlist);
@@ -459,13 +451,13 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 * appropriate substitution of variables.
 		 */
 		childrel->reltargetlist = (List *)
-			adjust_appendrel_attrs((Node *) rel->reltargetlist,
+			adjust_appendrel_attrs(root, (Node *) rel->reltargetlist,
 								   appinfo);
 		childrel->baserestrictinfo = (List *)
-			adjust_appendrel_attrs((Node *) rel->baserestrictinfo,
+			adjust_appendrel_attrs(root, (Node *) rel->baserestrictinfo,
 								   appinfo);
 		childrel->joininfo = (List *)
-			adjust_appendrel_attrs((Node *) rel->joininfo,
+			adjust_appendrel_attrs(root, (Node *) rel->joininfo,
 								   appinfo);
 
 		/*
@@ -698,8 +690,10 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 			tuple_fraction = root->tuple_fraction;
 
 		/* Generate the plan for the subquery */
+		PlannerConfig *config = CopyPlannerConfig(root->config);
+
 		rel->subplan = subquery_planner(root->glob, subquery, root, tuple_fraction,
-										&subroot);
+										&subroot, config);
 		rel->subrtable = subroot->parse->rtable;
 		subquery_pathkeys = subroot->query_pathkeys;
 	}
@@ -871,7 +865,8 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
 
 		rel = make_one_rel_by_joins(root, levels_needed, initial_rels, false);
 
-		if (rel == NULL && gp_enable_fallback_plan)
+		if (rel == NULL
+				&& root->config->gp_enable_fallback_plan)
 		{
 			root->join_rel_hash = NULL;
 			root->join_rel_list = NULL;
@@ -902,7 +897,7 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, 
 	int			lev;
 	RelOptInfo *rel = NULL;
 
-    root->mpp_trying_fallback_plan = fallback;
+    root->config->mpp_trying_fallback_plan = fallback;
 
 	/*
 	 * We employ a simple "dynamic programming" algorithm: we first find all
@@ -956,10 +951,10 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, 
 		}
 		/* If no paths found because enable_xxx=false, enable all & retry. */
 		if (!joinitems[lev] &&
-			gp_enable_fallback_plan &&
-			!root->mpp_trying_fallback_plan)
+				root->config->gp_enable_fallback_plan &&
+				!root->config->mpp_trying_fallback_plan)
 		{
-			root->mpp_trying_fallback_plan = true;
+			root->config->mpp_trying_fallback_plan = true;
 			lev--;
 		}
 

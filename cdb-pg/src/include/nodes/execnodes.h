@@ -44,8 +44,7 @@ struct FileScanDescData;
 struct TBMIterateResult;
 struct TriggerDesc;
 struct MirroredBufferPoolBulkLoadInfo;
-//enum ExprDoneCond;
-
+struct SliceTable;
 
 /* ----------------
  *          IndexInfo information
@@ -374,10 +373,7 @@ typedef struct EState
 	bool                es_useEvalPlan; /* evaluating EPQ tuples? */
         
 	/* Additions for MPP plan slicing. */
-	int es_cur_root_idx;
-	int es_cur_slice_idx;
-	SliceTable *es_sliceTable;
-	struct MotionState **es_slice_map;
+	struct SliceTable *es_sliceTable;
         
 	/* Data structure for node sharing */
 	List **es_sharenode;
@@ -409,14 +405,19 @@ typedef struct EState
 	 */
 	int current_slice_no;
 
-	/*
-	 * The EState for the root of each slice. This is used
-	 * at ExecEndPlan to shut down nodes in each slice.
-	 */
-	struct EState **slice_estates;
+	struct PlanState *planstate;        /* plan's state tree */
 
 } EState;
 
+struct PlanState;
+struct MotionState;
+
+extern struct MotionState *getMotionState(struct PlanState *ps, int sliceIndex);
+extern int LocallyExecutingSliceIndex(EState *estate);
+extern int RootSliceIndex(EState *estate);
+#ifdef USE_ASSERT_CHECKING
+extern void SliceLeafMotionStateAreValid(struct MotionState *ms);
+#endif
 
 /* es_rowMarks is a list of these structs: */
 typedef struct ExecRowMark
@@ -1046,10 +1047,11 @@ typedef struct ResultState
 {
         PlanState        ps;                                /* its first field is NodeTag */
         ExprState  *resconstantqual;
-        bool                rs_done;                /* are we done? */
+        bool                inputFullyConsumed;                /* are we done? */
         bool                rs_checkqual;        /* do we need to check the qual? */
-        bool                rs_TupFromTlist;/* state flag for processing set-valued
+        bool                isSRF;/* state flag for processing set-valued
                                                                  * functions in targetlist */
+        ExprDoneCond		lastSRFCond; /* Applicable only if isSRF is true. Represents the last done flag */
 } ResultState;
 
 /* ----------------
@@ -1847,7 +1849,6 @@ typedef struct MotionState
         bool stopRequested;         /* set when we want transfer to stop */
 
         /* For motion send */
-        List *sliceEntries;         /* for each outgoing slices */
         bool sentEndOfStream;       /* set when end-of-stream has successfully been sent */
         List *hashExpr;             /* state struct used for evaluating the hash expressions */
         struct CdbHash *cdbhash;    /* hash api object */

@@ -518,6 +518,34 @@ static char *gp_test_system_cache_flush_force_str;
 /* include file/line information to stack traces */
 bool gp_log_stack_trace_lines;
 
+/* Planner gucs */
+bool		enable_seqscan = true;
+bool		enable_indexscan = true;
+bool		enable_bitmapscan = true;
+bool		enable_tidscan = true;
+bool		enable_sort = true;
+bool		enable_hashagg = true;
+bool		enable_groupagg = true;
+bool		enable_nestloop = false;
+bool		enable_mergejoin = false;
+bool		enable_hashjoin = true;
+bool        gp_enable_hashjoin_size_heuristic = false;
+bool		gp_enable_fallback_plan = true;
+bool        gp_enable_predicate_propagation = false;
+bool		constraint_exclusion = false;
+bool		gp_enable_multiphase_agg = true;
+bool		gp_enable_preunique = TRUE;
+bool		gp_eager_preunique = FALSE;
+bool		gp_enable_sequential_window_plans = FALSE;
+bool 		gp_hashagg_streambottom = true;
+bool		gp_enable_agg_distinct = true;
+bool		gp_enable_dqa_pruning = true;
+bool		gp_eager_dqa_pruning = FALSE;
+bool		gp_eager_one_phase_agg = FALSE;
+bool		gp_eager_two_phase_agg = FALSE;
+bool        gp_enable_groupext_distinct_pruning = true;
+bool        gp_enable_groupext_distinct_gather = true;
+
 /*
  * Displayable names for context types (enum GucContext)
  *
@@ -1444,7 +1472,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&enable_agg_restruct,
+		&defunct_bool,
 		true, NULL, NULL
  	},
 
@@ -1464,7 +1492,7 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Enables the planner's use of two- or three-stage parallel aggregation plans."),
 			gettext_noop("Allows partial aggregation before motion.")
 		},
-		&enable_agg_restruct,
+		&gp_enable_multiphase_agg,
 		true, NULL, NULL
 	},
 
@@ -1544,7 +1572,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&gp_hashagg_recalc_density,
+		&defunct_bool,
 		true, NULL, NULL
 	},
 
@@ -4676,7 +4704,7 @@ static struct config_real ConfigureNamesReal[] =
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
-		&gp_hashagg_rewrite_limit,
+		&defunct_double,
 		2.0, 1.0, 100.0, NULL, NULL
 	},
 
