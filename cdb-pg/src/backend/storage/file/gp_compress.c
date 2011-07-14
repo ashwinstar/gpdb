@@ -52,7 +52,8 @@ CompressorType CompressorStrToType(const char* comp_str, int comp_level)
 int gp_trycompress(CompressorType cmpType, int cmplv,
                 char *src, int32 srcLen,
                 char *comp, int32 *compLen,
-                char *scratch
+                qlz1_state_compress *qlz1StateCompress,
+                qlz3_state_compress *qlz3StateCompress
                 )
 {
         Assert(cmplv > 0);
@@ -83,9 +84,9 @@ int gp_trycompress(CompressorType cmpType, int cmplv,
         Assert(*compLen >= srcLen + MAX_OVERRUN_QUICKLZ);
 
         if(cmpType == COMPTYPE_QUICKLZ1)
-                *compLen = qlz1_compress(src, comp, srcLen, scratch);
+                *compLen = qlz1_compress(src, comp, srcLen, qlz1StateCompress);
         else
-                *compLen = qlz3_compress(src, comp, srcLen, scratch);
+                *compLen = qlz3_compress(src, comp, srcLen, qlz3StateCompress);
 
         /* Assert QuickLz cannot overrun my buffer */
         Assert(*compLen <= srcLen + MAX_OVERRUN_QUICKLZ);
@@ -99,7 +100,8 @@ int gp_trycompress(CompressorType cmpType, int cmplv,
 void gp_decompress(CompressorType cmpType,
                 char *comp, int32 compLen,
                 char *decomp, int32 decompLen,
-                char *scratch
+                qlz1_state_decompress *qlz1StateDecompress,
+                qlz3_state_decompress *qlz3StateDecompress
                 )
 {
         if(cmpType == COMPTYPE_ZLIB)
@@ -143,7 +145,7 @@ void gp_decompress(CompressorType cmpType,
                 int32 tmpLen = qlz1_size_decompressed(comp);
                 if(tmpLen != decompLen)
                         elog(ERROR, "QuickLZ1 decompress error, size does not match");
-                tmpLen = qlz1_decompress(comp, decomp, scratch);
+                tmpLen = qlz1_decompress(comp, decomp, qlz1StateDecompress);
                 Assert(tmpLen == decompLen);
         }
         else
@@ -151,12 +153,12 @@ void gp_decompress(CompressorType cmpType,
                 int32 tmpLen = qlz3_size_decompressed(comp);
                 if(tmpLen != decompLen)
                         elog(ERROR, "QuickLZ3 decompress error, size does not match");
-                tmpLen = qlz3_decompress(comp, decomp, scratch);
+                tmpLen = qlz3_decompress(comp, decomp, qlz3StateDecompress);
                 Assert(tmpLen == decompLen);
         }
 }
 
-
+/*
 static void
 verifyQlzScratchGuard(
 	char		*title,
@@ -173,7 +175,7 @@ verifyQlzScratchGuard(
 		if (qlzScratch[qlzScratchLen + i] != 0)
 			elog(ERROR,"Guard area after %d byte scratch buffer for '%s' is not zero at index %d",
 			     qlzScratchLen, title, i);
-}
+}*/
 
 
 int gp_trycompress_new(
@@ -185,9 +187,8 @@ int gp_trycompress_new(
 	 int32		*compressedLen,
 	 int		compressLevel,
 	 CompressorType  compressType,
-	 char		*qlzScratch,
-	 int32		qlzScratchLen,
-	 int32		qlzScratchGuardLen)
+	 qlz1_state_compress *qlz1StateCompress,
+	 qlz3_state_compress *qlz3StateCompress)
 {
 	unsigned long 	compressedSize;
 	
@@ -224,16 +225,16 @@ int gp_trycompress_new(
 	{
 		Insist(compressLevel == 1);
 
-		if (Debug_appendonly_guard_end_quicklz_scratch)
-			verifyQlzScratchGuard("qlz3_compress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		//if (Debug_appendonly_guard_end_quicklz_scratch)
+		//	verifyQlzScratchGuard("qlz3_compress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
 		
-		if (Debug_appendonly_rezero_quicklz_compress_scratch)
-			memset(qlzScratch, 0, qlzScratchLen);			
+		//if (Debug_appendonly_rezero_quicklz_compress_scratch)
+		//	memset(qlzScratch, 0, qlzScratchLen);
 
 		compressedSize = qlz1_compress((const void *)sourceData, 
 									  (char *)compressedBuffer, 
 									  (size_t)sourceLen, 
-									  qlzScratch);
+									  qlz1StateCompress);
 	    
 		/*
 		 * Since qlz1_compress never returns an error (unlike zlib) if there was 
@@ -249,8 +250,8 @@ int gp_trycompress_new(
 			     "QuickLZ qlz1_compress overran extra buffer space (max buffer length %d, compressed length %d)",
 			     compressedBufferWithOverrrunLen, (int)compressedSize);
 		
-		if (Debug_appendonly_guard_end_quicklz_scratch)
-			verifyQlzScratchGuard("qlz3_compress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		//if (Debug_appendonly_guard_end_quicklz_scratch)
+		//	verifyQlzScratchGuard("qlz3_compress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
 			
 		if ((compressedSize > (unsigned long)maxCompressedLen) ||
 			(compressedSize > sourceLen))
@@ -264,16 +265,16 @@ int gp_trycompress_new(
 		Insist(compressType == COMPTYPE_QUICKLZ3);
 		Insist(compressLevel == 3);
 		
-		if (Debug_appendonly_guard_end_quicklz_scratch)
-			verifyQlzScratchGuard("qlz3_compress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		//if (Debug_appendonly_guard_end_quicklz_scratch)
+		//	verifyQlzScratchGuard("qlz3_compress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
 		
-		if (Debug_appendonly_rezero_quicklz_compress_scratch)
-			memset(qlzScratch, 0, qlzScratchLen);			
+		//if (Debug_appendonly_rezero_quicklz_compress_scratch)
+		//	memset(qlzScratch, 0, qlzScratchLen);
 
 		compressedSize = qlz3_compress((const void *)sourceData, 
 									  (char *)compressedBuffer, 
 									  (size_t)sourceLen, 
-									  qlzScratch);
+									  qlz3StateCompress);
 	    
 		/*
 		 * see comment above below qlz1_compress.
@@ -283,8 +284,8 @@ int gp_trycompress_new(
 				 "QuickLZ qlz3_compress overran extra buffer space (max buffer length %d, compressed length %d)",
 				 compressedBufferWithOverrrunLen, (int)compressedSize);
 			
-		if (Debug_appendonly_guard_end_quicklz_scratch)
-			verifyQlzScratchGuard("qlz3_compress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		//if (Debug_appendonly_guard_end_quicklz_scratch)
+		//	verifyQlzScratchGuard("qlz3_compress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
 			
 		if ((compressedSize > (unsigned long)maxCompressedLen) ||
 			(compressedSize > sourceLen))
@@ -306,9 +307,8 @@ void gp_decompress_new(
 			uint8			*uncompressed,
 			int32			uncompressedLen,
 			CompressorType	compresstype,	/* the compressor type used */
-			char			*qlzScratch,
-			int32		    qlzScratchLen,
-			int32			qlzScratchGuardLen,
+			qlz1_state_decompress *qlz1StateDecompress,
+			qlz3_state_decompress *qlz3StateDecompress,
 			int64			bufferCount)
 {
 	unsigned long compressedSize;
@@ -359,36 +359,36 @@ void gp_decompress_new(
 	}
 	else if(compresstype == COMPTYPE_QUICKLZ1)
 	{
-		if (Debug_appendonly_guard_end_quicklz_scratch)
-			verifyQlzScratchGuard("qlz1_decompress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		//if (Debug_appendonly_guard_end_quicklz_scratch)
+		//	verifyQlzScratchGuard("qlz1_decompress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
 		
-		if (Debug_appendonly_rezero_quicklz_decompress_scratch)
-			memset(qlzScratch, 0, qlzScratchLen);		
+		//if (Debug_appendonly_rezero_quicklz_decompress_scratch)
+		//	memset(qlzScratch, 0, qlzScratchLen);
 
 		uncompressedSize = qlz1_decompress((const char *)compressed, 
 										  uncompressed, 
-										  qlzScratch);
+										  qlz1StateDecompress);
 		
-		if (Debug_appendonly_guard_end_quicklz_scratch)
-			verifyQlzScratchGuard("qlz1_decompress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		//if (Debug_appendonly_guard_end_quicklz_scratch)
+		//	verifyQlzScratchGuard("qlz1_decompress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
 		
 	}
 	else
 	{
 		Insist(compresstype == COMPTYPE_QUICKLZ3);
 
-		if (Debug_appendonly_guard_end_quicklz_scratch)
-			verifyQlzScratchGuard("qlz3_decompress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		//if (Debug_appendonly_guard_end_quicklz_scratch)
+		//	verifyQlzScratchGuard("qlz3_decompress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
 		
-		if (Debug_appendonly_rezero_quicklz_decompress_scratch)
-			memset(qlzScratch, 0, qlzScratchLen);		
+		//if (Debug_appendonly_rezero_quicklz_decompress_scratch)
+		//	memset(qlzScratch, 0, qlzScratchLen);
 
 		uncompressedSize = qlz3_decompress((const char *)compressed, 
 										  uncompressed, 
-										  qlzScratch);
+										  qlz3StateDecompress);
 
-		if (Debug_appendonly_guard_end_quicklz_scratch)
-			verifyQlzScratchGuard("qlz3_decompress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
+		//if (Debug_appendonly_guard_end_quicklz_scratch)
+		//	verifyQlzScratchGuard("qlz3_decompress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
 	
 	}
 	

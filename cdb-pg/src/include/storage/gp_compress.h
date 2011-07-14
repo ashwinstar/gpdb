@@ -42,7 +42,8 @@ extern void gp_decompress(CompressorType cmptype,
                 int32 compLen,
                 char *decomp,
                 int32 decompLen,
-                char *scratch
+                qlz1_state_decompress *qlz1StateDecompress,
+                qlz3_state_decompress *qlz3StateDecompress
                 );
 
 /* Try to compress.  If comp buff too small, we will return error */
@@ -51,7 +52,8 @@ extern int gp_trycompress(CompressorType cmptype, int cmplv,
                 int32 srcLen,
                 char *comp,
                 int32 *compLen,
-                char *scratch
+                qlz1_state_compress *qlz1StateCompress,
+                qlz3_state_compress *qlz3StateCompress
                 );
 
 extern int gp_trycompress_new(
@@ -63,9 +65,8 @@ extern int gp_trycompress_new(
 		 int32		*compressedLen,
 		 int		compressLevel,
 		 CompressorType  compressType,
-		 char		*qlzScratch,
-		 int32		qlzScratchLen,
-		 int32		qlzScratchGuardLen);
+		 qlz1_state_compress *qlz1StateCompress,
+		 qlz3_state_compress *qlz3StateCompress);
 
 extern void gp_decompress_new(
 				uint8			*compressed,
@@ -73,9 +74,8 @@ extern void gp_decompress_new(
 				uint8			*uncompressed,
 				int32			uncompressedLen,
 				CompressorType	compresstype,	/* the compressor type used */
-				char			*qlzScratch,
-				int32			qlzScratchLen,
-				int32			qlzScratchGuardLen,
+				qlz1_state_decompress *qlz1StateDecompress,
+				qlz3_state_decompress *qlz3StateDecompress,
 				int64			bufferCount);
 
 extern void gp_issuecompresserror(

@@ -109,17 +109,13 @@ void AppendOnlyStorageRead_Init(
 		/*
 		 * if QuickLZ compression used, prepare scratch space for decompression.
 		 */
-		if (Debug_appendonly_guard_end_quicklz_scratch)
-			storageRead->qlzScratchGuardLen = 1024;
 		switch(storageRead->storageAttributes.compressType)
 		{
 		case COMPTYPE_QUICKLZ1:
-			storageRead->qlzScratchLen = QLZ1_SCRATCH_DECOMPRESS;
-			storageRead->qlzScratch = (char*) palloc0(storageRead->qlzScratchLen + storageRead->qlzScratchGuardLen);
+			storageRead->qlz1StateDecompress = (qlz1_state_decompress *)palloc0(sizeof(qlz1_state_decompress));
 			break;
 		case COMPTYPE_QUICKLZ3:
-			storageRead->qlzScratchLen = QLZ3_SCRATCH_DECOMPRESS;
-			storageRead->qlzScratch = (char*) palloc0(storageRead->qlzScratchLen + storageRead->qlzScratchGuardLen);
+			storageRead->qlz3StateDecompress = (qlz3_state_decompress *)palloc0(sizeof(qlz3_state_decompress));
 			break;
 		case COMPTYPE_ZLIB:
 		case COMPTYPE_NONE:
@@ -214,10 +210,16 @@ void AppendOnlyStorageRead_FinishSession(
 		storageRead->relationName = NULL;
 	}
 
-	if (storageRead->qlzScratch != NULL)
+	if (storageRead->qlz1StateDecompress != NULL)
 	{
-		pfree(storageRead->qlzScratch);
-		storageRead->qlzScratch = NULL;
+		pfree(storageRead->qlz1StateDecompress);
+		storageRead->qlz1StateDecompress = NULL;
+	}
+
+	if (storageRead->qlz3StateDecompress != NULL)
+	{
+		pfree(storageRead->qlz3StateDecompress);
+		storageRead->qlz3StateDecompress = NULL;
 	}
 
 	if (storageRead->segmentFileName != NULL)
@@ -1371,9 +1373,8 @@ void AppendOnlyStorageRead_Content(
 						contentOut,
 						storageRead->current.uncompressedLen,
 						storageRead->storageAttributes.compressType,
-						storageRead->qlzScratch,
-						storageRead->qlzScratchLen,
-						storageRead->qlzScratchGuardLen,
+						storageRead->qlz1StateDecompress,
+						storageRead->qlz3StateDecompress,
 						storageRead->bufferCount);
 
 			if (Debug_appendonly_print_scan)

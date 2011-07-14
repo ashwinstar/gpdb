@@ -121,12 +121,10 @@ void AppendOnlyStorageWrite_Init(
 		switch(storageWrite->storageAttributes.compressType)
 		{
 			case COMPTYPE_QUICKLZ1:
-				storageWrite->qlzScratchCompressLen = QLZ1_SCRATCH_COMPRESS;
-				storageWrite->qlzScratchCompress = (char*) palloc0(storageWrite->qlzScratchCompressLen + storageWrite->qlzScratchCompressGuardLen);
+				storageWrite->qlz1StateCompress = (qlz1_state_compress *)palloc0(sizeof(qlz1_state_compress));
 				break;
 			case COMPTYPE_QUICKLZ3:
-				storageWrite->qlzScratchCompressLen = QLZ3_SCRATCH_COMPRESS;
-				storageWrite->qlzScratchCompress = (char*) palloc0(storageWrite->qlzScratchCompressLen + storageWrite->qlzScratchCompressGuardLen);
+				storageWrite->qlz3StateCompress = (qlz3_state_compress *)palloc0(sizeof(qlz3_state_compress));
 				break;
 			case COMPTYPE_ZLIB:
 				break; /* nothing to do */
@@ -149,7 +147,6 @@ void AppendOnlyStorageWrite_Init(
 	else
 	{
 		Assert(storageWrite->uncompressedBuffer == NULL);
-		Assert(storageWrite->qlzScratchCompress == NULL);		
 	}
 
 	/*
@@ -194,19 +191,22 @@ void AppendOnlyStorageWrite_Init(
 		/*
 		 * If QuickLz compression used, prepare scratch space for decompression.
 		 */
-		if (Debug_appendonly_guard_end_quicklz_scratch)
-			storageWrite->qlzScratchDecompressGuardLen = 1024;
+		//if (Debug_appendonly_guard_end_quicklz_scratch)
+		//	storageWrite->qlzScratchDecompressGuardLen = 1024;
 		
-		storageWrite->qlzScratchDecompress = NULL;
+		storageWrite->qlz1StateDecompress = NULL;
+		storageWrite->qlz3StateDecompress = NULL;
 		switch(storageWrite->storageAttributes.compressType)
 		{
 			case COMPTYPE_QUICKLZ1:
-				storageWrite->qlzScratchDecompressLen = QLZ1_SCRATCH_DECOMPRESS;
-				storageWrite->qlzScratchDecompress = (char*) palloc0(storageWrite->qlzScratchDecompressLen + storageWrite->qlzScratchDecompressGuardLen);
+				//storageWrite->qlzScratchDecompressLen = QLZ1_SCRATCH_DECOMPRESS;
+				//storageWrite->qlzScratchDecompress = (char*) palloc0(storageWrite->qlzScratchDecompressLen + storageWrite->qlzScratchDecompressGuardLen);
+				storageWrite->qlz1StateDecompress = (qlz1_state_decompress *)palloc0(sizeof(qlz1_state_decompress));
 				break;
 			case COMPTYPE_QUICKLZ3:
-				storageWrite->qlzScratchDecompressLen = QLZ3_SCRATCH_DECOMPRESS;
-				storageWrite->qlzScratchDecompress = (char*) palloc0(storageWrite->qlzScratchDecompressLen + storageWrite->qlzScratchDecompressGuardLen);
+				//storageWrite->qlzScratchDecompressLen = QLZ3_SCRATCH_DECOMPRESS;
+				//storageWrite->qlzScratchDecompress = (char*) palloc0(storageWrite->qlzScratchDecompressLen + storageWrite->qlzScratchDecompressGuardLen);
+				storageWrite->qlz3StateDecompress = (qlz3_state_decompress *)palloc0(sizeof(qlz3_state_decompress));
 				break;
 			case COMPTYPE_ZLIB:
 			case COMPTYPE_NONE:
@@ -218,7 +218,6 @@ void AppendOnlyStorageWrite_Init(
 	else
 	{
 		Assert(storageWrite->verifyWriteBuffer == NULL);
-		Assert(storageWrite->qlzScratchDecompress == NULL);
 	}
 
 	storageWrite->file = -1;
@@ -264,10 +263,16 @@ void AppendOnlyStorageWrite_FinishSession(
 		storageWrite->uncompressedBuffer = NULL;
 	}
 
-	if (storageWrite->qlzScratchCompress != NULL)
+	if (storageWrite->qlz1StateCompress != NULL)
 	{
-		pfree(storageWrite->qlzScratchCompress);
-		storageWrite->qlzScratchCompress = NULL;
+		pfree(storageWrite->qlz1StateCompress);
+		storageWrite->qlz1StateCompress = NULL;
+	}
+
+	if (storageWrite->qlz3StateCompress != NULL)
+	{
+		pfree(storageWrite->qlz3StateCompress);
+		storageWrite->qlz3StateCompress = NULL;
 	}
 
 	if (storageWrite->verifyWriteBuffer != NULL)
@@ -276,10 +281,16 @@ void AppendOnlyStorageWrite_FinishSession(
 		storageWrite->verifyWriteBuffer = NULL;
 	}
 
-	if (storageWrite->qlzScratchDecompress != NULL)
+	if (storageWrite->qlz1StateDecompress != NULL)
 	{
-		pfree(storageWrite->qlzScratchDecompress);
-		storageWrite->qlzScratchDecompress = NULL;
+		pfree(storageWrite->qlz1StateDecompress);
+		storageWrite->qlz1StateDecompress = NULL;
+	}
+
+	if (storageWrite->qlz3StateDecompress != NULL)
+	{
+		pfree(storageWrite->qlz3StateDecompress);
+		storageWrite->qlz3StateDecompress = NULL;
 	}
 
 	if (storageWrite->segmentFileName != NULL)
@@ -1114,9 +1125,8 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 						storageWrite->verifyWriteBuffer,	// Temporary buffer to hold uncompressed data.
 						uncompressedLen,
 						storageWrite->storageAttributes.compressType,
-						storageWrite->qlzScratchDecompress,
-						storageWrite->qlzScratchDecompressLen,
-						storageWrite->qlzScratchDecompressGuardLen,
+						storageWrite->qlz1StateDecompress,
+						storageWrite->qlz3StateDecompress,
 						storageWrite->bufferCount);
 			
 			/*
@@ -1260,9 +1270,9 @@ AppendOnlyStorageWrite_CompressAppend(
 					compressedLen,				
 					storageWrite->storageAttributes.compressLevel,
 					storageWrite->storageAttributes.compressType,
-					storageWrite->qlzScratchCompress,
-					storageWrite->qlzScratchCompressLen,
-					storageWrite->qlzScratchCompressGuardLen);
+					storageWrite->qlz1StateCompress,
+					storageWrite->qlz3StateCompress);
+
 					
 	
 	if (res == Z_OK)

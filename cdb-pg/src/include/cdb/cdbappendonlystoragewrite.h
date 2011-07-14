@@ -124,14 +124,16 @@ typedef struct AppendOnlyStorageWrite
 			  * compression is being done.
 			  */
 
-	char	*qlzScratchCompress;
+
+	qlz1_state_compress *qlz1StateCompress;
+	qlz3_state_compress *qlz3StateCompress;
 			/*
 			 * This scratch buffer is used by the QuickLZ library
 			 * during compression.
 			 */
 
-	int32	qlzScratchCompressLen;
-	int32	qlzScratchCompressGuardLen;
+	//int32	qlzScratchCompressLen;
+	//int32	qlzScratchCompressGuardLen;
 			/*
 			 * Add these two byte lengths to get the length of the qlzScratchCompress buffer.
 			 */
@@ -152,15 +154,14 @@ typedef struct AppendOnlyStorageWrite
 			 * into so we can memory comprare it with the input.
 			 */
 
-	char	*qlzScratchDecompress;
+	qlz1_state_decompress *qlz1StateDecompress;
+	qlz3_state_decompress *qlz3StateDecompress;
 			/*
-			 * This scratch buffer is used by the QuickLZ library
-			 * during decompression of the just compressed block
 			 * for the VerifyBlock check.
 			 */
 
-	int32	qlzScratchDecompressLen;
-	int32	qlzScratchDecompressGuardLen;
+	//int32	qlzScratchDecompressLen;
+	//int32	qlzScratchDecompressGuardLen;
 			/*
 			 * Add these two byte lengths to get the length of the qlzScratchDecompress buffer.
 			 */
