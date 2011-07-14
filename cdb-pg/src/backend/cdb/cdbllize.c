@@ -322,10 +322,27 @@ typedef struct MapVarsMutatorContext
 /**
  * Forward declarations of static functions
  */
+static bool ContainsParamWalker(Node *expr, void *ctx);
 static void ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context);
 static Plan* ParallelizeCorrelatedSubPlan(PlannerInfo *root, SubPlan *spExpr, Plan *plan, Movement m);
 static Node* MapVarsMutator(Node *expr, MapVarsMutatorContext *ctx);
 static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerContext *ctx);
+
+/**
+ * Does an expression contain a parameter?
+ */
+static bool ContainsParamWalker(Node *expr, void *ctx)
+{
+	Assert(ctx == NULL);
+
+	if (IsA(expr, Param))
+	{
+		return true;
+	}
+
+	return expression_tree_walker(expr, ContainsParamWalker, ctx);
+}
+
 /**
  * Replaces all vars in an expression with OUTER vars referring to the
  * targetlist contained in the context (ctx->outerTL).
@@ -391,16 +408,33 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 		 */
 
 		/**
-		 * Step 1: save targetlist, quals and paramset from the scan node
+		 * Step 1: Save targetlist, quals and paramset from the scan node
 		 */
 		List *saveTL = copyObject(scanPlan->targetlist);
-		List *saveQual = copyObject(scanPlan->qual);
 		Bitmapset *saveParam = bms_copy(scanPlan->allParam);
 
+
 		/**
-		 * Step 2: Clean out scan's quals and params
+		 * Step 2: Next, iterate over quals and find out if they need to be part of the scan or the result node.
 		 */
-		scanPlan->qual = NULL;
+		ListCell *lc = NULL;
+		List *resQual = NIL;
+		List *scanQual = NIL;
+
+		foreach (lc, scanPlan->qual)
+		{
+			Node *qual = (Node *) lfirst(lc);
+
+			if (ContainsParamWalker(qual, NULL /*ctx*/))
+			{
+				resQual = lappend(resQual, qual);
+			}
+			else
+			{
+				scanQual = lappend(scanQual, qual);
+			}
+		}
+		scanPlan->qual = scanQual;
 		scanPlan->allParam = NULL;
 
 		/**
@@ -408,7 +442,7 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 		 * for upstream processing.
 		 */
 		List *scanVars = pull_var_clause((Node *) scanPlan->targetlist, false);
-		scanVars = list_concat(scanVars, pull_var_clause((Node *) saveQual, false));
+		scanVars = list_concat(scanVars, pull_var_clause((Node *) resQual, false));
 
 		/*
 		 * Step 4: Construct the new targetlist for the scan node
@@ -437,7 +471,7 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 		ctx1.base.node = ctx->base.node;
 		ctx1.outerTL = scanPlan->targetlist;
 
-		List *resQual = (List *) MapVarsMutator((Node *) saveQual, &ctx1);
+		resQual = (List *) MapVarsMutator((Node *) resQual, &ctx1);
 		List *resTL = (List *) MapVarsMutator((Node *) saveTL, &ctx1);
 
 		/**
