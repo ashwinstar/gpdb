@@ -376,6 +376,8 @@ SimpleLruReadPage_Internal(SlruCtl ctl, int pageno, TransactionId xid, bool *val
 			}
 			/* Otherwise, it's ready to use */
 			SlruRecentlyUsed(shared, slotno);
+			if (valid != NULL)
+			   *valid = true;
 			return slotno;
 		}
 
@@ -467,6 +469,8 @@ SimpleLruReadPage_ReadOnly(SlruCtl ctl, int pageno, TransactionId xid, bool *val
 		{
 			/* See comments for SlruRecentlyUsed macro */
 			SlruRecentlyUsed(shared, slotno);
+			if (valid != NULL)
+			  *valid = true;
 			return slotno;
 		}
 	}
