@@ -126,10 +126,11 @@ typedef struct MotionConn
 
     struct CdbProcess  *cdbProc;
     int			remoteContentId;
-    char        remoteHostAndPort[64];
-    char        localHostAndPort[64];
+    char        remoteHostAndPort[128];
+    char        localHostAndPort[128];
 
-	struct sockaddr_in peer;
+	struct sockaddr_storage peer;		/* Allow for IPv4 or IPv6 */
+	socklen_t peer_len;					/* And remember the actual length */
 
 	/* a queue of maximum length Gp_interconnect_queue_depth */
 	int			pkt_q_size;

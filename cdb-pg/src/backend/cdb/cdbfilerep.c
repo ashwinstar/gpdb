@@ -39,6 +39,7 @@
 #include "cdb/cdbpersistenttablespace.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 #include "libpq/pqsignal.h"
+#include "libpq/ip.h"
 #include "postmaster/fork_process.h"
 #include "storage/fd.h"
 #include "storage/lwlock.h"
@@ -3933,34 +3934,91 @@ void FileRepStats_GpmonInit(void)
 	 gpmonInfo->lastSend = GetCurrentTimestamp();
 #endif
 
-	 sock = socket(AF_INET, SOCK_DGRAM, 0);
-	 if (sock == -1) 
-	 {
-			 elog(WARNING, "gpmon: cannot create socket (%m)");
-	 }
+	int ret;
+	char portNumberStr[32];
+	char *service;
+	struct addrinfo *addrs = NULL, *rp;
+	struct addrinfo hint;
+
+	/* Initialize hint structure */
+	MemSet(&hint, 0, sizeof(hint));
+	hint.ai_socktype = SOCK_DGRAM; /* UDP */
+	hint.ai_family = AF_UNSPEC; /* Allow for any family (v4, v6, perhaps others) */
+	
+	/* Without AI_PASSIVE, we bind to localhost rather than ANY address */
+	/* Is this correct?  gpmon's collector will be running locally? */
+
+	//hint.ai_flags = AI_PASSIVE;    /* For wildcard IP address */
+
+
+	snprintf(portNumberStr, sizeof(portNumberStr), "%d", gpperfmon_port);
+	service = portNumberStr;
+
+	ret = pg_getaddrinfo_all(NULL, service, &hint, &addrs);
+	if (ret || !addrs)
+	{
+		if (addrs)
+		pg_freeaddrinfo_all(hint.ai_family, addrs);
+
+		ereport(ERROR,
+				(errmsg("could not translate host addr \"%s\", port \"%d\" to address: %s",
+								"localhost", gpperfmon_port, gai_strerror(ret))));
+		return;
+	}
+
+#ifdef HAVE_IPV6
+	if (addrs->ai_family == AF_INET && addrs->ai_next != NULL && addrs->ai_next->ai_family == AF_INET6)
+	{
+		/*
+		 * We got both an INET and INET6 possibility, but we want to prefer the INET6 one if it works.
+		 * Reverse the order we got from getaddrinfo so that we try things in our preferred order.
+		 * If we got more possibilities (other AFs??), I don't think we care about them, so don't
+		 * worry if the list is more that two, we just rearrange the first two.
+		 */
+		struct addrinfo *temp = addrs->ai_next; 	/* second node */
+		addrs->ai_next = addrs->ai_next->ai_next; 	/* point old first node to third node if any */
+		temp->ai_next = addrs;   					/* point second node to first */
+		addrs = temp;								/* start the list with the old second node */
+	}
+#endif
+
+	memset(&(gpmonInfo->gpaddr),0,sizeof(gpmonInfo->gpaddr));
+	gpmonInfo->gpaddr_len = 0;
+	gpmonInfo->gpsock = 0;
+
+	for (rp = addrs; rp != NULL; rp = rp->ai_next)
+	{
+
+		sock = socket(rp->ai_family, rp->ai_socktype, 0);
+		if (sock == -1)
+		{
+			continue;
+		}
 
 #ifndef WIN32
-	 if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) 
-	 {
-			 elog(WARNING, "fcntl(F_SETFL, O_NONBLOCK) failed");
-	 } 
+		if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1)
+		{
+			elog(WARNING, "fcntl(F_SETFL, O_NONBLOCK) failed");
+		}
 
-	 if (fcntl(sock, F_SETFD, 1) == -1) 
-	 {
-			 elog(WARNING, "fcntl(F_SETFD) failed");
-	 } 
+		if (fcntl(sock, F_SETFD, 1) == -1)
+		{
+			elog(WARNING, "fcntl(F_SETFD) failed");
+		}
 #endif 
-	 gpmonInfo->gpsock = sock;
-	 memset(&(gpmonInfo->gpaddr), 0, sizeof(struct sockaddr_in));
-	 gpmonInfo->gpaddr.sin_family = AF_INET;
-	 gpmonInfo->gpaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-	 //gpperfmon_port in utils/init/globals
-	 gpmonInfo->gpaddr.sin_port = htons(gpperfmon_port);
 
-	 elog(DEBUG1, "FileRepStats_GpmonInit destAddress 127.0.0.1, port %d\n", 
+		gpmonInfo->gpsock = sock;
+		memcpy(&(gpmonInfo->gpaddr), &addrs->ai_addr, addrs->ai_addrlen);
+		gpmonInfo->gpaddr_len = addrs->ai_addrlen;
+
+		elog(DEBUG1, "FileRepStats_GpmonInit destAddress localhost, port %d\n",
 		  gpperfmon_port);
-				 
+
+		return;
+	}
+	elog(WARNING, "gpmon: cannot create socket (%m)");
 }
+
 void FileRepStats_GpmonSend(int sig)
 {
 	 

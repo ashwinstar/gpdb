@@ -706,9 +706,6 @@ getDnsCachedAddress(char *name, int port, int elevel)
 			Assert(e != NULL);
 			memcpy(e->hostinfo, hostinfo, sizeof(hostinfo));
 
-			/* Whatever we do, we can't put an IPv6 address into our host-ip cache */
-			elog(LOG, "host %s only has IPv6 address %s, not yet supported", name,hostinfo);
-
 		}
 #endif
 			
@@ -779,7 +776,7 @@ getDnsAddress(char *hostname, int port, int elevel)
 
 #ifdef HAVE_IPV6
 	/*
-	 * IPv6 probably would work fine, we'd just need to make sure all the data structures are big enough for
+	 * IPv6 should would work fine, we'd just need to make sure all the data structures are big enough for
 	 * the IPv6 address.  And on some broken systems, you can get an IPv6 address, but not be able to bind to it
 	 * because IPv6 is disabled or missing in the kernel, so we'd only want to use the IPv6 address if there isn't
 	 * an IPv4 address.  All we really need to do is test this.
@@ -794,8 +791,6 @@ getDnsAddress(char *hostname, int port, int elevel)
 									   NULL, 0,
 									   NI_NUMERICHOST);
 					result = pstrdup(hostinfo);
-		elog(LOG, "host %s only has IPv6 address %s, not yet supported", hostname, hostinfo);
-
 	}
 #endif
 

@@ -662,42 +662,51 @@ TeardownSequenceServer(void)
 static void
 setupSeqServerConnection(char *seqServerHost, uint16 seqServerPort)
 {
-	int  n;
-	struct sockaddr_in addr;	
-	
+	int 		n;
+	int 		ret;
+	char 		portNumberStr[32];
+	char 	   *service;
+	struct addrinfo *addrs = NULL;
+	struct addrinfo hint;
 	/*
-	 * open a connection to the sequence server
+	 * We get the IP address (IPv4 or IPv6) of the sequence server,
+	 * not it's name, so we can tell getaddrinfo to skip any attempt at
+	 * name resolution.
 	 */
-	savedSeqServerFd = socket(AF_INET, SOCK_STREAM, 0);
-	
-	addr.sin_family = AF_INET;
 
-	if ((n = inet_net_pton(AF_INET, seqServerHost, &addr.sin_addr, sizeof(addr.sin_addr))) < 1)
+	/* Initialize hint structure */
+	MemSet(&hint, 0, sizeof(hint));
+	hint.ai_socktype = SOCK_STREAM;
+	hint.ai_family = AF_UNSPEC;		/* Allow for IPv4 or IPv6  */
+	hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
+
+	snprintf(portNumberStr, sizeof(portNumberStr), "%d", seqServerPort);
+	service = portNumberStr;
+
+	ret = pg_getaddrinfo_all(seqServerHost, service, &hint, &addrs);
+	if (ret || !addrs)
 	{
-		if (n == 0)
-		{
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-							errmsg("Interconnect Error: Could not parse remote seqserver"
-								   "address: '%s'", seqServerHost),
-							errdetail("inet_pton() unable to parse address: '%s'",
-									  seqServerHost)));
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-							errmsg("Interconnect Error: System error occured during parsing"
-								   " of remote seqserver address: '%s'", seqServerHost),
-							errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'",
-									  errno, seqServerHost)));
-		}
+		if (addrs)
+			pg_freeaddrinfo_all(hint.ai_family, addrs);
+
+		ereport(ERROR,
+				(errmsg("could not translate host addr \"%s\", port \"%d\" to address: %s",
+						seqServerHost, seqServerPort, gai_strerror(ret))));
+		return;
 	}
 
-	addr.sin_port = htons(seqServerPort);
+	if ((savedSeqServerFd = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol)) < 0)
+		elog(ERROR,"socket() call failed: %m");
 
-	if ((n = connect(savedSeqServerFd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
+	if ((n = connect(savedSeqServerFd, addrs->ai_addr, addrs->ai_addrlen)) < 0)
+	{
+		pg_freeaddrinfo_all(hint.ai_family, addrs);
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not connect to seqserver."),
 		                errdetail("%m%s", "connect")));
+	}
+
+	pg_freeaddrinfo_all(hint.ai_family, addrs);
 	
 	/* make socket non-blocking BEFORE we connect. */
 	if (!pg_set_noblock(savedSeqServerFd))

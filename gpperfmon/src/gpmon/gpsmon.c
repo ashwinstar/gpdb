@@ -1344,34 +1344,98 @@ static void gx_recvfrom(SOCKET sock, short event, void* arg)
 static void setup_tcp(void)
 {
 	SOCKET sock;
-	struct sockaddr_in a;
-	int on = 1;
-	struct linger linger;
 
-	/* create socket */
-	sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (sock < 0)
+    struct addrinfo hints;
+	struct addrinfo *addrs, *rp;
+	int  s;
+	char service[32];
+
+	/*
+	 * we let the system pick the TCP port here so we don't have to
+	 * manage port resources ourselves.
+	 */
+    snprintf(service,32,"%d",gx.port);
+    memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;    	/* Allow IPv4 or IPv6 */
+	hints.ai_socktype = SOCK_STREAM; 	/* TCP socket */
+	hints.ai_flags = AI_PASSIVE;    	/* For wildcard IP address */
+	hints.ai_protocol = 0;          	/* Any protocol */
+
+	s = getaddrinfo(NULL, service, &hints, &addrs);
+	if (s != 0)
+		gpsmon_fatalx(FLINE, 0, "getaddrinfo says %s",gai_strerror(s));
+
+	/*
+	 * getaddrinfo() returns a list of address structures,
+	 * one for each valid address and family we can use.
+	 *
+	 * Try each address until we successfully bind.
+	 * If socket (or bind) fails, we (close the socket
+	 * and) try the next address.  This can happen if
+	 * the system supports IPv6, but IPv6 is disabled from
+	 * working, or if it supports IPv6 and IPv4 is disabled.
+	 */
+
+	/*
+	 * If there is both an AF_INET6 and an AF_INET choice,
+	 * we prefer the AF_INET6, because on UNIX it can receive either
+	 * protocol, whereas AF_INET can only get IPv4.  Otherwise we'd need
+	 * to bind two sockets, one for each protocol.
+	 *
+	 * Why not just use AF_INET6 in the hints?  That works perfect
+	 * if we know this machine supports IPv6 and IPv6 is enabled,
+	 * but we don't know that.
+	 */
+
+#ifdef HAVE_IPV6
+	if (addrs->ai_family == AF_INET && addrs->ai_next != NULL && addrs->ai_next->ai_family == AF_INET6)
 	{
-		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
-				"unable to create tcp socket");
+		/*
+		 * We got both an INET and INET6 possibility, but we want to prefer the INET6 one if it works.
+		 * Reverse the order we got from getaddrinfo so that we try things in our preferred order.
+		 * If we got more possibilities (other AFs??), I don't think we care about them, so don't
+		 * worry if the list is more that two, we just rearrange the first two.
+		 */
+		struct addrinfo *temp = addrs->ai_next; 	/* second node */
+		addrs->ai_next = addrs->ai_next->ai_next; 	/* point old first node to third node if any */
+		temp->ai_next = addrs;   					/* point second node to first */
+		addrs = temp;								/* start the list with the old second node */
+	}
+#endif
+
+	for (rp = addrs; rp != NULL; rp = rp->ai_next)
+	{
+		int on = 1;
+		struct linger linger;
+		/*
+		 * getaddrinfo gives us all the parameters for the socket() call
+		 * as well as the parameters for the bind() call.
+		 */
+
+		sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if (sock == -1)
+			continue;
+
+		setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
+		setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void*) &on, sizeof(on));
+		linger.l_onoff = 1;
+		linger.l_linger = 5;
+		setsockopt(sock, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
+
+
+		if (bind(sock, rp->ai_addr, rp->ai_addrlen) == 0)
+			break;              /* Success */
+
+		close(sock);
 	}
 
-	setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
-	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void*) &on, sizeof(on));
-	linger.l_onoff = 1;
-	linger.l_linger = 5;
-	setsockopt(sock, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
-
-	/* bind socket to port */
-	memset(&a, 0, sizeof(a));
-	a.sin_addr.s_addr = htonl(INADDR_ANY);
-	a.sin_port = htons(gx.port);
-	a.sin_family = AF_INET;
-	if (bind(sock, (void*) &a, sizeof(a)))
-	{
+	if (rp == NULL)
+	{               /* No address succeeded */
 		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
-				"unable to bind udp socket");
+						"unable to bind tcp socket");
 	}
+
+	freeaddrinfo(addrs);
 
 	if (-1 == listen(sock, 5))
 	{
@@ -1396,29 +1460,92 @@ static void setup_tcp(void)
 static void setup_udp()
 {
 	SOCKET sock;
-	struct sockaddr_in a;
 
-	/* create the socket */
-	sock = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sock < 0)
+    struct addrinfo hints;
+	struct addrinfo *addrs, *rp;
+	int  s;
+	char service[32];
+
+	/*
+	 * we let the system pick the TCP port here so we don't have to
+	 * manage port resources ourselves.
+	 */
+    snprintf(service,32,"%d",gx.port);
+    memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;    	/* Allow IPv4 or IPv6 */
+	hints.ai_socktype = SOCK_DGRAM; 	/* UDP socket */
+	hints.ai_flags = AI_PASSIVE;    	/* For wildcard IP address */
+	hints.ai_protocol = 0;          	/* Any protocol */
+
+	s = getaddrinfo(NULL, service, &hints, &addrs);
+	if (s != 0)
+		gpsmon_fatalx(FLINE, 0, "getaddrinfo says %s",gai_strerror(s));
+
+	/*
+	 * getaddrinfo() returns a list of address structures,
+	 * one for each valid address and family we can use.
+	 *
+	 * Try each address until we successfully bind.
+	 * If socket (or bind) fails, we (close the socket
+	 * and) try the next address.  This can happen if
+	 * the system supports IPv6, but IPv6 is disabled from
+	 * working, or if it supports IPv6 and IPv4 is disabled.
+	 */
+
+	/*
+	 * If there is both an AF_INET6 and an AF_INET choice,
+	 * we prefer the AF_INET6, because on UNIX it can receive either
+	 * protocol, whereas AF_INET can only get IPv4.  Otherwise we'd need
+	 * to bind two sockets, one for each protocol.
+	 *
+	 * Why not just use AF_INET6 in the hints?  That works perfect
+	 * if we know this machine supports IPv6 and IPv6 is enabled,
+	 * but we don't know that.
+	 */
+
+#ifdef HAVE_IPV6
+	if (addrs->ai_family == AF_INET && addrs->ai_next != NULL && addrs->ai_next->ai_family == AF_INET6)
 	{
-		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
-				"cannot create udp socket");
+		/*
+		 * We got both an INET and INET6 possibility, but we want to prefer the INET6 one if it works.
+		 * Reverse the order we got from getaddrinfo so that we try things in our preferred order.
+		 * If we got more possibilities (other AFs??), I don't think we care about them, so don't
+		 * worry if the list is more that two, we just rearrange the first two.
+		 */
+		struct addrinfo *temp = addrs->ai_next; 	/* second node */
+		addrs->ai_next = addrs->ai_next->ai_next; 	/* point old first node to third node if any */
+		temp->ai_next = addrs;   					/* point second node to first */
+		addrs = temp;								/* start the list with the old second node */
+	}
+#endif
+
+	for (rp = addrs; rp != NULL; rp = rp->ai_next)
+	{
+		/*
+		 * getaddrinfo gives us all the parameters for the socket() call
+		 * as well as the parameters for the bind() call.
+		 */
+
+		sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if (sock == -1)
+			continue;
+
+		if (bind(sock, rp->ai_addr, rp->ai_addrlen) == 0)
+			break;              /* Success */
+
+		close(sock);
 	}
 
-	/* bind socket to port */
-	memset(&a, 0, sizeof(a));
-	a.sin_addr.s_addr = htonl(INADDR_ANY);
-	a.sin_port = htons(gx.port);
-	a.sin_family = AF_INET;
-	if (bind(sock, (void*) &a, sizeof(a)))
-	{
+	if (rp == NULL)
+	{               /* No address succeeded */
 		gpsmon_fatalx(FLINE, APR_FROM_OS_ERROR(errno),
-				"unable to bind udp socket");
+						"unable to bind udp socket");
 	}
 
 	/* save it */
 	gx.udp_sock = sock;
+
+	freeaddrinfo(addrs);
 
 	/* set up udp event */
 	event_set(&gx.udp_event, gx.udp_sock, EV_READ | EV_PERSIST, gx_recvfrom, 0);

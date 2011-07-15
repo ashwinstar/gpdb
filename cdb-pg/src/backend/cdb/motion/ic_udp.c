@@ -105,7 +105,7 @@ WSAPoll(
 #define poll WSAPoll
 
 /*
- * Postgres normally uses it's own custom select implementation 
+ * Postgres normally uses it's own custom select implementation
  * on Windows, but they haven't implemented execeptfds, which
  * we use here.  So, undef this to use the normal Winsock version
  * for now
@@ -322,6 +322,8 @@ purge_cursor_ic_entry(void)
 	}
 }
 
+static void getSockAddr(struct sockaddr_storage * peer, socklen_t * peer_len, const char * listenerAddr, int listenerPort);
+
 static ChunkTransportStateEntry *startOutgoingUDPConnections(ChunkTransportState *transportStates,
 															 Slice *sendSlice,
 															 int *pOutgoingCount);
@@ -353,47 +355,132 @@ static bool dispatcherAYT(void);
 
 static void *ic_rx_thread_func(void *arg);
 
-static void rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_in *peer);
+static void rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_storage *peer, int peer_len);
 static void aggregateStatistics(ChunkTransportStateEntry *pEntry);
 
 static void
 setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 {
-	struct sockaddr_in	saddr;
-	socklen_t			saddrlen;
 	int					errnoSave;
 	int					fd = -1;
 	int					rcvbuf;
 	socklen_t			rcvbufsize=0;
 	const char		   *fun;
 
-	fun = "socket";
-	fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (fd < 0)
+	/*
+	 * At the moment, we don't know which of IPv6 or IPv4 is wanted,
+	 * or even supported, so just ask getaddrinfo...
+	 *
+	 * Perhaps just avoid this and try socket with AF_INET6 and AF_INT?
+	 *
+	 * Most implementation of getaddrinfo are smart enough to only
+	 * return a particular address family if that family is both enabled,
+	 * and at least one network adapter has an IP address of that family.
+	 */
+	struct addrinfo hints;
+	struct addrinfo *addrs, *rp;
+	int  s;
+	struct sockaddr_storage our_addr;
+	socklen_t our_addr_len;
+	char service[32];
+	snprintf(service,32,"%d",0);
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;	/* Allow IPv4 or IPv6 */
+	hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
+	hints.ai_flags = AI_PASSIVE;	/* For wildcard IP address */
+	hints.ai_protocol = 0;			/* Any protocol */
+
+	fun = "getaddrinfo";
+	s = getaddrinfo(NULL, service, &hints, &addrs);
+	if (s != 0)
+		elog(ERROR,"getaddrinfo says %s",gai_strerror(s));
+
+	/*
+	 * getaddrinfo() returns a list of address structures,
+	 * one for each valid address and family we can use.
+	 *
+	 * Try each address until we successfully bind.
+	 * If socket (or bind) fails, we (close the socket
+	 * and) try the next address.  This can happen if
+	 * the system supports IPv6, but IPv6 is disabled from
+	 * working, or if it supports IPv6 and IPv4 is disabled.
+	 */
+
+	/*
+	 * If there is both an AF_INET6 and an AF_INET choice,
+	 * we prefer the AF_INET6, because on UNIX it can receive either
+	 * protocol, whereas AF_INET can only get IPv4.  Otherwise we'd need
+	 * to bind two sockets, one for each protocol.
+	 *
+	 * Why not just use AF_INET6 in the hints?	That works perfect
+	 * if we know this machine supports IPv6 and IPv6 is enabled,
+	 * but we don't know that.
+	 */
+
+#ifdef HAVE_IPV6
+	if (addrs->ai_family == AF_INET && addrs->ai_next != NULL && addrs->ai_next->ai_family == AF_INET6)
+	{
+		/*
+		 * We got both an INET and INET6 possibility, but we want to prefer the INET6 one if it works.
+		 * Reverse the order we got from getaddrinfo so that we try things in our preferred order.
+		 * If we got more possibilities (other AFs??), I don't think we care about them, so don't
+		 * worry if the list is more that two, we just rearrange the first two.
+		 */
+		struct addrinfo *temp = addrs->ai_next;		/* second node */
+		addrs->ai_next = addrs->ai_next->ai_next;	/* point old first node to third node if any */
+		temp->ai_next = addrs;						/* point second node to first */
+		addrs = temp;								/* start the list with the old second node */
+		elog(DEBUG1,"Have both IPv6 and IPv4 choices");
+	}
+#endif
+
+	for (rp = addrs; rp != NULL; rp = rp->ai_next)
+	{
+		fun = "socket";
+		/*
+		 * getaddrinfo gives us all the parameters for the socket() call
+		 * as well as the parameters for the bind() call.
+		 */
+		elog(DEBUG1,"receive socket %d %d %d",rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if (fd == -1)
+			continue;
+
+		fun = "fcntl(O_NONBLOCK)";
+		if (!pg_set_noblock(fd))
+			continue;
+
+		fun = "bind";
+		if (bind(fd, rp->ai_addr, rp->ai_addrlen) == 0)
+			break;					/* Success */
+
+		close(fd);
+	}
+
+	if (rp == NULL)
+	{				/* No address succeeded */
 		goto error;
+	}
 
-	fun = "fcntl(O_NONBLOCK)";
-	if (!pg_set_noblock(fd))
-		goto error;
+	freeaddrinfo(addrs);		   /* No longer needed */
 
-	MemSet(&saddr, 0, sizeof(saddr));
-	saddr.sin_family = AF_INET;
-
-	saddr.sin_port = 0;
-
-	fun = "bind";
-	if (bind(fd, (struct sockaddr *)&saddr, sizeof(saddr)) < 0)
-		goto error;
-
-	MemSet(&saddr, 0, sizeof(saddr));
-	saddrlen = sizeof(saddr);
+	/*
+	 * Get our socket address (IP and Port), which we will save for others to connected to.
+	 */
+	MemSet(&our_addr, 0, sizeof(our_addr));
+	our_addr_len = sizeof(our_addr);
 
 	fun = "getsockname";
-	if (getsockname(fd, (struct sockaddr *) &saddr, &saddrlen) < 0)
+	if (getsockname(fd, (struct sockaddr *) &our_addr, &our_addr_len) < 0)
 		goto error;
 
+	Assert(our_addr.ss_family == AF_INET ||our_addr.ss_family == AF_INET6 );
+
 	*listenerSocketFd = fd;
-	*listenerPort = ntohs(saddr.sin_port);
+	if (our_addr.ss_family == AF_INET6)
+		*listenerPort = ntohs(((struct sockaddr_in6 *)&our_addr)->sin6_port);
+	else
+		*listenerPort = ntohs(((struct sockaddr_in *)&our_addr)->sin_port);
 
 	fun = "setsockopt";
 
@@ -639,7 +726,7 @@ conn_addhash(volatile MotionConn *conn)
 
 	/*
 	 * check for collision -- if we already have an entry for this
-	 * connection, don't add another one. 
+	 * connection, don't add another one.
 	 */
 	for (bin = conn_htab[hashcode]; bin != NULL; bin = bin->next)
 	{
@@ -824,9 +911,12 @@ sendAck(volatile MotionConn *conn, bool stop)
 	if (testmode_drop(gp_udpic_dropacks_percent))
 		return;
 #endif
+	Assert(UDP_listenerFd >= 0);
+	Assert(conn->peer.ss_family == AF_INET ||conn->peer.ss_family == AF_INET6 );
+
 
 	n = sendto(UDP_listenerFd, (const char *)&msg, sizeof(msg), 0,
-			   (struct sockaddr *)&conn->peer, sizeof(conn->peer));
+			   (struct sockaddr *)&conn->peer, conn->peer_len);
 
 	/* No need to handle EAGAIN here: no-space just means that we
 	 * dropped the packet: our ordinary retransmit mechanism will
@@ -951,6 +1041,111 @@ get_rx_buffer(void)
 	return ret;
 }
 
+static void setXmitSocketOptions(int txfd);
+static void
+setXmitSocketOptions(int txfd)
+{
+	int errnoSave;
+	const char * fun;
+	/*
+	 * Note the buffer stuff below: The receive-side of our transmit socket is only used for acks.
+	 *
+	 * 128k of ack-space is enough for ~2000 acks if they're about 60-bytes. So that's a pretty
+	 * large number -- probably good enough.
+	 *
+	 * For transmit outbound space, I'm not sure that we can really feed the kernel as fast as
+	 * it can transmit. 128k of out-bound space is enough for 16 outbound messages at the default
+	 * size. Just in case, let's try 256k.
+	 *
+	 * Since only one copy of this outbound-stuff is held *per process* these buffers are pretty
+	 * cheap.
+	 */
+
+	{
+		int					rcvbuf;
+		socklen_t			rcvbufsize=0;
+
+		fun = "getsockopt";
+		rcvbufsize = sizeof(rcvbuf);
+		if (getsockopt(txfd, SOL_SOCKET, SO_RCVBUF, (char *)&rcvbuf, &rcvbufsize) < 0)
+			goto error;
+
+		elog(DEBUG1, "UDP-IC: xmit default rx-size %d bytes", rcvbuf);
+
+		fun = "setsockopt";
+		rcvbuf = 128 * 1024;
+
+		if (Gp_udp_bufsize_k != 0)
+			rcvbuf = Gp_udp_bufsize_k * 1024;
+
+		rcvbufsize = sizeof(rcvbuf);
+		if (setsockopt(txfd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf, rcvbufsize) < 0)
+			goto error;
+
+		elog(DEBUG1, "UDP-IC: xmit will use rx size of %d bytes", rcvbuf);
+	}
+
+	{
+		int					sndbuf;
+		socklen_t			sndbufsize=0;
+
+		fun = "getsockopt";
+		sndbufsize = sizeof(sndbuf);
+		if (getsockopt(txfd, SOL_SOCKET, SO_SNDBUF, (char *)&sndbuf, &sndbufsize) < 0)
+			goto error;
+
+		elog(DEBUG1, "UDP-IC: xmit default tx-size %d bytes", sndbuf);
+
+		fun = "setsockopt";
+		sndbuf = 256 * 1024;
+	retry:
+		sndbufsize = sizeof(sndbuf);
+		if (setsockopt(txfd, SOL_SOCKET, SO_SNDBUF, (const char *)&sndbuf, sndbufsize) < 0)
+		{
+			if (sndbuf == 256 * 1024)
+			{
+				sndbuf = 128 * 1024;
+				goto retry;
+			}
+			goto error;
+		}
+
+		elog(DEBUG1, "UDP-IC: xmit will use tx size of %d bytes", sndbuf);
+	}
+	return;
+
+error:
+	errnoSave = errno;
+	if (txfd >= 0)
+		closesocket(txfd);
+	errno = errnoSave;
+	ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+					errmsg("Interconnect Error: Could not set up listener socket."),
+					errdetail("%m%s", fun)));
+}
+
+static int getPortFromSocket(int fd);
+static int getPortFromSocket(int fd)
+{
+	struct sockaddr_storage source_addr;
+	socklen_t source_addr_len;
+	MemSet(&source_addr, 0, sizeof(source_addr));
+	source_addr_len = sizeof(source_addr);
+
+	if (getsockname(fd, (struct sockaddr *) &source_addr, &source_addr_len) < 0)
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+					errmsg("Interconnect Error: Could not get port from socket."),
+					errdetail("%m")));
+
+	/* return the port (if we are doing this, it was picked by the system) */
+	if (source_addr.ss_family == AF_INET6)
+		return ntohs(((struct sockaddr_in6*)&source_addr)->sin6_port);
+	else
+		return ntohs(((struct sockaddr_in *)&source_addr)->sin_port);
+
+
+}
+
 /* Function startOutgoingConnections() is used to initially kick-off any outgoing
  * connections for mySlice.
  *
@@ -976,11 +1171,9 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	Slice	   *recvSlice;
 	CdbProcess *cdbProc;
 
-	struct sockaddr_in	saddr;
-	socklen_t			saddrlen;
-
 	const char		   *fun;
-	int					i, errnoSave;
+	int					i;
+	int					errnoSave;
 
 	*pOutgoingCount = 0;
 
@@ -1024,6 +1217,77 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 		conn++;
 	}
 
+	pEntry->txport = 0;
+	pEntry->txfd = 0;
+
+	struct addrinfo hints;
+	struct addrinfo *addrs, *rp;
+	int s;
+
+	char service[32];
+	snprintf(service,32,"%d",0);
+
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;	/* Allow IPv4 or IPv6 */
+	hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
+	hints.ai_flags = AI_PASSIVE; /* For wildcard IP address */
+	hints.ai_protocol = 0; /* Any protocol */
+
+	fun = "getaddrinfo";
+	s = getaddrinfo(NULL, service, &hints, &addrs);
+	if (s != 0)
+		elog(ERROR,"getaddrinfo says %s",gai_strerror(s));
+
+#ifdef HAVE_IPV6
+	if (addrs->ai_family == AF_INET && addrs->ai_next != NULL && addrs->ai_next->ai_family == AF_INET6)
+	{
+		/*
+		 * We got both an INET and INET6 possibility, but we want to prefer the INET6 one if it works.
+		 * Reverse the order we got from getaddrinfo so that we try things in our preferred order.
+		 * If we got more possibilities (other AFs??), I don't think we care about them, so don't
+		 * worry if the list is more that two, we just rearrainge the first two.
+		 */
+		struct addrinfo *temp = addrs->ai_next;		/* second node */
+		addrs->ai_next = addrs->ai_next->ai_next;	/* point old first node to third node if any */
+		temp->ai_next = addrs;						/* point second node to first */
+		addrs = temp;								/* start the list with the old second node */
+	}
+#endif
+
+	/*
+	 * getaddrinfo() returns a list of address structures.
+	 * Try each address until we successfully bind.
+	 * If socket (or bind) fails, we (close the socket
+	 * and) try the next address.
+	 */
+
+	for (rp = addrs; rp != NULL; rp = rp->ai_next)
+	{
+		fun = "socket";
+		pEntry->txfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if (pEntry->txfd == -1)
+			continue;
+
+		fun = "fcntl(O_NONBLOCK)";
+		if (!pg_set_noblock(pEntry->txfd))
+			continue;
+
+		fun = "bind";
+		if (bind(pEntry->txfd, rp->ai_addr, rp->ai_addrlen) == 0)
+			break; /* Success */
+
+		close(pEntry->txfd);
+	}
+
+	if (rp == NULL)
+	{
+		/* No address succeeded */
+		goto error;
+	}
+
+	freeaddrinfo(addrs); /* No longer needed */
+
+#if OLDWAY
 	pEntry->txfd = socket(AF_INET, SOCK_DGRAM, 0);
 	fun = "socket";
 	if (pEntry->txfd < 0)
@@ -1043,83 +1307,12 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	fun = "bind";
 	if (bind(pEntry->txfd, (struct sockaddr *)&saddr, sizeof(saddr)) < 0)
 		goto error;
+#endif
 
-	MemSet(&saddr, 0, sizeof(saddr));
-	saddrlen = sizeof(saddr);
+	/* Save the txport we are using.  Just for debugging, I think */
+	pEntry->txport = getPortFromSocket(pEntry->txfd);
 
-	fun = "getsockname";
-	if (getsockname(pEntry->txfd, (struct sockaddr *) &saddr, &saddrlen) < 0)
-		goto error;
-
-
-	pEntry->txport = saddr.sin_port;
-
-	/*
-	 * Note the buffer stuff below: The receive-side of our transmit socket is only used for acks.
-	 *
-	 * 128k of ack-space is enough for ~2000 acks if they're about 60-bytes. So that's a pretty
-	 * large number -- probably good enough.
-	 *
-	 * For transmit outbound space, I'm not sure that we can really feed the kernel as fast as
-	 * it can transmit. 128k of out-bound space is enough for 16 outbound messages at the default
-	 * size. Just in case, let's try 256k.
-	 *
-	 * Since only one copy of this outbound-stuff is held *per process* these buffers are pretty
-	 * cheap.
-	 */
-
-	{
-		int					rcvbuf;
-		socklen_t			rcvbufsize=0;
-
-		fun = "getsockopt";
-		rcvbufsize = sizeof(rcvbuf);
-		if (getsockopt(pEntry->txfd, SOL_SOCKET, SO_RCVBUF, (char *)&rcvbuf, &rcvbufsize) < 0)
-			goto error;
-
-		elog(DEBUG1, "UDP-IC: xmit default rx-size %d bytes", rcvbuf);
-
-		fun = "setsockopt";
-		rcvbuf = 128 * 1024;
-
-		if (Gp_udp_bufsize_k != 0)
-			rcvbuf = Gp_udp_bufsize_k * 1024;
-
-		rcvbufsize = sizeof(rcvbuf);
-		if (setsockopt(pEntry->txfd, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbuf, rcvbufsize) < 0)
-			goto error;
-
-		elog(DEBUG1, "UDP-IC: xmit will use rx size of %d bytes", rcvbuf);
-	}
-
-	{
-		int					sndbuf;
-		socklen_t			sndbufsize=0;
-
-		fun = "getsockopt";
-		sndbufsize = sizeof(sndbuf);
-		if (getsockopt(pEntry->txfd, SOL_SOCKET, SO_SNDBUF, (char *)&sndbuf, &sndbufsize) < 0)
-			goto error;
-
-		elog(DEBUG1, "UDP-IC: xmit default tx-size %d bytes", sndbuf);
-
-		fun = "setsockopt";
-		sndbuf = 256 * 1024;
-	retry:
-		sndbufsize = sizeof(sndbuf);
-		if (setsockopt(pEntry->txfd, SOL_SOCKET, SO_SNDBUF, (const char *)&sndbuf, sndbufsize) < 0)
-		{
-			if (sndbuf == 256 * 1024)
-			{
-				sndbuf = 128 * 1024;
-				goto retry;
-			}
-			goto error;
-		}
-
-		elog(DEBUG1, "UDP-IC: xmit will use tx size of %d bytes", sndbuf);
-	}
-
+	setXmitSocketOptions(pEntry->txfd);
 
 	return pEntry;
 
@@ -1132,8 +1325,57 @@ error:
 					errmsg("Interconnect Error: Could not set up listener socket."),
 					errdetail("%m%s", fun)));
 	return NULL;
+
 }
 
+
+/*
+ * Convert IP addr and port to sockaddr
+ */
+static void
+getSockAddr(struct sockaddr_storage * peer, socklen_t * peer_len, const char * listenerAddr, int listenerPort)
+{
+	int			ret;
+	char		portNumberStr[32];
+	char	   *service;
+	struct addrinfo *addrs = NULL;
+	struct addrinfo hint;
+
+	/*
+	 * Get socketaddr to connect to.
+	 */
+
+	/* Initialize hint structure */
+	MemSet(&hint, 0, sizeof(hint));
+	hint.ai_socktype = SOCK_DGRAM; /* UDP */
+	hint.ai_family = AF_UNSPEC; /* Allow for any family (v4, v6, even unix in the future)  */
+	hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
+
+	snprintf(portNumberStr, sizeof(portNumberStr), "%d", listenerPort);
+	service = portNumberStr;
+
+	ret = pg_getaddrinfo_all(listenerAddr, service, &hint, &addrs);
+	if (ret || !addrs)
+	{
+		if (addrs)
+			pg_freeaddrinfo_all(hint.ai_family, addrs);
+
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+			errmsg("Interconnect Error: Could not parse remote listener"
+				   "address: '%s' port '%d': %s", listenerAddr,listenerPort,gai_strerror(ret)),
+			errdetail("getaddrinfo() unable to parse address: '%s'",
+					  listenerAddr)));
+		return;
+	}
+	/* Since we aren't using name resolution, getaddrinfo will return only 1 entry */
+
+	elog(DEBUG1,"socket %d %d %d for %s ",addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol, listenerAddr);
+	memset(peer, 0, sizeof(struct sockaddr_storage));
+	memcpy(peer, addrs->ai_addr, addrs->ai_addrlen);
+	*peer_len = addrs->ai_addrlen;
+
+	pg_freeaddrinfo_all(addrs->ai_family, addrs);
+}
 /*
  * setupOutgoingUDPConnection
  *
@@ -1148,7 +1390,6 @@ void
 setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn)
 {
 	CdbProcess		   *cdbProc = conn->cdbProc;
-	struct sockaddr_in	saddr;
 	int					n;
 
 	Assert(conn->state == mcsSetupOutgoingConnection);
@@ -1158,40 +1399,65 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 	conn->remoteContentId = cdbProc->contentid;
 	conn->stat_min_ack_time = ~((uint64)0);
 
-	snprintf(conn->remoteHostAndPort, sizeof(conn->remoteHostAndPort),
+	/* Save the information for the error message if getaddrinfo fails */
+	if (strchr(cdbProc->listenerAddr,':') != 0)
+		snprintf(conn->remoteHostAndPort, sizeof(conn->remoteHostAndPort),
+					 "[%s]:%d", cdbProc->listenerAddr, cdbProc->listenerPort);
+	else
+		snprintf(conn->remoteHostAndPort, sizeof(conn->remoteHostAndPort),
 			 "%s:%d", cdbProc->listenerAddr, cdbProc->listenerPort);
 
 	/*
-	 * Get ipaddr to connect to.
+	 * Get socketaddr to connect to.
 	 */
-	MemSet(&saddr, 0, sizeof(saddr));
-	saddr.sin_family = AF_INET;
+	getSockAddr(&conn->peer, &conn->peer_len, cdbProc->listenerAddr, cdbProc->listenerPort);
 
-	if ((n = inet_net_pton(AF_INET, cdbProc->listenerAddr, &saddr.sin_addr, sizeof(saddr.sin_addr))) < 1)
-	{
-		if (n == 0)
-		{
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect Error: Could not parse remote listener"
-								   "address: '%s'", cdbProc->listenerAddr),
-							errdetail("inet_pton() unable to parse address: '%s'",
-									  cdbProc->listenerAddr)));
-		}
-		else
-		{
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect Error: System error occured during parsing"
-								   " of remote listener address '%s'", cdbProc->listenerAddr),
-							errdetail("%m%s", "inet_pton")));
-		}
-	}
 
-	saddr.sin_port = htons(cdbProc->listenerPort);
-
-	format_sockaddr((struct sockaddr *) &saddr, conn->remoteHostAndPort,
+	/* Save the destination IP address */
+	format_sockaddr((struct sockaddr *)&conn->peer, conn->remoteHostAndPort,
 					sizeof(conn->remoteHostAndPort));
 
-	memcpy(&conn->peer, &saddr, sizeof(saddr));
+
+/* TEMP */
+
+	Assert(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 );
+	if (pEntry->txfd <= 0)
+	{
+		struct sockaddr saddr;
+
+		pEntry->txfd = socket(conn->peer.ss_family, SOCK_DGRAM, 0);
+		Assert(pEntry->txfd >= 0);
+		elog(DEBUG1, "creating a new socket %d for tx with family %d",pEntry->txfd,(int)conn->peer.ss_family);
+		pg_set_noblock(pEntry->txfd);
+		setXmitSocketOptions(pEntry->txfd);
+		MemSet(&saddr, 0, sizeof(saddr));
+		saddr.sa_family = conn->peer.ss_family;
+		if (bind(pEntry->txfd, &saddr, sizeof(saddr)) < 0)
+			Assert("bind failed"==0);
+		/* Save the txport we are using.  Just for debugging, I think */
+		pEntry->txport = getPortFromSocket(pEntry->txfd);
+	}
+	else
+	{
+		struct sockaddr_storage source_addr;
+		socklen_t source_addr_len;
+		MemSet(&source_addr, 0, sizeof(source_addr));
+		source_addr_len = sizeof(source_addr);
+
+		if (getsockname(pEntry->txfd, (struct sockaddr *) &source_addr, &source_addr_len) == -1)
+			Assert("getsockname failed"==0);
+		if (source_addr.ss_family != conn->peer.ss_family)
+		{
+			if (source_addr.ss_family == AF_INET6)
+				elog(DEBUG1, "We are inet6, remote is inet");
+			else
+				elog(WARNING, "We are inet, remove is inet6 ");
+		}
+		elog(DEBUG1, "reusing socket for tx %d ",pEntry->txfd);
+
+	}
+
+/* TEMP */
 
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		ereport(DEBUG1, (errmsg("Interconnect connecting to seg%d slice%d %s "
@@ -1249,12 +1515,12 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 		conn->msgSize = sizeof(conn->conn_info);
 		conn->stillActive = true;
 		conn->conn_info.seq = 1;
-		Assert(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6 );
+		Assert(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 );
 		return;
 	}
 
 	n = sendto(pEntry->txfd, (const char *)&conn->conn_info, sizeof(conn->conn_info), 0,
-			   (struct sockaddr *)&saddr, (socklen_t)sizeof(saddr));
+			   (struct sockaddr *)&conn->peer, conn->peer_len);
 
 	/* we'll let this packet drop. */
 	if (n < 0 && errno == EAGAIN)
@@ -1588,7 +1854,7 @@ SetupUDPInterconnect(EState *estate)
 			for (;;)
 			{
 				/* read ack */
-				struct sockaddr_in peer;
+				struct sockaddr_storage peer;
 				socklen_t peerlen;
 
 				struct icpkthdr pkt;
@@ -1633,7 +1899,7 @@ SetupUDPInterconnect(EState *estate)
 						conn->msgSize = sizeof(conn->conn_info);
 						conn->stillActive = true;
 						conn->conn_info.seq++;
-						Assert(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6 );
+						Assert(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 );
 
 						outgoing_count++;
 					}
@@ -2489,7 +2755,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 	volatile MotionConn *ackConn;
 	int n;
 
-	struct sockaddr_in peer;
+	struct sockaddr_storage peer;
 	socklen_t peerlen;
 
 	struct icpkthdr pkt;
@@ -2695,7 +2961,7 @@ sendOnce(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry,
 
 xmit_retry:
 	n = sendto(pEntry->txfd, conn->activeXmit, conn->conn_info.len, 0,
-			   (struct sockaddr *)&conn->peer, (socklen_t)sizeof(conn->peer));
+			   (struct sockaddr *)&conn->peer, conn->peer_len);
 	if (n < 0)
 	{
 		ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
@@ -3119,11 +3385,15 @@ doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID)
 #ifdef USE_ASSERT_CHECKING
 				if (!gp_interconnect_elide_setup || gp_interconnect_id == 1)
 				{
-					Assert(conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6);
+					if (!(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6))
+					{
+						elog(LOG,"UDP Interconnect bug: trying to send ack when we don't know where to send to %s", conn->remoteHostAndPort);
+					}
+					Assert(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6);
 				}
 #endif
 
-				if (conn->peer.sin_family == AF_INET || conn->peer.sin_family == AF_INET6)
+				if (conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6)
 				{
 					sendAck(conn, true);
 
@@ -3164,7 +3434,7 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 			 * //inet_ntop(AF_INET6, &sin6->sin6_addr, buf, bufsize - 8);
 			 *
 			 * postgres has a standard routine for converting addresses to printable format,
-			 * which works for IPv6, IPv4, and Unix domain sockets.  I've changed this 
+			 * which works for IPv6, IPv4, and Unix domain sockets.  I've changed this
 			 * routine to use that, but I think the entire format_sockaddr routine could
 			 * be replaced with it.
 			 */
@@ -3337,7 +3607,7 @@ ic_rx_thread_func(void *arg)
 			volatile MotionConn *conn;
 			int read_count;
 
-			struct sockaddr_in peer;
+			struct sockaddr_storage peer;
 			socklen_t peerlen;
 
 			peerlen = sizeof(peer);
@@ -3400,8 +3670,10 @@ ic_rx_thread_func(void *arg)
 						continue;
 					}
 
-					/* fill in the peer */
-					conn->peer = peer;
+					/* fill in the peer.  Need to case away "volatile"... Ugly	*/
+					memset((void *)&conn->peer, 0, sizeof(conn->peer));
+					memcpy((void *)&conn->peer, &peer, peerlen);
+					conn->peer_len = peerlen;
 
 					/* MPP-4194: fill in the dstListenerPort from the peer (may have mirror marking) */
 					conn->conn_info.dstListenerPort = pkt->dstListenerPort;
@@ -3495,8 +3767,10 @@ ic_rx_thread_func(void *arg)
 					 */
 					if (gp_interconnect_elide_setup && pkt->seq == 1)
 					{
-						/* fill in the peer */
-						conn->peer = peer;
+						/* fill in the peer.  Need to cast away "volatile".  ugly */
+						memset((void *)&conn->peer, 0, sizeof(conn->peer));
+						memcpy((void *)&conn->peer, &peer, peerlen);
+						conn->peer_len = peerlen;
 
 						/* MPP-4194: fill in the dstListenerPort from the peer (may have mirror marking) */
 						conn->conn_info.dstListenerPort = pkt->dstListenerPort;
@@ -3722,7 +3996,7 @@ ic_rx_thread_func(void *arg)
 				 */
 				ic_stats_mismatch++;
 
-				rx_handle_mismatch(pkt, &peer);
+				rx_handle_mismatch(pkt, &peer, peerlen);
 
 				pthread_mutex_unlock(&rx_thread_mutex);
 			}
@@ -3745,7 +4019,7 @@ ic_rx_thread_func(void *arg)
  * We are called with the receiver-lock held, and we never release it.
  */
 static void
-rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_in *peer)
+rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_storage *peer, int peer_len)
 {
 	/*
 	 * we want to ack old packets; but *must* avoid acking connection requests:
@@ -3817,6 +4091,7 @@ rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_in *peer)
 
 			memcpy(&dummyconn.conn_info, pkt, sizeof(struct icpkthdr));
 			dummyconn.peer = *peer;
+			dummyconn.peer_len = peer_len;
 
 			dummyconn.conn_info.flags |= ack_flags;
 
@@ -3827,7 +4102,7 @@ rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_in *peer)
 				write_log("ACKING PACKET WITH FLAGS: pkt->seq %d 0x%x pkt->icId %d last-teardown %d interconnect_id %d",
 					  pkt->seq, dummyconn.conn_info.flags, pkt->icId, ic_id_last_teardown, gp_interconnect_id);
 
-			Assert(dummyconn.peer.sin_family == AF_INET || dummyconn.peer.sin_family == AF_INET6);
+			Assert(dummyconn.peer.ss_family == AF_INET || dummyconn.peer.ss_family == AF_INET6);
 
 			format_sockaddr((struct sockaddr *)&dummyconn.peer, buf, sizeof(buf));
 

@@ -830,74 +830,117 @@ static int
 listenerSetup(void)
 {
 	int listenerPort;
-	struct sockaddr_in serv_addr;
-	struct sockaddr_in addr;
+
+	struct sockaddr_storage addr;
 	socklen_t	addrlen;
 
-	
-	if ((listenerFd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-						errmsg("Ddaserver Error: Could not setup listener socket: %s", strerror(errno)),
-				errdetail("error during socket() call (error:%d).", errno)));
-	}
-
-	memset(&addr, 0, sizeof(addr));
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_addr.s_addr = INADDR_ANY;
-	
-	serv_addr.sin_port = 0;		/* system picks port */
+    struct addrinfo hints;
+	struct addrinfo *addrs, *rp;
+	int  s;
+	char service[32];
 
 	/*
 	 * we let the system pick the TCP port here so we don't have to
 	 * manage port resources ourselves.
 	 */
-	if (bind(listenerFd, (struct sockaddr *) & serv_addr, sizeof(serv_addr)) < 0)
+    snprintf(service,32,"%d",0);
+    memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;    	/* Allow IPv4 or IPv6 */
+	hints.ai_socktype = SOCK_STREAM; 	/* TCP socket */
+	hints.ai_flags = AI_PASSIVE;    	/* For wildcard IP address */
+	hints.ai_protocol = 0;          	/* Any protocol */
+
+	s = getaddrinfo(NULL, service, &hints, &addrs);
+	if (s != 0)
+		elog(ERROR,"getaddrinfo says %s",gai_strerror(s));
+
+	/*
+	 * getaddrinfo() returns a list of address structures,
+	 * one for each valid address and family we can use.
+	 *
+	 * Try each address until we successfully bind.
+	 * If socket (or bind) fails, we (close the socket
+	 * and) try the next address.  This can happen if
+	 * the system supports IPv6, but IPv6 is disabled from
+	 * working, or if it supports IPv6 and IPv4 is disabled.
+	 */
+
+	/*
+	 * If there is both an AF_INET6 and an AF_INET choice,
+	 * we prefer the AF_INET6, because on UNIX it can receive either
+	 * protocol, whereas AF_INET can only get IPv4.  Otherwise we'd need
+	 * to bind two sockets, one for each protocol.
+	 *
+	 * Why not just use AF_INET6 in the hints?  That works perfect
+	 * if we know this machine supports IPv6 and IPv6 is enabled,
+	 * but we don't know that.
+	 */
+
+#ifdef HAVE_IPV6
+	if (addrs->ai_family == AF_INET && addrs->ai_next != NULL && addrs->ai_next->ai_family == AF_INET6)
 	{
 		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
+		 * We got both an INET and INET6 possibility, but we want to prefer the INET6 one if it works.
+		 * Reverse the order we got from getaddrinfo so that we try things in our preferred order.
+		 * If we got more possibilities (other AFs??), I don't think we care about them, so don't
+		 * worry if the list is more that two, we just rearrange the first two.
 		 */
+		struct addrinfo *temp = addrs->ai_next; 	/* second node */
+		addrs->ai_next = addrs->ai_next->ai_next; 	/* point old first node to third node if any */
+		temp->ai_next = addrs;   					/* point second node to first */
+		addrs = temp;								/* start the list with the old second node */
+	}
+#endif
+
+	for (rp = addrs; rp != NULL; rp = rp->ai_next)
+	{
+		/*
+		 * getaddrinfo gives us all the parameters for the socket() call
+		 * as well as the parameters for the bind() call.
+		 */
+		elog(DEBUG1,"seqserver  listener socket %d %d %d",rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+
+		listenerFd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if (listenerFd == -1)
+			continue;
+
+		if (bind(listenerFd, rp->ai_addr, rp->ai_addrlen) == 0)
+			break;              /* Success */
+
+		close(listenerFd);
+	}
+
+	if (rp == NULL)
+	{               /* No address succeeded */
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-			   errmsg("Ddaserver Error: Could not setup listener socket"),
+			   errmsg("SeqServer Error: Could not setup listener socket: %m"),
 				  errdetail("error during bind() call (error:%d).", errno)));
 		
 	}
 
-	listenerPort = ntohs(serv_addr.sin_port);
-
 	if (listen(listenerFd, LISTEN_BACKLOG) < 0)
 	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-						errmsg("Ddaserver Error: Could not setup listener socket: %s", strerror(errno)),
+						errmsg("SeqServer Error: Could not setup listener socket: %s", strerror(errno)),
 				errdetail("error during listen() call (error:%d).", errno)));
 	}
 
 
-	addrlen = sizeof(struct sockaddr_in);
+	addrlen = sizeof(addr);
 
 	if (getsockname(listenerFd, (struct sockaddr *) & addr, &addrlen) < 0)
 	{
-		/*
-		 * TODO: would be nice to read the errno and try and provide
-		 * more useful info as to why this happened.
-		 */
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-						errmsg("Ddaserver Error: Could not setup listener socket: %s", strerror(errno)),
+						errmsg("SeqServer Error: Could not setup listener socket: %s", strerror(errno)),
 		   errdetail("error during getsockname() call (error:%d).", errno)));
 	}
 
 
 	/* display which port was chosen by the system. */
-	listenerPort = ntohs(addr.sin_port);
+	if (addr.ss_family == AF_INET6)
+		listenerPort = ntohs(((struct sockaddr_in6*)&addr)->sin6_port);
+	else
+		listenerPort = ntohs(((struct sockaddr_in*)&addr)->sin_port);
 
 	elog(DEBUG1, "Ddaserver listener on port: %d", listenerPort);
 

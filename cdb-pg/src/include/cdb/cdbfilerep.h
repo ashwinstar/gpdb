@@ -1042,7 +1042,8 @@ extern void FileRep_SetFileRepRetry(void);
 typedef struct FileRepGpmonInfo_s {
 		gpmon_packet_t gpmonPacket;
 		int gpsock;
-		struct sockaddr_in gpaddr;
+		struct sockaddr_storage gpaddr;  // Allow for either IPv4 or IPv6
+		int gpaddr_len;					 // And remember the length
 		TimestampTz lastSend;
 
 } FileRepGpmonInfo_s;

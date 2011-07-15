@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <sys/param.h>
 #include <signal.h>
+#include <string.h>
 #include "apr_atomic.h"
 #include "apr_env.h"
 #include "apr_time.h"
@@ -1539,15 +1540,40 @@ void populate_smdw_aliases(host_t* host)
 
 char* get_ip_for_host(char* host)
 {
-	struct hostent *hp;
 	char * ipstr;
-	hp = gethostbyname(host);
-	if (!hp)
+	char		portNumberStr[32];
+	char	   *service;
+	int			ret;
+	struct addrinfo *addrs = NULL;
+	struct addrinfo hint;
+
+	/* Initialize hint structure */
+	memset(&hint, 0, sizeof(hint));
+	hint.ai_socktype = SOCK_STREAM; /* TCP */
+	hint.ai_family = AF_UNSPEC;	/* Allow for any family */
+
+
+	snprintf(portNumberStr, sizeof(portNumberStr), "%d", 0);
+	service = portNumberStr;
+
+	ret = getaddrinfo(host, service, &hint, &addrs);
+	if (ret || !addrs)
 	{
+		if (addrs)
+			freeaddrinfo(addrs);
+
+		gpmon_fatalx(FLINE, 0, "getaddrinfo returned %s",  gai_strerror(ret));
 		return NULL;
 	}
-		
-	ipstr = strdup(inet_ntoa(*(struct in_addr*) hp->h_addr_list[0]));
+
+	if (addrs == NULL)
+		return NULL;
+
+	ipstr = malloc(128);
+	/* just grab the first address... it should be fine */
+	inet_ntop(addrs->ai_family, addrs->ai_addr, ipstr, 128);
+	freeaddrinfo(addrs);
+
 	return ipstr;
 }
 

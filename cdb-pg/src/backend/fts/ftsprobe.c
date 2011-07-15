@@ -19,6 +19,7 @@
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
 #include "cdb/cdbgang.h"		/* gp_pthread_create */
+#include "libpq/ip.h"
 #include "postmaster/fts.h"
 
 #include "executor/spi.h"
@@ -42,8 +43,6 @@
  */
 
 #define PROBE_RESPONSE_LEN  (20)         /* size of segment response message */
-#define CONN_PROTOCOL       (AF_INET)    /* connection protocol is TCP */
-
 
 /*
  * MACROS
@@ -70,7 +69,8 @@ typedef struct ProbeConnectionInfo
 	char mode;                           /* sync ('s'), resync ('r'), change-tracking ('c') */
 
 	int	fd;                              /* socket file descriptor */
-	struct sockaddr_in  saddr;           /* socket descriptor */
+	struct sockaddr_storage  saddr;      /* socket descriptor */
+	int saddr_len;
 	const char *hostIp;                  /* segment ip */
 	int port;                            /* segment postmaster port */
 
@@ -111,9 +111,8 @@ static void *probeSegmentFromThread(void *cdb_component_dbs);
 static char probeSegment(CdbComponentDatabaseInfo *dbInfo);
 static char probeProcessResponse(ProbeConnectionInfo *probeInfo);
 
-static bool probeOpenSocket(ProbeConnectionInfo *probeInfo);
 static bool probeMarkSocketNonBlocking(ProbeConnectionInfo *probeInfo);
-static bool probeGetIpAddr(ProbeConnectionInfo *probeInfo);
+static bool probeGetIpAddrAndOpenSocket(ProbeConnectionInfo *probeInfo);
 static bool probeConnect(ProbeConnectionInfo *probeInfo);
 static bool probePoll(ProbeConnectionInfo *probeInfo, bool incoming);
 static bool probeSend(ProbeConnectionInfo *probeInfo);
@@ -235,9 +234,8 @@ probeSegment(CdbComponentDatabaseInfo *dbInfo)
 	 * and the probe process is restarted;
 	 * this is repeated until no error occurs (response is received) or timeout expires;
 	 */
-	while (!probeOpenSocket(&probeInfo) ||
+	while (!probeGetIpAddrAndOpenSocket(&probeInfo) ||
 	       !probeMarkSocketNonBlocking(&probeInfo) ||
-	       !probeGetIpAddr(&probeInfo) ||
 	       !probeConnect(&probeInfo) ||
 	       !probeSend(&probeInfo) ||
 	       !probeReceive(&probeInfo))
@@ -285,32 +283,6 @@ probeSegment(CdbComponentDatabaseInfo *dbInfo)
 
 
 /*
- * Open socket for connecting to segment
- */
-static bool
-probeOpenSocket(ProbeConnectionInfo *probeInfo)
-{
-	Assert(probeInfo != NULL);
-	Assert(!probeInfo->isSocketOpened);
-	Assert(!probeInfo->isConnected);
-	Assert(probeInfo->fd == 0);
-
-	probeInfo->isSocketOpened = true;
-
-	/* open socket */
-	if ((probeInfo->fd = gp_socket(CONN_PROTOCOL, SOCK_STREAM, 0)) < 0)
-	{
-		write_log("FTS: failed to open socket to connect to segment (content=%d, dbid=%d), errno %d",
-		          probeInfo->segmentId, probeInfo->dbId, errno);
-		probeInfo->isSocketOpened = false;
-		probeInfo->fd = 0;
-	}
-
-	return probeInfo->isSocketOpened;
-}
-
-
-/*
  * Mark socket as non-blocking
  */
 static bool
@@ -336,37 +308,70 @@ probeMarkSocketNonBlocking(ProbeConnectionInfo *probeInfo)
  * Get segment IP address and port.
  */
 static bool
-probeGetIpAddr(ProbeConnectionInfo *probeInfo)
+probeGetIpAddrAndOpenSocket(ProbeConnectionInfo *probeInfo)
 {
+    int			ret;
+	char		portNumberStr[32];
+	char	   *service;
+	struct addrinfo *addrs = NULL;
+	struct addrinfo hint;
+
 	Assert(probeInfo != NULL);
-	Assert(probeInfo->isSocketOpened);
+	Assert(!probeInfo->isSocketOpened);
 	Assert(!probeInfo->isConnected);
-	Assert(probeInfo->fd > 0);
 
 	MemSet(&probeInfo->saddr, 0, sizeof(probeInfo->saddr));
 
-	/* assign connection port */
-	probeInfo->saddr.sin_port = htons((unsigned short) probeInfo->port);
+	/*
+	 * Get an sockaddr that has the right address and port in it.
+	 * We get passed in the IP address (IPv4 or IPv6), not the name, so
+	 * we don't need to worry about name resolution.
+	 */
 
-	/* assign IP address */
-	probeInfo->saddr.sin_family = CONN_PROTOCOL;
-	int res = inet_net_pton
-			(
-			CONN_PROTOCOL,
-			probeInfo->hostIp,
-			&probeInfo->saddr.sin_addr,
-			sizeof(probeInfo->saddr.sin_addr)
-			)
-			;
+	/* Initialize hint structure */
+	MemSet(&hint, 0, sizeof(hint));
+	hint.ai_socktype = SOCK_STREAM; /* TCP */
+	hint.ai_family = AF_UNSPEC;	/* Allow for any family */
+	hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
 
-	if (res < 1)
+	snprintf(portNumberStr, sizeof(portNumberStr), "%d", probeInfo->port);
+	service = portNumberStr;
+
+	ret = pg_getaddrinfo_all(probeInfo->hostIp, service, &hint, &addrs);
+	if (ret || !addrs)
 	{
-		write_log("FTS: failed to get IP address to connect to segment (content=%d, dbid=%d)",
-		          probeInfo->segmentId, probeInfo->dbId);
+		if (addrs)
+			pg_freeaddrinfo_all(hint.ai_family, addrs);
+
+		write_log("FTS: failed to get IP address to connect to segment  (content=%d, dbid=%d) \"%s\", port \"%d\" to address: %s",
+						probeInfo->segmentId, probeInfo->dbId,
+						probeInfo->hostIp, probeInfo->port, gai_strerror(ret));
 		return false;
 	}
+	Assert(addrs->ai_next == NULL);
+	/* Since we aren't using name resolution, getaddrinfo will return only 1 entry */
+	memcpy(&probeInfo->saddr, addrs->ai_addr, addrs->ai_addrlen);
+	probeInfo->saddr_len = addrs->ai_addrlen;
 
-	return true;
+	Assert(probeInfo != NULL);
+	Assert(!probeInfo->isSocketOpened);
+	Assert(!probeInfo->isConnected);
+	Assert(probeInfo->fd == 0);
+
+	probeInfo->isSocketOpened = true;
+
+	/* open socket */
+	if ((probeInfo->fd = gp_socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol)) < 0)
+	{
+		write_log("FTS: failed to open socket to connect to segment (content=%d, dbid=%d), errno %d",
+		          probeInfo->segmentId, probeInfo->dbId, errno);
+		probeInfo->isSocketOpened = false;
+		probeInfo->fd = 0;
+	}
+
+	pg_freeaddrinfo_all(hint.ai_family, addrs);
+
+	return probeInfo->isSocketOpened;
 }
 
 
@@ -384,7 +389,7 @@ probeConnect(ProbeConnectionInfo *probeInfo)
 	int res = 0;
 	probeInfo->isConnected = true;
 
-	while ((res = gp_connect(probeInfo->fd, (struct sockaddr *) &probeInfo->saddr, sizeof(probeInfo->saddr))) == -1)
+	while ((res = gp_connect(probeInfo->fd, (struct sockaddr *) &probeInfo->saddr, probeInfo->saddr_len)) == -1)
 	{
 		/* check for transient error */
 		if (SYS_ERR_TRANSIENT(errno) && !probeTimeout(probeInfo) && FtsIsActive())

@@ -181,8 +181,6 @@ static void doSendStopMessageTCP(ChunkTransportState *transportStates, int16 mot
 static void
 setupTCPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort)
 {
-	struct sockaddr_in  saddr;
-	socklen_t           saddrlen;
     int                 errnoSave;
     int                 fd = -1;
     const char         *fun;
@@ -190,38 +188,119 @@ setupTCPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort
     *listenerSocketFd = -1;
     *listenerPort = 0;
 
-    fun = "socket";
-    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-        goto error;
+	struct sockaddr_storage addr;
+	socklen_t	addrlen;
 
-    /* Make socket non-blocking. */
-    fun = "fcntl(O_NONBLOCK)";
-    if (!pg_set_noblock(fd))
-        goto error;
+    struct addrinfo hints;
+	struct addrinfo *addrs, *rp;
+	int  s;
+	char service[32];
+	char myname[128];
+	char *localname  = NULL;
 
-	MemSet(&saddr, 0, sizeof(saddr));
-	saddr.sin_family = AF_INET;
+	/*
+	 * we let the system pick the TCP port here so we don't have to
+	 * manage port resources ourselves.  So set the port to 0 (any port)
+	 */
+    snprintf(service,32,"%d",0);
+    memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;    	/* Allow IPv4 or IPv6 */
+	hints.ai_socktype = SOCK_STREAM; 	/* TCP socket */
+	hints.ai_flags = AI_PASSIVE;    	/* For wildcard IP address */
+	hints.ai_protocol = 0;          	/* Any protocol */
 
 	/* We use INADDR_ANY if we don't have a valid address for
 	 * ourselves (e.g. QD local connections tend to be AF_UNIX, or
 	 * on 127.0.0.1 -- so bind everything) */
 	if (Gp_role == GP_ROLE_DISPATCH ||
-		MyProcPort->laddr.addr.ss_family != AF_INET)
-		saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+		(MyProcPort->laddr.addr.ss_family != AF_INET &&
+		 MyProcPort->laddr.addr.ss_family != AF_INET6))
+		localname = NULL;	/* We will listen on all network adapters */
 	else
-		saddr.sin_addr = ((struct sockaddr_in *)&MyProcPort->laddr.addr)->sin_addr;
+	{
+		/*
+		 * Restrict what IP address we will listen on to just the one
+		 * that was used to create this QE session.
+		 */
+		getnameinfo((const struct sockaddr *)&(MyProcPort->laddr.addr), MyProcPort->laddr.salen,
+				myname, sizeof(myname),
+				NULL, 0, NI_NUMERICHOST);
+		hints.ai_flags |= AI_NUMERICHOST;
+		localname = myname;
+		elog(LOG, "binding to %s only",localname);
+		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+				ereport(DEBUG4, (errmsg("binding listener %s", localname)));
+	}
 
-	saddr.sin_port = 0;	/* system picks port */
-
-    if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-        ereport(DEBUG4, (errmsg("binding listener %s", inet_ntoa(saddr.sin_addr))));
+	s = getaddrinfo(localname, service, &hints, &addrs);
+	if (s != 0)
+		elog(ERROR,"getaddrinfo says %s",gai_strerror(s));
 
 	/*
-	 * we let the system pick the TCP port here so we don't have to
-	 * manage port resources ourselves.
+	 * getaddrinfo() returns a list of address structures,
+	 * one for each valid address and family we can use.
+	 *
+	 * Try each address until we successfully bind.
+	 * If socket (or bind) fails, we (close the socket
+	 * and) try the next address.  This can happen if
+	 * the system supports IPv6, but IPv6 is disabled from
+	 * working, or if it supports IPv6 and IPv4 is disabled.
 	 */
-    fun = "bind";
-	if (bind(fd, (struct sockaddr *) &saddr, sizeof(saddr)) < 0)
+
+
+	/*
+	 * If there is both an AF_INET6 and an AF_INET choice,
+	 * we prefer the AF_INET6, because on UNIX it can receive either
+	 * protocol, whereas AF_INET can only get IPv4.  Otherwise we'd need
+	 * to bind two sockets, one for each protocol.
+	 *
+	 * Why not just use AF_INET6 in the hints?  That works perfect
+	 * if we know this machine supports IPv6 and IPv6 is enabled,
+	 * but we don't know that.
+	 */
+
+#ifdef HAVE_IPV6
+	if (addrs->ai_family == AF_INET && addrs->ai_next != NULL && addrs->ai_next->ai_family == AF_INET6)
+	{
+		/*
+		 * We got both an INET and INET6 possibility, but we want to prefer the INET6 one if it works.
+		 * Reverse the order we got from getaddrinfo so that we try things in our preferred order.
+		 * If we got more possibilities (other AFs??), I don't think we care about them, so don't
+		 * worry if the list is more that two, we just rearrange the first two.
+		 */
+		struct addrinfo *temp = addrs->ai_next; 	/* second node */
+		addrs->ai_next = addrs->ai_next->ai_next; 	/* point old first node to third node if any */
+		temp->ai_next = addrs;   					/* point second node to first */
+		addrs = temp;								/* start the list with the old second node */
+	}
+#endif
+
+	for (rp = addrs; rp != NULL; rp = rp->ai_next)
+	{
+		/*
+		 * getaddrinfo gives us all the parameters for the socket() call
+		 * as well as the parameters for the bind() call.
+		 */
+
+		fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if (fd == -1)
+			continue;
+
+		/*
+		 * we let the system pick the TCP port here so we don't have to
+		 * manage port resources ourselves.
+		 */
+
+		if (bind(fd, rp->ai_addr, rp->ai_addrlen) == 0)
+			break;              /* Success */
+
+		close(fd);
+	}
+
+
+    /* Make socket non-blocking. */
+    fun = "fcntl(O_NONBLOCK)";
+    if (!pg_set_noblock(fd))
         goto error;
 
     fun = "listen";
@@ -229,14 +308,20 @@ setupTCPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort
         goto error;
 
     /* Get the listening socket's port number. */
-    saddrlen = sizeof(struct sockaddr_in);
     fun = "getsockname";
-    if (getsockname(fd, (struct sockaddr *) &saddr, &saddrlen) < 0)
+    addrlen = sizeof(addr);
+    if (getsockname(fd, (struct sockaddr *) &addr, &addrlen) < 0)
         goto error;
 	
     /* Give results to caller. */
     *listenerSocketFd = fd;
-    *listenerPort = ntohs(saddr.sin_port);
+
+    /* display which port was chosen by the system. */
+	if (addr.ss_family == AF_INET6)
+		*listenerPort = ntohs(((struct sockaddr_in6*)&addr)->sin6_port);
+	else
+		*listenerPort = ntohs(((struct sockaddr_in*)&addr)->sin_port);
+
 	return;
 
 error:
@@ -521,9 +606,15 @@ void
 setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn)
 {
     CdbProcess         *cdbProc = conn->cdbProc;
-	struct sockaddr_in  saddr;
+
     int                 sockopt;
 	int                 n;
+
+    int			ret;
+	char		portNumberStr[32];
+	char	   *service;
+	struct addrinfo *addrs = NULL;
+	struct addrinfo hint;
 
     Assert(conn->cdbProc);
     Assert(conn->state == mcsSetupOutgoingConnection);
@@ -531,8 +622,21 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
     conn->wakeup_ms = 0;
     conn->remoteContentId = cdbProc->contentid;
 
-    snprintf(conn->remoteHostAndPort, sizeof(conn->remoteHostAndPort),
-             "%s:%d", cdbProc->listenerAddr, cdbProc->listenerPort);
+	/*
+	 * record the destination IP addr and port for error messages.
+	 * Since the IP addr might be IPv6, it might have ':' embedded, so in
+	 * that case, put '[]' around it so we can see that the string is an
+	 * IP and port (otherwise it might look just like an IP).
+	 *
+	 * Should we really put this info into these fields? Later we replace this with
+	 * the source IP and port (after the bind call).
+	 */
+    if (strchr(cdbProc->listenerAddr,':')!=0)
+    	snprintf(conn->remoteHostAndPort, sizeof(conn->remoteHostAndPort),
+    	        "[%s]:%d", cdbProc->listenerAddr, cdbProc->listenerPort);
+    else
+    	snprintf(conn->remoteHostAndPort, sizeof(conn->remoteHostAndPort),
+    			"%s:%d", cdbProc->listenerAddr, cdbProc->listenerPort);
 
     /* Might be retrying due to connection failure etc.  Close old socket. */
     if (conn->sockfd >= 0)
@@ -541,10 +645,33 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
         conn->sockfd = -1;
     }
 
+	/* Initialize hint structure */
+	MemSet(&hint, 0, sizeof(hint));
+	hint.ai_socktype = SOCK_STREAM;
+	hint.ai_family = AF_UNSPEC;	/* Allow for IPv4 or IPv6  */
+	hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
+
+	snprintf(portNumberStr, sizeof(portNumberStr), "%d", cdbProc->listenerPort);
+	service = portNumberStr;
+
+	ret = pg_getaddrinfo_all(cdbProc->listenerAddr, service, &hint, &addrs);
+	if (ret || !addrs)
+	{
+		if (addrs)
+			pg_freeaddrinfo_all(hint.ai_family, addrs);
+
+		ereport(ERROR,
+				(errmsg("could not translate host addr \"%s\", port \"%d\" to address: %s",
+						cdbProc->listenerAddr, cdbProc->listenerPort, gai_strerror(ret))));
+
+		return;
+	}
+	/* Since we aren't using name resolution, getaddrinfo will return only 1 entry */
+
     /*
-     * Create a socket.
+     * Create a socket.  getaddrinfo() returns the parameters needed by socket()
      */
-    conn->sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    conn->sockfd = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol);
     if (conn->sockfd < 0)
 	    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 			            errmsg("Interconnect error setting up outgoing "
@@ -567,62 +694,74 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
 	    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 			            errmsg("Interconnect error setting up outgoing "
                                "connection."),
-		                errdetail("%m%s", "setsockopt(SO_REUSEADDR)")));
+		                errdetail("%m %s", "setsockopt(SO_REUSEADDR)")));
 
-    MemSet(&saddr, 0, sizeof(saddr));
-    saddr.sin_family = AF_INET;
-
-	/* We use INADDR_ANY if we don't have a valid address for
-	 * ourselves (e.g. QD local connections tend to be AF_UNIX */
-	if (MyProcPort->laddr.addr.ss_family != AF_INET)
-		saddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	else
-		saddr.sin_addr = ((struct sockaddr_in *)&MyProcPort->laddr.addr)->sin_addr;
-
-    if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-        ereport(DEBUG4, (errmsg("bind outbound  %s", inet_ntoa(saddr.sin_addr))));
-
-    saddr.sin_port = 0; /* pick any available outbound port */
-
-    if (bind(conn->sockfd, (struct sockaddr *) &saddr, sizeof(saddr)) < 0)
-    {
-        /* Should never get EADDRINUSE because we know it's our port. */
-        ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-			            errmsg("Interconnect error setting up outgoing "
-                               "connection."),
-                        errdetail("Could not bind to local addr %s. %m",
-                                  inet_ntoa(saddr.sin_addr))));
-    }
 
     /*
-     * Get ipaddr to connect to.
+     * To help with fault tolerance, try to use the same LAN adapter as was used
+     * to connect the session to us.
+     *
+     * Bind that IP address to the socket.   But, we must insure that the source
+     * address is the same address family as the destination address.
+     *
+     * The is especially important to check on the QD, since local
+     * sessions are often AF_UNIX, and even if TCP, they could be either v6 or v4.
+     *
      */
-    MemSet(&saddr, 0, sizeof(saddr));
-    saddr.sin_family = AF_INET;
 
-    if ((n = inet_net_pton(AF_INET, cdbProc->listenerAddr, &saddr.sin_addr, sizeof(saddr.sin_addr))) < 1)
-    {
-	    if (n == 0)
-	    {
-		    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect Error: Could not parse remote listener"
-								   "address: '%s'", cdbProc->listenerAddr),
-							errdetail("inet_pton() unable to parse address: '%s'",
-									  cdbProc->listenerAddr)));
-	    }
-	    else
-	    {
-		    ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect Error: System error occured during parsing"
-								   " of remote listener address '%s'", cdbProc->listenerAddr),
-						    errdetail("%m%s", "inet_pton")));
-	    }
-    }
 
-    saddr.sin_port = htons(cdbProc->listenerPort);
+    struct sockaddr_storage  saddr;
+    int saddr_len = addrs->ai_addrlen;
+    memset(&saddr, 0, sizeof(saddr));
 
+	if (MyProcPort->laddr.addr.ss_family == addrs->ai_family)
+	{
+		/* We need to copy the address so we can clear the port */
+
+		memcpy(&saddr, &MyProcPort->laddr.addr, MyProcPort->laddr.salen);
+		if (saddr.ss_family == AF_INET)
+			((struct sockaddr_in *)&saddr)->sin_port = 0; /* pick any available outbound port */
+		else if (saddr.ss_family == AF_INET6)
+			((struct sockaddr_in6 *)&saddr)->sin6_port = 0;
+
+
+		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+		{
+			char debugmsg[128];
+			inet_ntop(saddr.ss_family, (struct sockaddr *)&saddr, debugmsg, sizeof(debugmsg));
+			ereport(DEBUG4, (errmsg("bind outbound  %s", debugmsg)));
+		}
+	}
+	else
+	{
+		/*
+		 * bind to the "any ip address" "any port".  Not really necessary to use bind()
+		 * but this allows us to get the system assigned source IP and port without
+		 * waiting until after the connect() call.
+		 */
+		saddr.ss_family = addrs->ai_family;
+
+		/* We could set the address to INADDR_ANY or INADDR_ANY6 but those are just zeros anyway */
+	}
+
+	if (bind(conn->sockfd, (struct sockaddr *)&saddr, saddr_len) < 0)
+	{
+		char debugmsg[128];
+		inet_ntop(saddr.ss_family, (struct sockaddr *)&saddr, debugmsg, sizeof(debugmsg));
+		/* Should never get EADDRINUSE because we know it's our port. */
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect error setting up outgoing "
+							   "connection."),
+						errdetail("Could not bind to local addr %s. %m",
+								  debugmsg)));
+	}
+
+	/*
+	 * Get the source IP address and Port
+	 */
     format_sockaddr((struct sockaddr *) &saddr, conn->remoteHostAndPort,
                     sizeof(conn->remoteHostAndPort));
+
 
     if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
         ereport(DEBUG1, (errmsg("Interconnect connecting to seg%d slice%d %s "
@@ -640,12 +779,13 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
     {                           /* connect() EINTR retry loop */
         ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
-        n = connect(conn->sockfd, (struct sockaddr *) &saddr, sizeof(saddr));
+        n = connect(conn->sockfd, addrs->ai_addr, addrs->ai_addrlen);
 	
         /* Non-blocking socket never connects immediately, but check anyway. */
         if (n == 0)
         {
             sendRegisterMessage(transportStates, pEntry, conn);
+            pg_freeaddrinfo_all(hint.ai_family, addrs);
             return;
         }
 	
@@ -658,9 +798,11 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
             errno == EWOULDBLOCK)
         {
             conn->state = mcsConnecting;
+            pg_freeaddrinfo_all(hint.ai_family, addrs);
             return;
         }
 
+        pg_freeaddrinfo_all(hint.ai_family, addrs);
         /* connect() failed.  Log the error.  Caller should retry. */
         updateOutgoingConnection(transportStates, pEntry, conn, errno);
         return;
@@ -2061,11 +2203,11 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 #ifdef HAVE_IPV6
     else if (sa->sa_family == AF_INET6)
     {
-        struct sockaddr_in6    *sin6 = (struct sockaddr_in6 *)sa;
-		char remote_port[20];
+		char remote_port[32];
 
-        if (bufsize > 8)
+        if (bufsize > 10)
         {
+        	buf[0] = '[';
 			/*
 			 * inet_ntop isn't portable.
              * //inet_ntop(AF_INET6, &sin6->sin6_addr, buf, bufsize - 8);
@@ -2075,11 +2217,15 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 			 * routine to use that, but I think the entire format_sockaddr routine could
 			 * be replaced with it.
 			 */
-			pg_getnameinfo_all((const struct sockaddr_storage *)&sin6->sin6_addr, sizeof(sin6->sin6_addr),
-							   buf, bufsize-8,
+			int ret = pg_getnameinfo_all((const struct sockaddr_storage *)sa, sizeof(struct sockaddr_storage),
+							   buf+1, bufsize-10,
 							   remote_port, sizeof(remote_port),
 							   NI_NUMERICHOST | NI_NUMERICSERV);
+			if (ret != 0)
+				elog(WARNING,"getnameinfo returned %s",gai_strerror(ret));
             buf += strlen(buf);
+            strcat(buf,"]");
+            buf++;
         }
         snprintf(buf, 8, ":%s", remote_port);
     }
@@ -2648,7 +2794,7 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 							return false;
 						}
 						ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-										errmsg("Interconnect error writing an outgoing packet"),
+										errmsg("Interconnect error writing an outgoing packet: %m"),
 										errdetail("error during select() call (error:%d).\n"
 												  "For Remote Connection: contentId=%d at %s",
 												  errno, conn->remoteContentId,
