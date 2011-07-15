@@ -195,6 +195,8 @@ directories:
 
 * GPDB-LICENSE.txt - Greenplum license agreement.
 
+* LICENSE.thirdparty - Licenses for third-party tools
+
 * bin - Greenplum Database server programs, client programs, and 
         management tools.
 
@@ -202,7 +204,7 @@ directories:
 
 * docs - Greenplum Database documentation.
 
-* etc — Sample configuration file for OpenSSL.
+* etc - Sample configuration file for OpenSSL.
 
 * ext - Bundled programs (such as Python) used by some 
         Greenplum Database utilies.
