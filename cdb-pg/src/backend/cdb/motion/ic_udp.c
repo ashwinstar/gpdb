@@ -1349,7 +1349,11 @@ getSockAddr(struct sockaddr_storage * peer, socklen_t * peer_len, const char * l
 	MemSet(&hint, 0, sizeof(hint));
 	hint.ai_socktype = SOCK_DGRAM; /* UDP */
 	hint.ai_family = AF_UNSPEC; /* Allow for any family (v4, v6, even unix in the future)  */
+#ifdef AI_NUMERICSERV
 	hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
+#else
+	hint.ai_flags = AI_NUMERICHOST;  /* Never do name resolution */
+#endif
 
 	snprintf(portNumberStr, sizeof(portNumberStr), "%d", listenerPort);
 	service = portNumberStr;

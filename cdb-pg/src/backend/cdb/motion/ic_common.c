@@ -57,7 +57,7 @@
 #define WIN32_LEAN_AND_MEAN
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
-#endif 
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #define SHUT_RDWR SD_BOTH
@@ -97,12 +97,12 @@ WSAPoll(
     IN ULONG fds,
     IN INT timeout
     );
-#endif 
+#endif
 
 #define poll WSAPoll
 
 /*
- * Postgres normally uses it's own custom select implementation 
+ * Postgres normally uses it's own custom select implementation
  * on Windows, but they haven't implemented execeptfds, which
  * we use here.  So, undef this to use the normal Winsock version
  * for now
@@ -161,8 +161,8 @@ logChunkParseDetails(MotionConn *conn)
 	Assert(conn->pBuff != NULL);
 
 	pkt = (struct icpkthdr *)conn->pBuff;
-	
-	elog(LOG, "Interconnect parse details: pkt->len %d pkt->seq %d pkt->flags 0x%x conn->active %d conn->stopRequest %d pkt->icId %d my_icId %d", 
+
+	elog(LOG, "Interconnect parse details: pkt->len %d pkt->seq %d pkt->flags 0x%x conn->active %d conn->stopRequest %d pkt->icId %d my_icId %d",
 		 pkt->len, pkt->seq, pkt->flags, conn->stillActive, conn->stopRequested, pkt->icId, gp_interconnect_id);
 
 	elog(LOG, "Interconnect parse details continued: peer: srcpid %d dstpid %d recvslice %d sendslice %d srccontent %d dstcontent %d",
@@ -234,7 +234,7 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 									  tcSize, Gp_max_packet_size,
 									  TUPLE_CHUNK_HEADER_SIZE, bytesProcessed, conn->msgSize, conn->msgPos)));
 		}
-			
+
 
 		/* we only check for interrupts here when we don't have a guaranteed full-message */
 		if (Gp_interconnect_type == INTERCONNECT_TYPE_TCP)
@@ -375,7 +375,7 @@ SendTupleChunkToAMS(MotionLayerState *mlStates,
 	 * them.
 	 */
 	currItem = tcItem;
-			
+
 	for (currItem = tcItem; currItem != NULL; currItem = currItem->p_next)
 	{
 #ifdef AMS_VERBOSE_LOGGING
@@ -425,8 +425,8 @@ SendTupleChunkToAMS(MotionLayerState *mlStates,
  */
 void
 getTransportDirectBuffer(ChunkTransportState *transportStates,
-						 int16 motNodeID, 
-						 int16 targetRoute, 
+						 int16 motNodeID,
+						 int16 targetRoute,
 						 struct directTransportBuffer *b)
 {
 	ChunkTransportStateEntry *pEntry = NULL;
@@ -629,7 +629,7 @@ SetupSequenceServer(const char *host, int port)
 		{
 			elog(ERROR, "SetupSequenceServer: memory allocation failed.");
 		}
-		
+
 		Assert(port != 0);
 		savedSeqServerPort = port;
 	}
@@ -678,7 +678,12 @@ setupSeqServerConnection(char *seqServerHost, uint16 seqServerPort)
 	MemSet(&hint, 0, sizeof(hint));
 	hint.ai_socktype = SOCK_STREAM;
 	hint.ai_family = AF_UNSPEC;		/* Allow for IPv4 or IPv6  */
+#ifdef AI_NUMERICSERV
 	hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
+#else
+	hint.ai_flags = AI_NUMERICHOST;  /* Never do name resolution */
+#endif
+
 
 	snprintf(portNumberStr, sizeof(portNumberStr), "%d", seqServerPort);
 	service = portNumberStr;
@@ -707,7 +712,7 @@ setupSeqServerConnection(char *seqServerHost, uint16 seqServerPort)
 	}
 
 	pg_freeaddrinfo_all(hint.ai_family, addrs);
-	
+
 	/* make socket non-blocking BEFORE we connect. */
 	if (!pg_set_noblock(savedSeqServerFd))
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
@@ -775,7 +780,7 @@ forceEosToPeers(MotionLayerState       *mlStates,
 	{
 		elog(FATAL, "no transport-states.");
 	}
-	
+
 	transportStates->teardownActive = true;
 
 	transportStates->SendEos(mlStates, transportStates, motNodeID, get_eos_tuplechunklist());
@@ -863,7 +868,7 @@ createChunkTransportState(ChunkTransportState *transportStates,
 		MemSet(&transportStates->states[transportStates->size], 0, (motNodeID - transportStates->size) * sizeof(ChunkTransportStateEntry));
 		transportStates->size = motNodeID;
 	}
-	
+
 	pEntry = &transportStates->states[motNodeID - 1];
 
 	if (pEntry->valid)
@@ -885,7 +890,7 @@ createChunkTransportState(ChunkTransportState *transportStates,
     pEntry->outgoingPortRetryCount = 0;
 
 	pEntry->conns = palloc0(pEntry->numConns * sizeof(pEntry->conns[0]));
-	
+
 	for (i = 0; i < pEntry->numConns; i++)
     {
         MotionConn *conn = &pEntry->conns[i];
@@ -988,7 +993,7 @@ void adjustMasterRouting(Slice *recvSlice)
 	foreach(lc, recvSlice->primaryProcesses)
 	{
 		CdbProcess *cdbProc = (CdbProcess *)lfirst(lc);
-		
+
 		if (cdbProc->listenerAddr == NULL)
 			cdbProc->listenerAddr = pstrdup(MyProcPort->remote_host);
 	}

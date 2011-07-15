@@ -332,7 +332,11 @@ probeGetIpAddrAndOpenSocket(ProbeConnectionInfo *probeInfo)
 	MemSet(&hint, 0, sizeof(hint));
 	hint.ai_socktype = SOCK_STREAM; /* TCP */
 	hint.ai_family = AF_UNSPEC;	/* Allow for any family */
+#ifdef AI_NUMERICSERV
 	hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
+#else
+	hint.ai_flags = AI_NUMERICHOST;  /* Never do name resolution */
+#endif
 
 	snprintf(portNumberStr, sizeof(portNumberStr), "%d", probeInfo->port);
 	service = portNumberStr;
@@ -707,7 +711,7 @@ probeSegmentFromThread(void *arg)
 	worker_info = (threadWorkerInfo *) arg;
 
 	i = 0;
-	
+
 	for (;;)
 	{
 		CdbComponentDatabaseInfo *primary = NULL;

@@ -109,12 +109,12 @@ WSAPoll(
     IN ULONG fds,
     IN INT timeout
     );
-#endif 
+#endif
 
 #define poll WSAPoll
 
 /*
- * Postgres normally uses it's own custom select implementation 
+ * Postgres normally uses it's own custom select implementation
  * on Windows, but they haven't implemented execeptfds, which
  * we use here.  So, undef this to use the normal Winsock version
  * for now
@@ -136,7 +136,7 @@ getMotionConn(ChunkTransportStateEntry *pEntry, int iConn)
 }
 
 static ChunkTransportStateEntry *startOutgoingConnections(ChunkTransportState *transportStates,
-													 Slice *sendSlice, 
+													 Slice *sendSlice,
 													 int *pOutgoingCount);
 
 static void format_fd_set(StringInfo buf, int nfds, mpp_fd_set fds, char* pfx, char *sfx);
@@ -312,7 +312,7 @@ setupTCPListeningSocket(int backlog, int *listenerSocketFd, uint16 *listenerPort
     addrlen = sizeof(addr);
     if (getsockname(fd, (struct sockaddr *) &addr, &addrlen) < 0)
         goto error;
-	
+
     /* Give results to caller. */
     *listenerSocketFd = fd;
 
@@ -566,7 +566,7 @@ startOutgoingConnections(ChunkTransportState *transportStates,
 									   sendSlice,
 									   recvSlice,
 									   list_length(recvSlice->primaryProcesses));
-	
+
 	/*
 	 * Setup a MotionConn entry for each of our outbound connections.
      * Request a connection to each receiving backend's listening port.
@@ -649,7 +649,11 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
 	MemSet(&hint, 0, sizeof(hint));
 	hint.ai_socktype = SOCK_STREAM;
 	hint.ai_family = AF_UNSPEC;	/* Allow for IPv4 or IPv6  */
+#ifdef AI_NUMERICSERV
 	hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
+#else
+	hint.ai_flags = AI_NUMERICHOST;  /* Never do name resolution */
+#endif
 
 	snprintf(portNumberStr, sizeof(portNumberStr), "%d", cdbProc->listenerPort);
 	service = portNumberStr;
@@ -780,7 +784,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
         ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
         n = connect(conn->sockfd, addrs->ai_addr, addrs->ai_addrlen);
-	
+
         /* Non-blocking socket never connects immediately, but check anyway. */
         if (n == 0)
         {
@@ -788,7 +792,7 @@ setupOutgoingConnection(ChunkTransportState *transportStates, ChunkTransportStat
             pg_freeaddrinfo_all(hint.ai_family, addrs);
             return;
         }
-	
+
         /* Retry if a signal was received. */
         if (errno == EINTR)
             continue;
@@ -1144,7 +1148,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
      * sending slice's CdbProc list.
 	 */
 	newConn = getMotionConn(pEntry, iconn);
-	
+
     if (newConn->sockfd != -1 ||
         newConn->state != mcsNull)
 	{
@@ -1243,7 +1247,7 @@ acceptIncomingConnection(void)
     {                           /* loop until success or EWOULDBLOCK */
 	    MemSet(&remoteAddr, 0, sizeof(remoteAddr));
 	    addrsize = sizeof(remoteAddr);
-	    newsockfd = accept(TCP_listenerFd, (struct sockaddr *)&remoteAddr, &addrsize);	
+	    newsockfd = accept(TCP_listenerFd, (struct sockaddr *)&remoteAddr, &addrsize);
 	    if (newsockfd >= 0)
             break;
 
@@ -1377,7 +1381,7 @@ SetupTCPInterconnect(EState *estate)
 	}
 
 	estate->interconnect_context = palloc0(sizeof(ChunkTransportState));
-	
+
 	/* initialize state variables */
 	Assert(estate->interconnect_context->size == 0);
 	estate->interconnect_context->size = CTS_INITIAL_SIZE;
@@ -1507,7 +1511,7 @@ SetupTCPInterconnect(EState *estate)
         for (i = 0; i < n; i++)
 		{
 			index = i;
-			
+
 			conn = &sendingChunkTransportState->conns[index];
 
             /* Time to cancel incomplete connect() and retry? */
@@ -2211,9 +2215,9 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 			/*
 			 * inet_ntop isn't portable.
              * //inet_ntop(AF_INET6, &sin6->sin6_addr, buf, bufsize - 8);
-			 * 
+			 *
 			 * postgres has a standard routine for converting addresses to printable format,
-			 * which works for IPv6, IPv4, and Unix domain sockets.  I've changed this 
+			 * which works for IPv6, IPv4, and Unix domain sockets.  I've changed this
 			 * routine to use that, but I think the entire format_sockaddr routine could
 			 * be replaced with it.
 			 */
@@ -2251,7 +2255,7 @@ flushInterconnectListenerBacklog(void)
 		MPP_FD_SET(TCP_listenerFd, &rset);
 		timeout.tv_sec = 0;
 		timeout.tv_usec = 0;
-	
+
 		pendingConn = select(TCP_listenerFd + 1, (fd_set *)&rset, NULL, NULL, &timeout);
 		if (pendingConn > 0)
 		{
@@ -2432,7 +2436,7 @@ waitOnOutbound(ChunkTransportStateEntry *pEntry)
 				/* ready to read. */
 				count = recv(conn->sockfd, &buf, sizeof(buf), 0);
 				if (count == 0)			/* done ! */
-				{					
+				{
 					MPP_FD_CLR(conn->sockfd, &waitset);
 					/* we may have finished */
 					conn_count--;
