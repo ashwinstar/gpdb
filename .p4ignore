@@ -15,11 +15,13 @@ krb5-1.6.2
 curl
 curl-7.17.1
 ext
-Linux GCC
-Linux\ GCC
-
 greenplum-clients-main-build-dev-SOL-x86_64.tar.gz
 greenplum-loaders-main-build-dev-SOL-x86_64.bin
 greenplum-loaders-main-build-dev-SOL-x86_64.tar.gz
 env.sh
 greenplum-clients-main-build-dev-SOL-x86_64.bin
+Debug
+Release
+
+Linux GCC
+Linux\ GCC
