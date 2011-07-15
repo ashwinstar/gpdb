@@ -246,6 +246,14 @@ AcquireRewriteLocks(Query *parsetree)
 		}
 	}
 
+	/* Recurse into subqueries in WITH */
+	foreach(l, parsetree->cteList)
+	{
+		CommonTableExpr *cte = (CommonTableExpr *) lfirst(l);
+
+		AcquireRewriteLocks((Query *) cte->ctequery);
+	}
+
 	/*
 	 * Recurse into sublink subqueries, too.  But we already did the ones in
 	 * the rtable.
@@ -1415,6 +1423,16 @@ fireRIRrules(Query *parsetree, List *activeRIRs)
 		}
 
 		heap_close(rel, NoLock);
+	}
+
+	/* Recurse into subqueries in WITH */
+	ListCell *lc;
+	foreach(lc, parsetree->cteList)
+	{
+		CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
+
+		cte->ctequery = (Node *)
+			fireRIRrules((Query *) cte->ctequery, activeRIRs);
 	}
 
 	/*

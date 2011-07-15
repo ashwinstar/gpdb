@@ -1787,6 +1787,12 @@ _copyRangeTblEntry(RangeTblEntry *from)
 	COPY_SCALAR_FIELD(requiredPerms);
 	COPY_SCALAR_FIELD(checkAsUser);
 
+	COPY_STRING_FIELD(ctename);
+	COPY_SCALAR_FIELD(ctelevelsup);
+	COPY_SCALAR_FIELD(self_reference);
+	COPY_NODE_FIELD(ctecoltypes);
+	COPY_NODE_FIELD(ctecoltypmods);
+
 	COPY_SCALAR_FIELD(forceDistRandom);
     COPY_NODE_FIELD(pseudocols);                /*CDB*/
 
@@ -1934,6 +1940,36 @@ _copyRowMarkClause(RowMarkClause *from)
 	COPY_SCALAR_FIELD(rti);
 	COPY_SCALAR_FIELD(forUpdate);
 	COPY_SCALAR_FIELD(noWait);
+
+	return newnode;
+}
+
+static WithClause *
+_copyWithClause(WithClause *from)
+{
+	WithClause *newnode = makeNode(WithClause);
+	
+	COPY_NODE_FIELD(ctes);
+	COPY_SCALAR_FIELD(recursive);
+	COPY_SCALAR_FIELD(location);
+	
+	return newnode;
+}
+
+static CommonTableExpr *
+_copyCommonTableExpr(CommonTableExpr *from)
+{
+	CommonTableExpr *newnode = makeNode(CommonTableExpr);
+	
+	COPY_STRING_FIELD(ctename);
+	COPY_NODE_FIELD(aliascolnames);
+	COPY_NODE_FIELD(ctequery);
+	COPY_SCALAR_FIELD(location);
+	COPY_SCALAR_FIELD(cterecursive);
+	COPY_SCALAR_FIELD(cterefcount);
+	COPY_NODE_FIELD(ctecolnames);
+	COPY_NODE_FIELD(ctecoltypes);
+	COPY_NODE_FIELD(ctecoltypmods);
 
 	return newnode;
 }
@@ -2213,6 +2249,9 @@ _copyQuery(Query *from)
 	COPY_NODE_FIELD(windowClause);
 	COPY_NODE_FIELD(distinctClause);
 	COPY_NODE_FIELD(sortClause);
+	COPY_NODE_FIELD(cteList);
+	COPY_SCALAR_FIELD(hasRecursive);
+	COPY_SCALAR_FIELD(hasModifyingCTE);
 	COPY_NODE_FIELD(limitOffset);
 	COPY_NODE_FIELD(limitCount);
 	COPY_NODE_FIELD(rowMarks);
@@ -4520,6 +4559,12 @@ copyObject(void *from)
 			break;
 		case T_RowMarkClause:
 			retval = _copyRowMarkClause(from);
+			break;
+		case T_WithClause:
+			retval = _copyWithClause(from);
+			break;
+		case T_CommonTableExpr:
+			retval = _copyCommonTableExpr(from);
 			break;
 		case T_FkConstraint:
 			retval = _copyFkConstraint(from);

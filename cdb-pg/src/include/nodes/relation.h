@@ -107,6 +107,45 @@ typedef struct PlannerGlobal
 	
 } PlannerGlobal;
 
+/*
+ * CtePlanInfo
+ *    Information for subplans that are associated with a CTE.
+ */
+typedef struct CtePlanInfo
+{
+	/*
+	 * List of subplans that are associated with a CTE.
+	 * If a CTE is referenced once, this list contains one element.
+	 * If a CTE is referenced multiple times, this list contains multiple plans,
+	 * each of which has ShareNode on top.
+	 */
+	List *subplans;
+
+	/*
+	 * The rtable corresponding to the subplan.
+	 */
+	List *subrtable;
+
+	/*
+	 * The pathkeys corresponding to the subplan.
+	 */
+	List *pathkeys;
+
+	/*
+	 * The next plan id in subplans that should be used (starting with 0).
+	 */
+	int nextPlanId;
+
+	/*
+	 * Number of InitPlans.
+	 * Note that InitPlans can not use ShareNode with the main plan. We
+	 * generate a separate subplan for InitPlans. This counter keeps track
+	 * of number of InitPlans in the query. The 'subplans' above does not
+	 * include these plans.
+	 */
+	int numInitPlans;
+} CtePlanInfo;
+
 /*----------
  * PlannerInfo
  *		Per-query information for planning/optimization
@@ -168,6 +207,8 @@ typedef struct PlannerInfo
 	List	   *result_aosegnos;
 	
 	List	   *init_plans;		/* init SubPlans for query */
+
+	List       *list_cteplaninfo; /* list of CtePlannerInfo, one for each CTE */
 
 	List	   *equi_key_list;	/* list of lists of equijoined PathKeyItems */
 

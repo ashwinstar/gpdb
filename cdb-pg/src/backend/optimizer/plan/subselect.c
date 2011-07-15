@@ -418,6 +418,14 @@ make_subplan(PlannerInfo *root, Query *orig_subquery, SubLinkType subLinkType,
 		config->enable_seqscan = true;
 	}
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		config->is_initplan = !IsSubqueryCorrelated(subquery) &&
+			(subLinkType == ROWCOMPARE_SUBLINK ||
+			 subLinkType == ARRAY_SUBLINK ||
+			 subLinkType == EXPR_SUBLINK ||
+			 subLinkType == EXISTS_SUBLINK);
+	}
 
 	PlannerInfo *subroot = NULL;
 
@@ -564,6 +572,7 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 		 * plan's expression tree; it is not kept in the initplan node.
 		 */
 	}
+	
 	else
 	{
 		splan->is_multirow = true; /* CDB: take note. */
@@ -607,7 +616,7 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 	root->glob->subrtables = lappend(root->glob->subrtables, rtable);
 	
 	splan->plan_id = list_length(root->glob->subplans); /* instead of old PlannerPlanId */
-	
+
 	if (splan->is_initplan)
 		root->init_plans = lappend(root->init_plans, splan);
 	
@@ -646,7 +655,7 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable,
 
 	return result;
 }
-	
+
 /*
  * convert_testexpr: convert the testexpr given by the parser into
  * actually executable form.  This entails replacing PARAM_SUBLINK Params

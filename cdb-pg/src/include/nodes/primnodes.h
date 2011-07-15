@@ -561,9 +561,6 @@ typedef struct BoolExpr
  *
  * In EXISTS, EXPR, and ARRAY SubLinks, testexpr and operName are unused and
  * are always null.
- *
- * The CTE_SUBLINK case never occurs in actual SubLink nodes, but it is used
- * in SubPlans generated for WITH subqueries.
  */
 typedef enum SubLinkType
 {

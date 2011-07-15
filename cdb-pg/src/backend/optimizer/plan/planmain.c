@@ -505,6 +505,8 @@ PlannerConfig *DefaultPlannerConfig(void)
 
 	c1->gp_enable_direct_dispatch = gp_enable_direct_dispatch;
 
+	c1->is_initplan = false;
+
 	return c1;
 }
 

@@ -18,6 +18,7 @@
 
 #include "catalog/pg_type.h"                /* INT4OID, INT8OID */
 #include "nodes/makefuncs.h"
+#include "nodes/relation.h"
 #ifdef OPTIMIZER_DEBUG
 #include "nodes/print.h"
 #endif
@@ -29,6 +30,7 @@
 #include "optimizer/planner.h"
 #include "optimizer/prep.h"
 #include "optimizer/var.h"
+#include "optimizer/planshare.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
 #include "parser/parsetree.h"
@@ -58,6 +60,7 @@ static void set_function_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  RangeTblEntry *rte);
 static void set_values_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					RangeTblEntry *rte);
+static void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte);
 static RelOptInfo *make_rel_from_joinlist(PlannerInfo *root, List *joinlist);
 static RelOptInfo *make_one_rel_by_joins(PlannerInfo *root, int levels_needed,
 										 List *initial_rels, bool fallback);
@@ -218,6 +221,11 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti)
 		/* Values list --- generate a separate plan for it */
 		set_values_pathlist(root, rel, rte);
 	}
+	else if (rel->rtekind == RTE_CTE)
+	{
+		set_cte_pathlist(root, rel, rte);
+	}
+	
 	else
 	{
 		/* Plain relation */
@@ -733,6 +741,140 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(root, rel);
 }
+
+/*
+ * set_cte_pathlist
+ *      Buld the (single) access path for a CTE RTE.
+ */
+static
+void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	/* Find the referenced CTE based on the given range table entry */
+	Index levelsup = rte->ctelevelsup;
+	PlannerInfo *cteroot = root;
+	while (levelsup > 0)
+	{
+		cteroot = cteroot->parent_root;
+		Assert(cteroot != NULL);
+		levelsup--;
+	}
+
+	ListCell *lc;
+	CommonTableExpr *cte = NULL;
+	int planinfo_id = 0;
+	foreach(lc, cteroot->parse->cteList)
+	{
+		cte = (CommonTableExpr *) lfirst(lc);
+
+		if (strcmp(cte->ctename, rte->ctename) == 0)
+			break;
+		planinfo_id++;
+	}
+
+	Assert(lc != NULL);
+	Assert(cte != NULL);
+
+	double tuple_fraction = 0.0;
+	Assert(IsA(cte->ctequery, Query));
+
+	/*
+	 * Determine whether we need to generate a new subplan for this CTE.
+	 *
+	 * There are the following cases:
+	 *   (1) If this subquery can be pulled up as an InitPlan, we will
+	 *       generate a new subplan. In InitPlan case, the subplan can
+	 *       not be shared with the main query or other InitPlans. We
+	 *       do not store this subplan in cteplaninfo.
+	 *   (2) If we never generate a subplan for this CTE, then we generate
+	 *       one. If the reference count for this CTE is greater than 1
+	 *       (excluding ones used in InitPlans), we create multiple subplans,
+	 *       each of which has a SharedNode on top. We store these subplans
+	 *       in cteplaninfo so that they can be used later.
+	 */
+	Assert(list_length(cteroot->list_cteplaninfo) > planinfo_id);
+	CtePlanInfo *cteplaninfo = list_nth(cteroot->list_cteplaninfo, planinfo_id);
+
+	Plan *subplan = NULL;
+	List *subrtable = NULL;
+	List *pathkeys = NULL;
+	PlannerInfo *subroot = NULL;
+
+	/* If this is an initplan, we create a new subplan for this CTE. */
+	if (root->config->is_initplan)
+	{
+		PlannerConfig *config = CopyPlannerConfig(root->config);
+		subplan = subquery_planner(cteroot->glob, (Query *)cte->ctequery, cteroot,
+								   tuple_fraction, &subroot, config);
+		cteplaninfo->numInitPlans++;
+
+		subrtable = subroot->parse->rtable;
+		pathkeys = subroot->query_pathkeys;
+
+		/*
+		 * Do not store the subplan in cteplaninfo, since we will not share
+		 * this plan.
+		 */
+	}
+	
+	/*
+	 * If we never generate a subplan for this CTE, generate one here.
+	 * This subplan will not be used by InitPlans, so that they can be
+	 * shared if this CTE is referenced multiple times (excluding in InitPlans).
+	 * We also generate all shared plans here.
+	 */
+	else if (cteplaninfo->subplans == NULL)
+	{
+		PlannerConfig *config = CopyPlannerConfig(root->config);
+		subplan = subquery_planner(cteroot->glob, (Query *)cte->ctequery, cteroot,
+								   tuple_fraction, &subroot, config);
+
+		Assert(cte->cterefcount - cteplaninfo->numInitPlans >= 1);
+		List *subplans = share_plan(cteroot, subplan,
+									cte->cterefcount - cteplaninfo->numInitPlans);
+		
+		cteplaninfo->subplans = subplans;
+		cteplaninfo->subrtable = subroot->parse->rtable;
+		cteplaninfo->pathkeys = subroot->query_pathkeys;
+		cteplaninfo->nextPlanId = 0;
+		
+		subplan = list_nth(cteplaninfo->subplans, cteplaninfo->nextPlanId);
+		cteplaninfo->nextPlanId++;
+
+		subrtable = subroot->parse->rtable;
+		pathkeys = subroot->query_pathkeys;
+	}
+
+	/*
+	 * The subplan has been generated in advance (see the above). We simply find
+	 * the subplan in the list stored in cteplaninfo.
+	 */
+	else
+	{
+		Assert(!root->config->is_initplan && cteplaninfo->subplans != NULL);
+		Assert(cteplaninfo->nextPlanId < list_length(cteplaninfo->subplans));
+		subplan = list_nth(cteplaninfo->subplans, cteplaninfo->nextPlanId);
+		subrtable = cteplaninfo->subrtable;
+		pathkeys = cteplaninfo->pathkeys;
+		
+		cteplaninfo->nextPlanId++;
+	}
+		
+	rel->subplan = subplan;
+	rel->subrtable = subrtable;
+
+	/* Mark rel with estimated output rows, width, etc */
+	set_cte_size_estimates(root, rel, rel->subplan);
+
+	/* Convert subquery pathkeys to outer representation */
+	pathkeys = convert_subquery_pathkeys(root, rel, pathkeys);
+
+	/* Generate appropriate path */
+	add_path(root, rel, create_ctescan_path(root, rel, pathkeys));
+
+	/* Select cheapest path (pretty easy in this case...) */
+	set_cheapest(root, rel);
+}
+
 
 /*
  * set_function_pathlist

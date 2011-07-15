@@ -3728,6 +3728,21 @@ expression_tree_mutator(Node *node,
 		case T_Query:
 			/* Do nothing with a sub-Query, per discussion above */
 			return node;
+		case T_CommonTableExpr:
+			{
+				CommonTableExpr *cte = (CommonTableExpr *) node;
+				CommonTableExpr *newnode;
+
+				FLATCOPY(newnode, cte, CommonTableExpr);
+
+				/*
+				 * Also invoke the mutator on the CTE's Query node, so it can
+				 * recurse into the sub-query if it wants to.
+				 */
+				MUTATE(newnode->ctequery, cte->ctequery, Node *);
+				return (Node *) newnode;
+			}
+			break;
 		case T_List:
 			{
 				/*
@@ -3859,6 +3874,10 @@ query_tree_mutator(Query *query,
 	MUTATE(query->windowClause, query->windowClause, List *);
 	MUTATE(query->limitOffset, query->limitOffset, Node *);
 	MUTATE(query->limitCount, query->limitCount, Node *);
+	if (!(flags & QTW_IGNORE_CTE_SUBQUERIES))
+		MUTATE(query->cteList, query->cteList, List *);
+	else	/* else copy CTE list as-is */
+		query->cteList = copyObject(query->cteList);
 	query->rtable = range_table_mutator(query->rtable,
 										mutator, context, flags);
 	return query;
@@ -3889,6 +3908,7 @@ range_table_mutator(List *rtable,
 			case RTE_RELATION:
 			case RTE_SPECIAL:
             case RTE_VOID:
+			case RTE_CTE:
 				/* we don't bother to copy eref, aliases, etc; OK? */
 				break;
 			case RTE_SUBQUERY:

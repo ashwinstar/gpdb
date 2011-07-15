@@ -663,7 +663,15 @@ plan_tree_mutator(Node *node,
 					case RTE_SUBQUERY:	/* subquery in FROM */
 						newrte->subquery = copyObject(rte->subquery);
 						break;
-
+						
+					case RTE_CTE:
+						newrte->ctename = pstrdup(rte->ctename);
+						newrte->ctelevelsup = rte->ctelevelsup;
+						newrte->self_reference = rte->self_reference;
+						MUTATE(newrte->ctecoltypes, rte->ctecoltypes, List *);
+						MUTATE(newrte->ctecoltypmods, rte->ctecoltypmods, List *);
+						break;
+						
 					case RTE_JOIN:		/* join */
 						newrte->joinaliasvars = copyObject(rte->joinaliasvars);
 						break;

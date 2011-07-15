@@ -360,6 +360,28 @@ _readQuery(void)
 	READ_NODE_FIELD(windowClause);
 	READ_NODE_FIELD(distinctClause);
 	READ_NODE_FIELD(sortClause);
+
+	if (!pg_strtok_peek_fldname("cteList"))
+	{
+		/*
+		 * If the Query node does not contain cteList, it means that this query
+		 * does not contain WITH clause. We simple initialize relevant variables
+		 * here.
+		 *
+		 * Note that if the Query node does not contain cteList, it should not
+		 * contain hasRecursive or hasModifyingCTE.
+		 */
+		local_node->cteList = NULL;
+		local_node->hasRecursive = false;
+		local_node->hasModifyingCTE = false;
+	}
+	else
+	{
+		READ_NODE_FIELD(cteList);
+		READ_BOOL_FIELD(hasRecursive);
+		READ_BOOL_FIELD(hasModifyingCTE);
+	}
+	
 	READ_NODE_FIELD(limitOffset);
 	READ_NODE_FIELD(limitCount);
 	READ_NODE_FIELD(rowMarks);
@@ -578,6 +600,36 @@ _readRowMarkClause(void)
 	READ_UINT_FIELD(rti);
 	READ_BOOL_FIELD(forUpdate);
 	READ_BOOL_FIELD(noWait);
+
+	READ_DONE();
+}
+
+static WithClause *
+_readWithClause(void)
+{
+	READ_LOCALS(WithClause);
+	
+	READ_NODE_FIELD(ctes);
+	READ_BOOL_FIELD(recursive);
+	READ_INT_FIELD(location);
+	
+	READ_DONE();
+}
+
+static CommonTableExpr *
+_readCommonTableExpr(void)
+{
+	READ_LOCALS(CommonTableExpr);
+	
+	READ_STRING_FIELD(ctename);
+	READ_NODE_FIELD(aliascolnames);
+	READ_NODE_FIELD(ctequery);
+	READ_INT_FIELD(location);
+	READ_BOOL_FIELD(cterecursive);
+	READ_INT_FIELD(cterefcount);
+	READ_NODE_FIELD(ctecolnames);
+	READ_NODE_FIELD(ctecoltypes);
+	READ_NODE_FIELD(ctecoltypmods);
 
 	READ_DONE();
 }
@@ -1949,6 +2001,13 @@ _readRangeTblEntry(void)
 		case RTE_SUBQUERY:
 			READ_NODE_FIELD(subquery);
 			break;
+		case RTE_CTE:
+			READ_STRING_FIELD(ctename);
+			READ_INT_FIELD(ctelevelsup);
+			READ_BOOL_FIELD(self_reference);
+			READ_NODE_FIELD(ctecoltypes);
+			READ_NODE_FIELD(ctecoltypmods);
+			break;
 		case RTE_FUNCTION:
 			READ_NODE_FIELD(funcexpr);
 			READ_NODE_FIELD(funccoltypes);
@@ -2841,6 +2900,7 @@ static ParseNodeInfo infoAr[] =
 	{"COERCETODOMAINVALUE", (ReadFn)_readCoerceToDomainValue},
 	{"COLUMNDEF", (ReadFn)_readColumnDef},
 	{"COLUMNREF", (ReadFn)_readColumnRef},
+	{"COMMONTABLEEXPR", (ReadFn)_readCommonTableExpr},
 	{"COMPTYPESTMT", (ReadFn)_readCompositeTypeStmt},
 	{"CONST", (ReadFn)_readConst},
 	{"CONSTRAINT", (ReadFn)_readConstraint},
@@ -2947,6 +3007,7 @@ static ParseNodeInfo infoAr[] =
 	{"WINDOWREF", (ReadFn)_readWindowRef},
 	{"WINDOWSPEC", (ReadFn)_readWindowSpec},
 	{"WINDOWSPECPARSE", (ReadFn)_readWindowSpecParse},
+	{"WITHCLAUSE", (ReadFn)_readWithClause},
 };
 
 /*

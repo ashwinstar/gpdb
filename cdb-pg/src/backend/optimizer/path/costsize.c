@@ -1184,6 +1184,25 @@ cost_valuesscan(Path *path, PlannerInfo *root, RelOptInfo *baserel)
 }
 
 /*
+ * cost_ctescan
+ *	  Determines and returns the cost of scanning a CTE RTE.
+ */
+void
+cost_ctescan(Path *path, PlannerInfo *root, RelOptInfo *baserel)
+{
+	/* Should only be applied to base relations that are CTEs */
+	Assert(baserel->relid > 0);
+	Assert(baserel->rtekind == RTE_CTE);
+
+	/*
+	 * For now, there should be no extra cost of scanning a CTE RTE,
+	 * besides the cost of evaluating the subplan.
+	 */
+	path->startup_cost = baserel->subplan->startup_cost;
+	path->total_cost = baserel->subplan->total_cost;
+}
+
+/*
  * cost_sort
  *	  Determines and returns the cost of sorting a relation, including
  *	  the cost of reading the input data.
@@ -2721,6 +2740,33 @@ set_values_size_estimates(PlannerInfo *root, RelOptInfo *rel)
 	set_baserel_size_estimates(root, rel);
 }
 
+/*
+ * set_cte_size_estimates
+ *		Set the size estimates for a base relation that is a CTE reference.
+ *
+ * The rel's targetlist and restrictinfo list must have been constructed
+ * already, and we need the completed plan for the CTE (if a regular CTE)
+ * or the non-recursive term (if a self-reference).
+ *
+ * We set the same fields as set_baserel_size_estimates.
+ */
+void
+set_cte_size_estimates(PlannerInfo *root, RelOptInfo *rel, Plan *cteplan)
+{
+	Assert(rel->relid > 0);
+
+#ifdef USE_ASSERT_CHECKING
+	/* Should only be applied to base relations that are CTE references */
+	RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
+	Assert(rte->rtekind == RTE_CTE);
+#endif
+
+	/* Set the number of tuples to the CTE plan's output estimate */
+	rel->tuples = cteplan->plan_rows;
+
+	/* Now estimate number of output rows, etc */
+	set_baserel_size_estimates(root, rel);
+}
 
 /*
  * set_rel_width

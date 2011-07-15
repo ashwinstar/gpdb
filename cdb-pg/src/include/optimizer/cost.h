@@ -88,6 +88,7 @@ extern void cost_functionscan(Path *path, PlannerInfo *root,
 				  RelOptInfo *baserel);
 extern void cost_valuesscan(Path *path, PlannerInfo *root,
 				RelOptInfo *baserel);
+extern void cost_ctescan(Path *path, PlannerInfo *root, RelOptInfo *baserel);
 extern void cost_sort(Path *path, PlannerInfo *root,
 		  List *pathkeys, Cost input_cost, double tuples, int width);
 extern void cost_material(Path *path, PlannerInfo *root,
@@ -120,6 +121,7 @@ extern void set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 extern void set_function_size_estimates(PlannerInfo *root, RelOptInfo *rel);
 extern void set_rel_width(PlannerInfo *root, RelOptInfo *rel);
 extern void set_values_size_estimates(PlannerInfo *root, RelOptInfo *rel);
+extern void set_cte_size_estimates(PlannerInfo *root, RelOptInfo *rel, Plan *cteplan);
 
 /* Additional costsize.c prototypes for CDB incremental cost functions. */
 extern Cost incremental_hashjoin_cost(double rows, 

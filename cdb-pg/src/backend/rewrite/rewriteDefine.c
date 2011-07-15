@@ -663,6 +663,14 @@ setRuleCheckAsUser_Query(Query *qry, Oid userid)
 			rte->checkAsUser = userid;
 	}
 
+	/* Recurse into subquery-in-WITH */
+	foreach(l, qry->cteList)
+	{
+		CommonTableExpr *cte = (CommonTableExpr *) lfirst(l);
+
+		setRuleCheckAsUser_Query((Query *) cte->ctequery, userid);
+	}
+
 	/* If there are sublinks, search for them and process their RTEs */
 	/* ignore subqueries in rtable because we already processed them */
 	if (qry->hasSubLinks)

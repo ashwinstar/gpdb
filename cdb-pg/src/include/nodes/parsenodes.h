@@ -156,6 +156,10 @@ typedef struct Query
 		List	   *distinctClause; /* a list of SortGroupClause's */
 		
 		List	   *sortClause;		/* a list of SortGroupClause's */
+
+		List	   *cteList; /* a list of CommonTableExprs in WITH clause */
+		bool 	   hasRecursive; /* Whether this query has a recursive WITH clause */
+		bool 	   hasModifyingCTE; /* has INSERT/UPDATE/DELETE in WITH clause */
 		
 		Node	   *limitOffset;	/* # of result tuples to skip (int8 expr) */
 		Node	   *limitCount;		/* # of result tuples to return (int8 expr) */
@@ -545,11 +549,11 @@ typedef struct LockingClause
  *	  A range table is a List of RangeTblEntry nodes.
  *
  *	  A range table entry may represent a plain relation, a sub-select in
- *	  FROM, or the result of a JOIN clause.  (Only explicit JOIN syntax
- *	  produces an RTE, not the implicit join resulting from multiple FROM
- *	  items.  This is because we only need the RTE to deal with SQL features
- *	  like outer joins and join-output-column aliasing.)  Other special
- *	  RTE types also exist, as indicated by RTEKind.
+ *	  FROM, a common table expression, or the result of a JOIN clause. 
+ *    (Only explicit JOIN syntax produces an RTE, not the implicit join
+ *    resulting from multiple FROM items.  This is because we only need
+ *    the RTE to deal with SQL features like outer joins and join-output-column
+ *    aliasing.)  Other special RTE types also exist, as indicated by RTEKind.
  *
  *	  alias is an Alias node representing the AS alias-clause attached to the
  *	  FROM expression, or NULL if no clause.
@@ -609,6 +613,7 @@ typedef enum RTEKind
 	RTE_FUNCTION,				/* function in FROM */
 	RTE_VALUES,					/* VALUES (<exprlist>), (<exprlist>), ... */
     RTE_VOID,                   /* CDB: deleted RTE */
+	RTE_CTE,                    /* CommonTableExpr in FROM */
 } RTEKind;
 
 typedef struct RangeTblEntry
@@ -674,6 +679,15 @@ typedef struct RangeTblEntry
 	 * pseudo-function was specified as modifier in FROM-clause
 	 */
 	bool		forceDistRandom;
+
+	/*
+	 * Fields valid for a CTE RTE (else NULL/zero):
+	 */
+	char	   *ctename;		/* name of the WITH list item */
+	Index		ctelevelsup;	/* number of query levels up */
+	bool		self_reference; /* is this a recursive self-reference? */
+	List	   *ctecoltypes;	/* OID list of column type OIDs */
+	List	   *ctecoltypmods;	/* integer list of column typmods */
 
 	/*
 	 * Fields valid in all RTEs:
@@ -821,6 +835,12 @@ typedef struct CommonTableExpr
 	List	   *ctecoltypmods;	/* integer list of output column typmods */
 } CommonTableExpr;
 
+#define GetCTETargetList(cte) \
+	(AssertMacro((cte)->ctequery != NULL && IsA((cte)->ctequery, Query)), \
+	 ((Query *) (cte)->ctequery)->commandType == CMD_SELECT ? \
+	 ((Query *) (cte)->ctequery)->targetList : \
+	 ((Query *) (cte)->ctequery)->returningList)
+
 /*****************************************************************************
  *		Optimizable Statements
  *****************************************************************************/
@@ -906,6 +926,8 @@ typedef struct SelectStmt
 	List	   *groupClause;	/* GROUP BY clauses */
 	Node	   *havingClause;	/* HAVING conditional-expression */
 	List	   *windowClause;	/* window specification clauses */
+
+	WithClause *withClause; /* with clause */
 
 	/*
 	 * In a "leaf" node representing a VALUES list, the above fields are all

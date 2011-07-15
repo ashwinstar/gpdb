@@ -136,6 +136,7 @@ test: matrix
 test: gpdtm_plpgsql
 ignore: gp_portal_error
 test: notin
+test: with_clause
 test: toast
 test: mapred
 test: gpparams

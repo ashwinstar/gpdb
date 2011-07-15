@@ -57,6 +57,7 @@
 #include "parser/parse_target.h"
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
+#include "parser/parse_cte.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
 #include "utils/acl.h"
@@ -8743,6 +8744,14 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 
 	qry->commandType = CMD_SELECT;
 
+	/* process the WITH clause */
+	if (stmt->withClause != NULL)
+	{
+		qry->hasRecursive = stmt->withClause->recursive;
+		qry->cteList = transformWithClause(pstate, stmt->withClause);
+		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
+	}
+
 	/* make FOR UPDATE/FOR SHARE info available to addRangeTableEntry */
 	pstate->p_locking_clause = stmt->lockingClause;
 
@@ -8896,6 +8905,14 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 	Assert(stmt->groupClause == NIL);
 	Assert(stmt->havingClause == NULL);
 	Assert(stmt->op == SETOP_NONE);
+
+	/* process the WITH clause independently of all else */
+	if (stmt->withClause != NULL)
+	{
+		qry->hasRecursive = stmt->withClause->recursive;
+		qry->cteList = transformWithClause(pstate, stmt->withClause);
+		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
+	}
 
 	/*
 	 * For each row of VALUES, transform the raw expressions and gather type
@@ -9111,6 +9128,14 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	int			tllen;
 
 	qry->commandType = CMD_SELECT;
+
+	/* process the WITH clause independently of all else */
+	if (stmt->withClause != NULL)
+	{
+		qry->hasRecursive = stmt->withClause->recursive;
+		qry->cteList = transformWithClause(pstate, stmt->withClause);
+		qry->hasModifyingCTE = pstate->p_hasModifyingCTE;
+	}
 
 	/*
 	 * Find leftmost leaf SelectStmt; extract the one-time-only items from it

@@ -28,6 +28,7 @@
 #include "optimizer/cost.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
+#include "optimizer/planshare.h"
 #include "optimizer/predtest.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/tlist.h"
@@ -88,6 +89,8 @@ static TidScan *create_tidscan_plan(CreatePlanContext *ctx, TidPath *best_path,
 					List *tlist, List *scan_clauses);
 static SubqueryScan *create_subqueryscan_plan(CreatePlanContext *ctx, Path *best_path,
 						 List *tlist, List *scan_clauses);
+static SubqueryScan *create_ctescan_plan(CreatePlanContext *ctx, Path *best_path,
+										 List *tlist, List *scan_clauses);
 static FunctionScan *create_functionscan_plan(CreatePlanContext *ctx, Path *best_path,
 						 List *tlist, List *scan_clauses);
 static ValuesScan *create_valuesscan_plan(CreatePlanContext *ctx, Path *best_path,
@@ -221,6 +224,7 @@ create_subplan(CreatePlanContext *ctx, Path *best_path)
 		case T_SubqueryScan:
 		case T_FunctionScan:
         case T_ValuesScan:
+		case T_CteScan:
 			plan = create_scan_plan(ctx, best_path);
 			break;
 		case T_HashJoin:
@@ -293,7 +297,7 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 	}
 	else
 		tlist = build_relation_tlist(rel);
-
+	
 	/*
 	 * Extract the relevant restriction clauses from the parent relation. The
 	 * executor must apply all these restrictions during the scan, except for
@@ -380,6 +384,14 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 												   scan_clauses);
 			break;
 
+		case T_CteScan:
+			plan = (Plan *) create_ctescan_plan(ctx,
+												best_path,
+												tlist,
+												scan_clauses);
+			
+			break;
+
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) best_path->pathtype);
@@ -448,7 +460,8 @@ use_physical_tlist(CreatePlanContext *ctx, RelOptInfo *rel)
 	if (rel->rtekind != RTE_RELATION &&
 		rel->rtekind != RTE_SUBQUERY &&
 		rel->rtekind != RTE_FUNCTION &&
-		rel->rtekind != RTE_VALUES)
+		rel->rtekind != RTE_VALUES &&
+		rel->rtekind != RTE_CTE)
 		return false;
 
 	/*
@@ -2369,6 +2382,39 @@ create_subqueryscan_plan(CreatePlanContext *ctx, Path *best_path,
 	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
 
 	return scan_plan;
+}
+
+/*
+ * create_ctescan_plan
+ *   Returns a ctescan plan for the base relatioon scanned by 'best_path'
+ *   with restriction clauses 'scan_clauses' and targetlist 'tlist'.
+ */
+static SubqueryScan *
+create_ctescan_plan(CreatePlanContext *ctx, Path *best_path,
+					List *tlist, List *scan_clauses)
+{
+	Assert(best_path->parent->rtekind == RTE_CTE);
+
+	Index scan_relid = best_path->parent->relid;
+
+	Assert(scan_relid > 0);
+	
+	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
+	scan_clauses = extract_actual_clauses(scan_clauses, false);
+
+	/* Sort clauses into best execution order */
+	scan_clauses = order_qual_clauses(ctx->root, scan_clauses);
+
+	SubqueryScan *scan_plan = make_subqueryscan(tlist,
+												scan_clauses,
+												scan_relid,
+												best_path->parent->subplan,
+												best_path->parent->subrtable);
+
+	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
+
+	return scan_plan;
+	
 }
 
 /*

@@ -303,6 +303,12 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	subroot->in_info_list = NIL;
 	subroot->append_rel_list = NIL;
 
+	subroot->list_cteplaninfo = NIL;
+	if (subroot->parse->cteList != NIL)
+	{
+		subroot->list_cteplaninfo = init_list_cteplaninfo(list_length(subroot->parse->cteList));
+	}
+
     /* CDB: Stash subquery jointree relids before flattening subqueries. */
     subroot->currlevel_relids = get_relids_in_jointree((Node *)subquery->jointree);
     
@@ -563,7 +569,7 @@ is_simple_subquery(Query *subquery)
 
 	/*
 	 * Can't pull up a subquery involving grouping, aggregation, windowing,
-	 * sorting, or limiting.
+	 * sorting, limiting, or WITH.
 	 */
 	if (subquery->hasAggs ||
 	    subquery->hasWindFuncs ||
@@ -573,7 +579,8 @@ is_simple_subquery(Query *subquery)
 		subquery->sortClause ||
 		subquery->distinctClause ||
 		subquery->limitOffset ||
-		subquery->limitCount)
+		subquery->limitCount ||
+		subquery->cteList)
 		return false;
 
 	/*
@@ -1214,4 +1221,23 @@ find_jointree_node_for_rel(Node *jtnode, int relid)
 		elog(ERROR, "unrecognized node type: %d",
 			 (int) nodeTag(jtnode));
 	return NULL;
+}
+
+/*
+ * init_list_cteplaninfo
+ *   Create a list of CtePlanInfos of size 'numCtes', and initialize each CtePlanInfo.
+ */
+List *
+init_list_cteplaninfo(int numCtes)
+{
+	List *list_cteplaninfo = NULL;
+	
+	for (int cteNo = 0; cteNo < numCtes; cteNo++)
+	{
+		CtePlanInfo *ctePlanInfo = palloc0(sizeof(CtePlanInfo));
+		list_cteplaninfo = lappend(list_cteplaninfo, ctePlanInfo);
+	}
+
+	return list_cteplaninfo;
+	
 }

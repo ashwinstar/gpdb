@@ -230,6 +230,7 @@ pathnode_walk_kids(Path            *path,
             case T_SubqueryScan:
             case T_FunctionScan:
             case T_ValuesScan:
+            case T_CteScan:
                     return CdbVisit_Walk;
             case T_BitmapHeapScan:
                     v = pathnode_walk_node(((BitmapHeapPath *)path)->bitmapqual, walker, context);
@@ -2319,6 +2320,28 @@ create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	return pathnode;
 }
 
+/*
+ * create_ctescan_path
+ *	  Creates a path corresponding to a scan of a CTE,
+ *	  returning the pathnode.
+ */
+Path *
+create_ctescan_path(PlannerInfo *root, RelOptInfo *rel, List *pathkeys)
+{
+	Path *pathnode = makeNode(Path);
+
+	pathnode->pathtype = T_CteScan;
+	pathnode->parent = rel;
+	pathnode->pathkeys = pathkeys;
+
+    pathnode->locus = cdbpathlocus_from_subquery(root, rel->subplan, rel->relid);
+	pathnode->motionHazard = false;
+	pathnode->rescannable = true;
+
+	cost_ctescan(pathnode, root, rel);
+
+	return pathnode;
+}
 
 /*
  * cdb_jointype_to_join_in

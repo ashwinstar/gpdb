@@ -2741,6 +2741,9 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(windowClause);
 	WRITE_NODE_FIELD(distinctClause);
 	WRITE_NODE_FIELD(sortClause);
+	WRITE_NODE_FIELD(cteList);
+	WRITE_BOOL_FIELD(hasRecursive);
+	WRITE_BOOL_FIELD(hasModifyingCTE);
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
 	WRITE_NODE_FIELD(rowMarks);
@@ -2854,6 +2857,32 @@ _outRowMarkClause(StringInfo str, RowMarkClause *node)
 }
 
 static void
+_outWithClause(StringInfo str, WithClause *node)
+{
+	WRITE_NODE_TYPE("WITHCLAUSE");
+	
+	WRITE_NODE_FIELD(ctes);
+	WRITE_BOOL_FIELD(recursive);
+	WRITE_INT_FIELD(location);
+}
+
+static void
+_outCommonTableExpr(StringInfo str, CommonTableExpr *node)
+{
+	WRITE_NODE_TYPE("COMMONTABLEEXPR");
+	
+    WRITE_STRING_FIELD(ctename);
+	WRITE_NODE_FIELD(aliascolnames);
+	WRITE_NODE_FIELD(ctequery);
+	WRITE_INT_FIELD(location);
+	WRITE_BOOL_FIELD(cterecursive);
+	WRITE_INT_FIELD(cterefcount);
+	WRITE_NODE_FIELD(ctecolnames);
+	WRITE_NODE_FIELD(ctecoltypes);
+	WRITE_NODE_FIELD(ctecoltypmods);
+}
+
+static void
 _outSetOperationStmt(StringInfo str, SetOperationStmt *node)
 {
 	WRITE_NODE_TYPE("SETOPERATIONSTMT");
@@ -2884,6 +2913,13 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 			break;
 		case RTE_SUBQUERY:
 			WRITE_NODE_FIELD(subquery);
+			break;
+		case RTE_CTE:
+			WRITE_STRING_FIELD(ctename);
+			WRITE_INT_FIELD(ctelevelsup);
+			WRITE_BOOL_FIELD(self_reference);
+			WRITE_NODE_FIELD(ctecoltypes);
+			WRITE_NODE_FIELD(ctecoltypmods);
 			break;
 		case RTE_FUNCTION:
 			WRITE_NODE_FIELD(funcexpr);
@@ -3939,6 +3975,12 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_RowMarkClause:
 				_outRowMarkClause(str, obj);
+				break;
+			case T_WithClause:
+				_outWithClause(str, obj);
+				break;
+			case T_CommonTableExpr:
+				_outCommonTableExpr(str, obj);
 				break;
 			case T_SetOperationStmt:
 				_outSetOperationStmt(str, obj);

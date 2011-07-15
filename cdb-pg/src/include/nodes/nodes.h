@@ -50,9 +50,11 @@ typedef enum NodeTag
 	T_Plan = 100,
 	T_Scan,
 	T_Join,
+	T_CteScan,
 
 	/* Real plan node starts below.  Scan and Join are "Virtal nodes",
 	 * It will take the form of IndexScan, SeqScan, etc. 
+	 * CteScan will take the form of SubqueryScan.
 	 */
 	T_Result,
 	T_Plan_Start = T_Result,
@@ -238,6 +240,7 @@ typedef enum NodeTag
 	T_ResultPath,
 	T_MaterialPath,
 	T_UniquePath,
+	T_CtePath,
 	T_PathKeyItem,
 	T_RestrictInfo,
 	T_InnerIndexscanInfo,

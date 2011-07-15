@@ -285,6 +285,12 @@ exprLocation(Node *expr)
 		case T_TypeName:
 			loc = ((TypeName *) expr)->location;
 			break;
+		case T_WithClause:
+			loc = ((WithClause *) expr)->location;
+			break;
+		case T_CommonTableExpr:
+			loc = ((CommonTableExpr *) expr)->location;
+			break;
 		default:
 			/* for any other node type it's just unknown... */
 			loc = -1;

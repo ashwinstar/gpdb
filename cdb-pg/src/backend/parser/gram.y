@@ -13115,7 +13115,7 @@ insertSelectOptions(SelectStmt *stmt,
 		if (stmt->sortClause)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("multiple ORDER BY clauses not allowed"),
+					 errmsg("syntax error at or near \"ORDER BY\""),
 					 scanner_errposition(exprLocation((Node *) sortClause))));
 		stmt->sortClause = sortClause;
 	}
@@ -13126,7 +13126,7 @@ insertSelectOptions(SelectStmt *stmt,
 		if (stmt->limitOffset)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("multiple OFFSET clauses not allowed"),
+					 errmsg("syntax error at or near \"OFFSET\""),
 					 scanner_errposition(exprLocation(limitOffset))));
 		stmt->limitOffset = limitOffset;
 	}
@@ -13135,20 +13135,18 @@ insertSelectOptions(SelectStmt *stmt,
 		if (stmt->limitCount)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("multiple LIMIT clauses not allowed"),
+					 errmsg("syntax error at or near \"LIMIT\""),
 					 scanner_errposition(exprLocation(limitCount))));
 		stmt->limitCount = limitCount;
 	}
 	if (withClause)
 	{
-		/*		if (stmt->withClause) */
-		if (1)
+		if (stmt->withClause)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("multiple WITH clauses not allowed")));
-					 /*					 errmsg("multiple WITH clauses not allowed"),
-					 		 scanner_errposition(exprLocation((Node *) withClause)))); */
-			/*		stmt->withClause = withClause; */
+					 errmsg("syntax error at or near \"WITH\""),
+					 scanner_errposition(exprLocation((Node *)withClause))));
+		stmt->withClause = (WithClause *)withClause;
 	}
 
 }

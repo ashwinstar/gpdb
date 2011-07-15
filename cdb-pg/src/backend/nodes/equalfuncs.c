@@ -753,6 +753,9 @@ _equalQuery(Query *a, Query *b)
 	COMPARE_NODE_FIELD(windowClause);
 	COMPARE_NODE_FIELD(distinctClause);
 	COMPARE_NODE_FIELD(sortClause);
+	COMPARE_NODE_FIELD(cteList);
+	COMPARE_SCALAR_FIELD(hasRecursive);
+	COMPARE_SCALAR_FIELD(hasModifyingCTE);
 	COMPARE_NODE_FIELD(limitOffset);
 	COMPARE_NODE_FIELD(limitCount);
 	COMPARE_NODE_FIELD(rowMarks);
@@ -2088,6 +2091,11 @@ _equalRangeTblEntry(RangeTblEntry *a, RangeTblEntry *b)
 	COMPARE_SCALAR_FIELD(inFromCl);
 	COMPARE_SCALAR_FIELD(requiredPerms);
 	COMPARE_SCALAR_FIELD(checkAsUser);
+	COMPARE_STRING_FIELD(ctename);
+	COMPARE_SCALAR_FIELD(ctelevelsup);
+	COMPARE_SCALAR_FIELD(self_reference);
+	COMPARE_NODE_FIELD(ctecoltypes);
+	COMPARE_NODE_FIELD(ctecoltypmods);
 
 	return true;
 }
@@ -2181,6 +2189,32 @@ _equalRowMarkClause(RowMarkClause *a, RowMarkClause *b)
 	COMPARE_SCALAR_FIELD(rti);
 	COMPARE_SCALAR_FIELD(forUpdate);
 	COMPARE_SCALAR_FIELD(noWait);
+
+	return true;
+}
+
+static bool
+_equalWithClause(WithClause *a, WithClause *b)
+{
+	COMPARE_NODE_FIELD(ctes);
+	COMPARE_SCALAR_FIELD(recursive);
+	COMPARE_SCALAR_FIELD(location);
+	
+	return true;
+}
+
+static bool
+_equalCommonTableExpr(CommonTableExpr *a, CommonTableExpr *b)
+{
+	COMPARE_STRING_FIELD(ctename);
+	COMPARE_NODE_FIELD(aliascolnames);
+	COMPARE_NODE_FIELD(ctequery);
+	COMPARE_SCALAR_FIELD(location);
+	COMPARE_SCALAR_FIELD(cterecursive);
+	COMPARE_SCALAR_FIELD(cterefcount);
+	COMPARE_NODE_FIELD(ctecolnames);
+	COMPARE_NODE_FIELD(ctecoltypes);
+	COMPARE_NODE_FIELD(ctecoltypmods);
 
 	return true;
 }
@@ -2860,6 +2894,12 @@ equal(void *a, void *b)
 			break;
 		case T_RowMarkClause:
 			retval = _equalRowMarkClause(a, b);
+			break;
+		case T_WithClause:
+			retval = _equalWithClause(a,b);
+			break;
+		case T_CommonTableExpr:
+			retval = _equalCommonTableExpr(a,b);
 			break;
 		case T_FkConstraint:
 			retval = _equalFkConstraint(a, b);

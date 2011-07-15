@@ -516,7 +516,13 @@ subquery_planner(PlannerGlobal *glob,
 	root->parent_root = parent_root;
 	root->planner_cxt = CurrentMemoryContext;
 	root->init_plans = NIL;
-	// root->cte_plan_ids = NIL;
+	
+	root->list_cteplaninfo = NIL;
+	if (parse->cteList != NIL)
+	{
+		root->list_cteplaninfo = init_list_cteplaninfo(list_length(parse->cteList));
+	}
+	
 	root->in_info_list = NIL;
 	root->append_rel_list = NIL;
 

@@ -174,6 +174,9 @@ _readQuery(const char ** str)
 	READ_NODE_FIELD(windowClause);
 	READ_NODE_FIELD(distinctClause);
 	READ_NODE_FIELD(sortClause);
+	READ_NODE_FIELD(cteList);
+	READ_BOOL_FIELD(hasRecursive);
+	READ_BOOL_FIELD(hasModifyingCTE);
 	READ_NODE_FIELD(limitOffset);
 	READ_NODE_FIELD(limitCount);
 	READ_NODE_FIELD(rowMarks);
@@ -363,6 +366,36 @@ _readRowMarkClause(const char ** str)
 	READ_UINT_FIELD(rti);
 	READ_BOOL_FIELD(forUpdate);
 	READ_BOOL_FIELD(noWait);
+
+	READ_DONE();
+}
+
+static WithClause *
+_readWithClause(const char ** str)
+{
+	READ_LOCALS(WithClause);
+	
+	READ_NODE_FIELD(ctes);
+	READ_BOOL_FIELD(recursive);
+	READ_INT_FIELD(location);
+	
+	READ_DONE();
+}
+
+static CommonTableExpr *
+_readCommonTableExpr(const char ** str)
+{
+	READ_LOCALS(CommonTableExpr);
+	
+	READ_STRING_FIELD(ctename);
+	READ_NODE_FIELD(aliascolnames);
+	READ_NODE_FIELD(ctequery);
+	READ_INT_FIELD(location);
+	READ_BOOL_FIELD(cterecursive);
+	READ_INT_FIELD(cterefcount);
+	READ_NODE_FIELD(ctecolnames);
+	READ_NODE_FIELD(ctecoltypes);
+	READ_NODE_FIELD(ctecoltypmods);
 
 	READ_DONE();
 }
@@ -1669,6 +1702,13 @@ _readRangeTblEntry(const char ** str)
 			break;
 		case RTE_SUBQUERY:
 			READ_NODE_FIELD(subquery);
+			break;
+		case RTE_CTE:
+			READ_STRING_FIELD(ctename);
+			READ_INT_FIELD(ctelevelsup);
+			READ_BOOL_FIELD(self_reference);
+			READ_NODE_FIELD(ctecoltypes);
+			READ_NODE_FIELD(ctecoltypmods);
 			break;
 		case RTE_FUNCTION:
 			READ_NODE_FIELD(funcexpr);
@@ -4041,6 +4081,12 @@ readNodeBinary(const char ** str)
 				break;
 			case T_RowMarkClause:
 				return_value = _readRowMarkClause(str);
+				break;
+			case T_WithClause:
+				return_value = _readWithClause(str);
+				break;
+			case T_CommonTableExpr:
+				return_value = _readCommonTableExpr(str);
 				break;
 			case T_SetOperationStmt:
 				return_value = _readSetOperationStmt(str);

@@ -35,6 +35,7 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parse_oper.h"
+#include "parser/parse_cte.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
@@ -94,6 +95,7 @@ typedef struct
 typedef struct
 {
 	List	   *rtable;			/* List of RangeTblEntry nodes */
+	List	   *ctes;			/* List of CommonTableExpr nodes */
 	int			outer_varno;	/* varno for outer_rte */
 	RangeTblEntry *outer_rte;	/* special RangeTblEntry, or NULL */
 	int			inner_varno;	/* varno for inner_rte */
@@ -138,6 +140,7 @@ static void make_viewdef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 static void get_query_def(Query *query, StringInfo buf, List *parentnamespace,
 			  TupleDesc resultDesc, int prettyFlags, int startIndent);
 static void get_values_def(List *values_lists, deparse_context *context);
+static void get_with_clause(Query *query, deparse_context *context);
 static void get_select_query_def(Query *query, deparse_context *context,
 					 TupleDesc resultDesc);
 static void get_insert_query_def(Query *query, deparse_context *context);
@@ -199,7 +202,7 @@ static void get_opclass_name(Oid opclass, Oid actual_datatype,
 static Node *processIndirection(Node *node, deparse_context *context,
 				   bool printit);
 static void printSubscripts(ArrayRef *aref, deparse_context *context);
-static char *generate_relation_name(Oid relid);
+static char *generate_relation_name(Oid relid, List *namespaces);
 static char *generate_function_name(Oid funcid, int nargs, Oid *argtypes);
 static char *generate_operator_name(Oid operid, Oid arg1, Oid arg2);
 static text *string_to_text(char *str);
@@ -512,13 +515,13 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 			appendStringInfo(&buf, " UPDATE");
 	}
 	appendStringInfo(&buf, " ON %s ",
-					 generate_relation_name(trigrec->tgrelid));
+					 generate_relation_name(trigrec->tgrelid, NIL));
 
 	if (trigrec->tgisconstraint)
 	{
 		if (trigrec->tgconstrrelid != InvalidOid)
 			appendStringInfo(&buf, "FROM %s ",
-							 generate_relation_name(trigrec->tgconstrrelid));
+							 generate_relation_name(trigrec->tgconstrrelid, NIL));
 		if (!trigrec->tgdeferrable)
 			appendStringInfo(&buf, "NOT ");
 		appendStringInfo(&buf, "DEFERRABLE INITIALLY ");
@@ -729,7 +732,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 		appendStringInfo(&buf, "CREATE %sINDEX %s ON %s USING %s (",
 						 idxrec->indisunique ? "UNIQUE " : "",
 						 quote_identifier(NameStr(idxrelrec->relname)),
-						 generate_relation_name(indrelid),
+						 generate_relation_name(indrelid, NIL),
 						 quote_identifier(NameStr(amrec->amname)));
 
 	/*
@@ -923,7 +926,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 	if (fullCommand && OidIsValid(conForm->conrelid))
 	{
 		appendStringInfo(&buf, "ALTER TABLE ONLY %s ADD CONSTRAINT %s ",
-						 generate_relation_name(conForm->conrelid),
+						 generate_relation_name(conForm->conrelid, NIL),
 						 quote_identifier(NameStr(conForm->conname)));
 	}
 
@@ -949,7 +952,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 
 				/* add foreign relation name */
 				appendStringInfo(&buf, ") REFERENCES %s(",
-								 generate_relation_name(conForm->confrelid));
+								 generate_relation_name(conForm->confrelid, NIL));
 
 				/* Fetch and build referenced-column list */
 				val = heap_getattr(tup, Anum_pg_constraint_confkey,
@@ -1496,6 +1499,7 @@ deparse_context_for(const char *aliasname, Oid relid)
 
 	/* Build one-element rtable */
 	dpns->rtable = list_make1(rte);
+	dpns->ctes = NIL;
 	dpns->outer_varno = dpns->inner_varno = 0;
 	dpns->outer_rte = dpns->inner_rte = NULL;
 
@@ -1524,6 +1528,7 @@ deparse_context_for_plan(int outer_varno, Node *outercontext,
 	dpns = (deparse_namespace *) palloc(sizeof(deparse_namespace));
 
 	dpns->rtable = rtable;
+	dpns->ctes = NIL;
 	dpns->outer_varno = outer_varno;
 	dpns->outer_rte = (RangeTblEntry *) outercontext;
 	dpns->inner_varno = inner_varno;
@@ -1662,7 +1667,7 @@ make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 	}
 
 	/* The relation the rule is fired on */
-	appendStringInfo(buf, " TO %s", generate_relation_name(ev_class));
+	appendStringInfo(buf, " TO %s", generate_relation_name(ev_class, NIL));
 	if (ev_attr > 0)
 		appendStringInfo(buf, ".%s",
 						 quote_identifier(get_relid_attribute_name(ev_class,
@@ -1707,6 +1712,7 @@ make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 		context.prettyFlags = prettyFlags;
 		context.indentLevel = PRETTYINDENT_STD;
 		dpns.rtable = query->rtable;
+		dpns.ctes = query->cteList;
 		dpns.outer_varno = dpns.inner_varno = 0;
 		dpns.outer_rte = dpns.inner_rte = NULL;
 
@@ -1852,6 +1858,7 @@ get_query_def(Query *query, StringInfo buf, List *parentnamespace,
 	context.query = query;
 
 	dpns.rtable = query->rtable;
+	dpns.ctes = query->cteList;
 	dpns.outer_varno = dpns.inner_varno = 0;
 	dpns.outer_rte = dpns.inner_rte = NULL;
 
@@ -1934,6 +1941,75 @@ get_values_def(List *values_lists, deparse_context *context)
 }
 
 /* ----------
+ * get_with_clause			- Parse back a WITH clause
+ * ----------
+ */
+static void
+get_with_clause(Query *query, deparse_context *context)
+{
+	StringInfo	buf = context->buf;
+	const char *sep;
+	ListCell   *l;
+
+	if (query->cteList == NIL)
+		return;
+
+	if (PRETTY_INDENT(context))
+	{
+		context->indentLevel += PRETTYINDENT_STD;
+		appendStringInfoChar(buf, ' ');
+	}
+
+	if (query->hasRecursive)
+		sep = "WITH RECURSIVE ";
+	else
+		sep = "WITH ";
+	foreach(l, query->cteList)
+	{
+		CommonTableExpr *cte = (CommonTableExpr *) lfirst(l);
+
+		appendStringInfoString(buf, sep);
+		appendStringInfoString(buf, quote_identifier(cte->ctename));
+		if (cte->aliascolnames)
+		{
+			bool		first = true;
+			ListCell   *col;
+
+			appendStringInfoChar(buf, '(');
+			foreach(col, cte->aliascolnames)
+			{
+				if (first)
+					first = false;
+				else
+					appendStringInfoString(buf, ", ");
+				appendStringInfoString(buf,
+									   quote_identifier(strVal(lfirst(col))));
+			}
+			appendStringInfoChar(buf, ')');
+		}
+		appendStringInfoString(buf, " AS (");
+		if (PRETTY_INDENT(context))
+			appendContextKeyword(context, "", 0, 0, 0);
+		get_query_def((Query *) cte->ctequery, buf, context->namespaces, NULL,
+					  context->prettyFlags, context->indentLevel);
+		if (PRETTY_INDENT(context))
+			appendContextKeyword(context, "", 0, 0, 0);
+		appendStringInfoChar(buf, ')');
+		sep = ", ";
+	}
+
+	if (PRETTY_INDENT(context))
+	{
+		context->indentLevel -= PRETTYINDENT_STD;
+		appendContextKeyword(context, "", 0, 0, 0);
+	}
+	else
+	{
+		appendStringInfoChar(buf, ' ');
+	}
+}
+
+/* ----------
  * get_select_query_def			- Parse back a SELECT parsetree
  * ----------
  */
@@ -1944,6 +2020,9 @@ get_select_query_def(Query *query, deparse_context *context,
 	StringInfo	buf = context->buf;
 	bool		force_colno;
 	ListCell   *l;
+
+	/* Insert the WITH clause if given */
+	get_with_clause(query, context);
 
 	/*
 	 * If the Query node has a setOperations tree, then it's the top level of
@@ -2244,8 +2323,9 @@ get_setop_query(Node *setOp, Query *query, deparse_context *context,
 
 		Assert(subquery != NULL);
 		Assert(subquery->setOperations == NULL);
-		/* Need parens if ORDER BY, FOR UPDATE, or LIMIT; see gram.y */
-		need_paren = (subquery->sortClause ||
+		/* Need parens if WITH, ORDER BY, FOR UPDATE, or LIMIT; see gram.y */
+		need_paren = (subquery->cteList ||
+					  subquery->sortClause ||
 					  subquery->rowMarks ||
 					  subquery->limitOffset ||
 					  subquery->limitCount);
@@ -2497,7 +2577,7 @@ get_insert_query_def(Query *query, deparse_context *context)
 		appendStringInfoChar(buf, ' ');
 	}
 	appendStringInfo(buf, "INSERT INTO %s (",
-					 generate_relation_name(rte->relid));
+					 generate_relation_name(rte->relid, NIL));
 
 	/*
 	 * Add the insert-column-names list.  To handle indirection properly, we
@@ -2605,7 +2685,7 @@ get_update_query_def(Query *query, deparse_context *context)
 	}
 	appendStringInfo(buf, "UPDATE %s%s",
 					 only_marker(rte),
-					 generate_relation_name(rte->relid));
+					 generate_relation_name(rte->relid, NIL));
 	if (rte->alias != NULL)
 		appendStringInfo(buf, " %s",
 						 quote_identifier(rte->alias->aliasname));
@@ -2686,7 +2766,7 @@ get_delete_query_def(Query *query, deparse_context *context)
 	}
 	appendStringInfo(buf, "DELETE FROM %s%s",
 					 only_marker(rte),
-					 generate_relation_name(rte->relid));
+					 generate_relation_name(rte->relid, NIL));
 	if (rte->alias != NULL)
 		appendStringInfo(buf, " %s",
 						 quote_identifier(rte->alias->aliasname));
@@ -2995,12 +3075,105 @@ get_name_for_var_field(Var *var, int fieldno,
 				if (IsA(expr, Var))
 				{
 					const char *result = NULL;
+
+					/*
+					 * Recurse into the sub-select to see what its Var
+					 * refers to. We have to build an additional level of
+					 * namespace to keep in step with varlevelsup in the
+					 * subselect.
+					 */
+					deparse_namespace mydpns;
+					memset(&mydpns, 0, sizeof(mydpns));
+					Assert(rte->subquery != NULL);
+					mydpns.rtable = rte->subquery->rtable;
+					mydpns.ctes = rte->subquery->cteList;
+					
+					context->namespaces = lcons(&mydpns,
+												context->namespaces);
+
 					result = get_name_for_var_field((Var *) expr, fieldno,
 													0, context);
+
+					context->namespaces =
+						list_delete_first(context->namespaces);
 
 					return result;
 				}
 				/* else fall through to inspect the expression */
+			}
+			break;
+		case RTE_CTE:
+			{
+				/* similar to RTE_SUBQUERY */
+				CommonTableExpr *cte = NULL;
+				Index ctelevelsup;
+				ListCell *lc = NULL;
+
+				/*
+				 * Try to find the referenced CTE using the namespace stack.
+				 */
+				ctelevelsup = rte->ctelevelsup + levelsup;
+				if (ctelevelsup < list_length(context->namespaces))
+				{
+					deparse_namespace *ctenamespace;
+
+					ctenamespace = (deparse_namespace *)
+						list_nth(context->namespaces, ctelevelsup);
+					foreach(lc, ctenamespace->ctes)
+					{
+						cte = (CommonTableExpr *) lfirst(lc);
+						if (strcmp(cte->ctename, rte->ctename) == 0)
+							break;
+					}
+				}
+				if (lc != NULL)
+				{
+					Assert(cte != NULL);
+					
+					TargetEntry *ste = get_tle_by_resno(GetCTETargetList(cte), attnum);
+					if (ste == NULL || ste->resjunk)
+					{
+						ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
+										  errmsg_internal("bogus var: varno=%d varattno=%d",
+														  var->varno, var->varattno) ));
+						return "*BOGUS*";
+					}
+					
+					expr = (Node *) ste->expr;
+					if (IsA(expr, Var))
+					{
+						const char *result = NULL;
+
+						/*
+						 * Recurse into the CTE to see what its Var refers to.
+						 * We have to build an additional level of namespace
+						 * to keep in step with varlevelsup in the CTE.
+						 * Furthermore it could be an outer CTE, so we may
+						 * have to delete some levels of namespace.
+						 */
+						List *save_nslist = context->namespaces;
+						List *new_nslist;
+						deparse_namespace mydpns;
+						Query *ctequery = (Query *)cte->ctequery;
+						Assert(ctequery != NULL && IsA(ctequery, Query));
+
+						memset(&mydpns, 0, sizeof(mydpns));
+						mydpns.rtable = ctequery->rtable;
+						mydpns.ctes = ctequery->cteList;
+
+						new_nslist = list_copy_tail(context->namespaces,
+													ctelevelsup);
+						context->namespaces = lcons(&mydpns, new_nslist);
+
+						result = get_name_for_var_field((Var *) expr, fieldno,
+														0, context);
+						
+						context->namespaces = save_nslist;
+
+						return result;
+					}
+					/* else fall through to inspect the expression */
+				}
 			}
 			break;
 		case RTE_JOIN:
@@ -4946,7 +5119,7 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 				/* Normal relation RTE */
 				appendStringInfo(buf, "%s%s",
 								 only_marker(rte),
-								 generate_relation_name(rte->relid));
+								 generate_relation_name(rte->relid, context->namespaces));
 				break;
 			case RTE_SUBQUERY:
 				/* Subquery RTE */
@@ -4954,6 +5127,9 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 				get_query_def(rte->subquery, buf, context->namespaces, NULL,
 							  context->prettyFlags, context->indentLevel);
 				appendStringInfoChar(buf, ')');
+				break;
+			case RTE_CTE:
+				appendStringInfoString(buf, quote_identifier(rte->ctename));
 				break;
 			case RTE_FUNCTION:
 				/* Function RTE */
@@ -5550,12 +5726,19 @@ quote_qualified_identifier(const char *qualifier,
  *		Compute the name to display for a relation specified by OID
  *
  * The result includes all necessary quoting and schema-prefixing.
+ *
+ * If namespaces isn't NIL, it must be a list of deparse_namespace nodes.
+ * We will forcibly qualify the relation name if it equals any CTE name
+ * visible in the namespace list.
  */
 static char *
-generate_relation_name(Oid relid)
+generate_relation_name(Oid relid, List *namespaces)
 {
 	HeapTuple	tp;
 	Form_pg_class reltup;
+	bool		need_qual;
+	ListCell   *nslist;
+	char	   *relname;
 	char	   *nspname;
 	char	   *result;
 
@@ -5565,14 +5748,40 @@ generate_relation_name(Oid relid)
 	if (!HeapTupleIsValid(tp))
 		elog(ERROR, "cache lookup failed for relation %u", relid);
 	reltup = (Form_pg_class) GETSTRUCT(tp);
+	relname = NameStr(reltup->relname);
+
+	/* Check for conflicting CTE name */
+	need_qual = false;
+	foreach(nslist, namespaces)
+	{
+		deparse_namespace *dpns = (deparse_namespace *) lfirst(nslist);
+		ListCell   *ctlist;
+
+		foreach(ctlist, dpns->ctes)
+		{
+			CommonTableExpr *cte = (CommonTableExpr *) lfirst(ctlist);
+
+			if (strcmp(cte->ctename, relname) == 0)
+			{
+				need_qual = true;
+				break;
+			}
+		}
+		if (need_qual)
+			break;
+	}
+
+	/* Otherwise, qualify the name if not visible in search path */
+	if (!need_qual)
+		need_qual = !RelationIsVisible(relid);
 
 	/* Qualify the name if not visible in search path */
-	if (RelationIsVisible(relid))
-		nspname = NULL;
-	else
+	if (need_qual)
 		nspname = get_namespace_name(reltup->relnamespace);
+	else
+		nspname = NULL;
 
-	result = quote_qualified_identifier(nspname, NameStr(reltup->relname));
+	result = quote_qualified_identifier(nspname, relname);
 
 	ReleaseSysCache(tp);
 
@@ -6575,7 +6784,7 @@ pg_get_partition_template_def_worker(Oid relid, int prettyFlags,
 	 */
 
 	appendStringInfo(&altr, "ALTER TABLE %s ",
-					 generate_relation_name(relid));
+					 generate_relation_name(relid, NIL));
 
 	/* build the text of the SET SUBPARTITION TEMPLATE statements from
 	 * shallowest (level 1) to deepest by walking pn tree rules, but

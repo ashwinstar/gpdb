@@ -48,6 +48,9 @@ typedef struct PlannerConfig
 	bool		gp_enable_motion_mk_sort;
 
 	bool		gp_enable_direct_dispatch;
+
+	bool		is_initplan; /* Indicate whether this plan is an InitPlan */
+
 	/* These ones are tricky */
 	//GpRoleValue	Gp_role; // TODO: this one is tricky
 	//int			gp_singleton_segindex; // TODO: change this.

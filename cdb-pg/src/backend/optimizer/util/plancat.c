@@ -968,6 +968,7 @@ build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 			}
 			break;
 
+		case RTE_CTE:
 		case RTE_FUNCTION:
 			expandRTE(rte, varno, 0, -1, true /* include dropped */ ,
 					  NULL, &colvars);

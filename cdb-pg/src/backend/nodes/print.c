@@ -274,6 +274,10 @@ print_rt(List *rtable)
 				printf("%d\t%s\t[subquery]",
 					   i, name);
 				break;
+			case RTE_CTE:
+				printf("%d\t%s\t[cte]",
+					   i, name);
+				break;
 			case RTE_FUNCTION:
 				printf("%d\t%s\t[rangefunction]",
 					   i, name);

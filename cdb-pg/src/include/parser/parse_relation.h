@@ -16,6 +16,10 @@
 
 #include "parser/parse_node.h"
 
+#define ERRMSG_GP_WITH_COLUMNS_MISMATCH \
+	"specified number of columns in WITH query \"%s\" must not " \
+	"exceed the number of available columns"
+
 extern bool add_missing_from;
 
 extern RangeTblEntry *refnameRangeTblEntry(ParseState *pstate,
@@ -25,6 +29,9 @@ extern RangeTblEntry *refnameRangeTblEntry(ParseState *pstate,
 					 int *sublevels_up);
 extern void checkNameSpaceConflicts(ParseState *pstate, List *namespace1,
 						List *namespace2);
+extern CommonTableExpr *scanNameSpaceForCTE(ParseState *pstate,
+											const char *refname,
+											Index *ctelevelsup);
 extern int RTERangeTablePosn(ParseState *pstate,
 				  RangeTblEntry *rte,
 				  int *sublevels_up);
@@ -70,6 +77,11 @@ extern RangeTblEntry *addRangeTableEntryForJoin(ParseState *pstate,
 						  List *aliasvars,
 						  Alias *alias,
 						  bool inFromCl);
+extern RangeTblEntry *addRangeTableEntryForCTE(ParseState *pstate,
+											   CommonTableExpr *cte,
+											   Index levelsup,
+											   RangeVar *rangeVar,
+											   bool inFromCl);
 extern void addRTEtoQuery(ParseState *pstate, RangeTblEntry *rte,
 			  bool addToJoinList,
 			  bool addToRelNameSpace, bool addToVarNameSpace);

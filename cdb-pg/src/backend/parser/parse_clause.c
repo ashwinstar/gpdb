@@ -75,9 +75,9 @@ static RangeTblEntry *transformRangeSubselect(ParseState *pstate,
 static RangeTblEntry *transformRangeFunction(ParseState *pstate,
 					   RangeFunction *r);
 static Node *transformFromClauseItem(ParseState *pstate, Node *n,
-						RangeTblEntry **top_rte, int *top_rti,
-						List **relnamespace,
-						Relids *containedRels);
+									 RangeTblEntry **top_rte, int *top_rti,
+									 List **relnamespace,
+									 Relids *containedRels);
 static Node *buildMergedJoinVar(ParseState *pstate, JoinType jointype,
 				   Var *l_colvar, Var *r_colvar);
 static TargetEntry *findTargetlistEntrySQL92(ParseState *pstate, Node *node,
@@ -137,11 +137,11 @@ transformFromClause(ParseState *pstate, List *frmList)
 	 */
 	foreach(fl, frmList)
 	{
-		Node	   *n = lfirst(fl);
+		Node *n = lfirst(fl);
 		RangeTblEntry *rte = NULL;
-		int			rtindex = 0;
-		List	   *relnamespace = NULL;
-		Relids		containedRels = NULL;
+		int	rtindex = 0;
+		List *relnamespace = NULL;
+		Relids containedRels = NULL;
 
 		n = transformFromClauseItem(pstate, n,
 									&rte,
@@ -1326,10 +1326,31 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 	{
 		/* Plain relation reference */
 		RangeTblRef *rtr;
-		RangeTblEntry *rte;
-		int			rtindex;
+		RangeTblEntry *rte = NULL;
+		int	rtindex;
+		RangeVar *rangeVar = (RangeVar *)n;
 
-		rte = transformTableEntry(pstate, (RangeVar *) n);
+		/*
+		 * If it is an unqualified name, it might be a CTE reference.
+		 */
+		if (rangeVar->schemaname == NULL)
+		{
+			CommonTableExpr *cte;
+			Index levelsup;
+
+			cte = scanNameSpaceForCTE(pstate, rangeVar->relname, &levelsup);
+			if (cte)
+			{
+				rte = addRangeTableEntryForCTE(pstate, cte, levelsup, rangeVar, true);
+			}
+		}
+
+		/* If it is not a CTE reference, it must be a simple relation reference. */
+		if (rte == NULL)
+		{
+			rte = transformTableEntry(pstate, rangeVar);
+		}
+		
 		/* assume new rte is at end */
 		rtindex = list_length(pstate->p_rtable);
 		Assert(rte == rt_fetch(rtindex, pstate->p_rtable));

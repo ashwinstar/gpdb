@@ -82,6 +82,8 @@ typedef struct ParseState
 								 * node's fromlist) */
 	List	   *p_relnamespace; /* current namespace for relations */
 	List	   *p_varnamespace; /* current namespace for columns */
+	List       *p_ctenamespace; /* current namespace for common-table-expressions */
+	List	   *p_future_ctes;	/* common table exprs not yet in namespace */
 	Oid		   *p_paramtypes;	/* OIDs of types for $n parameter symbols */
 	int			p_numparams;	/* allocated size of p_paramtypes[] */
 	int			p_next_resno;	/* next targetlist resno to assign */
@@ -91,6 +93,7 @@ typedef struct ParseState
 	bool		p_hasAggs;
 	bool		p_hasWindFuncs;
 	bool		p_hasSubLinks;
+	bool		p_hasModifyingCTE;
 	bool		p_is_insert;
 	bool		p_is_update;
 	Relation	p_target_relation;

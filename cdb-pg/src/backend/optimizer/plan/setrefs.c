@@ -269,7 +269,7 @@ static void set_plan_references_output_asserts(PlannerGlobal *glob, Plan *plan)
 		SubqueryScan *subQueryScan = (SubqueryScan *) lfirst(lc);
 		Assert(subQueryScan->scan.scanrelid <= list_length(glob->finalrtable) && "Subquery scan's scanrelid out of range");
 		RangeTblEntry *rte = rt_fetch(subQueryScan->scan.scanrelid, glob->finalrtable);
-		Assert(rte->rtekind == RTE_SUBQUERY && "Subquery scan should correspond to a subquery RTE!");
+		Assert((rte->rtekind == RTE_SUBQUERY || rte->rtekind == RTE_CTE) && "Subquery scan should correspond to a subquery RTE or cte RTE!");
 	}
 }
 

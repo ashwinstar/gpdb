@@ -334,6 +334,17 @@ expression_tree_walker(Node *node,
 		case T_Query:
 			/* Do nothing with a sub-Query, per discussion above */
 			break;
+		case T_CommonTableExpr:
+			{
+				CommonTableExpr *cte = (CommonTableExpr *) node;
+
+				/*
+				 * Invoke the walker on the CTE's Query node, so it can
+				 * recurse into the sub-query if it wants to.
+				 */
+				return walker(cte->ctequery, context);
+			}
+			break;
 		case T_List:
 			foreach(temp, (List *) node)
 			{
@@ -512,6 +523,11 @@ query_tree_walker(Query *query,
 		return true;
 	if (walker(query->limitCount, context))
 		return true;
+	if (!(flags & QTW_IGNORE_CTE_SUBQUERIES))
+	{
+		if (walker((Node *) query->cteList, context))
+			return true;
+	}
 	if (range_table_walker(query->rtable, walker, context, flags))
 		return true;
 	if (query->utilityStmt)
@@ -566,11 +582,17 @@ range_table_walker(List *rtable,
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(rt);
 
+		/* For historical reasons, visiting RTEs is not the default */
+		if (flags & QTW_EXAMINE_RTES)
+			if (walker(rte, context))
+				return true;
+
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
 			case RTE_SPECIAL:
             case RTE_VOID:
+			case RTE_CTE:
 				/* nothing to do */
 				break;
 			case RTE_SUBQUERY:

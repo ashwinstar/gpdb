@@ -189,6 +189,66 @@ scanNameSpaceForRelid(ParseState *pstate, Oid relid)
 }
 
 /*
+ * Search the query's CTE namespace for a CTE matching the given unqualified
+ * refname.  Return the CTE (and its levelsup count) if a match, or NULL
+ * if no match.  We need not worry about multiple matches, since parse_cte.c
+ * rejects WITH lists containing duplicate CTE names.
+ */
+CommonTableExpr *
+scanNameSpaceForCTE(ParseState *pstate,
+					const char *refname,
+					Index *ctelevelsup)
+{
+	Assert(refname != NULL);
+
+	Index levelsup;
+
+	for (levelsup = 0;
+		 pstate != NULL;
+		 pstate = pstate->parentParseState, levelsup++)
+	{
+		ListCell *lc;
+
+		foreach(lc, pstate->p_ctenamespace)
+		{
+			CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
+			Assert(cte != NULL && cte->ctename != NULL);
+
+			if (strcmp(cte->ctename, refname) == 0)
+			{
+				*ctelevelsup = levelsup;
+				return cte;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+/*
+ * Search for a possible "future CTE", that is one that is not yet in scope
+ * according to the WITH scoping rules.  This has nothing to do with valid
+ * SQL semantics, but it's important for error reporting purposes.
+ */
+static bool
+isFutureCTE(ParseState *pstate, const char *refname)
+{
+	for (; pstate != NULL; pstate = pstate->parentParseState)
+	{
+		ListCell   *lc;
+
+		foreach(lc, pstate->p_future_ctes)
+		{
+			CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
+
+			if (strcmp(cte->ctename, refname) == 0)
+				return true;
+		}
+	}
+	return false;
+}
+
+/*
  * searchRangeTable
  *	  See if any RangeTblEntry could possibly match the RangeVar.
  *	  If so, return a pointer to the RangeTblEntry; else return NULL.
@@ -200,15 +260,28 @@ scanNameSpaceForRelid(ParseState *pstate, Oid relid)
  * valid matches, but only one will be returned).  This must be used ONLY
  * as a heuristic in giving suitable error messages.  See warnAutoRange.
  *
- * Notice that we consider both matches on actual relation name and matches
+ * Notice that we consider both matches on actual relation name (or CTE) and matches
  * on alias.
  */
 static RangeTblEntry *
 searchRangeTable(ParseState *pstate, RangeVar *relation)
 {
-	Oid			relId = RangeVarGetRelid(relation, true);
-	char	   *refname = relation->relname;
+	Oid	relId = InvalidOid;
+	const char *refname = relation->relname;
+	CommonTableExpr *cte = NULL;
+	Index ctelevelsup = 0;
 
+	/*
+	 * If it's an unqualified name, check for possible CTE matches. A CTE
+	 * hides any real relation matches.  If no CTE, look for a matching
+	 * relation.
+	 */
+	if (!relation->schemaname)
+		cte = scanNameSpaceForCTE(pstate, refname, &ctelevelsup);
+	if (!cte)
+		relId = RangeVarGetRelid(relation, true);
+
+	Index levelsup = 0;
 	while (pstate != NULL)
 	{
 		ListCell   *l;
@@ -221,6 +294,13 @@ searchRangeTable(ParseState *pstate, RangeVar *relation)
 				rte->rtekind == RTE_RELATION &&
 				rte->relid == relId)
 				return rte;
+
+			if (rte->rtekind == RTE_CTE &&
+				cte != NULL &&
+				rte->ctelevelsup + levelsup == ctelevelsup &&
+				strcmp(rte->ctename, refname) == 0)
+				return rte;
+
 			if (rte->eref != NULL &&
                 rte->eref->aliasname != NULL &&
                 strcmp(rte->eref->aliasname, refname) == 0)
@@ -228,6 +308,7 @@ searchRangeTable(ParseState *pstate, RangeVar *relation)
 		}
 
 		pstate = pstate->parentParseState;
+		levelsup++;
 	}
 	return NULL;
 }
@@ -621,6 +702,43 @@ buildScalarFunctionAlias(Node *funcexpr, char *funcname,
 }
 
 /*
+ * Open a table during parse analysis
+ *
+ * This is essentially the same as CdbOpenRelationRv, except that it caters
+ * to some parser-specific error reporting needs.
+ */
+static Relation
+parserOpenTable(ParseState *pstate, const RangeVar *relation,
+				int lockmode, bool nowait, bool *lockUpgraded)
+{
+	Relation rel = NULL;
+	
+	PG_TRY();
+	{
+		rel = CdbOpenRelationRv(relation, lockmode, nowait, NULL);
+	}
+	PG_CATCH();
+	{
+		if (relation->schemaname == NULL &&
+			isFutureCTE(pstate, relation->relname))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_TABLE),
+					 errmsg("relation \"%s\" does not exist",
+							relation->relname),
+					 errdetail("There is a WITH item named \"%s\", but it cannot be referenced from this part of the query.",
+							   relation->relname),
+					 errhint("Re-order the WITH items to remove forward references.")));
+		}
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	return rel;
+}
+
+/*
  * Add an entry for a relation to the pstate's range table (p_rtable).
  *
  * If pstate is NULL, we just build an RTE and return it without adding it
@@ -654,7 +772,7 @@ addRangeTableEntry(ParseState *pstate,
 		lockmode = locking->forUpdate ? RowExclusiveLock : RowShareLock;
 		nowait	 = locking->noWait;
 	}
-	rel = CdbOpenRelationRv(relation, lockmode, nowait, NULL);
+	rel = parserOpenTable(pstate, relation, lockmode, nowait, NULL);
 	
 	/*
 	 * Get the rel's OID.  This access also ensures that we have an up-to-date
@@ -1117,6 +1235,92 @@ addRangeTableEntryForJoin(ParseState *pstate,
 }
 
 /*
+ * Add an entry for a CTE to the pstate's range table (p_rtable).
+ *
+ * This is just like addRangeTableEntry() except that it makes a CTE RTE.
+ */
+RangeTblEntry *
+addRangeTableEntryForCTE(ParseState *pstate,
+						 CommonTableExpr *cte,
+						 Index levelsup,
+						 RangeVar *rangeVar,
+						 bool inFromCl)
+{
+	RangeTblEntry *rte = makeNode(RangeTblEntry);
+
+	rte->rtekind = RTE_CTE;
+	rte->ctename = cte->ctename;
+	rte->ctelevelsup = levelsup;
+
+	/* Self-reference if and only if CTE's parse analysis isn't completed */
+	rte->self_reference = !IsA(cte->ctequery, Query);
+	Assert(cte->cterecursive || !rte->self_reference);
+	/* Bump the CTE's refcount if this isn't a self-reference */
+	if (!rte->self_reference)
+		cte->cterefcount++;
+
+	/* Currently, we only support SELECT in WITH query */
+	AssertImply(IsA(cte->ctequery, Query),
+				((Query *) cte->ctequery)->commandType == CMD_SELECT);
+
+	rte->ctecoltypes = cte->ctecoltypes;
+	rte->ctecoltypmods = cte->ctecoltypmods;
+
+	rte->alias = rangeVar->alias;
+	char *refname = rte->alias ? rte->alias->aliasname : cte->ctename;
+	Alias *eref;
+
+	if (rte->alias)
+		eref = copyObject(rte->alias);
+	else
+		eref = makeAlias(refname, NIL);
+	int numaliases = list_length(eref->colnames);
+
+	/* fill in any unspecified alias columns */
+	int varattno = 0;
+	ListCell *lc;
+	foreach(lc, cte->ctecolnames)
+	{
+		varattno++;
+		if (varattno > numaliases)
+			eref->colnames = lappend(eref->colnames, lfirst(lc));
+	}
+	if (varattno < numaliases)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg(ERRMSG_GP_WITH_COLUMNS_MISMATCH, refname)));
+	}
+
+	rte->eref = eref;
+
+	/*----------
+	 * Flags:
+	 * - this RTE should be expanded to include descendant tables,
+	 * - this RTE is in the FROM clause,
+	 * - this RTE should be checked for appropriate access rights.
+	 *
+	 * Subqueries are never checked for access rights.
+	 *----------
+	 */
+	rte->inh = false;			/* never true for subqueries */
+	rte->inFromCl = inFromCl;
+
+	rte->requiredPerms = 0;
+	rte->checkAsUser = InvalidOid;
+
+	/*
+	 * Add completed RTE to pstate's range table list, but not to join list
+	 * nor namespace --- caller must do that if appropriate.
+	 */
+	if (pstate != NULL)
+		pstate->p_rtable = lappend(pstate->p_rtable, rte);
+
+	return rte;
+}
+
+
+/*
  * Has the specified refname been selected FOR UPDATE/FOR SHARE?
  *
  * Note: we pay no attention to whether it's FOR UPDATE vs FOR SHARE.
@@ -1282,6 +1486,44 @@ expandRTE(RangeTblEntry *rte, int rtindex, int sublevels_up,
 				}
 			}
 			break;
+		case RTE_CTE:
+			{
+				ListCell *aliasp_item = list_head(rte->eref->colnames);
+				ListCell *lct;
+				ListCell *lcm;
+
+				varattno = 0;
+				forboth(lct, rte->ctecoltypes,
+						lcm, rte->ctecoltypmods)
+				{
+					Oid coltype = lfirst_oid(lct);
+					int32 coltypmod = lfirst_int(lcm);
+
+					varattno++;
+
+					if (colnames)
+					{
+						/* Assume there is one alias per output column */
+						Assert(IsA(lfirst(aliasp_item), String));
+						char *label = strVal(lfirst(aliasp_item));
+
+						*colnames = lappend(*colnames, makeString(pstrdup(label)));
+						aliasp_item = lnext(aliasp_item);
+					}
+
+					if (colvars)
+					{
+						Var	*varnode;
+
+						varnode = makeVar(rtindex, varattno,
+										  coltype, coltypmod,
+										  sublevels_up);
+						*colvars = lappend(*colvars, varnode);
+					}
+				}
+			}
+			break;
+			
 		case RTE_FUNCTION:
 			{
 				/* Function RTE */
@@ -1779,6 +2021,14 @@ get_rte_attribute_type(RangeTblEntry *rte, AttrNumber attnum,
 				*vartypmod = exprTypmod(aliasvar);
 			}
 			break;
+		case RTE_CTE:
+			{
+				/* CTE RTE --- get type info from lists in the RTE */
+				Assert(attnum > 0 && attnum <= list_length(rte->ctecoltypes));
+				*vartype = list_nth_oid(rte->ctecoltypes, attnum - 1);
+				*vartypmod = list_nth_int(rte->ctecoltypmods, attnum - 1);
+			}
+			break;
 		default:
 			elog(ERROR, "unrecognized RTE kind: %d", (int) rte->rtekind);
 	}
@@ -1817,6 +2067,7 @@ get_rte_attribute_is_dropped(RangeTblEntry *rte, AttrNumber attnum)
 			break;
 		case RTE_SUBQUERY:
 		case RTE_VALUES:
+		case RTE_CTE:
 			/* Subselect and Values RTEs never have dropped columns */
 			result = false;
 			break;
