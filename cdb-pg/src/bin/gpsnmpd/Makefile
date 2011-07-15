@@ -19,10 +19,7 @@ LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
 # This program isn't interactive, so doesn't need these
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
 
-CFLAGS += -Wno-error
-ifneq ($(PORTNAME), win32)
-override CFLAGS += $(PTHREAD_CFLAGS) -pthread
-endif
+override CFLAGS += -Wno-error
 
 # we pick up the wrong net-snmp-config here  with lots of references to /home/build/hridenour/dev
 #SNMPFLAGS=-I. -I./RDBMS-MIB_src $(shell ../../../../ext/bin/net-snmp-config --cflags) 
