@@ -441,7 +441,7 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 		 * getaddrinfo gives us all the parameters for the socket() call
 		 * as well as the parameters for the bind() call.
 		 */
-		elog(DEBUG1,"receive socket %d %d %d",rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		elog(DEBUG1,"receive socket ai_family %d ai_socktype %d ai_protocol %d",rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if (fd == -1)
 			continue;
@@ -451,6 +451,7 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 			continue;
 
 		fun = "bind";
+		elog(DEBUG1,"bind addrlen %d fam %d",rp->ai_addrlen,rp->ai_addr->sa_family);
 		if (bind(fd, rp->ai_addr, rp->ai_addrlen) == 0)
 			break;					/* Success */
 
@@ -1264,6 +1265,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	for (rp = addrs; rp != NULL; rp = rp->ai_next)
 	{
 		fun = "socket";
+		elog(DEBUG1,"txfd %d socket ai_family=%d, ai_socktype %d, ai_protocol %d",pEntry->txfd,rp->ai_family,rp->ai_socktype, rp->ai_protocol);
 		pEntry->txfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if (pEntry->txfd == -1)
 			continue;
@@ -1273,6 +1275,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 			continue;
 
 		fun = "bind";
+		elog(DEBUG1,"bind ai_addrlen %d, ai_fam %d",rp->ai_addrlen, rp->ai_addr->sa_family);
 		if (bind(pEntry->txfd, rp->ai_addr, rp->ai_addrlen) == 0)
 			break; /* Success */
 
@@ -1286,28 +1289,6 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	}
 
 	freeaddrinfo(addrs); /* No longer needed */
-
-#if OLDWAY
-	pEntry->txfd = socket(AF_INET, SOCK_DGRAM, 0);
-	fun = "socket";
-	if (pEntry->txfd < 0)
-		goto error;
-
-	if (!pg_set_noblock(pEntry->txfd))
-		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect Error: Could not set udp-tx socket"
-							   "to non-blocking mode."),
-						errdetail("%m%s sockfd=%d", "fcntl", pEntry->txfd)));
-
-	MemSet(&saddr, 0, sizeof(saddr));
-	saddr.sin_family = AF_INET;
-
-	saddr.sin_port = 0;
-
-	fun = "bind";
-	if (bind(pEntry->txfd, (struct sockaddr *)&saddr, sizeof(saddr)) < 0)
-		goto error;
-#endif
 
 	/* Save the txport we are using.  Just for debugging, I think */
 	pEntry->txport = getPortFromSocket(pEntry->txfd);
@@ -1373,7 +1354,7 @@ getSockAddr(struct sockaddr_storage * peer, socklen_t * peer_len, const char * l
 	}
 	/* Since we aren't using name resolution, getaddrinfo will return only 1 entry */
 
-	elog(DEBUG1,"socket %d %d %d for %s ",addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol, listenerAddr);
+	elog(DEBUG1,"socket ai_family %d ai_socktype %d ai_protocol %d for %s ",addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol, listenerAddr);
 	memset(peer, 0, sizeof(struct sockaddr_storage));
 	memcpy(peer, addrs->ai_addr, addrs->ai_addrlen);
 	*peer_len = addrs->ai_addrlen;
@@ -2975,7 +2956,7 @@ xmit_retry:
 		if (errno == EAGAIN) /* no space ? not an error. */
 			return;
 
-		elog(LOG,"peer_len = %d, fam = %d", conn->peer_len, conn->peer.ss_family);
+		elog(LOG,"txfd = %d, peer_len = %d, fam = %d", pEntry->txfd, conn->peer_len, conn->peer.ss_family);
 
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect error writing an outgoing packet: %m"),
