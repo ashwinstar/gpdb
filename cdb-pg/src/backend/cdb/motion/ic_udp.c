@@ -445,6 +445,8 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 		fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if (fd == -1)
 			continue;
+		elog(DEBUG1,"receive socket %d ai_family %d ai_socktype %d ai_protocol %d",fd,rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+
 
 		fun = "fcntl(O_NONBLOCK)";
 		if (!pg_set_noblock(fd))
@@ -1265,10 +1267,11 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	for (rp = addrs; rp != NULL; rp = rp->ai_next)
 	{
 		fun = "socket";
-		elog(DEBUG1,"txfd %d socket ai_family=%d, ai_socktype %d, ai_protocol %d",pEntry->txfd,rp->ai_family,rp->ai_socktype, rp->ai_protocol);
 		pEntry->txfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if (pEntry->txfd == -1)
 			continue;
+		elog(DEBUG1,"pEntry->txfd %d socket ai_family=%d, ai_socktype %d, ai_protocol %d",pEntry->txfd,rp->ai_family,rp->ai_socktype, rp->ai_protocol);
+
 
 		fun = "fcntl(O_NONBLOCK)";
 		if (!pg_set_noblock(pEntry->txfd))
@@ -1354,7 +1357,7 @@ getSockAddr(struct sockaddr_storage * peer, socklen_t * peer_len, const char * l
 	}
 	/* Since we aren't using name resolution, getaddrinfo will return only 1 entry */
 
-	elog(DEBUG1,"socket ai_family %d ai_socktype %d ai_protocol %d for %s ",addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol, listenerAddr);
+	elog(DEBUG1,"GetSockAddr socket ai_family %d ai_socktype %d ai_protocol %d for %s ",addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol, listenerAddr);
 	memset(peer, 0, sizeof(struct sockaddr_storage));
 	memcpy(peer, addrs->ai_addr, addrs->ai_addrlen);
 	*peer_len = addrs->ai_addrlen;
@@ -1434,7 +1437,12 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 		if (source_addr.ss_family != conn->peer.ss_family)
 		{
 			if (source_addr.ss_family == AF_INET6)
+			{
 				elog(DEBUG1, "We are inet6, remote is inet");
+				/* TEMP DEBUG CODE */
+				pEntry->txfd = socket(conn->peer.ss_family, SOCK_DGRAM, 0);
+
+			}
 			else
 				elog(WARNING, "We are inet, remove is inet6 ");
 		}
@@ -2956,7 +2964,7 @@ xmit_retry:
 		if (errno == EAGAIN) /* no space ? not an error. */
 			return;
 
-		elog(LOG,"txfd = %d, peer_len = %d, fam = %d", pEntry->txfd, conn->peer_len, conn->peer.ss_family);
+		elog(LOG,"sendto error: txfd = %d, peer_len = %d, fam = %d", pEntry->txfd, conn->peer_len, conn->peer.ss_family);
 
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect error writing an outgoing packet: %m"),
