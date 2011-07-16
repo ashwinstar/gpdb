@@ -2975,6 +2975,8 @@ xmit_retry:
 		if (errno == EAGAIN) /* no space ? not an error. */
 			return;
 
+		elog(LOG,"peer_len = %d, fam = %d", conn->peer_len, conn->peer.ss_family);
+
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect error writing an outgoing packet: %m"),
 						errdetail("error during sendto() call (error:%d).\n"
