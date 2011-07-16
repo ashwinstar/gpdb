@@ -1439,9 +1439,22 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 			if (source_addr.ss_family == AF_INET6)
 			{
 				elog(DEBUG1, "We are inet6, remote is inet");
+				// conn.peer.addrlen == 16
 				/* TEMP DEBUG CODE */
-				pEntry->txfd = socket(conn->peer.ss_family, SOCK_DGRAM, 0);
-
+				struct sockaddr_storage temp;
+				memset(&temp, 0, sizeof(temp));
+				temp.ss_family = AF_INET6;
+				((struct sockaddr_in6 *)&temp)->sin6_family = AF_INET6;
+				((struct sockaddr_in6 *)&temp)->sin6_port = ((struct sockaddr_in *)&conn->peer)->sin_port;
+				char * addrloc = (char *)&((struct sockaddr_in6 *)&temp)->sin6_addr ;
+				addrloc[10] = 0xFF;
+				addrloc[11] = 0xFF;
+				memcpy(addrloc+12,&((struct sockaddr_in *)&conn->peer)->sin_addr,4);
+				memcpy(&conn->peer,&temp,sizeof(struct sockaddr_in6));
+				conn->peer_len = sizeof(struct sockaddr_in6);
+				format_sockaddr((struct sockaddr *)&conn->peer, conn->remoteHostAndPort,
+									sizeof(conn->remoteHostAndPort));
+				elog(DEBUG1,"new sockaddr %s",conn->remoteHostAndPort);
 			}
 			else
 				elog(WARNING, "We are inet, remove is inet6 ");
