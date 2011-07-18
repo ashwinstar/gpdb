@@ -3462,7 +3462,7 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 							   remote_port, sizeof(remote_port),
 							   NI_NUMERICHOST | NI_NUMERICSERV);
 			if (ret != 0)
-				elog(WARNING,"getnameinfo returned %s",gai_strerror(ret));
+				elog(LOG,"getnameinfo returned %s",gai_strerror(ret));
 			buf += strlen(buf);
 			strcat(buf,"]");
 			buf++;
