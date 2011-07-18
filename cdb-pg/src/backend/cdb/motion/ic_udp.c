@@ -3444,10 +3444,13 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 	else if (sa->sa_family == AF_INET6)
 	{
 		char remote_port[32];
+		remote_port[0] = '\0';
+		buf[0] = '\0';
 
 		if (bufsize > 10)
 		{
 			buf[0] = '[';
+			buf[1] = '\0'; /* in case getnameinfo fails */
 			/*
 			 * inet_ntop isn't portable.
 			 * //inet_ntop(AF_INET6, &sin6->sin6_addr, buf, bufsize - 8);
@@ -3462,7 +3465,7 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 							   remote_port, sizeof(remote_port),
 							   NI_NUMERICHOST | NI_NUMERICSERV);
 			if (ret != 0)
-				elog(LOG,"getnameinfo returned %s",gai_strerror(ret));
+				elog(LOG,"getnameinfo returned %s, and says %s port %s",gai_strerror(ret),buf,remote_port);
 			buf += strlen(buf);
 			strcat(buf,"]");
 			buf++;
