@@ -251,6 +251,8 @@ class GPCatalog():
             # remove the tidycat comment
             if "__comment" in d:
                 del d["__comment"]
+            if "__info" in d:
+                del d["__info"]
             infil.close()
             self._tidycat = d
         except Exception, e:

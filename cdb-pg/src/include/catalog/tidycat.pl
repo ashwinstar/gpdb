@@ -2863,6 +2863,8 @@ if (1)
 				$cmt .= " CATALOG_VERSION_NO=$catvstr"
 					if (length($catvstr));
 				$dumptabs_h{"__comment"} = $cmt;
+				$dumptabs_h{"__info"} = {CATALOG_VERSION_NO => $catvstr}
+					if (length($catvstr));
 
 				print $file_out JSON::to_json(\%dumptabs_h, 
 												{pretty => 1, indent => 2, 
@@ -3000,7 +3002,7 @@ if (0)
       "slzy_date" : 1310506387
    },
    "short" : "generate catalog entries",
-   "version" : "29"
+   "version" : "30"
 }
 
 EOF_bigstr
