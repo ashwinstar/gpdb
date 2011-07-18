@@ -3477,7 +3477,13 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 							   remote_port, sizeof(remote_port),
 							   NI_NUMERICHOST | NI_NUMERICSERV);
 			if (ret != 0)
+			{
 				elog(LOG,"getnameinfo returned %s, and says %s port %s",gai_strerror(ret),buf,remote_port);
+				elog(LOG," port was %d",((struct sockaddr_in6 *)sa)->sin6_port);
+				char debugmsg[128];
+				inet_ntop(sa->sa_family, (struct sockaddr *)&sa, debugmsg, sizeof(debugmsg));
+				elog(LOG," inet_ntop says %s ",debugmsg);
+			}
 			buf += strlen(buf);
 			strcat(buf,"]");
 			buf++;
