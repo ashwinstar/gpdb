@@ -1438,26 +1438,37 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 		{
 			if (source_addr.ss_family == AF_INET6)
 			{
-				elog(DEBUG1, "We are inet6, remote is inet");
-				// conn.peer.addrlen == 16
-				/* TEMP DEBUG CODE */
 				struct sockaddr_storage temp;
+				const struct sockaddr_in *in = (const struct sockaddr_in *)&conn->peer;
+				struct sockaddr_in6 *in6_new = (struct sockaddr_in6 *)&temp;
 				memset(&temp, 0, sizeof(temp));
+
+				elog(DEBUG1, "We are inet6, remote is inet");
+
+
+				/* Construct a V4-to-6 mapped address.  */
 				temp.ss_family = AF_INET6;
-				((struct sockaddr_in6 *)&temp)->sin6_family = AF_INET6;
-				((struct sockaddr_in6 *)&temp)->sin6_port = ((struct sockaddr_in *)&conn->peer)->sin_port;
-				char * addrloc = (char *)&((struct sockaddr_in6 *)&temp)->sin6_addr ;
-				addrloc[10] = 0xFF;
-				addrloc[11] = 0xFF;
-				memcpy(addrloc+12,&((struct sockaddr_in *)&conn->peer)->sin_addr,4);
+				in6_new->sin6_family = AF_INET6;
+				in6_new->sin6_port = in->sin_port;
+				in6_new->sin6_flowinfo = 0;
+
+				memset (&in6_new->sin6_addr, '\0', sizeof (in6_new->sin6_addr));
+				//in6_new->sin6_addr.s6_addr16[5] = 0xffff;
+				((uint16 *)&in6_new->sin6_addr)[5] = 0xffff;
+				//in6_new->sin6_addr.s6_addr32[3] = in->sin_addr.s_addr;
+				memcpy(((char *)&in6_new->sin6_addr)+12,&(in->sin_addr),4);
+				in6_new->sin6_scope_id = 0;
+
+				/* copy it back */
 				memcpy(&conn->peer,&temp,sizeof(struct sockaddr_in6));
 				conn->peer_len = sizeof(struct sockaddr_in6);
-				format_sockaddr((struct sockaddr *)&conn->peer, conn->remoteHostAndPort,
-									sizeof(conn->remoteHostAndPort));
-				elog(DEBUG1,"new sockaddr %s",conn->remoteHostAndPort);
+				//Assert(IN6_IS_ADDR_V4MAPPED(&conn->peer.sin6_addr));
+				//format_sockaddr((struct sockaddr *)&conn->peer, conn->remoteHostAndPort,
+				//					sizeof(conn->remoteHostAndPort));
+				//elog(DEBUG1,"new sockaddr %s",conn->remoteHostAndPort);
 			}
 			else
-				elog(WARNING, "We are inet, remove is inet6 ");
+				elog(WARNING, "We are inet, remote is inet6 ");
 		}
 		elog(DEBUG1, "reusing socket for tx %d ",pEntry->txfd);
 
