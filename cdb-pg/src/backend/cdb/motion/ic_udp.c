@@ -390,6 +390,10 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 	hints.ai_flags = AI_PASSIVE;	/* For wildcard IP address */
 	hints.ai_protocol = 0;			/* Any protocol */
 
+#ifdef __darwin__
+	hints.ai_family = AF_INET;
+#endif
+
 	fun = "getaddrinfo";
 	s = getaddrinfo(NULL, service, &hints, &addrs);
 	if (s != 0)
@@ -1236,6 +1240,10 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	hints.ai_flags = AI_PASSIVE; /* For wildcard IP address */
 	hints.ai_protocol = 0; /* Any protocol */
 
+#ifdef __darwin__
+	hints.ai_family = AF_INET;
+#endif
+
 	fun = "getaddrinfo";
 	s = getaddrinfo(NULL, service, &hints, &addrs);
 	if (s != 0)
@@ -1337,6 +1345,10 @@ getSockAddr(struct sockaddr_storage * peer, socklen_t * peer_len, const char * l
 	hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
 #else
 	hint.ai_flags = AI_NUMERICHOST;  /* Never do name resolution */
+#endif
+
+#ifdef __darwin__
+	hint.ai_family = AF_UNSPEC;
 #endif
 
 	snprintf(portNumberStr, sizeof(portNumberStr), "%d", listenerPort);
