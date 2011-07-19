@@ -12,3 +12,8 @@ sreh.out
 tablespace.out
 upg2.out
 ereport.out
+tidycat.out
+orafunk.out
+filespace.out
+gpcheckmirrorseg.out
+upgrade.out
