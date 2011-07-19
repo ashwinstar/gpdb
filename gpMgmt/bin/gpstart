@@ -28,6 +28,7 @@ try:
     from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
     from gppylib.commands import base
     from gppylib.commands import pg
+    from gppylib.commands import dca
     from gppylib import pgconf
     from gppylib.operations.startSegments import *
     from gppylib.gpcoverage import GpCoverage
@@ -130,6 +131,11 @@ class GpStart:
         finally:
             # Reenable Ctrl-C
             signal.signal(signal.SIGINT,signal.default_int_handler)
+
+        if dca.is_dca_appliance():
+            logger.info("Iniializing DCA settings")
+            dca.DcaGpdbInitialized.local()
+            logger.info("DCA settings initialized")
 
         return 0 if success else 1
 

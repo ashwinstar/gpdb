@@ -27,6 +27,7 @@ try:
     from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
     from gppylib.commands import base
     from gppylib.commands import pg
+    from gppylib.commands import dca
     from gppylib.gpcoverage import GpCoverage
     from gppylib.utils import TableLogger
 except ImportError, e:    
@@ -120,6 +121,11 @@ class GpStop:
                 if self.restart:                    
                     logger.info("Restarting System...")                    
                     gp.NewGpStart.local('restarting system',verbose=logging_is_verbose(),nostandby=not self.stopstandby, masterDirectory=self.master_datadir)                    
+                else:
+                    if dca.is_dca_appliance():
+                        logger.info("Unregistering with DCA")
+                        dca.DcaGpdbStopped.local()
+                        logger.info("Unregistered with DCA")
          
                 if self.hadFailures:
                     return 1
