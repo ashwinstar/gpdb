@@ -250,3 +250,10 @@ order by thousand, tenthous;
       999 |     9999
 (25 rows)
 
+-- empty row constructor is valid
+select ROW();
+ row 
+-----
+ ()
+(1 row)
+

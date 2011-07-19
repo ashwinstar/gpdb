@@ -1014,7 +1014,7 @@ heap_deform_tuple(HeapTuple tuple, TupleDesc tupleDesc,
 
 	tp = (char *) tup + tup->t_hoff;
 
-	off = att[0]->attcacheoff = 0;
+	off = 0;
 
 	for (attnum = 0; attnum < natts; attnum++)
 	{
