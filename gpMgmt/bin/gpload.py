@@ -81,6 +81,9 @@ valid_tokens = {
     "port_range": {'parse_children': False, 'parent': "source"},
     "file": {'parse_children': False, 'parent': "source"},
     "columns": {'parse_children': False, 'parent': "input"},
+    "transform": {'parse_children': True, 'parent': "input"},
+    "transform_config": {'parse_children': True, 'parent': "input"},
+    "max_line_length": {'parse_children': True, 'parent': "input"},
     "format": {'parse_children': True, 'parent': "input"},
     "delimiter": {'parse_children': True, 'parent': "input"}, 
     "escape": {'parse_children': True, 'parent': "input"},
@@ -473,6 +476,7 @@ keywords = {
 	"to": True,
 	"trailing": True,
 	"transaction": True,
+	"transform": True,
 	"treat": True,
 	"trigger": True,
 	"trim": True,
@@ -1218,14 +1222,12 @@ class gpload:
             self.config = dictKeyToLower(self.config)
             ver = self.getconfig('version', unicode, extraStuff = ' tag')
             if ver != '1.0.0.1':
-                self.log(self.ERROR, "gpload configuration schema " +
-                    "version must be 1.0.0.1")
+                self.control_file_error("gpload configuration schema version must be 1.0.0.1")
             # second parse, to check that the keywords are sensible
             y = yaml.compose(doc)
             # first should be MappingNode
             if not isinstance(y, yaml.MappingNode):
-                self.log(self.ERROR, "configuration file must begin with a " +
-                         "mapping")
+                self.control_file_error("configuration file must begin with a mapping")
 
             yaml_walk(self, y.value, [])
         except yaml.scanner.ScannerError,e:
@@ -1249,6 +1251,12 @@ class gpload:
         self.subprocesses = []
         self.log(self.INFO,'gpload session started ' + \
                  datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+    def control_file_warning(self, msg):
+        self.log(self.WARN, "A gpload control file processing warning occurred. %s" % msg)
+
+    def control_file_error(self, msg):
+        self.log(self.ERROR, "A gpload control file processing error occurred. %s" % msg)
 
     def elevel2str(self, level):
         if level == self.DEBUG:
@@ -1331,27 +1339,23 @@ class gpload:
                            break
             else:
                 if default=='error':
-                    self.log(self.ERROR,
-                             "A gpload control file processing error occurred. The configuration must contain %s%s"%(a,extraStuff))
+                    self.control_file_error("The configuration must contain %s%s"%(a,extraStuff))
                     sys.exit(2)
                 return default
 
         if typ != None and type(config) != typ:
             if typ == list:
-                self.log(self.ERROR,
-                         "A gpload control file processing error occurred. The %s entry must be a YAML sequence %s"% (a ,extraStuff))
+                self.control_file_error("The %s entry must be a YAML sequence %s"% (a ,extraStuff))
             elif typ == dict:
-                self.log(self.ERROR,
-                         "A gpload control file processing error occurred. The %s entry must be a YAML mapping %s"% (a, extraStuff))
+                self.control_file_error("The %s entry must be a YAML mapping %s"% (a, extraStuff))
             elif typ == unicode or typ == str:
-                self.log(self.ERROR, "%s must be a string %s" % (a, extraStuff))
+                self.control_file_error("%s must be a string %s" % (a, extraStuff))
             elif typ == int:
-                self.log(self.ERROR,
-                         "A gpload control file processing error occurred. The %s entry must be a YAML integer %s" % (a, extraStuff))
+                self.control_file_error("The %s entry must be a YAML integer %s" % (a, extraStuff))
             else:
                 assert 0
 
-            self.log(self.ERROR,"A gpload control file processing error occurred. Encountered unknown configuration type %s"% type(config))
+            self.control_file_error("Encountered unknown configuration type %s"% type(config))
             sys.exit(2)
         return config
 
@@ -1426,6 +1430,131 @@ class gpload:
             # like libpq, just inherit USER
             self.options.d = self.options.U
 
+
+    def gpfdist_port_options(self, name, availablePorts, popenList):
+        """
+        Adds gpfdist -p / -P port options to popenList based on port and port_range in YAML file.
+        Raises errors if options are invalid or ports are unavailable.
+
+        @param name: input source name from YAML file.
+        @param availablePorts: current set of available ports 
+        @param popenList: gpfdist options (updated)
+        """
+        port = self.getconfig(name + ':port', int, None)
+        port_range = self.getconfig(name+':port_range', list, None)
+
+        if port:
+            startPort = endPort = port
+            endPort += 1
+        elif port_range:
+            try:
+                startPort = int(port_range[0])
+                endPort = int(port_range[1])
+            except (IndexError,ValueError):
+                self.control_file_error(name + ":port_range must be a YAML sequence of two integers")
+        else:
+            startPort = self.getconfig(name+':port',int,8000)
+            endPort = self.getconfig(name+':port',int,9000)
+
+        if (startPort > 65535 or endPort > 65535):
+            # Do not allow invalid ports
+            self.control_file_error("Invalid port. Port values must be less than or equal to 65535.")
+        elif not (set(xrange(startPort,endPort+1)) & availablePorts):
+            self.log(self.ERROR, "no more ports available for gpfdist")
+
+        popenList.append('-p')
+        popenList.append(str(startPort))
+
+        popenList.append('-P')
+        popenList.append(str(endPort))
+
+
+    def gpfdist_filenames(self, name, popenList):
+        """
+        Adds gpfdist -f filenames to popenList.
+        Raises errors if YAML file option is invalid.
+
+        @param name: input source name from YAML file.
+        @param popenList: gpfdist options (updated)
+        @return: list of files names
+        """
+        file = self.getconfig(name+':file',list)
+        for i in file:
+            if type(i)!= unicode and type(i) != str:
+                self.control_file_error(name + ":file must be a YAML sequence of strings")
+        popenList.append('-f')
+        popenList.append('"'+' '.join(file)+'"')
+        return file
+
+
+    def gpfdist_timeout_options(self, popenList):
+        """
+        Adds gpfdist -t timeout option to popenList.
+
+        @param popenList: gpfdist options (updated)
+        """
+        if self.options.gpfdist_timeout != None:
+            gpfdistTimeout = self.options.gpfdist_timeout
+        else:
+            gpfdistTimeout = 30
+        popenList.append('-t')
+        popenList.append(str(gpfdistTimeout))
+
+
+    def gpfdist_verbose_options(self, popenList):
+        """
+        Adds gpfdist -v / -V options to popenList depending on logging level
+
+        @param popenList: gpfdist options (updated)
+        """
+        if self.options.qv == self.LOG:
+            popenList.append('-v')
+        elif self.options.qv > self.LOG:
+            popenList.append('-V')
+
+
+    def gpfdist_max_line_length(self, popenList):
+        """
+        Adds gpfdist -m option to popenList when max_line_length option specified in YAML file.
+
+        @param popenList: gpfdist options (updated)
+        """
+        max_line_length = self.getconfig('gpload:input:max_line_length',int,None)
+        if max_line_length is not None:
+            popenList.append('-m')
+            popenList.append(str(max_line_length))
+
+
+    def gpfdist_transform(self, popenList):
+        """
+        Compute and return url fragment if transform option specified in YAML file.
+        Checks for readable transform config file if transform_config option is specified.
+        Adds gpfdist -c option to popenList if transform_config is specified.
+        Validates that transform_config is present when transform option is specified.
+
+        @param popenList: gpfdist options (updated)
+        @returns: uri fragment for transform or "" if not appropriate.
+        """
+        transform = self.getconfig('gpload:input:transform', unicode, None)
+        transform_config = self.getconfig('gpload:input:transform_config', unicode, None)
+        if transform_config:
+            try:
+                f = open(transform_config,'r')
+            except IOError,e:
+                self.log(self.ERROR, "could not open transform_config file: %s" % e)
+            f.close()
+            popenList.append('-c')
+            popenList.append(transform_config)
+        else:
+            if transform:
+                self.control_file_error("transform_config is required when transform is specified")
+
+        fragment = ""
+        if transform is not None:
+            fragment = "#transform=" + transform
+        return fragment
+
+
     def start_gpfdists(self):
         """
         Start gpfdist daemon(s)
@@ -1459,46 +1588,14 @@ class gpload:
                 
                 local_hostname = [result[0].strip()]
 
-            port = self.getconfig(name + ':port', int, None)
-            port_range = self.getconfig(name+':port_range', list, None)
-
-            if port:
-                startPort = endPort = port
-                endPort += 1
-            elif port_range:
-                try:
-                    startPort = int(port_range[0])
-                    endPort = int(port_range[1])
-                except (IndexError,ValueError):
-                    self.log(self.ERROR,
-                             "A gpload control file processing error occurred. " + name + ":port_range must be a YAML sequence of two integers")
-            else:
-                startPort = self.getconfig(name+':port',int,8000)
-                endPort = self.getconfig(name+':port',int,9000)
-
-            if (startPort > 65535 or endPort > 65535):
-                # Do not allow invalid ports
-                self.log(self.ERROR, "A gpload control file processing error occurred; invalid port. Port values must be less than or equal to 65535.")
-            elif not (set(xrange(startPort,endPort+1)) & availablePorts):
-                self.log(self.ERROR, "no more ports available for gpfdist")
-
-            file = self.getconfig(name+':file',list)
-
-            if self.options.gpfdist_timeout != None:
-               gpfdistTimeout = self.options.gpfdist_timeout
-            else:
-               gpfdistTimeout = 30
-
-            for i in file:
-                if type(i)!= unicode and type(i) != str:
-                    self.log(self.ERROR,
-                             "A gpload control file processing error occurred. " + name + ":file must be a YAML sequence of strings")
-            popenList = ['gpfdist','-p',str(startPort),'-P',str(endPort),
-                         '-f','"' + ' '.join(file) + '"', '-t', str(gpfdistTimeout)]
-            if self.options.qv == self.LOG:
-                popenList.append('-v')
-            elif self.options.qv > self.LOG:
-                popenList.append('-V')
+            # build gpfdist parameters
+            popenList = ['gpfdist']
+            self.gpfdist_port_options(name, availablePorts, popenList)
+            file = self.gpfdist_filenames(name, popenList)
+            self.gpfdist_timeout_options(popenList)
+            self.gpfdist_verbose_options(popenList)
+            self.gpfdist_max_line_length(popenList)
+            fragment = self.gpfdist_transform(popenList)
 
             try:
                 self.log(self.LOG, 'trying to run %s' % ' '.join(popenList))
@@ -1569,18 +1666,14 @@ class gpload:
 
             for l in local_hostname:
                 if type(l) != str and type(l) != unicode:
-                    self.log(self.ERROR,
-                             "A gpload control file processing error occurred. " + name + ":local_hostname must be a YAML sequence " +
-                               "of strings")
+                    self.control_file_error(name + ":local_hostname must be a YAML sequence of strings")
                 l = str(l)
                 sep = ''
                 if file[0] != '/':
                     sep = '/'
-                self.locations.append('gpfdist://%s:%d%s%s' % \
-                                       (l, port, sep, '%20'.join(file)))
+                self.locations.append('gpfdist://%s:%d%s%s%s' % (l, port, sep, '%20'.join(file), fragment))
         if not found_source:
-            self.log(self.ERROR, "configuration file must contain source " +
-                                 "definition")
+            self.control_file_error("configuration file must contain source definition")
 
     def readPgpass(self,pgpassname):
         """
@@ -1661,8 +1754,7 @@ class gpload:
             self.from_columns = []
             for d in columns:
                 if type(d)!=dict:
-                    self.log(self.ERROR,
-                               "A gpload control file processing error occurred. gpload:input:columns must be a sequence of YAML mappings")
+                    self.control_file_error("gpload:input:columns must be a sequence of YAML mappings")
                 tempkey = d.keys()[0]
                 value = d[tempkey]
                 """ remove leading or trailing spaces """
@@ -1768,7 +1860,7 @@ class gpload:
         if mapping:
             for key,value in mapping.iteritems():
                 if type(key) != unicode or type(value) != unicode:
-                    self.log(self.ERROR,'A gpload control file processing error occurred. gpload:output:mapping must be a YAML type mapping from strings to strings')
+                    self.control_file_error("gpload:output:mapping must be a YAML type mapping from strings to strings")
                 found = False
                 for a in self.into_columns:
                     if sqlIdentifierCompare(a[0], key) == True:
@@ -1937,7 +2029,7 @@ class gpload:
             if formatType=='csv':
                 formatOpts += "delimiter ',' "
         elif len(delimiterValue) != 1:
-            self.log(self.WARN, "A gpload control file processing warning occurred. A delimiter must have a length of one. Special characters must be quoted. gpload will assume this is a sql escape character sequence.")
+            self.control_file_warning("A delimiter must have a length of one. Special characters must be quoted. gpload will assume this is a sql escape character sequence.")
             formatOpts += "delimiter %s " % self.getconfig('gpload:input:delimiter', unicode)
         else:
             formatOpts += "delimiter %s " % \
@@ -1955,10 +2047,10 @@ class gpload:
         esc = self.getconfig('gpload:input:escape', None, None)
         if esc:
             if type(esc) != unicode and type(esc) != str:
-                self.log(self.ERROR, "A gpload control file processing error occurred. gpload:input:escape must be a string")
+                self.control_file_error("gpload:input:escape must be a string")
             if esc.lower() == 'off':
                 if formatType == 'csv':
-                    self.log(self.ERROR, "A gpload control file processing error occurred. ESCAPE cannot be set to OFF in CSV mode")
+                    self.control_file_error("ESCAPE cannot be set to OFF in CSV mode")
                 formatOpts += "escape 'off' "
             else:
                 formatOpts += "escape %s " % quote(esc)
@@ -1980,14 +2072,14 @@ class gpload:
         if force_not_null_columns:
             for i in force_not_null_columns:
                 if type(i) != unicode and type(i) != str:
-                    self.log(self.ERROR,'A gpload control file processing error occurred. gpload:input:force_not_null must be a YAML sequence of strings')
+                    self.control_file_error("gpload:input:force_not_null must be a YAML sequence of strings")
             formatOpts += "force not null %s " % ','.join(force_not_null_columns)
 
         encodingStr = self.getconfig('gpload:input:encoding', unicode, None)
 
         limitStr = self.getconfig('gpload:input:error_limit',int, None)
         if self.error_table and not limitStr:
-            self.log(self.ERROR, "A gpload control file processing error occurred. gpload:input:error_table requires " +
+            self.control_file_error("gpload:input:error_table requires " +
                     "gpload:input:error_limit to be specified")
 
         # get the list of columns to use in the extnernal table
@@ -2044,7 +2136,7 @@ class gpload:
 
         if limitStr:
             if limitStr < 2:
-                self.log(self.ERROR, "A gpload control file processing error occurred. error_limit must be 2 or higher")
+                self.control_file_error("error_limit must be 2 or higher")
             sql += "segment reject limit %s "%limitStr
         
         self.log(self.LOG, sql)
@@ -2214,7 +2306,7 @@ class gpload:
         theList = convertListToDelimited(theList)
         for i in theList:
             if type(i) != unicode and type(i) != str:
-                self.log(self.ERROR,'A gpload control file processing error occurred. %s must be a YAML sequence of strings'%config)
+                self.control_file_error("%s must be a YAML sequence of strings"%config)
             j = self.into_columns_dict.get(i)
             if not j:
                 self.log(self.ERROR,'column %s in %s does not exist'%(i,config))
@@ -2324,8 +2416,7 @@ class gpload:
         update_columns = set(update_columns)
         a = distkey.intersection(update_columns)
         if len(a):
-            self.log(self.ERROR, 'A gpload control file processing error occurred. update_columns cannot reference column(s) ' +
-                        'in distribution key (%s)' % ', '.join(list(distkey)))
+            self.control_file_error('update_columns cannot reference column(s) in distribution key (%s)' % ', '.join(list(distkey)))
 
         # remember, match_columns might be a superset of the key
         matchColumnList = self.getconfig('gpload:output:match_columns'
@@ -2428,7 +2519,7 @@ class gpload:
         elif method=='merge':
             self.do_method_merge()
         else:
-            self.log(self.ERROR, 'A gpload control file processing error occurred; unsupported method %s' % method)
+            self.control_file_error('unsupported method %s' % method)
 
         if after:
             self.log(self.LOG, "Post-SQL from user: %s" % after)

@@ -1,3 +1,8 @@
+#ifdef WIN32
+/* exclude transformation features on windows for now */
+#undef GPFXDIST
+#endif
+
 #include <apr_getopt.h>
 #include <apr_env.h>
 #include <apr_file_info.h>
@@ -12,6 +17,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
+#ifdef GPFXDIST
+#include <regex.h>
+#include <gpfxdist.h>
+#endif
 #include <fstream/fstream.h>
 
 #ifndef WIN32
@@ -122,7 +131,9 @@ static struct
 	int 		b;
     int 		m; /* max data line len */
     int			z; /* listen queue size (hidden option currently for debuging) */
-} opt = { 8080,8080, 0, 0, ".", 0,0, -1, 5, 0, 32768, 256 };
+	const char* c; /* config file */
+	struct transform* trlist; /* transforms from config file */
+} opt = { 8080,8080, 0, 0, ".", 0,0, -1, 5, 0, 32768, 256, 0, 0 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -242,6 +253,16 @@ struct request_t
 	const char* 	path; 		/* path to file */
 	const char* 	tid; 		/* transaction id */
 	const char* 	csvopt; 	/* options for csv file */
+
+#ifdef GPFXDIST
+	struct 
+	{
+	    const char* name; 		/* requested transformation */
+	    char*       command; 	/* command associated with transform */
+		int         paths;      /* 1 if filename passed to transform should contain paths to data files */
+	} trans;
+#endif
+
 	session_t* 		session; 	/* the session this request is attached to */
 	int 			gp_proto; 	/* the protocol to use, sent from client */
 	int				is_get;     /* true for GET, false for POST */
@@ -279,6 +300,9 @@ static int session_active_segs_isempty(session_t* session);
 static int request_validate(request_t *r);
 static int request_set_path(request_t *r, const char* d, char* p, char* pp, char* path);
 static int request_parse_gp_headers(request_t *r, int opt_g);
+#ifdef GPFXDIST
+static int request_set_transform(request_t *r);
+#endif
 static void handle_post_request(request_t *r, int header_end);
 static void handle_get_request(request_t *r);
 
@@ -312,7 +336,11 @@ static void usage_error(const char* msg, int print_usage)
 		{
 			fprintf(stderr,
 					"gpfdist -- file distribution web server\n\n"
-						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <maxlen>]\n\n"
+						"usage: gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>] [-v | -V] [-m <maxlen>]"
+#ifdef GPFXDIST
+					    "[-c file]"
+#endif
+					    "\n\n"
 						"       gpfdist [-? | --help] | --version\n\n"
 						"        -?, --help : print this screen\n"
 						"        -v         : verbose mode\n"
@@ -322,6 +350,9 @@ static void usage_error(const char* msg, int print_usage)
 						"        -l logfn   : log filename\n"
 					    "        -t tm      : timeout in seconds \n"
 						"        -m maxlen  : max data row length expected, in bytes. default is 32768\n"
+#ifdef GPFXDIST
+					    "        -c file    : configuration file for transformations\n"
+#endif
 						"        --version  : print version information\n\n");
 		}
 	}
@@ -374,6 +405,9 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ NULL, 'g', 1, "internal - gp_proto number" },
 	{ NULL, 'm', 1, "max data row length expected" },
 	{ NULL, 'z', 1, "internal - queue size for listen call" },
+#ifdef GPFXDIST
+	{ NULL, 'c', 1, "transform configuration file" },
+#endif
 	{ "version", 256, 0, "print version number" },
 	{ 0 } };
 
@@ -435,6 +469,9 @@ static void parse_command_line(int argc, const char* const argv[],
 		case 'z':
 			opt.z = atoi(arg);
 			break;
+		case 'c':
+			opt.c = arg;
+			break;
 		case 256:
 			print_version();
 			break;
@@ -456,8 +493,13 @@ static void parse_command_line(int argc, const char* const argv[],
 	if (! ((2 <= opt.t && opt.t <= 30) || opt.t == 0))
 		usage_error("Error:-t timeout must be between 2 and 30, or 0 for no timeout", 0);
 
+#ifdef GPFXDIST
+    if (! ((32*1024) <= opt.m && opt.m <= (1024*1024*1024)))
+    	usage_error("Error: -m max row length must be between 32KB and 1GB", 0);
+#else
     if (! ((32*1024) <= opt.m && opt.m <= (1024*1024)))
     	usage_error("Error: -m max row length must be between 32KB and 1MB", 0);
+#endif
 
     if (! (16 <= opt.z && opt.t <= 512) )
 		usage_error("Error: -z listen queue size must be between 16 and 512 (default is 256)", 0);
@@ -528,6 +570,21 @@ static void parse_command_line(int argc, const char* const argv[],
 		fclose(f);
 
 	}
+
+#ifdef GPFXDIST
+    /* validate opt.c */
+    if (opt.c)
+    {
+        extern int transform_config(const char* filename, struct transform** trlistp, int verbose);
+
+		if (transform_config(opt.c, &opt.trlist, opt.V))
+		{
+			/* transform_config has already printed a message to stderr on failure */
+			exit(1);
+        }
+    }
+#endif
+
 	/* there should not be any more args left */
 	if (os->ind != argc)
 		usage_error("Error: illegal arguments", 1);
@@ -1013,6 +1070,23 @@ static int session_attach(request_t* r)
 		else
 			fstream_options.forwrite = 1;  /* PUT request */
 				
+#ifdef GPFXDIST
+		/* set transformation options */
+        if (r->trans.command)
+        {
+            fstream_options.transform = (struct gpfxdist_t*) apr_pcalloc(pool, sizeof(struct gpfxdist_t));
+
+            if (! fstream_options.transform)
+                    gfatal(FLINE, "out of memory in session_attach");
+
+            fstream_options.transform->cmd        = r->trans.command;
+			fstream_options.transform->pass_paths = r->trans.paths;
+            fstream_options.transform->for_write  = fstream_options.forwrite;
+            fstream_options.transform->mp         = pool;
+        }
+		gprint("r->path %s\n", r->path);
+#endif
+
 		/* try opening the fstream */
 		gprint("new session trying to open the data stream\n");
 		fstream = fstream_open(r->path, &fstream_options, &response_code, &response_string);
@@ -1408,6 +1482,12 @@ static void do_read_request(int fd, short event, void* arg)
 	if(request_parse_gp_headers(r, opt.g) != 0)
 		return;
 	
+#ifdef GPFXDIST
+	/* setup transform */
+	if(request_set_transform(r) != 0)
+		return;
+#endif
+
 	/* Attach the request to a session */
 	if(session_attach(r) != 0)
 		return;
@@ -2180,6 +2260,10 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 			r->totalsegs = atoi(r->in.req->hvalue[i]);
 		else if (0 == strcmp("X-GP-SEGMENT-ID", r->in.req->hname[i]))
 			r->segid = atoi(r->in.req->hvalue[i]);
+#ifdef GPFXDIST
+		else if (0 == strcmp("X-GP-TRANSFORM", r->in.req->hname[i]))
+			r->trans.name = r->in.req->hvalue[i];
+#endif
 	}
 
 	r->gp_proto = strtol(gp_proto, 0, 0);
@@ -2220,6 +2304,103 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 
 	return 0;
 }
+
+
+#ifdef GPFXDIST
+static int request_set_transform(request_t *r)
+{
+    extern struct transform* transform_lookup(struct transform* trlist, const char* name, int for_write, int verbose);
+	extern char* transform_command(struct transform* tr);
+	extern int transform_content_paths(struct transform* tr);
+	extern char* transform_safe(struct transform* tr);
+	extern regex_t* transform_saferegex(struct transform* tr);
+
+    struct transform* tr;
+	char* safe;
+
+	/*
+	 * Requests involving transformations should have a #transform=name in the external
+	 * table URL.  In Rio, GPDB moves the name into an X-GP-TRANSFORM header.  However 
+	 * #transform= may still appear in the url in post requests.  
+	 *
+	 * Note that ordinary HTTP clients and browsers do not typically transmit the portion 
+	 * of the URL after a #.  RFC 2396 calls this part the fragment identifier. 
+	 */
+
+	char* param = "#transform=";
+	char* start = strstr(r->path, param);
+	if (start) 
+	{
+		/*
+		 * we have a transformation request encoded in the url
+		 */
+		*start = 0;
+		if (! r->trans.name) 
+			r->trans.name = start + strlen(param);
+	}
+
+	if (! r->trans.name) 
+		return 0;
+
+    /*
+     * at this point r->trans.name is the name of the transformation requested 
+     * in the url and r->is_get tells us what kind (input or output) to look for.
+     * attempt to look it up.
+     */
+	tr = transform_lookup(opt.trlist, r->trans.name, r->is_get ? 0 : 1, opt.V);
+    if (! tr)
+    {
+        if (r->is_get)
+        {
+            gwarning(FLINE, "reject invalid request from %s [%s %s] - unsppported input #transform",
+                     r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+            http_error(r, FDIST_BAD_REQUEST, "invalid request (unsupported input #transform)");
+        } 
+        else
+        {
+            gwarning(FLINE, "reject invalid request from %s [%s %s] - unsppported output #transform",
+                     r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+            http_error(r, FDIST_BAD_REQUEST, "invalid request (unsupported output #transform)");
+        } 
+        request_end(r, 1, 0);
+        return -1;
+    }
+
+	/*
+	 * propagate details for this transformation
+	 */
+	r->trans.command = transform_command(tr);
+	r->trans.paths   = transform_content_paths(tr);
+
+	/*
+	 * if safe regex is specified, check that the path matches it
+	 */
+	safe = transform_safe(tr);
+	if (safe) 
+	{
+		regex_t* saferegex = transform_saferegex(tr);
+		int rc = regexec(saferegex, r->path, 0, NULL, 0);
+		if (rc) 
+		{
+			char buf[1024];
+			regerror(rc, saferegex, buf, sizeof(buf));
+
+			gwarning(FLINE, "reject invalid request from %s [%s %s] - path does not match safe regex %s: %s",
+					 r->peer, r->in.req->argv[0], r->in.req->argv[1], safe, buf);
+			http_error(r, FDIST_BAD_REQUEST, "invalid request (path does not match safe regex)");
+			request_end(r, 1, 0);
+			return -1;
+		}
+		else
+		{
+			gprint("safe regex %s matches %s\n", safe, r->path);
+		}
+	}
+
+    return 0;
+}
+#endif
+
 
 /*
  * gpfdist main

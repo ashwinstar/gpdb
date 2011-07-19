@@ -1,13 +1,31 @@
-/*#include "c.h"*/
-#include <fstream/gfile.h>
+#ifdef WIN32
+/* exclude transformation features on windows for now */
+#undef GPFXDIST
+#endif
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <assert.h>
+
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#include <fstream/gfile.h>
+#ifdef GPFXDIST
+#include <gpfxdist.h>
+#endif
+
 #include <errno.h>
 #include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
+
+
 #ifdef WIN32
 #include <io.h>
 #define snprintf _snprintf
@@ -473,16 +491,151 @@ static int gz_file_open(gfile_t *fd, int _for_write)
 }
 #endif
 
-int 
-gfile_open(gfile_t *fd, const char *fpath, int for_write, int *response_code,
-		   const char **response_string)
+#ifdef GPFXDIST
+/*
+ * subprocess support
+ */
+
+static int 
+subprocess_open(gfile_t* fd, const char* fpath, int for_write, int* response_code, const char** response_string)
+{
+	apr_pool_t*     mp     = fd->transform->mp;
+	char*           cmd    = fd->transform->cmd;
+	apr_procattr_t* pattr;
+	char**          tokens;
+	apr_status_t    rv;
+
+	if ((rv = apr_tokenize_to_argv(cmd, &tokens, mp)) != APR_SUCCESS) 
+	{
+		*response_code   = 500;
+		*response_string = "subprocess_open: apr_tokenize_to_argv failed";
+		gfile_printf_then_putc_newline(*response_string);
+		return 1;
+	}
+
+	/* replace %FILENAME% with path to input or output file */
+	{
+		char** p;
+		for (p = tokens; *p; p++) 
+		{
+			if (0 == strcasecmp(*p, "%FILENAME%"))
+				*p = (char*) fpath;
+		}
+	}
+
+	if ((rv = apr_procattr_create(&pattr, mp)) != APR_SUCCESS) 
+	{
+		*response_code   = 500;
+		*response_string = "subprocess_open: apr_procattr_create failed";
+		gfile_printf_then_putc_newline(*response_string);
+		return 1;
+	}
+
+	if (for_write) 
+	{
+		if ((rv = apr_procattr_io_set(pattr, APR_FULL_BLOCK, APR_NO_PIPE, APR_NO_PIPE)) != APR_SUCCESS) 
+		{
+			*response_code   = 500;
+			*response_string = "subprocess_open: apr_procattr_io_set (full,no,no) failed";
+			gfile_printf_then_putc_newline(*response_string);
+			return 1;
+		}
+		fd->transform->for_write = 1;
+
+	} 
+	else 
+	{
+		if ((rv = apr_procattr_io_set(pattr, APR_NO_PIPE, APR_FULL_BLOCK, APR_NO_PIPE)) != APR_SUCCESS) 
+		{
+			*response_code   = 500;
+			*response_string = "subprocess_open: apr_procattr_io_set (no,full,no) failed";
+			gfile_printf_then_putc_newline(*response_string);
+			return 1;
+		}
+		fd->transform->for_write = 0;
+	}
+
+	if ((rv = apr_procattr_cmdtype_set(pattr, APR_PROGRAM_ENV)) != APR_SUCCESS) 
+	{
+		*response_code   = 500;
+		*response_string = "subprocess_open: apr_procattr_cmdtype_set failed";
+		gfile_printf_then_putc_newline(*response_string);
+		return 1;
+	}
+
+	if ((rv = apr_proc_create(&fd->transform->proc, tokens[0], (const char* const*)tokens, NULL, pattr, mp)) != APR_SUCCESS) 
+	{
+		*response_code   = 500;
+		*response_string = "subprocess_open: apr_proc_create failed";
+		gfile_printf_then_putc_newline(*response_string);
+		return 1;
+	}
+
+	return 0;
+}
+
+static ssize_t 
+read_subprocess(gfile_t *fd, void *ptr, size_t len)
+{
+	apr_size_t      nbytes = len;
+	apr_status_t    rv;
+
+	rv = apr_file_read(fd->transform->proc.out, ptr, &nbytes);
+	if (rv == APR_SUCCESS)
+		return nbytes;
+	
+	if (rv == APR_EOF)
+		return 0;
+
+	return -1;
+}
+
+static ssize_t
+write_subprocess(gfile_t *fd, void *ptr, size_t size)
+{
+	apr_size_t      nbytes = size;
+
+	apr_file_write(fd->transform->proc.in, ptr, &nbytes);
+	return nbytes;
+}
+
+static int
+close_subprocess(gfile_t *fd)
+{
+	int             st;
+	apr_exit_why_e  why;
+	apr_status_t    rv;
+    
+	if (fd->transform->for_write)
+	    apr_file_close(fd->transform->proc.in);
+	else
+	    apr_file_close(fd->transform->proc.out);
+        
+	rv = apr_proc_wait(&fd->transform->proc, &st, &why, APR_WAIT);
+	if (APR_STATUS_IS_CHILD_DONE(rv)) 
+	{
+		gfile_printf_then_putc_newline("close_subprocess: done: why = %d, exit status = %d", why, st);
+		return st;
+	} 
+	else 
+	{
+		gfile_printf_then_putc_newline("close_subprocess: notdone");
+		return 1;
+	}
+}
+#endif
+
+
+/*
+ * public interface
+ */
+
+int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code, const char** response_string, struct gpfxdist_t* transform)
 {
 	const char* s = strrchr(fpath, '.');
+	bool_t is_win_pipe = FALSE;
 #ifndef WIN32
 	struct 		stat sta;
-	char is_win_pipe = 0;
-#else
-	BOOL is_win_pipe = FALSE;
 #endif
 	off_t ssize = 0;
 
@@ -496,6 +649,21 @@ gfile_open(gfile_t *fd, const char *fpath, int for_write, int *response_code,
 #define strcasecmp stricmp
 #endif 
 
+
+	/*
+	 * check for subprocess and/or named pipe
+	 */
+
+#ifdef GPFXDIST
+	fd->transform = transform;
+
+	if (fd->transform)
+	{
+		/* caller wants a subprocess. nothing to do here just yet. */
+		gfile_printf_then_putc_newline("looks like a subprocess");
+	}
+	else 
+#endif
 #ifdef WIN32
 	/* is this a windows named pipe, of the form \\<host>\... */
 	if (strlen(fpath) > 2)
@@ -604,6 +772,13 @@ gfile_open(gfile_t *fd, const char *fpath, int for_write, int *response_code,
 
 	fd->compressed_size = ssize;
 
+#ifdef GPFXDIST
+	if (fd->transform)
+	{
+		/* CR-2173 nothing to do here if transformation is requested */
+	}
+	else
+#endif
 	if (!fd->is_win_pipe)
 	{
 		do
@@ -633,6 +808,19 @@ gfile_open(gfile_t *fd, const char *fpath, int for_write, int *response_code,
 		return 1;
 	}
 
+	/*
+	 * prepare to use the appropriate i/o routines 
+	 */
+
+#ifdef GPFXDIST
+	if (fd->transform)
+	{
+		fd->read  = read_subprocess;
+		fd->write = write_subprocess;
+		fd->close = close_subprocess;
+	}
+	else 
+#endif
 	if (fd->is_win_pipe)
 	{
 		fd->read = readwinpipe;
@@ -647,6 +835,18 @@ gfile_open(gfile_t *fd, const char *fpath, int for_write, int *response_code,
 	}
 
 	
+	/*
+	 * delegate remaining setup work to an appropriate open routine
+	 * or return an error if we can't handle the type
+	 */
+
+#ifdef GPFXDIST
+	if (fd->transform)
+	{
+		return subprocess_open(fd, fpath, for_write, response_code, response_string);
+	}
+	else 
+#endif
 	if (s && strcasecmp(s,".gz")==0)
 	{
 #ifdef WIN32
@@ -693,10 +893,20 @@ gfile_close(gfile_t*fd)
 
 	if (fd->close)
 	{
+#ifdef GPFXDIST
+		if (fd->transform)
+        {
+			fd->close(fd);
+		} 
+        else
+		{
+#endif
+
 		if ( fd->is_gz_write )
 		{
 			fd->close(fd);
 		}
+
 		if (!fd->is_win_pipe)
 		{
 			int i;
@@ -711,6 +921,11 @@ gfile_close(gfile_t*fd)
 			if (e == 0)
 				e = i;
 		}
+
+#ifdef GPFXDIST
+		} 
+#endif
+
 		fd->read = 0;
 		fd->close = 0;
 	}

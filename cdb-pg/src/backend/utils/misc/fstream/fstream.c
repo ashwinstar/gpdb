@@ -1,3 +1,8 @@
+#ifdef WIN32
+/* exclude transformation features on windows for now */
+#undef GPFXDIST
+#endif
+
 /*#include "c.h"*/
 #ifdef WIN32
 #define _WINSOCKAPI_
@@ -12,6 +17,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef GPFXDIST
+#include <gpfxdist.h>
+#endif
 
 #define FILE_ERROR_SZ 200
 char* format_error(char* c1, char* c2);
@@ -171,6 +180,17 @@ scan_csv_records(char *p, char *q, int one, fstream_t *fs)
 /* close the file stream */
 void fstream_close(fstream_t* fs)
 {
+#ifdef GPFXDIST
+	/*
+	 * remove temporary file we created to hold the file paths
+	 */
+	if (fs->options.transform && fs->options.transform->tempfilename)
+	{
+		apr_file_remove(fs->options.transform->tempfilename, fs->options.transform->mp);
+		fs->options.transform->tempfilename = NULL;
+	}
+#endif
+
 	if(fs->buffer)
 		gfile_free(fs->buffer);
 
@@ -278,6 +298,39 @@ static int glob_path(fstream_t *fs, const char *path)
 	return 0;
 }
 
+
+#ifdef GPFXDIST
+/*
+ * adjust fs->glob so that it contains a single item which is a
+ * properly allocated copy of the specified filename.  assumes fs->glob
+ * contains at least one name.  
+ */
+
+static int glob_adjust(fstream_t* fs, char* filename, int* response_code, const char** response_string)
+{
+	int i;
+	int tlen    = strlen(filename) + 1;
+	char* tname = gfile_malloc(tlen);
+	if (!tname) 
+	{
+		*response_code = 500;
+		*response_string = "fstream out of memory allocating copy of temporary file name";
+		gfile_printf_then_putc_newline(*response_string);
+		return 1;
+	}
+
+	for (i = 0; i<fs->glob.gl_pathc; i++)
+	{
+		gfile_free(fs->glob.gl_pathv[i]);
+		fs->glob.gl_pathv[i] = NULL;
+	}
+	strcpy(tname, filename);
+	fs->glob.gl_pathv[0] = tname;
+	fs->glob.gl_pathc = 1;
+	return 0;
+}
+#endif
+
 /*
  * fstream_open
  *
@@ -353,6 +406,69 @@ fstream_open(const char *path, const struct fstream_options *options,
 		return 0;
 	}
 
+
+#ifdef GPFXDIST
+	/*
+	 * when the subprocess transformation wants to handle iteration over the files
+	 * we write the paths to a temporary file and replace the fs->glob items with
+	 * just a single entry referencing the path to the temporary file.
+	 */
+	if (options->transform && options->transform->pass_paths)
+	{
+		apr_pool_t*  mp = options->transform->mp;
+		apr_file_t*  f = NULL;
+		const char*  tempdir = NULL;
+		char*        tempfilename = NULL;
+		apr_status_t rv;
+
+		if ((rv = apr_temp_dir_get(&tempdir, mp)) != APR_SUCCESS)
+		{
+			*response_code = 500;
+			*response_string = "failed to get temporary directory for paths file";
+			gfile_printf_then_putc_newline(*response_string);
+			fstream_close(fs);
+			return 0;
+		}
+
+	    tempfilename = apr_pstrcat(mp, tempdir, "/pathsXXXXXX", NULL);
+		if ((rv = apr_file_mktemp(&f, tempfilename, APR_CREATE|APR_WRITE|APR_EXCL, mp)) != APR_SUCCESS)
+		{
+			*response_code = 500;
+			*response_string = "failed to open temporary paths file";
+			gfile_printf_then_putc_newline(*response_string);
+			fstream_close(fs);
+			return 0;
+		}
+
+		options->transform->tempfilename = tempfilename;
+
+		for (i = 0; i<fs->glob.gl_pathc; i++)
+		{
+			char* filename      = fs->glob.gl_pathv[i];
+			apr_size_t expected = strlen(filename) + 1;
+			
+			if (apr_file_printf(f, "%s\n", filename) < expected)
+			{
+				apr_file_close(f);
+
+				*response_code = 500;
+				*response_string = "failed to fully write path to temporary paths file";
+				gfile_printf_then_putc_newline(*response_string);
+				fstream_close(fs);
+				return 0;
+			}
+		}
+
+		apr_file_close(f);
+
+		if (glob_adjust(fs, tempfilename, response_code, response_string)) 
+		{
+			fstream_close(fs);
+			return 0;
+		}
+	}
+#endif
+
 	/*
 	 * if writing - check write access rights for the one file.
 	 * if reading - check read access right for all files, and 
@@ -361,10 +477,26 @@ fstream_open(const char *path, const struct fstream_options *options,
 	 */
 	for (i = fs->glob.gl_pathc; --i >= 0;)
 	{
+		/*
+		 * CR-2173 - the fstream code allows the upper level logic to treat a
+		 * collection of input sources as a single stream.  One problem it has
+		 * to handle is the possibility that some of the underlying sources may
+		 * not be readable.  Here we're trying to detect potential problems in
+		 * advance by checking that we can open and close each source in our
+		 * list in reverse order.
+		 *
+		 * However in the case of subprocess transformations, we don't want to 
+		 * start and stop each transformation in this manner.  The check that 
+		 * each transformation's underlying input source can be read is still 
+		 * useful so we do those until we get to the first source, at which 
+		 * point we proceed to just setup the tranformation for it.
+		 */
+		struct gpfxdist_t* transform = (i == 0) ? options->transform : NULL;
+
 		gfile_close(&fs->fd);
 
 		if (gfile_open(&fs->fd, fs->glob.gl_pathv[i], options->forwrite,
-					   response_code, response_string))
+					   response_code, response_string, transform))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
 					fs->glob.gl_pathv[i]);
@@ -409,6 +541,7 @@ static int nextFile(fstream_t*fs)
 {
 	int response_code;
 	const char	*response_string;
+	struct gpfxdist_t* transform = fs->options.transform;
 
 	fs->compressed_position += gfile_get_compressed_size(&fs->fd);
 	gfile_close(&fs->fd);
@@ -421,7 +554,7 @@ static int nextFile(fstream_t*fs)
 		fs->skip_header_line = fs->options.header;
 
 		if (gfile_open(&fs->fd, fs->glob.gl_pathv[fs->fidx], 0 /* readonly */, 
-						&response_code, &response_string))
+					   &response_code, &response_string, transform))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
 											fs->glob.gl_pathv[fs->fidx]);
@@ -795,6 +928,7 @@ int fstream_rewind(fstream_t *fs)
 {
 	int 		response_code;
 	const char*	response_string;
+	struct gpfxdist_t* transform = fs->options.transform;
 
 	fs->fidx = 0;
 	fs->foff = 0;
@@ -807,7 +941,7 @@ int fstream_rewind(fstream_t *fs)
 	gfile_close(&fs->fd);
 
 	if (gfile_open(&fs->fd, fs->glob.gl_pathv[0], 0 /* readonly */,
-				   &response_code, &response_string))
+				   &response_code, &response_string, transform))
 	{
 		gfile_printf_then_putc_newline("fstream unable to open file %s",
 				fs->glob.gl_pathv[0]);

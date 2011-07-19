@@ -7,6 +7,8 @@
 typedef __int64 int64_t;
 #endif
 
+struct gpfxdist_t;
+
 /* A file stream - data may come from several files */
 typedef struct fstream_t fstream_t;
 
@@ -18,6 +20,7 @@ struct fstream_options{
     char escape;	/* escape char */
     int bufsize;
     int forwrite;   /* true for write, false for read */
+    struct gpfxdist_t* transform;	/* for gpfxdist transformations */
 };
 
 struct fstream_filename_and_offset{

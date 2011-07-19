@@ -871,6 +871,22 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			}
 		}
 		
+		{
+			/*
+			 * MPP-13031
+			 * copy #transform fragment, if present, into X-GP-TRANSFORM header
+			 */
+			char* p = local_strstr(file->url, "#transform=");
+			if (p && p[11]) 
+			{
+				if (set_httpheader(file, "X-GP-TRANSFORM", p+11))
+				{
+					url_fclose(file, false, pstate->cur_relname);
+					elog(ERROR, "internal error: X-GP-TRANSFORM header value is too long");
+				}
+			}
+		}
+		
 		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HTTPHEADER, file->u.curl.x_httpheader)))
 		{
 			url_fclose(file, false, pstate->cur_relname);

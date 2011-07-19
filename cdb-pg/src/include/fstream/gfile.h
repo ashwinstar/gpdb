@@ -19,6 +19,16 @@ typedef _int64 ssize_t;
 #endif
 #endif
 
+#ifdef WIN32
+typedef BOOL bool_t;
+#else
+typedef char bool_t;
+#ifndef FALSE
+#define FALSE 0
+#endif
+#endif
+
+struct gpfxdist_t;
 
 /* The struct gfile_t is private.  Please do not use any of its fields. */
 typedef struct gfile_t
@@ -27,11 +37,8 @@ typedef struct gfile_t
     ssize_t(*write)(struct gfile_t*,void*,size_t);
     int(*close)(struct gfile_t*);
     off_t compressed_size,compressed_position;
-#ifdef WIN32
-    BOOL is_win_pipe;
-#else
-    char is_win_pipe;
-#endif
+    bool_t is_win_pipe;
+
     union
     {
     	int filefd;
@@ -49,9 +56,11 @@ typedef struct gfile_t
 #endif
     }u;
 	int is_gz_write;
+
+    struct gpfxdist_t* transform;
 }gfile_t;
 
-int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code, const char** response_string);
+int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code, const char** response_string, struct gpfxdist_t* transform);
 int gfile_close(gfile_t*fd);
 off_t gfile_get_compressed_size(gfile_t*fd);
 off_t gfile_get_compressed_position(gfile_t*fd);

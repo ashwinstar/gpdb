@@ -16,15 +16,15 @@ ifeq "$(BLD_ARCH)" "win32"
 override CC=$(strip /usr/local/mingw32/bin/mingw32-gcc $(BLD_CFLAGS))
 override BLD_CFLAGS += -L/usr/local/mingw32/mingw32/lib -I/usr/local/mingw32/mingw32/include -DWIN32 $(CDBINCL)/port/win32 $(CDBINCL)/port/win32_msvc -DFRONTEND
 GPFDISTFILES=gpfdist.c
-GPFDISTFILES_EXTRA=fstream.c gfile.c glob.c $(CURDIR)/../cdb-pg/src/port/dirent.c $(CURDIR)/../cdb-pg/src/port/strlcpy.c $(CURDIR)/../cdb-pg/src/port/win32error.c $(CURDIR)/../cdb-pg/src/port/snprintf.c
+GPFDISTFILES_EXTRA=fstream.c gfile.c transform.c glob.c $(CURDIR)/../cdb-pg/src/port/dirent.c $(CURDIR)/../cdb-pg/src/port/strlcpy.c $(CURDIR)/../cdb-pg/src/port/win32error.c $(CURDIR)/../cdb-pg/src/port/snprintf.c
 GPFDISTOBJS_EXTRA=$(strip $(patsubst %.c,%.o,$(notdir $(GPFDISTFILES_EXTRA))))
 GPFDIST_INCLUDES=-I$(GPCC)/src/gpfdist/include
 GPFDIST_LIBS=-L$(CURDIR)/../cdb-pg/src/port -lpgport -lws2_32
 EXT_EXE=.exe
 else
-GPFDISTFILES=fstream.c gfile.c gpfdist.c
+GPFDISTFILES=fstream.c gfile.c gpfdist.c transform.c
 GPFDISTOBJSFILES=$(subst .c,.o,$(GPFDISTFILES))
-GPFDIST_LIBS=-lz -lbz2
+GPFDIST_LIBS=-lyaml -lz -lbz2
 endif
 
 export CC
@@ -36,12 +36,15 @@ LIBEVENT=libevent-1.4.3-stable
 OPENSSL=openssl-0.9.8h
 GP_VERSION:=$(shell cat $(GPCC)/../VERSION)
 
+# flag to include/exclude gpfdist transformation support
+GPFXDIST=-DGPFXDIST
+
 # use gpcc/ext/ copies of libraries until prebuilt ones are ready
 ifeq "$(BLD_ARCH)" "win32"
 BLD_THIRDPARTY_BIN_DIR=$(GPCC)/ext/bin
 endif
 INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --includes) -I$(GPCC)/src/include -I. 
-CFLAGS=$(OPT) $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cflags) -Wall
+CFLAGS=$(OPT) $$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cflags) -Wall $(GPFXDIST)
 APRLIBS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --link-ld --libs) 
 APULIBS= $$($(BLD_THIRDPARTY_BIN_DIR)/apu-1-config --link-ld --libs)
 CPPFLAGS=$$($(BLD_THIRDPARTY_BIN_DIR)/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
