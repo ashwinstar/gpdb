@@ -1,0 +1,130 @@
+**************************************************************************
+ABOUT THE GREENPLUM GPFDIST TRANSFORM DEMOS
+**************************************************************************
+
+This package contains example programs of Greenplum gpfdist transformations:
+
+1. dblp - This example demonstrates loading and extracting 
+          database research data.
+       
+          Specification File: 1_dblp.yaml
+	  Config Files:       config.yaml
+          Data Files:         data/dblp.xml (downloaded)
+
+ 
+**************************************************************************
+BEFORE YOU BEGIN
+**************************************************************************
+
+1. Download the demo data and jar files from www.cs.washington.edu and
+   sourceforge.net:
+
+    $ cd data
+    $ make
+
+2. Create a database to use for the Greenplum gpfdist transform demos:
+
+    $ createdb gptransform
+
+
+
+**************************************************************************
+RUNNING DEMO 1: input transformation via gpload
+**************************************************************************
+
+1. Edit the 1_dblp.yaml file and change the LOCAL_HOSTNAME setting
+   reflect the name of the host (e.g. myhostname) you where you will 
+   run gpload.
+
+      LOCAL_HOSTNAME: [ myhostname ]
+
+   GPDB will attempt to connect to this host to access the data.
+
+
+2. Create the dblp_thesis table
+
+    $ psql -d gptransform -f dblp/create.sql
+
+
+3. load the data
+
+    $ gpload -f 1_dblp.yaml
+
+
+4. review some of the data
+
+    $ psql -d gptransform -c "select * from dblp_thesis limit 5;"
+
+
+
+**************************************************************************
+RUNNING DEMO 2: input/output transformations via gpfdist
+**************************************************************************
+
+1. Edit the dblp/external.sql file and change the location settings
+   to reflect the name of the host (e.g. myhostname) you where you will 
+   run gpfdist.
+
+      location ('gpfdist://myhostname:8080/data/dblp.xml#transform=dblp_input') 
+
+   GPDB will attempt to connect to this host to read and write the data.
+
+
+2. in a separate window, start gpfdist:
+
+    $ gpfdist -c config.yaml
+
+   in this example we run gpfdist in the foreground in a separate window
+   until we're done.
+
+
+3. Re-create the dblp_thesis table
+
+    $ psql -d gptransform -f dblp/create.sql
+
+
+4. Create readable and writable external tables
+
+    $ psql -d gptransform -f dblp/external.sql
+
+
+5. load the data
+
+    $ psql -d gptransform -c "insert into dblp_thesis select * from dblp_thesis_readable;"
+
+
+6. review some of the data
+
+    $ psql -d gptransform -c "select * from dblp_thesis limit 5;"
+
+
+7. extract the data
+
+    $ psql -d gptransform -c "insert into dblp_thesis_writable select * from dblp_thesis;"
+
+   This will create a file called 'data/out.dblp_thesis.xml'
+
+
+**************************************************************************
+DEMO CLEANUP
+**************************************************************************
+
+After you have run the demos, run the following commands to clean up:
+
+1. stop the gpfdist started in step 2 of DEMO 2.
+
+    ^C
+    $
+
+
+2. drop the demo database
+
+    $ dropdb gptransform
+
+
+3. (optional) remove the downloaded files
+
+    $ cd data
+    $ make clean
+
+

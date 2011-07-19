@@ -1080,6 +1080,10 @@ mgmtcopy :
 	  mkdir -p $(INSTLOC)/demo; \
 	  $(TAR) -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpmapreduce.tar.gz gpmapreduce; \
 	fi
+	if [ -d $(GPMGMT)/demo/gpfdist_transform ]; then \
+	  mkdir -p $(INSTLOC)/demo; \
+	  $(TAR) -C $(GPMGMT)/demo -czf $(INSTLOC)/demo/gpfdist_transform.tar.gz gpfdist_transform; \
+	fi
 	$(MAKE) set_scripts_version INSTLOC=$(INSTLOC)
 	# Remove unwanted files.
 	rm -rf $(INSTLOC)/bin/CVS
