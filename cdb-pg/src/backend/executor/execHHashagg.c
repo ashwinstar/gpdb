@@ -1923,6 +1923,16 @@ void destroy_agg_hash_table(AggState *aggstate)
 		if (aggstate->hhashtable->hashkey_buf)
 			pfree(aggstate->hhashtable->hashkey_buf);
 
+		/**
+		 * Clean out the tuple descriptor.
+		 */
+		if (aggstate->hashslot
+				&& aggstate->hashslot->tts_tupleDescriptor)
+		{
+			ReleaseTupleDesc(aggstate->hashslot->tts_tupleDescriptor);
+			aggstate->hashslot->tts_tupleDescriptor = NULL;
+		}
+
 		closeSpillFiles(aggstate->hhashtable->spill_set);
 
 		mpool_delete(aggstate->hhashtable->group_buf);

@@ -399,14 +399,6 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 			break;
 	}
 
-	/*
-	 * If there are any pseudoconstant clauses attached to this node, insert a
-	 * gating Result node that evaluates the pseudoconstants as one-time
-	 * quals.
-	 */
-	if (ctx->root->hasPseudoConstantQuals)
-		plan = create_gating_plan(ctx, plan, scan_clauses);
-
 	/* Decorate the top node of the plan with a Flow node. */
 	plan->flow = cdbpathtoplan_create_flow(ctx->root,
 			best_path->locus,
@@ -414,6 +406,14 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 					: NULL,
 					  best_path->pathkeys,
 					  plan);
+
+	/*
+	 * If there are any pseudoconstant clauses attached to this node, insert a
+	 * gating Result node that evaluates the pseudoconstants as one-time
+	 * quals.
+	 */
+	if (ctx->root->hasPseudoConstantQuals)
+		plan = create_gating_plan(ctx, plan, scan_clauses);
 
 	return plan;
 }

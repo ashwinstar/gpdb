@@ -345,6 +345,22 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
      */
     correlated = contain_vars_of_level_or_above(sublink->subselect, 1);
 
+    if (correlated)
+    {
+    	/**
+    	 * Under certain conditions, we do cannot pull up the subquery as a join.
+    	 */
+
+    	if (subselect->hasAggs
+    			|| subselect->havingQual
+    			|| subselect->groupClause
+    			|| subselect->hasWindFuncs
+    			|| subselect->distinctClause
+    			|| subselect->setOperations)
+    		return (Node *) sublink;
+
+    }
+
     /*
 	 * Okay, pull up the sub-select into top range table and jointree.
 	 *
