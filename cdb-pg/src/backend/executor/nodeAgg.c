@@ -2359,6 +2359,15 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
 	{
 		destroy_agg_hash_table(node);
+		/**
+		 * Clean out the tuple descriptor.
+		 */
+		if (node->hashslot
+				&& node->hashslot->tts_tupleDescriptor)
+		{
+			ReleaseTupleDesc(node->hashslot->tts_tupleDescriptor);
+			node->hashslot->tts_tupleDescriptor = NULL;
+		}
 	}
 	else
 	{
