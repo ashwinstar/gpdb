@@ -10,16 +10,16 @@ import unittest
 import tempfile
 
 from gppylib.db import dbconn
+from gppylib.db.test import skipIfDatabaseDown
 from gppylib import gplog
 from gppylib.commands import pg
-from gppylib import gparray
+from gppylib.gparray import GpArray
 
 logger = gplog.get_default_logger()
 gplog.enable_verbose_logging()
 
+@skipIfDatabaseDown()
 class PgCommandsTestCase(unittest.TestCase):
-    
-    
     def setUp(self):
          pass
      
@@ -29,7 +29,7 @@ class PgCommandsTestCase(unittest.TestCase):
     def testReadPostmasterTempFile(self):
         logger.info("testReadPostmasterTempFile")
         url = dbconn.DbURL()
-        gpdb = gparray.createGPDBFromDB(url)
+        gpdb = GpArray.initFromCatalog(url)
         
         logger.info("Search for valid master port: %s" % gpdb.master.port)
         cmd = pg.ReadPostmasterTempFile.local('test pg tempfile read',gpdb.master.port)        

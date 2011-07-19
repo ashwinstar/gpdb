@@ -5,18 +5,20 @@
 # Unit Testing of catalog module.
 #
 
-import unittest
+import unittest2 as unittest
 
 
 
 from gppylib import gplog
 from gppylib.db import dbconn
 from gppylib.db import catalog
+from gppylib.db.test import skipIfDatabaseDown
 
 
 logger=gplog.get_default_logger()
 
 
+@skipIfDatabaseDown()
 class catalogTestCase(unittest.TestCase):
     
     def setUp(self):
@@ -44,7 +46,6 @@ class catalogTestCase(unittest.TestCase):
         
         new_table = catalog.GpVersionAtInitdbTable(self.conn)        
         self.validate_versionatinitdb_table(orig_table,new_table)
-    
     
     def test_vacuumcatalog(self):
         logger.info("test_vacuumcatalog")

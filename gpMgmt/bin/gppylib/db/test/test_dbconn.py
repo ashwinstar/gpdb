@@ -13,7 +13,10 @@ class TestDbURL(unittest.TestCase):
     """UnitTest class for DbURL class"""
     
     def setUp(self):
-        pass
+        self._environ = dict(os.environ)
+        
+    def tearDown(self):
+        os.environ = self._environ
         
     def testConstructorHost(self):
         if 'PGHOST' in os.environ:

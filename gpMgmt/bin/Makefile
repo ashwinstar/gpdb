@@ -186,6 +186,10 @@ checkcode: pylint
 	@PYTHONPATH=$(PYTHONPATH):$(PYLINT_PYTHONPATH) $(PYLIB_SRC)/$(PYLINT_DIR)/bin/pylint -i y $(PYTHON_FILES) > $(SRC)/../pylint.txt || true
 
 
+check:
+	@echo "Running unit tests..."
+	gppylib/unit2 discover -s gppylib
+
 
 solarisTest:
 	@if [ `uname -s` = 'SunOS' ]; then \

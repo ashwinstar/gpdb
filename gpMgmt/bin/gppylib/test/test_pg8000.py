@@ -15,18 +15,17 @@ except ImportError, e:
 
 
 
-import gplog
-from db.dbconn import *
+from gppylib import gplog
+from gppylib.db.dbconn import *
+from gppylib.db.test import skipIfDatabaseDown
 
 logger=gplog.get_unittest_logger()
 gplog.enable_verbose_logging()
 
 
+@skipIfDatabaseDown()
 class pg8000TestCase(unittest.TestCase):
 
-    
-    
-    
     def test_connect(self):
         conn=None        
         try:
@@ -38,7 +37,6 @@ class pg8000TestCase(unittest.TestCase):
         finally:
             if conn: conn.close()
         
-    
     def test_nonexist_objects(self):
         conn=None
         try:
@@ -49,8 +47,6 @@ class pg8000TestCase(unittest.TestCase):
         finally:
             if conn: conn.close()
          
-        
-        
     def test_datatypes(self):
         conn=None
         try:

@@ -6,21 +6,22 @@
 """ Unittesting for pygres module
 """
 import logging
-import unittest
+import unittest2 as unittest
 
 
 from pygresql import pg
 from pygresql import pgdb
 
-import gplog
-from db.dbconn import *
+from gppylib import gplog
+from gppylib.db.dbconn import *
+from gppylib.db.test import skipIfDatabaseDown
 
 logger=gplog.get_default_logger()
 gplog.enable_verbose_logging()
 
 
 #TODO:  incomplete list.
-catalog_names = ['pg_aggregate','pg_amop','pg_aocs','pg_attrdef','pg_auth_members',
+catalog_names = ['pg_aggregate','pg_amop','pg_attrdef','pg_auth_members',
                  'pg_autovacuum','pg_class','pg_conversion','pg_database','pg_description',
                  'pg_group','pg_indexes','pg_language','pg_listener',
                  'pg_max_external_files','pg_opclass','pg_partition']
@@ -31,9 +32,9 @@ datatypes = {'oid':True , 'int2':True, 'regproc':True, 'text':True, 'bool':True,
              'int2vector':True,'oidvector':True}
 
 
+@skipIfDatabaseDown()
 class pygresqlTestCase(unittest.TestCase):
 
-    
     
     def test_connect(self):
         dburl = DbURL()        
@@ -42,7 +43,6 @@ class pygresqlTestCase(unittest.TestCase):
         q = db.query("SELECT 1")
         logger.info(q.getresult())
     
-        
     def test_DBI_connect(self):
         
         logger.info("test_dbi_connect")

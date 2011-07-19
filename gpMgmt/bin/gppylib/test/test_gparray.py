@@ -17,7 +17,6 @@ logger = gplog.get_unittest_logger()
 class MyTestCase(unittest.TestCase):
     def test_spreadmirror_layout(self):
         """ Basic spread mirroring """
-        logger.info("test_spreadmirror_layout")
         mirror_type = 'spread'
         interface_list = [1]
         primary_portbase = 5000
@@ -73,7 +72,6 @@ class MyTestCase(unittest.TestCase):
 
     def test_groupmirror_layout(self):
         """ Basic group mirroring """
-        logger.info("test_groupmirror_layout")
         mirror_type = 'grouped'
         primary_portbase = 5000
         mirror_portbase = 6000
