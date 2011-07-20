@@ -2,11 +2,7 @@
 #include "funcapi.h"
 #include "orafunc.h"
 
-#if PG_VERSION_NUM >= 80400
-
 #include "utils/builtins.h"
-
-#endif
 
 #include "builtins.h"
 #include "lib/stringinfo.h"
@@ -126,12 +122,24 @@ orafce_listagg1_transfn(PG_FUNCTION_ARGS)
 	 */
 	PG_RETURN_POINTER(state);
 #else
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("feature not suppported"),
-			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
+	if (!PG_ARGISNULL(1))
+	{
+		if (PG_ARGISNULL(0))
+		{
+			/* 
+			 * Just return the input. No need to copy, our caller is responsible
+			 * for this.
+			 */
+			PG_RETURN_DATUM(PG_GETARG_DATUM(1));
+		}
+		else
+			return DirectFunctionCall2(textcat, PG_GETARG_DATUM(0), PG_GETARG_DATUM(1));
+	}
 
-	PG_RETURN_NULL();
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+	else
+		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
 #endif
 }
 
@@ -163,39 +171,41 @@ orafce_listagg2_transfn(PG_FUNCTION_ARGS)
 	 */
 	PG_RETURN_POINTER(state);
 #else
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("feature not suppported"),
-			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
+	
+	/* ignore if null */
+	if (!PG_ARGISNULL(1))
+	{
+		if (PG_ARGISNULL(0))
+			return PointerGetDatum(DatumGetTextPCopy(PG_GETARG_DATUM(1)));
+		else
+		{
+			/* delimiter is NULL, so a normal append */
+			if (PG_ARGISNULL(2))
+				return DirectFunctionCall2(textcat, PG_GETARG_DATUM(0),
+													PG_GETARG_DATUM(1));
+			else
+			{
+				/* 
+				 * Convoluted, yes, but we might be operating on large amounts
+				 * of memory here. So, be careful to free the intermediate
+				 * memory.
+				 */
+				Datum d1 = DirectFunctionCall2(textcat, PG_GETARG_DATUM(2),
+													   PG_GETARG_DATUM(1));
+				Pointer p = DatumGetPointer(d1);
+				Datum d2;
+		
+				d2 = DirectFunctionCall2(textcat, PG_GETARG_DATUM(0), d1);
+				pfree(p);
+				PG_RETURN_DATUM(d2);
+			}
+		}
+	}
 
-	PG_RETURN_NULL();
-#endif
-}
-
-Datum
-orafce_listagg_finalfn(PG_FUNCTION_ARGS)
-{
-#if PG_VERSION_NUM >= 90000
-	return string_agg_finalfn(fcinfo);
-#elif PG_VERSION_NUM >= 80400
-	StringInfo	state;
-
-	/* cannot be called directly because of internal-type argument */
-	Assert(AggCheckCallContext(fcinfo, NULL));
-
-	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
-
-	if (state != NULL)
-		PG_RETURN_TEXT_P(cstring_to_text(state->data));
-	else
+	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
-#else
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("feature not suppported"),
-			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
-
-	PG_RETURN_NULL();
+	else
+		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
 #endif
 }
 

@@ -151,3 +151,4 @@ test: gp_toolkit
 test: filespace
 test: orafunk
 test: gpcheckmirrorseg
+test: trig

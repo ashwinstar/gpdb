@@ -1692,6 +1692,14 @@ dcos(PG_FUNCTION_ARGS)
 	PG_RETURN_FLOAT8(result);
 }
 
+/*
+ * cosh
+ */
+Datum
+dcosh(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(cosh(PG_GETARG_FLOAT8(0)));
+}
 
 /*
  *		dcot			- returns the cotangent of arg1 (radians)
@@ -1737,6 +1745,11 @@ dsin(PG_FUNCTION_ARGS)
 	PG_RETURN_FLOAT8(result);
 }
 
+Datum
+dsinh(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(sinh(PG_GETARG_FLOAT8(0)));
+}
 
 /*
  *		dtan			- returns the tangent of arg1 (radians)
@@ -1759,6 +1772,11 @@ dtan(PG_FUNCTION_ARGS)
 	PG_RETURN_FLOAT8(result);
 }
 
+Datum
+dtanh(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_FLOAT8(tanh(PG_GETARG_FLOAT8(0)));
+}
 
 /*
  *		degrees		- returns degrees converted from radians

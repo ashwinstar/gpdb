@@ -19,14 +19,15 @@
 -- start_ignore
 \i @abs_builddir@/../../../contrib/orafce/orafunc.sql
 -- Adjust this setting to control where the objects get created.
-SET search_path = public;
+\set ORA_SCHEMA oracompat
+CREATE SCHEMA :ORA_SCHEMA;
+SET search_path = :ORA_SCHEMA;
 BEGIN;
 -- NVL
 CREATE OR REPLACE FUNCTION nvl(anyelement, anyelement)
 RETURNS anyelement
 AS '$libdir/orafunc','ora_nvl'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION nvl(anyelement, anyelement) IS '';
 -- DECODE
 CREATE OR REPLACE FUNCTION decode(anyelement, anyelement, text)
 RETURNS text
@@ -245,78 +246,183 @@ RETURNS timestamptz
 AS '$libdir/orafunc', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 -- ADD_MONTHS
-CREATE OR REPLACE FUNCTION pg_catalog.add_months(day date, value int)
+CREATE OR REPLACE FUNCTION add_months(day date, value int)
 RETURNS date
 AS '$libdir/orafunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
 -- LAST_DAY
-CREATE OR REPLACE FUNCTION pg_catalog.last_day(value date)
+CREATE OR REPLACE FUNCTION last_day(value date)
 RETURNS date
 AS '$libdir/orafunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
 -- NEXT_DAY
-CREATE OR REPLACE FUNCTION pg_catalog.next_day(value date, weekday text)
+CREATE OR REPLACE FUNCTION next_day(value date, weekday text)
 RETURNS date
 AS '$libdir/orafunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION pg_catalog.next_day(value date, weekday integer)
+CREATE OR REPLACE FUNCTION next_day(value date, weekday integer)
 RETURNS date
 AS '$libdir/orafunc', 'next_day_by_index'
 LANGUAGE 'C' IMMUTABLE STRICT;
 -- MONTHS_BETWEEN
-CREATE OR REPLACE FUNCTION pg_catalog.months_between(date1 date, date2 date)
+CREATE OR REPLACE FUNCTION months_between(date1 date, date2 date)
 RETURNS numeric
 AS '$libdir/orafunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
 -- TRUNC
-CREATE OR REPLACE FUNCTION pg_catalog.trunc(value date, fmt text)
+CREATE OR REPLACE FUNCTION trunc(value date, fmt text)
 RETURNS date
 AS '$libdir/orafunc','ora_date_trunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION pg_catalog.trunc(value timestamp with time zone, fmt text)
+CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
 AS '$libdir/orafunc', 'ora_timestamptz_trunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION pg_catalog.trunc(value timestamp with time zone)
+CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone)
 RETURNS timestamp with time zone
-AS $$ SELECT pg_catalog.trunc($1, 'DDD'); $$
+AS $$ SELECT trunc($1, 'DDD'); $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION pg_catalog.trunc(value date)
+CREATE OR REPLACE FUNCTION trunc(value date)
 RETURNS date
 AS $$ SELECT $1; $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 -- ROUND
-CREATE OR REPLACE FUNCTION pg_catalog.round(value date, fmt text)
+CREATE OR REPLACE FUNCTION round(value date, fmt text)
 RETURNS date
 AS '$libdir/orafunc','ora_date_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION pg_catalog.round(value timestamp with time zone, fmt text)
+CREATE OR REPLACE FUNCTION round(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
 AS '$libdir/orafunc','ora_timestamptz_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION pg_catalog.round(value timestamp with time zone)
+CREATE OR REPLACE FUNCTION round(value timestamp with time zone)
 RETURNS timestamp with time zone
-AS $$ SELECT pg_catalog.round($1, 'DDD'); $$
+AS $$ SELECT round($1, 'DDD'); $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION pg_catalog.round(value date)
+CREATE OR REPLACE FUNCTION round(value date)
 RETURNS date
 AS $$ SELECT $1; $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 -- INSTR
-CREATE OR REPLACE FUNCTION pg_catalog.instr(str text, patt text, start int, nth int)
+CREATE OR REPLACE FUNCTION instr(str text, patt text, start int, nth int)
 RETURNS int
 AS '$libdir/orafunc','plvstr_instr4'
 LANGUAGE C IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION pg_catalog.instr(str text, patt text, start int)
+CREATE OR REPLACE FUNCTION instr(str text, patt text, start int)
 RETURNS int
 AS '$libdir/orafunc','plvstr_instr3'
 LANGUAGE C IMMUTABLE STRICT;
-CREATE OR REPLACE FUNCTION pg_catalog.instr(str text, patt text)
+CREATE OR REPLACE FUNCTION instr(str text, patt text)
 RETURNS int
 AS '$libdir/orafunc','plvstr_instr2'
 LANGUAGE C IMMUTABLE STRICT;
+-- REVERSE
+CREATE OR REPLACE FUNCTION reverse(str text, start int, _end int)
+RETURNS text
+AS '$libdir/orafunc','plvstr_rvrs'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION reverse(str text, start int)
+RETURNS text
+AS $$ SELECT reverse($1,$2,NULL);$$
+LANGUAGE SQL IMMUTABLE STRICT;
+CREATE OR REPLACE FUNCTION reverse(str text)
+RETURNS text
+AS $$ SELECT reverse($1,1,NULL);$$
+LANGUAGE SQL IMMUTABLE STRICT;
+-- CONCAT
+CREATE OR REPLACE FUNCTION concat(text, text)
+RETURNS text
+AS '$libdir/orafunc','ora_concat'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION concat(text, anyarray)
+RETURNS text
+AS 'SELECT concat($1, $2::text)'
+LANGUAGE sql IMMUTABLE;
+CREATE OR REPLACE FUNCTION concat(anyarray, text)
+RETURNS text
+AS 'SELECT concat($1::text, $2)'
+LANGUAGE sql IMMUTABLE;
+CREATE OR REPLACE FUNCTION concat(anyarray, anyarray)
+RETURNS text
+AS 'SELECT concat($1::text, $2::text)'
+LANGUAGE sql IMMUTABLE;
+-- NANVL
+CREATE OR REPLACE FUNCTION nanvl(float4, float4)
+RETURNS float4 AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+CREATE OR REPLACE FUNCTION nanvl(float8, float8)
+RETURNS float8 AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+CREATE OR REPLACE FUNCTION nanvl(numeric, numeric)
+RETURNS numeric AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+-- BITAND
+CREATE OR REPLACE FUNCTION bitand(bigint, bigint)
+RETURNS bigint
+AS $$ SELECT $1 & $2; $$
+LANGUAGE sql IMMUTABLE STRICT;
+-- LISTAGG
+CREATE OR REPLACE FUNCTION listagg1_transfn(text, text)
+RETURNS text
+AS '$libdir/orafunc','orafce_listagg1_transfn'
+LANGUAGE C IMMUTABLE;
+CREATE OR REPLACE FUNCTION listagg2_transfn(text, text, text)
+RETURNS text
+AS '$libdir/orafunc','orafce_listagg2_transfn'
+LANGUAGE C IMMUTABLE;
+CREATE  AGGREGATE :ORA_SCHEMA.listagg(text) (
+  SFUNC=:ORA_SCHEMA.listagg1_transfn,
+  STYPE=text
+);
+CREATE AGGREGATE :ORA_SCHEMA.listagg(text, text) (
+  SFUNC=:ORA_SCHEMA.listagg2_transfn,
+  STYPE=text
+);
+-- NVL2
+CREATE OR REPLACE FUNCTION nvl2(anyelement, anyelement, anyelement)
+RETURNS anyelement
+AS '$libdir/orafunc','ora_nvl2'
+LANGUAGE C IMMUTABLE;
+-- LNNVL
+CREATE OR REPLACE FUNCTION lnnvl(bool)
+RETURNS bool
+AS '$libdir/orafunc','ora_lnnvl'
+LANGUAGE C IMMUTABLE;
+-- DUMP
+CREATE OR REPLACE FUNCTION dump("any") 
+RETURNS varchar
+AS '$libdir/orafunc', 'orafce_dump'
+LANGUAGE C;
+CREATE OR REPLACE FUNCTION dump("any", integer)
+RETURNS varchar
+AS '$libdir/orafunc', 'orafce_dump'
+LANGUAGE C;
+-- NLSSORT
+CREATE OR REPLACE FUNCTION nlssort(text, text)
+RETURNS bytea
+AS '$libdir/orafunc', 'ora_nlssort'
+LANGUAGE 'C' IMMUTABLE;
+-- SUBSTR
+CREATE FUNCTION substr(str text, start int)
+RETURNS text
+AS '$libdir/orafunc','oracle_substr2'
+LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION substr(str text, start int, len int)
+RETURNS text
+AS '$libdir/orafunc','oracle_substr3'
+LANGUAGE C IMMUTABLE STRICT;
 COMMIT;
 -- end_ignore
+set search_path = oracompat;
+show search_path;
+ search_path 
+-------------
+ oracompat
+(1 row)
+
 SET DATESTYLE TO ISO;
 select nvl('A'::text, 'B');
  nvl 
@@ -804,10 +910,238 @@ select 0 = instr('abcabcabc', 'abca', 1, 3);
  t
 (1 row)
 
+select reverse('abcdef') = 'fedcba';
+ ?column? 
+----------
+ t
+(1 row)
+
+select reverse('中国') = '国中';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat('Tech on', ' the Net') =  'Tech on the Net';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat('a', 'b') =  'ab';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat('a', NULL) = 'a';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat(NULL, 'b') = 'b';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat('a', 2) = 'a2';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat(1, 'b') = '1b';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat(1, 2) = '12';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat(1, NULL) = '1';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat(NULL, 2) = '2';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT nanvl(12345, 1), nanvl('NaN', 1);
+ nanvl | nanvl 
+-------+-------
+ 12345 |     1
+(1 row)
+
+SELECT nanvl(12345::float4, 1), nanvl('NaN'::float4, 1);
+ nanvl | nanvl 
+-------+-------
+ 12345 |     1
+(1 row)
+
+SELECT nanvl(12345::float8, 1), nanvl('NaN'::float8, 1);
+ nanvl | nanvl 
+-------+-------
+ 12345 |     1
+(1 row)
+
+SELECT nanvl(12345::numeric, 1), nanvl('NaN'::numeric, 1);
+ nanvl | nanvl 
+-------+-------
+ 12345 |     1
+(1 row)
+
+SELECT bitand(5,1), bitand(5,2), bitand(5,4);
+ bitand | bitand | bitand 
+--------+--------+--------
+      1 |      0 |      4
+(1 row)
+
+select listagg(i::text) from generate_series(1,3) g(i);
+ listagg 
+---------
+ 123
+(1 row)
+
+select listagg(i::text, ',') from generate_series(1,3) g(i);
+ listagg 
+---------
+ 1,2,3
+(1 row)
+
+select coalesce(listagg(i::text), '<NULL>') from (SELECT ''::text) g(i);
+ coalesce 
+----------
+ 
+(1 row)
+
+select coalesce(listagg(i::text), '<NULL>') from generate_series(1,0) g(i);
+ coalesce 
+----------
+ <NULL>
+(1 row)
+
+select nvl2('A'::text, 'B', 'C');
+ nvl2 
+------
+ B
+(1 row)
+
+select nvl2(NULL::text, 'B', 'C');
+ nvl2 
+------
+ C
+(1 row)
+
+select nvl2('A'::text, NULL, 'C');
+ nvl2 
+------
+ 
+(1 row)
+
+select nvl2(NULL::text, 'B', NULL);
+ nvl2 
+------
+ 
+(1 row)
+
+select nvl2(1, 2, 3);
+ nvl2 
+------
+    2
+(1 row)
+
+select nvl2(NULL, 2, 3);
+ nvl2 
+------
+    3
+(1 row)
+
+SELECT dump('Yellow dog'::text) ~ E'^Typ=25 Len=(\\d+): \\d+(,\\d+)*$' AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT dump('Yellow dog'::text, 10) ~ E'^Typ=25 Len=(\\d+): \\d+(,\\d+)*$' AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT dump('Yellow dog'::text, 17) ~ E'^Typ=25 Len=(\\d+): .(,.)*$' AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT dump(10::int2) ~ E'^Typ=21 Len=2: \\d+(,\\d+){1}$' AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT dump(10::int4) ~ E'^Typ=23 Len=4: \\d+(,\\d+){3}$' AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT dump(10::int8) ~ E'^Typ=20 Len=8: \\d+(,\\d+){7}$' AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT dump(10.23::float4) ~ E'^Typ=700 Len=4: \\d+(,\\d+){3}$' AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT dump(10.23::float8) ~ E'^Typ=701 Len=8: \\d+(,\\d+){7}$' AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT dump(10.23::numeric) ~ E'^Typ=1700 Len=(\\d+): \\d+(,\\d+)*$' AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT dump('2008-10-10'::date) ~ E'^Typ=1082 Len=4: \\d+(,\\d+){3}$' AS t;
+ t 
+---
+ t
+(1 row)
+
+SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
+ t 
+---
+ t
+(1 row)
+
 RESET DATESTYLE;
 -- start_ignore
 \i @abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql
+-- Adjust the following if this is not the schema you installed into
+\set ORA_SCHEMA oracompat
+set search_path = :ORA_SCHEMA
 BEGIN;
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:5: ERROR:  syntax error at or near "BEGIN"
+LINE 2: BEGIN;
+        ^
 DROP FUNCTION IF EXISTS nvl(anyelement, anyelement);
 DROP FUNCTION IF EXISTS decode(anyelement, anyelement, text);
 DROP FUNCTION IF EXISTS decode(anyelement, anyelement, text, text);
@@ -863,21 +1197,48 @@ DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamptz, anyelement, 
 DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, timestamptz);
 DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz);
 DROP FUNCTION IF EXISTS decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz, timestamptz);
-DROP FUNCTION IF EXISTS pg_catalog.add_months(day date, value int);
-DROP FUNCTION IF EXISTS pg_catalog.last_day(value date);
-DROP FUNCTION IF EXISTS pg_catalog.next_day(value date, weekday text);
-DROP FUNCTION IF EXISTS pg_catalog.next_day(value date, weekday integer);
-DROP FUNCTION IF EXISTS pg_catalog.months_between(date1 date, date2 date);
-DROP FUNCTION IF EXISTS pg_catalog.trunc(value date, fmt text);
-DROP FUNCTION IF EXISTS pg_catalog.trunc(value timestamp with time zone, fmt text);
-DROP FUNCTION IF EXISTS pg_catalog.trunc(value timestamp with time zone);
-DROP FUNCTION IF EXISTS pg_catalog.trunc(value date);
-DROP FUNCTION IF EXISTS pg_catalog.round(value timestamp with time zone, fmt text);
-DROP FUNCTION IF EXISTS pg_catalog.round(value timestamp with time zone);
-DROP FUNCTION IF EXISTS pg_catalog.round(value date);
-DROP FUNCTION IF EXISTS pg_catalog.round(value date, fmt text);
-DROP FUNCTION IF EXISTS pg_catalog.instr(str text, patt text, start int, nth int);
-DROP FUNCTION IF EXISTS pg_catalog.instr(str text, patt text, start int);
-DROP FUNCTION IF EXISTS pg_catalog.instr(str text, patt text);
+DROP FUNCTION IF EXISTS add_months(day date, value int);
+DROP FUNCTION IF EXISTS last_day(value date);
+DROP FUNCTION IF EXISTS next_day(value date, weekday text);
+DROP FUNCTION IF EXISTS next_day(value date, weekday integer);
+DROP FUNCTION IF EXISTS months_between(date1 date, date2 date);
+DROP FUNCTION IF EXISTS trunc(value date, fmt text);
+DROP FUNCTION IF EXISTS trunc(value timestamp with time zone, fmt text);
+DROP FUNCTION IF EXISTS trunc(value timestamp with time zone);
+DROP FUNCTION IF EXISTS trunc(value date);
+DROP FUNCTION IF EXISTS round(value timestamp with time zone, fmt text);
+DROP FUNCTION IF EXISTS round(value timestamp with time zone);
+DROP FUNCTION IF EXISTS round(value date);
+DROP FUNCTION IF EXISTS round(value date, fmt text);
+DROP FUNCTION IF EXISTS instr(str text, patt text, start int, nth int);
+DROP FUNCTION IF EXISTS instr(str text, patt text, start int);
+DROP FUNCTION IF EXISTS instr(str text, patt text);
+DROP FUNCTION IF EXISTS reverse(text, int, int);
+DROP FUNCTION IF EXISTS reverse(text, int);
+DROP FUNCTION IF EXISTS reverse(text);
+DROP FUNCTION IF EXISTS concat(text, text);
+DROP FUNCTION IF EXISTS concat(anyarray, text);
+DROP FUNCTION IF EXISTS concat(text, anyarray);
+DROP FUNCTION IF EXISTS concat(anyarray, anyarray);
+DROP FUNCTION IF EXISTS nanvl(float4, float4);
+DROP FUNCTION IF EXISTS nanvl(float8, float8);
+DROP FUNCTION IF EXISTS nanvl(numeric, numeric);
+DROP FUNCTION IF EXISTS bitand(bigint, bigint);
+DROP AGGREGATE IF EXISTS listagg(text);
+DROP AGGREGATE IF EXISTS listagg(text, text);
+DROP FUNCTION IF EXISTS listagg1_transfn(text, text);
+DROP FUNCTION IF EXISTS listagg2_transfn(text, text, text);
+DROP FUNCTION IF EXISTS nvl2(anyelement, anyelement, anyelement);
+DROP FUNCTION IF EXISTS lnnvl(bool);
+DROP FUNCTION IF EXISTS dump("any");
+DROP FUNCTION IF EXISTS dump("any", integer);
+DROP FUNCTION IF EXISTS nlssort(text, text);
+DROP FUNCTION IF EXISTS substr(text, int, int);
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:115: NOTICE:  removing built-in function "substr"
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:115: ERROR:  cannot drop function substr(text,integer,integer) because it is required by the database system
+DROP FUNCTION IF EXISTS substr(text, int);
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:116: NOTICE:  removing built-in function "substr"
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:116: ERROR:  cannot drop function substr(text,integer) because it is required by the database system
 COMMIT;
+psql:@abs_builddir@/../../../contrib/orafce/uninstall_orafunc.sql:118: WARNING:  there is no transaction in progress
 -- end_ignore
