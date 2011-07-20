@@ -125,9 +125,9 @@ typedef struct GlobalTransactionData
         char            gid[GIDSIZE];   /* The GID assigned to the prepared xact */
 
         int                     prepareAppendOnlyIntentCount;
-                                                                /* 
+                                                                /*
                                                                  * The Append-Only Resync EOF intent count for
-                                                                 * a non-crashed prepared transaction. 
+                                                                 * a non-crashed prepared transaction.
                                                                  */
 } GlobalTransactionData;
 
@@ -219,7 +219,7 @@ add_recover_post_checkpoint_prepared_transactions_map_entry(TransactionId xid, X
         elog(Persistent_DebugPrintLevel(),
              "add_recover_post_checkpoint_prepared_transactions_map_entry: initial setup of global hash table. Caller = %s",
              caller);
-    crashRecoverPostCheckpointPreparedTransactions_map_ht 
+    crashRecoverPostCheckpointPreparedTransactions_map_ht
                      = init_hash("two phase post checkpoint prepared transactions map",
                                  sizeof(TransactionId), /* keysize */
                                  sizeof(prpt_map),
@@ -287,7 +287,7 @@ TwoPhaseFindRecoverPostCheckpointPreparedTransactionsMapEntry(TransactionId xid,
         elog(Persistent_DebugPrintLevel(),
              "find_recover_post_checkpoint_prepared_transactions_map_entry: initial setup of global hash table. Caller = %s",
              caller);
-    crashRecoverPostCheckpointPreparedTransactions_map_ht 
+    crashRecoverPostCheckpointPreparedTransactions_map_ht
                      = init_hash("two phase post checkpoint prepared transactions map",
                                  sizeof(TransactionId), /* keysize */
                                  sizeof(prpt_map),
@@ -541,7 +541,7 @@ MarkAsPreparing(TransactionId xid,
         if (Debug_persistent_print)
            elog(Persistent_DebugPrintLevel(),
               "MarkAsPreparing: gxact->proc.xid = %d, gxact->prepare_begin_lsn = %s, and set valid = false",
-                gxact->proc.xid, 
+                gxact->proc.xid,
                 XLogLocationToString(&gxact->prepare_begin_lsn));
         gxact->valid = false;
         strcpy(gxact->gid, gid);
@@ -1282,7 +1282,7 @@ RegisterTwoPhaseRecord(TwoPhaseRmgrId rmid, uint16 info,
 }
 
 
-void 
+void
 PrepareIntentAppendOnlyCommitWork(char *gid)
 {
         GlobalTransaction gxact;
@@ -1293,7 +1293,7 @@ PrepareIntentAppendOnlyCommitWork(char *gid)
         gxact->prepareAppendOnlyIntentCount++;
 }
 
-void 
+void
 PrepareDecrAppendOnlyCommitWork(char *gid)
 {
         GlobalTransaction gxact;
@@ -1365,7 +1365,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
                if (gxact->valid && gxact->proc.xid == xid)
                  {
                   tfXLogRecPtr = gxact->prepare_begin_lsn;
-                  elog(LOG, "FinishPreparedTransaction: found TwoPhaseState entry for %d", xid);
+                  elog(DEBUG1, "FinishPreparedTransaction: found TwoPhaseState entry for %d", xid);
                   break;
                  }
              }
@@ -1387,17 +1387,17 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
                    ereport(WARNING,
                                    (errmsg("primary failure, "
                                                    "xlog record is invalid, "
-                                                   "failover requested"), 
-                                        errhint("run gprecoverseg to re-establish mirror connectivity")));                                 
-                   
+                                                   "failover requested"),
+                                        errhint("run gprecoverseg to re-establish mirror connectivity")));
+
                    FileRep_SetSegmentState(SegmentStateFault, FaultTypeIO);
-                                   
+
                    ereport(ERROR,
                                    (errcode(ERRCODE_DATA_CORRUPTED),
                                         errmsg("xlog record is invalid"),
-                                        errSendAlert(true)));             
+                                        errSendAlert(true)));
            }
-                  
+
        buf = XLogRecGetData(tfRecord);
 
         if (buf == NULL)
@@ -1601,7 +1601,7 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
 {
 
        /*
-        * I think this is not needed with the new two phase logic. 
+        * I think this is not needed with the new two phase logic.
         * We have already attached all the prepared transactions to
         * the checkpoint record. For now, just return from this.
         */
@@ -1618,7 +1618,7 @@ CheckPointTwoPhase(XLogRecPtr redo_horizon)
  *
  * This function is run during database startup, after we have completed
  * reading WAL.  ShmemVariableCache->nextXid has been set to one more than
- * the highest XID for which evidence exists in WAL. The 
+ * the highest XID for which evidence exists in WAL. The
  * crashRecoverPostCheckpointPreparedTransactions_map_ht has already been
  * populated with all pre and post checkpoint inflight transactions.
  *
@@ -1659,7 +1659,7 @@ PrescanPreparedTransactions(void)
           tfXLogRecPtr = (XLogRecPtr *) &entry->xlogrecptr;
       }
 
-    while (tfXLogRecPtr != NULL) 
+    while (tfXLogRecPtr != NULL)
       {
         if (Debug_persistent_print)
           elog(Persistent_DebugPrintLevel(),
@@ -1733,7 +1733,7 @@ SetupCheckpointPreparedTransactionList(XLogRecord *record)
      {
      /*
       * This is an old checkpoint (pre-removal of two phase) or a bad checkpoint record.
-      * Assume it is old and return. 
+      * Assume it is old and return.
       */
      if (Debug_persistent_print)
         elog(Persistent_DebugPrintLevel(),
@@ -1795,7 +1795,7 @@ void RecoverPreparedTransactions()
                   tfXLogRecPtr = (XLogRecPtr *) &entry->xlogrecptr;
         }
 
-        while (tfXLogRecPtr != NULL) 
+        while (tfXLogRecPtr != NULL)
         {
                 TransactionId                    xid;
                 char                            *bufptr;
@@ -1897,7 +1897,7 @@ void RecoverPreparedTransactions()
 
                 if (entry != NULL)
                    tfXLogRecPtr = (XLogRecPtr *) &entry->xlogrecptr;
-                else 
+                else
                    tfXLogRecPtr = NULL;
 
         }  /* end while (xlogrecptr = (XLogRecPtr *)hash_seq_search(&hsStatus)) */
@@ -1952,7 +1952,7 @@ RecordTransactionCommitPrepared(TransactionId xid,
          * The lock order is: MirroredLock then CheckpointStartLock.
          */
         MIRRORED_LOCK;
-                
+
         CHECKPOINT_START_LOCK;
 
         /* Emit the XLOG commit record */
@@ -2010,14 +2010,14 @@ RecordTransactionCommitPrepared(TransactionId xid,
                 lastrdata = 2;
         }
         rdata[lastrdata].next = NULL;
-        
-#ifdef FAULT_INJECTOR   
+
+#ifdef FAULT_INJECTOR
         FaultInjector_InjectFaultIfSet(
                                                                    TwoPhaseTransactionCommitPrepared,
                                                                    DDLNotSpecified,
                                                                    "" /* databaseName */,
                                                                    "" /* tableName */);
-#endif                                                                                  
+#endif
 
         recptr = XLogInsert(RM_XACT_ID,
                                                 XLOG_XACT_COMMIT_PREPARED | XLOG_NO_TRAN,
@@ -2154,14 +2154,14 @@ RecordTransactionAbortPrepared(TransactionId xid,
                 lastrdata = 2;
         }
         rdata[lastrdata].next = NULL;
-        
-#ifdef FAULT_INJECTOR   
+
+#ifdef FAULT_INJECTOR
         FaultInjector_InjectFaultIfSet(
                                                                    TwoPhaseTransactionAbortPrepared,
                                                                    DDLNotSpecified,
                                                                    "" /* databaseName */,
                                                                    "" /* tableName */);
-#endif                                                                                  
+#endif
 
         recptr = XLogInsert(RM_XACT_ID,
                                                 XLOG_XACT_ABORT_PREPARED | XLOG_NO_TRAN,
