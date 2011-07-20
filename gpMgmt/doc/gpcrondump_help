@@ -14,7 +14,7 @@ gpcrondump -x <database_name>
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
      [-a] [-q] [-y <reportfile>] [-l <logfile_directory>] [-D] 
      { [-E <encoding>] [--inserts | --column-inserts] [--oids] 
-       [--no-owner | --use-set-session-authorization] [--no-privileges] }
+       [--no-owner | --use-set-session-authorization] [--no-privileges] } 
 
 gpcrondump -? 
 
