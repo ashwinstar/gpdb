@@ -172,7 +172,7 @@ debug_mapping(struct mapping* map, int indent)
 int
 unexpected_event(struct streamstate* stp) 
 {
-    fprintf(stderr, "%s:%lu:%lu:unexpected event: %s\n",
+    fprintf(stderr, "%s:%zu:%zu:unexpected event: %s\n",
 			stp->filename, stp->event.start_mark.line+1, stp->event.start_mark.column+1, 
 			event_type(&stp->event));
 	return 1;
@@ -188,7 +188,7 @@ error_parser_initialize_failed(struct streamstate* stp)
 int
 error_parser_parse_failed(struct streamstate* stp) 
 {
-    fprintf(stderr, "%s:%lu:%lu:yaml_parser_parse failed\n",
+    fprintf(stderr, "%s:%zu:%zu:yaml_parser_parse failed\n",
            stp->filename, stp->event.start_mark.line+1, stp->event.start_mark.column+1);
 	return 1;
 }
@@ -196,7 +196,7 @@ error_parser_parse_failed(struct streamstate* stp)
 int
 error_invalid_stream_start(struct streamstate* stp) 
 {
-    fprintf(stderr, "%s:%lu:%lu:stream_start_event but stream has already been started\n",
+    fprintf(stderr, "%s:%zu:%zu:stream_start_event but stream has already been started\n",
 			stp->filename, stp->event.start_mark.line+1, stp->event.start_mark.column+1);
 	return 1;
 }
@@ -204,7 +204,7 @@ error_invalid_stream_start(struct streamstate* stp)
 int
 error_stream_not_started(struct streamstate* stp, char* what) 
 {
-    fprintf(stderr, "%s:%lu:%lu:%s but stream has not been started\n",
+    fprintf(stderr, "%s:%zu:%zu:%s but stream has not been started\n",
 			stp->filename, stp->event.start_mark.line+1, stp->event.start_mark.column+1, what);
 	return 1;
 }
@@ -212,7 +212,7 @@ error_stream_not_started(struct streamstate* stp, char* what)
 int
 error_invalid_document_start(struct streamstate* stp) 
 {
-    fprintf(stderr, "%s:%lu:%lu:document_start but already within a document\n",
+    fprintf(stderr, "%s:%zu:%zu:document_start but already within a document\n",
 			stp->filename, stp->event.start_mark.line+1, stp->event.start_mark.column+1);
 	return 1;
 }
@@ -220,7 +220,7 @@ error_invalid_document_start(struct streamstate* stp)
 int
 error_document_not_started(struct streamstate* stp, char* what) 
 {
-    fprintf(stderr, "%s:%lu:%lu:%s but not within a document\n",
+    fprintf(stderr, "%s:%zu:%zu:%s but not within a document\n",
 			stp->filename, stp->event.start_mark.line+1, stp->event.start_mark.column+1, what);
 	return 1;
 }
@@ -228,7 +228,7 @@ error_document_not_started(struct streamstate* stp, char* what)
 int
 error_no_current_mapping(struct streamstate* stp, char* what) 
 {
-    fprintf(stderr, "%s:%lu:%lu:%s but not within a mapping\n",
+    fprintf(stderr, "%s:%zu:%zu:%s but not within a mapping\n",
 			stp->filename, stp->event.start_mark.line+1, stp->event.start_mark.column+1, what);
 	return 1;
 }
@@ -250,7 +250,7 @@ copy_scalar(struct streamstate* stp)
         copy[len] = 0;
     } else
         snprintf(stp->errbuf, sizeof(stp->errbuf), 
-				 "%s:%lu:%lu:allocation failed for malloc(%lu)", 
+				 "%s:%zu:%zu:allocation failed for malloc(%zu)", 
                  stp->filename, stp->event.start_mark.line+1, stp->event.start_mark.column+1, len+1);
     return copy;
 }
@@ -263,7 +263,7 @@ new_keyvalue(struct streamstate* stp, struct keyvalue* nxt)
         kv->nxt = nxt;
     else
         snprintf(stp->errbuf, sizeof(stp->errbuf), 
-				 "%s:%lu:%lu:allocation failed for calloc(1, sizeof(struct keyvalue))",
+				 "%s:%zu:%zu:allocation failed for calloc(1, sizeof(struct keyvalue))",
                  stp->filename, stp->event.start_mark.line+1, stp->event.start_mark.column+1);
     return kv;
 
@@ -278,7 +278,7 @@ new_mapping(struct streamstate* stp, struct mapping* nxt)
         map->nxt = nxt;
     else
         snprintf(stp->errbuf, sizeof(stp->errbuf), 
-				 "%s:%lu:%lu:allocation failed for calloc(1, sizeof(struct mapping))",
+				 "%s:%zu:%zu:allocation failed for calloc(1, sizeof(struct mapping))",
                  stp->filename, stp->event.start_mark.line+1, stp->event.start_mark.column+1);
     return map;
 }
@@ -344,7 +344,7 @@ handle_scalar(struct streamstate* stp)
         if (stp->event.data.scalar.length > MAX_KEYLEN) 
         {
             snprintf(stp->errbuf, sizeof(stp->errbuf), 
-					 "%s:%lu:%lu:key name exceeds maximum length %u",
+					 "%s:%zu:%zu:key name exceeds maximum length %d",
                      stp->filename, stp->event.start_mark.line+1, stp->event.start_mark.column+1, MAX_KEYLEN);
             return 1;
         }
