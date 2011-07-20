@@ -335,7 +335,11 @@ static bool ContainsParamWalker(Node *expr, void *ctx)
 {
 	Assert(ctx == NULL);
 
-	if (IsA(expr, Param))
+	if (expr == NULL)
+	{
+		return false;
+	}
+	else if (IsA(expr, Param))
 	{
 		return true;
 	}
