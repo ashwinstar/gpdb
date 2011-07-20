@@ -47,14 +47,6 @@ internal:
 check:
 	$(MAKE) -C test
 
-$(SRCDIR)/yaml_scan.c: $(SRCDIR)/yaml_scan.l
-ifdef FLEX
-	cd $(SRCDIR) ; \
-	$(FLEX) $(FLEXFLAGS) -o'$@' $<
-else
-	@$(missing) flex $< $@
-endif
-
 $(SRCDIR)/yaml_scan.c: $(SRCDIR)/yaml_parse.h $(SRCDIR)/yaml_scan.l
 ifdef FLEX
 	cd $(SRCDIR) ; \
