@@ -42,6 +42,7 @@
  */
 Oid
 CreateConstraintEntry(const char *constraintName,
+					  Oid conOid,
 					  Oid constraintNamespace,
 					  char constraintType,
 					  bool isDeferrable,
@@ -62,7 +63,6 @@ CreateConstraintEntry(const char *constraintName,
 					  const char *conSrc)
 {
 	Relation	conDesc;
-	Oid			conOid;
 	HeapTuple	tup;
 	bool		nulls[Natts_pg_constraint];
 	Datum		values[Natts_pg_constraint];
@@ -155,6 +155,9 @@ CreateConstraintEntry(const char *constraintName,
 
 	tup = heap_form_tuple(RelationGetDescr(conDesc), values, nulls);
 
+	/* force tuple to have the desired OID */
+	if (OidIsValid(conOid))
+		HeapTupleSetOid(tup, conOid);
 	conOid = simple_heap_insert(conDesc, tup);
 
 	/* update catalog indexes */
@@ -603,6 +606,50 @@ GetConstraintNameForTrigger(Oid triggerId)
 
 	heap_close(conRel, AccessShareLock);
 
+	return result;
+}
+
+/*
+ * GetConstraintNameByOid
+ *		Get the name of the constraint with the given oid, if any.
+ *
+ * Returns a palloc'd string, or NULL if no constraint can be found.
+ */
+char *
+GetConstraintNameByOid(Oid constraintId)
+{
+	char *result = NULL;
+	Relation conRel;
+	ScanKeyData key[1];
+	SysScanDesc scan;
+	HeapTuple tup;
+	
+	if (!OidIsValid(constraintId))
+		return NULL;
+	
+	conRel = heap_open(ConstraintRelationId, AccessShareLock);
+	
+	ScanKeyInit(&key[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(constraintId));
+	
+	scan = systable_beginscan(conRel, ConstraintOidIndexId, true,
+							  SnapshotNow, 1, key);
+	
+	tup = systable_getnext(scan);
+	
+	if (HeapTupleIsValid(tup))
+	{
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tup);
+		
+		result = pstrdup(NameStr(con->conname));
+	}
+	
+	systable_endscan(scan);
+	
+	heap_close(conRel, AccessShareLock);
+	
 	return result;
 }
 

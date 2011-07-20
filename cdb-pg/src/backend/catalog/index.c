@@ -486,6 +486,7 @@ UpdateIndexRelation(Oid indexoid,
  * reloptions: AM-specific options
  * isprimary: index is a PRIMARY KEY
  * isconstraint: index is owned by a PRIMARY KEY or UNIQUE constraint
+ * constrOid: constraint OID to use if isconstraint is true
  * allow_system_table_mods: allow table to be a system catalog
  * skip_build: true to skip the index_build() step for the moment; caller
  *		must do it later (typically via reindex_index())
@@ -506,6 +507,7 @@ index_create(Oid heapRelationId,
 			 Datum reloptions,
 			 bool isprimary,
 			 bool isconstraint,
+			 Oid *constrOid,
 			 bool allow_system_table_mods,
 			 bool skip_build,
 			 bool concurrent,
@@ -753,7 +755,6 @@ index_create(Oid heapRelationId,
 		if (isconstraint)
 		{
 			char		constraintType;
-			Oid			conOid;
 			const char *constraintName = indexRelationName;
 			
 			if ( altConName )
@@ -775,28 +776,30 @@ index_create(Oid heapRelationId,
 			if (indexInfo->ii_Expressions)
 				elog(ERROR, "constraints can't have index expressions");
 
-			conOid = CreateConstraintEntry(constraintName,
-										   namespaceId,
-										   constraintType,
-										   false,		/* isDeferrable */
-										   false,		/* isDeferred */
-										   heapRelationId,
-										   indexInfo->ii_KeyAttrNumbers,
-										   indexInfo->ii_NumIndexAttrs,
-										   InvalidOid,	/* no domain */
-										   InvalidOid,	/* no foreign key */
-										   NULL,
-										   0,
-										   ' ',
-										   ' ',
-										   ' ',
-										   InvalidOid,	/* no associated index */
-										   NULL,		/* no check constraint */
-										   NULL,
-										   NULL);
+			Insist(constrOid != NULL);
+			*constrOid = CreateConstraintEntry(constraintName,
+											   *constrOid,
+											   namespaceId,
+											   constraintType,
+											   false,		/* isDeferrable */
+											   false,		/* isDeferred */
+											   heapRelationId,
+											   indexInfo->ii_KeyAttrNumbers,
+											   indexInfo->ii_NumIndexAttrs,
+											   InvalidOid,	/* no domain */
+											   InvalidOid,	/* no foreign key */
+											   NULL,
+											   0,
+											   ' ',
+											   ' ',
+											   ' ',
+											   InvalidOid,	/* no associated index */
+											   NULL,		/* no check constraint */
+											   NULL,
+											   NULL);
 
 			referenced.classId = ConstraintRelationId;
-			referenced.objectId = conOid;
+			referenced.objectId = *constrOid;
 			referenced.objectSubId = 0;
 
 			recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL);

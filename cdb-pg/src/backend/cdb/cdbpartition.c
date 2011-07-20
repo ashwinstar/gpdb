@@ -4463,6 +4463,7 @@ atpxPartAddList(Relation rel,
 	ct = (CreateStmt *)linitial(utils);
 	Assert(IsA(ct, CreateStmt));
 	
+	ct->is_add_part = true; /* subroutines need to know this */
 	ct->ownerid = ownerid;
 	
 	if (!ct->distributedBy)
@@ -7228,6 +7229,7 @@ constraint_apply_mapped(HeapTuple tuple, AttrMap *map, Relation cand,
 			Assert( conexpr && conbin && consrc );
 			
 			CreateConstraintEntry(NameStr(con->conname),
+								  InvalidOid,
 								  con->connamespace, // XXX should this be RelationGetNamespace(cand)?
 								  con->contype,
 								  con->condeferrable,
@@ -7274,6 +7276,7 @@ constraint_apply_mapped(HeapTuple tuple, AttrMap *map, Relation cand,
 			indexoid = transformFkeyCheckAttrs(frel, nfkeys, fkeys, opclasses);
 			
 			CreateConstraintEntry(NameStr(con->conname),
+								  InvalidOid,
 								  RelationGetNamespace(cand),
 								  con->contype,
 								  con->condeferrable,
@@ -7392,7 +7395,7 @@ relation_has_supers(Oid relid)
  * we can't use an expression tree walker to get the column names.
  *
  * For CHECK constraints, expr is an uncooked constraint expression.
- * For index-backed contraints (PRIMARY KEY, UNIQUE), expr is a list of IndexElem.
+ * For index-backed constraints (PRIMARY KEY, UNIQUE), expr is a list of IndexElem.
  *
  * A small possibility of name collision still exists, however, it seems 
  * remote and will be detected and rejected later anyway.

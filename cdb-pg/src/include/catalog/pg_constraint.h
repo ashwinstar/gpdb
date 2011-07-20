@@ -187,24 +187,25 @@ typedef enum ConstraintCategory
  * prototypes for functions in pg_constraint.c
  */
 extern Oid CreateConstraintEntry(const char *constraintName,
-					  Oid constraintNamespace,
-					  char constraintType,
-					  bool isDeferrable,
-					  bool isDeferred,
-					  Oid relId,
-					  const int16 *constraintKey,
-					  int constraintNKeys,
-					  Oid domainId,
-					  Oid foreignRelId,
-					  const int16 *foreignKey,
-					  int foreignNKeys,
-					  char foreignUpdateType,
-					  char foreignDeleteType,
-					  char foreignMatchType,
-					  Oid indexRelId,
-					  Node *conExpr,
-					  const char *conBin,
-					  const char *conSrc);
+								 Oid conOid,
+								 Oid constraintNamespace,
+								 char constraintType,
+								 bool isDeferrable,
+								 bool isDeferred,
+								 Oid relId,
+								 const int16 *constraintKey,
+								 int constraintNKeys,
+								 Oid domainId,
+								 Oid foreignRelId,
+								 const int16 *foreignKey,
+								 int foreignNKeys,
+								 char foreignUpdateType,
+								 char foreignDeleteType,
+								 char foreignMatchType,
+								 Oid indexRelId,
+								 Node *conExpr,
+								 const char *conBin,
+								 const char *conSrc);
 
 extern void RemoveConstraintById(Oid conId);
 
@@ -215,6 +216,8 @@ extern char *ChooseConstraintName(const char *name1, const char *name2,
 					 List *others);
 
 extern char *GetConstraintNameForTrigger(Oid triggerId);
+
+extern char * GetConstraintNameByOid(Oid constraintId);
 
 extern void AlterConstraintNamespaces(Oid ownerId, Oid oldNspId,
 						  Oid newNspId, bool isType);

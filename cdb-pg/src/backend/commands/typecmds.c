@@ -2034,25 +2034,26 @@ domainAddConstraint(Oid domainOid, Oid domainNamespace, Oid baseTypeOid,
 	/*
 	 * Store the constraint in pg_constraint
 	 */
-	CreateConstraintEntry(constr->name, /* Constraint Name */
-						  domainNamespace,		/* namespace */
-						  CONSTRAINT_CHECK,		/* Constraint Type */
-						  false,	/* Is Deferrable */
-						  false,	/* Is Deferred */
-						  InvalidOid,	/* not a relation constraint */
-						  NULL,
-						  0,
-						  domainOid,	/* domain constraint */
-						  InvalidOid,	/* Foreign key fields */
-						  NULL,
-						  0,
-						  ' ',
-						  ' ',
-						  ' ',
-						  InvalidOid,
-						  expr, /* Tree form check constraint */
-						  ccbin,	/* Binary form check constraint */
-						  ccsrc);		/* Source form check constraint */
+	constr->conoid = CreateConstraintEntry(constr->name, /* Constraint Name */
+										   constr->conoid,	/* Constraint Oid */
+										   domainNamespace,		/* namespace */
+										   CONSTRAINT_CHECK,		/* Constraint Type */
+										   false,	/* Is Deferrable */
+										   false,	/* Is Deferred */
+										   InvalidOid,	/* not a relation constraint */
+										   NULL,
+										   0,
+										   domainOid,	/* domain constraint */
+										   InvalidOid,	/* Foreign key fields */
+										   NULL,
+										   0,
+										   ' ',
+										   ' ',
+										   ' ',
+										   InvalidOid,
+										   expr, /* Tree form check constraint */
+										   ccbin,	/* Binary form check constraint */
+										   ccsrc);		/* Source form check constraint */
 
 	/*
 	 * Return the compiled constraint expression so the calling routine can

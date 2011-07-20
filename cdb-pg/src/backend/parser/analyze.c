@@ -479,8 +479,8 @@ do_parse_analyze(Node *parseTree, ParseState *pstate)
 	result = lappend(result, query);
 
 	foreach(l, extras_after)
-		tmp = list_concat(tmp, parse_sub_analyze(lfirst(l), pstate));
-
+ 		tmp = list_concat(tmp, parse_sub_analyze(lfirst(l), pstate));
+	
 	/*
 	 * If this is the top level query and it is a CreateStmt and it
 	 * has a partition by clause, reorder the expanded extras_after so
@@ -1390,6 +1390,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	cxt.relation = stmt->relation;
 	cxt.inhRelations = stmt->inhRelations;
 	cxt.isalter = false;
+	cxt.isaddpart = stmt->is_add_part;
 	cxt.columns = NIL;
 	cxt.ckconstraints = NIL;
 	cxt.fkconstraints = NIL;
@@ -6622,6 +6623,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 
 	child_tab_stmt->relation = child_tab_name;
 	child_tab_stmt->is_part_child = true;
+	child_tab_stmt->is_add_part = stmt->is_add_part;
 
 	if (!bQuiet)
 		ereport(NOTICE,

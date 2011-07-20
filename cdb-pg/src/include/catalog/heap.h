@@ -102,6 +102,9 @@ extern void DeleteGpRelationNodeTuple(
 extern List *AddRelationRawConstraints(Relation rel,
 						  List *rawColDefaults,
 						  List *rawConstraints);
+extern List *AddRelationConstraints(Relation rel,
+						  List *rawColDefaults,
+						  List *constraints);
 
 extern void StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin);
 

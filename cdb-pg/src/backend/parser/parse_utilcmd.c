@@ -29,6 +29,7 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/reloptions.h"
+#include "catalog/pg_constraint.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
@@ -80,6 +81,7 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 	List	   *indexprs;
 	ListCell   *indexpr_item;
 	Oid			indrelid;
+	Oid			conoid = InvalidOid;
 	int			keyno;
 	Oid			keycoltype;
 	Datum		datum;
@@ -138,7 +140,32 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 	else if (!index->unique)
 		index->isconstraint = false;
 	else
-		index->isconstraint = OidIsValid(get_index_constraint(source_relid));
+	{
+		conoid = get_index_constraint(source_relid);
+		index->isconstraint = OidIsValid(conoid);
+	}
+		
+	/* If the index backs a constraint and we are adding a part to a paritioned
+	 * table, we need to use the same constraint name as the partition root uses.  
+	 * We assume that the inheritance hierarchy above is consistent, so we just 
+	 * use the parent's constraint. 
+	 */
+	if (index->isconstraint && cxt->isaddpart )
+	{
+		char *conname;
+		
+		/*  */
+		if ( ! OidIsValid(conoid) )
+			conoid = get_index_constraint(source_relid);
+			
+		conname = GetConstraintNameByOid(conoid);
+		
+		if ( ! conname )
+		{
+			elog(ERROR, "missing constraint on partitioned table");
+		}
+		index->altconname = conname;
+	}
 
 	/* Get the index expressions, if any */
 	datum = SysCacheGetAttr(INDEXRELID, ht_idx,

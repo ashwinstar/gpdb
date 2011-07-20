@@ -206,7 +206,7 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	idxid = index_create(*lovHeapOid, lovIndexName, *lovIndexOid,
 						 indexInfo, BTREE_AM_OID,
 						 rel->rd_rel->reltablespace,
-						 classObjectId, 0, false, false, true,
+						 classObjectId, 0, false, false, (Oid *) NULL, true,
 						 false, false, NULL);
 	Assert(idxid == *lovIndexOid);
 }

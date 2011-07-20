@@ -38,6 +38,7 @@ typedef struct
 	List	   *inhRelations;	/* relations to inherit from */
 	bool		hasoids;		/* does relation have an OID column? */
 	bool		isalter;		/* true if altering existing table */
+	bool		isaddpart;		/* true if create in service of adding a part */
 	List	   *columns;		/* ColumnDef items */
 	List	   *ckconstraints;	/* CHECK constraints */
 	List	   *fkconstraints;	/* FOREIGN KEY constraints */

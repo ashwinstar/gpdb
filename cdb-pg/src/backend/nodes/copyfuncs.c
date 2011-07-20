@@ -1805,6 +1805,7 @@ _copyFkConstraint(FkConstraint *from)
 	FkConstraint *newnode = makeNode(FkConstraint);
 
 	COPY_STRING_FIELD(constr_name);
+	COPY_SCALAR_FIELD(constrOid);
 	COPY_NODE_FIELD(pktable);
 	COPY_NODE_FIELD(fk_attrs);
 	COPY_NODE_FIELD(pk_attrs);
@@ -2192,6 +2193,7 @@ _copyConstraint(Constraint *from)
 	Constraint *newnode = makeNode(Constraint);
 
 	COPY_SCALAR_FIELD(contype);
+	COPY_SCALAR_FIELD(conoid);
 	COPY_STRING_FIELD(name);
 	COPY_NODE_FIELD(raw_expr);
 	COPY_STRING_FIELD(cooked_expr);
@@ -2579,6 +2581,7 @@ _copyCreateStmt(CreateStmt *from)
 	else
 		newnode->policy = NULL;
 	COPY_SCALAR_FIELD(is_part_child);
+	COPY_SCALAR_FIELD(is_add_part);
 	COPY_SCALAR_FIELD(ownerid);
 	COPY_SCALAR_FIELD(buildAoBlkdir);
 
@@ -2886,6 +2889,7 @@ _copyIndexStmt(IndexStmt *from)
 	COPY_SCALAR_FIELD(primary);
 	COPY_SCALAR_FIELD(isconstraint);
 	COPY_STRING_FIELD(altconname);
+	COPY_SCALAR_FIELD(constrOid);
 	COPY_SCALAR_FIELD(concurrent);
 	COPY_NODE_FIELD(idxOids);
 	COPY_SCALAR_FIELD(do_part);

@@ -792,6 +792,8 @@ _readConstraint(void)
 
 	READ_LOCALS(Constraint);
 
+	READ_OID_FIELD(conoid);
+
 	READ_STRING_FIELD(name);			/* name, or NULL if unnamed */
 	token = pg_strtok(&length);			/* skip:  :contype */
 
@@ -845,13 +847,14 @@ _readIndexStmt(void)
 	READ_STRING_FIELD(accessMethod);
 	READ_STRING_FIELD(tableSpace);
 	READ_NODE_FIELD(indexParams);
-		READ_NODE_FIELD(options);
+	READ_NODE_FIELD(options);
 	READ_NODE_FIELD(whereClause);
 	READ_NODE_FIELD(rangetable);
 	READ_BOOL_FIELD(unique);
 	READ_BOOL_FIELD(primary);
 	READ_BOOL_FIELD(isconstraint);
 	READ_STRING_FIELD(altconname);
+	READ_OID_FIELD(constrOid);
 	READ_BOOL_FIELD(concurrent);
 	READ_NODE_FIELD(idxOids);
 
@@ -2073,6 +2076,7 @@ _readCreateStmt(void)
 	READ_CHAR_FIELD(relKind);
 	READ_CHAR_FIELD(relStorage);
 	READ_BOOL_FIELD(is_part_child);
+	READ_BOOL_FIELD(is_add_part);
 	READ_OID_FIELD(ownerid);
 	READ_BOOL_FIELD(buildAoBlkdir);
 
@@ -2212,6 +2216,7 @@ _outFkConstraint(void)
 	READ_LOCALS(FkConstraint);
 
 	READ_STRING_FIELD(constr_name);
+	READ_OID_FIELD(constrOid);
 	READ_NODE_FIELD(pktable);
 	READ_NODE_FIELD(fk_attrs);
 	READ_NODE_FIELD(pk_attrs);

@@ -103,7 +103,10 @@ static Oid AddNewRelationType(const char *typeName,
 				   char new_rel_kind,
 				   Oid ownerid);
 static void RelationRemoveInheritance(Oid relid);
-static void StoreRelCheck(Relation rel, char *ccname, char *ccbin);
+static Oid StoreRelCheck(Relation rel, char *ccname, char *ccbin, Oid conoid);
+static Node* cookConstraint (ParseState *pstate,
+							 Node 		*raw_constraint,
+							 char		*relname);
 static void StoreConstraints(Relation rel, TupleDesc tupdesc);
 static List *insert_ordered_unique_oid(List *list, Oid datum);
 
@@ -2347,9 +2350,11 @@ StoreAttrDefault(Relation rel, AttrNumber attnum, char *adbin)
  *
  * Caller is responsible for updating the count of constraints
  * in the pg_class entry for the relation.
+ *
+ * Return OID of the newly created constraint entry.
  */
-static void
-StoreRelCheck(Relation rel, char *ccname, char *ccbin)
+static Oid
+StoreRelCheck(Relation rel, char *ccname, char *ccbin, Oid conOid)
 {
 	Node	   *expr;
 	char	   *ccsrc;
@@ -2405,27 +2410,29 @@ StoreRelCheck(Relation rel, char *ccname, char *ccbin)
 	/*
 	 * Create the Check Constraint
 	 */
-	CreateConstraintEntry(ccname,		/* Constraint Name */
-						  RelationGetNamespace(rel),	/* namespace */
-						  CONSTRAINT_CHECK,		/* Constraint Type */
-						  false,	/* Is Deferrable */
-						  false,	/* Is Deferred */
-						  RelationGetRelid(rel),		/* relation */
-						  attNos,		/* attrs in the constraint */
-						  keycount,		/* # attrs in the constraint */
-						  InvalidOid,	/* not a domain constraint */
-						  InvalidOid,	/* Foreign key fields */
-						  NULL,
-						  0,
-						  ' ',
-						  ' ',
-						  ' ',
-						  InvalidOid,	/* no associated index */
-						  expr, /* Tree form check constraint */
-						  ccbin,	/* Binary form check constraint */
-						  ccsrc);		/* Source form check constraint */
+	conOid = CreateConstraintEntry(ccname,		/* Constraint Name */
+								   conOid,		/* Constraint Oid */
+								   RelationGetNamespace(rel),	/* namespace */
+								   CONSTRAINT_CHECK,		/* Constraint Type */
+								   false,	/* Is Deferrable */
+								   false,	/* Is Deferred */
+								   RelationGetRelid(rel),		/* relation */
+								   attNos,		/* attrs in the constraint */
+								   keycount,		/* # attrs in the constraint */
+								   InvalidOid,	/* not a domain constraint */
+								   InvalidOid,	/* Foreign key fields */
+								   NULL,
+								   0,
+								   ' ',
+								   ' ',
+								   ' ',
+								   InvalidOid,	/* no associated index */
+								   expr, /* Tree form check constraint */
+								   ccbin,	/* Binary form check constraint */
+								   ccsrc);		/* Source form check constraint */
 
 	pfree(ccsrc);
+	return conOid;
 }
 
 /*
@@ -2455,26 +2462,20 @@ StoreConstraints(Relation rel, TupleDesc tupdesc)
 	for (i = 0; i < constr->num_defval; i++)
 		StoreAttrDefault(rel, constr->defval[i].adnum,
 						 constr->defval[i].adbin);
-
-	for (i = 0; i < constr->num_check; i++)
-		StoreRelCheck(rel, constr->check[i].ccname,
-					  constr->check[i].ccbin);
-
-	if (constr->num_check > 0)
-		SetRelationNumChecks(rel, constr->num_check);
 }
 
+
 /*
- * AddRelationRawConstraints
+ * AddRelationConstraints
  *
- * Add raw (not-yet-transformed) column default expressions and/or constraint
- * check expressions to an existing relation.  This is defined to do both
+ * Add both raw (not-yet-transformed) and cooked column default expressions and/or
+ * constraint check expressions to an existing relation.  This is defined to do both
  * for efficiency in DefineRelation, but of course you can do just one or
  * the other by passing empty lists.
  *
  * rel: relation to be modified
  * rawColDefaults: list of RawColumnDefault structures
- * rawConstraints: list of Constraint nodes
+ * constraints: list of Constraint nodes
  *
  * All entries in rawColDefaults will be processed.  Entries in rawConstraints
  * will be processed only if they are CONSTR_CHECK type and contain a "raw"
@@ -2489,9 +2490,9 @@ StoreConstraints(Relation rel, TupleDesc tupdesc)
  * tuples visible.
  */
 List *
-AddRelationRawConstraints(Relation rel,
+AddRelationConstraints(Relation rel,
 						  List *rawColDefaults,
-						  List *rawConstraints)
+						  List *constraints)
 {
 	List	   *cookedConstraints = NIL;
 	TupleDesc	tupleDesc;
@@ -2554,64 +2555,34 @@ AddRelationRawConstraints(Relation rel,
 	 */
 	numchecks = numoldchecks;
 	checknames = NIL;
-	foreach(cell, rawConstraints)
+	foreach(cell, constraints)
 	{
 		Constraint *cdef = (Constraint *) lfirst(cell);
 		char	   *ccname;
 
-		if (cdef->contype != CONSTR_CHECK || cdef->raw_expr == NULL)
+		if (cdef->contype != CONSTR_CHECK)
 			continue;
 
-		if (IsA(cdef->raw_expr, AlterTableCmd)) /* HUGE HACK */
+		/*
+		 * Transform raw parsetree to executable expression, and verify
+		 * it's valid as a CHECK constraint
+		 */
+		if (cdef->raw_expr != NULL)
 		{
-			AlterTableCmd *atc = (AlterTableCmd *)cdef->raw_expr;
-			cdef->raw_expr = NULL;
-			expr = (Node *)atc->def;
-			goto L_precooked;
+			Insist(cdef->cooked_expr == NULL);
+			expr = cookConstraint(pstate, cdef->raw_expr,
+								  RelationGetRelationName(rel));
+		}
+		/*
+		 * Here, we assume the parser will only pass us valid CHECK
+		 * expressions, so we do no particular checking.
+		 */
+		else
+		{
+			Insist(cdef->cooked_expr != NULL);
+			expr = stringToNode(cdef->cooked_expr);
 		}
 
-		Assert(cdef->cooked_expr == NULL);
-
-		/*
-		 * Transform raw parsetree to executable expression.
-		 */
-		expr = transformExpr(pstate, cdef->raw_expr);
-
-		/*
-		 * Make sure it yields a boolean result.
-		 */
-		expr = coerce_to_boolean(pstate, expr, "CHECK");
-
-		/*
-		 * Make sure no outside relations are referred to.
-		 */
-		if (list_length(pstate->p_rtable) != 1)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-			errmsg("only table \"%s\" can be referenced in check constraint",
-				   RelationGetRelationName(rel)),
-						   errOmitLocation(true)));
-
-		/*
-		 * No subplans or aggregates, either...
-		 */
-		if (pstate->p_hasSubLinks)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot use subquery in check constraint"),
-							   errOmitLocation(true)));
-		if (pstate->p_hasAggs)
-			ereport(ERROR,
-					(errcode(ERRCODE_GROUPING_ERROR),
-			   errmsg("cannot use aggregate function in check constraint"),
-					   errOmitLocation(true)));
-		if (pstate->p_hasWindFuncs)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-			   errmsg("cannot use window function in check constraint"),
-			   errOmitLocation(true)));
-
-	L_precooked:
 		/*
 		 * Check name uniqueness, or generate a name if none was given.
 		 */
@@ -2627,9 +2598,10 @@ AddRelationRawConstraints(Relation rel,
 									 ccname))
 				ereport(ERROR,
 						(errcode(ERRCODE_DUPLICATE_OBJECT),
-				errmsg("constraint \"%s\" for relation \"%s\" already exists",
-					   ccname, RelationGetRelationName(rel)),
-							   errOmitLocation(true)));
+						 errmsg("constraint \"%s\" for relation \"%s\" already exists",
+								ccname, RelationGetRelationName(rel)),
+								errOmitLocation(true)));
+
 			/* Check against other new constraints */
 			/* Needed because we don't do CommandCounterIncrement in loop */
 			foreach(cell2, checknames)
@@ -2639,7 +2611,7 @@ AddRelationRawConstraints(Relation rel,
 							(errcode(ERRCODE_DUPLICATE_OBJECT),
 							 errmsg("check constraint \"%s\" already exists",
 									ccname),
-											   errOmitLocation(true)));
+									errOmitLocation(true)));
 			}
 		}
 		else
@@ -2683,7 +2655,7 @@ AddRelationRawConstraints(Relation rel,
 		/*
 		 * OK, store it.
 		 */
-		StoreRelCheck(rel, ccname, nodeToString(expr));
+		cdef->conoid = StoreRelCheck(rel, ccname, nodeToString(expr), cdef->conoid);
 
 		numchecks++;
 
@@ -2709,6 +2681,51 @@ AddRelationRawConstraints(Relation rel,
 
 	return cookedConstraints;
 }
+
+/*
+ * Transform raw parsetree to executable expression.
+ */
+static Node*
+cookConstraint (ParseState 	*pstate,
+				Node 		*raw_constraint,
+				char		*relname)
+{
+	Node	*expr;
+
+	/* Transform raw parsetree to executable expression. */
+	expr = transformExpr(pstate, raw_constraint);
+
+	/* Make sure it yields a boolean result. */
+	expr = coerce_to_boolean(pstate, expr, "CHECK");
+
+	/* Make sure no outside relations are referred to. */
+	if (list_length(pstate->p_rtable) != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+		errmsg("only table \"%s\" can be referenced in check constraint",
+			   relname), errOmitLocation(true)));
+	/*
+	 * No subplans or aggregates, either...
+	 */
+	if (pstate->p_hasSubLinks)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot use subquery in check constraint"),
+						   errOmitLocation(true)));
+	if (pstate->p_hasAggs)
+		ereport(ERROR,
+				(errcode(ERRCODE_GROUPING_ERROR),
+		   errmsg("cannot use aggregate function in check constraint"),
+				   errOmitLocation(true)));
+	if (pstate->p_hasWindFuncs)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+		   errmsg("cannot use window function in check constraint"),
+		   errOmitLocation(true)));
+
+	return expr;
+}
+
 
 /*
  * Update the count of constraints in the relation's pg_class tuple.

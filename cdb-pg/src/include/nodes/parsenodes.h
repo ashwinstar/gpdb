@@ -1105,6 +1105,7 @@ typedef struct AlterTableStmt
 typedef enum AlterTableType
 {
 	AT_AddColumn,				/* add column */
+	AT_AddColumnRecurse,		/* internal to commands/tablecmds.c */
 	AT_ColumnDefault,			/* alter column default */
 	AT_DropNotNull,				/* alter column drop not null */
 	AT_SetNotNull,				/* alter column set not null */
@@ -1115,6 +1116,7 @@ typedef enum AlterTableType
 	AT_AddIndex,				/* add index */
 	AT_ReAddIndex,				/* internal to commands/tablecmds.c */
 	AT_AddConstraint,			/* add constraint */
+	AT_AddConstraintRecurse,	/* internal to commands/tablecmds.c */
 	AT_ProcessedConstraint,		/* pre-processed add constraint (local in
 								 * parser/analyze.c) */
 	AT_DropConstraint,			/* drop constraint */
@@ -1374,6 +1376,7 @@ typedef struct CreateStmt
 	struct GpPolicy  *policy;
 	Node       *postCreate;      /* CDB: parse and process after the CREATE */
 	bool		is_part_child;	/* CDB: partition child table? */
+	bool		is_add_part;	/* CDB: is create adding a part to a partition? */
 	Oid			ownerid;		/* OID of the role to own this. if InvalidOid, GetUserId() */
 	bool		buildAoBlkdir; /* whether to build the block directory for an AO table */
 } CreateStmt;
@@ -1469,6 +1472,7 @@ typedef struct Constraint
 {
 	NodeTag		type;
 	ConstrType	contype;
+	Oid			conoid;			/* constraint oid */
 	char	   *name;			/* name, or NULL if unnamed */
 	Node	   *raw_expr;		/* expr, as untransformed parse tree */
 	char	   *cooked_expr;	/* expr, as nodeToString representation */
@@ -1505,6 +1509,7 @@ typedef struct Constraint
 typedef struct FkConstraint
 {
 	NodeTag		type;
+	Oid			constrOid;		/* Constraint Oid */
 	char	   *constr_name;	/* Constraint name, or NULL if unnamed */
 	RangeVar   *pktable;		/* Primary key table */
 	List	   *fk_attrs;		/* Attributes of foreign key */
@@ -2107,6 +2112,7 @@ typedef struct IndexStmt
 	bool		isconstraint;	/* is it from a CONSTRAINT clause? */
 	char	   *altconname;		/* constraint name, if desired name differs
 								 * from idxname and isconstraint, else NULL. */
+	Oid			constrOid;		/* constraint oid */
 	bool		concurrent;		/* should this be a concurrent index build? */
 	List		*idxOids;		/* For MPP. We use List here because the
 								 * bitmap index needs 3 additional oids. */

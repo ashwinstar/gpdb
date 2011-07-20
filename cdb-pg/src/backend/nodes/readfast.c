@@ -527,6 +527,7 @@ _readConstraint(const char ** str)
 	READ_LOCALS(Constraint);
 
 	READ_STRING_FIELD(name);			/* name, or NULL if unnamed */
+	READ_OID_FIELD(conoid);
 
 	READ_ENUM_FIELD(contype,ConstrType);
 	Assert(local_node->contype <= CONSTR_ATTR_IMMEDIATE);
@@ -581,6 +582,7 @@ _readIndexStmt(const char ** str)
 	READ_BOOL_FIELD(primary);
 	READ_BOOL_FIELD(isconstraint);
 	READ_STRING_FIELD(altconname);
+	READ_OID_FIELD(constrOid);
 	READ_BOOL_FIELD(concurrent);
 	READ_NODE_FIELD(idxOids);
 
@@ -1778,6 +1780,7 @@ _readCreateStmt(const char ** str)
 	READ_CHAR_FIELD(relKind);
 	READ_CHAR_FIELD(relStorage);
 	READ_BOOL_FIELD(is_part_child);
+	READ_BOOL_FIELD(is_add_part);
 	READ_OID_FIELD(ownerid);
 	READ_BOOL_FIELD(buildAoBlkdir);
 
@@ -2016,6 +2019,7 @@ _readFkConstraint(const char ** str)
 	READ_LOCALS(FkConstraint);
 
 	READ_STRING_FIELD(constr_name);
+	READ_OID_FIELD(constrOid);
 	READ_NODE_FIELD(pktable);
 	READ_NODE_FIELD(fk_attrs);
 	READ_NODE_FIELD(pk_attrs);

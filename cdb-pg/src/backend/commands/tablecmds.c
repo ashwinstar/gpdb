@@ -202,8 +202,8 @@ static void truncate_check_rel(Relation rel);
 static void MergeConstraintsIntoExisting(Relation child_rel, Relation parent_rel);
 static void MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel, List *inhAttrNameList,
 										bool is_partition);
-static void add_nonduplicate_constraint(Constraint *cdef,
-										ConstrCheck *check, int *ncheck);
+static bool add_nonduplicate_cooked_constraint(Constraint *cdef, List *stmtConstraints);
+
 static bool change_varattnos_walker(Node *node, const AttrNumber *newattno);
 static void StoreCatalogInheritance(Oid relationId, List *supers);
 static void StoreCatalogInheritance1(Oid relationId, Oid parentOid,
@@ -245,10 +245,9 @@ static void ATSimplePermissions(Relation rel, bool allowView);
 static void ATSimplePermissionsRelationOrIndex(Relation rel);
 static void ATSimpleRecursion(List **wqueue, Relation rel,
 				  AlterTableCmd *cmd, bool recurse);
-static void ATOneLevelRecursion(List **wqueue, Relation rel,
-					AlterTableCmd *cmd);
-static void ATPrepAddColumn(List **wqueue, Relation rel, bool recurse,
-				AlterTableCmd *cmd);
+/* static void ATOneLevelRecursion(List **wqueue, Relation rel,
+					AlterTableCmd *cmd); */
+static void ATPrepAddColumn(Relation rel, bool recurse, AlterTableCmd *cmd);
 static void ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 				ColumnDef *colDef);
 static void add_column_datatype_dependency(Oid relid, int32 attnum, Oid typid);
@@ -268,10 +267,9 @@ static void ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 				 bool recurse, bool recursing);
 static void ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 			   IndexStmt *stmt, bool is_rebuild, bool part_expanded);
-static void ATPrepAddConstraint(List **wqueue, Relation rel,
-					bool recurse, AlterTableCmd *cmd);
-static void ATExecAddConstraint(AlteredTableInfo *tab, Relation rel,
-					Node *newConstraint);
+static void ATExecAddConstraint(AlteredTableInfo *tab, Relation rel, Node *newConstraint, bool recurse);
+static void ATAddCheckConstraint(AlteredTableInfo *tab, Relation rel, Constraint *constr, bool recurse);
+
 static void ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 						  FkConstraint *fkconstraint);
 static void ATPrepDropConstraint(List **wqueue, Relation rel,
@@ -285,7 +283,7 @@ static void ATPrepAlterColumnType(List **wqueue,
 static void ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 					  const char *colName, TypeName *typname);
 static void ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab);
-static void ATPostAlterTypeParse(char *cmd, List **wqueue);
+static void ATPostAlterTypeParse(char *cmd, List **wqueue, Oid constrOid);
 static void change_owner_recurse_to_sequences(Oid relationOid,
 								  Oid newOwnerId);
 static void ATExecClusterOn(Relation rel, const char *indexName);
@@ -594,46 +592,24 @@ DefineRelation_int(CreateStmt *stmt,
 	localHasOids = interpretOidsOption(stmt->options);
 	descriptor->tdhasoid = (localHasOids || parentOidCount > 0);
 
-	if (old_constraints || stmt->constraints)
+	/*
+	 * old_constraints: pre-cooked constraints from CREATE TABLE ... INHERIT ...
+	 * stmt->constraints: might have some pre-cooked constraints passed by analyze.c,
+	 * 		due to LIKE tab INCLUDING CONSTRAINTS
+	 *
+	 * We no longer add these cooked constraints during heap_create_with_catalog.
+	 * Instead, we add them along with raw constraints so that we can specify
+	 * pg_constraint oid to use on segments.
+	 */
+	if (old_constraints)
 	{
-		ConstrCheck *check;
-		int			ncheck = 0;
-
-		/* make array that's certainly big enough */
-		check = (ConstrCheck *)
-			palloc((list_length(old_constraints) +
-					list_length(stmt->constraints)) * sizeof(ConstrCheck));
 		/* deal with constraints from MergeAttributes */
 		foreach(listptr, old_constraints)
 		{
 			Constraint *cdef = (Constraint *) lfirst(listptr);
-
-			if (cdef->contype == CONSTR_CHECK)
-				add_nonduplicate_constraint(cdef, check, &ncheck);
-		}
-		/*
-		 * analyze.c might have passed some precooked constraints too,
-		 * due to LIKE tab INCLUDING CONSTRAINTS
-		 */
-		foreach(listptr, stmt->constraints)
-		{
-			Constraint *cdef = (Constraint *) lfirst(listptr);
-
-			if (cdef->contype == CONSTR_CHECK && cdef->cooked_expr != NULL)
-				add_nonduplicate_constraint(cdef, check, &ncheck);
-		}
-		/* if we found any, insert 'em into the descriptor */
-		if (ncheck > 0)
-		{
-			if (descriptor->constr == NULL)
-			{
-				descriptor->constr = (TupleConstr *) palloc(sizeof(TupleConstr));
-				descriptor->constr->defval = NULL;
-				descriptor->constr->num_defval = 0;
-				descriptor->constr->has_not_null = false;
-			}
-			descriptor->constr->num_check = ncheck;
-			descriptor->constr->check = check;
+			if (cdef->contype == CONSTR_CHECK &&
+					add_nonduplicate_cooked_constraint(cdef, stmt->constraints))
+				stmt->constraints = lappend(stmt->constraints, cdef);
 		}
 	}
 
@@ -839,7 +815,7 @@ DefineRelation_int(CreateStmt *stmt,
 	 * Parse and add the defaults/constraints, if any.
 	 */
 	if (rawDefaults || stmt->constraints)
-		AddRelationRawConstraints(rel, rawDefaults, stmt->constraints);
+		AddRelationConstraints(rel, rawDefaults, stmt->constraints);
 
 	/* It is now safe to dispatch */
 	if (shouldDispatch)
@@ -2533,34 +2509,31 @@ MergeAttributes(List *schema, List *supers, bool istemp,
  * the same grandparent constraint through multiple parents.
  * Hence, we want to discard inherited constraints that match as to
  * both name and expression.  Otherwise, gripe if there are conflicting
- * names.  Nonconflicting constraints are added to the array check[]
- * of length *ncheck ... caller must ensure there is room!
+ * names. Nonconflicting constraints are added back to the CreateStmt->constraints
  */
-static void
-add_nonduplicate_constraint(Constraint *cdef, ConstrCheck *check, int *ncheck)
+static bool
+add_nonduplicate_cooked_constraint(Constraint *cdef, List *stmtConstraints)
 {
-	int			i;
-
 	/* Should only see precooked constraints here */
 	Assert(cdef->contype == CONSTR_CHECK);
 	Assert(cdef->name != NULL);
 	Assert(cdef->raw_expr == NULL && cdef->cooked_expr != NULL);
 
-	for (i = 0; i < *ncheck; i++)
+	ListCell 	*listptr;
+
+	foreach(listptr, stmtConstraints)
 	{
-		if (strcmp(check[i].ccname, cdef->name) != 0)
+		Constraint *stmtCdef = (Constraint *) lfirst(listptr);
+
+		/* Constraint in CreateStmt may be raw and maynot be a check constraint */
+		if (stmtCdef->cooked_expr == NULL || stmtCdef->contype != CONSTR_CHECK)
 			continue;
-		if (strcmp(check[i].ccbin, cdef->cooked_expr) == 0)
-			return;				/* duplicate constraint, so ignore it */
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("duplicate check constraint name \"%s\"",
-						cdef->name)));
+		if (strcmp(stmtCdef->name, cdef->name) != 0)
+			continue;
+		if (strcmp(stmtCdef->cooked_expr, cdef->cooked_expr) == 0)
+			return false;
 	}
-	/* No match on name, so add it to array */
-	check[*ncheck].ccname = cdef->name;
-	check[*ncheck].ccbin = pstrdup(cdef->cooked_expr);
-	(*ncheck)++;
+	return true;
 }
 
 
@@ -3602,6 +3575,7 @@ void ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 				case AT_AddIndex:			
 				case AT_ReAddIndex:			
 				case AT_AddConstraint:		
+				case AT_AddConstraintRecurse:
 				case AT_ProcessedConstraint:	
 				case AT_DropConstraint:		
 				case AT_DropConstraintQuietly:			
@@ -3942,18 +3916,23 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 	{
 		case AT_AddColumn:		/* ADD COLUMN */
 			ATSimplePermissions(rel, false);
-
 			/*
 			 * test that this is allowed for partitioning, but only if we aren't
 			 * recursing.
 			 */
 			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 			/* Performs own recursion */
-			ATPrepAddColumn(wqueue, rel, recurse, cmd);
+			ATPrepAddColumn(rel, recurse, cmd);
+			pass = AT_PASS_ADD_COL;
+			break;
+		case AT_AddColumnRecurse:		/* ADD COLUMN internal */
+			ATSimplePermissions(rel, false);
+			/* No need to do ATPartitionCheck */
+			/* Performs own recursion */
+			ATPrepAddColumn(rel, recurse, cmd);
 			pass = AT_PASS_ADD_COL;
 			break;
 		case AT_ColumnDefault:	/* ALTER COLUMN DEFAULT */
-
 			/*
 			 * We allow defaults on views so that INSERT into a view can have
 			 * default-ish behavior.  This works because the rewriter
@@ -4006,7 +3985,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_AddIndex:		/* ADD INDEX */
 			ATSimplePermissions(rel, false);
 			/* Any recursion for partitioning is done in ATExecAddIndex() itself */
-			/* However, if the index supports a PK or UNIQUE constaint and the
+			/* However, if the index supports a PK or UNIQUE constraint and the
 			 * relation is partitioned, we need to assure the constraint is named
 			 * in a reasonable way. */
 			if ( rel_is_partitioned(rel->rd_id) )
@@ -4022,7 +4001,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						contype = CONSTR_UNIQUE;
 					
 					/* Pick and install a constraint name. */
-					topindexstmt->altconname = 
+					topindexstmt->altconname =
 						ChooseConstraintNameForPartitionEarly(rel, 
 															  contype, 
 															  (Node*)topindexstmt->indexParams);
@@ -4037,14 +4016,21 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			 * not ONLY the root.
 			 */
 			ATPartitionCheck(cmd->subtype, rel, (!recurse && !recursing), recursing);
-
 			/*
 			 * Currently we recurse only for CHECK constraints, never for
 			 * foreign-key constraints.  UNIQUE/PKEY constraints won't be seen
 			 * here.
 			 */
-			if (IsA(cmd->def, Constraint))
-				ATPrepAddConstraint(wqueue, rel, recurse, cmd);
+			/* Any recursion for partitioning/inheritance is done in ATExecAddConstraint() itself */
+			if (recurse)
+				cmd->subtype = AT_AddConstraintRecurse;
+			pass = AT_PASS_ADD_CONSTR;
+			break;
+		case AT_AddConstraintRecurse: /* ADD check CONSTRAINT internal */
+			/* Parent/Base CHECK constraints apply to child/part tables here.
+			 * No need for ATPartitionCheck
+			 */
+			ATSimplePermissions(rel, false);
 			pass = AT_PASS_ADD_CONSTR;
 			break;
 		case AT_DropConstraint:	/* DROP CONSTRAINT */
@@ -5087,6 +5073,7 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:		/* ADD COLUMN */
+		case AT_AddColumnRecurse:
 			ATExecAddColumn(tab, rel, (ColumnDef *) cmd->def);
 			break;
 		case AT_ColumnDefault:	/* ALTER COLUMN DEFAULT */
@@ -5119,7 +5106,10 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd
 						   cmd->part_expanded);
 			break;
 		case AT_AddConstraint:	/* ADD CONSTRAINT */
-			ATExecAddConstraint(tab, rel, cmd->def);
+			ATExecAddConstraint(tab, rel, cmd->def, false);
+			break;
+		case AT_AddConstraintRecurse: /* ADD CONSTRAINT with recursion: internal */
+			ATExecAddConstraint(tab, rel, cmd->def, true);
 			break;
 		case AT_DropConstraint:	/* DROP CONSTRAINT */
 			ATExecDropConstraint(rel, cmd->name, cmd->behavior, false);
@@ -6189,6 +6179,7 @@ ATSimpleRecursion(List **wqueue, Relation rel,
  * When using this technique, a multiply-inheriting child will be visited
  * multiple times.
  */
+/*
 static void
 ATOneLevelRecursion(List **wqueue, Relation rel,
 					AlterTableCmd *cmd)
@@ -6197,7 +6188,7 @@ ATOneLevelRecursion(List **wqueue, Relation rel,
 	ListCell   *child;
 	List	   *children;
 
-	/* this routine is actually in the planner */
+	* this routine is actually in the planner *
 	children = find_inheritance_children(relid);
 
 	foreach(child, children)
@@ -6211,7 +6202,7 @@ ATOneLevelRecursion(List **wqueue, Relation rel,
 		relation_close(childrel, NoLock);
 	}
 }
-
+*/
 
 /*
  * find_composite_type_dependencies
@@ -6317,37 +6308,79 @@ find_composite_type_dependencies(Oid typeOid,
  * AlterTableCmd's.
  */
 static void
-ATPrepAddColumn(List **wqueue, Relation rel, bool recurse,
-				AlterTableCmd *cmd)
+ATPrepAddColumn(Relation rel, bool recurse, AlterTableCmd *cmd)
 {
 	/*
-	 * Recurse to add the column to child classes, if requested.
-	 *
-	 * We must recurse one level at a time, so that multiply-inheriting
-	 * children are visited the right number of times and end up with the
-	 * right attinhcount.
+	 * If we are told not to recurse, there had better not be any child
+	 * tables; else the addition would put them out of step.
 	 */
-	if (recurse)
+	if (!recurse && find_inheritance_children(RelationGetRelid(rel)) != NIL)
 	{
-		AlterTableCmd *childCmd = copyObject(cmd);
-		ColumnDef  *colDefChild = (ColumnDef *) childCmd->def;
-
-		/* Child should see column as singly inherited */
-		colDefChild->inhcount = 1;
-		colDefChild->is_local = false;
-
-		ATOneLevelRecursion(wqueue, rel, childCmd);
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("column must be added to child tables too")));
 	}
-	else
+	/*
+	 * We are the master and the table has child(ren):
+	 * 		internally create and execute new AlterTableStmt(s) on child(ren)
+	 * 		before dispatching the original AlterTableStmt
+	 * This is to ensure that pg_constraint oid is consistent across segments for
+	 * 		ALTER TABLE ... ADD COLUMN ... CHECK ...
+	 */
+	else if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		/*
-		 * If we are told not to recurse, there had better not be any child
-		 * tables; else the addition would put them out of step.
+		 * Recurse to add the column to child classes.
+		 *
+		 * We must recurse one level at a time, so that multiply-inheriting
+		 * children are visited the right number of times and end up with the
+		 * right attinhcount.
 		 */
-		if (find_inheritance_children(RelationGetRelid(rel)) != NIL)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("column must be added to child tables too")));
+		List		*children;
+		ListCell	*lchild;
+
+		children = find_inheritance_children(RelationGetRelid(rel));
+		DestReceiver *dest = None_Receiver;
+		foreach(lchild, children)
+		{
+			Oid 			childrelid = lfirst_oid(lchild);
+			Relation 		childrel;
+
+			RangeVar 		*rv;
+			AlterTableCmd 	*atc;
+			AlterTableStmt 	*ats;
+
+			if (childrelid == RelationGetRelid(rel))
+				continue;
+
+			childrel = heap_open(childrelid, AccessShareLock);
+			CheckTableNotInUse(childrel, "ALTER TABLE");
+
+			/* Recurse to child */
+			atc = copyObject(cmd);
+			atc->subtype = AT_AddColumnRecurse;
+
+			/* Child should see column as singly inherited */
+			((ColumnDef *) atc->def)->inhcount = 1;
+			((ColumnDef *) atc->def)->is_local = false;
+
+			rv = makeRangeVar(get_namespace_name(RelationGetNamespace(childrel)),
+							  get_rel_name(childrelid), -1);
+
+			ats = makeNode(AlterTableStmt);
+			ats->relation = rv;
+			ats->cmds = list_make1(atc);
+			ats->relkind = OBJECT_TABLE;
+
+			heap_close(childrel, AccessShareLock);
+
+			ProcessUtility((Node *)ats,
+							synthetic_sql,
+							NULL,
+							false, /* not top level */
+							dest,
+							NULL);
+		}
 	}
 }
 
@@ -6556,7 +6589,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 		 * This function is intended for CREATE TABLE, so it processes a
 		 * _list_ of defaults, but we just do one.
 		 */
-		AddRelationRawConstraints(rel, list_make1(rawEnt), NIL);
+		AddRelationConstraints(rel, list_make1(rawEnt), NIL);
 
 		/* Make the additional catalog changes visible */
 		CommandCounterIncrement();
@@ -6581,7 +6614,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	 * the constraints more directly.)
 	 *
 	 * Note: we use build_column_default, and not just the cooked default
-	 * returned by AddRelationRawConstraints, so that the right thing happens
+	 * returned by AddRelationConstraints, so that the right thing happens
 	 * when a datatype's default applies.
 	 */
 	defval = (Expr *) build_column_default(rel, attribute->attnum);
@@ -6875,7 +6908,7 @@ ATExecColumnDefault(Relation rel, const char *colName,
 		 * This function is intended for CREATE TABLE, so it processes a
 		 * _list_ of defaults, but we just do one.
 		 */
-		AddRelationRawConstraints(rel, list_make1(rawEnt), NIL);
+		AddRelationConstraints(rel, list_make1(rawEnt), NIL);
 	}
 
 	/* MPP-6929: metadata tracking */
@@ -7387,6 +7420,7 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
  			crel = heap_open(relid, AccessShareLock);
 			istmt = copyObject(stmt);
 			istmt->idxOids = NIL;
+			istmt->constrOid = InvalidOid;
 
 			ats = makeNode(AlterTableStmt);
 			atc = makeNode(AlterTableCmd);
@@ -7446,48 +7480,15 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 
 }
 
-/*
- * ALTER TABLE ADD CONSTRAINT
- */
 
 static void
-ATPrepAddConstraint(List **wqueue, Relation rel,
-					 bool recurse, AlterTableCmd *cmd)
-{
-	/*
-	 * We don't want errors or noise from child tables, so we have to pass
-	 * down a modified command.
-	 *
-	 * Note that ATPrepCmd guards against directly constrainting parts.
-	 */
-	if (recurse)
-	{
-		AlterTableCmd *atc = (AlterTableCmd*)cmd;
-		Constraint *con = NULL;
-		
-		Insist(IsA(atc, AlterTableCmd));
-		con = (Constraint*)atc->def;
-		Insist(IsA(con, Constraint));
-			   
-		if ( ! con->name )
-		{
-			/* Don't let name default on a partitioned table. */
-			
-			con->name = 
-				ChooseConstraintNameForPartitionEarly(rel, con->contype, con->raw_expr);
-		}
-		ATSimpleRecursion(wqueue, rel, cmd, recurse);
-	}
-}
-static void
-ATExecAddConstraint(AlteredTableInfo *tab, Relation rel, Node *newConstraint)
+ATExecAddConstraint(AlteredTableInfo *tab, Relation rel, Node *newConstraint, bool recurse)
 {
 	switch (nodeTag(newConstraint))
 	{
 		case T_Constraint:
 			{
 				Constraint *constr = (Constraint *) newConstraint;
-
 				/*
 				 * Currently, we only expect to see CONSTR_CHECK nodes
 				 * arriving here (see the preprocessing done in
@@ -7498,31 +7499,7 @@ ATExecAddConstraint(AlteredTableInfo *tab, Relation rel, Node *newConstraint)
 				{
 					case CONSTR_CHECK:
 						{
-							List	   *newcons;
-							ListCell   *lcon;
-
-							/*
-							 * Call AddRelationRawConstraints to do the work.
-							 * It returns a list of cooked constraints.
-							 */
-							newcons = AddRelationRawConstraints(rel, NIL,
-														 list_make1(constr));
-							/* Add each constraint to Phase 3's queue */
-							foreach(lcon, newcons)
-							{
-								CookedConstraint *ccon = (CookedConstraint *) lfirst(lcon);
-								NewConstraint *newcon;
-
-								newcon = (NewConstraint *) palloc0(sizeof(NewConstraint));
-								newcon->name = ccon->name;
-								newcon->contype = ccon->contype;
-								/* ExecQual wants implicit-AND format */
-								newcon->qual = (Node *)
-									make_ands_implicit((Expr *) ccon->expr);
-
-								tab->constraints = lappend(tab->constraints,
-														   newcon);
-							}
+							ATAddCheckConstraint(tab, rel, constr, recurse);
 							break;
 						}
 					default:
@@ -7534,7 +7511,6 @@ ATExecAddConstraint(AlteredTableInfo *tab, Relation rel, Node *newConstraint)
 		case T_FkConstraint:
 			{
 				FkConstraint *fkconstraint = (FkConstraint *) newConstraint;
-
 				/*
 				 * Assign or validate constraint name
 				 */
@@ -7578,6 +7554,98 @@ ATExecAddConstraint(AlteredTableInfo *tab, Relation rel, Node *newConstraint)
 				);
 
 }
+
+static void
+ATAddCheckConstraint(AlteredTableInfo *tab, Relation rel, Constraint *constr, bool recurse)
+{
+	List		*newcons;
+	ListCell	*lcon;
+	List 		*children;
+	ListCell	*lchild;
+
+	/*
+	 * Call AddRelationNewConstraints to do the work.
+	 * It returns a list of cooked constraints.
+	 */
+	newcons = AddRelationConstraints(rel, NIL, list_make1(constr));
+
+	/* Add each constraint to Phase 3's queue */
+	foreach(lcon, newcons)
+	{
+		CookedConstraint *ccon = (CookedConstraint *) lfirst(lcon);
+		NewConstraint *newcon;
+
+		newcon = (NewConstraint *) palloc0(sizeof(NewConstraint));
+		newcon->name = ccon->name;
+		newcon->contype = ccon->contype;
+		/* ExecQual wants implicit-AND format */
+		newcon->qual = (Node *) make_ands_implicit((Expr *) ccon->expr);
+
+		tab->constraints = lappend(tab->constraints, newcon);
+
+		/* Save the actually assigned name if it was defaulted on partitioned table */
+		if (rel_is_partitioned(rel->rd_id) && constr->name == NULL)
+			constr->name = ccon->name;
+	}
+
+	/*
+	 * If this constraint needs to be recursed, this is a base/parent table,
+	 * and we are the master, then cascade check constraint creation for all children.
+	 * We do it here to synchronize pg_constraint oid.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && recurse)
+	{
+		/* Propagate to children as appropriate. */
+		children = find_inheritance_children(RelationGetRelid(rel));
+		if (children == NIL)
+			return;
+
+		DestReceiver *dest = None_Receiver;
+		foreach(lchild, children)
+		{
+			Oid 			childrelid = lfirst_oid(lchild);
+			Relation 		childrel;
+			Constraint 		*childconstr;
+
+			RangeVar 		*rv;
+			AlterTableCmd 	*atc;
+			AlterTableStmt 	*ats;
+
+			if (childrelid == RelationGetRelid(rel))
+				continue;
+
+ 			childrel = heap_open(childrelid, AccessShareLock);
+ 			CheckTableNotInUse(childrel, "ALTER TABLE");
+
+ 			/* Recurse to child */
+ 			childconstr = copyObject(constr);
+ 			childconstr->conoid = InvalidOid;
+ 			//Insist(childconstr->name != NULL);
+
+			rv = makeRangeVar(get_namespace_name(RelationGetNamespace(childrel)),
+							  get_rel_name(childrelid), -1);
+
+			atc = makeNode(AlterTableCmd);
+			atc->subtype = AT_AddConstraintRecurse;
+			atc->def = (Node *) childconstr;
+
+			ats = makeNode(AlterTableStmt);
+			ats->relation = rv;
+			ats->cmds = list_make1(atc);
+			ats->relkind = OBJECT_TABLE;
+
+			heap_close(childrel, AccessShareLock);
+
+			ProcessUtility((Node *)ats,
+						   synthetic_sql,
+						   NULL,
+						   false, /* not top level */
+						   dest,
+						   NULL);
+		}
+	}
+}
+
 
 /*
  * Add a foreign-key constraint to a single table
@@ -7786,6 +7854,7 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 	 * Record the FK constraint in pg_constraint.
 	 */
 	constrOid = CreateConstraintEntry(fkconstraint->constr_name,
+									  fkconstraint->constrOid,
 									  RelationGetNamespace(rel),
 									  CONSTRAINT_FOREIGN,
 									  fkconstraint->deferrable,
@@ -7805,6 +7874,7 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 									  NULL,		/* no check constraint */
 									  NULL,
 									  NULL);
+	fkconstraint->constrOid = constrOid;
 
 	/*
 	 * Create the triggers that will enforce the constraint.
@@ -9119,6 +9189,8 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab)
 {
 	ObjectAddress obj;
 	ListCell   *l;
+	int 		i;
+	Oid			constrOid;
 
 	/*
 	 * Re-parse the index and constraint definitions, and attach them to the
@@ -9141,8 +9213,14 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab)
 					   errOmitLocation(true)));
 		/*ATPostAlterTypeParse((char *) lfirst(l), wqueue);*/
 	}
-	foreach(l, tab->changedConstraintDefs)
-		ATPostAlterTypeParse((char *) lfirst(l), wqueue);
+
+	/* Reuse old constraint OID for new constraint */
+	i = 0;
+	foreach(l, tab->changedConstraintDefs){
+		constrOid = list_nth_oid(tab->changedConstraintOids, i);
+		ATPostAlterTypeParse((char *) lfirst(l), wqueue, constrOid);
+		i++;
+	}
 
 	/*
 	 * Now we can drop the existing constraints and indexes --- constraints
@@ -9175,7 +9253,7 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab)
 }
 
 static void
-ATPostAlterTypeParse(char *cmd, List **wqueue)
+ATPostAlterTypeParse(char *cmd, List **wqueue, Oid constrOid)
 {
 	List	   *raw_parsetree_list;
 	List	   *querytree_list;
@@ -9243,6 +9321,11 @@ ATPostAlterTypeParse(char *cmd, List **wqueue)
 									lappend(tab->subcmds[AT_PASS_OLD_INDEX], cmd);
 								break;
 							case AT_AddConstraint:
+								/* Reuse old constraint OID for new constraint */
+								if (nodeTag(cmd->def) == T_Constraint)
+									((Constraint *)cmd->def)->conoid = constrOid;
+								else if (nodeTag(cmd->def) == T_FkConstraint)
+									((FkConstraint *)cmd->def)->constrOid = constrOid;
 								tab->subcmds[AT_PASS_OLD_CONSTR] =
 									lappend(tab->subcmds[AT_PASS_OLD_CONSTR], cmd);
 								break;
@@ -12995,22 +13078,23 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 	PartitionNode  		*pNode 		= NULL;
 	char           		*parTypName = NULL;
 	char			 	 namBuf[NAMEDATALEN];
-	AlterPartitionId 	*locPid 	= pid;	/* local pid if IDRule */
+	AlterPartitionId 	*locPid 	= NULL;	/* local pid if IDRule */
 	PgPartRule* 		 par_prule 	= NULL;	/* prule for parent if IDRule */
 	char 		 		 lRelNameBuf[(NAMEDATALEN*2)];
 	char 				*lrelname   = NULL;
 	Node 				*pSubSpec 	= NULL;
-	AlterPartitionCmd   *pc2;
+	AlterPartitionCmd   *pc2		= NULL;
 	bool				 is_split = false;
 	bool				 bSetTemplate = (att == AT_PartSetTemplate);
+
+	/* This whole function is QD only. */
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
 
 	pc2 = (AlterPartitionCmd *)pc->arg2;
 
 	if (pc2->partid)
 		is_split = true;
-
-	if (Gp_role != GP_ROLE_DISPATCH)
-		return;
 
 	locPid =
 			wack_pid_relname(pid,
@@ -13023,9 +13107,8 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 	if (!pNode)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("%s is not partitioned",
-						lrelname),
-								   errOmitLocation(true)));
+				 errmsg("%s is not partitioned", lrelname),
+				 errOmitLocation(true)));
 
 	switch (pNode->part->parkind)
 	{
@@ -13711,7 +13794,6 @@ exchange_part_inheritance(Oid oldrelid, Oid newrelid)
 	heap_close(oldrel, NoLock);
 	heap_close(newrel, NoLock);
 }
-
 
 /* ALTER TABLE ... EXCHANGE PARTITION 
  * 
@@ -17161,6 +17243,7 @@ char *alterTableCmdString(AlterTableType subtype)
 	switch (subtype)
 	{
 		case AT_AddColumn: /* add column */
+		case AT_AddColumnRecurse: /* internal to command/tablecmds.c*/
 			cmdstring = pstrdup("add a column to");
 			break;
 			
@@ -17187,6 +17270,7 @@ char *alterTableCmdString(AlterTableType subtype)
 			break;
 			
 		case AT_AddConstraint: /* add constraint */
+		case AT_AddConstraintRecurse: /* internal to commands/tablecmds.c */
 			cmdstring = pstrdup("add a constraint to");
 			break;
 			

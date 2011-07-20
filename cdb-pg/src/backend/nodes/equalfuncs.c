@@ -1041,6 +1041,7 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_SCALAR_FIELD(relKind);
 	COMPARE_SCALAR_FIELD(relStorage);
 	COMPARE_SCALAR_FIELD(is_part_child);
+	COMPARE_SCALAR_FIELD(is_add_part);
 	COMPARE_SCALAR_FIELD(ownerid);
 	COMPARE_SCALAR_FIELD(buildAoBlkdir);
 
@@ -1180,6 +1181,7 @@ _equalIndexStmt(IndexStmt *a, IndexStmt *b)
 	COMPARE_SCALAR_FIELD(primary);
 	COMPARE_SCALAR_FIELD(isconstraint);
 	COMPARE_STRING_FIELD(altconname);
+	COMPARE_SCALAR_FIELD(constrOid);
 	COMPARE_SCALAR_FIELD(concurrent);
 	COMPARE_NODE_FIELD(idxOids);
 	COMPARE_SCALAR_FIELD(do_part);
@@ -2044,6 +2046,7 @@ static bool
 _equalConstraint(Constraint *a, Constraint *b)
 {
 	COMPARE_SCALAR_FIELD(contype);
+	COMPARE_SCALAR_FIELD(conoid);
 	COMPARE_STRING_FIELD(name);
 	COMPARE_NODE_FIELD(raw_expr);
 	COMPARE_STRING_FIELD(cooked_expr);
@@ -2223,6 +2226,7 @@ static bool
 _equalFkConstraint(FkConstraint *a, FkConstraint *b)
 {
 	COMPARE_STRING_FIELD(constr_name);
+	COMPARE_SCALAR_FIELD(constrOid);
 	COMPARE_NODE_FIELD(pktable);
 	COMPARE_NODE_FIELD(fk_attrs);
 	COMPARE_NODE_FIELD(pk_attrs);
@@ -2232,6 +2236,10 @@ _equalFkConstraint(FkConstraint *a, FkConstraint *b)
 	COMPARE_SCALAR_FIELD(deferrable);
 	COMPARE_SCALAR_FIELD(initdeferred);
 	COMPARE_SCALAR_FIELD(skip_validation);
+	COMPARE_SCALAR_FIELD(trig1Oid);
+	COMPARE_SCALAR_FIELD(trig2Oid);
+	COMPARE_SCALAR_FIELD(trig3Oid);
+	COMPARE_SCALAR_FIELD(trig4Oid);
 
 	return true;
 }

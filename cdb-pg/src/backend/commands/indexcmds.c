@@ -675,7 +675,7 @@ DefineIndex(RangeVar *heapRelation,
 		indexRelationId =
 			index_create(relationId, indexRelationName, indexRelationId,
 						 indexInfo, accessMethodId, tablespaceId, classObjectId,
-						 reloptions, primary, isconstraint,
+						 reloptions, primary, isconstraint, &(stmt->constrOid),
 						 allowSystemTableMods, skip_build, concurrent, altconname);
 
         /*
@@ -732,7 +732,7 @@ DefineIndex(RangeVar *heapRelation,
 		indexRelationId =
 			index_create(relationId, indexRelationName, indexRelationId,
 						 indexInfo, accessMethodId, tablespaceId, classObjectId,
-						 reloptions, primary, isconstraint,
+						 reloptions, primary, isconstraint, &(stmt->constrOid),
 						 allowSystemTableMods, skip_build, concurrent, altconname);
 	}
 

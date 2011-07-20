@@ -1729,6 +1729,7 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_CHAR_FIELD(relKind);
 	WRITE_CHAR_FIELD(relStorage);
 	WRITE_BOOL_FIELD(is_part_child);
+	WRITE_BOOL_FIELD(is_add_part);
 	WRITE_OID_FIELD(ownerid);
 	WRITE_BOOL_FIELD(buildAoBlkdir);
 }
@@ -1927,6 +1928,7 @@ _outIndexStmt(StringInfo str, IndexStmt *node)
 	WRITE_BOOL_FIELD(primary);
 	WRITE_BOOL_FIELD(isconstraint);
 	WRITE_STRING_FIELD(altconname);
+	WRITE_OID_FIELD(constrOid);
 	WRITE_BOOL_FIELD(concurrent);
 	WRITE_NODE_FIELD(idxOids);
 }
@@ -3099,6 +3101,7 @@ _outConstraint(StringInfo str, Constraint *node)
 	WRITE_NODE_TYPE("CONSTRAINT");
 
 	WRITE_STRING_FIELD(name);
+	WRITE_OID_FIELD(conoid);
 
 	WRITE_ENUM_FIELD(contype,ConstrType);
 
@@ -3137,6 +3140,7 @@ _outFkConstraint(StringInfo str, FkConstraint *node)
 	WRITE_NODE_TYPE("FKCONSTRAINT");
 
 	WRITE_STRING_FIELD(constr_name);
+	WRITE_OID_FIELD(constrOid);
 	WRITE_NODE_FIELD(pktable);
 	WRITE_NODE_FIELD(fk_attrs);
 	WRITE_NODE_FIELD(pk_attrs);
