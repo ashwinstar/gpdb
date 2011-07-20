@@ -600,8 +600,8 @@ LOADERS_FILESET_BINEXT = $(strip $(tmpLOADERS_FILESET_BINEXT))
 
 # define python file subset to ship by platform, as desired
 BLD_PYTHON_FILESET=.
-aix5_ppc_32_PYTHON_FILESET=bin/python* lib/python*
-aix5_ppc_64_PYTHON_FILESET=bin/python* lib/python*
+aix5_ppc_32_PYTHON_FILESET=bin/python* lib/python* include/python*
+aix5_ppc_64_PYTHON_FILESET=bin/python* lib/python* include/python*
 ifneq "$($(BLD_ARCH)_PYTHON_FILESET)" ""
 BLD_PYTHON_FILESET=$($(BLD_ARCH)_PYTHON_FILESET)
 endif
