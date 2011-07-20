@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #define SOCKET int
 #ifndef closesocket
 #define closesocket(x)   close(x)
@@ -128,7 +129,7 @@ static struct
 	const char*	f; /* forced filename */
 	int 		g; /* gp_proto (0 or 1) (internal, not documented) */
 	int 		t; /* timeout in seconds */
-	int 		b;
+	const char *b;
     int 		m; /* max data line len */
     int			z; /* listen queue size (hidden option currently for debuging) */
 	const char* c; /* config file */
@@ -255,7 +256,7 @@ struct request_t
 	const char* 	csvopt; 	/* options for csv file */
 
 #ifdef GPFXDIST
-	struct 
+	struct
 	{
 	    const char* name; 		/* requested transformation */
 	    char*       command; 	/* command associated with transform */
@@ -412,9 +413,9 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ 0 } };
 
 	status = apr_getopt_init(&os, pool, argc, argv);
-	
+
 	if (status != APR_SUCCESS)
-		gfatal(FLINE, "apt_getopt_init failed: %s", 
+		gfatal(FLINE, "apt_getopt_init failed: %s",
 			   apr_strerror(status, apr_errbuf, sizeof(apr_errbuf)));
 
 	while (APR_SUCCESS == (e = apr_getopt_long(os, option, &ch, &arg)))
@@ -461,10 +462,10 @@ static void parse_command_line(int argc, const char* const argv[],
 			opt.g = atoi(arg);
 			break;
 		case 'b':
-			opt.b = atoi(arg);
+			opt.b = arg;
 			break;
-		case 'm': 
-			opt.m = atoi(arg); 
+		case 'm':
+			opt.m = atoi(arg);
 			break;
 		case 'z':
 			opt.z = atoi(arg);
@@ -563,7 +564,7 @@ static void parse_command_line(int argc, const char* const argv[],
 		f = fopen(opt.l, "a");
 		if (!f)
 		{
-			fprintf(stderr, "unable to create log file %s: %s\n", 
+			fprintf(stderr, "unable to create log file %s: %s\n",
 					opt.l, strerror(errno));
 			exit(1);
 		}
@@ -629,9 +630,9 @@ static void http_empty(request_t* r)
 static void http_continue(request_t* r)
 {
 	static const char buf[] = "HTTP/1.1 100 Continue\r\n\r\n";
-	
+
 	gprint("%s %s %s - Continue\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-	
+
 	send(r->sock, buf, sizeof buf - 1, 0);
 }
 
@@ -853,7 +854,7 @@ session_get_block(session_t* session, block_t* retblock)
 
 	/* read data from our filestream as a chunk with whole data rows */
 	size = fstream_read(session->fstream, retblock->data, opt.m, &fos, whole_rows);
-	
+
 	if (size == 0)
 	{
 		gcb.read_bytes += fstream_get_compressed_size(session->fstream);
@@ -930,17 +931,17 @@ static void session_detach(request_t* r)
 
 			session_free(session);
 		}
-		else if(!session->is_get && 
-				session->nrequest == 0 && 
+		else if(!session->is_get &&
+				session->nrequest == 0 &&
 				session_active_segs_isempty(session))
 		{
-			/* 
-			 * free the session if this is a POST request and it's 
+			/*
+			 * free the session if this is a POST request and it's
 			 * the last request for this session (we can tell is all
 			 * segments sent a "done" request by calling session_active_isempty.
 			 * (nrequest == 0 test isn't sufficient by itself).
-			 * 
-			 * this is needed in order to make sure to close the out file 
+			 *
+			 * this is needed in order to make sure to close the out file
 			 * when we're done writing. (only in write operations, not in read).
 			 */
 			session_free(session);
@@ -1010,7 +1011,7 @@ static int session_attach(request_t* r)
 		return -1;
 	}
 
-	
+
 	/* check if such session already exists in hashtable */
 	session = apr_hash_get(gcb.session.tab, key, APR_HASH_KEY_STRING);
 
@@ -1027,7 +1028,7 @@ static int session_attach(request_t* r)
 		/* remove any outdated sessions*/
 		sessions_cleanup();
 
-		/* 
+		/*
 		 * this is the special WET "session-end" request. Another similar
 		 * request must have already came in from another segdb and finished
 		 * the session we were at. we don't want to create a new session now,
@@ -1069,7 +1070,7 @@ static int session_attach(request_t* r)
 			fstream_options.forwrite = 0; /* GET request */
 		else
 			fstream_options.forwrite = 1;  /* PUT request */
-				
+
 #ifdef GPFXDIST
 		/* set transformation options */
         if (r->trans.command)
@@ -1090,7 +1091,7 @@ static int session_attach(request_t* r)
 		/* try opening the fstream */
 		gprint("new session trying to open the data stream\n");
 		fstream = fstream_open(r->path, &fstream_options, &response_code, &response_string);
-		
+
 		if (!fstream)
 		{
 			gwarning(FLINE, "reject request from %s, path %s\n", r->peer,
@@ -1102,7 +1103,7 @@ static int session_attach(request_t* r)
 		}
 
 		gprint("new session successfully opened the data stream\n");
-		
+
 		gcb.total_sessions++;
 		gcb.total_bytes += fstream_get_compressed_size(fstream);
 
@@ -1116,12 +1117,12 @@ static int session_attach(request_t* r)
 
 		/* allocate active_segdb array (session member) */
 		session->active_segids = (int *) apr_palloc(pool, sizeof(int) * r->totalsegs);
-		
+
 		if (session->active_segids == 0)
 			gfatal(FLINE, "out of memory when allocating active_segids array");
-		
+
 		memset(session->active_segids, 0, sizeof(int) * r->totalsegs);
-		
+
 		/* initialize session values */
 		session->tid = apr_pstrdup(pool, r->tid);
 		session->path = apr_pstrdup(pool, r->path);
@@ -1131,7 +1132,7 @@ static int session_attach(request_t* r)
 		session->is_get = r->is_get;
 		session->active_segids[r->segid] = 1; /* mark this segid as active */
 		session->maxsegs = r->totalsegs;
-		
+
 		if (session->tid == 0 || session->path == 0 || session->key == 0)
 			gfatal(FLINE, "out of memory in session_attach");
 
@@ -1171,9 +1172,9 @@ static int session_attach(request_t* r)
 		http_error(r, FDIST_BAD_REQUEST, "can\'t write to and read from the same "
 										 "gpfdist server simultaneously");
 		request_end(r, 1, 0);
-		return -1;		
+		return -1;
 	}
-	
+
 	gprint("joined session (%s, %s)\n", session->path, session->tid);
 
 	/* one more request for session */
@@ -1181,10 +1182,10 @@ static int session_attach(request_t* r)
 	session->active_segids[r->segid] = !r->is_final;
 	session->mtime = apr_time_now();
 	r->session = session;
-	
+
 	if(!session->is_get)
 		session_active_segs_dump(session);
-	
+
 	return 0;
 }
 
@@ -1197,9 +1198,9 @@ static void session_active_segs_dump(session_t* session)
 	if(opt.v)
 	{
 		int i = 0;
-		
+
 		gprint("active segids in session: ");
-		
+
 		for (i = 0 ; i < session->maxsegs ; i++)
 		{
 			if(session->active_segids[i] == 1)
@@ -1216,13 +1217,13 @@ static void session_active_segs_dump(session_t* session)
 static int session_active_segs_isempty(session_t* session)
 {
 	int i = 0;
-		
+
 	for (i = 0 ; i < session->maxsegs ; i++)
 	{
 		if(session->active_segids[i] == 1)
 			return 0; /* not empty */
 	}
-	
+
 	return 1; /* empty */
 }
 
@@ -1346,7 +1347,7 @@ static void do_read_request(int fd, short event, void* arg)
 	char*		p = NULL;
 	char*		pp = NULL;
 	char*		path = NULL;
-	
+
 	/* If we timeout, close the request. */
 	if (event & EV_TIMEOUT)
 	{
@@ -1403,9 +1404,9 @@ static void do_read_request(int fd, short event, void* arg)
 		}
 	}
 
-	/* 
+	/*
 	 * if we don't yet have a complete request, set up this function to be
-	 * called again for 
+	 * called again for
 	 */
 	if (!r->in.req)
 	{
@@ -1436,11 +1437,11 @@ static void do_read_request(int fd, short event, void* arg)
 	/* check that the request is validly formatted */
 	if(request_validate(r))
 		return;
-	
+
 	/* mark it as a GET or PUT request */
 	if (0 == strcmp("GET", r->in.req->argv[0]))
 		r->is_get = 1;
-	
+
 	/* if GET, we don't need to read from the socket anymore */
 	if (r->is_get)
 		shutdown(r->sock, SHUT_RD);
@@ -1481,7 +1482,7 @@ static void do_read_request(int fd, short event, void* arg)
 	/* parse gp variables from the request */
 	if(request_parse_gp_headers(r, opt.g) != 0)
 		return;
-	
+
 #ifdef GPFXDIST
 	/* setup transform */
 	if(request_set_transform(r) != 0)
@@ -1491,7 +1492,7 @@ static void do_read_request(int fd, short event, void* arg)
 	/* Attach the request to a session */
 	if(session_attach(r) != 0)
 		return;
-	
+
 	if (r->is_get)
 	{
 		/* handle GET */
@@ -1508,17 +1509,16 @@ static void do_read_request(int fd, short event, void* arg)
 /* Callback when the listen socket is ready to accept connections. */
 static void do_accept(int fd, short event, void* arg)
 {
-	struct sockaddr_in 	a;
+	struct sockaddr_storage 	a;
 	socklen_t 			len = sizeof(a);
 	SOCKET 				sock;
 	request_t* 			r;
 	apr_pool_t* 		pool;
-	int 				addr;
 	int 				on = 1;
 	struct linger		linger;
 
 	/* do the accept */
-	if ((sock = accept(fd, (void*) &a, &len)) < 0)
+	if ((sock = accept(fd, (struct sockaddr*) &a, &len)) < 0)
 	{
 		gwarning(FLINE, "accept failed");
 		goto failure;
@@ -1566,10 +1566,16 @@ static void do_accept(int fd, short event, void* arg)
 	r->in.hbufmax = 1024 * 4; /* 4K for reading the headers */
 	r->in.hbuf = apr_palloc(pool, r->in.hbufmax);
 	r->is_final = 0;	/* initialize */
-	
-	addr = ntohl(a.sin_addr.s_addr);
-	r->peer = apr_psprintf(r->pool, "%d.%d.%d.%d", (addr >> 24) & 0xff,
-						  (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
+
+	{
+		char host[128];
+		getnameinfo((struct sockaddr *)&a, len, host, sizeof(host), NULL, 0, NI_NUMERICHOST
+#ifdef NI_NUMERICSERV
+				| NI_NUMERICSERV
+#endif
+				);
+		r->peer = apr_psprintf(r->pool, "%s", host);
+	}
 
 	/* set up for callback when socket ready for reading the http request */
 	if (setup_read(r))
@@ -1603,12 +1609,12 @@ static int setup_write(request_t* r)
 /*
  * setup_read
  *
- * setup the read event to read data from a socket. 
- * 
+ * setup the read event to read data from a socket.
+ *
  * we expect to be reading either:
  * 1) a GET or PUT request. or,
  * 2) the body of a PUT request (the raw data from client).
- * 
+ *
  * this is controller by 'is_request' as follows:
  * -- if set to true, use the callback function 'do_read_request'.
  * -- if set to false, use the callback function 'do_read_body'.
@@ -1640,51 +1646,88 @@ static void http_setup(void)
 	SOCKET f;
 	int on = 1;
 	struct linger linger;
+	struct addrinfo hints;
+	struct addrinfo *addrs, *rp;
+	int  s;
 
-	/* create socket */
+	char service[32];
+	const char *hostaddr = NULL;
+	if (opt.b != NULL && strlen(opt.b) > 1)
+		hostaddr = opt.b;
 
-	f = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (f < 0)
-		gfatal(FLINE, "cannot create socket in http_setup: %s", strerror(errno));
-
-#ifndef WIN32
-	if (fcntl(f, F_SETFD, 1) == -1)
-		gfatal(FLINE, "cannot create socket - fcntl(F_SETFD) failed");
-
-	/* For the Windows case, we could use SetHandleInformation to remove
-	 the HANDLE_INHERIT property from fd.
-	 But for our purposes this does not matter,
-	 as by default handles are *not* inherited. */
-
-#endif
-
-	setsockopt(f, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
-
-	/*
-	 * We cannot use SO_REUSEADDR on win32 because it results in different
-	 * behaviour -- it allows multiple servers to bind to the same port,
-	 * resulting in totally unpredictable behaviour. What a silly operating
-	 * system.
-	 */
-#ifndef WIN32
-	setsockopt(f, SOL_SOCKET, SO_REUSEADDR, (void*) &on, sizeof(on));
-#endif
-	linger.l_onoff = 1;
-	linger.l_linger = 5;
-	setsockopt(f, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
-
+	/* Try each possible port from opt.p to opt.last_port */
 	for (;;)
 	{
-		struct sockaddr_in a;
+		snprintf(service,32,"%d",opt.p);
+		memset(&hints, 0, sizeof(struct addrinfo));
+		hints.ai_family = AF_UNSPEC;	/* Allow IPv4 or IPv6 */
+		hints.ai_socktype = SOCK_STREAM; /* tcp socket */
+		hints.ai_flags = AI_PASSIVE;	/* For wildcard IP address */
+		hints.ai_protocol = 0;			/* Any protocol */
 
-		memset(&a, 0, sizeof a);
-		a.sin_family = AF_INET;
-		a.sin_port = htons(opt.p);
-		a.sin_addr.s_addr = htonl(opt.b);
+		s = getaddrinfo(hostaddr, service, &hints, &addrs);
+		if (s != 0)
+			gfatal(FLINE,"getaddrinfo says %s",gai_strerror(s));
 
-		/* bind */
-		if (!bind(f, (void*) &a, sizeof(a)))
+		/*
+		 * getaddrinfo() returns a list of address structures,
+		 * one for each valid address and family we can use.
+		 *
+		 * Try each address until we successfully bind.
+		 * If socket (or bind) fails, we (close the socket
+		 * and) try the next address.  This can happen if
+		 * the system supports IPv6, but IPv6 is disabled from
+		 * working, or if it supports IPv6 and IPv4 is disabled.
+		 */
+		for (rp = addrs; rp != NULL; rp = rp->ai_next)
+		{
+			/*
+			 * getaddrinfo gives us all the parameters for the socket() call
+			 * as well as the parameters for the bind() call.
+			 */
+			f = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+			if (f == -1)
+				continue;
+
+#ifndef WIN32
+			if (fcntl(f, F_SETFD, 1) == -1)
+				gfatal(FLINE, "cannot create socket - fcntl(F_SETFD) failed");
+
+			/* For the Windows case, we could use SetHandleInformation to remove
+			 the HANDLE_INHERIT property from fd.
+			 But for our purposes this does not matter,
+			 as by default handles are *not* inherited. */
+
+#endif
+			setsockopt(f, SOL_SOCKET, SO_KEEPALIVE, (void*) &on, sizeof(on));
+
+			/*
+			 * We cannot use SO_REUSEADDR on win32 because it results in different
+			 * behaviour -- it allows multiple servers to bind to the same port,
+			 * resulting in totally unpredictable behaviour. What a silly operating
+			 * system.
+			 */
+#ifndef WIN32
+			setsockopt(f, SOL_SOCKET, SO_REUSEADDR, (void*) &on, sizeof(on));
+#endif
+			linger.l_onoff = 1;
+			linger.l_linger = 5;
+			setsockopt(f, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
+
+			if (bind(f, rp->ai_addr, rp->ai_addrlen) == 0)
+				break;					/* Success */
+
+			close(f);
+		}
+
+		/* When we get here, we have either succeeded, or tried all address families for this port */
+
+		if (rp != NULL)
+		{
+			/* Ok, we must have succeeded */
+			freeaddrinfo(addrs);
 			break;
+		}
 
 		if (opt.p >= opt.last_port)
 			gfatal(FLINE, "cannot create socket on port %d "
@@ -1698,8 +1741,8 @@ static void http_setup(void)
 		gfatal(FLINE, "listen with queue size %d on socket (%d) using port %d failed with error code (%d): %s",
 					  opt.z,
 					  (int)f,
-					  opt.p, 
-					  errno, 
+					  opt.p,
+					  errno,
 					  strerror(errno));
 
 	gcb.listen_sock = f;
@@ -1718,7 +1761,7 @@ static void http_setup(void)
 
 	/* start watching this event */
 	if (event_add(&gcb.listen_event, 0))
-		gfatal(FLINE, "cannot set up event on listen socket: %s", 
+		gfatal(FLINE, "cannot set up event on listen socket: %s",
 					   strerror(errno));
 
 }
@@ -1800,7 +1843,7 @@ static gnet_request_t *gnet_parse_request(const char* buf, int* len,
 			/* continuation */
 			if (req->hc == 0) /* illegal - missing first header */
 				break;
-			
+
 			line = gstring_trim(line);
 			if (*line == 0) /* empty line */
 				break;
@@ -1977,7 +2020,7 @@ static void handle_get_request(request_t *r)
 		request_end(r, 1, 0);
 		return;
 	}
-	
+
 	if (0 != http_ok(r))
 		request_end(r, 1, 0);
 }
@@ -1992,8 +2035,8 @@ static void handle_post_request(request_t *r, int header_end)
 	char *data_start = 0;
 	int data_bytes_in_req = 0;
 	int wrote = 0;
-	
-	/* 
+
+	/*
 	 * If this request is a "done" request (has GP-DONE header set)
 	 * it has already marked this segment as inactive in this session.
 	 * This is all that a "done" request should do. no data to process.
@@ -2007,32 +2050,32 @@ static void handle_post_request(request_t *r, int header_end)
 		/* the request include a "Expect: 100-continue" header? */
 		if(strcmp("Expect", h_names[i]) == 0 && strcmp("100-continue", h_values[i]) == 0)
 			b_continue = 1;
-		
+
 		/* find out how long is our data by looking at "Content-Length" header*/
 		if(strcmp("Content-Length", h_names[i]) == 0)
 			r->in.davailable = atoi(h_values[i]);
 	}
-	
+
 	/* if client asked for 100-Continue, send it. otherwise, move on. */
 	if(b_continue)
 		http_continue(r);
 
 	gprint("available data to consume %d, starting at offset %d\n", r->in.davailable, r->in.hbuftop);
-	
+
 	/* create a buffer to hold the incoming raw data */
 	r->in.dbufmax = opt.m; /* size of max line size */
 	r->in.dbuf = apr_palloc(r->pool, r->in.dbufmax);
 	r->in.dbuftop = 0;
-	
+
 	/* if some data come along with the request, copy it first */
 	data_start = strstr(r->in.hbuf, "\r\n\r\n");
-	
+
 	if(data_start)
 	{
 		data_start += 4;
 		data_bytes_in_req = (r->in.hbuf + r->in.hbuftop) - data_start;
 	}
-	
+
 	if(data_bytes_in_req > 0)
 	{
 		/* we have data after the request headers. consume it */
@@ -2044,9 +2087,9 @@ static void handle_post_request(request_t *r, int header_end)
 		if(r->in.davailable == 0)
 			wrote = fstream_write(r->session->fstream, r->in.dbuf, data_bytes_in_req, 1);
 	}
-	
-	/* 
-	 * we've consumed all data that came in the first buffer (with the request) 
+
+	/*
+	 * we've consumed all data that came in the first buffer (with the request)
 	 * if we're still expecting more data, get it from socket now and process it.
 	 */
 	while(r->in.davailable > 0)
@@ -2054,15 +2097,15 @@ static void handle_post_request(request_t *r, int header_end)
 		size_t want;
 		ssize_t n;
 		size_t buf_space_left = r->in.dbufmax - r->in.dbuftop;
-		
+
 		if (r->in.davailable - buf_space_left >= 0)
 			want = buf_space_left;
 		else
 			want = r->in.davailable;
-		
+
 		/* read from socket into data buf */
 		n = recv(r->sock, r->in.dbuf + r->in.dbuftop, want, 0);
-		
+
 		if (n < 0)
 		{
 #ifdef WIN32
@@ -2085,19 +2128,19 @@ static void handle_post_request(request_t *r, int header_end)
 			return;
 		}
 		else
-		{			
+		{
 			/*gprint("received %d bytes from client\n", n);*/
-			
+
 			r->in.davailable -= n;
 			r->in.dbuftop += n;
-			
+
 			/* if filled our buffer or no more data expected, write it */
 			if (r->in.dbufmax == r->in.dbuftop || r->in.davailable == 0)
 			{
 				/* only write up to end of last row */
 				wrote = fstream_write(r->session->fstream, r->in.dbuf, r->in.dbuftop, 1);
 				gprint("wrote %d bytes to file\n", wrote);
-				
+
 				if(wrote == -1)
 				{
 					/* write error */
@@ -2113,10 +2156,10 @@ static void handle_post_request(request_t *r, int header_end)
 				{
 					/* wrote up to last line, some data left over in buffer. move to front */
 					int bytes_left_over = r->in.dbuftop - wrote;
-					
+
 					memmove(r->in.dbuf, r->in.dbuf + wrote, bytes_left_over);
 					r->in.dbuftop = bytes_left_over;
-				}	
+				}
 			}
 		}
 
@@ -2212,7 +2255,7 @@ static int request_validate(request_t *r)
 		request_end(r, 1, 0);
 		return -1;
 	}
-	if (0 != strcmp("GET", r->in.req->argv[0]) && 
+	if (0 != strcmp("GET", r->in.req->argv[0]) &&
 		0 != strcmp("POST", r->in.req->argv[0]))
 	{
 		gwarning(FLINE, "reject invalid request from %s [%s %s]", r->peer,
@@ -2221,13 +2264,13 @@ static int request_validate(request_t *r)
 		request_end(r, 1, 0);
 		return -1;
 	}
-	
+
 	return 0;
 }
 
 /*
  * request_parse_gp_headers
- * 
+ *
  * Extract all X-GP-* variables from the HTTP headers.
  * Create a unique X-GP-TID value from it.
  */
@@ -2241,7 +2284,7 @@ static int request_parse_gp_headers(request_t *r, int opt_g)
 
 	r->csvopt = "";
 	r->is_final = 0;
-	
+
 	for (i = 0; i < r->in.req->hc; i++)
 	{
 		if (0 == strcmp("X-GP-XID", r->in.req->hname[i]))
@@ -2320,30 +2363,30 @@ static int request_set_transform(request_t *r)
 
 	/*
 	 * Requests involving transformations should have a #transform=name in the external
-	 * table URL.  In Rio, GPDB moves the name into an X-GP-TRANSFORM header.  However 
-	 * #transform= may still appear in the url in post requests.  
+	 * table URL.  In Rio, GPDB moves the name into an X-GP-TRANSFORM header.  However
+	 * #transform= may still appear in the url in post requests.
 	 *
-	 * Note that ordinary HTTP clients and browsers do not typically transmit the portion 
-	 * of the URL after a #.  RFC 2396 calls this part the fragment identifier. 
+	 * Note that ordinary HTTP clients and browsers do not typically transmit the portion
+	 * of the URL after a #.  RFC 2396 calls this part the fragment identifier.
 	 */
 
 	char* param = "#transform=";
 	char* start = strstr(r->path, param);
-	if (start) 
+	if (start)
 	{
 		/*
 		 * we have a transformation request encoded in the url
 		 */
 		*start = 0;
-		if (! r->trans.name) 
+		if (! r->trans.name)
 			r->trans.name = start + strlen(param);
 	}
 
-	if (! r->trans.name) 
+	if (! r->trans.name)
 		return 0;
 
     /*
-     * at this point r->trans.name is the name of the transformation requested 
+     * at this point r->trans.name is the name of the transformation requested
      * in the url and r->is_get tells us what kind (input or output) to look for.
      * attempt to look it up.
      */
@@ -2355,13 +2398,13 @@ static int request_set_transform(request_t *r)
             gwarning(FLINE, "reject invalid request from %s [%s %s] - unsppported input #transform",
                      r->peer, r->in.req->argv[0], r->in.req->argv[1]);
             http_error(r, FDIST_BAD_REQUEST, "invalid request (unsupported input #transform)");
-        } 
+        }
         else
         {
             gwarning(FLINE, "reject invalid request from %s [%s %s] - unsppported output #transform",
                      r->peer, r->in.req->argv[0], r->in.req->argv[1]);
             http_error(r, FDIST_BAD_REQUEST, "invalid request (unsupported output #transform)");
-        } 
+        }
         request_end(r, 1, 0);
         return -1;
     }
@@ -2376,11 +2419,11 @@ static int request_set_transform(request_t *r)
 	 * if safe regex is specified, check that the path matches it
 	 */
 	safe = transform_safe(tr);
-	if (safe) 
+	if (safe)
 	{
 		regex_t* saferegex = transform_saferegex(tr);
 		int rc = regexec(saferegex, r->path, 0, NULL, 0);
-		if (rc) 
+		if (rc)
 		{
 			char buf[1024];
 			regerror(rc, saferegex, buf, sizeof(buf));
@@ -2420,16 +2463,16 @@ int gpfdist_init(int argc, const char* const argv[])
 	if (0 != apr_app_initialize(&argc, &argv, 0))
 		gfatal(FLINE, "apr_app_initialize failed");
 	atexit(apr_terminate);
-	
+
 	if (0 != apr_pool_create(&gcb.pool, 0))
 		gfatal(FLINE, "apr_app_initialize failed");
-	
+
 	apr_signal_init(gcb.pool);
-	
+
 	gcb.session.tab = apr_hash_make(gcb.pool);
-	
+
 	parse_command_line(argc, argv, gcb.pool);
-	
+
 #ifndef WIN32
 #ifdef SIGPIPE
 	signal(SIGPIPE, SIG_IGN);
@@ -2442,13 +2485,13 @@ int gpfdist_init(int argc, const char* const argv[])
 	if (opt.V)
 		putenv("EVENT_SHOW_METHOD=1");
 	putenv("EVENT_NOKQUEUE=1");
-	
+
 	event_init();
 	http_setup();
-	
+
 	printf("Serving HTTP on port %d, directory %s\n", opt.p, opt.d);
 	fflush(stdout);
-	
+
 	/* redirect stderr and stdout to log */
 	if (opt.l)
 	{
@@ -2461,8 +2504,8 @@ int gpfdist_init(int argc, const char* const argv[])
 		setlinebuf(stdout);
 #endif
 	}
-	
-	/* 
+
+	/*
 	 * must identify errors in calls above and return non-zero for them
 	 * behaviour required for the Windows service case
 	 */
@@ -2486,7 +2529,7 @@ int main(int argc, const char* const argv[])
 #else   /* in Windows gpfdist may run as a Windows service or a console application  */
 
 
-SERVICE_STATUS          ServiceStatus; 
+SERVICE_STATUS          ServiceStatus;
 SERVICE_STATUS_HANDLE   hStatus;
 
 #define CMD_LINE_ARG_MAX_SIZE 1000
@@ -2495,8 +2538,8 @@ SERVICE_STATUS_HANDLE   hStatus;
 char* cmd_line_buffer[CMD_LINE_ARG_NUM];
 int cmd_line_args;
 
-void  ServiceMain(int argc, char** argv); 
-void  ControlHandler(DWORD request); 
+void  ServiceMain(int argc, char** argv);
+void  ControlHandler(DWORD request);
 
 
 /* gpfdist service registration on the WINDOWS command line
@@ -2505,21 +2548,21 @@ void  ControlHandler(DWORD request);
  */
 
 /* HELPERS - START */
-void report_event(LPCTSTR _error_msg) 
-{ 
+void report_event(LPCTSTR _error_msg)
+{
 	HANDLE hEventSource;
 	LPCTSTR lpszStrings[2];
 	TCHAR Buffer[100];
-	
+
 	hEventSource = RegisterEventSource(NULL, TEXT("gpfdist"));
-	
+
 	if( NULL != hEventSource )
 	{
 		memcpy(Buffer, _error_msg, 100);
-		
+
 		lpszStrings[0] = TEXT("gpfdist");
 		lpszStrings[1] = Buffer;
-		
+
 		ReportEvent(hEventSource,        /* event log handle */
 					EVENTLOG_ERROR_TYPE, /* event type */
 					0,                   /* event category */
@@ -2529,7 +2572,7 @@ void report_event(LPCTSTR _error_msg)
 					0,                   /* no binary data */
 					lpszStrings,         /* array of strings */
 					NULL);               /* no binary data */
-		
+
 		DeregisterEventSource(hEventSource);
 	}
 }
@@ -2537,7 +2580,7 @@ void report_event(LPCTSTR _error_msg)
 int verify_buf_size(char** pBuf, const char* _in_val)
 {
 	int val_len, new_len;
-	
+
 	val_len = (int)strlen(_in_val);
 	if (val_len >= CMD_LINE_ARG_SIZE)
 	{
@@ -2546,12 +2589,12 @@ int verify_buf_size(char** pBuf, const char* _in_val)
 		*pBuf = (char*)malloc(new_len);
 		memset(*pBuf, 0, new_len);
 	}
-	else 
+	else
 	{
 		new_len = val_len;
 	}
 
-	
+
 	return new_len;
 }
 
@@ -2564,10 +2607,10 @@ void init_cmd_buffer(int argc, const char* const argv[])
 		cmd_line_buffer[i] = (char*)malloc(CMD_LINE_ARG_SIZE);
 		memset(cmd_line_buffer[i], 0, CMD_LINE_ARG_SIZE);
 	}
-	
+
 	/* 2. the number of variables cannot be higher than a
 	 *    a predifined const, that is because - down the line
-	 *    this values get to a const buffer whose size is 
+	 *    this values get to a const buffer whose size is
 	 *    defined at compile time
 	 */
 	cmd_line_args = (argc <= CMD_LINE_ARG_NUM) ? argc : CMD_LINE_ARG_NUM;
@@ -2577,8 +2620,8 @@ void init_cmd_buffer(int argc, const char* const argv[])
 		sprintf(msg, "too many parameters - maximum allowed: %d.", CMD_LINE_ARG_NUM);
 		report_event(TEXT("msg"));
 	}
-	
-	
+
+
 	for (i = 0; i < cmd_line_args; i++)
 	{
 		int len;
@@ -2598,20 +2641,20 @@ void clean_cmd_buffer()
 
 void init_service_status()
 {
-	ServiceStatus.dwServiceType = SERVICE_WIN32; 
-	ServiceStatus.dwCurrentState = SERVICE_START_PENDING; 
+	ServiceStatus.dwServiceType = SERVICE_WIN32;
+	ServiceStatus.dwCurrentState = SERVICE_START_PENDING;
 	ServiceStatus.dwControlsAccepted   =  SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
-	ServiceStatus.dwWin32ExitCode = 0; 
-	ServiceStatus.dwServiceSpecificExitCode = 0; 
-	ServiceStatus.dwCheckPoint = 0; 
-	ServiceStatus.dwWaitHint = 0; 
+	ServiceStatus.dwWin32ExitCode = 0;
+	ServiceStatus.dwServiceSpecificExitCode = 0;
+	ServiceStatus.dwCheckPoint = 0;
+	ServiceStatus.dwWaitHint = 0;
 }
 
 void do_set_srv_status(DWORD _currentState, DWORD _exitCode)
 {
-	ServiceStatus.dwCurrentState = _currentState; 
-	ServiceStatus.dwWin32ExitCode = _exitCode; 
-	SetServiceStatus(hStatus, &ServiceStatus); 
+	ServiceStatus.dwCurrentState = _currentState;
+	ServiceStatus.dwWin32ExitCode = _exitCode;
+	SetServiceStatus(hStatus, &ServiceStatus);
 }
 
 void init_services_table(SERVICE_TABLE_ENTRY* ServiceTable)
@@ -2620,25 +2663,25 @@ void init_services_table(SERVICE_TABLE_ENTRY* ServiceTable)
 	ServiceTable[0].lpServiceProc = (LPSERVICE_MAIN_FUNCTIONA)ServiceMain;
 	ServiceTable[1].lpServiceName = (LPSTR)NULL;
 	ServiceTable[1].lpServiceProc = (LPSERVICE_MAIN_FUNCTIONA)NULL;
-	
+
 }
 /* HELPERS - STOP */
 
 int main(int argc, const char* const argv[])
 {
 	int main_ret = 0, srv_ret;
-	
+
 	/*
 	 * 1. command line parameters transfer to a global buffer - for ServiceMain
 	 */
-	init_cmd_buffer(argc, argv);		
+	init_cmd_buffer(argc, argv);
 
 	/*
 	 * 2. services table init
 	 */
 	SERVICE_TABLE_ENTRY ServiceTable[2];
 	init_services_table(ServiceTable);
-	
+
 	/*
 	 * 3. Start the control dispatcher thread for our service
 	 */
@@ -2649,110 +2692,110 @@ int main(int argc, const char* const argv[])
 		main_ret = gpfdist_run();
 	}
 
-	
+
 	return main_ret;
 }
 
-void ServiceMain(int argc, char** argv) 
-{ 	
-	int error = 0; 
+void ServiceMain(int argc, char** argv)
+{
+	int error = 0;
 	init_service_status();
-	
-	hStatus = RegisterServiceCtrlHandler((LPCSTR)"gpfdist", (LPHANDLER_FUNCTION)ControlHandler); 
-	if (hStatus == (SERVICE_STATUS_HANDLE)0) 
+
+	hStatus = RegisterServiceCtrlHandler((LPCSTR)"gpfdist", (LPHANDLER_FUNCTION)ControlHandler);
+	if (hStatus == (SERVICE_STATUS_HANDLE)0)
 	{
 		/*
 		 * Registering Control Handler failed
 		 */
-		return; 
-	}  
-	/* 
+		return;
+	}
+	/*
 	 * Initialize Service
 	 * If we don't pass a const char* const [], to gpfdist_init
 	 * we will get a warning that will fail the build
 	 */
 	const char* const buf[CMD_LINE_ARG_NUM] = {
-		cmd_line_buffer[0], 
+		cmd_line_buffer[0],
 		cmd_line_buffer[1],
-		cmd_line_buffer[2], 
+		cmd_line_buffer[2],
 		cmd_line_buffer[3],
-		cmd_line_buffer[4], 
+		cmd_line_buffer[4],
 		cmd_line_buffer[5],
-		cmd_line_buffer[6], 
+		cmd_line_buffer[6],
 		cmd_line_buffer[7],
-		cmd_line_buffer[8], 
+		cmd_line_buffer[8],
 		cmd_line_buffer[9],
-		cmd_line_buffer[10], 
+		cmd_line_buffer[10],
 		cmd_line_buffer[11],
-		cmd_line_buffer[12], 
+		cmd_line_buffer[12],
 		cmd_line_buffer[13],
-		cmd_line_buffer[14], 
+		cmd_line_buffer[14],
 		cmd_line_buffer[15],
-		cmd_line_buffer[16], 
+		cmd_line_buffer[16],
 		cmd_line_buffer[17],
-		cmd_line_buffer[18], 
+		cmd_line_buffer[18],
 		cmd_line_buffer[19],
-		cmd_line_buffer[20], 
+		cmd_line_buffer[20],
 		cmd_line_buffer[21],
-		cmd_line_buffer[22], 
+		cmd_line_buffer[22],
 		cmd_line_buffer[23],
-		cmd_line_buffer[24], 
+		cmd_line_buffer[24],
 		cmd_line_buffer[25],
-		cmd_line_buffer[26], 
+		cmd_line_buffer[26],
 		cmd_line_buffer[27],
-		cmd_line_buffer[28], 
+		cmd_line_buffer[28],
 		cmd_line_buffer[29],
 		cmd_line_buffer[30],
-		cmd_line_buffer[31], 
+		cmd_line_buffer[31],
 		cmd_line_buffer[32],
-		cmd_line_buffer[33], 
+		cmd_line_buffer[33],
 		cmd_line_buffer[34],
-		cmd_line_buffer[35], 
+		cmd_line_buffer[35],
 		cmd_line_buffer[36],
-		cmd_line_buffer[37], 
+		cmd_line_buffer[37],
 		cmd_line_buffer[38],
 		cmd_line_buffer[39]
-	};	
-	error = gpfdist_init(cmd_line_args, buf); 
-	if (error != 0) 
+	};
+	error = gpfdist_init(cmd_line_args, buf);
+	if (error != 0)
 	{
 		/*
 		 * Initialization failed
 		 */
 		do_set_srv_status(SERVICE_STOPPED, -1);
-		return; 
-	} 
+		return;
+	}
 	else
 	{
 		do_set_srv_status(SERVICE_RUNNING, 0);
 	}
-	
+
 	/*
 	 * free the command line arguments buffer - it's not used anymore
 	 */
 	clean_cmd_buffer();
-	
+
 	/*
 	 * actual service work
 	 */
 	gpfdist_run();
-} 
+}
 
-void ControlHandler(DWORD request) 
-{ 
-	switch(request) 
-	{ 
-		case SERVICE_CONTROL_STOP: 
+void ControlHandler(DWORD request)
+{
+	switch(request)
+	{
+		case SERVICE_CONTROL_STOP:
 		case SERVICE_CONTROL_SHUTDOWN:
 		{
 			do_set_srv_status(SERVICE_STOPPED, 0);
 			return;
 		}
-			
+
 		default:
 			break;
-	} 
-	
+	}
+
 	/*
 	 * Report current status
 	 */
