@@ -1147,7 +1147,7 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
 	if (attnum == 0)
 	{
 		/* Start from the first attribute */
-		off = att[0]->attcacheoff = 0;
+		off = 0;
 		slow = false;
 	}
 	else
