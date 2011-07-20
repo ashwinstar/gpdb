@@ -19,7 +19,7 @@
 -- *********************************************************************
 
 -- start_ignore
-\i @abs_srcdir@/../../../contrib/orafce/orafunc.sql
+\i @abs_builddir@/../../../contrib/orafce/orafunc.sql
 -- end_ignore
 
 SET DATESTYLE TO ISO;
