@@ -390,10 +390,6 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 	hints.ai_flags = AI_PASSIVE;	/* For wildcard IP address */
 	hints.ai_protocol = 0;			/* Any protocol */
 
-#ifdef __darwin__
-	hints.ai_family = AF_INET;
-#endif
-
 	fun = "getaddrinfo";
 	s = getaddrinfo(NULL, service, &hints, &addrs);
 	if (s != 0)
@@ -421,6 +417,7 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 	 * but we don't know that.
 	 */
 
+#ifndef __darwin__
 #ifdef HAVE_IPV6
 	if (addrs->ai_family == AF_INET && addrs->ai_next != NULL && addrs->ai_next->ai_family == AF_INET6)
 	{
@@ -436,6 +433,7 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 		addrs = temp;								/* start the list with the old second node */
 		elog(DEBUG1,"Have both IPv6 and IPv4 choices");
 	}
+#endif
 #endif
 
 	for (rp = addrs; rp != NULL; rp = rp->ai_next)
@@ -1240,15 +1238,12 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	hints.ai_flags = AI_PASSIVE; /* For wildcard IP address */
 	hints.ai_protocol = 0; /* Any protocol */
 
-#ifdef __darwin__
-	hints.ai_family = AF_INET;
-#endif
-
 	fun = "getaddrinfo";
 	s = getaddrinfo(NULL, service, &hints, &addrs);
 	if (s != 0)
 		elog(ERROR,"getaddrinfo says %s",gai_strerror(s));
 
+#ifndef __darwin__
 #ifdef HAVE_IPV6
 	if (addrs->ai_family == AF_INET && addrs->ai_next != NULL && addrs->ai_next->ai_family == AF_INET6)
 	{
@@ -1263,6 +1258,7 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 		temp->ai_next = addrs;						/* point second node to first */
 		addrs = temp;								/* start the list with the old second node */
 	}
+#endif
 #endif
 
 	/*
@@ -1345,10 +1341,6 @@ getSockAddr(struct sockaddr_storage * peer, socklen_t * peer_len, const char * l
 	hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
 #else
 	hint.ai_flags = AI_NUMERICHOST;  /* Never do name resolution */
-#endif
-
-#ifdef __darwin__
-	hint.ai_family = AF_UNSPEC;
 #endif
 
 	snprintf(portNumberStr, sizeof(portNumberStr), "%d", listenerPort);
@@ -3472,17 +3464,27 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 			 * routine to use that, but I think the entire format_sockaddr routine could
 			 * be replaced with it.
 			 */
-			int ret = pg_getnameinfo_all((const struct sockaddr_storage *)sa, sizeof(struct sockaddr_storage),
+			int ret = pg_getnameinfo_all((const struct sockaddr_storage *)sa, sizeof(struct sockaddr_in6),
 							   buf+1, bufsize-10,
 							   remote_port, sizeof(remote_port),
 							   NI_NUMERICHOST | NI_NUMERICSERV);
 			if (ret != 0)
 			{
-				elog(LOG,"getnameinfo returned %s, and says %s port %s",gai_strerror(ret),buf,remote_port);
-				elog(LOG," port was %d",((struct sockaddr_in6 *)sa)->sin6_port);
-				char debugmsg[128];
-				inet_ntop(sa->sa_family, (struct sockaddr *)&sa, debugmsg, sizeof(debugmsg));
-				elog(LOG," inet_ntop says %s ",debugmsg);
+				elog(LOG,"getnameinfo returned %d: %s, and says %s port %s",ret,gai_strerror(ret),buf,remote_port);
+				/*
+				 * Fall back to using our internal inet_ntop routine, which really is for inet datatype
+				 * This is because of a bug in solaris, where getnameinfo sometimes fails
+				 * Once we find out why, we can remove this
+				 */
+				snprintf(remote_port,sizeof(remote_port),"%d",((struct sockaddr_in6 *)sa)->sin6_port);
+				/*
+				 * This is nasty: our internal inet_net_ntop takes PGSQL_AF_INET6, not AF_INET6, which
+				 * is very odd... They are NOT the same value (even though PGSQL_AF_INET == AF_INET
+				 */
+#define PGSQL_AF_INET6	(AF_INET + 1)
+				inet_net_ntop(PGSQL_AF_INET6, sa, sizeof(struct sockaddr_in6), buf+1, bufsize-10);
+				elog(LOG,"Our alternative method says %s]:%s",buf,remote_port);
+
 			}
 			buf += strlen(buf);
 			strcat(buf,"]");
@@ -4126,7 +4128,7 @@ rx_handle_mismatch(struct icpkthdr *pkt, struct sockaddr_storage *peer, int peer
 		if (need_ack)
 		{
 			MotionConn dummyconn;
-			char buf[128];
+			char buf[128];	/* numeric IP addresses shouldn't exceed about 50 chars, but play it safe */
 
 
 			memcpy(&dummyconn.conn_info, pkt, sizeof(struct icpkthdr));

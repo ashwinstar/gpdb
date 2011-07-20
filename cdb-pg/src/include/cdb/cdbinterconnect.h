@@ -41,7 +41,7 @@ struct icpkthdr
 
 	int32		dstPid;
 	int32		dstListenerPort;
-	
+
     int32       sessionId;
     uint32      icId;
 
@@ -88,7 +88,7 @@ typedef struct MotionConn
 {
 	/* socket file descriptor. */
 	int			sockfd;
-	
+
 	/* pointer to the data buffer. */
 	uint8	   *pBuff;
 
@@ -99,26 +99,26 @@ typedef struct MotionConn
 	GpMonotonicTime activeXmitTime;
 
 	uint16		route;
-	
+
 	/* size of the message in the buffer, if any. */
 	int32		msgSize;
-	
+
 	/* position of message inside of buffer, "cursor" pointer */
 	uint8	   *msgPos;
-	
+
 	/*
 	 * recv bytes: we can have more than one message/message fragment in recv
 	 * queue at once
 	 */
 	int32		recvBytes;
-	
+
 	int			tupleCount;
-	
+
 	bool		stillActive;
 	bool		stopRequested;
-	
+
     MotionConnState state;
-	
+
     uint64      wakeup_ms;
 
 	struct icpkthdr		conn_info;
@@ -126,7 +126,7 @@ typedef struct MotionConn
 
     struct CdbProcess  *cdbProc;
     int			remoteContentId;
-    char        remoteHostAndPort[128];
+    char        remoteHostAndPort[128];	/* Numeric IP addresses should never be longer than about 50 chars, but play it safe */
     char        localHostAndPort[128];
 
 	struct sockaddr_storage peer;		/* Allow for IPv4 or IPv6 */
@@ -140,7 +140,7 @@ typedef struct MotionConn
 
 	/* Statistics info for this connection */
 	GpMonotonicTime ackWaitBeginTime;
-	
+
 	uint64 stat_total_ack_time;
 	uint64 stat_count_acks;
 	uint64 stat_max_ack_time;
@@ -148,7 +148,7 @@ typedef struct MotionConn
 	uint64 stat_count_resent;
 	uint64 stat_max_resent;
 	uint64 stat_count_dropped;
-	
+
 }	MotionConn;
 
 /*
@@ -158,12 +158,12 @@ typedef struct ChunkTransportStateEntry
 {
 	int         motNodeId;
 	bool		valid;
-	
+
 	/* Connection array: first the primaries, then the mirrors (if needed) */
     MotionConn *conns;
 	int			numConns;               /* all, including mirrors if present */
     int         numPrimaryConns;        /* does not include mirrors */
-	
+
 	/*
 	 * used for receiving. to select() from a set of interesting MotionConns
 	 * to see when data is ready to be read.  When the incoming connections
@@ -171,11 +171,11 @@ typedef struct ChunkTransportStateEntry
 	 * EOS (End of Stream) message is read.
 	 */
 	mpp_fd_set	readSet;
-	
+
 	/* highest file descriptor in the readSet. */
 	int			highReadSock;
     int         scanStart;
-	
+
     /* slice table entries */
     struct Slice   *sendSlice;
     struct Slice   *recvSlice;
@@ -186,7 +186,7 @@ typedef struct ChunkTransportStateEntry
 	int			txfd;
 	unsigned short txport;
 
-	bool		sendingEos;	
+	bool		sendingEos;
 
 	/* Statistics info for this motion on the interconnect level */
 	uint64 stat_total_ack_time;
@@ -263,53 +263,53 @@ typedef struct MotionNodeEntry
 
 	/* The description of tuples that this motion node will be exchanging. */
 	TupleDesc       tuple_desc;
-	
+
 	/*
 	 * The cached information to perform tuple serialization and
 	 * deserialization as quickly as possible.
 	 */
 	SerTupInfo      ser_tup_info;
-	
+
 	/*
 	 * If preserve_order is false, this is used to hold completed tuples that
 	 * have not yet been consumed.  If preserve_order is true, this is NULL.
 	 */
 	htup_fifo       ready_tuples;
-	
+
 	/*
 	 * Variable that records the total number of senders to this motion node.
 	 * This is expected to always be (number of qExecs).
 	 */
 	uint            num_senders;
-	
+
 	/*
 	 * Variable that tracks number of senders that have reported end-of-stream
 	 * for this motion node.  When the local node sends end-of-stream, that is
 	 * also recorded.
 	 */
 	uint            num_stream_ends_recvd;
-	
+
 	bool            cleanedUp;
 	bool            valid;
 	bool            moreNetWork;
 	bool            stopped;
-	
+
 	/*
 	 * PER-MOTION-NODE STATISTICS
 	 */
-	
+
 	uint64          stat_total_chunks_sent; /* Tuple-chunks sent. */
 	uint64          stat_total_bytes_sent;  /* Bytes sent, including headers. */
 	uint64          stat_tuple_bytes_sent;  /* Bytes of pure tuple-data sent. */
-	
+
 	uint64          stat_total_chunks_recvd;                /* Tuple-chunks received. */
 	uint64          stat_total_bytes_recvd; /* Bytes received, including headers. */
 	uint64          stat_tuple_bytes_recvd; /* Bytes of pure tuple-data received. */
-	
+
 	uint64          stat_total_sends;               /* Total calls to SendTuple. */
-	
+
 	uint64          stat_total_recvs;               /* Total calls to RecvTuple/etc. */
-	
+
 	uint64          stat_tuples_available;  /* Total tuples awaiting receive. */
 	uint64          stat_tuples_available_hwm;              /* High-water-mark of this
 		* value. */
@@ -328,34 +328,34 @@ typedef struct MotionLayerState
 {
 	/* The host ID that this segment-database is on. */
 	int			host_id;
-	
+
 	/*
 	 * Memory context for the whole motion layer.  This is a child context of
-	 * the Executor State Context, so the if it fails to get cleaned up the 
+	 * the Executor State Context, so the if it fails to get cleaned up the
 	 * estate context should free our resources at the end of the query.
 	 */
 	MemoryContext motion_layer_mctx;
-	
+
 	/*
 	 * MOTION NODE STATE - Initialized and used on per-statement basis.
 	 */
-	
+
 #define MNE_INITIAL_COUNT (10)
 	int			mneCount;
 	MotionNodeEntry *mnEntries;
-	
+
 	/*
 	 * GLOBAL MOTION-LAYER STATISTICS
 	 */
-	
+
 	uint32		stat_total_chunks_sent; /* Tuple-chunks sent. */
 	uint32		stat_total_bytes_sent;	/* Bytes sent, including headers. */
 	uint32		stat_tuple_bytes_sent;	/* Bytes of pure tuple-data sent. */
-	
+
 	uint32		stat_total_chunks_recvd;/* Tuple-chunks received. */
 	uint32		stat_total_bytes_recvd; /* Bytes received, including headers. */
 	uint32		stat_tuple_bytes_recvd; /* Bytes of pure tuple-data received. */
-	
+
 	uint32		stat_total_chunkproc_calls;		/* Calls to processIncomingChunks() */
 
 }	MotionLayerState;
@@ -365,18 +365,18 @@ typedef struct ChunkTransportState
 	/* array of per-motion-node chunk transport state */
 	int size;
 	ChunkTransportStateEntry *states;
-		
+
 	/* keeps track of if we've "activated" connections via SetupInterconnect(). */
 	bool		activated;
 
 	bool		aggressiveRetry;
-	
+
 	bool		teardownActive;
 	List	   *incompleteConns;
-	
+
 	/* slice table stuff. */
 	struct SliceTable  *sliceTable;
-	int			sliceId;	
+	int			sliceId;
 
 	/* Estate pointer for this statement (UDP-IC specific) */
 	EState		*estate;

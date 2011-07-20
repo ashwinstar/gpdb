@@ -2226,7 +2226,23 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 							   remote_port, sizeof(remote_port),
 							   NI_NUMERICHOST | NI_NUMERICSERV);
 			if (ret != 0)
-				elog(WARNING,"getnameinfo returned %s",gai_strerror(ret));
+			{
+				elog(LOG,"getnameinfo returned %d: %s, and says %s port %s",ret,gai_strerror(ret),buf,remote_port);
+				/*
+				 * Fall back to using our internal inet_ntop routine, which really is for inet datatype
+				 * This is because of a bug in solaris, where getnameinfo sometimes fails
+				 * Once we find out why, we can remove this
+				 */
+				snprintf(remote_port,sizeof(remote_port),"%d",((struct sockaddr_in6 *)sa)->sin6_port);
+				/*
+				 * This is nasty: our internal inet_net_ntop takes PGSQL_AF_INET6, not AF_INET6, which
+				 * is very odd... They are NOT the same value (even though PGSQL_AF_INET == AF_INET
+				 */
+#define PGSQL_AF_INET6	(AF_INET + 1)
+				inet_net_ntop(PGSQL_AF_INET6, sa, sizeof(struct sockaddr_in6), buf+1, bufsize-10);
+				elog(LOG,"Our alternative method says %s]:%s",buf,remote_port);
+
+			}
             buf += strlen(buf);
             strcat(buf,"]");
             buf++;
