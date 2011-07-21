@@ -1671,7 +1671,12 @@ static void http_setup(void)
 
 		s = getaddrinfo(hostaddr, service, &hints, &addrs);
 		if (s != 0)
+#if (!defined(WIN32)) || defined(gai_strerror)
 			gfatal(FLINE,"getaddrinfo says %s",gai_strerror(s));
+#else
+			/* Broken mingw header file from old version of mingw doesn't have gai_strerror */
+			gfatal(FLINE,"getaddrinfo says %d",s);
+#endif
 
 		/*
 		 * getaddrinfo() returns a list of address structures,
