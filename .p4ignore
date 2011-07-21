@@ -23,7 +23,6 @@ greenplum-plr-main-build-dev-suse10_x86_64.zip
 Debug
 Release
 Build
-.p4ignore
 .timestamp
 .autotools
 *.log
