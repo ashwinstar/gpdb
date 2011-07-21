@@ -201,6 +201,9 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
 
     Assert(IsA(subselect, Query));
 
+    if (subselect->jointree->fromlist == NULL)
+    	return (Node *) sublink;
+
     /*
      * 'LIMIT n' makes EXISTS false when n <= 0, and doesn't affect the outcome
      * when n > 0.  Delete subquery's LIMIT and build (0 < n) expr to be ANDed
@@ -352,6 +355,7 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
     	 */
 
     	if (subselect->hasAggs
+    			|| (subselect->jointree->fromlist == NULL)
     			|| subselect->havingQual
     			|| subselect->groupClause
     			|| subselect->hasWindFuncs
