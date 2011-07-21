@@ -4957,10 +4957,23 @@ CopyReadAttributesText(CopyState cstate, bool * __restrict nulls,
 	{
 		bytes_remaining = cstate->line_buf.len - cstate->line_buf.cursor;
 		stop = scan_start + bytes_remaining;
-		
+		/*
+		 * We can eliminate one test (for length) in the loop by replacing the
+		 * last byte with the delimiter.  We need to remember what it was so we
+		 * can replace it later.
+		 */
+		char  endchar = *(stop-1);
+		*(stop-1) = delimc;
+
 		/* Find the next of: delimiter, or escape, or end of buffer */
-		for (scanner = scan_start; *scanner != delimc && *scanner != escapec && scanner < stop; scanner++)
+		for (scanner = scan_start; *scanner != delimc && *scanner != escapec; scanner++)
 			;
+		if (scanner == (stop-1) && endchar != delimc)
+		{
+			if (endchar != escapec)
+				scanner++;
+		}
+		*(stop-1) = endchar;
 
 		scan_end = (*scanner != '\0' ? (char *) scanner : NULL);
 
