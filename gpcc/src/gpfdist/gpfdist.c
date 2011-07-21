@@ -1,6 +1,9 @@
 #ifdef WIN32
 /* exclude transformation features on windows for now */
 #undef GPFXDIST
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0501
+#endif
 #endif
 
 #include <apr_getopt.h>
