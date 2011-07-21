@@ -43,7 +43,7 @@ install: all installdirs
 	$(INSTALL_PROGRAM) gp_mount_agent$(X) '$(DESTDIR)$(bindir)'/gp_mount_agent$(X)
 
 installdirs:
-	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
+	$(MKDIR_P) '$(DESTDIR)$(bindir)'
 
 uninstall:
 	rm -f $(addprefix '$(DESTDIR)$(bindir)'/, gp_mount_agent$(X))

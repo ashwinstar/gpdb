@@ -23,7 +23,7 @@ install: all installdirs
 	$(INSTALL_SCRIPT) ipcclean '$(DESTDIR)$(bindir)/ipcclean'
 
 installdirs:
-	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
+	$(MKDIR_P) '$(DESTDIR)$(bindir)'
 
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/ipcclean'

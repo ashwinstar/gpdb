@@ -40,7 +40,7 @@ install: all installdirs
 	$(INSTALL_PROGRAM) gp_primarymirror$(X) '$(DESTDIR)$(bindir)'/gp_primarymirror$(X)
 
 installdirs:
-	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
+	$(MKDIR_P) '$(DESTDIR)$(bindir)'
 
 uninstall:
 	rm -f $(addprefix '$(DESTDIR)$(bindir)'/, gp_primarymirror$(X))

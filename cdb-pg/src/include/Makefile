@@ -55,9 +55,9 @@ install: all installdirs
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbdistributedsnapshot.h   $(DESTDIR)$(includedir_internal_cdb)
 
 installdirs:
-	$(mkinstalldirs) '$(DESTDIR)$(includedir)/libpq' '$(DESTDIR)$(includedir_internal)/libpq' \
+	$(MKDIR_P) '$(DESTDIR)$(includedir)/libpq' '$(DESTDIR)$(includedir_internal)/libpq' \
 	    '$(DESTDIR)$(includedir_internal_cdb)'
-	$(mkinstalldirs) $(addprefix '$(DESTDIR)$(includedir_server)'/, $(SUBDIRS))
+	$(MKDIR_P) $(addprefix '$(DESTDIR)$(includedir_server)'/, $(SUBDIRS))
 
 
 uninstall:

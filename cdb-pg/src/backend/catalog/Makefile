@@ -111,7 +111,7 @@ install-data: $(BKIFILES) installdirs
 	$(INSTALL_DATA) $(call vpathsearch,gp_toolkit.sql) '$(DESTDIR)$(datadir)/gp_toolkit.sql'
 
 installdirs:
-	$(mkinstalldirs) '$(DESTDIR)$(datadir)'
+	$(MKDIR_P) '$(DESTDIR)$(datadir)'
 
 .PHONY: uninstall-data
 uninstall-data:

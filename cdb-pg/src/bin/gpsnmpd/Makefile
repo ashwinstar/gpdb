@@ -89,7 +89,7 @@ install: all installdirs
 	$(INSTALL_DATA) $(srcdir)/gpsnmpd.sql '$(DESTDIR)$(datadir)/gpsnmpd.sql'
 
 installdirs:
-	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
+	$(MKDIR_P) '$(DESTDIR)$(bindir)'
 
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/gpsnmpd$(X)'

@@ -63,8 +63,8 @@ gpmodcat_install: gpmodcatversion
 		'$(DESTDIR)$(bindir)/lib'/gpmodcatversion$(X)
 
 installdirs:
-	$(mkinstalldirs) '$(DESTDIR)$(bindir)' '$(DESTDIR)$(bindir)/lib'
-	$(mkinstalldirs) '$(DESTDIR)$(datadir)' '$(DESTDIR)$(datadir)/upgrade'
+	$(MKDIR_P) '$(DESTDIR)$(bindir)' '$(DESTDIR)$(bindir)/lib'
+	$(MKDIR_P) '$(DESTDIR)$(datadir)' '$(DESTDIR)$(datadir)/upgrade'
 
 installupgradefiles: $(UPGRADEFILES)
 	@for i in $(UPGRADEFILES); \
