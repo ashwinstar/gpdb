@@ -161,7 +161,8 @@ sub mkvcbuild
         chomp($pyver);
         close(P);
 
-  # Sometimes (always?) if python is not present, the execution actually works, but gives no data...
+        # Sometimes (always?) if python is not present, the execution
+        # appears to work, but gives no data...
         die "Failed to query python for version information\n"
           if (!(defined($pyprefix) && defined($pyver)));
 

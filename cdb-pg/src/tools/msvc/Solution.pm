@@ -3,7 +3,7 @@ package Solution;
 #
 # Package that encapsulates a Visual C++ solution file generation
 #
-# $PostgreSQL: pgsql/src/tools/msvc/Solution.pm,v 1.47 2009/01/06 18:37:50 mha Exp $
+# src/tools/msvc/Solution.pm
 #
 use Carp;
 use strict;
@@ -27,7 +27,7 @@ sub new
         platform => undef,
     };
     bless $self;
-    	
+
     # integer_datetimes is now the default
 	$options->{integer_datetimes} = 1 
 		unless exists $options->{integer_datetimes};
@@ -187,7 +187,7 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
         print O "#define HAVE_LIBZ 1\n" if ($self->{options}->{zlib});
         print O "#define USE_SSL 1\n" if ($self->{options}->{openssl});
         print O "#define ENABLE_NLS 1\n" if ($self->{options}->{nls});
-        
+
         print O "#define BLCKSZ ",1024 * $self->{options}->{blocksize},"\n";
 	#	print O "#define RELSEG_SIZE ",
 	#		(1024 / $self->{options}->{blocksize}) * 

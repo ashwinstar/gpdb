@@ -70,6 +70,9 @@ AlterDatabaseStmt
 AlterDefaultPrivilegesStmt
 AlterDomainStmt
 AlteredTableInfo
+AlterEnumStmt
+AlterExtensionContentsStmt
+AlterExtensionStmt
 AlterFdwStmt
 AlterForeignServerStmt
 AlterFunctionStmt
@@ -191,6 +194,7 @@ ArrayExpr
 ArrayExprIterState
 ArrayExprState
 array_iter
+ArrayIterator
 ArrayMapState
 ArrayMetaState
 ArrayParseState
@@ -2888,7 +2892,9 @@ xmlXPathCompExprPtr
 xmlXPathContextPtr
 xmlXPathObjectPtr
 xmltype
+xpath_workspace
 xsltStylesheetPtr
+yy_parser
 yy_size_t
 yyscan_t
 z_stream

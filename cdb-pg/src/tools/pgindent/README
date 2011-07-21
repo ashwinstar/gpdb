@@ -10,7 +10,7 @@ This can format all PostgreSQL *.c and *.h files, but excludes *.y, and
 
 2) Download the typedef file from the buildfarm:
 
-	wget -O src/tools/pgindent/typedefs.list http://www.pgbuildfarm.org/cgi-bin/typedefs.pl
+	wget -O src/tools/pgindent/typedefs.list http://buildfarm.postgresql.org/cgi-bin/typedefs.pl
 
 3) Remove all derived files (pgindent has trouble with one of the flex macros):
 
@@ -23,12 +23,14 @@ This can format all PostgreSQL *.c and *.h files, but excludes *.y, and
 	xargs -n100 pgindent src/tools/pgindent/typedefs.list
 
 5) Remove any files that generate errors and restore their original
-   versions, e.g. ./src/backend/tsearch/wparser_def.c has problems
-   because of a DECIMAL listed as a typedef.
+   versions.
 
 6) Do a full test build:
 
 	run configure
+	# stop is only necessary if it's going to install in a location with an
+	# already running server
+	pg_ctl stop
 	gmake -C src install
 	gmake -C contrib install
 	gmake installcheck-world
