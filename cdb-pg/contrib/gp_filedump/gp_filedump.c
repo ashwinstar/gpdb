@@ -2220,12 +2220,16 @@ FormatControl()
 		ControlFileData *controlData = (ControlFileData *) buffer;
 		CheckPoint     *checkPoint = &(controlData->checkPointCopy);
 		pg_crc32        crcLocal;
+		pg_crc32        crcLocal_old;
 		char           *dbState;
 
 		/* Compute a local copy of the CRC to verify the one on disk */
-		INIT_CRC32(crcLocal);
-		COMP_CRC32(crcLocal, buffer, offsetof(ControlFileData, crc));
-		FIN_CRC32(crcLocal);
+		crcLocal = crc32cSlicingBy8(crc32cInit(), buffer, offsetof(ControlFileData, crc));
+		crc32cFinish(crcLocal);
+		/* Also compute a local copy of the CRC using old algorithm to verify the one on disk */
+		INIT_CRC32(crcLocal_old);
+		COMP_CRC32(crcLocal_old, buffer, offsetof(ControlFileData, crc));
+		FIN_CRC32(crcLocal_old);
 
 		/* Grab a readable version of the database state */
 		switch (controlData->state)
@@ -2282,8 +2286,8 @@ FormatControl()
 		       "         Locale Buffer Length: %u\n"
 		       "                   lc_collate: %s\n"
 		       "                     lc_ctype: %s\n\n",
-		       EQ_CRC32(crcLocal,
-			      controlData->crc) ? "Correct" : "Not Correct",
+		       EQ_CRC32(crcLocal, controlData->crc) ? "Correct (crc32c)" :
+		    		   EQ_CRC32(crcLocal_old, controlData->crc) ? "Correct (classic crc32)" : "Not Correct",
 		       controlData->pg_control_version,
 		    (controlData->pg_control_version == PG_CONTROL_VERSION ?
 		     "" : " (Not Correct!)"),

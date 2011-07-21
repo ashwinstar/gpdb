@@ -12,7 +12,8 @@
  */
 #include "postgres.h"
 
-
+#undef memcpy
+#undef memset
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>

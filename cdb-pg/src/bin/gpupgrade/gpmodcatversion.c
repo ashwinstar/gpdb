@@ -179,16 +179,23 @@ main(int argc, char *argv[])
 	}
 
 	/* Check the CRC. */
-	INIT_CRC32(crc);
-	COMP_CRC32(crc,
-			   (char *) &ControlFile,
-			   offsetof(ControlFileData, crc));
-	FIN_CRC32(crc);
+	crc = crc32cSlicingBy8(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
+	crc32cFinish(crc);
 
 	if (!EQ_CRC32(crc, ControlFile.crc))
-		printf(_("WARNING: Calculated CRC checksum does not match value stored in file.\n"
-				 "Either the file is corrupt, or it has a different layout than this program\n"
-				 "is expecting.  The results below are untrustworthy.\n\n"));
+	{
+		/* Check the CRC using old algorithm. */
+		INIT_CRC32(crc);
+		COMP_CRC32(crc,
+				   (char *) &ControlFile,
+				   offsetof(ControlFileData, crc));
+		FIN_CRC32(crc);
+
+		if (!EQ_CRC32(crc, ControlFile.crc))
+			printf(_("WARNING: Calculated CRC checksum does not match value stored in file.\n"
+					 "Either the file is corrupt, or it has a different layout than this program\n"
+					 "is expecting.  The results below are untrustworthy.\n\n"));
+	}
 
 	printf(_("\nCatalog version number: %u\n"),
 		   ControlFile.catalog_version_no);
@@ -222,11 +229,15 @@ main(int argc, char *argv[])
 		ControlFile.catalog_version_no = tover;
 
 		/* recalcualte the CRC. */
+		crc = crc32cSlicingBy8(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
+		crc32cFinish(crc);
+		/*
 		INIT_CRC32(crc);
 		COMP_CRC32(crc,
 				   (char *) &ControlFile,
 				   offsetof(ControlFileData, crc));
 		FIN_CRC32(crc);
+		*/
 		ControlFile.crc = crc;
 
 		printf(_("Setting version number to: %u\n"), tover);

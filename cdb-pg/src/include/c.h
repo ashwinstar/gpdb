@@ -943,6 +943,26 @@ extern int	fdatasync(int fildes);
 /* /port compatibility functions */
 #include "port.h"
 
+/*
+ * Define alternatives to slow C library functions.   If they are already defined, maybe there is a
+ * reason they are being overridden?  So to play it safe, don't redefine these
+ * if the headers already did a define.
+ */
+#ifndef memcpy
+
+static inline
+void *(memcpy_inline)(void *__restrict b, const void *__restrict a, size_t n)
+{
+    char *s1 = b;
+    const char *s2 = a;
+    for(; 0<n; --n)*s1++ = *s2++;
+    return b;
+}
+#define memcpy memcpy_inline
+#endif
+
+
+
 #ifdef __cplusplus
 }   /* extern "C" */
 #endif

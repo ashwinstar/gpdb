@@ -76,17 +76,17 @@ compute_checksum(const char *buffer, uint32 size)
 	 */
 	uint32 currSectorBegin = 0;
 	
-	INIT_CRC32(crc);
+	crc = crc32cInit();
 	
 	while (currSectorBegin < size)
 	{
-		COMP_CRC32(crc, buffer + currSectorBegin,
+		crc = crc32c(crc, buffer + currSectorBegin,
 				   Min(size - currSectorBegin,
 					   gp_workfile_bytes_to_checksum));
 		currSectorBegin += BFZ_CHECKSUM_SECTOR_SIZE;
 	}
 
-	FIN_CRC32(crc);
+	crc32cFinish(crc);
 
 	return crc;
 }

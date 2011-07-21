@@ -149,4 +149,32 @@ extern CRCDLLIMPORT const uint64 pg_crc64_table[];
 #endif   /* SIZEOF_VOID_P < 8 */
 #endif   /* PROVIDE_64BIT_CRC */
 
+/** Returns the initial value for a CRC32-C computation. */
+static inline pg_crc32 crc32cInit()
+{
+    return 0xFFFFFFFF;
+}
+
+/** Converts a partial CRC32-C computation to the final value. */
+static inline pg_crc32 crc32cFinish(pg_crc32 crc)
+{
+    return ~crc;
+}
+
+
+/** Pointer to a function that computes a CRC32C checksum.
+@arg crc Previous CRC32C value, or crc32c_init().
+@arg data Pointer to the data to be checksummed.
+@arg length length of the data in bytes.
+*/
+typedef pg_crc32 (*CRC32CFunctionPtr)(pg_crc32 crc, const void* data, int length);
+
+extern pg_crc32 crc32cSlicingBy8(pg_crc32 crc, const void* data, int length);
+extern pg_crc32 crc32cHardware32(pg_crc32 crc, const void* data, int length);
+extern pg_crc32 crc32cHardware64(pg_crc32 crc, const void* data, int length);
+
+/** This will map automatically to the "best" CRC implementation. */
+extern CRC32CFunctionPtr crc32c;
+
+
 #endif   /* PG_CRC_H */

@@ -1,7 +1,7 @@
 # $PostgreSQL: pgsql/contrib/dblink/Makefile,v 1.9 2004/08/20 20:13:03 momjian Exp $
 
 MODULE_big = xlogviewer
-PG_CPPFLAGS = -I$(libpq_srcdir)
+#PG_CPPFLAGS = -I$(libpq_srcdir)
 OBJS	= xlogviewer.o
 SHLIB_LINK = $(libpq)
 

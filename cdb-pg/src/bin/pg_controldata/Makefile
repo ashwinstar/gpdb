@@ -18,10 +18,9 @@ LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
 # This program isn't interactive, so doesn't need these
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
 
-
 override CPPFLAGS += -DFRONTEND
 
-OBJS= pg_controldata.o pg_crc.o $(WIN32RES)
+OBJS= pg_controldata.o pg_crc.o crc32c.o $(WIN32RES)
 
 all: submake-libpgport pg_controldata
 
@@ -29,6 +28,9 @@ pg_controldata: $(OBJS)
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LIBS) -o $@$(X)
 
 pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
+	rm -f $@ && $(LN_S) $< .
+	
+crc32c.c: $(top_srcdir)/src/backend/utils/hash/crc32c.c
 	rm -f $@ && $(LN_S) $< .
 
 install: all installdirs

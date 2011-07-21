@@ -2952,9 +2952,8 @@ prepareXmit(MotionConn *conn)
 		struct icpkthdr *pkt = (struct icpkthdr *)conn->pBuff;
 		pg_crc32 local_crc;
 
-		INIT_CRC32(local_crc);
-		COMP_CRC32(local_crc, pkt, pkt->len);
-		FIN_CRC32(local_crc);
+		local_crc = crc32c(crc32cInit(), pkt, pkt->len);
+		crc32cFinish(local_crc);
 
 		pkt->crc = local_crc;
 	}
@@ -3954,9 +3953,8 @@ ic_rx_thread_func(void *arg)
 						rx_crc = pkt->crc;
 						pkt->crc = 0;
 
-						INIT_CRC32(local_crc);
-						COMP_CRC32(local_crc, pkt, pkt->len);
-						FIN_CRC32(local_crc);
+						local_crc = crc32c(crc32cInit(), pkt, pkt->len);
+						crc32cFinish(local_crc);
 
 						if (rx_crc != local_crc)
 						{
