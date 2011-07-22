@@ -390,6 +390,10 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort)
 	hints.ai_flags = AI_PASSIVE;	/* For wildcard IP address */
 	hints.ai_protocol = 0;			/* Any protocol */
 
+#ifdef __darwin__
+	hints.ai_family = AF_INET; /* Due to a bug in OSX Leopard, disable IPv6 for UDP interconnect on all OSX platforms */
+#endif
+
 	fun = "getaddrinfo";
 	s = getaddrinfo(NULL, service, &hints, &addrs);
 	if (s != 0)
@@ -1237,6 +1241,10 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 	hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
 	hints.ai_flags = AI_PASSIVE; /* For wildcard IP address */
 	hints.ai_protocol = 0; /* Any protocol */
+
+#ifdef __darwin__
+	hints.ai_family = AF_INET; /* Due to a bug in OSX Leopard, disable IPv6 for UDP interconnect on all OSX platforms */
+#endif
 
 	fun = "getaddrinfo";
 	s = getaddrinfo(NULL, service, &hints, &addrs);
