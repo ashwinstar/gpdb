@@ -1771,7 +1771,9 @@ typedef struct HashState
         PlanState        ps;                /* its first field is NodeTag */
         HashJoinTable hashtable;        /* hash table for the hashjoin */
         List           *hashkeys;                /* list of ExprState nodes */
-        bool         hs_keepnull;                /* Keep nulls */ 
+        bool         hs_keepnull;                /* Keep nulls */
+        bool		hs_quit_if_hashkeys_null;	/* quit building hash table if hashkeys are all null */
+        bool		hs_hashkeys_null;				 /* found an instance wherein hashkeys are all null */
         /* hashkeys is same as parent's hj_InnerHashKeys */
 } HashState;
 

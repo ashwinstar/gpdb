@@ -35,7 +35,8 @@ extern bool ExecHashGetHashValue(HashJoinTable hashtable,
 					 ExprContext *econtext,
 					 List *hashkeys,
 					 bool keep_nulls,
-					 uint32 *hashvalue);
+					 uint32 *hashvalue,
+					 bool *hashkeys_null);
 extern void ExecHashGetBucketAndBatch(HashJoinTable hashtable,
 						  uint32 hashvalue,
 						  int *bucketno,

@@ -111,11 +111,24 @@ MultiExecHash(HashState *node)
                 CheckSendPlanStateGpmonPkt(&node->ps);
 		/* We have to compute the hash value */
 		econtext->ecxt_innertuple = slot;
-		if (ExecHashGetHashValue(hashtable, econtext, hashkeys, node->hs_keepnull, &hashvalue))
+		bool hashkeys_null = false;
+
+		if (ExecHashGetHashValue(hashtable, econtext, hashkeys, node->hs_keepnull, &hashvalue, &hashkeys_null))
 		{
 			ExecHashTableInsert(&node->ps, hashtable, slot, hashvalue);
 			hashtable->totalTuples += 1;
 		}
+
+		if (hashkeys_null)
+		{
+			node->hs_hashkeys_null = true;
+			if (node->hs_quit_if_hashkeys_null)
+			{
+				ExecSquelchNode(outerNode);
+				return NULL;
+			}
+		}
+
 	}
 
 	/* Now we have set up all the initial batches & primary overflow batches. */
@@ -810,18 +823,25 @@ ExecHashTableInsert(PlanState *ps, HashJoinTable hashtable,
  * and stored at *hashvalue.  A FALSE result means the tuple cannot match
  * because it contains a null attribute, and hence it should be discarded
  * immediately.  (If keep_nulls is true then FALSE is never returned.)
+ * Found_null indicates all the hashkeys are null.
  */
 bool
 ExecHashGetHashValue(HashJoinTable hashtable,
 					 ExprContext *econtext,
 					 List *hashkeys,
 					 bool keep_nulls,
-					 uint32 *hashvalue)
+					 uint32 *hashvalue,
+					 bool *hashkeys_null)
 {
 	uint32		hashkey = 0;
 	ListCell   *hk;
 	int			i = 0;
 	MemoryContext oldContext;
+	bool		result = true;
+
+	Assert(hashkeys_null);
+
+	(*hashkeys_null) = true;
 
 	/*
 	 * We reset the eval context each time to reclaim any memory leaked in the
@@ -835,7 +855,7 @@ ExecHashGetHashValue(HashJoinTable hashtable,
 	{
 		ExprState  *keyexpr = (ExprState *) lfirst(hk);
 		Datum		keyval;
-		bool		isNull;
+		bool		isNull = false;
 
 		/* rotate hashkey left 1 bit at each step */
 		hashkey = (hashkey << 1) | ((hashkey & 0x80000000) ? 1 : 0);
@@ -844,6 +864,11 @@ ExecHashGetHashValue(HashJoinTable hashtable,
 		 * Get the join attribute value of the tuple
 		 */
 		keyval = ExecEvalExpr(keyexpr, econtext, &isNull, NULL);
+
+		if (!isNull)
+		{
+			*hashkeys_null = false;
+		}
 
 		/*
 		 * If the attribute is NULL, and the join operator is strict, then
@@ -862,12 +887,11 @@ ExecHashGetHashValue(HashJoinTable hashtable,
 		{
 			if (hashtable->hashStrict[i] && !keep_nulls)
 			{
-				MemoryContextSwitchTo(oldContext);
-				return false;							/* cannot match */
+				result = false;
 			}
 			/* else, leave hashkey unmodified, equivalent to hashcode 0 */
 		}
-		else
+		else if (!result)
 		{
 			/* Compute the hash function */
 			uint32		hkey;
@@ -883,7 +907,7 @@ ExecHashGetHashValue(HashJoinTable hashtable,
 	MemoryContextSwitchTo(oldContext);
 
 	*hashvalue = hashkey;
-	return true;
+	return result;
 }
 
 /*

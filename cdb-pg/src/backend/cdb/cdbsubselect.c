@@ -37,7 +37,7 @@ typedef struct NonNullableVarsContext
 
 static bool find_nonnullable_vars_walker(Node *node, NonNullableVarsContext *context);
 static bool is_attribute_nonnullable(Oid relationOid, AttrNumber attrNumber);
-static bool is_targetlist_nonnullable(Query *subq);
+static bool is_targetlist_nullable(Query *subq);
 static Node *make_outer_nonnull_clause(SubLink *sublink);
 
 #define DUMMY_COLUMN_NAME "zero"
@@ -934,13 +934,13 @@ static bool find_nonnullable_vars_walker(Node *node, NonNullableVarsContext *con
 
 
 /**
- * This method determines if the targetlist of a query is non-nullable.
+ * This method determines if the targetlist of a query is nullable.
  * Consider a query of the form: select t1.x, t2.y from t1, t2 where t1.x > 5
- * This method simply determines if the targetlist i.e. (t1.x, t2.y) is non-nullable.
- * A targetlist is non-nullable if at least one entry in the targetlist
- * can be proven to be non-nullable.
+ * This method simply determines if the targetlist i.e. (t1.x, t2.y) is nullable.
+ * A targetlist is "nullable" if all entries in the targetlist
+ * cannot be proven to be non-nullable.
  */
-static bool is_targetlist_nonnullable(Query *subq)
+static bool is_targetlist_nullable(Query *subq)
 {
 	Assert(subq);
 	
@@ -961,6 +961,7 @@ static bool is_targetlist_nonnullable(Query *subq)
 	context.nonNullableVars = NIL;
 	expression_tree_walker((Node *) subq->jointree, find_nonnullable_vars_walker, &context);
 
+	bool result = false;
 	/**
 	 * Now cross-check with the actual targetlist of the query.
 	 */
@@ -971,19 +972,22 @@ static bool is_targetlist_nonnullable(Query *subq)
 		
 		if (tle->resjunk)
 		{
-			continue;
+			/**
+			 * Be conservative.
+			 */
+			result = true;
 		}
 		
 		if (nodeTag(tle->expr) == T_Const)
 		{
 			/**
-			 * Is the constant entry in the targetlist non-null?
+			 * Is the constant entry in the targetlist null?
 			 */
 			Const *constant = (Const *) tle->expr;
-			if (strcmp(tle->resname, DUMMY_COLUMN_NAME) != 0 /* Ignore dummy column */
-				&& constant->constisnull == false)
+			if (strcmp(tle->resname, DUMMY_COLUMN_NAME) != 0
+					&& constant->constisnull == true)
 			{
-				return true;
+				result = true;
 			}
 		}
 		else if (nodeTag(tle->expr) == T_Var)
@@ -991,27 +995,21 @@ static bool is_targetlist_nonnullable(Query *subq)
 			Var *var = (Var *) tle->expr;
 
 			/* Was this var determined to be non-nullable? */
-			if (context.nonNullableVars
-					&& list_member(context.nonNullableVars, var))
+			if (!list_member(context.nonNullableVars, var))
 			{
-				return true;
+				result = true;
 			}
 		}
 		else
 		{
-			/* 
-			 * We are very conservative in determining non-nullability.
-			 * We don't support complex expressions in the targetlist.
-			 * TODO: maybe improve this for simple opexprs?
+			/**
+			 * Be conservative.
 			 */
-			continue;
+			result = true;
 		}
 	}
 
-	/**
-	 * Be conservative.
-	 */
-	return false;
+	return result;
 }
 
 /**
@@ -1116,14 +1114,16 @@ convert_IN_to_antijoin(PlannerInfo * root, List **rtrlist_inout __attribute__((u
 		Assert(larg != NULL);
 
 		int			subq_indx = add_notin_subquery_rte(parse, subselect);
-		bool		inner_nonnullable = is_targetlist_nonnullable(subselect);
+		bool		inner_nullable = is_targetlist_nullable(subselect);
 
 		JoinExpr   *join_expr = make_join_expr(larg, subq_indx, JOIN_LASJ);
 
 		join_expr->quals = make_lasj_quals(root, sublink, subq_indx);
 
-		if (!inner_nonnullable)
+		if (inner_nullable)
+		{
 			join_expr->quals = add_null_match_clause(join_expr->quals);
+		}
 
 		/* 
 		 * What clause needs to be added to ensure that the outer side does not contain

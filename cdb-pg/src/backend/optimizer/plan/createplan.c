@@ -3156,9 +3156,24 @@ get_switched_clauses(Relids innerrelids, List *clauses)
 	foreach(l, clauses)
 	{
 		RestrictInfo *restrictinfo = (RestrictInfo *) lfirst(l);
-		OpExpr	   *clause = (OpExpr *) restrictinfo->clause;
 
-		Assert(is_opclause(clause));
+		Expr *rclause = restrictinfo->clause;
+
+		/**
+		 * If this is a IS NOT FALSE boolean test, we can peek underneath.
+		 */
+		if (IsA(rclause, BooleanTest))
+		{
+			BooleanTest *bt = (BooleanTest *) rclause;
+
+			if (bt->booltesttype == IS_NOT_FALSE)
+			{
+				rclause = bt->arg;
+			}
+		}
+
+		Assert(is_opclause(rclause));
+		OpExpr *clause = (OpExpr *) rclause;
 		if (bms_is_subset(restrictinfo->left_relids, innerrelids))
 		{
 			/*

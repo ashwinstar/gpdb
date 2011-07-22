@@ -179,7 +179,29 @@ ExecHashJoin(HashJoinState *node)
 		 * execute the Hash node, to build the hash table
 		 */
 		hashNode->hashtable = hashtable;
+
+		hashNode->hs_quit_if_hashkeys_null = (node->js.jointype == JOIN_LASJ);
+
 		(void) MultiExecProcNode((PlanState *) hashNode);
+
+		/**
+		 * If LASJ and a null was found on the inner side, then clean out.
+		 */
+		if (node->js.jointype == JOIN_LASJ && hashNode->hs_hashkeys_null)
+		{
+			/*
+			 * CDB: We'll read no more from outer subtree. To keep sibling
+			 * QEs from being starved, tell source QEs not to clog up the
+			 * pipeline with our never-to-be-consumed data.
+			 */
+			ExecSquelchNode(outerNode);
+			/* end of join */
+			if (gp_eager_hashtable_release)
+			{
+				ReleaseHashTable(node);
+			}
+			return NULL;
+		}
 
 		/*
 		 * If the inner relation is completely empty, and we're not doing an
@@ -658,12 +680,16 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 			 */
 			econtext = hjstate->js.ps.ps_ExprContext;
 			econtext->ecxt_outertuple = slot;
+
+			bool hashkeys_null = false;
 			if (ExecHashGetHashValue(hashtable, econtext,
 						hjstate->hj_OuterHashKeys,
 						(hjstate->js.jointype == JOIN_LEFT) || 
 						(hjstate->js.jointype == JOIN_LASJ) || 
 						hjstate->hj_nonequijoin,
-						hashvalue))
+						hashvalue,
+						&hashkeys_null
+						))
 			{
 				/* remember outer relation is not empty for possible rescan */
 				hjstate->hj_OuterNotEmpty = true;

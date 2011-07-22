@@ -1970,9 +1970,23 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 		foreach(hcl, hashclauses)
 		{
 			RestrictInfo *restrictinfo = (RestrictInfo *) lfirst(hcl);
+			Expr *clause = restrictinfo->clause;
 			Selectivity thisbucketsize;
 
 			Assert(IsA(restrictinfo, RestrictInfo));
+
+			/**
+			 * If this is a IS NOT FALSE boolean test, we can peek underneath.
+			 */
+			if (IsA(clause, BooleanTest))
+			{
+				BooleanTest *bt = (BooleanTest *) clause;
+
+				if (bt->booltesttype == IS_NOT_FALSE)
+				{
+					clause = bt->arg;
+				}
+			}
 
 			/*
 			 * First we have to figure out which side of the hashjoin clause
@@ -1992,7 +2006,7 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 					/* not cached yet */
 					thisbucketsize =
 						estimate_hash_bucketsize(root,
-										   get_rightop(restrictinfo->clause),
+										   get_rightop(clause),
 												 virtualbuckets);
 					restrictinfo->right_bucketsize = thisbucketsize;
 				}
@@ -2008,7 +2022,7 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 					/* not cached yet */
 					thisbucketsize =
 						estimate_hash_bucketsize(root,
-											get_leftop(restrictinfo->clause),
+											get_leftop(clause),
 												 virtualbuckets);
 					restrictinfo->left_bucketsize = thisbucketsize;
 				}
