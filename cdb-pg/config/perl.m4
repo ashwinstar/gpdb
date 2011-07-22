@@ -17,7 +17,7 @@ if test "$PERL"; then
   then
     AC_MSG_WARN([
 *** The installed version of Perl, $PERL, is too old to use with PostgreSQL.
-*** Perl version 5.8 or later is required, but this is $pgac_perl_version.])
+*** Perl version 5.6 or later is required, but this is $pgac_perl_version.])
     PERL=""
   fi
 fi
