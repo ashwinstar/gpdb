@@ -1123,8 +1123,8 @@ class gpload:
         # Create Temp and External table names. However external table name could 
         # get overwritten with another name later on (see create_external_table_name). 
         self.unique_suffix = '%s_%d'%(datetime.datetime.today().strftime('%Y%m%d_%H%M%S'),os.getpid())
-        self.tempTableName = quote_ident('temp_gpload' + self.unique_suffix)
-        self.extTableName = 'ext_gpload' + self.unique_suffix
+        self.tempTableName = 'temp_gpload' + self.unique_suffix
+        self.extTableName  = 'ext_gpload' + self.unique_suffix
 
         # SQL to run in order to undo our temporary work
         self.cleanupSql = []
@@ -2109,7 +2109,7 @@ class gpload:
             if len(resultList) > 0:
                 
                 # found an external table to reuse. no need to create one. we're done here.
-                self.extTableName = quote_ident((resultList[0])[0])
+                self.extTableName = (resultList[0])[0]
                 self.log(self.INFO, "reusing external table %s" % self.extTableName)
                 return
             
@@ -2117,7 +2117,7 @@ class gpload:
             # name and issue a CREATE EXTERNAL TABLE on it. Hopefully we can use it next time
             # around
 
-            self.extTableName = quote_ident("ext_gpload_reusable_%s_created_on_%s" % (shortTableName, self.unique_suffix))
+            self.extTableName = "ext_gpload_reusable_%s_created_%s" % (shortTableName, self.unique_suffix)
             self.log(self.INFO, "did not find an external table to reuse. creating %s" % self.extTableName)
         
         
@@ -2190,14 +2190,14 @@ class gpload:
             shortTableName = shortname(tableName)
             self.log(self.DEBUG, "create_temp_table: %s shortTableName: %s" % (tableName, shortTableName))
 
-            sql = self.get_reuse_temptable_query(tableName, from_cols, distcols)
+            sql = self.get_reuse_temptable_query(shortTableName, from_cols, distcols)
             
             resultList = self.db.query(sql.encode('utf-8')).getresult()
             
             if len(resultList) > 0:
                 
                 # found a temp table to reuse. no need to create one. we're done here.
-                self.tempTableName = quote_ident((resultList[0])[0])
+                self.tempTableName = (resultList[0])[0]
                 self.log(self.INFO, "reusing temp table %s" % self.tempTableName)
                 
                 # truncate it so we don't use old data
@@ -2209,7 +2209,7 @@ class gpload:
             # name and issue a CREATE TABLE on it (without TEMP!). Hopefully we can use it 
             # next time around
 
-            self.tempTableName = quote_ident("temp_gpload_reusable_%s_created_on_%s" % (shortTableName, self.unique_suffix))
+            self.tempTableName = "temp_gpload_reusable_%s_created_%s" % (shortTableName, self.unique_suffix)
             self.log(self.INFO, "did not find a temp table to reuse. creating %s" % self.tempTableName)
         
             # construct a CREATE TABLE statement (without TEMP!)
@@ -2270,7 +2270,7 @@ class gpload:
         if not self.from_cols_from_user:
             cols = filter(lambda a:a[3] == False, cols)
 
-        sql = 'INSERT INTO %s' % quote_ident(dest)
+        sql = 'INSERT INTO %s' % dest
         sql += ' (%s)'%','.join(map(lambda a:a[0], cols))
         sql += ' SELECT %s '%','.join(map(lambda a:a[2], cols))
         sql += ' FROM %s'%self.extTableName
