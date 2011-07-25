@@ -139,18 +139,22 @@ bool
 ExecWorkFile_Rewind(ExecWorkFile *workfile)
 {
 	Assert(workfile != NULL);
+
+	long ret = 0;
 	switch(workfile->fileType)
 	{
 		case BUFFILE:
-			return BufFileSeek((BufFile *)workfile->file, 0, 0L, SEEK_SET);
+			ret = BufFileSeek((BufFile *)workfile->file, 0, 0L, SEEK_SET);
+			/* BufFileSeek returns 0 if everything went OK */
+			return 0 == ret;
 		case BFZ:
 			bfz_append_end((bfz_t *)workfile->file);
 			bfz_scan_begin((bfz_t *)workfile->file);
 			break;
 		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("invalid work file type: %d", workfile->fileType)));
+			ereport(LOG,
+					 (errmsg("invalid work file type: %d", workfile->fileType)));
+			Assert(false);
 	}
 
 	return true;

@@ -910,7 +910,11 @@ ExecHashJoinSaveTuple(PlanState *ps, MemTuple tuple, uint32 hashvalue,
 
 		snprintf(tmpprefix, 50, "HashJoin_Slice%d", currentSliceId);
 		
-		batchside->workfile = ExecWorkFile_Create(tmpprefix, BFZ, gp_workfile_compress_algorithm);
+		/* Allow clients to select BUFFILE
+		 * instead of BFZ using GUC gp_workfile_type_hashjoin */
+		batchside->workfile = ExecWorkFile_Create(tmpprefix,
+				gp_workfile_type_hashjoin,
+				gp_workfile_compress_algorithm);
 		elog(DEBUG1, "create batch file %s with gp_workfile_compress_algorithm=%d",
 			 tmpprefix, gp_workfile_compress_algorithm);
 

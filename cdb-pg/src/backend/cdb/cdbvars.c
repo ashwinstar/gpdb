@@ -317,6 +317,9 @@ bool gp_workfile_checksumming = false;
 bool gp_workfile_faultinject = false;
 int gp_workfile_bytes_to_checksum = 16;
 
+/* The type of work files that HashJoin should use */
+int gp_workfile_type_hashjoin = 0;
+
 /* Gpmon */
 bool gp_enable_gpperfmon = false;
 int gp_gpperfmon_send_interval = 1;

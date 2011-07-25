@@ -142,6 +142,7 @@ extern char *SSLCipherSuites;
  */
 static const char *assign_hashagg_compress_spill_files(const char *newval, bool doit, GucSource source);
 static const char *assign_gp_workfile_compress_algorithm(const char *newval, bool doit, GucSource source);
+static const char *assign_gp_workfile_type_hashjoin(const char *newval, bool doit, GucSource source);
 static const char *assign_log_destination(const char *value,
 					   bool doit, GucSource source);
 
@@ -428,6 +429,7 @@ int	test_appendonly_version_default = AORelationVersion_GetLatest();
  */
 static char *gp_hashagg_compress_spill_files_str;
 static char *gp_workfile_compress_algorithm_str;
+static char *gp_workfile_type_hashjoin_str;
 static char *client_min_messages_str;
 static char *Debug_persistent_print_level_str;
 static char *Debug_persistent_recovery_print_level_str;
@@ -4791,6 +4793,16 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&gp_workfile_compress_algorithm_str,
 		"none", assign_gp_workfile_compress_algorithm, NULL
+	},
+
+	{
+		{"gp_workfile_type_hashjoin", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Specify the type of work files to use for executing hash join plans."),
+			gettext_noop("Valid values are \"BFZ\", \"BUFFILE\"."),
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_workfile_type_hashjoin_str,
+		"bfz", assign_gp_workfile_type_hashjoin, NULL
 	},
 
 	{
@@ -10251,6 +10263,26 @@ assign_gp_workfile_compress_algorithm(const char *newval, bool doit, GucSource s
 	if (doit)
 		gp_workfile_compress_algorithm = i;
 	return newval;				/* OK */
+}
+
+static const char *
+assign_gp_workfile_type_hashjoin(const char * newval, bool doit, GucSource source)
+{
+	ExecWorkFileType newtype = BFZ;
+	if (!pg_strcasecmp(newval, "bfz"))
+	{
+		newtype = BFZ;
+	}
+	else if (!pg_strcasecmp(newval,"buffile"))
+	{
+		newtype = BUFFILE;
+	}
+	else
+		return NULL;
+	if (doit)
+		gp_workfile_type_hashjoin = newtype;
+
+	return newval;
 }
 
 static const char *

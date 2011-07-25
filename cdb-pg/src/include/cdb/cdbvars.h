@@ -968,6 +968,8 @@ extern int gp_workfile_compress_algorithm;
 extern bool gp_workfile_checksumming;
 extern bool gp_workfile_faultinject;
 extern int gp_workfile_bytes_to_checksum;
+/* The type of work files that HashJoin should use */
+extern int gp_workfile_type_hashjoin;
 
 /* Disable logging while creating mapreduce views */
 extern bool gp_mapreduce_define;
