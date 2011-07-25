@@ -158,12 +158,14 @@ PROCESS_QE () {
 				PARA_EXIT $? "Update $PG_HBA for master standby address ${STANDBY_IP}"
 			done
 		fi
-		for QE_IP in "${QE_IP_ARRAY[@]}"
-		do
-			$TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${GP_DIR}/$PG_HBA"
-			PARA_EXIT $? "Update $PG_HBA for segment IP address ${QE_IP}"
-		done
 	fi
+
+	# Add all local IPV4 addresses
+    SEGMENT_IPV4_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTADDRESS "$IFCONFIG $IFCONFIG_TXT |$GREP \"inet \"|$GREP -v \"127.0.0\"|$AWK '{print \\$2}'|$CUT -d: -f2"`)
+    for ADDR in "${SEGMENT_IPV4_LOCAL_ADDRESS_ALL[@]}"
+    do
+        $TRUSTED_SHELL ${GP_HOSTADDRESS} "$ECHO host     all          $USER_NAME         $ADDR/32       trust >> ${GP_DIR}/$PG_HBA"
+    done
 
 	# Add all local IPV6 addresses
 	SEGMENT_IPV6_LOCAL_ADDRESS_ALL=(`$TRUSTED_SHELL $GP_HOSTADDRESS "$IPV6_ADDR_LIST_CMD | $GREP inet6 | $AWK '{print \\$2}' |$CUT -d'/' -f1"`)
@@ -253,8 +255,6 @@ case $TYPE in
 		LOG_MSG "[INFO][$INST_COUNT]:-Command line options passed to utility = $*"
 		TMP_MASTER_IP_ADDRESS=$1;shift	#List of IP addresses for the master instance
 		MASTER_IP_ADDRESS=(`$ECHO $TMP_MASTER_IP_ADDRESS|$TR '~' ' '`)
-		TMP_QE_IP_ARRAY=$1;shift	#List of segment IP addresses
-		QE_IP_ARRAY=(`$ECHO $TMP_QE_IP_ARRAY|$TR '~' ' '`)	
 		TMP_STANDBY_IP_ADDRESS=$1;shift #List of IP addresses for standby master
 		STANDBY_IP_ADDRESS=(`$ECHO $TMP_STANDBY_IP_ADDRESS|$TR '~' ' '`)
 		PROCESS_QE

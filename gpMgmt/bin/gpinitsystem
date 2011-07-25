@@ -787,7 +787,6 @@ CHK_QES () {
     CHECK_LIST=(`$ECHO ${MACHINE_LIST[@]} | $TR ' ' '\n' | $GREP -v "${HOSTNAME}\$" | $SORT | $TR '\n' ' '`)
     for QE_ID in ${CHECK_LIST[@]}
     do
-        GET_IP_ADDRESS 
         CHK_LOCALE_KNOWN $QE_ID
         CHK_OPEN_FILES $GP_HOSTADDRESS
         POSTGRES_VERSION_CHK $GP_HOSTADDRESS
@@ -816,8 +815,6 @@ CHK_QES () {
         fi
     done
 
-    # Clean the IP address array to make sure all are unique
-    QE_IP_ARRAY=(`$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`) 
     # Check to ensure that instance directories do not exist on hosts
     LOG_MSG "[INFO]:-Primary segment instance directory check"
     for I in "${QE_PRIMARY_ARRAY[@]}"
@@ -909,7 +906,6 @@ CHK_SEG () {
     
     # We need QE_ID to be able to re-use some functions.
     QE_ID=$GP_HOSTADDRESS
-    GET_IP_ADDRESS
     CHK_LOCALE_KNOWN $QE_ID
 	CHK_OPEN_FILES $GP_HOSTADDRESS
 	POSTGRES_VERSION_CHK $GP_HOSTADDRESS
@@ -988,14 +984,6 @@ CHK_QES_FROM_INPUTFILE () {
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 		LOG_MSG "[INFO]:-Checking new segment hosts, Completed" 1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-GET_IP_ADDRESS () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	IP_ADDRESSES=(`$TRUSTED_SHELL $QE_ID "$IFCONFIG $IFCONFIG_TXT |$GREP \"inet \"|$GREP -v \"127.0.0\"|$AWK '{print \\$2}'|$CUT -d: -f2|$TR '\n' ' '"`)
-    IPV6_ADDRESSES=(`$TRUSTED_SHELL $QE_ID "$IPV6_ADDR_LIST_CMD |$GREP inet6|$AWK '{print \\$2}' |$CUT -d'/' -f1"`)
-	QE_IP_ARRAY=(${QE_IP_ARRAY[@]} "${IP_ADDRESSES[@]} ${IPV6_ADDRESSES[@]}")
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 POSTGRES_PORT_CHK () {
@@ -1454,7 +1442,7 @@ CREATE_QES_PRIMARY () {
             fi
 
 			$GPCREATESEG $FLAG $$ 1 $I IS_PRIMARY $HAS_MIRRORS_OPTION $INST_COUNT  $LOG_FILE \
-`$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
+`$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 		done
@@ -1501,7 +1489,7 @@ CREATE_QES_MIRROR () {
 		fi
 
 		$GPCREATESEG $FLAG $$ 1 ${MIRRORS_ORDERED_BY_CONTENT_ID[$I_INDEX]} ${PRIMARIES_ORDERED_BY_CONTENT_ID[$I_INDEX]} no $INST_COUNT  $LOG_FILE \
-`$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` `$ECHO ${QE_IP_ARRAY[@]}|$TR ' ' '~'` \
+`$ECHO ${MASTER_IP_ADDRESS[@]}|$TR ' ' '~'` \
 `$ECHO ${STANDBY_IP_ADDRESS[@]}|$TR ' ' '~'` &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
