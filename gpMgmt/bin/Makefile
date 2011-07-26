@@ -184,7 +184,8 @@ PYTHON_FILES=`grep -l --exclude=Makefile --exclude=gplogfilter "/bin/env python"
 checkcode: pylint
 	@echo "Running pylint on management scripts..."
 	@PYTHONPATH=$(PYTHONPATH):$(PYLINT_PYTHONPATH) $(PYLIB_SRC)/$(PYLINT_DIR)/bin/pylint -i y $(PYTHON_FILES) > $(SRC)/../pylint.txt || true
-
+	@echo -n "pylint_score=" > $(SRC)/../pylint_score.properties
+	@grep "Your code has been rated at" $(SRC)/../pylint.txt | sed -e "s|Your .* \(.*\)/.*|\1|" >> $(SRC)/../pylint_score.properties
 
 check:
 	@echo "Running unit tests..."
