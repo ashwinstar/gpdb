@@ -6,6 +6,22 @@ else
     GPHOME_PATH="\`pwd\`"
 fi
 
+if [ "$2" = "ISO" ] ; then
+	cat <<-EOF
+		if [ "\${BASH_SOURCE:0:1}" == "/" ]
+		then
+		    GPHOME=\`dirname "\$BASH_SOURCE"\`
+		else
+		    GPHOME=\`pwd\`/\`dirname "\$BASH_SOURCE"\`
+		fi
+	EOF
+else
+	cat <<-EOF
+		GPHOME=${GPHOME_PATH}
+	EOF
+fi
+
+
 PLAT=`uname -s`
 if [ $? -ne 0 ] ; then
     echo "Error executing uname -s"
@@ -13,7 +29,7 @@ if [ $? -ne 0 ] ; then
 fi
 
 cat << EOF
-GPHOME=${GPHOME_PATH}
+
 # Replace with symlink path if it is present and correct
 if [ -h \${GPHOME}/../greenplum-db ]; then
     GPHOME_BY_SYMLINK=\`(cd \${GPHOME}/../greenplum-db/ && pwd -P)\`

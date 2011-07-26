@@ -380,7 +380,11 @@ endif
 define MAKE_ISO
 	@which mkisofs > /dev/null 2>&1 || \
 	 (echo "cannot find mkisofs in your path, unable to build ISO"; exit 1)
-	mkisofs -r -J -iso-level 4 -f -o $(INSTLOC)/../greenplum-db.iso $(INSTLOC)
+	mv $(INSTLOC)/greenplum_path.sh $(INSTLOC)/../greenplum_path.sh.orig
+	unset LIBPATH; \
+	  releng/generate-greenplum-path.sh $(INSTLOC) ISO > $(INSTLOC)/greenplum_path.sh
+    mkisofs -r -J -v -iso-level 4 -f -o $(INSTLOC)/../greenplum-db-$(MPP_ARCH).iso $(INSTLOC)
+	mv $(INSTLOC)/../greenplum_path.sh.orig $(INSTLOC)/greenplum_path.sh
 endef
 
 #---------------------------------------------------------------------
