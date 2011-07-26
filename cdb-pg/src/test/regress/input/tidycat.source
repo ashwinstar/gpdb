@@ -194,17 +194,22 @@ order by proname;
 -- m/checkthisproname\s+\|\s+tidycat\./
 -- s/tidycat\.//
 --
+-- m/checkthisproname\s+\|.*\|\s+fake\_/
+-- s/fake\_//
+--
 -- end_matchsubs
 
 -- start_equiv
 
-select 'checkthisproname', oid::regprocedure from pg_proc pp
+select 'checkthisproname', oid::regprocedure, prorettype::regtype 
+from pg_proc pp
 where
 pp.pronamespace =
 (select oid from pg_namespace where nspname = 'pg_catalog')
 and oid < 10000;
 
-select 'checkthisproname', oid::regprocedure from pg_proc pp
+select 'checkthisproname', oid::regprocedure, prorettype::regtype 
+from pg_proc pp
 where
 pp.pronamespace =
 (select oid from pg_namespace where nspname = 'tidycat');
