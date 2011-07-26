@@ -3531,6 +3531,9 @@ make_subqueryscan(List *qptlist,
 	plan->qual = qpqual;
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
+	plan->extParam = bms_copy(subplan->extParam);
+	plan->allParam = bms_copy(subplan->allParam);
+
 	/*
 	 * Note that, in most scan nodes, scanrelid refers to an entry in the rtable of the 
 	 * containing plan; in a subqueryscan node, the containing plan is the higher
@@ -4344,6 +4347,9 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 	plan->targetlist = tlist;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
+
+	plan->extParam = bms_copy(lefttree->extParam);
+	plan->allParam = bms_copy(lefttree->allParam);
 
 	return node;
 }
