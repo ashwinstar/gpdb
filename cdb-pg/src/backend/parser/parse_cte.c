@@ -65,7 +65,7 @@ transformWithClause(ParseState *pstate, WithClause *withClause)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_DUPLICATE_ALIAS),
-						 errmsg("query name \%s\" in WITH clause must not be specified more than once",
+						 errmsg("query name \"%s\" in WITH clause must not be specified more than once",
 								cte2->ctename),
 						 parser_errposition(pstate, cte2->location)));
 			}
