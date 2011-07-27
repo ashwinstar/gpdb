@@ -1282,8 +1282,9 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 		pEntry->txfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if (pEntry->txfd == -1)
 			continue;
-		elog(DEBUG1,"pEntry->txfd %d socket ai_family=%d, ai_socktype %d, ai_protocol %d",pEntry->txfd,rp->ai_family,rp->ai_socktype, rp->ai_protocol);
+		pEntry->txfd_family = rp->ai_family;
 
+		elog(DEBUG1,"pEntry->txfd %d socket ai_family=%d, ai_socktype %d, ai_protocol %d",pEntry->txfd,rp->ai_family,rp->ai_socktype, rp->ai_protocol);
 
 		fun = "fcntl(O_NONBLOCK)";
 		if (!pg_set_noblock(pEntry->txfd))
@@ -1418,11 +1419,19 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 					sizeof(conn->remoteHostAndPort));
 
 
-/* TEMP */
 
 	Assert(conn->peer.ss_family == AF_INET || conn->peer.ss_family == AF_INET6 );
 	if (pEntry->txfd <= 0)
 	{
+		/* TEMP */
+
+		/*
+		 * If we get here, we deferred creating the socket until now, because now is the
+		 * first time we know the address family of the remote side.
+		 *
+		 * Currently, we don't use this code... We just create the socket up front, using AF_INET6
+		 * if it *might* be IPv6, since we can send to either IPv4 or IPv6 addresses through that kind of socket.
+		 */
 		struct sockaddr saddr;
 
 		pEntry->txfd = socket(conn->peer.ss_family, SOCK_DGRAM, 0);
@@ -1436,27 +1445,44 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 			Assert("bind failed"==0);
 		/* Save the txport we are using.  Just for debugging, I think */
 		pEntry->txport = getPortFromSocket(pEntry->txfd);
+		/* TEMP */
 	}
 	else
-	{
-		struct sockaddr_storage source_addr;
-		socklen_t source_addr_len;
-		MemSet(&source_addr, 0, sizeof(source_addr));
-		source_addr_len = sizeof(source_addr);
 
-		if (getsockname(pEntry->txfd, (struct sockaddr *) &source_addr, &source_addr_len) == -1)
-			Assert("getsockname failed"==0);
-		if (source_addr.ss_family != conn->peer.ss_family)
+	{
+#ifdef USE_ASSERT_CHECKING
 		{
-			if (source_addr.ss_family == AF_INET6)
+			struct sockaddr_storage source_addr;
+			socklen_t source_addr_len;
+			MemSet(&source_addr, 0, sizeof(source_addr));
+			source_addr_len = sizeof(source_addr);
+
+
+			if (getsockname(pEntry->txfd, (struct sockaddr *) &source_addr, &source_addr_len) == -1)
+				Assert("getsockname failed"==0);
+			Assert(pEntry->txfd_family == source_addr.ss_family);
+		}
+#endif
+		/*
+		 * If the socket was created with a different address family than the place we
+		 * are sending to, we might need to do something special.
+		 */
+		if (pEntry->txfd_family != conn->peer.ss_family)
+		{
+			/*
+			 * If the socket was created AF_INET6, but the address we want to send to is IPv4 (AF_INET),
+			 * we might need to change the address format.  On Linux, it isn't necessary:  glibc automatically
+			 * handles this.  But on MAC OSX and Solaris, we need to convert the IPv4 address to an
+			 * V4-MAPPED address in AF_INET6 format.
+			 */
+			if (pEntry->txfd_family == AF_INET6)
 			{
 				struct sockaddr_storage temp;
 				const struct sockaddr_in *in = (const struct sockaddr_in *)&conn->peer;
 				struct sockaddr_in6 *in6_new = (struct sockaddr_in6 *)&temp;
 				memset(&temp, 0, sizeof(temp));
 
-				elog(DEBUG1, "We are inet6, remote is inet");
-
+				elog(DEBUG2, "We are inet6, remote is inet.  Converting to v4 mapped address.");
 
 				/* Construct a V4-to-6 mapped address.  */
 				temp.ss_family = AF_INET6;
@@ -1474,19 +1500,21 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 				/* copy it back */
 				memcpy(&conn->peer,&temp,sizeof(struct sockaddr_in6));
 				conn->peer_len = sizeof(struct sockaddr_in6);
-				//Assert(IN6_IS_ADDR_V4MAPPED(&conn->peer.sin6_addr));
-				//format_sockaddr((struct sockaddr *)&conn->peer, conn->remoteHostAndPort,
-				//					sizeof(conn->remoteHostAndPort));
-				//elog(DEBUG1,"new sockaddr %s",conn->remoteHostAndPort);
 			}
 			else
-				elog(WARNING, "We are inet, remote is inet6 ");
+			{
+				/*
+				 * If we get here, something is really wrong.  We created the socket as IPv4-only (AF_INET),
+				 * but the address we are trying to send to is IPv6.  It's possible we could have a V4-mapped
+				 * address that we could convert to an IPv4 address, but there is currently no code path where
+				 * that could happen.  So this must be an error.
+				 */
+				elog(ERROR, "Trying to use an IPv4 (AF_INET) socket to send to an IPv6 address");
+			}
 		}
-		elog(DEBUG1, "reusing socket for tx %d ",pEntry->txfd);
-
 	}
 
-/* TEMP */
+
 
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 		ereport(DEBUG1, (errmsg("Interconnect connecting to seg%d slice%d %s "
@@ -2223,6 +2251,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 
 		closesocket(pEntry->txfd);
 		pEntry->txfd = -1;
+		pEntry->txfd_family = 0;
 
 		for (i = 0; i < pEntry->numConns; i++)
 		{
