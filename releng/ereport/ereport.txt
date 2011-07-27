@@ -4888,76 +4888,76 @@ iaag: icxudp:00001133:  errdetail("%m%s", fun)));
 iaag: icxudp:00001145:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
 iaag: icxudp:00001146:  errmsg("Interconnect Error: Could not get port from socket."), 
 iaag: icxudp:00001147:  errdetail("%m"))); 
-iaag: icxudp:00001320:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001321:  errmsg("Interconnect Error: Could not set up listener socket."), 
-iaag: icxudp:00001322:  errdetail("%m%s", fun))); 
-iaag: icxudp:00001363:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001364:  errmsg("Interconnect Error: Could not parse remote listener" 
-iaag: icxudp:00001365:  "address: '%s' port '%d': %s", listenerAddr,listenerPort,gai_strerror(ret)), 
-iaag: icxudp:00001366:  errdetail("getaddrinfo() unable to parse address: '%s'", 
-iaag: icxudp:00001367:  listenerAddr))); 
-iaag: icxudp:00001529:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001530:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
-iaag: icxudp:00001531:  errdetail("%m %s", "malloc"))); 
-iaag: icxudp:00001564:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001565:  errmsg("Interconnect error setting up outgoing " 
-iaag: icxudp:00001566:  "connection."), 
-iaag: icxudp:00001567:  errdetail("%m%s", "sendto"))); 
-iaag: icxudp:00001716:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-iaag: icxudp:00001717:  errmsg("Setup UDP interconnect failed: out of memory"))); 
-iaag: icxudp:00001762:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001763:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
-iaag: icxudp:00001764:  errdetail("%m%s", "malloc"))); 
-iaag: icxudp:00001878:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001879:  errmsg("Interconnect error: %m%s", "poll"))); 
-iaag: icxudp:00001904:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001905:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
-iaag: icxudp:00001909:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001910:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
-iaag: icxudp:00001983:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00001984:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00002095:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002096:  errmsg("Interconnect timeout: Unable to " 
-iaag: icxudp:00002097:  "complete setup of all connections " 
-iaag: icxudp:00002098:  "within time limit."), 
-iaag: icxudp:00002099:  errdetail("Completed %d of %d incoming and " 
-iaag: icxudp:00002100:  "%d of %d outgoing connections. " 
-iaag: icxudp:00002101:  "gp_interconnect_setup_timeout = %d " 
-iaag: icxudp:00002102:  "seconds.", 
-iaag: icxudp:00002103:  incoming_count, expectedTotalIncoming, 
-iaag: icxudp:00002104:  outgoing_count, expectedTotalOutgoing, 
-iaag: icxudp:00002105:  interconnect_setup_timeout))); 
-iaag: icxudp:00002479:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002480:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
-iaag: icxudp:00002588:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002589:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
-iaag: icxudp:00002591:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002592:  errmsg("Interconnect error master lost contact with client (recv)"))); 
-iaag: icxudp:00002599:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002600:  errmsg("Interconnect error: UDP-IC out of memory."))); 
-iaag: icxudp:00002813:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002814:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002815:  errdetail("During recvfrom() call.\n"))); 
-iaag: icxudp:00002828:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00002829:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00002830:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
-iaag: icxudp:00003004:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00003005:  errmsg("Interconnect error writing an outgoing packet: %m"), 
-iaag: icxudp:00003006:  errdetail("error during sendto() call (error:%d).\n" 
-iaag: icxudp:00003007:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00003008:  errno, conn->remoteContentId, 
-iaag: icxudp:00003009:  conn->remoteHostAndPort))); 
-iaag: icxudp:00003015:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00003016:  errmsg("Interconnect error writing an outgoing packet"), 
-iaag: icxudp:00003017:  errdetail("short transmit during sendto() call.\n" 
-iaag: icxudp:00003018:  "For Remote Connection: contentId=%d at %s", 
-iaag: icxudp:00003019:  conn->remoteContentId, 
-iaag: icxudp:00003020:  conn->remoteHostAndPort))); 
-iaag: icxudp:00003076:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00003077:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
-iaag: icxudp:00003093:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-iaag: icxudp:00003094:  errmsg("Interconnect error waiting for peer ack"), 
-iaag: icxudp:00003095:  errdetail("During poll() call.\n"))); 
+iaag: icxudp:00001321:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001322:  errmsg("Interconnect Error: Could not set up listener socket."), 
+iaag: icxudp:00001323:  errdetail("%m%s", fun))); 
+iaag: icxudp:00001364:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001365:  errmsg("Interconnect Error: Could not parse remote listener" 
+iaag: icxudp:00001366:  "address: '%s' port '%d': %s", listenerAddr,listenerPort,gai_strerror(ret)), 
+iaag: icxudp:00001367:  errdetail("getaddrinfo() unable to parse address: '%s'", 
+iaag: icxudp:00001368:  listenerAddr))); 
+iaag: icxudp:00001557:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001558:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
+iaag: icxudp:00001559:  errdetail("%m %s", "malloc"))); 
+iaag: icxudp:00001592:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001593:  errmsg("Interconnect error setting up outgoing " 
+iaag: icxudp:00001594:  "connection."), 
+iaag: icxudp:00001595:  errdetail("%m%s", "sendto"))); 
+iaag: icxudp:00001744:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+iaag: icxudp:00001745:  errmsg("Setup UDP interconnect failed: out of memory"))); 
+iaag: icxudp:00001790:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001791:  errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."), 
+iaag: icxudp:00001792:  errdetail("%m%s", "malloc"))); 
+iaag: icxudp:00001906:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001907:  errmsg("Interconnect error: %m%s", "poll"))); 
+iaag: icxudp:00001932:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001933:  errmsg("Interconnect error: %m%s", "recvfrom"))); 
+iaag: icxudp:00001937:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00001938:  errmsg("Interconnect error: %m%s short ack receive!", "recvfrom"))); 
+iaag: icxudp:00002011:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002012:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00002123:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002124:  errmsg("Interconnect timeout: Unable to " 
+iaag: icxudp:00002125:  "complete setup of all connections " 
+iaag: icxudp:00002126:  "within time limit."), 
+iaag: icxudp:00002127:  errdetail("Completed %d of %d incoming and " 
+iaag: icxudp:00002128:  "%d of %d outgoing connections. " 
+iaag: icxudp:00002129:  "gp_interconnect_setup_timeout = %d " 
+iaag: icxudp:00002130:  "seconds.", 
+iaag: icxudp:00002131:  incoming_count, expectedTotalIncoming, 
+iaag: icxudp:00002132:  outgoing_count, expectedTotalOutgoing, 
+iaag: icxudp:00002133:  interconnect_setup_timeout))); 
+iaag: icxudp:00002508:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002509:  errmsg(CDB_MOTION_LOST_CONTACT_STRING))); 
+iaag: icxudp:00002617:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002618:  errmsg("Interconnect error segment lost contact with master (recv)"))); 
+iaag: icxudp:00002620:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002621:  errmsg("Interconnect error master lost contact with client (recv)"))); 
+iaag: icxudp:00002628:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002629:  errmsg("Interconnect error: UDP-IC out of memory."))); 
+iaag: icxudp:00002842:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002843:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002844:  errdetail("During recvfrom() call.\n"))); 
+iaag: icxudp:00002857:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00002858:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00002859:  errdetail("short read during recvfrom() call. (%d)\n", n))); 
+iaag: icxudp:00003033:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00003034:  errmsg("Interconnect error writing an outgoing packet: %m"), 
+iaag: icxudp:00003035:  errdetail("error during sendto() call (error:%d).\n" 
+iaag: icxudp:00003036:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00003037:  errno, conn->remoteContentId, 
+iaag: icxudp:00003038:  conn->remoteHostAndPort))); 
+iaag: icxudp:00003044:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00003045:  errmsg("Interconnect error writing an outgoing packet"), 
+iaag: icxudp:00003046:  errdetail("short transmit during sendto() call.\n" 
+iaag: icxudp:00003047:  "For Remote Connection: contentId=%d at %s", 
+iaag: icxudp:00003048:  conn->remoteContentId, 
+iaag: icxudp:00003049:  conn->remoteHostAndPort))); 
+iaag: icxudp:00003105:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00003106:  errmsg("Interconnect error segment lost contact with master (xmit)"))); 
+iaag: icxudp:00003122:  ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+iaag: icxudp:00003123:  errmsg("Interconnect error waiting for peer ack"), 
+iaag: icxudp:00003124:  errdetail("During poll() call.\n"))); 
 aaaaa GP_IGNORE: taag: tupser - ./backend/cdb/motion/tupser.c
 taag: tupser:00000086:  ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION), 
 taag: tupser:00000087:  errmsg("deserialize data underflow"))); 
@@ -12032,7 +12032,7 @@ paaj: parsexcte:00000038:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 paaj: parsexcte:00000039:  errmsg("RECURSIVE option in WITH clause is not supported"))); 
 paaj: parsexcte:00000066:  ereport(ERROR, 
 paaj: parsexcte:00000067:  (errcode(ERRCODE_DUPLICATE_ALIAS), 
-paaj: parsexcte:00000068:  errmsg("query name \%s\" in WITH clause must not be specified more than once", 
+paaj: parsexcte:00000068:  errmsg("query name \"%s\" in WITH clause must not be specified more than once", 
 paaj: parsexcte:00000069:  cte2->ctename), 
 paaj: parsexcte:00000070:  parser_errposition(pstate, cte2->location))); 
 paaj: parsexcte:00000176:  ereport(ERROR, 
