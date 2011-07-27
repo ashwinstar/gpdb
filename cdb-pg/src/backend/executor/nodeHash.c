@@ -891,7 +891,7 @@ ExecHashGetHashValue(HashJoinTable hashtable,
 			}
 			/* else, leave hashkey unmodified, equivalent to hashcode 0 */
 		}
-		else if (!result)
+		else if (result)
 		{
 			/* Compute the hash function */
 			uint32		hkey;
