@@ -184,6 +184,7 @@ typedef struct ChunkTransportStateEntry
     int         outgoingPortRetryCount;
 
 	int			txfd;
+	int			txfd_family;
 	unsigned short txport;
 
 	bool		sendingEos;
