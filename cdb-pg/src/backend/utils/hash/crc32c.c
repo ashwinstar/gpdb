@@ -662,6 +662,9 @@ CRC32CFunctionPtr crc32c = &crc32cDetectBestMethod;
  * If not x86, we don't have hardware crc.  We might even not be little-endian.
  * play it safe, and use the stupid slow but 100% portable code.
  */
+extern pg_crc32
+crc32cSimple(pg_crc32 crc, const void* data, int length);
+
 pg_crc32
 crc32cSimple(pg_crc32 crc, const void* data, int length)
 {
