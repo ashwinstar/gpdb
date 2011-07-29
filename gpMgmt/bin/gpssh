@@ -67,7 +67,7 @@ def usage(exitarg):
 
 #############
 def print_version():
-    print '%s version $Revision$' % GV.script_name
+    print '%s version main build 26138' % GV.script_name
     sys.exit(0)
 
 #############
@@ -94,11 +94,12 @@ def parseCommandLine():
 def sessionCleanup():
     while True:
         try:
+            return_code = 0
             if GV.session: 
                 if GV.session.verbose: print '\n[Cleanup...]'; 
-                GV.session.close()
+                return_code = GV.session.close()
             GV.session = None
-            break
+            return return_code
         except KeyboardInterrupt:
             pass
 
@@ -202,8 +203,8 @@ try:
     else: #Otherwise, implement an interactive session
         interactive()
     
-    sessionCleanup()
-    sys.exit(0)
+    return_code = sessionCleanup()
+    sys.exit(return_code)
 
 except KeyboardInterrupt:
     sessionCleanup()

@@ -177,7 +177,7 @@ class Session(cmd.Cmd):
                 raise self.SessionError('Error logging into host %s' % p.x_peer)
 
     def close(self):
-        self.clean()
+        return self.clean()
     
     def reset(self):
         '''reads from all the ssh connections to make sure we dont have any pending cruft'''
@@ -185,8 +185,9 @@ class Session(cmd.Cmd):
             s.readlines()
                 
     def clean(self):
-        self.closePxsshList(self.pxssh)
+        net_return_code = self.closePxsshList(self.pxssh)
         self.pxssh = []
+        return net_return_code
 
     def emptyline(self):
         pass
@@ -262,11 +263,18 @@ class Session(cmd.Cmd):
                     print (self.peerStringFormat() % s.x_peer), line
     
     def closePxsshList(self,list):
-        def closePxsshOne(p): p.close(force = True)
+        lock = threading.Lock()
+        return_codes = [0]
+        def closePxsshOne(p, return_codes): 
+            p.logout()
+            p.close()
+            with lock:
+                return_codes.append(p.exitstatus)
         th = []
         for p in list:
-            t = threading.Thread(target=closePxsshOne, args=(p,))
+            t = threading.Thread(target=closePxsshOne, args=(p, return_codes))
             t.start()
             th.append(t)
         for t in th:
             t.join() 
+        return max(return_codes)
