@@ -160,14 +160,43 @@ AORelCreateHashEntry(Oid relid)
 	int				total_segfiles = 0;
 	AORelHashEntry	aoHashEntry = NULL;
 	Relation		aorel;
+	AppendOnlyEntry *aoEntry;
 
 	Insist(Gp_role == GP_ROLE_DISPATCH);
 
+	/*
+	 * Momentarily release the AOSegFileLock so we can safely access the system catalog
+	 * (i.e. without risking a deadlock).
+	 */
+	LWLockRelease(AOSegFileLock);
+
+	/*
+	 * Now get all the segment files information for this relation
+	 * from the QD aoseg table. then update our segment file array
+	 * in this hash entry.
+	 */
+	aorel = heap_open(relid, RowExclusiveLock);
+	aoEntry = GetAppendOnlyEntry(relid);
+	allfsinfo = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
+	pfree(aoEntry);
+	heap_close(aorel, RowExclusiveLock);
+
+	/*
+	 * Re-acquire AOSegFileLock.
+	 *
+	 * Note: Another session may have raced-in and created it.
+	 */
+	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
+	
 	aoHashEntry = AppendOnlyRelHashNew(relid, &exists);
 
 	/* Does an entry for this relation exists already? exit early */
 	if(exists)
+	{
+		if(allfsinfo)
+			pfree(allfsinfo);
 		return true;
+	}
 
 	/*
 	 * If the new aoHashEntry pointer is NULL, then we are out of allowed # of
@@ -208,18 +237,6 @@ AORelCreateHashEntry(Oid relid)
 	aoHashEntry->relsegfiles[RESERVED_SEGNO].tupcount = 0;
 	aoHashEntry->relsegfiles[RESERVED_SEGNO].tupsadded = 0;
 
-	/*
-	 * Now get all the segment files information for this relation
-	 * from the QD aoseg table. then update our segment file array
-	 * in this hash entry.
-	 */
-	aorel = heap_open(relid, RowExclusiveLock);
-	{
-		AppendOnlyEntry *aoEntry = GetAppendOnlyEntry(relid);
-		allfsinfo = GetAllFileSegInfo(aorel, aoEntry, SnapshotNow, &total_segfiles);
-		pfree(aoEntry);
-	}
-	heap_close(aorel, RowExclusiveLock);
 
 	/*
 	 * update the tupcount of each 'segment' file in the append
@@ -591,20 +608,33 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 
 			LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
 
-			/* create a hash entry for this relation if one doesn't yet exist */
-			if(!AORelCreateHashEntry(relid))
+			/*
+			 * The most common case is likely the entry exists already.
+			 */
+			aoentry = AORelLookupHashEntry(relid);
+			if (aoentry == NULL)
 			{
-				LWLockRelease(AOSegFileLock);
-				ereport(ERROR, (errmsg("can't have more than %d different append-only "
-						    "tables open for writing data at the same time. "
-						    "if tables are heavily partitioned or if your "
-						    "workload requires, increase the value of "
-						    "max_appendonly_tables and retry",
-						    MaxAppendOnlyTables)));
-			}
+				/* 
+				 * We need to create a hash entry for this relation.
+				 *
+				 * However, we need to access the pg_appendonly system catalog
+				 * table, so AORelCreateHashEntry will carefully release the AOSegFileLock, 
+				 * gather the information, and then re-acquire AOSegFileLock.
+				 */
+				if(!AORelCreateHashEntry(relid))
+				{
+					LWLockRelease(AOSegFileLock);
+					ereport(ERROR, (errmsg("can't have more than %d different append-only "
+							    "tables open for writing data at the same time. "
+							    "if tables are heavily partitioned or if your "
+							    "workload requires, increase the value of "
+							    "max_appendonly_tables and retry",
+							    MaxAppendOnlyTables)));
+				}
 
-			/* get the hash entry for this relation (must exist) */
-			aoentry = AORelGetHashEntry(relid);
+				/* get the hash entry for this relation (must exist) */
+				aoentry = AORelGetHashEntry(relid);
+			}
 			aoentry->txns_using_rel++;
 
 			if (Debug_appendonly_print_segfile_choice)
@@ -670,9 +700,12 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			}
 
 			if(!segno_chosen)
+			{
+				LWLockRelease(AOSegFileLock);
 				ereport(ERROR, (errmsg("could not find segment file to use for "
 									   "inserting into relation %s (%d).", 
 									   get_rel_name(relid), relid)));
+			}
 				
 			Insist(usesegno != RESERVED_SEGNO);
 
