@@ -65,9 +65,9 @@ opt_write_test:
 	fi
 
 /opt/releng/apache-ant: opt_write_test
-	@echo "Sync Ivy project dependency management framework ..."
-	@curl --silent http://releng.sanmateo.greenplum.com/tools/apache-ant.1.8.1.tar.gz -o /tmp/apache-ant.1.8.1.tar.gz
-	@( [ ! -d /opt/releng ] && mkdir -p /opt/releng; \
+	echo "Sync Ivy project dependency management framework ..."
+	curl --silent http://releng.sanmateo.greenplum.com/tools/apache-ant.1.8.1.tar.gz -o /tmp/apache-ant.1.8.1.tar.gz
+	( umask 002; [ ! -d /opt/releng ] && mkdir -p /opt/releng; \
 	   cd /opt/releng; \
 	   gunzip -qc /tmp/apache-ant.1.8.1.tar.gz | tar xf -; \
 	   rm -f /tmp/apache-ant.1.8.1.tar.gz; \
@@ -75,7 +75,7 @@ opt_write_test:
 
 sync_tools: opt_write_test /opt/releng/apache-ant
 	@cd releng/make/dependencies; \
-	 /opt/releng/apache-ant/bin/ant -DBLD_ARCH=$(BLD_ARCH) resolve; \
+	 (umask 002; /opt/releng/apache-ant/bin/ant -DBLD_ARCH=$(BLD_ARCH) resolve); \
 	 echo "Resolve finished"
 
 clean_tools: opt_write_test
