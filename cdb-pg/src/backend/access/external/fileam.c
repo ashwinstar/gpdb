@@ -74,7 +74,8 @@ static void FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 										 CopyState 				pstate,
 										 FormatterData*			formatter, 
 										 Relation 				rel, 
-										 TupleDesc 				tupDesc);
+										 TupleDesc 				tupDesc,
+										 FmgrInfo			   *convFuncs);
 static void open_external_readable_source(FileScanDesc scan);
 static void open_external_writable_source(ExternalInsertDesc extInsertDesc);
 static int	external_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
@@ -633,7 +634,8 @@ external_insert(ExternalInsertDesc extInsertDesc, HeapTuple instup)
 									 pstate,
 									 formatter, 
 									 extInsertDesc->ext_rel, 
-									 extInsertDesc->ext_tupDesc);		
+									 extInsertDesc->ext_tupDesc,
+									 pstate->out_functions);		
 		
 		/* Mark the correct record type in the passed tuple */
 		HeapTupleHeaderSetTypeId(instup->t_data, tupDesc->tdtypeid);
@@ -1081,7 +1083,8 @@ externalgettup_custom(FileScanDesc scan)
 												 pstate,
 												 formatter, 
 												 scan->fs_rd, 
-												 scan->fs_tupDesc);
+												 scan->fs_tupDesc,
+												 scan->in_functions);
 
 					d = FunctionCallInvoke(&fcinfo);
 					
@@ -1503,9 +1506,10 @@ static void
 FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo, 
 							 int					nArgs,
 							 CopyState 				pstate,
-							 FormatterData*			formatter, 
+							 FormatterData		   *formatter, 
 							 Relation 				rel, 
-							 TupleDesc 				tupDesc)
+							 TupleDesc 				tupDesc,
+							 FmgrInfo			   *convFuncs)
 {
 	formatter->type = T_FormatterData;
 	formatter->fmt_relation = rel;
@@ -1513,6 +1517,7 @@ FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 	formatter->fmt_notification = FMT_NONE; 
 	formatter->fmt_badrow_len = 0;
 	formatter->fmt_args = pstate->custom_formatter_params;
+	formatter->fmt_conv_funcs = convFuncs;
 	
 	InitFunctionCallInfoData(/* FunctionCallInfoData */ *fcinfo, 
 							 /* FmgrInfo */ pstate->custom_formatter_func, 
