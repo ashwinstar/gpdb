@@ -701,6 +701,7 @@ enable_thread_safety
 INCLUDES
 enable_connectemc
 enable_email
+enable_gphdfs
 enable_snmp
 autodepend
 TAS
@@ -804,6 +805,7 @@ enable_debugbreak
 enable_debugntuplestore
 enable_testutils
 enable_snmp
+enable_gphdfs
 enable_email
 enable_connectemc
 enable_thread_safety
@@ -1473,6 +1475,7 @@ build with coverage testing instrumentation
   --enable-ntuplestore      enable debug_ntuplestore (for debugging)
   --enable-testutils        enable testing utilities
   --enable-snmp        enable snmp for MIB and alerts via TRAP/INFORM
+  --enable-gphdfs        enables GPHDFS support
   --enable-email        enable email alerts
   --enable-connectemc     enable connect emc support
   --disable-thread-safety  Do not make client libraries thread-safe
@@ -4860,8 +4863,41 @@ else
 fi
 
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $enable_snmp" >&5
-$as_echo "$enable_snmp" >&6; }
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: checking whether to build with snmp... $enable_snmp" >&5
+$as_echo "checking whether to build with snmp... $enable_snmp" >&6; }
+
+
+#
+# --enable-gphdfs enables GPHDFS support
+#
+
+pgac_args="$pgac_args enable_gphdfs"
+
+# Check whether --enable-gphdfs was given.
+if test "${enable_gphdfs+set}" = set; then :
+  enableval=$enable_gphdfs;
+  case $enableval in
+    yes)
+
+$as_echo "#define USE_GPHDFS 1" >>confdefs.h
+
+      ;;
+    no)
+      :
+      ;;
+    *)
+      as_fn_error $? "no argument expected for --enable-gphdfs option" "$LINENO" 5
+      ;;
+  esac
+
+else
+  enable_gphdfs=no
+
+fi
+
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: checking whether to build with gphdfs...$enable_gphdfs" >&5
+$as_echo "checking whether to build with gphdfs...$enable_gphdfs" >&6; }
 
 
 #
@@ -4893,8 +4929,8 @@ else
 fi
 
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $enable_email" >&5
-$as_echo "$enable_email" >&6; }
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: checking whether to build with email...$enable_email" >&5
+$as_echo "checking whether to build with email...$enable_email" >&6; }
 
 
 #
@@ -4926,8 +4962,8 @@ else
 fi
 
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $enable_connectemc" >&5
-$as_echo "$enable_connectemc" >&6; }
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: checking whether to build with connectemc... $enable_connectemc" >&5
+$as_echo "checking whether to build with connectemc... $enable_connectemc" >&6; }
 
 #
 # Include directories

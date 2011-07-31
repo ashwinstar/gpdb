@@ -500,8 +500,17 @@ PGAC_ARG_BOOL(enable, testutils, no, [  --enable-testutils        enable testing
 PGAC_ARG_BOOL(enable, snmp, no, [  --enable-snmp        enable snmp for MIB and alerts via TRAP/INFORM],
               [AC_DEFINE([USE_SNMP], 1, 
                          [Define to 1 to build with snmp capabilities. (--enable-snmp)])])
-AC_MSG_RESULT([$enable_snmp])
+AC_MSG_RESULT([checking whether to build with snmp... $enable_snmp])
 AC_SUBST(enable_snmp)
+
+#
+# --enable-gphdfs enables GPHDFS support
+#
+PGAC_ARG_BOOL(enable, gphdfs, no, [  --enable-gphdfs        enables GPHDFS support],
+              [AC_DEFINE([USE_GPHDFS], 1, 
+                         [Define to 1 to build with gphdfs capabilities. (--enable-gphdfs)])])
+AC_MSG_RESULT([checking whether to build with gphdfs...$enable_gphdfs])
+AC_SUBST(enable_gphdfs)
 
 #
 # --enable-email enables email alerts
@@ -509,7 +518,7 @@ AC_SUBST(enable_snmp)
 PGAC_ARG_BOOL(enable, email, no,  [  --enable-email        enable email alerts],
               [AC_DEFINE([USE_EMAIL], 1,
                          [Define to 1 to build with email alert capabilities. (--enable-email)])])
-AC_MSG_RESULT([$enable_email])
+AC_MSG_RESULT([checking whether to build with email...$enable_email])
 AC_SUBST(enable_email)
 
 #
@@ -518,7 +527,7 @@ AC_SUBST(enable_email)
 PGAC_ARG_BOOL(enable, connectemc, no,  [  --enable-connectemc     enable connect emc support],
               [AC_DEFINE([USE_CONNECTEMC], 1,
                          [Define to 1 to build with connect emc alert capabilities. (--enable-connectemc)])])
-AC_MSG_RESULT([$enable_connectemc])
+AC_MSG_RESULT([checking whether to build with connectemc... $enable_connectemc])
 AC_SUBST(enable_connectemc)
 #
 # Include directories

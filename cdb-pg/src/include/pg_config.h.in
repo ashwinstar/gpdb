@@ -761,6 +761,9 @@
    */
 #undef USE_FORCE_PLAN
 
+/* Define to 1 to build with gphdfs capabilities. (--enable-gphdfs) */
+#undef USE_GPHDFS
+
 /* Define to 1 if you want 64-bit integer timestamp and interval support.
    (--enable-integer-datetimes) */
 #undef USE_INTEGER_DATETIMES
