@@ -1094,13 +1094,6 @@ externalgettup_custom(FileScanDesc scan)
 							
 							/* got a tuple back */
 							
-							//td = DatumGetHeapTupleHeader(d);		
-							//tuple = (HeapTuple) palloc(HEAPTUPLESIZE);
-							//scan->fs_ctup.t_data = td;
-							//scan->fs_ctup.t_len = HeapTupleHeaderGetDatumLength(td);
-							//ItemPointerSetInvalid(&(scan->fs_ctup.t_self));
-							//heap_copytuple_with_tuple...
-							
 							tuple = formatter->fmt_tuple;
 							pstate->processed++;
 							MemoryContextReset(formatter->fmt_perrow_ctx);
@@ -1518,6 +1511,7 @@ FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 	formatter->fmt_badrow_len = 0;
 	formatter->fmt_args = pstate->custom_formatter_params;
 	formatter->fmt_conv_funcs = convFuncs;
+	formatter->fmt_saw_eof = pstate->fe_eof;
 	
 	InitFunctionCallInfoData(/* FunctionCallInfoData */ *fcinfo, 
 							 /* FmgrInfo */ pstate->custom_formatter_func, 

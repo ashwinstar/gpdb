@@ -37,6 +37,7 @@ typedef struct FormatterData
 	Relation    	fmt_relation;
 	TupleDesc   	fmt_tupDesc;
 	StringInfoData	fmt_databuf;
+	bool			fmt_saw_eof;
 	void		   *fmt_user_ctx;
 	int				fmt_badrow_num;
 	int				fmt_badrow_len;
@@ -57,6 +58,7 @@ typedef struct FormatterData
 #define FORMATTER_GET_DATABUF(fcinfo)         (((FormatterData*) fcinfo->context)->fmt_databuf.data)
 #define FORMATTER_GET_DATALEN(fcinfo)         (((FormatterData*) fcinfo->context)->fmt_databuf.len)
 #define FORMATTER_GET_DATACURSOR(fcinfo)      (((FormatterData*) fcinfo->context)->fmt_databuf.cursor)
+#define FORMATTER_GET_SAW_EOF(fcinfo)	      (((FormatterData*) fcinfo->context)->fmt_saw_eof)
 #define FORMATTER_GET_USER_CTX(fcinfo)        (((FormatterData*) fcinfo->context)->fmt_user_ctx)
 #define FORMATTER_GET_PER_ROW_MEM_CTX(fcinfo) (((FormatterData*) fcinfo->context)->fmt_perrow_ctx)
 #define FORMATTER_GET_CONVERSION_FUNCS(fcinfo) (((FormatterData*) fcinfo->context)->fmt_conv_funcs)
