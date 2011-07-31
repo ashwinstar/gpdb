@@ -125,7 +125,7 @@ typedef struct CopyStateData
 										server or the other way around */
 	FmgrInfo   *custom_formatter_func; /* function to convert to custom format */
 	char	   *custom_formatter_name; /* name of function to convert to custom format */
-
+	List	   *custom_formatter_params; /* list of defelems that hold user's format parameters */
 	uint64		processed;		/* # of tuples processed */
 	size_t		bytesread;
 

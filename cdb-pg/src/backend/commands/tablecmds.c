@@ -354,7 +354,7 @@ static void update_ri_trigger_args(Oid relid,
 					   const char *newname,
 					   bool fk_scan,
 					   bool update_relname);
-static Datum transformLocationUris(List *locs, bool isweb, bool iswritable, char *fmtname);
+static Datum transformLocationUris(List *locs, bool isweb, bool iswritable);
 static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
 static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols, bool iswritable);
@@ -904,8 +904,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 
 			/* Parse and validate URI strings (LOCATION clause) */
 			locationUris = transformLocationUris(exttypeDesc->location_list,
-												 isweb, iswritable,
-												 createExtStmt->format);
+												 isweb, iswritable);
 			
 			break;
 
@@ -16522,14 +16521,13 @@ AtEOSubXact_on_commit_actions(bool isCommit, SubTransactionId mySubid,
  * The result is a text array but we declare it as Datum to avoid
  * including array.h in analyze.h.
  */
-static Datum transformLocationUris(List *locs, bool isweb, bool iswritable, char *fmtname)
+static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 {
 	ListCell   *cell;
 	ArrayBuildState *astate;
 	Datum		result;
 	UriProtocol first_protocol = URI_FILE; /* initialize to keep gcc quiet */
 	bool		first_uri = true;
-	bool		custom_format = (pg_strcasecmp(fmtname, "custom") == 0);
 	
 #define FDIST_DEF_PORT 8080
 #define HDFS_DEF_PORT  9000
@@ -16673,16 +16671,6 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable, char
 					 errhint("Available protocols are 'http', 'file', 'gphdfs' and 'gpfdist'"),
 							   errOmitLocation(true)));
 
-		}
-
-		if(custom_format)
-		{
-			if(uri->protocol == URI_HTTP || uri->protocol == URI_GPFDIST)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("unsupported URI protocol for custom data format"),
-						 errhint("Use EXECUTE or 'file' instead ('file' is for read only)."),
-								   errOmitLocation(true)));
 		}
 		
 		if(uri->protocol != URI_HTTP && isweb)
@@ -16899,193 +16887,175 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 		   fmttype_is_csv(formattype));
 	
 	/* Extract options from the statement node tree */
-	foreach(option, formatOpts)
+	if (fmttype_is_text(formattype) || fmttype_is_csv(formattype))
 	{
-		DefElem    *defel = (DefElem *) lfirst(option);
+		foreach(option, formatOpts)
+		{
+			DefElem    *defel = (DefElem *) lfirst(option);
 
-		if (strcmp(defel->defname, "delimiter") == 0)
-		{
-			if (delim)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options"),
-								   errOmitLocation(true)));
-			delim = strVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "null") == 0)
-		{
-			if (null_print)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options"),
-								   errOmitLocation(true)));
-			null_print = strVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "header") == 0)
-		{
-			if (header_line)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options"),
-								   errOmitLocation(true)));
-			header_line = intVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "quote") == 0)
-		{
-			if (quote)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options"),
-								   errOmitLocation(true)));
-			quote = strVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "escape") == 0)
-		{
-			if (escape)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options"),
-								   errOmitLocation(true)));
-			escape = strVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "force_notnull") == 0)
-		{
-			if (force_notnull)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options"),
-								   errOmitLocation(true)));
-				
-			force_notnull = (List *) defel->arg;
-		}
-		else if (strcmp(defel->defname, "force_quote") == 0)
-		{
-			if (force_quote)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options"),
-								   errOmitLocation(true)));
-				
-			force_quote = (List *) defel->arg;
-		}
-		else if (strcmp(defel->defname, "fill_missing_fields") == 0)
-		{
-			if (fill_missing)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options"),
-								   errOmitLocation(true)));
-			fill_missing = intVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "newline") == 0)
-		{
-			if (eol_str)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options"),
-								   errOmitLocation(true)));
-			eol_str = strVal(defel->arg);
-		}
-		else if (strcmp(defel->defname, "formatter") == 0)
-		{
-			if (formatter)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options"),
-								   errOmitLocation(true)));
-			if (eol_str || fill_missing || force_quote || force_notnull || 
-				escape || quote || header_line || delim || null_print)
+			if (strcmp(defel->defname, "delimiter") == 0)
 			{
-				if(fmttype_is_custom(formattype))
+				if (delim)
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("formatter is the only allowed option in custom format"),
+							 errmsg("conflicting or redundant options"),
 									   errOmitLocation(true)));
-				else
+				delim = strVal(defel->arg);
+			}
+			else if (strcmp(defel->defname, "null") == 0)
+			{
+				if (null_print)
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("formatter option is not allowed in text formats"),
-									   errOmitLocation(true)));					
+							 errmsg("conflicting or redundant options"),
+									   errOmitLocation(true)));
+				null_print = strVal(defel->arg);
 			}
-				
-			formatter = strVal(defel->arg);
+			else if (strcmp(defel->defname, "header") == 0)
+			{
+				if (header_line)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting or redundant options"),
+									   errOmitLocation(true)));
+				header_line = intVal(defel->arg);
+			}
+			else if (strcmp(defel->defname, "quote") == 0)
+			{
+				if (quote)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting or redundant options"),
+									   errOmitLocation(true)));
+				quote = strVal(defel->arg);
+			}
+			else if (strcmp(defel->defname, "escape") == 0)
+			{
+				if (escape)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting or redundant options"),
+									   errOmitLocation(true)));
+				escape = strVal(defel->arg);
+			}
+			else if (strcmp(defel->defname, "force_notnull") == 0)
+			{
+				if (force_notnull)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting or redundant options"),
+									   errOmitLocation(true)));
+					
+				force_notnull = (List *) defel->arg;
+			}
+			else if (strcmp(defel->defname, "force_quote") == 0)
+			{
+				if (force_quote)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting or redundant options"),
+									   errOmitLocation(true)));
+					
+				force_quote = (List *) defel->arg;
+			}
+			else if (strcmp(defel->defname, "fill_missing_fields") == 0)
+			{
+				if (fill_missing)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting or redundant options"),
+									   errOmitLocation(true)));
+				fill_missing = intVal(defel->arg);
+			}
+			else if (strcmp(defel->defname, "newline") == 0)
+			{
+				if (eol_str)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting or redundant options"),
+									   errOmitLocation(true)));
+				eol_str = strVal(defel->arg);
+			}
+			else if (strcmp(defel->defname, "formatter") == 0)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("formatter option only valid for custom formatters"),
+						 errOmitLocation(true)));
+			}
+			else
+				elog(ERROR, "option \"%s\" not recognized",
+					 defel->defname);
 		}
-		else
-			elog(ERROR, "option \"%s\" not recognized",
-				 defel->defname);
-	}
 
-	/*
-	 * Set defaults
-	 */
-	if (!delim)
-		delim = fmttype_is_csv(formattype) ? "," : "\t";
+		/*
+		 * Set defaults
+		 */
+		if (!delim)
+			delim = fmttype_is_csv(formattype) ? "," : "\t";
 
-	if (!null_print)
-		null_print = fmttype_is_csv(formattype) ? "" : "\\N";
+		if (!null_print)
+			null_print = fmttype_is_csv(formattype) ? "" : "\\N";
 
-	if (fmttype_is_csv(formattype))
-	{
-		if (!quote)
-			quote = "\"";
-		if (!escape)
-			escape = quote;
-	}
-
-	if (!fmttype_is_csv(formattype) && !escape)
-		escape = "\\";			/* default escape for text mode */
-
-	/*
-	 * re-construct the FORCE NOT NULL list string.
-	 * TODO: is there no existing util function that does this? can't find.
-	 */
-	if(force_notnull)
-	{
-		ListCell   *l;
-		bool 		is_first_col = true;
-
-		initStringInfo(&fnn);
-		appendStringInfo(&fnn, " force not null");
-
-		foreach(l, force_notnull)
+		if (fmttype_is_csv(formattype))
 		{
-			const char	   *col_name = strVal(lfirst(l));
-
-			appendStringInfo(&fnn, (is_first_col ? " %s" : ",%s"),
-							 quote_identifier(col_name));
-			is_first_col = false;
+			if (!quote)
+				quote = "\"";
+			if (!escape)
+				escape = quote;
 		}
-	}
 
-	/*
-	 * re-construct the FORCE QUOTE list string.
-	 */
-	if(force_quote)
-	{
-		ListCell   *l;
-		bool 		is_first_col = true;
+		if (!fmttype_is_csv(formattype) && !escape)
+			escape = "\\";			/* default escape for text mode */
 
-		initStringInfo(&fq);
-		appendStringInfo(&fq, " force quote");
-
-		foreach(l, force_quote)
+		/*
+		 * re-construct the FORCE NOT NULL list string.
+		 * TODO: is there no existing util function that does this? can't find.
+		 */
+		if(force_notnull)
 		{
-			const char	   *col_name = strVal(lfirst(l));
+			ListCell   *l;
+			bool 		is_first_col = true;
 
-			appendStringInfo(&fq, (is_first_col ? " %s" : ",%s"),
-							 quote_identifier(col_name));
-			is_first_col = false;
+			initStringInfo(&fnn);
+			appendStringInfo(&fnn, " force not null");
+
+			foreach(l, force_notnull)
+			{
+				const char	   *col_name = strVal(lfirst(l));
+
+				appendStringInfo(&fnn, (is_first_col ? " %s" : ",%s"),
+								 quote_identifier(col_name));
+				is_first_col = false;
+			}
 		}
-	}
 
-	if(eol_str)
-	{
-		initStringInfo(&nl);
-		appendStringInfo(&nl, " newline '%s'", eol_str);
-	}
-	
-	if(!fmttype_is_custom(formattype))
-	{
+		/*
+		 * re-construct the FORCE QUOTE list string.
+		 */
+		if(force_quote)
+		{
+			ListCell   *l;
+			bool 		is_first_col = true;
+
+			initStringInfo(&fq);
+			appendStringInfo(&fq, " force quote");
+
+			foreach(l, force_quote)
+			{
+				const char	   *col_name = strVal(lfirst(l));
+
+				appendStringInfo(&fq, (is_first_col ? " %s" : ",%s"),
+								 quote_identifier(col_name));
+				is_first_col = false;
+			}
+		}
+
+		if(eol_str)
+		{
+			initStringInfo(&nl);
+			appendStringInfo(&nl, " newline '%s'", eol_str);
+		}
 		
 		/* verify all user supplied control char combinations are legal */
 		ValidateControlChars(false,
@@ -17145,24 +17115,57 @@ static Datum transformFormatOpts(char formattype, List *formatOpts, int numcols,
 			/* should never happen */
 			Assert(false);
 		}
+
 	}
 	else
 	{
-		/* custom format*/
+		/* custom format */
+		
+		int 		len = 0;
+		const int	maxlen = 8 * 1024 - 1;
+		
+		format_str = (char *) palloc0(maxlen + 1);
+		
+		foreach(option, formatOpts)
+		{
+			DefElem    *defel = (DefElem *) lfirst(option);
+			char	   *key = defel->defname;
+			char	   *val = strVal(defel->arg);
+			
+			if (strcmp(key, "formatter") == 0)
+			{
+				if (formatter)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("conflicting or redundant options"),
+									   errOmitLocation(true)));
+					
+				formatter = strVal(defel->arg);
+			}
+			
+			sprintf((char *) format_str + len, "%s '%s' ", key, val);
+			len += strlen(key) + strlen(val) + 4;
+			
+			if (len > maxlen)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("format options must be less than %d bytes in size", maxlen),
+								   errOmitLocation(true)));			
+		}
+		
 		if(!formatter)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("no formatter function specified"),
-							   errOmitLocation(true)));		
-		
-		format_str = (char *) palloc(12 + strlen(formatter) + 1);
-		sprintf((char *) format_str, "formatter '%s'", formatter);
+							   errOmitLocation(true)));
 	}
 	
+
 	/* convert c string to text datum */
 	result = DirectFunctionCall1(textin, CStringGetDatum(format_str));
 
 	/* clean up */
+	if (format_str) pfree(format_str);
 	if (force_notnull) pfree(fnn.data);
 	if (force_quote) pfree(fq.data);
 	if (eol_str) pfree(nl.data);

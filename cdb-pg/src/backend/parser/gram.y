@@ -218,10 +218,10 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <dbehavior>	opt_drop_behavior
 
 %type <list>	createdb_opt_list alterdb_opt_list copy_opt_list
-				ext_on_clause_list format_opt format_opt_list transaction_mode_list
+				ext_on_clause_list format_opt format_opt_list format_def_list transaction_mode_list
 				ext_opt_encoding_list
 %type <defelt>	createdb_opt_item alterdb_opt_item copy_opt_item
-				ext_on_clause_item format_opt_item transaction_mode_item
+				ext_on_clause_item format_opt_item format_def_item transaction_mode_item
 				ext_opt_encoding_item
 
 %type <ival>	opt_lock lock_type cast_context
@@ -4501,14 +4501,42 @@ ext_on_clause_item:
 			;
 
 format_opt: 
-			'(' format_opt_list ')'				{ $$ = $2; }
+			  '(' format_opt_list ')'			{ $$ = $2; }
+			| '(' format_def_list ')'			{ $$ = $2; }
+			| '(' ')'							{ $$ = NIL; }
 			| /*EMPTY*/							{ $$ = NIL; }
 			;
 
 format_opt_list:
-			format_opt_list format_opt_item		{ $$ = lappend($1, $2); }
-			| /*EMPTY*/							{ $$ = NIL; }
+			format_opt_item		
+			{ 
+				$$ = list_make1($1);
+			}
+			| format_opt_list format_opt_item		
+			{ 
+				$$ = lappend($1, $2); 
+			}
 			;
+
+format_def_list:
+			format_def_item		
+			{ 
+				$$ = list_make1($1);
+			} 
+			| format_def_list ',' format_def_item
+			{
+				$$ = lappend($1, $3);
+			}
+
+format_def_item:
+    		ColLabel '=' def_arg
+			{
+				$$ = makeDefElem($1, $3);
+			}
+			| ColLabel '=' '(' columnList ')'
+			{
+				$$ = makeDefElem($1, (Node *) $4);
+			}
 
 
 format_opt_item:
@@ -4551,10 +4579,6 @@ format_opt_item:
 			| NEWLINE opt_as Sconst
 			{
 				$$ = makeDefElem("newline", (Node *)makeString($3));
-			}
-			| FORMATTER opt_as Sconst
-			{
-				$$ = makeDefElem("formatter", (Node *)makeString($3));
 			}
 			;
 

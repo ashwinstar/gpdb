@@ -82,7 +82,7 @@ static void external_senddata(URL_FILE *extfile, CopyState pstate);
 static void external_scan_error_callback(void *arg);
 void readHeaderLine(CopyState pstate);
 static void close_external_source(FILE *dataSource, bool failOnError, const char *relname);
-static void parseFormatString(CopyState pstate, char *fmtstr);
+static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom);
 static void external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, 
 								  char* quote, bool header, uint32 scancounter);
 static void justifyDatabuf(StringInfo buf);
@@ -1248,7 +1248,7 @@ InitParseState(CopyState pstate, Relation relation,
 {
 	TupleDesc	tupDesc = NULL;
 	char	   *format_str = NULL;
-
+	bool		format_is_custom = fmttype_is_custom(fmtType);
 	
 	pstate->fe_eof = false;
 	pstate->eol_type = EOL_UNKNOWN;
@@ -1366,12 +1366,12 @@ InitParseState(CopyState pstate, Relation relation,
 	 * Now parse the data FORMAT options.
 	 */
 	format_str = pstrdup((char *) strVal(linitial(fmtOpts)));
-	parseFormatString(pstate, format_str);
+	parseFormatString(pstate, format_str, format_is_custom);
 
 	/* 
 	 * Custom format: get formatter name and find it in the catalog 
 	 */
-	if(fmttype_is_custom(fmtType))
+	if(format_is_custom)
 	{
 		Oid			procOid;
 
@@ -1512,6 +1512,7 @@ FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 	formatter->fmt_tupDesc  = tupDesc;
 	formatter->fmt_notification = FMT_NONE; 
 	formatter->fmt_badrow_len = 0;
+	formatter->fmt_args = pstate->custom_formatter_params;
 	
 	InitFunctionCallInfoData(/* FunctionCallInfoData */ *fcinfo, 
 							 /* FmgrInfo */ pstate->custom_formatter_func, 
@@ -2180,7 +2181,7 @@ strtokx2(const char *s,
  * logic here is largely borrowed from psql's parsing of '\copy' and adapted
  * for use in the backend, for the supported external table options only.
  */
-static void parseFormatString(CopyState pstate, char *fmtstr)
+static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom)
 {
 	char	   *token;
 	const char *whitespace = " \t\n\r";
@@ -2190,177 +2191,225 @@ static void parseFormatString(CopyState pstate, char *fmtstr)
 	token = strtokx2(fmtstr, whitespace, NULL, NULL,
 					0, false, true, encoding);
 
-	if (token)
+	if (!iscustom)
 	{
-
-		while (token)
+		if (token)
 		{
-			bool		fetch_next;
 
-			fetch_next = true;
+			while (token)
+			{
+				bool		fetch_next;
 
-			if (pg_strcasecmp(token, "header") == 0)
-				pstate->header_line = true;
-			else if (pg_strcasecmp(token, "delimiter") == 0)
-			{
-				token = strtokx2(NULL, whitespace, NULL, "'",
-								nonstd_backslash, true, true, encoding);
-				if (token)
-				{
-					pstate->delim = pstrdup(token);
+				fetch_next = true;
 
-					if (pg_strcasecmp(pstate->delim, "off") == 0)
-						pstate->delimiter_off = true;
-				}
-				else
-					goto error;
-			}
-			else if (pg_strcasecmp(token, "null") == 0)
-			{
-				token = strtokx2(NULL, whitespace, NULL, "'",
-								nonstd_backslash, true, true, encoding);
-				if (token)
+				if (pg_strcasecmp(token, "header") == 0)
+					pstate->header_line = true;
+				else if (pg_strcasecmp(token, "delimiter") == 0)
 				{
-					pstate->null_print = pstrdup(token);
-					pstate->null_print_len = strlen(token);
-				}
-				else
-					goto error;
-			}
-			else if (pg_strcasecmp(token, "quote") == 0)
-			{
-				token = strtokx2(NULL, whitespace, NULL, "'",
-								nonstd_backslash, true, true, encoding);
-				if (token)
-					pstate->quote = pstrdup(token);
-				else
-					goto error;
-			}
-			else if (pg_strcasecmp(token, "escape") == 0)
-			{
-				token = strtokx2(NULL, whitespace, NULL, "'",
-								nonstd_backslash, true, true, encoding);
-				if (token)
-				{
-					pstate->escape = pstrdup(token);
-
-					if (pg_strcasecmp(pstate->escape, "off") == 0)
-						pstate->escape_off = true;
-				}
-				else
-					goto error;
-			}
-			else if (pg_strcasecmp(token, "force") == 0)
-			{
-				token = strtokx2(NULL, whitespace, ",", "\"",
-								0, false, false, encoding);
-				if (pg_strcasecmp(token, "not") == 0)
-				{
-					token = strtokx2(NULL, whitespace, ",", "\"",
-									0, false, false, encoding);
-					if (pg_strcasecmp(token, "null") != 0)
-						goto error;
-					/* handle column list */
-					fetch_next = false;
-					for (;;)
+					token = strtokx2(NULL, whitespace, NULL, "'",
+									nonstd_backslash, true, true, encoding);
+					if (token)
 					{
-						Value *val;
+						pstate->delim = pstrdup(token);
 
-						token = strtokx2(NULL, whitespace, ",", "\"",
-										0, false, false, encoding);
-						if (!token || strchr(",", token[0]))
-							goto error;
-
-						val = makeString((char *)pstrdup(token));
-						pstate->force_notnull = lappend(pstate->force_notnull, val);
-
-						/* consume the comma if any */
-						token = strtokx2(NULL, whitespace, ",", "\"",
-										0, false, false, encoding);
-						if (!token || token[0] != ',')
-							break;
+						if (pg_strcasecmp(pstate->delim, "off") == 0)
+							pstate->delimiter_off = true;
 					}
+					else
+						goto error;
+				}
+				else if (pg_strcasecmp(token, "null") == 0)
+				{
+					token = strtokx2(NULL, whitespace, NULL, "'",
+									nonstd_backslash, true, true, encoding);
+					if (token)
+					{
+						pstate->null_print = pstrdup(token);
+						pstate->null_print_len = strlen(token);
+					}
+					else
+						goto error;
 				}
 				else if (pg_strcasecmp(token, "quote") == 0)
 				{
-					fetch_next = false;
-					for (;;)
-					{
-						Value *val;
-
-						token = strtokx2(NULL, whitespace, ",", "\"",
-										0, false, false, encoding);
-						if (!token || strchr(",", token[0]))
-							goto error;
-
-						val = makeString((char *)pstrdup(token));
-						pstate->force_quote = lappend(pstate->force_quote, val);
-
-						/* consume the comma if any */
-						token = strtokx2(NULL, whitespace, ",", "\"",
-										0, false, false, encoding);
-						if (!token || token[0] != ',')
-							break;
-					}					
+					token = strtokx2(NULL, whitespace, NULL, "'",
+									nonstd_backslash, true, true, encoding);
+					if (token)
+						pstate->quote = pstrdup(token);
+					else
+						goto error;
 				}
-				else
-					goto error;
-			}
-			else if (pg_strcasecmp(token, "fill") == 0)
-			{
-				token = strtokx2(NULL, whitespace, ",", "\"",
-								0, false, false, encoding);
-				if (pg_strcasecmp(token, "missing") == 0)
+				else if (pg_strcasecmp(token, "escape") == 0)
+				{
+					token = strtokx2(NULL, whitespace, NULL, "'",
+									nonstd_backslash, true, true, encoding);
+					if (token)
+					{
+						pstate->escape = pstrdup(token);
+
+						if (pg_strcasecmp(pstate->escape, "off") == 0)
+							pstate->escape_off = true;
+					}
+					else
+						goto error;
+				}
+				else if (pg_strcasecmp(token, "force") == 0)
 				{
 					token = strtokx2(NULL, whitespace, ",", "\"",
 									0, false, false, encoding);
-					if (pg_strcasecmp(token, "fields") == 0)
+					if (pg_strcasecmp(token, "not") == 0)
 					{
-						pstate->fill_missing = true;
+						token = strtokx2(NULL, whitespace, ",", "\"",
+										0, false, false, encoding);
+						if (pg_strcasecmp(token, "null") != 0)
+							goto error;
+						/* handle column list */
+						fetch_next = false;
+						for (;;)
+						{
+							Value *val;
+
+							token = strtokx2(NULL, whitespace, ",", "\"",
+											0, false, false, encoding);
+							if (!token || strchr(",", token[0]))
+								goto error;
+
+							val = makeString((char *)pstrdup(token));
+							pstate->force_notnull = lappend(pstate->force_notnull, val);
+
+							/* consume the comma if any */
+							token = strtokx2(NULL, whitespace, ",", "\"",
+											0, false, false, encoding);
+							if (!token || token[0] != ',')
+								break;
+						}
 					}
+					else if (pg_strcasecmp(token, "quote") == 0)
+					{
+						fetch_next = false;
+						for (;;)
+						{
+							Value *val;
+
+							token = strtokx2(NULL, whitespace, ",", "\"",
+											0, false, false, encoding);
+							if (!token || strchr(",", token[0]))
+								goto error;
+
+							val = makeString((char *)pstrdup(token));
+							pstate->force_quote = lappend(pstate->force_quote, val);
+
+							/* consume the comma if any */
+							token = strtokx2(NULL, whitespace, ",", "\"",
+											0, false, false, encoding);
+							if (!token || token[0] != ',')
+								break;
+						}					
+					}
+					else
+						goto error;
+				}
+				else if (pg_strcasecmp(token, "fill") == 0)
+				{
+					token = strtokx2(NULL, whitespace, ",", "\"",
+									0, false, false, encoding);
+					if (pg_strcasecmp(token, "missing") == 0)
+					{
+						token = strtokx2(NULL, whitespace, ",", "\"",
+										0, false, false, encoding);
+						if (pg_strcasecmp(token, "fields") == 0)
+						{
+							pstate->fill_missing = true;
+						}
+						else
+							goto error;
+					}
+					else
+						goto error;
+				}
+				else if (pg_strcasecmp(token, "newline") == 0)
+				{
+					token = strtokx2(NULL, whitespace, NULL, "'",
+									nonstd_backslash, true, true, encoding);
+					if (token)
+					{
+						/* if NEWLINE was specified in exttab def, set eol_type now */
+						pstate->eol_str = pstrdup(token);
+						CopyEolStrToType(pstate);
+					}
+					else
+						goto error;
+				}
+				else if (pg_strcasecmp(token, "formatter") == 0)
+				{
+					token = strtokx2(NULL, whitespace, NULL, "'",
+									nonstd_backslash, true, true, encoding);
+					if (token)
+						pstate->custom_formatter_name = pstrdup(token);
 					else
 						goto error;
 				}
 				else
 					goto error;
+
+				if (fetch_next)
+					token = strtokx2(NULL, whitespace, NULL, NULL,
+									0, false, false, encoding);
 			}
-			else if (pg_strcasecmp(token, "newline") == 0)
+		}
+
+		/* set defaults */
+
+		if (pstate->csv_mode)
+		{
+			if (!pstate->quote)
+				pstate->quote = "\"";
+		}
+	}
+	else
+	{
+		/* parse user custom options. take it as is. no validation needed */
+		
+		List 	*l = NIL;
+		bool	 formatter_found = false;
+		
+		if (token)
+		{
+			char	*key = token;
+			char	*val = NULL;
+			
+			
+			while (key)
 			{
-				token = strtokx2(NULL, whitespace, NULL, "'",
+				val = strtokx2(NULL, whitespace, NULL, "'",
 								nonstd_backslash, true, true, encoding);
-				if (token)
+				if (val)
 				{
-					/* if NEWLINE was specified in exttab def, set eol_type now */
-					pstate->eol_str = pstrdup(token);
-					CopyEolStrToType(pstate);
+					
+					if (pg_strcasecmp(key, "formatter") == 0)
+					{
+						pstate->custom_formatter_name = pstrdup(val);
+						formatter_found = true;
+					}
+					else
+					
+					l = lappend(l, makeDefElem(pstrdup(key), (Node *)makeString(pstrdup(val))));
 				}
 				else
 					goto error;
+				
+				key = strtokx2(NULL, whitespace, NULL, NULL,
+							   0, false, false, encoding);
 			}
-			else if (pg_strcasecmp(token, "formatter") == 0)
-			{
-				token = strtokx2(NULL, whitespace, NULL, "'",
-								nonstd_backslash, true, true, encoding);
-				if (token)
-					pstate->custom_formatter_name = pstrdup(token);
-				else
-					goto error;
-			}
-			else
-				goto error;
-
-			if (fetch_next)
-				token = strtokx2(NULL, whitespace, NULL, NULL,
-								0, false, false, encoding);
+			
 		}
-	}
+		
+		if (!formatter_found)
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
+							errmsg("external table internal parse error: "
+									"no formatter function name found")));
 
-	/* set defaults */
-
-	if (pstate->csv_mode)
-	{
-		if (!pstate->quote)
-			pstate->quote = "\"";
+		pstate->custom_formatter_params = l;
 	}
 
 	/*

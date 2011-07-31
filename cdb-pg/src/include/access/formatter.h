@@ -13,6 +13,7 @@
 #include "access/tupdesc.h"
 #include "lib/stringinfo.h"
 #include "nodes/nodes.h"
+#include "nodes/value.h"
 #include "utils/rel.h"
 
 #define FMT_BADROW_MAXLEN 1024
@@ -36,11 +37,12 @@ typedef struct FormatterData
 	Relation    	fmt_relation;
 	TupleDesc   	fmt_tupDesc;
 	StringInfoData	fmt_databuf;
-	void*			fmt_user_ctx;
+	void		   *fmt_user_ctx;
 	int				fmt_badrow_num;
 	int				fmt_badrow_len;
 	char			fmt_badrow_data[FMT_BADROW_MAXLEN];
 	FmtNotification fmt_notification;
+	List		   *fmt_args;
 	MemoryContext	fmt_perrow_ctx;
 	HeapTuple		fmt_tuple; /* hack! pass back the tuple through here for now... */
 		
@@ -49,14 +51,17 @@ typedef struct FormatterData
 #define CALLED_AS_FORMATTER(fcinfo) \
 	((fcinfo->context != NULL && IsA((fcinfo)->context, FormatterData)))
 
- 
-#define FORMATTER_GET_TUPDESC(fcinfo)    (((FormatterData*) fcinfo->context)->fmt_tupDesc)
-#define FORMATTER_GET_RELATION(fcinfo)   (((FormatterData*) fcinfo->context)->fmt_relation)
-#define FORMATTER_GET_DATABUF(fcinfo)    (((FormatterData*) fcinfo->context)->fmt_databuf.data)
-#define FORMATTER_GET_DATALEN(fcinfo)    (((FormatterData*) fcinfo->context)->fmt_databuf.len)
-#define FORMATTER_GET_DATACURSOR(fcinfo) (((FormatterData*) fcinfo->context)->fmt_databuf.cursor)
-#define FORMATTER_GET_USER_CTX(fcinfo)   (((FormatterData*) fcinfo->context)->fmt_user_ctx)
-#define FORMATTER_GET_PER_ROW_MEM_CTX(fcinfo)   (((FormatterData*) fcinfo->context)->fmt_perrow_ctx)
+#define FORMATTER_GET_TUPDESC(fcinfo)         (((FormatterData*) fcinfo->context)->fmt_tupDesc)
+#define FORMATTER_GET_RELATION(fcinfo)        (((FormatterData*) fcinfo->context)->fmt_relation)
+#define FORMATTER_GET_DATABUF(fcinfo)         (((FormatterData*) fcinfo->context)->fmt_databuf.data)
+#define FORMATTER_GET_DATALEN(fcinfo)         (((FormatterData*) fcinfo->context)->fmt_databuf.len)
+#define FORMATTER_GET_DATACURSOR(fcinfo)      (((FormatterData*) fcinfo->context)->fmt_databuf.cursor)
+#define FORMATTER_GET_USER_CTX(fcinfo)        (((FormatterData*) fcinfo->context)->fmt_user_ctx)
+#define FORMATTER_GET_PER_ROW_MEM_CTX(fcinfo) (((FormatterData*) fcinfo->context)->fmt_perrow_ctx)
+#define FORMATTER_GET_ARG_LIST(fcinfo)	      (((FormatterData*) fcinfo->context)->fmt_args)
+#define FORMATTER_GET_NUM_ARGS(fcinfo)	      (list_length(FORMATTER_GET_ARG_LIST(fcinfo)))
+#define FORMATTER_GET_NTH_ARG_KEY(fcinfo, n)  (((DefElem *)(list_nth(FORMATTER_GET_ARG_LIST(fcinfo),(n - 1))))->defname)
+#define FORMATTER_GET_NTH_ARG_VAL(fcinfo, n)  (((Value *)((DefElem *)(list_nth(FORMATTER_GET_ARG_LIST(fcinfo),(n - 1))))->arg)->val.str)
 
 #define FORMATTER_SET_USER_CTX(fcinfo, p) \
 	(((FormatterData*) fcinfo->context)->fmt_user_ctx = p)
