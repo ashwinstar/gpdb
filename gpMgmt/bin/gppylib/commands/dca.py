@@ -13,9 +13,10 @@ from base import Command, LOCAL, REMOTE
 
 logger = get_default_logger()
 
+# NOTE THIS IS A CHECK FOR 1040 or later appliance
 def is_dca_appliance():
     try:
-        if os.path.isfile('/etc/gpdb-appliance-version'):
+        if os.path.isfile('/opt/dca/bin/dca_gpdb_initialized'):
             return True
     except:
         pass
