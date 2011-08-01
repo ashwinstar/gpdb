@@ -395,78 +395,78 @@ taah: tupdesc:00000552:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 taah: tupdesc:00000553:  errmsg("column \"%s\" cannot be declared SETOF", 
 taah: tupdesc:00000554:  attname))); 
 aaaaa GP_IGNORE: faag: fileam - ./backend/access/external/fileam.c
-faag: fileam:00000532:  ereport(ERROR, 
-faag: fileam:00000533:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00000534:  errmsg("External table has more URLs then available primary " 
-faag: fileam:00000535:  "segments that can write into them"))); 
-faag: fileam:00000815:  ereport(ERROR, \ 
-faag: fileam:00000816:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
-faag: fileam:00000817:  (errmsg("%s", finalmsg) \ 
-faag: fileam:00000818:  ),errOmitLocation(true))); \ 
-faag: fileam:00000819: } 
-faag: fileam:00000820:  
-faag: fileam:00000821: /* 
-faag: fileam:00000822:  * parse_next_line 
-faag: fileam:00000823:  * 
-faag: fileam:00000824:  * Given a buffer of data, extract the next data line from it and parse it 
-faag: fileam:00000825:  * to attributes according to the data format specifications. 
-faag: fileam:00000826:  * 
-faag: fileam:00000827:  * Returns: 
-faag: fileam:00000828:  * LINE_OK - line parsed successfully. 
-faag: fileam:00000829:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
-faag: fileam:00000830:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
-faag: fileam:00000831:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
-faag: fileam:00000832:  */ 
-faag: fileam:00000833: static DataLineStatus parse_next_line(FileScanDesc scan) 
-faag: fileam:00000834: { 
-faag: fileam:00000835:  CopyState pstate = scan->fs_pstate; 
-faag: fileam:00001217:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-faag: fileam:00001218:  errmsg("formatter function %s of type %s was not found.", 
-faag: fileam:00001219:  formatter_name, 
-faag: fileam:00001220:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001221:  errhint("Create it with CREATE FUNCTION."), 
-faag: fileam:00001222:  errOmitLocation(true))); 
-faag: fileam:00001226:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faag: fileam:00001227:  errmsg("formatter function %s of type %s has an incorrect return type", 
-faag: fileam:00001228:  formatter_name, 
-faag: fileam:00001229:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001230:  errOmitLocation(true))); 
-faag: fileam:00001314:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
-faag: fileam:00001315:  errmsg("The specified error table for this " 
-faag: fileam:00001316:  "external table doesn't appear to " 
-faag: fileam:00001317:  "exist in the database. It may have " 
-faag: fileam:00001318:  "been dropped."), 
-faag: fileam:00001319:  errhint("Refresh your external table definition."))); 
-faag: fileam:00001380:  ereport(ERROR, 
-faag: fileam:00001381:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00001382:  errmsg("No formatter function defined for this external table."))); 
-faag: fileam:00001561:  ereport(ERROR, 
-faag: fileam:00001562:  (errcode_for_file_access(), 
-faag: fileam:00001563:  errmsg("could not open \"%s\" for reading: %d %s", 
-faag: fileam:00001564:  scan->fs_uri, response_code, response_string), 
-faag: fileam:00001565:  errOmitLocation(true))); 
-faag: fileam:00001612:  ereport(ERROR, 
-faag: fileam:00001613:  (errcode_for_file_access(), 
-faag: fileam:00001614:  errmsg("could not open \"%s\" for writing: %d %s", 
-faag: fileam:00001615:  extInsertDesc->ext_uri, response_code, response_string))); 
-faag: fileam:00001674:  ereport(ERROR, 
-faag: fileam:00001675:  (errcode_for_file_access(), 
-faag: fileam:00001676:  errmsg("could not read from external file: %m"))); 
-faag: fileam:00001694:  ereport(ERROR, 
-faag: fileam:00001695:  (errcode_for_file_access(), 
-faag: fileam:00001696:  errmsg("could not write to external resource: %m"))); 
-faag: fileam:00002408:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002409:  errmsg("external table internal parse error: " 
-faag: fileam:00002410:  "no formatter function name found"))); 
-faag: fileam:00002425:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002426:  errmsg("external table internal parse error at \"%s\"", 
-faag: fileam:00002427:  token))); 
-faag: fileam:00002429:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002430:  errmsg("external table internal parse error at end of " 
-faag: fileam:00002431:  "line"))); 
-faag: fileam:00002481:  ereport(ERROR, 
-faag: fileam:00002482:  (errcode_for_file_access(), 
-faag: fileam:00002483:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+faag: fileam:00000533:  ereport(ERROR, 
+faag: fileam:00000534:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00000535:  errmsg("External table has more URLs then available primary " 
+faag: fileam:00000536:  "segments that can write into them"))); 
+faag: fileam:00000817:  ereport(ERROR, \ 
+faag: fileam:00000818:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
+faag: fileam:00000819:  (errmsg("%s", finalmsg) \ 
+faag: fileam:00000820:  ),errOmitLocation(true))); \ 
+faag: fileam:00000821: } 
+faag: fileam:00000822:  
+faag: fileam:00000823: /* 
+faag: fileam:00000824:  * parse_next_line 
+faag: fileam:00000825:  * 
+faag: fileam:00000826:  * Given a buffer of data, extract the next data line from it and parse it 
+faag: fileam:00000827:  * to attributes according to the data format specifications. 
+faag: fileam:00000828:  * 
+faag: fileam:00000829:  * Returns: 
+faag: fileam:00000830:  * LINE_OK - line parsed successfully. 
+faag: fileam:00000831:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
+faag: fileam:00000832:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
+faag: fileam:00000833:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
+faag: fileam:00000834:  */ 
+faag: fileam:00000835: static DataLineStatus parse_next_line(FileScanDesc scan) 
+faag: fileam:00000836: { 
+faag: fileam:00000837:  CopyState pstate = scan->fs_pstate; 
+faag: fileam:00001213:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+faag: fileam:00001214:  errmsg("formatter function %s of type %s was not found.", 
+faag: fileam:00001215:  formatter_name, 
+faag: fileam:00001216:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001217:  errhint("Create it with CREATE FUNCTION."), 
+faag: fileam:00001218:  errOmitLocation(true))); 
+faag: fileam:00001222:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faag: fileam:00001223:  errmsg("formatter function %s of type %s has an incorrect return type", 
+faag: fileam:00001224:  formatter_name, 
+faag: fileam:00001225:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001226:  errOmitLocation(true))); 
+faag: fileam:00001310:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+faag: fileam:00001311:  errmsg("The specified error table for this " 
+faag: fileam:00001312:  "external table doesn't appear to " 
+faag: fileam:00001313:  "exist in the database. It may have " 
+faag: fileam:00001314:  "been dropped."), 
+faag: fileam:00001315:  errhint("Refresh your external table definition."))); 
+faag: fileam:00001376:  ereport(ERROR, 
+faag: fileam:00001377:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00001378:  errmsg("No formatter function defined for this external table."))); 
+faag: fileam:00001560:  ereport(ERROR, 
+faag: fileam:00001561:  (errcode_for_file_access(), 
+faag: fileam:00001562:  errmsg("could not open \"%s\" for reading: %d %s", 
+faag: fileam:00001563:  scan->fs_uri, response_code, response_string), 
+faag: fileam:00001564:  errOmitLocation(true))); 
+faag: fileam:00001611:  ereport(ERROR, 
+faag: fileam:00001612:  (errcode_for_file_access(), 
+faag: fileam:00001613:  errmsg("could not open \"%s\" for writing: %d %s", 
+faag: fileam:00001614:  extInsertDesc->ext_uri, response_code, response_string))); 
+faag: fileam:00001673:  ereport(ERROR, 
+faag: fileam:00001674:  (errcode_for_file_access(), 
+faag: fileam:00001675:  errmsg("could not read from external file: %m"))); 
+faag: fileam:00001693:  ereport(ERROR, 
+faag: fileam:00001694:  (errcode_for_file_access(), 
+faag: fileam:00001695:  errmsg("could not write to external resource: %m"))); 
+faag: fileam:00002407:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002408:  errmsg("external table internal parse error: " 
+faag: fileam:00002409:  "no formatter function name found"))); 
+faag: fileam:00002424:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002425:  errmsg("external table internal parse error at \"%s\"", 
+faag: fileam:00002426:  token))); 
+faag: fileam:00002428:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002429:  errmsg("external table internal parse error at end of " 
+faag: fileam:00002430:  "line"))); 
+faag: fileam:00002480:  ereport(ERROR, 
+faag: fileam:00002481:  (errcode_for_file_access(), 
+faag: fileam:00002482:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
 uaad: url:00000273:  ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE), 
 uaad: url:00000274:  errmsg("connection with gpfdist failed for %s. " 
@@ -5857,6 +5857,14 @@ eabf: extprotocolcmds:00000243:  ereport(ERROR,
 eabf: extprotocolcmds:00000244:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
 eabf: extprotocolcmds:00000245:  errmsg("internal error: protocol \"%s\" has no owner defined", 
 eabf: extprotocolcmds:00000246:  name))); 
+eabf: extprotocolcmds:00000355:  ereport(ERROR, 
+eabf: extprotocolcmds:00000356:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eabf: extprotocolcmds:00000357:  errmsg("protocol \"%s\" does not exist", 
+eabf: extprotocolcmds:00000358:  oldname))); 
+eabf: extprotocolcmds:00000368:  ereport(ERROR, 
+eabf: extprotocolcmds:00000369:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eabf: extprotocolcmds:00000370:  errmsg("internal error: protocol \"%s\" has no owner defined", 
+eabf: extprotocolcmds:00000371:  oldname))); 
 aaaaa GP_IGNORE: faaj: filespace - ./backend/commands/filespace.c
 faaj: filespace:00000110:  ereport(ERROR, 
 faaj: filespace:00000111:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
@@ -11261,315 +11269,315 @@ aaah: analyze:00011124:  ereport(NOTICE,
 aaah: analyze:00011125:  (errmsg("Error table \"%s\" does not exist. Auto generating an " 
 aaah: analyze:00011126:  "error table with the same name", sreh->errtable->relname))); 
 aaaaa GP_IGNORE: gaae: gram - ./backend/parser/gram.c
-gaae: gram:00019099:  ereport(ERROR, 
-gaae: gram:00019100:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019101:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
-gaae: gram:00019102:  scanner_errposition((yylsp[(3) - (3)])))); 
-gaae: gram:00019114:  ereport(ERROR, 
-gaae: gram:00019115:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00019116:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (6)].ival)), 
-gaae: gram:00019117:  scanner_errposition((yylsp[(3) - (6)])))); 
-gaae: gram:00019120:  ereport(WARNING, 
-gaae: gram:00019121:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00019122:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00019123:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
-gaae: gram:00019129:  ereport(ERROR, 
-gaae: gram:00019130:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019131:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
-gaae: gram:00019814:  ereport(ERROR, 
-gaae: gram:00019815:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019816:  errmsg("Cannot specify a name, rank, " 
-gaae: gram:00019817:  "or value for a DEFAULT partition " 
-gaae: gram:00019818:  "in this context"))); 
-gaae: gram:00019882:  ereport(ERROR, 
-gaae: gram:00019883:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019884:  errmsg("Can only ADD a partition by name"), 
-gaae: gram:00019885:  errOmitLocation(true))); 
-gaae: gram:00019923:  ereport(ERROR, 
-gaae: gram:00019924:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019925:  errmsg("Can only ADD a partition by name"))); 
-gaae: gram:00020002:  ereport(ERROR, 
-gaae: gram:00020003:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00020004:  errmsg("Can only COALESCE a partition by name"))); 
-gaae: gram:00020268:  ereport(ERROR, 
-gaae: gram:00020269:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00020270:  errmsg("template cannot contain " 
-gaae: gram:00020271:  "specification for child " 
-gaae: gram:00020272:  "partition"))); 
-gaae: gram:00021221:  ereport(ERROR, 
-gaae: gram:00021222:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00021223:  errmsg("MATCH PARTIAL not yet implemented"), 
-gaae: gram:00021224:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00021908:  ereport(ERROR, 
-gaae: gram:00021909:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00021910:  errmsg("PARTITION BY must specify RANGE or LIST"), 
-gaae: gram:00021911:  errOmitLocation(true))); 
-gaae: gram:00021957:  ereport(ERROR, 
-gaae: gram:00021958:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00021959:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
-gaae: gram:00021961:  ereport(ERROR, 
-gaae: gram:00021962:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00021963:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
-gaae: gram:00022019:  ereport(ERROR, 
-gaae: gram:00022020:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022021:  errmsg("template cannot contain " 
-gaae: gram:00022022:  "specification for child " 
-gaae: gram:00022023:  "partition"), 
-gaae: gram:00022024:  errOmitLocation(true))); 
-gaae: gram:00022117:  ereport(ERROR, 
-gaae: gram:00022118:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022119:  errmsg("CREATE TABLE AS cannot specify INTO"), 
-gaae: gram:00022120:  scanner_errposition(exprLocation((Node *) n->intoClause)))); 
-gaae: gram:00022129:  ereport(ERROR, 
-gaae: gram:00022130:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00022131:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
-gaae: gram:00022132:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"), 
-gaae: gram:00022133:  errOmitLocation(true))); 
-gaae: gram:00022243:  ereport(ERROR, 
-gaae: gram:00022244:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022245:  errmsg("EXECUTE may not be used with a regular external table"), 
-gaae: gram:00022246:  errhint("Use CREATE EXTERNAL WEB TABLE instead"), 
-gaae: gram:00022247:  errOmitLocation(true))); 
-gaae: gram:00022257:  ereport(ERROR, 
-gaae: gram:00022258:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022259:  errmsg("ON clause may not be used with a writable external table"), 
-gaae: gram:00022260:  errOmitLocation(true))); 
-gaae: gram:00022265:  ereport(ERROR, 
-gaae: gram:00022266:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022267:  errmsg("Single row error handling may not be used with a writable external table"))); 
-gaae: gram:00022566:  ereport(ERROR, 
-gaae: gram:00022567:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00022568:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
-gaae: gram:00022572:  ereport(ERROR, 
-gaae: gram:00022573:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00022574:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
-gaae: gram:00023528:  ereport(ERROR, 
-gaae: gram:00023529:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00023530:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
-gaae: gram:00023531:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00023550:  ereport(ERROR, 
-gaae: gram:00023551:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00023552:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
-gaae: gram:00023553:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00023619:  ereport(ERROR, 
-gaae: gram:00023620:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00023621:  errmsg("CREATE ASSERTION is not yet implemented"))); 
-gaae: gram:00023635:  ereport(ERROR, 
-gaae: gram:00023636:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00023637:  errmsg("DROP ASSERTION is not yet implemented"))); 
-gaae: gram:00023740:  ereport(ERROR, 
-gaae: gram:00023741:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00023742:  errmsg("improper qualified name (too many dotted names): %s", 
-gaae: gram:00023743:  NameListToString((yyvsp[(3) - (7)].list))), 
-gaae: gram:00023744:  scanner_errposition((yylsp[(3) - (7)])))); 
-gaae: gram:00024944:  ereport(ERROR, 
-gaae: gram:00024945:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00024946:  errmsg("CREATE INDEX CONCURRENTLY is not supported"))); 
-gaae: gram:00025471:  ereport(ERROR, 
-gaae: gram:00025472:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00025473:  errmsg("missing argument"), 
-gaae: gram:00025474:  errhint("Use NONE to denote the missing argument of a unary operator."), 
-gaae: gram:00025475:  errOmitLocation(true), 
-gaae: gram:00025476:  scanner_errposition((yylsp[(1) - (1)])))); 
-gaae: gram:00026433:  ereport(ERROR, 
-gaae: gram:00026434:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026435:  errmsg("WITH CHECK OPTION is not implemented"))); 
-gaae: gram:00026442:  ereport(ERROR, 
-gaae: gram:00026443:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026444:  errmsg("WITH CHECK OPTION is not implemented"))); 
-gaae: gram:00026451:  ereport(ERROR, 
-gaae: gram:00026452:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026453:  errmsg("WITH CHECK OPTION is not implemented"))); 
-gaae: gram:00026903:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00026904:  errmsg("cannot use force with explain statement") 
-gaae: gram:00026905:  )); 
-gaae: gram:00026914:  ereport(ERROR, 
-gaae: gram:00026915:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026916:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
-gaae: gram:00026917:  "clause"))); 
-gaae: gram:00026982:  ereport(ERROR, 
-gaae: gram:00026983:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026984:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
-gaae: gram:00027249:  ereport(ERROR, 
-gaae: gram:00027250:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00027251:  errmsg("number of columns does not match number of values"), 
-gaae: gram:00027252:  scanner_errposition((yylsp[(1) - (5)])))); 
-gaae: gram:00027730:  ereport(ERROR, 
-gaae: gram:00027731:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00027732:  errmsg("LIMIT #,# syntax is not supported"), 
-gaae: gram:00027733:  errhint("Use separate LIMIT and OFFSET clauses."), 
-gaae: gram:00027734:  scanner_errposition((yylsp[(1) - (4)])))); 
-gaae: gram:00028314:  ereport(ERROR, 
-gaae: gram:00028315:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00028316:  errmsg("VALUES in FROM must have an alias"), 
-gaae: gram:00028317:  errhint("For example, FROM (VALUES ...) [AS] foo."), 
-gaae: gram:00028318:  scanner_errposition((yylsp[(1) - (1)])))); 
-gaae: gram:00028320:  ereport(ERROR, 
-gaae: gram:00028321:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00028322:  errmsg("subquery in FROM must have an alias"), 
-gaae: gram:00028323:  errhint("For example, FROM (SELECT ...) [AS] foo."), 
-gaae: gram:00028324:  scanner_errposition((yylsp[(1) - (1)])))); 
-gaae: gram:00028708:  ereport(ERROR, 
-gaae: gram:00028709:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028710:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (5)].ival)), 
-gaae: gram:00028711:  scanner_errposition((yylsp[(3) - (5)])))); 
-gaae: gram:00028714:  ereport(WARNING, 
-gaae: gram:00028715:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028716:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00028717:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION), 
-gaae: gram:00028718:  scanner_errposition((yylsp[(3) - (5)])))); 
-gaae: gram:00028864:  ereport(ERROR, 
-gaae: gram:00028865:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028866:  errmsg("precision for type float must be at least 1 bit"), 
-gaae: gram:00028867:  scanner_errposition((yylsp[(2) - (3)])))); 
-gaae: gram:00028873:  ereport(ERROR, 
-gaae: gram:00028874:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028875:  errmsg("precision for type float must be less than 54 bits"), 
-gaae: gram:00028876:  scanner_errposition((yylsp[(2) - (3)])))); 
-gaae: gram:00028891:  ereport(ERROR, 
-gaae: gram:00028892:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028893:  errmsg("NUMERIC precision %d must be between 1 and %d", 
-gaae: gram:00028894:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
-gaae: gram:00028896:  ereport(ERROR, 
-gaae: gram:00028897:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028898:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
-gaae: gram:00028899:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
-gaae: gram:00028909:  ereport(ERROR, 
-gaae: gram:00028910:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028911:  errmsg("NUMERIC precision %d must be between 1 and %d", 
-gaae: gram:00028912:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00019145:  ereport(ERROR, 
+gaae: gram:00019146:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00019147:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
+gaae: gram:00019148:  scanner_errposition((yylsp[(3) - (3)])))); 
+gaae: gram:00019160:  ereport(ERROR, 
+gaae: gram:00019161:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00019162:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (6)].ival)), 
+gaae: gram:00019163:  scanner_errposition((yylsp[(3) - (6)])))); 
+gaae: gram:00019166:  ereport(WARNING, 
+gaae: gram:00019167:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00019168:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00019169:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+gaae: gram:00019175:  ereport(ERROR, 
+gaae: gram:00019176:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00019177:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
+gaae: gram:00019860:  ereport(ERROR, 
+gaae: gram:00019861:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00019862:  errmsg("Cannot specify a name, rank, " 
+gaae: gram:00019863:  "or value for a DEFAULT partition " 
+gaae: gram:00019864:  "in this context"))); 
+gaae: gram:00019928:  ereport(ERROR, 
+gaae: gram:00019929:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00019930:  errmsg("Can only ADD a partition by name"), 
+gaae: gram:00019931:  errOmitLocation(true))); 
+gaae: gram:00019969:  ereport(ERROR, 
+gaae: gram:00019970:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00019971:  errmsg("Can only ADD a partition by name"))); 
+gaae: gram:00020048:  ereport(ERROR, 
+gaae: gram:00020049:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020050:  errmsg("Can only COALESCE a partition by name"))); 
+gaae: gram:00020314:  ereport(ERROR, 
+gaae: gram:00020315:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020316:  errmsg("template cannot contain " 
+gaae: gram:00020317:  "specification for child " 
+gaae: gram:00020318:  "partition"))); 
+gaae: gram:00021267:  ereport(ERROR, 
+gaae: gram:00021268:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00021269:  errmsg("MATCH PARTIAL not yet implemented"), 
+gaae: gram:00021270:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00021954:  ereport(ERROR, 
+gaae: gram:00021955:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00021956:  errmsg("PARTITION BY must specify RANGE or LIST"), 
+gaae: gram:00021957:  errOmitLocation(true))); 
+gaae: gram:00022003:  ereport(ERROR, 
+gaae: gram:00022004:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022005:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
+gaae: gram:00022007:  ereport(ERROR, 
+gaae: gram:00022008:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022009:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
+gaae: gram:00022065:  ereport(ERROR, 
+gaae: gram:00022066:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022067:  errmsg("template cannot contain " 
+gaae: gram:00022068:  "specification for child " 
+gaae: gram:00022069:  "partition"), 
+gaae: gram:00022070:  errOmitLocation(true))); 
+gaae: gram:00022163:  ereport(ERROR, 
+gaae: gram:00022164:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022165:  errmsg("CREATE TABLE AS cannot specify INTO"), 
+gaae: gram:00022166:  scanner_errposition(exprLocation((Node *) n->intoClause)))); 
+gaae: gram:00022175:  ereport(ERROR, 
+gaae: gram:00022176:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00022177:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
+gaae: gram:00022178:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"), 
+gaae: gram:00022179:  errOmitLocation(true))); 
+gaae: gram:00022289:  ereport(ERROR, 
+gaae: gram:00022290:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022291:  errmsg("EXECUTE may not be used with a regular external table"), 
+gaae: gram:00022292:  errhint("Use CREATE EXTERNAL WEB TABLE instead"), 
+gaae: gram:00022293:  errOmitLocation(true))); 
+gaae: gram:00022303:  ereport(ERROR, 
+gaae: gram:00022304:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022305:  errmsg("ON clause may not be used with a writable external table"), 
+gaae: gram:00022306:  errOmitLocation(true))); 
+gaae: gram:00022311:  ereport(ERROR, 
+gaae: gram:00022312:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022313:  errmsg("Single row error handling may not be used with a writable external table"))); 
+gaae: gram:00022612:  ereport(ERROR, 
+gaae: gram:00022613:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00022614:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
+gaae: gram:00022618:  ereport(ERROR, 
+gaae: gram:00022619:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00022620:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
+gaae: gram:00023574:  ereport(ERROR, 
+gaae: gram:00023575:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00023576:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
+gaae: gram:00023577:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00023596:  ereport(ERROR, 
+gaae: gram:00023597:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00023598:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
+gaae: gram:00023599:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00023665:  ereport(ERROR, 
+gaae: gram:00023666:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00023667:  errmsg("CREATE ASSERTION is not yet implemented"))); 
+gaae: gram:00023681:  ereport(ERROR, 
+gaae: gram:00023682:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00023683:  errmsg("DROP ASSERTION is not yet implemented"))); 
+gaae: gram:00023786:  ereport(ERROR, 
+gaae: gram:00023787:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00023788:  errmsg("improper qualified name (too many dotted names): %s", 
+gaae: gram:00023789:  NameListToString((yyvsp[(3) - (7)].list))), 
+gaae: gram:00023790:  scanner_errposition((yylsp[(3) - (7)])))); 
+gaae: gram:00024990:  ereport(ERROR, 
+gaae: gram:00024991:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00024992:  errmsg("CREATE INDEX CONCURRENTLY is not supported"))); 
+gaae: gram:00025517:  ereport(ERROR, 
+gaae: gram:00025518:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00025519:  errmsg("missing argument"), 
+gaae: gram:00025520:  errhint("Use NONE to denote the missing argument of a unary operator."), 
+gaae: gram:00025521:  errOmitLocation(true), 
+gaae: gram:00025522:  scanner_errposition((yylsp[(1) - (1)])))); 
+gaae: gram:00026490:  ereport(ERROR, 
+gaae: gram:00026491:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00026492:  errmsg("WITH CHECK OPTION is not implemented"))); 
+gaae: gram:00026499:  ereport(ERROR, 
+gaae: gram:00026500:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00026501:  errmsg("WITH CHECK OPTION is not implemented"))); 
+gaae: gram:00026508:  ereport(ERROR, 
+gaae: gram:00026509:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00026510:  errmsg("WITH CHECK OPTION is not implemented"))); 
+gaae: gram:00026960:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00026961:  errmsg("cannot use force with explain statement") 
+gaae: gram:00026962:  )); 
+gaae: gram:00026971:  ereport(ERROR, 
+gaae: gram:00026972:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00026973:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
+gaae: gram:00026974:  "clause"))); 
+gaae: gram:00027039:  ereport(ERROR, 
+gaae: gram:00027040:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00027041:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
+gaae: gram:00027306:  ereport(ERROR, 
+gaae: gram:00027307:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00027308:  errmsg("number of columns does not match number of values"), 
+gaae: gram:00027309:  scanner_errposition((yylsp[(1) - (5)])))); 
+gaae: gram:00027787:  ereport(ERROR, 
+gaae: gram:00027788:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00027789:  errmsg("LIMIT #,# syntax is not supported"), 
+gaae: gram:00027790:  errhint("Use separate LIMIT and OFFSET clauses."), 
+gaae: gram:00027791:  scanner_errposition((yylsp[(1) - (4)])))); 
+gaae: gram:00028371:  ereport(ERROR, 
+gaae: gram:00028372:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00028373:  errmsg("VALUES in FROM must have an alias"), 
+gaae: gram:00028374:  errhint("For example, FROM (VALUES ...) [AS] foo."), 
+gaae: gram:00028375:  scanner_errposition((yylsp[(1) - (1)])))); 
+gaae: gram:00028377:  ereport(ERROR, 
+gaae: gram:00028378:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00028379:  errmsg("subquery in FROM must have an alias"), 
+gaae: gram:00028380:  errhint("For example, FROM (SELECT ...) [AS] foo."), 
+gaae: gram:00028381:  scanner_errposition((yylsp[(1) - (1)])))); 
+gaae: gram:00028765:  ereport(ERROR, 
+gaae: gram:00028766:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00028767:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (5)].ival)), 
+gaae: gram:00028768:  scanner_errposition((yylsp[(3) - (5)])))); 
+gaae: gram:00028771:  ereport(WARNING, 
+gaae: gram:00028772:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00028773:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00028774:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION), 
+gaae: gram:00028775:  scanner_errposition((yylsp[(3) - (5)])))); 
+gaae: gram:00028921:  ereport(ERROR, 
+gaae: gram:00028922:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00028923:  errmsg("precision for type float must be at least 1 bit"), 
+gaae: gram:00028924:  scanner_errposition((yylsp[(2) - (3)])))); 
 gaae: gram:00028930:  ereport(ERROR, 
 gaae: gram:00028931:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028932:  errmsg("DECIMAL precision %d must be between 1 and %d", 
-gaae: gram:00028933:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
-gaae: gram:00028935:  ereport(ERROR, 
-gaae: gram:00028936:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028937:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
-gaae: gram:00028938:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+gaae: gram:00028932:  errmsg("precision for type float must be less than 54 bits"), 
+gaae: gram:00028933:  scanner_errposition((yylsp[(2) - (3)])))); 
 gaae: gram:00028948:  ereport(ERROR, 
 gaae: gram:00028949:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028950:  errmsg("DECIMAL precision %d must be between 1 and %d", 
-gaae: gram:00028951:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
-gaae: gram:00029002:  ereport(ERROR, 
-gaae: gram:00029003:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029004:  errmsg("length for type %s must be at least 1", 
-gaae: gram:00029005:  typname))); 
-gaae: gram:00029007:  ereport(ERROR, 
-gaae: gram:00029008:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029009:  errmsg("length for type %s cannot exceed %d", 
-gaae: gram:00029010:  typname, MaxAttrSize * BITS_PER_BYTE))); 
-gaae: gram:00029085:  ereport(ERROR, 
-gaae: gram:00029086:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029087:  errmsg("length for type %s must be at least 1", 
-gaae: gram:00029088:  (yyvsp[(1) - (5)].str)))); 
-gaae: gram:00029090:  ereport(ERROR, 
-gaae: gram:00029091:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029092:  errmsg("length for type %s cannot exceed %d", 
-gaae: gram:00029093:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
-gaae: gram:00029190:  ereport(ERROR, 
-gaae: gram:00029191:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029192:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
-gaae: gram:00029193:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
-gaae: gram:00029196:  ereport(WARNING, 
-gaae: gram:00029197:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029198:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
-gaae: gram:00029199:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
-gaae: gram:00029200:  MAX_TIMESTAMP_PRECISION))); 
-gaae: gram:00029231:  ereport(ERROR, 
-gaae: gram:00029232:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029233:  errmsg("TIME(%d)%s precision must not be negative", 
-gaae: gram:00029234:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
-gaae: gram:00029237:  ereport(WARNING, 
-gaae: gram:00029238:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029239:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
-gaae: gram:00029240:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
-gaae: gram:00029241:  MAX_TIME_PRECISION))); 
-gaae: gram:00029882:  ereport(ERROR, 
-gaae: gram:00029883:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00029884:  errmsg("UNIQUE predicate is not yet implemented"), 
-gaae: gram:00029885:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00030013:  ereport(ERROR, 
-gaae: gram:00030014:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00030015:  errmsg("window OVER clause can only be used " 
-gaae: gram:00030016:  "with an aggregate"))); 
-gaae: gram:00030304:  ereport(ERROR, 
-gaae: gram:00030305:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030306:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
-gaae: gram:00030307:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030310:  ereport(WARNING, 
-gaae: gram:00030311:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030312:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030313:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
-gaae: gram:00030357:  ereport(ERROR, 
-gaae: gram:00030358:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030359:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
-gaae: gram:00030360:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030363:  ereport(WARNING, 
-gaae: gram:00030364:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030365:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030366:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
-gaae: gram:00030410:  ereport(ERROR, 
-gaae: gram:00030411:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030412:  errmsg("LOCALTIME(%d) precision must not be negative", 
-gaae: gram:00030413:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030416:  ereport(WARNING, 
-gaae: gram:00030417:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030418:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030419:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
-gaae: gram:00030464:  ereport(ERROR, 
-gaae: gram:00030465:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030466:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
-gaae: gram:00030467:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030470:  ereport(WARNING, 
-gaae: gram:00030471:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030472:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030473:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
-gaae: gram:00031455:  ereport(ERROR, 
-gaae: gram:00031456:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00031457:  errmsg("improper qualified name (too many dotted names): %s", 
-gaae: gram:00031458:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
-gaae: gram:00031612:  ereport(ERROR, 
-gaae: gram:00031613:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00031614:  errmsg("INTERVAL(%d) precision must not be negative", 
-gaae: gram:00031615:  (yyvsp[(3) - (6)].ival)))); 
-gaae: gram:00031618:  ereport(WARNING, 
-gaae: gram:00031619:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00031620:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00031621:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
-gaae: gram:00031774:  ereport(ERROR, 
-gaae: gram:00031775:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00031776:  errmsg("OLD used in query that is not in a rule"))); 
-gaae: gram:00031786:  ereport(ERROR, 
-gaae: gram:00031787:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00031788:  errmsg("NEW used in query that is not in a rule"))); 
-gaae: gram:00032221:  ereport(ERROR, 
-gaae: gram:00032222:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032223:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
-gaae: gram:00032224:  scanner_errposition(location))); 
-gaae: gram:00032228:  ereport(ERROR, 
-gaae: gram:00032229:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032230:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
-gaae: gram:00032231:  scanner_errposition(location))); 
-gaae: gram:00032335:  ereport(ERROR, 
-gaae: gram:00032336:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032337:  errmsg("syntax error at or near \"ORDER BY\""), 
-gaae: gram:00032338:  scanner_errposition(exprLocation((Node *) sortClause)))); 
-gaae: gram:00032346:  ereport(ERROR, 
-gaae: gram:00032347:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032348:  errmsg("syntax error at or near \"OFFSET\""), 
-gaae: gram:00032349:  scanner_errposition(exprLocation(limitOffset)))); 
-gaae: gram:00032355:  ereport(ERROR, 
-gaae: gram:00032356:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032357:  errmsg("syntax error at or near \"LIMIT\""), 
-gaae: gram:00032358:  scanner_errposition(exprLocation(limitCount)))); 
-gaae: gram:00032364:  ereport(ERROR, 
-gaae: gram:00032365:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032366:  errmsg("syntax error at or near \"WITH\""), 
-gaae: gram:00032367:  scanner_errposition(exprLocation((Node *)withClause)))); 
-gaae: gram:00032509:  ereport(ERROR, 
-gaae: gram:00032510:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032511:  errmsg("OUT and INOUT arguments aren't allowed in " 
-gaae: gram:00032512:  "TABLE functions"))); 
+gaae: gram:00028950:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+gaae: gram:00028951:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00028953:  ereport(ERROR, 
+gaae: gram:00028954:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00028955:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
+gaae: gram:00028956:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+gaae: gram:00028966:  ereport(ERROR, 
+gaae: gram:00028967:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00028968:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+gaae: gram:00028969:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00028987:  ereport(ERROR, 
+gaae: gram:00028988:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00028989:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+gaae: gram:00028990:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00028992:  ereport(ERROR, 
+gaae: gram:00028993:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00028994:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
+gaae: gram:00028995:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+gaae: gram:00029005:  ereport(ERROR, 
+gaae: gram:00029006:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029007:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+gaae: gram:00029008:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00029059:  ereport(ERROR, 
+gaae: gram:00029060:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029061:  errmsg("length for type %s must be at least 1", 
+gaae: gram:00029062:  typname))); 
+gaae: gram:00029064:  ereport(ERROR, 
+gaae: gram:00029065:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029066:  errmsg("length for type %s cannot exceed %d", 
+gaae: gram:00029067:  typname, MaxAttrSize * BITS_PER_BYTE))); 
+gaae: gram:00029142:  ereport(ERROR, 
+gaae: gram:00029143:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029144:  errmsg("length for type %s must be at least 1", 
+gaae: gram:00029145:  (yyvsp[(1) - (5)].str)))); 
+gaae: gram:00029147:  ereport(ERROR, 
+gaae: gram:00029148:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029149:  errmsg("length for type %s cannot exceed %d", 
+gaae: gram:00029150:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
+gaae: gram:00029247:  ereport(ERROR, 
+gaae: gram:00029248:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029249:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
+gaae: gram:00029250:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+gaae: gram:00029253:  ereport(WARNING, 
+gaae: gram:00029254:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029255:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
+gaae: gram:00029256:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+gaae: gram:00029257:  MAX_TIMESTAMP_PRECISION))); 
+gaae: gram:00029288:  ereport(ERROR, 
+gaae: gram:00029289:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029290:  errmsg("TIME(%d)%s precision must not be negative", 
+gaae: gram:00029291:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+gaae: gram:00029294:  ereport(WARNING, 
+gaae: gram:00029295:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029296:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
+gaae: gram:00029297:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+gaae: gram:00029298:  MAX_TIME_PRECISION))); 
+gaae: gram:00029939:  ereport(ERROR, 
+gaae: gram:00029940:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00029941:  errmsg("UNIQUE predicate is not yet implemented"), 
+gaae: gram:00029942:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00030070:  ereport(ERROR, 
+gaae: gram:00030071:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00030072:  errmsg("window OVER clause can only be used " 
+gaae: gram:00030073:  "with an aggregate"))); 
+gaae: gram:00030361:  ereport(ERROR, 
+gaae: gram:00030362:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030363:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
+gaae: gram:00030364:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030367:  ereport(WARNING, 
+gaae: gram:00030368:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030369:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030370:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+gaae: gram:00030414:  ereport(ERROR, 
+gaae: gram:00030415:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030416:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
+gaae: gram:00030417:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030420:  ereport(WARNING, 
+gaae: gram:00030421:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030422:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030423:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+gaae: gram:00030467:  ereport(ERROR, 
+gaae: gram:00030468:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030469:  errmsg("LOCALTIME(%d) precision must not be negative", 
+gaae: gram:00030470:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030473:  ereport(WARNING, 
+gaae: gram:00030474:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030475:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030476:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+gaae: gram:00030521:  ereport(ERROR, 
+gaae: gram:00030522:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030523:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
+gaae: gram:00030524:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030527:  ereport(WARNING, 
+gaae: gram:00030528:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030529:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030530:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+gaae: gram:00031512:  ereport(ERROR, 
+gaae: gram:00031513:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00031514:  errmsg("improper qualified name (too many dotted names): %s", 
+gaae: gram:00031515:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
+gaae: gram:00031669:  ereport(ERROR, 
+gaae: gram:00031670:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00031671:  errmsg("INTERVAL(%d) precision must not be negative", 
+gaae: gram:00031672:  (yyvsp[(3) - (6)].ival)))); 
+gaae: gram:00031675:  ereport(WARNING, 
+gaae: gram:00031676:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00031677:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00031678:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+gaae: gram:00031831:  ereport(ERROR, 
+gaae: gram:00031832:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00031833:  errmsg("OLD used in query that is not in a rule"))); 
+gaae: gram:00031843:  ereport(ERROR, 
+gaae: gram:00031844:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00031845:  errmsg("NEW used in query that is not in a rule"))); 
+gaae: gram:00032278:  ereport(ERROR, 
+gaae: gram:00032279:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032280:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
+gaae: gram:00032281:  scanner_errposition(location))); 
+gaae: gram:00032285:  ereport(ERROR, 
+gaae: gram:00032286:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032287:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
+gaae: gram:00032288:  scanner_errposition(location))); 
+gaae: gram:00032392:  ereport(ERROR, 
+gaae: gram:00032393:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032394:  errmsg("syntax error at or near \"ORDER BY\""), 
+gaae: gram:00032395:  scanner_errposition(exprLocation((Node *) sortClause)))); 
+gaae: gram:00032403:  ereport(ERROR, 
+gaae: gram:00032404:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032405:  errmsg("syntax error at or near \"OFFSET\""), 
+gaae: gram:00032406:  scanner_errposition(exprLocation(limitOffset)))); 
+gaae: gram:00032412:  ereport(ERROR, 
+gaae: gram:00032413:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032414:  errmsg("syntax error at or near \"LIMIT\""), 
+gaae: gram:00032415:  scanner_errposition(exprLocation(limitCount)))); 
+gaae: gram:00032421:  ereport(ERROR, 
+gaae: gram:00032422:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032423:  errmsg("syntax error at or near \"WITH\""), 
+gaae: gram:00032424:  scanner_errposition(exprLocation((Node *)withClause)))); 
+gaae: gram:00032566:  ereport(ERROR, 
+gaae: gram:00032567:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032568:  errmsg("OUT and INOUT arguments aren't allowed in " 
+gaae: gram:00032569:  "TABLE functions"))); 
 aaaaa GP_IGNORE: paaj: parsexagg - ./backend/parser/parse_agg.c
 paaj: parsexagg:00000087:  ereport(ERROR, 
 paaj: parsexagg:00000088:  (errcode(ERRCODE_GROUPING_ERROR), 
