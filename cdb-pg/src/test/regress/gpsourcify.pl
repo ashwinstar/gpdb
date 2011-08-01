@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# Copyright (c) 2007 GreenPlum.  All rights reserved.  
+# Copyright (c) 2007-2011 GreenPlum.  All rights reserved.  
 # Author: Jeffrey I Cohen
 #
 #
@@ -78,7 +78,7 @@ source directory references are less common, and usually followed by
 
 Jeffrey I Cohen
 
-Copyright (c) 2007 GreenPlum.  All rights reserved.  
+Copyright (c) 2007-2011 GreenPlum.  All rights reserved.  
 
 Address bug reports and comments to: jcohen@greenplum.com
 
@@ -202,13 +202,23 @@ if (1)
                 my $v2 = $vv . "/data";
                 my $k3 = $k2 . "/data";
                 # replace the srcdir only if followed by "/data"
-                $ini =~ s/$v2/$k3/g;                
+                $ini =~ s/$v2/$k3/g;  
+				# or "include/catalog"
+                my $v3 = $vv . "/../../include/catalog";
+                my $k4 = $k2 . "/../../include/catalog";
+                $ini =~ s/$v3/$k4/g;  
             }
             elsif (($kk =~ m/abs_builddir/) && $src_eq_build)
             {
+				my $regex1 =
+					"/data" . "|" .
+					"/../../include/catalog";
+
                 # replace buildir if not followed by "/data" 
+				# or "include/catalog"
                 # (negative look-ahead)
-                $ini =~ s/$vv(?!\/data)/$k2/g;
+                $ini =~ 
+					s/$vv(?!($regex1))/$k2/g;
             }
             else
             {
