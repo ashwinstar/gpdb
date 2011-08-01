@@ -227,7 +227,7 @@ demoprot_validate_urls(PG_FUNCTION_ARGS)
 	 * we don't want to be used in a url. in this example
 	 * it's 'secured_directory'.
 	 */
-	for (i = 0 ; i < nurls ; i++)
+	for (i = 1 ; i <= nurls ; i++)
 	{
 		char *url = EXTPROTOCOL_VALIDATOR_GET_NTH_URL(fcinfo, i);
 		

@@ -7243,6 +7243,15 @@ RenameStmt: ALTER AGGREGATE func_name aggr_args RENAME TO name
 					n->newname = $6;
 					$$ = (Node *)n;
 				}
+			| ALTER PROTOCOL name RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_EXTPROTOCOL;
+					n->subname = $3;
+					n->newname = $6;
+					$$ = (Node *)n;
+				}
+			
 		;
 
 opt_column: COLUMN									{ $$ = COLUMN; }

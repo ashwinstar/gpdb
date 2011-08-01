@@ -2033,6 +2033,9 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_DATABASE:
 					tag = "ALTER DATABASE";
 					break;
+				case OBJECT_EXTPROTOCOL:
+					tag = "ALTER PROTOCOL";
+					break;
 				case OBJECT_FUNCTION:
 					tag = "ALTER FUNCTION";
 					break;

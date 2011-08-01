@@ -205,7 +205,7 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 	
 	
 	/*
-	 * Check the pg_extprotocol relation to be certain the ao table 
+	 * Check the pg_extprotocol relation to be certain the protocol
 	 * is there. 
 	 */
 	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
@@ -312,3 +312,100 @@ AlterExtProtocolOwner(const char *name, Oid newOwnerId)
 	heap_close(rel, NoLock);
 }
 
+/*
+ * Change external protocol owner
+ */
+void
+RenameExtProtocol(const char *oldname, const char *newname)
+{
+	HeapTuple	tup;
+	Relation	rel;
+	TupleDesc	dsc;
+	Oid			ptcId;
+	Oid			ownerId;
+	bool		isNull;
+	ScanKeyData	key;
+	SysScanDesc	scan;
+	Datum		ownerDatum;
+	
+	
+	/*
+	 * Check the pg_extprotocol relation to be certain the protocol 
+	 * is there. 
+	 */
+	rel = heap_open(ExtprotocolRelationId, RowExclusiveLock);
+	dsc = RelationGetDescr(rel);
+	
+	ScanKeyInit(&key,
+				Anum_pg_extprotocol_ptcname,
+				BTEqualStrategyNumber,
+				F_NAMEEQ,
+				CStringGetDatum(oldname));
+	
+	scan = systable_beginscan(rel, 
+							  ExtprotocolPtcnameIndexId, 
+							  true,
+							  SnapshotNow, 
+							  1, 
+							  &key);
+	
+	tup = systable_getnext(scan);
+	
+	if (!HeapTupleIsValid(tup))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("protocol \"%s\" does not exist",
+						oldname)));
+	
+	ptcId = HeapTupleGetOid(tup);
+	
+	ownerDatum = heap_getattr(tup, 
+							  Anum_pg_extprotocol_ptcowner,
+							  dsc, 
+							  &isNull);
+	
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("internal error: protocol \"%s\"  has no owner defined",
+						 oldname)));	
+
+	ownerId = DatumGetObjectId(ownerDatum);
+
+	if (strcmp(oldname, newname) != 0)
+	{
+		Datum		values[Natts_pg_extprotocol];
+		bool		nulls[Natts_pg_extprotocol];
+		bool		replaces[Natts_pg_extprotocol];
+		HeapTuple	newtuple;
+
+		/* Superusers can always do it */
+		if (!superuser())
+		{
+			/* Must be owner */
+			if (!pg_extprotocol_ownercheck(ptcId, GetUserId()))
+				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_EXTPROTOCOL,
+							   oldname);
+		}
+
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+		MemSet(replaces, false, sizeof(replaces));
+
+		replaces[Anum_pg_extprotocol_ptcname - 1] = true;
+		values[Anum_pg_extprotocol_ptcname - 1] = CStringGetDatum(newname);
+		
+		newtuple = heap_modify_tuple(tup, RelationGetDescr(rel), values,
+									 nulls, replaces);
+
+		simple_heap_update(rel, &newtuple->t_self, newtuple);
+
+		/* keep the catalog indexes up to date */
+		CatalogUpdateIndexes(rel, newtuple);
+
+		heap_freetuple(newtuple);		
+	}
+
+	systable_endscan(scan);	
+	heap_close(rel, NoLock);
+}
