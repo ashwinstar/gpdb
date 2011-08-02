@@ -398,11 +398,11 @@ CREATE VIEW pg_resqueue_status AS
 -- External table views
 
 CREATE VIEW pg_max_external_files AS
-    SELECT   hostname, count(*) as maxfiles
-    FROM     gp_configuration
-    WHERE    content >= 0 
-    AND      isprimary
-    GROUP BY hostname;
+  SELECT   address, count(*) as maxfiles
+  FROM     gp_segment_configuration
+  WHERE    content >= 0 
+  AND      role='p'
+  GROUP BY address;
 
 -- partitioning
 create view pg_partitions as
