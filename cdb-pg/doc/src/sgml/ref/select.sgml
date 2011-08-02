@@ -42,6 +42,7 @@ PostgreSQL documentation
 
 <synopsis>
 
+[ WITH <replaceable class="parameter">with_query</replaceable> [, ...] ]
 SELECT [ ALL | DISTINCT [ ON ( <replaceable class="parameter">expression</replaceable> [, ...] ) ] ]
 
     * | <replaceable class="parameter">expression</replaceable> [ [AS] <replaceable class="parameter">output_name</replaceable> ] [, ...]
@@ -132,7 +133,7 @@ where <replaceable class="parameter">from_item</replaceable> can be one of:
 
 
 
-and <replaceable class="parameter">group_elem</replaceable> can be one of:
+where <replaceable class="parameter">group_elem</replaceable> can be one of:
 
     <replaceable class="parameter">expression</replaceable> [, ...] ]
 
@@ -143,6 +144,13 @@ and <replaceable class="parameter">group_elem</replaceable> can be one of:
     GROUPING SETS ( <replaceable class="parameter">group_elem</replaceable> [, ...] ] )
 
     ( )
+
+
+and <replaceable class="parameter">with_query</replaceable> can be:
+
+    <replaceable class="parameter">query_name</replaceable> [ ( <replaceable class="parameter">column</replaceable> [, ...] ) ]
+    AS ( { VALUES ( <replaceable class="PARAMETER">expression</replaceable> [, ...] ) | <replaceable class="parameter">query</replaceable> } )
+
 
 </synopsis>
 
