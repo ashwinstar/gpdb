@@ -1858,25 +1858,23 @@ Plan *assure_collocation_and_order(
 		Plan *input_plan,
 		int partkey_len,
 		AttrNumber *partkey_attrs,
-		List *sortclause,								 
+		List *sortclause,
 		CdbPathLocus input_locus,
 		CdbPathLocus *output_locus,  /*OUT*/
 		List **pathkeys_ptr /*OUT*/
 		)
 {
 	Plan *result_plan;
-	List *pathkeys;
 	List *sort_pathkeys = NULL;
 	double motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ?
 					gp_motion_cost_per_row :
 					2.0 * cpu_tuple_cost;
-	
+
 	Assert( input_plan && (input_plan->flow || IsA(input_plan, Motion)) );
 	Assert( !CdbPathLocus_IsNull(input_locus));
 	Assert( pathkeys_ptr && (*pathkeys_ptr == NIL || IsA(*pathkeys_ptr, List)) );
 	
 	result_plan = input_plan;
-	pathkeys = *pathkeys_ptr;
 	if (output_locus != NULL)
 		*output_locus = input_locus;
 	
@@ -1976,19 +1974,17 @@ Plan *assure_collocation_and_order(
 Plan *assure_order(
 		PlannerInfo *root,
 		Plan *input_plan,
-		List *sortclause,								 
+		List *sortclause,
 		List **pathkeys_ptr)
 {
 	Plan *result_plan;
-	List *pathkeys;
 	List *sort_pathkeys = NULL;
-	
+
 	Assert( input_plan && (input_plan->flow || IsA(input_plan, Motion)) );
 	Assert( pathkeys_ptr && (*pathkeys_ptr == NIL || IsA(*pathkeys_ptr, List)) );
 	
 	result_plan = input_plan;
-	pathkeys = *pathkeys_ptr;
-	
+
 	if ( sortclause != NIL )
 	{
 		sort_pathkeys = make_pathkeys_for_sortclauses(sortclause, input_plan->targetlist);
@@ -2285,7 +2281,6 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 {
 	Plan *window_plan;
 	Plan *agg_plan = NULL;
-	PlannerInfo *local_root;
 	WindowInfo *winfo;
 	int i;
 	ListCell *lc;
@@ -2304,12 +2299,6 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 	List *pathkeys = *pathkeys_ptr;
 	
 	/* elog(NOTICE, "Start of plan_sequential_stage()."); */
-	
-	/* In case this is the initial stage, local root is actual root. */
-	if ( context->original_range )
-		local_root = root;
-	else
-		local_root = NULL;
 
 	/* Determine whether this stage requires external aggregation and an
 	 * auxilliary aggregate. 
@@ -2364,12 +2353,13 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 	}
 
 
-	/* Assure collocation on the partition key and ordering for the first
+	/*
+	 * Assure collocation on the partition key and ordering for the first
 	 * WindowInfo in the stage.
 	 */
 	winfo = &context->windowinfos[lo_windex];
-	window_plan = assure_collocation_and_order(local_root, 
-											   input_plan, 
+	window_plan = assure_collocation_and_order(root,
+											   input_plan,
 											   winfo->partkey_len,
 											   winfo->partkey_attrs,
 											   winfo->sortclause,
@@ -2391,7 +2381,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 		 * by sharing the input window plan locally (within the slice) so
 		 * we can develop an Agg and a Window chain within the stage. 
 		 */
-		share_partners = share_plan(local_root, window_plan, 2);
+		share_partners = share_plan(root, window_plan, 2);
 		window_plan = list_nth(share_partners, 0);
 		agg_plan = list_nth(share_partners, 1);
 		list_free(share_partners);
@@ -2466,7 +2456,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 		 * incomplete at this point.  We'll fill it in as we go.
 		 */
 		agg_plan = (Plan *)make_agg(
-					local_root,
+					root,
 					tlist, /* just partkey (if any) at this point */
 					NIL, /* qual */
 					strategy, false,
@@ -2508,14 +2498,14 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 		{
 			/* [Re]condition input for this window info.  At most this may
 			 * add a Sort node, but the partitioning and the partitioning
-			 * sort order will be preserved so we don't need to reSort the 
+			 * sort order will be preserved so we don't need to reSort the
 			 * agg_plan (if any).
 			 *
-			 * XXX If we had a partitioned Sort operator, we could use 
-			 *     it here on a partitioned window plan.  
+			 * XXX If we had a partitioned Sort operator, we could use
+			 *     it here on a partitioned window plan.
 			 */
-			window_plan = assure_order(local_root, 
-									   window_plan, 
+			window_plan = assure_order(root,
+									   window_plan,
 									   winfo->sortclause,
 									   &pathkeys);
 		}
@@ -2535,7 +2525,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 			}
 			
 			window_plan = (Plan *)make_window(
-							local_root,
+							root,
 							copyObject(window_plan->targetlist),
 							winfo->partkey_len,
 							partkey,
