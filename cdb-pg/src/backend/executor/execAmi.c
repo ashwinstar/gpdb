@@ -43,6 +43,7 @@
 #include "executor/nodeValuesscan.h"
 #include "executor/nodeBitmapAppendOnlyscan.h"
 #include "executor/nodeWindow.h"
+#include "executor/nodeShareInputScan.h"
 
 /*
  * ExecReScan
@@ -214,6 +215,10 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 
 		case T_WindowState:
 			ExecReScanWindow((WindowState *) node, exprCtxt);
+			break;
+
+		case T_ShareInputScanState:
+			ExecShareInputScanReScan((ShareInputScanState *) node, exprCtxt);
 			break;
 			
 		default:

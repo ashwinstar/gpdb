@@ -43,6 +43,96 @@ TupleTableSlot *ExecShareInputScan(ShareInputScanState *node)
 	return ExecScan(&node->ss, (ExecScanAccessMtd) ShareInputNext);
 }
 
+/*
+ * init_tuplestore_state
+ *    Initialize the tuplestore state for the Shared node if the state
+ *    is not initialized.
+ */
+static void
+init_tuplestore_state(ShareInputScanState *node)
+{
+	Assert(node->ts_state == NULL);
+	
+	EState *estate = node->ss.ps.state;
+	ShareInputScan *sisc = (ShareInputScan *)node->ss.ps.plan;
+	ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, sisc->share_id, false);
+	PlanState *snState = NULL;
+
+	ShareType share_type = sisc->share_type;
+
+	if(snEntry)
+	{
+		snState = (PlanState *) snEntry->shareState;
+		if(snState)
+		{
+			ExecProcNode(snState);
+		}
+		
+		else
+		{
+			Assert(share_type == SHARE_MATERIAL_XSLICE || share_type == SHARE_SORT_XSLICE);
+		}
+	}
+
+	if(share_type == SHARE_MATERIAL_XSLICE)
+	{
+		char rwfile_prefix[100];
+		shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
+	
+		node->ts_state = (void *) ntuplestore_create_readerwriter(rwfile_prefix, 0, false);
+		node->ts_pos = (void *) ntuplestore_create_accessor((NTupleStore *) node->ts_state, false);
+		ntuplestore_acc_seek_bof((NTupleStoreAccessor *)node->ts_pos);
+	}
+	else if(share_type == SHARE_MATERIAL)
+	{
+		node->ts_state = ((MaterialState *)snState)->ts_state;
+		node->ts_pos = (void *) ntuplestore_create_accessor((NTupleStore *) node->ts_state, false);
+		ntuplestore_acc_seek_bof((NTupleStoreAccessor *)node->ts_pos);
+	}
+	else if(share_type == SHARE_SORT_XSLICE)
+	{
+		char rwfile_prefix[100];
+		shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
+			
+		if(gp_enable_mk_sort)
+		{
+			node->ts_state = tuplesort_begin_heap_file_readerwriter_mk(
+				rwfile_prefix, false,
+				NULL, 0, NULL, NULL, PlanStateOperatorMemKB((PlanState *) node), true);
+
+			tuplesort_begin_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk **)(&node->ts_pos));
+			tuplesort_rescan_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk *)node->ts_pos); 
+		}
+		else
+		{
+			node->ts_state = tuplesort_begin_heap_file_readerwriter(
+				rwfile_prefix, false,
+				NULL, 0, NULL, NULL, PlanStateOperatorMemKB((PlanState *) node), true);
+
+			tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
+			tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos); 
+		}
+	}
+	else 
+	{
+		Assert(sisc->share_type == SHARE_SORT);
+
+		if(gp_enable_mk_sort)
+		{
+			node->ts_state = ((SortState *)snState)->tuplesortstate;
+			tuplesort_begin_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk **)(&node->ts_pos));
+			tuplesort_rescan_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk *)node->ts_pos);
+		}
+		else
+		{
+			node->ts_state = ((SortState *)snState)->tuplesortstate;
+			tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
+			tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos);
+		}
+	}
+}
+
+
 /* ------------------------------------------------------------------
  * ShareInputNext
  * 	Retrieve a tuple from the ShareInputScan
@@ -68,79 +158,10 @@ ShareInputNext(ShareInputScanState *node)
 	forward = ScanDirectionIsForward(dir);
 
 
-	/* if first time call, need to init underlying material node */
+	/* if first time call, need to initialize the tuplestore state.  */
 	if(node->ts_state == NULL)
 	{
-		ShareNodeEntry *snEntry = ExecGetShareNodeEntry(estate, sisc->share_id, false);
-		PlanState *snState = NULL;
-
-		if(snEntry)
-		{
-			snState = (PlanState *) snEntry->shareState;
-			if(snState)
-				slot = ExecProcNode(snState);
-			else
-			{
-				Assert(share_type == SHARE_MATERIAL_XSLICE || share_type == SHARE_SORT_XSLICE);
-			}
-		}
-
-		if(share_type == SHARE_MATERIAL_XSLICE)
-		{
-			char rwfile_prefix[100];
-			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
-	
-			node->ts_state = (void *) ntuplestore_create_readerwriter(rwfile_prefix, 0, false);
-			node->ts_pos = (void *) ntuplestore_create_accessor((NTupleStore *) node->ts_state, false);
-			ntuplestore_acc_seek_bof((NTupleStoreAccessor *)node->ts_pos);
-		}
-		else if(share_type == SHARE_MATERIAL)
-		{
-			node->ts_state = ((MaterialState *)snState)->ts_state;
-			node->ts_pos = (void *) ntuplestore_create_accessor((NTupleStore *) node->ts_state, false);
-			ntuplestore_acc_seek_bof((NTupleStoreAccessor *)node->ts_pos);
-		}
-		else if(share_type == SHARE_SORT_XSLICE)
-		{
-			char rwfile_prefix[100];
-			shareinput_create_bufname_prefix(rwfile_prefix, sizeof(rwfile_prefix), sisc->share_id);
-			
-			if(gp_enable_mk_sort)
-			{
-				node->ts_state = tuplesort_begin_heap_file_readerwriter_mk(
-					rwfile_prefix, false,
-					NULL, 0, NULL, NULL, PlanStateOperatorMemKB((PlanState *) node), true);
-
-				tuplesort_begin_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk **)(&node->ts_pos));
-				tuplesort_rescan_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk *)node->ts_pos); 
-			}
-			else
-			{
-				node->ts_state = tuplesort_begin_heap_file_readerwriter(
-					rwfile_prefix, false,
-					NULL, 0, NULL, NULL, PlanStateOperatorMemKB((PlanState *) node), true);
-
-				tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
-				tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos); 
-			}
-		}
-		else 
-		{
-			Assert(sisc->share_type == SHARE_SORT);
-
-			if(gp_enable_mk_sort)
-			{
-				node->ts_state = ((SortState *)snState)->tuplesortstate;
-				tuplesort_begin_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk **)(&node->ts_pos));
-				tuplesort_rescan_pos_mk((Tuplesortstate_mk *) node->ts_state, (TuplesortPos_mk *)node->ts_pos);
-			}
-			else
-			{
-				node->ts_state = ((SortState *)snState)->tuplesortstate;
-				tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
-				tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos);
-			}
-		}
+		init_tuplestore_state(node);
 	}
 
 	slot = node->ss.ps.ps_ResultTupleSlot;
@@ -382,8 +403,13 @@ void ExecShareInputScanRestrPos(ShareInputScanState *node)
  */
 void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 {
+	/* if first time call, need to initialize the tuplestore state */
+	if(node->ts_state == NULL)
+	{
+		init_tuplestore_state(node);
+	}
+
 	ShareInputScan *sisc = (ShareInputScan *) node->ss.ps.plan;
-	Assert(node->ts_state);
 
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	if(sisc->share_type == SHARE_MATERIAL || sisc->share_type == SHARE_MATERIAL_XSLICE)

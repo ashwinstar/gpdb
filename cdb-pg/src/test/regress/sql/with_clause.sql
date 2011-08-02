@@ -310,3 +310,14 @@ and with_test2.i = my_group_sum.i;
 --select with_test2.* from with_test2
 --where value < all (select sum(value) from with_test1 group by i having i = with_test2.i);
 --end_equivalent(crashes)
+
+drop table if exists b;
+create table b (i integer);
+insert into b values(1);
+insert into b values(2);
+
+--begin_equivalent
+with b1 as (select * from b) select * from (select * from b1 where b1.i =1) AS FOO, b1 FOO2;
+
+select * from (select * from (select * from b) as b1 where b1.i = 1) AS FOO, (select * from b) as foo2;
+--end_equivalent

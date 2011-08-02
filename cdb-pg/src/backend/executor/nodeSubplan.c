@@ -691,7 +691,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
     sp_estate->es_sliceTable = estate->es_sliceTable;
 	sp_estate->current_slice_no = estate->current_slice_no;
 	sp_estate->motionlayer_context = estate->motionlayer_context;
-	
+	sp_estate->es_sharenode = estate->es_sharenode;
 
 	/*
 	 * Start up the subplan (this is a very cut-down form of InitPlan())
