@@ -931,8 +931,20 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 					XASSERT(plist->type);
 					i++;
 					plist->type = copyscalar(plist->type);
-					if (plist->name)
+
+					/*
+					 * if plist->name is not null and empty string,
+					 * then use that name
+					 */
+					if (plist->name &&
+							0 != strcmp(plist->name, "") &&
+							0 != strcmp(plist->name, "\"\"") )
+					{
 						plist->name = copyscalar(plist->name);
+					}
+					/*
+					 * else We need generate a name anyway
+					 */
 					else
 					{
 						/* 

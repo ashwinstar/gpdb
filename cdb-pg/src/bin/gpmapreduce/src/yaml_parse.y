@@ -815,8 +815,8 @@ void yaml_yyerror (mapred_parser_t *parser, char const *s)
 	if (parser->yparser->error != YAML_NO_ERROR)
 	{
 		fprintf(stderr, "Error: YAML syntax error - %s %s, at line %d\n",
-				parser->yparser->problem,
-				parser->yparser->context,
+				NULL != parser->yparser->problem? parser->yparser->problem: EMPTY_STRING,
+				NULL != parser->yparser->context? parser->yparser->context: EMPTY_STRING,
 				(int) parser->yparser->problem_mark.line+1);
 	}
 	else 
