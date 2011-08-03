@@ -322,6 +322,24 @@ purge_cursor_ic_entry(void)
 	}
 }
 
+static void
+reset_main_thread_waiting()
+{
+	main_thread_waiting = false;
+	main_thread_waiting_node = -1;
+	main_thread_waiting_route = ANY_ROUTE;
+	main_thread_waiting_query = -1;
+}
+
+static void
+set_main_thread_waiting(int motNodeId, int route, int icId)
+{
+	main_thread_waiting = true;
+	main_thread_waiting_node = motNodeId;
+	main_thread_waiting_route = route;
+	main_thread_waiting_query = icId;
+}
+
 static void getSockAddr(struct sockaddr_storage * peer, socklen_t * peer_len, const char * listenerAddr, int listenerPort);
 
 static ChunkTransportStateEntry *startOutgoingUDPConnections(ChunkTransportState *transportStates,
@@ -2023,10 +2041,7 @@ SetupUDPInterconnect(EState *estate)
 				pthread_mutex_lock(&rx_thread_mutex);
 				if (conn->state != mcsStarted)
 				{
-					main_thread_waiting_node = conn->conn_info.motNodeId;
-					main_thread_waiting = true;
-					main_thread_waiting_route = conn->route;
-					main_thread_waiting_query = gp_interconnect_id;
+					set_main_thread_waiting(conn->conn_info.motNodeId, conn->route, gp_interconnect_id);
 
 					if (wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
 					{
@@ -2037,10 +2052,7 @@ SetupUDPInterconnect(EState *estate)
 						/* timed out waiting. */
 					}
 
-					main_thread_waiting_query = -1;
-					main_thread_waiting_route = ANY_ROUTE;
-					main_thread_waiting_node = -1;
-					main_thread_waiting = false;
+					reset_main_thread_waiting();
 				}
 
 				/* Did we get what we wanted ? */
@@ -2156,7 +2168,6 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 						MotionLayerState *mlStates,
 						bool forceEOS)
 {
-	ListCell   *cell;
 	ChunkTransportStateEntry *pEntry=NULL;
 	int			i;
 	Slice	   *mySlice;
@@ -2206,7 +2217,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 	 * go, so don't use foreach() () */
 	if (list_length(transportStates->incompleteConns) != 0)
 	{
-		cell = list_head(transportStates->incompleteConns);
+		ListCell *cell = list_head(transportStates->incompleteConns);
 		while (cell != NULL)
 		{
 			conn = (volatile MotionConn *) lfirst(cell);
@@ -2281,6 +2292,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 	if (!forceEOS)
 	{
 		List *pendingStop = NIL;
+		ListCell   *cell;
 
 		foreach(cell, mySlice->children)
 		{
@@ -2316,55 +2328,52 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		elog(DEBUG3, "TeardownUDP: %d pending stops", list_length(pendingStop));
 
 		pthread_mutex_lock(&rx_thread_mutex);
-		while ((cell = list_head(pendingStop)) != NULL)
+
+		while (list_length(pendingStop) > 0)
 		{
-			conn = (volatile MotionConn *)lfirst(cell);
-
-			if (!conn->stillActive)
+			ListCell *cell = list_head(pendingStop);
+			while (cell != NULL)
 			{
-				/* remove from the list */
-				pendingStop = list_delete_ptr(pendingStop, (void *)conn);
+				conn = (volatile MotionConn *)lfirst(cell);
 
-				elog(DEBUG3, "TeardownUDP: %d pending stops", list_length(pendingStop));
-				continue;
-			}
-
-			main_thread_waiting = true;
-			main_thread_waiting_node = conn->conn_info.motNodeId;
-			main_thread_waiting_route = conn->route;
-			main_thread_waiting_query = transportStates->sliceTable->ic_instance_id;
-
-			if (wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
-			{
-				main_thread_waiting_query = -1;
-				main_thread_waiting_route = ANY_ROUTE;
-				main_thread_waiting_node = -1;
-				main_thread_waiting = false;
-
-				/* success, remove list (as above) */
-				pendingStop = list_delete_ptr(pendingStop, (void *)conn);
-
-				elog(DEBUG3, "TeardownUDP: %d pending stops", list_length(pendingStop));
-
-				continue;
-			}
-			else
-			{
-				main_thread_waiting_query = -1;
-				main_thread_waiting_route = ANY_ROUTE;
-				main_thread_waiting_node = -1;
-				main_thread_waiting = false;
-
-				pthread_mutex_unlock(&rx_thread_mutex);
-
-				/* if requested we want to bail-out to handle errors,
-				 * so we use "false" */
-				ML_CHECK_FOR_INTERRUPTS(false);
-
-				/* if we made it here we need the lock again. */
-				pthread_mutex_lock(&rx_thread_mutex);
+				cell = lnext(cell);
+				
+				if (!conn->stillActive || conn->eosAcked)
+				{
+					/* remove from the list */
+					pendingStop = list_delete_ptr(pendingStop, (void *)conn);
+					conn->stillActive = false;
+					continue;
+				}
+				
+				set_main_thread_waiting(conn->conn_info.motNodeId, ANY_ROUTE,
+										transportStates->sliceTable->ic_instance_id);
+				
+				if (wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
+				{
+					reset_main_thread_waiting();
+					
+					/* success, remove list (as above) */
+					pendingStop = list_delete_ptr(pendingStop, (void *)conn);
+					conn->stillActive = false;
+					continue;
+				}
+				else
+				{
+					reset_main_thread_waiting();
+					
+					pthread_mutex_unlock(&rx_thread_mutex);
+					
+					/* if requested we want to bail-out to handle errors,
+					 * so we use "false" */
+					ML_CHECK_FOR_INTERRUPTS(false);
+					
+					/* if we made it here we need the lock again. */
+					pthread_mutex_lock(&rx_thread_mutex);
+				}
 			}
 		}
+		
 		pthread_mutex_unlock(&rx_thread_mutex);
 	}
 
@@ -2373,6 +2382,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 	 * immediately (the receiver know for real if they want to shut
 	 * down -- they aren't going to be processing any more data).
 	 */
+	ListCell   *cell;
 	foreach(cell, mySlice->children)
 	{
 		Slice	*aSlice;
@@ -2533,17 +2543,15 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 	{
 		directed = true;
 		*srcRoute = conn->route;
-		main_thread_waiting_route = conn->route;
+		set_main_thread_waiting(motNodeID, conn->route,
+								pTransportStates->sliceTable->ic_instance_id);
 	}
 	else
 	{
 		/* non-directed receive */
-		main_thread_waiting_route = ANY_ROUTE;
+		set_main_thread_waiting(motNodeID, ANY_ROUTE,
+								pTransportStates->sliceTable->ic_instance_id);
 	}
-
-	main_thread_waiting_query = pTransportStates->sliceTable->ic_instance_id;
-	main_thread_waiting_node = motNodeID;
-	main_thread_waiting = true;
 
 	/* we didn't have any data, so we've got to read it from the network. */
 	for (;;)
@@ -2576,10 +2584,7 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 			if (!directed)
 				*srcRoute = rxconn->route;
 
-			main_thread_waiting_query = -1;
-			main_thread_waiting_route = ANY_ROUTE;
-			main_thread_waiting_node = -1;
-			main_thread_waiting = false;
+			reset_main_thread_waiting();
 
 			pthread_mutex_unlock(&rx_thread_mutex);
 
@@ -3380,6 +3385,7 @@ SendEosUDP(MotionLayerState *mlStates,
 				conn->state = mcsEosSent;
 				conn->stillActive = false;
 			}
+
 			Assert(!conn->activeXmit);
 		}
 #ifdef AMS_VERBOSE_LOGGING
@@ -4035,7 +4041,10 @@ ic_rx_thread_func(void *arg)
 					 * "in queue" which have EOS, so we don't bother
 					 * with things like stop messages */
 					if (pkt->flags & UDPIC_FLAGS_EOS)
+					{
 						conn->conn_info.flags |= UDPIC_FLAGS_EOS;
+						conn->eosAcked = true;
+					}
 
 					/* Was the main thread waiting for something ? */
 					if (main_thread_waiting &&

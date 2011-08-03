@@ -149,6 +149,9 @@ typedef struct MotionConn
 	uint64 stat_max_resent;
 	uint64 stat_count_dropped;
 
+	/* Indicate whether an EOS is received and acked. */
+	bool eosAcked;
+
 }	MotionConn;
 
 /*
