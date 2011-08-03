@@ -134,9 +134,7 @@ public class GPDBWritable implements Writable {
 		
 		/* extract column value */
 		for(int i=0; i<colCnt; i++) {
-			if (bitflag[i] == 1)
-				colValue[i] = null;
-			else {
+			if (bitflag[i] != 1) {
 				switch(colType[i]) {
 					case BIGINT:   { long    val = in.readLong();    colValue[i] = new Long(val);    break; } 
 					case BOOLEAN:  { boolean val = in.readBoolean(); colValue[i] = new Boolean(val); break; }
