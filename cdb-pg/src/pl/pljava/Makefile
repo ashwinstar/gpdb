@@ -113,7 +113,7 @@ test_all: test_%:
 	@$(MAKE) -r -C $(CLASSDIR)/test -f $(PROJDIR)/src/java/test/Makefile \
 	MODULEROOT=$(PROJDIR)/src/java $*
 
-c_all c_install c_uninstall c_depend: c_%:
+c_all c_install c_uninstall c_depend: c_%: pljava_all
 	@-mkdir -p $(OBJDIR)
 	@$(MAKE) -r -C $(OBJDIR) -f $(PROJDIR)/src/C/pljava/Makefile \
 	MODULEROOT=$(PROJDIR)/src/C build_$*

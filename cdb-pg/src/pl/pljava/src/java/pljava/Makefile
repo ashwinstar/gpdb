@@ -71,14 +71,15 @@ $(JNIHDRS): $(JNISRCS)
 # gcjh generated headers don't define final constants (see gcc
 # bugzilla #16843) so we must copy our own version of java.sql.Types. 
 #
-$(JNIDIR)/.timestamp: $(JNIHDRS)
+$(JNIDIR)/.timestamp: $(JNIHDRS) .timestamp
 	@-mkdir -p $(@D)
 	@cp $(PROJDIR)/fixes/gcj/java_sql_Types.h $(@D)
 	@touch $@
 else
 all: $(JARFILE) $(JNIDIR)/.timestamp
 
-$(JNIDIR)/.timestamp: $(JNISRCS)
+# .timestamp waits for javac in $(MODULEROOT)/Makefile.global
+$(JNIDIR)/.timestamp: $(JNISRCS) .timestamp
 	@-mkdir -p $(@D)
 	@echo $(JAVAH) -classpath . -d $(@D) '<jni classes>'
 	@$(JAVAH) -classpath . -d $(@D) $(JNI_CLASSES) java.sql.Types
