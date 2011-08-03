@@ -1474,3 +1474,9 @@ group by
     2*b.g,
     lower(f);
 
+-- End MPP-12082
+-- MPP-13710
+create table redundant_sort_check (i int, j int, k int) distributed by (i);
+explain select count(*) over (order by i), count(*) over (partition by i order by j) from redundant_sort_check;
+-- End of MPP-13710
+

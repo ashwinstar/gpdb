@@ -7959,3 +7959,25 @@ group by
     lower(f);
 ERROR:  unresolved grouping key in window query
 HINT:  You may need to use explicit aliases and/or to refer to grouping keys in the same way throughout the query.
+-- End MPP-12082
+-- MPP-13710
+create table redundant_sort_check (i int, j int, k int) distributed by (i);
+explain select count(*) over (order by i), count(*) over (partition by i order by j) from redundant_sort_check;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Subquery Scan coplan  (cost=0.01..0.06 rows=1 width=8)
+   ->  Window  (cost=0.01..0.05 rows=1 width=8)
+         Order By: coplan.i
+         ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=0.01..0.05 rows=1 width=8)
+               Merge Key: coplan.i, coplan.j
+               ->  Subquery Scan coplan  (cost=0.01..0.03 rows=1 width=8)
+                     ->  Window  (cost=0.01..0.02 rows=1 width=8)
+                           Partition By: redundant_sort_check.i
+                           Order By: redundant_sort_check.j
+                           ->  Sort  (cost=0.01..0.02 rows=1 width=8)
+                                 Sort Key: redundant_sort_check.i, redundant_sort_check.j
+                                 ->  Seq Scan on redundant_sort_check  (cost=0.00..0.00 rows=1 width=8)
+ Settings:  gp_enable_sequential_window_plans=on
+(13 rows)
+
+-- End of MPP-13710
