@@ -18,10 +18,22 @@
 
 jobject HeapTupleHeader_getTupleDesc(HeapTupleHeader ht)
 {
-	return TupleDesc_create(
-		lookup_rowtype_tupdesc(
-			HeapTupleHeaderGetTypeId(ht),
-			HeapTupleHeaderGetTypMod(ht)));
+	jobject jtd = 0;
+
+	/* create tuple descriptor */
+	TupleDesc tupDesc = lookup_rowtype_tupdesc(
+				HeapTupleHeaderGetTypeId(ht),
+				HeapTupleHeaderGetTypMod(ht));
+
+	if(0 != tupDesc)
+	{
+		jtd = TupleDesc_create(tupDesc);
+
+		/* release tuple descriptor */
+		DecrTupleDescRefCount(tupDesc);
+	}
+
+	return jtd;
 }
 
 jobject HeapTupleHeader_getObject(JNIEnv* env, jlong hth, jlong jtd, jint attrNo)
