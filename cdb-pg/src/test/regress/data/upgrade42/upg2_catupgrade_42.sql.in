@@ -17,7 +17,7 @@
 -- in all the segments.
 
 CREATE OR REPLACE VIEW pg_max_external_files AS
-    SELECT   address, count(*) as maxfiles
+    SELECT   address::name as hostname, count(*) as maxfiles
     FROM     gp_segment_configuration
     WHERE    content >= 0 
     AND      role='p'
