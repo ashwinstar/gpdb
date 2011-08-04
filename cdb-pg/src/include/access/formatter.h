@@ -16,13 +16,12 @@
 #include "nodes/value.h"
 #include "utils/rel.h"
 
-#define FMT_BADROW_MAXLEN 1024
+#define FMT_BADROW_MAXLEN 32 * 1024
 
 typedef enum FmtNotification
 {
 	FMT_NONE,
-	FMT_NEED_MORE_DATA,
-	FMT_DATA_ERROR
+	FMT_NEED_MORE_DATA
 
 } FmtNotification;
 
@@ -74,10 +73,17 @@ typedef struct FormatterData
 	(((FormatterData*) fcinfo->context)->fmt_badrow_num = n)
 
 #define FORMATTER_SET_BAD_ROW_DATA(fcinfo, p, n) \
-	(memcpy(((FormatterData*) fcinfo->context)->fmt_badrow_data, p, n))
-
+	do { \
+		int m = (n < FMT_BADROW_MAXLEN ? n : FMT_BADROW_MAXLEN); \
+		((FormatterData*) fcinfo->context)->fmt_badrow_len = m; \
+		memcpy(((FormatterData*) fcinfo->context)->fmt_badrow_data, p, m); \
+	} while (0)
+		
 #define FORMATTER_SET_DATACURSOR(fcinfo, n) \
 	((((FormatterData*) fcinfo->context)->fmt_databuf.cursor) = n)
+
+#define FORMATTER_SET_TUPLE(t) \
+	(((FormatterData*) fcinfo->context)->fmt_tuple = t)
 
 #define FORMATTER_RETURN_TUPLE(tuple) \
 	PG_RETURN_DATUM(HeapTupleGetDatum(tuple))

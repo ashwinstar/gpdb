@@ -1045,11 +1045,10 @@ static HeapTuple
 externalgettup_custom(FileScanDesc scan)
 {
 		HeapTuple   	tuple;
-		//HeapTupleHeader td;
 		CopyState		pstate = scan->fs_pstate;
 		FormatterData*	formatter = scan->fs_formatter;
 		bool			no_more_data = false;
-		
+		MemoryContext 	oldctxt = CurrentMemoryContext;
 		
 		Assert(formatter);
 		
@@ -1074,54 +1073,93 @@ externalgettup_custom(FileScanDesc scan)
 				/* while there is still data in our buffer */
 				while (!pstate->raw_buf_done)
 				{
-					Datum					d;
-					FunctionCallInfoData	fcinfo;
-
-					/* per call formatter prep */
-					FunctionCallPrepareFormatter(&fcinfo,
-												 0,
-												 pstate,
-												 formatter, 
-												 scan->fs_rd, 
-												 scan->fs_tupDesc,
-												 scan->in_functions);
-
-					d = FunctionCallInvoke(&fcinfo);
+					bool	error_caught = false;
 					
-					switch (formatter->fmt_notification)
+					/*
+					 * Invoke the custom formatter function.
+					 */
+					PG_TRY();
 					{
-						case FMT_NONE:
-							
-							/* got a tuple back */
-							
-							tuple = formatter->fmt_tuple;
-							pstate->processed++;
-							MemoryContextReset(formatter->fmt_perrow_ctx);
-							
-							return tuple;
-		
-						case FMT_NEED_MORE_DATA:
-							
-							/*
-							 * Callee consumed all data in the buffer. 
-							 * Prepare to read more data into it.
-							 */
-							pstate->raw_buf_done = true;
-							justifyDatabuf(&formatter->fmt_databuf);
-														
-							continue;
-							
-						case FMT_DATA_ERROR:
-							
-							/* TODO handle the error */
-							elog(ERROR, "FMT_DATA_ERROR not yet supported");
-							break;
+						Datum					d;
+						FunctionCallInfoData	fcinfo;
+
+						/* per call formatter prep */
+						FunctionCallPrepareFormatter(&fcinfo,
+													 0,
+													 pstate,
+													 formatter, 
+													 scan->fs_rd, 
+													 scan->fs_tupDesc,
+													 scan->in_functions);
+
+						d = FunctionCallInvoke(&fcinfo);
 						
-						default:
-							elog(ERROR, "unsupported formatter notification (%d)",
-										formatter->fmt_notification);
-							break;
 					}
+					PG_CATCH();
+					{
+						error_caught = true;
+						
+						MemoryContextSwitchTo(formatter->fmt_perrow_ctx);
+						
+						/* 
+						 * Save any bad row information that was set 
+						 * by the user in the formatter UDF (if any).
+						 * Then handle the error in FILEAM_HANDLE_ERROR.
+						 */
+						pstate->cur_lineno = formatter->fmt_badrow_num;
+						resetStringInfo(&pstate->line_buf);
+						if (formatter->fmt_badrow_len > 0)
+							appendBinaryStringInfo(&pstate->line_buf,
+												   formatter->fmt_badrow_data,
+												   formatter->fmt_badrow_len);
+						
+						FILEAM_HANDLE_ERROR;
+						
+						MemoryContextSwitchTo(oldctxt);
+					}
+					PG_END_TRY();
+
+					/*
+					 * Examine the function results. If an error was caught
+					 * we already handled it, so after checking the reject
+					 * limit, loop again and call the UDF for the next tuple.
+					 */
+					if (!error_caught)
+					{
+						switch (formatter->fmt_notification)
+						{
+							case FMT_NONE:
+								
+								/* got a tuple back */
+								
+								tuple = formatter->fmt_tuple;
+								pstate->processed++;
+								MemoryContextReset(formatter->fmt_perrow_ctx);
+								
+								return tuple;
+			
+							case FMT_NEED_MORE_DATA:
+								
+								/*
+								 * Callee consumed all data in the buffer. 
+								 * Prepare to read more data into it.
+								 */
+								pstate->raw_buf_done = true;
+								justifyDatabuf(&formatter->fmt_databuf);
+															
+								continue;
+							
+							default:
+								elog(ERROR, "unsupported formatter notification (%d)",
+											formatter->fmt_notification);
+								break;
+						}
+					}
+					else
+					{
+						FILEAM_IF_REJECT_LIMIT_REACHED_ABORT
+					}
+					
 				}
 			}
 			else
@@ -1509,6 +1547,7 @@ FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 	formatter->fmt_tupDesc  = tupDesc;
 	formatter->fmt_notification = FMT_NONE; 
 	formatter->fmt_badrow_len = 0;
+	formatter->fmt_badrow_num = 0;
 	formatter->fmt_args = pstate->custom_formatter_params;
 	formatter->fmt_conv_funcs = convFuncs;
 	formatter->fmt_saw_eof = pstate->fe_eof;
