@@ -1498,7 +1498,7 @@ make_lower_targetlist(Query *parse,
 							pull_var_clause(f->lead->val, false));
 		}
 	}
-	lower_tlist = add_to_flat_tlist(lower_tlist, extravars);
+	lower_tlist = add_to_flat_tlist(lower_tlist, extravars, false /* resjunk */);
 	list_free(extravars);
 
 	need_tlist_eval = false;

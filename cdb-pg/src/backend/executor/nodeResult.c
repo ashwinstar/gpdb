@@ -141,11 +141,6 @@ ExecResult(ResultState *node)
 		node->rs_checkqual = false;
 		if (!qualResult)
 		{
-            /* CDB: Tell source QEs that we don't need their results. */
-            if (outerPlan(node->ps.plan))
-            {
-                ExecSquelchNode(node->ps.lefttree);
-            }
 			return NULL;
 		}
 	}

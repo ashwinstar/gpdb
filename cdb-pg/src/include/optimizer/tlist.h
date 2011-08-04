@@ -22,7 +22,7 @@ extern TargetEntry *tlist_member(Node *node, List *targetlist);
 extern TargetEntry *tlist_member_ignoring_RelabelType(Expr *expr, List *targetlist);
 
 extern List *flatten_tlist(List *tlist);
-extern List *add_to_flat_tlist(List *tlist, List *vars);
+extern List *add_to_flat_tlist(List *tlist, List *vars, bool resjunk);
 
 extern TargetEntry *get_sortgroupclause_tle(SortClause *sortClause,
 						List *targetList);

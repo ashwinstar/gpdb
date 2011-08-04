@@ -498,6 +498,8 @@ use_physical_tlist(CreatePlanContext *ctx, RelOptInfo *rel)
  * needed Vars and not a physical tlist, it must call this routine to
  * undo the decision made by use_physical_tlist().	Currently, Hash, Sort,
  * and Material nodes want this, so they don't have to store useless columns.
+ * We need to ensure that all vars referenced in Flow node, if any, are added
+ * to the targetlist as resjunk.
  */
 static void
 disuse_physical_tlist(Plan *plan, Path *path)
@@ -516,7 +518,18 @@ disuse_physical_tlist(Plan *plan, Path *path)
 		case T_SubqueryScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
-			plan->targetlist = build_relation_tlist(path->parent);
+			{
+				plan->targetlist = build_relation_tlist(path->parent);
+				/**
+				 * If plan has a flow node, ensure all entries of hashExpr
+				 * are in the targetlist.
+				 */
+				if (plan->flow
+						&& plan->flow->hashExpr)
+				{
+					plan->targetlist = add_to_flat_tlist(plan->targetlist, plan->flow->hashExpr, true /* resjunk */);
+				}
+			}
 			break;
 		default:
 			break;

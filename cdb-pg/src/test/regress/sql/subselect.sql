@@ -226,11 +226,6 @@ create rule shipped_view_update as on update to shipped_view do instead
     update shipped set partnum = new.partnum, value = new.value
         where ttype = new.ttype and ordnum = new.ordnum;
 
-update shipped_view set value = 11
-    from int4_tbl a join int4_tbl b
-      on (a.f1 = (select f1 from int4_tbl c where c.f1=b.f1))
-    where ordnum = a.f1;
-
 select * from shipped_view ORDER BY 1,2;
 
 select f1, ss1 as relabel from
@@ -366,3 +361,90 @@ select * from mrs_u1 join mrs_u2 on mrs_u1.a=mrs_u2.a where mrs_u1.a in (1,11) o
 
 drop table if exists mrs_u1;
 drop table if exists mrs_u2;
+
+--
+-- MPP-13758
+--
+
+drop table if exists csq_m1;
+create table csq_m1();
+alter table csq_m1 add column x int;
+insert into csq_m1 values(1);
+
+drop table if exists csq_d1;
+create table csq_d1(x int) distributed by (x);
+insert into csq_d1 select * from csq_m1;
+
+explain select array(select x from csq_m1); -- no initplan
+select array(select x from csq_m1); -- {1}
+
+explain select array(select x from csq_d1); -- initplan
+select array(select x from csq_d1); -- {1}
+
+--
+-- CSQs involving master-only and distributed tables
+--
+
+drop table if exists t3coquicklz;
+
+create table t3coquicklz (c1 int , c2 varchar) with (appendonly=true, compresstype=quicklz, orientation=column) distributed by (c1);
+
+drop table if exists pg_attribute_storage;
+
+create table pg_attribute_storage (attrelid int, attnum int, attoptions text[]) distributed by (attrelid);
+
+insert into pg_attribute_storage values ('t3coquicklz'::regclass, 1, E'{\'something\'}');
+insert into pg_attribute_storage values ('t3coquicklz'::regclass, 2, E'{\'something2\'}');
+
+SELECT a.attname
+, pg_catalog.format_type(a.atttypid, a.atttypmod)
+
+, ( SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)
+ FROM pg_catalog.pg_attrdef d
+WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef
+)
+, a.attnotnull
+, a.attnum
+, a.attstorage
+, pg_catalog.col_description(a.attrelid, a.attnum)
+, ( SELECT s.attoptions
+FROM pg_attribute_storage s
+WHERE s.attrelid = a.attrelid AND s.attnum = a.attnum
+) newcolumn
+
+FROM pg_catalog.pg_attribute a
+WHERE a.attrelid = 't3coquicklz'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+ORDER BY a.attnum
+; -- expect to see 2 rows
+
+--
+-- More CSQs involving master-only and distributed relations
+--
+
+drop table if exists csq_m1;
+create table csq_m1();
+alter table csq_m1 add column x int;
+insert into csq_m1 values(1),(2),(3);
+
+drop table if exists csq_d1;
+create table csq_d1(x int) distributed by (x);
+insert into csq_d1 select * from csq_m1 where x < 3;
+insert into csq_d1 values(4);
+
+select * from csq_m1;
+select * from csq_d1;
+
+--
+-- outer plan node is master-only and CSQ has distributed relation
+--
+
+explain select * from csq_m1 where x not in (select x from csq_d1) or x < -100; -- gather motion
+select * from csq_m1 where x not in (select x from csq_d1) or x < -100; -- (3)
+
+--
+-- outer plan node is master-only and CSQ has distributed relation
+--
+
+explain select * from csq_d1 where x not in (select x from csq_m1) or x < -100; -- broadcast motion
+select * from csq_d1 where x not in (select x from csq_m1) or x < -100; -- (4)
+

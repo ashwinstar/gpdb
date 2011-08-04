@@ -2339,7 +2339,7 @@ List *make_subplan_tlist(List *tlist, Node *havingQual,
 	
 	sub_tlist = flatten_tlist(tlist);
 	extravars = pull_var_clause(havingQual, false);
-	sub_tlist = add_to_flat_tlist(sub_tlist, extravars);
+	sub_tlist = add_to_flat_tlist(sub_tlist, extravars, false /* resjunk */);
 	list_free(extravars);
 	
 	num_gkeys = num_distcols_in_grouplist(grp_clauses);

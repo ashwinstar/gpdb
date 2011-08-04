@@ -56,6 +56,7 @@ CREATE TABLE tenk1 (
 ) WITH OIDS;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  OIDS=TRUE is not recommended for user-created tables. Use OIDS=FALSE to prevent wrap-around of the OID counter
 CREATE TABLE tenk2 (
 	unique1 	int4,
 	unique2 	int4,
@@ -88,6 +89,7 @@ CREATE TABLE emp (
 	manager 	name
 ) INHERITS (person) WITH OIDS;
 NOTICE:  Table has parent, setting distribution columns to match parent table
+NOTICE:  OIDS=TRUE is not recommended for user-created tables. Use OIDS=FALSE to prevent wrap-around of the OID counter
 CREATE TABLE student (
 	gpa 		float8
 ) INHERITS (person);
@@ -99,6 +101,7 @@ NOTICE:  Table has parent, setting distribution columns to match parent table
 NOTICE:  merging multiple inherited definitions of column "name"
 NOTICE:  merging multiple inherited definitions of column "age"
 NOTICE:  merging multiple inherited definitions of column "location"
+NOTICE:  OIDS=TRUE is not recommended for user-created tables. Use OIDS=FALSE to prevent wrap-around of the OID counter
 CREATE TABLE city (
 	name		name,
 	location 	box,
@@ -271,7 +274,7 @@ ERROR:  UNIQUE and DISTRIBUTED RANDOMLY are incompatible
 -- this should work though
 create table distrand(i int, j int, constraint "test" unique (i, j)) 
    distributed by(i, j);
-NOTICE:  CREATE TABLE / UNIQUE will create implicit index "test" for table "distrand"
+NOTICE:  CREATE TABLE / UNIQUE will create implicit index "distrand_i_key" for table "distrand"
 drop table distrand;
 create table distrand(i int, j int) distributed randomly;
 create unique index distrand_idx on distrand(i);
@@ -372,24 +375,24 @@ drop table if exists bar;
 NOTICE:  table "bar" does not exist, skipping
 create table foo (a varchar(15), b int) distributed by (b);
 create table bar as select * from foo;
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'b' as the Greenplum Database data distribution key for this table.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 select attrnums from gp_distribution_policy where localoid='bar'::regclass;
  attrnums 
 ----------
- {2}
+ {1}
 (1 row)
 
 drop table if exists foo;
 drop table if exists bar;
 create table foo (a int, b varchar(15)) distributed by (b);
 create table bar as select * from foo;
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'b' as the Greenplum Database data distribution key for this table.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 select attrnums from gp_distribution_policy where localoid='bar'::regclass;
  attrnums 
 ----------
- {2}
+ {1}
 (1 row)
 
 drop table if exists foo;

@@ -131,7 +131,6 @@ static void record_plan_function_dependency(PlannerGlobal *glob,
 
 static bool extract_query_dependencies_walker(Node *node,
 											  PlannerGlobal *context);
-static bool IsScan(Node *node);
 extern bool is_plan_node(Node *node);
 
 #ifdef USE_ASSERT_CHECKING
@@ -419,12 +418,10 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 	
     /*
      * CDB: If plan has a Flow node, fix up its hashExpr to refer to the
-     * plan's own targetlist. Skip scan nodes since their flow nodes may
-     * refer to attributes that are not the scan node's TL.
+     * plan's own targetlist.
      */
-    if (!IsScan((Node *) plan)
-    		&& plan->flow
-    		&& plan->flow->hashExpr)
+	if (plan->flow
+			&& plan->flow->hashExpr)
     {
         indexed_tlist  *plan_itlist = build_tlist_index(plan->targetlist);
 		
@@ -2301,33 +2298,3 @@ cdb_insert_result_node(PlannerGlobal *glob, Plan *plan, int rtoffset)
     return resultplan;
 }                               /* cdb_insert_result_node */
 
-/**
- * Returns true if the node is a "Scan" node.
- */
-bool IsScan(Node *node)
-{
-	if (!is_plan_node(node))
-	{
-		return false;
-	}
-	else
-	{
-		switch(nodeTag(node))
-		{
-			case T_SeqScan:
-			case T_AppendOnlyScan:
-			case T_AOCSScan:
-			case T_ExternalScan:
-			case T_IndexScan:
-			case T_BitmapHeapScan:
-			case T_BitmapAppendOnlyScan:
-			case T_TidScan:
-			case T_SubqueryScan:
-			case T_FunctionScan:
-			case T_ValuesScan:
-				return true;
-			default:
-				return false;
-		}
-	}
-}

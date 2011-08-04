@@ -2609,7 +2609,7 @@ make_subplanTargetList(PlannerInfo *root,
 	 */
 	sub_tlist = flatten_tlist(tlist);
 	extravars = pull_var_clause(parse->havingQual, false);
-	sub_tlist = add_to_flat_tlist(sub_tlist, extravars);
+	sub_tlist = add_to_flat_tlist(sub_tlist, extravars, false /* resjunk */);
 	list_free(extravars);
 
 	/* XXX

@@ -81,6 +81,7 @@ adjustPlanFlow(Plan        *plan,
 
 static void motion_sanity_check(PlannerInfo *root, Plan *plan);
 static bool loci_compatible(List *hashExpr1, List *hashExpr2);
+static Plan *materialize_subplan(PlannerInfo *root, Plan *subplan);
 
 /* ------------------------------------------------------------------------- *
  * Function cdbparallelize() is the main entry point.
@@ -374,6 +375,23 @@ static Node* MapVarsMutator(Node *expr, MapVarsMutatorContext *ctx)
 	return expression_tree_mutator(expr, MapVarsMutator, ctx);
 }
 
+/**
+ * Add a materialize node to prevent rescan of subplan.
+ */
+Plan *materialize_subplan(PlannerInfo *root, Plan *subplan)
+{
+	Plan *mat = materialize_finished_plan(root, subplan);
+	((Material *)mat)->cdb_strict = true;
+
+	if (mat->flow)
+	{
+		mat->flow->req_move = MOVEMENT_NONE;
+		mat->flow->flow_before_req_move = NULL;
+	}
+
+	return mat;
+}
+
 
 /**
  * This is the workhorse method that transforms a plan containing correlated references
@@ -494,10 +512,7 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 		/**
 		 * Step 7: Add a material node
 		 */
-		Plan *mat = materialize_finished_plan((PlannerInfo *) ctx->base.node, scanPlan);
-		mat->flow->req_move = MOVEMENT_NONE;
-		mat->flow->flow_before_req_move = NULL;
-		((Material *)mat)->cdb_strict = true;
+		Plan *mat = materialize_subplan((PlannerInfo *) ctx->base.node, scanPlan);
 
 		/**
 		 * Step 8: Fix up the result node on top of the material node
@@ -570,8 +585,14 @@ void ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 	AssertImply(spExpr->is_initplan, spExpr->parParam == NIL);
 
 	Plan *origPlan = planner_subplan_get_plan(context->root, spExpr);
-	Assert(origPlan->flow &&
-			origPlan->flow->flotype != FLOW_UNDEFINED);
+
+	bool containingPlanDistributed = (context->currentPlanFlow && context->currentPlanFlow->flotype == FLOW_PARTITIONED);
+	bool subPlanDistributed = (origPlan->flow && origPlan->flow->flotype == FLOW_PARTITIONED);
+
+	/**
+	 * If containing plan is distributed then we must know the flow of the subplan.
+	 */
+	AssertImply(containingPlanDistributed, (origPlan->flow && origPlan->flow->flotype != FLOW_UNDEFINED));
 
 	Plan *newPlan = copyObject(origPlan);
 
@@ -591,28 +612,27 @@ void ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 		 * to be either broadcasted or focused depending on the flow of the containing
 		 * plan node.
 		 */
-		bool containingPlanDistributed = (context->currentPlanFlow && context->currentPlanFlow->flotype == FLOW_PARTITIONED);
 
 		if (containingPlanDistributed)
 		{
 			broadcastPlan(newPlan, false /* stable */, false /* rescannable */);
-			newPlan = materialize_finished_plan(context->root, newPlan);
-			newPlan->flow->req_move = MOVEMENT_NONE;
-			newPlan->flow->flow_before_req_move = NULL;
 		}
 		else
 		{
 			focusPlan(newPlan, false /* stable */, false /* rescannable */);
 		}
+
+		newPlan = materialize_subplan(context->root, newPlan);
 	}
-	else
+	else if (containingPlanDistributed || subPlanDistributed)
 	{
+		Movement reqMove = containingPlanDistributed ? MOVEMENT_BROADCAST : MOVEMENT_FOCUS;
 
 		/**
 		 * Subplan corresponds to a correlated subquery and its parallelization
 		 * requires certain transformations.
 		 */
-		newPlan = ParallelizeCorrelatedSubPlan(context->root, spExpr, newPlan, MOVEMENT_BROADCAST);
+		newPlan = ParallelizeCorrelatedSubPlan(context->root, spExpr, newPlan, reqMove);
 	}
 
 	Assert(newPlan);
@@ -686,8 +706,7 @@ prescan_walker(Node *node, PlanProfile * context)
 			 */
 			SubPlan    *subplan = (SubPlan *) node;
 
-			if (context->dispatchParallel
-					&& !subplan->is_parallelized)
+			if (!subplan->is_parallelized)
 			{
 				ParallelizeSubplan(subplan, context);
 			}

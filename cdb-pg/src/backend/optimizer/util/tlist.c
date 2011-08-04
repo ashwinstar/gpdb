@@ -112,38 +112,38 @@ flatten_tlist(List *tlist)
 	List	   *vlist = pull_var_clause((Node *) tlist, false);
 	List	   *new_tlist;
 
-	new_tlist = add_to_flat_tlist(NIL, vlist);
+	new_tlist = add_to_flat_tlist(NIL, vlist, false /* resjunk */);
 	list_free(vlist);
 	return new_tlist;
 }
 
 /*
  * add_to_flat_tlist
- *		Add more vars to a flattened tlist (if they're not already in it)
+ *		Add more expressions to a flattened tlist (if they're not already in it)
  *
  * 'tlist' is the flattened tlist
- * 'vars' is a list of var nodes
+ * 'exprs' is a list of expression nodes
  *
  * Returns the extended tlist.
  */
 List *
-add_to_flat_tlist(List *tlist, List *vars)
+add_to_flat_tlist(List *tlist, List *exprs, bool resjunk)
 {
 	int			next_resno = list_length(tlist) + 1;
 	ListCell   *v;
 
-	foreach(v, vars)
+	foreach(v, exprs)
 	{
-		Var		   *var = (Var *) lfirst(v);
+		Node		   *expr = (Node *) lfirst(v);
 
-		if (!tlist_member((Node *) var, tlist))
+		if (!tlist_member(expr, tlist))
 		{
 			TargetEntry *tle;
 
-			tle = makeTargetEntry(copyObject(var),		/* copy needed?? */
+			tle = makeTargetEntry(copyObject(expr),		/* copy needed?? */
 								  next_resno++,
 								  NULL,
-								  false);
+								  resjunk);
 			tlist = lappend(tlist, tle);
 		}
 	}
