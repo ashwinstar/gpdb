@@ -256,6 +256,11 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 */
 
 	top_plan = apply_shareinput_dag_to_tree(top_plan, &glob->share); 
+	foreach(lp, glob->subplans)
+	{
+		Plan	   *subplan = (Plan *) lfirst(lp);
+		lfirst(lp) = apply_shareinput_dag_to_tree(subplan, &glob->share);
+	}
 
 	/* final cleanup of the plan */
 	Assert(glob->finalrtable == NIL);

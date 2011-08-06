@@ -1190,7 +1190,6 @@ finalize_plan(PlannerInfo *root, Plan *plan, List *rtable,
 			break;
 
 		case T_SubqueryScan:
-
 			/*
 			 * In a SubqueryScan, SS_finalize_plan has already been run on the
 			 * subplan by the inner invocation of subquery_planner, so there's

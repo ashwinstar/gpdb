@@ -33,6 +33,7 @@
 #include "optimizer/restrictinfo.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
+#include "optimizer/subselect.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
@@ -2425,6 +2426,14 @@ create_ctescan_plan(CreatePlanContext *ctx, Path *best_path,
 												best_path->parent->subrtable);
 
 	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
+
+	/*
+	 * The finalize_plan() assumes that a SubqueryScan node has
+	 * already called SS_finalize_plan(). We need to make sure that
+	 * we satisfy this assumption, so we call SS_finalize_plan
+	 * explicitly here.
+	 */
+	SS_finalize_plan(ctx->root, (Plan *)scan_plan, true);
 
 	return scan_plan;
 	

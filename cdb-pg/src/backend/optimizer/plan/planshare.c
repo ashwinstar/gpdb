@@ -154,6 +154,9 @@ static ShareInputScan *make_shareinputscan(PlannerInfo *root, Plan *inputplan)
 	sisc->plan.plan_rows = inputplan->plan_rows;
 	sisc->plan.plan_width = inputplan->plan_width;
 
+	sisc->plan.extParam = bms_copy(inputplan->extParam);
+	sisc->plan.allParam = bms_copy(inputplan->allParam);
+
 	return sisc;
 }
 

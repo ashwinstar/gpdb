@@ -116,6 +116,7 @@ init_tuplestore_state(ShareInputScanState *node)
 	else 
 	{
 		Assert(sisc->share_type == SHARE_SORT);
+		Assert(snState != NULL);
 
 		if(gp_enable_mk_sort)
 		{

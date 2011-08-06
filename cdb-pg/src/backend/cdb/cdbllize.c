@@ -415,8 +415,9 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 		return NULL;
 
 	if (IsA(node, SeqScan)
-			|| IsA(node, AppendOnlyScan)
-			|| IsA(node, AOCSScan))
+		|| IsA(node, AppendOnlyScan)
+		|| IsA(node, AOCSScan)
+		|| IsA(node, ShareInputScan))
 	{
 		Plan *scanPlan = (Plan *) node;
 
