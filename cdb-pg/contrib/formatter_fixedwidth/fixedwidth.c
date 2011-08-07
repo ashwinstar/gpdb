@@ -403,7 +403,7 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 	bool                saw_eof;	
 	ListCell           *curIdx; 
 	ListCell           *curSize;
-	ListCell           *cur_null_with_blanks;	
+	ListCell           *cur_null_with_blanks = NULL;	
 	int		            remaining;
 	int                 field_size;
 	char               *nullval;
@@ -510,7 +510,7 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 		 * trailing blanks are are kept in the field value
 		 */			
 		{
-			if (nullval == NULL)
+			if (nullval == NULL || cur_null_with_blanks == NULL)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
