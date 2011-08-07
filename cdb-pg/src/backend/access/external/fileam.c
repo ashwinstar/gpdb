@@ -75,7 +75,9 @@ static void FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 										 FormatterData*			formatter, 
 										 Relation 				rel, 
 										 TupleDesc 				tupDesc,
-										 FmgrInfo			   *convFuncs);
+										 FmgrInfo			   *convFuncs,
+										 Oid                   *typioparams);
+
 static void open_external_readable_source(FileScanDesc scan);
 static void open_external_writable_source(ExternalInsertDesc extInsertDesc);
 static int	external_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
@@ -553,8 +555,6 @@ external_insert_init(Relation rel)
 	
 	fmtopts = lappend(fmtopts, makeString(pstrdup(extentry->fmtopts)));
 	
-	if(fmttype_is_custom(extentry->fmtcode))
-		extInsertDesc->ext_formatter_data = (FormatterData *) palloc0 (sizeof(FormatterData));
 		
 	InitParseState(extInsertDesc->ext_pstate,
 				   rel,
@@ -568,6 +568,12 @@ external_insert_init(Relation rel)
 				   (extentry->rejectlimittype == 'r'), 
 				   extentry->fmterrtbl,
 				   extentry->encoding);
+	
+	if(fmttype_is_custom(extentry->fmtcode))
+	{
+		extInsertDesc->ext_formatter_data = (FormatterData *) palloc0 (sizeof(FormatterData));
+		extInsertDesc->ext_formatter_data->fmt_perrow_ctx = extInsertDesc->ext_pstate->rowcontext;
+	}
 	
 	return extInsertDesc;
 }
@@ -635,7 +641,8 @@ external_insert(ExternalInsertDesc extInsertDesc, HeapTuple instup)
 									 formatter, 
 									 extInsertDesc->ext_rel, 
 									 extInsertDesc->ext_tupDesc,
-									 pstate->out_functions);		
+									 pstate->out_functions,
+									 NULL);		
 		
 		/* Mark the correct record type in the passed tuple */
 		HeapTupleHeaderSetTypeId(instup->t_data, tupDesc->tdtypeid);
@@ -645,6 +652,7 @@ external_insert(ExternalInsertDesc extInsertDesc, HeapTuple instup)
 		fcinfo.argnull[0] = false;
 
 		d = FunctionCallInvoke(&fcinfo);
+		MemoryContextReset(formatter->fmt_perrow_ctx);
 
 		/* We do not expect a null result */
 		if (fcinfo.isnull)
@@ -1084,16 +1092,16 @@ externalgettup_custom(FileScanDesc scan)
 						FunctionCallInfoData	fcinfo;
 
 						/* per call formatter prep */
-						FunctionCallPrepareFormatter(&fcinfo,
-													 0,
-													 pstate,
-													 formatter, 
-													 scan->fs_rd, 
-													 scan->fs_tupDesc,
-													 scan->in_functions);
+					FunctionCallPrepareFormatter(&fcinfo,
+												 0,
+												 pstate,
+												 formatter, 
+												 scan->fs_rd, 
+												 scan->fs_tupDesc,
+												 scan->in_functions,
+												 scan->typioparams);
+					d = FunctionCallInvoke(&fcinfo);
 
-						d = FunctionCallInvoke(&fcinfo);
-						
 					}
 					PG_CATCH();
 					{
@@ -1540,7 +1548,8 @@ FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 							 FormatterData		   *formatter, 
 							 Relation 				rel, 
 							 TupleDesc 				tupDesc,
-							 FmgrInfo			   *convFuncs)
+							 FmgrInfo			   *convFuncs,
+							 Oid                   *typioparams)
 {
 	formatter->type = T_FormatterData;
 	formatter->fmt_relation = rel;
@@ -1551,6 +1560,7 @@ FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 	formatter->fmt_args = pstate->custom_formatter_params;
 	formatter->fmt_conv_funcs = convFuncs;
 	formatter->fmt_saw_eof = pstate->fe_eof;
+	formatter->fmt_typioparams = typioparams;
 	
 	InitFunctionCallInfoData(/* FunctionCallInfoData */ *fcinfo, 
 							 /* FmgrInfo */ pstate->custom_formatter_func, 

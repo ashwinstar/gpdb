@@ -11,6 +11,7 @@ WANTED_DIRS = \
 		orafce \
 		changetrackingdump \
 		formatter \
+		formatter_fixedwidth \ 
 		extprotocol
 
 ifeq ($(with_openssl),yes)

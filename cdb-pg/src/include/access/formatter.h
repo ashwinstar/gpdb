@@ -44,6 +44,7 @@ typedef struct FormatterData
 	FmtNotification fmt_notification;
 	List		   *fmt_args;
 	FmgrInfo   	   *fmt_conv_funcs; /* in_fuctions (RET) or out_functions (WET) */
+	Oid            *fmt_typioparams;
 	MemoryContext	fmt_perrow_ctx;
 	HeapTuple		fmt_tuple; /* hack! pass back the tuple through here for now... */
 		
@@ -61,6 +62,7 @@ typedef struct FormatterData
 #define FORMATTER_GET_USER_CTX(fcinfo)        (((FormatterData*) fcinfo->context)->fmt_user_ctx)
 #define FORMATTER_GET_PER_ROW_MEM_CTX(fcinfo) (((FormatterData*) fcinfo->context)->fmt_perrow_ctx)
 #define FORMATTER_GET_CONVERSION_FUNCS(fcinfo) (((FormatterData*) fcinfo->context)->fmt_conv_funcs)
+#define FORMATTER_GET_TYPIOPARAMS(fcinfo)     (((FormatterData*) fcinfo->context)->fmt_typioparams)
 #define FORMATTER_GET_ARG_LIST(fcinfo)	      (((FormatterData*) fcinfo->context)->fmt_args)
 #define FORMATTER_GET_NUM_ARGS(fcinfo)	      (list_length(FORMATTER_GET_ARG_LIST(fcinfo)))
 #define FORMATTER_GET_NTH_ARG_KEY(fcinfo, n)  (((DefElem *)(list_nth(FORMATTER_GET_ARG_LIST(fcinfo),(n - 1))))->defname)
