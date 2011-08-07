@@ -1246,7 +1246,7 @@ HOMEFAIL :
 ##
 
 qautils-tarball:
-	@gtar -zcf releng/qautils-$(MPP_ARCH).tar.gz -C $(INSTLOC) $(shell cat releng/QAUTILS_FILES.txt)
+	@$(TAR) -zcf releng/qautils-$(MPP_ARCH).tar.gz -C $(INSTLOC) $(shell cat releng/QAUTILS_FILES.txt)
 
 #---------------------------------------------------------------------
 # Cleanup
