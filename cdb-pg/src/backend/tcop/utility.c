@@ -1172,7 +1172,7 @@ ProcessUtility(Node *parsetree,
 						break;
 					case OBJECT_EXTPROTOCOL:
 						Assert(stmt->args == NIL);
-						DefineExtProtocol(stmt->defnames, stmt->definition, stmt->newOid);
+						DefineExtProtocol(stmt->defnames, stmt->definition, stmt->newOid, stmt->trusted);
 						break;						
 					default:
 						elog(ERROR, "unrecognized define stmt type: %d",

@@ -1831,6 +1831,7 @@ ExecGrant_ExtProtocol(InternalGrant *istmt)
 	{
 		Oid			ptcid = lfirst_oid(cell);
 		bool		isNull;
+		bool		isTrusted;
 		AclMode		avail_goptions;
 		AclMode		this_privileges;
 		Acl		   *old_acl;
@@ -1849,6 +1850,7 @@ ExecGrant_ExtProtocol(InternalGrant *istmt)
 		Oid		   *newmembers;
 		Datum		ownerDatum;
 		Datum		aclDatum;
+		Datum		trustedDatum;
 		Datum		ptcnameDatum;
 		HeapScanDesc scandesc;
 		ScanKeyData entry[1];
@@ -1909,6 +1911,20 @@ ExecGrant_ExtProtocol(InternalGrant *istmt)
 				 errmsg("internal error: protocol '%u' has no name defined",
 						 ptcid)));
 		
+		trustedDatum = heap_getattr(tuple, 
+									Anum_pg_extprotocol_ptctrusted,
+									reldsc, 
+									&isNull);
+			
+		isTrusted = DatumGetBool(trustedDatum);
+		
+		if (!isTrusted)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("protocol \"%s\" is not trusted",
+							NameStr(*ptcname)),
+				   errhint("Only superusers may use untrusted protocols.")));
+
 		/* Determine ID to do the grant as, and available grant options */
 		select_best_grantor(GetUserId(), istmt->privileges,
 							old_acl, ownerId,

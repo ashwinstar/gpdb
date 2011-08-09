@@ -44,7 +44,8 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 					     List			*readfuncName,
 					     List			*writefuncName,
 					     List			*validatorfuncName,					   
-					     Oid			 protOid)
+					     Oid			 protOid,
+					     bool			 trusted)
 {
 	Relation	protdesc;
 	HeapTuple	tup;
@@ -127,8 +128,9 @@ ExtProtocolCreateWithOid(const char		*protocolName,
 		nulls[Anum_pg_extprotocol_ptcvalidatorfn - 1] = true;
 
 	values[Anum_pg_extprotocol_ptcowner - 1] = ObjectIdGetDatum(ownerId);
+	values[Anum_pg_extprotocol_ptctrusted - 1] = BoolGetDatum(trusted);
 	nulls[Anum_pg_extprotocol_ptcacl - 1] = true;
-	
+
 	protdesc = heap_open(ExtprotocolRelationId, RowExclusiveLock);
 	tupDesc = protdesc->rd_att;
 

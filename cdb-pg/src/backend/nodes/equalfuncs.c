@@ -1115,6 +1115,7 @@ _equalDefineStmt(DefineStmt *a, DefineStmt *b)
 	COMPARE_NODE_FIELD(args);
 	COMPARE_NODE_FIELD(definition);
 	COMPARE_SCALAR_FIELD(ordered);  /* CDB */
+	COMPARE_SCALAR_FIELD(trusted);  /* CDB */
 
 	return true;
 }

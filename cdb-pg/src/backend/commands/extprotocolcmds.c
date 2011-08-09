@@ -37,7 +37,7 @@
  *	DefineExtprotocol
  */
 void
-DefineExtProtocol(List *name, List *parameters, Oid newOid)
+DefineExtProtocol(List *name, List *parameters, Oid newOid, bool trusted)
 {
 	char	   *protName;
 	Oid			protNamespace;
@@ -97,7 +97,8 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid)
 									   readfuncName,		/* read function name */
 									   writefuncName,		/* write function name */
 									   validatorfuncName, 	/* validator function name */
-									   newOid);
+									   newOid,
+									   trusted);
 					
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -110,6 +111,7 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid)
 		stmt->newOid = protOid;
 		stmt->shadowOid = 0;
 		stmt->ordered = false;
+		stmt->trusted = trusted;
 		CdbDispatchUtilityStatement((Node *) stmt, "DefineExtprotocol");
 	}
 }

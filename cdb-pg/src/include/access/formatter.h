@@ -84,7 +84,7 @@ typedef struct FormatterData
 #define FORMATTER_SET_DATACURSOR(fcinfo, n) \
 	((((FormatterData*) fcinfo->context)->fmt_databuf.cursor) = n)
 
-#define FORMATTER_SET_TUPLE(t) \
+#define FORMATTER_SET_TUPLE(fcinfo, t) \
 	(((FormatterData*) fcinfo->context)->fmt_tuple = t)
 
 #define FORMATTER_RETURN_TUPLE(tuple) \

@@ -1046,10 +1046,13 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 					Oid			ptcId = LookupExtProtocolOid(protname, false);
 					AclResult	aclresult;
 					
-					/* Check we have USAGE permissions on this protocol */
+					/* Check we have the right permissions on this protocol */
 					if (!pg_extprotocol_ownercheck(ptcId, ownerId))
-					{
-						aclresult = pg_extprotocol_aclcheck(ptcId, ownerId, ACL_USAGE);
+					{	
+						AclMode mode = (iswritable ? ACL_INSERT : ACL_SELECT);
+						
+						aclresult = pg_extprotocol_aclcheck(ptcId, ownerId, mode);
+						
 						if (aclresult != ACLCHECK_OK)
 							aclcheck_error(aclresult, ACL_KIND_EXTPROTOCOL, protname);
 					}

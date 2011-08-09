@@ -5639,15 +5639,16 @@ DefineStmt:
 					n->comptypeOid = 0;
 					$$ = (Node *)n;
 				}
-			| CREATE PROTOCOL any_name definition
+			| CREATE opt_trusted PROTOCOL any_name definition
 				{
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_EXTPROTOCOL;
 					n->oldstyle = false;
-					n->defnames = $3;
+					n->trusted = $2;
+					n->defnames = $4;
 					n->args = NIL;
 					n->newOid = 0;
-					n->definition = $4;
+					n->definition = $5;
 					n->ordered = false;
 					$$ = (Node *)n;
 				}

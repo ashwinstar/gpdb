@@ -2817,6 +2817,7 @@ _copyDefineStmt(DefineStmt *from)
 	COPY_SCALAR_FIELD(newOid);
 	COPY_SCALAR_FIELD(shadowOid);
 	COPY_SCALAR_FIELD(ordered);  /* CDB */
+	COPY_SCALAR_FIELD(trusted);  /* CDB */
 
 	return newnode;
 }

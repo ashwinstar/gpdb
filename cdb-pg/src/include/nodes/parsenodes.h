@@ -1920,6 +1920,7 @@ typedef struct DefineStmt
 	Oid			newOid;			/* for MPP only, the new Oid of the object */
 	Oid			shadowOid;
 	bool        ordered;        /* signals ordered aggregates */
+	bool		trusted;		/* used only for PROTOCOL as this point */
 } DefineStmt;
 
 /* ----------------------

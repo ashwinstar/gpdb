@@ -2412,6 +2412,7 @@ _outDefineStmt(StringInfo str, DefineStmt *node)
 	WRITE_OID_FIELD(newOid);
 	WRITE_OID_FIELD(shadowOid);
 	WRITE_BOOL_FIELD(ordered);  /* CDB */
+	WRITE_BOOL_FIELD(trusted);  /* CDB */
 }
 
 static void

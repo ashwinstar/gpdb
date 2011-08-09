@@ -2550,6 +2550,7 @@ _readDefineStmt(void)
 	READ_OID_FIELD(newOid);
 	READ_OID_FIELD(shadowOid);
 	READ_BOOL_FIELD(ordered);   /* CDB */
+	READ_BOOL_FIELD(trusted);   /* CDB */
 
 	READ_DONE();
 
