@@ -2465,7 +2465,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 					PQclear(result);
 					result = NULL;
 
-					if (outfile != stdout)
+					if (NULL != outfile && outfile != stdout)
 					{
 						fclose(outfile);
 						outfile = stdout;
@@ -2479,7 +2479,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 		if (result)
 			PQclear(result);
 					
-		if (outfile != stdout)
+		if (NULL != outfile && outfile != stdout)
 		{
 			fclose(outfile);
 			outfile = stdout;
