@@ -2202,6 +2202,7 @@ typedef struct RenameStmt
 	NodeTag		type;
 	ObjectType	renameType;		/* OBJECT_TABLE, OBJECT_COLUMN, etc */
 	RangeVar   *relation;		/* in case it's a table */
+	Oid			objid;			/* in case it's a table */
 	List	   *object;			/* in case it's some other object */
 	List	   *objarg;			/* argument types, if applicable */
 	char	   *subname;		/* name of contained object (column, rule,

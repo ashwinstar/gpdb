@@ -349,6 +349,8 @@ copy_buffer_pool_data(
 	int64 		persistentSerialNum,
 
 	bool		useWal);
+
+static bool TypeTupleExists(Oid typeId);
 static void update_ri_trigger_args(Oid relid,
 					   const char *oldname,
 					   const char *newname,
@@ -3043,19 +3045,16 @@ renameatt(Oid myrelid,
 void
 renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 {
-	Relation	targetrelation;
-	Relation	relrelation;	/* for RELATION relation */
-	HeapTuple	reltup;
-	Oid			namespaceId;
-	char	   *oldrelname;
-	char		relkind;
-	bool		relhastriggers;
+	Relation		pg_class_desc;
+	HeapTuple		tuple;
+	Oid				typeId;
+	Oid				namespaceId;
+	char			relkind;
+	char			oldrelname[NAMEDATALEN];
+	bool			relhastriggers;
+	Form_pg_class	form;
+	bool			isSystemRelation;
 
-	/*
-	 * Grab an exclusive lock on the target table or index, which we will NOT
-	 * release until end of transaction.
-	 */
-	targetrelation = relation_open(myrelid, AccessExclusiveLock);
 
 	/* if this is a child table of a partitioning configuration, complain */
 	if (stmt && rel_is_child_partition(myrelid) && !stmt->bAllowPartn)
@@ -3064,7 +3063,6 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 		char	*pretty	= rel_get_part_path_pretty(myrelid,
 												   " ALTER PARTITION ",
 												   " RENAME PARTITION ");
-
 		ereport(ERROR,
 				(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 				errmsg("cannot rename partition \"%s\" directly",
@@ -3076,29 +3074,31 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 				errOmitLocation(true)));
 	}
 
-	oldrelname = pstrdup(RelationGetRelationName(targetrelation));
-	namespaceId = RelationGetNamespace(targetrelation);
-
-	if (!allowSystemTableMods && IsSystemRelation(targetrelation))
+	pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+	tuple = SearchSysCacheCopy(RELOID,
+							   ObjectIdGetDatum(myrelid),
+							   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("permission denied: \"%s\" is a system catalog",
-						RelationGetRelationName(targetrelation))));
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("relation \"%d\" does not exist", myrelid)));
 
-	relkind = targetrelation->rd_rel->relkind;
-	relhastriggers = (targetrelation->rd_rel->reltriggers > 0);
+	form = (Form_pg_class) GETSTRUCT(tuple);
+	relkind = form->relkind;
+	namespaceId = form->relnamespace;
+	relhastriggers = form->reltriggers;
+	typeId = form->reltype;
+	strncpy(&oldrelname[0], (form->relname).data, NAMEDATALEN);
+
+	isSystemRelation = IsSystemNamespace(namespaceId) ||
+					   IsToastNamespace(namespaceId) ||
+					   IsAoSegmentNamespace(namespaceId);
+
+	Assert (allowSystemTableMods || !isSystemRelation);
 
 	/*
 	 * Find relation's pg_class tuple, and make sure newrelname isn't in use.
 	 */
-	relrelation = heap_open(RelationRelationId, RowExclusiveLock);
-
-	reltup = SearchSysCacheCopy(RELOID,
-								ObjectIdGetDatum(myrelid),
-								0, 0, 0);
-	if (!HeapTupleIsValid(reltup))		/* shouldn't happen */
-		elog(ERROR, "cache lookup failed for relation %u", myrelid);
-
 	if (get_relname_relid(newrelname, namespaceId) != InvalidOid)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_TABLE),
@@ -3107,24 +3107,31 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 				 errOmitLocation(true)));
 
 	/*
-	 * Update pg_class tuple with new relname.	(Scribbling on reltup is OK
+	 * Update pg_class tuple with new relname.  (Scribbling on tuple is OK
 	 * because it's a copy...)
 	 */
-	namestrcpy(&(((Form_pg_class) GETSTRUCT(reltup))->relname), newrelname);
+	namestrcpy(&(form->relname), newrelname);
 
-	simple_heap_update(relrelation, &reltup->t_self, reltup);
+	simple_heap_update(pg_class_desc, &tuple->t_self, tuple);
 
 	/* keep the system catalog indexes current */
-	CatalogUpdateIndexes(relrelation, reltup);
+	CatalogUpdateIndexes(pg_class_desc, tuple);
 
-	heap_freetuple(reltup);
-	heap_close(relrelation, NoLock);
+	heap_freetuple(tuple);
+	heap_close(pg_class_desc, NoLock);
 
 	/*
 	 * Also rename the associated type, if any.
 	 */
 	if (relkind != RELKIND_INDEX)
-		TypeRename(oldrelname, namespaceId, newrelname);
+	{
+		if (!TypeTupleExists(typeId))
+			ereport(WARNING,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("type \"%s\" does not exist", oldrelname)));
+		else
+			TypeRename(typeId, newrelname);
+	}
 
 	/*
 	 * Update rel name in any RI triggers associated with the relation.
@@ -3136,12 +3143,14 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 							   oldrelname,
 							   newrelname,
 							   false, true);
+
 		/* update tgargs where relname is foreign key */
 		update_ri_trigger_args(myrelid,
 							   oldrelname,
 							   newrelname,
 							   true, true);
 	}
+
 
 	/* MPP-3059: recursive rename of partitioned table */
 	/* Note: the top-level RENAME has bAllowPartn=FALSE, while the
@@ -3153,8 +3162,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 		(Gp_role == GP_ROLE_DISPATCH))
 	{
 		PartitionNode *pNode;
-
-		pNode = RelationBuildPartitionDesc(targetrelation, false);
+		pNode = RelationBuildPartitionDescByOid(myrelid, false);
 
 		if (pNode)
 		{
@@ -3169,8 +3177,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 			renStmt->bAllowPartn = true; /* allow rename of partitions */
 
 			/* rename the children as well */
-			renList = atpxRenameList(targetrelation,
-									 pNode, oldrelname, newrelname, &skipped);
+			renList = atpxRenameList(pNode, oldrelname, newrelname, &skipped);
 
 			/* process children if there are any */
 			if (renList)
@@ -3190,9 +3197,9 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 					ProcessUtility((Node *) renStmt,
 								   synthetic_sql,
-								   NULL, 
+								   NULL,
 								   false, /* not top level */
-								   dest, 
+								   dest,
 								   NULL);
 					renamed++;
 				}
@@ -3207,22 +3214,16 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 									"due to name truncation",
 									renamed, skipped),
 							 errOmitLocation(true)));
-
 				}
-
 			}
-
-
 		}
-
-
 	}
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
-		&& 
+		&&
 		/* MPP-7773: don't track objects in system namespace
-		 * if modifying system tables (eg during upgrade)  
+		 * if modifying system tables (eg during upgrade)
 		 */
 		( ! ( (PG_CATALOG_NAMESPACE == namespaceId) && (allowSystemTableMods)))
 		&& (   MetaTrackValidRelkind(relkind)
@@ -3234,12 +3235,25 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 						   GetUserId(),
 						   "ALTER", "RENAME"
 				);
+}
 
+static bool
+TypeTupleExists(Oid typeId)
+{
+	Relation	pg_type_desc;
+	HeapTuple	tuple;
 
-	/*
-	 * Close rel, but keep exclusive lock!
-	 */
-	relation_close(targetrelation, NoLock);
+	pg_type_desc = heap_open(TypeRelationId, AccessShareLock);
+	tuple = SearchSysCache(TYPEOID,
+						   ObjectIdGetDatum(typeId),
+						   0, 0, 0);
+	heap_close(pg_type_desc, AccessShareLock);
+
+	if (!HeapTupleIsValid(tuple))
+		return false;
+
+	ReleaseSysCache(tuple);
+	return true;
 }
 
 /*
@@ -14441,7 +14455,7 @@ ATPExecPartRename(Relation rel,
 				pNode = NULL;
 
 		/* rename the children as well */
-		renList = atpxRenameList(rel, pNode, targetrelname, relname, &skipped);
+		renList = atpxRenameList(pNode, targetrelname, relname, &skipped);
 
 		part_rel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
 

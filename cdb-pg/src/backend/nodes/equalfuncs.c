@@ -1251,6 +1251,7 @@ _equalRenameStmt(RenameStmt *a, RenameStmt *b)
 {
 	COMPARE_SCALAR_FIELD(renameType);
 	COMPARE_NODE_FIELD(relation);
+	COMPARE_SCALAR_FIELD(objid);
 	COMPARE_NODE_FIELD(object);
 	COMPARE_NODE_FIELD(objarg);
 	COMPARE_STRING_FIELD(subname);

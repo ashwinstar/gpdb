@@ -93,6 +93,32 @@ ExecRenameStmt(RenameStmt *stmt)
 
 		case OBJECT_TABLE:
 		case OBJECT_INDEX:
+		{
+			if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				CheckRelationOwnership(stmt->relation, true);
+				stmt->objid = RangeVarGetRelid(stmt->relation, false);
+			}
+
+			/*
+			 * RENAME TABLE requires that we (still) hold
+			 * CREATE rights on the containing namespace, as
+			 * well as ownership of the table.
+			 */
+			Oid			namespaceId = get_rel_namespace(stmt->objid);
+			AclResult	aclresult;
+
+			aclresult = pg_namespace_aclcheck(namespaceId,
+											  GetUserId(),
+											  ACL_CREATE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+							   get_namespace_name(namespaceId));
+
+			renamerel(stmt->objid, stmt->newname, stmt);
+			break;
+		}
+
 		case OBJECT_COLUMN:
 		case OBJECT_TRIGGER:
 			{
@@ -104,27 +130,6 @@ ExecRenameStmt(RenameStmt *stmt)
 
 				switch (stmt->renameType)
 				{
-					case OBJECT_TABLE:
-					case OBJECT_INDEX:
-						{
-							/*
-							 * RENAME TABLE requires that we (still) hold
-							 * CREATE rights on the containing namespace, as
-							 * well as ownership of the table.
-							 */
-							Oid			namespaceId = get_rel_namespace(relid);
-							AclResult	aclresult;
-
-							aclresult = pg_namespace_aclcheck(namespaceId,
-															  GetUserId(),
-															  ACL_CREATE);
-							if (aclresult != ACLCHECK_OK)
-								aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
-											get_namespace_name(namespaceId));
-
-							renamerel(relid, stmt->newname, stmt);
-							break;
-						}
 					case OBJECT_COLUMN:
 						renameatt(relid,
 								  stmt->subname,		/* old att name */

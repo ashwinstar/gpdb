@@ -101,6 +101,8 @@ extern void AtEOSubXact_on_commit_actions(bool isCommit,
 							  SubTransactionId parentSubid);
 extern PartitionNode *RelationBuildPartitionDesc(Relation rel,
 												 bool inctemplate);
+extern PartitionNode *RelationBuildPartitionDescByOid(Oid relid,
+												 bool inctemplate);
 
 extern bool rel_needs_long_lock(Oid relid);
 extern Oid  rel_partition_get_master(Oid relid);

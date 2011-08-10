@@ -2170,6 +2170,7 @@ _outRenameStmt(StringInfo str, RenameStmt *node)
 	WRITE_NODE_TYPE("RENAMESTMT");
 
 	WRITE_NODE_FIELD(relation);
+	WRITE_OID_FIELD(objid);
 	WRITE_NODE_FIELD(object);
 	WRITE_NODE_FIELD(objarg);
 	WRITE_STRING_FIELD(subname);

@@ -2069,11 +2069,17 @@ get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 PartitionNode *
 RelationBuildPartitionDesc(Relation rel, bool inctemplate)
 {
+	return RelationBuildPartitionDescByOid(RelationGetRelid(rel), inctemplate);
+}
+
+PartitionNode *
+RelationBuildPartitionDescByOid(Oid relid, bool inctemplate)
+{
 	PartitionNode *n;
 	MemoryContext mcxt = CurrentMemoryContext;
-	
-	n = get_parts(RelationGetRelid(rel), 0, 0, inctemplate, mcxt);
-	
+
+	n = get_parts(relid, 0, 0, inctemplate, mcxt);
+
 	return n;
 }
 
@@ -6798,9 +6804,9 @@ build_rename_part_recurse(PartitionRule *rule, const char *old_parentname,
 				List *l2 = NIL;
 				
 				if (rule->children)
-					l2 = atpxRenameList(rel, rule->children,
+					l2 = atpxRenameList(rule->children,
 										relname, newRelNameBuf, skipped);
-				
+
 				if (l2)
 					l1 = list_concat(l1, l2);
 			}
@@ -6810,7 +6816,7 @@ build_rename_part_recurse(PartitionRule *rule, const char *old_parentname,
 }
 
 List *
-atpxRenameList(Relation rel, PartitionNode *pNode,
+atpxRenameList(PartitionNode *pNode,
 			   char *old_parentname, const char *new_parentname, int *skipped)
 {
 	List *l1 = NIL;

@@ -572,37 +572,40 @@ GenerateTypeDependencies(Oid typeNamespace,
  * renaming types associated with tables, for which there are no arrays.
  */
 void
-TypeRename(const char *oldTypeName, Oid typeNamespace,
-		   const char *newTypeName)
+TypeRename(Oid typeOid, const char *newTypeName)
 {
-	Relation	pg_type_desc;
-	HeapTuple	tuple;
+	Relation		pg_type_desc;
+	HeapTuple		tuple;
+	Form_pg_type	form;
 
 	pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+	tuple = SearchSysCacheCopy(TYPEOID,
+							   ObjectIdGetDatum(typeOid),
+							   0, 0, 0);
 
-	tuple = SearchSysCacheCopy(TYPENAMENSP,
-							   CStringGetDatum((char *) oldTypeName),
-							   ObjectIdGetDatum(typeNamespace),
-							   0, 0);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("type \"%s\" does not exist", oldTypeName)));
+				 errmsg("type with OID \"%d\" does not exist", typeOid)));
 
-	if (SearchSysCacheExists(TYPENAMENSP,
-							 CStringGetDatum((char *) newTypeName),
-							 ObjectIdGetDatum(typeNamespace),
-							 0, 0))
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("type \"%s\" already exists", newTypeName)));
+	form = (Form_pg_type) GETSTRUCT(tuple);
+	if (namestrcmp(&(form->typname), newTypeName))
+	{
+		if (SearchSysCacheExists(TYPENAMENSP,
+								 CStringGetDatum((char *) newTypeName),
+								 ObjectIdGetDatum(form->typnamespace),
+								 0, 0))
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_OBJECT),
+					 errmsg("type \"%s\" already exists", newTypeName)));
 
-	namestrcpy(&(((Form_pg_type) GETSTRUCT(tuple))->typname), newTypeName);
+		namestrcpy(&(form->typname), newTypeName);
 
-	simple_heap_update(pg_type_desc, &tuple->t_self, tuple);
+		simple_heap_update(pg_type_desc, &tuple->t_self, tuple);
 
-	/* update the system catalog indexes */
-	CatalogUpdateIndexes(pg_type_desc, tuple);
+		/* update the system catalog indexes */
+		CatalogUpdateIndexes(pg_type_desc, tuple);
+	}
 
 	heap_freetuple(tuple);
 	heap_close(pg_type_desc, RowExclusiveLock);

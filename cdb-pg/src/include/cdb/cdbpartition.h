@@ -201,7 +201,7 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 						PgPartRule   			*prule,
 						PartitionElem 			*pelem);
 extern List *
-atpxRenameList(Relation rel, PartitionNode *pNode,
+atpxRenameList(PartitionNode *pNode,
 			   char *old_parentname, const char *new_parentname, int *skipped);
 
 extern List *

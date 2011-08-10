@@ -104,7 +104,7 @@ test: prepare
 test: without_oid
 test: conversion
 test: truncate
-ignore: alter_table
+test: alter_table
 test: sequence
 ignore: polymorphism
 test: rowtypes

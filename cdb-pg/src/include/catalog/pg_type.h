@@ -835,8 +835,7 @@ extern void GenerateTypeDependencies(Oid typeNamespace,
 						 Node *defaultExpr,
 						 bool rebuild);
 
-extern void TypeRename(const char *oldTypeName, Oid typeNamespace,
-		   const char *newTypeName);
+extern void TypeRename(Oid typeOid, const char *newTypeName);
 
 extern char *makeArrayTypeName(const char *typeName);
 

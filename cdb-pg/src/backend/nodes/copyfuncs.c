@@ -2973,6 +2973,7 @@ _copyRenameStmt(RenameStmt *from)
 
 	COPY_SCALAR_FIELD(renameType);
 	COPY_NODE_FIELD(relation);
+	COPY_SCALAR_FIELD(objid);
 	COPY_NODE_FIELD(object);
 	COPY_NODE_FIELD(objarg);
 	COPY_STRING_FIELD(subname);

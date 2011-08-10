@@ -2,7 +2,7 @@
 -- ALTER_TABLE
 -- add attribute
 --
-
+DROP TABLE IF EXISTS tmp;
 CREATE TABLE tmp (initial int4);
 
 COMMENT ON TABLE tmp_wrong IS 'table comment';
@@ -163,6 +163,28 @@ SELECT * FROM tmp_new2;
 DROP TABLE tmp_new;
 DROP TABLE tmp_new2;
 
+-- ALTER TABLE ... RENAME on corrupted relations
+-- missing entry
+CREATE TABLE cor (a int, b float);
+INSERT INTO cor SELECT i, i+1 FROM generate_series(1,100)i;
+DELETE FROM pg_attribute WHERE attname='a' AND attrelid='cor'::regclass;
+ALTER TABLE cor RENAME TO oldcor;
+INSERT INTO pg_attribute SELECT distinct * FROM gp_dist_random('pg_attribute') WHERE attname='a' AND attrelid='oldcor'::regclass;
+DROP TABLE oldcor;
+
+-- typname is out of sync
+CREATE TABLE cor (a int, b float, c text);
+UPDATE pg_type SET typname='newcor' WHERE typrelid='cor'::regclass;
+ALTER TABLE cor RENAME TO newcor;
+ALTER TABLE newcor RENAME TO cor;
+DROP TABLE cor;
+
+-- relname is out of sync
+CREATE TABLE cor (a int, b int);
+UPDATE pg_class SET relname='othercor' WHERE relname='cor';
+ALTER TABLE othercor RENAME TO tmpcor;
+ALTER TABLE tmpcor RENAME TO cor;
+DROP TABLE cor;
 
 -- ALTER TABLE ... RENAME on non-table relations
 -- renaming indexes (FIXME: this should probably test the index's functionality)
@@ -216,10 +238,8 @@ ALTER TABLE tmp3 add constraint tmpconstr foreign key(a) references tmp2(b) matc
 -- Try (and fail) to add constraint due to invalid data
 ALTER TABLE tmp3 add constraint tmpconstr foreign key (a) references tmp2 match full;
 
--- Delete failing row
+-- Delete one row, add the constraint again -- should fail
 DELETE FROM tmp3 where a=5;
-
--- Try (and succeed)
 ALTER TABLE tmp3 add constraint tmpconstr foreign key (a) references tmp2 match full;
 
 -- Try (and fail) to create constraint from tmp5(a) to tmp4(a) - unique constraint on
@@ -457,7 +477,7 @@ insert into atacc1 (test) values(NULL);
 alter table atacc1 add constraint atacc_oid1 primary key(oid);
 -- drop first primary key constraint
 alter table atacc1 drop constraint atacc_test1 restrict;
--- try adding a primary key on oid (should succeed)
+-- try adding a primary key on oid (should fail)
 alter table atacc1 add constraint atacc_oid1 primary key(oid);
 drop table atacc1;
 
@@ -913,7 +933,7 @@ alter table altstartwith set without oids;
 
 select oid > 0, * from altstartwith; -- fails
 select * from altstartwith;
-
+/* MPP-13870:
 -- Run inheritance tests
 create table altwithoid (col integer) with oids;
 
@@ -932,7 +952,7 @@ select oid > 0, * from altwithoid; -- fails
 select oid > 0, * from altinhoid; -- fails
 select * from altwithoid;
 select * from altinhoid;
-
+*/
 -- test renumbering of child-table columns in inherited operations
 
 create table p1 (f1 int);
@@ -1070,7 +1090,8 @@ alter domain alter1.posint set schema alter2;
 alter type alter1.ctype set schema alter2;
 
 -- this should succeed because nothing is left in alter1
-drop schema alter1;
+-- MPP-13869:
+-- drop schema alter1;
 
 insert into alter2.t1(f2) values(13);
 insert into alter2.t1(f2) values(14);

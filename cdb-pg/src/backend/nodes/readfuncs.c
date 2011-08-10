@@ -1135,6 +1135,7 @@ _readRenameStmt(void)
 	READ_LOCALS(RenameStmt);
 
 	READ_NODE_FIELD(relation);
+	READ_OID_FIELD(objid);
 	READ_NODE_FIELD(object);
 	READ_NODE_FIELD(objarg);
 	READ_STRING_FIELD(subname);
