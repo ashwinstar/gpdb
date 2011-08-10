@@ -217,4 +217,8 @@ ChooseConstraintNameForPartitionEarly(Relation rel, ConstrType contype, Node *ex
 extern void
 fixCreateStmtForPartitionedTable(CreateStmt *stmt);
 
+extern void
+checkUniqueConstraintVsPartitioning(Relation rel, AttrNumber *indattr, int nidxatts, bool primary);
+
+
 #endif   /* CDBPARTITION_H */

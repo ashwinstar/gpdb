@@ -32,6 +32,7 @@
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbpartition.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
@@ -546,6 +547,13 @@ DefineIndex(RangeVar *heapRelation,
 									  list_length(indexInfo->ii_Expressions),
 									  relationHasPrimaryKey(rel),
 									  relationHasUniqueIndex(rel));
+		
+		/* We don't have to worry about constraints on parts.  Already checked. */
+		if ( isconstraint && rel_is_partitioned(relationId) )
+			checkUniqueConstraintVsPartitioning(rel,
+												indexInfo->ii_KeyAttrNumbers,
+												indexInfo->ii_NumIndexAttrs,
+												primary);
 
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)

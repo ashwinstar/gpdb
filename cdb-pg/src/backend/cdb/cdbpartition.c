@@ -170,6 +170,9 @@ ChooseConstraintNameForPartitionCreate(const char *rname,
 									   const char *label, 
 									   List *used_names);
 
+static Bitmapset *
+get_partition_key_bitmapset(Oid relid);
+
 
 /* Is the given relation the top relation of a partitioned table?
  *
@@ -2073,6 +2076,80 @@ RelationBuildPartitionDesc(Relation rel, bool inctemplate)
 	
 	return n;
 }
+
+/*
+ * Return a Bitmapset of the attribute numbers of a partitioned table
+ * (not a part).  The attribute numbers refer to the root partition table.
+ * Call only on the entry database.  Returns an empty set, if called on a 
+ * regular table or a part.
+ *
+ * Note: Reads the pg_partition catalog.  If you have a PartitionNode, 
+ * in hand, use get_partition_attrs and construct a Bitmapset from its
+ * result instead.
+ */
+Bitmapset *
+get_partition_key_bitmapset(Oid relid)
+{
+	Relation rel;
+	ScanKeyData key[1];
+	SysScanDesc scan;
+	HeapTuple tuple;
+	TupleDesc tupledesc;
+	
+	Bitmapset *partition_key = NULL;
+	
+	/* Reject calls from QEs running on a segment database, since
+	 * pg_partition and  pg_partition_rule are populated only
+	 * on the entry database. 
+	 */
+	Insist(Gp_segment == -1);
+	
+	/* select paratts
+	 * from pg_partition
+	 * where 
+	 *     parrelid = :relid and 
+	 *     not paristemplate;
+	 */
+	rel = heap_open(PartitionRelationId, AccessShareLock);
+	
+	ScanKeyInit(&key[0],
+				Anum_pg_partition_parrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+	
+	scan = systable_beginscan(rel,
+							  PartitionParrelidIndexId,
+							  true, SnapshotNow, 1, key);
+	
+	tupledesc = RelationGetDescr(rel);
+	
+	for ( tuple = systable_getnext(scan); HeapTupleIsValid(tuple);
+		 tuple = systable_getnext(scan) )
+	{
+	    int i;
+		int2 natts;
+		int2vector *atts;
+		bool isnull;
+	    Form_pg_partition partrow = (Form_pg_partition)GETSTRUCT(tuple);
+		
+		if (partrow->paristemplate)
+			continue;  /* no interest in template parts */
+		
+		natts = partrow->parnatts;
+	    atts = DatumGetPointer(heap_getattr(tuple, Anum_pg_partition_paratts,
+											tupledesc, &isnull));
+		Insist(!isnull);
+		
+		for ( i = 0; i < natts; i++ )
+			partition_key = bms_add_member(partition_key, atts->values[i]);
+	}
+	
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+	
+	return partition_key;
+}
+
 
 /*
  * Return a list of partition attributes. Order is not guaranteed.
@@ -7506,32 +7583,53 @@ fixCreateStmtForPartitionedTable(CreateStmt *stmt)
 				
 				foreach( lc_con, cdef->constraints )
 				{
-					con = (Constraint*)lfirst(lc_con);
+					Node *conelt = lfirst(lc_con);
 					
-					if ( con->name )
+					if ( IsA(conelt, Constraint) )
 					{
-						used_names = lappend(used_names, con->name);
-						continue;
+						con = (Constraint*)conelt;
+						
+						if ( con->name )
+						{
+							used_names = lappend(used_names, con->name);
+							continue;
+						}
+						switch (con->contype)
+						{
+							case CONSTR_CHECK:
+								unnamed_cons = lappend(unnamed_cons, con);
+								unnamed_cons_col = lappend(unnamed_cons_col, cdef->colname);
+								unnamed_cons_lbl = lappend(unnamed_cons_lbl, "check");
+								break;
+							case CONSTR_PRIMARY:
+								unnamed_cons = lappend(unnamed_cons, con);
+								unnamed_cons_col = lappend(unnamed_cons_col, cdef->colname);
+								unnamed_cons_lbl = lappend(unnamed_cons_lbl, "pkey");
+								break;
+							case CONSTR_UNIQUE:
+								unnamed_cons = lappend(unnamed_cons, con);
+								unnamed_cons_col = lappend(unnamed_cons_col, cdef->colname);
+								unnamed_cons_lbl = lappend(unnamed_cons_lbl, "key");
+								break;
+							default:
+								break;
+						}
 					}
-					switch (con->contype)
+					else
 					{
-						case CONSTR_CHECK:
-							unnamed_cons = lappend(unnamed_cons, con);
-							unnamed_cons_col = lappend(unnamed_cons_col, cdef->colname);
-							unnamed_cons_lbl = lappend(unnamed_cons_lbl, "check");
-							break;
-						case CONSTR_PRIMARY:
-							unnamed_cons = lappend(unnamed_cons, con);
-							unnamed_cons_col = lappend(unnamed_cons_col, cdef->colname);
-							unnamed_cons_lbl = lappend(unnamed_cons_lbl, "pkey");
-							break;
-						case CONSTR_UNIQUE:
-							unnamed_cons = lappend(unnamed_cons, con);
-							unnamed_cons_col = lappend(unnamed_cons_col, cdef->colname);
-							unnamed_cons_lbl = lappend(unnamed_cons_lbl, "key");
-							break;
-						default:
-							break;
+						FkConstraint *fkcon = (FkConstraint*)conelt;
+						
+						Insist( IsA(fkcon, FkConstraint) );
+						
+						if ( fkcon->constr_name )
+						{
+							used_names = lappend(used_names, fkcon->constr_name);
+							continue;
+						}
+						
+						unnamed_cons = lappend(unnamed_cons, fkcon);
+						unnamed_cons_col = lappend(unnamed_cons_col, cdef->colname);
+						unnamed_cons_lbl = lappend(unnamed_cons_lbl, "fkey");
 					}
 				}
 				break;
@@ -7566,13 +7664,16 @@ fixCreateStmtForPartitionedTable(CreateStmt *stmt)
 						default:
 							break;
 					}
-					break;
 				}
 				break;
 			}
 			case T_FkConstraint:
 			{
 				FkConstraint *fkcon = (FkConstraint*)elt;
+				
+				unnamed_cons = lappend(unnamed_cons, fkcon);
+				unnamed_cons_col = lappend(unnamed_cons_col, no_name);
+				unnamed_cons_lbl = lappend(unnamed_cons_lbl, "fkey");
 				
 				if ( fkcon->constr_name )
 				{
@@ -7593,19 +7694,44 @@ fixCreateStmtForPartitionedTable(CreateStmt *stmt)
 	
 	for ( i = 0; i < list_length(unnamed_cons); i++ )
 	{
-		Constraint *con = list_nth(unnamed_cons, i);
 		char *label = list_nth(unnamed_cons_lbl, i);
 		char *colname = NULL;
+		Node *elt = list_nth(unnamed_cons, i);
 		
-		/* Conventionally, no column name for PK. */
-		if ( strcmp(label, "pkey") != 0 )
-			colname = list_nth(unnamed_cons_col, i);
-		
-		con->name = ChooseConstraintNameForPartitionCreate(stmt->relation->relname,
+		switch ( nodeTag(elt) )
+		{
+			case T_FkConstraint:
+			{
+				FkConstraint *fcon = list_nth(unnamed_cons, i);
+			
+				fcon->constr_name = 
+					ChooseConstraintNameForPartitionCreate(stmt->relation->relname,
 														   colname,
 														   label,
 														   used_names);
-		used_names = lappend(used_names,con->name);
+				used_names = lappend(used_names, fcon->constr_name);
+				break;
+			}
+			
+			case T_Constraint:
+			{
+				Constraint *con = list_nth(unnamed_cons, i);
+				
+				/* Conventionally, no column name for PK. */
+				if ( 0 != strcmp(label, "pkey") )
+					colname = list_nth(unnamed_cons_col, i);
+				
+				con->name = ChooseConstraintNameForPartitionCreate(stmt->relation->relname,
+																   colname,
+																   label,
+																   used_names);
+				used_names = lappend(used_names,con->name);
+				
+				break;
+			}
+			default:
+				break;
+		}
 	}
 }
 
@@ -7663,4 +7789,43 @@ ChooseConstraintNameForPartitionCreate(const char *rname,
 		snprintf(modlabel, sizeof(modlabel), "%s%d", label, ++pass);
 	}
 	return conname;
+}
+
+/*
+ * Determine whether the given attributes can be enforced unique within
+ * the partitioning policy of the given partitioned table.  If not, issue
+ * an error.  The argument primary just conditions the message text.
+ */
+void
+checkUniqueConstraintVsPartitioning(Relation rel, AttrNumber *indattr, int nidxatts, bool primary)
+{
+	int i;
+	bool contains;
+	Bitmapset *ikey = NULL;
+	Bitmapset *pkey = get_partition_key_bitmapset(RelationGetRelid(rel));
+	
+	for (i = 0; i < nidxatts; i++)
+		ikey = bms_add_member(ikey, indattr[i]);
+	
+	contains = bms_is_subset(pkey, ikey);
+	
+	if (pkey)
+		bms_free(pkey);
+	if (ikey)
+		bms_free(ikey);
+	
+	if (! contains )
+	{
+		char *what = "UNIQUE";
+		
+		if ( primary )
+			what = "PRIMARY KEY";
+		
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("%s constraint must contain all columns in the "
+						"partition key of relation \"%s\".", 
+						what, RelationGetRelationName(rel)),
+				 errhint("Include the partition key or create a part-wise UNIQUE index instead.")));
+	}
 }

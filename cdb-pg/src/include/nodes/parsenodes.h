@@ -1375,7 +1375,10 @@ typedef struct CreateStmt
 	char		relStorage;
 	struct GpPolicy  *policy;
 	Node       *postCreate;      /* CDB: parse and process after the CREATE */
-	bool		is_part_child;	/* CDB: partition child table? */
+	bool		is_part_child;	/* CDB: child table in a partition? Marked during analysis for 
+								 * interior or leaf parts of the new table.  Not marked for a
+								 * a partition root or ordinary table.
+								 */
 	bool		is_add_part;	/* CDB: is create adding a part to a partition? */
 	Oid			ownerid;		/* OID of the role to own this. if InvalidOid, GetUserId() */
 	bool		buildAoBlkdir; /* whether to build the block directory for an AO table */
@@ -2108,6 +2111,7 @@ typedef struct IndexStmt
 	Node	   *whereClause;	/* qualification (partial-index predicate) */
 	List	   *rangetable;		/* range table for qual and/or expressions,
 								 * filled in by transformStmt() */
+	bool		is_part_child;	/* in service of a part of a partition? */
 	bool		unique;			/* is index unique? */
 	bool		primary;		/* is index on primary key? */
 	bool		isconstraint;	/* is it from a CONSTRAINT clause? */

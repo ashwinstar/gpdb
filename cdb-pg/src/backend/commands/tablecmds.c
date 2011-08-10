@@ -3990,23 +3990,50 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			/* However, if the index supports a PK or UNIQUE constraint and the
 			 * relation is partitioned, we need to assure the constraint is named
 			 * in a reasonable way. */
-			if ( rel_is_partitioned(rel->rd_id) )
 			{
+				ConstrType contype = CONSTR_NULL; /* name picker will reject this */
 				IndexStmt *topindexstmt = (IndexStmt*)cmd->def;
 				Insist(IsA(topindexstmt, IndexStmt));
-				if ( topindexstmt->isconstraint && !topindexstmt->altconname )
+				if ( topindexstmt->isconstraint )
 				{
-					ConstrType contype = CONSTR_NULL; /* name picker will reject this */
-					if ( topindexstmt->primary )
-						contype = CONSTR_PRIMARY;
-					else if ( topindexstmt->unique )
-						contype = CONSTR_UNIQUE;
-					
-					/* Pick and install a constraint name. */
-					topindexstmt->altconname =
-						ChooseConstraintNameForPartitionEarly(rel, 
-															  contype, 
-															  (Node*)topindexstmt->indexParams);
+					if ( !topindexstmt->altconname )
+ 					{
+ 						if ( topindexstmt->primary )
+							contype = CONSTR_PRIMARY;
+						else if ( topindexstmt->unique )
+							contype = CONSTR_UNIQUE;
+							 						 						
+						/* Pick and install a constraint name. */
+						topindexstmt->altconname =
+							ChooseConstraintNameForPartitionEarly(rel, 
+																  contype,
+																  (Node*)topindexstmt->indexParams);
+					}
+
+					switch ( rel_part_status(RelationGetRelid(rel)) )
+					{
+						case PART_STATUS_ROOT:
+ 							break;
+ 						case PART_STATUS_INTERIOR:
+ 						case PART_STATUS_LEAF:
+							/* Don't do this check for child parts (= internal requests). */
+ 							if ( ! topindexstmt->is_part_child )
+ 							{
+ 								char *what = "UNIQUE";
+ 								if ( contype == CONSTR_PRIMARY )
+ 									what = "PRIMARY KEY";
+ 								ereport(ERROR,
+ 										(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+ 										 errmsg("can't place a %s constraint on just part of "
+ 												"partitioned table \"%s\"", 
+ 												what,RelationGetRelationName(rel)),
+ 										 errhint("Constrain the whole table or create a "
+ 												 "part-wise UNIQUE index instead.")));
+ 							}
+ 							break;
+ 						default:
+ 							break;
+ 					}
 				}
 			}
 			pass = AT_PASS_ADD_INDEX;
@@ -4113,18 +4140,18 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			 * in which case, we need to act as if the command specified the top-level
 			 * list of parts.
 			 */
-			if (Gp_role == GP_ROLE_DISPATCH && rel_is_partitioned(rel->rd_id) )
+			if (Gp_role == GP_ROLE_DISPATCH && rel_is_partitioned(RelationGetRelid(rel)) )
 			{
 				PartitionNode *pnode = NULL;
 				List *all_oids = NIL;
 				
-				pnode = get_parts(rel->rd_id, 
+				pnode = get_parts(RelationGetRelid(rel), 
 								  0, /**/
 								  InvalidOid, /**/
 								  false, /**/
 								  CurrentMemoryContext);
 				
-				all_oids = lcons_oid(rel->rd_id, all_partition_relids(pnode));
+				all_oids = lcons_oid(RelationGetRelid(rel), all_partition_relids(pnode));
 				
 				Assert( cmd->partoids == NIL );
 				cmd->partoids = all_oids;
@@ -7186,7 +7213,7 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 			{
 				policy->nattrs = 0;
 				rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
-				GpPolicyReplace(rel->rd_id, policy);
+				GpPolicyReplace(RelationGetRelid(rel), policy);
 				if (Gp_role != GP_ROLE_EXECUTE)
 				    ereport(NOTICE,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -7422,6 +7449,7 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
  			crel = heap_open(relid, AccessShareLock);
 			istmt = copyObject(stmt);
 			istmt->idxOids = NIL;
+			istmt->is_part_child = true;
 			istmt->constrOid = InvalidOid;
 
 			ats = makeNode(AlterTableStmt);
@@ -7586,7 +7614,7 @@ ATAddCheckConstraint(AlteredTableInfo *tab, Relation rel, Constraint *constr, bo
 		tab->constraints = lappend(tab->constraints, newcon);
 
 		/* Save the actually assigned name if it was defaulted on partitioned table */
-		if (rel_is_partitioned(rel->rd_id) && constr->name == NULL)
+		if (rel_is_partitioned(RelationGetRelid(rel)) && constr->name == NULL)
 			constr->name = ccon->name;
 	}
 
@@ -7737,6 +7765,18 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("cannot reference permanent table from temporary table constraint"),
 							   errOmitLocation(true)));
+	}
+	
+	/*
+	 * Disallow reference to a part of a partitioned table.  A foreign key 
+	 * must reference the whole partitioned table or none of it.
+	 */
+	if ( rel_is_child_partition(RelationGetRelid(pkrel)) )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot reference just part of a partitioned table"),
+				 errOmitLocation(true)));
 	}
 
 	/*
@@ -8914,7 +8954,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 								{
 									int			ia = 0;
 
-									if (cdbRelSize(rel->rd_id) != 0)
+									if (cdbRelSize(RelationGetRelid(rel)) != 0)
 
 									for (ia = 0; ia < policy->nattrs; ia++)
 									{
@@ -8963,7 +9003,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 						{
 							int			ia = 0;
 
-							if (cdbRelSize(rel->rd_id) != 0)
+							if (cdbRelSize(RelationGetRelid(rel)) != 0)
 
 							for (ia = 0; ia < policy->nattrs; ia++)
 							{
@@ -9099,7 +9139,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	{
 		int			ia = 0;
 
-		if (cdbRelSize(rel->rd_id) != 0)
+		if (cdbRelSize(RelationGetRelid(rel)) != 0)
 		{
 			for (ia = 0; ia < policy->nattrs; ia++)
 			{
@@ -10182,7 +10222,7 @@ ATExecSetTableSpace_AppendOnly(
 			 "ALTER TABLE SET TABLESPACE: Append-Only "
 			 "relation id %u, old path '%s', old relfilenode %u, old reltablespace %u, "
 			 "new path '%s', new relfilenode %u, new reltablespace %u",
-			 rel->rd_id,
+			 RelationGetRelid(rel),
 			 relpath(rel->rd_node),
 			 rel->rd_rel->relfilenode,
 			 oldTablespace,
@@ -10382,7 +10422,7 @@ ATExecSetTableSpace_BufferPool(
 			 "relation id %u, old path '%s', old relfilenode %u, old reltablespace %u, "
 			 "new path '%s', new relfilenode %u, new reltablespace %u, "
 			 "bulk load %s",
-			 rel->rd_id,
+			 RelationGetRelid(rel),
 			 relpath(rel->rd_node),
 			 rel->rd_rel->relfilenode,
 			 oldTablespace,
