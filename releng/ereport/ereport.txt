@@ -18261,6 +18261,36 @@ taaf: tqual:00000550:  "and found none. Shared Local Snapshots dump: %s", id,
 taaf: tqual:00000551:  SharedSnapshotDump()), 
 taaf: tqual:00000552:  errhint("Either this %s was created before the %s or the %s died.", 
 taaf: tqual:00000553:  lookerDescription, creatorDescription, creatorDescription))); 
+aaaaa GP_IGNORE: gabf: gphdfsformatter - ./bin/gphdfs/src/protocol_formatter/gphdfsformatter.c
+gabf: gphdfsformatter:00000152:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000153:  errmsg("cannot execute gphdfsformatter_export outside format manager"), 
+gabf: gphdfsformatter:00000154:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000185:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000186:  errmsg("cannot handle external table with dropped columns"), 
+gabf: gphdfsformatter:00000187:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000328:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000329:  errmsg("cannot execute gphdfsformatter_import outside format manager"), 
+gabf: gphdfsformatter:00000330:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000358:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000359:  errmsg("cannot handle external table with dropped columns"), 
+gabf: gphdfsformatter:00000360:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000390:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000391:  errmsg("unexpected end of file"), 
+gabf: gphdfsformatter:00000392:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000401:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000402:  errmsg("unexpected end of file"), 
+gabf: gphdfsformatter:00000403:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000421:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000422:  errmsg("cannot import data version %d", version), 
+gabf: gphdfsformatter:00000423:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000425:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000426:  errmsg("input data column count (%d) did not match the external table definition", 
+gabf: gphdfsformatter:00000427:  colcnt), 
+gabf: gphdfsformatter:00000428:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000445:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000446:  errmsg("input data column %d of type \"%s\" did not match the external table definition", 
+gabf: gphdfsformatter:00000447:  i+1, intype), 
+gabf: gphdfsformatter:00000448:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: gaai: gpmrdemo - ./bin/gpmapreduce/test/lib/gpmrdemo.c
 gaai: gpmrdemo:00000063:  ereport(ERROR, 
 gaai: gpmrdemo:00000064:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
