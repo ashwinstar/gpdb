@@ -2,7 +2,7 @@
 #
 # $Header$
 #
-# copyright (c) 2009, 2010
+# copyright (c) 2009, 2010, 2011
 # Author: Jeffrey I Cohen
 #
 # SLZY_HDR_END
@@ -25,8 +25,8 @@ B<tidycat.pl> - generate catalog entries
 
 =head1 VERSION
 
- This document describes version 29 of tidycat.pl, released
- Tue Jul 12 14:33:07 2011.
+ This document describes version 31 of tidycat.pl, released
+ Tue Aug  9 15:47:46 2011.
 
 =head1 SYNOPSIS
 
@@ -367,9 +367,9 @@ BEGIN {
 	
 	# version and properties from json definition
 	$glob_glob->{_sleazy_properties} = {};
-	$glob_glob->{_sleazy_properties}->{version} = '29';
+	$glob_glob->{_sleazy_properties}->{version} = '31';
 	$glob_glob->{_sleazy_properties}->{COPYDATES} = '2009-2011';
-	$glob_glob->{_sleazy_properties}->{slzy_date} = '1310506387';
+	$glob_glob->{_sleazy_properties}->{slzy_date} = '1312930065';
 	
 	$glob_glob->{dumpdef}        =  $s_dumpdef      if (defined($s_dumpdef));
 	$glob_glob->{dumpformat}     =  $s_dumpformat   if (defined($s_dumpformat));
@@ -766,8 +766,21 @@ sub parsefk
 
 	$bigstr =~ s/^\s*alter\s+table\s+\w+\s+add\s+fk//i;
 
-	my @foo = ($bigstr =~ m/\s*(\w+)\s*on\s*(\w+)\s*\((\w+(\s*\,\s*\w+)*)\)/i);
+	my @foo;
 
+	# allow composite key, eg "add fk (k1[,k2...]) on ..."
+	if ($bigstr =~ 
+		m/\s*\(\s*(\w+(?:\s*,\s*\w+)*)\s*\)\s*on\s+(\w+)\s*\(\s*(\w+(?:\s*\,\s*\w+)*\s*)\)/i)
+	{
+		@foo = 
+			($bigstr =~ 
+			 m/\s*\(\s*(\w+(?:\s*,\s*\w+)*)\s*\)\s*on\s+(\w+)\s*\(\s*(\w+(?:\s*\,\s*\w+)*)\s*\)/i);
+	}
+	else # single key, no parents, ie "add fk k1 on ..."
+	{
+		@foo = 
+			($bigstr =~ m/\s*(\w+)\s+on\s+(\w+)\s*\(\s*(\w+(?:\s*\,\s*\w+)*)\s*\)/i);
+	}
 #	print Data::Dumper->Dump(\@foo), "\n";
 
 	die "$filnam: bad foreign key for table $tname: $bigstr" unless (2 < scalar(@foo));
@@ -775,14 +788,21 @@ sub parsefk
 	$alltabs->{$tname}->{foreign_keys} = []
 		unless (exists($alltabs->{$tname}->{foreign_keys}));
 
-	my $fkname = shift @foo; # the foreign key column name
-	my $pktname = shift @foo; # the primary key table name
+	my $fknamlist  = shift @foo; # the foreign key column list
+	my $pktname	   = shift @foo; # the primary key table name
 	my $colnamlist = shift @foo; # the primary key cols
-	my @cols = split(",", $colnamlist);
 
-	die "$filnam: bad foreign key for table $tname - no such column: $fkname" unless (exists($alltabs->{$tname}->{colh}->{$fkname}));
+	# remove leading/trailing spaces around comma as well
+	my @cols   = split(/\s*,\s*/, $colnamlist);
+	my @fkcols = split(/\s*,\s*/, $fknamlist);
+	
+	for my $fkname (@fkcols)
+	{
+		die "$filnam: bad foreign key for table $tname - no such column: $fkname" 
+			unless (exists($alltabs->{$tname}->{colh}->{$fkname}));
+	}
 
-	push @{$alltabs->{$tname}->{foreign_keys}}, [[$fkname], $pktname, \@cols];
+	push @{$alltabs->{$tname}->{foreign_keys}}, [\@fkcols, $pktname, \@cols];
 } # end parsefk
 
 sub parsecols
@@ -2999,10 +3019,10 @@ if (0)
    "long" : "$toplong",
    "properties" : {
       "COPYDATES" : "2009-2011",
-      "slzy_date" : 1310506387
+      "slzy_date" : 1312930065
    },
    "short" : "generate catalog entries",
-   "version" : "30"
+   "version" : "31"
 }
 
 EOF_bigstr
