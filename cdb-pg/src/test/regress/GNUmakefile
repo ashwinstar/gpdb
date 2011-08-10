@@ -166,6 +166,8 @@ endif
 upg2-setup:
 	@cp -f $(srcdir)/data/upgrade41/upg2_catupgrade_41.sql.in data/upg_catupgrade_41.sql
 	@gpstringsubs.pl data/upg_catupgrade_41.sql
+	@cp -f $(srcdir)/data/upgrade42/upg2_catupgrade_42.sql.in data/upg_catupgrade_42.sql
+	@gpstringsubs.pl data/upg_catupgrade_42.sql
 
 ugpart-setup:
 	@cp -f $(srcdir)/data/upgrade_pg_partitions.sql.in data/upgrade_pg_partitions.sql

@@ -16,9 +16,58 @@
 -- The first DML will populate the mater catalog and the second DML will update the catalog
 -- in all the segments.
 
-CREATE OR REPLACE VIEW pg_max_external_files AS
+CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_max_external_files AS
     SELECT   address::name as hostname, count(*) as maxfiles
     FROM     gp_segment_configuration
     WHERE    content >= 0 
     AND      role='p'
     GROUP BY address;
+
+    
+--
+-- gphdfs protocol/formatter upgrade
+--   1. create the formatter/protocol functions
+--   2. create the protocols
+--   3. Grant the protocol to those who has already been granted in the old way
+--
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.gphdfs_export(record) RETURNS bytea 
+AS '$libdir/gphdfs.so', 'gphdfsformatter_export'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.gphdfs_import() RETURNS record
+AS '$libdir/gphdfs.so', 'gphdfsformatter_import'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.gphdfs_read() RETURNS integer
+AS '$libdir/gphdfs.so', 'gphdfsprotocol_import'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.gphdfs_write() RETURNS integer
+AS '$libdir/gphdfs.so', 'gphdfsprotocol_export'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.gphdfs_validate() RETURNS void
+AS '$libdir/gphdfs.so', 'gphdfsprotocol_validate_urls'
+LANGUAGE C IMMUTABLE;
+
+CREATE PROTOCOL gphdfs (
+  writefunc     = 'gphdfs_write',
+  readfunc      = 'gphdfs_read',
+  validatorfunc = 'gphdfs_validate');
+
+create or replace function @gpupgradeschemaname@.grant_gphdfs() returns int as $$
+declare
+  rolname name;
+begin
+  for rolname in select rolname from pg_authid where rolcreaterexthdfs = true loop
+    execute 'grant usage on protocol gphdfs to '|| rolname;
+  end loop;
+  for rolname in select rolname from pg_authid where rolcreatewexthdfs = true loop
+    execute 'grant usage on protocol gphdfs to '|| rolname;
+  end loop;
+  
+  return 1;
+end;
+$$ language 'plpgsql';
+
+drop function @gpupgradeschemaname@.grant_gphdfs();

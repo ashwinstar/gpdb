@@ -113,6 +113,7 @@ ignore: stats
 ignore: tablespace
 test: gpdiffcheck
 test: exttab1
+test: gphdfs
 test: resource_queue
 test: gptokencheck
 test: gpcopy
