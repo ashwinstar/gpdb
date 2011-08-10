@@ -131,6 +131,10 @@ if __name__ == '__main__':
     # 4.1 gpperfmon schema additions
     cmd = Command("PGPORT=%d psql -f %s/lib/gpperfmon/gpperfmon41.sql gpperfmon" % (options.port, gphome))
     commands.append(cmd)
+
+    # 4.2 gpperfmon schema additions
+    cmd = Command("PGPORT=%d psql -f %s/lib/gpperfmon/gpperfmon42.sql gpperfmon" % (options.port, gphome))
+    commands.append(cmd)
     
     # gpperfmon schema completion tasks
     cmd = Command("PGPORT=%d psql -f %s/lib/gpperfmon/gpperfmonC.sql template1" % (options.port, gphome))

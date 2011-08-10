@@ -1035,6 +1035,7 @@ mkgpperfmon:
 	cp -p gpperfmon/src/gpmon/gpperfmon3.sql $(INSTLOC)/lib/gpperfmon
 	cp -p gpperfmon/src/gpmon/gpperfmon4.sql $(INSTLOC)/lib/gpperfmon
 	cp -p gpperfmon/src/gpmon/gpperfmon41.sql $(INSTLOC)/lib/gpperfmon
+	cp -p gpperfmon/src/gpmon/gpperfmon42.sql $(INSTLOC)/lib/gpperfmon
 	cp -p gpperfmon/src/gpmon/gpperfmonC.sql $(INSTLOC)/lib/gpperfmon
 
 mkplatform:
