@@ -67,7 +67,7 @@ def usage(exitarg):
 
 #############
 def print_version():
-    print '%s version main build 26138' % GV.script_name
+    print '%s version $Revision$' % GV.script_name
     sys.exit(0)
 
 #############
