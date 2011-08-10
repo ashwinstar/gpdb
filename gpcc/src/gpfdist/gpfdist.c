@@ -215,8 +215,9 @@ static void block_fill_header(block_t* b,
 static struct
 {
 	apr_pool_t* 	pool;
-	SOCKET 			listen_sock;
-	struct event 	listen_event;
+	int				listen_sock_count;
+	SOCKET 			listen_socks[6];
+	struct event 	listen_events[6];
 	struct
 	{
 		int 		gen;
@@ -1653,11 +1654,19 @@ static void http_setup(void)
 	struct addrinfo hints;
 	struct addrinfo *addrs, *rp;
 	int  s;
+	int  i;
 
 	char service[32];
 	const char *hostaddr = NULL;
+
+	gcb.listen_sock_count = 0;
 	if (opt.b != NULL && strlen(opt.b) > 1)
 		hostaddr = opt.b;
+
+	/* setup event priority */
+	if (event_priority_init(10))
+		gwarning(FLINE, "event_priority_init failed");
+
 
 	/* Try each possible port from opt.p to opt.last_port */
 	for (;;)
@@ -1723,20 +1732,36 @@ static void http_setup(void)
 			linger.l_linger = 5;
 			setsockopt(f, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
 
-			if (bind(f, rp->ai_addr, rp->ai_addrlen) == 0)
-				break;					/* Success */
+			if (bind(f, rp->ai_addr, rp->ai_addrlen) != 0)
+			{
+				/* failed on bind, maybe this address family isn't supported */
+				close(f);
+				continue;
+			}
 
-			close(f);
+			/* listen with a big queue */
+			if (listen(f, opt.z))
+				gfatal(FLINE, "listen with queue size %d on socket (%d) using port %d failed with error code (%d): %s",
+							  opt.z,
+							  (int)f,
+							  opt.p,
+							  errno,
+							  strerror(errno));
+
+			gcb.listen_socks[gcb.listen_sock_count++] = f;
+
 		}
 
 		/* When we get here, we have either succeeded, or tried all address families for this port */
 
-		if (rp != NULL)
+		if (addrs != NULL)
 		{
-			/* Ok, we must have succeeded */
+			/* don't need this any more */
 			freeaddrinfo(addrs);
-			break;
 		}
+
+		if (gcb.listen_sock_count > 0)
+			break;
 
 		if (opt.p >= opt.last_port)
 			gfatal(FLINE, "cannot create socket on port %d "
@@ -1745,33 +1770,22 @@ static void http_setup(void)
 		opt.p++;
 	}
 
-	/* listen with a big queue */
-	if (listen(f, opt.z))
-		gfatal(FLINE, "listen with queue size %d on socket (%d) using port %d failed with error code (%d): %s",
-					  opt.z,
-					  (int)f,
-					  opt.p,
-					  errno,
-					  strerror(errno));
 
-	gcb.listen_sock = f;
+	for (i = 0; i < gcb.listen_sock_count; i++)
+	{
+		/* when this socket is ready, do accept */
+		event_set(&gcb.listen_events[i], gcb.listen_socks[i], EV_READ | EV_PERSIST,
+				  do_accept, 0);
 
-	/* setup event priority */
-	if (event_priority_init(10))
-		gwarning(FLINE, "event_priority_init failed");
+		/* high priority so we accept as fast as possible */
+		if (event_priority_set(&gcb.listen_events[i], 0))
+			gwarning(FLINE, "event_priority_set failed");
 
-	/* when this socket is ready, do accept */
-	event_set(&gcb.listen_event, gcb.listen_sock, EV_READ | EV_PERSIST,
-			  do_accept, 0);
-
-	/* high priority so we accept as fast as possible */
-	if (event_priority_set(&gcb.listen_event, 0))
-		gwarning(FLINE, "event_priority_set failed");
-
-	/* start watching this event */
-	if (event_add(&gcb.listen_event, 0))
-		gfatal(FLINE, "cannot set up event on listen socket: %s",
-					   strerror(errno));
+		/* start watching this event */
+		if (event_add(&gcb.listen_events[i], 0))
+			gfatal(FLINE, "cannot set up event on listen socket: %s",
+						   strerror(errno));
+	}
 
 }
 
@@ -1779,11 +1793,13 @@ void process_signal(int sig)
 {
 	if (sig == SIGINT || sig == SIGTERM)
 	{
+		int i;
 		gwarning(FLINE, "signal %d received. gpfdist exits", sig);
-		if (gcb.listen_sock > 0)
-		{
-			closesocket(gcb.listen_sock);
-		}
+		for (i = 0; i < gcb.listen_sock_count; i++)
+			if (gcb.listen_socks[i] > 0)
+			{
+				closesocket(gcb.listen_socks[i]);
+			}
 		exit(1);
 	}
 }
