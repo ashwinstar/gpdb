@@ -9,16 +9,18 @@ SYNOPSIS
 
 gpcrondump -x <database_name> 
      [-s <schema> | -t <schema>.<table> | -T <schema>.<table>] 
-     [-w <dbid>[,...]] [-u <backup_directory>] [-R <post_dump_script>] 
-     [-c | -o] [-z] [-r] [-f <free_space_percent>] [-b] [-i] [-j | -k] 
+     [-u <backup_directory>] [-R <post_dump_script>] 
+     [-c] [-z] [-r] [-f <free_space_percent>] [-b] [-h] [-j | -k] 
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
-     [-a] [-q] [-y <reportfile>] [-l <logfile_directory>] [-D] 
+     [-a] [-q] [-y <reportfile>] [-l <logfile_directory>]
      { [-E <encoding>] [--inserts | --column-inserts] [--oids] 
        [--no-owner | --use-set-session-authorization] [--no-privileges] } 
 
 gpcrondump -? 
 
 gpcrondump -v
+
+gpcrondump -o
 
 
 *****************************************************
@@ -103,11 +105,6 @@ OPTIONS
  set for $MASTER_DATA_DIRECTORY will be used.
 
 
--D (debug)
-
- Sets logging level to debug.
-
-
 -E encoding
 
  Character set encoding of dumped data. Defaults to the encoding of 
@@ -136,9 +133,12 @@ OPTIONS
  db_dumps/YYYYMMDD/gp_global_1_1_<timestamp>.
 
 
--i (ignore parameter check)
+-h (records dump details)
 
- Ignore the initial parameter check phase.
+  Record details of database dump in database table
+  public.gpcrondump_history in database supplied via 
+  -x option. Utility will create table if it does not
+  currently exist.
 
 
 --inserts
@@ -181,12 +181,6 @@ OPTIONS
 --oids
 
  Include object identifiers (oid) in dump data.
-
-
--p (primary segments only)
-
- Dump all primary segments, which is the default behavior. 
- Note: this option is deprecated.
 
 
 -q (no screen output)
@@ -243,18 +237,9 @@ OPTIONS
  commands to set object ownership.
 
 
--v (show utility version)
+-v (verbose)
 
- Displays the version, status, last updated date, and 
- check sum of this utility.
-
-
--w <dbid>[,...] (backup certain segments only)
- 
- Specifies a set of active segment instances to back up as a 
- comma-separated list of the dbids of the segments. The master is 
- added to the list automatically. The default is to backup 
- all active segment instances.
+ Specifies verbose mode.
 
 
 -x <database_name>
