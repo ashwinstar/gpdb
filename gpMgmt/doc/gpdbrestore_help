@@ -158,8 +158,7 @@ OPTIONS
 
 --version (show utility version)
 
- Displays the version, status, last updated date, and check sum of 
- this utility.
+ Displays the version of this utility.
 
 
 -? (help)
