@@ -10195,34 +10195,34 @@ baba: bexfsstubs:00000533:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 baba: bexfsstubs:00000534:  errmsg("permission denied for large object %u", 
 baba: bexfsstubs:00000535:  cookies[fd]->id))); 
 aaaaa GP_IGNORE: baaj: bexsecure - ./backend/libpq/be-secure.c
-baaj: bexsecure:00000735:  ereport(FATAL, 
-baaj: bexsecure:00000736:  (errmsg("could not create SSL context: %s", 
-baaj: bexsecure:00000737:  SSLerrmessage()))); 
-baaj: bexsecure:00000744:  ereport(FATAL, 
-baaj: bexsecure:00000745:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
-baaj: bexsecure:00000746:  errmsg("could not load server certificate file \"%s\": %s", 
-baaj: bexsecure:00000747:  SERVER_CERT_FILE, SSLerrmessage()))); 
-baaj: bexsecure:00000750:  ereport(FATAL, 
-baaj: bexsecure:00000751:  (errcode_for_file_access(), 
-baaj: bexsecure:00000752:  errmsg("could not access private key file \"%s\": %m", 
-baaj: bexsecure:00000753:  SERVER_PRIVATE_KEY_FILE))); 
-baaj: bexsecure:00000765:  ereport(FATAL, 
-baaj: bexsecure:00000766:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
-baaj: bexsecure:00000767:  errmsg("private key file \"%s\" has group or world access", 
-baaj: bexsecure:00000768:  SERVER_PRIVATE_KEY_FILE), 
-baaj: bexsecure:00000769:  errdetail("Permissions should be u=rw (0600) or less."))); 
-baaj: bexsecure:00000775:  ereport(FATAL, 
-baaj: bexsecure:00000776:  (errmsg("could not load private key file \"%s\": %s", 
-baaj: bexsecure:00000777:  SERVER_PRIVATE_KEY_FILE, SSLerrmessage()))); 
-baaj: bexsecure:00000780:  ereport(FATAL, 
-baaj: bexsecure:00000781:  (errmsg("check of private key failed: %s", 
-baaj: bexsecure:00000782:  SSLerrmessage()))); 
-baaj: bexsecure:00000808:  ereport(FATAL, 
-baaj: bexsecure:00000809:  (errmsg("could not access root certificate file \"%s\": %m", 
-baaj: bexsecure:00000810:  ROOT_CERT_FILE))); 
-baaj: bexsecure:00000819:  ereport(FATAL, 
-baaj: bexsecure:00000820:  (errmsg("could not load root certificate file \"%s\": %s", 
-baaj: bexsecure:00000821:  ROOT_CERT_FILE, SSLerrmessage()))); 
+baaj: bexsecure:00000762:  ereport(FATAL, 
+baaj: bexsecure:00000763:  (errmsg("could not create SSL context: %s", 
+baaj: bexsecure:00000764:  SSLerrmessage()))); 
+baaj: bexsecure:00000771:  ereport(FATAL, 
+baaj: bexsecure:00000772:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
+baaj: bexsecure:00000773:  errmsg("could not load server certificate file \"%s\": %s", 
+baaj: bexsecure:00000774:  SERVER_CERT_FILE, SSLerrmessage()))); 
+baaj: bexsecure:00000777:  ereport(FATAL, 
+baaj: bexsecure:00000778:  (errcode_for_file_access(), 
+baaj: bexsecure:00000779:  errmsg("could not access private key file \"%s\": %m", 
+baaj: bexsecure:00000780:  SERVER_PRIVATE_KEY_FILE))); 
+baaj: bexsecure:00000792:  ereport(FATAL, 
+baaj: bexsecure:00000793:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
+baaj: bexsecure:00000794:  errmsg("private key file \"%s\" has group or world access", 
+baaj: bexsecure:00000795:  SERVER_PRIVATE_KEY_FILE), 
+baaj: bexsecure:00000796:  errdetail("Permissions should be u=rw (0600) or less."))); 
+baaj: bexsecure:00000802:  ereport(FATAL, 
+baaj: bexsecure:00000803:  (errmsg("could not load private key file \"%s\": %s", 
+baaj: bexsecure:00000804:  SERVER_PRIVATE_KEY_FILE, SSLerrmessage()))); 
+baaj: bexsecure:00000807:  ereport(FATAL, 
+baaj: bexsecure:00000808:  (errmsg("check of private key failed: %s", 
+baaj: bexsecure:00000809:  SSLerrmessage()))); 
+baaj: bexsecure:00000835:  ereport(FATAL, 
+baaj: bexsecure:00000836:  (errmsg("could not access root certificate file \"%s\": %m", 
+baaj: bexsecure:00000837:  ROOT_CERT_FILE))); 
+baaj: bexsecure:00000846:  ereport(FATAL, 
+baaj: bexsecure:00000847:  (errmsg("could not load root certificate file \"%s\": %s", 
+baaj: bexsecure:00000848:  ROOT_CERT_FILE, SSLerrmessage()))); 
 aaaaa GP_IGNORE: paag: pqcomm - ./backend/libpq/pqcomm.c
 paag: pqcomm:00000932:  ereport(ERROR, 
 paag: pqcomm:00000933:  (errmsg("could not set socket to non-blocking mode: %m"))); 
@@ -11668,261 +11668,273 @@ paaj: parsexagg:00000967:  (errcode(ERRCODE_SYNTAX_ERROR),
 paaj: parsexagg:00000968:  errmsg("window functions not allowed in JOIN conditions"), 
 paaj: parsexagg:00000969:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: pabc: parsexclause - ./backend/parser/parse_clause.c
-pabc: parsexclause:00000198:  ereport(ERROR, 
-pabc: parsexclause:00000199:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
-pabc: parsexclause:00000200:  errmsg("ROWS parameter must be an integer expression"), 
-pabc: parsexclause:00000201:  errOmitLocation(true))); 
-pabc: parsexclause:00000203:  ereport(ERROR, 
-pabc: parsexclause:00000204:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
-pabc: parsexclause:00000205:  errmsg("ROWS parameter cannot be negative"), 
-pabc: parsexclause:00000206:  errOmitLocation(true))); 
-pabc: parsexclause:00000210:  ereport(ERROR, 
-pabc: parsexclause:00000211:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
-pabc: parsexclause:00000212:  errmsg("ROWS parameter cannot contain NULL value"), 
-pabc: parsexclause:00000213:  errOmitLocation(true))); 
-pabc: parsexclause:00000228:  ereport(ERROR, 
-pabc: parsexclause:00000229:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000230:  errmsg("only one ORDER BY column may be specified when" 
-pabc: parsexclause:00000231:  " RANGE is used in a window specification"), 
-pabc: parsexclause:00000232:  errOmitLocation(true))); 
-pabc: parsexclause:00000242:  ereport(ERROR, 
-pabc: parsexclause:00000243:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
-pabc: parsexclause:00000244:  errmsg("RANGE parameter cannot be NULL"), 
-pabc: parsexclause:00000245:  errOmitLocation(true))); 
-pabc: parsexclause:00000263:  ereport(ERROR, 
-pabc: parsexclause:00000264:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000265:  errmsg("window specification RANGE parameter type " 
-pabc: parsexclause:00000266:  "must be coercible to ORDER BY column type"), 
-pabc: parsexclause:00000267:  errOmitLocation(true))); 
-pabc: parsexclause:00000294:  ereport(ERROR, 
-pabc: parsexclause:00000295:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000296:  errmsg("type mismatch between ORDER BY and RANGE " 
-pabc: parsexclause:00000297:  "parameter in window specification"), 
-pabc: parsexclause:00000298:  errhint("Operations between window specification " 
-pabc: parsexclause:00000299:  "the ORDER BY column and RANGE parameter " 
-pabc: parsexclause:00000300:  "must result in a data type which can be " 
-pabc: parsexclause:00000301:  "cast back to the ORDER BY column type"), 
-pabc: parsexclause:00000302:  errOmitLocation(true))); 
-pabc: parsexclause:00000312:  ereport(ERROR, 
-pabc: parsexclause:00000313:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000314:  errmsg("invalid RANGE parameter"), 
-pabc: parsexclause:00000315:  errhint("Operations between window specification " 
-pabc: parsexclause:00000316:  "the ORDER BY column and RANGE parameter " 
-pabc: parsexclause:00000317:  "must result in a data type which can be " 
-pabc: parsexclause:00000318:  "cast back to the ORDER BY column type"), 
-pabc: parsexclause:00000319:  errOmitLocation(true))); 
-pabc: parsexclause:00000346:  ereport(ERROR, 
-pabc: parsexclause:00000347:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
-pabc: parsexclause:00000348:  errmsg("RANGE parameter cannot be negative"), 
-pabc: parsexclause:00000349:  errOmitLocation(true))); 
-pabc: parsexclause:00000373:  ereport(ERROR, 
-pabc: parsexclause:00000374:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000375:  errmsg("DISTINCT cannot be used with " 
-pabc: parsexclause:00000376:  "window specification containing an " 
-pabc: parsexclause:00000377:  "ORDER BY clause"), 
-pabc: parsexclause:00000378:  errOmitLocation(true))); 
-pabc: parsexclause:00000381:  ereport(ERROR, 
-pabc: parsexclause:00000382:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000383:  errmsg("DISTINCT cannot be used with " 
-pabc: parsexclause:00000384:  "window specification containing a " 
-pabc: parsexclause:00000385:  "framing clause"), 
-pabc: parsexclause:00000386:  errOmitLocation(true))); 
-pabc: parsexclause:00000439:  ereport(ERROR, 
-pabc: parsexclause:00000440:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000441:  errmsg("cannot use window function in a window " 
-pabc: parsexclause:00000442:  "specification"), 
-pabc: parsexclause:00000443:  errOmitLocation(true))); 
-pabc: parsexclause:00000459:  ereport(ERROR, 
-pabc: parsexclause:00000460:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-pabc: parsexclause:00000461:  errmsg("window \"%s\" cannot reference itself", 
-pabc: parsexclause:00000462:  ws->name), 
-pabc: parsexclause:00000463:  errOmitLocation(true))); 
-pabc: parsexclause:00000471:  ereport(ERROR, 
-pabc: parsexclause:00000472:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-pabc: parsexclause:00000473:  errmsg("window name \"%s\" occurs more than once " 
-pabc: parsexclause:00000474:  "in WINDOW clause", ws->name), 
-pabc: parsexclause:00000475:  errOmitLocation(true))); 
-pabc: parsexclause:00000498:  ereport(ERROR, 
-pabc: parsexclause:00000499:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000500:  errmsg("PARTITION BY not allowed when " 
-pabc: parsexclause:00000501:  "an existing window name is specified"), 
-pabc: parsexclause:00000502:  errOmitLocation(true))); 
-pabc: parsexclause:00000505:  ereport(ERROR, 
-pabc: parsexclause:00000506:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000507:  errmsg("conflicting ORDER BY clauses in window " 
-pabc: parsexclause:00000508:  "specification"), 
-pabc: parsexclause:00000509:  errOmitLocation(true))); 
-pabc: parsexclause:00000520:  ereport(ERROR, 
-pabc: parsexclause:00000521:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000522:  errmsg("window specification \"%s\" cannot have " 
-pabc: parsexclause:00000523:  "a framing clause", ws2->name), 
-pabc: parsexclause:00000524:  errhint("Window specifications which are " 
-pabc: parsexclause:00000525:  "referenced by other window " 
-pabc: parsexclause:00000526:  "specifications cannot have framing " 
-pabc: parsexclause:00000527:  "clauses"), 
-pabc: parsexclause:00000528:  errOmitLocation(true), 
-pabc: parsexclause:00000529:  parser_errposition(pstate, ws2->location) 
-pabc: parsexclause:00000530:  )); 
-pabc: parsexclause:00000549:  ereport(ERROR, 
-pabc: parsexclause:00000550:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000551:  errmsg("window specification \"%s\" not found", 
-pabc: parsexclause:00000552:  ws->parent), 
-pabc: parsexclause:00000553:  errOmitLocation(true))); 
-pabc: parsexclause:00000637:  ereport(ERROR, 
-pabc: parsexclause:00000638:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000639:  errmsg("window specifications with a framing clause " 
-pabc: parsexclause:00000640:  "must have an ORDER BY clause"), 
-pabc: parsexclause:00000641:  errOmitLocation(true))); 
-pabc: parsexclause:00000649:  ereport(ERROR, 
-pabc: parsexclause:00000650:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000651:  errmsg("conflicting bounds in window framing " 
-pabc: parsexclause:00000652:  "clause"), 
-pabc: parsexclause:00000653:  errhint("First bound of BETWEEN clause in window " 
-pabc: parsexclause:00000654:  "specification cannot be UNBOUNDED FOLLOWING"), 
-pabc: parsexclause:00000655:  errOmitLocation(true))); 
-pabc: parsexclause:00000657:  ereport(ERROR, 
-pabc: parsexclause:00000658:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000659:  errmsg("conflicting bounds in window framing " 
-pabc: parsexclause:00000660:  "clause"), 
-pabc: parsexclause:00000661:  errhint("Second bound of BETWEEN clause in window " 
-pabc: parsexclause:00000662:  "specification cannot be UNBOUNDED PRECEDING"), 
-pabc: parsexclause:00000663:  errOmitLocation(true))); 
-pabc: parsexclause:00000667:  ereport(ERROR, 
-pabc: parsexclause:00000668:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000669:  errmsg("conflicting bounds in window framing " 
-pabc: parsexclause:00000670:  "clause"), 
-pabc: parsexclause:00000671:  errhint("Second bound cannot be PRECEDING " 
-pabc: parsexclause:00000672:  "when first bound is CURRENT ROW"), 
-pabc: parsexclause:00000673:  errOmitLocation(true))); 
-pabc: parsexclause:00000678:  ereport(ERROR, 
-pabc: parsexclause:00000679:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000680:  errmsg("conflicting bounds in window framing " 
-pabc: parsexclause:00000681:  "clause"), 
-pabc: parsexclause:00000682:  errhint("Second bound must be FOLLOWING if first " 
-pabc: parsexclause:00000683:  "bound is FOLLOWING"), 
-pabc: parsexclause:00000684:  errOmitLocation(true))); 
-pabc: parsexclause:00000792:  ereport(ERROR, 
-pabc: parsexclause:00000793:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-pabc: parsexclause:00000794:  errmsg("foreign tables are read only. cannot change \"%s\"", 
-pabc: parsexclause:00000795:  RelationGetRelationName(pstate->p_target_relation)), 
-pabc: parsexclause:00000796:  errOmitLocation(true))); 
-pabc: parsexclause:00000804:  ereport(ERROR, 
-pabc: parsexclause:00000805:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-pabc: parsexclause:00000806:  errmsg("cannot update or delete from external relation \"%s\"", 
-pabc: parsexclause:00000807:  RelationGetRelationName(pstate->p_target_relation)), 
-pabc: parsexclause:00000808:  errOmitLocation(true))); 
-pabc: parsexclause:00000819:  ereport(ERROR, 
-pabc: parsexclause:00000820:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-pabc: parsexclause:00000821:  errmsg("cannot change a readable external table \"%s\"", 
-pabc: parsexclause:00000822:  RelationGetRelationName(pstate->p_target_relation)), 
-pabc: parsexclause:00000823:  errOmitLocation(true))); 
-pabc: parsexclause:00001041:  ereport(ERROR, 
-pabc: parsexclause:00001042:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001043:  errmsg("JOIN/ON clause refers to \"%s\", which is not part of JOIN", 
-pabc: parsexclause:00001044:  rt_fetch(varno, pstate->p_rtable)->eref->aliasname))); 
-pabc: parsexclause:00001089:  ereport(ERROR, 
-pabc: parsexclause:00001090:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00001091:  errmsg("subquery in FROM must have an alias"))); 
-pabc: parsexclause:00001112:  ereport(ERROR, 
-pabc: parsexclause:00001113:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00001114:  errmsg("subquery in FROM may not have SELECT INTO"))); 
-pabc: parsexclause:00001132:  ereport(ERROR, 
-pabc: parsexclause:00001133:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001134:  errmsg("subquery in FROM may not refer to other relations of same query level"), 
-pabc: parsexclause:00001135:  errOmitLocation(true))); 
-pabc: parsexclause:00001239:  ereport(ERROR, 
-pabc: parsexclause:00001240:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001241:  errmsg("function expression in FROM may not refer to other relations of same query level"), 
-pabc: parsexclause:00001242:  errOmitLocation(true))); 
-pabc: parsexclause:00001252:  ereport(ERROR, 
-pabc: parsexclause:00001253:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00001254:  errmsg("cannot use aggregate function in function expression in FROM"), 
-pabc: parsexclause:00001255:  errOmitLocation(true))); 
-pabc: parsexclause:00001542:  ereport(ERROR, 
-pabc: parsexclause:00001543:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-pabc: parsexclause:00001544:  errmsg("column name \"%s\" appears more than once in USING clause", 
-pabc: parsexclause:00001545:  u_colname))); 
-pabc: parsexclause:00001557:  ereport(ERROR, 
-pabc: parsexclause:00001558:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
-pabc: parsexclause:00001559:  errmsg("common column name \"%s\" appears more than once in left table", 
-pabc: parsexclause:00001560:  u_colname))); 
-pabc: parsexclause:00001566:  ereport(ERROR, 
-pabc: parsexclause:00001567:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabc: parsexclause:00001568:  errmsg("column \"%s\" specified in USING clause does not exist in left table", 
-pabc: parsexclause:00001569:  u_colname))); 
-pabc: parsexclause:00001580:  ereport(ERROR, 
-pabc: parsexclause:00001581:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
-pabc: parsexclause:00001582:  errmsg("common column name \"%s\" appears more than once in right table", 
-pabc: parsexclause:00001583:  u_colname))); 
-pabc: parsexclause:00001589:  ereport(ERROR, 
-pabc: parsexclause:00001590:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabc: parsexclause:00001591:  errmsg("column \"%s\" specified in USING clause does not exist in right table", 
-pabc: parsexclause:00001592:  u_colname))); 
-pabc: parsexclause:00001644:  ereport(ERROR, 
-pabc: parsexclause:00001645:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00001646:  errmsg("column alias list for \"%s\" has too many entries", 
-pabc: parsexclause:00001647:  j->alias->aliasname))); 
-pabc: parsexclause:00001866:  ereport(ERROR, 
-pabc: parsexclause:00001867:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001868:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
-pabc: parsexclause:00001869:  errmsg("argument of %s must not contain variables", 
-pabc: parsexclause:00001870:  constructName))); 
-pabc: parsexclause:00001874:  ereport(ERROR, 
-pabc: parsexclause:00001875:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00001876:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
-pabc: parsexclause:00001877:  errmsg("argument of %s must not contain aggregates", 
-pabc: parsexclause:00001878:  constructName))); 
-pabc: parsexclause:00001882:  ereport(ERROR, 
-pabc: parsexclause:00001883:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-pabc: parsexclause:00001884:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
-pabc: parsexclause:00001885:  errmsg("argument of %s must not contain subqueries", 
-pabc: parsexclause:00001886:  constructName))); 
-pabc: parsexclause:00002109:  ereport(ERROR, 
-pabc: parsexclause:00002110:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
-pabc: parsexclause:00002111:  
-pabc: parsexclause:00002112:  /*------ 
-pabc: parsexclause:00002113:  translator: first %s is name of a SQL construct, eg ORDER BY */ 
-pabc: parsexclause:00002114:  errmsg("%s \"%s\" is ambiguous", 
-pabc: parsexclause:00002115:  clauseText[clause], name), 
-pabc: parsexclause:00002116:  parser_errposition(pstate, location))); 
-pabc: parsexclause:00002134:  ereport(ERROR, 
-pabc: parsexclause:00002135:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00002136:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
-pabc: parsexclause:00002137:  errmsg("non-integer constant in %s", 
-pabc: parsexclause:00002138:  clauseText[clause]))); 
-pabc: parsexclause:00002150:  ereport(ERROR, 
-pabc: parsexclause:00002151:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00002152:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
-pabc: parsexclause:00002153:  errmsg("%s position %d is not in select list", 
-pabc: parsexclause:00002154:  clauseText[clause], target_pos), 
-pabc: parsexclause:00002155:  errOmitLocation(true))); 
-pabc: parsexclause:00002362:  ereport(ERROR, 
-pabc: parsexclause:00002363:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00002364:  errmsg("row type can not be used inside a grouping function."), 
-pabc: parsexclause:00002365:  errOmitLocation(true))); 
-pabc: parsexclause:00002368:  ereport(ERROR, 
-pabc: parsexclause:00002369:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00002370:  errmsg("expression in a grouping fuction does not appear in GROUP BY."), 
-pabc: parsexclause:00002371:  errOmitLocation(true))); 
-pabc: parsexclause:00002380:  ereport(ERROR, 
-pabc: parsexclause:00002381:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00002382:  errmsg("column \"%s\".\"%s\" is not in GROUP BY", 
-pabc: parsexclause:00002383:  rte->eref->aliasname, attname), 
-pabc: parsexclause:00002384:  errOmitLocation(true))); 
-pabc: parsexclause:00002725:  ereport(ERROR, 
-pabc: parsexclause:00002726:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00002727:  errmsg("for SELECT DISTINCT, ORDER BY expressions must appear in select list"), 
-pabc: parsexclause:00002728:  errOmitLocation(true))); 
-pabc: parsexclause:00002766:  ereport(ERROR, 
-pabc: parsexclause:00002767:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00002768:  errmsg("SELECT DISTINCT ON expressions must match initial ORDER BY expressions"), 
-pabc: parsexclause:00002769:  errOmitLocation(true))); 
-pabc: parsexclause:00002952:  ereport(ERROR, 
-pabc: parsexclause:00002953:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-pabc: parsexclause:00002954:  errmsg("operator %s is not a valid ordering operator", 
-pabc: parsexclause:00002955:  strVal(llast(sortby_opname))), 
-pabc: parsexclause:00002956:  errhint("Ordering operators must be \"<\" or \">\" members of btree operator families."), 
-pabc: parsexclause:00002957:  errOmitLocation(true))); 
+pabc: parsexclause:00000201:  ereport(ERROR, 
+pabc: parsexclause:00000202:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+pabc: parsexclause:00000203:  errmsg("ROWS parameter must be an integer expression"), 
+pabc: parsexclause:00000204:  errOmitLocation(true))); 
+pabc: parsexclause:00000206:  ereport(ERROR, 
+pabc: parsexclause:00000207:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+pabc: parsexclause:00000208:  errmsg("ROWS parameter cannot be negative"), 
+pabc: parsexclause:00000209:  errOmitLocation(true))); 
+pabc: parsexclause:00000213:  ereport(ERROR, 
+pabc: parsexclause:00000214:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+pabc: parsexclause:00000215:  errmsg("ROWS parameter cannot contain NULL value"), 
+pabc: parsexclause:00000216:  errOmitLocation(true))); 
+pabc: parsexclause:00000231:  ereport(ERROR, 
+pabc: parsexclause:00000232:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000233:  errmsg("only one ORDER BY column may be specified when" 
+pabc: parsexclause:00000234:  " RANGE is used in a window specification"), 
+pabc: parsexclause:00000235:  errOmitLocation(true))); 
+pabc: parsexclause:00000245:  ereport(ERROR, 
+pabc: parsexclause:00000246:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+pabc: parsexclause:00000247:  errmsg("RANGE parameter cannot be NULL"), 
+pabc: parsexclause:00000248:  errOmitLocation(true))); 
+pabc: parsexclause:00000266:  ereport(ERROR, 
+pabc: parsexclause:00000267:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000268:  errmsg("window specification RANGE parameter type " 
+pabc: parsexclause:00000269:  "must be coercible to ORDER BY column type"), 
+pabc: parsexclause:00000270:  errOmitLocation(true))); 
+pabc: parsexclause:00000297:  ereport(ERROR, 
+pabc: parsexclause:00000298:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000299:  errmsg("type mismatch between ORDER BY and RANGE " 
+pabc: parsexclause:00000300:  "parameter in window specification"), 
+pabc: parsexclause:00000301:  errhint("Operations between window specification " 
+pabc: parsexclause:00000302:  "the ORDER BY column and RANGE parameter " 
+pabc: parsexclause:00000303:  "must result in a data type which can be " 
+pabc: parsexclause:00000304:  "cast back to the ORDER BY column type"), 
+pabc: parsexclause:00000305:  errOmitLocation(true))); 
+pabc: parsexclause:00000315:  ereport(ERROR, 
+pabc: parsexclause:00000316:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000317:  errmsg("invalid RANGE parameter"), 
+pabc: parsexclause:00000318:  errhint("Operations between window specification " 
+pabc: parsexclause:00000319:  "the ORDER BY column and RANGE parameter " 
+pabc: parsexclause:00000320:  "must result in a data type which can be " 
+pabc: parsexclause:00000321:  "cast back to the ORDER BY column type"), 
+pabc: parsexclause:00000322:  errOmitLocation(true))); 
+pabc: parsexclause:00000349:  ereport(ERROR, 
+pabc: parsexclause:00000350:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+pabc: parsexclause:00000351:  errmsg("RANGE parameter cannot be negative"), 
+pabc: parsexclause:00000352:  errOmitLocation(true))); 
+pabc: parsexclause:00000385:  ereport(ERROR, 
+pabc: parsexclause:00000386:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000387:  errmsg("DISTINCT cannot be used with " 
+pabc: parsexclause:00000388:  "window specification containing an " 
+pabc: parsexclause:00000389:  "ORDER BY clause"), 
+pabc: parsexclause:00000390:  errOmitLocation(true))); 
+pabc: parsexclause:00000393:  ereport(ERROR, 
+pabc: parsexclause:00000394:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000395:  errmsg("DISTINCT cannot be used with " 
+pabc: parsexclause:00000396:  "window specification containing a " 
+pabc: parsexclause:00000397:  "framing clause"), 
+pabc: parsexclause:00000398:  errOmitLocation(true))); 
+pabc: parsexclause:00000420:  ereport(ERROR, 
+pabc: parsexclause:00000421:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00000422:  errmsg("window function \"%s\" requires a window " 
+pabc: parsexclause:00000423:  "specification with an ordering clause", 
+pabc: parsexclause:00000424:  get_func_name(wf->winfnoid)), 
+pabc: parsexclause:00000425:  parser_errposition(ref->pstate, winref->location))); 
+pabc: parsexclause:00000428:  ereport(ERROR, 
+pabc: parsexclause:00000429:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00000430:  errmsg("window function \"%s\" cannot be used with " 
+pabc: parsexclause:00000431:  "a framed window specification", 
+pabc: parsexclause:00000432:  get_func_name(wf->winfnoid)), 
+pabc: parsexclause:00000433:  parser_errposition(ref->pstate, winref->location))); 
+pabc: parsexclause:00000513:  ereport(ERROR, 
+pabc: parsexclause:00000514:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000515:  errmsg("cannot use window function in a window " 
+pabc: parsexclause:00000516:  "specification"), 
+pabc: parsexclause:00000517:  errOmitLocation(true))); 
+pabc: parsexclause:00000533:  ereport(ERROR, 
+pabc: parsexclause:00000534:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+pabc: parsexclause:00000535:  errmsg("window \"%s\" cannot reference itself", 
+pabc: parsexclause:00000536:  ws->name), 
+pabc: parsexclause:00000537:  errOmitLocation(true))); 
+pabc: parsexclause:00000545:  ereport(ERROR, 
+pabc: parsexclause:00000546:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+pabc: parsexclause:00000547:  errmsg("window name \"%s\" occurs more than once " 
+pabc: parsexclause:00000548:  "in WINDOW clause", ws->name), 
+pabc: parsexclause:00000549:  errOmitLocation(true))); 
+pabc: parsexclause:00000572:  ereport(ERROR, 
+pabc: parsexclause:00000573:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000574:  errmsg("PARTITION BY not allowed when " 
+pabc: parsexclause:00000575:  "an existing window name is specified"), 
+pabc: parsexclause:00000576:  errOmitLocation(true))); 
+pabc: parsexclause:00000579:  ereport(ERROR, 
+pabc: parsexclause:00000580:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000581:  errmsg("conflicting ORDER BY clauses in window " 
+pabc: parsexclause:00000582:  "specification"), 
+pabc: parsexclause:00000583:  errOmitLocation(true))); 
+pabc: parsexclause:00000594:  ereport(ERROR, 
+pabc: parsexclause:00000595:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000596:  errmsg("window specification \"%s\" cannot have " 
+pabc: parsexclause:00000597:  "a framing clause", ws2->name), 
+pabc: parsexclause:00000598:  errhint("Window specifications which are " 
+pabc: parsexclause:00000599:  "referenced by other window " 
+pabc: parsexclause:00000600:  "specifications cannot have framing " 
+pabc: parsexclause:00000601:  "clauses"), 
+pabc: parsexclause:00000602:  errOmitLocation(true), 
+pabc: parsexclause:00000603:  parser_errposition(pstate, ws2->location) 
+pabc: parsexclause:00000604:  )); 
+pabc: parsexclause:00000623:  ereport(ERROR, 
+pabc: parsexclause:00000624:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000625:  errmsg("window specification \"%s\" not found", 
+pabc: parsexclause:00000626:  ws->parent), 
+pabc: parsexclause:00000627:  errOmitLocation(true))); 
+pabc: parsexclause:00000697:  ereport(ERROR, 
+pabc: parsexclause:00000698:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000699:  errmsg("window specifications with a framing clause " 
+pabc: parsexclause:00000700:  "must have an ORDER BY clause"), 
+pabc: parsexclause:00000701:  errOmitLocation(true))); 
+pabc: parsexclause:00000709:  ereport(ERROR, 
+pabc: parsexclause:00000710:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000711:  errmsg("conflicting bounds in window framing " 
+pabc: parsexclause:00000712:  "clause"), 
+pabc: parsexclause:00000713:  errhint("First bound of BETWEEN clause in window " 
+pabc: parsexclause:00000714:  "specification cannot be UNBOUNDED FOLLOWING"), 
+pabc: parsexclause:00000715:  errOmitLocation(true))); 
+pabc: parsexclause:00000717:  ereport(ERROR, 
+pabc: parsexclause:00000718:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000719:  errmsg("conflicting bounds in window framing " 
+pabc: parsexclause:00000720:  "clause"), 
+pabc: parsexclause:00000721:  errhint("Second bound of BETWEEN clause in window " 
+pabc: parsexclause:00000722:  "specification cannot be UNBOUNDED PRECEDING"), 
+pabc: parsexclause:00000723:  errOmitLocation(true))); 
+pabc: parsexclause:00000727:  ereport(ERROR, 
+pabc: parsexclause:00000728:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000729:  errmsg("conflicting bounds in window framing " 
+pabc: parsexclause:00000730:  "clause"), 
+pabc: parsexclause:00000731:  errhint("Second bound cannot be PRECEDING " 
+pabc: parsexclause:00000732:  "when first bound is CURRENT ROW"), 
+pabc: parsexclause:00000733:  errOmitLocation(true))); 
+pabc: parsexclause:00000738:  ereport(ERROR, 
+pabc: parsexclause:00000739:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000740:  errmsg("conflicting bounds in window framing " 
+pabc: parsexclause:00000741:  "clause"), 
+pabc: parsexclause:00000742:  errhint("Second bound must be FOLLOWING if first " 
+pabc: parsexclause:00000743:  "bound is FOLLOWING"), 
+pabc: parsexclause:00000744:  errOmitLocation(true))); 
+pabc: parsexclause:00000857:  ereport(ERROR, 
+pabc: parsexclause:00000858:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00000859:  errmsg("foreign tables are read only. cannot change \"%s\"", 
+pabc: parsexclause:00000860:  RelationGetRelationName(pstate->p_target_relation)), 
+pabc: parsexclause:00000861:  errOmitLocation(true))); 
+pabc: parsexclause:00000869:  ereport(ERROR, 
+pabc: parsexclause:00000870:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+pabc: parsexclause:00000871:  errmsg("cannot update or delete from external relation \"%s\"", 
+pabc: parsexclause:00000872:  RelationGetRelationName(pstate->p_target_relation)), 
+pabc: parsexclause:00000873:  errOmitLocation(true))); 
+pabc: parsexclause:00000884:  ereport(ERROR, 
+pabc: parsexclause:00000885:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00000886:  errmsg("cannot change a readable external table \"%s\"", 
+pabc: parsexclause:00000887:  RelationGetRelationName(pstate->p_target_relation)), 
+pabc: parsexclause:00000888:  errOmitLocation(true))); 
+pabc: parsexclause:00001106:  ereport(ERROR, 
+pabc: parsexclause:00001107:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001108:  errmsg("JOIN/ON clause refers to \"%s\", which is not part of JOIN", 
+pabc: parsexclause:00001109:  rt_fetch(varno, pstate->p_rtable)->eref->aliasname))); 
+pabc: parsexclause:00001154:  ereport(ERROR, 
+pabc: parsexclause:00001155:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00001156:  errmsg("subquery in FROM must have an alias"))); 
+pabc: parsexclause:00001177:  ereport(ERROR, 
+pabc: parsexclause:00001178:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00001179:  errmsg("subquery in FROM may not have SELECT INTO"))); 
+pabc: parsexclause:00001197:  ereport(ERROR, 
+pabc: parsexclause:00001198:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001199:  errmsg("subquery in FROM may not refer to other relations of same query level"), 
+pabc: parsexclause:00001200:  errOmitLocation(true))); 
+pabc: parsexclause:00001304:  ereport(ERROR, 
+pabc: parsexclause:00001305:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001306:  errmsg("function expression in FROM may not refer to other relations of same query level"), 
+pabc: parsexclause:00001307:  errOmitLocation(true))); 
+pabc: parsexclause:00001317:  ereport(ERROR, 
+pabc: parsexclause:00001318:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00001319:  errmsg("cannot use aggregate function in function expression in FROM"), 
+pabc: parsexclause:00001320:  errOmitLocation(true))); 
+pabc: parsexclause:00001607:  ereport(ERROR, 
+pabc: parsexclause:00001608:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+pabc: parsexclause:00001609:  errmsg("column name \"%s\" appears more than once in USING clause", 
+pabc: parsexclause:00001610:  u_colname))); 
+pabc: parsexclause:00001622:  ereport(ERROR, 
+pabc: parsexclause:00001623:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
+pabc: parsexclause:00001624:  errmsg("common column name \"%s\" appears more than once in left table", 
+pabc: parsexclause:00001625:  u_colname))); 
+pabc: parsexclause:00001631:  ereport(ERROR, 
+pabc: parsexclause:00001632:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+pabc: parsexclause:00001633:  errmsg("column \"%s\" specified in USING clause does not exist in left table", 
+pabc: parsexclause:00001634:  u_colname))); 
+pabc: parsexclause:00001645:  ereport(ERROR, 
+pabc: parsexclause:00001646:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
+pabc: parsexclause:00001647:  errmsg("common column name \"%s\" appears more than once in right table", 
+pabc: parsexclause:00001648:  u_colname))); 
+pabc: parsexclause:00001654:  ereport(ERROR, 
+pabc: parsexclause:00001655:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+pabc: parsexclause:00001656:  errmsg("column \"%s\" specified in USING clause does not exist in right table", 
+pabc: parsexclause:00001657:  u_colname))); 
+pabc: parsexclause:00001709:  ereport(ERROR, 
+pabc: parsexclause:00001710:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00001711:  errmsg("column alias list for \"%s\" has too many entries", 
+pabc: parsexclause:00001712:  j->alias->aliasname))); 
+pabc: parsexclause:00001931:  ereport(ERROR, 
+pabc: parsexclause:00001932:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001933:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+pabc: parsexclause:00001934:  errmsg("argument of %s must not contain variables", 
+pabc: parsexclause:00001935:  constructName))); 
+pabc: parsexclause:00001939:  ereport(ERROR, 
+pabc: parsexclause:00001940:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00001941:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+pabc: parsexclause:00001942:  errmsg("argument of %s must not contain aggregates", 
+pabc: parsexclause:00001943:  constructName))); 
+pabc: parsexclause:00001947:  ereport(ERROR, 
+pabc: parsexclause:00001948:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+pabc: parsexclause:00001949:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+pabc: parsexclause:00001950:  errmsg("argument of %s must not contain subqueries", 
+pabc: parsexclause:00001951:  constructName))); 
+pabc: parsexclause:00002174:  ereport(ERROR, 
+pabc: parsexclause:00002175:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
+pabc: parsexclause:00002176:  
+pabc: parsexclause:00002177:  /*------ 
+pabc: parsexclause:00002178:  translator: first %s is name of a SQL construct, eg ORDER BY */ 
+pabc: parsexclause:00002179:  errmsg("%s \"%s\" is ambiguous", 
+pabc: parsexclause:00002180:  clauseText[clause], name), 
+pabc: parsexclause:00002181:  parser_errposition(pstate, location))); 
+pabc: parsexclause:00002199:  ereport(ERROR, 
+pabc: parsexclause:00002200:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00002201:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
+pabc: parsexclause:00002202:  errmsg("non-integer constant in %s", 
+pabc: parsexclause:00002203:  clauseText[clause]))); 
+pabc: parsexclause:00002215:  ereport(ERROR, 
+pabc: parsexclause:00002216:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00002217:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
+pabc: parsexclause:00002218:  errmsg("%s position %d is not in select list", 
+pabc: parsexclause:00002219:  clauseText[clause], target_pos), 
+pabc: parsexclause:00002220:  errOmitLocation(true))); 
+pabc: parsexclause:00002427:  ereport(ERROR, 
+pabc: parsexclause:00002428:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00002429:  errmsg("row type can not be used inside a grouping function."), 
+pabc: parsexclause:00002430:  errOmitLocation(true))); 
+pabc: parsexclause:00002433:  ereport(ERROR, 
+pabc: parsexclause:00002434:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00002435:  errmsg("expression in a grouping fuction does not appear in GROUP BY."), 
+pabc: parsexclause:00002436:  errOmitLocation(true))); 
+pabc: parsexclause:00002445:  ereport(ERROR, 
+pabc: parsexclause:00002446:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00002447:  errmsg("column \"%s\".\"%s\" is not in GROUP BY", 
+pabc: parsexclause:00002448:  rte->eref->aliasname, attname), 
+pabc: parsexclause:00002449:  errOmitLocation(true))); 
+pabc: parsexclause:00002790:  ereport(ERROR, 
+pabc: parsexclause:00002791:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00002792:  errmsg("for SELECT DISTINCT, ORDER BY expressions must appear in select list"), 
+pabc: parsexclause:00002793:  errOmitLocation(true))); 
+pabc: parsexclause:00002831:  ereport(ERROR, 
+pabc: parsexclause:00002832:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00002833:  errmsg("SELECT DISTINCT ON expressions must match initial ORDER BY expressions"), 
+pabc: parsexclause:00002834:  errOmitLocation(true))); 
+pabc: parsexclause:00003017:  ereport(ERROR, 
+pabc: parsexclause:00003018:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00003019:  errmsg("operator %s is not a valid ordering operator", 
+pabc: parsexclause:00003020:  strVal(llast(sortby_opname))), 
+pabc: parsexclause:00003021:  errhint("Ordering operators must be \"<\" or \">\" members of btree operator families."), 
+pabc: parsexclause:00003022:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: pabc: parsexcoerce - ./backend/parser/parse_coerce.c
 pabc: parsexcoerce:00000169:  ereport(ERROR, 
 pabc: parsexcoerce:00000170:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
@@ -12265,121 +12277,109 @@ paba: parsexfunc:00000472:  ereport(ERROR,
 paba: parsexfunc:00000473:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
 paba: parsexfunc:00000474:  errmsg("aggregate ORDER BY is not implemented for window functions"), 
 paba: parsexfunc:00000475:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000490:  ereport(ERROR, 
-paba: parsexfunc:00000491:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000492:  errmsg("window function \"%s\" can not be used with a " 
-paba: parsexfunc:00000493:  "filter clause", 
-paba: parsexfunc:00000494:  NameListToString(funcname)), 
-paba: parsexfunc:00000495:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000518:  ereport(ERROR, 
-paba: parsexfunc:00000519:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000520:  errmsg("window function \"%s\" requires a window " 
-paba: parsexfunc:00000521:  "specification with an ordering clause", 
-paba: parsexfunc:00000522:  NameListToString(funcname)), 
-paba: parsexfunc:00000523:  errOmitLocation(true))); 
-paba: parsexfunc:00000531:  ereport(ERROR, 
-paba: parsexfunc:00000532:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000533:  errmsg("window function \"%s\" cannot be used with " 
-paba: parsexfunc:00000534:  "a framed window specification", 
-paba: parsexfunc:00000535:  NameListToString(funcname)), 
-paba: parsexfunc:00000536:  errOmitLocation(true))); 
-paba: parsexfunc:00000586:  ereport(ERROR, 
-paba: parsexfunc:00000587:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000588:  errmsg("%s(*) must be used to call a parameterless aggregate function", 
-paba: parsexfunc:00000589:  NameListToString(funcname)), 
-paba: parsexfunc:00000590:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000610:  ereport(ERROR, 
-paba: parsexfunc:00000611:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-paba: parsexfunc:00000612:  errmsg("function %s is not defined as STRICT", 
-paba: parsexfunc:00000613:  func_signature_string(funcname, nargs, 
-paba: parsexfunc:00000614:  actual_arg_types)), 
-paba: parsexfunc:00000615:  errhint("The filter clause is only supported over functions " 
-paba: parsexfunc:00000616:  "defined as STRICT."), 
-paba: parsexfunc:00000617:  errOmitLocation(true))); 
-paba: parsexfunc:00000621:  ereport(ERROR, 
-paba: parsexfunc:00000622:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-paba: parsexfunc:00000623:  errmsg("aggregates may not return sets"), 
-paba: parsexfunc:00000624:  parser_errposition(pstate, location), 
-paba: parsexfunc:00000625:  errOmitLocation(true))); 
-paba: parsexfunc:00000633:  ereport(ERROR, 
-paba: parsexfunc:00000634:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00000635:  errmsg("ORDER BY specified, but %s is not an ordered aggregate function", 
-paba: parsexfunc:00000636:  NameListToString(funcname)), 
-paba: parsexfunc:00000637:  errOmitLocation(true), 
-paba: parsexfunc:00000638:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000646:  ereport(ERROR, 
-paba: parsexfunc:00000647:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-paba: parsexfunc:00000648:  errmsg("ORDER BY and DISTINCT are mutually exclusive"), 
-paba: parsexfunc:00000649:  errOmitLocation(true), 
-paba: parsexfunc:00000650:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00000793:  ereport(ERROR, 
-paba: parsexfunc:00000794:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-paba: parsexfunc:00000795:  errmsg("cannot pass more than %d arguments to a function", 
-paba: parsexfunc:00000796:  FUNC_MAX_ARGS))); 
-paba: parsexfunc:00001479:  ereport(ERROR, 
-paba: parsexfunc:00001480:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paba: parsexfunc:00001481:  errmsg("column %s.%s does not exist", 
-paba: parsexfunc:00001482:  rte->eref->aliasname, attname), 
-paba: parsexfunc:00001483:  errOmitLocation(true), 
-paba: parsexfunc:00001484:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001492:  ereport(ERROR, 
-paba: parsexfunc:00001493:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paba: parsexfunc:00001494:  errmsg("column \"%s\" not found in data type %s", 
-paba: parsexfunc:00001495:  attname, format_type_be(relTypeId)), 
-paba: parsexfunc:00001496:  errOmitLocation(true), 
-paba: parsexfunc:00001497:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001499:  ereport(ERROR, 
-paba: parsexfunc:00001500:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paba: parsexfunc:00001501:  errmsg("could not identify column \"%s\" in record data type", 
-paba: parsexfunc:00001502:  attname), 
-paba: parsexfunc:00001503:  errOmitLocation(true), 
-paba: parsexfunc:00001504:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001506:  ereport(ERROR, 
-paba: parsexfunc:00001507:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00001508:  errmsg("column notation .%s applied to type %s, " 
-paba: parsexfunc:00001509:  "which is not a composite type", 
-paba: parsexfunc:00001510:  attname, format_type_be(relTypeId)), 
-paba: parsexfunc:00001511:  errOmitLocation(true), 
-paba: parsexfunc:00001512:  parser_errposition(pstate, location))); 
-paba: parsexfunc:00001584:  ereport(ERROR, 
-paba: parsexfunc:00001585:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paba: parsexfunc:00001586:  errmsg("function %s does not exist", 
-paba: parsexfunc:00001587:  func_signature_string(funcname, nargs, argtypes)), 
-paba: parsexfunc:00001588:  errOmitLocation(true))); 
-paba: parsexfunc:00001608:  ereport(ERROR, 
-paba: parsexfunc:00001609:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-paba: parsexfunc:00001610:  errmsg("functions cannot have more than %d arguments", 
-paba: parsexfunc:00001611:  FUNC_MAX_ARGS))); 
-paba: parsexfunc:00001621:  ereport(ERROR, 
-paba: parsexfunc:00001622:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paba: parsexfunc:00001623:  errmsg("type \"%s\" does not exist", 
-paba: parsexfunc:00001624:  TypeNameToString(t)), 
-paba: parsexfunc:00001625:  errOmitLocation(true))); 
-paba: parsexfunc:00001654:  ereport(ERROR, 
-paba: parsexfunc:00001655:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-paba: parsexfunc:00001656:  errmsg("functions cannot have more than %d arguments", 
-paba: parsexfunc:00001657:  FUNC_MAX_ARGS))); 
-paba: parsexfunc:00001666:  ereport(ERROR, 
-paba: parsexfunc:00001667:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paba: parsexfunc:00001668:  errmsg("type \"%s\" does not exist", 
-paba: parsexfunc:00001669:  TypeNameToString(t)), 
-paba: parsexfunc:00001670:  errOmitLocation(true))); 
-paba: parsexfunc:00001681:  ereport(ERROR, 
-paba: parsexfunc:00001682:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paba: parsexfunc:00001683:  errmsg("aggregate %s(*) does not exist", 
-paba: parsexfunc:00001684:  NameListToString(aggname)), 
-paba: parsexfunc:00001685:  errOmitLocation(true))); 
-paba: parsexfunc:00001687:  ereport(ERROR, 
-paba: parsexfunc:00001688:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-paba: parsexfunc:00001689:  errmsg("aggregate %s does not exist", 
-paba: parsexfunc:00001690:  func_signature_string(aggname, 
-paba: parsexfunc:00001691:  argcount, argoids)), 
-paba: parsexfunc:00001692:  errOmitLocation(true))); 
-paba: parsexfunc:00001709:  ereport(ERROR, 
-paba: parsexfunc:00001710:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paba: parsexfunc:00001711:  errmsg("function %s is not an aggregate", 
-paba: parsexfunc:00001712:  func_signature_string(aggname, 
-paba: parsexfunc:00001713:  argcount, argoids)))); 
+paba: parsexfunc:00000486:  ereport(ERROR, 
+paba: parsexfunc:00000487:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00000488:  errmsg("window function \"%s\" can not be used with a " 
+paba: parsexfunc:00000489:  "filter clause", 
+paba: parsexfunc:00000490:  NameListToString(funcname)), 
+paba: parsexfunc:00000491:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000548:  ereport(ERROR, 
+paba: parsexfunc:00000549:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00000550:  errmsg("%s(*) must be used to call a parameterless aggregate function", 
+paba: parsexfunc:00000551:  NameListToString(funcname)), 
+paba: parsexfunc:00000552:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000572:  ereport(ERROR, 
+paba: parsexfunc:00000573:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+paba: parsexfunc:00000574:  errmsg("function %s is not defined as STRICT", 
+paba: parsexfunc:00000575:  func_signature_string(funcname, nargs, 
+paba: parsexfunc:00000576:  actual_arg_types)), 
+paba: parsexfunc:00000577:  errhint("The filter clause is only supported over functions " 
+paba: parsexfunc:00000578:  "defined as STRICT."), 
+paba: parsexfunc:00000579:  errOmitLocation(true))); 
+paba: parsexfunc:00000583:  ereport(ERROR, 
+paba: parsexfunc:00000584:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+paba: parsexfunc:00000585:  errmsg("aggregates may not return sets"), 
+paba: parsexfunc:00000586:  parser_errposition(pstate, location), 
+paba: parsexfunc:00000587:  errOmitLocation(true))); 
+paba: parsexfunc:00000595:  ereport(ERROR, 
+paba: parsexfunc:00000596:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00000597:  errmsg("ORDER BY specified, but %s is not an ordered aggregate function", 
+paba: parsexfunc:00000598:  NameListToString(funcname)), 
+paba: parsexfunc:00000599:  errOmitLocation(true), 
+paba: parsexfunc:00000600:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000608:  ereport(ERROR, 
+paba: parsexfunc:00000609:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+paba: parsexfunc:00000610:  errmsg("ORDER BY and DISTINCT are mutually exclusive"), 
+paba: parsexfunc:00000611:  errOmitLocation(true), 
+paba: parsexfunc:00000612:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00000755:  ereport(ERROR, 
+paba: parsexfunc:00000756:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+paba: parsexfunc:00000757:  errmsg("cannot pass more than %d arguments to a function", 
+paba: parsexfunc:00000758:  FUNC_MAX_ARGS))); 
+paba: parsexfunc:00001441:  ereport(ERROR, 
+paba: parsexfunc:00001442:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paba: parsexfunc:00001443:  errmsg("column %s.%s does not exist", 
+paba: parsexfunc:00001444:  rte->eref->aliasname, attname), 
+paba: parsexfunc:00001445:  errOmitLocation(true), 
+paba: parsexfunc:00001446:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001454:  ereport(ERROR, 
+paba: parsexfunc:00001455:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paba: parsexfunc:00001456:  errmsg("column \"%s\" not found in data type %s", 
+paba: parsexfunc:00001457:  attname, format_type_be(relTypeId)), 
+paba: parsexfunc:00001458:  errOmitLocation(true), 
+paba: parsexfunc:00001459:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001461:  ereport(ERROR, 
+paba: parsexfunc:00001462:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paba: parsexfunc:00001463:  errmsg("could not identify column \"%s\" in record data type", 
+paba: parsexfunc:00001464:  attname), 
+paba: parsexfunc:00001465:  errOmitLocation(true), 
+paba: parsexfunc:00001466:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001468:  ereport(ERROR, 
+paba: parsexfunc:00001469:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00001470:  errmsg("column notation .%s applied to type %s, " 
+paba: parsexfunc:00001471:  "which is not a composite type", 
+paba: parsexfunc:00001472:  attname, format_type_be(relTypeId)), 
+paba: parsexfunc:00001473:  errOmitLocation(true), 
+paba: parsexfunc:00001474:  parser_errposition(pstate, location))); 
+paba: parsexfunc:00001546:  ereport(ERROR, 
+paba: parsexfunc:00001547:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paba: parsexfunc:00001548:  errmsg("function %s does not exist", 
+paba: parsexfunc:00001549:  func_signature_string(funcname, nargs, argtypes)), 
+paba: parsexfunc:00001550:  errOmitLocation(true))); 
+paba: parsexfunc:00001570:  ereport(ERROR, 
+paba: parsexfunc:00001571:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+paba: parsexfunc:00001572:  errmsg("functions cannot have more than %d arguments", 
+paba: parsexfunc:00001573:  FUNC_MAX_ARGS))); 
+paba: parsexfunc:00001583:  ereport(ERROR, 
+paba: parsexfunc:00001584:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paba: parsexfunc:00001585:  errmsg("type \"%s\" does not exist", 
+paba: parsexfunc:00001586:  TypeNameToString(t)), 
+paba: parsexfunc:00001587:  errOmitLocation(true))); 
+paba: parsexfunc:00001616:  ereport(ERROR, 
+paba: parsexfunc:00001617:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+paba: parsexfunc:00001618:  errmsg("functions cannot have more than %d arguments", 
+paba: parsexfunc:00001619:  FUNC_MAX_ARGS))); 
+paba: parsexfunc:00001628:  ereport(ERROR, 
+paba: parsexfunc:00001629:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paba: parsexfunc:00001630:  errmsg("type \"%s\" does not exist", 
+paba: parsexfunc:00001631:  TypeNameToString(t)), 
+paba: parsexfunc:00001632:  errOmitLocation(true))); 
+paba: parsexfunc:00001643:  ereport(ERROR, 
+paba: parsexfunc:00001644:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paba: parsexfunc:00001645:  errmsg("aggregate %s(*) does not exist", 
+paba: parsexfunc:00001646:  NameListToString(aggname)), 
+paba: parsexfunc:00001647:  errOmitLocation(true))); 
+paba: parsexfunc:00001649:  ereport(ERROR, 
+paba: parsexfunc:00001650:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+paba: parsexfunc:00001651:  errmsg("aggregate %s does not exist", 
+paba: parsexfunc:00001652:  func_signature_string(aggname, 
+paba: parsexfunc:00001653:  argcount, argoids)), 
+paba: parsexfunc:00001654:  errOmitLocation(true))); 
+paba: parsexfunc:00001671:  ereport(ERROR, 
+paba: parsexfunc:00001672:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paba: parsexfunc:00001673:  errmsg("function %s is not an aggregate", 
+paba: parsexfunc:00001674:  func_signature_string(aggname, 
+paba: parsexfunc:00001675:  argcount, argoids)))); 
 aaaaa GP_IGNORE: paba: parsexnode - ./backend/parser/parse_node.c
 paba: parsexnode:00000186:  ereport(ERROR, 
 paba: parsexnode:00000187:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
