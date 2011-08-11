@@ -1796,12 +1796,26 @@ class gpload:
 
     def read_table_metadata(self):
         # KAS Note to self. If schema is specified, then probably should use PostgreSQL rules for defining it.
-        tableName = quote_unident(self.table)
-        if self.schema != None:
-           tableSchema = quote_unident(self.schema)
-        else:
-           tableSchema = 'public'
+        
+        # find the shema name for this table (according to search_path)
+        # if it was not explicitly specified in the configuration file.
+        if self.schema == None:
+            queryString = """SELECT n.nspname
+                             FROM pg_catalog.pg_class c 
+                             LEFT JOIN pg_catalog.pg_namespace n 
+                             ON n.oid = c.relnamespace
+                             WHERE c.relname = '%s' 
+                             AND pg_catalog.pg_table_is_visible(c.oid);""" % quote_unident(self.table)
+            
+            resultList = self.db.query(queryString.encode('utf-8')).getresult()
+            
+            if len(resultList) > 0: 
+                self.schema = (resultList[0])[0]
+                self.log(self.INFO, "setting schema '%s' for table '%s'" % (self.schema, quote_unident(self.table)))
+            else:
+                self.log(self.ERROR, "table %s not found in any database schema" % self.table)
 
+                   
         queryString = """select nt.nspname as table_schema,
          c.relname as table_name,
          a.attname as column_name,
@@ -1817,7 +1831,7 @@ class gpload:
              join pg_attribute a on (a.attrelid = c.oid) 
          where c.relname = '%s' and nt.nspname = '%s'
          and a.attnum > 0 and a.attisdropped = 'f'
-         order by a.attnum """ % (tableName, tableSchema)
+         order by a.attnum """ % (quote_unident(self.table), quote_unident(self.schema))
 
         count = 0
         self.into_columns = []
@@ -1985,16 +1999,20 @@ class gpload:
                             relkind = 'r' and
                             relname like 'temp_gpload_reusable_%s_%%' and
                             pg_class.oid in (select localoid from gp_distribution_policy 
-                                             where attrnums = (select attrnums from gp_distribution_policy 
-                                                               where localoid=%s::regclass)) and
+                                             where attrnums = (select attrnums 
+                                                               from gp_distribution_policy d, pg_class c, pg_namespace n 
+                                                               where d.localoid = c.oid and 
+                                                                     c.relnamespace = n.oid and
+                                                                     n.nspname = '%s' and 
+                                                                     c.relname = '%s')) and
                             attnum > 0 and
                             not attisdropped
                     ) pgattr
                  group by attrelid
                  having 
                     count(*) = %s and 
-                    bool_and(case """ % (shortTableName, quote(self.schemaTable), len(from_cols))
-        
+                    bool_and(case """ % (shortTableName, quote_unident(self.schema), quote_unident(self.table), len(from_cols))              
+              
         for i, c in enumerate(from_cols):
             name = c[0]
             typ = c[1]
@@ -2213,7 +2231,7 @@ class gpload:
             self.log(self.INFO, "did not find a temp table to reuse. creating %s" % self.tempTableName)
         
             # construct a CREATE TABLE statement (without TEMP!)
-            sql = "create table %s(like %s%s)" % (self.tempTableName, self.schemaTable, including_defaults)
+            sql = "create table %s(like %s%s)" % (self.tempTableName, self.get_qualified_tablename(), including_defaults)
         else:
             # NOTE: there's no real reason to create a *TEMP* table here, since
             # we will drop it anyway soon. do it for sake of not changing the
@@ -2231,7 +2249,7 @@ class gpload:
                 sql += " distributed by (%s)" % ', '.join(distcols)
                 self.log(self.LOG, sql)
             else: # (merge)
-                sql = 'create temp table %s(like %s%s)' % (self.tempTableName, self.schemaTable, including_defaults)
+                sql = 'create temp table %s(like %s%s)' % (self.tempTableName, self.get_qualified_tablename(), including_defaults)
                 self.log(self.DEBUG, sql)
 
         if not self.options.D:
@@ -2298,7 +2316,7 @@ class gpload:
 
     def do_method_insert(self):
         self.create_external_table()
-        self.do_insert(self.schemaTable)
+        self.do_insert(self.get_qualified_tablename())
 
     def map_stuff(self,config,format,index):
         lis = []
@@ -2323,7 +2341,7 @@ class gpload:
         """
         UPDATE case
         """
-        sql = 'update %s into_table ' % self.schemaTable
+        sql = 'update %s into_table ' % self.get_qualified_tablename()
         sql += 'set %s '%','.join(self.map_stuff('gpload:output:update_columns',(lambda x,y:'%s=from_table.%s' % (x, y)),index))
         sql += 'from %s from_table' % fromname
 
@@ -2375,12 +2393,24 @@ class gpload:
                 self.rowsUpdated = self.db.query(sql.encode('utf-8'))
             except Exception, e:
                 self.log(self.ERROR, 'error encountered executing SQL "%s": %s' % (sql, str(e)))
-
+    
+    def get_qualified_tablename(self):
+    
+        tblname = "%s.%s" % (self.schema, self.table)        
+        return tblname
+    
     def get_table_dist_key(self):
-        sql = "select attname from pg_attribute a, gp_distribution_policy p "+\
-              "where a.attrelid = '" + self.schemaTable + "'::regclass and " + \
-              "a.attrelid = " + \
-              "p.localoid and a.attnum = any (p.attrnums);"
+                
+        # NOTE: this query should be re-written better. the problem is that it is
+        # not possible to perform a cast on a table name with spaces...
+        sql = "select attname from pg_attribute a, gp_distribution_policy p , pg_class c, pg_namespace n "+\
+              "where a.attrelid = c.oid and " + \
+              "a.attrelid = p.localoid and " + \
+              "a.attnum = any (p.attrnums) and " + \
+              "c.relnamespace = n.oid and " + \
+              "n.nspname = '%s' and c.relname = '%s'; " % (quote_unident(self.schema), quote_unident(self.table))
+              
+              
         resultList = self.db.query(sql.encode('utf-8')).getresult()
         attrs = []
         count = 0
@@ -2453,13 +2483,13 @@ class gpload:
         self.do_insert(self.tempTableName)
         self.rowsInserted = 0 # MPP-13024. No rows inserted yet (only to temp table).
         self.do_update(self.tempTableName, 0)
-        sql = 'insert into %s(' % self.schemaTable
+        sql = 'insert into %s(' % self.get_qualified_tablename()
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
         matchColumns = self.getconfig('gpload:output:match_columns',list)
         sql += 'select %s '%','.join(map(lambda a:'from_table.%s' % a[0], self.into_columns))
         sql += 'from(select *,row_number()over(partition by %s)as gpload_row_number '%','.join(matchColumns)
         sql += 'from %s)as from_table '%self.tempTableName
-        sql += 'left outer join %s into_table ' % self.schemaTable
+        sql += 'left outer join %s into_table ' % self.get_qualified_tablename()
         sql += 'on %s '%' and '.join(match)
         where = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s is null'%x,0)
         sql += 'where %s '%' and '.join(where)
