@@ -231,8 +231,7 @@ static void ATController(Relation rel, List *cmds, bool recurse,
 						 int * oidInfoCount, TableOidInfo ** oidInfo, List **poidmap);
 static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing);
-static void ATRewriteCatalogs(List **wqueue, 
-							  int oidInfoCount, TableOidInfo * oidInfo, List **poidmap);
+static void ATRewriteCatalogs(List **wqueue);
 static void ATAddToastIfNeeded(List **wqueue, 
 							   int oidInfoCount,TableOidInfo * oidInfo, List **poidmap);
 static void ATExecCmd(List **wqueue,
@@ -3787,6 +3786,9 @@ ATController(Relation rel, List *cmds, bool recurse,
 		/* Close the relation, but keep lock until commit */
 		relation_close(rel, NoLock);
 
+	/* Phase 2: update system catalogs */
+	ATRewriteCatalogs(&wqueue);
+
 	if (Gp_role == GP_ROLE_DISPATCH && oidInfoCount != NULL)
 	{
 		*oidInfoCount = list_length(wqueue);
@@ -3797,9 +3799,6 @@ ATController(Relation rel, List *cmds, bool recurse,
 		ocount = *oidInfoCount;
 	if (oidInfo != NULL)
 		oids = *oidInfo;
-
-	/* Phase 2: update system catalogs */
-	ATRewriteCatalogs(&wqueue, ocount, oids, poidmap);
 
 	/*
 	 * Build OID map info.
@@ -4940,8 +4939,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
  * conflicts).
  */
 static void
-ATRewriteCatalogs(List **wqueue, 
-				  int oidInfoCount, TableOidInfo * oidInfo, List **poidmap)
+ATRewriteCatalogs(List **wqueue)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -5347,6 +5345,9 @@ ATRewriteTables(List **wqueue,
 		 */
 		if (tab->newvals != NIL || tab->new_dropoids)
 		{
+			/* Sanity check of oidInfoCount */
+			Insist(oidInfoCount==list_length(*wqueue));
+
 			/* Build a temporary relation and copy data */
 			char		NewHeapName[NAMEDATALEN];
 			Oid         OIDNewHeap;

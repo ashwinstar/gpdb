@@ -933,7 +933,7 @@ alter table altstartwith set without oids;
 
 select oid > 0, * from altstartwith; -- fails
 select * from altstartwith;
-/* MPP-13870:
+
 -- Run inheritance tests
 create table altwithoid (col integer) with oids;
 
@@ -952,7 +952,7 @@ select oid > 0, * from altwithoid; -- fails
 select oid > 0, * from altinhoid; -- fails
 select * from altwithoid;
 select * from altinhoid;
-*/
+
 -- test renumbering of child-table columns in inherited operations
 
 create table p1 (f1 int);

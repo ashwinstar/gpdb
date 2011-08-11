@@ -1213,26 +1213,45 @@ select * from altstartwith;
    1
 (1 row)
 
-/* MPP-13870:
 -- Run inheritance tests
 create table altwithoid (col integer) with oids;
-
 -- Inherits parents oid column
 create table altinhoid () inherits (altwithoid) without oids;
-
 insert into altinhoid values (1);
-
 select oid > 0, * from altwithoid order by col;
+ ?column? | col 
+----------+-----
+ t        |   1
+(1 row)
+ 
 select oid > 0, * from altinhoid order by col;
+ ?column? | col 
+----------+-----
+ t        |   1
+(1 row)
 
 alter table altwithoid set without oids;
 alter table altinhoid set without oids;
-
 select oid > 0, * from altwithoid; -- fails
+ERROR:  column "oid" does not exist
+LINE 1: select oid > 0, * from altwithoid;
+               ^
 select oid > 0, * from altinhoid; -- fails
+ERROR:  column "oid" does not exist
+LINE 1: select oid > 0, * from altinhoid;
+               ^
 select * from altwithoid;
+ col 
+-----
+   1
+(1 row)
+
 select * from altinhoid;
-*/
+ col 
+-----
+   1
+(1 row)
+ 
 -- test renumbering of child-table columns in inherited operations
 create table p1 (f1 int);
 create table c1 (f2 text, f3 int) inherits (p1);
