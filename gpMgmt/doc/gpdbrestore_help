@@ -13,11 +13,11 @@ gpdbrestore { -t <timestamp_key> [-L]
               | -R <hostname>:<path_to_dumpset> 
               | -s <database_name> } 
      [-T <schema>.<table> [,...]] [-e] [-G] [-B <parallel_processes>] 
-     [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] [-D]
+     [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] [-v]
 
 gpdbrestore -? 
 
-gpdbrestore -v
+gpdbrestore --version
 
 
 *****************************************************
@@ -91,11 +91,6 @@ OPTIONS
  value set for $MASTER_DATA_DIRECTORY will be used.
 
 
--D (debug)
-
- Sets logging level to debug.
-
-
 -e (drop target database before restore)
 
  Drops the target database before doing the restore and then recreates it.
@@ -157,7 +152,11 @@ OPTIONS
  to running gpdbrestore -T.
 
 
--v (show utility version)
+-v (verbose)
+  Specifies verbose mode.
+
+
+--version (show utility version)
 
  Displays the version, status, last updated date, and check sum of 
  this utility.
