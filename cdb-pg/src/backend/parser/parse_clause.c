@@ -24,7 +24,9 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_window.h"
 #include "commands/defrem.h"
 #include "nodes/makefuncs.h"
 #include "nodes/print.h" /* XXX: remove after debugging !! */
@@ -104,6 +106,7 @@ typedef struct grouping_rewrite_ctx
 
 typedef struct winref_check_ctx
 {
+	ParseState *pstate;
 	Index win_clause;
 	bool has_order;
 	bool has_frame;
@@ -356,8 +359,11 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 	}
 }
 
+/*
+ * winref_checkspec_walker
+ */
 static bool
-winref_not_distinct_walker(Node *node, void *ctx)
+winref_checkspec_walker(Node *node, void *ctx)
 {
 	winref_check_ctx *ref = (winref_check_ctx *)ctx;
 
@@ -367,7 +373,13 @@ winref_not_distinct_walker(Node *node, void *ctx)
 	{
 		WindowRef *winref = (WindowRef *)node;
 
-		if (winref->winspec == ref->win_clause && winref->windistinct)
+		/*
+		 * Look at functions pointing to the interesting spec only.
+		 */
+		if (winref->winspec != ref->win_clause)
+			return false;
+
+		if (winref->windistinct)
 		{
 			if (ref->has_order)
 				ereport(ERROR,
@@ -384,12 +396,73 @@ winref_not_distinct_walker(Node *node, void *ctx)
 								"window specification containing a "
 								"framing clause"),
 										   errOmitLocation(true)));
+		}
 
+		/*
+		 * Check compatibilities between function's requirement and
+		 * window specification by looking up pg_window catalog.
+		 */
+		if (!ref->has_order || ref->has_frame)
+		{
+			HeapTuple		tuple;
+			Form_pg_window	wf;
 
+			tuple = SearchSysCache(WINFNOID,
+								   ObjectIdGetDatum(winref->winfnoid), 0, 0, 0);
+			/*
+			 * Check only "true" window function.
+			 * Otherwise, it must be an aggregate.
+			 */
+			if (HeapTupleIsValid(tuple))
+			{
+				wf = (Form_pg_window) GETSTRUCT(tuple);
+				if (wf->winrequireorder && !ref->has_order)
+					ereport(ERROR,
+							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							 errmsg("window function \"%s\" requires a window "
+									"specification with an ordering clause",
+									get_func_name(wf->winfnoid)),
+								parser_errposition(ref->pstate, winref->location)));
+
+				if (!wf->winallowframe && ref->has_frame)
+					ereport(ERROR,
+							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							 errmsg("window function \"%s\" cannot be used with "
+									"a framed window specification",
+									get_func_name(wf->winfnoid)),
+								parser_errposition(ref->pstate, winref->location)));
+
+				ReleaseSysCache(tuple);
+			}
 		}
 	}
 
-	return expression_tree_walker(node, winref_not_distinct_walker, ctx);
+	return expression_tree_walker(node, winref_checkspec_walker, ctx);
+}
+
+/*
+ * winref_checkspec
+ *
+ * See if any WindowRefs using this spec are DISTINCT qualified.
+ *
+ * In addition, we're going to check winrequireorder / winallowframe.
+ * You might want to do it in ParseFuncOrColumn,
+ * but we need to do this here after all the transformations
+ * (especially parent inheritance) was done.
+ */
+static bool
+winref_checkspec(ParseState *pstate, Query *qry, Index clauseno,
+				 bool has_order, bool has_frame)
+{
+	winref_check_ctx ctx;
+
+	ctx.pstate = pstate;
+	ctx.win_clause = clauseno;
+	ctx.has_order = has_order;
+	ctx.has_frame = has_frame;
+
+	return expression_tree_walker((Node *) qry->targetList,
+								  winref_checkspec_walker, (void *) &ctx);
 }
 
 /*
@@ -397,11 +470,12 @@ winref_not_distinct_walker(Node *node, void *ctx)
  * 		Process window clause specifications in a SELECT query
  *
  * There's a fair bit to do here: column references in the PARTITION and
- * ORDER clauses must be valid; the frame clause must be checked to ensure that
- * the function supports framing, that the framed column is of the right type,
- * that the offset is sane, that the start and end of the frame are sane,
- * . Then we translate it to use the proper parse nodes
- * for the respective part of the clause.
+ * ORDER clauses must be valid; ORDER clause must present if the function
+ * requires; the frame clause must be checked to ensure that the function
+ * supports framing, that the framed column is of the right type, that the
+ * offset is sane, that the start and end of the frame are sane.
+ * Then we translate it to use the proper parse nodes for the respective
+ * part of the clause.
  */
 void
 transformWindowClause(ParseState *pstate, Query *qry)
@@ -589,20 +663,6 @@ transformWindowClause(ParseState *pstate, Query *qry)
         /* Refresh our breadcrumb in case transformSortClause stepped on it. */
         pstate->p_breadcrumb.node = (Node *)ws;
 
-		/* see if any WindowRefs using this spec are DISTINCT qualified */
-		if (newspec->order || ws->frame)
-		{
-			winref_check_ctx ctx;
-
-			ctx.win_clause = clauseno;
-			ctx.has_order = PointerIsValid(newspec->order);
-			ctx.has_frame = PointerIsValid(ws->frame);
-
-			expression_tree_walker((Node *)qry->targetList,
-								   winref_not_distinct_walker, (void *)&ctx);
-
-		}
-
 		/*
 		 * Finally, process the framing clause. parseProcessWindFunc() will
 		 * have picked up window functions that do not support framing.
@@ -704,6 +764,11 @@ transformWindowClause(ParseState *pstate, Query *qry)
 									 nf->is_rows);
 			newspec->frame = nf;
 		}
+
+		/* finally, check function restriction with this spec. */
+		winref_checkspec(pstate, qry, clauseno,
+						 PointerIsValid(newspec->order),
+						 PointerIsValid(newspec->frame));
 
 		winout = lappend(winout, newspec);
 	}

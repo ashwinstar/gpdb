@@ -8066,3 +8066,20 @@ group by
     lower(f);
 ERROR:  unresolved grouping key in window query
 HINT:  You may need to use explicit aliases and/or to refer to grouping keys in the same way throughout the query.
+-- End MPP-12082
+-- MPP-13802
+select lag(x) over (w)
+	from(select 1 x, 2 y, 3 z)s
+	window w as (partition by y order by z rows unbounded preceding);
+ERROR:  window function "lag" cannot be used with a framed window specification
+LINE 1: select lag(x) over (w)
+               ^
+select rank() over (wx)
+	from(select 1 x, 2 y, 3 z)s
+	window w as (partition by y order by z), wx as (w);
+ rank 
+------
+    1
+(1 row)
+
+-- End MPP-13802

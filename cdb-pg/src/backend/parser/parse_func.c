@@ -482,10 +482,6 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		tuple = SearchSysCache(WINFNOID, ObjectIdGetDatum(funcid), 0, 0, 0);
 		if (HeapTupleIsValid(tuple))
 		{
-			Form_pg_window wf;
-			WindowSpec *parent = NULL;
-			ListCell *tmp;
-
 			if (agg_filter)
 			    ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -495,46 +491,11 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 						 parser_errposition(pstate, location)));
 
 			/*
-			 * OVER() clause specifies a parent, so look it up as the
-			 * ordering clause might be there.
+			 * We perform more checks – such as whether the window
+			 * function requires ordering or permits a frame specification –
+			 * later in transformWindowClause(). It's too early at this stage.
 			 */
-			if (over->parent)
-			{
-				WindowSpec *t;
-				
-				foreach(tmp, pstate->p_win_clauses)
-				{
-					t = (WindowSpec *)lfirst(tmp);
-					if (t->name && strcmp(t->name, over->parent) == 0)
-					{
-						parent = t;
-						break;
-					}
-				}
-			}
-			wf = (Form_pg_window)GETSTRUCT(tuple);
-			if (wf->winrequireorder && !(over->order || 
-										 (parent && parent->order)))
-				ereport(ERROR,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("window function \"%s\" requires a window "
-								"specification with an ordering clause",
-								NameListToString(funcname)),
-										 errOmitLocation(true)));
 
-			/*
-			 * We do not test the parent for a framing clause as parent
-			 * framing clauses are forbidden. This will be picked up by
-			 * transformWindowClause().
-			 */
-			if (!wf->winallowframe && over->frame)
-				ereport(ERROR,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("window function \"%s\" cannot be used with "
-								"a framed window specification",
-								NameListToString(funcname)),
-										 errOmitLocation(true)));
-			
 			ReleaseSysCache(tuple);
 		}
 
@@ -567,8 +528,9 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 				pstate->p_win_clauses = lappend(pstate->p_win_clauses, over);
 			winref->winspec = winspec;
 		}
-		
+
 		winref->windistinct = agg_distinct;
+		winref->location = location;
 
 		transformWindowFuncCall(pstate, winref);
 		retval = (Node *) winref;

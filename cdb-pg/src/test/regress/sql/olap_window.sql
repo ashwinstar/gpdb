@@ -1501,4 +1501,13 @@ from
 group by 
     2*b.g,
     lower(f);
+-- End MPP-12082
+-- MPP-13802
+select lag(x) over (w)
+	from(select 1 x, 2 y, 3 z)s
+	window w as (partition by y order by z rows unbounded preceding);
+select rank() over (wx)
+	from(select 1 x, 2 y, 3 z)s
+	window w as (partition by y order by z), wx as (w);
+-- End MPP-13802
 
