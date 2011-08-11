@@ -12,13 +12,13 @@ gpcrondump -x <database_name>
      [-u <backup_directory>] [-R <post_dump_script>] 
      [-c] [-z] [-r] [-f <free_space_percent>] [-b] [-h] [-j | -k] 
      [-g] [-G] [-C] [-d <master_data_directory>] [-B <parallel_processes>] 
-     [-a] [-q] [-y <reportfile>] [-l <logfile_directory>]
+     [-a] [-q] [-y <reportfile>] [-l <logfile_directory>] [-v]
      { [-E <encoding>] [--inserts | --column-inserts] [--oids] 
        [--no-owner | --use-set-session-authorization] [--no-privileges] } 
 
 gpcrondump -? 
 
-gpcrondump -v
+gpcrondump --version
 
 gpcrondump -o
 
@@ -242,9 +242,15 @@ OPTIONS
  Specifies verbose mode.
 
 
+--version (show utility version)
+
+ Displays the version of this utility.
+
+
 -x <database_name>
 
  Required. The name of the Greenplum database to dump.
+ Multiple databases can be specified in a comma-separated list.
 
 
 -y <reportfile>
