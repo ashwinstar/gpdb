@@ -181,7 +181,7 @@ Restore a database from backup files that reside on an archive
 host outside the Greenplum Database array (command issued on the 
 Greenplum master host):
 
-  gpdbrestore –R archivehostname:/data_p1/db_dumps/20080214
+  gpdbrestore -R archivehostname:/data_p1/db_dumps/20080214
 
 
 Restore global objects only (roles and tablespaces):
