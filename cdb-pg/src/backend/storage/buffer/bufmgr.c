@@ -1266,6 +1266,7 @@ retry:
 	{
 		if ( buf->flags & BM_DIRTY)
 		{
+			LWLockRelease(oldPartitionLock);
 			return false;
 		}
 	}
