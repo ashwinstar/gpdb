@@ -18,9 +18,9 @@ gpcrondump -x <database_name>
 
 gpcrondump -? 
 
-gpcrondump --version
-
 gpcrondump -o
+
+gpcrondump --version
 
 
 *****************************************************
@@ -41,9 +41,9 @@ Return Codes
 **********************
 
 The following is a list of the codes that gpcrondump returns.
-   0 – Dump completed with no problems
-   1 – Dump completed, but one or more warnings were generated
-   2 – Dump failed with a fatal error
+   0 - Dump completed with no problems
+   1 - Dump completed, but one or more warnings were generated
+   2 - Dump failed with a fatal error
 
 **********************
 EMAIL NOTIFICATIONS
