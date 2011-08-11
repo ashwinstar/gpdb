@@ -3639,6 +3639,7 @@ void ReleaseVariableStats(VariableStatData vardata)
 		/* Case 3 : we free it like any other tuple */
 		heap_freetuple(tup);
 	}
+	vardata.statsTuple = NULL;
 }
 
 /*

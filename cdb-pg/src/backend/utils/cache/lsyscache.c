@@ -2274,19 +2274,27 @@ get_attstatsslot_desc(TupleDesc tupdesc, HeapTuple statstuple,
 			elog(ERROR, "stanumbers is null");
 		statarray = DatumGetArrayTypeP(val);
 
-		/*
-		 * We expect the array to be a 1-D float4 array; verify that. We don't
-		 * need to use deconstruct_array() since the array data is just going
-		 * to look like a C array of float4 values.
+		*nnumbers = 0;
+
+		/**
+		 * Could be an empty array.
 		 */
-		narrayelem = ARR_DIMS(statarray)[0];
-		if (ARR_NDIM(statarray) != 1 || narrayelem <= 0 ||
-			ARR_HASNULL(statarray) ||
-			ARR_ELEMTYPE(statarray) != FLOAT4OID)
-			elog(ERROR, "stanumbers is not a 1-D float4 array");
-		*numbers = (float4 *) palloc(narrayelem * sizeof(float4));
-		memcpy(*numbers, ARR_DATA_PTR(statarray), narrayelem * sizeof(float4));
-		*nnumbers = narrayelem;
+		if (ARR_NDIM(statarray) > 0)
+		{
+			/*
+			 * We expect the array to be a 1-D float4 array; verify that. We don't
+			 * need to use deconstruct_array() since the array data is just going
+			 * to look like a C array of float4 values.
+			 */
+			narrayelem = ARR_DIMS(statarray)[0];
+			if (ARR_NDIM(statarray) != 1 || narrayelem <= 0 ||
+					ARR_HASNULL(statarray) ||
+					ARR_ELEMTYPE(statarray) != FLOAT4OID)
+				elog(ERROR, "stanumbers is not a 1-D float4 array");
+			*numbers = (float4 *) palloc(narrayelem * sizeof(float4));
+			*nnumbers = narrayelem;
+			memcpy(*numbers, ARR_DATA_PTR(statarray), narrayelem * sizeof(float4));
+		}
 
 		/*
 		 * Free statarray if it's a detoasted copy.
