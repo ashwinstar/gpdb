@@ -63,6 +63,8 @@
 #include <arpa/inet.h>
 #endif
 
+#include "miscadmin.h"
+
 #ifdef USE_SSL
 #include <openssl/ssl.h>
 #include <openssl/dh.h>
@@ -74,6 +76,7 @@
 #include "libpq/libpq.h"
 #include "tcop/tcopprot.h"
 
+#define ERROR_BUF_SIZE 32
 
 #ifdef USE_SSL
 
@@ -309,6 +312,24 @@ rloop:
 }
 
 /*
+ * Report a COMMERROR.
+ *
+ * This function holds an interrupt before reporting this error to avoid
+ * a self deadlock situation, see MPP-13718 for more info.
+ */
+static void
+report_commerror(const char *err_msg)
+{
+	HOLD_INTERRUPTS();
+
+	ereport(COMMERROR,
+			(errcode(ERRCODE_PROTOCOL_VIOLATION),
+			 errmsg(err_msg)));
+
+	RESUME_INTERRUPTS();
+}
+
+/*
  *	Write data to a secure connection.
  */
 ssize_t
@@ -326,23 +347,27 @@ secure_write(Port *port, void *ptr, size_t len)
 			SSL_set_session_id_context(port->ssl, (void *) &SSL_context,
 									   sizeof(SSL_context));
 			if (SSL_renegotiate(port->ssl) <= 0)
-				ereport(COMMERROR,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("SSL renegotiation failure")));
+			{
+				report_commerror("SSL renegotiation failure");
+			}
+			
 			if (SSL_do_handshake(port->ssl) <= 0)
-				ereport(COMMERROR,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("SSL renegotiation failure")));
+			{
+				report_commerror("SSL renegotiation failure");
+			}
+			
 			if (port->ssl->state != SSL_ST_OK)
-				ereport(COMMERROR,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("SSL failed to send renegotiation request")));
+			{
+				report_commerror("SSL failed to send renegotiation request");
+			}
+			
 			port->ssl->state |= SSL_ST_ACCEPT;
 			SSL_do_handshake(port->ssl);
 			if (port->ssl->state != SSL_ST_OK)
-				ereport(COMMERROR,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("SSL renegotiation failure")));
+			{
+				report_commerror("SSL renegotiation failure");
+			}
+
 			port->count = 0;
 		}
 
@@ -350,6 +375,10 @@ wloop:
 		errno = 0;
 		n = SSL_write(port->ssl, ptr, len);
 		err = SSL_get_error(port->ssl, n);
+
+		const int ERR_MSG_LEN = ERROR_BUF_SIZE + 20;
+		char err_msg[ERR_MSG_LEN];
+
 		switch (err)
 		{
 			case SSL_ERROR_NONE:
@@ -373,19 +402,17 @@ wloop:
 				}
 				break;
 			case SSL_ERROR_SSL:
-				ereport(COMMERROR,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("SSL error: %s", SSLerrmessage())));
+				snprintf((char *)&err_msg, ERR_MSG_LEN, "SSL error: %s", SSLerrmessage());
+				report_commerror(err_msg);
 				/* fall through */
 			case SSL_ERROR_ZERO_RETURN:
 				errno = ECONNRESET;
 				n = -1;
 				break;
 			default:
-				ereport(COMMERROR,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("unrecognized SSL error code: %d",
-								err)));
+				snprintf((char *)&err_msg, ERR_MSG_LEN, "unrecognized SSL error code: %d", err);
+				report_commerror(err_msg);
+
 				n = -1;
 				break;
 		}
@@ -1035,7 +1062,7 @@ SSLerrmessage(void)
 {
 	unsigned long errcode;
 	const char *errreason;
-	static char errbuf[32];
+	static char errbuf[ERROR_BUF_SIZE];
 
 	errcode = ERR_get_error();
 	if (errcode == 0)
@@ -1043,7 +1070,7 @@ SSLerrmessage(void)
 	errreason = ERR_reason_error_string(errcode);
 	if (errreason != NULL)
 		return errreason;
-	snprintf(errbuf, sizeof(errbuf), _("SSL error code %lu"), errcode);
+	snprintf(errbuf, ERROR_BUF_SIZE, _("SSL error code %lu"), errcode);
 	return errbuf;
 }
 
