@@ -17,6 +17,11 @@ gpmapreduce -V | --version
 
 gpmapreduce -h | --help
 
+gpmapreduce -x | --explain
+
+gpmapreduce -X | --explain-analyze
+
+
 *****************************************************
 PREREQUISITES
 *****************************************************
@@ -78,6 +83,16 @@ Show version information, then exit.
 -v | --verbose
 
 Show verbose output.
+
+
+-x | --explain
+
+Do not run MapReduce jobs, but produce explain plans.
+
+
+-X | --explain-analyze
+
+Run MapReduce jobs and produce explain-analyze plans.
 
 
 -k | --key <name>=<value>
