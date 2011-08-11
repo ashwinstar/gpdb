@@ -133,7 +133,7 @@ OPTIONS
  db_dumps/YYYYMMDD/gp_global_1_1_<timestamp>.
 
 
--h (records dump details)
+-h (record dump details)
 
   Record details of database dump in database table
   public.gpcrondump_history in database supplied via 
