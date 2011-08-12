@@ -33,34 +33,42 @@ struct gpfxdist_t;
 /* The struct gfile_t is private.  Please do not use any of its fields. */
 typedef struct gfile_t
 {
-    ssize_t(*read)(struct gfile_t*,void*,size_t);
-    ssize_t(*write)(struct gfile_t*,void*,size_t);
-    int(*close)(struct gfile_t*);
-    off_t compressed_size,compressed_position;
-    bool_t is_win_pipe;
+	ssize_t(*read)(struct gfile_t*,void*,size_t);
+	ssize_t(*write)(struct gfile_t*,void*,size_t);
+	int(*close)(struct gfile_t*);
+	off_t compressed_size,compressed_position;
+	bool_t is_win_pipe;
 
-    union
-    {
-    	int filefd;
+	union
+	{
+		int filefd;
 #ifdef WIN32
-	HANDLE pipefd;
+		HANDLE pipefd;
 #endif
-    } fd;
+	} fd;
 
-    union
-    {
-	int txt;
+	union
+	{
+		int txt;
 #ifndef WIN32
-	struct zlib_stuff*z;
-	struct bzlib_stuff*bz;
+		struct zlib_stuff*z;
+		struct bzlib_stuff*bz;
 #endif
-    }u;
+	}u;
 	int is_gz_write;
 
-    struct gpfxdist_t* transform;
+	struct gpfxdist_t* transform;
 }gfile_t;
 
-int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code, const char** response_string, struct gpfxdist_t* transform);
+/*
+ * MPP-13817 (support opening files without O_SYNC)
+ */
+int gfile_open_flags(int writing, int usesync);
+#define GFILE_OPEN_FOR_READ  	    0
+#define GFILE_OPEN_FOR_WRITE_NOSYNC 1
+#define GFILE_OPEN_FOR_WRITE_SYNC   2
+
+int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, const char** response_string, struct gpfxdist_t* transform);
 int gfile_close(gfile_t*fd);
 off_t gfile_get_compressed_size(gfile_t*fd);
 off_t gfile_get_compressed_position(gfile_t*fd);

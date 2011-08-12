@@ -20,6 +20,7 @@ struct fstream_options{
     char escape;	/* escape char */
     int bufsize;
     int forwrite;   /* true for write, false for read */
+	int usesync;    /* true if writes use O_SYNC */
     struct gpfxdist_t* transform;	/* for gpfxdist transformations */
 };
 

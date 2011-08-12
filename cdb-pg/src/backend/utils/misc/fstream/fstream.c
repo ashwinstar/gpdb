@@ -495,7 +495,7 @@ fstream_open(const char *path, const struct fstream_options *options,
 
 		gfile_close(&fs->fd);
 
-		if (gfile_open(&fs->fd, fs->glob.gl_pathv[i], options->forwrite,
+		if (gfile_open(&fs->fd, fs->glob.gl_pathv[i], gfile_open_flags(options->forwrite, options->usesync),
 					   response_code, response_string, transform))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
@@ -553,7 +553,7 @@ static int nextFile(fstream_t*fs)
 	{
 		fs->skip_header_line = fs->options.header;
 
-		if (gfile_open(&fs->fd, fs->glob.gl_pathv[fs->fidx], 0 /* readonly */, 
+		if (gfile_open(&fs->fd, fs->glob.gl_pathv[fs->fidx], GFILE_OPEN_FOR_READ, 
 					   &response_code, &response_string, transform))
 		{
 			gfile_printf_then_putc_newline("fstream unable to open file %s",
@@ -940,7 +940,7 @@ int fstream_rewind(fstream_t *fs)
 
 	gfile_close(&fs->fd);
 
-	if (gfile_open(&fs->fd, fs->glob.gl_pathv[0], 0 /* readonly */,
+	if (gfile_open(&fs->fd, fs->glob.gl_pathv[0], GFILE_OPEN_FOR_READ,
 				   &response_code, &response_string, transform))
 	{
 		gfile_printf_then_putc_newline("fstream unable to open file %s",

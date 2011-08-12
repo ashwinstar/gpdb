@@ -121,24 +121,25 @@ static void percent_encoding_to_char(char* p, char* pp, char* path);
 
 #define GP_VERSIONX APR_STRINGIFY(GP_VERSION)
 
-/*  Struct of command line options */
+/*	Struct of command line options */
 static struct
 {
-	int 		p; /* port */
-	int 		last_port;
-	int 		v; /* verbose */
-	int 		V; /* very verbose */
+	int			p; /* port */
+	int			last_port;
+	int			v; /* verbose */
+	int			V; /* very verbose */
 	const char* d; /* directory */
 	const char* l; /* log filename */
 	const char*	f; /* forced filename */
-	int 		g; /* gp_proto (0 or 1) (internal, not documented) */
-	int 		t; /* timeout in seconds */
+	int			g; /* gp_proto (0 or 1) (internal, not documented) */
+	int			t; /* timeout in seconds */
 	const char *b;
-    int 		m; /* max data line len */
-    int			z; /* listen queue size (hidden option currently for debuging) */
+	int			m; /* max data line len */
+	int			S; /* use O_SYNC when opening files for write  */
+	int			z; /* listen queue size (hidden option currently for debuging) */
 	const char* c; /* config file */
 	struct transform* trlist; /* transforms from config file */
-} opt = { 8080,8080, 0, 0, ".", 0,0, -1, 5, 0, 32768, 256, 0, 0 };
+} opt = { 8080, 8080, 0, 0, ".", 0,0, -1, 5, 0, 32768, 0, 256, 0, 0 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -410,6 +411,7 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ NULL, 't', 5, "timeout in seconds" },
 	{ NULL, 'g', 1, "internal - gp_proto number" },
 	{ NULL, 'm', 1, "max data row length expected" },
+	{ NULL, 'S', 0, "use O_SYNC when opening files for write" },
 	{ NULL, 'z', 1, "internal - queue size for listen call" },
 #ifdef GPFXDIST
 	{ NULL, 'c', 1, "transform configuration file" },
@@ -471,6 +473,9 @@ static void parse_command_line(int argc, const char* const argv[],
 			break;
 		case 'm':
 			opt.m = atoi(arg);
+			break;
+		case 'S':
+			opt.S = 1;
 			break;
 		case 'z':
 			opt.z = atoi(arg);
@@ -1074,7 +1079,10 @@ static int session_attach(request_t* r)
 		if (r->is_get)
 			fstream_options.forwrite = 0; /* GET request */
 		else
-			fstream_options.forwrite = 1;  /* PUT request */
+		{
+			fstream_options.forwrite = 1; /* PUT request */
+			fstream_options.usesync = opt.S;
+		}
 
 #ifdef GPFXDIST
 		/* set transformation options */

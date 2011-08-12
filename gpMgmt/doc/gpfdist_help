@@ -78,6 +78,13 @@ Should be used when user data includes very wide rows, i.e when
 "line too long" error message is receieved. Should not be used otherwise
 as it increases resource allocation. Valid range is 32K to 1MB.
 
+
+-S (use O_SYNC)
+
+Forces files for writable external tables to writing to be opened with 
+the O_SYNC flag so that writes block gpfdist until the operating system 
+believes the data has been physcially written to underlying hardware.
+
 -v (verbose)
 
 Verbose mode shows progress and status messages.

@@ -623,6 +623,7 @@ close_subprocess(gfile_t *fd)
 		return 1;
 	}
 }
+
 #endif
 
 
@@ -630,7 +631,21 @@ close_subprocess(gfile_t *fd)
  * public interface
  */
 
-int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code, const char** response_string, struct gpfxdist_t* transform)
+int 
+gfile_open_flags(int writing, int usesync)
+{
+	if (writing)
+	{
+		if (usesync)
+			return GFILE_OPEN_FOR_WRITE_SYNC;
+		else
+			return GFILE_OPEN_FOR_WRITE_NOSYNC;
+	}
+	return GFILE_OPEN_FOR_READ;
+}
+
+
+int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, const char** response_string, struct gpfxdist_t* transform)
 {
 	const char* s = strrchr(fpath, '.');
 	bool_t is_win_pipe = FALSE;
@@ -681,7 +696,7 @@ int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code
 		while (1)
 		{
 			HANDLE pipe = CreateFile(fpath, 
-									 (for_write ? GENERIC_WRITE : GENERIC_READ),
+									 (flags != GFILE_OPEN_FOR_READ ? GENERIC_WRITE : GENERIC_READ),
 									 0, /* no sharing */
 									 NULL, /* default security */
 									 OPEN_EXISTING, /* file must exist */
@@ -724,7 +739,7 @@ int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code
 
 #else
 
-	if (!is_win_pipe && !for_write)
+	if (!is_win_pipe && (flags == GFILE_OPEN_FOR_READ))
 	{
 		if (stat(fpath, &sta))
 		{
@@ -783,11 +798,27 @@ int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code
 	{
 		do
 		{
-            		int syncFlag = 0;
+			int syncFlag = 0;
 #ifndef WIN32
-			syncFlag = O_SYNC;
+			/*
+			 * MPP-13817 (support opening files without O_SYNC)
+			 */
+			if (flags & GFILE_OPEN_FOR_WRITE_SYNC)
+			{
+				/*
+				 * caller explicitly requested O_SYNC
+				 */
+				syncFlag = O_SYNC;
+			}
+			else if ((stat(fpath, &sta) == 0) && S_ISFIFO(sta.st_mode))
+			{
+				/*
+				 * use O_SYNC since we're writing to another process via a pipe
+				 */
+				syncFlag = O_SYNC;
+			}
 #endif
-			if (for_write)
+			if (flags != GFILE_OPEN_FOR_READ)
 				fd->fd.filefd = open(fpath, O_WRONLY | O_CREAT | O_BINARY | O_APPEND | syncFlag, S_IRUSR | S_IWUSR);
 			else
 				fd->fd.filefd = open(fpath, O_RDONLY | O_BINARY);
@@ -799,7 +830,8 @@ int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code
 	{
 		static char buf[256];
 		gfile_printf_then_putc_newline("gfile open (for %s) failed %s: %s",
-					  				  (for_write ? "write" : "read"),
+									   ((flags == GFILE_OPEN_FOR_READ) ? "read" : 
+										((flags == GFILE_OPEN_FOR_WRITE_SYNC) ? "write (sync)" : "write")),
 					  				  fpath, strerror(errno));
 		*response_code = 404;
 		snprintf(buf, sizeof buf, "file open failure %s: %s", fpath, 
@@ -843,7 +875,7 @@ int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code
 #ifdef GPFXDIST
 	if (fd->transform)
 	{
-		return subprocess_open(fd, fpath, for_write, response_code, response_string);
+		return subprocess_open(fd, fpath, (flags != GFILE_OPEN_FOR_READ), response_code, response_string);
 	}
 	else 
 #endif
@@ -855,11 +887,11 @@ int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code
 		/*
 		 * flag for gfile close
 		 */
-		if (for_write)
+		if (flags != GFILE_OPEN_FOR_READ)
 		{
 			fd->is_gz_write = 1;
 		}
-		return gz_file_open(fd, for_write);
+		return gz_file_open(fd, (flags != GFILE_OPEN_FOR_READ));
 #endif
 	}
 	else if (s && strcasecmp(s,".bz2")==0)
@@ -867,7 +899,7 @@ int gfile_open(gfile_t* fd, const char* fpath, int for_write, int* response_code
 #ifdef WIN32
 		gfile_printf_then_putc_newline(".bz2 not supported");
 #else
-		if (for_write)
+		if (flags != GFILE_OPEN_FOR_READ)
 			gfile_printf_then_putc_newline(".bz2 not yet supported for writable tables");
 
 		return bz_file_open(fd);
