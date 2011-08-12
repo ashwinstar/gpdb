@@ -128,11 +128,6 @@ typedef struct PMModuleState
 	 */
 	volatile TransitionState transitionState;
 
-	/**
-	 * Has the postmaster copied the currently requested transition to its local memory yet?
-	 */
-	volatile bool hasPostmasterCopiedTransitionToLocalMemory;
-
     /* FILE REPLICATION PARAMETERS */
 	volatile PrimaryMirrorMode mode;
 	volatile SegmentState_e segmentState;
@@ -195,8 +190,6 @@ typedef struct PMLocalState
      * The most recent transition applied.  This variable is only valid
      *   in the postmaster process; it is used to save around transitions
      *   for later postmaster reset.
-     *
-     * Only has meaning if haveSetMostRecentTransition is true
      *
      * Note also that the dataState value in this transition MAY CHANGE because of an internal transition
      *    to resync!
@@ -887,7 +880,6 @@ primaryMirrorModeShmemInit(void)
 
 	pmModuleState = (PMModuleState *) ShmemAlloc(sizeof(PMModuleState));
 	pmModuleState->isTransitionRequested = false;
-	pmModuleState->hasPostmasterCopiedTransitionToLocalMemory = false;
 	pmModuleState->mode = PMModeUninitialized;
 	pmModuleState->segmentState = SegmentStateNotInitialized;
 	pmModuleState->dataState = DataStateNotInitialized;
@@ -929,7 +921,6 @@ static void
 resetModuleStateForInitialTransition(void)
 {
 	pmModuleState->isTransitionRequested = true;
-	pmModuleState->hasPostmasterCopiedTransitionToLocalMemory = false;
 	pmModuleState->isTransitionListenerFinished = true; /* yes, true, because there is no waiting dispatcher */
 	pmModuleState->transitionState = TSNone;
     pmModuleState->requestedTransition.transitionNumber = pmModuleState->transitionNumberCounter++;
@@ -1088,7 +1079,7 @@ PrimaryMirrorModeTransitionResult
 requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 									 char extraResultInfoOut[MAX_TRANSITION_RESULT_EXTRA_INFO])
 {
-	volatile bool isTransitioning = false;
+	bool isTransitionRequested = false;
 	PrimaryMirrorMode targetMode;
 	extraResultInfoOut[0] = '\0';
 
@@ -1096,7 +1087,8 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 	assertModuleInitialized();
 	targetMode = args->mode;
 
-	elog(getPrimaryMirrorModeDebugLogLevel(false), "PrimaryMirrorTransitionRequest: to primary/mirror mode %s, "
+	elog(getPrimaryMirrorModeDebugLogLevel(false),
+		 "PrimaryMirrorTransitionRequest: to primary/mirror mode %s, "
 		 "data state %s, host %s, port %d, peer %s, peerPort %d%s%s",
 		 getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
 		 args->hostAddress, args->hostPort,
@@ -1108,6 +1100,9 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 	/* first, request the transition */
 	PG_TRY();
 	{
+		bool isTransitionPending = false;
+		bool isTransitionNoop = false;
+
 		acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 		{
 			args->transitionNumber = pmModuleState->transitionNumberCounter++;
@@ -1115,66 +1110,68 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 			/* check if another transition is currently in progress */
 			if (!pmModuleState->isTransitionListenerFinished)
 			{
-				elog(getPrimaryMirrorModeDebugLogLevel(false),
-					 "PrimaryMirrorTransitionRequest (%d) Result: Cannot transition: modulestate is: %s %s",
-					 args->transitionNumber,
-					 (pmModuleState->isTransitionRequested ? "requested transition and" : ""),
-					 (pmModuleState->isTransitionListenerFinished ?
-					  "listener is finished" : "transition listener isn't finished"));
+				isTransitionPending = true;
 			}
 			else
 			{
-				isTransitioning = true;
-				pmModuleState->isTransitionRequested = true;
-				pmModuleState->requestedTransition = *args;
-				pmModuleState->isTransitionListenerFinished = false;
-				pmModuleState->hasPostmasterCopiedTransitionToLocalMemory = false;
-				pmModuleState->transitionState = TSNone;
-				pmModuleState->requestedTransition.transitionNumber = args->transitionNumber;
+				/* check if the transition is a no-op */
+				if (args->mode == pmModuleState->mode &&
+					args->dataState == pmModuleState->dataState &&
+					args->hostPort == pmModuleState->hostPort &&
+					args->peerPort == pmModuleState->peerPort &&
+					strcmp((char *)args->hostAddress, (char *)pmModuleState->hostAddress) == 0 &&
+					strcmp((char *)args->peerAddress, (char *)pmModuleState->peerAddress) == 0 &&
+					!args->forceFullResync /* a force full resync can never be a no-op */
+					)
+				{
+					isTransitionNoop = true;
+				}
+				else
+				{
+					isTransitionRequested = true;
+
+					/* record new transition request */
+					pmModuleState->isTransitionRequested = true;
+					pmModuleState->requestedTransition = *args;
+					pmModuleState->isTransitionListenerFinished = false;
+					pmModuleState->transitionState = TSNone;
+					pmModuleState->requestedTransition.transitionNumber = args->transitionNumber;
+				}
 			}
 		}
+		releaseModuleSpinLockAndEndCriticalSectionAsNeeded(); /* set the postmaster loose */
 
-		if (!isTransitioning)
+		if (isTransitionPending)
 		{
-			releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
+			Assert(!isTransitionNoop);
+			Assert(!isTransitionRequested);
 
 			elog(getPrimaryMirrorModeDebugLogLevel(false),
-				 "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
-				 "data state %s resulted in %s pending request(%s%s)",
-				 args->transitionNumber,
-				 getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
-				 getTransitionResultLabel(PMTransitionOtherTransitionInProgress),
-				 getMirrorModeLabel(pmModuleState->requestedTransition.mode),
-				 getDataStateLabel(pmModuleState->requestedTransition.dataState));
+			     "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
+			     "data state %s resulted in %s, pending request (%s %s)",
+			     args->transitionNumber,
+			     getMirrorModeLabel(targetMode), getDataStateLabel(args->dataState),
+			     getTransitionResultLabel(PMTransitionOtherTransitionInProgress),
+			     getMirrorModeLabel(pmModuleState->requestedTransition.mode),
+			     getDataStateLabel(pmModuleState->requestedTransition.dataState));
+
 			return PMTransitionOtherTransitionInProgress;
 		}
 
-		/* see if the transition is a no-op */
-		if (args->mode == pmModuleState->mode &&
-			args->dataState == pmModuleState->dataState &&
-			args->hostPort == pmModuleState->hostPort &&
-			args->peerPort == pmModuleState->peerPort &&
-			strcmp((char *)args->hostAddress, (char *)pmModuleState->hostAddress) == 0 &&
-			strcmp((char *)args->peerAddress, (char *)pmModuleState->peerAddress) == 0 &&
-
-			! args->forceFullResync /* a force full resync can never be a no-op */   
-			)
+		if (isTransitionNoop)
 		{
-			pmModuleState->isTransitionListenerFinished = true;
-			pmModuleState->isTransitionRequested = false;
-
-			releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
+			Assert(!isTransitionPending);
+			Assert(!isTransitionRequested);
 
 			elog(getPrimaryMirrorModeDebugLogLevel(false),
-				 "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
-				 "data state %s is as no-op",
-				 args->transitionNumber,
-				 getMirrorModeLabel(targetMode),
-				 getDataStateLabel(args->dataState));
+			     "PrimaryMirrorTransitionRequest (%d) Result: Transition to primary/mirror mode %s, "
+			     "data state %s is no-op",
+			     args->transitionNumber,
+			     getMirrorModeLabel(targetMode),
+			     getDataStateLabel(args->dataState));
+
 			return PMTransitionSuccess;
 		}
-
-		releaseModuleSpinLockAndEndCriticalSectionAsNeeded(); /* set the postmaster loose */
 
 		/* tell postmaster to wake up */
 		SendPostmasterSignal(PMSIGNAL_PRIMARY_MIRROR_TRANSITION_RECEIVED);
@@ -1242,9 +1239,9 @@ requestTransitionToPrimaryMirrorMode(PrimaryMirrorModeTransitionArguments *args,
 	{
 		elog(getPrimaryMirrorModeDebugLogLevel(false),
 			 "PrimaryMirrorTransitionRequest: Caught exception in requestTransitionToPrimaryMirrorMode(), "
-			 "isTransitioning %d", isTransitioning);
+			 "isTransitioning %d", isTransitionRequested);
 
-		if (isTransitioning)
+		if (isTransitionRequested)
 		{
 			acquireModuleSpinLockAndMaybeStartCriticalSection(true);
 			{
@@ -1377,19 +1374,6 @@ isPrimaryMirrorModeTransitionRequested(void)
 	return pmModuleState->isTransitionRequested;
 }
 
-static void copyTransitionParametersToLocalMemoryIfNeeded(PrimaryMirrorModeTransitionArguments *args)
-{
-	Assert(pmModuleState->isTransitionRequested);
-
-	if (pmModuleState->hasPostmasterCopiedTransitionToLocalMemory)
-	{
-		return;
-	}
-
-	pmLocalState.mostRecentTransition = *args;
-	pmLocalState.haveSetMostRecentTransition = true;
-	pmModuleState->hasPostmasterCopiedTransitionToLocalMemory = true;
-}
 
 /*
  * Copy most recent transition request from shared memory to local memory
@@ -1398,6 +1382,7 @@ void copyTransitionParametersToLocalMemory()
 {
 	/* this is called before resetting shared memory so no locking is required */
 	pmLocalState.mostRecentTransition = pmModuleState->requestedTransition;
+	pmLocalState.haveSetMostRecentTransition = true;
 }
 
 
@@ -1506,7 +1491,6 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 		/* filerep should have been shut down by postmaster reset prior to this transition */
 		Assert(!IsFilerepProcessRunning());
 
-		copyTransitionParametersToLocalMemoryIfNeeded(&requestedTransition);
 		copyTransitionInputParameters(&requestedTransition, SegmentStateInitialization);
 		
 		/**
@@ -1562,14 +1546,6 @@ doRequestedPrimaryMirrorModeTransitions(bool isInShutdown)
 			}
 
 			Assert(result != PMTransitionOtherTransitionInProgress);
-
-			if (result != PMTransitionInvalidTargetMode &&
-				result != PMTransitionInvalidInputParameter)
-			{
-				/* if the result was  code that indicated that we are committed to this transition
-				 *   then go ahead and copy it to local memory so that a postmaster reset will replay it */
-				copyTransitionParametersToLocalMemoryIfNeeded(&requestedTransition);
-			}
 
 			if (result != PMTransitionSuccess)
 			{
