@@ -38,6 +38,9 @@
 #include "utils/fmgroids.h"
 #include "catalog/pg_authid.h"
 
+/* segment id for the master */
+#define MASTER_SEGMENT_ID -1
+
 FtsProbeInfo *ftsProbeInfo = NULL; /* Probe process updates this structure */
 volatile bool	*ftsEnabled;
 volatile bool	*ftsShutdownMaster;
@@ -211,6 +214,12 @@ void FtsRequestMasterShutdown()
 bool
 FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, bool fullScan)
 {
+	/* master is always reported as alive */
+	if (failedDBInfo->segindex == MASTER_SEGMENT_ID)
+	{
+		return true;
+	}
+
 	if (!fullScan)
 	{
 		return FTS_STATUS_ISALIVE(failedDBInfo->dbid, ftsProbeInfo->fts_status);
