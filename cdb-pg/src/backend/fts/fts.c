@@ -388,8 +388,6 @@ ftsMain(int argc, char *argv[])
 		history_timezone = gmt_timezone;
 	}
 
-	elog(LOG, "probeUser %s probeDatabase %s", probeUser, probeDatabase);
-	
 	/* main loop */
 	FtsLoop();
 
@@ -485,7 +483,7 @@ void FtsLoop()
 		readCdbComponentInfoAndUpdateStatus();
 		getFailoverStrategy(&failover_strategy);
 
-		elog(DEBUG3, "Ftsprober: starting %sscan with %d dbids with %d content-ids",
+		elog(DEBUG3, "FTS: starting %s scan with %d segments and %d contents",
 			 (processing_fullscan ? "full " : ""),
 			 cdb_component_dbs->total_segment_dbs,
 			 cdb_component_dbs->total_segments);
@@ -514,7 +512,7 @@ void FtsLoop()
 		if (!FtsIsActive())
 		{
 			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
-				elog(LOG, "skipping probe, FTS is paused or shutting down");
+				elog(LOG, "FTS: skipping probe, FTS is paused or shutting down.");
 			goto prober_sleep;
 		}
 
@@ -539,7 +537,7 @@ void FtsLoop()
 		if (ftsProbeInfo->fts_probeScanRequested >= ftsProbeInfo->fts_statusVersion)
 		{
 			/* we need to do a probe immediately */
-			elog(LOG, "skipping sleep -- rescanning (%d < %d)",
+			elog(LOG, "FTS: skipping sleep, requested version: %d, current version: %d.",
 				 (int)ftsProbeInfo->fts_probeScanRequested, (int)ftsProbeInfo->fts_statusVersion);
 			continue;
 		}
@@ -723,13 +721,13 @@ probePublishUpdate(uint8 *probe_results)
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
-			elog(LOG, "probePublishUpdate: primary found %s, mirror found %s, transition %d",
+			elog(LOG, "FTS: primary found %s, mirror found %s, transition %d.",
 				 (isPrimaryAlive ? "alive" : "dead"), (isMirrorAlive ? "alive" : "dead"), trans);
 		}
 
 		if (trans == TRANS_D_D)
 		{
-			elog(LOG, "FTS: detected double failure for content: %d, primary dbid: %d, mirror dbid: %d",
+			elog(LOG, "FTS: detected double failure for content=%d, primary (dbid=%d), mirror (dbid=%d).",
 			     primary->segindex, primary->dbid, mirror->dbid);
 		}
 
@@ -762,7 +760,7 @@ probePublishUpdate(uint8 *probe_results)
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 	{
-		elog(LOG, "probePublishUpdate: probe result processing is complete");
+		elog(LOG, "FTS: probe result processing is complete.");
 	}
 
 	return update_found;
@@ -861,7 +859,7 @@ transition
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 		{
-			elog(LOG, "probePublishUpdate: state machine transition from %d to %d", stateOld, stateNew);
+			elog(LOG, "FTS: state machine transition from %d to %d.", stateOld, stateNew);
 		}
 
 		if (failover_strategy == 'f')
@@ -900,7 +898,9 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 	if (entryDB->dbid != GpIdentity.dbid)
 	{
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-			elog(LOG, "ftsProbe: advancing to second entryDB.");
+		{
+			elog(LOG, "FTS: advancing to second entry-db.");
+		}
 		entryDB = entryDB + 1;
 	}
 
@@ -942,7 +942,7 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 	{
-		elog(LOG, "probePublishUpdate: finished segment modifications");
+		elog(LOG, "FTS: finished segment modifications.");
 	}
 }
 
@@ -984,7 +984,7 @@ probeUpdateConfig(PGconn *entryConn, FtsSegmentStatusChange *changes, int change
 		 * Log change to segment configuration
 		 */
 		count = snprintf(cmd, sizeof(cmd),
-						 "insert into %s values ('%s', %d, 'FTSPROBE: content %d fault marking status %s%s role %c')",
+						 "insert into %s values ('%s', %d, 'FTS: content %d fault marking status %s%s role %c')",
 						 GpConfigHistoryRelName,
 						 time_str, change->dbid, change->segindex,
 						 valid ? "UP" : "DOWN",
@@ -1065,7 +1065,7 @@ FtsIsSegmentAlive(CdbComponentDatabaseInfo *segInfo)
 				return true;
 			break;
 		default:
-			write_log("segmentToProbe: invalid failover strategy (%c)", failover_strategy);
+			write_log("segmentToProbe: invalid failover strategy (%c).", failover_strategy);
 			break;
 	}
 
@@ -1093,8 +1093,13 @@ FtsDumpChanges(FtsSegmentStatusChange *changes, int changeEntries)
 		new_pri = (changes[i].newStatus & FTS_STATUS_PRIMARY ? true : false);
 		old_pri = (changes[i].oldStatus & FTS_STATUS_PRIMARY ? true : false);
 
-		elog(LOG, "change: dbid %d content %d alive %d/%d primary %d/%d",
-			 changes[i].dbid, changes[i].segindex, new_alive, old_alive, new_pri, old_pri);
+		elog(LOG, "FTS: change state for segment (dbid=%d, content=%d) from ('%c','%c') to ('%c','%c')",
+			 changes[i].dbid,
+			 changes[i].segindex,
+			 (old_alive ? 'u' : 'd'),
+			 (old_pri ? 'p' : 'm'),
+			 (new_alive ? 'u' : 'd'),
+			 (new_pri ? 'p' : 'm'));
 	}
 }
 
@@ -1134,12 +1139,12 @@ FtsMarkSegmentsInSync(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInf
 	CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-		elog(LOG, "markSegmentInSyncInConfiguration: Updating segment to in-sync");
+		elog(LOG, "FTS: updating segment to in-sync.");
 
 	if (entryDB->dbid != GpIdentity.dbid)
 	{
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-			elog(LOG, "ftsProbe: advancing to second entryDB.");
+			elog(LOG, "FTS: advancing to second entryDB.");
 		entryDB = entryDB + 1;
 	}
 
@@ -1178,18 +1183,20 @@ FtsMarkSegmentsInSync(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInf
 
 	/* update configuration history */
 	snprintf(cmd, sizeof(cmd),
-			 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
+			 "insert into %s values ('%s', %d, 'FTS: changed segment to insync from resync.')",
+			 GpConfigHistoryRelName,
 			 timestamp_str, primary->dbid);
 	executeEntrySQL(entryConn, cmd);
 
 	snprintf(cmd, sizeof(cmd),
-			 "insert into gp_configuration_history values ('%s', %d, 'FTSPROBE: changed segment to insync from resync.')",
+			 "insert into %s values ('%s', %d, 'FTS: changed segment to insync from resync.')",
+			 GpConfigHistoryRelName,
 			 timestamp_str, mirror->dbid);
 	executeEntrySQL(entryConn, cmd);
 
 	ereport(LOG,
-			(errmsg("Resynchronization of mirror segment on %s:%d has completed.",
-					mirror->address, mirror->port ),
+			(errmsg("FTS: resynchronization of mirror (dbid=%d, content=%d) on %s:%d has completed.",
+					mirror->dbid, mirror->segindex, mirror->address, mirror->port ),
 			 errSendAlert(true)));
 
 	/* if FTS is not active, we ignore probe results (abort transaction) */
@@ -1230,10 +1237,10 @@ void FtsRequestPostmasterShutdown(CdbComponentDatabaseInfo *primary, CdbComponen
 {
 	FtsRequestMasterShutdown();
 
-	elog(FATAL, "FTS: detected invalid state for content %d: "
+	elog(FATAL, "FTS: detected invalid state for content=%d: "
 			    "primary (dbid=%d, mode='%c', status='%c'), "
 			    "mirror (dbid=%d, mode='%c', status='%c'), "
-			    "shutting down master",
+			    "shutting down master.",
 			    primary->segindex,
 			    primary->dbid,
 			    primary->mode,
@@ -1262,7 +1269,7 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 	if (PQExpBufferBroken(entryBuffer))
 	{
 		destroyPQExpBuffer(entryBuffer);
-		elog(FATAL, "FTSPROBE: failed to create self-connection buffer.");
+		elog(FATAL, "FTS: failed to create self-connection buffer.");
 		/* never reached */
 		return NULL;
 	}
@@ -1300,7 +1307,7 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 		PQfinish(entryConn);
 		entryConn = NULL;
 
-		elog(FATAL, "FTS: setting segDB state failed, error connecting to entry db, error: %s", error_message);
+		elog(FATAL, "FTS: failed to connect to entry-db, error: %s.", error_message);
 	}
 
 	rs = PQexec(entryConn, "BEGIN");
@@ -1322,7 +1329,7 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 		PQfinish(entryConn);
 		entryConn = NULL;
 
-		elog(FATAL, "FTS: error connecting to entry db, could not start transaction error: %s", error_message);
+		elog(FATAL, "FTS: failed to start transaction to entry-db, error: %s.", error_message);
 	}
 
 	destroyPQExpBuffer(entryBuffer);
@@ -1355,7 +1362,8 @@ executeEntrySQL(PGconn *entryConn, const char *query)
 		PQfinish(entryConn);
 		entryConn = NULL;
 
-		elog(FATAL, "FTS: connection to entry-DB could not commit: %s", error_message);
+		elog(FATAL, "FTS: query '%s' failed to execute to entry-db, error: %s.",
+		            query, error_message);
 	}
 }
 
@@ -1387,7 +1395,7 @@ closeSelfConn(PGconn *conn, bool commit)
 		PQfinish(conn);
 		conn = NULL;
 
-		elog(FATAL, "FTS: connection to master failed to %s: %s", stmt, error_message);
+		elog(FATAL, "FTS: connection to master failed to %s, error: %s.", stmt, error_message);
 	}
 
 	/* No error, we're ready to go */

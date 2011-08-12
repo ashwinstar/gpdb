@@ -128,7 +128,7 @@ FtsGetPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseIn
 		/* Primary: Up, Sync - Mirror: Up, Sync */
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
-			elog(LOG, "probePublishUpdate: last state: primary dbid=%d sync, mirror dbid=%d sync",
+			elog(LOG, "FTS: last state: primary (dbid=%d) sync, mirror (dbid=%d) sync.",
 				 primary->dbid, mirror->dbid);
 		}
 
@@ -142,7 +142,7 @@ FtsGetPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseIn
 		/* Primary: Up, Changetracking - Mirror: Down */
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
-			elog(LOG, "probePublishUpdate: last state: primary dbid=%d change-tracking, mirror dbid=%d dead",
+			elog(LOG, "FTS: last state: primary (dbid=%d) change-tracking, mirror (dbid=%d) down.",
 				 primary->dbid, mirror->dbid);
 		}
 
@@ -157,7 +157,7 @@ FtsGetPairStateFilerep(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseIn
 		/* Primary: Up, Resync - Mirror: Up, Resync */
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
-			elog(LOG, "probePublishUpdate: last state: primary dbid=%d resync, mirror dbid=%d resync",
+			elog(LOG, "FTS: last state: primary (dbid=%d) resync, mirror (dbid=%d) resync.",
 				 primary->dbid, mirror->dbid);
 		}
 
@@ -185,7 +185,7 @@ FtsTransitionFilerep(uint32 stateOld, uint32 trans)
 	{
 		if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 		{
-			elog(LOG, "ftsProbe: state machine: row=%d column=%d val=%d trans=%d comp=%d",
+			elog(LOG, "FTS: state machine: row=%d column=%d val=%d trans=%d comp=%d.",
 				 stateOld,
 				 i,
 				 state_machine_filerep[stateOld][i],
@@ -197,7 +197,7 @@ FtsTransitionFilerep(uint32 stateOld, uint32 trans)
 		{
 			if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 			{
-				elog(LOG, "ftsProbe: state machine: match found, new state: %d", i);
+				elog(LOG, "FTS: state machine: match found, new state: %d.", i);
 			}
 			return i;
 		}
@@ -296,7 +296,7 @@ FtsPreprocessProbeResultsFilerep(CdbComponentDatabases *dbs, uint8 *probe_result
 		}
 
 		/*
-		 * Decide which segments to consider "down."
+		 * Decide which segments to consider "down"
 		 *
 		 * There are a few possibilities here:
 		 *    1) primary in crash fault
@@ -308,16 +308,17 @@ FtsPreprocessProbeResultsFilerep(CdbComponentDatabases *dbs, uint8 *probe_result
 		 */
 		if (PROBE_HAS_FAULT_CRASH(primary))
 		{
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported crash, considered dead.",
-				 primary->dbid, probe_results[primary->dbid]);
+			elog(LOG, "FTS: primary (dbid=%d) reported crash, considered to be down.",
+			     primary->dbid);
 
 			/* consider primary dead -- case (1) */
 			probe_results[primary->dbid] &= ~PROBE_ALIVE;
 		}
 		else if (PROBE_HAS_FAULT_MIRROR(primary))
 		{
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported mirroring fault with mirror %d/0x%x, mirror considered dead.",
-				 primary->dbid, probe_results[primary->dbid], mirror->dbid, probe_results[mirror->dbid]);
+			elog(LOG, "FTS: primary (dbid=%d) reported mirroring fault with mirror (dbid=%d), "
+			          "mirror considered to be down.",
+			     primary->dbid, mirror->dbid);
 
 			/* consider mirror dead -- case (3) */
 			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
@@ -325,8 +326,8 @@ FtsPreprocessProbeResultsFilerep(CdbComponentDatabases *dbs, uint8 *probe_result
 
 		if (PROBE_HAS_FAULT_CRASH(mirror))
 		{
-			elog(LOG, "probePublishUpdate: dbid %d/0x%x reported crash, considered dead.",
-				 mirror->dbid, probe_results[mirror->dbid]);
+			elog(LOG, "FTS: mirror (dbid=%d) reported crash, considered to be down.",
+			     mirror->dbid);
 
 			/* consider mirror dead -- case (2) */
 			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
@@ -382,7 +383,7 @@ FtsFailoverFilerep(FtsSegmentStatusChange *changes, int changeCount)
 			 */
 			if (new_pri)
 			{
-				elog(LOG, "Segment with dbid %d failed *and* was marked as the new primary! Dumping changes.", changes[i].dbid);
+				elog(LOG, "FTS: failed segment (dbid=%d) was marked as the new primary.", changes[i].dbid);
 				FtsDumpChanges(changes, changeCount);
 				/* NOTE: we don't apply the state change here. */
 			}
@@ -392,7 +393,7 @@ FtsFailoverFilerep(FtsSegmentStatusChange *changes, int changeCount)
 			/* this is a segment that came back up ? Nothing to do here. */
 			if (old_pri)
 			{
-				elog(LOG, "Segment with dbid %d came back from the dead *and* was marked as the old primary! Dumping changes", changes[i].dbid);
+				elog(LOG, "FTS: failed segment (dbid=%d) is alive and marked as the old primary.", changes[i].dbid);
 				FtsDumpChanges(changes, changeCount);
 				/* NOTE: we don't apply the state change here. */
 			}
@@ -452,14 +453,14 @@ modeUpdate(int dbid, char *mode, char status, FilerepModeUpdateLoggingEnum logMs
 	{
 		case FilerepModeUpdateLoggingEnum_MirrorToChangeTracking:
 			ereport(LOG,
-					(errmsg("mirror segment on %s:%d taking over as primary in change-tracking mode",
-							seg_addr, seg_pm_port ),
+					(errmsg("FTS: mirror (dbid=%d) on %s:%d taking over as primary in change-tracking mode.",
+							dbid, seg_addr, seg_pm_port ),
 					 errSendAlert(true)));
 			break;
 		case FilerepModeUpdateLoggingEnum_PrimaryToChangeTracking:
 			ereport(LOG,
-					(errmsg("primary segment on %s:%d transitioning to change-tracking mode (peer marked down)",
-							seg_addr, seg_pm_port ),
+					(errmsg("FTS: primary (dbid=%d) on %s:%d transitioning to change-tracking mode, mirror marked as down.",
+							dbid, seg_addr, seg_pm_port ),
 					 errSendAlert(true)));
 			break;
 	}
@@ -492,17 +493,17 @@ modeUpdate(int dbid, char *mode, char status, FilerepModeUpdateLoggingEnum logMs
 	Assert(strlen(cmd) < sizeof(cmd) - 1);
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
-		elog(LOG, "gp_primarymirror command is [%s]", cmd);
+		elog(LOG, "FTS: gp_primarymirror command is [%s].", cmd);
 
 	cmd_status = system(cmd);
 
 	if (cmd_status == -1)
 	{
-		elog(ERROR, "failed to execute command: %s (%m)", cmd);
+		elog(ERROR, "FTS: failed to execute command: %s (%m).", cmd);
 	}
 	else if (cmd_status != 0)
 	{
-		elog(ERROR, "segment transition failed: %s (exit code %d)", cmd, cmd_status);
+		elog(ERROR, "FTS: segment transition failed: %s (exit code %d).", cmd, cmd_status);
 	}
 }
 
@@ -547,7 +548,7 @@ getHostsByDbid(int dbid, char **hostname_p, int *host_port_p, int *host_filerep_
 
 	if (!found)
 	{
-		elog(FATAL, "Filerep_get_hosts_by_dbid: could not find entry for dbid %d", dbid);
+		elog(FATAL, "FTS: could not find entry for dbid %d.", dbid);
 	}
 
 	found = false;
@@ -569,7 +570,7 @@ getHostsByDbid(int dbid, char **hostname_p, int *host_port_p, int *host_filerep_
 
 	if (!found)
 	{
-		elog(LOG, "Could not find mirror-peer for dbid %d", dbid);
+		elog(LOG, "FTS: could not find mirror-peer for dbid %d.", dbid);
 		*peer_name_p = NULL;
 		*peer_pm_port_p = -1;
 		*peer_filerep_port_p = -1;

@@ -203,7 +203,7 @@ FtsProbeSegments(CdbComponentDatabases *dbs, uint8 *probeRes)
 
 			segInfo = &cdb_component_dbs->segment_db_info[i];
 
-			elog(LOG, "segment dbid %d status 0x%x", segInfo->dbid, scan_status[segInfo->dbid]);
+			elog(LOG, "segment dbid %d status 0x%x.", segInfo->dbid, scan_status[segInfo->dbid]);
 		}
 	}
 }
@@ -275,7 +275,7 @@ probeSegment(CdbComponentDatabaseInfo *dbInfo)
 		pg_usleep(USECS_PER_SEC);
 		retryCnt++;
 
-		write_log("FTS: retry %d to probe segment (content=%d, dbid=%d)",
+		write_log("FTS: retry %d to probe segment (content=%d, dbid=%d).",
 				  retryCnt - 1, probeInfo.segmentId, probeInfo.dbId);
 	}
 
@@ -300,7 +300,7 @@ probeMarkSocketNonBlocking(ProbeConnectionInfo *probeInfo)
 	/* mark socket as non-blocking */
 	if (!pg_set_noblock(probeInfo->fd))
 	{
-		write_log("FTS: failed to mark socket as non-blocking to connect to segment (content=%d, dbid=%d)",
+		write_log("FTS: failed to mark socket as non-blocking to connect to segment (content=%d, dbid=%d).",
 		          probeInfo->segmentId, probeInfo->dbId);
 		return false;
 	}
@@ -349,7 +349,7 @@ probeGetIpAddr(ProbeConnectionInfo *probeInfo)
 			pg_freeaddrinfo_all(probeInfo->hint.ai_family, probeInfo->addrs);
 		}
 
-		write_log("FTS: failed to get IP address to connect to segment  (content=%d, dbid=%d) \"%s\", port \"%d\" to address: %s",
+		write_log("FTS: failed to get IP address to connect to segment (content=%d, dbid=%d) \"%s\", port \"%d\" to address: %s.",
 						probeInfo->segmentId, probeInfo->dbId,
 						probeInfo->hostIp, probeInfo->port, gai_strerror(ret));
 		return false;
@@ -383,7 +383,7 @@ probeOpenSocket(ProbeConnectionInfo *probeInfo)
 	/* open socket */
 	if ((probeInfo->fd = gp_socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol)) < 0)
 	{
-		write_log("FTS: failed to open socket to connect to segment (content=%d, dbid=%d), errno %d",
+		write_log("FTS: failed to open socket to connect to segment (content=%d, dbid=%d), errno %d.",
 		          probeInfo->segmentId, probeInfo->dbId, errno);
 		probeInfo->isSocketOpened = false;
 		probeInfo->fd = 0;
@@ -423,7 +423,7 @@ probeConnect(ProbeConnectionInfo *probeInfo)
 		 */
 		if (errno != EINPROGRESS)
 		{
-			write_log("FTS: failed to connect to segment (content=%d, dbid=%d), errno %d",
+			write_log("FTS: failed to connect to segment (content=%d, dbid=%d), errno %d.",
 						  probeInfo->segmentId, probeInfo->dbId, errno);
 			probeInfo->isConnected = false;
 		}
@@ -463,7 +463,7 @@ probePoll(ProbeConnectionInfo *probeInfo, bool incoming)
 		if (res != 0 && !SYS_ERR_TRANSIENT(errno))
 		{
 			const char *operation = (incoming ? "receiving from" : "sending to");
-			write_log("FTS: failed to poll connection before %s segment (content=%d, dbid=%d), errno %d",
+			write_log("FTS: failed to poll connection before %s segment (content=%d, dbid=%d), errno %d.",
 			          operation, probeInfo->segmentId, probeInfo->dbId, errno);
 			break;
 		}
@@ -504,7 +504,7 @@ probeSend(ProbeConnectionInfo *probeInfo)
 			/* check for transient error */
 			if (!SYS_ERR_TRANSIENT(errno))
 			{
-				write_log("FTS: failed to send request to segment (dbid %d content %d), errno %d",
+				write_log("FTS: failed to send request to segment (dbid=%d, content=%d), errno %d.",
 						  probeInfo->dbId, probeInfo->segmentId, errno);
 				break;
 			}
@@ -548,13 +548,13 @@ probeReceive(ProbeConnectionInfo *probeInfo)
 
 		if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
-			write_log("FTS: RESPONSE_READY: read %d offset %d remainder %ld from segment (dbid %d content %d)",
+			write_log("FTS: read %d offset %d remainder %ld from segment (dbid=%d, content=%d).",
 			           res, bytesReceived, (long)(sizeof(probeInfo->response) - bytesReceived), probeInfo->dbId, probeInfo->segmentId);
 		}
 
 		if (res == 0)
 		{
-			write_log("FTS: failed to receive data, segment (dbid %d content %d) closed connection unexpectedly",
+			write_log("FTS: failed to receive data, segment (dbid=%d, content=%d) closed connection unexpectedly.",
 			          probeInfo->dbId, probeInfo->segmentId);
 
 			break;
@@ -565,7 +565,7 @@ probeReceive(ProbeConnectionInfo *probeInfo)
 			/* check for transient error */
 			if (!SYS_ERR_TRANSIENT(errno))
 			{
-				write_log("FTS: failed to receive response from segment (dbid %d content %d), errno %d",
+				write_log("FTS: failed to receive response from segment (dbid=%d, content=%d), errno %d.",
 			              probeInfo->dbId, probeInfo->segmentId, errno);
 				break;
 			}
@@ -619,7 +619,7 @@ probeTimeout(ProbeConnectionInfo *probeInfo)
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_DEBUG)
 	{
-		write_log("FTS: probe elapsed time: " UINT64_FORMAT " ms for segment (dbid %d content %d)",
+		write_log("FTS: probe elapsed time: " UINT64_FORMAT " ms for segment (dbid=%d, content=%d).",
 		          elapsed_ms, probeInfo->dbId, probeInfo->segmentId);
 	}
 
@@ -643,7 +643,7 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 	memcpy(&bufInt, probeInfo->response, 4);
 	if (ntohl(bufInt) != PROBE_RESPONSE_LEN)
 	{
-		write_log("Probe protocol violation got length %d", ntohl(bufInt));
+		write_log("FTS: probe protocol violation got length %d.", ntohl(bufInt));
 		return PROBE_DEAD;
 	}
 
@@ -661,7 +661,7 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 
 	if (gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 	{
-		write_log("FTS probe: probe result for dbid %d content %d: %s %s %s %s",
+		write_log("FTS: probe result for dbid=%d, content=%d: %s %s %s %s.",
 				  probeInfo->dbId, probeInfo->segmentId,
 				  getMirrorModeLabel(role),
 				  getSegmentStateLabel(state),
@@ -684,8 +684,15 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 		char probeMode = getMode(mode);
 		if ((probeRole != probeInfo->role || probeMode != probeInfo->mode))
 		{
-			write_log("Segment with dbid %d content %d has not reached new state yet, expected state: ('%c','%c'), reported state: ('%c','%c')",
-					  probeInfo->dbId, probeInfo->segmentId, probeInfo->role, probeInfo->mode, probeRole, probeMode);
+			write_log("FTS: segment (dbid=%d, content=%d) has not reached new state yet, "
+			          "expected state: ('%c','%c'), "
+			          "reported state: ('%c','%c').",
+					  probeInfo->dbId,
+					  probeInfo->segmentId,
+					  probeInfo->role,
+					  probeInfo->mode,
+					  probeRole,
+					  probeMode);
 		}
 	}
 
@@ -707,7 +714,7 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 			default:
 				Assert(!"Unexpected segment fault type");
 		}
-		write_log("Segment with dbid %d content %d reported fault %s to the prober",
+		write_log("FTS: segment (dbid=%d, content=%d) reported fault %s to the prober.",
 				  probeInfo->dbId, probeInfo->segmentId, getFaultTypeLabel(fault));
 	}
 
@@ -793,8 +800,8 @@ probeSegmentFromThread(void *arg)
 
 		if ((probe_result_primary & PROBE_ALIVE) == 0 && gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 		{
-			write_log("Primary segment %d segment-dbid %d (status 0x%x) was found dead",
-			          primary->segindex, primary->dbid, probe_result_primary);
+			write_log("FTS: primary (dbid=%d, content=%d, status 0x%x) didn't respond to probe.",
+			          primary->dbid, primary->segindex, probe_result_primary);
 		}
 
 		if (mirror != NULL)
@@ -812,8 +819,8 @@ probeSegmentFromThread(void *arg)
 
 				if ((probe_result_mirror & PROBE_ALIVE) == 0 && gp_log_fts >= GPVARS_VERBOSITY_VERBOSE)
 				{
-					write_log("Mirror segment %d segment-dbid %d (status 0x%x) was found dead",
-							  mirror->segindex, mirror->dbid, probe_result_mirror);
+					write_log("FTS: mirror (dbid=%d, content=%d, status 0x%x) didn't respond to probe.",
+					          mirror->dbid, mirror->segindex, probe_result_mirror);
 				}
 			}
 		}
