@@ -1541,8 +1541,6 @@ void populate_smdw_aliases(host_t* host)
 char* get_ip_for_host(char* host)
 {
 	char * ipstr;
-	char		portNumberStr[32];
-	char	   *service;
 	int			ret;
 	struct addrinfo *addrs = NULL;
 	struct addrinfo hint;
@@ -1552,11 +1550,7 @@ char* get_ip_for_host(char* host)
 	hint.ai_socktype = SOCK_STREAM; /* TCP */
 	hint.ai_family = AF_UNSPEC;	/* Allow for any family */
 
-
-	snprintf(portNumberStr, sizeof(portNumberStr), "%d", 0);
-	service = portNumberStr;
-
-	ret = getaddrinfo(host, service, &hint, &addrs);
+	ret = getaddrinfo(host, NULL, &hint, &addrs);
 	if (ret || !addrs)
 	{
 		if (addrs)
@@ -1571,7 +1565,21 @@ char* get_ip_for_host(char* host)
 
 	ipstr = malloc(128);
 	/* just grab the first address... it should be fine */
-	inet_ntop(addrs->ai_family, addrs->ai_addr, ipstr, 128);
+    if (addrs->ai_family == AF_INET)
+    {
+        struct sockaddr_in* sock = (struct sockaddr_in*)addrs->ai_addr;
+	    inet_ntop(addrs->ai_family, &sock->sin_addr, ipstr, 128);
+    }
+    else if (addrs->ai_family == AF_INET6)
+    {
+        struct sockaddr_in6* sock = (struct sockaddr_in6*)addrs->ai_addr;
+	    inet_ntop(addrs->ai_family, &sock->sin6_addr, ipstr, 128);
+    }
+    else
+    {
+	    interuptable_sleep(30); // sleep to prevent loop of forking process and failing
+		gpmon_fatalx(FLINE, 0, "Bad address family for host: %s %d", host, addrs->ai_family);
+    }
 	freeaddrinfo(addrs);
 
 	return ipstr;
