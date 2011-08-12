@@ -10,7 +10,7 @@ CREATE PROTOCOL demoprot (readfunc = 'read_from_file', writefunc = 'write_to_fil
 -- Cleanup script
 --
 create external web table cleanup(a int)
-  execute 'rm -rf $GP_SEG_DATADIR/hdfsfile.out' on all
+  execute 'rm -rf $GP_SEG_DATADIR/hdfsfile.*' on all
   format 'text';
 
 --
@@ -273,4 +273,5 @@ select * from example_in;
 
 --
 -- End of Test (drop stuff)
--- 
+--
+select * from cleanup; 
