@@ -51,3 +51,7 @@ CREATE TYPE type_record AS (
 	first text,
 	second int4
 	);
+CREATE TYPE ab_tuple as (
+	a int8, 
+	b int8
+	);

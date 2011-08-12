@@ -91,6 +91,29 @@ return words'
 	LANGUAGE plpythonu;
 
 
+-- check module contents
+
+CREATE FUNCTION module_contents() RETURNS text AS
+$$
+contents = list(filter(lambda x: not x.startswith("__"), dir(plpy)))
+contents.sort()
+return ", ".join(contents)
+$$ LANGUAGE plpythonu;
+
+
+CREATE FUNCTION elog_test() RETURNS void
+AS $$
+plpy.debug('debug')
+plpy.log('log')
+plpy.info('info')
+plpy.info(37)
+plpy.info()
+plpy.info('info', 37, [1, 2, 3]) 
+plpy.notice('notice')
+plpy.warning('warning')
+plpy.error('error')
+$$ LANGUAGE plpythonu;
+
 -- these triggers are dedicated to HPHC of RI who
 -- decided that my kid's name was william not willem, and
 -- vigorously resisted all efforts at correction.  they have
@@ -141,6 +164,7 @@ CREATE TRIGGER users_delete_trig BEFORE DELETE ON users FOR EACH ROW
 
 
 -- dump trigger data
+DROP TABLE IF EXISTS trigger_test; 
 
 CREATE TABLE trigger_test
 	(i int, v text );
@@ -330,6 +354,22 @@ return seq
 '
 	LANGUAGE plpythonu;
 
+
+--
+-- plan and result objects
+--
+
+CREATE FUNCTION result_nrows_test() RETURNS int 
+AS $$
+plan = plpy.prepare("SELECT 1 UNION SELECT 2")
+plpy.info(plan.status()) # not really documented or useful
+result = plpy.execute(plan)
+if result.status() > 0:
+   return result.nrows()
+else:
+   return None
+$$ LANGUAGE plpythonu;
+
 --
 -- Universal Newline Support
 -- 
@@ -448,6 +488,34 @@ class producer:
 return producer(count, content)
 $$ LANGUAGE plpythonu;
 
+
+CREATE FUNCTION test_setof_spi_in_iterator() RETURNS SETOF text AS
+$$
+    for s in ('Hello', 'Brave', 'New', 'World'):
+        plpy.execute('select 1')
+        yield s
+        plpy.execute('select 2')
+$$
+LANGUAGE plpythonu;
+
+
+-- test of exception handling 
+
+CREATE OR REPLACE FUNCTION queryexec( query text )
+        returns boolean
+AS $$
+try:
+  plan = plpy.prepare( query )
+  rv = plpy.execute( plan )
+except:
+  plpy.notice( 'Error Trapped' )
+  return False
+
+for r in rv:
+  plpy.notice( str( r ) )
+
+return True
+$$ LANGUAGE plpythonu;
 
 --
 -- Test returning tuples
@@ -619,3 +687,51 @@ AS $$
   exec('y = ' + s)
   return y
 $$ language plpythonu;
+
+
+create or replace function split(input int) returns setof ab_tuple as
+$$
+	plpy.log("Returning the FIRST tuple")
+	yield [input, input + 1]
+	plpy.log("Returning the SECOND tuple"); 
+	yield [input+2, input + 3]
+$$
+language plpythonu; 
+
+CREATE OR REPLACE FUNCTION oneline() returns text as $$ 
+return 'No spaces' 
+$$ language plpythonu;
+
+CREATE OR REPLACE FUNCTION oneline2() returns text as $$  
+x = "\""
+y = ''
+z = ""
+w = '\'' + 'a string with # and "" inside ' + "another string with #  and '' inside "
+return x + y + z + w
+$$ language plpythonu;
+
+CREATE OR REPLACE FUNCTION multiline() returns text as $$ 
+return """ One space
+  Two spaces
+   Three spaces
+No spaces""" 
+$$ language plpythonu;
+
+CREATE OR REPLACE FUNCTION multiline2() returns text as $$
+# If there's something in my comment it can mess things up
+return '''
+The ' in the comment should not cause this line to begin with a tab
+''' + 'This is a rather long string containing\n\
+    several lines of text just as you would do in C.\n\
+     Note that whitespace at the beginning of the line is\
+significant. The string can contain both \' and ".\n' + r"This is an another long string containing\n\
+two lines of text and defined with the r\"...\" syntax."
+$$ language plpythonu; 
+
+CREATE OR REPLACE FUNCTION multiline3() returns text as $$  
+# This is a comment
+x = """ 
+  # This is not a comment so the quotes at the end of the line do end the string """ 
+return x
+$$ language plpythonu;
+

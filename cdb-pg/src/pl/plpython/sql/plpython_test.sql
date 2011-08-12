@@ -59,6 +59,19 @@ SELECT * FROM users;
 --  SELECT join_sequences(sequences) FROM sequences
 --  	WHERE join_sequences(sequences) ~* '^B';
 
+SELECT result_nrows_test();
+
+-- test of exception handling
+SELECT queryexec('SELECT 2'); 
+
+SELECT queryexec('SELECT X'); 
+
+
+select module_contents();
+
+SELECT elog_test();
+
+
 -- error in trigger
 --
 
@@ -96,6 +109,8 @@ SELECT test_setof_as_iterator(0, 'list');
 SELECT test_setof_as_iterator(1, 'list');
 SELECT test_setof_as_iterator(2, 'list');
 SELECT test_setof_as_iterator(2, null);
+
+SELECT test_setof_spi_in_iterator();
 
 -- Test tuple returning functions
 SELECT * FROM test_table_record_as('dict', null, null, false);
@@ -174,4 +189,16 @@ SELECT * FROM test_type_conversion_bytea('hello world');
 SELECT * FROM test_type_conversion_bytea(null);
 SELECT test_type_unmarshal(x) FROM test_type_marshal() x;
 
+SELECT (split(10)).*; 
 
+SELECT * FROM split(100); 
+
+select oneline() 
+union all 
+select oneline2()
+union all 
+select multiline() 
+union all 
+select multiline2() 
+union all 
+select multiline3()

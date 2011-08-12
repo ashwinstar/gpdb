@@ -1,4 +1,3 @@
-
 -- We will update on fname, so we can't have it as a distribution key,
 -- which in turn means it can't be part of a primary key
 CREATE TABLE users (
@@ -53,4 +52,9 @@ CREATE TABLE table_record (
 CREATE TYPE type_record AS (
 	first text,
 	second int4
+	);
+
+CREATE TYPE ab_tuple as (
+	a int8, 
+	b int8
 	);

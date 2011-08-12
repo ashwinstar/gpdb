@@ -39,7 +39,9 @@ override python_libspec := -L${python_configdir}/../.. ${python_libspec}
 ifneq (,$(findstring yes, $(shared_libpython)$(allow_nonpic_in_shlib)))
 
 # do not fail build due to warnings in this code
-override CPPFLAGS := -Wno-error -I$(srcdir) $(python_includespec) $(CPPFLAGS)
+#override CPPFLAGS := -Wno-error -I$(srcdir) $(python_includespec) $(CPPFLAGS) -DPLPYTHON_SHOW_DEBUG_INFO
+override CPPFLAGS := -Wno-error -I$(srcdir) $(python_includespec) $(CPPFLAGS) 
+
 
 rpathdir = $(python_libdir)
 
@@ -65,6 +67,7 @@ SHLIB_LINK = $(python_libspec) $(python_additional_libs) $(filter -lintl,$(LIBS)
 
 REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=plpythonu
 REGRESS = plpython_schema plpython_populate plpython_function plpython_test \
+	plpython_subtransaction plpython_composite	\
 	plpython_returns plpython_error plpython_drop
 # where to find psql for running the tests
 PSQLDIR = $(bindir)
