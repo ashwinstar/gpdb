@@ -90,6 +90,9 @@ static char failover_strategy='n';
 /* struct holding segment configuration */
 static CdbComponentDatabases *cdb_component_dbs = NULL;
 
+/* time zone used for history entries */
+static pg_tz *history_timezone = NULL;
+
 
 /*
  * FUNCTION PROTOTYPES
@@ -108,6 +111,8 @@ static void readCdbComponentInfoAndUpdateStatus(void);
 static bool probePublishUpdate(uint8 *scan_status);
 
 static uint32 getTransition(bool isPrimaryAlive, bool isMirrorAlive);
+
+static void get_history_timestamp(char *buffer, int bufferSize);
 
 static void
 buildSegmentStateChange
@@ -375,6 +380,13 @@ ftsMain(int argc, char *argv[])
 	 * will access catalog tables).
 	 */
 	retrieveUserAndDb(&probeUser);
+
+	/* check if logging time zone can be used for storing timestamps */
+	history_timezone = log_timezone;
+	if (!tz_acceptable(history_timezone))
+	{
+		history_timezone = gmt_timezone;
+	}
 
 	elog(LOG, "probeUser %s probeDatabase %s", probeUser, probeDatabase);
 	
@@ -892,7 +904,7 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 		entryDB = entryDB + 1;
 	}
 
-	get_timestamp(timestamp_str, sizeof(timestamp_str));
+	get_history_timestamp(timestamp_str, sizeof(timestamp_str));
 
 	/* if we've gotten a pause or shutdown request, we ignore our probe results. */
 	if (!FtsIsActive())
@@ -1117,7 +1129,7 @@ FtsMarkSegmentsInSync(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInf
 	char cmd[SQL_CMD_BUF_SIZE];
 	char timestamp_str[TIMESTAMP_BUF_SIZE];
 
-	get_timestamp(timestamp_str, sizeof(timestamp_str));
+	get_history_timestamp(timestamp_str, sizeof(timestamp_str));
 
 	CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
 
@@ -1382,6 +1394,22 @@ closeSelfConn(PGconn *conn, bool commit)
 	PQclear(rs);
 	PQfinish(conn);
 	return;
+}
+
+
+/*
+ * Get timestamp for history entries using a valid timestamp
+ */
+static void
+get_history_timestamp(char *buffer, int bufferSize)
+{
+	/* use history time zone to create timestamp for history entries */
+	pg_tz *timezone = log_timezone;
+	log_timezone = history_timezone;
+
+	get_timestamp(buffer, bufferSize);
+
+	log_timezone = timezone;
 }
 
 
