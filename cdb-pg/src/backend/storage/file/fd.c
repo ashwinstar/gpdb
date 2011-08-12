@@ -310,6 +310,20 @@ pg_fdatasync(int fd)
 }
 
 /*
+ * Retrying close in case it gets interrupted. If that happens, it will cause
+ * unlink to fail later.
+ */
+int
+gp_retry_close(int fd) {
+	int err = 0;
+	do
+	{
+		err = close(fd);
+	} while (err == -1 && errno == EINTR);
+	return err;
+}
+
+/*
  * InitFileAccess --- initialize this module during backend startup
  *
  * This is called during either normal or standalone backend start.
@@ -1016,7 +1030,7 @@ FileClose(File file)
 		Delete(file);
 
 		/* close the file */
-		if (close(vfdP->fd))
+		if (gp_retry_close(vfdP->fd))
 			elog(ERROR, "failed to close \"%s\": %m",
 				 vfdP->fileName);
 

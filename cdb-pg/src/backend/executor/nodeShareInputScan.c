@@ -501,20 +501,19 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 
 	if(lk_ctxt->readyfd >= 0)
 	{
-		err = close(lk_ctxt->readyfd);
+		err = gp_retry_close(lk_ctxt->readyfd);
 		if(err)
 			elog(ERROR, "shareinput_clean_lk_ctxt cannot close readyfd");
-
 		lk_ctxt->readyfd = -1;
 	}
 
 	if(lk_ctxt->donefd >= 0)
 	{
-		err = close(lk_ctxt->donefd);
+		err = gp_retry_close(lk_ctxt->donefd);
 		if(err)
 			elog(ERROR, "shareinput_clean_lk_ctxt cannot close donefd");
 
-		lk_ctxt->readyfd = -1;
+		lk_ctxt->donefd = -1;
 	}
 
 	if(lk_ctxt->del_ready && lk_ctxt->lkname_ready[0])
@@ -604,7 +603,7 @@ write_retry:
 	Assert(!"Never be here");
 	return 0;
 }
-		
+
 /* 
  * Readiness (a) synchronization.
  *

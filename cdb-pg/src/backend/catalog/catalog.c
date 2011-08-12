@@ -1051,7 +1051,7 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 		if (fd >= 0)
 		{
 			/* definite collision */
-			close(fd);
+			gp_retry_close(fd);
 			collides = true;
 		}
 		else
@@ -1146,7 +1146,7 @@ CheckNewRelFileNodeIsOk(Oid newOid, Oid reltablespace, bool relisshared,
 	if (fd >= 0)
 	{
 		/* definite collision */
-		close(fd);
+		gp_retry_close(fd);
 		collides = true;
 	}
 	else

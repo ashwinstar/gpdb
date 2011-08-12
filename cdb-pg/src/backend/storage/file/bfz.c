@@ -303,7 +303,7 @@ bfz_close(bfz_t * thiz, bool unreg)
 
 	if (thiz->fd != -1)
 	{
-		close(thiz->fd);
+		gp_retry_close(thiz->fd);
 		thiz->fd = -1;
 	}
 
