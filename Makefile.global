@@ -326,5 +326,5 @@ endif
 ifneq "$(PARALLEL_BUILD)" ""
 parallelexec_maxlimit=3.5
 parallelexec_cpufactor=1.5
-parallelexec_opts=-l$(parallelexec_maxlimit) -j$(shell $(BLD_PYTHON)/bin/python -c "import multiprocessing ; print int((multiprocessing.cpu_count() * $(parallelexec_cpufactor)))" )
+parallelexec_opts=-l$(parallelexec_maxlimit) -j$(shell PYTHONHOME=$(BLD_PYTHON) $(BLD_PYTHON)/bin/python -c "import multiprocessing ; print int((multiprocessing.cpu_count() * $(parallelexec_cpufactor)))" )
 endif
