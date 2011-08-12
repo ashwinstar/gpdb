@@ -70,6 +70,8 @@ typedef struct ProbeConnectionInfo
 
 	int	fd;                              /* socket file descriptor */
 	struct sockaddr_storage  saddr;      /* socket descriptor */
+	struct addrinfo *addrs;              /* socket address info */
+	struct addrinfo hint;                /* socket address info hint */
 	int saddr_len;
 	const char *hostIp;                  /* segment ip */
 	int port;                            /* segment postmaster port */
@@ -112,7 +114,8 @@ static char probeSegment(CdbComponentDatabaseInfo *dbInfo);
 static char probeProcessResponse(ProbeConnectionInfo *probeInfo);
 
 static bool probeMarkSocketNonBlocking(ProbeConnectionInfo *probeInfo);
-static bool probeGetIpAddrAndOpenSocket(ProbeConnectionInfo *probeInfo);
+static bool probeGetIpAddr(ProbeConnectionInfo *probeInfo);
+static bool probeOpenSocket(ProbeConnectionInfo *probeInfo);
 static bool probeConnect(ProbeConnectionInfo *probeInfo);
 static bool probePoll(ProbeConnectionInfo *probeInfo, bool incoming);
 static bool probeSend(ProbeConnectionInfo *probeInfo);
@@ -234,7 +237,8 @@ probeSegment(CdbComponentDatabaseInfo *dbInfo)
 	 * and the probe process is restarted;
 	 * this is repeated until no error occurs (response is received) or timeout expires;
 	 */
-	while (!probeGetIpAddrAndOpenSocket(&probeInfo) ||
+	while (!probeGetIpAddr(&probeInfo) ||
+	       !probeOpenSocket(&probeInfo) ||
 	       !probeMarkSocketNonBlocking(&probeInfo) ||
 	       !probeConnect(&probeInfo) ||
 	       !probeSend(&probeInfo) ||
@@ -308,19 +312,15 @@ probeMarkSocketNonBlocking(ProbeConnectionInfo *probeInfo)
  * Get segment IP address and port.
  */
 static bool
-probeGetIpAddrAndOpenSocket(ProbeConnectionInfo *probeInfo)
+probeGetIpAddr(ProbeConnectionInfo *probeInfo)
 {
-    int			ret;
-	char		portNumberStr[32];
-	char	   *service;
-	struct addrinfo *addrs = NULL;
-	struct addrinfo hint;
 
 	Assert(probeInfo != NULL);
 	Assert(!probeInfo->isSocketOpened);
 	Assert(!probeInfo->isConnected);
 
 	MemSet(&probeInfo->saddr, 0, sizeof(probeInfo->saddr));
+	probeInfo->addrs = NULL;
 
 	/*
 	 * Get an sockaddr that has the right address and port in it.
@@ -328,41 +328,57 @@ probeGetIpAddrAndOpenSocket(ProbeConnectionInfo *probeInfo)
 	 * we don't need to worry about name resolution.
 	 */
 
-	/* Initialize hint structure */
-	MemSet(&hint, 0, sizeof(hint));
-	hint.ai_socktype = SOCK_STREAM; /* TCP */
-	hint.ai_family = AF_UNSPEC;	/* Allow for any family */
+	/* initialize hint structure */
+	MemSet(&probeInfo->hint, 0, sizeof(probeInfo->hint));
+	probeInfo->hint.ai_socktype = SOCK_STREAM; /* TCP */
+	probeInfo->hint.ai_family = AF_UNSPEC;	/* Allow for any family */
 #ifdef AI_NUMERICSERV
-	hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
+	probeInfo->hint.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;  /* Never do name resolution */
 #else
-	hint.ai_flags = AI_NUMERICHOST;  /* Never do name resolution */
+	probeInfo->hint.ai_flags = AI_NUMERICHOST;  /* Never do name resolution */
 #endif
 
+	char portNumberStr[32];
 	snprintf(portNumberStr, sizeof(portNumberStr), "%d", probeInfo->port);
-	service = portNumberStr;
 
-	ret = pg_getaddrinfo_all(probeInfo->hostIp, service, &hint, &addrs);
-	if (ret || !addrs)
+	int ret = pg_getaddrinfo_all(probeInfo->hostIp, portNumberStr, &probeInfo->hint, &probeInfo->addrs);
+	if (ret != 0 || probeInfo->addrs == NULL)
 	{
-		if (addrs)
-			pg_freeaddrinfo_all(hint.ai_family, addrs);
+		if (probeInfo->addrs != NULL)
+		{
+			pg_freeaddrinfo_all(probeInfo->hint.ai_family, probeInfo->addrs);
+		}
 
 		write_log("FTS: failed to get IP address to connect to segment  (content=%d, dbid=%d) \"%s\", port \"%d\" to address: %s",
 						probeInfo->segmentId, probeInfo->dbId,
 						probeInfo->hostIp, probeInfo->port, gai_strerror(ret));
 		return false;
 	}
-	Assert(addrs->ai_next == NULL);
-	/* Since we aren't using name resolution, getaddrinfo will return only 1 entry */
-	memcpy(&probeInfo->saddr, addrs->ai_addr, addrs->ai_addrlen);
-	probeInfo->saddr_len = addrs->ai_addrlen;
 
+	Assert(probeInfo->addrs->ai_next == NULL);
+
+	/* since we aren't using name resolution, we retrieve exactly one address */
+	memcpy(&probeInfo->saddr, probeInfo->addrs->ai_addr, probeInfo->addrs->ai_addrlen);
+	probeInfo->saddr_len = probeInfo->addrs->ai_addrlen;
+
+	return true;
+}
+
+
+/*
+ * Open socket
+ */
+static bool
+probeOpenSocket(ProbeConnectionInfo *probeInfo)
+{
 	Assert(probeInfo != NULL);
+	Assert(probeInfo->addrs != NULL);
 	Assert(!probeInfo->isSocketOpened);
 	Assert(!probeInfo->isConnected);
 	Assert(probeInfo->fd == 0);
 
 	probeInfo->isSocketOpened = true;
+	struct addrinfo *addrs = probeInfo->addrs;
 
 	/* open socket */
 	if ((probeInfo->fd = gp_socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol)) < 0)
@@ -373,7 +389,7 @@ probeGetIpAddrAndOpenSocket(ProbeConnectionInfo *probeInfo)
 		probeInfo->fd = 0;
 	}
 
-	pg_freeaddrinfo_all(hint.ai_family, addrs);
+	pg_freeaddrinfo_all(probeInfo->hint.ai_family, addrs);
 
 	return probeInfo->isSocketOpened;
 }
@@ -682,10 +698,12 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 			case FaultTypeMirror:
 				segmentStatus |= PROBE_FAULT_MIRROR;
 				break;
+
 			case FaultTypeDB:
 			case FaultTypeIO:
 				segmentStatus |= PROBE_FAULT_CRASH;
 				break;
+
 			default:
 				Assert(!"Unexpected segment fault type");
 		}
