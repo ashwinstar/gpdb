@@ -974,7 +974,6 @@ SET_VERSION_SCRIPTS = \
 	bin/gprebuildsystem \
 	bin/gprecoverseg \
 	bin/gpscp \
-	bin/gpsetupsanfailover \
 	bin/gpsizecalc \
 	bin/gpskew \
 	bin/gpssh \
