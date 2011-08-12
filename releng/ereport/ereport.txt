@@ -3665,54 +3665,54 @@ cabh: cdbfilerepservice:00000497:  errhint("run gprecoverseg to re-establish mir
 cabh: cdbfilerepservice:00000587:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
 cabh: cdbfilerepservice:00000588:  errmsg("database 'postgres' does not exist"))); 
 aaaaa GP_IGNORE: caag: cdbfts - ./backend/cdb/cdbfts.c
-caag: cdbfts:00000239:  ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress"), 
-caag: cdbfts:00000240:  errSendAlert(true))); 
-caag: cdbfts:00000400:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-caag: cdbfts:00000401:  errmsg("QDMirroringUpdate: out of memory"))); 
-caag: cdbfts:00000428:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-caag: cdbfts:00000429:  errmsg("QDMirroringUpdate: out of memory"))); 
-caag: cdbfts:00000451:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caag: cdbfts:00000452:  errmsg("QDMirroringUpdate: format command string failure"))); 
-caag: cdbfts:00000458:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caag: cdbfts:00000459:  errmsg("QDMirroringUpdate: could not execute command '%s'", cmd))); 
-caag: cdbfts:00000515:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caag: cdbfts:00000516:  errmsg("QDMirroringUpdate: format command string failure"))); 
-caag: cdbfts:00000554:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
-caag: cdbfts:00000555:  errmsg("QDMirroringUpdate: format command string failure"))); 
-caag: cdbfts:00000561:  ereport(ERROR, 
-caag: cdbfts:00000562:  (errcode(ERRCODE_INTERNAL_ERROR), 
-caag: cdbfts:00000563:  errmsg("QDMirroringUpdate: could not execute command '%s'", cmd))); 
-caag: cdbfts:00000693:  ereport(LOG, 
-caag: cdbfts:00000694:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caag: cdbfts:00000695:  errmsg("Master mirroring is not synchronized as of %s (%s). " 
-caag: cdbfts:00000696:  "The GPDB system is currently not highly-available", 
-caag: cdbfts:00000697:  logTimeStr, 
-caag: cdbfts:00000698:  QDMirroringDisabledReasonToString(disabledReason)), 
-caag: cdbfts:00000699:  errSendAlert(true))); 
-caag: cdbfts:00000732:  ereport(NOTICE, 
-caag: cdbfts:00000733:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caag: cdbfts:00000734:  errmsg("Master mirroring not synchronized because the standby master was not started by the administrator"))); 
-caag: cdbfts:00000736:  ereport(WARNING, 
-caag: cdbfts:00000737:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caag: cdbfts:00000738:  errSendAlert(true), 
-caag: cdbfts:00000739:  errmsg("Master mirroring synchronization lost"), 
-caag: cdbfts:00000740:  errdetail("%s\nThe Greenplum Database is no longer highly available.", detail))); 
-caag: cdbfts:00000847:  ereport(ERROR, 
-caag: cdbfts:00000848:  (errcode(ERRCODE_INTERNAL_ERROR), 
-caag: cdbfts:00000849:  errmsg("Unexpected master mirror state '%s'", 
-caag: cdbfts:00000850:  QDMirroringStateToString(state)))); 
-caag: cdbfts:00000856:  ereport(NOTICE, 
-caag: cdbfts:00000857:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
-caag: cdbfts:00000858:  errmsg("%s", message), 
-caag: cdbfts:00000859:  errdetail("%s", detail))); 
-caag: cdbfts:00001059:  ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed), 
-caag: cdbfts:00001060:  errSendAlert(true))); 
-caag: cdbfts:00001121:  ereport(LOG, (errmsg_internal("FTS: found bad segment with dbid %d", segInfo->dbid), 
-caag: cdbfts:00001122:  errSendAlert(true))); 
-caag: cdbfts:00001316:  ereport(ERROR, (errmsg_internal("Unexpected master mirroring state '%s'", 
-caag: cdbfts:00001317:  QDMirroringStateToString(state)))); 
-caag: cdbfts:00001412:  ereport(ERROR, (errmsg_internal("Unexpected master mirror state '%s'", 
-caag: cdbfts:00001413:  QDMirroringStateToString(state)))); 
+caag: cdbfts:00000248:  ereport(LOG, (errmsg_internal("FTS: reconfiguration is in progress"), 
+caag: cdbfts:00000249:  errSendAlert(true))); 
+caag: cdbfts:00000409:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+caag: cdbfts:00000410:  errmsg("QDMirroringUpdate: out of memory"))); 
+caag: cdbfts:00000437:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+caag: cdbfts:00000438:  errmsg("QDMirroringUpdate: out of memory"))); 
+caag: cdbfts:00000460:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caag: cdbfts:00000461:  errmsg("QDMirroringUpdate: format command string failure"))); 
+caag: cdbfts:00000467:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caag: cdbfts:00000468:  errmsg("QDMirroringUpdate: could not execute command '%s'", cmd))); 
+caag: cdbfts:00000524:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caag: cdbfts:00000525:  errmsg("QDMirroringUpdate: format command string failure"))); 
+caag: cdbfts:00000563:  ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), 
+caag: cdbfts:00000564:  errmsg("QDMirroringUpdate: format command string failure"))); 
+caag: cdbfts:00000570:  ereport(ERROR, 
+caag: cdbfts:00000571:  (errcode(ERRCODE_INTERNAL_ERROR), 
+caag: cdbfts:00000572:  errmsg("QDMirroringUpdate: could not execute command '%s'", cmd))); 
+caag: cdbfts:00000702:  ereport(LOG, 
+caag: cdbfts:00000703:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caag: cdbfts:00000704:  errmsg("Master mirroring is not synchronized as of %s (%s). " 
+caag: cdbfts:00000705:  "The GPDB system is currently not highly-available", 
+caag: cdbfts:00000706:  logTimeStr, 
+caag: cdbfts:00000707:  QDMirroringDisabledReasonToString(disabledReason)), 
+caag: cdbfts:00000708:  errSendAlert(true))); 
+caag: cdbfts:00000741:  ereport(NOTICE, 
+caag: cdbfts:00000742:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caag: cdbfts:00000743:  errmsg("Master mirroring not synchronized because the standby master was not started by the administrator"))); 
+caag: cdbfts:00000745:  ereport(WARNING, 
+caag: cdbfts:00000746:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caag: cdbfts:00000747:  errSendAlert(true), 
+caag: cdbfts:00000748:  errmsg("Master mirroring synchronization lost"), 
+caag: cdbfts:00000749:  errdetail("%s\nThe Greenplum Database is no longer highly available.", detail))); 
+caag: cdbfts:00000856:  ereport(ERROR, 
+caag: cdbfts:00000857:  (errcode(ERRCODE_INTERNAL_ERROR), 
+caag: cdbfts:00000858:  errmsg("Unexpected master mirror state '%s'", 
+caag: cdbfts:00000859:  QDMirroringStateToString(state)))); 
+caag: cdbfts:00000865:  ereport(NOTICE, 
+caag: cdbfts:00000866:  (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), 
+caag: cdbfts:00000867:  errmsg("%s", message), 
+caag: cdbfts:00000868:  errdetail("%s", detail))); 
+caag: cdbfts:00001068:  ereport(ERROR, (errmsg_internal("MPP detected %d segment failures, system is reconnected", numOfFailed), 
+caag: cdbfts:00001069:  errSendAlert(true))); 
+caag: cdbfts:00001130:  ereport(LOG, (errmsg_internal("FTS: found bad segment with dbid %d", segInfo->dbid), 
+caag: cdbfts:00001131:  errSendAlert(true))); 
+caag: cdbfts:00001325:  ereport(ERROR, (errmsg_internal("Unexpected master mirroring state '%s'", 
+caag: cdbfts:00001326:  QDMirroringStateToString(state)))); 
+caag: cdbfts:00001421:  ereport(ERROR, (errmsg_internal("Unexpected master mirror state '%s'", 
+caag: cdbfts:00001422:  QDMirroringStateToString(state)))); 
 aaaaa GP_IGNORE: caah: cdbgang - ./backend/cdb/cdbgang.c
 caah: cdbgang:00000360:  ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR), 
 caah: cdbgang:00000361:  errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount), 
@@ -10010,29 +10010,29 @@ faah: foreign:00000425:  errmsg("invalid option \"%s\"", def->defname),
 faah: foreign:00000426:  errhint("Valid options in this context are: %s", buf.data), 
 faah: foreign:00000427:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: faad: fts - ./backend/fts/fts.c
-faad: fts:00000324:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
-faad: fts:00000325:  errmsg("database 'postgres' does not exist"))); 
-faad: fts:00001178:  ereport(LOG, 
-faad: fts:00001179:  (errmsg("Resynchronization of mirror segment on %s:%d has completed.", 
-faad: fts:00001180:  mirror->address, mirror->port ), 
-faad: fts:00001181:  errSendAlert(true))); 
-faad: fts:00001284:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faad: fts:00001285:  errmsg("FTS: out of memory"))); 
-faad: fts:00001306:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faad: fts:00001307:  errmsg("FTS: out of memory"))); 
-faad: fts:00001339:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faad: fts:00001340:  errmsg("FTS: out of memory"))); 
-faad: fts:00001371:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-faad: fts:00001372:  errmsg("FTS: out of memory"))); 
+faad: fts:00000329:  ereport(FATAL, (errcode(ERRCODE_UNDEFINED_DATABASE), 
+faad: fts:00000330:  errmsg("database 'postgres' does not exist"))); 
+faad: fts:00001197:  ereport(LOG, 
+faad: fts:00001198:  (errmsg("FTS: resynchronization of mirror (dbid=%d, content=%d) on %s:%d has completed.", 
+faad: fts:00001199:  mirror->dbid, mirror->segindex, mirror->address, mirror->port ), 
+faad: fts:00001200:  errSendAlert(true))); 
+faad: fts:00001303:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faad: fts:00001304:  errmsg("FTS: out of memory"))); 
+faad: fts:00001325:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faad: fts:00001326:  errmsg("FTS: out of memory"))); 
+faad: fts:00001358:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faad: fts:00001359:  errmsg("FTS: out of memory"))); 
+faad: fts:00001391:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+faad: fts:00001392:  errmsg("FTS: out of memory"))); 
 aaaaa GP_IGNORE: faba: ftsfilerep - ./backend/fts/ftsfilerep.c
-faba: ftsfilerep:00000454:  ereport(LOG, 
-faba: ftsfilerep:00000455:  (errmsg("mirror segment on %s:%d taking over as primary in change-tracking mode", 
-faba: ftsfilerep:00000456:  seg_addr, seg_pm_port ), 
-faba: ftsfilerep:00000457:  errSendAlert(true))); 
-faba: ftsfilerep:00000460:  ereport(LOG, 
-faba: ftsfilerep:00000461:  (errmsg("primary segment on %s:%d transitioning to change-tracking mode (peer marked down)", 
-faba: ftsfilerep:00000462:  seg_addr, seg_pm_port ), 
-faba: ftsfilerep:00000463:  errSendAlert(true))); 
+faba: ftsfilerep:00000455:  ereport(LOG, 
+faba: ftsfilerep:00000456:  (errmsg("FTS: mirror (dbid=%d) on %s:%d taking over as primary in change-tracking mode.", 
+faba: ftsfilerep:00000457:  dbid, seg_addr, seg_pm_port ), 
+faba: ftsfilerep:00000458:  errSendAlert(true))); 
+faba: ftsfilerep:00000461:  ereport(LOG, 
+faba: ftsfilerep:00000462:  (errmsg("FTS: primary (dbid=%d) on %s:%d transitioning to change-tracking mode, mirror marked as down.", 
+faba: ftsfilerep:00000463:  dbid, seg_addr, seg_pm_port ), 
+faba: ftsfilerep:00000464:  errSendAlert(true))); 
 aaaaa GP_IGNORE: faag: ftssan - ./backend/fts/ftssan.c
 faag: ftssan:00000477:  ereport(LOG, 
 faag: ftssan:00000478:  (errmsg("SAN mirror segment on %s:%d is taking over as primary.", 
@@ -10264,15 +10264,15 @@ raaj: readfuncs:00003079:  "supported in this version of %s.",
 raaj: readfuncs:00003080:  length, token, PACKAGE_NAME) 
 raaj: readfuncs:00003081:  )); 
 aaaaa GP_IGNORE: aaai: allpaths - ./backend/optimizer/path/allpaths.c
-aaai: allpaths:00000420:  ereport(ERROR, 
-aaai: allpaths:00000421:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaai: allpaths:00000422:  errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries"))); 
-aaai: allpaths:00001473:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), 
-aaai: allpaths:00001474:  errmsg("Query requires a feature that has been disabled " 
-aaai: allpaths:00001475:  "by a configuration setting."), 
-aaai: allpaths:00001476:  errdetail("Could not devise a query plan for the given query."), 
-aaai: allpaths:00001477:  errhint("Current settings: %s", buf.data) 
-aaai: allpaths:00001478:  )); 
+aaai: allpaths:00000422:  ereport(ERROR, 
+aaai: allpaths:00000423:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaai: allpaths:00000424:  errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries"))); 
+aaai: allpaths:00001516:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), 
+aaai: allpaths:00001517:  errmsg("Query requires a feature that has been disabled " 
+aaai: allpaths:00001518:  "by a configuration setting."), 
+aaai: allpaths:00001519:  errdetail("Could not devise a query plan for the given query."), 
+aaai: allpaths:00001520:  errhint("Current settings: %s", buf.data) 
+aaai: allpaths:00001521:  )); 
 aaaaa GP_IGNORE: jaai: joinpath - ./backend/optimizer/path/joinpath.c
 jaai: joinpath:00000996:  ereport(ERROR, 
 jaai: joinpath:00000997:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
