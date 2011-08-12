@@ -64,6 +64,8 @@ static void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *
 static RelOptInfo *make_rel_from_joinlist(PlannerInfo *root, List *joinlist);
 static RelOptInfo *make_one_rel_by_joins(PlannerInfo *root, int levels_needed,
 										 List *initial_rels, bool fallback);
+static Query *push_down_restrict(PlannerInfo *root, RelOptInfo *rel,
+				   RangeTblEntry *rte, Index rti,  Query *subquery);
 static bool subquery_is_pushdown_safe(Query *subquery, Query *topquery,
 						  bool *differentTypes);
 static bool recurse_pushdown_safe(Node *setOp, Query *topquery,
@@ -585,7 +587,6 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 {
 	Query	   *parse = root->parse;
 	Query	   *subquery = rte->subquery;
-	bool	   *differentTypes;
 	double		tuple_fraction;
 	List	   *pathkeys;
 	PlannerInfo *subroot;
@@ -598,58 +599,11 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	/* CDB: Could be a preplanned subquery from window_planner. */
 	if ( rte->subquery_plan == NULL )
 	{
-		/* We need a workspace for keeping track of set-op type coercions */
-		differentTypes = (bool *)
-			palloc0((list_length(subquery->targetList) + 1) * sizeof(bool));
-
 		/*
-		 * If there are any restriction clauses that have been attached to the
-		 * subquery relation, consider pushing them down to become WHERE or HAVING
-		 * quals of the subquery itself.  This transformation is useful because it
-		 * may allow us to generate a better plan for the subquery than evaluating
-		 * all the subquery output rows and then filtering them.
-		 *
-		 * There are several cases where we cannot push down clauses. Restrictions
-		 * involving the subquery are checked by subquery_is_pushdown_safe().
-		 * Restrictions on individual clauses are checked by
-		 * qual_is_pushdown_safe().  Also, we don't want to push down
-		 * pseudoconstant clauses; better to have the gating node above the
-		 * subquery.
-		 *
-		 * Non-pushed-down clauses will get evaluated as qpquals of the
-		 * SubqueryScan node.
-		 *
-		 * XXX Are there any cases where we want to make a policy decision not to
-		 * push down a pushable qual, because it'd result in a worse plan?
+		 * push down quals if possible. Note subquery might be
+		 * different pointer from original one.
 		 */
-		if (rel->baserestrictinfo != NIL &&
-			subquery_is_pushdown_safe(subquery, subquery, differentTypes))
-		{
-			/* OK to consider pushing down individual quals */
-			List	   *upperrestrictlist = NIL;
-			ListCell   *l;
-
-			foreach(l, rel->baserestrictinfo)
-			{
-				RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-				Node	   *clause = (Node *) rinfo->clause;
-
-				if (!rinfo->pseudoconstant &&
-					qual_is_pushdown_safe(subquery, rti, clause, differentTypes))
-				{
-					/* Push it down */
-					subquery_push_qual(subquery, rte, rti, clause);
-				}
-				else
-				{
-					/* Keep it in the upper query */
-					upperrestrictlist = lappend(upperrestrictlist, rinfo);
-				}
-			}
-			rel->baserestrictinfo = upperrestrictlist;
-		}
-
-		pfree(differentTypes);
+		subquery = push_down_restrict(root, rel, rte, rti, subquery);
 
 		/*
 		 * CDB: Does the subquery return at most one row?
@@ -825,7 +779,28 @@ void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	else if (cteplaninfo->subplans == NULL)
 	{
 		PlannerConfig *config = CopyPlannerConfig(root->config);
-		subplan = subquery_planner(cteroot->glob, (Query *)cte->ctequery, cteroot,
+		Query		  *subquery = (Query *) cte->ctequery;
+
+		if ((cte->cterefcount - cteplaninfo->numInitPlans) == 1)
+		{
+			/*
+			 * If this CTE is referrenced only once,
+			 * it will become simple subquery scan.
+			 * In that case, we can push down quals in the same way
+			 * as set_subqeury_pathlist().
+			 *
+			 * subquery tree will be modified if any qual is pushed down.
+			 * There's risk that it'd be confusing if the tree is used
+			 * later. At the moment InitPlan case uses the tree, but it
+			 * is called earlier than this pass always, so we don't avoid it.
+			 *
+			 * Also, we might want to think extracting "common"
+			 * qual expressions between multiple references, but
+			 * so far we don't support it.
+			 */
+			subquery = push_down_restrict(root, rel, rte, rel->relid, subquery);
+		}
+		subplan = subquery_planner(cteroot->glob, subquery, cteroot,
 								   tuple_fraction, &subroot, config);
 
 		Assert(cte->cterefcount - cteplaninfo->numInitPlans >= 1);
@@ -1117,6 +1092,74 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, 
 /*****************************************************************************
  *			PUSHING QUALS DOWN INTO SUBQUERIES
  *****************************************************************************/
+
+/*
+ * push_down_restrict
+ *   push down restrictinfo to subquery if any.
+ *
+ * If there are any restriction clauses that have been attached to the
+ * subquery relation, consider pushing them down to become WHERE or HAVING
+ * quals of the subquery itself.  This transformation is useful because it
+ * may allow us to generate a better plan for the subquery than evaluating
+ * all the subquery output rows and then filtering them.
+ *
+ * There are several cases where we cannot push down clauses. Restrictions
+ * involving the subquery are checked by subquery_is_pushdown_safe().
+ * Restrictions on individual clauses are checked by
+ * qual_is_pushdown_safe().  Also, we don't want to push down
+ * pseudoconstant clauses; better to have the gating node above the
+ * subquery.
+ *
+ * Non-pushed-down clauses will get evaluated as qpquals of the
+ * SubqueryScan node.
+ *
+ * XXX Are there any cases where we want to make a policy decision not to
+ * push down a pushable qual, because it'd result in a worse plan?
+ */
+static Query *
+push_down_restrict(PlannerInfo *root, RelOptInfo *rel,
+				   RangeTblEntry *rte, Index rti,  Query *subquery)
+{
+	bool	   *differentTypes;
+
+	/* Nothing to do here if it doesn't have qual at all */
+	if (rel->baserestrictinfo == NIL)
+		return subquery;
+
+	/* We need a workspace for keeping track of set-op type coercions */
+	differentTypes = (bool *)
+		palloc0((list_length(subquery->targetList) + 1) * sizeof(bool));
+
+	if (subquery_is_pushdown_safe(subquery, subquery, differentTypes))
+	{
+		/* Ok to consider pushing down individual quals */
+		List	   *upperrestrictlist = NIL;
+		ListCell   *l;
+
+		foreach(l, rel->baserestrictinfo)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+			Node	   *clause = (Node *) rinfo->clause;
+
+			if (!rinfo->pseudoconstant &&
+				qual_is_pushdown_safe(subquery, rti, clause, differentTypes))
+			{
+				/* Push it down */
+				subquery_push_qual(subquery, rte, rti, clause);
+			}
+			else
+			{
+				/* Keep it in the upper query */
+				upperrestrictlist = lappend(upperrestrictlist, rinfo);
+			}
+		}
+		rel->baserestrictinfo = upperrestrictlist;
+	}
+
+	pfree(differentTypes);
+
+	return subquery;
+}
 
 /*
  * subquery_is_pushdown_safe - is a subquery safe for pushing down quals?

@@ -321,3 +321,5 @@ with b1 as (select * from b) select * from (select * from b1 where b1.i =1) AS F
 
 select * from (select * from (select * from b) as b1 where b1.i = 1) AS FOO, (select * from b) as foo2;
 --end_equivalent
+-- qual push down test
+explain with t as (select * from with_test1) select * from t where i = 10;

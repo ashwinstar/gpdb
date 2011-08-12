@@ -1643,3 +1643,12 @@ select * from (select * from (select * from b) as b1 where b1.i = 1) AS FOO, (se
 (2 rows)
 
 --end_equivalent
+-- qual push down test
+explain with t as (select * from with_test1) select * from t where i = 10;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Gather Motion 1:1  (slice1; segments: 1)  (cost=0.00..139.01 rows=1 width=14)
+   ->  Seq Scan on with_test1  (cost=0.00..139.01 rows=1 width=14)
+         Filter: i = 10
+(3 rows)
+
