@@ -12,7 +12,7 @@ then	FLAGS="-dt"
 else	FLAGS="--c-types=+dfmstuv"
 fi
 
-find `pwd`/ \( -name _deadcode -prune \) -o \
+find `pwd` \( -name _deadcode -prune \) -o \
 		-type f -name '*.[chyl]' -print |
 	xargs ctags "$FLAGS" -a -f tags
 
