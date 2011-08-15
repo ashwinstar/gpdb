@@ -68,6 +68,9 @@ bool GetResourceTypeByName(char *pNameIn, int *pTypeOut, Oid *pOidOut)
 
 	rel = heap_open(ResourceTypeRelationId, RowExclusiveLock);
 
+	cql0("SELECT * FROM pg_resourcetype" 
+		 " where resname = :1 FOR UPDATE", pNameIn);
+
 	ScanKeyInit(&key[0],
 				Anum_pg_resourcetype_resname,
 				BTEqualStrategyNumber, 
@@ -362,6 +365,9 @@ AlterResqueueCapabilityEntry(
 							 * pg_resqueuecapability 
 							 */
 
+			cql0("SELECT * FROM pg_resourcetype" 
+				 " where restypid = :1 FOR UPDATE", resTypeInt);
+
 			ScanKeyInit(&key[0],
 						Anum_pg_resourcetype_restypid,
 						BTEqualStrategyNumber, 
@@ -480,6 +486,8 @@ AlterResqueueCapabilityEntry(
 
 		/* Note: key is empty - scan entire table */
 
+		cql0("SELECT * FROM pg_resourcetype FOR UPDATE");
+
 		scan = systable_beginscan(rel,
 								  ResourceTypeRestypidIndexId,
 								  /* XXX XXX XXX XXX : snapshotnow ? */
@@ -570,6 +578,9 @@ AlterResqueueCapabilityEntry(
 
 		pResSetting = strVal(pVal);
 
+		cql0("SELECT * FROM pg_resqueuecapability"
+			 " WHERE resqueueid = :1  FOR UPDATE", queueid);
+
 		ScanKeyInit(&key[0],
 					Anum_pg_resqueuecapability_resqueueid,
 					BTEqualStrategyNumber, F_OIDEQ,
@@ -639,6 +650,9 @@ AlterResqueueCapabilityEntry(
 		
 		pVal = lfirst(lc2);
 
+		cql0("SELECT * FROM pg_resqueuecapability"
+			 " WHERE resqueueid = :1  FOR UPDATE", queueid);
+
 		ScanKeyInit(&key[0],
 					Anum_pg_resqueuecapability_resqueueid,
 					BTEqualStrategyNumber, F_OIDEQ,
@@ -689,6 +703,9 @@ GetResqueueCapabilityEntry(Oid  queueid)
 	rel = heap_open(ResQueueCapabilityRelationId, RowExclusiveLock);
 
 	tupdesc = RelationGetDescr(rel);
+
+	cql0("SELECT * FROM pg_resqueuecapability"
+		 " WHERE resqueueid = :1  FOR UPDATE", queueid);
 
 	ScanKeyInit(&key[0],
 				Anum_pg_resqueuecapability_resqueueid,
@@ -935,6 +952,8 @@ CreateQueue(CreateQueueStmt *stmt)
 			index_open(ResQueueCapabilityResqueueidIndexId, AccessShareLock);
 	
 	pg_resqueue_dsc = RelationGetDescr(pg_resqueue_rel);
+
+	cql0("SELECT * FROM pg_resqueue where rsqname = :1", stmt->queue);
 
 	ScanKeyInit(&key,
 				Anum_pg_resqueue_rsqname,
@@ -1316,6 +1335,9 @@ AlterQueue(AlterQueueStmt *stmt)
 
 	pg_resqueue_dsc = RelationGetDescr(pg_resqueue_rel);
 
+	cql0("SELECT * FROM pg_resqueue where rsqname = :1 FOR UPDATE",
+		 stmt->queue);
+
 	ScanKeyInit(&key,
 				Anum_pg_resqueue_rsqname,
 				BTEqualStrategyNumber,
@@ -1534,6 +1556,10 @@ DropQueue(DropQueueStmt *stmt)
 
 	pg_resqueue_dsc = RelationGetDescr(pg_resqueue_rel);
 
+	cql0("SELECT * FROM pg_resqueue"
+		 " where rsqname = :1 FOR UPDATE",
+		 stmt->queue);
+
 	ScanKeyInit(&key,
 				Anum_pg_resqueue_rsqname,
 				BTEqualStrategyNumber,
@@ -1562,6 +1588,8 @@ DropQueue(DropQueueStmt *stmt)
 	 */
 	pg_authid_rel = heap_open(AuthIdRelationId, AccessShareLock);
 	pg_authid_dsc = RelationGetDescr(pg_authid_rel);
+
+	cql0("SELECT * FROM pg_authid where rolresqueue = :1", queueid);
 
 	ScanKeyInit(&rolekey,
 				Anum_pg_authid_rolresqueue,
@@ -1651,6 +1679,9 @@ DropQueue(DropQueueStmt *stmt)
 						queueid);
 
 	/* MPP-6923: drop the extended attributes for this queue */	 
+
+	cql0("DELETE FROM pg_resqueuecapability where resqueueid = :1",
+		 queueid);
 	{
 		HeapTuple	 xtuple;
 		ScanKeyData	 xkey[1];
