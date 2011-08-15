@@ -311,7 +311,7 @@ endif
 ##
 ## If PARALLEL_BUILD is set to any value, calculate parallel execution
 ## value.  Developers have the ability to control the parallel
-## execution characteristics.  This is performd by adjusting the max
+## execution characteristics.  This is performed by adjusting the max
 ## system load limit (parallelexec_maxlimit) and number of CPUs
 ## parallel job factor (parallelexec_cpufactor).
 ##
