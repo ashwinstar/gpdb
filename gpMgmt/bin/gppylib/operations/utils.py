@@ -1,7 +1,8 @@
+import os
+import sys
 import pickle
 
 from gppylib import gplog
-from gppylib.mainUtils import getProgramName
 from gppylib.commands.base import OperationWorkerPool, Command, REMOTE
 from gppylib.operations import Operation
 
@@ -39,7 +40,8 @@ class RemoteOperation(Operation):
         self.operation = operation
         self.host = host
     def execute(self):
-        pickled_execname = pickle.dumps(getProgramName()) 
+        execname = os.path.split(sys.argv[0])[-1]
+        pickled_execname = pickle.dumps(execname) 
         pickled_operation = pickle.dumps(self.operation)
         cmd = Command('pickling an operation', 'gpoperation.py',
                       ctxt=REMOTE, remoteHost=self.host, stdin = pickled_execname + pickled_operation)

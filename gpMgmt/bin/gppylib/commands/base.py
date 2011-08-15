@@ -344,6 +344,12 @@ class ExecutionContext():
     gather up information that are the results of the command.  
     
     """
+
+    propagate_env_map = {}
+    """ 
+    Dict. mapping environment variables to their values. See gpcoverage.py for example usage.
+    """
+
     def __init__(self):
         pass
     
@@ -361,13 +367,17 @@ class LocalExecutionContext(ExecutionContext):
     proc=None
     halt=False
     completed=False
-    
+
     def __init__(self,stdin):
         ExecutionContext.__init__(self)
         self.stdin = stdin
         pass
     
     def execute(self,cmd):
+        # prepend env. variables from ExcecutionContext.propagate_env_map
+        # e.g. Given {'FOO': 1, 'BAR': 2}, we'll produce "FOO=1 BAR=2 ..."
+        for k, v in self.__class__.propagate_env_map.iteritems():
+            cmd.cmdStr = "%s=%s %s" % (k, v, cmd.cmdStr)
         
         # executable='/bin/bash' is to ensure the shell is bash.  bash isn't the
         # actual command executed, but the shell that command string runs under.
@@ -569,6 +579,11 @@ class NakedExecutionContext(LocalExecutionContext):
 
     
 class RemoteExecutionContext(LocalExecutionContext):
+
+    trail = set()
+    """
+    Leaves a trail of hosts to which we've ssh'ed, during the life of a particular interpreter.
+    """
     
     def __init__(self,targetHost,stdin):
         LocalExecutionContext.__init__(self, stdin)
@@ -576,6 +591,12 @@ class RemoteExecutionContext(LocalExecutionContext):
         pass
     
     def execute(self,cmd):
+        # prepend env. variables from ExcecutionContext.propagate_env_map
+        # e.g. Given {'FOO': 1, 'BAR': 2}, we'll produce "FOO=1 BAR=2 ..."
+        for k, v in self.__class__.propagate_env_map.iteritems():
+            cmd.cmdStr = "%s=%s %s" % (k, v, cmd.cmdStr)
+        self.__class__.trail.add(self.targetHost)
+
         # Escape " for remote execution otherwise it interferes with ssh
         cmd.cmdStr = cmd.cmdStr.replace('"', '\\"')
         cmd.cmdStr="ssh -o 'StrictHostKeyChecking no' %s \"%s %s\"" % (self.targetHost,SRC_GPPATH,cmd.cmdStr)
