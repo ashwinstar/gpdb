@@ -396,6 +396,8 @@ extern MemTuple ExecCopySlotMemTupleTo(TupleTableSlot *slot, MemoryContext pctxt
 extern HeapTuple ExecFetchSlotHeapTuple(TupleTableSlot *slot);
 extern MemTuple ExecFetchSlotMemTuple(TupleTableSlot *slot, bool inline_toast);
 
+extern Datum ExecFetchSlotTupleDatum(TupleTableSlot *slot);
+
 static inline void *ExecFetchSlotGenericTuple(TupleTableSlot *slot, bool mtup_inline_toast)
 {
 	Assert(!TupIsNull(slot));

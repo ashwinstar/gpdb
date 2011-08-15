@@ -517,6 +517,36 @@ ExecStoreMemTuple(MemTuple mtup, TupleTableSlot *slot, bool shouldFree)
 }
 
 /* --------------------------------
+ *		ExecFetchSlotTupleDatum
+ *			Fetch the slot's tuple as a composite-type Datum.
+ *
+ *		We convert the slot's contents to local physical-tuple form,
+ *		and fill in the Datum header fields.  Note that the result
+ *		always points to storage owned by the slot.
+ * --------------------------------
+ */
+Datum
+ExecFetchSlotTupleDatum(TupleTableSlot *slot)
+{
+	HeapTuple	tup;
+	HeapTupleHeader td;
+	TupleDesc	tupdesc;
+
+	/* Make sure we can scribble on the slot contents ...
+	 * GPDB: ExecFetchSlotHeapTuple() replaces the Postgres call to
+	 * ExecMaterializeSlot() due to restructuring of the code around
+	 * memtuple support */
+	tup = ExecFetchSlotHeapTuple(slot);
+	/* ... and set up the composite-Datum header fields, in case not done */
+	td = tup->t_data;
+	tupdesc = slot->tts_tupleDescriptor;
+	HeapTupleHeaderSetDatumLength(td, tup->t_len);
+	HeapTupleHeaderSetTypeId(td, tupdesc->tdtypeid);
+	HeapTupleHeaderSetTypMod(td, tupdesc->tdtypmod);
+	return PointerGetDatum(td);
+}
+
+/* --------------------------------
  *		ExecClearTuple
  *
  *		This function is used to clear out a slot in the tuple table.
