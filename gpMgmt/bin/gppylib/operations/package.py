@@ -1,5 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python 
 #
+# Line too long - pylint: disable=C0301
 # Copyright (c) Greenplum Inc 2010. All Rights Reserved.
 #
 # import mainUtils FIRST to get python version check
@@ -20,9 +21,10 @@ try:
     from gppylib import gplog
     from gppylib.commands.base import Command, REMOTE, WorkerPool, ExecutionError
     from gppylib.operations import Operation
-    from gppylib.operations.unix import RemoveRemoteTree, CheckRemoteDir
-except ImportError, e:
-    sys.exit('Operation: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e)) 
+    from gppylib.operations.unix import RemoveRemoteTree, RemoveRemoteFile, CheckRemoteDir, MakeRemoteDir 
+    from gppylib.mainUtils import ExceptionNoStackTraceNeeded
+except ImportError, ex:
+    sys.exit('Operation: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(ex)) 
 
 logger = gplog.get_default_logger()
 
@@ -34,7 +36,6 @@ SPECFILE_OPTIONAL_TAGS = ['preinstall', 'postinstall', 'preuninstall', 'postunin
 
 RPM_DATABASE = os.path.join(GPHOME, 'addons/.gprpmdb')
 RPM_INSTALLATION_PATH = GPHOME
-RPM_INSTALLATION_CMD = 'rpm -i %s --dbpath %s --prefix=%s'   
 GPPKG_ARCHIVE_PATH = os.path.join(GPHOME, 'addons/archive')
 
 TEMP_EXTRACTION_PATH = GPHOME + '/.tmp'
@@ -76,7 +77,6 @@ class BuildPkgError(Exception):
     pass
 
 class MissingDependencyError(Exception):
- 
     '''
         Exception to catch missing dependency
     '''
@@ -85,7 +85,6 @@ class MissingDependencyError(Exception):
         Exception.__init__(self, 'Dependency %s is missing' % value )
 
 class OSCompatibilityError(Exception):
-
     '''
         Exception to notify that OS does not meet the 
         requirement
@@ -94,7 +93,6 @@ class OSCompatibilityError(Exception):
         Exception.__init__(self, '%s OS required. %s OS found' % (requiredos, foundos))
 
 class ArchCompatibilityError(Exception):
-
     '''
         Exception to notify that architecture does not meet
         the requirement
@@ -103,7 +101,6 @@ class ArchCompatibilityError(Exception):
         Exception.__init__(self, '%s Arch required. %s Arch found' % (requiredarch, foundarch))
 
 class RequiredDependencyError(Exception):
-
     '''
         Exception to notify that the package being uninstalled
         is a dependency for another package
@@ -115,13 +112,19 @@ class LocalCommand(Operation):
         Executes a command locally
     '''
 
-    def __init__(self, cmd_str):
+    def __init__(self, cmd_str, echo = False):
         self.cmd_str = cmd_str
+        self.echo = echo
 
     def execute(self):
 
+        logger.debug(self.cmd_str)
         cmd = Command(name = 'LocalCommand', cmdStr = self.cmd_str)
         cmd.run(validateAfter = True)
+        if self.echo:
+            echo_str = cmd.get_results().stdout.strip()
+            if echo_str:
+                logger.info(echo_str)
         return cmd.get_results()
 
 class RemoteCommand(Operation):
@@ -134,7 +137,9 @@ class RemoteCommand(Operation):
         self.host_list = host_list
        
     def execute(self):
-        
+       
+        logger.debug(self.cmd_str)
+
         # Create Worker pool
         # and add commands to it
         pool = WorkerPool()
@@ -151,7 +156,6 @@ class RemoteCommand(Operation):
         pool.check_results()
 
 class TransferPackageContents(Operation):
-      
     '''
       Transfer the package contents which have been upacked in 
       the $GPHOME/.tmp directory to the segment hosts 
@@ -169,18 +173,14 @@ class TransferPackageContents(Operation):
          
         #clean up the .tmp dir first before transferring
         for host in self.segment_host_list:
-            if host != self.master_host:        #Segments might exist on the master itself. So we need to check for this.
-                if CheckRemoteDir(TEMP_EXTRACTION_PATH, host).run():
-                    RemoveRemoteTree(TEMP_EXTRACTION_PATH, host).run()
+            if CheckRemoteDir(TEMP_EXTRACTION_PATH, host).run():
+                RemoveRemoteTree(TEMP_EXTRACTION_PATH, host).run()
 
-        # self._remote_command(cmd_str, host_list)
-         
         #transfer to segments
         for host in self.segment_host_list:
-            if host != self.master_host:
-                logger.info('Transferring package to segment %s' % host)
-                scp = Scp(name = 'copy gppkg to segments', srcFile = TEMP_EXTRACTION_PATH, dstFile = TEMP_EXTRACTION_PATH, srcHost = None, dstHost = host, recursive = True)
-                pool.addCommand(scp)
+            logger.info('Transferring package to segment %s' % host)
+            scp = Scp(name = 'copy gppkg to segments', srcFile = TEMP_EXTRACTION_PATH, dstFile = TEMP_EXTRACTION_PATH, srcHost = None, dstHost = host, recursive = True)
+            pool.addCommand(scp)
         pool.join()
          
         pool.check_results()
@@ -188,7 +188,7 @@ class TransferPackageContents(Operation):
         #clean up the .tmp dir first before transferring
         if self.standby_host:
             if CheckRemoteDir(TEMP_EXTRACTION_PATH, self.standby_host).run():
-                RemoveRemoteTree(TEMP_EXTRACTION_PATH, host).run()
+                RemoveRemoteTree(TEMP_EXTRACTION_PATH, self.standby_host).run()
 
         #transfer to standby
         if self.standby_host:
@@ -197,7 +197,6 @@ class TransferPackageContents(Operation):
             scp.run(validateAfter = True)
 
 class CleanupDir(Operation):
-      
     '''
         Cleans up the given dir 
         Returns True if either the dir is already removed
@@ -212,7 +211,7 @@ class CleanupDir(Operation):
        
         dir_path = self.dir_path
 
-        logger.info('Cleaning up %s' % dir_path)
+        logger.debug('Cleaning up %s' % dir_path)
 
         #If file does not exist, nothing to remove
         #So we return true
@@ -242,12 +241,116 @@ class IsRpmInstalled(Operation):
      
         try:
             cmd_str = 'rpm -q %s --dbpath %s' % (rpm, RPM_DATABASE)
-            results = LocalCommand(cmd_str).run()
+            LocalCommand(cmd_str).run()
 
             return True
 
         except ExecutionError:
             return False
+
+class IsVersionCompatible(Operation):
+    '''
+        Returns True if the gppkg is compatible 
+        with the gpdb version that has been installed
+    '''
+    def __init__(self, gppkg):
+        self.gppkg = gppkg
+
+    def execute(self):
+
+        gppkg = self.gppkg
+
+        gpdb_version = self._get_gpdb_version()
+
+        logger.debug('GPDB Version = %s' % gpdb_version)
+        logger.debug('GPDB min = %s' % gppkg.gpdbmin)
+        logger.debug('GPDB max = %s' % gppkg.gpdbmax)
+
+        if gpdb_version is None:
+            logger.error('Could not determine gpdb version')
+            return False
+ 
+        if gppkg.gpdbmin == gppkg.gpdbmax:
+            if gpdb_version != gppkg.gpdbmin:
+                logger.error('%s requires gpdb version %s' % (gppkg.pkg, gppkg.gpdbmin))
+                return False
+
+        if gpdb_version < gppkg.gpdbmin:
+            logger.error('%s requires gpdb version >= %s' % (gppkg.pkg, gppkg.gpdbmin))
+            return False 
+        elif gpdb_version > gppkg.gpdbmax:
+            logger.error('%s requires gpdb version <= %s' % (gppkg.pkg, gppkg.gpdbmax))
+            return False 
+
+        return True
+
+    def _get_gpdb_version(self):
+        '''
+            Get the version of the current GPDB
+            Returns a string consisting of the major 
+            release version
+        '''
+
+        logger.debug('_get_gpdb_version')
+        self.gphome = gp.get_gphome()
+        version = gp.GpVersion.local('local GP software version check', self.gphome)
+        gpdb_version = GpVersion(version.strip()) 
+        return gpdb_version
+
+class StorePackageInArchive(Operation):
+    '''
+        Stores gppkg in $GPHOME/arhive
+        The packages need to be store in both 
+        Master and the Standby
+    '''
+
+    def __init__(self, gppkg, standby):
+        self.gppkg = gppkg
+        self.standby = standby
+
+    def execute(self):
+
+        gppkg = self.gppkg
+      
+        #Store the package on the standby master
+        if self.standby:
+            if not CheckRemoteDir(GPPKG_ARCHIVE_PATH, self.standby).run():
+                MakeRemoteDir(GPPKG_ARCHIVE_PATH, self.standby).run()
+
+            #Scp the package 
+            scp = Scp(name = 'copy gppkg to segments', srcFile = gppkg.abspath, dstFile = os.path.join(GPPKG_ARCHIVE_PATH, gppkg.pkg), srcHost = None, dstHost = self.standby, recursive = False)
+            scp.run(validateAfter = True)
+
+        #Store the package from the archive on master
+        if not os.path.exists(GPPKG_ARCHIVE_PATH):
+            os.mkdir(GPPKG_ARCHIVE_PATH)
+        shutil.copyfile(gppkg.abspath, os.path.join(GPPKG_ARCHIVE_PATH, gppkg.pkg))
+
+class RemovePackageFromArchive(Operation):
+    '''
+        Removes packages from $GPHOME/archive
+        The packages need to be removed from both
+        Master and Standby
+    '''
+
+    def __init__(self, pkg_path, standby):
+        self.pkg_path = pkg_path
+        self.standby = standby
+
+    def execute(self):
+     
+        #gppkg = self.gppkg
+
+        #Remove from the master
+        if os.path.exists(os.path.join(GPPKG_ARCHIVE_PATH, self.pkg_path)):
+            os.remove(os.path.join(GPPKG_ARCHIVE_PATH, self.pkg_path))
+
+        #Remove from the standby
+        if self.standby:
+            if not CheckRemoteDir(GPPKG_ARCHIVE_PATH, self.standby).run():
+                return
+            else:
+                RemoveRemoteFile(os.path.join(GPPKG_ARCHIVE_PATH, self.pkg_path), self.standby).run()
 
 ##############################################################################
 #    This class can be replaced completely by using a single command         #
@@ -269,14 +372,14 @@ class GetRpmInstallString(Operation):
         
         gppkg = self.gppkg
 
-        q = Queue()
+        queue = Queue()
         rpm_list = [] 
         used = dict() 
         
-        q.put(gppkg.main_rpm)
+        queue.put(gppkg.main_rpm)
 
-        while not q.empty():
-            rpm = q.get()  
+        while not queue.empty():
+            rpm = queue.get()  
             rpm_list.append(rpm)
             used[rpm] = True            #TODO: Check this in before submitting code
 
@@ -293,12 +396,12 @@ class GetRpmInstallString(Operation):
                 if dep is not None:
                     dep = dep.strip()
 
-                if dep == '(none)' or len(dep) == 0:
+                if dep == '(none)' or len(dep) == 0 or 'rpmlib(CompressedFileNames)' in dep or 'rpmlib(PayloadFilesHavePrefix)' in dep:
                     break 
 
                 if dep in gppkg.dependencies:
                     if not IsRpmInstalled(dep).run() and dep not in used.keys():
-                        q.put(dep)
+                        queue.put(dep)
                 else:
                     raise MissingDependencyError(dep)
 
@@ -306,58 +409,19 @@ class GetRpmInstallString(Operation):
 
         return rpm_install_string
 
-#TODO: Try to make this operation idempotent
-class InstallGppkg(Operation):
+class ExtractPackage(Operation):
     '''
-        Main Class for installing a gppkg
+        Extract the contents of the package into the temp folder
     '''
-    def __init__(self, gppkg, master_host, standby_host, segment_host_list):
-        self.gppkg = gppkg
-        self.master_host = master_host
-        self.standby_host = standby_host
-        self.segment_host_list = segment_host_list
+
+    def __init__(self, gppkg):
+        self.gppkg = gppkg 
 
     def execute(self):
-       
-        gppkg = self.gppkg
-
-        logger.info('Installing package %s' % gppkg.pkg_path)
-
+      
         try:
+            gppkg = self.gppkg
 
-            #Check the GPDB requirements
-            gpdb_version = self._get_gpdb_version()
-
-            if gpdb_version is None:
-                logger.error('Could not determine gpdb version')
-                raise GpdbVersionError
- 
-            if gppkg.gpdbmin == gppkg.gpdbmax:
-                if gpdb_version != str(gppkg.gpdbmin):
-                    logger.error('%s requires gpdb version %s' % (gppkg.pkg_path, gppkg.gpdbmin))
-                    raise GpdbVersionError
-
-            if gpdb_version < str(gppkg.gpdbmin):
-                logger.error('%s requires gpdb version >= %s' % (gppkg.pkg_path, gppkg.gpdbmin))
-                raise GpdbVersionError
-            elif gpdb_version > str(gppkg.gpdbmax):
-                logger.error('%s requires gpdb version <= %s' % (gppkg.pkg_path, gppkg.gpdbmax))
-                raise GpdbVersionError
-
-            #TODO: Temporarily disabled. Will enable this for the final version
-            #OS compatibility
-            if gppkg.os.lower() != platform.system().lower():
-                raise OSCompatibilityError(gppkg.os, platform.system().lower())
-
-            #TODO: Temporariliy disabled. will enable this for the final version
-            #architecture compatibility
-            if gppkg.architecture.lower() !=  platform.machine().lower():
-                raise ArchCompatibilityError(gppkg.architecture, platform.machine().lower())
- 
-            #check if already installed
-            if IsRpmInstalled(gppkg.main_rpm).run():
-                raise AlreadyInstalledError(gppkg.pkg_path) 
-    
             #clean up tmp extraction folder
             if os.path.exists(TEMP_EXTRACTION_PATH) and not CleanupDir(TEMP_EXTRACTION_PATH).run():
                 logger.error('Could not clean temp folder')
@@ -373,6 +437,52 @@ class InstallGppkg(Operation):
                 for cur_file in os.listdir(path):
                     shutil.move(os.path.join(TEMP_EXTRACTION_PATH, DEPS_DIR, cur_file), TEMP_EXTRACTION_PATH)
 
+        finally:
+            if tarinfo:
+                tarinfo.close()
+
+#TODO: Try to make this operation idempotent
+class InstallGppkg(Operation):
+    '''
+        Main Class for installing a gppkg
+    '''
+    def __init__(self, gppkg, master_host, standby_host, segment_host_list):
+        self.gppkg = gppkg
+        self.master_host = master_host
+        self.standby_host = standby_host
+        self.segment_host_list = segment_host_list
+
+    def execute(self):
+       
+        rpm_installation_cmd = 'rpm -i %s --dbpath %s --prefix=%s'   
+
+        gppkg = self.gppkg
+
+        logger.info('Installing package %s' % gppkg.pkg)
+
+        try:
+
+            #Check the GPDB requirements
+            if not IsVersionCompatible(gppkg).run():
+                raise GpdbVersionError
+
+            #TODO: Temporarily disabled. Will enable this for the final version
+            #OS compatibility
+            if gppkg.os.lower() != platform.system().lower():
+                raise OSCompatibilityError(gppkg.os, platform.system().lower())
+
+            #TODO: Temporariliy disabled. will enable this for the final version
+            #architecture compatibility
+            if gppkg.architecture.lower() !=  platform.machine().lower():
+                raise ArchCompatibilityError(gppkg.architecture, platform.machine().lower())
+ 
+            #check if already installed
+            if IsRpmInstalled(gppkg.main_rpm).run():
+                raise AlreadyInstalledError(gppkg.pkg) 
+
+            #Extract the package contents
+            ExtractPackage(gppkg).run()
+
             #Transfer the gppkgs to the new segments 
             #before actual installation
             TransferPackageContents(self.master_host, self.standby_host, self.segment_host_list).run()
@@ -384,7 +494,7 @@ class InstallGppkg(Operation):
             install_string = GetRpmInstallString(gppkg).run()
 
             #prepare the command string
-            cmd_str = RPM_INSTALLATION_CMD % (install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
+            cmd_str = rpm_installation_cmd % (install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
    
             #chdir to the correct directory where files are located
             old_dir = os.getcwd()
@@ -407,32 +517,15 @@ class InstallGppkg(Operation):
             self._perform_post_install(gppkg)
  
             #Store the gppkg in $GPHOME/addons/archive
-            if not os.path.exists(GPPKG_ARCHIVE_PATH):
-                os.mkdir(GPPKG_ARCHIVE_PATH)
-            shutil.copyfile(gppkg.abspath, os.path.join(GPPKG_ARCHIVE_PATH, gppkg.pkg_path))
-    
+            StorePackageInArchive(gppkg, self.standby_host).run()
+
+            logger.info('%s successfully installed.' %(gppkg.pkg))
+
         finally:
             if  os.path.exists(TEMP_EXTRACTION_PATH) and not CleanupDir(TEMP_EXTRACTION_PATH).run():
                 raise IOError
 
-    def _get_gpdb_version(self):
-   
-        '''
-            Get the version of the current GPDB
-            Returns a string consisting of the major 
-            release version
-        '''
-
-        logger.debug('_get_gpdb_version')
-        self.gphome = gp.get_gphome()
-        version = gp.GpVersion.local('local GP software version check', self.gphome)
-        gpdb_version = GpVersion(version.strip()) 
-        gpdb_version = gpdb_version.getVersionRelease()
-        self.version = gpdb_version
-        return self.version
-
     def _perform_pre_install(self, gppkg):
-
         '''
             Perform any pre installation steps 
             that have been specified in the yml file 
@@ -454,16 +547,17 @@ class InstallGppkg(Operation):
                     return
                 key_str = key[0]
                 if key_str.lower() == 'master': 
-                    result = LocalCommand(preinst[key_str]).run()
+                    if self.standby_host:
+                        RemoteCommand(preinst[key_str], [self.standby_host]).run()
+                    LocalCommand(preinst[key_str], True).run()
                 elif key_str.lower() == 'segment':
-                    results = RemoteCommand(preinst[key_str], self.segment_host_list).run()
+                    RemoteCommand(preinst[key_str], self.segment_host_list).run()
            
         finally:
             #Change back to old directory
             os.chdir(old_dir)
 
     def _perform_post_install(self, gppkg):
-
         '''
             Perform post installation steps
             that have been specified in the yml file
@@ -487,9 +581,11 @@ class InstallGppkg(Operation):
                     return
                 key_str = key[0]
                 if key_str.lower() == 'master':
-                    result = LocalCommand(postinst[key_str]).run()
+                    if self.standby_host:
+                        RemoteCommand(postinst[key_str], [self.standby_host]).run()
+                    LocalCommand(postinst[key_str], True).run()
                 elif key_str.lower() == 'segment':
-                    results = RemoteCommand(postinst[key_str], self.segment_host_list).run()
+                    RemoteCommand(postinst[key_str], self.segment_host_list).run()
             
         finally:
             #Change back to original directory
@@ -501,69 +597,143 @@ class UnInstallGppkg(Operation):
         Uninstall a given gppkg
     '''
 
-    def __init__(self, gppkg, master_host, standby_host, segment_host_list):
+    def __init__(self, gppkg, master_host, standby_host, segment_host_list, cleanup_gppkg = False):
         self.gppkg = gppkg
         self.master_host = master_host
         self.standby_host = standby_host
         self.segment_host_list = segment_host_list
+        self.cleanup_gppkg = cleanup_gppkg
 
     def execute(self):
 
-        gppkg = self.gppkg
+        rpm_remove_cmd = 'rpm -e %s --dbpath %s'
 
-        #Test to see if the main rpm has been installed or not
-        #Since the DB on the master will be identical to the 
-        #ones on the segment, it is sufficient to check only that
-        #RPM database
-        if not IsRpmInstalled(gppkg.main_rpm).run():
-            raise NotInstalledError(gppkg.pkg_path)
+        tarinfo = None
+        try:
+            gppkg = self.gppkg
 
-        #unpack the package so that we can read the uninstall hooks if any
-        #clean up tmp extraction folder
-        if os.path.exists(TEMP_EXTRACTION_PATH) and not CleanupDir(TEMP_EXTRACTION_PATH).run():
-            logger.error('Could not clean temp folder')
-            raise IOError
+            #Test to see if the main rpm has been installed or not
+            #Since the DB on the master will be identical to the 
+            #ones on the segment, it is sufficient to check only that
+            #RPM database
+            if not self.cleanup_gppkg:
+                if not IsRpmInstalled(gppkg.main_rpm).run():
+                    raise NotInstalledError(gppkg.pkg)
 
-        #untar the package into tmp folder
-        tarinfo = tarfile.open(gppkg.abspath)
-        tarinfo.extractall(TEMP_EXTRACTION_PATH)
+            #unpack the package so that we can read the uninstall hooks if any
+            #clean up tmp extraction folder
+            if os.path.exists(TEMP_EXTRACTION_PATH) and not CleanupDir(TEMP_EXTRACTION_PATH).run():
+                logger.error('Could not clean temp folder')
+                raise IOError
+
+            #untar the package into tmp folder
+            tarinfo = tarfile.open(gppkg.abspath)
+            tarinfo.extractall(TEMP_EXTRACTION_PATH)
  
-        #Transfer the package contents
-        TransferPackageContents(self.master_host, self.standby_host, self.segment_host_list).run()
+            #Transfer the package contents
+            TransferPackageContents(self.master_host, self.standby_host, self.segment_host_list).run()
 
-        #Pre uninstall hooks
-        self._perform_pre_uninstall(gppkg)
+            #Pre uninstall hooks
+            self._perform_pre_uninstall(gppkg)
 
-        #perfrom the uninstall. This just involves removing the main rpm.
-        #We retain the other dependency rpms installed as other packages
-        #might be using them
-        rpm = gppkg.main_rpm[:-4]       #getting rid of the '.rpm' extension
-        #What if the main rpm is a dependency of another rpm. e.g R is a dependency for PL/R
-        #TODO: We need to check for that before uninstalling
-        cmd_str = 'rpm -e --test %s --dbpath %s' % (rpm, RPM_DATABASE)
-        if LocalCommand(cmd_str).run().rc != 0: 
-            raise RequiredDependencyError            
-        cmd_str = 'rpm -e %s --dbpath %s' % (rpm, RPM_DATABASE)
+            #perfrom the uninstall. 
+            #'-4' to remove the '.rpm' extension
+            rpm_uninstall_string = gppkg.main_rpm[:-4] + ' ' 
+            for dep in gppkg.dependencies:
+                rpm_uninstall_string += (dep[:-4] + ' ')
 
-        #First uninstall on the segment hosts
-        RemoteCommand(cmd_str, self.segment_host_list).run()
+            #We first do a test removal to see if removing the packages cause any conflicts
+            #We filter out all those rpms which cause conflicts and remove the remaining ones
+            cmd_str = 'rpm -e --test %s --dbpath %s' % (rpm_uninstall_string, RPM_DATABASE)
 
-        #Next uninstall on the standby host
-        if self.standby_host:
-            RemoteCommand(cmd_str, [self.standby_host]).run()
+            result = None
 
-        #Last Uninstall on the master host
-        LocalCommand(cmd_str).run()
+            #We parse the stderr to make sure that we exit for the right reason
+            #E.g of the error on which we want to exit :-
+            #error: Failed dependencies:
+            #    geosdevel-1.12-1.noarch.rpm is needed by (installed) geos-1.12-1.noarch
+            #    geosdevel-1.12-1.noarch.rpm is needed by (installed) postgis-1.13-1.noarch
 
-        #Post uninstall hooks
-        self._perform_post_uninstall(gppkg)
+            try:
+                result =  LocalCommand(cmd_str).run() 
+            except ExecutionError, ex:
+                results =  ex.cmd.get_results().stderr.strip().split('\n')
+                for result in results:
+                    if 'failed dependencies' in result.lower():     #conflicting dependencies so ignore these and remove the rest
+                        rpm_uninstall_string = self._get_filtered_rpm_string(results)            
+                        break
 
-        #Remove package from $GPHOME/addons/archive
-        if os.path.exists(os.path.join(GPPKG_ARCHIVE_PATH, gppkg.pkg_path)):
-            os.remove(os.path.join(GPPKG_ARCHIVE_PATH, gppkg.pkg_path))
+            cmd_str = rpm_remove_cmd % (rpm_uninstall_string, RPM_DATABASE)
+
+            try:
+                #First uninstall on the segment hosts
+                RemoteCommand(cmd_str, self.segment_host_list).run()
+            except ExecutionError, ex:
+                if self.cleanup_gppkg:
+                    results =  ex.cmd.get_results().stderr.strip().split('\n')
+                    for result in results:
+                        if not 'cannot create' in result.lower():                       #This is for the repackaging feature of rpm. TODO: Probably there is a way to turn this feature off
+                            raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
+
+            try:
+                #Next uninstall on the standby host
+                if self.standby_host:
+                    RemoteCommand(cmd_str, [self.standby_host]).run()
+            except ExecutionError, ex:
+                if self.cleanup_gppkg:
+                    results =  ex.cmd.get_results().stderr.strip().split('\n')
+                    for result in results:
+                        if not 'cannot create' in result.lower():
+                            raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
+
+            try:
+                #Last Uninstall on the master host
+                LocalCommand(cmd_str).run()
+            except ExecutionError, ex:
+                if not self.cleanup_gppkg:
+                    results =  ex.cmd.get_results().stderr.strip().split('\n')
+                    for result in results:
+                        if not 'cannot create' in result.lower():
+                            raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
+
+            #Post uninstall hooks
+            self._perform_post_uninstall(gppkg)
+
+            #Remove package from $GPHOME/addons/archive
+            RemovePackageFromArchive(gppkg.pkg, self.standby_host).run()
+            
+            logger.info('%s has been uninstalled.' % (gppkg.pkg))
+
+        finally:
+            if tarinfo:
+                tarinfo.close()
         
+    def _get_filtered_rpm_string(self, results):
+        '''
+            Filters the results and returns those rpms
+            which can be uninstalled safely without
+            causing any dependency issues
+        '''
+
+        filtered_rpm_string = ' ' 
+        filter_set = set() 
+        for result in results:
+            tokens = result.split(' ')
+
+            for token in tokens:
+                if '.rpm' in token:
+                    filter_set.add(token.strip())
+
+        if self.gppkg.main_rpm not in filter_set:
+            filtered_rpm_string = self.gppkg.main_rpm[:-4] + ' '
+
+        for rpm in self.gppkg.dependencies:
+            if rpm not in filter_set:
+                filtered_rpm_string = filtered_rpm_string + rpm[:-4] + ' '
+
+        return filtered_rpm_string
+
     def _perform_pre_uninstall(self, gppkg):
-        
         '''
             Perform pre uninstall steps
             that have been specified in yml file
@@ -587,16 +757,17 @@ class UnInstallGppkg(Operation):
                     return
                 key_str = key[0]
                 if key_str.lower() == 'master':
-                    result = LocalCommand(preuninst[key_str]).run()
+                    if self.standby_host:
+                        RemoteCommand(preuninst[key_str], [self.standby_host]).run()
+                    LocalCommand(preuninst[key_str], True).run()
                 elif key_str.lower() == 'segment':
-                    results = RemoteCommand(preuninst[key_str], self.segment_host_list).run()
+                    RemoteCommand(preuninst[key_str], self.segment_host_list).run()
             
         finally:
             #Change back to original directory
             os.chdir(old_dir)
             
     def _perform_post_uninstall(self, gppkg):
-        
         '''
             Perform post uninstall steps
             that have been specified in yml file
@@ -619,16 +790,17 @@ class UnInstallGppkg(Operation):
                     return
                 key_str = key[0]
                 if key_str.lower() == 'master':
-                    result = LocalCommand(postuninst[key_str]).run()
+                    if self.standby_host:
+                        RemoteCommand(postuninst[key_str], [self.standby_host]).run()
+                    LocalCommand(postuninst[key_str], True).run()
                 elif key_str.lower() == 'segment':
-                    results = RemoteCommand(postuninst[key_str], self.segment_host_list).run()
+                    RemoteCommand(postuninst[key_str], self.segment_host_list).run()
             
         finally:
             #Change back to original directory
             os.chdir(old_dir)
 
 class QueryGppkg(Operation):
-    
     '''
        Query the gppkg and print out information regarding it
     '''
@@ -644,10 +816,10 @@ class QueryGppkg(Operation):
 
         #print out the information about the package
         if self.query in ['I', '-I', 'info', '--info']:
-            print 'Name: %s' % gppkg.pkg_path[:gppkg.pkg_path.index('-')]
+            print 'Name: %s' % gppkg.pkgname
             print 'Version:    %s' % gppkg.version
-            print 'OS: %s' % gppkg.os
-            print 'Architecture: %s' % gppkg.architecture
+            print 'Architecture:    %s' % gppkg.architecture
+            print 'OS:         %s' % gppkg.os
             print 'GPDBMin:    %s' % gppkg.gpdbmin
             print 'GPDBMax:    %s' % gppkg.gpdbmax
             print 'Description:    %s' % gppkg.description
@@ -673,7 +845,6 @@ class QueryGppkg(Operation):
             print '%s is not installed.' % gppkg.pkgname
 
 class BuildGppkg(Operation):
-
     '''
         Builds a gppkg given a directory containing 
         the spec file, rpms and any pre/post installation scripts
@@ -709,11 +880,10 @@ class BuildGppkg(Operation):
         if pkg_path_details is None:
             raise BuildPkgError 
 
-        #The file already exists 
-        pkg_path = pkg_path_details['pkgname'] + '-' + str(pkg_path_details['version']) + '-' + pkg_path_details['os'] + '-' + pkg_path_details['architecture'] + '.gppkg'
-        if os.path.exists(pkg_path):
-            logger.error(' %s already exists !' % pkg_path)
-            raise BuildPkgError 
+        #The file already exists. Rewrite the original with the new one 
+        pkg = pkg_path_details['pkgname'] + '-' + str(pkg_path_details['version']) + '-' + pkg_path_details['os'] + '-' + pkg_path_details['architecture'] + '.gppkg'
+        if os.path.exists(pkg):
+            os.remove(pkg)
 
         #Verify the spec file 
         if not self._verify_specfile(specfile, directory):
@@ -728,23 +898,24 @@ class BuildGppkg(Operation):
 
         #tar and gzip the directory
         #rename the file with .gppkg extension
-        tar = tarfile.open(pkg_path, 'w:gz')
 
-        for cur_file in filelist:
-            tar.add(cur_file)
+        try:
+            tar = tarfile.open(pkg, 'w:gz')
 
-        tar.close()
+            for cur_file in filelist:
+                tar.add(cur_file)
+        finally:
+            tar.close()
 
         #change back to old directory
         os.chdir(old_dir)
     
         #move the gppkg to the new directory
-        shutil.move(directory + '/' + pkg_path, '.')
+        shutil.move(directory + '/' + pkg, '.')
 
         logger.info('Completed building gppkg')
 
     def _get_package_name_details(self, specfile):
-
         '''
             Get details about the name, version, operating system, architecture 
             of the package. The final gppkg which will be created
@@ -769,11 +940,8 @@ class BuildGppkg(Operation):
             return pkg_path_details
 
     def _verify_specfile(self, specfile, directory):
-
         '''
             Reads the spec file and makes sure that the tags are correct.
-            It also verifies that if any installation hooks are specified,
-            they exist in the gppkg.
         '''
 
         logger.debug('_verify_specfile')
@@ -786,15 +954,11 @@ class BuildGppkg(Operation):
                 if not self._verify_tags(yamlfile):
                     return False 
 
-                if not self._verify_scripts(yamlfile, directory):
-                    return False
-
                 return True
-        except ScannerError, e:
+        except ScannerError, ex:
             return False
 
     def _verify_tags(self, yamlfile):
-
         '''
             Verify that the tags are valid.
             Returns true if all tags are valid
@@ -819,45 +983,96 @@ class BuildGppkg(Operation):
                 return False
 
         return True
-
-    def _verify_scripts(self, yamlfile, directory):
-
-        '''
-           Verify that the installation scripts are present in the directory (if specified in the yml file)
-           Returns true if the scripts are present (if specified in the yml file)
-           False otherwise
-        '''
-
-        logger.debug('_verify_scripts')
-        installsteps = []            #contains the steps mentioned in pre/post install hooks
-        tags = yamlfile.keys()       #contains the tags e.g pkgName, Version, PreInstall etc
-
-        #Make a list of the pre/post install hooks
-        for tag in tags:
-            if tag.lower() in SPECFILE_OPTIONAL_TAGS:
-                installsteps += yamlfile[tag]
-
-        for installstep in installsteps:
-            keys = installstep.keys()
-            for key in keys:
-                step = installstep[key].strip()    
-                step_toks = step.split(' ')
-                
-                for tok in step_toks:
-                    if tok.find('.') != -1:                                 # the scripts must have extensions                      
-                        if directory and not os.path.exists(directory + '/' + tok):                           
-                            logger.error(' File %s does not exist' % tok)
-                            return False
-
-        return True
         
-def UpgradeGppkg(Operation):
-    
+class UpgradeGppkg(Operation):
     '''
         Upgrade to the given gppkg
     '''
-    #Check compatibility
-    #Check if not installed
-    #Transfer package
-    #perform upgrade using rpm -U
 
+    def __init__(self, gppkg, master_host, standby_host, segment_host_list):
+        self.gppkg = gppkg
+        self.master_host = master_host
+        self.standby_host = standby_host
+        self.segment_host_list = segment_host_list
+
+    def execute(self):
+
+        rpm_upgrade_cmd = 'rpm -U %s --dbpath %s --prefix=%s'
+
+        gppkg = self.gppkg
+
+        #TODO: Check compatibility
+        if not IsVersionCompatible(gppkg).run():
+            raise GpdbVersionError
+
+        #Extract the contents of the package into a temp folder
+        ExtractPackage(gppkg).run()
+
+        #Transfer package
+        TransferPackageContents(self.master_host, self.standby_host, self.segment_host_list).run() 
+
+        #get the installation string
+        rpm_install_string = GetRpmInstallString(gppkg).run()
+
+        #perform upgrade using rpm -U 
+        #First we test if upgrade is possible. If it fails due to dependencies we abort the upgrade.
+        cmd_str = 'rpm -U %s --test --dbpath %s --prefix=%s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH) 
+
+        try:
+            LocalCommand(cmd_str).run()
+        except ExecutionError, ex:
+            results = ex.cmd.get_results().stderr.split('\n')
+            for result in results:
+                if 'failed dependency'in result.lower():
+                    raise RequiredDependencyError
+        
+        cmd_str = rpm_upgrade_cmd % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
+
+        #change the directory
+        old_dir = os.getcwd()
+        os.chdir(TEMP_EXTRACTION_PATH)
+
+        #first the segments
+        RemoteCommand(cmd_str, self.segment_host_list).run()
+
+        #next standby
+        if self.standby_host:
+            RemoteCommand(cmd_str, [self.standby_host]).run()
+
+        #last master
+        LocalCommand(cmd_str).run()
+
+        #change back to original directory
+        os.chdir(old_dir)
+
+        #Remove older versions of the package from archive
+        file_list = set()
+        if os.path.exists(GPPKG_ARCHIVE_PATH):
+            for filename in os.listdir(GPPKG_ARCHIVE_PATH):
+                if filename[:filename.index('-')] == gppkg.pkgname:
+                    file_list.add(os.path.join(GPPKG_ARCHIVE_PATH, filename)) 
+
+        #Remove on the standby
+        for filename in file_list:
+            RemovePackageFromArchive(filename, self.standby_host).run()
+
+        #Store the latest version of the file in the archive
+        StorePackageInArchive(gppkg, self.standby_host).run()
+
+class CleanGppkg(Operation):
+    '''
+        Cleans up the Gppkg from the cluster in case of partial
+        installation or removal. This might not be required if 
+        we can make the install and uninstall options idempotent.
+        This operation is exactly the same as remove but we dont 
+        check on each host to see if the rpm is installed or not.
+    '''
+
+    def __init__(self, gppkg, master_host, standby_host, segment_host_list):
+        self.gppkg = gppkg 
+        self.master_host = master_host
+        self.standby_host = standby_host
+        self.segment_host_list = segment_host_list
+
+    def execute(self):
+        UnInstallGppkg(self.gppkg, self.master_host, self.standby_host, self.segment_host_list, cleanup_gppkg = True).run()
