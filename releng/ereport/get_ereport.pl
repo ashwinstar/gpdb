@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 #
-# copyright (c) 2009
+# copyright (c) 2009, 2010, 2011
 # Author: Jeffrey I Cohen
 #
 #
@@ -27,6 +27,7 @@ Options:
 	-quiet           be less verbose
 	-lax             be very lax
 	-fullname        print full file name (with GP_IGNORE)
+	-elog            include elog messages as well
 
 =head1 OPTIONS
 
@@ -58,6 +59,10 @@ Options:
     Print the full file name information in a GP_IGNORE message to
     make it easier to track ereport diffs back to the original file.
 
+=item B<-elog>
+
+    Include elog messages as well.
+
 
 =back
 
@@ -70,7 +75,7 @@ entries of level ERROR, WARNING, NOTICE, or FATAL.
 
 Jeffrey I Cohen
 
-Copyright (c) 2009 GreenPlum.  All rights reserved.  
+Copyright (c) 2009-2011 GreenPlum.  All rights reserved.  
 
 Address bug reports and comments to: jcohen@greenplum.com
 
@@ -86,6 +91,7 @@ if (1)
 	my $bQuiet	  = 0;
 	my $bLax	  = 0;
 	my $bFullname = 0;
+	my $bElog	  = 0;
 
     # check for man or help args
     if (scalar(@ARGV))
@@ -122,6 +128,11 @@ if (1)
 			elsif ($ARGV[0] =~ m/^\-(\-)*fullname$/i)
 			{
 				$bFullname = 1;
+				goto L_wWhile;
+			}
+			elsif ($ARGV[0] =~ m/^\-(\-)*elog$/i)
+			{
+				$bElog = 1;
 				goto L_wWhile;
 			}
 
@@ -199,9 +210,13 @@ if (1)
 		{
 			my $ini = $lines[$ii] . "\n"; # add the newline back...
 
-			if ($ini =~ m/ereport/)
+			my $regex = "ereport";
+
+			$regex = "(ereport|elog)" if ($bElog);
+
+			if ($ini =~ m/$regex/)
 			{
-			   if ($ini =~ m/ereport\s*\(\s*(ERROR|WARNING|NOTICE|FATAL)\,/)
+			   if ($ini =~ m/$regex\s*\(\s*(ERROR|WARNING|NOTICE|FATAL)\,/)
 			   {
 				   $gotmsg = 1;
 				   $msgcnt++;

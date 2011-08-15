@@ -21,6 +21,7 @@ cd ${BLDWRAP_TOP}/src/cdb-pg/src
 find . -name '*.c'  | xargs perl ${BLDWRAP_TOP}/src/releng/ereport/get_ereport.pl \
                                  -quiet \
                                  -lax \
+                                 -elog \
                                  -fullname \
                                  > ${ereportdir}/ereport.txt
 
