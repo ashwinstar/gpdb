@@ -303,42 +303,76 @@ FtsPreprocessProbeResultsFilerep(CdbComponentDatabases *dbs, uint8 *probe_result
 		 *             primary considered dead
 		 *    2) mirror in crash fault
 		 *             mirror considered dead
-		 *    3) primary in mirroring fault
+		 *    3) primary in networking fault, mirror has no fault or mirroring fault
+		 *             primary considered dead, mirror considered alive
+		 *    4) primary in mirroring fault
 		 *             primary considered alive, mirror considered dead
 		 */
 		if (PROBE_HAS_FAULT_CRASH(primary))
 		{
 			elog(LOG, "FTS: primary (dbid=%d) reported crash, considered to be down.",
-			     primary->dbid);
+				 primary->dbid);
 
 			/* consider primary dead -- case (1) */
 			probe_results[primary->dbid] &= ~PROBE_ALIVE;
-		}
-		else if (PROBE_HAS_FAULT_MIRROR(primary))
-		{
-			elog(LOG, "FTS: primary (dbid=%d) reported mirroring fault with mirror (dbid=%d), "
-			          "mirror considered to be down.",
-			     primary->dbid, mirror->dbid);
-
-			/* consider mirror dead -- case (3) */
-			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
 		}
 
 		if (PROBE_HAS_FAULT_CRASH(mirror))
 		{
 			elog(LOG, "FTS: mirror (dbid=%d) reported crash, considered to be down.",
-			     mirror->dbid);
+				 mirror->dbid);
 
 			/* consider mirror dead -- case (2) */
 			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
 		}
 
-		/* clear resync and fault flags because they are not needed after this processing */
+		if (PROBE_HAS_FAULT_NET(primary))
+		{
+			if (PROBE_IS_ALIVE(mirror) && !PROBE_HAS_FAULT_NET(mirror))
+			{
+				elog(LOG, "FTS: primary (dbid=%d) reported networking fault "
+				          "while mirror (dbid=%d) is accessible, "
+				          "primary considered to be down.",
+				     primary->dbid, mirror->dbid);
+
+				/* consider primary dead -- case (3) */
+				probe_results[primary->dbid] &= ~PROBE_ALIVE;
+			}
+			else
+			{
+				if (PROBE_IS_ALIVE(primary))
+				{
+					elog(LOG, "FTS: primary (dbid=%d) reported networking fault "
+					          "while mirror (dbid=%d) is unusable, "
+					          "mirror considered to be down.",
+					     primary->dbid, mirror->dbid);
+
+					/* mirror cannot be used, consider mirror dead -- case (2) */
+					probe_results[mirror->dbid] &= ~PROBE_ALIVE;
+				}
+			}
+		}
+
+		if (PROBE_IS_ALIVE(primary) && PROBE_HAS_FAULT_MIRROR(primary))
+		{
+			elog(LOG, "FTS: primary (dbid=%d) reported mirroring fault with mirror (dbid=%d), "
+					  "mirror considered to be down.",
+				 primary->dbid, mirror->dbid);
+
+			/* consider mirror dead -- case (4) */
+			probe_results[mirror->dbid] &= ~PROBE_ALIVE;
+		}
+
+		/*
+		 * clear resync and fault flags as they aren't needed any further
+		 */
 		probe_results[primary->dbid] &= ~PROBE_FAULT_CRASH;
 		probe_results[primary->dbid] &= ~PROBE_FAULT_MIRROR;
+		probe_results[primary->dbid] &= ~PROBE_FAULT_NET;
 		probe_results[primary->dbid] &= ~PROBE_RESYNC_COMPLETE;
 		probe_results[mirror->dbid] &= ~PROBE_FAULT_CRASH;
 		probe_results[mirror->dbid] &= ~PROBE_FAULT_MIRROR;
+		probe_results[mirror->dbid] &= ~PROBE_FAULT_NET;
 		probe_results[mirror->dbid] &= ~PROBE_RESYNC_COMPLETE;
 	}
 }

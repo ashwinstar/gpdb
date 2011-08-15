@@ -702,6 +702,10 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 		/* get fault type - this will be used to decide the next segment state */
 		switch(fault)
 		{
+			case FaultTypeNet:
+				segmentStatus |= PROBE_FAULT_NET;
+				break;
+
 			case FaultTypeMirror:
 				segmentStatus |= PROBE_FAULT_MIRROR;
 				break;
@@ -809,9 +813,10 @@ probeSegmentFromThread(void *arg)
 			/* assume mirror is alive */
 			probe_result_mirror = PROBE_ALIVE;
 
-			/* probe mirror only if primary is dead or has a crash fault */
+			/* probe mirror only if primary is dead or has a crash/network fault */
 			if (!PROBE_CHECK_FLAG(probe_result_primary, PROBE_ALIVE) ||
-				PROBE_CHECK_FLAG(probe_result_primary, PROBE_FAULT_CRASH))
+				PROBE_CHECK_FLAG(probe_result_primary, PROBE_FAULT_CRASH) ||
+				PROBE_CHECK_FLAG(probe_result_primary, PROBE_FAULT_NET))
 			{
 				/* probe mirror */
 				probe_result_mirror = probeSegment(mirror);

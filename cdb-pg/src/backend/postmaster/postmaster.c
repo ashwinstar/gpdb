@@ -3475,6 +3475,18 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
 		d_state = DataStateInSync;
 	}
 
+	/* in case of a mirroring fault, check if there is a NIC failure */
+	if ((pm_mode == PMModePrimarySegment && f_type == FaultTypeMirror) ||
+	     (pm_mode == PMModeMirrorSegment &&
+	       (f_type == FaultTypeNotInitialized || f_type == FaultTypeMirror)))
+	{
+		if (primaryMirrorCheckNICFailure())
+		{
+			/* report NIC failure to FTS */
+			f_type = FaultTypeNet;
+		}
+	}
+
 	sendPrimaryMirrorTransitionQuery((uint32)pm_mode, (uint32)s_state, (uint32)d_state, (uint32)f_type);
 
 	return;

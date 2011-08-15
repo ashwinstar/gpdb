@@ -13,6 +13,7 @@
 #include "miscadmin.h"
 #include "access/xlog.h"
 #include "utils/guc.h"
+#include "utils/netcheck.h"
 #include <string.h>
 
 
@@ -329,7 +330,8 @@ getFaultTypeLabel(FaultType_e faultType)
 		"NotInitialized", 
 		"FaultIO", 
 		"FaultDB", 
-		"FaultMirror", 
+		"FaultMirror",
+		"FaultNet",
 	};
 	COMPILE_ASSERT(ARRAY_SIZE(labels) == FaultType__EnumerationCount);
 	
@@ -555,6 +557,7 @@ getPrimaryMirrorStatusCodes(PrimaryMirrorMode *pm_mode,
 	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
 }
+
 
 void
 getPrimaryMirrorModeStatus(char *bufOut, int bufSize)
@@ -988,6 +991,52 @@ primaryMirrorSetInSync()
 		}
 	}
 	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
+}
+
+
+/**
+ * Check if one of the NICs where the primary and mirror are attached is not active
+ */
+bool
+primaryMirrorCheckNICFailure()
+{
+	char localHost[sizeof(pmModuleState->hostAddress)];
+	char peerHost[sizeof(pmModuleState->peerAddress)];
+
+	acquireModuleSpinLockAndMaybeStartCriticalSection(true);
+	{
+		/* get local and peer host names */
+		strncpy(localHost, (const char *) pmModuleState->hostAddress, sizeof(localHost));
+		strncpy(peerHost, (const char *) pmModuleState->peerAddress, sizeof(peerHost));
+	}
+	releaseModuleSpinLockAndEndCriticalSectionAsNeeded();
+
+	/*
+	 * if primary and mirror are uninitialized or co-located,
+	 * there is no NIC redundancy
+	 */
+	if (0 == strcmp(localHost, peerHost))
+	{
+		return false;
+	}
+
+	int running = 0;
+	if (NetCheckNIC(localHost))
+	{
+		running++;
+	}
+	if (NetCheckNIC(peerHost))
+	{
+		running++;
+	}
+
+	Assert(running > 0);
+
+	/*
+	 * report only a single NIC failure;
+	 * double failures indicate errors in NIC configuration retrieval
+	 */
+	return (running == 1);
 }
 
 

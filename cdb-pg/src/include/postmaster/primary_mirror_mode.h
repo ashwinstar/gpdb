@@ -134,8 +134,11 @@ typedef enum FaultType_e {
 		/* Database related Fault */
 	
 	FaultTypeMirror,
-		/* Network, filerep related Fault between primary and mirror, failover can happen to primary */
+		/* Mirroring, filerep related Fault between primary and mirror, failover can happen to primary */
 	
+	FaultTypeNet,
+		/* Network, one of the NICs used to communicate with remote segments is down */
+
 	/* The number of elements in this enumeration */
 	FaultType__EnumerationCount
 	
@@ -339,6 +342,7 @@ extern bool getTransitionToFault(void);
 extern void primaryMirrorSetInSync(void);
 extern void copyTransitionParametersToLocalMemory(void);
 
+extern bool primaryMirrorCheckNICFailure(void);
 extern bool primaryMirrorPostmasterResetShouldRestartPeer(void);
 extern void primaryMirrorRecordSegmentStateToPostmasterLocalMemory(void);
 extern PrimaryMirrorModeTransitionArguments primaryMirrorGetArgumentsFromLocalMemory(void);
