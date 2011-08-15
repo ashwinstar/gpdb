@@ -19,7 +19,9 @@ bfz_zlib_close_ex(bfz_t * thiz)
 	if (fs->f)
 	{
 		if ((thiz->fd = dup(thiz->fd)) == -1)
-			elog(ERROR, "dup failed with (errno %d) %m", errno);
+			ereport(ERROR,
+					(errcode(ERRCODE_IO_ERROR),
+					errmsg("could not duplicate file descriptor: %m")));
 		gzclose(fs->f);
 	}
 	free(fs);
@@ -34,7 +36,9 @@ gzwrite_fully(gzFile f, const char *buffer, int size)
 		int			i = gzwrite(f, (void *) buffer, size);
 
 		if (i <= 0)
-			elog(ERROR, "gzwrite write failed with (errno %d) %m", errno);
+			ereport(ERROR,
+					(errcode(ERRCODE_IO_ERROR),
+					errmsg("could not write to temporary file: %m")));
 		buffer += i;
 		size -= i;
 	}
@@ -50,7 +54,9 @@ gzread_fully(gzFile f, char *buffer, int size)
 		int			i = gzread(f, buffer, size);
 
 		if (i < 0)
-			elog(ERROR, "gzread read failed with (errno %d) %m", errno);
+			ereport(ERROR,
+					(errcode(ERRCODE_IO_ERROR),
+					errmsg("could not read from temporary file: %m")));
 		if (i == 0)
 			break;
 		buffer += i;
@@ -81,7 +87,9 @@ bfz_zlib_init(bfz_t * thiz)
 	struct bfz_zlib_freeable_stuff *fs = malloc(sizeof *fs);
 
 	if (!fs)
-		elog(ERROR, "bfz: bfz_zlib_init malloc failed");
+		ereport(ERROR,
+			(errcode(ERRCODE_OUT_OF_MEMORY),
+			 errmsg("out of memory")));
 
 	thiz->freeable_stuff = &fs->super;
 	fs->super.read_ex = bfz_zlib_read_ex;
@@ -94,7 +102,9 @@ bfz_zlib_init(bfz_t * thiz)
 		fs->f = gzdopen(thiz->fd, "rb");
 
 	if (!fs->f)
-		elog(ERROR, "bfz: gzdopen failed with (errno %d) %m", errno);
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not open temporary file: %m")));
 }
 
 static void *
@@ -107,11 +117,15 @@ bfz_threaded_zlib_compress(void *arg)
 	char		buf[BFZ_BUFFER_SIZE];
 
 	if (!f)
-		elog(ERROR, "bfz: gzdopen failed with (errno %d) %m", errno);
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not open temporary file: %m")));
 	while ((size = pipe_read(&fs->pipe, buf, sizeof buf)) != 0)
 		gzwrite_fully(f, buf, size);
 	if ((thiz->fd = dup(thiz->fd)) == -1)
-		elog(ERROR, "dup failed with (errno %d) %m", errno);
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not duplicate file descriptor: %m")));
 	gzclose(f);
 
 	return NULL;
@@ -127,13 +141,17 @@ bfz_threaded_zlib_uncompress(void *arg)
 	char		buf[BFZ_BUFFER_SIZE];
 
 	if (!f)
-		elog(ERROR, "bfz: gzdopen failed with (errno %d) %m", errno);
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not open temporary file: %m")));
 
 	while ((size = gzread_fully(f, buf, sizeof buf)) != 0)
 		pipe_write(&fs->pipe, buf, size);
 
 	if ((thiz->fd = dup(thiz->fd)) == -1)
-		elog(ERROR, "dup failed with (errno %d) %m", errno);
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not duplicate file descriptor: %m")));
 
 	gzclose(f);
 	pipe_done_writing(&fs->pipe);

@@ -395,7 +395,10 @@ GetRealCmin(TransactionId xmin, CommandId combocid)
 	if (combocid >= usedComboCids)
 	{
 		if (Gp_is_writer)
-			elog(ERROR, "Writer gang unable to resolve visibility %u/%u", combocid, usedComboCids);
+		{
+			elog(LOG, "writer segworker group unable to resolve visibility %u/%u", combocid, usedComboCids);
+			Insist(false);
+		}
 
 		/* We're a reader */
 		return getSharedComboCidEntry(xmin, combocid, CMIN);
@@ -410,8 +413,8 @@ GetRealCmax(TransactionId xmin, CommandId combocid)
 {
 	if (combocid >= usedComboCids)
 	{
-		if (Gp_is_writer)
-			elog(ERROR, "Writer gang unable to resolve visibility %u/%u", combocid, usedComboCids);
+		insist_log(!Gp_is_writer,
+				"writer segworker group unable to resolve visibility %u/%u", combocid, usedComboCids);
 
 		/* We're a reader */
 		return getSharedComboCidEntry(xmin, combocid, CMAX);

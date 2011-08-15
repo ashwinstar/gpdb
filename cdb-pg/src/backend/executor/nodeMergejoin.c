@@ -221,9 +221,7 @@ MJExamineQuals(List *qualList, PlanState *parent)
 					ok = true;
 				}
 			}
-			
-			if ( !ok )
-				elog(ERROR, "mergejoin clause is not an OpExpr");
+			insist_log(ok, "mergejoin clause is not an OpExpr");
 		}
 
 		/*
@@ -1260,9 +1258,7 @@ ExecMergeJoin(MergeJoinState *node)
 					 * ----------------
 					 */
 					if (compareResult <= 0 && !((MergeJoin*)node->js.ps.plan)->unique_outer)
-						ereport(ERROR,
-								(errcode(ERRCODE_GP_INTERNAL_ERROR),
-								 errmsg("Mergejoin: compareResult > 0, bad plan ?")));
+						insist_log(false, "Mergejoin: compareResult > 0, bad plan ?");
 					innerTupleSlot = node->mj_InnerTupleSlot;
 					if (TupIsNull(innerTupleSlot))
 					{
@@ -1638,7 +1634,7 @@ ExecMergeJoin(MergeJoinState *node)
 				 * broken state value?
 				 */
 			default:
-				elog(ERROR, "unrecognized mergejoin state: %d",
+				insist_log(false, "unrecognized mergejoin state: %d",
 					 (int) node->mj_JoinState);
 		}
 	}
@@ -1773,7 +1769,7 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 						 errmsg("FULL JOIN is only supported with merge-joinable join conditions")));
 			break;
 		default:
-			elog(ERROR, "unrecognized join type: %d",
+			insist_log(false, "unrecognized join type: %d",
 				 (int) node->join.jointype);
 	}
 

@@ -43,9 +43,10 @@ ExecWorkFile_Create(const char *fileName,
 			file = (void *)bfz_create(fileName, compressType);
 			break;
 		default:
-			ereport(ERROR,
+			ereport(LOG,
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("invalid work file type: %d", fileType)));
+			Assert(false);
 	}
 
 	workfile = palloc0(sizeof(ExecWorkFile));
@@ -85,9 +86,7 @@ ExecWorkFile_Write(ExecWorkFile *workfile,
 			bfz_append((bfz_t *)workfile->file, data, size);
 			break;
 		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("invalid work file type: %d", workfile->fileType)));
+			insist_log(false, "invalid work file type: %d", workfile->fileType);
 	}
 	
 	return true;
@@ -121,9 +120,7 @@ ExecWorkFile_Read(ExecWorkFile *workfile,
 			bytes = bfz_scan_next((bfz_t *)workfile->file, data, size);
 			break;
 		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("invalid work file type: %d", workfile->fileType)));
+			insist_log(false, "invalid work file type: %d", workfile->fileType);
 	}
 	
 	return bytes;
@@ -152,9 +149,7 @@ ExecWorkFile_Rewind(ExecWorkFile *workfile)
 			bfz_scan_begin((bfz_t *)workfile->file);
 			break;
 		default:
-			ereport(LOG,
-					 (errmsg("invalid work file type: %d", workfile->fileType)));
-			Assert(false);
+			insist_log(false, "invalid work file type: %d", workfile->fileType);
 	}
 
 	return true;
@@ -180,9 +175,7 @@ ExecWorkFile_Tell64(ExecWorkFile *workfile)
 			bytes = bfz_totalbytes((bfz_t *)workfile->file);
 			break;
 		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("invalid work file type: %d", workfile->fileType)));
+			insist_log(false, "invalid work file type: %d", workfile->fileType);
 	}
 
 	return bytes;
@@ -207,9 +200,7 @@ ExecWorkFile_Close(ExecWorkFile *workfile)
 			bfz_close((bfz_t *)workfile->file, true);
 			break;
 		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("invalid work file type: %d", workfile->fileType)));
+			insist_log(false, "invalid work file type: %d", workfile->fileType);
 	}
 
 	pfree(workfile);

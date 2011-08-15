@@ -384,7 +384,9 @@ count_usable_fds(int max_to_probe, int *usable_fds, int *already_open)
 		{
 			/* Expect EMFILE or ENFILE, else it's fishy */
 			if (errno != EMFILE && errno != ENFILE)
-				elog(WARNING, "dup(0) failed after %d successes: %m", used);
+			{
+				insist_log(false, "dup(0) failed after %d successes: %m", used);
+			}
 			break;
 		}
 
@@ -451,7 +453,7 @@ set_max_safe_fds(void)
 	if (max_safe_fds < FD_MINFREE)
 		ereport(FATAL,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("insufficient file descriptors available to start server process"),
+				 errmsg("insufficient file handles available to start server process"),
 				 errdetail("System allows %d, we need at least %d.",
 						   max_safe_fds + NUM_RESERVED_FDS,
 						   FD_MINFREE + NUM_RESERVED_FDS)));
@@ -493,7 +495,7 @@ tryAgain:
 
 		ereport(LOG,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("out of file descriptors: %m; release and retry")));
+				 errmsg("out of file handles: %m; release and retry")));
 		errno = 0;
 		if (ReleaseLruFile())
 			goto tryAgain;
@@ -564,7 +566,7 @@ LruDelete(File file)
 
 	/* close the file */
 	if (close(vfdP->fd))
-		elog(ERROR, "failed to close \"%s\": %m",
+		elog(ERROR, "could not close file \"%s\": %m",
 			 vfdP->fileName);
 
 	--nfile;
@@ -1031,7 +1033,7 @@ FileClose(File file)
 
 		/* close the file */
 		if (gp_retry_close(vfdP->fd))
-			elog(ERROR, "failed to close \"%s\": %m",
+			elog(ERROR, "could not close file \"%s\": %m",
 				 vfdP->fileName);
 
 		--nfile;
@@ -1327,8 +1329,7 @@ FileSeek(File file, int64 offset, int whence)
 		switch (whence)
 		{
 			case SEEK_SET:
-				if (offset < INT64CONST(0))
-					elog(ERROR, "invalid seek offset: " INT64_FORMAT, offset);
+				Assert(offset >= INT64CONST(0));
 				VfdCache[file].seekPos = offset;
 				break;
 			case SEEK_CUR:
@@ -1342,7 +1343,7 @@ FileSeek(File file, int64 offset, int whence)
 											   offset, whence);
 				break;
 			default:
-				elog(ERROR, "invalid whence: %d", whence);
+				Assert(!"invalid whence");
 				break;
 		}
 	}
@@ -1351,8 +1352,7 @@ FileSeek(File file, int64 offset, int whence)
 		switch (whence)
 		{
 			case SEEK_SET:
-				if (offset < 0)
-					elog(ERROR, "invalid seek offset: " INT64_FORMAT, offset);
+				Assert(offset >= INT64CONST(0));
 				if (VfdCache[file].seekPos != offset)
 					VfdCache[file].seekPos = pg_lseek64(VfdCache[file].fd,
 												   offset, whence);
@@ -1367,7 +1367,7 @@ FileSeek(File file, int64 offset, int whence)
 											   offset, whence);
 				break;
 			default:
-				elog(ERROR, "invalid whence: %d", whence);
+				Assert(!"invalid whence");
 				break;
 		}
 	}
@@ -1469,7 +1469,7 @@ AllocateFile(const char *name, const char *mode)
 	 */
 	if (numAllocatedDescs >= MAX_ALLOCATED_DESCS ||
 		numAllocatedDescs >= max_safe_fds - 1)
-		elog(ERROR, "too many private files demanded");
+		elog(ERROR, "could not allocate file: out of file handles");
 
 TryAgain:
 	if ((file = fopen(name, mode)) != NULL)
@@ -1489,7 +1489,7 @@ TryAgain:
 
 		ereport(LOG,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("out of file descriptors: %m; release and retry")));
+				 errmsg("out of file handles: %m; release and retry")));
 		errno = 0;
 		if (ReleaseLruFile())
 			goto TryAgain;
@@ -1507,7 +1507,7 @@ TryAgain:
 static int
 FreeDesc(AllocateDesc *desc)
 {
-	int			result;
+	int			result = 0;
 
 	/* Close the underlying object */
 	switch (desc->kind)
@@ -1519,8 +1519,7 @@ FreeDesc(AllocateDesc *desc)
 			result = closedir(desc->desc.dir);
 			break;
 		default:
-			elog(ERROR, "AllocateDesc kind not recognized");
-			result = 0;			/* keep compiler quiet */
+			Assert(false);
 			break;
 	}
 
@@ -1554,7 +1553,8 @@ FreeFile(FILE *file)
 	}
 
 	/* Only get here if someone passes us a file not in allocatedDescs */
-	elog(WARNING, "file passed to FreeFile was not obtained from AllocateFile");
+	elog(LOG, "file to be closed was not opened through the virtual file descriptor system");
+	Assert(false);
 
 	return fclose(file);
 }
@@ -1584,7 +1584,7 @@ AllocateDir(const char *dirname)
 	 */
 	if (numAllocatedDescs >= MAX_ALLOCATED_DESCS ||
 		numAllocatedDescs >= max_safe_fds - 1)
-		elog(ERROR, "too many private dirs demanded");
+		elog(ERROR, "could not allocate directory: out of file handles");
 
 TryAgain:
 	if ((dir = opendir(dirname)) != NULL)
@@ -1604,7 +1604,7 @@ TryAgain:
 
 		ereport(LOG,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("out of file descriptors: %m; release and retry")));
+				 errmsg("out of file handles: %m; release and retry")));
 		errno = 0;
 		if (ReleaseLruFile())
 			goto TryAgain;
@@ -1691,7 +1691,8 @@ FreeDir(DIR *dir)
 	}
 
 	/* Only get here if someone passes us a dir not in allocatedDescs */
-	elog(WARNING, "dir passed to FreeDir was not obtained from AllocateDir");
+	elog(LOG, "directory to be closed was not opened through the virtual file descriptor system");
+	Assert(false);
 
 	return closedir(dir);
 }

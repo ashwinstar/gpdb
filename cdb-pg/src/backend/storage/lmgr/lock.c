@@ -906,7 +906,7 @@ LockAcquire(const LOCKTAG *locktag,
 				 lock->tag.locktag_field3);
 			if (MyProc == lockHolderProcPtr)
 			{
-				elog(NOTICE, "Writer found lock %s on object %u/%u/%u that I didn't know I held",
+				elog(LOG, "writer found lock %s on object %u/%u/%u that it didn't know it held",
 						 lock_mode_names[lockmode],
 						 lock->tag.locktag_field1, lock->tag.locktag_field2,
 						 lock->tag.locktag_field3);
@@ -916,10 +916,12 @@ LockAcquire(const LOCKTAG *locktag,
 			else
 			{
 				if (MyProc != lockHolderProcPtr)
-					elog(NOTICE, "Reader found lock %s on object %u/%u/%u is already held by writer",
+				{
+					elog(LOG, "reader found lock %s on object %u/%u/%u which is already held by writer",
 						 lock_mode_names[lockmode],
 						 lock->tag.locktag_field1, lock->tag.locktag_field2,
 						 lock->tag.locktag_field3);
+				}
 				lock->nRequested--;
 				lock->requested[lockmode]--;
 			}
@@ -930,11 +932,13 @@ LockAcquire(const LOCKTAG *locktag,
 	}
 	else
 	if (proclock->holdMask & LOCKBIT_ON(lockmode))
-		elog(ERROR, "lock %s on object %u/%u/%u is already held",
+	{
+		elog(LOG, "lock %s on object %u/%u/%u is already held",
 			 lockMethodTable->lockModeNames[lockmode],
 			 lock->tag.locktag_field1, lock->tag.locktag_field2,
 			 lock->tag.locktag_field3);
-
+		Insist(false);
+	}
 	/*
 	 * If lock requested conflicts with locks requested by waiters, must join
 	 * wait queue.	Otherwise, check for conflict with already-held locks.
@@ -995,7 +999,7 @@ LockAcquire(const LOCKTAG *locktag,
 		if (Gp_role == GP_ROLE_EXECUTE)
 		{
 			if (!Gp_is_writer)
-				elog(NOTICE,"Reader gang member waiting on a lock [%u,%u] %s",
+				elog(LOG,"Reader gang member waiting on a lock [%u,%u] %s",
 					 locktag->locktag_field1, locktag->locktag_field2,
 					 lock_mode_names[lockmode]);
 			 else
@@ -2874,10 +2878,13 @@ lock_twophase_recover(TransactionId xid, uint16 info,
 	 * We shouldn't already hold the desired lock.
 	 */
 	if (proclock->holdMask & LOCKBIT_ON(lockmode))
-		elog(ERROR, "lock %s on object %u/%u/%u is already held",
+	{
+		elog(LOG, "lock %s on object %u/%u/%u is already held",
 			 lockMethodTable->lockModeNames[lockmode],
 			 lock->tag.locktag_field1, lock->tag.locktag_field2,
 			 lock->tag.locktag_field3);
+		Insist(false);
+	}
 
 	/*
 	 * We ignore any possible conflicts and just grant ourselves the lock.

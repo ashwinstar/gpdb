@@ -462,12 +462,8 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 		/* Are we dispatching to the writer-gang when it is already busy ? */
 		if (gp == dispatchResults->writer_gang)
 		{
-			if (dispatchResults->writer_gang->dispatcherActive)
-			{
-				elog(ERROR, "Statement Error, writer gang busy: possible attempt to execute volatile function in unsupported context");
-				/* not reached */
-			}
-
+			insist_log(!dispatchResults->writer_gang->dispatcherActive,
+					"cannot share active writer segworker");
 			dispatchResults->writer_gang->dispatcherActive = true;
 		}
 	}
@@ -620,7 +616,7 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 		if (qeResult == NULL)
 		{
 			dispatchResults->writer_gang->dispatcherActive = true;
-			elog(FATAL, "cdbdisp_dispatchToGang: allocation failed, cannot dispatch");
+			insist_log(false, "allocation failed, cannot dispatch");
 		}
 
 		/* Transfer any connection errors from segdbDesc. */
@@ -708,9 +704,8 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 				}
 	
 				ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-								errmsg("dispatchToGang: failed to create thread %d of %d", i + 1, newThreads),
-								errdetail("pthread_create() failed with err %d", pthread_err),
-								errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread)));
+								errmsg("could not create thread %d of %d", i + 1, newThreads),
+								errdetail("pthread_create() failed with err %d", pthread_err)));
 			}
 	    }
 

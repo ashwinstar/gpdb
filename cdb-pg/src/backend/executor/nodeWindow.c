@@ -2402,9 +2402,9 @@ initWindowFuncState(WindowState *wstate, Window *node)
 		heap_tuple = SearchSysCache(PROCOID,
 								  ObjectIdGetDatum(winref->winfnoid),
 								  0, 0, 0);
-		if (!HeapTupleIsValid(heap_tuple))
-			elog(ERROR, "cache lookup failed for window function proc %u",
-				 winref->winfnoid);
+		insist_log(HeapTupleIsValid(heap_tuple),
+			"cache lookup failed for window function proc %u",
+			winref->winfnoid);
 		proform = (Form_pg_proc) GETSTRUCT(heap_tuple);
 		
 		isAgg = proform->proisagg;
@@ -2455,8 +2455,7 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			agg_tuple = SearchSysCache(AGGFNOID,
 									   ObjectIdGetDatum(winref->winfnoid),
 									   0, 0, 0);
-			if (!HeapTupleIsValid(agg_tuple))
-				elog(ERROR, "cache lookup failed for aggregate %u",
+			insist_log(HeapTupleIsValid(agg_tuple), "cache lookup failed for aggregate %u",
 					 winref->winfnoid);
 			aggform = (Form_pg_aggregate) GETSTRUCT(agg_tuple);
 

@@ -510,8 +510,9 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 								 ExecGetResultType(innerPlanState(hjstate)));
 			break;
 		default:
-			elog(ERROR, "unrecognized join type: %d",
+			elog(LOG, "unrecognized join type: %d",
 				 (int) node->join.jointype);
+			Assert(false);
 	}
 
 	/*
@@ -841,7 +842,7 @@ start_over:
 	{
 		if (!ExecWorkFile_Rewind(batch->innerside.workfile))
 		    ereport(ERROR, (errcode_for_file_access(),
-		    	errmsg("Cound not rewind hash join tmp file")));
+		    	errmsg("could not access temporary file")));
 
 	    for (;;)
 	    {
@@ -879,7 +880,7 @@ start_over:
      */
 	if (!ExecWorkFile_Rewind(batch->outerside.workfile))
 	    ereport(ERROR, (errcode_for_file_access(),
-						errmsg("Cound not rewind hash join tmp file")));
+						errmsg("could not access temporary file")));
 	
     return curbatch;
 }
@@ -923,11 +924,11 @@ ExecHashJoinSaveTuple(PlanState *ps, MemTuple tuple, uint32 hashvalue,
 
 	if (!ExecWorkFile_Write(batchside->workfile, (void *)&hashvalue, sizeof(uint32)))
 		ereport(ERROR, (errcode_for_file_access(),
-						errmsg("Hashjoin write error")));
+						errmsg("could not write to temporary file")));
 		
 	if (!ExecWorkFile_Write(batchside->workfile, (void *) tuple, memtuple_get_size(tuple, NULL)))
 		ereport(ERROR, (errcode_for_file_access(),
-			errmsg("Hashjoin write error")));
+			errmsg("could not write to temporary file")));
 
 	if(ps)
 	{
@@ -976,7 +977,7 @@ ExecHashJoinGetSavedTuple(HashJoinBatchSide *batchside,
 	if (nread != memtuple_size_from_uint32(header[1]) - sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not read from hash-join temporary file: %m")));
+				 errmsg("could not read from temporary file")));
 	return ExecStoreMemTuple(tuple, tupleSlot, true);
 }
 

@@ -2407,8 +2407,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		{
 			conn = pEntry->conns + i;
 
-			if (conn->stillActive && !forceEOS)
-				elog(LOG, "teardownUDP: shutting down with a receiver still active ? this will confuse our peer.");
+			Assert((!conn->stillActive || forceEOS) && "connection is shut down while a receiver is still active");
 
 			conn_delhash(conn);
 

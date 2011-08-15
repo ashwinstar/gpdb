@@ -2493,6 +2493,31 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 			Assert(!stmt->mod_stmt);
 			break;
 
+		case SPI_OK_REWRITTEN:
+			Assert(!stmt->mod_stmt);
+
+			/*
+			 * The command was rewritten into another kind of command. It's
+			 * not clear what FOUND would mean in that case (and SPI doesn't
+			 * return the row count either), so just set it to false.
+			 */
+			exec_set_found(estate, false);
+			break;
+
+			/* Some SPI errors deserve specific error messages */
+		case SPI_ERROR_COPY:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot COPY to/from client in PL/pgSQL")));
+
+			/* Fixes MPP-3344 */
+		case SPI_ERROR_TRANSACTION:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot begin/end transactions in PL/pgSQL"),
+			errhint("Use a BEGIN block with an EXCEPTION clause instead.")));
+			break;
+
 		default:
 			elog(ERROR, "SPI_execute_plan failed executing query \"%s\": %s",
 				 expr->query, SPI_result_code_string(rc));

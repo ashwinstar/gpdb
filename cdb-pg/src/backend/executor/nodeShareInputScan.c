@@ -502,16 +502,15 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 	if(lk_ctxt->readyfd >= 0)
 	{
 		err = gp_retry_close(lk_ctxt->readyfd);
-		if(err)
-			elog(ERROR, "shareinput_clean_lk_ctxt cannot close readyfd");
+		insist_log(!err, "shareinput_clean_lk_ctxt cannot close readyfd: %m");
+
 		lk_ctxt->readyfd = -1;
 	}
 
 	if(lk_ctxt->donefd >= 0)
 	{
 		err = gp_retry_close(lk_ctxt->donefd);
-		if(err)
-			elog(ERROR, "shareinput_clean_lk_ctxt cannot close donefd");
+		insist_log(!err, "shareinput_clean_lk_ctxt cannot close donefd: %m");
 
 		lk_ctxt->donefd = -1;
 	}
@@ -519,8 +518,7 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 	if(lk_ctxt->del_ready && lk_ctxt->lkname_ready[0])
 	{
 		err = unlink(lk_ctxt->lkname_ready);
-		if(err)
-			elog(ERROR, "shareinput_clean_lk_ctxt cannot unlink %s", lk_ctxt->lkname_ready);
+		insist_log(!err, "shareinput_clean_lk_ctxt cannot unlink \"%s\": %m", lk_ctxt->lkname_ready);
 
 		lk_ctxt->del_ready = false;
 	}
@@ -528,8 +526,7 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 	if(lk_ctxt->del_done && lk_ctxt->lkname_done[0])
 	{
 		err = unlink(lk_ctxt->lkname_done);
-		if(err)
-			elog(ERROR, "shareinput_clean_lk_ctxt cannot unline %s", lk_ctxt->lkname_done);
+		insist_log(!err, "shareinput_clean_lk_ctxt cannot unline \"%s\": %m", lk_ctxt->lkname_done);
 
 		lk_ctxt->del_done = false;
 	}
@@ -560,7 +557,7 @@ static void create_tmp_fifo(const char *fifoname)
 		err = mkfifo(fifoname, 0600);
 
 		if(err < 0 && errno != EEXIST)
-			elog(ERROR, "Cannot create tmp fifo %s", fifoname);
+			elog(ERROR, "could not create temporary fifo \"%s\": %m", fifoname);
 	}
 #endif
 }
@@ -580,7 +577,7 @@ read_retry:
 	else if(sz == 0 || errno == EINTR)
 		goto read_retry;
 	else
-		elog(ERROR, "ShareInput Wait/Notify Read Failed");
+		elog(ERROR, "could not read from fifo: %m");
 
 	Assert(!"Never be here");
 	return 0;
@@ -598,7 +595,7 @@ write_retry:
 	else if(sz == 0 || errno == EINTR)
 		goto write_retry;
 	else
-		elog(ERROR, "ShareInput Wait/Notify Write Failed");
+		elog(ERROR, "could not write to fifo: %m");
 
 	Assert(!"Never be here");
 	return 0;
@@ -655,13 +652,13 @@ void *shareinput_reader_waitready(int share_id)
 	create_tmp_fifo(pctxt->lkname_ready);
 	pctxt->readyfd = open(pctxt->lkname_ready, O_RDWR, 0600); 
 	if(pctxt->readyfd < 0)
-		elog(ERROR, "shareinput_reader_waitready cannot open %s", pctxt->lkname_ready);
+		elog(ERROR, "could not open fifo \"%s\": %m", pctxt->lkname_ready);
 	
 	sisc_lockname(pctxt->lkname_done, MAXPGPATH, share_id, "done");
 	create_tmp_fifo(pctxt->lkname_done);
 	pctxt->donefd = open(pctxt->lkname_done, O_RDWR, 0600);
 	if(pctxt->donefd < 0)
-		elog(ERROR, "shareinput_reader_waitready cannot open %s", pctxt->lkname_done);
+		elog(ERROR, "could not open fifo \"%s\": %m", pctxt->lkname_done);
 
 	while(1)
 	{
@@ -728,14 +725,14 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 	pctxt->del_ready = true;
 	pctxt->readyfd = open(pctxt->lkname_ready, O_RDWR, 0600); 
 	if(pctxt->readyfd < 0)
-		elog(ERROR, "shareinput_writer_notifyready cannot open %s", pctxt->lkname_ready);
 	
+		elog(ERROR, "could not open fifo \"%s\": %m", pctxt->lkname_ready);
 	sisc_lockname(pctxt->lkname_done, MAXPGPATH, share_id, "done");
 	create_tmp_fifo(pctxt->lkname_done);
 	pctxt->del_done = true;
 	pctxt->donefd = open(pctxt->lkname_done, O_RDWR, 0600);
 	if(pctxt->donefd < 0)
-		elog(ERROR, "shareinput_reader_waitready cannot open %s", pctxt->lkname_done);
+		elog(ERROR, "could not open fifo \"%s\": %m", pctxt->lkname_done);
 
 	for(n=0; n<xslice; ++n)
 	{

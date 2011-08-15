@@ -28,7 +28,9 @@ bfz_nothing_read_ex(bfz_t * thiz, char *buffer, int size)
 		int			i = readAndRetry(thiz->fd, buffer, size);
 
 		if (i < 0)
-			elog(ERROR, "bfz_nothing_read_ex read failed with (errno %d) %m", errno);
+			ereport(ERROR,
+					(errcode(ERRCODE_IO_ERROR),
+					errmsg("could not read from temporary file: %m")));
 		if (i == 0)
 			break;
 		buffer += i;
@@ -45,7 +47,9 @@ bfz_nothing_write_ex(bfz_t * bfz, const char *buffer, int size)
 		int			i = writeAndRetry(bfz->fd, buffer, size);
 
 		if (i < 0)
-			elog(ERROR, "bfz_nothing_write_ex write failed with (errno %d) %m", errno);
+			ereport(ERROR,
+					(errcode(ERRCODE_IO_ERROR),
+					errmsg("could not write to temporary file: %m")));
 		buffer += i;
 		size -= i;
 	}
@@ -57,7 +61,9 @@ bfz_nothing_init(bfz_t * thiz)
 	struct bfz_freeable_stuff *fs = malloc(sizeof *fs);
 
 	if (!fs)
-		elog(ERROR, "bfz: bfz_nothing_init malloc failed");
+		ereport(ERROR,
+			(errcode(ERRCODE_OUT_OF_MEMORY),
+			 errmsg("out of memory")));
 
 	thiz->freeable_stuff = fs;
 

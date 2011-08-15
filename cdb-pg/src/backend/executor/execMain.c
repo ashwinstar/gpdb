@@ -678,9 +678,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		else if (exec_identity != GP_IGNORE)
 		{
 			/* should never happen */
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Unsupported Greeplum parallel execution strategy")));
+			Assert(!"unsupported parallel execution strategy");
 		}
 
 		if(estate->es_interconnect_is_setup)
@@ -862,9 +860,7 @@ ExecutorRun(QueryDesc *queryDesc,
 		else
 		{
 			/* should never happen */
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Undefined Greenplum parallel execution strategy")));
+			Assert(!"undefined parallel execution strategy");
 		}
 
 		/*
@@ -2477,7 +2473,8 @@ lnext:	;
 
 		if (operation != CMD_SELECT && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
 		{
-			elog(ERROR,"Internal Error: INSERT/UPDATE/DELETE must be executed by a writer gang");
+			elog(LOG,"INSERT/UPDATE/DELETE must be executed by a writer segworker group");
+			Insist(false);
 		}
 
 		/*

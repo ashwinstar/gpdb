@@ -358,9 +358,8 @@ create_gang_retry:
 			}
 
 			ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-							errmsg("CreateGang: failed to create thread %d of %d", i + 1, threadCount),
-							errdetail("pthread_create() failed with err %d gp_connections_per_thread %d", pthread_err, gp_connections_per_thread),
-							errhint("gp_connections_per_thread controls the number of threads created during parallel dispatch, current setting is %d increase the setting to spawn fewer threads", gp_connections_per_thread)));
+							errmsg("failed to create thread %d of %d", i + 1, threadCount),
+							errdetail("pthread_create() failed with err %d", pthread_err)));
 		}
 	}
 
@@ -372,12 +371,14 @@ create_gang_retry:
 		DoConnectParms *pParms = &doConnectParmsAr[i];
 
 		if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-			elog(DEBUG5, "createGang joining to thread %d of %d for libpq connections",
+			elog(DEBUG5, "joining to thread %d of %d for libpq connections",
 				 i + 1, threadCount);
 
 		if (0 != pthread_join(pParms->thread, NULL))
-			elog(FATAL, "createGang: pthread_join failed on thread %d of %d",
-				 i + 1, threadCount);
+		{
+			insist_log(false, "pthread_join failed on thread %d of %d",
+									 i + 1, threadCount);
+		}
 	}
 
 	/*
@@ -436,8 +437,8 @@ create_gang_retry:
 						  errmsg("%s", segdbDesc->error_message.data)));
 			}
 
-			if (segdbDesc->errcode == 0 && segdbDesc->error_message.len == 0)
-				elog(ERROR, "Connection is null, but no error code or error message, for segDB %d", i);
+			insist_log(segdbDesc->errcode != 0 || segdbDesc->error_message.len != 0,
+					"connection is null, but no error code or error message, for segDB %d", i);
 
 			Assert(segdbDesc->errcode != 0);
 			Assert(segdbDesc->error_message.len > 0);
@@ -693,7 +694,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 		cdb_component_dbs->total_segments <= 0 ||
 		cdb_component_dbs->total_segment_dbs <= 0)
 	{
-		elog(ERROR, "building Gang:  GP schema not populated");
+		insist_log(false, "schema not populated while building segworker group");
 		return NULL;
 	}
 
@@ -1362,16 +1363,12 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 
 	Gang	   *gp = NULL;
 
-	if (Gp_role != GP_ROLE_DISPATCH)
-		elog(FATAL, "allocateGang: called with Gp_role %d", Gp_role);
+	Assert(Gp_role == GP_ROLE_DISPATCH);
 
 	if (type == GANGTYPE_PRIMARY_WRITER)
 		return allocateWriterGang();
 
-	if (!IsTransactionOrTransactionBlock())
-	{
-		elog(ERROR, "allocateGang must be called inside of transaction");
-	}
+	insist_log(IsTransactionOrTransactionBlock(), "cannot allocate segworker group outside of transaction");
 
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG4, "allocateGang for portal %s: allocatedReaderGangsN %d, availableReaderGangsN %d",
@@ -1447,8 +1444,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 						}
 					}
 				}
-				if (gp == NULL)
-					elog(ERROR, "No reader gang allocated");
+				insist_log(gp != NULL, "no reader segworker group allocated");
 
 				allocatedReaderGangsN = lappend(allocatedReaderGangsN, gp);
 
@@ -1521,9 +1517,12 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 				if (gp == NULL || gp->size != size)
 				{
 					if (content == -1)
-						elog(ERROR, "Unable to allocate a reader 1-gang for entry db; portal: %s", (portal_name ? portal_name : "unnamed"));
+						elog(LOG, "could not allocate a reader 1-segworker group for master segment; portal: %s",
+								(portal_name ? portal_name : "unnamed"));
 					else
-						elog(ERROR, "Unable to allocate a reader 1-gang for seg%d; portal: %s", content, (portal_name ? portal_name : "unnamed"));
+						elog(LOG, "could not allocate a reader 1-segworker group for segment %d; portal: %s",
+								content, (portal_name ? portal_name : "unnamed"));
+					Insist(false);
 				}
 				allocatedReaderGangs1 = lappend(allocatedReaderGangs1, gp);
 			}
@@ -1532,8 +1531,7 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 		case GANGTYPE_PRIMARY_WRITER:
 		case GANGTYPE_UNALLOCATED:
 		default:
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-							errmsg_internal("problem in allocateGang")));
+			Assert(false);
 			break;
 	}
 
@@ -1548,18 +1546,13 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	 */
 
 	MemoryContextSwitchTo(oldContext);
-	if (gp == NULL)
-	{
-		elog(ERROR, "No primary gang allocated");
-	}
+	insist_log(gp != NULL, "no primary segworker group allocated");
 
 	if (gp != NULL)
 	{
 		gp->allocated = true;
-
 		/* sanity check the gang */
-		if (!gangOK(gp))
-			elog(ERROR, "Segment connection failed: allocateGang attempted to return a bad gang.");
+		insist_log(gangOK(gp), "could not connect to segment: initialization of segworker group failed");
 	}
 
 	return gp;
@@ -1584,10 +1577,8 @@ allocateWriterGang()
 	{
 		int			nsegdb;
 
-		if (!IsTransactionOrTransactionBlock())
-		{
-			elog(ERROR, "allocateWriterGang must be called inside of transaction");
-		}
+		insist_log(IsTransactionOrTransactionBlock(),
+				"cannot allocate segworker group outside of transaction");
 
 		if (GangContext == NULL)
 		{
@@ -1624,20 +1615,15 @@ allocateWriterGang()
 			elog(DEBUG4, "Reusing an existing primary writer gang");
 	}
 
-	if (writer_gang == NULL)
-	{
-		elog(ERROR, "No primary gang allocated");
-	}
-
-	Assert(writer_gang != NULL);
+	insist_log(writer_gang != NULL, "no primary segworker group allocated");
 
 	writer_gang->allocated = true;
 
 	/* sanity check the gang */
+
 	if (!gangOK(writer_gang))
 	{
-		elog(LOG, "Segment connection failed: allocateWriterGang attempted to return a bad gang.");
-		elog(ERROR, "GPDB performed segment reconfiguration.");
+		elog(ERROR, "could not temporarily connect to one or more segments");
 	}
 
 	primaryWriterGang = writer_gang;
@@ -1732,9 +1718,11 @@ findGangById(int gang_id)
 	 */
 
 	if (gang_id <= 2)
-		elog(ERROR, "Could not find gang_id %d", gang_id);
+	{
+		insist_log(false, "could not find segworker group %d", gang_id);
+	}
 	else
-		elog(DEBUG1, "Could not find gang_id %d", gang_id);
+		elog(DEBUG1, "could not find segworker group %d", gang_id);
 
 	return NULL;
 
@@ -1837,11 +1825,11 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 
 			if (qeinfo == NULL)
 			{
-				elog(ERROR, "getCdbProcessList: a required segment is unexpectedly unavailable");
+				elog(ERROR, "required segment is unavailable");
 			}
 			else if (qeinfo->hostip == NULL)
 			{
-				elog(ERROR, "getCdbProcessList: a required segment-ip is unexpectedly unavailable");
+				elog(ERROR, "required segment IP is unavailable");
 			}
 
 			process->listenerAddr = pstrdup(qeinfo->hostip);
@@ -1867,9 +1855,9 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 			listsize++;
 		}
 
-		if (gang->type == GANGTYPE_PRIMARY_WRITER &&
-			listsize < getgpsegmentCount())
-			elog(ERROR, "Primary gang smaller than number of segments");
+		insist_log( ! (gang->type == GANGTYPE_PRIMARY_WRITER &&
+			listsize < getgpsegmentCount()),
+			"master segworker group smaller than number of segments");
 
 		if (gang->size > 1 ||
 			gang->type == GANGTYPE_PRIMARY_WRITER)
@@ -2020,10 +2008,10 @@ cleanupGang(Gang *gp)
 				retry++;
 				if (retry > 20)
 				{
-					elog(LOG, "cleanupGang called when a gang member is still busy, waiting didn't help, trying to destroy the gang");
+					elog(LOG, "cleanup called when a segworker is still busy, waiting didn't help, trying to destroy the segworker group");
 					disconnectAndDestroyGang(gp);
 					gp = NULL;
-					elog(FATAL, "cleanupGang called when a gang member is still busy.  Fatal error.");
+					Insist(false);
 					return false;
 				}
 			}
@@ -2034,14 +2022,16 @@ cleanupGang(Gang *gp)
 			 * something happened to this gang, disconnect instead of
 			 * sending it back onto our lists!
 			 */
-			elog(LOG, "cleanupGang: lost connection with gang member. Disconnecting");
+			elog(LOG, "lost connection with segworker group member");
 			disconnectAndDestroyGang(gp);
 			return false;
 		}
 
 		/* QE is no longer associated with a slice. */
 		if (!cdbconn_setSliceIndex(segdbDesc, -1))
-			elog(ERROR, "cleanupGang: setSlideIndex failed");
+		{
+			insist_log(false, "could not reset slice index during cleanup");
+		}
 
 	}
 
@@ -2430,8 +2420,8 @@ freeGangsForPortal(char *portal_name)
 										 * disconnectAndDestroyGang() already */
 			disconnectAndDestroyAllGangs();
 
-			elog(LOG, "freeGangsForPortal: Bad primary writer gang");
-			elog(ERROR, "GPDB detected segment reconfiguration.");
+			elog(ERROR, "could not temporarily connect to one or more segments");
+
 			return;
 		}
 	}

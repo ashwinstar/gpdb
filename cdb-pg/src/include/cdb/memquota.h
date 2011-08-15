@@ -51,4 +51,7 @@ extern uint64 ResourceQueueGetSuperuserQueryMemoryLimit(void);
  */
 extern uint64 PolicyAutoStatementMemForNoSpillKB(PlannedStmt *stmt, uint64 minOperatorMemKB);
 
+/* Common error messages */
+#define ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY "insufficient memory reserved for statement"
+
 #endif /* MEMQUOTA_H_ */

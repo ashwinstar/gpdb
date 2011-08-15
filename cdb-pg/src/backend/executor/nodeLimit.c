@@ -167,8 +167,7 @@ ExecLimit(LimitState *node)
 				 * Get previous tuple from subplan; there should be one!
 				 */
 				slot = ExecProcNode(outerPlan);
-				if (TupIsNull(slot))
-					elog(ERROR, "LIMIT subplan failed to run backwards");
+				insist_log(!TupIsNull(slot), "LIMIT subplan failed to run backwards");
 				node->subSlot = slot;
 				node->position--;
 			}
@@ -183,8 +182,7 @@ ExecLimit(LimitState *node)
 			 * should be one!  Note previous tuple must be in window.
 			 */
 			slot = ExecProcNode(outerPlan);
-			if (TupIsNull(slot))
-				elog(ERROR, "LIMIT subplan failed to run backwards");
+			insist_log(!TupIsNull(slot), "LIMIT subplan failed to run backwards");
 			node->subSlot = slot;
 			node->lstate = LIMIT_INWINDOW;
 			/* position does not change 'cause we didn't advance it before */
@@ -217,7 +215,7 @@ ExecLimit(LimitState *node)
 			break;
 
 		default:
-			elog(ERROR, "impossible LIMIT state: %d",
+			insist_log(false, "impossible LIMIT state: %d",
 				 (int) node->lstate);
 			slot = NULL;		/* keep compiler quiet */
 			break;

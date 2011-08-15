@@ -70,8 +70,7 @@ ExecSubPlan(SubPlanState *node,
 	if (isDone)
 		*isDone = ExprSingleResult;
 
-	if (subplan->setParam != NIL)
-		elog(ERROR, "cannot set parent params from subquery");
+	insist_log(subplan->setParam == NIL, "cannot set parent parameters from subquery");
 
 	if (subplan->useHashTable)
 		return ExecHashSubPlan(node, econtext, isNull);
@@ -843,7 +842,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 		else
 		{
 			/* shouldn't see anything else in a hashable subplan */
-			elog(ERROR, "unrecognized testexpr type: %d",
+			insist_log(false, "unrecognized testexpr type: %d",
 				 (int) nodeTag(node->testexpr->expr));
 			oplist = NIL;		/* keep compiler quiet */
 		}
@@ -1397,12 +1396,12 @@ ExecReScanSetParamPlan(SubPlanState *node, PlanState *parent)
 	ListCell   *l;
 
 	/* sanity checks */
-	if (subplan->parParam != NIL)
-		elog(ERROR, "direct correlated subquery unsupported as initplan");
-	if (subplan->setParam == NIL)
-		elog(ERROR, "setParam list of initplan is empty");
-	if (bms_is_empty(planstate->plan->extParam))
-		elog(ERROR, "extParam set of initplan is empty");
+	insist_log(subplan->parParam == NIL,
+			"direct correlated subquery unsupported as initplan");
+	insist_log(subplan->setParam != NIL,
+			"setParam list of initplan is empty");
+	insist_log(!bms_is_empty(planstate->plan->extParam),
+		"extParam set of initplan is empty");
 
 	/*
 	 * Don't actually re-scan: ExecSetParamPlan does it if needed.

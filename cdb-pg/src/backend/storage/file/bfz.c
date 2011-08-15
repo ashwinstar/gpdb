@@ -214,7 +214,7 @@ read_bfz_buffer(bfz_t *bfz, char *buffer)
 		if (!BFZ_CHECKSUM_EQ(crc,storedCrc))
 			ereport(ERROR,
 					(errcode(ERRCODE_IO_ERROR),
-					 errmsg("Executor workfile block checksum mismatch -- current %u, "
+					 errmsg("temporary file block checksum mismatch: current %u, "
 							"expected %u", storedCrc, crc)));
 	}
 
@@ -266,7 +266,9 @@ bfz_create_internal(bfz_t * thiz, const char *filePrefix, int compress)
 #endif
 
 	if (thiz->fd == -1)
-		elog(ERROR, "bfz: mkstemp failed with (errno %d) %m", errno);
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not create temporary file: %m")));
 
 	RegisterXactCallbackOnce(bfz_close_callback, thiz);
 
@@ -310,7 +312,9 @@ bfz_close(bfz_t * thiz, bool unreg)
 	if (thiz->filename != NULL)
 	{
 		if (unlink(thiz->filename))
-			elog(ERROR, "bfz: unlink file %s failed with (errno %d): %m", thiz->filename, errno);
+			ereport(ERROR,
+					(errcode(ERRCODE_IO_ERROR),
+					errmsg("could not close temporary file %s: %m", thiz->filename)));
 		pfree(thiz->filename);
 	}
 
@@ -332,7 +336,9 @@ bfz_append_end(bfz_t * thiz)
 	fs->close_ex(thiz);
 
 	if ((tot_compressed = lseek(thiz->fd, 0, SEEK_END)) == -1)
-		elog(ERROR, "bfz: lseek failed with (errno %d) %m", errno);
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not seek in temporary file: %m")));
 
 	elog(DEBUG1, "bfz file size uncompressed %lld, compressed %lld, savings %d%%", 
 		 (long long) tot_bytes, (long long) tot_compressed,
@@ -348,7 +354,10 @@ bfz_scan_begin(bfz_t * thiz)
 
 	Assert(thiz->mode == BFZ_MODE_FREED);
 	if (lseek(thiz->fd, 0, SEEK_SET) == -1)
-		elog(ERROR, "bfz: lseek failed with (errno %d) %m", errno);
+		ereport(ERROR,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("could not seek in temporary file: %m")));
+
 	thiz->mode = BFZ_MODE_SCAN;
 	compression_algorithms[thiz->compression_index].init(thiz);
 	fs = thiz->freeable_stuff;

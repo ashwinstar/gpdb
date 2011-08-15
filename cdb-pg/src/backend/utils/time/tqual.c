@@ -338,7 +338,9 @@ retry:
 			goto retry;
 		}
 		else
-			elog(ERROR, "SharedSnapshotAdd: writer gang collision on id %d", slotId);
+		{
+			insist_log(false, "writer segworker group shared snapshot collision on id %d", slotId);
+		}
 		/* not reached */
 	}
 		

@@ -6048,7 +6048,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 		{
 			case 'G':			/* Gang management */
 				{
-					elog(ERROR,"Gang management command received by SyncAgent?");
+					insist_log(false, "cannot handle segworker group management commands");
 				}
 				break;
             case 'Q':           /* simple query */

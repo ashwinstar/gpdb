@@ -29,6 +29,7 @@
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
 #include "utils/elog.h"
+#include "cdb/memquota.h"
 
 #include "access/hash.h"
 
@@ -76,7 +77,7 @@ typedef enum InputRecordType
     do { \
        if ((hashtable)->mem_for_metadata >= (hashtable)->max_mem) \
 		   ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), \
-						   errmsg("HashAgg: no enough memory for hashagg.")));\
+						   errmsg(ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY)));\
     } while (0)
 
 #define GET_TOTAL_USED_SIZE(hashtable) \
@@ -435,8 +436,7 @@ lookup_agg_hash_entry(AggState *aggstate,
 					input_datum = memtuple_getattr((MemTuple)input_record, mt_bind, att, &input_isNull);
 					break;
 				default:
-					ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-									errmsg("HashAgg: invalid InputRecordType %d.", input_type)));
+					insist_log(false, "invalid record type %d", input_type);
 			}
 
 			entry_datum = memtuple_getattr(mtup, mt_bind, att, &entry_isNull);
@@ -468,8 +468,7 @@ lookup_agg_hash_entry(AggState *aggstate,
 				entry = makeHashAggEntryForGroup(aggstate, input_record, input_size, hashkey);
 				break;
 			default:
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-								errmsg("HashAgg: invalid InputRecordType.")));
+				insist_log(false, "invalid record type %d", input_type);
 		}
 			
 		if (entry != NULL)
@@ -573,9 +572,7 @@ calcHashAggTableSizes(double memquota,	/* Memory quota in bytes. */
 	{
 		if (force)
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("HashAgg: too many passes or hash entries")));
+			insist_log(false, "too many passes or hash entries");
 		}
 		else
 		{
@@ -688,7 +685,7 @@ create_agg_hash_table(AggState *aggstate)
 							   true,
 							   &(hashtable->hats)))
 	{
-		elog(ERROR, "HashAgg: unable to implement hashed aggregation strategy");
+		elog(ERROR, ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY);
 	}
 
 	/* Initialize the hash buckets */
@@ -830,7 +827,7 @@ agg_hash_initial_pass(AggState *aggstate)
 			if (hashtable->num_ht_groups <= 1)
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_INTERNAL_ERROR),
-						 errmsg("HashAgg: work_mem is too smalle to hold *one* group.")));
+								 ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY));
 			
 			/*
 			 * If stream_bottom is on, we store outerslot into hashslot, so that
@@ -1446,7 +1443,7 @@ readHashEntry(AggState *aggstate, BatchFileInfo *file_info,
 	if (bfz_scan_next(file_info->bfz, (char *)p_input_size, sizeof(int32)) !=
 		sizeof(int32))
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-						errmsg("HashAgg: error in reading a batch file.")));
+						errmsg("could not read from temporary file: %m")));
 
 	tuple_and_aggs = bfz_scan_peek(file_info->bfz, *p_input_size);
 	if (tuple_and_aggs == NULL)
@@ -1458,7 +1455,7 @@ readHashEntry(AggState *aggstate, BatchFileInfo *file_info,
 		read_size = bfz_scan_next(file_info->bfz, tuple_and_aggs, *p_input_size);
 		if (read_size != *p_input_size)
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-							errmsg("HashAgg: error in reading a batch file, requesting %d bytes, read %d bytes",
+							errmsg("could not read from temporary file, requesting %d bytes, read %d bytes: %m",
 								   *p_input_size, read_size)));
 		MemoryContextSwitchTo(oldcxt);
 	}
@@ -1577,7 +1574,7 @@ agg_hash_reload(AggState *aggstate)
 			if (hashtable->num_ht_groups <= 1)
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_INTERNAL_ERROR),
-						 errmsg("HashAgg: work_mem is too small to hold *one* group.")));
+								 ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY));
 
 			/* CDB: Report statistics for EXPLAIN ANALYZE. */
 			if (!hashtable->is_spilling && aggstate->ss.ps.instrument)
@@ -1722,7 +1719,7 @@ reCalcNumberBatches(HashAggTable *hashtable, SpillFile *spill_file)
 	if (hashtable->mem_for_metadata +
 		nbatches * BATCHFILE_METADATA > hashtable->max_mem)
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-						errmsg("HashAgg: no enough memory for hashagg.")));
+				 ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY));
 	
 	hashtable->hats.nbatches = nbatches;
 }

@@ -234,7 +234,7 @@ BufFileCreateTemp_ReaderWriter(const char* fileName, bool isWriter)
 							  false); /* closeAtEOXact */
 	if (pfile < 0)
 	{
-		elog(ERROR, "BufFileCreateTmp_ReaderWriter failed to open tmp file: %s", fileName);
+		elog(ERROR, "could not open temporary file \"%s\": %m", fileName);
 	}
 
 	file = makeBufFile(pfile);
@@ -408,7 +408,7 @@ static int BufFileLoadBuffer(BufFile *file, void* buffer, size_t bufsize)
 	{
 		if (FileSeek(thisfile, file->curOffset, SEEK_SET) != file->curOffset)
 		{
-			elog(ERROR, "Workfile I/O error. FileSeek offset=%d", file->curOffset);
+			elog(ERROR, "could not seek in temporary file: %m");
 		}
 		file->offsets[file->curFile] = file->curOffset;
 	}
@@ -419,8 +419,7 @@ static int BufFileLoadBuffer(BufFile *file, void* buffer, size_t bufsize)
 	nb = FileRead(thisfile, buffer, (int)bufsize);
 	if (nb < 0)
 	{
-		elog(ERROR, "Workfile I/O error.  FileRead offset=%d amount=%d",
-			 file->curOffset, (int)bufsize);
+		elog(ERROR, "could not read from temporary file: %m");
 	}
 
 	file->offsets[file->curFile] += nb;
@@ -463,7 +462,7 @@ static void BufFileDumpBuffer(BufFile *file, const void* buffer, Size nbytes)
 				File newTmpFile = extendBufFile(file);
 				if (newTmpFile < 0)
 				{
-					elog(ERROR, "buffile: can not create (or extend) a new temporary file.  errno %d, error: %s", errno, strerror(errno));
+					elog(ERROR, "could not create (or extend) temporary file: %m");
 					return;
 				}
 			}
@@ -491,8 +490,7 @@ static void BufFileDumpBuffer(BufFile *file, const void* buffer, Size nbytes)
 		{
 			if (FileSeek(thisfile, file->curOffset, SEEK_SET) != file->curOffset)
 			{
-				elog(ERROR, "Workfile I/O error.  FileSeek offset=%d.  errno %d, error: %s",
-					 file->curOffset, errno, strerror(errno));
+				elog(ERROR, "could not seek in temporary file: %m");
 			}
 
 			file->offsets[file->curFile] = file->curOffset;
@@ -500,8 +498,7 @@ static void BufFileDumpBuffer(BufFile *file, const void* buffer, Size nbytes)
 		wrote = FileWrite(thisfile, (char *)buffer + wpos, (int)bytestowrite);
 		if (wrote != bytestowrite)
 		{
-			elog(ERROR, "Workfile I/O error.  FileWrite offset=%d amount=%d.  errno %d, error: %s",
-				 file->curOffset, (int)bytestowrite, errno, strerror(errno));
+			elog(ERROR, "could not write %d bytes to temporary file: %m", (int)bytestowrite);
 		}
 		file->offsets[file->curFile] += wrote;
 		file->curOffset += wrote;
@@ -808,7 +805,8 @@ BufFileSeek(BufFile *file, int fileno, long offset, int whence)
 			break;
 #endif
 		default:
-			elog(ERROR, "invalid whence: %d", whence);
+			elog(LOG, "invalid whence: %d", whence);
+			Assert(false);
 			return EOF;
 	}
 	while (newOffset < 0)

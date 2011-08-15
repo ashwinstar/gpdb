@@ -705,7 +705,7 @@ doNotifyingCommitPrepared(void)
 		 * Reset the dispatch logic (i.e. deallocate gang) so later we can attempt a retry 
 		 * at the top in PostgresMain.
 		 */
-		elog(NOTICE, "Releasing gangs for retry broadcast.");
+		elog(NOTICE, "Releasing segworker group to retry broadcast.");
 		disconnectAndDestroyAllGangs();
 
 		/*
@@ -790,7 +790,7 @@ doNotifyingAbort(void)
 				/*
 				 * Reset the dispatch logic and disconnect from any segment that didn't respond to our abort.
 				 */
-				elog(NOTICE, "Releasing gangs to finish aborting the transaction.");
+				elog(NOTICE, "Releasing segworker groups to finish aborting the transaction.");
 				disconnectAndDestroyAllGangs();
 			
 				/*
@@ -809,7 +809,7 @@ doNotifyingAbort(void)
 		else
 		{
 			elog(DTM_DEBUG5,
-				 "The distributed transaction 'Abort' broadcast was omitted (gangs already dead) gid = %s.",
+				 "The distributed transaction 'Abort' broadcast was omitted (segworker group already dead) gid = %s.",
 				 currentGxact->gid);
 		}
 	}
@@ -849,7 +849,7 @@ doNotifyingAbort(void)
 			/*
 			 * Reset the dispatch logic (i.e. deallocate gang) so we can attempt a retry.
 			 */
-			elog(NOTICE, "Releasing gangs for retry broadcast.");
+			elog(NOTICE, "Releasing segworker groups to retry broadcast.");
 			disconnectAndDestroyAllGangs();
 			
 			/*
@@ -1160,7 +1160,7 @@ rollbackDtxTransaction(void)
 			 * segment instances.  And, we will abort the transactions in the
 			 * segments.  What's left are possibily prepared transactions.
 			 */
-			elog(WARNING, "Releasing gangs since one or more segment connections failed.  This will abort the transactions in the segments that did not get prepared.");
+			elog(WARNING, "Releasing segworker groups since one or more segment connections failed.  This will abort the transactions in the segments that did not get prepared.");
 			disconnectAndDestroyAllGangs();
 			
 			/*
@@ -1185,7 +1185,7 @@ rollbackDtxTransaction(void)
 		 * segment instances.  And, we will abort the transactions in the
 		 * segments.
 		 */
-		elog(NOTICE, "Releasing gangs to finish aborting the transaction.");
+		elog(NOTICE, "Releasing segworker groups to finish aborting the transaction.");
 		disconnectAndDestroyAllGangs();
 		
 		/*
@@ -2857,7 +2857,7 @@ cdbtm_performDeferredRecovery(void)
 			PG_END_TRY();
 
 			*shmDtmRecoveryDeferred = false;
-			elog(NOTICE, "Releasing gangs for deferred recovery.");
+			elog(NOTICE, "Releasing segworker groups for deferred recovery.");
 			disconnectAndDestroyAllGangs();
 			resetSessionForPrimaryGangLoss();
 		}

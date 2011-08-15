@@ -1251,8 +1251,7 @@ retry:
 		UnlockBufHdr(buf);
 		LWLockRelease(oldPartitionLock);
 		/* safety check: should definitely not be our *own* pin */
-		if (PrivateRefCount[buf->buf_id] != 0)
-			elog(ERROR, "buffer is pinned in InvalidateBuffer");
+		insist_log(PrivateRefCount[buf->buf_id] == 0, "buffer is pinned in InvalidateBuffer");
 
 		if(spin)
 		{
@@ -1317,8 +1316,7 @@ MarkBufferDirty(Buffer buffer)
 {
 	volatile BufferDesc *bufHdr;
 
-	if (!BufferIsValid(buffer))
-		elog(ERROR, "bad buffer id: %d", buffer);
+	insist_log(BufferIsValid(buffer), "bad buffer id: %d", buffer);
 
 	if (BufferIsLocal(buffer))
 	{
@@ -2441,8 +2439,7 @@ ReleaseBuffer_Ex(Buffer buffer, bool flushIfDirty)
 {
 	volatile BufferDesc *bufHdr;
 
-	if (!BufferIsValid(buffer))
-		elog(ERROR, "bad buffer id: %d", buffer);
+	insist_log(BufferIsValid(buffer), "bad buffer id: %d", buffer);
 
 	ResourceOwnerForgetBuffer(CurrentResourceOwner, buffer);
 
@@ -2538,8 +2535,7 @@ SetBufferCommitInfoNeedsSave(Buffer buffer)
 {
 	volatile BufferDesc *bufHdr;
 
-	if (!BufferIsValid(buffer))
-		elog(ERROR, "bad buffer id: %d", buffer);
+	insist_log(BufferIsValid(buffer), "bad buffer id: %d", buffer);
 
 	if (BufferIsLocal(buffer))
 	{
@@ -2629,7 +2625,7 @@ LockBuffer(Buffer buffer, int mode)
 	else if (mode == BUFFER_LOCK_EXCLUSIVE)
 		AcquireContentLock(buf, LW_EXCLUSIVE);
 	else
-		elog(ERROR, "unrecognized buffer lock mode: %d", mode);
+		Assert(!"unrecognized buffer lock mode");
 }
 
 /*
@@ -2680,17 +2676,15 @@ LockBufferForCleanup(Buffer buffer)
 	if (BufferIsLocal(buffer))
 	{
 		/* There should be exactly one pin */
-		if (LocalRefCount[-buffer - 1] != 1)
-			elog(ERROR, "incorrect local pin count: %d",
-				 LocalRefCount[-buffer - 1]);
+		insist_log(LocalRefCount[-buffer - 1] == 1,
+				"incorrect local pin count: %d", LocalRefCount[-buffer - 1]);
 		/* Nobody else to wait for */
 		return;
 	}
 
 	/* There should be exactly one local pin */
-	if (PrivateRefCount[buffer - 1] != 1)
-		elog(ERROR, "incorrect local pin count: %d",
-			 PrivateRefCount[buffer - 1]);
+	insist_log(PrivateRefCount[buffer - 1] == 1,
+		"incorrect local pin count: %d", PrivateRefCount[buffer - 1]);
 
 	bufHdr = &BufferDescriptors[buffer - 1];
 
@@ -2711,7 +2705,7 @@ LockBufferForCleanup(Buffer buffer)
 		{
 			UnlockBufHdr(bufHdr);
 			LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-			elog(ERROR, "multiple backends attempting to wait for pincount 1");
+			insist_log(false, "multiple backends attempting to wait for pincount 1");
 		}
 		bufHdr->wait_backend_pid = MyProcPid;
 		bufHdr->flags |= BM_PIN_COUNT_WAITER;

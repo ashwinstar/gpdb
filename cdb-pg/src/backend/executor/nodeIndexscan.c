@@ -803,7 +803,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 			if (!(IsA(leftop, Var) &&
 				  var_is_rel((Var *) leftop)))
-				elog(ERROR, "indexqual doesn't have key on left side");
+				insist_log(false,"indexqual doesn't have key on left side");
 
 			varattno = ((Var *) leftop)->varattno;
 
@@ -879,7 +879,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 				if (!(IsA(leftop, Var) &&
 					  var_is_rel((Var *) leftop)))
-					elog(ERROR, "indexqual doesn't have key on left side");
+					insist_log(false,"indexqual doesn't have key on left side");
 
 				varattno = ((Var *) leftop)->varattno;
 
@@ -920,14 +920,13 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 				if (index->rd_rel->relam != BTREE_AM_OID ||
 					varattno < 1 || varattno > index->rd_index->indnatts)
-					elog(ERROR, "bogus RowCompare index qualification");
+					insist_log(false, "bogus RowCompare index qualification");
 				opclass = index->rd_indclass->values[varattno - 1];
 
 				get_op_opclass_properties(opno, opclass,
 									 &op_strategy, &op_subtype, &op_recheck);
 
-				if (op_strategy != rc->rctype)
-					elog(ERROR, "RowCompare index qualification contains wrong operator");
+				insist_log(op_strategy == rc->rctype, "RowCompare index qualification contains wrong operator");
 
 				opfuncid = get_opclass_proc(opclass, op_subtype, BTORDER_PROC);
 
@@ -978,7 +977,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 			if (!(IsA(leftop, Var) &&
 				  var_is_rel((Var *) leftop)))
-				elog(ERROR, "indexqual doesn't have key on left side");
+				insist_log(false,"indexqual doesn't have key on left side");
 
 			varattno = ((Var *) leftop)->varattno;
 
@@ -1010,7 +1009,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 								   (Datum) 0);	/* constant */
 		}
 		else
-			elog(ERROR, "unsupported indexqual type: %d",
+			insist_log(false, "unsupported indexqual type: %d",
 				 (int) nodeTag(clause));
 	}
 
@@ -1039,7 +1038,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 		*numArrayKeys = n_array_keys;
 	}
 	else if (n_array_keys != 0)
-		elog(ERROR, "ScalarArrayOpExpr index qual found where not allowed");
+		insist_log(false, "ScalarArrayOpExpr index qual found where not allowed");
 }
 
 int

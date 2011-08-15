@@ -760,9 +760,7 @@ createdb_int(CreatedbStmt *stmt, CdbDispatcherState *ds)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("SQL_ASCII is no longer supported as a server encoding"),
-					 errhint("Use another encoding, such as LATIN1 or UTF8")
-							));
+					 errmsg("server encoding 'SQL_ASCII' is not supported")));
 		}
 	}
 	if (dconnlimit && dconnlimit->arg)

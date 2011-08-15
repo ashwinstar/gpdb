@@ -1546,7 +1546,7 @@ RUN_COMMAND () {
 		$COMMAND >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:- Command $COMMAND failed with error status $RETVAL" 2
+				ERROR_EXIT "[FATAL]:- Command $COMMAND failed with error status $RETVAL, see log file $LOG_FILE for more detail" 2
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

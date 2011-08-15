@@ -225,7 +225,7 @@ static bool PolicyAutoAssignWalker(Node *node, PolicyAutoContext *context)
 	 
 	 if (ctx.queryMemKB <= ctx.numNonMemIntensiveOperators * gp_resqueue_memory_policy_auto_fixed_mem)
 	 {
-		 elog(ERROR, "insufficient memory reserved for statement");
+		 elog(ERROR, ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY);
 	 }
 	 
 #ifdef USE_ASSERT_CHECKING

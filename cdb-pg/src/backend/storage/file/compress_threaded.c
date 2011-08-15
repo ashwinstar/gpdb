@@ -40,7 +40,10 @@ bfz_threaded_init(bfz_t * thiz, void *(*compress) (void *), void *(*uncompress) 
 	struct bfz_threaded_freeable_stuff *fs = malloc(sizeof *fs);
 
 	if (!fs)
-		elog(ERROR, "bfz: bfz_threaded_init malloc failed");
+		ereport(ERROR,
+			(errcode(ERRCODE_OUT_OF_MEMORY),
+			 errmsg("out of memory")));
+
 
 	thiz->freeable_stuff = &fs->super;
 
@@ -51,5 +54,5 @@ bfz_threaded_init(bfz_t * thiz, void *(*compress) (void *), void *(*uncompress) 
 	pipe_init(&fs->pipe);
 
 	if (pthread_create(&fs->thread, NULL, thiz->mode == BFZ_MODE_APPEND ? compress : uncompress, thiz))
-		elog(ERROR, "bfz: pthread_create failed");
+		insist_log(false, "bfz: pthread_create failed");
 }
