@@ -78,7 +78,6 @@ const char *SCHEMA_DOES_NOT_EXIST     = "3F000";
 
 const char *DISTRIBUTION_NOTICE = "NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause";
 
-
 /* local prototypes */
 void *         mapred_malloc(int size);
 void             mapred_free(void *ptr);
@@ -323,14 +322,15 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 	PGresult			*result	 = NULL;
 	PGresult			*result2 = NULL;
 	mapred_plist_t		*plist, *plist2;
-	mapred_plist_t		*newitem;
-	mapred_plist_t		*returns;
+	mapred_plist_t		*newitem = NULL;
+	mapred_plist_t		*returns = NULL;
 	buffer_t			*buffer	 = NULL;
 	char				*tmp1	 = NULL;
 	char				*tmp2	 = NULL;
 	char				*tmp3	 = NULL;
-	char				 str[50];
-	int					 i, nargs;
+	const int			STR_LEN  = 50;
+	char				str[STR_LEN];
+	int					i, nargs;
 	
 	XASSERT(doc);
 	XASSERT(obj);
@@ -340,6 +340,8 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 			obj->kind == MAPRED_FINALIZER);
 
 	obj->internal = true;
+	obj->u.function.internal_returns = NULL;
+
 	XTRY 
 	{
 		buffer = makebuffer(1024, 1024);
@@ -402,7 +404,7 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 				if (plist->next)
 					bufcat(&buffer, ", ");
 			}
-			snprintf(str, 50, "]\n  AND pronargs=%d\n", nargs);
+			snprintf(str, STR_LEN, "]\n  AND pronargs=%d\n", nargs);
 			bufcat(&buffer, str);
 		}
 		
@@ -590,7 +592,7 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 						 */
 						if (!name)
 						{
-							snprintf(str, 50, "parameter%d", i);
+							snprintf(str, STR_LEN, "parameter%d", i);
 							name = str;
 						}
 					}
@@ -726,7 +728,8 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 				type = strtok_r(tmp1, ",", &typetokens);
 				name = strtok_r(tmp2, ",", &nametokens);
 				mode = strtok_r(tmp3, ",", &modetokens);
-
+				
+				i = 1;
 				while (mode)
 				{
 					while (mode && 
@@ -750,8 +753,23 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 						 * do this after resolution when validating against any
 						 * RETURNS defined in the yaml, if any.
 						 */
-						newitem->name = copyscalar(name);
+
+						if( NULL != name &&
+								0 != strcmp(name, "") &&
+								0 != strcmp(name, "\"\"") )
+						{
+							/*if name defined in db, just use it*/
+							newitem->name = copyscalar(name);
+						}
+						else
+						{
+							/*else just obey the default name in db*/
+							snprintf( str, STR_LEN, "column%d", i);
+							newitem->name = copyscalar(str);
+						}
+						
 						newitem->type = copyscalar(type);
+						
 						newitem->next = NULL;
 
 						if (plist)
@@ -759,6 +777,7 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 						else
 							returns = newitem;
 						plist = newitem;
+						++i;
 					}
 					type = strtok_r(NULL, ",", &typetokens);
 					name = strtok_r(NULL, ",", &nametokens);
@@ -834,7 +853,7 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 					XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
 				}
 				returns = mapred_malloc(sizeof(mapred_plist_t));
-				returns->type = rettype;
+				returns->type = copyscalar(rettype);
 				returns->name = NULL;
 				returns->next = NULL;
 			}
@@ -845,6 +864,7 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 			 * not override return types.  If the return types are incompatible
 			 * raise an error.  
 			 */
+			obj->u.function.internal_returns = returns;
 			if (obj->u.function.returns)
 			{
 				/* 
@@ -907,8 +927,6 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 						plist->type = copyscalar(plist2->type);
 					else if (strcmp(plist->type, plist2->type))
 						break;
-					else if (plist2->name && strcmp(plist->name, plist2->name))
-						break;
 					plist  = plist->next;
 					plist2 = plist2->next;
 				}
@@ -956,12 +974,12 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 							name = (char*) default_return_names[obj->kind][i-1];
 						if (!name)
 						{
-							snprintf(str, 50, "parameter%d", i);
+							snprintf(str, STR_LEN, "parameter%d", i);
 							name = str;
 						}
 						plist->name = copyscalar(name);
 					}
-				}
+				}				
 			}
 		}
 	}
@@ -1247,13 +1265,14 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 			 * If the function is an internal function then we try to resolve
 			 * the function by looking it up in the catalog.
 			 */
+			obj->u.function.internal_returns = NULL;
+			obj->internal = false;
+
 			if (!obj->u.function.language)
 			{
 				obj->internal = true;
-				
 				lookup_function_in_catalog(conn, doc, obj);
 			}
-
 			/* ??? */
 			else if (!obj->u.function.returns)
 			{
@@ -2073,6 +2092,11 @@ void mapred_destroy_object(mapred_object_t **objh)
 			scalarfree(obj->u.function.body);
 			scalarfree(obj->u.function.language);
 			mapred_destroy_plist(&obj->u.function.parameters);
+			
+			if( obj->internal &&
+					obj->u.function.internal_returns != obj->u.function.returns )
+				mapred_destroy_plist(&obj->u.function.internal_returns);
+
 			mapred_destroy_plist(&obj->u.function.returns);
 			break;
 
@@ -2499,6 +2523,7 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 {
 	mapred_clist_t *clist    = NULL;
 	mapred_plist_t *plist    = NULL;
+	mapred_plist_t *plist2   = NULL;
 	const char     *ckind    = NULL;
 	buffer_t       *buffer   = NULL;
 	buffer_t       *qbuffer  = NULL;
@@ -2762,6 +2787,7 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 				mapred_setup_columns(conn, obj);
 				XASSERT(obj->u.function.parameters);
 				XASSERT(obj->u.function.rtype.name);
+				XASSERT(NULL == obj->u.function.internal_returns);
 
 				/* 
 				 * fill in the buffer:
@@ -3104,15 +3130,27 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 				if (mapper)
 				{
 					plist = mapper->u.function.returns;
+					plist2 = mapper->u.function.internal_returns;
 					XASSERT(plist);
 
 					if (plist->next)
 					{ /* 2a */
 						bufcat(&buffer, "SELECT ");
-						for (; plist; plist = plist->next)
+						for (; plist; plist = plist->next )
 						{
-							bufcat(&buffer, plist->name);
+							if( obj->internal )
+							{
+								XASSERT(plist2 != NULL);
+								bufcat(&buffer, plist2->name);
+								plist2 = plist2->next;
+							}
+							else
+							{
+								bufcat(&buffer, plist->name);
+							}
 							bufcat(&buffer, "(m)");
+							bufcat(&buffer, " as ");
+							bufcat(&buffer, plist->name);
 							if (plist->next)
 								bufcat(&buffer, ", ");
 						}
@@ -3529,12 +3567,25 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 								bufcat(&buffer, plist->name);
 								bufcat(&buffer, ", ");
 							}
-							for (plist = finalizer->u.function.returns; 
+							plist2 = finalizer->u.function.internal_returns;
+							for (plist = finalizer->u.function.returns;
 								 plist; 
 								 plist = plist->next)
 							{
-								bufcat(&buffer, plist->name);
+								if( finalizer->internal )
+								{
+									XASSERT( plist2 != NULL );
+									bufcat(&buffer, plist2->name);
+									plist2 = plist2->next;
+								}
+								else
+								{
+									bufcat(&buffer, plist->name);
+								}
+
 								bufcat(&buffer, "(r)");
+								bufcat(&buffer, " as ");
+								bufcat(&buffer, plist->name);
 								if (plist->next)
 									bufcat(&buffer, ", ");
 							}

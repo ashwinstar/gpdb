@@ -160,6 +160,7 @@ typedef struct {
 	char                *library;
 	mapred_plist_t      *parameters;
 	mapred_plist_t      *returns;
+	mapred_plist_t      *internal_returns;
 	mapred_reference_t   rtype;
 	mapred_mode_t        mode;
 	int                  flags;
