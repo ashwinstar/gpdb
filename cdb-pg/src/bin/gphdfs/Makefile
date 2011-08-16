@@ -16,11 +16,12 @@ gphdfs:
 
 install: all installdirs
 	$(MAKE) -C src/protocol_formatter install
-	$(INSTALL_PROGRAM) $(top_srcdir)/src/bin/gphdfs/dist/*.jar '$(DESTDIR)$(bindir)'
-	$(INSTALL_PROGRAM) $(top_srcdir)/src/bin/gphdfs/hadoop_env.sh$(X) '$(DESTDIR)$(bindir)/hadoop_env.sh$(X)'
+	$(INSTALL_PROGRAM) $(top_srcdir)/src/bin/gphdfs/dist/*.jar '$(DESTDIR)$(libdir)/hadoop/'
+	$(INSTALL_PROGRAM) $(top_srcdir)/src/bin/gphdfs/hadoop_env.sh$(X) '$(DESTDIR)$(libdir)/hadoop/hadoop_env.sh$(X)'
 
 installdirs:
-	$(MKDIR_P) '$(DESTDIR)$(bindir)'
+	$(MKDIR_P) '$(DESTDIR)$(libdir)'
+	$(MKDIR_P) '$(DESTDIR)$(libdir)/hadoop'
 
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/*.jar'

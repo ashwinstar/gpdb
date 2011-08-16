@@ -271,6 +271,20 @@ execute 'cat $GP_SEG_DATADIR/hdfsfile.out'
 
 select * from example_in;
 
+
+--
+-- Test 5: gphdfs protocol (just declare an external table)
+--
+drop external table example_out;
+CREATE WRITABLE EXTERNAL TABLE example_out(like pg_class)
+location ('gphdfs://localhost:9000/gpdb_out')
+ FORMAT 'CUSTOM' (formatter='gphdfs_export');
+
+drop external table example_in;
+CREATE EXTERNAL TABLE example_in(like pg_class)
+location ('gphdfs://localhost:9000/gpdb_out/*')
+ FORMAT 'CUSTOM' (formatter='gphdfs_import');
+
 --
 -- End of Test (drop stuff)
 --

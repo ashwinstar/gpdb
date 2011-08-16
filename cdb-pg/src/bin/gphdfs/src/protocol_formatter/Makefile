@@ -2,7 +2,7 @@ top_builddir = ../../../../..
 include $(top_builddir)/src/Makefile.global
 
 MODULE_big = gphdfs
-OBJS       = gphdfsformatter.o
+OBJS       = gphdfsformatter.o gphdfsprotocol.o
 
 
 PG_CPPFLAGS = -I$(libpq_srcdir)

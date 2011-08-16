@@ -60,7 +60,6 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
-#include "cdb/url.h"
 
 static HeapTuple externalgettup(FileScanDesc scan, ScanDirection dir);
 static void InitParseState(CopyState pstate, Relation relation, 
@@ -86,8 +85,6 @@ static void external_scan_error_callback(void *arg);
 void readHeaderLine(CopyState pstate);
 static void close_external_source(FILE *dataSource, bool failOnError, const char *relname);
 static void parseFormatString(CopyState pstate, char *fmtstr, bool iscustom);
-static void external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, 
-								  char* quote, bool header, uint32 scancounter);
 static void justifyDatabuf(StringInfo buf);
 
 
@@ -1315,6 +1312,7 @@ InitParseState(CopyState pstate, Relation relation,
 	pstate->custom = fmttype_is_custom(fmtType);
 	pstate->custom_formatter_func = NULL;
 	pstate->custom_formatter_name = NULL;
+	pstate->rel = relation;
 	
 	/*
 	 * Error handling setup
@@ -1561,6 +1559,7 @@ FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 	formatter->fmt_conv_funcs = convFuncs;
 	formatter->fmt_saw_eof = pstate->fe_eof;
 	formatter->fmt_typioparams = typioparams;
+	formatter->fmt_perrow_ctx = pstate->rowcontext;
 	
 	InitFunctionCallInfoData(/* FunctionCallInfoData */ *fcinfo, 
 							 /* FmgrInfo */ pstate->custom_formatter_func, 
@@ -1589,7 +1588,7 @@ open_external_readable_source(FileScanDesc scan)
 	/* set up extvar */
 	memset(&extvar, 0, sizeof(extvar));
 	external_set_env_vars(&extvar, 
-						  scan->fs_uri, 
+						  scan->fs_uri,
 						  scan->fs_pstate->csv_mode, 
 						  scan->fs_pstate->escape, 
 						  scan->fs_pstate->quote, 
@@ -2480,7 +2479,8 @@ error:
 
 }
 
-static void external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header, uint32 scancounter)
+void
+external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* escape, char* quote, bool header, uint32 scancounter)
 {
 	time_t 		now = time(0);
 	struct tm* 	tm = localtime(&now);
@@ -2537,4 +2537,16 @@ static void external_set_env_vars(extvar_t *extvar, char* uri, bool csv, char* e
     sprintf(extvar->GP_SESSION_ID, "%d", gp_session_id);
  	sprintf(extvar->GP_SEGMENT_COUNT, "%d", GpIdentity.numsegments);
 
+ 	/* Hadoop Connector env var
+ 	 *
+ 	 * Those has to be set into the env because the gphdfs env setup script
+ 	 * (hadoop_env.sh) relies on those to set the classpath to the connector
+ 	 * jar as well as the Hadoop jar.
+ 	 *
+ 	 * Setting these var here (instead of inside gphdfs protocol) allows ordinary
+ 	 * "execute" external table to run hadoop connector jar for other purposes.
+ 	 */
+ 	extvar->GP_HADOOP_CONN_JARDIR  = gp_hadoop_connector_jardir;
+ 	extvar->GP_HADOOP_CONN_VERSION = gp_hadoop_connector_version;
+ 	extvar->GP_HADOOP_HOME         = gp_hadoop_home;
 }
