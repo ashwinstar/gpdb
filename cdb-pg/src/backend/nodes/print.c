@@ -278,6 +278,10 @@ print_rt(List *rtable)
 				printf("%d\t%s\t[cte]",
 					   i, name);
 				break;
+			case RTE_TABLEFUNCTION:
+				printf("%d\t%s\t[tablefunction]",
+					   i, name);
+				break;
 			case RTE_FUNCTION:
 				printf("%d\t%s\t[rangefunction]",
 					   i, name);
@@ -545,6 +549,8 @@ char * plannode_type(Plan *p)
 			return "AGG";
 		case T_Window:
 			return "WINDOW";
+		case T_TableFunctionScan:
+			return "TABLEFUNCTIONSCAN";
 		case T_Unique:
 			return "UNIQUE";
 		case T_SetOp:

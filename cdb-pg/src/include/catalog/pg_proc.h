@@ -10213,6 +10213,14 @@ DESCR("Hyperbolic sine function");
 DATA(insert OID = 3541 ( tanh  PGNSP PGUID 12 f f f f i 1 701 f "701" _null_ _null_ _null_ dtanh - _null_ ));
 DESCR("Hyperbolic tangent function");
 
+/* anytable_in(cstring) => anytable */ 
+DATA(insert OID = 3054 ( anytable_in  PGNSP PGUID 12 f f t f i 1 3053 f "2275" _null_ _null_ _null_ anytable_in - _null_ ));
+DESCR("anytable type serialization input function");
+
+/* anytable_out(anytable) => cstring */ 
+DATA(insert OID = 3055 ( anytable_out  PGNSP PGUID 12 f f t f i 1 2275 f "3053" _null_ _null_ _null_ anytable_out - _null_ ));
+DESCR("anytable type serialization output function");
+
 
 /* TIDYCAT_END_PG_PROC_GEN */
 
@@ -10237,6 +10245,7 @@ DESCR("Hyperbolic tangent function");
 #define PROARGMODE_IN		'i'
 #define PROARGMODE_OUT		'o'
 #define PROARGMODE_INOUT	'b'
+#define PROARGMODE_VARIADIC 'v'
 #define PROARGMODE_TABLE	't'
 
 /*

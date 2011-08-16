@@ -72,6 +72,7 @@ typedef enum NodeTag
 	T_TidScan,
 	T_SubqueryScan,
 	T_FunctionScan,
+	T_TableFunctionScan,
 	T_ValuesScan,
 	T_NestLoop,
 	T_MergeJoin,
@@ -119,6 +120,7 @@ typedef enum NodeTag
 	T_TidScanState,
 	T_SubqueryScanState,
 	T_FunctionScanState,
+	T_TableFunctionState,
 	T_ValuesScanState,
 	T_NestLoopState,
 	T_MergeJoinState,
@@ -390,6 +392,7 @@ typedef enum NodeTag
 	T_DropUserMappingStmt, 
 	T_CreateForeignStmt,
 	T_FileSpaceEntry,
+	T_TableValueExpr,
 
 	/**/
 	

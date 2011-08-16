@@ -86,6 +86,8 @@ extern void cost_tidscan(Path *path, PlannerInfo *root,
 extern void cost_subqueryscan(Path *path, RelOptInfo *baserel);
 extern void cost_functionscan(Path *path, PlannerInfo *root,
 				  RelOptInfo *baserel);
+extern void cost_tablefunction(Path *path, PlannerInfo *root,
+							   RelOptInfo *baserel);
 extern void cost_valuesscan(Path *path, PlannerInfo *root,
 				RelOptInfo *baserel);
 extern void cost_ctescan(Path *path, PlannerInfo *root, RelOptInfo *baserel);
@@ -119,6 +121,7 @@ extern void set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 						   JoinType jointype,
 						   List *restrictlist);
 extern void set_function_size_estimates(PlannerInfo *root, RelOptInfo *rel);
+extern void set_table_function_size_estimates(PlannerInfo *root, RelOptInfo *rel);
 extern void set_rel_width(PlannerInfo *root, RelOptInfo *rel);
 extern void set_values_size_estimates(PlannerInfo *root, RelOptInfo *rel);
 extern void set_cte_size_estimates(PlannerInfo *root, RelOptInfo *rel, Plan *cteplan);

@@ -253,6 +253,9 @@ extern Datum GetAttributeByName(HeapTupleHeader tuple, const char *attname,
 				   bool *isNull);
 extern void init_fcache(Oid foid, FuncExprState *fcache,
 						MemoryContext fcacheCxt, bool needDescForSets);
+extern ExprDoneCond ExecEvalFuncArgs(FunctionCallInfo fcinfo,
+									 List *argList, 
+									 ExprContext *econtext);
 extern Tuplestorestate *ExecMakeTableFunctionResult(ExprState *funcexpr,
 							ExprContext *econtext,
 							TupleDesc expectedDesc,

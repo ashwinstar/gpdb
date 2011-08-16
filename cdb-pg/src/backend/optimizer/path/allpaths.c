@@ -16,6 +16,7 @@
 
 #include "postgres.h"
 
+#include "catalog/gp_policy.h"              /* GpPolicy */
 #include "catalog/pg_type.h"                /* INT4OID, INT8OID */
 #include "nodes/makefuncs.h"
 #include "nodes/relation.h"
@@ -27,6 +28,7 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/plancat.h"
+#include "optimizer/planmain.h"
 #include "optimizer/planner.h"
 #include "optimizer/prep.h"
 #include "optimizer/var.h"
@@ -37,8 +39,10 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"
 
+#include "cdb/cdbllize.h"                   /* repartitionPlan */
 #include "cdb/cdbmutate.h"                  /* cdbmutate_warn_ctid_without_segid */
 #include "cdb/cdbpath.h"                    /* cdbpath_rows() */
+#include "cdb/cdbsetop.h"					/* make_motion... routines */
 
 // TODO: these planner/executor gucs need to be refactored into PlannerConfig.
 bool		gp_enable_sort_limit = FALSE;
@@ -58,6 +62,8 @@ static void set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  Index rti, RangeTblEntry *rte);
 static void set_function_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  RangeTblEntry *rte);
+static void set_tablefunction_pathlist(PlannerInfo *root, RelOptInfo *rel,
+										RangeTblEntry *rte);
 static void set_values_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					RangeTblEntry *rte);
 static void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte);
@@ -217,6 +223,11 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti)
 	{
 		/* RangeFunction --- generate a separate plan for it */
 		set_function_pathlist(root, rel, rte);
+	}
+	else if (rel->rtekind == RTE_TABLEFUNCTION)
+	{
+		/* RangeFunction --- generate a separate plan for it */
+		set_tablefunction_pathlist(root, rel, rte);
 	}
 	else if (rel->rtekind == RTE_VALUES)
 	{
@@ -871,6 +882,59 @@ set_function_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	/* Generate appropriate path */
 	add_path(root, rel, create_functionscan_path(root, rel, rte));
 
+	/* Select cheapest path (pretty easy in this case...) */
+	set_cheapest(root, rel);
+}
+
+/*
+ * set_tablefunction_pathlist
+ *		Build the (single) access path for a table function RTE
+ */
+static void
+set_tablefunction_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	PlannerConfig		*config	 = CopyPlannerConfig(root->config);
+	PlannerInfo			*subroot = NULL;
+	FuncExpr			*fexpr	 = (FuncExpr *) rte->funcexpr;
+	ListCell			*arg;
+	
+	/* Cannot be a preplanned subquery from window_planner. */
+	Assert(!rte->subquery_plan);
+	Assert(fexpr && IsA(fexpr, FuncExpr));
+	
+	/* Plan input subquery */
+	rel->subplan = subquery_planner( root->glob, rte->subquery, root,
+									 0.0,	// tuple_fraction
+									 &subroot,
+									 config );
+	rel->subrtable = subroot->parse->rtable;
+	
+	/* 
+	 * With the subquery planned we now need to clear the subquery from the
+	 * TableValueExpr nodes, otherwise preprocess_expression will trip over it.
+	 */
+	foreach(arg, fexpr->args)
+	{
+		if (IsA(arg, TableValueExpr))
+		{
+			TableValueExpr	*tve = (TableValueExpr *) arg;
+			tve->subquery = NULL;
+		}
+	}
+	
+    /* Could the function return more than one row? */
+    rel->onerow = !expression_returns_set(rte->funcexpr);
+	
+    /* Attach subquery duplicate suppression info. */
+    if (root->in_info_list)
+		rel->dedup_info = cdb_make_rel_dedup_info(root, rel);
+	
+	/* Mark rel with estimated output rows, width, etc */
+	set_table_function_size_estimates(root, rel);
+	
+	/* Generate appropriate path */
+	add_path(root, rel, create_tablefunction_path(root, rel, rte));
+	
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(root, rel);
 }

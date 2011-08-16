@@ -801,6 +801,19 @@ _copyWindow(Window *from)
 	return newnode;
 }
 
+/*
+ * _copyTableFunctionScan
+ */
+static TableFunctionScan *
+_copyTableFunctionScan(TableFunctionScan *from)
+{
+	TableFunctionScan	*newnode = makeNode(TableFunctionScan);
+
+	CopyScanFields((Scan *) from, (Scan *) newnode);
+
+	return newnode;
+}
+
 
 /*
  * _copyUnique
@@ -1151,6 +1164,7 @@ _copyFuncExpr(FuncExpr *from)
 	COPY_SCALAR_FIELD(funcretset);
 	COPY_SCALAR_FIELD(funcformat);
 	COPY_NODE_FIELD(args);
+	COPY_SCALAR_FIELD(is_tablefunc);
 
 	return newnode;
 }
@@ -2251,6 +2265,7 @@ _copyQuery(Query *from)
 	COPY_NODE_FIELD(windowClause);
 	COPY_NODE_FIELD(distinctClause);
 	COPY_NODE_FIELD(sortClause);
+	COPY_NODE_FIELD(scatterClause);
 	COPY_NODE_FIELD(cteList);
 	COPY_SCALAR_FIELD(hasRecursive);
 	COPY_SCALAR_FIELD(hasModifyingCTE);
@@ -2325,6 +2340,7 @@ _copySelectStmt(SelectStmt *from)
 	COPY_NODE_FIELD(windowClause);
 	COPY_NODE_FIELD(valuesLists);
 	COPY_NODE_FIELD(sortClause);
+	COPY_NODE_FIELD(scatterClause);
 	COPY_NODE_FIELD(limitOffset);
 	COPY_NODE_FIELD(limitCount);
 	COPY_NODE_FIELD(lockingClause);
@@ -3781,6 +3797,16 @@ _copyDropQueueStmt(DropQueueStmt *from)
 	return newnode;
 }
 
+static TableValueExpr *
+_copyTableValueExpr(TableValueExpr *from)
+{
+	TableValueExpr *newnode = makeNode(TableValueExpr);
+
+	COPY_NODE_FIELD(subquery);
+
+	return newnode;
+}
+
 
 /* ****************************************************************
  *					pg_list.h copy functions
@@ -3965,6 +3991,9 @@ copyObject(void *from)
 			break;
 		case T_Window:
 			retval = _copyWindow(from);
+			break;
+		case T_TableFunctionScan:
+			retval = _copyTableFunctionScan(from);
 			break;
 		case T_Unique:
 			retval = _copyUnique(from);
@@ -4590,6 +4619,9 @@ copyObject(void *from)
 			break;
 		case T_SliceTable:
 			retval = _copySliceTable(from);
+			break;
+		case T_TableValueExpr:
+			retval = _copyTableValueExpr(from);
 			break;
 
 		default:

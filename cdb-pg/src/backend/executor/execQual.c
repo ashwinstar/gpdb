@@ -90,8 +90,6 @@ static void ShutdownFuncExpr(Datum arg);
 static TupleDesc get_cached_rowtype(Oid type_id, int32 typmod,
 				   TupleDesc *cache_field, ExprContext *econtext);
 static void ShutdownTupleDescRef(Datum arg);
-static ExprDoneCond ExecEvalFuncArgs(FunctionCallInfo fcinfo,
-				 List *argList, ExprContext *econtext);
 static void ExecPrepareTuplestoreResult(FuncExprState *fcache,
 							ExprContext *econtext,
 							Tuplestorestate *resultStore,
@@ -136,6 +134,9 @@ static Datum ExecEvalRow(RowExprState *rstate,
 static Datum ExecEvalRowCompare(RowCompareExprState *rstate,
 				   ExprContext *econtext,
 				   bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalTableValue(ExprState   *estate,
+								ExprContext *econtext,
+								bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalCoalesce(CoalesceExprState *coalesceExpr,
 				 ExprContext *econtext,
 				 bool *isNull, ExprDoneCond *isDone);
@@ -1273,7 +1274,7 @@ ShutdownTupleDescRef(Datum arg)
 /*
  * Evaluate arguments for a function.
  */
-static ExprDoneCond
+ExprDoneCond
 ExecEvalFuncArgs(FunctionCallInfo fcinfo,
 				 List *argList,
 				 ExprContext *econtext)
@@ -3513,6 +3514,32 @@ ExecEvalRowCompare(RowCompareExprState *rstate,
 }
 
 /* ----------------------------------------------------------------
+ *		ExecEvalTableValue
+ * ----------------------------------------------------------------
+ */
+static Datum 
+ExecEvalTableValue(ExprState	*estate,
+				   ExprContext	*econtext,
+				   bool			*isNull, 
+				   ExprDoneCond	*isDone)
+{
+	/* Guard against stack overflow due to overly complex expressions */
+	check_stack_depth();
+
+	if (isDone)
+		*isDone = ExprSingleResult;
+
+	/*
+	 * When evaluated as an expression a TableValueExpr will return NULL,
+	 * this NULL is replaced by an AnyTable datum within nodeTableFunction.c
+	 *
+	 * Is there a better way to do this?
+	 */
+	*isNull = true;
+	return (Datum) 0;
+}
+
+/* ----------------------------------------------------------------
  *		ExecEvalCoalesce
  * ----------------------------------------------------------------
  */
@@ -4645,6 +4672,10 @@ ExecInitExpr(Expr *node, PlanState *parent)
 				}
 				state = (ExprState *) rstate;
 			}
+			break;
+		case T_TableValueExpr:
+			state = (ExprState *) makeNode(ExprState);
+			state->evalfunc = ExecEvalTableValue;
 			break;
 		case T_CoalesceExpr:
 			{

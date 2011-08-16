@@ -1154,6 +1154,42 @@ cost_functionscan(Path *path, PlannerInfo *root, RelOptInfo *baserel)
 }
 
 /*
+ * cost_tablefunction
+ *	  Determines and returns the cost of scanning a table function RTE.
+ */
+void
+cost_tablefunction(Path *path, PlannerInfo *root, RelOptInfo *baserel)
+{
+	Cost		startup_cost;
+	Cost		run_cost;
+	Cost		cpu_per_tuple;
+
+	/* Should only be applied to base relations that are functions */
+	Assert(baserel->relid > 0);
+	Assert(baserel->rtekind == RTE_TABLEFUNCTION);
+
+	/* Initialize cost of the subquery input */
+	path->startup_cost = baserel->subplan->startup_cost;
+	path->total_cost   = baserel->subplan->total_cost;
+
+	/*
+	 * For now, estimate function's cost at one operator eval per function
+	 * call.  Someday we should revive the function cost estimate columns in
+	 * pg_proc...  (see cost_functionscan above)
+	 */
+	cpu_per_tuple = cpu_operator_cost;
+
+	/* Calculate additional cost of the table function node */
+	cpu_per_tuple += cpu_tuple_cost + baserel->baserestrictcost.per_tuple;
+	startup_cost   = baserel->baserestrictcost.startup;
+	run_cost	   = cpu_per_tuple * baserel->tuples;
+
+	/* Add in the additional cost */
+	path->startup_cost += startup_cost;
+	path->total_cost   += startup_cost + run_cost;
+}
+
+/*
  * cost_valuesscan
  *	  Determines and returns the cost of scanning a VALUES RTE.
  */
@@ -2722,6 +2758,37 @@ set_function_size_estimates(PlannerInfo *root, RelOptInfo *rel)
 	/* Now estimate number of output rows, etc */
 	set_baserel_size_estimates(root, rel);
 }
+
+/*
+ * set_table_function_size_estimates
+ *		Set the size estimates for a base relation that is a table function call.
+ *
+ * The rel's targetlist and restrictinfo list must have been constructed
+ * already.
+ *
+ * We set the same fields as set_baserel_size_estimates.
+ */
+void
+set_table_function_size_estimates(PlannerInfo *root, RelOptInfo *rel)
+{
+	/*
+	 * Estimate number of rows the function itself will return.
+	 *
+	 * If the function can return more than a single row then simply do
+	 * a best guess that it returns the same number of rows as the subscan.
+	 *
+	 * This will obviously be way wrong in many cases, to improve we would
+	 * need a stats callback function for table functions.
+	 */
+	if (rel->onerow)
+		rel->tuples = 1;
+	else
+		rel->tuples = rel->subplan->plan_rows;
+	
+	/* Now estimate number of output rows, etc */
+	set_baserel_size_estimates(root, rel);
+}
+
 
 /*
  * set_values_size_estimates

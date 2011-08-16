@@ -1281,6 +1281,7 @@ motion_sanity_walker(Node *node, sanity_result_t *result)
 	{
 		case T_Result:
 		case T_Window:
+		case T_TableFunctionScan:
 		case T_ShareInputScan:
 		case T_Append:
 		case T_SeqScan:

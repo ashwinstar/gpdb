@@ -233,7 +233,7 @@ addRemoteExecParamsToParamList(PlannedStmt *stmt, ParamListInfo extPrm, ParamExe
 	foreach(lc, rtable)
 	{
 		RangeTblEntry *rte = lfirst(lc);
-		if ( rte->rtekind == RTE_FUNCTION )
+		if ( rte->rtekind == RTE_FUNCTION || rte->rtekind == RTE_TABLEFUNCTION )
 		{
 			FuncExpr *fexpr = (FuncExpr*)rte->funcexpr;
 			Assert(fexpr && IsA(fexpr,FuncExpr));

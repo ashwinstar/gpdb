@@ -231,6 +231,7 @@ pathnode_walk_kids(Path            *path,
             case T_FunctionScan:
             case T_ValuesScan:
             case T_CteScan:
+            case T_TableFunctionScan:
                     return CdbVisit_Walk;
             case T_BitmapHeapScan:
                     v = pathnode_walk_node(((BitmapHeapPath *)path)->bitmapqual, walker, context);
@@ -2284,6 +2285,44 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	pathnode->rescannable = false;
 
 	cost_functionscan(pathnode, root, rel);
+
+	return pathnode;
+}
+
+/*
+ * create_tablefunction_path
+ *	  Creates a path corresponding to a sequential scan of a table function,
+ *	  returning the pathnode.
+ */
+Path *
+create_tablefunction_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	Path	   *pathnode = makeNode(Path);
+
+	Assert(rte->rtekind == RTE_TABLEFUNCTION);
+
+	/* Setup the basics of the TableFunction path */
+	pathnode->pathtype	   = T_TableFunctionScan;
+	pathnode->parent	   = rel;
+	pathnode->pathkeys	   = NIL;		/* no way to specify output ordering */
+	pathnode->motionHazard = true;      /* better safe than sorry */
+	pathnode->rescannable  = false;     /* better safe than sorry */
+
+	/* 
+	 * Inherit the locus of the input subquery.  This is necessary to handle the
+	 * case of a General locus, e.g. if all the data has been concentrated to a
+	 * single segment then the output will all be on that segment, otherwise the
+	 * output must be declared as randomly distributed because we do not know
+	 * what relationship, if any, there is between the input data and the output
+	 * data.
+	 */
+	pathnode->locus = cdbpathlocus_from_subquery(root, rel->subplan, rel->relid);
+
+	/* Mark the output as random if the input is partitioned */
+	if (CdbPathLocus_IsPartitioned(pathnode->locus))
+		CdbPathLocus_MakeStrewn(&pathnode->locus);
+
+	cost_tablefunction(pathnode, root, rel);
 
 	return pathnode;
 }

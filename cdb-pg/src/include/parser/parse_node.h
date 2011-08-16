@@ -101,6 +101,7 @@ typedef struct ParseState
 	List	   *p_win_clauses;	/* list of window specifications */
 	Node       *having_qual; /* Having clause */
 	struct HTAB *p_namecache;  /* parse state object name cache */
+	bool        p_hasTblValueExpr;
 } ParseState;
 
 extern ParseState *make_parsestate(ParseState *parentParseState);

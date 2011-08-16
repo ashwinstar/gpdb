@@ -23,6 +23,7 @@
 #include "catalog/pg_window.h"
 #include "funcapi.h"
 #include "nodes/makefuncs.h"
+#include "optimizer/walkers.h"
 #include "parser/parse_agg.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
@@ -41,6 +42,15 @@ static Node *ParseComplexProjection(ParseState *pstate, char *funcname,
 					   Node *first_arg, int location);
 static void unknown_attribute(ParseState *pstate, Node *relref, char *attname,
 				  int location);
+
+typedef struct
+{
+	Node *parent;
+} check_table_func_context;
+
+static bool 
+checkTableFunctions_walker(Node *node, check_table_func_context *context);
+
 
 static 
 Node*
@@ -1678,4 +1688,72 @@ LookupAggNameTypeNames(List *aggname, List *argtypes, bool noError)
 	ReleaseSysCache(ftup);
 
 	return oid;
+}
+
+
+/*
+ * parseCheckAggregates
+ *
+ *	Check for TableValueExpr where they shouldn't be.  Currently the only
+ *  valid location for a TableValueExpr is within a call to a table function.
+ *  In the full SQL Standard they can exist anywhere a multiset is supported.
+ */
+void 
+parseCheckTableFunctions(ParseState *pstate, Query *qry)
+{
+	check_table_func_context context;
+	context.parent = NULL;
+	query_tree_walker(qry, 
+					  checkTableFunctions_walker,
+					  (void *) &context, 0);
+}
+
+static bool 
+checkTableFunctions_walker(Node *node, check_table_func_context *context)
+{
+	if (node == NULL)
+		return false;
+
+	/* 
+	 * TABLE() value expressions are currently only permited as parameters
+	 * to table functions called in the FROM clause.
+	 */
+	if (IsA(node, TableValueExpr))
+	{
+		if (context->parent && IsA(context->parent, FuncExpr))
+		{ 
+			FuncExpr *parent = (FuncExpr *) context->parent;
+
+			/*
+			 * This flag is set in addRangeTableEntryForFunction for functions
+			 * called as range table entries having TABLE value expressions
+			 * as arguments.
+			 */
+			if (parent->is_tablefunc)
+				return false;
+
+			/* Error message could be improved */
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("table functions must be invoked in FROM clause")));
+		}
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("invalid use of TABLE value expression")));
+		return true;  /* not possible, but keeps compiler happy */
+	}
+
+	context->parent = node;
+	if (IsA(node, Query))
+	{
+		return query_tree_walker((Query *) node, 
+								 checkTableFunctions_walker,
+								 (void *) context, 0);
+	}
+	else
+	{
+		return expression_tree_walker(node, 
+									  checkTableFunctions_walker, 
+									  (void *) context);
+	}
 }

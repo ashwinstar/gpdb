@@ -584,6 +584,23 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 			return set_subqueryscan_references(glob,
 											   (SubqueryScan *) plan,
 											   rtoffset);
+		case T_TableFunctionScan:
+		{
+			TableFunctionScan	*tplan	   = (TableFunctionScan *) plan;
+			Plan				*subplan   = tplan->scan.plan.lefttree;
+			List				*subrtable = tplan->subrtable;
+
+			if (cdb_expr_requires_full_eval((Node *)plan->targetlist))
+				return  cdb_insert_result_node(glob, plan, rtoffset);
+
+			/* recursively process the subplan */
+			plan->lefttree = set_plan_references(glob, subplan, subrtable);
+			
+			/* subrtable is no longer needed in the plan tree */
+			tplan->subrtable = NIL;
+
+			return plan;
+		}
 		case T_FunctionScan:
 		{
 			FunctionScan *splan = (FunctionScan *) plan;
@@ -597,7 +614,7 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 			splan->scan.plan.qual =
 				fix_scan_list(glob, splan->scan.plan.qual, rtoffset);
 		}
-			break;
+		break;
 		case T_ValuesScan:
 		{
 			ValuesScan *splan = (ValuesScan *) plan;

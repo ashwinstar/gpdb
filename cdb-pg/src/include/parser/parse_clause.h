@@ -35,6 +35,8 @@ extern List *transformSortClause(ParseState *pstate, List *orderlist,
                                  bool useSQL99);
 extern List *transformDistinctClause(ParseState *pstate, List *distinctlist,
 						List **targetlist, List **sortClause);
+extern List *transformScatterClause(ParseState *pstate, List *scatterlist,
+									List **targetlist);
 
 extern List *addAllTargetsToSortList(ParseState *pstate,
 						List *sortlist, List *targetlist,

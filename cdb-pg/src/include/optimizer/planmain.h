@@ -100,6 +100,7 @@ extern RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref,
 extern Value *get_tle_name(TargetEntry *tle, List* rtable, const char *default_name);
 extern bool contain_windowref(Node *node, void *context);
 
+
 /*
  * prototype for plan/plangroupexp.c
  */

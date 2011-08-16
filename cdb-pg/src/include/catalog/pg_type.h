@@ -623,6 +623,9 @@ DATA(insert OID = 2282 ( opaque			PGNSP PGUID  4 t p t \054 0 0 opaque_in opaque
 #define OPAQUEOID		2282
 DATA(insert OID = 2283 ( anyelement		PGNSP PGUID  4 t p t \054 0 0 anyelement_in anyelement_out - - - i p f 0 -1 0 _null_ _null_ ));
 #define ANYELEMENTOID	2283
+DATA(insert OID = 3053 ( anytable		PGNSP PGUID -1 f p t \054 0 0 anytable_in anytable_out - - - d x f 0 -1 0 _null_ _null_ ));
+DESCR("Represents a generic TABLE value expression");
+#define ANYTABLEOID     3053
 
 /* 
  * These tables must be created with standardized oids because they are 

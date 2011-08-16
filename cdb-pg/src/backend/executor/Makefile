@@ -33,7 +33,7 @@ OBJS = execAmi.o execGrouping.o execHHashagg.o execJunk.o execMain.o \
        nodeRepeat.o \
        nodeSeqscan.o nodeSetOp.o nodeShareInputScan.o nodeSort.o \
        nodeSubplan.o nodeSubqueryscan.o \
-       nodeTidscan.o \
+       nodeTableFunction.o nodeTidscan.o \
        nodeUnique.o \
        nodeValuesscan.o \
        nodeWindow.o \

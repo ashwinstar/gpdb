@@ -444,7 +444,9 @@ typedef struct FuncExpr
 	CoercionForm funcformat;	/* how to display this function call */
 	List	   *args;			/* arguments to the function */
 	int			location;		/* token location, or -1 if unknown */
+	bool        is_tablefunc;   /* Is a TableFunction reference */
 } FuncExpr;
+
 
 /*
  * OpExpr - expression node for an operator invocation
@@ -521,6 +523,19 @@ typedef struct BoolExpr
 	List	   *args;			/* arguments to this expression */
 	int			location;		/* token location, or -1 if unknown */
 } BoolExpr;
+
+/*
+ * TableValueExpr - a "TABLE( <subquery> )" expression indicating a subquery
+ * expression that is passed as a value to a function.  
+ *
+ * This is <table value constructor by query> within the SQL Standard
+ */
+typedef struct TableValueExpr  
+{
+	NodeTag     type;
+	Node       *subquery;
+} TableValueExpr;
+
 
 /*
  * SubLink

@@ -437,6 +437,13 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_TableValueExpr:
+			{
+				TableValueExpr *expr = (TableValueExpr *) node;
+
+				return walker(expr->subquery, context);
+			}
+			break;
 		case T_WindowSpec:
 			{
 				WindowSpec *wspec = (WindowSpec *)node;
@@ -473,6 +480,7 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+
 		default:
             ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
                             errmsg_internal("unrecognized node type: %d",
@@ -606,6 +614,12 @@ range_table_walker(List *rtable,
 						return true;
 				break;
 			case RTE_FUNCTION:
+				if (walker(rte->funcexpr, context))
+					return true;
+				break;
+			case RTE_TABLEFUNCTION:
+				if (walker(rte->subquery, context))
+					return true;
 				if (walker(rte->funcexpr, context))
 					return true;
 				break;
@@ -853,6 +867,7 @@ plan_tree_walker(Node *node,
 		case T_BitmapHeapScan:
 		case T_BitmapAppendOnlyScan:
 		case T_FunctionScan:
+		case T_TableFunctionScan:
 		case T_ValuesScan:
 			if (walk_scan_node_fields((Scan *) node, walker, context))
 				return true;
@@ -1086,6 +1101,7 @@ plan_tree_walker(Node *node,
 		case T_JoinExpr:
 		case T_SetOperationStmt:
 		case T_InClauseInfo:
+		case T_TableValueExpr:
 
 		default:
 			return expression_tree_walker(node, walker, context);

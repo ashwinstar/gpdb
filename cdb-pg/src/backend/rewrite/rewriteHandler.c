@@ -399,6 +399,10 @@ rewriteRuleAction(Query *parsetree,
 
 			switch (rte->rtekind)
 			{
+				case RTE_TABLEFUNCTION:
+					sub_action->hasSubLinks =
+						checkExprHasSubLink(rte->funcexpr);
+					break;
 				case RTE_FUNCTION:
 					sub_action->hasSubLinks =
 						checkExprHasSubLink(rte->funcexpr);

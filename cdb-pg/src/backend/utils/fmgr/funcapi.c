@@ -817,7 +817,8 @@ get_func_result_name(Oid functionId)
 		numoutargs = 0;
 		for (i = 0; i < numargs; i++)
 		{
-			if (argmodes[i] == PROARGMODE_IN)
+			if (argmodes[i] == PROARGMODE_IN ||
+				argmodes[i] == PROARGMODE_VARIADIC)
 				continue;
 			Assert(argmodes[i] == PROARGMODE_OUT ||
 				   argmodes[i] == PROARGMODE_INOUT ||
@@ -969,24 +970,34 @@ build_function_result_tupdesc_d(Datum proallargtypes,
 	{
 		char	   *pname;
 
-		if (argmodes[i] == PROARGMODE_IN)
-			continue;
-		Assert(argmodes[i] == PROARGMODE_OUT ||
-			   argmodes[i] == PROARGMODE_INOUT ||
-			   argmodes[i] == PROARGMODE_TABLE);
-		outargtypes[numoutargs] = argtypes[i];
-		if (argnames)
-			pname = DatumGetCString(DirectFunctionCall1(textout, argnames[i]));
-		else
-			pname = NULL;
-		if (pname == NULL || pname[0] == '\0')
+		switch (argmodes[i])
 		{
-			/* Parameter is not named, so gin up a column name */
-			pname = (char *) palloc(32);
-			snprintf(pname, 32, "column%d", numoutargs + 1);
+			/* input modes */
+			case PROARGMODE_IN:
+			case PROARGMODE_VARIADIC:
+				break;
+
+			/* input and output */
+			case PROARGMODE_INOUT:
+				/* fallthrough */
+
+			/* output modes */
+			case PROARGMODE_OUT:
+			case PROARGMODE_TABLE:
+				outargtypes[numoutargs] = argtypes[i];
+				if (argnames)
+					pname = DatumGetCString(DirectFunctionCall1(textout, argnames[i]));
+				else
+					pname = NULL;
+				if (pname == NULL || pname[0] == '\0')
+				{
+					/* Parameter is not named, so gin up a column name */
+					pname = (char *) palloc(32);
+					snprintf(pname, 32, "column%d", numoutargs + 1);
+				}
+				outargnames[numoutargs] = pname;
+				numoutargs++;
 		}
-		outargnames[numoutargs] = pname;
-		numoutargs++;
 	}
 
 	/*

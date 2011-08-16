@@ -293,7 +293,9 @@ static TypeName *TableFuncTypeName(List *columns);
 				prep_type_clause prep_type_list
 				create_generic_options alter_generic_options
 				execute_param_clause using_clause returning_clause
-				table_func_column_list
+				table_func_column_list scatter_clause
+
+%type <node>    table_value_select_clause
 
 %type <range>	OptTempTableName OptErrorTableName
 %type <into>	into_clause create_as_target
@@ -419,7 +421,7 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <str>		OptTableSpace OptConsTableSpace OptOwner
 %type <list>    FileSpaceSegList
 %type <node>    FileSpaceSeg
-%type <list>    DistributedBy OptDistributedBy
+%type <list>    DistributedBy OptDistributedBy 
 %type <ival>	TabPartitionByType OptTabPartitionRangeInclusive
 %type <node>	OptTabPartitionBy TabSubPartitionBy 
 				tab_part_val tab_part_val_no_paran
@@ -518,12 +520,14 @@ static TypeName *TableFuncTypeName(List *columns);
 
 	QUEUE QUOTE
 
-	RANDOMLY RANGE READ READABLE REAL REASSIGN RECHECK RECURSIVE REFERENCES REINDEX REJECT_P RELATIVE_P 
+	RANDOMLY RANGE READ READABLE REAL REASSIGN RECHECK RECURSIVE 
+    REFERENCES REINDEX REJECT_P RELATIVE_P 
 	RELEASE RENAME REPEATABLE REPLACE RESET RESOURCE RESTART RESTRICT 
 	RETURNING RETURNS REVOKE RIGHT
 	ROLE ROLLBACK ROLLUP ROW ROWS RULE
 
-	SAVEPOINT SCHEMA SCROLL SEARCH SECOND_P SECURITY SEGMENT SELECT SEQUENCE
+	SAVEPOINT SCATTER SCHEMA SCROLL SEARCH SECOND_P 
+    SECURITY SEGMENT SELECT SEQUENCE
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETOF SETS SHARE
 	SHOW SIMILAR SIMPLE SMALLINT SOME SPLIT STABLE START STATEMENT
 	STATISTICS STDIN STDOUT STORAGE STRICT_P 
@@ -10731,6 +10735,12 @@ c_expr:		columnref								{ $$ = $1; }
 				}
 			| ARRAY array_expr
 				{	$$ = $2;	}
+            | TABLE '(' table_value_select_clause ')'
+				{	
+					TableValueExpr *n = makeNode(TableValueExpr);
+					n->subquery = $3;
+					$$ = (Node*) n;
+				}
 			| row
 				{
 					RowExpr *r = makeNode(RowExpr);
@@ -10740,6 +10750,21 @@ c_expr:		columnref								{ $$ = $1; }
 					$$ = (Node *)r;
 				}
 		;
+
+scatter_clause:
+		/* EMPTY */						{ $$ = NIL; }
+		| SCATTER RANDOMLY				{ $$ = list_make1(NULL); }
+		| SCATTER BY expr_list 			{ $$ = $3; }
+  		;
+
+table_value_select_clause:
+		SelectStmt scatter_clause
+		{
+			SelectStmt	*s	 = (SelectStmt *) $1;
+			s->scatterClause = $2;
+			$$ = (Node *) s;
+		}
+  		;
 
 /*
  * Users can write their own inline specification or refer to a
@@ -10763,7 +10788,7 @@ simple_func: 	func_name '(' ')'
 					n->over = NULL;
 					$$ = (Node *)n;
 				}
-			| func_name '(' expr_list opt_sort_clause')'
+			| func_name '(' expr_list opt_sort_clause ')'
 				{
 					FuncCall *n = makeNode(FuncCall);
 					n->funcname = $1;
@@ -12037,9 +12062,9 @@ ColLabel:	IDENT									{ $$ = $1; }
  * shift or reduce conflicts.  The earlier lists define "less reserved"
  * categories of keywords.
  *
- * Make sure that each keyword's category in keywords.c matches where
+ * Make sure that each keyword's category in parser/kwlist.h matches where
  * it is listed here.  (Someday we may be able to generate these lists and
- * keywords.c's table from a common master list.)
+ * kwlist.h's table from a common master list.)
  */
 
 /* "Unreserved" keywords --- available for use as any kind of name.
@@ -12785,6 +12810,7 @@ reserved_keyword:
 			| REFERENCES
 			| RETURNING
 			| ROWS
+			| SCATTER  /* gp */
 			| SELECT
 			| SESSION_USER
 			| SOME
@@ -13320,11 +13346,28 @@ mergeTableFuncParameters(List *func_args, List *columns)
 	{
 		FunctionParameter *p = (FunctionParameter *) lfirst(lc);
 
-		if (p->mode != FUNC_PARAM_IN)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("OUT and INOUT arguments aren't allowed in "
-							"TABLE functions")));
+		switch (p->mode)
+		{
+			/* Input modes */
+			case FUNC_PARAM_IN:
+			case FUNC_PARAM_VARIADIC:
+				break;  
+
+			/* Output modes */
+			case FUNC_PARAM_TABLE:
+				Insist(false);  /* not feasible */
+				break;
+			case FUNC_PARAM_OUT:
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("OUT arguments aren't allowed in TABLE functions")));
+				break;
+			case FUNC_PARAM_INOUT:
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("INOUT arguments aren't allowed in TABLE functions")));
+				break;
+		}
 	}
 
 	return list_concat(func_args, columns);

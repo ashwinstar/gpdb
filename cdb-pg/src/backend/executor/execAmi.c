@@ -38,6 +38,7 @@
 #include "executor/nodeSort.h"
 #include "executor/nodeSubplan.h"
 #include "executor/nodeSubqueryscan.h"
+#include "executor/nodeTableFunction.h"
 #include "executor/nodeTidscan.h"
 #include "executor/nodeUnique.h"
 #include "executor/nodeValuesscan.h"
@@ -211,6 +212,10 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 		
 		case T_MotionState:
 			ExecReScanMotion((MotionState *) node, exprCtxt);
+			break;
+
+		case T_TableFunctionScan:
+			ExecReScanTableFunction((TableFunctionState *) node, exprCtxt);
 			break;
 
 		case T_WindowState:

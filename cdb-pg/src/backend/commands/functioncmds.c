@@ -163,6 +163,8 @@ examine_parameter_list(List *parameters, Oid languageOid,
 	Datum	   *paramModes;
 	Datum	   *paramNames;
 	int			outCount = 0;
+	int         varCount = 0;
+	int         multisetCount = 0;
 	bool		have_names = false;
 	ListCell   *x;
 	int			i;
@@ -209,18 +211,61 @@ examine_parameter_list(List *parameters, Oid languageOid,
 		}
 
 		if (t->setof)
+		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("functions cannot accept set arguments")));
+		}
 
-		if (fp->mode != FUNC_PARAM_OUT && fp->mode != FUNC_PARAM_TABLE)
-			inTypes[inCount++] = toid;
-
-		if (fp->mode != FUNC_PARAM_IN)
+		/* track input vs output parameters */
+		switch (fp->mode)
 		{
-			if (outCount == 0)	/* save first OUT param's type */
-				*requiredResultType = toid;
-			outCount++;
+			/* input only modes */
+			case FUNC_PARAM_VARIADIC:	/* GPDB: not yet supported */
+			case FUNC_PARAM_IN:
+				inTypes[inCount++] = toid;
+
+				/* Keep track of the number of anytable arguments */
+				if (toid == ANYTABLEOID)
+					multisetCount++;
+
+				/* Other input parameters cannot follow VARIADIC parameter */
+				if (fp->mode == FUNC_PARAM_VARIADIC)
+					varCount++;
+				else if (varCount > 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("VARIADIC parameter must be the last input parameter")));
+				break;
+
+			/* output only modes */
+			case FUNC_PARAM_OUT:
+			case FUNC_PARAM_TABLE:
+				if (toid == ANYTABLEOID)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("functions cannot return \"anytable\" arguments")));
+
+				if (outCount == 0)	/* save first OUT param's type */
+					*requiredResultType = toid;
+				outCount++;
+				break;
+
+			/* input and output */
+			case FUNC_PARAM_INOUT:
+				if (toid == ANYTABLEOID)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("functions cannot return \"anytable\" arguments")));
+
+				inTypes[inCount++] = toid;
+
+				if (outCount == 0)	/* save first OUT param's type */
+					*requiredResultType = toid;
+				outCount++;
+				break;
+
+			/* no default, above list must be exhaustive */
 		}
 
 		allTypes[i] = ObjectIdGetDatum(toid);
@@ -237,10 +282,18 @@ examine_parameter_list(List *parameters, Oid languageOid,
 		i++;
 	}
 
+	/* Currently only support single multiset input parameters */
+	if (multisetCount > 1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("functions cannot have multiple \"anytable\" arguments")));
+	}
+
 	/* Now construct the proper outputs as needed */
 	*parameterTypes = buildoidvector(inTypes, inCount);
 
-	if (outCount > 0)
+	if (outCount > 0 || varCount > 0)
 	{
 		*allParameterTypes = construct_array(allTypes, parameterCount, OIDOID,
 											 sizeof(Oid), true, 'i');

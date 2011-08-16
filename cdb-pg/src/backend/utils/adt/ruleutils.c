@@ -2069,6 +2069,34 @@ get_select_query_def(Query *query, deparse_context *context,
 			get_rule_expr(query->limitCount, context, false);
 	}
 
+	/* Add the SCATTER BY clause, if given */
+	if (query->scatterClause)
+	{
+		appendContextKeyword(context, " SCATTER ",
+							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
+
+		/* Distinguish between RANDOMLY and BY <expr-list> */
+		if (list_length(query->scatterClause) == 1 && 
+			linitial(query->scatterClause) == NULL)
+		{
+			appendStringInfo(buf, "RANDOMLY");			
+		}
+		else
+		{
+			ListCell	*lc;
+
+			appendStringInfo(buf, "BY ");
+			foreach(lc, query->scatterClause)
+			{
+				Node *expr = (Node *) lfirst(lc);
+
+				get_rule_expr(expr, context, false);
+				if (lc->next)
+					appendStringInfo(buf, ", ");
+			}
+		}
+	}
+
 	/* Add FOR UPDATE/SHARE clauses if present */
 	foreach(l, query->rowMarks)
 	{
@@ -3186,6 +3214,7 @@ get_name_for_var_field(Var *var, int fieldno,
 											  context);
 			/* else fall through to inspect the expression */
 			break;
+		case RTE_TABLEFUNCTION:
 		case RTE_FUNCTION:
 
 			/*
@@ -4046,6 +4075,18 @@ get_rule_expr(Node *node, deparse_context *context,
 				appendStringInfo(buf, "ARRAY[");
 				get_rule_expr((Node *) arrayexpr->elements, context, true);
 				appendStringInfoChar(buf, ']');
+			}
+			break;
+
+		case T_TableValueExpr:
+			{
+				TableValueExpr	*tabexpr  = (TableValueExpr *) node;
+				Query			*subquery = (Query*) tabexpr->subquery;
+
+				appendStringInfo(buf, "TABLE(");
+				get_query_def(subquery, buf, context->namespaces, NULL,
+							  context->prettyFlags, context->indentLevel);
+				appendStringInfoChar(buf, ')');
 			}
 			break;
 
@@ -5131,6 +5172,9 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 			case RTE_CTE:
 				appendStringInfoString(buf, quote_identifier(rte->ctename));
 				break;
+			case RTE_TABLEFUNCTION:
+				/* Table Function RTE */
+				/* fallthrough */
 			case RTE_FUNCTION:
 				/* Function RTE */
 				get_rule_expr(rte->funcexpr, context, true);
@@ -5163,7 +5207,7 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 							 quote_identifier(rte->eref->aliasname));
 			gavealias = true;
 		}
-		else if (rte->rtekind == RTE_FUNCTION)
+		else if (rte->rtekind == RTE_FUNCTION || rte->rtekind == RTE_TABLEFUNCTION)
 		{
 			/*
 			 * For a function RTE, always give an alias. This covers possible
@@ -5175,7 +5219,7 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 			gavealias = true;
 		}
 
-		if (rte->rtekind == RTE_FUNCTION)
+		if (rte->rtekind == RTE_FUNCTION || rte->rtekind == RTE_TABLEFUNCTION)
 		{
 			if (rte->funccoltypes != NIL)
 			{

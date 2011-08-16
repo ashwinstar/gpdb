@@ -68,12 +68,6 @@ bool is_dummy_plan(Plan *plan);
  */
 static void assignMotionID(Node *newnode, ApplyMotionState * context, Node *oldnode);
 
-static List *
-getExprListFromTargetList(List         *tlist,
-                          int           numCols,
-                          AttrNumber   *colIdx,
-                          bool          useExecutorVarFormat);
-
 static int *makeDefaultSegIdxArray(int numSegs);
 
 static Motion *

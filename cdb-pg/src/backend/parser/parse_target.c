@@ -341,6 +341,7 @@ markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 			}
 			break;
 		case RTE_SPECIAL:
+		case RTE_TABLEFUNCTION:
 		case RTE_FUNCTION:
 		case RTE_VALUES:
         case RTE_VOID:
@@ -1245,6 +1246,7 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 				return expandRecordVariable(pstate, (Var *) expr, netlevelsup);
 			/* else fall through to inspect the expression */
 			break;
+		case RTE_TABLEFUNCTION:
 		case RTE_FUNCTION:
 
 			/*

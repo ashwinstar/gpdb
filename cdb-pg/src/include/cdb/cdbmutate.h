@@ -41,4 +41,7 @@ extern Plan *apply_shareinput_dag_to_tree(Plan *plan, ApplyShareInputContext *ct
 extern Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt);
 extern void assign_plannode_id(PlannedStmt *stmt);
 
+extern List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx,
+									   bool useExecutorVarFormat);
+
 #endif   /* CDBMUTATE_H */

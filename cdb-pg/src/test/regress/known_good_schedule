@@ -99,6 +99,7 @@ ignore: copy2
 test: temp
 ignore: domain
 ignore: rangefuncs
+test: table_functions
 test: rangefuncs_cdb
 test: prepare
 test: without_oid

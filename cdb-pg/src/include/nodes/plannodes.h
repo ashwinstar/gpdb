@@ -548,6 +548,16 @@ typedef struct FunctionScan
 } FunctionScan;
 
 /* ----------------
+ *      TableFunctionScan node
+ * ----------------
+ */
+typedef struct TableFunctionScan
+{
+	Scan		scan;
+	List	   *subrtable;		/* temporary workspace for planner */
+} TableFunctionScan;
+
+/* ----------------
  *		ValuesScan node
  * ----------------
  */

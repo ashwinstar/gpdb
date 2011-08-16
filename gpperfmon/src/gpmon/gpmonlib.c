@@ -514,6 +514,7 @@ const char* gpdb_getnodestatus(PerfmonNodeStatus status)
 #define QENODE_TYPE_SHARED_SCAN "Shared Scan"
 #define QENODE_TYPE_SORT "Sort"
 #define QENODE_TYPE_SUBQUERY_SCAN "Subquery Scan"
+#define QENODE_TYPE_TABLE_FUNCTION_SCAN "Table Function Scan"
 #define QENODE_TYPE_TID_SCAN "Tid Scan"
 #define QENODE_TYPE_UNIQUE "Unique"
 #define QENODE_TYPE_VALUES_SCAN "Values Scan"
@@ -870,6 +871,10 @@ QenodeNamesDescriptor nodetype_string_lookup[PMNT_MAXIMUM_ENUM] =
 	{PMNT_SubqueryScan, QENODE_TYPE_SUBQUERY_SCAN, 
 		{QENODE_MEASURE_ROWS_IN, QENODE_MEASURE_SUBQUERY_SCAN_RESCAN}, 
 		{QENODE_UNIT_ROWS, QENODE_UNIT_RESCANS}
+	},
+	{PMNT_TableFunctionScan, QENODE_TYPE_TABLE_FUNCTION_SCAN, 
+		{QENODE_MEASURE_ROWS_IN }, 
+		{QENODE_UNIT_ROWS }
 	},
 	{PMNT_TidScan, QENODE_TYPE_TID_SCAN, 
 		{QENODE_MEASURE_ROWS_IN }, 

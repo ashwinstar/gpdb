@@ -3090,6 +3090,9 @@ format_function_arguments(FuncInfo *finfo, int nallargs,
 				case PROARGMODE_INOUT:
 					argmode = "INOUT ";
 					break;
+				case PROARGMODE_VARIADIC:
+					argmode = "VARIADIC ";
+					break;
 				case PROARGMODE_TABLE:
 					/* skip table column's names */
 					free(typname);

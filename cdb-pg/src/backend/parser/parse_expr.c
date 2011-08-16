@@ -54,6 +54,7 @@ static Node *transformFuncCall(ParseState *pstate, FuncCall *fn);
 static Node *transformSubLink(ParseState *pstate, SubLink *sublink);
 static Node *transformArrayExpr(ParseState *pstate, ArrayExpr *a);
 static Node *transformRowExpr(ParseState *pstate, RowExpr *r);
+static Node *transformTableValueExpr(ParseState *pstate, TableValueExpr *t);
 static Node *transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c);
 static Node *transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m);
 static Node *transformBooleanTest(ParseState *pstate, BooleanTest *b);
@@ -223,6 +224,10 @@ transformExpr(ParseState *pstate, Node *expr)
 
 		case T_RowExpr:
 			result = transformRowExpr(pstate, (RowExpr *) expr);
+			break;
+
+		case T_TableValueExpr:
+			result = transformTableValueExpr(pstate, (TableValueExpr *) expr);
 			break;
 
 		case T_CoalesceExpr:
@@ -1405,12 +1410,23 @@ transformSubLink(ParseState *pstate, SubLink *sublink)
 
 	pstate->p_hasSubLinks = true;
 	qtrees = parse_sub_analyze(sublink->subselect, pstate);
-	if (list_length(qtrees) != 1)
-		elog(ERROR, "bad query in sub-select");
+
+	/*
+	 * Check that we got something reasonable.	Many of these conditions are
+	 * impossible given restrictions of the grammar, but check 'em anyway.
+	 */
+	Insist(list_length(qtrees) == 1);
 	qtree = (Query *) linitial(qtrees);
-	if (qtree->commandType != CMD_SELECT ||
-		qtree->intoClause != NULL)
-		elog(ERROR, "bad query in sub-select");
+	if (!IsA(qtree, Query) ||
+		qtree->commandType != CMD_SELECT ||
+		qtree->utilityStmt != NULL)
+		elog(ERROR, "unexpected non-SELECT command in SubLink");
+	if (qtree->intoClause)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("subquery cannot have SELECT INTO"),
+				 errOmitLocation(true)));
+
 	sublink->subselect = (Node *) qtree;
 
 	if (sublink->subLinkType == EXISTS_SUBLINK)
@@ -1604,6 +1620,61 @@ transformRowExpr(ParseState *pstate, RowExpr *r)
 }
 
 static Node *
+transformTableValueExpr(ParseState *pstate, TableValueExpr *t)
+{
+	List		*parsetrees;
+	Query		*query;
+
+
+	/* If we already transformed this node, do nothing */
+	if (IsA(t->subquery, Query))
+		return (Node*) t;
+
+	/* 
+	 * Table Value Expressions are subselects that can occur as parameters to
+	 * functions.  One result of this is that this code shares a lot with
+	 * transformRangeSubselect due to the nature of subquery resolution.
+	 */
+	pstate->p_hasTblValueExpr = true;
+
+	/* Analyze and transform the subquery */
+	parsetrees = parse_sub_analyze(t->subquery, pstate);
+
+	/* 
+	 * Check that we got something reasonable.  Most of these conditions
+	 * are probably impossible given restrictions in the grammar.
+	 */
+	Insist(list_length(parsetrees) == 1);
+	query = (Query *) linitial(parsetrees);
+	if (query == NULL || !IsA(query, Query))
+		elog(ERROR, "unexpected non-SELECT command in TableValueExpr");
+	if (query->commandType != CMD_SELECT)
+		elog(ERROR, "unexpected non-SELECT command in TableValueExpr");
+	if (query->intoClause != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("subquery in TABLE value expression cannot have SELECT INTO"),
+				 errOmitLocation(true)));
+	t->subquery = (Node*) query;
+
+	/*
+	 * Insist that the TABLE value expression does not contain references to the outer
+	 * range table, this would be an unsupported correlated TABLE value expression.
+	 */
+	if (pstate->p_relnamespace || pstate->p_varnamespace)
+	{
+		if (contain_vars_of_level((Node *) query, 1))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+					 errmsg("subquery in TABLE value expression may not refer "
+							"to other relations of same query level"),
+							 errOmitLocation(true)));
+	}
+
+	return (Node*) t;
+}
+
+static Node *
 transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c)
 {
 	CoalesceExpr *newc = makeNode(CoalesceExpr);
@@ -1763,6 +1834,7 @@ transformWholeRowRef(ParseState *pstate, char *schemaname, char *relname,
 									  -1,
 									  sublevels_up);
 			break;
+		case RTE_TABLEFUNCTION:
 		case RTE_FUNCTION:
 			toid = exprType(rte->funcexpr);
 			if (toid == RECORDOID || get_typtype(toid) == 'c')
@@ -1978,6 +2050,9 @@ exprType(Node *expr)
 			break;
 		case T_RowExpr:
 			type = ((RowExpr *) expr)->row_typeid;
+			break;
+		case T_TableValueExpr:
+			type = ANYTABLEOID;  /* MULTISET values are a special pseudotype */
 			break;
 		case T_RowCompareExpr:
 			type = BOOLOID;

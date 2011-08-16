@@ -1342,26 +1342,50 @@ typedef struct SubqueryScanState
 } SubqueryScanState;
 
 /* ----------------
- *         FunctionScanState information
+ * FunctionScanState information
  *
- *                Function nodes are used to scan the results of a
- *                function appearing in FROM (typically a function returning set).
+ *    Function nodes are used to scan the results of a
+ *    function appearing in FROM (typically a function returning set).
  *
- *                tupdesc                                expected return tuple description
- *                tuplestorestate                private state of tuplestore.c
- *                funcexpr                        state for function expression being evaluated
+ *    tupdesc                 expected return tuple description
+ *    tuplestorestate         private state of tuplestore.c
+ *    funcexpr                state for function expression being evaluated
+ *    cdb_want_ctid           true => ctid is referenced in targetlist
+ *    cdb_fake_ctid
+ *    cdb_mark_ctid
  * ----------------
  */
 typedef struct FunctionScanState
 {
-        ScanState        ss;                                /* its first field is NodeTag */
-        TupleDesc        tupdesc;
-        struct Tuplestorestate *tuplestorestate;
-        ExprState  *funcexpr;
-    bool        cdb_want_ctid;  /* true => ctid is referenced in targetlist */
-    ItemPointerData cdb_fake_ctid;
-    ItemPointerData cdb_mark_ctid;
+	ScanState					 ss;	/* its first field is NodeTag */
+	TupleDesc					 tupdesc;
+	struct Tuplestorestate		*tuplestorestate;
+	ExprState					*funcexpr;
+	bool						 cdb_want_ctid;
+	ItemPointerData				 cdb_fake_ctid;
+	ItemPointerData				 cdb_mark_ctid;
 } FunctionScanState;
+
+
+/* ----------------
+ * TableFunctionState information
+ *
+ *   Table Function nodes are used to scan the results of a table function 
+ *   operating over a table as input.
+ * ----------------
+ */
+typedef struct TableFunctionState
+{
+	ScanState					 ss;			/* Table Function is a Scan */
+	struct AnyTableData         *inputscan;     /* subquery scan data */
+	TupleDesc					 resultdesc;	/* Function Result descriptor */
+	HeapTupleData                tuple;			/* Returned tuple */
+	FuncExprState				*fcache;		/* Function Call Cache */
+	FunctionCallInfoData		 fcinfo;		/* Function Call Context */
+	ReturnSetInfo				 rsinfo;		/* Resultset Context */
+	bool                         is_rowtype;    /* Function returns records */
+} TableFunctionState;
+
 
 /* ----------------
  *         ValuesScanState information

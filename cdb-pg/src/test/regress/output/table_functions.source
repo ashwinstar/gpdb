@@ -1,0 +1,1981 @@
+CREATE SCHEMA table_function;
+SET search_path TO table_function, public;
+CREATE TABLE example(a int, b text) DISTRIBUTED by (a);
+COPY example FROM stdin;
+CREATE TABLE example_r AS SELECT * FROM example DISTRIBUTED RANDOMLY;
+/* Create some normal scalar input / scalar output functions */
+CREATE FUNCTION scalar_1(int) RETURNS int
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
+CREATE FUNCTION scalar_2(IN int) RETURNS int
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
+CREATE FUNCTION scalar_3(IN a int, OUT b INT)
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
+CREATE FUNCTION scalar_4(INOUT x int)
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
+CREATE FUNCTION scalar_5(anyelement) RETURNS anyelement
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
+/* Create some normal scalar input / table output functions */
+CREATE FUNCTION scalar_tf_1(int) RETURNS TABLE(a int, b text)
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
+CREATE FUNCTION scalar_tf_2(IN int) RETURNS TABLE(a int, b text)
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
+CREATE FUNCTION scalar_tf_3(IN a int) RETURNS TABLE(a int, b text)
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
+CREATE FUNCTION scalar_tf_4(IN a int, OUT a int, OUT b text) RETURNS SETOF RECORD
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
+CREATE FUNCTION scalar_tf_5(IN a int) RETURNS SETOF RECORD
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
+CREATE FUNCTION scalar_tf_6(IN a anyelement) RETURNS SETOF example
+    AS $$ SELECT a+$1, b from example $$ LANGUAGE SQL;
+/* CREATE some multiset input table functions */
+/* scalar value outputs */
+CREATE FUNCTION multiset_scalar_null(anytable) RETURNS int 
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_scalar_null' LANGUAGE C;
+CREATE FUNCTION multiset_scalar_value(anytable) RETURNS int 
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_scalar_value' LANGUAGE C;
+CREATE FUNCTION multiset_scalar_tuple(anytable) RETURNS example
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_scalar_tuple' LANGUAGE C;
+/* set value outputs */
+CREATE FUNCTION multiset_setof_null(anytable) RETURNS setof int
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_setof_null' LANGUAGE C;
+CREATE FUNCTION multiset_setof_value(anytable) RETURNS setof int
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_setof_value' LANGUAGE C;
+/* Bunches of different ways of saying "returns a setof rows */
+CREATE FUNCTION multiset_materialize_good(anytable) 
+	   RETURNS TABLE(a int, b text)
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_materialize_good' LANGUAGE C;
+CREATE FUNCTION multiset_materialize_bad(anytable) 
+	   RETURNS TABLE(a int, b text)
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_materialize_bad' LANGUAGE C;
+CREATE FUNCTION multiset_1(a anytable) RETURNS TABLE(a int, b text) 
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_example' LANGUAGE C;
+CREATE FUNCTION multiset_2(a anytable) RETURNS TABLE(a int, b text) 
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_example' LANGUAGE C;
+CREATE FUNCTION multiset_3(a anytable, out a int, out b text) RETURNS SETOF RECORD
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_example' LANGUAGE C;
+CREATE FUNCTION multiset_4(a anytable) RETURNS SETOF RECORD
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_example' LANGUAGE C;
+CREATE FUNCTION multiset_5(a anytable) RETURNS SETOF example
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_example' LANGUAGE C;
+CREATE FUNCTION multiset_6(a anytable) RETURNS SETOF record
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_example' LANGUAGE C;
+/* Negative test cases around CREATE FUNCTION */
+/* ERROR: TABLE output not allowed with OUT parameters */
+CREATE FUNCTION error(OUT a int) RETURNS TABLE(a int, b text)
+    AS $$ SELECT * from example $$ LANGUAGE SQL;
+ERROR:  OUT arguments aren't allowed in TABLE functions
+/* ERROR: Multiple multiset inputs not supported */
+CREATE FUNCTION error(a anytable, b anytable) RETURNS TABLE(a int, b text)
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
+ERROR:  functions cannot have multiple "anytable" arguments
+/* ERROR: Multiset outputs not supported */
+CREATE FUNCTION error(OUT anytable) 
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
+ERROR:  functions cannot return "anytable" arguments
+CREATE FUNCTION error() RETURNS TABLE(x anytable)
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
+ERROR:  functions cannot return "anytable" arguments
+/* ERROR: SETOF as IN/OUT/TABLE parameters is not supported */
+CREATE FUNCTION error(OUT setof example) 
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
+ERROR:  functions cannot accept set arguments
+CREATE FUNCTION error(IN setof example) 
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
+ERROR:  functions cannot accept set arguments
+CREATE FUNCTION error(INOUT setof example) 
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
+ERROR:  functions cannot accept set arguments
+CREATE FUNCTION error() RETURNS TABLE(a setof example) 
+    AS $$ SELECT * FROM example $$ LANGUAGE SQL;
+ERROR:  functions cannot accept set arguments
+/* Negative test cases around the "anytable" type */
+CREATE TABLE fail(x anytable);
+NOTICE:  Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
+ERROR:  column "x" has pseudo-type anytable
+CREATE TYPE  fail AS (x anytable);
+ERROR:  column "x" has pseudo-type anytable
+/* Observe how they are represented in the catalog */
+select 
+  p.proname, 
+  p.oid::regproc,
+  p.oid::regprocedure,
+  p.proretset, 
+  (p.proargtypes::regtype[])[0:0], 
+  p.prorettype::regtype, 
+  p.proargmodes
+FROM pg_proc p join pg_namespace n ON (p.pronamespace = n.oid)
+WHERE n.nspname = 'table_function'
+ORDER BY p.proname;
+          proname          |            oid            |                 oid                 | proretset | proargtypes  | prorettype | proargmodes 
+---------------------------+---------------------------+-------------------------------------+-----------+--------------+------------+-------------
+ multiset_1                | multiset_1                | multiset_1(anytable)                | t         | {anytable}   | record     | {i,t,t}
+ multiset_2                | multiset_2                | multiset_2(anytable)                | t         | {anytable}   | record     | {i,t,t}
+ multiset_3                | multiset_3                | multiset_3(anytable)                | t         | {anytable}   | record     | {i,o,o}
+ multiset_4                | multiset_4                | multiset_4(anytable)                | t         | {anytable}   | record     | 
+ multiset_5                | multiset_5                | multiset_5(anytable)                | t         | {anytable}   | example    | 
+ multiset_6                | multiset_6                | multiset_6(anytable)                | t         | {anytable}   | record     | 
+ multiset_materialize_bad  | multiset_materialize_bad  | multiset_materialize_bad(anytable)  | t         | {anytable}   | record     | {i,t,t}
+ multiset_materialize_good | multiset_materialize_good | multiset_materialize_good(anytable) | t         | {anytable}   | record     | {i,t,t}
+ multiset_scalar_null      | multiset_scalar_null      | multiset_scalar_null(anytable)      | f         | {anytable}   | integer    | 
+ multiset_scalar_tuple     | multiset_scalar_tuple     | multiset_scalar_tuple(anytable)     | f         | {anytable}   | example    | 
+ multiset_scalar_value     | multiset_scalar_value     | multiset_scalar_value(anytable)     | f         | {anytable}   | integer    | 
+ multiset_setof_null       | multiset_setof_null       | multiset_setof_null(anytable)       | t         | {anytable}   | integer    | 
+ multiset_setof_value      | multiset_setof_value      | multiset_setof_value(anytable)      | t         | {anytable}   | integer    | 
+ scalar_1                  | scalar_1                  | scalar_1(integer)                   | f         | {integer}    | integer    | 
+ scalar_2                  | scalar_2                  | scalar_2(integer)                   | f         | {integer}    | integer    | 
+ scalar_3                  | scalar_3                  | scalar_3(integer)                   | f         | {integer}    | integer    | {i,o}
+ scalar_4                  | scalar_4                  | scalar_4(integer)                   | f         | {integer}    | integer    | {b}
+ scalar_5                  | scalar_5                  | scalar_5(anyelement)                | f         | {anyelement} | anyelement | 
+ scalar_tf_1               | scalar_tf_1               | scalar_tf_1(integer)                | t         | {integer}    | record     | {i,t,t}
+ scalar_tf_2               | scalar_tf_2               | scalar_tf_2(integer)                | t         | {integer}    | record     | {i,t,t}
+ scalar_tf_3               | scalar_tf_3               | scalar_tf_3(integer)                | t         | {integer}    | record     | {i,t,t}
+ scalar_tf_4               | scalar_tf_4               | scalar_tf_4(integer)                | t         | {integer}    | record     | {i,o,o}
+ scalar_tf_5               | scalar_tf_5               | scalar_tf_5(integer)                | t         | {integer}    | record     | 
+ scalar_tf_6               | scalar_tf_6               | scalar_tf_6(anyelement)             | t         | {anyelement} | example    | 
+(24 rows)
+
+/* Observe how psql reports them */
+\df (scalar_*|multiset_*)
+                                               List of functions
+     Schema     |           Name            | Result data type |          Argument data types          |  Type  
+----------------+---------------------------+------------------+---------------------------------------+--------
+ table_function | multiset_1                | SETOF record     | a anytable                            | normal
+ table_function | multiset_2                | SETOF record     | a anytable                            | normal
+ table_function | multiset_3                | SETOF record     | a anytable, OUT a integer, OUT b text | normal
+ table_function | multiset_4                | SETOF record     | a anytable                            | normal
+ table_function | multiset_5                | SETOF example    | a anytable                            | normal
+ table_function | multiset_6                | SETOF record     | a anytable                            | normal
+ table_function | multiset_materialize_bad  | SETOF record     | anytable                              | normal
+ table_function | multiset_materialize_good | SETOF record     | anytable                              | normal
+ table_function | multiset_scalar_null      | integer          | anytable                              | normal
+ table_function | multiset_scalar_tuple     | example          | anytable                              | normal
+ table_function | multiset_scalar_value     | integer          | anytable                              | normal
+ table_function | multiset_setof_null       | SETOF integer    | anytable                              | normal
+ table_function | multiset_setof_value      | SETOF integer    | anytable                              | normal
+ table_function | scalar_1                  | integer          | integer                               | normal
+ table_function | scalar_2                  | integer          | integer                               | normal
+ table_function | scalar_3                  | integer          | a integer, OUT b integer              | normal
+ table_function | scalar_4                  | integer          | INOUT x integer                       | normal
+ table_function | scalar_5                  | anyelement       | anyelement                            | normal
+ table_function | scalar_tf_1               | SETOF record     | integer                               | normal
+ table_function | scalar_tf_2               | SETOF record     | integer                               | normal
+ table_function | scalar_tf_3               | SETOF record     | a integer                             | normal
+ table_function | scalar_tf_4               | SETOF record     | a integer, OUT a integer, OUT b text  | normal
+ table_function | scalar_tf_5               | SETOF record     | a integer                             | normal
+ table_function | scalar_tf_6               | SETOF example    | a anyelement                          | normal
+(24 rows)
+
+-- Normal function use:
+-- Normal scalar input / scalar output functions
+-- begin equivalent
+SELECT scalar_1(5) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT scalar_2(5) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT scalar_3(5) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT scalar_4(5) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT scalar_5(5) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT scalar_1((select 5)) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT scalar_2((select 5)) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT scalar_3((select 5)) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT scalar_4((select 5)) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT scalar_5((select 5)) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT b FROM scalar_1(5) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT b FROM scalar_2(5) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT b FROM scalar_3(5);
+ b 
+---
+ 5
+(1 row)
+
+SELECT x as b FROM scalar_4(5);
+ b 
+---
+ 5
+(1 row)
+
+SELECT b FROM scalar_5(5) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT b FROM scalar_1((select 5)) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT b FROM scalar_2((select 5)) as b;
+ b 
+---
+ 5
+(1 row)
+
+SELECT b FROM scalar_3((select 5));
+ b 
+---
+ 5
+(1 row)
+
+SELECT x as b FROM scalar_4((select 5));
+ b 
+---
+ 5
+(1 row)
+
+SELECT b FROM scalar_5((select 5)) as b;
+ b 
+---
+ 5
+(1 row)
+
+-- end equivalent
+-- ERROR cases for simple scalar functions
+SELECT scalar_1((select 1, 2));  -- subquery returns multiple columns
+ERROR:  subquery must return only one column
+LINE 1: SELECT scalar_1((select 1, 2));
+                        ^
+SELECT scalar_1((select 1 union select 2));  -- subquery returns multiple rows
+ERROR:  more than one row returned by a subquery used as an expression
+SELECT scalar_1(TABLE(select 1));  -- TableValue expression does not match type
+ERROR:  function scalar_1(anytable) does not exist
+LINE 1: SELECT scalar_1(TABLE(select 1));
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+SELECT scalar_5(TABLE(select 1));  -- TableValue shouldn't match "anyelement"
+ERROR:  function scalar_5(anytable) does not exist
+LINE 1: SELECT scalar_5(TABLE(select 1));
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+-- Normal scalar input / table output functions
+-- begin equivalent */
+SELECT row(a+5, b)::example from example;
+        row        
+-------------------
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+(10 rows)
+
+SELECT scalar_tf_1(5);
+    scalar_tf_1    
+-------------------
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+(10 rows)
+
+SELECT scalar_tf_2(5);
+    scalar_tf_2    
+-------------------
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+(10 rows)
+
+SELECT scalar_tf_3(5);
+    scalar_tf_3    
+-------------------
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+(10 rows)
+
+SELECT scalar_tf_4(5);
+    scalar_tf_4    
+-------------------
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+(10 rows)
+
+SELECT scalar_tf_5(5);
+    scalar_tf_5    
+-------------------
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+(10 rows)
+
+SELECT scalar_tf_6(5);
+    scalar_tf_6    
+-------------------
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+(10 rows)
+
+SELECT scalar_tf_1((select 5));
+    scalar_tf_1    
+-------------------
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+(10 rows)
+
+SELECT scalar_tf_2((select 5));
+    scalar_tf_2    
+-------------------
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+(10 rows)
+
+SELECT scalar_tf_3((select 5));
+    scalar_tf_3    
+-------------------
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+(10 rows)
+
+SELECT scalar_tf_4((select 5));
+    scalar_tf_4    
+-------------------
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+(10 rows)
+
+SELECT scalar_tf_5((select 5));
+    scalar_tf_5    
+-------------------
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+(10 rows)
+
+SELECT scalar_tf_6((select 5));
+    scalar_tf_6    
+-------------------
+ (6," value1.1/4")
+ (8," value3.1/2")
+ (6," value1.2/4")
+ (8," value3.2/2")
+ (6," value1.3/4")
+ (6," value1.4/4")
+ (7," value2.1/3")
+ (9," value4.1/1")
+ (7," value2.2/3")
+ (7," value2.3/3")
+(10 rows)
+
+-- end equivalent
+-- begin equivalent
+SELECT a+5 as a, b from example order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_1(5) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_2(5) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_3(5) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_4(5) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_5(5) e(a int, b text) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_6(5) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_1((select 5)) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_2((select 5)) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_3((select 5)) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_4((select 5)) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_5((select 5)) e(a int, b text) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+SELECT * FROM scalar_tf_6((select 5)) order by a, b;
+ a |      b      
+---+-------------
+ 6 |  value1.1/4
+ 6 |  value1.2/4
+ 6 |  value1.3/4
+ 6 |  value1.4/4
+ 7 |  value2.1/3
+ 7 |  value2.2/3
+ 7 |  value2.3/3
+ 8 |  value3.1/2
+ 8 |  value3.2/2
+ 9 |  value4.1/1
+(10 rows)
+
+/*
+  ERROR:  Statement Error, writer gang busy: possible attempt to execute volatile function in unsupported context.
+
+    Fixed if we switch away from SQL language functions?
+
+SELECT (scalar_tf_1(5)).*;
+SELECT (scalar_tf_2(5)).*;
+SELECT (scalar_tf_3(5)).*;
+SELECT (scalar_tf_4(5)).*;
+SELECT (scalar_tf_5(5)).*;
+SELECT (scalar_tf_6(5)).*;
+SELECT (scalar_tf_1((select 5))).*;
+SELECT (scalar_tf_2((select 5))).*;
+SELECT (scalar_tf_3((select 5))).*;
+SELECT (scalar_tf_4((select 5))).*;
+SELECT (scalar_tf_5((select 5))).*;
+SELECT (scalar_tf_6((select 5))).*;
+*/
+-- end equivalent
+-- ERROR cases for simple table output functions
+SELECT scalar_tf_1((select 1, 2));  -- subquery returns multiple columns
+ERROR:  subquery must return only one column
+LINE 21: SELECT scalar_tf_1((select 1, 2));
+                            ^
+SELECT scalar_tf_1((select 1 union select 2));  -- subquery returns multiple rows
+ERROR:  more than one row returned by a subquery used as an expression
+SELECT scalar_tf_1(TABLE(select 1));  -- TableValue expression does not match type
+ERROR:  function scalar_tf_1(anytable) does not exist
+LINE 1: SELECT scalar_tf_1(TABLE(select 1));
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+SELECT scalar_tf_6(TABLE(select 1));  -- TableValue expression does not anyelement
+ERROR:  function scalar_tf_6(anytable) does not exist
+LINE 1: SELECT scalar_tf_6(TABLE(select 1));
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+-- Table Functions   table input / table output
+-- begin equivalent
+SELECT * FROM example order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_2( TABLE( SELECT * from example) ) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_3( TABLE( SELECT * from example) ) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_4( TABLE( SELECT * from example) ) e(a int, b text) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_6( TABLE(SELECT * from example) ) e(a int, b text) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * from example) ) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example SCATTER by a) ) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example SCATTER by b) ) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example SCATTER RANDOMLY) ) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example ORDER BY a, b SCATTER by a) ) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example ORDER BY b, a SCATTER by b) ) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example ORDER BY a, b SCATTER RANDOMLY) ) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * from example_r) )  order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER by a||b) )  order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER by b, a, a||b) )  order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER RANDOMLY) )  order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+-- end equivalent
+-- Table Functions with a focused subplan plan
+SELECT * FROM multiset_5( TABLE( SELECT count(*)::integer, 'hello'::text from example_r ) );
+ a  |   b   
+----+-------
+ 10 | hello
+(1 row)
+
+SELECT * FROM example_r WHERE (10, 'hello') in (SELECT * FROM multiset_5( TABLE( SELECT count(*)::integer, 'hello'::text from example_r ))) order by a,b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+-- Table Functions + Projection
+-- begin equivalent
+SELECT b FROM example order by b;
+      b      
+-------------
+  value1.1/4
+  value1.2/4
+  value1.3/4
+  value1.4/4
+  value2.1/3
+  value2.2/3
+  value2.3/3
+  value3.1/2
+  value3.2/2
+  value4.1/1
+(10 rows)
+
+SELECT b FROM multiset_2( TABLE( SELECT * from example) ) order by b;
+      b      
+-------------
+  value1.1/4
+  value1.2/4
+  value1.3/4
+  value1.4/4
+  value2.1/3
+  value2.2/3
+  value2.3/3
+  value3.1/2
+  value3.2/2
+  value4.1/1
+(10 rows)
+
+SELECT b FROM multiset_3( TABLE( SELECT * from example) ) order by b;
+      b      
+-------------
+  value1.1/4
+  value1.2/4
+  value1.3/4
+  value1.4/4
+  value2.1/3
+  value2.2/3
+  value2.3/3
+  value3.1/2
+  value3.2/2
+  value4.1/1
+(10 rows)
+
+SELECT b FROM multiset_4( TABLE( SELECT * from example) ) e(a int, b text) order by b;
+      b      
+-------------
+  value1.1/4
+  value1.2/4
+  value1.3/4
+  value1.4/4
+  value2.1/3
+  value2.2/3
+  value2.3/3
+  value3.1/2
+  value3.2/2
+  value4.1/1
+(10 rows)
+
+SELECT b FROM multiset_6( TABLE( SELECT * from example) ) e(a int, b text)  order by b;
+      b      
+-------------
+  value1.1/4
+  value1.2/4
+  value1.3/4
+  value1.4/4
+  value2.1/3
+  value2.2/3
+  value2.3/3
+  value3.1/2
+  value3.2/2
+  value4.1/1
+(10 rows)
+
+SELECT b FROM multiset_5( TABLE( SELECT * from example) ) order by b;
+      b      
+-------------
+  value1.1/4
+  value1.2/4
+  value1.3/4
+  value1.4/4
+  value2.1/3
+  value2.2/3
+  value2.3/3
+  value3.1/2
+  value3.2/2
+  value4.1/1
+(10 rows)
+
+-- end equivalent
+-- Support for different backend code
+-- this function always returns a single scalar null value
+-- begin equivalent
+SELECT null as a;
+ a 
+---
+ 
+(1 row)
+
+SELECT * FROM multiset_scalar_null( TABLE(SELECT 1) );
+ multiset_scalar_null 
+----------------------
+                     
+(1 row)
+
+-- end_equivalent
+-- this function always returns a single scalar value of 42
+-- begin equivalent
+SELECT 42 as fortytwo; 
+ fortytwo
+----------
+       42
+(1 row)
+
+SELECT * FROM multiset_scalar_value( TABLE(SELECT 42) ) fortytwo;
+ fortytwo
+----------
+       42
+(1 row)
+
+-- end_equivalent
+-- This function always returns a single "(1,Example)" tuple
+-- begin equivalent
+SELECT 1 as a, 'Example' as b;
+ a |    b    
+---+---------
+ 1 | Example
+(1 row)
+
+SELECT * from multiset_scalar_tuple( TABLE(SELECT 1) );
+ a |    b    
+---+---------
+ 1 | Example
+(1 row)
+
+-- end_equivalent
+-- ERROR: functions returning SETOF x cannot return null
+SELECT * FROM multiset_setof_null( TABLE(SELECT 1) );
+ERROR:  function returning set of rows cannot return null value
+-- This function returns a setof values [1,2,3]
+-- begin equivalent
+SELECT a from generate_series(1,3) as a;
+ a 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+SELECT a from multiset_setof_value( TABLE(SELECT 1) ) as a;
+ a 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+-- end equivalent
+-- ERROR: Table Functions do not currently support SFRM_Materialize
+SELECT * FROM multiset_materialize_good( TABLE( SELECT * from example ) );
+ERROR:  set-valued function called in context that cannot accept a set  (seg0 slice1 maple.local:50000 pid=99372)
+SELECT * FROM multiset_materialize_bad( TABLE( SELECT * from example ) );
+ERROR:  table functions must use SFRM_ValuePerCall protocol  (seg0 slice1 maple.local:50000 pid=99372)
+-- name resolution rules should work correctly between scalar and anytable,
+-- i.e. there cannot be any automatic conversion.
+CREATE FUNCTION nameres(int) RETURNS int
+    AS $$ SELECT $1 $$ LANGUAGE SQL;
+SELECT * from nameres(5);                -- should work
+ nameres 
+---------
+       5
+(1 row)
+
+SELECT * from nameres(TABLE(SELECT 5));  -- should fail
+ERROR:  function nameres(anytable) does not exist
+LINE 1: SELECT * from nameres(TABLE(SELECT 5));
+                      ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+CREATE FUNCTION nameres(anytable) RETURNS int
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_scalar_value' LANGUAGE C;
+SELECT * from nameres(5);                -- should work
+ nameres 
+---------
+       5
+(1 row)
+
+SELECT * from nameres(TABLE(SELECT 5));  -- should work
+ nameres 
+---------
+       5
+(1 row)
+
+DROP FUNCTION nameres(int);
+SELECT * from nameres(5);                -- should fail
+ERROR:  function nameres(integer) does not exist
+LINE 1: SELECT * from nameres(5);
+                      ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+SELECT * from nameres(TABLE(SELECT 5));  -- should work
+ nameres 
+---------
+       5
+(1 row)
+
+DROP FUNCTION nameres(anytable);
+SELECT * from nameres(5);                -- should fail
+ERROR:  function nameres(integer) does not exist
+LINE 1: SELECT * from nameres(5);
+                      ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+SELECT * from nameres(TABLE(SELECT 5));  -- should fail
+ERROR:  function nameres(anytable) does not exist
+LINE 1: SELECT * from nameres(TABLE(SELECT 5));
+                      ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+-- Error: anytable does NOT match anyelement
+CREATE FUNCTION nameres(anyelement) returns int 
+  AS $$ SELECT $1 $$ LANGUAGE SQL;
+SELECT * FROM nameres( TABLE( SELECT 1) ); -- should fail
+ERROR:  function nameres(anytable) does not exist
+LINE 1: SELECT * FROM nameres( TABLE( SELECT 1) );
+                      ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+DROP FUNCTION nameres(anyelement);
+-- Must support resjunk scatter by clauses
+explain SELECT * FROM multiset_5( TABLE( SELECT * FROM example SCATTER BY a+1) );
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.25 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=0.00..2.25 rows=5 width=36)
+         ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.12 rows=5 width=16)
+               Hash Key: "?column3?"
+               ->  Seq Scan on example  (cost=0.00..2.12 rows=5 width=16)
+(5 rows)
+
+SELECT * FROM multiset_5( TABLE( SELECT * FROM example SCATTER BY a+1) ) order by a,b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+-- Use of a select list table value expression subquery
+-- begin equivalent
+SELECT a FROM example ORDER BY a;
+ a 
+---
+ 1
+ 1
+ 1
+ 1
+ 2
+ 2
+ 2
+ 3
+ 3
+ 4
+(10 rows)
+
+SELECT UNNEST(ARRAY(SELECT a FROM example)) ORDER BY 1;
+ unnest 
+--------
+      1
+      1
+      1
+      1
+      2
+      2
+      2
+      3
+      3
+      4
+(10 rows)
+
+SELECT UNNEST(ARRAY(SELECT a FROM multiset_5( TABLE ( SELECT a, b from example)))) ORDER BY 1;
+ unnest 
+--------
+      1
+      1
+      1
+      1
+      2
+      2
+      2
+      3
+      3
+      4
+(10 rows)
+
+-- end equivalent
+-- Use of a where clause table value expression subquery
+-- begin equivalent
+SELECT * FROM example order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM example where (a,b) in (select * from example) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM example where (a,b) in (select * from multiset_5( TABLE(SELECT a, b from example) )) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+SELECT * FROM multiset_5( TABLE(SELECT a, b from example)) where (a,b) in (select a,b from example) order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+-- end equivalent
+-- Explain a couple interesting cases
+explain SELECT * FROM multiset_5( TABLE (SELECT dbid, gpname FROM gp_id) );
+                             QUERY PLAN                              
+----------------------------------------------------------------------
+ Table Function Scan on multiset_5  (cost=0.00..1.03 rows=4 width=36)
+   ->  Seq Scan on gp_id  (cost=0.00..1.01 rows=2 width=66)
+(2 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT dbid, gpname FROM gp_id SCATTER BY dbid) );
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..1.03 rows=1 width=36)
+   ->  Table Function Scan on multiset_5  (cost=0.00..1.03 rows=1 width=36)
+         ->  Redistribute Motion 1:2  (slice1)  (cost=0.00..1.01 rows=2 width=66)
+               Hash Key: gp_id.dbid
+               ->  Seq Scan on gp_id  (cost=0.00..1.01 rows=2 width=66)
+(5 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT dbid, gpname FROM gp_id SCATTER RANDOMLY) );
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..1.03 rows=1 width=36)
+   ->  Table Function Scan on multiset_5  (cost=0.00..1.03 rows=1 width=36)
+         ->  Redistribute Motion 1:2  (slice1)  (cost=0.00..1.01 rows=2 width=66)
+               ->  Seq Scan on gp_id  (cost=0.00..1.01 rows=2 width=66)
+(4 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT * FROM example) );
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..2.23 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=36)
+         ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(3 rows)
+
+explain SELECT * from multiset_5( TABLE (SELECT * FROM example ORDER BY a limit 10 ) );
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Table Function Scan on multiset_5  (cost=2.27..2.62 rows=20 width=36)
+   ->  Limit  (cost=2.27..2.49 rows=10 width=16)
+         ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=2.27..2.49 rows=5 width=16)
+               Merge Key: example.a
+               ->  Limit  (cost=2.27..2.29 rows=5 width=16)
+                     ->  Sort  (cost=2.27..2.29 rows=5 width=16)
+                           Sort Key (Limit): example.a
+                           ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(8 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT * FROM example SCATTER BY a) );
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..2.23 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=36)
+         ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(3 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT * FROM example SCATTER BY b) );
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.23 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=36)
+         ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.10 rows=5 width=16)
+               Hash Key: example.b
+               ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(5 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT * FROM example SCATTER RANDOMLY) );
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.23 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=36)
+         ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.10 rows=5 width=16)
+               ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(4 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT * FROM example ORDER BY a, b) );
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=2.27..2.42 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=2.27..2.42 rows=5 width=36)
+         ->  Sort  (cost=2.27..2.29 rows=5 width=16)
+               Sort Key: example.a, example.b
+               ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(5 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT * FROM example ORDER BY a, b SCATTER BY a) );
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=2.27..2.42 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=2.27..2.42 rows=5 width=36)
+         ->  Sort  (cost=2.27..2.29 rows=5 width=16)
+               Sort Key: example.a, example.b
+               ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(5 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT * FROM example ORDER BY b, a SCATTER BY b) );
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=2.27..2.42 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=2.27..2.42 rows=5 width=36)
+         ->  Sort  (cost=2.27..2.29 rows=5 width=16)
+               Sort Key: example.b, example.a
+               ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.10 rows=5 width=16)
+                     Hash Key: example.b
+                     ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(7 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT * FROM example ORDER BY b, a SCATTER RANDOMLY) );
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=2.27..2.42 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=2.27..2.42 rows=5 width=36)
+         ->  Sort  (cost=2.27..2.29 rows=5 width=16)
+               Sort Key: example.b, example.a
+               ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.10 rows=5 width=16)
+                     ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(6 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT * FROM example ORDER BY a, b LIMIT 10 SCATTER BY a) );
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=2.27..2.62 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=2.27..2.62 rows=5 width=36)
+         ->  Redistribute Motion 1:2  (slice2; segments: 1)  (cost=2.27..2.49 rows=10 width=16)
+               Hash Key: example.a
+               ->  Limit  (cost=2.27..2.49 rows=10 width=16)
+                     ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=2.27..2.49 rows=5 width=16)
+                           Merge Key: example.a, example.b
+                           ->  Limit  (cost=2.27..2.29 rows=5 width=16)
+                                 ->  Sort  (cost=2.27..2.29 rows=5 width=16)
+                                       Sort Key (Limit): example.a, example.b
+                                       ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(11 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT * FROM example ORDER BY b, a LIMIT 10 SCATTER BY b) );
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=2.27..2.62 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=2.27..2.62 rows=5 width=36)
+         ->  Redistribute Motion 1:2  (slice2; segments: 1)  (cost=2.27..2.49 rows=10 width=16)
+               Hash Key: example.b
+               ->  Limit  (cost=2.27..2.49 rows=10 width=16)
+                     ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=2.27..2.49 rows=5 width=16)
+                           Merge Key: example.b, example.a
+                           ->  Limit  (cost=2.27..2.29 rows=5 width=16)
+                                 ->  Sort  (cost=2.27..2.29 rows=5 width=16)
+                                       Sort Key (Limit): example.b, example.a
+                                       ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(11 rows)
+
+explain SELECT * FROM multiset_5( TABLE (SELECT * FROM example ORDER BY b, a LIMIT 10 SCATTER RANDOMLY) );
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=2.27..2.62 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=2.27..2.62 rows=5 width=36)
+         ->  Redistribute Motion 1:2  (slice2; segments: 1)  (cost=2.27..2.49 rows=10 width=16)
+               ->  Limit  (cost=2.27..2.49 rows=10 width=16)
+                     ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=2.27..2.49 rows=5 width=16)
+                           Merge Key: example.b, example.a
+                           ->  Limit  (cost=2.27..2.29 rows=5 width=16)
+                                 ->  Sort  (cost=2.27..2.29 rows=5 width=16)
+                                       Sort Key (Limit): example.b, example.a
+                                       ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(10 rows)
+
+explain SELECT ARRAY(SELECT a FROM multiset_5( TABLE ( SELECT a, b from example)) order by a);
+                                       QUERY PLAN                                       
+-----------------------------------------------------------------------------------------
+ Result  (cost=2.42..2.43 rows=1 width=0)
+   InitPlan  (slice2)
+     ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=2.39..2.42 rows=5 width=4)
+           ->  Sort  (cost=2.39..2.42 rows=5 width=4)
+                 Sort Key: multiset_5.a
+                 ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=4)
+                       ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(7 rows)
+
+explain SELECT ARRAY(SELECT a FROM multiset_5( TABLE ( SELECT a, b from example order by a)));
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Result  (cost=2.42..2.43 rows=1 width=0)
+   InitPlan  (slice2)
+     ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=2.27..2.42 rows=5 width=4)
+           ->  Table Function Scan on multiset_5  (cost=2.27..2.42 rows=5 width=4)
+                 ->  Sort  (cost=2.27..2.29 rows=5 width=16)
+                       Sort Key: example.a
+                       ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(7 rows)
+
+explain SELECT * FROM example where (a,b) in (select * from multiset_5( TABLE(SELECT a, b from example) ));
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=2.58..4.76 rows=2 width=16)
+   ->  Hash EXISTS Join  (cost=2.58..4.76 rows=2 width=16)
+         Hash Cond: table_function.example.a = multiset_5.a AND table_function.example.b = multiset_5.b
+         ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+         ->  Hash  (cost=2.43..2.43 rows=5 width=36)
+               ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.43 rows=5 width=36)
+                     Hash Key: multiset_5.a
+                     ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=36)
+                           ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(9 rows)
+
+explain SELECT * FROM example where (a,b) in (select * from multiset_5( TABLE(SELECT a, b from example scatter by b) ));
+                                                   QUERY PLAN                                                    
+-----------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=2.58..4.76 rows=2 width=16)
+   ->  Hash EXISTS Join  (cost=2.58..4.76 rows=2 width=16)
+         Hash Cond: table_function.example.a = multiset_5.a AND table_function.example.b = multiset_5.b
+         ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+         ->  Hash  (cost=2.43..2.43 rows=5 width=36)
+               ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=0.00..2.43 rows=5 width=36)
+                     Hash Key: multiset_5.a
+                     ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=36)
+                           ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.10 rows=5 width=16)
+                                 Hash Key: table_function.example.b
+                                 ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(11 rows)
+
+explain SELECT * FROM multiset_5( TABLE(SELECT a, b from example)) where (a,b) in (select a,b from example);
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=2.60..4.91 rows=2 width=36)
+   ->  Hash Join  (cost=2.60..4.91 rows=2 width=36)
+         Hash Cond: multiset_5.a = table_function.example.a AND multiset_5.b = table_function.example.b
+         ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=36)
+               ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+         ->  Hash  (cost=2.45..2.45 rows=5 width=16)
+               ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=2.15..2.45 rows=5 width=16)
+                     ->  HashAggregate  (cost=2.15..2.25 rows=5 width=36)
+                           Group By: table_function.example.a, table_function.example.b
+                           ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(10 rows)
+
+explain SELECT * FROM multiset_5( TABLE(SELECT a, b from example scatter by b)) where (a,b) in (select a,b from example);
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=2.60..4.91 rows=2 width=36)
+   ->  Hash Join  (cost=2.60..4.91 rows=2 width=36)
+         Hash Cond: multiset_5.a = table_function.example.a AND multiset_5.b = table_function.example.b
+         ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=36)
+               ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.10 rows=5 width=16)
+                     Hash Key: table_function.example.b
+                     ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+         ->  Hash  (cost=2.45..2.45 rows=5 width=16)
+               ->  Broadcast Motion 2:2  (slice2; segments: 2)  (cost=2.15..2.45 rows=5 width=16)
+                     ->  HashAggregate  (cost=2.15..2.25 rows=5 width=36)
+                           Group By: table_function.example.a, table_function.example.b
+                           ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
+(12 rows)
+
+explain SELECT * FROM multiset_5( TABLE( SELECT * from example_r) );
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)  (cost=0.00..2.23 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=36)
+         ->  Seq Scan on example_r  (cost=0.00..2.10 rows=5 width=16)
+(3 rows)
+
+explain SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER by a||b) );
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.27 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=0.00..2.27 rows=5 width=36)
+         ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.15 rows=5 width=16)
+               Hash Key: "?column3?"
+               ->  Seq Scan on example_r  (cost=0.00..2.15 rows=5 width=16)
+(5 rows)
+
+explain SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER by b, a, a||b) );
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.27 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=0.00..2.27 rows=5 width=36)
+         ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.15 rows=5 width=16)
+               Hash Key: example_r.b, example_r.a, "?column3?"
+               ->  Seq Scan on example_r  (cost=0.00..2.15 rows=5 width=16)
+(5 rows)
+
+explain SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER RANDOMLY) );
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.23 rows=5 width=36)
+   ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=36)
+         ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.10 rows=5 width=16)
+               ->  Seq Scan on example_r  (cost=0.00..2.10 rows=5 width=16)
+(4 rows)
+
+explain SELECT * FROM multiset_5( TABLE( SELECT count(*)::integer, 'hello'::text from example_r ) );
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Table Function Scan on multiset_5  (cost=2.18..2.21 rows=2 width=36)
+   ->  Aggregate  (cost=2.18..2.19 rows=1 width=36)
+         ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=2.13..2.17 rows=1 width=8)
+               ->  Aggregate  (cost=2.13..2.14 rows=1 width=8)
+                     ->  Seq Scan on example_r  (cost=0.00..2.10 rows=5 width=0)
+(5 rows)
+
+explain SELECT * FROM example_r WHERE (10, 'hello') in (SELECT * FROM multiset_5( TABLE( SELECT count(*)::integer, 'hello'::text from example_r )));
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=2.22..4.45 rows=5 width=16)
+   ->  Nested Loop  (cost=2.22..4.45 rows=5 width=16)
+         ->  Broadcast Motion 1:2  (slice2; segments: 1)  (cost=2.22..2.25 rows=1 width=36)
+               ->  HashAggregate  (cost=2.22..2.23 rows=1 width=36)
+                     Group By: multiset_5.a, multiset_5.b
+                     ->  Table Function Scan on multiset_5  (cost=2.18..2.21 rows=2 width=36)
+                           ->  Aggregate  (cost=2.18..2.19 rows=1 width=36)
+                                 ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=2.13..2.17 rows=1 width=8)
+                                       ->  Aggregate  (cost=2.13..2.14 rows=1 width=8)
+                                             ->  Seq Scan on example_r  (cost=0.00..2.10 rows=5 width=0)
+         ->  Seq Scan on example_r  (cost=0.00..2.10 rows=5 width=16)
+(11 rows)
+
+-- Do an explain analyze while we are at it:
+explain analyze SELECT * FROM multiset_5( TABLE( SELECT count(*)::integer, 'hello'::text from example_r scatter randomly) ); 
+                                                              QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=2.18..2.21 rows=1 width=36)
+   Rows out:  1 rows at destination with 1.871 ms to first row, 1.874 ms to end, start offset by 0.496 ms.
+   ->  Table Function Scan on multiset_5  (cost=2.18..2.21 rows=1 width=36)
+         Rows out:  1 rows (seg0) with 1.011 ms to first row, 1.015 ms to end, start offset by 1.215 ms.
+         ->  Redistribute Motion 1:2  (slice2; segments: 1)  (cost=2.18..2.19 rows=1 width=36)
+               Rows out:  1 rows at destination (seg0) with 0.988 ms to first row, 0.989 ms to end, start offset by 1.226 ms.
+               ->  Aggregate  (cost=2.18..2.19 rows=1 width=36)
+                     Rows out:  1 rows with 0.048 ms to end, start offset by 2.021 ms.
+                     ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=2.13..2.17 rows=1 width=8)
+                           Rows out:  2 rows at destination with 0.033 ms to first row, 0.037 ms to end, start offset by 2.021 ms.
+                           ->  Aggregate  (cost=2.13..2.14 rows=1 width=8)
+                                 Rows out:  Avg 1.0 rows x 2 workers.  Max 1 rows (seg0) with 0.074 ms to end, start offset by 1.839 ms.
+                                 ->  Seq Scan on example_r  (cost=0.00..2.10 rows=5 width=0)
+                                       Rows out:  Avg 5.0 rows x 2 workers.  Max 5 rows (seg0) with 0.062 ms to first row, 0.069 ms to end, start offset by 1.840 ms.
+ Slice statistics:
+   (slice0)    Executor memory: 194K bytes.
+   (slice1)    Executor memory: 242K bytes avg x 2 workers, 242K bytes max (seg0).
+   (slice2)    Executor memory: 274K bytes (seg0).
+   (slice3)    Executor memory: 254K bytes avg x 2 workers, 266K bytes max (seg0).
+ Statement statistics:
+   Memory used: 128000K bytes
+ Total runtime: 3.009 ms
+(22 rows)
+
+-- ===========================================
+-- Test invalid use of table value expressions
+-- ===========================================
+-- ERROR cases for table functions over table value input
+SELECT multiset_2( (SELECT * from example) );       -- not a valid subselect
+ERROR:  subquery must return only one column
+LINE 1: SELECT multiset_2( (SELECT * from example) );
+                           ^
+SELECT multiset_2( (SELECT a from example) );       -- not a TableValue expression / no such function
+ERROR:  function multiset_2(integer) does not exist
+LINE 1: SELECT multiset_2( (SELECT a from example) );
+               ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+SELECT multiset_2( TABLE(SELECT * from example) );  -- not in the from clause
+ERROR:  table functions must be invoked in FROM clause
+SELECT multiset_3( TABLE(SELECT a from example) );  -- not in the from clause
+ERROR:  table functions must be invoked in FROM clause
+SELECT multiset_5( TABLE(SELECT * from example) ) over (order by 1);
+ERROR:  window functions may not return sets
+LINE 1: SELECT multiset_5( TABLE(SELECT * from example) ) over (orde...
+               ^
+SELECT * from example where 3 = multiset_scalar_value( TABLE(select a from example) ); -- not in from
+ERROR:  table functions must be invoked in FROM clause
+SELECT count(*) FROM example GROUP BY multiset_scalar_value( TABLE(select a from example) );
+ERROR:  table functions must be invoked in FROM clause
+SELECT count(*) FROM example HAVING multiset_scalar_value( TABLE(select a from example) ) > 4;
+ERROR:  table functions must be invoked in FROM clause
+SELECT sum(a) over (partition by multiset_scalar_value( TABLE(select a from example)) order by b) from example;
+ERROR:  table functions must be invoked in FROM clause
+-- Error: multiset_5 expects (int, text) records as input
+SELECT * FROM multiset_5( TABLE(SELECT 1) );
+ERROR:  invalid input tuple for function multiset_example
+HINT:  expected (integer, text)
+-- ERROR cases for simple TableValue Expressions (anything not a parameter to function)
+SELECT TABLE( SELECT * from example );
+ERROR:  invalid use of TABLE value expression
+SELECT ARRAY( TABLE( SELECT * from example) );
+ERROR:  syntax error at or near "TABLE"
+LINE 1: SELECT ARRAY( TABLE( SELECT * from example) );
+                      ^
+SELECT * FROM TABLE( SELECT * from example) );
+ERROR:  syntax error at or near "TABLE"
+LINE 1: SELECT * FROM TABLE( SELECT * from example) );
+                      ^
+SELECT * from example where TABLE( SELECT * from example) is not null;
+ERROR:  invalid use of TABLE value expression
+SELECT count(*) FROM example GROUP BY TABLE(select a from example);
+ERROR:  could not identify an ordering operator for type anytable
+HINT:  Use an explicit ordering operator or modify the query.
+SELECT count(*) FROM example HAVING TABLE(select a from example) is not null;
+ERROR:  invalid use of TABLE value expression
+SELECT sum(a) over (partition by TABLE(select * from example) order by b) from example;
+ERROR:  could not identify an ordering operator for type anytable
+HINT:  Use an explicit ordering operator or modify the query.
+-- ERROR raised internally by user code when we don't see an output tuple
+-- that matches expectations
+SELECT * FROM multiset_4( TABLE( SELECT 1::integer, 'hello'::text) ) as tf(a int);
+ERROR:  invalid output tuple for function multiset_example
+HINT:  expected (integer, text)
+-- ===========================================
+-- Views and view display
+-- ===========================================
+CREATE VIEW v1 AS
+  SELECT * FROM multiset_2( TABLE( SELECT * from example) ) as tf;
+SELECT * FROM v1 order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+\d v1
+   View "table_function.v1"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ b      | text    | 
+View definition:
+ SELECT tf.a, tf.b
+   FROM multiset_2(TABLE( SELECT example.a, example.b
+           FROM example)) tf(a, b);
+
+SELECT pg_get_viewdef('v1'::regclass);
+                                        pg_get_viewdef                                        
+----------------------------------------------------------------------------------------------
+ SELECT tf.a, tf.b FROM multiset_2(TABLE(SELECT example.a, example.b FROM example)) tf(a, b);
+(1 row)
+
+CREATE VIEW v2 AS
+  SELECT * FROM multiset_2( TABLE( SELECT * from example SCATTER BY a||b, 5) ) as tf;
+SELECT * FROM v2 order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+\d v2
+   View "table_function.v2"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ b      | text    | 
+View definition:
+ SELECT tf.a, tf.b
+   FROM multiset_2(TABLE( SELECT example.a, example.b
+           FROM example
+          SCATTER BY example.a::text || example.b, 5)) tf(a, b);
+
+SELECT pg_get_viewdef('v2'::regclass);
+                                                               pg_get_viewdef                                                                
+---------------------------------------------------------------------------------------------------------------------------------------------
+ SELECT tf.a, tf.b FROM multiset_2(TABLE(SELECT example.a, example.b FROM example SCATTER BY ((example.a)::text || example.b), 5)) tf(a, b);
+(1 row)
+
+CREATE VIEW v3 AS
+  SELECT * FROM multiset_2( TABLE( SELECT * from example SCATTER RANDOMLY) ) as tf;
+SELECT * FROM v3 order by a, b;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+\d v3
+   View "table_function.v3"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ b      | text    | 
+View definition:
+ SELECT tf.a, tf.b
+   FROM multiset_2(TABLE( SELECT example.a, example.b
+           FROM example
+          SCATTER RANDOMLY)) tf(a, b);
+
+SELECT pg_get_viewdef('v3'::regclass);
+                                                pg_get_viewdef                                                 
+---------------------------------------------------------------------------------------------------------------
+ SELECT tf.a, tf.b FROM multiset_2(TABLE(SELECT example.a, example.b FROM example SCATTER RANDOMLY)) tf(a, b);
+(1 row)
+
+DROP view v1;
+DROP view v2;
+DROP view v3;
+-- ========================================
+-- Interaction with set returning functions
+-- ========================================
+CREATE FUNCTION multi_args(a anytable, x int) RETURNS SETOF example
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_example' LANGUAGE C;
+-- In select list requires some extra setrefs logic in planning
+SELECT *, generate_series(1,2) FROM multi_args( TABLE(SELECT 1::int, 'hello'::text), 2);
+ a |   b   | generate_series 
+---+-------+-----------------
+ 1 | hello |               1
+ 1 | hello |               2
+(2 rows)
+
+-- Note the extra "Result" node when the srf is in the select list
+explain SELECT *, generate_series(1,2) FROM multi_args( TABLE(SELECT 1::int, 'hello'::text), 2);
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Result  (cost=0.00..0.03 rows=2 width=36)
+   ->  Table Function Scan on multi_args  (cost=0.00..0.03 rows=1 width=36)
+         ->  Result  (cost=0.00..0.01 rows=1 width=0)
+(3 rows)
+
+explain SELECT * FROM multi_args( TABLE(SELECT 1::int, 'hello'::text), 2);
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Table Function Scan on multi_args  (cost=0.00..0.02 rows=2 width=36)
+   ->  Result  (cost=0.00..0.01 rows=1 width=0)
+(2 rows)
+
+-- Error: don't support sets as arguments that are not TableValueExpr
+SELECT * FROM multi_args( TABLE(SELECT 1::int, 'hello'::text), generate_series(1,2));
+ERROR:  set-valued function called in context that cannot accept a set
+-- ===============
+-- Dropped Columns
+-- ===============
+ALTER TABLE example DROP column a;
+NOTICE:  Dropping a column that is part of the distribution policy forces a NULL distribution policy
+-- ERROR: input tuple does not conform to expectations of multiset_5
+SELECT * FROM multiset_5( TABLE( SELECT 'hello'::text) ) as tf;
+ERROR:  invalid input tuple for function multiset_example
+HINT:  expected (integer, text)
+-- However, this should work despite the output tupdesc having a dropped column.
+SELECT * FROM multiset_5( TABLE( SELECT 1::integer, 'hello'::text) ) as tf;
+   b   
+-------
+ hello
+(1 row)
+
+-- ============================================
+-- Currently on "C" is supported for "anytable"
+-- ============================================
+-- start_ignore
+-- These may have been created by previous test
+create language plperl;
+create language plpythonu;
+-- end_ignore
+CREATE FUNCTION tf_sql(anytable) returns int AS $$ SELECT 1 $$ language sql;
+ERROR:  SQL functions cannot have arguments of type anytable
+CREATE FUNCTION tf_pgsql(anytable) returns int AS $$ 
+BEGIN
+  RETURN 1;
+END; 
+$$ language plpgsql;
+ERROR:  PL/pgSQL functions cannot accept type anytable
+CREATE FUNCTION tf_perl(anytable) returns int AS $$ return 1 $$ language plperl;
+ERROR:  PL/Perl functions cannot accept type anytable
+-- python functions have no validator, error at call time.
+CREATE FUNCTION tf_python(anytable) returns int AS $$ return 1 $$ language plpythonu;
+SELECT * FROM tf_python( TABLE(SELECT 1) );
+ERROR:  PL/Python functions cannot accept type anytable
+DROP FUNCTION tf_python(anytable);
+-- =======
+-- Cleanup
+-- =======
+DROP SCHEMA table_function CASCADE;
+NOTICE:  drop cascades to function multi_args(anytable,integer)
+NOTICE:  drop cascades to function multiset_6(anytable)
+NOTICE:  drop cascades to function multiset_5(anytable)
+NOTICE:  drop cascades to function multiset_4(anytable)
+NOTICE:  drop cascades to function multiset_3(anytable)
+NOTICE:  drop cascades to function multiset_2(anytable)
+NOTICE:  drop cascades to function multiset_1(anytable)
+NOTICE:  drop cascades to function multiset_materialize_bad(anytable)
+NOTICE:  drop cascades to function multiset_materialize_good(anytable)
+NOTICE:  drop cascades to function multiset_setof_value(anytable)
+NOTICE:  drop cascades to function multiset_setof_null(anytable)
+NOTICE:  drop cascades to function multiset_scalar_tuple(anytable)
+NOTICE:  drop cascades to function multiset_scalar_value(anytable)
+NOTICE:  drop cascades to function multiset_scalar_null(anytable)
+NOTICE:  drop cascades to function scalar_tf_6(anyelement)
+NOTICE:  drop cascades to function scalar_tf_5(integer)
+NOTICE:  drop cascades to function scalar_tf_4(integer)
+NOTICE:  drop cascades to function scalar_tf_3(integer)
+NOTICE:  drop cascades to function scalar_tf_2(integer)
+NOTICE:  drop cascades to function scalar_tf_1(integer)
+NOTICE:  drop cascades to function scalar_5(anyelement)
+NOTICE:  drop cascades to function scalar_4(integer)
+NOTICE:  drop cascades to function scalar_3(integer)
+NOTICE:  drop cascades to function scalar_2(integer)
+NOTICE:  drop cascades to function scalar_1(integer)
+NOTICE:  drop cascades to table example_r
+NOTICE:  drop cascades to table example
+SET search_path TO public;

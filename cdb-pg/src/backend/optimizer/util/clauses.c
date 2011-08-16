@@ -3389,6 +3389,15 @@ expression_tree_mutator(Node *node,
 				return (Node *) newnode;
 			}
 			break;
+		case T_TableFunctionScan:
+			{
+				TableFunctionScan *tablefunc = (TableFunctionScan *) node;
+				TableFunctionScan *newnode;
+
+				FLATCOPY(newnode, tablefunc, TableFunctionScan);
+				return (Node *) newnode;
+			}
+			break;
 		case T_WindowRef:
 			{
 				WindowRef   *windowref = (WindowRef *) node;
@@ -3486,6 +3495,18 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, expr, FuncExpr);
 				MUTATE(newnode->args, expr->args, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_TableValueExpr:
+			{
+				TableValueExpr   *expr = (TableValueExpr *) node;
+				TableValueExpr   *newnode;
+
+				FLATCOPY(newnode, expr, TableValueExpr);
+
+				/* The subquery already pulled up into the T_TableFunctionScan node */
+				newnode->subquery = (Node *) NULL;
 				return (Node *) newnode;
 			}
 			break;
@@ -3870,6 +3891,7 @@ query_tree_mutator(Query *query,
 	MUTATE(query->jointree, query->jointree, FromExpr *);
 	MUTATE(query->setOperations, query->setOperations, Node *);
 	MUTATE(query->groupClause, query->groupClause, List *);
+	MUTATE(query->scatterClause, query->scatterClause, List *);
 	MUTATE(query->havingQual, query->havingQual, Node *);
 	MUTATE(query->windowClause, query->windowClause, List *);
 	MUTATE(query->limitOffset, query->limitOffset, Node *);
@@ -3933,6 +3955,9 @@ range_table_mutator(List *rtable,
 				}
 				break;
 			case RTE_FUNCTION:
+				MUTATE(newrte->funcexpr, rte->funcexpr, Node *);
+				break;
+			case RTE_TABLEFUNCTION:
 				MUTATE(newrte->funcexpr, rte->funcexpr, Node *);
 				break;
 			case RTE_VALUES:

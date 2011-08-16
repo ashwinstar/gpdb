@@ -528,6 +528,7 @@ AssignContentIdsToPlanData_Walker(Node *node, void *context)
 				DisableTargetedDispatch(&dispatchInfo);
 				break;
 			case T_Window:
+			case T_TableFunctionScan:
 			case T_Repeat:
 				/* no change to dispatchInfo --> just iterate children */
 				break;

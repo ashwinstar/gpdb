@@ -2865,6 +2865,50 @@ transformDistinctClause(ParseState *pstate, List *distinctlist,
 }
 
 /*
+ * transformScatterClause -
+ *	  transform a SCATTER BY clause
+ *
+ * SCATTER BY items will be added to the targetlist (as resjunk columns)
+ * if not already present, so the targetlist must be passed by reference.
+ *
+ */
+List *
+transformScatterClause(ParseState *pstate,
+					   List *scatterlist,
+					   List **targetlist)
+{
+	List	   *outlist = NIL;
+	ListCell   *olitem;
+
+	/* Special case handling for SCATTER RANDOMLY */
+	if (list_length(scatterlist) == 1 && linitial(scatterlist) == NULL)
+		return list_make1(NULL);
+	
+	/* preprocess the scatter clause, lookup TLEs */
+	foreach(olitem, scatterlist)
+	{
+		Node			*node = lfirst(olitem);
+		TargetEntry		*tle;
+
+		tle = findTargetlistEntrySQL99(pstate, node, targetlist);
+
+		/* coerce unknown to text */
+		if (exprType((Node *) tle->expr) == UNKNOWNOID)
+		{
+			tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
+											 UNKNOWNOID, TEXTOID, -1,
+											 COERCION_IMPLICIT,
+											 COERCE_IMPLICIT_CAST,
+											 -1);
+		}
+
+		outlist = lappend(outlist, tle->expr);
+	}
+	return outlist;
+}
+
+
+/*
  * addAllTargetsToSortList
  *		Make sure all non-resjunk targets in the targetlist are in the
  *		ORDER BY list, adding the not-yet-sorted ones to the end of the list.

@@ -753,6 +753,7 @@ _equalQuery(Query *a, Query *b)
 	COMPARE_NODE_FIELD(windowClause);
 	COMPARE_NODE_FIELD(distinctClause);
 	COMPARE_NODE_FIELD(sortClause);
+	COMPARE_NODE_FIELD(scatterClause);
 	COMPARE_NODE_FIELD(cteList);
 	COMPARE_SCALAR_FIELD(hasRecursive);
 	COMPARE_SCALAR_FIELD(hasModifyingCTE);
@@ -824,6 +825,7 @@ _equalSelectStmt(SelectStmt *a, SelectStmt *b)
 	COMPARE_NODE_FIELD(windowClause);
 	COMPARE_NODE_FIELD(valuesLists);
 	COMPARE_NODE_FIELD(sortClause);
+	COMPARE_NODE_FIELD(scatterClause);
 	COMPARE_NODE_FIELD(limitOffset);
 	COMPARE_NODE_FIELD(limitCount);
 	COMPARE_NODE_FIELD(lockingClause);
@@ -2248,6 +2250,14 @@ _equalFkConstraint(FkConstraint *a, FkConstraint *b)
 }
 
 
+static bool
+_equalTableValueExpr(TableValueExpr *a, TableValueExpr *b)
+{
+	COMPARE_NODE_FIELD(subquery);
+
+	return true;
+}
+
 /*
  * Stuff from pg_list.h
  */
@@ -2920,6 +2930,9 @@ equal(void *a, void *b)
 			break;
 		case T_FuncWithArgs:
 			retval = _equalFuncWithArgs(a, b);
+			break;
+		case T_TableValueExpr:
+			retval = _equalTableValueExpr(a, b);
 			break;
 
 		default:

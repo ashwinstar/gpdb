@@ -157,10 +157,12 @@ typedef struct Query
 		
 		List	   *sortClause;		/* a list of SortGroupClause's */
 
+		List	   *scatterClause;  /* a list of tle's */
+
 		List	   *cteList; /* a list of CommonTableExprs in WITH clause */
 		bool 	   hasRecursive; /* Whether this query has a recursive WITH clause */
 		bool 	   hasModifyingCTE; /* has INSERT/UPDATE/DELETE in WITH clause */
-		
+
 		Node	   *limitOffset;	/* # of result tuples to skip (int8 expr) */
 		Node	   *limitCount;		/* # of result tuples to return (int8 expr) */
 		
@@ -614,6 +616,7 @@ typedef enum RTEKind
 	RTE_VALUES,					/* VALUES (<exprlist>), (<exprlist>), ... */
     RTE_VOID,                   /* CDB: deleted RTE */
 	RTE_CTE,                    /* CommonTableExpr in FROM */
+	RTE_TABLEFUNCTION,          /* CDB: Functions over multiset input */
 } RTEKind;
 
 typedef struct RangeTblEntry
@@ -926,8 +929,8 @@ typedef struct SelectStmt
 	List	   *groupClause;	/* GROUP BY clauses */
 	Node	   *havingClause;	/* HAVING conditional-expression */
 	List	   *windowClause;	/* window specification clauses */
-
-	WithClause *withClause; /* with clause */
+	List       *scatterClause;	/* GPDB: TableValueExpr data distribution */
+	WithClause *withClause; 	/* with clause */
 
 	/*
 	 * In a "leaf" node representing a VALUES list, the above fields are all
@@ -957,8 +960,9 @@ typedef struct SelectStmt
 	struct SelectStmt *rarg;	/* right child */
 	/* Eventually add fields for CORRESPONDING spec here */
 
-	List       *distributedBy;   /* MPP. what columns we distribute the data by for SELECT INTO or CTAS */
-/*	XXX XXX: Node       *partitionBy; */    /* MPP. what columns we partition the data by */
+	/* This field used by: SELECT INTO, CTAS */
+	List       *distributedBy;  /* GPDB: columns to distribute the data on. */
+
 } SelectStmt;
 
 typedef struct WindowSpec
@@ -2148,7 +2152,7 @@ typedef enum FunctionParameterMode
 	FUNC_PARAM_OUT = 'o',		/* output only */
 	FUNC_PARAM_INOUT = 'b',		/* both */
 	FUNC_PARAM_VARIADIC = 'v',	/* variadic (always input) */
-	FUNC_PARAM_TABLE = 't'		/* table function output column */
+	FUNC_PARAM_TABLE = 't'		/* table (always output) */
 } FunctionParameterMode;
 
 typedef struct FunctionParameter

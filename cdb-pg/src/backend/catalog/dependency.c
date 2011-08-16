@@ -1444,6 +1444,7 @@ find_expr_references_walker(Node *node,
 					add_object_address(OCLASS_CLASS, rte->relid, 0,
 									   context->addrs);
 					break;
+				case RTE_TABLEFUNCTION:
 				case RTE_FUNCTION:
 					foreach(ct, rte->funccoltypes)
 					{

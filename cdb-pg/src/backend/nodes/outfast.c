@@ -647,6 +647,14 @@ _outWindow(StringInfo str, Window *node)
 }
 
 static void
+_outTableFunctionScan(StringInfo str, TableFunctionScan *node)
+{
+	WRITE_NODE_TYPE("TABLEFUNCTIONSCAN");
+
+	_outScanInfo(str, (Scan *) node);
+}
+
+static void
 _outMaterial(StringInfo str, Material *node)
 {
 	WRITE_NODE_TYPE("MATERIAL");
@@ -935,6 +943,7 @@ _outFuncExpr(StringInfo str, FuncExpr *node)
 	WRITE_BOOL_FIELD(funcretset);
 	WRITE_ENUM_FIELD(funcformat, CoercionForm);
 	WRITE_NODE_FIELD(args);
+	WRITE_BOOL_FIELD(is_tablefunc);
 }
 
 static void
@@ -2608,30 +2617,6 @@ _outConstraintsSetStmt(StringInfo str, ConstraintsSetStmt *node)
 }
 
 static void
-_outSelectStmt(StringInfo str, SelectStmt *node)
-{
-	WRITE_NODE_TYPE("SELECT");
-
-	WRITE_NODE_FIELD(distinctClause);
-	WRITE_NODE_FIELD(intoClause);
-	WRITE_NODE_FIELD(targetList);
-	WRITE_NODE_FIELD(fromClause);
-	WRITE_NODE_FIELD(whereClause);
-	WRITE_NODE_FIELD(groupClause);
-	WRITE_NODE_FIELD(havingClause);
-	WRITE_NODE_FIELD(valuesLists);
-	WRITE_NODE_FIELD(sortClause);
-	WRITE_NODE_FIELD(limitOffset);
-	WRITE_NODE_FIELD(limitCount);
-	WRITE_NODE_FIELD(lockingClause);
-	WRITE_ENUM_FIELD(op, SetOperation);
-	WRITE_BOOL_FIELD(all);
-	WRITE_NODE_FIELD(larg);
-	WRITE_NODE_FIELD(rarg);
-	WRITE_NODE_FIELD(distributedBy);
-}
-
-static void
 _outFuncCall(StringInfo str, FuncCall *node)
 {
 	WRITE_NODE_TYPE("FUNCCALL");
@@ -2746,6 +2731,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(windowClause);
 	WRITE_NODE_FIELD(distinctClause);
 	WRITE_NODE_FIELD(sortClause);
+	WRITE_NODE_FIELD(scatterClause);
 	WRITE_NODE_FIELD(cteList);
 	WRITE_BOOL_FIELD(hasRecursive);
 	WRITE_BOOL_FIELD(hasModifyingCTE);
@@ -2927,6 +2913,12 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 			WRITE_NODE_FIELD(ctecoltypmods);
 			break;
 		case RTE_FUNCTION:
+			WRITE_NODE_FIELD(funcexpr);
+			WRITE_NODE_FIELD(funccoltypes);
+			WRITE_NODE_FIELD(funccoltypmods);
+			break;
+		case RTE_TABLEFUNCTION:
+			WRITE_NODE_FIELD(subquery);
 			WRITE_NODE_FIELD(funcexpr);
 			WRITE_NODE_FIELD(funccoltypes);
 			WRITE_NODE_FIELD(funccoltypmods);
@@ -3349,6 +3341,14 @@ _outCommentStmt(StringInfo str, CommentStmt *node)
 }
 
 
+static void
+_outTableValueExpr(StringInfo str, TableValueExpr *node)
+{
+	WRITE_NODE_TYPE("TABLEVALUEEXPR");
+
+	WRITE_NODE_FIELD(subquery);
+}
+
 /*
  * _outNode -
  *	  converts a Node into binary string and append it to 'str'
@@ -3457,6 +3457,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_Window:
 				_outWindow(str, obj);
+				break;
+			case T_TableFunctionScan:
+				_outTableFunctionScan(str, obj);
 				break;
 			case T_Material:
 				_outMaterial(str, obj);
@@ -3932,9 +3935,6 @@ _outNode(StringInfo str, void *obj)
 			case T_CopyStmt:
 				_outCopyStmt(str, obj);
 				break;
-			case T_SelectStmt:
-				_outSelectStmt(str, obj);
-				break;
 			case T_ColumnDef:
 				_outColumnDef(str, obj);
 				break;
@@ -4083,10 +4083,13 @@ _outNode(StringInfo str, void *obj)
 				_outDropQueueStmt(str, obj);
 				break;
 
-                        case T_CommentStmt:
-                                _outCommentStmt(str, obj);
-                                break;
-
+			case T_CommentStmt:
+				_outCommentStmt(str, obj);
+				break;
+				
+			case T_TableValueExpr:
+				_outTableValueExpr(str, obj);
+				break;
 
 			default:
 				elog(ERROR, "could not serialize unrecognized node type: %d",

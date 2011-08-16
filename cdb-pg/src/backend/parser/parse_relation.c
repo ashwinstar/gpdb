@@ -991,6 +991,65 @@ addRangeTableEntryForFunction(ParseState *pstate,
 	rte->eref = eref;
 
 	/*
+	 * If the function has TABLE value expressions in its arguments then it must
+	 * be planned as a TableFunctionScan instead of a normal FunctionScan.  We
+	 * mark this here because this is where we know that the function is being
+	 * used as a RangeTableEntry.
+	 */
+	if (funcexpr && IsA(funcexpr, FuncExpr))
+	{
+		FuncExpr		*func = (FuncExpr *) funcexpr;
+
+		if (func->args && IsA(func->args, List))
+		{
+			ListCell		*arg;
+
+			foreach(arg, (List*) func->args)
+			{
+				Node *n = (Node *) lfirst(arg);
+				if (IsA(n, TableValueExpr))
+				{
+					TableValueExpr *input = (TableValueExpr *) n;
+
+					/* 
+					 * Currently only support single TABLE value expression.
+					 *
+					 * Note: this shouldn't be possible given that we don't
+					 * allow it at function creation so the function parser
+					 * should have already errored due to type mismatch.
+					 */
+					Assert(IsA(input->subquery, Query));
+					if (rte->subquery != NULL)
+						ereport(ERROR, 
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("functions over multiple TABLE value "
+										"expressions not supported")));
+
+					/*
+					 * Convert RTE to a TableFunctionScan over the specified
+					 * input 
+					 */
+					rte->rtekind = RTE_TABLEFUNCTION;
+					rte->subquery = (Query *) input->subquery;
+
+					/* 
+					 * Mark function as a table function so that the second pass
+					 * check, parseCheckTableFunctions(), can correctly detect
+					 * that it is a valid TABLE value expression.
+					 */
+					func->is_tablefunc = true;
+
+					/*
+					 * We do not break from the loop here because we want to
+					 * keep looping to guard against multiple TableValueExpr
+					 * arguments.
+					 */
+				}
+			}
+		}
+	}
+
+	/*
 	 * Now determine if the function returns a simple or composite type.
 	 */
 	functypclass = get_expr_result_type(funcexpr,
@@ -1524,6 +1583,7 @@ expandRTE(RangeTblEntry *rte, int rtindex, int sublevels_up,
 			}
 			break;
 			
+		case RTE_TABLEFUNCTION:
 		case RTE_FUNCTION:
 			{
 				/* Function RTE */
@@ -1936,6 +1996,7 @@ get_rte_attribute_type(RangeTblEntry *rte, AttrNumber attnum,
 				*vartypmod = exprTypmod((Node *) te->expr);
 			}
 			break;
+		case RTE_TABLEFUNCTION:
 		case RTE_FUNCTION:
 			{
 				/* Function RTE */
@@ -2090,6 +2151,7 @@ get_rte_attribute_is_dropped(RangeTblEntry *rte, AttrNumber attnum)
 				result = IsA(aliasvar, Const);
 			}
 			break;
+		case RTE_TABLEFUNCTION:
 		case RTE_FUNCTION:
 			{
 				/* Function RTE */

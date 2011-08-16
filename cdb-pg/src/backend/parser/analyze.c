@@ -52,6 +52,7 @@
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
+#include "parser/parse_func.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
@@ -945,6 +946,8 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 	qry->hasAggs = pstate->p_hasAggs;
 	if (pstate->p_hasAggs)
 		parseCheckAggregates(pstate, qry);
+	if (pstate->p_hasTblValueExpr)
+		parseCheckTableFunctions(pstate, qry);
 
 	return qry;
 }
@@ -8807,6 +8810,19 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 											qry->sortClause,
                                             false /* useSQL92 rules */);
 
+	/* 
+	 * SCATTER BY clause on a table function TableValueExpr subquery.
+	 *
+	 * Note: a given subquery cannot have both a SCATTER clause and an INTO
+	 * clause, because both of those control distribution.  This should not
+	 * possible due to grammar restrictions on where a SCATTER clause is
+	 * allowed.
+	 */
+	Insist(!(stmt->scatterClause && stmt->intoClause));
+	qry->scatterClause = transformScatterClause(pstate,
+												stmt->scatterClause,
+												&qry->targetList);
+
     /* Having clause */
 	qry->havingQual = pstate->having_qual;
 	pstate->having_qual = NULL;
@@ -8854,6 +8870,9 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->hasAggs = pstate->p_hasAggs;
 	if (pstate->p_hasAggs || qry->groupClause || qry->havingQual)
 		parseCheckAggregates(pstate, qry);
+
+	if (pstate->p_hasTblValueExpr)
+		parseCheckTableFunctions(pstate, qry);
 
 	qry->hasWindFuncs = pstate->p_hasWindFuncs;
 	if (pstate->p_hasWindFuncs)
@@ -8906,6 +8925,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 	Assert(stmt->whereClause == NULL);
 	Assert(stmt->groupClause == NIL);
 	Assert(stmt->havingClause == NULL);
+	Assert(stmt->scatterClause == NIL);
 	Assert(stmt->op == SETOP_NONE);
 
 	/* process the WITH clause independently of all else */
@@ -9330,6 +9350,9 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->hasAggs = pstate->p_hasAggs;
 	if (pstate->p_hasAggs || qry->groupClause || qry->havingQual)
 		parseCheckAggregates(pstate, qry);
+
+	if (pstate->p_hasTblValueExpr)
+		parseCheckTableFunctions(pstate, qry);
 
 	foreach(l, lockingClause)
 	{
@@ -10559,6 +10582,11 @@ transformLockingClause(Query *qry, LockingClause *lc)
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 									 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a function")));
+							break;
+						case RTE_TABLEFUNCTION:
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("SELECT FOR UPDATE/SHARE cannot be applied to a table function")));
 							break;
 						case RTE_VALUES:
 							ereport(ERROR,

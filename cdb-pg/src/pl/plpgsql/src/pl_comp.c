@@ -422,9 +422,6 @@ do_compile(FunctionCallInfo fcinfo,
 				if (argvariable->dtype == PLPGSQL_DTYPE_VAR)
 				{
 					argitemtype = PLPGSQL_NSTYPE_VAR;
-					/* input argument vars are forced to be CONSTANT */
-					if (argmode == PROARGMODE_IN)
-						((PLpgSQL_var *) argvariable)->isconst = true;
 				}
 				else
 				{
@@ -433,10 +430,29 @@ do_compile(FunctionCallInfo fcinfo,
 				}
 
 				/* Remember arguments in appropriate arrays */
-				if (argmode == PROARGMODE_IN || argmode == PROARGMODE_INOUT)
-					in_arg_varnos[num_in_args++] = argvariable->dno;
-				if (argmode == PROARGMODE_OUT || argmode == PROARGMODE_INOUT)
-					out_arg_variables[num_out_args++] = argvariable;
+				switch (argmode)
+				{
+					/* input modes */
+					case PROARGMODE_IN:
+					case PROARGMODE_VARIADIC:
+						in_arg_varnos[num_in_args++] = argvariable->dno;
+
+						/* input argument vars are forced to be CONSTANT */
+						((PLpgSQL_var *) argvariable)->isconst = true;
+						break;
+
+					/* output modes */
+					case PROARGMODE_OUT:
+					case PROARGMODE_TABLE:
+						out_arg_variables[num_out_args++] = argvariable;
+						break;
+
+					/* both */
+					case PROARGMODE_INOUT:
+						in_arg_varnos[num_in_args++] = argvariable->dno;
+						out_arg_variables[num_out_args++] = argvariable;
+						break;
+				}
 
 				/* Add to namespace under the $n name */
 				plpgsql_ns_additem(argitemtype, argvariable->dno, buf);

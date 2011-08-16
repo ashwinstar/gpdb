@@ -360,6 +360,10 @@ _readQuery(void)
 	READ_NODE_FIELD(windowClause);
 	READ_NODE_FIELD(distinctClause);
 	READ_NODE_FIELD(sortClause);
+    if (pg_strtok_peek_fldname("scatterClause"))
+    {
+        READ_NODE_FIELD(scatterClause);
+    }
 
 	if (!pg_strtok_peek_fldname("cteList"))
 	{
@@ -1439,6 +1443,11 @@ _readFuncExpr(void)
 	READ_ENUM_FIELD(funcformat, CoercionForm);
 	READ_NODE_FIELD(args);
 
+	if (pg_strtok_peek_fldname("is_tablefunc"))
+	{
+		READ_BOOL_FIELD(is_tablefunc);  /* GPDB */
+	}
+
 	READ_DONE();
 }
 
@@ -2014,6 +2023,12 @@ _readRangeTblEntry(void)
 			READ_NODE_FIELD(ctecoltypmods);
 			break;
 		case RTE_FUNCTION:
+			READ_NODE_FIELD(funcexpr);
+			READ_NODE_FIELD(funccoltypes);
+			READ_NODE_FIELD(funccoltypmods);
+			break;
+		case RTE_TABLEFUNCTION:
+			READ_NODE_FIELD(subquery);
 			READ_NODE_FIELD(funcexpr);
 			READ_NODE_FIELD(funccoltypes);
 			READ_NODE_FIELD(funccoltypmods);
@@ -2841,6 +2856,18 @@ _readCreateTrigStmt(void)
 	READ_DONE();
 
 }
+
+
+static TableValueExpr *
+_readTableValueExpr(void)
+{
+	READ_LOCALS(TableValueExpr);
+
+	READ_NODE_FIELD(subquery);
+
+	READ_DONE();
+}
+
 /*
  * Greenplum Database developers added code to improve performance over the
  * linear searching that existed in the postgres version of
@@ -3000,6 +3027,7 @@ static ParseNodeInfo infoAr[] =
 	{"SLICETABLE", (ReadFn)_readSliceTable},
 	{"SORTCLAUSE", (ReadFn)_readSortClause},
 	{"SUBLINK", (ReadFn)_readSubLink},
+	{"TABLEVALUEEXPR", (ReadFn)_readTableValueExpr},
 	{"TARGETENTRY", (ReadFn)_readTargetEntry},
 	{"TRUNCATESTMT", (ReadFn)_readTruncateStmt},
 	{"TYPECAST", (ReadFn)_readTypeCast},

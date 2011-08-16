@@ -13,7 +13,7 @@
 #ifndef _GP_POLICY_H_
 #define _GP_POLICY_H_
 
-
+#include "access/attnum.h"
 #include "catalog/genbki.h"
 /*
  * Defines for gp_policy

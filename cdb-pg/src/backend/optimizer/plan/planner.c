@@ -674,13 +674,23 @@ subquery_planner(PlannerGlobal *glob,
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(l);
 
-		if (rte->rtekind == RTE_FUNCTION)
-			rte->funcexpr = preprocess_expression(root, rte->funcexpr,
-												  EXPRKIND_RTFUNC);
-		else if (rte->rtekind == RTE_VALUES)
-			rte->values_lists = (List *)
-				preprocess_expression(root, (Node *) rte->values_lists,
-									  EXPRKIND_VALUES);
+		switch (rte->rtekind)
+		{
+			case RTE_TABLEFUNCTION:  
+			case RTE_FUNCTION:
+				rte->funcexpr = preprocess_expression(root, rte->funcexpr,
+													  EXPRKIND_RTFUNC);
+				break;
+
+			case RTE_VALUES:
+				rte->values_lists = (List *)
+					preprocess_expression(root, (Node *) rte->values_lists,
+										  EXPRKIND_VALUES);
+				break;
+
+			default:
+				break;
+		}
 	}
 
 	/*
@@ -755,6 +765,34 @@ subquery_planner(PlannerGlobal *glob,
 		plan = inheritance_planner(root);
 	else
 		plan = grouping_planner(root, tuple_fraction);
+
+	/* 
+	 * Deal with explicit redistribution requirements for TableValueExpr 
+	 * subplans with explicit distribitution
+	 */
+	if (parse->scatterClause)
+	{
+		bool	 r;
+		List    *exprList;
+		
+
+		/* Deal with the special case of SCATTER RANDOMLY */
+		if (list_length(parse->scatterClause) == 1 && linitial(parse->scatterClause) == NULL)
+			exprList = NIL;
+		else
+			exprList = parse->scatterClause;
+
+		/* Repartition the subquery plan based on our distribution requirements */
+		r = repartitionPlan(plan, false, false, exprList);
+		if (!r)
+		{
+			/* 
+			 * This should not be possible, repartitionPlan should never
+			 * fail when both stable and rescannable are false.
+			 */
+			elog(ERROR, "failure repartitioning plan");
+		}
+	}
 
 	/*
 	 * If any subplans were generated, or if we're inside a subplan, build

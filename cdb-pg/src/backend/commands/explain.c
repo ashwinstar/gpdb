@@ -1010,6 +1010,9 @@ explain_outNode(StringInfo str,
 		case T_Window:
 			pname = "Window";
 			break;
+		case T_TableFunctionScan:
+			pname = "Table Function Scan";
+			break;
 		case T_Unique:
 			pname = "Unique";
 			break;
@@ -1134,6 +1137,36 @@ explain_outNode(StringInfo str,
 
 				appendStringInfo(str, " %s",
 								 quote_identifier(rte->eref->aliasname));
+			}
+			break;
+		case T_TableFunctionScan:
+			{
+				RangeTblEntry	*rte;
+				FuncExpr		*funcexpr;
+				char			*proname;
+
+				/* Get the range table, it should be a TableFunction */
+				rte = rt_fetch(((Scan *) plan)->scanrelid, es->rtable);
+				Assert(rte->rtekind == RTE_TABLEFUNCTION);
+				
+				/* 
+				 * Lookup the function name.
+				 *
+				 * Unlike RTE_FUNCTION there should be no cases where the
+				 * optimizer could have evaluated away the function call.
+				 */
+				Insist(rte->funcexpr && IsA(rte->funcexpr, FuncExpr));
+				funcexpr = (FuncExpr *) rte->funcexpr;
+				proname	 = get_func_name(funcexpr->funcid);
+
+				/* Build the output description */
+				appendStringInfo(str, " on %s", quote_identifier(proname));
+				if (strcmp(rte->eref->aliasname, proname) != 0)
+					appendStringInfo(str, " %s",
+									 quote_identifier(rte->eref->aliasname));
+				
+				/* might be nice to add order by and scatter by info */
+				
 			}
 			break;
 		case T_FunctionScan:
@@ -1386,6 +1419,12 @@ explain_outNode(StringInfo str,
 				/* XXX don't show framing for now */
 			}
 			break;
+		case T_TableFunctionScan:
+			{
+				/* Partitioning and ordering information */
+			}
+			break;
+
 		case T_Unique:
 			show_motion_keys(plan,
                              NIL,

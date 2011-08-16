@@ -670,6 +670,14 @@ _outWindow(StringInfo str, Window *node)
 }
 
 static void
+_outTableFunctionScan(StringInfo str, Window *node)
+{
+	WRITE_NODE_TYPE("TABLEFUNCTIONSCAN");
+
+	_outScanInfo(str, (Scan *) node);
+}
+
+static void
 _outMaterial(StringInfo str, Material *node)
 {
 	WRITE_NODE_TYPE("MATERIAL");
@@ -938,7 +946,7 @@ _outAggref(StringInfo str, Aggref *node)
      * CDB: to minimize upgrade impact we only write out the aggorder
      * field when it is present
      */
-    if (node->aggorder != 0)
+    if (node->aggorder != NULL)
         WRITE_NODE_FIELD(aggorder);
 }
 
@@ -992,6 +1000,11 @@ _outFuncExpr(StringInfo str, FuncExpr *node)
 	WRITE_BOOL_FIELD(funcretset);
 	WRITE_ENUM_FIELD(funcformat, CoercionForm);
 	WRITE_NODE_FIELD(args);
+	
+	if (node->is_tablefunc)
+	{
+		WRITE_BOOL_FIELD(is_tablefunc);  /* GPDB */
+	}
 }
 
 static void
@@ -2776,6 +2789,12 @@ _outInsertStmt(StringInfo str, InsertStmt *node)
 	WRITE_NODE_FIELD(returningList);
 }
 
+
+/*
+ * SelectStmt's are never written to the catalog, they only exist
+ * between parse and parseTransform.  The only use of this function
+ * is for debugging purposes.
+ */
 static void
 _outSelectStmt(StringInfo str, SelectStmt *node)
 {
@@ -2791,6 +2810,10 @@ _outSelectStmt(StringInfo str, SelectStmt *node)
 	WRITE_NODE_FIELD(windowClause);
 	WRITE_NODE_FIELD(valuesLists);
 	WRITE_NODE_FIELD(sortClause);
+	if (node->scatterClause != NIL)
+	{
+		WRITE_NODE_FIELD(scatterClause);
+	}
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
 	WRITE_NODE_FIELD(lockingClause);
@@ -2997,18 +3020,21 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(windowClause);
 	WRITE_NODE_FIELD(distinctClause);
 	WRITE_NODE_FIELD(sortClause);
+	if (node->scatterClause != NIL)
+	{
+		WRITE_NODE_FIELD(scatterClause);
+	}
 
 	/*
 	 * To minimize the upgrade impact, we only write out cteList, hasRecursive,
 	 * hasModifyingCTE when cteList is present..
 	 */
-	if (node->cteList != NULL)
+	if (node->cteList != NIL)
 	{
 		WRITE_NODE_FIELD(cteList);
 		WRITE_BOOL_FIELD(hasRecursive);
 		WRITE_BOOL_FIELD(hasModifyingCTE);
 	}
-
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
 	WRITE_NODE_FIELD(rowMarks);
@@ -3187,6 +3213,12 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 			WRITE_NODE_FIELD(ctecoltypmods);
 			break;
 		case RTE_FUNCTION:
+			WRITE_NODE_FIELD(funcexpr);
+			WRITE_NODE_FIELD(funccoltypes);
+			WRITE_NODE_FIELD(funccoltypmods);
+			break;
+		case RTE_TABLEFUNCTION:
+			WRITE_NODE_FIELD(subquery);
 			WRITE_NODE_FIELD(funcexpr);
 			WRITE_NODE_FIELD(funccoltypes);
 			WRITE_NODE_FIELD(funccoltypmods);
@@ -3634,6 +3666,14 @@ _outCommentStmt(StringInfo str, CommentStmt *node)
 	WRITE_STRING_FIELD(comment);
 }
 
+static void
+_outTableValueExpr(StringInfo str, TableValueExpr *node)
+{
+	WRITE_NODE_TYPE("TABLEVALUEEXPR");
+	
+	WRITE_NODE_FIELD(subquery);
+}
+
 /*
  * _outNode -
  *	  converts a Node into ascii string and append it to 'str'
@@ -3738,6 +3778,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_Window:
 				_outWindow(str, obj);
+				break;
+			case T_TableFunctionScan:
+				_outTableFunctionScan(str, obj);
 				break;
 			case T_Material:
 				_outMaterial(str, obj);
@@ -4378,6 +4421,10 @@ _outNode(StringInfo str, void *obj)
 
 			case T_CommentStmt:
 				_outCommentStmt(str, obj);
+				break;
+
+			case T_TableValueExpr:
+				_outTableValueExpr(str, obj);
 				break;
 
 			default:

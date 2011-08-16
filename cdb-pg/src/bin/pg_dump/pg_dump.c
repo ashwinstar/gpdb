@@ -5383,6 +5383,9 @@ format_function_arguments(FuncInfo *finfo, int nallargs,
 				case PROARGMODE_INOUT:
 					argmode = "INOUT ";
 					break;
+				case PROARGMODE_VARIADIC:
+					argmode = "VARIADIC ";
+					break;
 				case PROARGMODE_TABLE:
 					/* skip table column's names */
 					free(typname);
@@ -5394,7 +5397,9 @@ format_function_arguments(FuncInfo *finfo, int nallargs,
 			}
 		}
 		else
+		{
 			argmode = "";
+		}
 
 		argname = argnames ? argnames[j] : (char *) NULL;
 		if (argname && argname[0] == '\0')

@@ -94,6 +94,10 @@ static SubqueryScan *create_ctescan_plan(CreatePlanContext *ctx, Path *best_path
 										 List *tlist, List *scan_clauses);
 static FunctionScan *create_functionscan_plan(CreatePlanContext *ctx, Path *best_path,
 						 List *tlist, List *scan_clauses);
+static TableFunctionScan *create_tablefunction_plan(CreatePlanContext *ctx, 
+													Path *best_path,
+													List *tlist, 
+													List *scan_clauses);
 static ValuesScan *create_valuesscan_plan(CreatePlanContext *ctx, Path *best_path,
 					   List *tlist, List *scan_clauses);
 static BitmapAppendOnlyScan *create_bitmap_appendonly_scan_plan(CreatePlanContext *ctx,
@@ -150,6 +154,11 @@ static BitmapAppendOnlyScan *make_bitmap_appendonlyscan(List *qptlist,
 														List *bitmapqualorig,
 														Index scanrelid,
 														bool isAORow);
+static TableFunctionScan* make_tablefunction(List *tlist,
+											 List *scan_clauses,
+											 Plan *subplan,
+											 List *subrtable,
+											 Index scanrelid);
 static TidScan *make_tidscan(List *qptlist, List *qpqual, Index scanrelid,
 			 List *tidquals);
 static FunctionScan *make_functionscan(List *qptlist, List *qpqual,
@@ -162,6 +171,7 @@ static Sort *make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 		  AttrNumber *sortColIdx, Oid *sortOperators);
 
 static List *flatten_grouping_list(List *groupcls);
+
 
 /*
  * create_plan
@@ -224,6 +234,7 @@ create_subplan(CreatePlanContext *ctx, Path *best_path)
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
+		case T_TableFunctionScan:
         case T_ValuesScan:
 		case T_CteScan:
 			plan = create_scan_plan(ctx, best_path);
@@ -378,6 +389,13 @@ create_scan_plan(CreatePlanContext *ctx, Path *best_path)
 													 scan_clauses);
 			break;
 
+		case T_TableFunctionScan:
+			plan = (Plan *) create_tablefunction_plan(ctx,
+													   best_path,
+													   tlist,
+													   scan_clauses);
+			break;
+
 		case T_ValuesScan:
 			plan = (Plan *) create_valuesscan_plan(ctx,
 												   best_path,
@@ -462,6 +480,7 @@ use_physical_tlist(CreatePlanContext *ctx, RelOptInfo *rel)
 		rel->rtekind != RTE_SUBQUERY &&
 		rel->rtekind != RTE_FUNCTION &&
 		rel->rtekind != RTE_VALUES &&
+		rel->rtekind != RTE_TABLEFUNCTION &&
 		rel->rtekind != RTE_CTE)
 		return false;
 
@@ -2466,6 +2485,41 @@ create_functionscan_plan(CreatePlanContext *ctx, Path *best_path,
 	copy_path_costsize(ctx->root, &scan_plan->scan.plan, best_path);
 
 	return scan_plan;
+}
+
+/*
+ * create_tablefunction_plan
+ *	 Returns a TableFunction plan for the base relation scanned by 'best_path'
+ *	 with restriction clauses 'scan_clauses' and targetlist 'tlist'.
+ */
+static TableFunctionScan *
+create_tablefunction_plan(CreatePlanContext *ctx, 
+						   Path *best_path,
+						   List *tlist, 
+						   List *scan_clauses)
+{
+	TableFunctionScan	*tablefunc;
+	Plan				*subplan    = best_path->parent->subplan;
+	List				*subrtable	= best_path->parent->subrtable;
+	Index				 scan_relid = best_path->parent->relid;
+
+	/* it should be a function base rel... */
+	Assert(scan_relid > 0);
+	Assert(best_path->parent->rtekind == RTE_TABLEFUNCTION);
+
+	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
+	scan_clauses = extract_actual_clauses(scan_clauses, false);
+
+	/* Create the TableFunctionScan plan */
+	tablefunc = make_tablefunction(tlist, scan_clauses, subplan, subrtable, 
+								   scan_relid);
+
+	/* Cost is determined largely by the cost of the underlying subplan */
+	copy_plan_costsize(&tablefunc->scan.plan, subplan);
+
+	copy_path_costsize(ctx->root, &tablefunc->scan.plan, best_path);
+
+	return tablefunc;
 }
 
 /*
@@ -4526,6 +4580,36 @@ Window *make_window(PlannerInfo *root, List *tlist,
 
 	return node;	
 }
+
+static TableFunctionScan*
+make_tablefunction(List *tlist,
+				   List *scan_clauses,
+				   Plan *subplan,
+				   List *subrtable,
+				   Index scanrelid)
+{
+	TableFunctionScan	*node = makeNode(TableFunctionScan);
+	Plan				*plan = &node->scan.plan;
+
+	copy_plan_costsize(plan, subplan);  /* only care about copying size */
+
+	/* FIXME: fix costing */
+	plan->startup_cost  = subplan->startup_cost;
+	plan->total_cost    = subplan->total_cost;
+	plan->total_cost   += 2 * plan->plan_rows;
+
+	plan->qual			= NIL;
+	plan->targetlist	= tlist;
+	plan->righttree		= NULL;
+
+	/* Fill in information for the subplan */
+	plan->lefttree		 = subplan;
+	node->subrtable		 = subrtable;
+	node->scan.scanrelid = scanrelid;
+
+	return node;	
+}
+
 
 
 /*

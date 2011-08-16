@@ -174,6 +174,7 @@ _readQuery(const char ** str)
 	READ_NODE_FIELD(windowClause);
 	READ_NODE_FIELD(distinctClause);
 	READ_NODE_FIELD(sortClause);
+	READ_NODE_FIELD(scatterClause);
 	READ_NODE_FIELD(cteList);
 	READ_BOOL_FIELD(hasRecursive);
 	READ_BOOL_FIELD(hasModifyingCTE);
@@ -1158,6 +1159,7 @@ _readFuncExpr(const char ** str)
 	READ_BOOL_FIELD(funcretset);
 	READ_ENUM_FIELD(funcformat, CoercionForm);
 	READ_NODE_FIELD(args);
+	READ_BOOL_FIELD(is_tablefunc);
 
 	READ_DONE();
 }
@@ -1715,6 +1717,12 @@ _readRangeTblEntry(const char ** str)
 			READ_NODE_FIELD(ctecoltypmods);
 			break;
 		case RTE_FUNCTION:
+			READ_NODE_FIELD(funcexpr);
+			READ_NODE_FIELD(funccoltypes);
+			READ_NODE_FIELD(funccoltypmods);
+			break;
+		case RTE_TABLEFUNCTION:
+			READ_NODE_FIELD(subquery);
 			READ_NODE_FIELD(funcexpr);
 			READ_NODE_FIELD(funccoltypes);
 			READ_NODE_FIELD(funccoltypmods);
@@ -2988,6 +2996,19 @@ _readWindow(const char ** str)
 }
 
 /*
+ * _readTableFunctionScan
+ */
+static TableFunctionScan *
+_readTableFunctionScan(const char ** str)
+{
+	READ_LOCALS(TableFunctionScan);
+
+	readScanInfo(str, (Scan *)local_node);
+
+	READ_DONE();
+}
+
+/*
  * _readMaterial
  */
 static Material *
@@ -3456,6 +3477,16 @@ _readCommentStmt(const char ** str)
 	READ_DONE();
 }
 
+static TableValueExpr *
+_readTableValueExpr(const char **str)
+{
+	READ_LOCALS(TableValueExpr);
+
+	READ_NODE_FIELD(subquery);
+
+	READ_DONE();
+}
+
 
 static Node *
 _readValue(const char ** str, NodeTag nt)
@@ -3657,6 +3688,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_Window:
 				return_value = _readWindow(str);
+				break;
+			case T_TableFunctionScan:
+				return_value = _readTableFunctionScan(str);
 				break;
 			case T_Material:
 				return_value = _readMaterial(str);
@@ -4181,6 +4215,10 @@ readNodeBinary(const char ** str)
 			case T_CommentStmt:
 				return_value = _readCommentStmt(str);
 				break;
+
+		case T_TableValueExpr:
+			return_value = _readTableValueExpr(str);
+			break;
 
 			default:
 				return_value = NULL; /* keep the compiler silent */

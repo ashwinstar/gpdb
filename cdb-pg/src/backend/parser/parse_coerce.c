@@ -743,6 +743,21 @@ can_coerce_type(int nargs, Oid *input_typeids, Oid *target_typeids,
 		if (inputTypeId == targetTypeId)
 			continue;
 
+		/* 
+		 * ANYTABLE is a special case that can occur when a function is 
+		 * called with a TableValue expression.  A table value expression
+		 * can only match a parameter to a function defined as a "anytable".
+		 *
+		 * Only allow ANYTABLE to match another ANYTABLE, anything else would
+		 * be a mismatch of Table domain and Value domain expressions.  
+		 *
+		 * Validation of ANYTABLE coercion is processed at a higher level
+		 * that has more context related to the tupleDesc for the tables
+		 * involved.
+		 */
+		if (targetTypeId == ANYTABLEOID || inputTypeId == ANYTABLEOID)
+			return false;
+
 		/* accept if target is ANY */
 		if (targetTypeId == ANYOID)
 			continue;

@@ -347,3 +347,30 @@ shell_out(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();			/* keep compiler quiet */
 }
+
+
+/*
+ * anytable_in		- input routine for multiset pseudotype
+ */
+Datum
+anytable_in(PG_FUNCTION_ARGS)
+{
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("cannot accept a value of type anytable")));
+
+	PG_RETURN_VOID();			/* keep compiler quiet */
+}
+
+/*
+ * shell_out		- output routine for "shell" types.
+ */
+Datum
+anytable_out(PG_FUNCTION_ARGS)
+{
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("cannot display a value of type anytable")));
+
+	PG_RETURN_VOID();			/* keep compiler quiet */
+}

@@ -3,6 +3,8 @@
  */
 
 #include "postgres.h"
+#include "funcapi.h"
+#include "tablefuncapi.h"
 
 #include <float.h>
 #include <math.h>
@@ -34,6 +36,16 @@ extern int	oldstyle_length(int n, text *t);
 extern Datum int44in(PG_FUNCTION_ARGS);
 extern Datum int44out(PG_FUNCTION_ARGS);
 extern Datum gp_str2bytea(PG_FUNCTION_ARGS);
+
+/* table_functions test */
+extern Datum multiset_example(PG_FUNCTION_ARGS);
+extern Datum multiset_scalar_null(PG_FUNCTION_ARGS);
+extern Datum multiset_scalar_value(PG_FUNCTION_ARGS);
+extern Datum multiset_scalar_tuple(PG_FUNCTION_ARGS);
+extern Datum multiset_setof_null(PG_FUNCTION_ARGS);
+extern Datum multiset_setof_value(PG_FUNCTION_ARGS);
+extern Datum multiset_materialize_good(PG_FUNCTION_ARGS);
+extern Datum multiset_materialize_bad(PG_FUNCTION_ARGS);
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -1491,5 +1503,321 @@ gp_str2bytea(PG_FUNCTION_ARGS)
 {
     Datum d = PG_GETARG_DATUM(0);
     return d;
+}
+
+
+
+/* table_functions test */
+PG_FUNCTION_INFO_V1(multiset_scalar_null);
+PG_FUNCTION_INFO_V1(multiset_scalar_value);
+PG_FUNCTION_INFO_V1(multiset_scalar_tuple);
+PG_FUNCTION_INFO_V1(multiset_setof_null);
+PG_FUNCTION_INFO_V1(multiset_setof_value);
+PG_FUNCTION_INFO_V1(multiset_materialize_good);
+PG_FUNCTION_INFO_V1(multiset_materialize_bad);
+PG_FUNCTION_INFO_V1(multiset_example);
+
+Datum
+multiset_scalar_null(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_NULL();
+}
+
+Datum
+multiset_scalar_value(PG_FUNCTION_ARGS)
+{
+	AnyTable             scan;
+	HeapTuple            tuple;
+	TupleDesc            in_tupdesc;
+	Datum                values[1];
+	bool				 nulls[1];
+	int					 result;
+
+	/* 
+	 * Sanity checking, shouldn't occur if our CREATE FUNCTION in SQL is done
+	 * correctly.
+	 */
+	if (PG_NARGS() < 1 || PG_ARGISNULL(0))
+		elog(ERROR, "invalid invocation of multiset_example");
+	scan = PG_GETARG_ANYTABLE(0);  /* Should be the first parameter */
+
+
+	/* Get the next value from the input scan */
+	in_tupdesc  = AnyTable_GetTupleDesc(scan);
+	tuple       = AnyTable_GetNextTuple(scan);
+
+	/* check for end of scan */
+	if (tuple == NULL)
+		PG_RETURN_NULL();
+
+	/*
+	 * We expect an input of one integer column for this stupid 
+	 * table function, if that is not what we got then complain.
+	 */
+	if (in_tupdesc->natts != 1 ||
+		in_tupdesc->attrs[0]->atttypid != INT4OID)
+	{
+		ereport(ERROR, 
+				(errcode(ERRCODE_CANNOT_COERCE),
+				 errmsg("invalid input tuple for function multiset_example"),
+				 errhint("expected (integer, text) ")));
+	}
+
+	/* -----
+	 * Extract fields from input tuple, there are several possibilities
+	 * depending on if we want to fetch the rows by name, by number, or extract
+	 * the full tuple contents.
+	 *
+	 *    - values[0] = GetAttributeByName(tuple->t_data, "a", &nulls[0]);
+	 *    - values[0] = GetAttributeByNum(tuple->t_data, 1, &nulls[0]);
+	 *    - heap_deform_tuple(tuple, in_tupdesc, values, nulls);
+	 *
+	 * In this case we have chosen to use getAttributeByNum
+	 */
+//	values[0] = GetAttributeByNum(tuple->t_data, 1, &nulls[0]);
+	values[0] = heap_getattr(tuple, 1, in_tupdesc, &nulls[0]);
+
+	/* Handle NULL */
+	if (nulls[0])
+		PG_RETURN_NULL();
+
+	/* 
+	 * Convert the Datum to an integer so we can operate on it.
+	 * 
+	 * Since we are just going to return it directly we could skip this step,
+	 * and simply call PG_RETURN_DATUM(values[0]), but this is more illustrative.
+	 */
+	result = DatumGetInt32(values[0]);
+
+	PG_RETURN_INT32(result);
+}
+
+Datum
+multiset_scalar_tuple(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsi;
+	TupleDesc	tupdesc;
+	HeapTuple	tuple;
+	Datum		values[2];
+	bool		nulls[2];
+	Datum		result;
+
+	/* Double check that the output tupledesc is what we expect */
+	rsi		= (ReturnSetInfo *) fcinfo->resultinfo;
+	tupdesc	= rsi->expectedDesc;
+
+	if (tupdesc->natts				 != 2												||
+		(tupdesc->attrs[0]->atttypid != INT4OID && !tupdesc->attrs[0]->attisdropped)	||
+		(tupdesc->attrs[1]->atttypid != TEXTOID && !tupdesc->attrs[1]->attisdropped))
+	{
+		ereport(ERROR, 
+				(errcode(ERRCODE_CANNOT_COERCE),
+				 errmsg("invalid output tupledesc for function multiset_scalar_tuple"),
+				 errhint("Expected (integer, text).")));
+	}
+
+	/* Populate an output tuple. */
+	values[0] = Int32GetDatum(1);
+	values[1] = CStringGetTextDatum("Example");
+	nulls[0] = nulls[1] = false;
+	tuple = heap_form_tuple(tupdesc, values, nulls);
+	result = HeapTupleGetDatum(tuple);
+
+	PG_RETURN_DATUM(result);
+}
+
+Datum
+multiset_setof_null(PG_FUNCTION_ARGS)
+{
+	FuncCallContext		*fctx;
+	ReturnSetInfo 		*rsi;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		fctx = SRF_FIRSTCALL_INIT();
+	}
+	fctx = SRF_PERCALL_SETUP();
+	
+	/* This is just one way we might test that we are done: */
+	if (fctx->call_cntr < 3)
+	{
+		/* 
+		 * set returning functions shouldn't return NULL results, in order to
+		 * due so you need to sidestep the normal SRF_RETURN_NEXT mechanism.
+		 * This is an error-condition test, not correct coding practices.
+		 */
+		rsi	= (ReturnSetInfo *) fcinfo->resultinfo;
+		rsi->isDone = ExprMultipleResult;
+		fctx->call_cntr++; /* would happen automatically with SRF_RETURN_NEXT */
+		PG_RETURN_NULL();  /* see above: only for testing, don't do this */
+	}
+	else
+	{
+		/* do any user specific cleanup on last call */
+		SRF_RETURN_DONE(fctx);
+	}
+}
+
+Datum
+multiset_setof_value(PG_FUNCTION_ARGS)
+{
+	FuncCallContext		*fctx;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		fctx = SRF_FIRSTCALL_INIT();
+	}
+	fctx = SRF_PERCALL_SETUP();
+	
+	/* This is just one way we might test that we are done: */
+	if (fctx->call_cntr < 3)
+	{
+		SRF_RETURN_NEXT(fctx, Int32GetDatum(fctx->call_cntr));
+	}
+	else
+	{
+		/* do any user specific cleanup on last call */
+		SRF_RETURN_DONE(fctx);
+	}
+}
+
+Datum
+multiset_materialize_good(PG_FUNCTION_ARGS)
+{
+	FuncCallContext		*fctx;
+	ReturnSetInfo 		*rsi = (ReturnSetInfo *) fcinfo->resultinfo;
+
+	/*
+	 * To return SFRM_Materialize the correct convention is to first
+	 * check if this is an allowed mode.  Currently it is not, so we
+	 * expect this to raise an error.
+	 */
+	if (!rsi || !IsA(rsi, ReturnSetInfo) ||
+		(rsi->allowedModes & SFRM_Materialize) == 0 ||
+		rsi->expectedDesc == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that "
+						"cannot accept a set")));
+	}
+
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		fctx = SRF_FIRSTCALL_INIT();
+	}
+	fctx = SRF_PERCALL_SETUP();
+	SRF_RETURN_DONE(fctx);
+}
+
+Datum
+multiset_materialize_bad(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsi = (ReturnSetInfo *) fcinfo->resultinfo;
+
+	/* 
+	 * This function is "bad" because it does not check if the caller 
+	 * supports SFRM_Materialize before trying to return a materialized
+	 * set.
+	 */
+	rsi->returnMode = SFRM_Materialize;
+	PG_RETURN_NULL();
+}
+
+
+Datum
+multiset_example(PG_FUNCTION_ARGS)
+{
+	FuncCallContext		*fctx;
+	ReturnSetInfo 		*rsi;
+	AnyTable             scan;
+	HeapTuple            tuple;
+	TupleDesc            in_tupdesc;
+	TupleDesc            out_tupdesc;
+	Datum                tup_datum;
+	Datum                values[2];
+	bool				 nulls[2];
+
+	/* 
+	 * Sanity checking, shouldn't occur if our CREATE FUNCTION in SQL is done
+	 * correctly.
+	 */
+	if (PG_NARGS() < 1 || PG_ARGISNULL(0))
+		elog(ERROR, "invalid invocation of multiset_example");
+	scan = PG_GETARG_ANYTABLE(0);  /* Should be the first parameter */
+
+	/* Basic set-returning function (SRF) protocol, setup the context */
+	if (SRF_IS_FIRSTCALL())
+	{
+		fctx = SRF_FIRSTCALL_INIT();
+	}
+	fctx = SRF_PERCALL_SETUP();
+
+	/* Get the next value from the input scan */
+	rsi			= (ReturnSetInfo *) fcinfo->resultinfo;
+	out_tupdesc = rsi->expectedDesc;
+	in_tupdesc  = AnyTable_GetTupleDesc(scan);
+	tuple       = AnyTable_GetNextTuple(scan);
+
+	/* check for end of scan */
+	if (tuple == NULL)
+		SRF_RETURN_DONE(fctx);
+
+	/*
+	 * We expect an input/output of two columns (int, text) for this stupid 
+	 * table function, if that is not what we got then complain.
+	 */
+	if (in_tupdesc->natts			   != 2				||
+		in_tupdesc->attrs[0]->atttypid != INT4OID		||
+		in_tupdesc->attrs[1]->atttypid != TEXTOID)
+	{
+		ereport(ERROR, 
+				(errcode(ERRCODE_CANNOT_COERCE),
+				 errmsg("invalid input tuple for function multiset_example"),
+				 errhint("expected (integer, text) ")));
+	}
+
+	/* For output tuple we also check for possibility of dropped columns */
+	if (out_tupdesc->natts				 != 2			||
+		(out_tupdesc->attrs[0]->atttypid != INT4OID		&& 
+		 !out_tupdesc->attrs[0]->attisdropped)			||
+		(out_tupdesc->attrs[1]->atttypid != TEXTOID		&&
+		 !out_tupdesc->attrs[1]->attisdropped))
+	{
+		ereport(ERROR, 
+				(errcode(ERRCODE_CANNOT_COERCE),
+				 errmsg("invalid output tuple for function multiset_example"),
+				 errhint("expected (integer, text) ")));
+	}
+
+
+	/* -----
+	 * Extract fields from input tuple, there are several possibilities
+	 * depending on if we want to fetch the rows by name, by number, or extract
+	 * the full tuple contents.
+	 *
+	 *    - values[0] = GetAttributeByName(tuple->t_data, "a", &nulls[0]);
+	 *    - values[0] = GetAttributeByNum(tuple->t_data, 0, &nulls[0]);
+	 *    - heap_deform_tuple(tuple, in_tupdesc, values, nulls);
+	 *
+	 * In this case we have chosen to do the whole tuple at once.
+	 */
+	heap_deform_tuple(tuple, in_tupdesc, values, nulls);
+
+	/* 
+	 * Since we have already validated types we can form this directly
+	 * into our output tuple without additional conversion.
+	 */
+	tuple = heap_form_tuple(out_tupdesc, values, nulls);
+
+	/* 
+	 * Final output must always be a Datum, so convert the tuple as required
+	 * by the API.
+	 */
+	tup_datum = HeapTupleGetDatum(tuple);
+
+	/* Extract values from input tuple, build output tuple */
+	SRF_RETURN_NEXT(fctx, tup_datum);
 }
 

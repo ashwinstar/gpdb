@@ -109,6 +109,7 @@
 #include "executor/nodeSort.h"
 #include "executor/nodeSubplan.h"
 #include "executor/nodeSubqueryscan.h"
+#include "executor/nodeTableFunction.h"
 #include "executor/nodeTidscan.h"
 #include "executor/nodeUnique.h"
 #include "executor/nodeValuesscan.h"
@@ -239,6 +240,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		case T_FunctionScan:
 			result = (PlanState *) ExecInitFunctionScan((FunctionScan *) node,
 														estate, eflags);
+			break;
+
+		case T_TableFunctionScan:
+			result = (PlanState *) ExecInitTableFunction((TableFunctionScan *) node,
+														 estate, eflags);
 			break;
 
 		case T_ValuesScan:
@@ -450,6 +456,7 @@ ExecProcNode(PlanState *node)
 		&&Exec_Jmp_TidScan,
 		&&Exec_Jmp_SubqueryScan,
 		&&Exec_Jmp_FunctionScan,
+		&&Exec_Jmp_TableFunctionScan,
 		&&Exec_Jmp_ValuesScan,
 		&&Exec_Jmp_NestLoop,
 		&&Exec_Jmp_MergeJoin,
@@ -546,6 +553,10 @@ Exec_Jmp_SubqueryScan:
 
 Exec_Jmp_FunctionScan:
 	result = ExecFunctionScan((FunctionScanState *) node);
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_TableFunctionScan:
+	result = ExecTableFunction((TableFunctionState *) node);
 	goto Exec_Jmp_Done;
 
 Exec_Jmp_ValuesScan:
@@ -675,6 +686,10 @@ Exec_Jmp_Done:
 
 		case T_FunctionScanState:
 			result = ExecFunctionScan((FunctionScanState *) node);
+			break;
+
+		case T_TableFunctionState:
+			result = ExecTableFunction((TableFunctionState *) node);
 			break;
 
 		case T_ValuesScanState:
@@ -892,6 +907,9 @@ ExecCountSlotsNode(Plan *node)
 
 		case T_FunctionScan:
 			return ExecCountSlotsFunctionScan((FunctionScan *) node);
+
+		case T_TableFunctionScan:
+			return ExecCountSlotsTableFunction((TableFunctionScan *) node);
 
 		case T_ValuesScan:
 			return ExecCountSlotsValuesScan((ValuesScan *) node);
@@ -1120,6 +1138,10 @@ ExecEndNode(PlanState *node)
 			ExecEndFunctionScan((FunctionScanState *) node);
 			break;
 
+		case T_TableFunctionState:
+			ExecEndTableFunction((TableFunctionState *) node);
+			break;
+
 		case T_ValuesScanState:
 			ExecEndValuesScan((ValuesScanState *) node);
 			break;
@@ -1272,6 +1294,10 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 
 		case T_FunctionScanState:
 			nameTag = "FunctionScan";
+			break;
+
+		case T_TableFunctionState:
+			nameTag = "TableFunctionScan";
 			break;
 
 		case T_ValuesScanState:

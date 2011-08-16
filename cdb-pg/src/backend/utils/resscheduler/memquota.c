@@ -118,6 +118,7 @@ static bool IsMemoryIntensiveOperator(Node *node)
 		case T_BitmapIndexScan:
 		case T_FunctionScan:
 		case T_Window:
+		case T_TableFunctionScan:
 			return true;
 		case T_Agg:
 			{

@@ -479,6 +479,17 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 
+		case T_TableFunctionScan:
+			{
+				TableFunctionScan		*tabfunc = (TableFunctionScan *) node;
+				TableFunctionScan		*newtabfunc;
+
+				FLATCOPY(newtabfunc, tabfunc, TableFunctionScan);
+				PLANMUTATE(newtabfunc, tabfunc);
+				return (Node *) newtabfunc;
+			}
+			break;
+
 		case T_Window:
 			{
 				Window	   *window = (Window *) node;
@@ -679,6 +690,11 @@ plan_tree_mutator(Node *node,
 					case RTE_FUNCTION:	/* function in FROM */
 						MUTATE(newrte->funcexpr, rte->funcexpr, Node *);
 						// TODO is this right? //newrte->coldeflist = (List *) copyObject(rte->coldeflist);
+						break;
+
+					case RTE_TABLEFUNCTION:
+						newrte->subquery = copyObject(rte->subquery);
+						MUTATE(newrte->funcexpr, rte->funcexpr, Node *);
 						break;
 
                     case RTE_VALUES:

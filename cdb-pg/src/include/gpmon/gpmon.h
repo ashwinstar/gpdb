@@ -417,6 +417,7 @@ typedef enum PerfmonNodeType
     PMNT_SharedScan,
     PMNT_Sort,
     PMNT_SubqueryScan,
+	PMNT_TableFunctionScan,
     PMNT_TidScan,
     PMNT_Unique,
     PMNT_ValuesScan,
