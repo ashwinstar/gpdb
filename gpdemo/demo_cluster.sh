@@ -1,26 +1,43 @@
 #!/bin/bash
 
-#set -x
-
-
-#
-# DATABASE PORTS
-#
-
-#
+# ======================================================================
 # Data Directories
-#
+# ======================================================================
+
 DATADIRS=`pwd`/datadirs
 QDDIR=$DATADIRS/qddir
-declare -a DIRVEC=($DATADIRS/dbfast1 $DATADIRS/dbfast2 $DATADIRS/dbfast3)
 
-declare -a DEMO_SEG_PORTS=(`expr $DEMO_PORT_BASE`  \
-        `expr $DEMO_PORT_BASE + 1` `expr  $DEMO_PORT_BASE + 2`)
+SEG_PREFIX=demoDataDir
 
+declare -a DIRVEC=($DATADIRS/dbfast1 \
+                   $DATADIRS/dbfast2 \
+                   $DATADIRS/dbfast3 )
+
+declare -a DIRVEC_MIRROR=($DATADIRS/dbfast_mirror1 \
+                          $DATADIRS/dbfast_mirror2 \
+                          $DATADIRS/dbfast_mirror3 )
+
+# ======================================================================
+# DATABASE PORTS
+# ======================================================================
+
+declare -a DEMO_SEG_PORTS=(`expr $DEMO_PORT_BASE`      \
+                           `expr $DEMO_PORT_BASE + 1`  \
+                           `expr $DEMO_PORT_BASE + 2`  \
+                           `expr $DEMO_PORT_BASE + 3`  \
+                           `expr $DEMO_PORT_BASE + 4`  \
+                           `expr $DEMO_PORT_BASE + 5`  \
+                           `expr $DEMO_PORT_BASE + 6`  \
+                           `expr $DEMO_PORT_BASE + 7`  \
+                           `expr $DEMO_PORT_BASE + 8`  \
+                           `expr $DEMO_PORT_BASE + 9`  \
+                           `expr $DEMO_PORT_BASE + 10` \
+                           `expr $DEMO_PORT_BASE + 11` )
 
 #******************************************************************************
 # Functions
 #******************************************************************************
+
 checkDemoConfig(){
     echo "Checking for port availability... "
     # Check if Master_DEMO_Port is free
@@ -37,8 +54,7 @@ checkDemoConfig(){
         return 1
     fi
 
-    for PORT_NUM in ${DEMO_SEG_PORTS[@]} 
-    do
+    for PORT_NUM in ${DEMO_SEG_PORTS[@]}; do
         echo "Checking if port ${PORT_NUM} is available"
         PORT_FILE="/tmp/.s.PGSQL.${PORT_NUM}"
         if [ -f ${PORT_FILE} -o -S ${PORT_FILE} ] ; then 
@@ -67,6 +83,7 @@ USAGE(){
 #
 # Clean up the demo
 #
+
 cleanDemo(){
     PG_CTL_PATH=${GPHOME}/bin/pg_ctl
     # Data Directories for the segments
@@ -74,9 +91,15 @@ cleanDemo(){
         echo "stopping postmaster ${PG_CTL_PATH} -D ${QDDIR}/demoDataDir-1 stop"
         ${PG_CTL_PATH} -D ${QDDIR}/demoDataDir-1 stop
     fi
-    declare -a SEGDIRS=($DATADIRS/dbfast1/demoDataDir0 $DATADIRS/dbfast2/demoDataDir1 $DATADIRS/dbfast3/demoDataDir2)
-    for eDir in ${SEGDIRS[@]}
-    do
+
+    declare -a SEGDIRS=($DATADIRS/dbfast1/demoDataDir0 \
+                        $DATADIRS/dbfast2/demoDataDir1 \
+                        $DATADIRS/dbfast3/demoDataDir2 \
+                        $DATADIRS/dbfast_mirror1/demoDataDir0 \
+                        $DATADIRS/dbfast_mirror2/demoDataDir1 \
+                        $DATADIRS/dbfast_mirror3/demoDataDir2 )
+
+    for eDir in ${SEGDIRS[@]}; do
         if [ -f ${eDir}/postmaster.pid ] ; then 
             echo "stopping postmaster ${PG_CTL_PATH} -D ${eDir} stop"
             ${PG_CTL_PATH} -D ${eDir} stop
@@ -106,6 +129,7 @@ cleanDemo(){
 #*****************************************************************************
 # Main Section
 #*****************************************************************************
+
 while getopts ":cd'?'" opt
 		do
 		case $opt in 
@@ -127,33 +151,36 @@ while getopts ":cd'?'" opt
 		esac
 done
 
-
-echo ""
-echo "**************************************************************************************************"
-echo "This is a demo of the Greenplum Database module.  We'll perform a local cluster installation with 1"
-echo "master instance and 3 segment instances all on this machine."
-echo ""
-echo "In order to run the Greenplum Database module, you must either have the BIZHOME environment variable"
-echo "set, or the GPHOME environment variable set to the location of the Greenplum install."
-echo "You must also have the following port numbers free ${MASTER_DEMO_PORT} ${DEMO_SEG_PORTS[@]}"
-echo ""
-echo "**************************************************************************************************"
-echo ""
-
-
-
 if [ x"$GPHOME" = x ]; then
-    if [ x"$BIZHOME" = x ]; then
-        echo "Neither GPHOME or BIZHOME are set.  Set one of these variables to point to the location"
-     echo "of the Greenplum installation directory."
+        echo ""
+        echo "GPHOME is not set.  Point to the location"
+        echo "of the Greenplum installation directory."
         echo ""
         exit 1
-    else
-        GPSEARCH=$BIZHOME
-    fi
 else
     GPSEARCH=$GPHOME
 fi
+
+cat <<-EOF
+
+	**********************************************************************
+	This is a demo of the Greenplum Database module.  We'll perform a
+	local cluster installation with 1 master instance and 6 segment
+	instances (3 primary & 3 mirror) all on this machine.
+
+	  GPHOME=${GPHOME}
+	  MASTER_DATA_DIRECTORY=$QDDIR/${SEG_PREFIX}-1
+
+	In order to run the Greenplum Database module, you must have the
+	GPHOME environment variable set to the location of the Greenplum
+	install.  You must also have the following port numbers free:
+
+	  ${MASTER_DEMO_PORT}
+	  ${DEMO_SEG_PORTS[@]}
+
+	**********************************************************************
+
+EOF
 
 GPPATH=`find $GPSEARCH -name gp_dump| tail -1`
 RETVAL=$?
@@ -173,16 +200,13 @@ if [ ! -x $GPPATH/gpinitsystem ]; then
     exit 1
 fi
 
-
-
-
 if [ -d $DATADIRS ]; then
   rm -rf $DATADIRS
 fi
 mkdir $DATADIRS
 mkdir $QDDIR
 
-for dir in ${DIRVEC[@]}
+for dir in ${DIRVEC[@]} ${DIRVEC_MIRROR[@]}
 do
   if [ ! -d $dir ]; then
     mkdir $dir
@@ -192,25 +216,27 @@ done
 #*****************************************************************************************
 # Host configuration
 #*****************************************************************************************
+
 LOCALHOST=`hostname`
 echo $LOCALHOST > hostfile
 
 #*****************************************************************************************
 # Name of the system configuration file.
 #*****************************************************************************************
+
 CLUSTER_CONFIG=clusterConfigFile
 CLUSTER_CONFIG_POSTGRES_ADDONS=clusterConfigPostgresAddonsFile
 
 rm -f ${CLUSTER_CONFIG}
 rm -f ${CLUSTER_CONFIG_POSTGRES_ADDONS}
 
-SEG_PREFIX=demoDataDir
-
 #*****************************************************************************************
 # Create the system configuration file
 #*****************************************************************************************
+
 cat >> $CLUSTER_CONFIG <<-EOF
 	# Set this to anything you like
+	ARRAY_NAME="Demo $HOSTNAME Cluster"
 	CLUSTER_NAME="Demo $HOSTNAME Cluster"
 	
 	# This file must exist in the same directory that you execute gpinitsystem in
@@ -235,7 +261,6 @@ cat >> $CLUSTER_CONFIG <<-EOF
 	
 	# Name of directory on that host in which to setup the QD
 	MASTER_DIRECTORY=$QDDIR
-	MASTER_DATA_DIRECTORY=$QDDIR/${SEG_PREFIX}0
 	
 	MASTER_PORT=${MASTER_DEMO_PORT}
 	
@@ -249,7 +274,16 @@ cat >> $CLUSTER_CONFIG <<-EOF
 	CHECK_POINT_SEGMENTS=8
 	
 	ENCODING=UNICODE
+
+	# Array of mirror data locations for each hosts Segment Instances, the number of directories in this array will
+	# set the number of segment instances per host
+	declare -a MIRROR_DATA_DIRECTORY=(${DIRVEC_MIRROR[@]})
 	
+	MIRROR_PORT_BASE=`expr $DEMO_PORT_BASE + 3`
+
+	REPLICATION_PORT_BASE=`expr $DEMO_PORT_BASE + 6`
+	MIRROR_REPLICATION_PORT_BASE=`expr $DEMO_PORT_BASE + 9`
+
 	# Path for Greenplum mgmt utils and Greenplum binaries
 	PATH=$GPHOME/bin:$PATH
 	LD_LIBRARY_PATH=$GPHOME/lib:$LD_LIBRARY_PATH
@@ -259,30 +293,21 @@ cat >> $CLUSTER_CONFIG <<-EOF
 	export TRUSTED_SHELL
 EOF
 
-## if [ "${BUILD_TYPE}" = "gcov" ] ; then
-## 	cat > ${CLUSTER_CONFIG_POSTGRES_ADDONS} <<-EOF
-## 		## ======================================================================
-## 		## GCov specific GUCs
-## 		## ======================================================================
-## 
-## 		stats_start_collector=on
-## 		stats_block_level=on
-## 		stats_row_level=on
-## 		stats_queue_level=on
-## 		log_parser_stats=on
-## 		log_planner_stats=on
-## 		log_executor_stats=on
-## 		log_destination='stderr'
-## 	
-## 	EOF
-## fi
-
 #*****************************************************************************************
 # Create cluster
 #*****************************************************************************************
 
 if [ "${BUILD_TYPE}" = "gcov" ] && [ -f "${CLUSTER_CONFIG_POSTGRES_ADDONS}" ]; then
-    $GPPATH/gpinitsystem -q -a -c $CLUSTER_CONFIG -p ${CLUSTER_CONFIG_POSTGRES_ADDONS} "$@"
+    echo "executing: $GPPATH/gpinitsystem -a -c $CLUSTER_CONFIG -p ${CLUSTER_CONFIG_POSTGRES_ADDONS} \"$@\""
+    $GPPATH/gpinitsystem -a -c $CLUSTER_CONFIG -p ${CLUSTER_CONFIG_POSTGRES_ADDONS} "$@"
 else
-    $GPPATH/gpinitsystem -q -a -c $CLUSTER_CONFIG "$@"
+    echo "executing: $GPPATH/gpinitsystem -a -c $CLUSTER_CONFIG \"$@\""
+    $GPPATH/gpinitsystem -a -c $CLUSTER_CONFIG "$@"
 fi
+
+RETURN=$?
+echo "========================================"
+echo "gpinitsystem returned: ${RETURN}"
+echo "========================================"
+
+exit ${RETURN}
