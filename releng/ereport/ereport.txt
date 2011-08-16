@@ -11844,163 +11844,191 @@ eabc: execprocnode:00000819:  elog(ERROR, "unrecognized node type: %d", (int) no
 eabc: execprocnode:00000950:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
 eabc: execprocnode:00001194:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
 aaaaa GP_IGNORE: eaai: execqual - ./backend/executor/execQual.c
-eaai: execqual:00000279:  ereport(ERROR, 
-eaai: execqual:00000280:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-eaai: execqual:00000281:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
-eaai: execqual:00000282:  i, MAXDIM))); 
-eaai: execqual:00000292:  ereport(ERROR, 
-eaai: execqual:00000293:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-eaai: execqual:00000294:  errmsg("array subscript in assignment must not be null"))); 
-eaai: execqual:00000307:  ereport(ERROR, 
-eaai: execqual:00000308:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-eaai: execqual:00000309:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
-eaai: execqual:00000310:  i, MAXDIM))); 
-eaai: execqual:00000320:  ereport(ERROR, 
-eaai: execqual:00000321:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-eaai: execqual:00000322:  errmsg("array subscript in assignment must not be null"))); 
-eaai: execqual:00000329:  elog(ERROR, "upper and lower index lists are not same length"); 
-eaai: execqual:00000431:  elog(ERROR, "no aggregates in this expression context"); 
-eaai: execqual:00000528:  elog(ERROR, "no window functions in this expression context"); 
-eaai: execqual:00000615:  elog(ERROR, "attribute number %d exceeds number of columns %d", 
-eaai: execqual:00000616:  attnum, slot_tupdesc->natts); 
-eaai: execqual:00000624:  ereport(ERROR, 
-eaai: execqual:00000625:  (errmsg("attribute %d has wrong type", attnum), 
-eaai: execqual:00000626:  errdetail("Table has type %s, but query expects %s.", 
-eaai: execqual:00000627:  format_type_be(attr->atttypid), 
-eaai: execqual:00000628:  format_type_be(variable->vartype)))); 
-eaai: execqual:00000682:  ereport(ERROR, 
-eaai: execqual:00000683:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00000684:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execqual:00000685:  errdetail("Table row contains %d attributes, but query expects %d.", 
-eaai: execqual:00000686:  slot_tupdesc->natts, var_tupdesc->natts))); 
-eaai: execqual:00000698:  ereport(ERROR, 
-eaai: execqual:00000699:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00000700:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execqual:00000701:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
-eaai: execqual:00000702:  format_type_be(sattr->atttypid), 
-eaai: execqual:00000703:  i + 1, 
-eaai: execqual:00000704:  format_type_be(vattr->atttypid)))); 
-eaai: execqual:00000708:  ereport(ERROR, 
-eaai: execqual:00000709:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00000710:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execqual:00000711:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
-eaai: execqual:00000712:  i + 1))); 
-eaai: execqual:00000967:  ereport(ERROR, 
-eaai: execqual:00000968:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eaai: execqual:00000969:  errmsg("no value found for parameter %d", thisParamId))); 
-eaai: execqual:00001003:  elog(ERROR, "invalid attribute number %d", attrno); 
-eaai: execqual:00001006:  elog(ERROR, "a NULL isNull pointer was passed"); 
-eaai: execqual:00001050:  elog(ERROR, "invalid attribute name"); 
-eaai: execqual:00001053:  elog(ERROR, "a NULL isNull pointer was passed"); 
-eaai: execqual:00001077:  elog(ERROR, "attribute \"%s\" does not exist", attname); 
-eaai: execqual:00001118:  ereport(ERROR, 
-eaai: execqual:00001119:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
-eaai: execqual:00001120:  errmsg("cannot pass more than %d arguments to a function", 
-eaai: execqual:00001121:  FUNC_MAX_ARGS))); 
-eaai: execqual:00001236:  ereport(ERROR, 
-eaai: execqual:00001237:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00001238:  errmsg("functions and operators can take at most one set argument"))); 
-eaai: execqual:00001289:  ereport(ERROR, 
-eaai: execqual:00001290:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00001291:  errmsg("set-valued function called in context that cannot accept a set"))); 
-eaai: execqual:00001332:  ereport(ERROR, 
-eaai: execqual:00001333:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00001334:  errmsg("set-valued function called in context that cannot accept a set"))); 
-eaai: execqual:00001626:  ereport(ERROR, 
-eaai: execqual:00001627:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00001628:  errmsg("set-valued function called in context that cannot accept a set"))); 
-eaai: execqual:00001709:  ereport(ERROR, 
-eaai: execqual:00001710:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-eaai: execqual:00001711:  errmsg("function returning set of rows cannot return null value"))); 
-eaai: execqual:00001812:  ereport(ERROR, 
-eaai: execqual:00001813:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
-eaai: execqual:00001814:  errmsg("table-function protocol for materialize mode was not followed"))); 
-eaai: execqual:00001819:  ereport(ERROR, 
-eaai: execqual:00001820:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
-eaai: execqual:00001821:  errmsg("unrecognized table-function returnMode: %d", 
-eaai: execqual:00001822:  (int) rsinfo.returnMode))); 
-eaai: execqual:00001964:  ereport(ERROR, 
-eaai: execqual:00001965:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00001966:  errmsg("IS DISTINCT FROM does not support set arguments"))); 
-eaai: execqual:00002380:  ereport(ERROR, 
-eaai: execqual:00002381:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00002382:  errmsg("op ANY/ALL (array) does not support set arguments"))); 
-eaai: execqual:00002728:  elog(ERROR, "attribute \"%s\" of type %s does not match corresponding attribute of type %s", 
-eaai: execqual:00002729:  attname, 
-eaai: execqual:00002730:  format_type_be(cstate->indesc->tdtypeid), 
-eaai: execqual:00002731:  format_type_be(cstate->outdesc->tdtypeid)); 
-eaai: execqual:00002737:  elog(ERROR, "attribute \"%s\" of type %s does not exist", 
-eaai: execqual:00002738:  attname, 
-eaai: execqual:00002739:  format_type_be(cstate->indesc->tdtypeid)); 
-eaai: execqual:00002999:  ereport(ERROR, 
-eaai: execqual:00003000:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00003001:  errmsg("cannot merge incompatible arrays"), 
-eaai: execqual:00003002:  errdetail("Array with element type %s cannot be " 
-eaai: execqual:00003003:  "included in ARRAY construct with element type %s.", 
-eaai: execqual:00003004:  format_type_be(ARR_ELEMTYPE(array)), 
-eaai: execqual:00003005:  format_type_be(element_type)))); 
-eaai: execqual:00003021:  ereport(ERROR, 
-eaai: execqual:00003022:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
-eaai: execqual:00003023:  errmsg("number of array dimensions (%d) exceeds " \ 
-eaai: execqual:00003024:  "the maximum allowed (%d)", ndims, MAXDIM))); 
-eaai: execqual:00003041:  ereport(ERROR, 
-eaai: execqual:00003042:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
-eaai: execqual:00003043:  errmsg("multidimensional arrays must have array " 
-eaai: execqual:00003044:  "expressions with matching dimensions"))); 
-eaai: execqual:00003068:  ereport(ERROR, 
-eaai: execqual:00003069:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
-eaai: execqual:00003070:  errmsg("multidimensional arrays must have array " 
-eaai: execqual:00003071:  "expressions with matching dimensions"))); 
-eaai: execqual:00003227:  elog(ERROR, "unrecognized RowCompareType: %d", (int) rctype); 
-eaai: execqual:00003363:  ereport(ERROR, 
-eaai: execqual:00003364:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00003365:  errmsg("NULLIF does not support set arguments"))); 
-eaai: execqual:00003473:  elog(ERROR, "unrecognized nulltesttype: %d", 
-eaai: execqual:00003474:  (int) ntest->nulltesttype); 
-eaai: execqual:00003559:  elog(ERROR, "unrecognized booltesttype: %d", 
-eaai: execqual:00003560:  (int) btest->booltesttype); 
-eaai: execqual:00003593:  ereport(ERROR, 
-eaai: execqual:00003594:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
-eaai: execqual:00003595:  errmsg("domain %s does not allow null values", 
-eaai: execqual:00003596:  format_type_be(ctest->resulttype)))); 
-eaai: execqual:00003622:  ereport(ERROR, 
-eaai: execqual:00003623:  (errcode(ERRCODE_CHECK_VIOLATION), 
-eaai: execqual:00003624:  errmsg("value for domain %s violates check constraint \"%s\"", 
-eaai: execqual:00003625:  format_type_be(ctest->resulttype), 
-eaai: execqual:00003626:  con->name))); 
-eaai: execqual:00003633:  elog(ERROR, "unrecognized constraint type: %d", 
-eaai: execqual:00003634:  (int) con->constrainttype); 
-eaai: execqual:00003700:  elog(ERROR, "attribute number %d exceeds number of columns %d", 
-eaai: execqual:00003701:  fieldnum, tupDesc->natts); 
-eaai: execqual:00003712:  ereport(ERROR, 
-eaai: execqual:00003713:  (errmsg("attribute %d has wrong type", fieldnum), 
-eaai: execqual:00003714:  errdetail("Table has type %s, but query expects %s.", 
-eaai: execqual:00003715:  format_type_be(attr->atttypid), 
-eaai: execqual:00003716:  format_type_be(fselect->resulttype)))); 
-eaai: execqual:00003957:  ereport(ERROR, 
-eaai: execqual:00003958:  (errcode(ERRCODE_GROUPING_ERROR), 
-eaai: execqual:00003959:  errmsg("aggregate function calls may not be nested"))); 
-eaai: execqual:00003964:  elog(ERROR, "aggref found in non-Agg plan node"); 
-eaai: execqual:00004114:  elog(ERROR, "unrecognized boolop: %d", 
-eaai: execqual:00004115:  (int) boolexpr->boolop); 
-eaai: execqual:00004132:  elog(ERROR, "SubPlan found with no parent plan"); 
-eaai: execqual:00004285:  ereport(ERROR, 
-eaai: execqual:00004286:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execqual:00004287:  errmsg("ROW() column has type %s instead of type %s", 
-eaai: execqual:00004288:  format_type_be(exprType((Node *) e)), 
-eaai: execqual:00004289:  format_type_be(attrs[i]->atttypid)))); 
-eaai: execqual:00004411:  ereport(ERROR, 
-eaai: execqual:00004412:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-eaai: execqual:00004413:  errmsg("could not identify a comparison function for type %s", 
-eaai: execqual:00004414:  format_type_be(minmaxexpr->minmaxtype)))); 
-eaai: execqual:00004496:  elog(ERROR, "unrecognized node type: %d", 
-eaai: execqual:00004497:  (int) nodeTag(node)); 
-eaai: execqual:00004750:  ereport(ERROR, 
-eaai: execqual:00004751:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execqual:00004752:  errmsg("set-valued function called in context that cannot accept a set"))); 
+eaai: execqual:00000288:  ereport(ERROR, 
+eaai: execqual:00000289:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+eaai: execqual:00000290:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
+eaai: execqual:00000291:  i, MAXDIM))); 
+eaai: execqual:00000301:  ereport(ERROR, 
+eaai: execqual:00000302:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+eaai: execqual:00000303:  errmsg("array subscript in assignment must not be null"))); 
+eaai: execqual:00000316:  ereport(ERROR, 
+eaai: execqual:00000317:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+eaai: execqual:00000318:  errmsg("number of array dimensions (%d) exceeds the maximum allowed (%d)", 
+eaai: execqual:00000319:  i, MAXDIM))); 
+eaai: execqual:00000329:  ereport(ERROR, 
+eaai: execqual:00000330:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+eaai: execqual:00000331:  errmsg("array subscript in assignment must not be null"))); 
+eaai: execqual:00000338:  elog(ERROR, "upper and lower index lists are not same length"); 
+eaai: execqual:00000440:  elog(ERROR, "no aggregates in this expression context"); 
+eaai: execqual:00000537:  elog(ERROR, "no window functions in this expression context"); 
+eaai: execqual:00000624:  elog(ERROR, "attribute number %d exceeds number of columns %d", 
+eaai: execqual:00000625:  attnum, slot_tupdesc->natts); 
+eaai: execqual:00000633:  ereport(ERROR, 
+eaai: execqual:00000634:  (errmsg("attribute %d has wrong type", attnum), 
+eaai: execqual:00000635:  errdetail("Table has type %s, but query expects %s.", 
+eaai: execqual:00000636:  format_type_be(attr->atttypid), 
+eaai: execqual:00000637:  format_type_be(variable->vartype)))); 
+eaai: execqual:00000691:  ereport(ERROR, 
+eaai: execqual:00000692:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00000693:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execqual:00000694:  errdetail("Table row contains %d attributes, but query expects %d.", 
+eaai: execqual:00000695:  slot_tupdesc->natts, var_tupdesc->natts))); 
+eaai: execqual:00000707:  ereport(ERROR, 
+eaai: execqual:00000708:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00000709:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execqual:00000710:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
+eaai: execqual:00000711:  format_type_be(sattr->atttypid), 
+eaai: execqual:00000712:  i + 1, 
+eaai: execqual:00000713:  format_type_be(vattr->atttypid)))); 
+eaai: execqual:00000717:  ereport(ERROR, 
+eaai: execqual:00000718:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00000719:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execqual:00000720:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
+eaai: execqual:00000721:  i + 1))); 
+eaai: execqual:00000976:  ereport(ERROR, 
+eaai: execqual:00000977:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execqual:00000978:  errmsg("no value found for parameter %d", thisParamId))); 
+eaai: execqual:00001012:  elog(ERROR, "invalid attribute number %d", attrno); 
+eaai: execqual:00001015:  elog(ERROR, "a NULL isNull pointer was passed"); 
+eaai: execqual:00001059:  elog(ERROR, "invalid attribute name"); 
+eaai: execqual:00001062:  elog(ERROR, "a NULL isNull pointer was passed"); 
+eaai: execqual:00001086:  elog(ERROR, "attribute \"%s\" does not exist", attname); 
+eaai: execqual:00001128:  ereport(ERROR, 
+eaai: execqual:00001129:  (errcode(ERRCODE_TOO_MANY_ARGUMENTS), 
+eaai: execqual:00001130:  errmsg("cannot pass more than %d arguments to a function", 
+eaai: execqual:00001131:  FUNC_MAX_ARGS))); 
+eaai: execqual:00001306:  ereport(ERROR, 
+eaai: execqual:00001307:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00001308:  errmsg("functions and operators can take at most one set argument"))); 
+eaai: execqual:00001342:  ereport(ERROR, 
+eaai: execqual:00001343:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00001344:  errmsg("function returning setof record called in " 
+eaai: execqual:00001345:  "context that cannot accept type record"))); 
+eaai: execqual:00001398:  ereport(ERROR, 
+eaai: execqual:00001399:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00001400:  errmsg("function return row and query-specified return row do not match"), 
+eaai: execqual:00001401:  errdetail("Returned row contains %d attributes, but query expects %d.", 
+eaai: execqual:00001402:  src_tupdesc->natts, dst_tupdesc->natts))); 
+eaai: execqual:00001412:  ereport(ERROR, 
+eaai: execqual:00001413:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00001414:  errmsg("function return row and query-specified return row do not match"), 
+eaai: execqual:00001415:  errdetail("Returned type %s at ordinal position %d, but query expects %s.", 
+eaai: execqual:00001416:  format_type_be(sattr->atttypid), 
+eaai: execqual:00001417:  i + 1, 
+eaai: execqual:00001418:  format_type_be(dattr->atttypid)))); 
+eaai: execqual:00001422:  ereport(ERROR, 
+eaai: execqual:00001423:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00001424:  errmsg("function return row and query-specified return row do not match"), 
+eaai: execqual:00001425:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
+eaai: execqual:00001426:  i + 1))); 
+eaai: execqual:00001516:  ereport(ERROR, 
+eaai: execqual:00001517:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00001518:  errmsg("set-valued function called in context that cannot accept a set"))); 
+eaai: execqual:00001558:  ereport(ERROR, 
+eaai: execqual:00001559:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00001560:  errmsg("set-valued function called in context that cannot accept a set"))); 
+eaai: execqual:00001644:  ereport(ERROR, 
+eaai: execqual:00001645:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+eaai: execqual:00001646:  errmsg("table-function protocol for materialize mode was not followed"))); 
+eaai: execqual:00001664:  ereport(ERROR, 
+eaai: execqual:00001665:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+eaai: execqual:00001666:  errmsg("unrecognized table-function returnMode: %d", 
+eaai: execqual:00001667:  (int) rsinfo.returnMode))); 
+eaai: execqual:00001884:  ereport(ERROR, 
+eaai: execqual:00001885:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00001886:  errmsg("set-valued function called in context that cannot accept a set"))); 
+eaai: execqual:00001967:  ereport(ERROR, 
+eaai: execqual:00001968:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+eaai: execqual:00001969:  errmsg("function returning set of rows cannot return null value"))); 
+eaai: execqual:00002070:  ereport(ERROR, 
+eaai: execqual:00002071:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+eaai: execqual:00002072:  errmsg("table-function protocol for materialize mode was not followed"))); 
+eaai: execqual:00002077:  ereport(ERROR, 
+eaai: execqual:00002078:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
+eaai: execqual:00002079:  errmsg("unrecognized table-function returnMode: %d", 
+eaai: execqual:00002080:  (int) rsinfo.returnMode))); 
+eaai: execqual:00002243:  ereport(ERROR, 
+eaai: execqual:00002244:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00002245:  errmsg("IS DISTINCT FROM does not support set arguments"))); 
+eaai: execqual:00002659:  ereport(ERROR, 
+eaai: execqual:00002660:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00002661:  errmsg("op ANY/ALL (array) does not support set arguments"))); 
+eaai: execqual:00003007:  elog(ERROR, "attribute \"%s\" of type %s does not match corresponding attribute of type %s", 
+eaai: execqual:00003008:  attname, 
+eaai: execqual:00003009:  format_type_be(cstate->indesc->tdtypeid), 
+eaai: execqual:00003010:  format_type_be(cstate->outdesc->tdtypeid)); 
+eaai: execqual:00003016:  elog(ERROR, "attribute \"%s\" of type %s does not exist", 
+eaai: execqual:00003017:  attname, 
+eaai: execqual:00003018:  format_type_be(cstate->indesc->tdtypeid)); 
+eaai: execqual:00003278:  ereport(ERROR, 
+eaai: execqual:00003279:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00003280:  errmsg("cannot merge incompatible arrays"), 
+eaai: execqual:00003281:  errdetail("Array with element type %s cannot be " 
+eaai: execqual:00003282:  "included in ARRAY construct with element type %s.", 
+eaai: execqual:00003283:  format_type_be(ARR_ELEMTYPE(array)), 
+eaai: execqual:00003284:  format_type_be(element_type)))); 
+eaai: execqual:00003300:  ereport(ERROR, 
+eaai: execqual:00003301:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
+eaai: execqual:00003302:  errmsg("number of array dimensions (%d) exceeds " \ 
+eaai: execqual:00003303:  "the maximum allowed (%d)", ndims, MAXDIM))); 
+eaai: execqual:00003320:  ereport(ERROR, 
+eaai: execqual:00003321:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+eaai: execqual:00003322:  errmsg("multidimensional arrays must have array " 
+eaai: execqual:00003323:  "expressions with matching dimensions"))); 
+eaai: execqual:00003347:  ereport(ERROR, 
+eaai: execqual:00003348:  (errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR), 
+eaai: execqual:00003349:  errmsg("multidimensional arrays must have array " 
+eaai: execqual:00003350:  "expressions with matching dimensions"))); 
+eaai: execqual:00003506:  elog(ERROR, "unrecognized RowCompareType: %d", (int) rctype); 
+eaai: execqual:00003643:  ereport(ERROR, 
+eaai: execqual:00003644:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00003645:  errmsg("NULLIF does not support set arguments"))); 
+eaai: execqual:00003753:  elog(ERROR, "unrecognized nulltesttype: %d", 
+eaai: execqual:00003754:  (int) ntest->nulltesttype); 
+eaai: execqual:00003839:  elog(ERROR, "unrecognized booltesttype: %d", 
+eaai: execqual:00003840:  (int) btest->booltesttype); 
+eaai: execqual:00003873:  ereport(ERROR, 
+eaai: execqual:00003874:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+eaai: execqual:00003875:  errmsg("domain %s does not allow null values", 
+eaai: execqual:00003876:  format_type_be(ctest->resulttype)))); 
+eaai: execqual:00003902:  ereport(ERROR, 
+eaai: execqual:00003903:  (errcode(ERRCODE_CHECK_VIOLATION), 
+eaai: execqual:00003904:  errmsg("value for domain %s violates check constraint \"%s\"", 
+eaai: execqual:00003905:  format_type_be(ctest->resulttype), 
+eaai: execqual:00003906:  con->name))); 
+eaai: execqual:00003913:  elog(ERROR, "unrecognized constraint type: %d", 
+eaai: execqual:00003914:  (int) con->constrainttype); 
+eaai: execqual:00003980:  elog(ERROR, "attribute number %d exceeds number of columns %d", 
+eaai: execqual:00003981:  fieldnum, tupDesc->natts); 
+eaai: execqual:00003992:  ereport(ERROR, 
+eaai: execqual:00003993:  (errmsg("attribute %d has wrong type", fieldnum), 
+eaai: execqual:00003994:  errdetail("Table has type %s, but query expects %s.", 
+eaai: execqual:00003995:  format_type_be(attr->atttypid), 
+eaai: execqual:00003996:  format_type_be(fselect->resulttype)))); 
+eaai: execqual:00004237:  ereport(ERROR, 
+eaai: execqual:00004238:  (errcode(ERRCODE_GROUPING_ERROR), 
+eaai: execqual:00004239:  errmsg("aggregate function calls may not be nested"))); 
+eaai: execqual:00004244:  elog(ERROR, "aggref found in non-Agg plan node"); 
+eaai: execqual:00004394:  elog(ERROR, "unrecognized boolop: %d", 
+eaai: execqual:00004395:  (int) boolexpr->boolop); 
+eaai: execqual:00004412:  elog(ERROR, "SubPlan found with no parent plan"); 
+eaai: execqual:00004565:  ereport(ERROR, 
+eaai: execqual:00004566:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execqual:00004567:  errmsg("ROW() column has type %s instead of type %s", 
+eaai: execqual:00004568:  format_type_be(exprType((Node *) e)), 
+eaai: execqual:00004569:  format_type_be(attrs[i]->atttypid)))); 
+eaai: execqual:00004691:  ereport(ERROR, 
+eaai: execqual:00004692:  (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+eaai: execqual:00004693:  errmsg("could not identify a comparison function for type %s", 
+eaai: execqual:00004694:  format_type_be(minmaxexpr->minmaxtype)))); 
+eaai: execqual:00004776:  elog(ERROR, "unrecognized node type: %d", 
+eaai: execqual:00004777:  (int) nodeTag(node)); 
+eaai: execqual:00005030:  ereport(ERROR, 
+eaai: execqual:00005031:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execqual:00005032:  errmsg("set-valued function called in context that cannot accept a set"))); 
 aaaaa GP_IGNORE: eaba: exectuples - ./backend/executor/execTuples.c
 eaba: exectuples:00000312:  elog(ERROR, "plan requires more slots than are available"); 
-eaba: exectuples:00001471:  elog(ERROR, "Invalid attnum: %d", attnum); 
+eaba: exectuples:00001501:  elog(ERROR, "Invalid attnum: %d", attnum); 
 aaaaa GP_IGNORE: eaaj: executils - ./backend/executor/execUtils.c
 eaaj: executils:00002320:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
 aaaaa GP_IGNORE: faaj: functions - ./backend/executor/functions.c
@@ -12126,24 +12154,7 @@ nabj: nodebitmapindexscan:00000165:  errmsg("the returning bitmap in nodeBitmapI
 aaaaa GP_IGNORE: nabc: nodebitmapor - ./backend/executor/nodeBitmapOr.c
 nabc: nodebitmapor:00000152:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nabg: nodefunctionscan - ./backend/executor/nodeFunctionscan.c
-nabg: nodefunctionscan:00000281:  elog(ERROR, "function in FROM has unsupported return type"); 
-nabg: nodefunctionscan:00000473:  ereport(ERROR, 
-nabg: nodefunctionscan:00000474:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-nabg: nodefunctionscan:00000475:  errmsg("function return row and query-specified return row do not match"), 
-nabg: nodefunctionscan:00000476:  errdetail("Returned row contains %d attributes, but query expects %d.", 
-nabg: nodefunctionscan:00000477:  src_tupdesc->natts, dst_tupdesc->natts))); 
-nabg: nodefunctionscan:00000487:  ereport(ERROR, 
-nabg: nodefunctionscan:00000488:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-nabg: nodefunctionscan:00000489:  errmsg("function return row and query-specified return row do not match"), 
-nabg: nodefunctionscan:00000490:  errdetail("Returned type %s at ordinal position %d, but query expects %s.", 
-nabg: nodefunctionscan:00000491:  format_type_be(sattr->atttypid), 
-nabg: nodefunctionscan:00000492:  i + 1, 
-nabg: nodefunctionscan:00000493:  format_type_be(dattr->atttypid)))); 
-nabg: nodefunctionscan:00000497:  ereport(ERROR, 
-nabg: nodefunctionscan:00000498:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-nabg: nodefunctionscan:00000499:  errmsg("function return row and query-specified return row do not match"), 
-nabg: nodefunctionscan:00000500:  errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.", 
-nabg: nodefunctionscan:00000501:  i + 1))); 
+nabg: nodefunctionscan:00000259:  elog(ERROR, "function in FROM has unsupported return type"); 
 aaaaa GP_IGNORE: naai: nodehash - ./backend/executor/nodeHash.c
 naai: nodehash:00000064:  elog(ERROR, "Hash node does not support ExecProcNode call convention"); 
 naai: nodehash:00000316:  elog(ERROR, "could not find hash function for hash operator %u", 
@@ -12388,17 +12399,17 @@ faad: fts:00001391:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
 faad: fts:00001392:  errmsg("FTS: out of memory"))); 
 faad: fts:00001398:  elog(FATAL, "FTS: connection to master failed to %s, error: %s.", stmt, error_message); 
 aaaaa GP_IGNORE: faba: ftsfilerep - ./backend/fts/ftsfilerep.c
-faba: ftsfilerep:00000455:  ereport(LOG, 
-faba: ftsfilerep:00000456:  (errmsg("FTS: mirror (dbid=%d) on %s:%d taking over as primary in change-tracking mode.", 
-faba: ftsfilerep:00000457:  dbid, seg_addr, seg_pm_port ), 
-faba: ftsfilerep:00000458:  errSendAlert(true))); 
-faba: ftsfilerep:00000461:  ereport(LOG, 
-faba: ftsfilerep:00000462:  (errmsg("FTS: primary (dbid=%d) on %s:%d transitioning to change-tracking mode, mirror marked as down.", 
-faba: ftsfilerep:00000463:  dbid, seg_addr, seg_pm_port ), 
-faba: ftsfilerep:00000464:  errSendAlert(true))); 
-faba: ftsfilerep:00000502:  elog(ERROR, "FTS: failed to execute command: %s (%m).", cmd); 
-faba: ftsfilerep:00000506:  elog(ERROR, "FTS: segment transition failed: %s (exit code %d).", cmd, cmd_status); 
-faba: ftsfilerep:00000551:  elog(FATAL, "FTS: could not find entry for dbid %d.", dbid); 
+faba: ftsfilerep:00000489:  ereport(LOG, 
+faba: ftsfilerep:00000490:  (errmsg("FTS: mirror (dbid=%d) on %s:%d taking over as primary in change-tracking mode.", 
+faba: ftsfilerep:00000491:  dbid, seg_addr, seg_pm_port ), 
+faba: ftsfilerep:00000492:  errSendAlert(true))); 
+faba: ftsfilerep:00000495:  ereport(LOG, 
+faba: ftsfilerep:00000496:  (errmsg("FTS: primary (dbid=%d) on %s:%d transitioning to change-tracking mode, mirror marked as down.", 
+faba: ftsfilerep:00000497:  dbid, seg_addr, seg_pm_port ), 
+faba: ftsfilerep:00000498:  errSendAlert(true))); 
+faba: ftsfilerep:00000536:  elog(ERROR, "FTS: failed to execute command: %s (%m).", cmd); 
+faba: ftsfilerep:00000540:  elog(ERROR, "FTS: segment transition failed: %s (exit code %d).", cmd, cmd_status); 
+faba: ftsfilerep:00000585:  elog(FATAL, "FTS: could not find entry for dbid %d.", dbid); 
 aaaaa GP_IGNORE: faai: ftsprobe - ./backend/fts/ftsprobe.c
 faai: ftsprobe:00000143:  elog(ERROR, "FTS: segment configuration has not been loaded to shared memory"); 
 aaaaa GP_IGNORE: faag: ftssan - ./backend/fts/ftssan.c
@@ -16190,68 +16201,68 @@ paba: postmaster:00002785:  errSendAlert(true),
 paba: postmaster:00002786:  errOmitLocation(true), 
 paba: postmaster:00002787:  errmsg("sorry, too many clients already"))); 
 paba: postmaster:00002927:  elog(ERROR, "Can only get postmaster reset status on a primary or mirror segment"); 
-paba: postmaster:00003792:  ereport(WARNING, 
-paba: postmaster:00003793:  (errmsg("pg_hba.conf not reloaded"))); 
-paba: postmaster:00003835:  ereport(LOG, 
-paba: postmaster:00003836:  (errmsg("received smart shutdown request"), 
-paba: postmaster:00003837:  errSendAlert(true), 
-paba: postmaster:00003838:  errOmitLocation(true))); 
-paba: postmaster:00003857:  ereport(LOG, 
-paba: postmaster:00003858:  (errmsg("received fast shutdown request"), 
-paba: postmaster:00003859:  errSendAlert(true), 
-paba: postmaster:00003860:  errOmitLocation(true))); 
-paba: postmaster:00003882:  ereport(LOG, 
-paba: postmaster:00003883:  (errmsg("received immediate shutdown request"), 
-paba: postmaster:00003884:  errSendAlert(true), 
-paba: postmaster:00003885:  errOmitLocation(true))); 
-paba: postmaster:00004096:  ereport(LOG, 
-paba: postmaster:00004097:  (errmsg("database system is ready to accept connections"), 
-paba: postmaster:00004098:  errdetail("%s",version), 
-paba: postmaster:00004099:  errSendAlert(true), 
-paba: postmaster:00004100:  errOmitLocation(true))); 
-paba: postmaster:00004531:  ereport(LOG, 
-paba: postmaster:00004532:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00004600:  elog(WARNING, "filerep peer reset during postmaster reset has failed"); 
-paba: postmaster:00005643:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00006186:  elog(FATAL, "setsid() failed: %m"); 
-paba: postmaster:00006216:  ereport(WARNING, 
-paba: postmaster:00006217:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
-paba: postmaster:00006218:  gai_strerror(ret)))); 
-paba: postmaster:00006260:  ereport(FATAL, 
-paba: postmaster:00006261:  (errmsg("could not load pg_hba.conf"))); 
-paba: postmaster:00006273:  elog(FATAL, "could not set timer for authorization timeout"); 
-paba: postmaster:00006340:  elog(FATAL, "could not disable timer for authorization timeout"); 
-paba: postmaster:00006699:  ereport(ERROR, 
-paba: postmaster:00006700:  (errmsg_internal("could not terminate unstarted process: error code %d", 
-paba: postmaster:00006701:  (int) GetLastError()))); 
-paba: postmaster:00006726:  ereport(ERROR, 
-paba: postmaster:00006727:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
-paba: postmaster:00006728:  (int) GetLastError()))); 
-paba: postmaster:00006743:  ereport(ERROR, 
-paba: postmaster:00006744:  (errmsg_internal("could not terminate unstartable process: error code %d", 
-paba: postmaster:00006745:  (int) GetLastError()))); 
-paba: postmaster:00006752:  ereport(ERROR, 
-paba: postmaster:00006753:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
-paba: postmaster:00006754:  (int) GetLastError()))); 
-paba: postmaster:00006768:  ereport(FATAL, 
-paba: postmaster:00006769:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006770:  errmsg("out of memory"))); 
-paba: postmaster:00006781:  ereport(FATAL, 
-paba: postmaster:00006782:  (errmsg_internal("could not register process for wait: error code %d", 
-paba: postmaster:00006783:  (int) GetLastError()))); 
-paba: postmaster:00006854:  ereport(FATAL, 
-paba: postmaster:00006855:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006856:  errmsg("out of memory"))); 
-paba: postmaster:00006862:  elog(FATAL, "invalid subpostmaster invocation"); 
-paba: postmaster:00007632:  ereport(ERROR, 
-paba: postmaster:00007633:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
-paba: postmaster:00007634:  (int) GetLastError()))); 
-paba: postmaster:00007654:  ereport(ERROR, 
-paba: postmaster:00007655:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
-paba: postmaster:00007656:  src, WSAGetLastError()))); 
+paba: postmaster:00003804:  ereport(WARNING, 
+paba: postmaster:00003805:  (errmsg("pg_hba.conf not reloaded"))); 
+paba: postmaster:00003847:  ereport(LOG, 
+paba: postmaster:00003848:  (errmsg("received smart shutdown request"), 
+paba: postmaster:00003849:  errSendAlert(true), 
+paba: postmaster:00003850:  errOmitLocation(true))); 
+paba: postmaster:00003869:  ereport(LOG, 
+paba: postmaster:00003870:  (errmsg("received fast shutdown request"), 
+paba: postmaster:00003871:  errSendAlert(true), 
+paba: postmaster:00003872:  errOmitLocation(true))); 
+paba: postmaster:00003894:  ereport(LOG, 
+paba: postmaster:00003895:  (errmsg("received immediate shutdown request"), 
+paba: postmaster:00003896:  errSendAlert(true), 
+paba: postmaster:00003897:  errOmitLocation(true))); 
+paba: postmaster:00004108:  ereport(LOG, 
+paba: postmaster:00004109:  (errmsg("database system is ready to accept connections"), 
+paba: postmaster:00004110:  errdetail("%s",version), 
+paba: postmaster:00004111:  errSendAlert(true), 
+paba: postmaster:00004112:  errOmitLocation(true))); 
+paba: postmaster:00004543:  ereport(LOG, 
+paba: postmaster:00004544:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00004612:  elog(WARNING, "filerep peer reset during postmaster reset has failed"); 
+paba: postmaster:00005655:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00006198:  elog(FATAL, "setsid() failed: %m"); 
+paba: postmaster:00006228:  ereport(WARNING, 
+paba: postmaster:00006229:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+paba: postmaster:00006230:  gai_strerror(ret)))); 
+paba: postmaster:00006272:  ereport(FATAL, 
+paba: postmaster:00006273:  (errmsg("could not load pg_hba.conf"))); 
+paba: postmaster:00006285:  elog(FATAL, "could not set timer for authorization timeout"); 
+paba: postmaster:00006352:  elog(FATAL, "could not disable timer for authorization timeout"); 
+paba: postmaster:00006711:  ereport(ERROR, 
+paba: postmaster:00006712:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+paba: postmaster:00006713:  (int) GetLastError()))); 
+paba: postmaster:00006738:  ereport(ERROR, 
+paba: postmaster:00006739:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+paba: postmaster:00006740:  (int) GetLastError()))); 
+paba: postmaster:00006755:  ereport(ERROR, 
+paba: postmaster:00006756:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+paba: postmaster:00006757:  (int) GetLastError()))); 
+paba: postmaster:00006764:  ereport(ERROR, 
+paba: postmaster:00006765:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+paba: postmaster:00006766:  (int) GetLastError()))); 
+paba: postmaster:00006780:  ereport(FATAL, 
+paba: postmaster:00006781:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006782:  errmsg("out of memory"))); 
+paba: postmaster:00006793:  ereport(FATAL, 
+paba: postmaster:00006794:  (errmsg_internal("could not register process for wait: error code %d", 
+paba: postmaster:00006795:  (int) GetLastError()))); 
+paba: postmaster:00006866:  ereport(FATAL, 
+paba: postmaster:00006867:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006868:  errmsg("out of memory"))); 
+paba: postmaster:00006874:  elog(FATAL, "invalid subpostmaster invocation"); 
+paba: postmaster:00007644:  ereport(ERROR, 
+paba: postmaster:00007645:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+paba: postmaster:00007646:  (int) GetLastError()))); 
+paba: postmaster:00007666:  ereport(ERROR, 
+paba: postmaster:00007667:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+paba: postmaster:00007668:  src, WSAGetLastError()))); 
 aaaaa GP_IGNORE: pabj: primaryxmirrorxmode - ./backend/postmaster/primary_mirror_mode.c
-pabj: primaryxmirrorxmode:00001731:  elog(ERROR, "Invalid state %d", *stateInOut); 
-pabj: primaryxmirrorxmode:00002095:  elog(ERROR, "Request for filerep arguments from local memory made when they do not exist."); 
+pabj: primaryxmirrorxmode:00001780:  elog(ERROR, "Invalid state %d", *stateInOut); 
+pabj: primaryxmirrorxmode:00002144:  elog(ERROR, "Request for filerep arguments from local memory made when they do not exist."); 
 aaaaa GP_IGNORE: saaj: sendalert - ./backend/postmaster/sendalert.c
 saaj: sendalert:00000144:  elog(ERROR,"send_alert_from_chunks only works when CSV logging is enabled"); 
 aaaaa GP_IGNORE: saaj: seqserver - ./backend/postmaster/seqserver.c
