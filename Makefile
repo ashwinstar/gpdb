@@ -960,7 +960,7 @@ SET_VERSION_SCRIPTS = \
 	bin/gpbitmapreindex \
 	bin/gpcheckos \
 	bin/gpcheckperf \
-	bin/gpcrondump \
+	bin/gpcrondump.py \
 	bin/gpdbrestore \
 	bin/gpdeletesystem \
 	bin/gpexpand \
