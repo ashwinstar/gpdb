@@ -22441,22 +22441,26 @@ gabf: gphdfsformatter:00000446:  errmsg("input data column %d of type \"%s\" did
 gabf: gphdfsformatter:00000447:  i+1, intype), 
 gabf: gphdfsformatter:00000448:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: gaai: gpmrdemo - ./bin/gpmapreduce/test/lib/gpmrdemo.c
-gaai: gpmrdemo:00000063:  ereport(ERROR, 
-gaai: gpmrdemo:00000064:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaai: gpmrdemo:00000065:  errmsg("function returning record called in context " 
-gaai: gpmrdemo:00000066:  "that cannot accept type record"))); 
-gaai: gpmrdemo:00000168:  elog(ERROR, "%s defined with %d arguments, expected 2", 
-gaai: gpmrdemo:00000169:  accum_str, PG_NARGS() ); 
-gaai: gpmrdemo:00000174:  elog(ERROR, "%s defined with invalid types, expected (int8, int4)", 
-gaai: gpmrdemo:00000175:  accum_str ); 
-gaai: gpmrdemo:00000179:  elog(ERROR, "%s defined with invalid return type, expected int8", 
-gaai: gpmrdemo:00000180:  accum_str ); 
-gaai: gpmrdemo:00000212:  elog(ERROR, "%s defined with %d arguments, expected 2", 
-gaai: gpmrdemo:00000213:  add_str, PG_NARGS() ); 
-gaai: gpmrdemo:00000218:  elog(ERROR, "%s defined with invalid types, expected (int8, int8)", 
-gaai: gpmrdemo:00000219:  add_str ); 
-gaai: gpmrdemo:00000223:  elog(ERROR, "%s defined with invalid return type, expected int8", 
-gaai: gpmrdemo:00000224:  add_str ); 
+gaai: gpmrdemo:00000072:  ereport(ERROR, 
+gaai: gpmrdemo:00000073:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaai: gpmrdemo:00000074:  errmsg("function returning record called in context " 
+gaai: gpmrdemo:00000075:  "that cannot accept type record"))); 
+gaai: gpmrdemo:00000177:  elog(ERROR, "%s defined with %d arguments, expected 2", 
+gaai: gpmrdemo:00000178:  accum_str, PG_NARGS() ); 
+gaai: gpmrdemo:00000183:  elog(ERROR, "%s defined with invalid types, expected (int8, int4)", 
+gaai: gpmrdemo:00000184:  accum_str ); 
+gaai: gpmrdemo:00000188:  elog(ERROR, "%s defined with invalid return type, expected int8", 
+gaai: gpmrdemo:00000189:  accum_str ); 
+gaai: gpmrdemo:00000221:  elog(ERROR, "%s defined with %d arguments, expected 2", 
+gaai: gpmrdemo:00000222:  add_str, PG_NARGS() ); 
+gaai: gpmrdemo:00000227:  elog(ERROR, "%s defined with invalid types, expected (int8, int8)", 
+gaai: gpmrdemo:00000228:  add_str ); 
+gaai: gpmrdemo:00000232:  elog(ERROR, "%s defined with invalid return type, expected int8", 
+gaai: gpmrdemo:00000233:  add_str ); 
+gaai: gpmrdemo:00000294:  ereport(ERROR, 
+gaai: gpmrdemo:00000295:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaai: gpmrdemo:00000296:  errmsg("function returning record called in context " 
+gaai: gpmrdemo:00000297:  "that cannot accept type record"))); 
 aaaaa GP_IGNORE: gaai: gpviewcp - ./bin/gpupgrade/gpviewcp.c
 gaai: gpviewcp:00000070:  ereport(ERROR, 
 gaai: gpviewcp:00000071:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
