@@ -209,6 +209,7 @@ typedef struct _ptcInfo
 	char	   *ptcwritefn;
 	char	   *ptcowner;
 	char	   *ptcacl;
+	bool	   ptctrusted;
 } ExtProtInfo;
 
 typedef struct _oprInfo

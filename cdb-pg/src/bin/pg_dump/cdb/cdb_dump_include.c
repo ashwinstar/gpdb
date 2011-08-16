@@ -1272,6 +1272,7 @@ getExtProtocols(int *numExtProtocols)
 	int			i_ptcwritefn;
 	int			i_rolname;
 	int			i_ptcacl;
+	int			i_ptctrusted;
 
 	/* Make sure we are in proper schema */
 	selectSourceSchema("pg_catalog");
@@ -1284,6 +1285,7 @@ getExtProtocols(int *numExtProtocols)
 							 "       pro1.proname as ptcread, "
 							 "       pro2.proname as ptcwrite, "
 							 "       (%s ptc.ptcowner) as rolname, "
+							 "       ptc.ptctrusted as ptctrusted, "
 							 "       ptc.ptcacl as ptcacl "
 							 "FROM   pg_extprotocol ptc, "
 							 "       pg_proc pro1, "
@@ -1307,6 +1309,7 @@ getExtProtocols(int *numExtProtocols)
 	i_ptcwritefn = PQfnumber(res, "ptcwrite");
 	i_rolname = PQfnumber(res, "rolname");
 	i_ptcacl = PQfnumber(res, "ptcacl");
+	i_ptctrusted = PQfnumber(res, "ptctrusted");
 
 	for (i = 0; i < ntups; i++)
 	{
@@ -1332,6 +1335,7 @@ getExtProtocols(int *numExtProtocols)
 			ptcinfo[i].ptcwritefn = strdup(PQgetvalue(res, i, i_ptcwritefn));
 		
 		ptcinfo[i].ptcacl = strdup(PQgetvalue(res, i, i_ptcacl));
+		ptcinfo[i].ptctrusted = *(PQgetvalue(res, i, i_ptctrusted)) == 't';
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(ptcinfo[i].dobj));

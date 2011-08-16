@@ -2440,6 +2440,7 @@ getExtProtocols(int *numExtProtocols)
 	int			i_ptcwritefn;
 	int			i_rolname;
 	int			i_ptcacl;
+	int			i_ptctrusted;
 
 	/* Make sure we are in proper schema */
 	selectSourceSchema("pg_catalog");
@@ -2452,6 +2453,7 @@ getExtProtocols(int *numExtProtocols)
 							 "       pro1.proname as ptcread, "
 							 "       pro2.proname as ptcwrite, "
 							 "       (%s ptc.ptcowner) as rolname, "
+							 "       ptc.ptctrusted as ptctrusted, "
 							 "       ptc.ptcacl as ptcacl "
 							 "FROM   pg_extprotocol ptc, "
 							 "       pg_proc pro1, "
@@ -2475,6 +2477,7 @@ getExtProtocols(int *numExtProtocols)
 	i_ptcwritefn = PQfnumber(res, "ptcwrite");
 	i_rolname = PQfnumber(res, "rolname");
 	i_ptcacl = PQfnumber(res, "ptcacl");
+	i_ptctrusted = PQfnumber(res, "ptctrusted");
 
 	for (i = 0; i < ntups; i++)
 	{
@@ -2500,6 +2503,7 @@ getExtProtocols(int *numExtProtocols)
 			ptcinfo[i].ptcwritefn = strdup(PQgetvalue(res, i, i_ptcwritefn));
 		
 		ptcinfo[i].ptcacl = strdup(PQgetvalue(res, i, i_ptcacl));
+		ptcinfo[i].ptctrusted = *(PQgetvalue(res, i, i_ptctrusted)) == 't';
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(ptcinfo[i].dobj));
@@ -6748,8 +6752,9 @@ dumpExtProtocol(Archive *fout, ExtProtInfo *ptcinfo)
 	q = createPQExpBuffer();
 	delq = createPQExpBuffer();
 
-	appendPQExpBuffer(q, "CREATE PROTOCOL %s (",
-					  fmtId(ptcinfo->dobj.name));
+	appendPQExpBuffer(q, "CREATE %s PROTOCOL %s (",
+			ptcinfo->ptctrusted == true ? "TRUSTED" : "",
+			fmtId(ptcinfo->dobj.name));
 
 	if (ptcinfo->ptcreadfn)
 	{
@@ -7185,6 +7190,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		char	   *extencoding;
 		char	   *writable = NULL;
 		char	   *tmpstring = NULL;
+		char 	   *tabfmt = NULL;
+		char	   *customfmt = NULL;
 		bool		isweb = false;
 		bool		iswritable = false;
 
@@ -7358,11 +7365,35 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		/* add FORMAT clause */
 		tmpstring = escape_fmtopts_string((const char *) fmtopts);
+
+		switch (fmttype[0])
+		{
+			case 't':
+				tabfmt = "text";
+				break;
+			case 'b':
+				/*
+				 * b denotes that a custom format is used.
+				 * the fmtopts string should be formatted as:
+				 * a1 = 'val1',...,an = 'valn'
+				 *
+				 */
+				tabfmt = "custom";
+				customfmt = custom_fmtopts_string(tmpstring);
+				break;
+			default:
+				tabfmt = "csv";
+		}
 		appendPQExpBuffer(q, "FORMAT '%s' (%s)\n",
-						  fmttype[0] == 't' ? "text" : "csv",
-						  tmpstring);
+						  tabfmt,
+						  customfmt ? customfmt : tmpstring);
 		free(tmpstring);
 		tmpstring = NULL;
+		if (customfmt)
+		{
+			free(customfmt);
+			customfmt = NULL;
+		}
 
 		if (g_fout->remoteVersion >= 80205)
 		{

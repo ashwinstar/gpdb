@@ -686,7 +686,10 @@ do { \
 	else if (strcmp(type, "SERVER") == 0)
 		CONVERT_PRIV('U', "USAGE");
 	else if (strcmp(type, "PROTOCOL") == 0)
-		CONVERT_PRIV('U', "USAGE");	
+	{
+		CONVERT_PRIV('r', "SELECT");
+		CONVERT_PRIV('a', "INSERT");
+	}
 	else
 		abort();
 
@@ -1048,4 +1051,44 @@ escape_fmtopts_string(const char *src)
 
 	result[j] = '\0';
 	return result;
+}
+/*
+ * tokenize an fmtopts string (for use with 'custom' formatters)
+ * i.e. convert it to: a = b, format.
+ */
+char *
+custom_fmtopts_string(const char *src)
+{
+		int			len = src ? strlen(src) : 0;
+		int			count=0;
+		int 		last=0;
+		char	   *result = malloc(len * 2 + 1);
+		char	   *srcdup = src ? strdup(src) : NULL;
+		char	   *token = NULL;
+
+		if(!src || !srcdup || !result)
+			return NULL;
+
+		memset(result,0,sizeof(result));
+
+		token = strtok(srcdup, " ");
+		while (token) {
+		   count++;
+		   if(strlen(token)>2 && token[0] == 'E' && token[1] == '\'') /* remove E' */
+			   token[0] = ' ';
+		   strncat(result,token,len * 2 - strlen(result));
+		   if(count%2) /* add = */
+			   strncat(result," = ",len * 2 - strlen(result));
+		   else /* add , */
+			   strncat(result,",",len * 2 - strlen(result));
+		   token = strtok(NULL, " ");
+		}
+
+		/* fix string - remove trailing ',' or '=' */
+		last = strlen(result)-1;
+		if(result[last] == ',' || result[last] == '=')
+			result[last]='\0';
+
+		free(srcdup);
+		return result;
 }
