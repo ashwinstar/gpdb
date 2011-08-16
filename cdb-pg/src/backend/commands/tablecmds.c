@@ -650,8 +650,7 @@ DefineRelation_int(CreateStmt *stmt,
 		 * The OID will be the relfilenode as well, so make sure it doesn't collide
 		 * with either pg_class OIDs or existing physical files.
 		 *
-		 * For upgrade, use the tidycat OIDs if specified. Also, remove the distribution
-		 * policy because catalog table does not have distribution.
+		 * For upgrade, use the specified OIDs.
 		 */
 		if (gp_upgrade_mode && (tidycatOptions->relid != InvalidOid))
 		{
@@ -660,7 +659,6 @@ DefineRelation_int(CreateStmt *stmt,
 			toastRelationId  = tidycatOptions->toast_oid;
 			toastIndexId     = tidycatOptions->toast_index;
 			toastComptypeOid = tidycatOptions->toast_reltype;
-			stmt->policy = NULL;
 		}
 		else
 		{
@@ -16590,6 +16588,7 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 	bool		first_uri = true;
 	
 #define FDIST_DEF_PORT 8080
+#define HDFS_DEF_PORT  9000
 
 	/* Parser should not let this happen */
 	Assert(locs != NIL);
@@ -16660,6 +16659,21 @@ static Datum transformLocationUris(List *locs, bool isweb, bool iswritable)
 			/* add the default port number to the uri string */
 			sprintf(uri_str_final, "%s%s:%d%s", PROTOCOL_GPFDIST, hostname,
 					FDIST_DEF_PORT, after_hostname);
+
+			pfree(hostname);
+		}
+		else if(uri->protocol == URI_GPHDFS && uri->port == -1)
+		{
+			char *at_hostname = (char *) uri_str_orig + strlen("gphdfs://");
+			char *after_hostname = strchr(at_hostname, '/');
+			int  len = after_hostname - at_hostname;
+			char *hostname = pstrdup(at_hostname);
+
+			hostname[len] = '\0';
+
+			/* add the default port number to the uri string */
+			sprintf(uri_str_final, "%s%s:%d%s", PROTOCOL_GPHDFS, hostname,
+					HDFS_DEF_PORT, after_hostname);
 
 			pfree(hostname);
 		}

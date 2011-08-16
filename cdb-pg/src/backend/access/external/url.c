@@ -48,9 +48,7 @@
 #include "cdb/cdbtimer.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
-#include "access/url.h"
-
-#include "tcop/tcopprot.h"
+#include "cdb/url.h"
 
 #ifndef FALSE
 #define FALSE 0
@@ -443,7 +441,7 @@ make_export(char *name, const char *value, char *buf)
 
 
 static int
-make_command(const char *cmd, extvar_t * ev, char *buf)
+make_command(const char* prefix, const char *cmd, extvar_t * ev, char *buf)
 {
 	int sz = 0;
 
@@ -463,12 +461,12 @@ make_command(const char *cmd, extvar_t * ev, char *buf)
 	sz += make_export("GP_SESSION_ID", ev->GP_SESSION_ID, buf ? buf + sz : 0);
 	sz += make_export("GP_SEGMENT_COUNT", ev->GP_SEGMENT_COUNT, buf ? buf + sz : 0);
 
-	/* hadoop env var */
-	sz += make_export("GP_HADOOP_CONN_JARDIR", ev->GP_HADOOP_CONN_JARDIR, buf ? buf + sz : 0);
-	sz += make_export("GP_HADOOP_CONN_VERSION", ev->GP_HADOOP_CONN_VERSION, buf ? buf + sz : 0);
-	if (strlen(ev->GP_HADOOP_HOME) > 0)
-		sz += make_export("HADOOP_HOME",    ev->GP_HADOOP_HOME,    buf ? buf + sz : 0);
-
+	if (prefix)
+	{
+		if (buf)
+			strcpy(buf+sz, prefix);
+		sz += strlen(prefix);
+	}
 
 	if (buf)
 		strcpy(buf + sz, cmd);
@@ -589,73 +587,6 @@ void extract_http_domain(char* i_path, char* o_domain, int dlen)
 	memcpy(o_domain, p_st, cpsz);
 }
 
-/**
- * execute_fopen()
- *
- * refactor the fopen code for execute into this routine
- */
-URL_FILE *
-url_execute_fopen(char* url, char *cmd, bool forwrite, extvar_t *ev)
-{
-	URL_FILE*      file;
-	int            save_errno;
-	struct itimers savetimers;
-	pqsigfunc      save_SIGPIPE;
-
-	int 	sz;
-	char*	shexec;
-
-    if (! (file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
-	{
-		elog(ERROR, "out of memory");
-	}
-    memset(file, 0, sizeof(URL_FILE));
-	file->url = ((char *) file) + sizeof(URL_FILE);
-	strcpy(file->url, url);
-
-	/* Execute command */
-	sz     = make_command(cmd, ev, 0);
-	shexec = palloc(sz);
-	make_command(cmd, ev, shexec);
-
-	file->type = CFTYPE_EXEC; /* marked as a EXEC */
-	file->u.exec.shexec = shexec;
-
-	/* Clear process interval timers */
-	resetTimers(&savetimers);
-
-	/*
-	 * Preserve the SIGPIPE handler and set to default handling.  This
-	 * allows "normal" SIGPIPE handling in the command pipeline.  Normal
-	 * for PG is to *ignore* SIGPIPE.
-	 */
-	save_SIGPIPE = pqsignal(SIGPIPE, SIG_DFL);
-
-	/* execute the user command */
-	file->u.exec.pid = popen_with_stderr(file->u.exec.pipes, shexec, forwrite);
-
-	save_errno = errno;
-
-	/* Restore the SIGPIPE handler */
-	pqsignal(SIGPIPE, save_SIGPIPE);
-
-	/* Restore process interval timers */
-	restoreTimers(&savetimers);
-
-	if (file->u.exec.pid == -1)
-	{
-		errno = save_errno;
-		free(file);
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-						errmsg("cannot start external table command: %m"),
-						errdetail("Command: %s", cmd),
-						errOmitLocation(true)));
-
-	}
-
-	return file;
-}
 
 /*
  * url_fopen
@@ -678,20 +609,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 	URL_FILE*	file;
 	int 		e;
 
-	/*
-	 * if 'url' starts with "execute:" then it's a command to execute and
-	 * not a url (the command specified in CREATE EXTERNAL TABLE .. EXECUTE)
-	 */
-	if (pg_strncasecmp(url, exec_prefix, strlen(exec_prefix)) == 0)
-	{
-		char* cmd;
-
-		/* Execute command */
-		cmd  = url + strlen(exec_prefix);
-		return url_execute_fopen(url, cmd, forwrite, ev);
-	}
-
-	if (!(file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
+    if (! (file = (URL_FILE *)malloc(sizeof(URL_FILE) + strlen(url) + 1)))
 	{
 		elog(ERROR, "out of memory");
 	}
@@ -701,7 +619,79 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 	file->url = ((char *) file) + sizeof(URL_FILE);
 	strcpy(file->url, url);
 
-    if (IS_FILE_URI(url))
+	/*
+	 * Both HDFS and Execute will use the execute framework.
+	 * if 'url' starts with 'hdfs://' then we convert it to execute.
+	 * if 'url' starts with "execute:" then it's a command to execute and
+	 * not a url (the command specified in CREATE EXTERNAL TABLE .. EXECUTE)
+	 */
+	if (IS_GPHDFS_URI(url) || pg_strncasecmp(url, exec_prefix, strlen(exec_prefix)) == 0)
+	{
+		int 			save_errno;
+		struct itimers 	savetimers;
+		pqsigfunc 		save_SIGPIPE;
+
+		char*   prefix;
+		char*	cmd;
+		int 	sz;
+		char*	shexec;
+
+		/* Execute command */
+		if (!IS_GPHDFS_URI(url))
+		{
+			prefix = 0;
+			cmd    = url + strlen(exec_prefix);
+		}
+		/* hdfs:// */
+		else
+		{
+			if (forwrite)
+				prefix = "source $GPHOME/bin/hadoop_env.sh; java $GP_JAVA_OPT -classpath $CLASSPATH HDFSWriter $GP_SEGMENT_ID $GP_XID \0";
+			else
+				prefix = "source $GPHOME/bin/hadoop_env.sh; java $GP_JAVA_OPT -classpath $CLASSPATH HDFSReader $GP_SEGMENT_ID $GP_SEGMENT_COUNT \0";
+			cmd = url;
+		}
+		sz     = make_command(prefix, cmd, ev, 0);
+		shexec = palloc(sz);
+		make_command(prefix, cmd, ev, shexec);
+
+		file->type = CFTYPE_EXEC; /* marked as a EXEC */
+		file->u.exec.shexec = shexec;
+
+		/* Clear process interval timers */
+		resetTimers(&savetimers);
+
+		/*
+		 * Preserve the SIGPIPE handler and set to default handling.  This
+		 * allows "normal" SIGPIPE handling in the command pipeline.  Normal
+		 * for PG is to *ignore* SIGPIPE.
+		 */
+		save_SIGPIPE = pqsignal(SIGPIPE, SIG_DFL);
+
+		/* execute the user command */
+		file->u.exec.pid = popen_with_stderr(file->u.exec.pipes, shexec, forwrite);
+
+		save_errno = errno;
+
+		/* Restore the SIGPIPE handler */
+		pqsignal(SIGPIPE, save_SIGPIPE);
+
+		/* Restore process interval timers */
+		restoreTimers(&savetimers);
+
+		if (file->u.exec.pid == -1)
+		{
+			errno = save_errno;
+			free(file);
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+							errmsg("cannot start external table command: %m"),
+							errdetail("Command: %s", url),
+							errOmitLocation(true)));
+
+		}
+	}
+    else if (IS_FILE_URI(url))
     {
 		char*	path = strchr(url + strlen(PROTOCOL_FILE), '/');
 		struct fstream_options fo;

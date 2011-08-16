@@ -1916,18 +1916,13 @@ static void CheckValueBelongsToKey(char *key, char *val, const char **keys, cons
 	}
 	else /* keys[1] */
 	{
-		if (strcasecmp(val, "gphdfs") == 0)
-			ereport(WARNING,
-					(errmsg("GRANT/REVOKE on gphdfs is deprecated"),
-					 errhint("Issue the GRANT or REVOKE on the protocol itself"),
-					 errOmitLocation(true)));
-
 		if(strcasecmp(val, "gpfdist") != 0 && 
 		   strcasecmp(val, "http") != 0 &&
 		   strcasecmp(val, "gphdfs") != 0)
+
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("invalid %s value \"%s\"", key, val)));
+					 errmsg("invalid %s value \"%s\"", key, val)));	
 	}
 	
 }

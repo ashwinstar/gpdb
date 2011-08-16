@@ -58,24 +58,6 @@ CREATE OR REPLACE FUNCTION pg_catalog.gphdfs_import() RETURNS record
 AS '$libdir/gphdfs.so', 'gphdfsformatter_import'
 LANGUAGE C IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION pg_catalog.gphdfs_read() RETURNS integer
-AS '$libdir/gphdfs.so', 'gphdfsprotocol_import'
-LANGUAGE C IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION pg_catalog.gphdfs_write() RETURNS integer
-AS '$libdir/gphdfs.so', 'gphdfsprotocol_export'
-LANGUAGE C IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION pg_catalog.gphdfs_validate() RETURNS void
-AS '$libdir/gphdfs.so', 'gphdfsprotocol_validate_urls'
-LANGUAGE C IMMUTABLE;
-
-CREATE PROTOCOL gphdfs (
-  writefunc     = gphdfs_write,
-  readfunc      = gphdfs_read,
-  validatorfunc = gphdfs_validate);
-
-
 ------------------------------------------------------------------
 -- plpgsql is created by default in 3.4, but it is still a "user" language,
 -- rather than an "internal" language.

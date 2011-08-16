@@ -290,17 +290,6 @@ select * from example_in;
 ERROR:  input data column count (1) did not match the external table definition  (seg1 slice1 alanpc-4.local:50001 pid=47937)
 DETAIL:  External table example_in
 --
--- Test 5: gphdfs protocol (just declare an external table)
---
-drop external table example_out;
-CREATE WRITABLE EXTERNAL TABLE example_out(like pg_class)
-location ('gphdfs://localhost:9000/gpdb_out')
- FORMAT 'CUSTOM' (formatter='gphdfs_export');
-drop external table example_in;
-CREATE EXTERNAL TABLE example_in(like pg_class)
-location ('gphdfs://localhost:9000/gpdb_out/*')
- FORMAT 'CUSTOM' (formatter='gphdfs_import');
---
 -- End of Test (drop stuff)
 --
 select * from cleanup; 

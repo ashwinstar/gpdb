@@ -513,11 +513,6 @@ static char *gp_test_deadlock_hazard_report_level_str;
 bool gp_upgrade_mode;
 bool gp_upgrade_conn;
 
-/* Hadoop Integration GUCs */
-char  *gp_hadoop_connector_jardir;
-char  *gp_hadoop_connector_version;
-char  *gp_hadoop_home;
-
 /* system cache invalidation mode*/
 int gp_test_system_cache_flush_force = SysCacheFlushForce_Off;
 static char *gp_test_system_cache_flush_force_str;
@@ -5713,37 +5708,7 @@ static struct config_string ConfigureNamesString[] =
 		"off", assign_system_cache_flush_force, NULL
 	},
 
-	{
-		{"gp_hadoop_connector_jardir", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("The directory of the Hadoop connector JAR, relative to $GPHOME."),
-			NULL,
-			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&gp_hadoop_connector_jardir,
-		"lib//hadoop", NULL, NULL
-	},
-
-	{
-		{"gp_hadoop_connector_version", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("The Hadoop connector version that external table should use."),
-			gettext_noop("Valid values are CE_1.0.0.0, EE_1.0.0.0. See admin guide for details."),
-			GUC_GPDB_ADDOPT
-		},
-		&gp_hadoop_connector_version,
-		"CE_1.0.0.0", NULL, NULL
-	},
-
-	{
-		{"gp_hadoop_home", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("The location where Hadoop is installed in each segment."),
-			NULL,
-			GUC_GPDB_ADDOPT
-		},
-		&gp_hadoop_home,
-		"", NULL, NULL
-	},
-
-	/* End-of-list marker */
+    /* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL
 	}

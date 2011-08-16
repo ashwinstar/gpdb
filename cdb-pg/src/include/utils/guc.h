@@ -289,11 +289,6 @@ extern char   *gp_snmp_debug_log;
 extern EmcConnectModeType_t gp_emcconnect_transport;
 #endif
 
-/* Hadoop Integration GUCs */
-extern char  *gp_hadoop_connector_jardir;  /* relative dir on $GPHOME of the Hadoop connector jar is located */
-extern char  *gp_hadoop_connector_version; /* connector version */
-extern char  *gp_hadoop_home;    /* $HADOOP_HOME on all segments */
-
 extern void SetConfigOption(const char *name, const char *value,
 				GucContext context, GucSource source);
 

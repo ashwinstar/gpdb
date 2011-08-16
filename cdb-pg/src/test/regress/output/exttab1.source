@@ -74,37 +74,29 @@ execute E'( env | sort)'
 on SEGMENT 0
 format 'text';
 select * from check_ps;
-ERROR:  external table check_ps command ended with error.  (seg0 slice1 @hostname@:50000 pid=64819)
+ERROR:  external table check_ps command ended with error.  (seg0 slice1 @hostname@:11002 pid=83265)
 DETAIL:  Command: execute:( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)
 select * from check_env;
-                                                                                                                                                                                                                                      x                                                                                                                                                                                                                                      
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CLICOLOR=1
- DYLD_LIBRARY_PATH=/Users/@gpcurusername@/greenplum-db-devel/lib:/Users/@gpcurusername@/greenplum-db-devel/ext/python/lib:/opt/gcc_infrastructure/lib:/Users/@gpcurusername@/greenplum-perfmon-web-4.0.1.0/lib:/Users/@gpcurusername@/greenplum-db-devel/lib:/Users/@gpcurusername@/greenplum-db-devel/ext/python/lib:
+                                                                                                      x                                                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ DYLD_LIBRARY_PATH=/Users/@gpcurusername@/greenplum-db-devel/lib:/Users/@gpcurusername@/greenplum-db-devel/ext/python/lib:
  GPHOME=/Users/@gpcurusername@/greenplum-db-devel
- GPPERFMONHOME=/Users/@gpcurusername@/greenplum-perfmon-web-4.0.1.0
- GPROOT=/Users/@gpcurusername@
  GP_CID=0
  GP_DATABASE=regression
- GP_DATE=20110816
- GP_HADOOP_CONN_JARDIR=lib//hadoop
- GP_HADOOP_CONN_VERSION=CE_1.0.0.0
- GP_MASTER_HOST=127.0.0.1
- GP_MASTER_PORT=5432
+ GP_DATE=20091008
+ GP_MASTER_HOST=10.254.0.239
+ GP_MASTER_PORT=11000
  GP_SEGMENT_COUNT=2
  GP_SEGMENT_ID=0
- GP_SEG_DATADIR=/Users/@gpcurusername@/greenplum-db-data/dbfast1/gpseg0
- GP_SEG_PG_CONF=/Users/@gpcurusername@/greenplum-db-data/dbfast1/gpseg0/postgresql.conf
- GP_SEG_PORT=50000
- GP_SESSION_ID=438
+ GP_SEG_DATADIR=/Users/@gpcurusername@/cdb-data/testdb0
+ GP_SEG_PG_CONF=/Users/@gpcurusername@/cdb-data/testdb0/postgresql.conf
+ GP_SEG_PORT=11001
+ GP_SESSION_ID=162
  GP_SN=1
- GP_TIME=132701
+ GP_TIME=122908
  GP_USER=@gpcurusername@
- GP_XID=1313526180-0000006772
- HADOOP_HOME=/Users/@gpcurusername@/WorkDir/hadoop-0.20.1-dev
- HADOOP_VERSION=0.21.0
+ GP_XID=1291062503-0000000175
  HOME=/Users/@gpcurusername@
- JAVA_HOME=/System/Library/Frameworks/JavaVM.framework/Versions/1.6.0/Home
  LC_COLLATE=en_US.utf-8
  LC_CTYPE=en_US.utf-8
  LC_MESSAGES=C
@@ -113,28 +105,21 @@ select * from check_env;
  LC_TIME=C
  LOGNAME=@gpcurusername@
  MAIL=/var/mail/@gpcurusername@
- MASTER_DATA_DIRECTORY=//Users/@gpcurusername@/greenplum-master/gpseg-1
  OPENSSL_CONF=/Users/@gpcurusername@/greenplum-db-devel/etc/openssl.cnf
- P4CONFIG=.p4config
- PATH=/Users/@gpcurusername@/greenplum-db-devel/bin:/Users/@gpcurusername@/greenplum-db-devel/ext/python/bin:/Users/@gpcurusername@/greenplum-db-devel/bin:/Users/@gpcurusername@/greenplum-db-devel/ext/python/bin:/opt/gcc-4.4.2/bin:/Users/@gpcurusername@/Workdir/mybin:/Users/@gpcurusername@/greenplum-perfmon-web-4.0.1.0/bin:/Users/@gpcurusername@/greenplum-db-devel/bin:/Users/@gpcurusername@/greenplum-db-devel/ext/python/bin:/Users/@gpcurusername@/greenplum-db-devel/bin:/Users/@gpcurusername@/greenplum-db-devel/ext/python/bin:/usr/bin:/bin:/usr/sbin:/sbin
- PGDATA=/Users/@gpcurusername@/greenplum-db-data/dbfast1/gpseg0
- PGHOST=127.0.0.1
+ PATH=/Users/@gpcurusername@/greenplum-db-devel/bin:/Users/@gpcurusername@/greenplum-db-devel/ext/python/bin:/Users/@gpcurusername@/greenplum-db-devel/bin:/Users/@gpcurusername@/greenplum-db-devel/ext/python/bin:/usr/bin:/bin:/usr/sbin:/sbin
+ PGDATA=/Users/@gpcurusername@/cdb-data/testdb0
  PGSYSCONFDIR=/Users/@gpcurusername@/greenplum-db-devel/etc/postgresql
- PWD=/Users/@gpcurusername@/greenplum-db-data/dbfast1/gpseg0
+ PWD=/Users/@gpcurusername@/cdb-data/testdb0
  PYTHONHOME=/Users/@gpcurusername@/greenplum-db-devel/ext/python
  PYTHONPATH=/Users/@gpcurusername@/greenplum-db-devel/lib/python
  SHELL=/bin/bash
  SHLVL=4
- SSH_CLIENT=127.0.0.1 50658 22
- SSH_CONNECTION=127.0.0.1 50658 127.0.0.1 22
- TERM=xterm-color
+ SSH_CLIENT=127.0.0.1 53700 22
+ SSH_CONNECTION=127.0.0.1 53700 127.0.0.1 22
  USER=@gpcurusername@
- VERSIONER_PERL_PREFER_32_BIT=yes
- VERSIONER_PERL_VERSION=5.8.9
- ZK_HOME=/Users/@gpcurusername@/WorkDir/zookeeper-3.3.3
  _=/usr/bin/env
- __CF_USER_TEXT_ENCODING=0x1F7:0:0
-(55 rows)
+ __CF_USER_TEXT_ENCODING=0x1F6:0:0
+(40 rows)
 
 -- end_ignore
 -- --------------------------------------
@@ -174,8 +159,8 @@ select * from gpfdist_start;
 (1 row)
 
 select * from gpfdist_status;
-                                     x                                     
----------------------------------------------------------------------------
+                                  x                                   
+----------------------------------------------------------------------
  Okay, gpfdist version "main build dev" is running on @hostname@:7070.
 (1 row)
 
@@ -237,32 +222,32 @@ SELECT * FROM EXT_REGION as r, EXT_NATION as n WHERE n.N_REGIONKEY = r.R_REGIONK
            0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |          14 | KENYA                     |           0 |  pending excuses haggle furiously deposits. pending, express pinto beans wake fluffily past t
            0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |           5 | ETHIOPIA                  |           0 | ven packages wake quickly. regu
            0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |           0 | ALGERIA                   |           0 |  haggle. carefully final deposits detect slyly agai
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |          24 | UNITED STATES             |           1 | y final packages. slow foxes cajole quickly. quickly silent platelets breach ironic accounts. unusual pinto be
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |          17 | PERU                      |           1 | platelets. blithely pending dependencies use fluffily across the even pinto beans. carefully silent accoun
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           3 | CANADA                    |           1 | eas hang ironic, silent packages. slyly regular packages are furiously over the tithes. fluffily bold
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           2 | BRAZIL                    |           1 | y alongside of the pending deposits. carefully special packages are about the ironic forges. slyly special 
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           1 | ARGENTINA                 |           1 | al foxes promise slyly according to the regular accounts. bold requests alon
            3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |          23 | UNITED KINGDOM            |           3 | eans boost carefully special requests. accounts are. carefull
            3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |          22 | RUSSIA                    |           3 |  requests against the platelets use never according to the quickly regular pint
            3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |          19 | ROMANIA                   |           3 | ular asymptotes are about the furious multipliers. express dependencies nag above the ironically ironic account
            3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |           7 | GERMANY                   |           3 | l platelets. regular accounts x-ray: unusual, regular acco
            3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |           6 | FRANCE                    |           3 | refully final requests. regular, ironi
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          21 | VIETNAM                   |           2 | hely enticingly express accounts. even, final 
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          18 | CHINA                     |           2 | c dependencies. furiously express notornis sleep slyly regular accounts. ideas sleep. depos
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          12 | JAPAN                     |           2 | ously. final, express gifts cajole a
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           9 | INDONESIA                 |           2 |  slyly express asymptotes. regular deposits haggle slyly. carefully ironic hockey players sleep blithely. carefull
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           8 | INDIA                     |           2 | ss excuses cajole slyly across the packages. deposits print aroun
            4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          20 | SAUDI ARABIA              |           4 | ts. silent requests haggle. closely express packages sleep across the blithely
            4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          13 | JORDAN                    |           4 | ic deposits are blithely about the carefully regular pa
            4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          11 | IRAQ                      |           4 | nic deposits boost atop the quickly final requests? quickly regula
            4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          10 | IRAN                      |           4 | efully alongside of the slyly final dependencies. 
            4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |           4 | EGYPT                     |           4 | y above the carefully unusual theodolites. final dugouts are quickly across the furiously regular d
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |          24 | UNITED STATES             |           1 | y final packages. slow foxes cajole quickly. quickly silent platelets breach ironic accounts. unusual pinto be
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |          17 | PERU                      |           1 | platelets. blithely pending dependencies use fluffily across the even pinto beans. carefully silent accoun
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           3 | CANADA                    |           1 | eas hang ironic, silent packages. slyly regular packages are furiously over the tithes. fluffily bold
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           2 | BRAZIL                    |           1 | y alongside of the pending deposits. carefully special packages are about the ironic forges. slyly special 
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           1 | ARGENTINA                 |           1 | al foxes promise slyly according to the regular accounts. bold requests alon
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          21 | VIETNAM                   |           2 | hely enticingly express accounts. even, final 
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          18 | CHINA                     |           2 | c dependencies. furiously express notornis sleep slyly regular accounts. ideas sleep. depos
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          12 | JAPAN                     |           2 | ously. final, express gifts cajole a
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           9 | INDONESIA                 |           2 |  slyly express asymptotes. regular deposits haggle slyly. carefully ironic hockey players sleep blithely. carefull
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           8 | INDIA                     |           2 | ss excuses cajole slyly across the packages. deposits print aroun
 (25 rows)
 
 -- start_ignore
 select * from gpfdist_status;
-                                     x                                     
----------------------------------------------------------------------------
+                                  x                                   
+----------------------------------------------------------------------
  Okay, gpfdist version "main build dev" is running on @hostname@:7070.
 (1 row)
 
@@ -325,8 +310,8 @@ select * from gpfdist_csv_start;
 (1 row)
 
 select * from gpfdist_status;
-                                     x                                     
----------------------------------------------------------------------------
+                                  x                                   
+----------------------------------------------------------------------
  Okay, gpfdist version "main build dev" is running on @hostname@:7070.
 (1 row)
 
@@ -456,7 +441,7 @@ select * from ext_fill1 order by a,b,c; -- should pad missing attrs with nulls
 (5 rows)
 
 select * from ext_fill2 order by a,b,c; -- should fail due to empty data line
-ERROR:  missing data for column "b", found empty data line  (seg0 slice1 @hostname@:50000 pid=64819)
+ERROR:  missing data for column "b", found empty data line  (seg1 slice1 @hostname@:11003 pid=83266)
 DETAIL:  External table ext_fill2, line 3 of gpfdist://@hostname@:7070/missing_fields2.data: ""
 select * from ext_fill3_fnn where c is null; -- should be empty
  a | b | c 
@@ -521,10 +506,8 @@ select * from ext_newline1; -- should pass. using the correct linefeed. file has
 (25 rows)
 
 select * from ext_newline2; -- should fail. using an incorrect linefeed. file has 'lf'.
-ERROR:  extra data after last expected column  (seg0 slice1 @hostname@:50000 pid=64819)
-DETAIL:  
-	 External table ext_newline2, line 1 of gpfdist://@hostname@:7070/nation.tbl: "0|ALGERIA|0| haggle. carefully final deposits detect slyly agai
-1|ARGENTINA|1|al foxes promise slyly..."
+ERROR:  extra data after last expected column
+DETAIL: External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION
 drop external table ext_newline1;
 drop external table ext_newline2;
 -- MPP-6698
@@ -575,10 +558,10 @@ drop external table ext_mpp12839;
 create external web table ext_stderr1(a text) execute 'nosuchcommand' format 'text';
 create external web table ext_stderr2(a text) execute 'cat nosuchfile.txt' format 'text';
 select * from ext_stderr1;
-ERROR:  external table ext_stderr1 command ended with error. sh: nosuchcommand: command not found  (seg0 slice1 @hostname@:50000 pid=64819)
+ERROR:  external table ext_stderr1 command ended with error. sh: nosuchcommand: command not found  (seg0 slice1 @hostname@:11002 pid=83265)
 DETAIL:  Command: execute:nosuchcommand
 select * from ext_stderr2;
-ERROR:  external table ext_stderr2 command ended with error. cat: nosuchfile.txt: No such file or directory  (seg0 slice1 @hostname@:50000 pid=64819)
+ERROR:  external table ext_stderr2 command ended with error. cat: nosuchfile.txt: No such file or directory  (seg1 slice1 @hostname@:11003 pid=83266)
 DETAIL:  Command: execute:cat nosuchfile.txt
 drop external web table ext_stderr1;
 drop external web table ext_stderr2;
@@ -606,9 +589,9 @@ create external table badt1 (x text)
 location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
 format 'text' (delimiter '|');
 select * from badt1;
-NOTICE:  gfile stat @abs_srcdir@/data/no/such/place/badt1.tbl failure: No such file or directory  (seg0 slice1 @hostname@:50000 pid=64819)
-NOTICE:  fstream unable to open file @abs_srcdir@/data/no/such/place/badt1.tbl  (seg0 slice1 @hostname@:50000 pid=64819)
-ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: 404 file not found  (seg0 slice1 @hostname@:50000 pid=64819)
+NOTICE:  gfile stat @abs_srcdir@/data/no/such/place/badt1.tbl failure: No such file or directory  (seg0 slice1 @hostname@:11002 pid=83265)
+NOTICE:  fstream unable to open file @abs_srcdir@/data/no/such/place/badt1.tbl  (seg0 slice1 @hostname@:11002 pid=83265)
+ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: 404 file not found  (seg0 slice1 @hostname@:11002 pid=83265)
 drop external table badt1;
 --
 -- try a bad protocol
@@ -662,9 +645,6 @@ NOTICE:  table "ext_w" does not exist, skipping
 DROP EXTERNAL TABLE IF EXISTS ext_r;
 NOTICE:  table "ext_r" does not exist, skipping
 DROP ROLE IF EXISTS extprotu;
-NOTICE:  role "extprotu" does not exist, skipping
-NOTICE:  role "extprotu" does not exist, skipping  (seg0 @hostname@:50000 pid=64819)
-NOTICE:  role "extprotu" does not exist, skipping  (seg1 @hostname@:50001 pid=64820)
 CREATE OR REPLACE FUNCTION write_to_file() RETURNS integer as '$libdir/gpextprotocol.so', 'demoprot_export' LANGUAGE C STABLE;
 CREATE OR REPLACE FUNCTION read_from_file() RETURNS integer as '$libdir/gpextprotocol.so', 'demoprot_import' LANGUAGE C STABLE;
 DROP PROTOCOL IF EXISTS demoprot;
@@ -720,7 +700,7 @@ create readable external table ret_region(like wet_region) location('gpfdist://@
 -- negative
 create writable external table wet_neg1(a text, b text) location('file://@hostname@@abs_srcdir@/badt1.tbl') format 'text';
 ERROR:  unsupported URI protocol 'file' for writable external table
-HINT:  Writable external tables may use 'gpfdist' or 'gphdfs' URIs only.
+HINT:  Writable external tables may use 'gpfdist' URIs only.
 create writable external table wet_neg1(a text, b text) location('gpfdist://@hostname@:7070/wet.out', 'gpfdist://@hostname@:7070/wet.out') format 'text';
 ERROR:  location uri "gpfdist://@hostname@:7070/wet.out" appears more than once
 create writable external web table wet_pos5(a text, b text) execute 'some command' on segment 0 format 'text';
@@ -755,8 +735,8 @@ SELECT DISTINCT(R_NAME) FROM ret_region ORDER BY R_NAME;
 
 -- start_ignore
 select * from gpfdist_status;
-                                     x                                     
----------------------------------------------------------------------------
+                                  x                                   
+----------------------------------------------------------------------
  Okay, gpfdist version "main build dev" is running on @hostname@:7070.
 (1 row)
 
@@ -779,7 +759,7 @@ select * from gpfdist_status;
 -- get an error for missing gpfdist
 --
 select count(*) from ext_whois;
-ERROR:  connection with gpfdist failed for gpfdist://@hostname@:7070/whois.csv. effective url: http://127.0.0.1:7070/whois.csv. error code = 61 (Connection refused)  (seg1 slice1 @hostname@:50001 pid=64820)
+ERROR:  connection with gpfdist failed for gpfdist://@hostname@:7070/whois.csv. effective url: http://127.0.0.1:7070/whois.csv. error code = 61 (Connection refused) (url.c:263)  (seg0 slice1 @hostname@:11002 pid=83265)
 --
 -- test CREATE EXTERNAL TABLE privileges
 --
@@ -798,47 +778,15 @@ CREATE ROLE exttab1_u3 CREATEEXTTABLE(protocol='gpfdist') NOCREATEEXTTABLE(proto
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 ERROR:  conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE
 CREATE ROLE exttab1_u4 CREATEEXTTABLE(protocol='gphdfs', type='readable'); 
-WARNING:  GRANT/REVOKE on gphdfs is deprecated
-HINT:  Issue the GRANT or REVOKE on the protocol itself
 NOTICE:  resource queue required -- using default resource queue "pg_default"
-WARNING:  GRANT/REVOKE on gphdfs is deprecated  (seg1 @hostname@:50001 pid=64820)
-HINT:  Issue the GRANT or REVOKE on the protocol itself
-WARNING:  GRANT/REVOKE on gphdfs is deprecated  (seg0 @hostname@:50000 pid=64819)
-HINT:  Issue the GRANT or REVOKE on the protocol itself
 CREATE ROLE exttab1_u5 CREATEEXTTABLE(protocol='gphdfs', type='writable'); 
-WARNING:  GRANT/REVOKE on gphdfs is deprecated
-HINT:  Issue the GRANT or REVOKE on the protocol itself
 NOTICE:  resource queue required -- using default resource queue "pg_default"
-WARNING:  GRANT/REVOKE on gphdfs is deprecated  (seg0 @hostname@:50000 pid=64819)
-HINT:  Issue the GRANT or REVOKE on the protocol itself
-WARNING:  GRANT/REVOKE on gphdfs is deprecated  (seg1 @hostname@:50001 pid=64820)
-HINT:  Issue the GRANT or REVOKE on the protocol itself
 CREATE ROLE exttab1_u6 NOCREATEEXTTABLE(protocol='gphdfs', type='readable') NOCREATEEXTTABLE(protocol='gphdfs', type='writable');
-WARNING:  GRANT/REVOKE on gphdfs is deprecated
-HINT:  Issue the GRANT or REVOKE on the protocol itself
-WARNING:  GRANT/REVOKE on gphdfs is deprecated
-HINT:  Issue the GRANT or REVOKE on the protocol itself
 NOTICE:  resource queue required -- using default resource queue "pg_default"
-WARNING:  GRANT/REVOKE on gphdfs is deprecated  (seg1 @hostname@:50001 pid=64820)
-HINT:  Issue the GRANT or REVOKE on the protocol itself
-WARNING:  GRANT/REVOKE on gphdfs is deprecated  (seg0 @hostname@:50000 pid=64819)
-HINT:  Issue the GRANT or REVOKE on the protocol itself
-WARNING:  GRANT/REVOKE on gphdfs is deprecated  (seg0 @hostname@:50000 pid=64819)
-HINT:  Issue the GRANT or REVOKE on the protocol itself
-WARNING:  GRANT/REVOKE on gphdfs is deprecated  (seg1 @hostname@:50001 pid=64820)
-HINT:  Issue the GRANT or REVOKE on the protocol itself
 CREATE ROLE exttab1_u7 CREATEEXTTABLE(protocol='gphdfs') NOCREATEEXTTABLE(protocol='gphdfs', type='readable'); -- fail due to conflict 
-WARNING:  GRANT/REVOKE on gphdfs is deprecated
-HINT:  Issue the GRANT or REVOKE on the protocol itself
-WARNING:  GRANT/REVOKE on gphdfs is deprecated
-HINT:  Issue the GRANT or REVOKE on the protocol itself
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 ERROR:  conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE
 CREATE ROLE exttab1_u7 CREATEEXTTABLE(protocol='gphdfs', type='writable') NOCREATEEXTTABLE(protocol='gphdfs', type='writable'); -- fail due to conflict 
-WARNING:  GRANT/REVOKE on gphdfs is deprecated
-HINT:  Issue the GRANT or REVOKE on the protocol itself
-WARNING:  GRANT/REVOKE on gphdfs is deprecated
-HINT:  Issue the GRANT or REVOKE on the protocol itself
 NOTICE:  resource queue required -- using default resource queue "pg_default"
 ERROR:  conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE
 SET SESSION AUTHORIZATION exttab1_su;
@@ -857,29 +805,25 @@ ERROR:  permission denied: no privilege to create a writable gpfdist external ta
 RESET SESSION AUTHORIZATION;
 SET SESSION AUTHORIZATION exttab1_u4;
 create external table auth_ext_test5(a int) location ('gphdfs://host:8000/file') format 'text';
-ERROR:  permission denied for external protocol gphdfs
 create writable external table auth_ext_test6(a int) location ('gphdfs://host:8000/file') format 'text'; -- fail
-ERROR:  permission denied for external protocol gphdfs
+ERROR:  permission denied: no privilege to create a writable gphdfs external table
 RESET SESSION AUTHORIZATION;
 SET SESSION AUTHORIZATION exttab1_u5;
 create writable external table auth_ext_test7(a int) location ('gphdfs://host:8000/file') format 'text';
-ERROR:  permission denied for external protocol gphdfs
 create external table auth_ext_test8(a int) location ('gphdfs://host:8000/file') format 'text';           -- fail
-ERROR:  permission denied for external protocol gphdfs
+ERROR:  permission denied: no privilege to create a readable gphdfs external table
 RESET SESSION AUTHORIZATION;
 SET SESSION AUTHORIZATION exttab1_u6;
 create writable external table auth_ext_test9(a int) location ('gphdfs://host:8000/file') format 'text';  -- fail
-ERROR:  permission denied for external protocol gphdfs
+ERROR:  permission denied: no privilege to create a writable gphdfs external table
 create external table auth_ext_test9(a int) location ('gphdfs://host:8000/file') format 'text';           -- fail
-ERROR:  permission denied for external protocol gphdfs
+ERROR:  permission denied: no privilege to create a readable gphdfs external table
 RESET SESSION AUTHORIZATION;
 drop external table auth_ext_test1;
 drop external table auth_ext_test2;
 drop external table auth_ext_test3;
 drop external table auth_ext_test5;
-ERROR:  table "auth_ext_test5" does not exist
 drop external table auth_ext_test7;
-ERROR:  table "auth_ext_test7" does not exist
 DROP ROLE exttab1_su;
 DROP ROLE exttab1_u1;
 DROP ROLE exttab1_u2;
