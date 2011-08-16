@@ -8,7 +8,7 @@ SYNOPSIS
 *****************************************************
 
 gpssh { -f <hostfile_gpssh> | -h <hostname> [-h <hostname> ...] } 
-[-v] [-e] [<bash_command>]
+[-u userid] [-v] [-e] [<bash_command>]
 
 gpssh -? 
 
@@ -71,17 +71,21 @@ OPTIONS
 -f <hostfile_gpssh>
 
  Specifies the name of a file that contains a list of hosts that 
- will participate in this SSH session. The host name is required, 
- and you can optionally specify an alternate user name and/or SSH port 
- number per host. The syntax of the host file is one host per line 
- as follows:
-  [<username>@]<hostname>[:<ssh_port>]
+ will participate in this SSH session. The host name is required.
+ The syntax of the host file is one host per line as follows:
+  
+  <hostname>
 
 
 -h <hostname>
 
  Specifies a single host name that will participate in this SSH session. 
  You can use the -h option multiple times to specify multiple host names.
+
+
+-u <userid>
+
+ Specifies the userid for this SSH session. 
 
 
 -v (verbose mode)
