@@ -25,5 +25,5 @@ for line in open(os.path.join(GPMONDIR, "queries_now.dat")):
     # escape all " with ""
     if qrytxt:
         qrytxt = '""'.join(qrytxt.split('"'))
-        line[-2] = '"' + qrytxt + '"'
+        line[-5] = '"' + qrytxt + '"'
     print '|'.join(line).strip()

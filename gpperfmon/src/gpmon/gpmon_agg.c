@@ -1370,7 +1370,7 @@ static apr_uint32_t write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr, a
 	else
 	{
 		/* Query text "joined" by python script */
-		fprintf(fp, "%s||\n", line);
+		fprintf(fp, "%s|||||\n", line);
 		return bytes_written;
 	}
 }
@@ -1460,7 +1460,7 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
 		TR1(("Failed to open query text file: %s\n", qfname));
 	}
 
-	fprintf(fp, "|\n");
+	fprintf(fp, "||||\n");
 	bytes_written += 2;
 	return bytes_written;
 }

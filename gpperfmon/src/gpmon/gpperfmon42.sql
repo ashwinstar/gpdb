@@ -222,6 +222,28 @@ create external web table public.tcp_extended_tail (like public.tcp_extended_his
 --   (like tcp_extended_history)
 create external web table public._tcp_extended_tail (like public.tcp_extended_history) execute 'cat gpperfmon/data/_tcp_extended_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
+-------------- MODIFY QUERY TABLE ----------------------------------
+
+-- cached queries should be loaded
+insert INTO queries_history (ctime, tmid, ssid, ccnt, username, db, tsubmit, tstart, tfinish, status, rows_out, cpu_elapsed, cpu_currpct, skew_cpu, skew_rows, query_hash, query_text, query_plan) select ctime, tmid, ssid, ccnt, username, db, tsubmit, tstart, tfinish, status, rows_out, cpu_elapsed, cpu_currpct, skew_cpu, skew_rows, query_hash, query_text, query_plan from _queries_tail;
+insert INTO queries_history (ctime, tmid, ssid, ccnt, username, db, tsubmit, tstart, tfinish, status, rows_out, cpu_elapsed, cpu_currpct, skew_cpu, skew_rows, query_hash, query_text, query_plan) select ctime, tmid, ssid, ccnt, username, db, tsubmit, tstart, tfinish, status, rows_out, cpu_elapsed, cpu_currpct, skew_cpu, skew_rows, query_hash, query_text, query_plan from queries_tail;
+
+-- clear out stale cache data
+create external web table public.gpperfmon_rio_queries_upgrade_t1 (output varchar(256)) execute 'rm -f gpperfmon/data/_queries_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+create external web table public.gpperfmon_rio_queries_upgrade_t2 (output varchar(256)) execute 'rm -f gpperfmon/data/queries_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+create external web table public.gpperfmon_rio_queries_upgrade_t3 (output varchar(256)) execute 'rm -f gpperfmon/data/queries_stage.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
+select * from public.gpperfmon_rio_queries_upgrade_t1;
+select * from public.gpperfmon_rio_queries_upgrade_t2;
+select * from public.gpperfmon_rio_queries_upgrade_t3;
+drop external table public.gpperfmon_rio_queries_upgrade_t1;
+drop external table public.gpperfmon_rio_queries_upgrade_t2;
+drop external table public.gpperfmon_rio_queries_upgrade_t3;
+
+-- add new columns to queries table
+alter external table public.queries_now add column application_name varchar(64), add column rsqname varchar(64), add column rqppriority varchar(16);
+alter external table public.queries_tail add column application_name varchar(64), add column rsqname varchar(64), add column rqppriority varchar(16);
+alter external table public._queries_tail add column application_name varchar(64), add column rsqname varchar(64), add column rqppriority varchar(16);
+alter table public.queries_history add column application_name varchar(64), add column rsqname varchar(64), add column rqppriority varchar(16);
 
 
 -- END
