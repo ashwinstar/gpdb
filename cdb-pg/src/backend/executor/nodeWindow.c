@@ -1638,7 +1638,7 @@ hasTuplesInFrame(WindowStatePerLevel level_state,
 										 level_state->numSortCols,
 										 level_state->ltfunctions,
 										 level_state->eqfunctions,
-										 econtext->ecxt_per_tuple_memory,
+										 wstate->cmpcontext,
 										 false);
 			MemoryContextSwitchTo(oldctx);
 			
@@ -2857,6 +2857,11 @@ makeWindowState(Window *window, EState *estate)
 												 ALLOCSET_DEFAULT_MINSIZE,
 												 ALLOCSET_DEFAULT_INITSIZE,
 												 ALLOCSET_DEFAULT_MAXSIZE);
+	wstate->cmpcontext = AllocSetContextCreate(CurrentMemoryContext,
+											   "CmpContext",
+											   ALLOCSET_DEFAULT_MINSIZE,
+											   ALLOCSET_DEFAULT_INITSIZE,
+											   ALLOCSET_DEFAULT_MAXSIZE);
 
 	/*
 	 * We allocate the buffer to be 1K initially, which should be
@@ -3551,7 +3556,7 @@ forwardEdgeForRange(WindowStatePerLevel level_state,
 									 level_state->numSortCols,
 									 level_state->ltfunctions,
 									 level_state->eqfunctions,
-									 econtext->ecxt_per_tuple_memory,
+									 wstate->cmpcontext,
 									 false);
 
 		if (!is_less)
@@ -3564,7 +3569,7 @@ forwardEdgeForRange(WindowStatePerLevel level_state,
 								   level_state->numSortCols,
 								   level_state->ltfunctions,
 								   level_state->eqfunctions,
-								   econtext->ecxt_per_tuple_memory,
+								   wstate->cmpcontext,
 								   true);
 		}
 		
@@ -3901,7 +3906,6 @@ checkLastRowForEdge(WindowStatePerLevel level_state,
 					bool new_edge_value_isnull,
 					bool is_lead_edge)
 {
-	ExprContext *econtext = wstate->ps.ps_ExprContext;
 	FrameBufferEntry *entry = level_state->curr_entry_buf;
 	bool is_less = true;
 	bool is_equal = true;
@@ -3941,7 +3945,7 @@ checkLastRowForEdge(WindowStatePerLevel level_state,
 								 level_state->numSortCols,
 								 level_state->ltfunctions,
 								 level_state->eqfunctions,
-								 econtext->ecxt_per_tuple_memory,
+								 wstate->cmpcontext,
 								 false);
 
 	if ((EDGE_IS_BOUND_FOLLOWING(edge) && !is_less) ||
@@ -3954,7 +3958,7 @@ checkLastRowForEdge(WindowStatePerLevel level_state,
 							   level_state->numSortCols,
 							   level_state->ltfunctions,
 							   level_state->eqfunctions,
-							   econtext->ecxt_per_tuple_memory,
+							   wstate->cmpcontext,
 							   true);
 	}
 	else
@@ -4053,7 +4057,7 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 										 level_state->numSortCols,
 										 level_state->ltfunctions,
 										 level_state->eqfunctions,
-										 econtext->ecxt_per_tuple_memory,
+										 wstate->cmpcontext,
 										 false);
 			prev_is_equal = is_equal;
 			is_equal = 
@@ -4064,7 +4068,7 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 								   level_state->numSortCols,
 								   level_state->ltfunctions,
 								   level_state->eqfunctions,
-								   econtext->ecxt_per_tuple_memory,
+								   wstate->cmpcontext,
 								   true);
 			
 			if ((EDGE_IS_BOUND_FOLLOWING(edge) && (is_less || is_equal))  ||
@@ -5731,6 +5735,9 @@ ExecEndWindow(WindowState *node)
 
 	if (node->transcontext != NULL)
 		MemoryContextDelete(node->transcontext);
+
+	if (node->cmpcontext != NULL)
+		MemoryContextDelete(node->cmpcontext);
 
 	pfree(node->serial_array);
 

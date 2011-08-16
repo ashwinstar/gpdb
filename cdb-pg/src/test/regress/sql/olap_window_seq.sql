@@ -1479,4 +1479,7 @@ group by
 create table redundant_sort_check (i int, j int, k int) distributed by (i);
 explain select count(*) over (order by i), count(*) over (partition by i order by j) from redundant_sort_check;
 -- End of MPP-13710
-
+-- MPP-13879
+create table num_range as select a::numeric from generate_series(1, 10)a;
+select a, max(a) over (order by a range between current row and 2 following) from num_range;
+-- End of MPP-13879

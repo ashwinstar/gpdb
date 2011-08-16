@@ -7981,3 +7981,21 @@ explain select count(*) over (order by i), count(*) over (partition by i order b
 (13 rows)
 
 -- End of MPP-13710
+-- MPP-13879
+create table num_range as select a::numeric from generate_series(1, 10)a;
+select a, max(a) over (order by a range between current row and 2 following) from num_range;
+ a  | max 
+----+-----
+  1 |   3
+  2 |   4
+  3 |   5
+  4 |   6
+  5 |   7
+  6 |   8
+  7 |   9
+  8 |  10
+  9 |  10
+ 10 |  10
+(10 rows)
+
+-- End of MPP-13879

@@ -1740,6 +1740,13 @@ typedef struct WindowState
         MemoryContext transcontext;
         MemoryManagerContainer mem_manager;
 
+        /*
+         * context for comparing datums immediately.
+         * we need reset this context every time we run comparison,
+         * since window frame may contain unlimited number of rows.
+         */
+        MemoryContext cmpcontext;
+
         /* framed window functions need access to their frames */
         WindowStatePerFunction cur_funcstate;
 
