@@ -17,6 +17,12 @@ COPY example FROM stdin;
 
 CREATE TABLE example_r AS SELECT * FROM example DISTRIBUTED RANDOMLY;
 
+/* Attempt to get relatively stable plans */
+set gp_segments_for_planner=8;
+analyze example;
+analyze example_r;
+
+
 /* Create some normal scalar input / scalar output functions */
 CREATE FUNCTION scalar_1(int) RETURNS int
     AS $$ SELECT $1 $$ LANGUAGE SQL;
