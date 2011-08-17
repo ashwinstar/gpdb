@@ -88,7 +88,7 @@ checkHadoopGUCs()
 	 */
 	if (strlen(gp_hadoop_home)> 0)
 	{
-		int hdHomeFD = BasicOpenFile(gp_hadoop_home, O_RDONLY | O_DIRECTORY, 0);
+		int hdHomeFD = BasicOpenFile(gp_hadoop_home, O_RDONLY, 0);
 		if (hdHomeFD == -1)
 		{
 			ereport(ERROR,
