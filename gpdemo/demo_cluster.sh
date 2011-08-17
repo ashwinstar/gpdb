@@ -274,15 +274,23 @@ cat >> $CLUSTER_CONFIG <<-EOF
 	CHECK_POINT_SEGMENTS=8
 	
 	ENCODING=UNICODE
+EOF
 
-	# Array of mirror data locations for each hosts Segment Instances, the number of directories in this array will
-	# set the number of segment instances per host
-	declare -a MIRROR_DATA_DIRECTORY=(${DIRVEC_MIRROR[@]})
+if [ `uname -p` != "sparc" ]; then
+	cat >> $CLUSTER_CONFIG <<-EOF
 	
-	MIRROR_PORT_BASE=`expr $DEMO_PORT_BASE + 3`
+		# Array of mirror data locations for each hosts Segment Instances, the number of directories in this array will
+		# set the number of segment instances per host
+		declare -a MIRROR_DATA_DIRECTORY=(${DIRVEC_MIRROR[@]})
+		
+		MIRROR_PORT_BASE=`expr $DEMO_PORT_BASE + 3`
+	
+		REPLICATION_PORT_BASE=`expr $DEMO_PORT_BASE + 6`
+		MIRROR_REPLICATION_PORT_BASE=`expr $DEMO_PORT_BASE + 9`
+	EOF
+fi
 
-	REPLICATION_PORT_BASE=`expr $DEMO_PORT_BASE + 6`
-	MIRROR_REPLICATION_PORT_BASE=`expr $DEMO_PORT_BASE + 9`
+cat >> $CLUSTER_CONFIG <<-EOF
 
 	# Path for Greenplum mgmt utils and Greenplum binaries
 	PATH=$GPHOME/bin:$PATH
