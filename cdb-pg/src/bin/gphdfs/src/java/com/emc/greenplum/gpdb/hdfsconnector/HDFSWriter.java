@@ -1,8 +1,17 @@
-package com.emc.greenplum.gpdb;
+/*-------------------------------------------------------------------------
+ *
+ * HDFSWritaber.java
+ *
+ * Copyright (c) 2011, Greenplum inc
+ *
+ *-------------------------------------------------------------------------
+ */
+
+
+package com.emc.greenplum.gpdb.hdfsconnector;
 
 import com.emc.greenplum.gpdb.hadoop.io.GPDBWritable;
 
-import java.net.URI;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -15,54 +24,66 @@ import org.apache.hadoop.io.compress.*;
 import org.apache.hadoop.mapreduce.lib.output.*;
 
 import java.io.*;
+import java.net.URI;
+import java.net.URISyntaxException;
 
-class HDFSWriter
+public class HDFSWriter
 {
-	protected int     segid;
-    protected String  xid;
-    protected boolean isTextFormat;
-	protected URI     fsURI;
-	protected String  outputpath;
     protected Configuration conf;
+	protected int           segid;
+	protected boolean       isTextFormat;
+	
+	protected String        xid;
+	protected String        outputpath;
 	protected TaskAttemptContext fakeTaskCtx;
 
 	protected boolean isCompressed = false;
 	protected String  compressType = null;
 	protected String  compressCodec = null;
 	
-
-	private boolean isdebug=false;
 	private InputStream instream;
     
 	/**
 	 * Constructor - parse the input args
-	 */
-	public HDFSWriter(String[] args) throws Exception {
-		/* Env var check */
-		String hdVer = System.getenv("GP_HADOOP_VERSION");
-		if (hdVer == null)
-			throw new Exception("Missing GP_HADOOP_VERSION env var");
+	 * 
+ 	 * @param args the list of input argument, that must be
+	 * local segment id, xid, format (TEXT or GPDBWritable)
+	 * and the location in the form of gphdfs://host:port/file_path
+	 * 
+	 * @throws Exception when something goes wrong
 
-	    /* The following input argments are required:
+	 */
+	public HDFSWriter(String[] args) {
+	    /** 
+	     * The following input argments are required:
 	     * arg[0] : local segment id
          * arg[1] : xid
 	     * arg[2] : format: TEXT or GPDBWritable
-	     * arg[3] : gphdfs://host:port/file_path?<query>
+	     * arg[3] : hadoop connector version
+	     * arg[4] : gphdfs://host:port/file_path?<query>
 	     * query contains:
 	     *  compress: true or false
 	     * 	compression_type (for gpdbwritable only): BLOCK and RECORD (gpdbwritable)
 	     *  codec (for gpdbwritable only): codec class name
 	     */
-	    if (args.length != 4)
-	        throw new Exception("Wrong number of argument");
+	    if (args.length != 5)
+	        throw new IllegalArgumentException("Wrong number of argument");
 
-		segid        = Integer.parseInt(args[0]);
-		xid          = args[1]; 
-		isTextFormat = (args[2].equals("TEXT"));
-		URI inputURI = new URI(args[3]);
-		
+		segid         = Integer.parseInt(args[0]);
+		xid           = args[1]; 
+		isTextFormat  = (args[2].equals("TEXT"));
+		String connVer = args[3];
+	    URI outputURI;
+		try {
+			outputURI = new URI(args[4]);
+		} catch (URISyntaxException e) {
+			throw new IllegalArgumentException("Illegal input uri: "+args[4]);
+		}
+
 		/**
-		 * Initialize conf, a fake ctx and conf derived var
+		 * Initialize conf, a fake ctx and compression var
+		 * Using a fake context is ok because only the confg portion
+		 * is used.
 		 */
 	    conf        = new Configuration();
 	    fakeTaskCtx = new TaskAttemptContext(conf, new TaskAttemptID());
@@ -71,47 +92,39 @@ class HDFSWriter
 	    		SequenceFile.CompressionType.RECORD.toString());
 	    compressCodec = conf.get("mapred.output.compression.codec");
 		
-		/* Parse the URI and reconstruct the destination URI
-		 * 1. scheme could be hdfs or maprfs
-		 * 2. get the path
-		 * 3. parse the compression type and codec from the URI query
-		 */
-	    String uriScheme = "hdfs";
-	    if (hdVer.startsWith("EE")) {
-	    	uriScheme = "maprfs";
-	    	conf.set("fs.maprfs.impl", "com.mapr.fs.MapRFileSystem");
-	    }
-	    fsURI = new URI(uriScheme, null, inputURI.getHost(), inputURI.getPort(), null, null, null);
-	    conf.set("fs.default.name", fsURI.toString());
+	    // Set the HDFS URI
+	    ConnectorUtil.setHadoopFSURI(conf, outputURI, connVer);
 	    
-	    outputpath = inputURI.getPath();
-	    
-	    String[] kv_pair = inputURI.getQuery().split("&");
-	    for(int i=0; i<kv_pair.length; i++) {
-	    	String[] kv = kv_pair[i].split("=");
-	    	String key = kv[0];
-	    	String val = kv[1];
-	    	
-	    	if (key.equals("compress"))	    	isCompressed  = val.equals("true");
-	    	if (key.equals("compression_type"))	compressType  = val;
-	    	if (key.equals("codec"))    		compressCodec = val;
-	    }
-	    
-	    
+	    // Setup the output path to <path>/seg_id_xid
+	    outputpath = outputURI.getPath()+Path.SEPARATOR+segid+"_"+xid;
 
-	    if (isdebug) {
-	    	byte[] bytes = (new String("sdfsdfs\n123123123\naaaaa")).getBytes();
-	    	instream = new ByteArrayInputStream(bytes);
+	    // Parse the compression type and codec from the URI query
+	    if (outputURI.getQuery() != null) {
+		    String[] kv_pair = outputURI.getQuery().split("&");
+		    for(int i=0; i<kv_pair.length; i++) {
+		    	String[] kv = kv_pair[i].split("=");
+		    	String key = kv[0].toLowerCase();
+		    	String val = kv[1];
+		    	
+		    	if (key.equals("compress"))
+		    		isCompressed  = val.toLowerCase().equals("true");
+		    	if (key.equals("compression_type"))
+		    		compressType  = val;
+		    	if (key.equals("codec"))
+		    		compressCodec = val;
+		    	else
+		    		throw new IllegalArgumentException("Unexpected parameter:"+key);
+		    }
 	    }
-	    else
-	    	instream = System.in;
+
+	    instream = System.in;
 	}
 
 
 	/** 
 	 * Either TEXT or GPDBWritable. Call the appropiate write method
 	 */
-	public void run() throws Exception {
+	public void doWrite() throws IOException, InterruptedException {
 		if (isTextFormat)
 			writeTextFormat();
 		else
@@ -121,8 +134,8 @@ class HDFSWriter
 	/**
 	 * Helper routine to get the compression codec class
 	 */
-	protected Class<? extends CompressionCodec>
-	getCodecClass(String name, Class<? extends CompressionCodec> defaultValue) {
+	protected Class<? extends CompressionCodec> getCodecClass(
+			String name, Class<? extends CompressionCodec> defaultValue) {
 		Class<? extends CompressionCodec> codecClass = defaultValue;
 	    if (name != null) {
 	    	try {
@@ -136,9 +149,9 @@ class HDFSWriter
 
 	
 	/**
-	 * Write as SequenceFile <LongWritable, GPDBWritable>
+	 * Write as GPDBOutputFormat, which is SequenceFile <LongWritable, GPDBWritable>
 	 */
-	protected void writeGPDBWritableFormat() throws Exception {
+	protected void writeGPDBWritableFormat() throws IOException, InterruptedException {
 		RecordWriter<LongWritable, GPDBWritable> rw = getGPDBRecordWriter();
 		LongWritable segIDWritable = new LongWritable(segid);
 		
@@ -159,14 +172,14 @@ class HDFSWriter
 	/**
 	 * Write as TextOutputFormat
 	 */
-	protected void writeTextFormat() throws Exception {
+	protected void writeTextFormat() throws IOException {
 		// construct the output stream
 		DataOutputStream dos;
-		String     filename = outputpath+"/"+segid+"_"+xid;
-	    FileSystem fs       = FileSystem.get(fsURI, conf);
+	    FileSystem fs = FileSystem.get(conf);
 
+		// Open the output file based on compression type and codec
 	    if (!isCompressed) {
-		    Path file = new Path(filename);
+		    Path file = new Path(outputpath);
 	    	dos = fs.create(file, false);
 	    }
 	    else {
@@ -176,7 +189,7 @@ class HDFSWriter
 	        			conf);
 	        String extension = codec.getDefaultExtension();
 	        
-	        Path file = new Path(filename+extension);
+	        Path file = new Path(outputpath+extension);
 	        FSDataOutputStream fileOut = fs.create(file, false);
 	    	dos = new DataOutputStream(codec.createOutputStream(fileOut));
 	    }
@@ -193,19 +206,19 @@ class HDFSWriter
 	/**
 	 * Helper function to construct the SequenceFile writer
 	 */
-	protected SequenceFile.Writer getSequenceWriterWriter() throws Exception {
+	private SequenceFile.Writer getSequenceFileWriter() throws IOException {
+		// Get the compression type and codec first
 	    CompressionCodec codec = null;
 	    SequenceFile.CompressionType compressionType = SequenceFile.CompressionType.NONE;
 	    if (isCompressed) {
-	      // find the kind of compression to do and the right codec
-	      compressionType = SequenceFile.CompressionType.valueOf(compressType);
-	      codec = (CompressionCodec) ReflectionUtils.newInstance(
-	    		  	getCodecClass(compressCodec, DefaultCodec.class),
-	    		  	conf);
-
+	    	compressionType = SequenceFile.CompressionType.valueOf(compressType);
+	    	codec = (CompressionCodec) ReflectionUtils.newInstance(
+	    			getCodecClass(compressCodec, DefaultCodec.class),
+	    			conf);
 	    }
+	    
 	    // get the path of the  output file 
-	    Path file = new Path(outputpath+"/"+segid+"_"+xid);
+	    Path file = new Path(outputpath);
 	    FileSystem fs = file.getFileSystem(conf);
 	    return SequenceFile.createWriter(fs, conf, file,
 	             LongWritable.class,
@@ -215,28 +228,29 @@ class HDFSWriter
 	             fakeTaskCtx);
 	}
 	
-	protected RecordWriter<LongWritable, GPDBWritable> getGPDBRecordWriter() throws Exception {
-		 final SequenceFile.Writer out = getSequenceWriterWriter();
-
-		 return new RecordWriter<LongWritable, GPDBWritable>() {
-
-		     public void write(LongWritable key, GPDBWritable value)
-		       throws IOException {
-
-		       out.append(key, value);
-		     }
-
-		     public void close(TaskAttemptContext context) throws IOException { 
-		       out.close();
-		     }
-		   };
+	/**
+	 * Helper function to construct the SequenceFile writer
+	 */
+	private RecordWriter<LongWritable, GPDBWritable> getGPDBRecordWriter() throws IOException {
+		final SequenceFile.Writer out = getSequenceFileWriter();
+		
+		return new RecordWriter<LongWritable, GPDBWritable>() {
+			public void write(LongWritable key, GPDBWritable value)
+			throws IOException {
+				out.append(key, value);
+			}
+			
+			public void close(TaskAttemptContext context) throws IOException { 
+				out.close();
+			}
+		};
 	}
 
 
 	public static void main(String[] args) throws Exception
 	{
 		HDFSWriter hw = new HDFSWriter(args);
-		hw.run();
+		hw.doWrite();
 	} 	
 
 }

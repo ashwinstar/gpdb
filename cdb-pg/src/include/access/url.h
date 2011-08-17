@@ -23,9 +23,11 @@
 
 #include <curl/curl.h>
 
-#include <fstream/fstream.h>
+/*#include <fstream/fstream.h>*/
 
 #include "access/extprotocol.h"
+
+#include "commands/copy.h"
 
 #ifndef FALSE
 #define FALSE 0
@@ -96,7 +98,7 @@ typedef struct URL_FILE
     union {
 		
     	struct {
-			fstream_t*fp;
+			struct fstream_t*fp;
 		} file;
 
 		curlctl_t curl;
@@ -133,6 +135,11 @@ typedef struct extvar_t
 	char GP_SESSION_ID[10];  /* session id */
  	char GP_SEGMENT_COUNT[6]; /* total number of (primary) segs in the system */
  	char GP_CSVOPT[13]; /* "m.x...q...h." former -q, -h and -x options for gpfdist.*/
+
+ 	/* Hadoop Specific env var */
+ 	char* GP_HADOOP_CONN_JARDIR;
+ 	char* GP_HADOOP_CONN_VERSION;
+ 	char* GP_HADOOP_HOME;
 } extvar_t;
 
 /* exported functions */
@@ -144,5 +151,7 @@ extern size_t url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file, Co
 extern size_t url_fwrite(void *ptr, size_t size, size_t nmemb, URL_FILE *file, CopyState pstate);
 extern void url_rewind(URL_FILE *file, const char *relname);
 extern void url_fflush(URL_FILE *file, CopyState pstate);
+
+extern URL_FILE *url_execute_fopen(char* url, char *cmd, bool forwrite, extvar_t *ev);
 
 #endif

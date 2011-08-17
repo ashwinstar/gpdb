@@ -29,6 +29,7 @@ fileset = {
     'alpha/builtins.h':  [],
     'crtdefs.h':         [],
     'cygwin/version.h':  [],
+    'curl/curl.h':       [],
     'direct.h':          [],
     'err.h':             [],
     'emcconnect/api.h':  [],
