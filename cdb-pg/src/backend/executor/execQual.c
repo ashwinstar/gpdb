@@ -1531,20 +1531,23 @@ restart:
 	}
 
 	/*
-	 * If function returns set, prepare a resultinfo node for communication
+	 * Prepare a resultinfo node for communication.  If the function
+	 * doesn't itself return set, we don't pass the resultinfo to the
+	 * function, but we need to fill it in anyway for internal use.
 	 */
 	if (fcache->func.fn_retset)
 	{
 		fcinfo.resultinfo = (Node *) &rsinfo;
-		rsinfo.type = T_ReturnSetInfo;
-		rsinfo.econtext = econtext;
-		rsinfo.expectedDesc = fcache->funcResultDesc;
-		rsinfo.allowedModes = (int) (SFRM_ValuePerCall | SFRM_Materialize);
-		rsinfo.returnMode = SFRM_ValuePerCall;
-		/* isDone is filled below */
-		rsinfo.setResult = NULL;
-		rsinfo.setDesc = NULL;
 	}
+	rsinfo.type = T_ReturnSetInfo;
+	rsinfo.econtext = econtext;
+	rsinfo.expectedDesc = fcache->funcResultDesc;
+	rsinfo.allowedModes = (int) (SFRM_ValuePerCall | SFRM_Materialize);
+	/* note we do not set SFRM_Materialize_Random or _Preferred */
+	rsinfo.returnMode = SFRM_ValuePerCall;
+	/* isDone is filled below */
+	rsinfo.setResult = NULL;
+	rsinfo.setDesc = NULL;
 
 	/*
 	 * Now call the function, passing the evaluated parameter values.
