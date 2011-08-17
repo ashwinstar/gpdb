@@ -1968,16 +1968,29 @@ exec_parse_message(const char *query_string,	/* string to execute */
 
 		querytree_list = pg_rewrite_queries(querytree_list);
 
+		if (parsetree_list)
+		{
+			Node	   *parsetree = (Node *) linitial(parsetree_list);
+			sourceTag = nodeTag(parsetree);
+		}
+
+		/**
+		 * Even though we do not store the plan, we want to perform planning
+		 * to know if SQL syntax is supported.
+		 */
+		if (sourceTag == T_SelectStmt)
+		{
+			List *ql = (List *) copyObject(querytree_list);
+			List *pstmt = pg_plan_queries(ql, NULL, false);
+			list_free(ql);
+			list_free(pstmt);
+		}
+
 		/* Done with the snapshot used for parsing/planning */
 		ActiveSnapshot = NULL;
 		if (mySnapshot)
 			FreeSnapshot(mySnapshot);
 		
-		if (parsetree_list)
-		{	
-			Node	   *parsetree = (Node *) linitial(parsetree_list); 
-			sourceTag = nodeTag(parsetree);
-		}
 	}
 	else
 	{
