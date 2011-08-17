@@ -243,7 +243,6 @@ thirdparty-dist-base: $(BLD_THIRDPARTY_BASE_SHARED_OBJECTS_INSTALLED) ;
 thirdparty-dist-exceptions: $(BLD_THIRDPARTY_EXCEPTIONS_INSTALLED) ;
 
 $(INSTLOC)/lib/%: $(BLD_THIRDPARTY_LIB_DIR)/%
-	@echo "Copying $(?D)/$(@F) to $(INSTLOC)/lib ..."
 	@(cd $(?D) && $(TAR) cf - $(@F)) | (cd $(INSTLOC)/lib && $(TAR) xf -)$(check_pipe_for_errors)
 
 $(INSTLOC)/lib/%: $(BLD_THIRDPARTY_EXCEPTIONS_DIRS)/lib/%
