@@ -193,8 +193,7 @@ ExecEndAOCSScan(AOCSScanState *node)
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
-	if((node->ss.scan_state & SCAN_SCAN) != 0)
-		CloseAOCSScanRelation(node);
+	ExecEagerFreeAOCSScan(node);
 
 	/*
 	 * close the heap relation.
@@ -256,4 +255,11 @@ initGpmonPktForAOCSScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estat
 							 (int64)planNode->plan_rows,
 							 GetScanRelNameGpmon(rte->relid, schema_rel_name));
 	}
+}
+
+void
+ExecEagerFreeAOCSScan(AOCSScanState *node)
+{
+	if((node->ss.scan_state & SCAN_SCAN) != 0)
+		CloseAOCSScanRelation(node);
 }

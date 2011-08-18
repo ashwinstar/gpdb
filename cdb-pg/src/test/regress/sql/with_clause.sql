@@ -287,8 +287,8 @@ with my_group_sum(i, total) as (select i, sum(value) from with_test1 group by i)
 select with_test2.* from with_test2
 where value < any (select total from my_group_sum where my_group_sum.i = with_test2.i);
 
---select with_test2.* from with_test2
---where value < any (select sum(value) from with_test1 group by i having i = with_test2.i);
+select with_test2.* from with_test2
+where value < any (select total from (select i, sum(value) as total from with_test1 group by i) as tmp where tmp.i = with_test2.i);
 --end_equivalent
 
 --begin_equivalent
@@ -297,19 +297,23 @@ select with_test2.* from with_test2, my_group_sum
 where value < any (select total from my_group_sum where my_group_sum.i = with_test2.i)
 and with_test2.i = my_group_sum.i;
 
---select with_test2.* from with_test2, (select i, sum(value) from with_test1 group by i) as my_group_sum
---where value < any (select sum(value) from with_test1 group by i having i = with_test2.i)
---and with_test2.i = my_group_sum.i;
+select with_test2.* from with_test2, (select i, sum(value) from with_test1 group by i) as my_group_sum
+where value < any (select total from (select i, sum(value) as total from with_test1 group by i) as tmp where tmp.i = with_test2.i)
+and with_test2.i = my_group_sum.i;
 --end_equivalent
 
---begin_equivalent(crashes)
---with my_group_sum(i, total) as (select i, sum(value) from with_test1 group by i)
---select with_test2.* from with_test2
---where value < all (select total from my_group_sum where my_group_sum.i = with_test2.i);
+--begin_equivalent
+with my_group_sum(i, total) as (select i, sum(value) from with_test1 group by i)
+select with_test2.* from with_test2
+where value < all (select total from my_group_sum where my_group_sum.i = with_test2.i)
+order by 1,2,3
+limit 60; --order 1,2,3
 
---select with_test2.* from with_test2
---where value < all (select sum(value) from with_test1 group by i having i = with_test2.i);
---end_equivalent(crashes)
+select with_test2.* from with_test2
+where value < all (select total from (select i, sum(value) as total from with_test1 group by i) as tmp where tmp.i = with_test2.i)
+order by 1,2,3
+limit 60; --order 1,2,3
+--end_equivalent
 
 drop table if exists b;
 create table b (i integer);

@@ -450,12 +450,8 @@ buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
 	 * If it's not necessary to distinguish FALSE and UNKNOWN, then we don't
 	 * need to store subplan output rows that contain NULL.
 	 */
-	MemoryContextReset(node->hashtablecxt);
-	node->hashtable = NULL;
-	node->hashnulls = NULL;
-	node->havehashrows = false;
-	node->havenullrows = false;
-
+	ExecEagerFreeSubPlan(node);
+	
 	nbuckets = (int) ceil(planstate->plan->plan_rows);
 	if (nbuckets < 1)
 		nbuckets = 1;
@@ -1418,4 +1414,15 @@ ExecReScanSetParamPlan(SubPlanState *node, PlanState *parent)
 		prm->execPlan = node;
 		parent->chgParam = bms_add_member(parent->chgParam, paramid);
 	}
+}
+
+void
+ExecEagerFreeSubPlan(SubPlanState *node)
+{
+	Assert(node->hashtablecxt != NULL);
+	MemoryContextReset(node->hashtablecxt);
+	node->hashtable = NULL;
+	node->hashnulls = NULL;
+	node->havehashrows = false;
+	node->havenullrows = false;
 }

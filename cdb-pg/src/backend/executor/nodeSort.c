@@ -63,6 +63,19 @@ ExecSort(SortState *node)
 	else
 		tuplesortstate = (Tuplesortstate *) node->tuplesortstate;
 
+	/*
+	 * In Window node, we might need to call ExecSort again even when
+	 * the last tuple in the Sort has been retrieved. Since we might
+	 * eager free the tuplestore, the tuplestorestate could be NULL.
+	 * We simply return NULL in this case.
+	 */
+	if (node->sort_Done &&
+		((gp_enable_mk_sort && tuplesortstate_mk == NULL) ||
+		 (!gp_enable_mk_sort && tuplesortstate == NULL)))
+	{
+		return NULL;
+	}
+
 	plannode = (Sort *) node->ss.ps.plan;
 
 	/*
@@ -301,6 +314,11 @@ ExecSort(SortState *node)
 				ScanDirectionIsForward(dir),
 				slot);
 
+	if (TupIsNull(slot) && !node->ss.ps.delayEagerFree)
+	{
+		ExecEagerFreeSort(node);
+	}
+
 	return slot;
 }
 
@@ -391,6 +409,13 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	}
 
 	/*
+	 * If eflag contains EXEC_FLAG_REWIND or EXEC_FLAG_BACKWARD or EXEC_FLAG_MARK,
+	 * then this node is not eager free safe.
+	 */
+	sortstate->ss.ps.delayEagerFree =
+		((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) != 0);
+
+	/*
 	 * initialize child nodes
 	 *
 	 * We shield the child node from the need to support REWIND, BACKWARD, or
@@ -399,6 +424,15 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	eflags &= ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
 
 	outerPlanState(sortstate) = ExecInitNode(outerPlan(node), estate, eflags);
+
+	/*
+	 * If the child node of a Material is a Motion, then this Material node is
+	 * not eager free safe.
+	 */
+	if (IsA(outerPlan((Plan *)node), Motion))
+	{
+		sortstate->ss.ps.delayEagerFree = true;
+	}
 
 	/*
 	 * initialize tuple type.  no need to initialize projection info because
@@ -435,11 +469,9 @@ ExecCountSlotsSort(Sort *node)
  *		ExecEndSort(node)
  * ----------------------------------------------------------------
  */
-static void
-ExecEndSort_internal(SortState *node)
+void
+ExecEndSort(SortState *node)
 {
-
-	Sort *sort = (Sort *) node->ss.ps.plan;
 	SO1_printf("ExecEndSort: %s\n",
 			   "shutting down sort node");
 
@@ -450,30 +482,7 @@ ExecEndSort_internal(SortState *node)
 	/* must drop pointer to sort result tuple */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
-	/*
-	 * Release tuplesort resources
-     *
-     * CDB: For EXPLAIN ANALYZE, tuplesort_end() may update statistics in our
-     * Instrumentation object via a ptr saved by tuplesort_set_instrument().
-	 */
-	if (node->tuplesortstate != NULL)
-	{
-		if(sort->share_type == SHARE_SORT_XSLICE)
-			shareinput_writer_waitdone(node->share_lk_ctxt, sort->share_id, sort->nsharer_xslice);
-
-		if(gp_enable_mk_sort)
-			tuplesort_end_mk((Tuplesortstate_mk *) node->tuplesortstate);
-		else
-			tuplesort_end((Tuplesortstate *) node->tuplesortstate);
-	}
-
-	node->tuplesortstate = NULL;
-}
-
-void
-ExecEndSort(SortState *node)
-{
-    ExecEndSort_internal(node);
+	ExecEagerFreeSort(node);
 
 	/*
 	 * shut down the subplan
@@ -553,14 +562,18 @@ ExecReScanSort(SortState *node, ExprContext *exprCtxt)
 	 * Otherwise we can just rewind and rescan the sorted output.
 	 */
 	if (((PlanState *) node)->lefttree->chgParam != NULL ||
-		!node->randomAccess)
+		!node->randomAccess ||
+		node->tuplesortstate == NULL)
 	{
 		node->sort_Done = false;
-		if(gp_enable_mk_sort)
-			tuplesort_end_mk((Tuplesortstate_mk *) node->tuplesortstate);
-		else
-			tuplesort_end((Tuplesortstate *) node->tuplesortstate);
-		node->tuplesortstate = NULL;
+		if (node->tuplesortstate != NULL)
+		{
+			if(gp_enable_mk_sort)
+				tuplesort_end_mk((Tuplesortstate_mk *) node->tuplesortstate);
+			else
+				tuplesort_end((Tuplesortstate *) node->tuplesortstate);
+			node->tuplesortstate = NULL;
+		}
 
 		/*
 		 * if chgParam of subnode is not null then plan will be re-scanned by
@@ -610,3 +623,24 @@ initGpmonPktForSort(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 							 NULL); 
 	}
 }
+
+void
+ExecEagerFreeSort(SortState *node)
+{
+	if (node->tuplesortstate != NULL)
+	{
+		Sort *sort = (Sort *) node->ss.ps.plan;
+
+		if(sort->share_type == SHARE_SORT_XSLICE)
+			shareinput_writer_waitdone(node->share_lk_ctxt, sort->share_id, sort->nsharer_xslice);
+
+		if(gp_enable_mk_sort)
+			tuplesort_end_mk((Tuplesortstate_mk *) node->tuplesortstate);
+		else
+			tuplesort_end((Tuplesortstate *) node->tuplesortstate);
+
+		node->tuplesortstate = NULL;
+	}
+}
+
+

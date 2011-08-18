@@ -1536,8 +1536,76 @@ where value < any (select total from my_group_sum where my_group_sum.i = with_te
  9 | text109 |     9
 (64 rows)
 
---select with_test2.* from with_test2
---where value < any (select sum(value) from with_test1 group by i having i = with_test2.i);
+select with_test2.* from with_test2
+where value < any (select total from (select i, sum(value) as total from with_test1 group by i) as tmp where tmp.i = with_test2.i);
+ i |    t    | value 
+---+---------+-------
+ 0 | text0   |     0
+ 1 | text1   |     1
+ 2 | text2   |     2
+ 3 | text3   |     3
+ 4 | text4   |     4
+ 5 | text5   |     5
+ 6 | text6   |     6
+ 7 | text7   |     7
+ 8 | text8   |     8
+ 9 | text9   |     9
+ 2 | text102 |   102
+ 3 | text103 |   103
+ 4 | text104 |   104
+ 5 | text105 |   105
+ 6 | text106 |   106
+ 7 | text107 |   107
+ 8 | text108 |   108
+ 9 | text109 |   109
+ 0 | text100 |     0
+ 1 | text101 |     1
+ 2 | text102 |     2
+ 3 | text103 |     3
+ 4 | text104 |     4
+ 5 | text105 |     5
+ 6 | text106 |     6
+ 7 | text107 |     7
+ 8 | text108 |     8
+ 9 | text109 |     9
+ 2 | text2   |   102
+ 3 | text3   |   103
+ 4 | text4   |   104
+ 5 | text5   |   105
+ 6 | text6   |   106
+ 7 | text7   |   107
+ 8 | text8   |   108
+ 9 | text9   |   109
+ 0 | text0   |     0
+ 1 | text1   |     1
+ 2 | text2   |     2
+ 3 | text3   |     3
+ 4 | text4   |     4
+ 5 | text5   |     5
+ 6 | text6   |     6
+ 7 | text7   |     7
+ 8 | text8   |     8
+ 9 | text9   |     9
+ 2 | text102 |   102
+ 3 | text103 |   103
+ 4 | text104 |   104
+ 5 | text105 |   105
+ 6 | text106 |   106
+ 7 | text107 |   107
+ 8 | text108 |   108
+ 9 | text109 |   109
+ 0 | text100 |     0
+ 1 | text101 |     1
+ 2 | text102 |     2
+ 3 | text103 |     3
+ 4 | text104 |     4
+ 5 | text105 |     5
+ 6 | text106 |     6
+ 7 | text107 |     7
+ 8 | text108 |     8
+ 9 | text109 |     9
+(64 rows)
+
 --end_equivalent
 --begin_equivalent
 with my_group_sum(i, total) as (select i, sum(value) from with_test1 group by i)
@@ -1612,17 +1680,217 @@ and with_test2.i = my_group_sum.i;
  9 | text109 |     9
 (64 rows)
 
---select with_test2.* from with_test2, (select i, sum(value) from with_test1 group by i) as my_group_sum
---where value < any (select sum(value) from with_test1 group by i having i = with_test2.i)
---and with_test2.i = my_group_sum.i;
+select with_test2.* from with_test2, (select i, sum(value) from with_test1 group by i) as my_group_sum
+where value < any (select total from (select i, sum(value) as total from with_test1 group by i) as tmp where tmp.i = with_test2.i)
+and with_test2.i = my_group_sum.i;
+ i |    t    | value 
+---+---------+-------
+ 0 | text0   |     0
+ 1 | text1   |     1
+ 2 | text2   |     2
+ 3 | text3   |     3
+ 4 | text4   |     4
+ 5 | text5   |     5
+ 6 | text6   |     6
+ 7 | text7   |     7
+ 8 | text8   |     8
+ 9 | text9   |     9
+ 2 | text102 |   102
+ 3 | text103 |   103
+ 4 | text104 |   104
+ 5 | text105 |   105
+ 6 | text106 |   106
+ 7 | text107 |   107
+ 8 | text108 |   108
+ 9 | text109 |   109
+ 0 | text100 |     0
+ 1 | text101 |     1
+ 2 | text102 |     2
+ 3 | text103 |     3
+ 4 | text104 |     4
+ 5 | text105 |     5
+ 6 | text106 |     6
+ 7 | text107 |     7
+ 8 | text108 |     8
+ 9 | text109 |     9
+ 2 | text2   |   102
+ 3 | text3   |   103
+ 4 | text4   |   104
+ 5 | text5   |   105
+ 6 | text6   |   106
+ 7 | text7   |   107
+ 8 | text8   |   108
+ 9 | text9   |   109
+ 0 | text0   |     0
+ 1 | text1   |     1
+ 2 | text2   |     2
+ 3 | text3   |     3
+ 4 | text4   |     4
+ 5 | text5   |     5
+ 6 | text6   |     6
+ 7 | text7   |     7
+ 8 | text8   |     8
+ 9 | text9   |     9
+ 2 | text102 |   102
+ 3 | text103 |   103
+ 4 | text104 |   104
+ 5 | text105 |   105
+ 6 | text106 |   106
+ 7 | text107 |   107
+ 8 | text108 |   108
+ 9 | text109 |   109
+ 0 | text100 |     0
+ 1 | text101 |     1
+ 2 | text102 |     2
+ 3 | text103 |     3
+ 4 | text104 |     4
+ 5 | text105 |     5
+ 6 | text106 |     6
+ 7 | text107 |     7
+ 8 | text108 |     8
+ 9 | text109 |     9
+(64 rows)
+
 --end_equivalent
---begin_equivalent(crashes)
---with my_group_sum(i, total) as (select i, sum(value) from with_test1 group by i)
---select with_test2.* from with_test2
---where value < all (select total from my_group_sum where my_group_sum.i = with_test2.i);
---select with_test2.* from with_test2
---where value < all (select sum(value) from with_test1 group by i having i = with_test2.i);
---end_equivalent(crashes)
+--begin_equivalent
+with my_group_sum(i, total) as (select i, sum(value) from with_test1 group by i)
+select with_test2.* from with_test2
+where value < all (select total from my_group_sum where my_group_sum.i = with_test2.i)
+order by 1,2,3
+limit 60; --order 1,2,3
+ i |    t    | value 
+---+---------+-------
+ 0 | text0   |     0
+ 0 | text0   |     0
+ 0 | text100 |     0
+ 0 | text100 |     0
+ 1 | text1   |     1
+ 1 | text1   |     1
+ 1 | text101 |     1
+ 1 | text101 |     1
+ 2 | text102 |     2
+ 2 | text102 |     2
+ 2 | text102 |   102
+ 2 | text102 |   102
+ 2 | text2   |     2
+ 2 | text2   |     2
+ 2 | text2   |   102
+ 3 | text103 |     3
+ 3 | text103 |     3
+ 3 | text103 |   103
+ 3 | text103 |   103
+ 3 | text3   |     3
+ 3 | text3   |     3
+ 3 | text3   |   103
+ 4 | text104 |     4
+ 4 | text104 |     4
+ 4 | text104 |   104
+ 4 | text104 |   104
+ 4 | text4   |     4
+ 4 | text4   |     4
+ 4 | text4   |   104
+ 5 | text105 |     5
+ 5 | text105 |     5
+ 5 | text105 |   105
+ 5 | text105 |   105
+ 5 | text5   |     5
+ 5 | text5   |     5
+ 5 | text5   |   105
+ 6 | text106 |     6
+ 6 | text106 |     6
+ 6 | text106 |   106
+ 6 | text106 |   106
+ 6 | text6   |     6
+ 6 | text6   |     6
+ 6 | text6   |   106
+ 7 | text107 |     7
+ 7 | text107 |     7
+ 7 | text107 |   107
+ 7 | text107 |   107
+ 7 | text7   |     7
+ 7 | text7   |     7
+ 7 | text7   |   107
+ 8 | text108 |     8
+ 8 | text108 |     8
+ 8 | text108 |   108
+ 8 | text108 |   108
+ 8 | text8   |     8
+ 8 | text8   |     8
+ 8 | text8   |   108
+ 9 | text109 |     9
+ 9 | text109 |     9
+ 9 | text109 |   109
+(60 rows)
+
+select with_test2.* from with_test2
+where value < all (select total from (select i, sum(value) as total from with_test1 group by i) as tmp where tmp.i = with_test2.i)
+order by 1,2,3
+limit 60; --order 1,2,3
+ i |    t    | value 
+---+---------+-------
+ 0 | text0   |     0
+ 0 | text0   |     0
+ 0 | text100 |     0
+ 0 | text100 |     0
+ 1 | text1   |     1
+ 1 | text1   |     1
+ 1 | text101 |     1
+ 1 | text101 |     1
+ 2 | text102 |     2
+ 2 | text102 |     2
+ 2 | text102 |   102
+ 2 | text102 |   102
+ 2 | text2   |     2
+ 2 | text2   |     2
+ 2 | text2   |   102
+ 3 | text103 |     3
+ 3 | text103 |     3
+ 3 | text103 |   103
+ 3 | text103 |   103
+ 3 | text3   |     3
+ 3 | text3   |     3
+ 3 | text3   |   103
+ 4 | text104 |     4
+ 4 | text104 |     4
+ 4 | text104 |   104
+ 4 | text104 |   104
+ 4 | text4   |     4
+ 4 | text4   |     4
+ 4 | text4   |   104
+ 5 | text105 |     5
+ 5 | text105 |     5
+ 5 | text105 |   105
+ 5 | text105 |   105
+ 5 | text5   |     5
+ 5 | text5   |     5
+ 5 | text5   |   105
+ 6 | text106 |     6
+ 6 | text106 |     6
+ 6 | text106 |   106
+ 6 | text106 |   106
+ 6 | text6   |     6
+ 6 | text6   |     6
+ 6 | text6   |   106
+ 7 | text107 |     7
+ 7 | text107 |     7
+ 7 | text107 |   107
+ 7 | text107 |   107
+ 7 | text7   |     7
+ 7 | text7   |     7
+ 7 | text7   |   107
+ 8 | text108 |     8
+ 8 | text108 |     8
+ 8 | text108 |   108
+ 8 | text108 |   108
+ 8 | text8   |     8
+ 8 | text8   |     8
+ 8 | text8   |   108
+ 9 | text109 |     9
+ 9 | text109 |     9
+ 9 | text109 |   109
+(60 rows)
+
+--end_equivalent
 drop table if exists b;
 create table b (i integer);
 insert into b values(1);

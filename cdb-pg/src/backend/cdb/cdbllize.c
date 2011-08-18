@@ -434,8 +434,8 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 		 * Step 1: Save targetlist, quals and paramset from the scan node
 		 */
 		List *saveTL = copyObject(scanPlan->targetlist);
-		Bitmapset *saveParam = bms_copy(scanPlan->allParam);
-
+		Bitmapset *saveAllParam = bms_copy(scanPlan->allParam);
+		Bitmapset *saveExtParam = bms_copy(scanPlan->extParam);
 
 		/**
 		 * Step 2: Next, iterate over quals and find out if they need to be part of the scan or the result node.
@@ -459,6 +459,7 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 		}
 		scanPlan->qual = scanQual;
 		scanPlan->allParam = NULL;
+		scanPlan->extParam = NULL;
 
 		/**
 		 * Step 3: Find all the vars that are needed from the scan node
@@ -520,7 +521,8 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 		 */
 		Result *res = make_result(resTL, NULL, mat);
 		res->plan.qual = resQual;
-		((Plan *) res)->allParam = saveParam;
+		((Plan *) res)->allParam = saveAllParam;
+		((Plan *) res)->extParam = saveExtParam;
 
 		return (Node *) res;
 	}

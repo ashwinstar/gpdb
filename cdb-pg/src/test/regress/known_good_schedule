@@ -139,6 +139,7 @@ test: gpdtm_plpgsql
 ignore: gp_portal_error
 test: notin
 test: with_clause
+test: eagerfree
 test: toast
 test: mapred
 test: gpparams

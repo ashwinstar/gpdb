@@ -78,11 +78,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
-#ifdef OLD_HASHAGG
-#include "executor/execHashagg.h"
-#else
 #include "executor/execHHashagg.h"
-#endif
 #include "executor/nodeAgg.h"
 #include "lib/stringinfo.h"             /* StringInfo */
 #include "miscadmin.h"
@@ -102,6 +98,8 @@
 
 #include "cdb/cdbexplain.h"
 #include "cdb/cdbvars.h" /* mpp_hybrid_hash_agg */
+
+#define IS_HASHAGG(aggstate) (((Agg *) (aggstate)->ss.ps.plan)->aggstrategy == AGG_HASHED)
 
 /*
  * AggStatePerAggData -- per-aggregate working state
@@ -125,6 +123,7 @@ typedef struct AggHashEntryData
 	/* per-aggregate transition status array - must be last! */
 	AggStatePerGroupData pergroup[1];	/* VARIABLE LENGTH ARRAY */
 } AggHashEntryData;				/* VARIABLE LENGTH STRUCT */
+
 
 static void advance_transition_function(AggState *aggstate,
 										AggStatePerAgg peraggstate,
@@ -955,7 +954,11 @@ TupleTableSlot *
 ExecAgg(AggState *node)
 {
 	if (node->agg_done)
+	{
+		ExecEagerFreeAgg(node);
 		return NULL;
+	}
+	
 
 	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
 	{
@@ -1005,7 +1008,6 @@ ExecAgg(AggState *node)
 		
 			switch (node->hhashtable->state)
 			{
-#ifndef OLD_HASHAGG
 				case HASHAGG_BETWEEN_PASSES:
 					Assert(!streaming);
 					if (agg_hash_next_pass(node))
@@ -1018,27 +1020,10 @@ ExecAgg(AggState *node)
 					 * pass through. Be sure that the next case statment
 					 * is HASHAGG_END_OF_PASSES.
 					 */
-#else
-				case HASHAGG_BETWEEN_PASSES:
-					Assert(!streaming);
-					if (!agg_hash_next_pass(node))
-					{
-						node->hhashtable->state = HASHAGG_END_OF_PASSES;
-						continue;
-					}
-					node->hhashtable->state = HASHAGG_IN_A_PASS;
-					continue;
-		
-				case HASHAGG_IN_A_PASS:
-					Assert(!streaming);
-					if (!agg_hash_continue_pass(node))
-						node->hhashtable->state = HASHAGG_BETWEEN_PASSES;
-					continue;
-				
-#endif
 
 				case HASHAGG_END_OF_PASSES:
 					node->agg_done = true;
+					ExecEagerFreeAgg(node);
 					return NULL;
 
 				case HASHAGG_STREAMING:
@@ -1543,15 +1528,12 @@ agg_retrieve_hash_table(AggState *aggstate)
 	 */
 	while (!aggstate->agg_done)
 	{
-#ifndef OLD_HASHAGG
 		HashAggEntry *entry = agg_hash_iter(aggstate);
-#else
-		HashAggEntry *entry = agg_hash_iter(aggstate->hhashtable);
-#endif
 			
 		if (entry == NULL)
 		{
 			aggstate->agg_done = TRUE;
+
 			return NULL;
 		}
 			
@@ -1561,16 +1543,10 @@ agg_retrieve_hash_table(AggState *aggstate)
 		 * Store the copied first input tuple in the tuple table slot reserved
 		 * for it, so that it can be used in ExecProject.
 		 */
-#ifndef OLD_HASHAGG
 		ExecStoreMemTuple((MemTuple)entry->tuple_and_aggs, firstSlot, false);
 		pergroup = (AggStatePerGroup)((char *)entry->tuple_and_aggs + 
 					      MAXALIGN(memtuple_get_size((MemTuple)entry->tuple_and_aggs,
 									 aggstate->hashslot->tts_mt_bind)));
-#else
-		ExecStoreMemTuple(entry->memtuple, firstSlot, false);
-
-		pergroup = entry->pergroup;
-#endif
 
 		/*
 		 * Finalize each aggregate calculation, and stash results in the
@@ -2259,37 +2235,12 @@ ExecCountSlotsAgg(Agg *node)
 	AGG_NSLOTS;
 }
 
-static void
-ExecEndAgg_internal(AggState *node)
-{
-	int			aggno;
-
-	/* Make sure we have closed any open tuplesorts */
-	for (aggno = 0; aggno < node->numaggs; aggno++)
-	{
-		AggStatePerAgg peraggstate = &node->peragg[aggno];
-
-		if (peraggstate->sortstate)
-		{
-			if(gp_enable_mk_sort)
-				tuplesort_end_mk((Tuplesortstate_mk *) peraggstate->sortstate);
-			else
-				tuplesort_end((Tuplesortstate *) peraggstate->sortstate);
-			peraggstate->sortstate = NULL;
-		}
-	}
-}
-
 void
 ExecEndAgg(AggState *node)
 {
 	PlanState  *outerPlan;
 
-    ExecEndAgg_internal(node);
-
-	/* Clean up hybrid hash agg. */
-	if ( ((Agg*)node->ss.ps.plan)->aggstrategy == AGG_HASHED)
-		destroy_agg_hash_table(node);
+	ExecEagerFreeAgg(node);
 
 	/*
 	 * Free both the expr contexts.
@@ -2320,63 +2271,8 @@ void
 ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 {
 	ExprContext *econtext = node->ss.ps.ps_ExprContext;
-	int			aggno;
 
-	node->agg_done = false;
-
-
-	/* Make sure we have closed any open tuplesorts */
-	for (aggno = 0; aggno < node->numaggs; aggno++)
-	{
-		AggStatePerAgg peraggstate = &node->peragg[aggno];
-
-		if (peraggstate->sortstate)
-		{
-			if(gp_enable_mk_sort)
-				tuplesort_end_mk((Tuplesortstate_mk *)peraggstate->sortstate);
-			else
-				tuplesort_end((Tuplesortstate *)peraggstate->sortstate);
-		}
-
-		peraggstate->sortstate = NULL;
-	}
-
-	/* Release first tuple of group, if we have made a copy */
-	if (node->grp_firstTuple != NULL)
-	{
-		pfree(node->grp_firstTuple);
-		node->grp_firstTuple = NULL;
-	}
-
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-	node->has_partial_agg = false;
-
-	/* Forget current agg values */
-	MemSet(econtext->ecxt_aggvalues, 0, sizeof(Datum) * node->numaggs);
-	MemSet(econtext->ecxt_aggnulls, 0, sizeof(bool) * node->numaggs);
-
-
-	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
-	{
-		destroy_agg_hash_table(node);
-		/**
-		 * Clean out the tuple descriptor.
-		 */
-		if (node->hashslot
-				&& node->hashslot->tts_tupleDescriptor)
-		{
-			ReleaseTupleDesc(node->hashslot->tts_tupleDescriptor);
-			node->hashslot->tts_tupleDescriptor = NULL;
-		}
-	}
-	else
-	{
-		/*
-		 * Reset the per-group state (in particular, mark transvalues null)
-		 */
-		MemSet(node->pergroup, 0,
-			   sizeof(AggStatePerGroupData) * node->numaggs);
-	}
+	ExecEagerFreeAgg(node);
 
 	/*
 	 * Release all temp storage. Note that with AGG_HASHED, the hash table
@@ -2386,7 +2282,26 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 	 * table's memory context header.
 	 */
 	MemoryContextResetAndDeleteChildren(node->aggcontext);
-	
+
+	/* Re-initialize some variables */
+	node->agg_done = false;
+
+	ExecClearTuple(node->ss.ss_ScanTupleSlot);
+	node->has_partial_agg = false;
+
+	/* Forget current agg values */
+	MemSet(econtext->ecxt_aggvalues, 0, sizeof(Datum) * node->numaggs);
+	MemSet(econtext->ecxt_aggnulls, 0, sizeof(bool) * node->numaggs);
+
+	if (!IS_HASHAGG(node))
+	{
+		/*
+		 * Reset the per-group state (in particular, mark transvalues null)
+		 */
+		MemSet(node->pergroup, 0,
+			   sizeof(AggStatePerGroupData) * node->numaggs);
+	}
+
 	if (((Agg *) node->ss.ps.plan)->inputHasGrouping)
 	{
 		/*
@@ -2417,14 +2332,6 @@ ExecAggExplainEnd(PlanState *planstate, struct StringInfoData *buf)
     /* Report executor memory used by our memory context. */
     planstate->instrument->execmemused += 
         (double)MemoryContextGetPeakSpace(aggstate->aggcontext);
-
-    /*
-     * Some of the cleanup that ordinarily would occur during ExecEndAgg()
-     * needs to be done earlier (i.e. now) in order to report statistics to 
-     * EXPLAIN ANALYZE.  Note that ExecEndAgg_internal() may be called twice:
-     * first here, and again when ExecEndAgg is called during ExecutorEnd().
-     */
-    ExecEndAgg_internal(aggstate);
 }                               /* ExecAggExplainEnd */
 
 /*
@@ -2651,3 +2558,51 @@ count_extra_agg_slots_walker(Node *node, int *count)
 	return expression_tree_walker(node, count_extra_agg_slots_walker, (void *) count);
 }
 
+void
+ExecEagerFreeAgg(AggState *node)
+{
+	/* Close any open tuplesorts */
+	for (int aggno = 0; aggno < node->numaggs; aggno++)
+	{
+		AggStatePerAgg peraggstate = &node->peragg[aggno];
+
+		if (!peraggstate->sortstate)
+		{
+			continue;
+		}
+		
+		if (gp_enable_mk_sort)
+		{
+			tuplesort_end_mk((Tuplesortstate_mk *) peraggstate->sortstate);
+		}
+		
+		else
+		{
+			tuplesort_end((Tuplesortstate *) peraggstate->sortstate);
+		}
+
+		peraggstate->sortstate = NULL;
+	}
+	
+	if (IS_HASHAGG(node))
+	{
+		destroy_agg_hash_table(node);
+
+		/**
+		 * Clean out the tuple descriptor.
+		 */
+		if (node->hashslot
+				&& node->hashslot->tts_tupleDescriptor)
+		{
+			ReleaseTupleDesc(node->hashslot->tts_tupleDescriptor);
+			node->hashslot->tts_tupleDescriptor = NULL;
+		}
+	}
+
+	/* Release first tuple of group, if we have made a copy. */
+	if (node->grp_firstTuple != NULL)
+	{
+		pfree(node->grp_firstTuple);
+		node->grp_firstTuple = NULL;
+	}
+}

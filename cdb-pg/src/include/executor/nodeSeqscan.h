@@ -23,6 +23,7 @@ extern void ExecEndSeqScan(SeqScanState *node);
 extern void ExecSeqMarkPos(SeqScanState *node);
 extern void ExecSeqRestrPos(SeqScanState *node);
 extern void ExecSeqReScan(SeqScanState *node, ExprContext *exprCtxt);
+extern void ExecEagerFreeSeqScan(SeqScanState *node);
 
 /* Gpmon stuff */
 enum 

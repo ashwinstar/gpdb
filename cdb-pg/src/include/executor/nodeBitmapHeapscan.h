@@ -21,6 +21,7 @@ extern BitmapHeapScanState *ExecInitBitmapHeapScan(BitmapHeapScan *node, EState 
 extern TupleTableSlot *ExecBitmapHeapScan(BitmapHeapScanState *node);
 extern void ExecEndBitmapHeapScan(BitmapHeapScanState *node);
 extern void ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt);
+extern void ExecEagerFreeBitmapHeapScan(BitmapHeapScanState *node);
 
 enum
 {

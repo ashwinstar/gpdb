@@ -443,8 +443,8 @@ log_autostats=off	# print additional autostats information
 #resource_select_only = on		# resource lock SELECT queries only.
 #resource_cleanup_gangs_on_wait = on	# Cleanup idle reader gangs before
 										# resource lockwait.
-gp_resqueue_memory_policy = 'auto'	# memory request based queueing. 
-									# auto or none
+gp_resqueue_memory_policy = 'eager_free'	# memory request based queueing. 
+									# eager_free, auto or none
 #---------------------------------------------------------------------------
 # EXTERNAL TABLES
 #---------------------------------------------------------------------------

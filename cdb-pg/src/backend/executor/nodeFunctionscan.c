@@ -35,7 +35,6 @@
 
 static TupleTableSlot *FunctionNext(FunctionScanState *node);
 static void ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf);
-static void ExecFunctionScanEndCommon(FunctionScanState *node);
 
 static void PushMemoryReservedForFunctionScan(uint64 mem_reserved);
 static void PopMemoryReservedForFunctionScan(void);
@@ -90,16 +89,6 @@ FunctionNext(FunctionScanState *node)
 			node->ss.ps.cdbexplainfun = ExecFunctionScanExplainEnd;
 		}
 
-		/* CDB: Offer extra info for EXPLAIN ANALYZE. */
-		if (node->ss.ps.instrument)
-		{
-			/* Let the tuplestore share our Instrumentation object. */
-			tuplestore_set_instrument(tuplestorestate, node->ss.ps.instrument);
-
-			/* Request a callback at end of query. */
-			node->ss.ps.cdbexplainfun = ExecFunctionScanExplainEnd;
-		}
-
 	}
 
 	/*
@@ -130,6 +119,12 @@ FunctionNext(FunctionScanState *node)
 		Gpmon_M_Incr_Rows_Out(GpmonPktFromFuncScanState(node));
 		CheckSendPlanStateGpmonPkt(&node->ss.ps);
 	}
+
+	else if (!node->ss.ps.delayEagerFree)
+	{
+		ExecEagerFreeFunctionScan((FunctionScanState *)(&node->ss.ps));
+	}
+	
 	return slot;
 }
 
@@ -284,11 +279,11 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 
 	initGpmonPktForFunctionScan((Plan *)node, &scanstate->ss.ps.gpmon_pkt, estate);
 	
-	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 	{
 		PushMemoryReservedForFunctionScan(((Plan *)node)->operatorMemKB * 1024L);
 	}
-	
+
 	return scanstate;
 }
 
@@ -300,32 +295,6 @@ ExecCountSlotsFunctionScan(FunctionScan *node)
 		FUNCTIONSCAN_NSLOTS;
 }
 
-/**
- * Common substrate of ExecFunctionScanExplainEnd and ExecFunctionScanEnd
- */
-void
-ExecFunctionScanEndCommon(FunctionScanState *node)
-{
-	/*
-	 * Free the exprcontext
-	 */
-	ExecFreeExprContext(&node->ss.ps);
-
-	/*
-	 * clean out the tuple table
-	 */
-	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-
-	/*
-	 * Release tuplestore resources
-	 */
-	if (node->tuplestorestate != NULL)
-		tuplestore_end(node->tuplestorestate); 
-	node->tuplestorestate = NULL;
-
-	EndPlanStateGpmonPkt(&node->ss.ps);
-}
 /*
  * ExecFunctionScanExplainEnd
  *      Called before ExecutorEnd to finish EXPLAIN ANALYZE reporting.
@@ -337,7 +306,7 @@ ExecFunctionScanEndCommon(FunctionScanState *node)
 void
 ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf __attribute__((unused)))
 {
-	ExecFunctionScanEndCommon((FunctionScanState *) planstate);
+	ExecEagerFreeFunctionScan((FunctionScanState *) planstate);
 }                               /* ExecFunctionScanExplainEnd */
 
 
@@ -350,8 +319,22 @@ ExecFunctionScanExplainEnd(PlanState *planstate, struct StringInfoData *buf __at
 void
 ExecEndFunctionScan(FunctionScanState *node)
 {
-	ExecFunctionScanEndCommon(node);
-	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+	/*
+	 * Free the exprcontext
+	 */
+	ExecFreeExprContext(&node->ss.ps);
+
+	/*
+	 * clean out the tuple table
+	 */
+	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
+	ExecClearTuple(node->ss.ss_ScanTupleSlot);
+
+	ExecEagerFreeFunctionScan(node);
+
+	EndPlanStateGpmonPkt(&node->ss.ps);
+
+	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 	{
 		PopMemoryReservedForFunctionScan();
 	}
@@ -425,11 +408,12 @@ ExecFunctionReScan(FunctionScanState *node, ExprContext *exprCtxt)
 	 */
 	if (node->ss.ps.chgParam != NULL)
 	{
-		tuplestore_end(node->tuplestorestate);
-		node->tuplestorestate = NULL;
+		ExecEagerFreeFunctionScan(node);
 	}
 	else
+	{
 		tuplestore_rescan(node->tuplestorestate);
+	}
 }
 
 void
@@ -465,7 +449,7 @@ static Stack functionScanMemoryReservedStack;
  */
 void InitFunctionScanMemoryReservedStack(void)
 {
-	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO);
+	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
 	Init(&functionScanMemoryReservedStack);
 }
 
@@ -477,7 +461,7 @@ void InitFunctionScanMemoryReservedStack(void)
  */
 void PushMemoryReservedForFunctionScan(uint64 mem_reserved)
 {
-	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO);
+	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
 	Assert(CurrentMemoryContext);
 	uint64 *mem_reserved_copy = palloc(sizeof(mem_reserved));
 	(* mem_reserved_copy) = mem_reserved;
@@ -496,7 +480,7 @@ void PushMemoryReservedForFunctionScan(uint64 mem_reserved)
  */
 uint64 CurrentFunctionScanMemoryReserved(void)
 {
-	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO);
+	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
 	uint64 *mem_reserved = (uint64 *) Peek(&functionScanMemoryReservedStack);
 	return (*mem_reserved);
 }
@@ -506,7 +490,7 @@ uint64 CurrentFunctionScanMemoryReserved(void)
  */
 void PopMemoryReservedForFunctionScan(void)
 {
-	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO);
+	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
 
 	if (!IsEmptyMemoryReservedForFunctionScan())
 	{
@@ -519,6 +503,17 @@ void PopMemoryReservedForFunctionScan(void)
  */
 bool IsEmptyMemoryReservedForFunctionScan(void)
 {
-	Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO);
+	Assert(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE);
 	return IsEmpty(&functionScanMemoryReservedStack);
+}
+
+void
+ExecEagerFreeFunctionScan(FunctionScanState *node)
+{
+	if (node->tuplestorestate != NULL)
+	{
+		tuplestore_end(node->tuplestorestate);
+	}
+	
+	node->tuplestorestate = NULL;
 }

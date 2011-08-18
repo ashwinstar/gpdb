@@ -1077,8 +1077,10 @@ gpvars_assign_gp_resqueue_memory_policy(const char *newval, bool doit, GucSource
 		newtype = RESQUEUE_MEMORY_POLICY_NONE;
 	else if (!pg_strcasecmp("auto", newval))
 		newtype = RESQUEUE_MEMORY_POLICY_AUTO;
+	else if (!pg_strcasecmp("eager_free", newval))
+		newtype = RESQUEUE_MEMORY_POLICY_EAGER_FREE;
 	else
-		elog(ERROR, "Unknown resource queue memory policy. (current policy is '%s')", gpvars_show_gp_resqueue_memory_policy());
+		elog(ERROR, "unknown resource queue memory policy: current policy is '%s'", gpvars_show_gp_resqueue_memory_policy());
 
 	if (doit)
 	{
@@ -1097,6 +1099,8 @@ gpvars_show_gp_resqueue_memory_policy(void)
 			return "none";
 		case RESQUEUE_MEMORY_POLICY_AUTO:
 			return "auto";
+		case RESQUEUE_MEMORY_POLICY_EAGER_FREE:
+			return "eager_free";
 		default:
 			return "none";
 	}

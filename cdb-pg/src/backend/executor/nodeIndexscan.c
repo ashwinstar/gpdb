@@ -124,9 +124,10 @@ IndexNext(IndexScanState *node)
 	{
 		if (estate->es_evTupleNull[scanrelid - 1])
 		{
-			if (node->iss_ScanDesc != NULL &&
-				node->iss_ScanDesc->earlyFreeSafe)
-				freeScanDesc(node);
+			if (!node->ss.ps.delayEagerFree)
+			{
+				ExecEagerFreeIndexScan(node);
+			}
 			
 			return ExecClearTuple(slot);
 		}
@@ -140,9 +141,10 @@ IndexNext(IndexScanState *node)
 
 		if (!ExecQual(node->indexqualorig, econtext, false))
 		{
-			if (node->iss_ScanDesc != NULL &&
-				node->iss_ScanDesc->earlyFreeSafe)
-				freeScanDesc(node);
+			if (!node->ss.ps.delayEagerFree)
+			{
+				ExecEagerFreeIndexScan(node);
+			}
 			
 			ExecClearTuple(slot);		/* would not be returned by scan */
 		}
@@ -175,9 +177,10 @@ IndexNext(IndexScanState *node)
 		return slot;
 	}
 
-	if (node->iss_ScanDesc != NULL &&
-		node->iss_ScanDesc->earlyFreeSafe)
-		freeScanDesc(node);
+	if (!node->ss.ps.delayEagerFree)
+	{
+		ExecEagerFreeIndexScan(node);
+	}
 	
 	/*
 	 * if we get here it means the index scan failed so we are at the end of
@@ -480,7 +483,7 @@ ExecEndIndexScan(IndexScanState *node)
 	/*
 	 * close the index relation
 	 */
-	freeScanDesc(node);
+	ExecEagerFreeIndexScan(node);
 	index_close(indexRelationDesc, NoLock);
 
 	/*
@@ -644,6 +647,13 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	ExecAssignScanProjectionInfo(&indexstate->ss);
 
 	initGpmonPktForIndexScan((Plan *)node, &indexstate->ss.ps.gpmon_pkt, estate);
+
+	/*
+	 * If eflag contains EXEC_FLAG_REWIND or EXEC_FLAG_BACKWARD or EXEC_FLAG_MARK,
+	 * then this node is not eager free safe.
+	 */
+	indexstate->ss.ps.delayEagerFree =
+		((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) != 0);
 
 	/*
 	 * all done.
@@ -1064,4 +1074,10 @@ initGpmonPktForIndexScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *esta
 		if (relname)
 			pfree(relname);
 	}
+}
+
+void
+ExecEagerFreeIndexScan(IndexScanState *node)
+{
+	freeScanDesc(node);
 }

@@ -176,8 +176,10 @@ ExecSeqScan(SeqScanState *node)
                 CheckSendPlanStateGpmonPkt(&node->ps);
         }
 
-	if(TupIsNull(slot) && ((node->scan_state & SCAN_MARKPOS) == 0))
+	if(TupIsNull(slot) && !node->ps.delayEagerFree)
+	{
 		CloseScanRelation(node);
+	}
 
 	return slot;
 }
@@ -320,6 +322,13 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 
 	initGpmonPktForSeqScan((Plan *)node, &scanstate->ps.gpmon_pkt, estate);
 
+	/*
+	 * If eflag contains EXEC_FLAG_REWIND or EXEC_FLAG_BACKWARD or EXEC_FLAG_MARK,
+	 * then this node is not eager free safe.
+	 */
+	scanstate->ps.delayEagerFree =
+		((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) != 0);
+
 	return scanstate;
 }
 
@@ -358,8 +367,7 @@ ExecEndSeqScan(SeqScanState *node)
 	ExecClearTuple(node->ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss_ScanTupleSlot);
 
-	if((node->scan_state & SCAN_SCAN) != 0)
-		CloseScanRelation(node);
+	ExecEagerFreeSeqScan(node);
 
 	/*
 	 * close the heap relation.
@@ -588,5 +596,14 @@ initGpmonPktForSeqScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate
 		Assert(GPMON_SEQSCAN_TOTAL <= (int)GPMON_QEXEC_M_COUNT);
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_SeqScan,
 							 (int64) planNode->plan_rows, GetScanRelNameGpmon(rte->relid, schema_rel_name));
+	}
+}
+
+void
+ExecEagerFreeSeqScan(SeqScanState *node)
+{
+	if (((node->scan_state & SCAN_SCAN) != 0))
+	{
+		CloseScanRelation(node);
 	}
 }

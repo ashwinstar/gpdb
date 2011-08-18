@@ -239,8 +239,7 @@ ExecEndAppendOnlyScan(AppendOnlyScanState *node)
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
-	if((node->ss.scan_state & SCAN_SCAN) != 0)
-		CloseAOScanRelation(node);
+	ExecEagerFreeAppendOnlyScan(node);
 
 	/*
 	 * close the heap relation.
@@ -306,4 +305,11 @@ initGpmonPktForAppendOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState 
 							 (int64)planNode->plan_rows,
 							 GetScanRelNameGpmon(rte->relid, schema_rel_name));
 	}
+}
+
+void
+ExecEagerFreeAppendOnlyScan(AppendOnlyScanState *node)
+{
+	if((node->ss.scan_state & SCAN_SCAN) != 0)
+		CloseAOScanRelation(node);
 }

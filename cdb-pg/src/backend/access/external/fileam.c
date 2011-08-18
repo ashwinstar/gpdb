@@ -312,10 +312,13 @@ external_endscan(FileScanDesc scan)
 {
 	char *relname = pstrdup(RelationGetRelationName(scan->fs_rd));
 	
-	/*
-	 * decrement relation reference count and free scan descriptor storage
-	 */
-	RelationDecrementReferenceCount(scan->fs_rd);
+	if (scan->fs_pstate != NULL)
+	{
+		/*
+		 * decrement relation reference count and free scan descriptor storage
+		 */
+		RelationDecrementReferenceCount(scan->fs_rd);
+	}
 
 	if (scan->values)
 	{
@@ -338,7 +341,7 @@ external_endscan(FileScanDesc scan)
 		scan->typioparams = NULL;
 	}
 
-	if (scan->fs_pstate->rowcontext != NULL)
+	if (scan->fs_pstate != NULL && scan->fs_pstate->rowcontext != NULL)
 	{
 		/*
 		 * delete the row context
@@ -352,7 +355,7 @@ external_endscan(FileScanDesc scan)
 	 * 1) QEs: send a libpq message to QD with num of rows rejected in this segment
 	 * 2) Free SREH resources (includes closing the error table if used).
 	 */
-	if (scan->fs_pstate->errMode != ALL_OR_NOTHING)
+	if (scan->fs_pstate != NULL && scan->fs_pstate->errMode != ALL_OR_NOTHING)
 	{
 		if (Gp_role == GP_ROLE_EXECUTE)
 			SendNumRowsRejected(scan->fs_pstate->cdbsreh->rejectcount);
@@ -367,40 +370,53 @@ external_endscan(FileScanDesc scan)
 		if (scan->fs_formatter->fmt_databuf.data)
 			pfree(scan->fs_formatter->fmt_databuf.data);
 		pfree(scan->fs_formatter);
+		scan->fs_formatter = NULL;
 	}
 	
 	/*
 	 * free parse state memory
 	 */
-	if (scan->fs_pstate->attribute_buf.data)
-		pfree(scan->fs_pstate->attribute_buf.data);
-	if (scan->fs_pstate->line_buf.data)
-		pfree(scan->fs_pstate->line_buf.data);
-	if (scan->fs_pstate->attr_offsets)
-		pfree(scan->fs_pstate->attr_offsets);
-	if (scan->fs_pstate->force_quote_flags)
-		pfree(scan->fs_pstate->force_quote_flags);
-	if (scan->fs_pstate->force_notnull_flags)
-		pfree(scan->fs_pstate->force_notnull_flags);
+	if (scan->fs_pstate != NULL)
+	{
+		if (scan->fs_pstate->attribute_buf.data)
+			pfree(scan->fs_pstate->attribute_buf.data);
+		if (scan->fs_pstate->line_buf.data)
+			pfree(scan->fs_pstate->line_buf.data);
+		if (scan->fs_pstate->attr_offsets)
+			pfree(scan->fs_pstate->attr_offsets);
+		if (scan->fs_pstate->force_quote_flags)
+			pfree(scan->fs_pstate->force_quote_flags);
+		if (scan->fs_pstate->force_notnull_flags)
+			pfree(scan->fs_pstate->force_notnull_flags);
 
-	pfree(scan->fs_pstate);
+		pfree(scan->fs_pstate);
+		scan->fs_pstate = NULL;
+	}
 
     /*
 	 * clean up error context
 	 */
 	error_context_stack = scan->errcontext.previous;
 
-	/*
-	 * Close the external file
-	 */
-	if (!scan->fs_noop && scan->fs_file)
+	PG_TRY();
 	{
-		close_external_source(scan->fs_file, true, (const char*)relname);
-		scan->fs_file = NULL;
+		/*
+		 * Close the external file
+		 */
+		if (!scan->fs_noop && scan->fs_file)
+		{
+			close_external_source(scan->fs_file, true, (const char*)relname);
+			scan->fs_file = NULL;
+		}
 	}
+	PG_CATCH();
+	{
+		scan->fs_file = NULL;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	pfree(relname);
-	pfree(scan);
 }
 
 

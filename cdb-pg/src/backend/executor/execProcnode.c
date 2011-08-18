@@ -778,6 +778,20 @@ Exec_Jmp_Done:
 	ExecCdbTraceNode(node, false, result);
 #endif   /* CDB_TRACE_EXECUTOR */
 
+	/* Eager free the subplans */
+	if (TupIsNull(result))
+	{
+		ListCell *subp;
+		foreach(subp, node->subPlan)
+		{
+			SubPlanState *subplanState = (SubPlanState *)lfirst(subp);
+			Assert(subplanState != NULL &&
+				   subplanState->planstate != NULL);
+			ExecEagerFreeChildNodes(subplanState->planstate, true);
+			ExecEagerFree(subplanState->planstate);
+		}
+	}
+
 	return result;
 }
 
@@ -995,6 +1009,7 @@ squelchNodeWalker(PlanState *node,
 		ExecStopExternalScan((ExternalScanState *) node);
 		/* ExternalScan nodes are expected to be leaf nodes (without subplans) */
 	}
+
 	return CdbVisit_Walk;
 }	/* squelchNodeWalker */
 

@@ -174,8 +174,7 @@ BitmapHeapNext(BitmapHeapScanState *node)
 	{
 		if (estate->es_evTupleNull[scanrelid - 1])
 		{
-			freeBitmapState(node);
-			freeScanDesc(node);
+			ExecEagerFreeBitmapHeapScan(node);
 			
 			return ExecClearTuple(slot);
 		}
@@ -191,8 +190,7 @@ BitmapHeapNext(BitmapHeapScanState *node)
 
 		if (!ExecQual(node->bitmapqualorig, econtext, false))
 		{
-			freeBitmapState(node);
-			freeScanDesc(node);
+			ExecEagerFreeBitmapHeapScan(node);
 
 			ExecClearTuple(slot);		/* would not be returned by scan */
 		}
@@ -346,8 +344,7 @@ BitmapHeapNext(BitmapHeapScanState *node)
 		return slot;
 	}
 
-	freeBitmapState(node);
-	freeScanDesc(node);
+	ExecEagerFreeBitmapHeapScan(node);
 
 	/*
 	 * if we get here it means we are at the end of the scan..
@@ -575,15 +572,7 @@ ExecEndBitmapHeapScan(BitmapHeapScanState *node)
 	 */
 	ExecEndNode(outerPlanState(node));
 
-	/*
-	 * Free up bitmaps
-	 */
-	freeBitmapState(node);
-	
-	/*
-	 * close heap scan
-	 */
-	freeScanDesc(node);
+	ExecEagerFreeBitmapHeapScan(node);
 
 	/*
 	 * close the heap relation.
@@ -714,4 +703,11 @@ initGpmonPktForBitmapHeapScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState 
 							 (int64)planNode->plan_rows,
 							 GetScanRelNameGpmon(rte->relid, schema_rel_name));
 	}
+}
+
+void
+ExecEagerFreeBitmapHeapScan(BitmapHeapScanState *node)
+{
+	freeScanDesc(node);
+	freeBitmapState(node);
 }

@@ -1908,7 +1908,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
                 	/** TODO: siva - can we ever reach this point? */
                     PortalSetStatus(ActivePortal, PORTAL_QUEUE);
             		
-                    if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+                    if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
                     {
             			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, ActivePortal->queueId);
                     }
@@ -1927,7 +1927,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
                 	Assert(ActivePortal);
                 	Assert(ActivePortal->releaseResLock);
 
-                	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+                	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
                 	{
                 		if (IsEmptyMemoryReservedForFunctionScan())
                 		{
@@ -1995,7 +1995,7 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 		Assert(queryDesc->plannedstmt->backoff_weight > 0);
 	}
 	
-	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO
+	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
 			&& superuser())
 	{
 		if (IsEmptyMemoryReservedForFunctionScan())

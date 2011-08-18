@@ -1572,7 +1572,7 @@ cdbexplain_showExecStatsEnd(struct PlannedStmt *stmt,
        appendStringInfoChar(str, '\n');
     }
     
-    if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+    if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
     {
         appendStringInfoString(str, "Statement statistics:\n");
         appendStringInfo(str, "  Memory used: %.0fK bytes", ceil((double) stmt->query_mem / 1024.0));

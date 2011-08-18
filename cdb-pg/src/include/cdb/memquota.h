@@ -15,7 +15,8 @@
 typedef enum ResQueueMemoryPolicy
 {
 	RESQUEUE_MEMORY_POLICY_NONE,
-	RESQUEUE_MEMORY_POLICY_AUTO
+	RESQUEUE_MEMORY_POLICY_AUTO,
+	RESQUEUE_MEMORY_POLICY_EAGER_FREE
 } ResQueueMemoryPolicy;
 
 extern char                		*gp_resqueue_memory_policy_str;
@@ -23,8 +24,10 @@ extern ResQueueMemoryPolicy		gp_resqueue_memory_policy;
 extern bool						gp_log_resqueue_memory;
 extern int						gp_resqueue_memory_policy_auto_fixed_mem;
 extern const int				gp_resqueue_memory_log_level;
+extern bool						gp_resqueue_print_operator_memory_limits;
 
 extern void PolicyAutoAssignOperatorMemoryKB(PlannedStmt *stmt, uint64 memoryAvailable);
+extern void PolicyEagerFreeAssignOperatorMemoryKB(PlannedStmt *stmt, uint64 memoryAvailable);
 
 /**
  * What is the memory limit on a queue per the catalog?

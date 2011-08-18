@@ -2741,7 +2741,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_eager_hashtable_release", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"gp_eager_hashtable_release", PGC_USERSET, DEPRECATED_OPTIONS,
 			gettext_noop("This guc determines if a hash-join eagerly releases its hash table."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
@@ -2969,6 +2969,18 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_log_resqueue_memory,
 		false, NULL, NULL
 	},
+
+	{
+		{"gp_resqueue_print_operator_memory_limits", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints out the memory limit for operators (in explain) assigned by resource queue's "
+						 "memory management."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&gp_resqueue_print_operator_memory_limits,
+		false, NULL, NULL
+	},
+
 
 	/* End-of-list marker */
 	{
@@ -3256,7 +3268,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"work_mem", PGC_USERSET, RESOURCES_MEM,
+		{"work_mem", PGC_USERSET, DEPRECATED_OPTIONS,
 			gettext_noop("Sets the maximum memory to be used for query workspaces."),
 			gettext_noop("This much memory may be used by each internal "
 						 "sort operation and hash table before switching to "
@@ -3272,7 +3284,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"max_work_mem", PGC_SUSET, RESOURCES_MEM,
+		{"max_work_mem", PGC_SUSET, DEPRECATED_OPTIONS,
 		 	gettext_noop("Sets the maximum value for work_mem setting."),
 		 	NULL,
 			GUC_UNIT_KB | GUC_GPDB_ADDOPT
@@ -5677,7 +5689,7 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"gp_resqueue_memory_policy", PGC_SUSET, RESOURCES_MGM,
 			gettext_noop("Sets the policy for memory allocation of queries."),
-			gettext_noop("Valid values are NONE, AUTO.")
+			gettext_noop("Valid values are NONE, AUTO, EAGER_FREE.")
 		},
 		&gp_resqueue_memory_policy_str,
 		"none", gpvars_assign_gp_resqueue_memory_policy, gpvars_show_gp_resqueue_memory_policy

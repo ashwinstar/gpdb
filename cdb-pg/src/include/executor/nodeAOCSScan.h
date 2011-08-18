@@ -14,6 +14,7 @@ extern AOCSScanState *ExecInitAOCSScan(AOCSScan *node, EState *estate, int eflag
 extern TupleTableSlot *ExecAOCSScan(AOCSScanState *node);
 extern void ExecEndAOCSScan(AOCSScanState *node);
 extern void ExecAOCSReScan(AOCSScanState *node, ExprContext *exprCtxt);
+extern void ExecEagerFreeAOCSScan(AOCSScanState *node);
 
 enum 
 {

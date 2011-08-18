@@ -24,6 +24,8 @@ extern Datum ExecSubPlan(SubPlanState *node,
 			ExprDoneCond *isDone);
 extern void ExecEndSubPlan(SubPlanState *node);
 extern void ExecReScanSetParamPlan(SubPlanState *node, PlanState *parent);
+extern void ExecEagerFreeSubPlan(SubPlanState *node);
+
 /*
  * MPP Change: Added a parameter (ParamListInfo p) to this function.  See comments in nodeSubplan.cpp
  */

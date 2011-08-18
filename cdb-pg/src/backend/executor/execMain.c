@@ -277,22 +277,35 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	/**
 	 * Distribute memory to operators.
 	 */
-	
-	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO
-			&& Gp_role == GP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		if (gp_log_resqueue_memory)
+		if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE &&
+			gp_log_resqueue_memory)
 		{
-			elog(gp_resqueue_memory_log_level, "this query requests %.0fkB", (double) queryDesc->plannedstmt->query_mem / 1024.0);
+			elog(gp_resqueue_memory_log_level, "query requested %.0fKB of memory", 
+				 (double) queryDesc->plannedstmt->query_mem / 1024.0);
 		}
-		
+
 		/**
 		 * There are some statements that do not go through the resource queue, so we cannot
 		 * put in a strong assert here. Someday, we should fix resource queues.
 		 */
 		if (queryDesc->plannedstmt->query_mem > 0)
 		{
-			PolicyAutoAssignOperatorMemoryKB(queryDesc->plannedstmt, queryDesc->plannedstmt->query_mem);
+			switch(gp_resqueue_memory_policy)
+			{
+				case RESQUEUE_MEMORY_POLICY_AUTO:
+					PolicyAutoAssignOperatorMemoryKB(queryDesc->plannedstmt, 
+													 queryDesc->plannedstmt->query_mem);
+					break;
+				case RESQUEUE_MEMORY_POLICY_EAGER_FREE:
+					PolicyEagerFreeAssignOperatorMemoryKB(queryDesc->plannedstmt, 
+														 queryDesc->plannedstmt->query_mem);
+					break;
+				default:
+					Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_NONE);
+					break;
+			}
 		}
 	}
 	

@@ -472,7 +472,7 @@ postquel_start(execution_state *es, SQLFunctionCachePtr fcache)
 			AfterTriggerBeginQuery();
 		
 		
-    	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO
+    	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
     			&& !IsEmptyMemoryReservedForFunctionScan())
     	{
     		es->qd->plannedstmt->query_mem = CurrentFunctionScanMemoryReserved();                		

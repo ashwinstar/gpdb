@@ -792,14 +792,21 @@ ExecMergeJoin(MergeJoinState *node)
 					if (node->mj_squelchInner)
 						ExecSquelchNode(innerPlan);
 
+					/*
+					 * The memory used by child nodes might not be freed because
+					 * they are not eager free safe. However, when the merge join
+					 * is done, we can free the memory used by the child nodes.
+					 */
+					ExecEagerFreeMergeJoin(node);
+					
 					/* Otherwise we're done. */
 					return NULL;
 				}
-                     	else
-                     	{
-                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
-                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
-                     	}
+				else
+				{
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+				}
 
 				/* Compute join values and check for unmatchability */
 				if (MJEvalOuterValues(node))
@@ -859,14 +866,16 @@ ExecMergeJoin(MergeJoinState *node)
 					 */
 					ExecSquelchNode(outerPlan);
 
+					ExecEagerFreeMergeJoin(node);
+
 					/* Otherwise we're done. */
 					return NULL;
 				}
-                     	else
-                     	{
-                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
-                         	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
-                    	}
+				else
+				{
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+				}
 
 				/* Compute join values and check for unmatchability */
 				if (MJEvalInnerValues(node, innerTupleSlot))
@@ -1019,17 +1028,21 @@ ExecMergeJoin(MergeJoinState *node)
 					node->mj_JoinState = EXEC_MJ_NEXTOUTER;
 
 					if (((MergeJoin*)node->js.ps.plan)->unique_outer)
+					{
+						ExecEagerFreeMergeJoin(node);
+						
 						/* we are done */
 						return NULL;
+					}
 					
 					break;
 				}
-                     	else
-                     	{
-                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
-                          	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
-                    	}
-
+				else
+				{
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+				}
+				
 				/*
 				 * Load up the new inner tuple's comparison values.  If we see
 				 * that it contains a NULL and hence can't match any outer
@@ -1135,14 +1148,16 @@ ExecMergeJoin(MergeJoinState *node)
 					if (!TupIsNull(innerTupleSlot) && node->mj_squelchInner)
 						ExecSquelchNode(innerPlan);
 
+					ExecEagerFreeMergeJoin(node);
+
 					/* Otherwise we're done. */
 					return NULL;
 				}
-                     	else
-                     	{
-                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
-                         	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
-                    	}
+				else
+				{
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+				}
 
 				/* Compute join values and check for unmatchability */
 				if (MJEvalOuterValues(node))
@@ -1279,6 +1294,8 @@ ExecMergeJoin(MergeJoinState *node)
 						 * never-to-be-consumed data.
 						 */
 						ExecSquelchNode(outerPlan);
+
+						ExecEagerFreeMergeJoin(node);
 
 						/* Otherwise we're done. */
 						return NULL;
@@ -1420,15 +1437,17 @@ ExecMergeJoin(MergeJoinState *node)
 					if (!TupIsNull(innerTupleSlot) && node->mj_squelchInner)
 						ExecSquelchNode(innerPlan);
 
+					ExecEagerFreeMergeJoin(node);
+
 					/* Otherwise we're done. */
 					return NULL;
 				}
-                     	else
-                     	{
-                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
-                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
-                    	}
-
+				else
+				{
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+				}
+				
 				/* Compute join values and check for unmatchability */
 				if (MJEvalOuterValues(node))
 				{
@@ -1503,14 +1522,16 @@ ExecMergeJoin(MergeJoinState *node)
 					if (!TupIsNull(outerTupleSlot))
 						ExecSquelchNode(outerPlan);
 
+					ExecEagerFreeMergeJoin(node);
+
 					/* Otherwise we're done. */
 					return NULL;
 				}
-                     	else
-                     	{
-                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
-                        	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
-                    	}
+				else
+				{
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+				}
 
 				/* Compute join values and check for unmatchability */
 				if (MJEvalInnerValues(node, innerTupleSlot))
@@ -1568,13 +1589,15 @@ ExecMergeJoin(MergeJoinState *node)
 				if (TupIsNull(innerTupleSlot))
 				{
 					MJ_printf("ExecMergeJoin: end of inner subplan\n");
+					ExecEagerFreeMergeJoin(node);
+
 					return NULL;
 				}
-                     	else
-                     	{
-                     		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
-                          	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
-                     	}
+				else
+				{
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+				}
 
 				/* Else remain in ENDOUTER state and process next tuple. */
 				break;
@@ -1619,13 +1642,16 @@ ExecMergeJoin(MergeJoinState *node)
 				if (TupIsNull(outerTupleSlot))
 				{
 					MJ_printf("ExecMergeJoin: end of outer subplan\n");
+
+					ExecEagerFreeMergeJoin(node);
+
 					return NULL;
 				}
-                     	else
-                     	{
-                    		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
-                         	Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
-                    	}
+				else
+				{
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
+					Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+				}
 
 				/* Else remain in ENDINNER state and process next tuple. */
 				break;
@@ -1916,4 +1942,14 @@ initGpmonPktForMergeJoin(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *esta
 							 (int64)planNode->plan_rows,
 							 NULL);
 	}
+}
+
+void
+ExecEagerFreeMergeJoin(MergeJoinState *node)
+{
+	/*
+	 * Since MergeJoin might call Mark/restore on its child nodes, its child nodes
+	 * are not eager free safe. We will free their memory here.
+	 */
+	ExecEagerFreeChildNodes((PlanState *)node, false);
 }

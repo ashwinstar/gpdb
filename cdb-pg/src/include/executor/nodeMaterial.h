@@ -23,6 +23,7 @@ extern void ExecEndMaterial(MaterialState *node);
 extern void ExecMaterialMarkPos(MaterialState *node);
 extern void ExecMaterialRestrPos(MaterialState *node);
 extern void ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt);
+extern void ExecEagerFreeMaterial(MaterialState *node);
 
 enum {
     GPMON_MATERIAL_RESCAN = GPMON_QEXEC_M_NODE_START,

@@ -972,6 +972,14 @@ typedef struct PlanState
         Bitmapset  *chgParam;                /* set of IDs of changed Params */
 
         /*
+         * Indicate whether it is unsafe to eager free the memory used by this node when
+		 * this node outputted its last row.
+		 *
+		 * The unsafe cases are Mark/Restore, Rescan on Material/Sort on top of a Motion.
+         */
+        bool delayEagerFree;
+
+        /*
          * Other run-time state needed by most if not all node types.
          */
         struct TupleTableSlot *ps_OuterTupleSlot;        /* slot for current "outer" tuple */

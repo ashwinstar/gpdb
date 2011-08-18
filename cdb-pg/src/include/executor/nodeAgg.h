@@ -187,6 +187,7 @@ extern Datum invoke_agg_trans_func(FmgrInfo *transfn, int numargs,
 
 extern Datum datumCopyWithMemManager(Datum oldvalue, Datum value, bool typByVal, int typLen,
 									 MemoryManagerContainer *mem_manager);
+extern void ExecEagerFreeAgg(AggState *aggstate);
 
 enum {
 	GPMON_AGG_SPILLTUPLE = GPMON_QEXEC_M_NODE_START,

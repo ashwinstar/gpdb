@@ -2033,7 +2033,7 @@ void AssertMemoryLimitsMatch(void)
 			elog(gp_resqueue_memory_log_level, "Memory limit for queue %d is %.0f in catalog and %.0f in shared mem", queueId, v2, v1);
 		}
 		
-		AssertImply(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO,
+		AssertImply(gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE,
 				v1 == v2 && "Resource queue / shared structure do not match on memory limit in policy AUTO.");
 	}
 	

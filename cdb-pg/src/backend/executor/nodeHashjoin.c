@@ -198,7 +198,7 @@ ExecHashJoin(HashJoinState *node)
 			/* end of join */
 			if (gp_eager_hashtable_release)
 			{
-				ReleaseHashTable(node);
+				ExecEagerFreeHashJoin(node);
 			}
 			return NULL;
 		}
@@ -227,7 +227,7 @@ ExecHashJoin(HashJoinState *node)
 				/* end of join */
 				if (gp_eager_hashtable_release)
 				{
-					ReleaseHashTable(node);
+					ExecEagerFreeHashJoin(node);
 				}
 			    return NULL;
 		    }
@@ -266,7 +266,7 @@ ExecHashJoin(HashJoinState *node)
 				/* end of join */
 				if (gp_eager_hashtable_release)
 				{
-					ReleaseHashTable(node);
+					ExecEagerFreeHashJoin(node);
 				}
 				return NULL;
 			}
@@ -1156,5 +1156,14 @@ initGpmonPktForHashJoin(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estat
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, type, 
 							 (int64)planNode->plan_rows,
 							 NULL);
+	}
+}
+
+void
+ExecEagerFreeHashJoin(HashJoinState *node)
+{
+	if (node->hj_HashTable != NULL && !node->hj_HashTable->eagerlyReleased)
+	{
+		ReleaseHashTable(node);
 	}
 }

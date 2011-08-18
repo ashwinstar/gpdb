@@ -377,7 +377,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt,
 	else
 		eflags = EXEC_FLAG_EXPLAIN_ONLY;
 
-    if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+    if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
     {
 		if (superuser())
 		{
@@ -1232,6 +1232,13 @@ explain_outNode(StringInfo str,
 	appendStringInfo(str, "  (cost=%.2f..%.2f rows=%.0f width=%d)",
 					 plan->startup_cost, plan->total_cost,
 					 ceil(plan->plan_rows / scaleFactor), plan->plan_width);
+
+	if (gp_resqueue_print_operator_memory_limits)
+	{
+		appendStringInfo(str, " (operatorMem=" UINT64_FORMAT "KB)",
+						 PlanStateOperatorMemKB(planstate));
+	}
+
     appendStringInfoChar(str, '\n');
 
 #ifdef DEBUG_EXPLAIN

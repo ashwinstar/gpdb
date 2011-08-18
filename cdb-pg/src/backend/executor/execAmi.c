@@ -543,3 +543,240 @@ ExecMayReturnRawTuples(PlanState *node)
 	}
 	return false;
 }
+
+/*
+ * ExecEagerFree
+ *    Eager free the memory that is used by the given node.
+ */
+void
+ExecEagerFree(PlanState *node)
+{
+	switch (nodeTag(node))
+	{
+		/* No need for eager free */
+		case T_AppendState:
+		case T_BitmapAndState:
+		case T_BitmapOrState:
+		case T_BitmapIndexScanState:
+		case T_LimitState:
+		case T_MotionState:
+		case T_NestLoopState:
+		case T_RepeatState:
+		case T_ResultState:
+		case T_SetOpState:
+		case T_ShareInputScanState:
+		case T_SubqueryScanState:
+		case T_TidScanState:
+		case T_UniqueState:
+		case T_HashState:
+		case T_ValuesScanState:
+			break;
+
+		case T_SeqScanState:
+			ExecEagerFreeSeqScan((SeqScanState *)node);
+			break;
+			
+		case T_AppendOnlyScanState:
+			ExecEagerFreeAppendOnlyScan((AppendOnlyScanState *)node);
+			break;
+			
+		case T_AOCSScanState:
+			ExecEagerFreeAOCSScan((AOCSScanState *)node);
+			break;
+			
+		case T_ExternalScanState:
+			ExecEagerFreeExternalScan((ExternalScanState *)node);
+			break;
+			
+		case T_IndexScanState:
+			ExecEagerFreeIndexScan((IndexScanState *)node);
+			break;
+			
+		case T_BitmapHeapScanState:
+			ExecEagerFreeBitmapHeapScan((BitmapHeapScanState *)node);
+			break;
+			
+		case T_BitmapAppendOnlyScanState:
+			ExecEagerFreeBitmapAppendOnlyScan((BitmapAppendOnlyScanState *)node);
+			break;
+			
+		case T_FunctionScanState:
+			ExecEagerFreeFunctionScan((FunctionScanState *)node);
+			break;
+			
+		case T_MergeJoinState:
+			ExecEagerFreeMergeJoin((MergeJoinState *)node);
+			break;
+			
+		case T_HashJoinState:
+			ExecEagerFreeHashJoin((HashJoinState *)node);
+			break;
+			
+		case T_MaterialState:
+			ExecEagerFreeMaterial((MaterialState*)node);
+			break;
+			
+		case T_SortState:
+			ExecEagerFreeSort((SortState *)node);
+			break;
+			
+		case T_AggState:
+			ExecEagerFreeAgg((AggState*)node);
+			break;
+
+		case T_WindowState:
+			ExecEagerFreeWindow((WindowState *)node);
+			break;
+
+		default:
+			Insist(false);
+			break;
+	}
+}
+
+/*
+ * EagerFreeChildNodesContext
+ *    Store the context info for eager freeing child nodes.
+ */
+typedef struct EagerFreeChildNodesContext
+{
+	/*
+	 * Indicate whether the eager free is called when a subplan
+	 * is finished. This is used to indicate whether we should
+	 * free the Material node under the Result (to support
+	 * correlated subqueries (CSQ)).
+	 */
+	bool subplanDone;
+} EagerFreeChildNodesContext;
+
+/*
+ * EagerFreeWalker
+ *    Walk the tree, and eager free the memory.
+ */
+static CdbVisitOpt
+EagerFreeWalker(PlanState *node, void *context)
+{
+	EagerFreeChildNodesContext *ctx = (EagerFreeChildNodesContext *)context;
+
+	if (node == NULL)
+	{
+		return CdbVisit_Walk;
+	}
+	
+	if (IsA(node, MotionState))
+	{
+		/* Skip the subtree */
+		return CdbVisit_Skip;
+	}
+
+	if (IsA(node, ResultState))
+	{
+		ResultState *resultState = (ResultState *)node;
+		PlanState *lefttree = resultState->ps.lefttree;
+
+		/*
+		 * If the child node for the Result node is a Material, and the child node for
+		 * the Material is a Broadcast Motion, we can't eagerly free the memory for
+		 * the Material node until the subplan is done.
+		 */
+		if (!ctx->subplanDone && lefttree != NULL && IsA(lefttree, MaterialState))
+		{
+			PlanState *matLefttree = lefttree->lefttree;
+			Assert(matLefttree != NULL);
+			
+			if (IsA(matLefttree, MotionState) &&
+				((Motion*)matLefttree->plan)->motionType == MOTIONTYPE_FIXED)
+			{
+				ExecEagerFree(node);
+
+				/* Skip the subtree */
+				return CdbVisit_Skip;
+			}
+		}
+	}
+
+	ExecEagerFree(node);
+	
+	return CdbVisit_Walk;
+}
+
+/*
+ * ExecEagerFreeChildNodes
+ *    Eager free the memory for the child nodes.
+ *
+ * If this function is called when a subplan is finished, this function eagerly frees
+ * the memory for all child nodes. Otherwise, it stops when it sees a Result node on top of
+ * a Material and a Broadcast Motion. The reason that the Material node below the
+ * Result can not be freed until the parent node of the subplan is finished.
+ */
+void
+ExecEagerFreeChildNodes(PlanState *node, bool subplanDone)
+{
+	EagerFreeChildNodesContext ctx;
+	ctx.subplanDone = subplanDone;
+	
+	switch(nodeTag(node))
+	{
+		case T_BitmapIndexScanState:
+		case T_LimitState:
+		case T_RepeatState:
+		case T_ResultState:
+		case T_SetOpState:
+		case T_ShareInputScanState:
+		case T_SubqueryScanState:
+		case T_TidScanState:
+		case T_UniqueState:
+		case T_HashState:
+		case T_ValuesScanState:
+		case T_SeqScanState:
+		case T_AppendOnlyScanState:
+		case T_AOCSScanState:
+		case T_ExternalScanState:
+		case T_IndexScanState:
+		case T_BitmapHeapScanState:
+		case T_BitmapAppendOnlyScanState:
+		case T_FunctionScanState:
+		case T_MaterialState:
+		case T_SortState:
+		case T_AggState:
+		case T_WindowState:
+		{
+			planstate_walk_node(outerPlanState(node), EagerFreeWalker, &ctx);
+			break;
+		}
+
+		case T_NestLoopState:
+		case T_MergeJoinState:
+		case T_BitmapAndState:
+		case T_BitmapOrState:
+		case T_HashJoinState:
+		{
+			planstate_walk_node(innerPlanState(node), EagerFreeWalker, &ctx);
+			planstate_walk_node(outerPlanState(node), EagerFreeWalker, &ctx);
+			break;
+		}
+		
+		case T_AppendState:
+		{
+			AppendState *appendState = (AppendState *)node;
+			for (int planNo = 0; planNo < appendState->as_nplans; planNo++)
+			{
+				planstate_walk_node(appendState->appendplans[planNo], EagerFreeWalker, &ctx);
+			}
+			
+			break;
+		}
+			
+		case T_MotionState:
+		{
+			/* do nothing */
+			break;
+		}
+			
+		default:
+		{
+			Insist(false);
+			break;
+		}
+	}
+}

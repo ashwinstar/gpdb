@@ -241,7 +241,7 @@ ProcessQuery(Portal portal,
 	{
 		PortalSetStatus(portal, PORTAL_QUEUE);
 		
-		if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+		if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
 		
 		portal->releaseResLock = ResLockPortal(portal, queryDesc);
@@ -265,7 +265,7 @@ ProcessQuery(Portal portal,
 		BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->backoff_weight);
 	}
 	
-	if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO
+	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
 			&& Gp_role == GP_ROLE_DISPATCH
 			&& gp_session_id > -1
 			&& superuser())
@@ -807,7 +807,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 				{
 					PortalSetStatus(portal, PORTAL_QUEUE);
 					
-					if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+					if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 						queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
 					
 					portal->releaseResLock = ResLockPortal(portal, queryDesc);
@@ -830,7 +830,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 					BackoffBackendEntryInit(gp_session_id, gp_command_count, queryDesc->plannedstmt->backoff_weight);
 				}
 
-				if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO
+				if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
 						&& Gp_role == GP_ROLE_DISPATCH
 						&& gp_session_id > -1
 						&& superuser())

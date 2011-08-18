@@ -18,6 +18,7 @@ extern AppendOnlyScanState *ExecInitAppendOnlyScan(AppendOnlyScan *node, EState 
 extern TupleTableSlot *ExecAppendOnlyScan(AppendOnlyScanState *node);
 extern void ExecEndAppendOnlyScan(AppendOnlyScanState *node);
 extern void ExecAppendOnlyReScan(AppendOnlyScanState *node, ExprContext *exprCtxt);
+extern void ExecEagerFreeAppendOnlyScan(AppendOnlyScanState *node);
 
 enum 
 {

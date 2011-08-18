@@ -74,13 +74,18 @@ ExternalNext(ExternalScanState *node)
 	 * refcount will not be dropped until the tuple table slot is cleared.
 	 */
 	if (tuple)
-     	{
-            Gpmon_M_Incr_Rows_Out(GpmonPktFromExtScanState(node));
-            CheckSendPlanStateGpmonPkt(&node->ss.ps);
-            ExecStoreGenericTuple(tuple, slot, true);
-    	}
+	{
+		Gpmon_M_Incr_Rows_Out(GpmonPktFromExtScanState(node));
+		CheckSendPlanStateGpmonPkt(&node->ss.ps);
+		ExecStoreGenericTuple(tuple, slot, true);
+	}
 	else
+	{
 		ExecClearTuple(slot);
+
+		ExecEagerFreeExternalScan(node);
+	}
+	
 
 	return slot;
 }
@@ -204,13 +209,6 @@ ExecCountSlotsExternalScan(ExternalScan *node)
 void
 ExecEndExternalScan(ExternalScanState *node)
 {
-	FileScanDesc fileScanDesc;
-
-	/*
-	 * get information from node
-	 */
-	fileScanDesc = node->ess_ScanDesc;
-
 	/*
 	 * Free the exprcontext
 	 */
@@ -222,10 +220,8 @@ ExecEndExternalScan(ExternalScanState *node)
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
-	/*
-	 * close file scan
-	 */
-	external_endscan(fileScanDesc);
+	ExecEagerFreeExternalScan(node);
+	pfree(node->ess_ScanDesc);
 
 	/*
 	 * close the external relation.
@@ -319,4 +315,11 @@ initGpmonPktForExternalScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *e
 							 (int64)planNode->plan_rows,
 							 GetScanRelNameGpmon(rte->relid, schema_rel_name));
 	}
+}
+
+void
+ExecEagerFreeExternalScan(ExternalScanState *node)
+{
+	Assert(node->ess_ScanDesc != NULL);
+	external_endscan(node->ess_ScanDesc);
 }

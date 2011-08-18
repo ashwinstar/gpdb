@@ -180,6 +180,14 @@ ExecNestLoop(NestLoopState *node)
 				 */
 				if (node->nl_Untouched)
 					ExecSquelchNode(innerPlan);
+
+				/*
+				 * The memory used by child nodes might not be freed because
+				 * they are not eager free safe. However, when the nestloop is done,
+				 * we can free the memory used by the child nodes.
+				 */
+				ExecEagerFreeChildNodes((PlanState *)node, false);
+
 				return NULL;
 			}
 

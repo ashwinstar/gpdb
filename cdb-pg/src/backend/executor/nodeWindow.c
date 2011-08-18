@@ -4720,7 +4720,11 @@ ExecWindow(WindowState *wstate)
 		econtext->ecxt_scantuple; /* XXX really need this? */
 
 	if (TupIsNull(econtext->ecxt_scantuple))
+	{
+		ExecEagerFreeWindow(wstate);
+
 		return NULL; /* we are done */
+	}
 
 	/* Process the current_row if it has not been processed. */
 	if (wstate->cur_slot_is_new)
@@ -4782,11 +4786,16 @@ ExecWindow(WindowState *wstate)
 	 */
 	resultSlot = ExecProject(wstate->ps.ps_ProjInfo, &isDone);
 
-     	if (!TupIsNull(resultSlot))
-    	{
-     		Gpmon_M_Incr_Rows_Out(GpmonPktFromWindowState(wstate)); 
-     		CheckSendPlanStateGpmonPkt(&wstate->ps);
-     	}
+	if (!TupIsNull(resultSlot))
+	{
+		Gpmon_M_Incr_Rows_Out(GpmonPktFromWindowState(wstate)); 
+		CheckSendPlanStateGpmonPkt(&wstate->ps);
+	}
+
+	else
+	{
+		ExecEagerFreeWindow(wstate);
+	}
 
 	return resultSlot;
 }
@@ -5705,9 +5714,6 @@ ExecEndWindow(WindowState *node)
 {
 	int level = 0;
 	
-	if (node->input_buffer)
-		freeInputBuffer(node);
-
 	for (level = 0; level < node->numlevels; level++)
 	{
 		WindowStatePerLevel level_state = &node->level_state[level];
@@ -5722,7 +5728,7 @@ ExecEndWindow(WindowState *node)
 		level_state->lead_entry_buf = NULL;
 	}
 
-	freeFrameBuffers(node);
+	ExecEagerFreeWindow(node);
 
 	/*  Free the exprcontext */
 	ExecFreeExprContext(&node->ps);
@@ -5763,11 +5769,7 @@ ExecReScanWindow(WindowState *node, ExprContext *exprCtxt)
 {
 	Assert(node);
 	
-	if (node->input_buffer)
-	{
-		freeInputBuffer(node);
-		freeFrameBuffers(node);
-	}
+	ExecEagerFreeWindow(node);
 	
 	Assert(outerPlanState(node));
 	
@@ -6469,4 +6471,15 @@ initGpmonPktForWindow(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 		InitPlanNodeGpmonPkt(planNode, gpmon_pkt, estate, PMNT_Window,
 							 (int64)planNode->plan_rows, NULL);
 	}
+}
+
+void
+ExecEagerFreeWindow(WindowState *node)
+{
+	if (node->input_buffer != NULL)
+	{
+		freeInputBuffer(node);
+	}
+	
+	freeFrameBuffers(node);
 }

@@ -20,6 +20,7 @@ extern BitmapAppendOnlyScanState *ExecInitBitmapAppendOnlyScan(BitmapAppendOnlyS
 extern TupleTableSlot *ExecBitmapAppendOnlyScan(BitmapAppendOnlyScanState *node);
 extern void ExecEndBitmapAppendOnlyScan(BitmapAppendOnlyScanState *node);
 extern void ExecBitmapAppendOnlyReScan(BitmapAppendOnlyScanState *node, ExprContext *exprCtxt);
+extern void ExecEagerFreeBitmapAppendOnlyScan(BitmapAppendOnlyScanState *node);
 
 enum
 {

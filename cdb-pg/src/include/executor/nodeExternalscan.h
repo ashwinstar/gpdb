@@ -17,6 +17,7 @@ extern TupleTableSlot *ExecExternalScan(ExternalScanState *node);
 extern void ExecEndExternalScan(ExternalScanState *node);
 extern void ExecStopExternalScan(ExternalScanState *node);
 extern void ExecExternalReScan(ExternalScanState *node, ExprContext *exprCtxt);
+extern void ExecEagerFreeExternalScan(ExternalScanState *node);
 
 enum {
     GPMON_EXTSCAN_RESCAN = GPMON_QEXEC_M_NODE_START,

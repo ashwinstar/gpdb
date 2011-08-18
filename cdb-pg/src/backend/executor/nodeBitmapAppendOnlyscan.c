@@ -220,8 +220,7 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 
 		if (!ExecQual(node->baos_bitmapqualorig, econtext, false))
 		{
-			freeFetchDesc(node);
-			freeBitmapState(node);
+			ExecEagerFreeBitmapAppendOnlyScan(node);
 
 			ExecClearTuple(slot);		/* would not be returned by scan */
 		}
@@ -262,8 +261,7 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 
 	if (tbm == NULL)
 	{
-		freeFetchDesc(node);
-		freeBitmapState(node);
+		ExecEagerFreeBitmapAppendOnlyScan(node);
 
 		return ExecClearTuple(slot);
 	}
@@ -392,8 +390,7 @@ BitmapAppendOnlyScanNext(BitmapAppendOnlyScanState *node)
 	/*
 	 * if we get here it means we are at the end of the scan..
 	 */
-	freeFetchDesc(node);
-	freeBitmapState(node);
+	ExecEagerFreeBitmapAppendOnlyScan(node);
 
 	return ExecClearTuple(slot);
 }
@@ -492,15 +489,7 @@ ExecEndBitmapAppendOnlyScan(BitmapAppendOnlyScanState *node)
 	 */
 	ExecEndNode(outerPlanState(node));
 
-	/*
-	 * Free up bitmaps
-	 */
-	freeBitmapState(node);
-
-	/*
-	 * close AO fetch
-	 */
-	freeFetchDesc(node);
+	ExecEagerFreeBitmapAppendOnlyScan(node);
 	
 	/*
 	 * close the heap relation.
@@ -645,4 +634,11 @@ initGpmonPktForBitmapAppendOnlyScan(Plan *planNode, gpmon_packet_t *gpmon_pkt, E
 							 (int64)planNode->plan_rows,
 							 GetScanRelNameGpmon(rte->relid, schema_rel_name));
 	}
+}
+
+void
+ExecEagerFreeBitmapAppendOnlyScan(BitmapAppendOnlyScanState *node)
+{
+	freeFetchDesc(node);
+	freeBitmapState(node);
 }

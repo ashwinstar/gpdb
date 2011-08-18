@@ -86,6 +86,8 @@ extern void ExecRestrPos(PlanState *node);
 extern bool ExecSupportsMarkRestore(NodeTag plantype);
 extern bool ExecSupportsBackwardScan(Plan *node);
 extern bool ExecMayReturnRawTuples(PlanState *node);
+extern void ExecEagerFree(PlanState *node);
+extern void ExecEagerFreeChildNodes(PlanState *node, bool subplanDone);
 
 /*
  * prototypes from functions in execGrouping.c

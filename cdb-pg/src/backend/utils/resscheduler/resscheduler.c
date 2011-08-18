@@ -573,15 +573,26 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 				incData.increments[RES_COUNT_LIMIT] = 1;
 				incData.increments[RES_COST_LIMIT] = ceil(plan->total_cost);
 
-				if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+				if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 				{
+					Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO ||
+						   gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_EAGER_FREE);
+					
 					uint64 queryMemory = qDesc->plannedstmt->query_mem;
 					Assert(queryMemory > 0);
 					if (gp_log_resqueue_memory)
 					{
 						elog(gp_resqueue_memory_log_level, "this query requests %.0fkB", (double) queryMemory / 1024.0);
 					}					
-					PolicyAutoAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
+					if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+					{
+						PolicyAutoAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
+					}
+					else
+					{
+						PolicyEagerFreeAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
+					}
+					
 					incData.increments[RES_MEMORY_LIMIT] = (Cost) queryMemory;
 				}
 				else 
@@ -609,15 +620,27 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 				incData.increments[RES_COST_LIMIT] = ceil(plan->total_cost);
 				incData.isHold = portal->cursorOptions & CURSOR_OPT_HOLD;
 
-				if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+				if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 				{
+					Assert(gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO ||
+						   gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_EAGER_FREE);
+					
 					uint64 queryMemory = qDesc->plannedstmt->query_mem;
 					Assert(queryMemory > 0);
 					if (gp_log_resqueue_memory)
 					{
 						elog(NOTICE, "this query requests %.0fkB", (double) queryMemory / 1024.0);
-					}					
-					PolicyAutoAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
+					}
+
+					if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
+					{
+						PolicyAutoAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
+					}
+					else
+					{
+						PolicyEagerFreeAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
+					}
+					
 					incData.increments[RES_MEMORY_LIMIT] = (Cost) queryMemory;
 				}
 				else 

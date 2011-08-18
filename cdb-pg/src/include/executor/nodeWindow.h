@@ -18,6 +18,7 @@ extern WindowState *ExecInitWindow(Window *node, EState *estate, int eflags);
 extern TupleTableSlot *ExecWindow(WindowState *node);
 extern void ExecEndWindow(WindowState *node);
 extern void ExecReScanWindow(WindowState *node, ExprContext *exprCtxt);
+extern void ExecEagerFreeWindow(WindowState *node);
 
 /* Dummy window function implementation for pg_proc (prosrc). */
 extern Datum window_dummy(PG_FUNCTION_ARGS);

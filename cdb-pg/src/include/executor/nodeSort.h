@@ -23,6 +23,7 @@ extern void ExecEndSort(SortState *node);
 extern void ExecSortMarkPos(SortState *node);
 extern void ExecSortRestrPos(SortState *node);
 extern void ExecReScanSort(SortState *node, ExprContext *exprCtxt);
+extern void ExecEagerFreeSort(SortState *node);
 
 enum
 {

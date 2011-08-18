@@ -87,22 +87,6 @@ typedef struct IndexScanDescData
 	HeapTupleData xs_ctup;		/* current heap tuple, if any */
 	Buffer		xs_cbuf;		/* current heap buffer in scan, if any */
 	/* NB: if xs_cbuf is not InvalidBuffer, we hold a pin on that buffer */
-
-	/*
-	 * Indicate whether it is safe to free this descriptor data
-	 * at an early time (instead of the end of scan), that is,
-	 * at the time after the last tuple has been read.
-	 * 
-	 * This is used to keep the memory usage minimal during the query
-	 * execution, when a large number of partition tables involve in
-	 * the index scan, see MPP-7734.
-	 *
-	 * The unsafe case is when the index scan has a marked position,
-	 * so that potentially the scan can be restored to this position
-	 * and continues, see MPP-10404.
-	 */
-	bool earlyFreeSafe;
-
 } IndexScanDescData;
 
 typedef IndexScanDescData *IndexScanDesc;
