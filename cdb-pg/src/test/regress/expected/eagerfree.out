@@ -2151,75 +2151,12 @@ explain analyze select t1.* from smallt as t1, smallt as t2 where t1.d = t2.d an
 set enable_hashjoin=on;
 set enable_mergejoin=off;
 -- ShareInputScan
-with my_group_max(i, maximum) as (select i, max(d) from smallt group by i)
-select smallt2.* from my_group_max, smallt2 where my_group_max.i = smallt2.i
-and smallt2.i < any (select maximum from my_group_max);
- i |   t    |     d      
----+--------+------------
- 0 | text 0 | 01-11-2011
- 0 | text 5 | 01-01-2011
- 0 | text 0 | 01-11-2011
- 0 | text 0 | 01-01-2011
- 0 | text 5 | 01-11-2011
- 0 | text 0 | 01-06-2011
- 0 | text 5 | 01-01-2011
- 0 | text 0 | 01-01-2011
- 0 | text 5 | 01-06-2011
- 0 | text 5 | 01-06-2011
-(10 rows)
-
-explain analyze with my_group_max(i, maximum) as (select i, max(d) from smallt group by i)
-select smallt2.* from my_group_max, smallt2 where my_group_max.i = smallt2.i
-and smallt2.i < any (select maximum from my_group_max);
-                                                                                      QUERY PLAN                                                                                       
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice2; segments: 2)  (cost=39.92..41.58 rows=84 width=52)
-   Rows out:  10 rows at destination with 27 ms to end, start offset by 1.499 ms.
-   ->  HashAggregate  (cost=39.92..41.58 rows=84 width=52)
-         Group By: smallt2.ctid::bigint, my_group_max.ctid::bigint
-         Rows out:  10 rows (seg1) with 20 ms to end, start offset by 8.464 ms.
-         Executor memory:  817K bytes avg, 849K bytes max (seg1).
-         ->  Nested Loop EXISTS Join  (cost=8.34..39.09 rows=84 width=27)
-               Join Filter: smallt2.i::text < my_group_max.maximum::text
-               Rows out:  10 rows (seg1) with 8.502 ms to first row, 11 ms to end, start offset by 16 ms.
-               ->  Hash Join  (cost=4.07..7.32 rows=25 width=27)
-                     Hash Cond: smallt2.i = my_group_max.i
-                     Rows out:  Avg 25.0 rows x 2 workers.  Max 30 rows (seg1) with 8.284 ms to first row, 10 ms to end, start offset by 16 ms.
-                     Executor memory:  1K bytes avg, 1K bytes max (seg0).
-                     Work_mem used:  1K bytes avg, 1K bytes max (seg0).
-                     (seg1)   Hash chain length 1.0 avg, 1 max, using 5 of 131111 buckets.
-                     ->  Seq Scan on smallt2  (cost=0.00..2.50 rows=25 width=21)
-                           Rows out:  Avg 25.0 rows x 2 workers.  Max 30 rows (seg1) with 0.031 ms to first row, 0.388 ms to end, start offset by 16 ms.
-                     ->  Hash  (cost=3.94..3.94 rows=5 width=10)
-                           Rows in:  Avg 5.0 rows x 2 workers.  Max 5 rows (seg0) with 15 ms to end, start offset by 5.505 ms.
-                           ->  Subquery Scan my_group_max  (cost=3.73..3.94 rows=5 width=10)
-                                 Rows out:  Avg 5.0 rows x 2 workers.  Max 5 rows (seg0) with 15 ms to end, start offset by 5.506 ms.
-                                 ->  Shared Scan (share slice:id 2:0)  (cost=3.73..3.94 rows=5 width=8)
-                                       Rows out:  Avg 5.0 rows x 2 workers.  Max 5 rows (seg0) with 15 ms to end, start offset by 5.508 ms.
-                                       ->  Materialize  (cost=3.63..3.73 rows=5 width=8)
-                                             Rows out:  0 rows (seg0) with 0 ms to end.
-                                             ->  HashAggregate  (cost=3.50..3.62 rows=5 width=8)
-                                                   Group By: public.smallt.i
-                                                   Rows out:  Avg 5.0 rows x 2 workers.  Max 5 rows (seg0) with 9.620 ms to first row, 13 ms to end, start offset by 5.845 ms.
-                                                   Executor memory:  1617K bytes avg, 1617K bytes max (seg0).
-                                                   ->  Seq Scan on smallt  (cost=0.00..3.00 rows=50 width=8)
-                                                         Rows out:  Avg 50.0 rows x 2 workers.  Max 50 rows (seg0) with 0.034 ms to first row, 0.063 ms to end, start offset by 15 ms.
-               ->  Materialize  (cost=4.26..4.46 rows=10 width=4)
-                     Rows out:  Avg 205.0 rows x 2 workers.  Max 210 rows (seg1) with 0.185 ms to first row, 0.374 ms to end of 30 scans, start offset by 27 ms.
-                     ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=3.73..4.25 rows=10 width=4)
-                           Rows out:  Avg 10.0 rows x 2 workers at destination.  Max 10 rows (seg0) with 0.945 ms to first row, 5.362 ms to end, start offset by 20 ms.
-                           ->  Shared Scan (share slice:id 1:0)  (cost=3.73..3.94 rows=5 width=8)
-                                 Rows out:  Avg 5.0 rows x 2 workers.  Max 5 rows (seg0) with 0.387 ms to first row, 0.405 ms to end, start offset by 20 ms.
- Slice statistics:
-   (slice0)    Executor memory: 300K bytes.
-   (slice1)    Executor memory: 348K bytes avg x 2 workers, 348K bytes max (seg0).
-   (slice2)    Executor memory: 4308K bytes avg x 2 workers, 4340K bytes max (seg1).  Work_mem: 1K bytes max.
- Statement statistics:
-   Memory used: 128000K bytes
- Settings:  enable_hashjoin=on; enable_mergejoin=off; enable_nestloop=off; gp_enable_agg_distinct=on
- Total runtime: 34.010 ms
-(45 rows)
-
+--with my_group_max(i, maximum) as (select i, max(d) from smallt group by i)
+--select smallt2.* from my_group_max, smallt2 where my_group_max.i = smallt2.i
+--and smallt2.i < any (select maximum from my_group_max);
+--explain analyze with my_group_max(i, maximum) as (select i, max(d) from smallt group by i)
+--select smallt2.* from my_group_max, smallt2 where my_group_max.i = smallt2.i
+--and smallt2.i < any (select maximum from my_group_max);
 -- IndexScan
 create index smallt_d_idx on smallt (d);
 create index smallt2_d_idx on smallt2 (d);

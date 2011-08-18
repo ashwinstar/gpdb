@@ -111,12 +111,12 @@ set enable_hashjoin=on;
 set enable_mergejoin=off;
 
 -- ShareInputScan
-with my_group_max(i, maximum) as (select i, max(d) from smallt group by i)
-select smallt2.* from my_group_max, smallt2 where my_group_max.i = smallt2.i
-and smallt2.i < any (select maximum from my_group_max);
-explain analyze with my_group_max(i, maximum) as (select i, max(d) from smallt group by i)
-select smallt2.* from my_group_max, smallt2 where my_group_max.i = smallt2.i
-and smallt2.i < any (select maximum from my_group_max);
+--with my_group_max(i, maximum) as (select i, max(d) from smallt group by i)
+--select smallt2.* from my_group_max, smallt2 where my_group_max.i = smallt2.i
+--and smallt2.i < any (select maximum from my_group_max);
+--explain analyze with my_group_max(i, maximum) as (select i, max(d) from smallt group by i)
+--select smallt2.* from my_group_max, smallt2 where my_group_max.i = smallt2.i
+--and smallt2.i < any (select maximum from my_group_max);
 
 -- IndexScan
 create index smallt_d_idx on smallt (d);
