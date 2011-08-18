@@ -449,95 +449,95 @@ taah: tupdesc:00000552:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 taah: tupdesc:00000553:  errmsg("column \"%s\" cannot be declared SETOF", 
 taah: tupdesc:00000554:  attname))); 
 aaaaa GP_IGNORE: faag: fileam - ./backend/access/external/fileam.c
-faag: fileam:00000532:  ereport(ERROR, 
-faag: fileam:00000533:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00000534:  errmsg("External table has more URLs then available primary " 
-faag: fileam:00000535:  "segments that can write into them"))); 
-faag: fileam:00000542:  /*elog(NOTICE, "seg %d got url number %d: %s", segindex, my_url, uri_str);*/ 
-faag: fileam:00000543:  } 
-faag: fileam:00000544:  
-faag: fileam:00000545:  /* 
-faag: fileam:00000546:  * Allocate and init our structure that keeps track of data parsing state 
-faag: fileam:00000547:  */ 
-faag: fileam:00000548:  extInsertDesc->ext_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData)); 
-faag: fileam:00000656:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
-faag: fileam:00000822:  ereport(ERROR, \ 
-faag: fileam:00000823:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
-faag: fileam:00000824:  (errmsg("%s", finalmsg) \ 
-faag: fileam:00000825:  ),errOmitLocation(true))); \ 
-faag: fileam:00000826: } 
-faag: fileam:00000827:  
-faag: fileam:00000828: /* 
-faag: fileam:00000829:  * parse_next_line 
-faag: fileam:00000830:  * 
-faag: fileam:00000831:  * Given a buffer of data, extract the next data line from it and parse it 
-faag: fileam:00000832:  * to attributes according to the data format specifications. 
-faag: fileam:00000833:  * 
-faag: fileam:00000834:  * Returns: 
-faag: fileam:00000835:  * LINE_OK - line parsed successfully. 
-faag: fileam:00000836:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
-faag: fileam:00000837:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
-faag: fileam:00000838:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
-faag: fileam:00000839:  */ 
-faag: fileam:00000840: static DataLineStatus parse_next_line(FileScanDesc scan) 
-faag: fileam:00000841: { 
-faag: fileam:00000842:  CopyState pstate = scan->fs_pstate; 
-faag: fileam:00001073:  elog(ERROR, "header line in custom format is not yet supported"); 
-faag: fileam:00001158:  elog(ERROR, "unsupported formatter notification (%d)", 
-faag: fileam:00001159:  formatter->fmt_notification); 
-faag: fileam:00001256:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-faag: fileam:00001257:  errmsg("formatter function %s of type %s was not found.", 
-faag: fileam:00001258:  formatter_name, 
-faag: fileam:00001259:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001260:  errhint("Create it with CREATE FUNCTION."), 
-faag: fileam:00001261:  errOmitLocation(true))); 
-faag: fileam:00001265:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faag: fileam:00001266:  errmsg("formatter function %s of type %s has an incorrect return type", 
-faag: fileam:00001267:  formatter_name, 
-faag: fileam:00001268:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001269:  errOmitLocation(true))); 
-faag: fileam:00001354:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
-faag: fileam:00001355:  errmsg("The specified error table for this " 
-faag: fileam:00001356:  "external table doesn't appear to " 
-faag: fileam:00001357:  "exist in the database. It may have " 
-faag: fileam:00001358:  "been dropped."), 
-faag: fileam:00001359:  errhint("Refresh your external table definition."))); 
-faag: fileam:00001420:  ereport(ERROR, 
-faag: fileam:00001421:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00001422:  errmsg("No formatter function defined for this external table."))); 
-faag: fileam:00001608:  ereport(ERROR, 
-faag: fileam:00001609:  (errcode_for_file_access(), 
-faag: fileam:00001610:  errmsg("could not open \"%s\" for reading: %d %s", 
-faag: fileam:00001611:  scan->fs_uri, response_code, response_string), 
-faag: fileam:00001612:  errOmitLocation(true))); 
-faag: fileam:00001659:  ereport(ERROR, 
-faag: fileam:00001660:  (errcode_for_file_access(), 
-faag: fileam:00001661:  errmsg("could not open \"%s\" for writing: %d %s", 
-faag: fileam:00001662:  extInsertDesc->ext_uri, response_code, response_string))); 
-faag: fileam:00001721:  ereport(ERROR, 
-faag: fileam:00001722:  (errcode_for_file_access(), 
-faag: fileam:00001723:  errmsg("could not read from external file: %m"))); 
-faag: fileam:00001741:  ereport(ERROR, 
-faag: fileam:00001742:  (errcode_for_file_access(), 
-faag: fileam:00001743:  errmsg("could not write to external resource: %m"))); 
-faag: fileam:00001857:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
-faag: fileam:00001859:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
-faag: fileam:00001865:  elog(NOTICE,"%s",a); 
-faag: fileam:00002455:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002456:  errmsg("external table internal parse error: " 
-faag: fileam:00002457:  "no formatter function name found"))); 
-faag: fileam:00002463:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
-faag: fileam:00002464:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
-faag: fileam:00002465:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
-faag: fileam:00002472:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002473:  errmsg("external table internal parse error at \"%s\"", 
-faag: fileam:00002474:  token))); 
-faag: fileam:00002476:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002477:  errmsg("external table internal parse error at end of " 
-faag: fileam:00002478:  "line"))); 
-faag: fileam:00002529:  ereport(ERROR, 
-faag: fileam:00002530:  (errcode_for_file_access(), 
-faag: fileam:00002531:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+faag: fileam:00000548:  ereport(ERROR, 
+faag: fileam:00000549:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00000550:  errmsg("External table has more URLs then available primary " 
+faag: fileam:00000551:  "segments that can write into them"))); 
+faag: fileam:00000558:  /*elog(NOTICE, "seg %d got url number %d: %s", segindex, my_url, uri_str);*/ 
+faag: fileam:00000559:  } 
+faag: fileam:00000560:  
+faag: fileam:00000561:  /* 
+faag: fileam:00000562:  * Allocate and init our structure that keeps track of data parsing state 
+faag: fileam:00000563:  */ 
+faag: fileam:00000564:  extInsertDesc->ext_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData)); 
+faag: fileam:00000672:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
+faag: fileam:00000838:  ereport(ERROR, \ 
+faag: fileam:00000839:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
+faag: fileam:00000840:  (errmsg("%s", finalmsg) \ 
+faag: fileam:00000841:  ),errOmitLocation(true))); \ 
+faag: fileam:00000842: } 
+faag: fileam:00000843:  
+faag: fileam:00000844: /* 
+faag: fileam:00000845:  * parse_next_line 
+faag: fileam:00000846:  * 
+faag: fileam:00000847:  * Given a buffer of data, extract the next data line from it and parse it 
+faag: fileam:00000848:  * to attributes according to the data format specifications. 
+faag: fileam:00000849:  * 
+faag: fileam:00000850:  * Returns: 
+faag: fileam:00000851:  * LINE_OK - line parsed successfully. 
+faag: fileam:00000852:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
+faag: fileam:00000853:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
+faag: fileam:00000854:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
+faag: fileam:00000855:  */ 
+faag: fileam:00000856: static DataLineStatus parse_next_line(FileScanDesc scan) 
+faag: fileam:00000857: { 
+faag: fileam:00000858:  CopyState pstate = scan->fs_pstate; 
+faag: fileam:00001089:  elog(ERROR, "header line in custom format is not yet supported"); 
+faag: fileam:00001174:  elog(ERROR, "unsupported formatter notification (%d)", 
+faag: fileam:00001175:  formatter->fmt_notification); 
+faag: fileam:00001272:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+faag: fileam:00001273:  errmsg("formatter function %s of type %s was not found.", 
+faag: fileam:00001274:  formatter_name, 
+faag: fileam:00001275:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001276:  errhint("Create it with CREATE FUNCTION."), 
+faag: fileam:00001277:  errOmitLocation(true))); 
+faag: fileam:00001281:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faag: fileam:00001282:  errmsg("formatter function %s of type %s has an incorrect return type", 
+faag: fileam:00001283:  formatter_name, 
+faag: fileam:00001284:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001285:  errOmitLocation(true))); 
+faag: fileam:00001370:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+faag: fileam:00001371:  errmsg("The specified error table for this " 
+faag: fileam:00001372:  "external table doesn't appear to " 
+faag: fileam:00001373:  "exist in the database. It may have " 
+faag: fileam:00001374:  "been dropped."), 
+faag: fileam:00001375:  errhint("Refresh your external table definition."))); 
+faag: fileam:00001436:  ereport(ERROR, 
+faag: fileam:00001437:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00001438:  errmsg("No formatter function defined for this external table."))); 
+faag: fileam:00001624:  ereport(ERROR, 
+faag: fileam:00001625:  (errcode_for_file_access(), 
+faag: fileam:00001626:  errmsg("could not open \"%s\" for reading: %d %s", 
+faag: fileam:00001627:  scan->fs_uri, response_code, response_string), 
+faag: fileam:00001628:  errOmitLocation(true))); 
+faag: fileam:00001675:  ereport(ERROR, 
+faag: fileam:00001676:  (errcode_for_file_access(), 
+faag: fileam:00001677:  errmsg("could not open \"%s\" for writing: %d %s", 
+faag: fileam:00001678:  extInsertDesc->ext_uri, response_code, response_string))); 
+faag: fileam:00001737:  ereport(ERROR, 
+faag: fileam:00001738:  (errcode_for_file_access(), 
+faag: fileam:00001739:  errmsg("could not read from external file: %m"))); 
+faag: fileam:00001757:  ereport(ERROR, 
+faag: fileam:00001758:  (errcode_for_file_access(), 
+faag: fileam:00001759:  errmsg("could not write to external resource: %m"))); 
+faag: fileam:00001873:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
+faag: fileam:00001875:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
+faag: fileam:00001881:  elog(NOTICE,"%s",a); 
+faag: fileam:00002471:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002472:  errmsg("external table internal parse error: " 
+faag: fileam:00002473:  "no formatter function name found"))); 
+faag: fileam:00002479:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
+faag: fileam:00002480:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
+faag: fileam:00002481:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
+faag: fileam:00002488:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002489:  errmsg("external table internal parse error at \"%s\"", 
+faag: fileam:00002490:  token))); 
+faag: fileam:00002492:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002493:  errmsg("external table internal parse error at end of " 
+faag: fileam:00002494:  "line"))); 
+faag: fileam:00002545:  ereport(ERROR, 
+faag: fileam:00002546:  (errcode_for_file_access(), 
+faag: fileam:00002547:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
 uaad: url:00000159:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
 uaad: url:00000188:  //elog(NOTICE, "write_callback %d", nbytes); 
@@ -1002,8 +1002,8 @@ iaah: indexam:00000151:  ereport(ERROR,
 iaah: indexam:00000152:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
 iaah: indexam:00000153:  errmsg("\"%s\" is not an index", 
 iaah: indexam:00000154:  RelationGetRelationName(r)))); 
-iaah: indexam:00000735:  elog(ERROR, "missing support function %d for attribute %d of index \"%s\"", 
-iaah: indexam:00000736:  procnum, attnum, RelationGetRelationName(irel)); 
+iaah: indexam:00000725:  elog(ERROR, "missing support function %d for attribute %d of index \"%s\"", 
+iaah: indexam:00000726:  procnum, attnum, RelationGetRelationName(irel)); 
 aaaaa GP_IGNORE: naaj: nbtinsert - ./backend/access/nbtree/nbtinsert.c
 naaj: nbtinsert:00000191:  ereport(ERROR, 
 naaj: nbtinsert:00000192:  (errcode(ERRCODE_UNIQUE_VIOLATION), 
@@ -4830,14 +4830,14 @@ caai: cdbllize:00000230:  "statement is not yet supported in "
 caai: cdbllize:00000231:  "this version of " PACKAGE_NAME ".", 
 caai: cdbllize:00000232:  cmd) 
 caai: cdbllize:00000233:  )); 
-caai: cdbllize:00000744:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
-caai: cdbllize:00000745:  errmsg("Cannot parallelize that query yet."), 
-caai: cdbllize:00000746:  errdetail("In a subquery FROM clause, a " 
-caai: cdbllize:00000747:  "function invocation cannot contain " 
-caai: cdbllize:00000748:  "a correlated reference."), 
-caai: cdbllize:00000749:  errOmitLocation(true) 
-caai: cdbllize:00000750:  )); 
-caai: cdbllize:00001380:  elog(ERROR, "Post-planning sanity check detected motion deadlock."); 
+caai: cdbllize:00000746:  ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET), 
+caai: cdbllize:00000747:  errmsg("Cannot parallelize that query yet."), 
+caai: cdbllize:00000748:  errdetail("In a subquery FROM clause, a " 
+caai: cdbllize:00000749:  "function invocation cannot contain " 
+caai: cdbllize:00000750:  "a correlated reference."), 
+caai: cdbllize:00000751:  errOmitLocation(true) 
+caai: cdbllize:00000752:  )); 
+caai: cdbllize:00001382:  elog(ERROR, "Post-planning sanity check detected motion deadlock."); 
 aaaaa GP_IGNORE: cabj: cdblocaldistribxact - ./backend/cdb/cdblocaldistribxact.c
 cabj: cdblocaldistribxact:00000151:  elog(FATAL, "Distributed to local xact element not valid (eyecatcher)"); 
 cabj: cdblocaldistribxact:00000229:  elog(FATAL, "Distributed to local xact element not valid"); 
@@ -6529,8 +6529,8 @@ caah: cdbvars:00001003:  errmsg("must be superuser to set gp_gpperfmon_send_inte
 caah: cdbvars:00001058:  ereport(WARNING, 
 caah: cdbvars:00001059:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
 caah: cdbvars:00001060:  errmsg("gp_hash_index is deprecated and has no effect"))); 
-caah: cdbvars:00001081:  elog(ERROR, "Unknown resource queue memory policy. (current policy is '%s')", gpvars_show_gp_resqueue_memory_policy()); 
-caah: cdbvars:00001113:  elog(ERROR, "Invalid input for statement_mem. Must be less than max_statement_mem (%d kB).", max_statement_mem); 
+caah: cdbvars:00001083:  elog(ERROR, "unknown resource queue memory policy: current policy is '%s'", gpvars_show_gp_resqueue_memory_policy()); 
+caah: cdbvars:00001117:  elog(ERROR, "Invalid input for statement_mem. Must be less than max_statement_mem (%d kB).", max_statement_mem); 
 aaaaa GP_IGNORE: cabb: cdbworkfile - ./backend/cdb/cdbworkfile.c
 cabb: cdbworkfile:00000113:  ereport(ERROR, (errmsg("Workfile I/O error: %m."), 
 cabb: cdbworkfile:00000114:  errdetail("Failed to seek to offset " UINT64_FORMAT 
@@ -7853,11 +7853,11 @@ daag: define:00000302:  (errcode(ERRCODE_SYNTAX_ERROR),
 daag: define:00000303:  errmsg("invalid argument for %s: \"%s\"", 
 daag: define:00000304:  def->defname, defGetString(def)))); 
 aaaaa GP_IGNORE: eaah: explain - ./backend/commands/explain.c
-eaah: explain:00001966:  elog(ERROR, "no tlist entry for key %d", keyresno); 
-eaah: explain:00002050:  elog(ERROR, "no tlist entry for key %d", keyresno); 
-eaah: explain:00002117:  elog(WARNING, "Gather Motion %s error: no tlist item %d", 
-eaah: explain:00002118:  qlabel, keyresno); 
-eaah: explain:00002165:  elog(ERROR, "cache lookup failed for index %u", indexId); 
+eaah: explain:00001973:  elog(ERROR, "no tlist entry for key %d", keyresno); 
+eaah: explain:00002057:  elog(ERROR, "no tlist entry for key %d", keyresno); 
+eaah: explain:00002124:  elog(WARNING, "Gather Motion %s error: no tlist item %d", 
+eaah: explain:00002125:  qlabel, keyresno); 
+eaah: explain:00002172:  elog(ERROR, "cache lookup failed for index %u", indexId); 
 aaaaa GP_IGNORE: eabf: extprotocolcmds - ./backend/commands/extprotocolcmds.c
 eabf: extprotocolcmds:00000077:  ereport(ERROR, 
 eabf: extprotocolcmds:00000078:  (errcode(ERRCODE_SYNTAX_ERROR), 
@@ -11717,149 +11717,149 @@ eabc: exechhashagg:00001577:  ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY));
 eabc: exechhashagg:00001721:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
 eabc: exechhashagg:00001722:  ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY)); 
 aaaaa GP_IGNORE: eaai: execmain - ./backend/executor/execMain.c
-eaai: execmain:00000398:  ereport(ERROR, 
-eaai: execmain:00000399:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eaai: execmain:00000400:  errmsg("tablespace \"%s\" does not exist", 
-eaai: execmain:00000401:  intoClause->tableSpaceName))); 
-eaai: execmain:00001245:  ereport(ERROR, 
-eaai: execmain:00001246:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
-eaai: execmain:00001247:  errmsg("transaction is read-only"))); 
-eaai: execmain:00001850:  ereport(ERROR, 
-eaai: execmain:00001851:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001852:  errmsg("cannot change sequence \"%s\"", 
-eaai: execmain:00001853:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001856:  ereport(ERROR, 
-eaai: execmain:00001857:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001858:  errmsg("cannot change TOAST relation \"%s\"", 
-eaai: execmain:00001859:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001862:  ereport(ERROR, 
-eaai: execmain:00001863:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001864:  errmsg("cannot change AO segment listing relation \"%s\"", 
-eaai: execmain:00001865:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001868:  ereport(ERROR, 
-eaai: execmain:00001869:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001870:  errmsg("cannot change AO block directory relation \"%s\"", 
-eaai: execmain:00001871:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00001874:  ereport(ERROR, 
-eaai: execmain:00001875:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-eaai: execmain:00001876:  errmsg("cannot change view \"%s\"", 
-eaai: execmain:00001877:  RelationGetRelationName(resultRelationDesc)))); 
-eaai: execmain:00002198:  ereport(ERROR, 
-eaai: execmain:00002199:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002200:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002201:  errdetail("Query has too many columns."))); 
-eaai: execmain:00002208:  ereport(ERROR, 
-eaai: execmain:00002209:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002210:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002211:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
-eaai: execmain:00002212:  format_type_be(attr->atttypid), 
-eaai: execmain:00002213:  attno, 
-eaai: execmain:00002214:  format_type_be(exprType((Node *) tle->expr))))); 
-eaai: execmain:00002225:  ereport(ERROR, 
-eaai: execmain:00002226:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002227:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002228:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
-eaai: execmain:00002229:  attno))); 
-eaai: execmain:00002233:  ereport(ERROR, 
-eaai: execmain:00002234:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-eaai: execmain:00002235:  errmsg("table row type and query-specified row type do not match"), 
-eaai: execmain:00002236:  errdetail("Query has too few columns."))); 
-eaai: execmain:00002365:  elog(ERROR, "could not find junk ctid column"); 
-eaai: execmain:00002369:  elog(ERROR, "ctid is NULL"); 
-eaai: execmain:00002400:  elog(ERROR, "could not find junk \"%s\" column", 
-eaai: execmain:00002401:  erm->resname); 
-eaai: execmain:00002405:  elog(ERROR, "\"%s\" is NULL", erm->resname); 
-eaai: execmain:00002431:  ereport(ERROR, 
-eaai: execmain:00002432:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002433:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00002458:  elog(ERROR, "unrecognized heap_lock_tuple status: %u", 
-eaai: execmain:00002459:  test); 
-eaai: execmain:00002508:  elog(ERROR, "unrecognized operation code: %d", 
-eaai: execmain:00002509:  (int) operation); 
-eaai: execmain:00002693:  elog(ERROR, "triggers are not supported on tables that use column-oriented storage"); 
-eaai: execmain:00002904:  ereport(ERROR, 
-eaai: execmain:00002905:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00002906:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00002926:  elog(ERROR, "unrecognized heap_delete status: %u", result); 
-eaai: execmain:00002959:  elog(ERROR, "failed to fetch deleted tuple for DELETE RETURNING"); 
-eaai: execmain:00003004:  elog(ERROR, "cannot UPDATE during bootstrap"); 
-eaai: execmain:00003044:  ereport(ERROR, 
-eaai: execmain:00003045:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00003046:  errmsg("no partition for partitioning key"))); 
-eaai: execmain:00003050:  ereport(ERROR, 
-eaai: execmain:00003051:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-eaai: execmain:00003052:  errmsg("moving tuple from partition \"%s\" to " 
-eaai: execmain:00003053:  "partition \"%s\" not supported", 
-eaai: execmain:00003054:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
-eaai: execmain:00003055:  get_rel_name(targetid)), 
-eaai: execmain:00003056:  errOmitLocation(true))); 
-eaai: execmain:00003135:  ereport(ERROR, 
-eaai: execmain:00003136:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
-eaai: execmain:00003137:  errmsg("could not serialize access due to concurrent update"))); 
-eaai: execmain:00003159:  elog(ERROR, "unrecognized heap_update status: %u", result); 
-eaai: execmain:00003294:  ereport(ERROR, 
-eaai: execmain:00003295:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
-eaai: execmain:00003296:  errmsg("null value in column \"%s\" violates not-null constraint", 
-eaai: execmain:00003297:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
-eaai: execmain:00003298:  errOmitLocation(true))); 
+eaai: execmain:00000411:  ereport(ERROR, 
+eaai: execmain:00000412:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execmain:00000413:  errmsg("tablespace \"%s\" does not exist", 
+eaai: execmain:00000414:  intoClause->tableSpaceName))); 
+eaai: execmain:00001258:  ereport(ERROR, 
+eaai: execmain:00001259:  (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION), 
+eaai: execmain:00001260:  errmsg("transaction is read-only"))); 
+eaai: execmain:00001863:  ereport(ERROR, 
+eaai: execmain:00001864:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001865:  errmsg("cannot change sequence \"%s\"", 
+eaai: execmain:00001866:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001869:  ereport(ERROR, 
+eaai: execmain:00001870:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001871:  errmsg("cannot change TOAST relation \"%s\"", 
+eaai: execmain:00001872:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001875:  ereport(ERROR, 
+eaai: execmain:00001876:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001877:  errmsg("cannot change AO segment listing relation \"%s\"", 
+eaai: execmain:00001878:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001881:  ereport(ERROR, 
+eaai: execmain:00001882:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001883:  errmsg("cannot change AO block directory relation \"%s\"", 
+eaai: execmain:00001884:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00001887:  ereport(ERROR, 
+eaai: execmain:00001888:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+eaai: execmain:00001889:  errmsg("cannot change view \"%s\"", 
+eaai: execmain:00001890:  RelationGetRelationName(resultRelationDesc)))); 
+eaai: execmain:00002211:  ereport(ERROR, 
+eaai: execmain:00002212:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002213:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002214:  errdetail("Query has too many columns."))); 
+eaai: execmain:00002221:  ereport(ERROR, 
+eaai: execmain:00002222:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002223:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002224:  errdetail("Table has type %s at ordinal position %d, but query expects %s.", 
+eaai: execmain:00002225:  format_type_be(attr->atttypid), 
+eaai: execmain:00002226:  attno, 
+eaai: execmain:00002227:  format_type_be(exprType((Node *) tle->expr))))); 
+eaai: execmain:00002238:  ereport(ERROR, 
+eaai: execmain:00002239:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002240:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002241:  errdetail("Query provides a value for a dropped column at ordinal position %d.", 
+eaai: execmain:00002242:  attno))); 
+eaai: execmain:00002246:  ereport(ERROR, 
+eaai: execmain:00002247:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+eaai: execmain:00002248:  errmsg("table row type and query-specified row type do not match"), 
+eaai: execmain:00002249:  errdetail("Query has too few columns."))); 
+eaai: execmain:00002378:  elog(ERROR, "could not find junk ctid column"); 
+eaai: execmain:00002382:  elog(ERROR, "ctid is NULL"); 
+eaai: execmain:00002413:  elog(ERROR, "could not find junk \"%s\" column", 
+eaai: execmain:00002414:  erm->resname); 
+eaai: execmain:00002418:  elog(ERROR, "\"%s\" is NULL", erm->resname); 
+eaai: execmain:00002444:  ereport(ERROR, 
+eaai: execmain:00002445:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002446:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00002471:  elog(ERROR, "unrecognized heap_lock_tuple status: %u", 
+eaai: execmain:00002472:  test); 
+eaai: execmain:00002521:  elog(ERROR, "unrecognized operation code: %d", 
+eaai: execmain:00002522:  (int) operation); 
+eaai: execmain:00002706:  elog(ERROR, "triggers are not supported on tables that use column-oriented storage"); 
+eaai: execmain:00002917:  ereport(ERROR, 
+eaai: execmain:00002918:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00002919:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00002939:  elog(ERROR, "unrecognized heap_delete status: %u", result); 
+eaai: execmain:00002972:  elog(ERROR, "failed to fetch deleted tuple for DELETE RETURNING"); 
+eaai: execmain:00003017:  elog(ERROR, "cannot UPDATE during bootstrap"); 
+eaai: execmain:00003057:  ereport(ERROR, 
+eaai: execmain:00003058:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00003059:  errmsg("no partition for partitioning key"))); 
+eaai: execmain:00003063:  ereport(ERROR, 
+eaai: execmain:00003064:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+eaai: execmain:00003065:  errmsg("moving tuple from partition \"%s\" to " 
+eaai: execmain:00003066:  "partition \"%s\" not supported", 
+eaai: execmain:00003067:  get_rel_name(RelationGetRelid(resultRelationDesc)), 
+eaai: execmain:00003068:  get_rel_name(targetid)), 
+eaai: execmain:00003069:  errOmitLocation(true))); 
+eaai: execmain:00003148:  ereport(ERROR, 
+eaai: execmain:00003149:  (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE), 
+eaai: execmain:00003150:  errmsg("could not serialize access due to concurrent update"))); 
+eaai: execmain:00003172:  elog(ERROR, "unrecognized heap_update status: %u", result); 
 eaai: execmain:00003307:  ereport(ERROR, 
-eaai: execmain:00003308:  (errcode(ERRCODE_CHECK_VIOLATION), 
-eaai: execmain:00003309:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
-eaai: execmain:00003310:  RelationGetRelationName(rel), failed), 
+eaai: execmain:00003308:  (errcode(ERRCODE_NOT_NULL_VIOLATION), 
+eaai: execmain:00003309:  errmsg("null value in column \"%s\" violates not-null constraint", 
+eaai: execmain:00003310:  NameStr(rel->rd_att->attrs[attrChk - 1]->attname)), 
 eaai: execmain:00003311:  errOmitLocation(true))); 
-eaai: execmain:00003402:  elog(ERROR, "could not find RowMark for RT index %u", rti); 
-eaai: execmain:00003434:  elog(ERROR, "t_xmin is uncommitted in tuple to be updated"); 
-eaai: execmain:00003885:  elog(ERROR, "t_xmin is uncommitted in tuple to be updated"); 
-eaai: execmain:00004036:  ereport(ERROR, 
-eaai: execmain:00004037:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-eaai: execmain:00004038:  errmsg("ON COMMIT can only be used on temporary tables"), 
-eaai: execmain:00004039:  errOmitLocation(true))); 
-eaai: execmain:00004065:  ereport(ERROR, 
-eaai: execmain:00004066:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-eaai: execmain:00004067:  errmsg("tablespace \"%s\" does not exist", 
-eaai: execmain:00004068:  intoClause->tableSpaceName))); 
-eaai: execmain:00004476:  ereport(ERROR, 
-eaai: execmain:00004477:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
-eaai: execmain:00004478:  errmsg("no partition for partitioning key"), 
-eaai: execmain:00004479:  errOmitLocation(true))); 
-eaai: execmain:00004761:  elog(ERROR, "attribute map discrepancy"); 
-eaai: execmain:00004881:  ereport(ERROR, 
-eaai: execmain:00004882:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004883:  errmsg("relation \"%s\" must have the same " 
-eaai: execmain:00004884:  "column names and column order as \"%s\"", 
-eaai: execmain:00004885:  RelationGetRelationName(part), 
-eaai: execmain:00004886:  RelationGetRelationName(base)), 
-eaai: execmain:00004887:  errOmitLocation(true))); 
-eaai: execmain:00004896:  ereport(ERROR, 
-eaai: execmain:00004897:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004898:  errmsg("type mismatch for attribute \"%s\"", 
-eaai: execmain:00004899:  NameStr((battr->attname))), 
+eaai: execmain:00003320:  ereport(ERROR, 
+eaai: execmain:00003321:  (errcode(ERRCODE_CHECK_VIOLATION), 
+eaai: execmain:00003322:  errmsg("new row for relation \"%s\" violates check constraint \"%s\"", 
+eaai: execmain:00003323:  RelationGetRelationName(rel), failed), 
+eaai: execmain:00003324:  errOmitLocation(true))); 
+eaai: execmain:00003415:  elog(ERROR, "could not find RowMark for RT index %u", rti); 
+eaai: execmain:00003447:  elog(ERROR, "t_xmin is uncommitted in tuple to be updated"); 
+eaai: execmain:00003898:  elog(ERROR, "t_xmin is uncommitted in tuple to be updated"); 
+eaai: execmain:00004049:  ereport(ERROR, 
+eaai: execmain:00004050:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+eaai: execmain:00004051:  errmsg("ON COMMIT can only be used on temporary tables"), 
+eaai: execmain:00004052:  errOmitLocation(true))); 
+eaai: execmain:00004078:  ereport(ERROR, 
+eaai: execmain:00004079:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+eaai: execmain:00004080:  errmsg("tablespace \"%s\" does not exist", 
+eaai: execmain:00004081:  intoClause->tableSpaceName))); 
+eaai: execmain:00004489:  ereport(ERROR, 
+eaai: execmain:00004490:  (errcode(ERRCODE_NO_PARTITION_FOR_PARTITIONING_KEY), 
+eaai: execmain:00004491:  errmsg("no partition for partitioning key"), 
+eaai: execmain:00004492:  errOmitLocation(true))); 
+eaai: execmain:00004774:  elog(ERROR, "attribute map discrepancy"); 
+eaai: execmain:00004894:  ereport(ERROR, 
+eaai: execmain:00004895:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004896:  errmsg("relation \"%s\" must have the same " 
+eaai: execmain:00004897:  "column names and column order as \"%s\"", 
+eaai: execmain:00004898:  RelationGetRelationName(part), 
+eaai: execmain:00004899:  RelationGetRelationName(base)), 
 eaai: execmain:00004900:  errOmitLocation(true))); 
 eaai: execmain:00004909:  ereport(ERROR, 
 eaai: execmain:00004910:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004911:  errmsg("alignment mismatch for attribute \"%s\"", 
+eaai: execmain:00004911:  errmsg("type mismatch for attribute \"%s\"", 
 eaai: execmain:00004912:  NameStr((battr->attname))), 
 eaai: execmain:00004913:  errOmitLocation(true))); 
-eaai: execmain:00004924:  elog(ERROR, 
-eaai: execmain:00004925:  "attribute numbers out of order"); 
-eaai: execmain:00004948:  ereport(ERROR, 
-eaai: execmain:00004949:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004950:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
-eaai: execmain:00004951:  RelationGetRelationName(part), 
-eaai: execmain:00004952:  RelationGetRelationName(base)), 
-eaai: execmain:00004953:  errOmitLocation(true))); 
-eaai: execmain:00004965:  ereport(ERROR, 
-eaai: execmain:00004966:  (errcode(ERRCODE_SYNTAX_ERROR), 
-eaai: execmain:00004967:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
-eaai: execmain:00004968:  RelationGetRelationName(part), 
-eaai: execmain:00004969:  RelationGetRelationName(base)), 
-eaai: execmain:00004970:  errOmitLocation(true))); 
+eaai: execmain:00004922:  ereport(ERROR, 
+eaai: execmain:00004923:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004924:  errmsg("alignment mismatch for attribute \"%s\"", 
+eaai: execmain:00004925:  NameStr((battr->attname))), 
+eaai: execmain:00004926:  errOmitLocation(true))); 
+eaai: execmain:00004937:  elog(ERROR, 
+eaai: execmain:00004938:  "attribute numbers out of order"); 
+eaai: execmain:00004961:  ereport(ERROR, 
+eaai: execmain:00004962:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004963:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
+eaai: execmain:00004964:  RelationGetRelationName(part), 
+eaai: execmain:00004965:  RelationGetRelationName(base)), 
+eaai: execmain:00004966:  errOmitLocation(true))); 
+eaai: execmain:00004978:  ereport(ERROR, 
+eaai: execmain:00004979:  (errcode(ERRCODE_SYNTAX_ERROR), 
+eaai: execmain:00004980:  errmsg("relation \"%s\" must have the same number columns as relation \"%s\"", 
+eaai: execmain:00004981:  RelationGetRelationName(part), 
+eaai: execmain:00004982:  RelationGetRelationName(base)), 
+eaai: execmain:00004983:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: eabc: execprocnode - ./backend/executor/execProcnode.c
 eabc: execprocnode:00000332:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
 eabc: execprocnode:00000769:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
-eabc: execprocnode:00000834:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
-eabc: execprocnode:00000968:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
-eabc: execprocnode:00001216:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+eabc: execprocnode:00000848:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+eabc: execprocnode:00000982:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+eabc: execprocnode:00001231:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
 aaaaa GP_IGNORE: eaai: execqual - ./backend/executor/execQual.c
 eaai: execqual:00000289:  ereport(ERROR, 
 eaai: execqual:00000290:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -12143,26 +12143,26 @@ faaj: functions:00001262:  errmsg("return type %s is not supported for SQL funct
 faaj: functions:00001263:  format_type_be(rettype)), 
 faaj: functions:00001264:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: naah: nodeagg - ./backend/executor/nodeAgg.c
-naah: nodeagg:00001052:  elog(ERROR,"hybrid hash aggregation sequencing error"); 
-naah: nodeagg:00001908:  elog(ERROR, "cache lookup failed for aggregate %u", 
-naah: nodeagg:00001909:  aggref->aggfnoid); 
-naah: nodeagg:00001954:  elog(ERROR, "cache lookup failed for function %u", 
-naah: nodeagg:00001955:  aggref->aggfnoid); 
-naah: nodeagg:00002050:  ereport(ERROR, 
-naah: nodeagg:00002051:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-naah: nodeagg:00002052:  errmsg("aggregate %u needs to have compatible input type and transition type", 
-naah: nodeagg:00002053:  aggref->aggfnoid))); 
-naah: nodeagg:00002100:  ereport(ERROR, 
-naah: nodeagg:00002101:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-naah: nodeagg:00002102:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
-naah: nodeagg:00002443:  elog(ERROR, "aggregate function %u called as normal function", 
-naah: nodeagg:00002444:  fcinfo->flinfo->fn_oid); 
+naah: nodeagg:00001037:  elog(ERROR,"hybrid hash aggregation sequencing error"); 
+naah: nodeagg:00001884:  elog(ERROR, "cache lookup failed for aggregate %u", 
+naah: nodeagg:00001885:  aggref->aggfnoid); 
+naah: nodeagg:00001930:  elog(ERROR, "cache lookup failed for function %u", 
+naah: nodeagg:00001931:  aggref->aggfnoid); 
+naah: nodeagg:00002026:  ereport(ERROR, 
+naah: nodeagg:00002027:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+naah: nodeagg:00002028:  errmsg("aggregate %u needs to have compatible input type and transition type", 
+naah: nodeagg:00002029:  aggref->aggfnoid))); 
+naah: nodeagg:00002076:  ereport(ERROR, 
+naah: nodeagg:00002077:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+naah: nodeagg:00002078:  errmsg("DISTINCT is supported only for single-argument aggregates"))); 
+naah: nodeagg:00002350:  elog(ERROR, "aggregate function %u called as normal function", 
+naah: nodeagg:00002351:  fcinfo->flinfo->fn_oid); 
 aaaaa GP_IGNORE: nabd: nodebitmapand - ./backend/executor/nodeBitmapAnd.c
 nabd: nodebitmapand:00000158:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nace: nodebitmapappendonlyscan - ./backend/executor/nodeBitmapAppendOnlyscan.c
-nace: nodebitmapappendonlyscan:00000251:  elog(ERROR, "unrecognized result from subplan"); 
+nace: nodebitmapappendonlyscan:00000250:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nabi: nodebitmapheapscan - ./backend/executor/nodeBitmapHeapscan.c
-nabi: nodebitmapheapscan:00000222:  elog(ERROR, "unrecognized result from subplan"); 
+nabi: nodebitmapheapscan:00000220:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nabj: nodebitmapindexscan - ./backend/executor/nodeBitmapIndexscan.c
 nabj: nodebitmapindexscan:00000080:  elog(ERROR, "unrecognized result from bitmap index scan"); 
 nabj: nodebitmapindexscan:00000163:  ereport(ERROR, 
@@ -12171,7 +12171,7 @@ nabj: nodebitmapindexscan:00000165:  errmsg("the returning bitmap in nodeBitmapI
 aaaaa GP_IGNORE: nabc: nodebitmapor - ./backend/executor/nodeBitmapOr.c
 nabc: nodebitmapor:00000152:  elog(ERROR, "unrecognized result from subplan"); 
 aaaaa GP_IGNORE: nabg: nodefunctionscan - ./backend/executor/nodeFunctionscan.c
-nabg: nodefunctionscan:00000259:  elog(ERROR, "function in FROM has unsupported return type"); 
+nabg: nodefunctionscan:00000254:  elog(ERROR, "function in FROM has unsupported return type"); 
 aaaaa GP_IGNORE: naai: nodehash - ./backend/executor/nodeHash.c
 naai: nodehash:00000064:  elog(ERROR, "Hash node does not support ExecProcNode call convention"); 
 naai: nodehash:00000316:  elog(ERROR, "could not find hash function for hash operator %u", 
@@ -12189,12 +12189,12 @@ nabc: nodehashjoin:00000978:  ereport(ERROR,
 nabc: nodehashjoin:00000979:  (errcode_for_file_access(), 
 nabc: nodehashjoin:00000980:  errmsg("could not read from temporary file"))); 
 aaaaa GP_IGNORE: nabd: nodemergejoin - ./backend/executor/nodeMergejoin.c
-nabd: nodemergejoin:00001749:  ereport(ERROR, 
-nabd: nodemergejoin:00001750:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-nabd: nodemergejoin:00001751:  errmsg("RIGHT JOIN is only supported with merge-joinable join conditions"))); 
-nabd: nodemergejoin:00001767:  ereport(ERROR, 
-nabd: nodemergejoin:00001768:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-nabd: nodemergejoin:00001769:  errmsg("FULL JOIN is only supported with merge-joinable join conditions"))); 
+nabd: nodemergejoin:00001775:  ereport(ERROR, 
+nabd: nodemergejoin:00001776:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+nabd: nodemergejoin:00001777:  errmsg("RIGHT JOIN is only supported with merge-joinable join conditions"))); 
+nabd: nodemergejoin:00001793:  ereport(ERROR, 
+nabd: nodemergejoin:00001794:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+nabd: nodemergejoin:00001795:  errmsg("FULL JOIN is only supported with merge-joinable join conditions"))); 
 aaaaa GP_IGNORE: naba: nodemotion - ./backend/executor/nodeMotion.c
 naba: nodemotion:00001634:  ereport(ERROR, 
 naba: nodemotion:00001635:  (errcode(ERRCODE_INTERNAL_ERROR), 
@@ -12221,12 +12221,12 @@ nabb: nodesubplan:00000296:  errmsg("more than one row returned by a subquery us
 nabb: nodesubplan:00000337:  ereport(ERROR, 
 nabb: nodesubplan:00000338:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
 nabb: nodesubplan:00000339:  errmsg("more than one row returned by a subquery used as an expression"))); 
-nabb: nodesubplan:00000905:  elog(ERROR, "could not find hash function for hash operator %u", 
-nabb: nodesubplan:00000906:  opexpr->opno); 
-nabb: nodesubplan:00001140:  elog(ERROR, "ANY/ALL subselect unsupported as initplan"); 
-nabb: nodesubplan:00001193:  ereport(ERROR, 
-nabb: nodesubplan:00001194:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
-nabb: nodesubplan:00001195:  errmsg("more than one row returned by a subquery used as an expression"))); 
+nabb: nodesubplan:00000901:  elog(ERROR, "could not find hash function for hash operator %u", 
+nabb: nodesubplan:00000902:  opexpr->opno); 
+nabb: nodesubplan:00001136:  elog(ERROR, "ANY/ALL subselect unsupported as initplan"); 
+nabb: nodesubplan:00001189:  ereport(ERROR, 
+nabb: nodesubplan:00001190:  (errcode(ERRCODE_CARDINALITY_VIOLATION), 
+nabb: nodesubplan:00001191:  errmsg("more than one row returned by a subquery used as an expression"))); 
 aaaaa GP_IGNORE: nabh: nodetablefunction - ./backend/executor/nodeTableFunction.c
 nabh: nodetablefunction:00000093:  ereport(ERROR, 
 nabh: nodetablefunction:00000094:  (errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED), 
@@ -12293,56 +12293,56 @@ naba: nodewindow:00003880:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER),
 naba: nodewindow:00003881:  errmsg("%s parameter cannot be negative", 
 naba: nodewindow:00003882:  (is_rows ? "ROWS" : "RANGE")), 
 naba: nodewindow:00003883:  errOmitLocation(true))); 
-naba: nodewindow:00005127:  ereport(ERROR, 
-naba: nodewindow:00005128:  (errcode(ERRCODE_DATA_EXCEPTION), 
-naba: nodewindow:00005129:  errmsg("can't coerce trailing frame bound to type of leading frame bound"), 
-naba: nodewindow:00005130:  errhint("specify the leading and trailing frame bounds as the same type"), 
-naba: nodewindow:00005131:  errOmitLocation(true))); 
-naba: nodewindow:00005147:  ereport(ERROR, 
-naba: nodewindow:00005148:  (errcode(ERRCODE_DATA_EXCEPTION), 
-naba: nodewindow:00005149:  errmsg("can't coerce leading frame bound to type of trailing frame bound"), 
-naba: nodewindow:00005150:  errhint("specify the leading and trailing frame bounds as the same type"), 
-naba: nodewindow:00005151:  errOmitLocation(true))); 
-naba: nodewindow:00005551:  ereport(ERROR, 
-naba: nodewindow:00005552:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
-naba: nodewindow:00005553:  errmsg("aggregate functions with no prelimfn or " 
-naba: nodewindow:00005554:  "invprelimfn are not yet supported as window functions"), 
-naba: nodewindow:00005555:  errOmitLocation(true))); 
-naba: nodewindow:00005787:  ereport(ERROR, 
-naba: nodewindow:00005788:  (errcode(ERRCODE_SYNTAX_ERROR), 
-naba: nodewindow:00005789:  errmsg("function %s may only be called as a window function", 
-naba: nodewindow:00005790:  format_procedure(fcinfo->flinfo->fn_oid)), 
-naba: nodewindow:00005791:  errhint("To call a function as a window function use an OVER clause."), 
-naba: nodewindow:00005792:  errOmitLocation(true)) 
-naba: nodewindow:00005793:  ); 
-naba: nodewindow:00005901:  ereport(ERROR, 
-naba: nodewindow:00005902:  (errcode(ERRCODE_DATA_EXCEPTION), 
-naba: nodewindow:00005903:  errmsg("arguments invalid or inconsistent"), 
-naba: nodewindow:00005904:  errhint("inappropriate call to window function implementation"), 
-naba: nodewindow:00005905:  errOmitLocation(true))); 
-naba: nodewindow:00005918:  ereport(ERROR, 
-naba: nodewindow:00005919:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naba: nodewindow:00005920:  errmsg("value out of range: overflow"), 
-naba: nodewindow:00005921:  errOmitLocation(true))); 
-naba: nodewindow:00005960:  ereport(ERROR, 
-naba: nodewindow:00005961:  (errcode(ERRCODE_DATA_EXCEPTION), 
-naba: nodewindow:00005962:  errmsg("arguments invalid or inconsistent"), 
-naba: nodewindow:00005963:  errhint("inappropriate call to window function implementation"))); 
-naba: nodewindow:00005976:  ereport(ERROR, 
-naba: nodewindow:00005977:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naba: nodewindow:00005978:  errmsg("value out of range: overflow"))); 
-naba: nodewindow:00006015:  ereport(ERROR, 
-naba: nodewindow:00006016:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-naba: nodewindow:00006017:  errmsg("argument value out of range"), 
-naba: nodewindow:00006018:  errhint("NTILE expects a positive integer argument."))); 
-naba: nodewindow:00006094:  elog(ERROR, "expected 2-element int8 array"); 
-naba: nodewindow:00006142:  elog(ERROR, "LEAD offset cannot be NULL"); 
-naba: nodewindow:00006144:  elog(ERROR, "LAG offset cannot be NULL"); 
-naba: nodewindow:00006156:  ereport(ERROR, 
-naba: nodewindow:00006157:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-naba: nodewindow:00006158:  errmsg("%s offset cannot be negative", 
-naba: nodewindow:00006159:  is_lead ? "LEAD" : "LAG"), 
-naba: nodewindow:00006160:  errOmitLocation(true))); 
+naba: nodewindow:00005136:  ereport(ERROR, 
+naba: nodewindow:00005137:  (errcode(ERRCODE_DATA_EXCEPTION), 
+naba: nodewindow:00005138:  errmsg("can't coerce trailing frame bound to type of leading frame bound"), 
+naba: nodewindow:00005139:  errhint("specify the leading and trailing frame bounds as the same type"), 
+naba: nodewindow:00005140:  errOmitLocation(true))); 
+naba: nodewindow:00005156:  ereport(ERROR, 
+naba: nodewindow:00005157:  (errcode(ERRCODE_DATA_EXCEPTION), 
+naba: nodewindow:00005158:  errmsg("can't coerce leading frame bound to type of trailing frame bound"), 
+naba: nodewindow:00005159:  errhint("specify the leading and trailing frame bounds as the same type"), 
+naba: nodewindow:00005160:  errOmitLocation(true))); 
+naba: nodewindow:00005560:  ereport(ERROR, 
+naba: nodewindow:00005561:  (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED), 
+naba: nodewindow:00005562:  errmsg("aggregate functions with no prelimfn or " 
+naba: nodewindow:00005563:  "invprelimfn are not yet supported as window functions"), 
+naba: nodewindow:00005564:  errOmitLocation(true))); 
+naba: nodewindow:00005789:  ereport(ERROR, 
+naba: nodewindow:00005790:  (errcode(ERRCODE_SYNTAX_ERROR), 
+naba: nodewindow:00005791:  errmsg("function %s may only be called as a window function", 
+naba: nodewindow:00005792:  format_procedure(fcinfo->flinfo->fn_oid)), 
+naba: nodewindow:00005793:  errhint("To call a function as a window function use an OVER clause."), 
+naba: nodewindow:00005794:  errOmitLocation(true)) 
+naba: nodewindow:00005795:  ); 
+naba: nodewindow:00005903:  ereport(ERROR, 
+naba: nodewindow:00005904:  (errcode(ERRCODE_DATA_EXCEPTION), 
+naba: nodewindow:00005905:  errmsg("arguments invalid or inconsistent"), 
+naba: nodewindow:00005906:  errhint("inappropriate call to window function implementation"), 
+naba: nodewindow:00005907:  errOmitLocation(true))); 
+naba: nodewindow:00005920:  ereport(ERROR, 
+naba: nodewindow:00005921:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naba: nodewindow:00005922:  errmsg("value out of range: overflow"), 
+naba: nodewindow:00005923:  errOmitLocation(true))); 
+naba: nodewindow:00005962:  ereport(ERROR, 
+naba: nodewindow:00005963:  (errcode(ERRCODE_DATA_EXCEPTION), 
+naba: nodewindow:00005964:  errmsg("arguments invalid or inconsistent"), 
+naba: nodewindow:00005965:  errhint("inappropriate call to window function implementation"))); 
+naba: nodewindow:00005978:  ereport(ERROR, 
+naba: nodewindow:00005979:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naba: nodewindow:00005980:  errmsg("value out of range: overflow"))); 
+naba: nodewindow:00006017:  ereport(ERROR, 
+naba: nodewindow:00006018:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+naba: nodewindow:00006019:  errmsg("argument value out of range"), 
+naba: nodewindow:00006020:  errhint("NTILE expects a positive integer argument."))); 
+naba: nodewindow:00006096:  elog(ERROR, "expected 2-element int8 array"); 
+naba: nodewindow:00006144:  elog(ERROR, "LEAD offset cannot be NULL"); 
+naba: nodewindow:00006146:  elog(ERROR, "LAG offset cannot be NULL"); 
+naba: nodewindow:00006158:  ereport(ERROR, 
+naba: nodewindow:00006159:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+naba: nodewindow:00006160:  errmsg("%s offset cannot be negative", 
+naba: nodewindow:00006161:  is_lead ? "LEAD" : "LAG"), 
+naba: nodewindow:00006162:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: saad: spi - ./backend/executor/spi.c
 saad: spi:00000241:  ereport(WARNING, 
 saad: spi:00000242:  (errcode(ERRCODE_WARNING), 
@@ -21968,109 +21968,109 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006251:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006252:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006265:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006266:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006279:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006280:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006310:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006311:  conf->gen.name, str); 
-gaad: guc:00006568:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006585:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006602:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006633:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007489:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007599:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007600:  " in a future release.", name); 
-gaad: guc:00007608:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007609:  name); 
-gaad: guc:00008083:  ereport(ERROR, 
-gaad: guc:00008084:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008085:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008087:  ereport(ERROR, 
-gaad: guc:00008088:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008089:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008123:  ereport(ERROR, 
-gaad: guc:00008124:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008125:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008127:  ereport(ERROR, 
-gaad: guc:00008128:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008129:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008198:  ereport(ERROR, 
-gaad: guc:00008199:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008200:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008207:  ereport(ERROR, 
-gaad: guc:00008208:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008209:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008222:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008269:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008270:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008327:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008353:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008354:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008380:  ereport(ERROR, 
-gaad: guc:00008381:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008382:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008444:  ereport(ERROR, 
-gaad: guc:00008445:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008446:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008765:  ereport(ERROR, 
-gaad: guc:00008766:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008767:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008769:  ereport(ERROR, 
-gaad: guc:00008770:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008771:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009540:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009573:  ereport(FATAL, 
-gaad: guc:00009574:  (errcode_for_file_access(), 
-gaad: guc:00009575:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009576:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009588:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009590:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009592:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009683:  ereport(WARNING, 
-gaad: guc:00009684:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009685:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009879:  ereport(ERROR, 
-gaad: guc:00009880:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009881:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009902:  ereport(ERROR, 
-gaad: guc:00009903:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009904:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009905:  tok))); 
-gaad: guc:00009931:  ereport(ERROR, 
-gaad: guc:00009932:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009933:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009934:  value))); 
-gaad: guc:00010342:  ereport(ERROR, 
-gaad: guc:00010343:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010344:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010418:  ereport(ERROR, 
-gaad: guc:00010419:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010420:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010429:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010439:  ereport(ERROR, 
-gaad: guc:00010440:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010441:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010452:  ereport(ERROR, 
-gaad: guc:00010453:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010454:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010469:  ereport(ERROR, 
-gaad: guc:00010470:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010471:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010472:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010473:  "\"log_dispatch_stats\", " 
-gaad: guc:00010474:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010489:  ereport(ERROR, 
-gaad: guc:00010490:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010491:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010492:  "\"log_statement_stats\", " 
-gaad: guc:00010493:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010494:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010509:  ereport(ERROR, 
-gaad: guc:00010510:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010511:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00006263:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006264:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006277:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006278:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006291:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006292:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006322:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006323:  conf->gen.name, str); 
+gaad: guc:00006580:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006597:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006614:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006645:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007501:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00007611:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00007612:  " in a future release.", name); 
+gaad: guc:00007620:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00007621:  name); 
+gaad: guc:00008095:  ereport(ERROR, 
+gaad: guc:00008096:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008097:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008099:  ereport(ERROR, 
+gaad: guc:00008100:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008101:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008135:  ereport(ERROR, 
+gaad: guc:00008136:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008137:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008139:  ereport(ERROR, 
+gaad: guc:00008140:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008141:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008210:  ereport(ERROR, 
+gaad: guc:00008211:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008212:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008219:  ereport(ERROR, 
+gaad: guc:00008220:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008221:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008234:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008281:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008282:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008339:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008365:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008366:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008392:  ereport(ERROR, 
+gaad: guc:00008393:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008394:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008456:  ereport(ERROR, 
+gaad: guc:00008457:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008458:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008777:  ereport(ERROR, 
+gaad: guc:00008778:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008779:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008781:  ereport(ERROR, 
+gaad: guc:00008782:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008783:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009552:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009585:  ereport(FATAL, 
+gaad: guc:00009586:  (errcode_for_file_access(), 
+gaad: guc:00009587:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009588:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009600:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00009602:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009604:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009695:  ereport(WARNING, 
+gaad: guc:00009696:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009697:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009891:  ereport(ERROR, 
+gaad: guc:00009892:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009893:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009914:  ereport(ERROR, 
+gaad: guc:00009915:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009916:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009917:  tok))); 
+gaad: guc:00009943:  ereport(ERROR, 
+gaad: guc:00009944:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009945:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009946:  value))); 
+gaad: guc:00010354:  ereport(ERROR, 
+gaad: guc:00010355:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010356:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010430:  ereport(ERROR, 
+gaad: guc:00010431:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010432:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010441:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010451:  ereport(ERROR, 
+gaad: guc:00010452:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010453:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010464:  ereport(ERROR, 
+gaad: guc:00010465:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010466:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010481:  ereport(ERROR, 
+gaad: guc:00010482:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010483:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010484:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010485:  "\"log_dispatch_stats\", " 
+gaad: guc:00010486:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010501:  ereport(ERROR, 
+gaad: guc:00010502:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010503:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010504:  "\"log_statement_stats\", " 
+gaad: guc:00010505:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010506:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010521:  ereport(ERROR, 
+gaad: guc:00010522:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010523:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -22216,7 +22216,10 @@ raai: resowner:00000858:  elog(WARNING,
 raai: resowner:00000859:  "TupleDesc reference leak: TupleDesc %p (%u,%d) still referenced", 
 raai: resowner:00000860:  tupdesc, tupdesc->tdtypeid, tupdesc->tdtypmod); 
 aaaaa GP_IGNORE: maai: memquota - ./backend/utils/resscheduler/memquota.c
-maai: memquota:00000229:  elog(ERROR, ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY); 
+maai: memquota:00000352:  elog(ERROR, ERRMSG_GP_INSUFFICIENT_STATEMENT_MEMORY); 
+maai: memquota:00000693:  ereport(ERROR, 
+maai: memquota:00000694:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+maai: memquota:00000695:  errmsg("insufficient memory reserved for statement"))); 
 aaaaa GP_IGNORE: raai: resqueue - ./backend/utils/resscheduler/resqueue.c
 raai: resqueue:00000184:  ereport(ERROR, 
 raai: resqueue:00000185:  (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -22244,11 +22247,11 @@ rabc: resscheduler:00000135:  (errcode(ERRCODE_OUT_OF_MEMORY),
 rabc: resscheduler:00000136:  errmsg("not enough shared memory for resource scheduler"))); 
 rabc: resscheduler:00000160:  elog(FATAL, "could not initialize portal increment hash"); 
 rabc: resscheduler:00000316:  elog(ERROR, "unknown resource limit type %d", i); 
-rabc: resscheduler:00000618:  elog(NOTICE, "this query requests %.0fkB", (double) queryMemory / 1024.0); 
-rabc: resscheduler:00000920:  ereport(ERROR, 
-rabc: resscheduler:00000921:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-rabc: resscheduler:00000922:  errmsg("insufficient portal ids available"), 
-rabc: resscheduler:00000923:  errhint("Increase max_resource_portals_per_transaction."))); 
+rabc: resscheduler:00000632:  elog(NOTICE, "this query requests %.0fkB", (double) queryMemory / 1024.0); 
+rabc: resscheduler:00000943:  ereport(ERROR, 
+rabc: resscheduler:00000944:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+rabc: resscheduler:00000945:  errmsg("insufficient portal ids available"), 
+rabc: resscheduler:00000946:  errhint("Increase max_resource_portals_per_transaction."))); 
 aaaaa GP_IGNORE: laah: logtape - ./backend/utils/sort/logtape.c
 laah: logtape:00000141:  elog(ERROR, "Load logicaltapeset failed to read nFileBlocks"); 
 laah: logtape:00000155:  elog(ERROR, "Load logicaltapeset failed to read tape firstBlkNum"); 
