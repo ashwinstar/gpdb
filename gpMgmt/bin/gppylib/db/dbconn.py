@@ -137,11 +137,18 @@ class DbURL:
 
 
 
-def connect(dburl, utility=False, verbose=False, encoding=None):
+def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTableMods=None):
+
     if utility:
         options = '-c gp_session_role=utility'
     else:
         options = ''
+
+    # MPP-13779, et al
+    if allowSystemTableMods in ['dml']:
+        options += ' -c allow_system_table_mods=' + allowSystemTableMods
+    elif allowSystemTableMods is not None:
+        raise Exception('allowSystemTableMods invalid: %s' % allowSystemTableMods)
     
     dsn_str = "" + str(dburl) + ": " + options + ":1"
     conn = pgdb.connect(dsn=dsn_str)

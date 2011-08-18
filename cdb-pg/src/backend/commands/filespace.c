@@ -123,7 +123,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 	 * Disallow creation of filespaces named "pg_xxx"; we reserve this namespace
 	 * for system purposes.
 	 */
-	if (!allowSystemTableMods && IsReservedName(stmt->filespacename))
+	if (!allowSystemTableModsDDL && IsReservedName(stmt->filespacename))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
@@ -703,7 +703,7 @@ AlterFileSpaceOwner(List *names, Oid newOwnerId)
 	fsForm = (Form_pg_filespace) GETSTRUCT(tup);
 
 	/* Cannot alter system filespaces */
-	if (!allowSystemTableMods && IsReservedName(fsname))
+	if (!allowSystemTableModsDDL && IsReservedName(fsname))
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("permission denied: \"%s\" is a system filespace", 
@@ -800,7 +800,7 @@ RenameFileSpace(const char *oldname, const char *newname)
 	heap_endscan(scan);
 
 	/* Can't rename system filespaces */
-	if (!allowSystemTableMods && IsReservedName(oldname))
+	if (!allowSystemTableModsDDL && IsReservedName(oldname))
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("permission denied: \"%s\" is a system filespace", 
@@ -812,7 +812,7 @@ RenameFileSpace(const char *oldname, const char *newname)
 		aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_FILESPACE, oldname);
 
 	/* Validate new name */
-	if (!allowSystemTableMods && IsReservedName(newname))
+	if (!allowSystemTableModsDDL && IsReservedName(newname))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),

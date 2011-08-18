@@ -7,6 +7,7 @@ set gp_enable_agg_distinct = off;
 set gp_selectivity_damping_for_scans = off;
 set gp_selectivity_damping_for_joins = off;
 
+set allow_system_table_mods = dml;
 
 -- 
 -- Greenplum Database Statistics Dump

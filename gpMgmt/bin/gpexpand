@@ -906,7 +906,7 @@ class gpexpand:
         self.numworkers=parallel
         self.gparray = gparray
         self.unique_index_tables = {}
-        self.conn = dbconn.connect(self.dburl,utility=True, encoding='UTF8')
+        self.conn = dbconn.connect(self.dburl,utility=True, encoding='UTF8', allowSystemTableMods = 'dml')
         self.old_segments = gparray.getSegDbList()
 
         if dburl.pgdb == 'template0' or dburl.pgdb == 'template1' or dburl.pgdb == 'postgres':
@@ -1175,7 +1175,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         if cleanSchema:
             GpStart.local('gpexpand rollback start database restricted', restricted=True)
             self.logger.info('Dropping expansion expansion schema')
-            schema_conn = dbconn.connect(self.dburl, encoding='UTF8')
+            schema_conn = dbconn.connect(self.dburl, encoding='UTF8', allowSystemTableMods='dml')
             try:
                 dbconn.execSQL(schema_conn, drop_schema_sql)
                 schema_conn.commit()
@@ -1779,7 +1779,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
            # Update the catalog with the contents of the backup
            restore_conn = None
            try:
-               restore_conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8')
+               restore_conn = dbconn.connect(self.dburl, utility=True, encoding='UTF8', allowSystemTableMods='dml')
 
                # Get a list of all the expand primary segments
                sqlStr = "select dbid from pg_catalog.gp_segment_configuration where dbid not in (%s) and role = 'p'" % str(originalDbIds)
@@ -1868,7 +1868,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
         self.statusLogger.set_status('PREPARE_EXPANSION_SCHEMA_STARTED')
 
         if not self.conn:
-            self.conn = dbconn.connect(self.dburl, encoding='UTF8')
+            self.conn = dbconn.connect(self.dburl, encoding='UTF8', allowSystemTableMods='dml')
             self.gparray = GpArray.initFromCatalog(self.dburl)
 
         nowStr = datetime.datetime.now()
@@ -2269,7 +2269,7 @@ UPDATE gp_distribution_policy
     def connect_database(self,dbname):
         test_url = copy.deepcopy(self.dburl)
         test_url.pgdb = dbname
-        c = dbconn.connect(test_url, encoding='UTF8')
+        c = dbconn.connect(test_url, encoding='UTF8', allowSystemTableMods='dml')
         return c
 
 
@@ -2451,7 +2451,7 @@ class ExecuteSQLStatementsCommand(SQLCommand):
                                     )
 
         try:
-            self.conn = dbconn.connect(self.url, utility=True, encoding='UTF8')
+            self.conn = dbconn.connect(self.url, utility=True, encoding='UTF8', allowSystemTableMods='dml')
             for statement in self.sqlCommandList:
                 dbconn.execSQL(self.conn, statement)
             self.conn.commit()

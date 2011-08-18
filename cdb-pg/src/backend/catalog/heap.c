@@ -1572,7 +1572,7 @@ heap_create_with_catalog(const char *relname,
 				/* MPP-7773: don't track objects in system namespace
 				 * if modifying system tables (eg during upgrade)  
 				 */
-				if (allowSystemTableMods)
+				if (allowSystemTableModsDDL)
 					doIt = false;
 				break;
 

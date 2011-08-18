@@ -755,7 +755,7 @@ DefineRelation_int(CreateStmt *stmt,
 										  stmt->oncommit,
                                           stmt->policy,  /*CDB*/
                                           reloptions,
-										  allowSystemTableMods,
+										  allowSystemTableModsDDL,
 										  &stmt->oidInfo.comptypeOid,
 										  /* persistentTid */ NULL,
 										  /* persistentSerialNum */ NULL);
@@ -1446,7 +1446,7 @@ MetaTrackValidKindNsp(Form_pg_class rd_rel)
 		/* MPP-7773: don't track objects in system namespace
 		 * if modifying system tables (eg during upgrade)  
 		 */
-		if (allowSystemTableMods)
+		if (allowSystemTableModsDDL)
 			return (false);
 	}
 
@@ -2011,7 +2011,7 @@ truncate_check_rel(Relation rel)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   RelationGetRelationName(rel));
 
-	if (!allowSystemTableMods && IsSystemRelation(rel))
+	if (!allowSystemTableModsDDL && IsSystemRelation(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied: \"%s\" is a system catalog",
@@ -2847,7 +2847,7 @@ renameatt(Oid myrelid,
 	if (!pg_class_ownercheck(myrelid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   RelationGetRelationName(targetrelation));
-	if (!allowSystemTableMods && IsSystemRelation(targetrelation))
+	if (!allowSystemTableModsDDL && IsSystemRelation(targetrelation))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied: \"%s\" is a system catalog",
@@ -3095,7 +3095,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 					   IsToastNamespace(namespaceId) ||
 					   IsAoSegmentNamespace(namespaceId);
 
-	Assert (allowSystemTableMods || !isSystemRelation);
+	Assert (allowSystemTableModsDDL || !isSystemRelation);
 
 	/*
 	 * Find relation's pg_class tuple, and make sure newrelname isn't in use.
@@ -3226,7 +3226,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 		/* MPP-7773: don't track objects in system namespace
 		 * if modifying system tables (eg during upgrade)
 		 */
-		( ! ( (PG_CATALOG_NAMESPACE == namespaceId) && (allowSystemTableMods)))
+		( ! ( (PG_CATALOG_NAMESPACE == namespaceId) && (allowSystemTableModsDDL)))
 		&& (   MetaTrackValidRelkind(relkind)
 			&& METATRACK_VALIDNAMESPACE(namespaceId)
 			   && (!(isAnyTempNamespace(namespaceId)))
@@ -6134,7 +6134,7 @@ ATSimplePermissions(Relation rel, bool allowView)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   RelationGetRelationName(rel));
 
-	if (!allowSystemTableMods && IsSystemRelation(rel))
+	if (!allowSystemTableModsDDL && IsSystemRelation(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied: \"%s\" is a system catalog",
@@ -6165,7 +6165,7 @@ ATSimplePermissionsRelationOrIndex(Relation rel)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   RelationGetRelationName(rel));
 
-	if (!allowSystemTableMods && IsSystemRelation(rel))
+	if (!allowSystemTableModsDDL && IsSystemRelation(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied: \"%s\" is a system catalog",
@@ -6979,7 +6979,7 @@ ATPrepSetStatistics(Relation rel, const char *colName, Node *flagValue)
 	 * We do our own permission checking because (a) we want to allow SET
 	 * STATISTICS on indexes (for expressional index columns), and (b) we want
 	 * to allow SET STATISTICS on system catalogs without requiring
-	 * allowSystemTableMods to be turned on.
+	 * allowSystemTableModsDDL to be turned on.
 	 */
 	if (rel->rd_rel->relkind != RELKIND_RELATION &&
 		rel->rd_rel->relkind != RELKIND_INDEX)
@@ -7746,7 +7746,7 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 		aclcheck_error(aclresult, ACL_KIND_CLASS,
 					   RelationGetRelationName(pkrel));
 
-	if (!allowSystemTableMods && IsSystemRelation(pkrel))
+	if (!allowSystemTableModsDDL && IsSystemRelation(pkrel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied: \"%s\" is a system catalog",

@@ -341,7 +341,7 @@ ProcessQuery(Portal portal,
 			{
 				if (truncRel->rd_rel->relkind != RELKIND_RELATION ||
 					!pg_class_ownercheck(RelationGetRelid(truncRel), GetUserId()) ||
-					(!allowSystemTableMods && IsSystemRelation(truncRel)))
+					(!allowSystemTableModsDDL && IsSystemRelation(truncRel)))
 				{
 					heap_close(truncRel, AccessExclusiveLock);
 					break;

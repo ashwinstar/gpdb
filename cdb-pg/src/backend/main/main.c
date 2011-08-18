@@ -328,6 +328,9 @@ help(const char *progname)
 	printf(_("  -T              send SIGSTOP to all backend servers if one dies\n"));
 	printf(_("  -W NUM          wait NUM seconds to allow attach from a debugger\n"));
 
+	printf(_("\nOptions for maintenance mode:\n"));
+	printf(_("  -m              start the system in maintenance mode\n"));
+
 	printf(_("\nOptions for upgrade mode:\n"));
 	printf(_("  -U              start the system in upgrade mode\n"));
 

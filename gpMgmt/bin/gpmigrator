@@ -930,7 +930,7 @@ class GPUpgrade:
         
         options = ''
         if utility or forceutility: options += ' -c gp_session_role=utility'          
-        if upgradeMode:             options += ' -c gp_upgrade_conn=true'
+        if upgradeMode:             options += ' -c gp_maintenance_conn=true'
 
         if self.__dict__.get('sock_dir'):
             sockdir = self.sock_dir
@@ -1059,7 +1059,7 @@ class GPUpgrade:
         try:
             cmd = "gpstart -a"
             if utility:  cmd = cmd +' -m'
-            if upgrade:  cmd = cmd +' -U'
+            if upgrade:  cmd = cmd +' -U upgrade'
 
             cmd += ' -l %s' % self.logdir
 
@@ -3114,7 +3114,7 @@ class GPUpgrade:
                      (str(dbname), str(dboid), tfile))
 
             # Execute the upgrade script
-            cmd = ' '.join(["PGOPTIONS='-c gp_upgrade_conn=true'", 'psql', '-f', tfile, dbname, self.user])
+            cmd = ' '.join(["PGOPTIONS='-c gp_maintenance_conn=true'", 'psql', '-f', tfile, dbname, self.user])
             logger.debug('running ' + cmd)
             p = subprocess.Popen(cmd, shell = True,
                                   close_fds = True,

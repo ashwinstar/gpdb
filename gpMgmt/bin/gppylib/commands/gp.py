@@ -74,7 +74,7 @@ class MasterStart(Command):
     def __init__(self, name, dataDir, port, dbid, standby_dbid,
                  numContentsInCluster, 
                  wrapper, wrapper_args,
-                 upgradeMode=False,
+                 specialMode=None,
                  restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
                  max_connections=1, disableMasterMirror=False,
                  utilityMode=False, ctxt=LOCAL, remoteHost=None
@@ -105,8 +105,11 @@ class MasterStart(Command):
         cmdfrags=["$GPHOME/bin/pg_ctl %s -w -D %s -l %s/pg_log/startup.log -o \" %s %s -i -M master -p %s -b %s -x %s -C -1 -z %s --silent-mode=true" % \
                   (wrapper_string, dataDir,dataDir,standby,gp_mode_flags,port,dbid,standby_dbid,numContentsInCluster)]
 
-        if upgradeMode:
+        assert(specialMode in [None, 'upgrade', 'maintenance'])
+        if specialMode == 'upgrade':
             cmdfrags.append(" -U")
+        elif specialMode == 'maintenance':
+            cmdfrags.append(" -m")
 
         if restrictedMode:
             cmdfrags.append(" -c superuser_reserved_connections=%s" % max_connections)
@@ -121,14 +124,14 @@ class MasterStart(Command):
     @staticmethod
     def local(name, dataDir, port, dbid, standbydbid, numContentsInCluster, 
               wrapper, wrapper_args,
-              upgradeMode=False,
+              specialMode=None,
               restrictedMode=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
               max_connections=1, disableMasterMirror=False,
               utilityMode=False):
         cmd=MasterStart(name, dataDir, port, dbid, standbydbid,
                         numContentsInCluster,
                         wrapper, wrapper_args, 
-                        upgradeMode, restrictedMode, timeout,max_connections,
+                        specialMode, restrictedMode, timeout,max_connections,
                         disableMasterMirror,utilityMode)
         cmd.run(validateAfter=True)
 
@@ -157,7 +160,7 @@ class SegmentStart(Command):
     def __init__(self, name, gpdb, numContentsInCluster, mirroringMode,
                  utilityMode=False, ctxt=LOCAL, remoteHost=None,
                  noWait=False, timeout=SEGMENT_TIMEOUT_DEFAULT,
-                 upgradeMode=False, wrapper=None, wrapper_args=None):
+                 specialMode=None, wrapper=None, wrapper_args=None):
 
         # This is referenced from calling code
         self.segment = gpdb
@@ -194,13 +197,17 @@ class SegmentStart(Command):
         utilityModeStr = ""
         if ( utilityMode ):
             utilityModeStr = "-c gp_role=utility"
-        upgradeModeStr = ""
-        if (upgradeMode):
-            upgradeModeStr = "-U"
+
+        assert(specialMode in [None, 'upgrade', 'maintenance'])
+        specialModeStr = ""
+        if (specialMode == 'upgrade'):
+            specialModeStr = '-U'
+        elif (specialMode == 'maintenance'):
+            specialModeStr = '-m'
 
         cmdfrags.append("-o '-i %s %s %s --silent-mode=true -M %s -b %s -C %s "
                         "-z %s' start 2>&1" %
-                        (portStr, upgradeModeStr, utilityModeStr, mirroringMode, dbid,
+                        (portStr, specialModeStr, utilityModeStr, mirroringMode, dbid,
                          content, numContentsInCluster))
         self.cmdStr=' '.join(cmdfrags)
 
@@ -461,7 +468,7 @@ class GpSegStartCmd(Command):
     def __init__(self, name, gphome, segments, collatelist, gpversion,
                  mirroringMode, numContentsInCluster, timeout=SEGMENT_TIMEOUT_DEFAULT, 
                  verbose=False,ctxt=LOCAL, remoteHost=None, pickledTransitionData=None,
-                 upgradeMode=False, wrapper=None, wrapper_args=None):
+                 specialMode=None, wrapper=None, wrapper_args=None):
 
         # Referenced by calling code, create a clone
         self.dblist = [x for x in segments]
@@ -485,8 +492,11 @@ class GpSegStartCmd(Command):
                 "-t %d" % timeout
                 ]
 
-        if upgradeMode:
-            args.append("-U")
+        # gpsegstart.py: takes "-U specialMode" for upgrade or maintenance mode 
+        assert(specialMode in [None, 'upgrade', 'maintenance'])
+        if specialMode is not None:
+            args.append("-U %s" % specialMode)
+
         if pickledTransitionData is not None:
             args.append("-p")
             args.append(pickledTransitionData)

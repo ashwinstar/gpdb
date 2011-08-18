@@ -4152,7 +4152,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 											  intoClause->onCommit,
 											  targetPolicy,  	/* MPP */
 											  reloptions,
-											  allowSystemTableMods,
+											  allowSystemTableModsDDL,
 											  &intoComptypeOid, 	/* MPP */
 						 					  &persistentTid,
 						 					  &persistentSerialNum);

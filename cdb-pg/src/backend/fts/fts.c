@@ -1274,7 +1274,7 @@ openSelfConn(CdbComponentDatabaseInfo *entryDB)
 		return NULL;
 	}
 
-	appendPQExpBuffer(entryBuffer, "options='-c gp_session_role=UTILITY' ");
+	appendPQExpBuffer(entryBuffer, "options='-c gp_session_role=UTILITY -c allow_system_table_mods=dml' ");
 
 	/*
 	 * Do not need to set host, since FTS is running on the same host

@@ -193,8 +193,11 @@ extern bool Debug_filerep_memory_log_flush;
 extern bool filerep_inject_listener_fault;
 extern bool filerep_inject_change_tracking_recovery_fault;
 extern bool gp_crash_recovery_supress_ao_eof;
+
 extern bool gp_upgrade_mode;
-extern bool gp_upgrade_conn;
+extern bool gp_maintenance_mode;
+extern bool gp_maintenance_conn;
+extern bool allow_segment_DML;
 
 extern bool Debug_print_tablespace;
 extern bool	Debug_print_server_processes;

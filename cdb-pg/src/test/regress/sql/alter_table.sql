@@ -164,6 +164,7 @@ DROP TABLE tmp_new;
 DROP TABLE tmp_new2;
 
 -- ALTER TABLE ... RENAME on corrupted relations
+SET allow_system_table_mods = dml;
 -- missing entry
 CREATE TABLE cor (a int, b float);
 INSERT INTO cor SELECT i, i+1 FROM generate_series(1,100)i;
@@ -185,6 +186,8 @@ UPDATE pg_class SET relname='othercor' WHERE relname='cor';
 ALTER TABLE othercor RENAME TO tmpcor;
 ALTER TABLE tmpcor RENAME TO cor;
 DROP TABLE cor;
+
+RESET allow_system_table_mods;
 
 -- ALTER TABLE ... RENAME on non-table relations
 -- renaming indexes (FIXME: this should probably test the index's functionality)

@@ -684,7 +684,7 @@ DefineIndex(RangeVar *heapRelation,
 			index_create(relationId, indexRelationName, indexRelationId,
 						 indexInfo, accessMethodId, tablespaceId, classObjectId,
 						 reloptions, primary, isconstraint, &(stmt->constrOid),
-						 allowSystemTableMods, skip_build, concurrent, altconname);
+						 allowSystemTableModsDDL, skip_build, concurrent, altconname);
 
         /*
          * Dispatch the command to all primary and mirror segment dbs.
@@ -741,7 +741,7 @@ DefineIndex(RangeVar *heapRelation,
 			index_create(relationId, indexRelationName, indexRelationId,
 						 indexInfo, accessMethodId, tablespaceId, classObjectId,
 						 reloptions, primary, isconstraint, &(stmt->constrOid),
-						 allowSystemTableMods, skip_build, concurrent, altconname);
+						 allowSystemTableModsDDL, skip_build, concurrent, altconname);
 	}
 
 	if (!concurrent)

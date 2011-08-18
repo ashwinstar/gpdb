@@ -665,7 +665,7 @@ index_create(Oid heapRelationId,
 				/* MPP-7773: don't track objects in system namespace
 				 * if modifying system tables (eg during upgrade)  
 				 */
-				if (allowSystemTableMods)
+				if (allowSystemTableModsDDL)
 					doIt = false;
 				break;
 
@@ -2682,7 +2682,7 @@ reindex_index(Oid indexId, Oid newrelfilenode, List **extra_oids)
 				/* MPP-7773: don't track objects in system namespace
 				 * if modifying system tables (eg during upgrade)  
 				 */
-				if (allowSystemTableMods)
+				if (allowSystemTableModsDDL)
 					doIt = false;
 				break;
 

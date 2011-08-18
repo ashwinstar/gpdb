@@ -49,6 +49,8 @@
 #include "utils/lsyscache.h"
 
 #include "cdb/cdbvars.h"
+#include "catalog/catalog.h"
+#include "miscadmin.h"
 
 /* clause types for findTargetlistEntrySQL92 */
 #define ORDER_CLAUSE 0
@@ -852,6 +854,21 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	rtindex = list_length(pstate->p_rtable);
 	Assert(rte == rt_fetch(rtindex, pstate->p_rtable));
 
+	/*
+	 * Special check for DML on system relations,
+	 * allow DML when:
+	 * 	- in single user mode: initdb insert PIN entries to pg_depend,...
+	 * 	- in maintenance mode, upgrade mode or
+	 *  - allow_system_table_mods = dml
+	 */
+	if (IsUnderPostmaster && !allowSystemTableModsDML
+		&& IsSystemRelation(pstate->p_target_relation))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("permission denied: \"%s\" is a system catalog",
+						 RelationGetRelationName(pstate->p_target_relation)),
+				 errOmitLocation(true)));
+
 	/* special check for DML on foreign relations */
 	if(RelationIsForeign(pstate->p_target_relation))
 		ereport(ERROR,
@@ -859,7 +876,8 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 				 errmsg("foreign tables are read only. cannot change \"%s\"",
 						 RelationGetRelationName(pstate->p_target_relation)),
 				 errOmitLocation(true)));
-	
+
+
 	/* special check for DML on external relations */
 	if(RelationIsExternal(pstate->p_target_relation))
 	{

@@ -64,7 +64,7 @@ class SegStartStatus:
 #-------------------------------------------------------------------------    
 class GpSegStart:
     ######
-    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster, timeout, pickledTransitionData, upgradeMode, wrapper, wrapper_args):
+    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster, timeout, pickledTransitionData, specialMode, wrapper, wrapper_args):
 
         self.dblist = map(gparray.GpDB.initFromString, dblist)
         self.mirroringMode = mirroringMode
@@ -72,7 +72,9 @@ class GpSegStart:
         self.numContentsInCluster=numContentsInCluster
         self.timeout = timeout
         self.pickledTransitionData = pickledTransitionData
-        self.upgradeMode = upgradeMode
+
+        assert(specialMode in [None, 'upgrade', 'maintenance'])
+        self.specialMode = specialMode
 
         #
         # There was an issue with Linux that required the numWorkers to be 1,
@@ -159,7 +161,7 @@ class GpSegStart:
                                 mirroringModeForStart,
                                 noWait=nowait,
                                 timeout=self.timeout,
-                                upgradeMode=self.upgradeMode,
+                                specialMode=self.specialMode,
                                 wrapper=self.wrapper,
                                 wrapper_args=self.wrapper_args)
             self.pool.addCommand(cmd)
@@ -396,8 +398,9 @@ class GpSegStart:
                           help="number of distinct content ids in cluster")
         parser.add_option("-t", "--timeout", dest="timeout", type="int", default=SEGMENT_TIMEOUT_DEFAULT,
                           help="seconds to wait")
-        parser.add_option('-U', '--upgrade_mode', action='store_true',
-                          help='start the instance in upgrade mode')
+        parser.add_option('-U', '--specialMode', type='choice', choices=['upgrade', 'maintenance'],
+                           metavar='upgrade|maintenance', action='store', default=None,
+                           help='start the instance in upgrade or maintenance mode')
         parser.add_option('', '--wrapper', dest="wrapper", default=None, type='string');
         parser.add_option('', '--wrapper-args', dest="wrapper_args", default=None, type='string');
         
@@ -412,7 +415,7 @@ class GpSegStart:
                                     options.numsegments,
                                     options.timeout,
                                     options.pickledTransitionData,
-                                    options.upgrade_mode,
+                                    options.specialMode,
                                     options.wrapper,
                                     options.wrapper_args)
 

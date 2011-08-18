@@ -281,7 +281,8 @@ extern int	CTimeZone;
 #define MAXTZLEN		10		/* max TZ name len, not counting tr. null */
 
 extern bool enableFsync;
-extern bool allowSystemTableMods;
+extern bool allowSystemTableModsDDL;
+extern bool allowSystemTableModsDML;
 extern PGDLLIMPORT int planner_work_mem;
 extern PGDLLIMPORT int work_mem;
 extern PGDLLIMPORT int max_work_mem;

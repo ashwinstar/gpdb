@@ -469,14 +469,29 @@ InitializeSessionUserId(const char *rolename)
 
 		/*
 		 * In Upgrade Mode, normal connection (i.e. dispatch mode)
-		 * is disallowed unless it's the bootstrap user and the "gp_upgrade_conn" GUC is set.
+		 * is disallowed unless it's the bootstrap user and
+		 * gp_maintenance_conn GUC is set.
 		 */
 		if (gp_upgrade_mode && Gp_role == GP_ROLE_DISPATCH &&
-			!(roleid==BOOTSTRAP_SUPERUSERID && gp_upgrade_conn))
+			!(roleid==BOOTSTRAP_SUPERUSERID && gp_maintenance_conn))
 		{
 			ereport(FATAL,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("Upgrade in progress, connection refused"),
+					 errOmitLocation(true),
+					 errSendAlert(false)));
+		}
+
+		/*
+		 * Maintenance Mode: allow superuser to connect when
+		 * gp_maintenance_conn GUC is set
+		 */
+		if (gp_maintenance_mode && Gp_role == GP_ROLE_DISPATCH &&
+			!(superuser() && gp_maintenance_conn))
+		{
+			ereport(FATAL,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("Maintenance mode: connected by superuser only"),
 					 errOmitLocation(true),
 					 errSendAlert(false)));
 		}

@@ -124,7 +124,7 @@ bool querytree_safe_for_segment_walker(Node *expr, void *context)
 			{
 				Query *q = (Query *) expr;
 				
-				if (!gp_upgrade_mode &&
+				if (!allow_segment_DML &&
 					(q->commandType != CMD_SELECT
 					 || q->intoClause != NULL
 					 || q->resultRelation > 0))

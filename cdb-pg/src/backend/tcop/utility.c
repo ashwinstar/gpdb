@@ -215,7 +215,7 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
 					   rel->relname);
 
-	if (!allowSystemTableMods && IsSystemClass(classform))
+	if (!allowSystemTableModsDDL && IsSystemClass(classform))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied: \"%s\" is a system catalog",
@@ -293,7 +293,7 @@ CheckDropRelStorage(RangeVar *rel, ObjectType removeType)
  * Verify user has ownership of specified relation, else ereport.
  *
  * If noCatalogs is true then we also deny access to system catalogs,
- * except when allowSystemTableMods is true.
+ * except when allowSystemTableModsDDL is true.
  */
 void
 CheckRelationOwnership(RangeVar *rel, bool noCatalogs)
@@ -314,7 +314,7 @@ CheckRelationOwnership(RangeVar *rel, bool noCatalogs)
 
 	if (noCatalogs)
 	{
-		if (!allowSystemTableMods &&
+		if (!allowSystemTableModsDDL &&
 			IsSystemClass((Form_pg_class) GETSTRUCT(tuple)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),

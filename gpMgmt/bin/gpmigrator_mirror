@@ -807,7 +807,7 @@ class GPUpgrade:
 
         try:
             if utility:  cmd = 'gpstart -a -m'
-            elif upgrade:cmd = 'gpstart -a -U'
+            elif upgrade:cmd = 'gpstart -a -U upgrade'
             else:        cmd = 'gpstart -a'
 
             cmd += ' -l %s' % self.logdir
@@ -1346,7 +1346,7 @@ class GPUpgrade:
                      (str(dbname), str(dboid), tfile))
 
             # Execute the upgrade script
-            cmd = ' '.join(["PGOPTIONS='-c gp_upgrade_conn=true'", 'psql', '-f', tfile, dbname, self.user])
+            cmd = ' '.join(["PGOPTIONS='-c gp_maintenance_conn=true'", 'psql', '-f', tfile, dbname, self.user])
             logger.debug('running ' + cmd)
             p = subprocess.Popen(cmd, shell = True,
                                   close_fds = True,

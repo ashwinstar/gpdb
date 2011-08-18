@@ -509,9 +509,20 @@ bool gp_test_deadlock_hazard;
 int gp_test_deadlock_hazard_report_level = ERROR;
 static char *gp_test_deadlock_hazard_report_level_str;
 
-/* Upgrade GUCs */
+/* Upgrade & maintenance GUCs */
 bool gp_upgrade_mode;
-bool gp_upgrade_conn;
+bool gp_maintenance_mode;
+bool gp_maintenance_conn;
+bool allow_segment_DML;
+static char *allow_system_table_mods_str;
+
+const char *
+assign_allow_system_table_mods(const char *newval,
+							   bool doit,
+							   GucSource source __attribute__((unused)) );
+
+const char *
+show_allow_system_table_mods(void);
 
 /* Hadoop Integration GUCs */
 char  *gp_hadoop_connector_jardir;
@@ -769,12 +780,32 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_upgrade_conn", PGC_BACKEND, CUSTOM_OPTIONS,
-			gettext_noop("Upgrade Connection"),
+		{"maintenance_mode", PGC_POSTMASTER, CUSTOM_OPTIONS,
+			gettext_noop("Maintenance Mode"),
 			NULL,
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&gp_upgrade_conn,
+		&gp_maintenance_mode,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_maintenance_conn", PGC_BACKEND, CUSTOM_OPTIONS,
+			gettext_noop("Maintenance Connection"),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_maintenance_conn,
+		false, NULL, NULL
+	},
+
+	{
+		{"allow_segment_DML", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Allow DML on segments"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&allow_segment_DML,
 		false, NULL, NULL
 	},
 
@@ -2153,16 +2184,6 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL
 			},
 		&gp_debug_resqueue_priority,
-		false, NULL, NULL
-	},
-
-	{
-		{"allow_system_table_mods", PGC_POSTMASTER, DEVELOPER_OPTIONS,
-			gettext_noop("Allows modifications of the structure of system tables."),
-			NULL,
-			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
-		},
-		&allowSystemTableMods,
 		false, NULL, NULL
 	},
 
@@ -4792,6 +4813,16 @@ static struct config_real ConfigureNamesReal[] =
 
 static struct config_string ConfigureNamesString[] =
 {
+	{
+		{"allow_system_table_mods", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Allows ddl/dml modifications of system tables."),
+			gettext_noop("Valid values are \"NONE\", \"DDL\", \"DML\", \"ALL\". " ),
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&allow_system_table_mods_str,
+		"none", assign_allow_system_table_mods, show_allow_system_table_mods
+	},
+
 	{
 		{"gp_hashagg_compress_spill_files", PGC_USERSET, DEPRECATED_OPTIONS,
 			gettext_noop("Specify if spill files in HashAggregate should be compressed."),
@@ -10888,5 +10919,60 @@ assign_application_name(const char *newval, bool doit, GucSource source)
 	else
 		return newval;
 }
+
+/*
+ * Assign hook routine for "allow_system_table_mods" GUC.
+ * Setting it DDL or ALL requires either:
+ * 		- upgrade_mode GUC set
+ * 		- in single user mode
+ */
+const char *
+assign_allow_system_table_mods(const char *newval,
+							   bool doit,
+							   GucSource source __attribute__((unused)) )
+{
+	bool valueDDL = false;
+	bool valueDML = false;
+
+	if (newval == NULL || newval[0] == 0 ||
+		!pg_strcasecmp("none", newval));
+	else if (!pg_strcasecmp("dml", newval))
+		valueDML = true;
+	else if (!pg_strcasecmp("ddl", newval) &&
+			 (gp_upgrade_mode || !IsUnderPostmaster))
+		valueDDL = true;
+	else if (!pg_strcasecmp("all", newval) &&
+			 (gp_upgrade_mode || !IsUnderPostmaster))
+	{
+		valueDML = true;
+		valueDDL = true;
+	}
+	else
+		elog(ERROR,
+			"Unknown system table modification policy. (Current policy: '%s')",
+			show_allow_system_table_mods());
+
+	if (doit)
+	{
+		allowSystemTableModsDML = valueDML;
+		allowSystemTableModsDDL = valueDDL;
+	}
+
+	return newval;
+}
+
+const char *
+show_allow_system_table_mods(void)
+{
+	if (allowSystemTableModsDML && allowSystemTableModsDDL)
+		return "ALL";
+	else if (allowSystemTableModsDDL)
+		return "DDL";
+	else if (allowSystemTableModsDML)
+		return "DML";
+	else
+		return "NONE";
+}
+
 
 #include "guc-file.c"

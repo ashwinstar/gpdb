@@ -869,7 +869,7 @@ PostmasterMain(int argc, char *argv[])
 	 * tcop/postgres.c (the option sets should not conflict) and with the
 	 * common help() function in main/main.c.
 	 */
-	while ((opt = getopt(argc, argv, "A:b:B:C:c:D:d:EeFf:h:ijk:lN:M:nOo:Pp:r:S:sTt:UW:y:x:z:-:")) != -1)
+	while ((opt = getopt(argc, argv, "A:b:B:C:c:D:d:EeFf:h:ijk:lN:mM:nOo:Pp:r:S:sTt:UW:y:x:z:-:")) != -1)
 	{
 		switch (opt)
 		{
@@ -947,6 +947,18 @@ PostmasterMain(int argc, char *argv[])
 			case 'l':
 				SetConfigOption("ssl", "true", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
+
+			case 'm':
+				/*
+				 * In maintenance mode:
+				 * 	1. allow DML on catalog table
+				 * 	2. allow DML on segments
+				 */
+				SetConfigOption("maintenance_mode",  	  	"true", PGC_POSTMASTER, PGC_S_ARGV);
+				SetConfigOption("allow_segment_DML", 	  	"true", PGC_POSTMASTER, PGC_S_ARGV);
+				SetConfigOption("allow_system_table_mods",	"dml",  PGC_POSTMASTER, PGC_S_ARGV);
+				break;
+
 			case 'M':
 
 				/* note that M is a postmaster-only option */
@@ -968,7 +980,8 @@ PostmasterMain(int argc, char *argv[])
 				break;
 
 			case 'O':
-				SetConfigOption("allow_system_table_mods", "true", PGC_POSTMASTER, PGC_S_ARGV);
+				/* Only use in single user mode */
+				SetConfigOption("allow_system_table_mods", "all", PGC_POSTMASTER, PGC_S_ARGV);
 				break;
 
 			case 'o':
@@ -1028,13 +1041,14 @@ PostmasterMain(int argc, char *argv[])
 			case 'U':
 				/*
 				 * In upgrade mode, we indicate we're in upgrade mode and
-				 * 1. allow DML on persistent table
-				 * 2. alter DDL on catalog table
+				 * 1. allow DML on persistent table & catalog table
+				 * 2. alter DDL on catalog table (NOTE: upgrade_mode must set beforehand)
 				 * 3. TODO: disable the 4.1 xlog format (stick with the old)
 				 */
 				SetConfigOption("upgrade_mode",                         "true", PGC_POSTMASTER, PGC_S_ARGV);
 				SetConfigOption("gp_permit_persistent_metadata_update", "true", PGC_POSTMASTER, PGC_S_ARGV);
-				SetConfigOption("allow_system_table_mods",              "true", PGC_POSTMASTER, PGC_S_ARGV);
+				SetConfigOption("allow_segment_DML",  		            "true", PGC_POSTMASTER, PGC_S_ARGV);
+				SetConfigOption("allow_system_table_mods",              "all",  PGC_POSTMASTER, PGC_S_ARGV);
 				break;
 
 			case 'W':

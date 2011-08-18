@@ -130,7 +130,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	 * Disallow creation of tablespaces named "pg_xxx"; we reserve this
 	 * namespace for system purposes.
 	 */
-	if (!allowSystemTableMods && IsReservedName(stmt->tablespacename))
+	if (!allowSystemTableModsDDL && IsReservedName(stmt->tablespacename))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
@@ -762,7 +762,7 @@ RenameTableSpace(const char *oldname, const char *newname)
 		aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_TABLESPACE, oldname);
 
 	/* Validate new name */
-	if (!allowSystemTableMods && IsReservedName(newname))
+	if (!allowSystemTableModsDDL && IsReservedName(newname))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),

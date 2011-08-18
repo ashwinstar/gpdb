@@ -146,7 +146,7 @@ CreateTrigger(CreateTrigStmt *stmt, bool forConstraint)
 				 errmsg("\"%s\" is not a table",
 						RelationGetRelationName(rel))));
 
-	if (!allowSystemTableMods && IsSystemRelation(rel))
+	if (!allowSystemTableModsDDL && IsSystemRelation(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied: \"%s\" is a system catalog",
@@ -578,7 +578,7 @@ RemoveTriggerById(Oid trigOid)
 				 errmsg("\"%s\" is not a table",
 						RelationGetRelationName(rel))));
 
-	if (!allowSystemTableMods && IsSystemRelation(rel))
+	if (!allowSystemTableModsDDL && IsSystemRelation(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied: \"%s\" is a system catalog",
