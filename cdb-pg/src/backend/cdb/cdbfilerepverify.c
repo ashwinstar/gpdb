@@ -4968,8 +4968,8 @@ FileRepPrimary_CheckpointVerificationRequest(
 	bool force)
 {
 	TimestampTz currentTime;
-	long secs;
-	int microsecs;
+	long secs = 0;
+	int microsecs = 0;
 	
 
 	/* if we are not forcing the check point, consider whether we really want
@@ -11281,8 +11281,8 @@ bool
 extractDir(char * file, char * dir, int maxLen)
 {
 	int len, i;
-	int endOfDir;
-	int startOfDir;
+	int endOfDir =0;
+	int startOfDir =0;
 
 	len = strlen(file);
 	
