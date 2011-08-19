@@ -2113,6 +2113,7 @@ select t1.* from smallt as t1, smallt as t2 where t1.d = t2.d and t1.i < 2;
  1 | text 6  | 01-12-2011
 (100 rows)
 
+--start_ignore
 explain analyze select t1.* from smallt as t1, smallt as t2 where t1.d = t2.d and t1.i < 2;
                                                                              QUERY PLAN                                                                              
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2148,6 +2149,7 @@ explain analyze select t1.* from smallt as t1, smallt as t2 where t1.d = t2.d an
  Total runtime: 9.731 ms
 (30 rows)
 
+--end_ignore
 set enable_hashjoin=on;
 set enable_mergejoin=off;
 -- ShareInputScan

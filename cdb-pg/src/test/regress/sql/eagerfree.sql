@@ -106,7 +106,9 @@ select t1.* from smallt as t1, smallt as t2 where t1.i = t2.i and t1.i < 2;
 explain analyze select t1.* from smallt as t1, smallt as t2 where t1.i = t2.i and t1.i < 2;
 
 select t1.* from smallt as t1, smallt as t2 where t1.d = t2.d and t1.i < 2;
+--start_ignore
 explain analyze select t1.* from smallt as t1, smallt as t2 where t1.d = t2.d and t1.i < 2;
+--end_ignore
 set enable_hashjoin=on;
 set enable_mergejoin=off;
 
