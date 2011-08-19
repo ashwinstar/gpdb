@@ -4132,7 +4132,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_S
 		},
 		&gp_fts_probe_timeout,
-		180, 0, INT_MAX, NULL, NULL
+		10, 0, INT_MAX, NULL, NULL
 	},
 
 	{

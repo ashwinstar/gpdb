@@ -254,20 +254,16 @@ probeSegment(CdbComponentDatabaseInfo *dbInfo)
 		}
 
 		/*
-		 * if probe timeout has expired or maximum number of retries was reached,
+		 * if maximum number of retries was reached,
 		 * report segment as non-responsive (dead)
 		 */
-		bool timeout = probeTimeout(&probeInfo);
-		if (timeout || retryCnt == gp_fts_probe_retries)
+		if (retryCnt == gp_fts_probe_retries)
 		{
-			const char *errorMsg = (timeout ? "exceeded timeout" : "maximum number of retries reached");
 			write_log("FTS: failed to probe segment (content=%d, dbid=%d) after trying %d time(s), "
-					  "probe elapsed time: " UINT64_FORMAT " ms, %s",
+					  "maximum number of retries reached.",
 					  probeInfo.segmentId,
 					  probeInfo.dbId,
-					  retryCnt,
-					  gp_get_elapsed_ms(&probeInfo.startTime),
-					  errorMsg);
+					  retryCnt);
 			return PROBE_DEAD;
 		}
 
@@ -277,6 +273,9 @@ probeSegment(CdbComponentDatabaseInfo *dbInfo)
 
 		write_log("FTS: retry %d to probe segment (content=%d, dbid=%d).",
 				  retryCnt - 1, probeInfo.segmentId, probeInfo.dbId);
+
+		/* reset timer */
+		gp_set_monotonic_begin_time(&probeInfo.startTime);
 	}
 
 	/* segment response to probe was received, close connection  */
@@ -624,7 +623,18 @@ probeTimeout(ProbeConnectionInfo *probeInfo)
 	}
 
 	/* If connection takes more than the gp_fts_probe_timeout, we fail. */
-	return (elapsed_ms > gp_fts_probe_timeout * 1000);
+	if (elapsed_ms > gp_fts_probe_timeout * 1000)
+	{
+		write_log("FTS: failed to probe segment (content=%d, dbid=%d) due to timeout expiration, "
+				  "probe elapsed time: " UINT64_FORMAT " ms.",
+				  probeInfo->segmentId,
+				  probeInfo->dbId,
+				  elapsed_ms);
+
+		return true;
+	}
+
+	return false;
 }
 
 
