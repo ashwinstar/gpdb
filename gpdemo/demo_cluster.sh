@@ -276,7 +276,7 @@ cat >> $CLUSTER_CONFIG <<-EOF
 	ENCODING=UNICODE
 EOF
 
-if [ `uname -p` != "sparc" ]; then
+if [ `uname -p` != "sparc" ] && [ `uname -s` != "Darwin" ]; then
 	cat >> $CLUSTER_CONFIG <<-EOF
 	
 		# Array of mirror data locations for each hosts Segment Instances, the number of directories in this array will
