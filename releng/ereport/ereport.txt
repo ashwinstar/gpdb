@@ -4741,7 +4741,7 @@ cabg: cdbfilerepverify:00000625:  "could not write to file '%s' data '%s' length
 cabg: cdbfilerepverify:00000626:  "verification aborted", 
 cabg: cdbfilerepverify:00000627:  logControl.logOptions.fixPath, 
 cabg: cdbfilerepverify:00000628:  fixMessage, 
-cabg: cdbfilerepverify:00000629:  strlen(fixMessage), 
+cabg: cdbfilerepverify:00000629:  (long unsigned int) strlen(fixMessage), 
 cabg: cdbfilerepverify:00000630:  logControl.logOptions.token), 
 cabg: cdbfilerepverify:00000631:  errhint("address file system failure and run gpverify"))); 
 cabg: cdbfilerepverify:00000636:  ereport(WARNING, 
@@ -4908,7 +4908,7 @@ cabg: cdbfilerepverify:00001439:  (errcode_for_file_access(),
 cabg: cdbfilerepverify:00001440:  errmsg("could not write to file '%s' data '%p' dataLength '%lu' : %m", 
 cabg: cdbfilerepverify:00001441:  logControl.logOptions.logPath, 
 cabg: cdbfilerepverify:00001442:  logMessage, 
-cabg: cdbfilerepverify:00001443:  strlen(logMessage)))); 
+cabg: cdbfilerepverify:00001443:  (long unsigned int) strlen(logMessage)))); 
 cabg: cdbfilerepverify:00001449:  ereport(WARNING, 
 cabg: cdbfilerepverify:00001450:  (errcode_for_file_access(), 
 cabg: cdbfilerepverify:00001451:  errmsg("could not write to file '%s' data '%p' dataLength '%u' : %m", 
