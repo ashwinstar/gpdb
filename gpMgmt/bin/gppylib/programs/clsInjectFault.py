@@ -315,7 +315,8 @@ class GpInjectFaultProgram:
 			      "filerep_consumer (inject fault before data are processed, i.e. if mirror " \
 			      "then before file operation is issued to file system, if primary " \
 			      "then before mirror file operation is acknowledged to backend processes), " \
-				  "filerep_change_tracking_compacting (inject fault when compacting change tracking log files), " \
+			      "filerep_consumer_verificaton (inject fault before ack verification data are processed on primary), " \
+			      "filerep_change_tracking_compacting (inject fault when compacting change tracking log files), " \
 			      "filerep_sender (inject fault before data are sent to network), " \
 			      "filerep_receiver (inject fault after data are received from network), " \
 			      "filerep_flush (inject fault before fsync is issued to file system), " \

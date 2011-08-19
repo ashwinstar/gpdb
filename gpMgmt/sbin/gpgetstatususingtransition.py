@@ -111,7 +111,9 @@ class GpSegStatusProgram:
         # verify that all expected ones are there
         for expected in ["mode","segmentState","dataState", "postmasterState", "databaseStatus", "isFullResync", \
                             "resyncNumCompleted","resyncTotalToComplete","estimatedCompletionTimeSecondsSinceEpoch", \
-                            "changeTrackingBytesUsed"]:
+                            "changeTrackingBytesUsed","verificationStatus","verificationMode", 
+                            "verificationStartTimeSecondsSinceEpoch", "verificationCompletedCount", "verificationTotalCount",
+                            "estimatedCompletionVerificationTimeSecondsSinceEpoch"]:
             if expected not in data:
                 logger.warn("Missing data key %s from str %s" % (expected, str))
                 return None

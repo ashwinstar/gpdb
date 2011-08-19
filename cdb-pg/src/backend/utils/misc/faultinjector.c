@@ -111,6 +111,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		 *		*) file operation is issued to file system (if mirror)
 		 *		*) file operation performed on mirror is acknowledged to backend processes (if primary)
 		 */
+	_("filerep_consumer_verification"),
+		/* inject fault before ack verification data are consumed on primary */
 	_("filerep_change_tracking_compacting"),
 		/* Ashwin - inject fault during compacting change tracking */
 	_("filerep_sender"),
@@ -192,6 +194,8 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault after persistent state change is permanently stored during first pass */
 	_("finish_prepared_transaction_abort_pass2_aborting_create_needed"),
 		/* inject fault after physical drop and before final persistent state change is permanently stored during second pass */
+	_("filerep_verification"),
+	    /* inject fault to start verification */
 	_("twophase_transaction_commit_prepared"),
 		/* inject fault before transaction commit is recorded in xlog */
 	_("twophase_transaction_abort_prepared"),
@@ -463,6 +467,7 @@ FaultInjector_InjectFaultIfSet(
 			switch (entryLocal->faultInjectorIdentifier)
 			{	
 				case FileRepConsumer:
+				case FileRepConsumerVerification:
 				case FileRepSender:
 				case FileRepReceiver:
 				case FileRepResync:
@@ -771,6 +776,8 @@ FaultInjector_NewHashEntry(
 		{
 			case Checkpoint:
 			case ChangeTrackingDisable:
+			case FileRepVerification:
+
 			case FinishPreparedTransactionCommitPass1FromCreatePendingToCreated:
 			case FinishPreparedTransactionCommitPass2FromCreatePendingToCreated:
 				
@@ -810,6 +817,7 @@ FaultInjector_NewHashEntry(
 	switch (entry->faultInjectorIdentifier)
 	{
 		case ChangeTrackingDisable:
+		case FileRepConsumerVerification:
 		case StartPrepareTx:
 		case FileRepResync:
 		case FileRepResyncInProgress:
@@ -844,7 +852,7 @@ FaultInjector_NewHashEntry(
 		case FinishPreparedTransactionCommitPass2AbortingCreateNeeded:
 			
 		case FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate:
-		case FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate:
+//		case FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate:
 			
 		case FinishPreparedTransactionAbortPass1AbortingCreateNeeded:
 		case FinishPreparedTransactionAbortPass2AbortingCreateNeeded:

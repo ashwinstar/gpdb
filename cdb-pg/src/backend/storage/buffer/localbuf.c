@@ -60,7 +60,7 @@ static Block GetLocalBufferStorage(void);
  * does not get set.
  */
 BufferDesc *
-LocalBufferAlloc(Relation reln, BlockNumber blockNum, bool *foundPtr)
+LocalBufferAlloc_SMgr(SMgrRelation smgr, BlockNumber blockNum, bool *foundPtr)
 {
 	BufferTag	newTag;			/* identity of requested block */
 	LocalBufferLookupEnt *hresult;
@@ -69,7 +69,9 @@ LocalBufferAlloc(Relation reln, BlockNumber blockNum, bool *foundPtr)
 	int			trycounter;
 	bool		found;
 
-	INIT_BUFFERTAG(newTag, reln, blockNum);
+	//INIT_BUFFERTAG(newTag, reln, blockNum);
+	newTag.rnode = smgr->smgr_rnode;
+	newTag.blockNum = blockNum;
 
 	/* Initialize local buffers if first request in this session */
 	if (LocalBufHash == NULL)

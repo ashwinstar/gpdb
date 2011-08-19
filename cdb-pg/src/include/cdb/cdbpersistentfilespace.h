@@ -23,6 +23,8 @@ extern void PersistentFilespace_Reset(void);
 extern bool PersistentFilespace_Check(
 	Oid 			filespace);
 
+extern void PersistentFilespace_FileRepVerify(void);
+
 extern void PersistentFilespace_ConvertBlankPaddedLocation(
 	char 		**filespaceLocation,
 

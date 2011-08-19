@@ -300,6 +300,10 @@ bool		Debug_persistent_bootstrap_print = false;
 bool		Debug_bulk_load_bypass_wal = true;
 bool		Debug_persistent_appendonly_commit_count_print = false;
 
+#define VERIFY_CHECKPOINT_INTERVAL_DEFAULT 180
+int         verify_checkpoint_interval = 
+	VERIFY_CHECKPOINT_INTERVAL_DEFAULT;
+
 bool		Debug_database_command_print = false;
 int			Debug_database_command_print_level = LOG;
 #define GP_MAX_DATABASES_DEFAULT 16
@@ -317,10 +321,12 @@ bool		gp_persistent_skip_free_list = false;
 bool 		Debug_print_xlog_relation_change_info = false;
 bool 		Debug_print_xlog_relation_change_info_skip_issues_only = false;
 bool 		Debug_print_xlog_relation_change_info_backtrace_skip_issues = false;
+
 bool		Debug_filerep_crc_on = true;
 bool		Debug_filerep_print = false;
 bool		Debug_filerep_gcov = false;
 bool		Debug_filerep_config_print = false;
+bool		Debug_filerep_verify_performance_print = false;
 bool		Debug_filerep_memory_log_flush = false;
 bool		filerep_inject_listener_fault = false;
 bool		filerep_inject_change_tracking_recovery_fault = false;
@@ -2850,6 +2856,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"debug_filerep_verify_performance_print", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("enable filerep verify performance tracing"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_filerep_verify_performance_print,
+		false, NULL, NULL
+	},
+
+	{
 		{"debug_filerep_memory_log_flush", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("enable filerep config logs"),
 			NULL,
@@ -4087,6 +4103,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&gp_segment_connect_timeout,
 		180, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"verify_checkpoint_interval", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("set the online verification checkpoint interval (seconds)"),
+		 gettext_noop("0 means do not checkpoint"),
+			GUC_UNIT_S | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&verify_checkpoint_interval,
+		VERIFY_CHECKPOINT_INTERVAL_DEFAULT, 0, 1800, NULL, NULL
 	},
 
 	{

@@ -264,6 +264,16 @@ extern void FileRepPrimary_MirrorInSyncTransition(void);
  */
 extern void FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index);
 
+extern int FileRepPrimary_MirrorVerify(
+									   FileRepIdentifier_u				fileRepIdentifier,
+									   FileRepRelationType_e			fileRepRelationType,
+									   FileRepOperationDescription_u	fileRepOperationDescription,
+									   char								*data, 
+									   uint32							dataLength,
+									   void								**responseData, 
+									   uint32							*responseDataLength, 
+									   FileRepOperationDescription_u	*responseDesc);
+
 // -----------------------------------------------------------------------------
 // SENDER THREAD
 // -----------------------------------------------------------------------------

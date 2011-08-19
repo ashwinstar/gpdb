@@ -34,10 +34,12 @@
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepconnserver.h"
 #include "cdb/cdbmirroredflatfile.h"
+#include "cdb/cdbfilerepverify.h"
 #include "libpq/pqsignal.h"
 #include "storage/lwlock.h"
 #include "utils/faultinjector.h"
 #include "utils/hsearch.h"
+#include "utils/pg_crc.h"
 
 /*
  * It specifies fields maintained by each entry in hash table
@@ -113,6 +115,7 @@ static int SegmentFileFillZero(File fd, int64 writeOffset);
 static int FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName, int segmentFileNum);
 
 static int FileRepMirror_Drop(FileName fileName);
+
 
 /****************************************************************
  * FILEREP SUB-PROCESS (FileRep Mirror RECEIVER Process)
@@ -340,7 +343,8 @@ FileRepMirror_RunReceiver(void)
 														 fileRepShmemArray[msgType],
 														 msgLength, 
 														 &spareField,
-														 FileRepOperationNotSpecified);
+														 FileRepOperationNotSpecified,
+						                                 FileRepShmemLock);
 		
 				if (msgPositionInsert == NULL)
 				{
@@ -411,7 +415,7 @@ FileRepMirror_RunReceiver(void)
 				
 				LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
 				FileRep_IpcSignal(fileRepIpcArray[fileRepShmemArray[msgType]->ipcArrayIndex]->semC, 
-								  &fileRepIpcArray[fileRepShmemArray[msgType]->ipcArrayIndex]->refCountSemC);
+						  &fileRepIpcArray[fileRepShmemArray[msgType]->ipcArrayIndex]->refCountSemC);
 				LWLockRelease(FileRepShmemLock);
 
 				if (status == STATUS_OK)
@@ -555,8 +559,8 @@ FileRepMirror_StartConsumer(void)
 		case FileRepProcessTypeMirrorConsumerAppendOnly1:
 			fileRepProcIndex = FileRepMessageTypeAO01;
 			break;
-		case FileRepProcessTypeMirrorConsumerAppendOnly2:
-			fileRepProcIndex = FileRepMessageTypeAO02;
+		case FileRepProcessTypeMirrorVerification:
+		    fileRepProcIndex = FileRepMessageTypeVerify;
 			break;
 		default:
 			Assert(0);
@@ -565,7 +569,7 @@ FileRepMirror_StartConsumer(void)
 	}
 	
 	fileRepShmem = fileRepShmemArray[fileRepProcIndex];
-	
+
 	status = FileRepMirror_Init();
 	
 	while (1) {
@@ -647,6 +651,7 @@ FileRepMirror_RunConsumer(void)
 	struct timeval				currentTime;
 	pg_time_t					beginTime = 0;
 	pg_time_t					endTime = 0;
+	void*						responseData = NULL;
 		
 	FileRep_InsertConfigLogEntry("run consumer");
 
@@ -671,7 +676,7 @@ FileRepMirror_RunConsumer(void)
 			}
 			
 			FileRep_IpcSignal(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semP,
-							  &fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP);
+					  &fileRepIpcArray[fileRepShmem->ipcArrayIndex]->refCountSemP);
 		}
 		
 		fileRepShmemMessageDescr = 
@@ -692,11 +697,9 @@ FileRepMirror_RunConsumer(void)
 			}
 			
 			FileRep_IpcWait(fileRepIpcArray[fileRepShmem->ipcArrayIndex]->semC);
-	
-			//pg_usleep(1000L);  /* 1 ms */
 			
 			LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
-			
+
 			if (fileRepShmem->positionConsume == fileRepShmem->positionWraparound &&
 				fileRepShmem->positionInsert != fileRepShmem->positionWraparound) {
 				
@@ -762,42 +765,57 @@ FileRepMirror_RunConsumer(void)
 		
   		/* if message body present then calculate and compare Data Crc */
 		
-		if (fileRepMessageHeader->fileRepOperation == FileRepOperationWrite) {
-			
-			fileRepMessageBody =
-				(char*) (fileRepShmem->positionConsume + 
-						 sizeof(FileRepMessageHeader_s) + 
-						 sizeof(FileRepShmemMessageDescr_s) + 
-						 sizeof(pg_crc32));
-			
-			FileRep_CalculateCrc((char *) fileRepMessageBody,
-					fileRepMessageHeader->fileRepOperationDescription.write.dataLength,
-					&messageBodyLocal);	
-			
-			if (messageBodyLocal != fileRepMessageHeader->fileRepMessageBodyCrc) {
-				ereport(WARNING,
-					(errmsg("mirror failure, "
-							"could not match message body checksum between primary '%u' and mirror '%u' data length '%u', "
-							"failover requested", 
-							fileRepMessageHeader->fileRepMessageBodyCrc, 
-							messageBodyLocal,
-							fileRepMessageHeader->fileRepOperationDescription.write.dataLength),
-					 errhint("run gprecoverseg to re-establish mirror connectivity"),
-						FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-										  fileRepMessageHeader->fileRepRelationType,
-										  fileRepMessageHeader->fileRepOperation,
-										  fileRepMessageHeader->messageCount),
-						FileRep_errdetail_Shmem(),
-						FileRep_errcontext()));		
-				
-				status = STATUS_ERROR;
-				
-				FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+		if (fileRepMessageHeader->fileRepOperation == FileRepOperationWrite ||
+			fileRepMessageHeader->fileRepOperation == FileRepOperationVerify)
+		{
 
-				break;
-			}	
+			if (fileRepMessageHeader->messageBodyLength > 0)
+			{
+				
+				fileRepMessageBody =
+									(char*) (fileRepShmem->positionConsume + 
+											 sizeof(FileRepMessageHeader_s) + 
+											 sizeof(FileRepShmemMessageDescr_s) + 
+											 sizeof(pg_crc32));
+				
+				FileRep_CalculateCrc((char *) fileRepMessageBody,
+									 fileRepMessageHeader->messageBodyLength,
+									 &messageBodyLocal);	
+				
+				if (messageBodyLocal != fileRepMessageHeader->fileRepMessageBodyCrc) 
+				{
+					ereport(WARNING,
+							(errmsg("mirror failure, "
+									"could not match message body checksum between primary:'%u' and mirror:'%u' data length:'%u', "
+									"failover requested", 
+									fileRepMessageHeader->fileRepMessageBodyCrc, 
+									messageBodyLocal,
+									fileRepMessageHeader->messageBodyLength),
+							 errhint("run gprecoverseg to re-establish mirror connectivity"),
+							 
+							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+											   fileRepMessageHeader->fileRepRelationType,
+											   fileRepMessageHeader->fileRepOperation,
+														   fileRepMessageHeader->messageCount),	
+							 FileRep_errdetail_Shmem(),
+							 FileRep_errcontext()));		
+						
+						status = STATUS_ERROR;
+					
+						fileRepMessageHeader->messageBodyLength = 0;
+					
+						FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);	
+					
+						break;
+				}
+				fileRepMessageHeader->messageBodyLength = 0;
+			}
+			else
+			{
+				Assert(fileRepMessageHeader->fileRepOperation == FileRepOperationVerify);
+			}
 		}
-		
+	
 		FileRep_InsertLogEntry(
 							   "M_RunConsumer",
 							   fileRepMessageHeader->fileRepIdentifier,
@@ -888,7 +906,7 @@ FileRepMirror_RunConsumer(void)
 							}
 							
 							break;
-						
+					
 						default:
 							break;
 					}
@@ -1112,8 +1130,9 @@ FileRepMirror_RunConsumer(void)
 				}
 				
 				break;
-			case FileRepOperationWrite:
-				
+
+				case FileRepOperationWrite: 
+
 				fd = FileRepMirror_GetFileDescriptor(fileName);
 								
 				if (fd < 0) {	
@@ -1249,6 +1268,7 @@ FileRepMirror_RunConsumer(void)
 				}
 				
 				errno = 0;
+
 				if ((int) FileWrite(
 							fd, 
 							fileRepMessageBody,
@@ -2068,38 +2088,90 @@ FileRepMirror_RunConsumer(void)
 			case FileRepOperationHeartBeat:
 				/* NoOp. Just send ACK back. */
 				break;
+
+			case FileRepOperationVerify:
+			{
+				GpMonotonicTime	beginTime;
 				
-			default:
+				if (Debug_filerep_verify_performance_print)
+				{
+					gp_set_monotonic_begin_time(&beginTime);
+				}				
+
+				status = FileRepMirror_ExecuteVerificationRequest(
+																  fileRepMessageHeader, 
+																  fileRepMessageBody, 
+																  &responseData, 
+																  &fileRepMessageHeader->messageBodyLength);
+				
+				if (Debug_filerep_verify_performance_print)
+				{
+					ereport(LOG,
+							(errmsg("verification mirror elapsed time ' " INT64_FORMAT " ' miliseconds  "
+									"operation verification type '%s' ",
+									gp_get_elapsed_ms(&beginTime),
+									FileRepOperationVerificationTypeToString[fileRepMessageHeader->fileRepOperationDescription.verify.type]),
+							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+											   fileRepMessageHeader->fileRepRelationType,
+											   fileRepMessageHeader->fileRepOperation,
+											   fileRepMessageHeader->messageCount)));
+				}		
+				
+				if (status == STATUS_ERROR)
+				{
+					ereport(LOG,
+							(errmsg("mirror verification failure, "
+									"verification continues"),
+							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+											   fileRepMessageHeader->fileRepRelationType,
+											   fileRepMessageHeader->fileRepOperation,
+											   fileRepMessageHeader->messageCount),
+							 FileRep_errdetail_ShmemAck(),
+							 FileRep_errcontext()));	
+					
+					status = STATUS_OK;
+				}
+				break;
+			}
+		    default:
 				Assert(0);
 				break;
-			
 		}
 
 		if (fd == -1) 
 		{
 			Assert(status == STATUS_ERROR);
 		}
-		
+			
 		if (FileRep_IsOperationSynchronous(
-								fileRepMessageHeader->fileRepOperation)) {
-			if (status != STATUS_OK) {
+						fileRepMessageHeader->fileRepOperation)) 
+		{
+			if (status != STATUS_OK) 
+			{
 				fileRepMessageHeader->fileRepAckState = FileRepAckStateMirrorInFault;
-			} else {
+			} 
+			else 
+			{
 				fileRepMessageHeader->fileRepAckState = FileRepAckStateCompleted;
 			}
 			
-			if (FileRepAckMirror_Ack(
-							  fileRepMessageHeader->fileRepIdentifier,				
-							  fileRepMessageHeader->fileRepRelationType,
-							  fileRepMessageHeader->fileRepOperation,
-							  fileRepMessageHeader->fileRepOperationDescription,
-							  fileRepMessageHeader->fileRepAckState) != STATUS_OK) 
-			{
+			if (fileRepMessageHeader->messageBodyLength)
+				Assert(responseData != NULL);
 			
+			if (FileRepAckMirror_Ack(
+									 fileRepMessageHeader->fileRepIdentifier,				
+									 fileRepMessageHeader->fileRepRelationType,
+									 fileRepMessageHeader->fileRepOperation,
+									 fileRepMessageHeader->fileRepOperationDescription,
+									 fileRepMessageHeader->fileRepAckState,
+									 fileRepMessageHeader->messageBodyLength,
+									 (char*)responseData) != STATUS_OK) 
+			{
 				status = STATUS_ERROR;
+				
 				ereport(WARNING,
 						(errmsg("mirror failure, "
-								"could not queue ACK message to be sent to primary, "
+								"could not queue ack message to be sent to primary, "
 								"failover requested"),
 						 errhint("run gprecoverseg to re-establish mirror connectivity"),
 						 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
@@ -2110,6 +2182,16 @@ FileRepMirror_RunConsumer(void)
 						 FileRep_errcontext()));	
 				
 				FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			}
+			
+			if (fileRepMessageHeader->messageBodyLength)
+			{
+				Assert(fileRepMessageHeader->fileRepOperation == FileRepOperationVerify);
+				if (responseData)
+				{
+					pfree(responseData);
+					responseData = NULL;
+				}
 			}
 		}		
 				
@@ -2699,3 +2781,4 @@ FileRepMirror_DropBufferPoolSegmentFiles(FileName  fileName, int segmentFileNum)
 	
 	return status;
 }
+

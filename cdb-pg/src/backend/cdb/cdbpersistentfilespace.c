@@ -376,6 +376,71 @@ bool PersistentFilespace_Check(
 	return persistentFilespaceCheckFound;
 }
 
+static bool PersistentFilespace_FileRepVerifyScanTupleCallback(
+															   ItemPointer 			persistentTid,
+															   int64				persistentSerialNum,
+															   Datum				*values)
+{
+	Oid		filespaceOid;
+	
+	int16	dbId1;
+	char	locationBlankPadded1[FilespaceLocationBlankPaddedWithNullTermLen];
+	
+	int16	dbId2;
+	char	locationBlankPadded2[FilespaceLocationBlankPaddedWithNullTermLen];
+	
+	PersistentFileSysState	state;
+	
+	int64	createMirrorDataLossTrackingSessionNum;
+	
+	MirroredObjectExistenceState	mirrorExistenceState;
+	
+	int32					reserved;
+	TransactionId			parentXid;
+	int64					serialNum;
+	ItemPointerData			previousFreeTid;
+	
+	GpPersistentFilespaceNode_GetValues(
+										values,
+										&filespaceOid,
+										&dbId1,
+										locationBlankPadded1,
+										&dbId2,
+										locationBlankPadded2,
+										&state,
+										&createMirrorDataLossTrackingSessionNum,
+										&mirrorExistenceState,
+										&reserved,
+										&parentXid,
+										&serialNum,
+										&previousFreeTid);
+	
+	elog(LOG, 
+			"PersistentFilespace_FileRepVerify: filespace %u, location1 %s location2 %s dbId1 %d, dbId2 %d, state '%s', mirror existence state '%s', TID %s, serial number " INT64_FORMAT,
+			filespaceOid,
+			locationBlankPadded1,
+			locationBlankPadded2,
+			dbId1,
+			dbId2,
+			PersistentFileSysObjState_Name(state),
+			MirroredObjectExistenceState_Name(mirrorExistenceState),
+			ItemPointerToString2(persistentTid),
+			persistentSerialNum);
+		
+	return true;	// Continue.
+}
+
+void PersistentFilespace_FileRepVerify(void)
+{
+	PersistentFilespace_VerifyInitScan();
+		
+	PersistentFileSysObj_Scan(
+							  PersistentFsObjType_FilespaceDir,
+							  PersistentFilespace_FileRepVerifyScanTupleCallback);
+	
+	return;
+}
+
 extern void PersistentFilespace_LookupTidAndSerialNum(
 	Oid 		filespaceOid,
 				/* The filespace OID for the lookup. */

@@ -316,7 +316,65 @@ class SendFilerepTransitionStatusMessage(Command):
                 line = line[len("Success:"):]
             return line
 
+#-----------------------------------------------
+class SendFilerepVerifyMessage(Command):
 
+    DEFAULT_IGNORE_FILES = [
+        'pg_internal.init', 'pgstat.stat', 'pga_hba.conf', 
+        'pg_ident.conf', 'pg_fsm.cache', 'gp_dbid', 'gp_pmtransitions_args', 
+        'gp_dump', 'postgresql.conf', 'postmaster.log', 'postmaster.opts', 
+        'postmaser.pids', 'postgresql.conf.bak', 'core',  'wet_execute.tbl',
+        'recovery.done']
+
+    DEFAULT_IGNORE_DIRS = [
+        'pgsql_tmp', 'pg_xlog', 'pg_log', 'pg_stat_tmp', 'pg_changetracking'
+    ]
+
+    def __init__(self, name, host, port, token, full=None, verify_file=None, verify_dir=None,
+                 abort=None, suspend=None, resume=None, ignore_dir=None, ignore_file=None,
+                 results=None, results_level=None, ctxt=LOCAL, remoteHost=None):
+        """
+        Sends gp_verify message to backend to either start or get results of a 
+        mirror verification.
+        """
+        
+        self.host = host
+        self.port = port
+        
+        msg_contents = ['gp_verify']
+        
+        ## The ordering of the following appends is critical.  Do not rearrange without
+        ## an associated change in gp_primarymirror
+        
+        # full
+        msg_contents.append('true') if full else msg_contents.append('')
+        # verify_file
+        msg_contents.append(verify_file) if verify_file else msg_contents.append('')
+        # verify_dir
+        msg_contents.append(verify_dir) if verify_dir else msg_contents.append('')
+        # token
+        msg_contents.append(token) 
+        # abort
+        msg_contents.append('true') if abort else msg_contents.append('')
+        # suspend
+        msg_contents.append('true') if suspend else msg_contents.append('')
+        # resume
+        msg_contents.append('true') if resume else msg_contents.append('')
+        # ignore_directory
+        ignore_dir_list = SendFilerepVerifyMessage.DEFAULT_IGNORE_DIRS + (ignore_dir.split(',') if ignore_dir else [])
+        msg_contents.append(','.join(ignore_dir_list))
+        # ignore_file
+        ignore_file_list = SendFilerepVerifyMessage.DEFAULT_IGNORE_FILES + (ignore_file.split(',') if ignore_file else [])
+        msg_contents.append(','.join(ignore_file_list))
+        # resultslevel
+        msg_contents.append(str(results_level)) if results_level else msg_contents.append('')
+        
+        logger.debug("gp_verify message sent to %s:%s:\n%s" % (host, port, "\n".join(msg_contents)))
+        
+        self.cmdStr='$GPHOME/bin/gp_primarymirror -h %s -p %s' % (host, port)
+        Command.__init__(self, name, self.cmdStr, ctxt, remoteHost, stdin="\n".join(msg_contents))
+        
+    
 #-----------------------------------------------
 class SegmentStop(Command):
     def __init__(self, name, dataDir,mode='smart', nowait=False, ctxt=LOCAL, 

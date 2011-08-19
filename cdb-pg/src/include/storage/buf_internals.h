@@ -202,7 +202,9 @@ extern int	BufTableInsert(BufferTag *tagPtr, uint32 hashcode, int buf_id);
 extern void BufTableDelete(BufferTag *tagPtr, uint32 hashcode);
 
 /* localbuf.c */
-extern BufferDesc *LocalBufferAlloc(Relation reln, BlockNumber blockNum,
+/*extern BufferDesc *LocalBufferAlloc(Relation reln, BlockNumber blockNum,
+  bool *foundPtr);*/
+extern BufferDesc *LocalBufferAlloc_SMgr(SMgrRelation reln, BlockNumber blockNum,
 				 bool *foundPtr);
 extern void MarkLocalBufferDirty(Buffer buffer);
 extern void DropRelFileNodeLocalBuffers(RelFileNode rnode,

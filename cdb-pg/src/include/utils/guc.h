@@ -189,6 +189,7 @@ extern bool Debug_filerep_crc_on;
 extern bool Debug_filerep_print;
 extern bool Debug_filerep_gcov;
 extern bool Debug_filerep_config_print;
+extern bool Debug_filerep_verify_performance_print;
 extern bool Debug_filerep_memory_log_flush;
 extern bool filerep_inject_listener_fault;
 extern bool filerep_inject_change_tracking_recovery_fault;
@@ -198,6 +199,8 @@ extern bool gp_upgrade_mode;
 extern bool gp_maintenance_mode;
 extern bool gp_maintenance_conn;
 extern bool allow_segment_DML;
+
+extern int verify_checkpoint_interval;
 
 extern bool Debug_print_tablespace;
 extern bool	Debug_print_server_processes;

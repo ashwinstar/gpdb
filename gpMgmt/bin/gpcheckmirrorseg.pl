@@ -486,7 +486,8 @@ sub ignore_list
 	# MPP-8973: ignore changetracking files
 	# MPP-9461: ignore filespace gp_dbid files
 	my @m1 = qw(
-		pg_stat 
+		pg_stat
+		pg_verify
 		pg_log
 		pg_internal
 		pg_fsm.cache

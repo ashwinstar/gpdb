@@ -50,10 +50,12 @@ static bool FileRepPrimary_IsMirroringRequired(
 
 static int FileRepPrimary_RunSender(void);
 static int FileRepPrimary_ConstructAndInsertMessage(
-				FileRepIdentifier_u		fileRepIdentifier,
-				FileRepRelationType_e	fileRepRelationType,
-				FileRepOperation_e		fileRepOperation,
-				FileRepOperationDescription_u fileRepOperationDescription);
+				FileRepIdentifier_u				fileRepIdentifier,
+				FileRepRelationType_e			fileRepRelationType,
+				FileRepOperation_e				fileRepOperation,
+				FileRepOperationDescription_u	fileRepOperationDescription,
+				char							*data,
+				uint32							dataLength);
 
 /****************************************************************
  * Routines called by BACKEND PROCESSES 
@@ -206,6 +208,11 @@ FileRepPrimary_IsMirroringRequired(
 						break;
 					}
 				}
+				/* online verification is not allowed during resync and during change tracking */
+				if (fileRepOperation == FileRepOperationVerify)
+				{
+					break;	
+				}
 				/* no break */
 			case DataStateInSync:
 				/*
@@ -313,17 +320,20 @@ FileRepPrimary_IsMirroringRequired(
  */
 static int 
 FileRepPrimary_ConstructAndInsertMessage(
-				FileRepIdentifier_u		fileRepIdentifier,
-				FileRepRelationType_e	fileRepRelationType,
-				FileRepOperation_e		fileRepOperation,
-				FileRepOperationDescription_u fileRepOperationDescription)
+				FileRepIdentifier_u				fileRepIdentifier,
+				FileRepRelationType_e			fileRepRelationType,
+				FileRepOperation_e				fileRepOperation,
+				FileRepOperationDescription_u	fileRepOperationDescription,
+				char							*data,
+				uint32							dataLength)
 {
 
 	FileRepShmemMessageDescr_s	*fileRepShmemMessageDescr;
 	FileRepMessageHeader_s		*fileRepMessageHeader;
 	pg_crc32					*fileRepMessageHeaderCrc;
 	pg_crc32					fileRepMessageHeaderCrcLocal;
-	char*						msgPositionInsert = NULL;
+	char						*msgPositionInsert = NULL;
+	char						*fileRepMessageBody = NULL;
 	uint32						msgLength = 0;
 	int							status = STATUS_OK;
 	uint32						spareField = 0;
@@ -332,7 +342,6 @@ FileRepPrimary_ConstructAndInsertMessage(
 	if ((fileRepOperation == FileRepOperationFlush) ||
 		(fileRepOperation == FileRepOperationFlushAndClose))
 	{
-			
 			if (fileRepRole == FileRepPrimaryRole) 
 			{
 					FileRepGpmonStat_OpenRecord(
@@ -344,10 +353,14 @@ FileRepPrimary_ConstructAndInsertMessage(
 	 * Prevent cancel/die interrupt while doing this multi-step in order to  
 	 * insert message and update message state atomically with respect to 
 	 * cancel/die interrupts. See MPP-10040.
+	 *
+	 * FileRepOperationVerify does not get inserted into ack hash shared memory structure
+	 * since it is using dedicated ack shared memory slot.
 	 */
 	HOLD_INTERRUPTS();
 
-	if (FileRep_IsOperationSynchronous(fileRepOperation) == TRUE) { 
+	if (FileRep_IsOperationSynchronous(fileRepOperation) == TRUE &&
+		fileRepOperation != FileRepOperationVerify) { 
 		
 		status = FileRepAckPrimary_NewHashEntry(
 												fileRepIdentifier,
@@ -385,7 +398,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 		return status;
 	}	
 		
-	msgLength = sizeof(FileRepMessageHeader_s) + sizeof(pg_crc32);
+	msgLength = sizeof(FileRepMessageHeader_s) + sizeof(pg_crc32) + dataLength;
 /*
  * Shared memory is reserved in advance in order to avoid 
  * holding lock during memcpy() and Crc calculation...
@@ -396,7 +409,8 @@ FileRepPrimary_ConstructAndInsertMessage(
 											  fileRepShmemArray[fileRepProcIndex], 
 											  msgLength, 
 											  &spareField,
-											  fileRepOperation);
+											  fileRepOperation,
+											  FileRepShmemLock);
 
 	if (msgPositionInsert == NULL) 
 	{
@@ -444,6 +458,8 @@ FileRepPrimary_ConstructAndInsertMessage(
 	
 	fileRepMessageHeader->messageCount = spareField;
 	
+	fileRepMessageHeader->messageBodyLength = dataLength;
+	
 	switch (fileRepOperation) {
 		case FileRepOperationReconcileXLogEof:
 		case FileRepOperationOpen:
@@ -453,6 +469,7 @@ FileRepPrimary_ConstructAndInsertMessage(
 		case FileRepOperationCreateAndOpen:
 		case FileRepOperationCreate:
 		case FileRepOperationValidation:
+		case FileRepOperationVerify:
 			
 			fileRepMessageHeader->fileRepOperationDescription = fileRepOperationDescription;
 			break;
@@ -461,6 +478,13 @@ FileRepPrimary_ConstructAndInsertMessage(
 			break;
 	}
 		
+	if (dataLength > 0)
+	{
+		FileRep_CalculateCrc((char *) data,
+							 dataLength,
+							 &fileRepMessageHeader->fileRepMessageBodyCrc);
+	}
+	
 	/* 
 	 * The following fields are not in use during open(). 
 	 * They were zeroed during reserving message buffer.  
@@ -497,12 +521,14 @@ FileRepPrimary_ConstructAndInsertMessage(
 		ereport(LOG,
 			(errmsg("P_ConstructAndInsertMessage "
 					"msg header count '%d' msg header crc '%u' position insert '%p' "
-					"msg length '%u' open file flags '%x' "
+					"msg length '%u' data length '%u'"
+					"open file flags '%x' "
 					"truncate position '" INT64_FORMAT "' ",
 					fileRepMessageHeader->messageCount,
 					fileRepMessageHeaderCrcLocal,
 					msgPositionInsert,
 					msgLength,
+					dataLength,
 					(fileRepOperation == FileRepOperationOpen || fileRepOperation == FileRepOperationCreateAndOpen) ?
 					fileRepOperationDescription.open.fileFlags : 0,
 					(fileRepOperation == FileRepOperationTruncate) ?
@@ -514,6 +540,15 @@ FileRepPrimary_ConstructAndInsertMessage(
 			 FileRep_errdetail_Shmem(),
 			 FileRep_errcontext()));		
 
+	if (dataLength > 0)
+	{
+		fileRepMessageBody = (char *) (msgPositionInsert + 
+									   sizeof(FileRepMessageHeader_s) + 
+									   sizeof(FileRepShmemMessageDescr_s) +
+									   sizeof(pg_crc32));
+		
+		memcpy(fileRepMessageBody, data, dataLength);
+	}
 	
 	fileRepShmemMessageDescr = 
 	(FileRepShmemMessageDescr_s*) msgPositionInsert;	
@@ -584,10 +619,12 @@ FileRepPrimary_MirrorOpen(FileRepIdentifier_u	fileRepIdentifier,
 			   segmentState != SegmentStateInSyncTransition))
 		{			
 			status = FileRepPrimary_ConstructAndInsertMessage(
-							  fileRepIdentifier,
-							  fileRepRelationType,
-							  fileRepOperation, 
-							  descr);
+															  fileRepIdentifier,
+															  fileRepRelationType,
+															  fileRepOperation, 
+															  descr,
+															  NULL, /* data */
+															  0);	/* data length */
 			if (fileRepOperation == FileRepOperationCreateAndOpen && 
 				status == STATUS_OK)
 			{
@@ -627,10 +664,12 @@ FileRepPrimary_MirrorFlush(FileRepIdentifier_u		fileRepIdentifier,
 			   segmentState != SegmentStateInSyncTransition))
 		{			
 			status = FileRepPrimary_ConstructAndInsertMessage(
-							  fileRepIdentifier,
-							  fileRepRelationType,
-							  FileRepOperationFlush, 
-							  descr);
+															  fileRepIdentifier,
+															  fileRepRelationType,
+															  FileRepOperationFlush, 
+															  descr,
+															  NULL, /* data */
+															  0);	/* data length */
 		}
 	}
 
@@ -655,10 +694,12 @@ FileRepPrimary_MirrorClose(FileRepIdentifier_u		fileRepIdentifier,
 			   segmentState != SegmentStateInSyncTransition))
 		{				
 			status = FileRepPrimary_ConstructAndInsertMessage(
-						  fileRepIdentifier,
-						  fileRepRelationType,
-						  FileRepOperationClose, 
-						  descr);
+															  fileRepIdentifier,
+															  fileRepRelationType,
+															  FileRepOperationClose, 
+															  descr,
+															  NULL, /* data */
+															  0);	/* data length */
 		}
 	}
 		
@@ -683,10 +724,12 @@ FileRepPrimary_MirrorFlushAndClose(FileRepIdentifier_u		fileRepIdentifier,
 			   segmentState != SegmentStateInSyncTransition))
 		{			
 			status = FileRepPrimary_ConstructAndInsertMessage(
-							  fileRepIdentifier,
-							  fileRepRelationType,
-							  FileRepOperationFlushAndClose, 
-							  descr);
+															  fileRepIdentifier,
+															  fileRepRelationType,
+															  FileRepOperationFlushAndClose, 
+															  descr,
+															  NULL, /* data */
+															  0);	/* length */
 		}
 	}
 
@@ -719,10 +762,12 @@ FileRepPrimary_MirrorTruncate(
 			   segmentState != SegmentStateInSyncTransition))
 		{			
 			status = FileRepPrimary_ConstructAndInsertMessage(
-									  fileRepIdentifier,
-									  fileRepRelationType,
-									  FileRepOperationTruncate, 
-									  descr);
+															  fileRepIdentifier,
+															  fileRepRelationType,
+															  FileRepOperationTruncate, 
+															  descr,
+															  NULL, /* data */
+															  0);	/* length */
 		}
 	}
 	
@@ -745,12 +790,15 @@ int FileRepPrimary_ReconcileXLogEof(
 	
 	descr.reconcile.xLogEof = primaryXLogEof;
 	
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationReconcileXLogEof)) {	
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationReconcileXLogEof)) 
+	{	
 		status = FileRepPrimary_ConstructAndInsertMessage(
-								  fileRepIdentifier,
-								  fileRepRelationType,
-								  FileRepOperationReconcileXLogEof, 
-								  descr);
+														  fileRepIdentifier,
+														  fileRepRelationType,
+														  FileRepOperationReconcileXLogEof, 
+														  descr,
+														  NULL, /* data */
+														  0);	/* length */
 	}
 	
 	return status;		
@@ -778,10 +826,12 @@ int FileRepPrimary_MirrorRename(
 			   segmentState != SegmentStateInSyncTransition))
 		{			
 			status = FileRepPrimary_ConstructAndInsertMessage(
-											  oldFileRepIdentifier,
-											  fileRepRelationType,
-											  FileRepOperationRename, 
-											  descr);
+															  oldFileRepIdentifier,
+															  fileRepRelationType,
+															  FileRepOperationRename, 
+															  descr,
+															  NULL, /* data */
+															  0);	/* data length */
 		}
 	}
 	
@@ -849,7 +899,8 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 													 fileRepShmemArray[fileRepProcIndex],
 													 msgLength, 
 													 &spareField,
-													 FileRepOperationWrite);
+													 FileRepOperationWrite,
+													 FileRepShmemLock);
 			
 			if (msgPositionInsert == NULL) 
 			{
@@ -898,6 +949,7 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 			fileRepMessageHeader->fileRepOperationDescription.write.offset = offset;
 			fileRepMessageHeader->fileRepOperationDescription.write.dataLength = dataLengthLocal;
 			fileRepMessageHeader->fileRepOperationDescription.write.lsn = lsn;
+			fileRepMessageHeader->messageBodyLength = dataLengthLocal;
 			
 			/* Construct fileRepMessageBodyCrc */
 			FileRep_CalculateCrc((char *) data,
@@ -1022,7 +1074,9 @@ FileRepPrimary_MirrorCreate(FileRepIdentifier_u		fileRepIdentifier,
 															  fileRepIdentifier,
 															  fileRepRelationType,
 															  FileRepOperationCreate,
-															  descr);
+															  descr,
+															  NULL, /* data */
+															  0);	/* data length */
 		}
 	}
 	
@@ -1047,10 +1101,12 @@ FileRepPrimary_MirrorDrop(FileRepIdentifier_u	fileRepIdentifier,
 			   segmentState != SegmentStateInSyncTransition))
 		{			
 			status = FileRepPrimary_ConstructAndInsertMessage(
-							  fileRepIdentifier,
-							  fileRepRelationType,
-							  FileRepOperationDrop,
-							  descr);
+															  fileRepIdentifier,
+															  fileRepRelationType,
+															  FileRepOperationDrop,
+															  descr,
+															  NULL, /* data */
+															  0);	/* data length */
 		}
 	}
 
@@ -1074,7 +1130,9 @@ FileRepPrimary_MirrorDropFilesFromDir(FileRepIdentifier_u	fileRepIdentifier,
 														  fileRepIdentifier,
 														  fileRepRelationType,
 														  FileRepOperationDropFilesFromDir,
-														  descr);		
+														  descr,
+														  NULL, /* data */
+														  0);	/* data length */	
 	}
 	
 	return status;
@@ -1098,7 +1156,9 @@ FileRepPrimary_MirrorDropTemporaryFiles(
 														  fileRepIdentifier,
 														  fileRepRelationType,
 														  FileRepOperationDropTemporaryFiles,
-														  descr);		
+														  descr,
+														  NULL, /* data */
+														  0);	/* data length */
 	}
 	
 	return status;
@@ -1125,7 +1185,9 @@ FileRepPrimary_MirrorValidation(FileRepIdentifier_u		fileRepIdentifier,
 														  fileRepIdentifier,
 														  fileRepRelationType,
 														  FileRepOperationValidation,
-														  descr);
+														  descr,
+														  NULL, /* data */
+														  0);	/* data length */
 		if (status != STATUS_OK)
 		{
 			mirrorStatus = FileRepStatusMirrorLossOccurred;
@@ -1201,7 +1263,9 @@ FileRepPrimary_MirrorShutdown(void)
 														  fileRepIdentifier,
 														  FileRepRelationTypeUnknown,
 														  FileRepOperationShutdown,
-														  descr);
+														  descr,
+														  NULL, /* data */
+														  0);	/* data length */
 		if (status != STATUS_OK)
 			return;
 		retval = FileRepAckPrimary_IsOperationCompleted(
@@ -1253,7 +1317,9 @@ FileRepPrimary_MirrorInSyncTransition(void)
 														  fileRepIdentifier,
 														  FileRepRelationTypeUnknown,
 														  FileRepOperationInSyncTransition,
-														  descr);
+														  descr,
+														  NULL, /* data */
+														  0);	/* data length */
 		if (status != STATUS_OK)
 			return;
 		
@@ -1314,10 +1380,12 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 							&gpmonRecord);
 			}
 			status = FileRepPrimary_ConstructAndInsertMessage(
-														  fileRepIdentifier,
-														  FileRepRelationTypeUnknown,
-														  FileRepOperationHeartBeat,
-														  descr);
+															  fileRepIdentifier,
+															  FileRepRelationTypeUnknown,
+															  FileRepOperationHeartBeat,
+															  descr,
+															  NULL, /* data */
+															  0);	/* data length */
 		
 		if (status != STATUS_OK)
 			return;
@@ -1358,6 +1426,84 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 	
 	return;
 }
+
+/*
+ * FileRepPrimary_MirrorVerify
+ * verify data integrity between primary and mirror
+ */
+int 
+FileRepPrimary_MirrorVerify(
+							FileRepIdentifier_u				fileRepIdentifier,
+							FileRepRelationType_e			fileRepRelationType,
+							FileRepOperationDescription_u	fileRepOperationDescription,
+							char							*data, 
+							uint32							dataLength,
+							void							**responseData, 
+							uint32							*responseDataLength, 
+							FileRepOperationDescription_u	*responseDesc)
+{
+	int				status = STATUS_ERROR;
+	GpMonotonicTime	beginTime;
+	
+	if (Debug_filerep_verify_performance_print)
+	{
+		gp_set_monotonic_begin_time(&beginTime);
+	}
+	
+	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationVerify)) 
+	{
+		status = FileRepPrimary_ConstructAndInsertMessage(
+														  fileRepIdentifier,
+														  fileRepRelationType,
+														  FileRepOperationVerify,
+														  fileRepOperationDescription,
+														  data,
+														  dataLength);
+		if (status != STATUS_OK)
+			return status;
+	
+		status = FileRepAckPrimary_RunConsumerVerification(
+														   &*responseData, 
+														   &*responseDataLength, 
+														   &*responseDesc);
+														  
+		if (status != STATUS_OK && 
+			dataState != DataStateInChangeTracking &&
+			! primaryMirrorIsIOSuspended())
+		{
+			ereport(WARNING,
+					(errmsg("mirror failure, "
+							"could not complete operation on mirror, "
+							"failover requested"), 
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
+					 FileRep_errdetail(fileRepIdentifier,
+									   fileRepRelationType,
+									   FileRepOperationVerify,
+									   FILEREP_UNDEFINED), 
+					 FileRep_errdetail_Shmem(),
+					 FileRep_errdetail_ShmemAck(),
+					 FileRep_errcontext()));	
+			
+			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
+			FileRepSubProcess_ProcessSignals();
+		}
+	}
+	
+	if (Debug_filerep_verify_performance_print)
+	{
+		ereport(LOG,
+				(errmsg("verification round trip elapsed time ' " INT64_FORMAT " ' miliseconds  ",
+						gp_get_elapsed_ms(&beginTime)),
+				 FileRep_errdetail(fileRepIdentifier,
+								   fileRepRelationType,
+								   FileRepOperationVerify,
+								   FILEREP_UNDEFINED)));
+	}		
+	
+	return status;
+}
+
+
 
 bool 
 FileRepPrimary_IsOperationCompleted(
@@ -1689,7 +1835,6 @@ FileRepPrimary_RunSender(void)
 				
 			case FileRepRelationTypeAppendOnly:
 				messageType = FileRepMessageTypeAO01;
-				/* messageType = FileRepMessageTypeAO02; */
 				break;
 				
 			case FileRepRelationTypeBufferPool:
@@ -1712,6 +1857,11 @@ FileRepPrimary_RunSender(void)
 
 				status = STATUS_ERROR;		
 				break;
+		}
+		
+		if (fileRepMessageHeader->fileRepOperation == FileRepOperationVerify)
+		{
+			messageType = FileRepMessageTypeVerify;
 		}
 		
 		if (! FileRepConnClient_SendMessage(

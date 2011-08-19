@@ -285,19 +285,19 @@ FileRepConnServer_ReceiveMessageType(
 		 case '1':
 			 *fileRepMessageType = FileRepMessageTypeXLog;
 			 break;
-			 
+
 		 case '2':
-			 *fileRepMessageType = FileRepMessageTypeWriter;
+			 *fileRepMessageType = FileRepMessageTypeVerify;
 			 break;
-			 
+	 			 
 		 case '3':
 			 *fileRepMessageType = FileRepMessageTypeAO01;
 			 break;
-			 
-		 case '4':
-			 *fileRepMessageType = FileRepMessageTypeAO02;
+
+		case '4':
+			 *fileRepMessageType = FileRepMessageTypeWriter;
 			 break;
-			 
+		 		 
 		 case 'S':
 			 *fileRepMessageType = FileRepMessageTypeShutdown;
 			 break;

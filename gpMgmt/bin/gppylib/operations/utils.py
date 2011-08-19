@@ -47,7 +47,7 @@ class RemoteOperation(Operation):
                       ctxt=REMOTE, remoteHost=self.host, stdin = pickled_execname + pickled_operation)
         cmd.run(validateAfter=True)
         logger.debug(cmd.get_results().stdout)
-        ret = pickle.loads(cmd.get_results().stdout)
+        ret = self.operation.ret = pickle.loads(cmd.get_results().stdout)
         if isinstance(ret, Exception):
             raise ret
         return ret

@@ -18,11 +18,14 @@
 #include "postmaster/primary_mirror_mode.h"
 #include "storage/fd.h"
 #include "storage/dbdirnode.h"
+#include "storage/lwlock.h"
 #include "storage/pg_sema.h"
 #include "storage/spin.h"
 #include "signal.h"
 #include "gpmon/gpmon.h"
 #include "utils/timestamp.h"
+
+
 
 	/* ATTENTION: Code has to be changed if FILEREP_MAX_LISTEN > 1 */
 #define FILEREP_MAX_LISTEN	1
@@ -35,7 +38,6 @@
 #define FILEREP_MAX_IPC_ARRAY	5
 #define FILEREP_MAX_SEMAPHORES	2 * FILEREP_MAX_IPC_ARRAY
 
-#define FILEREP_MAX_PROC 4
 #define FILEREP_MAX_RESYNC_FILES 128  //8k
 
 #define FILEREP_OFFSET_UNDEFINED -1  
@@ -54,6 +56,7 @@
 #define FileRepLogPath(path) \
 	snprintf(path, MAXPGPATH, CHANGETRACKINGDIR "/FILEREP_LOG")
 
+#define FILEREPFLATFILEID_WHOLE_FILE -1
 	
 /*
  * 'file_rep_retry == 0' indicates retry forever
@@ -104,6 +107,7 @@ extern const char*	FileRepOperationToString[];
 extern const char*	FileRepRelationTypeToString[];
 extern const char*	FileRepAckStateToString[];
 extern const char*	FileRepStatusToString[];
+extern const char*  FileRepOperationVerificationTypeToString[];
 
 /****************************************************************
  * FILEREP SHARED MEMORY
@@ -248,6 +252,7 @@ typedef enum FileRep_IndexIpcArray_e
 	IndexIpcArrayAckShmem = 0,
 	IndexIpcArrayShmem,
 	IndexIpcArrayAckHashShmem,
+	IndexIpcArrayVerify
 	
 } FileRep_IndexIpcArray_e;
 
@@ -300,15 +305,53 @@ extern void FileRepAck_ShmemInit(void);
 /****************************************************************
  * FILEREP PROCESS
  ****************************************************************/
+/*
+ * PRIMARY
+ *			*) FileRepShmem has 1 slot. All filerep messages are inserted into that slot.
+ *			*) FileRepAckShmem has 2 slots. Indexing into slot is done via #define 
+ *			   FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_ACK and
+ *			   FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_VERIFY
+ *					1) Slot 0 is dedicated for all ACK filerep related messages. 
+ *					   These messages has no data body.
+ *					2) Slot 1 is dedicated for all ACK online verification related messages. 
+ *					   These messages may have data body.
+ *
+ *	MIRROR
+ *			*) FileRepShmem has 4 slots. Messages are inserted into slots based on relation type.
+ *			   An exception is online verification that has dedicated slot. 
+ *			   Indexing into slot is done via msgType.
+ *					1) Slot 0 is dedicated to flat files (i.e. transaction logs) related messages
+ *					2) Slot 1 is dedicated to online verification
+ *					3) Slot 2 is dedicated to append only files related messages
+ *					4) Slot 3 is dedicated to heap files related messages
+ *			*)	FileRepAckShmem has 1 slot. All ack filerep messages are inserted into that slot.
+ */
+#define FILEREP_ACKSHMEM_MESSAGE_SLOTS_PRIMARY	2 
+#define FILEREP_ACKSHMEM_MESSAGE_SLOTS_MIRROR	1
 
-extern FileRepShmem_s	*fileRepShmemArray[FILEREP_MAX_PROC];
+#define FILEREP_SHMEM_MESSAGE_SLOTS_PRIMARY 1
+#define FILEREP_SHMEM_MESSAGE_SLOTS_MIRROR	4
 
-extern	int				fileRepShmemArrayCount;
+#define FILEREP_SHMEM_MAX_SLOTS		Max(FILEREP_SHMEM_MESSAGE_SLOTS_PRIMARY, FILEREP_SHMEM_MESSAGE_SLOTS_MIRROR)
+#define FILEREP_ACKSHMEM_MAX_SLOTS	Max(FILEREP_ACKSHMEM_MESSAGE_SLOTS_PRIMARY, FILEREP_ACKSHMEM_MESSAGE_SLOTS_MIRROR)
+
+#define FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_ACK		0 /* Slot #0 is dedicated for ACK */		
+#define FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_VERIFY	1 /* Slot #1 is dedicated for online verification */
 
 /*
-extern FileRepShmem_s	*fileRepShmem;
+I might have been tempted to use OutgoingMessageQueue and IncomingMessageQueue as main abstraction names
+outgoing message queue would always have 1 slot and incoming would have mailboxes for incoming messages
+
 */
-extern FileRepShmem_s	*fileRepAckShmem;
+//JNM TODO replace fileRepProcIndex with FILEREP_OUTGOING_MESSAGE_QUEUE ?
+#define FILEREP_OUTGOING_MESSAGE_QUEUE 0
+
+//must be 63 or less due to the gp_verification_history table 
+#define FILEREP_VERIFY_MAX_REQUEST_TOKEN_LEN 63
+
+extern FileRepShmem_s	*fileRepShmemArray[FILEREP_SHMEM_MAX_SLOTS];
+
+extern FileRepShmem_s	*fileRepAckShmemArray[FILEREP_ACKSHMEM_MAX_SLOTS];
 
 typedef enum FileRepState_e {
 	FileRepStateNotInitialized=0,
@@ -341,7 +384,7 @@ typedef enum FileRepState_e {
 
 	FileRepStateShutdown,
 	/* Process is going to exit (graceful termination). */
-
+	
 	FileRepState__EnumerationCount
 } FileRepState_e;	
 		
@@ -398,18 +441,17 @@ typedef enum FileRepMessageHeaderVersion_e {
 	FileRepMessageHeaderVersionOne=0,
 } FileRepMessageHeaderVersion_e;
 
-
 typedef enum FileRepConsumerProcIndex_e {
 	FileRepMessageTypeXLog=0,
 
-	FileRepMessageTypeWriter,
+	FileRepMessageTypeVerify, // This needs to be <2 because on primary it is used as the second incoming message slot
 		
 	FileRepMessageTypeAO01,
-	
-	FileRepMessageTypeAO02,
+
+	FileRepMessageTypeWriter,
 	
 	FileRepMessageTypeShutdown,
-	
+
 	FileRepMessageTypeUndefined,
 	
 
@@ -501,6 +543,32 @@ typedef enum FileRepOperation_e {
 	
 	FileRepOperationDropTemporaryFiles,
 		/* Drop temporary files */
+
+	FileRepOperationVerify,  
+
+	/*
+	  IMPORTANT: If add new operation, add to FileRepOperationToString
+
+	  Also a number of decisions should be made about this operation:
+
+	  1) Is the operation synchronous? 
+	  Answer True/False with addition to FileRep_IsOperationSynchronous in cdbfilerep.c
+
+	  2) Should this operation carry a description field from primary to mirror?
+	  Answer by adding to switch statement in FileRepPrimary_ConstructAndInsertMessage
+	  Could encapsulate this decision as a bool routine like IsOperation Synchronous
+
+	  3) Should this operation carry a description field from mirror back to the primary?
+	  Answer by adding to switch statement in FileRepAckMirror_ConstructAndInsertMessage
+	  Encapsulate this decision as a bool routine like IsOperation Synchronous?
+	  
+	  4) Do you want to define a unique message description for this operation?
+	  If so add struct below and then add struct into union for all operations (FileRepOperationDescription_u)
+
+	  5) Does this operation carry a message body?
+	  If so in FileRepMirror_RunConsumer, you need to calcuate and check the CRC over the message body
+      Could encapsulate this descision as a bool routine like IsOperationSynchronous? DoesOperationCarryMessaageBody
+	*/
 	
 	FileRepOperationNotSpecified,
 
@@ -545,7 +613,7 @@ typedef enum FileRepResyncState_e {
 	
 	FileRepResyncStateFault,
 		/* file resync fault */
-	
+
 } FileRepResyncState_e;
 
 /*
@@ -573,6 +641,8 @@ typedef struct FileRepFlatFileIdentifier_s {
 	
 	char	fileSimpleName[MAXPGPATH+1];
 		/* The simple name of the file. */
+
+	int32 blockId;
 } FileRepFlatFileIdentifier_s;
 
 /*
@@ -644,6 +714,8 @@ typedef union FileRepIdentifier_u {
 	FileRepFlatFileIdentifier_s fileRepFlatFileIdentifier;
 		/* */
 	
+//    FileRepFlatFileBlockIdentifier_s fileRepFlatFileBlockIdentifier;
+
 	FileRepDirIdentifier_s		fileRepDirIdentifier; 
 		/* */
 	
@@ -684,7 +756,7 @@ typedef struct FileRepOperationDescriptionWrite_s {
 	int32		offset;
 		/* blocknum if buffer pool */
 	
-	uint32		dataLength;
+	uint32		dataLength; 
 		/* 32k for buffer pool */
 	
 	XLogRecPtr	lsn;
@@ -718,8 +790,8 @@ typedef struct FileRepOperationDescriptionHeartBeat_s {
 /*
  *	 
  */
-typedef struct FileRepOperationDescriptionValidation_s {
-	
+typedef struct FileRepOperationDescriptionValidation_s 
+{
 	FileRepValidationType_e	fileRepValidationType;
 	
 	int		mirrorStatus;
@@ -729,18 +801,178 @@ typedef struct FileRepOperationDescriptionValidation_s {
 /*
  *	 
  */
-typedef struct FileRepOperationDescriptionCreate_s {
-	
+typedef struct FileRepOperationDescriptionCreate_s 
+{	
 	int		ignoreAlreadyExists;
 	
 	int		mirrorStatus;
 	
 } FileRepOperationDescriptionCreate_s;
 
+typedef enum FileRepOperationVerificationType_e 
+{
+	FileRepOpVerifyType_NotInitialized=0,
+
+	FileRepOpVerifyType_SummaryItems,
+	FileRepOpVerifyType_DirectoryTreeHash, 
+	FileRepOpVerifyType_EnhancedBlockHash,
+
+	FileRepOpVerifyType_RequestParameters,
+	/* Not really used now, but could be useful for repairs 
+	   if we decided to do those
+	*/
+	FileRepOpVerifyType_FileContents,        
+	FileRepOpVerifyType_DirectoryContents,
+
+	/* 
+	   If add an operation type, then should add corresponding structure into the
+	   FileRepOperationDescriptionVerify_u and add string into FileRepOperationVerificationTypeToString 
+	*/
+
+	/* the number of values in this enumeration */
+	FileRepOpVerifyType__EnumerationCount
+	
+} FileRepOperationVerificationType_e;
+
+/*
+ *	 
+ */
+
+typedef enum FileRepOperationVerifyParameterType_e 
+{
+	FileRepOpVerifyParamterType_IgnoreInfo
+	
+} FileRepOperationVerifyParameterType_e;
+
+typedef struct FileRepOperationDescriptionVerify_RequestParameters_s 
+{
+	char  token[FILEREP_VERIFY_MAX_REQUEST_TOKEN_LEN+1];
+	FileRepOperationVerifyParameterType_e type;
+	int numFileIgnore;
+	int numDirIgnore;
+	
+} FileRepOperationDescriptionVerify_RequestParameters_s;
+
+
+typedef struct FileRepOperationDescriptionVerify_SummaryItems_s 
+{   
+	//when sent from primary to mirror this is the number of things to be verified
+	//when sent from mirror to primary this is the number of things that mismatched
+	uint32          num_entries; 
+	bool            hashcodesValid;
+	bool            sizesValid;
+	
+} FileRepOperationDescriptionVerify_SummaryItems_s;
+
+typedef struct FileRepOperationDescriptionVerify_DirectoryContents_Primary_s 
+{
+	uint32          numChildrenOnPrimary;
+	bool            lastMatch;
+	bool            finalBatch;
+
+} FileRepOperationDescriptionVerify_DirectoryContents_Primary_s;
+
+typedef struct FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s 
+{
+	uint32          numChildrenAddedOnMirror;
+	uint32          numChildrenMissingOnMirror;
+	uint32          numLeftOnMirrorToCompare;
+	bool            newLastMatch;
+	bool            endCompares;  //could just use this as numLeftOnMirrorToCompare == 0??
+
+} FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s;
+
+
+typedef struct FileRepOperationDescriptionVerify_DirectoryTreeHash_s 
+{
+	pg_crc32		hashcode;
+	uint32          num_entries;
+
+} FileRepOperationDescriptionVerify_DirectoryTreeHash_s;
+
+
+typedef enum FileRepVerify_CompareException_e 
+{
+	FileRepVerifyCompareException_None=0,
+	FileRepVerifyCompareException_AORelation,
+	FileRepVerifyCompareException_HeapRelation,
+	FileRepVerifyCompareException_BtreeIndex
+	
+} FileRepVerify_CompareException_e;
+
+
+typedef struct FileRepOperationDescriptionVerify_EnhancedBlockHash_s 
+{
+	int32		offset;
+	uint32		dataLength; //amount of data to be compute the hash over
+	
+	pg_crc32		hashcode;
+	
+	FileRepVerify_CompareException_e exception;
+	
+	bool isOnMirror;
+
+} FileRepOperationDescriptionVerify_EnhancedBlockHash_s;
+
+
+typedef struct FileRepOperationDescriptionVerify_FileContents_s 
+{
+	int32		offset;
+	/* blocknum if buffer pool */
+	
+	uint32		dataLength; //moved into messageBodyLength in the message header, can be removed 
+	/* 32k for buffer pool */
+	
+	//Used to determine type of relnode being compared (ao, heap, btree index etc. so compare can take into account the proper exceptions)
+	//        char relstorage;
+	//		char relkind;
+	//		int64  relam;
+	FileRepVerify_CompareException_e exception;
+	int64  AO_logicalEof;
+	
+} FileRepOperationDescriptionVerify_FileContents_s;
+
+typedef struct FileRepOperationDescriptionVerify_u 
+{
+	FileRepOperationDescriptionVerify_SummaryItems_s summaryItems;
+	FileRepOperationDescriptionVerify_DirectoryTreeHash_s dirTreeHash;        //TODO: could be made into a new type of summary item
+	FileRepOperationDescriptionVerify_EnhancedBlockHash_s enhancedBlockHash;
+	FileRepOperationDescriptionVerify_RequestParameters_s requestParameters;
+	FileRepOperationDescriptionVerify_FileContents_s fileContents;		        //Not really used right now but could be helpful if we decided to repair
+	
+	//Both used to support 	FileRepOpVerifyType_DirectoryContents - one for what primary sends to mirror and one for what mirror send back
+	FileRepOperationDescriptionVerify_DirectoryContents_Primary_s dirContents;  
+	FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s dirContentsMirror;		
+
+} FileRepOperationDescriptionVerify_u;
+
+
+typedef struct FileRepVerifyLoggingOptions_s 
+{
+	char token[FILEREP_VERIFY_MAX_REQUEST_TOKEN_LEN+1];
+	int  level;
+	char logPath[MAXPGPATH+1];
+	char fixPath[MAXPGPATH+1];
+	char chkpntPath[MAXPGPATH+1];
+	
+	char externalTablePath[MAXPGPATH+1];	
+	char resultsPath[MAXPGPATH+1];
+} FileRepVerifyLoggingOptions_s;
+
+
+typedef struct FileRepOperationDescriptionVerify_s 
+{
+	FileRepOperationVerificationType_e type;
+	FileRepOperationDescriptionVerify_u desc;
+	FileRepVerifyLoggingOptions_s logOptions;
+		
+} FileRepOperationDescriptionVerify_s;
+
 /* 
  *
  */
-typedef union FileRepOperationDescription_u {
+typedef union FileRepOperationDescription_u 
+{
 	
 	FileRepOperationDescriptionOpen_s open;
 		/* */
@@ -761,6 +993,8 @@ typedef union FileRepOperationDescription_u {
 	
 	FileRepOperationDescriptionCreate_s create;
 	
+	FileRepOperationDescriptionVerify_s verify;
+
 } FileRepOperationDescription_u;
 
 /* 
@@ -793,6 +1027,8 @@ typedef struct FileRepMessageHeader_s {
 	uint32	messageCount;
 	
 	uint32 spareField;
+
+	uint32 messageBodyLength;
 		/* reserved for future */
 	
 } FileRepMessageHeader_s;
@@ -844,8 +1080,6 @@ typedef enum FileRepProcessType_e {
 	
 	FileRepProcessTypeMirrorConsumerAppendOnly1,
 	
-	FileRepProcessTypeMirrorConsumerAppendOnly2,
-	
 	FileRepProcessTypeResyncManager,
 	
 	FileRepProcessTypeResyncWorker1,
@@ -856,6 +1090,33 @@ typedef enum FileRepProcessType_e {
 	
 	FileRepProcessTypeResyncWorker4,
 	
+	FileRepProcessTypePrimaryVerification,
+
+	FileRepProcessTypeMirrorVerification,
+/*
+	  IMPORTANT: If add new process type, add to FileRepProcessTypeToString
+
+	  Also a number of decisions should be made about this process:
+
+	  1) Is the process a backend sub process?
+	  Answer True/False with addition to FileRepIsBackendSubProcess
+
+	  2) Should the process be on the mirror or primary?
+	  Answer by starting in the appropriate case in switch for fileRepRole in routine FileRep_Main
+
+	  3) Consider increasing MaxFileRepSubProc 
+
+	  4) Add into the FileRepSubProcList
+
+	  5) Add into the proper place in FileRepSubProcess_Main 
+
+	  6) For things on mirror if FileRepSubProcess_Main calls FileRepMirror_StartConsumer, then add 
+	  proper handling into FileRepMirror_StartConsumer
+
+
+	  
+	*/
+
 	FileRepProcessType__EnumerationCount
 	/* the count of enumeration values */
 	
@@ -914,15 +1175,13 @@ extern void FileRep_SetPostmasterReset(void);
  * Reserve memory in order to insert FileRep message.
  * The routine returns the insert position in FileRep shared memory.
  */
-extern char *FileRep_ReserveShmem(
-					FileRepShmem_s		*fileRepShmem,
-					uint32				msgLength,
-					uint32				*spareField,
-					FileRepOperation_e	fileRepOperation);
-
-extern char *FileRepAck_ReserveShmem(
-								  uint32		msgLength,
-								  uint32		*spareField);
+extern char *
+FileRep_ReserveShmem(
+					 FileRepShmem_s		*fileRepShmem,
+					 uint32				msgLength,
+					 uint32				*spareField,
+					 FileRepOperation_e	fileRepOperation,
+					 LWLockId whichLock);
 
 /*
  * ERROR REPORTING
@@ -1016,6 +1275,11 @@ extern bool FileRep_IsIpcSleep(FileRepOperation_e fileRepOperation);
 extern XLogRecPtr FileRep_GetXLogRecPtrUndefined(void);
 
 	
+extern FileName
+FileRep_GetHashKey(
+					  FileRepIdentifier_u	 fileRepIdentifier,
+					  FileRepRelationType_e	fileRepRelationType);
+
 extern FileName FileRep_GetFileName(
 				 FileRepIdentifier_u	fileRepIdentifier,
 				 FileRepRelationType_e	fileRepRelationType);

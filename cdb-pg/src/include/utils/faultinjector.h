@@ -34,6 +34,8 @@ typedef enum FaultInjectorIdentifier_e {
 	StartPrepareTx,
 	
 	FileRepConsumer,
+	
+	FileRepConsumerVerification,
 
 	FileRepChangeTrackingCompacting,
 	
@@ -100,7 +102,6 @@ typedef enum FaultInjectorIdentifier_e {
 		/* commit: create pending => created */
 			
 	FinishPreparedTransactionAbortPass1FromCreatePendingToAbortingCreate,
-
 	FinishPreparedTransactionAbortPass2FromCreatePendingToAbortingCreate,
 		/* abort: create pending => aborting create */
 
@@ -118,6 +119,9 @@ typedef enum FaultInjectorIdentifier_e {
 	
 	FinishPreparedTransactionAbortPass2AbortingCreateNeeded,	
 		/* abort: create pending => aborting create */
+
+	FileRepVerification,
+		/* trigger filerep verification for testing */
 	
 	TwoPhaseTransactionCommitPrepared,
 	

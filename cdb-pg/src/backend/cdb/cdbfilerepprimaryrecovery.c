@@ -434,7 +434,7 @@ FileRepPrimary_RunHeartBeat(void)
 
 		if (retry == 1203) /* 1200 * 50 ms = 60 sec */
 		{
-			FileRepPrimary_MirrorHeartBeat(FileRepMessageTypeAO02);
+			FileRepPrimary_MirrorHeartBeat(FileRepMessageTypeVerify);
 			retry = 0;
 		}
 		

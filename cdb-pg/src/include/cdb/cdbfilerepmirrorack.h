@@ -18,7 +18,9 @@ extern int FileRepAckMirror_Ack(
 					FileRepRelationType_e	fileRepRelationType,
 					FileRepOperation_e		fileRepOperation,
 					FileRepOperationDescription_u fileRepOperationDescription,
-					FileRepAckState_e		fileRepAckState);
+					FileRepAckState_e		fileRepAckState,
+					uint32					messageBodyLength,
+					char*					messageBody);
 
 extern void FileRepAckMirror_StartSender(void);
 

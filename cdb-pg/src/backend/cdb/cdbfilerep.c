@@ -42,7 +42,7 @@
 #include "libpq/ip.h"
 #include "postmaster/fork_process.h"
 #include "storage/fd.h"
-#include "storage/lwlock.h"
+#include "postmaster/primary_mirror_mode.h"
 #include "storage/ipc.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
@@ -137,8 +137,8 @@ static void FileRep_ConfigureSignals(void);
 static void FileRep_IpcSignalAllInternal(int ii);
 
 static pg_crc32 FileRep_CalculateAdler32(unsigned char *buf, int len);
-
-#define MaxFileRepSubProc 17
+	
+#define MaxFileRepSubProc 18
 
 #define EXIT_STATUS_0(st)  ((st) == 0)
 #define EXIT_STATUS_1(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 1)
@@ -171,12 +171,13 @@ static FileRepSubProc FileRepSubProcList[MaxFileRepSubProc] =
 	{0, FileRepProcessTypePrimaryRecovery},
 	{0, FileRepProcessTypeMirrorConsumerWriter},
 	{0, FileRepProcessTypeMirrorConsumerAppendOnly1},
-	{0, FileRepProcessTypeMirrorConsumerAppendOnly2},
 	{0, FileRepProcessTypeResyncManager},
 	{0, FileRepProcessTypeResyncWorker1},
 	{0, FileRepProcessTypeResyncWorker2},
 	{0, FileRepProcessTypeResyncWorker3},
 	{0, FileRepProcessTypeResyncWorker4},
+	{0, FileRepProcessTypePrimaryVerification},        
+    {0, FileRepProcessTypeMirrorVerification}, 
 };
 
 
@@ -201,8 +202,7 @@ FileRepProcessTypeToString[] = {
 	_("primary recovery process"),
 	_("mirror consumer writer process"),
 
-	_("mirror consumer append only #1 process"),
-	_("mirror consumer append only #2 process"),
+	_("mirror consumer append only process"),
 
 	_("primary resync manager process"),
 
@@ -210,6 +210,10 @@ FileRepProcessTypeToString[] = {
 	_("primary resync worker #2 process"),
 	_("primary resync worker #3 process"),
 	_("primary resync worker #4 process"),
+
+	_("primary verification process"),
+	_("mirror verification process"),
+
 };
 
 const char*
@@ -269,10 +273,12 @@ FileRepOperationToString[] = {
 	_("in sync transition"),
 	_("heart beat"),
 	_("create and open"),
-	_("validation fileSpace dir or existence"),
+	_("validation filespace dir or existence"),
 	_("drop files from dir"),
 	_("drop temporary files"),
+	_("online verification"),
 	_("not specified"),
+
 };
 
 const char*
@@ -297,9 +303,9 @@ FileRepAckStateToString[] = {
 const char*
 FileRepConsumerProcIndexToString[] = {
 	_("xlog"),
+	_("verify"),
+	_("append only"),
 	_("writer"),
-	_("append only #1"),
-	_("append only #2"),
 	_("shutdown"),
 	_("undefined"),
 };
@@ -319,6 +325,17 @@ FileRepStatusToString[] = {
 	_("mirror error"),
 };
 
+const char *
+FileRepOperationVerificationTypeToString[]= {
+		_("not initialized"),
+		_("summary items"),
+		_("recursive directory tree hash"),
+		_("enhanced block hash"),
+		_("send request parameters"),
+		_("file contents"),
+		_("directory contents"),
+
+};
 /****************************************************************
  * FILEREP_SHARED MEMORY 
  ****************************************************************/
@@ -408,7 +425,8 @@ int		file_rep_retry = 2000;  // 186 seconds
  */
 int file_rep_min_data_before_flush = 128 * 1024;
 
-/**
+
+/*
  * GUC parameter
  *     	    file_rep_socket_timeout
  *
@@ -416,17 +434,12 @@ int file_rep_min_data_before_flush = 128 * 1024;
  */
 int file_rep_socket_timeout = 10;
 
+FileRepShmem_s	*fileRepShmemArray[FILEREP_SHMEM_MAX_SLOTS];
+FileRepShmem_s	*fileRepAckShmemArray[FILEREP_ACKSHMEM_MAX_SLOTS];
 
-int fileRepShmemArrayCount = 4;
+static void
+FileRep_ShmemInitArray(FileRepShmem_s	**array, int arrayCount, int bufferSize, bool initIpcArrayIndex);
 
-/*
-FileRepShmem_s *fileRepShmem = NULL;
-*/
-FileRepShmem_s	*fileRepShmemArray[FILEREP_MAX_PROC];
-
-FileRepShmem_s *fileRepAckShmem = NULL;
-
-static void FileRep_ShmemInitArray(void);
 static void FileRepIpc_ShmemReInit(void);
 
 FileRepIpcShmem_s	*fileRepIpcArray[FILEREP_MAX_IPC_ARRAY];
@@ -440,6 +453,7 @@ FileRepSemas(void)
 	 *		2) Receiver Ack and Consumer Ack (FileRepAckShmem_s = 2)
 	 *		3) Consumer Ack and backend (IsOperationCompleted = 1)
 	 *		4) backend and backend (InsertNewHashEntry = 1)
+     *      5) receiver ack and verification 
 	 *
 	 *	MIRROR
 	 *		1) receiver and consumer XLOG (FileRepShmem_s = 2)
@@ -457,7 +471,7 @@ FileRepSemas(void)
 	 *		1) LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
 	 *		2) LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
 	 *		3) LWLockAcquire(FileRepAckHashShmemLock, LW_EXCLUSIVE);
-	 *		4) LWLockAcquire(FileRepAckHashShmemLock, LW_EXCLUSIVE);
+	 *      4) LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
 	 *
 	 *	MIRROR
 	 *		1) LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
@@ -702,7 +716,8 @@ void
 FileRep_ShmemInit(void)
 {
 	fileRepShmemArray[fileRepProcIndex] = FileRep_ShmemInitOneBuffer("filerep primary mirror messages",
-							FileRep_ShmemSize(), FileRep_ShmemSize() - sizeof(FileRepShmem_s));
+																	 FileRep_ShmemSize(), 
+																	 FileRep_ShmemSize() - sizeof(FileRepShmem_s));
 	
 	fileRepShmemArray[fileRepProcIndex]->ipcArrayIndex = IndexIpcArrayShmem;
 		
@@ -716,10 +731,13 @@ FileRep_ShmemInit(void)
 void 
 FileRepAck_ShmemInit(void)
 {
-	fileRepAckShmem = FileRep_ShmemInitOneBuffer("filerep ack primary mirror messages",
-							FileRepAck_ShmemSize(), file_rep_ack_buffer_size );
+
+	//TODO merge with FileRep_ShmemInit
+	fileRepAckShmemArray[fileRepProcIndex] = FileRep_ShmemInitOneBuffer("filerep ack primary mirror messages",
+																		FileRepAck_ShmemSize(), 
+																		FileRepAck_ShmemSize() - sizeof(FileRepShmem_s));
 	
-	fileRepAckShmem->ipcArrayIndex = IndexIpcArrayAckShmem;
+	fileRepAckShmemArray[fileRepProcIndex]->ipcArrayIndex = IndexIpcArrayAckShmem;
 }
 
 /*
@@ -734,7 +752,7 @@ FileRep_ShmemSize(void)
 	size = sizeof(FileRepShmem_s);
 	
 	size = add_size(size, file_rep_buffer_size);
-	size = mul_size(size, fileRepShmemArrayCount);
+	size = mul_size(size, FILEREP_SHMEM_MAX_SLOTS); 
 	
 	return size;
 }
@@ -753,39 +771,62 @@ FileRepAck_ShmemSize(void)
 	size = sizeof(FileRepShmem_s);
 	
 	size = add_size(size, file_rep_ack_buffer_size);
+	size = mul_size(size, FILEREP_ACKSHMEM_MAX_SLOTS); 
 
 	return size;
 }
 
 static void
-FileRep_ShmemInitArray(void)
+FileRep_ShmemInitArray(
+					   FileRepShmem_s	**array, 
+					   int				arrayCount, 
+					   int				bufferSize, 
+					   bool				initIpcArrayIndex)
 {
 	int	ii;
 	
-	for (ii = 0; ii < fileRepShmemArrayCount; ii++) {
+	for (ii = 0; ii < arrayCount; ii++) {
 		
-		fileRepShmemArray[ii]->positionBegin =
-			((char *) fileRepShmemArray[ii]) + sizeof(FileRepShmem_s);
+		array[ii]->positionBegin = ((char *) array[ii]) + sizeof(FileRepShmem_s);
 		
-		fileRepShmemArray[ii]->positionEnd =
-				fileRepShmemArray[ii]->positionBegin + file_rep_buffer_size;
+		array[ii]->positionEnd = array[ii]->positionBegin + bufferSize; 
 		
-		fileRepShmemArray[ii]->positionInsert = fileRepShmemArray[ii]->positionBegin;
+		array[ii]->positionInsert = array[ii]->positionBegin;
 		
-		fileRepShmemArray[ii]->positionConsume = fileRepShmemArray[ii]->positionBegin;
+		array[ii]->positionConsume = array[ii]->positionBegin;
 		
-		fileRepShmemArray[ii]->positionWraparound = fileRepShmemArray[ii]->positionEnd;
+		array[ii]->positionWraparound = array[ii]->positionEnd;
 		
-		fileRepShmemArray[ii]->insertCount = 0;
+		array[ii]->insertCount = 0;
 		
-		fileRepShmemArray[ii]->consumeCount = 0;
+		array[ii]->consumeCount = 0;
 		
-		fileRepShmemArray[ii]->state = FileRepStateNotInitialized;
+		array[ii]->state = FileRepStateNotInitialized;
 		
-		fileRepShmemArray[ii]->ipcArrayIndex = ii+1;
+		if (initIpcArrayIndex)
+		{
+			array[ii]->ipcArrayIndex = ii+1;
+		} 
+		else
+		{
+			switch (ii)
+			{
+				case 0:
+					array[ii]->ipcArrayIndex = IndexIpcArrayAckShmem;
+					break;
+					
+				case 1:
+					array[ii]->ipcArrayIndex = IndexIpcArrayVerify;
+					break;
+					
+				default:
+					Assert(0);
+			}
+		}
 		
-		if ((ii + 1) < fileRepShmemArrayCount) {
-			fileRepShmemArray[ii+1] = (FileRepShmem_s *)fileRepShmemArray[ii]->positionEnd;
+		if ((ii + 1) < arrayCount) 
+		{
+			array[ii+1] = (FileRepShmem_s *)array[ii]->positionEnd;
 		}
 	}	
 	
@@ -807,13 +848,11 @@ FileRep_ShmemReInitOneBuffer(FileRepShmem_s *result, int shmemSize, int bufSize)
 	
 	MemSet(result, 0, sizeof(FileRepShmem_s));
 	
-	result->positionBegin =
-	((char *) result) + sizeof(FileRepShmem_s);
+	result->positionBegin = ((char *) result) + sizeof(FileRepShmem_s);
 	
 	MemSet(result->positionBegin, 0, bufSize);
 	
-	result->positionEnd =
-	result->positionBegin + bufSize;
+	result->positionEnd = result->positionBegin + bufSize;
 	
 	result->positionInsert = result->positionBegin;
 	
@@ -834,13 +873,23 @@ FileRep_ShmemReInitOneBuffer(FileRepShmem_s *result, int shmemSize, int bufSize)
 }
 
 /* 
- * FileRep_ShmemInit()
+ * FileRep_ShmemReInit()
  *			Allocate and initialize FileRep Shared Memory 
  *
  */
 static void 
 FileRep_ShmemReInit(void)
 {
+		/* This function is primarily used to initialize ShMem when it is used as one pool rather
+		   than divided into slots  - this initializes the single pool or slot appropriately
+		   fileRepProcIndex should always be 0 here and so could be removed ie
+
+		   fileRepShmemArray[fileRepProcIndex] replaced with *fileRepShmemArray
+		   
+		   We could also merge this with FileRepAck_ShmemReInit and just pass in fileRepShmemArray or fileRepAckShmemArray as a parameter
+		   somewhat like FileRep_ShmemInitArray
+		*/
+	Assert(fileRepProcIndex ==0);
 	FileRep_ShmemReInitOneBuffer(fileRepShmemArray[fileRepProcIndex],
 								 FileRep_ShmemSize(), 
 								 FileRep_ShmemSize() - sizeof(FileRepShmem_s));
@@ -863,134 +912,25 @@ FileRep_ShmemReInit(void)
 static void 
 FileRepAck_ShmemReInit(void)
 {
-	FileRep_ShmemReInitOneBuffer(fileRepAckShmem,
+		/* This function is primarily used to initialize AckShMem when it is used as one pool rather
+		   than divided into slots  - this initializes the single pool or slot appropriately
+		   fileRepProcIndex should always be 0 here and so could be removed
+
+		   We could also merge this with FileRep_ShmemReInit and just pass in fileRepShmemArray or fileRepAckShmemArray as a parameter
+		   somewhat like FileRep_ShmemInitArray
+		*/
+	FileRep_ShmemReInitOneBuffer(*fileRepAckShmemArray,
 								 FileRepAck_ShmemSize(), 
-								 file_rep_ack_buffer_size);
+								 FileRepAck_ShmemSize() - sizeof(FileRepShmem_s));
 	
-	fileRepAckShmem->ipcArrayIndex = IndexIpcArrayAckShmem;
+	(*fileRepAckShmemArray)->ipcArrayIndex = IndexIpcArrayAckShmem;
 	
-	fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC = 0;
-	fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemP = 0;
+	fileRepIpcArray[(*fileRepAckShmemArray)->ipcArrayIndex]->refCountSemC = 0;
+	fileRepIpcArray[(*fileRepAckShmemArray)->ipcArrayIndex]->refCountSemP = 0;
 	
-	PGSemaphoreReset(&fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC);
-	PGSemaphoreReset(&fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semP);		
+	PGSemaphoreReset(&fileRepIpcArray[(*fileRepAckShmemArray)->ipcArrayIndex]->semC);
+	PGSemaphoreReset(&fileRepIpcArray[(*fileRepAckShmemArray)->ipcArrayIndex]->semP);		
 
-}
-
-char *
-FileRepAck_ReserveShmem(
-					 uint32			msgLength,
-					 uint32			*spareField)
-{
-	bool	insert = false;
-	int		retry = 0;
-	bool	wait = FALSE;
-	char	*msgPositionInsert = NULL;
-	FileRepShmemMessageDescr_s *fileRepShmemMessageDescr;
-		
-	while ((insert == false) && FileRep_IsRetry(retry)) {
-		
-		LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
-		
-		if (wait == TRUE)
-		{
-			wait = FALSE;
-		}
-		
-		if (fileRepAckShmem->positionInsert > fileRepAckShmem->positionConsume) {
-			if ((fileRepAckShmem->positionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s)) < 
-				fileRepAckShmem->positionEnd) {
-				insert = true;
-			} else {
-				/* Message wraparound */
-				if (fileRepAckShmem->positionConsume != fileRepAckShmem->positionBegin) {
-					fileRepAckShmem->positionWraparound = fileRepAckShmem->positionInsert;
-					fileRepAckShmem->positionInsert = fileRepAckShmem->positionBegin;
-					LWLockRelease(FileRepAckShmemLock);
-					continue;
-				}
-			}
-		}
-		
-		if (fileRepAckShmem->positionInsert < fileRepAckShmem->positionConsume) {
-			if ((fileRepAckShmem->positionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s)) < 
-				fileRepAckShmem->positionConsume) {
-				insert = true;
-			} 
-		}	
-		
-		if (fileRepAckShmem->positionInsert == fileRepAckShmem->positionConsume) {
-			if ((fileRepAckShmem->positionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s)) < 
-				fileRepAckShmem->positionEnd) {
-				insert = true;
-			} else {
-				/* Message wraparound */
-				fileRepAckShmem->positionWraparound = fileRepAckShmem->positionInsert;
-				fileRepAckShmem->positionInsert = fileRepAckShmem->positionBegin;
-				LWLockRelease(FileRepAckShmemLock);
-				continue;
-
-			}			
-		}
-		
-		if (insert == true) {
-			if ((fileRepAckShmem->positionInsert + 
-				 msgLength + sizeof(FileRepShmemMessageDescr_s)) == 
-				fileRepAckShmem->positionConsume) {
-				
-				insert = false;
-			} else {
-				msgPositionInsert = fileRepAckShmem->positionInsert;
-				
-				Assert(msgPositionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s) < fileRepAckShmem->positionEnd);
-				
-				fileRepShmemMessageDescr = 
-				(FileRepShmemMessageDescr_s*) msgPositionInsert;
-				
-				fileRepShmemMessageDescr->messageLength = msgLength;
-				
-				fileRepShmemMessageDescr->messageState = 
-				FileRepShmemMessageStateReserved; 
-				
-				fileRepAckShmem->insertCount++;
-				
-				*spareField = fileRepAckShmem->insertCount; 
-				
-				fileRepAckShmem->positionInsert = msgPositionInsert + 
-						msgLength + sizeof(FileRepShmemMessageDescr_s);
-			}
-		}
-		
-		if (insert == FALSE)
-		{
-			fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemP++;
-			wait = TRUE;
-		}
-		
-		LWLockRelease(FileRepAckShmemLock);
-		
-		if (insert == false) {
-			if (FileRepSubProcess_IsStateTransitionRequested())
-			{
-				break;
-			}	
-			
-			FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semP);
-						
-			//FileRep_Sleep10ms(retry);
-			
-			FileRep_IncrementRetry(retry);
-			
-		}
-		
-	}
-	
-	if (insert == false && Debug_filerep_print) {
-		ereport(LOG,
-				(errmsg("reserving filerep ack shared memory fail")));
-	}
-	
-	return (msgPositionInsert);
 }
 
 /*
@@ -998,30 +938,33 @@ FileRepAck_ReserveShmem(
  * only when insert and consume messages are aligned. 
  * next insertPosition == consumePosition is TRUE when no space
  * for message insert is available.
- */
-/* TEST SCENARIOS 
+ *
+ * TEST SCENARIOS 
  *		a) wraparound that is/ is not aligned with endPosition 
  *		b) no more space to insert message
  *		c) no more messages to consume
  *
+ *     lockId is either FileRepAckShmemLock or FileRepShmemLock
  */
-char *
+char*
 FileRep_ReserveShmem(
 					 FileRepShmem_s		*fileRepShmem,
 					 uint32				msgLength,
 					 uint32				*spareField,
-					 FileRepOperation_e	fileRepOperation)
+					 FileRepOperation_e	fileRepOperation,
+					 LWLockId			lockId)
 {
 	bool	insert = false;
 	int		retry = 0;
 	bool	wait = FALSE;
 	char	*msgPositionInsert = NULL;
 	FileRepShmemMessageDescr_s *fileRepShmemMessageDescr;
-	
-	while ((insert == false) && (FileRep_IsRetry(retry))) {
+   			
+	while ((insert == false) && (FileRep_IsRetry(retry))) 
+	{
 		
-		LWLockAcquire(FileRepShmemLock, LW_EXCLUSIVE);
-		
+		LWLockAcquire(lockId, LW_EXCLUSIVE);
+
 		if (! FileRep_IsIpcSleep(fileRepOperation))
 		{					
 			if (wait == TRUE)
@@ -1034,62 +977,72 @@ FileRep_ReserveShmem(
 			if ((fileRepShmem->positionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s)) < 
 				fileRepShmem->positionEnd) {
 				insert = true;
-			} else {
+			} 
+			else 
+			{
 				/* Message wraparound */
-				if (fileRepShmem->positionConsume != fileRepShmem->positionBegin) {
+				if (fileRepShmem->positionConsume != fileRepShmem->positionBegin) 
+				{
 					fileRepShmem->positionWraparound = fileRepShmem->positionInsert;
 					fileRepShmem->positionInsert = fileRepShmem->positionBegin;
-					LWLockRelease(FileRepShmemLock);
+					LWLockRelease(lockId);
 					continue;
 				}
 			}
 		}
 		
-		if (fileRepShmem->positionInsert < fileRepShmem->positionConsume) {
+		if (fileRepShmem->positionInsert < fileRepShmem->positionConsume) 
+		{
 			if ((fileRepShmem->positionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s)) < 
-				fileRepShmem->positionConsume) {
+				fileRepShmem->positionConsume) 
+			{
 				insert = true;
 			} 
 		}	
 		
-		if (fileRepShmem->positionInsert == fileRepShmem->positionConsume) {
+		if (fileRepShmem->positionInsert == fileRepShmem->positionConsume) 
+		{
 			if ((fileRepShmem->positionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s)) < 
-				fileRepShmem->positionEnd) {
+				fileRepShmem->positionEnd) 
+			{
 				insert = true;
-			} else {
+			} 
+			else 
+			{
 				/* Message wraparound */
 				fileRepShmem->positionWraparound = fileRepShmem->positionInsert;
 				fileRepShmem->positionInsert = fileRepShmem->positionBegin;
-				LWLockRelease(FileRepShmemLock);
+				LWLockRelease(lockId);
 				continue;
 			}
 		}
 		
-		if (insert == true) {
+		if (insert == true) 
+		{
 			if ((fileRepShmem->positionInsert + 
 				 msgLength + sizeof(FileRepShmemMessageDescr_s)) == 
-				fileRepShmem->positionConsume) {
+				fileRepShmem->positionConsume) 
+			{
 				
 				insert = false;
-			} else {				
+			} 
+			else 
+			{				
 				msgPositionInsert = fileRepShmem->positionInsert;
 				
 				Assert(msgPositionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s) < fileRepShmem->positionEnd);
 				
-				fileRepShmemMessageDescr = 
-				(FileRepShmemMessageDescr_s*) msgPositionInsert;
+				fileRepShmemMessageDescr = (FileRepShmemMessageDescr_s*) msgPositionInsert;
 				
 				fileRepShmemMessageDescr->messageLength = msgLength;
 				
-				fileRepShmemMessageDescr->messageState = 
-				FileRepShmemMessageStateReserved; 
+				fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReserved; 
 				
 				fileRepShmem->insertCount++;
 				
 				*spareField = fileRepShmem->insertCount; 
 				
-				fileRepShmem->positionInsert = msgPositionInsert + 
-						msgLength + sizeof(FileRepShmemMessageDescr_s);
+				fileRepShmem->positionInsert = msgPositionInsert + msgLength + sizeof(FileRepShmemMessageDescr_s);
 			}
 		}
 			
@@ -1102,9 +1055,10 @@ FileRep_ReserveShmem(
 			}
 		}
 		
-		LWLockRelease(FileRepShmemLock);
+		LWLockRelease(lockId);
 		
-		if (insert == false) {
+		if (insert == false) 
+		{
 			if (FileRepSubProcess_IsStateTransitionRequested())
 			{
 				break;
@@ -1192,6 +1146,7 @@ int
 FileRep_errdetail_ShmemAck(void)
 {
 	
+		//Todo - merge with FileRep_errdetail_Shmem just pass in pointer
 	errcontext(
 			  "position ack begin '%p' "
 			  "position ack end '%p' "
@@ -1200,13 +1155,13 @@ FileRep_errdetail_ShmemAck(void)
 			  "position ack wraparound '%p' "
 			  "insert count ack '%d' "
 			  "consume count ack '%d' ",
-			  fileRepAckShmem->positionBegin,
-			  fileRepAckShmem->positionEnd,
-			  fileRepAckShmem->positionInsert,
-			  fileRepAckShmem->positionConsume,
-			  fileRepAckShmem->positionWraparound,
-			  fileRepAckShmem->insertCount,
-			  fileRepAckShmem->consumeCount);
+			  (*fileRepAckShmemArray)->positionBegin,
+			  (*fileRepAckShmemArray)->positionEnd,
+			  (*fileRepAckShmemArray)->positionInsert,
+			  (*fileRepAckShmemArray)->positionConsume,
+			  (*fileRepAckShmemArray)->positionWraparound,
+			  (*fileRepAckShmemArray)->insertCount,
+			  (*fileRepAckShmemArray)->consumeCount);
 	
 	return 0;
 }
@@ -1369,7 +1324,7 @@ FileRep_InsertLogEntry(
 	
 	struct timeval	logTime;
 	
-	if (Debug_filerep_print || fileRepAckShmem == NULL)
+	if (Debug_filerep_print || (*fileRepAckShmemArray) == NULL)
 		return;
 		
 	halfLength = (fileRepLogShmem->logEnd - fileRepLogShmem->logBegin) / 2;
@@ -1404,13 +1359,13 @@ FileRep_InsertLogEntry(
 			fileRepShmemArray[fileRepProcIndex]->positionWraparound,	
 			fileRepShmemArray[fileRepProcIndex]->insertCount,			//15
 			fileRepShmemArray[fileRepProcIndex]->consumeCount,				
-			fileRepAckShmem->positionBegin,								//17
-			fileRepAckShmem->positionEnd,								
-			fileRepAckShmem->positionInsert,							//19
-			fileRepAckShmem->positionConsume,							
-			fileRepAckShmem->positionWraparound,						//21
-			fileRepAckShmem->insertCount,								
-			fileRepAckShmem->consumeCount,								//23
+			(*fileRepAckShmemArray)->positionBegin,						//17
+			(*fileRepAckShmemArray)->positionEnd,								
+			(*fileRepAckShmemArray)->positionInsert,					//19
+			(*fileRepAckShmemArray)->positionConsume,							
+			(*fileRepAckShmemArray)->positionWraparound,				//21
+			(*fileRepAckShmemArray)->insertCount,								
+			(*fileRepAckShmemArray)->consumeCount,						//23
 			FileRepRoleToString[fileRepRole],							
 			DataStateToString[dataState],								//25
 			SegmentStateToString[segmentState],							
@@ -1467,6 +1422,7 @@ FileRepLog_ShmemSize(void)
 	return size;
 }
 
+
 /* 
  * FileRepLog_ShmemInit()
  *			Allocate and initialize FileRep Shared Memory 
@@ -1476,7 +1432,7 @@ void
 FileRepLog_ShmemInit(void)
 {
 	bool	foundPtr;
-	
+
 	fileRepConfigLogShmem = (FileRepLogShmem_s *) ShmemInitStruct("filerep config log", 
 																	FileRepLog_ShmemSize()/2,
 																	&foundPtr);
@@ -2300,7 +2256,7 @@ FileRepIsBackendSubProcess(FileRepProcessType_e processType)
 	    case FileRepProcessTypePrimaryConsumerAck:
 	    case FileRepProcessTypeMirrorConsumerWriter:
         case FileRepProcessTypeMirrorConsumerAppendOnly1:
-        case FileRepProcessTypeMirrorConsumerAppendOnly2:
+		case FileRepProcessTypeMirrorVerification:
             return false;
 		case FileRepProcessTypePrimaryRecovery:
         case FileRepProcessTypeResyncManager:
@@ -2308,6 +2264,7 @@ FileRepIsBackendSubProcess(FileRepProcessType_e processType)
         case FileRepProcessTypeResyncWorker2:
         case FileRepProcessTypeResyncWorker3:
         case FileRepProcessTypeResyncWorker4:
+		case FileRepProcessTypePrimaryVerification: 
             return true;
         default:
             Assert(!"unknown process type in 'FileRepIsBackendSubProcess' ");
@@ -2827,7 +2784,7 @@ FileRep_IsOperationSynchronous(FileRepOperation_e fileRepOperation)
 		case FileRepOperationHeartBeat:
 		case FileRepOperationCreateAndOpen:
 		case FileRepOperationValidation:
-			
+		case FileRepOperationVerify:	
 			return TRUE;	
 
 		case FileRepOperationOpen: 
@@ -2979,6 +2936,8 @@ FileRep_GetFlatFileIdentifier(
 	strncpy(identifier.fileRepFlatFileIdentifier.fileSimpleName,
 			simpleFileName,
 			MAXPGPATH);
+
+	identifier.fileRepFlatFileIdentifier.blockId = FILEREPFLATFILEID_WHOLE_FILE;
 	
 	return identifier;
 }
@@ -3003,6 +2962,7 @@ FileRep_GetUnknownIdentifier(
 	return identifier;
 }
 
+
 /*
  * $PGDATA/filespace/segment/tablespace_oid/database_oid/relfilenode_oid
  */
@@ -3019,11 +2979,12 @@ FileRep_GetFileName(
 			fileName = (char*) palloc(
 				strlen(fileRepIdentifier.fileRepFlatFileIdentifier.directorySimpleName) +
 				strlen(fileRepIdentifier.fileRepFlatFileIdentifier.fileSimpleName) + 2);
-			
+
 			sprintf(fileName, "%s/%s",
 					fileRepIdentifier.fileRepFlatFileIdentifier.directorySimpleName,
 					fileRepIdentifier.fileRepFlatFileIdentifier.fileSimpleName);
-		
+
+
 			break;
 		
 		case FileRepRelationTypeBulk:
@@ -3064,7 +3025,6 @@ FileRep_GetFileName(
 										   fileName,
 										   NULL,
 										   fileRepIdentifier.fileRepDirIdentifier.dbDirNode.tablespace);
-					
 					else 
 						FormTablespacePath(
 										   fileName,
@@ -3293,6 +3253,9 @@ void FileRep_Main(void)
 	
 	sigjmp_buf		local_sigjmp_buf;
 
+	/* 
+	 * Enum in cdpfilerep.h should match TypetoString declaration here in cdpfilerep.c 
+	 */
     COMPILE_ASSERT(ARRAY_SIZE(FileRepProcessTypeToString) == FileRepProcessType__EnumerationCount);
     COMPILE_ASSERT(ARRAY_SIZE(FileRepRoleToString) == FileRepRole_e_Count);
     COMPILE_ASSERT(ARRAY_SIZE(SegmentStateToString) == SegmentState__EnumerationCount);
@@ -3303,7 +3266,7 @@ void FileRep_Main(void)
     COMPILE_ASSERT(ARRAY_SIZE(FileRepAckStateToString) == FileRepAckState__EnumerationCount);
     COMPILE_ASSERT(ARRAY_SIZE(FileRepConsumerProcIndexToString) == FileRepMessageType__EnumerationCount);
 	COMPILE_ASSERT(ARRAY_SIZE(FileRepStatusToString) == FileRepStatus__EnumerationCount);
-	
+	COMPILE_ASSERT(ARRAY_SIZE(FileRepOperationVerificationTypeToString) == 	FileRepOpVerifyType__EnumerationCount);
 	Insist(IsUnderPostmaster == TRUE);
 
 	fileRepProcessType = FileRepProcessTypeMain;
@@ -3430,6 +3393,12 @@ void FileRep_Main(void)
 	switch (fileRepRole) {
 		case FileRepPrimaryRole:
 				
+			FileRep_ShmemInitArray(
+								   fileRepAckShmemArray, 
+								   FILEREP_ACKSHMEM_MESSAGE_SLOTS_PRIMARY, 
+								   file_rep_ack_buffer_size, 
+								   false);
+			
 			if (FileRep_StartChildProcess(FileRepProcessTypePrimaryReceiverAck) < 0) {
 				status = STATUS_ERROR;
 				break;
@@ -3449,6 +3418,11 @@ void FileRep_Main(void)
 				status = STATUS_ERROR;
 				break;
 			}	
+
+			if (FileRep_StartChildProcess(FileRepProcessTypePrimaryVerification) < 0) {
+				status = STATUS_ERROR;
+				break;
+			}
 
 			if (dataState == DataStateInResync) 
 			{
@@ -3480,7 +3454,11 @@ void FileRep_Main(void)
 		
 		case FileRepMirrorRole:
 			
-			FileRep_ShmemInitArray();
+			FileRep_ShmemInitArray(
+								   fileRepShmemArray, 
+								   FILEREP_SHMEM_MESSAGE_SLOTS_MIRROR, 
+								   file_rep_buffer_size, 
+								   true);
 			
 			if (FileRep_StartChildProcess(FileRepProcessTypeMirrorReceiver) < 0) {
 				status = STATUS_ERROR;
@@ -3501,17 +3479,17 @@ void FileRep_Main(void)
 				status = STATUS_ERROR;
 				break;
 			}
-			
-			if (FileRep_StartChildProcess(FileRepProcessTypeMirrorConsumerAppendOnly2) < 0) {
-				status = STATUS_ERROR;
-				break;
-			}
-			
+
 			if (FileRep_StartChildProcess(FileRepProcessTypeMirrorSenderAck) < 0) {
 				status = STATUS_ERROR;
 				break;
 			}
-						
+
+			if (FileRep_StartChildProcess(FileRepProcessTypeMirrorVerification) < 0) {
+				status = STATUS_ERROR;
+				break;
+			}							
+
 			break;
 		case FileRepNoRoleConfigured:
 		case FileRepRoleNotInitialized:

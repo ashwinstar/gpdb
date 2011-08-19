@@ -466,6 +466,86 @@ extern void PersistentFileSysObj_ResynchronizeRelationComplete(
 
 	bool							flushToXLog);
 
+typedef struct OnlineVerifyScanToken
+{
+	bool				beginScan;
+
+	PersistentStoreScan storeScan;
+
+	bool				done;
+} OnlineVerifyScanToken;
+
+inline static void OnlineVerifyScanToken_Init(
+	OnlineVerifyScanToken		*token)
+{
+	MemSet(token, 0, sizeof(OnlineVerifyScanToken));
+	token->beginScan = false;
+	token->done = false;
+}
+extern bool PersistentFileSysObj_OnlineVerifyScan(
+	OnlineVerifyScanToken			*onlineVerifyScanToken,
+
+	RelFileNode						*relFileNode,
+
+	int32							*segmentFileNum,
+
+	PersistentFileSysRelStorageMgr 	*relStorageMgr,
+
+	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
+
+	PersistentFileSysRelBufpoolKind *relBufpoolKind,
+
+	int64							*mirrorAppendOnlyLossEof,
+
+	int64							*mirrorAppendOnlyNewEof,
+
+	ItemPointer						persistentTid,
+
+	int64							*persistentSerialNum);
+
+extern void PersistentFileSysObj_OnlineVerifyAbandonScan(
+	OnlineVerifyScanToken			*onlineVerifyScanToken);
+
+typedef struct FilespaceScanToken
+{
+	bool				beginScan;
+
+	PersistentStoreScan storeScan;
+
+	bool				done;
+} FilespaceScanToken;
+
+inline static void FilespaceScanToken_Init(
+	FilespaceScanToken		*token)
+{
+	MemSet(token, 0, sizeof(FilespaceScanToken));
+	token->beginScan = false;
+	token->done = false;
+}
+extern bool PersistentFileSysObj_FilespaceScan(
+	FilespaceScanToken				*filespaceScanToken,
+
+	Oid 							*filespaceOid,
+	
+	int16							*dbId1,
+	
+	char							locationBlankPadded1[FilespaceLocationBlankPaddedWithNullTermLen],
+	
+	int16							*dbId2,
+	
+	char							locationBlankPadded2[FilespaceLocationBlankPaddedWithNullTermLen],
+	
+	PersistentFileSysState			*persistentState,
+	
+	MirroredObjectExistenceState	*mirrorExistenceState,
+
+	ItemPointer						persistentTid,
+
+	int64							*persistentSerialNum);
+
+extern void PersistentFileSysObj_FilespaceAbandonScan(
+	FilespaceScanToken			*filespaceScanToken);
+
 extern bool PersistentFileSysObj_ScanForRelation(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the create. */

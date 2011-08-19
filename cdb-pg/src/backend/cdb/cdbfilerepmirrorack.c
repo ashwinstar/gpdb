@@ -28,46 +28,64 @@ static int FileRepAckMirror_ConstructAndInsertMessage(
 					FileRepRelationType_e	fileRepRelationType,
 					FileRepOperation_e		fileRepOperation,
 					FileRepOperationDescription_u fileRepOperationDescription,
-					FileRepAckState_e		fileRepAckState);
-
+					FileRepAckState_e		fileRepAckState,
+					uint32					messageBodyLength,
+					char					*messageBody);
 
 /****************************************************************
  * Routines called by CONSUMER PROCESSES 
  ****************************************************************/
 
 /*
- * FileRepPrimary_MirrorOpen
- *		Reserve shared memory
- *		Construct Message Header for open operation
- *		Construct Message Header Crc
- *		Insert Message into Mirror Messages Shared Memory
- *		Set FileRep Message state to Ready, so message can be consumed.
+ * FileRepAckMirror_ConstructAndInsertMessage
+ *			a) reserve ack shared memory
+ *			b) construct message header 
+ *			c) calculate message body crc
+ *			d) calculate message header crc
+ *			e) insert message header, message header crc and message body into ack shared memory
+ *			f) set filerep message state to 'ready' so that message can be consumed
+ *			g) signal send ack process so message will be sent to primary immediately
+ *
+ *	NOTE
+ *		Only FileRepOperationVerify messages has body message. That means message body length and message body crc are
+ *		different than zero. 
  */
 static int 
 FileRepAckMirror_ConstructAndInsertMessage(
-			 FileRepIdentifier_u	fileRepIdentifier,
-			 FileRepRelationType_e	fileRepRelationType,
-			 FileRepOperation_e		fileRepOperation,
-			 FileRepOperationDescription_u fileRepOperationDescription,
-			 FileRepAckState_e		fileRepAckState)
+										   FileRepIdentifier_u		fileRepIdentifier,
+										   FileRepRelationType_e	fileRepRelationType,
+										   FileRepOperation_e		fileRepOperation,
+										   FileRepOperationDescription_u fileRepOperationDescription,
+										   FileRepAckState_e		fileRepAckState,
+										   uint32					messageBodyLength,
+										   char						*messageBody)
 {
 	
 	FileRepShmemMessageDescr_s	*fileRepShmemMessageDescr = NULL;
 	FileRepMessageHeader_s		*fileRepMessageHeader = NULL;
 	pg_crc32					*fileRepMessageHeaderCrc = 0;
 	pg_crc32					fileRepMessageHeaderCrcLocal = 0;
-	char*						msgPositionInsert = NULL;
+	char						*msgPositionInsert = NULL;
+	char						*fileRepMessageBody = NULL;
 	uint32						msgLength = 0;
 	uint32						spareField = 0;
 	
-	msgLength = sizeof(FileRepMessageHeader_s) + sizeof(pg_crc32);
+	if (fileRepOperation != FileRepOperationVerify)
+		Assert(messageBodyLength == 0);
+	
+	msgLength = sizeof(FileRepMessageHeader_s) + sizeof(pg_crc32) + messageBodyLength;
 	/*
 	 * Shared memory is reserved in advance in order to avoid 
 	 * holding lock during memcpy() and Crc calculation...
 	 *
 	 * Construct FileRepShmemMessageDescr_s 
 	 */
-	msgPositionInsert = FileRepAck_ReserveShmem(msgLength, &spareField);
+	msgPositionInsert = FileRep_ReserveShmem(
+											 fileRepAckShmemArray[FILEREP_OUTGOING_MESSAGE_QUEUE], 
+											 msgLength, 
+											 &spareField, 
+											 fileRepOperation, 
+											 FileRepAckShmemLock);
 	
 	if (msgPositionInsert == NULL) {
 		
@@ -101,11 +119,25 @@ FileRepAckMirror_ConstructAndInsertMessage(
 	fileRepMessageHeader->fileRepAckState = fileRepAckState;
 	
 	fileRepMessageHeader->messageCount = spareField;
-		
+	
+	fileRepMessageHeader->messageBodyLength = messageBodyLength;
+	
+	if (messageBodyLength)
+	{
+		FileRep_CalculateCrc((char *) messageBody,
+							 messageBodyLength,
+							 &fileRepMessageHeader->fileRepMessageBodyCrc);
+	}
+	else
+	{
+		fileRepMessageHeader->fileRepMessageBodyCrc = 0;
+	}
+	
 	switch (fileRepOperation) {
 		case FileRepOperationReconcileXLogEof:
 		case FileRepOperationValidation:
 		case FileRepOperationCreate:
+		case FileRepOperationVerify:	
 			fileRepMessageHeader->fileRepOperationDescription = fileRepOperationDescription;
 			break;
 			
@@ -125,7 +157,7 @@ FileRepAckMirror_ConstructAndInsertMessage(
 	(pg_crc32 *) (msgPositionInsert + 
 				  sizeof(FileRepMessageHeader_s) + 
 				  sizeof(FileRepShmemMessageDescr_s));
-	
+
 	FileRep_CalculateCrc((char *) fileRepMessageHeader,
 						 sizeof(FileRepMessageHeader_s),
 						 &fileRepMessageHeaderCrcLocal);
@@ -146,8 +178,9 @@ FileRepAckMirror_ConstructAndInsertMessage(
 	if (Debug_filerep_print)
 		ereport(LOG,
 				(errmsg("M_ConstructAndInsertMessageAck construct and insert ack message "
-						"msg header crc:'%u' position insert:'%p' ack state:'%s' ",
+						"msg header crc '%u' message body length '%d' position insert '%p' ack state '%s' ",
 						fileRepMessageHeaderCrcLocal,
+						messageBodyLength,
 						msgPositionInsert,
 						FileRepAckStateToString[fileRepAckState]),
 				 FileRep_errdetail(fileRepIdentifier,
@@ -156,6 +189,16 @@ FileRepAckMirror_ConstructAndInsertMessage(
 								   fileRepMessageHeader->messageCount),
 				 FileRep_errdetail_ShmemAck(),
 				 FileRep_errcontext()));			
+	
+	if (messageBodyLength)
+	{
+		fileRepMessageBody = (char *) (msgPositionInsert + 
+									   sizeof(FileRepMessageHeader_s) + 
+									   sizeof(FileRepShmemMessageDescr_s) +
+									   sizeof(pg_crc32));
+		
+		memcpy(fileRepMessageBody, messageBody, messageBodyLength);	
+	}
 
 	fileRepShmemMessageDescr = 
 	(FileRepShmemMessageDescr_s*) msgPositionInsert;	
@@ -166,23 +209,23 @@ FileRepAckMirror_ConstructAndInsertMessage(
 	fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 
 	
 	LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
-	FileRep_IpcSignal(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC, 
-					  &fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC);
+
+	FileRep_IpcSignal(fileRepIpcArray[fileRepAckShmemArray[FILEREP_OUTGOING_MESSAGE_QUEUE]->ipcArrayIndex]->semC, 
+					  &fileRepIpcArray[fileRepAckShmemArray[FILEREP_OUTGOING_MESSAGE_QUEUE]->ipcArrayIndex]->refCountSemC);
 	LWLockRelease(FileRepAckShmemLock);
 	
 	return STATUS_OK;
 }	
 
-/*
- * FileRepAckMirror_MirrorOpen
- */
 int 
 FileRepAckMirror_Ack(
 			FileRepIdentifier_u			fileRepIdentifier,
 			FileRepRelationType_e		fileRepRelationType,
 			FileRepOperation_e			fileRepOperation,
 			FileRepOperationDescription_u fileRepOperationDescription,
-			FileRepAckState_e			fileRepAckState)
+			FileRepAckState_e			fileRepAckState,
+			uint32						messageBodyLength,
+			char						*messageBody)
 {
 	int status = STATUS_OK;
 	
@@ -191,7 +234,9 @@ FileRepAckMirror_Ack(
 							fileRepRelationType,
 							fileRepOperation,
 							fileRepOperationDescription,
-							fileRepAckState);
+							fileRepAckState,
+							messageBodyLength,
+							messageBody);
 	
 	return status;
 }	
@@ -310,9 +355,14 @@ FileRepAckMirror_RunSender(void)
 	char						*fileRepMessage;
 	int							status = STATUS_OK;
 	bool						movePositionConsume = FALSE;
+	FileRepConsumerProcIndex_e  messageType;
+	FileRepMessageHeader_s		*fileRepMessageHeader;
+	FileRepShmem_s              *fileRepAckShmem = NULL;
 	
 	FileRep_InsertConfigLogEntry("run sender ack");
 	
+	fileRepAckShmem = fileRepAckShmemArray[FILEREP_OUTGOING_MESSAGE_QUEUE];
+
 	while (1) {
 
 		LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
@@ -354,9 +404,7 @@ FileRepAckMirror_RunSender(void)
 			}
 			
 			FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC);
-			
-			//pg_usleep(1000L); /* 1 ms */
-			
+						
 			LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE); 
 			
 			if (fileRepAckShmem->positionConsume == fileRepAckShmem->positionWraparound &&
@@ -389,7 +437,7 @@ FileRepAckMirror_RunSender(void)
 							   FileRepAckStateNotInitialized,
 							   FILEREP_UNDEFINED,
 							   FILEREP_UNDEFINED);		
-		
+				
 #ifdef FAULT_INJECTOR
 		FaultInjector_InjectFaultIfSet(
 									   FileRepSender,
@@ -400,9 +448,21 @@ FileRepAckMirror_RunSender(void)
 		
 		fileRepMessage = (char*) (fileRepAckShmem->positionConsume + 
 								  sizeof(FileRepShmemMessageDescr_s));
+		
+		fileRepMessageHeader = (FileRepMessageHeader_s*) (fileRepAckShmem->positionConsume + 
+														  sizeof(FileRepShmemMessageDescr_s));
 
+		if (fileRepMessageHeader->fileRepOperation == FileRepOperationVerify)
+		{
+			messageType = FileRepMessageTypeVerify;
+		} 
+		else 
+		{
+			messageType = FileRepMessageTypeXLog;
+		}
+		
 		if (! FileRepConnClient_SendMessage(
-						FileRepMessageTypeXLog, 
+						messageType,
 						fileRepShmemMessageDescr->messageSync,
 						fileRepMessage,
 						fileRepShmemMessageDescr->messageLength)) 

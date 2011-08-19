@@ -6468,6 +6468,297 @@ void PersistentFileSysObj_ResynchronizeRelationComplete(
 
 }
 
+bool PersistentFileSysObj_OnlineVerifyScan(
+	OnlineVerifyScanToken			*onlineVerifyScanToken,
+
+	RelFileNode						*relFileNode,
+
+	int32							*segmentFileNum,
+
+	PersistentFileSysRelStorageMgr 	*relStorageMgr,
+
+	MirroredRelDataSynchronizationState *mirrorDataSynchronizationState,
+
+	PersistentFileSysRelBufpoolKind *relBufpoolKind,
+
+	int64							*mirrorAppendOnlyLossEof,
+
+	int64							*mirrorAppendOnlyNewEof,
+
+	ItemPointer						persistentTid,
+
+	int64							*persistentSerialNum)
+{
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
+	PersistentFileSysObjData *fileSysObjData;
+	PersistentFileSysObjSharedData	*fileSysObjSharedData;
+
+	Datum values[Natts_gp_persistent_relation_node];
+	 
+	PersistentFileSysState			state;
+	int64							createMirrorDataLossTrackingSessionNum;
+	MirroredObjectExistenceState	mirrorExistenceState;
+	bool							mirrorBufpoolMarkedForScanIncrementalResync;
+	int64							mirrorBufpoolResyncChangedPageCount;
+	XLogRecPtr						mirrorBufpoolResyncCkptLoc;
+	BlockNumber 					mirrorBufpoolResyncCkptBlockNum;
+	TransactionId					parentXid;
+	int64							serialNum;
+	ItemPointerData 				previousFreeTid;
+
+	PersistentFileSysObjName		fsObjName;
+
+	if (onlineVerifyScanToken->done)
+		return false;
+
+	PersistentFileSysObj_GetDataPtrs(
+								PersistentFsObjType_RelationFile,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
+
+	if (!onlineVerifyScanToken->beginScan)
+	{
+		PersistentStore_BeginScan(
+							&fileSysObjData->storeData,
+							&fileSysObjSharedData->storeSharedData,
+							&onlineVerifyScanToken->storeScan);
+		
+		onlineVerifyScanToken->beginScan = true;
+	}
+
+	while (true)
+	{
+		if (!PersistentStore_GetNext(
+								&onlineVerifyScanToken->storeScan,
+								values,
+								persistentTid,
+								persistentSerialNum))
+		{
+			PersistentStore_EndScan(&onlineVerifyScanToken->storeScan);
+			onlineVerifyScanToken->beginScan = false;
+			onlineVerifyScanToken->done = true;
+			
+			WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+
+			return false;
+		}
+
+		GpPersistentRelationNode_GetValues(
+										values,
+										&relFileNode->spcNode,
+										&relFileNode->dbNode,
+										&relFileNode->relNode,
+										segmentFileNum,
+										relStorageMgr,
+										&state,
+										&createMirrorDataLossTrackingSessionNum,
+										&mirrorExistenceState,
+										mirrorDataSynchronizationState,
+										&mirrorBufpoolMarkedForScanIncrementalResync,
+										&mirrorBufpoolResyncChangedPageCount,
+										&mirrorBufpoolResyncCkptLoc,
+										&mirrorBufpoolResyncCkptBlockNum,
+										mirrorAppendOnlyLossEof,
+										mirrorAppendOnlyNewEof,
+										relBufpoolKind,
+										&parentXid,
+										&serialNum,
+										&previousFreeTid);
+
+		if (state == PersistentFileSysState_Free)
+			continue;
+		
+		PersistentFileSysObjName_SetRelationFile(
+											&fsObjName,
+											relFileNode,
+											*segmentFileNum);
+		
+		if (state != PersistentFileSysState_BulkLoadCreatePending &&
+			MirroredObjectExistenceState_IsResynchCreated(mirrorExistenceState))
+		{
+
+			if (Debug_persistent_print)
+				elog(Persistent_DebugPrintLevel(), 
+					 "PersistentFileSysObj_OnlineVerifyScan: Return '%s' needing data resynchronization ('%s'), persistent state '%s', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+					 PersistentFileSysObjName_ObjectName(&fsObjName),
+					 MirroredRelDataSynchronizationState_Name(*mirrorDataSynchronizationState),
+					 PersistentFileSysObjState_Name(state),
+					 MirroredObjectExistenceState_Name(mirrorExistenceState),
+					 serialNum,
+					 ItemPointerToString(persistentTid));
+
+			break;
+		}
+		else
+		{
+			if (Debug_persistent_print)
+				elog(Persistent_DebugPrintLevel(), 
+					 "PersistentFileSysObj_OnlineVerifyScan: Skip '%s' -- doesn't need data resynchronization ('%s'), persistent state '%s', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+					 PersistentFileSysObjName_ObjectName(&fsObjName),
+					 MirroredRelDataSynchronizationState_Name(*mirrorDataSynchronizationState),
+					 PersistentFileSysObjState_Name(state),
+					 MirroredObjectExistenceState_Name(mirrorExistenceState),
+					 serialNum,
+					 ItemPointerToString(persistentTid));
+		}
+
+		WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+		
+		WRITE_PERSISTENT_STATE_ORDERED_LOCK;
+		
+	}
+	
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+	
+	return true;
+}
+
+void PersistentFileSysObj_OnlineVerifyAbandonScan(
+	OnlineVerifyScanToken			*onlineVerifyScanToken)
+{
+	if (onlineVerifyScanToken->done)
+		return;
+
+	if (onlineVerifyScanToken->beginScan)
+	{
+		PersistentStore_EndScan(&onlineVerifyScanToken->storeScan);
+		onlineVerifyScanToken->beginScan = false;
+	}
+
+	onlineVerifyScanToken->done = true;
+}
+
+bool PersistentFileSysObj_FilespaceScan(
+	FilespaceScanToken				*filespaceScanToken,
+
+	Oid 							*filespaceOid,
+	
+	int16							*dbId1,
+	
+	char							locationBlankPadded1[FilespaceLocationBlankPaddedWithNullTermLen],
+	
+	int16							*dbId2,
+	
+	char							locationBlankPadded2[FilespaceLocationBlankPaddedWithNullTermLen],
+	
+	PersistentFileSysState			*persistentState,
+	
+	MirroredObjectExistenceState	*mirrorExistenceState,
+
+	ItemPointer						persistentTid,
+
+	int64							*persistentSerialNum)
+{
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK_DECLARE;
+
+	PersistentFileSysObjData *fileSysObjData;
+	PersistentFileSysObjSharedData	*fileSysObjSharedData;
+
+	Datum values[Natts_gp_persistent_filespace_node];
+	 
+	int64							createMirrorDataLossTrackingSessionNum;
+	int32							reserved;
+	TransactionId					parentXid;
+	int64							serialNum;
+	ItemPointerData 				previousFreeTid;
+
+	PersistentFileSysObjName		fsObjName;
+
+	if (filespaceScanToken->done)
+		return false;
+
+	PersistentFileSysObj_GetDataPtrs(
+								PersistentFsObjType_FilespaceDir,
+								&fileSysObjData,
+								&fileSysObjSharedData);
+
+	WRITE_PERSISTENT_STATE_ORDERED_LOCK;
+
+	if (!filespaceScanToken->beginScan)
+	{
+		PersistentStore_BeginScan(
+							&fileSysObjData->storeData,
+							&fileSysObjSharedData->storeSharedData,
+							&filespaceScanToken->storeScan);
+		
+		filespaceScanToken->beginScan = true;
+	}
+
+	while (true)
+	{	
+
+		if (!PersistentStore_GetNext(
+								&filespaceScanToken->storeScan,
+								values,
+								persistentTid,
+								persistentSerialNum))
+		{
+			PersistentStore_EndScan(&filespaceScanToken->storeScan);
+			filespaceScanToken->beginScan = false;
+			filespaceScanToken->done = true;
+			
+			WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+
+			return false;
+		}
+
+		GpPersistentFilespaceNode_GetValues(
+										values,
+										filespaceOid,
+										dbId1,
+										locationBlankPadded1,
+										dbId2,
+										locationBlankPadded2,
+										persistentState,
+										&createMirrorDataLossTrackingSessionNum,
+										mirrorExistenceState,
+										&reserved,
+										&parentXid,
+										&serialNum,
+										&previousFreeTid);
+
+		if (*persistentState == PersistentFileSysState_Free)
+			continue;
+		
+		PersistentFileSysObjName_SetFilespaceDir(
+											&fsObjName,
+											*filespaceOid);
+		if (Debug_persistent_print)
+			elog(Persistent_DebugPrintLevel(), 
+				 "PersistentFileSysObj_FilespaceScan: Return '%s' (persistent state '%s', mirror existence state '%s', serial number " INT64_FORMAT " at TID %s",
+				 PersistentFileSysObjName_ObjectName(&fsObjName),
+				 PersistentFileSysObjState_Name(*persistentState),
+				 MirroredObjectExistenceState_Name(*mirrorExistenceState),
+				 serialNum,
+				 ItemPointerToString(persistentTid));
+
+		break;
+		
+	}
+	
+	WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
+	
+	return true;
+}
+
+void PersistentFileSysObj_FilespaceAbandonScan(
+	FilespaceScanToken			*filespaceScanToken)
+{
+	if (filespaceScanToken->done)
+		return;
+
+	if (filespaceScanToken->beginScan)
+	{
+		PersistentStore_EndScan(&filespaceScanToken->storeScan);
+		filespaceScanToken->beginScan = false;
+	}
+
+	filespaceScanToken->done = true;
+}
+
 bool PersistentFileSysObj_ScanForRelation(
 	RelFileNode 		*relFileNode,
 				/* The tablespace, database, and relation OIDs for the create. */

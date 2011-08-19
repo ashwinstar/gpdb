@@ -19,6 +19,7 @@
 #include "cdb/cdbfilerepprimaryack.h"
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepconnserver.h"
+#include "cdb/cdbfilerepverify.h"
 #include "libpq/pqsignal.h"
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
@@ -289,7 +290,11 @@ FileRepAckPrimary_RunReceiver(void)
 			break;
 		}
 
-		msgPositionInsert = FileRepAck_ReserveShmem(msgLength, /* not used */ &spareField);
+		msgPositionInsert = FileRep_ReserveShmem(fileRepAckShmemArray[msgType], 
+												 msgLength, 
+												 /* not used */ &spareField, 
+												 FileRepOperationNotSpecified, 
+												 FileRepAckShmemLock);
 		
 		if (msgPositionInsert == NULL) {
 			
@@ -330,8 +335,10 @@ FileRepAckPrimary_RunReceiver(void)
 		fileRepShmemMessageDescr->messageState = FileRepShmemMessageStateReady; 
 		
 		LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
-		FileRep_IpcSignal(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC, 
-						  &fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC);
+		
+		FileRep_IpcSignal(fileRepIpcArray[fileRepAckShmemArray[msgType]->ipcArrayIndex]->semC, 
+						  &fileRepIpcArray[fileRepAckShmemArray[msgType]->ipcArrayIndex]->refCountSemC);
+		
 		LWLockRelease(FileRepAckShmemLock);
 		
 		FileRep_InsertLogEntry(
@@ -968,8 +975,11 @@ FileRepAckPrimary_RunConsumer(void)
 	pg_crc32					messageHeaderCrcLocal = 0;
 	int							status = STATUS_OK;
 	bool						movePositionConsume = FALSE;
+	FileRepShmem_s              *fileRepAckShmem = NULL;
 		
 	FileRep_InsertConfigLogEntry("run consumer");
+	
+	fileRepAckShmem = fileRepAckShmemArray[FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_ACK];
 	
 	while (1) {	
 		
@@ -1011,8 +1021,6 @@ FileRepAckPrimary_RunConsumer(void)
 			}
 			
 			FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC);
-			
-			//pg_usleep(1000L); /* 1 ms */
 			
 			LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
 			
@@ -1202,6 +1210,245 @@ FileRepAckPrimary_RunConsumer(void)
 	} // while(1)	
 	
 	return status;
+}
+
+/*
+ * Verification primary process consumes ack verification related messages 
+ * from slot #1 FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_VERIFY in filerep ack shared memory
+ */
+int 
+FileRepAckPrimary_RunConsumerVerification( 
+										  void							**responseData, 
+										  uint32						*responseDataLength, 
+										  FileRepOperationDescription_u	*responseDesc)
+{
+	FileRepShmemMessageDescr_s	*fileRepShmemMessageDescr = NULL;
+	FileRepMessageHeader_s		*fileRepMessageHeader;
+	pg_crc32					*fileRepMessageHeaderCrc;
+	char						*fileRepMessageBody = NULL;
+	pg_crc32					messageHeaderCrcLocal;
+	pg_crc32					messageBodyLocal;
+	FileRepShmem_s				*fileRepAckShmem = NULL;
+	bool						transitionRequested = FALSE;
+	
+	FileRep_InsertConfigLogEntry("run consumer verification");
+
+	fileRepAckShmem = fileRepAckShmemArray[FILEREP_ACKSHMEM_MESSAGE_SLOT_PRIMARY_VERIFY];
+	
+	LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
+	
+	fileRepShmemMessageDescr = (FileRepShmemMessageDescr_s*) fileRepAckShmem->positionConsume;	
+	
+	while ((fileRepAckShmem->positionConsume == fileRepAckShmem->positionInsert) ||
+		   ((fileRepAckShmem->positionConsume != fileRepAckShmem->positionInsert) &&
+			(fileRepShmemMessageDescr->messageState != FileRepShmemMessageStateReady))) 
+	{
+		
+		fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemC++;
+		LWLockRelease(FileRepAckShmemLock);
+		
+		FileRepSubProcess_ProcessSignals();
+		if (FileRepSubProcess_GetState() != FileRepStateReady) 
+		{
+			transitionRequested = TRUE;
+			LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
+			break;
+		}
+		
+		/* if verification is suspended or aborted then return */
+		if (FileRepVerification_ProcessRequests())
+		{
+			transitionRequested = TRUE;
+			LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
+			break;
+		}
+		
+		FileRep_IpcWait(fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semC);
+		
+		LWLockAcquire(FileRepAckShmemLock, LW_EXCLUSIVE);
+		
+		if (fileRepAckShmem->positionConsume == fileRepAckShmem->positionWraparound &&
+			fileRepAckShmem->positionInsert != fileRepAckShmem->positionWraparound) 
+		{
+			
+			fileRepAckShmem->positionConsume = fileRepAckShmem->positionBegin;
+			fileRepAckShmem->positionWraparound = fileRepAckShmem->positionEnd;
+		}		
+		
+		/* Re-assign to find if messageState is changed */
+		fileRepShmemMessageDescr = (FileRepShmemMessageDescr_s*) fileRepAckShmem->positionConsume;	
+		
+	} //while
+	
+	fileRepAckShmem->consumeCount++;
+	
+	LWLockRelease(FileRepAckShmemLock);
+	
+	if (transitionRequested == TRUE)
+	{
+		return STATUS_ERROR;
+	}
+
+	FileRepSubProcess_ProcessSignals();
+	if (FileRepSubProcess_GetState() != FileRepStateReady) 
+	{
+		return STATUS_ERROR;
+	}
+	
+	/* if verification is suspended or aborted then return */
+	if (FileRepVerification_ProcessRequests())
+	{
+		return STATUS_ERROR;
+	}
+	
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+								   FileRepConsumerVerification,
+								   DDLNotSpecified,
+								   "",	//databaseName
+								   ""); // tableName
+#endif
+	/* Calculate and compare FileRepMessageHeader_s Crc */
+	fileRepMessageHeader = (FileRepMessageHeader_s*) (fileRepAckShmem->positionConsume + 
+													  sizeof(FileRepShmemMessageDescr_s));
+	
+	FileRep_CalculateCrc((char *) fileRepMessageHeader,
+						 sizeof(FileRepMessageHeader_s),
+						 &messageHeaderCrcLocal);	
+	
+	fileRepMessageHeaderCrc =
+	(pg_crc32 *) (fileRepAckShmem->positionConsume + 
+				  sizeof(FileRepMessageHeader_s) + 
+				  sizeof(FileRepShmemMessageDescr_s));
+	
+	if (*fileRepMessageHeaderCrc != messageHeaderCrcLocal) 
+	{
+		ereport(WARNING,
+				(errmsg("mirror failure, "
+						"could not match ack message header checksum between primary '%u' and mirror '%u', "
+						"failover requested", 
+						*fileRepMessageHeaderCrc, 
+						messageHeaderCrcLocal),
+				 errhint("run gprecoverseg to re-establish mirror connectivity"),
+				 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+								   fileRepMessageHeader->fileRepRelationType,
+								   fileRepMessageHeader->fileRepOperation,
+								   fileRepMessageHeader->messageCount),
+				 FileRep_errdetail_ShmemAck(),
+				 FileRep_errcontext()));		
+		
+		return STATUS_ERROR;
+	}
+	
+	Assert(fileRepMessageHeader->fileRepOperation == FileRepOperationVerify);
+	
+	*responseData = NULL;
+	*responseDataLength = fileRepMessageHeader->messageBodyLength;
+	*responseDesc = fileRepMessageHeader->fileRepOperationDescription;
+	
+	/* if message body present then calculate and compare Data Crc */
+	if (fileRepMessageHeader->messageBodyLength > 0)
+	{
+		
+		fileRepMessageBody =
+		(char*) (fileRepAckShmem->positionConsume + 
+				 sizeof(FileRepMessageHeader_s) + 
+				 sizeof(FileRepShmemMessageDescr_s) + 
+				 sizeof(pg_crc32));
+		
+		
+		FileRep_CalculateCrc((char *) fileRepMessageBody,
+							 fileRepMessageHeader->messageBodyLength,
+							 &messageBodyLocal);	
+		
+		if (messageBodyLocal != fileRepMessageHeader->fileRepMessageBodyCrc) 
+		{
+			ereport(WARNING,
+					(errmsg("mirror failure, "
+							"could not match ack message body checksum between primary:'%u' and mirror:'%u' data length:'%u', "
+							"failover requested", 
+							fileRepMessageHeader->fileRepMessageBodyCrc, 
+							messageBodyLocal,
+							fileRepMessageHeader->messageBodyLength),
+					 errhint("run gprecoverseg to re-establish mirror connectivity"),
+					 
+					 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+									   fileRepMessageHeader->fileRepRelationType,
+									   fileRepMessageHeader->fileRepOperation,
+									   fileRepMessageHeader->messageCount),	
+					 FileRep_errdetail_Shmem(),
+					 FileRep_errcontext()));		
+			
+			return STATUS_ERROR;
+		}
+		
+		/* response gets freed in FileRepMirror_RunConsumer */
+		*responseData = (char *)palloc(fileRepMessageHeader->messageBodyLength);		
+		if (*responseData == NULL)
+		{
+			ereport(WARNING,
+					(errmsg("verification failure, "
+							"could not allocate memory to run verification "
+							"verification aborted"),
+					 errhint("run gpverify")));							
+		}
+		
+		memcpy(*responseData, 
+			   fileRepMessageBody, 
+			   fileRepMessageHeader->messageBodyLength);
+		
+	}
+	
+	FileRep_InsertLogEntry(
+						   "P_RunConsumerVerification",
+						   fileRepMessageHeader->fileRepIdentifier,
+						   fileRepMessageHeader->fileRepRelationType,
+						   fileRepMessageHeader->fileRepOperation,
+						   messageHeaderCrcLocal,
+						   fileRepMessageHeader->fileRepMessageBodyCrc,
+						   fileRepMessageHeader->fileRepAckState,
+						   FILEREP_UNDEFINED,
+						   fileRepMessageHeader->messageCount);				
+	
+	if (Debug_filerep_print)
+		ereport(LOG,
+				(errmsg("P_RunConsumerVerification ack msg header count '%d' ack state '%s' ",
+						fileRepMessageHeader->messageCount,
+						FileRepAckStateToString[fileRepMessageHeader->fileRepAckState]),
+				 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
+								   fileRepMessageHeader->fileRepRelationType,
+								   fileRepMessageHeader->fileRepOperation,
+								   fileRepMessageHeader->messageCount),
+				 FileRep_errdetail_ShmemAck(),
+				 FileRep_errcontext()));		
+	
+	fileRepAckShmem->positionConsume = fileRepAckShmem->positionConsume +
+									   fileRepShmemMessageDescr->messageLength + 
+									   sizeof(FileRepShmemMessageDescr_s);
+	
+	if (fileRepAckShmem->positionConsume == fileRepAckShmem->positionWraparound &&
+		fileRepAckShmem->positionInsert != fileRepAckShmem->positionWraparound) 
+	{
+		
+		fileRepAckShmem->positionConsume = fileRepAckShmem->positionBegin;
+		fileRepAckShmem->positionWraparound = fileRepAckShmem->positionEnd;
+	}
+	
+	FileRep_IpcSignal(
+					  fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->semP,
+					  &fileRepIpcArray[fileRepAckShmem->ipcArrayIndex]->refCountSemP);
+	
+	
+	if (*responseData == NULL)
+	{
+		Assert(*responseDataLength == 0);
+	}
+	if (*responseDataLength == 0)
+	{
+		Assert(*responseData == NULL);
+	}
+	
+	return STATUS_OK;
 }
 
 XLogRecPtr 

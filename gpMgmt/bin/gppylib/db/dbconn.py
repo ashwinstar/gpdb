@@ -167,6 +167,11 @@ def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTable
         conn.commit()
         cursor.close()   
         
+    def __enter__(self): 
+        return self
+    def __exit__(self, type, value, traceback):
+        self.close()
+    conn.__class__.__enter__, conn.__class__.__exit__ = __enter__, __exit__
     return conn 
 
 
@@ -187,12 +192,17 @@ def execSQLForSingletonRow(conn, sql):
     cursor.execute(sql)
 
     if cursor.rowcount != 1 :
-        raise Exception("SQL retrieved %d rows but 1 was expected:\n%s" % \
-                        (cursor.rowcount, sql))
+        raise UnexpectedRowsError(1, cursor.rowcount, sql)
 
     res = cursor.fetchall()[0]
     cursor.close()
     return res
+
+class UnexpectedRowsError(Exception):
+    def __init__(self, expected, actual, sql):
+        self.expected, self.actual, self.sql = expected, actual, sql
+        Exception.__init__(self, "SQL retrieved %d rows but %d was expected:\n%s" % \
+                                 (self.actual, self.expected, self.sql))
 
 def execSQLForSingleton(conn, sql):
     """

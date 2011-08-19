@@ -124,13 +124,13 @@ FileRepConnClient_SendMessage(
 		case FileRepMessageTypeXLog:
 			msgType = '1';
 			break;
-		case FileRepMessageTypeWriter:
+		case FileRepMessageTypeVerify:
 			msgType = '2';
 			break;
 		case FileRepMessageTypeAO01:
 			msgType = '3';
 			break;
-		case FileRepMessageTypeAO02:
+		case FileRepMessageTypeWriter:
 			msgType = '4';
 			break;
 		case FileRepMessageTypeShutdown:

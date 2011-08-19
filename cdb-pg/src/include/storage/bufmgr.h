@@ -15,6 +15,7 @@
 #define BUFMGR_H
 
 #include "storage/buf.h"
+#include "storage/buf_internals.h"
 #include "storage/bufpage.h"
 #include "storage/relfilenode.h"
 #include "storage/smgr.h"
@@ -287,6 +288,8 @@ ReadBuffer_ResyncEx(SMgrRelation reln,
 					BlockNumber blockNum);
 
 extern Buffer ReadBuffer(Relation reln, BlockNumber blockNum);
+extern Buffer ReadBuffer_Ex_SMgr(SMgrRelation smgr, BlockNumber blockNum, volatile BufferDesc* availBufHdr, bool isLocalBuf, bool isTemp);
+
 extern void ReleaseBuffer(Buffer buffer);
 extern void ReleaseBuffer_Ex(Buffer buffer, bool flushIfDirty);
 extern void UnlockReleaseBuffer(Buffer buffer);

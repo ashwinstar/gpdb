@@ -24,6 +24,7 @@
 #include "cdb/cdbfilerepmirrorack.h"
 #include "cdb/cdbfilerepresyncmanager.h"
 #include "cdb/cdbfilerepresyncworker.h"
+#include "cdb/cdbfilerepverify.h"
 #include "cdb/cdbvars.h"
 #include "libpq/pqsignal.h"
 #include "postmaster/postmaster.h"
@@ -788,10 +789,13 @@ FileRepSubProcess_Main()
 			FileRepMirror_StartReceiver();
 			break;	
 
+		case FileRepProcessTypeMirrorVerification:
+			FileRepMirror_StartVerification();
+			/* no break */
+			
 		case FileRepProcessTypeMirrorConsumer:
 		case FileRepProcessTypeMirrorConsumerWriter:
 		case FileRepProcessTypeMirrorConsumerAppendOnly1:
-		case FileRepProcessTypeMirrorConsumerAppendOnly2:
 			FileRepMirror_StartConsumer();
 			break;	
 
@@ -837,7 +841,17 @@ FileRepSubProcess_Main()
 								 RESOURCE_RELEASE_BEFORE_LOCKS,
 								 false, true);							
 			break;
+	        
+	    case FileRepProcessTypePrimaryVerification:
+
+			FileRepSubProcess_InitializeResyncManagerProcess();
+			FileRepPrimary_StartVerification();
 			
+			ResourceOwnerRelease(CurrentResourceOwner,
+								 RESOURCE_RELEASE_BEFORE_LOCKS,
+								 false, true);							
+			break;
+		
 		default:
 			elog(PANIC, "unrecognized process type: %s(%d)", 
 				 statmsg, fileRepProcessType);
