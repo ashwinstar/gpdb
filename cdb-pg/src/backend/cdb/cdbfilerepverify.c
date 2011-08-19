@@ -626,7 +626,7 @@ writeFixFileRecord(
 							"verification aborted",
 							logControl.logOptions.fixPath,
 							fixMessage,
-							strlen(fixMessage),
+							(long unsigned int) strlen(fixMessage),
 							logControl.logOptions.token),
 					 errhint("address file system failure and run gpverify")));		
 			return;
@@ -1440,7 +1440,7 @@ void verifyLog(
 						 errmsg("could not write to file '%s' data '%p' dataLength '%lu' : %m", 
 								logControl.logOptions.logPath,
 								logMessage,
-								strlen(logMessage))));
+								(long unsigned int) strlen(logMessage))));
 					
 			}
 			if ((int) FileWrite(logControl.logFile, "\n", strlen("\n"))
@@ -11804,7 +11804,7 @@ void writeDiffTableRecord(FileRepVerifyLogControl_s logControl,
 				 errmsg("could not write to file '%s' data '%p' length '%lu' : %m",
 						logControl.logOptions.externalTablePath,
 						diffMessage,
-						strlen(diffMessage))));
+						(long unsigned int) strlen(diffMessage))));
 			
 		}
 	}
