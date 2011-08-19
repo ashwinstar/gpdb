@@ -14500,284 +14500,289 @@ paaj: parsexagg:00000967:  (errcode(ERRCODE_SYNTAX_ERROR),
 paaj: parsexagg:00000968:  errmsg("window functions not allowed in JOIN conditions"), 
 paaj: parsexagg:00000969:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: pabc: parsexclause - ./backend/parser/parse_clause.c
-pabc: parsexclause:00000201:  ereport(ERROR, 
-pabc: parsexclause:00000202:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
-pabc: parsexclause:00000203:  errmsg("ROWS parameter must be an integer expression"), 
-pabc: parsexclause:00000204:  errOmitLocation(true))); 
-pabc: parsexclause:00000206:  ereport(ERROR, 
-pabc: parsexclause:00000207:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
-pabc: parsexclause:00000208:  errmsg("ROWS parameter cannot be negative"), 
-pabc: parsexclause:00000209:  errOmitLocation(true))); 
-pabc: parsexclause:00000213:  ereport(ERROR, 
-pabc: parsexclause:00000214:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
-pabc: parsexclause:00000215:  errmsg("ROWS parameter cannot contain NULL value"), 
-pabc: parsexclause:00000216:  errOmitLocation(true))); 
-pabc: parsexclause:00000231:  ereport(ERROR, 
-pabc: parsexclause:00000232:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000233:  errmsg("only one ORDER BY column may be specified when" 
-pabc: parsexclause:00000234:  " RANGE is used in a window specification"), 
-pabc: parsexclause:00000235:  errOmitLocation(true))); 
-pabc: parsexclause:00000245:  ereport(ERROR, 
-pabc: parsexclause:00000246:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
-pabc: parsexclause:00000247:  errmsg("RANGE parameter cannot be NULL"), 
-pabc: parsexclause:00000248:  errOmitLocation(true))); 
-pabc: parsexclause:00000266:  ereport(ERROR, 
-pabc: parsexclause:00000267:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000268:  errmsg("window specification RANGE parameter type " 
-pabc: parsexclause:00000269:  "must be coercible to ORDER BY column type"), 
-pabc: parsexclause:00000270:  errOmitLocation(true))); 
-pabc: parsexclause:00000297:  ereport(ERROR, 
-pabc: parsexclause:00000298:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000299:  errmsg("type mismatch between ORDER BY and RANGE " 
-pabc: parsexclause:00000300:  "parameter in window specification"), 
-pabc: parsexclause:00000301:  errhint("Operations between window specification " 
-pabc: parsexclause:00000302:  "the ORDER BY column and RANGE parameter " 
-pabc: parsexclause:00000303:  "must result in a data type which can be " 
-pabc: parsexclause:00000304:  "cast back to the ORDER BY column type"), 
-pabc: parsexclause:00000305:  errOmitLocation(true))); 
-pabc: parsexclause:00000315:  ereport(ERROR, 
-pabc: parsexclause:00000316:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000317:  errmsg("invalid RANGE parameter"), 
-pabc: parsexclause:00000318:  errhint("Operations between window specification " 
-pabc: parsexclause:00000319:  "the ORDER BY column and RANGE parameter " 
-pabc: parsexclause:00000320:  "must result in a data type which can be " 
-pabc: parsexclause:00000321:  "cast back to the ORDER BY column type"), 
-pabc: parsexclause:00000322:  errOmitLocation(true))); 
-pabc: parsexclause:00000349:  ereport(ERROR, 
-pabc: parsexclause:00000350:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
-pabc: parsexclause:00000351:  errmsg("RANGE parameter cannot be negative"), 
-pabc: parsexclause:00000352:  errOmitLocation(true))); 
-pabc: parsexclause:00000385:  ereport(ERROR, 
-pabc: parsexclause:00000386:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000387:  errmsg("DISTINCT cannot be used with " 
-pabc: parsexclause:00000388:  "window specification containing an " 
-pabc: parsexclause:00000389:  "ORDER BY clause"), 
-pabc: parsexclause:00000390:  errOmitLocation(true))); 
-pabc: parsexclause:00000393:  ereport(ERROR, 
-pabc: parsexclause:00000394:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000395:  errmsg("DISTINCT cannot be used with " 
-pabc: parsexclause:00000396:  "window specification containing a " 
-pabc: parsexclause:00000397:  "framing clause"), 
-pabc: parsexclause:00000398:  errOmitLocation(true))); 
-pabc: parsexclause:00000420:  ereport(ERROR, 
-pabc: parsexclause:00000421:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-pabc: parsexclause:00000422:  errmsg("window function \"%s\" requires a window " 
-pabc: parsexclause:00000423:  "specification with an ordering clause", 
-pabc: parsexclause:00000424:  get_func_name(wf->winfnoid)), 
-pabc: parsexclause:00000425:  parser_errposition(ref->pstate, winref->location))); 
-pabc: parsexclause:00000428:  ereport(ERROR, 
-pabc: parsexclause:00000429:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-pabc: parsexclause:00000430:  errmsg("window function \"%s\" cannot be used with " 
-pabc: parsexclause:00000431:  "a framed window specification", 
-pabc: parsexclause:00000432:  get_func_name(wf->winfnoid)), 
-pabc: parsexclause:00000433:  parser_errposition(ref->pstate, winref->location))); 
-pabc: parsexclause:00000513:  ereport(ERROR, 
-pabc: parsexclause:00000514:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000515:  errmsg("cannot use window function in a window " 
-pabc: parsexclause:00000516:  "specification"), 
-pabc: parsexclause:00000517:  errOmitLocation(true))); 
-pabc: parsexclause:00000533:  ereport(ERROR, 
-pabc: parsexclause:00000534:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-pabc: parsexclause:00000535:  errmsg("window \"%s\" cannot reference itself", 
-pabc: parsexclause:00000536:  ws->name), 
-pabc: parsexclause:00000537:  errOmitLocation(true))); 
-pabc: parsexclause:00000545:  ereport(ERROR, 
-pabc: parsexclause:00000546:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-pabc: parsexclause:00000547:  errmsg("window name \"%s\" occurs more than once " 
-pabc: parsexclause:00000548:  "in WINDOW clause", ws->name), 
-pabc: parsexclause:00000549:  errOmitLocation(true))); 
-pabc: parsexclause:00000572:  ereport(ERROR, 
-pabc: parsexclause:00000573:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000574:  errmsg("PARTITION BY not allowed when " 
-pabc: parsexclause:00000575:  "an existing window name is specified"), 
-pabc: parsexclause:00000576:  errOmitLocation(true))); 
-pabc: parsexclause:00000579:  ereport(ERROR, 
-pabc: parsexclause:00000580:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000581:  errmsg("conflicting ORDER BY clauses in window " 
-pabc: parsexclause:00000582:  "specification"), 
-pabc: parsexclause:00000583:  errOmitLocation(true))); 
-pabc: parsexclause:00000594:  ereport(ERROR, 
-pabc: parsexclause:00000595:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000596:  errmsg("window specification \"%s\" cannot have " 
-pabc: parsexclause:00000597:  "a framing clause", ws2->name), 
-pabc: parsexclause:00000598:  errhint("Window specifications which are " 
-pabc: parsexclause:00000599:  "referenced by other window " 
-pabc: parsexclause:00000600:  "specifications cannot have framing " 
-pabc: parsexclause:00000601:  "clauses"), 
-pabc: parsexclause:00000602:  errOmitLocation(true), 
-pabc: parsexclause:00000603:  parser_errposition(pstate, ws2->location) 
-pabc: parsexclause:00000604:  )); 
-pabc: parsexclause:00000623:  ereport(ERROR, 
-pabc: parsexclause:00000624:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000625:  errmsg("window specification \"%s\" not found", 
-pabc: parsexclause:00000626:  ws->parent), 
-pabc: parsexclause:00000627:  errOmitLocation(true))); 
-pabc: parsexclause:00000697:  ereport(ERROR, 
-pabc: parsexclause:00000698:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000699:  errmsg("window specifications with a framing clause " 
-pabc: parsexclause:00000700:  "must have an ORDER BY clause"), 
-pabc: parsexclause:00000701:  errOmitLocation(true))); 
-pabc: parsexclause:00000709:  ereport(ERROR, 
-pabc: parsexclause:00000710:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000711:  errmsg("conflicting bounds in window framing " 
-pabc: parsexclause:00000712:  "clause"), 
-pabc: parsexclause:00000713:  errhint("First bound of BETWEEN clause in window " 
-pabc: parsexclause:00000714:  "specification cannot be UNBOUNDED FOLLOWING"), 
-pabc: parsexclause:00000715:  errOmitLocation(true))); 
-pabc: parsexclause:00000717:  ereport(ERROR, 
-pabc: parsexclause:00000718:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000719:  errmsg("conflicting bounds in window framing " 
-pabc: parsexclause:00000720:  "clause"), 
-pabc: parsexclause:00000721:  errhint("Second bound of BETWEEN clause in window " 
-pabc: parsexclause:00000722:  "specification cannot be UNBOUNDED PRECEDING"), 
-pabc: parsexclause:00000723:  errOmitLocation(true))); 
-pabc: parsexclause:00000727:  ereport(ERROR, 
-pabc: parsexclause:00000728:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000729:  errmsg("conflicting bounds in window framing " 
-pabc: parsexclause:00000730:  "clause"), 
-pabc: parsexclause:00000731:  errhint("Second bound cannot be PRECEDING " 
-pabc: parsexclause:00000732:  "when first bound is CURRENT ROW"), 
-pabc: parsexclause:00000733:  errOmitLocation(true))); 
-pabc: parsexclause:00000738:  ereport(ERROR, 
-pabc: parsexclause:00000739:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00000740:  errmsg("conflicting bounds in window framing " 
-pabc: parsexclause:00000741:  "clause"), 
-pabc: parsexclause:00000742:  errhint("Second bound must be FOLLOWING if first " 
-pabc: parsexclause:00000743:  "bound is FOLLOWING"), 
-pabc: parsexclause:00000744:  errOmitLocation(true))); 
-pabc: parsexclause:00000857:  ereport(ERROR, 
-pabc: parsexclause:00000858:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-pabc: parsexclause:00000859:  errmsg("foreign tables are read only. cannot change \"%s\"", 
-pabc: parsexclause:00000860:  RelationGetRelationName(pstate->p_target_relation)), 
-pabc: parsexclause:00000861:  errOmitLocation(true))); 
-pabc: parsexclause:00000869:  ereport(ERROR, 
-pabc: parsexclause:00000870:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-pabc: parsexclause:00000871:  errmsg("cannot update or delete from external relation \"%s\"", 
-pabc: parsexclause:00000872:  RelationGetRelationName(pstate->p_target_relation)), 
-pabc: parsexclause:00000873:  errOmitLocation(true))); 
-pabc: parsexclause:00000884:  ereport(ERROR, 
-pabc: parsexclause:00000885:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-pabc: parsexclause:00000886:  errmsg("cannot change a readable external table \"%s\"", 
-pabc: parsexclause:00000887:  RelationGetRelationName(pstate->p_target_relation)), 
-pabc: parsexclause:00000888:  errOmitLocation(true))); 
-pabc: parsexclause:00000936:  elog(ERROR, "bogus InhOption value: %d", inhOpt); 
-pabc: parsexclause:00001106:  ereport(ERROR, 
-pabc: parsexclause:00001107:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001108:  errmsg("JOIN/ON clause refers to \"%s\", which is not part of JOIN", 
-pabc: parsexclause:00001109:  rt_fetch(varno, pstate->p_rtable)->eref->aliasname))); 
-pabc: parsexclause:00001154:  ereport(ERROR, 
-pabc: parsexclause:00001155:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00001156:  errmsg("subquery in FROM must have an alias"))); 
-pabc: parsexclause:00001169:  elog(ERROR, "unexpected parse analysis result for subquery in FROM"); 
-pabc: parsexclause:00001172:  elog(ERROR, "unexpected parse analysis result for subquery in FROM"); 
-pabc: parsexclause:00001175:  elog(ERROR, "expected SELECT query from subquery in FROM"); 
-pabc: parsexclause:00001177:  ereport(ERROR, 
-pabc: parsexclause:00001178:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00001179:  errmsg("subquery in FROM may not have SELECT INTO"))); 
-pabc: parsexclause:00001197:  ereport(ERROR, 
-pabc: parsexclause:00001198:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001199:  errmsg("subquery in FROM may not refer to other relations of same query level"), 
-pabc: parsexclause:00001200:  errOmitLocation(true))); 
-pabc: parsexclause:00001241:  elog(ERROR, "Invalid %s syntax.", GP_DIST_RANDOM_NAME); 
-pabc: parsexclause:00001252:  elog(ERROR, "%s: invalid argument type, non-string in value", GP_DIST_RANDOM_NAME); 
-pabc: parsexclause:00001282:  elog(ERROR, "%s: invalid argument type", GP_DIST_RANDOM_NAME); 
-pabc: parsexclause:00001304:  ereport(ERROR, 
-pabc: parsexclause:00001305:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001306:  errmsg("function expression in FROM may not refer to other relations of same query level"), 
-pabc: parsexclause:00001307:  errOmitLocation(true))); 
-pabc: parsexclause:00001317:  ereport(ERROR, 
-pabc: parsexclause:00001318:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00001319:  errmsg("cannot use aggregate function in function expression in FROM"), 
-pabc: parsexclause:00001320:  errOmitLocation(true))); 
-pabc: parsexclause:00001607:  ereport(ERROR, 
-pabc: parsexclause:00001608:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-pabc: parsexclause:00001609:  errmsg("column name \"%s\" appears more than once in USING clause", 
-pabc: parsexclause:00001610:  u_colname))); 
-pabc: parsexclause:00001622:  ereport(ERROR, 
-pabc: parsexclause:00001623:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
-pabc: parsexclause:00001624:  errmsg("common column name \"%s\" appears more than once in left table", 
-pabc: parsexclause:00001625:  u_colname))); 
-pabc: parsexclause:00001631:  ereport(ERROR, 
-pabc: parsexclause:00001632:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabc: parsexclause:00001633:  errmsg("column \"%s\" specified in USING clause does not exist in left table", 
-pabc: parsexclause:00001634:  u_colname))); 
-pabc: parsexclause:00001645:  ereport(ERROR, 
-pabc: parsexclause:00001646:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
-pabc: parsexclause:00001647:  errmsg("common column name \"%s\" appears more than once in right table", 
-pabc: parsexclause:00001648:  u_colname))); 
-pabc: parsexclause:00001654:  ereport(ERROR, 
-pabc: parsexclause:00001655:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-pabc: parsexclause:00001656:  errmsg("column \"%s\" specified in USING clause does not exist in right table", 
-pabc: parsexclause:00001657:  u_colname))); 
-pabc: parsexclause:00001709:  ereport(ERROR, 
-pabc: parsexclause:00001710:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00001711:  errmsg("column alias list for \"%s\" has too many entries", 
-pabc: parsexclause:00001712:  j->alias->aliasname))); 
-pabc: parsexclause:00001757:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(n)); 
-pabc: parsexclause:00001868:  elog(ERROR, "unrecognized join type: %d", (int) jointype); 
-pabc: parsexclause:00001931:  ereport(ERROR, 
-pabc: parsexclause:00001932:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00001933:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
-pabc: parsexclause:00001934:  errmsg("argument of %s must not contain variables", 
-pabc: parsexclause:00001935:  constructName))); 
-pabc: parsexclause:00001939:  ereport(ERROR, 
-pabc: parsexclause:00001940:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00001941:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
-pabc: parsexclause:00001942:  errmsg("argument of %s must not contain aggregates", 
-pabc: parsexclause:00001943:  constructName))); 
-pabc: parsexclause:00001947:  ereport(ERROR, 
-pabc: parsexclause:00001948:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-pabc: parsexclause:00001949:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
-pabc: parsexclause:00001950:  errmsg("argument of %s must not contain subqueries", 
-pabc: parsexclause:00001951:  constructName))); 
-pabc: parsexclause:00002174:  ereport(ERROR, 
-pabc: parsexclause:00002175:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
-pabc: parsexclause:00002176:  
-pabc: parsexclause:00002177:  /*------ 
-pabc: parsexclause:00002178:  translator: first %s is name of a SQL construct, eg ORDER BY */ 
-pabc: parsexclause:00002179:  errmsg("%s \"%s\" is ambiguous", 
-pabc: parsexclause:00002180:  clauseText[clause], name), 
-pabc: parsexclause:00002181:  parser_errposition(pstate, location))); 
-pabc: parsexclause:00002199:  ereport(ERROR, 
-pabc: parsexclause:00002200:  (errcode(ERRCODE_SYNTAX_ERROR), 
-pabc: parsexclause:00002201:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
-pabc: parsexclause:00002202:  errmsg("non-integer constant in %s", 
-pabc: parsexclause:00002203:  clauseText[clause]))); 
-pabc: parsexclause:00002215:  ereport(ERROR, 
-pabc: parsexclause:00002216:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00002217:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
-pabc: parsexclause:00002218:  errmsg("%s position %d is not in select list", 
-pabc: parsexclause:00002219:  clauseText[clause], target_pos), 
-pabc: parsexclause:00002220:  errOmitLocation(true))); 
-pabc: parsexclause:00002427:  ereport(ERROR, 
-pabc: parsexclause:00002428:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00002429:  errmsg("row type can not be used inside a grouping function."), 
-pabc: parsexclause:00002430:  errOmitLocation(true))); 
-pabc: parsexclause:00002433:  ereport(ERROR, 
-pabc: parsexclause:00002434:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00002435:  errmsg("expression in a grouping fuction does not appear in GROUP BY."), 
-pabc: parsexclause:00002436:  errOmitLocation(true))); 
+pabc: parsexclause:00000203:  ereport(ERROR, 
+pabc: parsexclause:00000204:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+pabc: parsexclause:00000205:  errmsg("ROWS parameter must be an integer expression"), 
+pabc: parsexclause:00000206:  errOmitLocation(true))); 
+pabc: parsexclause:00000208:  ereport(ERROR, 
+pabc: parsexclause:00000209:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+pabc: parsexclause:00000210:  errmsg("ROWS parameter cannot be negative"), 
+pabc: parsexclause:00000211:  errOmitLocation(true))); 
+pabc: parsexclause:00000215:  ereport(ERROR, 
+pabc: parsexclause:00000216:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+pabc: parsexclause:00000217:  errmsg("ROWS parameter cannot contain NULL value"), 
+pabc: parsexclause:00000218:  errOmitLocation(true))); 
+pabc: parsexclause:00000233:  ereport(ERROR, 
+pabc: parsexclause:00000234:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000235:  errmsg("only one ORDER BY column may be specified when" 
+pabc: parsexclause:00000236:  " RANGE is used in a window specification"), 
+pabc: parsexclause:00000237:  errOmitLocation(true))); 
+pabc: parsexclause:00000247:  ereport(ERROR, 
+pabc: parsexclause:00000248:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+pabc: parsexclause:00000249:  errmsg("RANGE parameter cannot be NULL"), 
+pabc: parsexclause:00000250:  errOmitLocation(true))); 
+pabc: parsexclause:00000268:  ereport(ERROR, 
+pabc: parsexclause:00000269:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000270:  errmsg("window specification RANGE parameter type " 
+pabc: parsexclause:00000271:  "must be coercible to ORDER BY column type"), 
+pabc: parsexclause:00000272:  errOmitLocation(true))); 
+pabc: parsexclause:00000299:  ereport(ERROR, 
+pabc: parsexclause:00000300:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000301:  errmsg("type mismatch between ORDER BY and RANGE " 
+pabc: parsexclause:00000302:  "parameter in window specification"), 
+pabc: parsexclause:00000303:  errhint("Operations between window specification " 
+pabc: parsexclause:00000304:  "the ORDER BY column and RANGE parameter " 
+pabc: parsexclause:00000305:  "must result in a data type which can be " 
+pabc: parsexclause:00000306:  "cast back to the ORDER BY column type"), 
+pabc: parsexclause:00000307:  errOmitLocation(true))); 
+pabc: parsexclause:00000317:  ereport(ERROR, 
+pabc: parsexclause:00000318:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000319:  errmsg("invalid RANGE parameter"), 
+pabc: parsexclause:00000320:  errhint("Operations between window specification " 
+pabc: parsexclause:00000321:  "the ORDER BY column and RANGE parameter " 
+pabc: parsexclause:00000322:  "must result in a data type which can be " 
+pabc: parsexclause:00000323:  "cast back to the ORDER BY column type"), 
+pabc: parsexclause:00000324:  errOmitLocation(true))); 
+pabc: parsexclause:00000351:  ereport(ERROR, 
+pabc: parsexclause:00000352:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+pabc: parsexclause:00000353:  errmsg("RANGE parameter cannot be negative"), 
+pabc: parsexclause:00000354:  errOmitLocation(true))); 
+pabc: parsexclause:00000387:  ereport(ERROR, 
+pabc: parsexclause:00000388:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000389:  errmsg("DISTINCT cannot be used with " 
+pabc: parsexclause:00000390:  "window specification containing an " 
+pabc: parsexclause:00000391:  "ORDER BY clause"), 
+pabc: parsexclause:00000392:  errOmitLocation(true))); 
+pabc: parsexclause:00000395:  ereport(ERROR, 
+pabc: parsexclause:00000396:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000397:  errmsg("DISTINCT cannot be used with " 
+pabc: parsexclause:00000398:  "window specification containing a " 
+pabc: parsexclause:00000399:  "framing clause"), 
+pabc: parsexclause:00000400:  errOmitLocation(true))); 
+pabc: parsexclause:00000422:  ereport(ERROR, 
+pabc: parsexclause:00000423:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00000424:  errmsg("window function \"%s\" requires a window " 
+pabc: parsexclause:00000425:  "specification with an ordering clause", 
+pabc: parsexclause:00000426:  get_func_name(wf->winfnoid)), 
+pabc: parsexclause:00000427:  parser_errposition(ref->pstate, winref->location))); 
+pabc: parsexclause:00000430:  ereport(ERROR, 
+pabc: parsexclause:00000431:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00000432:  errmsg("window function \"%s\" cannot be used with " 
+pabc: parsexclause:00000433:  "a framed window specification", 
+pabc: parsexclause:00000434:  get_func_name(wf->winfnoid)), 
+pabc: parsexclause:00000435:  parser_errposition(ref->pstate, winref->location))); 
+pabc: parsexclause:00000515:  ereport(ERROR, 
+pabc: parsexclause:00000516:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000517:  errmsg("cannot use window function in a window " 
+pabc: parsexclause:00000518:  "specification"), 
+pabc: parsexclause:00000519:  errOmitLocation(true))); 
+pabc: parsexclause:00000535:  ereport(ERROR, 
+pabc: parsexclause:00000536:  (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+pabc: parsexclause:00000537:  errmsg("window \"%s\" cannot reference itself", 
+pabc: parsexclause:00000538:  ws->name), 
+pabc: parsexclause:00000539:  errOmitLocation(true))); 
+pabc: parsexclause:00000547:  ereport(ERROR, 
+pabc: parsexclause:00000548:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+pabc: parsexclause:00000549:  errmsg("window name \"%s\" occurs more than once " 
+pabc: parsexclause:00000550:  "in WINDOW clause", ws->name), 
+pabc: parsexclause:00000551:  errOmitLocation(true))); 
+pabc: parsexclause:00000574:  ereport(ERROR, 
+pabc: parsexclause:00000575:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000576:  errmsg("PARTITION BY not allowed when " 
+pabc: parsexclause:00000577:  "an existing window name is specified"), 
+pabc: parsexclause:00000578:  errOmitLocation(true))); 
+pabc: parsexclause:00000581:  ereport(ERROR, 
+pabc: parsexclause:00000582:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000583:  errmsg("conflicting ORDER BY clauses in window " 
+pabc: parsexclause:00000584:  "specification"), 
+pabc: parsexclause:00000585:  errOmitLocation(true))); 
+pabc: parsexclause:00000596:  ereport(ERROR, 
+pabc: parsexclause:00000597:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000598:  errmsg("window specification \"%s\" cannot have " 
+pabc: parsexclause:00000599:  "a framing clause", ws2->name), 
+pabc: parsexclause:00000600:  errhint("Window specifications which are " 
+pabc: parsexclause:00000601:  "referenced by other window " 
+pabc: parsexclause:00000602:  "specifications cannot have framing " 
+pabc: parsexclause:00000603:  "clauses"), 
+pabc: parsexclause:00000604:  errOmitLocation(true), 
+pabc: parsexclause:00000605:  parser_errposition(pstate, ws2->location) 
+pabc: parsexclause:00000606:  )); 
+pabc: parsexclause:00000625:  ereport(ERROR, 
+pabc: parsexclause:00000626:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000627:  errmsg("window specification \"%s\" not found", 
+pabc: parsexclause:00000628:  ws->parent), 
+pabc: parsexclause:00000629:  errOmitLocation(true))); 
+pabc: parsexclause:00000699:  ereport(ERROR, 
+pabc: parsexclause:00000700:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000701:  errmsg("window specifications with a framing clause " 
+pabc: parsexclause:00000702:  "must have an ORDER BY clause"), 
+pabc: parsexclause:00000703:  errOmitLocation(true))); 
+pabc: parsexclause:00000711:  ereport(ERROR, 
+pabc: parsexclause:00000712:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000713:  errmsg("conflicting bounds in window framing " 
+pabc: parsexclause:00000714:  "clause"), 
+pabc: parsexclause:00000715:  errhint("First bound of BETWEEN clause in window " 
+pabc: parsexclause:00000716:  "specification cannot be UNBOUNDED FOLLOWING"), 
+pabc: parsexclause:00000717:  errOmitLocation(true))); 
+pabc: parsexclause:00000719:  ereport(ERROR, 
+pabc: parsexclause:00000720:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000721:  errmsg("conflicting bounds in window framing " 
+pabc: parsexclause:00000722:  "clause"), 
+pabc: parsexclause:00000723:  errhint("Second bound of BETWEEN clause in window " 
+pabc: parsexclause:00000724:  "specification cannot be UNBOUNDED PRECEDING"), 
+pabc: parsexclause:00000725:  errOmitLocation(true))); 
+pabc: parsexclause:00000729:  ereport(ERROR, 
+pabc: parsexclause:00000730:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000731:  errmsg("conflicting bounds in window framing " 
+pabc: parsexclause:00000732:  "clause"), 
+pabc: parsexclause:00000733:  errhint("Second bound cannot be PRECEDING " 
+pabc: parsexclause:00000734:  "when first bound is CURRENT ROW"), 
+pabc: parsexclause:00000735:  errOmitLocation(true))); 
+pabc: parsexclause:00000740:  ereport(ERROR, 
+pabc: parsexclause:00000741:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00000742:  errmsg("conflicting bounds in window framing " 
+pabc: parsexclause:00000743:  "clause"), 
+pabc: parsexclause:00000744:  errhint("Second bound must be FOLLOWING if first " 
+pabc: parsexclause:00000745:  "bound is FOLLOWING"), 
+pabc: parsexclause:00000746:  errOmitLocation(true))); 
+pabc: parsexclause:00000866:  ereport(ERROR, 
+pabc: parsexclause:00000867:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00000868:  errmsg("permission denied: \"%s\" is a system catalog", 
+pabc: parsexclause:00000869:  RelationGetRelationName(pstate->p_target_relation)), 
+pabc: parsexclause:00000870:  errOmitLocation(true))); 
+pabc: parsexclause:00000874:  ereport(ERROR, 
+pabc: parsexclause:00000875:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00000876:  errmsg("foreign tables are read only. cannot change \"%s\"", 
+pabc: parsexclause:00000877:  RelationGetRelationName(pstate->p_target_relation)), 
+pabc: parsexclause:00000878:  errOmitLocation(true))); 
+pabc: parsexclause:00000887:  ereport(ERROR, 
+pabc: parsexclause:00000888:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+pabc: parsexclause:00000889:  errmsg("cannot update or delete from external relation \"%s\"", 
+pabc: parsexclause:00000890:  RelationGetRelationName(pstate->p_target_relation)), 
+pabc: parsexclause:00000891:  errOmitLocation(true))); 
+pabc: parsexclause:00000902:  ereport(ERROR, 
+pabc: parsexclause:00000903:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00000904:  errmsg("cannot change a readable external table \"%s\"", 
+pabc: parsexclause:00000905:  RelationGetRelationName(pstate->p_target_relation)), 
+pabc: parsexclause:00000906:  errOmitLocation(true))); 
+pabc: parsexclause:00000954:  elog(ERROR, "bogus InhOption value: %d", inhOpt); 
+pabc: parsexclause:00001124:  ereport(ERROR, 
+pabc: parsexclause:00001125:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001126:  errmsg("JOIN/ON clause refers to \"%s\", which is not part of JOIN", 
+pabc: parsexclause:00001127:  rt_fetch(varno, pstate->p_rtable)->eref->aliasname))); 
+pabc: parsexclause:00001172:  ereport(ERROR, 
+pabc: parsexclause:00001173:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00001174:  errmsg("subquery in FROM must have an alias"))); 
+pabc: parsexclause:00001187:  elog(ERROR, "unexpected parse analysis result for subquery in FROM"); 
+pabc: parsexclause:00001190:  elog(ERROR, "unexpected parse analysis result for subquery in FROM"); 
+pabc: parsexclause:00001193:  elog(ERROR, "expected SELECT query from subquery in FROM"); 
+pabc: parsexclause:00001195:  ereport(ERROR, 
+pabc: parsexclause:00001196:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00001197:  errmsg("subquery in FROM may not have SELECT INTO"))); 
+pabc: parsexclause:00001215:  ereport(ERROR, 
+pabc: parsexclause:00001216:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001217:  errmsg("subquery in FROM may not refer to other relations of same query level"), 
+pabc: parsexclause:00001218:  errOmitLocation(true))); 
+pabc: parsexclause:00001259:  elog(ERROR, "Invalid %s syntax.", GP_DIST_RANDOM_NAME); 
+pabc: parsexclause:00001270:  elog(ERROR, "%s: invalid argument type, non-string in value", GP_DIST_RANDOM_NAME); 
+pabc: parsexclause:00001300:  elog(ERROR, "%s: invalid argument type", GP_DIST_RANDOM_NAME); 
+pabc: parsexclause:00001322:  ereport(ERROR, 
+pabc: parsexclause:00001323:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001324:  errmsg("function expression in FROM may not refer to other relations of same query level"), 
+pabc: parsexclause:00001325:  errOmitLocation(true))); 
+pabc: parsexclause:00001335:  ereport(ERROR, 
+pabc: parsexclause:00001336:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00001337:  errmsg("cannot use aggregate function in function expression in FROM"), 
+pabc: parsexclause:00001338:  errOmitLocation(true))); 
+pabc: parsexclause:00001625:  ereport(ERROR, 
+pabc: parsexclause:00001626:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+pabc: parsexclause:00001627:  errmsg("column name \"%s\" appears more than once in USING clause", 
+pabc: parsexclause:00001628:  u_colname))); 
+pabc: parsexclause:00001640:  ereport(ERROR, 
+pabc: parsexclause:00001641:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
+pabc: parsexclause:00001642:  errmsg("common column name \"%s\" appears more than once in left table", 
+pabc: parsexclause:00001643:  u_colname))); 
+pabc: parsexclause:00001649:  ereport(ERROR, 
+pabc: parsexclause:00001650:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+pabc: parsexclause:00001651:  errmsg("column \"%s\" specified in USING clause does not exist in left table", 
+pabc: parsexclause:00001652:  u_colname))); 
+pabc: parsexclause:00001663:  ereport(ERROR, 
+pabc: parsexclause:00001664:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
+pabc: parsexclause:00001665:  errmsg("common column name \"%s\" appears more than once in right table", 
+pabc: parsexclause:00001666:  u_colname))); 
+pabc: parsexclause:00001672:  ereport(ERROR, 
+pabc: parsexclause:00001673:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+pabc: parsexclause:00001674:  errmsg("column \"%s\" specified in USING clause does not exist in right table", 
+pabc: parsexclause:00001675:  u_colname))); 
+pabc: parsexclause:00001727:  ereport(ERROR, 
+pabc: parsexclause:00001728:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00001729:  errmsg("column alias list for \"%s\" has too many entries", 
+pabc: parsexclause:00001730:  j->alias->aliasname))); 
+pabc: parsexclause:00001775:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(n)); 
+pabc: parsexclause:00001886:  elog(ERROR, "unrecognized join type: %d", (int) jointype); 
+pabc: parsexclause:00001949:  ereport(ERROR, 
+pabc: parsexclause:00001950:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00001951:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+pabc: parsexclause:00001952:  errmsg("argument of %s must not contain variables", 
+pabc: parsexclause:00001953:  constructName))); 
+pabc: parsexclause:00001957:  ereport(ERROR, 
+pabc: parsexclause:00001958:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00001959:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+pabc: parsexclause:00001960:  errmsg("argument of %s must not contain aggregates", 
+pabc: parsexclause:00001961:  constructName))); 
+pabc: parsexclause:00001965:  ereport(ERROR, 
+pabc: parsexclause:00001966:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+pabc: parsexclause:00001967:  /* translator: %s is name of a SQL construct, eg LIMIT */ 
+pabc: parsexclause:00001968:  errmsg("argument of %s must not contain subqueries", 
+pabc: parsexclause:00001969:  constructName))); 
+pabc: parsexclause:00002192:  ereport(ERROR, 
+pabc: parsexclause:00002193:  (errcode(ERRCODE_AMBIGUOUS_COLUMN), 
+pabc: parsexclause:00002194:  
+pabc: parsexclause:00002195:  /*------ 
+pabc: parsexclause:00002196:  translator: first %s is name of a SQL construct, eg ORDER BY */ 
+pabc: parsexclause:00002197:  errmsg("%s \"%s\" is ambiguous", 
+pabc: parsexclause:00002198:  clauseText[clause], name), 
+pabc: parsexclause:00002199:  parser_errposition(pstate, location))); 
+pabc: parsexclause:00002217:  ereport(ERROR, 
+pabc: parsexclause:00002218:  (errcode(ERRCODE_SYNTAX_ERROR), 
+pabc: parsexclause:00002219:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
+pabc: parsexclause:00002220:  errmsg("non-integer constant in %s", 
+pabc: parsexclause:00002221:  clauseText[clause]))); 
+pabc: parsexclause:00002233:  ereport(ERROR, 
+pabc: parsexclause:00002234:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00002235:  /* translator: %s is name of a SQL construct, eg ORDER BY */ 
+pabc: parsexclause:00002236:  errmsg("%s position %d is not in select list", 
+pabc: parsexclause:00002237:  clauseText[clause], target_pos), 
+pabc: parsexclause:00002238:  errOmitLocation(true))); 
 pabc: parsexclause:00002445:  ereport(ERROR, 
 pabc: parsexclause:00002446:  (errcode(ERRCODE_GROUPING_ERROR), 
-pabc: parsexclause:00002447:  errmsg("column \"%s\".\"%s\" is not in GROUP BY", 
-pabc: parsexclause:00002448:  rte->eref->aliasname, attname), 
-pabc: parsexclause:00002449:  errOmitLocation(true))); 
-pabc: parsexclause:00002790:  ereport(ERROR, 
-pabc: parsexclause:00002791:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00002792:  errmsg("for SELECT DISTINCT, ORDER BY expressions must appear in select list"), 
-pabc: parsexclause:00002793:  errOmitLocation(true))); 
-pabc: parsexclause:00002831:  ereport(ERROR, 
-pabc: parsexclause:00002832:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-pabc: parsexclause:00002833:  errmsg("SELECT DISTINCT ON expressions must match initial ORDER BY expressions"), 
-pabc: parsexclause:00002834:  errOmitLocation(true))); 
-pabc: parsexclause:00002859:  elog(ERROR, "failed to add DISTINCT ON clause to target list"); 
-pabc: parsexclause:00003061:  ereport(ERROR, 
-pabc: parsexclause:00003062:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-pabc: parsexclause:00003063:  errmsg("operator %s is not a valid ordering operator", 
-pabc: parsexclause:00003064:  strVal(llast(sortby_opname))), 
-pabc: parsexclause:00003065:  errhint("Ordering operators must be \"<\" or \">\" members of btree operator families."), 
-pabc: parsexclause:00003066:  errOmitLocation(true))); 
-pabc: parsexclause:00003070:  elog(ERROR, "unrecognized sortby_kind: %d", sortby_kind); 
+pabc: parsexclause:00002447:  errmsg("row type can not be used inside a grouping function."), 
+pabc: parsexclause:00002448:  errOmitLocation(true))); 
+pabc: parsexclause:00002451:  ereport(ERROR, 
+pabc: parsexclause:00002452:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00002453:  errmsg("expression in a grouping fuction does not appear in GROUP BY."), 
+pabc: parsexclause:00002454:  errOmitLocation(true))); 
+pabc: parsexclause:00002463:  ereport(ERROR, 
+pabc: parsexclause:00002464:  (errcode(ERRCODE_GROUPING_ERROR), 
+pabc: parsexclause:00002465:  errmsg("column \"%s\".\"%s\" is not in GROUP BY", 
+pabc: parsexclause:00002466:  rte->eref->aliasname, attname), 
+pabc: parsexclause:00002467:  errOmitLocation(true))); 
+pabc: parsexclause:00002808:  ereport(ERROR, 
+pabc: parsexclause:00002809:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00002810:  errmsg("for SELECT DISTINCT, ORDER BY expressions must appear in select list"), 
+pabc: parsexclause:00002811:  errOmitLocation(true))); 
+pabc: parsexclause:00002849:  ereport(ERROR, 
+pabc: parsexclause:00002850:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+pabc: parsexclause:00002851:  errmsg("SELECT DISTINCT ON expressions must match initial ORDER BY expressions"), 
+pabc: parsexclause:00002852:  errOmitLocation(true))); 
+pabc: parsexclause:00002877:  elog(ERROR, "failed to add DISTINCT ON clause to target list"); 
+pabc: parsexclause:00003079:  ereport(ERROR, 
+pabc: parsexclause:00003080:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+pabc: parsexclause:00003081:  errmsg("operator %s is not a valid ordering operator", 
+pabc: parsexclause:00003082:  strVal(llast(sortby_opname))), 
+pabc: parsexclause:00003083:  errhint("Ordering operators must be \"<\" or \">\" members of btree operator families."), 
+pabc: parsexclause:00003084:  errOmitLocation(true))); 
+pabc: parsexclause:00003088:  elog(ERROR, "unrecognized sortby_kind: %d", sortby_kind); 
 aaaaa GP_IGNORE: pabc: parsexcoerce - ./backend/parser/parse_coerce.c
 pabc: parsexcoerce:00000169:  ereport(ERROR, 
 pabc: parsexcoerce:00000170:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
@@ -16154,193 +16159,193 @@ paag: pgstat:00003840:  ereport(ERROR,
 paag: pgstat:00003841:  (errmsg("database hash table corrupted " 
 paag: pgstat:00003842:  "during cleanup --- abort"))); 
 aaaaa GP_IGNORE: paba: postmaster - ./backend/postmaster/postmaster.c
-paba: postmaster:00001054:  ereport(ERROR, 
-paba: postmaster:00001055:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: postmaster:00001056:  errmsg("--%s requires a value", 
-paba: postmaster:00001057:  optarg))); 
-paba: postmaster:00001059:  ereport(ERROR, 
-paba: postmaster:00001060:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: postmaster:00001061:  errmsg("-c %s requires a value", 
-paba: postmaster:00001062:  optarg))); 
-paba: postmaster:00001176:  ereport(FATAL, 
-paba: postmaster:00001177:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001178:  errmsg("dbid (from -b option) is not specified or is invalid. This value must be >= 0, or >= -1 in utility mode. " 
-paba: postmaster:00001179:  "The dbid value to pass can be determined from this server's entry in the segment configuration; it may be -1 if running in utility mode."))); 
-paba: postmaster:00001184:  ereport(FATAL, 
-paba: postmaster:00001185:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001186:  errmsg("contentid (from -C option) is not specified or is invalid. This value must be >= -1. " 
-paba: postmaster:00001187:  "The contentid value to pass can be determined this server's entry in the segment configuration; it may be -1 for a master, or in utility mode." 
-paba: postmaster:00001188:  ))); 
-paba: postmaster:00001193:  ereport(FATAL, 
-paba: postmaster:00001194:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001195:  errmsg("numContentsInCluster (from -z option) is not specified or is invalid. This value must be >= 0. " 
-paba: postmaster:00001196:  "The value to pass can be determined by determining the number of primary segments in the cluster." 
-paba: postmaster:00001197:  ))); 
-paba: postmaster:00001316:  ereport(FATAL, 
-paba: postmaster:00001317:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00001318:  errmsg("invalid list syntax for \"listen_addresses\""))); 
-paba: postmaster:00001338:  ereport(WARNING, 
-paba: postmaster:00001339:  (errmsg("could not create listen socket for \"%s\"", 
-paba: postmaster:00001340:  curhost))); 
-paba: postmaster:00001344:  ereport(FATAL, 
-paba: postmaster:00001345:  (errmsg("could not create any TCP/IP sockets"))); 
-paba: postmaster:00001371:  ereport(WARNING, 
-paba: postmaster:00001372:  (errmsg("could not create Unix-domain socket"))); 
-paba: postmaster:00001379:  ereport(FATAL, 
-paba: postmaster:00001380:  (errmsg("no socket created for listening"))); 
-paba: postmaster:00001405:  ereport(FATAL, 
-paba: postmaster:00001406:  (errmsg("could not create I/O completion port for child queue"))); 
+paba: postmaster:00001068:  ereport(ERROR, 
+paba: postmaster:00001069:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: postmaster:00001070:  errmsg("--%s requires a value", 
+paba: postmaster:00001071:  optarg))); 
+paba: postmaster:00001073:  ereport(ERROR, 
+paba: postmaster:00001074:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: postmaster:00001075:  errmsg("-c %s requires a value", 
+paba: postmaster:00001076:  optarg))); 
+paba: postmaster:00001190:  ereport(FATAL, 
+paba: postmaster:00001191:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001192:  errmsg("dbid (from -b option) is not specified or is invalid. This value must be >= 0, or >= -1 in utility mode. " 
+paba: postmaster:00001193:  "The dbid value to pass can be determined from this server's entry in the segment configuration; it may be -1 if running in utility mode."))); 
+paba: postmaster:00001198:  ereport(FATAL, 
+paba: postmaster:00001199:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001200:  errmsg("contentid (from -C option) is not specified or is invalid. This value must be >= -1. " 
+paba: postmaster:00001201:  "The contentid value to pass can be determined this server's entry in the segment configuration; it may be -1 for a master, or in utility mode." 
+paba: postmaster:00001202:  ))); 
+paba: postmaster:00001207:  ereport(FATAL, 
+paba: postmaster:00001208:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001209:  errmsg("numContentsInCluster (from -z option) is not specified or is invalid. This value must be >= 0. " 
+paba: postmaster:00001210:  "The value to pass can be determined by determining the number of primary segments in the cluster." 
+paba: postmaster:00001211:  ))); 
+paba: postmaster:00001330:  ereport(FATAL, 
+paba: postmaster:00001331:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00001332:  errmsg("invalid list syntax for \"listen_addresses\""))); 
+paba: postmaster:00001352:  ereport(WARNING, 
+paba: postmaster:00001353:  (errmsg("could not create listen socket for \"%s\"", 
+paba: postmaster:00001354:  curhost))); 
+paba: postmaster:00001358:  ereport(FATAL, 
+paba: postmaster:00001359:  (errmsg("could not create any TCP/IP sockets"))); 
+paba: postmaster:00001385:  ereport(WARNING, 
+paba: postmaster:00001386:  (errmsg("could not create Unix-domain socket"))); 
+paba: postmaster:00001393:  ereport(FATAL, 
+paba: postmaster:00001394:  (errmsg("no socket created for listening"))); 
 paba: postmaster:00001419:  ereport(FATAL, 
-paba: postmaster:00001420:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
-paba: postmaster:00001421:  (int) GetLastError()))); 
-paba: postmaster:00001506:  ereport(FATAL, 
-paba: postmaster:00001507:  (errmsg("could not load pg_hba.conf"), 
-paba: postmaster:00001508:  errOmitLocation(true))); 
-paba: postmaster:00001641:  elog(FATAL, "%s: could not locate my own executable path", argv0); 
-paba: postmaster:00001647:  ereport(FATAL, 
-paba: postmaster:00001648:  (errmsg("%s: could not locate matching postgres executable", 
-paba: postmaster:00001649:  argv0))); 
-paba: postmaster:00001667:  ereport(ERROR, 
-paba: postmaster:00001668:  (errcode_for_file_access(), 
-paba: postmaster:00001669:  errmsg("could not open directory \"%s\": %m", 
-paba: postmaster:00001670:  pkglib_path), 
-paba: postmaster:00001671:  errSendAlert(true), 
-paba: postmaster:00001672:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file \"%s\" has been moved away from its proper location.", 
-paba: postmaster:00001673:  my_exec_path))); 
-paba: postmaster:00001696:  ereport(FATAL, 
-paba: postmaster:00001697:  (errcode_for_file_access(), 
-paba: postmaster:00001698:  errmsg("data directory \"%s\" does not exist", 
-paba: postmaster:00001699:  DataDir))); 
-paba: postmaster:00001701:  ereport(FATAL, 
-paba: postmaster:00001702:  (errcode_for_file_access(), 
-paba: postmaster:00001703:  errmsg("could not read permissions of directory \"%s\": %m", 
-paba: postmaster:00001704:  DataDir))); 
-paba: postmaster:00001709:  ereport(FATAL, 
-paba: postmaster:00001710:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paba: postmaster:00001711:  errmsg("specified data directory \"%s\" is not a directory", 
-paba: postmaster:00001712:  DataDir))); 
-paba: postmaster:00001725:  ereport(FATAL, 
-paba: postmaster:00001726:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paba: postmaster:00001727:  errmsg("data directory \"%s\" has wrong ownership", 
-paba: postmaster:00001728:  DataDir), 
-paba: postmaster:00001729:  errhint("The server must be started by the user that owns the data directory."))); 
-paba: postmaster:00001747:  ereport(FATAL, 
-paba: postmaster:00001748:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
-paba: postmaster:00001749:  errmsg("data directory \"%s\" has group or world access", 
-paba: postmaster:00001750:  DataDir), 
-paba: postmaster:00001751:  errdetail("Permissions should be u=rwx (0700)."))); 
-paba: postmaster:00001941:  elog(FATAL, "silent_mode is not supported under Windows"); 
-paba: postmaster:00002460:  ereport(FATAL, 
-paba: postmaster:00002461:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00002462:  errmsg("invalid value for boolean option \"replication\""))); 
-paba: postmaster:00002518:  elog(FATAL, "could not disable timer for authorization timeout"); 
-paba: postmaster:00002526:  elog(FATAL, "could not disable timer for authorization timeout"); 
-paba: postmaster:00002581:  ereport(FATAL, 
-paba: postmaster:00002582:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: postmaster:00002583:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
-paba: postmaster:00002584:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
-paba: postmaster:00002585:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
-paba: postmaster:00002586:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
-paba: postmaster:00002587:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
-paba: postmaster:00002638:  ereport(FATAL, 
-paba: postmaster:00002639:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paba: postmaster:00002640:  errmsg("option not supported: \"replication\""))); 
-paba: postmaster:00002658:  ereport(FATAL, 
-paba: postmaster:00002659:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paba: postmaster:00002660:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
-paba: postmaster:00002686:  ereport(FATAL, 
-paba: postmaster:00002687:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-paba: postmaster:00002688:  errmsg("no PostgreSQL user name specified in startup packet"))); 
-paba: postmaster:00002735:  ereport(FATAL, 
-paba: postmaster:00002736:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002737:  errSendAlert(true), 
-paba: postmaster:00002738:  errOmitLocation(true), 
-paba: postmaster:00002739:  errmsg("GPAgent deprecated."))); 
-paba: postmaster:00002755:  ereport(FATAL, 
-paba: postmaster:00002756:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002757:  errSendAlert(false), 
-paba: postmaster:00002758:  errOmitLocation(true), 
-paba: postmaster:00002759:  errmsg(POSTMASTER_IN_STARTUP_MSG))); 
-paba: postmaster:00002762:  ereport(FATAL, 
-paba: postmaster:00002763:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002764:  errSendAlert(false), 
-paba: postmaster:00002765:  errOmitLocation(true), 
-paba: postmaster:00002766:  errmsg("the database system is shutting down"))); 
+paba: postmaster:00001420:  (errmsg("could not create I/O completion port for child queue"))); 
+paba: postmaster:00001433:  ereport(FATAL, 
+paba: postmaster:00001434:  (errmsg_internal("could not duplicate postmaster handle: error code %d", 
+paba: postmaster:00001435:  (int) GetLastError()))); 
+paba: postmaster:00001520:  ereport(FATAL, 
+paba: postmaster:00001521:  (errmsg("could not load pg_hba.conf"), 
+paba: postmaster:00001522:  errOmitLocation(true))); 
+paba: postmaster:00001655:  elog(FATAL, "%s: could not locate my own executable path", argv0); 
+paba: postmaster:00001661:  ereport(FATAL, 
+paba: postmaster:00001662:  (errmsg("%s: could not locate matching postgres executable", 
+paba: postmaster:00001663:  argv0))); 
+paba: postmaster:00001681:  ereport(ERROR, 
+paba: postmaster:00001682:  (errcode_for_file_access(), 
+paba: postmaster:00001683:  errmsg("could not open directory \"%s\": %m", 
+paba: postmaster:00001684:  pkglib_path), 
+paba: postmaster:00001685:  errSendAlert(true), 
+paba: postmaster:00001686:  errhint("This may indicate an incomplete PostgreSQL installation, or that the file \"%s\" has been moved away from its proper location.", 
+paba: postmaster:00001687:  my_exec_path))); 
+paba: postmaster:00001710:  ereport(FATAL, 
+paba: postmaster:00001711:  (errcode_for_file_access(), 
+paba: postmaster:00001712:  errmsg("data directory \"%s\" does not exist", 
+paba: postmaster:00001713:  DataDir))); 
+paba: postmaster:00001715:  ereport(FATAL, 
+paba: postmaster:00001716:  (errcode_for_file_access(), 
+paba: postmaster:00001717:  errmsg("could not read permissions of directory \"%s\": %m", 
+paba: postmaster:00001718:  DataDir))); 
+paba: postmaster:00001723:  ereport(FATAL, 
+paba: postmaster:00001724:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paba: postmaster:00001725:  errmsg("specified data directory \"%s\" is not a directory", 
+paba: postmaster:00001726:  DataDir))); 
+paba: postmaster:00001739:  ereport(FATAL, 
+paba: postmaster:00001740:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paba: postmaster:00001741:  errmsg("data directory \"%s\" has wrong ownership", 
+paba: postmaster:00001742:  DataDir), 
+paba: postmaster:00001743:  errhint("The server must be started by the user that owns the data directory."))); 
+paba: postmaster:00001761:  ereport(FATAL, 
+paba: postmaster:00001762:  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE), 
+paba: postmaster:00001763:  errmsg("data directory \"%s\" has group or world access", 
+paba: postmaster:00001764:  DataDir), 
+paba: postmaster:00001765:  errdetail("Permissions should be u=rwx (0700)."))); 
+paba: postmaster:00001955:  elog(FATAL, "silent_mode is not supported under Windows"); 
+paba: postmaster:00002474:  ereport(FATAL, 
+paba: postmaster:00002475:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00002476:  errmsg("invalid value for boolean option \"replication\""))); 
+paba: postmaster:00002532:  elog(FATAL, "could not disable timer for authorization timeout"); 
+paba: postmaster:00002540:  elog(FATAL, "could not disable timer for authorization timeout"); 
+paba: postmaster:00002595:  ereport(FATAL, 
+paba: postmaster:00002596:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: postmaster:00002597:  errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u", 
+paba: postmaster:00002598:  PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto), 
+paba: postmaster:00002599:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST), 
+paba: postmaster:00002600:  PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST), 
+paba: postmaster:00002601:  PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))); 
+paba: postmaster:00002652:  ereport(FATAL, 
+paba: postmaster:00002653:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paba: postmaster:00002654:  errmsg("option not supported: \"replication\""))); 
+paba: postmaster:00002672:  ereport(FATAL, 
+paba: postmaster:00002673:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paba: postmaster:00002674:  errmsg("invalid startup packet layout: expected terminator as last byte"))); 
+paba: postmaster:00002700:  ereport(FATAL, 
+paba: postmaster:00002701:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+paba: postmaster:00002702:  errmsg("no PostgreSQL user name specified in startup packet"))); 
+paba: postmaster:00002749:  ereport(FATAL, 
+paba: postmaster:00002750:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002751:  errSendAlert(true), 
+paba: postmaster:00002752:  errOmitLocation(true), 
+paba: postmaster:00002753:  errmsg("GPAgent deprecated."))); 
 paba: postmaster:00002769:  ereport(FATAL, 
 paba: postmaster:00002770:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002771:  errSendAlert(true), 
+paba: postmaster:00002771:  errSendAlert(false), 
 paba: postmaster:00002772:  errOmitLocation(true), 
-paba: postmaster:00002773:  errmsg(POSTMASTER_IN_RECOVERY_MSG))); 
+paba: postmaster:00002773:  errmsg(POSTMASTER_IN_STARTUP_MSG))); 
 paba: postmaster:00002776:  ereport(FATAL, 
 paba: postmaster:00002777:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paba: postmaster:00002778:  errSendAlert(true), 
+paba: postmaster:00002778:  errSendAlert(false), 
 paba: postmaster:00002779:  errOmitLocation(true), 
-paba: postmaster:00002780:  errmsg("the database system is in mirror or uninitialized mode"))); 
+paba: postmaster:00002780:  errmsg("the database system is shutting down"))); 
 paba: postmaster:00002783:  ereport(FATAL, 
-paba: postmaster:00002784:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+paba: postmaster:00002784:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
 paba: postmaster:00002785:  errSendAlert(true), 
 paba: postmaster:00002786:  errOmitLocation(true), 
-paba: postmaster:00002787:  errmsg("sorry, too many clients already"))); 
-paba: postmaster:00002927:  elog(ERROR, "Can only get postmaster reset status on a primary or mirror segment"); 
-paba: postmaster:00003804:  ereport(WARNING, 
-paba: postmaster:00003805:  (errmsg("pg_hba.conf not reloaded"))); 
-paba: postmaster:00003847:  ereport(LOG, 
-paba: postmaster:00003848:  (errmsg("received smart shutdown request"), 
-paba: postmaster:00003849:  errSendAlert(true), 
-paba: postmaster:00003850:  errOmitLocation(true))); 
-paba: postmaster:00003869:  ereport(LOG, 
-paba: postmaster:00003870:  (errmsg("received fast shutdown request"), 
-paba: postmaster:00003871:  errSendAlert(true), 
-paba: postmaster:00003872:  errOmitLocation(true))); 
-paba: postmaster:00003894:  ereport(LOG, 
-paba: postmaster:00003895:  (errmsg("received immediate shutdown request"), 
-paba: postmaster:00003896:  errSendAlert(true), 
-paba: postmaster:00003897:  errOmitLocation(true))); 
-paba: postmaster:00004108:  ereport(LOG, 
-paba: postmaster:00004109:  (errmsg("database system is ready to accept connections"), 
-paba: postmaster:00004110:  errdetail("%s",version), 
-paba: postmaster:00004111:  errSendAlert(true), 
-paba: postmaster:00004112:  errOmitLocation(true))); 
-paba: postmaster:00004543:  ereport(LOG, 
-paba: postmaster:00004544:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00004612:  elog(WARNING, "filerep peer reset during postmaster reset has failed"); 
-paba: postmaster:00005655:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
-paba: postmaster:00006198:  elog(FATAL, "setsid() failed: %m"); 
-paba: postmaster:00006228:  ereport(WARNING, 
-paba: postmaster:00006229:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
-paba: postmaster:00006230:  gai_strerror(ret)))); 
-paba: postmaster:00006272:  ereport(FATAL, 
-paba: postmaster:00006273:  (errmsg("could not load pg_hba.conf"))); 
-paba: postmaster:00006285:  elog(FATAL, "could not set timer for authorization timeout"); 
-paba: postmaster:00006352:  elog(FATAL, "could not disable timer for authorization timeout"); 
-paba: postmaster:00006711:  ereport(ERROR, 
-paba: postmaster:00006712:  (errmsg_internal("could not terminate unstarted process: error code %d", 
-paba: postmaster:00006713:  (int) GetLastError()))); 
-paba: postmaster:00006738:  ereport(ERROR, 
-paba: postmaster:00006739:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
-paba: postmaster:00006740:  (int) GetLastError()))); 
-paba: postmaster:00006755:  ereport(ERROR, 
-paba: postmaster:00006756:  (errmsg_internal("could not terminate unstartable process: error code %d", 
-paba: postmaster:00006757:  (int) GetLastError()))); 
-paba: postmaster:00006764:  ereport(ERROR, 
-paba: postmaster:00006765:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
-paba: postmaster:00006766:  (int) GetLastError()))); 
-paba: postmaster:00006780:  ereport(FATAL, 
-paba: postmaster:00006781:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006782:  errmsg("out of memory"))); 
-paba: postmaster:00006793:  ereport(FATAL, 
-paba: postmaster:00006794:  (errmsg_internal("could not register process for wait: error code %d", 
-paba: postmaster:00006795:  (int) GetLastError()))); 
-paba: postmaster:00006866:  ereport(FATAL, 
-paba: postmaster:00006867:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-paba: postmaster:00006868:  errmsg("out of memory"))); 
-paba: postmaster:00006874:  elog(FATAL, "invalid subpostmaster invocation"); 
-paba: postmaster:00007644:  ereport(ERROR, 
-paba: postmaster:00007645:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
-paba: postmaster:00007646:  (int) GetLastError()))); 
-paba: postmaster:00007666:  ereport(ERROR, 
-paba: postmaster:00007667:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
-paba: postmaster:00007668:  src, WSAGetLastError()))); 
+paba: postmaster:00002787:  errmsg(POSTMASTER_IN_RECOVERY_MSG))); 
+paba: postmaster:00002790:  ereport(FATAL, 
+paba: postmaster:00002791:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paba: postmaster:00002792:  errSendAlert(true), 
+paba: postmaster:00002793:  errOmitLocation(true), 
+paba: postmaster:00002794:  errmsg("the database system is in mirror or uninitialized mode"))); 
+paba: postmaster:00002797:  ereport(FATAL, 
+paba: postmaster:00002798:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+paba: postmaster:00002799:  errSendAlert(true), 
+paba: postmaster:00002800:  errOmitLocation(true), 
+paba: postmaster:00002801:  errmsg("sorry, too many clients already"))); 
+paba: postmaster:00002943:  elog(ERROR, "Can only get postmaster reset status on a primary or mirror segment"); 
+paba: postmaster:00003820:  ereport(WARNING, 
+paba: postmaster:00003821:  (errmsg("pg_hba.conf not reloaded"))); 
+paba: postmaster:00003863:  ereport(LOG, 
+paba: postmaster:00003864:  (errmsg("received smart shutdown request"), 
+paba: postmaster:00003865:  errSendAlert(true), 
+paba: postmaster:00003866:  errOmitLocation(true))); 
+paba: postmaster:00003885:  ereport(LOG, 
+paba: postmaster:00003886:  (errmsg("received fast shutdown request"), 
+paba: postmaster:00003887:  errSendAlert(true), 
+paba: postmaster:00003888:  errOmitLocation(true))); 
+paba: postmaster:00003910:  ereport(LOG, 
+paba: postmaster:00003911:  (errmsg("received immediate shutdown request"), 
+paba: postmaster:00003912:  errSendAlert(true), 
+paba: postmaster:00003913:  errOmitLocation(true))); 
+paba: postmaster:00004124:  ereport(LOG, 
+paba: postmaster:00004125:  (errmsg("database system is ready to accept connections"), 
+paba: postmaster:00004126:  errdetail("%s",version), 
+paba: postmaster:00004127:  errSendAlert(true), 
+paba: postmaster:00004128:  errOmitLocation(true))); 
+paba: postmaster:00004559:  ereport(LOG, 
+paba: postmaster:00004560:  (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00004628:  elog(WARNING, "filerep peer reset during postmaster reset has failed"); 
+paba: postmaster:00005671:  ereport(LOG, (errmsg("abnormal database system shutdown"),errSendAlert(true))); 
+paba: postmaster:00006214:  elog(FATAL, "setsid() failed: %m"); 
+paba: postmaster:00006244:  ereport(WARNING, 
+paba: postmaster:00006245:  (errmsg_internal("pg_getnameinfo_all() failed: %s", 
+paba: postmaster:00006246:  gai_strerror(ret)))); 
+paba: postmaster:00006288:  ereport(FATAL, 
+paba: postmaster:00006289:  (errmsg("could not load pg_hba.conf"))); 
+paba: postmaster:00006301:  elog(FATAL, "could not set timer for authorization timeout"); 
+paba: postmaster:00006368:  elog(FATAL, "could not disable timer for authorization timeout"); 
+paba: postmaster:00006727:  ereport(ERROR, 
+paba: postmaster:00006728:  (errmsg_internal("could not terminate unstarted process: error code %d", 
+paba: postmaster:00006729:  (int) GetLastError()))); 
+paba: postmaster:00006754:  ereport(ERROR, 
+paba: postmaster:00006755:  (errmsg_internal("could not terminate process that failed to reserve memory: error code %d", 
+paba: postmaster:00006756:  (int) GetLastError()))); 
+paba: postmaster:00006771:  ereport(ERROR, 
+paba: postmaster:00006772:  (errmsg_internal("could not terminate unstartable process: error code %d", 
+paba: postmaster:00006773:  (int) GetLastError()))); 
+paba: postmaster:00006780:  ereport(ERROR, 
+paba: postmaster:00006781:  (errmsg_internal("could not resume thread of unstarted process: error code %d", 
+paba: postmaster:00006782:  (int) GetLastError()))); 
+paba: postmaster:00006796:  ereport(FATAL, 
+paba: postmaster:00006797:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006798:  errmsg("out of memory"))); 
+paba: postmaster:00006809:  ereport(FATAL, 
+paba: postmaster:00006810:  (errmsg_internal("could not register process for wait: error code %d", 
+paba: postmaster:00006811:  (int) GetLastError()))); 
+paba: postmaster:00006882:  ereport(FATAL, 
+paba: postmaster:00006883:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+paba: postmaster:00006884:  errmsg("out of memory"))); 
+paba: postmaster:00006890:  elog(FATAL, "invalid subpostmaster invocation"); 
+paba: postmaster:00007660:  ereport(ERROR, 
+paba: postmaster:00007661:  (errmsg_internal("could not duplicate handle to be written to backend parameter file: error code %d", 
+paba: postmaster:00007662:  (int) GetLastError()))); 
+paba: postmaster:00007682:  ereport(ERROR, 
+paba: postmaster:00007683:  (errmsg("could not duplicate socket %d for use in backend: error code %d", 
+paba: postmaster:00007684:  src, WSAGetLastError()))); 
 aaaaa GP_IGNORE: pabj: primaryxmirrorxmode - ./backend/postmaster/primary_mirror_mode.c
 pabj: primaryxmirrorxmode:00001780:  elog(ERROR, "Invalid state %d", *stateInOut); 
 pabj: primaryxmirrorxmode:00002144:  elog(ERROR, "Request for filerep arguments from local memory made when they do not exist."); 
@@ -17533,70 +17538,70 @@ paai: postgres:00003585:  errhint("Increase the configuration parameter \"max_st
 paai: postgres:00003586:  "after ensuring the platform's stack depth limit is adequate."))); 
 paai: postgres:00003778:  elog(FATAL, "%s: could not locate my own executable path", 
 paai: postgres:00003779:  argv[0]); 
-paai: postgres:00004009:  ereport(ERROR, 
-paai: postgres:00004010:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004011:  errmsg("--%s requires a value", 
-paai: postgres:00004012:  optarg))); 
-paai: postgres:00004014:  ereport(ERROR, 
-paai: postgres:00004015:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004016:  errmsg("-c %s requires a value", 
-paai: postgres:00004017:  optarg))); 
-paai: postgres:00004057:  ereport(FATAL, 
-paai: postgres:00004058:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
-paai: postgres:00004059:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
-paai: postgres:00004177:  ereport(FATAL, 
-paai: postgres:00004178:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004179:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00004180:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004190:  ereport(FATAL, 
-paai: postgres:00004191:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00004192:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00004193:  argv[0]), 
-paai: postgres:00004194:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00004200:  ereport(FATAL, 
-paai: postgres:00004201:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00004202:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00004203:  argv[0]))); 
-paai: postgres:00004584:  elog(FATAL, "could not set timer for client wait timeout"); 
-paai: postgres:00005039:  ereport(ERROR, 
-paai: postgres:00005040:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005041:  errmsg("invalid CLOSE message subtype %d", 
-paai: postgres:00005042:  close_type))); 
-paai: postgres:00005076:  ereport(ERROR, 
-paai: postgres:00005077:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005078:  errmsg("invalid DESCRIBE message subtype %d", 
-paai: postgres:00005079:  describe_type))); 
-paai: postgres:00005133:  ereport(FATAL, 
-paai: postgres:00005134:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00005135:  errmsg("invalid frontend message type %d ('%c')", 
-paai: postgres:00005136:  firstchar,firstchar))); 
-paai: postgres:00005431:  elog(FATAL, "%s: could not locate my own executable path", 
-paai: postgres:00005432:  argv[0]); 
-paai: postgres:00005636:  ereport(ERROR, 
-paai: postgres:00005637:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005638:  errmsg("--%s requires a value", 
-paai: postgres:00005639:  optarg))); 
-paai: postgres:00005641:  ereport(ERROR, 
-paai: postgres:00005642:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005643:  errmsg("-c %s requires a value", 
-paai: postgres:00005644:  optarg))); 
-paai: postgres:00005757:  ereport(FATAL, 
-paai: postgres:00005758:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005759:  errmsg("invalid command-line arguments for server process"), 
-paai: postgres:00005760:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005771:  ereport(FATAL, 
-paai: postgres:00005772:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paai: postgres:00005773:  errmsg("%s: invalid command-line arguments", 
-paai: postgres:00005774:  argv[0]), 
-paai: postgres:00005775:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
-paai: postgres:00005781:  ereport(FATAL, 
-paai: postgres:00005782:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-paai: postgres:00005783:  errmsg("%s: no database nor user name specified", 
-paai: postgres:00005784:  argv[0]))); 
-paai: postgres:00006107:  ereport(FATAL, 
-paai: postgres:00006108:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
-paai: postgres:00006109:  errmsg("invalid frontend message type %d", 
-paai: postgres:00006110:  firstchar))); 
+paai: postgres:00004021:  ereport(ERROR, 
+paai: postgres:00004022:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004023:  errmsg("--%s requires a value", 
+paai: postgres:00004024:  optarg))); 
+paai: postgres:00004026:  ereport(ERROR, 
+paai: postgres:00004027:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004028:  errmsg("-c %s requires a value", 
+paai: postgres:00004029:  optarg))); 
+paai: postgres:00004069:  ereport(FATAL, 
+paai: postgres:00004070:  (errcode(ERRCODE_CANNOT_CONNECT_NOW), 
+paai: postgres:00004071:  errmsg("System was started in master-only utility mode - only utility mode connections are allowed"))); 
+paai: postgres:00004189:  ereport(FATAL, 
+paai: postgres:00004190:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004191:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00004192:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004202:  ereport(FATAL, 
+paai: postgres:00004203:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00004204:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00004205:  argv[0]), 
+paai: postgres:00004206:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00004212:  ereport(FATAL, 
+paai: postgres:00004213:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00004214:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00004215:  argv[0]))); 
+paai: postgres:00004596:  elog(FATAL, "could not set timer for client wait timeout"); 
+paai: postgres:00005051:  ereport(ERROR, 
+paai: postgres:00005052:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005053:  errmsg("invalid CLOSE message subtype %d", 
+paai: postgres:00005054:  close_type))); 
+paai: postgres:00005088:  ereport(ERROR, 
+paai: postgres:00005089:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005090:  errmsg("invalid DESCRIBE message subtype %d", 
+paai: postgres:00005091:  describe_type))); 
+paai: postgres:00005145:  ereport(FATAL, 
+paai: postgres:00005146:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00005147:  errmsg("invalid frontend message type %d ('%c')", 
+paai: postgres:00005148:  firstchar,firstchar))); 
+paai: postgres:00005443:  elog(FATAL, "%s: could not locate my own executable path", 
+paai: postgres:00005444:  argv[0]); 
+paai: postgres:00005649:  ereport(ERROR, 
+paai: postgres:00005650:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005651:  errmsg("--%s requires a value", 
+paai: postgres:00005652:  optarg))); 
+paai: postgres:00005654:  ereport(ERROR, 
+paai: postgres:00005655:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005656:  errmsg("-c %s requires a value", 
+paai: postgres:00005657:  optarg))); 
+paai: postgres:00005770:  ereport(FATAL, 
+paai: postgres:00005771:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005772:  errmsg("invalid command-line arguments for server process"), 
+paai: postgres:00005773:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005784:  ereport(FATAL, 
+paai: postgres:00005785:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paai: postgres:00005786:  errmsg("%s: invalid command-line arguments", 
+paai: postgres:00005787:  argv[0]), 
+paai: postgres:00005788:  errhint("Try \"%s --help\" for more information.", argv[0]))); 
+paai: postgres:00005794:  ereport(FATAL, 
+paai: postgres:00005795:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+paai: postgres:00005796:  errmsg("%s: no database nor user name specified", 
+paai: postgres:00005797:  argv[0]))); 
+paai: postgres:00006120:  ereport(FATAL, 
+paai: postgres:00006121:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
+paai: postgres:00006122:  errmsg("invalid frontend message type %d", 
+paai: postgres:00006123:  firstchar))); 
 aaaaa GP_IGNORE: paag: pquery - ./backend/tcop/pquery.c
 paag: pquery:00000983:  ereport(ERROR, 
 paag: pquery:00000984:  (errcode(ERRCODE_PROTOCOL_VIOLATION), 
@@ -21630,100 +21635,105 @@ maai: miscinit:00000465:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 maai: miscinit:00000466:  errmsg("role \"%s\" is not permitted to log in", 
 maai: miscinit:00000467:  rolename), 
 maai: miscinit:00000468:  errOmitLocation(true))); 
-maai: miscinit:00000477:  ereport(FATAL, 
-maai: miscinit:00000478:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-maai: miscinit:00000479:  errmsg("Upgrade in progress, connection refused"), 
-maai: miscinit:00000480:  errOmitLocation(true), 
-maai: miscinit:00000481:  errSendAlert(false))); 
-maai: miscinit:00000501:  ereport(FATAL, 
-maai: miscinit:00000502:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
-maai: miscinit:00000503:  errmsg("too many connections for role \"%s\"", 
-maai: miscinit:00000504:  rolename), 
-maai: miscinit:00000505:  errOmitLocation(true))); 
-maai: miscinit:00000580:  ereport(ERROR, 
-maai: miscinit:00000581:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-maai: miscinit:00000582:  errmsg("permission denied to set session authorization"), 
-maai: miscinit:00000583:  errOmitLocation(true))); 
-maai: miscinit:00000671:  ereport(ERROR, 
-maai: miscinit:00000672:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-maai: miscinit:00000673:  errmsg("invalid role OID: %u", roleid))); 
-maai: miscinit:00000763:  ereport(FATAL, 
-maai: miscinit:00000764:  (errcode_for_file_access(), 
-maai: miscinit:00000765:  errmsg("could not create lock file \"%s\": %m", 
-maai: miscinit:00000766:  filename))); 
-maai: miscinit:00000777:  ereport(FATAL, 
-maai: miscinit:00000778:  (errcode_for_file_access(), 
-maai: miscinit:00000779:  errmsg("could not open lock file \"%s\": %m", 
-maai: miscinit:00000780:  filename))); 
-maai: miscinit:00000783:  ereport(FATAL, 
-maai: miscinit:00000784:  (errcode_for_file_access(), 
-maai: miscinit:00000785:  errmsg("could not read lock file \"%s\": %m", 
-maai: miscinit:00000786:  filename))); 
-maai: miscinit:00000796:  elog(FATAL, "bogus data in lock file \"%s\": \"%s\"", 
-maai: miscinit:00000797:  filename, buffer); 
-maai: miscinit:00000846:  ereport(FATAL, 
-maai: miscinit:00000847:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
-maai: miscinit:00000848:  errmsg("lock file \"%s\" already exists", 
-maai: miscinit:00000849:  filename), 
-maai: miscinit:00000850:  isDDLock ? 
-maai: miscinit:00000851:  (encoded_pid < 0 ? 
-maai: miscinit:00000852:  errhint("Is another postgres (PID %d) running in data directory \"%s\"?", 
-maai: miscinit:00000853:  (int) other_pid, refName) : 
-maai: miscinit:00000854:  errhint("Is another postmaster (PID %d) running in data directory \"%s\"?", 
-maai: miscinit:00000855:  (int) other_pid, refName)) : 
-maai: miscinit:00000856:  (encoded_pid < 0 ? 
-maai: miscinit:00000857:  errhint("Is another postgres (PID %d) using socket file \"%s\"?", 
-maai: miscinit:00000858:  (int) other_pid, refName) : 
-maai: miscinit:00000859:  errhint("Is another postmaster (PID %d) using socket file \"%s\"?", 
-maai: miscinit:00000860:  (int) other_pid, refName)), 
-maai: miscinit:00000861:  errOmitLocation(true))); 
-maai: miscinit:00000886:  ereport(FATAL, 
-maai: miscinit:00000887:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
-maai: miscinit:00000888:  errmsg("pre-existing shared memory block " 
-maai: miscinit:00000889:  "(key %lu, ID %lu) is still in use", 
-maai: miscinit:00000890:  id1, id2), 
-maai: miscinit:00000891:  errhint("If you're sure there are no old " 
-maai: miscinit:00000892:  "server processes still running, remove " 
-maai: miscinit:00000893:  "the shared memory block with " 
-maai: miscinit:00000894:  "the command \"ipcclean\", \"ipcrm\", " 
-maai: miscinit:00000895:  "or just delete the file \"%s\".", 
-maai: miscinit:00000896:  filename))); 
-maai: miscinit:00000907:  ereport(FATAL, 
-maai: miscinit:00000908:  (errcode_for_file_access(), 
-maai: miscinit:00000909:  errmsg("could not remove old lock file \"%s\": %m", 
-maai: miscinit:00000910:  filename), 
-maai: miscinit:00000911:  errhint("The file seems accidentally left over, but " 
-maai: miscinit:00000912:  "it could not be removed. Please remove the file " 
-maai: miscinit:00000913:  "by hand and try again."))); 
-maai: miscinit:00000931:  ereport(FATAL, 
-maai: miscinit:00000932:  (errcode_for_file_access(), 
-maai: miscinit:00000933:  errmsg("could not write lock file \"%s\": %m", filename))); 
-maai: miscinit:00000941:  ereport(FATAL, 
-maai: miscinit:00000942:  (errcode_for_file_access(), 
-maai: miscinit:00000943:  errmsg("could not write lock file \"%s\": %m", filename))); 
-maai: miscinit:00000952:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
-maai: miscinit:00000953:  errmsg("Create lock file failed: out of memory"))); 
-maai: miscinit:00001146:  ereport(FATAL, 
-maai: miscinit:00001147:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maai: miscinit:00001148:  errmsg("\"%s\" is not a valid data directory", 
-maai: miscinit:00001149:  path), 
-maai: miscinit:00001150:  errdetail("File \"%s\" is missing.", full_path))); 
-maai: miscinit:00001152:  ereport(FATAL, 
-maai: miscinit:00001153:  (errcode_for_file_access(), 
-maai: miscinit:00001154:  errmsg("could not open file \"%s\": %m", full_path))); 
-maai: miscinit:00001159:  ereport(FATAL, 
-maai: miscinit:00001160:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maai: miscinit:00001161:  errmsg("\"%s\" is not a valid data directory", 
-maai: miscinit:00001162:  path), 
-maai: miscinit:00001163:  errdetail("File \"%s\" does not contain valid data.", 
-maai: miscinit:00001164:  full_path), 
-maai: miscinit:00001165:  errhint("You may need to run gprecoversegment.sh"))); 
-maai: miscinit:00001170:  ereport(FATAL, 
-maai: miscinit:00001171:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maai: miscinit:00001172:  errmsg("database files are incompatible with server"), 
-maai: miscinit:00001173:  errdetail("The data directory was initialized by PostgreSQL version %ld.%ld, " 
-maai: miscinit:00001174:  "which is not compatible with this version %s.", 
-maai: miscinit:00001175:  file_major, file_minor, version_string))); 
+maai: miscinit:00000478:  ereport(FATAL, 
+maai: miscinit:00000479:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+maai: miscinit:00000480:  errmsg("Upgrade in progress, connection refused"), 
+maai: miscinit:00000481:  errOmitLocation(true), 
+maai: miscinit:00000482:  errSendAlert(false))); 
+maai: miscinit:00000492:  ereport(FATAL, 
+maai: miscinit:00000493:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+maai: miscinit:00000494:  errmsg("Maintenance mode: connected by superuser only"), 
+maai: miscinit:00000495:  errOmitLocation(true), 
+maai: miscinit:00000496:  errSendAlert(false))); 
+maai: miscinit:00000516:  ereport(FATAL, 
+maai: miscinit:00000517:  (errcode(ERRCODE_TOO_MANY_CONNECTIONS), 
+maai: miscinit:00000518:  errmsg("too many connections for role \"%s\"", 
+maai: miscinit:00000519:  rolename), 
+maai: miscinit:00000520:  errOmitLocation(true))); 
+maai: miscinit:00000595:  ereport(ERROR, 
+maai: miscinit:00000596:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+maai: miscinit:00000597:  errmsg("permission denied to set session authorization"), 
+maai: miscinit:00000598:  errOmitLocation(true))); 
+maai: miscinit:00000686:  ereport(ERROR, 
+maai: miscinit:00000687:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+maai: miscinit:00000688:  errmsg("invalid role OID: %u", roleid))); 
+maai: miscinit:00000778:  ereport(FATAL, 
+maai: miscinit:00000779:  (errcode_for_file_access(), 
+maai: miscinit:00000780:  errmsg("could not create lock file \"%s\": %m", 
+maai: miscinit:00000781:  filename))); 
+maai: miscinit:00000792:  ereport(FATAL, 
+maai: miscinit:00000793:  (errcode_for_file_access(), 
+maai: miscinit:00000794:  errmsg("could not open lock file \"%s\": %m", 
+maai: miscinit:00000795:  filename))); 
+maai: miscinit:00000798:  ereport(FATAL, 
+maai: miscinit:00000799:  (errcode_for_file_access(), 
+maai: miscinit:00000800:  errmsg("could not read lock file \"%s\": %m", 
+maai: miscinit:00000801:  filename))); 
+maai: miscinit:00000811:  elog(FATAL, "bogus data in lock file \"%s\": \"%s\"", 
+maai: miscinit:00000812:  filename, buffer); 
+maai: miscinit:00000861:  ereport(FATAL, 
+maai: miscinit:00000862:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
+maai: miscinit:00000863:  errmsg("lock file \"%s\" already exists", 
+maai: miscinit:00000864:  filename), 
+maai: miscinit:00000865:  isDDLock ? 
+maai: miscinit:00000866:  (encoded_pid < 0 ? 
+maai: miscinit:00000867:  errhint("Is another postgres (PID %d) running in data directory \"%s\"?", 
+maai: miscinit:00000868:  (int) other_pid, refName) : 
+maai: miscinit:00000869:  errhint("Is another postmaster (PID %d) running in data directory \"%s\"?", 
+maai: miscinit:00000870:  (int) other_pid, refName)) : 
+maai: miscinit:00000871:  (encoded_pid < 0 ? 
+maai: miscinit:00000872:  errhint("Is another postgres (PID %d) using socket file \"%s\"?", 
+maai: miscinit:00000873:  (int) other_pid, refName) : 
+maai: miscinit:00000874:  errhint("Is another postmaster (PID %d) using socket file \"%s\"?", 
+maai: miscinit:00000875:  (int) other_pid, refName)), 
+maai: miscinit:00000876:  errOmitLocation(true))); 
+maai: miscinit:00000901:  ereport(FATAL, 
+maai: miscinit:00000902:  (errcode(ERRCODE_LOCK_FILE_EXISTS), 
+maai: miscinit:00000903:  errmsg("pre-existing shared memory block " 
+maai: miscinit:00000904:  "(key %lu, ID %lu) is still in use", 
+maai: miscinit:00000905:  id1, id2), 
+maai: miscinit:00000906:  errhint("If you're sure there are no old " 
+maai: miscinit:00000907:  "server processes still running, remove " 
+maai: miscinit:00000908:  "the shared memory block with " 
+maai: miscinit:00000909:  "the command \"ipcclean\", \"ipcrm\", " 
+maai: miscinit:00000910:  "or just delete the file \"%s\".", 
+maai: miscinit:00000911:  filename))); 
+maai: miscinit:00000922:  ereport(FATAL, 
+maai: miscinit:00000923:  (errcode_for_file_access(), 
+maai: miscinit:00000924:  errmsg("could not remove old lock file \"%s\": %m", 
+maai: miscinit:00000925:  filename), 
+maai: miscinit:00000926:  errhint("The file seems accidentally left over, but " 
+maai: miscinit:00000927:  "it could not be removed. Please remove the file " 
+maai: miscinit:00000928:  "by hand and try again."))); 
+maai: miscinit:00000946:  ereport(FATAL, 
+maai: miscinit:00000947:  (errcode_for_file_access(), 
+maai: miscinit:00000948:  errmsg("could not write lock file \"%s\": %m", filename))); 
+maai: miscinit:00000956:  ereport(FATAL, 
+maai: miscinit:00000957:  (errcode_for_file_access(), 
+maai: miscinit:00000958:  errmsg("could not write lock file \"%s\": %m", filename))); 
+maai: miscinit:00000967:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+maai: miscinit:00000968:  errmsg("Create lock file failed: out of memory"))); 
+maai: miscinit:00001161:  ereport(FATAL, 
+maai: miscinit:00001162:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maai: miscinit:00001163:  errmsg("\"%s\" is not a valid data directory", 
+maai: miscinit:00001164:  path), 
+maai: miscinit:00001165:  errdetail("File \"%s\" is missing.", full_path))); 
+maai: miscinit:00001167:  ereport(FATAL, 
+maai: miscinit:00001168:  (errcode_for_file_access(), 
+maai: miscinit:00001169:  errmsg("could not open file \"%s\": %m", full_path))); 
+maai: miscinit:00001174:  ereport(FATAL, 
+maai: miscinit:00001175:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maai: miscinit:00001176:  errmsg("\"%s\" is not a valid data directory", 
+maai: miscinit:00001177:  path), 
+maai: miscinit:00001178:  errdetail("File \"%s\" does not contain valid data.", 
+maai: miscinit:00001179:  full_path), 
+maai: miscinit:00001180:  errhint("You may need to run gprecoversegment.sh"))); 
+maai: miscinit:00001185:  ereport(FATAL, 
+maai: miscinit:00001186:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maai: miscinit:00001187:  errmsg("database files are incompatible with server"), 
+maai: miscinit:00001188:  errdetail("The data directory was initialized by PostgreSQL version %ld.%ld, " 
+maai: miscinit:00001189:  "which is not compatible with this version %s.", 
+maai: miscinit:00001190:  file_major, file_minor, version_string))); 
 aaaaa GP_IGNORE: paai: postinit - ./backend/utils/init/postinit.c
 paai: postinit:00000091:  ereport(FATAL, 
 paai: postinit:00000092:  (errcode_for_file_access(), 
@@ -21968,109 +21978,112 @@ gaai: gucxfile:00000567:  GUC_EOL = 99,
 gaai: gucxfile:00000568:  GUC_ERROR = 100 
 gaai: gucxfile:00000569: }; 
 aaaaa GP_IGNORE: gaad: guc - ./backend/utils/misc/guc.c
-gaad: guc:00006263:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006264:  conf->gen.name, (int) conf->reset_val); 
-gaad: guc:00006277:  elog(FATAL, "failed to initialize %s to %d", 
-gaad: guc:00006278:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006291:  elog(FATAL, "failed to initialize %s to %g", 
-gaad: guc:00006292:  conf->gen.name, conf->reset_val); 
-gaad: guc:00006322:  elog(FATAL, "failed to initialize %s to \"%s\"", 
-gaad: guc:00006323:  conf->gen.name, str); 
-gaad: guc:00006580:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006597:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00006614:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006294:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006295:  conf->gen.name, (int) conf->reset_val); 
+gaad: guc:00006308:  elog(FATAL, "failed to initialize %s to %d", 
+gaad: guc:00006309:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006322:  elog(FATAL, "failed to initialize %s to %g", 
+gaad: guc:00006323:  conf->gen.name, conf->reset_val); 
+gaad: guc:00006353:  elog(FATAL, "failed to initialize %s to \"%s\"", 
+gaad: guc:00006354:  conf->gen.name, str); 
+gaad: guc:00006611:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00006628:  elog(ERROR, "failed to reset %s", conf->gen.name); 
 gaad: guc:00006645:  elog(ERROR, "failed to reset %s", conf->gen.name); 
-gaad: guc:00007501:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
-gaad: guc:00007611:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
-gaad: guc:00007612:  " in a future release.", name); 
-gaad: guc:00007620:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
-gaad: guc:00007621:  name); 
-gaad: guc:00008095:  ereport(ERROR, 
-gaad: guc:00008096:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008097:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008099:  ereport(ERROR, 
-gaad: guc:00008100:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008101:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008135:  ereport(ERROR, 
-gaad: guc:00008136:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008137:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008139:  ereport(ERROR, 
-gaad: guc:00008140:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008141:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00008210:  ereport(ERROR, 
-gaad: guc:00008211:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008212:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008219:  ereport(ERROR, 
-gaad: guc:00008220:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00008221:  errmsg("SET %s takes only one argument", name))); 
-gaad: guc:00008234:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008281:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008282:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008339:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
-gaad: guc:00008365:  elog(ERROR, "unrecognized node type: %d", 
-gaad: guc:00008366:  (int) nodeTag(&arg->val)); 
-gaad: guc:00008392:  ereport(ERROR, 
-gaad: guc:00008393:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-gaad: guc:00008394:  errmsg("SET requires parameter name"))); 
-gaad: guc:00008456:  ereport(ERROR, 
-gaad: guc:00008457:  (errcode(ERRCODE_INTERNAL_ERROR), 
-gaad: guc:00008458:  errmsg("attempt to redefine parameter \"%s\"", name))); 
-gaad: guc:00008777:  ereport(ERROR, 
-gaad: guc:00008778:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-gaad: guc:00008779:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
-gaad: guc:00008781:  ereport(ERROR, 
-gaad: guc:00008782:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-gaad: guc:00008783:  errmsg("must be superuser to examine \"%s\"", name))); 
-gaad: guc:00009552:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009585:  ereport(FATAL, 
-gaad: guc:00009586:  (errcode_for_file_access(), 
-gaad: guc:00009587:  errmsg("could not read from file \"%s\": %m", 
-gaad: guc:00009588:  CONFIG_EXEC_PARAMS))); 
-gaad: guc:00009600:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
-gaad: guc:00009602:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009604:  elog(FATAL, "invalid format of exec config params file"); 
-gaad: guc:00009695:  ereport(WARNING, 
-gaad: guc:00009696:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaad: guc:00009697:  errmsg("could not parse setting for parameter \"%s\"", name))); 
-gaad: guc:00009891:  ereport(ERROR, 
-gaad: guc:00009892:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009893:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
-gaad: guc:00009914:  ereport(ERROR, 
-gaad: guc:00009915:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009916:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
-gaad: guc:00009917:  tok))); 
-gaad: guc:00009943:  ereport(ERROR, 
-gaad: guc:00009944:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00009945:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
-gaad: guc:00009946:  value))); 
-gaad: guc:00010354:  ereport(ERROR, 
-gaad: guc:00010355:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaad: guc:00010356:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
-gaad: guc:00010430:  ereport(ERROR, 
-gaad: guc:00010431:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010432:  errmsg("assertion checking is not supported by this build"))); 
-gaad: guc:00010441:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
-gaad: guc:00010451:  ereport(ERROR, 
-gaad: guc:00010452:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010453:  errmsg("SSL is not supported by this build"))); 
-gaad: guc:00010464:  ereport(ERROR, 
-gaad: guc:00010465:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010466:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
-gaad: guc:00010481:  ereport(ERROR, 
-gaad: guc:00010482:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010483:  errmsg("cannot enable \"log_statement_stats\" when " 
-gaad: guc:00010484:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010485:  "\"log_dispatch_stats\", " 
-gaad: guc:00010486:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010501:  ereport(ERROR, 
-gaad: guc:00010502:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010503:  errmsg("cannot enable \"log_dispatch_stats\" when " 
-gaad: guc:00010504:  "\"log_statement_stats\", " 
-gaad: guc:00010505:  "\"log_parser_stats\", \"log_planner_stats\", " 
-gaad: guc:00010506:  "or \"log_executor_stats\" is true"))); 
-gaad: guc:00010521:  ereport(ERROR, 
-gaad: guc:00010522:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaad: guc:00010523:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00006676:  elog(ERROR, "failed to reset %s", conf->gen.name); 
+gaad: guc:00007532:  elog(WARNING, "\"%s\": can not be set by the user and will be ignored.", name); 
+gaad: guc:00007642:  elog(WARNING, "\"%s\": setting is deprecated, and may be removed" 
+gaad: guc:00007643:  " in a future release.", name); 
+gaad: guc:00007651:  elog(WARNING, "\"%s\": setting is ignored because it is defunct", 
+gaad: guc:00007652:  name); 
+gaad: guc:00008126:  ereport(ERROR, 
+gaad: guc:00008127:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008128:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008130:  ereport(ERROR, 
+gaad: guc:00008131:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008132:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008166:  ereport(ERROR, 
+gaad: guc:00008167:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008168:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008170:  ereport(ERROR, 
+gaad: guc:00008171:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008172:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00008241:  ereport(ERROR, 
+gaad: guc:00008242:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008243:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008250:  ereport(ERROR, 
+gaad: guc:00008251:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00008252:  errmsg("SET %s takes only one argument", name))); 
+gaad: guc:00008265:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008312:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008313:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008370:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg)); 
+gaad: guc:00008396:  elog(ERROR, "unrecognized node type: %d", 
+gaad: guc:00008397:  (int) nodeTag(&arg->val)); 
+gaad: guc:00008423:  ereport(ERROR, 
+gaad: guc:00008424:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+gaad: guc:00008425:  errmsg("SET requires parameter name"))); 
+gaad: guc:00008487:  ereport(ERROR, 
+gaad: guc:00008488:  (errcode(ERRCODE_INTERNAL_ERROR), 
+gaad: guc:00008489:  errmsg("attempt to redefine parameter \"%s\"", name))); 
+gaad: guc:00008808:  ereport(ERROR, 
+gaad: guc:00008809:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+gaad: guc:00008810:  errmsg("unrecognized configuration parameter \"%s\"", name))); 
+gaad: guc:00008812:  ereport(ERROR, 
+gaad: guc:00008813:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+gaad: guc:00008814:  errmsg("must be superuser to examine \"%s\"", name))); 
+gaad: guc:00009583:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009616:  ereport(FATAL, 
+gaad: guc:00009617:  (errcode_for_file_access(), 
+gaad: guc:00009618:  errmsg("could not read from file \"%s\": %m", 
+gaad: guc:00009619:  CONFIG_EXEC_PARAMS))); 
+gaad: guc:00009631:  elog(FATAL, "failed to locate variable %s in exec config params file", varname); 
+gaad: guc:00009633:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009635:  elog(FATAL, "invalid format of exec config params file"); 
+gaad: guc:00009726:  ereport(WARNING, 
+gaad: guc:00009727:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaad: guc:00009728:  errmsg("could not parse setting for parameter \"%s\"", name))); 
+gaad: guc:00009922:  ereport(ERROR, 
+gaad: guc:00009923:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009924:  errmsg("invalid list syntax for parameter \"log_destination\""))); 
+gaad: guc:00009945:  ereport(ERROR, 
+gaad: guc:00009946:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009947:  errmsg("unrecognized \"log_destination\" key word: \"%s\"", 
+gaad: guc:00009948:  tok))); 
+gaad: guc:00009974:  ereport(ERROR, 
+gaad: guc:00009975:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00009976:  errmsg("unrecognized \"gp_log_format\" key word: \"%s\"", 
+gaad: guc:00009977:  value))); 
+gaad: guc:00010385:  ereport(ERROR, 
+gaad: guc:00010386:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaad: guc:00010387:  errmsg("SET AUTOCOMMIT TO OFF is no longer supported"))); 
+gaad: guc:00010461:  ereport(ERROR, 
+gaad: guc:00010462:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010463:  errmsg("assertion checking is not supported by this build"))); 
+gaad: guc:00010472:  elog(WARNING, "Autovacuum is not supported in GPDB."); 
+gaad: guc:00010482:  ereport(ERROR, 
+gaad: guc:00010483:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010484:  errmsg("SSL is not supported by this build"))); 
+gaad: guc:00010495:  ereport(ERROR, 
+gaad: guc:00010496:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010497:  errmsg("cannot enable parameter when \"log_statement_stats\" is true"))); 
+gaad: guc:00010512:  ereport(ERROR, 
+gaad: guc:00010513:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010514:  errmsg("cannot enable \"log_statement_stats\" when " 
+gaad: guc:00010515:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010516:  "\"log_dispatch_stats\", " 
+gaad: guc:00010517:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010532:  ereport(ERROR, 
+gaad: guc:00010533:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010534:  errmsg("cannot enable \"log_dispatch_stats\" when " 
+gaad: guc:00010535:  "\"log_statement_stats\", " 
+gaad: guc:00010536:  "\"log_parser_stats\", \"log_planner_stats\", " 
+gaad: guc:00010537:  "or \"log_executor_stats\" is true"))); 
+gaad: guc:00010552:  ereport(ERROR, 
+gaad: guc:00010553:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaad: guc:00010554:  errmsg("cannot set transaction read-write mode inside a read-only transaction"))); 
+gaad: guc:00010951:  elog(ERROR, 
+gaad: guc:00010952:  "Unknown system table modification policy. (Current policy: '%s')", 
+gaad: guc:00010953:  show_allow_system_table_mods()); 
 aaaaa GP_IGNORE: sabd: syncbitvector - ./backend/utils/misc/syncbitvector.c
 sabd: syncbitvector:00000067:  ereport(ERROR, 
 sabd: syncbitvector:00000068:  (errcode(ERRCODE_OUT_OF_MEMORY), 
