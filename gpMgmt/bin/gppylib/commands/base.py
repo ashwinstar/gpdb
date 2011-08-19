@@ -66,7 +66,7 @@ class WorkerPool(object):
             self.workers.append(w)
             w.start()
         self.numWorkers = numWorkers
-        
+        self.logger = logger
      
     ###
     def getNumWorkers(self):
@@ -81,7 +81,7 @@ class WorkerPool(object):
     
     
     def addCommand(self,cmd):   
-        logger.debug("Adding cmd to work_queue: %s" % cmd.cmdStr) 
+        self.logger.debug("Adding cmd to work_queue: %s" % cmd.cmdStr) 
         self.work_queue.put(cmd)
         self.num_assigned += 1
     
@@ -143,7 +143,7 @@ class WorkerPool(object):
         
     
     def haltWork(self):
-        logger.debug("WorkerPool haltWork()")
+        self.logger.debug("WorkerPool haltWork()")
         for w in self.workers:
             w.haltWork()    
 
@@ -169,13 +169,14 @@ class Worker(Thread):
     shouldStop=False
     cmd=None
     name=None
+    logger=None
     
     def __init__(self,name,pool,timeout=5):
         self.name=name
         self.pool=pool
         self.timeout=timeout
+        self.logger=logger
         Thread.__init__(self)
-        
     
     
     def run(self):
@@ -183,36 +184,36 @@ class Worker(Thread):
         while True:
             try:
                 if try_count == 5:
-                    logger.debug("[%s] try and get work from queue..." % self.name)
+                    self.logger.debug("[%s] try and get work from queue..." % self.name)
                     try_count = 0
                 
                 if self.shouldStop:
-                    logger.debug('[%s] stopping' % self.name)
+                    self.logger.debug('[%s] stopping' % self.name)
                     return
                     
                 self.cmd = self.pool.getNextWorkItem(timeout=self.timeout)
                 
                 if self.cmd is not None and not self.shouldStop:
-                    logger.debug("[%s] got cmd: %s" % (self.name,self.cmd.cmdStr))
+                    self.logger.debug("[%s] got cmd: %s" % (self.name,self.cmd.cmdStr))
                     self.cmd.run()
-                    logger.debug("[%s] finished cmd: %s" % (self.name, self.cmd))
+                    self.logger.debug("[%s] finished cmd: %s" % (self.name, self.cmd))
                     self.pool.addFinishedWorkItem(self.cmd)
                     self.cmd=None
                     try_count = 0
                 else:
                     try_count += 1
                     if self.shouldStop:
-                        logger.debug("[%s] stopping" % self.name)
+                        self.logger.debug("[%s] stopping" % self.name)
                         return
                       
             except Empty:                
                 if self.shouldStop:
-                    logger.debug("[%s] stopping" % self.name)
+                    self.logger.debug("[%s] stopping" % self.name)
                     return
             except Exception,e:
-                logger.exception(e)
+                self.logger.exception(e)
                 if self.cmd:
-                    logger.debug("[%s] finished cmd with exception: %s" % (self.name, self.cmd))
+                    self.logger.debug("[%s] finished cmd with exception: %s" % (self.name, self.cmd))
                     self.pool.addFinishedWorkItem(self.cmd)
                     self.cmd=None
                     try_count = 0
@@ -220,7 +221,7 @@ class Worker(Thread):
                     
     
     def haltWork(self):
-        logger.debug("[%s] haltWork" % self.name)
+        self.logger.debug("[%s] haltWork" % self.name)
         self.shouldStop=True
         if self.cmd is not None:
             self.cmd.interrupt()

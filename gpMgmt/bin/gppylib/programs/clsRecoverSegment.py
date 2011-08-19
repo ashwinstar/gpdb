@@ -102,6 +102,7 @@ class GpRecoverSegmentProgram:
     def __init__(self, options):
         self.__options = options
         self.__pool = None
+        self.logger = logger
 
     def outputToFile(self, mirrorBuilder, gpArray, fileName):
         lines = []
@@ -263,8 +264,8 @@ class GpRecoverSegmentProgram:
         lines.sort()
         utils.writeLinesToFile(outputFile, lines)
 
-        logger.info("Wrote sample configuration file %s" % outputFile)
-        logger.info("MODIFY IT and then run with      gprecoverseg -s %s" % outputFile)
+        self.logger.info("Wrote sample configuration file %s" % outputFile)
+        self.logger.info("MODIFY IT and then run with      gprecoverseg -s %s" % outputFile)
 
     def __readSpareDirectoryMap(self, gpArray, spareDataDirectoryFile):
         """
@@ -455,14 +456,14 @@ class GpRecoverSegmentProgram:
         for dbid, v in san_mount_by_dbid.iteritems():
             (status, content, mountlist) = v
             if status == 'd':
-                logger.info('Bad segment with dbid %d' % dbid)
+                self.logger.info('Bad segment with dbid %d' % dbid)
                 bad_segs[dbid] = (status, content, mountlist)
 
         # 2 Get the failed mountpoints.
         bad_mounts = {}
         for mount_id, v in san_mounts.iteritems():
             if v['active'] == 'm':
-                logger.info('Bad mountpoint with id %d' % mount_id)
+                self.logger.info('Bad mountpoint with id %d' % mount_id)
                 bad_mounts[mount_id] = v
 
         # 3 Verify that the required hosts are back up (this may reduce the number of recoverable segments)
@@ -491,7 +492,7 @@ class GpRecoverSegmentProgram:
             if recoverable:
                 recoverable_segs[dbid] = v
             else:
-                logger.warning('Unrecoverable segment dbid %d' % (dbid))
+                self.logger.warning('Unrecoverable segment dbid %d' % (dbid))
 
         if len(recoverable_segs) == 0:
             raise Exception("Found no recoverable segments.")
@@ -500,10 +501,10 @@ class GpRecoverSegmentProgram:
         e = os.system('gpstop -aq -d %s' % (os.environ.get('MASTER_DATA_DIRECTORY')))
         ok = not e
         if not ok:
-            logger.error('Failed to shutdown Greenplum Database: segment recovery cannot proceed.')
+            self.logger.error('Failed to shutdown Greenplum Database: segment recovery cannot proceed.')
             raise Exception("Failed to shutdown GPDB. Segment recovery failed.")
         else:
-            logger.info('Successfully shutdown the Greenplum Database')
+            self.logger.info('Successfully shutdown the Greenplum Database')
 
         # 5 Move mountpoints
         #   For each recoverable seg, walk its mountlist.
@@ -527,22 +528,22 @@ class GpRecoverSegmentProgram:
                 else:
                     mount_done[mount_id] = False
 
-        logger.debug('Completed mount-recovery:')
+        self.logger.debug('Completed mount-recovery:')
         for mount_id, v in mount_done.iteritems():
             if v:
-                logger.debug('mount-id %d ---> TRUE' % mount_id)
+                self.logger.debug('mount-id %d ---> TRUE' % mount_id)
             else:
-                logger.debug('mount-id %d ---> FALSE' % mount_id)
+                self.logger.debug('mount-id %d ---> FALSE' % mount_id)
 
         # N - 3
         # Start GPDB in admin-mode
         e = os.system('gpstart -m -d %s' % (os.environ.get('MASTER_DATA_DIRECTORY')))
         ok = not e
         if not ok:
-            logger.error('Failed to bring Greenplum Database up in management mode: segment recovery failed')
+            self.logger.error('Failed to bring Greenplum Database up in management mode: segment recovery failed')
             raise Exception("Failed to start GPDB in management mode.")
         else:
-            logger.info('Greenplum Database restarted for configuration update')
+            self.logger.info('Greenplum Database restarted for configuration update')
 
         # N - 2
         # Update configuration
@@ -556,54 +557,54 @@ class GpRecoverSegmentProgram:
 
             dbconn.execSQL(conn, "BEGIN")
 
-            logger.debug('Starting Transaction')
+            self.logger.debug('Starting Transaction')
 
             # Update gp_san_configuration
             for mount_id, v in mount_done.iteritems():
-                logger.debug('Checking Mount id %d' % mount_id)
+                self.logger.debug('Checking Mount id %d' % mount_id)
                 if v:
                     sql = 'UPDATE gp_san_configuration SET active_host=\'p\' WHERE mountid=%d' % mount_id
-                    logger.debug('Issuing SQL [%s]' % sql)
+                    self.logger.debug('Issuing SQL [%s]' % sql)
                     dbconn.executeUpdateOrInsert(conn, sql, 1)
 
                     history_message = "GPRECOVERSEG: san-mount-id %d set active_host to primary" % (mount_id)
                     sql = 'INSERT INTO gp_configuration_history values (now(), -1, \'%s\')' % history_message
-                    logger.debug('Issuing SQL [%s]' % sql)
+                    self.logger.debug('Issuing SQL [%s]' % sql)
                     dbconn.executeUpdateOrInsert(conn, sql, 1)
 
             # Update gp_segment_configuration
             for dbid, v in recoverable_segs.iteritems():
                 (status, content, mountlist) = v
 
-                logger.debug('Checking dbid id %d' % dbid)
+                self.logger.debug('Checking dbid id %d' % dbid)
 
                 all_mountpoints = True
                 for mount_id, v in mount_done.iteritems():
-                    logger.debug('Scanning mountid %d in dbid id %d' % (mount_id, dbid))
+                    self.logger.debug('Scanning mountid %d in dbid id %d' % (mount_id, dbid))
                     if not v:
-                        logger.debug('Mountid %d --> False' % mount_id)
+                        self.logger.debug('Mountid %d --> False' % mount_id)
                         all_mountpoints = False
                     else:
-                        logger.debug('Mountid %d --> True' % mount_id)
+                        self.logger.debug('Mountid %d --> True' % mount_id)
 
                 if all_mountpoints:
                     sql = 'UPDATE gp_segment_configuration SET status = \'u\' where dbid = %d' % dbid
 
-                    logger.debug('Issuing SQL [%s]' % sql)
+                    self.logger.debug('Issuing SQL [%s]' % sql)
                     dbconn.executeUpdateOrInsert(conn, sql, 1)
 
                     sql = 'UPDATE gp_segment_configuration SET role = preferred_role where content = %d' % content
-                    logger.debug('Issuing SQL [%s]' % sql)
+                    self.logger.debug('Issuing SQL [%s]' % sql)
                     dbconn.executeUpdateOrInsert(conn, sql, 2)
 
                     history_message = "GPRECOVERSEG: content %d, dbid %d moved to primary host" % (content, dbid)
                     sql = 'INSERT INTO gp_configuration_history values (now(), %d, \'%s\')' % (dbid, history_message)
-                    logger.debug('Issuing SQL [%s]' % sql)
+                    self.logger.debug('Issuing SQL [%s]' % sql)
                     dbconn.executeUpdateOrInsert(conn, sql, 1)
                 else:
-                    logger.info('Failed to recover sufficient mountpoints for dbid %d' % dbid)
+                    self.logger.info('Failed to recover sufficient mountpoints for dbid %d' % dbid)
 
-            logger.debug('Committing our updates.')
+            self.logger.debug('Committing our updates.')
             dbconn.execSQL(conn, "COMMIT")
         finally:
             if conn:
@@ -614,19 +615,19 @@ class GpRecoverSegmentProgram:
         e = os.system('gpstop -m -d %s' % (os.environ.get('MASTER_DATA_DIRECTORY')))
         ok = not e
         if not ok:
-            logger.error('Failed to stop Greenplum Database up in management mode: segment recovery failed')
+            self.logger.error('Failed to stop Greenplum Database up in management mode: segment recovery failed')
             raise Exception("Failed to stop GPDB, from management mode.")
         else:
-            logger.info('Greenplum Database stopped, preparing for full restart.')
+            self.logger.info('Greenplum Database stopped, preparing for full restart.')
 
         # N Start GPDB
         e = os.system('gpstart -aq -d %s' % (os.environ.get('MASTER_DATA_DIRECTORY')))
         ok = not e
         if not ok:
-            logger.error('Failed to restart Greenplum Database: segment recovery failed')
+            self.logger.error('Failed to restart Greenplum Database: segment recovery failed')
             raise Exception("Failed to restart GPDB.")
         else:
-            logger.info('Successfully restarted the Greenplum Database')
+            self.logger.info('Successfully restarted the Greenplum Database')
 
         configInterface.getConfigurationProvider().sendPgElogFromMaster( "SAN recovery has completed.", True)
 
@@ -644,7 +645,7 @@ class GpRecoverSegmentProgram:
             new_mp = mp_dict['mirrormountpoint']
         else:
             # failback unnecessary ?
-            logger.info('Not failback required for mount id %d primary is active!' % mp_id)
+            self.logger.info('Not failback required for mount id %d primary is active!' % mp_id)
             return 0
 
         # RUN GP_MOUNT_AGENT HERE ??
@@ -653,12 +654,12 @@ class GpRecoverSegmentProgram:
                                                                                                  mp_dict['primaryhost'], mp_dict['primarydevice'], mp_dict['primarymountpoint'],
                                                                                                  mp_dict['mirrorhost'], mp_dict['mirrordevice'], mp_dict['mirrormountpoint'])
                                                                                          
-        logger.debug('gp_mount_agent command is \'%s\'' % command)
+        self.logger.debug('gp_mount_agent command is \'%s\'' % command)
 
         e = os.system(command)
         ok = not e
         if not ok:
-            logger.error('gp_mount_agent: failed to relocate mount point %d' % mp_id)
+            self.logger.error('gp_mount_agent: failed to relocate mount point %d' % mp_id)
             raise Exception("Failed to relocate mountpoint for mount id %d" % mp_id)
 
         return 0
@@ -672,25 +673,25 @@ class GpRecoverSegmentProgram:
             return self.getRecoveryActionsFromConfiguration(gpEnv, gpArray)
 
     def displayRecovery(self, mirrorBuilder, gpArray):
-        logger.info('Greenplum instance recovery parameters')
-        logger.info('---------------------------------------------------------')
+        self.logger.info('Greenplum instance recovery parameters')
+        self.logger.info('---------------------------------------------------------')
 
         if self.__options.recoveryConfigFile:
-            logger.info('Recovery from configuration -i option supplied')
+            self.logger.info('Recovery from configuration -i option supplied')
         elif self.__options.newRecoverHosts is not None:
-            logger.info('Recovery type              = Pool Host')
+            self.logger.info('Recovery type              = Pool Host')
             for h in self.__options.newRecoverHosts:
-                logger.info('Pool host for recovery     = %s' % h)
+                self.logger.info('Pool host for recovery     = %s' % h)
             type_text = 'Pool    '
         elif self.__options.spareDataDirectoryFile is not None:
-            logger.info('Recovery type              = Pool Directory')
-            logger.info('Mirror pool directory file = %s' % self.__options.spareDataDirectoryFile)
+            self.logger.info('Recovery type              = Pool Directory')
+            self.logger.info('Mirror pool directory file = %s' % self.__options.spareDataDirectoryFile)
             type_text = 'Pool dir'
         elif self.__options.rebalanceSegments:
-            logger.info('Recovery type              = Rebalance')
+            self.logger.info('Recovery type              = Rebalance')
             type_text = 'Rebalance segments'
         else:
-            logger.info('Recovery type              = Standard')
+            self.logger.info('Recovery type              = Standard')
             type_text = 'Failed  '
 
         if self.__options.rebalanceSegments:
@@ -698,9 +699,9 @@ class GpRecoverSegmentProgram:
             total = len(gpArray.get_unbalanced_segdbs())
             for toRebalance in gpArray.get_unbalanced_segdbs():
                 tabLog = TableLogger()
-                logger.info('---------------------------------------------------------')
-                logger.info('Unbalanced segment %d of %d' % (i, total))
-                logger.info('---------------------------------------------------------')
+                self.logger.info('---------------------------------------------------------')
+                self.logger.info('Unbalanced segment %d of %d' % (i, total))
+                self.logger.info('---------------------------------------------------------')
                 programIoUtils.appendSegmentInfoForOutput("Unbalanced", gpArray, toRebalance, tabLog)
                 tabLog.info(["Balanced role", "= Primary" if toRebalance.preferred_role == 'p' else "= Mirror"])
                 tabLog.info(["Current role", "= Primary" if toRebalance.role == 'p' else "= Mirror"])                
@@ -708,13 +709,13 @@ class GpRecoverSegmentProgram:
                 i+=1                
         else:
             count = 0
-            # logger.info('Recovery parallel batch value = %d' % opt['-B'])
+            # self.logger.info('Recovery parallel batch value = %d' % opt['-B'])
             i = 0
             total = len(mirrorBuilder.getMirrorsToBuild())
             for toRecover in mirrorBuilder.getMirrorsToBuild():
-                logger.info('---------------------------------------------------------')
-                logger.info('Recovery %d of %d' % (i+1, total))
-                logger.info('---------------------------------------------------------')
+                self.logger.info('---------------------------------------------------------')
+                self.logger.info('Recovery %d of %d' % (i+1, total))
+                self.logger.info('---------------------------------------------------------')
     
                 tabLog = TableLogger()
     
@@ -731,14 +732,14 @@ class GpRecoverSegmentProgram:
     
                 i = i + 1
 
-        logger.info('---------------------------------------------------------')
+        self.logger.info('---------------------------------------------------------')
 
     def __getSimpleSegmentLabel(self, seg):
         return "%s:%s" % (seg.getSegmentAddress(), seg.getSegmentDataDirectory())
 
     def __displayRecoveryWarnings(self, mirrorBuilder):
         for warning in self._getRecoveryWarnings(mirrorBuilder):
-            logger.warn(warning)
+            self.logger.warn(warning)
 
     def _getRecoveryWarnings(self, mirrorBuilder):
         """
@@ -826,7 +827,7 @@ class GpRecoverSegmentProgram:
                 segmentState = lines[1].split(": ")[1].strip()
                 dataState    = lines[2].split(": ")[1].strip()
             except Exception, e:
-                logger.warning("Problem getting Segment state dbid = %s, results = %s." % (str(dbid), str(cmd.get_results().stderr)))
+                self.logger.warning("Problem getting Segment state dbid = %s, results = %s." % (str(dbid), str(cmd.get_results().stderr)))
                 continue
 
             db = dbsMap[dbid]
@@ -882,34 +883,34 @@ class GpRecoverSegmentProgram:
         if self.__options.outputSampleConfigFile is not None:
             # just output config file and done
             self.outputToFile(mirrorBuilder, gpArray, self.__options.outputSampleConfigFile)
-            logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
+            self.logger.info('Configuration file output to %s successfully.' % self.__options.outputSampleConfigFile)
         elif self.__options.rebalanceSegments:
             assert(isinstance(mirrorBuilder,GpSegmentRebalanceOperation))
 
             # Make sure we have work to do
             if len(gpArray.get_unbalanced_segdbs()) == 0:
-                logger.info("No segments are running in their non-preferred role and need to be rebalanced.")
+                self.logger.info("No segments are running in their non-preferred role and need to be rebalanced.")
             else:           
                 self.displayRecovery(mirrorBuilder, gpArray)
                 
                 if self.__options.interactive:
-                    logger.warn("This operation will cancel queries that are currently executing.")
-                    logger.warn("Connections to the database however will not be interrupted.")
+                    self.logger.warn("This operation will cancel queries that are currently executing.")
+                    self.logger.warn("Connections to the database however will not be interrupted.")
                     if not userinput.ask_yesno(None, "\nContinue with segment rebalance procedure", 'N'):
                         raise UserAbortedException()
                 
                 mirrorBuilder.rebalance()
                 
-                logger.info("******************************************************************")
-                logger.info("The rebalance operation has completed successfully.")
-                logger.info("There is a resynchronization running in the background to bring all")
-                logger.info("segments in sync.")
-                logger.info("")
-                logger.info("Use gpstate -s to check the resynchronization progress.")
-                logger.info("******************************************************************")
+                self.logger.info("******************************************************************")
+                self.logger.info("The rebalance operation has completed successfully.")
+                self.logger.info("There is a resynchronization running in the background to bring all")
+                self.logger.info("segments in sync.")
+                self.logger.info("")
+                self.logger.info("Use gpstate -s to check the resynchronization progress.")
+                self.logger.info("******************************************************************")
             
         elif len(mirrorBuilder.getMirrorsToBuild()) == 0:
-            logger.info('No segments to recover')
+            self.logger.info('No segments to recover')
         else:
             mirrorBuilder.checkForPortAndDirectoryConflicts(gpArray)
 
@@ -925,18 +926,20 @@ class GpRecoverSegmentProgram:
             confProvider.sendPgElogFromMaster("Recovery of %d segment(s) has been started." % \
                     len(mirrorBuilder.getMirrorsToBuild()), True)
 
-            logger.info("******************************************************************")
-            logger.info("Updating segments for resynchronization is completed.")
-            logger.info("For segments updated successfully, resynchronization will continue in the background.")
-            logger.info("")
-            logger.info("Use  gpstate -s  to check the resynchronization progress.")
-            logger.info("******************************************************************")
+            self.logger.info("******************************************************************")
+            self.logger.info("Updating segments for resynchronization is completed.")
+            self.logger.info("For segments updated successfully, resynchronization will continue in the background.")
+            self.logger.info("")
+            self.logger.info("Use  gpstate -s  to check the resynchronization progress.")
+            self.logger.info("******************************************************************")
 
         return 0 # success -- exit code 0!
 
     def cleanup(self):
         if self.__pool:
-            self.__pool.haltWork()
+            self.__pool.haltWork()    # \  MPP-13489, CR-2572
+            self.__pool.joinWorkers() #  > all three of these appear necessary 
+            self.__pool.join()        # /  see MPP-12633, CR-2252 as well
 
     #-------------------------------------------------------------------------
     @staticmethod
