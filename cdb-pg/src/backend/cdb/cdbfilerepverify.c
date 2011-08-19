@@ -574,7 +574,7 @@ isPageAllZeros(Page page)
 {
   
 	char *buf = (char *) page;
-	int i;
+	int i = 0;
   
 	for ( i=0; i< BLCKSZ; i++)
 	{
@@ -653,7 +653,7 @@ FileRepVerify_CreateInProgressTokenFile(char *token)
 	struct	stat		st;
 	char	fileName[MAXPGPATH+1]; 
 	File	f;
-	int		len;
+	int		len = 0;
 	
 	if (strlen(token) > FILEREP_VERIFY_MAX_REQUEST_TOKEN_LEN+1)
 	{
@@ -737,7 +737,7 @@ FileRepVerify_GetInProgressTokenFromFile(char *token)
 {
 	File	fd;
 	char	fileName[MAXPGPATH+1]; 
-	int		len;
+	int		len = 0;
 
 	snprintf(fileName,
 			 MAXPGPATH+1, 
@@ -846,7 +846,7 @@ FileRepVerify_EmptyInProgressTokenFile(void)
 	struct	stat		st;
 	char	fileName[MAXPGPATH+1]; 
 	File	f;
-	int		len;
+	int		len = 0;
 	
 	errno = 0;
 	if (stat(VERIFYDIR, &st) < 0)
@@ -1792,8 +1792,8 @@ FileRepPrimary_StartRequest(
 							bool					resume,
 							bool					autoResume)
 {
-	long		secs;
-	int			microsecs;
+	long		secs = 0;
+	int			microsecs = 0;
 	int			status = STATUS_OK;
 	TimestampTz resumeTime;
 #define MAX_RESULT 25
@@ -2166,7 +2166,7 @@ FileRepPrimary_StartRequest_Return:
 void
 FileRepPrimary_CleanRequest(FileRepVerifyRequest_s * request)
 {
-	int i;
+	int i = 0;
 
 	if (request->numIgnoreFilePatterns)
 	{
@@ -2205,8 +2205,8 @@ FileRepPrimary_BuildRequest(FileRepVerifyRequest_s *request)
 {
 	FileRepVerifyArguments *args = &(request->fileRepVerifyArguments);
 	TimestampTz startTime;
-	int i;
-	int logLevel;
+	int i = 0;
+	int logLevel = 0;
 
 	request->allLogical = true;
 	request->allPhysical = true;
@@ -2558,16 +2558,16 @@ FileRepPrimary_VerifyUserFilespaces(
 	FilespaceScanToken	  token;
 	char	primaryFilespaceLocationBlankPadded[FilespaceLocationBlankPaddedWithNullTermLen];
 	char	mirrorFilespaceLocationBlankPadded[FilespaceLocationBlankPaddedWithNullTermLen];
-	char	*primaryFilespaceLocation;
-	char	*mirrorFilespaceLocation;
-	int16	primary_dbId;
-	int16	mirror_dbId;
+	char	*primaryFilespaceLocation = NULL;
+	char	*mirrorFilespaceLocation = NULL;
+	int16	primary_dbId = 0;
+	int16	mirror_dbId = 0;
 	PersistentFileSysState	persistentState;
 	MirroredObjectExistenceState mirrorExistenceState;
 	ItemPointerData	 persistentTid;
-	int64	persistentSerialNum;
+	int64	persistentSerialNum = 0;
 	Oid		filespaceOid;
-	int		numFilespaces;
+	int		numFilespaces = 0;
 	FileRepVerifyLogControl_s logControl = request->logControl;
 	bool	keepFilespace = false;
 
@@ -2712,7 +2712,7 @@ FileRepPrimary_EstimateDirectory(
 
 	bool complete = false;
 
-	uint32 toCompareThisDirectory;
+	uint32 toCompareThisDirectory = 0;
 	
 
 
@@ -2777,21 +2777,21 @@ FileRepPrimary_VerifyDirectory(
 	uint32 bufferSizeBytes= FILEREP_MESSAGEBODY_LEN;
 
 	FileRepOperationDescription_u desc;
-	uint32						responseDataLength;
+	uint32						responseDataLength = 0;
 	void *						responseData = NULL;
-	FileRepVerifySummaryItem_s * pItem;
+	FileRepVerifySummaryItem_s * pItem = NULL;
 
 	uint32 numLeftToSend = 0;
 	uint32 num_entries = 0;
 	uint32 whichBuf=0; 
 
-	uint32 maxSummaryItemsPerSend;
+	uint32 maxSummaryItemsPerSend = 0;
 
-	int numMismatches;
+	int numMismatches = 0;
 
 	FileRepIdentifier_u		fileRepIdentifier;
 	FileRepRelationType_e	fileRepRelationType; 
-	bool continueRequest;
+	bool continueRequest = true;
 
 	memset(&fileRepIdentifier, 0, sizeof(FileRepIdentifier_u));
 
@@ -2988,7 +2988,7 @@ FileRepPrimary_VerifyDirectory(
 			} 
 			else 
 			{
-				int i;
+				int i = 0;
 				FileRepVerifySummaryItem_s * itemArray 
 					= (FileRepVerifySummaryItem_s *)responseData;
 				int numFiles =0, numDirs = 0;
@@ -3002,7 +3002,7 @@ FileRepPrimary_VerifyDirectory(
 					   
 				for (i=0; i < numMismatches; i++)
 				{
-					FileRepVerifySummaryItem_s * pItem;
+					FileRepVerifySummaryItem_s * pItem = NULL;
 								  
 							
 					pItem = &(itemArray[i]);
@@ -3010,7 +3010,7 @@ FileRepPrimary_VerifyDirectory(
 					if(pItem->isFile)
 					{
 						FileRepRelFileNodeInfo_s relinfo;
-						bool matched;
+						bool matched = false;
 
 						char primaryFilename[MAXPGPATH+1];
 						char mirrorFilename[MAXPGPATH+1];
@@ -3325,8 +3325,8 @@ keepItem(
 	FileRepVerifyRequestType_e requestType)
 {
 	
-	int toMatchLen;
-	int toKeepLen;
+	int toMatchLen = 0;
+	int toKeepLen = 0;
 
 
 	if (requestType ==	FileRepVerifyRequestType_FULL)
@@ -3444,12 +3444,12 @@ FileRepPrimary_EstimateAllFilespaces(
 	char   mirrorFilespaceLocationBlankPadded[FilespaceLocationBlankPaddedWithNullTermLen];
 	char * primaryFilespaceLocation;
 	//	char * mirrorFilespaceLocation;
-	int16	 primary_dbId;
-	int16	 mirror_dbId;
+	int16	 primary_dbId = 0;
+	int16	 mirror_dbId = 0;
 	PersistentFileSysState	persistentState;
 	MirroredObjectExistenceState mirrorExistenceState;
 	ItemPointerData	 persistentTid;
-	int64		 persistentSerialNum;
+	int64		 persistentSerialNum = 0;
 	Oid	   filespaceOid;
 
 	verifyLog(request->logControl, DEBUG1, 
@@ -3593,7 +3593,7 @@ FileRepPrimary_VerifySystemFilespace(
 
 	FileRepVerifyLogControl_s logControl = request->logControl;
 	char primaryBaseDirectory[MAXPGPATH+1];
-	bool keepBaseDir;
+	bool keepBaseDir = true;
 	int status = STATUS_OK;
 
 	
@@ -3687,32 +3687,32 @@ FileRepPrimary_VerifyAllRelFileNodes(
 {
 	FileRepVerifyLogControl_s logControl = request->logControl;
 	int status = STATUS_OK;
-	FileRepRelFileNodeInfo_s *relfilenodeTable;
+	FileRepRelFileNodeInfo_s *relfilenodeTable = NULL;
 	int numRows= 0;
-	int numMismatches, numThisSend;
-	int numSends;
-	int row;
+	int numMismatches=0, numThisSend=0;
+	int numSends = 0;
+	int row = 0;
 					 
 	char listingBuffer[FILEREP_MESSAGEBODY_LEN];
 
-	uint32 maxSummaryItemsPerSend;
+	uint32 maxSummaryItemsPerSend = 0;
 	FileRepOperationDescription_u desc;
 	FileRepOperationDescription_u responseDesc;
-	uint32						responseDataLength;
+	uint32						responseDataLength = 0;
 	void *						responseData = NULL;
-	FileRepVerifySummaryItem_s	*summaryItemArray;
+	FileRepVerifySummaryItem_s	*summaryItemArray = NULL;
 
 	OnlineVerifyScanToken onlineVerifyScanToken;
 	RelFileNode relNode;
-	int32 segmentFileNum;
+	int32 segmentFileNum = 0;
 	PersistentFileSysRelStorageMgr	relStorageMgr;
 	MirroredRelDataSynchronizationState mirrorDataSynchronizationState;
 	PersistentFileSysRelBufpoolKind relBufpoolKind;
-	int64							mirrorAppendOnlyLossEof;
-	int64							mirrorAppendOnlyNewEof;
+	int64							mirrorAppendOnlyLossEof = 0;
+	int64							mirrorAppendOnlyNewEof = 0;
 	ItemPointerData					persistentTid;
-	int64							persistentSerialNum;
-	bool  foundAnotherRow;
+	int64							persistentSerialNum = 0;
+	bool  foundAnotherRow = false;
 	char *primaryFilespaceLocation = NULL;
 	char *mirrorFilespaceLocation = NULL;
 	FileRepIdentifier_u		fileRepIdentifier;	
@@ -4323,7 +4323,7 @@ FileRepPrimary_VerifyAllRelFileNodes(
 			} 
 			else 
 			{
-				int i;
+				int i =0;
 				FileRepVerifySummaryItem_s * itemArray = 
 					(FileRepVerifySummaryItem_s *)responseData;
 				int numFiles =0, numDirs = 0;
@@ -4338,8 +4338,8 @@ FileRepPrimary_VerifyAllRelFileNodes(
 						  
 				for (i=0; i < numMismatches; i++)
 				{
-					FileRepVerifySummaryItem_s * pItem;
-					int rowHint;
+					FileRepVerifySummaryItem_s * pItem = NULL;
+					int rowHint = 0;
 					char  primaryFilename[MAXPGPATH+1];
 					char mirrorFilename[MAXPGPATH+1];
 					
@@ -4580,7 +4580,7 @@ FileRepPrimary_CheckpointFileIsPresent(
 	
 	FileRepVerifyRequest_s restoreContents;
 	char chkpntPath[MAXPGPATH+1];
-	FILE * f;
+	FILE * f = NULL;
 	snprintf(chkpntPath, 
 			 MAXPGPATH+1, 
 			 "%s/verification_%s.chkpnt", 
@@ -5797,8 +5797,8 @@ int FileRepMirror_CompareSummaryItem(
 	{
 		char segmentFileName[MAXPGPATH+2];
 		int numSegments = 0;
-		int seg;
-		pg_crc32 thisHashcode;
+		int seg =0;
+		pg_crc32 thisHashcode = 0;
 
 		if (pItem->summary.fileSummary.exception == FileRepVerifyCompareException_HeapRelation)
 		{
@@ -5924,11 +5924,11 @@ int FileRepMirror_CompareSummaryItem(
 	{
 		char directoryName[MAXPGPATH+1];
 		DIR	 *dir = NULL;
-		struct dirent *de;
+		struct dirent *de = NULL;
 		uint32 numImmediateChildren =0;
 		struct stat	 child_st;
 		char		 child_path[MAXPGPATH+1];
-		pg_crc32 hashcode;			 
+		pg_crc32 hashcode = 0;			 
 
 		snprintf(directoryName, MAXPGPATH+1, "%s/%s",
 				 pItem->baseDir, pItem->fromBasePath);
@@ -6081,11 +6081,11 @@ FileRepMirror_CompareAllSummaryItems(
 									 FileRepVerifyLogControl_s	logControl)
 {
 	int status = STATUS_OK;
-	int numSummaryItems;
-	int numMismatches, numFiles, numDirs;
-	int i;
-	bool doHash;
-	bool includeFileSizeInfo;
+	int numSummaryItems =0;
+	int numMismatches=0, numFiles=0, numDirs=0;
+	int i=0;
+	bool doHash = false;
+	bool includeFileSizeInfo = false;
 
 	Assert(fileRepMessageHeader->fileRepOperation == 
 		   FileRepOperationVerify);
@@ -6112,8 +6112,8 @@ FileRepMirror_CompareAllSummaryItems(
 	numDirs = 0;
 	for (i=0; i< numSummaryItems; i++)
 	{
-		bool mismatch;
-		FileRepVerifySummaryItem_s *pItem;
+		bool mismatch - false;
+		FileRepVerifySummaryItem_s *pItem = NULL;
 		FileRepVerifySummaryItem_s *itemArray = (FileRepVerifySummaryItem_s *)fileRepMessageBody;
 			 
 		pItem = &(itemArray[i]);
@@ -6139,7 +6139,7 @@ FileRepMirror_CompareAllSummaryItems(
 		}
 		if (mismatch)
 		{
-			char * intoResponse;
+			char * intoResponse = NULL;
 				 
 			/* if first mismatch - allocated responseBuffer */
 			if (numMismatches == 0)
@@ -6199,18 +6199,18 @@ FileRepMirror_CompareEnhancedBlockHash(
 									   FileRepVerifyLogControl_s	logControl )
 {
 
-	FILE  *f;
+	FILE  *f = NULL;
 	FileName fileName=NULL;
 	struct stat	 info;
-	char * buf;
+	char * buf = NULL;
 	FileRepIdentifier_u		fileRepIdentifier;	
 	FileRepRelationType_e	fileRepRelationType;
-	int64 fileOffset;
-	uint32 dataLength;
-	FileRepVerify_CompareException_e exception;
+	int64 fileOffset = 0;
+	uint32 dataLength = 0;
+	FileRepVerify_CompareException_e exception = FileRepVerifyCompareException_None;
 	bool success = false;
-	pg_crc32 hashcode;
-	uint32 bytesRead;
+	pg_crc32 hashcode = 0;
+	uint32 bytesRead = 0;
 
 
 	fileRepRelationType	   =   fileRepMessageHeader->fileRepRelationType;
@@ -6437,8 +6437,8 @@ FileRepMirror_CompareEnhancedBlockHash(
 					 FileRepVerifyCompareException_BtreeIndex)
 			{
 				Page page = (Page) buf;
-				bool madeChange;
-				bool validPage;
+				bool madeChange = false;
+				bool validPage = false;
 
 				validPage = FileRepVerify_ProcessBtreeIndexPage(
 					page, 
@@ -6519,25 +6519,25 @@ FileRepMirror_CompareDirectoryContents(
 	int						status = STATUS_OK;
 	FileRepIdentifier_u		fileRepIdentifier;	
 	FileRepRelationType_e	fileRepRelationType;
-	uint32					numChildrenOnPrimary;
+	uint32					numChildrenOnPrimary = 0;
 	uint32					numChildrenAddedOnMirror = 0;
 	uint32					numChildrenMissingOnMirror = 0;
-	bool finalBatch;
-	bool lastMatch;
+	bool finalBatch = false;
+	bool lastMatch = false;
 	char lastMatchName[MAXPGPATH+1];
 	char primaryDirectoryName[MAXPGPATH+1];
-	int primaryDirectoryNameLen;
-	int lastMatchLen;
+	int primaryDirectoryNameLen =0;
+	int lastMatchLen =0;
 	char * currentName = NULL;
 	int currentNameLen = 0;
 	int currOffset =0;
 	FileName   directoryName;
 	DIR *dir = NULL;
-	struct dirent	*de;
+	struct dirent	*de = NULL;
 	struct stat	 child_st;
 	char		 child_path[MAXPGPATH+1];
 	bool newLastMatch = false;
-	int child;
+	int child = 0;
 	bool endCompares =false;
 	int numLeftOnMirrorToCompare = 0;
 	int numMatches = 0;
@@ -7423,8 +7423,8 @@ FileRepMirror_CompareFileContents(
 	FileRepIdentifier_u		fileRepIdentifier;	
 	FileRepRelationType_e	fileRepRelationType;
 	int64					fileOffset = 0;
-	uint32					dataLength, compareLength;
-	FileRepVerify_CompareException_e exception;
+	uint32					dataLength =0, compareLength =0;
+	FileRepVerify_CompareException_e exception = FileRepVerifyCompareException_None;
 	bool					success = FALSE;
 	uint32					bytesRead = 0;
 	int64					AO_logicalEof = 0;
@@ -7622,8 +7622,8 @@ FileRepMirror_CompareFileContents(
 		if (exception == FileRepVerifyCompareException_HeapRelation)
 		{
 			Page page = (Page) buf;
-			bool madeChange;
-			bool validPage;
+			bool madeChange = false;
+			bool validPage = false;
 			validPage = FileRepVerify_ProcessHeapPage(page, &madeChange, logControl);
 			
 			if (!validPage)
@@ -7641,8 +7641,8 @@ FileRepMirror_CompareFileContents(
 		else if (exception == FileRepVerifyCompareException_BtreeIndex)
 		{
 			Page page = (Page) buf;
-			bool madeChange;
-			bool validPage;
+			bool madeChange = false;
+			bool validPage = false;
 			validPage = FileRepVerify_ProcessBtreeIndexPage(page, &madeChange, logControl);
 			
 			if (!validPage)
@@ -7727,7 +7727,7 @@ FileRepVerify_ProcessHeapPage(
 							  FileRepVerifyLogControl_s logControl)
 {
 	int	 maxOffset = PageGetMaxOffsetNumber(page);
-	int	 whichItem;
+	int	 whichItem = 0;
 	 
 
 	if (!((maxOffset >=0) && (maxOffset <= BLCKSZ)))
@@ -7757,9 +7757,9 @@ FileRepVerify_ProcessHeapPage(
 	*madeChange = false;
 	for (whichItem = 1; whichItem < (maxOffset + 1); whichItem++)
 	{
-		unsigned int	itemSize;
-		unsigned int	itemOffset;
-		unsigned int	itemFlags;
+		unsigned int	itemSize = 0;
+		unsigned int	itemOffset = 0;
+		unsigned int	itemFlags = 0;
 		ItemId			itemId;
 		HeapTupleHeader htup;
 		  
@@ -7808,7 +7808,7 @@ FileRepVerify_ProcessBtreeIndexPage(
 		
 	BTPageOpaque opaque;
 	int	 maxOffset = PageGetMaxOffsetNumber(page);
-	int	 whichItem;
+	int	 whichItem = 0;
 	
 	opaque = (BTPageOpaque) PageGetSpecialPointer(page);
 
@@ -7887,12 +7887,12 @@ int FileRepPrimary_SendChunkDirectoryListing(
 	int status = STATUS_OK;
 	FileRepOperationDescription_u fileRepOperationDescription;
 	 
-	uint32							responseDataLength;
+	uint32							responseDataLength = 0;
 	void							*responseData = NULL;
 	FileRepOperationDescription_u	responseDesc;
 
-	int lastMatchLen;
-	int numLeftOnMirrorToCompare;
+	int lastMatchLen = 0;
+	int numLeftOnMirrorToCompare = 0;
 
 	verifyLog(
 			  logControl, DEBUG1, 
@@ -8010,17 +8010,17 @@ int FileRepPrimary_SendDirectoryListing(
 	int curOffset = 0;
 	int whichChild = 0;
 	int lastSentChild = 0;
-	struct dirent	*de;
+	struct dirent	*de = NULL;
 	struct stat	 child_st;
 	char		 child_path[MAXPGPATH+1];
-	int thisSetNumMissing;
-	int thisSetNumAdded;
-	int numThisSend;
+	int thisSetNumMissing = 0;
+	int thisSetNumAdded = 0;
+	int numThisSend = 0;
 	char lastMatchName[MAXPGPATH+1];
 	bool lastMatch = false;
-	bool newLastMatch;
+	bool newLastMatch = false;
 	bool endCompares = false;
-	int primaryDirectoryNameLen;
+	int primaryDirectoryNameLen = 0;
 	
 	verifyLog(
 			  request->logControl, 
@@ -8301,10 +8301,10 @@ FileRepPrimary_SendEnhancedBlockHashes(
 	struct	stat	 info;
 	uint32	dataLength = 0;
 	char	*dataToMirror = NULL;
-	uint32	dataLengthLocal;
+	uint32	dataLengthLocal = 0;
 	int64	fileOffset; //heap can require int64
-	int32	mirrorFileOffset;
-	uint32	bytesRead;
+	int32	mirrorFileOffset = 0;
+	uint32	bytesRead = 0;
 	
 	char	primaryFilename[MAXPGPATH+1];
 	char	mirrorFilename[MAXPGPATH+1];
@@ -8323,7 +8323,7 @@ FileRepPrimary_SendEnhancedBlockHashes(
 	Page			page;
 	BlockNumber		numBlocks = 0;
 	BlockNumber		blkno=0;
-	pg_crc32		hashcode;
+	pg_crc32		hashcode = 0;
 	bool			isBufferPoolRelation = true;
 	uint32			nameLength = 0;
 	FILE			*fd = NULL;
@@ -8774,8 +8774,8 @@ FileRepPrimary_SendEnhancedBlockHashes(
 				
 				if (relinfo.exception == FileRepVerifyCompareException_HeapRelation)
 				{
-					bool validPage;
-					bool madeChange;
+					bool validPage  = false;
+					bool madeChange = false;
 					
 					/* 
 					 * if one of the last two heap blocks is all 
@@ -8835,8 +8835,8 @@ FileRepPrimary_SendEnhancedBlockHashes(
 				} 
 				else if (relinfo.exception == FileRepVerifyCompareException_BtreeIndex)
 				{
-					bool validPage;
-					bool madeChange;
+					bool validPage = false;
+					bool madeChange = false;
 					validPage = FileRepVerify_ProcessBtreeIndexPage(page, &madeChange, logControl);
 					
 					if (! validPage)
@@ -9323,7 +9323,7 @@ FileRepVerify_NumHeapSegments( RelFileNode relFileNode)
   
 	SMgrRelation smgr_relation = NULL;
 	BlockNumber numBlocks = 0;
-	int numSegs;
+	int numSegs = 0;
 
 	smgr_relation = smgropen(relFileNode);
 	if (smgr_relation == NULL)
@@ -9369,10 +9369,10 @@ int FileRepPrimary_ComputeSummaryItemsFromRelFileNodeInfoTable(
 															   FileRepVerifyLogControl_s logControl)
 {
 	int status = STATUS_OK;
-	int row;
+	int row = 0;
 	struct stat info;
 	int numSegments = 0;
-	int seg;
+	int seg = 0;
 	char segmentFileName[MAXPGPATH+2];
 	
 	for (row = 0; row < numRows; row++)
@@ -9536,7 +9536,7 @@ isExcludedFile(
 			   int numExcluded,		
 			   char ** excludeList)
 {
-	int i;
+	int i = 0;
 	/*
 	 * gpcheckmirrorseg
 	 *
@@ -9710,7 +9710,7 @@ isExcludedDirectory(
 	char ** excludeList)
 {
 
-	int i;
+	int i = 0;
 
 	/* exact match -	 if exclude list contains foo 
 	 * it will match any directory named exactly foo
@@ -9797,7 +9797,7 @@ looksLikeRelFileName(
 	char * file)
 {
 	int i;
-	char * directory;
+	char * directory = NULL;
   
 	/* move past . or / 's
 	 * Sometimes we get .//base rather than base - not sure why?
@@ -10218,14 +10218,14 @@ FillBufferWithDirectoryTreeListing(
 	char		 currentDirectoryName[MAXPGPATH+1];
 	char		 child_path[MAXPGPATH+1];
 	char		 base_path[MAXPGPATH+1];
-	struct dirent	*de;
+	struct dirent	*de = NULL;
 	FileRepVerifySummaryItem_s summaryItem;
-	FileRepVerifySummaryItem_s *pItem;
+	FileRepVerifySummaryItem_s *pItem = NULL;
 	uint32 numImmediateChildren =0;
-	int this_len;
-	pg_crc32 directoryHashcode;
-	bool doFileHash;
-	bool doDirectoryHash;
+	int this_len = 0;
+	pg_crc32 directoryHashcode = 0;
+	bool doFileHash = false;
+	bool doDirectoryHash = false;
 	bool keepChild = false;
 	bool sendDirectory = false;
 
@@ -10848,7 +10848,7 @@ int FileRepVerify_ComputeSummaryItemsFromRecursiveDirectoryListing(
 						{
 	int status = STATUS_OK;
 	struct stat	 dir_st;
-	uint32	used_len;
+	uint32	used_len = 0;
 
 	verifyLog(request->logControl, 
 			  DEBUG1, 
@@ -10951,12 +10951,12 @@ FileRepVerify_ComputeFileHash(
 {
 
 	struct stat	 info;
-	FILE	   *f;
+	FILE	   *f = NULL;
 
 #define FILEREPVERIFY_COMPUTEFILEHASH_BUFSIZE BLCKSZ
 	char buffer[FILEREPVERIFY_COMPUTEFILEHASH_BUFSIZE];
-	int dataRead;
-	int64 totalDataRead;
+	int dataRead = 0;
+	int64 totalDataRead = 0;
 	int whichPage =0;
 
 	verifyLog(logControl, 
@@ -11053,8 +11053,8 @@ FileRepVerify_ComputeFileHash(
 
 		if (exception ==		FileRepVerifyCompareException_HeapRelation)
 		{
-			bool validPage;
-			bool madeChange;
+			bool validPage = false;
+			bool madeChange = false;
 
 			validPage =FileRepVerify_ProcessHeapPage(buffer, &madeChange, logControl); 
 
@@ -11084,8 +11084,8 @@ FileRepVerify_ComputeFileHash(
 		else if (exception ==			
 				 FileRepVerifyCompareException_BtreeIndex)
 		{
-			bool validPage;
-			bool madeChange;
+			bool validPage = false;
+			bool madeChange = false;
 
 			validPage = 
 				FileRepVerify_ProcessBtreeIndexPage(buffer, &madeChange, logControl);
@@ -11153,17 +11153,17 @@ checkDirectoryInDB(char * dir)
 	FilespaceScanToken token;
 	char   primaryFilespaceLocationBlankPadded[FilespaceLocationBlankPaddedWithNullTermLen];
 	char   mirrorFilespaceLocationBlankPadded[FilespaceLocationBlankPaddedWithNullTermLen];
-	char * primaryFilespaceLocation;
-	char * mirrorFilespaceLocation;
-	int16	 primary_dbId;
-	int16	 mirror_dbId;
+	char * primaryFilespaceLocation= NULL;
+	char * mirrorFilespaceLocation = NULL;
+	int16	 primary_dbId = 0;
+	int16	 mirror_dbId = 0;
 	PersistentFileSysState	persistentState;
 	MirroredObjectExistenceState mirrorExistenceState;
 	ItemPointerData	 persistentTid;
-	int64		 persistentSerialNum;
+	int64		 persistentSerialNum = 0;
 	Oid	   filespaceOid;
 
-	bool found;
+	bool found = false;
 	char primaryBaseDirectory[MAXPGPATH+1];
 
 	struct stat st;
@@ -11255,7 +11255,7 @@ checkDirectoryInDB(char * dir)
 bool
 extractDirPath(char * file, char * dir, int maxLen)
 {
-	int len, i;
+	int len=0, i=0;
 
 	len = strlen(file);
 	strcpy(dir, file);
@@ -11280,7 +11280,7 @@ extractDirPath(char * file, char * dir, int maxLen)
 bool
 extractDir(char * file, char * dir, int maxLen)
 {
-	int len, i;
+	int len =0, i=0;
 	int endOfDir =0;
 	int startOfDir =0;
 
@@ -11387,7 +11387,7 @@ processVerifyRequest(
 {
 	int status = STATUS_OK;
 	FileRepVerifyRequest_s *request = NULL;
-	bool sameToken;
+	bool sameToken = false;
 
 	printFileRepVerifyArguments(*args, DEBUG3);
 
