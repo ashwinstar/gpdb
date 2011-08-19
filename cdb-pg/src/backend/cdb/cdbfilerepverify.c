@@ -6112,7 +6112,7 @@ FileRepMirror_CompareAllSummaryItems(
 	numDirs = 0;
 	for (i=0; i< numSummaryItems; i++)
 	{
-		bool mismatch - false;
+		bool mismatch = false;
 		FileRepVerifySummaryItem_s *pItem = NULL;
 		FileRepVerifySummaryItem_s *itemArray = (FileRepVerifySummaryItem_s *)fileRepMessageBody;
 			 
