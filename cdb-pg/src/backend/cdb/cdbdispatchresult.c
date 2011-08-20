@@ -781,7 +781,7 @@ cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex)
         {
             char   *cmdTuples = PQcmdTuples(pgresult);
             if (cmdTuples)
-                sum += atoi(cmdTuples);
+                sum += atoll(cmdTuples);
         }
     }
     return sum;
