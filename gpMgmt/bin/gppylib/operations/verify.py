@@ -450,7 +450,7 @@ class InsertVerificationEntry(Operation):
     def execute(self):
         dburl = dbconn.DbURL()
         query = self.INSERT_VERIFICATION_ENTRY % (self.token, self.type, self.content, VerificationState.RUNNING)
-        with dbconn.connect(dburl) as conn:
+        with dbconn.connect(dburl, allowSystemTableMods='dml') as conn:
             dbconn.execSQL(conn, query)
 
 
@@ -465,7 +465,7 @@ class UpdateVerificationEntry(Operation):
     def execute(self):
         dburl = dbconn.DbURL()
         query = self.UPDATE_VERIFICATION_ENTRY % (self.state, self.done, self.mismatch, self.token)
-        with dbconn.connect(dburl) as conn:
+        with dbconn.connect(dburl, allowSystemTableMods='dml') as conn:
             dbconn.execSQL(conn, query)
 
 
@@ -477,7 +477,7 @@ class RemoveVerificationEntry(Operation):
     def execute(self):
         dburl = dbconn.DbURL()
         query = self.REMOVE_VERIFICATION_ENTRY % self.token
-        with dbconn.connect(dburl) as conn:
+        with dbconn.connect(dburl, allowSystemTableMods='dml') as conn:
             dbconn.execSQL(conn, query)
 
 
