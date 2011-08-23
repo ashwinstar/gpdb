@@ -1481,15 +1481,15 @@ sub get_relfilenode_func
     $psql_str .= $glob_connect
         if (defined($glob_connect));
 
-	# only read from "connectable" db's
+	# read from all db's, but separate out "connectable ones later...
     $psql_str .= " -c \' " . 
-		"select oid, datname from pg_database where datallowconn  \' ";
+		"select oid, datname, datallowconn from pg_database  \' ";
 
 #	print $psql_str, "\n";
 
     my $tabdef = `$psql_str`;
 
-	print "databases that allow connect:\n", $tabdef;
+	print "databases (with connect state):\n", $tabdef;
 
 	my $dbidinfo = tablelizer($tabdef);
 
@@ -1505,19 +1505,24 @@ sub get_relfilenode_func
 	{
 		if (exists($dbs{$rr->{oid}}))
 		{
-			$dbs{$rr->{oid}}->{dbname} = $rr->{datname};
+			if ($rr->{datallowconn} eq 't')
+			{
+				# normal case -- database allows connections
+				$dbs{$rr->{oid}}->{dbname} = $rr->{datname};
+			}
+			else # cannot connect
+			{
+				# handle template0 - treat as template1
+				if ($rr->{datname} eq "template0")
+				{
+					print "cannot connect to template0 (oid $rr->{oid}) - ",
+					"will resolve relfiles against template1 instead\n",
+					Data::Dumper->Dump([$dbs{$rr->{oid}}]);
+					$dbs{$rr->{oid}}->{dbname} = "template1";
+				}
+			}
 		}
 	}
-
-	# handle template0 - treat as template1
-	if (exists($dbs{10889}))
-	{
-		print "cannot connect to template0 (oid 10889) - ",
-		"will resolve relfiles against template1 instead\n",
-		Data::Dumper->Dump([$dbs{10889}]);
-		$dbs{10889}->{dbname} = "template1";
-	}
-
 
 #	print Data::Dumper->Dump([%dbs]);
 
