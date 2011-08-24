@@ -23110,11 +23110,11 @@ rabc: resscheduler:00000135:  (errcode(ERRCODE_OUT_OF_MEMORY),
 rabc: resscheduler:00000136:  errmsg("not enough shared memory for resource scheduler"))); 
 rabc: resscheduler:00000160:  elog(FATAL, "could not initialize portal increment hash"); 
 rabc: resscheduler:00000316:  elog(ERROR, "unknown resource limit type %d", i); 
-rabc: resscheduler:00000632:  elog(NOTICE, "this query requests %.0fkB", (double) queryMemory / 1024.0); 
-rabc: resscheduler:00000943:  ereport(ERROR, 
-rabc: resscheduler:00000944:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
-rabc: resscheduler:00000945:  errmsg("insufficient portal ids available"), 
-rabc: resscheduler:00000946:  errhint("Increase max_resource_portals_per_transaction."))); 
+rabc: resscheduler:00000624:  elog(NOTICE, "query requested %.0fKB", (double) queryMemory / 1024.0); 
+rabc: resscheduler:00000926:  ereport(ERROR, 
+rabc: resscheduler:00000927:  (errcode(ERRCODE_INSUFFICIENT_RESOURCES), 
+rabc: resscheduler:00000928:  errmsg("insufficient portal ids available"), 
+rabc: resscheduler:00000929:  errhint("Increase max_resource_portals_per_transaction."))); 
 aaaaa GP_IGNORE: laah: logtape - ./backend/utils/sort/logtape.c
 laah: logtape:00000141:  elog(ERROR, "Load logicaltapeset failed to read nFileBlocks"); 
 laah: logtape:00000155:  elog(ERROR, "Load logicaltapeset failed to read tape firstBlkNum"); 
