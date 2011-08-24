@@ -266,7 +266,15 @@ ValidateProtocolFunction(List *fnName, ExtPtcFuncType fntype)
 						(fntype == EXTPTC_FUNC_VALIDATOR ? "void" : "an integer")),
 				 errOmitLocation(true)));
 	
-	/* TODO: check func type (STABLE, etc... ) */
+	if (func_volatile(fnOid) == PROVOLATILE_IMMUTABLE)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("%s protocol function %s is declared IMMUTABLE",
+						func_type_to_name(fntype),
+						func_signature_string(fnName, nargs, inputTypes)),
+				 errhint("PROTOCOL functions must be declared STABLE or VOLATILE"),
+				 errOmitLocation(true)));
+
 	
 	/* Check protocol creator has permission to call the function */
 	aclresult = pg_proc_aclcheck(fnOid, GetUserId(), ACL_EXECUTE);

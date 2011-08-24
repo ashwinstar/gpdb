@@ -40,6 +40,7 @@
 #include "access/valid.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_exttable.h"
+#include "catalog/pg_proc.h"
 #include "commands/copy.h"
 #include "commands/dbcommands.h"
 #include "libpq/libpq-be.h"
@@ -1283,6 +1284,14 @@ lookupCustomFormatter(char *formatter_name, bool iswritable)
 									formatter_name,
 									(iswritable ? "writable" : "readable")),
 							errOmitLocation(true)));
+
+		/* check allowed volatility */
+		if (func_volatile(procOid) != PROVOLATILE_STABLE)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+					 errmsg("formatter function %s is not declared STABLE.",
+							 formatter_name),
+					 errOmitLocation(true)));
 
 		return procOid;			
 }
