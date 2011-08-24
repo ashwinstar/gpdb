@@ -582,16 +582,8 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 					Assert(queryMemory > 0);
 					if (gp_log_resqueue_memory)
 					{
-						elog(gp_resqueue_memory_log_level, "this query requests %.0fkB", (double) queryMemory / 1024.0);
+						elog(gp_resqueue_memory_log_level, "query requested %.0fKB", (double) queryMemory / 1024.0);
 					}					
-					if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
-					{
-						PolicyAutoAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
-					}
-					else
-					{
-						PolicyEagerFreeAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
-					}
 					
 					incData.increments[RES_MEMORY_LIMIT] = (Cost) queryMemory;
 				}
@@ -629,18 +621,9 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 					Assert(queryMemory > 0);
 					if (gp_log_resqueue_memory)
 					{
-						elog(NOTICE, "this query requests %.0fkB", (double) queryMemory / 1024.0);
+						elog(NOTICE, "query requested %.0fKB", (double) queryMemory / 1024.0);
 					}
 
-					if (gp_resqueue_memory_policy == RESQUEUE_MEMORY_POLICY_AUTO)
-					{
-						PolicyAutoAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
-					}
-					else
-					{
-						PolicyEagerFreeAssignOperatorMemoryKB(qDesc->plannedstmt, queryMemory);
-					}
-					
 					incData.increments[RES_MEMORY_LIMIT] = (Cost) queryMemory;
 				}
 				else 

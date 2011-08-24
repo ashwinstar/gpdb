@@ -845,11 +845,7 @@ PolicyEagerFreeAssignWalker(Node *node, PolicyEagerFreeContext *context)
 			 */
 			uint64 memKB = ComputeAvgMemKBForMemIntenseOp(context->groupNode);
 
-			/*
-			 * We can't add Assert(planNode->operatorMemKB == 0) here. It appears that
-			 * we might call PolicyEagerFreeAssignOperatorMemoryKB() multiple times.
-			 * For example, one in ResLockPortal(), the other in ExecutorStart(). Why?
-			 */
+			Assert(planNode->operatorMemKB == 0);
 
 			planNode->operatorMemKB = memKB;
 
