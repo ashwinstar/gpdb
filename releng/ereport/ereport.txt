@@ -449,95 +449,100 @@ taah: tupdesc:00000552:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 taah: tupdesc:00000553:  errmsg("column \"%s\" cannot be declared SETOF", 
 taah: tupdesc:00000554:  attname))); 
 aaaaa GP_IGNORE: faag: fileam - ./backend/access/external/fileam.c
-faag: fileam:00000548:  ereport(ERROR, 
-faag: fileam:00000549:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00000550:  errmsg("External table has more URLs then available primary " 
-faag: fileam:00000551:  "segments that can write into them"))); 
-faag: fileam:00000558:  /*elog(NOTICE, "seg %d got url number %d: %s", segindex, my_url, uri_str);*/ 
-faag: fileam:00000559:  } 
-faag: fileam:00000560:  
-faag: fileam:00000561:  /* 
-faag: fileam:00000562:  * Allocate and init our structure that keeps track of data parsing state 
-faag: fileam:00000563:  */ 
-faag: fileam:00000564:  extInsertDesc->ext_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData)); 
-faag: fileam:00000672:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
-faag: fileam:00000838:  ereport(ERROR, \ 
-faag: fileam:00000839:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
-faag: fileam:00000840:  (errmsg("%s", finalmsg) \ 
-faag: fileam:00000841:  ),errOmitLocation(true))); \ 
-faag: fileam:00000842: } 
-faag: fileam:00000843:  
-faag: fileam:00000844: /* 
-faag: fileam:00000845:  * parse_next_line 
-faag: fileam:00000846:  * 
-faag: fileam:00000847:  * Given a buffer of data, extract the next data line from it and parse it 
-faag: fileam:00000848:  * to attributes according to the data format specifications. 
-faag: fileam:00000849:  * 
-faag: fileam:00000850:  * Returns: 
-faag: fileam:00000851:  * LINE_OK - line parsed successfully. 
-faag: fileam:00000852:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
-faag: fileam:00000853:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
-faag: fileam:00000854:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
-faag: fileam:00000855:  */ 
-faag: fileam:00000856: static DataLineStatus parse_next_line(FileScanDesc scan) 
-faag: fileam:00000857: { 
-faag: fileam:00000858:  CopyState pstate = scan->fs_pstate; 
-faag: fileam:00001089:  elog(ERROR, "header line in custom format is not yet supported"); 
-faag: fileam:00001174:  elog(ERROR, "unsupported formatter notification (%d)", 
-faag: fileam:00001175:  formatter->fmt_notification); 
-faag: fileam:00001272:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
-faag: fileam:00001273:  errmsg("formatter function %s of type %s was not found.", 
-faag: fileam:00001274:  formatter_name, 
-faag: fileam:00001275:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001276:  errhint("Create it with CREATE FUNCTION."), 
-faag: fileam:00001277:  errOmitLocation(true))); 
-faag: fileam:00001281:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
-faag: fileam:00001282:  errmsg("formatter function %s of type %s has an incorrect return type", 
-faag: fileam:00001283:  formatter_name, 
-faag: fileam:00001284:  (iswritable ? "writable" : "readable")), 
-faag: fileam:00001285:  errOmitLocation(true))); 
-faag: fileam:00001370:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
-faag: fileam:00001371:  errmsg("The specified error table for this " 
-faag: fileam:00001372:  "external table doesn't appear to " 
-faag: fileam:00001373:  "exist in the database. It may have " 
-faag: fileam:00001374:  "been dropped."), 
-faag: fileam:00001375:  errhint("Refresh your external table definition."))); 
-faag: fileam:00001436:  ereport(ERROR, 
-faag: fileam:00001437:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-faag: fileam:00001438:  errmsg("No formatter function defined for this external table."))); 
-faag: fileam:00001624:  ereport(ERROR, 
-faag: fileam:00001625:  (errcode_for_file_access(), 
-faag: fileam:00001626:  errmsg("could not open \"%s\" for reading: %d %s", 
-faag: fileam:00001627:  scan->fs_uri, response_code, response_string), 
-faag: fileam:00001628:  errOmitLocation(true))); 
-faag: fileam:00001675:  ereport(ERROR, 
-faag: fileam:00001676:  (errcode_for_file_access(), 
-faag: fileam:00001677:  errmsg("could not open \"%s\" for writing: %d %s", 
-faag: fileam:00001678:  extInsertDesc->ext_uri, response_code, response_string))); 
-faag: fileam:00001737:  ereport(ERROR, 
-faag: fileam:00001738:  (errcode_for_file_access(), 
-faag: fileam:00001739:  errmsg("could not read from external file: %m"))); 
-faag: fileam:00001757:  ereport(ERROR, 
-faag: fileam:00001758:  (errcode_for_file_access(), 
-faag: fileam:00001759:  errmsg("could not write to external resource: %m"))); 
-faag: fileam:00001873:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
-faag: fileam:00001875:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
-faag: fileam:00001881:  elog(NOTICE,"%s",a); 
-faag: fileam:00002471:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002472:  errmsg("external table internal parse error: " 
-faag: fileam:00002473:  "no formatter function name found"))); 
-faag: fileam:00002479:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
-faag: fileam:00002480:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
-faag: fileam:00002481:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
-faag: fileam:00002488:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002489:  errmsg("external table internal parse error at \"%s\"", 
-faag: fileam:00002490:  token))); 
-faag: fileam:00002492:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002493:  errmsg("external table internal parse error at end of " 
-faag: fileam:00002494:  "line"))); 
-faag: fileam:00002545:  ereport(ERROR, 
-faag: fileam:00002546:  (errcode_for_file_access(), 
-faag: fileam:00002547:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+faag: fileam:00000549:  ereport(ERROR, 
+faag: fileam:00000550:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00000551:  errmsg("External table has more URLs then available primary " 
+faag: fileam:00000552:  "segments that can write into them"))); 
+faag: fileam:00000559:  /*elog(NOTICE, "seg %d got url number %d: %s", segindex, my_url, uri_str);*/ 
+faag: fileam:00000560:  } 
+faag: fileam:00000561:  
+faag: fileam:00000562:  /* 
+faag: fileam:00000563:  * Allocate and init our structure that keeps track of data parsing state 
+faag: fileam:00000564:  */ 
+faag: fileam:00000565:  extInsertDesc->ext_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData)); 
+faag: fileam:00000673:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
+faag: fileam:00000839:  ereport(ERROR, \ 
+faag: fileam:00000840:  (errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \ 
+faag: fileam:00000841:  (errmsg("%s", finalmsg) \ 
+faag: fileam:00000842:  ),errOmitLocation(true))); \ 
+faag: fileam:00000843: } 
+faag: fileam:00000844:  
+faag: fileam:00000845: /* 
+faag: fileam:00000846:  * parse_next_line 
+faag: fileam:00000847:  * 
+faag: fileam:00000848:  * Given a buffer of data, extract the next data line from it and parse it 
+faag: fileam:00000849:  * to attributes according to the data format specifications. 
+faag: fileam:00000850:  * 
+faag: fileam:00000851:  * Returns: 
+faag: fileam:00000852:  * LINE_OK - line parsed successfully. 
+faag: fileam:00000853:  * LINE_ERROR - line was mal-formatted. error caught and handled. 
+faag: fileam:00000854:  * NEED_MORE_DATA - line not parsed all the way through. need more data. 
+faag: fileam:00000855:  * END_MARKER - saw line end marker. skip attr parsing, we're done. 
+faag: fileam:00000856:  */ 
+faag: fileam:00000857: static DataLineStatus parse_next_line(FileScanDesc scan) 
+faag: fileam:00000858: { 
+faag: fileam:00000859:  CopyState pstate = scan->fs_pstate; 
+faag: fileam:00001090:  elog(ERROR, "header line in custom format is not yet supported"); 
+faag: fileam:00001175:  elog(ERROR, "unsupported formatter notification (%d)", 
+faag: fileam:00001176:  formatter->fmt_notification); 
+faag: fileam:00001273:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION), 
+faag: fileam:00001274:  errmsg("formatter function %s of type %s was not found.", 
+faag: fileam:00001275:  formatter_name, 
+faag: fileam:00001276:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001277:  errhint("Create it with CREATE FUNCTION."), 
+faag: fileam:00001278:  errOmitLocation(true))); 
+faag: fileam:00001282:  ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION), 
+faag: fileam:00001283:  errmsg("formatter function %s of type %s has an incorrect return type", 
+faag: fileam:00001284:  formatter_name, 
+faag: fileam:00001285:  (iswritable ? "writable" : "readable")), 
+faag: fileam:00001286:  errOmitLocation(true))); 
+faag: fileam:00001290:  ereport(ERROR, 
+faag: fileam:00001291:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+faag: fileam:00001292:  errmsg("formatter function %s is not declared STABLE.", 
+faag: fileam:00001293:  formatter_name), 
+faag: fileam:00001294:  errOmitLocation(true))); 
+faag: fileam:00001379:  ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE), 
+faag: fileam:00001380:  errmsg("The specified error table for this " 
+faag: fileam:00001381:  "external table doesn't appear to " 
+faag: fileam:00001382:  "exist in the database. It may have " 
+faag: fileam:00001383:  "been dropped."), 
+faag: fileam:00001384:  errhint("Refresh your external table definition."))); 
+faag: fileam:00001445:  ereport(ERROR, 
+faag: fileam:00001446:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+faag: fileam:00001447:  errmsg("No formatter function defined for this external table."))); 
+faag: fileam:00001633:  ereport(ERROR, 
+faag: fileam:00001634:  (errcode_for_file_access(), 
+faag: fileam:00001635:  errmsg("could not open \"%s\" for reading: %d %s", 
+faag: fileam:00001636:  scan->fs_uri, response_code, response_string), 
+faag: fileam:00001637:  errOmitLocation(true))); 
+faag: fileam:00001684:  ereport(ERROR, 
+faag: fileam:00001685:  (errcode_for_file_access(), 
+faag: fileam:00001686:  errmsg("could not open \"%s\" for writing: %d %s", 
+faag: fileam:00001687:  extInsertDesc->ext_uri, response_code, response_string))); 
+faag: fileam:00001746:  ereport(ERROR, 
+faag: fileam:00001747:  (errcode_for_file_access(), 
+faag: fileam:00001748:  errmsg("could not read from external file: %m"))); 
+faag: fileam:00001766:  ereport(ERROR, 
+faag: fileam:00001767:  (errcode_for_file_access(), 
+faag: fileam:00001768:  errmsg("could not write to external resource: %m"))); 
+faag: fileam:00001882:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
+faag: fileam:00001884:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
+faag: fileam:00001890:  elog(NOTICE,"%s",a); 
+faag: fileam:00002480:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002481:  errmsg("external table internal parse error: " 
+faag: fileam:00002482:  "no formatter function name found"))); 
+faag: fileam:00002488:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
+faag: fileam:00002489:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
+faag: fileam:00002490:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
+faag: fileam:00002497:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002498:  errmsg("external table internal parse error at \"%s\"", 
+faag: fileam:00002499:  token))); 
+faag: fileam:00002501:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002502:  errmsg("external table internal parse error at end of " 
+faag: fileam:00002503:  "line"))); 
+faag: fileam:00002554:  ereport(ERROR, 
+faag: fileam:00002555:  (errcode_for_file_access(), 
+faag: fileam:00002556:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
 uaad: url:00000159:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
 uaad: url:00000188:  //elog(NOTICE, "write_callback %d", nbytes); 
@@ -2775,25 +2780,32 @@ pabe: pgxextprotocol:00000264:  func_type_to_name(fntype),
 pabe: pgxextprotocol:00000265:  func_signature_string(fnName, nargs, inputTypes), 
 pabe: pgxextprotocol:00000266:  (fntype == EXTPTC_FUNC_VALIDATOR ? "void" : "an integer")), 
 pabe: pgxextprotocol:00000267:  errOmitLocation(true))); 
-pabe: pgxextprotocol:00000324:  ereport(ERROR, 
-pabe: pgxextprotocol:00000325:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabe: pgxextprotocol:00000326:  errmsg("protocol \"%s\" does not exist", 
-pabe: pgxextprotocol:00000327:  prot_name))); 
-pabe: pgxextprotocol:00000337:  ereport(ERROR, 
-pabe: pgxextprotocol:00000338:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabe: pgxextprotocol:00000339:  errmsg("protocol '%s' has no %s function defined", 
-pabe: pgxextprotocol:00000340:  prot_name, func_type_to_name(prot_type)))); 
-pabe: pgxextprotocol:00000395:  ereport(ERROR, 
-pabe: pgxextprotocol:00000396:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabe: pgxextprotocol:00000397:  errmsg("protocol \"%s\" does not exist", 
-pabe: pgxextprotocol:00000398:  prot_name))); 
-pabe: pgxextprotocol:00000440:  elog(ERROR, "protocol %u could not be found", protOid); 
-pabe: pgxextprotocol:00000452:  ereport(ERROR, 
-pabe: pgxextprotocol:00000453:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-pabe: pgxextprotocol:00000454:  errmsg("internal error: protocol '%u' has no name defined", 
-pabe: pgxextprotocol:00000455:  protOid))); 
-pabe: pgxextprotocol:00000474:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_name"); 
-pabe: pgxextprotocol:00000490:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_attnum"); 
+pabe: pgxextprotocol:00000270:  ereport(ERROR, 
+pabe: pgxextprotocol:00000271:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+pabe: pgxextprotocol:00000272:  errmsg("%s protocol function %s is declared IMMUTABLE", 
+pabe: pgxextprotocol:00000273:  func_type_to_name(fntype), 
+pabe: pgxextprotocol:00000274:  func_signature_string(fnName, nargs, inputTypes)), 
+pabe: pgxextprotocol:00000275:  errhint("PROTOCOL functions must be declared STABLE or VOLATILE"), 
+pabe: pgxextprotocol:00000276:  errOmitLocation(true))); 
+pabe: pgxextprotocol:00000332:  ereport(ERROR, 
+pabe: pgxextprotocol:00000333:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabe: pgxextprotocol:00000334:  errmsg("protocol \"%s\" does not exist", 
+pabe: pgxextprotocol:00000335:  prot_name))); 
+pabe: pgxextprotocol:00000345:  ereport(ERROR, 
+pabe: pgxextprotocol:00000346:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabe: pgxextprotocol:00000347:  errmsg("protocol '%s' has no %s function defined", 
+pabe: pgxextprotocol:00000348:  prot_name, func_type_to_name(prot_type)))); 
+pabe: pgxextprotocol:00000403:  ereport(ERROR, 
+pabe: pgxextprotocol:00000404:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabe: pgxextprotocol:00000405:  errmsg("protocol \"%s\" does not exist", 
+pabe: pgxextprotocol:00000406:  prot_name))); 
+pabe: pgxextprotocol:00000448:  elog(ERROR, "protocol %u could not be found", protOid); 
+pabe: pgxextprotocol:00000460:  ereport(ERROR, 
+pabe: pgxextprotocol:00000461:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+pabe: pgxextprotocol:00000462:  errmsg("internal error: protocol '%u' has no name defined", 
+pabe: pgxextprotocol:00000463:  protOid))); 
+pabe: pgxextprotocol:00000482:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_name"); 
+pabe: pgxextprotocol:00000498:  elog(ERROR, "internal error in pg_extprotocol:func_type_to_attnum"); 
 aaaaa GP_IGNORE: pabb: pgxexttable - ./backend/catalog/pg_exttable.c
 pabb: pgxexttable:00000171:  ereport(ERROR, 
 pabb: pgxexttable:00000172:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
