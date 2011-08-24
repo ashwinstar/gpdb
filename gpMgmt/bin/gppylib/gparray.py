@@ -2086,7 +2086,7 @@ class GpArray:
                     if len(seg.mirrorDBs) > 0 and seg.mirrorDBs[0].dbid in self.recoveredSegmentDbids:
                         recovered_contents.append((seg.primaryDB.content, seg.primaryDB.dbid, seg.mirrorDBs[0].dbid))
 
-        conn = dbconn.connect(dbURL, True)
+        conn = dbconn.connect(dbURL, True, allowSystemTableMods = 'dml')
         for (content_id, primary_dbid, mirror_dbid) in recovered_contents:
             sql = "UPDATE gp_segment_configuration SET role=preferred_role where content = %d" % content_id
             dbconn.executeUpdateOrInsert(conn, sql, 2)
