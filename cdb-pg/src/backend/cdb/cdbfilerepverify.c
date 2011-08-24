@@ -1235,7 +1235,8 @@ clearFileRepVerifyArguments(FileRepVerifyArguments *args)
 char*
 FileRepVerify_GetCurrentToken(void)
 {
-	return fileRepVerifyShmem->request.fileRepVerifyArguments.token;
+	return ((fileRepVerifyShmem != NULL) ?
+			(fileRepVerifyShmem->request.fileRepVerifyArguments.token) : "");
 }
 
 float
@@ -1283,6 +1284,10 @@ FileRepVerify_GetEstimateVerifyCompletionTime(void)
 	struct timeval	currentVerificationTime = {0, 0};
 	struct timeval	estimateVerifyCompletionTime = {0, 0};
 
+	if (fileRepVerifyShmem == NULL)
+	{
+		return estimateVerifyCompletionTime;
+	}
 	/* pull values out of shared memory into local variables so we 
 	 * have consistent values for calculation here 
 	 */
@@ -1314,9 +1319,6 @@ FileRepVerify_GetEstimateVerifyCompletionTime(void)
 	else
 	{
 		estimateVerifyCompletionTime = currentVerificationTime;
-/*		estimateVerifyCompletionTime.tv_sec = 0;
-		estimateVerifyCompletionTime.tv_usec = 0;
-*/
 	}
 
 	if (Debug_filerep_print)
@@ -1344,12 +1346,26 @@ FileRepVerify_GetEstimateVerifyCompletionTime(void)
 struct timeval
 FileRepVerify_GetVerifyRequestStartTime(void)
 {
-	return fileRepVerifyShmem->request.startVerificationTime;
+	struct timeval	startVerificationTime = {0, 0};
+
+	if (fileRepVerifyShmem != NULL)
+	{
+		return fileRepVerifyShmem->request.startVerificationTime;
+	}
+	else
+	{
+		return startVerificationTime;
+	}
 }
 
 char*
 FileRepVerify_GetVerifyRequestMode(void)
 {
+	if (fileRepVerifyShmem == NULL)
+	{
+		return "Unknown";
+	}
+	
 	if (fileRepVerifyShmem->request.requestType == 
 		FileRepVerifyRequestType_FULL)
 	{
