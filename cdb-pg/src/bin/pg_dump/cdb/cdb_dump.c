@@ -307,9 +307,9 @@ addPassThroughLongParm(const char *Parm, const char *pszValue, char *pszPassThro
 //		for (cell = list.head; cell; cell = cell->next)
 //		{
 //			int numtups = 0;
-//			
+//
 //			appendPQExpBuffer(query, "select 1 from pg_partition_rule "
-//									 "where parchildrelid ='%u'::pg_catalog.oid; ", 
+//									 "where parchildrelid ='%u'::pg_catalog.oid; ",
 //									  cell->val);
 //
 //			res = PQexec(g_conn, query->data);
@@ -326,9 +326,9 @@ addPassThroughLongParm(const char *Parm, const char *pszValue, char *pszPassThro
 //
 //		}
 //	}
-//		
+//
 //	destroyPQExpBuffer(query);
-//	
+//
 //	return true;
 //}
 
@@ -686,7 +686,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"clean", no_argument, NULL, 'c'},
 		/* {"create", no_argument, NULL, 'C'}, */
 		/*
-		 * {"file", required_argument, NULL, 'f'}, 
+		 * {"file", required_argument, NULL, 'f'},
 		 * {"format",  required_argument, NULL, 'F'},
 		 */
 		{"encoding", required_argument, NULL, 'E'},
@@ -832,13 +832,14 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				break;
 
 /*
-			case 'C':			 
+			case 'C':
 				outputCreateDB = 1;
 				break;
 */
 
 			case 'd':			/* dump data as proper insert strings */
 				dump_inserts = true;
+				pInputOpts->pszPassThroughParms = addPassThroughParm(c, NULL, pInputOpts->pszPassThroughParms);
 				fprintf(stderr," --inserts is preferred over -d.  -d is deprecated.\n");
 				break;
 
@@ -846,6 +847,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 								 * attr names */
 				dump_inserts = true;
 				column_inserts = true;
+				pInputOpts->pszPassThroughParms = addPassThroughParm(c, NULL, pInputOpts->pszPassThroughParms);
 				fprintf(stderr," --column-inserts is preferred over -D.  -D is deprecated.\n");
 				break;
 
