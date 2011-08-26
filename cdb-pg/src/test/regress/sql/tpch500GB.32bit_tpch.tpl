@@ -1886,51 +1886,51 @@ order by
 
 select 'query 02' as current_query;
 
-explain select 
-	s.s_acctbal,
-	s.s_name,
-	n.n_name,
-	p.p_partkey,
-	p.p_mfgr,
-	s.s_address,
-	s.s_phone,
-	s.s_comment 
-from 
-	supplier s, 
-	partsupp ps, 
-	nation n, 
-	region r, 
-	part p, 
-	(select p_partkey, min(ps_supplycost) as min_ps_cost 
-		from 
-			part, 
-			partsupp , 	
-			supplier,
-			nation, 
-			region 
-		where 
-			p_partkey=ps_partkey 
-			and s_suppkey = ps_suppkey 
-			and s_nationkey = n_nationkey 
-			and n_regionkey = r_regionkey 
-			and r_name = 'EUROPE' 
-		group by p_partkey ) g 
-where 
-	p.p_partkey = ps.ps_partkey 
-	and g.p_partkey = p.p_partkey 
-	and g. min_ps_cost = ps.ps_supplycost 
-	and s.s_suppkey = ps.ps_suppkey 
-	and p.p_size = 36 
-	and p.p_type like '%COPPER' 
-	and s.s_nationkey = n.n_nationkey 
-	and n.n_regionkey = r.r_regionkey 
-	and r.r_name = 'EUROPE' 
-order by 
-	s.s_acctbal desc,
-	n.n_name,
-	s.s_name,
-	p.p_partkey
+explain select
+        s_acctbal,
+        s_name,
+        n_name,
+        p_partkey,
+        p_mfgr,
+        s_address,
+        s_phone,
+        s_comment
+from
+        part,
+        supplier,
+        partsupp,
+        nation,
+        region
+where
+        p_partkey = ps_partkey
+        and s_suppkey = ps_suppkey
+        and p_size = 36
+        and p_type like '%COPPER'
+        and s_nationkey = n_nationkey
+        and n_regionkey = r_regionkey
+        and r_name = 'EUROPE'
+        and ps_supplycost = (
+                select
+                        min(ps_supplycost)
+                from
+                        partsupp,
+                        supplier,
+                        nation,
+                        region
+                where
+                        p_partkey = ps_partkey
+                        and s_suppkey = ps_suppkey
+                        and s_nationkey = n_nationkey
+                        and n_regionkey = r_regionkey
+                        and r_name = 'EUROPE'
+        )
+order by
+        s_acctbal desc,
+        n_name,
+        s_name,
+        p_partkey
 LIMIT 100;
+
 --
 --
 -- 03.txt
@@ -2403,28 +2403,35 @@ drop view revenue0;
 select 'query 16' as current_query;
 
 -- using 2133894592 as a seed to the RNG
-explain select 
-	p_brand, 
-	p_type, 
-	p_size, 
-	count(distinct ps_suppkey) as supplier_cnt 
-from 
-	part, 
-	partsupp left join supplier on (ps_suppkey=s_suppkey and s_comment like '%Customer%Complaints%' ) 
-where 
-	p_partkey = ps_partkey 
-	and p_brand <> 'Brand#15' 
-	and p_type not like 'LARGE BRUSHED%' 
+explain select
+	p_brand,
+	p_type,
+	p_size,
+	count(distinct ps_suppkey) as supplier_cnt
+from
+	partsupp,
+	part
+where
+	p_partkey = ps_partkey
+	and p_brand <> 'Brand#15'
+	and p_type not like 'LARGE BRUSHED%'
 	and p_size in (4, 41, 17, 9, 15, 2, 25, 34)
-	and s_suppkey is null 
-group by 
-	p_brand, 
-	p_type, 
-	p_size 
-order by 
-	supplier_cnt desc, 
-	p_brand, 
-	p_type, 
+	and ps_suppkey not in (
+		select
+			s_suppkey
+		from
+			supplier
+		where
+			s_comment like '%Customer%Complaints%'
+	)
+group by
+	p_brand,
+	p_type,
+	p_size
+order by
+	supplier_cnt desc,
+	p_brand,
+	p_type,
 	p_size;
 
 --
@@ -2436,26 +2443,22 @@ select 'query 17' as current_query;
 
 -- using 2133894592 as a seed to the RNG
 explain select
-      sum(l_extendedprice) / 7.0 as avg_yearly
+	sum(l_extendedprice) / 7.0 as avg_yearly
 from
-      lineitem,
-      (
-          select
-              p_partkey as x_partkey,
-              0.2 * avg(l_quantity) as x_avg_20
-          from
-              part,
-              lineitem
-          where
-              p_partkey = l_partkey
-              and p_brand = 'Brand#54'
-              and p_container = 'SM CAN'
-          group by
-              p_partkey
-      ) x
+	lineitem,
+	part
 where
-      x_partkey = l_partkey
-and l_quantity < x_avg_20;
+	p_partkey = l_partkey
+	and p_brand = 'Brand#54'
+	and p_container = 'SM CAN'
+	and l_quantity < (
+		select
+			0.2 * avg(l_quantity)
+		from
+			lineitem
+		where
+			l_partkey = p_partkey
+	);
 
 --
 --
@@ -2550,36 +2553,42 @@ where
 select 'query 20' as current_query;
 
 -- using 2133894592 as a seed to the RNG
-explain select 
+explain select
 	s_name,
-	s_address 
-from 
-	supplier, 
-	nation 
-where 
-	s_suppkey in( 
-		select 
-			ps_suppkey 
-		from 
-			partsupp, 
-			( 
-				select 
-					sum(l_quantity) as qty_sum, l_partkey, l_suppkey 
-				from 
-					lineitem 
-				where 
-					l_shipdate >= date '1997-01-01' 
-					and l_shipdate < date '1997-01-01' + interval '1 year' 
-				group by l_partkey, l_suppkey ) g 
-		where 
-			g.l_partkey = ps_partkey 
-			and g.l_suppkey = ps_suppkey 
-			and ps_availqty > 0.5 * g.qty_sum 
-			and ps_partkey in ( select p_partkey from part where p_name like 'burnished%' ) 
-		) 
-	and s_nationkey = n_nationkey 
+	s_address
+from
+	supplier,
+	nation
+where
+	s_suppkey in (
+		select
+			ps_suppkey
+		from
+			partsupp
+		where
+			ps_partkey in (
+				select
+					p_partkey
+				from
+					part
+				where
+					p_name like 'burnished%'
+			)
+			and ps_availqty > (
+				select
+					0.5 * sum(l_quantity)
+				from
+					lineitem
+				where
+					l_partkey = ps_partkey
+					and l_suppkey = ps_suppkey
+					and l_shipdate >= date '1997-01-01'
+					and l_shipdate < date '1997-01-01' + interval '1 year'
+			)
+	)
+	and s_nationkey = n_nationkey
 	and n_name = 'ALGERIA'
-order by 
+order by
 	s_name;
 
 
@@ -2591,38 +2600,44 @@ order by
 select 'query 21' as current_query;
 
 -- using 2133894592 as a seed to the RNG
-explain select 
-	s_name, 
-	count(distinct(l1.l_orderkey||l1.l_linenumber)) as numwait 
-from 
-	supplier, 
-	orders, 
-	nation, 
-	lineitem l1 
-		left join lineitem l2 
-			on (l2.l_orderkey = l1.l_orderkey and l2.l_suppkey <> l1.l_suppkey) 
-		left join (
-			select 
-				l3.l_orderkey,
-				l3.l_suppkey 
-			from 
-				lineitem l3 
-			where 
-				l3.l_receiptdate > l3.l_commitdate) l4 
-			on (l4.l_orderkey = l1.l_orderkey and l4.l_suppkey <> l1.l_suppkey) 
-where 
-	s_suppkey = l1.l_suppkey 
-	and o_orderkey = l1.l_orderkey 
-	and o_orderstatus = 'F' 
-	and l1.l_receiptdate > l1.l_commitdate 
-	and l2.l_orderkey is not null 
-	and l4.l_orderkey is null 
-	and s_nationkey = n_nationkey 
-	and n_name = 'SAUDI ARABIA' 
-group by 
-	s_name 
-order by 
-	numwait desc, 
+explain select
+	s_name,
+	count(*) as numwait
+from
+	supplier,
+	lineitem l1,
+	orders,
+	nation
+where
+	s_suppkey = l1.l_suppkey
+	and o_orderkey = l1.l_orderkey
+	and o_orderstatus = 'F'
+	and l1.l_receiptdate > l1.l_commitdate
+	and exists (
+		select
+			*
+		from
+			lineitem l2
+		where
+			l2.l_orderkey = l1.l_orderkey
+			and l2.l_suppkey <> l1.l_suppkey
+	)
+	and not exists (
+		select
+			*
+		from
+			lineitem l3
+		where
+			l3.l_orderkey = l1.l_orderkey
+			and l3.l_suppkey <> l1.l_suppkey
+			and l3.l_receiptdate > l3.l_commitdate
+	)
+	and s_nationkey = n_nationkey
+	and n_name = 'SAUDI ARABIA'
+group by
+	s_name
+order by
+	numwait desc,
 	s_name
 LIMIT 100;
 
@@ -2634,36 +2649,41 @@ LIMIT 100;
 select 'query 22' as current_query;
 
 -- using 2133894592 as a seed to the RNG
-explain select 
-	cntrycode, 
-	count(*) as numcust, 
-	sum(c_acctbal) as totacctbal 
-from 
-	( 
-		select 
-			substring(c_phone from 1 for 2) as cntrycode, 
-			c_acctbal 
-		from 
-			customer left join orders 
-				on c_custkey = o_custkey 
-		where 
-			substring(c_phone from 1 for 2) in 
-				('10', '28', '11', '15', '18', '16', '19') 
-			and c_acctbal > ( 
-				select 
-					avg(c_acctbal) 
-				from 
-					customer 
-				where 
-					c_acctbal > 0.00 
-					and substring(c_phone from 1 for 2) in 
-						('10', '28', '11', '15', '18', '16', '19') 
-			) 
-			and o_custkey is null 
-	) as custsale 
-group by 
-	cntrycode 
-order by 
+explain select
+	cntrycode,
+	count(*) as numcust,
+	sum(c_acctbal) as totacctbal
+from
+	(
+		select
+			substring(c_phone from 1 for 2) as cntrycode,
+			c_acctbal
+		from
+			customer
+		where
+			substring(c_phone from 1 for 2) in
+				('10', '28', '11', '15', '18', '16', '19')
+			and c_acctbal > (
+				select
+					avg(c_acctbal)
+				from
+					customer
+				where
+					c_acctbal > 0.00
+					and substring(c_phone from 1 for 2) in
+						('10', '28', '11', '15', '18', '16', '19')
+			)
+			and not exists (
+				select
+					*
+				from
+					orders
+				where
+					o_custkey = c_custkey
+			)
+	) as custsale
+group by
+	cntrycode
+order by
 	cntrycode;
-
 -- EOF

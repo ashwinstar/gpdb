@@ -569,6 +569,8 @@ cdbpullup_make_expr(Index varno, AttrNumber varattno, Expr *oldexpr)
         Var        *var = (Var *)copyObject(oldexpr);
         var->varno = varno;
         var->varattno = varattno;
+        var->varoattno = varattno;
+        var->varnoold = varno;
         var->varlevelsup = 0;
         return (Expr *) var;
     }

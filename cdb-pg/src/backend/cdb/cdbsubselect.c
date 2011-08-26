@@ -16,18 +16,40 @@
 #include "optimizer/prep.h"              /* canonicalize_qual() */
 #include "optimizer/var.h"              /* contain_vars_of_level_or_above() */
 #include "parser/parse_oper.h"          /* make_op() */
+#include "parser/parse_expr.h"
 #include "parser/parse_relation.h"      /* addRangeTableEntryForSubquery() */
 #include "parser/parsetree.h"           /* rt_fetch() */
 #include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"            /* get_op_btree_interpretation() */
 #include "utils/syscache.h"
 #include "cdb/cdbsubselect.h"           /* me */
+#include "lib/stringinfo.h"
+#include "cdb/cdbpullup.h"
+
+extern bool sort_op_can_sort(Oid opid, bool mergejoin);
+extern List *add_to_flat_tlist(List *tlist, List *exprs, bool resjunk);
 
 static Node *
 pull_up_IN_clauses(PlannerInfo *root, List** rtrlist_inout, Node *clause);
 
 static Node *
 convert_IN_to_antijoin(PlannerInfo * root, List** rtrlist_inout, SubLink * sublink);
+
+static int
+add_expr_subquery_rte(Query * parse, Query * subselect);
+
+
+static JoinExpr *
+make_join_expr(Node *larg, int r_rtindex, int join_type);
+
+static Node *
+make_lasj_quals(PlannerInfo *root, SubLink * sublink, int subquery_indx);
+
+static Node *
+add_null_match_clause(Node *clause);
+
+static Node *
+not_null_inner_vars(Node *clause);
 
 typedef struct NonNullableVarsContext
 {
@@ -186,6 +208,504 @@ cdbsubselect_add_rte_and_ininfo(PlannerInfo    *root,
     return ininfo;
 }                               /* cdbsubselect_add_rte_and_ininfo */
 
+/**
+ * safe_to_convert_NOT_EXISTS
+ */
+static bool
+safe_to_convert_NOT_EXISTS(SubLink *sublink)
+{
+	Query	       *subselect = (Query *)sublink->subselect;
+
+	if (subselect->jointree->fromlist == NULL)
+		return false;
+
+	if (expression_returns_set((Node *)subselect->targetList))
+		return false;
+
+	/* No set operations in the subquery */
+	if (subselect->setOperations)
+		return false;
+
+	/**
+	 * If there are no correlations in the WHERE clause, then don't bother.
+	 */
+	if (!contain_vars_of_level_or_above(sublink->subselect, 1))
+		return false;
+
+	/**
+	 * If deeply correlated, don't bother.
+	 */
+	if (contain_vars_of_level_or_above(sublink->subselect, 2))
+		return false;
+
+	/**
+	 * If subquery has more than one relation, then don't bother.
+	 */
+	if (list_length(subselect->rtable) > 1)
+		return false;
+
+	return true;
+}
+
+/**
+ * Walker that performs the following tasks:
+ * - It checks if a given expr is "safe" to be pulled up to be a join
+ * - Extracts out the vars from the outer query in the qual in order
+ * - Extracts out the vars from the inner query in the qual in order
+ */
+typedef struct ConvertExprToJoinWalkerContext
+{
+	bool safeToConvert; /* Can correlated expression subquery be pulled up? */
+	Node *joinQual; /* Qual to employ to join subquery */
+	Node *innerQual; /* Qual to leave behind in subquery */
+	List *groupClause; /* grouping clause for subquery */
+	List *targetList; /* targetlist for subquery */
+} ConvertExprToJoinWalkerContext;
+
+/**
+ * Initialize context.
+ */
+static void InitConvertExprToJoinWalkerContext(ConvertExprToJoinWalkerContext *ctx)
+{
+	Assert(ctx);
+	ctx->safeToConvert = true;
+	ctx->joinQual = NULL;
+	ctx->innerQual = NULL;
+	ctx->groupClause = NIL;
+	ctx->targetList = NIL;
+}
+
+/**
+ * Checks if an opexpression is of the form (a = b) where a and b are vars. One of them must
+ * be an outer var and one of them is an inner var.
+ * Input:
+ * 	opexp - op expression
+ * Output:
+ * 	returns true if correlated equality condition
+ * 	*outerVar - points to the outer var in the condition
+ * 	*innerVar - points to the inner var in the condition
+ * 	*sortOp - postgres special, sort operator to implement the condition as a mergejoin.
+ */
+static bool IsCorrelatedEqualityOpExpr(	OpExpr *opexp, Var **outerVar, Var **innerVar, Oid *sortOp )
+{
+	Assert(opexp);
+	Assert(list_length(opexp->args) > 1);
+	Assert(outerVar);
+	Assert(innerVar);
+	Assert(sortOp);
+
+	Oid lsortOp = InvalidOid;
+	Oid rsortOp = InvalidOid;
+
+	/**
+	 * If this is an expression of the form a = b, then we want to know about the vars involved.
+	 */
+
+	bool isEqualityOp = op_mergejoinable(opexp->opno, &lsortOp, &rsortOp);
+
+	if (!isEqualityOp
+			|| list_length(opexp->args) != 2
+			|| !IsA(list_nth(opexp->args, 0), Var)
+			|| !IsA(list_nth(opexp->args, 1), Var)
+		)
+	{
+		return false;
+	}
+
+	Assert(lsortOp == rsortOp);
+	Assert(lsortOp != InvalidOid);
+
+	Var *v1 = (Var *) list_nth(opexp->args, 0);
+	Var *v2 = (Var *) list_nth(opexp->args, 1);
+
+	/**
+	 * One of the vars must be outer, and other must be inner.
+	 */
+
+	Var *tOuterVar = NULL;
+	Var *tInnerVar = NULL;
+
+	if (v1->varlevelsup > 0)
+	{
+		tOuterVar = copyObject(v1);
+	}
+	else
+	{
+		tInnerVar = copyObject(v1);
+	}
+
+	if (v2->varlevelsup > 0)
+	{
+		tOuterVar = copyObject(v2);
+	}
+	else
+	{
+		tInnerVar = copyObject(v2);
+	}
+
+	/**
+	 * It is correlated only if we found an inner and outer var.
+	 */
+
+	if (tOuterVar && tInnerVar)
+	{
+		*outerVar = tOuterVar;
+		*innerVar = tInnerVar;
+		*sortOp = lsortOp;
+		return true;
+	}
+
+	return false;
+}
+
+/**
+ * This method recursively walks down the quals of an expression subquery to see if it can be pulled up to a join
+ * and constructs the pieces necessary to perform the pullup.
+ * E.g. SELECT * FROM outer o WHERE o.a < (SELECT avg(i.x) FROM inner i WHERE o.b = i.y)
+ * This extracts interesting pieces of the subquery so as to create SELECT i.y, avg(i.x) from inner i GROUP by i.y
+ */
+static void
+ConvertExprToJoinWalker(Node *node, ConvertExprToJoinWalkerContext *context)
+{
+	Assert(context);
+	Assert(context->safeToConvert);
+	Assert(node);
+
+	if (IsA(node, BoolExpr))
+	{
+
+		/**
+		 * Be extremely conservative. If there are any outer vars under an or or a not expression, then give up.
+		 */
+		if (not_clause(node)
+				|| or_clause(node))
+		{
+			if (contain_vars_of_level_or_above(node, 1))
+			{
+				context->safeToConvert = false;
+				return;
+			}
+			context->innerQual = make_and_qual(context->innerQual, node);
+			return;
+		}
+
+		Assert(and_clause(node));
+
+		BoolExpr *bexp = (BoolExpr *) node;
+		ListCell *lc = NULL;
+		foreach (lc, bexp->args)
+		{
+			Node *arg = (Node *) lfirst(lc);
+
+			/**
+			 * If there is an outer var anywhere in the boolean expression, walk recursively.
+			 */
+			if (contain_vars_of_level_or_above(arg, 1))
+			{
+				ConvertExprToJoinWalker(arg, context);
+
+				if (!context->safeToConvert)
+				{
+					return;
+				}
+			}
+			else
+			{
+				/**
+				 * This qual should be part of the subquery's inner qual.
+				 */
+				context->innerQual = make_and_qual(context->innerQual, arg);
+			}
+		}
+		return;
+	}
+
+	if (contain_vars_of_level_or_above(node, 1))
+	{
+		if ( IsA(node, OpExpr))
+		{
+			OpExpr *opexp = (OpExpr *) node;
+
+			/**
+			 * If this is an expression of the form a = b, then we want to know about the vars involved.
+			 */
+			Oid sortOp = InvalidOid;
+			Var *outerVar = NULL;
+			Var *innerVar = NULL;
+
+			if (IsCorrelatedEqualityOpExpr(opexp, &outerVar, &innerVar, &sortOp))
+			{
+				GroupClause *gc = makeNode(GroupClause);
+				gc->sortop = sortOp;
+				gc->tleSortGroupRef = list_length(context->groupClause) + 1;
+				context->groupClause = lappend(context->groupClause, gc);
+
+				TargetEntry *tle = makeTargetEntry(copyObject(innerVar),		/* copy needed?? */
+						list_length(context->targetList) + 1,
+						NULL,
+						false);
+				tle->ressortgroupref = list_length(context->targetList) + 1;
+				context->targetList = lappend(context->targetList, tle);
+
+				context->joinQual = make_and_qual(context->joinQual, (Node *) opexp);
+
+				Assert(list_length(context->groupClause) == list_length(context->targetList));
+
+				return;
+			}
+		}
+
+		/**
+		 * Correlated join expression contains incompatible operators. Not safe to convert.
+		 */
+		context->safeToConvert = false;
+	}
+
+	return;
+}
+
+
+
+/**
+ * Safe to convert expr sublink to a join
+ */
+static bool
+safe_to_convert_EXPR(SubLink *sublink, ConvertExprToJoinWalkerContext * ctx1)
+{
+	Assert(ctx1);
+
+	Query	       *subselect = (Query *)sublink->subselect;
+
+	if (subselect->jointree->fromlist == NULL)
+		return false;
+
+	if (expression_returns_set((Node *)subselect->targetList))
+		return false;
+
+	/* No set operations in the subquery */
+	if (subselect->setOperations)
+		return false;
+
+	/**
+	 * If there are no correlations in the WHERE clause, then don't bother.
+	 */
+	if (!contain_vars_of_level_or_above(sublink->subselect, 1))
+		return false;
+
+	/**
+	 * If deeply correlated, don't bother.
+	 */
+	if (contain_vars_of_level_or_above(sublink->subselect, 2))
+		return false;
+
+	/**
+	 * If there is a having qual, then don't bother.
+	 */
+	if (subselect->havingQual != NULL)
+		return false;
+
+	/**
+	 * If it does not have aggs, then don't bother. This could result in a run-time error.
+	 */
+	if (!subselect->hasAggs)
+		return false;
+
+	/**
+	 * Cannot support grouping clause in subselect.
+	 */
+	if (subselect->groupClause)
+		return false;
+
+	/**
+	 * If targetlist of the subquery does not contain exactly one element, don't bother.
+	 */
+	if (list_length(subselect->targetList) != 1)
+		return false;
+
+
+	/**
+	 * Walk the quals of the subquery to do a more fine grained check as to whether this subquery
+	 * may be pulled up. Identify useful fragments to construct join condition if possible to pullup.
+	 */
+	ConvertExprToJoinWalker(subselect->jointree->quals, ctx1);
+
+	/**
+	 * There should be no outer vars in innerQual
+	 */
+	Assert(!contain_vars_of_level_or_above(ctx1->innerQual, 1));
+
+	return ctx1->safeToConvert;
+}
+
+
+/**
+ * convert_EXPR_to_join
+ *
+ * Method attempts to convert an EXPR_SUBLINK of the form select * from T where a > (select 10*avg(x) from R where T.b=R.y)
+ */
+static Node *
+convert_EXPR_to_join(PlannerInfo *root, List** rtrlist_inout, OpExpr *opexp)
+{
+	Assert(root);
+	Assert(list_length(opexp->args) == 2);
+	Node *rarg = list_nth(opexp->args, 1);
+
+	Assert(IsA(rarg, SubLink));
+	SubLink *sublink = (SubLink *) rarg;
+
+	ConvertExprToJoinWalkerContext ctx1;
+	InitConvertExprToJoinWalkerContext(&ctx1);
+
+	if (safe_to_convert_EXPR(sublink, &ctx1))
+	{
+		Query			*subselect = (Query *) copyObject(sublink->subselect);
+		Assert(IsA(subselect, Query));
+
+		/**
+		 * Don't care about order by clause
+		 */
+		cdbsubselect_drop_orderby(subselect);
+
+		/**
+		 * Original subselect must have a single output column (e.g. 10*avg(x) )
+		 */
+		Assert(list_length(subselect->targetList) == 1);
+
+		/**
+		 * To pull up the subquery, we need to construct a new "Query" object that has grouping
+		 * columns extracted from the correlated join predicate and the extra column from the subquery's
+		 * targetlist.
+		 */
+		TargetEntry *origSubqueryTLE = (TargetEntry *) list_nth(subselect->targetList,0);
+
+		List *subselectTargetList = (List *) copyObject(ctx1.targetList);
+		subselectTargetList = add_to_flat_tlist(subselectTargetList, list_make1(origSubqueryTLE->expr), false);
+		subselect->targetList = subselectTargetList;
+		subselect->groupClause = ctx1.groupClause;
+		subselect->jointree->quals = ctx1.innerQual;
+
+		/**
+		 * Construct a new range table entry for the new pulled up subquery.
+		 */
+		int rteIndex = add_expr_subquery_rte(root->parse, subselect);
+		Assert(rteIndex > 0);
+
+		/**
+		 * Construct the join expression involving the new pulled up subselect.
+		 */
+		Assert(list_length(root->parse->jointree->fromlist) == 1);
+		Node		*larg = lfirst(list_head(root->parse->jointree->fromlist)); /* represents the top-level join tree entry */
+		Assert(larg != NULL);
+
+		JoinExpr   *join_expr = make_join_expr(larg, rteIndex, JOIN_INNER);
+
+		Node *joinQual = ctx1.joinQual;
+
+		/**
+		 * Make outer ones regular and regular ones correspond to rteIndex
+		 */
+		joinQual = (Node *) cdbpullup_expr( (Expr *) joinQual, subselect->targetList, NULL, rteIndex);
+		IncrementVarSublevelsUp(joinQual, -1, 1);
+
+		join_expr->quals = joinQual;
+
+		root->parse->jointree->fromlist = list_make1(join_expr); /* Replace the join-tree with the new one */
+
+		TargetEntry *subselectAggTLE = (TargetEntry *) list_nth(subselect->targetList, list_length(subselect->targetList) - 1);
+
+		/**
+		 *  modify the op expr to involve the column that has the computed aggregate that needs to compared.
+		 */
+		Var *aggVar =  (Var *) makeVar(rteIndex,
+				subselectAggTLE->resno,
+				exprType((Node *) subselectAggTLE->expr),
+				exprTypmod((Node *) subselectAggTLE->expr),
+				0);
+
+		list_nth_replace(opexp->args, 1, aggVar);
+
+	}
+
+	return (Node *) opexp;
+}
+
+
+/**
+ * convert_NOT_EXISTS_to_antijoin
+ */
+static Node *
+convert_NOT_EXISTS_to_antijoin(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
+{
+	Assert(root);
+	Assert(sublink);
+
+	Query	       *subselect = (Query *)sublink->subselect;
+	Assert(IsA(subselect, Query));
+
+	Query	   *parse = root->parse;
+
+	if (safe_to_convert_NOT_EXISTS(sublink))
+	{
+
+		/* Delete ORDER BY and DISTINCT. */
+		cdbsubselect_drop_orderby(subselect);
+		cdbsubselect_drop_distinct(subselect);
+
+		/* HAVING is the only place that could still contain aggregates.
+		 * We can delete targetlist if there is no havingQual.
+		 */
+		if (subselect->havingQual == NULL)
+		{
+			subselect->targetList = NULL;
+			subselect->hasAggs = false;
+		}
+
+		/* If HAVING has no aggregates, demote it to WHERE. */
+		else if (!checkExprHasAggs(subselect->havingQual))
+		{
+			subselect->jointree->quals = make_and_qual(subselect->jointree->quals,
+					subselect->havingQual);
+			subselect->havingQual = NULL;
+			subselect->hasAggs = false;
+		}
+
+		/* Delete GROUP BY if no aggregates. */
+		if (!subselect->hasAggs)
+			subselect->groupClause = NIL;
+
+
+		Assert(list_length(parse->jointree->fromlist) == 1);
+
+		Node		*larg = lfirst(list_head(parse->jointree->fromlist)); /* represents the top-level join tree entry */
+
+		Assert(larg != NULL);
+
+		int varnoOffset = list_length(parse->rtable);
+		parse->rtable = list_concat(parse->rtable, subselect->rtable);
+
+		JoinExpr   *join_expr = make_join_expr(larg, varnoOffset + 1, JOIN_LASJ);
+
+		Node *whereClause = subselect->jointree->quals;
+
+		OffsetVarNodes(whereClause, varnoOffset, 0);
+
+		Node *innerCorrelatedVarsNotNull = not_null_inner_vars(whereClause);
+
+		IncrementVarSublevelsUp(whereClause, -1, 1);
+
+		join_expr->quals = (Node *) make_andclause(list_make2(whereClause, innerCorrelatedVarsNotNull));
+
+		parse->jointree->fromlist = list_make1(join_expr); /* Replace the join-tree with the new one */
+
+		return NULL;
+	}
+
+	/**
+	 * convert back to EXISTS SUBLINK;
+	 */
+	sublink->subLinkType = EXISTS_SUBLINK;
+	return (Node *) make_notclause((Expr *) sublink);
+}
 
 /*
  * convert_EXISTS_to_join
@@ -320,6 +840,9 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 
     Assert(IsA(subselect, Query));
 
+    cdbsubselect_drop_orderby(subselect);
+    cdbsubselect_drop_distinct(subselect);
+
 	/*
 	 * The combining operators and left-hand expressions mustn't be volatile.
 	 */
@@ -440,10 +963,9 @@ static Node *
 convert_sublink_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 {
     Node   *result = (Node *)sublink;
-	Query  *subselect = (Query *)sublink->subselect;
 
-    Assert(IsA(sublink, SubLink) &&
-           IsA(subselect, Query));
+    Assert(IsA(sublink, SubLink));
+    Assert(IsA(((SubLink *) sublink)->subselect, Query));
 
     switch (sublink->subLinkType)
     {
@@ -451,19 +973,20 @@ convert_sublink_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublin
             result = convert_EXISTS_to_join(root, rtrlist_inout, sublink);
             break;
 
+        case NOT_EXISTS_SUBLINK:
+            result = convert_NOT_EXISTS_to_antijoin(root, rtrlist_inout, sublink);
+            break;
+
         case ALL_SUBLINK:
 			result = convert_IN_to_antijoin(root, rtrlist_inout, sublink);
             break;
 
         case ANY_SUBLINK:
-            cdbsubselect_drop_orderby(subselect);
-            cdbsubselect_drop_distinct(subselect);
             result = convert_IN_to_join(root, rtrlist_inout, sublink);
             break;
 
         case ROWCOMPARE_SUBLINK:
         case EXPR_SUBLINK:
-            cdbsubselect_drop_orderby(subselect);
             break;
 
         case ARRAY_SUBLINK:
@@ -621,6 +1144,45 @@ add_notin_subquery_rte(Query * parse, Query * subselect)
 	return subq_indx;
 }
 
+/*
+ * Pulls up the expr sublink subquery into the top-level range table.
+ */
+static int
+add_expr_subquery_rte(Query * parse, Query * subselect)
+{
+	RangeTblEntry *subq_rte;
+	int			subq_indx;
+
+	/**
+	 * Generate column names.
+	 * TODO: improve this to keep old names around
+	 */
+	ListCell *lc = NULL;
+	int teNum = 0;
+	foreach (lc, subselect->targetList)
+	{
+		StringInfoData si;
+		initStringInfo(&si);
+		appendStringInfo(&si, "csq_c%d", teNum);
+
+		TargetEntry *te = (TargetEntry *) lfirst(lc);
+		te->resname = si.data;
+		teNum++;
+	}
+
+	subq_rte = addRangeTableEntryForSubquery(NULL,		/* pstate */
+											 subselect,
+											 makeAlias("Expr_SUBQUERY", NIL),
+											 false /* inFromClause */ );
+	parse->rtable = lappend(parse->rtable, subq_rte);
+
+	/* assume new rte is at end */
+	subq_indx = list_length(parse->rtable);
+	Assert(subq_rte = rt_fetch(subq_indx, parse->rtable));
+
+	return subq_indx;
+}
+
 
 /* Create a join expression linking the supplied larg node
  * with the pulled up NOT IN subquery located at r_rtindex
@@ -658,12 +1220,12 @@ make_lasj_quals(PlannerInfo *root, SubLink * sublink, int subquery_indx)
 	List	   *subtlist = NIL;
 
 	Assert(sublink->subLinkType == ALL_SUBLINK);
-	
+
 	join_pred = (Expr *) convert_testexpr(root,
-										  sublink->testexpr,
-										  subquery_indx,
-										  &subtlist,
-										  subselect->targetList);
+			sublink->testexpr,
+			subquery_indx,
+			&subtlist,
+			subselect->targetList);
 
 	join_pred = canonicalize_qual(make_notclause(join_pred));
 	
@@ -684,6 +1246,31 @@ add_null_match_clause(Node *clause)
 	return (Node *) btest;
 }
 
+
+/**
+ * Given an expression tree, extract all inner vars and construct a qual that eliminates NULLs.
+ * E.g. For input (i1 = o1) and (i2 = o1 + 2), the function produces NOT NULL (i1) and NOT NULL (i2)
+ */
+static Node* not_null_inner_vars(Node *clause)
+{
+	List *allVars = extract_nodes(NULL /* PlannerGlobal */, clause, T_Var);
+	List *notNullClauses = NULL;
+	ListCell *lc = NULL;
+	foreach (lc, allVars)
+	{
+		Assert(IsA(lfirst(lc), Var));
+		Var *v = (Var *) lfirst(lc);
+		if (v->varlevelsup == 0)
+		{
+			NullTest *nullTest = makeNode(NullTest);
+			nullTest->arg = copyObject(v);
+			nullTest->nulltesttype = IS_NOT_NULL;
+			notNullClauses = lappend(notNullClauses, nullTest);
+		}
+	}
+
+	return (Node *) make_andclause(notNullClauses);
+}
 
 
 /**
@@ -1212,17 +1799,27 @@ pull_up_IN_clauses(PlannerInfo * root, List **rtrlist_inout, Node *clause)
 			SubLink    *sublink = (SubLink *) arg;
 
 			if (sublink->subLinkType == ANY_SUBLINK)
+			{
 				sublink->subLinkType = ALL_SUBLINK;
+				sublink->testexpr = (Node *) canonicalize_qual(
+									 make_notclause((Expr *) sublink->testexpr));
+			}
 			else if (sublink->subLinkType == ALL_SUBLINK)
+			{
 				sublink->subLinkType = ANY_SUBLINK;
+				sublink->testexpr = (Node *) canonicalize_qual(
+									 make_notclause((Expr *) sublink->testexpr));
+			}
+			else if (sublink->subLinkType == EXISTS_SUBLINK)
+			{
+				sublink->subLinkType = NOT_EXISTS_SUBLINK;
+			}
 			else
+			{
 				return clause;	/* do nothing for other sublinks */
-
-			sublink->testexpr = (Node *) canonicalize_qual(
-								 make_notclause((Expr *) sublink->testexpr));
+			}
 
 			return (Node *) pull_up_IN_clauses(root, rtrlist_inout, (Node *) sublink);
-
 		}
 		else if (not_clause(arg))
 		{
@@ -1236,6 +1833,27 @@ pull_up_IN_clauses(PlannerInfo * root, List **rtrlist_inout, Node *clause)
 			return (Node *) pull_up_IN_clauses(root, rtrlist_inout,
 									(Node *) canonicalize_qual((Expr *) clause));
 			
+		}
+	}
+
+	/**
+	 * (expr) op SUBLINK
+	 */
+	if (IsA(clause, OpExpr))
+	{
+		OpExpr *opexp = (OpExpr *) clause;
+
+		if (list_length(opexp->args) == 2)
+		{
+			/**
+			 * Check if second arg is sublink
+			 */
+			Node *rarg = list_nth(opexp->args, 1);
+
+			if (IsA(rarg, SubLink))
+			{
+				return (Node *) convert_EXPR_to_join(root, rtrlist_inout, opexp);
+			}
 		}
 	}
 	/* Stop if not an AND */

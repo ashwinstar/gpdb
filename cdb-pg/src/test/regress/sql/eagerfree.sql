@@ -77,7 +77,7 @@ explain analyze select t1.* from smallt as t1, smallt as t2 where t1.i = t2.i;
 -- Material in SubPlan
 select smallt2.* from smallt2
 where i < (select count(*) from smallt where smallt.i = smallt2.i);
-explain analyze select smallt2.* from smallt2
+explain select smallt2.* from smallt2
 where i < (select count(*) from smallt where smallt.i = smallt2.i);
 
 -- Append + Material in SubPlan
