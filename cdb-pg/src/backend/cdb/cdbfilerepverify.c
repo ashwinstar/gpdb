@@ -11711,6 +11711,11 @@ createNewFileRepVerifyArguments(void)
 char*
 FileRepVerify_GetVerifyRequestState(void)
 {
+	/* Verification shared memory is not initialized on master */
+	if (fileRepVerifyShmem == NULL)
+	{
+		return "None";
+	} 
 
 	if (fileRepVerifyShmem->request.state == FileRepVerifyRequestState_NONE)
 	{
