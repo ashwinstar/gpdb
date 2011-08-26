@@ -276,7 +276,7 @@ QDMirroringFormatTime(char *logTimeStr, int logTimeStrMax,
  * If calling from a thread it is illegal to leave username or dbName NULL.
  */
 static void
-initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName, PQExpBuffer buffer, bool utility)
+initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName, PQExpBuffer buffer, bool catdml)
 {
 	char *user = username;
 
@@ -291,9 +291,9 @@ initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *username, char *dbName
 	/*
 	 * Build the connection string
 	 */
-	if (utility)
+	if (catdml)
 		appendPQExpBuffer(buffer,
-						  "options='-c gp_session_role=UTILITY' ");
+						  "options='-c gp_session_role=UTILITY -c allow_system_table_mods=dml' ");
 
 	if (q->hostname == NULL)
 		appendPQExpBufferStr(buffer, "host='' ");
