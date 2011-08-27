@@ -178,13 +178,7 @@ InitResQueues(void)
 	bool				queuesok = true;
 	
 	Assert(ResScheduler);
-	
-	if (ResScheduler->num_queues > 0)
-	{
-		/* Hash table has already been loaded */
-		return;
-	}
-	
+
 	/*
 	 * Need a resource owner to keep the heapam code happy.
 	 */
@@ -193,7 +187,29 @@ InitResQueues(void)
 	ResourceOwner owner = ResourceOwnerCreate(NULL, "InitQueues");
 	CurrentResourceOwner = owner;
 	
+	/**
+	 * The resqueue shared mem initialization must be serialized. Only the first session
+	 * should do the init.
+	 * Serialization is done the ResQueueLock LW_EXCLUSIVE. However, we must obtain all DB
+	 * lock before obtaining LWlock.
+	 * So, we must have obtained ResQueueRelationId and ResQueueCapabilityRelationId lock
+	 * first.
+	 */
 	Relation relResqueue = heap_open(ResQueueRelationId, AccessShareLock);
+	LockRelationOid(ResQueueCapabilityRelationId, RowExclusiveLock);
+	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+
+	if (ResScheduler->num_queues > 0)
+	{
+		/* Hash table has already been loaded */
+		LWLockRelease(ResQueueLock);
+		UnlockRelationOid(ResQueueCapabilityRelationId, RowExclusiveLock);
+		heap_close(relResqueue, AccessShareLock);
+		CurrentResourceOwner = NULL;
+		ResourceOwnerDelete(owner);
+		return;
+	}
+
 	HeapScanDesc scan = heap_beginscan(relResqueue, SnapshotNow, 0 /* key length */, NULL);
 
 
@@ -215,17 +231,11 @@ InitResQueues(void)
 		thresholds[RES_COUNT_LIMIT] = queueform->rsqcountlimit;
 		thresholds[RES_COST_LIMIT] = queueform->rsqcostlimit;
 
-		/** 
-		 * This lwlock is not essential since this is during initialization of shared memory and no concurrency is possible. However, it enables
-		 * us to write strong asserts in some of the re-used functions.
-		 */
-		LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
 		thresholds[RES_MEMORY_LIMIT] = ResourceQueueGetMemoryLimit(queueid);
 		overcommit = queueform->rsqovercommit;
 		ignorelimit = queueform->rsqignorecostlimit;
 		queuesok = ResCreateQueue(queueid, thresholds, overcommit, ignorelimit);
-		LWLockRelease(ResQueueLock);
-		
+
 		if (!queuesok)
 		{
 			/** Break out of loop. Close relations, relinquish LWLock and then error out */ 
@@ -233,7 +243,9 @@ InitResQueues(void)
 		}
 	}
 
-	heap_endscan(scan);	
+	heap_endscan(scan);
+	LWLockRelease(ResQueueLock);
+	UnlockRelationOid(ResQueueCapabilityRelationId, RowExclusiveLock);
 	heap_close(relResqueue, AccessShareLock);
 
 	if (!queuesok)
