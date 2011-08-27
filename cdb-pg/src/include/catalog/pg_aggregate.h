@@ -310,6 +310,9 @@ DATA(insert ( 3262  float8_mregr_accum    - float8_mregr_combine  - float8_mregr
 DATA(insert ( 3264  float8_mregr_accum    - float8_mregr_combine  - float8_mregr_tstats 0   1022    "{0}"  f));
 DATA(insert ( 3266  float8_mregr_accum    - float8_mregr_combine  - float8_mregr_pvalues 0   1022    "{0}"  f));
 
+/* xml */
+DATA(insert ( 2981  xmlconcat2	             - - - - 				  0	142  _null_ t));
+
 /* array */
 DATA(insert ( 2910	array_agg_transfn        - - - array_agg_finalfn  0 2281 _null_ t));
 

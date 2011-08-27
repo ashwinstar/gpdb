@@ -5313,6 +5313,45 @@
 
  CREATE FUNCTION pg_advisory_unlock_all() RETURNS void LANGUAGE internal VOLATILE STRICT AS 'pg_advisory_unlock_all' WITH (OID=2892, DESCRIPTION="release all advisory locks");
 
+
+-- xml functions
+ CREATE FUNCTION xml_in(cstring) RETURNS xml LANGUAGE internal IMMUTABLE STRICT AS 'xml_in' WITH (OID=2973, DESCRIPTION="I/O");
+
+ CREATE FUNCTION xml_out(xml) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT AS 'xml_out' WITH (OID=2974, DESCRIPTION="I/O");
+
+ CREATE FUNCTION xmlcomment(text) RETURNS xml LANGUAGE internal IMMUTABLE STRICT AS 'xmlcomment' WITH (OID=2975, DESCRIPTION="generate XML comment");
+
+ CREATE FUNCTION xml(text) RETURNS xml LANGUAGE internal IMMUTABLE STRICT AS 'texttoxml' WITH (OID=2976, DESCRIPTION="perform a non-validating parse of a character string to produce an XML value");
+
+ CREATE FUNCTION xmlvalidate(xml, text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xmlvalidate' WITH (OID=2977, DESCRIPTION="validate an XML value");
+
+ CREATE FUNCTION xml_recv(internal) RETURNS xml LANGUAGE internal IMMUTABLE STRICT AS 'xml_recv' WITH (OID=2978, DESCRIPTION="I/O");
+
+ CREATE FUNCTION xml_send(xml) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'xml_send' WITH (OID=2979, DESCRIPTION="I/O");
+
+ CREATE FUNCTION xmlconcat2(xml, xml) RETURNS xml LANGUAGE internal IMMUTABLE STRICT AS 'xmlconcat2' WITH (OID=2980, DESCRIPTION="aggregate transition function");
+
+ CREATE FUNCTION xmlagg(xml) RETURNS xml LANGUAGE internal IMMUTABLE STRICT AS 'aggregate_dummy' WITH (OID=2981, DESCRIPTION="concatenate XML values", proisagg="t");
+
+ CREATE FUNCTION text(xml) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'xmltotext' WITH (OID=2982, DESCRIPTION="serialize an XML value to a character string");
+
+ CREATE FUNCTION xpath(text, xml, _text) RETURNS _xml LANGUAGE internal IMMUTABLE STRICT AS 'xpath' WITH (OID=2983, DESCRIPTION="evaluate XPath expression, with namespaces support");
+
+ CREATE FUNCTION xpath(text, xml) RETURNS _xml LANGUAGE sql IMMUTABLE STRICT AS $$select pg_catalog.xpath($1, $2, '{}'::pg_catalog.text[])$$ WITH (OID=2984, DESCRIPTION="evaluate XPath expression");
+
+ CREATE FUNCTION xmlexists(text, xml) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xmlexists' WITH (OID=2985, DESCRIPTION="test XML value against XPath expression");
+
+ CREATE FUNCTION xpath_exists(text, xml, _text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xpath_exists' WITH (OID=2986, DESCRIPTION="test XML value against XPath expression, with namespace support");
+
+ CREATE FUNCTION xpath_exists(text, xml) RETURNS bool LANGUAGE sql IMMUTABLE STRICT AS $$select pg_catalog.xpath_exists($1, $2, '{}'::pg_catalog.text[])$$ WITH (OID=2987, DESCRIPTION="test XML value against XPath expression");
+
+ CREATE FUNCTION xml_is_well_formed(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xml_is_well_formed' WITH (OID=2988, DESCRIPTION="determine if a string is well formed XML");
+
+ CREATE FUNCTION xml_is_well_formed_document(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xml_is_well_formed_document' WITH (OID=2989, DESCRIPTION="determine if a string is well formed XML document");
+
+ CREATE FUNCTION xml_is_well_formed_content(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xml_is_well_formed_content' WITH (OID=2990, DESCRIPTION="determine if a string is well formed XML content");
+
+
 -- the bitmap index access method routines
  CREATE FUNCTION bmgettuple(internal, internal) RETURNS bool LANGUAGE internal VOLATILE STRICT AS 'bmgettuple' WITH (OID=3050, DESCRIPTION="bitmap(internal)");
 

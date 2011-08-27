@@ -156,3 +156,5 @@ test: filespace
 test: orafunk
 test: gpcheckmirrorseg
 test: trig
+test: xml
+

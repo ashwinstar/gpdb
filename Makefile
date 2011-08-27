@@ -200,7 +200,7 @@ aix5_ppc_32_PTHREADS_LIB_DIR=/usr/lib/threads
 BLD_PTHREADS_LIB_DIR=$($(BLD_ARCH)_PTHREADS_LIB_DIR)
 
 # Configure in thirdparty libraries from the ext/ directory
-CONFIG_INCLUDES=$(BLD_THIRDPARTY_INCLUDE_DIR)
+CONFIG_INCLUDES=$(BLD_THIRDPARTY_INCLUDE_DIR) $(BLD_THIRDPARTY_INCLUDE_DIR)/libxml2
 CONFIG_LIBRARIES=$(strip $(BLD_THIRDPARTY_LIB_DIR) $(BLD_CXX_LIB_DIR) $(BLD_PTHREADS_LIB_DIR))
 CONFIGFLAGS+= --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
 
@@ -218,7 +218,24 @@ ifneq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64)" ""
 CONFIGFLAGS+= --with-openssl --with-pam --without-krb5 --with-ldap $(BLD_CURL_CONFIG)
 endif
 
-# Windows-specific config flags
+# build with libxml2 on these platforms
+# note that configure on our suse build servers doesn't understand --with-libraries above
+# the same way it does on our rhel build servers so we also set LDFLAGS
+rhel5_x86_32_LIBXML2=LIBS="-lxml2"
+rhel5_x86_64_LIBXML2=LIBS="-lxml2"
+sol10_x86_64_LIBXML2=LIBS="-lxml2"
+suse10_x86_64_LIBXML2=LDFLAGS="-L$(BLD_THIRDPARTY_LIB_DIR)" LIBS="-lxml2"
+osx105_x86_LIBXML2=LIBS="-lxml2"
+osx106_x86_LIBXML2=LIBS="-lxml2"
+LIBXML2FLAGS= $($(BLD_ARCH)_LIBXML2)
+
+#$(warning )
+#$(warning LIBXML2FLAGS=$(LIBXML2FLAGS))
+#$(warning )
+
+CONFIGFLAGS+= $(LIBXML2FLAGS)
+
+# Platform-specific config flags
 aix5_ppc_64_CONFIG_ADDITIONS=LDFLAGS="-Wl,-bbigtoc -L/usr/lib/threads"
 aix5_ppc_32_CONFIG_ADDITIONS=LDFLAGS="-L/usr/lib/threads"
 win32_CONFIG_ADDITIONS=--build=x86_x64-unknown-linux-gnu --host=i686-pc-mingw32 --without-zlib --enable-debug CC=/usr/local/mingw32/bin/mingw32-gcc LDFLAGS=-L/usr/local/mingw32/mingw32/lib CPP= CPPFLAGS=-I/usr/local/mingw32/mingw32/include
