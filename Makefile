@@ -224,6 +224,7 @@ endif
 rhel5_x86_32_LIBXML2=LIBS="-lxml2"
 rhel5_x86_64_LIBXML2=LIBS="-lxml2"
 sol10_x86_64_LIBXML2=LIBS="-lxml2"
+sol10_sparc_64_LIBXML2=LIBS="-lxml2"
 suse10_x86_64_LIBXML2=LDFLAGS="-L$(BLD_THIRDPARTY_LIB_DIR)" LIBS="-lxml2"
 osx105_x86_LIBXML2=LIBS="-lxml2"
 osx106_x86_LIBXML2=LIBS="-lxml2"
