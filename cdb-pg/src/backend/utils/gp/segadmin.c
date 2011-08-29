@@ -992,6 +992,7 @@ static void
 update_gp_master_mirroring(char *str)
 {
 	volatile bool connected = false;
+	volatile bool resetModsDML = false;
 	
 	PG_TRY();
 	{
@@ -1008,13 +1009,22 @@ update_gp_master_mirroring(char *str)
 			elog(ERROR, "cannot connect via SPI");
 		connected = true;
 
+		if (!allowSystemTableModsDML)
+		{
+			allowSystemTableModsDML = true;
+			resetModsDML = true;
+		}
 		if (SPI_execute(sql.data, false, 0) < 0)
 			elog(ERROR, "cannot update gp_master_mirroring");
+		if (resetModsDML)
+			allowSystemTableModsDML = false;
 	}
 	PG_CATCH();
 	{
 		if (connected)
 			SPI_finish();
+		if (resetModsDML)
+			allowSystemTableModsDML = false;
 
 		PG_RE_THROW();
 	}
