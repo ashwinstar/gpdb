@@ -13654,24 +13654,25 @@ taaj: tidbitmap:00000431:  elog(ERROR, "hash table corrupted");
 taaj: tidbitmap:00000630:  elog(ERROR, "unrecoganized node type"); 
 taaj: tidbitmap:00001140:  elog(ERROR, "unknown stream type %i", (int)n->type); 
 aaaaa GP_IGNORE: aaai: allpaths - ./backend/optimizer/path/allpaths.c
-aaai: allpaths:00000433:  ereport(ERROR, 
-aaai: allpaths:00000434:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaai: allpaths:00000435:  errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries"))); 
-aaai: allpaths:00001015:  elog(ERROR, "unrecognized joinlist node type: %d", 
-aaai: allpaths:00001016:  (int) nodeTag(jlnode)); 
-aaai: allpaths:00001335:  elog(ERROR, "unrecognized node type: %d", 
-aaai: allpaths:00001336:  (int) nodeTag(setOp)); 
-aaai: allpaths:00001364:  elog(ERROR, "wrong number of tlist entries"); 
-aaai: allpaths:00001370:  elog(ERROR, "wrong number of tlist entries"); 
-aaai: allpaths:00001562:  elog(ERROR, "unrecognized node type: %d", 
-aaai: allpaths:00001563:  (int) nodeTag(setOp)); 
-aaai: allpaths:00001580:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), 
-aaai: allpaths:00001581:  errmsg("Query requires a feature that has been disabled " 
-aaai: allpaths:00001582:  "by a configuration setting."), 
-aaai: allpaths:00001583:  errdetail("Could not devise a query plan for the given query."), 
-aaai: allpaths:00001584:  errhint("Current settings: %s", buf.data) 
-aaai: allpaths:00001585:  )); 
-aaai: allpaths:00001587:  elog(ERROR, "Could not devise a query plan for the given query."); 
+aaai: allpaths:00000352:  elog(ERROR, "plan contains range table with relstorage='%c'", relstorage); 
+aaai: allpaths:00000440:  ereport(ERROR, 
+aaai: allpaths:00000441:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaai: allpaths:00000442:  errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries"))); 
+aaai: allpaths:00001022:  elog(ERROR, "unrecognized joinlist node type: %d", 
+aaai: allpaths:00001023:  (int) nodeTag(jlnode)); 
+aaai: allpaths:00001342:  elog(ERROR, "unrecognized node type: %d", 
+aaai: allpaths:00001343:  (int) nodeTag(setOp)); 
+aaai: allpaths:00001371:  elog(ERROR, "wrong number of tlist entries"); 
+aaai: allpaths:00001377:  elog(ERROR, "wrong number of tlist entries"); 
+aaai: allpaths:00001569:  elog(ERROR, "unrecognized node type: %d", 
+aaai: allpaths:00001570:  (int) nodeTag(setOp)); 
+aaai: allpaths:00001587:  ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED), 
+aaai: allpaths:00001588:  errmsg("Query requires a feature that has been disabled " 
+aaai: allpaths:00001589:  "by a configuration setting."), 
+aaai: allpaths:00001590:  errdetail("Could not devise a query plan for the given query."), 
+aaai: allpaths:00001591:  errhint("Current settings: %s", buf.data) 
+aaai: allpaths:00001592:  )); 
+aaai: allpaths:00001594:  elog(ERROR, "Could not devise a query plan for the given query."); 
 aaaaa GP_IGNORE: caai: costsize - ./backend/optimizer/path/costsize.c
 caai: costsize:00000600:  elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual)); 
 caai: costsize:00000949:  elog(ERROR, "unrecognized node type: %d", nodeTag(path)); 
