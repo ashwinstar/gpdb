@@ -51,7 +51,7 @@ class GpFigleafCoverage:
 
     To enable recording, gppylib must be *reactive* to coverage requests; in other words, the entry points to gppylib
     must invoke GpFigleafCoverage. Currently, there are two such entry points: gppylib.mainUtils.simple_main and 
-    bin/gpoperation.py. Moreover, gppylib must be *proactive* to propagate requests to subprocesses or remote processes. 
+    sbin/gpoperation.py. Moreover, gppylib must be *proactive* to propagate requests to subprocesses or remote processes. 
     This is accomplished below by hooking gppylib.commands.base.ExecutionContext, and its inherited classes, in order
     to propagate a couple of key environment variables needed below: USE_FIGLEAF, FIGLEAF_DIR, and FIGLEAF_PID.
 
