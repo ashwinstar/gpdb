@@ -262,7 +262,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
     List       *indexpathlist = NIL;
     List       *bitmappathlist = NIL;
     List       *tidpathlist = NIL;
-    Path       *seqpath;
+    Path       *seqpath = NULL;
     ListCell   *cell;
 	char		relstorage;
 
@@ -350,7 +350,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 			 * apply rewrite rules.
 			 */
 			elog(ERROR, "plan contains range table with relstorage='%c'", relstorage);
-			break;
+			return;
 	}
 
 	/* Consider sequential scan. */
