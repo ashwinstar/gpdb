@@ -320,30 +320,37 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	relstorage = get_rel_relstorage(rte->relid);
 	
 	/* early exit for external and append only relations */
-	if(relstorage == RELSTORAGE_EXTERNAL)
+	switch (relstorage)
 	{
-		/*
-		 * If the relation is external, create an external path for
-		 * it and select it (only external path is considered for
-		 * an external base rel).
-		 */
-		add_path(root, rel, (Path *) create_external_path(root, rel));
+		case RELSTORAGE_EXTERNAL:
+			/*
+			 * If the relation is external, create an external path for
+			 * it and select it (only external path is considered for
+			 * an external base rel).
+			 */
+			add_path(root, rel, (Path *) create_external_path(root, rel));			
+			set_cheapest(root, rel);
+			return;
 
-		set_cheapest(root, rel);
-		return;
-	}
-	else if(relstorage == RELSTORAGE_AOROWS)
-	{
-		seqpath = (Path *) create_appendonly_path(root, rel);
-	}
-	else if(relstorage == RELSTORAGE_AOCOLS)
-    {
-        seqpath = (Path *) create_aocs_path(root, rel);
-    }
-	else
-	{
-		Assert(relstorage == RELSTORAGE_HEAP);
-		seqpath = create_seqscan_path(root, rel);
+		case RELSTORAGE_AOROWS:
+			seqpath = (Path *) create_appendonly_path(root, rel);
+			break;
+
+		case RELSTORAGE_AOCOLS:
+			seqpath = (Path *) create_aocs_path(root, rel);
+			break;
+
+		case RELSTORAGE_HEAP:
+			seqpath = create_seqscan_path(root, rel);
+			break;
+
+		default:
+			/*
+			 * should not be feasible, usually indicates a failure to correctly
+			 * apply rewrite rules.
+			 */
+			elog(ERROR, "plan contains range table with relstorage='%c'", relstorage);
+			break;
 	}
 
 	/* Consider sequential scan. */

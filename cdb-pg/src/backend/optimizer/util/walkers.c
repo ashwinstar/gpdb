@@ -1213,6 +1213,13 @@ extract_nodes_walker(Node *node, extract_context *context)
 		/* Do not descend into subquery scans. */
 		return false;
 	}
+	if (nodeTag(node) == T_TableFunctionScan
+		&& !context->descendIntoSubqueries)
+	{
+		/* Do not descend into table function subqueries */
+		return false;
+	}
+
 	return plan_tree_walker(node, extract_nodes_walker,
 								  (void *) context);
 }

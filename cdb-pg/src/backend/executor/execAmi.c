@@ -570,6 +570,7 @@ ExecEagerFree(PlanState *node)
 		case T_UniqueState:
 		case T_HashState:
 		case T_ValuesScanState:
+		case T_TableFunctionState:
 			break;
 
 		case T_SeqScanState:

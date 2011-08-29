@@ -1341,7 +1341,7 @@ fireRIRrules(Query *parsetree, List *activeRIRs)
 		 * do to this level of the query, but we must recurse into the
 		 * subquery to expand any rule references in it.
 		 */
-		if (rte->rtekind == RTE_SUBQUERY)
+		if (rte->rtekind == RTE_SUBQUERY || rte->rtekind == RTE_TABLEFUNCTION)
 		{
 			rte->subquery = fireRIRrules(rte->subquery, activeRIRs);
 			continue;

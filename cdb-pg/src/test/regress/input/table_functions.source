@@ -17,6 +17,8 @@ COPY example FROM stdin;
 
 CREATE TABLE example_r AS SELECT * FROM example DISTRIBUTED RANDOMLY;
 
+CREATE VIEW example_v AS SELECT * FROM example;
+
 /* Attempt to get relatively stable plans */
 set gp_segments_for_planner=8;
 analyze example;
@@ -265,6 +267,10 @@ SELECT * FROM multiset_5( TABLE( SELECT * from example_r) )  order by a, b;
 SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER by a||b) )  order by a, b;
 SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER by b, a, a||b) )  order by a, b;
 SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER RANDOMLY) )  order by a, b;
+SELECT * FROM multiset_5( TABLE( SELECT * from example_v) )  order by a, b;
+WITH cte AS (SELECT * FROM example) SELECT * FROM multiset_5( TABLE ( SELECT * FROM cte ) )  order by a, b;
+WITH cte AS (SELECT * FROM example) SELECT x.* FROM multiset_5( TABLE ( SELECT * FROM cte ) ) x, (SELECT count(*) FROM cte) y order by x.a, x.b;
+SELECT x.* FROM multiset_5( TABLE ( SELECT * FROM example ) ) x right join (SELECT 1) y on (true) order by x.a, x.b;
 -- end equivalent
 
 -- Table Functions with a focused subplan plan
@@ -395,6 +401,11 @@ explain SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER by b, a
 explain SELECT * FROM multiset_5( TABLE( SELECT * FROM example_r SCATTER RANDOMLY) );
 explain SELECT * FROM multiset_5( TABLE( SELECT count(*)::integer, 'hello'::text from example_r ) );
 explain SELECT * FROM example_r WHERE (10, 'hello') in (SELECT * FROM multiset_5( TABLE( SELECT count(*)::integer, 'hello'::text from example_r )));
+explain SELECT * FROM multiset_5( TABLE( SELECT * from example_v) );
+explain WITH cte AS (SELECT * FROM example) SELECT * FROM multiset_5( TABLE ( SELECT * FROM cte ) )  order by a, b;
+explain WITH cte AS (SELECT * FROM example) SELECT x.* FROM multiset_5( TABLE ( SELECT * FROM cte ) ) x, (SELECT count(*) FROM cte) y order by x.a, x.b;
+-- Not rescannable, should produce materialize node
+explain SELECT x.* FROM multiset_5( TABLE ( SELECT 1 ) ) x right join (SELECT 1) y on (true);
 
 -- Do an explain analyze while we are at it:
 explain analyze SELECT * FROM multiset_5( TABLE( SELECT count(*)::integer, 'hello'::text from example_r scatter randomly) );
@@ -466,7 +477,6 @@ DROP view v1;
 DROP view v2;
 DROP view v3;
 
-
 -- ========================================
 -- Interaction with set returning functions
 -- ========================================
@@ -483,10 +493,16 @@ explain SELECT * FROM multi_args( TABLE(SELECT 1::int, 'hello'::text), 2);
 -- Error: don't support sets as arguments that are not TableValueExpr
 SELECT * FROM multi_args( TABLE(SELECT 1::int, 'hello'::text), generate_series(1,2));
 
+-- And use it with a CTAS as well
+explain CREATE TABLE example_out AS SELECT * FROM multi_args( TABLE(SELECT 1::int, 'hello'::text), 2);
+CREATE TABLE example_out AS SELECT * FROM multi_args( TABLE(SELECT 1::int, 'hello'::text), 2);
+SELECT * FROM example_out;
+DROP TABLE example_out;
 
 -- ===============
 -- Dropped Columns
 -- ===============
+DROP VIEW example_v;
 ALTER TABLE example DROP column a;
 
 -- ERROR: input tuple does not conform to expectations of multiset_5
