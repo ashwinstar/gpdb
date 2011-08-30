@@ -2482,17 +2482,17 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 		/* If it's a domain, it might have constraints */
 		if (typform->typtype == 'd')
 			AlterConstraintNamespaces(typeOid, oldNspOid, nspOid, true);
-
-		/*
-		 * Update dependency on schema, if any --- a table rowtype has not got
-		 * one.
-		 */
-		if (typform->typtype != 'c')
-			if (changeDependencyFor(TypeRelationId, typeOid,
-								NamespaceRelationId, oldNspOid, nspOid) != 1)
-				elog(ERROR, "failed to change schema dependency for type %s",
-					 format_type_be(typeOid));
 	}
+
+	/*
+	 * Update dependency on schema, if any --- a table rowtype has not got
+	 * one.
+	 */
+	if (isCompositeType || typform->typtype != 'c')
+		if (changeDependencyFor(TypeRelationId, typeOid,
+							NamespaceRelationId, oldNspOid, nspOid) != 1)
+			elog(ERROR, "failed to change schema dependency for type %s",
+				 format_type_be(typeOid));
 
 	heap_freetuple(tup);
 

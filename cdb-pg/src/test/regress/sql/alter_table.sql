@@ -1093,8 +1093,7 @@ alter domain alter1.posint set schema alter2;
 alter type alter1.ctype set schema alter2;
 
 -- this should succeed because nothing is left in alter1
--- MPP-13869:
--- drop schema alter1;
+drop schema alter1;
 
 insert into alter2.t1(f2) values(13);
 insert into alter2.t1(f2) values(14);
