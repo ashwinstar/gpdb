@@ -90,9 +90,6 @@ static char failover_strategy='n';
 /* struct holding segment configuration */
 static CdbComponentDatabases *cdb_component_dbs = NULL;
 
-/* time zone used for history entries */
-static pg_tz *history_timezone = NULL;
-
 
 /*
  * FUNCTION PROTOTYPES
@@ -111,8 +108,6 @@ static void readCdbComponentInfoAndUpdateStatus(void);
 static bool probePublishUpdate(uint8 *scan_status);
 
 static uint32 getTransition(bool isPrimaryAlive, bool isMirrorAlive);
-
-static void get_history_timestamp(char *buffer, int bufferSize);
 
 static void
 buildSegmentStateChange
@@ -135,7 +130,7 @@ static uint32 transition
 	;
 
 static void updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries);
-static void probeUpdateConfig(PGconn *entryConn, FtsSegmentStatusChange *changes, int changeCount, char *time_str);
+static void probeUpdateConfig(PGconn *entryConn, FtsSegmentStatusChange *changes, int changeCount);
 
 static PGconn *openSelfConn(CdbComponentDatabaseInfo *entryDB);
 static void executeEntrySQL(PGconn *entryConn, const char *query);
@@ -380,13 +375,6 @@ ftsMain(int argc, char *argv[])
 	 * will access catalog tables).
 	 */
 	retrieveUserAndDb(&probeUser);
-
-	/* check if logging time zone can be used for storing timestamps */
-	history_timezone = log_timezone;
-	if (!tz_acceptable(history_timezone))
-	{
-		history_timezone = gmt_timezone;
-	}
 
 	/* main loop */
 	FtsLoop();
@@ -904,8 +892,6 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 		entryDB = entryDB + 1;
 	}
 
-	get_history_timestamp(timestamp_str, sizeof(timestamp_str));
-
 	/* if we've gotten a pause or shutdown request, we ignore our probe results. */
 	if (!FtsIsActive())
 	{
@@ -916,7 +902,7 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
 	Assert(entryConn != NULL);
 
 	/* update segment configuration */
-	probeUpdateConfig(entryConn, changes, changeEntries, timestamp_str);
+	probeUpdateConfig(entryConn, changes, changeEntries);
 
 	/* if FTS is not active, we ignore probe results (abort transaction) */
 	ftsLock();
@@ -951,7 +937,7 @@ updateConfiguration(FtsSegmentStatusChange *changes, int changeEntries)
  * update segment configuration in catalog and shared memory
  */
 static void
-probeUpdateConfig(PGconn *entryConn, FtsSegmentStatusChange *changes, int changeCount, char *time_str)
+probeUpdateConfig(PGconn *entryConn, FtsSegmentStatusChange *changes, int changeCount)
 {
 	int i;
 
@@ -984,9 +970,9 @@ probeUpdateConfig(PGconn *entryConn, FtsSegmentStatusChange *changes, int change
 		 * Log change to segment configuration
 		 */
 		count = snprintf(cmd, sizeof(cmd),
-						 "insert into %s values ('%s', %d, 'FTS: content %d fault marking status %s%s role %c')",
+						 "insert into %s values (now(), %d, 'FTS: content %d fault marking status %s%s role %c')",
 						 GpConfigHistoryRelName,
-						 time_str, change->dbid, change->segindex,
+						 change->dbid, change->segindex,
 						 valid ? "UP" : "DOWN",
 						 (changelogging) ? " mode: change-tracking" : "",
 						 primary ? 'p' : 'm');
@@ -1132,9 +1118,6 @@ FtsMarkSegmentsInSync(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInf
 	}
 
 	char cmd[SQL_CMD_BUF_SIZE];
-	char timestamp_str[TIMESTAMP_BUF_SIZE];
-
-	get_history_timestamp(timestamp_str, sizeof(timestamp_str));
 
 	CdbComponentDatabaseInfo *entryDB = &cdb_component_dbs->entry_db_info[0];
 
@@ -1183,15 +1166,15 @@ FtsMarkSegmentsInSync(CdbComponentDatabaseInfo *primary, CdbComponentDatabaseInf
 
 	/* update configuration history */
 	snprintf(cmd, sizeof(cmd),
-			 "insert into %s values ('%s', %d, 'FTS: changed segment to insync from resync.')",
+			 "insert into %s values (now(), %d, 'FTS: changed segment to insync from resync.')",
 			 GpConfigHistoryRelName,
-			 timestamp_str, primary->dbid);
+			 primary->dbid);
 	executeEntrySQL(entryConn, cmd);
 
 	snprintf(cmd, sizeof(cmd),
-			 "insert into %s values ('%s', %d, 'FTS: changed segment to insync from resync.')",
+			 "insert into %s values (now(), %d, 'FTS: changed segment to insync from resync.')",
 			 GpConfigHistoryRelName,
-			 timestamp_str, mirror->dbid);
+			 mirror->dbid);
 	executeEntrySQL(entryConn, cmd);
 
 	ereport(LOG,
@@ -1402,22 +1385,6 @@ closeSelfConn(PGconn *conn, bool commit)
 	PQclear(rs);
 	PQfinish(conn);
 	return;
-}
-
-
-/*
- * Get timestamp for history entries using a valid timestamp
- */
-static void
-get_history_timestamp(char *buffer, int bufferSize)
-{
-	/* use history time zone to create timestamp for history entries */
-	pg_tz *timezone = log_timezone;
-	log_timezone = history_timezone;
-
-	get_timestamp(buffer, bufferSize);
-
-	log_timezone = timezone;
 }
 
 
