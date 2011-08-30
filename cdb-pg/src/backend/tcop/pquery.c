@@ -19,7 +19,6 @@
 #include "access/xact.h"
 #include "commands/prepare.h"
 #include "commands/trigger.h"
-#include "cdb/cdbpartition.h"
 #include "cdb/cdbvars.h"
 #include "executor/executor.h"          /* ExecutorStart, ExecutorRun, etc */
 #include "miscadmin.h"
@@ -30,7 +29,6 @@
 #include "utils/resscheduler.h"
 #include "commands/vacuum.h"
 #include "commands/tablecmds.h"
-#include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "nodes/makefuncs.h"
 #include "utils/acl.h"
@@ -194,7 +192,7 @@ ProcessQuery(Portal portal,
 	Oid			truncOid = InvalidOid;
 	
 	/* auto-stats related */
-	Oid			relationOid = InvalidOid; 					/* relation that is modified */
+	Oid	relationOid = InvalidOid; 	/* relation that is modified */
 	AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
 	
 	ereport(DEBUG3,
@@ -395,8 +393,6 @@ ProcessQuery(Portal portal,
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		RangeTblEntry * rte = NULL;
-
 		/*
 		 * MPP-4145: truncate using saved Oid from earlier.
 		 */
@@ -425,34 +421,7 @@ ProcessQuery(Portal portal,
 			}
 		}
 	
-		switch (stmt->commandType)
-		{
-			case CMD_SELECT:
-				if (stmt->intoClause != NULL)
-				{
-					/* CTAS */
-					relationOid = stmt->intoClause->oidInfo.relOid;
-					cmdType = AUTOSTATS_CMDTYPE_CTAS;
-				}
-				break;
-			case CMD_INSERT:
-				rte = rt_fetch(lfirst_int(list_head(stmt->resultRelations)), stmt->rtable);
-				relationOid = rte->relid;
-				cmdType = AUTOSTATS_CMDTYPE_INSERT;
-				break;
-			case CMD_UPDATE:
-				rte = rt_fetch(lfirst_int(list_head(stmt->resultRelations)), stmt->rtable);
-				relationOid = rte->relid;
-				cmdType = AUTOSTATS_CMDTYPE_UPDATE;
-				break;
-			case CMD_DELETE:
-				rte = rt_fetch(lfirst_int(list_head(stmt->resultRelations)), stmt->rtable);
-				relationOid = rte->relid;
-				cmdType = AUTOSTATS_CMDTYPE_DELETE;
-				break;
-			default:
-				break;
-		}
+		autostats_get_cmdtype(stmt, &cmdType, &relationOid);
 
 		/* MPP-4407. Logging number of tuples modified. */
 		if (relationOid != InvalidOid)
@@ -468,12 +437,8 @@ ProcessQuery(Portal portal,
 			}
 		}
 		
-		if (relationOid != InvalidOid 
-				&& !rel_is_partitioned(relationOid))
-		{
-			/* MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
-			auto_stats(cmdType, relationOid, queryDesc->es_processed);
-		}
+		/* MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
+		auto_stats(cmdType, relationOid, queryDesc->es_processed);
 	}
 
 	FreeQueryDesc(queryDesc);

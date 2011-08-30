@@ -36,6 +36,7 @@
 #include "optimizer/clauses.h"
 #include "executor/nodeFunctionscan.h"
 #include "cdb/memquota.h"
+#include "postmaster/autovacuum.h"
 
 /*
  * We have an execution_state record for each query in a function.	Each
@@ -560,6 +561,15 @@ postquel_end(execution_state *es)
 			if (es->qd->operation != CMD_SELECT)
 				AfterTriggerEndQuery(es->qd->estate);
 			ExecutorEnd(es->qd);
+
+			/* MPP-14001: Running auto_stats */
+			if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				Oid			relationOid = InvalidOid; 					/* relation that is modified */
+				AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
+				autostats_get_cmdtype(es->qd->plannedstmt, &cmdType, &relationOid);
+				auto_stats(cmdType, relationOid, es->qd->es_processed);
+			}
 		}
 		PG_CATCH();
 		{

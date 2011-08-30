@@ -54,6 +54,7 @@
 #include "utils/ps_status.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbpartition.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "nodes/makefuncs.h"
@@ -1356,6 +1357,56 @@ const char *autostats_cmdtype_to_string(AutoStatsCmdType cmdType)
 }
 
 /**
+ * This function extracts the command type and id of the modified relation from a
+ * a PlannedStmt. This is done in preparation to call auto_stats()
+ */
+void autostats_get_cmdtype(PlannedStmt * stmt, AutoStatsCmdType * pcmdType, Oid * prelationOid)
+{
+
+	Oid relationOid = InvalidOid;   /* relation that is modified */
+	AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
+	RangeTblEntry * rte = NULL;
+
+	switch (stmt->commandType)
+	{
+		case CMD_SELECT:
+			if (stmt->intoClause != NULL)
+			{
+				/* CTAS */
+				relationOid = stmt->intoClause->oidInfo.relOid;
+				cmdType = AUTOSTATS_CMDTYPE_CTAS;
+			}
+			break;
+		case CMD_INSERT:
+			rte = rt_fetch(lfirst_int(list_head(stmt->resultRelations)), stmt->rtable);
+			relationOid = rte->relid;
+			cmdType = AUTOSTATS_CMDTYPE_INSERT;
+			break;
+		case CMD_UPDATE:
+			rte = rt_fetch(lfirst_int(list_head(stmt->resultRelations)), stmt->rtable);
+			relationOid = rte->relid;
+			cmdType = AUTOSTATS_CMDTYPE_UPDATE;
+			break;
+		case CMD_DELETE:
+			rte = rt_fetch(lfirst_int(list_head(stmt->resultRelations)), stmt->rtable);
+			relationOid = rte->relid;
+			cmdType = AUTOSTATS_CMDTYPE_DELETE;
+			break;
+		case CMD_UTILITY:
+		case CMD_UNKNOWN:
+		case CMD_NOTHING:
+			break;
+		default:
+			Assert(false);
+			break;
+	}
+
+	Assert (cmdType >=0 && cmdType <= AUTOSTATS_CMDTYPE_SENTINEL);
+	*pcmdType = cmdType;
+	*prelationOid = relationOid;
+}
+
+/**
  * This method takes a decision to run analyze based on the query and the number of modified tuples based
  * on the policy set via gp_autostats_mode. The following modes are currently supported:
  * none 		: 	no automatic analyzes are issued. simply return.
@@ -1369,7 +1420,7 @@ void auto_stats(AutoStatsCmdType cmdType, Oid relationOid, uint64 ntuples)
 	bool policyCheck = false;
 	start = GetCurrentTimestamp();
 	
-	if (Gp_role != GP_ROLE_DISPATCH) 
+	if (Gp_role != GP_ROLE_DISPATCH || relationOid == InvalidOid || rel_is_partitioned(relationOid))
 	{
 		return;
 	}

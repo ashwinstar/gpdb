@@ -38,6 +38,7 @@
 #include "commands/dbcommands.h"	/* get_database_name() */
 #include "postmaster/postmaster.h"		/* PostPortNumber */
 #include "postmaster/backoff.h"
+#include "postmaster/autovacuum.h" /* auto_stats() */
 #include "nodes/print.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_namespace.h"
@@ -2047,6 +2048,15 @@ _SPI_pquery(QueryDesc * queryDesc, bool fire_triggers, long tcount)
 		ExecutorEnd(queryDesc);
 
 		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
+
+		/* MPP-14001: Running auto_stats */
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			Oid	relationOid = InvalidOid; 	/* relation that is modified */
+			AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
+			autostats_get_cmdtype(queryDesc->plannedstmt, &cmdType, &relationOid);
+			auto_stats(cmdType, relationOid, queryDesc->es_processed);
+		}
 	}
 	PG_CATCH();
 	{
