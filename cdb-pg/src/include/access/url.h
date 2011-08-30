@@ -112,6 +112,7 @@ typedef struct URL_FILE
 		struct {
 			FmgrInfo   *protocol_udf;
 			ExtProtocol extprotocol;
+			MemoryContext protcxt;
 		} custom;
 		
 	} u;

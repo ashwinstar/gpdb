@@ -975,6 +975,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
     {
     	/* we're using a custom protocol */
     	
+    	MemoryContext	oldcontext;
     	ExtPtcFuncType	ftype;
 		Oid				procOid;
     	char   		   *prot_name 	= pstrdup(file->url);
@@ -991,18 +992,30 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
     	prot_name[i] = '\0';
     	procOid = LookupExtProtocolFunction(prot_name, ftype, true);
 
-		/* 
-		 * allocate space for our protocol handlers. Note that we use
-		 * alloc and not palloc, similarly to the parent 'file' handler
-		 * since we much ensure that it persists during Abort, so that
-		 * the UDF has a chance to clean up open resource/connections.
-		 */
-		file->u.custom.protocol_udf = malloc(sizeof(FmgrInfo));
-		file->u.custom.extprotocol = (ExtProtocolData *) malloc (sizeof(ExtProtocolData));
+        /*
+    	 * Create a memory context to store all custom UDF private
+    	 * memory. We do this in order to allow resource cleanup in
+    	 * cases of query abort. We use TopTransactionContext as a
+    	 * parent context so that it lives longer than Portal context.
+    	 * Note that we always Delete our new context, in normal execution
+    	 * and in abort (see url_fclose()).
+    	 */
+    	file->u.custom.protcxt = AllocSetContextCreate(TopTransactionContext,
+													   "CustomProtocolMemCxt",
+													   ALLOCSET_DEFAULT_MINSIZE,
+													   ALLOCSET_DEFAULT_INITSIZE,
+													   ALLOCSET_DEFAULT_MAXSIZE);
+    	
+    	oldcontext = MemoryContextSwitchTo(file->u.custom.protcxt);
+		
+    	file->u.custom.protocol_udf = palloc(sizeof(FmgrInfo));
+		file->u.custom.extprotocol = (ExtProtocolData *) palloc (sizeof(ExtProtocolData));
 
 		/* we found our function. set it in custom file handler */
 		fmgr_info(procOid, file->u.custom.protocol_udf);
 
+		MemoryContextSwitchTo(oldcontext);
+		
 		file->u.custom.extprotocol->prot_user_ctx = NULL;
 		file->u.custom.extprotocol->prot_last_call = false;
 		file->u.custom.extprotocol->prot_url = NULL;
@@ -1127,13 +1140,12 @@ url_fclose(URL_FILE *file, bool failOnError, const char *relname)
 
 		case CFTYPE_CUSTOM:
 			
+			/* last call. let the user close custom resources */
 			if(file->u.custom.protocol_udf)
 				(void) InvokeExtProtocol(NULL, 0, file, NULL, true);
 
-			if(file->u.custom.protocol_udf)
-				free(file->u.custom.protocol_udf);
-			if(file->u.custom.extprotocol)
-				free(file->u.custom.extprotocol);
+			/* now clean up everything not cleaned by user */
+			MemoryContextDelete(file->u.custom.protcxt);
 
 			break;
 			
@@ -2151,6 +2163,7 @@ InvokeExtProtocol(void 	   		*ptr,
 	ExtProtocolData*		extprotocol = file->u.custom.extprotocol;
 	FmgrInfo*				extprotocol_udf = file->u.custom.protocol_udf;
 	Datum					d;
+	MemoryContext			oldcontext;
 	
 	/* must have been created during url_fopen() */
 	Assert(extprotocol);
@@ -2168,8 +2181,10 @@ InvokeExtProtocol(void 	   		*ptr,
 							 /* Call Context */ (Node *) extprotocol, 
 							 /* ResultSetInfo */ NULL);
 	
-
+	/* invoke the protocol within a designated memory context */
+	oldcontext = MemoryContextSwitchTo(file->u.custom.protcxt);
 	d = FunctionCallInvoke(&fcinfo);
+	MemoryContextSwitchTo(oldcontext);
 
 	/* We do not expect a null result */
 	if (fcinfo.isnull)
