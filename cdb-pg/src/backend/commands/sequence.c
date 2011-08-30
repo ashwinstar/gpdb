@@ -108,15 +108,14 @@ static void
 cdb_sequence_nextval(Relation   seqrel,
                      int64     *plast,
                      int64     *pcached,
-                     int64     *pincrement);
+                     int64     *pincrement,
+                     bool      *seq_overflow);
 static void
-cdb_sequence_nextval_proxy(Oid      tablespaceid,
-                           Oid      dbid,
-                           Oid      relid,
-                           bool     istemp,
+cdb_sequence_nextval_proxy(Relation seqrel,
                            int64   *plast,
                            int64   *pcached,
-                           int64   *pincrement);
+                           int64   *pincrement,
+                           bool    *poverflow);
 
 typedef struct SequencePersistentInfoCacheEntryKey
 {
@@ -822,6 +821,7 @@ nextval_internal(Oid relid)
 {
 	SeqTable	elm;
 	Relation	seqrel;
+	bool is_overflow = false;
 
 	/* open and AccessShareLock sequence */
 	init_sequence(relid, &elm, &seqrel);
@@ -842,18 +842,17 @@ nextval_internal(Oid relid)
 
     /* Update the sequence object. */
     if (Gp_role == GP_ROLE_EXECUTE)
-        cdb_sequence_nextval_proxy(seqrel->rd_node.spcNode,
-                                   seqrel->rd_node.dbNode,
-                                   relid,
-                                   seqrel->rd_istemp,
+        cdb_sequence_nextval_proxy(seqrel,
                                    &elm->last,
                                    &elm->cached,
-                                   &elm->increment);
+                                   &elm->increment,
+                                   &is_overflow);
     else
         cdb_sequence_nextval(seqrel,
                              &elm->last,
                              &elm->cached,
-                             &elm->increment);
+                             &elm->increment,
+                             &is_overflow);
 	last_used_seq = elm;
 
     relation_close(seqrel, NoLock);
@@ -865,7 +864,8 @@ void
 cdb_sequence_nextval(Relation   seqrel,
                      int64     *plast,
                      int64     *pcached,
-                     int64     *pincrement)
+                     int64     *pincrement,
+                     bool      *poverflow)
 {
 	MIRROREDLOCK_BUFMGR_DECLARE;
 
@@ -882,6 +882,7 @@ cdb_sequence_nextval(Relation   seqrel,
 	int64		result,
 				next,
 				rescnt = 0;
+	bool 		have_overflow = false;
 	bool		logit = false;
 
 	/* lock page' buffer and read tuple */
@@ -950,15 +951,12 @@ cdb_sequence_nextval(Relation   seqrel,
 					break;		/* stop fetching */
 				if (!seq->is_cycled)
 				{
-					char		buf[100];
-
-					snprintf(buf, sizeof(buf), INT64_FORMAT, maxv);
-					ereport(ERROR,
-						  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-						   errmsg("nextval: reached maximum value of sequence \"%s\" (%s)",
-								  RelationGetRelationName(seqrel), buf)));
+					have_overflow = true;
 				}
-				next = minv;
+				else
+				{
+					next = minv;
+				}
 			}
 			else
 				next += incby;
@@ -973,15 +971,12 @@ cdb_sequence_nextval(Relation   seqrel,
 					break;		/* stop fetching */
 				if (!seq->is_cycled)
 				{
-					char		buf[100];
-
-					snprintf(buf, sizeof(buf), INT64_FORMAT, minv);
-					ereport(ERROR,
-						  (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-						   errmsg("nextval: reached minimum value of sequence \"%s\" (%s)",
-								  RelationGetRelationName(seqrel), buf)));
+					have_overflow = true;
 				}
-				next = maxv;
+				else
+				{
+					next = maxv;
+				}
 			}
 			else
 				next += incby;
@@ -1001,6 +996,7 @@ cdb_sequence_nextval(Relation   seqrel,
 	Assert(log >= 0);
 
     /* set results for caller */
+	*poverflow = have_overflow; /* has the sequence overflown */
     *plast = result;            /* last returned number */
     *pcached = last;            /* last fetched number */
 	*pincrement = incby;
@@ -1869,23 +1865,20 @@ cdb_sequence_relation_term(Relation seqrel)
  * CDB: forward a nextval request from qExec to the sequence server
  */
 void
-cdb_sequence_nextval_proxy(Oid      tablespaceid,
-                           Oid      dbid,
-                           Oid      relid,
-                           bool     istemp,
+cdb_sequence_nextval_proxy(Relation	seqrel,
                            int64   *plast,
                            int64   *pcached,
-                           int64   *pincrement)
+                           int64   *pincrement,
+                           bool    *poverflow)
 {
-    sendSequenceRequest(GetSeqServerFD(),
-    					dbid,
-    					tablespaceid,
-    					relid,
-    					istemp,
+
+	sendSequenceRequest(GetSeqServerFD(),
+						seqrel,
     					gp_session_id,
     					plast,
     					pcached,
-    					pincrement);
+    					pincrement,
+    					poverflow);
 
 }                               /* cdb_sequence_server_nextval */
 
@@ -1900,7 +1893,8 @@ cdb_sequence_nextval_server(Oid    tablespaceid,
                             bool   istemp,
                             int64 *plast,
                             int64 *pcached,
-                            int64 *pincrement)
+                            int64 *pincrement,
+                            bool  *poverflow)
 {
     RelationData    fakerel;
 	Relation	    seqrel = &fakerel;
@@ -1916,7 +1910,7 @@ cdb_sequence_nextval_server(Oid    tablespaceid,
     /* CDB TODO: Catch errors. */
 
     /* Update the sequence object. */
-    cdb_sequence_nextval(seqrel, plast, pcached, pincrement);
+    cdb_sequence_nextval(seqrel, plast, pcached, pincrement, poverflow);
 
     /* Cleanup. */
     cdb_sequence_relation_term(seqrel);

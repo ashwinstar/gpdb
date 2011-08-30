@@ -42,6 +42,7 @@ typedef struct NextValResponse
 	int64  	 plast;
 	int64    pcached;
 	int64    pincrement;
+	bool 	 poverflowed;
 } NextValResponse;
 
 extern void SeqServerShmemInit(void);
@@ -52,14 +53,12 @@ extern int seqserver_start(void);
 /* used to call nextval on a sequence by going through the seqserver*/
 extern void 
 sendSequenceRequest(int     sockfd, 
-                    Oid     dbid, 
-                    Oid     tablespaceid, 								 
-                    Oid     seq_oid, 
-                    bool    isTemp, 
+					Relation seqrel,
                     int     session_id,
 					int64  *plast, 
                     int64  *pcached,
-			 		int64  *pincrement);
+			 		int64  *pincrement,
+			 		bool   *poverflow);
 
 
 

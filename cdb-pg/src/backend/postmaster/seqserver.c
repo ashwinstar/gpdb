@@ -77,8 +77,6 @@ NON_EXEC_STATIC void SeqServerMain(int argc, char *argv[]);
 static void SeqServerLoop(void);
 static bool processSequenceRequest( int sockfd );
 static int listenerSetup(void);
-static int64 readInt64(uint8 *buff);
-static void sendInt64(uint8 *buff, int64 i);
 
 extern bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
 
@@ -154,21 +152,24 @@ seqserver_start(void)
  */
 void
 sendSequenceRequest(int     sockfd, 
-                    Oid     dbid, 
-                    Oid     tablespaceid, 								 
-                    Oid     seq_oid, 
-                    bool    isTemp, 
+					Relation seqrel,
                     int     session_id,
 					int64  *plast, 
                     int64  *pcached,
-			 		int64  *pincrement)
+			 		int64  *pincrement,
+			 		bool   *poverflow)
 {	
 	int		n;
 	int    bytesWritten = 0;
 	int	   bytesRead = 0;
 	int			saved_err;
 	mpp_fd_set	rset, wset;
-	
+
+	Oid     dbid = seqrel->rd_node.dbNode;
+    Oid     tablespaceid = seqrel->rd_node.spcNode;
+    Oid     seq_oid = seqrel->rd_id;
+    bool    isTemp = seqrel->rd_istemp;
+
 	/* request message */
     NextValRequest  request;
 	int     reqlen = sizeof(request);
@@ -321,9 +322,19 @@ sendSequenceRequest(int     sockfd,
 			bytesRead += n;
 	}
 	
-	*plast      = readInt64((uint8 *)&response.plast);
-	*pcached    = readInt64((uint8 *)&response.pcached);
-	*pincrement = readInt64((uint8 *)&response.pincrement);
+	if (response.poverflowed)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						errmsg("nextval: reached %s value of sequence \"%s\" (" INT64_FORMAT ")",
+								response.pincrement>0 ? "maximum":"minimum",
+								RelationGetRelationName(seqrel), response.plast)));
+	}
+
+	*plast = response.plast;
+	*pcached = response.pcached;
+	*pincrement = response.pincrement;
+	*poverflow = response.poverflowed;
 }
 
 
@@ -669,6 +680,7 @@ processSequenceRequest(int sockfd )
 	int64 plast;
 	int64 pcached;
 	int64 pincrement;
+	bool poverflow = false;
 	
 	int n;
 	int bytesRead = 0;
@@ -802,7 +814,8 @@ processSequenceRequest(int sockfd )
 									nextValRequest.isTemp,
 									&plast,
 									&pcached,
-									&pincrement);
+									&pincrement,
+									&poverflow);
 	}
 	PG_CATCH();
 	{
@@ -816,11 +829,13 @@ processSequenceRequest(int sockfd )
 	PG_END_TRY();
 
 	/*
-	 * Send the response
+	 * Create the response
 	 */
-	sendInt64((uint8 *)&response.plast, plast);
-	sendInt64((uint8 *)&response.pcached, pcached);
-	sendInt64((uint8 *)&response.pincrement, pincrement);
+
+	response.plast = plast;
+	response.pcached = pcached;
+	response.pincrement = pincrement;
+	response.poverflowed = poverflow;
 
 	/*
 	 * Write the response
@@ -1013,24 +1028,4 @@ listenerSetup(void)
 
 	return listenerPort;
 }
-
-
-
-int64 readInt64(uint8 *buff)
-{
-	int64		result;
-
-	memcpy(&result, buff, 8 );	
-		
-	return result;
-}
-
-
-void sendInt64(uint8 *buff, int64 i)
-{
-	memcpy( buff, &i, 8);
-}
-
-
-
 

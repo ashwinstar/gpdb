@@ -118,6 +118,8 @@ cdb_sequence_nextval_server(Oid    tablespaceid,
                             bool   istemp,
                             int64 *plast,
                             int64 *pcached,
-                            int64 *pincrement);
+                            int64 *pincrement,
+                            bool  *poverflow);
+
 
 #endif   /* SEQUENCE_H */
