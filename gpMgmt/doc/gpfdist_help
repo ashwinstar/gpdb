@@ -8,7 +8,7 @@ SYNOPSIS
 
 
 gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>]  
-[-v | -V] [-m <maxlen>]
+[-S] [-v | -V] [-m <maxlen>]
 
 gpfdist [-? | --help] | --version
 
@@ -81,9 +81,10 @@ as it increases resource allocation. Valid range is 32K to 1MB.
 
 -S (use O_SYNC)
 
-Forces files for writable external tables to writing to be opened with 
-the O_SYNC flag so that writes block gpfdist until the operating system 
-believes the data has been physcially written to underlying hardware.
+Opens the file for synchronous I/O with the O_SYNC flag. Any writes to 
+the resulting file descriptor block gpfdist until the data is 
+physically written to the underlying hardware.
+ 
 
 -v (verbose)
 
