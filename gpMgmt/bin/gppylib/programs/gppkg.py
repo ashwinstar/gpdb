@@ -10,7 +10,7 @@ try:
     import tarfile
     import yaml
     import os, sys 
-    from gppylib.mainUtils import addMasterDirectoryOptionForSingleClusterProgram, addStandardLoggingAndHelpOptions
+    from gppylib.mainUtils import addMasterDirectoryOptionForSingleClusterProgram, addStandardLoggingAndHelpOptions, ExceptionNoStackTraceNeeded
     from gppylib.commands import gp
     from gppylib.db import dbconn
     from optparse import OptionGroup 
@@ -20,11 +20,15 @@ try:
     from gppylib.gparray import GpArray
     from gppylib.operations.package import SPECFILE_NAME, InstallGppkg, UnInstallGppkg, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg
     from gppylib.gpversion import GpVersion
+    from gppylib.commands.base import Command, ExecutionError
+    from gppylib.commands.unix import curr_platform, SUNOS
 
 except ImportError, ex:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(ex))
 
 logger = gplog.get_default_logger()
+
+REQUIRED_RPM_VERSIONS = ["4.4.2.3", "5.0.0"]        #I use 5.0.0 on my mac but the qavms use 4.4.2.3. So we support these two versions.
 
 class Gppkg:
 
@@ -293,6 +297,24 @@ class GpPkgProgram:
         if self.build:
             BuildGppkg(self.build).run()    
             return 
+
+        #Check for RPM and Solaris OS
+        if curr_platform == SUNOS:
+            raise ExceptionNoStackTraceNeeded('gppkg is not supported on Solaris')
+                  
+        try:
+            cmd = Command(name = 'Check for rpm', cmdStr = 'rpm --version')
+            cmd.run(validateAfter = True)
+            results = cmd.get_results().stdout.strip()
+            rpm_version_string = results.split(' ')[-1]
+
+            if rpm_version_string not in  REQUIRED_RPM_VERSIONS:
+                raise ExceptionNoStackTraceNeeded('gppkg requires one of the RPM versions %s' % REQUIRED_RPM_VERSIONS)
+
+        except ExecutionError, ex: 
+            results = ex.cmd.get_results().stderr.strip()
+            if len(results) != 0 and 'not found' in results:
+                raise ExceptionNoStackTraceNeeded('gppkg requires RPM to be available in PATH') 
 
         #Get the host list first
         self._get_gpdb_host_list()
