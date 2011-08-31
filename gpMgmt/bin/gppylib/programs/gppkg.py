@@ -18,7 +18,7 @@ try:
     from gppylib import gplog
     from gppylib import pgconf
     from gppylib.gparray import GpArray
-    from gppylib.operations.package import SPECFILE_NAME, InstallGppkg, UnInstallGppkg, QueryGppkg, BuildGppkg, UpgradeGppkg, CleanGppkg
+    from gppylib.operations.package import SPECFILE_NAME, InstallGppkg, UnInstallGppkg, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg
     from gppylib.gpversion import GpVersion
 
 except ImportError, ex:
@@ -156,7 +156,7 @@ class GpPkgProgram:
     '''
         This class is the main class for gppkg tool. 
         This class contains the methods to install,
-        remove, upgrade packages.
+        remove, update packages.
     '''
     
     def __init__(self, options, args):
@@ -179,7 +179,7 @@ class GpPkgProgram:
         self.build = options.build
         self.install = options.install
         self.remove = options.remove
-        self.upgrade = options.upgrade
+        self.update = options.update
         self.clean = options.clean
 
     @staticmethod
@@ -192,7 +192,7 @@ class GpPkgProgram:
         logger.debug('create_parser')
 
         parser = OptParser(option_class=OptChecker,
-            description="Install/Upgrade/Remove a gppkg.",
+            description="Install/Update/Remove a gppkg.",
             version='%prog version $Revision: #1 $')
         parser.setHelp([])
 
@@ -208,7 +208,7 @@ class GpPkgProgram:
 
         add_to.add_option('-c', '--clean', help='clean the cluster of the given gppkg', metavar='<package>')
         add_to.add_option('-i', '--install', help='install the given gppkg', metavar='<package>')
-        add_to.add_option('-u', '--upgrade', help='upgrade the given gppkg', metavar='<package>')
+        add_to.add_option('-u', '--update', help='update the given gppkg', metavar='<package>')
         add_to.add_option('-r', '--remove', help='remove the given gppkg', metavar='<package>')
         add_to.add_option('-b', '--build', help='build a gppkg', metavar='<directory>')
         add_to.add_option('-q', '--query', help='query the given gppkg', metavar='<package>')
@@ -317,9 +317,9 @@ class GpPkgProgram:
         elif self.remove:
             pkg = Gppkg.from_package_path(self.remove)
             UnInstallGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
-        elif self.upgrade:
-            pkg = Gppkg.from_package_path(self.upgrade)
-            UpgradeGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
+        elif self.update:
+            pkg = Gppkg.from_package_path(self.update)
+            UpdateGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
         elif self.clean:
             pkg = Gppkg.from_package_path(self.clean)
             CleanGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run()

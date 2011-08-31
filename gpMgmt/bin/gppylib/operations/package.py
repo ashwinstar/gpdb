@@ -984,9 +984,9 @@ class BuildGppkg(Operation):
 
         return True
         
-class UpgradeGppkg(Operation):
+class UpdateGppkg(Operation):
     '''
-        Upgrade to the given gppkg
+        Update to the given gppkg
     '''
 
     def __init__(self, gppkg, master_host, standby_host, segment_host_list):
@@ -997,7 +997,7 @@ class UpgradeGppkg(Operation):
 
     def execute(self):
 
-        rpm_upgrade_cmd = 'rpm -U %s --dbpath %s --prefix=%s'
+        rpm_update_cmd = 'rpm -U %s --dbpath %s --prefix=%s'
 
         gppkg = self.gppkg
 
@@ -1014,8 +1014,8 @@ class UpgradeGppkg(Operation):
         #get the installation string
         rpm_install_string = GetRpmInstallString(gppkg).run()
 
-        #perform upgrade using rpm -U 
-        #First we test if upgrade is possible. If it fails due to dependencies we abort the upgrade.
+        #perform update using rpm -U 
+        #First we test if update is possible. If it fails due to dependencies we abort the update.
         cmd_str = 'rpm -U %s --test --dbpath %s --prefix=%s' % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH) 
 
         try:
@@ -1026,7 +1026,7 @@ class UpgradeGppkg(Operation):
                 if 'failed dependency'in result.lower():
                     raise RequiredDependencyError
         
-        cmd_str = rpm_upgrade_cmd % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
+        cmd_str = rpm_update_cmd % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
 
         #change the directory
         old_dir = os.getcwd()
