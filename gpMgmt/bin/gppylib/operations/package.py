@@ -31,13 +31,17 @@ logger = gplog.get_default_logger()
 
 GPHOME = gp.get_gphome() 
 
+GPPKG_EXTENSION = '.gppkg'
 SPECFILE_NAME = 'gppkg_spec.yml'
 SPECFILE_REQUIRED_TAGS = ['pkgname', 'version', 'architecture', 'os', 'description', 'gpdbmin', 'gpdbmax']
 SPECFILE_OPTIONAL_TAGS = ['preinstall', 'postinstall', 'preuninstall', 'postuninstall']
 
-RPM_DATABASE = os.path.join(GPHOME, 'addons/.gprpmdb')
+RPM_DATABASE_PATH = 'share/packages/database'
+RPM_DATABASE = os.path.join(GPHOME, RPM_DATABASE_PATH)
 RPM_INSTALLATION_PATH = GPHOME
-GPPKG_ARCHIVE_PATH = os.path.join(GPHOME, 'addons/archive')
+
+ARCHIVE_PATH = 'share/packages/archive'
+GPPKG_ARCHIVE_PATH = os.path.join(GPHOME, ARCHIVE_PATH)
 
 TEMP_EXTRACTION_PATH = GPHOME + '/.tmp'
 DEPS_DIR = 'deps'
@@ -167,7 +171,7 @@ class ListPackages(Operation):
 
     def execute(self):
         #Get all gppkgs from archive
-        package_list = glob.glob(GPPKG_ARCHIVE_PATH+'/*.gppkg')
+        package_list = glob.glob(GPPKG_ARCHIVE_PATH+'/*'+GPPKG_EXTENSION)
 
         package_name_list = []
 
@@ -908,7 +912,7 @@ class BuildGppkg(Operation):
             raise BuildPkgError 
 
         #The file already exists. Rewrite the original with the new one 
-        pkg = pkg_path_details['pkgname'] + '-' + str(pkg_path_details['version']) + '-' + pkg_path_details['os'] + '-' + pkg_path_details['architecture'] + '.gppkg'
+        pkg = pkg_path_details['pkgname'] + '-' + str(pkg_path_details['version']) + '-' + pkg_path_details['os'] + '-' + pkg_path_details['architecture'] + GPPKG_EXTENSION 
         if os.path.exists(pkg):
             os.remove(pkg)
 

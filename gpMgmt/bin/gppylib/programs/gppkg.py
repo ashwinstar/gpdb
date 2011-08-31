@@ -219,7 +219,7 @@ class GpPkgProgram:
         add_to.add_option('-I', '--info', help='print information about the gppkg including name, version, description')
         add_to.add_option('-R', '--requires', help='print the dependencies of the gppkg')
         add_to.add_option('-l', '--list', help='print all the files present in the gppkg')
-        add_to.add_option('--all', help='print all the files installed by gppkg')
+        add_to.add_option('--all', help='print all the gppkgs installed by gppkg')
         #add_to.add_option('--list', help='print all the files present in the gppkg')
 
         return parser
