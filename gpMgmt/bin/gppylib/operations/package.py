@@ -33,7 +33,7 @@ GPHOME = gp.get_gphome()
 
 GPPKG_EXTENSION = '.gppkg'
 SPECFILE_NAME = 'gppkg_spec.yml'
-SPECFILE_REQUIRED_TAGS = ['pkgname', 'version', 'architecture', 'os', 'description', 'gpdbmin', 'gpdbmax']
+SPECFILE_REQUIRED_TAGS = ['pkgname', 'version', 'architecture', 'os', 'description', 'gpdbversion']
 SPECFILE_OPTIONAL_TAGS = ['preinstall', 'postinstall', 'preuninstall', 'postuninstall']
 
 RPM_DATABASE_PATH = 'share/packages/database'
@@ -287,26 +287,18 @@ class IsVersionCompatible(Operation):
         gppkg = self.gppkg
 
         gpdb_version = self._get_gpdb_version()
+        required_gpdb_version = gppkg.gpdbversion
 
-        logger.debug('GPDB Version = %s' % gpdb_version)
-        logger.debug('GPDB min = %s' % gppkg.gpdbmin)
-        logger.debug('GPDB max = %s' % gppkg.gpdbmax)
+        logger.debug('Greenplum Database Version = %s' % gpdb_version)
+        logger.debug('Required Greenplum Database version = %s' % required_gpdb_version)
 
         if gpdb_version is None:
-            logger.error('Could not determine gpdb version')
+            logger.error('Could not determine Greenplum Database version')
             return False
- 
-        if gppkg.gpdbmin == gppkg.gpdbmax:
-            if gpdb_version != gppkg.gpdbmin:
-                logger.error('%s requires gpdb version %s' % (gppkg.pkg, gppkg.gpdbmin))
-                return False
-
-        if gpdb_version < gppkg.gpdbmin:
-            logger.error('%s requires gpdb version >= %s' % (gppkg.pkg, gppkg.gpdbmin))
-            return False 
-        elif gpdb_version > gppkg.gpdbmax:
-            logger.error('%s requires gpdb version <= %s' % (gppkg.pkg, gppkg.gpdbmax))
-            return False 
+        
+        if not required_gpdb_version.isVersionRelease(gpdb_version):
+            logger.error('%s requires Greenplum Database version %s' % (gppkg.pkgname, required_gpdb_version))
+            return False
 
         return True
 
@@ -846,8 +838,7 @@ class QueryGppkg(Operation):
             print 'Version:    %s' % gppkg.version
             print 'Architecture:    %s' % gppkg.architecture
             print 'OS:         %s' % gppkg.os
-            print 'GPDBMin:    %s' % gppkg.gpdbmin
-            print 'GPDBMax:    %s' % gppkg.gpdbmax
+            print 'GPDBVersion:    %s' % gppkg.gpdbversion
             print 'Description:    %s' % gppkg.description
             
             return 

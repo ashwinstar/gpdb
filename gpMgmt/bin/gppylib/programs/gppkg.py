@@ -36,7 +36,7 @@ class Gppkg:
         This class stores all the information about a gppkg
     '''
                 
-    def __init__(self, pkg, pkgname, main_rpm, version, architecture, os, gpdbmin, gpdbmax, description, abspath, preinstall, postinstall, preuninstall, postuninstall, dependencies, file_list):
+    def __init__(self, pkg, pkgname, main_rpm, version, architecture, os, gpdbversion, description, abspath, preinstall, postinstall, preuninstall, postuninstall, dependencies, file_list):
 
         logger.debug('Gppkg Constructor')
 
@@ -46,8 +46,7 @@ class Gppkg:
         self.version = version 
         self.architecture = architecture
         self.os = os
-        self.gpdbmin = gpdbmin
-        self.gpdbmax = gpdbmax
+        self.gpdbversion = gpdbversion
         self.description = description 
         self.abspath = abspath 
         self.preinstall = preinstall
@@ -88,7 +87,7 @@ class Gppkg:
             logger.error('Package is empty')
             raise IOError 
 
-        pkg = {'pkg': '', 'pkgname':'', 'os':'', 'architecture':'', 'gpdbmin':'', 'gpdbmax':'', 'description':'', 
+        pkg = {'pkg': '', 'pkgname':'', 'os':'', 'architecture':'', 'gpdbversion':'', 'description':'', 
         'preinstall' : [], 'postinstall' : [], 'preuninstall' : [], 'postuninstall' : [], 'file_list' : [], 'dependencies' : [] } 
     
         try:
@@ -123,20 +122,8 @@ class Gppkg:
         #make the versions as strings
         pkg['version'] = str(pkg['version'])
 
-        pkg['gpdbmin'] = str(pkg['gpdbmin'])
-        #TODO: add 0s to the end to make the version of the form a.b.c.d
-        version_list = pkg['gpdbmin'].split('.')
-        while len(version_list) != 4:
-            version_list.append('0')
-        #Convert it to GpVersion
-        pkg['gpdbmin'] = GpVersion('.'.join(version_list))
-
-        pkg['gpdbmax'] = str(pkg['gpdbmax'])
-        version_list = pkg['gpdbmax'].split('.')
-        while len(version_list) != 4:
-            version_list.append('0')
-        #Convert it to GpVersion
-        pkg['gpdbmax'] = GpVersion('.'.join(version_list))
+        #Convert the required version to a GpVersion
+        pkg['gpdbversion'] = GpVersion(str(pkg['gpdbversion']))
 
         #update the absolute path
         pkg['abspath'] = pkg_path
