@@ -1613,6 +1613,7 @@ describeOneTableDetails(const char *schemaname,
 			char	   *writable = PQgetvalue(result, 0, 6);
 			char	   *errtblname = PQgetvalue(result, 0, 7);
 			char	   *extencoding = PQgetvalue(result, 0, 8);
+			char       *format;
 
 			/* Writable/Readable */
 			printfPQExpBuffer(&tmpbuf, _("Type: %s"), writable[0] == 't' ? "writable" : "readable");
@@ -1623,7 +1624,31 @@ describeOneTableDetails(const char *schemaname,
 			printTableAddFooter(&cont, tmpbuf.data);
 
 			/* format type */
-			printfPQExpBuffer(&tmpbuf, _("Format type: %s"), fmttype[0] == 't' ? "text" : "csv");
+			switch ( fmttype[0] )
+			{
+				case 't':
+				{
+					format = "text";
+				}
+				break;
+				case 'c':
+				{
+					format = "csv";
+				}
+				break;
+				case 'b':
+				{
+					format = "custom";
+				}
+				break;					
+				default:
+				{
+					format = "";
+					fprintf(stderr, _("Unknown fmttype value: %c\n"), fmttype[0]);
+				}
+				break;	
+			};
+			printfPQExpBuffer(&tmpbuf, _("Format type: %s"), format);
 			printTableAddFooter(&cont, tmpbuf.data);
 
 			/* format options */
