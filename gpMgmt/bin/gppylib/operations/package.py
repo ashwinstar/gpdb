@@ -7,6 +7,7 @@
 # THIS IMPORT SHOULD COME FIRST
 
 import tarfile
+import glob
 import shutil
 import os, sys
 import yaml     # this sits in gpMgmt/bin/ext/yaml 
@@ -154,6 +155,27 @@ class RemoteCommand(Operation):
 
         #This will raise ExecutionError exception if even a single command fails
         pool.check_results()
+
+class ListPackages(Operation):
+    '''  
+        Lists all the packages present in 
+        $GPHOME/share/packages/archive
+    '''
+
+    def __init__(self):
+        pass 
+
+    def execute(self):
+        #Get all gppkgs from archive
+        package_list = glob.glob(GPPKG_ARCHIVE_PATH+'/*.gppkg')
+
+        package_name_list = []
+
+        for pkg in package_list:
+            pkg_name = pkg.split('/')[-1]
+            package_name_list.append(pkg_name[:pkg_name.index('-', pkg_name.index('-') + 1)])
+
+        return package_name_list
 
 class TransferPackageContents(Operation):
     '''
@@ -837,7 +859,12 @@ class QueryGppkg(Operation):
             for cur_file in gppkg.file_list:
                 print cur_file
             return
-        
+      
+        elif self.query in ['all', '--all']:
+            package_name_list = ListPackages().run()
+            for pkg_name in package_name_list:
+                print pkg_name
+
         #No query option was entered. So just query the RPM database
         elif IsRpmInstalled(gppkg.main_rpm).run():
             print '%s is installed.' % gppkg.pkgname

@@ -219,6 +219,7 @@ class GpPkgProgram:
         add_to.add_option('-I', '--info', help='print information about the gppkg including name, version, description')
         add_to.add_option('-R', '--requires', help='print the dependencies of the gppkg')
         add_to.add_option('-l', '--list', help='print all the files present in the gppkg')
+        add_to.add_option('--all', help='print all the files installed by gppkg')
         #add_to.add_option('--list', help='print all the files present in the gppkg')
 
         return parser
@@ -302,13 +303,16 @@ class GpPkgProgram:
         elif self.query:
             try:
                 if len(self.__args) == 0:
-                    pkg = Gppkg.from_package_path(self.query)
+                    if self.query not in ['all', '--all']:
+                        pkg = Gppkg.from_package_path(self.query)
+                    else:
+                        pkg = None
                 else:
                     pkg = Gppkg.from_package_path(self.__args[0])
             except KeyError, ex:
                 print 'Missing key %s' % str(ex)
 
-            if self.query in ['I', 'info', 'R', 'requires', 'l', 'list', '--info', '--list', '--requires', '-I', '-R', '-l']:
+            if self.query in ['I', 'info', 'R', 'requires', 'l', 'list', '--info', '--list', '--requires', '-I', '-R', '-l', 'all', '--all']:
                 QueryGppkg(pkg, self.query).run()
             elif os.path.isfile(self.query):
                 QueryGppkg(pkg, self.query).run()
