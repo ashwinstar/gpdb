@@ -115,6 +115,7 @@ ignore: tablespace
 test: gpdiffcheck
 test: exttab1
 test: gphdfs
+test: custom_format
 test: resource_queue
 test: gptokencheck
 test: gpcopy

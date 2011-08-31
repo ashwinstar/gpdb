@@ -60,15 +60,17 @@ typedef struct {
 	bytea         *buffer;
 	StringInfoData one_val;
 	StringInfoData one_field;
+	int            lineno;
 } format_t;
 
 static void 
 init_format_t(format_t** data, int ncolumns, FunctionCallInfo fcinfo)
 {
-	*data          = palloc(sizeof(format_t));
+	*data            = palloc(sizeof(format_t));
 	(*data)->ncols   = ncolumns;
 	(*data)->values  = palloc(sizeof(Datum) * ncolumns);
 	(*data)->nulls   = palloc(sizeof(bool) * ncolumns);
+	(*data)->lineno  = 1;
 	initStringInfo( &((*data)->one_val) );
 	initStringInfo( &((*data)->one_field) );
 	
@@ -77,15 +79,15 @@ init_format_t(format_t** data, int ncolumns, FunctionCallInfo fcinfo)
 }
 
 static void
-extract_field(char *data_cursor, int field_total_length, int preserve_blanks, StringInfo output)
+extract_field(char *data_cursor, int field_total_length, bool preserve_blanks, StringInfo output)
 {
-	int actual_length, final_size;
+	int actual_length;
 	
 	/*
 	 * the actual length of the string we will restore into the database depends whether
 	 * we preserve_blanks or not.
 	 */
-	if (0 != preserve_blanks)
+	if (preserve_blanks)
 	{
 		actual_length = field_total_length;
 	}
@@ -94,9 +96,9 @@ extract_field(char *data_cursor, int field_total_length, int preserve_blanks, St
 		/*
 		 * assume all field characters are blanks
 		 */
+		char *tail = data_cursor + field_total_length - 1;
 		actual_length = 0;
 		
-		char *tail = data_cursor + field_total_length - 1;
 		while ( tail != data_cursor)
 		{
 			if ( *tail != ' ' )
@@ -113,7 +115,6 @@ extract_field(char *data_cursor, int field_total_length, int preserve_blanks, St
 		}
 	}
 	
-	final_size = actual_length + 1;
 	appendBinaryStringInfo(output, data_cursor, actual_length);
 }
 
@@ -158,6 +159,7 @@ load_format_config(FormatConfig *format_config, FunctionCallInfo fcinfo)
 		else if ( strcasecmp("line_delim", key) == 0)
 		{
 			format_config->line_delimiter = val;
+			format_config->line_delimiter_length = strlen(val);
 		}
 		else if ( strcasecmp("null", key) == 0)
 		{
@@ -197,6 +199,21 @@ make_null_val_with_blanks(char *value, int field_size)
 	return ret;
 }
 
+/*
+ * make_val_with_blanks
+ *
+ * Pad one string value with blanks, so the size will corespond to the fixedwidth 
+ * required by the format
+ *
+ * Arguments:
+ *  value           - the field value in string format 
+ *  field_size      - the fixedwidth field size, that is required for the value, for it to be added on the output line
+ *  buf             - The temporary field buffer used for field value expansion - so it will reach the fixedwidth size
+ *
+ * Returns:
+ * 	blank padded    - padded value of size field_size, in case value is NULL the return string will contain only blanks
+ *  value
+ */
 static char*
 make_val_with_blanks(char *value, int field_size, StringInfo buf)
 {
@@ -210,8 +227,9 @@ make_val_with_blanks(char *value, int field_size, StringInfo buf)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_STRING_DATA_LENGTH_MISMATCH),
-					 errmsg("The size of the value cannot be bigger than the field size")));			
-		}
+					 errmsg("The size of the value cannot be bigger than the field size value: %s, size: %d, field_size %d",
+							value, sz, field_size)));			
+		} 
 		
 		appendBinaryStringInfo(buf, value, sz);
 		appendStringInfoFill(buf, field_size - sz, ' ');
@@ -313,6 +331,89 @@ get_tuple_info(TupleDesc tupdesc, int *r_ncolumns, format_t **r_myData, char **d
 	
 }
 
+static int
+get_actual_line_size(FormatConfig *format_in_config, char *line_start, int cur_size, int tot_size)
+{
+	int   row_size;
+	int   actual_fields_size;
+	int   remaining;
+	char *line_end; 
+	char *expected_delim_loc = line_start + format_in_config->fields_tot_size;
+	
+	/*
+	 * the case where there is no line delimiter
+	 */
+	if ( 0 == format_in_config->line_delimiter_length )
+	{
+		return format_in_config->fields_tot_size;
+	}
+
+	if ( 1 == format_in_config->line_delimiter_length )
+	{
+		char delim = format_in_config->line_delimiter[0];
+				
+		if ( *expected_delim_loc == delim )
+			line_end = expected_delim_loc;
+		else
+			line_end = strchr(line_start, delim);
+		
+	}
+	else /* > 1 */
+	{
+		int i;
+		bool as_expected = true;
+		
+		for ( i = 0; i < format_in_config->line_delimiter_length; i++)
+		{
+			if ( expected_delim_loc[i] != format_in_config->line_delimiter[i] )
+			{
+				as_expected = false;
+				break;
+			}
+		}
+		
+		if ( as_expected )
+			line_end = expected_delim_loc;
+		else
+			line_end = strstr(line_start, format_in_config->line_delimiter);
+	}
+	
+	/*
+	 * line_end will be 0, if strchr or strstr did not find the delimiter.
+	 * In this case we throw an exception  ( unless this is the last line in the buffer )--> The line delimiter specified in
+	 * FormatConfig must be present in the file.
+	 */
+	if ( 0 == line_end /*did not find delimiter*/ )
+	{
+		remaining = tot_size - cur_size - format_in_config->fields_tot_size;
+		if (1 == remaining) /* we are at the last line so we cannot find a custom delimiter - we have an OS line delimiter here */
+		{
+			return (format_in_config->fields_tot_size + 1);
+		}
+		
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_EXCEPTION),
+	             errmsg("The line delimiter specified in the Formatter arguments: <%s> is not located in the data file", 
+						format_in_config->line_delimiter)));			
+	}
+
+	actual_fields_size = line_end - line_start; 
+	if ( actual_fields_size != format_in_config->fields_tot_size )
+	{
+		StringInfoData line;
+		
+		initStringInfo( &line );
+		appendBinaryStringInfo(&line, line_start, actual_fields_size);
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_EXCEPTION),
+	             errmsg("Expected line size from the formatting string: %d, but the actual size is: %d", 
+						format_in_config->fields_tot_size, actual_fields_size)));			
+	}
+	
+	row_size = actual_fields_size + format_in_config->line_delimiter_length;
+	return row_size;
+}
+
 Datum 
 fixedwidth_out(PG_FUNCTION_ARGS)
 {
@@ -388,7 +489,6 @@ fixedwidth_out(PG_FUNCTION_ARGS)
  * fixedwidth_in
  * each time this function is called, it builds one tuple from the input data buffer
  */
-
 Datum 
 fixedwidth_in(PG_FUNCTION_ARGS)
 {	
@@ -438,8 +538,7 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 	data_len = FORMATTER_GET_DATALEN(fcinfo); 
 	data_cur = FORMATTER_GET_DATACURSOR(fcinfo);
 	saw_eof  = FORMATTER_GET_SAW_EOF(fcinfo);
-	
-	
+		
 	/* =======================================================================
 	 *                            MAIN FORMATTING CODE
 	 * ======================================================================= */	
@@ -448,7 +547,21 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 	 */
 	m = FORMATTER_GET_PER_ROW_MEM_CTX(fcinfo); 
 	oldcontext = MemoryContextSwitchTo(m); 
-			
+		
+	/*
+	 * if data_cur == data_len, it means we finished the current buffer, we will not do any formatting,
+	 * instead inside forboth loop we will fall inside "if (remaining < field_size)", so there is NO need to
+	 * set the BAD_ROW_DATA error string ---> there will bw no formatting errors that throw exceptions
+	 */
+	if (data_cur < data_len)
+	{		
+		int   row_size = get_actual_line_size(&format_in_config, data_buf + data_cur, data_cur, data_len);
+
+		FORMATTER_SET_BAD_ROW_DATA(fcinfo, data_buf + data_cur, row_size);
+		FORMATTER_SET_BAD_ROW_NUM(fcinfo, myData->lineno);
+		FORMATTER_SET_BYTE_NUMBER(fcinfo, row_size);
+	}
+		
 	if (format_in_config.null_value != NULL)
 		cur_null_with_blanks = list_head(format_in_config.fldNullsWithBlanks);
 	
@@ -457,11 +570,11 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 		remaining	= 0;
 		field_size = lfirst_int(curSize);
 		nullval = format_in_config.null_value;		
-		remaining = data_len - data_cur;	
+		remaining = data_len - data_cur;
 		
 		if (remaining < field_size)
 		{
-			if (  saw_eof && remaining )
+			if (  saw_eof && (remaining > 1) )
 			{
 				data_cur += remaining;
 				FORMATTER_SET_DATACURSOR(fcinfo, data_cur);
@@ -470,6 +583,15 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 						 errmsg("Last line in the file contains an incomplete tuple")));
 				
 			}
+			else if ( saw_eof && (1 == remaining) )
+			{
+				/* we are in a case of no line delimiter, but the end of the file contains one EOL */
+				data_cur += remaining;
+				FORMATTER_SET_DATACURSOR(fcinfo, data_cur);
+				MemoryContextSwitchTo(oldcontext);
+				FORMATTER_RETURN_NOTIFICATION(fcinfo, FMT_NEED_MORE_DATA);				
+				
+			}			 
 			else 
 			{
 				MemoryContextSwitchTo(oldcontext);
@@ -487,7 +609,7 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 		 * trailing blanks are removed from the field value
 		 */
 		{
-			extract_field(data_buf + data_cur, field_size, 0, &(myData->one_val));
+			extract_field(data_buf + data_cur, field_size, false, &(myData->one_val));
 			/*
 			 * there are two (2) cases when we set value to null:
 			 * a. there is a null value defined in the formatter arguments, and this value was found in the field
@@ -518,7 +640,7 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 								 must be defined in the formatter arguments string")));
 			}
 			
-			extract_field(data_buf + data_cur, field_size, 1, &(myData->one_val));
+			extract_field(data_buf + data_cur, field_size, true, &(myData->one_val));
 			
 			null_val_with_blanks = strVal(lfirst(cur_null_with_blanks));
 			cur_null_with_blanks = lnext(cur_null_with_blanks);
@@ -538,15 +660,29 @@ fixedwidth_in(PG_FUNCTION_ARGS)
 	/*
 	 * go over the line delimiter
 	 */
-	data_cur += format_in_config.line_delimiter_length;	
+	remaining = data_len - data_cur;
+	if ( remaining > 1 )
+	{
+		data_cur += format_in_config.line_delimiter_length;
+	}
+	else if ( 1 == remaining )
+	{
+		data_cur += 1;
+	}
+	
+	/*
+	 * myData->lineno represents the line number in the datafile, when the file was opened
+	 * with a conventional editor, so we increase the lineno only when the delimiter is LF
+	 */
+	if ( strcmp(format_in_config.line_delimiter, "\n") == 0 )
+			myData->lineno++;
 
 	/*
 	 * wrapping up
 	 */
 	MemoryContextSwitchTo(oldcontext);
 	/* ======================================================================= */
-
-
+	
 	FORMATTER_SET_DATACURSOR(fcinfo, data_cur);
 
 	tuple = heap_form_tuple(tupdesc, myData->values, myData->nulls);

@@ -16,8 +16,6 @@
 #include "nodes/value.h"
 #include "utils/rel.h"
 
-#define FMT_BADROW_MAXLEN 32 * 1024
-
 typedef enum FmtNotification
 {
 	FMT_NONE,
@@ -40,7 +38,8 @@ typedef struct FormatterData
 	void		   *fmt_user_ctx;
 	int				fmt_badrow_num;
 	int				fmt_badrow_len;
-	char			fmt_badrow_data[FMT_BADROW_MAXLEN];
+	char		   *fmt_badrow_data;
+	int             fmt_bytesread;
 	FmtNotification fmt_notification;
 	List		   *fmt_args;
 	FmgrInfo   	   *fmt_conv_funcs; /* in_fuctions (RET) or out_functions (WET) */
@@ -76,9 +75,8 @@ typedef struct FormatterData
 
 #define FORMATTER_SET_BAD_ROW_DATA(fcinfo, p, n) \
 	do { \
-		int m = (n < FMT_BADROW_MAXLEN ? n : FMT_BADROW_MAXLEN); \
-		((FormatterData*) fcinfo->context)->fmt_badrow_len = m; \
-		memcpy(((FormatterData*) fcinfo->context)->fmt_badrow_data, p, m); \
+		((FormatterData*) fcinfo->context)->fmt_badrow_len = n; \
+		((FormatterData*) fcinfo->context)->fmt_badrow_data = p; \
 	} while (0)
 		
 #define FORMATTER_SET_DATACURSOR(fcinfo, n) \
@@ -86,6 +84,9 @@ typedef struct FormatterData
 
 #define FORMATTER_SET_TUPLE(fcinfo, t) \
 	(((FormatterData*) fcinfo->context)->fmt_tuple = t)
+
+#define FORMATTER_SET_BYTE_NUMBER(fcinfo, n) \
+	((((FormatterData*) fcinfo->context)->fmt_bytesread) += n)
 
 #define FORMATTER_RETURN_TUPLE(tuple) \
 	PG_RETURN_DATUM(HeapTupleGetDatum(tuple))

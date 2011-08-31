@@ -154,6 +154,7 @@ typedef struct CopyStateData
 	/* these are just for error messages, see copy_in_error_callback */
 	const char *cur_relname;	/* table name for error messages */
 	int64		cur_lineno;		/* line number for error messages.  Negative means it isn't available. */
+	int64       cur_byteno;     /* number of bytes processed from input */
 	const char *cur_attname;	/* current att for error messages */
 	//const char *cur_attval;		 /* current att value for error messages */
 

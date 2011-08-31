@@ -1081,8 +1081,8 @@ externalgettup_custom(FileScanDesc scan)
 			if (pstate->raw_buf_done)
 			{
 				int	 bytesread = external_getdata((URL_FILE*)scan->fs_file, pstate, RAW_BUF_SIZE);
-				
-				appendBinaryStringInfo(&formatter->fmt_databuf, pstate->raw_buf, bytesread);								
+				if ( bytesread > 0 )
+					appendBinaryStringInfo(&formatter->fmt_databuf, pstate->raw_buf, bytesread);								
 				pstate->raw_buf_done = false;	
 				
 				/* HEADER not yet supported ... */
@@ -1129,11 +1129,22 @@ externalgettup_custom(FileScanDesc scan)
 						 * Then handle the error in FILEAM_HANDLE_ERROR.
 						 */
 						pstate->cur_lineno = formatter->fmt_badrow_num;
+						pstate->cur_byteno = formatter->fmt_bytesread;
 						resetStringInfo(&pstate->line_buf);
 						if (formatter->fmt_badrow_len > 0)
-							appendBinaryStringInfo(&pstate->line_buf,
-												   formatter->fmt_badrow_data,
-												   formatter->fmt_badrow_len);
+						{
+							if ( NULL != formatter->fmt_badrow_data )
+								appendBinaryStringInfo(&pstate->line_buf,
+													   formatter->fmt_badrow_data,
+													   formatter->fmt_badrow_len);
+							
+							formatter->fmt_databuf.cursor += formatter->fmt_badrow_len;
+							if (    formatter->fmt_databuf.cursor > formatter->fmt_databuf.len 
+								 || formatter->fmt_databuf.cursor < 0 )
+							{
+								formatter->fmt_databuf.cursor = formatter->fmt_databuf.len;
+							}
+						}
 						
 						FILEAM_HANDLE_ERROR;
 						
