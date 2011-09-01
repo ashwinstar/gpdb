@@ -2209,6 +2209,9 @@ get_attstatsslot_desc(TupleDesc tupdesc, HeapTuple statstuple,
 
 	if (values)
 	{
+		*values = NULL;
+		*nvalues = 0;
+
 		if(tupdesc)
 			val = heap_getattr(statstuple, Anum_pg_statistic_stavalues1 + i, 
 					tupdesc, &isnull);
@@ -2220,39 +2223,45 @@ get_attstatsslot_desc(TupleDesc tupdesc, HeapTuple statstuple,
 			elog(ERROR, "stavalues is null");
 		statarray = DatumGetArrayTypeP(val);
 
-		/* Need to get info about the array element type */
-		typeTuple = SearchSysCache(TYPEOID,
-								   ObjectIdGetDatum(atttype),
-								   0, 0, 0);
-		if (!HeapTupleIsValid(typeTuple))
-			elog(ERROR, "cache lookup failed for type %u", atttype);
-		typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
-
-		/* Deconstruct array into Datum elements; NULLs not expected */
-		deconstruct_array(statarray,
-						  atttype,
-						  typeForm->typlen,
-						  typeForm->typbyval,
-						  typeForm->typalign,
-						  values, NULL, nvalues);
-
-		/*
-		 * If the element type is pass-by-reference, we now have a bunch of
-		 * Datums that are pointers into the syscache value.  Copy them to
-		 * avoid problems if syscache decides to drop the entry.
+		/**
+		 * Could be an empty array.
 		 */
-		if (!typeForm->typbyval)
+		if (ARR_NDIM(statarray) > 0)
 		{
-			for (j = 0; j < *nvalues; j++)
+
+			/* Need to get info about the array element type */
+			typeTuple = SearchSysCache(TYPEOID,
+					ObjectIdGetDatum(atttype),
+					0, 0, 0);
+			if (!HeapTupleIsValid(typeTuple))
+				elog(ERROR, "cache lookup failed for type %u", atttype);
+			typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+
+			/* Deconstruct array into Datum elements; NULLs not expected */
+			deconstruct_array(statarray,
+					atttype,
+					typeForm->typlen,
+					typeForm->typbyval,
+					typeForm->typalign,
+					values, NULL, nvalues);
+
+			/*
+			 * If the element type is pass-by-reference, we now have a bunch of
+			 * Datums that are pointers into the syscache value.  Copy them to
+			 * avoid problems if syscache decides to drop the entry.
+			 */
+			if (!typeForm->typbyval)
 			{
-				(*values)[j] = datumCopy((*values)[j],
-										 typeForm->typbyval,
-										 typeForm->typlen);
+				for (j = 0; j < *nvalues; j++)
+				{
+					(*values)[j] = datumCopy((*values)[j],
+							typeForm->typbyval,
+							typeForm->typlen);
+				}
 			}
+
+			ReleaseSysCache(typeTuple);
 		}
-
-		ReleaseSysCache(typeTuple);
-
 		/*
 		 * Free statarray if it's a detoasted copy.
 		 */
@@ -2262,6 +2271,9 @@ get_attstatsslot_desc(TupleDesc tupdesc, HeapTuple statstuple,
 
 	if (numbers)
 	{
+		*numbers = NULL;
+		*nnumbers = 0;
+
 		if(tupdesc)
 			val = heap_getattr(statstuple, Anum_pg_statistic_stanumbers1 + i, 
 					tupdesc, &isnull);
@@ -2273,8 +2285,6 @@ get_attstatsslot_desc(TupleDesc tupdesc, HeapTuple statstuple,
 		if (isnull)
 			elog(ERROR, "stanumbers is null");
 		statarray = DatumGetArrayTypeP(val);
-
-		*nnumbers = 0;
 
 		/**
 		 * Could be an empty array.
