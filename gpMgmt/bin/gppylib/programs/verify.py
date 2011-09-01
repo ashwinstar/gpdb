@@ -46,7 +46,7 @@ class GpVerifyProgram(Operation):
         if options.ignore_dir is not None and count != 1:
             raise ProgramArgumentValidationException("--dirignore must be used with --full, --file, or --directorytree") 
         if options.results_level is not None and count != 1:
-            raise ProgramArgumetnValidationException("--resultslevel must be used with --full, --file, or --directorytree")
+            raise ProgramArgumentValidationException("--resultslevel must be used with --full, --file, or --directorytree")
         self.ignore_file = options.ignore_file
         self.ignore_dir = options.ignore_dir
         self.results_level = options.results_level
