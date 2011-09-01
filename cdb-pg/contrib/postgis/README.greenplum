@@ -1,23 +1,7 @@
 Building
 
-The source here is pre-configured and meant to be built within the full GPDB source tree. Run configure if you intend
-to build/install for a different target location. (Or, to discover more appropriate commands for the various Makefiles.)
-
-postgis/Makefile currently assumes that /opt/geos and /opt/proj contain //tools/geos/3.2.2/ARCH/... and //tools/proj/4.7.0/ARCH...,
-respectively. A fancier mechanism will be needed to pull down these packages upon a 'make' of the postgis source. I'd
-rather not use Makefile.thirdparty to shove these dependencies into ext/, as this will cause libproj and libgeos to be
-shipped with GPDB, unnecessarily.
-
-Ultimately, pending a new package management solution for GPDB, postgis, libxml2, geos, and proj will need to be packaged
-together into one file at the end of this process.
-
-osx105_x86 - geos, proj, postgis functional
-rhel5_x86_64 - geos, proj, postgis functional
-rhel5_x86_32 - could not reach build server
-suse10_x86_64 - geos, proj verified, but not postgis
-sol10_* - could not build geos, proj; threw ELF errors; more lib flags? see other Makefiles
-
-
+The Makefiles have been edited to configure and build against libgeos, libproj, and libxml2 under ext/<arch>/. So long as
+those dependencies are supported for a particular choice of <arch>, a simple `make` and `make install` should suffice.
 
 Caveats - Greenplum v. Postgres
 
@@ -74,4 +58,4 @@ the function cannot access the relation, authorization_table.
 Since this is a row-level mechanism, in theory, there could be a way to keep each segments' auth checks on that 
 segment itself, rather than accessing SQL on a cluster-level scope.
 
-Note: I don't see long transactions used by PostGIS itself.
+Note: Long transaction support is needed for the OpenGIS Web Feature Service specification.
