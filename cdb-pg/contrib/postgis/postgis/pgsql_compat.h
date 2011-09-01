@@ -1,3 +1,7 @@
+/**********************************************************************
+ * Portions of this file modified by EMC Corporation, 2011.
+ **********************************************************************/
+
 #ifndef _PGSQL_COMPAT_H
 
 /* Make sure PG_NARGS is defined for older PostgreSQL versions */

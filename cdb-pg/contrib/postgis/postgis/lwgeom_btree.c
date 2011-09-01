@@ -5,6 +5,7 @@
  * Comparision function for use in Binary Tree searches
  * (ORDER BY, GROUP BY, DISTINCT)
  *
+ * Portions of this file modified by EMC Corporation, 2011.
  ***********************************************************/
 
 #include "postgres.h"

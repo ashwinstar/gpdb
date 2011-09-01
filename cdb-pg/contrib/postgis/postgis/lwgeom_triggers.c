@@ -1,3 +1,7 @@
+/**********************************************************************
+ * Portions of this file modified by EMC Corporation, 2011.
+ **********************************************************************/
+
 #include "postgres.h"
 #include "executor/spi.h"       /* this is what you need to work with SPI */
 #include "commands/trigger.h"   /* ... and triggers */

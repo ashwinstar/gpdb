@@ -9,6 +9,7 @@
 -- This is free software; you can redistribute and/or modify it under
 -- the terms of the GNU General Public Licence. See the COPYING file.
 --  
+-- Portions of this file modified by EMC Corporation, 2011.
 -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 #include "pg_config.h"

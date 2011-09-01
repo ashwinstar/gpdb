@@ -2,6 +2,7 @@
  *
  * BOX3D IO and conversions
  *
+ * Portions of this file modified by EMC Corporation, 2011.
  **********************************************************************/
 
 #include "postgres.h"
