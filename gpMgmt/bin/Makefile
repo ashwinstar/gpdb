@@ -216,10 +216,6 @@ docs: epydoc
 	@echo "Running epydoc on management scripts..."
 	@PYTHONPATH=$(PYTHONPATH):$(EPYDOC_PYTHONPATH) $(PYLIB_SRC)/$(EPYDOC_DIR)/build/scripts-2.6/epydoc --config=.epydoc.config
 
-solarisTest:
-	@if [ `uname -s` = 'SunOS' ]; then \
-		echo "SOLARIS" ; \
-	fi
 clean :
 	@rm -rf $(PYLIB_SRC)/$(LOCKFILE_DIR)
 	@rm -rf $(PYLIB_SRC)/$(PARAMIKO_DIR)
