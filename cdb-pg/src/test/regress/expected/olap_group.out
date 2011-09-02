@@ -5998,3 +5998,11 @@ group by rollup (a,b);
 --end_equiv
 drop table r6756 cascade; --ignore
 drop table s6756 cascade; --ignore
+-- begin MPP-14021
+select sum((select prc from sale where cn = s.cn and vn = s.vn and pn = s.pn)) from sale s;
+ sum  
+------
+ 2417
+(1 row)
+
+-- end MPP-14021

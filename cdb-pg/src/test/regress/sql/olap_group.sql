@@ -587,3 +587,7 @@ order by 1,2;
 
 drop table r6756 cascade; --ignore
 drop table s6756 cascade; --ignore
+
+-- begin MPP-14021
+select sum((select prc from sale where cn = s.cn and vn = s.vn and pn = s.pn)) from sale s;
+-- end MPP-14021

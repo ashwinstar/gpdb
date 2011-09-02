@@ -145,7 +145,6 @@ static bool find_unaggregated_cols_walker(Node *node, Bitmapset **colnos);
 static TupleTableSlot *agg_retrieve_direct(AggState *aggstate);
 static TupleTableSlot *agg_retrieve_hash_table(AggState *aggstate);
 static void ExecAggExplainEnd(PlanState *planstate, struct StringInfoData *buf);
-static List *combineAggrefArgs(Aggref *aggref, List **sort_clauses);
 static int count_extra_agg_slots(Node *node);
 static bool count_extra_agg_slots_walker(Node *node, int *count);
 
@@ -1802,7 +1801,6 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		List	   *inputTargets = NIL;
 		List	   *inputSortClauses = NIL;
 		Oid		   *inputTypes = NULL;
-		List	   *inputExprStates = NIL;
 		int			numInputs;
 		int			numArguments;
 		int			numSortCols;
@@ -1848,14 +1846,15 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		peraggstate->aggref = aggref;
 		numArguments = list_length(aggref->args);
 		peraggstate->numArguments = numArguments;
-		
-		/* Combine the argument and sortkey expressions into a single list
-		 * along with the corresponding sortkey clauses, if any.
+
+		/*
+		 * Use these information from ExecInitExpr for per agg info.
 		 */
-		inputTargets = combineAggrefArgs(aggref, &inputSortClauses);
+		inputTargets = aggrefstate->inputTargets;
+		inputSortClauses = aggrefstate->inputSortClauses;
 		numInputs = list_length(inputTargets);
 		numSortCols = list_length(inputSortClauses);
-		
+
 		peraggstate->numSortCols = numSortCols;
 		peraggstate->numInputs = numInputs;
 		
@@ -2038,12 +2037,9 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		/* Create slot we're going to do argument evaluation in */
 		peraggstate->evalslot = ExecInitExtraTupleSlot(estate);
 		ExecSetSlotDescriptor(peraggstate->evalslot, peraggstate->evaldesc);
-		
-		inputExprStates = (List *)
-			ExecInitExpr((Expr *) inputTargets, (PlanState *) aggstate);
-		
+
 		/* Set up projection info for evaluation */
-		peraggstate->evalproj = ExecBuildProjectionInfo(inputExprStates,
+		peraggstate->evalproj = ExecBuildProjectionInfo(aggrefstate->args,
 														aggstate->tmpcontext,
 														peraggstate->evalslot,
 														NULL);

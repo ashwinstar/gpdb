@@ -207,4 +207,6 @@ static inline gpmon_packet_t * GpmonPktFromAggState(AggState *node)
 	return &node->ss.ps.gpmon_pkt;
 }
 
+extern List *combineAggrefArgs(Aggref *aggref, List **sort_clauses);
+
 #endif   /* NODEAGG_H */

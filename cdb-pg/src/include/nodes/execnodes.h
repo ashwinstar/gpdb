@@ -566,6 +566,8 @@ typedef struct AggrefExprState
 {
 	ExprState	xprstate;
 	List		*args;	/* states of argument expressions */
+	List	   *inputTargets; /* combined TargetList */
+	List	   *inputSortClauses; /* list of SortClause */
 	int			aggno;	/* ID number for agg within its plan node */
 } AggrefExprState;
 
