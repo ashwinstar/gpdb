@@ -26,9 +26,19 @@ typedef char bool_t;
 #ifndef FALSE
 #define FALSE 0
 #endif
+#ifndef TRUE
+#define TRUE 1
+#endif
 #endif
 
 struct gpfxdist_t;
+
+typedef enum Compression_type
+{
+	NO_COMPRESSION = 0,
+	GZ_COMPRESSION,
+	BZ_COMPRESSION
+} compression_type;
 
 /* The struct gfile_t is private.  Please do not use any of its fields. */
 typedef struct gfile_t
@@ -55,7 +65,8 @@ typedef struct gfile_t
 		struct bzlib_stuff*bz;
 #endif
 	}u;
-	int is_gz_write;
+	bool_t is_write;
+	compression_type compression;
 
 	struct gpfxdist_t* transform;
 }gfile_t;

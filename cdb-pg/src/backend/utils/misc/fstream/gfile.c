@@ -412,22 +412,24 @@ gz_file_write(gfile_t *fd, void *ptr, size_t size)
 static int
 gz_file_close(gfile_t *fd)
 {
-	int ret;
+	int e = 0;
 	
-	ret = gz_file_write_one_chunk(fd, Z_FINISH);
-	if (0 != ret)
+	if ( fd->is_write == TRUE ) /* writing, or in other words compressing */
 	{
-		return ret;
+		e = gz_file_write_one_chunk(fd, Z_FINISH);
+		if (0 != e)
+		{
+			return e;
+		}
+
+		e = deflateEnd(&fd->u.z->s);
+	}
+	else /* reading, that is inflating */
+	{
+		e = inflateEnd(&fd->u.z->s);
 	}
 	
-	/*
-	 * presently gfile_close calls gz_file_close only for the on_write case so we don't need
-	 * to handle inflateEnd here
-	 */	
-	int e = deflateEnd(&fd->u.z->s);
-	
 	gfile_free(fd->u.z);
-	
 	return e;
 }
 
@@ -442,7 +444,7 @@ static void z_free(voidpf a, voidpf b)
 	gfile_free(b);
 }
 
-static int gz_file_open(gfile_t *fd, int _for_write)
+static int gz_file_open(gfile_t *fd)
 {
 	if (!(fd->u.z = gfile_malloc(sizeof *fd->u.z)))
 	{
@@ -461,8 +463,7 @@ static int gz_file_open(gfile_t *fd, int _for_write)
 	fd->write = gz_file_write;
 	fd->close = gz_file_close;
 	
-	
-	if ( 0 == _for_write ) 
+	if ( fd->is_write == FALSE )/* for read */  
 	{
 		/*
 		 * reading a compressed file
@@ -623,7 +624,6 @@ close_subprocess(gfile_t *fd)
 		return 1;
 	}
 }
-
 #endif
 
 
@@ -887,11 +887,14 @@ int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, co
 		/*
 		 * flag for gfile close
 		 */
+		fd->compression = GZ_COMPRESSION;
+		
 		if (flags != GFILE_OPEN_FOR_READ)
 		{
-			fd->is_gz_write = 1;
+			fd->is_write = TRUE;
 		}
-		return gz_file_open(fd, (flags != GFILE_OPEN_FOR_READ));
+
+		return gz_file_open(fd);
 #endif
 	}
 	else if (s && strcasecmp(s,".bz2")==0)
@@ -899,6 +902,7 @@ int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, co
 #ifdef WIN32
 		gfile_printf_then_putc_newline(".bz2 not supported");
 #else
+		fd->compression = BZ_COMPRESSION;
 		if (flags != GFILE_OPEN_FOR_READ)
 			gfile_printf_then_putc_newline(".bz2 not yet supported for writable tables");
 
@@ -934,7 +938,11 @@ gfile_close(gfile_t*fd)
 		{
 #endif
 
-		if ( fd->is_gz_write )
+		/*
+		 * for the compressed data implementation we need to call the "close" callback. Other implementations
+		 * didn't use to call this callback here and it will remain so.
+		 */
+		if (  fd->compression == GZ_COMPRESSION ) 
 		{
 			fd->close(fd);
 		}
