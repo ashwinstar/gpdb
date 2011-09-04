@@ -885,7 +885,7 @@ int gfile_open(gfile_t* fd, const char* fpath, int flags, int* response_code, co
 		gfile_printf_then_putc_newline(".gz not supported");
 #else
 		/*
-		 * flag for gfile close
+		 * flag used by function gfile close
 		 */
 		fd->compression = GZ_COMPRESSION;
 		
