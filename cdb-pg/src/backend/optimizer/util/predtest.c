@@ -1819,7 +1819,7 @@ CreateNodeSetHashTable(MemoryContext memoryContext)
 	hash_ctl.match = ConstHashTableMatch;
 	hash_ctl.hcxt = memoryContext;
 
-	return hash_create("ConstantSet", 16, &hash_ctl, HASH_ELEM | HASH_FUNCTION | HASH_COMPARE);
+	return hash_create("ConstantSet", 16, &hash_ctl, HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
 }
 
 /**
