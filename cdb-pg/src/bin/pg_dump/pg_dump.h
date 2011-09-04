@@ -210,6 +210,9 @@ typedef struct _ptcInfo
 	char	   *ptcowner;
 	char	   *ptcacl;
 	bool	   ptctrusted;
+	Oid		   ptcreadid;
+	Oid		   ptcwriteid;
+	Oid		   ptcvalidid;
 } ExtProtInfo;
 
 typedef struct _oprInfo

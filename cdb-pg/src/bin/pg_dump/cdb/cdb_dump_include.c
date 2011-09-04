@@ -1268,11 +1268,12 @@ getExtProtocols(int *numExtProtocols)
 	int			i_oid;
 	int			i_tableoid;
 	int			i_ptcname;
-	int			i_ptcreadfn;
-	int			i_ptcwritefn;
 	int			i_rolname;
 	int			i_ptcacl;
 	int			i_ptctrusted;
+	int 		i_ptcreadid;
+	int			i_ptcwriteid;
+	int			i_ptcvalidid;
 
 	/* Make sure we are in proper schema */
 	selectSourceSchema("pg_catalog");
@@ -1282,34 +1283,32 @@ getExtProtocols(int *numExtProtocols)
 	appendPQExpBuffer(query, "SELECT ptc.tableoid as tableoid, "
 							 "       ptc.oid as oid, "
 							 "       ptc.ptcname as ptcname, "
-							 "       pro1.proname as ptcread, "
-							 "       pro2.proname as ptcwrite, "
+							 "       ptcreadfn as ptcreadoid, "
+							 "       ptcwritefn as ptcwriteoid, "
+							 "		 ptcvalidatorfn as ptcvaloid, "
 							 "       (%s ptc.ptcowner) as rolname, "
 							 "       ptc.ptctrusted as ptctrusted, "
 							 "       ptc.ptcacl as ptcacl "
-							 "FROM   pg_extprotocol ptc, "
-							 "       pg_proc pro1, "
-							 "       pg_proc pro2  "
-							 "WHERE  ptc.ptcreadfn = pro1.oid "
-							 "AND    ptc.ptcwritefn = pro2.oid",
-					  username_subquery);
+							 "FROM   pg_extprotocol ptc",
+							 	 	 username_subquery);
 
 	res = PQexec(g_conn, query->data);
 	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
 
 	ntups = PQntuples(res);
 	*numExtProtocols = ntups;
-	
+
 	ptcinfo = (ExtProtInfo *) malloc(ntups * sizeof(ExtProtInfo));
 
 	i_tableoid = PQfnumber(res, "tableoid");
 	i_oid = PQfnumber(res, "oid");
 	i_ptcname = PQfnumber(res, "ptcname");
-	i_ptcreadfn = PQfnumber(res, "ptcread");
-	i_ptcwritefn = PQfnumber(res, "ptcwrite");
 	i_rolname = PQfnumber(res, "rolname");
 	i_ptcacl = PQfnumber(res, "ptcacl");
 	i_ptctrusted = PQfnumber(res, "ptctrusted");
+	i_ptcreadid = PQfnumber(res, "ptcreadoid");
+	i_ptcwriteid = PQfnumber(res, "ptcwriteoid");
+	i_ptcvalidid = PQfnumber(res, "ptcvaloid");
 
 	for (i = 0; i < ntups; i++)
 	{
@@ -1322,18 +1321,23 @@ getExtProtocols(int *numExtProtocols)
 		ptcinfo[i].ptcowner = strdup(PQgetvalue(res, i, i_rolname));
 		if (strlen(ptcinfo[i].ptcowner) == 0)
 			mpp_err_msg(logWarn, progname, "WARNING: owner of external protocol \"%s\" appears to be invalid\n",
-						ptcinfo[i].dobj.name);
-		
-		if (PQgetisnull(res, i, i_ptcreadfn))
-			ptcinfo[i].ptcreadfn = NULL;
-		else
-			ptcinfo[i].ptcreadfn = strdup(PQgetvalue(res, i, i_ptcreadfn));
+								ptcinfo[i].dobj.name);
 
-		if (PQgetisnull(res, i, i_ptcwritefn))
-			ptcinfo[i].ptcwritefn = NULL;
+		if (PQgetisnull(res, i, i_ptcreadid))
+			ptcinfo[i].ptcreadid = InvalidOid;
 		else
-			ptcinfo[i].ptcwritefn = strdup(PQgetvalue(res, i, i_ptcwritefn));
-		
+			ptcinfo[i].ptcreadid = atooid(PQgetvalue(res, i, i_ptcreadid));
+
+		if (PQgetisnull(res, i, i_ptcwriteid))
+			ptcinfo[i].ptcwriteid = InvalidOid;
+		else
+			ptcinfo[i].ptcwriteid = atooid(PQgetvalue(res, i, i_ptcwriteid));
+
+		if (PQgetisnull(res, i, i_ptcvalidid))
+			ptcinfo[i].ptcvalidid = InvalidOid;
+		else
+			ptcinfo[i].ptcvalidid = atooid(PQgetvalue(res, i, i_ptcvalidid));
+
 		ptcinfo[i].ptcacl = strdup(PQgetvalue(res, i, i_ptcacl));
 		ptcinfo[i].ptctrusted = *(PQgetvalue(res, i, i_ptctrusted)) == 't';
 

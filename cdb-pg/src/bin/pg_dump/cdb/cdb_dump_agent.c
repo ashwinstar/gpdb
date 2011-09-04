@@ -4444,19 +4444,119 @@ dumpAgg(Archive *fout, AggInfo *agginfo)
 }
 
 /*
+ * getFunctionName - retrieves a function name from an oid
+ *
+ */
+static char *
+getFunctionName(Oid oid)
+{
+	char	   *result;
+	PQExpBuffer query;
+	PGresult   *res;
+	int			ntups;
+
+	if (oid == InvalidOid)
+	{
+		return NULL;
+	}
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query, "SELECT proname FROM pg_proc WHERE oid = %u;",oid);
+
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	/* Expecting a single result only */
+	ntups = PQntuples(res);
+	if (ntups != 1)
+	{
+		write_msg(NULL, "query yielded %d rows instead of one: %s\n",
+				  ntups, query->data);
+		exit_nicely();
+	}
+
+	/* already quoted */
+	result = strdup(PQgetvalue(res, 0, 0));
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+
+	return result;
+}
+
+/*
  * dumpExtProtocol
  *	  write out a single external protocol definition
  */
 static void
 dumpExtProtocol(Archive *fout, ExtProtInfo *ptcinfo)
 {
+#define FCOUNT	3
+#define READFN_IDX 0
+#define WRITEFN_IDX 1
+#define VALIDFN_IDX 2
+
+	typedef struct
+	{
+		Oid oid; 				/* func's oid */
+		char* name; 			/* func name */
+		FuncInfo* pfuncinfo; 	/* FuncInfo ptr */
+		bool dumpable; 			/* should we dump this function */
+		bool internal;			/* is it an internal function */
+	} ProtoFunc;
+
+	ProtoFunc	protoFuncs[FCOUNT];
+
 	PQExpBuffer q;
 	PQExpBuffer delq;
 	char	   *namecopy;
+	int			i;
 
 	/* Skip if not to be dumped */
 	if (!ptcinfo->dobj.dump || dataOnly)
 		return;
+
+	/* init and fill the protoFuncs array */
+	memset(protoFuncs, 0, sizeof(protoFuncs));
+	protoFuncs[READFN_IDX].oid = ptcinfo->ptcreadid;
+	protoFuncs[WRITEFN_IDX].oid = ptcinfo->ptcwriteid;
+	protoFuncs[VALIDFN_IDX].oid = ptcinfo->ptcvalidid;
+
+	for(i=0; i<FCOUNT; i++)
+	{
+		if (protoFuncs[i].oid == InvalidOid)
+		{
+			protoFuncs[i].dumpable = false;
+			protoFuncs[i].internal = true;
+		}
+		else
+		{
+			protoFuncs[i].pfuncinfo = findFuncByOid(protoFuncs[i].oid);
+			if(protoFuncs[i].pfuncinfo != NULL)
+			{
+				protoFuncs[i].dumpable = true;
+				protoFuncs[i].name = strdup(protoFuncs[i].pfuncinfo->dobj.name);
+				protoFuncs[i].internal = false;
+			}
+			else
+				protoFuncs[i].internal = true;
+		}
+	}
+
+	/* if all funcs are internal then we do not need to dump this protocol */
+	if(protoFuncs[READFN_IDX].internal && protoFuncs[WRITEFN_IDX].internal
+			&& protoFuncs[VALIDFN_IDX].internal)
+		return;
+
+	/* obtain the function name for internal functions (if any) */
+	for (i=0; i<FCOUNT; i++)
+		if(protoFuncs[i].internal && protoFuncs[i].oid)
+		{
+			protoFuncs[i].name = getFunctionName(protoFuncs[i].oid);
+			if(protoFuncs[i].name)
+				protoFuncs[i].dumpable = true;
+		}
 
 	q = createPQExpBuffer();
 	delq = createPQExpBuffer();
@@ -4465,16 +4565,25 @@ dumpExtProtocol(Archive *fout, ExtProtInfo *ptcinfo)
 			ptcinfo->ptctrusted == true ? "TRUSTED" : "",
 			fmtId(ptcinfo->dobj.name));
 
-	if (ptcinfo->ptcreadfn)
+	if (protoFuncs[READFN_IDX].dumpable)
 	{
 		appendPQExpBuffer(q, " readfunc = '%s'%s",
-						  ptcinfo->ptcreadfn,
-						  (ptcinfo->ptcwritefn == NULL ? "" : ","));
+						  protoFuncs[READFN_IDX].name,
+						  (protoFuncs[WRITEFN_IDX].dumpable ? "," : ""));
 	}
 
-	if (ptcinfo->ptcwritefn)
-		appendPQExpBuffer(q, " writefunc = '%s'",
-						  ptcinfo->ptcwritefn);
+	if (protoFuncs[WRITEFN_IDX].dumpable)
+	{
+		appendPQExpBuffer(q, " writefunc = '%s'%s",
+						  protoFuncs[WRITEFN_IDX].name,
+					      (protoFuncs[VALIDFN_IDX].dumpable ? "," : ""));
+	}
+
+	if (protoFuncs[VALIDFN_IDX].dumpable)
+	{
+		appendPQExpBuffer(q, " validatorfunc = '%s'",
+						  protoFuncs[VALIDFN_IDX].name);
+	}
 
 	appendPQExpBuffer(q, ");\n");
 
@@ -4502,6 +4611,10 @@ dumpExtProtocol(Archive *fout, ExtProtInfo *ptcinfo)
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
+
+	for(i=0; i<FCOUNT; i++)
+		if(protoFuncs[i].name)
+			free (protoFuncs[i].name);
 }
 
 /*
