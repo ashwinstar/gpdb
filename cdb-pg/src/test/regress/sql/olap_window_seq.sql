@@ -1483,3 +1483,13 @@ explain select count(*) over (order by i), count(*) over (partition by i order b
 create table num_range as select a::numeric from generate_series(1, 10)a;
 select a, max(a) over (order by a range between current row and 2 following) from num_range;
 -- End of MPP-13879
+-- MPP-13969
+create table esc176_1(id int, seq int, val float, clickdate timestamp);
+insert into esc176_1 values(1, 1, 0.2, '2011-08-18 04:59:35.471494'),
+	(1, 2, 0.1, '2011-08-18 04:59:45.920501'),
+	(1, 3, 0.5, '2011-08-18 04:59:51.174672'),
+	(1, 4, 0.7, '2011-08-18 04:59:57.343782');
+select id, seq, clickdate, sum(val) over
+	(partition by id order by clickdate range
+	between interval '0 seconds' following and '1000 seconds' following) from esc176_1;
+-- End of MPP-13969

@@ -187,6 +187,10 @@ typedef struct WindowStatePerLevelData
 	ExprState *trail_range_expr;
 	ExprState *lead_range_expr;
 
+	/* RANGE frame only; see comments on init_bound_frame_edge_expr */
+	ExprState *trail_range_eq_expr;
+	ExprState *lead_range_eq_expr;
+
 	/* The frame buffer to buffer the intermediate results for
 	 * the functions in this level key.
 	 */
@@ -322,16 +326,18 @@ typedef struct WindowStatePerFunctionData
 #define EDGE_IS_DELAYED_BOUND(e) \
      (e->kind == WINDOW_DELAYED_BOUND_PRECEDING || \
       e->kind == WINDOW_DELAYED_BOUND_FOLLOWING)
-#define EDGE_EQ_CURRENT_ROW(level_state, e, is_lead) \
+#define EDGE_EQ_CURRENT_ROW(level_state, wstate, e, is_lead) \
          (EDGE_IS_CURRENT_ROW(e) || \
 		  ((EDGE_IS_BOUND_FOLLOWING(e) || \
 			EDGE_IS_BOUND_PRECEDING(e)) && \
             ((!is_lead && \
 		       (((level_state)->is_rows && (level_state)->trail_rows == 0) || \
-				(!(level_state)->is_rows && (level_state)->trail_range == 0))) || \
+				(!(level_state)->is_rows && exec_eq_exprstate((wstate), \
+															  (level_state)->trail_range_eq_expr)))) || \
              (is_lead && \
 			  (((level_state)->is_rows && (level_state)->lead_rows == 0) || \
-			   (!(level_state)->is_rows && (level_state)->lead_range == 0))))))
+			   (!(level_state)->is_rows && exec_eq_exprstate((wstate), \
+															 (level_state)->lead_range_eq_expr)))))))
 
 /****************************************************
  * Window Input Buffer and its APIs
@@ -450,10 +456,12 @@ static void trimFrameBuffer(WindowFrameBuffer buffer);
 static void incrementCurrentRow(WindowFrameBuffer buffer, WindowState *wstate);
 static bool hasEnoughDataInRange(WindowFrameBuffer buffer,
 								 WindowStatePerLevel level_state,
+								 WindowState *wstate,
 								 Datum tail_range,
 								 Datum lead_range);
 static bool hasEnoughDataInRows(WindowFrameBuffer buffer,
 								WindowStatePerLevel level_state,
+								WindowState *wstate,
 								long int trail_rows,
 								long int lead_rows);
 static void computeFrameValue(WindowStatePerLevel level_state,
@@ -521,6 +529,9 @@ static bool checkLastRowForEdge(WindowStatePerLevel level_state,
 								Datum new_edge_value,
 								bool new_edge_value_isnull,
 								bool is_lead_edge);
+static ExprState *make_eq_exprstate(WindowState *wstate,
+						Expr *expr1, Expr *expr2);
+static bool exec_eq_exprstate(WindowState *wstate, ExprState *eq_exprstate);
 static void setEmptyFrame(WindowStatePerLevel level_state,
 						  WindowState *wstate);
 
@@ -1279,7 +1290,7 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 					level_state->num_lead_rows++;
 			}
 			else if ((EDGE_IS_BOUND(level_state->frame->lead) ||
-					  EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true)) &&
+					  EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true)) &&
 					 level_state->num_lead_rows == level_state->lead_rows)
 			{
 				/* If the leading edge is not set, set it here. */
@@ -1287,7 +1298,7 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 					ntuplestore_acc_seek_last(level_state->lead_reader);
 			}
 			else if (!EDGE_IS_BOUND(level_state->frame->lead) &&
-					 !EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
+					 !EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
 			{
 				if (!ntuplestore_acc_tell(level_state->lead_reader, NULL))
 					ntuplestore_acc_seek_last(level_state->lead_reader);
@@ -1301,7 +1312,7 @@ adjustEdgesAfterAppend(WindowStatePerLevel level_state,
 		}
 		else
 		{
-			if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, 
+			if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, 
 									true))
 			{
 				bool found;
@@ -1466,13 +1477,14 @@ incrementCurrentRow(WindowFrameBuffer buffer,
 static bool
 hasEnoughDataInRange(WindowFrameBuffer buffer,
 					 WindowStatePerLevel level_state,
+					 WindowState *wstate,
 					 Datum trail_range, Datum lead_range)
 {
 	if (level_state->empty_frame)
 		return true;
 
 	if (!EDGE_IS_BOUND(level_state->frame->lead) &&
-		!EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
+		!EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
 		return false;
 	
 	return level_state->lead_ready;
@@ -1486,13 +1498,14 @@ hasEnoughDataInRange(WindowFrameBuffer buffer,
 static bool
 hasEnoughDataInRows(WindowFrameBuffer buffer,
 					WindowStatePerLevel level_state,
+					WindowState *wstate,
 					long int trail_rows, long int lead_rows)
 {
 	if (level_state->empty_frame)
 		return true;
 
 	if (!EDGE_IS_BOUND(level_state->frame->lead) &&
-		!EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
+		!EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
 		return false;
 
 	if (trail_rows == 0 &&
@@ -1646,7 +1659,7 @@ hasTuplesInFrame(WindowStatePerLevel level_state,
 		}
 
 		if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
-			EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->trail, false))
+			EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
 			ntuplestore_acc_seek_first(level_state->trail_reader);
 	}
 	
@@ -1677,7 +1690,7 @@ hasTuplesInFrame(WindowStatePerLevel level_state,
 		else
 		{
 			if (!ntuplestore_acc_tell(level_state->trail_reader, NULL) &&
-				level_state->trail_range != 0)
+				!exec_eq_exprstate(wstate, level_state->trail_range_eq_expr))
 			{
 				Datum new_edge_value = 0;
 				bool new_edge_value_isnull = false;
@@ -1735,7 +1748,8 @@ hasTuplesInFrame(WindowStatePerLevel level_state,
     else if (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
 	         (EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
 			  ((level_state->is_rows && level_state->lead_rows != 0) ||
-			   (!level_state->is_rows && level_state->lead_range != 0))))
+			   (!level_state->is_rows && !exec_eq_exprstate(wstate,
+															level_state->lead_range_eq_expr)))))
 		has_tuples = false;
 
 	/* Restore trail_reader */
@@ -1804,7 +1818,8 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 		if (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
 			(EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
 			 ((level_state->is_rows && level_state->lead_rows != 0) ||
-			  (!level_state->is_rows && level_state->lead_range != 0))))
+			  (!level_state->is_rows && !exec_eq_exprstate(wstate,
+														   level_state->lead_range_eq_expr)))))
 			has_tuples = false;
 		else
 			ntuplestore_acc_seek_first(level_state->trail_reader);
@@ -1922,12 +1937,12 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 		 * Add the funcstate->aggTransValue if it is in the current
 		 * frame.
 		 */
-		if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->trail, false))
+		if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
 			include_last_agg = true;
 		
 		if (!EDGE_IS_BOUND(level_state->frame->lead) ||
 			EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead)  ||
-			EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
+			EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
 			include_last_agg = true;
 				
 		if (!ntuplestore_acc_tell(level_state->lead_reader, NULL) &&
@@ -2218,12 +2233,25 @@ computeFrameValue(WindowStatePerLevel level_state,
 			
 			else
 			{
+				/*
+				 * Check if the frame overlaps the current row.
+				 * This is done by checking if trail is identical to
+				 * the current row when the frame is
+				 * RANGE BETWEEN <following> and <following>, or
+				 * if lead is identical to the current row when the frame is
+				 * RANGE BETWEEN <preceding> and <preceding>.
+				 *
+				 * In the case the frame overlaps, take aggTransValue,
+				 * otherwise aggInitValue, as the final value.
+				 */
 				if ((EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) &&
 					 ((level_state->is_rows && level_state->trail_rows != 0) ||
-					  (!level_state->is_rows && level_state->trail_range != 0))) ||
+					  (!level_state->is_rows &&
+					   !exec_eq_exprstate(wstate, level_state->trail_range_eq_expr)))) ||
 					(EDGE_IS_BOUND_PRECEDING(level_state->frame->lead) &&
 					 ((level_state->is_rows && level_state->lead_rows != 0) ||
-					  (!level_state->is_rows && level_state->lead_range != 0))))
+					  (!level_state->is_rows &&
+					   !exec_eq_exprstate(wstate, level_state->lead_range_eq_expr)))))
 				{
 					funcstate->final_aggTransValue = funcstate->aggInitValue;
 					funcstate->final_aggTransValueIsNull = funcstate->aggInitValueIsNull;
@@ -3449,7 +3477,7 @@ adjustEdgesForRows(WindowFrameBuffer buffer,
 		  EDGE_IS_DELAYED(level_state->frame->trail)))
 	{
 		if (EDGE_IS_BOUND(level_state->frame->trail) ||
-			EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->trail, false))
+			EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
 		{
 			if (level_state->num_trail_rows <= level_state->trail_rows - 1)
 			{
@@ -3485,7 +3513,7 @@ adjustEdgesForRows(WindowFrameBuffer buffer,
 		}
 		
 		else if ((!EDGE_IS_BOUND(level_state->frame->lead) &&
-				  !EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true)) ||
+				  !EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true)) ||
 				 level_state->num_lead_rows < level_state->lead_rows)
 		{
 			bool prev_set = ntuplestore_acc_tell(level_state->lead_reader, NULL);
@@ -3615,7 +3643,7 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 	if (!(level_state->empty_frame &&
 		  EDGE_IS_DELAYED(level_state->frame->trail)))
 	{
-		if	(EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->trail, false))
+		if	(EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
 		{
 			found = ntuplestore_acc_advance(level_state->trail_reader, 1);
 			if (!found)
@@ -3636,7 +3664,7 @@ adjustEdgesForRange(WindowFrameBuffer buffer,
 	if (!(level_state->empty_frame &&
 		  EDGE_IS_DELAYED(level_state->frame->lead)))
 	{
-		if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
+		if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
 		{
 			NTupleStorePos pos;
 			
@@ -4039,7 +4067,7 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 			ntuplestore_acc_seek_last(edge_reader);
 	}
 
-	if (!EDGE_EQ_CURRENT_ROW(level_state, edge, is_lead_edge))
+	if (!EDGE_EQ_CURRENT_ROW(level_state, wstate, edge, is_lead_edge))
 	{
 		bool prev_is_equal = false;
 			
@@ -4164,7 +4192,7 @@ advanceEdgeForRange(WindowStatePerLevel level_state,
 
 		if (!found)
 		{
-			if (EDGE_EQ_CURRENT_ROW(level_state, edge, is_lead_edge))
+			if (EDGE_EQ_CURRENT_ROW(level_state, wstate, edge, is_lead_edge))
 			{
 				if (!ntuplestore_acc_tell(level_state->frame_buffer->current_row_reader,
 										  NULL))
@@ -4227,7 +4255,7 @@ adjustDelayBoundEdgeForRange(WindowStatePerLevel level_state,
 		 * we are done.
 		 */
 		if (EDGE_IS_BOUND_FOLLOWING(edge) ||
-			EDGE_EQ_CURRENT_ROW(level_state, edge, is_lead_edge))
+			EDGE_EQ_CURRENT_ROW(level_state, wstate, edge, is_lead_edge))
 		{
 			if (is_lead_edge)
 				level_state->lead_ready = false;
@@ -5050,6 +5078,7 @@ checkOutputReady(WindowState *wstate)
 		{
 			if (!hasEnoughDataInRows(level_state->frame_buffer,
 									 level_state,
+									 wstate,
 									 level_state->trail_rows,
 									 level_state->lead_rows))
 				return false;
@@ -5059,6 +5088,7 @@ checkOutputReady(WindowState *wstate)
 		{
 			if (!hasEnoughDataInRange(level_state->frame_buffer,
 									  level_state,
+									  wstate,
 									  level_state->trail_range,
 									  level_state->lead_range))
 				return false;
@@ -5250,6 +5280,85 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 		level_state->trail_range_expr = n;
 	else
 		level_state->lead_range_expr = n;
+
+	/*
+	 * Construct immediate clause like:
+	 *   var +/- range = var
+	 * where var is ORDER BY value and range is frame range value,
+	 * so "var +/- range" means frame edge created above (expr).
+	 * Now, if the left hand equals to the right hand, the frame
+	 * edge must be on the current row.
+	 * The created expression is used to determine if the frame
+	 * edge is on the current row or not. 
+	 */
+	n = make_eq_exprstate(wstate, expr, varexpr);
+	if (is_trail)
+		level_state->trail_range_eq_expr = n;
+	else
+		level_state->lead_range_eq_expr = n;
+}
+
+/*
+ * make_eq_exprstate
+ * Given expr1 and expr2, make clase "expr1 = expr2".
+ * In case the result types of expr1 and expr2 are different,
+ * the cast is installed on expr2.
+ */
+static ExprState *
+make_eq_exprstate(WindowState *wstate, Expr *expr1, Expr *expr2)
+{
+	Oid		restype1, restype2;
+	Expr   *eq_expr;
+	Operator	eq_optup;
+	Oid		eq_opid;
+
+	restype1 = exprType((Node *) expr1);
+	restype2 = exprType((Node *) expr2);
+	if (restype1 != restype2)
+	{
+		expr2 = (Expr *) coerce_to_target_type(NULL,
+											   (Node *) expr2,
+											   restype2,
+											   restype1,
+											   exprTypmod((Node *) expr2),
+											   COERCION_EXPLICIT,
+											   COERCE_IMPLICIT_CAST,
+											   -1);
+	}
+
+	eq_optup = equality_oper(restype1, false);
+	Assert(exprType((Node *) expr1) == exprType((Node *) expr2));
+	eq_opid = oprid(eq_optup);
+	eq_expr = make_opclause(eq_opid, BOOLOID, false, expr1, expr2);
+	((OpExpr *) eq_expr)->opfuncid = oprfuncid(eq_optup);
+	ReleaseSysCache(eq_optup);
+
+	return ExecInitExpr(eq_expr, (PlanState *) wstate);
+}
+
+/*
+ * exec_eq_exprstate
+ * Executes eq_exprstate made in make_eq_exprstate() and returns
+ * bool result. It sets ecxt_scantuple to the current slot
+ * so that Vars contained in eq_exprstate point to the current row.
+ */
+static bool
+exec_eq_exprstate(WindowState *wstate, ExprState *eq_exprstate)
+{
+	ExprContext	   *econtext = wstate->ps.ps_ExprContext;
+	MemoryContext	oldctx;
+	bool			isnull, result;
+
+	Assert(IsA(eq_exprstate->expr, OpExpr));
+
+	/* Make sure Var in eq_expr points to the current slot */
+	econtext->ecxt_scantuple = wstate->curslot;
+
+	oldctx = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+	result = DatumGetBool(ExecEvalExpr(eq_exprstate, econtext, &isnull, NULL));
+	MemoryContextSwitchTo(oldctx);
+
+	return isnull ? false : result;
 }
 
 /*
@@ -6178,7 +6287,7 @@ lead_lag_internal(PG_FUNCTION_ARGS, bool is_lead, bool *isnull)
 
 	/* The value could be stored in aggTransValue. */
 	else if (level_state->agg_filled &&
-			 (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true) ||
+			 (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true) ||
 			 (EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead) &&
 			  level_state->num_lead_rows >= level_state->trail_rows)))
 	{
@@ -6274,12 +6383,12 @@ last_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 		
 	if (has_tuples)
 	{
-		if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->trail, false))
+		if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
 			include_last_agg = true;
 
 		if (!EDGE_IS_BOUND(level_state->frame->lead) ||
 			EDGE_IS_BOUND_FOLLOWING(level_state->frame->lead)  ||
-			EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
+			EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
 			include_last_agg = true;
 
 		if (!level_state->agg_filled &&
@@ -6386,7 +6495,7 @@ first_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 	else
 	{
 		if (!EDGE_IS_BOUND_FOLLOWING(level_state->frame->trail) ||
-			EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->trail, false))
+			EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
 			ntuplestore_acc_seek_first(level_state->trail_reader);
 	}
 
@@ -6417,10 +6526,10 @@ first_value_internal(WindowRefExprState *wrxstate, bool *isnull)
 	{
 		bool include_last_agg = false;
 		
-		if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->trail, false))
+		if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->trail, false))
 			include_last_agg = true;
 
-		if (EDGE_EQ_CURRENT_ROW(level_state, level_state->frame->lead, true))
+		if (EDGE_EQ_CURRENT_ROW(level_state, wstate, level_state->frame->lead, true))
 			include_last_agg = true;
 
 		if ((has_tuples || include_last_agg || trail_valid) &&
