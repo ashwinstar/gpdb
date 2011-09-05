@@ -1596,6 +1596,9 @@ FunctionCallPrepareFormatter(FunctionCallInfoData*	fcinfo,
 	formatter->fmt_saw_eof = pstate->fe_eof;
 	formatter->fmt_typioparams = typioparams;
 	formatter->fmt_perrow_ctx = pstate->rowcontext;
+	formatter->fmt_needs_transcoding = pstate->need_transcoding;
+	formatter->fmt_conversion_proc = pstate->enc_conversion_proc;
+	formatter->fmt_external_encoding = pstate->client_encoding;
 	
 	InitFunctionCallInfoData(/* FunctionCallInfoData */ *fcinfo, 
 							 /* FmgrInfo */ pstate->custom_formatter_func, 

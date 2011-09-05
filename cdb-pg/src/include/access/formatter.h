@@ -12,6 +12,7 @@
 
 #include "access/tupdesc.h"
 #include "lib/stringinfo.h"
+#include "mb/pg_wchar.h"
 #include "nodes/nodes.h"
 #include "nodes/value.h"
 #include "utils/rel.h"
@@ -31,21 +32,32 @@ typedef enum FmtNotification
 typedef struct FormatterData
 {
 	NodeTag			type;                 /* see T_FormatterData */
+	
+	/* metadata */
 	Relation    	fmt_relation;
 	TupleDesc   	fmt_tupDesc;
+	List		   *fmt_args;
+	FmtNotification fmt_notification;
+	HeapTuple		fmt_tuple; /* hack! pass back the tuple through here for now... */
+
+	/* formatting */
 	StringInfoData	fmt_databuf;
 	bool			fmt_saw_eof;
+	FmgrInfo   	   *fmt_conv_funcs; /* in_fuctions (RET) or out_functions (WET) */
+	Oid            *fmt_typioparams;
+	MemoryContext	fmt_perrow_ctx;
 	void		   *fmt_user_ctx;
+	
+	/* sreh */
 	int				fmt_badrow_num;
 	int				fmt_badrow_len;
 	char		   *fmt_badrow_data;
 	int             fmt_bytesread;
-	FmtNotification fmt_notification;
-	List		   *fmt_args;
-	FmgrInfo   	   *fmt_conv_funcs; /* in_fuctions (RET) or out_functions (WET) */
-	Oid            *fmt_typioparams;
-	MemoryContext	fmt_perrow_ctx;
-	HeapTuple		fmt_tuple; /* hack! pass back the tuple through here for now... */
+	
+	/* encoding */
+	bool			fmt_needs_transcoding;
+	FmgrInfo*		fmt_conversion_proc;
+	int				fmt_external_encoding;
 		
 } FormatterData;
 
@@ -95,6 +107,24 @@ typedef struct FormatterData
 	do { \
 		(((FormatterData*) fcinfo->context)->fmt_notification = n); \
 		PG_RETURN_NULL(); \
+	} while (0)
+
+#define FORMATTER_ENCODE_OUTPUT(fcinfo, p, n) \
+	do { \
+		if (((FormatterData*) fcinfo->context)->fmt_needs_transcoding) \
+			p = pg_server_to_custom(p, \
+								    n, \
+									((FormatterData*) fcinfo->context)->fmt_external_encoding, \
+									((FormatterData*) fcinfo->context)->fmt_conversion_proc); \
+	} while (0)
+
+#define FORMATTER_ENCODE_INPUT(fcinfo, p, n) \
+	do { \
+		if (((FormatterData*) fcinfo->context)->fmt_needs_transcoding) \
+			p = pg_custom_to_server(p, \
+								    n, \
+									((FormatterData*) fcinfo->context)->fmt_external_encoding, \
+									((FormatterData*) fcinfo->context)->fmt_conversion_proc); \
 	} while (0)
 
 
