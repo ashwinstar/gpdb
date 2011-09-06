@@ -68,4 +68,4 @@ endif
 	$(MAKE) -C tznames $@
 
 clean distclean maintainer-clean:
-	rm -f zic$(X) $(ZICOBJS)
+	rm -f zic$(X) $(ZICOBJS) gmon.out
