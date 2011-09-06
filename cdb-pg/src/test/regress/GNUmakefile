@@ -213,6 +213,7 @@ clean distclean maintainer-clean: clean-lib
 	rm -f input/loadcat33.source
 	rm -f input/loadcat34.source
 	rm -f input/loadcat34_sh.source
+	rm -f gmon.out
 	rm -f $(upg2_temp_files)
 ifeq ($(PORTNAME), cygwin)
 	rm -f regress.def
