@@ -498,6 +498,8 @@ AnyTable_GetTupleDesc(AnyTable t)
 HeapTuple
 AnyTable_GetNextTuple(AnyTable t)
 {
+	MemoryContext oldcontext;
+
 	if (t == NULL)
 	{
 		ereport(ERROR, 
@@ -506,12 +508,13 @@ AnyTable_GetNextTuple(AnyTable t)
 	}
 
 	/* Fetch the next tuple into the tuple slot */
+	oldcontext = MemoryContextSwitchTo(t->econtext->ecxt_per_query_memory);
 	t->econtext->ecxt_outertuple = ExecProcNode(t->subplan);
+	MemoryContextSwitchTo(oldcontext);
 	if (TupIsNull(t->econtext->ecxt_outertuple))
 	{
 		return (HeapTuple) NULL;
 	}
-
 
 	/* ----------------------------------------
 	 * 1) Fetch the tuple from the tuple slot
