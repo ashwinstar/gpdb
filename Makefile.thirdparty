@@ -135,7 +135,7 @@ define tmpBLD_THIRDPARTY_LIBS_BASE
 	libedit/3.0
 	libesmtp/1.0.4
 	libevent/1.4.6
-	lighttpd/1.4.19
+	lighttpd/1.4.28
 	net-snmp/5.5
 	openldap/2.3.38
 	openssl/0.9.8g
