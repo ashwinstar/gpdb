@@ -53,7 +53,9 @@ class Popen(subprocess.Popen):
         if self.stdin:
             if input:
                 self.stdin.write(input)
-                self.stdin.close()
+
+            # ESCALATION-151 - always close stdin, even when no input from caller
+            self.stdin.close()
                 
         while not (terminated or self.cancelRequested):
             terminated = self._check_status()
