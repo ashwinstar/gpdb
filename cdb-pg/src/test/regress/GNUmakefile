@@ -168,6 +168,7 @@ endif
 # 2. tablespace pg_global
 # 3. (oid=...)
 upg2-setup:
+	rm -rf data/upg_catupgrade_42.sql
 	sed -e 's/with (.*/;/g' -e 's/\tablespace pg_global//g' -e 's/(oid=.*)//g' $(srcdir)/data/upgrade42/upg2_catupgrade_42.sql.in > data/upg_catupgrade_42.sql
 	@gpstringsubs.pl data/upg_catupgrade_42.sql
 
