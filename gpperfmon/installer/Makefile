@@ -7,7 +7,7 @@ include $(BLD_TOP)/Makefile.thirdparty
 GPMONWS_DIR=../src/webui/webapi
 GPMONUI_DIR=../src/webui/flexGUI
 GPMONDOCS_DIR=../docs/release
-LIGHTY_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/lighttpd-1.4.19/
+LIGHTY_DIR=$(BLD_TOP)/ext/$(BLD_ARCH)/lighttpd-1.4.28/
 GPPERFMON_VERSION=$(shell perl -pe 's, ,-,g' ../../VERSION)
 CONSOLEDOCS_DIR=../../docs/release/html/perfmon_console_help
 
