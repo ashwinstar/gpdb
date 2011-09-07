@@ -16,6 +16,64 @@
 -- The first DML will populate the mater catalog and the second DML will update the catalog
 -- in all the segments.
 
+
+--
+-- New Tables in 4.2
+--
+CREATE TABLE @gpupgradeschemaname@.pg_type_encoding
+(
+  typid     oid, 
+  typoptions   text[]
+)
+with (relid=3220, reltype_oid=3221, toast_oid=3222, toast_index=3223, toast_reltype=3224, CamelCase=TypeEncoding);
+create unique index pg_type_encoding_typid_index on @gpupgradeschemaname@.pg_type_encoding(typid) with (indexid=3207);
+
+CREATE TABLE @gpupgradeschemaname@.pg_extprotocol
+(
+   ptcname        name,
+   ptcreadfn      Oid,
+   ptcwritefn     Oid,
+   ptcvalidatorfn Oid, 
+   ptcowner       Oid,
+   ptctrusted	  bool,
+   ptcacl         aclitem[]   
+)
+with (shared=false, oids=true, relid=7175, reltype_oid=7176);
+create unique index pg_extprotocol_oid_index on @gpupgradeschemaname@.pg_extprotocol(oid) with (indexid=7156);
+create unique index pg_extprotocol_ptcname_index on @gpupgradeschemaname@.pg_extprotocol(ptcname) with (indexid=7177);
+
+
+CREATE TABLE @gpupgradeschemaname@.pg_attribute_encoding
+(
+   attrelid     oid, 
+   attnum		smallint, 
+   attoptions   text[]
+)
+ with (relid=3231, reltype_oid=3232, toast_oid=3233, toast_index=3234, toast_reltype=3235, CamelCase=AttributeEncoding);
+create index pg_attribute_encoding_attrelid_index on @gpupgradeschemaname@.pg_attribute_encoding(attrelid) with (indexid=3236);
+create unique index pg_attribute_encoding_attrelid_attnum_index on @gpupgradeschemaname@.pg_attribute_encoding(attrelid, attnum) with (indexid=3237);
+
+CREATE TABLE @gpupgradeschemaname@.gp_verification_history
+(
+   vertoken             name       ,    -- token of the verification request, 63 characters or less
+   vertype              smallint   ,    -- 0=FULL (ie. all files and directories), 1=FILE, 2=DIRECTORY
+   vercontent           smallint   ,    -- -1= all primary mirror pairs, >=0 specific primary/mirror pair
+   verstarttime         timestamp with time zone,  --time the request is started
+   verstate             smallint   ,     -- 0=Started, 1=Suspended, 2=Aborted, 3=Failed, 4=Succeeded
+   verdone              boolean    ,     --0 if started or suspeneded, 1 if aborted or failed or successful completion
+   verendtime           timestamp with time zone,  --time the request is completely done processing, only valid id verdone is true, latest end time for this token on any primary/mirror pair
+   vermismatch          boolean         --were mismatches found on any primary/mirror pair for this token
+)
+with (camelcase=GpVerificationHistory, shared=true, oid=false, relid=6429, reltype_oid=6430)
+tablespace pg_global;
+   
+create unique index gp_verification_history_vertoken_index on @gpupgradeschemaname@.gp_verification_history(vertoken) with (indexid=6431);  
+
+
+--
+--  End of New Tables
+--
+
 CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_max_external_files AS
     SELECT   address::name as hostname, count(*) as maxfiles
     FROM     gp_segment_configuration
@@ -32,23 +90,23 @@ CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_max_external_files AS
 --
 CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.gphdfs_export(record) RETURNS bytea 
 AS '$libdir/gphdfs.so', 'gphdfsformatter_export'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C STABLE;
 
 CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.gphdfs_import() RETURNS record
 AS '$libdir/gphdfs.so', 'gphdfsformatter_import'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C STABLE;
 
 CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.gphdfs_read() RETURNS integer
 AS '$libdir/gphdfs.so', 'gphdfsprotocol_import'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C STABLE;
 
 CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.gphdfs_write() RETURNS integer
 AS '$libdir/gphdfs.so', 'gphdfsprotocol_export'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C STABLE;
 
 CREATE OR REPLACE FUNCTION @gpupgradeschemaname@.gphdfs_validate() RETURNS void
 AS '$libdir/gphdfs.so', 'gphdfsprotocol_validate_urls'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C STABLE;
 
 CREATE PROTOCOL gphdfs (
   writefunc     = 'gphdfs_write',
@@ -71,3 +129,102 @@ end;
 $$ language 'plpgsql';
 
 drop function @gpupgradeschemaname@.grant_gphdfs();
+
+--
+-- Rename index using tidycat convention
+--
+alter index @gpupgradeschemaname@.pg_language_name_index rename to pg_language_lanname_index;
+--
+-- Cosh/Sinh/Tanh
+--
+CREATE FUNCTION @gpupgradeschemaname@.cosh(float8) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'dcosh' WITH (OID=3539);
+COMMENT ON FUNCTION @gpupgradeschemaname@.cosh(float8) IS 'Hyperbolic cosine function';
+
+CREATE FUNCTION @gpupgradeschemaname@.sinh(float8) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'dsinh' WITH (OID=3540);
+COMMENT ON FUNCTION @gpupgradeschemaname@.sinh(float8) IS 'Hyperbolic sine function';
+
+CREATE FUNCTION @gpupgradeschemaname@.tanh(float8) RETURNS float8 LANGUAGE internal IMMUTABLE AS 'dtanh' WITH (OID=3541);
+COMMENT ON FUNCTION @gpupgradeschemaname@.tanh(float8) IS 'Hyperbolic tangent function';
+
+
+--
+--  Anytable
+--
+CREATE TYPE @gpupgradeschemaname@.anytable (oid=3053);
+
+CREATE FUNCTION @gpupgradeschemaname@.anytable_in(cstring) RETURNS @gpupgradeschemaname@.anytable LANGUAGE internal IMMUTABLE STRICT AS 'anytable_in' WITH (OID=3054);
+COMMENT ON FUNCTION @gpupgradeschemaname@.anytable_in(cstring) IS 'anytable type serialization input function';
+
+CREATE FUNCTION @gpupgradeschemaname@.anytable_out(@gpupgradeschemaname@.anytable) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT AS 'anytable_out' WITH (OID=3055);
+COMMENT ON  FUNCTION @gpupgradeschemaname@.anytable_out(@gpupgradeschemaname@.anytable) IS 'anytable type serialization output function';
+
+CREATE TYPE @gpupgradeschemaname@.anytable(
+   INPUT = @gpupgradeschemaname@.anytable_in,
+   OUTPUT = @gpupgradeschemaname@.anytable_out,
+   INTERNALLENGTH = VARIABLE,
+   STORAGE = extended,
+   DELIMITER = ',',
+   ALIGNMENT = double,
+   TYPTYPE = 'p'
+);
+
+--
+--  XML
+--
+CREATE TYPE @gpupgradeschemaname@.xml (oid=142);
+
+CREATE FUNCTION @gpupgradeschemaname@.xml_in(cstring) RETURNS @gpupgradeschemaname@.xml LANGUAGE internal IMMUTABLE STRICT AS 'xml_in' WITH (OID=2973);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xml_in(cstring) IS 'I/O';
+CREATE FUNCTION @gpupgradeschemaname@.xml_out(@gpupgradeschemaname@.xml) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT AS 'xml_out' WITH (OID=2974);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xml_out(@gpupgradeschemaname@.xml) IS 'I/O';
+ CREATE FUNCTION @gpupgradeschemaname@.xml_recv(internal) RETURNS @gpupgradeschemaname@.xml LANGUAGE internal IMMUTABLE STRICT AS 'xml_recv' WITH (OID=2978);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xml_recv(internal) IS 'I/O';
+ CREATE FUNCTION @gpupgradeschemaname@.xml_send(@gpupgradeschemaname@.xml) RETURNS bytea LANGUAGE internal IMMUTABLE STRICT AS 'xml_send' WITH (OID=2979);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xml_send(@gpupgradeschemaname@.xml) IS 'I/O';
+
+CREATE TYPE @gpupgradeschemaname@.xml(
+   INPUT = @gpupgradeschemaname@.xml_in,
+   OUTPUT = @gpupgradeschemaname@.xml_out,
+   SEND = @gpupgradeschemaname@.xml_send,
+   RECEIVE = @gpupgradeschemaname@.xml_recv,
+   INTERNALLENGTH = VARIABLE,
+   STORAGE = extended,
+   DELIMITER = ',',
+   ALIGNMENT = integer,
+   SHADOWOID = 143
+);
+
+CREATE FUNCTION @gpupgradeschemaname@.xmlcomment(text) RETURNS @gpupgradeschemaname@.xml LANGUAGE internal IMMUTABLE STRICT AS 'xmlcomment' WITH (OID=2975);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xmlcomment(text) IS 'generate XML comment';
+CREATE FUNCTION @gpupgradeschemaname@.xml(text) RETURNS @gpupgradeschemaname@.xml LANGUAGE internal IMMUTABLE STRICT AS 'texttoxml' WITH (OID=2976);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xml(text) IS 'perform a non-validating parse of a character string to produce an XML value';
+ CREATE FUNCTION @gpupgradeschemaname@.xmlvalidate(@gpupgradeschemaname@.xml, text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xmlvalidate' WITH (OID=2977);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xmlvalidate(@gpupgradeschemaname@.xml, text) IS 'validate an XML value';
+ CREATE FUNCTION @gpupgradeschemaname@.xmlconcat2(@gpupgradeschemaname@.xml, @gpupgradeschemaname@.xml) RETURNS @gpupgradeschemaname@.xml LANGUAGE internal IMMUTABLE STRICT AS 'xmlconcat2' WITH (OID=2980);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xmlconcat2(@gpupgradeschemaname@.xml, @gpupgradeschemaname@.xml) IS 'aggregate transition function';
+ CREATE FUNCTION @gpupgradeschemaname@.text(@gpupgradeschemaname@.xml) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'xmltotext' WITH (OID=2982);
+COMMENT ON FUNCTION @gpupgradeschemaname@.text(@gpupgradeschemaname@.xml) IS 'serialize an XML value to a character string';
+ CREATE FUNCTION @gpupgradeschemaname@.xpath(text, @gpupgradeschemaname@.xml, _text) RETURNS @gpupgradeschemaname@._xml LANGUAGE internal IMMUTABLE STRICT AS 'xpath' WITH (OID=2983);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xpath(text, @gpupgradeschemaname@.xml, _text) IS 'evaluate XPath expression, with namespaces support';
+ CREATE FUNCTION @gpupgradeschemaname@.xpath(text, @gpupgradeschemaname@.xml) RETURNS @gpupgradeschemaname@._xml LANGUAGE sql IMMUTABLE STRICT AS $$select @gpupgradeschemaname@.xpath($1, $2, '{}'::pg_catalog.text[])$$ WITH (OID=2984);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xpath(text, @gpupgradeschemaname@.xml) IS 'evaluate XPath expression';
+ CREATE FUNCTION @gpupgradeschemaname@.xmlexists(text, @gpupgradeschemaname@.xml) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xmlexists' WITH (OID=2985);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xmlexists(text, @gpupgradeschemaname@.xml) IS 'test XML value against XPath expression';
+ CREATE FUNCTION @gpupgradeschemaname@.xpath_exists(text, @gpupgradeschemaname@.xml, _text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xpath_exists' WITH (OID=2986);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xpath_exists(text, @gpupgradeschemaname@.xml, _text) IS 'test XML value against XPath expression, with namespace support';
+ CREATE FUNCTION @gpupgradeschemaname@.xpath_exists(text, @gpupgradeschemaname@.xml) RETURNS bool LANGUAGE sql IMMUTABLE STRICT AS $$select @gpupgradeschemaname@.xpath_exists($1, $2, '{}'::pg_catalog.text[])$$ WITH (OID=2987);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xpath_exists(text, @gpupgradeschemaname@.xml) IS 'test XML value against XPath expression';
+ CREATE FUNCTION @gpupgradeschemaname@.xml_is_well_formed(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xml_is_well_formed' WITH (OID=2988);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xml_is_well_formed(text) IS 'determine if a string is well formed XML';
+ CREATE FUNCTION @gpupgradeschemaname@.xml_is_well_formed_document(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xml_is_well_formed_document' WITH (OID=2989);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xml_is_well_formed_document(text) IS 'determine if a string is well formed XML document';
+ CREATE FUNCTION @gpupgradeschemaname@.xml_is_well_formed_content(text) RETURNS bool LANGUAGE internal IMMUTABLE STRICT AS 'xml_is_well_formed_content' WITH (OID=2990);
+COMMENT ON FUNCTION @gpupgradeschemaname@.xml_is_well_formed_content(text) IS 'determine if a string is well formed XML content';
+
+create ordered aggregate @gpupgradeschemaname@.xmlagg(@gpupgradeschemaname@.xml) (
+    stype     = @gpupgradeschemaname@.xml,
+    sfunc     = @gpupgradeschemaname@.xmlconcat2,
+    oid       = 2981
+);
+COMMENT ON AGGREGATE @gpupgradeschemaname@.xmlagg(@gpupgradeschemaname@.xml) IS 'concatenate XML values';
+

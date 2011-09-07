@@ -163,10 +163,12 @@ else
 endif
 
 # Copy and transform all of the upgrade related data files
+# For upgrade installcheck-good test, we need to get rid of
+# 1. WITH clause (because create table doesn't like tidycat definition)
+# 2. tablespace pg_global
+# 3. (oid=...)
 upg2-setup:
-	@cp -f $(srcdir)/data/upgrade41/upg2_catupgrade_41.sql.in data/upg_catupgrade_41.sql
-	@gpstringsubs.pl data/upg_catupgrade_41.sql
-	@cp -f $(srcdir)/data/upgrade42/upg2_catupgrade_42.sql.in data/upg_catupgrade_42.sql
+	sed -e 's/with (.*/;/g' -e 's/\tablespace pg_global//g' -e 's/(oid=.*)//g' $(srcdir)/data/upgrade42/upg2_catupgrade_42.sql.in > data/upg_catupgrade_42.sql
 	@gpstringsubs.pl data/upg_catupgrade_42.sql
 
 ugpart-setup:

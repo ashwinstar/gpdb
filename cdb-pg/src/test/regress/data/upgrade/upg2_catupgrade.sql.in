@@ -40,18 +40,25 @@ end;
 $$ language 'plpgsql';
 
 -- Use this pl/pgsql function to add PIn dependency of the newly created procedure
-create or replace function @gpupgradeschemaname@.addProcPIN(procid oid) returns int as $$
+create or replace function @gpupgradeschemaname@.addProcPIN(classoid oid, procid oid) returns int as $$
 begin
-  INSERT INTO @gpupgradeschemaname@.pg_depend values(0,0,0, 1255, procid, 0, 'p');
-  PERFORM @gpupgradeschemaname@.catDML('INSERT INTO @gpupgradeschemaname@.pg_depend values(0,0,0, 1255, '||procid||', 0, ''p'')') from gp_dist_random('gp_id');
+  INSERT INTO @gpupgradeschemaname@.pg_depend values(0,0,0, classoid, procid, 0, 'p');
+  PERFORM @gpupgradeschemaname@.catDML('INSERT INTO @gpupgradeschemaname@.pg_depend values(0,0,0, '||classoid||', '||procid||', 0, ''p'')') from gp_dist_random('gp_id');
   return 1;
 end;
 $$ language 'plpgsql';
 
+
+-------------------------------------
+-- Blow away the gp_toolkit schema
+-------------------------------------
+DROP SCHEMA if exists gp_toolkit cascade;
+CREATE SCHEMA gp_toolkit ;
+
 -------------------------------------
 -- Execute the main upgrade script
 -------------------------------------
-\set upg2script `echo $GPHOME/share/postgresql/upgrade/upg2_catupgrade_41.sql`
+\set upg2script `echo $GPHOME/share/postgresql/upgrade/upg2_catupgrade_42.sql`
 \i :upg2script
 
 
@@ -73,7 +80,7 @@ select @gpupgradeschemaname@.catDML(
 from gp_dist_random('gp_id');
 
 drop function @gpupgradeschemaname@.catDML(stmt text);
-drop function @gpupgradeschemaname@.addProcPIN(procid oid);
+drop function @gpupgradeschemaname@.addProcPIN(classoid oid, procid oid);
 commit;
 
 \unset ON_ERROR_STOP

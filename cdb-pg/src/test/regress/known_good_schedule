@@ -146,7 +146,7 @@ test: mapred
 test: gpparams
 test: tidycat
 test: tidycat2
-ignore: upgrade
+test: upgrade
 ignore: upg2
 test: alter_distribution_policy
 ignore: gp_delete_as_trunc

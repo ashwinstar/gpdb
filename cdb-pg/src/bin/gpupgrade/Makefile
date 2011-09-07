@@ -19,8 +19,8 @@ LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl
 
 MODCAT_OBJS= gpmodcatversion.o pg_crc.o crc32c.o
 
-UPGRADEFILES = $(top_srcdir)/src/test/regress/data/upgrade41/upg2_catupgrade.sql \
-               $(top_srcdir)/src/test/regress/data/upgrade41/upg2_catupgrade_check.sql \
+UPGRADEFILES = $(top_srcdir)/src/test/regress/data/upgrade/upg2_catupgrade.sql \
+               $(top_srcdir)/src/test/regress/data/upgrade/upg2_catupgrade_check.sql \
                $(top_srcdir)/src/test/regress/data/upgrade42/upg2_catupgrade_42.sql
 
 # This sets things up to create a "contrib" module for upgrade extensions

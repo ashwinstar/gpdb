@@ -109,7 +109,7 @@ def is_supported_version(version, upgrade=True):
     '''
     Checks that a given GpVersion Object is supported for upgrade/downgrade.
     We do not support:
-      Versions < 4.0.0.0
+      Versions < PREVIOUS MINOR RELEASE
       Versions > main
       Versions with unusual "builds" (eg 3.4.0.0_EAP1)
     '''
@@ -127,10 +127,10 @@ def is_supported_version(version, upgrade=True):
             "Greenplum Version '%s' is not supported for %s"
             % (str(version), upstr))            
 
-    if version >= "4.0.0.0" and version <= 'main':
+    if version >= "4.1.0.0" and version <= 'main':
         return True
 
-    if version < "4.0.0.0":
+    if version < "4.1.0.0":
         raise UpgradeError(
             "Greenplum Version '%s' is not supported for %s"
             % (str(version), upstr))
@@ -890,7 +890,7 @@ class GPUpgrade:
         return rows
 
     #------------------------------------------------------------
-    def Update(self, qry, db='template1', port=None, forceutility=False, upgradeMode=False):
+    def Update(self, qry, db='template1', port=None, forceutility=False, upgradeMode=False, modSysTbl=False):
         '''
         Execute a SQL query expecting no output
         '''
@@ -928,7 +928,8 @@ class GPUpgrade:
         if port == None:
             port = self.masterport
         
-        options = ''
+        options = ' '
+        if modSysTbl:               options += ' -c allow_system_table_mods=dml'
         if utility or forceutility: options += ' -c gp_session_role=utility'          
         if upgradeMode:             options += ' -c gp_maintenance_conn=true'
 
@@ -1676,7 +1677,7 @@ class GPUpgrade:
         # We don't support mirror any more in this script.
         if (self.mirrors):
             raise UpgradeError(
-                "Please use gpmigrator_with_mirror to upgrade a cluster with mirroring")
+                "Please use gpmigrator_mirror to upgrade a cluster with mirroring")
 
         # self.config
         config_file = os.path.join(self.workdir, 'gp_config')
@@ -2508,8 +2509,8 @@ class GPUpgrade:
             self.Update("""
                UPDATE pg_filespace_entry SET fselocation =
                   regexp_replace(fselocation, E'/gpmigrator/upgrade/','/')
-            """, forceutility=True, upgradeMode=True)
-            self.Update("VACUUM FREEZE pg_filespace_entry", forceutility=True, upgradeMode=True)
+            """, forceutility=True, upgradeMode=True, modSysTbl=True)
+            self.Update("VACUUM FREEZE pg_filespace_entry", forceutility=True, upgradeMode=True, modSysTbl=True)
             
             self.Shutdown()
             self.Startup(self.newenv, upgrade=True)
@@ -2545,7 +2546,7 @@ class GPUpgrade:
                 UPDATE gp_persistent_filespace_node SET location_1 =
                    regexp_replace(location_1, E'/gpmigrator/upgrade/','/')||'                   '
                    where persistent_state = 2
-                """, port=port, forceutility=True, upgradeMode=True)
+                """, port=port, forceutility=True, upgradeMode=True, modSysTbl=True)
 
         if self.cmd == 'MASTER':
             self.Shutdown()
@@ -2572,7 +2573,7 @@ class GPUpgrade:
                 UPDATE pg_filespace_entry SET fselocation =
                    regexp_replace(fselocation, E'(/[^/]*)$', 
                                   E'/gpmigrator/upgrade\\\\1')
-                """, forceutility=True, upgradeMode=True)
+                """, forceutility=True, upgradeMode=True, modSysTbl=True)
             self.Update("VACUUM FREEZE pg_filespace_entry", forceutility=True, upgradeMode=True)
 
             # Update the gp_segment configuration table to correctly fill in
@@ -2586,7 +2587,7 @@ class GPUpgrade:
                    UPDATE gp_segment_configuration 
                    SET hostname='%s', replication_port=%s
                    WHERE dbid=%s
-                   """ % (hostname, rport, dbid), forceutility=True, upgradeMode=True)
+                   """ % (hostname, rport, dbid), forceutility=True, upgradeMode=True, modSysTbl=True)
                 self.Update("VACUUM FREEZE gp_segment_configuration", forceutility=True, upgradeMode=True)
 
             self.Shutdown()
@@ -2625,7 +2626,7 @@ class GPUpgrade:
                    regexp_replace(location_1, E'(/[^/]*)                   $',
                    E'/gpmigrator/upgrade\\\\1')
                    where persistent_state = 2
-                """, port=port, forceutility=True, upgradeMode=True)
+                """, port=port, forceutility=True, upgradeMode=True, modSysTbl=True)
             
         if self.cmd == 'MASTER':
             self.Shutdown()
@@ -3146,7 +3147,8 @@ class GPUpgrade:
                     "3.1": "200712072",
                     "3.2": "200808253",
                     "3.3": "200905011",
-                    "4.0": "201005134"}
+                    "4.0": "201005134",
+                    "4.1": "201101130"}
         
         self.CheckDown()
 

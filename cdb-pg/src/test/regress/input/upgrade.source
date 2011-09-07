@@ -1,641 +1,789 @@
--- -*- mode: sql; -*-
+--
+--  This function dumps the catalog DDL into a table called catdump.DDL
+--
+drop schema catdump cascade;
+create schema catdump;
 
--- ===========================================================================
--- upgrade.sql
--- ===========================================================================
---
---  1) Create a schema like the 4.0 catalog schema including:
---      * catalog tables
---      * catalog functions
---      * catalog aggregates
---      * catalog types
---      * catalog operators
---      * catalog casts
---      etc.
---
---  2) Run the upgrade DDL on the schema
---
---  3) Compare against the real catalog to check that they are the same
---
---  4) Cleanup
---
--- ===========================================================================
---
--- Exceptions to deal with issues in the definition of various operator classes
---
--- start_matchsubs
---
--- # several functions that should return varchar actually return text
---
--- m/varchar(_pattern)?_ops/
--- s/ varchar (\s*)\| [tf] / text    $1\| f/
---
--- # Functions that should return cidr actually return inet
---
--- m/cidr_ops/
--- s/ inet (\s*) \| f/ cidr $1 | t/
---
--- # The bitmap operator class for int4_ops misdeclares its comparison functions
---
--- m/int4_ops/
--- s/btint(\d+)cmp/btintXXcmp/
---
--- # Because we hacked together pg_stat to have "text" rather than "anyarray"
--- # columns the alignment of the columns is different in our fake schema.
---
--- m/pg_stat/
--- s/ d / i /
---
--- # We can't actually create a table with anyarray columns, so we hacked our
--- # fake schema to have text columns and fix our comparison with this 
--- # substitution.
---
--- m/pg_stat/
--- s/anyarray/text    /
---
--- # Many cast functions actually return the wrong datatype, which makes them
--- # impossible to create as they are defined in the catalog.  To work around
--- # this it is necessary to create a bunch of dummy functions, then substitute
--- # the original function name back in for comparison.
---
--- m/dummycast_(\w*)_(\w*)_(\w*)/
--- s/dummycast_(\w*)_(\w*)_(\w*)/$3/
---
--- end_matchsubs
---
--- ===========================================================================
+create table catdump.DDL(ver text, stmt text);
 
--- ===========================================================================
--- ===========================================================================
--- This script will produce diffs if you add or change catalog table
--- definitions in src/include/catalog. If you want to change the results, 
--- you must make the changes in regress/output/upgrade.source, not
--- regress/expected, and use gpsourcify.pl to generate a ".out" file.
+create or replace function catdump.dump_to_table(ver text, src_schema name) returns int as $$
+declare
+  stmtrow record;
+begin
+-- Dump Access Methods
+for stmtrow in
+SELECT 
+    'CREATE FUNCTION upg_catalog.' || quote_ident(proname)
+    || '(' 
+    || coalesce(
+        array_to_string( array(
+                     select coalesce(proargnames[i] || ' ','') 
+                           || case when typname = 'internal' then 'pg_catalog.' else 'upg_catalog.' end
+                           || quote_ident(typname)
+                     from pg_type t, generate_series(1, pronargs) i
+                     where t.oid = proargtypes[i-1]
+                     order by i), ', '), '')
+    || ') RETURNS '
+    || case when proretset then 'SETOF ' else '' end 
+    || 'pg_catalog.' || quote_ident(r.typname) || ' '
+    || 'LANGUAGE ' || quote_ident(lanname) || ' '
+    || case when provolatile = 'i' then 'IMMUTABLE '
+            when provolatile = 'v' then 'VOLATILE '
+            when provolatile = 's' then 'STABLE ' 
+            else '' end
+    || case when proisstrict then 'STRICT ' else '' end
+    || case when prosecdef then 'SECURITY DEFINER ' else '' end
+    || 'AS ' 
+    || case when lanname = 'c' 
+            then '''' || textin(byteaout(probin)) || ''', ''' || prosrc || '''' 
+            when lanname = 'internal'
+            then '''' || prosrc || ''''
+            when lanname = 'sql'
+            then E'\$\$' || prosrc || E'\$\$'
+            else 'BROKEN (unsupported language)' end
+    || ';' as stmt
+FROM pg_proc p
+JOIN pg_type r on (p.prorettype = r.oid)
+JOIN pg_language l on (p.prolang = l.oid)
+JOIN pg_namespace n on (p.pronamespace = n.oid)
+WHERE n.nspname = src_schema
+  and p.oid in (select amproc from pg_amproc)
+order by pronargs, 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+end loop;
+ 
+ 
 --
--- From the regress directory invoke the command:
+-- Cast Functions
 --
---    gpsourcify.pl results/upgrade.out > output/upgrade.source
+for stmtrow in
+ SELECT 
+    'CREATE FUNCTION upg_catalog.' || quote_ident(proname)
+    || '(' 
+    || coalesce(
+        array_to_string( array(
+                     select coalesce(proargnames[i] || ' ','') 
+                           || case when i > 1 
+                                   then 'pg_catalog.' 
+                                   else 'upg_catalog.' end
+                           || quote_ident(typname)
+                     from pg_type t, generate_series(1, pronargs) i
+                     where t.oid = proargtypes[i-1]
+                     order by i), ', '), '')
+    || ') RETURNS '
+    || case when proretset then 'SETOF ' else '' end 
+    || 'upg_catalog.' || quote_ident(r.typname) || ' '
+    || 'LANGUAGE ' || quote_ident(lanname) || ' '
+    || case when provolatile = 'i' then 'IMMUTABLE '
+            when provolatile = 'v' then 'VOLATILE '
+            when provolatile = 's' then 'STABLE ' 
+            else '' end
+    || case when proisstrict then 'STRICT ' else '' end
+    || case when prosecdef then 'SECURITY DEFINER ' else '' end
+    || 'AS ' 
+    || case when lanname = 'c' 
+            then '''' || textin(byteaout(probin)) || ''', ''' || prosrc || '''' 
+            when lanname = 'internal'
+            then '''' || prosrc || ''''
+            when lanname = 'sql'
+            then E'\$\$ SELECT null::upg_catalog.' || quote_ident(r.typname) || E'\$\$'
+            else 'BROKEN (unsupported language)' end
+    || ';' as stmt
+FROM pg_proc p
+JOIN pg_type r on (p.prorettype = r.oid)
+JOIN pg_language l on (p.prolang = l.oid)
+JOIN pg_namespace n on (p.pronamespace = n.oid)
+WHERE n.nspname = src_schema
+  and p.oid in (select castfunc from pg_cast)
+order by 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
 --
--- ===========================================================================
--- ===========================================================================
+-- Casts
+--
+for stmtrow in
+ SELECT 'CREATE CAST ('
+    || 'upg_catalog.' || quote_ident(t1.typname) || ' AS '
+    || 'upg_catalog.' || quote_ident(t2.typname) || ') '
+    || case when proname is not null 
+            then 'WITH FUNCTION ' 
+                 || case when p.proargtypes[0] != c.castsource or p.prorettype != c.casttarget
+                         then 'dummy_cast_functions.dummycast_' 
+                              || t1.typname || '_' || t2.typname || '_' || p.proname
+                              || '(upg_catalog.' || quote_ident(t1.typname) || ')'
+                         else 'upg_catalog.' || p.proname || '('
+                              || array_to_string( array ( 
+                                    select coalesce(proargnames[i] || ' ','') 
+                                           || case when i = 1 then 'upg_catalog.' else 'pg_catalog.' end
+                                           || quote_ident(typname)
+                                    from pg_type t, generate_series(1, pronargs) i
+                                     where t.oid = proargtypes[i-1]
+                                     order by i), ', ') || ')'
+                         end
+            else 'WITHOUT FUNCTION' end
+    || case when castcontext = 'e' then ''
+            when castcontext = 'i' then ' AS IMPLICIT'
+            when castcontext = 'a' then ' AS ASSIGNMENT' end
+    || ';' as stmt
+FROM pg_cast c
+     join pg_type t1 on (c.castsource = t1.oid)
+     join pg_type t2 on (c.casttarget = t2.oid)
+     left join pg_proc p on (c.castfunc = p.oid)
+ORDER BY 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
 
-SET client_min_messages = 'WARNING';
-
-
--- ===========================================================================
--- * Create a dummy schema for cast functions
---   Many of the builtin casts use functions with the wrong prototypes, this
---   works around this by creating functions with the right prototypes in a
---   dummy schema.
--- ===========================================================================
-CREATE SCHEMA dummy_cast_functions;
+end loop;
 
 
 
--- ===========================================================================
--- * Create a schema like the 4.0 catalog schema
--- ===========================================================================
+--
+-- Dummy Cast
+--
+for stmtrow in
+SELECT 'CREATE FUNCTION '
+    || 'dummy_cast_functions.dummycast_'||t1.typname||'_'||t2.typname||'_'||p.proname||'('
+    || 'upg_catalog.' || quote_ident(t1.typname) || ') '
+    || 'RETURNS upg_catalog.' || quote_ident(t2.typname) || ' '
+    || 'LANGUAGE internal AS ''' || p.prosrc || ''' STRICT IMMUTABLE;' as stmt
+FROM pg_cast c
+     join pg_type t1 on (c.castsource = t1.oid)
+     join pg_type t2 on (c.casttarget = t2.oid)
+     join pg_proc p on (c.castfunc = p.oid)
+     join pg_namespace n on (p.pronamespace = n.oid)
+WHERE n.nspname = 'pg_catalog'
+  AND p.proargtypes[0] != c.castsource OR p.prorettype != c.casttarget
+ORDER BY 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
+--
+-- Functions SQL
+--
+for stmtrow in
+SELECT 
+    'CREATE FUNCTION upg_catalog.'
+    || case when proname in ('convert') 
+            then '"' || proname || '"' 
+            else quote_ident(proname) end
+    || '(' 
+    || coalesce(
+        array_to_string( 
+            case when proargmodes is null 
+                 then array(
+                     select coalesce(proargnames[i] || ' ','') 
+                           || 'upg_catalog.' || quote_ident(typname)
+                     from pg_type t, generate_series(1, pronargs) i
+                     where t.oid = proargtypes[i-1]
+                     order by i)
+                 else array(
+                     select   case when proargmodes[i] = 'i' then 'IN '
+                                   when proargmodes[i] = 'o' then 'OUT '
+                                   when proargmodes[i] = 'b' then 'INOUT '
+                                   else 'BROKEN(proargmode)' end
+                           || coalesce(proargnames[i] || ' ','') 
+                           || 'upg_catalog.' || quote_ident(typname)
+                     from pg_type t, generate_series(1, array_upper(proargmodes, 1)) i
+                     where t.oid = proallargtypes[i]
+                     order by i) 
+                 end, ', '), '')
+    || ') RETURNS '
+    || case when proretset then 'SETOF ' else '' end 
+    || 'upg_catalog.' || quote_ident(r.typname) || ' '
+    || 'LANGUAGE ' || quote_ident(lanname) || ' '
+    || case when provolatile = 'i' then 'IMMUTABLE '
+            when provolatile = 'v' then 'VOLATILE '
+            when provolatile = 's' then 'STABLE ' 
+            else '' end
+    || case when proisstrict then 'STRICT ' else '' end
+    || case when prosecdef then 'SECURITY DEFINER ' else '' end
+    || 'AS ''select null::upg_catalog.' || quote_ident(r.typname) || ''';' as stmt
+FROM pg_proc p
+JOIN pg_type r on (p.prorettype = r.oid)
+JOIN pg_language l on (p.prolang = l.oid)
+JOIN pg_namespace n on (p.pronamespace = n.oid)
+WHERE n.nspname = src_schema
+  and proisagg = 'f'
+  and proiswin = 'f'
+  and p.oid not in (select unnest(array[typinput, typoutput, typreceive, typsend, typanalyze])
+                    from pg_type)
+  and p.oid not in (select castfunc from pg_cast)
+  and p.oid not in (select conproc from pg_conversion)
+  and p.oid not in (select unnest(array[oprrest, oprjoin]) from pg_operator)
+  and p.oid not in (select unnest(array['pg_catalog.shell_in'::regproc, 'pg_catalog.shell_out'::regproc]))
+  and lanname = 'sql'
+order by 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
+--
+-- Functions
+--
+for stmtrow in
+SELECT 
+    'CREATE FUNCTION upg_catalog.'
+    || case when proname in ('convert') then '"' || proname || '"' else quote_ident(proname) end
+    || '('
+    || coalesce(
+        array_to_string( 
+            case when proargmodes is null 
+                 then array(
+                     select coalesce(proargnames[i] || ' ','') 
+                           || 'upg_catalog.' || quote_ident(typname)
+                     from pg_type t, generate_series(1, pronargs) i
+                     where t.oid = proargtypes[i-1]
+                     order by i)
+                 else array(
+                     select   case when proargmodes[i] = 'i' then 'IN '
+                                   when proargmodes[i] = 'o' then 'OUT '
+                                   when proargmodes[i] = 'b' then 'INOUT '
+                                   else 'BROKEN(proargmode)' end
+                           || coalesce(proargnames[i] || ' ','') 
+                           || 'upg_catalog.' || quote_ident(typname)
+                     from pg_type t, generate_series(1, array_upper(proargmodes, 1)) i
+                     where t.oid = proallargtypes[i]
+                     order by i) 
+                 end, ', '), '')
+    || ') RETURNS '
+    || case when proretset then 'SETOF ' else '' end 
+    || case when lanname = 'sql' or proargmodes is not null then 'pg_catalog.' else 'upg_catalog.' end
+    || quote_ident(r.typname) || ' '
+    || 'LANGUAGE ' || quote_ident(lanname) || ' '
+    || case when provolatile = 'i' then 'IMMUTABLE '
+            when provolatile = 'v' then 'VOLATILE '
+            when provolatile = 's' then 'STABLE ' 
+            else '' end
+    || case when proisstrict then 'STRICT ' else '' end
+    || case when prosecdef then 'SECURITY DEFINER ' else '' end
+    || 'AS ' 
+    || case when lanname = 'c' 
+            then '''' || textin(byteaout(probin)) || ''', ''' || prosrc || '''' 
+            when lanname = 'internal'
+            then '''' || prosrc || ''''
+            else 'BROKEN (unsupported language)' end
+    || ';' as stmt
+FROM pg_proc p
+JOIN pg_type r on (p.prorettype = r.oid)
+JOIN pg_language l on (p.prolang = l.oid)
+JOIN pg_namespace n on (p.pronamespace = n.oid)
+WHERE n.nspname = src_schema
+  and proisagg = 'f'
+  and proiswin = 'f'
+  and p.oid not in (select unnest(array[typinput, typoutput, typreceive, typsend, typanalyze]) from pg_type)
+  and p.oid not in (select castfunc from pg_cast)
+  and p.oid not in (select conproc from pg_conversion)
+  and p.oid not in (select unnest(array[oprrest, oprjoin]) from pg_operator)
+  and p.oid not in (select oprcode from pg_operator where oprname in ('<', '<=', '=', '>', '>='))
+  and p.oid not in (select oprcode from pg_operator where oid in (select amopopr from pg_amop))
+  and p.oid not in (select amproc from pg_amproc)
+  and p.oid not in (select unnest(array['pg_catalog.shell_in'::regproc, 'pg_catalog.shell_out'::regproc]))
+  and p.oid not in (select unnest(array[lanplcallfoid, lanvalidator]) 
+                    from pg_language where lanname not in ('internal', 'c', 'sql', 'plpgsql'))
+  and l.lanname != 'sql'
+order by 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
+
+--
+-- Indexes
+--
+for stmtrow in
+SELECT 
+   CASE when indisprimary then -- (primary key index)
+        'BROKEN(primary key)'  -- (none in catalog, this would be an ALTER TABLE)
+        when indisunique  then -- (unique index)
+          'CREATE UNIQUE INDEX '
+        else                   -- (normal index)
+          'CREATE INDEX ' 
+        end 
+   || quote_ident(c.relname) || ' ON '
+   || 'upg_catalog.' || quote_ident(rel.relname) || ' '
+   || 'USING ' || am.amname || '('
+   || array_to_string(array(
+         select attname
+         from pg_attribute, generate_series(array_lower(indkey,1), array_upper(indkey,1)) i
+         where attrelid=indrelid and attnum = indkey[i]
+         order by i), ', ')         
+   || ');' as stmt
+FROM pg_index 
+     join pg_class c ON (indexrelid = c.oid)
+     join pg_class rel ON (indrelid   = rel.oid)
+     join pg_namespace n ON (c.relnamespace = n.oid)
+     join pg_am am ON (c.relam = am.oid)
+WHERE n.nspname = src_schema
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
+--
+-- Operator classes
+--
+for stmtrow in
+SELECT 'CREATE OPERATOR CLASS ' || quote_ident(opcname) || ' '
+    || case when t.typname = 'varchar' then ' FOR TYPE upg_catalog.text '
+            when t.typname = 'cidr'    then ' FOR TYPE upg_catalog.inet '
+            else case when opcdefault then 'DEFAULT ' else '' end
+            || 'FOR TYPE upg_catalog.' || quote_ident(t.typname) || ' '
+            end
+    || 'USING ' || amname || ' '
+    || E'AS '
+    || array_to_string(array(
+          SELECT '  '||kind||' '||strategy||' '||name||'('||param||')'||option
+          FROM (
+              SELECT amopclaid    as classid,
+                     amopsubtype  as subtype,
+                     0            as sort,
+                     amopstrategy as strategy,
+                     'OPERATOR'   as kind,
+                     'upg_catalog.' || op.oprname as name,
+                     'upg_catalog.' || t1.typname 
+                                    || ', upg_catalog.' 
+                                    || t2.typname as param,
+                     case when amopreqcheck then ' RECHECK' else '' end as option
+              FROM pg_amop amop
+                   join pg_operator op on (amopopr = op.oid)
+                   left join pg_type t1 on (op.oprleft = t1.oid)
+                   left join pg_type t2 on (op.oprright = t2.oid)
+              UNION ALL
+              SELECT amopclaid     as classid,
+                     amprocsubtype as subtype,
+                     1             as sort,
+                     amprocnum     as opstrategy,
+                     'FUNCTION'    as opkind,
+                     'upg_catalog.' || quote_ident(p.proname) as name,
+                      coalesce(array_to_string(array(
+                          SELECT case when typname = 'internal' 
+                                      then 'pg_catalog.' 
+                                      else 'upg_catalog.' end || quote_ident(typname)
+                          FROM pg_type t, generate_series(1, pronargs) i
+                          WHERE t.oid = proargtypes[i-1]
+                          ORDER BY i), ', '), '') as param,
+                      '' as option
+              FROM pg_amproc amproc
+                   join pg_proc p on (amproc.amproc = p.oid)
+              ) q
+          WHERE classid = opc.oid  -- correlate to outer query block
+          ORDER BY subtype, sort, strategy), E', ')
+    || coalesce(E',   STORAGE ' || quote_ident(keytype.typname), '') || ';' as stmt
+FROM pg_opclass opc
+     join pg_type t on (opc.opcintype = t.oid)
+     join pg_am am on (opc.opcamid = am.oid)
+     join pg_namespace n on (opc.opcnamespace = n.oid)
+     left join pg_type keytype on (opc.opckeytype = keytype.oid)
+WHERE n.nspname = src_schema
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
+--
+-- Operator Comparison
+--
+for stmtrow in
+SELECT 
+    'CREATE FUNCTION upg_catalog.' || quote_ident(proname)
+    || '(' 
+    || coalesce(
+        array_to_string( array(
+                     select coalesce(proargnames[i] || ' ','') 
+                           || 'upg_catalog.' || quote_ident(typname)
+                     from pg_type t, generate_series(1, pronargs) i
+                     where t.oid = proargtypes[i-1]
+                     order by i), ', '), '')
+    || ') RETURNS '
+    || case when proretset then 'SETOF ' else '' end 
+    || 'pg_catalog.' || quote_ident(r.typname) || ' '
+    || 'LANGUAGE ' || quote_ident(lanname) || ' '
+    || case when provolatile = 'i' then 'IMMUTABLE '
+            when provolatile = 'v' then 'VOLATILE '
+            when provolatile = 's' then 'STABLE ' 
+            else '' end
+    || case when proisstrict then 'STRICT ' else '' end
+    || case when prosecdef then 'SECURITY DEFINER ' else '' end
+    || 'AS ' 
+    || case when lanname = 'c' 
+            then '''' || textin(byteaout(probin)) || ''', ''' || prosrc || '''' 
+            when lanname = 'internal'
+            then '''' || prosrc || ''''
+            when lanname = 'sql'
+            then E'\$\$' || prosrc || E'\$\$'
+            else 'BROKEN (unsupported language)' end
+    || ';' as stmt
+FROM pg_proc p
+JOIN pg_type r on (p.prorettype = r.oid)
+JOIN pg_language l on (p.prolang = l.oid)
+JOIN pg_namespace n on (p.pronamespace = n.oid)
+WHERE n.nspname = src_schema
+  and p.oid in (select oprcode from pg_operator 
+                where oprname in ('<', '<=', '=', '>', '>=') 
+                   or oid in (select amopopr from pg_amop))
+order by 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
+--
+-- Operator Functions
+--
+for stmtrow in
+SELECT 
+    'CREATE FUNCTION upg_catalog.' || quote_ident(proname)
+    || '(' 
+    || coalesce(
+        array_to_string( array(
+                     select coalesce(proargnames[i] || ' ','') 
+                           || 'pg_catalog.' || quote_ident(typname)
+                     from pg_type t, generate_series(1, pronargs) i
+                     where t.oid = proargtypes[i-1]
+                     order by i), ', '), '')
+    || ') RETURNS '
+    || case when proretset then 'SETOF ' else '' end 
+    || 'pg_catalog.' || quote_ident(r.typname) || ' '
+    || 'LANGUAGE ' || quote_ident(lanname) || ' '
+    || case when provolatile = 'i' then 'IMMUTABLE '
+            when provolatile = 'v' then 'VOLATILE '
+            when provolatile = 's' then 'STABLE ' 
+            else '' end
+    || case when proisstrict then 'STRICT ' else '' end
+    || case when prosecdef then 'SECURITY DEFINER ' else '' end
+    || 'AS ' 
+    || case when lanname = 'c' 
+            then '''' || textin(byteaout(probin)) || ''', ''' || prosrc || '''' 
+            when lanname = 'internal'
+            then '''' || prosrc || ''''
+            when lanname = 'sql'
+            then E'\$\$' || prosrc || E'\$\$'
+            else 'BROKEN (unsupported language)' end
+    || ';' as stmt
+FROM pg_proc p
+JOIN pg_type r on (p.prorettype = r.oid)
+JOIN pg_language l on (p.prolang = l.oid)
+JOIN pg_namespace n on (p.pronamespace = n.oid)
+WHERE n.nspname = src_schema
+  and p.oid in (select unnest(array[oprrest, oprjoin]) from pg_operator)
+order by 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
+--
+-- Operator Selectivity
+--
+for stmtrow in
+SELECT 
+    'CREATE OR REPLACE OR REPLACE FUNCTION upg_catalog.' || quote_ident(proname)
+    || '(' 
+    || coalesce(
+        array_to_string( array(
+                     select coalesce(proargnames[i] || ' ','') 
+                           || 'pg_catalog.' || quote_ident(typname)
+                     from pg_type t, generate_series(1, pronargs) i
+                     where t.oid = proargtypes[i-1]
+                     order by i), ', '), '')
+    || ') RETURNS '
+    || case when proretset then 'SETOF ' else '' end 
+    || 'pg_catalog.' || quote_ident(r.typname) || ' '
+    || 'LANGUAGE ' || quote_ident(lanname) || ' '
+    || case when provolatile = 'i' then 'IMMUTABLE '
+            when provolatile = 'v' then 'VOLATILE '
+            when provolatile = 's' then 'STABLE ' 
+            else '' end
+    || case when proisstrict then 'STRICT ' else '' end
+    || case when prosecdef then 'SECURITY DEFINER ' else '' end
+    || 'AS ' 
+    || case when lanname = 'c' 
+            then '''' || textin(byteaout(probin)) || ''', ''' || prosrc || '''' 
+            when lanname = 'internal'
+            then '''' || prosrc || ''''
+            when lanname = 'sql'
+            then E'\$\$' || prosrc || E'\$\$'
+            else 'BROKEN (unsupported language)' end
+    || ';' as stmt
+FROM pg_proc p
+JOIN pg_type r on (p.prorettype = r.oid)
+JOIN pg_language l on (p.prolang = l.oid)
+JOIN pg_namespace n on (p.pronamespace = n.oid)
+WHERE n.nspname = src_schema
+  and p.oid in (select unnest(array[oprrest, oprjoin]) from pg_operator)
+order by 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
+--
+-- Operator
+--
+for stmtrow in
+SELECT 'CREATE OPERATOR upg_catalog.' || o.oprname || '('
+    || E'   PROCEDURE = upg_catalog.' || quote_ident(p.proname)
+    || case when tleft.typname is not null 
+            then E',   LEFTARG = upg_catalog.' || quote_ident(tleft.typname) else '' end
+    || case when tright.typname is not null 
+            then E',   RIGHTARG = upg_catalog.' || quote_ident(tright.typname) else '' end
+    || case when com.oprname is not null
+            then E',   COMMUTATOR = ' || com.oprname else '' end
+    || case when neg.oprname is not null
+            then E',   NEGATOR = ' || neg.oprname else '' end
+    || case when rest.proname is not null
+            then E',   RESTRICT = upg_catalog.' || quote_ident(rest.proname) else '' end
+    || case when pjoin.proname is not null
+            then E',   JOIN = upg_catalog.' || quote_ident(pjoin.proname) else '' end
+    || case when o.oprcanhash 
+            then E',   HASHES' else '' end
+    || case when sort1.oprname is not null
+            then E',   SORT1 = ' || sort1.oprname else '' end
+    || case when sort2.oprname is not null
+            then E',   SORT2 = ' || sort2.oprname else '' end
+    || case when ltcmp.oprname is not null
+            then E',   LTCMP = ' || ltcmp.oprname else '' end
+    || case when gtcmp.oprname is not null
+            then E',   GTCMP = ' || gtcmp.oprname else '' end
+    || E' );' as stmt
+FROM pg_operator o
+     join pg_namespace n on (o.oprnamespace = n.oid)
+     join pg_proc p on (o.oprcode = p.oid)
+     left join pg_type tleft on (o.oprleft = tleft.oid)
+     left join pg_type tright on (o.oprright = tright.oid)
+     left join pg_operator com on (o.oprcom = com.oid and o.oid > com.oid)
+     left join pg_operator neg on (o.oprnegate = neg.oid and o.oid > neg.oid)
+     left join pg_proc rest on (o.oprrest = rest.oid)
+     left join pg_proc pjoin on (o.oprjoin = pjoin.oid)
+     left join pg_operator sort1 on (o.oprlsortop = sort1.oid)
+     left join pg_operator sort2 on (o.oprrsortop = sort2.oid)
+     left join pg_operator ltcmp on (o.oprltcmpop = ltcmp.oid)
+     left join pg_operator gtcmp on (o.oprgtcmpop = gtcmp.oid)
+WHERE n.nspname = src_schema
+ORDER BY 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
+
+
+--
+-- type functions
+--
+for stmtrow in
+SELECT 
+    'CREATE FUNCTION upg_catalog.' || quote_ident(proname)
+    || '(' 
+    || coalesce(
+        array_to_string( array(
+            select coalesce(proargnames[i] || ' ','') 
+                || case when p.oid in (select unnest(array[typoutput, typsend]) from pg_type)
+                        then 'upg_catalog.'
+                        else 'pg_catalog.' end
+                || quote_ident(typname)
+            from pg_type t, generate_series(1, pronargs) i
+            where t.oid = proargtypes[i-1]
+            order by i), ', '),
+        '')
+    || ') RETURNS '
+    || case when proretset then 'SETOF ' else '' end 
+    || case when p.oid in (select unnest(array[typinput, typreceive]) from pg_type)
+            then 'upg_catalog.'
+            else 'pg_catalog.' end
+    || quote_ident(r.typname) || ' '
+    || 'LANGUAGE ' || quote_ident(lanname) || ' '
+    || case when provolatile = 'i' then 'IMMUTABLE '
+            when provolatile = 'v' then 'VOLATILE '
+            when provolatile = 's' then 'STABLE ' 
+            else '' end
+    || case when proisstrict then 'STRICT ' else '' end
+    || case when prosecdef then 'SECURITY DEFINER ' else '' end
+    || 'AS '
+    || case when lanname = 'c' 
+            then '''' || textin(byteaout(probin)) || ''', ''' || prosrc || '''' 
+            when lanname = 'internal'
+            then '''' || prosrc || ''''
+            when lanname = 'sql'
+            then E'\$\$' || prosrc || E'\$\$'
+            else 'BROKEN (unsupported language)' end
+    || ';' as stmt
+FROM pg_proc p
+JOIN pg_type r on (p.prorettype = r.oid)
+JOIN pg_language l on (p.prolang = l.oid)
+JOIN pg_namespace n on (p.pronamespace = n.oid)
+WHERE n.nspname = src_schema
+  and proisagg = 'f'
+  and proiswin = 'f'
+  and p.oid in (select unnest(array[typinput, typoutput, typreceive, typsend, typanalyze])
+                from pg_type)
+order by 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
+
+--
+-- type shells
+--
+for stmtrow in
+SELECT 'CREATE TYPE upg_catalog.' || quote_ident(typname) || ';' as stmt
+FROM pg_type t
+JOIN pg_namespace n on (t.typnamespace = n.oid)
+WHERE typtype in ('b', 'p') and typname !~ '^_' and n.nspname = src_schema
+order by 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+
+--
+-- type shells
+--
+for stmtrow in
+SELECT 'CREATE TYPE upg_catalog.' || quote_ident(t.typname)
+    || '('
+    || E'   INPUT = ' 
+    ||    case when pin.prorettype = t.oid 
+               then 'upg_catalog.'
+               else 'dummy_cast_functions.' 
+          end || pin.proname 
+    || E',   OUTPUT = '
+    ||    case when pout.proargtypes[0] = t.oid 
+               then 'upg_catalog.'
+               else 'dummy_cast_functions.' 
+          end || pout.proname 
+    || case when precv.proname is not null 
+            then E',   RECEIVE = ' ||
+            case when precv.prorettype = t.oid 
+                 then 'upg_catalog.'
+                 else 'dummy_cast_functions.' 
+            end || precv.proname 
+            else '' end
+    || case when psend.proname is not null 
+            then E',   SEND = ' ||
+            case when psend.proargtypes[0] = t.oid 
+                 then 'upg_catalog.'
+                 else 'dummy_cast_functions.' 
+            end || psend.proname 
+            else '' end
+    || case when panalyze.proname is not null 
+            then E',   ANALYZE = upg_catalog.' || panalyze.proname
+            else '' end
+    || case when t.typlen = -1 
+            then E',   INTERNALLENGTH = VARIABLE'
+            else E',   INTERNALLENGTH = ' || t.typlen end
+    || case when t.typbyval 
+            then E',   PASSEDBYVALUE' else '' end
+    || E',   STORAGE = ' 
+    || case when t.typstorage = 'p' then 'plain'
+            when t.typstorage = 'x' then 'extended'
+            when t.typstorage = 'm' then 'main'
+            when t.typstorage = 'e' then 'external'
+            else 'BROKEN' end
+    || case when t.typdefault is not null 
+            then E',   DEFAULT = ' || t.typdefault else '' end
+    || case when telement.typname is not null
+            then E',   ELEMENT = ' || telement.typname else '' end
+    || E',   DELIMITER = ''' || t.typdelim  || ''''
+    || E',   ALIGNMENT = '
+    || case when t.typalign = 'c' then 'char'
+            when t.typalign = 's' then 'int2'
+            when t.typalign = 'i' then 'int4'
+            when t.typalign = 'd' then 'double'
+            else 'BROKEN' end
+    || E' );'
+    || case when (t.typtype = 'p' or t.typname in ('smgr', 'unknown'))
+            then E' DROP TYPE upg_catalog._' || t.typname || ';' 
+            else '' end as stmt
+FROM pg_type t
+     join pg_namespace n on (t.typnamespace = n.oid)
+     join pg_proc pin on (t.typinput = pin.oid)
+     join pg_proc pout on (t.typoutput = pout.oid)
+     left join pg_proc precv on (t.typreceive = precv.oid)
+     left join pg_proc psend on (t.typsend = psend.oid)
+     left join pg_proc panalyze on (t.typanalyze = panalyze.oid)
+     left join pg_type telement on (t.typelem = telement.oid)
+WHERE t.typtype in ('b', 'p') and t.typname !~ '^_' and n.nspname = src_schema
+order by 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+
+end loop;
+
+return 1;
+end;
+$$ language 'plpgsql';
+
+
+select catdump.dump_to_table('4.2', 'pg_catalog');
+
+
+
+--
+-- Now, load the 4.1 catalog into catdump.ddl
+--
+drop external table cat41;
+create external table cat41(stmt text) location('file://@hostname@@abs_srcdir@/data/upgrade42/catalog41/4_1_dump.txt')
+format 'TEXT' (delimiter 'OFF');
+
+insert into catdump.ddl SELECT distinct '4.1u', stmt from cat41;
+drop external table cat41;
+
+--
+-- Create the upgrade schema and fill that schema with 4.1 cat
+-- then execute the upgrade script
+--
+drop schema upg_catalog cascade;
 CREATE SCHEMA upg_catalog;      -- pg_catalog
 SET SEARCH_PATH to upg_catalog;
 
-\i @abs_srcdir@/data/upgrade41/catalog40/type_shells.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/type_functions.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/types.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/tables.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/functions.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/functions_sql.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/dummy_cast_functions.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/cast_functions.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/casts.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/conversions.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/operator_comparison_functions.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/operator_selectivity_functions.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/operators.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/access_method_functions.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/operator_classes.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/aggregates.sql
--- \i @abs_srcdir@/data/upgrade41/catalog40/indexes.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/system_views.sql
-\i @abs_srcdir@/data/upgrade41/catalog40/cdb_schema.sql
--- domains?
--- rules?
--- sequences?
--- triggers?
--- constraints?
+drop external table execCmd;
+create external web table execCmd(a text)
+execute 'psql -p $GP_MASTER_PORT -f @abs_srcdir@/data/upg_catupgrade_42.sql $GP_DATABASE $GP_USER >@abs_srcdir@/data/upgrade_exec.log 2>@abs_srcdir@/data/upgrade_err.log;'
+on master format 'text';
 
-
-
-CREATE SCHEMA upg_toolkit;      -- gp_toolkit
-SET SEARCH_PATH to upg_toolkit;
-\i @abs_srcdir@/data/upgrade41/catalog40/toolkit.sql
-
-CREATE SCHEMA upg_information;  -- information_schema
-SET SEARCH_PATH to upg_information;
-\i @abs_srcdir@/data/upgrade41/catalog40/information_schema.sql
-
-RESET search_path;
-
--- ===========================================================================
--- * Run the upgrade DDL on the schema
---
--- We expect warnings due to not supporting oid assignment in regular
--- connection mode, set client_min_messages to error to hide these warnings.
--- ===========================================================================
-set client_min_messages = 'ERROR';
-
--- The following views have new columns added as part of upgrade, this can 
--- only occur correctly when we are in a _real_ upgrade mode, here we can
--- only manage this by dropping the views first.  CASCADE should not be 
--- necessary - the views should all point to the real catalog so there are
--- no dependencies on them.
-DROP VIEW upg_catalog.pg_roles;
-DROP VIEW upg_catalog.pg_stat_activity;
-DROP VIEW upg_catalog.pg_locks;
+select * from execCmd; 
 
 --
--- Create a dummy "CatDML" function
-CREATE FUNCTION CatDML(text) returns setof text as $$select unnest('{}'::text[])$$ language sql;
-
--- Run the actual upgrade DDL
+-- Dump the upgraded upg_catalog to catdump
 --
--- Note: Calls to catDML will fail since we have not defined the function
--- the test would fail if we did because the calls will return a different
--- number of rows depending on the number of segments in the system.
-\i @abs_srcdir@/data/upg_catupgrade_41.sql
+select catdump.dump_to_table('4.1u', 'upg_catalog');
 
-DROP FUNCTION CatDML(text);
-
-set client_min_messages = 'WARNING';
-
--- Dummy query to help atmsort figure out how to handle equiv regions
-SELECT 1 as dummy;
-
--- ===========================================================================
--- * Compare this the transformed schema to the catalog schema
--- ===========================================================================
-
--- Compare pg_type (Types, Tables, Views, Indexes, Sequences)
--- start_equiv
-SELECT t.typname, t.typlen, t.typbyval, t.typisdefined, t.typdelim, t.typalign
-	   , t.typstorage, t.typnotnull, t.typbasetype, t.typtypmod
-       -- , t.typndims
-	   , input.proname, output.proname, recv.proname, send.proname, anlyze.proname
-	   , c.relname, t.typdefaultbin, t.typdefault
-FROM pg_type t
-	 join pg_namespace n on (n.oid = t.typnamespace)
-	 left join pg_proc input on (input.oid = t.typinput)
-	 left join pg_proc output on (output.oid = t.typoutput)
-	 left join pg_proc send on (send.oid = t.typsend)
-	 left join pg_proc recv on (recv.oid = t.typreceive)
-	 left join pg_proc anlyze on (anlyze.oid = t.typanalyze)
-	 left join pg_class c on (c.oid = t.typrelid)
-WHERE n.nspname = 'upg_catalog'
-ORDER BY 1;
-
-SELECT t.typname, t.typlen, t.typbyval, t.typisdefined, t.typdelim, t.typalign
-	   , t.typstorage, t.typnotnull, t.typbasetype, t.typtypmod
-       -- , t.typndims
-	   , input.proname, output.proname, recv.proname, send.proname, anlyze.proname
-	   , c.relname, t.typdefaultbin, t.typdefault
-FROM pg_type t
-	 join pg_namespace n on (n.oid = t.typnamespace)
-	 left join pg_proc input on (input.oid = t.typinput)
-	 left join pg_proc output on (output.oid = t.typoutput)
-	 left join pg_proc send on (send.oid = t.typsend)
-	 left join pg_proc recv on (recv.oid = t.typreceive)
-	 left join pg_proc anlyze on (anlyze.oid = t.typanalyze)
-	 left join pg_class c on (c.oid = t.typrelid)
-WHERE n.nspname = 'pg_catalog'
-ORDER BY 1;
--- end_equiv
-
-
--- Compare pg_class (Types, Tables, Views, Indexes, Sequences)
--- start_equiv
-SELECT c.relname, t.typname, am.amname, c.relkind, c.relstorage, c.relnatts
-       -- , c.reltoastrelid != 0 as relhastoast
-       -- , c.relhasindex
-	   -- , c.relchecks
-       -- , c.reltriggers
-       -- , c.relukeys
-       -- , c.relfkeys
-       -- , c.relrefs
-	   -- , c.relhasoids
-	   -- , c.relhaspkey 
-       -- , c.relhasrules
-       -- , c.relhassubclass
-FROM pg_class c
-	 left join pg_type t on (t.oid = c.reltype)
-	 left join pg_am am on (am.oid = c.relam)
-	 left join pg_namespace n on (n.oid = c.relnamespace)
-WHERE n.nspname = 'upg_catalog' and relkind != 'i'
-ORDER BY 1;
-
-SELECT c.relname, t.typname, am.amname, c.relkind, c.relstorage, c.relnatts
-       -- , c.reltoastrelid != 0 as relhastoast
-       -- , c.relhasindex
-	   -- , c.relchecks
-       -- , c.reltriggers
-       -- , c.relukeys
-       -- , c.relfkeys
-       -- , c.relrefs
-	   -- , c.relhasoids
-	   -- , c.relhaspkey 
-       -- , c.relhasrules
-       -- , c.relhassubclass
-FROM pg_class c
-	 left join pg_type t on (t.oid = c.reltype)
-	 left join pg_am am on (am.oid = c.relam)
-	 left join pg_namespace n on (n.oid = c.relnamespace)
-WHERE n.nspname = 'pg_catalog' and relkind != 'i'
-ORDER BY 1;
-
--- end_equiv
-
--- Compare pg_attribute (Tables, Views, Indexes)
--- start_equiv
-SELECT
-    c.relname, a.attnum, a.attname, t.typname, a.atttypmod, a.attbyval, 
-    a.attstorage, a.attalign
-    -- , a.attndims
-    -- , a.attnotnull
-    , atthasdef, attislocal, attinhcount
-FROM
-    pg_class c
-	join pg_attribute a on (a.attrelid = c.oid)
-    join pg_type t on (a.atttypid = t.oid)
-    join pg_namespace n on (n.oid = c.relnamespace)
-WHERE a.attnum > 0 and nspname = 'upg_catalog' and c.relkind != 'i'
-ORDER BY c.relname, a.attnum;
-
-SELECT
-    c.relname, a.attnum, a.attname, t.typname, a.atttypmod, a.attbyval,
-    a.attstorage, a.attalign
-    -- , a.attndims
-    -- , a.attnotnull
-    , atthasdef, attislocal, attinhcount
-FROM
-    pg_class c
-    join pg_attribute a on (a.attrelid = c.oid)
-    join pg_type t on (a.atttypid = t.oid)
-    join pg_namespace n on (n.oid = c.relnamespace)
-WHERE a.attnum > 0 and nspname = 'pg_catalog' and c.relkind != 'i'
-ORDER BY c.relname, a.attnum;
--- end_equiv
-
--- Compare pg_proc (Functions, Aggregates, Window Functions)
--- start_equiv
-SELECT 
-    proname, proisagg, proiswin, prosecdef, proisstrict, proretset, provolatile,
-    typname as rettype, pronargs,
-    array(select typname 
-          from pg_type t, 
-              generate_series(array_lower(proargtypes,1), array_upper(proargtypes,1)) i
-          where t.oid=proargtypes[i] 
-          order by i) as argtypes,
-    array(select typname 
-          from pg_type t, 
-              generate_series(array_lower(proallargtypes,1), array_upper(proallargtypes,1)) i
-          where t.oid=proallargtypes[i] 
-          order by i) as allargtypes,
-    proargmodes, proargnames,
-    lanname as language, 
-    case when lanname = 'sql' 
-         then 'SQL LANGUAGE FUNCTION: no check' 
-         else replace(prosrc,E'\n',E'\\n') 
-         end as prosrc, 
-    probin
-FROM
-    pg_proc p 
-    join pg_namespace n on (p.pronamespace = n.oid and n.nspname='upg_catalog')
-    join pg_language l on (p.prolang = l.oid)
-    join pg_type t on (p.prorettype = t.oid)
-WHERE proisagg = 'f' and proiswin = 'f'
-ORDER BY proname, 10;
-
-SELECT 
-    proname, proisagg, proiswin, prosecdef, proisstrict, proretset, provolatile,
-    typname as rettype, pronargs,
-    array(select typname 
-          from pg_type t, 
-              generate_series(array_lower(proargtypes,1), array_upper(proargtypes,1)) i
-          where t.oid=proargtypes[i] 
-          order by i) as argtypes,
-    array(select typname 
-          from pg_type t, 
-              generate_series(array_lower(proallargtypes,1), array_upper(proallargtypes,1)) i
-          where t.oid=proallargtypes[i] 
-          order by i) as allargtypes,
-    proargmodes, proargnames,
-    lanname as language,
-    case when lanname = 'sql' 
-         then 'SQL LANGUAGE FUNCTION: no check' 
-         else replace(prosrc,E'\n',E'\\n') 
-         end as prosrc, 
-    probin
-FROM
-    pg_proc p 
-    join pg_namespace n on (p.pronamespace = n.oid and n.nspname='pg_catalog')
-    join pg_language l on (p.prolang = l.oid)
-    join pg_type t on (p.prorettype = t.oid)
-WHERE proisagg = 'f' and proiswin = 'f' 
-    and p.oid not in (select unnest(array[lanplcallfoid, lanvalidator]) 
-                      from pg_language 
-                      where lanname not in ('internal', 'c', 'sql', 'plpgsql'))
-ORDER BY proname, 10;
--- end_equiv
-
-
--- Compare pg_aggregate (Aggregates, Window Functions)
---
--- We must exclude a couple aggregates that we can't create via regular DDL
---   This includes: 
---      - count(*)
---      - min(abstime)
---      - max(abstime)
---      - pivot_sum(_text, text, int4)
---
--- start_equiv
-SELECT
-    p.proname as aggname,
-    array(select typname 
-          from pg_type t, 
-               generate_series(array_lower(p.proargtypes,1), array_upper(p.proargtypes,1)) i
-          where t.oid=p.proargtypes[i] 
-          order by i) as aggargs,
-    tran.proname as transition,  -- invtran.proname as invtransition,  (no syntax support)
-    pre.proname as prelim, -- invpre.proname as invprelim,  (no syntax support)
-    fin.proname as final, sort.oprname as sortop, typ.typname as trantype, a.agginitval
-FROM
-    pg_aggregate a
-    join pg_proc p on (p.oid = a.aggfnoid)
-    join pg_namespace n on (n.oid = p.pronamespace)
-    left join pg_proc tran on (tran.oid = a.aggtransfn)
-    left join pg_proc invtran on (invtran.oid = a.agginvtransfn)
-    left join pg_proc pre on (pre.oid = a.aggprelimfn)
-    left join pg_proc invpre on (invpre.oid = a.agginvprelimfn)
-    left join pg_proc fin on (fin.oid = a.aggfinalfn)
-    left join pg_operator sort on (sort.oid = a.aggsortop)
-    left join pg_type typ on (typ.oid = a.aggtranstype)
-WHERE n.nspname = 'upg_catalog'
-  and not p.proiswin  -- Skip checking Window Functions (no DDL support)
-ORDER BY 1, 2;
-
-SELECT
-    p.proname as aggname,
-    array(select typname 
-          from pg_type t, 
-               generate_series(array_lower(p.proargtypes,1), array_upper(p.proargtypes,1)) i
-          where t.oid=p.proargtypes[i] 
-          order by i) as aggargs,
-    tran.proname as transition,  -- invtran.proname as invtransition,  (no syntax support)
-    pre.proname as prelim, -- invpre.proname as invprelim,  (no syntax support)
-    fin.proname as final, sort.oprname as sortop, typ.typname as trantype, a.agginitval
-FROM
-    pg_aggregate a
-    join pg_proc p on (p.oid = a.aggfnoid)
-    join pg_namespace n on (n.oid = p.pronamespace)
-    left join pg_proc tran on (tran.oid = a.aggtransfn)
-    left join pg_proc invtran on (invtran.oid = a.agginvtransfn)
-    left join pg_proc pre on (pre.oid = a.aggprelimfn)
-    left join pg_proc invpre on (invpre.oid = a.agginvprelimfn)
-    left join pg_proc fin on (fin.oid = a.aggfinalfn)
-    left join pg_operator sort on (sort.oid = a.aggsortop)
-    left join pg_type typ on (typ.oid = a.aggtranstype)
-WHERE n.nspname = 'pg_catalog'
-  and not p.proiswin  -- Skip checking Window Functions (no DDL support)
-  and p.oid not in ('count()'::regprocedure,
-                    'min(abstime)'::regprocedure,
-                    'max(abstime)'::regprocedure,
-                    'pivot_sum(_text,text,int4)'::regprocedure)
-ORDER BY 1, 2;
--- end_equiv
-
--- Compare pg_cast (Casts)
--- start_equiv
-SELECT 
-    src.typname as source, trg.typname as target, p.proname as func, c.castcontext
-FROM
-    pg_cast c
-    join pg_proc p on (c.castfunc = p.oid)
-    join pg_namespace n on (p.pronamespace = n.oid)
-    left join pg_type src on (c.castsource = src.oid)
-    left join pg_type trg on (c.casttarget = trg.oid)
-WHERE n.nspname in ('upg_catalog', 'dummy_cast_functions')
-ORDER BY 1,2,3;
-
-SELECT 
-    src.typname as source, trg.typname as target, p.proname as func, c.castcontext
-FROM
-    pg_cast c
-    join pg_proc p on (c.castfunc = p.oid)
-    join pg_namespace n on (p.pronamespace = n.oid)
-    left join pg_type src on (c.castsource = src.oid)
-    left join pg_type trg on (c.casttarget = trg.oid)
-WHERE n.nspname = 'pg_catalog'
-ORDER BY 1,2,3;
--- end_equiv
-
--- Compare pg_operator (Operators)
--- start_equiv
-SELECT
-    o.oprname, p.proname as oprfunc,
-    tleft.typname as typleft, tright.typname as typright, 
-    result.typname as typresult, o.oprkind, o.oprcanhash,
-    com.oprname as oprcom, neg.oprname as oprnegate, 
-    sort1.oprname as oprsort1, sort2.oprname as oprsort2,
-    ltcmp.oprname as oprltcmp, gtcmp.oprname as oprgtcmp,
-    rest.proname as oprrest, pjoin.proname as oprjoin
-FROM
-    pg_operator o
-    join pg_namespace n on (o.oprnamespace = n.oid)
-    join pg_proc p on (o.oprcode = p.oid)
-    left join pg_type tleft on (o.oprleft = tleft.oid)
-    left join pg_type tright on (o.oprright = tright.oid)
-    left join pg_type result on (o.oprresult = result.oid)
-    left join pg_operator com on (o.oprcom = com.oid)
-    left join pg_operator neg on (o.oprnegate = neg.oid)
-    left join pg_proc rest on (o.oprrest = rest.oid)
-    left join pg_proc pjoin on (o.oprjoin = pjoin.oid)
-    left join pg_operator sort1 on (o.oprlsortop = sort1.oid)
-    left join pg_operator sort2 on (o.oprrsortop = sort2.oid)
-    left join pg_operator ltcmp on (o.oprltcmpop = ltcmp.oid)
-    left join pg_operator gtcmp on (o.oprgtcmpop = gtcmp.oid)
-WHERE n.nspname = 'upg_catalog'
-ORDER BY 1,2,3;
-
-SELECT
-    o.oprname, p.proname as oprfunc,
-    tleft.typname as typleft, tright.typname as typright, 
-    result.typname as typresult, o.oprkind, o.oprcanhash,
-    com.oprname as oprcom, neg.oprname as oprnegate, 
-    sort1.oprname as oprsort1, sort2.oprname as oprsort2,
-    ltcmp.oprname as oprltcmp, gtcmp.oprname as oprgtcmp,
-    rest.proname as oprrest, pjoin.proname as oprjoin
-FROM
-    pg_operator o
-    join pg_namespace n on (o.oprnamespace = n.oid)
-    join pg_proc p on (o.oprcode = p.oid)
-    left join pg_type tleft on (o.oprleft = tleft.oid)
-    left join pg_type tright on (o.oprright = tright.oid)
-    left join pg_type result on (o.oprresult = result.oid)
-    left join pg_operator com on (o.oprcom = com.oid)
-    left join pg_operator neg on (o.oprnegate = neg.oid)
-    left join pg_proc rest on (o.oprrest = rest.oid)
-    left join pg_proc pjoin on (o.oprjoin = pjoin.oid)
-    left join pg_operator sort1 on (o.oprlsortop = sort1.oid)
-    left join pg_operator sort2 on (o.oprrsortop = sort2.oid)
-    left join pg_operator ltcmp on (o.oprltcmpop = ltcmp.oid)
-    left join pg_operator gtcmp on (o.oprgtcmpop = gtcmp.oid)
-WHERE n.nspname = 'pg_catalog'
-ORDER BY 1,2,3;
--- end_equiv
-
--- Compare pg_opclass (Operator Classes)
--- start_equiv
-SELECT
-    c.opcname, am.amname, intype.typname as intype, c.opcdefault, 
-    keytype.typname as keytype
-FROM
-    pg_opclass c
-    join pg_namespace n ON (c.opcnamespace = n.oid)
-    left join pg_am am on (c.opcamid = am.oid)
-    left join pg_type intype on (c.opcintype = intype.oid)
-    left join pg_type keytype on (c.opckeytype = keytype.oid)
-WHERE n.nspname = 'upg_catalog'
-ORDER BY 1, 2, 3;
-
-SELECT
-    c.opcname, am.amname, intype.typname as intype, c.opcdefault, 
-    keytype.typname as keytype
-FROM
-    pg_opclass c
-    join pg_namespace n ON (c.opcnamespace = n.oid)
-    left join pg_am am on (c.opcamid = am.oid)
-    left join pg_type intype on (c.opcintype = intype.oid)
-    left join pg_type keytype on (c.opckeytype = keytype.oid)
-WHERE n.nspname = 'pg_catalog'
-ORDER BY 1, 2, 3;
--- end_equiv
-
--- Compare pg_amproc (Operator Classes)
--- start_equiv
-SELECT
-    c.opcname, am.amname, t.typname, op.amprocnum, p.proname
-FROM
-    pg_amproc op
-    JOIN pg_opclass c on (op.amopclaid = c.oid)
-    JOIN pg_namespace n on (c.opcnamespace = n.oid)
-    JOIN pg_am am on (c.opcamid = am.oid)
-    LEFT JOIN pg_proc p on (op.amproc = p.oid)
-    LEFT JOIN pg_type t on (op.amprocsubtype = t.oid)
-WHERE n.nspname = 'upg_catalog'
-ORDER BY 1, 2, 3, 4;
-
-SELECT
-    c.opcname, am.amname, t.typname, cp.amprocnum, p.proname
-FROM
-    pg_amproc cp
-    JOIN pg_opclass c on (cp.amopclaid = c.oid)
-    JOIN pg_namespace n on (c.opcnamespace = n.oid)
-    JOIN pg_am am on (c.opcamid = am.oid)
-    LEFT JOIN pg_proc p on (cp.amproc = p.oid)
-    LEFT JOIN pg_type t on (cp.amprocsubtype = t.oid)
-WHERE n.nspname = 'pg_catalog'
-ORDER BY 1, 2, 3, 4;
--- end_equiv
-
--- Compare pg_amop (Operator Classes)
--- start_equiv
-SELECT
-    c.opcname, am.amname, t.typname, co.amopstrategy, co.amopreqcheck, o.oprname
-FROM
-    pg_amop co
-    JOIN pg_opclass c on (co.amopclaid = c.oid)
-    JOIN pg_namespace n on (c.opcnamespace = n.oid)
-    JOIN pg_am am on (c.opcamid = am.oid)
-    LEFT JOIN pg_operator o on (co.amopopr = o.oid)
-    LEFT JOIN pg_type t on (co.amopsubtype = t.oid)
-WHERE n.nspname = 'upg_catalog'
-ORDER BY 1, 2, 3, 4;
-
-SELECT
-    c.opcname, am.amname, t.typname, co.amopstrategy, co.amopreqcheck, o.oprname
-FROM
-    pg_amop co
-    JOIN pg_opclass c on (co.amopclaid = c.oid)
-    JOIN pg_namespace n on (c.opcnamespace = n.oid)
-    JOIN pg_am am on (c.opcamid = am.oid)
-    LEFT JOIN pg_operator o on (co.amopopr = o.oid)
-    LEFT JOIN pg_type t on (co.amopsubtype = t.oid)
-WHERE n.nspname = 'pg_catalog'
-ORDER BY 1, 2, 3, 4;
--- end_equiv
-
--- Compare pg_conversion (Conversions)
--- start_equiv
-SELECT
-    c.conname, c.conforencoding, c.contoencoding, p.proname, c.condefault
-FROM
-    pg_conversion c
-    JOIN pg_namespace n ON (c.connamespace = n.oid)
-    LEFT JOIN pg_proc p ON (c.conproc = p.oid)
-WHERE n.nspname = 'upg_catalog'
-ORDER BY 1,2,3;
-
-SELECT
-    c.conname, c.conforencoding, c.contoencoding, p.proname, c.condefault
-FROM
-    pg_conversion c
-    JOIN pg_namespace n ON (c.connamespace = n.oid)
-    LEFT JOIN pg_proc p ON (c.conproc = p.oid)
-WHERE n.nspname = 'pg_catalog'
-ORDER BY 1,2,3;
--- end_equiv
-
-
--- ===========================================================================
--- Validate as much as possible that we can't validate via the above checks:
---    * Shared Objects (Tablespace/Filespaces/Databases/Resource Queues/etc
---    * Objects without corresponding DDL (Window Functions, Access Methods)
---    * Objects without schemas (Languages, Schemas)
---    * Objects we skipped above for some other reason
---
--- ===========================================================================
-SELECT * FROM pg_pltemplate ORDER BY tmplname;
-SELECT oid, * FROM pg_resqueue WHERE oid < 10000 ORDER BY rsqname;
-SELECT oid, * FROM pg_filespace WHERE oid < 10000 ORDER BY fsname;
-SELECT oid, * FROM pg_tablespace WHERE oid < 10000 ORDER BY spcname;
-SELECT oid, datname, datdba, encoding, datistemplate, datallowconn, datconnlimit,
-       dattablespace, datconfig
-FROM pg_database WHERE oid < 10000 ORDER BY datname;
-SELECT oid, * FROM pg_resourcetype ORDER BY resname;
-SELECT oid, * FROM pg_resqueuecapability WHERE resqueueid < 10000 ORDER BY oid;
-
-SELECT oid, * FROM pg_am ORDER BY amname;
-SELECT * FROM pg_window ORDER BY winfnoid;
-
-SELECT oid, * FROM pg_language WHERE oid < 10000 ORDER BY lanname;
-SELECT oid, nspname, nspowner FROM pg_namespace WHERE oid < 10000 ORDER BY nspname;
-
-SELECT * FROM pg_aggregate WHERE aggfnoid in (
-        'count()'::regprocedure,
-        'min(abstime)'::regprocedure,
-        'max(abstime)'::regprocedure,
-        'pivot_sum(_text,text,int4)'::regprocedure) ;
 
 --
--- TODO: Checks for pg_description, pg_shdescription
+--  Tidy up the dumped text
+--
+update catdump.DDL set stmt = regexp_replace(ltrim(rtrim(stmt)), 'upg_catalog', 'pg_catalog', 'ig');
 
--- ===========================================================================
--- * Test Cleanup
--- ===========================================================================
--- start_ignore
-DROP SCHEMA upg_toolkit CASCADE;
-DROP SCHEMA upg_information CASCADE;
-DROP SCHEMA upg_catalog CASCADE;
-DROP SCHEMA dummy_cast_functions CASCADE;
--- end_ignore
+select stmt from catdump.DDL where ver = '4.1u'
+except
+select stmt from catdump.DDL where ver = '4.2'
+order by 1;
 
-RESET search_path;
-RESET client_min_messages;
+select stmt from catdump.DDL where ver = '4.2'
+except
+select stmt from catdump.DDL where ver = '4.1u'
+order by 1;
+

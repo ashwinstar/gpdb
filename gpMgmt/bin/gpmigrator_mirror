@@ -108,7 +108,7 @@ def is_supported_version(version):
     '''
     Checks that a given GpVersion Object is supported for upgrade/downgrade.
     We do not support:
-      Versions < 4.0.0.0
+      Versions < PREVIOUS MINOR VERSION
       Versions > main
       Versions with unusual "builds" (eg 3.4.0.0_EAP1)
     '''
@@ -123,10 +123,10 @@ def is_supported_version(version):
             "Greenplum Version '%s' is not supported for %s"
             % (str(version), upstr))            
 
-    if version >= "4.0.0.0" and version <= 'main':
+    if version >= "4.1.0.0" and version <= 'main':
         return True
 
-    if version < "4.0.0.0":
+    if version < "4.1.0.0":
         raise UpgradeError(
             "Greenplum Version '%s' is not supported for %s"
             % (str(version), upstr))
@@ -1382,12 +1382,22 @@ class GPUpgrade:
         
 
     #------------------------------------------------------------
-    def SetCatVersion(self, to):
+    def SetCatVersion(self, tonewver):
         '''
         Set the catalog version to something different. Cluster should be down.
         '''
 
         logger.info('Modifying catalog version')
+        
+        if tonewver:
+            curenv     = self.newenv
+            curhome    = self.newhome
+        else:
+            curenv     = self.oldenv
+            curhome    = self.oldhome
+        toversion = GpVersion(self.getversion(curhome, curenv))
+        to        = toversion.getVersionRelease()
+
         logger.info("To %s"%to)
         self.CheckDown()
 
@@ -1399,7 +1409,7 @@ class GPUpgrade:
              cmd = ' '.join(['pg_controldata', datadir])
              p = subprocess.Popen(cmd, shell=True, close_fds=True,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                  env=self.newenv)
+                                  env=curenv)
              result = p.communicate()
         
              if p.returncode != 0:
@@ -1428,15 +1438,12 @@ class GPUpgrade:
             if state != "shut down":
                 raise UpgradeError("Cannot upgrade: Database did not shutdown cleanly")
 
-            e = self.newenv
-            h = self.newhome
-
-            cmd = ['%s/bin/lib/gpmodcatversion' % h,
+            cmd = ['%s/bin/lib/gpmodcatversion' % curhome,
                    '--catversion', to, datadir]
             p = subprocess.Popen(cmd,
                                  shell=False,
                                  close_fds=True,
-                                 env=e,
+                                 env=curenv,
                                  stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE)
             result = p.communicate()
@@ -1446,7 +1453,7 @@ class GPUpgrade:
 
         if self.cmd == 'MASTER':
             datadirs = [ self.masterdir ]
-            self.CallSlaves('SETCATVERSION', to)
+            self.CallSlaves('SETCATVERSION', tonewver)
             if self.faultinjection == 2:
                 raise UpgradeError("faultinjection=%d" % self.faultinjection)
         else:
@@ -1715,8 +1722,7 @@ class GPUpgrade:
         """
         Set the catversion to the old one
         """
-        oldversion = GpVersion(self.getversion(self.oldhome, self.oldenv))
-        self.SetCatVersion(oldversion.getVersionRelease())
+        self.SetCatVersion(False)
         
         return "SwitchToMirror"
 
@@ -1805,7 +1811,7 @@ class GPUpgrade:
             runfile = "%s/share/postgresql/upgrade/upg2_catupgrade.sql" % self.newhome
             self.ExecuteSQLFileOnAllDBs(runfile)
             self.Shutdown()
-            self.SetCatVersion(snv)
+            self.SetCatVersion(True)
             self.Startup(self.newenv, False, False)
             self.PerformPostUpgrade()
         except:

@@ -108,6 +108,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 	char		delimiter = DEFAULT_TYPDELIM;
 	char		alignment = 'i';	/* default alignment */
 	char		storage = 'p';	/* default TOAST storage method */
+	char        typtype = 'b';
 	Oid			inputOid;
 	Oid			outputOid;
 	Oid			receiveOid = InvalidOid;
@@ -148,6 +149,23 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 							0, 0);
 	if (!OidIsValid(typoid))
 	{
+		/*
+		 * See if oid is specified for the shell type during upgrade, if so use it
+		 * to create shell type.
+		 */
+		bool createShellOnly = (parameters==NIL);
+		if (gp_upgrade_mode)
+		{
+			foreach(pl, parameters)
+			{
+				DefElem *defel = (DefElem *) lfirst(pl);
+				if (pg_strcasecmp(defel->defname, "oid") == 0)
+				{
+					newOid = intVal(defel->arg);
+					createShellOnly = true;
+				}
+			}
+		}
 		typoid = TypeShellMake(typeName, typeNamespace, GetUserId(), newOid);
 
 		/* Make new shell type visible for modification below */
@@ -157,7 +175,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 		 * If the command was a parameterless CREATE TYPE, we're done ---
 		 * creating the shell type was all we're supposed to do.
 		 */
-		if (parameters == NIL)
+		if (createShellOnly)
 		{
 			/* Must dispatch shell type creation */
 			if (Gp_role == GP_ROLE_DISPATCH)
@@ -167,7 +185,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 				stmt->oldstyle = false; /*?*/
 				stmt->defnames = names;
 				stmt->args = NIL;
-				stmt->definition = parameters;
+				stmt->definition = NIL;
 				stmt->newOid = typoid;
 				stmt->shadowOid = shadowOid;
 				CdbDispatchUtilityStatement((Node *) stmt, "DefineType");
@@ -270,6 +288,24 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("storage \"%s\" not recognized", a),
 								   errOmitLocation(true)));
+		}
+		else if (gp_upgrade_mode && pg_strcasecmp(defel->defname, "typtype") == 0)
+		{
+			/* upgrade only option..!!!!
+			 *
+			 * Normally, type are created with type "b".
+			 * During upgrade, we need to create "build-in" psudue type with 'p'.
+			 *
+			 */
+			typtype = defGetString(defel)[0];
+		}
+		else if (gp_upgrade_mode && pg_strcasecmp(defel->defname, "shadowoid") == 0)
+		{
+			/* upgrade only option..!!!!
+			 *
+			 * Need to specify the shadowtype oid.
+			 */
+			shadowOid = (int)defGetInt64(defel);
 		}
 		else
 			ereport(WARNING,
@@ -407,7 +443,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 				   0,			/* relation kind (ditto) */
 				   GetUserId(), /* owner's ID */
 				   internalLength,		/* internal size */
-				   'b',			/* type-type (base type) */
+				   typtype,		/* type-type (base type) */
 				   delimiter,	/* array element delimiter */
 				   inputOid,	/* input procedure */
 				   outputOid,	/* output procedure */
@@ -429,13 +465,17 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 	/*
 	 * When we create a base type (as opposed to a complex type) we need to
 	 * have an array entry for it in pg_type as well.
+	 *
+	 * Create a array type only if we're not creating an internal type during upgrade.
 	 */
-	shadow_type = makeArrayTypeName(typeName);
+	if (typtype == 'b')
+	{
+		shadow_type = makeArrayTypeName(typeName);
 
-	/* alignment must be 'i' or 'd' for arrays */
-	alignment = (alignment == 'd') ? 'd' : 'i';
+		/* alignment must be 'i' or 'd' for arrays */
+		alignment = (alignment == 'd') ? 'd' : 'i';
 
-	shadowOid = TypeCreateWithOid(shadow_type,		/* type name */
+		shadowOid = TypeCreateWithOid(shadow_type,		/* type name */
 			   typeNamespace,	/* namespace */
 			   InvalidOid,		/* relation oid (n/a here) */
 			   0,				/* relation kind (ditto) */
@@ -460,7 +500,8 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 			   false,			/* Type NOT NULL */
 			   shadowOid);
 
-	pfree(shadow_type);
+		pfree(shadow_type);
+	}
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{

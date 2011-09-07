@@ -30,7 +30,7 @@
 #include "nodes/makefuncs.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
-
+#include "utils/guc.h"
 
 static bool create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 							   Oid *comptypeOid, bool is_part_child);
@@ -199,6 +199,13 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	 * Check to see whether the table actually needs a TOAST table.
 	 */
 	if (!RelationNeedsToastTable(rel))
+		return false;
+
+	/*
+	 * If we're in upgrade mode, and we say we don't want a toast table
+	 * (by having an InvalidOid for toast Oid).
+	 */
+	if (gp_upgrade_mode && toastOid==InvalidOid)
 		return false;
 
 	/*

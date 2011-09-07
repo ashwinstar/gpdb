@@ -27,12 +27,7 @@ struct verarray
 
 static struct verarray versions[] =
 {
-	{"3.0", 200703112},
-	{"3.1", 200712072},
-	{"3.2", 200808253},
-	{"3.3", 200905011},
-	{"4.0", 201005134},
-	{"4.1", CATALOG_VERSION_NO},
+	{"4.2", CATALOG_VERSION_NO},
 	{NULL, 0}
 };
 
@@ -48,7 +43,7 @@ usage(const char *progname)
 		   "Usage:\n"
 		   "  %s [OPTION] [DATADIR]\n\n"
 		   "Options:\n"
-		   "  --catversion [3.0 | 3.1 | 3.2 | 3.3 | 4.0 | 4.1]  replace catalog version with <version>\n"
+		   "  --catversion [ CURRENT VERSION ]  replace catalog version with <version>\n"
 		   "  --help                    show this help, then exit\n"
 		   "  --version                 output version information, then exit\n"
 		   ),
