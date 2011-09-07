@@ -1397,6 +1397,8 @@ DefineForeignRelation(CreateForeignStmt *createForeignStmt)
 void
 DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
 {
+	ListCell *lc;
+	
 	if (stmt->postCreate)
 	{
 		List *pQry;
@@ -1406,25 +1408,60 @@ DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
 
 		pQry = parse_analyze(linitial(pL1), NULL, NULL, 0);
 
-		if (!pQry)
-			return;
+		if (pQry)
+		{
+			/* just grab the first guy - "There Can Be Only One"(TM) */
+			pUtl = linitial(pQry);
 
-		/* just grab the first guy - "There Can Be Only One"(TM) */
-		pUtl = linitial(pQry);
+			if (pUtl)
+			{
+				Assert(IsA(pUtl, Query));
+				Assert(((Query *)pUtl)->commandType == CMD_UTILITY);
 
-		if (!pUtl)
-			return;
-
-		Assert(IsA(pUtl, Query));
-        Assert(((Query *)pUtl)->commandType == CMD_UTILITY);
-
-		ProcessUtility((Node *)(((Query *)pUtl)->utilityStmt),
-					   synthetic_sql,
-					   NULL, 
-					   false, /* not top level */
-					   dest,
-					   NULL);
-
+				ProcessUtility((Node *)(((Query *)pUtl)->utilityStmt),
+							   synthetic_sql,
+							   NULL, 
+							   false, /* not top level */
+							   dest,
+							   NULL);
+			}
+		}
+	}
+	
+	/*** 
+	 *** XXX: Fix MPP-13750, however this fails to address the similar bug
+	 ***      with ordinary inheritance and partial indexes.  When that bug,
+	 ***      is fixed, this section should become unnecessary!
+	 ***/
+	
+	foreach( lc, stmt->deferredStmts )
+	{
+		ListCell *ulc;
+		List *analyzedStmts = NIL;
+		DestReceiver *dest = None_Receiver;
+		
+		Node *dstmt = lfirst(lc);
+		
+		analyzedStmts = parse_analyze(dstmt, NULL, NULL, 0);
+		foreach (ulc, analyzedStmts)
+		{
+			Query *uquery = NULL;
+			Node *utilityStmt = lfirst(ulc);
+			
+			Insist(IsA(utilityStmt, Query));
+			uquery = (Query*)utilityStmt;
+			Insist(uquery->commandType == CMD_UTILITY);
+			
+			ereport(DEBUG1, 
+					(errmsg("processing deferred utility statement")));
+			
+			ProcessUtility((Node*)uquery->utilityStmt,
+						   synthetic_sql,
+						   NULL,
+						   false,
+						   dest,
+						   NULL);
+		}
 	}
 }
 

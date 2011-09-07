@@ -677,7 +677,7 @@ transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
  *		LIKE ... INCLUDING INDEXES.
  */
 void
-transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt)
+transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt, bool mayDefer)
 {
 	IndexStmt  *index;
 	List	   *indexlist = NIL;
@@ -770,6 +770,25 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt)
 		}
 
 		if (keep)
-			cxt->alist = lappend(cxt->alist, index);
+		{
+			if (index->whereClause && mayDefer)
+			{
+				/* An index with a WHERE clause for an inheritance child will
+				 * cause a trip through parse_analyze.  If we do that before
+				 * creating the table, it will fail, so we put it on a list
+				 * for later.
+				 */
+			
+				ereport(DEBUG1,
+						(errmsg("deferring index creation for table \"%s\"",
+								cxt->relation->relname)
+						 ));
+				cxt->dlist = lappend(cxt->dlist, index);
+			}
+			else
+			{
+				cxt->alist = lappend(cxt->alist, index);
+			}
+		}
 	}
 }

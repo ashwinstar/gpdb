@@ -4313,4 +4313,65 @@ drop table r cascade; --ignore
 
 -- MPP-7898 end.
 
+-- ( MPP-13750 
+
+CREATE TABLE s (id int, date date, amt decimal(10,2), units int) 
+DISTRIBUTED BY (id) 
+PARTITION BY RANGE (date) 
+( START (date '2008-01-01') INCLUSIVE 
+   END (date '2008-01-02') EXCLUSIVE 
+   EVERY (INTERVAL '1 day') );
+
+create index s_i on s(amt) 
+  where (id > 1)
+  ;
+
+create index s_j on s(units)
+  where (id <= 1)
+  ;
+
+alter table s add partition s_test 
+    start(date '2008-01-03') end (date '2008-01-04');
+
+
+select 
+    relname, 
+    (select count(distinct content) - 1 
+     from gp_segment_configuration) - count(*) as missing, 
+    count(distinct relid) oid_count 
+from (
+    select gp_execution_segment(), oid, relname 
+    from gp_dist_random('pg_class') 
+    ) seg_class(segid, relid, relname) 
+where relname ~ '^s_' 
+group by relname; 
+
+drop table cascade;
+
+--   MPP-13750 )
+
+-- MPP-13806 start
+drop table if exists mpp13806;
+ CREATE TABLE mpp13806 (id int, date date, amt decimal(10,2))
+ DISTRIBUTED BY (id)
+ PARTITION BY RANGE (date)
+ ( START (date '2008-01-01') INCLUSIVE
+	END (date '2008-01-05') EXCLUSIVE
+	EVERY (INTERVAL '1 day') );
+ 
+-- Adding unbound partition right before the start  used to fail
+alter table mpp13806 add partition test end (date '2008-01-01') exclusive;
+ 
+drop table if exists mpp13806;
+ CREATE TABLE mpp13806 (id int, date date, amt decimal(10,2))
+ DISTRIBUTED BY (id)
+ PARTITION BY RANGE (date)
+ ( START (date '2008-01-01') EXCLUSIVE
+	END (date '2008-01-05') EXCLUSIVE
+	EVERY (INTERVAL '1 day') );
+-- For good measure, test the opposite case
+alter table mpp13806 add partition test end (date '2008-01-01') inclusive;
+drop table mpp13806;
+-- MPP-13806 end
+
 

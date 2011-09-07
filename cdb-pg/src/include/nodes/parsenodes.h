@@ -1379,6 +1379,9 @@ typedef struct CreateStmt
 	char		relStorage;
 	struct GpPolicy  *policy;
 	Node       *postCreate;      /* CDB: parse and process after the CREATE */
+	List	   *deferredStmts;	/* CDB: Statements, e.g., partial indexes, that can't be 
+								 * analyzed until after CREATE (until the target table
+								 * is created and visible). */
 	bool		is_part_child;	/* CDB: child table in a partition? Marked during analysis for 
 								 * interior or leaf parts of the new table.  Not marked for a
 								 * a partition root or ordinary table.

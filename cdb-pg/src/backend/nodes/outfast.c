@@ -1737,6 +1737,9 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 	WRITE_CHAR_FIELD(relKind);
 	WRITE_CHAR_FIELD(relStorage);
+	/* policy omitted */
+	/* postCreate - for analysis, QD only */
+	/* deferredStmts - for analysis, QD only */
 	WRITE_BOOL_FIELD(is_part_child);
 	WRITE_BOOL_FIELD(is_add_part);
 	WRITE_OID_FIELD(ownerid);

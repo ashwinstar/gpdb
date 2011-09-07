@@ -1789,6 +1789,9 @@ _readCreateStmt(const char ** str)
 	READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 	READ_CHAR_FIELD(relKind);
 	READ_CHAR_FIELD(relStorage);
+	/* policy omitted */
+	/* postCreate - for analysis, QD only */
+	/* deferredStmts - for analysis, QD only */
 	READ_BOOL_FIELD(is_part_child);
 	READ_BOOL_FIELD(is_add_part);
 	READ_OID_FIELD(ownerid);

@@ -18,7 +18,7 @@
 #include "parser/analyze.h"
 #include "parser/parse_node.h"
 
-extern void transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt);
+extern void transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt, bool mayDefer);
 extern void transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 								 InhRelation *inhRelation, bool forceBareCol);
 

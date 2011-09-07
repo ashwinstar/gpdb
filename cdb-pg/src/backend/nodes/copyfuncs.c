@@ -2596,6 +2596,8 @@ _copyCreateStmt(CreateStmt *from)
 	}
 	else
 		newnode->policy = NULL;
+	/* postCreate omitted (why?) */
+	COPY_NODE_FIELD(deferredStmts);
 	COPY_SCALAR_FIELD(is_part_child);
 	COPY_SCALAR_FIELD(is_add_part);
 	COPY_SCALAR_FIELD(ownerid);

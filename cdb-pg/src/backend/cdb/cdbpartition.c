@@ -4524,7 +4524,6 @@ atpxPartAddList(Relation rel,
 	bool 				 bOpenGap  = false;
 	PartitionBy 		*pBy   	   = makeNode(PartitionBy);
 	CreateStmtContext    cxt;
-	List				*utils 	   = (List *)pUtl;
 	Node 				*pSubSpec  = NULL;	/* return the subpartition spec */
 	Relation 			 par_rel   = rel;
 	PartitionNode 		 pNodebuf;
@@ -4541,9 +4540,14 @@ atpxPartAddList(Relation rel,
 	
 	Assert( (PARTTYP_LIST == part_type) || (PARTTYP_RANGE == part_type) );
 	
+	/* ct - the CreateStmt from pUtl ammended to show that it is for an
+	 * added part, that it is owned by the argument ownerid, and that it
+	 * is distributed like the parent rel.  Note that, at this time,
+	 * the name is "fake_partition_name". */
+	
 	Assert(IsA(pUtl, List));
 	
-	ct = (CreateStmt *)linitial(utils);
+	ct = (CreateStmt *)linitial((List *)pUtl);
 	Assert(IsA(ct, CreateStmt));
 	
 	ct->is_add_part = true; /* subroutines need to know this */
@@ -4705,6 +4709,40 @@ atpxPartAddList(Relation rel,
 									   ">",
 									   (List *)prule->topRule->parrangestart,
 									   d_end, isnull, tupledesc);
+				
+				
+				if (!bstat)
+				{
+					/* 
+					 * MPP-13806 fix by Gavin Sherry
+					 *
+					 * As we support explicit inclusive and exclusive ranges
+					 * we need to be even more careful.
+					 *
+					 * We can proceed if we have the following:
+					 *
+					 * END (R) EXCLUSIVE ; START (R) INCLUSIVE
+					 * END (R) INCLUSIVE ; START (R) EXCLUSIVE
+					 *
+					 * XXX: this should be refactored into a single generic
+					 * function that can be used here and in the unbounded end
+					 * case, checked further down. That said, a lot of this code
+					 * should be refactored.
+					 */
+					PartitionRangeItem *ri = (PartitionRangeItem *)pbs->partEnd;
+					
+					if ((ri->partedge == PART_EDGE_EXCLUSIVE &&
+						 prule->topRule->parrangestartincl) ||
+						(ri->partedge == PART_EDGE_INCLUSIVE &&
+						 !prule->topRule->parrangestartincl))
+					{
+						bstat = compare_partn_opfuncid(pNode, "pg_catalog", "=",
+													   (List *)prule->topRule->parrangestart,
+													   d_end, isnull, tupledesc);
+					}
+					
+				}
+				
 				if (bstat)
 				{
 					/* should be first partition */
@@ -5629,7 +5667,9 @@ atpxPartAddList(Relation rel,
 		
 	}
 	
-	/* create the partition */
+	/* create the partition - change the table name from "fake_partition_name" to 
+	 * name of the parent relation
+	 */
 	
 	ct->relation = makeRangeVar(
 								get_namespace_name(RelationGetNamespace(par_rel)),
@@ -5681,6 +5721,12 @@ atpxPartAddList(Relation rel,
 		
 		ct->partitionBy = (Node *)pBy;
 		
+		/* this parse_analyze expands the phony create of a partitioned table
+		 * that we just build into the constituent commands we need to create
+		 * the new part.  (This will include some commands for the parent that
+		 * we don't need, since the parent already exists.)
+		 */
+		
 		l1 = parse_analyze((Node *)ct, NULL, NULL, 0);
 		
 		/*
@@ -5691,7 +5737,7 @@ atpxPartAddList(Relation rel,
 		{
 			Node *s = lfirst(lc);
 			
-			/* skip the first one, it's the fake create table */
+			/* skip the first one, it's the fake create table for the parent */
 			if (lc == list_head(l1))
 				continue;
 			

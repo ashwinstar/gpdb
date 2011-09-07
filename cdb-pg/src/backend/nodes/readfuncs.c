@@ -2092,6 +2092,9 @@ _readCreateStmt(void)
 	READ_OID_FIELD(oidInfo.aoblkdirComptypeOid);
 	READ_CHAR_FIELD(relKind);
 	READ_CHAR_FIELD(relStorage);
+	/* policy omitted */
+	/* postCreate omitted */
+	READ_NODE_FIELD(deferredStmts);
 	READ_BOOL_FIELD(is_part_child);
 	READ_BOOL_FIELD(is_add_part);
 	READ_OID_FIELD(ownerid);

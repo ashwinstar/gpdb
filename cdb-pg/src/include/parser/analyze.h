@@ -48,6 +48,9 @@ typedef struct
 								 * creating the table */
 	List	   *alist;			/* "after list" of things to do after creating
 								 * the table */
+	List	   *dlist;			/* "deferred list" of utility statements to 
+								 * transfer to the list CreateStmt->deferredStmts
+								 * for later parse_analyze and dispatch */
 	IndexStmt  *pkey;			/* PRIMARY KEY index, if any */
 } CreateStmtContext;
 

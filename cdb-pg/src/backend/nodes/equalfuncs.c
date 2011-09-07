@@ -1042,6 +1042,9 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_SCALAR_FIELD(oidInfo.toastIndexOid);
 	COMPARE_SCALAR_FIELD(relKind);
 	COMPARE_SCALAR_FIELD(relStorage);
+	/* policy omitted */
+	/* postCreate omitted */
+	/* deferredStmts omitted */
 	COMPARE_SCALAR_FIELD(is_part_child);
 	COMPARE_SCALAR_FIELD(is_add_part);
 	COMPARE_SCALAR_FIELD(ownerid);

@@ -1401,6 +1401,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	cxt.inh_indexes = NIL;
 	cxt.blist = NIL;
 	cxt.alist = NIL;
+	cxt.dlist = NIL; /* for deferred analysis requiring the created table */
 	cxt.pkey = NULL;
 	cxt.hasoids = interpretOidsOption(stmt->options);
 
@@ -1482,7 +1483,17 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	/*
 	 * Postprocess constraints that give rise to index definitions.
 	 */
-	transformIndexConstraints(pstate, &cxt);
+	transformIndexConstraints(pstate, &cxt, stmt->is_add_part);
+	
+	/*
+	 * Carry any deferred analysis statements forward.  Added for MPP-13750
+	 * but should also apply to the similar case involving simple inheritance.
+	 */
+	if ( cxt.dlist )
+	{
+		stmt->deferredStmts = list_concat(stmt->deferredStmts, cxt.dlist);
+		cxt.dlist = NIL;
+	}
 
 	/*
 	 * Postprocess foreign-key constraints.
@@ -10043,6 +10054,7 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 	cxt.inh_indexes = NIL;
 	cxt.blist = NIL;
 	cxt.alist = NIL;
+	cxt.dlist = NIL; /* used by transformCreateStmt, not here */
 	cxt.pkey = NULL;
 
 	/*
@@ -10188,7 +10200,7 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 	cxt.alist = NIL;
 
 	/* Postprocess index and FK constraints */
-	transformIndexConstraints(pstate, &cxt);
+	transformIndexConstraints(pstate, &cxt, false);
 
 	transformFKConstraints(pstate, &cxt, skipValidation, true);
 
