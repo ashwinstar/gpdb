@@ -196,7 +196,6 @@ static TupleDesc _Composite_getTupleDesc(Type self, PG_FUNCTION_ARGS)
 	switch(get_call_result_type(fcinfo, 0, &td))
 	{
 		case TYPEFUNC_COMPOSITE:
-		case TYPEFUNC_RECORD:
 			if(td->tdtypeid == RECORDOID)
 				/*
 				 * We can't hold on to this one. It's anonymous
