@@ -1,3 +1,8 @@
+drop schema if exists dpe cascade;
+NOTICE:  schema "dpe" does not exist, skipping
+create schema dpe;
+set search_path='dpe';
+set gp_segments_for_planner=2;
 drop table if exists pt;
 NOTICE:  table "pt" does not exist, skipping
 drop table if exists pt1;
@@ -69,47 +74,39 @@ explain select * from t, pt where tid = ptid;
 --------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice3; segments: 2)  (cost=4.17..10.90 rows=3 width=50)
    ->  Hash Join  (cost=4.17..10.90 rows=3 width=50)
-         Hash Cond: public.pt.ptid = public.t.tid
+         Hash Cond: dpe.pt.ptid = dpe.t.tid
          InitPlan  (slice4)
            ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
                  ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
                        ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
          ->  Append  (cost=0.00..6.54 rows=27 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25436::oid = ANY ($0)
+                     One-Time Filter: 151912::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25461::oid = ANY ($0)
+                     One-Time Filter: 151937::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25487::oid = ANY ($0)
+                     One-Time Filter: 151963::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25513::oid = ANY ($0)
+                     One-Time Filter: 151989::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25539::oid = ANY ($0)
+                     One-Time Filter: 152015::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25565::oid = ANY ($0)
+                     One-Time Filter: 152041::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
          ->  Hash  (cost=2.08..2.08 rows=2 width=19)
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
                      ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
-(29 rows)
+ Settings:  gp_segments_for_planner=2
+(30 rows)
 
 select * from t, pt where tid = ptid;
  dist | tid |   t1   | t2  | dist |   pt1   |  pt2  |    pt3    | ptid 
 ------+-----+--------+-----+------+---------+-------+-----------+------
-    1 |   1 | hello1 | bar |    1 | hello1  | world | drop this |    1
-    1 |   1 | hello1 | bar |    7 | hello7  | world | drop this |    1
-    1 |   1 | hello1 | bar |   13 | hello13 | world | drop this |    1
-    1 |   1 | hello1 | bar |   19 | hello19 | world | drop this |    1
-    1 |   1 | hello1 | bar |   25 | hello25 | world | drop this |    1
-    1 |   1 | hello1 | bar |   31 | hello31 | world | drop this |    1
-    1 |   1 | hello1 | bar |   37 | hello37 | world | drop this |    1
-    1 |   1 | hello1 | bar |   43 | hello43 | world | drop this |    1
-    1 |   1 | hello1 | bar |   49 | hello49 | world | drop this |    1
     0 |   0 | hello0 | bar |    0 | hello0  | world | drop this |    0
     0 |   0 | hello0 | bar |    6 | hello6  | world | drop this |    0
     0 |   0 | hello0 | bar |   12 | hello12 | world | drop this |    0
@@ -119,6 +116,15 @@ select * from t, pt where tid = ptid;
     0 |   0 | hello0 | bar |   36 | hello36 | world | drop this |    0
     0 |   0 | hello0 | bar |   42 | hello42 | world | drop this |    0
     0 |   0 | hello0 | bar |   48 | hello48 | world | drop this |    0
+    1 |   1 | hello1 | bar |    1 | hello1  | world | drop this |    1
+    1 |   1 | hello1 | bar |    7 | hello7  | world | drop this |    1
+    1 |   1 | hello1 | bar |   13 | hello13 | world | drop this |    1
+    1 |   1 | hello1 | bar |   19 | hello19 | world | drop this |    1
+    1 |   1 | hello1 | bar |   25 | hello25 | world | drop this |    1
+    1 |   1 | hello1 | bar |   31 | hello31 | world | drop this |    1
+    1 |   1 | hello1 | bar |   37 | hello37 | world | drop this |    1
+    1 |   1 | hello1 | bar |   43 | hello43 | world | drop this |    1
+    1 |   1 | hello1 | bar |   49 | hello49 | world | drop this |    1
 (18 rows)
 
 explain select * from t, pt where tid + 1 = ptid;
@@ -126,34 +132,35 @@ explain select * from t, pt where tid + 1 = ptid;
 --------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice3; segments: 2)  (cost=4.17..11.92 rows=27 width=50)
    ->  Hash Join  (cost=4.17..11.92 rows=27 width=50)
-         Hash Cond: public.pt.ptid = (public.t.tid + 1)
+         Hash Cond: dpe.pt.ptid = (dpe.t.tid + 1)
          InitPlan  (slice4)
            ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
                  ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
                        ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
          ->  Append  (cost=0.00..6.54 rows=27 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25436::oid = ANY ($0)
+                     One-Time Filter: 151912::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25461::oid = ANY ($0)
+                     One-Time Filter: 151937::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25487::oid = ANY ($0)
+                     One-Time Filter: 151963::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25513::oid = ANY ($0)
+                     One-Time Filter: 151989::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25539::oid = ANY ($0)
+                     One-Time Filter: 152015::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25565::oid = ANY ($0)
+                     One-Time Filter: 152041::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
          ->  Hash  (cost=2.08..2.08 rows=2 width=19)
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
                      ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
-(29 rows)
+ Settings:  gp_segments_for_planner=2
+(30 rows)
 
 select * from t, pt where tid + 1 = ptid;
  dist | tid |   t1   | t2  | dist |   pt1   |  pt2  |    pt3    | ptid 
@@ -183,7 +190,7 @@ explain select * from t, pt where tid = ptid and t1 = 'hello' || tid;
 --------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice3; segments: 2)  (cost=4.14..10.88 rows=3 width=50)
    ->  Hash Join  (cost=4.14..10.88 rows=3 width=50)
-         Hash Cond: public.pt.ptid = public.t.tid
+         Hash Cond: dpe.pt.ptid = dpe.t.tid
          InitPlan  (slice4)
            ->  Aggregate  (cost=2.04..2.05 rows=1 width=32)
                  ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.04 rows=1 width=19)
@@ -191,41 +198,33 @@ explain select * from t, pt where tid = ptid and t1 = 'hello' || tid;
                              Filter: t1 = ('hello'::text || tid::text)
          ->  Append  (cost=0.00..6.54 rows=27 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25436::oid = ANY ($0)
+                     One-Time Filter: 151912::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25461::oid = ANY ($0)
+                     One-Time Filter: 151937::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25487::oid = ANY ($0)
+                     One-Time Filter: 151963::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25513::oid = ANY ($0)
+                     One-Time Filter: 151989::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25539::oid = ANY ($0)
+                     One-Time Filter: 152015::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25565::oid = ANY ($0)
+                     One-Time Filter: 152041::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
          ->  Hash  (cost=2.06..2.06 rows=1 width=19)
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.06 rows=1 width=19)
                      ->  Seq Scan on t  (cost=0.00..2.04 rows=1 width=19)
                            Filter: t1 = ('hello'::text || tid::text)
-(31 rows)
+ Settings:  gp_segments_for_planner=2
+(32 rows)
 
 select * from t, pt where tid = ptid and t1 = 'hello' || tid;
  dist | tid |   t1   | t2  | dist |   pt1   |  pt2  |    pt3    | ptid 
 ------+-----+--------+-----+------+---------+-------+-----------+------
-    1 |   1 | hello1 | bar |    1 | hello1  | world | drop this |    1
-    1 |   1 | hello1 | bar |    7 | hello7  | world | drop this |    1
-    1 |   1 | hello1 | bar |   13 | hello13 | world | drop this |    1
-    1 |   1 | hello1 | bar |   19 | hello19 | world | drop this |    1
-    1 |   1 | hello1 | bar |   25 | hello25 | world | drop this |    1
-    1 |   1 | hello1 | bar |   31 | hello31 | world | drop this |    1
-    1 |   1 | hello1 | bar |   37 | hello37 | world | drop this |    1
-    1 |   1 | hello1 | bar |   43 | hello43 | world | drop this |    1
-    1 |   1 | hello1 | bar |   49 | hello49 | world | drop this |    1
     0 |   0 | hello0 | bar |    0 | hello0  | world | drop this |    0
     0 |   0 | hello0 | bar |    6 | hello6  | world | drop this |    0
     0 |   0 | hello0 | bar |   12 | hello12 | world | drop this |    0
@@ -235,6 +234,15 @@ select * from t, pt where tid = ptid and t1 = 'hello' || tid;
     0 |   0 | hello0 | bar |   36 | hello36 | world | drop this |    0
     0 |   0 | hello0 | bar |   42 | hello42 | world | drop this |    0
     0 |   0 | hello0 | bar |   48 | hello48 | world | drop this |    0
+    1 |   1 | hello1 | bar |    1 | hello1  | world | drop this |    1
+    1 |   1 | hello1 | bar |    7 | hello7  | world | drop this |    1
+    1 |   1 | hello1 | bar |   13 | hello13 | world | drop this |    1
+    1 |   1 | hello1 | bar |   19 | hello19 | world | drop this |    1
+    1 |   1 | hello1 | bar |   25 | hello25 | world | drop this |    1
+    1 |   1 | hello1 | bar |   31 | hello31 | world | drop this |    1
+    1 |   1 | hello1 | bar |   37 | hello37 | world | drop this |    1
+    1 |   1 | hello1 | bar |   43 | hello43 | world | drop this |    1
+    1 |   1 | hello1 | bar |   49 | hello49 | world | drop this |    1
 (18 rows)
 
 explain select * from t, pt where t1 = pt1 and ptid = tid;
@@ -242,34 +250,35 @@ explain select * from t, pt where t1 = pt1 and ptid = tid;
 --------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice3; segments: 2)  (cost=4.18..11.05 rows=3 width=50)
    ->  Hash Join  (cost=4.18..11.05 rows=3 width=50)
-         Hash Cond: public.pt.pt1 = public.t.t1 AND public.pt.ptid = public.t.tid
+         Hash Cond: dpe.pt.pt1 = dpe.t.t1 AND dpe.pt.ptid = dpe.t.tid
          InitPlan  (slice4)
            ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
                  ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
                        ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
          ->  Append  (cost=0.00..6.54 rows=27 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25436::oid = ANY ($0)
+                     One-Time Filter: 151912::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25461::oid = ANY ($0)
+                     One-Time Filter: 151937::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25487::oid = ANY ($0)
+                     One-Time Filter: 151963::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25513::oid = ANY ($0)
+                     One-Time Filter: 151989::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25539::oid = ANY ($0)
+                     One-Time Filter: 152015::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25565::oid = ANY ($0)
+                     One-Time Filter: 152041::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
          ->  Hash  (cost=2.08..2.08 rows=2 width=19)
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
                      ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
-(29 rows)
+ Settings:  gp_segments_for_planner=2
+(30 rows)
 
 select * from t, pt where t1 = pt1 and ptid = tid;
  dist | tid |   t1   | t2  | dist |  pt1   |  pt2  |    pt3    | ptid 
@@ -286,7 +295,7 @@ explain select * from pt where ptid in (select tid from t where t1 = 'hello' || 
 -------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice3; segments: 2)  (cost=4.14..10.88 rows=3 width=31)
    ->  Hash EXISTS Join  (cost=4.14..10.88 rows=3 width=31)
-         Hash Cond: public.pt.ptid = public.t.tid
+         Hash Cond: dpe.pt.ptid = dpe.t.tid
          InitPlan  (slice4)
            ->  Aggregate  (cost=2.04..2.05 rows=1 width=32)
                  ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.04 rows=1 width=4)
@@ -294,28 +303,29 @@ explain select * from pt where ptid in (select tid from t where t1 = 'hello' || 
                              Filter: t1 = ('hello'::text || tid::text)
          ->  Append  (cost=0.00..6.54 rows=27 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25436::oid = ANY ($0)
+                     One-Time Filter: 151912::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25461::oid = ANY ($0)
+                     One-Time Filter: 151937::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25487::oid = ANY ($0)
+                     One-Time Filter: 151963::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25513::oid = ANY ($0)
+                     One-Time Filter: 151989::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25539::oid = ANY ($0)
+                     One-Time Filter: 152015::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25565::oid = ANY ($0)
+                     One-Time Filter: 152041::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
          ->  Hash  (cost=2.06..2.06 rows=1 width=4)
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.06 rows=1 width=4)
                      ->  Seq Scan on t  (cost=0.00..2.04 rows=1 width=4)
                            Filter: t1 = ('hello'::text || tid::text)
-(31 rows)
+ Settings:  gp_segments_for_planner=2
+(32 rows)
 
 select * from pt where ptid in (select tid from t where t1 = 'hello' || tid);
  dist |   pt1   |  pt2  |    pt3    | ptid 
@@ -345,7 +355,7 @@ explain select * from pt where exists (select 1 from t where tid = ptid and t1 =
 -------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice3; segments: 2)  (cost=4.14..10.88 rows=3 width=31)
    ->  Hash EXISTS Join  (cost=4.14..10.88 rows=3 width=31)
-         Hash Cond: public.pt.ptid = public.t.tid
+         Hash Cond: dpe.pt.ptid = dpe.t.tid
          InitPlan  (slice4)
            ->  Aggregate  (cost=2.04..2.05 rows=1 width=32)
                  ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.04 rows=1 width=4)
@@ -353,41 +363,33 @@ explain select * from pt where exists (select 1 from t where tid = ptid and t1 =
                              Filter: t1 = ('hello'::text || tid::text)
          ->  Append  (cost=0.00..6.54 rows=27 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25436::oid = ANY ($0)
+                     One-Time Filter: 151912::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25461::oid = ANY ($0)
+                     One-Time Filter: 151937::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25487::oid = ANY ($0)
+                     One-Time Filter: 151963::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25513::oid = ANY ($0)
+                     One-Time Filter: 151989::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25539::oid = ANY ($0)
+                     One-Time Filter: 152015::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25565::oid = ANY ($0)
+                     One-Time Filter: 152041::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
          ->  Hash  (cost=2.06..2.06 rows=1 width=4)
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.06 rows=1 width=4)
                      ->  Seq Scan on t  (cost=0.00..2.04 rows=1 width=4)
                            Filter: t1 = ('hello'::text || tid::text)
-(31 rows)
+ Settings:  gp_segments_for_planner=2
+(32 rows)
 
 select * from pt where exists (select 1 from t where tid = ptid and t1 = 'hello' || tid);
  dist |   pt1   |  pt2  |    pt3    | ptid 
 ------+---------+-------+-----------+------
-    1 | hello1  | world | drop this |    1
-    7 | hello7  | world | drop this |    1
-   13 | hello13 | world | drop this |    1
-   19 | hello19 | world | drop this |    1
-   25 | hello25 | world | drop this |    1
-   31 | hello31 | world | drop this |    1
-   37 | hello37 | world | drop this |    1
-   43 | hello43 | world | drop this |    1
-   49 | hello49 | world | drop this |    1
     0 | hello0  | world | drop this |    0
     6 | hello6  | world | drop this |    0
    12 | hello12 | world | drop this |    0
@@ -397,6 +399,15 @@ select * from pt where exists (select 1 from t where tid = ptid and t1 = 'hello'
    36 | hello36 | world | drop this |    0
    42 | hello42 | world | drop this |    0
    48 | hello48 | world | drop this |    0
+    1 | hello1  | world | drop this |    1
+    7 | hello7  | world | drop this |    1
+   13 | hello13 | world | drop this |    1
+   19 | hello19 | world | drop this |    1
+   25 | hello25 | world | drop this |    1
+   31 | hello31 | world | drop this |    1
+   37 | hello37 | world | drop this |    1
+   43 | hello43 | world | drop this |    1
+   49 | hello49 | world | drop this |    1
 (18 rows)
 
 --
@@ -413,30 +424,31 @@ explain select count(*) from t, pt where tid = ptid;
    ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=8.88..8.92 rows=1 width=8)
          ->  Aggregate  (cost=8.88..8.89 rows=1 width=8)
                ->  Hash Join  (cost=2.13..8.87 rows=3 width=0)
-                     Hash Cond: public.pt.ptid = public.t.tid
+                     Hash Cond: dpe.pt.ptid = dpe.t.tid
                      ->  Append  (cost=0.00..6.54 rows=27 width=4)
                            ->  Result  (cost=0.00..1.09 rows=5 width=4)
-                                 One-Time Filter: 25436::oid = ANY ($0)
+                                 One-Time Filter: 151912::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=4)
                            ->  Result  (cost=0.00..1.09 rows=5 width=4)
-                                 One-Time Filter: 25461::oid = ANY ($0)
+                                 One-Time Filter: 151937::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=4)
                            ->  Result  (cost=0.00..1.09 rows=5 width=4)
-                                 One-Time Filter: 25487::oid = ANY ($0)
+                                 One-Time Filter: 151963::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=4)
                            ->  Result  (cost=0.00..1.09 rows=5 width=4)
-                                 One-Time Filter: 25513::oid = ANY ($0)
+                                 One-Time Filter: 151989::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=4)
                            ->  Result  (cost=0.00..1.09 rows=5 width=4)
-                                 One-Time Filter: 25539::oid = ANY ($0)
+                                 One-Time Filter: 152015::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=4)
                            ->  Result  (cost=0.00..1.09 rows=5 width=4)
-                                 One-Time Filter: 25565::oid = ANY ($0)
+                                 One-Time Filter: 152041::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=4)
                      ->  Hash  (cost=2.08..2.08 rows=2 width=4)
                            ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=4)
                                  ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=4)
-(31 rows)
+ Settings:  gp_segments_for_planner=2
+(32 rows)
 
 select count(*) from t, pt where tid = ptid;
  count 
@@ -451,40 +463,41 @@ explain select *, rank() over (order by ptid,pt1) from t, pt where tid = ptid;
                                                   QUERY PLAN                                                  
 --------------------------------------------------------------------------------------------------------------
  Window  (cost=10.98..11.13 rows=6 width=50)
-   Order By: public.pt.ptid, public.pt.pt1
+   Order By: dpe.pt.ptid, dpe.pt.pt1
    InitPlan  (slice4)
      ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
            ->  Gather Motion 2:1  (slice3; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
                  ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
    ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=8.94..9.07 rows=3 width=50)
-         Merge Key: public.pt.ptid, public.pt.pt1
+         Merge Key: dpe.pt.ptid, dpe.pt.pt1
          ->  Sort  (cost=8.94..8.95 rows=3 width=50)
-               Sort Key: public.pt.ptid, public.pt.pt1
+               Sort Key: dpe.pt.ptid, dpe.pt.pt1
                ->  Hash Join  (cost=2.13..8.87 rows=3 width=50)
-                     Hash Cond: public.pt.ptid = public.t.tid
+                     Hash Cond: dpe.pt.ptid = dpe.t.tid
                      ->  Append  (cost=0.00..6.54 rows=27 width=31)
                            ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                 One-Time Filter: 25436::oid = ANY ($0)
+                                 One-Time Filter: 151912::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                            ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                 One-Time Filter: 25461::oid = ANY ($0)
+                                 One-Time Filter: 151937::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                            ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                 One-Time Filter: 25487::oid = ANY ($0)
+                                 One-Time Filter: 151963::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                            ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                 One-Time Filter: 25513::oid = ANY ($0)
+                                 One-Time Filter: 151989::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                            ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                 One-Time Filter: 25539::oid = ANY ($0)
+                                 One-Time Filter: 152015::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                            ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                 One-Time Filter: 25565::oid = ANY ($0)
+                                 One-Time Filter: 152041::oid = ANY ($0)
                                  ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Hash  (cost=2.08..2.08 rows=2 width=19)
                            ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
                                  ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
-(34 rows)
+ Settings:  gp_segments_for_planner=2
+(35 rows)
 
 select *, rank() over (order by ptid,pt1) from t, pt where tid = ptid;
  dist | tid |   t1   | t2  | dist |   pt1   |  pt2  |    pt3    | ptid | rank 
@@ -520,62 +533,63 @@ explain select * from t, pt where tid = ptid
  Gather Motion 2:1  (slice5; segments: 2)  (cost=4.17..23.43 rows=30 width=50)
    ->  Append  (cost=4.17..23.43 rows=30 width=50)
          ->  Hash Join  (cost=4.17..10.90 rows=3 width=50)
-               Hash Cond: public.pt.ptid = public.t.tid
+               Hash Cond: dpe.pt.ptid = dpe.t.tid
                InitPlan  (slice6)
                  ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
                        ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
                              ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
                ->  Append  (cost=0.00..6.54 rows=27 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25436::oid = ANY ($1)
+                           One-Time Filter: 151912::oid = ANY ($1)
                            ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25461::oid = ANY ($1)
+                           One-Time Filter: 151937::oid = ANY ($1)
                            ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25487::oid = ANY ($1)
+                           One-Time Filter: 151963::oid = ANY ($1)
                            ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25513::oid = ANY ($1)
+                           One-Time Filter: 151989::oid = ANY ($1)
                            ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25539::oid = ANY ($1)
+                           One-Time Filter: 152015::oid = ANY ($1)
                            ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25565::oid = ANY ($1)
+                           One-Time Filter: 152041::oid = ANY ($1)
                            ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Hash  (cost=2.08..2.08 rows=2 width=19)
                      ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
                            ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
          ->  Hash Join  (cost=4.17..11.92 rows=27 width=50)
-               Hash Cond: public.pt.ptid = (public.t.tid + 2)
+               Hash Cond: dpe.pt.ptid = (dpe.t.tid + 2)
                InitPlan  (slice7)
                  ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
                        ->  Gather Motion 2:1  (slice4; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
                              ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
                ->  Append  (cost=0.00..6.54 rows=27 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25436::oid = ANY ($0)
+                           One-Time Filter: 151912::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25461::oid = ANY ($0)
+                           One-Time Filter: 151937::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25487::oid = ANY ($0)
+                           One-Time Filter: 151963::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25513::oid = ANY ($0)
+                           One-Time Filter: 151989::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25539::oid = ANY ($0)
+                           One-Time Filter: 152015::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25565::oid = ANY ($0)
+                           One-Time Filter: 152041::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Hash  (cost=2.08..2.08 rows=2 width=19)
                      ->  Broadcast Motion 2:2  (slice3; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
                            ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
-(58 rows)
+ Settings:  gp_segments_for_planner=2
+(59 rows)
 
 select * from t, pt where tid = ptid
 	  union all
@@ -636,62 +650,63 @@ explain select count(*) from
                ->  Subquery Scan foo  (cost=4.17..23.44 rows=1 width=0)
                      ->  Append  (cost=4.17..23.43 rows=30 width=50)
                            ->  Hash Join  (cost=4.17..10.90 rows=3 width=50)
-                                 Hash Cond: public.pt.ptid = public.t.tid
+                                 Hash Cond: dpe.pt.ptid = dpe.t.tid
                                  InitPlan  (slice6)
                                    ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
                                          ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
                                                ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
                                  ->  Append  (cost=0.00..6.54 rows=27 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25436::oid = ANY ($1)
+                                             One-Time Filter: 151912::oid = ANY ($1)
                                              ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25461::oid = ANY ($1)
+                                             One-Time Filter: 151937::oid = ANY ($1)
                                              ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25487::oid = ANY ($1)
+                                             One-Time Filter: 151963::oid = ANY ($1)
                                              ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25513::oid = ANY ($1)
+                                             One-Time Filter: 151989::oid = ANY ($1)
                                              ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25539::oid = ANY ($1)
+                                             One-Time Filter: 152015::oid = ANY ($1)
                                              ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25565::oid = ANY ($1)
+                                             One-Time Filter: 152041::oid = ANY ($1)
                                              ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
                                  ->  Hash  (cost=2.08..2.08 rows=2 width=19)
                                        ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
                                              ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
                            ->  Hash Join  (cost=4.17..11.92 rows=27 width=50)
-                                 Hash Cond: public.pt.ptid = (public.t.tid + 2)
+                                 Hash Cond: dpe.pt.ptid = (dpe.t.tid + 2)
                                  InitPlan  (slice7)
                                    ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
                                          ->  Gather Motion 2:1  (slice4; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
                                                ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
                                  ->  Append  (cost=0.00..6.54 rows=27 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25436::oid = ANY ($0)
+                                             One-Time Filter: 151912::oid = ANY ($0)
                                              ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25461::oid = ANY ($0)
+                                             One-Time Filter: 151937::oid = ANY ($0)
                                              ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25487::oid = ANY ($0)
+                                             One-Time Filter: 151963::oid = ANY ($0)
                                              ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25513::oid = ANY ($0)
+                                             One-Time Filter: 151989::oid = ANY ($0)
                                              ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25539::oid = ANY ($0)
+                                             One-Time Filter: 152015::oid = ANY ($0)
                                              ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                                        ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                                             One-Time Filter: 25565::oid = ANY ($0)
+                                             One-Time Filter: 152041::oid = ANY ($0)
                                              ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
                                  ->  Hash  (cost=2.08..2.08 rows=2 width=19)
                                        ->  Broadcast Motion 2:2  (slice3; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
                                              ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
-(61 rows)
+ Settings:  gp_segments_for_planner=2
+(62 rows)
 
 select count(*) from
 	( select * from t, pt where tid = ptid
@@ -710,38 +725,38 @@ set enable_hashjoin=off;
 set enable_nestloop=on;
 set enable_mergejoin=off;
 explain select * from t, pt where tid = ptid;
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice3; segments: 2)  (cost=4.12..15.52 rows=3 width=50)
    ->  Nested Loop  (cost=4.12..15.52 rows=3 width=50)
-         Join Filter: public.t.tid = public.pt.ptid
+         Join Filter: dpe.t.tid = dpe.pt.ptid
          InitPlan  (slice4)
            ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
                  ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
                        ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
          ->  Append  (cost=0.00..6.54 rows=27 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25436::oid = ANY ($0)
+                     One-Time Filter: 151912::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25461::oid = ANY ($0)
+                     One-Time Filter: 151937::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25487::oid = ANY ($0)
+                     One-Time Filter: 151963::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25513::oid = ANY ($0)
+                     One-Time Filter: 151989::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25539::oid = ANY ($0)
+                     One-Time Filter: 152015::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25565::oid = ANY ($0)
+                     One-Time Filter: 152041::oid = ANY ($0)
                      ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
          ->  Materialize  (cost=2.08..2.12 rows=2 width=19)
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
                      ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
- Settings:  enable_hashjoin=off; enable_mergejoin=off; enable_nestloop=on
+ Settings:  enable_hashjoin=off; enable_mergejoin=off; enable_nestloop=on; gp_segments_for_planner=2
 (30 rows)
 
 select * from t, pt where tid = ptid;
@@ -776,44 +791,44 @@ set enable_mergejoin=off;
 set enable_seqscan=off;
 set enable_indexscan=on;
 explain select * from t, pt where tid = ptid and pt1 = 'hello0';
-                                                           QUERY PLAN                                                           
---------------------------------------------------------------------------------------------------------------------------------
+                                                                  QUERY PLAN                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice3; segments: 2)  (cost=4.17..1205.90 rows=4 width=50)
    ->  Hash Join  (cost=4.17..1205.90 rows=4 width=50)
-         Hash Cond: public.pt.ptid = public.t.tid
+         Hash Cond: dpe.pt.ptid = dpe.t.tid
          InitPlan  (slice4)
            ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
                  ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
                        ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
          ->  Append  (cost=0.00..1201.62 rows=4 width=31)
                ->  Result  (cost=0.00..200.27 rows=1 width=31)
-                     One-Time Filter: 25436::oid = ANY ($0)
+                     One-Time Filter: 151912::oid = ANY ($0)
                      ->  Index Scan using pt1_idx_1_prt_junk_data on pt_1_prt_junk_data pt  (cost=0.00..200.27 rows=1 width=31)
                            Index Cond: pt1 = 'hello0'::text
                ->  Result  (cost=0.00..200.27 rows=1 width=31)
-                     One-Time Filter: 25461::oid = ANY ($0)
+                     One-Time Filter: 151937::oid = ANY ($0)
                      ->  Index Scan using pt1_idx_1_prt_2 on pt_1_prt_2 pt  (cost=0.00..200.27 rows=1 width=31)
                            Index Cond: pt1 = 'hello0'::text
                ->  Result  (cost=0.00..200.27 rows=1 width=31)
-                     One-Time Filter: 25487::oid = ANY ($0)
+                     One-Time Filter: 151963::oid = ANY ($0)
                      ->  Index Scan using pt1_idx_1_prt_3 on pt_1_prt_3 pt  (cost=0.00..200.27 rows=1 width=31)
                            Index Cond: pt1 = 'hello0'::text
                ->  Result  (cost=0.00..200.27 rows=1 width=31)
-                     One-Time Filter: 25513::oid = ANY ($0)
+                     One-Time Filter: 151989::oid = ANY ($0)
                      ->  Index Scan using pt1_idx_1_prt_4 on pt_1_prt_4 pt  (cost=0.00..200.27 rows=1 width=31)
                            Index Cond: pt1 = 'hello0'::text
                ->  Result  (cost=0.00..200.27 rows=1 width=31)
-                     One-Time Filter: 25539::oid = ANY ($0)
+                     One-Time Filter: 152015::oid = ANY ($0)
                      ->  Index Scan using pt1_idx_1_prt_5 on pt_1_prt_5 pt  (cost=0.00..200.27 rows=1 width=31)
                            Index Cond: pt1 = 'hello0'::text
                ->  Result  (cost=0.00..200.27 rows=1 width=31)
-                     One-Time Filter: 25565::oid = ANY ($0)
+                     One-Time Filter: 152041::oid = ANY ($0)
                      ->  Index Scan using pt1_idx_1_prt_6 on pt_1_prt_6 pt  (cost=0.00..200.27 rows=1 width=31)
                            Index Cond: pt1 = 'hello0'::text
          ->  Hash  (cost=2.08..2.08 rows=2 width=19)
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
                      ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
- Settings:  enable_hashjoin=on; enable_indexscan=on; enable_mergejoin=off; enable_nestloop=off; enable_seqscan=off
+ Settings:  enable_hashjoin=on; enable_indexscan=on; enable_mergejoin=off; enable_nestloop=off; enable_seqscan=off; gp_segments_for_planner=2
 (36 rows)
 
 select * from t, pt where tid = ptid and pt1 = 'hello0';
@@ -829,11 +844,11 @@ set enable_nestloop=on;
 set enable_indexscan=on;
 set enable_seqscan=off;
 explain select * from t, pt where tid = ptid and t1 = 'hello0';
-                                                           QUERY PLAN                                                            
----------------------------------------------------------------------------------------------------------------------------------
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice3; segments: 2)  (cost=4.10..2408.85 rows=3 width=50)
    ->  Nested Loop  (cost=4.10..2408.85 rows=3 width=50)
-         Join Filter: public.t.tid = public.pt.ptid
+         Join Filter: dpe.t.tid = dpe.pt.ptid
          InitPlan  (slice4)
            ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
                  ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
@@ -841,28 +856,28 @@ explain select * from t, pt where tid = ptid and t1 = 'hello0';
                              Filter: t1 = 'hello0'::text
          ->  Append  (cost=0.00..2402.33 rows=27 width=31)
                ->  Result  (cost=0.00..400.39 rows=5 width=31)
-                     One-Time Filter: 25436::oid = ANY ($0)
+                     One-Time Filter: 151912::oid = ANY ($0)
                      ->  Index Scan using ptid_idx_1_prt_junk_data on pt_1_prt_junk_data pt  (cost=0.00..400.39 rows=5 width=31)
                ->  Result  (cost=0.00..400.39 rows=5 width=31)
-                     One-Time Filter: 25461::oid = ANY ($0)
+                     One-Time Filter: 151937::oid = ANY ($0)
                      ->  Index Scan using ptid_idx_1_prt_2 on pt_1_prt_2 pt  (cost=0.00..400.39 rows=5 width=31)
                ->  Result  (cost=0.00..400.39 rows=5 width=31)
-                     One-Time Filter: 25487::oid = ANY ($0)
+                     One-Time Filter: 151963::oid = ANY ($0)
                      ->  Index Scan using ptid_idx_1_prt_3 on pt_1_prt_3 pt  (cost=0.00..400.39 rows=5 width=31)
                ->  Result  (cost=0.00..400.39 rows=5 width=31)
-                     One-Time Filter: 25513::oid = ANY ($0)
+                     One-Time Filter: 151989::oid = ANY ($0)
                      ->  Index Scan using ptid_idx_1_prt_4 on pt_1_prt_4 pt  (cost=0.00..400.39 rows=5 width=31)
                ->  Result  (cost=0.00..400.39 rows=5 width=31)
-                     One-Time Filter: 25539::oid = ANY ($0)
+                     One-Time Filter: 152015::oid = ANY ($0)
                      ->  Index Scan using ptid_idx_1_prt_5 on pt_1_prt_5 pt  (cost=0.00..400.39 rows=5 width=31)
                ->  Result  (cost=0.00..400.39 rows=5 width=31)
-                     One-Time Filter: 25565::oid = ANY ($0)
+                     One-Time Filter: 152041::oid = ANY ($0)
                      ->  Index Scan using ptid_idx_1_prt_6 on pt_1_prt_6 pt  (cost=0.00..400.39 rows=5 width=31)
          ->  Materialize  (cost=2.06..2.08 rows=1 width=19)
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.05 rows=1 width=19)
                      ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
                            Filter: t1 = 'hello0'::text
- Settings:  enable_hashjoin=on; enable_indexscan=on; enable_mergejoin=off; enable_nestloop=on; enable_seqscan=off
+ Settings:  enable_hashjoin=on; enable_indexscan=on; enable_mergejoin=off; enable_nestloop=on; enable_seqscan=off; gp_segments_for_planner=2
 (32 rows)
 
 select * from t, pt where tid = ptid and t1 = 'hello0';
@@ -885,11 +900,11 @@ select * from t, pt where tid = ptid and t1 = 'hello0';
 set enable_indexscan=off;
 set enable_seqscan=on;
 explain select * from t, pt where t1 = pt1;
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice2; segments: 2)  (cost=2.13..8.87 rows=3 width=50)
    ->  Hash Join  (cost=2.13..8.87 rows=3 width=50)
-         Hash Cond: public.pt.pt1 = t.t1
+         Hash Cond: dpe.pt.pt1 = t.t1
          ->  Append  (cost=0.00..6.54 rows=27 width=31)
                ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
@@ -900,49 +915,49 @@ explain select * from t, pt where t1 = pt1;
          ->  Hash  (cost=2.08..2.08 rows=2 width=19)
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
                      ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
- Settings:  enable_hashjoin=on; enable_indexscan=off; enable_mergejoin=off; enable_nestloop=on; enable_seqscan=on
+ Settings:  enable_hashjoin=on; enable_indexscan=off; enable_mergejoin=off; enable_nestloop=on; enable_seqscan=on; gp_segments_for_planner=2
 (14 rows)
 
 select * from t, pt where t1 = pt1;
  dist | tid |   t1   | t2  | dist |  pt1   |  pt2  |    pt3    | ptid 
 ------+-----+--------+-----+------+--------+-------+-----------+------
-    1 |   1 | hello1 | bar |    1 | hello1 | world | drop this |    1
     0 |   0 | hello0 | bar |    0 | hello0 | world | drop this |    0
+    1 |   1 | hello1 | bar |    1 | hello1 | world | drop this |    1
 (2 rows)
 
 --
 -- cascading joins
 --
 explain select * from t, t1, pt where t1.t2 = t.t2 and t1.tid = ptid and t.t1 = 'hello0';
-                                                    QUERY PLAN                                                    
-------------------------------------------------------------------------------------------------------------------
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice4; segments: 2)  (cost=6.25..13.08 rows=3 width=69)
    ->  Hash Join  (cost=6.25..13.08 rows=3 width=69)
-         Hash Cond: public.t1.t2 = public.t.t2
+         Hash Cond: dpe.t1.t2 = dpe.t.t2
          InitPlan  (slice5)
            ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
                  ->  Gather Motion 2:1  (slice3; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
                        ->  Seq Scan on t1  (cost=0.00..2.02 rows=1 width=19)
          ->  Hash Join  (cost=2.13..8.87 rows=3 width=50)
-               Hash Cond: public.pt.ptid = public.t1.tid
+               Hash Cond: dpe.pt.ptid = dpe.t1.tid
                ->  Append  (cost=0.00..6.54 rows=27 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25436::oid = ANY ($0)
+                           One-Time Filter: 151912::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25461::oid = ANY ($0)
+                           One-Time Filter: 151937::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25487::oid = ANY ($0)
+                           One-Time Filter: 151963::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25513::oid = ANY ($0)
+                           One-Time Filter: 151989::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25539::oid = ANY ($0)
+                           One-Time Filter: 152015::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                      ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                           One-Time Filter: 25565::oid = ANY ($0)
+                           One-Time Filter: 152041::oid = ANY ($0)
                            ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
                ->  Hash  (cost=2.08..2.08 rows=2 width=19)
                      ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
@@ -951,21 +966,12 @@ explain select * from t, t1, pt where t1.t2 = t.t2 and t1.tid = ptid and t.t1 = 
                ->  Broadcast Motion 2:2  (slice2; segments: 2)  (cost=0.00..2.05 rows=1 width=19)
                      ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
                            Filter: t1 = 'hello0'::text
- Settings:  enable_hashjoin=on; enable_indexscan=off; enable_mergejoin=off; enable_nestloop=on; enable_seqscan=on
+ Settings:  enable_hashjoin=on; enable_indexscan=off; enable_mergejoin=off; enable_nestloop=on; enable_seqscan=on; gp_segments_for_planner=2
 (36 rows)
 
 select * from t, t1, pt where t1.t2 = t.t2 and t1.tid = ptid and t.t1 = 'hello0';
  dist | tid |   t1   | t2  | dist | tid |   t1   | t2  | dist |   pt1   |  pt2  |    pt3    | ptid 
 ------+-----+--------+-----+------+-----+--------+-----+------+---------+-------+-----------+------
-    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |    1 | hello1  | world | drop this |    1
-    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |    7 | hello7  | world | drop this |    1
-    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   13 | hello13 | world | drop this |    1
-    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   19 | hello19 | world | drop this |    1
-    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   25 | hello25 | world | drop this |    1
-    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   31 | hello31 | world | drop this |    1
-    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   37 | hello37 | world | drop this |    1
-    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   43 | hello43 | world | drop this |    1
-    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   49 | hello49 | world | drop this |    1
     0 |   0 | hello0 | bar |    0 |   0 | hello0 | bar |    0 | hello0  | world | drop this |    0
     0 |   0 | hello0 | bar |    0 |   0 | hello0 | bar |    6 | hello6  | world | drop this |    0
     0 |   0 | hello0 | bar |    0 |   0 | hello0 | bar |   12 | hello12 | world | drop this |    0
@@ -975,6 +981,15 @@ select * from t, t1, pt where t1.t2 = t.t2 and t1.tid = ptid and t.t1 = 'hello0'
     0 |   0 | hello0 | bar |    0 |   0 | hello0 | bar |   36 | hello36 | world | drop this |    0
     0 |   0 | hello0 | bar |    0 |   0 | hello0 | bar |   42 | hello42 | world | drop this |    0
     0 |   0 | hello0 | bar |    0 |   0 | hello0 | bar |   48 | hello48 | world | drop this |    0
+    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |    1 | hello1  | world | drop this |    1
+    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |    7 | hello7  | world | drop this |    1
+    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   13 | hello13 | world | drop this |    1
+    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   19 | hello19 | world | drop this |    1
+    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   25 | hello25 | world | drop this |    1
+    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   31 | hello31 | world | drop this |    1
+    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   37 | hello37 | world | drop this |    1
+    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   43 | hello43 | world | drop this |    1
+    0 |   0 | hello0 | bar |    1 |   1 | hello1 | bar |   49 | hello49 | world | drop this |    1
 (18 rows)
 
 --
@@ -984,58 +999,58 @@ explain analyze select * from t, pt where tid = ptid;
                                                                            QUERY PLAN                                                                           
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------
  Gather Motion 2:1  (slice3; segments: 2)  (cost=4.17..10.90 rows=3 width=50)
-   Rows out:  18 rows at destination with 19 ms to first row, 32 ms to end, start offset by 7.897 ms.
+   Rows out:  18 rows at destination with 20 ms to first row, 44 ms to end, start offset by 6.380 ms.
    ->  Hash Join  (cost=4.17..10.90 rows=3 width=50)
-         Hash Cond: public.pt.ptid = public.t.tid
-         Rows out:  Avg 9.0 rows x 2 workers.  Max 9 rows (seg0) with 16 ms to first row, 23 ms to end, start offset by 17 ms.
+         Hash Cond: dpe.pt.ptid = dpe.t.tid
+         Rows out:  Avg 9.0 rows x 2 workers.  Max 9 rows (seg0) with 7.522 ms to first row, 14 ms to end, start offset by 12 ms.
          Executor memory:  1K bytes avg, 1K bytes max (seg0).
          Work_mem used:  1K bytes avg, 1K bytes max (seg0).
          (seg0)   Hash chain length 1.0 avg, 1 max, using 2 of 524341 buckets.
          InitPlan  (slice4)
            ->  Aggregate  (cost=2.03..2.04 rows=1 width=32)
-                 Rows out:  0 rows (seg0) with 2.218 ms to end, start offset by 1.280 ms.
+                 Rows out:  0 rows (seg0) with 2.295 ms to end, start offset by 1.231 ms.
                  ->  Gather Motion 2:1  (slice2; segments: 2)  (cost=0.00..2.02 rows=1 width=19)
-                       Rows out:  0 rows at destination (seg0) with 1.133 ms to first row, 1.792 ms to end, start offset by 1.281 ms.
+                       Rows out:  0 rows at destination (seg0) with 1.293 ms to first row, 1.855 ms to end, start offset by 1.232 ms.
                        ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
-                             Rows out:  Avg 1.0 rows x 2 workers.  Max 1 rows (seg0) with 0.024 ms to first row, 0.027 ms to end, start offset by 2.288 ms.
+                             Rows out:  Avg 1.0 rows x 2 workers.  Max 1 rows (seg0) with 0.016 ms to first row, 0.019 ms to end, start offset by 3.335 ms.
          ->  Append  (cost=0.00..6.54 rows=27 width=31)
-               Rows out:  Avg 9.0 rows x 2 workers.  Max 9 rows (seg0) with 0.074 ms to first row, 0.108 ms to end, start offset by 32 ms.
+               Rows out:  Avg 9.0 rows x 2 workers.  Max 9 rows (seg0) with 0.078 ms to first row, 0.119 ms to end, start offset by 19 ms.
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25436::oid = ANY ($0)
+                     One-Time Filter: 151912::oid = ANY ($0)
                      Rows out:  0 rows (seg0) with 0 ms to end.
                      ->  Seq Scan on pt_1_prt_junk_data pt  (cost=0.00..1.09 rows=5 width=31)
                            Rows out:  0 rows (seg0) with 0 ms to end.
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25461::oid = ANY ($0)
-                     Rows out:  9 rows (seg1) with 0.036 ms to first row, 0.050 ms to end, start offset by 23 ms.
+                     One-Time Filter: 151937::oid = ANY ($0)
+                     Rows out:  9 rows (seg1) with 0.104 ms to first row, 0.119 ms to end, start offset by 36 ms.
                      ->  Seq Scan on pt_1_prt_2 pt  (cost=0.00..1.09 rows=5 width=31)
-                           Rows out:  9 rows (seg1) with 0.027 ms to first row, 0.033 ms to end, start offset by 23 ms.
+                           Rows out:  9 rows (seg1) with 0.079 ms to first row, 0.085 ms to end, start offset by 36 ms.
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25487::oid = ANY ($0)
-                     Rows out:  9 rows (seg0) with 0.029 ms to first row, 0.041 ms to end, start offset by 32 ms.
+                     One-Time Filter: 151963::oid = ANY ($0)
+                     Rows out:  9 rows (seg0) with 0.029 ms to first row, 0.049 ms to end, start offset by 19 ms.
                      ->  Seq Scan on pt_1_prt_3 pt  (cost=0.00..1.09 rows=5 width=31)
-                           Rows out:  9 rows (seg0) with 0.021 ms to first row, 0.027 ms to end, start offset by 32 ms.
+                           Rows out:  9 rows (seg0) with 0.019 ms to first row, 0.027 ms to end, start offset by 19 ms.
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25513::oid = ANY ($0)
+                     One-Time Filter: 151989::oid = ANY ($0)
                      Rows out:  0 rows (seg0) with 0 ms to end.
                      ->  Seq Scan on pt_1_prt_4 pt  (cost=0.00..1.09 rows=5 width=31)
                            Rows out:  0 rows (seg0) with 0 ms to end.
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25539::oid = ANY ($0)
+                     One-Time Filter: 152015::oid = ANY ($0)
                      Rows out:  0 rows (seg0) with 0 ms to end.
                      ->  Seq Scan on pt_1_prt_5 pt  (cost=0.00..1.09 rows=5 width=31)
                            Rows out:  0 rows (seg0) with 0 ms to end.
                ->  Result  (cost=0.00..1.09 rows=5 width=31)
-                     One-Time Filter: 25565::oid = ANY ($0)
+                     One-Time Filter: 152041::oid = ANY ($0)
                      Rows out:  0 rows (seg0) with 0 ms to end.
                      ->  Seq Scan on pt_1_prt_6 pt  (cost=0.00..1.09 rows=5 width=31)
                            Rows out:  0 rows (seg0) with 0 ms to end.
          ->  Hash  (cost=2.08..2.08 rows=2 width=19)
-               Rows in:  Avg 2.0 rows x 2 workers.  Max 2 rows (seg0) with 0.050 ms to end, start offset by 32 ms.
+               Rows in:  Avg 2.0 rows x 2 workers.  Max 2 rows (seg0) with 0.050 ms to end, start offset by 19 ms.
                ->  Broadcast Motion 2:2  (slice1; segments: 2)  (cost=0.00..2.08 rows=2 width=19)
-                     Rows out:  Avg 2.0 rows x 2 workers at destination.  Max 2 rows (seg0) with 0.027 ms to first row, 0.031 ms to end, start offset by 32 ms.
+                     Rows out:  Avg 2.0 rows x 2 workers at destination.  Max 2 rows (seg0) with 0.028 ms to first row, 0.032 ms to end, start offset by 19 ms.
                      ->  Seq Scan on t  (cost=0.00..2.02 rows=1 width=19)
-                           Rows out:  Avg 1.0 rows x 2 workers.  Max 1 rows (seg0) with 0.118 ms to first row, 0.121 ms to end, start offset by 19 ms.
+                           Rows out:  Avg 1.0 rows x 2 workers.  Max 1 rows (seg0) with 0.059 ms to first row, 0.062 ms to end, start offset by 11 ms.
  Slice statistics:
    (slice0)    Executor memory: 482K bytes.
    (slice1)    Executor memory: 435K bytes avg x 2 workers, 435K bytes max (seg0).
@@ -1044,7 +1059,7 @@ explain analyze select * from t, pt where tid = ptid;
    (slice4)    Executor memory: 482K bytes.
  Statement statistics:
    Memory used: 128000K bytes
- Settings:  enable_hashjoin=on; enable_indexscan=off; enable_mergejoin=off; enable_nestloop=on; enable_seqscan=on
- Total runtime: 40.675 ms
+ Settings:  enable_hashjoin=on; enable_indexscan=off; enable_mergejoin=off; enable_nestloop=on; enable_seqscan=on; gp_segments_for_planner=2
+ Total runtime: 50.313 ms
 (63 rows)
 

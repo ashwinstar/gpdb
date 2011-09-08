@@ -1,3 +1,8 @@
+drop schema if exists dpe cascade;
+create schema dpe;
+set search_path='dpe';
+set gp_segments_for_planner=2;
+
 drop table if exists pt;
 drop table if exists pt1;
 drop table if exists t;
