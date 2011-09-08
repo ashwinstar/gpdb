@@ -1617,12 +1617,13 @@ explain SELECT ARRAY(SELECT a FROM multiset_5( TABLE ( SELECT a, b from example)
  Result  (cost=2.42..2.43 rows=1 width=0)
    InitPlan  (slice2)
      ->  Gather Motion 2:1  (slice1; segments: 2)  (cost=2.39..2.42 rows=5 width=4)
+           Merge Key: a
            ->  Sort  (cost=2.39..2.42 rows=5 width=4)
                  Sort Key: multiset_5.a
                  ->  Table Function Scan on multiset_5  (cost=0.00..2.23 rows=5 width=4)
                        ->  Seq Scan on example  (cost=0.00..2.10 rows=5 width=16)
  Settings:  gp_segments_for_planner=8
-(8 rows)
+(9 rows)
 
 explain SELECT ARRAY(SELECT a FROM multiset_5( TABLE ( SELECT a, b from example order by a)));
                                      QUERY PLAN                                     

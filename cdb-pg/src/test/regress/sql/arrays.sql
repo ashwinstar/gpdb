@@ -173,7 +173,9 @@ SELECT t.f[1][3][1] AS "131", t.f[2][2][1] AS "221" FROM (
 ) AS t;
 SELECT ARRAY[[[[[['hello'],['world']]]]]];
 SELECT ARRAY[ARRAY['hello'],ARRAY['world']];
--- SELECT ARRAY(select f2 from arrtest_f order by f2) AS "ARRAY" ORDER BY 1; -- MPP-11853
+SELECT ARRAY(select f2 from arrtest_f order by f2) AS "ARRAY" ORDER BY 1; -- MPP-11853
+-- check no merge on Motion
+EXPLAIN SELECT ARRAY(select f2 from arrtest_f) AS "ARRAY";
 
 -- with nulls
 SELECT '{1,null,3}'::int[];

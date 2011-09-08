@@ -604,8 +604,10 @@ void ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 		/*
 		 * Corresponds to an initplan whose results need to end up at the QD.
 		 * Request focus flow.
+		 * Note ARRAY() subquery needs its order preserved, per spec. Otherwise,
+		 * initplan doesn't care the query result order even if it is specified.
 		 */
-		focusPlan(newPlan, false, false);
+		focusPlan(newPlan, spExpr->subLinkType == ARRAY_SUBLINK, false);
 	}
 	else if (spExpr->is_multirow
 			&& spExpr->parParam == NIL)
@@ -904,9 +906,6 @@ is_plan_node(Node *node)
  *
  * plan		   the plan to annotate
  *
- * live		   if false, don't actually make any change to the flow
- *			   specifications; just verify that they can be done.
- *
  * stable	   if true, the result plan must present the result in the
  *			   order specified in the flow (which, presumably, matches
  *			   the input order.
@@ -918,8 +917,7 @@ is_plan_node(Node *node)
  * Remaining arguments, if any, determined by the requirements of the specific
  * function.
  *
- * The result is true if the requested annotation could be made (or was made
- * in case live == true).  Else, false.
+ * The result is true if the requested annotation could be made. Else, false.
  */
 
 /*
