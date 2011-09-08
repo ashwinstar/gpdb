@@ -2641,9 +2641,7 @@ initWindowFuncState(WindowState *wstate, Window *node)
 			if (aclresult != ACLCHECK_OK)
 				aclcheck_error(aclresult, ACL_KIND_PROC,
 							   get_func_name(windowfn_oid));
-			
-			ReleaseSysCache(win_tuple);
-			
+
 			funcstate->windowfn_oid = windowfn_oid;
 			funcstate->allowframe = winform->winallowframe;
 			
@@ -2712,6 +2710,8 @@ initWindowFuncState(WindowState *wstate, Window *node)
 
 			funcstate->win_value = 0;
 			funcstate->win_value_is_null = true;
+
+			ReleaseSysCache(win_tuple);
 		}
 		else
 		{
@@ -5247,14 +5247,13 @@ init_bound_frame_edge_expr(WindowFrameEdge *edge, TupleDesc desc,
 	}
 	else
 		opr = ((Form_pg_operator) GETSTRUCT(tup));
-	
-	ReleaseSysCache(tup);
 
 	exprrestype = opr->oprresult;
 	expr = make_opclause(HeapTupleGetOid(tup), exprrestype,
 						 false, varexpr, 
 						 (Expr *)edge->val);
 	((OpExpr *)expr)->opfuncid = opr->oprcode;
+	ReleaseSysCache(tup);
 
 	/*
 	 * If the frame edge operation returns a different type
@@ -5497,12 +5496,13 @@ init_frames(WindowState *wstate)
 							   				 0, 0, 0);
 			Insist(HeapTupleIsValid(optup));
 			op = (Form_pg_operator)GETSTRUCT(optup);
-			ReleaseSysCache(optup);
 
 			if (strcmp(NameStr(op->oprname), "<") == 0)
 				level_state->col_sort_asc[col_no] = true;
 			else
 				level_state->col_sort_asc[col_no] = false;
+
+			ReleaseSysCache(optup);
 		}
 
 		/* now, initialize the actual frame */
@@ -5704,12 +5704,12 @@ get_ltfuncs(TupleDesc tupdesc, int numCols, AttrNumber *matchColIdx)
 		AttrNumber	att = matchColIdx[i];
 		Oid			typid = tupdesc->attrs[att - 1]->atttypid;
 		Oid			lt_function;
-    	Operator    optup;
+		Operator    optup;
 
-	    optup = ordering_oper(typid, false);
-	    lt_function = oprfuncid(optup);
-		ReleaseSysCache(optup);
+		optup = ordering_oper(typid, false);
+		lt_function = oprfuncid(optup);
 		fmgr_info(lt_function, &ltfunctions[i]);
+		ReleaseSysCache(optup);
 	}
 
 	return ltfunctions;
