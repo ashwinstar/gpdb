@@ -228,3 +228,18 @@ create ordered aggregate @gpupgradeschemaname@.xmlagg(@gpupgradeschemaname@.xml)
 );
 COMMENT ON AGGREGATE @gpupgradeschemaname@.xmlagg(@gpupgradeschemaname@.xml) IS 'concatenate XML values';
 
+--
+-- Dynamic partition elimination aggregate and its functions
+--
+
+CREATE FUNCTION @gpupgradeschemaname@.pg_partition_oid_transfn(internal, oid, record) RETURNS internal LANGUAGE internal IMMUTABLE AS 'pg_partition_oid_transfn' WITH (OID=2911);
+COMMENT ON FUNCTION @gpupgradeschemaname@.pg_partition_oid_transfn(internal, oid, record) IS 'pg_partition_oid transition function';
+CREATE FUNCTION @gpupgradeschemaname@.pg_partition_oid_finalfn(internal) RETURNS _oid LANGUAGE internal IMMUTABLE AS 'pg_partition_oid_finalfn' WITH (OID=2912);
+COMMENT ON FUNCTION @gpupgradeschemaname@.pg_partition_oid_finalfn(internal) IS 'pg_partition_oid final function';
+
+CREATE AGGREGATE @gpupgradeschemaname@.pg_partition_oid(oid, record) (
+	stype		= internal,
+	sfunc		= pg_partition_oid_transfn,
+	finalfunc	= pg_partition_oid_finalfn,
+	oid			= 2913
+);

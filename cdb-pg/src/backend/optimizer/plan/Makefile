@@ -21,6 +21,7 @@ OBJS = createplan.o \
 	   planshare.o \
 	   planwindow.o \
 	   setrefs.o \
-	   subselect.o
+	   subselect.o \
+	   planpartition.o
 
 include $(top_srcdir)/src/backend/common.mk

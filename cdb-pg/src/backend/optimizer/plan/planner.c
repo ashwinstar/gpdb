@@ -33,6 +33,7 @@
 #include "optimizer/planner.h"
 #include "optimizer/prep.h"
 #include "optimizer/subselect.h"
+#include "optimizer/planpartition.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
 #ifdef OPTIMIZER_DEBUG
@@ -765,6 +766,15 @@ subquery_planner(PlannerGlobal *glob,
 		plan = inheritance_planner(root);
 	else
 		plan = grouping_planner(root, tuple_fraction);
+
+	if (Gp_role == GP_ROLE_DISPATCH
+			&& root->config->gp_dynamic_partition_pruning)
+	{
+		/**
+		 * Apply transformation for dynamic partition elimination.
+		 */
+		plan = apply_dyn_partition_transforms(root, plan);
+	}
 
 	/* 
 	 * Deal with explicit redistribution requirements for TableValueExpr 

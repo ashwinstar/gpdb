@@ -1454,7 +1454,7 @@ SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 	get_first_col_type(plan, &node->firstColType, &node->firstColTypmod);
     node->qDispSliceId = 0;             /*CDB*/
 	node->plan_id = list_length(root->glob->subplans);
-
+	node->is_initplan = true;
 	root->init_plans = lappend(root->init_plans, node);
 
 	/*

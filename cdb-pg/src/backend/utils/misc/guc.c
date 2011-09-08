@@ -569,6 +569,7 @@ bool		gp_eager_one_phase_agg = FALSE;
 bool		gp_eager_two_phase_agg = FALSE;
 bool        gp_enable_groupext_distinct_pruning = true;
 bool        gp_enable_groupext_distinct_gather = true;
+bool		gp_dynamic_partition_pruning = true;
 
 /*
  * Displayable names for context types (enum GucContext)
@@ -3017,7 +3018,14 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_resqueue_print_operator_memory_limits,
 		false, NULL, NULL
 	},
-
+	{
+		{"gp_dynamic_partition_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("This guc enables plans that can dynamically eliminate scanning of partitions."),
+			NULL
+		},
+		&gp_dynamic_partition_pruning,
+		true, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{

@@ -2591,6 +2591,12 @@
 
  CREATE FUNCTION float8_corr(_float8) RETURNS float8 LANGUAGE internal IMMUTABLE STRICT AS 'float8_corr' WITH (OID=2817, DESCRIPTION="CORR(double, double) aggregate final function");
 
+ CREATE FUNCTION pg_partition_oid_transfn(internal, oid, record) RETURNS internal LANGUAGE internal IMMUTABLE AS 'pg_partition_oid_transfn' WITH (OID=2911, DESCRIPTION="pg_partition_oid transition function");
+
+ CREATE FUNCTION pg_partition_oid_finalfn(internal) RETURNS _oid LANGUAGE internal IMMUTABLE AS 'pg_partition_oid_finalfn' WITH (OID=2912, DESCRIPTION="pg_partition_oid final function");
+
+ CREATE FUNCTION pg_partition_oid(oid, record) RETURNS _oid LANGUAGE internal IMMUTABLE AS 'aggregate_dummy' WITH (OID=2913, proisagg="t");
+
 -- To ASCII conversion 
  CREATE FUNCTION to_ascii(text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'to_ascii_default' WITH (OID=1845, DESCRIPTION="encode text from DB encoding to ASCII text");
 

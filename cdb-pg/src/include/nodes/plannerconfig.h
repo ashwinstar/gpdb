@@ -48,6 +48,7 @@ typedef struct PlannerConfig
 	bool		gp_enable_motion_mk_sort;
 
 	bool		gp_enable_direct_dispatch;
+	bool		gp_dynamic_partition_pruning;
 
 	bool		is_initplan; /* Indicate whether this plan is an InitPlan */
 

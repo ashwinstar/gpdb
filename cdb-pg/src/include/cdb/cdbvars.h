@@ -890,6 +890,11 @@ extern int gp_sort_max_distinct;
 
 extern bool	gp_enable_hash_partitioned_tables;
 
+/**
+ * Enable dynamic pruning of partitions based on join condition.
+ */
+extern bool gp_dynamic_partition_pruning;
+
 /* turn SQL/MED functionality on */
 
 extern bool	gp_foreign_data_access;
