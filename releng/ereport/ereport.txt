@@ -2010,10 +2010,10 @@ xaaj: xlogutils:00000500:  elog(ERROR, "Empty primary filespace directory locati
 xaaj: xlogutils:00000540:  elog(ERROR, "could not create database directory \"%s\": %m", 
 xaaj: xlogutils:00000541:  dbPath); 
 aaaaa GP_IGNORE: baaj: bootparse - ./backend/bootstrap/bootparse.c
-baaj: bootparse:00001808:  elog(ERROR, "incorrect number of columns in row (expected %d, got %d)", 
-baaj: bootparse:00001809:  numattr, num_columns_read); 
-baaj: bootparse:00001811:  elog(FATAL, "relation not open"); 
-baaj: bootparse:00001930:  elog(FATAL, "too many columns"); 
+baaj: bootparse:00001813:  elog(ERROR, "incorrect number of columns in row (expected %d, got %d)", 
+baaj: bootparse:00001814:  numattr, num_columns_read); 
+baaj: bootparse:00001816:  elog(FATAL, "relation not open"); 
+baaj: bootparse:00001935:  elog(FATAL, "too many columns"); 
 aaaaa GP_IGNORE: aaag: aclchk - ./backend/catalog/aclchk.c
 aaag: aclchk:00000137:  ereport(ERROR, 
 aaag: aclchk:00000138:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
@@ -2224,11 +2224,11 @@ caah: catalog:00000493:  elog(ERROR, "FormRelationPath formatting error");
 caah: catalog:00000500:  elog(ERROR, "FormRelationPath formatting result length %d exceeded the maximum length %d", 
 caah: catalog:00000501:  snprintfResult, 
 caah: catalog:00000502:  targetMaxLen); 
-caah: catalog:00000928:  elog(WARNING, "generating possibly-non-unique OID for \"%s\"", 
-caah: catalog:00000929:  RelationGetRelationName(relation)); 
-caah: catalog:00001136:  elog(ERROR, "relfilenode %d already in use in \"pg_class\"", 
-caah: catalog:00001137:  newOid); 
-caah: catalog:00001163:  elog(ERROR, "oid %d already in use", newOid); 
+caah: catalog:00000930:  elog(WARNING, "generating possibly-non-unique OID for \"%s\"", 
+caah: catalog:00000931:  RelationGetRelationName(relation)); 
+caah: catalog:00001138:  elog(ERROR, "relfilenode %d already in use in \"pg_class\"", 
+caah: catalog:00001139:  newOid); 
+caah: catalog:00001165:  elog(ERROR, "oid %d already in use", newOid); 
 aaaaa GP_IGNORE: daba: dependency - ./backend/catalog/dependency.c
 daba: dependency:00000188:  ereport(ERROR, 
 daba: dependency:00000189:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
@@ -2346,134 +2346,134 @@ haae: heap:00000267:  errmsg("permission denied to create \"%s.%s\"",
 haae: heap:00000268:  get_namespace_name(relnamespace), relname), 
 haae: heap:00000269:  errdetail("System catalog modifications are currently disallowed."), 
 haae: heap:00000270:  errOmitLocation(true))); 
-haae: heap:00000443:  ereport(ERROR, 
-haae: heap:00000444:  (errcode(ERRCODE_TOO_MANY_COLUMNS), 
-haae: heap:00000445:  errmsg("tables can have at most %d columns", 
-haae: heap:00000446:  MaxHeapAttributeNumber))); 
-haae: heap:00000460:  ereport(ERROR, 
-haae: heap:00000461:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-haae: heap:00000462:  errmsg("column name \"%s\" conflicts with a system column name", 
-haae: heap:00000463:  NameStr(tupdesc->attrs[i]->attname)))); 
-haae: heap:00000476:  ereport(ERROR, 
-haae: heap:00000477:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
-haae: heap:00000478:  errmsg("column name \"%s\" is duplicated", 
-haae: heap:00000479:  NameStr(tupdesc->attrs[j]->attname)), 
-haae: heap:00000480:  errOmitLocation(true))); 
-haae: heap:00000516:  ereport(WARNING, 
-haae: heap:00000517:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-haae: heap:00000518:  errmsg("column \"%s\" has type \"unknown\"", attname), 
-haae: heap:00000519:  errdetail("Proceeding with relation creation anyway."), 
-haae: heap:00000520:  errOmitLocation(true))); 
-haae: heap:00000525:  ereport(ERROR, 
-haae: heap:00000526:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
-haae: heap:00000527:  errmsg("column \"%s\" has pseudo-type %s", 
-haae: heap:00000528:  attname, format_type_be(atttypid)), 
-haae: heap:00000529:  errOmitLocation(true))); 
-haae: heap:00001317:  ereport(ERROR, 
-haae: heap:00001318:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-haae: heap:00001319:  errmsg( 
-haae: heap:00001320:  "OIDS=TRUE is not allowed on tables that " 
-haae: heap:00001321:  "use column-oriented storage. Use OIDS=FALSE" 
-haae: heap:00001322:  ), 
-haae: heap:00001323:  errOmitLocation(true))); 
-haae: heap:00001325:  ereport(NOTICE, 
-haae: heap:00001326:  (errmsg( 
-haae: heap:00001327:  "OIDS=TRUE is not recommended for user-created " 
-haae: heap:00001328:  "tables. Use OIDS=FALSE to prevent wrap-around " 
-haae: heap:00001329:  "of the OID counter" 
-haae: heap:00001330:  ), 
-haae: heap:00001331:  errOmitLocation(true))); 
-haae: heap:00001337:  ereport(ERROR, 
-haae: heap:00001338:  (errcode(ERRCODE_DUPLICATE_TABLE), 
-haae: heap:00001339:  errmsg("relation \"%s\" already exists", relname), 
-haae: heap:00001340:  errOmitLocation(true))); 
-haae: heap:00001738:  elog(ERROR, "cache lookup failed for relation %u", relid); 
-haae: heap:00001803:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
-haae: heap:00001804:  RelationGetRelid(relation), 
-haae: heap:00001805:  relation->rd_rel->relfilenode, 
-haae: heap:00001806:  segmentFileNum); 
-haae: heap:00001848:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00001849:  attnum, relid); 
-haae: heap:00001957:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
-haae: heap:00001958:  relid, attnum); 
-haae: heap:00001994:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
-haae: heap:00002016:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002017:  myattnum, myrelid); 
-haae: heap:00002318:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
-haae: heap:00002319:  attnum, RelationGetRelid(rel)); 
-haae: heap:00002599:  ereport(ERROR, 
-haae: heap:00002600:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002601:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
-haae: heap:00002602:  ccname, RelationGetRelationName(rel)), 
-haae: heap:00002603:  errOmitLocation(true))); 
-haae: heap:00002610:  ereport(ERROR, 
-haae: heap:00002611:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-haae: heap:00002612:  errmsg("check constraint \"%s\" already exists", 
-haae: heap:00002613:  ccname), 
-haae: heap:00002614:  errOmitLocation(true))); 
-haae: heap:00002703:  ereport(ERROR, 
-haae: heap:00002704:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002705:  errmsg("only table \"%s\" can be referenced in check constraint", 
-haae: heap:00002706:  relname), errOmitLocation(true))); 
-haae: heap:00002711:  ereport(ERROR, 
-haae: heap:00002712:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002713:  errmsg("cannot use subquery in check constraint"), 
-haae: heap:00002714:  errOmitLocation(true))); 
-haae: heap:00002716:  ereport(ERROR, 
-haae: heap:00002717:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002718:  errmsg("cannot use aggregate function in check constraint"), 
-haae: heap:00002719:  errOmitLocation(true))); 
-haae: heap:00002721:  ereport(ERROR, 
-haae: heap:00002722:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002723:  errmsg("cannot use window function in check constraint"), 
-haae: heap:00002724:  errOmitLocation(true))); 
-haae: heap:00002752:  elog(ERROR, "cache lookup failed for relation %u", 
-haae: heap:00002753:  RelationGetRelid(rel)); 
-haae: heap:00002807:  ereport(ERROR, 
-haae: heap:00002808:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
-haae: heap:00002809:  errmsg("cannot use column references in default expression"))); 
-haae: heap:00002815:  ereport(ERROR, 
-haae: heap:00002816:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002817:  errmsg("default expression must not return a set"), 
-haae: heap:00002818:  errOmitLocation(true))); 
-haae: heap:00002824:  ereport(ERROR, 
-haae: heap:00002825:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00002826:  errmsg("cannot use subquery in default expression"), 
-haae: heap:00002827:  errOmitLocation(true))); 
-haae: heap:00002829:  ereport(ERROR, 
-haae: heap:00002830:  (errcode(ERRCODE_GROUPING_ERROR), 
-haae: heap:00002831:  errmsg("cannot use aggregate function in default expression"), 
-haae: heap:00002832:  errOmitLocation(true))); 
-haae: heap:00002834:  ereport(ERROR, 
-haae: heap:00002835:  (errcode(ERRCODE_SYNTAX_ERROR), 
-haae: heap:00002836:  errmsg("cannot use window function in default expression"), 
-haae: heap:00002837:  errOmitLocation(true))); 
-haae: heap:00002853:  ereport(ERROR, 
-haae: heap:00002854:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-haae: heap:00002855:  errmsg("column \"%s\" is of type %s" 
-haae: heap:00002856:  " but default expression is of type %s", 
-haae: heap:00002857:  attname, 
-haae: heap:00002858:  format_type_be(atttypid), 
-haae: heap:00002859:  format_type_be(type_id)), 
-haae: heap:00002860:  errhint("You will need to rewrite or cast the expression."), 
-haae: heap:00002861:  errOmitLocation(true))); 
-haae: heap:00003168:  ereport(ERROR, 
-haae: heap:00003169:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003170:  errmsg("unsupported ON COMMIT and foreign key combination"), 
-haae: heap:00003171:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
-haae: heap:00003172:  relname2, relname), 
-haae: heap:00003173:  errOmitLocation(true))); 
-haae: heap:00003175:  ereport(ERROR, 
-haae: heap:00003176:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-haae: heap:00003177:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
-haae: heap:00003178:  errdetail("Table \"%s\" references \"%s\".", 
-haae: heap:00003179:  relname2, relname), 
-haae: heap:00003180:  errhint("Truncate table \"%s\" at the same time, " 
-haae: heap:00003181:  "or use TRUNCATE ... CASCADE.", 
-haae: heap:00003182:  relname2), 
-haae: heap:00003183:  errOmitLocation(true))); 
-haae: heap:00003304:  elog(ERROR, "could not find tuple for relation %u", 
-haae: heap:00003305:  RelationGetRelid(relation)); 
+haae: heap:00000471:  ereport(ERROR, 
+haae: heap:00000472:  (errcode(ERRCODE_TOO_MANY_COLUMNS), 
+haae: heap:00000473:  errmsg("tables can have at most %d columns", 
+haae: heap:00000474:  MaxHeapAttributeNumber))); 
+haae: heap:00000488:  ereport(ERROR, 
+haae: heap:00000489:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+haae: heap:00000490:  errmsg("column name \"%s\" conflicts with a system column name", 
+haae: heap:00000491:  NameStr(tupdesc->attrs[i]->attname)))); 
+haae: heap:00000504:  ereport(ERROR, 
+haae: heap:00000505:  (errcode(ERRCODE_DUPLICATE_COLUMN), 
+haae: heap:00000506:  errmsg("column name \"%s\" is duplicated", 
+haae: heap:00000507:  NameStr(tupdesc->attrs[j]->attname)), 
+haae: heap:00000508:  errOmitLocation(true))); 
+haae: heap:00000544:  ereport(WARNING, 
+haae: heap:00000545:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+haae: heap:00000546:  errmsg("column \"%s\" has type \"unknown\"", attname), 
+haae: heap:00000547:  errdetail("Proceeding with relation creation anyway."), 
+haae: heap:00000548:  errOmitLocation(true))); 
+haae: heap:00000553:  ereport(ERROR, 
+haae: heap:00000554:  (errcode(ERRCODE_INVALID_TABLE_DEFINITION), 
+haae: heap:00000555:  errmsg("column \"%s\" has pseudo-type %s", 
+haae: heap:00000556:  attname, format_type_be(atttypid)), 
+haae: heap:00000557:  errOmitLocation(true))); 
+haae: heap:00001345:  ereport(ERROR, 
+haae: heap:00001346:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+haae: heap:00001347:  errmsg( 
+haae: heap:00001348:  "OIDS=TRUE is not allowed on tables that " 
+haae: heap:00001349:  "use column-oriented storage. Use OIDS=FALSE" 
+haae: heap:00001350:  ), 
+haae: heap:00001351:  errOmitLocation(true))); 
+haae: heap:00001353:  ereport(NOTICE, 
+haae: heap:00001354:  (errmsg( 
+haae: heap:00001355:  "OIDS=TRUE is not recommended for user-created " 
+haae: heap:00001356:  "tables. Use OIDS=FALSE to prevent wrap-around " 
+haae: heap:00001357:  "of the OID counter" 
+haae: heap:00001358:  ), 
+haae: heap:00001359:  errOmitLocation(true))); 
+haae: heap:00001365:  ereport(ERROR, 
+haae: heap:00001366:  (errcode(ERRCODE_DUPLICATE_TABLE), 
+haae: heap:00001367:  errmsg("relation \"%s\" already exists", relname), 
+haae: heap:00001368:  errOmitLocation(true))); 
+haae: heap:00001766:  elog(ERROR, "cache lookup failed for relation %u", relid); 
+haae: heap:00001831:  elog(ERROR, "could not find node tuple for relation %u, relation file node %u, segment file #%d", 
+haae: heap:00001832:  RelationGetRelid(relation), 
+haae: heap:00001833:  relation->rd_rel->relfilenode, 
+haae: heap:00001834:  segmentFileNum); 
+haae: heap:00001876:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00001877:  attnum, relid); 
+haae: heap:00001985:  elog(ERROR, "could not find attrdef tuple for relation %u attnum %d", 
+haae: heap:00001986:  relid, attnum); 
+haae: heap:00002022:  elog(ERROR, "could not find tuple for attrdef %u", attrdefId); 
+haae: heap:00002044:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002045:  myattnum, myrelid); 
+haae: heap:00002346:  elog(ERROR, "cache lookup failed for attribute %d of relation %u", 
+haae: heap:00002347:  attnum, RelationGetRelid(rel)); 
+haae: heap:00002627:  ereport(ERROR, 
+haae: heap:00002628:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002629:  errmsg("constraint \"%s\" for relation \"%s\" already exists", 
+haae: heap:00002630:  ccname, RelationGetRelationName(rel)), 
+haae: heap:00002631:  errOmitLocation(true))); 
+haae: heap:00002638:  ereport(ERROR, 
+haae: heap:00002639:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+haae: heap:00002640:  errmsg("check constraint \"%s\" already exists", 
+haae: heap:00002641:  ccname), 
+haae: heap:00002642:  errOmitLocation(true))); 
+haae: heap:00002731:  ereport(ERROR, 
+haae: heap:00002732:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002733:  errmsg("only table \"%s\" can be referenced in check constraint", 
+haae: heap:00002734:  relname), errOmitLocation(true))); 
+haae: heap:00002739:  ereport(ERROR, 
+haae: heap:00002740:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002741:  errmsg("cannot use subquery in check constraint"), 
+haae: heap:00002742:  errOmitLocation(true))); 
+haae: heap:00002744:  ereport(ERROR, 
+haae: heap:00002745:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002746:  errmsg("cannot use aggregate function in check constraint"), 
+haae: heap:00002747:  errOmitLocation(true))); 
+haae: heap:00002749:  ereport(ERROR, 
+haae: heap:00002750:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002751:  errmsg("cannot use window function in check constraint"), 
+haae: heap:00002752:  errOmitLocation(true))); 
+haae: heap:00002780:  elog(ERROR, "cache lookup failed for relation %u", 
+haae: heap:00002781:  RelationGetRelid(rel)); 
+haae: heap:00002835:  ereport(ERROR, 
+haae: heap:00002836:  (errcode(ERRCODE_INVALID_COLUMN_REFERENCE), 
+haae: heap:00002837:  errmsg("cannot use column references in default expression"))); 
+haae: heap:00002843:  ereport(ERROR, 
+haae: heap:00002844:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002845:  errmsg("default expression must not return a set"), 
+haae: heap:00002846:  errOmitLocation(true))); 
+haae: heap:00002852:  ereport(ERROR, 
+haae: heap:00002853:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00002854:  errmsg("cannot use subquery in default expression"), 
+haae: heap:00002855:  errOmitLocation(true))); 
+haae: heap:00002857:  ereport(ERROR, 
+haae: heap:00002858:  (errcode(ERRCODE_GROUPING_ERROR), 
+haae: heap:00002859:  errmsg("cannot use aggregate function in default expression"), 
+haae: heap:00002860:  errOmitLocation(true))); 
+haae: heap:00002862:  ereport(ERROR, 
+haae: heap:00002863:  (errcode(ERRCODE_SYNTAX_ERROR), 
+haae: heap:00002864:  errmsg("cannot use window function in default expression"), 
+haae: heap:00002865:  errOmitLocation(true))); 
+haae: heap:00002881:  ereport(ERROR, 
+haae: heap:00002882:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+haae: heap:00002883:  errmsg("column \"%s\" is of type %s" 
+haae: heap:00002884:  " but default expression is of type %s", 
+haae: heap:00002885:  attname, 
+haae: heap:00002886:  format_type_be(atttypid), 
+haae: heap:00002887:  format_type_be(type_id)), 
+haae: heap:00002888:  errhint("You will need to rewrite or cast the expression."), 
+haae: heap:00002889:  errOmitLocation(true))); 
+haae: heap:00003196:  ereport(ERROR, 
+haae: heap:00003197:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003198:  errmsg("unsupported ON COMMIT and foreign key combination"), 
+haae: heap:00003199:  errdetail("Table \"%s\" references \"%s\", but they do not have the same ON COMMIT setting.", 
+haae: heap:00003200:  relname2, relname), 
+haae: heap:00003201:  errOmitLocation(true))); 
+haae: heap:00003203:  ereport(ERROR, 
+haae: heap:00003204:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+haae: heap:00003205:  errmsg("cannot truncate a table referenced in a foreign key constraint"), 
+haae: heap:00003206:  errdetail("Table \"%s\" references \"%s\".", 
+haae: heap:00003207:  relname2, relname), 
+haae: heap:00003208:  errhint("Truncate table \"%s\" at the same time, " 
+haae: heap:00003209:  "or use TRUNCATE ... CASCADE.", 
+haae: heap:00003210:  relname2), 
+haae: heap:00003211:  errOmitLocation(true))); 
+haae: heap:00003332:  elog(ERROR, "could not find tuple for relation %u", 
+haae: heap:00003333:  RelationGetRelid(relation)); 
 aaaaa GP_IGNORE: iaaf: index - ./backend/catalog/index.c
 iaaf: index:00000186:  elog(ERROR, "invalid column number %d", atnum); 
 iaaf: index:00000217:  elog(ERROR, "too few entries in indexprs list"); 
@@ -4183,106 +4183,106 @@ cabg: cdbfilerepmirror:00001874:  fileRepMessageHeader->fileRepRelationType,
 cabg: cdbfilerepmirror:00001875:  fileRepMessageHeader->fileRepOperation, 
 cabg: cdbfilerepmirror:00001876:  fileRepMessageHeader->messageCount), 
 cabg: cdbfilerepmirror:00001877:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002015:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002016:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002017:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002018:  "could not rename to '%s' : %m, " 
-cabg: cdbfilerepmirror:00002019:  "failover requested", 
-cabg: cdbfilerepmirror:00002020:  newFileName), 
-cabg: cdbfilerepmirror:00002021:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002022:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00002023:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00002024:  fileRepMessageHeader->fileRepOperation, 
-cabg: cdbfilerepmirror:00002025:  fileRepMessageHeader->messageCount), 
-cabg: cdbfilerepmirror:00002026:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002051:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002052:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002053:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002054:  "could not link to '%s' : %m, " 
-cabg: cdbfilerepmirror:00002055:  "failover requested", 
-cabg: cdbfilerepmirror:00002056:  newFileName), 
-cabg: cdbfilerepmirror:00002057:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002058:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00002059:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00002060:  fileRepMessageHeader->fileRepOperation, 
-cabg: cdbfilerepmirror:00002061:  fileRepMessageHeader->messageCount), 
-cabg: cdbfilerepmirror:00002062:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002172:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002173:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002174:  "could not queue ack message to be sent to primary, " 
-cabg: cdbfilerepmirror:00002175:  "failover requested"), 
-cabg: cdbfilerepmirror:00002176:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002177:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
-cabg: cdbfilerepmirror:00002178:  fileRepMessageHeader->fileRepRelationType, 
-cabg: cdbfilerepmirror:00002179:  fileRepMessageHeader->fileRepOperation, 
-cabg: cdbfilerepmirror:00002180:  fileRepMessageHeader->messageCount), 
-cabg: cdbfilerepmirror:00002181:  FileRep_errdetail_ShmemAck(), 
-cabg: cdbfilerepmirror:00002182:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002304:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002305:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002306:  "could not insert file information in open files hash table identifier '%s' fd '%d', " 
-cabg: cdbfilerepmirror:00002307:  "failover requested", 
-cabg: cdbfilerepmirror:00002308:  fileName, 
-cabg: cdbfilerepmirror:00002309:  fd), 
-cabg: cdbfilerepmirror:00002310:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002311:  FileRep_errdetail_Shmem(), 
-cabg: cdbfilerepmirror:00002312:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002340:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002341:  (errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002342:  "could not insert file information in open files hash table, entry exists " 
-cabg: cdbfilerepmirror:00002343:  "identifier '%s' fd '%d' relation type '%s', " 
-cabg: cdbfilerepmirror:00002344:  "failover requested", 
-cabg: cdbfilerepmirror:00002345:  fileName, 
-cabg: cdbfilerepmirror:00002346:  fd, 
-cabg: cdbfilerepmirror:00002347:  FileRepRelationTypeToString[fileRepRelationType]), 
-cabg: cdbfilerepmirror:00002348:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002349:  FileRep_errdetail_Shmem(), 
-cabg: cdbfilerepmirror:00002350:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002582:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002583:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002584:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002585:  "could not zero segment file, " 
-cabg: cdbfilerepmirror:00002586:  "could not seek to end of file fd '%d' : %m, " 
-cabg: cdbfilerepmirror:00002587:  "failover requested", 
-cabg: cdbfilerepmirror:00002588:  fd), 
-cabg: cdbfilerepmirror:00002589:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002590:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002607:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002608:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002609:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002610:  "could not zero segment file, " 
-cabg: cdbfilerepmirror:00002611:  "could not seek to position " INT64_FORMAT " of file fd '%d' : %m, " 
-cabg: cdbfilerepmirror:00002612:  "failover requested", 
-cabg: cdbfilerepmirror:00002613:  startOffset, 
-cabg: cdbfilerepmirror:00002614:  fd), 
-cabg: cdbfilerepmirror:00002615:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002616:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002636:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002637:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002638:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002639:  "could not zero segment file, " 
-cabg: cdbfilerepmirror:00002640:  "could not write to file fd '%d' : %m, " 
-cabg: cdbfilerepmirror:00002641:  "failover requested", 
-cabg: cdbfilerepmirror:00002642:  fd), 
-cabg: cdbfilerepmirror:00002643:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002644:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002655:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002656:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002657:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002658:  "could not zero segment file, " 
-cabg: cdbfilerepmirror:00002659:  "could not fsync file fd '%d' : %m, " 
-cabg: cdbfilerepmirror:00002660:  "failover requested", 
-cabg: cdbfilerepmirror:00002661:  fd), 
-cabg: cdbfilerepmirror:00002662:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002663:  FileRep_errcontext())); 
-cabg: cdbfilerepmirror:00002698:  ereport(WARNING, 
-cabg: cdbfilerepmirror:00002699:  (errcode_for_file_access(), 
-cabg: cdbfilerepmirror:00002700:  errmsg("mirror failure, " 
-cabg: cdbfilerepmirror:00002701:  "could not open file '%s' to issue drop : %m, " 
-cabg: cdbfilerepmirror:00002702:  "failover requested", 
-cabg: cdbfilerepmirror:00002703:  fileName), 
-cabg: cdbfilerepmirror:00002704:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
-cabg: cdbfilerepmirror:00002705:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002016:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002017:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002018:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002019:  "could not rename to '%s' : %m, " 
+cabg: cdbfilerepmirror:00002020:  "failover requested", 
+cabg: cdbfilerepmirror:00002021:  newFileName), 
+cabg: cdbfilerepmirror:00002022:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002023:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00002024:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00002025:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00002026:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00002027:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002052:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002053:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002054:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002055:  "could not link to '%s' : %m, " 
+cabg: cdbfilerepmirror:00002056:  "failover requested", 
+cabg: cdbfilerepmirror:00002057:  newFileName), 
+cabg: cdbfilerepmirror:00002058:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002059:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00002060:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00002061:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00002062:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00002063:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002173:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002174:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002175:  "could not queue ack message to be sent to primary, " 
+cabg: cdbfilerepmirror:00002176:  "failover requested"), 
+cabg: cdbfilerepmirror:00002177:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002178:  FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier, 
+cabg: cdbfilerepmirror:00002179:  fileRepMessageHeader->fileRepRelationType, 
+cabg: cdbfilerepmirror:00002180:  fileRepMessageHeader->fileRepOperation, 
+cabg: cdbfilerepmirror:00002181:  fileRepMessageHeader->messageCount), 
+cabg: cdbfilerepmirror:00002182:  FileRep_errdetail_ShmemAck(), 
+cabg: cdbfilerepmirror:00002183:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002305:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002306:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002307:  "could not insert file information in open files hash table identifier '%s' fd '%d', " 
+cabg: cdbfilerepmirror:00002308:  "failover requested", 
+cabg: cdbfilerepmirror:00002309:  fileName, 
+cabg: cdbfilerepmirror:00002310:  fd), 
+cabg: cdbfilerepmirror:00002311:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002312:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00002313:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002341:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002342:  (errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002343:  "could not insert file information in open files hash table, entry exists " 
+cabg: cdbfilerepmirror:00002344:  "identifier '%s' fd '%d' relation type '%s', " 
+cabg: cdbfilerepmirror:00002345:  "failover requested", 
+cabg: cdbfilerepmirror:00002346:  fileName, 
+cabg: cdbfilerepmirror:00002347:  fd, 
+cabg: cdbfilerepmirror:00002348:  FileRepRelationTypeToString[fileRepRelationType]), 
+cabg: cdbfilerepmirror:00002349:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002350:  FileRep_errdetail_Shmem(), 
+cabg: cdbfilerepmirror:00002351:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002583:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002584:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002585:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002586:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002587:  "could not seek to end of file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002588:  "failover requested", 
+cabg: cdbfilerepmirror:00002589:  fd), 
+cabg: cdbfilerepmirror:00002590:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002591:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002608:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002609:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002610:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002611:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002612:  "could not seek to position " INT64_FORMAT " of file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002613:  "failover requested", 
+cabg: cdbfilerepmirror:00002614:  startOffset, 
+cabg: cdbfilerepmirror:00002615:  fd), 
+cabg: cdbfilerepmirror:00002616:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002617:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002637:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002638:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002639:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002640:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002641:  "could not write to file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002642:  "failover requested", 
+cabg: cdbfilerepmirror:00002643:  fd), 
+cabg: cdbfilerepmirror:00002644:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002645:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002656:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002657:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002658:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002659:  "could not zero segment file, " 
+cabg: cdbfilerepmirror:00002660:  "could not fsync file fd '%d' : %m, " 
+cabg: cdbfilerepmirror:00002661:  "failover requested", 
+cabg: cdbfilerepmirror:00002662:  fd), 
+cabg: cdbfilerepmirror:00002663:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002664:  FileRep_errcontext())); 
+cabg: cdbfilerepmirror:00002699:  ereport(WARNING, 
+cabg: cdbfilerepmirror:00002700:  (errcode_for_file_access(), 
+cabg: cdbfilerepmirror:00002701:  errmsg("mirror failure, " 
+cabg: cdbfilerepmirror:00002702:  "could not open file '%s' to issue drop : %m, " 
+cabg: cdbfilerepmirror:00002703:  "failover requested", 
+cabg: cdbfilerepmirror:00002704:  fileName), 
+cabg: cdbfilerepmirror:00002705:  errhint("run gprecoverseg to re-establish mirror connectivity"), 
+cabg: cdbfilerepmirror:00002706:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: cabj: cdbfilerepmirrorack - ./backend/cdb/cdbfilerepmirrorack.c
 cabj: cdbfilerepmirrorack:00000092:  ereport(WARNING, 
 cabj: cdbfilerepmirrorack:00000093:  (errmsg("mirror failure, " 
@@ -5977,31 +5977,31 @@ cabj: cdbmirroredflatfile:00000987:  ereport(ERROR,
 cabj: cdbmirroredflatfile:00000988:  (errcode_for_file_access(), 
 cabj: cdbmirroredflatfile:00000989:  errmsg("could not read from position:%d in file \"%s\" : %m", 
 cabj: cdbmirroredflatfile:00000990:  startOffset, primaryOpen.path))); 
-cabj: cdbmirroredflatfile:00001236:  ereport(WARNING, 
-cabj: cdbmirroredflatfile:00001237:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00001238:  errmsg("mirror failure, " 
-cabj: cdbmirroredflatfile:00001239:  "could not open file '%s' : %m " 
-cabj: cdbmirroredflatfile:00001240:  "failover requested", 
-cabj: cdbmirroredflatfile:00001241:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
-cabj: cdbmirroredflatfile:00001242:  FileRep_errcontext())); 
-cabj: cdbmirroredflatfile:00001255:  ereport(WARNING, 
-cabj: cdbmirroredflatfile:00001256:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00001257:  errmsg("mirror failure, " 
-cabj: cdbmirroredflatfile:00001258:  "could not seek to end of file '%s' : %m " 
-cabj: cdbmirroredflatfile:00001259:  "failover requested", 
-cabj: cdbmirroredflatfile:00001260:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
-cabj: cdbmirroredflatfile:00001261:  FileRep_errcontext())); 
-cabj: cdbmirroredflatfile:00001287:  ereport(ERROR, 
-cabj: cdbmirroredflatfile:00001288:  (errcode(ERRCODE_OUT_OF_MEMORY), 
-cabj: cdbmirroredflatfile:00001289:  (errmsg("not enough shared memory for mirroring")))); 
-cabj: cdbmirroredflatfile:00001306:  ereport(WARNING, 
-cabj: cdbmirroredflatfile:00001307:  (errcode_for_file_access(), 
-cabj: cdbmirroredflatfile:00001308:  errmsg("mirror failure, " 
-cabj: cdbmirroredflatfile:00001309:  "could not read from position '%d' file '%s' : %m " 
-cabj: cdbmirroredflatfile:00001310:  "failover requested", 
-cabj: cdbmirroredflatfile:00001311:  startOffset, 
-cabj: cdbmirroredflatfile:00001312:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
-cabj: cdbmirroredflatfile:00001313:  FileRep_errcontext())); 
+cabj: cdbmirroredflatfile:00001247:  ereport(WARNING, 
+cabj: cdbmirroredflatfile:00001248:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00001249:  errmsg("mirror failure, " 
+cabj: cdbmirroredflatfile:00001250:  "could not open file '%s' : %m " 
+cabj: cdbmirroredflatfile:00001251:  "failover requested", 
+cabj: cdbmirroredflatfile:00001252:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+cabj: cdbmirroredflatfile:00001253:  FileRep_errcontext())); 
+cabj: cdbmirroredflatfile:00001266:  ereport(WARNING, 
+cabj: cdbmirroredflatfile:00001267:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00001268:  errmsg("mirror failure, " 
+cabj: cdbmirroredflatfile:00001269:  "could not seek to end of file '%s' : %m " 
+cabj: cdbmirroredflatfile:00001270:  "failover requested", 
+cabj: cdbmirroredflatfile:00001271:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+cabj: cdbmirroredflatfile:00001272:  FileRep_errcontext())); 
+cabj: cdbmirroredflatfile:00001298:  ereport(ERROR, 
+cabj: cdbmirroredflatfile:00001299:  (errcode(ERRCODE_OUT_OF_MEMORY), 
+cabj: cdbmirroredflatfile:00001300:  (errmsg("not enough shared memory for mirroring")))); 
+cabj: cdbmirroredflatfile:00001317:  ereport(WARNING, 
+cabj: cdbmirroredflatfile:00001318:  (errcode_for_file_access(), 
+cabj: cdbmirroredflatfile:00001319:  errmsg("mirror failure, " 
+cabj: cdbmirroredflatfile:00001320:  "could not read from position '%d' file '%s' : %m " 
+cabj: cdbmirroredflatfile:00001321:  "failover requested", 
+cabj: cdbmirroredflatfile:00001322:  startOffset, 
+cabj: cdbmirroredflatfile:00001323:  (primaryOpen.path == NULL) ? "<null>" : primaryOpen.path), 
+cabj: cdbmirroredflatfile:00001324:  FileRep_errcontext())); 
 aaaaa GP_IGNORE: caaj: cdbmutate - ./backend/cdb/cdbmutate.c
 caaj: cdbmutate:00000401:  ereport(NOTICE, 
 caaj: cdbmutate:00000402:  (errcode(ERRCODE_SUCCESSFUL_COMPLETION), 
@@ -12080,108 +12080,96 @@ taai: typecmds:00002486:  errhint("Use ALTER TABLE SET SCHEMA instead.")));
 taai: typecmds:00002535:  elog(ERROR, "failed to change schema dependency for type %s", 
 taai: typecmds:00002536:  format_type_be(typeOid)); 
 aaaaa GP_IGNORE: uaae: user - ./backend/commands/user.c
-uaae: user:00000171:  ereport(ERROR, 
-uaae: user:00000172:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000173:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000183:  ereport(NOTICE, 
-uaae: user:00000184:  (errmsg("SYSID can no longer be specified"))); 
-uaae: user:00000189:  ereport(ERROR, 
-uaae: user:00000190:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000191:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000197:  ereport(ERROR, 
-uaae: user:00000198:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000199:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000205:  ereport(ERROR, 
-uaae: user:00000206:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000207:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000213:  ereport(ERROR, 
-uaae: user:00000214:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000215:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000221:  ereport(ERROR, 
-uaae: user:00000222:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000223:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000229:  ereport(ERROR, 
-uaae: user:00000230:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000231:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000237:  ereport(ERROR, 
-uaae: user:00000238:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000239:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000245:  ereport(ERROR, 
-uaae: user:00000246:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000247:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000253:  ereport(ERROR, 
-uaae: user:00000254:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000255:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000261:  ereport(ERROR, 
-uaae: user:00000262:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000263:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000269:  ereport(ERROR, 
-uaae: user:00000270:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000271:  errmsg("conflicting or redundant options"))); 
-uaae: user:00000293:  elog(ERROR, "option \"%s\" not recognized", 
-uaae: user:00000294:  defel->defname); 
-uaae: user:00000330:  ereport(NOTICE, 
-uaae: user:00000331:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-uaae: user:00000332:  errmsg("resource queue required -- " 
-uaae: user:00000333:  "using default resource queue \"%s\"", 
-uaae: user:00000334:  GP_DEFAULT_RESOURCE_QUEUE_NAME))); 
-uaae: user:00000344:  ereport(ERROR, 
-uaae: user:00000345:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00000346:  errmsg("must be superuser to create superusers"))); 
-uaae: user:00000351:  ereport(ERROR, 
-uaae: user:00000352:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00000353:  errmsg("permission denied to create role"))); 
-uaae: user:00000358:  ereport(ERROR, 
-uaae: user:00000359:  (errcode(ERRCODE_RESERVED_NAME), 
-uaae: user:00000360:  errmsg("role name \"%s\" is reserved", 
-uaae: user:00000361:  stmt->role))); 
-uaae: user:00000374:  ereport(ERROR, 
-uaae: user:00000375:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-uaae: user:00000376:  errmsg("role \"%s\" already exists", 
-uaae: user:00000377:  stmt->role))); 
-uaae: user:00000418:  elog(ERROR, "password encryption failed"); 
-uaae: user:00000441:  ereport(ERROR, 
-uaae: user:00000442:  (errcode(ERRCODE_RESERVED_NAME), 
-uaae: user:00000443:  errmsg("resource queue name \"%s\" is reserved", 
-uaae: user:00000444:  resqueue), 
-uaae: user:00000445:  errOmitLocation(true))); 
-uaae: user:00000449:  ereport(ERROR, 
-uaae: user:00000450:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00000451:  errmsg("resource queue \"%s\" does not exist", 
-uaae: user:00000452:  resqueue), 
-uaae: user:00000453:  errOmitLocation(true))); 
-uaae: user:00000464:  ereport(WARNING, 
-uaae: user:00000465:  (errmsg("resource scheduling is disabled"), 
-uaae: user:00000466:  errhint("To enable set resource_scheduler=on"), 
+uaae: user:00000185:  ereport(ERROR, 
+uaae: user:00000186:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000187:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000197:  ereport(NOTICE, 
+uaae: user:00000198:  (errmsg("SYSID can no longer be specified"))); 
+uaae: user:00000203:  ereport(ERROR, 
+uaae: user:00000204:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000205:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000211:  ereport(ERROR, 
+uaae: user:00000212:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000213:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000219:  ereport(ERROR, 
+uaae: user:00000220:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000221:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000227:  ereport(ERROR, 
+uaae: user:00000228:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000229:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000235:  ereport(ERROR, 
+uaae: user:00000236:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000237:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000243:  ereport(ERROR, 
+uaae: user:00000244:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000245:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000251:  ereport(ERROR, 
+uaae: user:00000252:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000253:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000259:  ereport(ERROR, 
+uaae: user:00000260:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000261:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000267:  ereport(ERROR, 
+uaae: user:00000268:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000269:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000275:  ereport(ERROR, 
+uaae: user:00000276:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000277:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000283:  ereport(ERROR, 
+uaae: user:00000284:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000285:  errmsg("conflicting or redundant options"))); 
+uaae: user:00000315:  elog(ERROR, "option \"%s\" not recognized", 
+uaae: user:00000316:  defel->defname); 
+uaae: user:00000352:  ereport(NOTICE, 
+uaae: user:00000353:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+uaae: user:00000354:  errmsg("resource queue required -- " 
+uaae: user:00000355:  "using default resource queue \"%s\"", 
+uaae: user:00000356:  GP_DEFAULT_RESOURCE_QUEUE_NAME))); 
+uaae: user:00000366:  ereport(ERROR, 
+uaae: user:00000367:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00000368:  errmsg("must be superuser to create superusers"))); 
+uaae: user:00000373:  ereport(ERROR, 
+uaae: user:00000374:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00000375:  errmsg("permission denied to create role"))); 
+uaae: user:00000380:  ereport(ERROR, 
+uaae: user:00000381:  (errcode(ERRCODE_RESERVED_NAME), 
+uaae: user:00000382:  errmsg("role name \"%s\" is reserved", 
+uaae: user:00000383:  stmt->role))); 
+uaae: user:00000396:  ereport(ERROR, 
+uaae: user:00000397:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+uaae: user:00000398:  errmsg("role \"%s\" already exists", 
+uaae: user:00000399:  stmt->role))); 
+uaae: user:00000440:  elog(ERROR, "password encryption failed"); 
+uaae: user:00000463:  ereport(ERROR, 
+uaae: user:00000464:  (errcode(ERRCODE_RESERVED_NAME), 
+uaae: user:00000465:  errmsg("resource queue name \"%s\" is reserved", 
+uaae: user:00000466:  resqueue), 
 uaae: user:00000467:  errOmitLocation(true))); 
-uaae: user:00000630:  ereport(ERROR, 
-uaae: user:00000631:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000632:  errmsg("conflicting or redundant options"), 
-uaae: user:00000633:  errOmitLocation(true))); 
-uaae: user:00000645:  ereport(ERROR, 
-uaae: user:00000646:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000647:  errmsg("conflicting or redundant options"), 
-uaae: user:00000648:  errOmitLocation(true))); 
-uaae: user:00000655:  ereport(ERROR, 
-uaae: user:00000656:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000657:  errmsg("conflicting or redundant options"), 
-uaae: user:00000658:  errOmitLocation(true))); 
-uaae: user:00000665:  ereport(ERROR, 
-uaae: user:00000666:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000667:  errmsg("conflicting or redundant options"), 
-uaae: user:00000668:  errOmitLocation(true))); 
-uaae: user:00000675:  ereport(ERROR, 
-uaae: user:00000676:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000677:  errmsg("conflicting or redundant options"), 
-uaae: user:00000678:  errOmitLocation(true))); 
-uaae: user:00000685:  ereport(ERROR, 
-uaae: user:00000686:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000687:  errmsg("conflicting or redundant options"), 
-uaae: user:00000688:  errOmitLocation(true))); 
-uaae: user:00000695:  ereport(ERROR, 
-uaae: user:00000696:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00000697:  errmsg("conflicting or redundant options"), 
-uaae: user:00000698:  errOmitLocation(true))); 
+uaae: user:00000471:  ereport(ERROR, 
+uaae: user:00000472:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00000473:  errmsg("resource queue \"%s\" does not exist", 
+uaae: user:00000474:  resqueue), 
+uaae: user:00000475:  errOmitLocation(true))); 
+uaae: user:00000486:  ereport(WARNING, 
+uaae: user:00000487:  (errmsg("resource scheduling is disabled"), 
+uaae: user:00000488:  errhint("To enable set resource_scheduler=on"), 
+uaae: user:00000489:  errOmitLocation(true))); 
+uaae: user:00000661:  ereport(ERROR, 
+uaae: user:00000662:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000663:  errmsg("conflicting or redundant options"), 
+uaae: user:00000664:  errOmitLocation(true))); 
+uaae: user:00000676:  ereport(ERROR, 
+uaae: user:00000677:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000678:  errmsg("conflicting or redundant options"), 
+uaae: user:00000679:  errOmitLocation(true))); 
+uaae: user:00000686:  ereport(ERROR, 
+uaae: user:00000687:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000688:  errmsg("conflicting or redundant options"), 
+uaae: user:00000689:  errOmitLocation(true))); 
+uaae: user:00000696:  ereport(ERROR, 
+uaae: user:00000697:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000698:  errmsg("conflicting or redundant options"), 
+uaae: user:00000699:  errOmitLocation(true))); 
 uaae: user:00000706:  ereport(ERROR, 
 uaae: user:00000707:  (errcode(ERRCODE_SYNTAX_ERROR), 
 uaae: user:00000708:  errmsg("conflicting or redundant options"), 
@@ -12194,170 +12182,203 @@ uaae: user:00000726:  ereport(ERROR,
 uaae: user:00000727:  (errcode(ERRCODE_SYNTAX_ERROR), 
 uaae: user:00000728:  errmsg("conflicting or redundant options"), 
 uaae: user:00000729:  errOmitLocation(true))); 
-uaae: user:00000756:  elog(ERROR, "option \"%s\" not recognized", 
-uaae: user:00000757:  defel->defname); 
-uaae: user:00000791:  ereport(ERROR, 
-uaae: user:00000792:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00000793:  errmsg("role \"%s\" does not exist", stmt->role))); 
-uaae: user:00000807:  ereport(ERROR, 
-uaae: user:00000808:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00000809:  errmsg("must be superuser to alter superusers"))); 
-uaae: user:00000826:  ereport(ERROR, 
-uaae: user:00000827:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00000828:  errmsg("permission denied"), 
-uaae: user:00000829:  errOmitLocation(true))); 
-uaae: user:00000898:  elog(ERROR, "password encryption failed"); 
-uaae: user:00000980:  ereport(NOTICE, 
-uaae: user:00000981:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-uaae: user:00000982:  errmsg("resource queue required -- " 
-uaae: user:00000983:  "using default resource queue \"%s\"", 
-uaae: user:00000984:  GP_DEFAULT_RESOURCE_QUEUE_NAME))); 
-uaae: user:00000998:  ereport(ERROR, 
-uaae: user:00000999:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00001000:  errmsg("resource queue \"%s\" does not exist", 
-uaae: user:00001001:  resqueue), 
-uaae: user:00001002:  errOmitLocation(true))); 
-uaae: user:00001014:  ereport(WARNING, 
-uaae: user:00001015:  (errmsg("resource scheduling is disabled"), 
-uaae: user:00001016:  errhint("To enable set resource_scheduler=on"), 
-uaae: user:00001017:  errOmitLocation(true))); 
-uaae: user:00001104:  ereport(ERROR, 
-uaae: user:00001105:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00001106:  errmsg("role \"%s\" does not exist", stmt->role), 
-uaae: user:00001107:  errOmitLocation(true))); 
-uaae: user:00001116:  ereport(ERROR, 
-uaae: user:00001117:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001118:  errmsg("must be superuser to alter superusers"), 
-uaae: user:00001119:  errOmitLocation(true))); 
-uaae: user:00001125:  ereport(ERROR, 
-uaae: user:00001126:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001127:  errmsg("permission denied"), 
-uaae: user:00001128:  errOmitLocation(true))); 
-uaae: user:00001259:  ereport(ERROR, 
-uaae: user:00001260:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001261:  errmsg("permission denied to drop role"), 
-uaae: user:00001262:  errOmitLocation(true))); 
-uaae: user:00001288:  ereport(ERROR, 
-uaae: user:00001289:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00001290:  errmsg("role \"%s\" does not exist", role), 
-uaae: user:00001291:  errOmitLocation(true))); 
-uaae: user:00001295:  ereport(NOTICE, 
-uaae: user:00001296:  (errmsg("role \"%s\" does not exist, skipping", 
-uaae: user:00001297:  role), 
-uaae: user:00001298:  errOmitLocation(true))); 
-uaae: user:00001307:  ereport(ERROR, 
-uaae: user:00001308:  (errcode(ERRCODE_OBJECT_IN_USE), 
-uaae: user:00001309:  errmsg("current user cannot be dropped"), 
-uaae: user:00001310:  errOmitLocation(true))); 
-uaae: user:00001312:  ereport(ERROR, 
-uaae: user:00001313:  (errcode(ERRCODE_OBJECT_IN_USE), 
-uaae: user:00001314:  errmsg("current user cannot be dropped"), 
-uaae: user:00001315:  errOmitLocation(true))); 
-uaae: user:00001317:  ereport(ERROR, 
-uaae: user:00001318:  (errcode(ERRCODE_OBJECT_IN_USE), 
-uaae: user:00001319:  errmsg("session user cannot be dropped"), 
-uaae: user:00001320:  errOmitLocation(true))); 
-uaae: user:00001329:  ereport(ERROR, 
-uaae: user:00001330:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001331:  errmsg("must be superuser to drop superusers"))); 
-uaae: user:00001341:  ereport(ERROR, 
-uaae: user:00001342:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
-uaae: user:00001343:  errmsg("role \"%s\" cannot be dropped because some objects depend on it", 
-uaae: user:00001344:  role), 
-uaae: user:00001345:  errdetail("%s", detail), 
-uaae: user:00001346:  errOmitLocation(true))); 
-uaae: user:00001456:  ereport(ERROR, 
-uaae: user:00001457:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-uaae: user:00001458:  errmsg("role \"%s\" does not exist", oldname), 
-uaae: user:00001459:  errOmitLocation(true))); 
-uaae: user:00001472:  ereport(ERROR, 
-uaae: user:00001473:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-uaae: user:00001474:  errmsg("session user cannot be renamed"))); 
-uaae: user:00001476:  ereport(ERROR, 
-uaae: user:00001477:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-uaae: user:00001478:  errmsg("current user cannot be renamed"))); 
-uaae: user:00001484:  ereport(ERROR, 
-uaae: user:00001485:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
-uaae: user:00001486:  errmsg("role \"%s\" already exists", newname))); 
-uaae: user:00001490:  ereport(ERROR, 
-uaae: user:00001491:  (errcode(ERRCODE_RESERVED_NAME), 
-uaae: user:00001492:  errmsg("role name \"%s\" is reserved", 
-uaae: user:00001493:  newname))); 
-uaae: user:00001501:  ereport(ERROR, 
-uaae: user:00001502:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001503:  errmsg("must be superuser to rename superusers"))); 
-uaae: user:00001508:  ereport(ERROR, 
-uaae: user:00001509:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001510:  errmsg("permission denied to rename role"))); 
-uaae: user:00001531:  ereport(NOTICE, 
-uaae: user:00001532:  (errmsg("MD5 password cleared because of role rename"))); 
-uaae: user:00001655:  ereport(ERROR, 
-uaae: user:00001656:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001657:  errmsg("permission denied to drop objects"), 
-uaae: user:00001658:  errOmitLocation(true))); 
-uaae: user:00001688:  ereport(ERROR, 
-uaae: user:00001689:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001690:  errmsg("permission denied to reassign objects"), 
-uaae: user:00001691:  errOmitLocation(true))); 
-uaae: user:00001698:  ereport(ERROR, 
-uaae: user:00001699:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001700:  errmsg("permission denied to reassign objects"), 
-uaae: user:00001701:  errOmitLocation(true))); 
-uaae: user:00001769:  ereport(ERROR, 
-uaae: user:00001770:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001771:  errmsg("must be superuser to alter superusers"))); 
-uaae: user:00001777:  ereport(ERROR, 
-uaae: user:00001778:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001779:  errmsg("must have admin option on role \"%s\"", 
-uaae: user:00001780:  rolename))); 
-uaae: user:00001785:  ereport(ERROR, 
-uaae: user:00001786:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00001787:  errmsg("must be superuser to set grantor"))); 
-uaae: user:00001810:  ereport(ERROR, 
-uaae: user:00001811:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
-uaae: user:00001812:  (errmsg("role \"%s\" is a member of role \"%s\"", 
-uaae: user:00001813:  rolename, membername)))); 
-uaae: user:00001828:  ereport(NOTICE, 
-uaae: user:00001829:  (errmsg("role \"%s\" is already a member of role \"%s\"", 
-uaae: user:00001830:  membername, rolename))); 
+uaae: user:00000737:  ereport(ERROR, 
+uaae: user:00000738:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000739:  errmsg("conflicting or redundant options"), 
+uaae: user:00000740:  errOmitLocation(true))); 
+uaae: user:00000747:  ereport(ERROR, 
+uaae: user:00000748:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000749:  errmsg("conflicting or redundant options"), 
+uaae: user:00000750:  errOmitLocation(true))); 
+uaae: user:00000757:  ereport(ERROR, 
+uaae: user:00000758:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000759:  errmsg("conflicting or redundant options"), 
+uaae: user:00000760:  errOmitLocation(true))); 
+uaae: user:00000803:  elog(ERROR, "option \"%s\" not recognized", 
+uaae: user:00000804:  defel->defname); 
+uaae: user:00000840:  ereport(ERROR, 
+uaae: user:00000841:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00000842:  errmsg("conflicting or redundant options"), 
+uaae: user:00000843:  errhint("Time based rules cannot be added and deleted in the same ALTER ROLE statement."))); 
+uaae: user:00000855:  ereport(ERROR, 
+uaae: user:00000856:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00000857:  errmsg("role \"%s\" does not exist", stmt->role))); 
+uaae: user:00000871:  ereport(ERROR, 
+uaae: user:00000872:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00000873:  errmsg("must be superuser to alter superusers"))); 
+uaae: user:00000890:  ereport(ERROR, 
+uaae: user:00000891:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00000892:  errmsg("permission denied"), 
+uaae: user:00000893:  errOmitLocation(true))); 
+uaae: user:00000962:  elog(ERROR, "password encryption failed"); 
+uaae: user:00001044:  ereport(NOTICE, 
+uaae: user:00001045:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+uaae: user:00001046:  errmsg("resource queue required -- " 
+uaae: user:00001047:  "using default resource queue \"%s\"", 
+uaae: user:00001048:  GP_DEFAULT_RESOURCE_QUEUE_NAME))); 
+uaae: user:00001062:  ereport(ERROR, 
+uaae: user:00001063:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00001064:  errmsg("resource queue \"%s\" does not exist", 
+uaae: user:00001065:  resqueue), 
+uaae: user:00001066:  errOmitLocation(true))); 
+uaae: user:00001078:  ereport(WARNING, 
+uaae: user:00001079:  (errmsg("resource scheduling is disabled"), 
+uaae: user:00001080:  errhint("To enable set resource_scheduler=on"), 
+uaae: user:00001081:  errOmitLocation(true))); 
+uaae: user:00001182:  ereport(ERROR, 
+uaae: user:00001183:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00001184:  errmsg("role \"%s\" does not exist", stmt->role), 
+uaae: user:00001185:  errOmitLocation(true))); 
+uaae: user:00001194:  ereport(ERROR, 
+uaae: user:00001195:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001196:  errmsg("must be superuser to alter superusers"), 
+uaae: user:00001197:  errOmitLocation(true))); 
+uaae: user:00001203:  ereport(ERROR, 
+uaae: user:00001204:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001205:  errmsg("permission denied"), 
+uaae: user:00001206:  errOmitLocation(true))); 
+uaae: user:00001337:  ereport(ERROR, 
+uaae: user:00001338:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001339:  errmsg("permission denied to drop role"), 
+uaae: user:00001340:  errOmitLocation(true))); 
+uaae: user:00001366:  ereport(ERROR, 
+uaae: user:00001367:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00001368:  errmsg("role \"%s\" does not exist", role), 
+uaae: user:00001369:  errOmitLocation(true))); 
+uaae: user:00001373:  ereport(NOTICE, 
+uaae: user:00001374:  (errmsg("role \"%s\" does not exist, skipping", 
+uaae: user:00001375:  role), 
+uaae: user:00001376:  errOmitLocation(true))); 
+uaae: user:00001385:  ereport(ERROR, 
+uaae: user:00001386:  (errcode(ERRCODE_OBJECT_IN_USE), 
+uaae: user:00001387:  errmsg("current user cannot be dropped"), 
+uaae: user:00001388:  errOmitLocation(true))); 
+uaae: user:00001390:  ereport(ERROR, 
+uaae: user:00001391:  (errcode(ERRCODE_OBJECT_IN_USE), 
+uaae: user:00001392:  errmsg("current user cannot be dropped"), 
+uaae: user:00001393:  errOmitLocation(true))); 
+uaae: user:00001395:  ereport(ERROR, 
+uaae: user:00001396:  (errcode(ERRCODE_OBJECT_IN_USE), 
+uaae: user:00001397:  errmsg("session user cannot be dropped"), 
+uaae: user:00001398:  errOmitLocation(true))); 
+uaae: user:00001407:  ereport(ERROR, 
+uaae: user:00001408:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001409:  errmsg("must be superuser to drop superusers"))); 
+uaae: user:00001419:  ereport(ERROR, 
+uaae: user:00001420:  (errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST), 
+uaae: user:00001421:  errmsg("role \"%s\" cannot be dropped because some objects depend on it", 
+uaae: user:00001422:  role), 
+uaae: user:00001423:  errdetail("%s", detail), 
+uaae: user:00001424:  errOmitLocation(true))); 
+uaae: user:00001539:  ereport(ERROR, 
+uaae: user:00001540:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+uaae: user:00001541:  errmsg("role \"%s\" does not exist", oldname), 
+uaae: user:00001542:  errOmitLocation(true))); 
+uaae: user:00001555:  ereport(ERROR, 
+uaae: user:00001556:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+uaae: user:00001557:  errmsg("session user cannot be renamed"))); 
+uaae: user:00001559:  ereport(ERROR, 
+uaae: user:00001560:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+uaae: user:00001561:  errmsg("current user cannot be renamed"))); 
+uaae: user:00001567:  ereport(ERROR, 
+uaae: user:00001568:  (errcode(ERRCODE_DUPLICATE_OBJECT), 
+uaae: user:00001569:  errmsg("role \"%s\" already exists", newname))); 
+uaae: user:00001573:  ereport(ERROR, 
+uaae: user:00001574:  (errcode(ERRCODE_RESERVED_NAME), 
+uaae: user:00001575:  errmsg("role name \"%s\" is reserved", 
+uaae: user:00001576:  newname))); 
+uaae: user:00001584:  ereport(ERROR, 
+uaae: user:00001585:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001586:  errmsg("must be superuser to rename superusers"))); 
+uaae: user:00001591:  ereport(ERROR, 
+uaae: user:00001592:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001593:  errmsg("permission denied to rename role"))); 
+uaae: user:00001614:  ereport(NOTICE, 
+uaae: user:00001615:  (errmsg("MD5 password cleared because of role rename"))); 
+uaae: user:00001738:  ereport(ERROR, 
+uaae: user:00001739:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001740:  errmsg("permission denied to drop objects"), 
+uaae: user:00001741:  errOmitLocation(true))); 
+uaae: user:00001771:  ereport(ERROR, 
+uaae: user:00001772:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001773:  errmsg("permission denied to reassign objects"), 
+uaae: user:00001774:  errOmitLocation(true))); 
+uaae: user:00001781:  ereport(ERROR, 
+uaae: user:00001782:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001783:  errmsg("permission denied to reassign objects"), 
+uaae: user:00001784:  errOmitLocation(true))); 
+uaae: user:00001852:  ereport(ERROR, 
+uaae: user:00001853:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001854:  errmsg("must be superuser to alter superusers"))); 
+uaae: user:00001860:  ereport(ERROR, 
+uaae: user:00001861:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001862:  errmsg("must have admin option on role \"%s\"", 
+uaae: user:00001863:  rolename))); 
+uaae: user:00001868:  ereport(ERROR, 
+uaae: user:00001869:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00001870:  errmsg("must be superuser to set grantor"))); 
 uaae: user:00001893:  ereport(ERROR, 
-uaae: user:00001894:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00001895:  errmsg("invalid [NO]CREATEEXTTABLE option \"%s\"", keyword))); 
-uaae: user:00001913:  ereport(ERROR, 
-uaae: user:00001914:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00001915:  errmsg("invalid %s value \"%s\"", key, val))); 
-uaae: user:00001920:  ereport(WARNING, 
-uaae: user:00001921:  (errmsg("GRANT/REVOKE on gphdfs is deprecated"), 
-uaae: user:00001922:  errhint("Issue the GRANT or REVOKE on the protocol itself"), 
-uaae: user:00001923:  errOmitLocation(true))); 
-uaae: user:00001928:  ereport(ERROR, 
-uaae: user:00001929:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00001930:  errmsg("invalid %s value \"%s\"", key, val))); 
-uaae: user:00001962:  ereport(ERROR, 
-uaae: user:00001963:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00001964:  errmsg("invalid [NO]CREATEEXTTABLE specification. too many values"))); 
-uaae: user:00002024:  ereport(ERROR, 
-uaae: user:00002025:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002026:  errmsg("redundant option for \"%s\"", genpair->key1))); 
-uaae: user:00002113:  ereport(ERROR, 
-uaae: user:00002114:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002115:  errmsg("invalid CREATEEXTTABLE specification. writable http external tables do not exist"))); 
-uaae: user:00002181:  ereport(ERROR, 
-uaae: user:00002182:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002183:  errmsg("invalid NOCREATEEXTTABLE specification. writable http external tables do not exist"))); 
-uaae: user:00002189:  ereport(ERROR, 
-uaae: user:00002190:  (errcode(ERRCODE_SYNTAX_ERROR), 
-uaae: user:00002191:  errmsg("conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE"))); 
-uaae: user:00002231:  ereport(ERROR, 
-uaae: user:00002232:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00002233:  errmsg("must be superuser to alter superusers"))); 
-uaae: user:00002239:  ereport(ERROR, 
-uaae: user:00002240:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
-uaae: user:00002241:  errmsg("must have admin option on role \"%s\"", 
-uaae: user:00002242:  rolename))); 
-uaae: user:00002263:  ereport(WARNING, 
-uaae: user:00002264:  (errmsg("role \"%s\" is not a member of role \"%s\"", 
-uaae: user:00002265:  membername, rolename))); 
+uaae: user:00001894:  (errcode(ERRCODE_INVALID_GRANT_OPERATION), 
+uaae: user:00001895:  (errmsg("role \"%s\" is a member of role \"%s\"", 
+uaae: user:00001896:  rolename, membername)))); 
+uaae: user:00001911:  ereport(NOTICE, 
+uaae: user:00001912:  (errmsg("role \"%s\" is already a member of role \"%s\"", 
+uaae: user:00001913:  membername, rolename))); 
+uaae: user:00001976:  ereport(ERROR, 
+uaae: user:00001977:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00001978:  errmsg("invalid [NO]CREATEEXTTABLE option \"%s\"", keyword))); 
+uaae: user:00001996:  ereport(ERROR, 
+uaae: user:00001997:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00001998:  errmsg("invalid %s value \"%s\"", key, val))); 
+uaae: user:00002003:  ereport(WARNING, 
+uaae: user:00002004:  (errmsg("GRANT/REVOKE on gphdfs is deprecated"), 
+uaae: user:00002005:  errhint("Issue the GRANT or REVOKE on the protocol itself"), 
+uaae: user:00002006:  errOmitLocation(true))); 
+uaae: user:00002011:  ereport(ERROR, 
+uaae: user:00002012:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002013:  errmsg("invalid %s value \"%s\"", key, val))); 
+uaae: user:00002045:  ereport(ERROR, 
+uaae: user:00002046:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002047:  errmsg("invalid [NO]CREATEEXTTABLE specification. too many values"))); 
+uaae: user:00002107:  ereport(ERROR, 
+uaae: user:00002108:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002109:  errmsg("redundant option for \"%s\"", genpair->key1))); 
+uaae: user:00002196:  ereport(ERROR, 
+uaae: user:00002197:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002198:  errmsg("invalid CREATEEXTTABLE specification. writable http external tables do not exist"))); 
+uaae: user:00002264:  ereport(ERROR, 
+uaae: user:00002265:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002266:  errmsg("invalid NOCREATEEXTTABLE specification. writable http external tables do not exist"))); 
+uaae: user:00002272:  ereport(ERROR, 
+uaae: user:00002273:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002274:  errmsg("conflicting specifications in CREATEEXTTABLE and NOCREATEEXTTABLE"))); 
+uaae: user:00002314:  ereport(ERROR, 
+uaae: user:00002315:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00002316:  errmsg("must be superuser to alter superusers"))); 
+uaae: user:00002322:  ereport(ERROR, 
+uaae: user:00002323:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
+uaae: user:00002324:  errmsg("must have admin option on role \"%s\"", 
+uaae: user:00002325:  rolename))); 
+uaae: user:00002346:  ereport(WARNING, 
+uaae: user:00002347:  (errmsg("role \"%s\" is not a member of role \"%s\"", 
+uaae: user:00002348:  membername, rolename))); 
+uaae: user:00002422:  ereport(ERROR, 
+uaae: user:00002423:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002424:  errmsg("time interval must not wrap around"))); 
+uaae: user:00002442:  ereport(ERROR, 
+uaae: user:00002443:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002444:  errmsg("numeric day of week must be between 0 and 6"))); 
+uaae: user:00002454:  ereport(ERROR, 
+uaae: user:00002455:  (errcode(ERRCODE_SYNTAX_ERROR), 
+uaae: user:00002456:  errmsg("invalid weekday name \"%s\"", target), 
+uaae: user:00002457:  errhint("Day of week must be one of 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'."))); 
+uaae: user:00002564:  ereport(NOTICE, 
+uaae: user:00002565:  (errmsg("Dropping time constraint for %s between %s %s and %s %s", 
+uaae: user:00002566:  rolename, 
+uaae: user:00002567:  daysofweek[existing->start.day], 
+uaae: user:00002568:  DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->start.time))), 
+uaae: user:00002569:  daysofweek[existing->end.day], 
+uaae: user:00002570:  DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->end.time)))))); 
 aaaaa GP_IGNORE: vaag: vacuum - ./backend/commands/vacuum.c
 vaag: vacuum:00000367:  ereport(NOTICE, 
 vaag: vacuum:00000368:  (errcode(ERRCODE_WARNING), 
@@ -13332,96 +13353,102 @@ saba: stringinfo:00000285:  errmsg("out of memory"),
 saba: stringinfo:00000286:  errdetail("Cannot enlarge string buffer containing %d bytes by %d more bytes.", 
 saba: stringinfo:00000287:  str->len, needed))); 
 aaaaa GP_IGNORE: aaae: auth - ./backend/libpq/auth.c
-aaae: auth:00000304:  ereport(FATAL, 
-aaae: auth:00000305:  (errcode(errcode_return), 
-aaae: auth:00000306:  errmsg(errstr, port->user_name))); 
-aaae: auth:00000327:  ereport(FATAL, 
-aaae: auth:00000328:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
-aaae: auth:00000329:  errmsg("missing or erroneous pg_hba.conf file"), 
-aaae: auth:00000330:  errhint("See server log for details."))); 
-aaae: auth:00000358:  ereport(FATAL, 
-aaae: auth:00000359:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000360:  errmsg("connection requires a valid client certificate"))); 
-aaae: auth:00000401:  ereport(FATAL, 
-aaae: auth:00000402:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000403:  errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\", %s", 
-aaae: auth:00000404:  hostinfo, port->user_name, 
-aaae: auth:00000405:  port->ssl ? _("SSL on") : _("SSL off")))); 
-aaae: auth:00000407:  ereport(FATAL, 
-aaae: auth:00000408:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000409:  errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\"", 
-aaae: auth:00000410:  hostinfo, port->user_name))); 
-aaae: auth:00000417:  ereport(FATAL, 
-aaae: auth:00000418:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000419:  errmsg("pg_hba.conf rejects connection for host \"%s\", user \"%s\", database \"%s\", %s", 
-aaae: auth:00000420:  hostinfo, port->user_name, 
-aaae: auth:00000421:  port->database_name, 
-aaae: auth:00000422:  port->ssl ? _("SSL on") : _("SSL off")), 
-aaae: auth:00000423:  errSendAlert(false))); 
-aaae: auth:00000425:  ereport(FATAL, 
-aaae: auth:00000426:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000427:  errmsg("pg_hba.conf rejects connection for host \"%s\", user \"%s\", database \"%s\"", 
-aaae: auth:00000428:  hostinfo, port->user_name, 
-aaae: auth:00000429:  port->database_name) 
-aaae: auth:00000430:  errSendAlert(false))); 
-aaae: auth:00000458:  ereport(FATAL, 
-aaae: auth:00000459:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000460:  errmsg("no pg_hba.conf entry for replication connection from host \"%s\", user \"%s\", %s", 
-aaae: auth:00000461:  hostinfo, port->user_name, 
-aaae: auth:00000462:  port->ssl ? _("SSL on") : _("SSL off")))); 
-aaae: auth:00000464:  ereport(FATAL, 
-aaae: auth:00000465:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000466:  errmsg("no pg_hba.conf entry for replication connection from host \"%s\", user \"%s\"", 
-aaae: auth:00000467:  hostinfo, port->user_name))); 
-aaae: auth:00000474:  ereport(FATAL, 
-aaae: auth:00000475:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000476:  errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\", %s", 
-aaae: auth:00000477:  hostinfo, port->user_name, 
-aaae: auth:00000478:  port->database_name, 
-aaae: auth:00000479:  port->ssl ? _("SSL on") : _("SSL off")))); 
-aaae: auth:00000481:  ereport(FATAL, 
-aaae: auth:00000482:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000483:  errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\"", 
-aaae: auth:00000484:  hostinfo, port->user_name, 
-aaae: auth:00000485:  port->database_name))); 
-aaae: auth:00000539:  ereport(FATAL, 
-aaae: auth:00000540:  (errcode_for_socket_access(), 
-aaae: auth:00000541:  errmsg("could not enable credential reception: %m"))); 
-aaae: auth:00000552:  ereport(FATAL, 
-aaae: auth:00000553:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
-aaae: auth:00000554:  errmsg("MD5 authentication is not supported when \"db_user_namespace\" is enabled"))); 
-aaae: auth:00000981:  ereport(WARNING, 
-aaae: auth:00000982:  (errmsg_internal("incomplete GSS error report"))); 
-aaae: auth:00000992:  ereport(WARNING, 
-aaae: auth:00000993:  (errmsg_internal("incomplete GSS minor error report"))); 
-aaae: auth:00001025:  ereport(FATAL, 
-aaae: auth:00001026:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaae: auth:00001027:  errmsg("GSSAPI is not supported in protocol version 2"))); 
-aaae: auth:00001286:  ereport(FATAL, 
-aaae: auth:00001287:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-aaae: auth:00001288:  errmsg("SSPI is not supported in protocol version 2"))); 
-aaae: auth:00001399:  ereport(ERROR, 
-aaae: auth:00001400:  (errmsg("out of memory"))); 
-aaae: auth:00001429:  ereport(ERROR, 
-aaae: auth:00001430:  (errmsg_internal("could not load secur32.dll: %d", 
-aaae: auth:00001431:  (int) GetLastError()))); 
-aaae: auth:00001438:  ereport(ERROR, 
-aaae: auth:00001439:  (errmsg_internal("could not locate QuerySecurityContextToken in secur32.dll: %d", 
-aaae: auth:00001440:  (int) GetLastError()))); 
-aaae: auth:00001461:  ereport(ERROR, 
-aaae: auth:00001462:  (errmsg_internal("could not get token user size: error code %d", 
-aaae: auth:00001463:  (int) GetLastError()))); 
-aaae: auth:00001467:  ereport(ERROR, 
-aaae: auth:00001468:  (errmsg("out of memory"))); 
+aaae: auth:00000308:  ereport(FATAL, 
+aaae: auth:00000309:  (errcode(errcode_return), 
+aaae: auth:00000310:  errmsg(errstr, port->user_name))); 
+aaae: auth:00000331:  ereport(FATAL, 
+aaae: auth:00000332:  (errcode(ERRCODE_CONFIG_FILE_ERROR), 
+aaae: auth:00000333:  errmsg("missing or erroneous pg_hba.conf file"), 
+aaae: auth:00000334:  errhint("See server log for details."))); 
+aaae: auth:00000362:  ereport(FATAL, 
+aaae: auth:00000363:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000364:  errmsg("connection requires a valid client certificate"))); 
+aaae: auth:00000405:  ereport(FATAL, 
+aaae: auth:00000406:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000407:  errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\", %s", 
+aaae: auth:00000408:  hostinfo, port->user_name, 
+aaae: auth:00000409:  port->ssl ? _("SSL on") : _("SSL off")))); 
+aaae: auth:00000411:  ereport(FATAL, 
+aaae: auth:00000412:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000413:  errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\"", 
+aaae: auth:00000414:  hostinfo, port->user_name))); 
+aaae: auth:00000421:  ereport(FATAL, 
+aaae: auth:00000422:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000423:  errmsg("pg_hba.conf rejects connection for host \"%s\", user \"%s\", database \"%s\", %s", 
+aaae: auth:00000424:  hostinfo, port->user_name, 
+aaae: auth:00000425:  port->database_name, 
+aaae: auth:00000426:  port->ssl ? _("SSL on") : _("SSL off")), 
+aaae: auth:00000427:  errSendAlert(false))); 
+aaae: auth:00000429:  ereport(FATAL, 
+aaae: auth:00000430:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000431:  errmsg("pg_hba.conf rejects connection for host \"%s\", user \"%s\", database \"%s\"", 
+aaae: auth:00000432:  hostinfo, port->user_name, 
+aaae: auth:00000433:  port->database_name) 
+aaae: auth:00000434:  errSendAlert(false))); 
+aaae: auth:00000462:  ereport(FATAL, 
+aaae: auth:00000463:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000464:  errmsg("no pg_hba.conf entry for replication connection from host \"%s\", user \"%s\", %s", 
+aaae: auth:00000465:  hostinfo, port->user_name, 
+aaae: auth:00000466:  port->ssl ? _("SSL on") : _("SSL off")))); 
+aaae: auth:00000468:  ereport(FATAL, 
+aaae: auth:00000469:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000470:  errmsg("no pg_hba.conf entry for replication connection from host \"%s\", user \"%s\"", 
+aaae: auth:00000471:  hostinfo, port->user_name))); 
+aaae: auth:00000478:  ereport(FATAL, 
+aaae: auth:00000479:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000480:  errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\", %s", 
+aaae: auth:00000481:  hostinfo, port->user_name, 
+aaae: auth:00000482:  port->database_name, 
+aaae: auth:00000483:  port->ssl ? _("SSL on") : _("SSL off")))); 
+aaae: auth:00000485:  ereport(FATAL, 
+aaae: auth:00000486:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000487:  errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\"", 
+aaae: auth:00000488:  hostinfo, port->user_name, 
+aaae: auth:00000489:  port->database_name))); 
+aaae: auth:00000543:  ereport(FATAL, 
+aaae: auth:00000544:  (errcode_for_socket_access(), 
+aaae: auth:00000545:  errmsg("could not enable credential reception: %m"))); 
+aaae: auth:00000556:  ereport(FATAL, 
+aaae: auth:00000557:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000558:  errmsg("MD5 authentication is not supported when \"db_user_namespace\" is enabled"))); 
+aaae: auth:00000601:  ereport(FATAL, 
+aaae: auth:00000602:  (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION), 
+aaae: auth:00000603:  errmsg("authentication failed for user \"%s\": login not permitted at this time", port->user_name))); 
+aaae: auth:00000991:  ereport(WARNING, 
+aaae: auth:00000992:  (errmsg_internal("incomplete GSS error report"))); 
+aaae: auth:00001002:  ereport(WARNING, 
+aaae: auth:00001003:  (errmsg_internal("incomplete GSS minor error report"))); 
+aaae: auth:00001035:  ereport(FATAL, 
+aaae: auth:00001036:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaae: auth:00001037:  errmsg("GSSAPI is not supported in protocol version 2"))); 
+aaae: auth:00001296:  ereport(FATAL, 
+aaae: auth:00001297:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+aaae: auth:00001298:  errmsg("SSPI is not supported in protocol version 2"))); 
+aaae: auth:00001409:  ereport(ERROR, 
+aaae: auth:00001410:  (errmsg("out of memory"))); 
+aaae: auth:00001439:  ereport(ERROR, 
+aaae: auth:00001440:  (errmsg_internal("could not load secur32.dll: %d", 
+aaae: auth:00001441:  (int) GetLastError()))); 
+aaae: auth:00001448:  ereport(ERROR, 
+aaae: auth:00001449:  (errmsg_internal("could not locate QuerySecurityContextToken in secur32.dll: %d", 
+aaae: auth:00001450:  (int) GetLastError()))); 
 aaae: auth:00001471:  ereport(ERROR, 
-aaae: auth:00001472:  (errmsg_internal("could not get user token: error code %d", 
+aaae: auth:00001472:  (errmsg_internal("could not get token user size: error code %d", 
 aaae: auth:00001473:  (int) GetLastError()))); 
 aaae: auth:00001477:  ereport(ERROR, 
-aaae: auth:00001478:  (errmsg_internal("could not lookup acconut sid: error code %d", 
-aaae: auth:00001479:  (int) GetLastError()))); 
-aaae: auth:00002618:  elog(WARNING, 
-aaae: auth:00002619:  "Adding attribute code %i with length %i to radius packet would create oversize packet, ignoring", 
-aaae: auth:00002620:  type, len); 
+aaae: auth:00001478:  (errmsg("out of memory"))); 
+aaae: auth:00001481:  ereport(ERROR, 
+aaae: auth:00001482:  (errmsg_internal("could not get user token: error code %d", 
+aaae: auth:00001483:  (int) GetLastError()))); 
+aaae: auth:00001487:  ereport(ERROR, 
+aaae: auth:00001488:  (errmsg_internal("could not lookup acconut sid: error code %d", 
+aaae: auth:00001489:  (int) GetLastError()))); 
+aaae: auth:00002628:  elog(WARNING, 
+aaae: auth:00002629:  "Adding attribute code %i with length %i to radius packet would create oversize packet, ignoring", 
+aaae: auth:00002630:  type, len); 
+aaae: auth:00003011:  ereport(FATAL, 
+aaae: auth:00003012:  (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE), 
+aaae: auth:00003013:  errmsg("current timestamp out of range"))); 
 aaaaa GP_IGNORE: baba: bexfsstubs - ./backend/libpq/be-fsstubs.c
 baba: bexfsstubs:00000130:  ereport(ERROR, 
 baba: bexfsstubs:00000131:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
@@ -13515,11 +13542,11 @@ baaj: bexsecure:00000846:  ereport(FATAL,
 baaj: bexsecure:00000847:  (errmsg("could not load root certificate file \"%s\": %s", 
 baaj: bexsecure:00000848:  ROOT_CERT_FILE, SSLerrmessage()))); 
 aaaaa GP_IGNORE: haad: hba - ./backend/libpq/hba.c
-haad: hba:00001693:  elog(FATAL, "bad data in flat pg_database file"); 
-haad: hba:00001697:  elog(FATAL, "bad data in flat pg_database file"); 
-haad: hba:00001701:  elog(FATAL, "bad data in flat pg_database file"); 
-haad: hba:00001705:  elog(FATAL, "bad data in flat pg_database file"); 
-haad: hba:00001709:  elog(FATAL, "bad data in flat pg_database file"); 
+haad: hba:00001832:  elog(FATAL, "bad data in flat pg_database file"); 
+haad: hba:00001836:  elog(FATAL, "bad data in flat pg_database file"); 
+haad: hba:00001840:  elog(FATAL, "bad data in flat pg_database file"); 
+haad: hba:00001844:  elog(FATAL, "bad data in flat pg_database file"); 
+haad: hba:00001848:  elog(FATAL, "bad data in flat pg_database file"); 
 aaaaa GP_IGNORE: paag: pqcomm - ./backend/libpq/pqcomm.c
 paag: pqcomm:00000543:  elog(WARNING, "configuration item unix_socket_group is not supported on this platform"); 
 paag: pqcomm:00000837:  elog(ERROR, "SSL connection cannot be used with pq_waitForDataUsingSelect"); 
@@ -13562,30 +13589,30 @@ baaj: bitmapset:00000674:  elog(ERROR, "negative bitmapset member not allowed");
 aaaaa GP_IGNORE: caaj: copyfuncs - ./backend/nodes/copyfuncs.c
 caaj: copyfuncs:00002049:  elog(ERROR, "unrecognized node type: %d", 
 caaj: copyfuncs:00002050:  (int) from->val.type); 
-caaj: copyfuncs:00003881:  elog(ERROR, "unrecognized node type: %d", 
-caaj: copyfuncs:00003882:  (int) from->type); 
-caaj: copyfuncs:00004630:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(from)); 
+caaj: copyfuncs:00003903:  elog(ERROR, "unrecognized node type: %d", 
+caaj: copyfuncs:00003904:  (int) from->type); 
+caaj: copyfuncs:00004659:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(from)); 
 aaaaa GP_IGNORE: eaba: equalfuncs - ./backend/nodes/equalfuncs.c
-eaba: equalfuncs:00002309:  elog(ERROR, "unrecognized list node type: %d", 
-eaba: equalfuncs:00002310:  (int) a->type); 
-eaba: equalfuncs:00002346:  elog(ERROR, "unrecognized node type: %d", (int) a->type); 
-eaba: equalfuncs:00002942:  elog(ERROR, "unrecognized node type: %d", 
-eaba: equalfuncs:00002943:  (int) nodeTag(a)); 
+eaba: equalfuncs:00002327:  elog(ERROR, "unrecognized list node type: %d", 
+eaba: equalfuncs:00002328:  (int) a->type); 
+eaba: equalfuncs:00002364:  elog(ERROR, "unrecognized node type: %d", (int) a->type); 
+eaba: equalfuncs:00002966:  elog(ERROR, "unrecognized node type: %d", 
+eaba: equalfuncs:00002967:  (int) nodeTag(a)); 
 aaaaa GP_IGNORE: laae: list - ./backend/nodes/list.c
 laae: list:00000328:  elog(ERROR, "cannot list_concat() a list to itself"); 
 aaaaa GP_IGNORE: oaah: outfast - ./backend/nodes/outfast.c
-oaah: outfast:00002939:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
-oaah: outfast:00003033:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
-oaah: outfast:00003130:  elog(WARNING,"serialization doesn't know what to do with this constraint"); 
-oaah: outfast:00004098:  elog(ERROR, "could not serialize unrecognized node type: %d", 
-oaah: outfast:00004099:  (int) nodeTag(obj)); 
+oaah: outfast:00002956:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
+oaah: outfast:00003050:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
+oaah: outfast:00003147:  elog(WARNING,"serialization doesn't know what to do with this constraint"); 
+oaah: outfast:00004120:  elog(ERROR, "could not serialize unrecognized node type: %d", 
+oaah: outfast:00004121:  (int) nodeTag(obj)); 
 aaaaa GP_IGNORE: oaai: outfuncs - ./backend/nodes/outfuncs.c
 oaai: outfuncs:00000196:  elog(ERROR, "unrecognized list node type: %d", 
 oaai: outfuncs:00000197:  (int) node->type); 
-oaai: outfuncs:00003239:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
-oaai: outfuncs:00003338:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
-oaai: outfuncs:00004435:  elog(WARNING, "could not dump unrecognized node type: %d", 
-oaai: outfuncs:00004436:  (int) nodeTag(obj)); 
+oaai: outfuncs:00003257:  elog(ERROR, "unrecognized RTE kind: %d", (int) node->rtekind); 
+oaai: outfuncs:00003356:  elog(ERROR, "unrecognized node type: %d", (int) value->type); 
+oaai: outfuncs:00004459:  elog(WARNING, "could not dump unrecognized node type: %d", 
+oaai: outfuncs:00004460:  (int) nodeTag(obj)); 
 aaaaa GP_IGNORE: raae: read - ./backend/nodes/read.c
 raae: read:00000329:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 raae: read:00000330:  errmsg("This operation requires a feature " 
@@ -13613,33 +13640,33 @@ raae: read:00000552:  elog(ERROR, "did not find '%c' as expected, instead found 
 raae: read:00000553:  closingDelimiter, token); 
 aaaaa GP_IGNORE: raai: readfast - ./backend/nodes/readfast.c
 raai: readfast:00000561:  elog(WARNING,"Can't deserialize constraint %d",(int)local_node->contype); 
-raai: readfast:00001045:  elog(ERROR,"Unable to understand A_Expr node "); 
-raai: readfast:00001740:  elog(ERROR, "unrecognized RTE kind: %d", 
-raai: readfast:00001741:  (int) local_node->rtekind); 
-raai: readfast:00003540:  elog(ERROR, "unknown Value node type %i", nt); 
-raai: readfast:00004228:  elog(ERROR, "could not deserialize unrecognized node type: %d", 
-raai: readfast:00004229:  (int) nt); 
-raai: readfast:00004247:  elog(ERROR,"Deserialization lost sync."); 
+raai: readfast:00001067:  elog(ERROR,"Unable to understand A_Expr node "); 
+raai: readfast:00001762:  elog(ERROR, "unrecognized RTE kind: %d", 
+raai: readfast:00001763:  (int) local_node->rtekind); 
+raai: readfast:00003562:  elog(ERROR, "unknown Value node type %i", nt); 
+raai: readfast:00004256:  elog(ERROR, "could not deserialize unrecognized node type: %d", 
+raai: readfast:00004257:  (int) nt); 
+raai: readfast:00004275:  elog(ERROR,"Deserialization lost sync."); 
 aaaaa GP_IGNORE: raaj: readfuncs - ./backend/nodes/readfuncs.c
-raaj: readfuncs:00001240:  elog(ERROR,"Deserialization problem: A_Const not string, bitstring, float, or int"); 
-raaj: readfuncs:00001312:  elog(ERROR,"Unable to understand A_Expr node %.30s",token); 
-raaj: readfuncs:00001555:  elog(ERROR, "unrecognized boolop \"%.*s\"", length, token); 
-raaj: readfuncs:00002046:  elog(ERROR, "unrecognized RTE kind: %d", 
-raaj: readfuncs:00002047:  (int) local_node->rtekind); 
-raaj: readfuncs:00003107:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-raaj: readfuncs:00003108:  errmsg("This operation involves an internal data item " 
-raaj: readfuncs:00003109:  "of a type called \"%.*s\" which is not " 
-raaj: readfuncs:00003110:  "supported in this version of %s.", 
-raaj: readfuncs:00003111:  length, token, PACKAGE_NAME) 
-raaj: readfuncs:00003112:  )); 
-raaj: readfuncs:00003153:  elog(ERROR, "expected \"[\" to start datum, but got \"%s\"; length = %lu", 
-raaj: readfuncs:00003154:  token ? (const char *) token : "[NULL]", 
-raaj: readfuncs:00003155:  (unsigned long) length); 
-raaj: readfuncs:00003160:  elog(ERROR, "byval datum but length = %lu", 
-raaj: readfuncs:00003161:  (unsigned long) length); 
-raaj: readfuncs:00003185:  elog(ERROR, "expected \"]\" to end datum, but got \"%s\"; length = %lu", 
-raaj: readfuncs:00003186:  token ? (const char *) token : "[NULL]", 
-raaj: readfuncs:00003187:  (unsigned long) length); 
+raaj: readfuncs:00001262:  elog(ERROR,"Deserialization problem: A_Const not string, bitstring, float, or int"); 
+raaj: readfuncs:00001334:  elog(ERROR,"Unable to understand A_Expr node %.30s",token); 
+raaj: readfuncs:00001577:  elog(ERROR, "unrecognized boolop \"%.*s\"", length, token); 
+raaj: readfuncs:00002068:  elog(ERROR, "unrecognized RTE kind: %d", 
+raaj: readfuncs:00002069:  (int) local_node->rtekind); 
+raaj: readfuncs:00003131:  ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+raaj: readfuncs:00003132:  errmsg("This operation involves an internal data item " 
+raaj: readfuncs:00003133:  "of a type called \"%.*s\" which is not " 
+raaj: readfuncs:00003134:  "supported in this version of %s.", 
+raaj: readfuncs:00003135:  length, token, PACKAGE_NAME) 
+raaj: readfuncs:00003136:  )); 
+raaj: readfuncs:00003177:  elog(ERROR, "expected \"[\" to start datum, but got \"%s\"; length = %lu", 
+raaj: readfuncs:00003178:  token ? (const char *) token : "[NULL]", 
+raaj: readfuncs:00003179:  (unsigned long) length); 
+raaj: readfuncs:00003184:  elog(ERROR, "byval datum but length = %lu", 
+raaj: readfuncs:00003185:  (unsigned long) length); 
+raaj: readfuncs:00003209:  elog(ERROR, "expected \"]\" to end datum, but got \"%s\"; length = %lu", 
+raaj: readfuncs:00003210:  token ? (const char *) token : "[NULL]", 
+raaj: readfuncs:00003211:  (unsigned long) length); 
 aaaaa GP_IGNORE: taaj: tidbitmap - ./backend/nodes/tidbitmap.c
 taaj: tidbitmap:00000277: // elog(ERROR, "tuple offset out of range: %u", off); 
 taaj: tidbitmap:00000431:  elog(ERROR, "hash table corrupted"); 
@@ -13836,19 +13863,19 @@ paah: planner:00001302:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 paah: planner:00001303:  errmsg("SELECT FOR UPDATE/SHARE is not allowed with UNION/INTERSECT/EXCEPT"))); 
 paah: planner:00001941:  ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR), 
 paah: planner:00001942:  errmsg("unexpected input locus to distinct"))); 
-paah: planner:00002963:  elog(ERROR, "failed to locate grouping columns"); 
-paah: planner:00003002:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00003007:  elog(ERROR, "resjunk output columns are not implemented"); 
-paah: planner:00003080:  elog(ERROR, "invalid grouping set"); 
-paah: planner:00003218:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003227:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003237:  elog(ERROR,"invalid column reference list"); 
-paah: planner:00003281:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003296:  elog(ERROR,"invalid ordinary grouping set"); 
-paah: planner:00003310:  elog(ERROR,"invalid grouping set"); 
-paah: planner:00003316:  elog(ERROR,"invalid grouping set list"); 
-paah: planner:00003336:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
-paah: planner:00003405:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00002967:  elog(ERROR, "failed to locate grouping columns"); 
+paah: planner:00003006:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00003011:  elog(ERROR, "resjunk output columns are not implemented"); 
+paah: planner:00003084:  elog(ERROR, "invalid grouping set"); 
+paah: planner:00003222:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003231:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003241:  elog(ERROR,"invalid column reference list"); 
+paah: planner:00003285:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003300:  elog(ERROR,"invalid ordinary grouping set"); 
+paah: planner:00003314:  elog(ERROR,"invalid grouping set"); 
+paah: planner:00003320:  elog(ERROR,"invalid grouping set list"); 
+paah: planner:00003340:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
+paah: planner:00003409:  elog(ERROR,"invalid grouping ordinary grouping set list"); 
 aaaaa GP_IGNORE: pabd: planpartition - ./backend/optimizer/plan/planpartition.c
 pabd: planpartition:00000689:  //elog(NOTICE, "modified outer plan is %s", nodeToString(ctx->outerPlan)); 
 pabd: planpartition:00000785:  //elog(NOTICE, "safe to convert = %s", ctx->safeToConvert ? "true" : "false"); 
@@ -14969,317 +14996,317 @@ aaah: analyze:00011164:  ereport(NOTICE,
 aaah: analyze:00011165:  (errmsg("Error table \"%s\" does not exist. Auto generating an " 
 aaah: analyze:00011166:  "error table with the same name", sreh->errtable->relname))); 
 aaaaa GP_IGNORE: gaae: gram - ./backend/parser/gram.c
-gaae: gram:00019143:  ereport(ERROR, 
-gaae: gram:00019144:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019145:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
-gaae: gram:00019146:  scanner_errposition((yylsp[(3) - (3)])))); 
-gaae: gram:00019158:  ereport(ERROR, 
-gaae: gram:00019159:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00019160:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (6)].ival)), 
-gaae: gram:00019161:  scanner_errposition((yylsp[(3) - (6)])))); 
-gaae: gram:00019164:  ereport(WARNING, 
-gaae: gram:00019165:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00019166:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00019167:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
-gaae: gram:00019173:  ereport(ERROR, 
-gaae: gram:00019174:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019175:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
-gaae: gram:00019858:  ereport(ERROR, 
-gaae: gram:00019859:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019860:  errmsg("Cannot specify a name, rank, " 
-gaae: gram:00019861:  "or value for a DEFAULT partition " 
-gaae: gram:00019862:  "in this context"))); 
-gaae: gram:00019926:  ereport(ERROR, 
-gaae: gram:00019927:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019928:  errmsg("Can only ADD a partition by name"), 
-gaae: gram:00019929:  errOmitLocation(true))); 
-gaae: gram:00019967:  ereport(ERROR, 
-gaae: gram:00019968:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00019969:  errmsg("Can only ADD a partition by name"))); 
-gaae: gram:00020046:  ereport(ERROR, 
-gaae: gram:00020047:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00020048:  errmsg("Can only COALESCE a partition by name"))); 
-gaae: gram:00020312:  ereport(ERROR, 
-gaae: gram:00020313:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00020314:  errmsg("template cannot contain " 
-gaae: gram:00020315:  "specification for child " 
-gaae: gram:00020316:  "partition"))); 
-gaae: gram:00021265:  ereport(ERROR, 
-gaae: gram:00021266:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00021267:  errmsg("MATCH PARTIAL not yet implemented"), 
-gaae: gram:00021268:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00021952:  ereport(ERROR, 
-gaae: gram:00021953:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00021954:  errmsg("PARTITION BY must specify RANGE or LIST"), 
-gaae: gram:00021955:  errOmitLocation(true))); 
-gaae: gram:00022001:  ereport(ERROR, 
-gaae: gram:00022002:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022003:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
-gaae: gram:00022005:  ereport(ERROR, 
-gaae: gram:00022006:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022007:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
-gaae: gram:00022063:  ereport(ERROR, 
-gaae: gram:00022064:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022065:  errmsg("template cannot contain " 
-gaae: gram:00022066:  "specification for child " 
-gaae: gram:00022067:  "partition"), 
-gaae: gram:00022068:  errOmitLocation(true))); 
-gaae: gram:00022161:  ereport(ERROR, 
-gaae: gram:00022162:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022163:  errmsg("CREATE TABLE AS cannot specify INTO"), 
-gaae: gram:00022164:  scanner_errposition(exprLocation((Node *) n->intoClause)))); 
-gaae: gram:00022173:  ereport(ERROR, 
-gaae: gram:00022174:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00022175:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
-gaae: gram:00022176:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"), 
-gaae: gram:00022177:  errOmitLocation(true))); 
-gaae: gram:00022287:  ereport(ERROR, 
-gaae: gram:00022288:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022289:  errmsg("EXECUTE may not be used with a regular external table"), 
-gaae: gram:00022290:  errhint("Use CREATE EXTERNAL WEB TABLE instead"), 
-gaae: gram:00022291:  errOmitLocation(true))); 
-gaae: gram:00022301:  ereport(ERROR, 
-gaae: gram:00022302:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022303:  errmsg("ON clause may not be used with a writable external table"), 
-gaae: gram:00022304:  errOmitLocation(true))); 
-gaae: gram:00022309:  ereport(ERROR, 
-gaae: gram:00022310:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00022311:  errmsg("Single row error handling may not be used with a writable external table"))); 
-gaae: gram:00022610:  ereport(ERROR, 
-gaae: gram:00022611:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00022612:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
-gaae: gram:00022616:  ereport(ERROR, 
-gaae: gram:00022617:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00022618:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
-gaae: gram:00023572:  ereport(ERROR, 
-gaae: gram:00023573:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00023574:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
-gaae: gram:00023575:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00023594:  ereport(ERROR, 
-gaae: gram:00023595:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00023596:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
-gaae: gram:00023597:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00023663:  ereport(ERROR, 
-gaae: gram:00023664:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00023665:  errmsg("CREATE ASSERTION is not yet implemented"))); 
-gaae: gram:00023679:  ereport(ERROR, 
-gaae: gram:00023680:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00023681:  errmsg("DROP ASSERTION is not yet implemented"))); 
-gaae: gram:00023784:  ereport(ERROR, 
-gaae: gram:00023785:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00023786:  errmsg("improper qualified name (too many dotted names): %s", 
-gaae: gram:00023787:  NameListToString((yyvsp[(3) - (7)].list))), 
-gaae: gram:00023788:  scanner_errposition((yylsp[(3) - (7)])))); 
-gaae: gram:00024989:  ereport(ERROR, 
-gaae: gram:00024990:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00024991:  errmsg("CREATE INDEX CONCURRENTLY is not supported"))); 
-gaae: gram:00025516:  ereport(ERROR, 
-gaae: gram:00025517:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00025518:  errmsg("missing argument"), 
-gaae: gram:00025519:  errhint("Use NONE to denote the missing argument of a unary operator."), 
-gaae: gram:00025520:  errOmitLocation(true), 
-gaae: gram:00025521:  scanner_errposition((yylsp[(1) - (1)])))); 
-gaae: gram:00026489:  ereport(ERROR, 
-gaae: gram:00026490:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026491:  errmsg("WITH CHECK OPTION is not implemented"))); 
-gaae: gram:00026498:  ereport(ERROR, 
-gaae: gram:00026499:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026500:  errmsg("WITH CHECK OPTION is not implemented"))); 
-gaae: gram:00026507:  ereport(ERROR, 
-gaae: gram:00026508:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026509:  errmsg("WITH CHECK OPTION is not implemented"))); 
-gaae: gram:00026959:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00026960:  errmsg("cannot use force with explain statement") 
-gaae: gram:00026961:  )); 
-gaae: gram:00026970:  ereport(ERROR, 
-gaae: gram:00026971:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00026972:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
-gaae: gram:00026973:  "clause"))); 
-gaae: gram:00027038:  ereport(ERROR, 
-gaae: gram:00027039:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00027040:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
-gaae: gram:00027305:  ereport(ERROR, 
-gaae: gram:00027306:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00027307:  errmsg("number of columns does not match number of values"), 
-gaae: gram:00027308:  scanner_errposition((yylsp[(1) - (5)])))); 
-gaae: gram:00027786:  ereport(ERROR, 
-gaae: gram:00027787:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00027788:  errmsg("LIMIT #,# syntax is not supported"), 
-gaae: gram:00027789:  errhint("Use separate LIMIT and OFFSET clauses."), 
-gaae: gram:00027790:  scanner_errposition((yylsp[(1) - (4)])))); 
-gaae: gram:00028370:  ereport(ERROR, 
-gaae: gram:00028371:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00028372:  errmsg("VALUES in FROM must have an alias"), 
-gaae: gram:00028373:  errhint("For example, FROM (VALUES ...) [AS] foo."), 
-gaae: gram:00028374:  scanner_errposition((yylsp[(1) - (1)])))); 
-gaae: gram:00028376:  ereport(ERROR, 
-gaae: gram:00028377:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00028378:  errmsg("subquery in FROM must have an alias"), 
-gaae: gram:00028379:  errhint("For example, FROM (SELECT ...) [AS] foo."), 
-gaae: gram:00028380:  scanner_errposition((yylsp[(1) - (1)])))); 
-gaae: gram:00028764:  ereport(ERROR, 
-gaae: gram:00028765:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028766:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (5)].ival)), 
-gaae: gram:00028767:  scanner_errposition((yylsp[(3) - (5)])))); 
-gaae: gram:00028770:  ereport(WARNING, 
-gaae: gram:00028771:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028772:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00028773:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION), 
-gaae: gram:00028774:  scanner_errposition((yylsp[(3) - (5)])))); 
-gaae: gram:00028920:  ereport(ERROR, 
-gaae: gram:00028921:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028922:  errmsg("precision for type float must be at least 1 bit"), 
-gaae: gram:00028923:  scanner_errposition((yylsp[(2) - (3)])))); 
-gaae: gram:00028929:  ereport(ERROR, 
-gaae: gram:00028930:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028931:  errmsg("precision for type float must be less than 54 bits"), 
-gaae: gram:00028932:  scanner_errposition((yylsp[(2) - (3)])))); 
-gaae: gram:00028947:  ereport(ERROR, 
-gaae: gram:00028948:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028949:  errmsg("NUMERIC precision %d must be between 1 and %d", 
-gaae: gram:00028950:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
-gaae: gram:00028952:  ereport(ERROR, 
-gaae: gram:00028953:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028954:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
-gaae: gram:00028955:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
-gaae: gram:00028965:  ereport(ERROR, 
-gaae: gram:00028966:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028967:  errmsg("NUMERIC precision %d must be between 1 and %d", 
-gaae: gram:00028968:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
-gaae: gram:00028986:  ereport(ERROR, 
-gaae: gram:00028987:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028988:  errmsg("DECIMAL precision %d must be between 1 and %d", 
-gaae: gram:00028989:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
-gaae: gram:00028991:  ereport(ERROR, 
-gaae: gram:00028992:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00028993:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
-gaae: gram:00028994:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
-gaae: gram:00029004:  ereport(ERROR, 
-gaae: gram:00029005:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029006:  errmsg("DECIMAL precision %d must be between 1 and %d", 
-gaae: gram:00029007:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
-gaae: gram:00029058:  ereport(ERROR, 
-gaae: gram:00029059:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029060:  errmsg("length for type %s must be at least 1", 
-gaae: gram:00029061:  typname))); 
-gaae: gram:00029063:  ereport(ERROR, 
-gaae: gram:00029064:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029065:  errmsg("length for type %s cannot exceed %d", 
-gaae: gram:00029066:  typname, MaxAttrSize * BITS_PER_BYTE))); 
-gaae: gram:00029141:  ereport(ERROR, 
-gaae: gram:00029142:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029143:  errmsg("length for type %s must be at least 1", 
-gaae: gram:00029144:  (yyvsp[(1) - (5)].str)))); 
-gaae: gram:00029146:  ereport(ERROR, 
-gaae: gram:00029147:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029148:  errmsg("length for type %s cannot exceed %d", 
-gaae: gram:00029149:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
-gaae: gram:00029246:  ereport(ERROR, 
-gaae: gram:00029247:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029248:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
-gaae: gram:00029249:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
-gaae: gram:00029252:  ereport(WARNING, 
-gaae: gram:00029253:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029254:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
-gaae: gram:00029255:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
-gaae: gram:00029256:  MAX_TIMESTAMP_PRECISION))); 
-gaae: gram:00029287:  ereport(ERROR, 
-gaae: gram:00029288:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029289:  errmsg("TIME(%d)%s precision must not be negative", 
-gaae: gram:00029290:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
-gaae: gram:00029293:  ereport(WARNING, 
-gaae: gram:00029294:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00029295:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
-gaae: gram:00029296:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
-gaae: gram:00029297:  MAX_TIME_PRECISION))); 
-gaae: gram:00029938:  ereport(ERROR, 
-gaae: gram:00029939:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-gaae: gram:00029940:  errmsg("UNIQUE predicate is not yet implemented"), 
-gaae: gram:00029941:  scanner_errposition((yylsp[(1) - (2)])))); 
-gaae: gram:00030069:  ereport(ERROR, 
-gaae: gram:00030070:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00030071:  errmsg("window OVER clause can only be used " 
-gaae: gram:00030072:  "with an aggregate"))); 
-gaae: gram:00030393:  ereport(ERROR, 
-gaae: gram:00030394:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030395:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
-gaae: gram:00030396:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030399:  ereport(WARNING, 
-gaae: gram:00030400:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030401:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030402:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
-gaae: gram:00030446:  ereport(ERROR, 
-gaae: gram:00030447:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030448:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
-gaae: gram:00030449:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030452:  ereport(WARNING, 
-gaae: gram:00030453:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030454:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030455:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
-gaae: gram:00030499:  ereport(ERROR, 
-gaae: gram:00030500:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030501:  errmsg("LOCALTIME(%d) precision must not be negative", 
-gaae: gram:00030502:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030505:  ereport(WARNING, 
-gaae: gram:00030506:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030507:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030508:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
-gaae: gram:00030553:  ereport(ERROR, 
-gaae: gram:00030554:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030555:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
-gaae: gram:00030556:  (yyvsp[(3) - (4)].ival)))); 
-gaae: gram:00030559:  ereport(WARNING, 
-gaae: gram:00030560:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00030561:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00030562:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
-gaae: gram:00031544:  ereport(ERROR, 
-gaae: gram:00031545:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00031546:  errmsg("improper qualified name (too many dotted names): %s", 
-gaae: gram:00031547:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
-gaae: gram:00031701:  ereport(ERROR, 
-gaae: gram:00031702:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00031703:  errmsg("INTERVAL(%d) precision must not be negative", 
-gaae: gram:00031704:  (yyvsp[(3) - (6)].ival)))); 
-gaae: gram:00031707:  ereport(WARNING, 
-gaae: gram:00031708:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-gaae: gram:00031709:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
-gaae: gram:00031710:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
-gaae: gram:00031863:  ereport(ERROR, 
-gaae: gram:00031864:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00031865:  errmsg("OLD used in query that is not in a rule"))); 
-gaae: gram:00031875:  ereport(ERROR, 
-gaae: gram:00031876:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00031877:  errmsg("NEW used in query that is not in a rule"))); 
-gaae: gram:00032310:  ereport(ERROR, 
-gaae: gram:00032311:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032312:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
-gaae: gram:00032313:  scanner_errposition(location))); 
-gaae: gram:00032317:  ereport(ERROR, 
-gaae: gram:00032318:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032319:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
-gaae: gram:00032320:  scanner_errposition(location))); 
-gaae: gram:00032424:  ereport(ERROR, 
-gaae: gram:00032425:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032426:  errmsg("syntax error at or near \"ORDER BY\""), 
-gaae: gram:00032427:  scanner_errposition(exprLocation((Node *) sortClause)))); 
-gaae: gram:00032435:  ereport(ERROR, 
-gaae: gram:00032436:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032437:  errmsg("syntax error at or near \"OFFSET\""), 
-gaae: gram:00032438:  scanner_errposition(exprLocation(limitOffset)))); 
-gaae: gram:00032444:  ereport(ERROR, 
-gaae: gram:00032445:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032446:  errmsg("syntax error at or near \"LIMIT\""), 
-gaae: gram:00032447:  scanner_errposition(exprLocation(limitCount)))); 
-gaae: gram:00032453:  ereport(ERROR, 
-gaae: gram:00032454:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032455:  errmsg("syntax error at or near \"WITH\""), 
-gaae: gram:00032456:  scanner_errposition(exprLocation((Node *)withClause)))); 
-gaae: gram:00032609:  ereport(ERROR, 
-gaae: gram:00032610:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032611:  errmsg("OUT arguments aren't allowed in TABLE functions"))); 
-gaae: gram:00032614:  ereport(ERROR, 
-gaae: gram:00032615:  (errcode(ERRCODE_SYNTAX_ERROR), 
-gaae: gram:00032616:  errmsg("INOUT arguments aren't allowed in TABLE functions"))); 
+gaae: gram:00019323:  ereport(ERROR, 
+gaae: gram:00019324:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00019325:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"), 
+gaae: gram:00019326:  scanner_errposition((yylsp[(3) - (3)])))); 
+gaae: gram:00019338:  ereport(ERROR, 
+gaae: gram:00019339:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00019340:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (6)].ival)), 
+gaae: gram:00019341:  scanner_errposition((yylsp[(3) - (6)])))); 
+gaae: gram:00019344:  ereport(WARNING, 
+gaae: gram:00019345:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00019346:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00019347:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+gaae: gram:00019353:  ereport(ERROR, 
+gaae: gram:00019354:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00019355:  errmsg("time zone interval must be HOUR or HOUR TO MINUTE"))); 
+gaae: gram:00020038:  ereport(ERROR, 
+gaae: gram:00020039:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020040:  errmsg("Cannot specify a name, rank, " 
+gaae: gram:00020041:  "or value for a DEFAULT partition " 
+gaae: gram:00020042:  "in this context"))); 
+gaae: gram:00020106:  ereport(ERROR, 
+gaae: gram:00020107:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020108:  errmsg("Can only ADD a partition by name"), 
+gaae: gram:00020109:  errOmitLocation(true))); 
+gaae: gram:00020147:  ereport(ERROR, 
+gaae: gram:00020148:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020149:  errmsg("Can only ADD a partition by name"))); 
+gaae: gram:00020226:  ereport(ERROR, 
+gaae: gram:00020227:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020228:  errmsg("Can only COALESCE a partition by name"))); 
+gaae: gram:00020492:  ereport(ERROR, 
+gaae: gram:00020493:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00020494:  errmsg("template cannot contain " 
+gaae: gram:00020495:  "specification for child " 
+gaae: gram:00020496:  "partition"))); 
+gaae: gram:00021445:  ereport(ERROR, 
+gaae: gram:00021446:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00021447:  errmsg("MATCH PARTIAL not yet implemented"), 
+gaae: gram:00021448:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00022132:  ereport(ERROR, 
+gaae: gram:00022133:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022134:  errmsg("PARTITION BY must specify RANGE or LIST"), 
+gaae: gram:00022135:  errOmitLocation(true))); 
+gaae: gram:00022181:  ereport(ERROR, 
+gaae: gram:00022182:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022183:  errmsg("PARTITION BY must specify RANGE or LIST"))); 
+gaae: gram:00022185:  ereport(ERROR, 
+gaae: gram:00022186:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022187:  errmsg("PARTITION BY must specify RANGE, HASH, or LIST"))); 
+gaae: gram:00022243:  ereport(ERROR, 
+gaae: gram:00022244:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022245:  errmsg("template cannot contain " 
+gaae: gram:00022246:  "specification for child " 
+gaae: gram:00022247:  "partition"), 
+gaae: gram:00022248:  errOmitLocation(true))); 
+gaae: gram:00022341:  ereport(ERROR, 
+gaae: gram:00022342:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022343:  errmsg("CREATE TABLE AS cannot specify INTO"), 
+gaae: gram:00022344:  scanner_errposition(exprLocation((Node *) n->intoClause)))); 
+gaae: gram:00022353:  ereport(ERROR, 
+gaae: gram:00022354:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00022355:  errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"), 
+gaae: gram:00022356:  errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead"), 
+gaae: gram:00022357:  errOmitLocation(true))); 
+gaae: gram:00022467:  ereport(ERROR, 
+gaae: gram:00022468:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022469:  errmsg("EXECUTE may not be used with a regular external table"), 
+gaae: gram:00022470:  errhint("Use CREATE EXTERNAL WEB TABLE instead"), 
+gaae: gram:00022471:  errOmitLocation(true))); 
+gaae: gram:00022481:  ereport(ERROR, 
+gaae: gram:00022482:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022483:  errmsg("ON clause may not be used with a writable external table"), 
+gaae: gram:00022484:  errOmitLocation(true))); 
+gaae: gram:00022489:  ereport(ERROR, 
+gaae: gram:00022490:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00022491:  errmsg("Single row error handling may not be used with a writable external table"))); 
+gaae: gram:00022790:  ereport(ERROR, 
+gaae: gram:00022791:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00022792:  errmsg("invalid PERCENT value. Should be (1 - 100)"))); 
+gaae: gram:00022796:  ereport(ERROR, 
+gaae: gram:00022797:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00022798:  errmsg("invalid (ROWS) reject limit. Should be 2 or larger"))); 
+gaae: gram:00023752:  ereport(ERROR, 
+gaae: gram:00023753:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00023754:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
+gaae: gram:00023755:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00023774:  ereport(ERROR, 
+gaae: gram:00023775:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00023776:  errmsg("constraint declared INITIALLY DEFERRED must be DEFERRABLE"), 
+gaae: gram:00023777:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00023843:  ereport(ERROR, 
+gaae: gram:00023844:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00023845:  errmsg("CREATE ASSERTION is not yet implemented"))); 
+gaae: gram:00023859:  ereport(ERROR, 
+gaae: gram:00023860:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00023861:  errmsg("DROP ASSERTION is not yet implemented"))); 
+gaae: gram:00023964:  ereport(ERROR, 
+gaae: gram:00023965:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00023966:  errmsg("improper qualified name (too many dotted names): %s", 
+gaae: gram:00023967:  NameListToString((yyvsp[(3) - (7)].list))), 
+gaae: gram:00023968:  scanner_errposition((yylsp[(3) - (7)])))); 
+gaae: gram:00025169:  ereport(ERROR, 
+gaae: gram:00025170:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00025171:  errmsg("CREATE INDEX CONCURRENTLY is not supported"))); 
+gaae: gram:00025696:  ereport(ERROR, 
+gaae: gram:00025697:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00025698:  errmsg("missing argument"), 
+gaae: gram:00025699:  errhint("Use NONE to denote the missing argument of a unary operator."), 
+gaae: gram:00025700:  errOmitLocation(true), 
+gaae: gram:00025701:  scanner_errposition((yylsp[(1) - (1)])))); 
+gaae: gram:00026669:  ereport(ERROR, 
+gaae: gram:00026670:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00026671:  errmsg("WITH CHECK OPTION is not implemented"))); 
+gaae: gram:00026678:  ereport(ERROR, 
+gaae: gram:00026679:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00026680:  errmsg("WITH CHECK OPTION is not implemented"))); 
+gaae: gram:00026687:  ereport(ERROR, 
+gaae: gram:00026688:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00026689:  errmsg("WITH CHECK OPTION is not implemented"))); 
+gaae: gram:00027139:  ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00027140:  errmsg("cannot use force with explain statement") 
+gaae: gram:00027141:  )); 
+gaae: gram:00027150:  ereport(ERROR, 
+gaae: gram:00027151:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00027152:  errmsg("cannot EXPLAIN CREATE TABLE without AS " 
+gaae: gram:00027153:  "clause"))); 
+gaae: gram:00027218:  ereport(ERROR, 
+gaae: gram:00027219:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00027220:  errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE"))); 
+gaae: gram:00027485:  ereport(ERROR, 
+gaae: gram:00027486:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00027487:  errmsg("number of columns does not match number of values"), 
+gaae: gram:00027488:  scanner_errposition((yylsp[(1) - (5)])))); 
+gaae: gram:00027966:  ereport(ERROR, 
+gaae: gram:00027967:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00027968:  errmsg("LIMIT #,# syntax is not supported"), 
+gaae: gram:00027969:  errhint("Use separate LIMIT and OFFSET clauses."), 
+gaae: gram:00027970:  scanner_errposition((yylsp[(1) - (4)])))); 
+gaae: gram:00028550:  ereport(ERROR, 
+gaae: gram:00028551:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00028552:  errmsg("VALUES in FROM must have an alias"), 
+gaae: gram:00028553:  errhint("For example, FROM (VALUES ...) [AS] foo."), 
+gaae: gram:00028554:  scanner_errposition((yylsp[(1) - (1)])))); 
+gaae: gram:00028556:  ereport(ERROR, 
+gaae: gram:00028557:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00028558:  errmsg("subquery in FROM must have an alias"), 
+gaae: gram:00028559:  errhint("For example, FROM (SELECT ...) [AS] foo."), 
+gaae: gram:00028560:  scanner_errposition((yylsp[(1) - (1)])))); 
+gaae: gram:00028944:  ereport(ERROR, 
+gaae: gram:00028945:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00028946:  errmsg("INTERVAL(%d) precision must not be negative", (yyvsp[(3) - (5)].ival)), 
+gaae: gram:00028947:  scanner_errposition((yylsp[(3) - (5)])))); 
+gaae: gram:00028950:  ereport(WARNING, 
+gaae: gram:00028951:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00028952:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00028953:  (yyvsp[(3) - (5)].ival), MAX_INTERVAL_PRECISION), 
+gaae: gram:00028954:  scanner_errposition((yylsp[(3) - (5)])))); 
+gaae: gram:00029100:  ereport(ERROR, 
+gaae: gram:00029101:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029102:  errmsg("precision for type float must be at least 1 bit"), 
+gaae: gram:00029103:  scanner_errposition((yylsp[(2) - (3)])))); 
+gaae: gram:00029109:  ereport(ERROR, 
+gaae: gram:00029110:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029111:  errmsg("precision for type float must be less than 54 bits"), 
+gaae: gram:00029112:  scanner_errposition((yylsp[(2) - (3)])))); 
+gaae: gram:00029127:  ereport(ERROR, 
+gaae: gram:00029128:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029129:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+gaae: gram:00029130:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00029132:  ereport(ERROR, 
+gaae: gram:00029133:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029134:  errmsg("NUMERIC scale %d must be between 0 and precision %d", 
+gaae: gram:00029135:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+gaae: gram:00029145:  ereport(ERROR, 
+gaae: gram:00029146:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029147:  errmsg("NUMERIC precision %d must be between 1 and %d", 
+gaae: gram:00029148:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00029166:  ereport(ERROR, 
+gaae: gram:00029167:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029168:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+gaae: gram:00029169:  (yyvsp[(2) - (5)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00029171:  ereport(ERROR, 
+gaae: gram:00029172:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029173:  errmsg("DECIMAL scale %d must be between 0 and precision %d", 
+gaae: gram:00029174:  (yyvsp[(4) - (5)].ival), (yyvsp[(2) - (5)].ival)))); 
+gaae: gram:00029184:  ereport(ERROR, 
+gaae: gram:00029185:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029186:  errmsg("DECIMAL precision %d must be between 1 and %d", 
+gaae: gram:00029187:  (yyvsp[(2) - (3)].ival), NUMERIC_MAX_PRECISION))); 
+gaae: gram:00029238:  ereport(ERROR, 
+gaae: gram:00029239:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029240:  errmsg("length for type %s must be at least 1", 
+gaae: gram:00029241:  typname))); 
+gaae: gram:00029243:  ereport(ERROR, 
+gaae: gram:00029244:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029245:  errmsg("length for type %s cannot exceed %d", 
+gaae: gram:00029246:  typname, MaxAttrSize * BITS_PER_BYTE))); 
+gaae: gram:00029321:  ereport(ERROR, 
+gaae: gram:00029322:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029323:  errmsg("length for type %s must be at least 1", 
+gaae: gram:00029324:  (yyvsp[(1) - (5)].str)))); 
+gaae: gram:00029326:  ereport(ERROR, 
+gaae: gram:00029327:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029328:  errmsg("length for type %s cannot exceed %d", 
+gaae: gram:00029329:  (yyvsp[(1) - (5)].str), MaxAttrSize))); 
+gaae: gram:00029426:  ereport(ERROR, 
+gaae: gram:00029427:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029428:  errmsg("TIMESTAMP(%d)%s precision must not be negative", 
+gaae: gram:00029429:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+gaae: gram:00029432:  ereport(WARNING, 
+gaae: gram:00029433:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029434:  errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d", 
+gaae: gram:00029435:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+gaae: gram:00029436:  MAX_TIMESTAMP_PRECISION))); 
+gaae: gram:00029467:  ereport(ERROR, 
+gaae: gram:00029468:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029469:  errmsg("TIME(%d)%s precision must not be negative", 
+gaae: gram:00029470:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": "")))); 
+gaae: gram:00029473:  ereport(WARNING, 
+gaae: gram:00029474:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00029475:  errmsg("TIME(%d)%s precision reduced to maximum allowed, %d", 
+gaae: gram:00029476:  (yyvsp[(3) - (5)].ival), ((yyvsp[(5) - (5)].boolean) ? " WITH TIME ZONE": ""), 
+gaae: gram:00029477:  MAX_TIME_PRECISION))); 
+gaae: gram:00030118:  ereport(ERROR, 
+gaae: gram:00030119:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+gaae: gram:00030120:  errmsg("UNIQUE predicate is not yet implemented"), 
+gaae: gram:00030121:  scanner_errposition((yylsp[(1) - (2)])))); 
+gaae: gram:00030249:  ereport(ERROR, 
+gaae: gram:00030250:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00030251:  errmsg("window OVER clause can only be used " 
+gaae: gram:00030252:  "with an aggregate"))); 
+gaae: gram:00030573:  ereport(ERROR, 
+gaae: gram:00030574:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030575:  errmsg("CURRENT_TIME(%d) precision must not be negative", 
+gaae: gram:00030576:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030579:  ereport(WARNING, 
+gaae: gram:00030580:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030581:  errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030582:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+gaae: gram:00030626:  ereport(ERROR, 
+gaae: gram:00030627:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030628:  errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative", 
+gaae: gram:00030629:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030632:  ereport(WARNING, 
+gaae: gram:00030633:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030634:  errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030635:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+gaae: gram:00030679:  ereport(ERROR, 
+gaae: gram:00030680:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030681:  errmsg("LOCALTIME(%d) precision must not be negative", 
+gaae: gram:00030682:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030685:  ereport(WARNING, 
+gaae: gram:00030686:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030687:  errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030688:  (yyvsp[(3) - (4)].ival), MAX_TIME_PRECISION))); 
+gaae: gram:00030733:  ereport(ERROR, 
+gaae: gram:00030734:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030735:  errmsg("LOCALTIMESTAMP(%d) precision must not be negative", 
+gaae: gram:00030736:  (yyvsp[(3) - (4)].ival)))); 
+gaae: gram:00030739:  ereport(WARNING, 
+gaae: gram:00030740:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00030741:  errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00030742:  (yyvsp[(3) - (4)].ival), MAX_TIMESTAMP_PRECISION))); 
+gaae: gram:00031724:  ereport(ERROR, 
+gaae: gram:00031725:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00031726:  errmsg("improper qualified name (too many dotted names): %s", 
+gaae: gram:00031727:  NameListToString(lcons(makeString((yyvsp[(1) - (2)].str)), (yyvsp[(2) - (2)].list)))))); 
+gaae: gram:00031881:  ereport(ERROR, 
+gaae: gram:00031882:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00031883:  errmsg("INTERVAL(%d) precision must not be negative", 
+gaae: gram:00031884:  (yyvsp[(3) - (6)].ival)))); 
+gaae: gram:00031887:  ereport(WARNING, 
+gaae: gram:00031888:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+gaae: gram:00031889:  errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d", 
+gaae: gram:00031890:  (yyvsp[(3) - (6)].ival), MAX_INTERVAL_PRECISION))); 
+gaae: gram:00032043:  ereport(ERROR, 
+gaae: gram:00032044:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032045:  errmsg("OLD used in query that is not in a rule"))); 
+gaae: gram:00032055:  ereport(ERROR, 
+gaae: gram:00032056:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032057:  errmsg("NEW used in query that is not in a rule"))); 
+gaae: gram:00032490:  ereport(ERROR, 
+gaae: gram:00032491:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032492:  errmsg("wrong number of parameters on left side of OVERLAPS expression"), 
+gaae: gram:00032493:  scanner_errposition(location))); 
+gaae: gram:00032497:  ereport(ERROR, 
+gaae: gram:00032498:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032499:  errmsg("wrong number of parameters on right side of OVERLAPS expression"), 
+gaae: gram:00032500:  scanner_errposition(location))); 
+gaae: gram:00032604:  ereport(ERROR, 
+gaae: gram:00032605:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032606:  errmsg("syntax error at or near \"ORDER BY\""), 
+gaae: gram:00032607:  scanner_errposition(exprLocation((Node *) sortClause)))); 
+gaae: gram:00032615:  ereport(ERROR, 
+gaae: gram:00032616:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032617:  errmsg("syntax error at or near \"OFFSET\""), 
+gaae: gram:00032618:  scanner_errposition(exprLocation(limitOffset)))); 
+gaae: gram:00032624:  ereport(ERROR, 
+gaae: gram:00032625:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032626:  errmsg("syntax error at or near \"LIMIT\""), 
+gaae: gram:00032627:  scanner_errposition(exprLocation(limitCount)))); 
+gaae: gram:00032633:  ereport(ERROR, 
+gaae: gram:00032634:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032635:  errmsg("syntax error at or near \"WITH\""), 
+gaae: gram:00032636:  scanner_errposition(exprLocation((Node *)withClause)))); 
+gaae: gram:00032789:  ereport(ERROR, 
+gaae: gram:00032790:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032791:  errmsg("OUT arguments aren't allowed in TABLE functions"))); 
+gaae: gram:00032794:  ereport(ERROR, 
+gaae: gram:00032795:  (errcode(ERRCODE_SYNTAX_ERROR), 
+gaae: gram:00032796:  errmsg("INOUT arguments aren't allowed in TABLE functions"))); 
 aaaaa GP_IGNORE: paaj: parsexagg - ./backend/parser/parse_agg.c
 paaj: parsexagg:00000087:  ereport(ERROR, 
 paaj: parsexagg:00000088:  (errcode(ERRCODE_GROUPING_ERROR), 
@@ -22584,10 +22611,10 @@ daai: dynahash:00001503:  seq_scan_tables[i]);
 daai: dynahash:00001525:  elog(WARNING, "leaked hash_seq_search scan for hash table %p", 
 daai: dynahash:00001526:  seq_scan_tables[i]); 
 aaaaa GP_IGNORE: faaj: flatfiles - ./backend/utils/init/flatfiles.c
-faaj: flatfiles:00000917:  elog(ERROR, 
-faaj: flatfiles:00000918:  "flatfile_update_trigger was not called by trigger manager"); 
-faaj: flatfiles:00000921:  elog(ERROR, "flatfile_update_trigger was called for wrong table"); 
-faaj: flatfiles:00000933:  elog(ERROR, "flatfile_update_trigger was called for wrong table"); 
+faaj: flatfiles:00001185:  elog(ERROR, 
+faaj: flatfiles:00001186:  "flatfile_update_trigger was not called by trigger manager"); 
+faaj: flatfiles:00001189:  elog(ERROR, "flatfile_update_trigger was called for wrong table"); 
+faaj: flatfiles:00001204:  elog(ERROR, "flatfile_update_trigger was called for wrong table"); 
 aaaaa GP_IGNORE: maai: miscinit - ./backend/utils/init/miscinit.c
 maai: miscinit:00000109:  elog(ERROR, "cannot reindex while reindexing"); 
 maai: miscinit:00000143:  ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
@@ -25151,111 +25178,111 @@ mabc: mlipcxaccess:00000072:  errmsg("Interconnect testing through libcdbtest is
 mabc: mlipcxaccess:00000073:  )); 
 mabc: mlipcxaccess:00000174:  elog( NOTICE, "recvd: %d", msgsReceived ); 
 aaaaa GP_IGNORE: raah: regress - ./test/regress/regress.c
-raah: regress:00000377:  elog(ERROR, "funny_dup17: not fired by trigger manager"); 
-raah: regress:00000429:  elog(ERROR, "funny_dup17 (fired %s) on level %3d: SPI_exec (insert ...) returned %d", 
-raah: regress:00000430:  when, *level, ret); 
-raah: regress:00000440:  elog(ERROR, "funny_dup17 (fired %s) on level %3d: SPI_exec (select ...) returned %d", 
-raah: regress:00000441:  when, *level, ret); 
-raah: regress:00000501:  elog(ERROR, "ttdummy: not fired by trigger manager"); 
-raah: regress:00000503:  elog(ERROR, "ttdummy: cannot process STATEMENT events"); 
-raah: regress:00000505:  elog(ERROR, "ttdummy: must be fired before event"); 
-raah: regress:00000507:  elog(ERROR, "ttdummy: cannot process INSERT event"); 
-raah: regress:00000526:  elog(ERROR, "ttdummy (%s): invalid (!= 2) number of arguments %d", 
-raah: regress:00000527:  relname, trigger->tgnargs); 
-raah: regress:00000537:  elog(ERROR, "ttdummy (%s): there is no attribute %s", relname, args[i]); 
-raah: regress:00000539:  elog(ERROR, "ttdummy (%s): attributes %s and %s must be of abstime type", 
-raah: regress:00000540:  relname, args[0], args[1]); 
-raah: regress:00000545:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[0]); 
-raah: regress:00000549:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[1]); 
-raah: regress:00000555:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[0]); 
-raah: regress:00000558:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[1]); 
-raah: regress:00000561:  elog(ERROR, "ttdummy (%s): you cannot change %s and/or %s columns (use set_ttdummy)", 
-raah: regress:00000562:  relname, args[0], args[1]); 
-raah: regress:00000582:  elog(ERROR, "ttdummy (%s): SPI_connect returned %d", relname, ret); 
-raah: regress:00000634:  elog(ERROR, "ttdummy (%s): SPI_prepare returned %d", relname, SPI_result); 
-raah: regress:00000638:  elog(ERROR, "ttdummy (%s): SPI_saveplan returned %d", relname, SPI_result); 
-raah: regress:00000646:  elog(ERROR, "ttdummy (%s): SPI_execp returned %d", relname, ret); 
-raah: regress:00000815:  elog(ERROR, "check_primary_key: not fired by trigger manager"); 
-raah: regress:00000820:  elog(ERROR, "check_primary_key: can't process STATEMENT events"); 
-raah: regress:00000829:  elog(ERROR, "check_primary_key: can't process DELETE events"); 
-raah: regress:00000841:  elog(ERROR, "check_primary_key: odd number of arguments should be specified"); 
-raah: regress:00000851:  elog(ERROR, "check_primary_key: SPI_connect returned %d", ret); 
-raah: regress:00000878:  ereport(ERROR, 
-raah: regress:00000879:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-raah: regress:00000880:  errmsg("there is no attribute \"%s\" in relation \"%s\"", 
-raah: regress:00000881:  args[i], SPI_getrelname(rel)))); 
-raah: regress:00000924:  elog(ERROR, "check_primary_key: SPI_prepare returned %d", SPI_result); 
-raah: regress:00000933:  elog(ERROR, "check_primary_key: SPI_saveplan returned %d", SPI_result); 
-raah: regress:00000947:  elog(ERROR, "check_primary_key: SPI_execp returned %d", ret); 
-raah: regress:00000953:  ereport(ERROR, 
-raah: regress:00000954:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
-raah: regress:00000955:  errmsg("tuple references non-existent key"), 
-raah: regress:00000956:  errdetail("Trigger \"%s\" found tuple referencing non-existent key in \"%s\".", trigger->tgname, relname))); 
-raah: regress:00001015:  elog(ERROR, "check_foreign_key: not fired by trigger manager"); 
-raah: regress:00001020:  elog(ERROR, "check_foreign_key: can't process STATEMENT events"); 
-raah: regress:00001025:  elog(ERROR, "check_foreign_key: can't process INSERT events"); 
-raah: regress:00001047:  elog(ERROR, "check_foreign_key: too short %d (< 5) list of arguments", nargs); 
-raah: regress:00001052:  elog(ERROR, "check_foreign_key: %d (< 1) number of references specified", nrefs); 
-raah: regress:00001056:  elog(ERROR, "check_foreign_key: invalid action %s", args[1]); 
-raah: regress:00001062:  elog(ERROR, "check_foreign_key: invalid number of arguments %d for %d references", 
-raah: regress:00001063:  nargs + 2, nrefs); 
-raah: regress:00001071:  elog(ERROR, "check_foreign_key: SPI_connect returned %d", ret); 
-raah: regress:00001095:  elog(ERROR, "%s: check_foreign_key: # of plans changed in meantime", 
-raah: regress:00001096:  trigger->tgname); 
-raah: regress:00001106:  ereport(ERROR, 
-raah: regress:00001107:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-raah: regress:00001108:  errmsg("there is no attribute \"%s\" in relation \"%s\"", 
-raah: regress:00001109:  args[i], SPI_getrelname(rel)))); 
-raah: regress:00001138:  elog(ERROR, "check_foreign_key: SPI_getvalue returned %d", SPI_result); 
-raah: regress:00001271:  elog(ERROR, "check_foreign_key: SPI_prepare returned %d", SPI_result); 
-raah: regress:00001281:  elog(ERROR, "check_foreign_key: SPI_saveplan returned %d", SPI_result); 
-raah: regress:00001321:  ereport(ERROR, 
-raah: regress:00001322:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
-raah: regress:00001323:  errmsg("SPI_execp returned %d", ret))); 
-raah: regress:00001330:  ereport(ERROR, 
-raah: regress:00001331:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
-raah: regress:00001332:  errmsg("\"%s\": tuple is referenced in \"%s\"", 
-raah: regress:00001333:  trigger->tgname, relname))); 
-raah: regress:00001338:  elog(NOTICE, "%s: %d tuple(s) of %s are %s", 
-raah: regress:00001339:  trigger->tgname, SPI_processed, relname, 
-raah: regress:00001340:  (action == 'c') ? "deleted" : "set to null"); 
-raah: regress:00001406:  elog(ERROR, "not fired by trigger manager"); 
-raah: regress:00001409:  elog(ERROR, "can't process STATEMENT events"); 
-raah: regress:00001412:  elog(ERROR, "must be fired before event"); 
-raah: regress:00001420:  elog(ERROR, "can't process DELETE events"); 
-raah: regress:00001430:  elog(ERROR, "autoinc (%s): even number gt 0 of arguments was expected", relname); 
-raah: regress:00001445:  ereport(ERROR, 
-raah: regress:00001446:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
-raah: regress:00001447:  errmsg("\"%s\" has no attribute \"%s\"", 
-raah: regress:00001448:  relname, args[i]))); 
-raah: regress:00001451:  ereport(ERROR, 
-raah: regress:00001452:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
-raah: regress:00001453:  errmsg("attribute \"%s\" of \"%s\" must be type INT4", 
-raah: regress:00001454:  args[i], relname))); 
-raah: regress:00001486:  elog(ERROR, "autoinc (%s): %d returned by SPI_modifytuple", 
-raah: regress:00001487:  relname, SPI_result); 
-raah: regress:00001541:  elog(ERROR, "invalid invocation of multiset_example"); 
-raah: regress:00001560:  ereport(ERROR, 
-raah: regress:00001561:  (errcode(ERRCODE_CANNOT_COERCE), 
-raah: regress:00001562:  errmsg("invalid input tuple for function multiset_example"), 
-raah: regress:00001563:  errhint("expected (integer, text) "))); 
-raah: regress:00001613:  ereport(ERROR, 
-raah: regress:00001614:  (errcode(ERRCODE_CANNOT_COERCE), 
-raah: regress:00001615:  errmsg("invalid output tupledesc for function multiset_scalar_tuple"), 
-raah: regress:00001616:  errhint("Expected (integer, text)."))); 
-raah: regress:00001699:  ereport(ERROR, 
-raah: regress:00001700:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-raah: regress:00001701:  errmsg("set-valued function called in context that " 
-raah: regress:00001702:  "cannot accept a set"))); 
-raah: regress:00001747:  elog(ERROR, "invalid invocation of multiset_example"); 
-raah: regress:00001775:  ereport(ERROR, 
-raah: regress:00001776:  (errcode(ERRCODE_CANNOT_COERCE), 
-raah: regress:00001777:  errmsg("invalid input tuple for function multiset_example"), 
-raah: regress:00001778:  errhint("expected (integer, text) "))); 
-raah: regress:00001788:  ereport(ERROR, 
-raah: regress:00001789:  (errcode(ERRCODE_CANNOT_COERCE), 
-raah: regress:00001790:  errmsg("invalid output tuple for function multiset_example"), 
-raah: regress:00001791:  errhint("expected (integer, text) "))); 
+raah: regress:00000379:  elog(ERROR, "funny_dup17: not fired by trigger manager"); 
+raah: regress:00000431:  elog(ERROR, "funny_dup17 (fired %s) on level %3d: SPI_exec (insert ...) returned %d", 
+raah: regress:00000432:  when, *level, ret); 
+raah: regress:00000442:  elog(ERROR, "funny_dup17 (fired %s) on level %3d: SPI_exec (select ...) returned %d", 
+raah: regress:00000443:  when, *level, ret); 
+raah: regress:00000503:  elog(ERROR, "ttdummy: not fired by trigger manager"); 
+raah: regress:00000505:  elog(ERROR, "ttdummy: cannot process STATEMENT events"); 
+raah: regress:00000507:  elog(ERROR, "ttdummy: must be fired before event"); 
+raah: regress:00000509:  elog(ERROR, "ttdummy: cannot process INSERT event"); 
+raah: regress:00000528:  elog(ERROR, "ttdummy (%s): invalid (!= 2) number of arguments %d", 
+raah: regress:00000529:  relname, trigger->tgnargs); 
+raah: regress:00000539:  elog(ERROR, "ttdummy (%s): there is no attribute %s", relname, args[i]); 
+raah: regress:00000541:  elog(ERROR, "ttdummy (%s): attributes %s and %s must be of abstime type", 
+raah: regress:00000542:  relname, args[0], args[1]); 
+raah: regress:00000547:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[0]); 
+raah: regress:00000551:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[1]); 
+raah: regress:00000557:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[0]); 
+raah: regress:00000560:  elog(ERROR, "ttdummy (%s): %s must be NOT NULL", relname, args[1]); 
+raah: regress:00000563:  elog(ERROR, "ttdummy (%s): you cannot change %s and/or %s columns (use set_ttdummy)", 
+raah: regress:00000564:  relname, args[0], args[1]); 
+raah: regress:00000584:  elog(ERROR, "ttdummy (%s): SPI_connect returned %d", relname, ret); 
+raah: regress:00000636:  elog(ERROR, "ttdummy (%s): SPI_prepare returned %d", relname, SPI_result); 
+raah: regress:00000640:  elog(ERROR, "ttdummy (%s): SPI_saveplan returned %d", relname, SPI_result); 
+raah: regress:00000648:  elog(ERROR, "ttdummy (%s): SPI_execp returned %d", relname, ret); 
+raah: regress:00000817:  elog(ERROR, "check_primary_key: not fired by trigger manager"); 
+raah: regress:00000822:  elog(ERROR, "check_primary_key: can't process STATEMENT events"); 
+raah: regress:00000831:  elog(ERROR, "check_primary_key: can't process DELETE events"); 
+raah: regress:00000843:  elog(ERROR, "check_primary_key: odd number of arguments should be specified"); 
+raah: regress:00000853:  elog(ERROR, "check_primary_key: SPI_connect returned %d", ret); 
+raah: regress:00000880:  ereport(ERROR, 
+raah: regress:00000881:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+raah: regress:00000882:  errmsg("there is no attribute \"%s\" in relation \"%s\"", 
+raah: regress:00000883:  args[i], SPI_getrelname(rel)))); 
+raah: regress:00000926:  elog(ERROR, "check_primary_key: SPI_prepare returned %d", SPI_result); 
+raah: regress:00000935:  elog(ERROR, "check_primary_key: SPI_saveplan returned %d", SPI_result); 
+raah: regress:00000949:  elog(ERROR, "check_primary_key: SPI_execp returned %d", ret); 
+raah: regress:00000955:  ereport(ERROR, 
+raah: regress:00000956:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+raah: regress:00000957:  errmsg("tuple references non-existent key"), 
+raah: regress:00000958:  errdetail("Trigger \"%s\" found tuple referencing non-existent key in \"%s\".", trigger->tgname, relname))); 
+raah: regress:00001017:  elog(ERROR, "check_foreign_key: not fired by trigger manager"); 
+raah: regress:00001022:  elog(ERROR, "check_foreign_key: can't process STATEMENT events"); 
+raah: regress:00001027:  elog(ERROR, "check_foreign_key: can't process INSERT events"); 
+raah: regress:00001049:  elog(ERROR, "check_foreign_key: too short %d (< 5) list of arguments", nargs); 
+raah: regress:00001054:  elog(ERROR, "check_foreign_key: %d (< 1) number of references specified", nrefs); 
+raah: regress:00001058:  elog(ERROR, "check_foreign_key: invalid action %s", args[1]); 
+raah: regress:00001064:  elog(ERROR, "check_foreign_key: invalid number of arguments %d for %d references", 
+raah: regress:00001065:  nargs + 2, nrefs); 
+raah: regress:00001073:  elog(ERROR, "check_foreign_key: SPI_connect returned %d", ret); 
+raah: regress:00001097:  elog(ERROR, "%s: check_foreign_key: # of plans changed in meantime", 
+raah: regress:00001098:  trigger->tgname); 
+raah: regress:00001108:  ereport(ERROR, 
+raah: regress:00001109:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+raah: regress:00001110:  errmsg("there is no attribute \"%s\" in relation \"%s\"", 
+raah: regress:00001111:  args[i], SPI_getrelname(rel)))); 
+raah: regress:00001140:  elog(ERROR, "check_foreign_key: SPI_getvalue returned %d", SPI_result); 
+raah: regress:00001273:  elog(ERROR, "check_foreign_key: SPI_prepare returned %d", SPI_result); 
+raah: regress:00001283:  elog(ERROR, "check_foreign_key: SPI_saveplan returned %d", SPI_result); 
+raah: regress:00001323:  ereport(ERROR, 
+raah: regress:00001324:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+raah: regress:00001325:  errmsg("SPI_execp returned %d", ret))); 
+raah: regress:00001332:  ereport(ERROR, 
+raah: regress:00001333:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+raah: regress:00001334:  errmsg("\"%s\": tuple is referenced in \"%s\"", 
+raah: regress:00001335:  trigger->tgname, relname))); 
+raah: regress:00001340:  elog(NOTICE, "%s: %d tuple(s) of %s are %s", 
+raah: regress:00001341:  trigger->tgname, SPI_processed, relname, 
+raah: regress:00001342:  (action == 'c') ? "deleted" : "set to null"); 
+raah: regress:00001408:  elog(ERROR, "not fired by trigger manager"); 
+raah: regress:00001411:  elog(ERROR, "can't process STATEMENT events"); 
+raah: regress:00001414:  elog(ERROR, "must be fired before event"); 
+raah: regress:00001422:  elog(ERROR, "can't process DELETE events"); 
+raah: regress:00001432:  elog(ERROR, "autoinc (%s): even number gt 0 of arguments was expected", relname); 
+raah: regress:00001447:  ereport(ERROR, 
+raah: regress:00001448:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+raah: regress:00001449:  errmsg("\"%s\" has no attribute \"%s\"", 
+raah: regress:00001450:  relname, args[i]))); 
+raah: regress:00001453:  ereport(ERROR, 
+raah: regress:00001454:  (errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION), 
+raah: regress:00001455:  errmsg("attribute \"%s\" of \"%s\" must be type INT4", 
+raah: regress:00001456:  args[i], relname))); 
+raah: regress:00001488:  elog(ERROR, "autoinc (%s): %d returned by SPI_modifytuple", 
+raah: regress:00001489:  relname, SPI_result); 
+raah: regress:00001542:  elog(ERROR, "invalid invocation of multiset_example"); 
+raah: regress:00001561:  ereport(ERROR, 
+raah: regress:00001562:  (errcode(ERRCODE_CANNOT_COERCE), 
+raah: regress:00001563:  errmsg("invalid input tuple for function multiset_example"), 
+raah: regress:00001564:  errhint("expected (integer, text) "))); 
+raah: regress:00001614:  ereport(ERROR, 
+raah: regress:00001615:  (errcode(ERRCODE_CANNOT_COERCE), 
+raah: regress:00001616:  errmsg("invalid output tupledesc for function multiset_scalar_tuple"), 
+raah: regress:00001617:  errhint("Expected (integer, text)."))); 
+raah: regress:00001700:  ereport(ERROR, 
+raah: regress:00001701:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+raah: regress:00001702:  errmsg("set-valued function called in context that " 
+raah: regress:00001703:  "cannot accept a set"))); 
+raah: regress:00001748:  elog(ERROR, "invalid invocation of multiset_example"); 
+raah: regress:00001776:  ereport(ERROR, 
+raah: regress:00001777:  (errcode(ERRCODE_CANNOT_COERCE), 
+raah: regress:00001778:  errmsg("invalid input tuple for function multiset_example"), 
+raah: regress:00001779:  errhint("expected (integer, text) "))); 
+raah: regress:00001789:  ereport(ERROR, 
+raah: regress:00001790:  (errcode(ERRCODE_CANNOT_COERCE), 
+raah: regress:00001791:  errmsg("invalid output tuple for function multiset_example"), 
+raah: regress:00001792:  errhint("expected (integer, text) "))); 
 aaaaa GP_IGNORE: paae: pgtz - ./timezone/pgtz.c
 paae: pgtz:00001019:  ereport(WARNING, 
 paae: pgtz:00001020:  (errmsg_internal("could not determine current date/time: localtime failed"))); 
