@@ -62,8 +62,6 @@ create external web table public._network_interface_tail (like public.network_in
 
 create table public.socket_history ( ctime timestamp(0) not null, hostname varchar(64) not null, total_sockets_used int, tcp_sockets_inuse int, tcp_sockets_orphan int, tcp_sockets_timewait int, tcp_sockets_alloc int, tcp_sockets_memusage_inbytes int, udp_sockets_inuse int, udp_sockets_memusage_inbytes int, raw_sockets_inuse int, frag_sockets_inuse int, frag_sockets_memusage_inbytes int) with (fillfactor=100) distributed by (ctime) partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month')); 
 
-create table public.socket_history ( ctime timestamp(0) not null, hostname varchar(64) not null, packets_received bigint, packets_sent bigint, packets_received_unkown_port int, packet_receive_errors bigint) with (fillfactor=100) distributed by (ctime) partition by range (ctime)(start (date '2010-01-01') end (date '2010-02-01') EVERY (interval '1 month'));
-
 --- TABLE: socket_now
 --   (like socket_history)
 create external web table public.socket_now (like public.socket_history) execute 'cat gpperfmon/data/socket_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
@@ -223,21 +221,6 @@ create external web table public.tcp_extended_tail (like public.tcp_extended_his
 create external web table public._tcp_extended_tail (like public.tcp_extended_history) execute 'cat gpperfmon/data/_tcp_extended_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 -------------- MODIFY QUERY TABLE ----------------------------------
-
--- cached queries should be loaded
-insert INTO queries_history (ctime, tmid, ssid, ccnt, username, db, tsubmit, tstart, tfinish, status, rows_out, cpu_elapsed, cpu_currpct, skew_cpu, skew_rows, query_hash, query_text, query_plan) select ctime, tmid, ssid, ccnt, username, db, tsubmit, tstart, tfinish, status, rows_out, cpu_elapsed, cpu_currpct, skew_cpu, skew_rows, query_hash, query_text, query_plan from _queries_tail;
-insert INTO queries_history (ctime, tmid, ssid, ccnt, username, db, tsubmit, tstart, tfinish, status, rows_out, cpu_elapsed, cpu_currpct, skew_cpu, skew_rows, query_hash, query_text, query_plan) select ctime, tmid, ssid, ccnt, username, db, tsubmit, tstart, tfinish, status, rows_out, cpu_elapsed, cpu_currpct, skew_cpu, skew_rows, query_hash, query_text, query_plan from queries_tail;
-
--- clear out stale cache data
-create external web table public.gpperfmon_rio_queries_upgrade_t1 (output varchar(256)) execute 'rm -f gpperfmon/data/_queries_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
-create external web table public.gpperfmon_rio_queries_upgrade_t2 (output varchar(256)) execute 'rm -f gpperfmon/data/queries_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
-create external web table public.gpperfmon_rio_queries_upgrade_t3 (output varchar(256)) execute 'rm -f gpperfmon/data/queries_stage.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
-select * from public.gpperfmon_rio_queries_upgrade_t1;
-select * from public.gpperfmon_rio_queries_upgrade_t2;
-select * from public.gpperfmon_rio_queries_upgrade_t3;
-drop external table public.gpperfmon_rio_queries_upgrade_t1;
-drop external table public.gpperfmon_rio_queries_upgrade_t2;
-drop external table public.gpperfmon_rio_queries_upgrade_t3;
 
 -- add new columns to queries table
 alter external table public.queries_now add column application_name varchar(64), add column rsqname varchar(64), add column rqppriority varchar(16);
