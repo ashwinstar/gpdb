@@ -11,6 +11,11 @@ ifeq "$(BLD_ARCH)" "osx106_x86"
 export BLD_ARCH=osx105_x86
 endif
 
+# map builds on OpenSUSE to look like SUSE enterprise 10, for now
+ifeq "$(BLD_ARCH)" "suse11.4_x86_64"
+export BLD_ARCH=suse10_x86_64
+endif
+
 # include thirdparty infrastructure which depends on WHERE_THE...
 BLD_WHERE_THE_LIBRARY_THINGS_ARE=LD_LIBRARY_PATH
 aix5_ppc_64_WHERE_THE_LIBRARY_THINGS_ARE=LIBPATH
