@@ -2431,10 +2431,14 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	 *
 	 * CDB: The parallel groupping planner cannot use hashed aggregation
 	 * for ordered aggregates.
+	 *
+	 * CDB: The preliminary function is used to merge transient values
+	 * during hash reloading (see execHHashagg.c). So hash agg is not
+	 * allowed if one of the aggregates doesn't have its preliminary function.
 	 */
 	hash_ok = root->config->enable_hashagg && hash_safe_grouping(root) &&
-		agg_counts->aggOrder == NIL;
-	
+		!agg_counts->missing_prelimfunc && agg_counts->aggOrder == NIL;
+
 	has_dqa = agg_counts->numDistinctAggs != 0;
 
 	if ( hash_ok )

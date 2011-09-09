@@ -591,3 +591,8 @@ drop table s6756 cascade; --ignore
 -- begin MPP-14021
 select sum((select prc from sale where cn = s.cn and vn = s.vn and pn = s.pn)) from sale s;
 -- end MPP-14021
+
+-- begin MPP-14125: if prelim function is missing, do not choose hash agg.
+create temp table mpp14125 as select repeat('a', a) a, a % 10 b from generate_series(1, 100)a;
+explain select string_agg(a) from mpp14125 group by b;
+-- end MPP-14125
