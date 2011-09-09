@@ -83,7 +83,10 @@ ExternalNext(ExternalScanState *node)
 	{
 		ExecClearTuple(slot);
 
-		ExecEagerFreeExternalScan(node);
+		if (!node->ss.ps.delayEagerFree)
+		{
+			ExecEagerFreeExternalScan(node);
+		}
 	}
 	
 
@@ -185,6 +188,13 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 	 */
 	ExecAssignResultTypeFromTL(&externalstate->ss.ps);
 	ExecAssignScanProjectionInfo(&externalstate->ss);
+
+	/*
+	 * If eflag contains EXEC_FLAG_REWIND or EXEC_FLAG_BACKWARD or EXEC_FLAG_MARK,
+	 * then this node is not eager free safe.
+	 */
+	externalstate->ss.ps.delayEagerFree =
+		((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) != 0);
 
 	initGpmonPktForExternalScan((Plan *)node, &externalstate->ss.ps.gpmon_pkt, estate);
 
