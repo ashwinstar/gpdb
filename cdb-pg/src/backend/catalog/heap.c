@@ -331,50 +331,78 @@ heap_create(const char *relname,
 	if (create_storage)
 	{
 		bool isAppendOnly;
+		bool skipCreatingSharedTable = false;
 
 		/*
 		 * We save the persistent TID and serial number in pg_class so we
 		 * can supply them to the Storage Manager if the object is subsequently
 		 * dropped.
+		 *
+		 * For shared table (that we created during upgrade), we create it once in every
+		 * database, but they will all point to the same file. So, the file might have already
+		 * been created.
+		 * So, if we're in upgrade and we're creating shared table, we scan for existences.
+		 * (We don't need to scan when we're creating shared table during initdb.)
+		 * If it exists, we reuse the Tid and SerialNum and mark the isPresent to true.
+		 *
+		 * Note that we have not tried creating shared AO table.
+		 *
+		 * For non-shared table, we should always need to create a file.
 		 */
 		// WARNING: Do not use the rel structure -- it doesn't have relstorage set...
 		isAppendOnly = (relstorage == RELSTORAGE_AOROWS || relstorage == RELSTORAGE_AOCOLS);
 
-		if (!isAppendOnly)
+		if (shared_relation && gp_upgrade_mode)
 		{
-			PersistentFileSysRelStorageMgr localRelStorageMgr;
-			PersistentFileSysRelBufpoolKind relBufpoolKind;
-			
-			GpPersistentRelationNode_GetRelationInfo(
-												relkind,
-												relstorage,
-												relam,
-												&localRelStorageMgr,
-												&relBufpoolKind);
-			Assert(localRelStorageMgr == PersistentFileSysRelStorageMgr_BufferPool);
+			skipCreatingSharedTable = PersistentFileSysObj_ScanForRelation(
+							&rel->rd_node,
+							/* segmentFileNum */ 0,
+							&rel->rd_segfile0_relationnodeinfo.persistentTid,
+							&rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
 
-			Assert(rel->rd_smgr == NULL);
-			RelationOpenSmgr(rel);
-
-			MirroredFileSysObj_TransactionCreateBufferPoolFile(
-												rel->rd_smgr,
-												relBufpoolKind,
-												rel->rd_isLocalBuf,
-												rel->rd_rel->relname.data,
-												/* doJustInTimeDirCreate */ true,
-												bufferPoolBulkLoad,
-												&rel->rd_segfile0_relationnodeinfo.persistentTid,
-												&rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
+			if (Debug_persistent_print && skipCreatingSharedTable)
+				elog(Persistent_DebugPrintLevel(),
+						"heap_create: file for shared relation '%s' already exists", relname);
 		}
-		else
+
+		if (!skipCreatingSharedTable)
 		{
-			MirroredFileSysObj_TransactionCreateAppendOnlyFile(
-												&rel->rd_node,
-												/* segmentFileNum */ 0,
-												rel->rd_rel->relname.data,
-												/* doJustInTimeDirCreate */ true,
-												&rel->rd_segfile0_relationnodeinfo.persistentTid,
-												&rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
+			if (!isAppendOnly)
+			{
+				PersistentFileSysRelStorageMgr localRelStorageMgr;
+				PersistentFileSysRelBufpoolKind relBufpoolKind;
+
+				GpPersistentRelationNode_GetRelationInfo(
+													relkind,
+													relstorage,
+													relam,
+													&localRelStorageMgr,
+													&relBufpoolKind);
+				Assert(localRelStorageMgr == PersistentFileSysRelStorageMgr_BufferPool);
+
+				Assert(rel->rd_smgr == NULL);
+				RelationOpenSmgr(rel);
+
+				MirroredFileSysObj_TransactionCreateBufferPoolFile(
+													rel->rd_smgr,
+													relBufpoolKind,
+													rel->rd_isLocalBuf,
+													rel->rd_rel->relname.data,
+													/* doJustInTimeDirCreate */ true,
+													bufferPoolBulkLoad,
+													&rel->rd_segfile0_relationnodeinfo.persistentTid,
+													&rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
+			}
+			else
+			{
+				MirroredFileSysObj_TransactionCreateAppendOnlyFile(
+													&rel->rd_node,
+													/* segmentFileNum */ 0,
+													rel->rd_rel->relname.data,
+													/* doJustInTimeDirCreate */ true,
+													&rel->rd_segfile0_relationnodeinfo.persistentTid,
+													&rel->rd_segfile0_relationnodeinfo.persistentSerialNum);
+			}
 		}
 		
 
