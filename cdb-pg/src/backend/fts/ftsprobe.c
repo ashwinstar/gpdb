@@ -82,6 +82,8 @@ typedef struct ProbeConnectionInfo
 	bool isSocketOpened;                 /* flag indicating if socket is opened */
 	bool isConnected;                    /* flag indicating if connection has been established */
 
+	char segmentStatus;                  /* probed segment status */
+
 } ProbeConnectionInfo;
 
 typedef struct ProbeMsg
@@ -111,7 +113,6 @@ static uint8 *scan_status;
 static void *probeSegmentFromThread(void *cdb_component_dbs);
 
 static char probeSegment(CdbComponentDatabaseInfo *dbInfo);
-static char probeProcessResponse(ProbeConnectionInfo *probeInfo);
 
 static bool probeMarkSocketNonBlocking(ProbeConnectionInfo *probeInfo);
 static bool probeGetIpAddr(ProbeConnectionInfo *probeInfo);
@@ -120,6 +121,7 @@ static bool probeConnect(ProbeConnectionInfo *probeInfo);
 static bool probePoll(ProbeConnectionInfo *probeInfo, bool incoming);
 static bool probeSend(ProbeConnectionInfo *probeInfo);
 static bool probeReceive(ProbeConnectionInfo *probeInfo);
+static bool probeProcessResponse(ProbeConnectionInfo *probeInfo);
 static bool probeTimeout(ProbeConnectionInfo *probeInfo);
 static void probeClose(ProbeConnectionInfo *probeInfo);
 
@@ -226,6 +228,7 @@ probeSegment(CdbComponentDatabaseInfo *dbInfo)
 	probeInfo.mode = dbInfo->mode;
 	probeInfo.hostIp = dbInfo->hostip;
 	probeInfo.port = dbInfo->port;
+	probeInfo.segmentStatus = PROBE_DEAD;
 
 	/* set probe start timestamp */
 	gp_set_monotonic_begin_time(&probeInfo.startTime);
@@ -242,15 +245,19 @@ probeSegment(CdbComponentDatabaseInfo *dbInfo)
 	       !probeMarkSocketNonBlocking(&probeInfo) ||
 	       !probeConnect(&probeInfo) ||
 	       !probeSend(&probeInfo) ||
-	       !probeReceive(&probeInfo))
+	       !probeReceive(&probeInfo) ||
+	       !probeProcessResponse(&probeInfo))
 	{
 		probeClose(&probeInfo);
+
+		Assert(probeInfo.segmentStatus == PROBE_DEAD);
 
 		/* check if FTS is active */
 		if (!FtsIsActive())
 		{
 			/* the returned value will be ignored */
-			return PROBE_ALIVE;
+			probeInfo.segmentStatus = PROBE_ALIVE;
+			break;
 		}
 
 		/*
@@ -264,7 +271,7 @@ probeSegment(CdbComponentDatabaseInfo *dbInfo)
 					  probeInfo.segmentId,
 					  probeInfo.dbId,
 					  retryCnt);
-			return PROBE_DEAD;
+			break;
 		}
 
 		/* sleep for 1 second to avoid tight loops */
@@ -281,7 +288,7 @@ probeSegment(CdbComponentDatabaseInfo *dbInfo)
 	/* segment response to probe was received, close connection  */
 	probeClose(&probeInfo);
 
-	return probeProcessResponse(&probeInfo);
+	return probeInfo.segmentStatus;
 }
 
 
@@ -641,9 +648,11 @@ probeTimeout(ProbeConnectionInfo *probeInfo)
 /*
  * Process segment response
  */
-static char
+static bool
 probeProcessResponse(ProbeConnectionInfo *probeInfo)
 {
+	Assert(probeInfo->segmentStatus == PROBE_DEAD);
+
 	PrimaryMirrorMode role;
 	SegmentState_e state;
 	DataState_e mode;
@@ -654,7 +663,7 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 	if (ntohl(bufInt) != PROBE_RESPONSE_LEN)
 	{
 		write_log("FTS: probe protocol violation got length %d.", ntohl(bufInt));
-		return PROBE_DEAD;
+		return false;
 	}
 
 	memcpy(&bufInt, probeInfo->response + 4, sizeof(bufInt));
@@ -680,12 +689,12 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 	}
 
 	/* segment responded to probe, mark it as alive */
-	char segmentStatus = PROBE_ALIVE;
+	probeInfo->segmentStatus = PROBE_ALIVE;
 
 	/* check if segment has completed re-synchronizing */
 	if (mode == DataStateInSync && probeInfo->mode == 'r')
 	{
-		segmentStatus |= PROBE_RESYNC_COMPLETE;
+		probeInfo->segmentStatus |= PROBE_RESYNC_COMPLETE;
 	}
 	else
 	{
@@ -713,16 +722,16 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 		switch(fault)
 		{
 			case FaultTypeNet:
-				segmentStatus |= PROBE_FAULT_NET;
+				probeInfo->segmentStatus |= PROBE_FAULT_NET;
 				break;
 
 			case FaultTypeMirror:
-				segmentStatus |= PROBE_FAULT_MIRROR;
+				probeInfo->segmentStatus |= PROBE_FAULT_MIRROR;
 				break;
 
 			case FaultTypeDB:
 			case FaultTypeIO:
-				segmentStatus |= PROBE_FAULT_CRASH;
+				probeInfo->segmentStatus |= PROBE_FAULT_CRASH;
 				break;
 
 			default:
@@ -732,7 +741,7 @@ probeProcessResponse(ProbeConnectionInfo *probeInfo)
 				  probeInfo->dbId, probeInfo->segmentId, getFaultTypeLabel(fault));
 	}
 
-	return segmentStatus;
+	return true;
 }
 
 
