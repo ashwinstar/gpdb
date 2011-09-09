@@ -40,8 +40,6 @@
 #include "utils/builtins.h"
 
 
-#define SAMESIGN(a,b)	(((a) < 0) == ((b) < 0))
-
 typedef struct
 {
 	int32		current;
