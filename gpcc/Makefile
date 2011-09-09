@@ -24,7 +24,8 @@ EXT_EXE=.exe
 else
 GPFDISTFILES=fstream.c gfile.c gpfdist.c transform.c
 GPFDISTOBJSFILES=$(subst .c,.o,$(GPFDISTFILES))
-GPFDIST_LIBS=-lyaml -lz -lbz2
+# link with static libyaml so gpfdist won't need LD_LIBRARY_PATH
+GPFDIST_LIBS=$(BLD_THIRDPARTY_LIB_DIR)/libyaml.a -lz -lbz2
 endif
 
 export CC

@@ -497,21 +497,36 @@ static int gz_file_open(gfile_t *fd)
  * subprocess support
  */
 
+static void
+subprocess_open_errfn(apr_pool_t *pool, apr_status_t status, const char *desc)
+{
+	char errbuf[256];
+	fprintf(stderr, "subprocess: %s: %s\n", desc, apr_strerror(status, errbuf, sizeof(errbuf)));
+}
+
 static int 
-subprocess_open(gfile_t* fd, const char* fpath, int for_write, int* response_code, const char** response_string)
+subprocess_open_failed(int* response_code, const char** response_string, char* reason)
+{
+	*response_code   = 500;
+	*response_string = reason;
+	gfile_printf_then_putc_newline(*response_string);
+	return 1;
+}
+
+static int 
+subprocess_open(gfile_t* fd, const char* fpath, int for_write, int* rcode, const char** rstring)
 {
 	apr_pool_t*     mp     = fd->transform->mp;
 	char*           cmd    = fd->transform->cmd;
 	apr_procattr_t* pattr;
 	char**          tokens;
 	apr_status_t    rv;
+	apr_file_t*     errfile;
 
+	/* tokenize command string */
 	if ((rv = apr_tokenize_to_argv(cmd, &tokens, mp)) != APR_SUCCESS) 
 	{
-		*response_code   = 500;
-		*response_string = "subprocess_open: apr_tokenize_to_argv failed";
-		gfile_printf_then_putc_newline(*response_string);
-		return 1;
+		return subprocess_open_failed(rcode, rstring, "subprocess_open: apr_tokenize_to_argv failed");
 	}
 
 	/* replace %FILENAME% with path to input or output file */
@@ -524,56 +539,68 @@ subprocess_open(gfile_t* fd, const char* fpath, int for_write, int* response_cod
 		}
 	}
 
+	/* setup apr subprocess attribute structure */
 	if ((rv = apr_procattr_create(&pattr, mp)) != APR_SUCCESS) 
 	{
-		*response_code   = 500;
-		*response_string = "subprocess_open: apr_procattr_create failed";
-		gfile_printf_then_putc_newline(*response_string);
-		return 1;
+		return subprocess_open_failed(rcode, rstring, "subprocess_open: apr_procattr_create failed");
 	}
 
+	/* setup child stdin/stdout depending on the direction of transformation */
 	if (for_write) 
 	{
+		/* writable external table, so child will be reading from standard input */
+
 		if ((rv = apr_procattr_io_set(pattr, APR_FULL_BLOCK, APR_NO_PIPE, APR_NO_PIPE)) != APR_SUCCESS) 
 		{
-			*response_code   = 500;
-			*response_string = "subprocess_open: apr_procattr_io_set (full,no,no) failed";
-			gfile_printf_then_putc_newline(*response_string);
-			return 1;
+			return subprocess_open_failed(rcode, rstring, "subprocess_open: apr_procattr_io_set (full,no,no) failed");
 		}
 		fd->transform->for_write = 1;
-
 	} 
 	else 
 	{
+		/* readable external table, so child will be writing to standard output */
+
 		if ((rv = apr_procattr_io_set(pattr, APR_NO_PIPE, APR_FULL_BLOCK, APR_NO_PIPE)) != APR_SUCCESS) 
 		{
-			*response_code   = 500;
-			*response_string = "subprocess_open: apr_procattr_io_set (no,full,no) failed";
-			gfile_printf_then_putc_newline(*response_string);
-			return 1;
+			return subprocess_open_failed(rcode, rstring, "subprocess_open: apr_procattr_io_set (no,full,no) failed");
 		}
 		fd->transform->for_write = 0;
 	}
 
-	if ((rv = apr_procattr_cmdtype_set(pattr, APR_PROGRAM_ENV)) != APR_SUCCESS) 
+	/* setup child stderr */
+	if (fd->transform->errfile)
 	{
-		*response_code   = 500;
-		*response_string = "subprocess_open: apr_procattr_cmdtype_set failed";
-		gfile_printf_then_putc_newline(*response_string);
-		return 1;
+		/* redirect stderr to a file to be sent to server when we're finished */
+
+		errfile = fd->transform->errfile;
+
+		if ((rv = apr_procattr_child_err_set(pattr, errfile, NULL)) !=  APR_SUCCESS)
+		{
+			return subprocess_open_failed(rcode, rstring, "subprocess_open: apr_procattr_child_err_set failed");
+		}
+	} 
+
+	/* more APR complexity: setup error handler for when child doesn't spawn properly */
+	if ((rv = apr_procattr_child_errfn_set(pattr, subprocess_open_errfn)) != APR_SUCCESS) 
+	{
+		return subprocess_open_failed(rcode, rstring, "subprocess_open: apr_procattr_child_errfn_set failed");
 	}
 
+	/* don't run the child via an operating system shell */
+	if ((rv = apr_procattr_cmdtype_set(pattr, APR_PROGRAM_ENV)) != APR_SUCCESS) 
+	{
+		return subprocess_open_failed(rcode, rstring, "subprocess_open: apr_procattr_cmdtype_set failed");
+	}
+
+	/* finally... start the child process */
 	if ((rv = apr_proc_create(&fd->transform->proc, tokens[0], (const char* const*)tokens, NULL, pattr, mp)) != APR_SUCCESS) 
 	{
-		*response_code   = 500;
-		*response_string = "subprocess_open: apr_proc_create failed";
-		gfile_printf_then_putc_newline(*response_string);
-		return 1;
+		return subprocess_open_failed(rcode, rstring, "subprocess_open: apr_proc_create failed");
 	}
 
 	return 0;
 }
+
 
 static ssize_t 
 read_subprocess(gfile_t *fd, void *ptr, size_t len)

@@ -121,6 +121,17 @@ static void percent_encoding_to_char(char* p, char* pp, char* path);
 
 #define GP_VERSIONX APR_STRINGIFY(GP_VERSION)
 
+/* CR-2723 */
+#define GPFDIST_MAX_LINE_LOWER_LIMIT (32*1024)
+#ifdef GPFXDIST
+#define GPFDIST_MAX_LINE_UPPER_LIMIT (256*1024*1024)
+#define GPFDIST_MAX_LINE_MESSAGE     "Error: -m max row length must be between 32KB and 256MB"
+#else
+#define GPFDIST_MAX_LINE_UPPER_LIMIT (1024*1024)
+#define GPFDIST_MAX_LINE_MESSAGE     "Error: -m max row length must be between 32KB and 1MB"
+#endif
+
+
 /*	Struct of command line options */
 static struct
 {
@@ -264,9 +275,11 @@ struct request_t
 #ifdef GPFXDIST
 	struct
 	{
-	    const char* name; 		/* requested transformation */
-	    char*       command; 	/* command associated with transform */
-		int         paths;      /* 1 if filename passed to transform should contain paths to data files */
+		const char* name;		/* requested transformation */
+		char*		command;	/* command associated with transform */
+		int			paths;		/* 1 if filename passed to transform should contain paths to data files */
+		const char* errfilename; /* name of temporary file holding stderr to send to server */
+		apr_file_t* errfile;	/* temporary file holding stderr to send to server */
 	} trans;
 #endif
 
@@ -295,6 +308,9 @@ struct request_t
 /* send gp-proto==1 ctl info */
 static void gp1_send_eof(request_t* r);
 static void gp1_send_errmsg(request_t* r, const char* msg);
+#ifdef GPFXDIST
+static void gp1_send_errfile(request_t* r, apr_file_t* errfile);
+#endif
 
 static int setup_read(request_t* r);
 static int setup_write(request_t* r);
@@ -504,13 +520,9 @@ static void parse_command_line(int argc, const char* const argv[],
 	if (! ((2 <= opt.t && opt.t <= 30) || opt.t == 0))
 		usage_error("Error:-t timeout must be between 2 and 30, or 0 for no timeout", 0);
 
-#ifdef GPFXDIST
-    if (! ((32*1024) <= opt.m && opt.m <= (1024*1024*1024)))
-    	usage_error("Error: -m max row length must be between 32KB and 1GB", 0);
-#else
-    if (! ((32*1024) <= opt.m && opt.m <= (1024*1024)))
-    	usage_error("Error: -m max row length must be between 32KB and 1MB", 0);
-#endif
+	/* validate max row length */
+    if (! ((GPFDIST_MAX_LINE_LOWER_LIMIT <= opt.m) && (opt.m <= GPFDIST_MAX_LINE_UPPER_LIMIT)))
+    	usage_error(GPFDIST_MAX_LINE_MESSAGE, 0);
 
     if (! (16 <= opt.z && opt.t <= 512) )
 		usage_error("Error: -z listen queue size must be between 16 and 512 (default is 256)", 0);
@@ -727,6 +739,38 @@ static void request_end(request_t* r, int error, const char* errmsg)
 {
 	session_t* s = r->session;
 
+#ifdef GPFXDIST
+	if (r->trans.errfile)
+	{
+		apr_status_t rv;
+
+		/*
+		 * close and then re-open (for reading) the temporary file we've used to capture stderr
+		 */
+		apr_file_flush(r->trans.errfile);
+		apr_file_close(r->trans.errfile);
+		TR(("[%d] request closed stderr file %s\n", r->sock, r->trans.errfilename));
+
+		/*
+		 * send the first 8K of stderr to the server
+		 */
+		if ((rv = apr_file_open(&r->trans.errfile, r->trans.errfilename, APR_READ|APR_BUFFERED, APR_UREAD, r->pool)) == APR_SUCCESS)
+		{
+			gp1_send_errfile(r, r->trans.errfile);
+			apr_file_close(r->trans.errfile);
+		}
+
+		/*
+		 * remove the temp file
+		 */
+		apr_file_remove(r->trans.errfilename, r->pool);
+		TR(("[%d] request removed stderr file %s\n", r->sock, r->trans.errfilename));
+
+		r->trans.errfile = NULL;
+	}
+
+#endif
+
 	if (r->gp_proto == 1)
 	{
 		if (!error)
@@ -838,6 +882,30 @@ static void gp1_send_errmsg(request_t* r, const char* errmsg)
 	if (!gp1_send_header(r, 'E', len))
 		local_sendall(r->sock, errmsg, len);
 }
+
+#ifdef GPFXDIST
+/*
+ * Send the first 8k of the specified file as an error message
+ */
+static void gp1_send_errfile(request_t* r, apr_file_t* errfile)
+{
+	char         buf[8192];
+	apr_size_t   nbytes = sizeof(buf);
+	apr_status_t rv;
+
+	if ((rv = apr_file_read(errfile, buf, &nbytes)) == APR_SUCCESS)
+	{
+		if (nbytes > 0)
+		{
+			if (! gp1_send_header(r, 'E', nbytes)) 
+			{
+				local_sendall(r->sock, buf, nbytes);
+				TR(("[%d] request sent %"APR_SIZE_T_FMT" stderr bytes to server\n", r->sock, nbytes));
+			}
+		}
+	}
+}
+#endif
 
 /*
  * session_get_block
@@ -1097,6 +1165,7 @@ static int session_attach(request_t* r)
 			fstream_options.transform->pass_paths = r->trans.paths;
             fstream_options.transform->for_write  = fstream_options.forwrite;
             fstream_options.transform->mp         = pool;
+			fstream_options.transform->errfile    = r->trans.errfile;
         }
 		gprint("r->path %s\n", r->path);
 #endif
@@ -2387,6 +2456,7 @@ static int request_set_transform(request_t *r)
 {
     extern struct transform* transform_lookup(struct transform* trlist, const char* name, int for_write, int verbose);
 	extern char* transform_command(struct transform* tr);
+	extern int transform_stderr_server(struct transform* tr);
 	extern int transform_content_paths(struct transform* tr);
 	extern char* transform_safe(struct transform* tr);
 	extern regex_t* transform_saferegex(struct transform* tr);
@@ -2442,6 +2512,8 @@ static int request_set_transform(request_t *r)
         return -1;
     }
 
+	TR(("[%d] transform: %s\n", r->sock, r->trans.name));
+
 	/*
 	 * propagate details for this transformation
 	 */
@@ -2469,8 +2541,46 @@ static int request_set_transform(request_t *r)
 		}
 		else
 		{
-			gprint("safe regex %s matches %s\n", safe, r->path);
+			TR(("[%d] safe regex %s matches %s\n", r->sock, safe, r->path));
 		}
+	}
+
+	/*
+	 * if we've been requested to send stderr output to the server,
+	 * we prepare a temporary file to hold it.	when the request is
+	 * done we'll forward the output as error messages.
+	 */
+	if (transform_stderr_server(tr)) 
+	{
+		apr_pool_t*	 mp = r->pool;
+		apr_file_t*	 f = NULL;
+		const char*	 tempdir = NULL;
+		char*		 tempfilename = NULL;
+		apr_status_t rv;
+
+		if ((rv = apr_temp_dir_get(&tempdir, mp)) != APR_SUCCESS)
+		{
+			gwarning(FLINE, "request failed from %s [%s %s] - failed to get temporary directory for stderr",
+					 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+			http_error(r, FDIST_INTERNAL_ERROR, "internal error");
+			request_end(r, 1, 0);
+			return -1;
+		}
+
+		tempfilename = apr_pstrcat(mp, tempdir, "/stderrXXXXXX", NULL);
+		if ((rv = apr_file_mktemp(&f, tempfilename, APR_CREATE|APR_WRITE|APR_EXCL, mp)) != APR_SUCCESS)
+		{
+			gwarning(FLINE, "request failed from %s [%s %s] - failed to create temporary file for stderr",
+					 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+			http_error(r, FDIST_INTERNAL_ERROR, "internal error");
+			request_end(r, 1, 0);
+			return -1;
+		}
+
+		TR(("[%d] request opened stderr file %s\n", r->sock, tempfilename));
+
+		r->trans.errfilename = tempfilename;
+		r->trans.errfile	 = f;
 	}
 
     return 0;

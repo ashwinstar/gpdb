@@ -500,6 +500,10 @@ struct transform
 	int               content;          /* what transform expects %filename% to contain (data or path names) */
 	char*             safe;             /* if set, regex specifying safe file names */
 	regex_t           saferegex;        /* compiled form of safe */
+#define TR_ER_UNKNOWN 0
+#define TR_ER_CONSOLE 1
+#define TR_ER_SERVER  2
+    int               errs;             /* where stderr output should go (console or server) */
 };
 
 struct parsestate 
@@ -520,6 +524,7 @@ dump_transform(struct transform* tr)
 	printf(" %s:\n", tr->kv->key);
 	printf("  TYPE: %s\n", tr->type == TR_INPUT ? "input" : (tr->type == TR_OUTPUT ? "output" : "unknown")); 
 	printf("  COMMAND: %s\n", tr->command);
+	printf("  STDERR: %s\n", tr->errs == TR_ER_CONSOLE ? "console" : (tr->errs == TR_ER_SERVER ? "server" : "unknown")); 
 	printf("  CONTENTS: %s\n", tr->content == TR_FN_DATA ? "data" : (tr->content == TR_FN_PATHS ? "paths" : "unknown"));
 	if (tr->safe)
 		printf("  SAFE: %s\n", tr->safe);
@@ -613,10 +618,24 @@ error_invalid_command_for_transformation(struct parsestate* psp, struct keyvalue
 }
 
 int
+error_stderr_not_scalar(struct parsestate* psp, struct keyvalue* trkv, struct keyvalue* kv)
+{
+	char* fmt = ERRFMT "transformation '%s': STDERR not a scalar (expected a simple non-empty string)\n";
+	return format_key1(psp, fmt, trkv->key, kv->keymark);
+}
+
+int
+error_invalid_stderr_for_transformation(struct parsestate* psp, struct keyvalue* trkv, struct keyvalue* kv)
+{
+	char* fmt = ERRFMT "transformation '%s': invalid STDERR (expected STDERR:console or STDERR:server)\n";
+	return format_key1(psp, fmt, trkv->key, kv->keymark);
+}
+
+int
 error_content_not_scalar(struct parsestate* psp, struct keyvalue* trkv, struct keyvalue* kv)
 {
-    char* fmt = ERRFMT "transformation '%s': CONTENT not a scalar (expected CONTENT:data or CONTENT:paths)\n";
-    return format_key1(psp, fmt, trkv->key, kv->keymark);
+	char* fmt = ERRFMT "transformation '%s': CONTENT not a scalar (expected CONTENT:data or CONTENT:paths)\n";
+	return format_key1(psp, fmt, trkv->key, kv->keymark);
 }
 
 int
@@ -706,6 +725,25 @@ validate_transform(struct parsestate* psp, struct transform* tr, struct mapping*
         return error_invalid_command_for_transformation(psp, tr->kv, kv);
 
     tr->command = kv->scalar;
+
+	kv = find_keyvalue(map->kvlist, "STDERR");
+	if (kv) 
+	{
+		if (kv->type != KV_SCALAR)
+			return error_stderr_not_scalar(psp, tr->kv, kv);
+
+		if (0 == strcasecmp(kv->scalar, "console"))
+			tr->errs = TR_ER_CONSOLE;
+		else if (0 == strcasecmp(kv->scalar, "server"))
+			tr->errs = TR_ER_SERVER;
+		else
+			return error_invalid_stderr_for_transformation(psp, tr->kv, kv);
+	}
+	else
+	{
+		/* 'server' is the default when stderr is not specified */
+		tr->errs = TR_ER_SERVER;
+	}
 
     kv = find_keyvalue(map->kvlist, "CONTENT");
     if (kv) 
@@ -868,6 +906,12 @@ char*
 transform_command(struct transform* tr)
 {
 	return tr->command;
+}
+
+int
+transform_stderr_server(struct transform* tr)
+{
+	return (tr->errs == TR_ER_SERVER);
 }
 
 int
