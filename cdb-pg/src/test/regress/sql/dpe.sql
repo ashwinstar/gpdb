@@ -142,6 +142,8 @@ set enable_mergejoin=off;
 
 set enable_seqscan=off;
 set enable_indexscan=on;
+set enable_bitmapscan=off;
+set enable_hashjoin=off;
 
 explain select * from t, pt where tid = ptid and pt1 = 'hello0';
 
@@ -153,6 +155,7 @@ select * from t, pt where tid = ptid and pt1 = 'hello0';
 set enable_nestloop=on;
 set enable_indexscan=on;
 set enable_seqscan=off;
+set enable_hashjoin=off;
 
 explain select * from t, pt where tid = ptid and t1 = 'hello0';
 
@@ -164,10 +167,16 @@ select * from t, pt where tid = ptid and t1 = 'hello0';
 
 set enable_indexscan=off;
 set enable_seqscan=on;
+set enable_hashjoin=on;
+set enable_nestloop=off;
 
 explain select * from t, pt where t1 = pt1;
 
 select * from t, pt where t1 = pt1;
+
+explain select * from t, pt where tid < ptid;
+
+select * from t, pt where tid < ptid;
 
 --
 -- cascading joins
