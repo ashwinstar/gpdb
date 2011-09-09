@@ -3529,6 +3529,28 @@ _copyCreateRoleStmt(CreateRoleStmt *from)
 	return newnode;
 }
 
+static DenyLoginInterval *
+_copyDenyLoginInterval(DenyLoginInterval *from)
+{
+	DenyLoginInterval *newnode = makeNode(DenyLoginInterval);
+
+	COPY_NODE_FIELD(start);
+	COPY_NODE_FIELD(end);
+
+	return newnode;
+}
+
+static DenyLoginPoint *
+_copyDenyLoginPoint(DenyLoginPoint *from)
+{
+	DenyLoginPoint *newnode = makeNode(DenyLoginPoint);
+
+	COPY_NODE_FIELD(day);
+	COPY_NODE_FIELD(time);
+
+	return newnode;
+}
+
 static AlterRoleStmt *
 _copyAlterRoleStmt(AlterRoleStmt *from)
 {
@@ -4624,6 +4646,13 @@ copyObject(void *from)
 			break;
 		case T_TableValueExpr:
 			retval = _copyTableValueExpr(from);
+			break;
+
+		case T_DenyLoginInterval:
+			retval = _copyDenyLoginInterval(from);
+			break;
+		case T_DenyLoginPoint:
+			retval = _copyDenyLoginPoint(from);
 			break;
 
 		default:

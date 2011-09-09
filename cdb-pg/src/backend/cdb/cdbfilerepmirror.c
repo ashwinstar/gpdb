@@ -2004,7 +2004,8 @@ FileRepMirror_RunConsumer(void)
 
 				/* XXX: hacky, I know. By damn, we need to ship 4.0 some day */
 				if (strcmp(newFileName, "global/pg_database") == 0 ||
-					strcmp(newFileName, "global/pg_auth") == 0)
+					strcmp(newFileName, "global/pg_auth") == 0 ||
+					strcmp(newFileName, "global/pg_auth_time_constraint") == 0)
 				{
 
 					errno = 0;

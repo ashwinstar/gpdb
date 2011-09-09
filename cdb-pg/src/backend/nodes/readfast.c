@@ -817,6 +817,28 @@ _readCreateRoleStmt(const char ** str)
 	READ_DONE();
 }
 
+static DenyLoginInterval *
+_readDenyLoginInterval(const char ** str)
+{
+	READ_LOCALS(DenyLoginInterval);
+
+	READ_NODE_FIELD(start);
+	READ_NODE_FIELD(end);
+	
+	READ_DONE();
+}
+
+static DenyLoginPoint *
+_readDenyLoginPoint(const char ** str)
+{
+	READ_LOCALS(DenyLoginPoint);
+
+	READ_NODE_FIELD(day);
+	READ_NODE_FIELD(time);
+
+	READ_DONE();
+}
+
 static DropRoleStmt *
 _readDropRoleStmt(const char ** str)
 {
@@ -4217,6 +4239,12 @@ readNodeBinary(const char ** str)
 
 			case T_CommentStmt:
 				return_value = _readCommentStmt(str);
+				break;
+			case T_DenyLoginInterval:
+				return_value = _readDenyLoginInterval(str);
+				break;
+			case T_DenyLoginPoint:
+				return_value = _readDenyLoginPoint(str);
 				break;
 
 		case T_TableValueExpr:

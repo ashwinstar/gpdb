@@ -33,6 +33,7 @@
 #include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 
 
 #define atooid(x)  ((Oid) strtoul((x), NULL, 10))
@@ -74,6 +75,13 @@ static List *role_line_nums = NIL;
 static List **role_sorted = NULL;		/* sorted role list, for bsearch() */
 static int	role_length;
 
+/* pre-parsed content of flat auth time file and corresponding line #s */
+static List *role_interval_lines = NIL;
+static List *role_interval_line_nums = NIL;
+
+/* sorted entries so we can do binary search lookups */
+static List **role_interval_sorted = NULL;
+static int  role_interval_length;
 
 
 static void tokenize_file(const char *filename, FILE *file,
@@ -484,6 +492,59 @@ get_role_line(const char *role)
 							 role_bsearch_cmp);
 }
 
+/*
+ * get_role_intervals - return a List of elements from role_interval_sorted[]
+ * 						whose role names match the given one
+ *
+ * In other words, we return a List of Lists, where the outer List is fabricated
+ * here and the inner List is a preexisting List of tokens that role_interval_sorted
+ * had referenced.
+ *
+ * Note: caller is responsible for list_freeing ONLY the returned (outer) List
+ */
+List *
+get_role_intervals(const char *role)
+{
+	List	*ret;
+	List 	**needle, 
+			**temp; 
+
+	if (role_interval_length == 0)
+		return NIL;
+	
+	/*  Find ONE entry that pertains to role. There may be more. See below. */
+	needle = bsearch((void *) role,
+				  	 (void *) role_interval_sorted,
+				  	 role_interval_length,
+				  	 sizeof(List *),
+				  	 role_bsearch_cmp);
+
+	/* If no relevant auth constraints, no reason to deny. */
+	if (needle == NULL)
+		return NIL;
+
+	ret = list_make1(*needle);
+
+	/* Find first constraint for *role in role_interval. */
+	char	*myrole;
+	for (temp = needle - 1; temp >= role_interval_sorted; temp--)
+	{	
+		myrole = linitial(*temp);
+		if (strcmp(role, myrole) != 0)
+			break;
+		ret = lcons(*temp, ret);
+	}
+
+	for (temp = needle + 1; temp < role_interval_sorted + role_interval_length; temp++)
+	{
+		myrole = linitial(*temp);
+		if (strcmp(role, myrole) != 0)
+			break;
+		ret = lappend(ret, *temp);
+	} 
+
+	return ret;
+}
 
 /*
  * Does user belong to role?
@@ -1539,6 +1600,84 @@ load_role(void)
 		foreach(line, role_lines)
 			role_sorted[i++] = lfirst(line);
 	}
+
+	load_role_interval();
+}
+
+/*
+ *   Load role time constraint file
+ *
+ *   We use a flat-file version of pg_auth_time_constraint that is written whenever the catalog is updated.
+ */
+void
+load_role_interval(void)
+{
+	char		*filename;
+	FILE		*role_interval_file;
+
+	/* Discard any old data */
+	if (role_interval_lines || role_interval_line_nums)
+		free_lines(&role_interval_lines, &role_interval_line_nums);
+	if (role_interval_sorted)
+		pfree(role_interval_sorted);
+	role_interval_sorted = NULL;
+	role_interval_length = 0;
+
+	/* Read in the file contents */
+	filename = auth_time_getflatfilename();
+	role_interval_file = AllocateFile(filename, "r");
+
+	if (role_interval_file == NULL)
+	{
+		/* no complaint if not there */
+		if (errno != ENOENT)
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not open file \"%s\": %m", filename)));
+		pfree(filename);
+		return;
+	}
+
+	tokenize_file(filename, role_interval_file, &role_interval_lines, &role_interval_line_nums);
+
+	FreeFile(role_interval_file);
+	pfree(filename);
+
+	/* create array for binary searching */
+	role_interval_length = list_length(role_interval_lines);
+	if (role_interval_length)
+	{
+		int			i = 0;
+		ListCell   	*line;
+
+		/* We assume the flat file was written already-sorted */
+		role_interval_sorted = palloc(role_interval_length * sizeof(List *));
+		foreach(line, role_interval_lines)
+			role_interval_sorted[i++] = lfirst(line);
+	}
+}
+
+/*
+ * The primary purpose of this function is to ensure that the role information
+ * is available to the backend process, for the sake of unit testing through SQL queries.
+ * 
+ * Traditionally, load_role is invoked after the postmaster forks to the backend, but while
+ * the backend retains the PostmasterContext. Once this context is released, the pointers
+ * mentioned in this function are, in some sense, stale. Thus, this function first checks
+ * whether the pointers are, in fact, "stale" and if so, resets the pointers and invokes load_role().
+ */
+void
+force_load_role(void)
+{
+	if (MemoryContextContains(CurrentMemoryContext, role_lines))
+		return;
+	role_lines      		= NIL;
+	role_line_nums  		= NIL;
+	role_sorted     		= NULL;
+	role_interval_lines     = NIL;
+	role_interval_line_nums = NIL;
+	role_interval_sorted    = NULL;
+	return load_role();
 }
 
 /*

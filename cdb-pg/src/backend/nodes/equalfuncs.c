@@ -1706,6 +1706,24 @@ _equalCreateRoleStmt(CreateRoleStmt *a, CreateRoleStmt *b)
 }
 
 static bool
+_equalDenyLoginInterval(DenyLoginInterval *a, DenyLoginInterval *b)
+{
+	COMPARE_NODE_FIELD(start);
+	COMPARE_NODE_FIELD(end);
+
+	return true;
+}
+
+static bool
+_equalDenyLoginPoint(DenyLoginPoint *a, DenyLoginPoint *b)
+{
+	COMPARE_NODE_FIELD(day);
+	COMPARE_NODE_FIELD(time);
+	
+	return true;
+}
+
+static bool
 _equalAlterRoleStmt(AlterRoleStmt *a, AlterRoleStmt *b)
 {
 	COMPARE_STRING_FIELD(role);
@@ -2936,6 +2954,12 @@ equal(void *a, void *b)
 			break;
 		case T_TableValueExpr:
 			retval = _equalTableValueExpr(a, b);
+			break;
+		case T_DenyLoginInterval:
+			retval = _equalDenyLoginInterval(a, b);
+			break;
+		case T_DenyLoginPoint:
+			retval = _equalDenyLoginPoint(a, b);
 			break;
 
 		default:

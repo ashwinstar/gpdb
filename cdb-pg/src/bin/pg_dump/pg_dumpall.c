@@ -42,6 +42,7 @@ static void help(void);
 static void dumpResQueues(PGconn *conn);
 static void dumpRoles(PGconn *conn);
 static void dumpRoleMembership(PGconn *conn);
+static void dumpRoleConstraints(PGconn *conn);
 static void dumpFilespaces(PGconn *conn);
 static void dumpTablespaces(PGconn *conn);
 static void dumpCreateDB(PGconn *conn);
@@ -455,6 +456,9 @@ main(int argc, char *argv[])
 
 		/* Dump role memberships */
 		dumpRoleMembership(conn);
+
+		/* Dump role constraints */
+		dumpRoleConstraints(conn);
 
 		/* Dump filespaces */
 		if (filespaces)
@@ -956,6 +960,43 @@ dumpRoleMembership(PGconn *conn)
 			fprintf(OPF, " GRANTED BY %s", fmtId(grantor));
 		}
 		fprintf(OPF, ";\n");
+	}
+
+	PQclear(res);
+
+	fprintf(OPF, "\n\n");
+}
+
+/*
+ * Dump role time constraints. 
+ *
+ * Note: we expect dumpRoles already created all the roles, but there are
+ * no time constraints yet.
+ */
+static void
+dumpRoleConstraints(PGconn *conn)
+{
+	PGresult   *res;
+	int 		i;
+
+	res = executeQuery(conn, "SELECT a.rolname, c.start_day, c.start_time, c.end_day, c.end_time "
+							 "FROM pg_authid a, pg_auth_time_constraint c "
+							 "WHERE a.oid = c.authid "
+							 "ORDER BY 1");
+
+	if (PQntuples(res) > 0)
+		fprintf(OPF, "--\n-- Role time constraints\n--\n\n");
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		char		*rolname 	= PQgetvalue(res, i, 0);
+		char		*start_day 	= PQgetvalue(res, i, 1);
+		char 		*start_time = PQgetvalue(res, i, 2);
+		char		*end_day 	= PQgetvalue(res, i, 3);
+		char 		*end_time 	= PQgetvalue(res, i, 4);
+
+		fprintf(OPF, "ALTER ROLE %s DENY BETWEEN DAY %s TIME '%s' AND DAY %s TIME '%s';\n", 
+				fmtId(rolname), start_day, start_time, end_day, end_time);
 	}
 
 	PQclear(res);

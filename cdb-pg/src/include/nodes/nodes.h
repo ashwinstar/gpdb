@@ -393,6 +393,8 @@ typedef enum NodeTag
 	T_CreateForeignStmt,
 	T_FileSpaceEntry,
 	T_TableValueExpr,
+	T_DenyLoginInterval,
+	T_DenyLoginPoint,
 
 	/**/
 	

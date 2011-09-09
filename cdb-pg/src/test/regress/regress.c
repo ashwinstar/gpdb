@@ -16,6 +16,7 @@
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/spi.h"
+#include "libpq/auth.h"
 #include "utils/builtins.h"
 #include "utils/geo_decls.h"
 
@@ -36,6 +37,7 @@ extern int	oldstyle_length(int n, text *t);
 extern Datum int44in(PG_FUNCTION_ARGS);
 extern Datum int44out(PG_FUNCTION_ARGS);
 extern Datum gp_str2bytea(PG_FUNCTION_ARGS);
+extern Datum check_auth_time_constraints(PG_FUNCTION_ARGS);
 
 /* table_functions test */
 extern Datum multiset_example(PG_FUNCTION_ARGS);
@@ -1506,7 +1508,6 @@ gp_str2bytea(PG_FUNCTION_ARGS)
 }
 
 
-
 /* table_functions test */
 PG_FUNCTION_INFO_V1(multiset_scalar_null);
 PG_FUNCTION_INFO_V1(multiset_scalar_value);
@@ -1821,3 +1822,14 @@ multiset_example(PG_FUNCTION_ARGS)
 	SRF_RETURN_NEXT(fctx, tup_datum);
 }
 
+/*
+ * Simply invoke CheckAuthTimeConstraints from libpq/auth.h with given rolname.
+ */
+PG_FUNCTION_INFO_V1(check_auth_time_constraints);
+Datum
+check_auth_time_constraints(PG_FUNCTION_ARGS)
+{
+	char			*rolname = PG_GETARG_CSTRING(0);
+	TimestampTz 	timestamp = PG_GETARG_TIMESTAMPTZ(1);
+ 	PG_RETURN_BOOL(check_auth_time_constraints_internal(rolname, timestamp));
+}

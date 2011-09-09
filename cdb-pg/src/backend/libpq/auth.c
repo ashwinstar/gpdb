@@ -36,6 +36,11 @@
 #include "libpq/pqformat.h"
 #include "libpq/md5.h"
 #include "miscadmin.h"
+#include "pgtime.h"
+#include "utils/builtins.h"
+#include "utils/datetime.h"
+#include "utils/guc.h"
+#include "utils/timestamp.h"
 /*#include "replication/walsender.h"*/
 #include "storage/ipc.h"
 
@@ -202,7 +207,6 @@ static int pg_SSPI_recvauth(Port *port);
 #include <openssl/rand.h>
 #endif
 static int	CheckRADIUSAuth(Port *port);
-
 
 /*
  * Maximum accepted size of GSS and SSPI authentication tokens.
@@ -591,6 +595,12 @@ ClientAuthentication(Port *port)
 			status = STATUS_OK;
 			break;
 	}
+
+	if (status == STATUS_OK)
+		if (!CheckAuthTimeConstraints(port->user_name))
+			ereport(FATAL,
+					 (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+					  errmsg("authentication failed for user \"%s\": login not permitted at this time", port->user_name)));
 
 	if (status == STATUS_OK)
 		sendAuthRequest(port, AUTH_REQ_OK);
@@ -2945,4 +2955,146 @@ CheckRADIUSAuth(Port *port)
 					 receivepacket->code, port->user_name)));
 		return STATUS_ERROR;
 	}
+}
+
+/*----------------------------------------------------------------
+ * Time-based authentication
+ *----------------------------------------------------------------
+ */
+/*
+ * interval_overlap -- Return true iff intersection of a, b is nonempty
+ */
+bool
+interval_overlap(const authInterval *a, const authInterval *b)
+{
+	return point_cmp(&a->start, &b->end) <= 0 &&
+		   point_cmp(&a->end, &b->start) >= 0;
+}
+
+/*
+ * interval_contains -- Return true iff interval contains point
+ */
+bool
+interval_contains(const authInterval *interval, const authPoint *point)
+{
+	return point_cmp(point, &interval->start) >= 0 &&
+		   point_cmp(point, &interval->end) <= 0;
+}
+
+/* Comparator for authPoint struct */
+int
+point_cmp(const authPoint *a, const authPoint *b)
+{
+	if (a->day > b->day)
+		return 1;
+	else if (a->day == b->day)
+		if (a->time > b->time)
+			return 1;
+		else if (a->time == b->time)
+			return 0;
+		else
+			return -1;
+	else
+		return -1;
+}
+
+/* convert timestamptz to authPoint through use of timestamp2tm and timestamptz_time */
+void
+timestamptz_to_point(TimestampTz in, authPoint *out)
+{
+	/* from timestamptz_to_char */
+	struct	pg_tm 	tm;
+	fsec_t  fsec;   
+	char	*tzn;
+	int 	tzp, thisdate;
+	if (timestamp2tm(in, &tzp, &tm, &fsec, &tzn, NULL) != 0)
+		ereport(FATAL,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("current timestamp out of range")));
+
+	thisdate = date2j(tm.tm_year, tm.tm_mon, tm.tm_mday);
+	out->day = (thisdate + 1) % 7;
+	out->time = DatumGetTimeADT(DirectFunctionCall1(timestamptz_time,
+													TimestampTzGetDatum(in)));
+}
+
+/*
+ * CheckAuthTimeConstraints - check pg_auth_time_constraint for login restrictions
+ *
+ * Invokes check_auth_time_constraints_internal against the current timestamp
+ */
+bool
+CheckAuthTimeConstraints(char *rolname) 
+{
+	return check_auth_time_constraints_internal(rolname, GetCurrentTimestamp());
+}
+
+/*
+ * check_auth_time_constraints_internal - helper to CheckAuthTimeConstraints
+ *
+ * Called out as separate function to facilitate unit testing, where the provided
+ * timestamp is likely to be hardcoded for deterministic test runs
+ *
+ * Returns false iff it finds an interval that contains timestamp from among the
+ * entries of pg_auth_time_constraint that pertain to rolname
+ */
+bool
+check_auth_time_constraints_internal(char *rolname, TimestampTz timestamp)
+{
+	/*
+	 * For the sake of unit testing, we must ensure that the role information
+	 * is accessible to the backend process. This function call will ensure
+	 * the role information is reloaded, if necessary. This is a moot point
+	 * for the traditional auth. checking. For more information, see force_load_role().
+	 */
+	force_load_role();
+
+	List  	  		*role_intervals = get_role_intervals(rolname);
+
+	if (role_intervals == NIL)
+		return true;
+
+	List   	   		*row;
+	ListCell   		*line, *cell;
+	char   	   		*temp;
+	authInterval	given;
+	authPoint 		now;
+
+	timestamptz_to_point(timestamp, &now);
+	
+	foreach (line, role_intervals) 
+	{
+		row = lfirst(line);
+		/* 
+		 * Each row of role_intervals is a List of 5 records
+		 * <rolname> <startday> <starttime> <endday> <endtime> 
+	 	 */
+		cell = list_head(row);
+		cell = lnext(cell);			/* skip first entry in record, which is rolname */
+		temp = lfirst(cell);
+		given.start.day = pg_atoi(temp, sizeof(int16), 0);
+
+		cell = lnext(cell);
+		temp = lfirst(cell);
+		given.start.time = DatumGetTimeADT(DirectFunctionCall1(time_in,
+										   CStringGetDatum(temp)));
+		
+		cell = lnext(cell);
+		temp = lfirst(cell);
+		given.end.day = pg_atoi(temp, sizeof(int16), 0);
+	
+		cell = lnext(cell);
+		temp = lfirst(cell);
+		given.end.time = DatumGetTimeADT(DirectFunctionCall1(time_in,
+										 CStringGetDatum(temp)));
+
+		if (interval_contains(&given, &now))
+		{
+			list_free(role_intervals);
+			return false;
+		}
+	}
+	
+	list_free(role_intervals);
+	return true;
 }

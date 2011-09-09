@@ -42,6 +42,7 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_auth_members.h"
+#include "catalog/pg_auth_time_constraint.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
@@ -62,10 +63,12 @@
 /* Actual names of the flat files (within $PGDATA) */
 #define DATABASE_FLAT_FILE	"global/pg_database"
 #define AUTH_FLAT_FILE		"global/pg_auth"
+#define AUTH_TIME_FLAT_FILE "global/pg_auth_time_constraint"
 
 /* Info bits in a flatfiles 2PC record */
-#define FF_BIT_DATABASE 1
-#define FF_BIT_AUTH		2
+#define FF_BIT_DATABASE 	1
+#define FF_BIT_AUTH			2
+#define FF_BIT_AUTH_TIME	4
 
 /*
  * The need-to-update-files flags are SubTransactionIds that show
@@ -81,6 +84,7 @@
  */
 static SubTransactionId database_file_update_subid = InvalidSubTransactionId;
 static SubTransactionId auth_file_update_subid = InvalidSubTransactionId;
+static SubTransactionId auth_time_file_update_subid = InvalidSubTransactionId;
 
 
 /*
@@ -104,6 +108,16 @@ auth_file_update_needed(void)
 		auth_file_update_subid = GetCurrentSubTransactionId();
 }
 
+/*
+ * Mark flat auth time file as needing an update (because 
+ * pg_auth_time_constraint changed)
+ */
+void
+auth_time_file_update_needed(void)
+{
+	if (auth_time_file_update_subid == InvalidSubTransactionId)
+		auth_time_file_update_subid = GetCurrentSubTransactionId();
+}
 
 /*
  * database_getflatfilename --- get pathname of database file
@@ -129,6 +143,19 @@ char *
 auth_getflatfilename(void)
 {
 	return pstrdup(AUTH_FLAT_FILE);
+}
+
+/*  
+ * auth_time_getflatfilename --- get pathname of auth_time_constraint file
+ *      
+ * Note that result string is palloc'd, and should be freed by the caller.
+ * (This convention is not really needed anymore, since the relative path
+ * is fixed.)       
+ */                  
+char *  
+auth_time_getflatfilename(void)
+{   
+	return pstrdup(AUTH_TIME_FLAT_FILE);
 }
 
 /*
@@ -367,27 +394,22 @@ mem_compar(const void *a, const void *b)
 	return 0;
 }
 
-
 /*
- * write_auth_file: update the flat auth file
+ * load_auth_entries: read pg_authid into auth_entry[]
+ *
+ * auth_info_out: pointer to auth_entry * where address to auth_entry[] should be stored
+ * total_roles_out: pointer to int where num of total roles should be stored
  */
 static void
-write_auth_file(Relation rel_authid, Relation rel_authmem)
+load_auth_entries(Relation rel_authid, auth_entry **auth_info_out, int *total_roles_out)
 {
-	StringInfoData buffer;
 	BlockNumber totalblocks;
 	HeapScanDesc scan;
-	HeapTuple	tuple;
-	int			curr_role = 0;
-	int			total_roles = 0;
-	int			curr_mem = 0;
-	int			total_mem = 0;
-	int			est_rows;
+	HeapTuple   tuple;
+	int         curr_role = 0;
+	int         total_roles = 0;
+	int         est_rows;
 	auth_entry *auth_info;
-	authmem_entry *authmem_info;
-	MirroredFlatFileOpen	mirroredOpen;
-
-	initStringInfo(&buffer);
 
 	/*
 	 * Read pg_authid and fill temporary data structures.  Note we must read
@@ -403,10 +425,10 @@ write_auth_file(Relation rel_authid, Relation rel_authmem)
 	{
 		Form_pg_authid aform = (Form_pg_authid) GETSTRUCT(tuple);
 		HeapTupleHeader tup = tuple->t_data;
-		char	   *tp;			/* ptr to tuple data */
-		long		off;		/* offset in tuple data */
-		bits8	   *bp = tup->t_bits;	/* ptr to null bitmask in tuple */
-		Datum		datum;
+		char       *tp;         /* ptr to tuple data */
+		long        off;        /* offset in tuple data */
+		bits8      *bp = tup->t_bits;   /* ptr to null bitmask in tuple */
+		Datum       datum;
 
 		if (curr_role >= est_rows)
 		{
@@ -422,7 +444,7 @@ write_auth_file(Relation rel_authid, Relation rel_authmem)
 
 		/*
 		 * We can't use heap_getattr() here because during startup we will not
-		 * have any tupdesc for pg_authid.	Fortunately it's not too hard to
+		 * have any tupdesc for pg_authid.  Fortunately it's not too hard to
 		 * work around this.  rolpassword is the first possibly-null field so
 		 * we can compute its offset directly.
 		 */
@@ -492,6 +514,33 @@ write_auth_file(Relation rel_authid, Relation rel_authmem)
 		total_roles++;
 	}
 	heap_endscan(scan);
+
+	*auth_info_out = auth_info;
+	*total_roles_out = total_roles;
+} 
+
+/*
+ * write_auth_file: update the flat auth file
+ */
+static void
+write_auth_file(Relation rel_authid, Relation rel_authmem)
+{
+	StringInfoData buffer;
+	BlockNumber totalblocks;
+	HeapScanDesc scan;
+	HeapTuple	tuple;
+	int			curr_role = 0;
+	int			total_roles = 0;
+	int			curr_mem = 0;
+	int			total_mem = 0;
+	int			est_rows;
+	auth_entry *auth_info;
+	authmem_entry *authmem_info;
+	MirroredFlatFileOpen	mirroredOpen;
+
+	initStringInfo(&buffer);
+
+	load_auth_entries(rel_authid, &auth_info, &total_roles);
 
 	/*
 	 * Read pg_auth_members into temporary data structure, too
@@ -661,6 +710,185 @@ write_auth_file(Relation rel_authid, Relation rel_authmem)
 	MirroredFlatFile_Close(&mirroredOpen);
 }
 
+/*
+ * Support for write_auth_time_file
+ *
+ * The format for the flat auth file is
+ *      "rolename" "startday" "starttime" "endday" "endtime" 
+ *
+ * To construct this information, we scan pg_auth_time_constraint,
+ * and build data structures in-memory before writing the file.
+ */
+typedef struct
+{
+	Oid			roleid;
+	char	   *rolname;
+	int16 		startday;
+	TimeADT		starttime;
+	int16		endday;
+	TimeADT		endtime;
+} authtime_entry;
+
+/* qsort comparator for sorting auth_entry array by roleid */
+static int
+time_oid_compar(const void *a, const void *b)
+{
+	const authtime_entry *x = (const authtime_entry *) a;
+	const authtime_entry *y = (const authtime_entry *) b;
+
+	if (x->roleid < y->roleid)
+		return -1;
+	if (x->roleid > y->roleid)
+		return 1;
+	return 0;
+}
+
+/* qsort comparator for sorting auth_entry array by rolname */
+static int
+time_name_compar(const void *a, const void *b)
+{
+	const authtime_entry *x = (const authtime_entry *) a;
+	const authtime_entry *y = (const authtime_entry *) b;
+
+	return strcmp(x->rolname, y->rolname);
+}
+
+
+/*
+ * write_auth_time_file: update the flat auth time constraint file
+ */
+static void
+write_auth_time_file(Relation rel_authid, Relation rel_authtime)
+{
+	StringInfoData buffer;
+	BlockNumber totalblocks;
+	HeapScanDesc scan;
+	HeapTuple   tuple;
+	int			total_roles = 0;
+	int			curr_constraint = 0;
+	int			total_constraints = 0;
+	int			est_rows;
+	auth_entry *auth_info;
+	authtime_entry *authtime_info;
+	MirroredFlatFileOpen	mirroredOpen;
+
+	initStringInfo(&buffer);
+
+	load_auth_entries(rel_authid, &auth_info, &total_roles);
+
+	/*
+	 * Read pg_auth_time_constraint into temporary data structure, too
+	 */
+	totalblocks = RelationGetNumberOfBlocks(rel_authtime);
+	totalblocks = totalblocks ? totalblocks : 1;
+	est_rows = totalblocks * (BLCKSZ / (sizeof(HeapTupleHeaderData) + sizeof(FormData_pg_auth_time_constraint)));
+	authtime_info = (authtime_entry *) palloc(est_rows * sizeof(authtime_entry));
+
+	scan = heap_beginscan(rel_authtime, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		Form_pg_auth_time_constraint timeform = (Form_pg_auth_time_constraint) GETSTRUCT(tuple);
+
+		if (curr_constraint >= est_rows)
+		{
+			est_rows *= 2;
+			authtime_info = (authtime_entry *)
+				repalloc(authtime_info, est_rows * sizeof(authtime_entry));
+		}
+
+		authtime_info[curr_constraint].roleid = timeform->authid;
+		authtime_info[curr_constraint].startday = timeform->start_day;
+		authtime_info[curr_constraint].starttime = timeform->start_time;
+		authtime_info[curr_constraint].endday = timeform->end_day;
+		authtime_info[curr_constraint].endtime = timeform->end_time;
+		curr_constraint++;
+		total_constraints++;
+	}
+	heap_endscan(scan);
+
+	/*
+	 * Search for rolenames.  We can skip all this if pg_auth_time_constraint is
+	 * empty.
+	 */
+	if (total_constraints > 0)
+	{
+		/*
+		 * Sort auth_info by roleid and authtime_info by roleid.
+		 */
+		qsort(auth_info, total_roles, sizeof(auth_entry), oid_compar);
+		qsort(authtime_info, total_constraints, sizeof(authtime_entry), time_oid_compar);
+
+		/*
+		 * For each time constraint, determine the rolename.
+		 * TODO: this is O(nlogm). we could do O(n + m).
+		 */
+		for (curr_constraint = 0; curr_constraint < total_constraints; curr_constraint++)
+		{
+			auth_entry 	key_auth;
+			auth_entry *found_role;
+			key_auth.roleid = authtime_info[curr_constraint].roleid;
+			found_role = bsearch(&key_auth, auth_info, total_roles,
+								 sizeof(auth_entry), oid_compar);
+			if (found_role)
+				authtime_info[curr_constraint].rolname = found_role->rolname;
+		}
+	}
+
+	/*
+	 * Now sort auth_info into rolname order for output, and write the file.
+	 */
+	qsort(authtime_info, total_constraints, sizeof(authtime_entry), time_name_compar);
+
+	/*
+	 * Create a temporary filename to be renamed later.  This prevents the
+	 * backend from clobbering the flat file while the postmaster might be
+	 * reading from it.
+	 */
+	MirroredFlatFile_Open(
+					&mirroredOpen,
+					"global",
+					"pg_auth_time_constraint",
+					O_CREAT | O_TRUNC | O_WRONLY | PG_BINARY,
+					S_IRUSR | S_IWUSR,
+					/* suppressError */ false,
+					/* atomic operation */ true,
+					/*isMirrorRecovery */ false);
+
+	for (curr_constraint = 0; curr_constraint < total_constraints; curr_constraint++)
+	{
+		authtime_entry *atime = &authtime_info[curr_constraint];
+
+		char	startday[2], endday[2];
+		char 	*starttime, *endtime;
+
+		sputs_quote(&buffer, atime->rolname);
+		appendStringInfoChar(&buffer, ' ');
+
+		snprintf(&startday[0], 2, "%d", atime->startday);
+		sputs_quote(&buffer, startday);
+		appendStringInfoChar(&buffer, ' ');
+
+		starttime = DatumGetCString(DirectFunctionCall1(time_out,
+									TimeADTGetDatum(atime->starttime)));
+		sputs_quote(&buffer, starttime);
+		appendStringInfoChar(&buffer, ' ');
+
+		snprintf(&endday[0], 2, "%d", atime->endday);
+		sputs_quote(&buffer, endday);
+		appendStringInfoChar(&buffer, ' ');
+
+		endtime = DatumGetCString(DirectFunctionCall1(time_out,
+								  TimeADTGetDatum(atime->endtime)));
+		sputs_quote(&buffer, endtime);
+
+		appendStringInfoChar(&buffer, '\n');
+	}
+
+	MirroredFlatFile_Append(&mirroredOpen, buffer.data, buffer.len,
+							/* suppressError */ false);
+	MirroredFlatFile_Flush(&mirroredOpen, /* suppressError */ false);
+	MirroredFlatFile_Close(&mirroredOpen);
+}
 
 /*
  * This routine is called once during database startup, after completing
@@ -689,7 +917,8 @@ BuildFlatFiles(bool database_only)
 	RelFileNode rnode;
 	Relation	rel_db,
 				rel_authid,
-				rel_authmem;
+				rel_authmem,	
+				rel_authtime;
 
 	/*
 	 * We don't have any hope of running a real relcache, but we can use the
@@ -725,6 +954,14 @@ BuildFlatFiles(bool database_only)
 		rel_authmem = XLogOpenRelation(rnode);
 
 		write_auth_file(rel_authid, rel_authmem);
+
+		/* hard-wired path to pg_auth_time_constraint */
+		rnode.spcNode = GLOBALTABLESPACE_OID;
+		rnode.dbNode = 0;
+		rnode.relNode = AuthTimeConstraintRelationId;
+		rel_authtime = XLogOpenRelation(rnode);
+
+		write_auth_time_file(rel_authid, rel_authtime);
 	}
 
 	CurrentResourceOwner = NULL;
@@ -754,15 +991,18 @@ AtEOXact_UpdateFlatFiles(bool isCommit)
 	Relation	drel = NULL;
 	Relation	arel = NULL;
 	Relation	mrel = NULL;
+	Relation	trel = NULL;
 
 	if (database_file_update_subid == InvalidSubTransactionId &&
-		auth_file_update_subid == InvalidSubTransactionId)
+		auth_file_update_subid == InvalidSubTransactionId &&
+		auth_time_file_update_subid == InvalidSubTransactionId)
 		return;					/* nothing to do */
 
 	if (!isCommit)
 	{
 		database_file_update_subid = InvalidSubTransactionId;
 		auth_file_update_subid = InvalidSubTransactionId;
+		auth_time_file_update_subid = InvalidSubTransactionId;
 		return;
 	}
 
@@ -786,10 +1026,14 @@ AtEOXact_UpdateFlatFiles(bool isCommit)
 		drel = heap_open(DatabaseRelationId, AccessShareLock);
 
 	if (auth_file_update_subid != InvalidSubTransactionId)
-	{
-		arel = heap_open(AuthIdRelationId, AccessShareLock);
 		mrel = heap_open(AuthMemRelationId, AccessShareLock);
-	}
+
+	if (auth_time_file_update_subid != InvalidSubTransactionId)
+		trel = heap_open(AuthTimeConstraintRelationId, AccessShareLock);
+
+	if (auth_file_update_subid != InvalidSubTransactionId ||
+		auth_time_file_update_subid != InvalidSubTransactionId)
+		arel = heap_open(AuthIdRelationId, AccessShareLock);
 
 	/*
 	 * Obtain special locks to ensure that two transactions don't try to write
@@ -816,6 +1060,10 @@ AtEOXact_UpdateFlatFiles(bool isCommit)
 		LockSharedObject(AuthIdRelationId, InvalidOid, 0,
 						 AccessExclusiveLock);
 
+	if (auth_time_file_update_subid != InvalidSubTransactionId)
+		LockSharedObject(AuthTimeConstraintRelationId, InvalidOid, 0,
+						 AccessExclusiveLock);
+
 	/* Okay to write the files */
 	if (database_file_update_subid != InvalidSubTransactionId)
 	{
@@ -828,9 +1076,18 @@ AtEOXact_UpdateFlatFiles(bool isCommit)
 	{
 		auth_file_update_subid = InvalidSubTransactionId;
 		write_auth_file(arel, mrel);
-		heap_close(arel, NoLock);
 		heap_close(mrel, NoLock);
 	}
+
+	if (auth_time_file_update_subid != InvalidSubTransactionId)
+	{
+		auth_time_file_update_subid = InvalidSubTransactionId;
+		write_auth_time_file(arel, trel);
+		heap_close(trel, NoLock);
+	}
+
+	if (arel != NULL)
+		heap_close(arel, NoLock);
 
 	/*
 	 * Signal the postmaster to reload its caches.
@@ -864,6 +1121,11 @@ AtPrepare_UpdateFlatFiles(void)
 		auth_file_update_subid = InvalidSubTransactionId;
 		info |= FF_BIT_AUTH;
 	}
+	if (auth_time_file_update_subid != InvalidSubTransactionId)
+	{
+		auth_time_file_update_subid = InvalidSubTransactionId;
+		info |= FF_BIT_AUTH_TIME;
+	}
 	if (info != 0)
 		RegisterTwoPhaseRecord(TWOPHASE_RM_FLATFILES_ID, info,
 							   NULL, 0);
@@ -888,6 +1150,9 @@ AtEOSubXact_UpdateFlatFiles(bool isCommit,
 
 		if (auth_file_update_subid == mySubid)
 			auth_file_update_subid = parentSubid;
+
+		if (auth_file_update_subid == mySubid)
+			auth_time_file_update_subid = parentSubid;
 	}
 	else
 	{
@@ -896,6 +1161,9 @@ AtEOSubXact_UpdateFlatFiles(bool isCommit,
 
 		if (auth_file_update_subid == mySubid)
 			auth_file_update_subid = InvalidSubTransactionId;
+
+		if (auth_time_file_update_subid == mySubid)
+			auth_time_file_update_subid = InvalidSubTransactionId;
 	}
 }
 
@@ -929,6 +1197,9 @@ flatfile_update_trigger(PG_FUNCTION_ARGS)
 		case AuthMemRelationId:
 			auth_file_update_needed();
 			break;
+		case AuthTimeConstraintRelationId:
+			auth_time_file_update_needed();
+			break;
 		default:
 			elog(ERROR, "flatfile_update_trigger was called for wrong table");
 			break;
@@ -958,6 +1229,8 @@ flatfile_twophase_postcommit(TransactionId xid, uint16 info,
 		database_file_update_needed();
 	if (info & FF_BIT_AUTH)
 		auth_file_update_needed();
+	if (info & FF_BIT_AUTH_TIME)
+		auth_time_file_update_needed();
 }
 
 /*
@@ -978,6 +1251,11 @@ FlatFilesRecoverMirror(void)
 		return retval;
 	
 	retval = MirrorFlatFile("global", "pg_auth");
+
+	if (retval != 0)
+		return retval;
+	
+	retval = MirrorFlatFile("global", "pg_auth_time_constraint");
 	
 	return retval;
 }
@@ -994,7 +1272,8 @@ FlatFilesTemporaryResynchronizeMirror(void)
 	while ((de = ReadDir(global_dir, "global")) != NULL) 
 	{
 		if (strstr(de->d_name, "pg_database.") != NULL ||
-			strstr(de->d_name, "pg_auth.") != NULL)
+			strstr(de->d_name, "pg_auth.") != NULL ||
+			strstr(de->d_name, "pg_auth_time_constraint.") != NULL)
 		{
 			retval = MirrorFlatFile("global", de->d_name);
 			

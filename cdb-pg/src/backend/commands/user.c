@@ -19,14 +19,17 @@
 #include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_auth_time_constraint.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "commands/comment.h"
 #include "commands/user.h"
 #include "libpq/md5.h"
+#include "libpq/auth.h"
 #include "miscadmin.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/date.h"
 #include "utils/flatfiles.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
@@ -73,6 +76,16 @@ static void SetCreateExtTableForRole(List* allow,
 			List* disallow, bool* createrextgpfd,
 			bool* createrexthttp, bool* createwextgpfd,
 			bool* createrexthdfs, bool* createwexthdfs);
+
+static char *daysofweek[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
+							 "Thursday", "Friday", "Saturday"};
+static int16 ExtractAuthInterpretDay(Value * day);
+static void ExtractAuthIntervalClause(DefElem *defel,
+			authInterval *authInterval);
+static void AddRoleDenials(const char *rolename, Oid roleid,
+			List *addintervals); 
+static void DelRoleDenials(const char *rolename, Oid roleid, 
+			List *dropintervals);
 
 /* Check if current user has createrole privileges */
 static bool
@@ -132,6 +145,7 @@ CreateRole(CreateRoleStmt *stmt)
 	List	   *exttabnocreate = NIL;	/* external table create privileges being removed */
 	char	   *validUntil = NULL;		/* time the login is valid until */
 	char	   *resqueue = NULL;		/* resource queue for this role */
+	List	   *addintervals = NIL;	/* list of time intervals for which login should be denied */
 	DefElem    *dpassword = NULL;
 	DefElem    *dresqueue = NULL;
 	DefElem    *dissuper = NULL;
@@ -288,6 +302,14 @@ CreateRole(CreateRoleStmt *stmt)
 			
 			/* now actually append our transformed key value pairs to the list */
 			exttabnocreate = lappend(exttabnocreate, extauth);
+		}
+		else if (strcmp(defel->defname, "deny") == 0) 
+		{
+			authInterval *interval = (authInterval *) palloc0(sizeof(authInterval));
+
+			ExtractAuthIntervalClause(defel, interval);
+
+			addintervals = lappend(addintervals, interval);
 		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
@@ -521,6 +543,13 @@ CreateRole(CreateRoleStmt *stmt)
 				GetUserId(), false);
 
 	/*
+	 * Populate pg_auth_time_constraint with intervals for which this 
+	 * particular role should be denied access.
+	 */
+	if (addintervals != NIL)
+		AddRoleDenials(stmt->role, roleid, addintervals);
+
+	/*
 	 * Close pg_authid, but keep lock till commit (this is important to
 	 * prevent any risk of deadlock failure while updating flat file)
 	 */
@@ -600,6 +629,8 @@ AlterRole(AlterRoleStmt *stmt)
 	bool		 createwextgpfd;
 	bool 		 createrexthdfs;
 	bool		 createwexthdfs;
+	List		*addintervals = NIL;    /* list of time intervals for which login should be denied */
+	List		*dropintervals = NIL;    /* list of time intervals for which matching rules should be dropped */
 
 
 	numopts = list_length(stmt->options);
@@ -752,6 +783,22 @@ AlterRole(AlterRoleStmt *stmt)
 			
 			if (1 == numopts) alter_subtype = "NO CREATEEXTTABLE";
 		}
+		else if (strcmp(defel->defname, "deny") == 0)
+		{
+			authInterval *interval = (authInterval *) palloc0(sizeof(authInterval));
+
+			ExtractAuthIntervalClause(defel, interval);
+
+			addintervals = lappend(addintervals, interval);
+		}
+		else if (strcmp(defel->defname, "drop_deny") == 0)
+		{
+			authInterval *interval = (authInterval *) palloc0(sizeof(authInterval));
+		
+			ExtractAuthIntervalClause(defel, interval);
+	
+			dropintervals = lappend(dropintervals, interval);
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -777,6 +824,23 @@ AlterRole(AlterRoleStmt *stmt)
 		validUntil = strVal(dvalidUntil->arg);
 	if (dresqueue)
 		resqueue = strVal(linitial((List *) dresqueue->arg));
+
+	/*
+	 * Disallow the use of DENY and DROP DENY fragments in the same query.
+	 *
+	 * We do this to prevent commands with unusual behavior.
+	 * e.g. consider "ALTER ROLE foo DENY DAY 0 DROP DENY FOR DAY 1 DENY DAY 1 DENY DAY 2"
+	 * In the manner that this is currently coded, because all DENY fragments are interpreted
+	 * first, this actually becomes equivalent to you "ALTER ROLE foo DENY DAY 0 DENY DAY 2".
+	 * 
+	 * Instead, we could honor the order in which the fragments are presented, but still that
+	 * allows users to contradict themselves, as in the example given.
+	 */
+	if (addintervals != NIL && dropintervals != NIL)
+		ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("conflicting or redundant options"),
+					 errhint("Time based rules cannot be added and deleted in the same ALTER ROLE statement.")));
 
 	/*
 	 * Scan the pg_authid relation to be certain the user exists.
@@ -1052,6 +1116,20 @@ AlterRole(AlterRoleStmt *stmt)
 					rolemembers, roleNamesToIds(rolemembers),
 					false);
 	}
+
+	/*
+	 * Populate pg_auth_time_constraint with the new intervals for which this 
+	 * particular role should be denied access.
+	 */
+	if (addintervals != NIL)
+		AddRoleDenials(stmt->role, roleid, addintervals);
+
+	/*
+	 * Remove pg_auth_time_constraint entries that overlap with the 
+	 * intervals given by the user.
+	 */
+	if (dropintervals != NIL)
+		DelRoleDenials(stmt->role, roleid, dropintervals);
 
 	/* MPP-6929: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1387,6 +1465,11 @@ DropRole(DropRoleStmt *stmt)
 		}
 
 		systable_endscan(sscan);
+
+		/*
+		 * Remove any time constraints on this role.
+		 */
+		DelRoleDenials(role, roleid, NIL);
 
 		/*
 		 * Remove any comments on this role.
@@ -2305,4 +2388,205 @@ DelRoleMems(const char *rolename, Oid roleid,
 	 * prevent any risk of deadlock failure while updating flat file)
 	 */
 	heap_close(pg_authmem_rel, NoLock);
+}
+
+/*
+ * ExtractAuthIntervalClause
+ * 
+ * Build an authInterval struct (defined above) from given input
+ */
+static void 
+ExtractAuthIntervalClause(DefElem *defel, authInterval *interval)
+{
+	DenyLoginPoint *start = NULL, *end = NULL;
+	char	*temp;
+	if (IsA(defel->arg, DenyLoginInterval))
+	{
+		DenyLoginInterval *span = (DenyLoginInterval *)defel->arg;
+		start = span->start;
+		end = span->end;
+	} 
+	else 
+	{
+		Assert(IsA(defel->arg, DenyLoginPoint));
+		start = (DenyLoginPoint *)defel->arg;
+		end = start;
+	}
+	interval->start.day = ExtractAuthInterpretDay(start->day);
+	temp = start->time != NULL ? strVal(start->time) : "00:00:00";
+	interval->start.time = DatumGetTimeADT(DirectFunctionCall1(time_in, CStringGetDatum(temp)));
+	interval->end.day = ExtractAuthInterpretDay(end->day);
+	temp = end->time != NULL ? strVal(end->time) : "24:00:00";
+	interval->end.time = DatumGetTimeADT(DirectFunctionCall1(time_in, CStringGetDatum(temp)));
+	if (point_cmp(&interval->start, &interval->end) > 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("time interval must not wrap around"))); 
+}
+
+/*
+ * TransferAuthInterpretDay -- Interpret day of week from parse node
+ *
+ * day: node which dictates a day of week;
+ *		may be either an integer in [0, 6] 
+ *		or a string giving name of day in English
+ */
+static int16 
+ExtractAuthInterpretDay(Value * day) 
+{
+	int16   ret;
+	if (day->type == T_Integer) 
+	{
+		ret = intVal(day);
+		if (ret < 0 || ret > 6)
+			ereport(ERROR,
+					 (errcode(ERRCODE_SYNTAX_ERROR),
+					  errmsg("numeric day of week must be between 0 and 6")));
+	} 
+	else 
+	{
+		int16		 elems = 7;
+		char		*target = strVal(day);
+		for (ret = 0; ret < elems; ret++) 
+			if (strcasecmp(target, daysofweek[ret]) == 0)
+				break;
+		if (ret == elems)
+			ereport(ERROR,
+					 (errcode(ERRCODE_SYNTAX_ERROR),
+					  errmsg("invalid weekday name \"%s\"", target),
+					  errhint("Day of week must be one of 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'.")));
+	}
+	return ret;
+}
+
+/*
+ * AddRoleDenials -- Populate pg_auth_time_constraint
+ *
+ * rolename: name of role to add to (used only for error messages)
+ * roleid: OID of role to add to
+ * addintervals: list of authInterval structs dictating when
+ *				  this particular role should be denied access
+ *
+ * Note: caller is reponsible for checking permissions to edit the given role.
+ */
+static void
+AddRoleDenials(const char *rolename, Oid roleid, List *addintervals) {
+	Relation	pg_auth_time_rel;
+	TupleDesc   pg_auth_time_dsc;
+	ListCell   *intervalitem;
+
+	pg_auth_time_rel = heap_open(AuthTimeConstraintRelationId, RowExclusiveLock);
+	pg_auth_time_dsc = RelationGetDescr(pg_auth_time_rel);
+
+	foreach(intervalitem, addintervals)
+	{
+		authInterval 	*interval = (authInterval *)lfirst(intervalitem);
+		HeapTuple   tuple;
+		Datum		new_record[Natts_pg_auth_time_constraint];
+		bool		new_record_nulls[Natts_pg_auth_time_constraint];
+
+		/* Build a tuple to insert or update */
+		MemSet(new_record, 0, sizeof(new_record));
+		MemSet(new_record_nulls, false, sizeof(new_record_nulls));
+
+		new_record[Anum_pg_auth_time_constraint_authid - 1] = ObjectIdGetDatum(roleid);
+		new_record[Anum_pg_auth_time_constraint_start_day - 1] = Int16GetDatum(interval->start.day);
+		new_record[Anum_pg_auth_time_constraint_start_time - 1] = TimeADTGetDatum(interval->start.time);
+		new_record[Anum_pg_auth_time_constraint_end_day - 1] = Int16GetDatum(interval->end.day);
+		new_record[Anum_pg_auth_time_constraint_end_time - 1] = TimeADTGetDatum(interval->end.time);
+		tuple = heap_form_tuple(pg_auth_time_dsc,
+								new_record, new_record_nulls);
+		simple_heap_insert(pg_auth_time_rel, tuple);
+		CatalogUpdateIndexes(pg_auth_time_rel, tuple);
+	}
+
+	CommandCounterIncrement();
+
+	/*
+	 * Close pg_auth_time_constraint, but keep lock till commit (this is important to
+	 * prevent any risk of deadlock failure while updating flat file)
+	 */
+	heap_close(pg_auth_time_rel, NoLock);
+
+	/*
+	 * Set flag to update flat auth time constraint file at commit.
+	 */
+	auth_time_file_update_needed();
+}
+
+/*
+ * DelRoleDenials -- Trim pg_auth_time_constraint
+ *
+ * rolename: name of role to edit (used only for error messages)
+ * roleid: OID of role to edit
+ * dropintervals: list of authInterval structs dictating which
+ *                existing rules should be dropped. Here, NIL will mean
+ *                remove all constraints for the given role.
+ *
+ * Note: caller is reponsible for checking permissions to edit the given role.
+ */
+static void
+DelRoleDenials(const char *rolename, Oid roleid, List *dropintervals) 
+{
+	Relation    pg_auth_time_rel;
+	ListCell	*intervalitem;
+
+	HeapTuple 	tmp_tuple;
+	ScanKeyData scankey;
+	SysScanDesc sscan;
+
+	pg_auth_time_rel = heap_open(AuthTimeConstraintRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&scankey,
+				Anum_pg_auth_time_constraint_authid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(roleid));
+
+	sscan = systable_beginscan(pg_auth_time_rel, InvalidOid, false, 
+								SnapshotNow, 1, &scankey);
+
+	while (HeapTupleIsValid(tmp_tuple = systable_getnext(sscan)))
+	{
+		if (dropintervals != NIL) 
+		{
+			Form_pg_auth_time_constraint obj = (Form_pg_auth_time_constraint) GETSTRUCT(tmp_tuple);
+			authInterval *interval, *existing = (authInterval *) palloc0(sizeof(authInterval));
+			existing->start.day = obj->start_day;
+			existing->start.time = obj->start_time;
+			existing->end.day = obj->end_day;
+			existing->end.time = obj->end_time;
+			foreach(intervalitem, dropintervals) 
+			{
+				interval = (authInterval *)lfirst(intervalitem);
+				if (interval_overlap(existing, interval))
+				{
+					if (Gp_role == GP_ROLE_DISPATCH)
+						ereport(NOTICE,
+								(errmsg("Dropping time constraint for %s between %s %s and %s %s",
+										rolename, 
+										daysofweek[existing->start.day],
+										DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->start.time))),
+										daysofweek[existing->end.day],
+										DatumGetCString(DirectFunctionCall1(time_out, TimeADTGetDatum(existing->end.time))))));
+					simple_heap_delete(pg_auth_time_rel, &tmp_tuple->t_self);
+					break;
+				}
+			}
+		} 
+		else
+			simple_heap_delete(pg_auth_time_rel, &tmp_tuple->t_self);
+	}
+
+	systable_endscan(sscan);
+
+	/*
+	 * Close pg_auth_time_constraint, but keep lock till commit (this is important to
+	 * prevent any risk of deadlock failure while updating flat file)
+	 */
+	heap_close(pg_auth_time_rel, NoLock);
+
+	/*
+	 * Set flag to update flat auth time constraint file at commit.
+	 */
+	auth_time_file_update_needed();
 }

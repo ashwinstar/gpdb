@@ -17,3 +17,4 @@ orafunk.out
 filespace.out
 gpcheckmirrorseg.out
 upgrade.out
+auth_constraint.out

@@ -1636,6 +1636,9 @@ setup_auth(void)
 		"CREATE TRIGGER pg_sync_pg_auth_members "
 		"  AFTER INSERT OR UPDATE OR DELETE ON pg_auth_members "
 		"  FOR EACH STATEMENT EXECUTE PROCEDURE flatfile_update_trigger();\n",
+		"CREATE TRIGGER pg_sync_pg_auth_time_constraint "
+		"  AFTER INSERT OR UPDATE OR DELETE ON pg_auth_time_constraint "
+		"  FOR EACH STATEMENT EXECUTE PROCEDURE flatfile_update_trigger();\n",
 
 		/*
 		 * The authid table shouldn't be readable except through views, to

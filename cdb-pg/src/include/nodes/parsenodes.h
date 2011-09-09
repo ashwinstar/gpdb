@@ -1894,6 +1894,21 @@ typedef struct DropRoleStmt
 	bool		missing_ok;		/* skip error if a role is missing? */
 } DropRoleStmt;
 
+typedef struct DenyLoginPoint
+{
+	NodeTag			type;
+	Value 		   *day;
+	Value		   *time;
+} DenyLoginPoint;
+
+typedef struct DenyLoginInterval
+{
+	NodeTag			type;
+	DenyLoginPoint *start;
+	DenyLoginPoint *end;
+} DenyLoginInterval;
+
+
 /* ----------------------
  *		{Create|Alter} SEQUENCE Statement
  * ----------------------

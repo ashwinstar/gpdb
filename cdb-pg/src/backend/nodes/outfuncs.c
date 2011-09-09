@@ -2142,6 +2142,24 @@ _outCreateRoleStmt(StringInfo str, CreateRoleStmt *node)
 
 }
 
+static void
+_outDenyLoginInterval(StringInfo str, DenyLoginInterval *node) 
+{
+	WRITE_NODE_TYPE("DENYLOGININTERVAL");
+	
+	WRITE_NODE_FIELD(start);
+	WRITE_NODE_FIELD(end);
+}
+
+static void
+_outDenyLoginPoint(StringInfo str, DenyLoginPoint *node)
+{
+	WRITE_NODE_TYPE("DENYLOGINPOINT");
+
+	WRITE_NODE_FIELD(day);
+	WRITE_NODE_FIELD(time);
+}
+
 static  void
 _outDropRoleStmt(StringInfo str, DropRoleStmt *node)
 {
@@ -4428,6 +4446,12 @@ _outNode(StringInfo str, void *obj)
 
 			case T_TableValueExpr:
 				_outTableValueExpr(str, obj);
+                break;
+			case T_DenyLoginInterval:
+				_outDenyLoginInterval(str, obj);
+				break;
+			case T_DenyLoginPoint:
+				_outDenyLoginPoint(str, obj);
 				break;
 
 			default:

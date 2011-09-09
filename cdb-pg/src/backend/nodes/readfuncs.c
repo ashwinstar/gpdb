@@ -1063,6 +1063,28 @@ _readCreateRoleStmt(void)
 	READ_DONE();
 }
 
+static DenyLoginInterval *
+_readDenyLoginInterval(const char ** str)
+{
+	READ_LOCALS(DenyLoginInterval);
+	
+	READ_NODE_FIELD(start);
+	READ_NODE_FIELD(end);
+
+	READ_DONE();
+}
+
+static DenyLoginPoint *
+_readDenyLoginPoint(const char ** str)
+{
+	READ_LOCALS(DenyLoginPoint);
+	
+	READ_NODE_FIELD(day);
+	READ_NODE_FIELD(time);
+	
+	READ_DONE();
+}
+
 static DropRoleStmt *
 _readDropRoleStmt(void)
 {
@@ -2965,6 +2987,8 @@ static ParseNodeInfo infoAr[] =
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DEFINESTMT", (ReadFn)_readDefineStmt},
+	{"DENYLOGININTERVAL", (ReadFn)_readDenyLoginInterval},
+	{"DENYLOGINPOINT", (ReadFn)_readDenyLoginPoint},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
 	{"DROPCAST", (ReadFn)_readDropCastStmt},
 	{"DROPFDWCAST", (ReadFn)_readDropFdwStmt},

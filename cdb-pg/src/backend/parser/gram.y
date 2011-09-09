@@ -201,6 +201,8 @@ static TypeName *TableFuncTypeName(List *columns);
 		DeallocateStmt PrepareStmt ExecuteStmt
 		DropOwnedStmt ReassignOwnedStmt
 
+%type <node>    deny_login_role deny_interval deny_point deny_day_specifier
+
 %type <node>	select_no_parens select_with_parens select_clause
 				simple_select values_clause
 
@@ -231,6 +233,9 @@ static TypeName *TableFuncTypeName(List *columns);
 
 %type <list>	OptRoleList
 %type <defelt>	OptRoleElem
+
+%type <list> 	OptAlterRoleList
+%type <defelt>	OptAlterRoleElem
 
 %type <list>	OptQueueList
 %type <defelt>	OptQueueElem
@@ -451,6 +456,7 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <node> 	common_table_expr
 %type <with> 	with_clause
 %type <list>	cte_list
+%type <node>	opt_time
 
 /*
  * If you make any token changes, update the keyword table in
@@ -476,7 +482,7 @@ static TypeName *TableFuncTypeName(List *columns);
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
 	DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
-	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS
+	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS DENY
 	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOMAIN_P DOUBLE_P DROP
 
 	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ERRORS ESCAPE EVERY EXCEPT 
@@ -1342,6 +1348,40 @@ OptRoleElem:
 				{
 					$$ = makeDefElem("exttabnoauth", (Node *)$2);
 				}			
+			| deny_login_role
+				{
+					$$ = makeDefElem("deny", (Node *)$1);
+				}
+		;
+
+deny_login_role: DENY deny_interval { $$ = (Node *)$2; }
+			| DENY deny_point { $$ = (Node *)$2; }
+		;
+
+deny_interval: BETWEEN deny_point AND deny_point
+				{
+					DenyLoginInterval *n = makeNode(DenyLoginInterval);
+					n->start = (DenyLoginPoint *)$2;
+					n->end = (DenyLoginPoint *)$4;
+					$$ = (Node *)n;
+				}
+		;
+
+deny_day_specifier: Sconst { $$ = (Node *)makeString($1); }
+			| Iconst { $$ = (Node *)makeInteger($1); }
+		;
+
+deny_point: DAY_P deny_day_specifier opt_time
+				{
+					DenyLoginPoint *n = makeNode(DenyLoginPoint);
+					n->day = (Value *)$2;
+					n->time = (Value *)$3;
+					$$ = (Node *)n;
+				}
+		;
+
+opt_time: TIME Sconst { $$ = (Node *)makeString($2); }
+		| /* nothing */ { $$ = NULL; }
 		;
 
 exttab_auth_list:
@@ -1388,7 +1428,7 @@ CreateUserStmt:
  *****************************************************************************/
 
 AlterRoleStmt:
-			ALTER ROLE RoleId opt_with OptRoleList
+			ALTER ROLE RoleId opt_with OptAlterRoleList
 				 {
 					AlterRoleStmt *n = makeNode(AlterRoleStmt);
 					n->role = $3;
@@ -1416,6 +1456,15 @@ AlterRoleSetStmt:
 					$$ = (Node *)n;
 				}
 		;
+
+OptAlterRoleList:
+            OptAlterRoleList OptAlterRoleElem       { $$ = lappend($1, $2); }
+            | /*EMPTY*/                             { $$ = NIL; }
+        ;
+
+OptAlterRoleElem:
+			OptRoleElem								{ $$ = $1; }
+			| DROP DENY FOR deny_point				{ $$ = makeDefElem("drop_deny", $4); }
 
 
 /*****************************************************************************
@@ -12128,6 +12177,7 @@ unreserved_keyword:
 			| DELETE_P
 			| DELIMITER
 			| DELIMITERS
+			| DENY
 			| DISABLE_P
 			| DOMAIN_P
 			| DOUBLE_P

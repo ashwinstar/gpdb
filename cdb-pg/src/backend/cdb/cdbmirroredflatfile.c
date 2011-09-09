@@ -1073,7 +1073,7 @@ MirroredFlatFile_DropFilesFromDir(void)
 }
 
 /* 
- * Drop temporary files of pg_database and pg_auth  
+ * Drop temporary files of pg_database, pg_auth, pg_auth_time_constraint
  */
 void
 MirroredFlatFile_DropTemporaryFiles(void)
@@ -1088,7 +1088,8 @@ MirroredFlatFile_DropTemporaryFiles(void)
 	while ((de = ReadDir(global_dir, "global")) != NULL) 
 	{
 		if (strstr(de->d_name, "pg_database.") != NULL ||
-			strstr(de->d_name, "pg_auth.") != NULL)
+			strstr(de->d_name, "pg_auth.") != NULL ||
+			strstr(de->d_name, "pg_auth_time_constraint.") != NULL)
 		{
 			sprintf(path, "%s/%s", "global", de->d_name);
 
@@ -1113,7 +1114,7 @@ MirroredFlatFile_DropTemporaryFiles(void)
 }
 
 /* 
- * Send to mirror request for drop temporary files of pg_database and pg_auth
+ * Send to mirror request for drop temporary files of pg_database, pg_auth, pg_auth_time_constraint
  */
 void
 MirroredFlatFile_MirrorDropTemporaryFiles(void)
@@ -1138,6 +1139,16 @@ MirroredFlatFile_MirrorDropTemporaryFiles(void)
 		ereport(LOG,
 				(errmsg("could not sent drop file to mirror identifier 'global/pg_auth' ")));
 	}	
+
+	if (FileRepPrimary_MirrorDropTemporaryFiles(
+												FileRep_GetFlatFileIdentifier(
+																			  "global",
+																			  "pg_auth_time_constraint."),
+												FileRepRelationTypeFlatFile) != 0)
+	{
+		ereport(LOG,
+				(errmsg("could not sent drop file to mirror identifier 'global/pg_auth_time_constraint' ")));
+	} 
 	
 	return;
 }
