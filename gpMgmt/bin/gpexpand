@@ -21,8 +21,8 @@ try:
     from gppylib.gparray import GpArray, MODE_CHANGELOGGING, STATUS_DOWN
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
-    from gppylib.db import dbconn
     from gppylib.db import catalog
+    from gppylib.db import dbconn
     from gppylib.userinput import *
     from gppylib.operations.startSegments import *
     from gppylib.system import configurationInterface, configurationImplGpdb
@@ -1009,6 +1009,21 @@ class gpexpand:
 
         # make sure gpexpand schema doesn't exist since it wasn't in DB provided
         if not gpexpand_db_status:
+            """
+            MPP-14145 - If there's no discernable status, the schema must not exist.
+
+            The checks in get_status_from_db claim to look for existence of the 'gpexpand' schema, but more accurately they're
+            checking for non-emptiness of the gpexpand.status table. If the table were empty, but the schema did exist, gpexpand would presume 
+            a new expansion was taking place and it would try to CREATE SCHEMA later, which would fail. So, here, if this is the case, we error out. 
+
+            Note: -c/--clean will not necessarily work either, as it too has assumptions about the non-emptiness of the gpexpand schema.
+            """
+            with dbconn.connect(dburl, encoding='UTF8', utility=True) as conn:
+                count = dbconn.execSQLForSingleton(conn, "select count(n.nspname) from pg_catalog.pg_namespace n where n.nspname = 'gpexpand'")
+                if count > 0:
+                    raise ExpansionError("Existing expansion state could not be determined, but a gpexpand schema already exists. Cannot proceed.")
+
+            # now determine whether gpexpand schema merely resides in another DB
             status_conn = dbconn.connect(dburl, encoding='UTF8')
             db_list = catalog.getDatabaseList(status_conn)
             status_conn.close()
