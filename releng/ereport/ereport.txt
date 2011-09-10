@@ -13324,7 +13324,7 @@ faba: ftsfilerep:00000536:  elog(ERROR, "FTS: failed to execute command: %s (%m)
 faba: ftsfilerep:00000540:  elog(ERROR, "FTS: segment transition failed: %s (exit code %d).", cmd, cmd_status); 
 faba: ftsfilerep:00000585:  elog(FATAL, "FTS: could not find entry for dbid %d.", dbid); 
 aaaaa GP_IGNORE: faai: ftsprobe - ./backend/fts/ftsprobe.c
-faai: ftsprobe:00000143:  elog(ERROR, "FTS: segment configuration has not been loaded to shared memory"); 
+faai: ftsprobe:00000145:  elog(ERROR, "FTS: segment configuration has not been loaded to shared memory"); 
 aaaaa GP_IGNORE: faag: ftssan - ./backend/fts/ftssan.c
 faag: ftssan:00000339:  elog(ERROR, "getMounts_forDbid: failed dbid lookup in segment configuration"); 
 faag: ftssan:00000371:  elog(FATAL, "Fault reponse error: %s IS NULL", #ATTR); \ 
@@ -19942,285 +19942,285 @@ gaah: geoxops:00005080:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 gaah: geoxops:00005081:  errmsg("cannot convert empty polygon to circle"), 
 gaah: geoxops:00005082:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: iaad: int - ./backend/utils/adt/int.c
-iaad: int:00000158:  ereport(ERROR, 
-iaad: int:00000159:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-iaad: int:00000160:  errmsg("int2vector has too many elements"))); 
-iaad: int:00000231:  ereport(ERROR, 
-iaad: int:00000232:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
-iaad: int:00000233:  errmsg("invalid int2vector data"))); 
-iaad: int:00000336:  ereport(ERROR, 
-iaad: int:00000337:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000338:  errmsg("smallint out of range"), 
-iaad: int:00000339:  errOmitLocation(true))); 
-iaad: int:00000673:  ereport(ERROR, 
-iaad: int:00000674:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000675:  errmsg("integer out of range"), 
-iaad: int:00000676:  errOmitLocation(true))); 
-iaad: int:00000703:  ereport(ERROR, 
-iaad: int:00000704:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000705:  errmsg("integer out of range"), 
-iaad: int:00000706:  errOmitLocation(true))); 
-iaad: int:00000725:  ereport(ERROR, 
-iaad: int:00000726:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000727:  errmsg("integer out of range"), 
-iaad: int:00000728:  errOmitLocation(true))); 
-iaad: int:00000746:  ereport(ERROR, 
-iaad: int:00000747:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000748:  errmsg("integer out of range"))); 
-iaad: int:00000768:  ereport(ERROR, 
-iaad: int:00000769:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000770:  errmsg("integer out of range"), 
-iaad: int:00000771:  errOmitLocation(true))); 
-iaad: int:00000783:  ereport(ERROR, 
-iaad: int:00000784:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaad: int:00000785:  errmsg("division by zero"), 
-iaad: int:00000786:  errOmitLocation(true))); 
-iaad: int:00000795:  ereport(ERROR, 
-iaad: int:00000796:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000797:  errmsg("integer out of range"))); 
-iaad: int:00000809:  ereport(ERROR, 
-iaad: int:00000810:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000811:  errmsg("integer out of range"), 
-iaad: int:00000812:  errOmitLocation(true))); 
-iaad: int:00000825:  ereport(ERROR, 
-iaad: int:00000826:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000827:  errmsg("integer out of range"), 
-iaad: int:00000828:  errOmitLocation(true))); 
-iaad: int:00000842:  ereport(ERROR, 
-iaad: int:00000843:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000844:  errmsg("smallint out of range"), 
-iaad: int:00000845:  errOmitLocation(true))); 
-iaad: int:00000872:  ereport(ERROR, 
-iaad: int:00000873:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000874:  errmsg("smallint out of range"), 
-iaad: int:00000875:  errOmitLocation(true))); 
-iaad: int:00000894:  ereport(ERROR, 
-iaad: int:00000895:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000896:  errmsg("smallint out of range"), 
-iaad: int:00000897:  errOmitLocation(true))); 
-iaad: int:00000915:  ereport(ERROR, 
-iaad: int:00000916:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000917:  errmsg("smallint out of range"), 
-iaad: int:00000918:  errOmitLocation(true))); 
-iaad: int:00000931:  ereport(ERROR, 
-iaad: int:00000932:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaad: int:00000933:  errmsg("division by zero"), 
-iaad: int:00000934:  errOmitLocation(true))); 
-iaad: int:00000945:  ereport(ERROR, 
-iaad: int:00000946:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000947:  errmsg("smallint out of range"))); 
-iaad: int:00000966:  ereport(ERROR, 
-iaad: int:00000967:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000968:  errmsg("integer out of range"), 
-iaad: int:00000969:  errOmitLocation(true))); 
-iaad: int:00000988:  ereport(ERROR, 
-iaad: int:00000989:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00000990:  errmsg("integer out of range"), 
-iaad: int:00000991:  errOmitLocation(true))); 
-iaad: int:00001016:  ereport(ERROR, 
-iaad: int:00001017:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00001018:  errmsg("integer out of range"), 
-iaad: int:00001019:  errOmitLocation(true))); 
-iaad: int:00001031:  ereport(ERROR, 
-iaad: int:00001032:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaad: int:00001033:  errmsg("division by zero"), 
-iaad: int:00001034:  errOmitLocation(true))); 
-iaad: int:00001058:  ereport(ERROR, 
-iaad: int:00001059:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00001060:  errmsg("integer out of range"), 
-iaad: int:00001061:  errOmitLocation(true))); 
-iaad: int:00001080:  ereport(ERROR, 
-iaad: int:00001081:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00001082:  errmsg("integer out of range"), 
-iaad: int:00001083:  errOmitLocation(true))); 
-iaad: int:00001108:  ereport(ERROR, 
-iaad: int:00001109:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00001110:  errmsg("integer out of range"), 
-iaad: int:00001111:  errOmitLocation(true))); 
-iaad: int:00001123:  ereport(ERROR, 
-iaad: int:00001124:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaad: int:00001125:  errmsg("division by zero"), 
-iaad: int:00001126:  errOmitLocation(true))); 
-iaad: int:00001137:  ereport(ERROR, 
-iaad: int:00001138:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00001139:  errmsg("integer out of range"), 
-iaad: int:00001140:  errOmitLocation(true))); 
-iaad: int:00001151:  ereport(ERROR, 
-iaad: int:00001152:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaad: int:00001153:  errmsg("division by zero"), 
-iaad: int:00001154:  errOmitLocation(true))); 
-iaad: int:00001172:  ereport(ERROR, 
-iaad: int:00001173:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaad: int:00001174:  errmsg("division by zero"), 
-iaad: int:00001175:  errOmitLocation(true))); 
-iaad: int:00001188:  ereport(ERROR, 
-iaad: int:00001189:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaad: int:00001190:  errmsg("division by zero"), 
-iaad: int:00001191:  errOmitLocation(true))); 
-iaad: int:00001204:  ereport(ERROR, 
-iaad: int:00001205:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaad: int:00001206:  errmsg("division by zero"))); 
-iaad: int:00001225:  ereport(ERROR, 
-iaad: int:00001226:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00001227:  errmsg("integer out of range"), 
-iaad: int:00001228:  errOmitLocation(true))); 
-iaad: int:00001241:  ereport(ERROR, 
-iaad: int:00001242:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaad: int:00001243:  errmsg("smallint out of range"), 
-iaad: int:00001244:  errOmitLocation(true))); 
-iaad: int:00001430:  ereport(ERROR, 
-iaad: int:00001431:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-iaad: int:00001432:  errmsg("step size cannot equal zero"))); 
+iaad: int:00000160:  ereport(ERROR, 
+iaad: int:00000161:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+iaad: int:00000162:  errmsg("int2vector has too many elements"))); 
+iaad: int:00000233:  ereport(ERROR, 
+iaad: int:00000234:  (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION), 
+iaad: int:00000235:  errmsg("invalid int2vector data"))); 
+iaad: int:00000338:  ereport(ERROR, 
+iaad: int:00000339:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000340:  errmsg("smallint out of range"), 
+iaad: int:00000341:  errOmitLocation(true))); 
+iaad: int:00000675:  ereport(ERROR, 
+iaad: int:00000676:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000677:  errmsg("integer out of range"), 
+iaad: int:00000678:  errOmitLocation(true))); 
+iaad: int:00000705:  ereport(ERROR, 
+iaad: int:00000706:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000707:  errmsg("integer out of range"), 
+iaad: int:00000708:  errOmitLocation(true))); 
+iaad: int:00000727:  ereport(ERROR, 
+iaad: int:00000728:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000729:  errmsg("integer out of range"), 
+iaad: int:00000730:  errOmitLocation(true))); 
+iaad: int:00000748:  ereport(ERROR, 
+iaad: int:00000749:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000750:  errmsg("integer out of range"))); 
+iaad: int:00000770:  ereport(ERROR, 
+iaad: int:00000771:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000772:  errmsg("integer out of range"), 
+iaad: int:00000773:  errOmitLocation(true))); 
+iaad: int:00000785:  ereport(ERROR, 
+iaad: int:00000786:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaad: int:00000787:  errmsg("division by zero"), 
+iaad: int:00000788:  errOmitLocation(true))); 
+iaad: int:00000797:  ereport(ERROR, 
+iaad: int:00000798:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000799:  errmsg("integer out of range"))); 
+iaad: int:00000811:  ereport(ERROR, 
+iaad: int:00000812:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000813:  errmsg("integer out of range"), 
+iaad: int:00000814:  errOmitLocation(true))); 
+iaad: int:00000827:  ereport(ERROR, 
+iaad: int:00000828:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000829:  errmsg("integer out of range"), 
+iaad: int:00000830:  errOmitLocation(true))); 
+iaad: int:00000844:  ereport(ERROR, 
+iaad: int:00000845:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000846:  errmsg("smallint out of range"), 
+iaad: int:00000847:  errOmitLocation(true))); 
+iaad: int:00000874:  ereport(ERROR, 
+iaad: int:00000875:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000876:  errmsg("smallint out of range"), 
+iaad: int:00000877:  errOmitLocation(true))); 
+iaad: int:00000896:  ereport(ERROR, 
+iaad: int:00000897:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000898:  errmsg("smallint out of range"), 
+iaad: int:00000899:  errOmitLocation(true))); 
+iaad: int:00000917:  ereport(ERROR, 
+iaad: int:00000918:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000919:  errmsg("smallint out of range"), 
+iaad: int:00000920:  errOmitLocation(true))); 
+iaad: int:00000933:  ereport(ERROR, 
+iaad: int:00000934:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaad: int:00000935:  errmsg("division by zero"), 
+iaad: int:00000936:  errOmitLocation(true))); 
+iaad: int:00000947:  ereport(ERROR, 
+iaad: int:00000948:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000949:  errmsg("smallint out of range"))); 
+iaad: int:00000968:  ereport(ERROR, 
+iaad: int:00000969:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000970:  errmsg("integer out of range"), 
+iaad: int:00000971:  errOmitLocation(true))); 
+iaad: int:00000990:  ereport(ERROR, 
+iaad: int:00000991:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00000992:  errmsg("integer out of range"), 
+iaad: int:00000993:  errOmitLocation(true))); 
+iaad: int:00001018:  ereport(ERROR, 
+iaad: int:00001019:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00001020:  errmsg("integer out of range"), 
+iaad: int:00001021:  errOmitLocation(true))); 
+iaad: int:00001033:  ereport(ERROR, 
+iaad: int:00001034:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaad: int:00001035:  errmsg("division by zero"), 
+iaad: int:00001036:  errOmitLocation(true))); 
+iaad: int:00001060:  ereport(ERROR, 
+iaad: int:00001061:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00001062:  errmsg("integer out of range"), 
+iaad: int:00001063:  errOmitLocation(true))); 
+iaad: int:00001082:  ereport(ERROR, 
+iaad: int:00001083:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00001084:  errmsg("integer out of range"), 
+iaad: int:00001085:  errOmitLocation(true))); 
+iaad: int:00001110:  ereport(ERROR, 
+iaad: int:00001111:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00001112:  errmsg("integer out of range"), 
+iaad: int:00001113:  errOmitLocation(true))); 
+iaad: int:00001125:  ereport(ERROR, 
+iaad: int:00001126:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaad: int:00001127:  errmsg("division by zero"), 
+iaad: int:00001128:  errOmitLocation(true))); 
+iaad: int:00001139:  ereport(ERROR, 
+iaad: int:00001140:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00001141:  errmsg("integer out of range"), 
+iaad: int:00001142:  errOmitLocation(true))); 
+iaad: int:00001153:  ereport(ERROR, 
+iaad: int:00001154:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaad: int:00001155:  errmsg("division by zero"), 
+iaad: int:00001156:  errOmitLocation(true))); 
+iaad: int:00001174:  ereport(ERROR, 
+iaad: int:00001175:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaad: int:00001176:  errmsg("division by zero"), 
+iaad: int:00001177:  errOmitLocation(true))); 
+iaad: int:00001190:  ereport(ERROR, 
+iaad: int:00001191:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaad: int:00001192:  errmsg("division by zero"), 
+iaad: int:00001193:  errOmitLocation(true))); 
+iaad: int:00001206:  ereport(ERROR, 
+iaad: int:00001207:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaad: int:00001208:  errmsg("division by zero"))); 
+iaad: int:00001227:  ereport(ERROR, 
+iaad: int:00001228:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00001229:  errmsg("integer out of range"), 
+iaad: int:00001230:  errOmitLocation(true))); 
+iaad: int:00001243:  ereport(ERROR, 
+iaad: int:00001244:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaad: int:00001245:  errmsg("smallint out of range"), 
+iaad: int:00001246:  errOmitLocation(true))); 
+iaad: int:00001432:  ereport(ERROR, 
+iaad: int:00001433:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+iaad: int:00001434:  errmsg("step size cannot equal zero"))); 
 aaaaa GP_IGNORE: iaai: inteight - ./backend/utils/adt/int8.c
-iaai: inteight:00000097:  ereport(ERROR, 
-iaai: inteight:00000098:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-iaai: inteight:00000099:  errmsg("invalid input syntax for integer: \"%s\"",str), 
-iaai: inteight:00000100:  errOmitLocation(true))); 
-iaai: inteight:00000113:  ereport(ERROR, 
-iaai: inteight:00000114:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000115:  errmsg("value \"%s\" is out of range for type bigint",str), 
-iaai: inteight:00000116:  errOmitLocation(true))); 
-iaai: inteight:00000132:  ereport(ERROR, 
-iaai: inteight:00000133:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
-iaai: inteight:00000134:  errmsg("invalid input syntax for integer: \"%s\"", 
-iaai: inteight:00000135:  str), 
-iaai: inteight:00000136:  errOmitLocation(true))); 
-iaai: inteight:00000168:  elog(ERROR, "could not format int8"); 
-iaai: inteight:00000503:  ereport(ERROR, 
-iaai: inteight:00000504:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000505:  errmsg("bigint out of range"), 
-iaai: inteight:00000506:  errOmitLocation(true))); 
-iaai: inteight:00000533:  ereport(ERROR, 
-iaai: inteight:00000534:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000535:  errmsg("bigint out of range"), 
-iaai: inteight:00000536:  errOmitLocation(true))); 
-iaai: inteight:00000555:  ereport(ERROR, 
-iaai: inteight:00000556:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000557:  errmsg("bigint out of range"), 
-iaai: inteight:00000558:  errOmitLocation(true))); 
-iaai: inteight:00000586:  ereport(ERROR, 
-iaai: inteight:00000587:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000588:  errmsg("bigint out of range"), 
-iaai: inteight:00000589:  errOmitLocation(true))); 
-iaai: inteight:00000601:  ereport(ERROR, 
-iaai: inteight:00000602:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaai: inteight:00000603:  errmsg("division by zero"), 
-iaai: inteight:00000604:  errOmitLocation(true))); 
-iaai: inteight:00000615:  ereport(ERROR, 
-iaai: inteight:00000616:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000617:  errmsg("bigint out of range"), 
-iaai: inteight:00000618:  errOmitLocation(true))); 
-iaai: inteight:00000634:  ereport(ERROR, 
-iaai: inteight:00000635:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000636:  errmsg("bigint out of range"), 
-iaai: inteight:00000637:  errOmitLocation(true))); 
-iaai: inteight:00000651:  ereport(ERROR, 
-iaai: inteight:00000652:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaai: inteight:00000653:  errmsg("division by zero"), 
-iaai: inteight:00000654:  errOmitLocation(true))); 
-iaai: inteight:00000671:  ereport(ERROR, 
-iaai: inteight:00000672:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000673:  errmsg("bigint out of range"), 
-iaai: inteight:00000674:  errOmitLocation(true))); 
-iaai: inteight:00000688:  ereport(ERROR, 
-iaai: inteight:00000689:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000690:  errmsg("bigint out of range"), 
-iaai: inteight:00000691:  errOmitLocation(true))); 
-iaai: inteight:00000757:  ereport(ERROR, 
-iaai: inteight:00000758:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000759:  errmsg("bigint out of range"), 
-iaai: inteight:00000760:  errOmitLocation(true))); 
-iaai: inteight:00000779:  ereport(ERROR, 
-iaai: inteight:00000780:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000781:  errmsg("bigint out of range"), 
-iaai: inteight:00000782:  errOmitLocation(true))); 
-iaai: inteight:00000807:  ereport(ERROR, 
-iaai: inteight:00000808:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000809:  errmsg("bigint out of range"), 
-iaai: inteight:00000810:  errOmitLocation(true))); 
-iaai: inteight:00000822:  ereport(ERROR, 
-iaai: inteight:00000823:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaai: inteight:00000824:  errmsg("division by zero"), 
-iaai: inteight:00000825:  errOmitLocation(true))); 
-iaai: inteight:00000836:  ereport(ERROR, 
-iaai: inteight:00000837:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000838:  errmsg("bigint out of range"), 
-iaai: inteight:00000839:  errOmitLocation(true))); 
-iaai: inteight:00000858:  ereport(ERROR, 
-iaai: inteight:00000859:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000860:  errmsg("bigint out of range"), 
-iaai: inteight:00000861:  errOmitLocation(true))); 
-iaai: inteight:00000880:  ereport(ERROR, 
-iaai: inteight:00000881:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000882:  errmsg("bigint out of range"), 
-iaai: inteight:00000883:  errOmitLocation(true))); 
-iaai: inteight:00000908:  ereport(ERROR, 
-iaai: inteight:00000909:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000910:  errmsg("bigint out of range"), 
-iaai: inteight:00000911:  errOmitLocation(true))); 
-iaai: inteight:00000923:  ereport(ERROR, 
-iaai: inteight:00000924:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaai: inteight:00000925:  errmsg("division by zero"), 
-iaai: inteight:00000926:  errOmitLocation(true))); 
-iaai: inteight:00000950:  ereport(ERROR, 
-iaai: inteight:00000951:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000952:  errmsg("bigint out of range"), 
-iaai: inteight:00000953:  errOmitLocation(true))); 
-iaai: inteight:00000972:  ereport(ERROR, 
-iaai: inteight:00000973:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00000974:  errmsg("bigint out of range"), 
-iaai: inteight:00000975:  errOmitLocation(true))); 
-iaai: inteight:00001000:  ereport(ERROR, 
-iaai: inteight:00001001:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00001002:  errmsg("bigint out of range"), 
-iaai: inteight:00001003:  errOmitLocation(true))); 
-iaai: inteight:00001015:  ereport(ERROR, 
-iaai: inteight:00001016:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaai: inteight:00001017:  errmsg("division by zero"), 
-iaai: inteight:00001018:  errOmitLocation(true))); 
-iaai: inteight:00001029:  ereport(ERROR, 
-iaai: inteight:00001030:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00001031:  errmsg("bigint out of range"), 
-iaai: inteight:00001032:  errOmitLocation(true))); 
-iaai: inteight:00001051:  ereport(ERROR, 
-iaai: inteight:00001052:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00001053:  errmsg("bigint out of range"), 
-iaai: inteight:00001054:  errOmitLocation(true))); 
-iaai: inteight:00001073:  ereport(ERROR, 
-iaai: inteight:00001074:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00001075:  errmsg("bigint out of range"), 
-iaai: inteight:00001076:  errOmitLocation(true))); 
-iaai: inteight:00001101:  ereport(ERROR, 
-iaai: inteight:00001102:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00001103:  errmsg("bigint out of range"), 
-iaai: inteight:00001104:  errOmitLocation(true))); 
-iaai: inteight:00001116:  ereport(ERROR, 
-iaai: inteight:00001117:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
-iaai: inteight:00001118:  errmsg("division by zero"), 
-iaai: inteight:00001119:  errOmitLocation(true))); 
-iaai: inteight:00001213:  ereport(ERROR, 
-iaai: inteight:00001214:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00001215:  errmsg("integer out of range"), 
-iaai: inteight:00001216:  errOmitLocation(true))); 
-iaai: inteight:00001239:  ereport(ERROR, 
-iaai: inteight:00001240:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00001241:  errmsg("smallint out of range"), 
-iaai: inteight:00001242:  errOmitLocation(true))); 
-iaai: inteight:00001278:  ereport(ERROR, 
-iaai: inteight:00001279:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00001280:  errmsg("bigint out of range"), 
-iaai: inteight:00001281:  errOmitLocation(true))); 
-iaai: inteight:00001318:  ereport(ERROR, 
-iaai: inteight:00001319:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00001320:  errmsg("bigint out of range"), 
-iaai: inteight:00001321:  errOmitLocation(true))); 
-iaai: inteight:00001336:  ereport(ERROR, 
-iaai: inteight:00001337:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
-iaai: inteight:00001338:  errmsg("OID out of range"), 
-iaai: inteight:00001339:  errOmitLocation(true))); 
-iaai: inteight:00001422:  ereport(ERROR, 
-iaai: inteight:00001423:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-iaai: inteight:00001424:  errmsg("step size cannot equal zero"))); 
+iaai: inteight:00000099:  ereport(ERROR, 
+iaai: inteight:00000100:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+iaai: inteight:00000101:  errmsg("invalid input syntax for integer: \"%s\"",str), 
+iaai: inteight:00000102:  errOmitLocation(true))); 
+iaai: inteight:00000115:  ereport(ERROR, 
+iaai: inteight:00000116:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000117:  errmsg("value \"%s\" is out of range for type bigint",str), 
+iaai: inteight:00000118:  errOmitLocation(true))); 
+iaai: inteight:00000134:  ereport(ERROR, 
+iaai: inteight:00000135:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
+iaai: inteight:00000136:  errmsg("invalid input syntax for integer: \"%s\"", 
+iaai: inteight:00000137:  str), 
+iaai: inteight:00000138:  errOmitLocation(true))); 
+iaai: inteight:00000170:  elog(ERROR, "could not format int8"); 
+iaai: inteight:00000505:  ereport(ERROR, 
+iaai: inteight:00000506:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000507:  errmsg("bigint out of range"), 
+iaai: inteight:00000508:  errOmitLocation(true))); 
+iaai: inteight:00000535:  ereport(ERROR, 
+iaai: inteight:00000536:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000537:  errmsg("bigint out of range"), 
+iaai: inteight:00000538:  errOmitLocation(true))); 
+iaai: inteight:00000557:  ereport(ERROR, 
+iaai: inteight:00000558:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000559:  errmsg("bigint out of range"), 
+iaai: inteight:00000560:  errOmitLocation(true))); 
+iaai: inteight:00000588:  ereport(ERROR, 
+iaai: inteight:00000589:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000590:  errmsg("bigint out of range"), 
+iaai: inteight:00000591:  errOmitLocation(true))); 
+iaai: inteight:00000603:  ereport(ERROR, 
+iaai: inteight:00000604:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaai: inteight:00000605:  errmsg("division by zero"), 
+iaai: inteight:00000606:  errOmitLocation(true))); 
+iaai: inteight:00000617:  ereport(ERROR, 
+iaai: inteight:00000618:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000619:  errmsg("bigint out of range"), 
+iaai: inteight:00000620:  errOmitLocation(true))); 
+iaai: inteight:00000636:  ereport(ERROR, 
+iaai: inteight:00000637:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000638:  errmsg("bigint out of range"), 
+iaai: inteight:00000639:  errOmitLocation(true))); 
+iaai: inteight:00000653:  ereport(ERROR, 
+iaai: inteight:00000654:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaai: inteight:00000655:  errmsg("division by zero"), 
+iaai: inteight:00000656:  errOmitLocation(true))); 
+iaai: inteight:00000673:  ereport(ERROR, 
+iaai: inteight:00000674:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000675:  errmsg("bigint out of range"), 
+iaai: inteight:00000676:  errOmitLocation(true))); 
+iaai: inteight:00000690:  ereport(ERROR, 
+iaai: inteight:00000691:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000692:  errmsg("bigint out of range"), 
+iaai: inteight:00000693:  errOmitLocation(true))); 
+iaai: inteight:00000759:  ereport(ERROR, 
+iaai: inteight:00000760:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000761:  errmsg("bigint out of range"), 
+iaai: inteight:00000762:  errOmitLocation(true))); 
+iaai: inteight:00000781:  ereport(ERROR, 
+iaai: inteight:00000782:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000783:  errmsg("bigint out of range"), 
+iaai: inteight:00000784:  errOmitLocation(true))); 
+iaai: inteight:00000809:  ereport(ERROR, 
+iaai: inteight:00000810:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000811:  errmsg("bigint out of range"), 
+iaai: inteight:00000812:  errOmitLocation(true))); 
+iaai: inteight:00000824:  ereport(ERROR, 
+iaai: inteight:00000825:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaai: inteight:00000826:  errmsg("division by zero"), 
+iaai: inteight:00000827:  errOmitLocation(true))); 
+iaai: inteight:00000838:  ereport(ERROR, 
+iaai: inteight:00000839:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000840:  errmsg("bigint out of range"), 
+iaai: inteight:00000841:  errOmitLocation(true))); 
+iaai: inteight:00000860:  ereport(ERROR, 
+iaai: inteight:00000861:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000862:  errmsg("bigint out of range"), 
+iaai: inteight:00000863:  errOmitLocation(true))); 
+iaai: inteight:00000882:  ereport(ERROR, 
+iaai: inteight:00000883:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000884:  errmsg("bigint out of range"), 
+iaai: inteight:00000885:  errOmitLocation(true))); 
+iaai: inteight:00000910:  ereport(ERROR, 
+iaai: inteight:00000911:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000912:  errmsg("bigint out of range"), 
+iaai: inteight:00000913:  errOmitLocation(true))); 
+iaai: inteight:00000925:  ereport(ERROR, 
+iaai: inteight:00000926:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaai: inteight:00000927:  errmsg("division by zero"), 
+iaai: inteight:00000928:  errOmitLocation(true))); 
+iaai: inteight:00000952:  ereport(ERROR, 
+iaai: inteight:00000953:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000954:  errmsg("bigint out of range"), 
+iaai: inteight:00000955:  errOmitLocation(true))); 
+iaai: inteight:00000974:  ereport(ERROR, 
+iaai: inteight:00000975:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00000976:  errmsg("bigint out of range"), 
+iaai: inteight:00000977:  errOmitLocation(true))); 
+iaai: inteight:00001002:  ereport(ERROR, 
+iaai: inteight:00001003:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00001004:  errmsg("bigint out of range"), 
+iaai: inteight:00001005:  errOmitLocation(true))); 
+iaai: inteight:00001017:  ereport(ERROR, 
+iaai: inteight:00001018:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaai: inteight:00001019:  errmsg("division by zero"), 
+iaai: inteight:00001020:  errOmitLocation(true))); 
+iaai: inteight:00001031:  ereport(ERROR, 
+iaai: inteight:00001032:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00001033:  errmsg("bigint out of range"), 
+iaai: inteight:00001034:  errOmitLocation(true))); 
+iaai: inteight:00001053:  ereport(ERROR, 
+iaai: inteight:00001054:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00001055:  errmsg("bigint out of range"), 
+iaai: inteight:00001056:  errOmitLocation(true))); 
+iaai: inteight:00001075:  ereport(ERROR, 
+iaai: inteight:00001076:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00001077:  errmsg("bigint out of range"), 
+iaai: inteight:00001078:  errOmitLocation(true))); 
+iaai: inteight:00001103:  ereport(ERROR, 
+iaai: inteight:00001104:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00001105:  errmsg("bigint out of range"), 
+iaai: inteight:00001106:  errOmitLocation(true))); 
+iaai: inteight:00001118:  ereport(ERROR, 
+iaai: inteight:00001119:  (errcode(ERRCODE_DIVISION_BY_ZERO), 
+iaai: inteight:00001120:  errmsg("division by zero"), 
+iaai: inteight:00001121:  errOmitLocation(true))); 
+iaai: inteight:00001215:  ereport(ERROR, 
+iaai: inteight:00001216:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00001217:  errmsg("integer out of range"), 
+iaai: inteight:00001218:  errOmitLocation(true))); 
+iaai: inteight:00001241:  ereport(ERROR, 
+iaai: inteight:00001242:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00001243:  errmsg("smallint out of range"), 
+iaai: inteight:00001244:  errOmitLocation(true))); 
+iaai: inteight:00001280:  ereport(ERROR, 
+iaai: inteight:00001281:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00001282:  errmsg("bigint out of range"), 
+iaai: inteight:00001283:  errOmitLocation(true))); 
+iaai: inteight:00001320:  ereport(ERROR, 
+iaai: inteight:00001321:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00001322:  errmsg("bigint out of range"), 
+iaai: inteight:00001323:  errOmitLocation(true))); 
+iaai: inteight:00001338:  ereport(ERROR, 
+iaai: inteight:00001339:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), 
+iaai: inteight:00001340:  errmsg("OID out of range"), 
+iaai: inteight:00001341:  errOmitLocation(true))); 
+iaai: inteight:00001424:  ereport(ERROR, 
+iaai: inteight:00001425:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+iaai: inteight:00001426:  errmsg("step size cannot equal zero"))); 
 aaaaa GP_IGNORE: laae: like - ./backend/utils/adt/like.c
 laae: like:00000489:  ereport(ERROR, 
 laae: like:00000490:  (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE), 
@@ -20247,141 +20247,85 @@ maad: mac:00000188:  ereport(ERROR,
 maad: mac:00000189:  (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), 
 maad: mac:00000190:  errmsg("text too long to convert to MAC address"))); 
 aaaaa GP_IGNORE: maag: matrix - ./backend/utils/adt/matrix.c
-maag: matrix:00000017:  ereport(ERROR, \ 
-maag: matrix:00000018:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), \ 
-maag: matrix:00000019:  errmsg("value out of range: overflow"),errOmitLocation(true))); \ 
-maag: matrix:00000020:  \ 
-maag: matrix:00000021:  if ((val) == 0.0 && !(zero_is_valid)) \ 
-maag: matrix:00000022:  ereport(ERROR, \ 
-maag: matrix:00000023:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), \ 
-maag: matrix:00000024:  errmsg("value out of range: underflow"),errOmitLocation(true))); \ 
-maag: matrix:00000025: } while(0) 
-maag: matrix:00000026:  
-maag: matrix:00000027:  
-maag: matrix:00000028: /* 
-maag: matrix:00000029:  * check to see if a int16/32/64 val has overflow in addition 
-maag: matrix:00000030:  */ 
-maag: matrix:00000031: #define CHECKINTADD(result, arg1, arg2) \ 
-maag: matrix:00000032: do { \ 
-maag: matrix:00000033:  if (SAMESIGN(arg1, arg2) && !SAMESIGN(result, arg1)) \ 
-maag: matrix:00000034:  ereport(ERROR, \ 
-maag: matrix:00000035:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), \ 
-maag: matrix:00000036:  errmsg("int value out of range: overflow"),errOmitLocation(true))); \ 
-maag: matrix:00000037: } while(0) 
-maag: matrix:00000038:  
-maag: matrix:00000039: /* 
-maag: matrix:00000040:  * check to see if a int64 val has overflow in addition 
-maag: matrix:00000041: * 
-maag: matrix:00000042: * Overflow check. We basically check to see if result / arg2 gives arg1 
-maag: matrix:00000043: * again. There are two cases where this fails: arg2 = 0 (which cannot 
-maag: matrix:00000044: * overflow) and arg1 = INT64_MIN, arg2 = -1 (where the division itself 
-maag: matrix:00000045: * will overflow and thus incorrectly match). 
-maag: matrix:00000046: * 
-maag: matrix:00000047: * Since the division is likely much more expensive than the actual 
-maag: matrix:00000048: * multiplication, we'd like to skip it where possible. The best bang for 
-maag: matrix:00000049: * the buck seems to be to check whether both inputs are in the int32 
-maag: matrix:00000050: * range; if so, no overflow is possible. (But that only works if we 
-maag: matrix:00000051: * really have a 64-bit int64 datatype...) 
-maag: matrix:00000052: * 
-maag: matrix:00000053: */ 
-maag: matrix:00000054: #define CHECKINT64MULT(result, arg1, arg2) \ 
-maag: matrix:00000055: do { \ 
-maag: matrix:00000056:  if (!(arg1 >= (int32) INT_MIN && arg1 <= (int32) INT_MAX && \ 
-maag: matrix:00000057:  arg2 >= (int32) INT_MIN && arg2 <= (int32) INT_MAX) && \ 
-maag: matrix:00000058:  arg2 != 0 && \ 
-maag: matrix:00000059:  (result / arg2 != arg1 *PIPE**PIPE* (arg2 == -1 && arg1 < 0 && result < 0))) \ 
-maag: matrix:00000060:  ereport(ERROR, \ 
-maag: matrix:00000061:  (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE), \ 
-maag: matrix:00000062:  errmsg("int value out of range: overflow"),errOmitLocation(true))); \ 
-maag: matrix:00000063: } while(0) 
-maag: matrix:00000064:  
-maag: matrix:00000065:  
-maag: matrix:00000066: /* 
-maag: matrix:00000067:  * matrix_transpose - transpose an array[x][y] into an array[y][x]. 
-maag: matrix:00000068:  */ 
-maag: matrix:00000069: Datum 
-maag: matrix:00000070: matrix_transpose(PG_FUNCTION_ARGS) 
-maag: matrix:00000071: { 
-maag: matrix:00000072:  ArrayType *m, *result; 
-maag: matrix:00000086:  ereport(ERROR, 
-maag: matrix:00000087:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maag: matrix:00000088:  errmsg("argument must be a two dimensional array"))); 
-maag: matrix:00000090:  ereport(ERROR, 
-maag: matrix:00000091:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-maag: matrix:00000092:  errmsg("null array element not allowed in this context"))); 
-maag: matrix:00000094:  ereport(ERROR, 
-maag: matrix:00000095:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000096:  errmsg("could not determine anyarray/anyelement type because " 
-maag: matrix:00000097:  "input has type \"unknown\""))); 
-maag: matrix:00000179:  ereport(ERROR, 
-maag: matrix:00000180:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maag: matrix:00000181:  errmsg("argument must be a two dimensional array"))); 
-maag: matrix:00000183:  ereport(ERROR, 
-maag: matrix:00000184:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maag: matrix:00000185:  errmsg("non-conformable arrays"))); 
-maag: matrix:00000188:  ereport(ERROR, 
-maag: matrix:00000189:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-maag: matrix:00000190:  errmsg("null array element not allowed in this context"))); 
-maag: matrix:00000192:  ereport(ERROR, 
-maag: matrix:00000193:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000194:  errmsg("could not determine anyarray/anyelement type because " 
-maag: matrix:00000195:  "input has type \"unknown\""))); 
-maag: matrix:00000197:  ereport(ERROR, 
-maag: matrix:00000198:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000199:  errmsg("cannot multiply arrays of different element types"))); 
-maag: matrix:00000202:  ereport(ERROR, 
-maag: matrix:00000203:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000204:  errmsg("datatype not supported for array multiplication"))); 
-maag: matrix:00000341:  ereport(ERROR, 
-maag: matrix:00000342:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maag: matrix:00000343:  errmsg("matrix_add called with %d arguments", PG_NARGS()))); 
-maag: matrix:00000372:  ereport(ERROR, 
-maag: matrix:00000373:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000374:  errmsg("matrix_add: unsupported datatype"))); 
+maag: matrix:00000032:  ereport(ERROR, 
+maag: matrix:00000033:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maag: matrix:00000034:  errmsg("argument must be a two dimensional array"))); 
+maag: matrix:00000036:  ereport(ERROR, 
+maag: matrix:00000037:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+maag: matrix:00000038:  errmsg("null array element not allowed in this context"))); 
+maag: matrix:00000040:  ereport(ERROR, 
+maag: matrix:00000041:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000042:  errmsg("could not determine anyarray/anyelement type because " 
+maag: matrix:00000043:  "input has type \"unknown\""))); 
+maag: matrix:00000125:  ereport(ERROR, 
+maag: matrix:00000126:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maag: matrix:00000127:  errmsg("argument must be a two dimensional array"))); 
+maag: matrix:00000129:  ereport(ERROR, 
+maag: matrix:00000130:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maag: matrix:00000131:  errmsg("non-conformable arrays"))); 
+maag: matrix:00000134:  ereport(ERROR, 
+maag: matrix:00000135:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+maag: matrix:00000136:  errmsg("null array element not allowed in this context"))); 
+maag: matrix:00000138:  ereport(ERROR, 
+maag: matrix:00000139:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000140:  errmsg("could not determine anyarray/anyelement type because " 
+maag: matrix:00000141:  "input has type \"unknown\""))); 
+maag: matrix:00000143:  ereport(ERROR, 
+maag: matrix:00000144:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000145:  errmsg("cannot multiply arrays of different element types"))); 
+maag: matrix:00000148:  ereport(ERROR, 
+maag: matrix:00000149:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000150:  errmsg("datatype not supported for array multiplication"))); 
+maag: matrix:00000245:  ereport(ERROR, 
+maag: matrix:00000246:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maag: matrix:00000247:  errmsg("matrix_add called with %d arguments", PG_NARGS()))); 
+maag: matrix:00000276:  ereport(ERROR, 
+maag: matrix:00000277:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000278:  errmsg("matrix_add: unsupported datatype"))); 
+maag: matrix:00000316:  ereport(ERROR, 
+maag: matrix:00000317:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000318:  errmsg("matrix_add: return datatype lookup failure"))); 
+maag: matrix:00000345:  ereport(ERROR, 
+maag: matrix:00000346:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maag: matrix:00000347:  errmsg("matrix_add: Dimensionality of both arrays must match"))); 
+maag: matrix:00000351:  ereport(ERROR, 
+maag: matrix:00000352:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maag: matrix:00000353:  errmsg("matrix_add: non-conformable arrays"))); 
+maag: matrix:00000356:  ereport(ERROR, 
+maag: matrix:00000357:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
+maag: matrix:00000358:  errmsg("matrix_add: null array element not allowed in this context"))); 
+maag: matrix:00000363:  ereport(ERROR, 
+maag: matrix:00000364:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000365:  errmsg("matrix_add: unsupported datatype"))); 
+maag: matrix:00000386:  ereport(ERROR, 
+maag: matrix:00000387:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000388:  errmsg("matrix_add: can not downconvert state"))); 
 maag: matrix:00000412:  ereport(ERROR, 
 maag: matrix:00000413:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000414:  errmsg("matrix_add: return datatype lookup failure"))); 
-maag: matrix:00000441:  ereport(ERROR, 
-maag: matrix:00000442:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maag: matrix:00000443:  errmsg("matrix_add: Dimensionality of both arrays must match"))); 
-maag: matrix:00000447:  ereport(ERROR, 
-maag: matrix:00000448:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maag: matrix:00000449:  errmsg("matrix_add: non-conformable arrays"))); 
-maag: matrix:00000452:  ereport(ERROR, 
-maag: matrix:00000453:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), 
-maag: matrix:00000454:  errmsg("matrix_add: null array element not allowed in this context"))); 
-maag: matrix:00000459:  ereport(ERROR, 
-maag: matrix:00000460:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000461:  errmsg("matrix_add: unsupported datatype"))); 
-maag: matrix:00000497:  ereport(ERROR, 
-maag: matrix:00000498:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000499:  errmsg("matrix_add: can not downconvert state"))); 
-maag: matrix:00000533:  ereport(ERROR, 
-maag: matrix:00000534:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000535:  errmsg("matrix_add: can not downconvert state"))); 
-maag: matrix:00000580:  ereport(ERROR, 
-maag: matrix:00000581:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000582:  errmsg("matrix_add: can not downconvert state"))); 
-maag: matrix:00000628:  ereport(ERROR, 
-maag: matrix:00000629:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000630:  errmsg("matrix_add: can not downconvert state"))); 
-maag: matrix:00000681:  ereport(ERROR, 
-maag: matrix:00000682:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00000683:  errmsg("matrix_add: can not downconvert state"))); 
-maag: matrix:00001075:  ereport(ERROR, 
-maag: matrix:00001076:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maag: matrix:00001077:  errmsg("matrix_smultiply_int8 called with %d arguments", 
-maag: matrix:00001078:  PG_NARGS()))); 
-maag: matrix:00001088:  ereport(ERROR, 
-maag: matrix:00001089:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00001090:  errmsg("matrix_smultiply_int8 datatype mismatch"))); 
-maag: matrix:00001126:  ereport(ERROR, 
-maag: matrix:00001127:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
-maag: matrix:00001128:  errmsg("matrix_smultiply_float8 called with %d arguments", 
-maag: matrix:00001129:  PG_NARGS()))); 
-maag: matrix:00001139:  ereport(ERROR, 
-maag: matrix:00001140:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
-maag: matrix:00001141:  errmsg("matrix_smultiply_float8 datatype mismatch"))); 
+maag: matrix:00000414:  errmsg("matrix_add: can not downconvert state"))); 
+maag: matrix:00000445:  ereport(ERROR, 
+maag: matrix:00000446:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000447:  errmsg("matrix_add: can not downconvert state"))); 
+maag: matrix:00000485:  ereport(ERROR, 
+maag: matrix:00000486:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000487:  errmsg("matrix_add: can not downconvert state"))); 
+maag: matrix:00000532:  ereport(ERROR, 
+maag: matrix:00000533:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000534:  errmsg("matrix_add: can not downconvert state"))); 
+maag: matrix:00000878:  ereport(ERROR, 
+maag: matrix:00000879:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maag: matrix:00000880:  errmsg("matrix_smultiply_int8 called with %d arguments", 
+maag: matrix:00000881:  PG_NARGS()))); 
+maag: matrix:00000891:  ereport(ERROR, 
+maag: matrix:00000892:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000893:  errmsg("matrix_smultiply_int8 datatype mismatch"))); 
+maag: matrix:00000924:  ereport(ERROR, 
+maag: matrix:00000925:  (errcode(ERRCODE_INVALID_PARAMETER_VALUE), 
+maag: matrix:00000926:  errmsg("matrix_smultiply_float8 called with %d arguments", 
+maag: matrix:00000927:  PG_NARGS()))); 
+maag: matrix:00000937:  ereport(ERROR, 
+maag: matrix:00000938:  (errcode(ERRCODE_DATATYPE_MISMATCH), 
+maag: matrix:00000939:  errmsg("matrix_smultiply_float8 datatype mismatch"))); 
 aaaaa GP_IGNORE: maae: misc - ./backend/utils/adt/misc.c
 maae: misc:00000099:  ereport(ERROR, 
 maae: misc:00000100:  (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE), 
