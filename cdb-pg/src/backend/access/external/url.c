@@ -504,7 +504,16 @@ local_strstr(const char *str1, const char *str2)
 }
 
 static int
-make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
+make_url_ipv6(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
+{
+	if ( buf )
+		strcpy(buf, url);
+		
+	return strlen(url) + 1;
+}
+
+static int
+make_url_ipv4(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
 {
 	char *authority_start = local_strstr(url, "//");
 	char *authority_end;
@@ -516,21 +525,21 @@ make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
 	int len;
 	int port = 80; /* default for http */
 	char *p;
-
+	
 	if (! authority_start)
 	{
 		elog(ERROR, "illegal url '%s'", url);
 	}
-
+	
 	authority_start += 2;
 	authority_end = strchr(authority_start, '/');
 	if (! authority_end)
 		authority_end = authority_start + strlen(authority_start);
-
+	
 	hostname_start = strchr(authority_start, '@');
 	if (! (hostname_start && hostname_start < authority_end))
 		hostname_start = authority_start;
-
+	
 	hostname_end = strchr(hostname_start, ':');
 	if (! (hostname_end && hostname_end < authority_end))
 	{
@@ -544,32 +553,47 @@ make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf)
 		portstr[len] = 0;
 		port = atoi(portstr);
 	}
-		
+	
 	if (hostname_end - hostname_start >= sizeof(hostname))
 	{
 		elog(ERROR, "hostname too long for url '%s'", url);
 	}
-
+	
 	memcpy(hostname, hostname_start, hostname_end - hostname_start);
 	hostname[hostname_end - hostname_start] = 0;
 	
 	hostip = getDnsAddress(hostname, port, ERROR);
-
+	
 	if (!buf)
 		return strlen(url) + 1 - strlen(hostname) + strlen(hostip);
-
+	
 	p = buf;
 	len = hostname_start - url;
 	strncpy(p, url, len); p += len; url += len;
-
+	
 	len = strlen(hostname);
 	url += len;
-
+	
 	len = strlen(hostip);
 	strncpy(p, hostip, len); p += len;
-
+	
 	strcpy(p, url);
 	return p - buf;
+}
+
+
+static int
+make_url(const char *url, extvar_t *ev __attribute__((unused)), char *buf, bool is_ipv6)
+{
+	int ret;
+	
+	if ( !is_ipv6 ) /* most of the cases will be ipv4 */
+		ret = make_url_ipv4(url, ev, buf);
+	else 
+		ret = make_url_ipv6(url, ev, buf);
+
+		
+	return ret;	
 }
 
 /*
@@ -677,6 +701,7 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 	const char*	exec_prefix = "execute:";
 	URL_FILE*	file;
 	int 		e;
+	int         ip_mode;
 
 	/*
 	 * if 'url' starts with "execute:" then it's a command to execute and
@@ -742,7 +767,11 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
     }
     else if (IS_HTTP_URI(url) || IS_GPFDIST_URI(url))
     {
-		int sz = make_url(file->url, ev, 0);
+		int sz;
+		char* ipv6 = strchr(file->url, ']');
+		bool is_ipv6 = (ipv6 != NULL);
+		
+		sz = make_url(file->url, ev, 0, is_ipv6);
 		
         file->type = CFTYPE_CURL; /* marked as URL */
 
@@ -756,7 +785,8 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 
 		file->u.curl.curl_url = palloc(sz);
 		file->u.curl.for_write = forwrite;
-		make_url(file->url, ev, file->u.curl.curl_url);
+		
+		make_url(file->url, ev, file->u.curl.curl_url, is_ipv6);
 
 		if (IS_GPFDIST_URI(file->u.curl.curl_url))
 		{
@@ -814,21 +844,23 @@ url_fopen(char *url, bool forwrite, extvar_t *ev, CopyState pstate, int *respons
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
-		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4)))
+				
+		if ( !is_ipv6 )
+			ip_mode = CURL_IPRESOLVE_V4;
+		else 
+			ip_mode = CURL_IPRESOLVE_V6;
+		if (CURLE_OK != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_IPRESOLVE, ip_mode)))
 		{
 			url_fclose(file, false, pstate->cur_relname);
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_IPRESOLVE error (%d - %s)",
 				 e, curl_easy_strerror(e));
 		}
-
-
+		
 		/*
 		 * set up a linked list of http headers. start with common headers
 		 * needed for read and write operations, and continue below with 
 		 * more specifics
-		 */
-		
-		
+		 */			
 		file->u.curl.x_httpheader = NULL;
 		
 		/*
