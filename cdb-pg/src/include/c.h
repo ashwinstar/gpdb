@@ -633,13 +633,6 @@ typedef NameData *Name;
 #define Abs(x)			((x) >= 0 ? (x) : -(x))
 
 /*
- * SameSign
- *		Return if the two inputs are the same sign.
- */
-#define SAMESIGN(a,b)	(((a) < 0) == ((b) < 0))
-
-
-/*
  * StrNCpy
  *	Like standard library function strncpy(), except that result string
  *	is guaranteed to be null-terminated --- that is, at most N-1 bytes

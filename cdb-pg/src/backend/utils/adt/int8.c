@@ -25,6 +25,8 @@
 
 #define MAXINT8LEN		25
 
+#define SAMESIGN(a,b)	(((a) < 0) == ((b) < 0))
+
 typedef struct
 {
 	int64		current;
