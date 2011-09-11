@@ -4,7 +4,7 @@ from datetime import datetime
 
 from gppylib import gplog
 from gppylib.db import dbconn
-from gppylib.db.dbconn import execSQL, execSQLForSingleton
+from gppylib.db.dbconn import execSQL, execSQLForSingleton, UnexpectedRowsError
 from gppylib.commands.base import Command, REMOTE, ExecutionError
 from gppylib.commands.gp import Psql
 from gppylib.commands.unix import getUserName, findCmdInPath, curr_platform, SUNOS
@@ -339,6 +339,9 @@ class ValidateSegDiskSpace(Operation):
                     needed_space += execSQLForSingleton(conn, "select sotdsize/1024 from gp_toolkit.gp_size_of_table_disk where sotdschemaname='%s' and sotdtablename='%s';" % (schema, table))
             else:
                 needed_space = execSQLForSingleton(conn, "select sodddatsize/1024 from gp_toolkit.gp_size_of_database where sodddatname='%s';" % self.dump_database)
+        except UnexpectedRowsError, e:
+            logger.exception("Disk space queries have failed. Cannot estimate disk space needed for dump.")
+            raise ExceptionNoStackTraceNeeded("Cannot estimate disk space needed for dump. Use -b to override this check.")
         finally:
             if conn is not None:
                 conn.close()
