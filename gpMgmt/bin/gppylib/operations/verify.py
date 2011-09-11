@@ -306,12 +306,12 @@ class GatherResults(Operation):
         self.to_gather = to_gather
         self.batch_default = batch_default
     def execute(self):
-        # TODO: If master pg_verify contains ALL needed artifacts, don't bother, just return.
-
         logger.info('Gathering results of verification %s...' % self.token)
         dest_base = os.path.join(self.master_datadir, 'pg_verify', self.token)
         if CheckDir(dest_base).run():
-            RemoveTree(dest_base).run()
+            # TODO: if end user has mucked around with artifacts on master, a regathering may
+            # be needed; perhaps, a --force option to accompany --results?
+            return
         MakeDir(dest_base).run()
 
         pool = WorkerPool(min(len(self.to_gather), self.batch_default))
