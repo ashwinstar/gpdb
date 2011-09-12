@@ -49,7 +49,7 @@ static Node *pull_up_simple_subquery(PlannerInfo *root, Node *jtnode,
 						RangeTblEntry *rte,
 						bool below_outer_join,
 						bool append_rel_member);
-static bool is_simple_subquery(Query *subquery);
+static bool is_simple_subquery(PlannerInfo *root, Query *subquery);
 static bool has_nullable_targetlist(Query *subquery);
 static bool is_safe_append_member(Query *subquery);
 static void resolvenew_in_jointree(Node *jtnode, int varno,
@@ -124,7 +124,7 @@ pull_up_subqueries(PlannerInfo *root, Node *jtnode,
 		 * unless is_safe_append_member says so.
 		 */
 		if (rte->rtekind == RTE_SUBQUERY && !rte->forceDistRandom &&
-			is_simple_subquery(rte->subquery) &&
+			is_simple_subquery(root, rte->subquery) &&
 			(!below_outer_join || has_nullable_targetlist(rte->subquery)) &&
 			(!append_rel_member || is_safe_append_member(rte->subquery)))
 			return pull_up_simple_subquery(root, jtnode, rte,
@@ -347,7 +347,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 * easier just to keep this "if" looking the same as the one in
 	 * pull_up_subqueries.
 	 */
-	if (is_simple_subquery(subquery) &&
+	if (is_simple_subquery(root, subquery) &&
 		(!below_outer_join || has_nullable_targetlist(subquery)) &&
 		(!append_rel_member || is_safe_append_member(subquery)))
 	{
@@ -549,7 +549,7 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
  *	  to pull up into the parent query.
  */
 static bool
-is_simple_subquery(Query *subquery)
+is_simple_subquery(PlannerInfo *root, Query *subquery)
 {
 	/*
 	 * Let's just make sure it's a valid subselect ...
@@ -601,6 +601,17 @@ is_simple_subquery(Query *subquery)
 	if (contain_volatile_functions((Node *) subquery->targetList))
 		return false;
 
+	/*
+	 * Don't pull up a subquery that coerces values to a different domain, since
+	 * those may be used incorrectly before they are coerced by operators in 
+	 * the tree above
+	 */
+	List *corce_to_domain_list = extract_nodes(root->glob, (Node *) subquery, T_CoerceToDomain);
+	if (NIL != corce_to_domain_list)
+	{
+		return false;
+	}
+	
 	/*
 	 * Hack: don't try to pull up a subquery with an empty jointree.
 	 * query_planner() will correctly generate a Result plan for a jointree

@@ -63,6 +63,7 @@ test: select_distinct_on
 ignore: select_implicit
 test: select_having
 test: subselect
+test: information_schema
 test: union
 test: case
 test: join
