@@ -43,6 +43,9 @@ extern Param *SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 						   Oid resulttype, int32 resulttypmod);
 extern Oid exprType(Node *expr);
 extern void mark_plan_strewn(Plan* plan);
+extern Plan * plan_pushdown_tlist(Plan *plan, List *tlist);
+
+extern bool	gp_log_dynamic_partition_pruning;
 
 /**
  * Notes:
@@ -371,10 +374,15 @@ static void MatchJoinPattern(Plan *join, PartitionJoinMutatorContext *ctx)
 	}
 
 	/**
-	 * If not all columns in the partitioning key had an equijoin, then we cannot proceed
-	 * with transformation.
+	 * The join key set must be a subset of the partition key set. We ignore other join conditions.
 	 */
-	if (!bms_equal(ctx->partitionKeySet, ctx->joinKeySet))
+	Assert(bms_is_subset(ctx->joinKeySet, ctx->partitionKeySet));
+
+	/**
+	 * If the join key set does not contain even a single partition column,
+	 * then we cannot proceed with transformation.
+	 */
+	if (bms_is_empty(ctx->joinKeySet))
 	{
 		ctx->safeToConvert = false;
 		return;
@@ -598,6 +606,14 @@ AdjustVarnoWalker(Node *node, AdjustVarnoContext *ctx)
 			var->varnoold += ctx->offset;
 			return false;
 		}
+		case T_Flow:
+		{
+			/**
+			 * flow's hashexpression needs to be walked explicitly
+			 */
+			Flow *flow = (Flow *) node;
+			return AdjustVarnoWalker((Node *) flow->hashExpr, ctx);
+		}
 		case T_SeqScan:
 		case T_AppendOnlyScan:
 		case T_AOCSScan:
@@ -654,7 +670,7 @@ static void ConstructInitPlan(PartitionJoinMutatorContext *ctx)
 {
 	Assert(CurrentMemoryContext == ctx->callerCtx);
 
-	ctx->outerPlan->targetlist = ctx->outerTargetList;
+	ctx->outerPlan = plan_pushdown_tlist(ctx->outerPlan, ctx->outerTargetList);
 
 	/**
 	 * Mark plan as strewn.
@@ -878,7 +894,6 @@ typedef struct PartitionMatchInfo
 	TupleDesc	tupleDesc;
 	Datum		*values;
 	bool		*nulls;
-	TupleTableSlot *slot;
 
 } PartitionMatchInfo;
 
@@ -917,7 +932,7 @@ static void InitPMI(PartitionMatchInfo *pmi, Oid partitionOid, MemoryContext mct
 			hash_create("matching partition map",
 			10000,
 			&hash_ctl,
-			HASH_ELEM | HASH_CONTEXT);
+			HASH_ELEM | HASH_CONTEXT | HASH_FUNCTION);
 
 
 	/**
@@ -929,7 +944,6 @@ static void InitPMI(PartitionMatchInfo *pmi, Oid partitionOid, MemoryContext mct
 	pmi->tupleTypeOid = InvalidOid;
 	pmi->values = NULL;
 	pmi->nulls = NULL;
-	pmi->slot = NULL;
 
 	MemoryContextSwitchTo(oldCtx);
 }
@@ -953,7 +967,6 @@ static void AddRecordPMI(PartitionMatchInfo *pmi, HeapTupleHeader record)
 		pmi->values = (Datum *) palloc(sizeof(Datum) * ncolumns);
 		pmi->nulls = (bool *) palloc(sizeof(bool) * ncolumns);
 
-		pmi->slot = MakeSingleTupleTableSlot(pmi->tupleDesc);
 	}
 
 	/**
@@ -965,17 +978,15 @@ static void AddRecordPMI(PartitionMatchInfo *pmi, HeapTupleHeader record)
 
 	heap_deform_tuple(&pmi->tuple, pmi->tupleDesc, pmi->values, pmi->nulls);
 
-	ExecStoreHeapTuple(&pmi->tuple, pmi->slot, InvalidBuffer, false);
+	List *partIds = selectPartitionMulti(pmi->partitionInfo, pmi->values, pmi->nulls, pmi->tupleDesc, pmi->partitionState);
 
-	//elog(NOTICE, "input record = %s", tup2str(pmi->slot));
-
-	Oid partId = selectPartition(pmi->partitionInfo, pmi->values, pmi->nulls,
-			pmi->tupleDesc, pmi->partitionState);
-
-	/**
-	 * Record the fact that a specific partitionId may contain a match.
-	 */
-	AddPartitionMatch(pmi, partId);
+	ListCell *lc = NULL;
+	foreach (lc, partIds)
+	{
+		Oid partId = lfirst_oid(lc);
+		Assert(partId != InvalidOid);
+		AddPartitionMatch(pmi, partId);
+	}
 
 	MemoryContextSwitchTo(oldCtx);
 }
@@ -989,8 +1000,6 @@ static void FreeRecordPMI(PartitionMatchInfo *pmi)
 	{
 		pfree(pmi->values);
 		pfree(pmi->nulls);
-
-		ExecDropSingleTupleTableSlot(pmi->slot);
 		ReleaseTupleDesc(pmi->tupleDesc);
 	}
 }
@@ -1005,6 +1014,11 @@ static void AddPartitionMatch(PartitionMatchInfo *pmi, Oid partOid)
 	Assert(CurrentMemoryContext == pmi->mctx);
 
 	bool found = false;
+
+	if (gp_log_dynamic_partition_pruning)
+	{
+		elog(LOG, "matched partition %s", get_rel_name(partOid));
+	}
 
 	Oid *value = hash_search(pmi->matchingPartitionOids, &partOid,
 			HASH_ENTER, &found);
@@ -1022,6 +1036,24 @@ static ArrayType *CreateEmptyPartitionOidArray()
 {
 	ArrayType *array = construct_array(NULL, 0, OIDOID, sizeof(Oid), true, 'i');
 	return array;
+}
+
+/**
+ * Function that returns a string representation of partitions chosen from oid array.
+ */
+static char* DebugPartitionOid(Datum *elements, int n)
+{
+
+	StringInfoData str;
+	initStringInfo(&str);
+	appendStringInfo(&str, "{");
+	for (int i=0;i<n;i++)
+	{
+		Oid o = DatumGetObjectId(elements[i]);
+		appendStringInfo(&str, "%s, ", get_rel_name(o));
+	}
+	appendStringInfo(&str, "}");
+	return str.data;
 }
 
 /**
@@ -1047,6 +1079,11 @@ static ArrayType *ExtractPartitionOidArray(PartitionMatchInfo *pmi)
 	Assert(i == numPartitions);
 
 	ArrayType *array = construct_array(elements, numPartitions, OIDOID, sizeof(Oid), true, 'i');
+
+	if (gp_log_dynamic_partition_pruning)
+	{
+		elog(LOG, "DPE matched partitions: %s", DebugPartitionOid(elements, numPartitions));
+	}
 
 	return array;
 }

@@ -7881,3 +7881,167 @@ checkUniqueConstraintVsPartitioning(Relation rel, AttrNumber *indattr, int nidxa
 				 errhint("Include the partition key or create a part-wise UNIQUE index instead.")));
 	}
 }
+
+/**
+ * Does a partition node correspond to a leaf partition?
+ */
+static bool IsLeafPartitionNode(PartitionNode *p)
+{
+	Assert(p);
+	Assert(list_length(p->rules) > 0);
+
+	/**
+	 * If all of the rules have no children, this is a leaf partition.
+	 */
+	ListCell *lc = NULL;
+	foreach (lc, p->rules)
+	{
+		PartitionRule *rule = (PartitionRule *) lfirst(lc);
+		if (rule->children)
+		{
+			return false;
+		}
+	}
+
+	/**
+	 * If default partition has children then, this is not a leaf
+	 */
+	if (p->default_part
+				&& p->default_part->children)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * Given a partition node, return list of children. Should not be called on a leaf partition node.
+ *
+ * Input:
+ * 	p - input partition node
+ * Output:
+ * 	List of partition nodes corresponding to its children across all rules.
+ */
+static List *PartitionChildren(PartitionNode *p)
+{
+	Assert(p);
+	Assert(!IsLeafPartitionNode(p));
+
+	List *result = NIL;
+
+	ListCell *lc = NULL;
+	foreach (lc, p->rules)
+	{
+		PartitionRule *rule = (PartitionRule *) lfirst(lc);
+
+		if (rule->children)
+		{
+			result = lappend(result, rule->children);
+		}
+	}
+
+	/**
+	 * Also add default child
+	 */
+	if (p->default_part
+			&& p->default_part->children)
+	{
+		result = lappend(result, p->default_part->children);
+	}
+
+	return result;
+}
+
+/*
+ * selectPartitionMulti()
+ *
+ * Given an input partition node, values and nullness, and partition state,
+ * find matching leaf partitions. This is similar to selectPartition() with one
+ * big difference around nulls. If there is a null value corresponding to a partitioning attribute,
+ * then all children are considered matches.
+ *
+ * Output:
+ * 	leafPartitionOids - list of leaf partition oids, null if there are no matches
+ */
+List *
+selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
+				 TupleDesc tupdesc, PartitionState *pstate)
+{
+	Assert(partnode);
+
+	List *leafPartitionOids = NIL;
+
+	List *inputList = list_make1(partnode);
+
+	while (list_length(inputList) > 0)
+	{
+		List *levelOutput = NIL;
+
+		ListCell *lc = NULL;
+		foreach (lc, inputList)
+		{
+			PartitionNode *candidatePartNode = (PartitionNode *) lfirst(lc);
+			bool foundNull = false;
+
+			for (int i = 0; i < candidatePartNode->part->parnatts; i++)
+			{
+				AttrNumber attno = candidatePartNode->part->paratts[i];
+
+				/**
+				 * If corresponding value is null, then we should pick all of its
+				 * children (or itself if it is a leaf partition)
+				 */
+				if (isnull[attno - 1])
+				{
+					foundNull = true;
+					if (IsLeafPartitionNode(candidatePartNode))
+					{
+						/**
+						 * Extract out Oids of all children
+						 */
+						leafPartitionOids = list_concat(leafPartitionOids, all_partition_relids(candidatePartNode));
+					}
+					else
+					{
+						levelOutput = PartitionChildren(candidatePartNode);
+					}
+				}
+			}
+
+			/**
+			 * If null was not found on the attribute, and if this is a leaf partition,
+			 * then there will be an exact match. If it is not a leaf partition, then
+			 * we have to find the right child to investigate.
+			 */
+			if (!foundNull)
+			{
+				if (IsLeafPartitionNode(candidatePartNode))
+				{
+					Oid matchOid = selectPartition1(candidatePartNode, values, isnull, tupdesc, pstate, NULL, NULL);
+					if (matchOid != InvalidOid)
+					{
+						leafPartitionOids = lappend_oid(leafPartitionOids, matchOid);
+					}
+				}
+				else
+				{
+					PartitionNode *childPartitionNode = NULL;
+					selectPartition1(candidatePartNode, values, isnull, tupdesc, pstate, NULL, &childPartitionNode);
+					if (childPartitionNode)
+					{
+						levelOutput = lappend(levelOutput, childPartitionNode);
+					}
+				}
+			}
+
+		}
+
+		/**
+		 * Start new level
+		 */
+		inputList = levelOutput;
+	}
+
+	return leafPartitionOids;
+}

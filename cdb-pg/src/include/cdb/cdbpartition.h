@@ -220,5 +220,9 @@ fixCreateStmtForPartitionedTable(CreateStmt *stmt);
 extern void
 checkUniqueConstraintVsPartitioning(Relation rel, AttrNumber *indattr, int nidxatts, bool primary);
 
+extern List *
+selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
+				 TupleDesc tupdesc, PartitionState *pstate);
+
 
 #endif   /* CDBPARTITION_H */
