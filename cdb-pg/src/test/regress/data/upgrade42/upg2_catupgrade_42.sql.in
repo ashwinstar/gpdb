@@ -69,10 +69,23 @@ tablespace pg_global;
    
 create unique index gp_verification_history_vertoken_index on @gpupgradeschemaname@.gp_verification_history(vertoken) with (indexid=6431);  
 
-
+CREATE TABLE @gpupgradeschemaname@.pg_auth_time_constraint
+(
+   authid oid, -- foreign key to pg_authid.oid,
+   start_day smallint, -- [0,6] denoting start of interval
+   start_time time, -- optional time denoting start of interval
+   end_day smallint, -- [0,6] denoting end of interval
+   end_time time -- optional time denoting end of interval
+)
+with (CamelCase=AuthTimeConstraint, shared=true, oid=false, relid=2914, reltype_oid=2915)
+tablespace pg_global;
+   
 --
 --  End of New Tables
 --
+CREATE TRIGGER pg_sync_pg_auth_time_constraint
+  AFTER INSERT OR UPDATE OR DELETE ON @gpupgradeschemaname@.pg_auth_time_constraint
+  FOR EACH STATEMENT EXECUTE PROCEDURE flatfile_update_trigger();
 
 CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_max_external_files AS
     SELECT   address::name as hostname, count(*) as maxfiles
