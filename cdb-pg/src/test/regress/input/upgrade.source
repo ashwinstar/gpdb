@@ -53,7 +53,37 @@ loop
   insert into catdump.DDL values(ver, stmtrow.stmt);
 end loop;
  
- 
+-- Aggregate
+for stmtrow in
+ SELECT 'CREATE AGGREGATE upg_catalog.' || quote_ident(p.proname) || '('
+    || coalesce(array_to_string(array(
+          select 'upg_catalog.' || quote_ident(typname)
+          from pg_type t, generate_series(1, p.pronargs) i
+          where t.oid = p.proargtypes[i-1]
+          order by i), ', '), '')
+    || ') ('
+    || E'   SFUNC     = ' || quote_ident(sfunc.proname)
+    || E',   STYPE     = upg_catalog.' || quote_ident(stype.typname)
+    || case when prefunc.oid is not null then E',   PREFUNC   = ' || quote_ident(prefunc.proname) else '' end
+    || case when finfunc.oid is not null then E',   FINALFUNC = ' || quote_ident(finfunc.proname) else '' end
+    || case when agginitval is not null then E',   INITCOND  = ''' || agginitval || '''' else '' end
+    || case when sortop.oid is not null then E',   SORTOP    = ' || quote_ident(sortop.oprname) else '' end
+    || E' );' as stmt
+FROM pg_aggregate a
+     join pg_proc p on (a.aggfnoid = p.oid)
+     join pg_namespace n on (p.pronamespace = n.oid)
+     join pg_proc sfunc on (a.aggtransfn = sfunc.oid)
+     join pg_type stype on (a.aggtranstype = stype.oid)
+     left join pg_proc prefunc on (a.aggprelimfn = prefunc.oid)
+     left join pg_proc finfunc on (a.aggfinalfn = finfunc.oid)
+     left join pg_operator sortop on (a.aggsortop = sortop.oid)
+WHERE n.nspname = src_schema
+ORDER BY 1
+loop
+  insert into catdump.DDL values(ver, stmtrow.stmt);
+end loop;
+
+
 --
 -- Cast Functions
 --
