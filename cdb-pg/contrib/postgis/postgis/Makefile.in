@@ -101,8 +101,8 @@ $(SQL_OBJS): %.in: %.in.c
 	$(CPP) -traditional-cpp $< | grep -v '^#' > $@
 
 deps-install:
-	cp $(GEOS_DIR)/lib/libgeos* $(libdir)
-	cp $(PROJ_DIR)/lib/libproj* $(libdir)
+	$(INSTALL_SHLIB) $(GEOS_DIR)/lib/libgeos* $(libdir)
+	$(INSTALL_SHLIB) $(PROJ_DIR)/lib/libproj* $(libdir)
 
 deps-uninstall:
 	rm -f $(libdir)/libgeos*
