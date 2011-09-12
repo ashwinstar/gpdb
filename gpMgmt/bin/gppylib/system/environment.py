@@ -47,6 +47,10 @@ class GpMasterEnvironment:
             dbUrl = dbconn.DbURL(port=self.__masterPort, dbname='template1')
             conn = dbconn.connect(dbUrl, utility=True)
             (self.__lcCollate, self.__lcMonetary, self.__lcNumeric) = catalog.getCollationSettings(conn)
+
+            # MPP-13807, read/show the master's database version too
+            self.__pgVersion = dbconn.execSQLForSingletonRow(conn, "select version();")[0]
+            logger.info("master Greenplum Version: '%s'" % self.__pgVersion)
             conn.close()
 
             checkNotNone("lc_collate", self.__lcCollate)
@@ -56,10 +60,12 @@ class GpMasterEnvironment:
             self.__lcCollate = None
             self.__lcMonetary = None
             self.__lcNumeric = None
+            self.__pgVersion = None
 
 
     def getGpHome(self): return self.__gpHome
     def getGpVersion(self): return self.__gpVersion
+    def getPgVersion(self): return self.__pgVersion
     def getLcCollate(self):
         checkNotNone("lc_collate", self.__lcCollate) # make sure we were initialized with "readFromMasterCatalog"
         return self.__lcCollate
