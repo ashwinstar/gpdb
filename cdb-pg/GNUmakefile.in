@@ -21,7 +21,7 @@ all:
 	$(MAKE) -C contrib/orafce all
 	@echo "All of Greenplum Database successfully made. Ready to install."
 
-install:
+install: 
 #	$(MAKE) -C doc $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
@@ -33,6 +33,13 @@ install:
 	$(MAKE) -C contrib/gp_sparse_vector $@
 	$(MAKE) -C contrib/orafce $@
 	@echo "Greenplum Database installation complete."
+
+gppkg:
+	$(MAKE) -C contrib/pgcrypto/package 
+	$(MAKE) -C contrib/postgis/package 
+	$(MAKE) -C src/pl/plr/package 
+	$(MAKE) -C src/pl/plperl/package 
+	$(MAKE) -C src/pl/pljava/package 
 
 installdirs uninstall:
 #	$(MAKE) -C doc $@
