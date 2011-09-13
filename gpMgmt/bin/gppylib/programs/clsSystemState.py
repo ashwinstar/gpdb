@@ -77,7 +77,7 @@ VALUE__ACTIVE_PID = FieldDefinition("PID", "active_pid", "text") # int would be 
 
 CATEGORY__VERIFICATION = "Verification Info"
 VALUE__VERIFICATION_STATUS = FieldDefinition("Verification status", "verification_status", "text")
-VALUE__VERIFICATION_MODE = FieldDefinition("Verification mode", "verificaiton_mode", "text")
+VALUE__VERIFICATION_MODE = FieldDefinition("Verification mode", "verification_mode", "text")
 VALUE__VERIFICATION_START_TIME = FieldDefinition("Start time", "start_time", "text")
 VALUE__VERIFICATION_VERIFIED = FieldDefinition("Data verified", "data_verified", "text")
 VALUE__VERIFICATION_EST_TOTAL = FieldDefinition("Estimated total data to verify", "est_total_data", "text")
@@ -183,7 +183,7 @@ class GpStateData:
                     VALUE__ACTIVE_PID_INT, VALUE__POSTMASTER_PID_VALUE_INT,
                     VALUE__CHANGE_TRACKING_DATA_SIZE_BYTES,
 					VALUE__POSTMASTER_PID_FILE, VALUE__POSTMASTER_PID_VALUE, VALUE__LOCK_FILES,
-                    VALUE__VERIFICATION_STATUS,VALUE__VERIFICATION_MODE, 
+                    VALUE__VERIFICATION_STATUS,
                     VALUE__VERIFICATION_MODE, VALUE__VERIFICATION_START_TIME,
                     VALUE__VERIFICATION_VERIFIED, VALUE__VERIFICATION_EST_TOTAL,
                     VALUE__VERIFICATION_EST_PROGRESS, VALUE__VERIFICATION_EST_END_TIME
@@ -768,7 +768,6 @@ class GpSystemStateProgram:
                 VALUE__VERSION_STRING,
                 
                 VALUE__VERIFICATION_STATUS,
-                VALUE__VERIFICATION_MODE,
                 VALUE__VERIFICATION_MODE,
                 VALUE__VERIFICATION_START_TIME,
                 VALUE__VERIFICATION_VERIFIED,
