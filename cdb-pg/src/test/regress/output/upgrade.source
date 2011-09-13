@@ -792,7 +792,7 @@ SET SEARCH_PATH to upg_catalog;
 drop external table execCmd;
 ERROR:  table "execcmd" does not exist
 create external web table execCmd(a text)
-execute 'psql -p $GP_MASTER_PORT -f @abs_srcdir@/data/upg_catupgrade_42.sql $GP_DATABASE $GP_USER >@abs_srcdir@/data/upgrade_exec.log 2>@abs_srcdir@/data/upgrade_err.log;'
+execute 'psql -p $GP_MASTER_PORT -f @abs_builddir@/data/upg_catupgrade_42.sql $GP_DATABASE $GP_USER >@abs_builddir@/data/upgrade_exec.log 2>@abs_builddir@/data/upgrade_err.log;'
 on master format 'text';
 select * from execCmd; 
  a 
@@ -832,5 +832,6 @@ order by 1;
  CREATE TYPE pg_catalog.anytable(   INPUT = pg_catalog.anytable_in,   OUTPUT = pg_catalog.anytable_out,   INTERNALLENGTH = VARIABLE,   STORAGE = extended,   DELIMITER = ',',   ALIGNMENT = double ); DROP TYPE pg_catalog._anytable;
  CREATE UNIQUE INDEX pg_extprotocol_oid_index ON pg_catalog.pg_extprotocol USING btree(oid);
  CREATE UNIQUE INDEX pg_language_lanname_index ON pg_catalog.pg_language USING btree(lanname);
-(4 rows)
+ CREATE UNIQUE INDEX pg_proc_callback_profnoid_promethod_index ON pg_catalog.pg_proc_callback USING btree(profnoid, promethod);
+(5 rows)
 

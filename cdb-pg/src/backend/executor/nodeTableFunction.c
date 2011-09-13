@@ -257,10 +257,9 @@ ExecInitTableFunction(TableFunctionScan *node, EState *estate, int eflags)
 	subplan   = outerPlanState(scanstate);
 	inputdesc = CreateTupleDescCopy(ExecGetResultType(subplan));
 
-
 	/* get info about the function */
 	rte	 = rt_fetch(node->scan.scanrelid, estate->es_range_table);
-	Assert(rte->rtekind == RTE_TABLEFUNCTION);
+	Insist(rte->rtekind == RTE_TABLEFUNCTION);
 
 	/* 
 	 * The funcexpr must be a function call.  This check is to verify that
@@ -390,6 +389,7 @@ ExecInitTableFunction(TableFunctionScan *node, EState *estate, int eflags)
 		input->junkfilter = ExecInitJunkFilter(input->subplan->plan->targetlist, 
 											   false /* hasoid */,
 											   NULL  /* slot */);
+		BlessTupleDesc(input->junkfilter->jf_cleanTupType);
 
 		foreach(arg, scanstate->fcache->args)
 		{

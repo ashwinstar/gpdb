@@ -791,7 +791,7 @@ SET SEARCH_PATH to upg_catalog;
 
 drop external table execCmd;
 create external web table execCmd(a text)
-execute 'psql -p $GP_MASTER_PORT -f @abs_srcdir@/data/upg_catupgrade_42.sql $GP_DATABASE $GP_USER >@abs_srcdir@/data/upgrade_exec.log 2>@abs_srcdir@/data/upgrade_err.log;'
+execute 'psql -p $GP_MASTER_PORT -f @abs_builddir@/data/upg_catupgrade_42.sql $GP_DATABASE $GP_USER >@abs_builddir@/data/upgrade_exec.log 2>@abs_builddir@/data/upgrade_err.log;'
 on master format 'text';
 
 select * from execCmd; 

@@ -852,6 +852,14 @@ transformViewStmt(ParseState *pstate, ViewStmt *stmt,
 	stmt->query = transformStmt(pstate, (Node *) stmt->query,
 								extras_before, extras_after);
 
+	if (pstate->p_hasDynamicFunction)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INDETERMINATE_DATATYPE),
+				 errmsg("CREATE VIEW statements cannot include calls to "
+						"dynamically typed function")));
+	}
+
 	/*
 	 * If a list of column names was given, run through and insert these into
 	 * the actual query tree. - thomas 2000-03-08

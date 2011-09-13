@@ -14,14 +14,18 @@
  */
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "access/heapam.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_depend.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_proc_callback.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_rewrite.h"
 #include "executor/functions.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
@@ -31,6 +35,7 @@
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
@@ -63,6 +68,7 @@ ProcedureCreate(const char *procedureName,
 				Oid returnType,
 				Oid languageObjectId,
 				Oid languageValidator,
+				Oid describeFuncOid,
 				const char *prosrc,
 				const char *probin,
 				bool isAgg,
@@ -70,16 +76,16 @@ ProcedureCreate(const char *procedureName,
 				bool security_definer,
 				bool isStrict,
 				char volatility,
-				oidvector *parameterTypes,
+				const oidvector *parameterTypes,
 				Datum allParameterTypes,
 				Datum parameterModes,
 				Datum parameterNames,
-				const Oid funcOid)
+				Oid funcOid)
 {
 	Oid			retval;
 	int			parameterCount;
 	int			allParamCount;
-	Oid		   *allParams;
+	const Oid  *allParams;
 	bool		genericInParam = false;
 	bool		genericOutParam = false;
 	bool		internalInParam = false;
@@ -272,6 +278,7 @@ ProcedureCreate(const char *procedureName,
 	{
 		/* There is one; okay to replace it? */
 		Form_pg_proc oldproc = (Form_pg_proc) GETSTRUCT(oldtup);
+		Oid oldOid = HeapTupleGetOid(oldtup);
 
 		if (!replace)
 			ereport(ERROR,
@@ -279,7 +286,7 @@ ProcedureCreate(const char *procedureName,
 			errmsg("function \"%s\" already exists with same argument types",
 				   procedureName),
 						   errOmitLocation(true)));
-		if (!pg_proc_ownercheck(HeapTupleGetOid(oldtup), GetUserId()))
+		if (!pg_proc_ownercheck(oldOid, GetUserId()))
 			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
 						   procedureName);
 
@@ -318,6 +325,47 @@ ProcedureCreate(const char *procedureName,
 				errdetail("Row type defined by OUT parameters is different."),
 						 errhint("Use DROP FUNCTION first."),
 								   errOmitLocation(true)));
+		}
+
+		/*
+		 * Cannot add a describe callback to a function that has views defined
+		 * on it.  This restriction is for the same set of reasons that we 
+		 * cannot change the return type of existing functions.
+		 */
+		if (OidIsValid(describeFuncOid))
+		{
+			Relation	depRel;
+			ScanKeyData key[2];
+			SysScanDesc scan;
+			HeapTuple   depTup;
+			
+
+			depRel = heap_open(DependRelationId, AccessShareLock);
+			
+			ScanKeyInit(&key[0],
+						Anum_pg_depend_refclassid,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(ProcedureRelationId));
+			ScanKeyInit(&key[1],
+						Anum_pg_depend_refobjid,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(oldOid));
+			
+			scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+									  SnapshotNow, 2, key);
+			while (HeapTupleIsValid(depTup = systable_getnext(scan)))
+			{
+				Form_pg_depend depData = (Form_pg_depend) GETSTRUCT(depTup);
+				if (depData->classid == RewriteRelationId)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("cannot add DESCRIBE callback to function used in view(s)"),
+							 errOmitLocation(true)));
+				}
+			}
+			systable_endscan(scan);
+			heap_close(depRel, AccessShareLock);
 		}
 
 		/* Can't change aggregate or window status, either */
@@ -388,6 +436,7 @@ ProcedureCreate(const char *procedureName,
 	{
 		deleteDependencyRecordsFor(ProcedureRelationId, retval);
 		deleteSharedDependencyRecordsFor(ProcedureRelationId, retval);
+		deleteProcCallbacks(retval);
 	}
 
 	myself.classId = ProcedureRelationId;
@@ -411,6 +460,16 @@ ProcedureCreate(const char *procedureName,
 	referenced.objectId = returnType;
 	referenced.objectSubId = 0;
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+
+	/* dependency on describe function */
+	if (OidIsValid(describeFuncOid))
+	{
+		referenced.classId = ProcedureRelationId;
+		referenced.objectId = describeFuncOid;
+		referenced.objectSubId = 0;
+		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		addProcCallback(retval, describeFuncOid, PROMETHOD_DESCRIBE);
+	}
 
 	/* dependency on parameter types */
 	for (i = 0; i < allParamCount; i++)

@@ -102,6 +102,7 @@ typedef struct ParseState
 	Node       *having_qual; /* Having clause */
 	struct HTAB *p_namecache;  /* parse state object name cache */
 	bool        p_hasTblValueExpr;
+	bool        p_hasDynamicFunction; /* function w/unstable return type */
 } ParseState;
 
 extern ParseState *make_parsestate(ParseState *parentParseState);

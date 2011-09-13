@@ -19,6 +19,7 @@
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_proc_callback.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_window.h"
 #include "funcapi.h"
@@ -637,6 +638,24 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		transformAggregateCall(pstate, aggref, agg_order);
 
 		retval = (Node *) aggref;
+	}
+
+	/*
+	 * Mark the context if this is a dynamic typed function, if so we mustn't
+	 * allow views to be created from this statement because we cannot 
+	 * guarantee that the future return type will be the same as the current
+	 * return type.
+	 */
+	if (TypeSupportsDescribe(rettype))
+	{
+		Oid DescribeFuncOid = lookupProcCallback(funcid, PROMETHOD_DESCRIBE);
+		if (OidIsValid(DescribeFuncOid))
+		{
+			ParseState *state = pstate;
+
+			for (state = pstate; state; state = state->parentParseState)
+				state->p_hasDynamicFunction = true;
+		}
 	}
 
 	return retval;

@@ -1,3 +1,8 @@
+-- =================== -*- mode: sql; -*- =================== 
+-- table_functions.sql
+-- 
+-- Test for enhancements to table function support
+-- ===================
 CREATE SCHEMA table_function;
 SET search_path TO table_function, public;
 
@@ -13,6 +18,28 @@ COPY example FROM stdin;
 1	 value1.3/4
 2	 value2.3/3
 1	 value1.4/4
+\.
+
+CREATE TABLE history(id integer, time timestamp) DISTRIBUTED BY (id);
+COPY history FROM stdin;
+1	 2011/08/21 10:15:02am
+1	 2011/08/21 10:15:30am
+1	 2011/08/22 10:15:04am
+1	 2011/08/22 10:16:10am
+2	 2011/08/21 10:15:02am
+2	 2011/08/21 10:15:02pm
+2	 2011/08/21 10:16:02am
+2	 2011/08/21 10:16:02pm
+3	 2011-08-19 19:05:13
+3	 2011-08-19 19:06:50
+3	 2011-08-19 19:07:35
+3	 2011-08-19 19:08:18
+3	 2011-08-19 19:09:07
+3 	 2011-08-20 10:07:10
+3	 2011-08-20 10:07:35
+3	 2011-08-20 10:11:29
+3	 2011-08-20 10:17:10
+3	 2011-08-20 10:17:42
 \.
 
 CREATE TABLE example_r AS SELECT * FROM example DISTRIBUTED RANDOMLY;
@@ -534,6 +561,337 @@ CREATE FUNCTION tf_perl(anytable) returns int AS $$ return 1 $$ language plperl;
 CREATE FUNCTION tf_python(anytable) returns int AS $$ return 1 $$ language plpythonu;
 SELECT * FROM tf_python( TABLE(SELECT 1) );
 DROP FUNCTION tf_python(anytable);
+
+
+-- ====================================
+-- Test support of dynamic return types (aka the DESCRIBE callback)
+-- ====================================
+
+-- Create a function and a describe method
+CREATE FUNCTION sessionize_describe(internal)
+  RETURNS internal
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'describe'
+  LANGUAGE C;
+
+CREATE FUNCTION sessionize(anytable, interval) 
+  RETURNS setof record
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C;
+
+-- No dependency yet, all three queries should return 0 rows
+SELECT * FROM pg_proc_callback where profnoid = 'sessionize'::regproc;
+SELECT * FROM pg_proc_callback where profnoid not in (select oid from pg_proc);
+SELECT * FROM pg_proc_callback where procallback not in (select oid from pg_proc);
+
+-- Should be able to drop the describe function, no ref yet
+DROP FUNCTION sessionize_describe(internal);
+
+-- Should fail, no such function
+CREATE OR REPLACE FUNCTION sessionize(anytable, interval) 
+  RETURNS setof record
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C
+  WITH (describe = sessionize_describe);
+
+-- Recreate describe function
+CREATE OR REPLACE FUNCTION sessionize_describe(internal)
+  RETURNS internal
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'describe'
+  LANGUAGE C;
+
+-- Alter the existing function to add the describe callback
+CREATE OR REPLACE FUNCTION sessionize(anytable, interval) 
+  RETURNS setof record
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C
+  WITH (describe = sessionize_describe);
+
+-- Observe the relationship now recorded in pg_proc_callback
+SELECT * FROM pg_proc_callback where profnoid = 'sessionize'::regproc;
+
+-- Should fail due to dependency on sessionize
+DROP FUNCTION sessionize_describe(internal);
+SELECT * FROM pg_proc_callback where profnoid = 'sessionize'::regproc;
+
+-- Should cascade to main function and cleanup pg_proc_callback entries.
+DROP FUNCTION sessionize_describe(internal) CASCADE;
+SELECT * FROM pg_proc_callback where profnoid = 'sessionize'::regproc;
+SELECT * FROM pg_proc_callback where profnoid not in (select oid from pg_proc);
+SELECT * FROM pg_proc_callback where procallback not in (select oid from pg_proc);
+
+-- Recreate both functions
+CREATE OR REPLACE FUNCTION sessionize_describe(internal)
+  RETURNS internal
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'describe'
+  LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION sessionize(anytable, interval) 
+  RETURNS setof record
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C
+  WITH (describe = sessionize_describe);
+
+-- Check the dependency again, drop should fail
+DROP FUNCTION sessionize_describe(internal);
+SELECT * FROM pg_proc_callback where profnoid = 'sessionize'::regproc;
+
+-- Alter existing function to remove the describe callback
+CREATE OR REPLACE FUNCTION sessionize(anytable, interval) 
+  RETURNS setof record
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C;
+
+-- Check the dependency again, drop should succeed
+DROP FUNCTION sessionize_describe(internal);
+SELECT * FROM pg_proc_callback where profnoid = 'sessionize'::regproc;
+DROP FUNCTION sessionize(anytable, interval);
+
+-- Shouldn't have any integrity constraint violations
+SELECT * FROM pg_proc_callback where profnoid not in (select oid from pg_proc);
+SELECT * FROM pg_proc_callback where procallback not in (select oid from pg_proc);
+
+-- One more time, creating without using "OR REPLACE"
+CREATE FUNCTION sessionize_describe(internal)
+  RETURNS internal
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'describe'
+  LANGUAGE C;
+
+CREATE FUNCTION sessionize_plain(anytable, interval) 
+  RETURNS setof record
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C;
+
+CREATE FUNCTION sessionize_static(anytable, interval) 
+  RETURNS TABLE(id integer, "time" timestamp, sessionnum integer)
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C;
+
+CREATE FUNCTION sessionize_dynamic(anytable, interval) 
+  RETURNS setof record
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C
+  WITH (describe = sessionize_describe);
+
+-- Check catalog for the new functions, should only see sessionize_describe
+SELECT * FROM pg_proc_callback 
+WHERE profnoid in (
+        'sessionize_plain'::regproc,
+        'sessionize_static'::regproc,
+        'sessionize_dynamic'::regproc
+        );
+
+-- Plain without qualification fails
+SELECT * 
+FROM sessionize_plain( 
+    TABLE 
+    ( 
+        SELECT id, time 
+        FROM history 
+        ORDER BY id, time 
+        SCATTER BY id 
+    ), 
+    '1 minute' ) as sessionize
+ORDER BY id, time; -- FAILS, no record type
+
+-- Static with qualification fails
+SELECT * 
+FROM sessionize_static( 
+    TABLE 
+    ( 
+        SELECT id, time 
+        FROM history 
+        ORDER BY id, time 
+        SCATTER BY id 
+    ), 
+    '1 minute' ) AS sessionize(id integer, "time" timestamp, sessionnum integer)
+ORDER BY id, time; -- FAIL, double qualified
+
+-- Describe with qualification fails
+SELECT * 
+FROM sessionize_dynamic( 
+    TABLE 
+    ( 
+        SELECT id, time 
+        FROM history 
+        ORDER BY id, time 
+        SCATTER BY id 
+    ), 
+    '1 minute' ) AS sessionize(id integer, "time" timestamp, sessionnum integer)
+ORDER BY id, time; -- FAIL, double qualified
+
+-- Otherwise results should match
+-- start_equiv
+SELECT * 
+FROM sessionize_plain( 
+    TABLE 
+    ( 
+        SELECT id, time 
+        FROM history 
+        ORDER BY id, time 
+        SCATTER BY id 
+    ), 
+    '1 minute' ) AS sessionize(id integer, "time" timestamp, sessionnum integer)
+ORDER BY id, time; -- SUCCESS, qualified record
+
+SELECT * 
+FROM sessionize_static( 
+    TABLE 
+    ( 
+        SELECT id, time 
+        FROM history 
+        ORDER BY id, time 
+        SCATTER BY id 
+    ), 
+    '1 minute' ) as sessionize
+ORDER BY id, time; -- SUCCESS, qualified in function
+
+SELECT * 
+FROM sessionize_dynamic( 
+    TABLE 
+    ( 
+        SELECT id, time 
+        FROM history 
+        ORDER BY id, time 
+        SCATTER BY id 
+    ), 
+    '1 minute' ) as sessionize
+ORDER BY id, time; -- SUCCESS, qualified in describe
+
+-- end_equiv
+
+-- ===================================
+-- Dynamic type interaction with VIEWS
+--
+--
+-- Because qualification is not guaranteed stable views over functions
+-- with dynamic types are *not* supported.
+--
+-- There are multiple ways this could cause issues:
+--    - DESCRIBE function is not immutable and could return different
+--      descriptors at later points in time.
+--    - DESCRIBE function could have the source code change resulting
+--      in a different descriptor
+--    - DESCRIBE function could be replaced with a different function
+--      resulting in a different descriptor.
+--
+-- ===================================
+CREATE VIEW not_supported
+AS SELECT * 
+FROM sessionize_dynamic( 
+    TABLE 
+    ( 
+        SELECT id, time 
+        FROM history 
+        ORDER BY id, time 
+        SCATTER BY id 
+    ), 
+    '1 minute' ) as sessionize;   -- ERROR, view over dynamic typed function
+
+-- The call is in a subquery, not the main query 
+CREATE VIEW not_supported
+AS SELECT * FROM (
+      SELECT * 
+      FROM sessionize_dynamic( 
+              TABLE 
+              ( 
+                  SELECT id, time 
+                  FROM history 
+                  ORDER BY id, time 
+                  SCATTER BY id 
+              ), 
+              '1 minute' ) as sessionize
+      ) subq;   -- ERROR, view over dynamic typed function
+
+
+--
+-- An existing function that has views defined over it can not be allowed to
+-- be altered to have a describe function for similar reasons outlined above.
+--
+CREATE VIEW supported
+AS SELECT * 
+FROM sessionize_plain( 
+    TABLE 
+    ( 
+        SELECT id, time 
+        FROM history 
+        ORDER BY id, time 
+        SCATTER BY id 
+    ), 
+    '1 minute' ) as sessionize(id integer, "time" timestamp, sessionnum integer);
+
+CREATE OR REPLACE FUNCTION sessionize_plain(anytable, interval) 
+  RETURNS setof record
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C
+  WITH (describe = sessionize_describe);  -- ERROR: views exist
+
+DROP VIEW supported;
+
+-- ========================
+-- The above describe is still pretty static, test a more dynamic describe function
+-- ========================
+CREATE FUNCTION project_describe(internal)
+  RETURNS internal
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'project_describe'
+  LANGUAGE C;
+
+CREATE FUNCTION project(anytable, integer)
+  RETURNS setof record
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'project'
+  LANGUAGE C
+  WITH (describe = project_describe);
+
+SELECT * FROM project( TABLE( SELECT * FROM history ), 1);
+SELECT * FROM project( TABLE( SELECT * FROM history ), 2);
+
+
+-- Valid operations on results
+SELECT id+1  FROM project( TABLE( SELECT * FROM history ), 1);
+SELECT extract(day from "time") FROM project( TABLE( SELECT * FROM history ), 2);
+
+-- ERROR: invalid operations demonstrating different return types
+SELECT extract(day from id) FROM project( TABLE( SELECT * FROM history ), 1);
+SELECT "time"+1 FROM project( TABLE( SELECT * FROM history ), 2);
+
+-- ERROR: select columns projected out by the function
+SELECT id  FROM project( TABLE( SELECT * FROM history ), 2);
+SELECT "time" FROM project( TABLE( SELECT * FROM history ), 1);
+
+/* Invalid projection position */
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), NULL);
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 1+1);  /* not a ConstExpr */
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), -1);
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 0);
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 25);
+
+
+-- ========================
+-- More negative test cases
+-- ========================
+
+-- explicit return type not suitable for dynamic type resolution
+CREATE FUNCTION x() returns int
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C 
+  WITH (describe = sessionize_describe);
+
+-- explicit return type (setof) not suitable for dynamic type resolution
+CREATE FUNCTION x() returns setof int
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C 
+  WITH (describe = sessionize_describe);
+
+-- explicit return type (TABLE) not suitable for dynamic type resolution
+CREATE FUNCTION x() returns TABLE(id integer, "time" timestamp, sessionnum integer)
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C 
+  WITH (describe = sessionize_describe);
+
+-- explicit return type (OUT PARAMS) not suitable for dynamic type resolution
+CREATE FUNCTION x(OUT id integer, OUT "time" timestamp, OUT sessionnum integer)
+  AS '@abs_builddir@/regress@DLSUFFIX@', 'sessionize'
+  LANGUAGE C 
+  WITH (describe = sessionize_describe);
 
 
 -- =======

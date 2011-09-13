@@ -41,6 +41,7 @@
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_proc_callback.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "commands/proclang.h"
@@ -121,10 +122,12 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 				 errdetail("Creating a shell type definition.")));
 		}
 		else
-		ereport(NOTICE,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("type \"%s\" is not yet defined", typnam),
-				 errdetail("Creating a shell type definition.")));
+		{
+			ereport(NOTICE,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("type \"%s\" is not yet defined", typnam),
+					 errdetail("Creating a shell type definition.")));
+		}
 		namespaceId = QualifiedNameGetCreationNamespace(returnType->names,
 														&typname);
 		aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(),
@@ -169,8 +172,13 @@ examine_parameter_list(List *parameters, Oid languageOid,
 	ListCell   *x;
 	int			i;
 
-	*requiredResultType = InvalidOid;	/* default result */
+	/* default results */
+	*requiredResultType = InvalidOid;
+	*parameterNames		= NULL;
+	*allParameterTypes	= NULL;
+	*parameterModes		= NULL;
 
+	/* Allocate local memory */
 	inTypes = (Oid *) palloc(parameterCount * sizeof(Oid));
 	allTypes = (Datum *) palloc(parameterCount * sizeof(Datum));
 	paramModes = (Datum *) palloc(parameterCount * sizeof(Datum));
@@ -265,7 +273,10 @@ examine_parameter_list(List *parameters, Oid languageOid,
 				outCount++;
 				break;
 
-			/* no default, above list must be exhaustive */
+			/* above list must be exhaustive */
+			default:
+				elog(ERROR, "unrecognized function parameter mode: %c", fp->mode);
+				break;
 		}
 
 		allTypes[i] = ObjectIdGetDatum(toid);
@@ -274,8 +285,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 
 		if (fp->name && fp->name[0])
 		{
-			paramNames[i] = DirectFunctionCall1(textin,
-												CStringGetDatum(fp->name));
+			paramNames[i] = CStringGetTextDatum(fp->name);
 			have_names = true;
 		}
 
@@ -303,25 +313,18 @@ examine_parameter_list(List *parameters, Oid languageOid,
 			*requiredResultType = RECORDOID;
 		/* otherwise we set requiredResultType correctly above */
 	}
-	else
-	{
-		*allParameterTypes = NULL;
-		*parameterModes = NULL;
-	}
 
 	if (have_names)
 	{
 		for (i = 0; i < parameterCount; i++)
 		{
 			if (paramNames[i] == PointerGetDatum(NULL))
-				paramNames[i] = DirectFunctionCall1(textin,
-													CStringGetDatum(""));
+				paramNames[i] = CStringGetTextDatum("");
 		}
 		*parameterNames = construct_array(paramNames, parameterCount, TEXTOID,
 										  -1, false, 'i');
 	}
-	else
-		*parameterNames = NULL;
+
 }
 
 
@@ -488,10 +491,17 @@ compute_attributes_sql_style(List *options,
  *
  *   * oid (upgrade mode only) specifies that the function should be
  *     created with the user-specified oid.
+ *
+ *   * describeQualName is the qualified name of a describe callback function
+ *     to handle dynamic type resolution.
  *------------
  */
 static void
-compute_attributes_with_style(List *parameters, bool *isStrict_p, char *volatility_p, Oid* oid_p)
+compute_attributes_with_style(List *parameters, 
+							  bool *isStrict_p, 
+							  char *volatility_p, 
+							  Oid* oid_p,
+							  List **describeQualName_p)
 {
 	ListCell   *pl;
 
@@ -507,18 +517,24 @@ compute_attributes_with_style(List *parameters, bool *isStrict_p, char *volatili
 			if (defGetBoolean(param))
 				*volatility_p = PROVOLATILE_IMMUTABLE;
 		}
+		else if (pg_strcasecmp(param->defname, "describe") == 0)
+		{
+			*describeQualName_p = defGetQualifiedName(param);
+		}
 		else if (gp_upgrade_mode && pg_strcasecmp(param->defname, "OID")==0)
 		{
 			/* Catalog obj's OID must be less than FirstBootstrapObjectId */
 			int64 oid = defGetInt64(param);
 			Assert(oid < FirstBootstrapObjectId);
-			*oid_p = (Oid)oid;
+			*oid_p = (Oid) oid;
 		}
 		else
+		{
 			ereport(WARNING,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("unrecognized function attribute \"%s\" ignored",
 							param->defname)));
+		}
 	}
 }
 
@@ -566,6 +582,126 @@ interpret_AS_clause(Oid languageOid, const char *languageName, List *as,
 }
 
 
+/*
+ * Handle functions that try to define a "DESCRIBE" callback.
+ */
+static Oid
+lookup_describe_callback(List *describeQualName, 
+						 Oid returnTypeOid, 
+						 ArrayType *parameterModes)
+{
+	int					 nargs			  = 1;
+	Oid					 inputTypeOids[1] = {INTERNALOID};
+	Oid					*actualInputTypeOids;
+	Oid					 describeReturnTypeOid;
+	Oid					 describeFuncOid;
+	bool				 describeReturnsSet;
+	bool				 describeIsOrdered;
+	bool				 describeIsStrict;
+	FuncDetailCode		 fdResult;
+	AclResult			 aclresult;
+	int					 i;
+
+	if (describeQualName == NIL)
+		return InvalidOid;
+
+	/* 
+	 * describe callbacks only supported for functions that return either
+	 * a pseudotype or a generic record.
+	 */
+	if (!TypeSupportsDescribe(returnTypeOid))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("DESCRIBE only supported for functions returning \"record\""),
+				 errOmitLocation(true)));
+	}
+	if (parameterModes)
+	{
+		int   len   = ARR_DIMS(parameterModes)[0];
+		char *modes = ARR_DATA_PTR(parameterModes);
+		
+		Insist(ARR_NDIM(parameterModes) == 1);
+		for (i = 0; i < len; i++)
+		{
+			switch (modes[i])
+			{
+				case FUNC_PARAM_IN:
+				case FUNC_PARAM_VARIADIC:
+					break;
+
+				case FUNC_PARAM_INOUT:
+				case FUNC_PARAM_OUT:
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("DESCRIBE is not supported for functions "
+									"with OUT parameters"),
+							 errOmitLocation(true)));
+					break;
+
+				case FUNC_PARAM_TABLE:
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("DESCRIBE is not supported for functions "
+									"that return TABLE"),
+							 errOmitLocation(true)));				
+					break;
+
+				/* above list should be exhaustive */
+				default:
+					elog(ERROR, "unrecognized function parameter mode: %c", modes[i]);
+					break;
+			}
+		}
+	}
+
+	/* Lookup the function in the catalog */
+	fdResult = func_get_detail(describeQualName,
+							   NIL,   /* argument expressions */
+							   nargs, 
+							   inputTypeOids,
+							   &describeFuncOid,
+							   &describeReturnTypeOid, 
+							   &describeReturnsSet,
+							   &describeIsStrict, 
+							   &describeIsOrdered, 
+							   &actualInputTypeOids);
+
+	if (fdResult != FUNCDETAIL_NORMAL || !OidIsValid(describeFuncOid))
+	{
+		/* Should we try to create the function when not found? */
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_FUNCTION),
+				 errmsg("function %s does not exist",
+						func_signature_string(describeQualName, nargs, inputTypeOids)),
+				 errOmitLocation(true)));
+	}
+	if (describeReturnTypeOid != INTERNALOID)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("return type of function %s is not \"internal\"",
+						func_signature_string(describeQualName, nargs, inputTypeOids)),
+				 errOmitLocation(true)));
+	}
+	if (describeReturnsSet)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("function %s returns a set",
+						func_signature_string(describeQualName, nargs, inputTypeOids)),
+				 errOmitLocation(true)));
+	}
+
+	/* Check that the creator has permission to call the function */
+	aclresult = pg_proc_aclcheck(describeFuncOid, GetUserId(), ACL_EXECUTE);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, ACL_KIND_PROC, get_func_name(describeFuncOid));
+
+	/* Looks reasonable */
+	return describeFuncOid;
+}
+
 
 /*
  * CreateFunction
@@ -596,6 +732,8 @@ CreateFunction(CreateFunctionStmt *stmt)
 	HeapTuple	languageTuple;
 	Form_pg_language languageStruct;
 	List	   *as_clause;
+	List       *describeQualName = NIL;
+	Oid         describeFuncOid  = InvalidOid;
 
 	/* Convert list of names to a name and namespace */
 	namespaceId = QualifiedNameGetCreationNamespace(stmt->funcname,
@@ -695,7 +833,8 @@ CreateFunction(CreateFunctionStmt *stmt)
 		returnsSet = false;
 	}
 
-	compute_attributes_with_style(stmt->withClause, &isStrict, &volatility, &stmt->funcOid);
+	compute_attributes_with_style(stmt->withClause, &isStrict, &volatility,
+								  &stmt->funcOid, &describeQualName);
 
 	interpret_AS_clause(languageOid, languageName, as_clause,
 						&prosrc_str, &probin_str);
@@ -725,6 +864,12 @@ CreateFunction(CreateFunctionStmt *stmt)
 	if (prosrc_str == NULL)
 		prosrc_str = strdup("");
 
+	/* Handle the describe callback, if any */
+	if (describeQualName != NIL)
+		describeFuncOid = lookup_describe_callback(describeQualName,
+												   prorettype,
+												   parameterModes);
+
 	/*
 	 * And now that we have all the parameters, and know we're permitted to do
 	 * so, go ahead and create the function.
@@ -736,6 +881,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 					prorettype,
 					languageOid,
 					languageValidator,
+					describeFuncOid,
 					prosrc_str, /* converted to text later */
 					probin_str, /* converted to text later */
 					false,		/* not an aggregate */
@@ -861,6 +1007,9 @@ RemoveFunctionById(Oid funcOid)
 	ReleaseSysCache(tup);
 
 	heap_close(relation, RowExclusiveLock);
+
+	/* Remove anything in pg_proc_callback for this function */
+	deleteProcCallbacks(funcOid);
 
 	/*
 	 * If there's a pg_aggregate tuple, delete that too.

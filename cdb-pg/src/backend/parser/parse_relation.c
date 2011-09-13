@@ -21,8 +21,9 @@
 #include "access/genam.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_type.h"
 #include "catalog/pg_exttable.h"
+#include "catalog/pg_proc_callback.h"
+#include "catalog/pg_type.h"
 #include "catalog/indexing.h"
 #include "funcapi.h"
 #include "nodes/makefuncs.h"
@@ -974,6 +975,7 @@ addRangeTableEntryForFunction(ParseState *pstate,
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
 	TypeFuncClass functypclass;
 	Oid			funcrettype;
+	Oid         funcDescribe = InvalidOid;
 	TupleDesc	tupdesc;
 	Alias	   *alias = rangefunc->alias;
 	List	   *coldeflist = rangefunc->coldeflist;
@@ -1055,6 +1057,48 @@ addRangeTableEntryForFunction(ParseState *pstate,
 	functypclass = get_expr_result_type(funcexpr,
 										&funcrettype,
 										&tupdesc);
+
+	/*
+	 * Handle dynamic type resolution for functions with DESCRIBE callbacks.
+	 */
+	if (functypclass == TYPEFUNC_RECORD && IsA(funcexpr, FuncExpr))
+	{
+		FuncExpr *func = (FuncExpr *) funcexpr;
+		Datum     d;
+		int       i;
+		
+		Insist(TypeSupportsDescribe(funcrettype));
+
+		funcDescribe = lookupProcCallback(func->funcid, PROMETHOD_DESCRIBE);
+		if (OidIsValid(funcDescribe))
+		{
+			/* 
+			 * Describe functions have the signature  d(internal) => internal
+			 * where the parameter is the untransformed FuncExpr node and the result
+			 * is a tuple descriptor.
+			 */
+			d = OidFunctionCall1(funcDescribe, PointerGetDatum(funcexpr));
+			tupdesc = (TupleDesc) DatumGetPointer(d);
+
+			/* 
+			 * Might want to improve this API so the describe method return 
+			 * value is somehow verifiable 
+			 */
+			if (tupdesc != NULL)
+			{
+				functypclass = TYPEFUNC_COMPOSITE;
+				for (i = 0; i < tupdesc->natts; i++)
+				{
+					Form_pg_attribute attr = tupdesc->attrs[i];
+
+					rte->funccoltypes	= lappend_oid(rte->funccoltypes, 
+													  attr->atttypid);
+					rte->funccoltypmods = lappend_int(rte->funccoltypmods, 
+													  attr->atttypmod);
+				}
+			}
+		}
+	}
 
 	/*
 	 * A coldeflist is required if the function returns RECORD and hasn't got

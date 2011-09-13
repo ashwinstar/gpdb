@@ -152,6 +152,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 										 LANGUAGE_HANDLEROID,
 										 ClanguageId,
 										 F_FMGR_C_VALIDATOR,
+										 InvalidOid, /* describeFuncOid */
 										 pltemplate->tmplhandler,
 										 pltemplate->tmpllibrary,
 										 false, /* isAgg */
@@ -184,6 +185,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 										 VOIDOID,
 										 ClanguageId,
 										 F_FMGR_C_VALIDATOR,
+										 InvalidOid, /* describeFuncOid */
 										 pltemplate->tmplvalidator,
 										 pltemplate->tmpllibrary,
 										 false, /* isAgg */

@@ -248,6 +248,7 @@ AggregateCreateWithOid(const char		*aggName,
 							  finaltype,		/* returnType */
 							  INTERNALlanguageId,		/* languageObjectId */
 							  InvalidOid,		/* no validator */
+							  InvalidOid,		/* no describe function */
 							  "aggregate_dummy",		/* placeholder proc */
 							  "-",		/* probin */
 							  true,		/* isAgg */

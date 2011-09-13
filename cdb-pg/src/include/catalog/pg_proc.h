@@ -10337,24 +10337,25 @@ DESCR("anytable type serialization output function");
  * prototypes for functions in pg_proc.c
  */
 extern Oid ProcedureCreate(const char *procedureName,
-				Oid procNamespace,
-				bool replace,
-				bool returnsSet,
-				Oid returnType,
-				Oid languageObjectId,
-				Oid languageValidator,
-				const char *prosrc,
-				const char *probin,
-				bool isAgg,
-				bool isWin,
-				bool security_definer,
-				bool isStrict,
-				char volatility,
-				oidvector *parameterTypes,
-				Datum allParameterTypes,
-				Datum parameterModes,
-				Datum parameterNames,
-				const Oid procOid);
+						   Oid procNamespace,
+						   bool replace,
+						   bool returnsSet,
+						   Oid returnType,
+						   Oid languageObjectId,
+						   Oid languageValidator,
+						   Oid describeFuncOid,
+						   const char *prosrc,
+						   const char *probin,
+						   bool isAgg,
+						   bool isWin,
+						   bool security_definer,
+						   bool isStrict,
+						   char volatility,
+						   const oidvector *parameterTypes,
+						   Datum allParameterTypes,
+						   Datum parameterModes,
+						   Datum parameterNames,
+						   Oid procOid);
 
 extern bool function_parse_error_transpose(const char *prosrc);
 
