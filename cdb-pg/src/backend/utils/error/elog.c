@@ -203,8 +203,20 @@ static void append_with_tabs(StringInfo buf, const char *str);
 static bool is_log_level_output(int elevel, int log_min_level);
 static void write_pipe_chunks(char *data, int len);
 static void elog_debug_linger(ErrorData *edata);
-//static void setup_formatted_log_time(void);
 static void setup_formatted_start_time(void);
+
+
+/* verify string is correctly encoded, and escape it if invalid  */
+static void verify_and_replace_mbstr(char **str, int len)
+{
+	Assert(pg_verifymbstr(*str, len, true));
+	
+	if (!pg_verifymbstr(*str, len, true))
+	{
+		pfree(*str);
+		*str = pstrdup("Message skipped due to incorrect encoding.");
+	}
+}
 
 /*
  * OpenSolaris has this header, but Solaris 10 doesn't.
@@ -901,6 +913,9 @@ errmsg(const char *fmt,...)
 
     EVALUATE_MESSAGE(message, false, true);
 
+    /* enforce correct encoding */
+    verify_and_replace_mbstr(&(edata->message), strlen(edata->message));
+    
     MemoryContextSwitchTo(oldcontext);
     recursion_depth--;
     errno = edata->saved_errno; /*CDB*/
@@ -931,6 +946,9 @@ errmsg_internal(const char *fmt,...)
 
     EVALUATE_MESSAGE(message, false, false);
 
+    /* enforce correct encoding */
+    verify_and_replace_mbstr(&(edata->message), strlen(edata->message));
+    
     MemoryContextSwitchTo(oldcontext);
     recursion_depth--;
     errno = edata->saved_errno; /*CDB*/
@@ -955,6 +973,9 @@ errmsg_plural(const char *fmt_singular, const char *fmt_plural,
 
     EVALUATE_MESSAGE_PLURAL(message, false);
 
+    /* enforce correct encoding */
+    verify_and_replace_mbstr(&(edata->message), strlen(edata->message));
+    
     MemoryContextSwitchTo(oldcontext);
     recursion_depth--;
     errno = edata->saved_errno; /*CDB*/
@@ -977,6 +998,9 @@ errdetail(const char *fmt,...)
 
     EVALUATE_MESSAGE(detail, false, true);
 
+    /* enforce correct encoding */
+    verify_and_replace_mbstr(&(edata->detail), strlen(edata->detail));
+    
     MemoryContextSwitchTo(oldcontext);
     recursion_depth--;
     errno = edata->saved_errno; /*CDB*/
@@ -999,6 +1023,9 @@ errdetail_log(const char *fmt,...)
 
     EVALUATE_MESSAGE(detail_log, false, true);
 
+    /* enforce correct encoding */
+    verify_and_replace_mbstr(&(edata->detail_log), strlen(edata->detail_log));
+    
     MemoryContextSwitchTo(oldcontext);
     recursion_depth--;
     errno = edata->saved_errno; /*CDB*/
@@ -1023,6 +1050,9 @@ errdetail_plural(const char *fmt_singular, const char *fmt_plural,
 
     EVALUATE_MESSAGE_PLURAL(detail, false);
 
+    /* enforce correct encoding */
+    verify_and_replace_mbstr(&(edata->detail), strlen(edata->detail));
+    
     MemoryContextSwitchTo(oldcontext);
     recursion_depth--;
     errno = edata->saved_errno; /*CDB*/
@@ -1045,6 +1075,9 @@ errhint(const char *fmt,...)
 
     EVALUATE_MESSAGE(hint, false, true);
 
+    /* enforce correct encoding */
+    verify_and_replace_mbstr(&(edata->hint), strlen(edata->hint));
+    
     MemoryContextSwitchTo(oldcontext);
     recursion_depth--;
     errno = edata->saved_errno; /*CDB*/
@@ -1071,6 +1104,9 @@ errcontext(const char *fmt,...)
 
     EVALUATE_MESSAGE(context, true, true);
 
+    /* enforce correct encoding */
+    verify_and_replace_mbstr(&(edata->context), strlen(edata->context));
+    
     MemoryContextSwitchTo(oldcontext);
     recursion_depth--;
     errno = edata->saved_errno; /*CDB*/
@@ -1373,6 +1409,9 @@ elog_finish(int elevel, const char *fmt,...)
 
     EVALUATE_MESSAGE(message, false, false);
 
+    /* enforce correct encoding */
+    verify_and_replace_mbstr(&(edata->message), strlen(edata->message));
+    
     MemoryContextSwitchTo(oldcontext);
     recursion_depth--;
 
