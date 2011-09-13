@@ -160,4 +160,4 @@ test: orafunk
 test: gpcheckmirrorseg
 test: trig
 test: xml
-ignore: auth_constraint
+test: auth_constraint

@@ -3041,14 +3041,6 @@ CheckAuthTimeConstraints(char *rolname)
 bool
 check_auth_time_constraints_internal(char *rolname, TimestampTz timestamp)
 {
-	/*
-	 * For the sake of unit testing, we must ensure that the role information
-	 * is accessible to the backend process. This function call will ensure
-	 * the role information is reloaded, if necessary. This is a moot point
-	 * for the traditional auth. checking. For more information, see force_load_role().
-	 */
-	force_load_role();
-
 	List  	  		*role_intervals = get_role_intervals(rolname);
 
 	if (role_intervals == NIL)

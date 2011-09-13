@@ -1663,14 +1663,11 @@ load_role_interval(void)
  * 
  * Traditionally, load_role is invoked after the postmaster forks to the backend, but while
  * the backend retains the PostmasterContext. Once this context is released, the pointers
- * mentioned in this function are, in some sense, stale. Thus, this function first checks
- * whether the pointers are, in fact, "stale" and if so, resets the pointers and invokes load_role().
+ * mentioned in this function are, in some sense, stale. Thus, we reinitialize them here.
  */
 void
 force_load_role(void)
 {
-	if (MemoryContextContains(CurrentMemoryContext, role_lines))
-		return;
 	role_lines      		= NIL;
 	role_line_nums  		= NIL;
 	role_sorted     		= NULL;

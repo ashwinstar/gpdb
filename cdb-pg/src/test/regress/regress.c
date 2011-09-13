@@ -18,6 +18,7 @@
 #include "executor/spi.h"
 #include "parser/parse_expr.h"
 #include "libpq/auth.h"
+#include "libpq/hba.h"
 #include "utils/builtins.h"
 #include "utils/geo_decls.h"
 
@@ -2216,5 +2217,13 @@ check_auth_time_constraints(PG_FUNCTION_ARGS)
 {
 	char			*rolname = PG_GETARG_CSTRING(0);
 	TimestampTz 	timestamp = PG_GETARG_TIMESTAMPTZ(1);
- 	PG_RETURN_BOOL(check_auth_time_constraints_internal(rolname, timestamp));
+	/*
+	 * For the sake of unit testing, we must ensure that the role information
+	 * is accessible to the backend process. This function call will ensure
+	 * the role information is reloaded. This is a moot point
+	 * for the traditional auth. checking where this data already resides in the
+	 * PostmasterContext. For more information, see force_load_role().
+	 */
+	force_load_role();
+	PG_RETURN_BOOL(check_auth_time_constraints_internal(rolname, timestamp));
 }
