@@ -223,9 +223,22 @@ class Worker(Thread):
     def haltWork(self):
         self.logger.debug("[%s] haltWork" % self.name)
         self.shouldStop=True
-        if self.cmd is not None:
-            self.cmd.interrupt()
-            self.cmd.cancel()
+
+        # this was originally coded as
+        # 
+        #    if self.cmd is not None:
+        #        self.cmd.interrupt()
+        #        self.cmd.cancel()
+        #
+        # but as observed in MPP-13808, the worker thread's run() loop may set self.cmd to None
+        # past the point where the calling thread checks self.cmd for None, leading to a curious 
+        # "'NoneType' object has no attribute 'cancel' exception" which may prevent the worker pool's
+        # haltWorkers() from actually halting all the workers.
+        #
+        c = self.cmd
+        if c is not None:
+            c.interrupt()
+            c.cancel()
     
     def signalPassiveStop(self):
         self.shouldStop=True
