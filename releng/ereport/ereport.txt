@@ -522,27 +522,28 @@ faag: fileam:00001701:  extInsertDesc->ext_uri, response_code, response_string))
 faag: fileam:00001760:  ereport(ERROR, 
 faag: fileam:00001761:  (errcode_for_file_access(), 
 faag: fileam:00001762:  errmsg("could not read from external file: %m"))); 
-faag: fileam:00001780:  ereport(ERROR, 
-faag: fileam:00001781:  (errcode_for_file_access(), 
-faag: fileam:00001782:  errmsg("could not write to external resource: %m"))); 
-faag: fileam:00001896:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
-faag: fileam:00001898:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
-faag: fileam:00001904:  elog(NOTICE,"%s",a); 
-faag: fileam:00002494:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002495:  errmsg("external table internal parse error: " 
-faag: fileam:00002496:  "no formatter function name found"))); 
-faag: fileam:00002502:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
-faag: fileam:00002503:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
-faag: fileam:00002504:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
-faag: fileam:00002511:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002512:  errmsg("external table internal parse error at \"%s\"", 
-faag: fileam:00002513:  token))); 
-faag: fileam:00002515:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
-faag: fileam:00002516:  errmsg("external table internal parse error at end of " 
-faag: fileam:00002517:  "line"))); 
-faag: fileam:00002568:  ereport(ERROR, 
-faag: fileam:00002569:  (errcode_for_file_access(), 
-faag: fileam:00002570:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
+faag: fileam:00001784:  ereport(ERROR, 
+faag: fileam:00001785:  (errcode_for_file_access(), 
+faag: fileam:00001786:  strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) : 
+faag: fileam:00001787:  errmsg("could not write to external resource: %m"))); 
+faag: fileam:00001902:  elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed."); 
+faag: fileam:00001904:  elog(NOTICE,"gfile_printf_then_putc_newline palloc failed."); 
+faag: fileam:00001910:  elog(NOTICE,"%s",a); 
+faag: fileam:00002500:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002501:  errmsg("external table internal parse error: " 
+faag: fileam:00002502:  "no formatter function name found"))); 
+faag: fileam:00002508:  elog(NOTICE, "delim %s null %s escape %s quote %s %s %s", pstate->delim, 
+faag: fileam:00002509:  pstate->null_print, pstate->escape, pstate->quote, (pstate->header_line 
+faag: fileam:00002510:  ? "header" : ""), (pstate->fill_missing ? "fill missing fields" : "")); 
+faag: fileam:00002517:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002518:  errmsg("external table internal parse error at \"%s\"", 
+faag: fileam:00002519:  token))); 
+faag: fileam:00002521:  ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR), 
+faag: fileam:00002522:  errmsg("external table internal parse error at end of " 
+faag: fileam:00002523:  "line"))); 
+faag: fileam:00002574:  ereport(ERROR, 
+faag: fileam:00002575:  (errcode_for_file_access(), 
+faag: fileam:00002576:  errmsg("cannot get distributed transaction identifier while %s", uri))); 
 aaaaa GP_IGNORE: uaad: url - ./backend/access/external/url.c
 uaad: url:00000159:  // elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto); 
 uaad: url:00000188:  //elog(NOTICE, "write_callback %d", nbytes); 
@@ -612,47 +613,47 @@ uaad: url:00000994:  curl_easy_strerror(e));
 uaad: url:00001186:  ereport(ERROR, 
 uaad: url:00001187:  (errcode(ERRCODE_INTERNAL_ERROR), 
 uaad: url:00001188:  errmsg_internal("external table type not implemented: %d", type))); 
-uaad: url:00001319:  elog(ERROR, "gpfdist error: server closed connection.\n"); 
-uaad: url:00001325:  elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n); 
-uaad: url:00001339:  elog(ERROR, "gpfdist error: bad packet type %d len %d", 
-uaad: url:00001340:  type, len); 
-uaad: url:00001344:  /* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
-uaad: url:00001345:  curl->in.bot, curl->in.top); 
-uaad: url:00001366:  elog(ERROR, "gpfdist error - %s%c", &curl->in.ptr[curl->in.bot], x); 
-uaad: url:00001371:  elog(ERROR, "gpfdist error: please check gpfdist log messages."); 
-uaad: url:00001386:  elog(ERROR, "gpfdist error: filename too long (%d)", len); 
-uaad: url:00001391:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001420:  elog(ERROR, "gpfdist error: offset not of length 8 (%d)", len); 
-uaad: url:00001425:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001441:  elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len); 
-uaad: url:00001446:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
-uaad: url:00001468:  // elog(NOTICE, "D %d", curl->block.datalen); 
-uaad: url:00001472:  elog(ERROR, "gpfdist error: unknown meta type %d", type); 
-uaad: url:00001489:  elog(ERROR, "gpfdist server closed connection.\n"); 
-uaad: url:00001498:  // elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen); 
-uaad: url:00001523:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
-uaad: url:00001524:  e, curl_easy_strerror(e)); 
-uaad: url:00001528:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)", 
-uaad: url:00001529:  e, curl_easy_strerror(e)); 
-uaad: url:00001533:  elog(ERROR, "%s error (%d - %s)", 
-uaad: url:00001534:  file->u.curl.curl_url, 
-uaad: url:00001535:  e, curl_easy_strerror(e)); 
-uaad: url:00001539:  elog(ERROR, "error while writing data to gpfdist on %s (code %d, msg %s)", 
-uaad: url:00001540:  file->u.curl.curl_url, response_code, response_string); 
-uaad: url:00001556:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)", 
-uaad: url:00001557:  file->u.curl.curl_url, 
-uaad: url:00001558:  e, curl_easy_strerror(e)); 
-uaad: url:00001564:  elog(ERROR, "%s error: %s", 
-uaad: url:00001565:  file->u.curl.curl_url, 
-uaad: url:00001566:  curl_easy_strerror(e)); 
-uaad: url:00001581:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
-uaad: url:00001592:  //elog(NOTICE, "curl_fread %d bytes", n); 
-uaad: url:00001607:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
-uaad: url:00001653:  elog(ERROR, "out of memory (curl_fwrite)"); 
-uaad: url:00001738:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
-uaad: url:00001778:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
-uaad: url:00001832:  elog(ERROR, "rewind support not yet implemented in custom protocol"); 
-uaad: url:00002223:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
+uaad: url:00001329:  elog(ERROR, "gpfdist error: server closed connection.\n"); 
+uaad: url:00001335:  elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n); 
+uaad: url:00001349:  elog(ERROR, "gpfdist error: bad packet type %d len %d", 
+uaad: url:00001350:  type, len); 
+uaad: url:00001354:  /* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
+uaad: url:00001355:  curl->in.bot, curl->in.top); 
+uaad: url:00001376:  elog(ERROR, "gpfdist error - %s%c", &curl->in.ptr[curl->in.bot], x); 
+uaad: url:00001381:  elog(ERROR, "gpfdist error: please check gpfdist log messages."); 
+uaad: url:00001396:  elog(ERROR, "gpfdist error: filename too long (%d)", len); 
+uaad: url:00001401:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001430:  elog(ERROR, "gpfdist error: offset not of length 8 (%d)", len); 
+uaad: url:00001435:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001451:  elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len); 
+uaad: url:00001456:  elog(ERROR, "gpfdist error: stream ends suddenly"); 
+uaad: url:00001478:  // elog(NOTICE, "D %d", curl->block.datalen); 
+uaad: url:00001482:  elog(ERROR, "gpfdist error: unknown meta type %d", type); 
+uaad: url:00001499:  elog(ERROR, "gpfdist server closed connection.\n"); 
+uaad: url:00001508:  // elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen); 
+uaad: url:00001533:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS error (%d - %s)", 
+uaad: url:00001534:  e, curl_easy_strerror(e)); 
+uaad: url:00001538:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDSIZE error (%d - %s)", 
+uaad: url:00001539:  e, curl_easy_strerror(e)); 
+uaad: url:00001543:  elog(ERROR, "%s error (%d - %s)", 
+uaad: url:00001544:  file->u.curl.curl_url, 
+uaad: url:00001545:  e, curl_easy_strerror(e)); 
+uaad: url:00001549:  elog(ERROR, "error while writing data to gpfdist on %s (code %d, msg %s)", 
+uaad: url:00001550:  file->u.curl.curl_url, response_code, response_string); 
+uaad: url:00001566:  elog(ERROR, "internal error: curl_easy_setopt CURLOPT_POSTFIELDS %s error (%d - %s)", 
+uaad: url:00001567:  file->u.curl.curl_url, 
+uaad: url:00001568:  e, curl_easy_strerror(e)); 
+uaad: url:00001574:  elog(ERROR, "%s error: %s", 
+uaad: url:00001575:  file->u.curl.curl_url, 
+uaad: url:00001576:  curl_easy_strerror(e)); 
+uaad: url:00001591:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
+uaad: url:00001602:  //elog(NOTICE, "curl_fread %d bytes", n); 
+uaad: url:00001617:  elog(ERROR, "unknown gp protocol %d", curl->gp_proto); 
+uaad: url:00001663:  elog(ERROR, "out of memory (curl_fwrite)"); 
+uaad: url:00001748:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
+uaad: url:00001788:  elog(ERROR, "CFTYPE_FILE not yet supported in url.c"); 
+uaad: url:00001842:  elog(ERROR, "rewind support not yet implemented in custom protocol"); 
+uaad: url:00002233:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
 aaaaa GP_IGNORE: gabc: ginarrayproc - ./backend/access/gin/ginarrayproc.c
 gabc: ginarrayproc:00000028:  ereport(ERROR, \ 
 gabc: ginarrayproc:00000029:  (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED), \ 
