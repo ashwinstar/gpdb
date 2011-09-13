@@ -244,6 +244,12 @@ safe_to_convert_NOT_EXISTS(SubLink *sublink)
 	if (list_length(subselect->rtable) > 1)
 		return false;
 
+	/**
+	 * If there is a limit offset, then don't bother.
+	 */
+	if (subselect->limitOffset)
+		return false;
+
 	return true;
 }
 
@@ -650,6 +656,17 @@ convert_NOT_EXISTS_to_antijoin(PlannerInfo *root, List** rtrlist_inout, SubLink 
 		/* Delete ORDER BY and DISTINCT. */
 		cdbsubselect_drop_orderby(subselect);
 		cdbsubselect_drop_distinct(subselect);
+
+	    /*
+	     * Trivial NOT EXISTS subquery can be eliminated altogether.
+	     */
+		if (subselect->hasAggs
+				&& subselect->havingQual == NULL)
+	    {
+	        Assert(!subselect->limitOffset);
+
+	        return makeBoolConst(false, false);
+	    }
 
 		/* HAVING is the only place that could still contain aggregates.
 		 * We can delete targetlist if there is no havingQual.
