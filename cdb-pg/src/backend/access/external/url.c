@@ -1227,10 +1227,11 @@ url_feof(URL_FILE *file, int bytesread)
 }
 
 
-bool url_ferror(URL_FILE *file, int bytesread)
+bool url_ferror(URL_FILE *file, int bytesread, char *ebuf, int ebuflen)
 {
 	bool ret = 0;
-
+	int nread = 0;
+	
 	switch (file->type)
 	{
 		case CFTYPE_FILE:
@@ -1239,6 +1240,15 @@ bool url_ferror(URL_FILE *file, int bytesread)
 
 		case CFTYPE_EXEC:
 			ret = (bytesread == -1);
+			if(ret == true && ebuflen > 0 && ebuf != NULL)
+			{
+				nread = piperead(file->u.exec.pipes[EXEC_ERR_P], ebuf, ebuflen);
+			
+				if(nread != -1)
+					ebuf[nread] = 0;
+				else
+					strncpy(ebuf,"error string unavailable due to read error",ebuflen-1);
+			}
 			break;
 
 		case CFTYPE_CURL:

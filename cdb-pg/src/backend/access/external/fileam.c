@@ -1756,12 +1756,13 @@ external_getdata(URL_FILE *extfile, CopyState pstate, int maxread)
 
  	if (bytesread <= 0)
  	{
- 		if (url_ferror(extfile, bytesread))
- 			ereport(ERROR,
- 					(errcode_for_file_access(),
- 					 errmsg("could not read from external file: %m")));
- 	}
-
+ 		if (url_ferror(extfile, bytesread, NULL, 0))
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not read from external file: %m")));
+			
+	}
+	
 	return bytesread;
 }
 
@@ -1772,14 +1773,19 @@ static void
 external_senddata(URL_FILE *extfile, CopyState pstate)
 {
 	StringInfo	fe_msgbuf = pstate->fe_msgbuf;
+	static char	ebuf[512] = {0};
 	size_t	nwrote = 0;
-	
+	int		ebuflen = 512;
+		
 	nwrote = url_fwrite((void *) fe_msgbuf->data, 1, fe_msgbuf->len, extfile, pstate);
 	
-	if (url_ferror(extfile, nwrote))
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not write to external resource: %m")));
+	if (url_ferror(extfile, nwrote, ebuf, ebuflen))
+	{	
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 strlen(ebuf) > 0 ? errmsg("could not write to external resource:\n%s",ebuf) :
+				 errmsg("could not write to external resource: %m")));
+	}
 }
 
 /*
