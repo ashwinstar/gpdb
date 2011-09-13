@@ -105,8 +105,7 @@ all:
 	fi ;
 	$(MAKE) set_gpmon_scripts_version
 	./generate-gpperfmon-path.sh > .tmp/gpperfmon_path.sh
-	cd .tmp && tar cf ../greenplum-perfmon-web.tar *
-	gzip greenplum-perfmon-web.tar
+	(cd .tmp && tar cf - * | gzip -c > ../greenplum-perfmon-web.tar.gz)
 	./create-gpperfmon-installer.sh
 	mv greenplum-perfmon-web.bin greenplum-perfmon-web-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin
 	rm -rf .tmp
