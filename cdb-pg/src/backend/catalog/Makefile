@@ -21,8 +21,11 @@ BKIFILES = postgres.bki postgres.description postgres.shdescription
 
 include $(top_srcdir)/src/backend/common.mk
 
-all: cdb_util.sql cdb_schema.sql  gp_toolkit.sql gp_toolkit_test.sql $(BKIFILES)
+all: cdb_init.sql cdb_util.sql cdb_schema.sql gp_toolkit.sql gp_toolkit_test.sql $(BKIFILES)
 
+cdb_init.sql: cdb_schema.sql
+	cat $(call vpathsearch,cdb_schema.sql) $(call vpathsearch,cdb_external_extensions.sql) > cdb_init.sql
+	
 cdb_schema.sql: cdb_schema.in
 			sed -e 's,@pkglibdir@,$(pkglibdir),g' \
                 -e 's,@dlsuffix@,$(DLSUFFIX),g' \
@@ -119,6 +122,8 @@ install-data: $(BKIFILES) installdirs
 	$(INSTALL_DATA) $(srcdir)/information_schema.sql '$(DESTDIR)$(datadir)/information_schema.sql'
 	$(INSTALL_DATA) $(call vpathsearch,cdb_schema.sql) '$(DESTDIR)$(datadir)/cdb_schema.sql'
 	$(INSTALL_DATA) $(call vpathsearch,cdb_util.sql) '$(DESTDIR)$(datadir)/cdb_util.sql'
+	$(INSTALL_DATA) $(call vpathsearch,cdb_init.sql) '$(DESTDIR)$(datadir)/cdb_init.sql'
+	$(INSTALL_DATA) $(call vpathsearch,cdb_external_extensions.sql) '$(DESTDIR)$(datadir)/cdb_external_extensions.sql'
 	$(INSTALL_DATA) $(srcdir)/sql_features.txt '$(DESTDIR)$(datadir)/sql_features.txt'
 	$(INSTALL_DATA) $(call vpathsearch,gp_toolkit.sql) '$(DESTDIR)$(datadir)/gp_toolkit.sql'
 
@@ -130,4 +135,4 @@ uninstall-data:
 	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, $(BKIFILES) system_views.sql information_schema.sql cdb_schema.sql sql_features.txt)
 
 clean:
-	rm -f SUBSYS.o $(OBJS) $(BKIFILES) cdb_schema.sql gp_toolkit_test.sql gp_toolkit.sql cdb_util.sql
+	rm -f SUBSYS.o $(OBJS) $(BKIFILES) cdb_schema.sql gp_toolkit_test.sql gp_toolkit.sql cdb_util.sql cdb_init.sql

@@ -127,7 +127,7 @@ static char *ident_file;
 static char *conf_file;
 static char *conversion_file;
 static char *info_schema_file;
-static char *cdb_schema_file;
+static char *cdb_init_file;
 static char *features_file;
 static char *system_views_file;
 static bool made_new_pgdata = false;
@@ -2108,7 +2108,7 @@ setup_cdb_schema(void)
 	fputs(_("creating Greenplum Database schema ... "), stdout);
 	fflush(stdout);
 
-	lines = readfile(cdb_schema_file);
+	lines = readfile(cdb_init_file);
 
 	/*
 	 * We use -N here to avoid backslashing stuff in
@@ -3179,7 +3179,7 @@ main(int argc, char *argv[])
 	set_input(&conf_file, "postgresql.conf.sample");
 	set_input(&conversion_file, "conversion_create.sql");
 	set_input(&info_schema_file, "information_schema.sql");
-	set_input(&cdb_schema_file, "cdb_schema.sql");
+	set_input(&cdb_init_file, "cdb_init.sql");
 	set_input(&features_file, "sql_features.txt");
 	set_input(&system_views_file, "system_views.sql");
 
@@ -3211,7 +3211,7 @@ main(int argc, char *argv[])
 	check_input(conf_file);
 	check_input(conversion_file);
 	check_input(info_schema_file);
-	check_input(cdb_schema_file);
+	check_input(cdb_init_file);
 	check_input(features_file);
 	check_input(system_views_file);
 
