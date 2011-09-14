@@ -182,3 +182,32 @@ select matrix_multiply(pinv(array[[1,-1,3],[2,1,2],[-2,-2,1]]),
                        array[[1,-1,3],[2,1,2],[-2,-2,1]])::numeric(10,8)[] as "A'A";
 
 drop table dtype;
+
+
+-- Check overflow
+--SMALLINT: [-32768, 32767]
+select matrix_add(array[32767]::smallint[], array[1]::smallint[]);      --overflow
+select matrix_add(array[32766]::smallint[], array[1]::smallint[]);      --no overflow
+select matrix_add(array[-32768]::smallint[], array[-1]::smallint[]);    --overflow
+select matrix_add(array[-32767]::smallint[], array[-1]::smallint[]);    --no overflow
+   
+-- Check overflow
+--INT: [-2147483648, 2147483647]
+select matrix_add(array[2147483647]::int[], array[1]::int[]);   --overflow
+select matrix_add(array[2147483646]::int[], array[1]::int[]);   --no overflow
+select matrix_add(array[-2147483648]::int[], array[-1]::int[]); --overflow
+select matrix_add(array[-2147483647]::int[], array[-1]::int[]); --no overflow
+ 
+-- Check overflow
+--BIGINT: [-9223372036854775808, 9223372036854775807]
+select matrix_add(array[9223372036854775807]::bigint[], array[1]::bigint[]);    --overflow
+select matrix_add(array[9223372036854775806]::bigint[], array[1]::int[]);       --no overflow
+select matrix_add(array[-9223372036854775808]::bigint[], array[-1]::bigint[]);  --overflow
+select matrix_add(array[-9223372036854775807]::bigint[], array[-1]::int[]);     --no overflow
+ 
+-- Matrix_multiply will promote result to int64 or float8 automatically
+select matrix_multiply(array[array[9223372036854775807/3]]::bigint[], array[array[4]]::bigint[]);       --overflow
+select matrix_multiply(array[array[-9223372036854775808]]::bigint[], array[array[-1]]::bigint[]);       --overflow
+ 
+select matrix_multiply(array[array[10e200], array[10e200]]::float8[], array[array[10e200]]::float8[]);  --overflow
+ 

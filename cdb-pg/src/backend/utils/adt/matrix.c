@@ -9,6 +9,63 @@
 #include "utils/lsyscache.h"
 
 
+#define SAMESIGN(a,b)	(((a) < 0) == ((b) < 0))
+
+/*
+ * check to see if a float4/8 val has underflowed or overflowed
+ */
+#define CHECKFLOATVAL(val, inf_is_valid, zero_is_valid)			\
+do {															\
+	if (isinf(val) && !(inf_is_valid))							\
+		ereport(ERROR,											\
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),	\
+		  errmsg("value out of range: overflow"),errOmitLocation(true)));				\
+																\
+	if ((val) == 0.0 && !(zero_is_valid))						\
+		ereport(ERROR,											\
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),	\
+		 errmsg("value out of range: underflow"),errOmitLocation(true)));				\
+} while(0)
+
+
+/*
+ * check to see if a int16/32/64 val has overflow in addition
+ */
+#define CHECKINTADD(result, arg1, arg2)							\
+do {															\
+	if (SAMESIGN(arg1, arg2) && !SAMESIGN(result, arg1))		\
+		ereport(ERROR,											\
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),	\
+		  errmsg("int value out of range: overflow"),errOmitLocation(true)));				\
+} while(0)
+
+/*
+ * check to see if a int64 val has overflow in addition
+*
+* Overflow check.	We basically check to see if result / arg2 gives arg1
+* again.  There are two cases where this fails: arg2 = 0 (which cannot
+* overflow) and arg1 = INT64_MIN, arg2 = -1 (where the division itself
+* will overflow and thus incorrectly match).
+*
+* Since the division is likely much more expensive than the actual
+* multiplication, we'd like to skip it where possible.  The best bang for
+* the buck seems to be to check whether both inputs are in the int32
+* range; if so, no overflow is possible.  (But that only works if we
+* really have a 64-bit int64 datatype...)
+*
+*/
+#define CHECKINT64MULT(result, arg1, arg2)												\
+do {																					\
+	if (!(arg1 >= (int32) INT_MIN && arg1 <= (int32) INT_MAX &&							\
+		  arg2 >= (int32) INT_MIN && arg2 <= (int32) INT_MAX) &&						\
+		arg2 != 0 &&																	\
+		(result / arg2 != arg1 || (arg2 == -1 && arg1 < 0 && result < 0)))				\
+		ereport(ERROR,																	\
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),							\
+		  errmsg("int value out of range: overflow"),errOmitLocation(true)));			\
+} while(0)
+
+
 /*
  * matrix_transpose - transpose an array[x][y] into an array[y][x].
  */
@@ -180,7 +237,16 @@ Datum matrix_multiply(PG_FUNCTION_ARGS)
 	data_r = ARR_DATA_PTR(result);
 	memset(data_r, 0, ARR_DIMS(m)[0] * ARR_DIMS(n)[1] * sizeof(int64));
 
-	/* 
+	/*
+	 * Integer Overflow Detecting: We should check arithmetic overflow
+	 * of int64 and float8; Below local variable is used to restore temporary
+	 * arithmetic result.
+	 *
+	 */
+	int64 int64_mul, int64_add;
+	float8 float8_mul, float8_add;
+
+	/*
 	 * Three dimensional loop over result arrays two dimensional space and
 	 * over the intersection dimension of the two input matrices.
 	 * Locality is preserved for the m matrix.
@@ -197,24 +263,57 @@ Datum matrix_multiply(PG_FUNCTION_ARGS)
 				data_n = ARR_DATA_PTR(n) + k * ARR_DIMS(n)[1] * elsize;
 				switch (eltype) {
 					case INT2OID:
-						*(int64*)data_r += 
-							((int16*)data_n)[j] * ((int16*)data_m)[k];
+						/*
+						 * int16 * int16 -> int64 will never overflow
+						 * int64 + int64 -> int64 will overflow, need detection
+						 */
+						int64_mul = ((int16*)data_n)[j] * ((int16*)data_m)[k];
+						int64_add = *(int64*)data_r + int64_mul;
+						CHECKINTADD(int64_add, *(int64*)data_r, int64_mul);
+						*(int64*)data_r = int64_add;
 						break;
 					case INT4OID:
-						*(int64*)data_r += 
-							((int32*)data_n)[j] * ((int32*)data_m)[k];
+						/*
+						 * int32 * int32 -> int64 will never overflow
+						 * int64 + int64 -> int64 will overflow, need detection
+						 */
+						int64_mul = ((int32*)data_n)[j] * ((int32*)data_m)[k];
+						int64_add = *(int64*)data_r + int64_mul;
+						CHECKINTADD(int64_add, *(int64*)data_r, int64_mul);
+						*(int64*)data_r = int64_add;
 						break;
 					case INT8OID:
-						*(int64*)data_r += 
-							((int64*)data_n)[j] * ((int64*)data_m)[k];
+						/*
+						 * int64 * int64 -> int64 could overflow, need detection
+						 * int64 + int64 -> int64 will overflow, need detection
+						 */
+						int64_mul = ((int64*)data_n)[j] * ((int64*)data_m)[k];
+						int64_add = *(int64*)data_r + int64_mul;
+						CHECKINT64MULT(int64_mul, ((int64*)data_n)[j], ((int64*)data_m)[k]);
+						CHECKINTADD(int64_add, *(int64*)data_r, int64_mul);
+						*(int64*)data_r = int64_add;
 						break;
 					case FLOAT4OID:
-						*(float8*)data_r += 
-							((float*)data_n)[j] * ((float*)data_m)[k];
+						float8_mul = ((float*)data_n)[j] * ((float*)data_m)[k];
+						float8_add = *(float8*)data_r + float8_mul;
+						/*
+						 * check overflow of multiply
+						 */
+						CHECKFLOATVAL(float8_mul, isinf(((float*)data_n)[j]) || isinf(((float*)data_m)[k]),
+								((float*)data_n)[j] == 0 || ((float*)data_m)[k] == 0);
+						CHECKFLOATVAL(float8_add, isinf(*(float8*)data_r) || isinf(float8_mul), true);
+						*(float8*)data_r = float8_add;
 						break;
 					case FLOAT8OID:
-						*(float8*)data_r += 
-							((float8*)data_n)[j] * ((float8*)data_m)[k];
+						float8_mul = ((float8*)data_n)[j] * ((float8*)data_m)[k];
+						float8_add = *(float8*)data_r + float8_mul;
+						/*
+						 * check overflow of multiply
+						 */
+						CHECKFLOATVAL(float8_mul, isinf(((float8*)data_n)[j]) || isinf(((float8*)data_m)[k]),
+								((float8*)data_n)[j] == 0 || ((float8*)data_m)[k] == 0);
+						CHECKFLOATVAL(float8_add, isinf(*(float8*)data_r) || isinf(float8_mul), true);
+						*(float8*)data_r = float8_add;
 						break;
 					default:
 						Assert(false);
@@ -365,6 +464,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 					 errmsg("matrix_add: unsupported datatype")));
 	}
 	
+	/*
+	 * Overflow check.	If the sign of inputs are different, then their sum
+	 * cannot overflow.  If the inputs are of the same sign, their sum had
+	 * better be that sign too.
+	 */
 	/* Transition function updates in place, otherwise allocate result */
 	if (transition_function) 
 	{
@@ -373,13 +477,23 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 			case INT2OID:
 			{
 				int16 *data_m = (int16*) ARR_DATA_PTR(m);
+				/*	plus result, need to check overflow*/
+				int16 result;
 				switch (ntype)
 				{
 					case INT2OID:
 					{
 						int16 *data_n = (int16*) ARR_DATA_PTR(n);
-						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+						for (i = 0; i < len; i++){
+							/*
+							 * return type of plus of two int16 is int32,
+							 * we should cast to int16 explicitly
+							 */
+							result = (int16) (data_m[i] + data_n[i]);
+							/* overflow checking*/
+							CHECKINTADD(result, data_m[i], data_n[i]);
+							data_m[i] = result;
+						}
 						break;
 					}
 					default:
@@ -392,20 +506,30 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 			case INT4OID:
 			{
 				int32 *data_m = (int32*) ARR_DATA_PTR(m);
+				/*	plus result, need to check overflow*/
+				int32 result;
 				switch (ntype)
 				{
 					case INT2OID:
 					{
 						int16 *data_n = (int16*) ARR_DATA_PTR(n);
-						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+						for (i = 0; i < len; i++){
+							/* overflow checking */
+							result = data_m[i] + data_n[i];
+							CHECKINTADD(result, data_m[i], data_n[i]);
+							data_m[i] = result;
+						}
 						break;
 					}
 					case INT4OID:
 					{
 						int32 *data_n = (int32*) ARR_DATA_PTR(n);
-						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+						for (i = 0; i < len; i++){
+							/* overflow checking */
+							result = data_m[i] + data_n[i];
+							CHECKINTADD(result, data_m[i], data_n[i]);
+							data_m[i] = result;
+						}
 						break;
 					}
 					default:
@@ -418,27 +542,41 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 			case INT8OID:
 			{
 				int64 *data_m = (int64*) ARR_DATA_PTR(m);
+				/*	plus result, need to check overflow*/
+				int64 result;
 				switch (ntype)
 				{
 					case INT2OID:
 					{
 						int16 *data_n = (int16*) ARR_DATA_PTR(n);
-						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+						for (i = 0; i < len; i++){
+							/* overflow checking */
+							result = data_m[i] + data_n[i];
+							CHECKINTADD(result, data_m[i], data_n[i]);
+							data_m[i] = result;
+						}
 						break;
 					}
 					case INT4OID:
 					{
 						int32 *data_n = (int32*) ARR_DATA_PTR(n);
-						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+						for (i = 0; i < len; i++){
+							/* overflow checking */
+							result = data_m[i] + data_n[i];
+							CHECKINTADD(result, data_m[i], data_n[i]);
+							data_m[i] = result;
+						}
 						break;
 					}
 					case INT8OID:
 					{
 						int64 *data_n = (int64*) ARR_DATA_PTR(n);
-						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+						for (i = 0; i < len; i++){
+							/* overflow checking */
+							result = data_m[i] + data_n[i];
+							CHECKINTADD(result, data_m[i], data_n[i]);
+							data_m[i] = result;
+						}
 						break;
 					}
 					default:
@@ -451,34 +589,42 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 			case FLOAT4OID:
 			{
 				float4 *data_m = (float4*) ARR_DATA_PTR(m);
+				float4 add_r;
 				switch (ntype)
 				{
 					case INT2OID:
 					{
 						int16 *data_n = (int16*) ARR_DATA_PTR(n);
 						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+							/* explicit upcasting */
+							data_m[i] += (float4)data_n[i];
 						break;
 					}
 					case INT4OID:
 					{
 						int32 *data_n = (int32*) ARR_DATA_PTR(n);
 						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+							/* explicit upcasting */
+							data_m[i] += (float4)data_n[i];
 						break;
 					}
 					case INT8OID:
 					{
 						int64 *data_n = (int64*) ARR_DATA_PTR(n);
 						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+							/* explicit upcasting */
+							data_m[i] += (float4)data_n[i];
 						break;
 					}
 					case FLOAT4OID:
 					{
 						float4 *data_n = (float4*) ARR_DATA_PTR(n);
-						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+						for (i = 0; i < len; i++){
+							/* overflow checking */
+							add_r = data_m[i] + data_n[i];
+							CHECKFLOATVAL(add_r, isinf(data_m[i]) || isinf(data_n[i]), true);
+							data_m[i] = add_r;
+						}
 						break;
 					}
 					default:
@@ -491,6 +637,7 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 			case FLOAT8OID:
 			{
 				float8 *data_m = (float8*) ARR_DATA_PTR(m);
+				float8 add_r;
 				switch (ntype)
 				{
 					case INT2OID:
@@ -511,7 +658,8 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 					{
 						int64 *data_n = (int64*) ARR_DATA_PTR(n);
 						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+							/* explicit upcasting */
+							data_m[i] += (float8)data_n[i];
 						break;
 					}
 					case FLOAT4OID:
@@ -524,8 +672,12 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 					case FLOAT8OID:
 					{
 						float8 *data_n = (float8*) ARR_DATA_PTR(n);
-						for (i = 0; i < len; i++)
-							data_m[i] += data_n[i];
+						for (i = 0; i < len; i++){
+							/* overflow checking */
+							add_r = data_m[i] + data_n[i];
+							CHECKFLOATVAL(add_r, isinf(data_m[i]) || isinf(data_n[i]), true);
+							data_m[i] = add_r;
+						}
 						break;
 					}
 					default:
@@ -598,8 +750,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						int16 *data_n = (int16*) ARR_DATA_PTR(n);
 						int16 *data_r = (int16*) ARR_DATA_PTR(result);
 						Assert(rtype == INT2OID);
-						for (i = 0; i < len; i++)
-							data_r[i] = data_m[i] + data_n[i];
+						for (i = 0; i < len; i++){
+							data_r[i] = (int16) (data_m[i] + data_n[i]);
+							/* overflow checking */
+							CHECKINTADD(data_r[i], data_m[i], data_n[i]);
+						}
 						break;
 					}
 					case INT4OID:
@@ -607,8 +762,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						int32 *data_n = (int32*) ARR_DATA_PTR(n);
 						int32 *data_r = (int32*) ARR_DATA_PTR(result);
 						Assert(rtype == INT4OID);
-						for (i = 0; i < len; i++)
+						for (i = 0; i < len; i++){
 							data_r[i] = data_m[i] + data_n[i];
+							/* overflow checking */
+							CHECKINTADD(data_r[i], data_m[i], data_n[i]);
+						}
 						break;
 					}
 					case INT8OID:
@@ -616,8 +774,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						int64 *data_n = (int64*) ARR_DATA_PTR(n);
 						int64 *data_r = (int64*) ARR_DATA_PTR(result);
 						Assert(rtype == INT8OID);
-						for (i = 0; i < len; i++)
+						for (i = 0; i < len; i++){
 							data_r[i] = data_m[i] + data_n[i];
+							/* overflow checking */
+							CHECKINTADD(data_r[i], data_m[i], data_n[i]);
+						}
 						break;
 					}
 					case FLOAT4OID:
@@ -626,7 +787,7 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						float4 *data_r = (float4*) ARR_DATA_PTR(result);
 						Assert(rtype == FLOAT4OID);
 						for (i = 0; i < len; i++)
-							data_r[i] = data_m[i] + data_n[i];
+							data_r[i] = (float4)data_m[i] + data_n[i];
 						break;
 					}
 					case FLOAT8OID:
@@ -653,8 +814,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						int16 *data_n = (int16*) ARR_DATA_PTR(n);
 						int32 *data_r = (int32*) ARR_DATA_PTR(result);
 						Assert(rtype == INT4OID);
-						for (i = 0; i < len; i++)
+						for (i = 0; i < len; i++){
 							data_r[i] = data_m[i] + data_n[i];
+							/* overflow checking */
+							CHECKINTADD(data_r[i], data_m[i], data_n[i]);
+						}
 						break;
 					}
 					case INT4OID:
@@ -662,8 +826,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						int32 *data_n = (int32*) ARR_DATA_PTR(n);
 						int32 *data_r = (int32*) ARR_DATA_PTR(result);
 						Assert(rtype == INT4OID);
-						for (i = 0; i < len; i++)
+						for (i = 0; i < len; i++){
 							data_r[i] = data_m[i] + data_n[i];
+							/* overflow checking */
+							CHECKINTADD(data_r[i], data_m[i], data_n[i]);
+						}
 						break;
 					}
 					case INT8OID:
@@ -671,8 +838,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						int64 *data_n = (int64*) ARR_DATA_PTR(n);
 						int64 *data_r = (int64*) ARR_DATA_PTR(result);
 						Assert(rtype == INT8OID);
-						for (i = 0; i < len; i++)
+						for (i = 0; i < len; i++){
 							data_r[i] = data_m[i] + data_n[i];
+							/* overflow checking */
+							CHECKINTADD(data_r[i], data_m[i], data_n[i]);
+						}
 						break;
 					}
 					case FLOAT4OID:
@@ -681,7 +851,7 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						float4 *data_r = (float4*) ARR_DATA_PTR(result);
 						Assert(rtype == FLOAT4OID);
 						for (i = 0; i < len; i++)
-							data_r[i] = data_m[i] + data_n[i];
+							data_r[i] = (float4)data_m[i] + data_n[i];
 						break;
 					}
 					case FLOAT8OID:
@@ -708,8 +878,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						int16 *data_n = (int16*) ARR_DATA_PTR(n);
 						int64 *data_r = (int64*) ARR_DATA_PTR(result);
 						Assert(rtype == INT8OID);
-						for (i = 0; i < len; i++)
+						for (i = 0; i < len; i++){
 							data_r[i] = data_m[i] + data_n[i];
+							/* overflow checking */
+							CHECKINTADD(data_r[i], data_m[i], data_n[i]);
+						}
 						break;
 					}
 					case INT4OID:
@@ -717,8 +890,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						int32 *data_n = (int32*) ARR_DATA_PTR(n);
 						int64 *data_r = (int64*) ARR_DATA_PTR(result);
 						Assert(rtype == INT8OID);
-						for (i = 0; i < len; i++)
+						for (i = 0; i < len; i++){
 							data_r[i] = data_m[i] + data_n[i];
+							/* overflow checking */
+							CHECKINTADD(data_r[i], data_m[i], data_n[i]);
+						}
 						break;
 					}
 					case INT8OID:
@@ -726,8 +902,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						int64 *data_n = (int64*) ARR_DATA_PTR(n);
 						int64 *data_r = (int64*) ARR_DATA_PTR(result);
 						Assert(rtype == INT8OID);
-						for (i = 0; i < len; i++)
+						for (i = 0; i < len; i++){
 							data_r[i] = data_m[i] + data_n[i];
+							/* overflow checking */
+							CHECKINTADD(data_r[i], data_m[i], data_n[i]);
+						}
 						break;
 					}
 					case FLOAT4OID:
@@ -736,7 +915,7 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						float4 *data_r = (float4*) ARR_DATA_PTR(result);
 						Assert(rtype == FLOAT4OID);
 						for (i = 0; i < len; i++)
-							data_r[i] = data_m[i] + data_n[i];
+							data_r[i] = (float4)data_m[i] + data_n[i];
 						break;
 					}
 					case FLOAT8OID:
@@ -745,7 +924,7 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						float8 *data_r = (float8*) ARR_DATA_PTR(result);
 						Assert(rtype == FLOAT8OID);
 						for (i = 0; i < len; i++)
-							data_r[i] = data_m[i] + data_n[i];
+							data_r[i] = (float4)data_m[i] + data_n[i];
 						break;
 					}
 					default:
@@ -764,7 +943,7 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						float4 *data_r = (float4*) ARR_DATA_PTR(result);
 						Assert(rtype == FLOAT4OID);
 						for (i = 0; i < len; i++)
-							data_r[i] = data_m[i] + data_n[i];
+							data_r[i] = data_m[i] + (float4)data_n[i];
 						break;
 					}
 					case INT4OID:
@@ -773,7 +952,7 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						float4 *data_r = (float4*) ARR_DATA_PTR(result);
 						Assert(rtype == FLOAT4OID);
 						for (i = 0; i < len; i++)
-							data_r[i] = data_m[i] + data_n[i];
+							data_r[i] = data_m[i] + (float4)data_n[i];
 						break;
 					}
 					case INT8OID:
@@ -782,7 +961,7 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						float4 *data_r = (float4*) ARR_DATA_PTR(result);
 						Assert(rtype == FLOAT4OID);
 						for (i = 0; i < len; i++)
-							data_r[i] = data_m[i] + data_n[i];
+							data_r[i] = data_m[i] + (float4)data_n[i];
 						break;
 					}
 					case FLOAT4OID:
@@ -790,8 +969,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						float4 *data_n = (float4*) ARR_DATA_PTR(n);
 						float4 *data_r = (float4*) ARR_DATA_PTR(result);
 						Assert(rtype == FLOAT4OID);
-						for (i = 0; i < len; i++)
+						for (i = 0; i < len; i++){
+							/* flow checking */
 							data_r[i] = data_m[i] + data_n[i];
+							CHECKFLOATVAL(data_r[i], isinf(data_m[i] ) || isinf(data_n[i]), true);
+						}
 						break;
 					}
 					case FLOAT8OID:
@@ -799,8 +981,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 						float8 *data_n = (float8*) ARR_DATA_PTR(n);
 						float8 *data_r = (float8*) ARR_DATA_PTR(result);
 						Assert(rtype == FLOAT8OID);
-						for (i = 0; i < len; i++)
+						for (i = 0; i < len; i++){
+							/* flow checking */
 							data_r[i] = data_m[i] + data_n[i];
+							CHECKFLOATVAL(data_r[i], isinf(data_m[i] ) || isinf(data_n[i]), true);
+						}
 						break;
 					}
 					default:
@@ -833,7 +1018,7 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 					{
 						int64 *data_n = (int64*) ARR_DATA_PTR(n);
 						for (i = 0; i < len; i++)
-							data_r[i] = data_m[i] + data_n[i];
+							data_r[i] = data_m[i] + (float4)data_n[i];
 						break;
 					}
 					case FLOAT4OID:
@@ -846,8 +1031,11 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 					case FLOAT8OID:
 					{
 						float8 *data_n = (float8*) ARR_DATA_PTR(n);
-						for (i = 0; i < len; i++)
+						for (i = 0; i < len; i++){
+							/* flow checking */
 							data_r[i] = data_m[i] + data_n[i];
+							CHECKFLOATVAL(data_r[i], isinf(data_m[i] ) || isinf(data_n[i]), true);
+						}
 						break;
 					}
 					default:
@@ -904,8 +1092,13 @@ Datum int8_matrix_smultiply(PG_FUNCTION_ARGS)
 	
 	/* And multiply by the scalar in place */
 	data_r = (int64*) ARR_DATA_PTR(result);
-	for (i = 0; i < nelem; i++)
-		data_r[i] *= scalar;
+	int64 mult_r;
+	for (i = 0; i < nelem; i++){
+		/* flow checking */
+		mult_r = data_r[i] * scalar;
+		CHECKINT64MULT(mult_r, data_r[i], scalar);
+		data_r[i] = mult_r;
+	}
 	PG_RETURN_ARRAYTYPE_P(result);
 }
 
@@ -950,8 +1143,13 @@ Datum float8_matrix_smultiply(PG_FUNCTION_ARGS)
 	
 	/* And multiply by the scalar in place */
 	data_r = (float8*) ARR_DATA_PTR(result);
-	for (i = 0; i < nelem; i++)
-		data_r[i] *= scalar;
+	float8 mult_r;
+	for (i = 0; i < nelem; i++){
+		mult_r = data_r[i] * scalar;
+		CHECKFLOATVAL(mult_r, isinf(data_r[i]) || isinf(scalar),
+				data_r[i] == 0 || scalar == 0);
+		data_r[i] = mult_r;
+	}
 	PG_RETURN_ARRAYTYPE_P(result);
 }
 
