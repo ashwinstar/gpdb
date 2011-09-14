@@ -18,10 +18,11 @@ try:
     from gppylib import gplog
     from gppylib import pgconf
     from gppylib.gparray import GpArray
-    from gppylib.operations.package import SPECFILE_NAME, InstallGppkg, UnInstallGppkg, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg
+    from gppylib.operations.package import InstallGppkg, UnInstallGppkg, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
     from gppylib.gpversion import GpVersion
     from gppylib.commands.base import Command, ExecutionError
     from gppylib.commands.unix import curr_platform, SUNOS
+    from gppylib.operations.unix import ListFilesByPattern
 
 except ImportError, ex:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(ex))
@@ -29,118 +30,6 @@ except ImportError, ex:
 logger = gplog.get_default_logger()
 
 REQUIRED_RPM_VERSIONS = ["4.4.2.3", "5.0.0"]        #I use 5.0.0 on my mac but the qavms use 4.4.2.3. So we support these two versions.
-
-class Gppkg:
-
-    '''
-        This class stores all the information about a gppkg
-    '''
-                
-    def __init__(self, pkg, pkgname, main_rpm, version, architecture, os, gpdbversion, description, abspath, preinstall, postinstall, preuninstall, postuninstall, dependencies, file_list):
-
-        logger.debug('Gppkg Constructor')
-
-        self.pkg = pkg          #This stores the complete package name E.g pgcrypto-1.0-Darwin-i386.gppkg
-        self.pkgname = pkgname  #This only store the name of the package as specified in the spec file
-        self.main_rpm = main_rpm
-        self.version = version 
-        self.architecture = architecture
-        self.os = os
-        self.gpdbversion = gpdbversion
-        self.description = description 
-        self.abspath = abspath 
-        self.preinstall = preinstall
-        self.postinstall = postinstall
-        self.preuninstall = preuninstall
-        self.postuninstall = postuninstall
-        self.dependencies = dependencies
-        self.file_list = file_list
-
-    @staticmethod
-    def from_package_path(pkg_path):
-        '''
-             This method takes a package as the argument and 
-             obtains all the information about the package
-             Details include name, arch, OS, version, description, dependencies,
-             list of files present in the package and returns a gppkg object
-        '''
-        
-        logger.debug('from_package_path')
-           
-        tarinfo = None
-
-        if not os.path.exists(pkg_path):
-            logger.error('Cannot find package %s' % pkg_path)
-            raise IOError 
-
-        #We check for a directory first because 
-        #is_tarfile does not accept directories as path names
-        if os.path.isdir(pkg_path):
-            logger.error('%s is a directory !' % pkg_path)
-            raise IOError 
-
-        if not tarfile.is_tarfile(pkg_path) or not pkg_path.endswith('.gppkg'):
-            logger.error('%s is Not a valid package' % pkg_path)
-            raise IOError 
-
-        if os.path.getsize(pkg_path) == 0:
-            logger.error('Package is empty')
-            raise IOError 
-
-        pkg = {'pkg': '', 'pkgname':'', 'os':'', 'architecture':'', 'gpdbversion':'', 'description':'', 
-        'preinstall' : [], 'postinstall' : [], 'preuninstall' : [], 'postuninstall' : [], 'file_list' : [], 'dependencies' : [] } 
-    
-        try:
-            tarinfo = tarfile.open(pkg_path, 'r:gz')
-            archive_list = tarinfo.getnames()
-
-            #store the list of all files present in the archive
-            pkg["file_list"] = archive_list 
-
-            #The spec file has to be called gppkg_spec
-            #so there will only be one such file,
-            #so we dont need to worry about the loop
-            #overwriting the 'specfile' variable with different values
-            for cur_file in archive_list:
-                if cur_file.endswith(SPECFILE_NAME):
-                    specfile = tarinfo.extractfile(cur_file) 
-
-            yamlfile = yaml.load(specfile)
-            keys = yamlfile.keys()
-
-        finally:
-            if tarinfo:
-                tarinfo.close()
-
-        #store all the tags
-        for key in keys:
-            pkg[key.lower()] = yamlfile[key]    
-        
-        #update the pkgpath
-        pkg['pkg'] = os.path.split(pkg_path)[-1] 
-
-        #make the versions as strings
-        pkg['version'] = str(pkg['version'])
-
-        #Convert the required version to a GpVersion
-        pkg['gpdbversion'] = GpVersion(str(pkg['gpdbversion']))
-
-        #update the absolute path
-        pkg['abspath'] = pkg_path
-
-        #store all the dependencies of the gppkg
-        for cur_file in archive_list:
-            if cur_file.find('deps/') != -1 and cur_file.endswith('.rpm'):
-                pkg['dependencies'].append(cur_file[cur_file.rfind('/') + 1:])    
-
-        #store the main rpm 
-        for cur_file in archive_list:
-            if cur_file.find('deps/') == -1 and cur_file.endswith('.rpm'):
-                pkg['main_rpm'] = cur_file
-
-        gppkg = Gppkg(**pkg)
-
-        return gppkg
 
 class GpPkgProgram:
 
@@ -197,7 +86,7 @@ class GpPkgProgram:
 
         addMasterDirectoryOptionForSingleClusterProgram(add_to)
 
-        add_to.add_option('-c', '--clean', help='clean the cluster of the given gppkg', metavar='<package>')
+        add_to.add_option('-c', '--clean', help='clean the cluster of the given gppkg', metavar='<package>', action='store_true')
         add_to.add_option('-i', '--install', help='install the given gppkg', metavar='<package>')
         add_to.add_option('-u', '--update', help='update the given gppkg', metavar='<package>')
         add_to.add_option('-r', '--remove', help='remove the given gppkg', metavar='<package>')
@@ -328,15 +217,26 @@ class GpPkgProgram:
             else:
                 logger.error('Invalid option %s' % self.query)
         elif self.remove:
-            pkg = Gppkg.from_package_path(self.remove)
+            pkg = None
+            pkg_file_list = ListFilesByPattern(GPPKG_ARCHIVE_PATH, self.remove + '*' + GPPKG_EXTENSION).run() 
+            if len(pkg_file_list) == 0:
+                raise ExceptionNoStackTraceNeeded('Package %s has not been installed' % self.remove)
+           
+            for pkg_file in  pkg_file_list:
+                name_version = pkg_file[:pkg_file.index('-', pkg_file.index('-') + 1)] 
+                if self.remove == name_version:
+                    pkg = Gppkg.from_package_path(os.path.join(GPPKG_ARCHIVE_PATH, pkg_file))
+                    break
+
+            if pkg is None:
+                raise ExceptionNoStackTraceNeeded('Please specify the correct name and version number')
+                
             UnInstallGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
         elif self.update:
             pkg = Gppkg.from_package_path(self.update)
             UpdateGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
         elif self.clean:
-            pkg = Gppkg.from_package_path(self.clean)
-            CleanGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
-
+            CleanGppkg(self.standby_host, self.segment_host_list).run()
     def cleanup(self):
        
         '''  
