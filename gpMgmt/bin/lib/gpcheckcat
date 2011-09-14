@@ -15,6 +15,10 @@ Usage: gpcheckcat [<option>] [dbname]
     -A         : all databases
     -S option  : shared table options (none, only)
     -O         : Online 
+    -l         : list all tests
+    -R test    : run this particular test
+    -C catname : run cross consistency, FK and ACL tests for this catalog table
+
 '''
 import sys, os, subprocess, tempfile, stat, re
 from threading import Thread
@@ -31,9 +35,28 @@ except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
 parallelism = 8
-logger = get_default_logger()
 # cache OID -> object name cache
 oidmap = {}
+
+#-------------------------------------------------------------------------------
+class CheckcatLogger:
+
+    def __init__(self):
+        self.logger = None
+
+    def get(self):
+        if self.logger == None:
+            form = logging.Formatter("gpcheckcat:-[%(levelname)-s]:-%(message)s")
+            handler = gplog.EncodingStreamHandler()
+            handler.setFormatter(form)
+            self.logger = logging.getLogger('gpcheckcat')
+            self.logger.addHandler(handler)
+            self.logger.setLevel(logging.INFO)
+        return self.logger
+
+#-------------------------------------------------------------------------------
+logger = CheckcatLogger().get()
+
 
 ################
 def parse_int(val):
@@ -79,6 +102,10 @@ class Global():
     opt['-S'] = None
     opt['-O'] = False
 
+    opt['-R'] = None
+    opt['-C'] = None
+    opt['-l'] = False
+
     cfg       = None
     dbname    = None
     firstdb   = None
@@ -114,6 +141,8 @@ class Global():
     if user == None:
         usage('Error: either $USER or $LOGNAME must be set')
 
+    catalog = None
+    max_content = 0
 
 GV = Global()
 
@@ -158,14 +187,14 @@ def getalldbs():
 ###############################
 def parseCommandLine():
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vog:tT:AOS:')
+        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vog:tT:AOS:R:C:l')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?':      usage(0)
-        elif switch[1] in 'hpBPUgTS': GV.opt[switch] = val
-        elif switch[1] in 'votAO':   GV.opt[switch] = True
+        elif switch[1] in 'hpBPUgTSRC': GV.opt[switch] = val
+        elif switch[1] in 'votAOl':   GV.opt[switch] = True
 
     def setdef(x, v):
         if not GV.opt[x]:
@@ -191,6 +220,13 @@ def parseCommandLine():
         GV.opt['-h'] = 'localhost'
         logger.debug('-h not specified; default to %s' % GV.opt['-h'])
     
+    if GV.opt['-R']:
+        logger.debug('Run this test: %s' % GV.opt['-R'])
+
+    if GV.opt['-C']:
+        GV.opt['-C'] = GV.opt['-C'].lower()
+        logger.debug('Run cross consistency test for table: %s' % GV.opt['-C'])
+
     if (len(args) != 0 and len(args) != 1):
         usage('Too many arguments')
 
@@ -962,150 +998,6 @@ def BuildFKResync(db, dtab, tables, badfktables, badpktables, max_content):
             BuildTableResync(db, dtab, tables, max_content,
                              tname, fktname, badfktables[fktname])
 
-
-#############
-def checkFKConstraint(db, tables, max_content):
-    logger.info('-----------------------------------')
-    logger.info('Checking foreign keys ...')
-    
-    qtempl = '''
-    SELECT cat1.gp_segment_id, {cat1_dot_primary_key}, cat1.{FK1}
-    FROM
-    gp_dist_random('{CATALOG1}') cat1 LEFT OUTER JOIN
-    gp_dist_random('{CATALOG2}') cat2
-    ON (cat1.gp_segment_id = cat2.gp_segment_id AND
-        cat1.{FK1} = cat2.{PK2} )
-    WHERE cat2.{PK2} is NULL
-    AND cat1.{FK1} != 0
-    UNION ALL
-    SELECT -1 as gp_segment_id, {cat1_dot_primary_key}, cat1.{FK1}
-    FROM
-    {CATALOG1} cat1 LEFT OUTER JOIN
-    {CATALOG2} cat2
-    ON (cat1.gp_segment_id = cat2.gp_segment_id AND
-        cat1.{FK1} = cat2.{PK2} )
-    WHERE cat2.{PK2} is NULL
-    AND cat1.{FK1} != 0
-    ORDER BY {primary_key_alias}, gp_segment_id
-    '''
-
-    tidx   = 0
-    tblcnt = 0
-    qrycnt = 0
-
-    fktables = []
-    badfktables = {}
-    badpktables = {}
-    dtab = {}
-
-    for cat in tables:
-        isShared = cat.isShared()
-        catname  = cat.getTableName()
-        fkey     = cat.getForeignKeys()
-        dtab[catname] = tidx
-        tidx += 1
-
-        # skip tables without fkey
-        if len(fkey) <= 0:
-            continue
-        if cat.isMasterOnly():
-            continue
-        if len(cat.getPrimaryKey()) <= 0:
-            continue
-
-        # skip shared/non-shared tables
-        if GV.opt['-S']:
-            if re.match("none", GV.opt['-S'], re.I) and isShared:
-                continue
-            if re.match("only", GV.opt['-S'], re.I) and not isShared:
-                continue
-
-
-        fktables.append(cat)
-
-        tblcnt += 1
-        qrycnt += len(fkey)
-
-    logger.info(' %d tables, %d queries' % (tblcnt, qrycnt))
-        
-    for tab in sorted(fktables):
-        fkeylist = tab.getForeignKeys()
-        tname    = tab.getTableName()
-
-        # primary key lists
-        cat1pkeys = []
-        pkeys     = []
-        aliasidx  = 1;
-        
-        # build array of catalog primary keys (with aliases) and
-        # primary key alias list
-        for pk in tab.getPrimaryKey():
-            cat1pkeys.append('cat1.' + pk + ' as PK%s'%aliasidx+'_'+pk)
-            pkeys.append('PK%s'%aliasidx+'_'+pk)
-            aliasidx += 1
-
-        for fkeydef in fkeylist:
-            fkeystr     = ', '.join(fkeydef.getColumns())
-            cat1fkeystr = 'cat1.' + ', cat1.'.join(fkeydef.getColumns())
-            
-            pkeytabname = fkeydef.getPkeyTableName()
-
-            qry = qtempl.format(cat1_dot_primary_key = ', '.join(cat1pkeys) ,
-                                primary_key_alias    = ', '.join(pkeys),
-                                FK1      = fkeystr,
-                                CATALOG1 = tname,
-                                CATALOG2 = pkeytabname,
-                                PK2      = ', '.join(fkeydef.getPKey())
-                                )
-                                
-            # Execute the query
-            try:
-                curs  = db.query(qry)
-                nrows = curs.ntuples()
-        
-                if nrows == 0:
-                    logger.info('[OK] Foreign key check for %s(%s)'%
-                                (tname, fkeystr))
-                else:
-                    setError(ERROR_NOREPAIR)
-                    logger.info('[FAIL] Foreign key check for %s(%s)'%
-                                (tname, fkeystr))
-                    logger.error('  %s has %d issue(s)' % (tname, nrows))
-                    if tname not in badfktables:
-                        badfktables[tname] = []
-                    if pkeytabname not in badpktables:
-                        badpktables[pkeytabname] = []
-                    # TODO: smarter handling of output
-                    #   - Improved reporting when all segments are different 
-                    #     from master
-                    #   - Improved identification of what the difference is
-                    #   - Dumping to a file when there is too much data
-                    #   - Don't use "print"
-                    fields = curs.listfields()
-                    print "    " + " | ".join(fields)
-                    for row in curs.getresult():
-                        print "    " + " | ".join(map(str, row))
-                    #
-                    def1           = {}
-                    def1["fk"]     = fkeydef
-                    def1["qry"]    = qry
-                    def1["fields"] = fields
-                    def1["rows"]   = curs.getresult()
-                    
-                    badfktables[tname].append(def1)
-                    badpktables[pkeytabname].append(tname)
-        
-            except Exception, e:
-                setError(ERROR_NOREPAIR)
-                logger.info('[FAIL] Foreign key check for ' + tname)
-                logger.error('  Execution error: ' + str(e))
-                logger.error(qry)
-
-    # attempt to construct sql to resynchronize foreign key entries on
-    # segments
-#    BuildFKResync(db, dtab, tables, badfktables, badpktables, max_content)
-
-
 #############
 # remove all remnants of a schema
 def removeSchema(seg, db, schemaid):
@@ -1316,457 +1208,8 @@ def row2str(row):
     strout = ', '.join(l)
     return strout
 #############
-def crossDbquery(max_content, catname, pkey, columns):
-
-        # Build up the query based on catalog definition
-        pkey      = ', '.join(pkey)
-        catcols   = 'c.' + ', c.'.join(columns)
-
-        # MPP-10286 - oid inconsistencies for temp schemas
-        #
-        # Due to oid differences for temp schemas the query would show
-        # relnamespace and typnamespace differences for any table defined
-        # in a temporary schema.  For the purposes of this consistency
-        # test we hack around this right now by joining to pg_namespace
-        # and eliminating temporary schemas.
-        if catname == 'pg_class':
-            temp_schema_hack_1 = """
-            JOIN gp_dist_random('pg_namespace') as n
-              ON (c.relnamespace = n.oid and n.nspname !~ '^pg_temp_' and
-                  c.gp_segment_id = n.gp_segment_id)
-            """
-            temp_schema_hack_2 = """
-            JOIN pg_namespace as n
-              ON (c.relnamespace = n.oid and n.nspname !~ '^pg_temp_')
-            """
-        elif catname == 'pg_type':
-            temp_schema_hack_1 = """
-            JOIN gp_dist_random('pg_namespace') as n
-              ON (c.typnamespace = n.oid and n.nspname !~ '^pg_temp_' and
-                  c.gp_segment_id = n.gp_segment_id)
-            """
-            temp_schema_hack_2 = """
-            JOIN pg_namespace as n
-              ON (c.typnamespace = n.oid and n.nspname !~ '^pg_temp_')
-            """
-        else:
-            temp_schema_hack_1 = ""
-            temp_schema_hack_2 = ""
 
 
-        # Construct the query
-        # 
-        # Basic idea of the query is:
-        #   SELECT (all rows on segments different from master)
-        #   UNION ALL
-        #   SELECT (all rows on master different from segments)
-        qry = """
-        SELECT * FROM (
-            SELECT c.gp_segment_id, {columns}
-            FROM   gp_dist_random('{catalog}') as c {schema_join_1}
-            WHERE  ({primary_key}) in (
-               SELECT {primary_key} FROM (
-                   select c.gp_segment_id, {columns}
-                   from   gp_dist_random('{catalog}') as c
-                   except all 
-                   select segid as gp_segment_id, {columns}
-                   from   {catalog} as c, 
-                          generate_series(0,{max_content}) as segid
-               ) segments
-            )
-        ) x
-        UNION ALL
-        SELECT * FROM (
-            select c.gp_segment_id, {columns}
-            from   {catalog} as c {schema_join_2}
-            where ({primary_key}) in (
-               SELECT {primary_key} FROM (
-                   select segid as gp_segment_id, {columns}
-                   from   {catalog} as c, 
-                          generate_series(0,{max_content}) as segid
-                   except all 
-                   select c.gp_segment_id, {columns}
-                   from   gp_dist_random('{catalog}') as c
-               ) master
-            )
-        ) y
-        order by {primary_key}, gp_segment_id
-        """.format(max_content = max_content,
-                   catalog     = catname,
-                   primary_key = pkey,
-                   columns     = catcols,
-                   schema_join_1 = temp_schema_hack_1,
-                   schema_join_2 = temp_schema_hack_2)
-
-        return qry
-
-#############
-def crossDbCheck():
-    fkcdb = 'Performing foreign key and cross database consistency tests';
-    fkcdbdash = '-'*len(fkcdb) # big dashed line
-    logger.info(fkcdbdash)
-    logger.info(fkcdb);
-    logger.info(fkcdbdash)
-
-    # Establish a connection to the master
-    db = connect2(GV.cfg[1], utilityMode=False)
-
-    # Find the highest contentid
-    max_content = max([GV.cfg[dbid]['content'] for dbid in GV.cfg])
-
-    # the GPCatalog object looks up information in the catalog:
-    #   - a list of catalog tables defined in the database
-    #   - which tables are "master only"
-    #   - the primary keys for the tables
-    #   - the oid columns for the tables
-    #   - the acl columns for the tables
-    #   - which tables have foreign keys on other tables
-    #   - etc
-    #
-    # Most of this is derived directly from the catalog definition, but
-    # some requires extra hinting.  
-    #
-    # see gppylib.gpcatalog for details
-    #
-    catalog = GPCatalog(db)
-    tables = catalog.getCatalogTables()
-
-    # check foreign key constraints            
-    checkFKConstraint(db, tables, max_content)
-
-    logger.info('-----------------------------------')
-    logger.info('Checking cross database consistency ...')
-
-    for cat in sorted(tables):
-        catname  = cat.getTableName()
-        pkey     = cat.getPrimaryKey()
-        master   = cat.isMasterOnly()
-        isShared = cat.isShared()
-        columns  = cat.getTableColumns(with_acl=False)
-
-        # Skip master only tables
-        if master:
-            continue
-
-        # skip shared/non-shared tables
-        if GV.opt['-S']:
-            if re.match("none", GV.opt['-S'], re.I) and isShared:
-                continue
-            if re.match("only", GV.opt['-S'], re.I) and not isShared:
-                continue
-
-        # Skip catalogs without primary key
-        if pkey == []:
-            logger.warn("[WARN] Skipped cross consistency check for %s" % 
-                        catname)
-            continue
-
-        qry = crossDbquery(max_content, catname, pkey, columns)
-        
-        # Execute the query
-        try:
-            curs  = db.query(qry)
-            nrows = curs.ntuples()
-        
-            if nrows == 0:
-                logger.info('[OK] Cross consistency check for ' + catname)
-            else:
-                setError(ERROR_NOREPAIR)
-                logger.info('[FAIL] Cross consistency check for ' + catname)
-                logger.error('  %s has %d issue(s)' % (catname, nrows))
-                # logger.error(qry)
-
-                # TODO: smarter handling of output
-                #   - Improved reporting when all segments are different 
-                #     from master
-                #   - Improved identification of what the difference is
-                #   - Dumping to a file when there is too much data
-                #   - Don't use "print"
-                fields = curs.listfields()
-                print "    " + " | ".join(fields)
-                for row in curs.getresult():
-                    print "    " + " | ".join(map(str, row))
-        
-        except Exception, e:
-            setError(ERROR_NOREPAIR)
-            logger.info('[FAIL] Cross consistency check for ' + catname)
-            logger.error('  Execution error: ' + str(e))
-            logger.error(qry)
-
-            
-    # Checking ACLs in the above query proved prohibitively difficult to
-    # do correctly, so we break the ACL check into a separate query.
-    for cat in sorted(tables):
-
-        catname  = cat.getTableName()
-        pkey     = cat.getPrimaryKey()
-        master   = cat.isMasterOnly()
-        isShared = cat.isShared()
-        acl      = cat.getTableAcl()
-
-        # Skip:
-        #   - master only tables
-        #   - tables without a primary key
-        #   - tables without acls
-        if master or pkey == [] or acl == None:
-            continue
-
-        # skip shared/non-shared tables
-        if GV.opt['-S']:
-            if re.match("none", GV.opt['-S'], re.I) and isShared:
-                continue
-            if re.match("only", GV.opt['-S'], re.I) and not isShared:
-                continue
-
-        # Build up the catalog query based on the catalog definition
-        #
-        # It is sufficient to only compare acls for objects that exist on
-        # both master and segment, so we can do a simple join on the primary
-        # key instead of the complex union/except queries above.
-        #
-        # Comparing ACLs cannot be done with a simple equality comparison
-        # since it is valid for the ACLs to have different order.  Instead
-        # we compare that both acls are subsets of each other => equality.
-        pkey = ', '.join(pkey)
-        qry = """
-        SELECT s.gp_segment_id, {primary_key}, 
-               m.{acl} as master_acl, s.{acl} as segment_acl
-        FROM {catalog} m
-        JOIN gp_dist_random('{catalog}') s using ({primary_key})
-        WHERE  not (m.{acl} @> s.{acl} and s.{acl} @> m.{acl}) or
-               (m.{acl} is null and s.{acl} is not null) or
-               (s.{acl} is null and m.{acl} is not null)
-        ORDER BY {primary_key}, s.gp_segment_id
-        """.format(catalog     = catname,
-                   primary_key = pkey,
-                   acl         = acl)
-
-
-        try:
-            curs  = db.query(qry)
-            nrows = curs.ntuples()
-        
-            if nrows == 0:
-                logger.info('[OK] Cross consistency acl check for ' + catname)
-            else:
-                setError(ERROR_NOREPAIR)
-                logger.info('[FAIL] Cross consistency acl check for ' + catname)
-                logger.error('  %s acl check has %d issue(s)' % (catname, nrows))
-                # logger.error(qry)
-
-                # TODO: smarter handling of output
-                #   - Improved reporting when all segments are different 
-                #     from master
-                #   - Improved identification of what the difference is
-                #   - Dumping to a file when there is too much data
-                #   - Don't use "print"
-                fields = curs.listfields()
-                print "    " + " | ".join(fields)
-                for row in curs.getresult():
-                    print "    " + " | ".join(map(str, row))
-        
-        except Exception, e:
-            setError(ERROR_NOREPAIR)
-            logger.info('[FAIL] Cross consistency check for ' + catname)
-            logger.error('  Execution error: ' + str(e))
-            logger.error(qry)
-
-
-class fileCheckThread(Thread):
-    # connect to host and look for oidlist for each segment on the host
-    # dirs is a dict mapping segid -> dir
-    def __init__(self, host, segs, env):
-       self.host = host
-       self.segs = segs
-       self.env = env
-       self.badinds = []
-       self.exception = None
-       Thread.__init__(self)
-
-    def run(self):
-        logger.debug('Checking bitmap indexes on host %s' % self.host)
-
-        oidsbyseg = {}
-        dboid = 0
-
-        for seg in self.segs:
-            db = connect2(seg)
-            curs = db.query('''
-    select d.oid as dboid, nspname, relname, relfilenode from 
-    pg_class c, pg_index i, pg_namespace n, pg_am a,
-    pg_database d where c.relam = a.oid and 
-    a.amname = 'bitmap' and i.indexrelid = c.oid and c.relnamespace = n.oid
-    and d.datname = current_database();
-            ''')
-            oidsbyseg[seg['dbid']] = {}
-            for row in curs.dictresult():
-                dboid = row['dboid']
-                oidsbyseg[seg['dbid']][row['relfilenode']] = row
-
-        
-        try:
-            cs = ""
-            for seg in self.segs:
-                dir = '%s/base/%s/' % (seg['datadir'], dboid)
-                segid = seg['dbid'];
-                cs += 'cd ' + dir + '; ls -1 | while read file; ' + \
-                       'do echo ' + str(segid) + '=$file; done; '
-
-            cmd = "ssh -o StrictHostKeyChecking=no %s (%s)" % \
-                    (self.host, cs)
-
-            logger.debug('running command %s' % cmd)
-            cmd = cmd.split(' ')
-            pipe = subprocess.Popen(cmd, env=self.env,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, close_fds=True)
-            result  = pipe.communicate();
-        except OSError, e:
-            logger.info('%s, %s' % (' '.join(cmd),  str(e)))
-            self.exception = e
-            return
-    
-        logger.debug('directory listing:\n%s' % result[0])
-        if pipe.returncode == 0:
-            oidseghash = {}
-            for line in result[0].split('\n'):
-                l = line.split('=')
-                if len(l) == 2:
-                    if l[0].isdigit() and l[1].isdigit():
-                        segid = int(l[0])
-                        oid = int(l[1])
-                        if oidseghash.get(segid) == None:
-                            oidseghash[segid] = {}
-
-                        oidseghash[segid][oid] = True
-
-            for seg in self.segs:
-                segid = seg['dbid']
-                # XXX: this doesn't handle tablespaces correctly
-                if not oidseghash.get(segid):
-                    for oid, row in oidsbyseg[segid].iteritems():
-                        self.badinds.append(row)
-                    break
-                  
-                for oid, row in oidsbyseg[segid].iteritems():
-                    oid = int(oid)
-                    logger.debug('Checking index oid %s' % oid)
-                    if not oidseghash[segid].get(oid):
-                        self.badinds.append(row)
-                        logger.debug('Could not find index with relfilenode %s' % oid)
-
-        else:
-            msg = 'Failed to fetch directory listing on host %s' % self.host
-            logger.error(result[1].strip())
-            self.exception = Exception(msg)
-            return
-
-
-
-def checkBitmapIndexes():
-    # In 4.0 the bitmap index check, which looks for bitmap indexes
-    # where the relfilenode does not exist on disk, is subsumed by the
-    # persistent object validation, which checks the same thing for
-    # every object using a more efficient methodology.
-    #
-    # However, the persistent validation functions only exist in 4.0+,
-    # for older versions we still want to at least check for the
-    # issue we know to be possible with bitmaps, so this test remains.
-    if GV.version >= "4.0":
-        return
-
-    logger.info('-----------------------------------')
-    logger.info('Checking bitmap indexes')
-
-    db = connect2(GV.cfg[1])
-    curs = db.query('''
-    select d.oid as dboid, nspname, relname, relfilenode 
-    from   pg_class c, pg_index i, pg_namespace n, pg_am a, pg_database d 
-    where  c.relam = a.oid and a.amname = 'bitmap' and i.indexrelid = c.oid 
-      and c.relnamespace = n.oid and d.datname = current_database();
-    ''')
-    if curs.ntuples() == 0:
-        logger.info('[OK] no bitmaps to check')
-        return
-
-    # same path as gpinitsystem
-    path = '/usr/kerberos/bin:/usr/sfw/bin:/opt/sfw/bin'
-    path += ':/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/ucb'
-    path += ':/sw/bin'
-    env = {'PATH': path, 'LOGNAME': GV.user, 'USER': GV.user,
-           'HOME': GV.home}
-    ssh = os.environ.get('SSH_AUTH_SOCK')
-    if ssh:
-        env['SSH_AUTH_SOCK'] = ssh
-
-    reindex = []
-    threads = []
-    mod = GV.opt['-B'] / 4
-    if mod == 0:
-        mod = 1
-
-    raised = False
-    badinds = []
-
-    hostsegmap = {}
-    for segid in GV.cfg:
-        seg = GV.cfg[segid]
-        if not hostsegmap.get(seg['hostname']):
-            hostsegmap[seg['hostname']] = []
-
-        hostsegmap[seg['hostname']].append(seg)
-
-    for host in hostsegmap.keys():
-        segs = hostsegmap[host]
-        # supply just the relfilenodes, not the full mapping
-        thread = fileCheckThread(host, segs, env)
-        thread.start()
-        threads.append(thread)
-
-        if (len(threads) % mod) == 0:
-            for th in threads:
-                logger.debug('waiting on thread %s' % th.getName())
-                th.join()
-                badinds += th.badinds
-                raised |= (th.exception != None)
-
-            threads = []
-
-    # stragglers 
-    for th in threads:
-        logger.debug('waiting on thread %s' % 
-                       th.getName())
-        th.join()
-        badinds += th.badinds
-        raised |= (th.exception != None)
-
-    threads = []
-
-    if raised:
-        setError(ERROR_NOREPAIR)
-        logger.info('[FAIL] bitmap indexes')
-    elif badinds:
-        setError(ERROR_REMOVE)
-
-        # unique
-        reindex = []
-
-        for row in badinds:
-            reindex.append(row['nspname'] + '.' + row['relname'])
-
-        a = list(set(reindex))
-        logger.info('bitmap test found %d bitmap issue(s)' % len(a))
-        for index in a[0:100]:
-            logger.error(index)
-        if len(a) > 100:
-            logger.error("...")
-
-        # Generate a repair script for all broken indexes
-        for index in a:
-            GV.Reindex.append(index)
-
-    else:
-        logger.info('[OK] bitmap indexes')
 
 def checkDepend():
     # Check for dependencies on non-existent objects
@@ -2521,13 +1964,528 @@ def closeDbs():
         db.close()
     GV.db = {} # remove everything
 
-#############
-def checkcatfordb(dbname):
+
+#-------------------------------------------------------------------------------
+def getCatObj(namestr):
+
+    db = connect2(GV.cfg[1], utilityMode=False)
+    try:
+        cat = GV.catalog.getCatalogTable(namestr)
+    except Exception, e:
+        logger.error("No such catalog table: %s" % str(namestr))
+        raise
+    return cat
+
+
+#-------------------------------------------------------------------------------
+def checkACL():
+    logger.info('-----------------------------------')
+    logger.info('Performing cross database ACL tests')
+
+    # looks up information in the catalog:
+    tables = GV.catalog.getCatalogTables()
+
+    for cat in sorted(tables):
+        checkTableACL(cat)
+
+#-------------------------------------------------------------------------------
+def checkTableACL(cat):
+
+    catname  = cat.getTableName()
+    pkey     = cat.getPrimaryKey()
+    master   = cat.isMasterOnly()
+    isShared = cat.isShared()
+    acl      = cat.getTableAcl()
+
+    # Skip:
+    #   - master only tables
+    #   - tables without a primary key
+    #   - tables without acls
+    if master or pkey == [] or acl == None:
+        return
+
+    # skip shared/non-shared tables
+    if GV.opt['-S']:
+        if re.match("none", GV.opt['-S'], re.I) and isShared:
+            return
+        if re.match("only", GV.opt['-S'], re.I) and not isShared:
+            return
+
+    # Comparing ACLs cannot be done with a simple equality comparison
+    # since it is valid for the ACLs to have different order.  Instead
+    # we compare that both acls are subsets of each other => equality.
+    pkey = ', '.join(pkey)
+    qry = """
+    SELECT s.gp_segment_id, {primary_key},
+           m.{acl} as master_acl, s.{acl} as segment_acl
+    FROM {catalog} m
+    JOIN gp_dist_random('{catalog}') s using ({primary_key})
+    WHERE  not (m.{acl} @> s.{acl} and s.{acl} @> m.{acl}) or
+           (m.{acl} is null and s.{acl} is not null) or
+           (s.{acl} is null and m.{acl} is not null)
+    ORDER BY {primary_key}, s.gp_segment_id
+    """.format(catalog     = catname,
+               primary_key = pkey,
+               acl         = acl)
+
+    # Execute the query
+    try:
+        db = connect2(GV.cfg[1], utilityMode=False)
+        curs  = db.query(qry)
+        nrows = curs.ntuples()
+
+        if nrows == 0:
+            logger.info('[OK] Cross consistency acl check for ' + catname)
+        else:
+            setError(ERROR_NOREPAIR)
+            logger.info('[FAIL] Cross consistency acl check for ' + catname)
+            logger.error('  %s acl check has %d issue(s)' % (catname, nrows))
+            # logger.error(qry)
+
+            fields = curs.listfields()
+            print "    " + " | ".join(fields)
+            for row in curs.getresult():
+                print "    " + " | ".join(map(str, row))
+
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] Cross consistency check for ' + catname)
+        logger.error('  Execution error: ' + str(e))
+        logger.error(qry)
+
+
+#-------------------------------------------------------------------------------
+def checkForeignKey():
+
+    logger.info('-----------------------------------')
+    logger.info('Performing foreign key tests')
+
+    # looks up information in the catalog:
+    tables = GV.catalog.getCatalogTables()
+
+    for cat in sorted(tables):
+        checkTableForeignKey(cat)
+
+#-------------------------------------------------------------------------------
+def checkTableForeignKey(cat):
+    
+    catname  = cat.getTableName()
+    fkeylist = cat.getForeignKeys()
+    isShared = cat.isShared()
+    pkeylist = cat.getPrimaryKey()
+
+    # skip tables without fkey
+    if len(fkeylist) <= 0:
+        return
+    if cat.isMasterOnly():
+        return
+    if len(cat.getPrimaryKey()) <= 0:
+        return
+
+    # skip shared/non-shared tables
+    if GV.opt['-S']:
+        if re.match("none", GV.opt['-S'], re.I) and isShared:
+            return
+        if re.match("only", GV.opt['-S'], re.I) and not isShared:
+            return
+ 
+    # primary key lists
+    cat1pkeys = []
+    pkeys     = []
+
+    # build array of catalog primary keys (with aliases) and
+    # primary key alias list
+    for pk in pkeylist:
+        cat1pkeys.append('cat1.' + pk + ' as %s_%s' % (catname,pk))
+        pkeys.append('%s_%s' % (catname,pk))
+
+    logger.info('Building %d queries to check FK constraint on table %s' % (len(fkeylist),catname))
+    for fkeydef in fkeylist:
+        fkeystr     = ', '.join(fkeydef.getColumns())
+        cat1fkeystr = 'cat1.' + ', cat1.'.join(fkeydef.getColumns())
+        pkeystr     = ', '.join(fkeydef.getPKey())
+        pkeytabname = fkeydef.getPkeyTableName()
+
+        qry = fkQuery().format(cat1_dot_primary_key = ', '.join(cat1pkeys) ,
+                            primary_key_alias    = ', '.join(pkeys),
+                            FK1      = fkeystr,
+                            CATALOG1 = catname,
+                            CATALOG2 = pkeytabname,
+                            PK2      = pkeystr,
+                            cat2_dot_primary_key = '%s_%s' % (pkeytabname,pkeystr)
+                            )
+        # Execute the query
+        try:
+            db = connect2(GV.cfg[1], utilityMode=False)
+            curs  = db.query(qry)
+            nrows = curs.ntuples()
+
+            if nrows == 0:
+                logger.info('[OK] Foreign key check for %s(%s) referencing %s(%s)'%
+                            (catname, fkeystr, pkeytabname, pkeystr))
+            else:
+                setError(ERROR_NOREPAIR)
+                logger.info('[FAIL] Foreign key check for %s(%s) referencing %s(%s)'%
+                            (catname, fkeystr, pkeytabname, pkeystr))
+                logger.error('  %s has %d issue(s): entry has NULL reference of %s(%s)'% 
+                            (catname, nrows, pkeytabname, pkeystr))
+
+                fields = curs.listfields()
+                print "    " + " | ".join(fields)
+                for row in curs.getresult():
+                    print "    " + " | ".join(map(str, row))
+
+        except Exception, e:
+            setError(ERROR_NOREPAIR)
+            logger.info('[FAIL] Foreign key check for ' + catname)
+            logger.error('  Execution error: ' + str(e))
+            logger.error(qry)
+
+
+#-------------------------------------------------------------------------------
+def fkQuery():
+
+    qtempl = '''
+    SELECT cat1.gp_segment_id, {cat1_dot_primary_key}, cat1.{FK1} as {cat2_dot_primary_key}
+    FROM
+    gp_dist_random('{CATALOG1}') cat1 LEFT OUTER JOIN
+    gp_dist_random('{CATALOG2}') cat2
+    ON (cat1.gp_segment_id = cat2.gp_segment_id AND
+        cat1.{FK1} = cat2.{PK2} )
+    WHERE cat2.{PK2} is NULL
+    AND cat1.{FK1} != 0
+    UNION ALL
+    SELECT -1 as gp_segment_id, {cat1_dot_primary_key}, cat1.{FK1} as {cat2_dot_primary_key}
+    FROM
+    {CATALOG1} cat1 LEFT OUTER JOIN
+    {CATALOG2} cat2
+    ON (cat1.gp_segment_id = cat2.gp_segment_id AND
+        cat1.{FK1} = cat2.{PK2} )
+    WHERE cat2.{PK2} is NULL
+    AND cat1.{FK1} != 0
+    ORDER BY {primary_key_alias}, gp_segment_id
+    '''
+    return qtempl
+
+
+#-------------------------------------------------------------------------------
+def checkCrossConsistency():
+    logger.info('-----------------------------------')
+    logger.info('Performing cross database consistency tests')
+
+    # looks up information in the catalog:
+    tables = GV.catalog.getCatalogTables()
+
+    for cat in sorted(tables):
+        checkTableCrossConsistency(cat)
+
+
+#-------------------------------------------------------------------------------
+# Cross consistency check for each catalog table
+def checkTableCrossConsistency(cat):
+    
+    catname  = cat.getTableName()
+    pkey     = cat.getPrimaryKey()
+    master   = cat.isMasterOnly()
+    isShared = cat.isShared()
+    columns  = cat.getTableColumns(with_acl=False)
+
+    # Skip master only tables
+    if master:
+        return
+
+    # skip shared/non-shared tables
+    if GV.opt['-S']:
+        if re.match("none", GV.opt['-S'], re.I) and isShared:
+            return
+        if re.match("only", GV.opt['-S'], re.I) and not isShared:
+            return
+
+    # Skip catalogs without primary key
+    if pkey == []:
+        logger.warn("[WARN] Skipped cross consistency check for %s" %
+                    catname)
+        return
+
+    qry = crossDbquery(GV.max_content, catname, pkey, columns)
+
+    # Execute the query
+    try:
+        db = connect2(GV.cfg[1], utilityMode=False)
+        curs  = db.query(qry)
+        nrows = curs.ntuples()
+
+        if nrows == 0:
+            logger.info('[OK] Cross consistency check for ' + catname)
+        else:
+            setError(ERROR_NOREPAIR)
+            logger.info('[FAIL] Cross consistency check for ' + catname)
+            logger.error('  %s has %d issue(s)' % (catname, nrows))
+            # logger.error(qry)
+
+            # TODO: smarter handling of output
+            #   - Improved reporting when all segments are different 
+            #     from master
+            #   - Improved identification of what the difference is
+            #   - Dumping to a file when there is too much data
+            #   - Don't use "print"
+            fields = curs.listfields()
+            print "    " + " | ".join(fields)
+            for row in curs.getresult():
+                print "    " + " | ".join(map(str, row))
+
+    except Exception, e:
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] Cross consistency check for ' + catname)
+        logger.error('  Execution error: ' + str(e))
+        logger.error(qry)
+
+
+#-------------------------------------------------------------------------------
+def crossDbquery(max_content, catname, pkey, columns):
+
+        # Build up the query based on catalog definition
+        pkey      = ', '.join(pkey)
+        catcols   = 'c.' + ', c.'.join(columns)
+
+        # MPP-10286 - oid inconsistencies for temp schemas
+        #
+        # Due to oid differences for temp schemas the query would show
+        # relnamespace and typnamespace differences for any table defined
+        # in a temporary schema.  For the purposes of this consistency
+        # test we hack around this right now by joining to pg_namespace
+        # and eliminating temporary schemas.
+        if catname == 'pg_class':
+            temp_schema_hack_1 = """
+            JOIN gp_dist_random('pg_namespace') as n
+              ON (c.relnamespace = n.oid and n.nspname !~ '^pg_temp_' and
+                  c.gp_segment_id = n.gp_segment_id)
+            """
+            temp_schema_hack_2 = """
+            JOIN pg_namespace as n
+              ON (c.relnamespace = n.oid and n.nspname !~ '^pg_temp_')
+            """
+        elif catname == 'pg_type':
+            temp_schema_hack_1 = """
+            JOIN gp_dist_random('pg_namespace') as n
+              ON (c.typnamespace = n.oid and n.nspname !~ '^pg_temp_' and
+                  c.gp_segment_id = n.gp_segment_id)
+            """
+            temp_schema_hack_2 = """
+            JOIN pg_namespace as n
+              ON (c.typnamespace = n.oid and n.nspname !~ '^pg_temp_')
+            """
+        else:
+            temp_schema_hack_1 = ""
+            temp_schema_hack_2 = ""
+
+
+        # Construct the query
+        # 
+        # Basic idea of the query is:
+        #   SELECT (all rows on segments different from master)
+        #   UNION ALL
+        #   SELECT (all rows on master different from segments)
+        qry = """
+        SELECT * FROM (
+            SELECT c.gp_segment_id, {columns}
+            FROM   gp_dist_random('{catalog}') as c {schema_join_1}
+            WHERE  ({primary_key}) in (
+               SELECT {primary_key} FROM (
+                   select c.gp_segment_id, {columns}
+                   from   gp_dist_random('{catalog}') as c
+                   except all 
+                   select segid as gp_segment_id, {columns}
+                   from   {catalog} as c, 
+                          generate_series(0,{max_content}) as segid
+               ) segments
+            )
+        ) x
+        UNION ALL
+        SELECT * FROM (
+            select c.gp_segment_id, {columns}
+            from   {catalog} as c {schema_join_2}
+            where ({primary_key}) in (
+               SELECT {primary_key} FROM (
+                   select segid as gp_segment_id, {columns}
+                   from   {catalog} as c, 
+                          generate_series(0,{max_content}) as segid
+                   except all 
+                   select c.gp_segment_id, {columns}
+                   from   gp_dist_random('{catalog}') as c
+               ) master
+            )
+        ) y
+        order by {primary_key}, gp_segment_id
+        """.format(max_content = max_content,
+                   catalog     = catname,
+                   primary_key = pkey,
+                   columns     = catcols,
+                   schema_join_1 = temp_schema_hack_1,
+                   schema_join_2 = temp_schema_hack_2)
+
+        return qry
+
+
+
+############################################################################
+# version = X.X : run this test as part of running all tests on gpdb <= X.X  
+#                 individually, any test should be ok run on any version
+#  online = True: okie to run gpcheckcat online
+#   order = X   : the order test should be run when running all tests
+############################################################################
+
+name_test = {
+    "namespace":
+    {
+         "description": "Check for leaked temporary schema and missing schema definition",
+         "fn": lambda: checkPGNamespace(),
+         "version": 'main',
+         "order": 1,
+         "online": False
+    },
+    "cc":
+    {
+         "description": "Cross consistency check",
+         "fn": lambda: checkCrossConsistency(),
+         "version": 'main',
+         "order": 2,
+         "online": True
+    },
+    "fk":
+    {
+         "description": "Foreign key check",
+         "fn": lambda: checkForeignKey(),
+         "version": 'main',
+         "order": 3,
+         "online": True
+    },
+    "acl":
+    {
+         "description": "Check ACL",
+         "fn": lambda: checkACL(),
+         "version": 'main',
+         "order": 4,
+         "online": True
+    },
+    "persistent":
+    {
+         "description": "Check persistent table: various checks",
+         "fn": lambda: checkPersistentTables(),
+         "version": 'main',
+         "order": 5,
+         "online": False
+    },
+    "partition":
+    {
+         "description": "Check pg_partition branch integrity, partition with oids check, partition distribution policy",
+         "fn": lambda: checkPartitionIntegrity(),
+         "version": 'main',
+         "order": 6,
+         "online": True
+    },
+    "pgclass":
+    {
+         "description": "Check pg_class: report entry that does not have any correspond pg_attribute entry",
+         "fn": lambda: checkPGClass(),
+         "version": 'main',
+         "order": 7,
+         "online": False
+    },
+    "toasttable":
+    {
+         "description": "Check toast table: report orphaned toast tables, no correspond pg_class entry",
+         "fn": lambda: checkPGClassToast(),
+         "version": 'main',
+         "order": 8,
+         "online": False
+    },
+    "pgattribute":
+    {
+         "description": "Check pg_attribute: report entry that does not have correspond pg_class entry",
+         "fn": lambda: checkPGAttribute(),
+         "version": '4.1',
+         "order": 9,
+         "online": False
+    },
+    "pgtype":
+    {
+         "description": "Check pg_type: report entry that does not have correspond pg_class entry",
+         "fn": lambda: checkPGType(),
+         "version": '4.1',
+         "order": 10,
+         "online": False
+    },
+    "exttable":
+    {
+         "description": "Check pg_exttable: report entry that does not have correspond pg_class entry",
+         "fn": lambda: checkPGExtTable(),
+         "version": '4.1',
+         "order": 11,
+         "online": False
+    },
+    "distribution":
+    {
+         "description": "Check constraints on randomly distributed tables",
+         "fn": lambda: checkDistribPolicy(),
+         "version": 'main',
+         "order": 12,
+         "online": False
+    },
+    "dependencies":
+    {
+         "description": "Check for dependencies on non-existent objects",
+         "fn": lambda: checkDepend(),
+         "version": 'main',
+         "order": 13,
+         "online": False
+    },
+    "owners":
+    {
+         "description": "Check table ownership: report each table that has an inconsistency with the master database",
+         "fn": lambda: checkOwners(),
+         "version": 'main',
+         "order": 14,
+         "online": True
+    },
+    "indexes":
+    {
+         "description": "Check for relhasindex variations amongst the segments",
+         "fn": lambda: checkIndexes(),
+         "version": 'main',
+         "order": 15,
+         "online": True
+    }
+}
+
+
+#-------------------------------------------------------------------------------
+def listAllTests():
+
+    logger.info("Gpcheckcat current tests:\n")
+    for name in sorted(name_test, key=lambda x: name_test[x]["order"]):
+        print "%2d. %15s: %s" % \
+              (name_test[name]["order"], name, name_test[name]["description"])
+    print ''
+
+#-------------------------------------------------------------------------------
+def runOneTest(name):
+
+    if not name_test.has_key(name):
+        logger.info("%s: This is not a valid test" % (name))
+        return
+    if GV.opt['-O'] and not name_test[name]["online"]:
+        logger.info("%s: Skip this test in online mode" % (name))
+        return
+    else:
+        name_test[name]["fn"]()
+
+
+#-------------------------------------------------------------------------------
+def runAllTests():
     '''
     perform catalog check for specified database
     '''
-
-    GV.dbname = dbname
 
     try:
         if GV.opt['-T']:
@@ -2547,31 +2505,16 @@ def checkcatfordb(dbname):
         logger.fatal('Unable to create temporary directory')
         sys.exit(1)
 
-    checkPartitionIntegrity()        
     logger.info('----------------------------------------------')
     logger.info('Performing segment specific consistency checks')
     logger.info('----------------------------------------------')
-    if (not GV.opt['-O']):
-        if GV.version < "4.1":
-            # these checks subsumed by foreign key checks in 4.1
-            checkPGClass()
-            checkPGAttribute()
-            checkPGType()
-            checkPGExtTable()
-        checkPGClassToast()
-        checkPGNamespace()
-        checkDistribPolicy()
-    checkOwners()
-    checkIndexes()
-    if (not GV.opt['-O']):
-        checkBitmapIndexes()
-        checkDepend()
-        checkPersistentTables()
 
-    crossDbCheck()
+    for name in sorted(name_test, key=lambda x: name_test[x]["order"]):
+        if name_test[name]["version"] >= GV.version:
+            runOneTest(name)
 
     closeDbs()
-    
+
     logger.info("------------------------------------")
 
     fixes = (len(GV.Remove) > 0 or 
@@ -2630,7 +2573,6 @@ def checkcatfordb(dbname):
             script += '%secho "Repairing segment %i"\n' % (maybeRemove, seg)
             script += '''
 {maybe}env PGOPTIONS="-c gp_session_role=utility" psql -X -a -h {hostname} -p {port} -f {fname} "{dbname}" > {fname}.out
-
 '''.format(
                 maybe = maybeRemove,
                 hostname = c['hostname'], 
@@ -2763,13 +2705,28 @@ def checkcatfordb(dbname):
 
 
 
+
+#-------------------------------------------------------------------------------
+def getCatalog():
+    # Establish a connection to the master & looks up info in the catalog
+    db = connect2(GV.cfg[1], utilityMode=False)
+    return GPCatalog(db)
+
+
+
 #############
 if __name__ == '__main__':
 
     parseCommandLine()
     GV.version = getversion()
     GV.cfg = getGPConfiguration()
+    GV.max_content = max([GV.cfg[dbid]['content'] for dbid in GV.cfg])
+    GV.catalog = getCatalog()
     
+    if GV.opt['-l']:
+        listAllTests()
+        sys.exit(GV.retcode)
+
     # turn on toast table check for 3.2
     if GV.opt['-o'] == False and not GV.version == "8.2.6":
         GV.opt['-o'] = True
@@ -2779,7 +2736,23 @@ if __name__ == '__main__':
         logger.info('-----------------------------------')
         logger.info("Performing check for database \'%s\', version %s" % (dbname, GV.version ))
         logger.info('-----------------------------------')
-        checkcatfordb(dbname)
+
+        GV.dbname = dbname
+
+        if GV.opt['-R']:
+            runOneTest(GV.opt['-R'])
+        elif GV.opt['-C']:
+            namestr = GV.opt['-C']
+            try:
+                cat = getCatObj(namestr)
+                checkTableCrossConsistency(cat)
+                checkTableForeignKey(cat)
+                checkTableACL(cat)
+            except Exception, e:
+                setError(ERROR_NOREPAIR)
+                sys.exit(GV.retcode)
+        else:
+            runAllTests()
 
         GV.Remove = {}
         GV.ReSync = {}
