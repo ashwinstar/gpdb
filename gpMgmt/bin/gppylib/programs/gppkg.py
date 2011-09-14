@@ -89,7 +89,7 @@ class GpPkgProgram:
         add_to.add_option('-c', '--clean', help='clean the cluster of the given gppkg', metavar='<package>', action='store_true')
         add_to.add_option('-i', '--install', help='install the given gppkg', metavar='<package>')
         add_to.add_option('-u', '--update', help='update the given gppkg', metavar='<package>')
-        add_to.add_option('-r', '--remove', help='remove the given gppkg', metavar='<package>')
+        add_to.add_option('-r', '--remove', help='remove the given gppkg', metavar='<name>-<version>')
         add_to.add_option('-b', '--build', help='build a gppkg', metavar='<directory>')
         add_to.add_option('-q', '--query', help='query the given gppkg', metavar='<package>')
         #add_to.add_option('--query', help='query the given gppkg', metavar='<package>')
@@ -217,20 +217,14 @@ class GpPkgProgram:
             else:
                 logger.error('Invalid option %s' % self.query)
         elif self.remove:
-            pkg = None
-            pkg_file_list = ListFilesByPattern(GPPKG_ARCHIVE_PATH, self.remove + '*' + GPPKG_EXTENSION).run() 
+            if self.remove.count('-') != 1:
+                raise ExceptionNoStackTraceNeeded('Please specify the correct <name>-<version>.')
+            pkg_file_list = ListFilesByPattern(GPPKG_ARCHIVE_PATH, self.remove + '-*-*' + GPPKG_EXTENSION).run() 
             if len(pkg_file_list) == 0:
-                raise ExceptionNoStackTraceNeeded('Package %s has not been installed' % self.remove)
-           
-            for pkg_file in  pkg_file_list:
-                name_version = pkg_file[:pkg_file.index('-', pkg_file.index('-') + 1)] 
-                if self.remove == name_version:
-                    pkg = Gppkg.from_package_path(os.path.join(GPPKG_ARCHIVE_PATH, pkg_file))
-                    break
-
-            if pkg is None:
-                raise ExceptionNoStackTraceNeeded('Please specify the correct name and version number')
-                
+                raise ExceptionNoStackTraceNeeded('Package %s has not been installed.' % self.remove)
+            assert len(pkg_file_list) == 1
+            pkg_file = pkg_file_list[0]
+            pkg = Gppkg.from_package_path(os.path.join(GPPKG_ARCHIVE_PATH, pkg_file))
             UnInstallGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
         elif self.update:
             pkg = Gppkg.from_package_path(self.update)
