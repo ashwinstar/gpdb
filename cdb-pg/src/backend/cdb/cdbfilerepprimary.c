@@ -1482,10 +1482,7 @@ FileRepPrimary_MirrorVerify(
 									   FILEREP_UNDEFINED), 
 					 FileRep_errdetail_Shmem(),
 					 FileRep_errdetail_ShmemAck(),
-					 FileRep_errcontext()));	
-			
-			FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
-			FileRepSubProcess_ProcessSignals();
+					 FileRep_errcontext()));				
 		}
 	}
 	

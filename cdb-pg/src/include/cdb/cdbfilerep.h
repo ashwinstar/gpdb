@@ -814,14 +814,12 @@ typedef enum FileRepOperationVerificationType_e
 	FileRepOpVerifyType_NotInitialized=0,
 
 	FileRepOpVerifyType_SummaryItems,
-	FileRepOpVerifyType_DirectoryTreeHash, 
 	FileRepOpVerifyType_EnhancedBlockHash,
 
 	FileRepOpVerifyType_RequestParameters,
 	/* Not really used now, but could be useful for repairs 
 	   if we decided to do those
 	*/
-	FileRepOpVerifyType_FileContents,        
 	FileRepOpVerifyType_DirectoryContents,
 
 	/* 
@@ -883,13 +881,6 @@ typedef struct FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s
 } FileRepOperationDescriptionVerify_DirectoryContents_Mirror_s;
 
 
-typedef struct FileRepOperationDescriptionVerify_DirectoryTreeHash_s 
-{
-	pg_crc32		hashcode;
-	uint32          num_entries;
-
-} FileRepOperationDescriptionVerify_DirectoryTreeHash_s;
-
 
 typedef enum FileRepVerify_CompareException_e 
 {
@@ -911,34 +902,17 @@ typedef struct FileRepOperationDescriptionVerify_EnhancedBlockHash_s
 	FileRepVerify_CompareException_e exception;
 	
 	bool isOnMirror;
+	bool lastBlock;
 
 } FileRepOperationDescriptionVerify_EnhancedBlockHash_s;
 
 
-typedef struct FileRepOperationDescriptionVerify_FileContents_s 
-{
-	int32		offset;
-	/* blocknum if buffer pool */
-	
-	uint32		dataLength; //moved into messageBodyLength in the message header, can be removed 
-	/* 32k for buffer pool */
-	
-	//Used to determine type of relnode being compared (ao, heap, btree index etc. so compare can take into account the proper exceptions)
-	//        char relstorage;
-	//		char relkind;
-	//		int64  relam;
-	FileRepVerify_CompareException_e exception;
-	int64  AO_logicalEof;
-	
-} FileRepOperationDescriptionVerify_FileContents_s;
 
 typedef struct FileRepOperationDescriptionVerify_u 
 {
 	FileRepOperationDescriptionVerify_SummaryItems_s summaryItems;
-	FileRepOperationDescriptionVerify_DirectoryTreeHash_s dirTreeHash;        //TODO: could be made into a new type of summary item
 	FileRepOperationDescriptionVerify_EnhancedBlockHash_s enhancedBlockHash;
 	FileRepOperationDescriptionVerify_RequestParameters_s requestParameters;
-	FileRepOperationDescriptionVerify_FileContents_s fileContents;		        //Not really used right now but could be helpful if we decided to repair
 	
 	//Both used to support 	FileRepOpVerifyType_DirectoryContents - one for what primary sends to mirror and one for what mirror send back
 	FileRepOperationDescriptionVerify_DirectoryContents_Primary_s dirContents;  

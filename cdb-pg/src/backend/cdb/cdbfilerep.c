@@ -329,10 +329,8 @@ const char *
 FileRepOperationVerificationTypeToString[]= {
 		_("not initialized"),
 		_("summary items"),
-		_("recursive directory tree hash"),
 		_("enhanced block hash"),
 		_("send request parameters"),
-		_("file contents"),
 		_("directory contents"),
 
 };

@@ -497,6 +497,7 @@ sub ignore_list
 		pg_utilitymodedtmredo
 		gp_dbid
 		core
+		db_dumps
 		);
 
 	# add any other expressions (eg user-supplied)

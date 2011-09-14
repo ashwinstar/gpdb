@@ -140,7 +140,7 @@ class DbURL:
 def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTableMods=None):
 
     if utility:
-        options = '-c gp_session_role=utility'
+        options = '-c gp_session_role=utility' 
     else:
         options = ''
 

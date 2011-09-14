@@ -23,6 +23,10 @@
  */
 #define DEBUG_PRINTS_WHILE_LOCKS_HELD 0
 
+/* Useful for debugging testing - really should provide a
+ * gpverify option to control */
+#define DO_ENHANCED_COMPARES 1
+
 /* Should I use the list of specific subdirectories below
  * Or just the default base directory and discover any not-excluded 
  * directories below that

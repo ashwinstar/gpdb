@@ -327,7 +327,7 @@ class SendFilerepVerifyMessage(Command):
         'recovery.done']
 
     DEFAULT_IGNORE_DIRS = [
-        'pgsql_tmp', 'pg_xlog', 'pg_log', 'pg_stat_tmp', 'pg_changetracking'
+        'pgsql_tmp', 'pg_xlog', 'pg_log', 'pg_stat_tmp', 'pg_changetracking', 'pg_verify', 'db_dumps', 'pg_utilitymodedtmredo'
     ]
 
     def __init__(self, name, host, port, token, full=None, verify_file=None, verify_dir=None,
