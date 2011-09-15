@@ -144,14 +144,6 @@ typedef struct RefInfo
 #define RefInfo_WindowImmediate(rinfo, context) \
 	( !(rinfo)->isagg && !(rinfo)->needcount )
 
-/* Does the given (WindowFrameEdge*) contain an expressioon that must be
- * evaluated at run time (i.e., may contain a Var)?
- */
-#define EDGE_IS_DELAYED(edge) ( (edge) != NULL \
-	&& ( (edge)->kind == WINDOW_DELAYED_BOUND_PRECEDING \
-		|| (edge)->kind == WINDOW_DELAYED_BOUND_FOLLOWING ) \
-	&& (edge)->val != NULL )
-
 /* SpecInfo represents a distinct, referenced WindowSpec from the query.
  * They are stored in the WindowContext's array (nspecinfos,specinfos).
  *
@@ -1487,12 +1479,12 @@ make_lower_targetlist(Query *parse,
 		if ( f == NULL )
 			continue;
 			
-		if ( EDGE_IS_DELAYED(f->trail) )
+		if ( window_edge_is_delayed(f->trail) )
 		{
 			extravars = list_concat(extravars, 
 							pull_var_clause(f->trail->val, false));
 		}
-		if ( EDGE_IS_DELAYED(f->lead) )
+		if ( window_edge_is_delayed(f->lead) )
 		{
 			extravars = list_concat(extravars, 
 							pull_var_clause(f->lead->val, false));
@@ -4231,4 +4223,24 @@ contain_windowref(Node *node, void *context)
 	
 	return expression_tree_walker(node, contain_windowref, NULL);
 }
-				  
+
+/*
+ * Does the given window frame edge contains an expression that must be
+ * evaluated at run time (i.e., may contain a Var)?
+ */
+bool
+window_edge_is_delayed(WindowFrameEdge *edge)
+{
+	if (edge == NULL)
+		return false;
+	if ((edge->kind == WINDOW_DELAYED_BOUND_PRECEDING ||
+		 edge->kind == WINDOW_DELAYED_BOUND_FOLLOWING) &&
+			edge->val != NULL)
+		return true;
+
+	/* Non-delayed frame edge must not have Var */
+	Assert(pull_var_clause((Node *) edge->val, false) == NIL);
+
+	return false;
+}
+

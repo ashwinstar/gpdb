@@ -7960,6 +7960,25 @@ group by
 ERROR:  unresolved grouping key in window query
 HINT:  You may need to use explicit aliases and/or to refer to grouping keys in the same way throughout the query.
 -- End MPP-12082
+-- MPP-12913
+select count(*) over (partition by 1 order by cn rows between 1 preceding and 1 preceding) from sale;
+ count 
+-------
+     0
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+     1
+(12 rows)
+
+-- End MPP-12913
 -- MPP-13710
 create table redundant_sort_check (i int, j int, k int) distributed by (i);
 explain select count(*) over (order by i), count(*) over (partition by i order by j) from redundant_sort_check;

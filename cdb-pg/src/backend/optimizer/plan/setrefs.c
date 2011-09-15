@@ -20,9 +20,9 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
+#include "optimizer/pathnode.h"
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
-#include "optimizer/pathnode.h"
 #include "parser/parsetree.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_expr.h" /* exprType, exprTypmod */
@@ -758,14 +758,23 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 				
 				if (frame != NULL)
 				{
-					if (frame->trail != NULL)
+					/*
+					 * Fix reference of frame edge expression *only*
+					 * when the edge is DELAYED type. Otherwise it will have
+					 * potential risk that the edge expression is converted
+					 * to Var (see fix_upper_expr_mutator for reason), which
+					 * cannot be evaluated in the executor's init stage.
+					 * It is ok that DELAYED frame edges have Var, since
+					 * they are evaluated at the executor's run time stage.
+					 */
+					if (window_edge_is_delayed(frame->trail))
 						frame->trail->val =
-						fix_upper_expr(glob, frame->trail->val, 
-									   subplan_itlist, rtoffset, true);
-					if (frame->lead != NULL)
+							fix_upper_expr(glob, frame->trail->val,
+										   subplan_itlist, rtoffset, true);
+					if (window_edge_is_delayed(frame->lead))
 						frame->lead->val =
-						fix_upper_expr(glob, frame->lead->val, 
-									   subplan_itlist, rtoffset, true);
+							fix_upper_expr(glob, frame->lead->val,
+										   subplan_itlist, rtoffset, true);
 				}
 			}
 			pfree(subplan_itlist);

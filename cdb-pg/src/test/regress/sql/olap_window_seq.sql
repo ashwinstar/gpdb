@@ -1475,6 +1475,9 @@ group by
     lower(f);
 
 -- End MPP-12082
+-- MPP-12913
+select count(*) over (partition by 1 order by cn rows between 1 preceding and 1 preceding) from sale;
+-- End MPP-12913
 -- MPP-13710
 create table redundant_sort_check (i int, j int, k int) distributed by (i);
 explain select count(*) over (order by i), count(*) over (partition by i order by j) from redundant_sort_check;
