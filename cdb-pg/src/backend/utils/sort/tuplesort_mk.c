@@ -481,7 +481,8 @@ static Datum tupsort_fetch_datum_itup(MKEntry *a, MKContext *mkctxt, MKLvContext
 static int32 estimateMaxPrepareSizeForEntry(MKEntry *a, struct MKContext *mkctxt);
 static int32 estimatePrepareSpaceForChar(struct MKContext *mkContext, MKEntry *e, Datum d, bool isCHAR);
 
-static void tuplesort_limit_insert(Tuplesortstate_mk *state, MKEntry *e);
+static void tuplesort_inmem_limit_insert(Tuplesortstate_mk *state, MKEntry *e);
+static void tuplesort_inmem_nolimit_insert(Tuplesortstate_mk * state, MKEntry * e);
 static void tuplesort_heap_insert(Tuplesortstate_mk *state, MKEntry *e);
 static void tuplesort_limit_sort(Tuplesortstate_mk *state);
 
@@ -1147,33 +1148,42 @@ puttuple_common(Tuplesortstate_mk *state, MKEntry *e)
              */
             if (!state->mkheap && state->entry_count >= state->entry_allocsize - 1) 
             {
-				growSucceed = grow_unsorted_array(state);
+            	growSucceed = grow_unsorted_array(state);
             }
 
             /* full sort? */
             if (state->mkctxt.limit == 0)
-			{
-            	state->entries[state->entry_count] = *e;
-            	if ( state->mkctxt.fetchForPrep)
-            		state->mkctxt.estimatedExtraForPrep += estimateMaxPrepareSizeForEntry(&state->entries[state->entry_count], &state->mkctxt);
-            	state->entry_count++;
-			}
+            {
+            	tuplesort_inmem_nolimit_insert(state,e);
+            }
             else
             {
-                tuplesort_limit_insert(state, e);
-                return;
+            	/* Limit sort insert */
+            	tuplesort_inmem_limit_insert(state,e);
             }
 
             /* If out of work_mem, switch to diskmode */
             if(!growSucceed)
             {
-				state->arraySizeBeforeSpill = state->entry_allocsize;
-				state->memUsedBeforeSpill = MemoryContextGetPeakSpace(state->sortcontext);
-				inittapes_mk(state, is_sortstate_rwfile(state) ? state->pfile_rwfile_prefix : NULL);
-                Assert(state->status == TSS_BUILDRUNS);
+            	if (state->mkheap != NULL)
+            	{
+                	/* Corner case. LIMIT == amount of entries in memory.
+                	 * In this case, we failed to grow array, but we just created
+                	 * the heap. No need to spill in this case, we'll just use the in-memory heap. */
+            		Assert(state->mkctxt.limit != 0);
+            		Assert(state->numTuplesInMem == state->mkheap->count);
+            	}
+            	else
+            	{
+            		Assert(state->mkheap == NULL);
+            		Assert(state->entry_count > 0);
+            		state->arraySizeBeforeSpill = state->entry_allocsize;
+            		state->memUsedBeforeSpill = MemoryContextGetPeakSpace(state->sortcontext);
+            		inittapes_mk(state, is_sortstate_rwfile(state) ? state->pfile_rwfile_prefix : NULL);
+            		Assert(state->status == TSS_BUILDRUNS);
+            	}
             }
 
-			state->numTuplesInMem++;
             break;
 
         case TSS_BUILDRUNS:
@@ -3227,43 +3237,93 @@ static void tupsort_prepare_char(MKEntry *a, bool isCHAR)
     mke_set_refc(a);
 }
 
-static void tuplesort_limit_insert(Tuplesortstate_mk *state, MKEntry *e)
+/*
+ * tuplesort_inmem_limit_insert
+ *   Adds a tuple for sorting when we are doing LIMIT sort and we (still) fit in memory
+ *   If we're in here, it means we haven't exceeded memory yet.
+ * Three cases:
+ *   - we're below LIMIT tuples. Then add to unsorted array, increase memory
+ *   - we just hit LIMIT tuples. Switch to using a heap instead of array, so
+ *     we only keep top LIMIT tuples.
+ *   - we're above LIMIT tuples. Then add to heap, don't increase memory usage
+ */
+static void
+tuplesort_inmem_limit_insert(Tuplesortstate_mk *state, MKEntry *entry)
 {
-    int i;
-
     Assert(state->mkctxt.limit > 0);
     Assert(is_under_sort_ctxt(state));
-    Assert(!mke_is_empty(e));
+    Assert(!mke_is_empty(entry));
 
-    if(!state->mkheap)
+    Assert(state->status == TSS_INITIAL);
+
+    if (state->mkheap == NULL)
     {
-        if(state->entry_count < state->entry_allocsize &&
-		   state->entry_count < state->mkctxt.limit)
+    	Assert(state->entry_count < state->entry_allocsize);
+
+    	/* We haven't created the heap yet.
+    	 * First add element to unsorted array so we don't lose it.
+    	 * Then, we have two cases:
+    	 *  A. if we're under limit, we're done, iterate.
+    	 *  B. We just hit the limit. Create heap. Add to heap.
+    	 */
+
+        state->entries[state->entry_count++] = *entry;
+		state->numTuplesInMem++;
+
+		if (state->entry_count == state->mkctxt.limit)
         {
-            state->entries[state->entry_count++] = *e;
-			state->numTuplesInMem++;
-
-            return;
+        	/* B: just hit limit. Create heap from array */
+    		state->mkheap = mkheap_from_array(state->entries,
+    				state->entry_count,
+    				state->entry_count,
+    				&state->mkctxt);
+    		state->entries = NULL;
+    		state->entry_allocsize = 0;
+    		state->entry_count = 0;
         }
-
-        state->mkheap = mkheap_from_array(state->entries, 
-                state->entry_allocsize, 
-                state->entry_count,
-                &state->mkctxt);
-        state->entries = NULL;
-        state->entry_allocsize = 0;
-        state->entry_count = 0;
     }
+    else
+    {
+    	/* We already have the heap (and it fits in memory).
+    	 * Simply add to the heap, keeping only top LIMIT elements.
+    	 */
+		Assert(state->mkheap && !mkheap_empty(state->mkheap));
+		Assert(state->mkheap->count == state->numTuplesInMem);
+		Assert(state->entry_count == 0);
+		(void) mkheap_putAndGet(state->mkheap, entry);
 
-    Assert(state->mkheap && !mkheap_empty(state->mkheap));
-    Assert(state->mkheap->count == state->numTuplesInMem);
-    i = mkheap_putAndGet(state->mkheap, e);
+		Assert(!mke_is_empty(entry));
+		Assert(entry->ptr);
+		pfree(entry->ptr);
+		entry->ptr = NULL;
+    }
+}
 
-    Assert(!mke_is_empty(e));
-    Assert(e->ptr);
-    pfree(e->ptr); 
-    e->ptr = NULL;
-} 
+/*
+ * tuplesort_inmem_nolimit_insert
+ *   Adds a tuple for sorting when we are regular (no LIMIT) sort and we (still) fit in memory
+ *
+ *   Simply add to the unsorted in-memory array. We'll either qsort or spill this later.
+ */
+static void
+tuplesort_inmem_nolimit_insert(Tuplesortstate_mk *state, MKEntry *entry)
+{
+	Assert(state->status == TSS_INITIAL);
+	Assert(state->mkctxt.limit == 0);
+	Assert(is_under_sort_ctxt(state));
+	Assert(!mke_is_empty(entry));
+	Assert(state->entry_count < state->entry_allocsize);
+
+	state->entries[state->entry_count] = *entry;
+	if ( state->mkctxt.fetchForPrep)
+	{
+		state->mkctxt.estimatedExtraForPrep += estimateMaxPrepareSizeForEntry(&state->entries[state->entry_count],
+				&state->mkctxt);
+	}
+	state->entry_count++;
+	state->numTuplesInMem++;
+
+}
 
 static void tuplesort_heap_insert(Tuplesortstate_mk *state, MKEntry *e)
 {
