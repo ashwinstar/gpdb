@@ -1,29 +1,27 @@
-#!/usr/bin/env python 
-#
 # Line too long - pylint: disable=C0301
-# Copyright (c) Greenplum Inc 2010. All Rights Reserved.
-#
-# import mainUtils FIRST to get python version check
-# THIS IMPORT SHOULD COME FIRST
+# Copyright (c) Greenplum Inc 2011. All Rights Reserved.
 
-import tarfile
-import shutil
-import os, sys
-import yaml     # this sits in gpMgmt/bin/ext/yaml 
+from contextlib import closing
+import os
 import platform
+from Queue import Queue
+import shutil
+import sys
+import tarfile
 
 try:
-    from yaml.scanner import ScannerError
+    from gppylib import gplog
     from gppylib.commands import gp
+    from gppylib.commands.base import Command, REMOTE, WorkerPool, ExecutionError
     from gppylib.commands.unix import Scp
     from gppylib.gpversion import GpVersion
-    from Queue import Queue
-    from gppylib import gplog
-    from gppylib.commands.base import Command, REMOTE, WorkerPool, ExecutionError
+    from gppylib.mainUtils import ExceptionNoStackTraceNeeded
     from gppylib.operations import Operation
     from gppylib.operations.utils import RemoteOperation, ParallelOperation
     from gppylib.operations.unix import RemoveRemoteTree, RemoveRemoteFile, CheckRemoteDir, MakeRemoteDir, CheckRemoteFile, ListRemoteFilesByPattern, ListFilesByPattern
-    from gppylib.mainUtils import ExceptionNoStackTraceNeeded
+
+    import yaml   
+    from yaml.scanner import ScannerError
 except ImportError, ex:
     sys.exit('Operation: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(ex)) 
 
@@ -167,8 +165,6 @@ class Gppkg:
         
         logger.debug('from_package_path')
            
-        tarinfo = None
-
         if not os.path.exists(pkg_path):
             logger.error('Cannot find package %s' % pkg_path)
             raise IOError 
@@ -197,11 +193,9 @@ class Gppkg:
         pkg['file_list'] = []
         pkg['dependencies'] = []
     
-        try:
-            tarinfo = tarfile.open(pkg_path, 'r:gz')
-            archive_list = tarinfo.getnames()
-
+        with closing(tarfile.open(pkg_path, 'r:gz')) as tarinfo:
             #store the list of all files present in the archive
+            archive_list = tarinfo.getnames()
             pkg["file_list"] = archive_list 
 
             #The spec file has to be called gppkg_spec
@@ -214,10 +208,6 @@ class Gppkg:
 
             yamlfile = yaml.load(specfile)
             keys = yamlfile.keys()
-
-        finally:
-            if tarinfo:
-                tarinfo.close()
 
         #store all the tags
         for key in keys:
@@ -602,6 +592,8 @@ class GetRpmInstallString(Operation):
 
         return rpm_install_string
 
+
+
 class ExtractPackage(Operation):
     '''
         Extract the contents of the package into the temp folder
@@ -611,28 +603,22 @@ class ExtractPackage(Operation):
         self.gppkg = gppkg 
 
     def execute(self):
-      
-        try:
-            gppkg = self.gppkg
+        #clean up tmp extraction folder
+        if os.path.exists(TEMP_EXTRACTION_PATH) and not CleanupDir(TEMP_EXTRACTION_PATH).run():
+            logger.error('Could not clean temp folder')
+            raise IOError
 
-            #clean up tmp extraction folder
-            if os.path.exists(TEMP_EXTRACTION_PATH) and not CleanupDir(TEMP_EXTRACTION_PATH).run():
-                logger.error('Could not clean temp folder')
-                raise IOError
-
-            #untar the package into tmp folder
-            tarinfo = tarfile.open(gppkg.abspath)
+        #untar the package into tmp folder
+        with closing(tarfile.open(self.gppkg.abspath)) as tarinfo:
             tarinfo.extractall(TEMP_EXTRACTION_PATH)
  
-            #move all the deps into same folder as the main rpm
-            path = os.path.join(TEMP_EXTRACTION_PATH, DEPS_DIR)
-            if os.path.exists(path):
-                for cur_file in os.listdir(path):
-                    shutil.move(os.path.join(TEMP_EXTRACTION_PATH, DEPS_DIR, cur_file), TEMP_EXTRACTION_PATH)
+        #move all the deps into same folder as the main rpm
+        path = os.path.join(TEMP_EXTRACTION_PATH, DEPS_DIR)
+        if os.path.exists(path):
+            for cur_file in os.listdir(path):
+                shutil.move(os.path.join(TEMP_EXTRACTION_PATH, DEPS_DIR, cur_file), TEMP_EXTRACTION_PATH)
 
-        finally:
-            if tarinfo:
-                tarinfo.close()
+
 
 class InstallSegGppkg(Operation):
     '''
@@ -964,109 +950,103 @@ class UnInstallGppkg(Operation):
 
         rpm_remove_cmd = 'rpm -e %s --dbpath %s'
 
-        tarinfo = None
-        try:
-            gppkg = self.gppkg
+        gppkg = self.gppkg
 
-            #Test to see if the main rpm has been installed or not
-            #Since the DB on the master will be identical to the 
-            #ones on the segment, it is sufficient to check only that
-            #RPM database
-            if not self.cleanup_gppkg:
-                if not IsRpmInstalled(gppkg.main_rpm).run():
-                    raise NotInstalledError(gppkg.pkg)
+        #Test to see if the main rpm has been installed or not
+        #Since the DB on the master will be identical to the 
+        #ones on the segment, it is sufficient to check only that
+        #RPM database
+        if not self.cleanup_gppkg:
+            if not IsRpmInstalled(gppkg.main_rpm).run():
+                raise NotInstalledError(gppkg.pkg)
 
-            #unpack the package so that we can read the uninstall hooks if any
-            #clean up tmp extraction folder
-            if os.path.exists(TEMP_EXTRACTION_PATH) and not CleanupDir(TEMP_EXTRACTION_PATH).run():
-                logger.error('Could not clean temp folder')
-                raise IOError
+        #unpack the package so that we can read the uninstall hooks if any
+        #clean up tmp extraction folder
+        if os.path.exists(TEMP_EXTRACTION_PATH) and not CleanupDir(TEMP_EXTRACTION_PATH).run():
+            logger.error('Could not clean temp folder')
+            raise IOError
 
-            #untar the package into tmp folder
-            tarinfo = tarfile.open(gppkg.abspath)
+        #untar the package into tmp folder
+        with closing(tarfile.open(gppkg.abspath)) as tarinfo:
             tarinfo.extractall(TEMP_EXTRACTION_PATH)
  
-            #Transfer the package contents
-            TransferPackageContents(self.master_host, self.standby_host, self.segment_host_list).run()
+        #Transfer the package contents
+        TransferPackageContents(self.master_host, self.standby_host, self.segment_host_list).run()
 
-            #Pre uninstall hooks
-            self._perform_pre_uninstall(gppkg)
+        #Pre uninstall hooks
+        self._perform_pre_uninstall(gppkg)
 
-            #perfrom the uninstall. 
-            #'-4' to remove the '.rpm' extension
-            rpm_uninstall_string = gppkg.main_rpm[:-4] + ' ' 
-            for dep in gppkg.dependencies:
-                rpm_uninstall_string += (dep[:-4] + ' ')
+        #perfrom the uninstall. 
+        #'-4' to remove the '.rpm' extension
+        rpm_uninstall_string = gppkg.main_rpm[:-4] + ' ' 
+        for dep in gppkg.dependencies:
+            rpm_uninstall_string += (dep[:-4] + ' ')
 
-            #We first do a test removal to see if removing the packages cause any conflicts
-            #We filter out all those rpms which cause conflicts and remove the remaining ones
-            cmd_str = 'rpm -e --test %s --dbpath %s' % (rpm_uninstall_string, RPM_DATABASE)
+        #We first do a test removal to see if removing the packages cause any conflicts
+        #We filter out all those rpms which cause conflicts and remove the remaining ones
+        cmd_str = 'rpm -e --test %s --dbpath %s' % (rpm_uninstall_string, RPM_DATABASE)
 
-            result = None
+        result = None
 
-            #We parse the stderr to make sure that we exit for the right reason
-            #E.g of the error on which we want to exit :-
-            #error: Failed dependencies:
-            #    geosdevel-1.12-1.noarch.rpm is needed by (installed) geos-1.12-1.noarch
-            #    geosdevel-1.12-1.noarch.rpm is needed by (installed) postgis-1.13-1.noarch
+        #We parse the stderr to make sure that we exit for the right reason
+        #E.g of the error on which we want to exit :-
+        #error: Failed dependencies:
+        #    geosdevel-1.12-1.noarch.rpm is needed by (installed) geos-1.12-1.noarch
+        #    geosdevel-1.12-1.noarch.rpm is needed by (installed) postgis-1.13-1.noarch
 
-            try:
-                result =  LocalCommand(cmd_str).run() 
-            except ExecutionError, ex:
+        try:
+            result =  LocalCommand(cmd_str).run() 
+        except ExecutionError, ex:
+            results =  ex.cmd.get_results().stderr.strip().split('\n')
+            for result in results:
+                if 'failed dependencies' in result.lower():     #conflicting dependencies so ignore these and remove the rest
+                    rpm_uninstall_string = GetFilteredRpmString(results).run()            
+                    break
+
+        cmd_str = rpm_remove_cmd % (rpm_uninstall_string, RPM_DATABASE)
+
+        try:
+            #First uninstall on the segment hosts
+            RemoteCommand(cmd_str, self.segment_host_list).run()
+        except ExecutionError, ex:
+            if self.cleanup_gppkg:
                 results =  ex.cmd.get_results().stderr.strip().split('\n')
                 for result in results:
-                    if 'failed dependencies' in result.lower():     #conflicting dependencies so ignore these and remove the rest
-                        rpm_uninstall_string = GetFilteredRpmString(results).run()            
-                        break
+                    if not 'cannot create' in result.lower():                       #This is for the repackaging feature of rpm. TODO: Probably there is a way to turn this feature off
+                        raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
 
-            cmd_str = rpm_remove_cmd % (rpm_uninstall_string, RPM_DATABASE)
+        try:
+            #Next uninstall on the standby host
+            if self.standby_host:
+                RemoteCommand(cmd_str, [self.standby_host]).run()
+        except ExecutionError, ex:
+            if self.cleanup_gppkg:
+                results =  ex.cmd.get_results().stderr.strip().split('\n')
+                for result in results:
+                    if not 'cannot create' in result.lower():
+                        raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
 
-            try:
-                #First uninstall on the segment hosts
-                RemoteCommand(cmd_str, self.segment_host_list).run()
-            except ExecutionError, ex:
-                if self.cleanup_gppkg:
-                    results =  ex.cmd.get_results().stderr.strip().split('\n')
-                    for result in results:
-                        if not 'cannot create' in result.lower():                       #This is for the repackaging feature of rpm. TODO: Probably there is a way to turn this feature off
-                            raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
+        try:
+            #Last Uninstall on the master host
+            LocalCommand(cmd_str).run()
+        except ExecutionError, ex:
+            if not self.cleanup_gppkg:
+                results =  ex.cmd.get_results().stderr.strip().split('\n')
+                for result in results:
+                    if not 'cannot create' in result.lower():
+                        raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
 
-            try:
-                #Next uninstall on the standby host
-                if self.standby_host:
-                    RemoteCommand(cmd_str, [self.standby_host]).run()
-            except ExecutionError, ex:
-                if self.cleanup_gppkg:
-                    results =  ex.cmd.get_results().stderr.strip().split('\n')
-                    for result in results:
-                        if not 'cannot create' in result.lower():
-                            raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
+        #Post uninstall hooks
+        self._perform_post_uninstall(gppkg)
 
-            try:
-                #Last Uninstall on the master host
-                LocalCommand(cmd_str).run()
-            except ExecutionError, ex:
-                if not self.cleanup_gppkg:
-                    results =  ex.cmd.get_results().stderr.strip().split('\n')
-                    for result in results:
-                        if not 'cannot create' in result.lower():
-                            raise ExceptionNoStackTraceNeeded('Error %s' % str(ex))
+        #Remove package from $GPHOME/addons/archive
+        RemovePackageFromArchive(gppkg.pkg, self.standby_host).run()
 
-            #Post uninstall hooks
-            self._perform_post_uninstall(gppkg)
-
-            #Remove package from $GPHOME/addons/archive
-            RemovePackageFromArchive(gppkg.pkg, self.standby_host).run()
-
-            #UnArchive packages from hosts
-            for host in self.segment_host_list:
-                UnArchivePackageOnHost(host, gppkg.pkg).run()
-            
-            logger.info('%s has been uninstalled.' % (gppkg.pkg))
-
-        finally:
-            if tarinfo:
-                tarinfo.close()
+        #UnArchive packages from hosts
+        for host in self.segment_host_list:
+            UnArchivePackageOnHost(host, gppkg.pkg).run()
+        
+        logger.info('%s has been uninstalled.' % (gppkg.pkg))
 
     def _perform_pre_uninstall(self, gppkg):
         '''
