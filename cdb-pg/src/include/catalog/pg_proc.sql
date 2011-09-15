@@ -5337,7 +5337,7 @@
 
  CREATE FUNCTION xmlconcat2(xml, xml) RETURNS xml LANGUAGE internal IMMUTABLE STRICT AS 'xmlconcat2' WITH (OID=2980, DESCRIPTION="aggregate transition function");
 
- CREATE FUNCTION xmlagg(xml) RETURNS xml LANGUAGE internal IMMUTABLE STRICT AS 'aggregate_dummy' WITH (OID=2981, DESCRIPTION="concatenate XML values", proisagg="t");
+ CREATE FUNCTION xmlagg(xml) RETURNS xml LANGUAGE internal IMMUTABLE AS 'aggregate_dummy' WITH (OID=2981, DESCRIPTION="concatenate XML values", proisagg="t");
 
  CREATE FUNCTION text(xml) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'xmltotext' WITH (OID=2982, DESCRIPTION="serialize an XML value to a character string");
 

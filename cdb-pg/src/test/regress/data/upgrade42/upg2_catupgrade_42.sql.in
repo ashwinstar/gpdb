@@ -22,70 +22,90 @@
 --
 CREATE TABLE @gpupgradeschemaname@.pg_type_encoding
 (
-  typid     oid, 
+  typid     oid not null, 
   typoptions   text[]
 )
-with (relid=3220, reltype_oid=3221, toast_oid=3222, toast_index=3223, toast_reltype=3224, CamelCase=TypeEncoding);
+with (relid=3220, oids=true, reltype_oid=3221, toast_oid=3222, toast_index=3223, toast_reltype=3224, CamelCase=TypeEncoding);
 create unique index pg_type_encoding_typid_index on @gpupgradeschemaname@.pg_type_encoding(typid) with (indexid=3207);
+grant select on @gpupgradeschemaname@.pg_type_encoding to public;
 
 CREATE TABLE @gpupgradeschemaname@.pg_extprotocol
 (
-   ptcname        name,
-   ptcreadfn      Oid,
-   ptcwritefn     Oid,
-   ptcvalidatorfn Oid, 
-   ptcowner       Oid,
-   ptctrusted	  bool,
+   ptcname        name not null,
+   ptcreadfn      Oid not null,
+   ptcwritefn     Oid not null,
+   ptcvalidatorfn Oid not null, 
+   ptcowner       Oid not null,
+   ptctrusted	  bool not null,
    ptcacl         aclitem[]   
 )
 with (shared=false, oids=true, relid=7175, reltype_oid=7176);
 create unique index pg_extprotocol_oid_index on @gpupgradeschemaname@.pg_extprotocol(oid) with (indexid=7156);
 create unique index pg_extprotocol_ptcname_index on @gpupgradeschemaname@.pg_extprotocol(ptcname) with (indexid=7177);
-
+grant select on @gpupgradeschemaname@.pg_extprotocol to public;
 
 CREATE TABLE @gpupgradeschemaname@.pg_attribute_encoding
 (
-   attrelid     oid, 
-   attnum		smallint, 
+   attrelid     oid not null, 
+   attnum		smallint not null, 
    attoptions   text[]
 )
- with (relid=3231, reltype_oid=3232, toast_oid=3233, toast_index=3234, toast_reltype=3235, CamelCase=AttributeEncoding);
+ with (relid=3231, oids=true, reltype_oid=3232, toast_oid=3233, toast_index=3234, toast_reltype=3235, CamelCase=AttributeEncoding);
 create index pg_attribute_encoding_attrelid_index on @gpupgradeschemaname@.pg_attribute_encoding(attrelid) with (indexid=3236);
 create unique index pg_attribute_encoding_attrelid_attnum_index on @gpupgradeschemaname@.pg_attribute_encoding(attrelid, attnum) with (indexid=3237);
+grant select on @gpupgradeschemaname@.pg_attribute_encoding to public;
 
 CREATE TABLE @gpupgradeschemaname@.gp_verification_history
 (
-   vertoken             name       ,    -- token of the verification request, 63 characters or less
-   vertype              smallint   ,    -- 0=FULL (ie. all files and directories), 1=FILE, 2=DIRECTORY
-   vercontent           smallint   ,    -- -1= all primary mirror pairs, >=0 specific primary/mirror pair
-   verstarttime         timestamp with time zone,  --time the request is started
-   verstate             smallint   ,     -- 0=Started, 1=Suspended, 2=Aborted, 3=Failed, 4=Succeeded
-   verdone              boolean    ,     --0 if started or suspeneded, 1 if aborted or failed or successful completion
-   verendtime           timestamp with time zone,  --time the request is completely done processing, only valid id verdone is true, latest end time for this token on any primary/mirror pair
-   vermismatch          boolean         --were mismatches found on any primary/mirror pair for this token
+   vertoken             name not null       ,    -- token of the verification request, 63 characters or less
+   vertype              smallint not null   ,    -- 0=FULL (ie. all files and directories), 1=FILE, 2=DIRECTORY
+   vercontent           smallint not null   ,    -- -1= all primary mirror pairs, >=0 specific primary/mirror pair
+   verstarttime         timestamp with time zone not null,  --time the request is started
+   verstate             smallint not null   ,     -- 0=Started, 1=Suspended, 2=Aborted, 3=Failed, 4=Succeeded
+   verdone              boolean not null    ,     --0 if started or suspeneded, 1 if aborted or failed or successful completion
+   verendtime           timestamp with time zone not null,  --time the request is completely done processing, only valid id verdone is true, latest end time for this token on any primary/mirror pair
+   vermismatch          boolean not null         --were mismatches found on any primary/mirror pair for this token
 )
-with (camelcase=GpVerificationHistory, shared=true, oid=false, relid=6429, reltype_oid=6430)
+with (camelcase=GpVerificationHistory, shared=true, oids=false, relid=6429, reltype_oid=6430)
 tablespace pg_global;
-   
-create unique index gp_verification_history_vertoken_index on @gpupgradeschemaname@.gp_verification_history(vertoken) with (indexid=6431);  
+create unique index gp_verification_history_vertoken_index on @gpupgradeschemaname@.gp_verification_history(vertoken) with (indexid=6431);
+grant select on @gpupgradeschemaname@.gp_verification_history to public;
 
 CREATE TABLE @gpupgradeschemaname@.pg_auth_time_constraint
 (
-   authid oid, -- foreign key to pg_authid.oid,
-   start_day smallint, -- [0,6] denoting start of interval
-   start_time time, -- optional time denoting start of interval
-   end_day smallint, -- [0,6] denoting end of interval
-   end_time time -- optional time denoting end of interval
+   authid oid not null, -- foreign key to pg_authid.oid,
+   start_day smallint not null, -- [0,6] denoting start of interval
+   start_time time not null, -- optional time denoting start of interval
+   end_day smallint not null, -- [0,6] denoting end of interval
+   end_time time not null -- optional time denoting end of interval
 )
-with (CamelCase=AuthTimeConstraint, shared=true, oid=false, relid=2914, reltype_oid=2915)
+with (CamelCase=AuthTimeConstraint, shared=true, oids=false, relid=2914, reltype_oid=2915)
 tablespace pg_global;
+grant select on @gpupgradeschemaname@.pg_auth_time_constraint to public;
    
+CREATE TABLE @gpupgradeschemaname@.pg_proc_callback
+(
+   profnoid     regproc not null,   -- oid of the main function
+   procallback  regproc not null,   -- oid of the callback function
+   promethod    "char" not null     -- role the callback function is performing
+)
+with (relid=3124, reltype_oid=3125, oids=false, CamelCase=ProcCallback);
+create unique index pg_proc_callback_profnoid_promethod_index on @gpupgradeschemaname@.pg_proc_callback(profnoid, promethod) with (indexid=3126);
+grant select on @gpupgradeschemaname@.pg_proc_callback to public;
+
 --
 --  End of New Tables
 --
 CREATE TRIGGER pg_sync_pg_auth_time_constraint
   AFTER INSERT OR UPDATE OR DELETE ON @gpupgradeschemaname@.pg_auth_time_constraint
   FOR EACH STATEMENT EXECUTE PROCEDURE flatfile_update_trigger();
+select @gpupgradeschemaname@.addProcPIN(2620, oid)
+  from pg_trigger
+  where tgname = 'pg_sync_pg_auth_time_constraint' and tgrelid=2914;
+delete from pg_depend where classid = 2620 and objid = (select oid from pg_trigger where tgname = 'pg_sync_pg_auth_time_constraint' and tgrelid=2914);
+select @gpupgradeschemaname@.catDML(
+  'delete from pg_depend where classid = 2620 and objid = (select oid from pg_trigger where tgname = ''pg_sync_pg_auth_time_constraint'' and tgrelid=2914)')
+from gp_dist_random('gp_id');
 
 CREATE OR REPLACE VIEW @gpupgradeschemaname@.pg_max_external_files AS
     SELECT   address::name as hostname, count(*) as maxfiles
@@ -180,7 +200,7 @@ CREATE TYPE @gpupgradeschemaname@.anytable(
    ALIGNMENT = double,
    TYPTYPE = 'p'
 );
-
+COMMENT ON TYPE @gpupgradeschemaname@.anytable IS 'Represents a generic TABLE value expression';
 --
 --  XML
 --
@@ -206,6 +226,7 @@ CREATE TYPE @gpupgradeschemaname@.xml(
    ALIGNMENT = integer,
    SHADOWOID = 143
 );
+COMMENT ON TYPE @gpupgradeschemaname@.xml IS 'XML content';
 
 CREATE FUNCTION @gpupgradeschemaname@.xmlcomment(text) RETURNS @gpupgradeschemaname@.xml LANGUAGE internal IMMUTABLE STRICT AS 'xmlcomment' WITH (OID=2975);
 COMMENT ON FUNCTION @gpupgradeschemaname@.xmlcomment(text) IS 'generate XML comment';
@@ -256,3 +277,9 @@ CREATE AGGREGATE @gpupgradeschemaname@.pg_partition_oid(oid, record) (
 	finalfunc	= pg_partition_oid_finalfn,
 	oid			= 2913
 );
+
+-- Fixes gp_relation_node relhaspkey
+update @gpupgradeschemaname@.pg_class set relhaspkey = false where relnamespace = 11 and relname = 'gp_relation_node';
+select @gpupgradeschemaname@.catDML(
+'update @gpupgradeschemaname@.pg_class set relhaspkey = false where relnamespace = 11 and relname = ''gp_relation_node''')
+from gp_dist_random('gp_id');
