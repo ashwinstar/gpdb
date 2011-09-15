@@ -13936,78 +13936,78 @@ aaaaa GP_IGNORE: pabd: planpartition - ./backend/optimizer/plan/planpartition.c
 pabd: planpartition:00000705:  //elog(NOTICE, "modified outer plan is %s", nodeToString(ctx->outerPlan)); 
 pabd: planpartition:00000801:  //elog(NOTICE, "safe to convert = %s", ctx->safeToConvert ? "true" : "false"); 
 aaaaa GP_IGNORE: paba: planwindow - ./backend/optimizer/plan/planwindow.c
-paba: planwindow:00000386:  ereport(ERROR, 
-paba: planwindow:00000387:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paba: planwindow:00000388:  errmsg("That windowing query is not supported yet."))); 
-paba: planwindow:00000662:  ereport(ERROR, 
-paba: planwindow:00000663:  (errcode(ERRCODE_INTERNAL_ERROR), 
-paba: planwindow:00000664:  errmsg("PARTITION BY expression does not appear in the targetlist."), 
-paba: planwindow:00000665:  errOmitLocation(true))); 
-paba: planwindow:00000674:  ereport(ERROR, 
-paba: planwindow:00000675:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: planwindow:00000676:  errmsg("NTILE function argument expression should be in PARTITION BY."), 
-paba: planwindow:00000677:  errOmitLocation(true))); 
-paba: planwindow:00000738:  ereport(ERROR, 
-paba: planwindow:00000739:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: planwindow:00000740:  errmsg("Call to window function may not reference outer queries."), 
-paba: planwindow:00000741:  errOmitLocation(true))); 
-paba: planwindow:00000758:  ereport(ERROR, 
-paba: planwindow:00000759:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: planwindow:00000760:  errmsg("NTILE function argument should not use volatile functions."), 
-paba: planwindow:00000761:  errOmitLocation(true))); 
-paba: planwindow:00000805:  ereport(ERROR, 
-paba: planwindow:00000806:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: planwindow:00000807:  errmsg("Window function calls may not be nested."), 
-paba: planwindow:00000808:  errOmitLocation(true))); 
-paba: planwindow:00000980:  elog(ERROR, "internal window framing error"); 
-paba: planwindow:00001372:  ereport(ERROR, 
-paba: planwindow:00001373:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
-paba: planwindow:00001374:  errmsg("%s parameter cannot be negative", is_rows ? "ROWS" : "RANGE"), 
-paba: planwindow:00001375:  errOmitLocation(true))); 
-paba: planwindow:00001422:  elog(ERROR,"invalid window frame edge"); 
-paba: planwindow:00001636:  ereport(ERROR, 
-paba: planwindow:00001637:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: planwindow:00001638:  errmsg("invalid window specification"), 
-paba: planwindow:00001639:  errhint("Only ordered windows may specify ROWS or RANGE framing."), 
-paba: planwindow:00001640:  errOmitLocation(true))); 
-paba: planwindow:00001707:  elog(ERROR, "cache lookup failed for function %u", fnoid); 
-paba: planwindow:00001714:  ereport(ERROR, 
-paba: planwindow:00001715:  (errcode(ERRCODE_SYNTAX_ERROR), 
-paba: planwindow:00001716:  errmsg("can not call ordinary function, %s, as window function", NameStr(proform->proname)), 
-paba: planwindow:00001717:  errOmitLocation(true))); 
-paba: planwindow:00001731:  elog(ERROR, "cache lookup failed for aggregate function %u", fnoid); 
-paba: planwindow:00001766:  elog(ERROR, "cache lookup failed for window function %u", fnoid); 
-paba: planwindow:00002301:  /* elog(NOTICE, "Start of plan_sequential_stage()."); */ 
-paba: planwindow:00002302:  
-paba: planwindow:00002303:  /* Determine whether this stage requires external aggregation and an 
-paba: planwindow:00002304:  * auxilliary aggregate. 
-paba: planwindow:00002305:  */ 
-paba: planwindow:00002306:  { 
-paba: planwindow:00002307:  hasaux = false; 
-paba: planwindow:00002378:  /* elog(NOTICE, "Fn plan_sequential_stage(): Preparing for Agg."); */ 
-paba: planwindow:00002379:  
-paba: planwindow:00002380:  /* Since we'll be encountering some Agg targets. Prepare for that 
-paba: planwindow:00002381:  * by sharing the input window plan locally (within the slice) so 
-paba: planwindow:00002382:  * we can develop an Agg and a Window chain within the stage. 
-paba: planwindow:00002383:  */ 
-paba: planwindow:00002384:  share_partners = share_plan(root, window_plan, 2); 
-paba: planwindow:00002519:  /* elog(NOTICE, "Fn plan_sequential_stage(): Adding Window node."); */ 
-paba: planwindow:00002520:  
-paba: planwindow:00002521:  if ( winfo->partkey_len > 0 ) 
-paba: planwindow:00002522:  { 
-paba: planwindow:00002523:  partkey = (AttrNumber*)palloc(sz); 
-paba: planwindow:00002749:  /* elog(NOTICE, "End of plan_sequential_stage()."); */ 
-paba: planwindow:00002750:  return window_plan; 
-paba: planwindow:00003109:  elog(ERROR,"internal error planning window function call"); 
-paba: planwindow:00003325:  elog(ERROR,"invalid window coplan"); 
-paba: planwindow:00003852:  elog(ERROR, "nested window reference invalid"); 
-paba: planwindow:00003866:  elog(ERROR, "nested window key invalid"); 
+paba: planwindow:00000378:  ereport(ERROR, 
+paba: planwindow:00000379:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paba: planwindow:00000380:  errmsg("That windowing query is not supported yet."))); 
+paba: planwindow:00000654:  ereport(ERROR, 
+paba: planwindow:00000655:  (errcode(ERRCODE_INTERNAL_ERROR), 
+paba: planwindow:00000656:  errmsg("PARTITION BY expression does not appear in the targetlist."), 
+paba: planwindow:00000657:  errOmitLocation(true))); 
+paba: planwindow:00000666:  ereport(ERROR, 
+paba: planwindow:00000667:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: planwindow:00000668:  errmsg("NTILE function argument expression should be in PARTITION BY."), 
+paba: planwindow:00000669:  errOmitLocation(true))); 
+paba: planwindow:00000730:  ereport(ERROR, 
+paba: planwindow:00000731:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: planwindow:00000732:  errmsg("Call to window function may not reference outer queries."), 
+paba: planwindow:00000733:  errOmitLocation(true))); 
+paba: planwindow:00000750:  ereport(ERROR, 
+paba: planwindow:00000751:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: planwindow:00000752:  errmsg("NTILE function argument should not use volatile functions."), 
+paba: planwindow:00000753:  errOmitLocation(true))); 
+paba: planwindow:00000797:  ereport(ERROR, 
+paba: planwindow:00000798:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: planwindow:00000799:  errmsg("Window function calls may not be nested."), 
+paba: planwindow:00000800:  errOmitLocation(true))); 
+paba: planwindow:00000972:  elog(ERROR, "internal window framing error"); 
+paba: planwindow:00001364:  ereport(ERROR, 
+paba: planwindow:00001365:  (errcode(ERROR_INVALID_WINDOW_FRAME_PARAMETER), 
+paba: planwindow:00001366:  errmsg("%s parameter cannot be negative", is_rows ? "ROWS" : "RANGE"), 
+paba: planwindow:00001367:  errOmitLocation(true))); 
+paba: planwindow:00001414:  elog(ERROR,"invalid window frame edge"); 
+paba: planwindow:00001628:  ereport(ERROR, 
+paba: planwindow:00001629:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: planwindow:00001630:  errmsg("invalid window specification"), 
+paba: planwindow:00001631:  errhint("Only ordered windows may specify ROWS or RANGE framing."), 
+paba: planwindow:00001632:  errOmitLocation(true))); 
+paba: planwindow:00001699:  elog(ERROR, "cache lookup failed for function %u", fnoid); 
+paba: planwindow:00001706:  ereport(ERROR, 
+paba: planwindow:00001707:  (errcode(ERRCODE_SYNTAX_ERROR), 
+paba: planwindow:00001708:  errmsg("can not call ordinary function, %s, as window function", NameStr(proform->proname)), 
+paba: planwindow:00001709:  errOmitLocation(true))); 
+paba: planwindow:00001723:  elog(ERROR, "cache lookup failed for aggregate function %u", fnoid); 
+paba: planwindow:00001758:  elog(ERROR, "cache lookup failed for window function %u", fnoid); 
+paba: planwindow:00002293:  /* elog(NOTICE, "Start of plan_sequential_stage()."); */ 
+paba: planwindow:00002294:  
+paba: planwindow:00002295:  /* Determine whether this stage requires external aggregation and an 
+paba: planwindow:00002296:  * auxilliary aggregate. 
+paba: planwindow:00002297:  */ 
+paba: planwindow:00002298:  { 
+paba: planwindow:00002299:  hasaux = false; 
+paba: planwindow:00002370:  /* elog(NOTICE, "Fn plan_sequential_stage(): Preparing for Agg."); */ 
+paba: planwindow:00002371:  
+paba: planwindow:00002372:  /* Since we'll be encountering some Agg targets. Prepare for that 
+paba: planwindow:00002373:  * by sharing the input window plan locally (within the slice) so 
+paba: planwindow:00002374:  * we can develop an Agg and a Window chain within the stage. 
+paba: planwindow:00002375:  */ 
+paba: planwindow:00002376:  share_partners = share_plan(root, window_plan, 2); 
+paba: planwindow:00002511:  /* elog(NOTICE, "Fn plan_sequential_stage(): Adding Window node."); */ 
+paba: planwindow:00002512:  
+paba: planwindow:00002513:  if ( winfo->partkey_len > 0 ) 
+paba: planwindow:00002514:  { 
+paba: planwindow:00002515:  partkey = (AttrNumber*)palloc(sz); 
+paba: planwindow:00002741:  /* elog(NOTICE, "End of plan_sequential_stage()."); */ 
+paba: planwindow:00002742:  return window_plan; 
+paba: planwindow:00003101:  elog(ERROR,"internal error planning window function call"); 
+paba: planwindow:00003317:  elog(ERROR,"invalid window coplan"); 
+paba: planwindow:00003844:  elog(ERROR, "nested window reference invalid"); 
+paba: planwindow:00003858:  elog(ERROR, "nested window key invalid"); 
 aaaaa GP_IGNORE: saah: setrefs - ./backend/optimizer/plan/setrefs.c
-saah: setrefs:00000886:  elog(ERROR, "unrecognized node type: %d", 
-saah: setrefs:00000887:  (int) nodeTag(plan)); 
-saah: setrefs:00001915:  elog(ERROR, "variable not found in subplan target lists"); 
-saah: setrefs:00002015:  elog(ERROR, "variable not found in subplan target list"); 
-saah: setrefs:00002195:  elog(ERROR, "cache lookup failed for function %u", funcid); 
+saah: setrefs:00000895:  elog(ERROR, "unrecognized node type: %d", 
+saah: setrefs:00000896:  (int) nodeTag(plan)); 
+saah: setrefs:00001924:  elog(ERROR, "variable not found in subplan target lists"); 
+saah: setrefs:00002024:  elog(ERROR, "variable not found in subplan target list"); 
+saah: setrefs:00002204:  elog(ERROR, "cache lookup failed for function %u", funcid); 
 aaaaa GP_IGNORE: saaj: subselect - ./backend/optimizer/plan/subselect.c
 saaj: subselect:00000399:  elog(ERROR, "correlated subquery with skip-level correlations is not supported"); 
 saaj: subselect:00000550:  elog(ERROR, "could not find array type for datatype %s", 
@@ -23580,35 +23580,35 @@ taaf: tqual:00003362:  (int) tupleVisibilitySummary->xminStatus);
 taaf: tqual:00003406:  elog(ERROR, "Unrecognized tuple transaction status: %d", 
 taaf: tqual:00003407:  (int) status); 
 aaaaa GP_IGNORE: gabf: gphdfsformatter - ./bin/gphdfs/src/protocol_formatter/gphdfsformatter.c
-gabf: gphdfsformatter:00000152:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-gabf: gphdfsformatter:00000153:  errmsg("cannot execute gphdfsformatter_export outside format manager"), 
-gabf: gphdfsformatter:00000154:  errOmitLocation(true))); 
-gabf: gphdfsformatter:00000185:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-gabf: gphdfsformatter:00000186:  errmsg("cannot handle external table with dropped columns"), 
-gabf: gphdfsformatter:00000187:  errOmitLocation(true))); 
-gabf: gphdfsformatter:00000328:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-gabf: gphdfsformatter:00000329:  errmsg("cannot execute gphdfsformatter_import outside format manager"), 
-gabf: gphdfsformatter:00000330:  errOmitLocation(true))); 
-gabf: gphdfsformatter:00000358:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-gabf: gphdfsformatter:00000359:  errmsg("cannot handle external table with dropped columns"), 
-gabf: gphdfsformatter:00000360:  errOmitLocation(true))); 
-gabf: gphdfsformatter:00000390:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-gabf: gphdfsformatter:00000391:  errmsg("unexpected end of file"), 
-gabf: gphdfsformatter:00000392:  errOmitLocation(true))); 
-gabf: gphdfsformatter:00000401:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-gabf: gphdfsformatter:00000402:  errmsg("unexpected end of file"), 
-gabf: gphdfsformatter:00000403:  errOmitLocation(true))); 
-gabf: gphdfsformatter:00000421:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-gabf: gphdfsformatter:00000422:  errmsg("cannot import data version %d", version), 
-gabf: gphdfsformatter:00000423:  errOmitLocation(true))); 
-gabf: gphdfsformatter:00000425:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-gabf: gphdfsformatter:00000426:  errmsg("input data column count (%d) did not match the external table definition", 
-gabf: gphdfsformatter:00000427:  colcnt), 
-gabf: gphdfsformatter:00000428:  errOmitLocation(true))); 
-gabf: gphdfsformatter:00000445:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
-gabf: gphdfsformatter:00000446:  errmsg("input data column %d of type \"%s\" did not match the external table definition", 
-gabf: gphdfsformatter:00000447:  i+1, intype), 
-gabf: gphdfsformatter:00000448:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000153:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000154:  errmsg("cannot execute gphdfsformatter_export outside format manager"), 
+gabf: gphdfsformatter:00000155:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000186:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000187:  errmsg("cannot handle external table with dropped columns"), 
+gabf: gphdfsformatter:00000188:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000329:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000330:  errmsg("cannot execute gphdfsformatter_import outside format manager"), 
+gabf: gphdfsformatter:00000331:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000359:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
+gabf: gphdfsformatter:00000360:  errmsg("cannot handle external table with dropped columns"), 
+gabf: gphdfsformatter:00000361:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000406:  ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), 
+gabf: gphdfsformatter:00000407:  errmsg("unexpected end of file"), 
+gabf: gphdfsformatter:00000408:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000420:  ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), 
+gabf: gphdfsformatter:00000421:  errmsg("unexpected end of file"), 
+gabf: gphdfsformatter:00000422:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000442:  ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), 
+gabf: gphdfsformatter:00000443:  errmsg("cannot import data version %d", version), 
+gabf: gphdfsformatter:00000444:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000447:  ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), 
+gabf: gphdfsformatter:00000448:  errmsg("input data column count (%d) did not match the external table definition", 
+gabf: gphdfsformatter:00000449:  colcnt), 
+gabf: gphdfsformatter:00000450:  errOmitLocation(true))); 
+gabf: gphdfsformatter:00000468:  ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION), 
+gabf: gphdfsformatter:00000469:  errmsg("input data column %d of type \"%s\" did not match the external table definition", 
+gabf: gphdfsformatter:00000470:  i+1, intype), 
+gabf: gphdfsformatter:00000471:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: gabe: gphdfsprotocol - ./bin/gphdfs/src/protocol_formatter/gphdfsprotocol.c
 gabe: gphdfsprotocol:00000077:  ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION), 
 gabe: gphdfsprotocol:00000078:  errmsg("cannot open HDFS connector in %s: %m", path.data), 
