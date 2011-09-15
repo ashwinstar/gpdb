@@ -128,6 +128,31 @@
 static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result);
 #endif   /* CDB_TRACE_EXECUTOR */
 
+ /* flags bits for planstate walker */
+ #define PSW_IGNORE_INITPLAN	0x01
+
+ /**
+  * Forward declarations of static functions
+  */
+ static CdbVisitOpt
+ planstate_walk_node_extended(PlanState      *planstate,
+ 			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
+ 			        void           *context,
+ 			        int flags);
+
+ static CdbVisitOpt
+ planstate_walk_array(PlanState    **planstates,
+                       int            nplanstate,
+  			         CdbVisitOpt  (*walker)(PlanState *planstate, void *context),
+  			         void          *context,
+  			         int flags);
+
+ static CdbVisitOpt
+ planstate_walk_kids(PlanState      *planstate,
+  			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
+  			        void           *context,
+  			        int flags);
+
 /* ------------------------------------------------------------------------
  *		ExecInitNode
  *
@@ -1017,7 +1042,7 @@ squelchNodeWalker(PlanState *node,
 void
 ExecSquelchNode(PlanState *node)
 {
-    planstate_walk_node(node, squelchNodeWalker, NULL);
+    planstate_walk_node_extended(node, squelchNodeWalker, NULL, PSW_IGNORE_INITPLAN);
 }	                            /* ExecSquelchNode */
 
 static CdbVisitOpt
@@ -1484,12 +1509,31 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
  * visiting the common subtree twice when descending through the AJ node.
  * The caller's walker function can handle the NJ as a special case to
  * override this behavior if there is a need to always visit both subtrees.
+ *
+ * NB: Use PSW_* flags to skip walking certain parts of the planstate tree.
  * -----------------------------------------------------------------------
+ */
+
+
+/**
+ * Version of walker that uses no flags.
  */
 CdbVisitOpt
 planstate_walk_node(PlanState      *planstate,
 			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
 			        void           *context)
+{
+	return planstate_walk_node_extended(planstate, walker, context, 0);
+}
+
+/**
+ * Workhorse walker that uses flags.
+ */
+CdbVisitOpt
+planstate_walk_node_extended(PlanState      *planstate,
+			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
+			        void           *context,
+			        int flags)
 {
     CdbVisitOpt     whatnext;
 
@@ -1499,7 +1543,7 @@ planstate_walk_node(PlanState      *planstate,
     {
         whatnext = walker(planstate, context);
         if (whatnext == CdbVisit_Walk)
-            whatnext = planstate_walk_kids(planstate, walker, context);
+            whatnext = planstate_walk_kids(planstate, walker, context, flags);
         else if (whatnext == CdbVisit_Skip)
             whatnext = CdbVisit_Walk;
     }
@@ -1511,7 +1555,8 @@ CdbVisitOpt
 planstate_walk_array(PlanState    **planstates,
                      int            nplanstate,
 			         CdbVisitOpt  (*walker)(PlanState *planstate, void *context),
-			         void          *context)
+			         void          *context,
+			         int flags)
 {
     CdbVisitOpt     whatnext = CdbVisit_Walk;
     int             i;
@@ -1520,34 +1565,16 @@ planstate_walk_array(PlanState    **planstates,
         return CdbVisit_Walk;
 
     for (i = 0; i < nplanstate && whatnext == CdbVisit_Walk; i++)
-        whatnext = planstate_walk_node(planstates[i], walker, context);
+        whatnext = planstate_walk_node_extended(planstates[i], walker, context, flags);
 
     return whatnext;
 }	                            /* planstate_walk_array */
 
 CdbVisitOpt
-planstate_walk_list(List           *planstatelist,
-			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
-			        void           *context)
-{
-    ListCell       *cell;
-    PlanState      *planstate;
-    CdbVisitOpt     v = CdbVisit_Walk;
-
-	foreach(cell, planstatelist)
-	{
-        planstate = (PlanState *)lfirst(cell);
-        v = planstate_walk_node(planstate, walker, context);
-        if (v != CdbVisit_Walk) /* stop */
-            break;
-	}
-	return v;
-}	                            /* planstate_walk_list */
-
-CdbVisitOpt
 planstate_walk_kids(PlanState      *planstate,
 			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
-			        void           *context)
+			        void           *context,
+			        int flags)
 {
     CdbVisitOpt v;
 
@@ -1564,11 +1591,11 @@ planstate_walk_kids(PlanState      *planstate,
             if (nls->shared_outer)
                 v = CdbVisit_Walk;
             else
-                v = planstate_walk_node(planstate->lefttree, walker, context);
+                v = planstate_walk_node_extended(planstate->lefttree, walker, context, flags);
 
             /* Right subtree */
             if (v == CdbVisit_Walk)
-                v = planstate_walk_node(planstate->righttree, walker, context);
+                v = planstate_walk_node_extended(planstate->righttree, walker, context, flags);
             break;
         }
 
@@ -1576,7 +1603,7 @@ planstate_walk_kids(PlanState      *planstate,
 		{
 			AppendState *as = (AppendState *)planstate;
 
-            v = planstate_walk_array(as->appendplans, as->as_nplans, walker, context);
+            v = planstate_walk_array(as->appendplans, as->as_nplans, walker, context, flags);
             Assert(!planstate->lefttree && !planstate->righttree);
 			break;
 		}
@@ -1584,7 +1611,7 @@ planstate_walk_kids(PlanState      *planstate,
         {
             BitmapAndState *bas = (BitmapAndState *)planstate;
 
-            v = planstate_walk_array(bas->bitmapplans, bas->nplans, walker, context);
+            v = planstate_walk_array(bas->bitmapplans, bas->nplans, walker, context, flags);
             Assert(!planstate->lefttree && !planstate->righttree);
 			break;
         }
@@ -1592,28 +1619,29 @@ planstate_walk_kids(PlanState      *planstate,
         {
             BitmapOrState  *bos = (BitmapOrState *)planstate;
 
-            v = planstate_walk_array(bos->bitmapplans, bos->nplans, walker, context);
+            v = planstate_walk_array(bos->bitmapplans, bos->nplans, walker, context, flags);
             Assert(!planstate->lefttree && !planstate->righttree);
 			break;
         }
 
         case T_SubqueryScanState:
-            v = planstate_walk_node(((SubqueryScanState *)planstate)->subplan, walker, context);
+            v = planstate_walk_node_extended(((SubqueryScanState *)planstate)->subplan, walker, context, flags);
             Assert(!planstate->lefttree && !planstate->righttree);
 			break;
 
         default:
             /* Left subtree */
-            v = planstate_walk_node(planstate->lefttree, walker, context);
+            v = planstate_walk_node_extended(planstate->lefttree, walker, context, flags);
 
 	        /* Right subtree */
             if (v == CdbVisit_Walk)
-                v = planstate_walk_node(planstate->righttree, walker, context);
+                v = planstate_walk_node_extended(planstate->righttree, walker, context, flags);
             break;
 	}
 
 	/* Init plan subtree */
-	if (v == CdbVisit_Walk)
+	if (!(flags & PSW_IGNORE_INITPLAN)
+			&& (v == CdbVisit_Walk))
 	{
 		ListCell *lc = NULL;
 		CdbVisitOpt v1 = v;
@@ -1624,12 +1652,10 @@ planstate_walk_kids(PlanState      *planstate,
 			Assert(ips);
 			if (v1 == CdbVisit_Walk)
 			{
-				v1 = planstate_walk_node(ips, walker, context);
+				v1 = planstate_walk_node_extended(ips, walker, context, flags);
 			}
 		}
-
 	}
-
 
 	/* Sub plan subtree */
 	if (v == CdbVisit_Walk)
@@ -1643,7 +1669,7 @@ planstate_walk_kids(PlanState      *planstate,
 			Assert(ips);
 			if (v1 == CdbVisit_Walk)
 			{
-				v1 = planstate_walk_node(ips, walker, context);
+				v1 = planstate_walk_node_extended(ips, walker, context, flags);
 			}
 		}
 

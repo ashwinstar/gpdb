@@ -232,19 +232,6 @@ CdbVisitOpt
 planstate_walk_node(PlanState      *planstate,
 			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
 			        void           *context);
-CdbVisitOpt
-planstate_walk_array(PlanState    **planstates,
-                     int            nplanstate,
-			         CdbVisitOpt  (*walker)(PlanState *planstate, void *context),
-			         void          *context);
-CdbVisitOpt
-planstate_walk_list(List           *planstatelist,
-			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
-			        void           *context);
-CdbVisitOpt
-planstate_walk_kids(PlanState      *planstate,
-			        CdbVisitOpt   (*walker)(PlanState *planstate, void *context),
-			        void           *context);
 
 /*
  * prototypes from functions in execQual.c
