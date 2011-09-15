@@ -10,7 +10,11 @@ CREATE PROTOCOL demoprot (readfunc = 'read_from_file', writefunc = 'write_to_fil
 -- Cleanup script
 --
 create external web table cleanup(a int)
-  execute 'rm -rf $GP_SEG_DATADIR/hdfsfile.*; touch hdfsfile.out;' on all
+  execute 'rm -rf $GP_SEG_DATADIR/hdfsfile.*;' on all
+  format 'text';
+
+create external web table touchfile(a int)
+  execute 'touch $GP_SEG_DATADIR/hdfsfile.out;' on all
   format 'text';
 
 --
@@ -289,6 +293,8 @@ location ('gphdfs://localhost:9000/gpdb_out/*')
 -- Test 6: formatter SREH
 --
 select * from cleanup;
+select * from touchfile;
+
 drop table test1;
 CREATE TABLE test1(
   v0 bigint,

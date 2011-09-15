@@ -10,7 +10,10 @@ CREATE PROTOCOL demoprot (readfunc = 'read_from_file', writefunc = 'write_to_fil
 -- Cleanup script
 --
 create external web table cleanup(a int)
-  execute 'rm -rf $GP_SEG_DATADIR/hdfsfile.*; touch hdfsfile.out;' on all
+  execute 'rm -rf $GP_SEG_DATADIR/hdfsfile.*;' on all
+  format 'text';
+create external web table touchfile(a int)
+  execute 'touch $GP_SEG_DATADIR/hdfsfile.out;' on all
   format 'text';
 --
 -- Test 0: String serialization in/out test
@@ -251,7 +254,7 @@ CREATE  EXTERNAL WEB TABLE example_in(like test1)
 execute 'cat $GP_SEG_DATADIR/hdfsfile.corrupt'
  FORMAT 'CUSTOM' (formatter='gphdfs_import');
 select * from example_in except select * from test1;
-ERROR:  unexpected end of file  (seg0 slice1 alanpc-4.local:50000 pid=33650)
+ERROR:  unexpected end of file  (seg2 slice1 rh55-qavm35:40002 pid=19998)
 DETAIL:  External table example_in
 --
 -- Test 4: Negative test (type mismatch)
@@ -280,14 +283,14 @@ CREATE  EXTERNAL WEB TABLE example_in(a boolean)
 execute 'cat $GP_SEG_DATADIR/hdfsfile.out'
  FORMAT 'CUSTOM' (formatter='gphdfs_import');
 select * from example_in;
-ERROR:  input data column 1 of type "int8" did not match the external table definition  (seg1 slice1 alanpc-4.local:50001 pid=33645)
+ERROR:  input data column 1 of type "int8" did not match the external table definition  (seg1 slice1 rh55-qavm35:40001 pid=19945)
 DETAIL:  External table example_in
 drop external web table example_in;
 CREATE  EXTERNAL WEB TABLE example_in(a1 int, a boolean)
 execute 'cat $GP_SEG_DATADIR/hdfsfile.out'
  FORMAT 'CUSTOM' (formatter='gphdfs_import');
 select * from example_in;
-ERROR:  input data column count (1) did not match the external table definition  (seg0 slice1 alanpc-4.local:50000 pid=33644)
+ERROR:  input data column count (1) did not match the external table definition  (seg1 slice1 rh55-qavm35:40001 pid=19945)
 DETAIL:  External table example_in
 --
 -- Test 5: gphdfs protocol (just declare an external table)
@@ -304,6 +307,11 @@ location ('gphdfs://localhost:9000/gpdb_out/*')
 -- Test 6: formatter SREH
 --
 select * from cleanup;
+ a 
+---
+(0 rows)
+
+select * from touchfile;
  a 
 ---
 (0 rows)
