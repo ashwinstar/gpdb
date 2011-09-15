@@ -130,6 +130,7 @@ static void getTypeName(Oid typeid, char* data)
 	name = ((Form_pg_type) GETSTRUCT(type_tuple))->typname.data;
 
 	strcpy(data, name);
+	ReleaseSysCache(type_tuple);
 }
 
 Datum
@@ -381,15 +382,31 @@ gphdfsformatter_import(PG_FUNCTION_ARGS)
 	 *
 	 * ======================================================================= */
 
+
 	/* Get the first 4 byte; That's the length of the entire packet */
 	remaining = data_len - data_cur;
 	bufidx    = data_cur;
+
+	/* NOTE: Unexpected EOF Error Handling
+	 * The first time we noticed an unexpected EOF, we'll set the datacursor
+	 * forward and then raise the error. But then, the framework will still
+	 * call the formatter the function again. Now, the formatter function will
+	 * be provided with a zero length data buffer. In this case, we should not
+	 * raise an error again, but simply retruns "NEED MORE DATA". This is how
+	 * the formatter framework works.
+	 */
+	if (remaining == 0 && FORMATTER_GET_SAW_EOF(fcinfo))
+		FORMATTER_RETURN_NOTIFICATION(fcinfo, FMT_NEED_MORE_DATA);
+
 	if (remaining < 4)
 	{
 		if (FORMATTER_GET_SAW_EOF(fcinfo))
-			ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+		{
+			FORMATTER_SET_BAD_ROW_DATA(fcinfo, data_buf+data_cur, remaining);
+			ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
 							errmsg("unexpected end of file"),
 						    errOmitLocation(true)));
+		}
 		FORMATTER_RETURN_NOTIFICATION(fcinfo, FMT_NEED_MORE_DATA);
 	}
 	tuplelen = readIntFromBuffer(data_buf, &bufidx);
@@ -398,13 +415,17 @@ gphdfsformatter_import(PG_FUNCTION_ARGS)
 	if (remaining < tuplelen)
 	{
 		if (FORMATTER_GET_SAW_EOF(fcinfo))
-			ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+		{
+			FORMATTER_SET_BAD_ROW_DATA(fcinfo, data_buf+data_cur, remaining);
+			ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
 							errmsg("unexpected end of file"),
 						    errOmitLocation(true)));
+		}
 		FORMATTER_RETURN_NOTIFICATION(fcinfo, FMT_NEED_MORE_DATA);
 	}
 
 	/* We got here. So, we've the ENTIRE tuple in the buffer */
+	FORMATTER_SET_BAD_ROW_DATA(fcinfo, data_buf+data_cur, tuplelen);
 
 	/* start clean */
 	MemSet(myData->values, 0,    ncolumns * sizeof(Datum));
@@ -418,11 +439,12 @@ gphdfsformatter_import(PG_FUNCTION_ARGS)
 	colcnt  = readIntFromBuffer(data_buf, &bufidx);
 
 	if (version != GPDBWRITABLE_VERSION)
-		ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
 						errmsg("cannot import data version %d",	version),
 					    errOmitLocation(true)));
+
 	if (colcnt != ncolumns)
-		ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
 						errmsg("input data column count (%d) did not match the external table definition",
 								colcnt),
 					    errOmitLocation(true)));
@@ -438,11 +460,12 @@ gphdfsformatter_import(PG_FUNCTION_ARGS)
 		 * For text formatted type, call the conversion function anyway.
 		 */
 		input_type = readIntFromBuffer(data_buf, &bufidx);
-		if (isBinaryFormatType(defined_type) && input_type != defined_type)
+		if ((isBinaryFormatType(defined_type) || isBinaryFormatType(input_type)) &&
+			input_type != defined_type)
 		{
 			char intype[NAMEDATALEN];
 			getTypeName(input_type, intype);
-			ereport(ERROR, (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+			ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
 							errmsg("input data column %d of type \"%s\" did not match the external table definition",
 									i+1, intype),
 						    errOmitLocation(true)));
@@ -486,7 +509,7 @@ gphdfsformatter_import(PG_FUNCTION_ARGS)
 		}
 	}
 
-	data_cur = bufidx;
+	data_cur += tuplelen;
 
 	MemoryContextSwitchTo(oldcontext);
 

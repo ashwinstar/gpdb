@@ -286,6 +286,64 @@ location ('gphdfs://localhost:9000/gpdb_out/*')
  FORMAT 'CUSTOM' (formatter='gphdfs_import');
 
 --
+-- Test 6: formatter SREH
+--
+select * from cleanup;
+drop table test1;
+CREATE TABLE test1(
+  v0 bigint,
+  v1 bigint
+) 
+WITH (appendonly = true) DISTRIBUTED BY (v0);
+insert into test1 values(12345, 123444);
+
+drop external table example_out;
+CREATE WRITABLE EXTERNAL TABLE example_out(like test1)
+ location('demoprot://hdfsfile.out')
+ format 'custom' (formatter='gphdfs_export') distributed by (v0);
+
+insert into example_out select * from test1;
+
+drop table test1;
+CREATE TABLE test1(
+  v0 bigint
+) 
+WITH (appendonly = true) DISTRIBUTED BY (v0);
+insert into test1 values(12345);
+
+drop external table example_out;
+CREATE WRITABLE EXTERNAL TABLE example_out(like test1)
+ location('demoprot://hdfsfile.out')
+ format 'custom' (formatter='gphdfs_export') distributed by (v0);
+
+insert into example_out select * from test1;
+
+drop external table example_out;
+CREATE WRITABLE EXTERNAL TABLE example_out(a boolean)
+ location('demoprot://hdfsfile.out')
+ FORMAT 'CUSTOM' (formatter='gphdfs_export')
+ distributed by (a);
+
+insert into example_out values(true);
+insert into example_out values(false);
+
+drop external table example_out;
+CREATE WRITABLE EXTERNAL TABLE example_out(like test1)
+ location('demoprot://hdfsfile.out')
+ format 'TEXT' distributed by (v0);
+
+insert into example_out select * from test1;
+
+drop external web table example_in;
+CREATE  EXTERNAL WEB TABLE example_in(a boolean)
+execute 'cat $GP_SEG_DATADIR/hdfsfile.out'
+ FORMAT 'CUSTOM' (formatter='gphdfs_import')
+ log errors into errtbl SEGMENT REJECT LIMIT 1000 rows;
+
+select * from example_in order by 1;
+
+select relname, filename, linenum, bytenum, errmsg, rawdata, rawbytes from errtbl order by 1,2,3,4,5,6,7;
+--
 -- End of Test (drop stuff)
 --
 select * from cleanup; 
