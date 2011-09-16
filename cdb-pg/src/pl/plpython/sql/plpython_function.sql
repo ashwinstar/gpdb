@@ -688,6 +688,13 @@ AS $$
   return y
 $$ language plpythonu;
 
+CREATE OR REPLACE FUNCTION unnamed_tuple_test() RETURNS VOID LANGUAGE plpythonu AS $$
+plpy.execute("SHOW client_min_messages")
+$$;
+
+CREATE FUNCTION named_tuple_test() RETURNS VARCHAR LANGUAGE plpythonu AS $$
+return plpy.execute("SELECT setting FROM pg_settings WHERE name='client_min_messages'")[0]['setting']
+$$;
 
 create or replace function split(input int) returns setof ab_tuple as
 $$

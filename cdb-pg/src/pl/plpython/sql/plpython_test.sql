@@ -193,6 +193,10 @@ SELECT (split(10)).*;
 
 SELECT * FROM split(100); 
 
+select unnamed_tuple_test(); 
+
+select named_tuple_test(); 
+
 select oneline() 
 union all 
 select oneline2()

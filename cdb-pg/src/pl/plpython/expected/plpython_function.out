@@ -158,67 +158,67 @@ CREATE TRIGGER show_trigger_data_trig
 BEFORE INSERT OR UPDATE OR DELETE ON trigger_test
 FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
 insert into trigger_test values(1,'insert');
-NOTICE:  TD[args] => ['23', 'skidoo']  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[args] => ['23', 'skidoo']  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[event] => INSERT  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[event] => INSERT  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[level] => ROW  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[level] => ROW  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[name] => show_trigger_data_trig  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[name] => show_trigger_data_trig  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[new] => {'i': 1, 'v': 'insert'}  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[new] => {'i': 1, 'v': 'insert'}  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[old] => None  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[old] => None  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[relid] => bogus:12345  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[relid] => bogus:12345  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[table_name] => trigger_test  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[table_name] => trigger_test  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[table_schema] => public  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[table_schema] => public  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[when] => BEFORE  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[when] => BEFORE  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
 update trigger_test set v = 'update' where i = 1;
-NOTICE:  TD[args] => ['23', 'skidoo']  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[args] => ['23', 'skidoo']  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[event] => UPDATE  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[event] => UPDATE  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[level] => ROW  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[level] => ROW  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[name] => show_trigger_data_trig  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[name] => show_trigger_data_trig  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[new] => {'i': 1, 'v': 'update'}  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[new] => {'i': 1, 'v': 'update'}  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[old] => {'i': 1, 'v': 'insert'}  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[old] => {'i': 1, 'v': 'insert'}  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[relid] => bogus:12345  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[relid] => bogus:12345  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[table_name] => trigger_test  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[table_name] => trigger_test  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[table_schema] => public  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[table_schema] => public  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[when] => BEFORE  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[when] => BEFORE  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
 delete from trigger_test;
-NOTICE:  TD[args] => ['23', 'skidoo']  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[args] => ['23', 'skidoo']  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[event] => DELETE  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[event] => DELETE  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[level] => ROW  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[level] => ROW  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[name] => show_trigger_data_trig  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[name] => show_trigger_data_trig  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[new] => None  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[new] => None  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[old] => {'i': 1, 'v': 'update'}  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[old] => {'i': 1, 'v': 'update'}  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[relid] => bogus:12345  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[relid] => bogus:12345  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[table_name] => trigger_test  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[table_name] => trigger_test  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[table_schema] => public  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[table_schema] => public  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
-NOTICE:  TD[when] => BEFORE  (seg0 gavinmac:40000 pid=41970)
+NOTICE:  TD[when] => BEFORE  (seg0 gavinmac:40000 pid=14272)
 CONTEXT:  PL/Python function "trigger_data"
       
 DROP TRIGGER show_trigger_data_trig on trigger_test;
@@ -657,6 +657,12 @@ AS $$
   exec('y = ' + s)
   return y
 $$ language plpythonu;
+CREATE OR REPLACE FUNCTION unnamed_tuple_test() RETURNS VOID LANGUAGE plpythonu AS $$
+plpy.execute("SHOW client_min_messages")
+$$;
+CREATE FUNCTION named_tuple_test() RETURNS VARCHAR LANGUAGE plpythonu AS $$
+return plpy.execute("SELECT setting FROM pg_settings WHERE name='client_min_messages'")[0]['setting']
+$$;
 create or replace function split(input int) returns setof ab_tuple as
 $$
 	plpy.log("Returning the FIRST tuple")

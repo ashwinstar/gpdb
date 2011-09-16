@@ -119,6 +119,11 @@ typedef int Py_ssize_t;
 #include <compile.h>
 #include <eval.h>
 
+#ifdef PLPYTHON_SHOW_DEBUG_INFO
+#define pyelog(...) elog(__VA_ARGS__)
+#else
+#define pyelog(...)
+#endif
 
 PG_MODULE_MAGIC;
 
@@ -532,9 +537,7 @@ plpython_call_handler(PG_FUNCTION_ARGS)
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connect failed");
 
-	#ifdef PLPYTHON_SHOW_DEBUG_INFO
-	elog(LOG, "Entering call handler with  PLy_curr_procedure: %p", PLy_curr_procedure); 
-	#endif 
+	pyelog(LOG, "Entering call handler with  PLy_curr_procedure: %p", PLy_curr_procedure); 
 
 	save_curr_proc = PLy_curr_procedure;
 
@@ -555,9 +558,7 @@ plpython_call_handler(PG_FUNCTION_ARGS)
 
 			proc = PLy_procedure_get(fcinfo->flinfo->fn_oid, true);
 
-			#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-			elog(LOG, "Calling python proc @ address: %p", proc); 
-			#endif 
+			pyelog(LOG, "Calling python proc @ address: %p", proc); 
 			
 			PLy_curr_procedure = proc;
 			trv = PLy_trigger_handler(fcinfo, proc);
@@ -567,9 +568,7 @@ plpython_call_handler(PG_FUNCTION_ARGS)
 		{
 			proc = PLy_procedure_get(fcinfo->flinfo->fn_oid, false);
 
-			#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-			elog(LOG, "Calling python proc @ address: %p", proc); 
-			#endif 
+			pyelog(LOG, "Calling python proc @ address: %p", proc); 
 
 			PLy_curr_procedure = proc;
 			retval = PLy_function_handler(fcinfo, proc);
@@ -1029,9 +1028,7 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure *proc)
 
 	PG_TRY();
 	{
-		#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-		elog(INFO, "fcinfo->flinfo->fn_retset: %d", fcinfo->flinfo->fn_retset); 
-		#endif 
+		pyelog(INFO, "fcinfo->flinfo->fn_retset: %d", fcinfo->flinfo->fn_retset); 
 
 		if (fcinfo->flinfo->fn_retset)
 		{
@@ -1045,16 +1042,13 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure *proc)
 				 * so that this call will have a fresh start 
 				 */ 
 				PyErr_Clear(); 
-				#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-				elog(INFO, "The funcctx pointer returned by SRF_FIRSTCALL_INIT() is: %p", funcctx); 
-				#endif 
+				pyelog(INFO, "The funcctx pointer returned by SRF_FIRSTCALL_INIT() is: %p", funcctx); 
 			}
 			else
 			{
 				funcctx = SRF_PERCALL_SETUP();
-				#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-				elog(INFO, "The funcctx pointer returned by SRF_PERCALL_SETUP() is: %p", funcctx); 
-				#endif 
+
+				pyelog(INFO, "The funcctx pointer returned by SRF_PERCALL_SETUP() is: %p", funcctx); 
 			}
 			
 			Assert(funcctx != NULL);
@@ -1069,9 +1063,7 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure *proc)
 			plargs = PLy_function_build_args(fcinfo, proc);
 			plrv = PLy_procedure_call(proc, "args", plargs);
 
-			#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-			elog(INFO, "The python procedure is called for the first time"); 
-			#endif 
+			pyelog(INFO, "The python procedure is called for the first time"); 
 
 			if (!fcinfo->flinfo->fn_retset)
 			{
@@ -1097,9 +1089,7 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure *proc)
 			
 			if (funcctx->user_fctx == NULL)
 			{
-				#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-				elog(INFO, "first time call, preparing the result set..."); 
-				#endif 
+				pyelog(INFO, "first time call, preparing the result set..."); 
 
 				/* first time -- do checks and setup */
 				if (!rsi || !IsA(rsi, ReturnSetInfo) ||
@@ -1125,9 +1115,7 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure *proc)
 							 errdetail("PL/Python set-returning functions must return an iterable object.")));
 			}
 			
-			#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-			elog(INFO, "Now ready to call PyIter_Next on %p", funcctx->user_fctx); 
-			#endif 
+			pyelog(INFO, "Now ready to call PyIter_Next on %p", funcctx->user_fctx); 
 
 			/* Fetch next from iterator */
 			plrv = PyIter_Next( (PyObject*) funcctx->user_fctx ); 
@@ -1810,15 +1798,11 @@ PLy_procedure_compile(PLyProcedure *proc, const char *src)
 	/*
 	 * insert the function code into the interpreter
 	 */
-	#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-	elog(INFO, "original plpython code:\n%s", src); 
-	#endif 
+	pyelog(INFO, "original plpython code:\n%s", src); 
 
 	msrc = PLy_procedure_munge_source(proc->pyname, src);
 	
-	#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-	elog(INFO, "munged plpython code:\n%s", msrc); 
-	#endif 
+	pyelog(INFO, "munged plpython code:\n%s", msrc); 
 	
 	/* Save the mangled source for later inclusion in tracebacks */
 	proc->src = PLy_strdup(msrc);
@@ -1998,16 +1982,12 @@ PLy_procedure_munge_source(const char *name, const char *src)
 				}
 			}
 
-			#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-			elog(INFO, "After searching the start of the string, index is: %d sf is: %d endquote is: %c", i, sf, cendquote); 
-			#endif
+			pyelog(INFO, "After searching the start of the string, index is: %d sf is: %d endquote is: %c", i, sf, cendquote); 
 
 			/* now copy all characters to the destination buffer if we see the beginning of a string */ 
 			while (sf != STRING_BEGIN_NOT_YET && sf != STRING_SEEN_END && i < olen)
 			{
-				#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-				elog(INFO, "copying src[%d]=%c", i, src[i]); 
-				#endif
+				pyelog(INFO, "copying src[%d]=%c", i, src[i]); 
 
 				BOUNDED_PTR_ASSIGN_INC(mp, mrc + mlen, src[i]); 
 
@@ -2036,9 +2016,7 @@ PLy_procedure_munge_source(const char *name, const char *src)
 				i++; 
 			}
 
-			#ifdef PLPYTHON_SHOW_DEBUG_INFO 
-			elog(INFO, "After searching the END of the string, index is: %d sf is: %d", i, sf); 
-			#endif 
+			pyelog(INFO, "After searching the END of the string, index is: %d sf is: %d", i, sf); 
 
 			if (i == olen) 
 				break; 
@@ -2117,6 +2095,7 @@ PLy_input_tuple_funcs(PLyTypeInfo *arg, TupleDesc desc)
 
 	if (arg->is_rowtype == 0)
 		elog(ERROR, "PLyTypeInfo struct is initialized for a Datum");
+
 	arg->is_rowtype = 1;
 
 	if (arg->in.r.natts != desc->natts)
@@ -2127,12 +2106,18 @@ PLy_input_tuple_funcs(PLyTypeInfo *arg, TupleDesc desc)
 		arg->in.r.atts = PLy_malloc0(desc->natts * sizeof(PLyDatumToOb));
 	}
 
+	pyelog(LOG, "Done with malloc, typmod:%d tdtypeid:%d", desc->tdtypmod, desc->tdtypeid); 
 	/* Can this be an unnamed tuple? If not, then an Assert would be enough */
 	if (desc->tdtypmod != -1)
-		elog(ERROR, "received unnamed record type as input");
+	{
+		pyelog(LOG, "received unnamed record type as input");
+		//elog(ERROR, "received unnamed record type as input");
+	}
+
+	pyelog(LOG, "Checking oid: %d", desc->tdtypeid); 
 
 	Assert(OidIsValid(desc->tdtypeid));
-
+	
 	/*
 	 * RECORDOID means we got called to create input functions for a tuple
 	 * fetched by plpy.execute or for an anonymous record type
@@ -2153,11 +2138,11 @@ PLy_input_tuple_funcs(PLyTypeInfo *arg, TupleDesc desc)
 
 		ReleaseSysCache(relTup);
 	}
-
+	
 	for (i = 0; i < desc->natts; i++)
 	{
 		HeapTuple	typeTup;
-
+		
 		if (desc->attrs[i]->attisdropped)
 			continue;
 
@@ -2566,7 +2551,9 @@ PLyDict_FromTuple(PLyTypeInfo *info, HeapTuple tuple, TupleDesc desc)
 			vattr = heap_getattr(tuple, (i + 1), desc, &is_null);
 
 			if (is_null || info->in.r.atts[i].func == NULL)
+			{
 				PyDict_SetItemString(dict, key, Py_None);
+			}
 			else
 			{
 				value = (info->in.r.atts[i].func) (&info->in.r.atts[i], vattr);
@@ -3838,6 +3825,7 @@ PLy_spi_execute_query(char *query, long limit)
 	{
 		pg_verifymbstr(query, strlen(query), false);
 		rv = SPI_execute(query, PLy_curr_procedure->fn_readonly, limit);
+
 		ret = PLy_spi_execute_fetch_result(SPI_tuptable, SPI_processed, rv);
 
 		/* Commit the inner transaction, return to outer xact context */
@@ -3906,7 +3894,7 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, int rows, int status)
 	result = (PLyResultObject *) PLy_result_new();
 	Py_DECREF(result->status);
 	result->status = PyInt_FromLong(status);
-
+	
 	if (status > 0 && tuptable == NULL)
 	{
 		Py_DECREF(result->nrows);
@@ -3930,8 +3918,10 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, int rows, int status)
 				result->rows = PyList_New(rows);
 
 				PLy_input_tuple_funcs(&args, tuptable->tupdesc);
+
 				for (i = 0; i < rows; i++)
 				{
+
 					PyObject   *row = PLyDict_FromTuple(&args, tuptable->vals[i],
 														tuptable->tupdesc);
 
