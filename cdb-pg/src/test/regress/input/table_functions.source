@@ -315,6 +315,13 @@ SELECT b FROM multiset_6( TABLE( SELECT * from example) ) e(a int, b text)  orde
 SELECT b FROM multiset_5( TABLE( SELECT * from example) ) order by b;
 -- end equivalent
 
+-- Different cases of joins in the subplan
+-- begin equivalent
+SELECT distinct a.a, b.b from example a, example b where a.a = b.a order by 1,2;
+select * from multiset_2( TABLE( SELECT distinct a.a, b.b from example a, example b where a.a = b.a) ) order by 1,2;
+select * from multiset_2( TABLE( SELECT distinct a.a, b.b from example a join example b using (a) ) ) order by 1,2;
+-- end_equivalent
+
 -- Support for different backend code
 
 -- this function always returns a single scalar null value
@@ -431,6 +438,8 @@ explain SELECT * FROM example_r WHERE (10, 'hello') in (SELECT * FROM multiset_5
 explain SELECT * FROM multiset_5( TABLE( SELECT * from example_v) );
 explain WITH cte AS (SELECT * FROM example) SELECT * FROM multiset_5( TABLE ( SELECT * FROM cte ) )  order by a, b;
 explain WITH cte AS (SELECT * FROM example) SELECT x.* FROM multiset_5( TABLE ( SELECT * FROM cte ) ) x, (SELECT count(*) FROM cte) y order by x.a, x.b;
+explain select * from multiset_2( TABLE( SELECT distinct a.a, b.b from example a, example b where a.a = b.a) ) order by 1,2;
+explain select * from multiset_2( TABLE( SELECT distinct a.a, b.b from example a join example b using (a) ) ) order by 1,2;
 -- Not rescannable, should produce materialize node
 explain SELECT x.* FROM multiset_5( TABLE ( SELECT 1 ) ) x right join (SELECT 1) y on (true);
 

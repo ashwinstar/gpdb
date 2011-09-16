@@ -3959,6 +3959,7 @@ range_table_mutator(List *rtable,
 				break;
 			case RTE_TABLEFUNCTION:
 				MUTATE(newrte->funcexpr, rte->funcexpr, Node *);
+				MUTATE(newrte->subquery, newrte->subquery, Query *);
 				break;
 			case RTE_VALUES:
 				MUTATE(newrte->values_lists, rte->values_lists, List *);
