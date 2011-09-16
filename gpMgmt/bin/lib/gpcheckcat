@@ -64,6 +64,13 @@ def parse_int(val):
     except ValueError: val = 0
     return val
 
+###############################
+def quote_value(name):
+    """Add surrounding single quote, double interior single quote."""
+    assert isinstance(name,str)
+    return "'" + "''".join(name.split("'")) + "'"
+
+
 SUCCESS=0
 ERROR_REMOVE=1
 ERROR_RESYNC=2
@@ -113,8 +120,11 @@ class Global():
     db        = {}
     tmpdir    = None
 
-    # array of SQL statements. Key is dbid
+    # dictionary of SQL statements. Key is dbid
     Remove = {}
+
+    # dictionary of SQL statements. Key is dbid
+    AdjustConname = {}
 
     # array of SQL statements. Key is dbid
     ReSync = {}
@@ -664,6 +674,808 @@ def checkPartitionIntegrity():
     db.close()
 
 #############
+# A dictionary of SQL statements for checkPartitionRegularity()
+
+partitionRegularityChecks = {
+    # Query: irreg_user_constraint
+    # 
+    #     A row represents an irregular user-defined constraint.
+    # 
+    #     This view just filters ptable_user_con_info so that it returns no rows
+    #     if no irregular user-defined constraints exist.
+    #     
+    #     An irregular user-constraint is a constraint whose definition (DDL expression
+    #     format) appears on the root table of a partitioned table, and doesn't appear
+    #     on every part table of the partitioned table.  It is possible to construct
+    #     these using sequences of DDL operations on release prior to Rio.  In Rio,
+    #     it is possible to construct them with FOREIGN KEY constraints, but not with
+    #     other constraint types.
+    # 
+    # tableid:  pg_class.oid of the partitioned table
+    # conname:  name of the constraint on the partitioned table
+    # contype:  type of constraint (same on part and table)
+    # condef:  specification of constraint (same on part and table)
+    # numexpected:  number of constraint occurrences expected (incl table)
+    # numactual:  number of constraint occurrences observed (incl table)
+    'irreg_user_constraint' :
+    """select 
+	    tableid,
+	    tableconname,
+	    contype,
+	    condef,
+	    numexpected,
+	    numactual
+	from
+	    (
+			select 
+				c.tableid, 
+				c.tableconname, 
+				c.contype, 
+				c.condef, 
+				i.tableparts + 1, 
+				count(c.partid), 
+				count(distinct c.partconname) 
+			from 
+				(
+					select
+						u.tableid,
+						u.conname, 
+						u.contype,
+						u.condef, 
+						p.partid, 
+						p.conid,
+						coalesce(p.conname) 
+					from
+						(
+							select
+								p.tableid,
+								c.conname,
+								c.contype,
+								pg_get_constraintdef(c.oid) as condef
+							from 
+								(
+									select 
+										parrelid::regclass,
+										max(parlevel)+1
+									from
+										pg_partition
+									group by parrelid
+								) as p(tableid, tabledepth) ,
+								pg_constraint c
+							where
+								p.tableid = c.conrelid
+						) as u(tableid, conname, contype, condef) 
+							join
+						(
+							select 
+								x.tableid::regclass as tableid,
+								c.conrelid::regclass as partid,
+								c.oid as conid,
+								c.conname,
+								c.contype,
+								pg_get_constraintdef(c.oid) as condef
+							from 
+								pg_constraint c,
+								(
+									select 
+										tableid,  
+										tabledepth,
+										tableid::regclass partid, 
+										0 as partdepth, 
+										0 as partordinal,
+										'r'::char as partstatus
+									from 
+										(
+											select 
+												parrelid::regclass,
+												max(parlevel)+1
+											from
+												pg_partition
+											group by parrelid
+										) as ptable(tableid, tabledepth) 
+									union all
+									select 
+										parrelid::regclass as tableid,  
+										t.tabledepth as tabledepth,
+										r.parchildrelid::regclass partid, 
+										p.parlevel + 1 as partdepth, 
+										r.parruleord as partordinal,
+										case
+											when t.tabledepth = p.parlevel + 1 then 'l'::char
+											else 'i'::char
+										end as partstatus
+									from 
+										pg_partition p, 
+										pg_partition_rule r,
+										 (
+											select 
+												parrelid::regclass,
+												max(parlevel)+1
+											from
+												pg_partition
+											group by parrelid
+										) as t(tableid, tabledepth) 
+									where 
+										p.oid = r.paroid
+										and not p.paristemplate
+										and p.parrelid = t.tableid
+								) as x(tableid, tabledepth, partid, partdepth, partordinal, partstatus) 
+							where
+								x.partid = c.conrelid
+						) as p(tableid, partid, conid, conname, contype, condef) 
+							on (
+								u.tableid = p.tableid and
+								u.contype = p.contype and
+								u.condef = p.condef
+								)
+				) as c(tableid, tableconname, contype, condef, partid, partconid, partconname) ,
+				(
+					select
+						t.tableid,
+						t.tabledepth,
+						n.nparts as tableparts,
+						r.nspname,
+						r.relname
+					from
+						(
+							select 
+								parrelid::regclass,
+								max(parlevel)+1
+							from
+								pg_partition
+							group by parrelid
+						) as t(tableid, tabledepth) ,
+						(
+							select 
+								c.oid::regclass as relid,
+								n.nspname,
+								c.relname, 
+								c.relkind
+							from
+								pg_class c,
+								pg_namespace n
+							where
+								c.relnamespace = n.oid
+						) as r(relid, nspname, relname, relkind) ,
+						(
+							select tableid, count(*) 
+							from (
+									select 
+										t.tableid::regclass,
+										p.parchildrelid::regclass as partid
+									from 
+										( 
+											select pg_partition.parrelid, pg_partition.oid
+											from pg_partition
+											where not pg_partition.paristemplate
+										) t(tableid, partid), 
+										pg_partition_rule p
+									where p.paroid = t.partid
+								) as contains_part(tableid, partid)  
+							group by tableid
+						) n(tableid, nparts)
+					where 
+						t.tableid = r.relid and
+						t.tableid = n.tableid 
+				) as i(tableid, tabledepth, tableparts, nspname, relname) 
+			where
+				c.tableid = i.tableid
+			group by 
+				c.tableid, 
+				c.tableconname, 
+				c.contype, 
+				c.condef,
+				i.tableparts
+		) as ptable_user_con_info(tableid, tableconname, contype, condef, numexpected, numactual, numnames) 
+	where
+	    contype != 'f' and -- no FK consistency in Rio
+	    numexpected != numactual""",
+    
+    # Query: irreg_sys_constraint
+    # 
+    #     A row represents an irregular system-defined constraint.
+    # 
+    #     An irregular system constraint is a constraint whose definition (DDL
+    #     expression format) appears on some part tables and that is not a system-
+    #     defined partition constraint.
+    #     
+    #     This view doesn't actually test this.  Instead, it checks for an
+    #     expected pattern of system-defined constraints.
+    #     1. The constraints checked are those that don't appear on the root.
+    #     2. Each part has as many constraints as its depth in the partition.
+    #     Violators are listed as results.
+    # 
+    # tableid:  pg_class.oid of the partitioned table
+    # partid:  pg_class.oid of the (constrained) part table
+    # tabledepth:  maximum depth of partitioned table
+    # partdepth:  depth of part in partition
+    # numcondefs:  number of constraint occurrences expected (incl table)
+    # numconstraints:  number of constraint occurrences observed (incl table)
+    'irreg_sys_constraint' :
+    """select 
+		s.tableid, 
+		s.partid,
+		c.tabledepth, 
+		c.partdepth,
+		count(distinct s.condef) as numcondefs, 
+		count(*) as numconstraints
+	from 
+		(
+			select 
+				tableid,
+				partid,
+				conid,
+				conname,
+				contype,
+				condef 
+			from (
+					select 
+						x.tableid::regclass as tableid,
+						c.conrelid::regclass as partid,
+						c.oid as conid,
+						c.conname,
+						c.contype,
+						pg_get_constraintdef(c.oid) as condef
+					from 
+						pg_constraint c,
+						(
+							select 
+								tableid,  
+								tabledepth,
+								tableid::regclass partid, 
+								0 as partdepth, 
+								0 as partordinal,
+								'r'::char as partstatus
+							from 
+								(
+									select 
+										parrelid::regclass,
+										max(parlevel)+1
+									from
+										pg_partition
+									group by parrelid
+								) as ptable(tableid, tabledepth) 
+							union all
+							select 
+								parrelid::regclass as tableid,  
+								t.tabledepth as tabledepth,
+								r.parchildrelid::regclass partid, 
+								p.parlevel + 1 as partdepth, 
+								r.parruleord as partordinal,
+								case
+									when t.tabledepth = p.parlevel + 1 then 'l'::char
+									else 'i'::char
+								end as partstatus
+							from 
+								pg_partition p, 
+								pg_partition_rule r,
+								 (
+									select 
+										parrelid::regclass,
+										max(parlevel)+1
+									from
+										pg_partition
+									group by parrelid
+								) as t(tableid, tabledepth) 
+							where 
+								p.oid = r.paroid
+								and not p.paristemplate
+								and p.parrelid = t.tableid
+						) as x(tableid, tabledepth, partid, partdepth, partordinal, partstatus) 
+					where
+						x.partid = c.conrelid
+				) as part_constraint(tableid, partid, conid, conname, contype, condef)  
+			where 
+				(partid, condef) not in 
+					(
+						select partid, condef 
+						from (
+					select
+						u.tableid,
+						u.conname, 
+						u.contype,
+						u.condef, 
+						p.partid, 
+						p.conid,
+						coalesce(p.conname) 
+					from
+						(
+							select
+								p.tableid,
+								c.conname,
+								c.contype,
+								pg_get_constraintdef(c.oid) as condef
+							from 
+								(
+									select 
+										parrelid::regclass,
+										max(parlevel)+1
+									from
+										pg_partition
+									group by parrelid
+								) as p(tableid, tabledepth) ,
+								pg_constraint c
+							where
+								p.tableid = c.conrelid
+						) as u(tableid, conname, contype, condef) 
+							join
+						(
+							select 
+								x.tableid::regclass as tableid,
+								c.conrelid::regclass as partid,
+								c.oid as conid,
+								c.conname,
+								c.contype,
+								pg_get_constraintdef(c.oid) as condef
+							from 
+								pg_constraint c,
+								(
+									select 
+										tableid,  
+										tabledepth,
+										tableid::regclass partid, 
+										0 as partdepth, 
+										0 as partordinal,
+										'r'::char as partstatus
+									from 
+										(
+											select 
+												parrelid::regclass,
+												max(parlevel)+1
+											from
+												pg_partition
+											group by parrelid
+										) as ptable(tableid, tabledepth) 
+									union all
+									select 
+										parrelid::regclass as tableid,  
+										t.tabledepth as tabledepth,
+										r.parchildrelid::regclass partid, 
+										p.parlevel + 1 as partdepth, 
+										r.parruleord as partordinal,
+										case
+											when t.tabledepth = p.parlevel + 1 then 'l'::char
+											else 'i'::char
+										end as partstatus
+									from 
+										pg_partition p, 
+										pg_partition_rule r,
+										 (
+											select 
+												parrelid::regclass,
+												max(parlevel)+1
+											from
+												pg_partition
+											group by parrelid
+										) as t(tableid, tabledepth) 
+									where 
+										p.oid = r.paroid
+										and not p.paristemplate
+										and p.parrelid = t.tableid
+								) as x(tableid, tabledepth, partid, partdepth, partordinal, partstatus) 
+							where
+								x.partid = c.conrelid
+						) as p(tableid, partid, conid, conname, contype, condef) 
+							on (
+								u.tableid = p.tableid and
+								u.contype = p.contype and
+								u.condef = p.condef
+								)
+				) as part_user_constraint(tableid, tableconname, contype, condef, partid, partconid, partconname) 
+			)  
+		) as s(tableid, partid, conid, conname, contype, condef) ,
+		(
+			select 
+				tableid,  
+				tabledepth,
+				tableid::regclass partid, 
+				0 as partdepth, 
+				0 as partordinal,
+				'r'::char as partstatus
+			from 
+				(
+					select 
+						parrelid::regclass,
+						max(parlevel)+1
+					from
+						pg_partition
+					group by parrelid
+				) as ptable(tableid, tabledepth) 
+			union all
+			select 
+				parrelid::regclass as tableid,  
+				t.tabledepth as tabledepth,
+				r.parchildrelid::regclass partid, 
+				p.parlevel + 1 as partdepth, 
+				r.parruleord as partordinal,
+				case
+					when t.tabledepth = p.parlevel + 1 then 'l'::char
+					else 'i'::char
+				end as partstatus
+			from 
+				pg_partition p, 
+				pg_partition_rule r,
+				 (
+					select 
+						parrelid::regclass,
+						max(parlevel)+1
+					from
+						pg_partition
+					group by parrelid
+				) as t(tableid, tabledepth) 
+			where 
+				p.oid = r.paroid
+				and not p.paristemplate
+				and p.parrelid = t.tableid
+		) as c(tableid, tabledepth, partid, partdepth, partordinal, partstatus) 
+	where
+		s.partid = c.partid
+	group by 
+		 s.tableid, 
+		 s.partid, 
+		 c.tabledepth,
+		 c.partdepth
+	having c.partdepth != count(*)""",
+        
+    # Query: unenforced_unique_constraint
+    # 
+    #     A row represents an unenforceable key constraint on a partitioned table.
+    # 
+    # tableid
+    # distkey
+    # partkey
+    # conid
+    # conname
+    # contype
+    # indrelid
+    # indkey
+    "unenforced_unique_constraint" :
+    """select
+        k.tableid,
+        k.distkey,
+        k.partkey,
+        c.conid,
+        c.conname,
+        c.contype,
+        i.indrelid::regclass,
+        i.indkey::smallint[]
+    from 
+        pg_index i, 
+        (
+			select 
+				k.tableid, 
+				d.attrcnt,
+				d.attrnums,
+				sum(k.partkeylen),
+				array_agg(k.partkey[g.g])  
+			from 
+				(
+					select
+						p.parrelid::regclass,
+						t.tabledepth,
+						p.parlevel,
+						p.parnatts,
+						p.paratts
+					from 
+						pg_partition p,
+						(
+							select 
+								parrelid::regclass,
+								max(parlevel)+1
+							from
+								pg_partition
+							group by parrelid
+						) as t(tableid, tabledepth) 
+					where 
+						p.parrelid = t.tableid and
+						p.paristemplate is false
+				) as k(tableid, tabledepth, partdepth, partkeylen, partkey) , 
+				generate_series(0, (select max(partkeylen) from (
+					select
+						p.parrelid::regclass,
+						t.tabledepth,
+						p.parlevel,
+						p.parnatts,
+						p.paratts
+					from 
+						pg_partition p,
+						(
+							select 
+								parrelid::regclass,
+								max(parlevel)+1
+							from
+								pg_partition
+							group by parrelid
+						) as t(tableid, tabledepth) 
+					where 
+						p.parrelid = t.tableid and
+						p.paristemplate is false
+				) as partition_level(tableid, tabledepth, partdepth, partkeylen, partkey) )-1) g(g),
+				(
+					select 
+						localoid::regclass, 
+						attrnums,
+						coalesce(1+array_upper(attrnums,1)-array_lower(attrnums,1),0)
+					from 
+						gp_distribution_policy
+				) as d(relid, attrnums, attrcnt) 
+			where 
+				g.g < k.partkeylen and
+				k.tableid = d.relid
+			group by 
+				k.tableid,
+				d.attrcnt,
+				d.attrnums 
+		) as k(tableid, distkeylen, distkey, partkeylen, partkey) ,
+        (
+			select
+				relid,
+				conid,
+				conname,
+				contype,
+				indexid        
+			from 
+				(
+					select  
+						r.oid::regclass as relid, 
+						c.oid as conid,
+						c.conname,
+						c.contype,
+						c.consrc,
+						pg_get_constraintdef(c.oid) as condef,
+						d.objid::regclass as indexid
+					from 
+						(
+							pg_class r
+								join
+								pg_constraint c
+								on 
+									r.oid = c.conrelid
+									and r.relkind = 'r'
+						)
+							left join
+							pg_depend d
+							on 
+								d.refobjid = c.oid
+								and d.classid = 'pg_class'::regclass
+								and d.refclassid = 'pg_constraint'::regclass
+								and d.deptype = 'i'
+					) as relconstraint(relid, conid, conname, contype, consrc, condef, indexid) 
+			where 
+				indexid is not null
+				or contype in ('p', 'u') 
+		) as c(relid, conid, conname, contype, indexid) 
+    where 
+        c.relid = k.tableid and
+        i.indrelid = k.tableid and
+        i.indexrelid = c.indexid and 
+        not i.indkey::smallint[] @> array_cat(k.distkey, k.partkey)""",
+    
+    # Query: fix_ill_named_constraint
+    # 
+    #     a row represents the data for a fixup of an ill-named constraint
+    # 
+    # tableid:  pg_class.oid of the partitioned table as regclass
+    # tableconname:  pg_constraint.conname on the partitioned table
+    # partid:  pg_class.oid of the part table as regclass
+    # partrelid:  pg_class.oid of the part table as int
+    # partconname:  pg_constraint.conname on the part or partitioned table
+
+    'fix_ill_named_constraint' :
+    """select 
+        tableid, 
+        tableconname, 
+        partid, 
+        partid::int as partrelid, 
+        partconname
+    from (
+			select
+				u.tableid,
+				u.conname, 
+				u.contype,
+				u.condef, 
+				p.partid, 
+				p.conid,
+				coalesce(p.conname) 
+			from
+				(
+					select
+						p.tableid,
+						c.conname,
+						c.contype,
+						pg_get_constraintdef(c.oid) as condef
+					from 
+						(
+							select 
+								parrelid::regclass,
+								max(parlevel)+1
+							from
+								pg_partition
+							group by parrelid
+						) as p(tableid, tabledepth) ,
+						pg_constraint c
+					where
+						p.tableid = c.conrelid
+				) as u(tableid, conname, contype, condef) 
+					join
+				(
+					select 
+						x.tableid::regclass as tableid,
+						c.conrelid::regclass as partid,
+						c.oid as conid,
+						c.conname,
+						c.contype,
+						pg_get_constraintdef(c.oid) as condef
+					from 
+						pg_constraint c,
+						(
+							select 
+								tableid,  
+								tabledepth,
+								tableid::regclass partid, 
+								0 as partdepth, 
+								0 as partordinal,
+								'r'::char as partstatus
+							from 
+								(
+									select 
+										parrelid::regclass,
+										max(parlevel)+1
+									from
+										pg_partition
+									group by parrelid
+								) as ptable(tableid, tabledepth) 
+							union all
+							select 
+								parrelid::regclass as tableid,  
+								t.tabledepth as tabledepth,
+								r.parchildrelid::regclass partid, 
+								p.parlevel + 1 as partdepth, 
+								r.parruleord as partordinal,
+								case
+									when t.tabledepth = p.parlevel + 1 then 'l'::char
+									else 'i'::char
+								end as partstatus
+							from 
+								pg_partition p, 
+								pg_partition_rule r,
+								 (
+									select 
+										parrelid::regclass,
+										max(parlevel)+1
+									from
+										pg_partition
+									group by parrelid
+								) as t(tableid, tabledepth) 
+							where 
+								p.oid = r.paroid
+								and not p.paristemplate
+								and p.parrelid = t.tableid
+						) as x(tableid, tabledepth, partid, partdepth, partordinal, partstatus) 
+					where
+						x.partid = c.conrelid
+				) as p(tableid, partid, conid, conname, contype, condef) 
+					on (
+						u.tableid = p.tableid and
+						u.contype = p.contype and
+						u.condef = p.condef
+						)
+		) as part_user_constraint(tableid, tableconname, contype, condef, partid, partconid, partconname) 
+    where partconname != tableconname"""
+    }
+
+#############
+def checkPartitionRegularity():
+    #
+    # Rio partitioning changes introduce new regularity requirements for constraints
+    # on partitioned tables.  These are the checks.
+    #
+    irregular = False
+    
+    db = connect()
+
+    logger.info('-----------------------------------')
+    logger.info('Checking pg_partition/pg_constraint regularity ...')
+
+    testname = 'user-defined constraint regularity on partitioned tables'
+    
+    qry = partitionRegularityChecks['irreg_user_constraint']    
+    err = []
+    curs = db.query(qry)
+    
+    for row in curs.dictresult():
+        err.append( (row['tableconname'], row['tableid'], row['numactual'], row['numexpected']) )
+
+    if not err:
+        logger.info('[OK]  %s' % testname)
+    else:
+        irregular = True
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL]  %s' % testname)
+        logger.error(' %s test has %d issue(s)' % (testname, len(err)) )
+        efmt = '  Constraint "%s" of partitioned table "%s" occurs %d times, %d expected.'
+        for e in err: 
+            logger.error(efmt % e)
+
+    testname = 'system-defined partition constraint regularity on partitioned tables'
+    
+    qry = partitionRegularityChecks['irreg_sys_constraint']    
+    err = []
+    curs = db.query(qry)
+    for row in curs.dictresult():
+        err.append( (row['partid'], row['tableid'], row['numconstraints'], row['partdepth']) ) 
+
+    if not err:
+        logger.info('[OK]  %s' % testname)
+    else:
+        irregular = True
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL]  %s' % testname)
+        logger.error(' %s test has %d issue(s)' % ( testname, len(err)) )
+        efmt = '  Part table "%s" of partitioned table "%s" has %d system-defined constraints, %d expected.'
+        for e in err: 
+            logger.error(efmt % e)
+
+    testname = 'unenforced unique constraints on partitioned tables'
+    
+    qry = partitionRegularityChecks['unenforced_unique_constraint']    
+    err = []
+    curs = db.query(qry)
+    for row in curs.dictresult():
+        ctype = 'primary key' if row['contype'] == 'p' else 'unique'
+        err.append( (row['tableid'], ctype, row['conname']) ) 
+
+    if not err:
+        logger.info('[OK]  %s' % testname)
+    else:
+        irregular = True # TODO to fix this issue
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL]  %s' % testname)
+        logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
+        efmt = '  partitioned table "%s" has unenforced %s constraint: "%s"'
+        for e in err[0:100]: 
+            logger.error(efmt % e)
+        if len(err) > 100:
+            logger.error("...")
+
+    testname = 'inconsistently named constraint in partitioned table'
+    
+    if irregular:
+        logger.warn('skipping test %s' % testname)
+        # logger.info('due to detected irregularities in partitioned table constraints.')
+    else:
+        # logger.info('Checking %s ...' % testname)
+        
+        qry = partitionRegularityChecks['fix_ill_named_constraint']    
+        err = []
+        curs = db.query(qry)
+        for row in curs.dictresult():
+            err.append( row ) 
+    
+        if not err:
+            logger.info('[OK]  %s' % testname)
+        else:
+            setError(ERROR_REMOVE)
+            logger.info('[FAIL]  %s' % testname)
+            logger.error(' %s test has %d issue(s)' % ( testname, len(err) ) )
+            efmt = '  part table "%s" has constraint named "%s"; should be "%s"'
+            n = 0
+            for e in err:
+                n = n+1
+                if n <= 100:
+                    # part name, wrong constraint name, right constraint name
+                    logger.error(efmt % (e['partid'], e['partconname'], e['tableconname']))
+                for dbid in GV.cfg:
+                    buildAdjustConname(
+						dbid, e['tableid'], int(e['partrelid']), 
+						quote_value(e['partconname']), 
+						quote_value(e['tableconname']) )
+            if len(err) > 100:
+                logger.error("...")
+
+    db.close()
+
+#############
 def checkPGClass():
     logger.info('-----------------------------------')
     logger.info('Checking pg_class ...')
@@ -1168,6 +1980,23 @@ def addRemove(seg, line):
     if not GV.Remove.has_key(seg):
         GV.Remove[seg] = []
     GV.Remove[seg].append(line)
+
+def buildAdjustConname(seg, relname, relid, oldconname, newconname):
+    # relname text
+    # relid oid as int
+    # old/newconname text
+    stmt = '--Adjust Constraint Name: %s on %s becomes %s\n' % \
+        (oldconname, relname, newconname)
+    stmt += 'UPDATE pg_constraint\n'
+    stmt += 'SET conname = %s\n' % newconname
+    stmt += 'WHERE conrelid = %d and conname = %s;' % (relid, oldconname)
+    addAdjustConname(seg, stmt)
+
+def addAdjustConname(seg, stmt):
+    if not GV.AdjustConname.has_key(seg):
+        GV.AdjustConname[seg] = []
+    GV.AdjustConname[seg].append(stmt)
+
 
 class sysCatThread(Thread):
     # Override Thread.__init__ to supply extra info
@@ -2384,6 +3213,14 @@ name_test = {
          "order": 6,
          "online": True
     },
+    "partregularity":
+    {
+         "description": "Check regularity and enforceability of constraints on partitioned tables",
+         "fn": lambda: checkPartitionRegularity(),
+         "version": 'main',
+         "order": 6,
+         "online": True
+    },
     "pgclass":
     {
          "description": "Check pg_class: report entry that does not have any correspond pg_attribute entry",
@@ -2518,6 +3355,7 @@ def runAllTests():
     logger.info("------------------------------------")
 
     fixes = (len(GV.Remove) > 0 or 
+             len(GV.AdjustConname) > 0 or
              len(GV.ReSync) > 0 or 
              len(GV.Reindex) > 0 or 
              len(GV.Constraints) > 0 or
@@ -2542,8 +3380,14 @@ def runAllTests():
         maybeRemove = "";
         if len(GV.ReSync):
             maybeRemove="# "
+        
+        # use the per-dbid loop for removal and for contraint
+        # name adjustments
+        
+        dbids = set(GV.Remove.keys())
+        dbids = dbids.union(GV.AdjustConname.keys())
 
-        for seg in GV.Remove:
+        for seg in dbids:
             # dbid.host.port.dbname.sql
             c = GV.cfg[seg]
             filename = '%i.%s.%i.%s.sql' % (seg, c['hostname'],
@@ -2558,7 +3402,11 @@ def runAllTests():
                 sys.exit(1)
 
             #unique
-            lines = set(GV.Remove[seg])
+            lines = set()
+            if GV.Remove.has_key(seg):
+                lines = lines.union(GV.Remove[seg])
+            if GV.AdjustConname.has_key(seg):
+                lines = lines.union(GV.AdjustConname[seg])
 
             # make sure it is sorted
             li = list(lines)
