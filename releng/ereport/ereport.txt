@@ -12773,11 +12773,11 @@ eaai: execmain:00004981:  RelationGetRelationName(part),
 eaai: execmain:00004982:  RelationGetRelationName(base)), 
 eaai: execmain:00004983:  errOmitLocation(true))); 
 aaaaa GP_IGNORE: eabc: execprocnode - ./backend/executor/execProcnode.c
-eabc: execprocnode:00000332:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
-eabc: execprocnode:00000769:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
-eabc: execprocnode:00000848:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
-eabc: execprocnode:00000982:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
-eabc: execprocnode:00001231:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+eabc: execprocnode:00000357:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+eabc: execprocnode:00000794:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+eabc: execprocnode:00000873:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+eabc: execprocnode:00001007:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
+eabc: execprocnode:00001256:  elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node)); 
 aaaaa GP_IGNORE: eaai: execqual - ./backend/executor/execQual.c
 eaai: execqual:00000290:  ereport(ERROR, 
 eaai: execqual:00000291:  (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED), 
@@ -23375,28 +23375,28 @@ taaj: tuplesort:00003269:  elog(ERROR, "unexpected end of data");
 taaj: tuplesort:00003280:  elog(ERROR, "unexpected end of data"); 
 taaj: tuplesort:00003293:  elog(ERROR, "unexpected end of data"); 
 aaaaa GP_IGNORE: tabc: tuplesortxmk - ./backend/utils/sort/tuplesort_mk.c
-tabc: tuplesortxmk:00000565:  elog(ERROR, "insufficient memory allowed for sort"); 
-tabc: tuplesortxmk:00001188:  elog(ERROR, "invalid tuplesort state"); 
-tabc: tuplesortxmk:00001250:  elog(ERROR, "Invalid tuplesort state"); 
-tabc: tuplesortxmk:00001411:  elog(ERROR, "bogus tuple length in backward scan"); 
-tabc: tuplesortxmk:00001426:  elog(ERROR, "bogus tuple length in backward scan"); 
-tabc: tuplesortxmk:00001440:  elog(ERROR, "invalid tuplesort state"); 
-tabc: tuplesortxmk:00002266:  elog(ERROR, "invalid tuplesort state"); 
-tabc: tuplesortxmk:00002306:  elog(ERROR, "invalid tuplesort state"); 
-tabc: tuplesortxmk:00002343:  elog(ERROR, "tuplesort_restorepos failed"); 
-tabc: tuplesortxmk:00002348:  elog(ERROR, "invalid tuplesort state"); 
-tabc: tuplesortxmk:00002376:  elog(ERROR, "unexpected end of tape"); 
-tabc: tuplesortxmk:00002380:  elog(ERROR, "unexpected end of data"); 
-tabc: tuplesortxmk:00002414:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
-tabc: tuplesortxmk:00002487:  elog(ERROR, "unrecognized SortFunctionKind: %d", (int) kind); 
-tabc: tuplesortxmk:00002570:  elog(ERROR, "unexpected end of data"); 
-tabc: tuplesortxmk:00002577:  elog(ERROR, "unexpected end of data"); 
-tabc: tuplesortxmk:00002641:  elog(ERROR, "unexpected end of data"); 
-tabc: tuplesortxmk:00002648:  elog(ERROR, "unexpected end of data"); 
-tabc: tuplesortxmk:00002658:  elog(ERROR, "copytup_datum() should not be called"); 
-tabc: tuplesortxmk:00002750:  elog(ERROR, "unexpected end of data"); 
-tabc: tuplesortxmk:00002759:  elog(ERROR, "unexpected end of data"); 
-tabc: tuplesortxmk:00002770:  elog(ERROR, "unexpected end of data"); 
+tabc: tuplesortxmk:00000566:  elog(ERROR, "insufficient memory allowed for sort"); 
+tabc: tuplesortxmk:00001198:  elog(ERROR, "invalid tuplesort state"); 
+tabc: tuplesortxmk:00001260:  elog(ERROR, "Invalid tuplesort state"); 
+tabc: tuplesortxmk:00001421:  elog(ERROR, "bogus tuple length in backward scan"); 
+tabc: tuplesortxmk:00001436:  elog(ERROR, "bogus tuple length in backward scan"); 
+tabc: tuplesortxmk:00001450:  elog(ERROR, "invalid tuplesort state"); 
+tabc: tuplesortxmk:00002276:  elog(ERROR, "invalid tuplesort state"); 
+tabc: tuplesortxmk:00002316:  elog(ERROR, "invalid tuplesort state"); 
+tabc: tuplesortxmk:00002353:  elog(ERROR, "tuplesort_restorepos failed"); 
+tabc: tuplesortxmk:00002358:  elog(ERROR, "invalid tuplesort state"); 
+tabc: tuplesortxmk:00002386:  elog(ERROR, "unexpected end of tape"); 
+tabc: tuplesortxmk:00002390:  elog(ERROR, "unexpected end of data"); 
+tabc: tuplesortxmk:00002424:  elog(ERROR, "function %u returned NULL", fcinfo.flinfo->fn_oid); 
+tabc: tuplesortxmk:00002497:  elog(ERROR, "unrecognized SortFunctionKind: %d", (int) kind); 
+tabc: tuplesortxmk:00002580:  elog(ERROR, "unexpected end of data"); 
+tabc: tuplesortxmk:00002587:  elog(ERROR, "unexpected end of data"); 
+tabc: tuplesortxmk:00002651:  elog(ERROR, "unexpected end of data"); 
+tabc: tuplesortxmk:00002658:  elog(ERROR, "unexpected end of data"); 
+tabc: tuplesortxmk:00002668:  elog(ERROR, "copytup_datum() should not be called"); 
+tabc: tuplesortxmk:00002760:  elog(ERROR, "unexpected end of data"); 
+tabc: tuplesortxmk:00002769:  elog(ERROR, "unexpected end of data"); 
+tabc: tuplesortxmk:00002780:  elog(ERROR, "unexpected end of data"); 
 aaaaa GP_IGNORE: taba: tuplestore - ./backend/utils/sort/tuplestore.c
 taba: tuplestore:00000575:  elog(ERROR, "seek to EOF failed"); 
 taba: tuplestore:00000580:  elog(ERROR, "invalid tuplestore state"); 
@@ -24078,70 +24078,74 @@ paah: plxcomp:00000413:  ereport(ERROR,
 paah: plxcomp:00000414:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
 paah: plxcomp:00000415:  errmsg("plpgsql functions cannot take type %s", 
 paah: plxcomp:00000416:  format_type_be(argtypeid)))); 
-paah: plxcomp:00000506:  ereport(ERROR, 
-paah: plxcomp:00000507:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: plxcomp:00000508:  errmsg("could not determine actual return type " 
-paah: plxcomp:00000509:  "for polymorphic function \"%s\"", 
-paah: plxcomp:00000510:  plpgsql_error_funcname))); 
-paah: plxcomp:00000527:  elog(ERROR, "cache lookup failed for type %u", rettypeid); 
-paah: plxcomp:00000538:  ereport(ERROR, 
-paah: plxcomp:00000539:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: plxcomp:00000540:  errmsg("trigger functions may only be called as triggers"))); 
-paah: plxcomp:00000542:  ereport(ERROR, 
-paah: plxcomp:00000543:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: plxcomp:00000544:  errmsg("plpgsql functions cannot return type %s", 
-paah: plxcomp:00000545:  format_type_be(rettypeid)))); 
-paah: plxcomp:00000584:  ereport(ERROR, 
-paah: plxcomp:00000585:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
-paah: plxcomp:00000586:  errmsg("trigger functions cannot have declared arguments"), 
-paah: plxcomp:00000587:  errhint("You probably want to use TG_NARGS and TG_ARGV instead."))); 
-paah: plxcomp:00000670:  elog(ERROR, "unrecognized function typecode: %u", functype); 
-paah: plxcomp:00000690:  elog(ERROR, "plpgsql parser returned %d", parse_rc); 
-paah: plxcomp:00000978:  ereport(ERROR, 
-paah: plxcomp:00000979:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paah: plxcomp:00000980:  errmsg("row \"%s\" has no field \"%s\"", 
-paah: plxcomp:00000981:  cp[0], cp[1]))); 
-paah: plxcomp:00001089:  ereport(ERROR, 
-paah: plxcomp:00001090:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
-paah: plxcomp:00001091:  errmsg("row \"%s.%s\" has no field \"%s\"", 
-paah: plxcomp:00001092:  cp[0], cp[1], cp[2]))); 
-paah: plxcomp:00001288:  elog(ERROR, "cache lookup failed for type %u", attrStruct->atttypid); 
-paah: plxcomp:00001394:  elog(ERROR, "cache lookup failed for type %u", attrStruct->atttypid); 
-paah: plxcomp:00001440:  ereport(ERROR, 
-paah: plxcomp:00001441:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-paah: plxcomp:00001442:  errmsg("relation \"%s\" does not exist", cp[0]), 
-paah: plxcomp:00001443:  errOmitLocation(true))); 
-paah: plxcomp:00001488:  ereport(ERROR, 
-paah: plxcomp:00001489:  (errcode(ERRCODE_UNDEFINED_TABLE), 
-paah: plxcomp:00001490:  errmsg("relation \"%s\" does not exist", cp), 
-paah: plxcomp:00001491:  errOmitLocation(true))); 
-paah: plxcomp:00001583:  ereport(ERROR, 
-paah: plxcomp:00001584:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: plxcomp:00001585:  errmsg("variable \"%s\" has pseudo-type %s", 
-paah: plxcomp:00001586:  refname, format_type_be(dtype->typoid)))); 
-paah: plxcomp:00001590:  elog(ERROR, "unrecognized ttype: %d", dtype->ttype); 
-paah: plxcomp:00001622:  ereport(ERROR, 
-paah: plxcomp:00001623:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
-paah: plxcomp:00001624:  errmsg("relation \"%s\" is not a table", relname))); 
-paah: plxcomp:00001728:  elog(ERROR, "unrecognized dtype: %d", var->dtype); 
-paah: plxcomp:00001776:  elog(ERROR, "cache lookup failed for type %u", typeOid); 
-paah: plxcomp:00001795:  ereport(ERROR, 
-paah: plxcomp:00001796:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paah: plxcomp:00001797:  errmsg("type \"%s\" is only a shell", 
-paah: plxcomp:00001798:  NameStr(typeStruct->typname)))); 
-paah: plxcomp:00001821:  elog(ERROR, "unrecognized typtype: %d", 
-paah: plxcomp:00001822:  (int) typeStruct->typtype); 
-paah: plxcomp:00001881:  ereport(ERROR, 
-paah: plxcomp:00001882:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
-paah: plxcomp:00001883:  errmsg("unrecognized exception condition \"%s\"", 
-paah: plxcomp:00001884:  condname))); 
-paah: plxcomp:00002036:  ereport(ERROR, 
-paah: plxcomp:00002037:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
-paah: plxcomp:00002038:  errmsg("could not determine actual argument " 
-paah: plxcomp:00002039:  "type for polymorphic function \"%s\"", 
-paah: plxcomp:00002040:  proname))); 
-paah: plxcomp:00002136:  elog(WARNING, "trying to insert a function that already exists"); 
-paah: plxcomp:00002157:  elog(WARNING, "trying to delete function that does not exist"); 
+paah: plxcomp:00000457:  ereport(ERROR, 
+paah: plxcomp:00000458:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: plxcomp:00000459:  errmsg("plpgsql functions do not support argmode '%c'", 
+paah: plxcomp:00000460:  argmode))); 
+paah: plxcomp:00000513:  ereport(ERROR, 
+paah: plxcomp:00000514:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: plxcomp:00000515:  errmsg("could not determine actual return type " 
+paah: plxcomp:00000516:  "for polymorphic function \"%s\"", 
+paah: plxcomp:00000517:  plpgsql_error_funcname))); 
+paah: plxcomp:00000534:  elog(ERROR, "cache lookup failed for type %u", rettypeid); 
+paah: plxcomp:00000545:  ereport(ERROR, 
+paah: plxcomp:00000546:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: plxcomp:00000547:  errmsg("trigger functions may only be called as triggers"))); 
+paah: plxcomp:00000549:  ereport(ERROR, 
+paah: plxcomp:00000550:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: plxcomp:00000551:  errmsg("plpgsql functions cannot return type %s", 
+paah: plxcomp:00000552:  format_type_be(rettypeid)))); 
+paah: plxcomp:00000591:  ereport(ERROR, 
+paah: plxcomp:00000592:  (errcode(ERRCODE_INVALID_FUNCTION_DEFINITION), 
+paah: plxcomp:00000593:  errmsg("trigger functions cannot have declared arguments"), 
+paah: plxcomp:00000594:  errhint("You probably want to use TG_NARGS and TG_ARGV instead."))); 
+paah: plxcomp:00000677:  elog(ERROR, "unrecognized function typecode: %u", functype); 
+paah: plxcomp:00000697:  elog(ERROR, "plpgsql parser returned %d", parse_rc); 
+paah: plxcomp:00000985:  ereport(ERROR, 
+paah: plxcomp:00000986:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paah: plxcomp:00000987:  errmsg("row \"%s\" has no field \"%s\"", 
+paah: plxcomp:00000988:  cp[0], cp[1]))); 
+paah: plxcomp:00001096:  ereport(ERROR, 
+paah: plxcomp:00001097:  (errcode(ERRCODE_UNDEFINED_COLUMN), 
+paah: plxcomp:00001098:  errmsg("row \"%s.%s\" has no field \"%s\"", 
+paah: plxcomp:00001099:  cp[0], cp[1], cp[2]))); 
+paah: plxcomp:00001295:  elog(ERROR, "cache lookup failed for type %u", attrStruct->atttypid); 
+paah: plxcomp:00001401:  elog(ERROR, "cache lookup failed for type %u", attrStruct->atttypid); 
+paah: plxcomp:00001447:  ereport(ERROR, 
+paah: plxcomp:00001448:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+paah: plxcomp:00001449:  errmsg("relation \"%s\" does not exist", cp[0]), 
+paah: plxcomp:00001450:  errOmitLocation(true))); 
+paah: plxcomp:00001495:  ereport(ERROR, 
+paah: plxcomp:00001496:  (errcode(ERRCODE_UNDEFINED_TABLE), 
+paah: plxcomp:00001497:  errmsg("relation \"%s\" does not exist", cp), 
+paah: plxcomp:00001498:  errOmitLocation(true))); 
+paah: plxcomp:00001590:  ereport(ERROR, 
+paah: plxcomp:00001591:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: plxcomp:00001592:  errmsg("variable \"%s\" has pseudo-type %s", 
+paah: plxcomp:00001593:  refname, format_type_be(dtype->typoid)))); 
+paah: plxcomp:00001597:  elog(ERROR, "unrecognized ttype: %d", dtype->ttype); 
+paah: plxcomp:00001629:  ereport(ERROR, 
+paah: plxcomp:00001630:  (errcode(ERRCODE_WRONG_OBJECT_TYPE), 
+paah: plxcomp:00001631:  errmsg("relation \"%s\" is not a table", relname))); 
+paah: plxcomp:00001735:  elog(ERROR, "unrecognized dtype: %d", var->dtype); 
+paah: plxcomp:00001783:  elog(ERROR, "cache lookup failed for type %u", typeOid); 
+paah: plxcomp:00001802:  ereport(ERROR, 
+paah: plxcomp:00001803:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paah: plxcomp:00001804:  errmsg("type \"%s\" is only a shell", 
+paah: plxcomp:00001805:  NameStr(typeStruct->typname)))); 
+paah: plxcomp:00001828:  elog(ERROR, "unrecognized typtype: %d", 
+paah: plxcomp:00001829:  (int) typeStruct->typtype); 
+paah: plxcomp:00001888:  ereport(ERROR, 
+paah: plxcomp:00001889:  (errcode(ERRCODE_UNDEFINED_OBJECT), 
+paah: plxcomp:00001890:  errmsg("unrecognized exception condition \"%s\"", 
+paah: plxcomp:00001891:  condname))); 
+paah: plxcomp:00002043:  ereport(ERROR, 
+paah: plxcomp:00002044:  (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), 
+paah: plxcomp:00002045:  errmsg("could not determine actual argument " 
+paah: plxcomp:00002046:  "type for polymorphic function \"%s\"", 
+paah: plxcomp:00002047:  proname))); 
+paah: plxcomp:00002143:  elog(WARNING, "trying to insert a function that already exists"); 
+paah: plxcomp:00002164:  elog(WARNING, "trying to delete function that does not exist"); 
 aaaaa GP_IGNORE: paah: plxexec - ./pl/plpgsql/src/pl_exec.c
 paah: plxexec:00000266:  elog(ERROR, "unrecognized dtype: %d", func->datums[i]->dtype); 
 paah: plxexec:00000299:  ereport(ERROR, 
