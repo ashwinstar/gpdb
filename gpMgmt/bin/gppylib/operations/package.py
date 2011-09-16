@@ -185,6 +185,7 @@ class Gppkg:
 
         pkg = {}
 
+        # XXX: AK: It's purely coincidence that the optional tags are lists.
         for tag in SPECFILE_REQUIRED_TAGS:
             pkg[tag] = ''
         for tag in SPECFILE_OPTIONAL_TAGS:
@@ -638,27 +639,20 @@ class InstallSegGppkg(Operation):
         if IsRpmInstalled(gppkg.main_rpm).run():
             return
 
-        try:
+        #Extract the package contents on the host
+        ExtractPackage(gppkg).run()
+        
+        #Temp extraction path
+        os.chdir(TEMP_EXTRACTION_PATH)
 
-            #Extract the package contents on the host
-            ExtractPackage(gppkg).run()
-            
-            #Temp extraction path
-            old_dir = os.getcwd()
-            os.chdir(TEMP_EXTRACTION_PATH)
+        #Dependency check on the host
+        install_string = GetRpmInstallString(gppkg).run()
 
-            #Dependency check on the host
-            install_string = GetRpmInstallString(gppkg).run()
+        cmd_str = rpm_installation_command % (install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
 
-            cmd_str = rpm_installation_command % (install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
-
-            #run rpm -i on the host
-            LocalCommand(cmd_str).run()        
+        #run rpm -i on the host
+        LocalCommand(cmd_str).run()        
     
-        finally:
-            if old_dir:
-                os.chdir(old_dir)
-
 class UnInstallSegGppkg(Operation):
     '''
         This Operation is invoked as a RemoteOperation. 
@@ -835,7 +829,6 @@ class InstallGppkg(Operation):
             cmd_str = rpm_installation_cmd % (install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
    
             #chdir to the correct directory where files are located
-            old_dir = os.getcwd()
             os.chdir(TEMP_EXTRACTION_PATH)
  
             #First install on the segments
@@ -847,9 +840,6 @@ class InstallGppkg(Operation):
      
             #Third install on the master
             LocalCommand(cmd_str).run()
- 
-            #change back to old directory
-            os.chdir(old_dir)
  
             #run postinstall steps
             self._perform_post_install(gppkg)
@@ -878,26 +868,20 @@ class InstallGppkg(Operation):
         if gppkg.preinstall is None:
             logger.info('No preinstall hooks')
             return 
-        try:
 
-            old_dir = os.getcwd()
-            os.chdir(TEMP_EXTRACTION_PATH)
+        os.chdir(TEMP_EXTRACTION_PATH)
 
-            for preinst in gppkg.preinstall:
-                key = preinst.keys()
-                if key is None:
-                    return
-                key_str = key[0]
-                if key_str.lower() == 'master': 
-                    if self.standby_host:
-                        RemoteCommand(preinst[key_str], [self.standby_host]).run()
-                    LocalCommand(preinst[key_str], True).run()
-                elif key_str.lower() == 'segment':
-                    RemoteCommand(preinst[key_str], self.segment_host_list).run()
-           
-        finally:
-            #Change back to old directory
-            os.chdir(old_dir)
+        for preinst in gppkg.preinstall:
+            key = preinst.keys()
+            if key is None:
+                return
+            key_str = key[0]
+            if key_str.lower() == 'master': 
+                if self.standby_host:
+                    RemoteCommand(preinst[key_str], [self.standby_host]).run()
+                LocalCommand(preinst[key_str], True).run()
+            elif key_str.lower() == 'segment':
+                RemoteCommand(preinst[key_str], self.segment_host_list).run()
 
     def _perform_post_install(self, gppkg):
         '''
@@ -907,31 +891,23 @@ class InstallGppkg(Operation):
 
         logger.debug('_perform_post_install')
 
-        try:
-            
-            if gppkg.postinstall is None:
-                logger.info('No postinstall hooks')
-                return 
+        if gppkg.postinstall is None:
+            logger.info('No postinstall hooks')
+            return 
 
-            #Change directory to temp directory
-            old_dir = os.getcwd()
-            os.chdir(TEMP_EXTRACTION_PATH)
+        os.chdir(TEMP_EXTRACTION_PATH)
 
-            for postinst in gppkg.postinstall:
-                key = postinst.keys()
-                if key is None:
-                    return
-                key_str = key[0]
-                if key_str.lower() == 'master':
-                    if self.standby_host:
-                        RemoteCommand(postinst[key_str], [self.standby_host]).run()
-                    LocalCommand(postinst[key_str], True).run()
-                elif key_str.lower() == 'segment':
-                    RemoteCommand(postinst[key_str], self.segment_host_list).run()
-            
-        finally:
-            #Change back to original directory
-            os.chdir(old_dir)
+        for postinst in gppkg.postinstall:
+            key = postinst.keys()
+            if key is None:
+                return
+            key_str = key[0]
+            if key_str.lower() == 'master':
+                if self.standby_host:
+                    RemoteCommand(postinst[key_str], [self.standby_host]).run()
+                LocalCommand(postinst[key_str], True).run()
+            elif key_str.lower() == 'segment':
+                RemoteCommand(postinst[key_str], self.segment_host_list).run()
 
 #TODO: Try to make this operation idempotent
 class UnInstallGppkg(Operation):
@@ -1060,27 +1036,19 @@ class UnInstallGppkg(Operation):
             logger.info('No preuninstall hooks')
             return 
 
-        #Change directory to temp directory
-        old_dir = os.getcwd()
         os.chdir(TEMP_EXTRACTION_PATH)
 
-        try:
-            
-            for preuninst in gppkg.preuninstall:
-                key = preuninst.keys()
-                if key is None:
-                    return
-                key_str = key[0]
-                if key_str.lower() == 'master':
-                    if self.standby_host:
-                        RemoteCommand(preuninst[key_str], [self.standby_host]).run()
-                    LocalCommand(preuninst[key_str], True).run()
-                elif key_str.lower() == 'segment':
-                    RemoteCommand(preuninst[key_str], self.segment_host_list).run()
-            
-        finally:
-            #Change back to original directory
-            os.chdir(old_dir)
+        for preuninst in gppkg.preuninstall:
+            key = preuninst.keys()
+            if key is None:
+                return
+            key_str = key[0]
+            if key_str.lower() == 'master':
+                if self.standby_host:
+                    RemoteCommand(preuninst[key_str], [self.standby_host]).run()
+                LocalCommand(preuninst[key_str], True).run()
+            elif key_str.lower() == 'segment':
+                RemoteCommand(preuninst[key_str], self.segment_host_list).run()
             
     def _perform_post_uninstall(self, gppkg):
         '''
@@ -1094,26 +1062,19 @@ class UnInstallGppkg(Operation):
             logger.info('No postuninstall hooks')
             return 
 
-        #Change directory to temp directory
-        old_dir = os.getcwd()
+        os.chdir(TEMP_EXTRACTION_PATH)
 
-        try:
-
-            for postuninst in gppkg.postuninstall:
-                key = postuninst.keys()
-                if key is None:
-                    return
-                key_str = key[0]
-                if key_str.lower() == 'master':
-                    if self.standby_host:
-                        RemoteCommand(postuninst[key_str], [self.standby_host]).run()
-                    LocalCommand(postuninst[key_str], True).run()
-                elif key_str.lower() == 'segment':
-                    RemoteCommand(postuninst[key_str], self.segment_host_list).run()
-            
-        finally:
-            #Change back to original directory
-            os.chdir(old_dir)
+        for postuninst in gppkg.postuninstall:
+            key = postuninst.keys()
+            if key is None:
+                return
+            key_str = key[0]
+            if key_str.lower() == 'master':
+                if self.standby_host:
+                    RemoteCommand(postuninst[key_str], [self.standby_host]).run()
+                LocalCommand(postuninst[key_str], True).run()
+            elif key_str.lower() == 'segment':
+                RemoteCommand(postuninst[key_str], self.segment_host_list).run()
 
 class QueryGppkg(Operation):
     '''
@@ -1208,27 +1169,20 @@ class BuildGppkg(Operation):
         if not self._verify_specfile(specfile, directory):
             raise BuildPkgError 
 
-        #store the directory so that we can 
-        #get back after taring the file
-        old_dir = os.getcwd()
-
         #cd to the directory 
+        old_dir = os.getcwd()
         os.chdir(directory)
 
         #tar and gzip the directory
         #rename the file with .gppkg extension
 
-        try:
-            tar = tarfile.open(pkg, 'w:gz')
-
+        with closing(tarfile.open(pkg, 'w:gz')) as tarinfo:
             for cur_file in filelist:
-                tar.add(cur_file)
-        finally:
-            tar.close()
+                tarinfo.add(cur_file)
 
         #change back to old directory
         os.chdir(old_dir)
-    
+
         #move the gppkg to the new directory
         shutil.move(directory + '/' + pkg, '.')
 
@@ -1347,8 +1301,6 @@ class UpdateGppkg(Operation):
         
         cmd_str = rpm_update_cmd % (rpm_install_string, RPM_DATABASE, RPM_INSTALLATION_PATH)
 
-        #change the directory
-        old_dir = os.getcwd()
         os.chdir(TEMP_EXTRACTION_PATH)
 
         #first the segments
@@ -1360,9 +1312,6 @@ class UpdateGppkg(Operation):
 
         #last master
         LocalCommand(cmd_str).run()
-
-        #change back to original directory
-        os.chdir(old_dir)
 
         #Remove older versions of the package from archive
         file_list = set()

@@ -1,49 +1,43 @@
-#!/usr/bin/env python
-#
 # Line too long - pylint: disable=C0301
-# Copyright (c) Greenplum Inc 2010. All Rights Reserved.
-#
-# import mainUtils FIRST to get python version check
-# THIS IMPORT SHOULD COME FIRST
+# Copyright (c) Greenplum Inc 2011. All Rights Reserved.
+
+from optparse import OptionGroup
+import os
+import sys
+import tarfile
 
 try:
-    import tarfile
-    import yaml
-    import os, sys 
-    from gppylib.mainUtils import addMasterDirectoryOptionForSingleClusterProgram, addStandardLoggingAndHelpOptions, ExceptionNoStackTraceNeeded
+    from gppylib import gplog, pgconf
     from gppylib.commands import gp
-    from gppylib.db import dbconn
-    from optparse import OptionGroup 
-    from gppylib.gpparseopts import OptParser, OptChecker
-    from gppylib import gplog
-    from gppylib import pgconf
-    from gppylib.gparray import GpArray
-    from gppylib.operations.package import InstallGppkg, UnInstallGppkg, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
-    from gppylib.gpversion import GpVersion
     from gppylib.commands.base import Command, ExecutionError
     from gppylib.commands.unix import curr_platform, SUNOS
+    from gppylib.db import dbconn
+    from gppylib.gparray import GpArray
+    from gppylib.gpversion import GpVersion
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.mainUtils import addMasterDirectoryOptionForSingleClusterProgram, addStandardLoggingAndHelpOptions, ExceptionNoStackTraceNeeded
+    from gppylib.operations.package import InstallGppkg, UnInstallGppkg, QueryGppkg, BuildGppkg, UpdateGppkg, CleanGppkg, Gppkg, GPPKG_EXTENSION, GPPKG_ARCHIVE_PATH
     from gppylib.operations.unix import ListFilesByPattern
 
+    import yaml
 except ImportError, ex:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(ex))
 
 logger = gplog.get_default_logger()
 
+# TODO: AK: This concerns me. If we need this degree of specificity, we should provide a version or rpm
+# under $GPHOME/ext. Otherwise, this choice of versions seem completely arbitrary. If the end user has
+# 4.4.2.4, we'll blow up! Why?!
 REQUIRED_RPM_VERSIONS = ["4.4.2.3", "5.0.0"]        #I use 5.0.0 on my mac but the qavms use 4.4.2.3. So we support these two versions.
 
 class GpPkgProgram:
-
-    '''
-        This class is the main class for gppkg tool. 
-        This class contains the methods to install,
-        remove, update packages.
-    '''
-    
+    """ This is the CLI entry point to package management code.  """
     def __init__(self, options, args):
+        # TODO: AK: There are no validation checks here. 
+        # e.g. no options and no args should error out, but that's currently not the case.
 
-        logger.debug('GpPkgProgram Constructor')
-
-        self.__options = options
+        # TODO: AK: There should be no need to hold onto self.__args
+        # Whatever's needed from args should be pulled out here to adhere with convention
         self.__args = args
         if options.masterDataDirectory is None:
             options.masterDataDirectory  = gp.get_masterdatadir()        
@@ -52,10 +46,7 @@ class GpPkgProgram:
         self.master_host = None
         self.standby_host = None
         self.segment_host_list = None
-        self.version = None
-        self.gphome = None
         self.query = options.query
-        self.args = args
         self.build = options.build
         self.install = options.install
         self.remove = options.remove
@@ -64,13 +55,6 @@ class GpPkgProgram:
 
     @staticmethod
     def create_parser():
-
-        '''
-             This method creates a parser object and returns it to the caller
-        '''
-
-        logger.debug('create_parser')
-
         parser = OptParser(option_class=OptChecker,
             description="Install/Update/Remove a gppkg.",
             version='%prog version $Revision: #1 $')
@@ -92,7 +76,6 @@ class GpPkgProgram:
         add_to.add_option('-r', '--remove', help='remove the given gppkg', metavar='<name>-<version>')
         add_to.add_option('-b', '--build', help='build a gppkg', metavar='<directory>')
         add_to.add_option('-q', '--query', help='query the given gppkg', metavar='<package>')
-        #add_to.add_option('--query', help='query the given gppkg', metavar='<package>')
 
         add_to = OptionGroup(parser, 'Query Options')
         parser.add_option_group(add_to)
@@ -100,18 +83,12 @@ class GpPkgProgram:
         add_to.add_option('-R', '--requires', help='print the dependencies of the gppkg')
         add_to.add_option('-l', '--list', help='print all the files present in the gppkg')
         add_to.add_option('--all', help='print all the gppkgs installed by gppkg')
-        #add_to.add_option('--list', help='print all the files present in the gppkg')
 
         return parser
             
     @staticmethod
     def create_program(options, args):
-
-        '''
-            Starts the program
-        '''
-
-        logger.debug('create_program')
+        """ TODO: AK: This convention may be unnecessary. """
         return GpPkgProgram(options, args)    
 
     def _get_gpdb_host_list(self):
@@ -231,8 +208,6 @@ class GpPkgProgram:
             UpdateGppkg(pkg, self.master_host, self.standby_host, self.segment_host_list).run()
         elif self.clean:
             CleanGppkg(self.standby_host, self.segment_host_list).run()
+
     def cleanup(self):
-       
-        '''  
-            Clean up before exiting
-        '''
+        pass
