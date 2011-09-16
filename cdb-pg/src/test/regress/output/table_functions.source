@@ -2699,7 +2699,7 @@ LINE 1: PREPARE p2 AS SELECT * FROM multiset_2( $1 ) order by a, b;
                                     ^
 HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
 PREPARE p3(anytable) AS SELECT * FROM multiset_5( $1 ) order by a, b;
-ERROR:  invalid parameter type for prepare statement: anytable
+ERROR:  type "anytable" is not a valid parameter for PREPARE
 -- FAIL: $1 is not a constant
 PREPARE p4 AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
 ERROR:  unable to resolve type for function (regress.c:2180)
