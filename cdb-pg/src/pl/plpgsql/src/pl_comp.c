@@ -422,6 +422,9 @@ do_compile(FunctionCallInfo fcinfo,
 				if (argvariable->dtype == PLPGSQL_DTYPE_VAR)
 				{
 					argitemtype = PLPGSQL_NSTYPE_VAR;
+					/* input argument vars are forced to be CONSTANT */
+					if (argmode == PROARGMODE_IN)
+						((PLpgSQL_var *) argvariable)->isconst = true;
 				}
 				else
 				{
@@ -436,9 +439,6 @@ do_compile(FunctionCallInfo fcinfo,
 					case PROARGMODE_IN:
 					case PROARGMODE_VARIADIC:
 						in_arg_varnos[num_in_args++] = argvariable->dno;
-
-						/* input argument vars are forced to be CONSTANT */
-						((PLpgSQL_var *) argvariable)->isconst = true;
 						break;
 
 					/* output modes */
@@ -452,6 +452,13 @@ do_compile(FunctionCallInfo fcinfo,
 						in_arg_varnos[num_in_args++] = argvariable->dno;
 						out_arg_variables[num_out_args++] = argvariable;
 						break;
+
+					default:
+						ereport(ERROR, 
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("plpgsql functions do not support argmode '%c'",
+										argmode)));
+						break;								 
 				}
 
 				/* Add to namespace under the $n name */
