@@ -2511,17 +2511,17 @@ CREATE FUNCTION project(anytable, integer)
   AS '@abs_builddir@/regress@DLSUFFIX@', 'project'
   LANGUAGE C
   WITH (describe = project_describe);
-SELECT * FROM project( TABLE( SELECT * FROM history ), 1);
+SELECT * FROM project( TABLE( SELECT * FROM history ), 1) order by 1;
  id 
 ----
-  2
-  2
-  2
-  2
   1
   1
   1
   1
+  2
+  2
+  2
+  2
   3
   3
   3
@@ -2534,17 +2534,9 @@ SELECT * FROM project( TABLE( SELECT * FROM history ), 1);
   3
 (18 rows)
 
-SELECT * FROM project( TABLE( SELECT * FROM history ), 2);
+SELECT * FROM project( TABLE( SELECT * FROM history ), 2) order by 1;
            time           
 --------------------------
- Sun Aug 21 10:15:02 2011
- Sun Aug 21 22:15:02 2011
- Sun Aug 21 10:16:02 2011
- Sun Aug 21 22:16:02 2011
- Sun Aug 21 10:15:02 2011
- Sun Aug 21 10:15:30 2011
- Mon Aug 22 10:15:04 2011
- Mon Aug 22 10:16:10 2011
  Fri Aug 19 19:05:13 2011
  Fri Aug 19 19:06:50 2011
  Fri Aug 19 19:07:35 2011
@@ -2555,20 +2547,28 @@ SELECT * FROM project( TABLE( SELECT * FROM history ), 2);
  Sat Aug 20 10:11:29 2011
  Sat Aug 20 10:17:10 2011
  Sat Aug 20 10:17:42 2011
+ Sun Aug 21 10:15:02 2011
+ Sun Aug 21 10:15:02 2011
+ Sun Aug 21 10:15:30 2011
+ Sun Aug 21 10:16:02 2011
+ Sun Aug 21 22:15:02 2011
+ Sun Aug 21 22:16:02 2011
+ Mon Aug 22 10:15:04 2011
+ Mon Aug 22 10:16:10 2011
 (18 rows)
 
 -- Valid operations on results
-SELECT id+1  FROM project( TABLE( SELECT * FROM history ), 1);
+SELECT id+1  FROM project( TABLE( SELECT * FROM history ), 1) order by 1;
  ?column? 
 ----------
-        3
-        3
-        3
-        3
         2
         2
         2
         2
+        3
+        3
+        3
+        3
         4
         4
         4
@@ -2581,9 +2581,19 @@ SELECT id+1  FROM project( TABLE( SELECT * FROM history ), 1);
         4
 (18 rows)
 
-SELECT extract(day from "time") FROM project( TABLE( SELECT * FROM history ), 2);
+SELECT extract(day from "time") FROM project( TABLE( SELECT * FROM history ), 2) order by 1;
  date_part 
 -----------
+        19
+        19
+        19
+        19
+        19
+        20
+        20
+        20
+        20
+        20
         21
         21
         21
@@ -2592,16 +2602,6 @@ SELECT extract(day from "time") FROM project( TABLE( SELECT * FROM history ), 2)
         21
         22
         22
-        19
-        19
-        19
-        19
-        19
-        20
-        20
-        20
-        20
-        20
 (18 rows)
 
 -- ERROR: invalid operations demonstrating different return types
@@ -2672,6 +2672,46 @@ CREATE FUNCTION x(OUT id integer, OUT "time" timestamp, OUT sessionnum integer)
   LANGUAGE C 
   WITH (describe = sessionize_describe);
 ERROR:  DESCRIBE is not supported for functions with OUT parameters
+-- ========================
+-- Interaction with PREPARE
+-- ========================
+-- PASS: completely defined at prepare time
+PREPARE p1 AS SELECT * FROM multiset_2( TABLE(SELECT * FROM example_r) ) order by a, b;
+EXECUTE p1;
+ a |      b      
+---+-------------
+ 1 |  value1.1/4
+ 1 |  value1.2/4
+ 1 |  value1.3/4
+ 1 |  value1.4/4
+ 2 |  value2.1/3
+ 2 |  value2.2/3
+ 2 |  value2.3/3
+ 3 |  value3.1/2
+ 3 |  value3.2/2
+ 4 |  value4.1/1
+(10 rows)
+
+-- FAIL: can't pass anytable as prepare argument
+PREPARE p2 AS SELECT * FROM multiset_2( $1 ) order by a, b;
+ERROR:  function multiset_2(unknown) does not exist
+LINE 1: PREPARE p2 AS SELECT * FROM multiset_2( $1 ) order by a, b;
+                                    ^
+HINT:  No function matches the given name and argument types. You may need to add explicit type casts.
+PREPARE p3(anytable) AS SELECT * FROM multiset_5( $1 ) order by a, b;
+ERROR:  invalid parameter type for prepare statement: anytable
+-- FAIL: $1 is not a constant
+PREPARE p4 AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
+ERROR:  unable to resolve type for function (regress.c:2180)
+LINE 1: PREPARE p4 AS SELECT * FROM project( TABLE( SELECT * FROM pg...
+                                    ^
+PREPARE p5(integer) AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
+ERROR:  unable to resolve type for function (regress.c:2180)
+LINE 1: PREPARE p5(integer) AS SELECT * FROM project( TABLE( SELECT ...
+                                             ^
+-- FAIL: can't prepare with a dynamic result set (same reason as no view support)
+PREPARE p6 AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 1);
+ERROR:  PREPARE statements cannot include calls to dynamically typed function
 -- =======
 -- Cleanup
 -- =======

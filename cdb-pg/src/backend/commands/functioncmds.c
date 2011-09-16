@@ -586,9 +586,9 @@ interpret_AS_clause(Oid languageOid, const char *languageName, List *as,
  * Handle functions that try to define a "DESCRIBE" callback.
  */
 static Oid
-lookup_describe_callback(List *describeQualName, 
-						 Oid returnTypeOid, 
-						 ArrayType *parameterModes)
+validate_describe_callback(List *describeQualName, 
+						   Oid returnTypeOid, 
+						   ArrayType *parameterModes)
 {
 	int					 nargs			  = 1;
 	Oid					 inputTypeOids[1] = {INTERNALOID};
@@ -866,9 +866,9 @@ CreateFunction(CreateFunctionStmt *stmt)
 
 	/* Handle the describe callback, if any */
 	if (describeQualName != NIL)
-		describeFuncOid = lookup_describe_callback(describeQualName,
-												   prorettype,
-												   parameterModes);
+		describeFuncOid = validate_describe_callback(describeQualName,
+													 prorettype,
+													 parameterModes);
 
 	/*
 	 * And now that we have all the parameters, and know we're permitted to do

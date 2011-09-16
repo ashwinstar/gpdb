@@ -348,6 +348,14 @@ parse_analyze_varparams(Node *parseTree, const char *sourceText,
 	*paramTypes = pstate->p_paramtypes;
 	*numParams = pstate->p_numparams;
 
+	if (pstate->p_hasDynamicFunction)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INDETERMINATE_DATATYPE),
+				 errmsg("PREPARE statements cannot include calls to "
+						"dynamically typed function")));
+	}
+
 	free_parsestate(&pstate);
 
 	/* make sure all is well with parameter types */
@@ -10343,6 +10351,15 @@ transformPrepareStmt(ParseState *pstate, PrepareStmt *stmt)
 		{
 			TypeName   *tn = lfirst(l);
 			Oid			toid = typenameTypeId(pstate, tn);
+
+			/* Pseudotypes are not valid parameters to PREPARE */
+			if (get_typtype(toid) == TYPTYPE_PSEUDO)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INDETERMINATE_DATATYPE),
+						 errmsg("type \"%s\" is not a valid parameter for PREPARE",
+								TypeNameToString(tn))));
+			}
 
 			argtoids[i++] = toid;
 		}
