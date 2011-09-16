@@ -1049,6 +1049,18 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_SCALAR_FIELD(is_add_part);
 	COMPARE_SCALAR_FIELD(ownerid);
 	COMPARE_SCALAR_FIELD(buildAoBlkdir);
+	COMPARE_NODE_FIELD(attr_encodings);
+
+	return true;
+}
+
+static bool
+_equalColumnReferenceStorageDirective(ColumnReferenceStorageDirective *a,
+									   ColumnReferenceStorageDirective *b)
+{
+	COMPARE_NODE_FIELD(column);
+	COMPARE_SCALAR_FIELD(deflt);
+	COMPARE_NODE_FIELD(encoding);
 
 	return true;
 }
@@ -2279,6 +2291,15 @@ _equalTableValueExpr(TableValueExpr *a, TableValueExpr *b)
 	return true;
 }
 
+static bool
+_equalAlterTypeStmt(AlterTypeStmt *a, AlterTypeStmt *b)
+{
+	COMPARE_NODE_FIELD(typname);
+	COMPARE_NODE_FIELD(encoding);
+
+	return true;
+}
+
 /*
  * Stuff from pg_list.h
  */
@@ -2612,6 +2633,9 @@ equal(void *a, void *b)
 			break;
 		case T_CreateStmt:
 			retval = _equalCreateStmt(a, b);
+			break;
+		case T_ColumnReferenceStorageDirective:
+			retval = _equalColumnReferenceStorageDirective(a, b);
 			break;
 		case T_PartitionRangeItem:
 			retval = _equalPartitionRangeItem(a, b);
@@ -2960,6 +2984,9 @@ equal(void *a, void *b)
 			break;
 		case T_DenyLoginPoint:
 			retval = _equalDenyLoginPoint(a, b);
+			break;
+		case T_AlterTypeStmt:
+			retval = _equalAlterTypeStmt(a, b);
 			break;
 
 		default:

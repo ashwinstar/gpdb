@@ -395,6 +395,7 @@ typedef enum NodeTag
 	T_TableValueExpr,
 	T_DenyLoginInterval,
 	T_DenyLoginPoint,
+	T_AlterTypeStmt,
 
 	/**/
 	
@@ -432,6 +433,7 @@ typedef enum NodeTag
 	T_RowMarkClause,
 	T_WithClause,
 	T_CommonTableExpr,
+	T_ColumnReferenceStorageDirective,
 
 	/*
 	 * TAGS FOR RANDOM OTHER STUFF

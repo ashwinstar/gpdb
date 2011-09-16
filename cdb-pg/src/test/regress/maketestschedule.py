@@ -113,7 +113,8 @@ class EstimatedDurations:
                 ("filter", 0.47), ("gpctas", 2.18), ("gpdist", 6.81), ("matrix", 0.35),
                 ("gpdtm_plpgsql", 52.83), ("notin", 1.21), ("toast", 0.95), ("mapred", 1.75),
                 ("gpparams", 1.10), ("upg2", 6.71), ("alter_distribution_policy", 44.76), ("ereport", 4.82),
-                ("gp_numeric_agg", 2.81), ("foreign_data", 1.51), ("gp_toolkit", 0.06))
+                ("gp_numeric_agg", 2.81), ("foreign_data", 1.51), ("gp_toolkit", 0.06),
+                ("column_compression", 5.5))
 
     def getEstimatedDuration(self, testName, defaultIfNotThere=1):
         if testName in self.__estimatedDurationPerTest:

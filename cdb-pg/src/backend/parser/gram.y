@@ -200,6 +200,7 @@ static TypeName *TableFuncTypeName(List *columns);
 		ViewStmt CheckPointStmt CreateConversionStmt
 		DeallocateStmt PrepareStmt ExecuteStmt
 		DropOwnedStmt ReassignOwnedStmt
+		AlterTypeStmt
 
 %type <node>    deny_login_role deny_interval deny_point deny_day_specifier
 
@@ -457,6 +458,9 @@ static TypeName *TableFuncTypeName(List *columns);
 %type <with> 	with_clause
 %type <list>	cte_list
 %type <node>	opt_time
+
+%type <node>	column_reference_storage_directive
+%type <list>	opt_storage_encoding
 
 /*
  * If you make any token changes, update the keyword table in
@@ -968,10 +972,11 @@ stmt :
 			| AlterObjectSchemaStmt
 			| AlterOwnerStmt
 			| AlterQueueStmt
-			| AlterSeqStmt
-			| AlterTableStmt
 			| AlterRoleSetStmt
 			| AlterRoleStmt
+			| AlterSeqStmt
+			| AlterTableStmt
+			| AlterTypeStmt
 			| AlterUserMappingStmt
 			| AlterUserSetStmt
 			| AlterUserStmt
@@ -3316,15 +3321,39 @@ TableElement:
 			columnDef							{ $$ = $1; }
 			| TableLikeClause					{ $$ = $1; }
 			| TableConstraint					{ $$ = $1; }
+			| column_reference_storage_directive { $$ = $1; }
 		;
 
-columnDef:	ColId Typename ColQualList
+column_reference_storage_directive:
+			COLUMN columnElem ENCODING definition
+				{
+					ColumnReferenceStorageDirective *n =
+						makeNode(ColumnReferenceStorageDirective);
+
+					n->column = (Value *)$2;
+					n->encoding = $4;
+					$$ = (Node *)n;
+				}
+			| DEFAULT COLUMN ENCODING definition
+				{
+					ColumnReferenceStorageDirective *n =
+						makeNode(ColumnReferenceStorageDirective);
+
+					n->deflt = true;
+					n->encoding = $4;
+
+					$$ = (Node *)n;
+				}
+		;
+				
+columnDef:	ColId Typename ColQualList opt_storage_encoding
 				{
 					ColumnDef *n = makeNode(ColumnDef);
 					n->colname = $1;
 					n->typname = $2;
 					n->constraints = $3;
 					n->is_local = true;
+					n->encoding = $4;
 					$$ = (Node *)n;
 				}
 		;
@@ -3358,6 +3387,10 @@ ColConstraint:
 				}
 			| ColConstraintElem						{ $$ = $1; }
 			| ConstraintAttr						{ $$ = $1; }
+		;
+
+opt_storage_encoding: ENCODING definition { $$ = $2; }
+			| /* nothing */ { $$ = NIL; }
 		;
 
 /* DEFAULT NULL is already the default for Postgres.
@@ -4030,7 +4063,6 @@ TabPartitionElem:
             TabPartitionNameDecl 
             OptTabPartitionBoundarySpec	OptTabPartitionStorageAttr
 			OptTabSubPartitionSpec 
-
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
@@ -4042,6 +4074,7 @@ TabPartitionElem:
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
+
 /* allow boundary spec for default partition in parser, but complain later */
 			| TabPartitionDefaultNameDecl 
               OptTabPartitionBoundarySpec
@@ -4070,6 +4103,10 @@ TabPartitionElem:
                         n->storeAttr = $2;
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
+				}
+			| column_reference_storage_directive
+				{
+					$$ = (Node *)$1;
 				}
             ;
 
@@ -4116,6 +4153,10 @@ TabSubPartitionElem:
                         n->storeAttr = $2;
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
+				}
+			| column_reference_storage_directive
+				{
+					$$ = (Node *)$1;
 				}
             ;
 
@@ -4249,7 +4290,9 @@ TabSubPartitionTemplate:
 						foreach(lc, elems)
 						{
 							PartitionElem *e = lfirst(lc);
-							
+
+							if (!IsA(e, PartitionElem)) continue;
+
 							if (e->subSpec)
 								ereport(ERROR,
 										(errcode(ERRCODE_SYNTAX_ERROR),
@@ -5737,6 +5780,13 @@ def_arg:	func_type						{ $$ = (Node *)$1; }
 			| qual_all_Op					{ $$ = (Node *)$1; }
 			| NumericOnly					{ $$ = (Node *)$1; }
 			| Sconst						{ $$ = (Node *)makeString($1); }
+
+			/* 
+			 * For compresstype=none in ENCODING clauses. Allows us to avoid
+			 * promoting that to a reserved word or adding the column reserved
+			 * list here which could get tricky.
+			 */
+			| NONE							{ $$ = (Node *)makeString(pstrdup("none")); }
 		;
 
 aggr_args:	'(' aggr_args_list ')'					{ $$ = $2; }
@@ -7155,6 +7205,20 @@ opt_force:	FORCE									{  $$ = TRUE; }
 			| /*EMPTY*/								{  $$ = FALSE; }
 		;
 
+/*
+ * ALTER TYPE ... SET DEFAULT ENCODING
+ *
+ * Used to set storage parameter defaults for types
+ */
+AlterTypeStmt: ALTER TYPE_P any_name SET DEFAULT ENCODING definition
+				{
+					AlterTypeStmt *n = makeNode(AlterTypeStmt);
+
+					n->typname = $3;
+					n->encoding = $7;
+					$$ = (Node *)n;
+				}
+		;
 
 /*****************************************************************************
  *

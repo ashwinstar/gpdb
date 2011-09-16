@@ -46,6 +46,7 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_appendonly.h"
 #include "catalog/pg_attrdef.h"
+#include "catalog/pg_attribute_encoding.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_exttable.h"
@@ -58,6 +59,7 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/gp_fastsequence.h"
+#include "cdb/cdbpartition.h"
 #include "commands/tablecmds.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
@@ -1455,8 +1457,9 @@ heap_create_with_catalog(const char *relname,
 					   'x',			/* fully TOASTable */
 					   -1,			/* typmod */
 					   0,			/* array dimensions for typBaseType */
-					   false,
-					   *comptypeOid);		/* Type NOT NULL */
+					   false,		/* Type NOT NULL */
+					   *comptypeOid,
+					   0);
 
 			Assert(new_type_oid == *comptypeOid);
 		}
@@ -1698,6 +1701,8 @@ RemovePartitioning(Oid relid)
 	if (Gp_role == GP_ROLE_EXECUTE)
 		return;
 
+	RemovePartitionEncodingByRelid(relid);
+
 	/* loop through all matches in pg_partition */
 	rel = heap_open(PartitionRelationId, RowExclusiveLock);
 	pgrule = heap_open(PartitionRuleRelationId,
@@ -1719,6 +1724,7 @@ RemovePartitioning(Oid relid)
 					Anum_pg_partition_rule_paroid,
 					BTEqualStrategyNumber, F_OIDEQ,
 					ObjectIdGetDatum(paroid));
+
 		del_part_entry_by_key(pgrule, 
 						  PartitionRuleParoidParparentruleParruleordIndexId,
 							  &rkey, 1);
@@ -2165,11 +2171,14 @@ heap_drop_with_catalog(Oid relid)
 	bool		is_appendonly_rel;
 	bool		is_external_rel;
 	bool		is_foreign_rel;
+	char		relkind;
 
 	/*
 	 * Open and lock the relation.
 	 */
 	rel = relation_open(relid, AccessExclusiveLock);
+
+	relkind = rel->rd_rel->relkind;
 
 	is_appendonly_rel = (RelationIsAoRows(rel) || RelationIsAoCols(rel));
 	is_external_rel = RelationIsExternal(rel);
@@ -2182,14 +2191,14 @@ heap_drop_with_catalog(Oid relid)
 	if (policy &&
 		policy->ptype == POLICYTYPE_PARTITIONED &&
 		Gp_role == GP_ROLE_DISPATCH &&
-		rel->rd_rel->relkind == RELKIND_RELATION)
+		relkind == RELKIND_RELATION)
 		removePolicy = true;
 
 	/*
 	 * Schedule unlinking of the relation's physical file at commit.
 	 */
-	if (rel->rd_rel->relkind != RELKIND_VIEW &&
-		rel->rd_rel->relkind != RELKIND_COMPOSITE_TYPE &&
+	if (relkind != RELKIND_VIEW &&
+		relkind != RELKIND_COMPOSITE_TYPE &&
 		!RelationIsExternal(rel))
 	{
 		remove_gp_relation_node_and_schedule_drop(rel);
@@ -2265,6 +2274,12 @@ heap_drop_with_catalog(Oid relid)
  	 */
 	if (removePolicy)
 		GpPolicyRemove(relid);
+
+	/*
+	 * Attribute encoding
+	 */
+	if (relkind == RELKIND_RELATION)
+		RemoveAttributeEncodingsByRelid(relid);
 
 	/* MPP-6929: metadata tracking */
 	MetaTrackDropObject(RelationRelationId,

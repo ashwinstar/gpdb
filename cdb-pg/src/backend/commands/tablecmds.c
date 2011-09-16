@@ -37,6 +37,8 @@
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_appendonly.h"
+#include "catalog/pg_attribute_encoding.h"
+#include "catalog/pg_compression.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_exttable.h"
@@ -819,6 +821,9 @@ DefineRelation_int(CreateStmt *stmt,
 	 */
 	if (rawDefaults || stmt->constraints)
 		AddRelationConstraints(rel, rawDefaults, stmt->constraints);
+
+	if (stmt->attr_encodings)
+		AddRelationAttributeEncodings(rel, stmt->attr_encodings);
 
 	/* It is now safe to dispatch */
 	if (shouldDispatch)
@@ -6393,6 +6398,18 @@ find_composite_type_dependencies(Oid typeOid,
 static void
 ATPrepAddColumn(Relation rel, bool recurse, AlterTableCmd *cmd)
 {
+	/* 
+	 * If there's an encoding clause, this better be an append only
+	 * column oriented table.
+	 */
+	ColumnDef *def = (ColumnDef *)cmd->def;
+	if (def->encoding && !RelationIsAoCols(rel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("ENCODING clause supplied for table that is "
+						"not column oriented")));
+
+
 	/*
 	 * If we are told not to recurse, there had better not be any child
 	 * tables; else the addition would put them out of step.
@@ -6746,6 +6763,32 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	 * Add needed dependency entries for the new column.
 	 */
 	add_column_datatype_dependency(myrelid, i, attribute->atttypid);
+
+	if (!RelationIsAoCols(rel) && colDef->encoding)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("ENCODING clause not supported on non "
+						"column orientated table")));
+						
+
+	/* 
+	 * For AO/CO tables, always store an encoding clause. If no encoding
+	 * clause was provided, store the default encoding clause.
+	 */
+	if (RelationIsAoCols(rel))
+	{
+		ColumnReferenceStorageDirective *c =
+			makeNode(ColumnReferenceStorageDirective);
+
+		c->column = makeString(colDef->colname);
+
+		if (colDef->encoding)
+			c->encoding = colDef->encoding;
+		else
+			c->encoding = default_column_encoding_clause();
+
+		AddRelationAttributeEncodings(rel, list_make1(c));
+	}
 
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH)
@@ -7252,6 +7295,11 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 					 errmsg("cannot drop partitioning column \"%s\"",
 							colName),
 									   errOmitLocation(true)));
+
+		/*
+		 * Remove any partition encoding entry
+		 */
+		RemovePartitionEncodingByRelidAttribute(RelationGetRelid(rel), attnum);
 	}
 
 	ReleaseSysCache(tuple);

@@ -2121,6 +2121,7 @@ _readCreateStmt(void)
 	READ_BOOL_FIELD(is_add_part);
 	READ_OID_FIELD(ownerid);
 	READ_BOOL_FIELD(buildAoBlkdir);
+	READ_NODE_FIELD(attr_encodings);
 
 	local_node->policy = NULL;
 	Assert(local_node->oidInfo.relOid == InvalidOid);
@@ -2893,6 +2894,17 @@ _readTableValueExpr(void)
 	READ_DONE();
 }
 
+static AlterTypeStmt *
+_readAlterTypeStmt(void)
+{
+	READ_LOCALS(AlterTypeStmt);
+
+	READ_NODE_FIELD(typname);
+	READ_NODE_FIELD(encoding);
+
+	READ_DONE();
+}
+
 /*
  * Greenplum Database developers added code to improve performance over the
  * linear searching that existed in the postgres version of
@@ -2945,6 +2957,7 @@ static ParseNodeInfo infoAr[] =
 	{"ALTERSEQSTMT", (ReadFn)_readAlterSeqStmt},
 	{"ALTERTABLECMD", (ReadFn)_readAlterTableCmd},
 	{"ALTERTABLESTMT", (ReadFn)_readAlterTableStmt},
+	{"ALTERTYPESTMT", (ReadFn)_readAlterTypeStmt},
 	{"ALTERUSERMAPPINGSTMT", (ReadFn)_readAlterUserMappingStmt},
 	{"ARRAY", (ReadFn)_readArrayExpr},
 	{"ARRAYREF", (ReadFn)_readArrayRef},

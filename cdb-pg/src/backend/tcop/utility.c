@@ -1639,6 +1639,10 @@ ProcessUtility(Node *parsetree,
 			RemoveOpClass((RemoveOpClassStmt *) parsetree);
 			break;
 
+		case T_AlterTypeStmt:
+			AlterType((AlterTypeStmt *) parsetree);
+			break;
+
 		default:
 			Assert(false);
 			elog(ERROR, "unrecognized node type: %d",
@@ -2475,6 +2479,9 @@ CreateCommandTag(Node *parsetree)
 			}
 			break;
 
+		case T_AlterTypeStmt:
+			tag = "ALTER TYPE";
+			break;
 		default:
 			Assert(false);
 			elog(WARNING, "unrecognized node type: %d",

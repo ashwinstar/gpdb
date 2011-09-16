@@ -10306,6 +10306,86 @@ DESCR("anytable type serialization input function");
 DATA(insert OID = 3055 ( anytable_out  PGNSP PGUID 12 f f t f i 1 2275 f "3053" _null_ _null_ _null_ anytable_out - _null_ ));
 DESCR("anytable type serialization output function");
 
+/* gp_quicklz_constructor(internal, internal, bool) => internal */ 
+DATA(insert OID = 5076 ( gp_quicklz_constructor  PGNSP PGUID 12 f f f f v 3 2281 f "2281 2281 16" _null_ _null_ _null_ quicklz_constructor - _null_ ));
+DESCR("quicklz constructor");
+
+/* gp_quicklz_destructor(internal) => void */ 
+DATA(insert OID = 5077 ( gp_quicklz_destructor  PGNSP PGUID 12 f f f f v 1 2278 f "2281" _null_ _null_ _null_ quicklz_destructor - _null_ ));
+DESCR("quicklz destructor");
+
+/* gp_quicklz_compress(internal, int4, internal, int4, internal, internal) => void */ 
+DATA(insert OID = 5078 ( gp_quicklz_compress  PGNSP PGUID 12 f f f f i 6 2278 f "2281 23 2281 23 2281 2281" _null_ _null_ _null_ quicklz_compress - _null_ ));
+DESCR("quicklz compressor");
+
+/* gp_quicklz_decompress(internal, int4, internal, int4, internal, internal) => void */ 
+DATA(insert OID = 5079 ( gp_quicklz_decompress  PGNSP PGUID 12 f f f f i 6 2278 f "2281 23 2281 23 2281 2281" _null_ _null_ _null_ quicklz_decompress - _null_ ));
+DESCR("quicklz decompressor");
+
+/* gp_quicklz_validator(internal) => void */ 
+DATA(insert OID = 9925 ( gp_quicklz_validator  PGNSP PGUID 12 f f f f i 1 2278 f "2281" _null_ _null_ _null_ quicklz_validator - _null_ ));
+DESCR("quicklz compression validator");
+
+/* gp_zlib_constructor(internal, internal, bool) => internal */ 
+DATA(insert OID = 9910 ( gp_zlib_constructor  PGNSP PGUID 12 f f f f v 3 2281 f "2281 2281 16" _null_ _null_ _null_ zlib_constructor - _null_ ));
+DESCR("zlib constructor");
+
+/* gp_zlib_destructor(internal) => void */ 
+DATA(insert OID = 9911 ( gp_zlib_destructor  PGNSP PGUID 12 f f f f v 1 2278 f "2281" _null_ _null_ _null_ zlib_destructor - _null_ ));
+DESCR("zlib destructor");
+
+/* gp_zlib_compress(internal, int4, internal, int4, internal, internal) => void */ 
+DATA(insert OID = 9912 ( gp_zlib_compress  PGNSP PGUID 12 f f f f i 6 2278 f "2281 23 2281 23 2281 2281" _null_ _null_ _null_ zlib_compress - _null_ ));
+DESCR("zlib compressor");
+
+/* gp_zlib_decompress(internal, int4, internal, int4, internal, internal) => void */ 
+DATA(insert OID = 9913 ( gp_zlib_decompress  PGNSP PGUID 12 f f f f i 6 2278 f "2281 23 2281 23 2281 2281" _null_ _null_ _null_ zlib_decompress - _null_ ));
+DESCR("zlib decompressor");
+
+/* gp_zlib_validator(internal) => void */ 
+DATA(insert OID = 9924 ( gp_zlib_validator  PGNSP PGUID 12 f f f f i 1 2278 f "2281" _null_ _null_ _null_ zlib_validator - _null_ ));
+DESCR("zlib compression validator");
+
+/* gp_rle_type_constructor(internal, internal, bool) => internal */ 
+DATA(insert OID = 9914 ( gp_rle_type_constructor  PGNSP PGUID 12 f f f f v 3 2281 f "2281 2281 16" _null_ _null_ _null_ rle_type_constructor - _null_ ));
+DESCR("Type specific RLE constructor");
+
+/* gp_rle_type_destructor(internal) => void */ 
+DATA(insert OID = 9915 ( gp_rle_type_destructor  PGNSP PGUID 12 f f f f v 1 2278 f "2281" _null_ _null_ _null_ rle_type_destructor - _null_ ));
+DESCR("Type specific RLE destructor");
+
+/* gp_rle_type_compress(internal, int4, internal, int4, internal, internal) => void */ 
+DATA(insert OID = 9916 ( gp_rle_type_compress  PGNSP PGUID 12 f f f f i 6 2278 f "2281 23 2281 23 2281 2281" _null_ _null_ _null_ rle_type_compress - _null_ ));
+DESCR("Type specific RLE compressor");
+
+/* gp_rle_type_decompress(internal, int4, internal, int4, internal, internal) => void */ 
+DATA(insert OID = 9917 ( gp_rle_type_decompress  PGNSP PGUID 12 f f f f i 6 2278 f "2281 23 2281 23 2281 2281" _null_ _null_ _null_ rle_type_decompress - _null_ ));
+DESCR("Type specific RLE decompressor");
+
+/* gp_rle_type_validator(internal) => void */ 
+DATA(insert OID = 9923 ( gp_rle_type_validator  PGNSP PGUID 12 f f f f i 1 2278 f "2281" _null_ _null_ _null_ rle_type_validator - _null_ ));
+DESCR("Type speific RLE compression validator");
+
+/* gp_dummy_compression_constructor(internal, internal, bool) => internal */ 
+DATA(insert OID = 3064 ( gp_dummy_compression_constructor  PGNSP PGUID 12 f f f f v 3 2281 f "2281 2281 16" _null_ _null_ _null_ dummy_compression_constructor - _null_ ));
+DESCR("Dummy compression destructor");
+
+/* gp_dummy_compression_destructor(internal) => internal */ 
+DATA(insert OID = 3065 ( gp_dummy_compression_destructor  PGNSP PGUID 12 f f f f v 1 2281 f "2281" _null_ _null_ _null_ dummy_compression_destructor - _null_ ));
+DESCR("Dummy compression destructor");
+
+/* gp_dummy_compression_compress(internal, int4, internal, int4, internal, internal) => internal */ 
+DATA(insert OID = 3066 ( gp_dummy_compression_compress  PGNSP PGUID 12 f f f f v 6 2281 f "2281 23 2281 23 2281 2281" _null_ _null_ _null_ dummy_compression_compress - _null_ ));
+DESCR("Dummy compression compressor");
+
+/* gp_dummy_compression_decompress(internal, int4, internal, int4, internal, internal) => internal */ 
+DATA(insert OID = 3067 ( gp_dummy_compression_decompress  PGNSP PGUID 12 f f f f v 6 2281 f "2281 23 2281 23 2281 2281" _null_ _null_ _null_ dummy_compression_decompress - _null_ ));
+DESCR("Dummy compression decompressor");
+
+/* gp_dummy_compression_validator(internal) => internal */ 
+DATA(insert OID = 3068 ( gp_dummy_compression_validator  PGNSP PGUID 12 f f f f v 1 2281 f "2281" _null_ _null_ _null_ dummy_compression_validator - _null_ ));
+DESCR("Dummy compression validator");
+
 
 /* TIDYCAT_END_PG_PROC_GEN */
 

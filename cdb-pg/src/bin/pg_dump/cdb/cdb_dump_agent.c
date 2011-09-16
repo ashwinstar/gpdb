@@ -173,6 +173,7 @@ static int	collectComments(Archive *fout, CommentItem **items);
 static void dumpDumpableObject(Archive *fout, DumpableObject *dobj);
 static void dumpNamespace(Archive *fout, NamespaceInfo *nspinfo);
 static void dumpType(Archive *fout, TypeInfo *tinfo);
+static void dumpTypeStorageOptions(Archive *fout, TypeStorageOptions *tstorageoptions);
 static void dumpBaseType(Archive *fout, TypeInfo *tinfo);
 static void dumpDomain(Archive *fout, TypeInfo *tinfo);
 static void dumpCompositeType(Archive *fout, TypeInfo *tinfo);
@@ -243,8 +244,36 @@ static void dumpMain(bool oids, const char *dumpencoding, int outputBlobs, int p
 static void dumpDatabaseDefinition(void);
 static void installSignalHandlers(void);
 extern void reset(void);
+static bool testAttributeEncodingSupport(void);
 
 /* MPP additions end */
+
+
+/*
+ * testAttributeEncodingSupport - tests whether or not the current GP
+ * database includes support for column encoding.
+ */
+static bool
+testAttributeEncodingSupport(void)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	bool		isSupported;
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query, "SELECT 1 from pg_catalog.pg_class where relnamespace = 11 and relname  = 'pg_attribute_encoding';");
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	isSupported = (PQntuples(res) == 1);
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+
+	return isSupported;
+}
+
 
 int
 main(int argc, char **argv)
@@ -547,7 +576,7 @@ main(int argc, char **argv)
 	/* --column-inserts implies --inserts */
 	if (column_inserts)
 		dump_inserts = 1;
-		
+
 	/* --post-data-schema-only implies --schema-only */
 	if (postDataSchemaOnly)
 		schemaOnly = true;
@@ -576,7 +605,7 @@ main(int argc, char **argv)
 		write_msg(NULL, "(The INSERT command cannot set OIDs.)\n");
 		exit(1);
 	}
-	
+
 	/* MPP addition start */
 	if (g_CDBDumpInfo == NULL)
 	{
@@ -908,6 +937,8 @@ dumpMain(bool oids, const char *dumpencoding, int outputBlobs, int plainText, Re
 	g_gp_supportsPartitioning = g_fout->remoteVersion >= 80209;
 	g_gp_supportsPartitionTemplates = g_fout->remoteVersion >= 80214;
 
+	g_gp_supportsAttributeEncoding = testAttributeEncodingSupport();
+
 	/*
 	 * Process the schema and table include/exclude lists and develop a list
 	 * of table oids to be included in the dump.
@@ -1054,7 +1085,7 @@ help(const char *progname)
 	printf(("   --gp-k=BACKUPKEY        key for CDB Backup\n"));
 	printf(("   --gp-d=OUTPUTDIRECTORY  output directory for backup and error files\n"));
 	/* END MPP ADDITION */
-	
+
 	printf(_("\nConnection options:\n"));
 	printf(_("  -h, --host=HOSTNAME      database server host or socket directory\n"));
 	printf(_("  -p, --port=PORT          database server port number\n"));
@@ -2150,6 +2181,10 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			if (!postDataSchemaOnly)
 			dumpType(fout, (TypeInfo *) dobj);
 			break;
+		case DO_TYPE_STORAGE_OPTIONS:
+			if (!postDataSchemaOnly)
+				dumpTypeStorageOptions(fout, (TypeStorageOptions *) dobj);
+			break;
 		case DO_SHELL_TYPE:
 			if (!postDataSchemaOnly)
 			dumpShellType(fout, (ShellTypeInfo *) dobj);
@@ -2503,6 +2538,51 @@ dumpBaseType(Archive *fout, TypeInfo *tinfo)
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
 }
+
+
+
+/*
+ * dumpTypeStorageOptions
+ *     writes out to fout the ALTER TYPE queries to set default storage options for type
+ */
+static void
+dumpTypeStorageOptions(Archive *fout, TypeStorageOptions *tstorageoptions)
+{
+	PQExpBuffer q;
+	PQExpBuffer delq;
+
+	q = createPQExpBuffer();
+	delq = createPQExpBuffer();
+
+	appendPQExpBuffer(q, "ALTER TYPE %s ",
+					  fmtId(tstorageoptions->dobj.name));
+	appendPQExpBuffer(q, " SET DEFAULT ENCODING (%s);\n", tstorageoptions->typoptions);
+
+	ArchiveEntry(	fout
+							, tstorageoptions->dobj.catId                 /* catalog ID  */
+							, tstorageoptions->dobj.dumpId                /* dump ID     */
+							, tstorageoptions->dobj.name                  /* type name   */
+							, tstorageoptions->dobj.namespace->dobj.name  /* name space  */
+							, NULL                                        /* table space */
+							, tstorageoptions->rolname                    /* owner name  */
+							, false                                       /* with oids   */
+							, "TYPE STORAGE OPTIONS"                      /* Desc        */
+							, q->data                                     /* ALTER...    */
+							, ""                                          /* Del         */
+							, NULL                                        /* Copy        */
+							, NULL                                        /* Deps        */
+							, 0                                           /* num Deps    */
+							, NULL                                        /* Dumper      */
+							, NULL                                        /* Dumper Arg  */
+							);
+
+	destroyPQExpBuffer(q);
+	destroyPQExpBuffer(delq);
+
+
+}  /* end dumpTypeStorageOptions */
+
+
 
 /*
  * dumpDomain
@@ -2928,8 +3008,8 @@ dumpProcLang(Archive *fout, ProcLangInfo *plang)
 				 plang->dobj.name,
 				 lanschema, NULL, plang->lanowner,
 				 false, "PROCEDURAL LANGUAGE",
-				 defqry->data, 
-				 delqry->data, 
+				 defqry->data,
+				 delqry->data,
 				 NULL,
 				 plang->dobj.dependencies, plang->dobj.nDeps,
 				 NULL, NULL);
@@ -5378,6 +5458,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				appendPQExpBuffer(q, "%s",
 								  tbinfo->atttypnames[j]);
 
+				/* Column Storage attributes */
+				if (tbinfo->attencoding[j] != NULL)
+					appendPQExpBuffer(q, " ENCODING (%s)",
+										tbinfo->attencoding[j]);
+
 				/*
 				 * Default value --- suppress if inherited
 				 * and not to be printed separately.
@@ -7121,7 +7206,7 @@ _check_database_version(ArchiveHandle *AH)
 	{
 		mpp_err_msg(logInfo, progname, "server version: %s; %s version: %s\n",
 					remoteversion_str, progname, PG_VERSION);
-					
+
 		die_horribly(AH, NULL, "aborting because of version mismatch  (Use the -i option to proceed anyway.)\n");
 	}
 }

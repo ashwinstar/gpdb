@@ -33,14 +33,17 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/reloptions.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_compression.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_type_encoding.h"
 #include "commands/defrem.h"
 #include "commands/tablecmds.h"
 #include "commands/typecmds.h"
@@ -84,7 +87,7 @@ static char *domainAddConstraint(Oid domainOid, Oid domainNamespace,
 					Oid baseTypeOid,
 					int typMod, Constraint *constr,
 					char *domainName);
-
+static void remove_type_encoding(Oid typid);
 
 /*
  * DefineType
@@ -118,6 +121,8 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 	ListCell   *pl;
 	Oid			typoid;
 	Oid			resulttype;
+	Datum		typoptions = 0;
+	List	   *encoding = NIL;
 
 	/* Convert list of names to a name and namespace */
 	typeNamespace = QualifiedNameGetCreationNamespace(names, &typeName);
@@ -307,12 +312,21 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 			 */
 			shadowOid = (int)defGetInt64(defel);
 		}
+		else if (is_storage_encoding_directive(defel->defname))
+		{
+			encoding = lappend(encoding, defel);
+		}
 		else
 			ereport(WARNING,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("type attribute \"%s\" not recognized",
 							defel->defname),
 									   errOmitLocation(true)));
+	}
+
+	if (encoding)
+	{
+		typoptions = transformRelOptions((Datum) 0, encoding, true, false);
 	}
 
 	/*
@@ -460,7 +474,8 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 				   -1,			/* typMod (Domains only) */
 				   0,			/* Array Dimensions of typbasetype */
 				   false,		/* Type NOT NULL */
-				   newOid);
+				   newOid,
+				   typoptions);
 
 	/*
 	 * When we create a base type (as opposed to a complex type) we need to
@@ -498,7 +513,8 @@ DefineType(List *names, List *parameters, Oid newOid, Oid shadowOid)
 			   -1,				/* typMod (Domains only) */
 			   0,				/* Array dimensions of typbasetype */
 			   false,			/* Type NOT NULL */
-			   shadowOid);
+			   shadowOid,
+			   typoptions);
 
 		pfree(shadow_type);
 	}
@@ -581,6 +597,12 @@ RemoveType(List *names, DropBehavior behavior, bool missing_ok)
 	object.objectSubId = 0;
 
 	performDeletion(&object, behavior);
+
+
+	/*
+	 * Remove any storage encoding
+	 */
+	remove_type_encoding(typeoid);
 }
 
 
@@ -592,6 +614,13 @@ RemoveTypeById(Oid typeOid)
 {
 	Relation	relation;
 	HeapTuple	tup;
+
+	/* 
+	 * It might look like the call in RemoveType() is enough for
+	 * pg_type_encoding but it's not. This case catches array type derivations
+	 * of base types.
+	 */
+	remove_type_encoding(typeOid);
 
 	relation = heap_open(TypeRelationId, RowExclusiveLock);
 
@@ -896,7 +925,8 @@ DefineDomain(CreateDomainStmt *stmt)
 				   stmt->typname->typmod,		/* typeMod value */
 				   typNDims,	/* Array dimensions for base type */
 				   typNotNull,	/* Type NOT NULL */
-				   stmt->domainOid);
+				   stmt->domainOid,
+				   0);
 
 	stmt->domainOid = domainoid;
 	/*
@@ -2538,4 +2568,125 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 	heap_freetuple(tup);
 
 	heap_close(rel, RowExclusiveLock);
+}
+
+/*
+ * Currently, we only land here if the user has issued:
+ *
+ * ALTER TYPE <typname> SET DEFAULT ENCODING (...)
+ */
+void
+AlterType(AlterTypeStmt *stmt)
+{
+	Relation 		pgtypeenc = heap_open(TypeEncodingRelationId, RowExclusiveLock);
+	TypeName	   *typname;
+	Oid				typid;
+	ScanKeyData		key[1];
+	SysScanDesc		scan;
+	HeapTuple		tup;
+	Datum			typoptions;
+
+	/* Make a TypeName so we can use standard type lookup machinery */
+	typname = makeTypeNameFromNameList(stmt->typname);
+	typid = LookupTypeName(NULL, typname);
+
+	if (!OidIsValid(typid))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("type \"%s\" does not exist",
+						TypeNameToString(typname))));
+
+	if (type_is_rowtype(typid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("type \"%s\" is not a base type",
+						TypeNameToString(typname)),
+				 errhint("The ENCODING clause cannot be used with row or "
+						 "composite types.")));
+
+	/* check permissions on type */
+	if (!pg_type_ownercheck(typid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
+					   format_type_be(typid));
+
+	typoptions = transformRelOptions(PointerGetDatum(NULL),
+									 stmt->encoding,
+									 false,
+									 false);
+
+
+	ScanKeyInit(&key[0],
+				Anum_pg_type_encoding_typid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(typid));
+
+	scan = systable_beginscan(pgtypeenc, TypeEncodingTypidIndexId, true,
+							  SnapshotNow, 1, key);
+	tup = systable_getnext(scan);
+
+	if (HeapTupleIsValid(tup))
+	{
+		/* update case */
+		Datum values[Natts_pg_type_encoding];
+		bool nulls[Natts_pg_type_encoding];
+		bool replaces[Natts_pg_type_encoding];
+		HeapTuple newtuple;
+
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+		MemSet(replaces, false, sizeof(replaces));
+
+		replaces[Anum_pg_type_encoding_typoptions - 1] = true;
+		values[Anum_pg_type_encoding_typoptions - 1] = typoptions;
+
+		newtuple = heap_modify_tuple(tup, RelationGetDescr(pgtypeenc),
+									 values, nulls, replaces);
+
+		simple_heap_update(pgtypeenc, &tup->t_self, newtuple);
+
+		CatalogUpdateIndexes(pgtypeenc, newtuple);
+	}
+	else
+	{
+		add_type_encoding(typid, typoptions);
+	}	
+
+	systable_endscan(scan);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+		CdbDispatchUtilityStatement((Node *)stmt, NULL);
+
+	heap_close(pgtypeenc, NoLock);
+}
+
+/*
+ * Remove the default type encoding for typid.
+ */
+static void
+remove_type_encoding(Oid typid)
+{
+	Relation 		pgtypeenc = heap_open(TypeEncodingRelationId, RowExclusiveLock);
+	ScanKeyData		key[1];
+	SysScanDesc		scan;
+	HeapTuple		tup;
+
+	/* check permissions on type */
+	if (!pg_type_ownercheck(typid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
+					   format_type_be(typid));
+
+	ScanKeyInit(&key[0],
+				Anum_pg_type_encoding_typid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(typid));
+
+	scan = systable_beginscan(pgtypeenc, TypeEncodingTypidIndexId, true,
+							  SnapshotNow, 1, key);
+	tup = systable_getnext(scan);
+
+	if (HeapTupleIsValid(tup))
+		simple_heap_delete(pgtypeenc, &tup->t_self);
+
+	systable_endscan(scan);
+	heap_close(pgtypeenc, RowExclusiveLock);
 }

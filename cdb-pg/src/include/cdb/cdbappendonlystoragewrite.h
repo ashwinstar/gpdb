@@ -9,12 +9,14 @@
 #ifndef CDBAPPENDONLYSTORAGEWRITE_H
 #define CDBAPPENDONLYSTORAGEWRITE_H
 
-#include "utils/palloc.h"
-#include "storage/fd.h"
+#include "catalog/pg_compression.h"
 #include "cdb/cdbappendonlystorage.h"
 #include "cdb/cdbappendonlystoragelayer.h"
-
 #include "cdb/cdbbufferedappend.h"
+#include "utils/palloc.h"
+#include "storage/fd.h"
+
+
 
 /*
  * This structure contains write session information.  Consider the fields
@@ -27,7 +29,7 @@ typedef struct AppendOnlyStorageWrite
 	MemoryContext memoryContext;
 			/*
 			 * The memory context to use for buffers and
-			 * other memory needs.	
+			 * other memory needs.
 			 */
 
     int32         maxBufferLen;
@@ -35,18 +37,18 @@ typedef struct AppendOnlyStorageWrite
 			 * The maximum Append-Only Storage Block
 			 * length including all storage headers.
 			 */
-			 
+
 	int32		largeWriteLen;
 			/*
 			 * The large write length given to the BufferedAppend module.
 			 */
-			
+
 	char		 *relationName;
 			/*
 			 * Name of the relation to use in system
 			 * logging and error messages.
 			 */
-			 
+
 	AppendOnlyStorageAttributes		storageAttributes;
 			/*
 			 * The Append-Only Storage Attributes
@@ -63,7 +65,7 @@ typedef struct AppendOnlyStorageWrite
 			/*
 			 * The BufferedAppend module's object that holds write session data.
 			 */
-					
+
 	char		 *segmentFileName;
 			/*
 			 * Name of the current segment file name to use in system
@@ -82,7 +84,7 @@ typedef struct AppendOnlyStorageWrite
 
 	RelFileNode	relFileNode;
 	int32		segmentFileNum;
-	
+
 	ItemPointerData 	persistentTid;
 	int64				persistentSerialNum;
 			/*
@@ -93,7 +95,7 @@ typedef struct AppendOnlyStorageWrite
 			/*
 			 * The number of blocks written since the beginning of the segment file.
 			 */
-			
+
 	bool	isFirstRowNumSet;
 			/*
 			 * When true, the first row number for the next block has
@@ -114,7 +116,7 @@ typedef struct AppendOnlyStorageWrite
 			 */
 
 	uint8	*currentBuffer;
-			 /* 
+			 /*
 			  * Current block pointer within the BufferedAppend buffer.
 			  */
 
@@ -125,19 +127,10 @@ typedef struct AppendOnlyStorageWrite
 			  */
 
 
-	qlz1_state_compress *qlz1StateCompress;
-	qlz3_state_compress *qlz3StateCompress;
-			/*
-			 * This scratch buffer is used by the QuickLZ library
-			 * during compression.
-			 */
-
-	//int32	qlzScratchCompressLen;
-	//int32	qlzScratchCompressGuardLen;
 			/*
 			 * Add these two byte lengths to get the length of the qlzScratchCompress buffer.
 			 */
-	
+
 	int32	compressionOverrunLen;
 			/*
 			 * Number of bytes of extra buffer must have beyond the output
@@ -162,21 +155,28 @@ typedef struct AppendOnlyStorageWrite
 
 	//int32	qlzScratchDecompressLen;
 	//int32	qlzScratchDecompressGuardLen;
-			/*
-			 * Add these two byte lengths to get the length of the qlzScratchDecompress buffer.
-			 */
+	/*
+	 * Add these two byte lengths to get the length of the qlzScratchDecompress buffer.
+	 */
+
+	/* Storage attributes */
+	CompressionState *compressionState;
+	CompressionState *verifyWriteCompressionState; /* This is only valid if the gp_appendonly_verify_write_block GUC is set. */
+	int               blocksize;                   /* For AO or CO uncompresed block size         */
+	PGFunction       *compression_functions;       /* For AO or CO compression.                   */
+			/* The array index corresponds to COMP_FUNC_*  */
 
 } AppendOnlyStorageWrite;
 
 // -----------------------------------------------------------------------------
-// Initialization 
+// Initialization
 // -----------------------------------------------------------------------------
 
 /*
  * Initialize AppendOnlyStorageWrite.
  *
- * The AppendOnlyStorageWrite data structure is initialized 
- * once for a append �session� and can be used to add 
+ * The AppendOnlyStorageWrite data structure is initialized
+ * once for a append �session� and can be used to add
  * Append-Only Storage Blocks to 1 or more segment files.
  *
  * The current file to write to is opened with the
@@ -216,7 +216,7 @@ extern void AppendOnlyStorageWrite_FinishSession(
 				/* The data structure to finish. */
 
 // -----------------------------------------------------------------------------
-// Open and FlushAndClose  
+// Open and FlushAndClose
 // -----------------------------------------------------------------------------
 
 /*
@@ -308,12 +308,12 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 	int64						*fileLen_uncompressed);
 
 // -----------------------------------------------------------------------------
-// Usable Block Length 
+// Usable Block Length
 // -----------------------------------------------------------------------------
 
 /*
  *    When writing �short� content intended to stay within the maxBufferLen (also known as
- *    blocksize), some of the buffer will be used for the Append-Only Block Header.  This 
+ *    blocksize), some of the buffer will be used for the Append-Only Block Header.  This
  *    function returns that overhead length.
  *
  *    Isn�t the length of the Append-Only Storage Block constant? NO.
@@ -321,7 +321,7 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
  *    Currently, there are two things that can make it longer.  When checksums are configured,
  *    we add checksum data to the header.  And there is optional header data
  *   (e.g. firstRowNum).
- * 
+ *
  *   We call the header portion with the optional checksums the fixed header because we
  *   need to be able to read and evaluate the checksums before we can interpret flags
  *   in the fixed header that indicate there is more header information.
@@ -346,7 +346,7 @@ extern int32 AppendOnlyStorageWrite_CompleteHeaderLen(
 
 
 // -----------------------------------------------------------------------------
-// Writing �Short� Content Efficiently that is not being Bulk Compressed 
+// Writing �Short� Content Efficiently that is not being Bulk Compressed
 // -----------------------------------------------------------------------------
 
 /*
@@ -366,7 +366,7 @@ extern int32 AppendOnlyStorageWrite_CompleteHeaderLen(
  *				maxBufferLen �
  *				AppendOnlyStorageWrite_HeaderLen(...)
  *
- * When compression is not being used, this interface provides a pointer directly into the 
+ * When compression is not being used, this interface provides a pointer directly into the
  * write buffer for efficient data generation.  Otherwise, a pointer to a temporary buffer
  * will be provided.
  *
@@ -438,7 +438,7 @@ extern void AppendOnlyStorageWrite_CancelLastBuffer(
 
 
 // -----------------------------------------------------------------------------
-// Writing "Large" and/or Compressed Content 
+// Writing "Large" and/or Compressed Content
 // -----------------------------------------------------------------------------
 
 /*

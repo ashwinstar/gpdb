@@ -224,5 +224,9 @@ extern List *
 selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
 				 TupleDesc tupdesc, PartitionState *pstate);
 
+extern void AddPartitionEncoding(Oid relid, Oid paroid, AttrNumber attnum,
+								 bool deflt, List *encoding);
+extern void RemovePartitionEncodingByRelid(Oid relid);
+extern void RemovePartitionEncodingByRelidAttribute(Oid relid, AttrNumber attnum);
 
 #endif   /* CDBPARTITION_H */

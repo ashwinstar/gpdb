@@ -18,10 +18,13 @@ LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lz -lpam -lkrb5 -lgssapi_krb5 -lcom_err -lk5crypto -lnuma -lkrb5support, $(LIBS))
 
 MODCAT_OBJS= gpmodcatversion.o pg_crc.o crc32c.o
+DATADIR=$(top_srcdir)/src/test/regress/data
 
-UPGRADEFILES = $(top_srcdir)/src/test/regress/data/upgrade/upg2_catupgrade.sql \
-               $(top_srcdir)/src/test/regress/data/upgrade/upg2_catupgrade_check.sql \
-               $(top_srcdir)/src/test/regress/data/upgrade42/upg2_catupgrade_42.sql
+UPGRADEFILES = $(DATADIR)/upgrade/upg2_catupgrade.sql \
+			   $(DATADIR)/upgrade/upg2_catupgrade_check.sql \
+			   $(DATADIR)/upgrade42/upg2_catupgrade_42.sql
+
+DATAFILES = $(DATADIR)/upgrade42/pg_compression.data
 
 # This sets things up to create a "contrib" module for upgrade extensions
 MODULE_big = gpupgrade
@@ -60,7 +63,7 @@ gpmodcat_clean:
 	rm -f crc32c.c
 	
 upgradesql_clean:
-	rm -f $(top_srcdir)/src/test/regress/data/upgrade41/*.sql
+	rm -f $(DATADIR)/upgrade42/*.sql
 
 gpmodcat_install: gpmodcatversion
 	$(INSTALL_PROGRAM) gpmodcatversion$(X) \
@@ -70,8 +73,8 @@ installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(bindir)' '$(DESTDIR)$(bindir)/lib'
 	$(MKDIR_P) '$(DESTDIR)$(datadir)' '$(DESTDIR)$(datadir)/upgrade'
 
-installupgradefiles: $(UPGRADEFILES)
-	@for i in $(UPGRADEFILES); \
+installupgradefiles: $(UPGRADEFILES) $(DATAFILES)
+	@for i in $^; \
 	do \
 		$(INSTALL_DATA) $$i '$(DESTDIR)$(datadir)/upgrade/'`basename $$i`; \
 	done

@@ -463,6 +463,7 @@ typedef struct ColumnDef
 	Node	   *raw_default;	/* default value (untransformed parse tree) */
 	char	   *cooked_default; /* nodeToString representation */
 	List	   *constraints;	/* other constraints on column */
+	List	   *encoding;		/* ENCODING clause */
 } ColumnDef;
 
 /*
@@ -499,6 +500,17 @@ typedef struct IndexElem
 	Node	   *expr;			/* expression to index, or NULL */
 	List	   *opclass;		/* name of desired opclass; NIL = default */
 } IndexElem;
+
+/*
+ * column reference encoding clause for storage
+ */
+typedef struct ColumnReferenceStorageDirective
+{
+	NodeTag		type;
+	Value	   *column;
+	bool		deflt;
+	List	   *encoding;
+} ColumnReferenceStorageDirective;
 
 /*
  * DefElem - a generic "name = value" option definition
@@ -1389,6 +1401,7 @@ typedef struct CreateStmt
 	bool		is_add_part;	/* CDB: is create adding a part to a partition? */
 	Oid			ownerid;		/* OID of the role to own this. if InvalidOid, GetUserId() */
 	bool		buildAoBlkdir; /* whether to build the block directory for an AO table */
+	List	   *attr_encodings; /* attribute storage directives */
 } CreateStmt;
 
 /* ----------------------
@@ -1635,6 +1648,7 @@ typedef struct PartitionSpec			/* a Partition Specification */
 {
 	NodeTag				type;
 	List			   *partElem;		/* partition element list */
+	List			   *enc_clauses;	/* ENCODING () clauses */
 	Node			   *subSpec;		/* subpartition spec */
 	bool				istemplate;
 	int					location;		/* token location, or -1 if unknown */
@@ -2263,6 +2277,16 @@ typedef struct AlterOwnerStmt
 	char	   *newowner;		/* the new owner */
 } AlterOwnerStmt;
 
+/* ----------------------
+ * ALTER TYPE ... SET DEFAULT ENCODING ()
+ * ----------------------
+ */
+typedef struct AlterTypeStmt
+{
+	NodeTag		type;
+	List	   *typname;
+	List	   *encoding;
+} AlterTypeStmt;
 
 /* ----------------------
  *		Create Rule Statement

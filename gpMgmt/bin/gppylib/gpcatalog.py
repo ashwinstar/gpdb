@@ -41,6 +41,7 @@ MASTER_ONLY_TABLES = [
     'pg_stat_last_shoperation',
     'pg_statistic',
     'pg_filespace_entry',
+    'pg_partition_encoding',
     ]
 
 # Hard coded since "persistent" is not defined in the catalog

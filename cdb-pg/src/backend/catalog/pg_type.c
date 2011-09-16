@@ -20,6 +20,7 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_type_encoding.h"
 #include "commands/typecmds.h"
 #include "miscadmin.h"
 #include "utils/acl.h"
@@ -29,6 +30,29 @@
 
 #include "cdb/cdbvars.h"
 
+/*
+ * Record a type's default encoding clause in the catalog.
+ */
+void
+add_type_encoding(Oid typid, Datum typoptions)
+{
+	Relation pgte = heap_open(TypeEncodingRelationId, RowExclusiveLock);
+	Datum values[Natts_pg_type_encoding];
+	bool nulls[Natts_pg_type_encoding];
+	HeapTuple tuple;
+
+	MemSet(nulls, false, sizeof(nulls));
+	
+	values[Anum_pg_type_encoding_typid - 1] = ObjectIdGetDatum(typid);
+	values[Anum_pg_type_encoding_typoptions - 1] = typoptions;
+
+	tuple = heap_form_tuple(RelationGetDescr(pgte), values, nulls);
+
+	simple_heap_insert(pgte, tuple);
+	CatalogUpdateIndexes(pgte, tuple);
+
+	heap_close(pgte, RowExclusiveLock);
+}
 
 /* ----------------------------------------------------------------
  *		TypeShellMake
@@ -192,7 +216,8 @@ TypeCreateWithOid(const char *typeName,
 		   int32 typeMod,
 		   int32 typNDims,		/* Array dimensions for baseType */
 		   bool typeNotNull,
-		   Oid newtypeOid)
+		   Oid newtypeOid,
+		   Datum typoptions)
 {
 	Relation	pg_type_desc;
 	Oid			typeObjectId;
@@ -373,9 +398,13 @@ TypeCreateWithOid(const char *typeName,
 								 rebuildDeps);
 
 	/*
-	 * finish up
+	 * finish up with pg_type
 	 */
 	heap_close(pg_type_desc, RowExclusiveLock);
+
+	/* now pg_type_encoding */
+	if (DatumGetPointer(typoptions) != NULL)
+		add_type_encoding(typeObjectId, typoptions);
 
 	return typeObjectId;
 }
@@ -421,7 +450,9 @@ Oid TypeCreate(const char *typeName,
 		   storage,
 		   typeMod,
 		   typNDims,
-		   typeNotNull,InvalidOid);
+		   typeNotNull,
+		   InvalidOid,
+		   0);
 }
 
 /*

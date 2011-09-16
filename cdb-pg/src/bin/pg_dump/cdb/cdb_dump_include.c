@@ -55,6 +55,12 @@ bool		g_gp_supportsPartitioning = true;
 bool		g_gp_supportsPartitionTemplates = true;
 
 /*
+ * Indicates whether or not the GPDB cluster supports column attributes.
+ */
+bool g_gp_supportsAttributeEncoding = false;
+
+
+/*
  * When true, indicates that only the MPP schema is being dumped.
  */
 bool		g_gp_catalog_only = false;
@@ -923,6 +929,84 @@ getTypes(int *numTypes)
 
 
 /*
+ * getTypeStorageOptions:
+ *	  read all types with storage options in the system catalogs and return them in the
+ * TypeStorageOptions* structure
+ *
+ *	numTypes is set to the number of types with storage options read in
+ *
+ */
+TypeStorageOptions *
+getTypeStorageOptions(int *numTypes)
+{
+	PGresult   *res;
+	int			ntups;
+	int			i;
+	PQExpBuffer query = createPQExpBuffer();
+	TypeStorageOptions   *tstorageoptions;
+	int			i_oid;
+	int			i_typname;
+	int			i_typnamespace;
+	int			i_typoptions;
+	int			i_rolname;
+
+	if (g_gp_supportsAttributeEncoding == false)
+	{
+		numTypes = 0;
+		tstorageoptions = (TypeStorageOptions *) malloc(0);
+		return tstorageoptions;
+	}
+
+	/* Make sure we are in proper schema */
+	selectSourceSchema("pg_catalog");
+
+	appendPQExpBuffer(query, "SELECT "
+			"  t.typname AS typname"
+			", t.oid AS oid"
+			", t.typnamespace AS typnamespace"
+			", (%s typowner) as rolname"
+			", array_to_string(a.typoptions, ', ') AS typoptions "
+			" FROM pg_type AS t "
+			" INNER JOIN pg_catalog.pg_type_encoding a ON a.typid = t.oid"
+			" WHERE t.typisdefined = 't'", username_subquery);
+
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	ntups = PQntuples(res);
+
+	tstorageoptions = (TypeStorageOptions *) malloc(ntups * sizeof(TypeStorageOptions));
+
+	i_typname = PQfnumber(res, "typname");
+	i_oid = PQfnumber(res, "oid");
+	i_typnamespace = PQfnumber(res, "typnamespace");
+	i_typoptions = PQfnumber(res, "typoptions");
+	i_rolname = PQfnumber(res, "rolname");
+
+	for (i = 0; i < ntups; i++)
+	{
+		tstorageoptions[i].dobj.objType = DO_TYPE_STORAGE_OPTIONS;
+		AssignDumpId(&tstorageoptions[i].dobj);
+		tstorageoptions[i].dobj.name = strdup(PQgetvalue(res, i, i_typname));
+		tstorageoptions[i].dobj.catId.oid = atooid(PQgetvalue(res, i, i_oid));
+		tstorageoptions[i].dobj.namespace = findNamespace(atooid(PQgetvalue(res, i, i_typnamespace)),tstorageoptions[i].dobj.catId.oid);
+		tstorageoptions[i].typoptions = strdup(PQgetvalue(res, i, i_typoptions));
+		tstorageoptions[i].rolname = strdup(PQgetvalue(res, i, i_rolname));
+	}
+
+	*numTypes = ntups;
+
+	PQclear(res);
+
+	destroyPQExpBuffer(query);
+
+	return tstorageoptions;
+}
+
+
+
+
+/*
  * getOperators:
  *	  read all operators in the system catalogs and return them in the
  * OprInfo* structure
@@ -1321,7 +1405,8 @@ getExtProtocols(int *numExtProtocols)
 		ptcinfo[i].ptcowner = strdup(PQgetvalue(res, i, i_rolname));
 		if (strlen(ptcinfo[i].ptcowner) == 0)
 			mpp_err_msg(logWarn, progname, "WARNING: owner of external protocol \"%s\" appears to be invalid\n",
-								ptcinfo[i].dobj.name);
+						ptcinfo[i].dobj.name);
+		
 
 		if (PQgetisnull(res, i, i_ptcreadid))
 			ptcinfo[i].ptcreadid = InvalidOid;
@@ -2521,6 +2606,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 	int			i_atthasdef;
 	int			i_attisdropped;
 	int			i_attislocal;
+	int     i_attencoding;
 	PGresult   *res;
 	int			ntups;
 	bool		hasdefaults;
@@ -2561,10 +2647,14 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 		/* need left join here to not fail on dropped columns ... */
 		appendPQExpBuffer(q, "SELECT a.attnum, a.attname, a.atttypmod, a.attstattarget, a.attstorage, t.typstorage, "
 				  "a.attnotnull, a.atthasdef, a.attisdropped, a.attislocal, "
-				   "pg_catalog.format_type(t.oid,a.atttypmod) as atttypname "
-			 "from pg_catalog.pg_attribute a left join pg_catalog.pg_type t "
-						  "on a.atttypid = t.oid "
-						  "where a.attrelid = '%u'::pg_catalog.oid "
+				   "pg_catalog.format_type(t.oid,a.atttypmod) as atttypname ");
+		if (g_gp_supportsAttributeEncoding)
+			appendPQExpBuffer(q, ", pg_catalog.array_to_string(e.attoptions, ',') as attencoding ");
+		appendPQExpBuffer(q, "from pg_catalog.pg_attribute a left join pg_catalog.pg_type t "
+						  "on a.atttypid = t.oid ");
+		if (g_gp_supportsAttributeEncoding)
+			appendPQExpBuffer(q, "	 LEFT OUTER JOIN pg_catalog.pg_attribute_encoding e ON e.attrelid = a.attrelid AND e.attnum = a.attnum ");
+		appendPQExpBuffer(q, "where a.attrelid = '%u'::pg_catalog.oid "
 						  "and a.attnum > 0::pg_catalog.int2 "
 						  "order by a.attrelid, a.attnum",
 						  tbinfo->dobj.catId.oid);
@@ -2585,6 +2675,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 		i_atthasdef = PQfnumber(res, "atthasdef");
 		i_attisdropped = PQfnumber(res, "attisdropped");
 		i_attislocal = PQfnumber(res, "attislocal");
+		i_attencoding = PQfnumber(res, "attencoding");
 
 		tbinfo->numatts = ntups;
 		tbinfo->attnames = (char **) malloc(ntups * sizeof(char *));
@@ -2600,6 +2691,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 		tbinfo->inhAttrs = (bool *) malloc(ntups * sizeof(bool));
 		tbinfo->inhAttrDef = (bool *) malloc(ntups * sizeof(bool));
 		tbinfo->inhNotNull = (bool *) malloc(ntups * sizeof(bool));
+		tbinfo->attencoding = (char **)malloc(ntups * sizeof(char *));
 		hasdefaults = false;
 
 		for (j = 0; j < ntups; j++)
@@ -2626,6 +2718,12 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 			tbinfo->inhAttrs[j] = false;
 			tbinfo->inhAttrDef[j] = false;
 			tbinfo->inhNotNull[j] = false;
+
+			/* column storage attributes */
+			if (g_gp_supportsAttributeEncoding && !PQgetisnull(res, j, i_attencoding))
+				tbinfo->attencoding[j] = strdup(PQgetvalue(res, j, i_attencoding));
+			else
+				tbinfo->attencoding[j] = NULL;
 		}
 
 		PQclear(res);

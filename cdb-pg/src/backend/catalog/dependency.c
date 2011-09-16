@@ -24,8 +24,10 @@
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_attrdef.h"
+#include "catalog/pg_attribute_encoding.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_cast.h"
+#include "catalog/pg_compression.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
@@ -38,12 +40,15 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
+#include "catalog/pg_partition_encoding.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_type_encoding.h"
 #include "catalog/pg_user_mapping.h"
+#include "cdb/cdbpartition.h"
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
@@ -108,7 +113,9 @@ static const Oid object_classes[MAX_OCLASS] = {
 	FileSpaceRelationId,        /* OCLASS_FILESPACE */
 	ForeignDataWrapperRelationId,	/* OCLASS_FDW */
 	ForeignServerRelationId,	/* OCLASS_FOREIGN_SERVER */
-	UserMappingRelationId		/* OCLASS_USER_MAPPING */
+	UserMappingRelationId,		/* OCLASS_USER_MAPPING */
+	ExtprotocolRelationId,		/* OCLASS_EXTPROTOCOL */
+	CompressionRelationId		/* OCLASS_COMPRESSION */
 };
 
 
@@ -1046,6 +1053,10 @@ doDeletion(const ObjectAddress *object)
 		case OCLASS_EXTPROTOCOL:
 			RemoveExtProtocolById(object->objectId);
 			break;
+
+		case OCLASS_COMPRESSION:
+			elog(NOTICE, "dependency: not yet implemented!");
+			break;
 			
 		default:
 			elog(ERROR, "unrecognized object class: %u",
@@ -1756,6 +1767,10 @@ getObjectClass(const ObjectAddress *object)
 		case ExtprotocolRelationId:
 			Assert(object->objectSubId == 0);
 			return OCLASS_EXTPROTOCOL;
+
+		case CompressionRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_COMPRESSION;
 	}
 
 	/* shouldn't get here */
@@ -2160,7 +2175,13 @@ getObjectDescription(const ObjectAddress *object)
 
 		case OCLASS_EXTPROTOCOL:
 			{
-				appendStringInfo(&buffer, _("protocol %s"), ExtProtocolGetNameByOid(object->objectId));
+				appendStringInfo(&buffer, _("protocol %s"),
+								 ExtProtocolGetNameByOid(object->objectId));
+				break;
+			}
+		case OCLASS_COMPRESSION:
+			{
+				elog(NOTICE, "NOT YET IMPLEMENTED");
 				break;
 			}
 		default:

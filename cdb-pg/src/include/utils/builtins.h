@@ -1150,4 +1150,38 @@ extern Datum gp_persistent_relation_node_check(PG_FUNCTION_ARGS);
 extern Datum pg_partition_oid_transfn(PG_FUNCTION_ARGS);
 extern Datum pg_partition_oid_finalfn(PG_FUNCTION_ARGS);
 
+/* storage/compress.c */
+extern Datum quicklz_constructor(PG_FUNCTION_ARGS);
+extern Datum quicklz_destructor(PG_FUNCTION_ARGS);
+extern Datum quicklz_compress(PG_FUNCTION_ARGS);
+extern Datum quicklz_decompress(PG_FUNCTION_ARGS);
+extern Datum quicklz_validator(PG_FUNCTION_ARGS);
+
+extern Datum zlib_constructor(PG_FUNCTION_ARGS);
+extern Datum zlib_destructor(PG_FUNCTION_ARGS);
+extern Datum zlib_compress(PG_FUNCTION_ARGS);
+extern Datum zlib_decompress(PG_FUNCTION_ARGS);
+extern Datum zlib_validator(PG_FUNCTION_ARGS);
+
+extern Datum rle_type_constructor(PG_FUNCTION_ARGS);
+extern Datum rle_type_destructor(PG_FUNCTION_ARGS);
+extern Datum rle_type_compress(PG_FUNCTION_ARGS);
+extern Datum rle_type_decompress(PG_FUNCTION_ARGS);
+extern Datum rle_type_validator(PG_FUNCTION_ARGS);
+
+extern Datum delta_constructor(PG_FUNCTION_ARGS);
+extern Datum delta_destructor(PG_FUNCTION_ARGS);
+extern Datum delta_compress(PG_FUNCTION_ARGS);
+extern Datum delta_decompress(PG_FUNCTION_ARGS);
+extern Datum delta_validator(PG_FUNCTION_ARGS);
+
+extern Datum dummy_compression_constructor(PG_FUNCTION_ARGS);
+extern Datum dummy_compression_destructor(PG_FUNCTION_ARGS);
+extern Datum dummy_compression_compress(PG_FUNCTION_ARGS);
+extern Datum dummy_compression_decompress(PG_FUNCTION_ARGS);
+extern Datum dummy_compression_validator(PG_FUNCTION_ARGS);
+
+extern Datum gp_compressor(PG_FUNCTION_ARGS);
+extern Datum gp_decompressor(PG_FUNCTION_ARGS);
+extern Datum test_quicklz_compression(PG_FUNCTION_ARGS);
 #endif   /* BUILTINS_H */

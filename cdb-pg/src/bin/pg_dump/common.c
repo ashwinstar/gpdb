@@ -46,13 +46,14 @@ static int	numCatalogIds = 0;
  */
 static TableInfo *tblinfo;
 static TypeInfo *typinfo;
+static TypeStorageOptions *typestorageoptions;
 static FuncInfo *funinfo;
 static OprInfo *oprinfo;
 static int	numTables;
 static int	numTypes;
+static int  numTypeStorageOptions;
 static int	numFuncs;
 static int	numOperators;
-
 
 static void flagInhTables(TableInfo *tbinfo, int numTables,
 			  InhInfo *inhinfo, int numInherits);
@@ -107,6 +108,11 @@ getSchemaData(int *numTablesPtr)
 		write_msg(NULL, "reading user-defined types\n");
 	typinfo = getTypes(&numTypes);
 
+	/* this must be after getFuncs */
+	if (g_verbose)
+		write_msg(NULL, "reading type storage options\n");
+	typestorageoptions = getTypeStorageOptions(&numTypeStorageOptions);
+
 	/* this must be after getFuncs, too */
 	if (g_verbose)
 		write_msg(NULL, "reading procedural languages\n");
@@ -126,7 +132,7 @@ getSchemaData(int *numTablesPtr)
 			write_msg(NULL, "reading user-defined external protocols\n");
 		ptcinfo = getExtProtocols(&numExtProtocols);
 	}
-	
+
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined operator classes\n");
 	opcinfo = getOpclasses(&numOpclasses);

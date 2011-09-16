@@ -11,30 +11,31 @@
 #include <sys/fcntl.h>
 #else
 #include <io.h>
-#endif 
+#endif
 #include <sys/file.h>
 #include <unistd.h>
 
-#include "utils/guc.h"
-
+#include "catalog/heap.h"
+#include "catalog/pg_compression.h"
+#include "cdb/cdbappendonlystorageread.h"
 #include "cdb/cdbappendonlystorage.h"
 #include "cdb/cdbappendonlystoragelayer.h"
 #include "cdb/cdbappendonlystorageformat.h"
 #include "cdb/cdbappendonlystoragewrite.h"
 #include "cdb/cdbmirroredfilesysobj.h"
-#include "catalog/heap.h"
 #include "cdb/cdbpersistentfilesysobj.h"
+#include "utils/guc.h"
 
 
 // -----------------------------------------------------------------------------
-// Initialization 
+// Initialization
 // -----------------------------------------------------------------------------
 
 /*
  * Initialize AppendOnlyStorageWrite.
  *
- * The AppendOnlyStorageWrite data structure is initialized 
- * once for a append �session� and can be used to add 
+ * The AppendOnlyStorageWrite data structure is initialized
+ * once for a append �session� and can be used to add
  * Append-Only Storage Blocks to 1 or more segment files.
  *
  * The current file to write to is opened with the
@@ -70,20 +71,20 @@ void AppendOnlyStorageWrite_Init(
 	uint8	*memory;
 	int32	memoryLen;
 	MemoryContext	oldMemoryContext;
-	
+
 	Assert(storageWrite != NULL);
-	
+
 	// UNDONE: Range check maxBufferLen
-	
+
 	Assert(relationName != NULL);
 	Assert(storageAttributes != NULL);
 
 	// UNDONE: Range check fields in storageAttributes
-	
+
 	MemSet(storageWrite, 0, sizeof(AppendOnlyStorageWrite));
-	
+
 	storageWrite->maxBufferLen = maxBufferLen;
-	
+
 	if (memoryContext == NULL)
 		storageWrite->memoryContext = CurrentMemoryContext;
 	else
@@ -92,8 +93,8 @@ void AppendOnlyStorageWrite_Init(
 	oldMemoryContext = MemoryContextSwitchTo(storageWrite->memoryContext);
 
 	memcpy(
-		&storageWrite->storageAttributes, 
-		storageAttributes, 
+		&storageWrite->storageAttributes,
+		storageAttributes,
 		sizeof(AppendOnlyStorageAttributes));
 
 	/*
@@ -114,29 +115,11 @@ void AppendOnlyStorageWrite_Init(
 	if (storageWrite->storageAttributes.compress)
 	{
 		storageWrite->uncompressedBuffer = (uint8 *) palloc(storageWrite->maxBufferLen * sizeof(uint8));
-		
-		/*
-		 * if quicklz compression used, set up scratch space.
-		 */
-		switch(storageWrite->storageAttributes.compressType)
-		{
-			case COMPTYPE_QUICKLZ1:
-				storageWrite->qlz1StateCompress = (qlz1_state_compress *)palloc0(sizeof(qlz1_state_compress));
-				break;
-			case COMPTYPE_QUICKLZ3:
-				storageWrite->qlz3StateCompress = (qlz3_state_compress *)palloc0(sizeof(qlz3_state_compress));
-				break;
-			case COMPTYPE_ZLIB:
-				break; /* nothing to do */
-			case COMPTYPE_NONE:
-			default:
-				Insist(false);
-		}
 
 		if (storageWrite->storageAttributes.compressType == COMPTYPE_QUICKLZ1 ||
 			storageWrite->storageAttributes.compressType == COMPTYPE_QUICKLZ3)
 		{
-			/* 
+			/*
 			  * QuickLZ has compression overrun issues.  It can generate compressed output beyond the
 			  * original source length!
 			  */
@@ -150,28 +133,36 @@ void AppendOnlyStorageWrite_Init(
 	}
 
 	/*
+	 * KAS The following is a kludge. In 4.2 we changed the way compression type is determined,
+	 * but that information is not available at this point. Currently, only QUICKLZ requires
+	 * extra space (400 bytes), so I'll just make the compression OverrunLen the MAX_OVERRUN_QUICKLZ
+	 * for now.
+	 */
+	storageWrite->compressionOverrunLen = MAX_OVERRUN_QUICKLZ;
+
+	/*
 	 * Now that we have determined the compression overrun, we can now
 	 * initialize BufferedAppend with the correct maxBufferLen + compressionOverrunLen.
 	 */
-	storageWrite->maxBufferWithCompressionOverrrunLen = 
+	storageWrite->maxBufferWithCompressionOverrrunLen =
 		storageWrite->maxBufferLen + storageWrite->compressionOverrunLen;
 	storageWrite->largeWriteLen = 2 * storageWrite->maxBufferLen;
 	Assert(storageWrite->maxBufferWithCompressionOverrrunLen <= storageWrite->largeWriteLen);
 
-	memoryLen = 
+	memoryLen =
 		BufferedAppendMemoryLen(
 					/* maxBufferLen */ storageWrite->maxBufferWithCompressionOverrrunLen,
 					storageWrite->largeWriteLen);
-	
+
 	memory = (uint8*)palloc(memoryLen);
 
-	BufferedAppendInit(&storageWrite->bufferedAppend, 
+	BufferedAppendInit(&storageWrite->bufferedAppend,
 					   memory,
-					   memoryLen, 
-					   /* maxBufferLen */ storageWrite->maxBufferWithCompressionOverrrunLen, 
+					   memoryLen,
+					   /* maxBufferLen */ storageWrite->maxBufferWithCompressionOverrrunLen,
 					   storageWrite->largeWriteLen,
 					   relationName);
-				
+
 	if (Debug_appendonly_print_insert || Debug_appendonly_print_append_block)
 		elog(LOG,"Append-Only Storage Write initialize for table '%s' "
 		     "(compression = %s, compression level %d, maximum buffer length %d, large write length %d)",
@@ -187,13 +178,13 @@ void AppendOnlyStorageWrite_Init(
 	if (gp_appendonly_verify_write_block && storageWrite->storageAttributes.compress)
 	{
 		storageWrite->verifyWriteBuffer = (uint8 *) palloc(storageWrite->maxBufferLen * sizeof(uint8));
-		
+
 		/*
 		 * If QuickLz compression used, prepare scratch space for decompression.
 		 */
 		//if (Debug_appendonly_guard_end_quicklz_scratch)
 		//	storageWrite->qlzScratchDecompressGuardLen = 1024;
-		
+
 		storageWrite->qlz1StateDecompress = NULL;
 		storageWrite->qlz3StateDecompress = NULL;
 		switch(storageWrite->storageAttributes.compressType)
@@ -226,9 +217,9 @@ void AppendOnlyStorageWrite_Init(
 
 	storageWrite->isActive = true;
 
-	storageWrite->bufferedAppend.mirroredOpen.isActive = FALSE; 
-	storageWrite->bufferedAppend.mirroredOpen.segmentFileNum = 0; 
-	storageWrite->bufferedAppend.mirroredOpen.primaryFile = -1; 
+	storageWrite->bufferedAppend.mirroredOpen.isActive = FALSE;
+	storageWrite->bufferedAppend.mirroredOpen.segmentFileNum = 0;
+	storageWrite->bufferedAppend.mirroredOpen.primaryFile = -1;
 
 
 
@@ -263,18 +254,6 @@ void AppendOnlyStorageWrite_FinishSession(
 		storageWrite->uncompressedBuffer = NULL;
 	}
 
-	if (storageWrite->qlz1StateCompress != NULL)
-	{
-		pfree(storageWrite->qlz1StateCompress);
-		storageWrite->qlz1StateCompress = NULL;
-	}
-
-	if (storageWrite->qlz3StateCompress != NULL)
-	{
-		pfree(storageWrite->qlz3StateCompress);
-		storageWrite->qlz3StateCompress = NULL;
-	}
-
 	if (storageWrite->verifyWriteBuffer != NULL)
 	{
 		pfree(storageWrite->verifyWriteBuffer);
@@ -301,13 +280,13 @@ void AppendOnlyStorageWrite_FinishSession(
 
 	/* Deallocation is done.	  Go back to caller memory-context. */
 	MemoryContextSwitchTo(oldMemoryContext);
-	
+
 	storageWrite->isActive = false;
 
 }
 
 // -----------------------------------------------------------------------------
-// Open and FlushAndClose  
+// Open and FlushAndClose
 // -----------------------------------------------------------------------------
 
 /*
@@ -335,7 +314,7 @@ void AppendOnlyStorageWrite_TransactionCreateFile(
 	int64 						*persistentSerialNum)
 {
 	Relation gp_relation_node;
-	
+
 
 	Assert (segmentFileNum > 0);
 	Assert (logicalEof == 0);
@@ -352,7 +331,7 @@ void AppendOnlyStorageWrite_TransactionCreateFile(
 		// UNDONE: Verify the gp_persistent_relation_node Append-Only EOFs are zero.
 		return;
 	}
-	
+
 	MirroredFileSysObj_TransactionCreateAppendOnlyFile(
 										relFileNode,
 										segmentFileNum,
@@ -404,23 +383,23 @@ void AppendOnlyStorageWrite_OpenFile(
 	int		primaryError;
 
 	File	file;
-	
+
 	int64	seekResult;
 
 	MemoryContext	oldMemoryContext;
-	
+
 	int		segmentFileNameLen;
-	
+
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
-	
+
 	Assert(filePathName != NULL);
-	
+
 	/*
 	 * Open or create the file for write.
-	 */	
+	 */
 	MirroredAppendOnly_OpenReadWrite(
-							&storageWrite->bufferedAppend.mirroredOpen, 
+							&storageWrite->bufferedAppend.mirroredOpen,
 							relFileNode,
 							segmentFileNum,
 							storageWrite->relationName,
@@ -438,8 +417,8 @@ void AppendOnlyStorageWrite_OpenFile(
 					   strerror(primaryError))));
 
 	file = storageWrite->bufferedAppend.mirroredOpen.primaryFile;
-	
-	/* 
+
+	/*
 	 * Seek to the logical EOF write position.
 	 */
 	seekResult = FileSeek(file, logicalEof, SEEK_SET);
@@ -451,7 +430,7 @@ void AppendOnlyStorageWrite_OpenFile(
 						&storageWrite->bufferedAppend.mirroredOpen,
 						&mirrorDataLossOccurred);
 
-        ereport(ERROR, 
+        ereport(ERROR,
 				(errcode(ERRCODE_IO_ERROR),
 			     errmsg("Append-only Storage Write error on segment file '%s' for relation '%s'.  FileSeek offset = " INT64_FORMAT ".  Error code = %d (%s)",
         	 		    filePathName,
@@ -470,7 +449,7 @@ void AppendOnlyStorageWrite_OpenFile(
 
 	/*
 	 * When writing multiple segment files, we throw away the old segment file name strings.
-	 */	
+	 */
 	oldMemoryContext = MemoryContextSwitchTo(storageWrite->memoryContext);
 
 	if (storageWrite->segmentFileName != NULL)
@@ -482,13 +461,13 @@ void AppendOnlyStorageWrite_OpenFile(
 
 	/* Allocation is done.	Go back to caller memory-context. */
 	MemoryContextSwitchTo(oldMemoryContext);
-	
+
 	/*
 	 * Tell the BufferedAppend module about the file we just opened.
 	 */
-	BufferedAppendSetFile(&storageWrite->bufferedAppend, 
-						  storageWrite->file, 
-						  storageWrite->segmentFileName, 
+	BufferedAppendSetFile(&storageWrite->bufferedAppend,
+						  storageWrite->file,
+						  storageWrite->segmentFileName,
 						  logicalEof,
 						  fileLen_uncompressed);
 
@@ -497,11 +476,11 @@ void AppendOnlyStorageWrite_OpenFile(
 /*
  * Optionally pad out to next page boundary.
  *
- * Since we do not do typical recovery processing of append-only file-system 
+ * Since we do not do typical recovery processing of append-only file-system
  * pages, we pad out the last file-system byte with zeroes. The number of bytes
  * that are padded with zero's is determined by safefswritesize.
- * This function pads with 0's of length padLen or pads the whole remainder 
- * of the safefswritesize size with 0's if padLen is -1. 
+ * This function pads with 0's of length padLen or pads the whole remainder
+ * of the safefswritesize size with 0's if padLen is -1.
  */
 static void
 AppendOnlyStorageWrite_DoPadOutRemainder(
@@ -510,20 +489,20 @@ AppendOnlyStorageWrite_DoPadOutRemainder(
 {
 	int64	nextWritePosition;
 	int64   nextBoundaryPosition;
-	int32	safeWrite = storageWrite->storageAttributes.safeFSWriteSize; 
+	int32	safeWrite = storageWrite->storageAttributes.safeFSWriteSize;
 	int32	safeWriteRemainder;
 	bool	doPad;
 	uint8   *buffer;
-	
+
 	/* early exit if no pad needed */
 	if(safeWrite == 0)
 		return;
-	
+
 	nextWritePosition = BufferedAppendNextBufferPosition(&storageWrite->bufferedAppend);
-	nextBoundaryPosition = 
+	nextBoundaryPosition =
 		((nextWritePosition + safeWrite - 1)/safeWrite)*safeWrite;
 	safeWriteRemainder = (int32)(nextBoundaryPosition - nextWritePosition);
-	
+
 	if (safeWriteRemainder <= 0)
 		doPad = false;
 	else if (padLen == -1)
@@ -536,7 +515,7 @@ AppendOnlyStorageWrite_DoPadOutRemainder(
 	}
 	else
 		doPad = (safeWriteRemainder < padLen);
-	
+
 	if (doPad)
 	{
 		/*
@@ -544,25 +523,25 @@ AppendOnlyStorageWrite_DoPadOutRemainder(
 		 */
 		buffer = BufferedAppendGetBuffer(&storageWrite->bufferedAppend,
 										 safeWriteRemainder);
-		
+
 		if (buffer == NULL)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("We do not expect files to be have a maximum length")));						
+					 errmsg("We do not expect files to be have a maximum length")));
 		}
-		
+
 		memset(buffer, 0, safeWriteRemainder);
-		BufferedAppendFinishBuffer(&storageWrite->bufferedAppend, 
-								   safeWriteRemainder, 
+		BufferedAppendFinishBuffer(&storageWrite->bufferedAppend,
+								   safeWriteRemainder,
 								   safeWriteRemainder);
-		
+
 		if (Debug_appendonly_print_insert)
 			elog(LOG,"Append-only insert zero padded safeWriteRemainder for table '%s' (nextWritePosition = " INT64_FORMAT ", safeWriteRemainder = %d)",
 			     storageWrite->relationName,
 			     nextWritePosition,
 			     safeWriteRemainder);
-		
+
 	}
 }
 
@@ -594,28 +573,28 @@ void AppendOnlyStorageWrite_FlushAndCloseFile(
 
 	*mirrorDataLossOccurred = false;	// Assume.
 	*mirrorCatchupRequired = false;	// Assume.
-	
+
 	if (storageWrite->file == -1)
 	{
 		*newLogicalEof = 0;
 		*fileLen_uncompressed = 0;
 		return;
 	}
-	
+
 	/*
 	 * We pad out append commands to the page boundary.
 	 */
 	AppendOnlyStorageWrite_DoPadOutRemainder(
-										storageWrite, 
+										storageWrite,
 										/* indicate till end of page */ -1);
-	
-	/* 
+
+	/*
 	 * Have the BufferedAppend module let go, but this does not close the file.
 	 */
-	BufferedAppendCompleteFile(&storageWrite->bufferedAppend, 
-							   newLogicalEof, 
+	BufferedAppendCompleteFile(&storageWrite->bufferedAppend,
+							   newLogicalEof,
 							   fileLen_uncompressed);
-	
+
 	/*
 	 * We must take care of fsynching to disk ourselves since
 	 * the fd API won't do it for us.
@@ -635,7 +614,7 @@ void AppendOnlyStorageWrite_FlushAndCloseFile(
 					   storageWrite->segmentFileName,
 					   storageWrite->relationName,
 					   strerror(primaryError))));
-	
+
 	storageWrite->file = -1;
 
 	MemSet(&storageWrite->relFileNode, 0, sizeof(RelFileNode));
@@ -665,7 +644,7 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 	int32 segmentFileNum;
 	ItemPointerData persistentTid;
 	int64 persistentSerialNum;
-		
+
 	int64	startEof;
 	bool	mirrorDataLossOccurred;
 	bool 	mirrorCatchupRequired;
@@ -675,7 +654,7 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
-	
+
 	if (storageWrite->file == -1)
 	{
 		*newLogicalEof = 0;
@@ -707,12 +686,12 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 
 	if (*newLogicalEof - startEof > 0)
 	{
-		/* 
+		/*
 		 * This routine will handle both updating the persistent information about the
 		 * new EOF and copy data to the mirror if we are now in synchronized state.
 		 */
 		if (Debug_persistent_print)
-			elog(Persistent_DebugPrintLevel(), 
+			elog(Persistent_DebugPrintLevel(),
 				 "AppendOnlyStorageWrite_TransactionFlushAndCloseFile: %u/%u/%u, segment file #%d, serial number " INT64_FORMAT ", TID %s, mirror catchup required %s, "
 				 "mirror data loss tracking (state '%s', session num " INT64_FORMAT "), "
 				 "mirror start EOF " INT64_FORMAT ", mirror new EOF " INT64_FORMAT,
@@ -740,13 +719,13 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 										*newLogicalEof);
 
 	}
-	
+
 	MIRRORED_UNLOCK;
 
 }
 
 // -----------------------------------------------------------------------------
-// Usable Block Length 
+// Usable Block Length
 // -----------------------------------------------------------------------------
 
 /*
@@ -774,7 +753,7 @@ int32 AppendOnlyStorageWrite_CompleteHeaderLen(
 
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
-	
+
 	completeHeaderLen = storageWrite->fixedHeaderLen;
 
 	if (storageWrite->isFirstRowNumSet)
@@ -798,7 +777,7 @@ static int32 AppendOnlyStorageWrite_LargeContentHeaderLen(
 
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
-	
+
 	completeHeaderLen = storageWrite->fixedHeaderLen;
 
 	if (storageWrite->isFirstRowNumSet)
@@ -825,8 +804,8 @@ errcontext_appendonly_write_storage_block(AppendOnlyStorageWrite *storageWrite)
 	int64	headerOffsetInFile;
 
 	headerOffsetInFile = BufferedAppendCurrentBufferPosition(&storageWrite->bufferedAppend);
-	
-	errcontext( 
+
+	errcontext(
 		 "Append-Only table '%s', segment file '%s', block header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
 		 storageWrite->relationName,
 		 storageWrite->segmentFileName,
@@ -852,27 +831,27 @@ errdetail_appendonly_write_storage_block_header(AppendOnlyStorageWrite *storageW
 	header = BufferedAppendGetCurrentBuffer(&storageWrite->bufferedAppend);
 
 	checksum = storageWrite->storageAttributes.checksum;
-	
+
 	return errdetail_appendonly_storage_block_header(header, checksum, storageWrite->storageAttributes.version);
 }
 
 
 // -----------------------------------------------------------------------------
-// Writing �Short� Content Efficiently that is not being Bulk Compressed 
+// Writing �Short� Content Efficiently that is not being Bulk Compressed
 // -----------------------------------------------------------------------------
 
 /*
  * Get a pointer to next maximum length buffer space for
  * appending �small� content.
  *
- * You must decide whether you are supplying the optional first row number BEFORE 
+ * You must decide whether you are supplying the optional first row number BEFORE
  * calling this routine!
  *
  * NOTE: The maximum length buffer space =
  *				maxBufferLen �
  *				AppendOnlyStorageWrite_CompleteHeaderLen(...)
  *
- * When compression is not being used, this interface provides a pointer directly into the 
+ * When compression is not being used, this interface provides a pointer directly into the
  * write buffer for efficient data generation.  Otherwise, a pointer to a temporary buffer
  * to collect the uncompressed contents will be provided.
  *
@@ -884,8 +863,8 @@ uint8 *AppendOnlyStorageWrite_GetBuffer(
 {
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
-	
-	storageWrite->currentCompleteHeaderLen = 
+
+	storageWrite->currentCompleteHeaderLen =
 				AppendOnlyStorageWrite_CompleteHeaderLen(storageWrite);
 
 
@@ -900,9 +879,9 @@ uint8 *AppendOnlyStorageWrite_GetBuffer(
 	}
 	else
 	{
-		storageWrite->currentBuffer = 
+		storageWrite->currentBuffer =
 					BufferedAppendGetMaxBuffer(&storageWrite->bufferedAppend);
-		
+
 		return &storageWrite->currentBuffer[storageWrite->currentCompleteHeaderLen];
 	}
 }
@@ -969,7 +948,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 {
 	uint8	*header;
 	uint8   *content;
-	
+
 	AOHeaderCheckError	checkError;
 	AoHeaderKind	    headerKind;
 	int32				actualHeaderLen;
@@ -986,7 +965,10 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 	pg_crc32			computedChecksum;
 
 	if (storageWrite->storageAttributes.compress && storageWrite->verifyWriteBuffer == NULL)
-		return;		// GUC must have been turned on mid-transaction.
+	   return;		// GUC must have been turned on mid-transaction.
+
+	if (gp_appendonly_verify_write_block == false)
+     elog(WARNING, "The GUC gp_appendonly_verify_write_block is false. Compressed write not checked.");
 
 	header = BufferedAppendGetCurrentBuffer(&storageWrite->bufferedAppend);
 
@@ -1000,14 +982,14 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 	 *	 2. Examine (basic) header.
 	 *	 3. Examine specific header.
 	 * [ 4. Verify the block checksum ]
-	 */ 
+	 */
 	if (storageWrite->storageAttributes.checksum)
 	{
 		if (!AppendOnlyStorageFormat_VerifyHeaderChecksum(
 												header,
 												&storedChecksum,
 												&computedChecksum))
-			ereport(ERROR, 
+			ereport(ERROR,
 				    (errmsg("Verify block during write found header checksum does not match.  Expected 0x%X and found 0x%X",
 						    storedChecksum,
 						    computedChecksum),
@@ -1024,7 +1006,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 													&headerKind,
 													&actualHeaderLen);
 	if (checkError != AOHeaderCheckOk)
-		ereport(ERROR, 
+		ereport(ERROR,
 				(errmsg("Verify block during write found bad append-only storage header. Header check error %d, detail '%s'",
 						 (int)checkError,
 						 AppendOnlyStorageFormat_GetHeaderCheckErrorStr()),
@@ -1037,7 +1019,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 		/*
 		 * Check the Block header information.
 		 */
-		checkError = 
+		checkError =
 			AppendOnlyStorageFormat_GetSmallContentHeaderInfo(
 								header,
 								actualHeaderLen,
@@ -1054,16 +1036,16 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 								&isCompressed,
 								&compressedLen);
 		if (checkError != AOHeaderCheckOk)
-			ereport(ERROR, 
+			ereport(ERROR,
 			        (errmsg("Verify block during write found bad append-only storage block header. "
 	 					    "Header check error %d, detail '%s'",
 				 			(int)checkError,
 				 			AppendOnlyStorageFormat_GetHeaderCheckErrorStr()),
 					 errdetail_appendonly_write_storage_block_header(storageWrite),
 					 errcontext_appendonly_write_storage_block(storageWrite)));
-		
+
 		if (uncompressedLen != expectedUncompressedLen)
-			ereport(ERROR, 
+			ereport(ERROR,
 				    (errmsg("Verify block during write found append-only storage block header. "
 				            "DataLen %d does not equal expected length %d, ",
 	 					    uncompressedLen,
@@ -1071,9 +1053,9 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 					 errdetail_appendonly_write_storage_block_header(storageWrite),
 					 errcontext_appendonly_write_storage_block(storageWrite)));
 
-		
+
 		if (compressedLen != expectedCompressedLen)
-			ereport(ERROR, 
+			ereport(ERROR,
 					(errmsg("Verify block during write found append-only storage block header. "
 						    "CompressedLen %d does not equal expected length %d",
 						    compressedLen,
@@ -1086,7 +1068,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 		 */
 
 		if (executorBlockKind != expectedExecutorBlockKind)
-			ereport(ERROR, 
+			ereport(ERROR,
 					(errmsg("Verify block during write found append-only storage block header. "
 				 			"ExecutorBlockKind %d does not equal expected value %d.",
 						    executorBlockKind,
@@ -1097,7 +1079,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 		// UNDONE: Check hasFirstRowNum
 
 		if (rowCount != expectedRowCount)
-			ereport(ERROR, 
+			ereport(ERROR,
 					(errmsg("Verify block during write found append-only storage block header. "
 				 			"RowCount %d does not equal expected value %d",
 						    rowCount,
@@ -1113,34 +1095,48 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 								header,
 								storageWrite->storageAttributes.checksum,
 								storageWrite->storageAttributes.version);
-		
+
 
 		if (isCompressed)
 		{
 			int test;
-			
-			gp_decompress_new(
-						&header[offset],			// Compressed data in block.
-						compressedLen,
-						storageWrite->verifyWriteBuffer,	// Temporary buffer to hold uncompressed data.
-						uncompressedLen,
-						storageWrite->storageAttributes.compressType,
-						storageWrite->qlz1StateDecompress,
-						storageWrite->qlz3StateDecompress,
-						storageWrite->bufferCount);
-			
+			PGFunction decompressor;
+			PGFunction *cfns = storageWrite->compression_functions;
+
+			Assert(gp_appendonly_verify_write_block == true);
+			Assert(storageWrite->verifyWriteCompressionState != NULL);
+
+			if (cfns == NULL)
+				decompressor = NULL;
+			else
+				decompressor = cfns[COMPRESSION_DECOMPRESS];
+
+			gp_decompress_new(&header[offset], // Compressed data in block.
+							  compressedLen,
+							  storageWrite->verifyWriteBuffer, // Temporary buffer to hold uncompressed data. 
+							  uncompressedLen,
+							  storageWrite->storageAttributes.compressType,
+							  decompressor,
+							  storageWrite->verifyWriteCompressionState,
+							  storageWrite->qlz1StateDecompress,
+							  storageWrite->qlz3StateDecompress,
+							  storageWrite->bufferCount);
+
 			/*
 			 * Compare.
 			 */
-			test = memcmp(expectedContent, storageWrite->verifyWriteBuffer, uncompressedLen);
+			test = memcmp(expectedContent,
+						  storageWrite->verifyWriteBuffer,
+						  uncompressedLen);
+
 			if (test != 0)
-				ereport(ERROR, 
+				ereport(ERROR,
 						(errmsg("Verify block during write found decompress did not produce the exact same bits passed to compress! "
 						        "Memcmp result %d",
 								test),
 						 errdetail_appendonly_write_storage_block_header(storageWrite),
 						 errcontext_appendonly_write_storage_block(storageWrite)));
-			
+
 		}
 		else
 		{
@@ -1164,7 +1160,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 												&firstRowNum,
 												&rowCount);
 		if (checkError != AOHeaderCheckOk)
-			ereport(ERROR, 
+			ereport(ERROR,
 					(errmsg("Bad append-only storage header of type LargeContent. Header check error %d, detail '%s'",
 							(int)checkError,
 							AppendOnlyStorageFormat_GetHeaderCheckErrorStr()),
@@ -1188,7 +1184,7 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 		VarBlockCheckError varBlockCheckError;
 		VarBlockReader varBlockReader;
 		int readerItemCount;
-		
+
 		varBlockCheckError = VarBlockIsValid(data, uncompressedLen);
 		if (varBlockCheckError != VarBlockCheckOk)
 			ereport(ERROR,
@@ -1198,15 +1194,15 @@ static void AppendOnlyStorageWrite_VerifyWriteBlock(
 							VarBlockGetCheckErrorStr()),
 					 errdetail_appendonly_write_storage_block_header(storageWrite),
 					 errcontext_appendonly_write_storage_block(storageWrite)));
-		
+
 		/*
 		 * Now use the VarBlock module to extract the items out.
 		 */
-		VarBlockReaderInit(&varBlockReader, 
-						   data, 
+		VarBlockReaderInit(&varBlockReader,
+						   data,
 						   uncompressedLen);
-		
-		readerItemCount = VarBlockReaderItemCount(&varBlockReader);	
+
+		readerItemCount = VarBlockReaderItemCount(&varBlockReader);
 
 		if (rowCount != readerItemCount)
 		{
@@ -1236,27 +1232,30 @@ AppendOnlyStorageWrite_CompressAppend(
 	int 	 		res;
 	int32 			dataRoundedUpLen = 0;	// Shutup compiler.
 	int32			dataBufferWithOverrrunLen;
+	PGFunction	   *cfns = storageWrite->compression_functions;
+	PGFunction		compressor;
+
+	if (cfns == NULL)
+	   compressor = NULL;
+	else
+	   compressor = cfns[COMPRESSION_COMPRESS];
 
 	// UNDONE: This can be a duplicate call...
-	storageWrite->currentCompleteHeaderLen = 
+	storageWrite->currentCompleteHeaderLen =
 				AppendOnlyStorageWrite_CompleteHeaderLen(storageWrite);
-	
+
 	header = BufferedAppendGetMaxBuffer(&storageWrite->bufferedAppend);
 	if (header == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("We do not expect files to be have a maximum length"),
 				 errcontext_appendonly_write_storage_block(storageWrite)));
-	
+
 	dataBuffer = &header[storageWrite->currentCompleteHeaderLen];
-	dataBufferWithOverrrunLen = 
-		     storageWrite->maxBufferWithCompressionOverrrunLen 
+	dataBufferWithOverrrunLen =
+		     storageWrite->maxBufferWithCompressionOverrrunLen
 	       - storageWrite->currentCompleteHeaderLen;
 
-	// UNDONE: Here is a point where we could look at the sourceLen and
-	// UNDONE: and decide it is too small to compress and go directly
-	// UNDONE: to copying in non-compressed data.
-	
 	/*
 	 * Compress into the BufferedAppend buffer after the large header (and
 	 * optional checksum, etc.
@@ -1267,15 +1266,23 @@ AppendOnlyStorageWrite_CompressAppend(
 					dataBuffer,
 					dataBufferWithOverrrunLen,
 					sourceLen,	// Limit compression to be no more than the input size.
-					compressedLen,				
+					compressedLen,
 					storageWrite->storageAttributes.compressLevel,
 					storageWrite->storageAttributes.compressType,
-					storageWrite->qlz1StateCompress,
-					storageWrite->qlz3StateCompress);
-
-					
-	
-	if (res == Z_OK)
+					compressor,
+					storageWrite->compressionState);
+	/*
+	 * We always store the data compressed if the comprssed length is less than
+	 * the uncompressed length.
+	 *
+	 * TODO: this is a weak assumption. It doesn't account for the fact that
+	 * it's not worth paying the CPU cost of decompression for a potentially
+	 * trivial saving.
+	 *
+	 * The best solution to this seems to be to make the threshold at which we
+	 * compress data user configurable.
+	 */
+	if (*compressedLen < sourceLen)
 	{
 		/*
 		 * Compression successful.
@@ -1285,8 +1292,8 @@ AppendOnlyStorageWrite_CompressAppend(
 		AOStorage_ZeroPad(
 					dataBuffer,
 					*compressedLen,
-					dataRoundedUpLen);	
-		
+					dataRoundedUpLen);
+
 		/*
 		 * Make the header and compute the checksum if necessary.
 		 */
@@ -1300,7 +1307,7 @@ AppendOnlyStorageWrite_CompressAppend(
 									itemCount,
 									sourceLen,
 									*compressedLen);
-		
+
 		if (Debug_appendonly_print_storage_headers)
 			AppendOnlyStorageFormat_LogBlockHeader(
 								storageWrite->relationName,
@@ -1309,7 +1316,7 @@ AppendOnlyStorageWrite_CompressAppend(
 								header,
 								storageWrite->storageAttributes.checksum,
 								storageWrite->storageAttributes.version);
-		
+
 		if (Debug_appendonly_print_insert)
 			elog(LOG,"Append-only insert finished compressed block for table '%s' "
 				 "(segment file '%s', header offset in file " INT64_FORMAT ", "
@@ -1322,7 +1329,7 @@ AppendOnlyStorageWrite_CompressAppend(
 			     itemCount,
 			     storageWrite->bufferCount);
 	}
-	else if (res == Z_BUF_ERROR)
+	else
 	{
 		int32 	overallBlockLen;
 
@@ -1332,7 +1339,7 @@ AppendOnlyStorageWrite_CompressAppend(
 		 * block.
 		 */
 		*compressedLen = 0;
-		
+
 		dataRoundedUpLen = AOStorage_RoundUp(sourceLen, storageWrite->storageAttributes.version);
 
 		overallBlockLen = storageWrite->currentCompleteHeaderLen + dataRoundedUpLen;
@@ -1341,11 +1348,11 @@ AppendOnlyStorageWrite_CompressAppend(
 		 * Copy non-compressed data in after the header information.
 		 */
 		memcpy(dataBuffer, sourceData, sourceLen);
-		
+
 		AOStorage_ZeroPad(
 					dataBuffer,
 					sourceLen,
-					dataRoundedUpLen);	
+					dataRoundedUpLen);
 
 		/*
 		 * Make the header and compute the checksum if necessary.
@@ -1369,7 +1376,7 @@ AppendOnlyStorageWrite_CompressAppend(
 								header,
 								storageWrite->storageAttributes.checksum,
 								storageWrite->storageAttributes.version);
-	
+
 		if (Debug_appendonly_print_insert)
 			elog(LOG,"Append-only insert could not compress block for table '%s' smaller -- non-compressed block stored "
 				 "(segment file '%s', header offset in file " INT64_FORMAT ", "
@@ -1381,13 +1388,6 @@ AppendOnlyStorageWrite_CompressAppend(
 			     itemCount,
 			     storageWrite->bufferCount);
 	}
-	else
-		/*
-		 * Throw an ERROR.
-		 */
-		gp_issuecompresserror(
-						res,
-						sourceLen);
 
 	*bufferLen = storageWrite->currentCompleteHeaderLen + dataRoundedUpLen;
 
@@ -1424,10 +1424,10 @@ void AppendOnlyStorageWrite_FinishBuffer(
 
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
-	
+
 	Assert(storageWrite->currentCompleteHeaderLen > 0);
 
-	if (contentLen > 
+	if (contentLen >
 		   storageWrite->maxBufferLen - storageWrite->currentCompleteHeaderLen)
 		elog(ERROR,
 			 "Append-only content too large AO storage block (table '%s', "
@@ -1437,28 +1437,28 @@ void AppendOnlyStorageWrite_FinishBuffer(
 			 storageWrite->maxBufferLen,
 			 storageWrite->currentCompleteHeaderLen,
 			 (storageWrite->isFirstRowNumSet ? "true" : "false"));
-		
+
 
 	headerOffsetInFile = BufferedAppendCurrentBufferPosition(&storageWrite->bufferedAppend);
-	
+
 	if(!storageWrite->storageAttributes.compress)
 	{
 		uint8 	*nonCompressedHeader;
 		uint8	*nonCompressedData;
 		int32 	dataRoundedUpLen;
 		int32 	uncompressedlen;
-		
+
 		nonCompressedHeader = storageWrite->currentBuffer;
-			
+
 		nonCompressedData = &nonCompressedHeader[storageWrite->currentCompleteHeaderLen];
-		
+
 		dataRoundedUpLen = AOStorage_RoundUp(contentLen, storageWrite->storageAttributes.version);
 
 		AOStorage_ZeroPad(
 				nonCompressedData,
 				contentLen,
 				dataRoundedUpLen);
-		
+
 		/*
 		 * Make the header and compute the checksum if necessary.
 		 */
@@ -1511,7 +1511,7 @@ void AppendOnlyStorageWrite_FinishBuffer(
 
 		// Declare it finished.
 		storageWrite->currentCompleteHeaderLen = 0;
-		
+
 		if (Debug_appendonly_print_insert)
 			elog(LOG,
 			     "Append-only insert finished uncompressed block for table '%s' "
@@ -1526,16 +1526,16 @@ void AppendOnlyStorageWrite_FinishBuffer(
 	else
 	{
 		int32	compressedLen = 0;
-		
+
 		AppendOnlyStorageWrite_CompressAppend(
 					 storageWrite,
-					 storageWrite->uncompressedBuffer, 
+					 storageWrite->uncompressedBuffer,
 					 contentLen,
 					 executorBlockKind,
 					 rowCount,
 					 &compressedLen,
 					 &bufferLen);
-		
+
 		/*
 		  * Just before finishing the AO Storage buffer with our non-compressed content, let's verify it.
 		  */
@@ -1549,7 +1549,7 @@ void AppendOnlyStorageWrite_FinishBuffer(
 					executorBlockKind,
 					rowCount,
 					compressedLen);
-		
+
 		storageWrite->lastWriteBeginPosition =
 			BufferedAppendNextBufferPosition(&(storageWrite->bufferedAppend));
 
@@ -1580,15 +1580,15 @@ void AppendOnlyStorageWrite_CancelLastBuffer(
 {
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
-	
+
 	Assert(storageWrite->currentCompleteHeaderLen > 0);
-	
+
 	if (storageWrite->currentBuffer != NULL)
 	{
 		BufferedAppendCancelLastBuffer(&storageWrite->bufferedAppend);
 		storageWrite->currentBuffer = NULL;
 	}
-	
+
 	storageWrite->currentCompleteHeaderLen = 0;
 
 	/*
@@ -1599,7 +1599,7 @@ void AppendOnlyStorageWrite_CancelLastBuffer(
 }
 
 // -----------------------------------------------------------------------------
-// Writing "Large" Content 
+// Writing "Large" Content
 // -----------------------------------------------------------------------------
 
 /*
@@ -1668,14 +1668,14 @@ void AppendOnlyStorageWrite_Content(
 		else
 		{
 			AppendOnlyStorageWrite_CompressAppend(
-						 storageWrite, 
-						 content, 
+						 storageWrite,
+						 content,
 						 contentLen,
 						 executorBlockKind,
 						 rowCount,
 						 &compressedLen,
 						 &bufferLen);
-			
+
 			/*
 			  * Just before finishing the AO Storage buffer with our non-compressed content, let's verify it.
 			  */
@@ -1683,13 +1683,13 @@ void AppendOnlyStorageWrite_Content(
 				AppendOnlyStorageWrite_VerifyWriteBlock(
 						storageWrite,
 						BufferedAppendCurrentBufferPosition(&storageWrite->bufferedAppend),
-						bufferLen, 
+						bufferLen,
 						content,
 						contentLen,
 						executorBlockKind,
 						rowCount,
 						compressedLen);
-			
+
 			storageWrite->lastWriteBeginPosition =
 				BufferedAppendNextBufferPosition(&(storageWrite->bufferedAppend));
 
@@ -1729,7 +1729,7 @@ void AppendOnlyStorageWrite_Content(
 		 */
 		largeContentHeaderLen = AppendOnlyStorageWrite_LargeContentHeaderLen(storageWrite);
 
-		largeContentHeader = 
+		largeContentHeader =
 				BufferedAppendGetBuffer(
 								&storageWrite->bufferedAppend,
 								largeContentHeaderLen);
@@ -1743,12 +1743,12 @@ void AppendOnlyStorageWrite_Content(
 								executorBlockKind,
 								rowCount,
 								contentLen);
-		
+
 		BufferedAppendFinishBuffer(
 							&storageWrite->bufferedAppend,
 							largeContentHeaderLen,
 							largeContentHeaderLen);
-		
+
 		// Declare it finished.
 		storageWrite->currentCompleteHeaderLen = 0;
 
@@ -1767,16 +1767,16 @@ void AppendOnlyStorageWrite_Content(
 				smallContentLen = countdownContentLen;
 			else
 				smallContentLen = maxSmallContentLen;
-			
+
 			if(!storageWrite->storageAttributes.compress)
 			{
 				data = AppendOnlyStorageWrite_GetBuffer(storageWrite);
-			
+
 				memcpy(
 					data,
 					contentNext,
 					smallContentLen);
-			
+
 				AppendOnlyStorageWrite_FinishBuffer(
 					storageWrite,
 					smallContentLen,
@@ -1787,13 +1787,13 @@ void AppendOnlyStorageWrite_Content(
 			{
 				AppendOnlyStorageWrite_CompressAppend(
 							 storageWrite,
-							 contentNext, 
+							 contentNext,
 							 smallContentLen,
 							 executorBlockKind,
 							 /* rowCount */ 0,
 							 &compressedLen,
 							 &bufferLen);
-				
+
 				/*
 				  * Just before finishing the AO Storage buffer with our non-compressed content, let's verify it.
 				  */
@@ -1801,13 +1801,13 @@ void AppendOnlyStorageWrite_Content(
 					AppendOnlyStorageWrite_VerifyWriteBlock(
 							storageWrite,
 							BufferedAppendCurrentBufferPosition(&storageWrite->bufferedAppend),
-							bufferLen, 
+							bufferLen,
 							contentNext,
 							smallContentLen,
 							executorBlockKind,
 							/* rowCount */ 0,
 							compressedLen);
-				
+
 				/*
 				 * Finish the current buffer by specifying the used length.
 				 */
@@ -1816,7 +1816,7 @@ void AppendOnlyStorageWrite_Content(
 									bufferLen,
 									smallContentHeaderLen +
 									AOStorage_RoundUp(smallContentLen, storageWrite->storageAttributes.version) /* non-compressed size */);
-				
+
 				// Declare it finished.
 				storageWrite->currentCompleteHeaderLen = 0;
 			}
@@ -1824,11 +1824,11 @@ void AppendOnlyStorageWrite_Content(
 		   	countdownContentLen -= smallContentLen;
 			if (countdownContentLen == 0)
 				break;
-			
+
 			contentNext += smallContentLen;
-		}	
+		}
 	}
-	
+
 	storageWrite->isFirstRowNumSet = false;
 
 	// Verify we have no buffer allocated.
@@ -1850,9 +1850,9 @@ void AppendOnlyStorageWrite_SetFirstRowNum(
 
 	Assert(storageWrite != NULL);
 	Assert(storageWrite->isActive);
-	
+
 	// UNDONE: Range check firstRowNum
-	
+
 	storageWrite->isFirstRowNumSet = true;
 	storageWrite->firstRowNum = firstRowNum;
 }

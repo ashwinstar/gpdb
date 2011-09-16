@@ -2197,6 +2197,20 @@ _copyColumnDef(ColumnDef *from)
 	COPY_NODE_FIELD(raw_default);
 	COPY_STRING_FIELD(cooked_default);
 	COPY_NODE_FIELD(constraints);
+	COPY_NODE_FIELD(encoding);
+
+	return newnode;
+}
+
+static ColumnReferenceStorageDirective *
+_copyColumnReferenceStorageDirective(ColumnReferenceStorageDirective *from)
+{
+	ColumnReferenceStorageDirective *newnode =
+		makeNode(ColumnReferenceStorageDirective);
+
+	COPY_NODE_FIELD(column);
+	COPY_SCALAR_FIELD(deflt);
+	COPY_NODE_FIELD(encoding);
 
 	return newnode;
 }
@@ -2602,6 +2616,7 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_SCALAR_FIELD(is_add_part);
 	COPY_SCALAR_FIELD(ownerid);
 	COPY_SCALAR_FIELD(buildAoBlkdir);
+	COPY_NODE_FIELD(attr_encodings);
 
 	return newnode;
 }
@@ -2633,6 +2648,7 @@ _copyPartitionSpec(PartitionSpec *from)
 	COPY_NODE_FIELD(partElem);
 	COPY_NODE_FIELD(subSpec);
 	COPY_SCALAR_FIELD(istemplate);
+	COPY_NODE_FIELD(enc_clauses);
 	COPY_SCALAR_FIELD(location);
 
 	return newnode;
@@ -3831,6 +3847,16 @@ _copyTableValueExpr(TableValueExpr *from)
 	return newnode;
 }
 
+static AlterTypeStmt *
+_copyAlterTypeStmt(AlterTypeStmt *from)
+{
+	AlterTypeStmt *newnode = makeNode(AlterTypeStmt);
+
+	COPY_NODE_FIELD(typname);
+	COPY_NODE_FIELD(encoding);
+
+	return newnode;
+}
 
 /* ****************************************************************
  *					pg_list.h copy functions
@@ -4575,6 +4601,9 @@ copyObject(void *from)
 		case T_ColumnDef:
 			retval = _copyColumnDef(from);
 			break;
+		case T_ColumnReferenceStorageDirective:
+			retval = _copyColumnReferenceStorageDirective(from);
+			break;
 		case T_Constraint:
 			retval = _copyConstraint(from);
 			break;
@@ -4646,6 +4675,9 @@ copyObject(void *from)
 			break;
 		case T_TableValueExpr:
 			retval = _copyTableValueExpr(from);
+			break;
+		case T_AlterTypeStmt:
+			retval = _copyAlterTypeStmt(from);
 			break;
 
 		case T_DenyLoginInterval:

@@ -318,7 +318,7 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 	parseRelOptions(reloptions, ARRAY_SIZE(default_keywords), default_keywords, values, validate);
 
 	/* fillfactor */
-	if(values[0] != NULL)
+	if (values[0] != NULL)
 	{
 		fillfactor = pg_atoi(values[0], sizeof(int32), 0);
 		if (fillfactor < minFillfactor || fillfactor > 100)
@@ -336,14 +336,14 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 	}
 
 	/* appendonly */
-	if(values[1] != NULL)
+	if (values[1] != NULL)
 	{
 		if (relkind != RELKIND_RELATION)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("usage of parameter \"appendonly\" in a non relation object is not supported"),
 					 errOmitLocation(false)));
-			
+
 		if (!(pg_strcasecmp(values[1], "true") == 0 ||
 			  pg_strcasecmp(values[1], "false") == 0))
 		{
@@ -357,15 +357,15 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 	}
 
 	/* blocksize */
-	if(values[2] != NULL)
+	if (values[2] != NULL)
 	{
-		if (relkind != RELKIND_RELATION)
+		if (relkind != RELKIND_RELATION && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("usage of parameter \"blocksize\" in a non relation object is not supported"),
 					 errOmitLocation(false)));
 
-		if(!appendonly)
+		if (!appendonly && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \'blocksize\' for base relation. "
@@ -390,15 +390,15 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 	}
 
 	/* compression type */
-	if(values[3] != NULL)
+	if (values[3] != NULL)
 	{
-		if (relkind != RELKIND_RELATION)
+		if (relkind != RELKIND_RELATION && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("usage of parameter \"compresstype\" in a non relation object is not supported"),
 					 errOmitLocation(false)));
 
-		if(!appendonly)
+		if (!appendonly && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \'compresstype\' for base relation. "
@@ -407,32 +407,23 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 
 		compresstype = values[3];
 
-		/*
-		if (pg_strcasecmp(compresstype, "zlib") != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("invalid compresstype \"%s\". currently supported: "
-								 "\"zlib\" ", compresstype)));
-         */
-		if ((pg_strcasecmp(compresstype, "zlib") != 0) &&
-			(pg_strcasecmp(compresstype, "quicklz") != 0))
+		if (!compresstype_is_valid(compresstype))
 			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-					 errmsg("invalid compresstype \'%s\'. valid values are "
-							"\'zlib\' and \'quicklz\'", compresstype),
-									   errOmitLocation(true)));
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("unknown compresstype \"%s\"", compresstype),
+					 errOmitLocation(true)));
 	}
 
 	/* compression level */
-	if(values[4] != NULL)
+	if (values[4] != NULL)
 	{
-		if (relkind != RELKIND_RELATION)
+		if (relkind != RELKIND_RELATION && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("usage of parameter \"compresslevel\" in a non relation object is not supported"),
 					 errOmitLocation(false)));
 
-		if(!appendonly)
+		if (!appendonly && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \'compresslevel\' for base relation. "
@@ -441,7 +432,7 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 
 		compresslevel = pg_atoi(values[4], sizeof(int32), 0);
 
-		if (compresstype && compresslevel == 0)
+		if (compresstype && compresslevel == 0 && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("compresstype can\'t be used with compresslevel 0"),
@@ -480,7 +471,7 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 									 "(should be 1)", compresslevel),
 											   errOmitLocation(true)));
 
-				compresslevel = setDefaultCompressionLevel(compresstype);				
+				compresslevel = setDefaultCompressionLevel(compresstype);
 			}
 		}
 	}
@@ -490,15 +481,15 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 	}
 
 	/* checksum */
-	if(values[5] != NULL)
+	if (values[5] != NULL)
 	{
-		if (relkind != RELKIND_RELATION)
+		if (relkind != RELKIND_RELATION && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("usage of parameter \"checksum\" in a non relation object is not supported"),
 					 errOmitLocation(false)));
 
-		if(!appendonly)
+		if (!appendonly && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \'checksum\' for base relation. "
@@ -506,7 +497,8 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 									   errOmitLocation(true)));
 
 		if (!(pg_strcasecmp(values[5], "true") == 0 ||
-			  pg_strcasecmp(values[5], "false") == 0))
+			  pg_strcasecmp(values[5], "false") == 0) &&
+			validate)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -518,15 +510,15 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 	}
 
 	/* columnstore */
-	if(values[6] != NULL)
+	if (values[6] != NULL)
 	{
-		if (relkind != RELKIND_RELATION)
+		if (relkind != RELKIND_RELATION && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("usage of parameter \"orientation\" in a non relation object is not supported"),
 					 errOmitLocation(false)));
 
-		if(!appendonly)
+		if (!appendonly && validate)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("invalid option \"orientation\" for base relation. "
@@ -534,7 +526,8 @@ default_reloptions(Datum reloptions, bool validate, char relkind,
 									   errOmitLocation(true)));
 
 		if (!(pg_strcasecmp(values[6], "column") == 0 ||
-			  pg_strcasecmp(values[6], "row") == 0))
+			  pg_strcasecmp(values[6], "row") == 0) &&
+			validate)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -660,8 +653,8 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *saf
 		*safewrite = Test_safefswritesize_override;
 	}
 
-    /* 
-     * Testing for columnstore override 
+    /*
+     * Testing for columnstore override
      */
     if (gp_test_orientation_override)
     {
@@ -733,7 +726,7 @@ void validateAppendOnlyRelOptions(bool ao,
 								  bool checksum,
 								  char relkind)
 {
-	if(relkind != RELKIND_RELATION)
+	if (relkind != RELKIND_RELATION)
 	{
 		if(ao)
 			ereport(ERROR,
@@ -751,27 +744,32 @@ void validateAppendOnlyRelOptions(bool ao,
 					 errmsg("compresstype may only be specified for base relations")));
 	}
 
-	if (comptype && complevel == 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("compresstype can\'t be used with compresslevel 0")));
-
-	if(complevel < 0 || complevel > 9)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("compresslevel=%d is out of range (should be between 0 and 9)",
-						complevel)));
-	
-	if (comptype && (pg_strcasecmp(comptype, "quicklz") == 0) &&
-		(complevel != 1))
+	if (comptype &&
+		(pg_strcasecmp(comptype, "quicklz") == 0 ||
+		 pg_strcasecmp(comptype, "zlib") == 0))
 	{
-		/* allow quicklz level 3 only if the debug guc is on */
-		if (!(complevel == 3 && Test_enable_broken_quicklz3))
-		{
+		if (comptype && complevel == 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("compresslevel=%d is out of range for quicklz "
-							 "(should be 1)", complevel)));
+					 errmsg("compresstype cannot be used with compresslevel 0")));
+
+		if (complevel < 0 || complevel > 9)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("compresslevel=%d is out of range (should be between 0 and 9)",
+							complevel)));
+
+		if (comptype && (pg_strcasecmp(comptype, "quicklz") == 0) &&
+			(complevel != 1))
+		{
+			/* allow quicklz level 3 only if the debug guc is on */
+			if (!(complevel == 3 && Test_enable_broken_quicklz3))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("compresslevel=%d is out of range for quicklz "
+								 "(should be 1)", complevel)));
+			}
 		}
 	}
 
@@ -799,11 +797,12 @@ void validateAppendOnlyRelOptions(bool ao,
 
 /*
  * if no compressor type was specified, we set to no compression (level 0)
- * otherwise default for both zlib and quicklz is level 1
+ * otherwise default for both zlib and quicklz is level 1. RLE_TYPE does
+ * not have a compression level.
  */
 static int setDefaultCompressionLevel(char* compresstype)
 {
-	if(!compresstype)
+	if(!compresstype || pg_strcasecmp(compresstype, "none") == 0)
 		return 0;
 	else
 		return 1;

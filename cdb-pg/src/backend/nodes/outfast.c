@@ -1744,6 +1744,17 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_BOOL_FIELD(is_add_part);
 	WRITE_OID_FIELD(ownerid);
 	WRITE_BOOL_FIELD(buildAoBlkdir);
+	WRITE_NODE_FIELD(attr_encodings);
+}
+
+static void
+_outColumnReferenceStorageDirective(StringInfo str, ColumnReferenceStorageDirective *node)
+{
+	WRITE_NODE_TYPE("COLUMNREFERENCESTORAGEDIRECTIVE");
+	
+	WRITE_NODE_FIELD(column);
+	WRITE_BOOL_FIELD(deflt);
+	WRITE_NODE_FIELD(encoding);
 }
 
 static void
@@ -3369,6 +3380,15 @@ _outTableValueExpr(StringInfo str, TableValueExpr *node)
 	WRITE_NODE_FIELD(subquery);
 }
 
+static void
+_outAlterTypeStmt(StringInfo str, AlterTypeStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERTYPESTMT");
+
+	WRITE_NODE_FIELD(typname);
+	WRITE_NODE_FIELD(encoding);
+}
+
 /*
  * _outNode -
  *	  converts a Node into binary string and append it to 'str'
@@ -3727,6 +3747,9 @@ _outNode(StringInfo str, void *obj)
 
 			case T_CreateStmt:
 				_outCreateStmt(str, obj);
+				break;
+			case T_ColumnReferenceStorageDirective:
+				_outColumnReferenceStorageDirective(str, obj);
 				break;
 			case T_PartitionBy:
 				_outPartitionBy(str, obj);
@@ -4114,6 +4137,10 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_DenyLoginPoint:
 				_outDenyLoginPoint(str, obj);
+				break;
+
+			case T_AlterTypeStmt:
+				_outAlterTypeStmt(str, obj);
 				break;
 
 			default:

@@ -23,6 +23,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_partition_encoding.h"
 #include "catalog/namespace.h"
 #include "cdb/cdbpartition.h"
 #include "cdb/cdbvars.h"
@@ -68,6 +69,8 @@ constraint_names(List *cons);
 
 static void 
 constraint_diffs(List *cons_a, List *cons_b, bool match_names, List **missing, List **extra);
+
+static void add_template_encoding_clauses(Oid relid, Oid paroid, List *stenc);
 
 /*
  * Hash keys are null-terminated C strings assumed to be stably 
@@ -173,6 +176,7 @@ ChooseConstraintNameForPartitionCreate(const char *rname,
 static Bitmapset *
 get_partition_key_bitmapset(Oid relid);
 
+static List *get_deparsed_partition_encodings(Oid relid, Oid paroid);
 
 /* Is the given relation the top relation of a partitioned table?
  *
@@ -1044,7 +1048,7 @@ char_to_parttype(char c)
 }
 
 /*
- *
+ * Add metadata for a partition level.
  */
 static void
 add_partition(Partition *part)
@@ -1062,7 +1066,7 @@ add_partition(Partition *part)
 	values[Anum_pg_partition_parkind - 1] = CharGetDatum(part->parkind);
 	values[Anum_pg_partition_parlevel - 1] = Int16GetDatum(part->parlevel);
 	values[Anum_pg_partition_paristemplate - 1] =
-	BoolGetDatum(part->paristemplate);
+									BoolGetDatum(part->paristemplate);
 	values[Anum_pg_partition_parnatts - 1] = Int16GetDatum(part->parnatts);
 	
 	attnums = buildint2vector(part->paratts, part->parnatts);
@@ -1084,7 +1088,8 @@ add_partition(Partition *part)
 }
 
 /*
- *
+ * Add a partition rule. A partition rule represents a discrete partition
+ * child.
  */
 static void
 add_partition_rule(PartitionRule *rule)
@@ -1099,43 +1104,43 @@ add_partition_rule(PartitionRule *rule)
 	
 	values[Anum_pg_partition_rule_paroid - 1] = ObjectIdGetDatum(rule->paroid);
 	values[Anum_pg_partition_rule_parchildrelid - 1] =
-	ObjectIdGetDatum(rule->parchildrelid);
+							ObjectIdGetDatum(rule->parchildrelid);
 	values[Anum_pg_partition_rule_parparentrule - 1] =
-	ObjectIdGetDatum(rule->parparentoid);
+							ObjectIdGetDatum(rule->parparentoid);
 	
 	name.data[0] = '\0';
 	namestrcpy(&name, rule->parname);
 	values[Anum_pg_partition_rule_parname - 1] = NameGetDatum(&name);
 	
 	values[Anum_pg_partition_rule_parisdefault - 1] =
-	BoolGetDatum(rule->parisdefault);
+							BoolGetDatum(rule->parisdefault);
 	values[Anum_pg_partition_rule_parruleord - 1] =
-	Int16GetDatum(rule->parruleord);
+							Int16GetDatum(rule->parruleord);
 	values[Anum_pg_partition_rule_parrangestartincl - 1] =
-	BoolGetDatum(rule->parrangestartincl);
+							BoolGetDatum(rule->parrangestartincl);
 	values[Anum_pg_partition_rule_parrangeendincl - 1] =
-	BoolGetDatum(rule->parrangeendincl);
+							BoolGetDatum(rule->parrangeendincl);
 	
 	values[Anum_pg_partition_rule_parrangestart - 1] =
-	DirectFunctionCall1(textin,
+			DirectFunctionCall1(textin,
 						CStringGetDatum(nodeToString(rule->parrangestart)));
 	values[Anum_pg_partition_rule_parrangeend - 1] =
-	DirectFunctionCall1(textin,
+			DirectFunctionCall1(textin,
 						CStringGetDatum(nodeToString(rule->parrangeend)));
 	values[Anum_pg_partition_rule_parrangeevery - 1] =
-	DirectFunctionCall1(textin,
+			DirectFunctionCall1(textin,
 						CStringGetDatum(nodeToString(rule->parrangeevery)));
 	values[Anum_pg_partition_rule_parlistvalues - 1] =
-	DirectFunctionCall1(textin,
+			DirectFunctionCall1(textin,
 						CStringGetDatum(nodeToString(rule->parlistvalues)));
 	if (rule->parreloptions)
 		values[Anum_pg_partition_rule_parreloptions - 1] =
-		transformRelOptions((Datum) 0, rule->parreloptions, true, false);
+				transformRelOptions((Datum) 0, rule->parreloptions, true, false);
 	else
 		isnull[Anum_pg_partition_rule_parreloptions - 1] = true;
 	
 	values[Anum_pg_partition_rule_partemplatespace -1] = 
-	ObjectIdGetDatum(rule->partemplatespaceId);
+							ObjectIdGetDatum(rule->partemplatespaceId);
 	
 	rulerel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
 	
@@ -1336,6 +1341,7 @@ add_part_to_catalog(Oid relid, PartitionBy *pby,
 	SysScanDesc scan;
 	Oid parttemplid = InvalidOid;
 	bool add_temp = bTemplate_Only; /* normally false */
+	spec = (PartitionSpec *)pby->partSpec;
 	
 	/* only create partition catalog entries on the master */
 	if (Gp_role == GP_ROLE_EXECUTE)
@@ -1399,12 +1405,19 @@ add_part_to_catalog(Oid relid, PartitionBy *pby,
 		{
 			add_temp = true;
 			parttemplid = part->partid;
-			
+
+			if (spec && spec->enc_clauses)
+			{
+				add_template_encoding_clauses(relid, parttemplid,
+											  spec->enc_clauses);
+			}
+		
 			/* if only building a template, don't add "real" entries */
 			if (!bTemplate_Only)
 			{
 				part->paristemplate = false;
 				add_partition(part);
+
 			}
 		}
 		paroid = part->partid;
@@ -1414,7 +1427,6 @@ add_part_to_catalog(Oid relid, PartitionBy *pby,
 		parttemplid = get_part_oid(rootrelid, pby->partDepth, true);
 	
 	/* create partition rule */
-	spec = (PartitionSpec *)pby->partSpec;
 	if (spec)
 	{
 		Node *listvalues = NULL;
@@ -4135,8 +4147,41 @@ get_part_rule(Relation rel,
 	return NULL;
 } /* end get_part_rule */
 
+static void
+fixup_table_storage_options(CreateStmt *ct)
+{
+	if (!ct->options)
+	{
+    	ct->options = list_make2(makeDefElem("appendonly",
+											 (Node *)makeString("true")),
+								 makeDefElem("orientation",
+											 (Node *)makeString("column")));
+	}
+}
 
+/*
+ * The user is adding a partition and we have a subpartition template that has
+ * been brought into the mix. At partition create time, if the user added any
+ * storage encodings to the subpartition template, we would have cached them in
+ * pg_partition_encoding. Retrieve them now, deparse and apply to the
+ * PartitionSpec as if this was CREATE TABLE.
+ */
+static void
+apply_template_storage_encodings(CreateStmt *ct, Oid relid, Oid paroid,
+								 PartitionSpec *tmpl)
+{
+	List *encs = get_deparsed_partition_encodings(relid, paroid);
 
+	if (encs)
+	{
+		/* 
+		 * If the user didn't specify WITH (...) at create time,
+		 * we need to force the new partitions to be AO/CO.
+		 */
+		fixup_table_storage_options(ct);
+		ct->attr_encodings = encs;
+	}
+}
 
 /*
  * atpxPart_validate_spec: kludge up a PartitionBy statement and use
@@ -4456,6 +4501,12 @@ atpxPart_validate_spec(
 														  el);
 							
 						}
+
+						/* apply storage encoding for this template */
+						apply_template_storage_encodings(ct,
+												 RelationGetRelid(rel),
+												 pNode_tmpl->part->partid,
+												 spec_tmpl);
 						
 						/* the PartitionElem should hang off the pby
 						 * partspec, and subsequent templates should
@@ -5718,8 +5769,11 @@ atpxPartAddList(Relation rel,
 		bool			 bFirst_TemplateOnly = true;   /* ignore dummy entry */
 		int 			 pby_templ_depth	 = 0;	   /* template partdepth */
 		Oid 			 skipTableRelid	 	 = InvalidOid; 
+		List			*attr_encodings		 = NIL;
 		
 		ct->partitionBy = (Node *)pBy;
+
+		attr_encodings = ct->attr_encodings;
 		
 		/* this parse_analyze expands the phony create of a partitioned table
 		 * that we just build into the constituent commands we need to create
@@ -5749,6 +5803,8 @@ atpxPartAddList(Relation rel,
 				CreateStmt *t = (CreateStmt *)((Query *)s)->utilityStmt;
 				
 				
+				t->attr_encodings = copyObject(attr_encodings);
+
 				tuple = SearchSysCache(RELOID,
 									   ObjectIdGetDatum(RelationGetRelid(rel)),
 									   0, 0, 0);
@@ -8044,4 +8100,204 @@ selectPartitionMulti(PartitionNode *partnode, Datum *values, bool *isnull,
 	}
 
 	return leafPartitionOids;
+}
+
+/*
+ * Add a partition encoding clause for a subpartition template. We need to be
+ * able to recall these for when we later add partitions which inherit the
+ * subpartition template definition.
+ */
+static void
+add_partition_encoding(Oid relid, Oid paroid, AttrNumber attnum, List *encoding)
+{
+	Relation pgperel;
+	Datum partoptions;
+	Datum values[Natts_pg_partition_encoding];
+	bool nulls[Natts_pg_partition_encoding];
+	HeapTuple tuple;
+
+	pgperel = heap_open(PartitionEncodingRelationId, RowExclusiveLock);
+
+	Insist(attnum > 0);
+
+	partoptions = transformRelOptions(PointerGetDatum(NULL),
+									  encoding,
+									  true,
+									  false);
+
+	MemSet(nulls, 0, sizeof(nulls));
+
+	values[Anum_pg_partition_encoding_parencoid - 1] = ObjectIdGetDatum(paroid);
+	values[Anum_pg_partition_encoding_parencattnum - 1] = Int16GetDatum(attnum);
+	values[Anum_pg_partition_encoding_parencattoptions - 1] = partoptions;
+
+	tuple = heap_form_tuple(RelationGetDescr(pgperel), values, nulls);
+
+	simple_heap_insert(pgperel, tuple);
+
+	CatalogUpdateIndexes(pgperel, tuple);
+
+	heap_freetuple(tuple);
+
+	heap_close(pgperel, RowExclusiveLock);
+}
+
+static void
+remove_partition_encoding_entry(Oid paroid, AttrNumber attnum)
+{
+	ScanKeyData		key[1];
+	SysScanDesc		scan;
+	HeapTuple		tup;
+	Relation		pgpeenc = heap_open(PartitionEncodingRelationId,
+										RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_partition_encoding_parencoid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(paroid));
+
+	scan = systable_beginscan(pgpeenc, PartitionEncodingParencoidIndexId,
+							  true, SnapshotNow, 1, key);
+
+	while ((tup = systable_getnext(scan)) != NULL)
+	{
+		if (attnum != InvalidAttrNumber)
+		{
+			Form_pg_partition_encoding ppe =
+				(Form_pg_partition_encoding)GETSTRUCT(tup);
+
+			if (ppe->parencattnum != attnum)
+				continue;
+		}
+		simple_heap_delete(pgpeenc, &tup->t_self);
+	}
+
+	systable_endscan(scan);
+	heap_close(pgpeenc, RowExclusiveLock);
+}
+
+/*
+ * Remove all trace of partition encoding for a relation. This is the DROP TABLE
+ * case. May be called even if there's no entry for the partition.
+ */
+static void
+remove_partition_encoding_by_key(Oid relid, AttrNumber attnum)
+{
+	ScanKeyData		key[1];
+	SysScanDesc		scan;
+	HeapTuple		tup;
+	Relation		pgpart;
+
+ 	pgpart = heap_open(PartitionRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_partition_parrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(pgpart, PartitionParrelidIndexId,
+							  true, SnapshotNow, 1, key);
+
+	while ((tup = systable_getnext(scan)) != NULL)
+	{
+		Form_pg_partition part = (Form_pg_partition)GETSTRUCT(tup);
+
+		if (part->paristemplate)
+			remove_partition_encoding_entry(HeapTupleGetOid(tup), attnum);
+	}
+
+	systable_endscan(scan);
+
+	heap_close(pgpart, AccessShareLock);
+}
+
+void
+RemovePartitionEncodingByRelid(Oid relid)
+{
+	remove_partition_encoding_by_key(relid, InvalidAttrNumber);
+}
+
+/*
+ * Remove a partition encoding entry for a specific attribute number.
+ * May be called when no such entry actually exists.
+ */
+void
+RemovePartitionEncodingByRelidAttribute(Oid relid, AttrNumber attnum)
+{
+	remove_partition_encoding_by_key(relid, attnum);
+}
+
+/*
+ * For all encoding clauses, create a pg_partition_encoding entry
+ */
+static void
+add_template_encoding_clauses(Oid relid, Oid paroid, List *stenc)
+{
+	ListCell *lc;
+
+	foreach(lc, stenc)
+	{
+		ColumnReferenceStorageDirective *c = lfirst(lc);
+		AttrNumber attnum;
+
+		/* 
+		 * Don't store default clauses since we have no need of them
+		 * when we add partitions later.
+		 */
+		if (c->deflt)
+			continue;
+
+		attnum = get_attnum(relid, strVal(c->column));
+
+		Insist(attnum > 0);
+
+		add_partition_encoding(relid, paroid, attnum,  c->encoding);
+	}
+}
+
+static List *
+get_deparsed_partition_encodings(Oid relid, Oid paroid)
+{
+	List		   *out = NIL;
+	ScanKeyData		key[1];
+	SysScanDesc		scan;
+	HeapTuple		tup;
+	Relation		pgpeenc = heap_open(PartitionEncodingRelationId,
+										RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_partition_encoding_parencoid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(paroid));
+
+	scan = systable_beginscan(pgpeenc, PartitionEncodingParencoidIndexId,
+							  true, SnapshotNow, 1, key);
+
+	while ((tup = systable_getnext(scan)) != NULL)
+	{
+		ColumnReferenceStorageDirective *c;
+		Datum paroptions;
+		AttrNumber attnum;
+		bool isnull;
+		char *column;
+		
+		attnum = ((Form_pg_partition_encoding)GETSTRUCT(tup))->parencattnum;
+		paroptions = heap_getattr(tup,
+								  Anum_pg_partition_encoding_parencattoptions,
+								  RelationGetDescr(pgpeenc),
+								  &isnull);
+
+		Insist(!isnull);
+		
+		c = makeNode(ColumnReferenceStorageDirective);
+		c->encoding = untransformRelOptions(paroptions);
+		column = get_attname(relid, attnum);
+		c->column = makeString(column);
+		out = lappend(out, c);
+	}
+
+	systable_endscan(scan);
+	heap_close(pgpeenc, RowExclusiveLock);
+
+	return out;
 }

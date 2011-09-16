@@ -602,11 +602,11 @@ ArchiveEntry(Archive *AHX,
 	newToc->tag = strdup(tag);
 	newToc->namespace = namespace ? strdup(namespace) : NULL;
 	newToc->tablespace = tablespace ? strdup(tablespace) : NULL;
-	newToc->owner = strdup(owner);
+	newToc->owner = owner ? strdup(owner) : NULL;
 	newToc->withOids = withOids;
 	newToc->desc = strdup(desc);
 	newToc->defn = strdup(defn);
-	newToc->dropStmt = strdup(dropStmt);
+	newToc->dropStmt = dropStmt ? strdup(dropStmt) : NULL;
 	newToc->copyStmt = copyStmt ? strdup(copyStmt) : NULL;
 
 	if (nDeps > 0)

@@ -9,11 +9,13 @@
 #ifndef CDBAPPENDONLYSTORAGEREAD_H
 #define CDBAPPENDONLYSTORAGEREAD_H
 
-#include "utils/palloc.h"
-#include "storage/fd.h"
+#include "catalog/pg_compression.h"
 #include "cdb/cdbappendonlystorage.h"
 #include "cdb/cdbappendonlystoragelayer.h"
 #include "cdb/cdbbufferedread.h"
+#include "utils/palloc.h"
+#include "storage/fd.h"
+
 
 /*
  * This structure contains information about the current block.
@@ -102,7 +104,7 @@ typedef struct AppendOnlyStorageRead
 	MemoryContext memoryContext;
 			/*
 			 * The memory context to use for buffers and
-			 * other memory needs.	
+			 * other memory needs.
 			 */
 
     int32         maxBufferLen;
@@ -121,7 +123,7 @@ typedef struct AppendOnlyStorageRead
 			 * Name of the relation to use in system
 			 * logging and error messages.
 			 */
-			 
+
 	AppendOnlyStorageAttributes		storageAttributes;
 			/*
 			 * The Append-Only Storage Attributes
@@ -132,7 +134,7 @@ typedef struct AppendOnlyStorageRead
 			/*
 			 * The BufferedRead module's object that holds read session data.
 			 */
-			
+
 	File	file;
 			/*
 			 * The handle to the current open segment file.
@@ -142,19 +144,19 @@ typedef struct AppendOnlyStorageRead
 			/*
 			 * The byte length of the current segment file being read.
 			 */
-					
+
 	int32	minimumHeaderLen;
 			/*
 			 * The minimum block header length based on the checkum attribute.
 			 * Does not include optional header data (e.g. firstRowNum).
 			 */
-	
+
 	char		 *segmentFileName;
 			/*
 			 * Name of the current segment file name to use in system
 			 * logging and error messages.
 			 */
-					
+
 	int64	bufferCount;
 			/*
 			 * The number of blocks read since the beginning of the segment file.
@@ -174,21 +176,29 @@ typedef struct AppendOnlyStorageRead
 
 	//int32			qlzScratchLen;
 	//int32			qlzScratchGuardLen;
-			/*
-			 * Add these two byte lengths to get the length of the qlzScratch buffer.
-			 */
+	/*
+	 * Add these two byte lengths to get the length of the qlzScratch buffer.
+	 */
+
+	/* Storage attributes */
+	CompressionState *compressionState;
+	int               blocksize;             /* For AO or CO uncompresed block size          */
+	PGFunction       *compression_functions; /* For AO or CO compression funciton pointers.  */
+			/* The array index corresponds to COMP_FUNC_*   */
+
+
 
 } AppendOnlyStorageRead;
 
 // -----------------------------------------------------------------------------
-// Initialization 
+// Initialization
 // -----------------------------------------------------------------------------
 
 /*
  * Initialize AppendOnlyStorageRead.
  *
- * The AppendOnlyStorageRead data structure is initialized 
- * once for a read session and can be used to read 
+ * The AppendOnlyStorageRead data structure is initialized
+ * once for a read session and can be used to read
  * Append-Only Storage Blocks from 1 or more segment files.
  *
  * The current file to read to is opened with the
@@ -282,7 +292,7 @@ extern bool AppendOnlyStorageRead_TryOpenFile(
 				 */
 
 /*
- * 
+ *
  * Set a temporary read range in the current open segment file.
  *
  * The beginFileOffset must be to the beginning of an Append-Only Storage block.
@@ -306,16 +316,16 @@ extern void AppendOnlyStorageRead_SetTemporaryRange(
 extern void AppendOnlyStorageRead_CloseFile(
 	AppendOnlyStorageRead		*storageRead);
 
- 
+
 // -----------------------------------------------------------------------------
-// Reading Content 
+// Reading Content
 // -----------------------------------------------------------------------------
- 
+
 /*
  *    This section describes for reading potentially long content that can be up to 1 Gb long
  *    and and/or content may have been be bulk-compressed.
  *
- *    The AppendOnlyStorageRead_GetBlockInfo routine is used to peek at the next 
+ *    The AppendOnlyStorageRead_GetBlockInfo routine is used to peek at the next
  *    Append-Only Storage Block and tell the caller how to handle it.
  *
  *    If the block is small and not compressed, then it may be looked at directly in the
@@ -344,9 +354,9 @@ extern bool AppendOnlyStorageRead_GetBlockInfo(
 				 * Append-Only Storage Block header.
 				 */
 	int64						*firstRowNum,
-				/* 
+				/*
 				 * When the first row number for this block
-				 * was explicitly set, that value is 
+				 * was explicitly set, that value is
 				 * returned here.  Otherwise, INT64CONST(-1)
 				 * is returned.
 				 */
@@ -354,7 +364,7 @@ extern bool AppendOnlyStorageRead_GetBlockInfo(
 				/* The number of rows in the content. */
 
 	bool						*isLarge,
-				/* 
+				/*
 				 * When true, the content was longer than the
 				 * maxBufferLen (i.e. blocksize) minus
 				 * Append-Only Storage Block header and had
@@ -371,7 +381,7 @@ extern bool AppendOnlyStorageRead_GetBlockInfo(
  */
 extern uint8 *AppendOnlyStorageRead_CurrentBuffer(
 	AppendOnlyStorageRead		*storageRead);
-				
+
 /*
  * Return the file offset of the current Append-Only Storage Block.
  */
@@ -393,7 +403,7 @@ extern int64 AppendOnlyStorageRead_OverallBlockLen(
 /*
  * Get a pointer to the small non-compressed content.
  *
- * This interface provides a pointer directly into the 
+ * This interface provides a pointer directly into the
  * read buffer for efficient data use.
  *
  */

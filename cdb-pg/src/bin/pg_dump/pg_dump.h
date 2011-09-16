@@ -132,7 +132,8 @@ typedef enum
 	DO_FOREIGN_SERVER,
 	DO_BLOBS,
 	DO_BLOB_COMMENTS,
-	DO_EXTPROTOCOL
+	DO_EXTPROTOCOL,
+	DO_TYPE_STORAGE_OPTIONS
 } DumpableObjectType;
 
 typedef struct _dumpableObject
@@ -176,6 +177,22 @@ typedef struct _typeInfo
 	int			nDomChecks;
 	struct _constraintInfo *domChecks;
 } TypeInfo;
+
+
+typedef struct _typeStorageOptions
+{
+	DumpableObject dobj;
+
+	/*
+	 * Note: dobj.name is the pg_type.typname entry.  format_type() might
+	 * produce something different than typname
+	 */
+	char     *typnamespace;
+	char     *typoptions; /* storage options */
+	char     *rolname;		/* name of owner, or empty string */
+} TypeStorageOptions;
+
+
 
 typedef struct _shellTypeInfo
 {
@@ -282,6 +299,7 @@ typedef struct _tableInfo
 	bool	   *inhAttrs;		/* true if each attribute is inherited */
 	bool	   *inhAttrDef;		/* true if attr's default is inherited */
 	bool	   *inhNotNull;		/* true if NOT NULL is inherited */
+	char    **attencoding;  /* the attribute encoding values */
 	struct _constraintInfo *checkexprs; /* CHECK constraints */
 
 	/*
@@ -477,6 +495,7 @@ extern void sortDumpableObjectsByTypeOid(DumpableObject **objs, int numObjs);
  */
 extern NamespaceInfo *getNamespaces(int *numNamespaces);
 extern TypeInfo *getTypes(int *numTypes);
+extern TypeStorageOptions *getTypeStorageOptions(int *numTypes);
 extern FuncInfo *getFuncs(int *numFuncs);
 extern AggInfo *getAggregates(int *numAggregates);
 extern ExtProtInfo *getExtProtocols(int *numExtProtocols);

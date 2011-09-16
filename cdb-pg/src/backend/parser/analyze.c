@@ -26,14 +26,17 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/reloptions.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_compression.h"
 #include "catalog/pg_partition.h"
 #include "catalog/pg_partition_rule.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_type_encoding.h"
 #include "cdb/cdbpartition.h"
 #include "commands/defrem.h"
 #include "commands/prepare.h"
@@ -67,6 +70,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbhash.h"
@@ -104,8 +108,8 @@ typedef struct
 	int			numParams;
 } check_parameter_resolution_context;
 
-/* Context for transformGroupedWindows() which mutates components 
- * of a query that mixes windowing and aggregation or grouping.  It 
+/* Context for transformGroupedWindows() which mutates components
+ * of a query that mixes windowing and aggregation or grouping.  It
  * accumulates context for eventual construction of a subquery (the
  * grouping query) during mutation of components of the outer query
  * (the windowing query).
@@ -115,16 +119,16 @@ typedef struct
 	List *subtlist; /* target list for subquery */
 	List *subgroupClause; /* group clause for subquery */
 	List *windowClause; /* window clause for outer query*/
-	
+
 	/* Scratch area for init_grouped_window context and map_sgr_mutator.
 	 */
-	Index *sgr_map; 
-	
+	Index *sgr_map;
+
 	/* Scratch area for grouped_window_mutator and var_for_gw_expr.
 	 */
 	List *subrtable;
 	int call_depth;
-	TargetEntry *tle;	
+	TargetEntry *tle;
 } grouped_window_ctx;
 
 typedef struct
@@ -251,6 +255,7 @@ static Alias *make_replacement_alias(Query *qry, const char *aname);
 static char *generate_positional_name(AttrNumber attrno);
 static List*generate_alternate_vars(Var *var, grouped_window_ctx *ctx);
 
+static List *transformMissingAttributeEncoding(List *list);
 
 static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize);
 
@@ -290,6 +295,7 @@ static Node *make_prule_rulestmt(ParseState *pstate,
 		 Node *pWhere
 		);
 
+static List *transformAttributeEncoding(List *stenc, CreateStmt *stmt);
 /*
  * parse_analyze
  *		Analyze a raw parse tree and transform it to Query form.
@@ -489,7 +495,7 @@ do_parse_analyze(Node *parseTree, ParseState *pstate)
 
 	foreach(l, extras_after)
  		tmp = list_concat(tmp, parse_sub_analyze(lfirst(l), pstate));
-	
+
 	/*
 	 * If this is the top level query and it is a CreateStmt and it
 	 * has a partition by clause, reorder the expanded extras_after so
@@ -663,7 +669,7 @@ transformStmt(ParseState *pstate, Node *parseTree,
 			result = transformCreateForeignStmt(pstate, (CreateForeignStmt *) parseTree,
 												extras_before, extras_after);
 			break;
-		
+
 		case T_IndexStmt:
 			result = transformIndexStmt(pstate, (IndexStmt *) parseTree,
 										extras_before, extras_after);
@@ -1385,6 +1391,469 @@ transformInsertRow(ParseState *pstate, List *exprlist,
 	return result;
 }
 
+
+/*
+ * Tell the caller whether appendonly=true and orientation=column
+ * have been specified.
+ */
+static bool
+is_aocs(List *opts)
+{
+	bool found_ao = false;
+	bool found_cs = false;
+	ListCell *lc;
+
+	foreach(lc, opts)
+	{
+		DefElem *el = lfirst(lc);
+		char *arg = NULL;
+
+		/* Arguement will be a Value */
+		if (!el->arg)
+			continue;
+
+		arg = defGetString(el);
+
+		if (pg_strcasecmp("appendonly", el->defname) == 0 &&
+			pg_strcasecmp("true", arg) == 0)
+		{
+			found_ao = true;
+		}
+		else if (pg_strcasecmp("orientation", el->defname) == 0 &&
+				 pg_strcasecmp("column", arg) == 0)
+		{
+			found_cs = true;
+		}
+	}
+	return (found_ao && found_cs);
+}
+
+/*
+ * See if two encodings attempt to see the same parameters. If test_conflicts is
+ * true, allow setting the same value, but the setting must be identical.
+ */
+static bool
+encodings_overlap(List *a, List *b, bool test_conflicts)
+{
+	ListCell *lca;
+
+	foreach(lca, a)
+	{
+		ListCell *lcb;
+		DefElem *ela = lfirst(lca);
+
+		foreach(lcb, b)
+		{
+			DefElem *elb = lfirst(lcb);
+
+			if (pg_strcasecmp(ela->defname, elb->defname) == 0)
+			{
+				if (test_conflicts)
+				{
+					if (!ela->arg && !elb->arg)
+						return true;
+					else if (!ela->arg || !elb->arg)
+					{
+						/* skip */
+					}
+					else
+					{
+						if (pg_strcasecmp(defGetString(ela),
+										  defGetString(elb)) != 0)
+							return true;
+					}
+				}
+				else
+					return true;
+			}
+		}
+	}
+	return false;
+}
+
+/*
+ * Validate the sanity of column reference storage clauses.
+ *
+ * 1. Ensure that we only refer to columns that exist.
+ * 2. Ensure that each column is referenced either zero times or once.
+ */
+static void
+validateColumnStorageEncodingClauses(List *stenc, CreateStmt *stmt)
+{
+	List *extra = NIL;
+	ListCell *lc;
+	struct HTAB *ht = NULL;
+	struct colent {
+		char colname[NAMEDATALEN];
+		int count;
+	} *ce = NULL;
+
+	if (!stenc)
+		return;
+
+	/* Generate a hash table for all the columns */
+	foreach(lc, stmt->tableElts)
+	{
+		Node *n = lfirst(lc);
+
+		if (IsA(n, ColumnDef))
+		{
+			ColumnDef *c = (ColumnDef *)n;
+			char *colname;
+			bool found = false;
+			size_t n = NAMEDATALEN - 1 < strlen(c->colname) ?
+							NAMEDATALEN - 1 : strlen(c->colname);
+
+			colname = palloc0(NAMEDATALEN);
+			MemSet(colname, 0, NAMEDATALEN);
+			memcpy(colname, c->colname, n);
+			colname[n] = '\0';
+
+			if (!ht)
+			{
+				HASHCTL  cacheInfo;
+				int      cacheFlags;
+
+				memset(&cacheInfo, 0, sizeof(cacheInfo));
+				cacheInfo.keysize = NAMEDATALEN;
+				cacheInfo.entrysize = sizeof(*ce);
+				cacheFlags = HASH_ELEM;
+
+				ht = hash_create("column info cache",
+								 list_length(stmt->tableElts),
+								 &cacheInfo, cacheFlags);
+			}
+
+			ce = hash_search(ht, colname, HASH_ENTER, &found);
+
+			/*
+			 * XXX: might be that we have very long column names. Shouldn't that
+			 * have been taken care of already?
+			 */
+			Insist(found == false);
+			ce->count = 0;
+		}
+	}
+
+	/*
+	 * Validate the actual encoding clauses. We need tell the underlying system
+	 * that these are AO/CO tables too, hence the concatenation of the extra
+	 * elements.
+	 */
+	extra = list_make2(makeDefElem("appendonly", (Node *)makeString("true")),
+					   makeDefElem("orientation", (Node *)makeString("column")));
+	foreach(lc, stenc)
+	{
+		ColumnReferenceStorageDirective *c = lfirst(lc);
+		Datum options;
+		List *l = list_copy(extra); /* copy since list_concat is destructive */
+
+		Insist(IsA(c, ColumnReferenceStorageDirective));
+
+		options = transformRelOptions(PointerGetDatum(NULL),
+									  list_concat(l, c->encoding),
+									  true, false);
+		(void)heap_reloptions(0, options, true);
+	}
+
+	/*
+	 * All column reference storage directives without the DEFAULT
+	 * clause should refer to real columns.
+	 */
+	foreach(lc, stenc)
+	{
+		ColumnReferenceStorageDirective *c = lfirst(lc);
+
+		Insist(IsA(c, ColumnReferenceStorageDirective));
+
+		if (c->deflt)
+			continue;
+		else
+		{
+			bool found = false;
+			char colname[NAMEDATALEN];
+			size_t collen = strlen(strVal(c->column));
+			size_t n = NAMEDATALEN < collen ? NAMEDATALEN : collen;
+			MemSet(colname, 0, NAMEDATALEN);
+			memcpy(colname, strVal(c->column), n);
+			colname[n] = '\0';
+
+			ce = hash_search(ht, colname, HASH_FIND, &found);
+
+			if (!found)
+				elog(ERROR, "column \"%s\" does not exist", colname);
+
+			ce->count++;
+
+			if (ce->count > 1)
+				elog(ERROR, "column \"%s\" referenced in more than one "
+					 "COLUMN ENCODING clause", colname);
+
+		}
+	}
+
+	hash_destroy(ht);
+
+	foreach(lc, stenc)
+	{
+		ColumnReferenceStorageDirective *c = lfirst(lc);
+
+		if (c->deflt)
+			continue;
+
+		/*
+		 * XXX: O(N^2) and O(P . N^2) where P is number of partitions. N is
+		 * assumed small but we may have to revisit this for large column
+		 * numbers.
+		 */
+		if (encodings_overlap(c->encoding, stmt->options, true))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("ENCODING clause conflicts with table WITH clause")));
+
+	}
+}
+
+/*
+ * Find the column reference storage encoding clause for `column'.
+ *
+ * This is called by transformAttributeEncoding() in a loop but stenc should be
+ * quite small in practice.
+ */
+static ColumnReferenceStorageDirective *
+find_crsd(Value *column, List *stenc)
+{
+	ListCell *lc;
+
+	foreach(lc, stenc)
+	{
+		ColumnReferenceStorageDirective *c = lfirst(lc);
+
+		if (c->deflt == false && equal(column, c->column))
+			return c;
+	}
+	return NULL;
+}
+
+static List *
+TypeNameGetStorageDirective(TypeName *typname)
+{
+	SysScanDesc scan;
+	ScanKeyData key;
+	HeapTuple tuple;
+	Relation pgtypenc = heap_open(TypeEncodingRelationId, AccessShareLock);
+	Oid typid = typenameTypeId(NULL, typname);
+	List *out = NIL;
+
+	ScanKeyInit(&key,
+				Anum_pg_type_encoding_typid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(typid));
+
+	scan = systable_beginscan(pgtypenc,
+							  TypeEncodingTypidIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
+
+	if (HeapTupleIsValid(tuple))
+	{
+		Datum options;
+		bool isnull;
+
+		options = heap_getattr(tuple, Anum_pg_type_encoding_typoptions,
+							   RelationGetDescr(pgtypenc), &isnull);
+
+		Insist(!isnull);
+
+		out = untransformRelOptions(options);
+	}
+	systable_endscan(scan);
+
+	heap_close(pgtypenc, AccessShareLock);
+	return out;
+}
+
+/*
+ * Make a default column storage directive from a WITH clause
+ */
+static List *
+form_default_storage_directive(List *enc)
+{
+	List *out = NIL;
+	ListCell *lc;
+
+	foreach(lc, enc)
+	{
+		DefElem *el = lfirst(lc);
+
+		if (!el->defname)
+			out = lappend(out, copyObject(el));
+
+		if (pg_strcasecmp("appendonly", el->defname) == 0)
+			continue;
+		if (pg_strcasecmp("orientation", el->defname) == 0)
+			continue;
+		out = lappend(out, copyObject(el));
+	}
+	return out;
+}
+
+static List *
+transformAttributeEncoding(List *stenc, CreateStmt *stmt)
+{
+	ListCell *lc;
+	bool found_enc = stenc != NIL;
+	bool can_enc = is_aocs(stmt->options);
+	ColumnReferenceStorageDirective *deflt = NULL;
+	List *newenc = NIL;
+	List *tmpenc;
+
+#define UNSUPPORTED_ORIENTATION_ERROR() \
+	elog(ERROR, "ENCODING clause only supported with column oriented tables")
+
+	/* We only support the attribute encoding clause on AOCS tables */
+	if (stenc && !can_enc)
+		UNSUPPORTED_ORIENTATION_ERROR();
+
+
+	/* get the default clause, if there is one. */
+	foreach(lc, stenc)
+	{
+		ColumnReferenceStorageDirective *c = lfirst(lc);
+		Insist(IsA(c, ColumnReferenceStorageDirective));
+
+		if (c->deflt)
+		{
+			/*
+			 * Some quick validation: there should only be one default
+			 * clause
+			 */
+			if (deflt)
+				elog(ERROR, "only one default column encoding may be specified");
+			else
+			{
+				deflt = c;
+
+				/*
+				 * The default encoding and the with clause better not
+				 * try and set the same options!
+				 */
+
+				if (encodings_overlap(stmt->options, c->encoding, false))
+					elog(ERROR, "DEFAULT COLUMN ENCODING clause cannot "
+						 "override values set in WITH clause");
+			}
+		}
+	}
+
+	/*
+	 * If no default has been specified, we might create one out of the
+	 * WITH clause.
+	 */
+	tmpenc = form_default_storage_directive(stmt->options);
+
+	if (tmpenc)
+	{
+		deflt = makeNode(ColumnReferenceStorageDirective);
+		deflt->deflt = true;
+		deflt->encoding = tmpenc;
+	}
+
+	/*
+	 * Loop over all columns. If a column has a column reference storage clause
+	 * -- i.e., COLUMN name ENCODING () -- apply that. Otherwise, apply the
+	 * default.
+	 */
+	foreach(lc, stmt->tableElts)
+	{
+		Node *n = lfirst(lc);
+
+		if (IsA(n, ColumnDef))
+		{
+			/*
+			 * Convert inline storage directives to column reference directives.
+			 * This makes it easier to deal with them later.
+			 */
+			ColumnDef *d = (ColumnDef *)n;
+			ColumnReferenceStorageDirective *c =
+				makeNode(ColumnReferenceStorageDirective);
+
+			c->column = makeString(pstrdup(d->colname));
+
+			if (d->encoding)
+			{
+				found_enc = true;
+				c->encoding = d->encoding;
+				c->encoding = transformMissingAttributeEncoding(c->encoding);
+			}
+			else
+			{
+				/*
+				 * No explicit encoding clause but we may still have a
+				 * clause if
+				 * i. There's a column reference storage directive for this
+				 * column
+				 * ii. There's a default column encoding
+				 * iii. There's a default for the type.
+				 *
+				 * If none of these is the case, we set an 'empty' encoding
+				 * clause.
+				 */
+
+				/*
+				 * We use stenc here -- the storage encoding directives
+				 * gleaned from the table elements list because we know
+				 * there's nothing to look at in new_enc, since we're
+				 * generating that
+				 */
+				ColumnReferenceStorageDirective *s = find_crsd(c->column, stenc);
+
+				if (s)
+				{
+					s->encoding = transformMissingAttributeEncoding(s->encoding);
+					newenc = lappend(newenc, s);
+					continue;
+				}
+
+				/* ... and so we beat on, boats against the current... */
+				if (deflt)
+				{
+					c->encoding = copyObject(deflt->encoding);
+					c->encoding = transformMissingAttributeEncoding(c->encoding);
+				}
+				else
+				{
+					List *te = TypeNameGetStorageDirective(d->typname);
+
+					if (te)
+					{
+						c->encoding = copyObject(te);
+						c->encoding = transformMissingAttributeEncoding(c->encoding);
+					}
+					else
+						c->encoding = default_column_encoding_clause();
+				}
+			}
+			newenc = lappend(newenc, c);
+		}
+
+	}
+
+	/* Check again incase we expanded a some column encoding clauses */
+	if (!can_enc)
+	{
+		if (found_enc)
+			UNSUPPORTED_ORIENTATION_ERROR();
+		else
+			return NULL;
+	}
+
+	validateColumnStorageEncodingClauses(newenc, stmt);
+
+	return newenc;
+}
+
 /*
  * transformCreateStmt -
  *	  transforms the "create table" statement
@@ -1403,6 +1872,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	ListCell   *elements;
 	List  	   *likeDistributedBy = NIL;
 	bool	    bQuiet = false;	/* shut up transformDistributedBy messages */
+	List	   *stenc = NIL; /* column reference storage encoding clauses */
 
 
 	cxt.stmtType = "CREATE TABLE";
@@ -1422,15 +1892,15 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	cxt.hasoids = interpretOidsOption(stmt->options);
 
 	stmt->policy = NULL;
-	
+
 	/* Disallow inheritance in combination with partitioning. */
 	if (stmt->inhRelations && (stmt->partitionBy || stmt->is_part_child ))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot mix inheritance with partitioning")));
-	}	
-	
+	}
+
 	/* Only on top-most partitioned tables. */
 	if ( stmt->partitionBy && !stmt->is_part_child )
 	{
@@ -1471,12 +1941,17 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 
 					if (Gp_role == GP_ROLE_DISPATCH && isBeginning &&
 						stmt->distributedBy == NIL &&
-						stmt->inhRelations == NIL && 
+						stmt->inhRelations == NIL &&
 						stmt->policy == NULL)
 					{
 						likeDistributedBy = getLikeDistributionPolicy((InhRelation *) element);
 					}
 				}
+				break;
+
+			case T_ColumnReferenceStorageDirective:
+				/* processed below in transformAttributeEncoding() */
+				stenc = lappend(stenc, element);
 				break;
 
 			default:
@@ -1500,7 +1975,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	 * Postprocess constraints that give rise to index definitions.
 	 */
 	transformIndexConstraints(pstate, &cxt, stmt->is_add_part);
-	
+
 	/*
 	 * Carry any deferred analysis statements forward.  Added for MPP-13750
 	 * but should also apply to the similar case involving simple inheritance.
@@ -1515,6 +1990,11 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	 * Postprocess foreign-key constraints.
 	 */
 	transformFKConstraints(pstate, &cxt, true, false);
+
+	/*
+	 * Analyze attribute encoding clauses
+	 */
+	stmt->attr_encodings = transformAttributeEncoding(stenc, stmt);
 
 	/*
 	 * Postprocess Greenplum Database distribution columns
@@ -1569,7 +2049,7 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	bool	    bQuiet = false;	/* shut up transformDistributedBy messages */
 	bool		onmaster = false;
 	bool		iswritable = stmt->iswritable;
-	
+
 	cxt.stmtType = "CREATE EXTERNAL TABLE";
 	cxt.relation = stmt->relation;
 	cxt.inhRelations = NIL;
@@ -1580,7 +2060,7 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	cxt.fkconstraints = NIL;
 	cxt.ixconstraints = NIL;
 	cxt.pkey = NULL;
-	
+
 	cxt.blist = NIL;
 	cxt.alist = NIL;
 
@@ -1610,10 +2090,10 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 				{
 					/* LIKE */
 					bool	isBeginning = (cxt.columns == NIL);
-	
+
 					transformInhRelation(pstate, &cxt,
 										 (InhRelation *) element, true);
-					
+
 					if (Gp_role == GP_ROLE_DISPATCH && isBeginning &&
 						stmt->distributedBy == NIL &&
 						stmt->policy == NULL &&
@@ -1637,23 +2117,23 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	 * table is attempted to be used on ON MASTER table and error if so.
 	 */
 	if(!iswritable)
-	{	
+	{
 		exttypeDesc = (ExtTableTypeDesc *)stmt->exttypedesc;
-	
+
 		if(exttypeDesc->exttabletype == EXTTBL_TYPE_EXECUTE)
 		{
 			ListCell   *exec_location_opt;
-	
+
 			foreach(exec_location_opt, exttypeDesc->on_clause)
 			{
 				DefElem    *defel = (DefElem *) lfirst(exec_location_opt);
-	
+
 				if (strcmp(defel->defname, "master") == 0)
 				{
 					SingleRowErrorDesc *srehDesc = (SingleRowErrorDesc *)stmt->sreh;
-	
+
 					onmaster = true;
-	
+
 					if(srehDesc && srehDesc->errtable)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -1663,7 +2143,7 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 			}
 		}
 	}
-	
+
 	/*
 	 * Check if we need to create an error table. If so, add it to the
 	 * before list.
@@ -1674,7 +2154,7 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 
 	transformETDistributedBy(pstate, &cxt, stmt->distributedBy, &stmt->policy,
 							 likeDistributedBy, bQuiet, iswritable, onmaster);
-	
+
 	Assert(cxt.ckconstraints == NIL);
 	Assert(cxt.fkconstraints == NIL);
 	Assert(cxt.ixconstraints == NIL);
@@ -1699,7 +2179,7 @@ transformCreateForeignStmt(ParseState *pstate, CreateForeignStmt *stmt,
 	CreateStmtContext cxt;
 	Query	   *q;
 	ListCell   *elements;
-	
+
 	cxt.stmtType = "CREATE FOREIGN TABLE";
 	cxt.relation = stmt->relation;
 	cxt.inhRelations = NIL;
@@ -1710,7 +2190,7 @@ transformCreateForeignStmt(ParseState *pstate, CreateForeignStmt *stmt,
 	cxt.fkconstraints = NIL;
 	cxt.ixconstraints = NIL;
 	cxt.pkey = NULL;
-	
+
 	cxt.blist = NIL;
 	cxt.alist = NIL;
 
@@ -1738,9 +2218,9 @@ transformCreateForeignStmt(ParseState *pstate, CreateForeignStmt *stmt,
 
 			case T_InhRelation:
 				{
-					/* LIKE */	
+					/* LIKE */
 					transformInhRelation(pstate, &cxt,
-										 (InhRelation *) element, true);					
+										 (InhRelation *) element, true);
 				}
 				break;
 
@@ -1750,7 +2230,7 @@ transformCreateForeignStmt(ParseState *pstate, CreateForeignStmt *stmt,
 				break;
 		}
 	}
-	
+
 	Assert(cxt.ckconstraints == NIL);
 	Assert(cxt.fkconstraints == NIL);
 	Assert(cxt.ixconstraints == NIL);
@@ -2027,16 +2507,16 @@ transformTableConstraint(ParseState *pstate, CreateStmtContext *cxt,
 
 
 /*
- * transformETDistributedBy - transform DISTRIBUTED BY clause for 
- * external tables. 
- * 
+ * transformETDistributedBy - transform DISTRIBUTED BY clause for
+ * external tables.
+ *
  * WET: by default we distribute RANDOMLY, or by the distribution key
  * of the LIKE table if exists. However, if DISTRIBUTED BY was
  * specified we use it by calling the regular transformDistributedBy and
  * handle it like we would for non external tables.
- * 
- * RET: We always create a random distribution policy entry *unless* 
- * this is an EXECUTE table with ON MASTER specified, in which case 
+ *
+ * RET: We always create a random distribution policy entry *unless*
+ * this is an EXECUTE table with ON MASTER specified, in which case
  * we create no policy so that the master will be accessed.
  */
 static void
@@ -2049,7 +2529,7 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 {
 	int			maxattrs = 200;
 	GpPolicy*	p = NULL;
-	
+
 	/*
 	 * utility mode creates can't have a policy.  Only the QD can have policies
 	 */
@@ -2063,11 +2543,11 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("Readable external tables can\'t specify a DISTRIBUTED BY clause.")));
-	
+
 	if(iswritable)
 	{
 		/* WET */
-		
+
 		if(distributedBy == NIL && likeDistributedBy == NIL)
 		{
 			/* defaults to DISTRIBUTED RANDOMLY */
@@ -2076,8 +2556,8 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			p->ptype = POLICYTYPE_PARTITIONED;
 			p->nattrs = 0;
 			p->attrs[0] = 1;
-			
-			*policyp = p; 
+
+			*policyp = p;
 		}
 		else
 		{
@@ -2089,7 +2569,7 @@ transformETDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	else
 	{
 		/* RET */
-		
+
 		if(onmaster)
 		{
 			p = NULL;
@@ -2771,6 +3251,43 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			}
 		}
 	}
+}
+
+/*
+ * Add any missing encoding attributes (compresstype = none, blocksize=...).
+ */
+static List *
+transformMissingAttributeEncoding(List *list)
+{
+	bool foundCompressType = false;
+	bool foundCompressLevel = false;
+	bool foundBlockSize = false;
+	DefElem *e1 = makeDefElem("compresstype", (Node *) makeString("none"));
+	DefElem *e2 = makeDefElem("compresslevel", (Node *) makeInteger(1));
+	DefElem *e3 = makeDefElem("blocksize", (Node *) makeInteger(DEFAULT_APPENDONLY_BLOCK_SIZE));
+	List *retList = list;
+	ListCell *lc;
+
+	foreach(lc, list)
+	{
+		DefElem *el = lfirst(lc);
+
+		if (pg_strcasecmp("compresstype", el->defname) == 0)
+			foundCompressType = true;
+		else if (pg_strcasecmp("compresslevel", el->defname) == 0)
+			foundCompressLevel = true;
+		else if (pg_strcasecmp("blocksize", el->defname) == 0)
+			foundBlockSize = true;
+	}
+
+	if (foundCompressType == false)
+		retList = lappend(retList, e1);
+	if (foundCompressLevel == false)
+		retList = lappend(retList, e2);
+	if (foundBlockSize == false)
+		retList = lappend(retList, e3);
+
+	return retList;
 }
 
 static int
@@ -4216,6 +4733,7 @@ preprocess_range_spec(partValidationState *vstate)
 	List *plusop = list_make2(makeString("pg_catalog"), makeString("+"));
 	List *ltop = list_make2(makeString("pg_catalog"), makeString("<"));
 	List *coltypes = NIL;
+	List *stenc;
 	List *newelts = NIL;
 
 	foreach(lc, vstate->pBy->keys)
@@ -4250,6 +4768,12 @@ preprocess_range_spec(partValidationState *vstate)
 						  vstate);
 
 	/*
+	 * Must happen after partition_range_every(), since that gathers up
+	 * encoding clauses for us.
+	 */
+	stenc = spec->enc_clauses;
+
+	/*
 	 * Iterate over the elements in a given partition specification and
 	 * expand any EVERY clauses into raw elements.
 	 */
@@ -4262,6 +4786,12 @@ preprocess_range_spec(partValidationState *vstate)
 		ListCell		*lc2;
 		bool			 bTablename = false;
 
+		if (IsA(el, ColumnReferenceStorageDirective))
+		{
+			stenc = lappend(stenc, el);
+			continue;
+		}
+
 		/* we might not have a boundary spec if user just specified DEFAULT */
 		if (!pbs)
 		{
@@ -4273,7 +4803,7 @@ preprocess_range_spec(partValidationState *vstate)
 
 		pStoreAttr = el->storeAttr;
 
-		/* MPP-6297: check for WITH (tablename=name) clause 
+		/* MPP-6297: check for WITH (tablename=name) clause
 		 * [only for dump/restore, set deep in the guts of
 		 * partition_range_every...]
 		 */
@@ -4282,7 +4812,7 @@ preprocess_range_spec(partValidationState *vstate)
 		if (!bTablename && pbs->partEvery)
 		{
 			/* the start expression might come from a previous end
-			 * expression 
+			 * expression
 			 */
 			List *start = NIL;
 			List *curstart = NIL;
@@ -4637,6 +5167,7 @@ preprocess_range_spec(partValidationState *vstate)
 
 	/* do an initial sort */
 	spec->partElem = sort_range_elems(vstate->pBy->keyopclass, newelts);
+	spec->enc_clauses = stenc;
 }
 
 static bool
@@ -5630,6 +6161,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	partValidationState *vstate;
 	PartitionElem *pDefaultElem = NULL;
 	int partno = 0;
+	List			*enc_cls = NIL;
 
 	vstate = palloc0(sizeof(partValidationState));
 
@@ -5680,11 +6212,24 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 		preprocess_range_spec(vstate);
 
 	partElts = pSpec->partElem;
+
+	/*
+	 * If this is a RANGE partition, we might have gleaned some encoding clauses
+	 * already, because preprocess_range_spec() looks at partition elements.
+	 */
+	enc_cls = pSpec->enc_clauses;
+
 	foreach(lc, partElts)
 	{
 		PartitionElem *pElem = (PartitionElem *)lfirst(lc);
 		PartitionBoundSpec *pBSpec = NULL;
 
+		if (!IsA(pElem, PartitionElem))
+		{
+			Insist(IsA(pElem, ColumnReferenceStorageDirective));
+			enc_cls = lappend(enc_cls, lfirst(lc));
+			continue;
+		}
 		vstate->pElem = pElem;
 
 		/*
@@ -5851,6 +6396,8 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 
 		}
 	} /* end foreach(lc, partElts) */
+
+	pSpec->enc_clauses = enc_cls;
 
 	/* validate_range_partition might have changed some boundaries */
 	if (pBy->partType == PARTTYP_RANGE)
@@ -6153,6 +6700,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 	List			*partElts;
 	ListCell		*lc = NULL;
 	ListCell		*lc_prev = NULL;
+	List			*stenc = NIL;
 
 	Assert(pBy);
 	Assert(pBy->partType == PARTTYP_RANGE);
@@ -6162,6 +6710,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 	if (pSpec) /* no bound spec for default partition */
 	{
 		partElts = pSpec->partElem;
+		stenc = pSpec->enc_clauses;
 
 		lc = list_head(partElts);
 	}
@@ -6187,6 +6736,12 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 		bool					 do_every_param_test = true;
 
 		pBSpec = NULL;
+
+		if (pElem && IsA(pElem, ColumnReferenceStorageDirective))
+		{
+			stenc = lappend(stenc, pElem);
+			goto l_next_iteration;
+		}
 
 		numElts++;
 
@@ -6267,8 +6822,8 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 					 parser_errposition(pstate, pBSpec->location)));
 		}
 
-		/* MPP-6297: check for WITH (tablename=name) clause 
-		 * [magic to make dump/restore work by ignoring EVERY] 
+		/* MPP-6297: check for WITH (tablename=name) clause
+		 * [magic to make dump/restore work by ignoring EVERY]
 		 */
 		if (pStoreAttr && ((AlterPartitionCmd *)pStoreAttr)->arg1)
 		{
@@ -6295,7 +6850,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 					bTablename = true;
 					pBSpec->pWithTnameStr = pstrdup(defGetString(pDef));
 					pWithList = list_delete_cell(pWithList, def_lc, prev_lc);
-					((AlterPartitionCmd *)pStoreAttr)->arg1 = 
+					((AlterPartitionCmd *)pStoreAttr)->arg1 =
 							(Node *)pWithList;
 					break;
 				}
@@ -6304,7 +6859,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 
 			if (bTablename)
 				goto l_EveryLoopEnd;
-		}		
+		}
 
 		everyCnt = make_const(pstate, makeInteger(1), -1);
 
@@ -6622,10 +7177,12 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 		if (pBSpec)
 			pBSpec->everyGenList = allNewPartns;
 
+l_next_iteration:
 		lc_prev = lc;
 		lc = lnext(lc);
 	} /* end foreach */
 
+	pSpec->enc_clauses = stenc;
 
 	return 1;
 } /* end partition_range_every */
@@ -6635,7 +7192,8 @@ static void
 make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 			   	PartitionBy *curPby, Node *newSub,
 				Node *pRuleCatalog, Node *pPostCreate, Node *pConstraint,
-				Node *pStoreAttr, char *prtstr, bool bQuiet)
+				Node *pStoreAttr, char *prtstr, bool bQuiet,
+				List *stenc)
 {
 	RangeVar *parent_tab_name = makeNode(RangeVar);
 	RangeVar *child_tab_name = makeNode(RangeVar);
@@ -6666,11 +7224,11 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	child_tab_stmt->postCreate = pPostCreate;
 
 	/*
-	 * Deep copy the parent's table elements. 
+	 * Deep copy the parent's table elements.
 	 *
 	 * XXX The copy may be unnecessary, but it is safe.
 	 *
-	 * Previously, some following code updated constraint names 
+	 * Previously, some following code updated constraint names
 	 * in the tableElts to assure uniqueness and handle issues
 	 * with FKs (?).  This required a copy.
 	 *
@@ -6679,6 +7237,17 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	 * any more.
 	 */
 	child_tab_stmt->tableElts = copyObject(stmt->tableElts);
+
+	/* add encoding clauses */
+	{
+		ListCell *lc;
+
+		foreach(lc, stenc)
+		{
+			child_tab_stmt->tableElts = lappend(child_tab_stmt->tableElts,
+												lfirst(lc));
+		}
+	}
 
 	/* Hash partitioning special case. */
 	if (pConstraint && ((enable_partition_rules &&
@@ -6704,7 +7273,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	if ( pStoreAttr )
 	{
 		AlterPartitionCmd *psa_apc = (AlterPartitionCmd *)pStoreAttr;
-		
+
 		/* Options */
 		if ( psa_apc->arg1 )
 			child_tab_stmt->options = (List *)psa_apc->arg1;
@@ -6725,7 +7294,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	child_tab_stmt->partitionBy = (Node *)newSub;
 
 	child_tab_stmt->relKind = RELKIND_RELATION;
-	
+
 	/*
 	 * Adjust tablespace name for the CREATE TABLE via ADD PARTITION. (MPP-8047)
 	 *
@@ -6738,7 +7307,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	if ( ! child_tab_stmt->tablespacename )
 	{
 		Oid poid = RangeVarGetRelid(cxt->relation, true); /* parent branch */
-		
+
 		if ( ! poid )
 		{
 			poid = RangeVarGetRelid(stmt->relation, true); /* whole partitioned table */
@@ -6750,7 +7319,7 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 			RelationClose(prel);
 		}
 	}
-	
+
 	cxt->alist = lappend(cxt->alist, child_tab_stmt);
 
 	/*
@@ -6939,6 +7508,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	ListCell   *lc_anp = NULL;
 	List	   *key_attnums = NIL;
 	part_col_cxt pcolcxt;
+	List	   *stenc = NIL;
 
 	if (NULL == partitionBy)
 		return;
@@ -7134,8 +7704,11 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	}
 
 	if (pBy->partSpec)
+	{
 		partNumber = validate_partition_spec(pstate, cxt, stmt, pBy, at_depth,
 											 partNumber);
+		stenc = ((PartitionSpec *)pBy->partSpec)->enc_clauses;
+	}
 
 	/*
 	 * We'd better have some partitions to look at by now
@@ -7352,7 +7925,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		else
 			snprintf(prtstr, sizeof(prtstr), "prt_%d", partno + 1);
 
-		/* MPP-6297: check for WITH (tablename=name) clause 
+		/* MPP-6297: check for WITH (tablename=name) clause
 		 * [only for dump/restore, set deep in the guts of
 		 * partition_range_every...]
 		 */
@@ -7366,7 +7939,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			/* MPP-6297, MPP-7661, MPP-7514: check for WITH
 			 * (tablename=name) clause (AGAIN!) because the pWithTname
 			 * is only set for an EVERY clause, and we might not have
-			 * an EVERY clause. 
+			 * an EVERY clause.
 			 */
 
 			ListCell *prev_lc = NULL;
@@ -7391,7 +7964,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 					relname = pstrdup(defGetString(pDef));
 					prtstr[0] = '\0';
 					pWithList = list_delete_cell(pWithList, def_lc, prev_lc);
-					((AlterPartitionCmd *)pStoreAttr)->arg1 = 
+					((AlterPartitionCmd *)pStoreAttr)->arg1 =
 							(Node *)pWithList;
 					break;
 				}
@@ -7511,9 +8084,10 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 			if (pElem)
 			{
+				PartitionSpec *_spec = (PartitionSpec *)pBy->partSpec;
 				tmppspec->partElem = list_make1(copyObject(pElem));
-				tmppspec->istemplate =
-					((PartitionSpec *)pBy->partSpec)->istemplate;
+				tmppspec->istemplate = _spec->istemplate;
+				tmppspec->enc_clauses = copyObject(stenc);
 			}
 
 			curPby->partSpec = (Node *)tmppspec;
@@ -7530,7 +8104,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 		make_child_node(stmt, cxt, relname, curPby, (Node *)newSub,
 						pRuleCatalog, pPostCreate, pConstraint, pStoreAttr,
-						prtstr, bQuiet);
+						prtstr, bQuiet, stenc);
 
 		if (pBSpec)
 			prevEvery = pBSpec->partEvery;
@@ -7645,17 +8219,17 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 	if (OidIsValid(idxOid) && stmt->idxname)
 	{
 		Relation rel;
-		
+
 		PG_TRY();
 		{
 			rel = heap_openrv(stmt->relation, AccessShareLock);
 		}
 		PG_CATCH();
 		{
-			/* 
-			 * In the case of the table being dropped concurrently, 
+			/*
+			 * In the case of the table being dropped concurrently,
 			 * throw a friendlier error than:
-			 * 
+			 *
 			 * "could not open relation with relid 1234"
 			 */
 			if (stmt->relation->schemaname)
@@ -7673,7 +8247,7 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt,
 			PG_RE_THROW();
 		}
 		PG_END_TRY();
-		
+
 		if (RelationBuildPartitionDesc(rel, false))
 			stmt->do_part = true;
 
@@ -8130,8 +8704,8 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
 
 
 /*
- * If an input query (Q) mixes window functions with aggregate 
- * functions or grouping, then (per SQL:2003) we need to divide 
+ * If an input query (Q) mixes window functions with aggregate
+ * functions or grouping, then (per SQL:2003) we need to divide
  * it into an outer query, Q', that contains no aggregate calls
  * or grouping and an inner query, Q'', that contains no window
  * calls.
@@ -8139,19 +8713,19 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
  * Q' will have a 1-entry range table whose entry corresponds to
  * the results of Q''.
  *
- * Q'' will have the same range as Q and will be pushed down into 
- * a subquery range table entry in Q'.  
+ * Q'' will have the same range as Q and will be pushed down into
+ * a subquery range table entry in Q'.
  *
- * As a result, the depth of outer references in Q'' and below 
- * will increase, so we need to adjust non-zero xxxlevelsup fields 
- * (Var, Aggref, and WindowRef nodes) in Q'' and below.  At the end, 
- * there will be no levelsup items referring to Q'.  Prior references 
- * to Q will now refer to Q''; prior references to blocks above Q will 
+ * As a result, the depth of outer references in Q'' and below
+ * will increase, so we need to adjust non-zero xxxlevelsup fields
+ * (Var, Aggref, and WindowRef nodes) in Q'' and below.  At the end,
+ * there will be no levelsup items referring to Q'.  Prior references
+ * to Q will now refer to Q''; prior references to blocks above Q will
  * refer to the same blocks above Q'.)
  *
- * We do all this by creating a new Query node, subq, for Q''.  We 
- * modify the input Query node, qry, in place for Q'.  (Since qry is 
- * also the input, Q, be careful not to destroy values before we're  
+ * We do all this by creating a new Query node, subq, for Q''.  We
+ * modify the input Query node, qry, in place for Q'.  (Since qry is
+ * also the input, Q, be careful not to destroy values before we're
  * done with them.
  */
 static Query *
@@ -8162,18 +8736,18 @@ transformGroupedWindows(Query *qry)
 	RangeTblRef *ref;
 	Alias *alias;
 	bool hadSubLinks = qry->hasSubLinks;
-		
+
 	grouped_window_ctx ctx;
-	
+
 	Assert(qry->commandType == CMD_SELECT);
 	Assert(!PointerIsValid(qry->utilityStmt));
 	Assert(qry->returningList == NIL);
-	
+
 	if ( !qry->hasWindFuncs || !(qry->groupClause || qry->hasAggs) )
 		return qry;
-	
-	/* Make the new subquery (Q'').  Note that (per SQL:2003) there 
-	 * can't be any window functions called in the WHERE, GROUP BY, 
+
+	/* Make the new subquery (Q'').  Note that (per SQL:2003) there
+	 * can't be any window functions called in the WHERE, GROUP BY,
 	 * or HAVING clauses.
 	 */
 	subq = makeNode(Query);
@@ -8186,12 +8760,12 @@ transformGroupedWindows(Query *qry)
 	subq->hasAggs = qry->hasAggs;
 	subq->hasWindFuncs = false; /* reevaluate later */
 	subq->hasSubLinks = qry->hasSubLinks; /* reevaluate later */
-	
+
 	/* Core of subquery input table expression: */
 	subq->rtable = qry->rtable; /* before windowing */
 	subq->jointree = qry->jointree; /* before windowing */
 	subq->targetList = NIL; /* fill in later */
-	
+
 	subq->returningList = NIL;
 	subq->groupClause = qry->groupClause; /* before windowing */
 	subq->havingQual = qry->havingQual; /* before windowing */
@@ -8202,21 +8776,21 @@ transformGroupedWindows(Query *qry)
 	subq->limitCount = NULL; /* after windowing */
 	subq->rowMarks = NIL;
 	subq->setOperations = NULL;
-	
+
 	/* Check if there is a window function in the join tree. If so
 	 * we must mark hasWindFuncs in the sub query as well.
 	 */
 	if (checkExprHasWindFuncs((Node *)subq->jointree))
 		subq->hasWindFuncs = true;
-	
-	/* Make the single range table entry for the outer query Q' as 
+
+	/* Make the single range table entry for the outer query Q' as
 	 * a wrapper for the subquery (Q'') currently under construction.
 	 */
 	rte = makeNode(RangeTblEntry);
 	rte->rtekind = RTE_SUBQUERY;
 	rte->subquery = subq;
 	rte->alias = NULL; /* fill in later */
-	rte->eref = NULL; /* fill in later */	
+	rte->eref = NULL; /* fill in later */
 	rte->inFromCl = true;
 	rte->requiredPerms = ACL_SELECT;
 	/* Default?
@@ -8224,85 +8798,85 @@ transformGroupedWindows(Query *qry)
 	 * rte->checkAsUser = 0;
 	 * rte->pseudocols = 0;
 	*/
-	
+
 	/* Make a reference to the new range table entry .
 	 */
 	ref = makeNode(RangeTblRef);
 	ref->rtindex = 1;
-	
+
 	/* Set up context for mutating the target list.  Careful.
 	 * This is trickier than it looks.  The context will be
 	 * "primed" with grouping targets.
 	 */
 	init_grouped_window_context(&ctx, qry);
-	
+
     /* Begin rewriting the outer query in place.
      */
 	qry->hasAggs = false; /* by constuction */
-	/* qry->hasSubLinks -- reevaluate later. */	
-	
+	/* qry->hasSubLinks -- reevaluate later. */
+
 	/* Core of outer query input table expression: */
 	qry->rtable = list_make1(rte);
 	qry->jointree = (FromExpr *)makeNode(FromExpr);
 	qry->jointree->fromlist = list_make1(ref);
 	qry->jointree->quals = NULL;
 	/* qry->targetList -- to be mutated from Q to Q' below */
-	
+
 	qry->groupClause = NIL; /* by construction */
-	qry->havingQual = NULL; /* by construction */	
-	
+	qry->havingQual = NULL; /* by construction */
+
 	/* Mutate the Q target list and windowClauses for use in Q' and, at the
-	 * same time, update state with info needed to assemble the target list 
-	 * for the subquery (Q''). 
+	 * same time, update state with info needed to assemble the target list
+	 * for the subquery (Q'').
 	 */
 	qry->targetList = (List*)grouped_window_mutator((Node*)qry->targetList, &ctx);
 	qry->windowClause = (List*)grouped_window_mutator((Node*)qry->windowClause, &ctx);
 	qry->hasSubLinks = checkExprHasSubLink((Node*)qry->targetList);
-	
+
 	/* New subquery fields
 	 */
 	subq->targetList = ctx.subtlist;
 	subq->groupClause = ctx.subgroupClause;
-	
+
 	/* We always need an eref, but we shouldn't really need a filled in alias.
-	 * However, view deparse (or at least the fix for MPP-2189) wants one. 
+	 * However, view deparse (or at least the fix for MPP-2189) wants one.
 	 */
 	alias = make_replacement_alias(subq, "Window");
 	rte->eref = copyObject(alias);
 	rte->alias = alias;
-	
+
 	/* Accomodate depth change in new subquery, Q''.
 	 */
 	IncrementVarSublevelsUp((Node*)subq, 1, 1);
-	
+
 	/* Might have changed. */
 	subq->hasSubLinks = checkExprHasSubLink((Node*)subq);
-	
+
 	Assert(PointerIsValid(qry->targetList));
 	Assert(IsA(qry->targetList, List));
 	/* Use error instead of assertion to "use" hadSubLinks and keep compiler happy. */
 	if (hadSubLinks != (qry->hasSubLinks || subq->hasSubLinks))
 		elog(ERROR, "inconsistency detected in internal grouped windows transformation");
-	
+
 	discard_grouped_window_context(&ctx);
-	
+
 	return qry;
 }
 
 
 /* Helper for transformGroupedWindows:
  *
- * Prime the subquery target list in the context with the grouping 
- * and windowing attributes from the given query and adjust the 
- * subquery group clauses in the context to agree.  
+ * Prime the subquery target list in the context with the grouping
+ * and windowing attributes from the given query and adjust the
+ * subquery group clauses in the context to agree.
  *
- * Note that we arrange dense sortgroupref values and stash the 
- * referents on the front of the subquery target list.  This may 
- * be over-kill, but the grouping extension code seems to like it 
+ * Note that we arrange dense sortgroupref values and stash the
+ * referents on the front of the subquery target list.  This may
+ * be over-kill, but the grouping extension code seems to like it
  * this way.
- * 
- * Note that we only transfer sortgrpref values associated with 
- * grouping and windowing to the subquery context.  The subquery 
+ *
+ * Note that we only transfer sortgrpref values associated with
+ * grouping and windowing to the subquery context.  The subquery
  * shouldn't care about ordering, etc. XXX
  */
 static void
@@ -8311,18 +8885,18 @@ init_grouped_window_context(grouped_window_ctx *ctx, Query *qry)
 	List *grp_tles = NIL;
 	ListCell *lc = NULL;
 	Index maxsgr = 0;
-	
+
 	grp_tles = get_sortgroupclauses_tles(qry->groupClause, qry->targetList);
 	maxsgr = maxSortGroupRef(grp_tles, true);
 
 	ctx->subtlist = NIL;
 	ctx->subgroupClause = NIL;
-	
-	/* Set up scratch space. 
+
+	/* Set up scratch space.
 	 */
 
 	ctx->subrtable = qry->rtable;
-	
+
 	/* Map input = outer query sortgroupref values to subquery values while building the
 	 * subquery target list prefix. */
 	ctx->sgr_map = palloc0((maxsgr+1)*sizeof(ctx->sgr_map[0]));
@@ -8330,24 +8904,24 @@ init_grouped_window_context(grouped_window_ctx *ctx, Query *qry)
 	{
 	    TargetEntry *tle;
 	    Index old_sgr;
-	    
+
 	    tle = (TargetEntry*)copyObject(lfirst(lc));
 	    old_sgr = tle->ressortgroupref;
-	    
+
 	    ctx->subtlist = lappend(ctx->subtlist, tle);
 		tle->resno = list_length(ctx->subtlist);
 		tle->ressortgroupref = tle->resno;
 		tle->resjunk = false;
-		
+
 		ctx->sgr_map[old_sgr] = tle->ressortgroupref;
 	}
-	
+
 	/* Miscellaneous scratch area. */
 	ctx->call_depth = 0;
 	ctx->tle = NULL;
-	
+
 	/* Revise grouping into ctx->subgroupClause */
-	ctx->subgroupClause = (List*)map_sgr_mutator((Node*)qry->groupClause, ctx);	
+	ctx->subgroupClause = (List*)map_sgr_mutator((Node*)qry->groupClause, ctx);
 }
 
 
@@ -8367,8 +8941,8 @@ discard_grouped_window_context(grouped_window_ctx *ctx)
 
 /* Helper for transformGroupedWindows:
  *
- * Look for the given expression in the context's subtlist.  If 
- * none is found and the force argument is true, add a target 
+ * Look for the given expression in the context's subtlist.  If
+ * none is found and the force argument is true, add a target
  * for it.  Make and return a variable referring to the target
  * with the matching expression, or return NULL, if no target
  * was found/added.
@@ -8378,7 +8952,7 @@ var_for_gw_expr(grouped_window_ctx *ctx, Node *expr, bool force)
 {
 	Var *var = NULL;
 	TargetEntry *tle = tlist_member(expr, ctx->subtlist);
-	
+
 	if ( tle == NULL && force )
 	{
 		tle = makeNode(TargetEntry);
@@ -8399,7 +8973,7 @@ var_for_gw_expr(grouped_window_ctx *ctx, Node *expr, bool force)
 		tle->resorigcol = 0;
 		tle->resjunk = false;
 	}
-	
+
 	if (tle != NULL)
 	{
 		var = makeNode(Var);
@@ -8412,7 +8986,7 @@ var_for_gw_expr(grouped_window_ctx *ctx, Node *expr, bool force)
 		var->varoattno = tle->resno;
 		var->location = 0;
 	}
-	
+
 	return var;
 }
 
@@ -8426,15 +9000,15 @@ static Node*
 map_sgr_mutator(Node *node, void *context)
 {
 	grouped_window_ctx *ctx = (grouped_window_ctx*)context;
-	
+
 	if (!node)
 		return NULL;
-	
+
 	if (IsA(node, List))
 	{
 		ListCell *lc;
 		List *new_lst = NIL;
-		
+
 		foreach ( lc, (List *)node)
 		{
 			Node *newnode = lfirst(lc);
@@ -8443,7 +9017,7 @@ map_sgr_mutator(Node *node, void *context)
 		}
 		return (Node*)new_lst;
 	}
-	
+
 	else if (IsA(node, GroupClause))
 	{
 		GroupClause *g = (GroupClause*)node;
@@ -8452,7 +9026,7 @@ map_sgr_mutator(Node *node, void *context)
 		new_g->tleSortGroupRef = ctx->sgr_map[g->tleSortGroupRef];
 		return (Node*)new_g;
 	}
-	
+
 	/* Just like above, but don't assume identical */
 	else if (IsA(node, SortClause))
 	{
@@ -8462,7 +9036,7 @@ map_sgr_mutator(Node *node, void *context)
 		 new_s->tleSortGroupRef = ctx->sgr_map[s->tleSortGroupRef];
 		 return (Node*)new_s;
 	}
-	 
+
 	else if (IsA(node, GroupingClause))
 	{
 		GroupingClause *gc = (GroupingClause*)node;
@@ -8471,30 +9045,30 @@ map_sgr_mutator(Node *node, void *context)
 		new_gc->groupsets = (List*)map_sgr_mutator((Node*)gc->groupsets, ctx);
 		return (Node*)new_gc;
 	}
-	 
+
 	return NULL; /* Never happens */
 }
-			 
-			 
-			 
-			 
+
+
+
+
 /*
  * Helper for transformGroupedWindows:
  *
- * Transform targets from Q into targets for Q' and place information 
- * needed to eventually construct the target list for the subquery Q'' 
+ * Transform targets from Q into targets for Q' and place information
+ * needed to eventually construct the target list for the subquery Q''
  * in the context structure.
  *
  * The general idea is to add expressions that must be evaluated in the
- * subquery to the subquery target list (in the context) and to replace 
+ * subquery to the subquery target list (in the context) and to replace
  * them with Var nodes in the outer query.
  *
- * If there are any Agg nodes in the Q'' target list, arrange 
- * to set hasAggs to true in the subquery. (This should already be 
+ * If there are any Agg nodes in the Q'' target list, arrange
+ * to set hasAggs to true in the subquery. (This should already be
  * done, though).
  *
  * If we're pushing down an entire TLE that has a resname, use
- * it as an alias in the upper TLE, too.  Facilitate this by copying 
+ * it as an alias in the upper TLE, too.  Facilitate this by copying
  * down the resname from an immediately enclosing TargetEntry, if any.
  *
  * The algorithm repeatedly searches the subquery target list under
@@ -8502,23 +9076,23 @@ map_sgr_mutator(Node *node, void *context)
  * we don't optimize this.  (Could, for example, use a hash or divide
  * the target list into var, expr, and group/aggregate function lists.)
  */
-		 
+
 static Node* grouped_window_mutator(Node *node, void *context)
 {
 	Node *result = NULL;
 
 	grouped_window_ctx *ctx = (grouped_window_ctx*)context;
-	
+
 	if (!node)
 		return result;
-	
+
 	ctx->call_depth++;
-	
+
 	if (IsA(node, TargetEntry))
 	{
 		TargetEntry *tle = (TargetEntry *)node;
 		TargetEntry *new_tle = makeNode(TargetEntry);
-		
+
 		/* Copy the target entry. */
 		new_tle->resno = tle->resno;
 		if (tle->resname == NULL )
@@ -8533,7 +9107,7 @@ static Node* grouped_window_mutator(Node *node, void *context)
 		new_tle->resorigtbl = InvalidOid;
 		new_tle->resorigcol = 0;
 		new_tle->resjunk = tle->resjunk;
-		
+
 		/* This is pretty shady, but we know our call pattern.  The target
 		 * list is at level 1, so we're interested in target entries at level
 		 * 2.  We record them in context so var_for_gw_expr can maybe make a better
@@ -8549,7 +9123,7 @@ static Node* grouped_window_mutator(Node *node, void *context)
 		}
 
 		new_tle->expr = (Expr*)grouped_window_mutator((Node*)tle->expr, ctx);
-		
+
 		ctx->tle = NULL;
 		result = (Node*)new_tle;
 	}
@@ -8563,12 +9137,12 @@ static Node* grouped_window_mutator(Node *node, void *context)
 	else if (IsA(node, Var))
 	{
 		Var *var = (Var*)node;
-		
-		/* Since this is a Var (leaf node), we must be able to mutate it, 
+
+		/* Since this is a Var (leaf node), we must be able to mutate it,
 		 * else we can't finish the transformation and must give up.
-		 */		
+		 */
 		result = (Node*) var_for_gw_expr(ctx, node, false);
-		
+
 		if ( !result )
 		{
 			List *altvars = generate_alternate_vars(var, ctx);
@@ -8580,7 +9154,7 @@ static Node* grouped_window_mutator(Node *node, void *context)
 					break;
 			}
 		}
-		
+
 		if ( ! result )
 			ereport(ERROR,
 					(errcode(ERRCODE_WINDOWING_ERROR),
@@ -8594,13 +9168,13 @@ static Node* grouped_window_mutator(Node *node, void *context)
 		/* Grouping expression; may not find one. */
 		result = (Node*) var_for_gw_expr(ctx, node, false);
 	}
-	
-	
+
+
 	if ( !result )
 	{
 		result = expression_tree_mutator(node, grouped_window_mutator, ctx);
 	}
-									   
+
 	ctx->call_depth--;
 	return result;
 }
@@ -8619,15 +9193,15 @@ make_replacement_alias(Query *qry, const char *aname)
 	 char *name = NULL;
 	Alias *alias = makeNode(Alias);
 	AttrNumber attrno = 0;
-	
+
 	alias->aliasname = pstrdup(aname);
 	alias->colnames = NIL;
-	
+
 	foreach(lc, qry->targetList)
 	{
 		TargetEntry *tle = (TargetEntry*)lfirst(lc);
 		attrno++;
-		
+
 		if (tle->resname)
 		{
 			/* Prefer the target's resname. */
@@ -8646,7 +9220,7 @@ make_replacement_alias(Query *qry, const char *aname)
 			/* If all else, fails, generate a name based on position. */
 			name = generate_positional_name(attrno);
 		}
-		
+
 		alias->colnames = lappend(alias->colnames, makeString(name));
 	}
 	return alias;
@@ -8662,8 +9236,8 @@ generate_positional_name(AttrNumber attrno)
 {
 	int rc = 0;
 	char buf[NAMEDATALEN];
-	
-	rc = snprintf(buf, sizeof(buf), 
+
+	rc = snprintf(buf, sizeof(buf),
 				  "att_%d", attrno );
 	if ( rc == EOF || rc < 0 || rc >=sizeof(buf) )
 	{
@@ -8678,12 +9252,12 @@ generate_positional_name(AttrNumber attrno)
 /*
  * Helper for transformGroupedWindows:
  *
- * Find alternate Vars on the range of the input query that are aliases 
+ * Find alternate Vars on the range of the input query that are aliases
  * (modulo ANSI join) of the input Var on the range and that occur in the
  * target list of the input query.
  *
  * If the input Var references a join result, there will be a single
- * alias.  If not, we need to search the range table for occurances 
+ * alias.  If not, we need to search the range table for occurances
  * of the input Var in some join result's RTE and add a Var referring
  * to the appropriate attribute of the join RTE to the list.
  *
@@ -8696,16 +9270,16 @@ generate_alternate_vars(Var *invar, grouped_window_ctx *ctx)
 	List *rtable = ctx->subrtable;
 	RangeTblEntry *inrte;
 	List *alternates = NIL;
-	
+
 	Assert(IsA(invar, Var));
-	
+
 	inrte = rt_fetch(invar->varno, rtable);
-	
+
 	if ( inrte->rtekind == RTE_JOIN )
 	{
 		Node *ja = list_nth(inrte->joinaliasvars, invar->varattno-1);
-		
-		/* Though Node types other than Var (e.g., CoalesceExpr or Const) may occur 
+
+		/* Though Node types other than Var (e.g., CoalesceExpr or Const) may occur
 		 * as joinaliasvars, we ignore them.
 		 */
 		if ( IsA(ja, Var) )
@@ -8713,40 +9287,40 @@ generate_alternate_vars(Var *invar, grouped_window_ctx *ctx)
 			alternates = lappend(alternates, copyObject(ja));
 		}
 	}
-	else 
+	else
 	{
 		ListCell *jlc;
 		Index varno = 0;
-		
+
 		foreach (jlc, rtable)
 		{
 			RangeTblEntry *rte = (RangeTblEntry*)lfirst(jlc);
-			
+
 			varno++; /* This RTE's varno */
-			
+
 			if ( rte->rtekind == RTE_JOIN )
 			{
 				ListCell *alc;
 				AttrNumber attno = 0;
-				
+
 				foreach (alc, rte->joinaliasvars)
 				{
 					ListCell *tlc;
 					Node *altnode = lfirst(alc);
 					Var *altvar = (Var*)altnode;
-					
+
 					attno++; /* This attribute's attno in its join RTE */
-					
+
 					if ( !IsA(altvar, Var) || !equal(invar, altvar) )
 						continue;
-					
+
 					/* Look for a matching Var in the target list. */
-					
+
 					foreach(tlc, ctx->subtlist)
 					{
 						TargetEntry *tle = (TargetEntry*)lfirst(tlc);
 						Var *v = (Var*)tle->expr;
-						
+
 						if ( IsA(v, Var) && v->varno == varno && v->varattno == attno )
 						{
 							alternates = lappend(alternates, tle->expr);
@@ -8837,7 +9411,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 											qry->sortClause,
                                             false /* useSQL92 rules */);
 
-	/* 
+	/*
 	 * SCATTER BY clause on a table function TableValueExpr subquery.
 	 *
 	 * Note: a given subquery cannot have both a SCATTER clause and an INTO
@@ -9065,7 +9639,7 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 	qry->sortClause = transformSortClause(pstate,
 										  stmt->sortClause,
 										  &qry->targetList,
-										  true, /* fix unknowns */ 
+										  true, /* fix unknowns */
                                           false /* use SQL92 rules */);
 
 	qry->limitOffset = transformLimitClause(pstate, stmt->limitOffset,
@@ -10302,7 +10876,7 @@ transformDeclareCursorStmt(ParseState *pstate, DeclareCursorStmt *stmt)
 	/* Shouldn't get any extras, since grammar only allows SelectStmt */
 	if (extras_before || extras_after)
 		elog(ERROR, "unexpected extra stuff in cursor statement");
-	
+
 	/* Grammar should not have allowed anything but SELECT */
 	if (!IsA(result, Query) ||
 		result->commandType != CMD_SELECT ||
@@ -10314,12 +10888,12 @@ transformDeclareCursorStmt(ParseState *pstate, DeclareCursorStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
 				 errmsg("DECLARE CURSOR cannot specify INTO")));
-	
+
 	/* We won't need the raw querytree any more */
 	stmt->query = NULL;
-	
+
 	result->utilityStmt = (Node *) stmt;
-	
+
 	return result;
 }
 
@@ -11052,7 +11626,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 		if (stmt->distributedBy->length == 1 && (list_head(stmt->distributedBy) == NULL || linitial(stmt->distributedBy) == NULL))
 		{
 			/* distributed randomly */
-			qry->intoPolicy = policy; 
+			qry->intoPolicy = policy;
 		}
 		else
 		foreach(keys, stmt->distributedBy)
@@ -11097,7 +11671,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 
 /*
  * getLikeDistributionPolicy
- * 
+ *
  * For Greenplum Database distributed tables, default to
  * the same distribution as the first LIKE table, unless
  * we also have INHERITS
@@ -11111,7 +11685,7 @@ getLikeDistributionPolicy(InhRelation* e)
 
 	relId = RangeVarGetRelid(e->relation, false);
 	oldTablePolicy = GpPolicyFetch(CurrentMemoryContext, relId);
-	
+
 	if (oldTablePolicy != NULL &&
 		oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
 	{
@@ -11122,7 +11696,7 @@ getLikeDistributionPolicy(InhRelation* e)
 			for (ia = 0 ; ia < oldTablePolicy->nattrs ; ia++)
 			{
 				char *attname = get_attname(relId, oldTablePolicy->attrs[ia]);
-				
+
 				if (likeDistributedBy)
 					likeDistributedBy = lappend(likeDistributedBy, (Node *) makeString(attname));
 				else
@@ -11134,7 +11708,7 @@ getLikeDistributionPolicy(InhRelation* e)
 			likeDistributedBy = list_make1((Node *) NULL);
 		}
 	}
-	
+
 	return likeDistributedBy;
 }
 

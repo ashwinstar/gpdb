@@ -2419,9 +2419,9 @@ class GPUpgrade(GPUpgradeBase):
             else:
                 logger.debug(result[0])
                 raise CmdError(str(cmd), result[0], result[1])
-        
+
         # run the upgrade file
-        runfile = "%s/share/postgresql/upgrade/upg2_catupgrade.sql" % self.newhome
+        runfile =  "%s/share/postgresql/upgrade/upg2_catupgrade.sql" % self.newhome
         transform(self.dbs, runfile)
 
 

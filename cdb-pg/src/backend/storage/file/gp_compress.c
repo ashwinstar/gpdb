@@ -1,25 +1,47 @@
 /*
  * gp_compress.c
  *      Common compression utilities
- *    
- * Copyright (c) 2009, Greenplum INc.
+ *
+ * Copyright (c) 2009, Greenplum Inc.
+ * Copyright (c) EMC, 2011
  */
 
 #include "postgres.h"
-#include "utils/guc.h"
-#include "storage/gp_compress.h"
 
-CompressorType CompressorStrToType(const char* comp_str, int comp_level)
+#include "catalog/pg_compression.h"
+#include "cdb/cdbappendonlystoragelayer.h"
+#include "storage/gp_compress.h"
+#include "utils/guc.h"
+
+static void gp_trycompress_generic(uint8 *sourceData, int32 sourceLen,
+								   uint8 *compressedBuffer,
+								   int32 compressedBufferLen,
+								   int32 *compressedLen,
+								   PGFunction compressor,
+								   CompressionState *compressionState);
+
+static void gp_decompress_generic(uint8 *compressed, int32 compressedLen,
+								  uint8 *uncompressed, int32 uncompressedLen,
+								  PGFunction decompressor,
+								  CompressionState *compressionState,
+								  int64 bufferCount);
+
+CompressorType
+CompressorStrToType(const char* comp_str, int comp_level)
 {
 	CompressorType comptype = COMPTYPE_NONE;
-	
-	if (!comp_str)
+
+	if (!comp_str || pg_strcasecmp(comp_str, "none") == 0)
 	{
-		comptype = COMPTYPE_NONE;		
+		comptype = COMPTYPE_NONE;
+	}
+	else if (pg_strcasecmp(comp_str, "rle_type") == 0)
+	{
+		comptype = COMPTYPE_RLE_TYPE;
 	}
 	else if (pg_strcasecmp(comp_str, "zlib") == 0)
 	{
-		comptype = COMPTYPE_ZLIB;		
+		comptype = COMPTYPE_ZLIB;
 	}
 	else if (pg_strcasecmp(comp_str, "quicklz") == 0)
 	{
@@ -43,13 +65,27 @@ CompressorType CompressorStrToType(const char* comp_str, int comp_level)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("Found undefined compressor %s", comp_str)));
-
 	}
-	
+
 	return comptype;
 }
 
-int gp_trycompress(CompressorType cmpType, int cmplv,
+char *
+CompressorTypeToString(CompressorType type)
+{
+	switch (type)
+	{
+		case COMPTYPE_ZLIB: return pstrdup("zlib");
+		case COMPTYPE_QUICKLZ1: return pstrdup("quicklz");
+		case COMPTYPE_QUICKLZ3: return pstrdup("quicklz");
+		case COMPTYPE_RLE_TYPE: return pstrdup("rle_type");
+		case COMPTYPE_NONE: return pstrdup("none");
+	}
+	return NULL;
+}
+
+int 
+gp_trycompress(CompressorType cmpType, int cmplv,
                 char *src, int32 srcLen,
                 char *comp, int32 *compLen,
                 qlz1_state_compress *qlz1StateCompress,
@@ -71,9 +107,9 @@ int gp_trycompress(CompressorType cmpType, int cmplv,
                 return err;
         }
 
-        /* Quicklz 1 and 3.  
+        /* Quicklz 1 and 3.
          * Unlike zlib, quicklz does not return error if there was not enough
-         * room in output buffer.  We will need to convert to an explicit 
+         * room in output buffer.  We will need to convert to an explicit
          * failure so caller can handle it (Z_BUF_ERROR)
          */
         Assert(cmpType == COMPTYPE_QUICKLZ1 || cmpType == COMPTYPE_QUICKLZ3);
@@ -97,7 +133,8 @@ int gp_trycompress(CompressorType cmpType, int cmplv,
         return Z_OK;
 }
 
-void gp_decompress(CompressorType cmpType,
+void
+gp_decompress(CompressorType cmpType,
                 char *comp, int32 compLen,
                 char *decomp, int32 decompLen,
                 qlz1_state_decompress *qlz1StateDecompress,
@@ -137,7 +174,7 @@ void gp_decompress(CompressorType cmpType,
 
                 return;
         }
-        
+
         Assert(cmpType == COMPTYPE_QUICKLZ1 || cmpType == COMPTYPE_QUICKLZ3);
 
         if(cmpType == COMPTYPE_QUICKLZ1)
@@ -162,12 +199,12 @@ void gp_decompress(CompressorType cmpType,
 static void
 verifyQlzScratchGuard(
 	char		*title,
-	char		*qlzScratch, 
-	int32		qlzScratchLen, 
+	char		*qlzScratch,
+	int32		qlzScratchLen,
 	int32		qlzScratchGuardLen)
 {
 	int i;
-	
+
 	if (qlzScratchGuardLen == 0)
 		return;
 
@@ -187,126 +224,86 @@ int gp_trycompress_new(
 	 int32		*compressedLen,
 	 int		compressLevel,
 	 CompressorType  compressType,
-	 qlz1_state_compress *qlz1StateCompress,
-	 qlz3_state_compress *qlz3StateCompress)
+	 PGFunction     compressor,
+	 CompressionState *compressionState)
 {
-	unsigned long 	compressedSize;
-	
-	Assert(compressLevel > 0);
-	
-	if(compressType == COMPTYPE_ZLIB)
-	{
+	Insist(PointerIsValid(compressor));
 
-#ifndef HAVE_LIBZ
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("Don't have ZLIB on the system!")));
-		*compressedLen = 0;
-		return -1;	// Never reaches here.
-#else
-		int				zlibCompressError;
+	gp_trycompress_generic(sourceData, sourceLen, compressedBuffer,
+						   compressedBufferWithOverrrunLen, compressedLen,
+						   compressor, compressionState);
 
-		/* 
-		 * On input, the 2nd 'destLen' parameter to compress2 is the maximum size
-		 * of the compression buffer.  On output, it is the resulting compressed
-		 * length.
-		 */
-		compressedSize = (unsigned long)maxCompressedLen; 
-		
-		zlibCompressError = compress2(compressedBuffer, &compressedSize, 
-									  (Bytef *)sourceData, sourceLen, 
-									  compressLevel);
-		
-		if (zlibCompressError != Z_OK)
-			return zlibCompressError;
-#endif
-	}
-	else if(compressType == COMPTYPE_QUICKLZ1)
-	{
-		Insist(compressLevel == 1);
-
-		//if (Debug_appendonly_guard_end_quicklz_scratch)
-		//	verifyQlzScratchGuard("qlz3_compress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
-		
-		//if (Debug_appendonly_rezero_quicklz_compress_scratch)
-		//	memset(qlzScratch, 0, qlzScratchLen);
-
-		compressedSize = qlz1_compress((const void *)sourceData, 
-									  (char *)compressedBuffer, 
-									  (size_t)sourceLen, 
-									  qlz1StateCompress);
-	    
-		/*
-		 * Since qlz1_compress never returns an error (unlike zlib) if there was 
-		 * not enough room in the output buffer (compressed size is larger than
-		 * uncompressed size), so return an explicit error here, so that the
-		 * caller will handle it by storing an uncompressed block. For now we
-		 * use the zlib error code Z_BUF_ERROR, but we could make up our own
-		 * instead too.
-		 */
-
-		if (compressedSize > compressedBufferWithOverrrunLen)
-			elog(FATAL, 
-			     "QuickLZ qlz1_compress overran extra buffer space (max buffer length %d, compressed length %d)",
-			     compressedBufferWithOverrrunLen, (int)compressedSize);
-		
-		//if (Debug_appendonly_guard_end_quicklz_scratch)
-		//	verifyQlzScratchGuard("qlz3_compress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
-			
-		if ((compressedSize > (unsigned long)maxCompressedLen) ||
-			(compressedSize > sourceLen))
-		{
-			return Z_BUF_ERROR;
-		}
-			
-	}
-	else /* COMPTYPE_QUICKLZ3 */
-	{
-		Insist(compressType == COMPTYPE_QUICKLZ3);
-		Insist(compressLevel == 3);
-		
-		//if (Debug_appendonly_guard_end_quicklz_scratch)
-		//	verifyQlzScratchGuard("qlz3_compress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
-		
-		//if (Debug_appendonly_rezero_quicklz_compress_scratch)
-		//	memset(qlzScratch, 0, qlzScratchLen);
-
-		compressedSize = qlz3_compress((const void *)sourceData, 
-									  (char *)compressedBuffer, 
-									  (size_t)sourceLen, 
-									  qlz3StateCompress);
-	    
-		/*
-		 * see comment above below qlz1_compress.
-		 */
-		if (compressedSize > compressedBufferWithOverrrunLen)
-			elog(FATAL, 
-				 "QuickLZ qlz3_compress overran extra buffer space (max buffer length %d, compressed length %d)",
-				 compressedBufferWithOverrrunLen, (int)compressedSize);
-			
-		//if (Debug_appendonly_guard_end_quicklz_scratch)
-		//	verifyQlzScratchGuard("qlz3_compress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
-			
-		if ((compressedSize > (unsigned long)maxCompressedLen) ||
-			(compressedSize > sourceLen))
-		{
-			return Z_BUF_ERROR;
-		}
-
-	}
-	
-	Assert(compressedSize > 0);
-	*compressedLen = (int32)compressedSize;
-
+	/* XXX: this interface is AWFUL! */
 	return Z_OK;
 }
 
+/*---------------------------------------------------------------------------*/
+static void
+gp_trycompress_generic( uint8			*sourceData
+						  , int32			 sourceLen
+						  , uint8			*compressedBuffer
+						  , int32			 compressedBufferLen
+						  , int32			*compressedLen
+						  , PGFunction		compressor
+						  , CompressionState *compressionState
+						  )
+
+{
+	callCompressionActuator( compressor
+						   , (const void *)sourceData
+						   , (size_t)sourceLen
+						   , (char*)compressedBuffer
+						   , compressedBufferLen
+						   , compressedLen
+						   , compressionState
+						   );
+}
+
+/*---------------------------------------------------------------------------*/
+static void gp_decompress_generic(
+	  uint8	 *compressed,
+	  int32	 compressedLen,
+	  uint8	 *uncompressed,
+	  int32	 uncompressedLen,
+	  PGFunction	 decompressor,
+	  CompressionState *compressionState,
+	  int64	 bufferCount
+	  )
+{
+	unsigned long compressedSize;
+	unsigned long uncompressedSize;
+	int32				 resultingUncompressedLen;
+
+	compressedSize = (unsigned long)compressedLen;
+	uncompressedSize = (unsigned long)uncompressedLen;
+
+	callCompressionActuator(decompressor,
+							(const void *)compressed,
+							(size_t)compressedLen,
+							(char*)uncompressed,
+							uncompressedLen,
+							&resultingUncompressedLen,
+							compressionState);
+
+	if (resultingUncompressedLen != uncompressedLen)
+		elog(ERROR,
+			 "Uncompress returned length %d which is different than the "
+			 "expected length %d (block count " INT64_FORMAT ")",
+			 resultingUncompressedLen,
+			 uncompressedLen,
+			 bufferCount);
+
+}  /* end gp_decompress_generic */
+
+/*---------------------------------------------------------------------------*/
 void gp_decompress_new(
 			uint8			*compressed,
 			int32			compressedLen,
 			uint8			*uncompressed,
 			int32			uncompressedLen,
 			CompressorType	compresstype,	/* the compressor type used */
+			PGFunction     decompressor,
+			CompressionState *compressionState,
 			qlz1_state_decompress *qlz1StateDecompress,
 			qlz3_state_decompress *qlz3StateDecompress,
 			int64			bufferCount)
@@ -315,26 +312,40 @@ void gp_decompress_new(
 	unsigned long uncompressedSize;
 
 	int32 resultingUncompressedLen;
-	
+
 	compressedSize = (unsigned long)compressedLen;
 	uncompressedSize = (unsigned long)uncompressedLen;
+
+	if (decompressor != NULL)
+	{
+		gp_decompress_generic( compressed
+						, compressedLen
+						, uncompressed
+						, uncompressedLen
+						, decompressor
+						, compressionState
+						, bufferCount
+		);
+
+	    return;
+	}
 
 	if(compresstype == COMPTYPE_ZLIB)
 	{
 		int res;
-		
+
 #ifndef HAVE_LIBZ
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("Don't have ZLIB on the system!")));			
-#else		
-		res = uncompress(uncompressed, &uncompressedSize, 
+				 errmsg("Don't have ZLIB on the system!")));
+#else
+		res = uncompress(uncompressed, &uncompressedSize,
 						 (Bytef *)compressed, compressedSize);
-	
+
 		if (res != Z_OK)
 		{
 			char *detail = NULL;
-			
+
 			switch(res)
 			{
 				case Z_MEM_ERROR:
@@ -351,27 +362,26 @@ void gp_decompress_new(
 						 res, uncompressedLen, compressedLen);
 					break;
 			}
-	
+
 			elog(ERROR,"ZLIB uncompress failed (detail: '%s', output buffer length %d, compressed length %d, (block count " INT64_FORMAT "))",
 				 detail, uncompressedLen, compressedLen, bufferCount);
-		}	
+		}
 #endif
 	}
 	else if(compresstype == COMPTYPE_QUICKLZ1)
 	{
 		//if (Debug_appendonly_guard_end_quicklz_scratch)
 		//	verifyQlzScratchGuard("qlz1_decompress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
-		
 		//if (Debug_appendonly_rezero_quicklz_decompress_scratch)
 		//	memset(qlzScratch, 0, qlzScratchLen);
 
-		uncompressedSize = qlz1_decompress((const char *)compressed, 
-										  uncompressed, 
+		uncompressedSize = qlz1_decompress((const char *)compressed,
+										  uncompressed,
 										  qlz1StateDecompress);
-		
+
 		//if (Debug_appendonly_guard_end_quicklz_scratch)
 		//	verifyQlzScratchGuard("qlz1_decompress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
-		
+
 	}
 	else
 	{
@@ -379,24 +389,23 @@ void gp_decompress_new(
 
 		//if (Debug_appendonly_guard_end_quicklz_scratch)
 		//	verifyQlzScratchGuard("qlz3_decompress (check before)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
-		
 		//if (Debug_appendonly_rezero_quicklz_decompress_scratch)
 		//	memset(qlzScratch, 0, qlzScratchLen);
 
-		uncompressedSize = qlz3_decompress((const char *)compressed, 
-										  uncompressed, 
+		uncompressedSize = qlz3_decompress((const char *)compressed,
+										  uncompressed,
 										  qlz3StateDecompress);
 
 		//if (Debug_appendonly_guard_end_quicklz_scratch)
 		//	verifyQlzScratchGuard("qlz3_decompress (check after)", qlzScratch, qlzScratchLen, qlzScratchGuardLen);
-	
+
 	}
-	
+
 	resultingUncompressedLen = (int32)uncompressedSize;
 
 	if (resultingUncompressedLen != uncompressedLen)
-		elog(ERROR, 
-			 "Uncompress returned length %d which is different than the " 
+		elog(ERROR,
+			 "Uncompress returned length %d which is different than the "
 			 "expected length %d (block count " INT64_FORMAT ")",
 			 resultingUncompressedLen,
 			 uncompressedLen,
@@ -409,7 +418,7 @@ gp_issuecompresserror(
 	int32			sourceLen)
 {
 	char *detail = NULL;
-	
+
 	switch(zlibCompressError)
 	{
 	case Z_MEM_ERROR:

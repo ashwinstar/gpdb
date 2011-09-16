@@ -169,7 +169,16 @@ endif
 # 3. (oid=...)
 upg2-setup:
 	rm -rf data/upg_catupgrade_42.sql
-	sed -e 's/with (.*/;/g' -e 's/\tablespace pg_global//g' -e 's/(oid=.*)//g' $(srcdir)/data/upgrade42/upg2_catupgrade_42.sql.in > data/upg_catupgrade_42.sql
+	perl -pi \
+		-e 's/(, )?(indexid|relid|reltype_oid|toast_oid|toast_index|toast_relid|toast_reltype|shared|CamelCase)=[0-9a-zA-Z]+//gi;' \
+		-e 's/oid=false//g;' \
+		-e 's/with \([^a-zA-Z]*\)//g;' \
+		-e 's/\(oid=[0-9]+\)//;' \
+		-e 's/tablespace pg_global//g;' \
+		-e 's/oids=true, /oids=true/;' \
+		-e 's/\(,/(/;' \
+ 		< $(srcdir)/data/upgrade42/upg2_catupgrade_42.sql.in \
+		> data/upg_catupgrade_42.sql
 	@gpstringsubs.pl data/upg_catupgrade_42.sql
 
 ugpart-setup:

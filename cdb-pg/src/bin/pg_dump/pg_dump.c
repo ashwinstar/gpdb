@@ -148,6 +148,9 @@ static int	column_inserts = 0;
 /* flag indicating whether or not this GP database supports partitioning */
 static bool gp_partitioning_available = false;
 
+/* flag indicating whether or not this GP database supports column encoding */
+static bool gp_attribute_encoding_available = false;
+
 static void help(const char *progname);
 static void expand_schema_name_patterns(SimpleStringList *patterns,
 							SimpleOidList *oids);
@@ -165,6 +168,7 @@ static void dumpDumpableObject(Archive *fout, DumpableObject *dobj);
 static void dumpNamespace(Archive *fout, NamespaceInfo *nspinfo);
 static void dumpType(Archive *fout, TypeInfo *tinfo);
 static void dumpBaseType(Archive *fout, TypeInfo *tinfo);
+static void dumpTypeStorageOptions(Archive *fout, TypeStorageOptions *tstorageoptions);
 static void dumpDomain(Archive *fout, TypeInfo *tinfo);
 static void dumpCompositeType(Archive *fout, TypeInfo *tinfo);
 static void dumpShellType(Archive *fout, ShellTypeInfo *stinfo);
@@ -216,6 +220,7 @@ static const char *convertOperatorReference(const char *opr);
 static void selectSourceSchema(const char *schemaName);
 static bool testGPbackend(void);
 static bool testPartitioningSupport(void);
+static bool testAttributeEncodingSupport(void);
 static char *getFormattedTypeName(Oid oid, OidOptions opts);
 static const char *fmtQualifiedId(const char *schema, const char *id);
 static bool hasBlobs(Archive *AH);
@@ -696,6 +701,11 @@ main(int argc, char **argv)
 	 * Remember whether or not this GP database supports partitioning.
 	 */
 	gp_partitioning_available = testPartitioningSupport();
+
+	/*
+	 * Remember whether or not this GP database supports column encoding.
+	 */
+	gp_attribute_encoding_available = testAttributeEncodingSupport();
 
 	/* Expand schema selection patterns into OID lists */
 	if (schema_include_patterns.head != NULL)
@@ -2096,6 +2106,85 @@ getTypes(int *numTypes)
 
 	return tinfo;
 }
+
+
+
+/*
+ * getTypeStorageOptions:
+ *	  read all types with storage options in the system catalogs and return them in the
+ * TypeStorageOptions* structure
+ *
+ *	numTypes is set to the number of types with storage options read in
+ *
+ */
+TypeStorageOptions *
+getTypeStorageOptions(int *numTypes)
+{
+	PGresult   *res;
+	int			ntups;
+	int			i;
+	PQExpBuffer query = createPQExpBuffer();
+	TypeStorageOptions   *tstorageoptions;
+	int			i_oid;
+	int			i_typname;
+	int			i_typnamespace;
+	int			i_typoptions;
+	int			i_rolname;
+
+	if (gp_attribute_encoding_available == false)
+	{
+		numTypes = 0;
+		tstorageoptions = (TypeStorageOptions *) malloc(0);
+		return tstorageoptions;
+	}
+
+	/* Make sure we are in proper schema */
+	selectSourceSchema("pg_catalog");
+
+	appendPQExpBuffer(query, "SELECT "
+			"  t.typname AS typname"
+			", t.oid AS oid"
+			", t.typnamespace AS typnamespace"
+			", (%s typowner) as rolname"
+			", array_to_string(a.typoptions, ', ') AS typoptions "
+			" FROM pg_type AS t "
+			" INNER JOIN pg_catalog.pg_type_encoding a ON a.typid = t.oid"
+			" WHERE t.typisdefined = 't'", username_subquery);
+
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	ntups = PQntuples(res);
+
+	tstorageoptions = (TypeStorageOptions *) malloc(ntups * sizeof(TypeStorageOptions));
+
+	i_typname = PQfnumber(res, "typname");
+	i_oid = PQfnumber(res, "oid");
+	i_typnamespace = PQfnumber(res, "typnamespace");
+	i_typoptions = PQfnumber(res, "typoptions");
+	i_rolname = PQfnumber(res, "rolname");
+
+	for (i = 0; i < ntups; i++)
+	{
+		tstorageoptions[i].dobj.objType = DO_TYPE_STORAGE_OPTIONS;
+		AssignDumpId(&tstorageoptions[i].dobj);
+		tstorageoptions[i].dobj.name = strdup(PQgetvalue(res, i, i_typname));
+		tstorageoptions[i].dobj.catId.oid = atooid(PQgetvalue(res, i, i_oid));
+		tstorageoptions[i].dobj.namespace = findNamespace(atooid(PQgetvalue(res, i, i_typnamespace)),tstorageoptions[i].dobj.catId.oid);
+		tstorageoptions[i].typoptions = strdup(PQgetvalue(res, i, i_typoptions));
+		tstorageoptions[i].rolname = strdup(PQgetvalue(res, i, i_rolname));
+	}
+
+	*numTypes = ntups;
+
+	PQclear(res);
+
+	destroyPQExpBuffer(query);
+
+	return tstorageoptions;
+}
+
+
 
 /*
  * getOperators:
@@ -3716,6 +3805,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 	int			i_attndims;
 	int			i_attbyval;
 	int			i_attalign;
+	int			i_attencoding;
 	PGresult   *res;
 	int			ntups;
 	bool		hasdefaults;
@@ -3758,10 +3848,14 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 						  "a.attlen, a.attndims, a.attbyval, a.attalign, "		/* Added for dropped
 																				 * column reconstruction */
 				  "a.attnotnull, a.atthasdef, a.attisdropped, a.attislocal, "
-				   "pg_catalog.format_type(t.oid,a.atttypmod) as atttypname "
-			 "from pg_catalog.pg_attribute a left join pg_catalog.pg_type t "
-						  "on a.atttypid = t.oid "
-						  "where a.attrelid = '%u'::pg_catalog.oid "
+				   "pg_catalog.format_type(t.oid,a.atttypmod) as atttypname ");
+		if (gp_attribute_encoding_available)
+			appendPQExpBuffer(q, ", pg_catalog.array_to_string(e.attoptions, ',') as attencoding ");
+		appendPQExpBuffer(q, "from pg_catalog.pg_attribute a left join pg_catalog.pg_type t "
+						  "on a.atttypid = t.oid ");
+		if (gp_attribute_encoding_available)
+			appendPQExpBuffer(q, "	 LEFT OUTER JOIN pg_catalog.pg_attribute_encoding e ON e.attrelid = a.attrelid AND e.attnum = a.attnum ");
+		appendPQExpBuffer(q, "where a.attrelid = '%u'::pg_catalog.oid "
 						  "and a.attnum > 0::pg_catalog.int2 "
 						  "order by a.attrelid, a.attnum",
 						  tbinfo->dobj.catId.oid);
@@ -3786,6 +3880,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 		i_attndims = PQfnumber(res, "attndims");
 		i_attbyval = PQfnumber(res, "attbyval");
 		i_attalign = PQfnumber(res, "attalign");
+		i_attencoding = PQfnumber(res, "attencoding");
 
 		tbinfo->numatts = ntups;
 		tbinfo->attnames = (char **) malloc(ntups * sizeof(char *));
@@ -3801,6 +3896,7 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 		tbinfo->inhAttrs = (bool *) malloc(ntups * sizeof(bool));
 		tbinfo->inhAttrDef = (bool *) malloc(ntups * sizeof(bool));
 		tbinfo->inhNotNull = (bool *) malloc(ntups * sizeof(bool));
+		tbinfo->attencoding = (char **)malloc(ntups * sizeof(char *));
 		hasdefaults = false;
 
 		for (j = 0; j < ntups; j++)
@@ -3828,6 +3924,12 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 			tbinfo->inhAttrs[j] = false;
 			tbinfo->inhAttrDef[j] = false;
 			tbinfo->inhNotNull[j] = false;
+
+			/* column storage attributes */
+			if (gp_attribute_encoding_available && !PQgetisnull(res, j, i_attencoding))
+				tbinfo->attencoding[j] = strdup(PQgetvalue(res, j, i_attencoding));
+			else
+				tbinfo->attencoding[j] = NULL;
 		}
 
 		PQclear(res);
@@ -4448,6 +4550,10 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			if (!postDataSchemaOnly)
 			dumpType(fout, (TypeInfo *) dobj);
 			break;
+		case DO_TYPE_STORAGE_OPTIONS:
+			if (!postDataSchemaOnly)
+				dumpTypeStorageOptions(fout, (TypeStorageOptions *) dobj);
+			break;
 		case DO_SHELL_TYPE:
 			if (!postDataSchemaOnly)
 			dumpShellType(fout, (ShellTypeInfo *) dobj);
@@ -4661,8 +4767,8 @@ dumpBaseType(Archive *fout, TypeInfo *tinfo)
 					  "typanalyze::pg_catalog.oid as typanalyzeoid, "
 					  "typdelim, typbyval, typalign, typstorage, "
 					  "pg_catalog.pg_get_expr(typdefaultbin, 'pg_catalog.pg_type'::pg_catalog.regclass) as typdefaultbin, typdefault "
-					  "FROM pg_catalog.pg_type "
-					  "WHERE oid = '%u'::pg_catalog.oid",
+						"FROM pg_catalog.pg_type "
+						"WHERE oid = '%u'::pg_catalog.oid",
 					  tinfo->dobj.catId.oid);
 
 	res = PQexec(g_conn, query->data);
@@ -4800,6 +4906,47 @@ dumpBaseType(Archive *fout, TypeInfo *tinfo)
 	destroyPQExpBuffer(delq);
 	destroyPQExpBuffer(query);
 }
+
+/*
+ * dumpTypeStorageOptions
+ *     writes out to fout the ALTER TYPE queries to set default storage options for type
+ */
+static void
+dumpTypeStorageOptions(Archive *fout, TypeStorageOptions *tstorageoptions)
+{
+	PQExpBuffer q;
+	PQExpBuffer delq;
+
+	q = createPQExpBuffer();
+	delq = createPQExpBuffer();
+
+	appendPQExpBuffer(q, "ALTER TYPE %s ",
+					  fmtId(tstorageoptions->dobj.name));
+	appendPQExpBuffer(q, " SET DEFAULT ENCODING (%s);\n", tstorageoptions->typoptions);
+
+	ArchiveEntry(	fout
+	            , tstorageoptions->dobj.catId                 /* catalog ID  */
+	            , tstorageoptions->dobj.dumpId                /* dump ID     */
+	            , tstorageoptions->dobj.name                  /* type name   */
+	            , tstorageoptions->dobj.namespace->dobj.name  /* name space  */
+	            , NULL                                        /* table space */
+	            , tstorageoptions->rolname                    /* owner name  */
+	            , false                                       /* with oids   */
+	            , "TYPE STORAGE OPTIONS"                      /* Desc        */
+	            , q->data                                     /* ALTER...    */
+	            , ""                                          /* Del         */
+	            , NULL                                        /* Copy        */
+	            , NULL                                        /* Deps        */
+	            , 0                                           /* num Deps    */
+	            , NULL                                        /* Dumper      */
+	            , NULL                                        /* Dumper Arg  */
+	            );
+
+	destroyPQExpBuffer(q);
+	destroyPQExpBuffer(delq);
+
+
+}  /* end dumpTypeStorageOptions */
 
 /*
  * dumpDomain
@@ -6884,7 +7031,6 @@ dumpExtProtocol(Archive *fout, ExtProtInfo *ptcinfo)
 		appendPQExpBuffer(q, " validatorfunc = '%s'",
 						  protoFuncs[VALIDFN_IDX].name);
 	}
-	
 	appendPQExpBuffer(q, ");\n");
 
 	appendPQExpBuffer(delq, "DROP PROTOCOL %s;\n",
@@ -7679,6 +7825,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				appendPQExpBuffer(q, "%s",
 								  tbinfo->atttypnames[j]);
 
+				/* Column Storage attributes */
+				if (tbinfo->attencoding[j] != NULL)
+					appendPQExpBuffer(q, " ENCODING (%s)",
+										tbinfo->attencoding[j]);
+
 				/*
 				 * Default value --- suppress if inherited
 				 * and not to be printed separately.
@@ -7906,10 +8057,10 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		 * An inherited constraint may be dropped from a child table.  While
 		 * this arguably severs the inheritance contract between the child and
 		 * the parent, the current pg_constraint content doesn't track
-		 * inherited/shared/disjoint constraints of a child. 
+		 * inherited/shared/disjoint constraints of a child.
 		 * the INHERITS clause is used on a CREATE
 		 * TABLE statement to re-establish the inheritance relationship and
-		 * "recovers" the dropped constraint(s). 
+		 * "recovers" the dropped constraint(s).
 		 */
 		if (numParents > 0)
 			DetectChildConstraintDropped(tbinfo, q);
@@ -8971,6 +9122,33 @@ testPartitioningSupport(void)
 	query = createPQExpBuffer();
 
 	appendPQExpBuffer(query, "SELECT 1 FROM pg_class WHERE relname = 'pg_partition' and relnamespace = 11;");
+	res = PQexec(g_conn, query->data);
+	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+	isSupported = (PQntuples(res) == 1);
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+
+	return isSupported;
+}
+
+
+
+/*
+ * testAttributeEncodingSupport - tests whether or not the current GP
+ * database includes support for column encoding.
+ */
+static bool
+testAttributeEncodingSupport(void)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	bool		isSupported;
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query, "SELECT 1 from pg_catalog.pg_class where relnamespace = 11 and relname  = 'pg_attribute_encoding';");
 	res = PQexec(g_conn, query->data);
 	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
 

@@ -31,7 +31,7 @@
  * AOCSInsertDescData is used for inserting data into append-only columnar
  * relations. It serves an equivalent purpose as AOCSScanDescData
  * only that the later is used for scanning append-only columnar
- * relations. 
+ * relations.
  */
 struct DatumStream;
 struct AOCSFileSegInfo;
@@ -71,7 +71,7 @@ typedef struct AOCSScanDescData
 									 *  as THEY MAY BE DIFFERENT.
 									 *  See code in aocsam.c's aocs_beginscan for more info
  									 */
-	                                 
+
 	Index       aos_scanrelid;                  /* index */
 
     int         total_seg;
@@ -89,13 +89,13 @@ typedef struct AOCSScanDescData
     ItemPointerData cdb_fake_ctid;
     int64 total_row;
     int64 cur_seg_row;
-	
+
 	AppendOnlyEntry *aoEntry;
 
 	/*
 	 * The block directory info.
 	 *
-	 * For CO tables that are upgraded from pre-3.4 release, the block directory 
+	 * For CO tables that are upgraded from pre-3.4 release, the block directory
 	 * built during the first index creation.
 	 */
 	bool buildBlockDirectory;
@@ -106,7 +106,7 @@ typedef struct AOCSScanDescData
 typedef AOCSScanDescData *AOCSScanDesc;
 
 /*
- * Used for fetch individual tuples from specified by TID of append only relations 
+ * Used for fetch individual tuples from specified by TID of append only relations
  * using the AO Block Directory.
  */
 typedef struct AOCSFetchDescData
@@ -118,7 +118,7 @@ typedef struct AOCSFetchDescData
 	int				totalSegfiles;
 	struct AOCSFileSegInfo **segmentFileInfo;
 	bool			*proj;
-	
+
 	char			*segmentFileName;
 	int				segmentFileNameMaxLen;
 	char            *basepath;
@@ -129,7 +129,7 @@ typedef struct AOCSFetchDescData
 	AppendOnlyBlockDirectory	blockDirectory;
 
 	DatumStreamFetchDesc *datumStreamFetchDesc;
-	
+
 	AppendOnlyEntry *aoEntry;
 
 	int64	skipBlockCount;
@@ -153,7 +153,7 @@ static inline Oid aocs_insert(AOCSInsertDesc idesc, TupleTableSlot *slot)
 {
 	Oid oid;
 	AOTupleId aotid;
-	
+
 	slot_getallattrs(slot);
 	oid = aocs_insert_values(idesc, slot_get_values(slot), slot_get_isnull(slot), &aotid);
 	slot_set_ctid(slot, (ItemPointer)&aotid);

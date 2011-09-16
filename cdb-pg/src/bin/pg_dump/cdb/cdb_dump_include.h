@@ -54,6 +54,13 @@ extern bool g_gp_supportsPartitioning;
  */
 extern bool g_gp_supportsPartitionTemplates;
 
+
+/*
+ * Indicates whether or not the GPDB cluster supports column attributes.
+ */
+extern bool g_gp_supportsAttributeEncoding;
+
+
 /*
  * Indicates whether or not the GPDB cluster supports SQL/MED.
  * This boolean is used in cdb_dump_include.c to ignore sql/med

@@ -1818,6 +1818,7 @@ _readCreateStmt(const char ** str)
 	READ_BOOL_FIELD(is_add_part);
 	READ_OID_FIELD(ownerid);
 	READ_BOOL_FIELD(buildAoBlkdir);
+	READ_NODE_FIELD(attr_encodings);
 
 	local_node->policy = NULL;
 
@@ -1838,6 +1839,19 @@ _readCreateStmt(const char ** str)
 
 	READ_DONE();
 }
+
+static ColumnReferenceStorageDirective *
+_readColumnReferenceStorageDirective(const char **str)
+{
+	READ_LOCALS(ColumnReferenceStorageDirective);
+
+	READ_NODE_FIELD(column);
+	READ_BOOL_FIELD(deflt);
+	READ_NODE_FIELD(encoding);
+
+	READ_DONE();
+}
+
 
 static PartitionBy *
 _readPartitionBy(const char **str)
@@ -3512,6 +3526,16 @@ _readTableValueExpr(const char **str)
 	READ_DONE();
 }
 
+static AlterTypeStmt *
+_readAlterTypeStmt(const char **str)
+{
+	READ_LOCALS(AlterTypeStmt);
+
+	READ_NODE_FIELD(typname);
+	READ_NODE_FIELD(encoding);
+
+	READ_DONE();
+}
 
 static Node *
 _readValue(const char ** str, NodeTag nt)
@@ -3879,6 +3903,9 @@ readNodeBinary(const char ** str)
 
 			case T_CreateStmt:
 				return_value = _readCreateStmt(str);
+				break;
+			case T_ColumnReferenceStorageDirective:
+				return_value = _readColumnReferenceStorageDirective(str);
 				break;
 			case T_PartitionBy:
 				return_value = _readPartitionBy(str);
@@ -4249,6 +4276,10 @@ readNodeBinary(const char ** str)
 
 		case T_TableValueExpr:
 			return_value = _readTableValueExpr(str);
+			break;
+
+		case T_AlterTypeStmt:
+			return_value = _readAlterTypeStmt(str);
 			break;
 
 			default:
