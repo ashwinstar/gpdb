@@ -458,6 +458,7 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 			char        *type, *typetokens = NULL;
 			char        *name, *nametokens = NULL;
 			char        *mode, *modetokens = NULL;
+			boolean     name_end, mode_end;
 				
 			value = PQgetvalue(result, 0, 0);   /* Column 0: proretset */
 			retset = (value[0] == 't');
@@ -562,6 +563,8 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 					name = strtok_r(NULL, ",", &nametokens);
 					mode = strtok_r(NULL, ",", &modetokens);
 				}
+				name_end = (NULL == name);
+				mode_end = (NULL == mode);
 
 				i = 0;
 				while (type)
@@ -616,12 +619,28 @@ void lookup_function_in_catalog(PGconn *conn, mapred_document_t *doc,
 					
 					/* Procede to the next parameter */
 					type = strtok_r(NULL, ",", &typetokens);
-					name = strtok_r(NULL, ",", &nametokens);
-					mode = strtok_r(NULL, ",", &modetokens);
-					while (mode && strcmp(mode, "i") && strcmp(mode, "b"))
+					if (!name_end)
 					{
 						name = strtok_r(NULL, ",", &nametokens);
+						name_end = (NULL == name);
+					}
+					if (!mode_end)
+					{
 						mode = strtok_r(NULL, ",", &modetokens);
+						mode_end = (NULL == mode);
+					}
+					while (mode && strcmp(mode, "i") && strcmp(mode, "b"))
+					{
+						if (!name_end)
+						{
+							name = strtok_r(NULL, ",", &nametokens);
+							name_end = (NULL == name);
+						}
+						if (!mode_end)
+						{
+							mode = strtok_r(NULL, ",", &modetokens);
+							mode_end = (NULL == mode);
+						}
 					}
 				}
 
