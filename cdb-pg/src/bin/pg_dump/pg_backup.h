@@ -180,6 +180,8 @@ extern Archive *OpenArchive(const char *FileSpec, const ArchiveFormat fmt);
 extern Archive *CreateArchive(const char *FileSpec, const ArchiveFormat fmt,
 			  const int compression);
 
+extern int updateArchiveWithDDBoostFile(Archive *AH, const char *ddBoostFile);
+
 /* The --list option */
 extern void PrintTOCSummary(Archive *AH, RestoreOptions *ropt);
 

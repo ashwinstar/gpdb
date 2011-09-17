@@ -26,7 +26,6 @@
 #include "cdb_dump.h"
 #include "cdb_dump_include.h"
 
-
 /* This is necessary on platforms where optreset variable is not available.
  * Look at "man getopt" documentation for details.
  */
@@ -110,6 +109,12 @@ static pthread_cond_t MyCondVar2 = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t MyMutex2 = PTHREAD_MUTEX_INITIALIZER;
 static bool g_b_SendCancelMessage = false;
 static const char *pszAgent = "gp_dump_agent";
+
+
+#ifdef USE_DDBOOST
+#include "ddp_api.h"
+static int dd_boost_enabled = 0;
+#endif
 
 int
 main(int argc, char **argv)
@@ -678,6 +683,13 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 	int			lenCmdLineParms;
 	int			i;
 
+#ifdef USE_DDBOOST
+	char 		*ddboost_user = NULL;
+	char		*ddboost_passwd = NULL;
+	char		*ddboost_hostname = NULL;
+	char		*ddboost_directory = NULL;
+#endif
+
 
 	static struct option long_options[] =
 	{
@@ -718,7 +730,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"attribute-inserts", no_argument, &column_inserts, 1},
 		{"column-inserts", no_argument, &column_inserts, 1},
 		{"disable-triggers", no_argument, &disable_triggers, 1},
-	    {"inserts", no_argument, &dump_inserts, 1},
+	    	{"inserts", no_argument, &dump_inserts, 1},
 		{"gp-catalog-skip", no_argument, &skipcat, 1},
 
 		/*
@@ -731,6 +743,13 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"gp-r", required_argument, NULL, 4},
 		{"gp-s", required_argument, NULL, 5},
 		{"rsyncable", no_argument, &rsyncable, 1},
+
+
+#ifdef USE_DDBOOST
+		{"gp-ddb-user", required_argument, NULL, 6},
+		{"gp-ddb-passwd", required_argument, NULL, 7},
+		{"gp-ddb-hostname", required_argument, NULL, 8},
+#endif
 		{NULL, 0, NULL, 0}
 	};
 
@@ -1015,6 +1034,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 			case 3:
 				/* gp-d backup remote directory */
 				pInputOpts->pszBackupDirectory = Safe_strdup(optarg);
+#ifdef USE_DDBOOST
+				ddboost_directory = Safe_strdup(optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("dd_boost_dir", ddboost_directory, pInputOpts->pszPassThroughParms);
+#endif
 				break;
 
 			case 4:
@@ -1040,7 +1063,26 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 					goto cleanup;
 				}
 				break;
-
+#ifdef USE_DDBOOST
+			case 6:
+				/* DDBoost user name */
+				ddboost_user = Safe_strdup(optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-user", ddboost_user, pInputOpts->pszPassThroughParms);
+				dd_boost_enabled = 1;
+				break;
+			case 7:
+				/* DDBoost password */
+				ddboost_passwd = Safe_strdup(optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-passwd", ddboost_passwd, pInputOpts->pszPassThroughParms);
+				dd_boost_enabled = 1;
+				break;
+			case 8:
+				/* DDBoost hostname */
+				ddboost_hostname = Safe_strdup(optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-hostname", optarg, pInputOpts->pszPassThroughParms);
+				dd_boost_enabled = 1;
+				break;
+#endif
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);
 				goto cleanup;
@@ -1065,6 +1107,10 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-catalog-skip", NULL, pInputOpts->pszPassThroughParms);
 	if (rsyncable)
 		pInputOpts->pszPassThroughParms = addPassThroughLongParm("rsyncable", NULL, pInputOpts->pszPassThroughParms);
+#ifdef USE_DDBOOST
+	if (dd_boost_enabled)
+		pInputOpts->pszPassThroughParms = addPassThroughLongParm("dd_boost_enabled", NULL, pInputOpts->pszPassThroughParms);
+#endif
 
 	 /* Get database name from command line */
 	if (optind < argc)
@@ -1148,6 +1194,28 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		goto cleanup;
 	}
 
+#ifdef USE_DDBOOST
+	if (dd_boost_enabled)
+	{
+		if (ddboost_user == NULL)
+		{
+			mpp_err_msg_cache(logError, progname,"DDboost login username missing\n");
+			goto cleanup;
+		}
+
+		if (ddboost_passwd == NULL)
+		{
+			mpp_err_msg_cache(logError, progname,"DDboost login password missing\n");
+                        goto cleanup;
+		}
+
+		if (ddboost_hostname == NULL)
+		{
+			mpp_err_msg_cache(logError, progname,"DDboost login hostname missing\n");
+                        goto cleanup;
+		}	
+	}
+#endif
 	bRtn = true;
 
 	cleanup:
@@ -2014,3 +2082,4 @@ threadProc(void *arg)
 
 	return (NULL);
 }
+

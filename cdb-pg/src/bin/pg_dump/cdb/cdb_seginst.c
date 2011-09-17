@@ -437,6 +437,7 @@ GetRestoreSegmentDatabaseArray(PGconn *pConn,
 		targetSegDB->pszDBName = PQdb(pConn);
 		targetSegDB->pszDBUser = PQuser(pConn);
 		targetSegDB->pszDBPswd = PQpass(pConn);
+		targetSegDB->content = contentid;
 
 		sourceSegDB = &restorePairAr->pData[x].segdb_source;
 		sourceSegDB->dbid = targetSegDB->dbid;
