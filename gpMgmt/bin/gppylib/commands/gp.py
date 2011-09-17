@@ -671,6 +671,7 @@ class GpStart(Command):
         self.cmdStr="$GPHOME/bin/gpstart -a"
         if masterOnly:
             self.cmdStr += " -m"
+            self.propagate_env_map['GPSTART_INTERNAL_MASTER_ONLY'] = 1
         if restricted:
             self.cmdStr += " -R"
         if verbose or logging_is_verbose():
@@ -688,6 +689,7 @@ class NewGpStart(Command):
         self.cmdStr="$GPHOME/bin/gpstart -a"
         if masterOnly:
             self.cmdStr += " -m"
+            self.propagate_env_map['GPSTART_INTERNAL_MASTER_ONLY'] = 1
         if restricted:
             self.cmdStr += " -R"
         if verbose or logging_is_verbose():
@@ -1361,42 +1363,11 @@ def createTempDirectoryName(masterDataDirectory, tempDirPrefix):
                                 datetime.datetime.now().strftime('%m%d%Y'),
                                 os.getpid())
 
-def get_dbid(datadir, host=None):
-    return get_some_dbid(datadir, "dbid", host)
 
-def get_standby_dbid(datadir, host=None):
-    dbid = get_some_dbid(datadir, "standby_dbid", host)
-    # dbid may be None
-    if dbid == None:
-        dbid = 0
-    return dbid
-
-def remove_standby_dbid(gp_dbid_file):
-    cmd = InlinePerlReplace('remove standby dbid',
-                                 'standby_dbid = \d+\\n',
-                                 '',
-                                 gp_dbid_file)
-    cmd.run(validateAfter=True)
-
-def get_some_dbid(datadir, varname, host=None):
-    import re
-    try:
-        file = os.path.join(datadir, "gp_dbid")
-        data = createFromSingleHostFile(file)
-        RE = re.compile(r"%s\s*=\s*(\d+)" % varname)
-    except Exception, e:
-        raise Exception("Failed to read %s from %s. %s" % (varname, file, str(e)))
-
-    dbid = None
-    for l in data:
-        if not l: continue
-        m = re.match(RE, l)
-        if m:
-            (dbid,) = m.groups()
-            break
-
-    return dbid
-
+#-------------------------------------------------------------------------
+# gp_dbid methods moved to gp_dbid.py, but this class was left here
+# to avoid changing gpmigrator and gpmigrator_mirror (which is the only caller).  
+#
 
 class GpCreateDBIdFile(Command):
     def __init__(self, name, directory, dbid, verbose=False, ctxt=LOCAL, remoteHost=None):

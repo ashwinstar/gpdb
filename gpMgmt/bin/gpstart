@@ -33,6 +33,7 @@ try:
     from gppylib.operations.startSegments import *
     from gppylib.gpcoverage import GpCoverage
     from gppylib.utils import TableLogger
+    from gppylib.gp_dbid import GpDbidFile
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -346,12 +347,12 @@ class GpStart:
     def _startMaster(self):
         logger.info("Starting Master instance in admin mode")
 
-        dbid = gp.get_dbid(datadir=self.master_datadir)
-        standby_dbid = gp.get_standby_dbid(datadir=self.master_datadir)
+        d = GpDbidFile(self.master_datadir)
+        d.read_gp_dbid()
 
         numContentsInCluster = 0
         cmd=gp.MasterStart('master in utility mode',self.master_datadir,
-                           self.port,dbid,standby_dbid,
+                           self.port, d.dbid, d.standby_dbid or 0,
                            numContentsInCluster,
                            wrapper=self.wrapper, wrapper_args=self.wrapper_args,
                            utilityMode=True,

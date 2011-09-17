@@ -26,9 +26,10 @@ try:
     from gppylib.commands import unix, gp, pg
     from gppylib.db import dbconn
     from gppylib.gpparseopts import OptParser, OptChecker, OptionGroup, SUPPRESS_HELP
-    from gppylib.gplog import get_default_logger, setup_tool_logging, enable_verbose_logging
+    from gppylib.gplog import get_default_logger, setup_tool_logging, enable_verbose_logging, get_logger_if_verbose
     from gppylib import gparray
     from gppylib.userinput import ask_yesno
+    from gppylib.gp_dbid import writeGpDbidFile
 except ImportError, e_:
     sys.exit('ERROR: Cannot import modules.  Please check that you '
              'have sourced greenplum_path.sh.  Detail: ' + str(e_))
@@ -388,18 +389,13 @@ def update_config():
 
 #-------------------------------------------------------------------------
 def update_gpdbid_file(array):
-    """Updates to gp_dbid file in the data directory to reflect the standby
-    masters dbid."""
+    """Updates to gp_dbid file in the data directory to reflect the standby masters dbid."""
     
-    standby_dbid = array.standbyMaster.getSegmentDbId()
     standby_datadir = os.path.normpath(array.standbyMaster.getSegmentDataDirectory())
-    gp_dbid_file = os.path.join(standby_datadir, 'gp_dbid')
-    gp.remove_standby_dbid(gp_dbid_file)
-    cmd = unix.InlinePerlReplace('update gp_dbid file',
-                                 'dbid = %s' % standby_dbid,
-                                 'dbid = 1',
-                                 gp_dbid_file)
-    cmd.run(validateAfter=True)
+
+    # MPP-13245, use single mechanism to manage gp_dbid file instead of ad-hoc replace
+    writeGpDbidFile(standby_datadir, 1, get_logger_if_verbose())
+
 
 #-------------------------------------------------------------------------
 def create_new_standby_master(options):

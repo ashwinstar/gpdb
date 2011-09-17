@@ -182,6 +182,10 @@ def log_literal(logger, lvl, msg):
     
     return
     
+def get_logger_if_verbose():
+    if logging_is_verbose():
+        return get_default_logger()
+    return None
 
     
 #------------------------------- Private --------------------------------    

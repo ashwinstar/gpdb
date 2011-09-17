@@ -13,7 +13,8 @@ from gppylib.commands.pg import DbStatus
 from gppylib import gplog
 from gppylib.commands.base import *
 from gppylib.gparray import GpDB
-from gppylib.utils import canStringBeParsedAsInt, writeGpDbidFile
+from gppylib.utils import canStringBeParsedAsInt
+from gppylib.gp_dbid import writeGpDbidFile
 from time import sleep
 from gppylib.operations.buildMirrorSegments import gDatabaseDirectories, gDatabaseFiles
 
@@ -142,7 +143,7 @@ class ConfExpSegCmd(Command):
         try:
             if self.writeGpDbidFileOnly:
                 logger.info("create gp_dbid file for segment")
-                writeGpDbidFile(self.datadir, self.dbid)
+                writeGpDbidFile(self.datadir, self.dbid, logger=gplog.get_logger_if_verbose())
             else:
                 if self.newseg:
                     # make directories, extract template update postgresql.conf
@@ -189,7 +190,8 @@ class ConfExpSegCmd(Command):
                         self.fixupFilespaces()
 
                     logger.info("create gp_dbid file for segment")
-                    writeGpDbidFile(self.datadir, self.dbid)
+                    writeGpDbidFile(self.datadir, self.dbid, logger=gplog.get_logger_if_verbose())
+
 
                     logger.info("Updating %s/postgresql.conf" % self.datadir)
                     modifyPostgresqlConfCmd = ModifyPostgresqlConfSetting('Updating %s/postgresql.conf' % self.datadir,

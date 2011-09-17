@@ -16,6 +16,7 @@ try:
     from gppylib.db import dbconn
     from gppylib.db import catalog
     from gppylib.userinput import *
+    from gppylib.gp_dbid import GpDbidFile
 except ImportError, e:
     sys.exit('ERROR: Cannot import modules.  Please check that you '
              'have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -650,20 +651,6 @@ the same location on both the master and standby master.
     return standby_filespace_map
 
 #-------------------------------------------------------------------------
-
-# Standby is a GpDB describing the standby
-def put_standbydbid(master_dir, standby):
-    dbid_file = os.path.join(master_dir, "gp_dbid")
-    unix.Chmod('Make writable', dbid_file, '600').run(validateAfter=True)
-    dbid = standby.getSegmentDbId()
-    string = "standby_dbid = %i\n" % dbid
-    cmd = unix.AppendTextToFile('append to gp_dbid file',
-                                os.path.join(master_dir, "gp_dbid"),
-                                string)
-    cmd.run(validateAfter=True)
-    unix.Chmod('Make read only', dbid_file, '400').run(validateAfter=True)
-
-#-------------------------------------------------------------------------
 def add_standby_to_catalog(options, standby_filespace_map):
     """Adds the standby to the catalog."""
     
@@ -687,8 +674,10 @@ def add_standby_to_catalog(options, standby_filespace_map):
         array = gparray.GpArray.initFromCatalog(dburl, utility=True)
         stop_master()
 
-        put_standbydbid(array.master.getSegmentDataDirectory(),
-                        array.standbyMaster)
+        # MPP-13245, store the new standby_dbid in the gp_dbid file
+        d = GpDbidFile( array.master.getSegmentDataDirectory(), do_read=True, logger=get_logger_if_verbose() )
+        d.standby_dbid = int(array.standbyMaster.getSegmentDbId())
+        d.write_gp_dbid()
 
         return array
     except Exception, ex:
@@ -715,7 +704,11 @@ def remove_standby_from_catalog(options, array):
         logger.info('Database catalog updated successfully.')
         stop_master()
 
-        gp.remove_standby_dbid(array.master.getSegmentDataDirectory())
+        # MPP-13245, remove the standby_dbid from the gp_dbid file
+        d = GpDbidFile( array.master.getSegmentDataDirectory(), do_read=True, logger=get_logger_if_verbose() )
+        d.standby_dbid = None
+        d.write_gp_dbid()
+
     except Exception, ex:
         logger.error('Failed to remove standby from master catalog.')
         stop_master()
@@ -793,11 +786,13 @@ def update_gpdbid_file(options, array):
     standby_dbid = array.standbyMaster.getSegmentDbId()
     standby_datadir = os.path.normpath(array.standbyMaster.getSegmentDataDirectory())
     try:
-        cmd = unix.InlinePerlReplace('update gp_dbid file', 'dbid = 1',
-                                     'dbid = %s' % standby_dbid,
-                                     standby_datadir + '/gp_dbid',
-                                     ctxt=base.REMOTE,
-                                     remoteHost=options.standby_host)
+        # MPP-13245, use single mechanism to manage gp_dbid file instead of ad-hoc replace
+        cmd = gp.GpCreateDBIdFile('update gp_dbid file',
+                                  standby_datadir,
+                                  standby_dbid,
+                                  ctxt=base.REMOTE,
+                                  remoteHost=options.standby_host)
+
         cmd.run(validateAfter=True)
     except Exception, ex:
         logger.error('Failed to update standby master\'s gp_dbid file.')

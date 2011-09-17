@@ -14,9 +14,10 @@ the database.
 import os
 
 from optparse            import OptionGroup
-from gppylib.utils       import writeGpDbidFile
+from gppylib.gp_dbid     import writeGpDbidFile
 from gppylib.mainUtils   import *
 from gppylib.gpparseopts import OptParser, OptChecker
+from gppylib.gplog       import get_logger_if_verbose
 
 __help__ = [""]
 
@@ -31,7 +32,7 @@ class GpSetDBId:
         self.__dbid      = options.dbid
 
     def run(self):
-        writeGpDbidFile(self.__directory, self.__dbid)
+        writeGpDbidFile(self.__directory, self.__dbid, logger=get_logger_if_verbose())
 
     def cleanup(self):
         pass
