@@ -35,26 +35,24 @@ CREATEDB_PREFIX = 'gp_cdatabase_1_1_'
 # TODO: use CLI-agnostic custom exceptions instead of ExceptionNoStackTraceNeeded
 
 class RestoreDatabase(Operation):
-    def __init__(self, restore_timestamp, no_analyze, drop_db, restore_global, master_datadir, master_port, ddboost): 
+    def __init__(self, restore_timestamp, no_analyze, drop_db, restore_global, master_datadir, master_port): 
         self.restore_timestamp = restore_timestamp
         self.no_analyze = no_analyze
         self.drop_db = drop_db
         self.restore_global = restore_global
         self.master_datadir = master_datadir
         self.master_port = master_port
-        self.ddboost = ddboost
     def execute(self): 
         (restore_timestamp, restore_db, compress) = ValidateRestoreDatabase(restore_timestamp = self.restore_timestamp,
                                                                             master_datadir = self.master_datadir,
-                                                                            master_port = self.master_port,
-                                                                            ddboost = self.ddboost).run()
+                                                                            master_port = self.master_port).run()
         if self.drop_db:
             self._process_createdb(restore_timestamp, restore_db, self.master_datadir, self.master_port)
         
         if self.restore_global:
             self._restore_global(restore_timestamp, self.master_datadir)
 
-        restore_line = self._build_restore_line(restore_timestamp, restore_db, compress, self.master_port, self.ddboost)
+        restore_line = self._build_restore_line(restore_timestamp, restore_db, compress, self.master_port)
         logger.info(restore_line)
         Command('Invoking gp_restore', restore_line).run()
 
@@ -107,7 +105,7 @@ class RestoreDatabase(Operation):
         createdb_file = os.path.join(master_datadir, DUMP_DIR, restore_timestamp[0:8], "%s%s" % (CREATEDB_PREFIX, restore_timestamp))
         logger.info('Invoking %s' % createdb_file)
         Psql('Invoking schema dump', filename=createdb_file).run(validateAfter=True)
-    def _build_restore_line(self, restore_timestamp, restore_db, compress, master_port, ddboost): 
+    def _build_restore_line(self, restore_timestamp, restore_db, compress, master_port): 
         user = getpass.getuser()
         hostname = socket.gethostname()    # TODO: can this just be localhost? bash was using `hostname`
         path = os.path.join(DUMP_DIR, restore_timestamp[0:8])
@@ -116,45 +114,35 @@ class RestoreDatabase(Operation):
         if compress:
             restore_line += " --gp-c"
         restore_line += " -d %s" % restore_db
-        if self.ddboost is not None:
-            restore_line += " --gp-ddb-host=%s" % self.ddboost['host']
-            restore_line += " --gp-ddb-user=%s" % self.ddboost['user']
-            restore_line += " --gp-ddb-passwd=%s" % self.ddboost['passwd']
         return restore_line
 
 
 
 class ValidateRestoreDatabase(Operation):
     """ TODO: add other checks. check for _process_createdb? """
-    def __init__(self, restore_timestamp, master_datadir, master_port, ddboost):
+    def __init__(self, restore_timestamp, master_datadir, master_port):
         self.restore_timestamp = restore_timestamp
         self.master_datadir = master_datadir
         self.master_port = master_port
-        self.ddboost = ddboost
     def execute(self):
-        (restore_timestamp, restore_db, compress) = ValidateTimestamp(self.restore_timestamp, self.master_datadir, self.ddboost).run()   
-        if self.ddboost is None:
-            ValidateSegments(restore_timestamp, compress, self.master_port).run()
+        (restore_timestamp, restore_db, compress) = ValidateTimestamp(self.restore_timestamp, self.master_datadir).run()   
+        ValidateSegments(restore_timestamp, compress, self.master_port).run()
         return (restore_timestamp, restore_db, compress)
 
 
 
 class ValidateTimestamp(Operation):
-    def __init__(self, candidate_timestamp, master_datadir, ddboost=None):
+    def __init__(self, candidate_timestamp, master_datadir):
         self.master_datadir = master_datadir
         self.candidate_timestamp = candidate_timestamp
-        self.ddboost = ddboost
     def execute(self):
         path = os.path.join(self.master_datadir, DUMP_DIR, self.candidate_timestamp[0:8])
         createdb_file = os.path.join(path, "%s%s" % (CREATEDB_PREFIX, self.candidate_timestamp))
         if not CheckFile(createdb_file).run():
             raise ExceptionNoStackTraceNeeded("Dump file %s%s does not exist on Master" % (CREATEDB_PREFIX, self.candidate_timestamp))
         restore_db = GetDbName(createdb_file).run()
-        if self.ddboost is None:
-            compressed_file = os.path.join(path, "%s%s.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
-            compress = CheckFile(compressed_file).run()
-        else:
-            compress = False
+        compressed_file = os.path.join(path, "%s%s.gz" % (MASTER_DBDUMP_PREFIX, self.candidate_timestamp))
+        compress = CheckFile(compressed_file).run()
         return (self.candidate_timestamp, restore_db, compress)
 
 
@@ -187,7 +175,7 @@ class ValidateSegments(Operation):
 
 class RestoreTables(Operation):
     """ If this seems like a hacky composition of RestoreDatabase, you're absolutely correct. """
-    def __init__(self, restore_timestamp, restore_tables, no_analyze, keep_dump_files, batch_default, master_datadir, master_port, ddboost): 
+    def __init__(self, restore_timestamp, restore_tables, no_analyze, keep_dump_files, batch_default, master_datadir, master_port): 
         self.restore_timestamp = restore_timestamp
         self.restore_tables = restore_tables
         self.batch_default = batch_default
@@ -195,38 +183,24 @@ class RestoreTables(Operation):
         self.master_port = master_port
         self.no_analyze = no_analyze
         self.keep_dump_files = keep_dump_files
-        self.ddboost = ddboost
     def execute(self):
         (restore_timestamp, restore_db, compress) = ValidateTimestamp(candidate_timestamp = self.restore_timestamp,
                                                                       master_datadir = self.master_datadir).run()
         ValidateRestoreTables(restore_tables = self.restore_tables,
                               restore_db = restore_db,
                               master_port = self.master_port).run()
-
-        if self.ddboost is not None:
-            logger.info("Copying dump %s from DDBoost..." % self.restore_timestamp)            
-            RecoverDDBoostDumps(restore_timestamp = self.restore_timestamp,
-                                master_port = self.master_port,
-                                batch_default = self.batch_default,
-                                user = self.ddboost['user'],
-                                passwd = self.ddboost['passwd'],
-                                host = self.ddboost['host']).run()
-
         fake_timestamp = BuildAllTableDumps(restore_timestamp = self.restore_timestamp,
                                             compress = compress,
                                             restore_tables = self.restore_tables,
                                             batch_default = self.batch_default,
                                             master_datadir = self.master_datadir,
                                             master_port = self.master_port).run()
-        # Dump files reside on segments now, so there's no need for gp_dump to go out
-        # to the DDBoost storage unit. Thus, ddboost = None here.
         RestoreDatabase(restore_timestamp = fake_timestamp,
                         no_analyze = True,
                         drop_db = False,
                         restore_global = False,
                         master_datadir = self.master_datadir,
-                        master_port = self.master_port,
-                        ddboost = None).run()                             
+                        master_port = self.master_port).run()
         if not self.keep_dump_files:
             ClearAllTableDumps(fake_timestamp = fake_timestamp,
                                compress = compress,
@@ -548,69 +522,14 @@ class RecoverRemoteDumps(Operation):
 
 
 
-class RecoverDDBoostDumps(Operation):
-    """
-    This Operation is responsible for bringing all dumps for a particular timestamp back to the 
-    segment hosts from the DDBoost storage unit. It is almost identical to RecoverRemoteDumps
-    except that gpddboost is used to recover dumps, instead of scp.
-    """
-    def __init__(self, restore_timestamp, master_port, batch_default, user, passwd, host):
-        self.restore_timestamp = restore_timestamp
-        self.master_port = master_port
-        self.batch_default = batch_default
-        self.user = user
-        self.passwd = passwd
-        self.host = host
-    def execute(self):
-        logger.info("Commencing ddboost database dump file recovery process, please wait...")
-        gparray = GpArray.initFromCatalog(dbconn.DbURL(port=self.master_port), utility=True)
-        segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True) or seg.isSegmentMaster()]
-        pool = WorkerPool(numWorkers = min(len(segs), self.batch_default))
-        for seg in segs:
-            if seg.isSegmentMaster():
-                file = '%s%s' % (MASTER_DBDUMP_PREFIX, self.restore_timestamp)
-            else:
-                file = '%s0_%d_%s' % (DBDUMP_PREFIX, seg.getSegmentDbId(), self.restore_timestamp)
-
-            to_host = seg.getSegmentHostName()
-            from_path = os.path.join(DUMP_DIR, self.restore_timestamp[0:8])
-            to_path = os.path.join(seg.getSegmentDataDirectory(), from_path)
-            if not CheckRemoteDir(to_path, to_host).run():
-                logger.info('Creating directory %s on %s' % (to_path, to_host))
-                try:
-                    MakeRemoteDir(to_path, to_host).run()
-                except OSError, e:
-                    raise ExceptionNoStackTraceNeeded("Failed to create directory %s on %s" % (to_path, to_host))
-
-            from_path = os.path.join(from_path, file)
-            to_path = os.path.join(to_path, file)
-
-            logger.info("Commencing remote copy from DDBoost to %s:%s" % (to_host, to_path))
-            pool.addCommand(Command('DDBoost copy for seg %d' % seg.getSegmentDbId(),
-                                    'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s' % (from_path, to_path, self.host, self.user, self.passwd),
-                                    remoteHost = to_host))
-        pool.join()
-        pool.check_results()
-
-
-
 class GetDumpTables(Operation):
-    def __init__(self, restore_timestamp, master_datadir, ddboost): 
+    def __init__(self, restore_timestamp, master_datadir): 
         self.master_datadir = master_datadir
         self.restore_timestamp = restore_timestamp
-        self.ddboost = ddboost
     def execute(self): 
         (restore_timestamp, restore_db, compress) = ValidateTimestamp(master_datadir = self.master_datadir,
-                                                                      candidate_timestamp = self.restore_timestamp,
-                                                                      ddboost = self.ddboost).run()
+                                                                      candidate_timestamp = self.restore_timestamp).run()
         dump_file = os.path.join(self.master_datadir, DUMP_DIR, restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, restore_timestamp))
-
-        if self.ddboost is not None:
-            from_file = os.path.join(DUMP_DIR, restore_timestamp[0:8], "%s%s" % (MASTER_DBDUMP_PREFIX, restore_timestamp))
-            cmd = Command('DDBoost copy of master dump file',
-                          'gpddboost --copyFromDDBoost --from-file=%s --to-file=%s --host=%s --user=%s --passwd=%s' 
-                            % (from_file, dump_file, self.ddboost['host'], self.ddboost['user'], self.ddboost['passwd']))
-            cmd.run(validateAfter = True)
 
         f = None
         schema = ''

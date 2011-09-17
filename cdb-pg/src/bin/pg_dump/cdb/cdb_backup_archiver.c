@@ -35,9 +35,6 @@
 #include "libpq/libpq-fs.h"
 #include "mb/pg_wchar.h"
 
-#ifdef USE_DDBOOST
-#include "ddp_api.h"
-#endif
 
 const char *progname;
 
@@ -76,11 +73,6 @@ static void dumpTimestamp(ArchiveHandle *AH, const char *msg, time_t tim);
 static OutputContext SetOutput(ArchiveHandle *AH, char *filename, int compression);
 static void ResetOutput(ArchiveHandle *AH, OutputContext savedContext);
 
-#ifdef USE_DDBOOST
-static size_t dd_write(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH);
-char *ddboost_buf = NULL;
-int ddboost_buf_data_length = 0;
-#endif
 
 /*
  *	Wrapper functions.
@@ -150,13 +142,6 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 
 	AH->ropt = ropt;
 	AH->stage = STAGE_INITIALIZING;
-	
-#ifdef USE_DDBOOST
-	ddboost_buf = malloc(AH->dd_boost_buf_size);
-	ddboost_buf_data_length = 0;
-	if (ddboost_buf == NULL)
-		die_horribly(AH, modulename, "could not allocate memory for ddboost buffer\n");
-#endif
 
 	/*
 	 * Check for nonsensical option combinations.
@@ -458,12 +443,6 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 		dumpTimestamp(AH, "Completed on", time(NULL));
 
 	ahprintf(AH, "--\n-- Greenplum Database database dump complete\n--\n\n");
-
-#ifdef USE_DDBOOST
-	if (ddboost_buf_data_length > 0)
-		dd_write(ddboost_buf, 1, ddboost_buf_data_length, AH);
-	free(ddboost_buf);
-#endif
 
 	/*
 	 * Clean up & we're done.
@@ -968,8 +947,6 @@ SetOutput(ArchiveHandle *AH, char *filename, int compression)
 	sav.OF = AH->OF;
 	sav.gzOut = AH->gzOut;
 
-	printf("\nSetOutput during gp_dump\n");
-
 	if (filename)
 		fn = -1;
 	else if (AH->FH)
@@ -999,13 +976,11 @@ SetOutput(ArchiveHandle *AH, char *filename, int compression)
 	else
 #endif
 	{							/* Use fopen */
-#ifndef USE_DDBOOST
 		if (fn >= 0)
 			AH->OF = fdopen(dup(fn), PG_BINARY_W);
 		else
 			AH->OF = fopen(filename, PG_BINARY_W);
 		AH->gzOut = 0;
-#endif
 	}
 
 	if (!AH->OF)
@@ -1188,37 +1163,8 @@ ahwrite(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH)
 			return ExecuteSqlCommandBuf(AH, (void *) ptr, size * nmemb);		/* Always 1, currently */
 		else
 		{
-#ifdef USE_DDBOOST
-			if (AH->ddHandle != -1) 
-			{
-				if (nmemb < AH->dd_boost_buf_size)
-				{
-					if ((ddboost_buf_data_length + nmemb) <= AH->dd_boost_buf_size)
-					{
-						memcpy(ddboost_buf + ddboost_buf_data_length, ptr, nmemb);
-						ddboost_buf_data_length += nmemb;
-					}
-					else
-					{
-						res = dd_write(ddboost_buf, size, ddboost_buf_data_length, AH);
-						memcpy(ddboost_buf, ptr, nmemb);
-						ddboost_buf_data_length = nmemb;
-					}
-				}
-				else
-				{
-					res = dd_write((void*) ptr, size, nmemb, AH);
-				}
-				
-				return nmemb; /* an ugly hack for now, todo: ERROR handling */
-			}
-			else
-				res = fwrite((void *) ptr, size, nmemb, AH->OF);
-#else
 			res = fwrite((void *) ptr, size, nmemb, AH->OF);
-#endif
-
- 			if (res != nmemb)
+			if (res != nmemb)
 				die_horribly(AH, modulename, "could not write to output file: %s\n",
 							 strerror(errno));
 			return res;
@@ -1247,25 +1193,6 @@ write_msg(const char *modulename, const char *fmt,...)
 	va_end(ap);
 }
 
-#ifdef USE_DDBOOST
-static size_t
-dd_write(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH)
-{
-
-       	dd_errno_t err = DD_OK;
-       	ddp_uint64_t ret_count;
-       	static uint64_t offset = 0;
-
-       	err = ddp_write(AH->ddHandle, (char*)ptr, nmemb, offset, &ret_count);
-		
-		if (ret_count != nmemb)
-			die_horribly(AH, modulename, "could not write to Data Domain system through DD Boost\n");
- 
-		offset += ret_count;
-
-       	return ret_count;
-}
-#endif
 
 static void
 _die_horribly(ArchiveHandle *AH, const char *modulename, const char *fmt, va_list ap)
@@ -1785,10 +1712,6 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 	/* Open stdout with no compression for AH output handle */
 	AH->gzOut = 0;
 	AH->OF = stdout;
-
-#ifdef USE_DDBOOST
-	AH->ddHandle = -1;
-#endif
 
 	/*
 	 * On Windows, we need to use binary mode to read/write non-text archive

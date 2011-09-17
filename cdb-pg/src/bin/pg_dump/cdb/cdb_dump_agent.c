@@ -86,6 +86,7 @@ extern char *optarg;
 extern int	optind,
 			opterr;
 
+
 typedef struct
 {
 	const char *descr;			/* comment for an object */
@@ -247,43 +248,7 @@ static bool testAttributeEncodingSupport(void);
 
 /* MPP additions end */
 
-#ifdef USE_DDBOOST
-#include "ddp_api.h"
-static int dd_boost_enabled = 0; /* Is set to 1 if we are doing a backup onto Data Domain system */
-static int dd_boost_buf_size = 0;
 
-static void dumpDatabaseDefinitionToDDBoost(void);
-
-#ifndef MAX_PATH_NAME
-#define MAX_PATH_NAME 1024
-#endif
-
-#ifndef DDBOOST_POOL_SIZE
-#define DDBOOST_POOL_SIZE (32 * 1024 * 2048)
-#endif
-
-/* DDBoost routines */
-static int initDDSystem(void);
-static int cleanupDDSystem(void);
-
-static char *dd_boost_hostname = NULL;
-static char *dd_boost_username = NULL;
-static char *dd_boost_passwd = NULL;
-
-static char *g_pszDDBoostDir = "db_dumps";
-static ddp_client_info_t cl_info = {DDP_CL_DDP, "Test DD Client"};
-                
-static ddp_inst_desc_t ddp_inst = DDP_INVALID_DESCRIPTOR;
-static ddp_conn_desc_t ddp_conn = DDP_INVALID_DESCRIPTOR;
-
-static ddp_path_t path1 = {0};
-static char *DDP_SU_NAME = NULL;
-
-char *log_message_path = NULL;
-
-static int createDDBoostDir(ddp_conn_desc_t ddp_conn, char *storage_unit_name, char *path_name);
-static int updateArchiveWithDDFile(ArchiveHandle *AH, char *g_pszDDBoostFile, const char *g_pszDDBoostDir);
-static void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity);
 
 void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity)
 {
@@ -358,15 +323,6 @@ main(int argc, char **argv)
 	ArchiveHandle *AH;
 	StatusOp   *pOp;
 
-#ifdef USE_DDBOOST
-	char            *g_pszDDBoostFile = NULL;
-	char		*g_DDBoostUser = NULL;
-	char 		*g_DDBoostPasswd = NULL;
-	char		*g_DDBoostHost = NULL;
-	int 		ret = 0;
-	char		*temp_dd_file = NULL;
-#endif
-
 	/* MPP additions end */
 
 	RestoreOptions *ropt;
@@ -426,16 +382,6 @@ main(int argc, char **argv)
 		{"pre-data-schema-only", no_argument, &preDataSchemaOnly, 1},
 		{"post-data-schema-only", no_argument, &postDataSchemaOnly, 1},
 		/* END MPP ADDITION */
-
-#ifdef USE_DDBOOST
-		{"dd_boost_file", required_argument, NULL, 6},
-		{"gp-ddb-user", required_argument, NULL, 7},
-		{"gp-ddb-passwd", required_argument, NULL, 8},
-		{"gp-ddb-hostname", required_argument, NULL, 9},
-		{"dd_boost_enabled", no_argument, NULL, 10},
-		{"dd_boost_dir", required_argument, NULL, 11},
-		{"dd_boost_buf_size", required_argument, NULL, 12},
-#endif
 		{NULL, 0, NULL, 0}
 	};
 	int			optindex;
@@ -471,11 +417,6 @@ main(int argc, char **argv)
 		}
 	}
 
-#ifdef USE_DDBOOST	
-	dd_boost_enabled = 0;
-#endif
-	
-	
 	while ((c = getopt_long(argc, argv, "abcCdDE:f:F:h:in:N:oOp:RsS:t:T:uU:vwWxX:Z:",
 							long_options, &optindex)) != -1)
 	{
@@ -633,34 +574,6 @@ main(int argc, char **argv)
 				g_pszCDBOutputDirectory = strdup(optarg);
 				break;
 
-#ifdef USE_DDBOOST
-			case 6:
-				g_pszDDBoostFile = strdup(optarg);
-				break;
-			case 7:
-				g_DDBoostUser = strdup(optarg);
-				dd_boost_enabled = 1;
-				dd_boost_username = strdup(optarg);
-				break;
-			case 8:
-				g_DDBoostPasswd = strdup(optarg);
-				dd_boost_enabled = 1;
-				dd_boost_passwd = strdup(optarg);
-				break;
-			case 9:
-				g_DDBoostHost = strdup(optarg);
-				dd_boost_enabled = 1;
-				dd_boost_hostname = strdup(optarg);
-				break;
-			case 10:
-				dd_boost_enabled = 1;
-				break;
-			case 11:g_pszDDBoostDir = strdup(optarg);
-				break;
-			case 12:
-				sscanf(optarg, "%d", &dd_boost_buf_size);
-				break;	
-#endif
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
@@ -694,29 +607,6 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-#ifdef USE_DDBOOST
-	if (dd_boost_enabled)
-	{
-		if (dd_boost_username == NULL)
-		{
-			fprintf(stderr, _("%s: Trying to log into DDBoost system with no username\n"),
-				progname);
-			exit(1);
-		}
-		if (dd_boost_passwd == NULL)
-		{
-			fprintf(stderr, _("%s: Trying to log into DDBoost system with no username\n"),
-				progname);
-			exit(1);
-		}
-		if (dd_boost_hostname == NULL)
-		{
-			fprintf(stderr, _("%s: Trying to log into DDBoost system with no username\n"),
-				progname);
-			exit(1);
-		}
-	}
-#endif
 	if (dataOnly && outputClean)
 	{
 		/*
@@ -743,11 +633,6 @@ main(int argc, char **argv)
 		exit(1);
 	}
 	/* MPP addition end */
-
-#ifdef USE_DDBOOST
-	if (dd_boost_enabled)
-		ret = initDDSystem();
-#endif
 
 	/* open the output file */
 	switch (format[0])
@@ -845,33 +730,6 @@ main(int argc, char **argv)
 	AH = (ArchiveHandle *) g_fout;
 	AH->connection = g_conn;
 	_check_database_version(AH);
-
-#ifdef USE_DDBOOST
-
-	/* Only *_post_data files will be dumped on local GPDB directories */ 
-	if (dd_boost_enabled)
-	{	
-		if(postDataSchemaOnly)
-		{
-			temp_dd_file = (char*)malloc(MAX_PATH_NAME);
-			if(!temp_dd_file)
-			{
-				mpp_err_msg(logError, progname, "Could not allocate memory\n");
-				exit(1);
-			}
-			sprintf(temp_dd_file, "%s_post_data", g_pszDDBoostFile);
-			ret = updateArchiveWithDDFile(AH, temp_dd_file, g_pszDDBoostDir);
-		}
-		else
-			ret = updateArchiveWithDDFile(AH, g_pszDDBoostFile, g_pszDDBoostDir);
-		AH->dd_boost_buf_size = dd_boost_buf_size; 
-		if (ret)
-		{
-			mpp_err_msg(logError, progname, "Could not open file on ddboost. Err %d\n", ret);
-			exit(1);
-		}
-	}
-#endif
 
 	if (g_CDBDumpKey != NULL)
 	{
@@ -1010,13 +868,6 @@ main(int argc, char **argv)
 	mpp_err_msg(logInfo, progname, "Dumping database \"%s\"...\n", g_conn->dbName);
 	dumpMain(oids, dumpencoding, outputBlobs, plainText, ropt);
 
-#ifdef USE_DDBOOST
-	if (dd_boost_enabled)
-	{
-		ret = ddp_close_file(AH->ddHandle);
-	}
-#endif
-
 	reset();
 
 	/* cleanup */
@@ -1029,19 +880,9 @@ main(int argc, char **argv)
 	if (g_role == ROLE_MASTER && !dataOnly  && !postDataSchemaOnly)
 	{
 		mpp_err_msg(logInfo, progname, "Dumping CREATE DATABASE statement for database \"%s\"\n", g_conn->dbName);
-#ifdef USE_DDBOOST
-		
-		if(dd_boost_enabled)
-			dumpDatabaseDefinitionToDDBoost();
-		else
-#endif
 		dumpDatabaseDefinition();
 	}
 
-#ifdef USE_DDBOOST
-	if(dd_boost_enabled)
-		cleanupDDSystem();
-#endif
 	/*
 	 * Make sure to report that we are done.
 	 */
@@ -7343,144 +7184,6 @@ dumpDatabaseDefinition()
 	destroyPQExpBuffer(creaQry);
 }
 
-#ifdef USE_DDBOOST
-/*
- * Dump the database definition.
- *
- * This is a very similar version to pg_dump's dumpDatabase() but
- * we make it more straight forward here and write it to the file.
- */
-static void
-dumpDatabaseDefinitionToDDBoost()
-{
-	PGresult   *res;
-	char	   *pszBackupFileName;
-	PQExpBuffer dbQry = createPQExpBuffer();
-	PQExpBuffer creaQry = createPQExpBuffer();
-	int			ntups;
-	int			i_dba,
-				i_encoding,
-				i_tablespace;
-	const char *datname,
-			   *dba,
-			   *encoding,
-			   *tablespace;
-	int err = 0;
-	ddp_uint64_t ret_count, nmemb;
-	ddp_uint64_t offset = 0;
-	ddp_file_desc_t handle = DDP_INVALID_DESCRIPTOR;
-	char *createStmt = "--\n-- Database creation\n--\n\n";
-
-
-	datname = PQdb(g_conn);		/* the database we are dumping */
-
-	/* Make sure we are in proper schema */
-	/* MPP addition start: comment this line out */
-	/*//selectSourceSchema("pg_catalog"); */
-	/* MPP addition end */
-
-	pszBackupFileName = formCDatabaseFilePathName(g_pszDDBoostDir,	
-								   g_CDBDumpKey, g_role, g_dbID);
-
-	/*
-	 * Make sure we can create this file before we spin off sh cause we don't
-	 * get a good error message from sh if we can't write to the file
-	 */
-	path1.su_name = DDP_SU_NAME;
-	path1.path_name  = g_pszDDBoostDir;
-
-	err = createDDBoostDir(ddp_conn, path1.su_name, path1.path_name);
-	if (err)
-	{
-		mpp_err_msg(logError, progname, "Error creating directory on ddboost\n");
-                return ;
-	}
-
-	path1.path_name = pszBackupFileName;
-	err = ddp_open_file(ddp_conn, &path1, DDP_O_CREAT | DDP_O_RDWR , 0777, &handle);
-
-	if (err)
-	{
-		mpp_err_msg(logError, progname, "Error creating file %s on ddboost from gp_dump_agent",
-					pszBackupFileName);
-		return ;
-	}
-	free(pszBackupFileName);
-
-	//fprintf(fcat, "--\n-- Database creation\n--\n\n");
-	err = ddp_write(handle, createStmt, strlen(createStmt), 0, &ret_count);
-	if(err)
-	{
-		mpp_err_msg(logError, progname, "Write to cdatabase file failed\n");
-		return;
-	}
-
-	offset += ret_count;
-
-	appendPQExpBuffer(dbQry, "SELECT "
-	  "(SELECT rolname FROM pg_catalog.pg_roles WHERE oid = datdba) as dba, "
-					  "pg_encoding_to_char(encoding) as encoding, "
-					  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = dattablespace) as tablespace "
-					  "FROM pg_database "
-					  "WHERE datname = ");
-	appendStringLiteralConn(dbQry, datname, g_conn);
-
-	res = PQexec(g_conn, dbQry->data);
-	check_sql_result(res, g_conn, dbQry->data, PGRES_TUPLES_OK);
-
-	ntups = PQntuples(res);
-
-	if (ntups <= 0)
-	{
-		mpp_err_msg(logError, progname, "missing pg_database entry for database \"%s\"\n",
-					datname);
-		exit_nicely();
-	}
-
-	if (ntups != 1)
-	{
-		mpp_err_msg(logError, progname, "query returned more than one (%d) pg_database entry for database \"%s\"\n",
-					ntups, datname);
-		exit_nicely();
-	}
-
-	i_dba = PQfnumber(res, "dba");
-	i_encoding = PQfnumber(res, "encoding");
-	i_tablespace = PQfnumber(res, "tablespace");
-
-	dba = PQgetvalue(res, 0, i_dba);
-	encoding = PQgetvalue(res, 0, i_encoding);
-	tablespace = PQgetvalue(res, 0, i_tablespace);
-
-	appendPQExpBuffer(creaQry, "CREATE DATABASE %s WITH TEMPLATE = template0",
-					  fmtId(datname));
-	if (strlen(encoding) > 0)
-	{
-		appendPQExpBuffer(creaQry, " ENCODING = ");
-		appendStringLiteralConn(creaQry, encoding, g_conn);
-	}
-	if (strlen(dba) > 0)
-	{
-		appendPQExpBuffer(creaQry, " OWNER = %s", dba);
-	}
-
-	if (strlen(tablespace) > 0 && strcmp(tablespace, "pg_default") != 0)
-		appendPQExpBuffer(creaQry, " TABLESPACE = %s",
-						  fmtId(tablespace));
-	appendPQExpBuffer(creaQry, ";\n");
-
-	/* write the CREATE DATABASE command to the file */
-	nmemb = strlen(creaQry->data);
-	err = ddp_write(handle, creaQry->data, nmemb, offset, &ret_count);
-	if (ret_count != nmemb)
-		mpp_err_msg(logError, progname, "write to cdatabase file failed on ddboost\n");
-
-	ddp_close_file(handle);	
-	PQclear(res);
-	destroyPQExpBuffer(dbQry);
-	destroyPQExpBuffer(creaQry);
-}
-#endif
 
 
 static int
@@ -7590,145 +7293,3 @@ installSignalHandlers(void)
 	if (sigaction(SIGTERM, &act, &oact) < 0)
 		mpp_err_msg(logError, progname, "Error trying to set SIGTERM interrupt handler\n");
 }
-
-#ifdef USE_DDBOOST
-/* Initialize the ddboost instance and create a connection */
-int
-initDDSystem(void)
-{
-	int err = DD_ERR_NONE;
-	uint POOL_SIZE = DDBOOST_POOL_SIZE;
-	char *storage_unit_name = NULL;
-
-      	storage_unit_name = (char*)malloc(MAX_PATH_NAME);
-
-	sprintf(storage_unit_name, "%s", "GPDB");
-       
-	DDP_SU_NAME = storage_unit_name;
- 
-	err = ddp_init("gp_dump");
-                if (err != DD_ERR_NONE) {
-                        mpp_err_msg(logError, progname,"ddboost init failed. Err = %d\n", err);
-                        return err;
-        }
-
-        err = ddp_instance_create(POOL_SIZE, &cl_info, &ddp_inst);
-
-        if (err)
-        {
-                mpp_err_msg(logError, progname,"ddboost instance creation failed. Err = %d\n", err);
-                return err;
-        }
-
-       ddp_log_init(ddp_inst, NULL, _ddp_test_log);
-
-        err = ddp_connect_with_user_pwd(ddp_inst, dd_boost_hostname, NULL, dd_boost_username, dd_boost_passwd, &ddp_conn);
-
-        if (err != DD_ERR_NONE) {
-                mpp_err_msg(logError, progname, "ddboost connect failed. Err = %d\n", err);
-               return err;
-        }
-
-       err = ddp_create_storage_unit(ddp_conn, storage_unit_name);
-       if (err != DD_ERR_NONE) {
-                mpp_err_msg(logError, progname, "ddboost create storage unit failed. Err = %d\n", err);
-                return err;
-       }
- 
-        return 0;
-
-}
-
-int 
-cleanupDDSystem(void)
-{
-	int err = DD_ERR_NONE;
- 
-	/* Close the connection */
-	err = ddp_disconnect(ddp_conn);
-	if (err)
-	{
-		mpp_err_msg(logError, progname, "ddboost disconnect failed. Err = %d\n", err);
-		return err;
-	}
-
-	err = ddp_instance_destroy(ddp_inst);
-	if (err)
-	{
-		mpp_err_msg(logError, progname, "ddboost instance destroy failed. Err = %d\n", err);
-		return err;
-	}	 
-	return 0;
-}
-
-int
-updateArchiveWithDDFile(ArchiveHandle *AH, char *g_pszDDBoostFile, const char *g_pszDDBoostDir)
-{
-       	int err = 0;
-       	ddp_file_desc_t handle = DDP_INVALID_DESCRIPTOR;
-       	char *full_path = NULL;
-	char *dir_name = "db_dumps";
-	char *orig_dir = NULL;
-
- 	full_path = (char*)malloc(MAX_PATH_NAME);
-       	path1.su_name = DDP_SU_NAME;
-	
-	if (g_pszDDBoostDir)
-		path1.path_name  = strdup(g_pszDDBoostDir);
-	else
-		path1.path_name = dir_name;
-
-	orig_dir = strdup(path1.path_name);
-
-	err = createDDBoostDir(ddp_conn, path1.su_name, path1.path_name); 
-	
-	if (err)
-		return err;	
-
-	sprintf(full_path, "%s/%s", orig_dir, g_pszDDBoostFile);
-       	path1.path_name = full_path;
-
-       	err = ddp_open_file(ddp_conn, &path1, DDP_O_CREAT | DDP_O_RDWR , 0777, &handle);
-
-      	if (err)
-       	{
-               mpp_err_msg(logError, progname, "ddboost file open failed. Err code = %d\n", err);
-               return err;
-       	}
-
-       	AH->ddHandle = handle;  
-
-       	return 0;
-} 
-
-int 
-createDDBoostDir(ddp_conn_desc_t ddp_conn, char *storage_unit_name, char *path_name)
-{
-	char *pch = NULL;
-	ddp_path_t path = {0};
-	int err = 0;
-	char *full_path = NULL;
-
-	full_path = (char*)malloc(MAX_PATH_NAME);
-	memset(full_path, 0, MAX_PATH_NAME);
-
-	pch = strtok(path_name, " /");
-	while(pch != NULL)
-        {
-        	path.su_name = storage_unit_name;
-		strcat(full_path, "/");
-		strcat(full_path, pch);
-                path.path_name = full_path;
-
-        	err = ddp_mkdir(ddp_conn, &path, 0755);
-        	if ((err != 0) && (err != DD_ERR_EXIST))
-        	{
-                	mpp_err_msg(logError, progname, "mkdir failed. err %d\n", err);
-                	return err;
-        	}
-
-                pch = strtok(NULL, " /");
-        }
-	return 0;
-}
-#endif

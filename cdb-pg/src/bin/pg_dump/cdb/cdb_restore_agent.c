@@ -70,33 +70,6 @@ int			optreset;
 #include <locale.h>
 #endif
 
-#ifdef USE_DDBOOST
-#include "ddp_api.h"
-static int initDDSystem(void);
-static void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity);
-static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, char *ddBoostDir);
-
-static char *dd_boost_hostname = NULL;
-static char *dd_boost_username = NULL;
-static char *dd_boost_passwd = NULL;
-
-static ddp_client_info_t cl_info = {DDP_CL_DDP, "Test DD Client"};
-
-static ddp_inst_desc_t ddp_inst = DDP_INVALID_DESCRIPTOR;
-static ddp_conn_desc_t ddp_conn = DDP_INVALID_DESCRIPTOR;
-
-static char *DDP_SU_NAME = NULL;
-
-char *log_message_path = NULL;
-static int dd_boost_enabled = 0;
-static int dd_boost_buf_size = 0;
-static char *ddboostPg = NULL;
-
-#ifndef PATH_NAME_MAX
-#define PATH_NAME_MAX 1024
-#endif
-
-#endif
 
 static void usage(const char *progname);
 
@@ -142,6 +115,7 @@ char	   *g_LastMsg = NULL;
 
 int			g_role = ROLE_MASTER;		/* would change to ROLE_MASTER when
 										 * necessary */
+
 /* end cdb additions */
 /*	end cdb specific stuff */
 
@@ -171,11 +145,6 @@ main(int argc, char **argv)
 	char	   *pszErrorMsg;
 	ArchiveHandle *pAH;
 	int 		postDataSchemaOnly = 0;
-
-#ifdef USE_DDBOOST
-	char    *ddp_file_name = NULL;
-	char 	*dd_boost_dir = NULL;
-#endif
 
 	struct option cmdopts[] = {
 		{"clean", 0, NULL, 'c'},
@@ -223,16 +192,6 @@ main(int argc, char **argv)
 		{"target-host", required_argument, NULL, 6},
 		{"target-port", required_argument, NULL, 7},
 		{"post-data-schema-only", no_argument, &postDataSchemaOnly, 1},
-
-#ifdef USE_DDBOOST      
-                {"dd_boost_file", required_argument, NULL, 8},
-                {"gp-ddb-user", required_argument, NULL, 9},
-                {"gp-ddb-passwd", required_argument, NULL, 10},
-                {"gp-ddb-hostname", required_argument, NULL, 11},
-                {"dd_boost_enabled", no_argument, NULL, 12},
-		{"dd_boost_dir", required_argument, NULL, 13},
-		{"dd_boost_buf_size", required_argument, NULL, 14},
-#endif 
 		{NULL, 0, NULL, 0}
 	};
 
@@ -259,9 +218,6 @@ main(int argc, char **argv)
 		}
 	}
 
-#ifdef USE_DDBOOST
-	dd_boost_enabled = 0;
-#endif
 	while ((c = getopt_long(argc, argv, "acCd:ef:F:h:iI:lL:Op:P:RsS:t:T:uU:vwWxX:",
 							cmdopts, NULL)) != -1)
 	{
@@ -418,29 +374,6 @@ main(int argc, char **argv)
 			case 7:				/* target-port */
 				g_targetPort = strdup(optarg);
 				break;
-#ifdef USE_DDBOOST
-			case 9:
-				dd_boost_enabled = 1;
-                                dd_boost_username = strdup(optarg);
-				break;
-			case 10:
-				dd_boost_enabled = 1;
-                                dd_boost_passwd = strdup(optarg);
-				break;
-			case 11:
-				dd_boost_enabled = 1;
-                                dd_boost_hostname = strdup(optarg);
-				break;
-			case 12:
-				dd_boost_enabled = 1;
-				break;
-			case 13:
-				dd_boost_dir = strdup(optarg);
-				break;
-			case 14:
-				sscanf(optarg, "%d", &dd_boost_buf_size);
-				break;
-#endif
 
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
@@ -526,43 +459,6 @@ main(int argc, char **argv)
 		mpp_err_msg(logInfo, progname, "missing required parameter gp-k (backup key)\n");
 		exit(1);
 	}
-
-#ifdef USE_DDBOOST
-	if (dd_boost_enabled)
-	{
-		if (dd_boost_username == NULL)
-		{
-			mpp_err_msg(logInfo, progname, "ddboost username is NULL\n");
-			exit(1);
-		}
-
-		if (dd_boost_passwd == NULL)
-		{
-			mpp_err_msg(logInfo, progname, "ddboost passwd is NULL\n");
-			exit(1);
-		}
-
-		if (dd_boost_hostname == NULL)
-		{
-			mpp_err_msg(logInfo, progname, "ddboost hostname is NULL\n");
-			exit(1);
-		}
-
-		initDDSystem();
-		mpp_err_msg(logInfo, progname, "ddboost is initialized\n");
-		
-     		if (!postDataSchemaOnly)
-		{       
-               		ddp_file_name = formDDBoostFileName(g_gpdumpKey, false, dd_boost_dir);
-               		if (ddp_file_name == NULL)
-               		{
-				mpp_err_msg(logInfo, progname, "Error in opening ddboost file\n");
-				exit(1);
-               		}	       
-
-       		}
-	}
-#endif
 
 	SegDB.dbid = g_sourceDBID;
 	SegDB.role = g_role;
@@ -707,8 +603,6 @@ main(int argc, char **argv)
 			exit(1);
 		}
 
-		mpp_err_msg(logInfo, progname, "Before fork of gp_restore_agent\n");
-
 		newpid = fork();
 		if (newpid < 0)
 		{
@@ -738,39 +632,7 @@ main(int argc, char **argv)
 				len += strlen(" | ");	/* de-comp pipe into psql */
 			}
 
-#ifdef USE_DDBOOST
-			/* find if gpddboost is present in PATH or PGPATH */
-			if ((ddboostPg = testProgramExists("gpddboost")) == NULL)
-			{
-				mpp_err_msg(logError, progname, "gpddboost not found in path\n");
-			}
-
-			if (!postDataSchemaOnly)
-			{
-				if (dd_boost_enabled)
-				{
-					len += strlen("gpddboost ");
-					len += strlen("--readFile ");
-					len += strlen("--from-file=");
-
-					if (ddp_file_name)
-						len += strlen(ddp_file_name);
-					len += strlen(" --user= ");
-					if (dd_boost_username)
-						len += strlen(dd_boost_username);
-					len += strlen(" --passwd= ");
-					if (dd_boost_passwd)
-						len += strlen(dd_boost_passwd);
-					len += strlen(" --host= ");
-					if (dd_boost_hostname)
-						len += strlen(dd_boost_hostname);
-				}
-						
-			}
-#endif
-
 			len += strlen(inputFileSpec) + 4;
-			len += strlen(psqlPg) + 4;
 
 			if (g_bOnErrorStop)
 				len += strlen(pszOnErrorStop) + 1;
@@ -784,12 +646,10 @@ main(int argc, char **argv)
 			len += strlen(SegDB.pszDBUser);
 			len += 4;			/* " -d " */
 			len += strlen(SegDB.pszDBName);
-			
-			
+
 			/* add all the psql args to the command string */
 			pszCmdLine = (char *) calloc(len + 1, 1);
 
-#ifndef USE_DDBOOST
 			/*
 			 * If decompression is used start our command as such:
 			 * "/pathto/gunzip -c filename | /pathto/psql" else just
@@ -803,83 +663,18 @@ main(int argc, char **argv)
 				strcat(pszCmdLine, psqlPg);
 			}
 			else
-                                strcpy(pszCmdLine, psqlPg);
+				strcpy(pszCmdLine, psqlPg);
 
-                        /*
-                         * we use an input file only if no compression is used. if
-                         * compression is used, input is coming from stdin
-                         */
-                        if (!bCompUsed)
-                        {
-                                strcat(pszCmdLine, " -f ");
-                                strcat(pszCmdLine, inputFileSpec);
-                        }
-#endif
-
-#ifdef USE_DDBOOST
-			if (!postDataSchemaOnly)
+			/*
+			 * we use an input file only if no compression is used. if
+			 * compression is used, input is coming from stdin
+			 */
+			if (!bCompUsed)
 			{
-				if (dd_boost_enabled)
-				{
-					strcpy(pszCmdLine, ddboostPg);
-					strcat(pszCmdLine, " --readFile");
-					strcat(pszCmdLine, " --from-file=");
-
-					strcat(pszCmdLine, ddp_file_name);
-					strcat(pszCmdLine, " --user=");
-					strcat(pszCmdLine, dd_boost_username);
-					strcat(pszCmdLine, " --passwd=");
-					strcat(pszCmdLine, dd_boost_passwd);
-					strcat(pszCmdLine, " --host=");
-					strcat(pszCmdLine, dd_boost_hostname);
-	
-					strcat(pszCmdLine, " | ");
-
-					if(bCompUsed)
-					{
-						strcpy(pszCmdLine, g_compPg);
-						strcat(pszCmdLine, " | ");
-					}
-
-					strcat(pszCmdLine, psqlPg);
-				}
-				else 
-				{
-					/* Non ddboost restore */
-					if (bCompUsed)
-					{
-						
-                                		strcpy(pszCmdLine, g_compPg);
-                                		strcat(pszCmdLine, inputFileSpec);
-                                		strcat(pszCmdLine, " | ");
-                                		strcat(pszCmdLine, psqlPg);
-					}
-					else
-					{
-						strcat(pszCmdLine, psqlPg);
-						strcat(pszCmdLine, " -f ");
-						strcat(pszCmdLine, inputFileSpec);
-					}
-				}
+				strcat(pszCmdLine, " -f ");
+				strcat(pszCmdLine, inputFileSpec);
 			}
-			else if (postDataSchemaOnly)
-			{
-				/* Right now the postdata files will be synced to segment directories before restore */
-				if (bCompUsed)
-				{
-					strcpy(pszCmdLine, g_compPg);
-					strcat(pszCmdLine, inputFileSpec);
-					strcat(pszCmdLine, " | ");
-					strcat(pszCmdLine, psqlPg);
-				}
-				else
-				{
-					strcat(pszCmdLine, psqlPg);	
-					strcat(pszCmdLine, " -f ");
-					strcat(pszCmdLine, inputFileSpec);
-				}
-			}
-#endif
+
 			strcat(pszCmdLine, " -h ");
 			strcat(pszCmdLine, g_targetHost);
 			strcat(pszCmdLine, " -p ");
@@ -1580,118 +1375,3 @@ testProgramExists(char *pszProgramName)
 
 	return NULL;
 }
-
-#ifdef USE_DDBOOST
-int
-initDDSystem(void)
-{
-        int err = DD_ERR_NONE;
-        uint POOL_SIZE = 32 * 1024 * 2048;
-        char *storage_unit_name = NULL;
-
-        storage_unit_name = (char*)malloc(1024);
-
-        sprintf(storage_unit_name, "%s", "GPDB");
-
-        DDP_SU_NAME = storage_unit_name;
-
-        err = ddp_init("gp_dump");
-                if (err != DD_ERR_NONE) {
-                        mpp_err_msg(logError, progname,"DDInit fails with code %d\n", err);
-                        return err;
-        }
-
-        err = ddp_instance_create(POOL_SIZE, &cl_info, &ddp_inst);
-
-        if (err)
-        {
-                mpp_err_msg(logError, progname,"dd instance creation failed. Err = %d\n", err);
-                return err;
-        }
-
-        ddp_log_init(ddp_inst, NULL, _ddp_test_log);
-
-        err = ddp_connect_with_user_pwd(ddp_inst, dd_boost_hostname, NULL, dd_boost_username, dd_boost_passwd, &ddp_conn);
-
-        if (err != DD_ERR_NONE) {
-                mpp_err_msg(logError, progname, "dd_connect failed. err = %d\n", err);
-                return err;
-        }
-
-        err = ddp_create_storage_unit(ddp_conn, storage_unit_name);
-        if (err != DD_ERR_NONE) {
-                mpp_err_msg(logError, progname, "dd_connect failed. err = %d\n", err);
-                return err;
-       }
-
-        return 0;
-}
-
-void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity)
-{
-    FILE* log_file = NULL;
-    time_t ltime;
-    struct tm *Tm;
-
-    log_file = fopen("libDDBoost_test.log", "a");
-    if (log_file) {
-        ltime = time(NULL);
-        Tm = localtime(&ltime);
-        fprintf(log_file, "%02d/%02d %02d:%02d:%02d: %s\n",
-                           Tm->tm_mon + 1, Tm->tm_mday,
-                           Tm->tm_hour + (1 - Tm->tm_isdst), Tm->tm_min, Tm->tm_sec,
-                           log_msg);
-        fclose(log_file);
-    }
-}
-
-static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, char *dd_boost_dir)
-{
-        /* First form the prefix */
-        char	szFileNamePrefix[1 + PATH_NAME_MAX];
-        int     instid;                 	/* dispatch node */
-        int     segid;
-        int     len = 0;
-        char    *pszBackupFileName;
-	char 	*dir_name = "db_dumps";		/* default directory */
-	
-        instid = g_role;           		/* dispatch node */
-        segid = g_sourceDBID;
-
-       	memset(szFileNamePrefix, 0, (1+PATH_NAME_MAX));
-	if (dd_boost_dir)
-        	sprintf(szFileNamePrefix, "%s/gp_dump_%d_%d_", dd_boost_dir, instid, segid);
-	else	
-        	sprintf(szFileNamePrefix, "%s/gp_dump_%d_%d_", dir_name, instid, segid);
-
-        /* Now add up the length of the pieces */
-        len += strlen(szFileNamePrefix);
-        len += strlen(pszBackupKey);
-
-	if (isPostData)
-		len += strlen("_post_data");
-        if (len > PATH_NAME_MAX)
-        {
-               mpp_err_msg(logInfo, progname, "Length > MAX for filename\n");
-               return NULL;
-        }
-
-        pszBackupFileName = (char *) malloc(sizeof(char) * (1 + len));
-        if (pszBackupFileName == NULL)
-        {
-              mpp_err_msg(logInfo, progname, "Error out of memory\n");
-              return NULL;
-        }
-
-       	memset(pszBackupFileName, 0, len + 1 );
- 
-        strcat(pszBackupFileName, szFileNamePrefix);
-        strcat(pszBackupFileName, pszBackupKey);
-
-        if (isPostData)
-                strcat(pszBackupFileName, "_post_data");
-
-        return pszBackupFileName;
-}
-
-#endif

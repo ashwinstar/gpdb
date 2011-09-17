@@ -1,17 +1,13 @@
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-#
-# Because it's hard to build these class files, due to not having the Hadoop files on the build machine,
-# the class files are in perforce, and we don't do anything here on a make all or make clean.
-#
-all:
 ANT=/opt/releng/apache-ant/bin/ant
 
 all: gphdfs protocol_formatter
 
 protocol_formatter:
 	$(MAKE) -C src/protocol_formatter
+
 gphdfs:
 	$(ANT) clean
 	$(ANT) dist -Dgphdconn.version=CE_1.0.0.0 -Dhadoop.core.version=0.20.2

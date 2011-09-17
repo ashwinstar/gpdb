@@ -24,11 +24,6 @@
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"
 
-#ifdef USE_DDBOOST
-#include "ddp_api.h"
-#include "utils/guc.h"
-#endif
-
 /* general utility copied from cdblink.c */
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
@@ -43,18 +38,6 @@ static char *testProgramExists(char *pszProgramName);
 static void validateBackupDirectory(char *pszBackupDirectory);
 static char *positionToError(char *source);
 
-#ifdef USE_DDBOOST
-static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, bool isCompress);
-static int dd_boost_enabled = 0;
-
-#ifndef MAX_PATH_NAME
-#define MAX_PATH_NAME 1024
-#endif
-
-#define MAX_DDBOOST_BUF_NAME 50
-
-#endif
-
 static char *compPg = NULL,
 		   *bkPg = NULL;
 
@@ -64,7 +47,6 @@ typedef enum backup_file_type
 	BFT_BACKUP_STATUS = 1,
 	BFT_RESTORE_STATUS = 2
 } BackupFileType;
-
 
 /*
  * gp_backup_launch__( TEXT, TEXT, TEXT, TEXT, TEXT ) returns TEXT
@@ -83,25 +65,21 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 	char	   *pszPassThroughCredentials = "";
 	char	   *pszDataOption = "";
 	char	   *pszBackupFileName,
-		   *pszStatusFileName;
+			   *pszStatusFileName;
 	char       *pszSaveBackupfileName;
+	FILE	   *ftest;
 	char	   *pszDBName,
-		   *pszUserName;
+			   *pszUserName;
 	pid_t		newpid;
 	char	   *pszCmdLine;
-	int		port;
+	int			port;
 	char	   *pszKeyParm;		/* dispatch node */
-	int		segid;
-	int		len;
-	int		instid;			/* dispatch node */
+	int			segid;
+	int			len;
+	int			instid;			/* dispatch node */
 	bool		is_compress;
 	bool		rsyncable;
 	itimers 	savetimers;
-#ifdef USE_DDBOOST
-	char       *pszDDBoostFileName = NULL;
-	char	   *pszDDBoostDirName = "db_dumps";		/* Default directory */	
-	char 	   *dd_boost_buffer_size = NULL;
-#endif
 
 	rsyncable = false;
 	verifyGpIdentityIsSet();
@@ -155,19 +133,20 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 
 	pszSaveBackupfileName = pszBackupFileName;
 
-	/* Initialise the DDBoost connection and use it to open the file */
-#ifdef USE_DDBOOST
-	if (strstr(pszPassThroughParameters,"--dd_boost_enabled") != NULL)
+	/*
+	 * Make sure we can create this file before we spin off sh cause we don't
+	 * get a good error message from sh if we can't write to the file
+	 */
+	ftest = fopen(pszBackupFileName, "w");
+	if (ftest == NULL)
 	{
-		dd_boost_enabled = 1;
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				 errmsg("Error creating file %s in gp_backup_launch",
+						pszBackupFileName)));
 	}
-	
-	if (dd_boost_enabled)
-	{
-		pszDDBoostFileName = formDDBoostFileName(pszBackupKey, false, is_compress);
-	}	
+	fclose(ftest);
 
-#endif
 
 	pszDBName = NULL;
 	pszUserName = (char *) NULL;
@@ -181,7 +160,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		pszDBName = "";
 	if (pszUserName == NULL)
 		pszUserName = "";
-
 
 	if (strstr(pszPassThroughParameters,"--rsyncable") != NULL)
 	{
@@ -247,17 +225,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 				 errmsg("out of memory")));
 	}
 
-#ifdef USE_DDBOOST
-	dd_boost_buffer_size = (char*)malloc(MAX_DDBOOST_BUF_NAME);
-	if (!dd_boost_buffer_size)
-	{
-		ereport(ERROR,
-                (errcode(ERRCODE_OUT_OF_MEMORY),
-                 errmsg("out of memory")));
-	}
-
-	sprintf(dd_boost_buffer_size, "%d", ddboost_buf_size);
-#endif
 	/*
 	 * dump schema and data for entry db, and data only for segment db.
 	 * why dump data for entry db? because that will include statements
@@ -294,21 +261,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		+ strlen(pszStatusFileName)
 		+ 1;
 
-#ifdef USE_DDBOOST
-	if (dd_boost_enabled)
-	{
-		len += strlen(pszDDBoostFileName)
-			+ 15 + 2			/* --dd_boost_file */
-			+ strlen(pszDDBoostDirName)
-			+ 14 + 2			/* --dd_boost_dir */
-			+ strlen(dd_boost_buffer_size)
-			+ 20 + 2			/* --dd_boost_buf_size */
-			+ strlen("post_data")
-			+ strlen(".gz")
-			+ 1;
-	}
-#endif
-
 	/* if user selected a compression program */
 	if (pszCompressionProgram[0] != '\0')
 	{
@@ -324,62 +276,22 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 				 errmsg("out of memory")));
 	}
 
-#ifdef USE_DDBOOST
-	if (dd_boost_enabled)
+	/* if user selected a compression program */
+	if (pszCompressionProgram[0] != '\0')
 	{
-		if (pszCompressionProgram[0] != '\0')
-        	{
-                	/* gp_dump_agent + options, pipe into compression program, direct
-                 	* stdout to backup file and stderr to status file */
-                	sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_dir %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2> %s | %s ",
-                                bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName, pszDDBoostDirName, dd_boost_buffer_size,
-								port, pszUserName, pszPassThroughParameters,pszDataOption, pszDBName, pszStatusFileName, compPg);
-        	}
-        	else
-        	{
-                	sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_dir %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2> %s ",
-                                bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName, pszDDBoostDirName, dd_boost_buffer_size,
-                                port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-                                pszStatusFileName);
-        	}
-	}
-	else 
-	{
-		/* if user selected a compression program */
-		if (pszCompressionProgram[0] != '\0')
-		{
-			/* gp_dump_agent + options, pipe into compression program, direct
-		 	* stdout to backup file and stderr to status file */
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
+		/* gp_dump_agent + options, pipe into compression program, direct
+		 * stdout to backup file and stderr to status file */
+		sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
 				bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
 				pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
-		}
-		else
-		{
-			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s > %s",
-				bkPg, pszKeyParm, pszBackupDirectory, 
+	}
+	else
+	{
+		sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s > %s",
+				bkPg, pszKeyParm, pszBackupDirectory,
 				port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
 				pszStatusFileName, pszBackupFileName);
-		}
 	}
-#else
-	/* if user selected a compression program */
-        if (pszCompressionProgram[0] != '\0')
-        {
-                /* gp_dump_agent + options, pipe into compression program, direct
-                 * stdout to backup file and stderr to status file */
-                sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
-                                bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
-                                pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
-        }
-        else
-        {
-                sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2> %s > %s",
-                                bkPg, pszKeyParm, pszBackupDirectory,
-                                port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-                                pszStatusFileName, pszBackupFileName);
-        }
-#endif
 
 	elog(LOG, "gp_dump_agent command line: %s", pszCmdLine),
 
@@ -420,46 +332,6 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, true);
 		pszDataOption = "--post-data-schema-only" ;
 
-#ifdef USE_DDBOOST
-		if(dd_boost_enabled)
-		{
-			/* if user selected a compression program */
-			if (pszCompressionProgram[0] != '\0')
-			{
-				/* gp_dump_agent + options, pipe into compression program, direct
-			 	* stdout to backup file and stderr to status file */
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s -p %d -U %s %s %s %s 2>> %s | %s > %s",
-					bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName, port, pszUserName, pszPassThroughParameters,
-					pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
-			}
-			else
-			{
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s -p %d -U %s %s %s %s 2>> %s",
-					bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName,
-					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					pszStatusFileName);
-			}
-		}
-		else
-		{
-			/* if user selected a compression program */
-			if (pszCompressionProgram[0] != '\0')
-			{
-				/* gp_dump_agent + options, pipe into compression program, direct
-			 	* stdout to backup file and stderr to status file */
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s | %s > %s",
-					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters,
-					pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
-			}
-			else
-			{
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s > %s",
-					bkPg, pszKeyParm, pszBackupDirectory, 
-					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					pszStatusFileName, pszBackupFileName);
-			}
-		}
-#else
 		/* if user selected a compression program */
 		if (pszCompressionProgram[0] != '\0')
 		{
@@ -472,13 +344,12 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 		else
 		{
 			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s -p %d -U %s %s %s %s 2>> %s > %s",
-					bkPg, pszKeyParm, pszBackupDirectory, 
+					bkPg, pszKeyParm, pszBackupDirectory,
 					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
 					pszStatusFileName, pszBackupFileName);
 		}
-#endif
 
-		elog(LOG, "gp_dump_agent command line : %s", pszCmdLine),
+		elog(LOG, "gp_dump_agent command line #2: %s", pszCmdLine),
 
 #ifdef _WIN32
 		exit(1);
@@ -550,17 +421,6 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 	bool		is_file_compressed; /* is the dump file ending with '.gz'*/
 	bool		postDataSchemaOnly;
 	itimers 	savetimers;
-#ifdef USE_DDBOOST
-	char       *ddFileName = NULL;
-	char       *dd_boost_buffer_size = NULL;
-	
-	ddFileName = (char*)palloc(MAX_PATH_NAME);
-	if (!ddFileName)
-	{
-		elog(ERROR, "Out of memory\n");
-		return -1;		
-	}
-#endif	
 
 	postDataSchemaOnly = false;
 	verifyGpIdentityIsSet();
@@ -616,52 +476,37 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_decompress, postDataSchemaOnly);
 	pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, false);
 
-#ifdef USE_DDBOOST
-        if (strstr(pszPassThroughParameters,"--dd_boost_enabled") != NULL)
-        {
-                dd_boost_enabled = 1;
-        }
-	/* Initialise the DDBoost connection and use it to open the file */
-
 	/* Make sure pszBackupFileName exists */
-	if (!dd_boost_enabled)
+	if (0 != stat(pszBackupFileName, &info))
 	{
-#endif
-		if (0 != stat(pszBackupFileName, &info))
-		{
-			pszBackupFileName = findAcceptableBackupFilePathName(pszBackupDirectory, pszBackupKey, segid);
-			if (pszBackupFileName == NULL)
-				ereport(ERROR,
+		pszBackupFileName = findAcceptableBackupFilePathName(pszBackupDirectory, pszBackupKey, segid);
+		if (pszBackupFileName == NULL)
+			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("Attempt to restore dbid %d failed. No acceptable dump file name found "
-					 " in directory %s with backup key %s and source dbid key %d", target_dbid, 
-					 pszBackupDirectory, pszBackupKey, segid)));
+					 errmsg("Attempt to restore dbid %d failed. No acceptable dump file name found in directory %s with backup key %s and source dbid key %d", target_dbid, pszBackupDirectory, pszBackupKey, segid)));
 
-			/*
-		 	* If --gp-c is on make sure our file name has a .gz suffix.
-		 	* If no decompression requested make sure the file *doesn't* have
-		 	* a .gz suffix. This fixes the problem with forgetting to use
-		 	* the compression flags and gp_restore completing silently with
-		 	* no errors (hard to reproduce, but this check doesn't hurt)
-		 	*/
-			len_name = strlen(pszBackupFileName);
-			is_file_compressed = (strcmp(pszBackupFileName + (len_name - 3), ".gz") == 0 ? true : false);
+		/*
+		 * If --gp-c is on make sure our file name has a .gz suffix.
+		 * If no decompression requested make sure the file *doesn't* have
+		 * a .gz suffix. This fixes the problem with forgetting to use
+		 * the compression flags and gp_restore completing silently with
+		 * no errors (hard to reproduce, but this check doesn't hurt)
+		 */
+		len_name = strlen(pszBackupFileName);
+		is_file_compressed = (strcmp(pszBackupFileName + (len_name - 3), ".gz") == 0 ? true : false);
 
-			if (is_file_compressed && !is_decompress)
-				ereport(ERROR,
+		if(is_file_compressed && !is_decompress)
+			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 					errmsg("dump file appears to be compressed. Pass a decompression "
 						   "option to gp_restore to decompress it on the fly")));
 
-			if (!is_file_compressed && is_decompress)
-				ereport(ERROR,
+		if(!is_file_compressed && is_decompress)
+			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 					errmsg("a decompression cmd line option is used but the dump "
 						   "file does not appear to be compressed.")));
-		}
-#ifdef USE_DDBOOST
 	}
-#endif
 
 	len_name = strlen(pszBackupFileName);
 
@@ -711,108 +556,77 @@ gp_restore_launch__(PG_FUNCTION_ARGS)
 
 		sprintf(pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials);
 
-#ifdef USE_DDBOOST
-    dd_boost_buffer_size = (char*)malloc(MAX_DDBOOST_BUF_NAME);
-    if (!dd_boost_buffer_size)
-    {
-        ereport(ERROR,
-                (errcode(ERRCODE_OUT_OF_MEMORY),
-                 errmsg("out of memory")));
-    }
-
-    sprintf(dd_boost_buffer_size, "%d", ddboost_buf_size);
-#endif
-
-	/*
-	 * In the following calc for the number of characters in the
-	 * pszCmdLine, I show each piece as the count of the string for that
-	 * piece  + 1 for the space after that piece, e.g. -p comes out 2 for
-	 * the -p and 1 for the space after the -p	The last 1 is for the
-	 * binary zero at the end.
-	 */
-	len = strlen(bkPg) + 1	/* gp_restore_agent */
-		+ 7 + 1				/* --gp-k */
-		+ strlen(pszKeyParm) + 1
-		+ 7 + 1				/* --gp-d */
-		+ strlen(pszBackupDirectory) + 1
-		+ 7 + 1				/* --gp-e */
-		+ 2 + 1				/* -p */
-		+ 5 + 1				/* port */
-		+ 2 + 1				/* -U */
-		+ strlen(pszUserName) + 1	/* pszUserName */
-		+ strlen(pszPassThroughParameters) + 1
-		+ strlen(pszPassThroughTargetInfo) + 1
-		+ 2 + 1				/* -d */
-		+ strlen(pszDBName) + 1
-		+ 1 + 1				/* > */
-		+ strlen(pszStatusFileName)
-		+ 4 + 1				/* 2>&1 */
-		+ 1;
-
-#ifdef USE_DDBOOST
-        	len += strlen(dd_boost_buffer_size)
-  	  	+ 20 + 2;            /* --dd_boost_buf_size */
-#endif
-
-	/*
-	 * if compression was requested with --gp-c
-	 */
-	if (is_decompress)
-	{
-		len += 4 + strlen(compPg) +
-			+strlen(pszBackupFileName);
-
-		len += 8; /* pass along "--gp-c" to tell restore file is compressed */
-
-		pszCmdLine = (char *) palloc(len);
-		if (pszCmdLine == NULL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
-		}
+		/*
+		 * In the following calc for the number of characters in the
+		 * pszCmdLine, I show each piece as the count of the string for that
+		 * piece  + 1 for the space after that piece, e.g. -p comes out 2 for
+		 * the -p and 1 for the space after the -p	The last 1 is for the
+		 * binary zero at the end.
+		 */
+		len = strlen(bkPg) + 1	/* gp_restore_agent */
+			+ 7 + 1				/* --gp-k */
+			+ strlen(pszKeyParm) + 1
+			+ 7 + 1				/* --gp-d */
+			+ strlen(pszBackupDirectory) + 1
+			+ 7 + 1				/* --gp-e */
+			+ 2 + 1				/* -p */
+			+ 5 + 1				/* port */
+			+ 2 + 1				/* -U */
+			+ strlen(pszUserName) + 1	/* pszUserName */
+			+ strlen(pszPassThroughParameters) + 1
+			+ strlen(pszPassThroughTargetInfo) + 1
+			+ 2 + 1				/* -d */
+			+ strlen(pszDBName) + 1
+			+ 1 + 1				/* > */
+			+ strlen(pszStatusFileName)
+			+ 4 + 1				/* 2>&1 */
+			+ 1;
 
 		/*
-		 * de-compress backupfile and pipe into stdin of gp_restore_agent along with its
-		 * options. Redirect both stdout and stderr into the status file.
+		 * if compression was requested with --gp-c
 		 */
-#ifdef USE_DDBOOST
-		sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --dd_boost_buf_size %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
-				bkPg, compPg, pszKeyParm, dd_boost_buffer_size, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
-				pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
-				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
-#else
-		sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
-				bkPg, compPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
-				pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
-				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
-#endif
-
-	}
-	else
-	{
-		len += strlen(pszBackupFileName) + 1;
-
-		pszCmdLine = (char *) palloc(len);
-		if (pszCmdLine == NULL)
+		if (is_decompress)
 		{
-			ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-		}
+			len += 4 + strlen(compPg) +
+				+strlen(pszBackupFileName);
 
-		/* Format gp_restore_agent with options, and Redirect both stdout and stderr into the status file */
-#ifdef USE_DDBOOST	
-		sprintf(pszCmdLine, "%s --gp-k %s --dd_boost_buf_size %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
-				bkPg, pszKeyParm, dd_boost_buffer_size, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
-				pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
-				postDataSchemaOnly ? "2>" : "2", pszStatusFileName);
-#else
-		sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&2",
-				bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
-				pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
-				postDataSchemaOnly ? "2>>" : "2>", pszStatusFileName);
-#endif
+			len += 8; /* pass along "--gp-c" to tell restore file is compressed */
+
+			pszCmdLine = (char *) palloc(len);
+			if (pszCmdLine == NULL)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 errmsg("out of memory")));
+			}
+
+			/*
+			 * de-compress backupfile and pipe into stdin of gp_restore_agent along with its
+			 * options. Redirect both stdout and stderr into the status file.
+			 */
+			sprintf(pszCmdLine, "%s --gp-c %s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&1",
+					bkPg, compPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
+					pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
+					postDataSchemaOnly ? ">>" : ">", pszStatusFileName);
+
+		}
+		else
+		{
+			len += strlen(pszBackupFileName) + 1;
+
+			pszCmdLine = (char *) palloc(len);
+			if (pszCmdLine == NULL)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 errmsg("out of memory")));
+			}
+
+			/* Format gp_restore_agent with options, and Redirect both stdout and stderr into the status file */
+			sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s %s -p %d -U %s %s %s -d %s %s %s %s 2>&1",
+					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters,
+					pszPassThroughTargetInfo, pszDBName, pszBackupFileName,
+					postDataSchemaOnly ? ">>" : ">", pszStatusFileName);
 		}
 
 
@@ -1160,6 +974,7 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 	struct dirent *dirp = NULL;
 	DIR		   *dp = NULL;
 	char	   *pszBackupFilePathName = NULL;
+
 	static regex_t rFindFileName;
 	static bool bFirstTime = true;
 	char	   *pszRegex;
@@ -1249,7 +1064,6 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 	}
 
 	closedir(dp);
-
 	return pszBackupFilePathName;
 }
 
@@ -1288,7 +1102,7 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_com
 	len += strlen(pszBackupKey);
 
 	/* if gzip/gunzip is used, the suffix is gz */
-	if (is_compress)
+	if(is_compress)
 		len += strlen(".gz");
 
 	if (isPostData)
@@ -1315,12 +1129,11 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_com
 
 	strcat(pszBackupFileName, szFileNamePrefix);
 	strcat(pszBackupFileName, pszBackupKey);
-	
 	if (isPostData)
 		strcat(pszBackupFileName, "_post_data");
 
 	/* if gzip/gunzip is used, the suffix is gz */
-	if (is_compress)
+	if(is_compress)
 		strcat(pszBackupFileName, ".gz");
 
 	return pszBackupFileName;
@@ -1641,14 +1454,14 @@ static char *positionToError(char *source)
 	{
 		firstErr = strstr((const char*)sourceCopy, "ERROR");
 		
-		if (!firstErr)
+		if(!firstErr)
 		{
 			break;
 		}
 		else
 		{
 			/* found "ERROR". only done if it's "ERROR:" or "[ERROR]" */
-			if (firstErr[5] == ']' || firstErr[5] == ':')
+			if(firstErr[5] == ']' || firstErr[5] == ':')
 			{
 				break; /* done */
 			}
@@ -1660,7 +1473,7 @@ static char *positionToError(char *source)
 		}
 	}
 	
-	if (!firstErr)
+	if(!firstErr)
 	{
 		/* no [ERROR] found */
 		firstErr = defaultNoErr;
@@ -1684,59 +1497,3 @@ static char *positionToError(char *source)
 	
 	return firstErr;
 }
-
-#ifdef USE_DDBOOST
-static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, bool isCompress)
-{
-       /* First form the prefix */
-       char            szFileNamePrefix[1 + MAX_PATH_NAME];
-       int                     instid;                 /* dispatch node */
-       int                     segid;
-       int                     len = 0;
-       char       *pszBackupFileName;
-
-       verifyGpIdentityIsSet();
-       instid = (GpIdentity.segindex == -1) ? 1 : 0;           /* dispatch node */
-       segid = GpIdentity.dbid;
-
-	memset(szFileNamePrefix, 0, sizeof(szFileNamePrefix));
-       sprintf(szFileNamePrefix, "gp_dump_%d_%d_", instid, segid);
-
-      /* Now add up the length of the pieces */
-       len += strlen(szFileNamePrefix);
-       len += strlen(pszBackupKey);
-
-	if(isPostData)
-		len += strlen("_post_data");
-
-	if(isCompress)
-		len += strlen(".gz");
-
-       if (len > PATH_MAX)
-       {
-               ereport(ERROR,
-                               (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                                errmsg("Backup FileName based on key %s too long", pszBackupKey)));
-       }
-
-       pszBackupFileName = (char *) palloc(sizeof(char) * (1 + len));
-       if (pszBackupFileName == NULL)
-       {
-               ereport(ERROR,
-                               (errcode(ERRCODE_OUT_OF_MEMORY),
-                                errmsg("out of memory")));
-       }
-
-	memset(pszBackupFileName, 0, (1+len));
-       strcat(pszBackupFileName, szFileNamePrefix);
-       strcat(pszBackupFileName, pszBackupKey);
-
-       if (isPostData)
-               strcat(pszBackupFileName, "_post_data");
-
-	if(isCompress)
-		strcat(pszBackupFileName, ".gz");
-
-       return pszBackupFileName;
-}
-#endif

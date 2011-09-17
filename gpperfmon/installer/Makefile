@@ -108,12 +108,8 @@ all:
 	(cd .tmp && tar cf - * | gzip -c > ../greenplum-perfmon-web.tar.gz)
 	./create-gpperfmon-installer.sh
 	mv greenplum-perfmon-web.bin greenplum-perfmon-web-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin
-
 	rm -rf .tmp
 	zip -q greenplum-perfmon-web-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).zip greenplum-perfmon-web-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin
-
-	cp -p greenplum-perfmon-web-$(GPPERFMON_VERSION)-$(PACKAGE_ARCH).bin greenplum-perfmon-web-$(PROJECT_VERSION)-${PACKAGE_ARCH}.bin
-	zip -q greenplum-perfmon-web-$(PROJECT_VERSION)-${PACKAGE_ARCH}.zip greenplum-perfmon-web-$(PROJECT_VERSION)-${PACKAGE_ARCH}.bin
 
 clean:
 	rm -rf .tmp

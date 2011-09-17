@@ -332,7 +332,6 @@ bool		filerep_inject_listener_fault = false;
 bool		filerep_inject_change_tracking_recovery_fault = false;
 bool		gp_crash_recovery_supress_ao_eof = false;
 bool            gp_keep_all_xlog = false;
-int 		ddboost_buf_size = 512*1024;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -3049,16 +3048,6 @@ static struct config_bool ConfigureNamesBool[] =
 
 static struct config_int ConfigureNamesInt[] =
 {
-	{
-		{"ddboost_buf_size", PGC_SIGHUP, DEVELOPER_OPTIONS,
-			gettext_noop("size of ddboost dump/restore buffer"),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&ddboost_buf_size,
-		524288, 65536, 2097152, NULL, NULL
-	},
-
 	{
 		{"archive_timeout", PGC_SIGHUP, WAL_SETTINGS,
 			gettext_noop("Forces a switch to the next xlog file if a "
