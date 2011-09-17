@@ -97,6 +97,7 @@ def main():
 	    sys.stderr.write('Error: psql unable to connect\n')
 	    sys.exit(2)
 
+        os.putenv('GPSTART_INTERNAL_MASTER_ONLY', '1')
 	p = os.popen("gpstart -m")
 	p.readlines()
 	p.close()

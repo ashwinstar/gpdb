@@ -467,7 +467,10 @@ class GPUpgradeBase(object):
 
         try:
             cmd = "gpstart -a"
-            if utility:  cmd = cmd +' -m'
+            if utility:
+                cmd = cmd +' -m'
+                env['GPSTART_INTERNAL_MASTER_ONLY'] = '1'
+
             if upgrade:  cmd = cmd +' -U upgrade'
 
             cmd += ' -l %s' % self.logdir

@@ -537,6 +537,7 @@ class GpRecoverSegmentProgram:
 
         # N - 3
         # Start GPDB in admin-mode
+        os.putenv('GPSTART_INTERNAL_MASTER_ONLY', '1')
         e = os.system('gpstart -m -d %s' % (os.environ.get('MASTER_DATA_DIRECTORY')))
         ok = not e
         if not ok:

@@ -393,6 +393,10 @@ class LocalExecutionContext(ExecutionContext):
         for k, v in self.__class__.propagate_env_map.iteritems():
             cmd.cmdStr = "%s=%s %s" % (k, v, cmd.cmdStr)
         
+        # also propagate env from command instance specific map
+        for k, v in cmd.propagate_env_map.iteritems():
+            cmd.cmdStr = "%s=%s %s" % (k, v, cmd.cmdStr)
+
         # executable='/bin/bash' is to ensure the shell is bash.  bash isn't the
         # actual command executed, but the shell that command string runs under.
         self.proc = gpsubprocess.Popen(cmd.cmdStr, env=None, shell=True, 
@@ -611,6 +615,10 @@ class RemoteExecutionContext(LocalExecutionContext):
             cmd.cmdStr = "%s=%s %s" % (k, v, cmd.cmdStr)
         self.__class__.trail.add(self.targetHost)
 
+        # also propagate env from command instance specific map
+        for k, v in cmd.propagate_env_map.iteritems():
+            cmd.cmdStr = "%s=%s %s" % (k, v, cmd.cmdStr)
+
         # Escape " for remote execution otherwise it interferes with ssh
         cmd.cmdStr = cmd.cmdStr.replace('"', '\\"')
         cmd.cmdStr="ssh -o 'StrictHostKeyChecking no' %s \"%s %s\"" % (self.targetHost,SRC_GPPATH,cmd.cmdStr)
@@ -643,8 +651,8 @@ class Command:
     cmdStr=None
     results=None
     exec_context=None
-    
-    
+    propagate_env_map={} #  specific environment variables for this command instance
+
     def __init__(self,name,cmdStr,ctxt=LOCAL,remoteHost=None,stdin=None,nakedExecutionInfo=None):
         self.name=name
         self.cmdStr=cmdStr        

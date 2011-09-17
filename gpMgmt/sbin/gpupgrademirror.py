@@ -124,6 +124,7 @@ def Startup(env, utility=False):
     try:
         if utility:
            cmd = 'gpstart -a -m'
+           env['GPSTART_INTERNAL_MASTER_ONLY'] = '1'
         else:
            cmd = 'gpstart -a'
 

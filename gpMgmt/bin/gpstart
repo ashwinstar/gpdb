@@ -71,6 +71,7 @@ class GpStart:
         #
         # Some variables that are set during execution
         #
+        self.dbidfile=None
         self.gpversion=None
         self.gparray=None
         self.port=None
@@ -86,6 +87,23 @@ class GpStart:
     ######
     def run(self):
         self._prepare()
+
+        # MPP-13700
+        if self.masteronly:
+            if os.getenv('GPSTART_INTERNAL_MASTER_ONLY'):
+                logger.info('Master-only start requested for management utilities.')
+            else:
+                if self.dbidfile.standby_dbid is not None:
+                    logger.warning("****************************************************************************")
+                    logger.warning("Master-only start requested in a configuration with a standby master.")
+                    logger.warning("This is advisable only under the direct supervision of Greenplum support. ")
+                    logger.warning("This mode of operation is not supported in a production environment and ")
+                    logger.warning("may lead to a split-brain condition and possible unrecoverable data loss.")
+                    logger.warning("****************************************************************************")
+                else:
+                    logger.info('Master-only start requested in configuration without a standby master.')
+                if not userinput.ask_yesno(None, "\nContinue with master-only startup", 'N'):
+                    raise UserAbortedException()
 
         try:
             # Disable Ctrl-C
@@ -110,7 +128,7 @@ class GpStart:
             cmd=gp.GpStop("Shutting down master", masterOnly=True,
                           fast=True, quiet=logging_is_quiet(),
                           verbose=logging_is_verbose(),
-                          datadir=self._get_master_datadir())
+                          datadir=self.master_datadir)
             cmd.run()
             logger.debug("results of forcing master shutdown: %s" % cmd)
             #TODO: check results of command.
@@ -170,10 +188,7 @@ class GpStart:
         self.user=gp.get_user()
         gp.check_permissions(self.user)
         self._read_postgresqlconf()
-
-    ######
-    def _get_master_datadir(self):
-        return self.master_datadir
+        self.dbidfile = GpDbidFile(self.master_datadir, do_read=True, logger=get_logger_if_verbose())
 
     ######
     def _read_postgresqlconf(self):
@@ -185,6 +200,7 @@ class GpStart:
         logger.debug("Read from postgresql.conf max_connections=%s" % self.max_connections)
         self.gp_external_grant_privileges = pgconf_dict.str('gp_external_grant_privileges');
         logger.debug("gp_external_grant_privileges is %s" % self.gp_external_grant_privileges);
+
     ######
     def _check_version(self):
         self.gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
@@ -234,7 +250,7 @@ class GpStart:
                     cmd=gp.GpStop("Shutting down master", masterOnly=True, 
                                   fast=True, quiet=logging_is_quiet(),
                                   verbose=logging_is_verbose(),
-                                  datadir=self._get_master_datadir())
+                                  datadir=self.master_datadir)
                     cmd.run(validateAfter=True)
                     raise ExceptionNoStackTraceNeeded("Standby activated")
 
