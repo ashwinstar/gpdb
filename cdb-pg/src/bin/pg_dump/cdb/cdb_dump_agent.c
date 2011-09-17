@@ -281,6 +281,9 @@ static char *DDP_SU_NAME = NULL;
 
 char *log_message_path = NULL;
 
+static int createDDBoostDir(ddp_conn_desc_t ddp_conn, char *storage_unit_name, char *path_name);
+static int updateArchiveWithDDFile(ArchiveHandle *AH, char *g_pszDDBoostFile, const char *g_pszDDBoostDir);
+static void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity);
 
 void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity)
 {
