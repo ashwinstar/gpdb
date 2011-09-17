@@ -25,6 +25,8 @@ try:
 except ImportError, e:
     sys.exit('Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
+INJECT_ROLLBACK = False
+
 EXECNAME = 'gpcrondump'
 GPCRONDUMP_PID_FILE = 'gpcrondump.pid'
 FREE_SPACE_PERCENT = 10
@@ -50,7 +52,7 @@ class GpCronDump(Operation):
         self.rollback = options.rollback
 
         self.compress = options.compress
-        self.free_space_percent = options.free_space_percent
+        self.free_space_percent = int(options.free_space_percent)
         self.clear_dumps = options.clear_dumps
         self.dump_schema = options.dump_schema
         self.dump_databases = options.dump_databases
@@ -84,10 +86,27 @@ class GpCronDump(Operation):
         if options.backup_set is not None:
             logger.info("-w is no longer supported, will continue with dump of primary segments.")
 
+        count = sum([1 for opt in ['ddb_host', 'ddb_user', 'ddb_passwd']
+                       if options.__dict__[opt] is not None])
+        if count > 0:
+            if count < 3:
+                raise ExceptionNoStackTraceNeeded("--gp-ddb-user, --gp-ddb-host, --gp-ddb-passwd must all be provided for DDBoost capabilities.")
+            self.ddboost = { 'user' : options.ddb_user,
+                             'passwd' : options.ddb_passwd,
+                             'host' : options.ddb_host } 
+            self.compress = False
+            self.free_space_percent = None
+            logger.info('Bypassing disk space checks due to DDBoost parameters')
+            if self.backup_dir is not None:
+                raise ExceptionNoStackTraceNeeded('-u cannot be used with DDBoost parameters.')
+        else:
+            self.ddboost = None
+
     def execute(self):
         if self.clear_dumps_only:
             DeleteOldestDumps(master_datadir = self.master_datadir,
-                              master_port = self.master_port).run()
+                              master_port = self.master_port,
+                              ddboost = self.ddboost).run()
             return
 
         if self.post_script is not None:
@@ -118,7 +137,8 @@ class GpCronDump(Operation):
                                         output_options = self.output_options,
                                         batch_default = self.batch_default,
                                         master_datadir = self.master_datadir,
-                                        master_port = self.master_port).run()
+                                        master_port = self.master_port,
+                                        ddboost = self.ddboost).run()
 
             post_dump_outcome = PostDumpDatabase(timestamp_start = dump_outcome['timestamp_start'],
                                                  compress = self.compress,
@@ -126,13 +146,15 @@ class GpCronDump(Operation):
                                                  report_dir = self.report_dir,
                                                  batch_default = self.batch_default,
                                                  master_datadir = self.master_datadir,
-                                                 master_port = self.master_port).run()
+                                                 master_port = self.master_port,
+                                                 ddboost = self.ddboost).run()
             exit_status = max(exit_status, post_dump_outcome['exit_status'])
 
             if self.dump_global:
                 if post_dump_outcome['exit_status'] == 0:
                     DumpGlobal(timestamp = post_dump_outcome['timestamp'],
-                               master_datadir = self.master_datadir).run()
+                               master_datadir = self.master_datadir,
+                               ddboost = self.ddboost).run()
                 else:
                     logger.info("Skipping global dump due to issues during post-dump checks.")
             
@@ -149,28 +171,33 @@ class GpCronDump(Operation):
                                    master_port = self.master_port).run()
 
             deleted_dump_set = None
-            if post_dump_outcome['exit_status'] > 0:
+            if post_dump_outcome['exit_status'] > 0 or INJECT_ROLLBACK:
                 if post_dump_outcome['exit_status'] == 2 and self.rollback:
                     logger.warn("Dump request was incomplete, however cannot rollback since no timestamp was found.")
                     MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host,
-                                  "Failed for database %s with return code %d, dump files not rolled back, because no new timestamp was found. [Start=%s End=%s] Options passed [%s]" % (dump_database, dump_outcome['exit_status'], dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
+                                  "Failed for database %s with return code %d, dump files not rolled back, because no new timestamp was found. [Start=%s End=%s] Options passed [%s]" 
+                                    % (dump_database, dump_outcome['exit_status'], dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
                 elif self.rollback:
                     logger.warn("Dump request was incomplete, rolling back dump")
                     DeleteCurrentDump(timestamp = post_dump_outcome['timestamp'],
                                       master_datadir = self.master_datadir,
-                                      master_port = self.master_port).run()
+                                      master_port = self.master_port,
+                                      ddboost = self.ddboost).run()
                     MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host,
-                                  "Failed for database %s with return code %d dump files rolled back. [Start=%s End=%s] Options passed [%s]" % (dump_database, dump_outcome['exit_status'], dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
+                                  "Failed for database %s with return code %d dump files rolled back. [Start=%s End=%s] Options passed [%s]" 
+                                    % (dump_database, dump_outcome['exit_status'], dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
                     raise ExceptionNoStackTraceNeeded("Dump incomplete, completed rollback")
                 else:
                     logger.warn("Dump request was incomplete, not rolling back because -r option was not supplied")
                     MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host, 
-                                  "Failed for database %s with return code %s dump files not rolled back. [Start=%s End=%s] Options passed [%s]" % (dump_database, dump_outcome['exit_status'], dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
+                                  "Failed for database %s with return code %s dump files not rolled back. [Start=%s End=%s] Options passed [%s]" 
+                                    % (dump_database, dump_outcome['exit_status'], dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
                     raise ExceptionNoStackTraceNeeded("Dump incomplete, rollback not processed")
             else:
                 if self.clear_dumps:
                     deleted_dump_set = DeleteOldestDumps(master_datadir = self.master_datadir, 
-                                                           master_port = self.master_port).run()
+                                                         master_port = self.master_port,
+                                                         ddboost = self.ddboost).run()
 
             if self.post_vacuum:
                 logger.info('Commencing post-dump vacuum...')
@@ -187,7 +214,8 @@ class GpCronDump(Operation):
             DumpConfig(timestamp = timestamp,
                        backup_dir = self.backup_dir,
                        master_datadir = self.master_datadir,
-                       master_port = self.master_port).run()
+                       master_port = self.master_port,
+                       ddboost = self.ddboost).run()
         
         if self.post_script is not None:
             self._run_program()
@@ -428,6 +456,13 @@ def create_parser():
     addTo.add_option('-w', dest='backup_set', help="No longer supported.")
 
     parser.add_option_group(addTo)
+
+    ddOpt = OptionGroup(parser, "DDBoost APIs")
+    ddOpt.add_option('--gp-ddb-host', dest='ddb_host')
+    ddOpt.add_option('--gp-ddb-user', dest='ddb_user')
+    ddOpt.add_option('--gp-ddb-passwd', dest='ddb_passwd')
+    
+    parser.add_option_group(ddOpt)
 
     parser.setHelp([
     """

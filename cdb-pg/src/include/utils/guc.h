@@ -225,6 +225,8 @@ extern int	log_min_duration_statement;
 
 extern int	num_temp_buffers;
 
+extern int ddboost_buf_size;
+
 /* Debug DTM Action */
 typedef enum
 {

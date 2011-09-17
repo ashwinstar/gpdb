@@ -34,6 +34,10 @@
 #include "libpq-fe.h"
 #include "pqexpbuffer.h"
 
+#ifdef USE_DDBOOST
+#include "ddp_api.h"
+#endif
+
 #define LOBBUFSIZE 16384
 
 /*
@@ -249,6 +253,12 @@ typedef struct _archiveHandle
 	char	   *fSpec;			/* Archive File Spec */
 	FILE	   *FH;				/* General purpose file handle */
 	void	   *OF;
+
+#ifdef USE_DDBOOST
+	ddp_file_desc_t                 ddHandle;                       /* Handler for ddboost support */
+	int								dd_boost_buf_size;
+#endif
+
 	int			gzOut;			/* Output file */
 
 	struct _tocEntry *toc;		/* List of TOC entries */

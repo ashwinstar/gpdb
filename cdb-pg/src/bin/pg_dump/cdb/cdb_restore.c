@@ -63,6 +63,11 @@ static const char *logError = "ERROR";
 static const char *logFatal = "FATAL";
 const char *progname;
 
+#ifdef USE_DDBOOST
+static char * addPassThroughLongParm(const char *Parm, const char *pszValue, char *pszPassThroughParmString);
+static char * shellEscape(const char *shellArg, PQExpBuffer escapeBuf);
+static int dd_boost_enabled = 0;
+#endif
 
 int
 main(int argc, char **argv)
@@ -94,11 +99,15 @@ main(int argc, char **argv)
 
 	progname = get_progname(argv[0]);
 
+#ifdef USE_DDBOOST
+	dd_boost_enabled = 0;
+#endif
 	/* Parse command line for options */
 	if (!fillInputOptions(argc, argv, &inputOpts))
 	{
 		failCount = reportMasterError(inputOpts, &masterParm,
 									  get_early_error());
+		mpp_err_msg(logInfo, progname, "Reporting Master Error from fillInputOptions.\n");
 		goto cleanup;
 	}
 
@@ -303,6 +312,12 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 	int			lenCmdLineParms;
 	int			i;
 
+#ifdef USE_DDBOOST
+        char            *ddboost_user = NULL;
+        char            *ddboost_passwd = NULL;
+        char            *ddboost_hostname = NULL;
+#endif
+
 	struct option cmdopts[] = {
 		{"clean", 0, NULL, 'c'},
 		/* {"create", 0, NULL, 'C'}, */
@@ -351,6 +366,13 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"gp-r", required_argument, NULL, 7},
 		{"gp-s", required_argument, NULL, 8},
 		{"gp-l", required_argument, NULL, 9},
+
+#ifdef USE_DDBOOST
+                {"gp-ddb-user", required_argument, NULL, 10},
+                {"gp-ddb-passwd", required_argument, NULL, 11},
+                {"gp-ddb-hostname", required_argument, NULL, 12},
+#endif
+
 		{NULL, 0, NULL, 0}
 	};
 
@@ -362,6 +384,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 												 * automatically */
 	pInputOpts->backupLocation = FILE_ON_PRIMARIES;
 	pInputOpts->bOnErrorStop = true;
+	pInputOpts->pszBackupDirectory = NULL;
 
 	opts = (RestoreOptions *) calloc(1, sizeof(RestoreOptions));
 	if (opts == NULL)
@@ -692,12 +715,44 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 					return false;
 				}
 				break;
+#ifdef USE_DDBOOST
+                        case 10:
+                                /* DDBoost user name */
+                                ddboost_user = Safe_strdup(optarg);
+                                pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-user", ddboost_user, pInputOpts->pszPassThroughParms);
+                                dd_boost_enabled = 1;
+                                break;
+                        case 11:
+                                /* DDBoost password */
+                                ddboost_passwd = Safe_strdup(optarg);
+                                pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-passwd", ddboost_passwd, pInputOpts->pszPassThroughParms);
+                                dd_boost_enabled = 1;
+                                break;
+                        case 12:
+                                /* DDBoost hostname */
+                                ddboost_hostname = Safe_strdup(optarg);
+                                pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-ddb-hostname", optarg, pInputOpts->pszPassThroughParms);
+                                dd_boost_enabled = 1;
+                                break;
+#endif
+
 
 			default:
 				mpp_err_msg_cache(logError, progname, "Try \"%s --help\" for more information.\n", progname);
 				return false;
 		}
 	}
+
+#ifdef USE_DDBOOST
+        if (dd_boost_enabled)
+	{
+                pInputOpts->pszPassThroughParms = addPassThroughLongParm("dd_boost_enabled", NULL, pInputOpts->pszPassThroughParms);
+		if (pInputOpts->pszBackupDirectory)
+                	pInputOpts->pszPassThroughParms = addPassThroughLongParm("dd_boost_dir", pInputOpts->pszBackupDirectory, pInputOpts->pszPassThroughParms);
+		else
+			pInputOpts->pszPassThroughParms = addPassThroughLongParm("dd_boost_dir", "db_dumps", pInputOpts->pszPassThroughParms);
+	}
+#endif
 
 	/*
 	 * get PG env variables, override only of no cmd-line value specified
@@ -754,6 +809,26 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		return false;
 	}
 
+#ifdef USE_DDBOOST
+	if (dd_boost_enabled)
+	{
+		if (ddboost_user == NULL)
+		{
+			mpp_err_msg_cache(logError, progname, "DDBoost login username missing\n");
+			return false;
+		}
+		if (ddboost_passwd == NULL)
+		{
+			mpp_err_msg_cache(logError, progname, "DDBoost login password missing\n");
+			return false;
+		}
+		if (ddboost_hostname == NULL)
+		{
+			mpp_err_msg_cache(logError, progname, "DDBoost login hostname missing\n");
+			return false;
+		}
+	}
+#endif
 
 	if (opts->formatName == NULL)
 	{
@@ -1746,3 +1821,90 @@ reportMasterError(InputOptions inputopts, const ThreadParm * pMasterParm, const 
 
 	return failCount;
 }
+
+#ifdef USE_DDBOOST
+/*
+ * addPassThroughLongParm: this function adds a long option to the string of pass-through parameters.
+ * These get sent to each backend and get passed to the gp_dump_agent program.
+ */
+static char *
+addPassThroughLongParm(const char *Parm, const char *pszValue, char *pszPassThroughParmString)
+{
+        char       *pszRtn;
+        bool            bFirstTime = (pszPassThroughParmString == NULL);
+
+        if (pszValue != NULL)
+        {
+                if (parmValNeedsQuotes(pszValue))
+                {
+                        PQExpBuffer valueBuf = createPQExpBuffer();
+
+                        if (bFirstTime)
+                                pszRtn = MakeString("--%s \"%s\"", Parm, shellEscape(pszValue, valueBuf));
+                        else
+                                pszRtn = MakeString("%s --%s \"%s\"", pszPassThroughParmString, Parm, shellEscape(pszValue, valueBuf));
+
+                        destroyPQExpBuffer(valueBuf);
+                }
+                else
+                {
+                        if (bFirstTime)
+                                pszRtn = MakeString("--%s %s", Parm, pszValue);
+                        else
+                                pszRtn = MakeString("%s --%s %s", pszPassThroughParmString, Parm, pszValue);
+                }
+        }
+        else
+        {
+                if (bFirstTime)
+                        pszRtn = MakeString("--%s", Parm);
+                else
+                        pszRtn = MakeString("%s --%s", pszPassThroughParmString, Parm);
+        }
+
+        return pszRtn;
+}
+
+/*
+ * shellEscape: Returns a string in which the shell-significant quoted-string characters are
+ * escaped.  The resulting string, if used as a SQL statement component, should be quoted
+ * using the PG $$ delimiter (or as an E-string with the '\' characters escaped again).
+ *
+ * This function escapes the following characters: '"', '$', '`', '\', '!'.
+ *
+ * The PQExpBuffer escapeBuf is used for assembling the escaped string and is reset at the
+ * start of this function.
+ *
+ * The return value of this function is the data area from excapeBuf.
+ */
+static char *
+shellEscape(const char *shellArg, PQExpBuffer escapeBuf)
+{
+        const char *s = shellArg;
+        const char      escape = '\\';
+
+        resetPQExpBuffer(escapeBuf);
+
+        /*
+         * Copy the shellArg into the escapeBuf prepending any characters
+         * requiring an escape with the escape character.
+         */
+        while (*s != '\0')
+        {
+                switch (*s)
+                {
+                        case '"':
+                        case '$':
+                        case '\\':
+                        case '`':
+                        case '!':
+                                appendPQExpBufferChar(escapeBuf, escape);
+                }
+                appendPQExpBufferChar(escapeBuf, *s);
+                s++;
+        }
+
+        return escapeBuf->data;
+}
+#endif
+

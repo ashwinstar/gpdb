@@ -186,6 +186,8 @@ main(int argc, char *argv[])
 
 	while ((c = getopt_long(argc, argv, "acdDf:Fgh:il:oOp:rsS:U:vwWxX:", long_options, &optindex)) != -1)
 	{
+		fprintf(stderr, "ZENITH %d argc '%d' progname'%s' \n", c, argc, progname);
+				
 		switch (c)
 		{
 			case 'a':

@@ -30,10 +30,6 @@
 
   <!-- Project Libraries -->
   
-  <path id="pig.classpath">
-    <fileset file="${lib.dir}/hadoop-${hadoop.version}/pig-*-core.jar" />
-  </path>
-
   <path id="library.commons.classpath">
     <fileset dir="${lib.dir}">
       <patternset refid="library.patterns" />

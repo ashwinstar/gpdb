@@ -165,11 +165,11 @@ DEBUGFLAGS="$(strip $(CFLAGS_INLINE) $(CFLAGS_OPT) $(DEBUG_CFLAGS_OPT) $(TRACE_G
 #---------------------------------------------------------------------
 
 DEFPORT=5432
-rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email --enable-snmp
-rhel5_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc
-sol10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
+rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-email --enable-snmp --enable-ddboost
+rhel5_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-connectemc --enable-ddboost
+sol10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost
 sol_x86_64_CONFIGFLAGS=--enable-email
-suse10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
+suse10_x86_64_CONFIGFLAGS=--enable-email --enable-snmp --enable-ddboost
 linux_x86_64_CONFIGFLAGS=--enable-email --enable-snmp
 osx104_x86_CONFIGFLAGS=--enable-email
 osx105_x86_CONFIGFLAGS=--enable-email --enable-snmp	
@@ -1044,7 +1044,7 @@ mkpgbench:
 mkgpperfmon:
 	@cd $(GPPERFMON) && $(MAKE) BUILDDIR=$(BUILDDIR)
 	rm -f $(INSTLOC)/../greenplum-perfmon-*.zip
-	cp -p gpperfmon/installer/greenplum-perfmon-*.zip $(INSTLOC)/..
+	cp -p gpperfmon/installer/greenplum-perfmon-web*.zip $(INSTLOC)/..
 	cp -p gpperfmon/src/gpmon/gpmmon gpperfmon/src/gpmon/gpsmon $(INSTLOC)/bin
 	cp -p gpperfmon/src/gpmon/gpmon_catqrynow.py $(INSTLOC)/sbin
 	cp -p gpperfmon/src/gpmon/gpperfmon_install $(INSTLOC)/bin
