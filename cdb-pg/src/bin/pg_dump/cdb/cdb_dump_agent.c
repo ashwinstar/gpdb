@@ -282,6 +282,24 @@ static char *DDP_SU_NAME = NULL;
 char *log_message_path = NULL;
 
 
+void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity)
+{
+    FILE* log_file = NULL;
+    time_t ltime;
+    struct tm *Tm;
+
+    log_file = fopen("libDDBoost_test.log", "a");
+    if (log_file) {
+        ltime = time(NULL);
+        Tm = localtime(&ltime);
+        fprintf(log_file, "%02d/%02d %02d:%02d:%02d: %s\n",
+                           Tm->tm_mon + 1, Tm->tm_mday,
+                           Tm->tm_hour + (1 - Tm->tm_isdst), Tm->tm_min, Tm->tm_sec,
+                           log_msg);
+        fclose(log_file);
+    }
+}
+#endif
 
 /*
  * testAttributeEncodingSupport - tests whether or not the current GP
@@ -308,26 +326,6 @@ testAttributeEncodingSupport(void)
 	return isSupported;
 }
 
-
-
-void _ddp_test_log(const void *session_ptr, const ddp_char_t *log_msg, ddp_severity_t severity)
-{
-    FILE* log_file = NULL;
-    time_t ltime;
-    struct tm *Tm;
-
-    log_file = fopen("libDDBoost_test.log", "a");
-    if (log_file) {
-        ltime = time(NULL);
-        Tm = localtime(&ltime);
-        fprintf(log_file, "%02d/%02d %02d:%02d:%02d: %s\n",
-                           Tm->tm_mon + 1, Tm->tm_mday,
-                           Tm->tm_hour + (1 - Tm->tm_isdst), Tm->tm_min, Tm->tm_sec,
-                           log_msg);
-        fclose(log_file);
-    }
-}
-#endif
 
 int
 main(int argc, char **argv)
