@@ -67,11 +67,15 @@ The directory to write the log file. Defaults to ~/gpAdminLogs.
 
 -m (master only)
 
-Optional. Starts the master instance only, which may be useful for 
-maintenance tasks. This mode only allows connections to the master 
+Optional. Starts the master instance only, which may be necessary 
+for maintenance tasks. This mode only allows connections to the master 
 in utility mode. For example:
 
 PGOPTIONS='-c gp_session_role=utility' psql
+
+Note that starting the system in master-only mode is only advisable
+under supervision of Greenplum support.  Improper use of this option
+may lead to a split-brain condition and possible data loss.
 
 
 -q (no screen output)

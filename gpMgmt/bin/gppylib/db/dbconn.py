@@ -137,7 +137,7 @@ class DbURL:
 
 
 
-def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTableMods=None):
+def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTableMods=None, upgrade=False):
 
     if utility:
         options = '-c gp_session_role=utility' 
@@ -149,6 +149,10 @@ def connect(dburl, utility=False, verbose=False, encoding=None, allowSystemTable
         options += ' -c allow_system_table_mods=' + allowSystemTableMods
     elif allowSystemTableMods is not None:
         raise Exception('allowSystemTableMods invalid: %s' % allowSystemTableMods)
+
+    # gpmigrator needs gpstart to make master connection in maintenance mode
+    if upgrade:
+        options += ' -c gp_maintenance_conn=true'
     
     dsn_str = "" + str(dburl) + ": " + options + ":1"
     conn = pgdb.connect(dsn=dsn_str)

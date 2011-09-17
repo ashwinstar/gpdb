@@ -435,17 +435,10 @@ class GpStart:
             self._shutdown_segments(segmentStartResult)
             raise ExceptionNoStackTraceNeeded("Do not have enough valid segments to start the array.")
 
-        hadSegmentFailuresOrInactive = len(segmentStartResult.getFailedSegmentObjs()) > 0 or \
-                                       len(invalidSegments ) > 0
+        failedToStart = segmentStartResult.getFailedSegmentObjs()
+        final_result  = self._start_final_master(failedToStart, invalidSegments)
+        return final_result
 
-        final_result = self._start_final_master(hadSegmentFailuresOrInactive)
-        if not final_result:
-            return False
-
-        if len(segmentStartResult.getFailedSegmentObjs()) == 0:
-            return True
-        else:
-            return False
 
     ######
     def _prepare_segment_start(self):
@@ -651,6 +644,11 @@ class GpStart:
 
             logger.info("----------------------------------------------------")
 
+        # MPP-14014
+        # don't confuse the user with warning about intentionally invalid segments during upgrade
+        if self.specialMode == 'upgrade':
+            return
+
         if len(invalidSegments) > 0:
             logger.warning("****************************************************************************")
             logger.warning("There are %d segment(s) marked down in the database" % len(invalidSegments))
@@ -660,7 +658,7 @@ class GpStart:
 
 
     ######
-    def _start_final_master(self, hadSegmentFailuresOrInactive):
+    def _start_final_master(self, failedToStart, invalidSegments):
         ''' Last item in the startup sequence is to start the master. 
 
             After starting the master we connect to it.  This is done both as a check that the system is 
@@ -668,54 +666,74 @@ class GpStart:
             until the first connection.  The DTM is an example of this and it allows those initialization
             messages to end up in the gpstart log as opposed to the user's psql session.
         '''
+        restrict_txt = ""
         if self.restricted:
             restrict_txt = "in RESTRICTED mode"
-        else:
-            restrict_txt = ""
-        logger.info("Starting Master instance %s directory %s %s" % (self.gparray.master.hostname, self.master_datadir, restrict_txt))
 
-        numContentsInCluster = self.gparray.getNumSegmentContents()
+        is_upgrade_mode = False
+        if self.specialMode == 'upgrade':
+            is_upgrade_mode = True
+
+        standby_dbid = 0
         if self.gparray.standbyMaster:
             standby_dbid = self.gparray.standbyMaster.getSegmentDbId()
-        else:
-            standby_dbid = 0
 
-        gp.MasterStart.local("Starting Master instance",self.master_datadir,self.port,
-                             self.gparray.master.dbid, standby_dbid,
-                             numContentsInCluster, timeout=self.timeout, specialMode=self.specialMode,
-                             restrictedMode=self.restricted,max_connections=self.max_connections,
-                             disableMasterMirror=(not self.start_standby), wrapper=self.wrapper, wrapper_args=self.wrapper_args )
+        numContentsInCluster = self.gparray.getNumSegmentContents()
 
-        if pg.DbStatus.local('master instance',self.gparray.master):
-            logger.info("Command pg_ctl reports Master %s instance active" % self.gparray.master.hostname)
+        logger.info("Starting Master instance %s directory %s %s" % (self.gparray.master.hostname, self.master_datadir, restrict_txt))
 
-            try:
-                masterconn = dbconn.connect(self.dburl)
-                masterconn.close()
-            except Exception,e:
-                ''' we do nothing here since certain fts scenarios will trigger initial connection failures
-                    and other goodies.
-                '''
-                logger.warning("Encountered problem while connecting to master: %s" % str(e))
+        # attempt to start master
+        gp.MasterStart.local("Starting Master instance",
+                             self.master_datadir, self.port, self.gparray.master.dbid, standby_dbid,
+                             numContentsInCluster, 
+                             wrapper=self.wrapper, wrapper_args=self.wrapper_args,
+                             specialMode=self.specialMode,
+                             restrictedMode=self.restricted, timeout=self.timeout, 
+                             max_connections=self.max_connections, disableMasterMirror=(not self.start_standby)
+                             )
 
-            standby_failure=not self.standby_was_started and self.attempt_standby_start
-
-            if standby_failure:
-                logger.warning("Standby Master could not be started")
-                return False
-
-            if hadSegmentFailuresOrInactive:
-                logger.warning("Database started but warnings generated       <<<<<")
-                logger.info("Check status of database with gpstate utility")
-                return True
-
-            else:
-                logger.info("Database successfully started with no errors reported")
-                return True
-
-        else:
+        # check that master is running now
+        if not pg.DbStatus.local('master instance',self.gparray.master):
             logger.warning("Command pg_ctl reports Master %s on port %d not running" % (self.gparray.master.datadir,self.gparray.master.port))
-            return True
+            logger.warning("Master could not be started")
+            return False
+
+        logger.info("Command pg_ctl reports Master %s instance active" % self.gparray.master.hostname)
+
+        # verify we can connect to the master
+        msg = None
+        try:
+            masterconn = dbconn.connect(self.dburl, upgrade=is_upgrade_mode)
+            masterconn.close()
+
+        except Exception, e:
+            # MPP-14016.  While certain fts scenarios will trigger initial connection failures
+            # we still need watch for PANIC events, especially during upgrades.
+            msg = str(e)
+            if 'PANIC' in msg:
+                logger.critical(msg)
+                return False
+            logger.warning(msg)
+
+        standby_failure = not self.standby_was_started and self.attempt_standby_start
+        if standby_failure:
+            logger.warning("Standby Master could not be started")
+        if len(failedToStart) > 0:
+            logger.warning("Number of segments which failed to start:  %d", len(failedToStart))
+
+        if standby_failure or len(failedToStart) > 0:
+            return False
+        
+        if len(invalidSegments) > 0:
+            logger.warning("Number of segments not attempted to start: %d", len(invalidSegments))
+            
+        if len(failedToStart) > 0 or len(invalidSegments) > 0 or msg is not None:
+            logger.info("Check status of database with gpstate utility")
+        else:
+            logger.info("Database successfully started")
+
+        return True
+
 
 
     ######
