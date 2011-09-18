@@ -747,6 +747,10 @@
    (--enable-connectemc) */
 #undef USE_CONNECTEMC
 
+/* Define to 1 to build with DD Boost capabilities.
+   (--enable-ddboost) */
+#undef USE_DDBOOST
+
 /* Define to 1 to build with debug_break capabilities. (--enable-debugbreak)
    */
 #undef USE_DEBUG_BREAK
