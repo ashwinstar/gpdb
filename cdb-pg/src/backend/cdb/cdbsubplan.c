@@ -236,8 +236,8 @@ addRemoteExecParamsToParamList(PlannedStmt *stmt, ParamListInfo extPrm, ParamExe
 		if ( rte->rtekind == RTE_FUNCTION || rte->rtekind == RTE_TABLEFUNCTION )
 		{
 			FuncExpr *fexpr = (FuncExpr*)rte->funcexpr;
-			Assert(fexpr && IsA(fexpr,FuncExpr));
-			param_walker((Node*)fexpr->args, &context);
+			Assert(fexpr && (IsA(fexpr,FuncExpr) || IsA(fexpr,Param)));
+			param_walker((Node *) fexpr, &context);
 		}
 		else if ( rte->rtekind == RTE_VALUES )
 			param_walker((Node*)rte->values_lists, &context);

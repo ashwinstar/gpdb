@@ -448,3 +448,51 @@ select * from csq_m1 where x not in (select x from csq_d1) or x < -100; -- (3)
 explain select * from csq_d1 where x not in (select x from csq_m1) or x < -100; -- broadcast motion
 select * from csq_d1 where x not in (select x from csq_m1) or x < -100; -- (4)
 
+--
+-- correlation in a func expr
+--
+CREATE FUNCTION csq_f(a int) RETURNS int AS $$ select $1 $$ LANGUAGE SQL;
+CREATE TABLE csq_r(a int);
+INSERT INTO csq_r VALUES (1);
+
+-- subqueries shouldn't be pulled into a join if the from clause has a function call
+-- with a correlated argument
+
+-- force_explain
+explain SELECT * FROM csq_r WHERE a IN (SELECT * FROM csq_f(csq_r.a));
+
+SELECT * FROM csq_r WHERE a IN (SELECT * FROM csq_f(csq_r.a));
+
+-- force_explain
+explain SELECT * FROM csq_r WHERE a not IN (SELECT * FROM csq_f(csq_r.a));
+
+SELECT * FROM csq_r WHERE a not IN (SELECT * FROM csq_f(csq_r.a));
+
+-- force_explain
+explain SELECT * FROM csq_r WHERE exists (SELECT * FROM csq_f(csq_r.a));
+
+SELECT * FROM csq_r WHERE exists (SELECT * FROM csq_f(csq_r.a));
+
+-- force_explain
+explain SELECT * FROM csq_r WHERE not exists (SELECT * FROM csq_f(csq_r.a));
+
+SELECT * FROM csq_r WHERE not exists (SELECT * FROM csq_f(csq_r.a));
+
+-- force_explain
+explain SELECT * FROM csq_r WHERE a > (SELECT csq_f FROM csq_f(csq_r.a) limit 1);
+
+SELECT * FROM csq_r WHERE a > (SELECT csq_f FROM csq_f(csq_r.a) limit 1);
+
+-- force_explain
+explain SELECT * FROM csq_r WHERE a < ANY (SELECT csq_f FROM csq_f(csq_r.a));
+
+SELECT * FROM csq_r WHERE a < ANY (SELECT csq_f FROM csq_f(csq_r.a));
+
+-- force_explain
+explain SELECT * FROM csq_r WHERE a <= ALL (SELECT csq_f FROM csq_f(csq_r.a));
+
+SELECT * FROM csq_r WHERE a <= ALL (SELECT csq_f FROM csq_f(csq_r.a));
+
+-- fails: correlation in distributed subplan
+-- force_explain
+explain SELECT * FROM csq_r WHERE a IN (SELECT csq_f FROM csq_f(csq_r.a),csq_r);

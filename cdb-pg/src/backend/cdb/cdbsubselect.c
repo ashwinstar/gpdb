@@ -62,6 +62,8 @@ static bool is_attribute_nonnullable(Oid relationOid, AttrNumber attrNumber);
 static bool is_targetlist_nullable(Query *subq);
 static Node *make_outer_nonnull_clause(SubLink *sublink);
 
+static bool has_correlation_in_funcexpr_rte(List *rtable);
+
 #define DUMMY_COLUMN_NAME "zero"
 
 /*
@@ -225,7 +227,7 @@ safe_to_convert_NOT_EXISTS(SubLink *sublink)
 	/* No set operations in the subquery */
 	if (subselect->setOperations)
 		return false;
-
+		
 	/**
 	 * If there are no correlations in the WHERE clause, then don't bother.
 	 */
@@ -237,6 +239,14 @@ safe_to_convert_NOT_EXISTS(SubLink *sublink)
 	 */
 	if (contain_vars_of_level_or_above(sublink->subselect, 2))
 		return false;
+
+	/**
+	 * If there are correlations in a func expr in the from clause, then don't bother.
+	 */
+	if (has_correlation_in_funcexpr_rte(subselect->rtable))
+	{
+		return false;
+	}
 
 	/**
 	 * If subquery has more than one relation, then don't bother.
@@ -505,6 +515,14 @@ safe_to_convert_EXPR(SubLink *sublink, ConvertExprToJoinWalkerContext * ctx1)
 		return false;
 
 	/**
+	 * If there are correlations in a func expr in the from clause, then don't bother.
+	 */
+	if (has_correlation_in_funcexpr_rte(subselect->rtable))
+	{
+		return false;
+	}
+
+	/**
 	 * If there is a having qual, then don't bother.
 	 */
 	if (subselect->havingQual != NULL)
@@ -741,6 +759,11 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
     if (subselect->jointree->fromlist == NULL)
     	return (Node *) sublink;
 
+    if (has_correlation_in_funcexpr_rte(subselect->rtable))
+    {
+    	return (Node *) sublink;
+    }
+    
     /*
      * 'LIMIT n' makes EXISTS false when n <= 0, and doesn't affect the outcome
      * when n > 0.  Delete subquery's LIMIT and build (0 < n) expr to be ANDed
@@ -902,7 +925,13 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
     			|| subselect->distinctClause
     			|| subselect->setOperations)
     		return (Node *) sublink;
-
+    	
+    	/* do not pull subqueries with correlation in a func expr in the 
+    	   from clause of the subselect */
+    	if (has_correlation_in_funcexpr_rte(subselect->rtable))
+    	{
+    		return (Node *) sublink;
+    	}
     }
 
     /*
@@ -1033,6 +1062,14 @@ safe_to_convert_NOTIN(SubLink * sublink)
 	/* No volatile functions in the subquery */
 	if (contain_volatile_functions(sublink->testexpr))
 		return false;
+
+	/**
+	 * If there are correlations in a func expr in the from clause, then don't bother.
+	 */
+	if (has_correlation_in_funcexpr_rte(subselect->rtable))
+	{
+		return false;
+	}
 
 	/* Left-hand expressions must contain some Vars of the current */
 	left_varnos = pull_varnos(sublink->testexpr);
@@ -1875,4 +1912,24 @@ pull_up_IN_clauses(PlannerInfo * root, List **rtrlist_inout, Node *clause)
 	}
 	/* Stop if not an AND */
 	return clause;
+}
+
+/*
+ * Check if there is a range table entry of type func expr whose arguments
+ * are correlated
+ */
+bool has_correlation_in_funcexpr_rte(List *rtable)
+{
+	/* check if correlation occurs in a func expr in the from clause of the
+	   subselect */
+	ListCell *lc_rte = NULL;
+	foreach(lc_rte, rtable)
+	{
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc_rte);
+		if (NULL != rte->funcexpr && contain_vars_of_level_or_above(rte->funcexpr, 1))
+		{
+			return true;
+		}
+	}
+	return false;
 }

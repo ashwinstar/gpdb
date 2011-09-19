@@ -78,12 +78,12 @@ select foost(fooid), * from foost(3);
 select foost(fooid), * from foo2;
  foost  | fooid | f2  
 --------+-------+-----
- (2,11) |     2 |  22
- (2,33) |     2 |  22
  (1,11) |     1 |  11
  (1,33) |     1 |  11
  (1,11) |     1 | 111
  (1,33) |     1 | 111
+ (2,11) |     2 |  22
+ (2,33) |     2 |  22
 (6 rows)
 
 -- Joining with a table
@@ -108,26 +108,33 @@ ORDER BY 1,2;
 (1 row)
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foost(foo2.fooid) z where z.fooid = foo2.fooid) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     1 | 11
+(1 row)
+
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foost(foo2.fooid) z where z.fooid = 1) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     1 | 11
+(1 row)
+
 -- function in subselect, with correlation - master only
---    Fails: Correlated subquery
 select * from foost(4) x 
 where f2 in (select f2 from foost(x.fooid) z where x.fooid = z.fooid) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     4 | 11
+     4 | 33
+(2 rows)
+
 -- nested functions
 select z.fooid, z.f2 from foost(sin(pi()/2)::int) z ORDER BY 1,2;
  fooid | f2 
@@ -178,7 +185,7 @@ ERROR:  function returning record called in context that cannot accept type reco
 -- function over table (executed on segments)
 --    Fails: record + motion and plperl does not support SFRM_Materialize
 select foor(fooid), * from foo2;
-ERROR:  Can't serialize transient record types (tupser.c:170)
+ERROR:  Can't serialize transient record types (tupser.c:165)
 -- Joining with a table
 select * from foo2, foor(3) z(fooid int, f2 int) where foo2.f2 = z.f2;
  fooid | f2 | fooid | f2 
@@ -203,29 +210,36 @@ ORDER BY 1,2;
 (1 row)
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foor(foo2.fooid) z(fooid int, f2 int) 
              where z.fooid = foo2.fooid) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     1 | 11
+(1 row)
+
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foor(foo2.fooid) z(fooid int, f2 int) 
              where z.fooid = 1) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     1 | 11
+(1 row)
+
 -- function in subselect, with correlation - master only
---    Fails: Correlated subquery
 select * from foor(4) x(fooid int, f2 int)
 where f2 in (select f2 from foor(x.fooid) z(fooid int, f2 int)
              where x.fooid = z.fooid) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     4 | 11
+     4 | 33
+(2 rows)
+
 -- nested functions
 select z.fooid, z.f2 
 from foor(sin(pi()/2)::int) z(fooid int, f2 int)
@@ -285,7 +299,7 @@ select fooro(fooid), * from fooro(3);
 -- function over table (executed on segments)
 --    Fails: can't serialize record
 select fooro(fooid), * from foo2;
-ERROR:  Can't serialize transient record types (tupser.c:170)
+ERROR:  Can't serialize transient record types (tupser.c:165)
 -- Joining with a table
 select * from foo2, fooro(3) z where foo2.f2 = z.f2;
  fooid | f2 | fooid | f2 
@@ -308,26 +322,33 @@ ORDER BY 1,2;
 (1 row)
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from fooro(foo2.fooid) z where z.fooid = foo2.fooid) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     1 | 11
+(1 row)
+
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from fooro(foo2.fooid) z where z.fooid = 1) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     1 | 11
+(1 row)
+
 -- function in subselect, with correlation - master only
---    Fails: Correlated subquery
 select * from fooro(4) x 
 where f2 in (select f2 from fooro(x.fooid) z where x.fooid = z.fooid) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     4 | 11
+     4 | 33
+(2 rows)
+
 -- nested functions
 select z.fooid, z.f2 from fooro(sin(pi()/2)::int) z ORDER BY 1,2;
  fooid | f2 
@@ -387,7 +408,7 @@ select foot(fooid), * from foot(3);
 -- function over table (executed on segments)
 --    Fails: can't serialize record
 select foot(fooid), * from foo2;
-ERROR:  Can't serialize transient record types (tupser.c:170)
+ERROR:  Can't serialize transient record types (tupser.c:165)
 -- Joining with a table
 select * from foo2, foot(3) z where foo2.f2 = z.f2;
  fooid | f2 | fooid | f2 
@@ -410,26 +431,33 @@ ORDER BY 1,2;
 (1 row)
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foot(foo2.fooid) z where z.fooid = foo2.fooid) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     1 | 11
+(1 row)
+
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foot(foo2.fooid) z where z.fooid = 1) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     1 | 11
+(1 row)
+
 -- function in subselect, with correlation - master only
---    Fails: Correlated subquery
 select * from foot(4) x 
 where f2 in (select f2 from foot(x.fooid) z where x.fooid = z.fooid) 
 ORDER BY 1,2;
-ERROR:  Cannot parallelize that query yet.
-DETAIL:  In a subquery FROM clause, a function invocation cannot contain a correlated reference.
+ fooid | f2 
+-------+----
+     4 | 11
+     4 | 33
+(2 rows)
+
 -- nested functions
 select z.fooid, z.f2 from foot(sin(pi()/2)::int) z ORDER BY 1,2;
  fooid | f2 
@@ -711,7 +739,7 @@ HINT:  Use DROP FUNCTION first.
 CREATE OR REPLACE FUNCTION foor(in f1 int, out f2 int, out text)
 AS $$select $1-1, $1::text || 'z'$$ LANGUAGE sql;
 SELECT f1, foor(f1) FROM int4_tbl;
-ERROR:  Can't serialize transient record types (tupser.c:170)
+ERROR:  Can't serialize transient record types (tupser.c:165)
 SELECT * FROM foor(42);
  f2 | column2 
 ----+---------
@@ -727,7 +755,7 @@ SELECT * FROM foor(42) AS p(a,b);
 CREATE OR REPLACE FUNCTION foob(in f1 int, inout f2 int, out text)
 AS $$select $2-1, $1::text || 'z'$$ LANGUAGE sql;
 SELECT f1, foob(f1, f1/2) FROM int4_tbl;
-ERROR:  Can't serialize transient record types (tupser.c:170)
+ERROR:  Can't serialize transient record types (tupser.c:165)
 SELECT * FROM foob(42, 99);
  f2 | column2 
 ----+---------

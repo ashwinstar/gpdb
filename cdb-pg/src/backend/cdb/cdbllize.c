@@ -308,6 +308,8 @@ typedef struct ParallelizeCorrelatedPlanWalkerContext
 	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker/mutator */
 	SubPlan *sp;	/* subplan node */
 	Movement movement; /* What is the final movement necessary? Is it gather or broadcast */
+	List *rtable; /* rtable from the global context */
+	bool subPlanDistributed; /* is original subplan distributed */
 } ParallelizeCorrelatedPlanWalkerContext;
 
 /**
@@ -325,7 +327,7 @@ typedef struct MapVarsMutatorContext
  */
 static bool ContainsParamWalker(Node *expr, void *ctx);
 static void ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context);
-static Plan* ParallelizeCorrelatedSubPlan(PlannerInfo *root, SubPlan *spExpr, Plan *plan, Movement m);
+static Plan* ParallelizeCorrelatedSubPlan(PlannerInfo *root, SubPlan *spExpr, Plan *plan, Movement m, bool subPlanDistributed);
 static Node* MapVarsMutator(Node *expr, MapVarsMutatorContext *ctx);
 static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerContext *ctx);
 
@@ -414,6 +416,26 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 	if (node == NULL)
 		return NULL;
 
+	if (IsA(node, FunctionScan))
+	{
+		RangeTblEntry  *rte = rt_fetch(((Scan *)node)->scanrelid,
+									   ctx->rtable);
+
+		Assert(rte->rtekind == RTE_FUNCTION);
+
+		if (rte->funcexpr &&
+			ContainsParamWalker(rte->funcexpr, NULL /*ctx */) && ctx->subPlanDistributed)
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+							errmsg("Cannot parallelize that query yet."),
+							errdetail("In a subquery FROM clause, a "
+									  "function invocation cannot contain "
+									  "a correlated reference."),
+							errOmitLocation(true)
+					));
+		}
+	}
+	
 	if (IsA(node, SeqScan)
 		|| IsA(node, AppendOnlyScan)
 		|| IsA(node, AOCSScan)
@@ -553,12 +575,14 @@ static Node* ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelat
 /**
  * Parallelizes a correlated subplan. See ParallelizeCorrelatedSubPlanMutator for details.
  */
-Plan* ParallelizeCorrelatedSubPlan(PlannerInfo *root, SubPlan *spExpr, Plan *plan, Movement m)
+Plan* ParallelizeCorrelatedSubPlan(PlannerInfo *root, SubPlan *spExpr, Plan *plan, Movement m, bool subPlanDistributed)
 {
 	ParallelizeCorrelatedPlanWalkerContext ctx;
 	ctx.base.node = (Node *) root;
 	ctx.movement = m;
+	ctx.subPlanDistributed = subPlanDistributed;
 	ctx.sp = spExpr;
+	ctx.rtable = root->glob->finalrtable;
 	return (Plan *) ParallelizeCorrelatedSubPlanMutator((Node *) plan, &ctx);
 
 }
@@ -637,7 +661,7 @@ void ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 		 * Subplan corresponds to a correlated subquery and its parallelization
 		 * requires certain transformations.
 		 */
-		newPlan = ParallelizeCorrelatedSubPlan(context->root, spExpr, newPlan, reqMove);
+		newPlan = ParallelizeCorrelatedSubPlan(context->root, spExpr, newPlan, reqMove, subPlanDistributed);
 	}
 
 	Assert(newPlan);
@@ -724,38 +748,6 @@ prescan_walker(Node *node, PlanProfile * context)
 			break;
 		}
 
-		case T_FunctionScan:
-        {
-            /*
-             * Disallow outer references in function scans, for now.
-             *
-             * NB: A Var node with varlevelsup==0 in the function expr can only
-             * come from an outer reference in a subquery that was pulled up
-             * into the current query level.
-             *
-             * CDB TODO: Build plans such that a function scan's required
-             * inputs are produced upstream of the function invocation.
-             */
-            RangeTblEntry  *rte = rt_fetch(((Scan *)node)->scanrelid,
-                                           context->root->glob->finalrtable);
-
-            Assert(rte->rtekind == RTE_FUNCTION);
-
-            if (rte->funcexpr &&
-                IsA(rte->funcexpr, FuncExpr) &&
-                contain_vars_of_level_or_above(rte->funcexpr, 0))
-            {
-			    ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-					            errmsg("Cannot parallelize that query yet."),
-                                errdetail("In a subquery FROM clause, a "
-                                          "function invocation cannot contain "
-                                          "a correlated reference."),
-                                errOmitLocation(true)
-					    ));
-            }
-
-            break;
-        }
 		default:
 			break;
 

@@ -57,19 +57,16 @@ where f2 in (select f2 from foost(1) z where z.fooid = foo2.fooid)
 ORDER BY 1,2;
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foost(foo2.fooid) z where z.fooid = foo2.fooid) 
 ORDER BY 1,2;
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foost(foo2.fooid) z where z.fooid = 1) 
 ORDER BY 1,2;
 
 -- function in subselect, with correlation - master only
---    Fails: Correlated subquery
 select * from foost(4) x 
 where f2 in (select f2 from foost(x.fooid) z where x.fooid = z.fooid) 
 ORDER BY 1,2;
@@ -127,21 +124,18 @@ where f2 in (select f2 from foor(1) z(fooid int, f2 int)
 ORDER BY 1,2;
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foor(foo2.fooid) z(fooid int, f2 int) 
              where z.fooid = foo2.fooid) 
 ORDER BY 1,2;
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foor(foo2.fooid) z(fooid int, f2 int) 
              where z.fooid = 1) 
 ORDER BY 1,2;
 
 -- function in subselect, with correlation - master only
---    Fails: Correlated subquery
 select * from foor(4) x(fooid int, f2 int)
 where f2 in (select f2 from foor(x.fooid) z(fooid int, f2 int)
              where x.fooid = z.fooid) 
@@ -194,19 +188,16 @@ where f2 in (select f2 from fooro(1) z where z.fooid = foo2.fooid)
 ORDER BY 1,2;
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from fooro(foo2.fooid) z where z.fooid = foo2.fooid) 
 ORDER BY 1,2;
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from fooro(foo2.fooid) z where z.fooid = 1) 
 ORDER BY 1,2;
 
 -- function in subselect, with correlation - master only
---    Fails: Correlated subquery
 select * from fooro(4) x 
 where f2 in (select f2 from fooro(x.fooid) z where x.fooid = z.fooid) 
 ORDER BY 1,2;
@@ -255,19 +246,16 @@ where f2 in (select f2 from foot(1) z where z.fooid = foo2.fooid)
 ORDER BY 1,2;
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foot(foo2.fooid) z where z.fooid = foo2.fooid) 
 ORDER BY 1,2;
 
 -- function in subselect, with correlation
---    Fails: Correlated subquery
 select * from foo2 
 where f2 in (select f2 from foot(foo2.fooid) z where z.fooid = 1) 
 ORDER BY 1,2;
 
 -- function in subselect, with correlation - master only
---    Fails: Correlated subquery
 select * from foot(4) x 
 where f2 in (select f2 from foot(x.fooid) z where x.fooid = z.fooid) 
 ORDER BY 1,2;
