@@ -428,14 +428,14 @@ gp_backup_launch__(PG_FUNCTION_ARGS)
 			{
 				/* gp_dump_agent + options, pipe into compression program, direct
 			 	* stdout to backup file and stderr to status file */
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s -p %d -U %s %s %s %s 2>> %s | %s > %s",
-					bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName, port, pszUserName, pszPassThroughParameters,
+				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2>> %s | %s > %s",
+					bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName, dd_boost_buffer_size, port, pszUserName, pszPassThroughParameters,
 					pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
 			}
 			else
 			{
-				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s -p %d -U %s %s %s %s 2>> %s",
-					bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName,
+				sprintf(pszCmdLine, "%s --gp-k %s --gp-d %s --dd_boost_file %s --dd_boost_buf_size %s -p %d -U %s %s %s %s 2>> %s",
+					bkPg, pszKeyParm, pszBackupDirectory, pszDDBoostFileName, dd_boost_buffer_size,
 					port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
 					pszStatusFileName);
 			}
@@ -1727,7 +1727,7 @@ static char *formDDBoostFileName(char *pszBackupKey, bool isPostData, bool isCom
                                 errmsg("out of memory")));
        }
 
-	memset(pszBackupFileName, 0, (1+len));
+       memset(pszBackupFileName, 0, (1+len));
        strcat(pszBackupFileName, szFileNamePrefix);
        strcat(pszBackupFileName, pszBackupKey);
 

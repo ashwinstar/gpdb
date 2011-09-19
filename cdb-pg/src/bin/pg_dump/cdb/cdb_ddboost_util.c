@@ -599,7 +599,7 @@ readFromDDFile(FILE *fp, char *ddBoostFileName)
         ddp_uint64_t ret_count = 0;
         char *buf = NULL;
         int i = 0;
-        ddp_uint64_t rw_size = MAX_PATH_NAME;
+        ddp_uint64_t rw_size = DDB_IO_SIZE;
         ddp_uint64_t total_bytes = 0;
         size_t written = 0;
 	ddp_path_t path1 = {0};
