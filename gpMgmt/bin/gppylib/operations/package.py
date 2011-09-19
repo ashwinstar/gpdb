@@ -623,19 +623,26 @@ class ExtractPackage(Operation):
 
 class InstallSegGppkg(Operation):
     '''
-        This Operation is invoked as a RemoteOperation. 
-        It installs a given gppkg on the remote host.
+    Installs a package on the local host
+
+    This operation must take a slew of starting conditions and drive the state
+    of the local machine towards the ending state, in which the given package is successfully
+    installed, the rpm database is sane, and the package now resides in the designated archive.
+
+    We must consider the following scenarios and more: package was deleted from archive,
+    the main comprising rpm was uninstalled, dependent rpms were removed, the rpm database was
+    corrupted, etc.
     '''
     def __init__(self, pkg_name):
         self.pkg_name = pkg_name
 
     def execute(self): 
-        
         rpm_installation_command = 'rpm -i %s --dbpath %s --prefix=%s' 
 
         gppkg = Gppkg.from_package_path(os.path.join(GPHOME, self.pkg_name))
 
-        #if RPM has already been installed then just return
+        # if RPM has already been installed then just return
+        # TODO: AK: No. Ensure all embedded rpms are installed.
         if IsRpmInstalled(gppkg.main_rpm).run():
             return
 
@@ -738,42 +745,39 @@ class GetFilteredRpmString(Operation):
         return filtered_rpm_string
 
 class SyncPackages(Operation):
-    '''
-        Synchronizes packages between Host and master
-    '''
-
+    """ Synchronizes packages from master to a remote host """
     def __init__(self, host):
         self.host = host
-
     def execute(self):
-       
         if not CheckRemoteDir(GPPKG_ARCHIVE_PATH, self.host).run():
             MakeRemoteDir(GPPKG_ARCHIVE_PATH, self.host).run()
 
-        #Set of packages on the master
+        # set of packages on the master
         master_package_set = set(ListFilesByPattern(GPPKG_ARCHIVE_PATH, '*' + GPPKG_EXTENSION).run())
+        # set of packages on the remote host
+        remote_package_set = set(ListRemoteFilesByPattern(GPPKG_ARCHIVE_PATH, '*' + GPPKG_EXTENSION, self.host).run())
+        # packages to be installed on the remote host             
+        uninstall_package_set = remote_package_set - master_package_set
+        # packages to be uninstalled on the remote host
+        install_package_set = master_package_set - remote_package_set
 
-        #Set of packages on the host
-        host_package_set = set((ListRemoteFilesByPattern(GPPKG_ARCHIVE_PATH, '*' + GPPKG_EXTENSION, self.host).run()))
-                     
-        uninstall_gppkgs = host_package_set - master_package_set
-        install_gppkgs = master_package_set - host_package_set
-        
-        if install_gppkgs:
-            logger.info('Installing packages')
-        for pkg in install_gppkgs:
-            scp = Scp(name = 'copy gppkg to host', srcFile = os.path.join(GPPKG_ARCHIVE_PATH, pkg), dstFile = os.path.join(GPHOME, pkg), 
-                        srcHost = None,  dstHost = self.host, recursive = False) 
-            scp.run(validateAfter = True)
-            RemoteOperation(InstallSegGppkg(pkg), self.host).run()
-            ArchivePackageOnHost(self.host, pkg).run()
-            RemoveRemoteFile(os.path.join(GPHOME, pkg), self.host).run()
+        if install_package_set:
+            logger.info('The following packages will be installed on %s: %s' % (self.host, ''.join(install_package_set)))
+            for package in install_package_set:
+                logger.debug('copying %s to %s' % (package, self.host))
+                Scp(name = 'copying %s to %s' % (package, self.host), 
+                    srcFile = os.path.join(GPPKG_ARCHIVE_PATH, package), 
+                    dstFile = os.path.join(GPHOME, package), 
+                    dstHost = self.host).run(validateAfter = True)
+                RemoteOperation(InstallSegGppkg(package), self.host).run()
+                ArchivePackageOnHost(self.host, package).run()
+                RemoveRemoteFile(os.path.join(GPHOME, package), self.host).run()
 
-        if uninstall_gppkgs:
-            logger.info('UnInstalling packages')
-        for pkg in uninstall_gppkgs:
-            RemoteOperation(UnInstallSegGppkg(pkg), self.host).run()
-            UnArchivePackageOnHost(self.host, pkg).run()
+        if uninstall_package_set:
+            logger.info('The following packages will be uninstalled on %s: %s' % (self.host, ''.join(uninstall_package_set)))
+            for package in uninstall_package_set:
+                RemoteOperation(UnInstallSegGppkg(package), self.host).run()
+                UnArchivePackageOnHost(self.host, package).run()
 
 #TODO: Try to make this operation idempotent
 class InstallGppkg(Operation):
