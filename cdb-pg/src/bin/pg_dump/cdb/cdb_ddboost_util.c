@@ -196,6 +196,12 @@ main(int argc, char **argv)
 
 	if (dd_options->listDir)
 	{
+		if(!dd_options->directory)
+		{
+			mpp_err_msg(logInfo, progname, "Directory not specified for listDir\n");
+			goto cleanup;
+		}
+			
 		failCount = listDirectory(dd_options, ddp_conn);
 		goto cleanup;
 	}
@@ -226,8 +232,11 @@ cleanup:
 	if (opts != NULL)
 		free(opts);
 
-	ddp_disconnect(ddp_conn);
-	ddp_instance_destroy(ddp_inst);
+	if(ddp_conn != DDP_INVALID_DESCRIPTOR)
+		ddp_disconnect(ddp_conn);
+
+	if(ddp_inst != DDP_INVALID_DESCRIPTOR)
+		ddp_instance_destroy(ddp_inst);
 
 	if (dd_options != NULL)
 		free(dd_options);	
@@ -448,7 +457,6 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 	}
 
 	return true;
-
 }
 
 /*
