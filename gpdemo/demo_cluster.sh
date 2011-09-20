@@ -85,28 +85,20 @@ USAGE(){
 #
 
 cleanDemo(){
-    PG_CTL_PATH=${GPHOME}/bin/pg_ctl
-    # Data Directories for the segments
-    if [ -f ${QDDIR}/demoDataDir-1/postmaster.pid ] ; then 
-        echo "stopping postmaster ${PG_CTL_PATH} -D ${QDDIR}/demoDataDir-1 stop"
-        ${PG_CTL_PATH} -D ${QDDIR}/demoDataDir-1 stop
-    fi
 
-    declare -a SEGDIRS=($DATADIRS/dbfast1/demoDataDir0 \
-                        $DATADIRS/dbfast2/demoDataDir1 \
-                        $DATADIRS/dbfast3/demoDataDir2 \
-                        $DATADIRS/dbfast_mirror1/demoDataDir0 \
-                        $DATADIRS/dbfast_mirror2/demoDataDir1 \
-                        $DATADIRS/dbfast_mirror3/demoDataDir2 )
+    ##
+    ## Attempt to bring down using GPDB cluster instance using gpstop
+    ##
 
-    for eDir in ${SEGDIRS[@]}; do
-        if [ -f ${eDir}/postmaster.pid ] ; then 
-            echo "stopping postmaster ${PG_CTL_PATH} -D ${eDir} stop"
-            ${PG_CTL_PATH} -D ${eDir} stop
-        fi
-    done
+    (export MASTER_DATA_DIRECTORY=$QDDIR/${SEG_PREFIX}-1;
+     source ${GPHOME}/greenplum_path.sh;
+     gpstop -a)
 
-    # Remove the files and directories created; allow test harnesses to disable this
+    ##
+    ## Remove the files and directories created; allow test harnesses
+    ## to disable this
+    ##
+
     if [ "${GPDEMO_DESTRUCTIVE_CLEAN}" != "false" ]; then
         if [ -f hostfile ];  then
             echo "Deleting hostfile"
