@@ -475,13 +475,6 @@ ExecEndSort(SortState *node)
 	SO1_printf("ExecEndSort: %s\n",
 			   "shutting down sort node");
 
-	/*
-	 * clean out the tuple table
-	 */
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
-	/* must drop pointer to sort result tuple */
-	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-
 	ExecEagerFreeSort(node);
 
 	/*
@@ -627,6 +620,12 @@ initGpmonPktForSort(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
 void
 ExecEagerFreeSort(SortState *node)
 {
+	/* clean out the tuple table */
+	ExecClearTuple(node->ss.ss_ScanTupleSlot);
+
+	/* must drop pointer to sort result tuple */
+	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
+
 	if (node->tuplesortstate != NULL)
 	{
 		Sort *sort = (Sort *) node->ss.ps.plan;
