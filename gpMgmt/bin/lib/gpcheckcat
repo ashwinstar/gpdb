@@ -3603,6 +3603,7 @@ if __name__ == '__main__':
             runAllTests()
 
         GV.Remove = {}
+        GV.AdjustConname = {}
         GV.ReSync = {}
         GV.Reindex = []
         GV.Constraints = []
