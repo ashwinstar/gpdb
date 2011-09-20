@@ -153,7 +153,7 @@ class GpStart:
             signal.signal(signal.SIGINT,signal.default_int_handler)
 
         if dca.is_dca_appliance():
-            logger.info("Iniializing DCA settings")
+            logger.info("Initializing DCA settings")
             dca.DcaGpdbInitialized.local()
             logger.info("DCA settings initialized")
 
