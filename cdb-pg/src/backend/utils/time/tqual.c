@@ -182,16 +182,16 @@ SharedSnapshotShmemSize(void)
 	 * cleanup, for instance).
 	 */
 	slotCount = 2 * max_prepared_xacts;
-	
+
 	size = offsetof(SharedSnapshotStruct, xips);
 	size = add_size(size, mul_size(slotSize, slotCount));
-	
+
 	return MAXALIGN(size);
 }
 
 /*
- * Initialize the sharedSnapshot array.  This array is used to communicate 
- * snapshots between qExecs that are segmates. 
+ * Initialize the sharedSnapshot array.  This array is used to communicate
+ * snapshots between qExecs that are segmates.
  */
 void
 CreateSharedSnapshotArray(void)
@@ -213,7 +213,7 @@ CreateSharedSnapshotArray(void)
 		 * We're the first - initialize.
 		 */
 		sharedSnapshotArray->numSlots = 0;
-		
+
 		/* TODO:  MaxBackends is only somewhat right.  What we really want here
 		 *        is the MaxBackends value from the QD.  But this is at least
 		 *		  safe since we know we dont need *MORE* than MaxBackends.  But
@@ -223,7 +223,7 @@ CreateSharedSnapshotArray(void)
 		 * But really, max_prepared_transactions *is* what we want (it
 		 * corresponds to the number of connections allowed on the
 		 * master).
-		 * 
+		 *
 		 * slotCount is initialized in SharedSnapshotShmemSize().
 		 */
 		sharedSnapshotArray->maxSlots = slotCount;
@@ -249,11 +249,11 @@ CreateSharedSnapshotArray(void)
 			 */
 			tmpSlot->snapshot.xip = &xip_base[xipEntryCount];
 			xip_base += xipEntryCount;
-		}		
+		}
 	}
 }
 
-/* 
+/*
  * Used to dump the internal state of the shared slots for debugging.
  */
 char *
@@ -262,38 +262,38 @@ SharedSnapshotDump(void)
 	StringInfoData str;
 	volatile SharedSnapshotStruct *arrayP = sharedSnapshotArray;
 	int index;
-	
+
     initStringInfo(&str);
 
-	appendStringInfo(&str, "Local SharedSnapshot Slot Dump: currSlots: %d maxSlots: %d ", 
+	appendStringInfo(&str, "Local SharedSnapshot Slot Dump: currSlots: %d maxSlots: %d ",
 					 arrayP->numSlots, arrayP->maxSlots);
-	
+
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
 
 	for (index=0; index < arrayP->maxSlots; index++)
 	{
-		/* need to do byte addressing to find the right slot */ 
+		/* need to do byte addressing to find the right slot */
 		SharedSnapshotSlot *testSlot = &arrayP->slots[index];
-		
+
 		if (testSlot->slotid != -1)
 		{
-			appendStringInfo(&str, "(SLOT index: %d slotid: %d QDxid: %u QDcid: %u pid: %u)", 
+			appendStringInfo(&str, "(SLOT index: %d slotid: %d QDxid: %u QDcid: %u pid: %u)",
 							 testSlot->slotindex, testSlot->slotid, testSlot->QDxid, testSlot->QDcid, (int)testSlot->pid);
 		}
-		
+
 	}
-	
+
 	LWLockRelease(SharedSnapshotLock);
-	
+
 	return str.data;
 }
 
 /* Acquires an available slot in the sharedSnapshotArray.  The slot is then
  * marked with the supplied slotId.  This slotId is what others will use to
  * find this slot.  This should only ever be called by the "writer" qExec.
- * 
- * The slotId should be something that is unique amongst all the possible 
- * "writer" qExecs active on a segment database at a given moment.  It also 
+ *
+ * The slotId should be something that is unique amongst all the possible
+ * "writer" qExecs active on a segment database at a given moment.  It also
  * will need to be communicated to the "reader" qExecs so that they can find
  * this slot.
  */
@@ -314,7 +314,7 @@ retry:
 	for (i=0; i < arrayP->maxSlots; i++)
 	{
 		SharedSnapshotSlot *testSlot = &arrayP->slots[i];
-		
+
 		if (testSlot->slotindex > arrayP->maxSlots)
 			elog(ERROR, "Shared Local Snapshots Array appears corrupted: %s", SharedSnapshotDump());
 
@@ -343,10 +343,10 @@ retry:
 		}
 		/* not reached */
 	}
-		
+
 	if (arrayP->numSlots >= arrayP->maxSlots || arrayP->nextSlot == -1)
 	{
-		/* 
+		/*
 		 * Ooops, no room.  this shouldn't happen as something else should have
 		 * complained if we go over MaxBackends.
 		 */
@@ -360,31 +360,31 @@ retry:
 	}
 
 	slot = &arrayP->slots[arrayP->nextSlot];
-	
+
 	slot->slotindex = arrayP->nextSlot;
-	
+
 	/*
 	 * find the next available slot
 	 */
 	for (i=arrayP->nextSlot+1; i < arrayP->maxSlots; i++)
 	{
 		SharedSnapshotSlot *tmpSlot = &arrayP->slots[i];
-		
+
 		if (tmpSlot->slotid == -1)
 		{
 			nextSlot = i;
 			break;
 		}
 	}
-	
+
 	/* mark that there isn't a nextSlot if the above loop didn't find one */
 	if (nextSlot == arrayP->nextSlot)
 		arrayP->nextSlot = -1;
 	else
 		arrayP->nextSlot = nextSlot;
-	
+
 	arrayP->numSlots += 1;
-	
+
 	/* initialize some things */
 	slot->slotid = slotId;
 	slot->xid = 0;
@@ -410,7 +410,7 @@ GetSlotTableDebugInfo(void **snapshotArray, int *maxSlots)
 /*
  * Used by "reader" qExecs to find the slot in the sharedsnapshotArray with the
  * specified slotId.  In general, we should always be able to find the specified
- * slot unless something unexpected.  If the slot is not found, then NULL is 
+ * slot unless something unexpected.  If the slot is not found, then NULL is
  * returned.
  *
  * MPP-4599: retry in the same pattern as the writer.
@@ -447,7 +447,7 @@ SharedSnapshotLookup(int4 slotId)
 				break;
 			}
 		}
-	
+
 		LWLockRelease(SharedSnapshotLock);
 
 		if (slot != NULL)
@@ -473,29 +473,29 @@ SharedSnapshotLookup(int4 slotId)
 }
 
 
-/* 
+/*
  * Used by the "writer" qExec to "release" the slot it had been using.
  *
  */
-void 
+void
 SharedSnapshotRemove(volatile SharedSnapshotSlot *slot, char *creatorDescription)
 {
 	int slotId = slot->slotid;
-	
+
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
-		
+
 	/* determine if we need to modify the next available slot to use.  we
 	 * only do this is our slotindex is lower then the existing one.
 	 */
 	if (sharedSnapshotArray->nextSlot == -1 || slot->slotindex < sharedSnapshotArray->nextSlot)
 	{
 		if (slot->slotindex > sharedSnapshotArray->maxSlots)
-			elog(ERROR, "Shared Local Snapshots slot has a bogus slotindex: %d. slot array dump: %s", 
+			elog(ERROR, "Shared Local Snapshots slot has a bogus slotindex: %d. slot array dump: %s",
 				 slot->slotindex, SharedSnapshotDump());
-			
-		sharedSnapshotArray->nextSlot = slot->slotindex;  
+
+		sharedSnapshotArray->nextSlot = slot->slotindex;
 	}
-	
+
 	/* reset the slotid which marks it as being unused. */
 	slot->slotid = -1;
 	slot->xid = 0;
@@ -507,10 +507,10 @@ SharedSnapshotRemove(volatile SharedSnapshotSlot *slot, char *creatorDescription
 	slot->segmateSync = 0;
 
 	sharedSnapshotArray->numSlots -= 1;
-	
+
 	LWLockRelease(SharedSnapshotLock);
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"SharedSnapshotRemove removed slot for slotId = %d, creator = %s (address %p)", 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"SharedSnapshotRemove removed slot for slotId = %d, creator = %s (address %p)",
 		 slotId, creatorDescription, SharedLocalSnapshotSlot);
 }
 
@@ -518,7 +518,7 @@ void
 addSharedSnapshot(char *creatorDescription, int id)
 {
 	SharedSnapshotSlot *slot;
-	
+
 	slot = SharedSnapshotAdd(id);
 
 	if (slot==NULL)
@@ -528,11 +528,11 @@ addSharedSnapshot(char *creatorDescription, int id)
 						creatorDescription),
 				 errdetail("Tried to set the shared local snapshot slot with id: %d "
 						   "and failed. Shared Local Snapshots dump: %s", id,
-						   SharedSnapshotDump())));	
+						   SharedSnapshotDump())));
 	}
 	SharedLocalSnapshotSlot = slot;
 
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"%s added Shared Local Snapshot slot for gp_session_id = %d (address %p)", 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"%s added Shared Local Snapshot slot for gp_session_id = %d (address %p)",
 		 creatorDescription, id, SharedLocalSnapshotSlot);
 }
 
@@ -542,18 +542,18 @@ lookupSharedSnapshot(char *lookerDescription, char *creatorDescription, int id)
 	SharedSnapshotSlot *slot;
 
 	slot = SharedSnapshotLookup(id);
-	
+
 	if (slot == NULL)
 	{
 		ereport(ERROR,
-				(errmsg("%s could not find Shared Local Snapshot!", 
+				(errmsg("%s could not find Shared Local Snapshot!",
 						lookerDescription),
 				 errdetail("Tried to find a shared snapshot slot with id: %d "
 						   "and found none. Shared Local Snapshots dump: %s", id,
 						   SharedSnapshotDump()),
-				 errhint("Either this %s was created before the %s or the %s died.", 
-						 lookerDescription, creatorDescription, creatorDescription)));			 
-	}					
+				 errhint("Either this %s was created before the %s or the %s died.",
+						 lookerDescription, creatorDescription, creatorDescription)));
+	}
 	SharedLocalSnapshotSlot = slot;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"%s found Shared Local Snapshot slot for gp_session_id = %d created by %s (address %p)",
@@ -641,7 +641,7 @@ dumpSharedLocalSnapshot_forCursor(void)
 		FileWriteFieldWithCount(count, f, src->snapshot.curcid);
 
 		/*
-		 * THE STUFF IN THE SHARED LOCAL VERSION OF 
+		 * THE STUFF IN THE SHARED LOCAL VERSION OF
 		 * snapshot.distribSnapshotWithLocalMapping
 		 * APPEARS TO *NEVER* BE USED, SO THERE IS
 		 * NO POINT IN TRYING TO DUMP IT (IN FACT,
@@ -673,7 +673,7 @@ dumpSharedLocalSnapshot_forCursor(void)
 
 		/* now flush and close. */
 		BufFileFlush(f);
-		/* 
+		/*
 		 * Temp files get deleted on close!
 		 *
 		 * BufFileClose(f);
@@ -826,12 +826,12 @@ static inline
 void markDirty(Buffer buffer, bool disabled, Relation relation, HeapTupleHeader tuple, bool isXmin)
 {
 	TransactionId xid;
-	
+
 	if (!disabled)
 	{
 		WATCH_VISIBILITY_ADDPAIR(
 			WATCH_VISIBILITY_GUC_OFF_MARK_BUFFFER_DIRTY_FOR_XMIN, !isXmin);
-		
+
 		SetBufferCommitInfoNeedsSave(buffer);
 		return;
 	}
@@ -844,18 +844,18 @@ void markDirty(Buffer buffer, bool disabled, Relation relation, HeapTupleHeader 
 	{
 		WATCH_VISIBILITY_ADDPAIR(
 			WATCH_VISIBILITY_NO_REL_MARK_BUFFFER_DIRTY_FOR_XMIN, !isXmin);
-		
+
 		SetBufferCommitInfoNeedsSave(buffer);
 		return;
 	}
-	
+
 	if (relation->rd_issyscat)
 	{
 		/* Assume we want to always mark the buffer dirty */
-		
+
 		WATCH_VISIBILITY_ADDPAIR(
 			WATCH_VISIBILITY_SYS_CAT_MARK_BUFFFER_DIRTY_FOR_XMIN, !isXmin);
-		
+
 		SetBufferCommitInfoNeedsSave(buffer);
 		return;
 	}
@@ -872,11 +872,11 @@ void markDirty(Buffer buffer, bool disabled, Relation relation, HeapTupleHeader 
 	{
 		WATCH_VISIBILITY_ADDPAIR(
 			WATCH_VISIBILITY_NO_XID_MARK_BUFFFER_DIRTY_FOR_XMIN, !isXmin);
-		
+
 		SetBufferCommitInfoNeedsSave(buffer);
 		return;
 	}
-	
+
 	/*
 	 * Check age of the affected xid.  If it is too old, mark the buffer to be written.
 	 */
@@ -884,7 +884,7 @@ void markDirty(Buffer buffer, bool disabled, Relation relation, HeapTupleHeader 
 	{
 		WATCH_VISIBILITY_ADDPAIR(
 			WATCH_VISIBILITY_TOO_OLD_MARK_BUFFFER_DIRTY_FOR_XMIN, !isXmin);
-		
+
 		SetBufferCommitInfoNeedsSave(buffer);
 		return;
 	}
@@ -1115,11 +1115,11 @@ HeapTupleSatisfiesNow(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 	if (!(tuple->t_infomask & HEAP_XMIN_COMMITTED))
 	{
 		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_NOT_HINT_COMMITTED);
-			
+
 		if (tuple->t_infomask & HEAP_XMIN_INVALID)
 		{
 			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_ABORTED);
-			
+
 			return false;
 		}
 
@@ -1128,11 +1128,11 @@ HeapTupleSatisfiesNow(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
 			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_MOVED_AWAY_BY_VACUUM);
-			
+
 			if (TransactionIdIsCurrentTransactionId(xvac))
 			{
 				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_CURRENT);
-				
+
 				return false;
 			}
 			if (!TransactionIdIsInProgress(xvac))
@@ -1286,7 +1286,7 @@ HeapTupleSatisfiesNow(Relation relation, HeapTupleHeader tuple, Buffer buffer)
 	if (tuple->t_infomask & HEAP_XMAX_COMMITTED)
 	{
 		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_HINT_COMMITTED);
-		
+
 		if (tuple->t_infomask & HEAP_IS_LOCKED)
 		{
 			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_LOCKED);
@@ -1821,11 +1821,11 @@ HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple, Snapshot sn
 	if (!(tuple->t_infomask & HEAP_XMIN_COMMITTED))
 	{
 		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_NOT_HINT_COMMITTED);
-			
+
 		if (tuple->t_infomask & HEAP_XMIN_INVALID)
 		{
 			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_ABORTED);
-			
+
 			return false;
 		}
 
@@ -1834,11 +1834,11 @@ HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple, Snapshot sn
 			TransactionId xvac = HeapTupleHeaderGetXvac(tuple);
 
 			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMIN_MOVED_AWAY_BY_VACUUM);
-			
+
 			if (TransactionIdIsCurrentTransactionId(xvac))
 			{
 				WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_VACUUM_XID_CURRENT);
-				
+
 				return false;
 			}
 			if (!TransactionIdIsInProgress(xvac))
@@ -1990,10 +1990,10 @@ HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple, Snapshot sn
 	 * when...
 	 */
 	inSnapshot = XidInSnapshot(
-		HeapTupleHeaderGetXmin(tuple), 
+		HeapTupleHeaderGetXmin(tuple),
 		snapshot,
 		/* isXmax */ false,
-		((tuple->t_infomask2 & HEAP_XMIN_DISTRIBUTED_SNAPSHOT_IGNORE) != 0), 
+		((tuple->t_infomask2 & HEAP_XMIN_DISTRIBUTED_SNAPSHOT_IGNORE) != 0),
 		&setDistributedSnapshotIgnore);
 	if (setDistributedSnapshotIgnore)
 	{
@@ -2036,7 +2036,7 @@ HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple, Snapshot sn
 	if (!(tuple->t_infomask & HEAP_XMAX_COMMITTED))
 	{
 		WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_NOT_HINT_COMMITTED);
-		
+
 		if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmax(tuple)))
 		{
 			WATCH_VISIBILITY_ADD(WATCH_VISIBILITY_XMAX_CURRENT);
@@ -2084,10 +2084,10 @@ HeapTupleSatisfiesSnapshot(Relation relation, HeapTupleHeader tuple, Snapshot sn
 	 * OK, the deleting transaction committed too ... but when?
 	 */
 	inSnapshot = XidInSnapshot(
-		HeapTupleHeaderGetXmax(tuple), 
+		HeapTupleHeaderGetXmax(tuple),
 		snapshot,
 		/* isXmax */ true,
-		((tuple->t_infomask2 & HEAP_XMAX_DISTRIBUTED_SNAPSHOT_IGNORE) != 0), 
+		((tuple->t_infomask2 & HEAP_XMAX_DISTRIBUTED_SNAPSHOT_IGNORE) != 0),
 		&setDistributedSnapshotIgnore);
 	if (setDistributedSnapshotIgnore)
 	{
@@ -2327,17 +2327,17 @@ GetTransactionSnapshot(void)
 
 	if (IsXactIsoLevelSerializable)
 	{
-		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Serializable Skip* (gxid = %u, '%s')", 
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Serializable Skip* (gxid = %u, '%s')",
 			 (SerializableSnapshot == NULL ? 0 : SerializableSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId),
 			 getDistributedTransactionId(),
 			 DtxContextToString(DistributedTransactionContext));
-		
+
 		UpdateSerializableCommandId();
-		
+
 		return SerializableSnapshot;
 	}
 
-	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] (gxid = %u, '%s')", 
+	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] (gxid = %u, '%s')",
 		 (LatestSnapshot == NULL ? 0 : LatestSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId),
 		 getDistributedTransactionId(),
 		 DtxContextToString(DistributedTransactionContext));
@@ -2389,14 +2389,14 @@ CopySnapshot(Snapshot snapshot)
 	if (snapshot->subxcnt > 0)
 		size += snapshot->subxcnt * sizeof(TransactionId);
 
-	if (snapshot->haveDistribSnapshot && 
+	if (snapshot->haveDistribSnapshot &&
 		snapshot->distribSnapshotWithLocalMapping.header.count > 0)
 	{
 		dsoff = size;
 		size += snapshot->distribSnapshotWithLocalMapping.header.count *
 			sizeof(DistributedSnapshotMapEntry);
 	}
-	
+
 	newsnap = (Snapshot) palloc(size);
 	memcpy(newsnap, snapshot, sizeof(SnapshotData));
 
@@ -2420,10 +2420,10 @@ CopySnapshot(Snapshot snapshot)
 	else
 		newsnap->subxip = NULL;
 
-	if (snapshot->haveDistribSnapshot && 
+	if (snapshot->haveDistribSnapshot &&
 		snapshot->distribSnapshotWithLocalMapping.header.count > 0)
 	{
-		newsnap->distribSnapshotWithLocalMapping.inProgressEntryArray = 
+		newsnap->distribSnapshotWithLocalMapping.inProgressEntryArray =
 			(DistributedSnapshotMapEntry *) ((char *) newsnap + dsoff);
 		memcpy(newsnap->distribSnapshotWithLocalMapping.inProgressEntryArray,
 			   snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray,
@@ -2470,7 +2470,7 @@ FreeXactSnapshot(void)
 	 */
 	SerializableSnapshot = NULL;
 	LatestSnapshot = NULL;
-	
+
 	ActiveSnapshot = NULL;		/* just for cleanliness */
 }
 
@@ -2483,7 +2483,7 @@ FreeXactSnapshot(void)
 void LogDistributedSnapshotInfo(Snapshot snapshot, const char *prefix)
 {
 	static const int MESSAGE_LEN = 500;
-	
+
 	if (!IsMVCCSnapshot(snapshot))
 		return;
 
@@ -2500,7 +2500,7 @@ void LogDistributedSnapshotInfo(Snapshot snapshot, const char *prefix)
 			 mapping->header.xmin,
 			 mapping->header.xmax,
 			 mapping->header.count);
-	
+
 	snprintf(message, MESSAGE_LEN, "%s, In progress array: {",
 			 message);
 
@@ -2570,7 +2570,7 @@ mpp_global_xid_map(PG_FUNCTION_ARGS)
 
 		/* figure out how many slots we need */
 
-		ctx = (struct mpp_xid_map *)palloc0(sizeof(struct mpp_xid_map) + 
+		ctx = (struct mpp_xid_map *)palloc0(sizeof(struct mpp_xid_map) +
 											arrayP->maxSlots * sizeof(struct mpp_xid_map_entry));
 
 		j = 0;
@@ -2578,15 +2578,15 @@ mpp_global_xid_map(PG_FUNCTION_ARGS)
 		for (i = 0; i < arrayP->maxSlots; i++)
 		{
 			SharedSnapshotSlot *testSlot = &arrayP->slots[i];
-		
+
 			if (testSlot->slotid != -1)
 			{
 				ctx->map[j].pid = testSlot->pid;
 				ctx->map[j].local = testSlot->xid;
 				ctx->map[j].global = testSlot->QDxid;
 				j++;
-			}		
-		}	
+			}
+		}
 		LWLockRelease(SharedSnapshotLock);
 		ctx->size = j;
 
@@ -2656,7 +2656,7 @@ XidInSnapshot(
 		 * transaction and should be evaluated against the distributed snapshot
 		 * instead.
 		 */
-		distributedSnapshotCommitted = 
+		distributedSnapshotCommitted =
 			DistributedSnapshotWithLocalMapping_CommittedTest(
 				&snapshot->distribSnapshotWithLocalMapping,
 				xid,
@@ -2677,7 +2677,7 @@ XidInSnapshot(
 				 */
 				*setDistributedSnapshotIgnore = true;
 				break;
-		
+
 			default:
 				elog(FATAL, "Unrecognized distributed committed test result: %d",
 					 (int) distributedSnapshotCommitted);
@@ -2716,7 +2716,7 @@ XidInSnapshot_Local(TransactionId xid, Snapshot snapshot, bool isXmax)
 	TransactionId saveXid = xid;
 #endif
 	uint32		i;
-				
+
 	/*
 	 * Make a quick range check to eliminate most XIDs without looking at the
 	 * xip arrays.	Note that this is OK even if we convert a subxact XID to
@@ -2736,7 +2736,7 @@ XidInSnapshot_Local(TransactionId xid, Snapshot snapshot, bool isXmax)
 	/* Any xid >= xmax is in-progress */
 	if (TransactionIdFollowsOrEquals(xid, snapshot->xmax))
 	{
-		WATCH_VISIBILITY_ADDPAIR( 
+		WATCH_VISIBILITY_ADDPAIR(
 			WATCH_VISIBILITY_XMIN_LESS_THAN_SNAPSHOT_XMIN, isXmax);
 
 		return true;
@@ -2758,7 +2758,7 @@ XidInSnapshot_Local(TransactionId xid, Snapshot snapshot, bool isXmax)
 		{
 			if (TransactionIdEquals(xid, snapshot->subxip[j]))
 			{
-				WATCH_VISIBILITY_ADDPAIR( 
+				WATCH_VISIBILITY_ADDPAIR(
 					WATCH_VISIBILITY_XMIN_SNAPSHOT_SUBTRANSACTION, isXmax);
 				return true;
 			}
@@ -2825,7 +2825,7 @@ bool WatchVisibilityAllZeros(void)
 
 static char WatchVisibilityBuffer[2000];
 
-char * 
+char *
 WatchVisibilityInActionString(
 	BlockNumber 	page,
 	OffsetNumber 	lineoff,
@@ -2853,7 +2853,7 @@ WatchVisibilityInActionString(
 		snapshotStr = "SnapshotToast";
 	else if (snapshot == SnapshotDirty)
 		snapshotStr = "SnapshotDirty";
-	else 
+	else
 	{
 		if (snapshot == LatestSnapshot)
 			snapshotStr = "LatestSnapshot";
@@ -2885,12 +2885,12 @@ WatchVisibilityInActionString(
 		count += sprintf(&WatchVisibilityBuffer[count],"no visiblity path collected");
 		return WatchVisibilityBuffer;
 	}
-	
+
 	for (b = 0; b < MAX_WATCH_VISIBILITY; b++)
 	{
 		int nthbyte = (b) >> 3;
 		char nthbit  = 1 << ((b) & 7);
-		
+
 		if ((WatchVisibilityFlags[nthbyte] & nthbit) != 0)
 		{
 			if (atLeastOne)
@@ -2935,7 +2935,7 @@ WatchVisibilityInActionString(
 					count += sprintf(&WatchVisibilityBuffer[count],"Xmin not current %s", WatchVisibilityXminCurrent);
 					break;
 				case WATCH_VISIBILITY_XMIN_INSERTED_AFTER_SCAN_STARTED:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmin inserted after scan started (curcid %d)", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmin inserted after scan started (curcid %d)",
 									 snapshotCurcid);
 					break;
 				case WATCH_VISIBILITY_XMAX_INVALID:
@@ -3053,27 +3053,27 @@ WatchVisibilityInActionString(
 					count += sprintf(&WatchVisibilityBuffer[count],"Xmax known by local distributed xact module");
 					break;
 				case WATCH_VISIBILITY_XMIN_LESS_THAN_ALL_CURRENT_DISTRIBUTED:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmin < all current distributed %u", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmin < all current distributed %u",
 									 xminAllDistributedSnapshots);
 					break;
 				case WATCH_VISIBILITY_XMAX_LESS_THAN_ALL_CURRENT_DISTRIBUTED:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmax < all current distributed %u", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmax < all current distributed %u",
 									 xminAllDistributedSnapshots);
 					break;
 				case WATCH_VISIBILITY_XMIN_LESS_THAN_DISTRIBUTED_SNAPSHOT_XMIN:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmin < distributed snapshot xmin %u", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmin < distributed snapshot xmin %u",
 									 xminDistributedSnapshot);
 					break;
 				case WATCH_VISIBILITY_XMAX_LESS_THAN_DISTRIBUTED_SNAPSHOT_XMIN:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmax < distributed snapshot xmin %u", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmax < distributed snapshot xmin %u",
 									 xminDistributedSnapshot);
 					break;
 				case WATCH_VISIBILITY_XMIN_GREATER_THAN_EQUAL_DISTRIBUTED_SNAPSHOT_XMAX:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmin >= distributed snapshot xmax %u", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmin >= distributed snapshot xmax %u",
 									 xmaxDistributedSnapshot);
 					break;
 				case WATCH_VISIBILITY_XMAX_GREATER_THAN_EQUAL_DISTRIBUTED_SNAPSHOT_XMAX:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmax >= distributed snapshot xmax %u", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmax >= distributed snapshot xmax %u",
 									 xmaxDistributedSnapshot);
 					break;
 				case WATCH_VISIBILITY_XMIN_DISTRIBUTED_SNAPSHOT_IN_PROGRESS_BY_DISTRIB:
@@ -3089,19 +3089,19 @@ WatchVisibilityInActionString(
 					count += sprintf(&WatchVisibilityBuffer[count],"Xmax not in distributed snapshot in progress");
 					break;
 				case WATCH_VISIBILITY_XMIN_LESS_THAN_SNAPSHOT_XMIN:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmin < snapshot xmin %u", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmin < snapshot xmin %u",
 									 snapshotXmin);
 					break;
 				case WATCH_VISIBILITY_XMAX_LESS_THAN_SNAPSHOT_XMIN:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmax < snapshot xmin %u", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmax < snapshot xmin %u",
 									 snapshotXmin);
 					break;
 				case WATCH_VISIBILITY_XMIN_GREATER_THAN_EQUAL_SNAPSHOT_XMAX:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmin >= snapshot xmax %u", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmin >= snapshot xmax %u",
 									 snapshotXmax);
 					break;
 				case WATCH_VISIBILITY_XMAX_GREATER_THAN_EQUAL_SNAPSHOT_XMAX:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmax >= snapshot xmax %u", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmax >= snapshot xmax %u",
 									 snapshotXmax);
 					break;
 				case WATCH_VISIBILITY_XMIN_SNAPSHOT_SUBTRANSACTION:
@@ -3117,11 +3117,11 @@ WatchVisibilityInActionString(
 					count += sprintf(&WatchVisibilityBuffer[count],"Xmax mapped subtransaction");
 					break;
 				case WATCH_VISIBILITY_XMIN_LESS_THAN_SNAPSHOT_XMIN_2:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmin < snapshot xmin %u (#2)", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmin < snapshot xmin %u (#2)",
 									 snapshotXmin);
 					break;
 				case WATCH_VISIBILITY_XMAX_LESS_THAN_SNAPSHOT_XMIN_2:
-					count += sprintf(&WatchVisibilityBuffer[count],"Xmax < snapshot xmin %u (#2)", 
+					count += sprintf(&WatchVisibilityBuffer[count],"Xmax < snapshot xmin %u (#2)",
 									 snapshotXmin);
 					break;
 				case WATCH_VISIBILITY_XMIN_SNAPSHOT_IN_PROGRESS:
@@ -3182,7 +3182,7 @@ WatchVisibilityInActionString(
 					count += sprintf(&WatchVisibilityBuffer[count],"<Unknown %d>", b);
 					break;
 			}
-			
+
 			atLeastOne = true;
 		}
 
@@ -3227,7 +3227,7 @@ static char *TupleVisibilityStatus_Name(TupleVisibilityStatus status)
 static TupleTransactionStatus GetTupleVisibilityCLogStatus(TransactionId xid)
 {
 	XidStatus xidStatus;
-	
+
 	xidStatus = TransactionIdGetStatus(xid);
 	switch (xidStatus)
 	{
@@ -3249,7 +3249,7 @@ void GetTupleVisibilitySummary(
 	tupleVisibilitySummary->infomask = tuple->t_data->t_infomask;
 	tupleVisibilitySummary->infomask2 = tuple->t_data->t_infomask2;
 	tupleVisibilitySummary->updateTid = tuple->t_data->t_ctid;
-	
+
 	tupleVisibilitySummary->xmin = HeapTupleHeaderGetXmin(tuple->t_data);
 	if (!TransactionIdIsNormal(tupleVisibilitySummary->xmin))
 	{
@@ -3261,18 +3261,18 @@ void GetTupleVisibilitySummary(
 		{
 			tupleVisibilitySummary->xminStatus = TupleTransactionStatus_None;
 		}
-	} 
+	}
 	else if (tuple->t_data->t_infomask & HEAP_XMIN_COMMITTED)
 	{
 		tupleVisibilitySummary->xminStatus = TupleTransactionStatus_HintCommitted;
-	} 
+	}
 	else if (tuple->t_data->t_infomask & HEAP_XMIN_INVALID)
 	{
 		tupleVisibilitySummary->xminStatus = TupleTransactionStatus_HintAborted;
 	}
 	else
 	{
-		tupleVisibilitySummary->xminStatus = 
+		tupleVisibilitySummary->xminStatus =
 					GetTupleVisibilityCLogStatus(tupleVisibilitySummary->xmin);
 	}
 	tupleVisibilitySummary->xmax = HeapTupleHeaderGetXmax(tuple->t_data);
@@ -3286,22 +3286,22 @@ void GetTupleVisibilitySummary(
 		{
 			tupleVisibilitySummary->xmaxStatus = TupleTransactionStatus_None;
 		}
-	} 
+	}
 	else if (tuple->t_data->t_infomask & HEAP_XMAX_COMMITTED)
 	{
 		tupleVisibilitySummary->xmaxStatus = TupleTransactionStatus_HintCommitted;
-	} 
+	}
 	else if (tuple->t_data->t_infomask & HEAP_XMAX_INVALID)
 	{
 		tupleVisibilitySummary->xmaxStatus = TupleTransactionStatus_HintAborted;
 	}
 	else
 	{
-		tupleVisibilitySummary->xmaxStatus = 
+		tupleVisibilitySummary->xmaxStatus =
 					GetTupleVisibilityCLogStatus(tupleVisibilitySummary->xmax);
 	}
 
-	tupleVisibilitySummary->cid = 
+	tupleVisibilitySummary->cid =
 					HeapTupleHeaderGetRawCommandId(tuple->t_data);
 
 	/*
@@ -3338,16 +3338,16 @@ void GetTupleVisibilitySummary(
 			case TupleTransactionStatus_CLogAborted:
 				tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Now;
 				break;
-				
+
 			case TupleTransactionStatus_CLogSubCommitted:
 				tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Unknown;
 				break;
-			
+
 			case TupleTransactionStatus_HintCommitted:
 			case TupleTransactionStatus_CLogCommitted:
 				tupleVisibilitySummary->visibilityStatus = TupleVisibilityStatus_Past;
 				break;
-			
+
 			default:
 				elog(ERROR, "Unrecognized tuple transaction status: %d",
 					 (int) tupleVisibilitySummary->xmaxStatus);
@@ -3381,7 +3381,7 @@ static char *GetTupleVisibilityDistribId(
 	case TupleTransactionStatus_CLogAborted:
 	case TupleTransactionStatus_CLogSubCommitted:
 		return NULL;
-		
+
 	case TupleTransactionStatus_HintCommitted:
 	case TupleTransactionStatus_CLogCommitted:
 		if (DistributedLog_CommittedCheck(
@@ -3401,7 +3401,7 @@ static char *GetTupleVisibilityDistribId(
 			return pstrdup("(info not avail)");
 		}
 		break;
-	
+
 	default:
 		elog(ERROR, "Unrecognized tuple transaction status: %d",
 			 (int) status);
@@ -3424,7 +3424,7 @@ static void TupleVisibilityAddFlagName(
 		{
 			appendStringInfo(buf, ", ");
 		}
-		appendStringInfo(buf, flagName);
+		appendStringInfo(buf, "%s", flagName);
 		*atLeastOne = true;
 	}
 }
@@ -3456,7 +3456,7 @@ static char *GetTupleVisibilityInfoMaskSet(
 
 	TupleVisibilityAddFlagName(&buf, infomask2 & HEAP_XMIN_DISTRIBUTED_SNAPSHOT_IGNORE, "HEAP_XMIN_DISTRIBUTED_SNAPSHOT_IGNORE", &atLeastOne);
 	TupleVisibilityAddFlagName(&buf, infomask2 & HEAP_XMAX_DISTRIBUTED_SNAPSHOT_IGNORE, "HEAP_XMAX_DISTRIBUTED_SNAPSHOT_IGNORE", &atLeastOne);
-	
+
 	appendStringInfo(&buf, "}");
 	return buf.data;
 }
@@ -3484,7 +3484,7 @@ void GetTupleVisibilitySummaryDatums(
 
 	values[0] = ItemPointerGetDatum(&tupleVisibilitySummary->tid);
 	values[1] = Int32GetDatum((int32)tupleVisibilitySummary->xmin);
-	values[2] = 
+	values[2] =
 		DirectFunctionCall1(textin,
 							CStringGetDatum(
 								TupleTransactionStatus_Name(
@@ -3494,7 +3494,7 @@ void GetTupleVisibilitySummaryDatums(
 									tupleVisibilitySummary->xminStatus);
 	if (xminDistribId != NULL)
 	{
-		values[3] = 
+		values[3] =
 			DirectFunctionCall1(textin,
 								CStringGetDatum(
 										xminDistribId));
@@ -3505,7 +3505,7 @@ void GetTupleVisibilitySummaryDatums(
 		nulls[3] = true;
 	}
 	values[4] = Int32GetDatum((int32)tupleVisibilitySummary->xmax);
-	values[5] = 
+	values[5] =
 		DirectFunctionCall1(textin,
 							CStringGetDatum(
 								TupleTransactionStatus_Name(
@@ -3515,7 +3515,7 @@ void GetTupleVisibilitySummaryDatums(
 									tupleVisibilitySummary->xmaxStatus);
 	if (xmaxDistribId != NULL)
 	{
-		values[6] = 
+		values[6] =
 			DirectFunctionCall1(textin,
 								CStringGetDatum(
 										xmaxDistribId));
@@ -3529,13 +3529,13 @@ void GetTupleVisibilitySummaryDatums(
 	infoMaskSet = GetTupleVisibilityInfoMaskSet(
 									tupleVisibilitySummary->infomask,
 									tupleVisibilitySummary->infomask2);
-	values[8] = 
+	values[8] =
 		DirectFunctionCall1(textin,
 							CStringGetDatum(
 									infoMaskSet));
 	pfree(infoMaskSet);
 	values[9] = ItemPointerGetDatum(&tupleVisibilitySummary->updateTid);
-	values[10] = 
+	values[10] =
 		DirectFunctionCall1(textin,
 							CStringGetDatum(
 								TupleVisibilityStatus_Name(
@@ -3552,11 +3552,11 @@ char *GetTupleVisibilitySummaryString(
 	char *infoMaskSet;
 
 	initStringInfo(&buf);
-	appendStringInfo(&buf, "tid %s", 
+	appendStringInfo(&buf, "tid %s",
 					 ItemPointerToString(&tupleVisibilitySummary->tid));
-	appendStringInfo(&buf, ", xmin %u", 
+	appendStringInfo(&buf, ", xmin %u",
 					 tupleVisibilitySummary->xmin);
-	appendStringInfo(&buf, ", xmin_status '%s'", 
+	appendStringInfo(&buf, ", xmin_status '%s'",
 					 TupleTransactionStatus_Name(
 							tupleVisibilitySummary->xminStatus));
 
@@ -3565,13 +3565,13 @@ char *GetTupleVisibilitySummaryString(
 									tupleVisibilitySummary->xminStatus);
 	if (xminDistribId != NULL)
 	{
-		appendStringInfo(&buf, ", xmin_commit_distrib_id '%s'", 
+		appendStringInfo(&buf, ", xmin_commit_distrib_id '%s'",
 						 xminDistribId);
 		pfree(xminDistribId);
 	}
-	appendStringInfo(&buf, ", xmax %u", 
+	appendStringInfo(&buf, ", xmax %u",
 					 tupleVisibilitySummary->xmax);
-	appendStringInfo(&buf, ", xmax_status '%s'", 
+	appendStringInfo(&buf, ", xmax_status '%s'",
 					 TupleTransactionStatus_Name(
 							tupleVisibilitySummary->xmaxStatus));
 
@@ -3580,21 +3580,21 @@ char *GetTupleVisibilitySummaryString(
 									tupleVisibilitySummary->xmaxStatus);
 	if (xmaxDistribId != NULL)
 	{
-		appendStringInfo(&buf, ", xmax_commit_distrib_id '%s'", 
+		appendStringInfo(&buf, ", xmax_commit_distrib_id '%s'",
 						 xmaxDistribId);
 		pfree(xmaxDistribId);
 	}
-	appendStringInfo(&buf, ", command_id %u", 
+	appendStringInfo(&buf, ", command_id %u",
 					 tupleVisibilitySummary->cid);
 	infoMaskSet = GetTupleVisibilityInfoMaskSet(
 									tupleVisibilitySummary->infomask,
 									tupleVisibilitySummary->infomask2);
-	appendStringInfo(&buf, ", infomask '%s'", 
+	appendStringInfo(&buf, ", infomask '%s'",
 					 infoMaskSet);
 	pfree(infoMaskSet);
-	appendStringInfo(&buf, ", update_tid %s", 
+	appendStringInfo(&buf, ", update_tid %s",
 					 ItemPointerToString(&tupleVisibilitySummary->updateTid));
-	appendStringInfo(&buf, ", visibility '%s'", 
+	appendStringInfo(&buf, ", visibility '%s'",
 					 TupleVisibilityStatus_Name(
 											tupleVisibilitySummary->visibilityStatus));
 

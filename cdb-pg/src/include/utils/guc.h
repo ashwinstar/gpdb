@@ -235,20 +235,20 @@ typedef enum
 	DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND = 2,
 	DEBUG_DTM_ACTION_FAIL_END_COMMAND = 3,
 	DEBUG_DTM_ACTION_PANIC_BEGIN_COMMAND = 4,
-  
+
 	DEBUG_DTM_ACTION_LAST = 4
 }	DebugDtmAction;
-  
+
 /* Debug DTM Action */
 typedef enum
 {
 	DEBUG_DTM_ACTION_TARGET_NONE = 0,
 	DEBUG_DTM_ACTION_TARGET_PROTOCOL = 1,
 	DEBUG_DTM_ACTION_TARGET_SQL = 2,
-  
+
 	DEBUG_DTM_ACTION_TARGET_LAST = 2
 }	DebugDtmActionTarget;
-  
+
 extern int Debug_dtm_action;
 extern int Debug_dtm_action_target;
 extern int Debug_dtm_action_protocol;
@@ -377,13 +377,13 @@ extern ArrayType *GUCArrayDelete(ArrayType *array, const char *name);
 
 extern void pg_timezone_abbrev_initialize(void);
 
-extern int  gp_guc_list_show(struct StringInfoData    *buf, 
-                              const char               *pfx, 
-                              const char               *fmt, 
-                              GucSource                 excluding, 
+extern int  gp_guc_list_show(struct StringInfoData    *buf,
+                              const char               *pfx,
+                              const char               *fmt,
+                              GucSource                 excluding,
                               List                     *guclist)
                 /* This extension allows gcc to check the format string */
-                __attribute__((format(printf, 3, 0)));
+                __attribute__((__format__(__printf__, 3, 0)));
 
 #ifdef EXEC_BACKEND
 extern void write_nondefault_variables(GucContext context);

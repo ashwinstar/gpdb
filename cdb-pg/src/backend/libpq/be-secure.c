@@ -324,7 +324,7 @@ report_commerror(const char *err_msg)
 
 	ereport(COMMERROR,
 			(errcode(ERRCODE_PROTOCOL_VIOLATION),
-			 errmsg(err_msg)));
+			 errmsg("%s",err_msg)));
 
 	RESUME_INTERRUPTS();
 }
@@ -350,17 +350,17 @@ secure_write(Port *port, void *ptr, size_t len)
 			{
 				report_commerror("SSL renegotiation failure");
 			}
-			
+
 			if (SSL_do_handshake(port->ssl) <= 0)
 			{
 				report_commerror("SSL renegotiation failure");
 			}
-			
+
 			if (port->ssl->state != SSL_ST_OK)
 			{
 				report_commerror("SSL failed to send renegotiation request");
 			}
-			
+
 			port->ssl->state |= SSL_ST_ACCEPT;
 			SSL_do_handshake(port->ssl);
 			if (port->ssl->state != SSL_ST_OK)

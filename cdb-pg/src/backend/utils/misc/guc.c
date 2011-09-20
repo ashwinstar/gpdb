@@ -227,8 +227,8 @@ static bool dummy_autovac=false;
 static bool assign_autovacuum_warning(bool newval, bool doit, GucSource source);
 
 /* Helper function for guc setter */
-extern const char *gpvars_assign_gp_resqueue_priority_default_value(const char *newval, 
-		bool doit, 
+extern const char *gpvars_assign_gp_resqueue_priority_default_value(const char *newval,
+		bool doit,
 		GucSource source __attribute__((unused)) );
 
 /*
@@ -301,7 +301,7 @@ bool		Debug_bulk_load_bypass_wal = true;
 bool		Debug_persistent_appendonly_commit_count_print = false;
 
 #define VERIFY_CHECKPOINT_INTERVAL_DEFAULT 180
-int         verify_checkpoint_interval = 
+int         verify_checkpoint_interval =
 	VERIFY_CHECKPOINT_INTERVAL_DEFAULT;
 
 bool		Debug_database_command_print = false;
@@ -490,8 +490,8 @@ char	   *session_authorization_string;
 bool gp_enable_resqueue_priority;
 int gp_resqueue_priority_local_interval;
 int gp_resqueue_priority_sweeper_interval;
-int gp_resqueue_priority_inactivity_timeout; 
-int gp_resqueue_priority_grouping_timeout;	
+int gp_resqueue_priority_inactivity_timeout;
+int gp_resqueue_priority_grouping_timeout;
 double gp_resqueue_priority_cpucores_per_segment;
 char* gp_resqueue_priority_default_value;
 bool gp_debug_resqueue_priority = false;
@@ -1746,7 +1746,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_enable_motion_mk_sort", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable multi-key sort in sorted motion recv."), 
+			gettext_noop("Enable multi-key sort in sorted motion recv."),
 			gettext_noop("A faster sort for recv motion"),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 
@@ -1964,7 +1964,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_rezero_quicklz_compress_scratch,
 		false, NULL, NULL
 	},
-			
+
 	{
 		{"debug_appendonly_guard_end_quicklz_scratch", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Put a guard area of all zeroes after the QuickLZ scratch buffers and verify it is still zero before and after compress and decompress operations."),
@@ -1974,7 +1974,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_guard_end_quicklz_scratch,
 		false, NULL, NULL
 	},
-				
+
 	{
 		{"debug_appendonly_rezero_quicklz_decompress_scratch", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Zero the QuickLZ scratch buffer before each append-only block that is being decompressed."),
@@ -1984,7 +1984,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_rezero_quicklz_decompress_scratch,
 		false, NULL, NULL
 	},
-				
+
 	{
 		{"gp_cost_hashjoin_chainwalk", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Enable the cost for walking the chain in the hash join"),
@@ -2286,7 +2286,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_abort_after_segment_prepared,
 		false, NULL, NULL
 	},
-		
+
 	{
 		{"debug_print_tablespace", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print TABLESPACE debugging information."),
@@ -2306,7 +2306,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_print_blockdirectory,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"Debug_appendonly_print_read_block", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print log messages for append-only reads."),
@@ -2316,7 +2316,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_print_read_block,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"Debug_appendonly_print_append_block", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print log messages for append-only writes."),
@@ -2326,7 +2326,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_print_append_block,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_appendonly_print_insert", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print log messages for append-only insert."),
@@ -2386,7 +2386,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_print_verify_write_block,
 		false, NULL, NULL
 	},
-		
+
 	{
 		{"debug_appendonly_use_no_toast", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Use no toast for an append-only table.  Store the large row inline."),
@@ -2396,7 +2396,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_use_no_toast,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_appendonly_print_segfile_choice", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print log messages for append-only writers about their choice for AO segment file."),
@@ -2406,7 +2406,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_appendonly_print_segfile_choice,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"debug_xlog_insert_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print XLOG Insert record debugging information."),
@@ -2416,7 +2416,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_xlog_insert_print,
 		false, NULL, NULL
 	},
-				
+
 	{
 		{"debug_persistent_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print persistent file-system object debugging information."),
@@ -2426,7 +2426,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_persistent_print,
 		false, NULL, NULL
 	},
-				
+
 	{
 		{"debug_persistent_recovery_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print persistent recovery debugging information."),
@@ -2436,7 +2436,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_persistent_recovery_print,
 		false, NULL, NULL
 	},
-					
+
 	{
 		{"debug_persistent_store_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print persistent file-system object store debugging information."),
@@ -2446,7 +2446,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_persistent_store_print,
 		false, NULL, NULL
 	},
-					
+
 	{
 		{"debug_persistent_bootstrap_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print persistent store debugging information during bootstrap."),
@@ -2456,7 +2456,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_persistent_bootstrap_print,
 		false, NULL, NULL
 	},
-					
+
 	{
 		{"Debug_bulk_load_bypass_wal", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Use new bulk load bypass WAL logic."),
@@ -2466,7 +2466,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_bulk_load_bypass_wal,
 		true, NULL, NULL
 	},
-		
+
 	{
 		{"debug_persistent_appendonly_commit_count_print", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print persistent Append-Only resync commit count information."),
@@ -2486,7 +2486,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_database_command_print,
 		false, NULL, NULL
 	},
-		
+
 	{
 		{"gp_initdb_mirrored", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Indicate we are initializing a mirrored cluster during initdb."),
@@ -2496,7 +2496,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_initdb_mirrored,
 		false, NULL, NULL
 	},
-		
+
 	{
 		{"gp_before_persistence_work", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Indicate we are initializing / upgrading and do not want to do persistence work yet."),
@@ -2516,7 +2516,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_before_filespace_setup,
 		false, NULL, NULL
 	},
-		
+
 	{
 		{"gp_startup_integrity_checks", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Perform integrity checks after performing startup but before allowing connections in."),
@@ -2526,7 +2526,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_startup_integrity_checks,
 		true, NULL, NULL
 	},
-	
+
 	{
 		{"debug_print_xlog_relation_change_info", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print relation change information"),
@@ -2534,9 +2534,9 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_print_xlog_relation_change_info,
-		false, NULL, NULL 
+		false, NULL, NULL
 	},
-				
+
 	{
 		{"debug_print_xlog_relation_change_info_skip_issues_only", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print relation change information only when there is a skip issue"),
@@ -2546,7 +2546,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_print_xlog_relation_change_info_skip_issues_only,
 		false, NULL, NULL
 	},
-				
+
 	{
 		{"debug_print_xlog_relation_change_info_backtrace_skip_issues", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Print relation change information backtrace when there is a skip issue"),
@@ -2556,7 +2556,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_print_xlog_relation_change_info_backtrace_skip_issues,
 		false, NULL, NULL
 	},
-			
+
 	{
 		{"test_appendonly_override", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("For testing purposes, change the default of the appendonly create table option."),
@@ -2576,7 +2576,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Test_print_direct_dispatch_info,
 		false, NULL, NULL
 	},
-		
+
 	{
 		{"debug_bitmap_print_insert", PGC_SUSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Print log messages for bitmap index insert routines (caution-- generate a lot of logs!)"),
@@ -2606,7 +2606,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_permit_persistent_metadata_update,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"gp_permit_relation_node_change", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Permit updates to gp_relation_node tables."),
@@ -2616,7 +2616,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_permit_relation_node_change,
 		false, NULL, NULL
 	},
-		
+
 	{
 		{"test_checksum_override", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("For testing purposes, change the default of the checksum create table option."),
@@ -2791,7 +2791,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_hash_index", PGC_SUSET, UNGROUPED,
 			gettext_noop("Specify whether hash indexes can be used. Deprecated and has no effect."),
 			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE 
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_hash_index,
 		false, gpvars_assign_gp_hash_index, NULL
@@ -2801,23 +2801,23 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_change_tracking", PGC_SUSET, UNGROUPED,
 			gettext_noop("Allows disabling change tracking."),
 			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE 
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_change_tracking,
 		true, NULL, NULL
 	},
 
-		
+
 	{
 		{"gp_persistent_skip_free_list", PGC_SUSET, UNGROUPED,
 			gettext_noop("Avoids using the persistent free list and always allocates a new tuple."),
 			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE 
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_persistent_skip_free_list,
 		false, NULL, NULL
 	},
-		
+
 	{
 		{"filerep_crc_on", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("enable adler 32 crc in filerep"),
@@ -3222,7 +3222,7 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_max_databases,
 		GP_MAX_DATABASES_DEFAULT, 8, 256, NULL, NULL
 	},
-	
+
 	{
 		{"gp_max_tablespaces", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Sets the maximum number of tablespaces."),
@@ -3231,7 +3231,7 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_max_tablespaces,
 		GP_MAX_TABLESPACES_DEFAULT, 8, 2048, NULL, NULL
 	},
-			
+
 	{
 		{"gp_max_filespaces", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Sets the maximum number of filespaces."),
@@ -3240,7 +3240,7 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_max_filespaces,
 		GP_MAX_FILESPACES_DEFAULT, 8, 256, NULL, NULL
 	},
-				
+
 	{
 		{"debug_dtm_action_delay_ms", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the debug DTM action delay in milliseconds."),
@@ -3395,7 +3395,7 @@ static struct config_int ConfigureNamesInt[] =
 		&max_statement_mem,
 		2048000, 32768, INT_MAX, NULL, NULL
 	},
-	
+
 	{
 		{"max_stack_depth", PGC_SUSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum stack depth, in kilobytes."),
@@ -4289,7 +4289,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashagg_spillbatch_min", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("(Obsolete) Minimum number of spill batches of HashAgg"),
 		 gettext_noop("Controlling number of spill batches, if too small, hashagg may respill"),
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL 
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_hashagg_spillbatch_min,
 		0, 0, 1000000, NULL, NULL
@@ -4299,7 +4299,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashagg_spillbatch_max", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("(Obsolete) Maximum number of spill batches of HashAgg"),
 		 gettext_noop("Controlling number of spill batches, if too big, hashagg spill I/O will be slow"),
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL 
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_hashagg_spillbatch_max,
 		0, 0, 1000000, NULL, NULL
@@ -4419,13 +4419,13 @@ static struct config_int ConfigureNamesInt[] =
         0,
 #else
         8192,
-#endif 
+#endif
             0, INT_MAX / 2, NULL, NULL
 	},
 
 	{
 		{"gp_vmem_protect_segworker_cache_limit", PGC_POSTMASTER, RESOURCES_MEM,
-			gettext_noop("Max virtual memory limit (in MB) for a segworker to be cachable."), 
+			gettext_noop("Max virtual memory limit (in MB) for a segworker to be cachable."),
 			NULL,
 		},
 		&gp_vmem_protect_gang_cache_limit,
@@ -4447,7 +4447,7 @@ static struct config_int ConfigureNamesInt[] =
 					  "aggregate computation will be rewritten based on the multi-phrase aggregation. "
 					  "The rest of grouping sets in the same query will not be rewritten."),
 		 NULL,
-		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE 
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_distinct_grouping_sets_threshold,
 		32, 0, 1024, NULL, NULL
@@ -4496,7 +4496,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&gp_resqueue_priority_inactivity_timeout,
 		2000, 500, INT_MAX, NULL, NULL
-	},	
+	},
 	{
 		{"gp_resqueue_priority_grouping_timeout", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("A backend gives up on finding a better group leader after this timeout (in ms)."),
@@ -4963,7 +4963,7 @@ static struct config_string ConfigureNamesString[] =
 		&log_min_messages_str,
 		"warning", assign_log_min_messages, NULL
 	},
-		
+
 	{
 		{"debug_persistent_print_level", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the persistent relation debug message levels that are logged."),
@@ -4987,7 +4987,7 @@ static struct config_string ConfigureNamesString[] =
 		&Debug_persistent_recovery_print_level_str,
 		"debug1", assign_debug_persistent_recovery_print_level, NULL
 	},
-		
+
 	{
 		{"debug_persistent_store_print_level", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the persistent relation store debug message levels that are logged."),
@@ -4999,7 +4999,7 @@ static struct config_string ConfigureNamesString[] =
 		&Debug_persistent_store_print_level_str,
 		"debug1", assign_debug_persistent_store_print_level, NULL
 	},
-	
+
 	{
 		{"debug_database_command_error_level", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Sets the database command debug message levels that are logged."),
@@ -5011,7 +5011,7 @@ static struct config_string ConfigureNamesString[] =
 		&Debug_database_command_print_level_str,
 		"log", assign_debug_database_command_print_level, NULL
 	},
-					
+
  	{
 		{"IntervalStyle", PGC_USERSET, CLIENT_CONN_LOCALE,
 			gettext_noop("Sets the display format for interval values."),
@@ -5021,7 +5021,7 @@ static struct config_string ConfigureNamesString[] =
 		&IntervalStyle_string,
 		"postgres", assign_IntervalStyle, show_IntervalStyle
 	},
-	
+
 	{
 		{"log_error_verbosity", PGC_SUSET, LOGGING_WHEN,
 			gettext_noop("Sets the verbosity of logged messages."),
@@ -5069,7 +5069,7 @@ static struct config_string ConfigureNamesString[] =
 		&log_timezone_string,
 		"UNKNOWN", assign_log_timezone, show_log_timezone
 	},
-	
+
 	{
 		{"DateStyle", PGC_USERSET, CLIENT_CONN_LOCALE,
 			gettext_noop("Sets the display format for date and time values."),
@@ -5462,7 +5462,7 @@ static struct config_string ConfigureNamesString[] =
 		&IdentFileName,
 		NULL, NULL, NULL
 	},
-	
+
 #ifdef USE_SSL
 	{
 		{"ssl_ciphers", PGC_POSTMASTER, CONN_AUTH_SECURITY,
@@ -5494,8 +5494,8 @@ static struct config_string ConfigureNamesString[] =
 		&external_pid_file,
 		NULL, assign_canonical_path, NULL
 	},
-	
-	
+
+
 	{
 		{"stats_temp_directory", PGC_SIGHUP, STATS_COLLECTOR,
 			gettext_noop("Writes temporary statistics files to the specified directory."),
@@ -6021,7 +6021,7 @@ build_guc_variables(void)
 	{
 	    Assert(config_group_names[i] != NULL);
 	}
-	Assert(config_group_names[___CONFIG_GROUP_COUNT] == NULL); 
+	Assert(config_group_names[___CONFIG_GROUP_COUNT] == NULL);
 
 	for (i = 0; ConfigureNamesBool[i].gen.name; i++)
 	{
@@ -7709,14 +7709,14 @@ set_config_option(const char *name, const char *value,
 				 name);
 		return true;
 	}
-	
+
     /*
 	 * Should we set reset/stacked values?	(If so, the behavior is not
 	 * transactional.)	This is done either when we get a default value from
 	 * the database's/user's/client's default settings or when we reset a
 	 * value to its default.
 	 */
-	makeDefault = changeVal && (source <= PGC_S_OVERRIDE) && 
+	makeDefault = changeVal && (source <= PGC_S_OVERRIDE) &&
 	    (value != NULL);
 
 	/*
@@ -7859,7 +7859,7 @@ set_config_option(const char *name, const char *value,
 										newval, name, conf->min, max_work_mem)));
 						return false;
 					}
-					
+
 					/*
 					 * If this is for "max_work_mem", its value has to be greater than or equal to
 					 * current work_mem setting.
@@ -10022,7 +10022,7 @@ static const char *
 assign_gp_log_format(const char *value, bool doit, GucSource source)
 {
 	int log_format = 0;
-	
+
 	if (pg_strcasecmp(value, "text") == 0)
 		log_format = 0;
 	else if (pg_strcasecmp(value, "csv") == 0)
@@ -10304,7 +10304,7 @@ assign_IntervalStyle(const char *newval, bool doit, GucSource source)
 	else
 		return NULL;
 	return newval;
-	
+
 }
 
 static const char *
@@ -10318,7 +10318,7 @@ show_IntervalStyle(void)
 	case INTSTYLE_ISO_8601:  return "ISO_8601";
 	};
 	return NULL;
-	
+
 }
 
 static const char *
@@ -10377,10 +10377,10 @@ assign_hashagg_compress_spill_files(const char *newval, bool doit, GucSource sou
 {
 	int i;
 	const char *val = newval;
-	
+
 	if (pg_strcasecmp(newval, "nothing") == 0)
 		val = "none";
-	
+
 	i = bfz_string_to_compression(val);
 	if (i == -1)
 		return NULL;			/* fail */
