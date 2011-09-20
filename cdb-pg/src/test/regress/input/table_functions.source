@@ -755,6 +755,16 @@ FROM sessionize_static(
 ORDER BY id, time; -- SUCCESS, qualified in function
 
 SELECT * 
+FROM (SELECT sessionize.id, sessionize."time", sessionize.sessionnum
+      FROM sessionize_static(TABLE( SELECT history.id, history."time"
+                                    FROM history
+                                    ORDER BY history.id, history."time"
+                                    SCATTER BY history.id),
+                             '00:01:00'::interval) sessionize
+      ORDER BY sessionize.id, sessionize."time") q
+ORDER BY 1, 2; -- SUCCESS, qualified in function
+
+SELECT * 
 FROM sessionize_dynamic( 
     TABLE 
     ( 

@@ -2489,6 +2489,37 @@ ORDER BY id, time; -- SUCCESS, qualified in function
 (18 rows)
 
 SELECT * 
+FROM (SELECT sessionize.id, sessionize."time", sessionize.sessionnum
+      FROM sessionize_static(TABLE( SELECT history.id, history."time"
+                                    FROM history
+                                    ORDER BY history.id, history."time"
+                                    SCATTER BY history.id),
+                             '00:01:00'::interval) sessionize
+      ORDER BY sessionize.id, sessionize."time") q
+ORDER BY 1, 2; -- SUCCESS, qualified in function
+ id |           time           | sessionnum 
+----+--------------------------+------------
+  1 | Sun Aug 21 10:15:02 2011 |          1
+  1 | Sun Aug 21 10:15:30 2011 |          1
+  1 | Mon Aug 22 10:15:04 2011 |          2
+  1 | Mon Aug 22 10:16:10 2011 |          3
+  2 | Sun Aug 21 10:15:02 2011 |          1
+  2 | Sun Aug 21 10:16:02 2011 |          1
+  2 | Sun Aug 21 22:15:02 2011 |          2
+  2 | Sun Aug 21 22:16:02 2011 |          2
+  3 | Fri Aug 19 19:05:13 2011 |          1
+  3 | Fri Aug 19 19:06:50 2011 |          2
+  3 | Fri Aug 19 19:07:35 2011 |          2
+  3 | Fri Aug 19 19:08:18 2011 |          2
+  3 | Fri Aug 19 19:09:07 2011 |          2
+  3 | Sat Aug 20 10:07:10 2011 |          3
+  3 | Sat Aug 20 10:07:35 2011 |          3
+  3 | Sat Aug 20 10:11:29 2011 |          4
+  3 | Sat Aug 20 10:17:10 2011 |          5
+  3 | Sat Aug 20 10:17:42 2011 |          5
+(18 rows)
+
+SELECT * 
 FROM sessionize_dynamic( 
     TABLE 
     ( 

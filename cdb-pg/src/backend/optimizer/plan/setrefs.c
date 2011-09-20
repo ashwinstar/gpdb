@@ -599,6 +599,13 @@ set_plan_refs(PlannerGlobal *glob, Plan *plan, const int rtoffset)
 			/* subrtable is no longer needed in the plan tree */
 			tplan->subrtable = NIL;
 
+			/* adjust for the new range table offset */
+			tplan->scan.scanrelid += rtoffset;
+			tplan->scan.plan.targetlist =
+				fix_scan_list(glob, tplan->scan.plan.targetlist, rtoffset);
+			tplan->scan.plan.qual =
+				fix_scan_list(glob, tplan->scan.plan.qual, rtoffset);
+
 			return plan;
 		}
 		case T_FunctionScan:
