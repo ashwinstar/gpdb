@@ -1427,10 +1427,17 @@ explain_outNode(StringInfo str,
 			}
 			break;
 		case T_TableFunctionScan:
-			{
-				/* Partitioning and ordering information */
-			}
-			break;
+		{
+			show_scan_qual(plan->qual,
+						   "Filter",
+						   ((Scan *) plan)->scanrelid,
+						   plan, outer_plan,
+						   str, indent, es);
+
+			/* Partitioning and ordering information */
+			
+		}
+		break;
 
 		case T_Unique:
 			show_motion_keys(plan,

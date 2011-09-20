@@ -155,7 +155,7 @@ static BitmapAppendOnlyScan *make_bitmap_appendonlyscan(List *qptlist,
 														Index scanrelid,
 														bool isAORow);
 static TableFunctionScan* make_tablefunction(List *tlist,
-											 List *scan_clauses,
+											 List *scan_quals,
 											 Plan *subplan,
 											 List *subrtable,
 											 Index scanrelid);
@@ -4583,7 +4583,7 @@ Window *make_window(PlannerInfo *root, List *tlist,
 
 static TableFunctionScan*
 make_tablefunction(List *tlist,
-				   List *scan_clauses,
+				   List *scan_quals,
 				   Plan *subplan,
 				   List *subrtable,
 				   Index scanrelid)
@@ -4598,7 +4598,7 @@ make_tablefunction(List *tlist,
 	plan->total_cost    = subplan->total_cost;
 	plan->total_cost   += 2 * plan->plan_rows;
 
-	plan->qual			= NIL;
+	plan->qual			= scan_quals;
 	plan->targetlist	= tlist;
 	plan->righttree		= NULL;
 
