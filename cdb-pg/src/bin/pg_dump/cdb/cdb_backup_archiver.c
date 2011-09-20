@@ -1207,6 +1207,12 @@ ahwrite(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH)
 				}
 				else
 				{
+					/* Flush the buffer if there is any data already */
+					if (ddboost_buf_data_length)
+					{
+						res = dd_write(ddboost_buf, size, ddboost_buf_data_length, AH);
+						ddboost_buf_data_length = 0;
+					}	
 					res = dd_write((void*) ptr, size, nmemb, AH);
 				}
 				
