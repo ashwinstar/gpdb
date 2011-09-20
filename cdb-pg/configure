@@ -4242,6 +4242,33 @@ $as_echo "no" >&6; }
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
 
+    #PGAC_PROG_CC_CFLAGS_OPT([-Wmissing-format-attribute])
+  # This was included in -Wall/-Wformat in older GCC versions
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking if $CC supports -Wformat-security" >&5
+$as_echo_n "checking if $CC supports -Wformat-security... " >&6; }
+pgac_save_CFLAGS=$CFLAGS
+CFLAGS="$pgac_save_CFLAGS -Wformat-security"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+else
+  CFLAGS="$pgac_save_CFLAGS"
+                    { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
   # Disable strict-aliasing rules; needed for gcc 3.3+
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking if $CC supports -fno-strict-aliasing" >&5
 $as_echo_n "checking if $CC supports -fno-strict-aliasing... " >&6; }
@@ -6980,6 +7007,9 @@ $as_echo "$as_me: WARNING:
 fi
 
 if test "$with_perl" = yes; then
+  if test -z "$PERL"; then
+    as_fn_error $? "Perl not found" "$LINENO" 5
+  fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for Perl archlibexp" >&5
 $as_echo_n "checking for Perl archlibexp... " >&6; }
@@ -16136,6 +16166,7 @@ $as_echo "$as_me: WARNING: *** link for $FILE -- please fix by hand" >&2;}
 # Update timestamp for pg_config.h (see Makefile.global)
 echo >src/include/stamp-h
  ;;
+    "src/interfaces/ecpg/include/ecpg_config.h":H) echo >src/interfaces/ecpg/include/stamp-h ;;
 
   esac
 done # for ac_tag
