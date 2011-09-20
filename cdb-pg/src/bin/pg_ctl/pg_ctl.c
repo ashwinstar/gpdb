@@ -446,6 +446,7 @@ test_postmaster_connection(bool do_checkpoint __attribute__((unused)))
 	static const char *backend_options = "'-c gp_session_role=utility'";
 
 	*portstr = '\0';
+	
 
 	/*
 	 * Look in post_opts for a -p switch.
@@ -572,6 +573,26 @@ test_postmaster_connection(bool do_checkpoint __attribute__((unused)))
 			else
 #endif
 				print_msg(".");
+
+
+			/*
+			 * our connection attempt failed.  
+			 * after two attempts check if the postmaster is still alive before sleeping.
+			 */
+			if (i > 1) 
+			{
+				pgpid_t pid = get_pgpid();
+				if (pid == 0)				/* no pid file */
+				{
+					write_stderr(_("%s: PID file \"%s\" does not exist\n"), progname, pid_file);
+					break;
+				}
+				if (! postmaster_is_alive((pid_t) pid))
+				{
+					write_stderr(_("%s: postmaster pid %ld not running\n"), progname, pid);
+					break;
+				}
+			}
 
 			pg_usleep(1000000); /* 1 sec */
 		}

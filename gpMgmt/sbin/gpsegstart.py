@@ -1,425 +1,552 @@
 #!/usr/bin/env python
+# Line too long - pylint: disable=C0301
+# Invalid name  - pylint: disable=C0103
 #
+# Copyright (c) EMC/Greenplum Inc 2011. All Rights Reserved.
 # Copyright (c) Greenplum Inc 2008. All Rights Reserved. 
 #
-#
-# Internal Use Function.
-#
-#
+"""
+Internal Use Function.
+"""
+
 # THIS IMPORT MUST COME FIRST
-#
-# import mainUtils FIRST to get python version check
-from gppylib.mainUtils import *
-import os, sys
+from gppylib.mainUtils import simple_main, addStandardLoggingAndHelpOptions
 
-from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
-
-import pickle, base64
+import os, pickle, base64
 
 from gppylib.gpparseopts import OptParser, OptChecker
 from gppylib import gparray, gplog
-from gppylib.commands import base, gp, pg, unix
-from gppylib.commands.gp import SEGMENT_TIMEOUT_DEFAULT
-from gppylib.commands.gp import *
-from gppylib.db import catalog, dbconn
-from gppylib import pgconf
-from gppylib.gpcoverage import GpCoverage
+from gppylib.commands import base, gp
 from gppylib.utils import parseKeyColonValueLines
 
+logger = gplog.get_default_logger()
 
-description = (""" 
+
+DESCRIPTION = """
 This utility is NOT SUPPORTED and is for internal-use only.
-
 Starts a set of one or more segment databases.
-""")
+"""
 
-_help = ["""
+HELP = ["""
 Utility should only be used by other GP utilities.  
 
 Return codes:
   0 - All segments started successfully
   1 - At least one segment didn't start successfully
-  2 - Fatal error to script during startup.  unknown state.
 
 """]
 
-logger = gplog.get_default_logger()
 
-#-------------------------------------------------------------------------
-class SegStartStatus:
 
-    def __init__(self,datadir,started,reason, reasonCode):
+
+class StartResult:
+    """
+    Recorded result information from an attempt to start one segment.
+    """
+
+    def __init__(self, datadir, started, reason, reasoncode):
         """
-        @param reasonCode one of the gp.SEGSTART_* values
+        @param datadir
+        @param started
+        @param reason
+        @param reasoncode one of the gp.SEGSTART_* values
         """
-        self.datadir=datadir
-        self.started=started
-        self.reason=reason
-        self.reasonCode = reasonCode
+        self.datadir    = datadir
+        self.started    = started
+        self.reason     = reason
+        self.reasoncode = reasoncode
     
     def __str__(self):
-        return "STATUS--DIR:%s--STARTED:%s--REASONCODE:%s--REASON:%s" % \
-                    (self.datadir,self.started,self.reasonCode,self.reason)
+        return "".join([
+                "STATUS", 
+                "--DIR:", str(self.datadir),
+                "--STARTED:", str(self.started),
+                "--REASONCODE:", str(self.reasoncode),
+                "--REASON:", str(self.reason)
+                ])
 
-#-------------------------------------------------------------------------    
+
+class OverallStatus:
+    """
+    Mapping and segment status information for all segments on this host.
+    """
+
+    def __init__(self, dblist):
+        """
+        Build the datadir->segment mapping and remember the original size.
+        Since segments which fail to start will be removed from the mapping, 
+        we later test the size of the map against the original size when
+        returning the appropriate status code to the caller.
+        """
+        self.dirmap          = dict([(seg.getSegmentDataDirectory(), seg) for seg in dblist])
+        self.original_length = len(self.dirmap)
+        self.results         = []
+        self.logger          = logger
+
+
+    def mark_failed(self, datadir, msg, reasoncode):
+        """
+        Mark a segment as failed during some startup process.
+        Remove the entry for the segment from dirmap.
+
+        @param datadir
+        @param msg
+        @param reasoncode one of the gp.SEGSTART_* constant values
+        """
+        self.logger.info("Marking failed %s, %s, %s" % (datadir, msg, reasoncode))
+        self.results.append( StartResult(datadir=datadir, started=False, reason=msg, reasoncode=reasoncode) )
+        del self.dirmap[datadir]
+
+
+    def remaining_items_succeeded(self):
+        """
+        Add results for all remaining items in our datadir->segment map.
+        """
+        for datadir in self.dirmap.keys():
+            self.results.append( StartResult(datadir=datadir, started=True, reason="Start Succeeded", reasoncode=gp.SEGSTART_SUCCESS ) )
+
+
+    def log_results(self):
+        """
+        Log info messages with our results
+        """
+        status = '\nCOMMAND RESULTS\n' + "\n".join([str(result) for result in self.results])
+        self.logger.info(status)
+
+
+    def exit_code(self):
+        """
+        Return an appropriate exit code: 0 if no failures, 1 if some segments failed to start.
+        """
+        if len(self.dirmap) != self.original_length:
+            return 1
+        return 0
+
+
+
 class GpSegStart:
-    ######
-    def __init__(self, dblist, gpversion, collation, mirroringMode, numContentsInCluster, timeout, pickledTransitionData, specialMode, wrapper, wrapper_args):
+    """
+    Logic to start segment servers on this host.
+    """
 
-        self.dblist = map(gparray.GpDB.initFromString, dblist)
-        self.mirroringMode = mirroringMode
-        self.expected_gpversion=gpversion
-        self.numContentsInCluster=numContentsInCluster
-        self.timeout = timeout
-        self.pickledTransitionData = pickledTransitionData
+    def __init__(self, dblist, gpversion, collation, mirroringMode, num_cids, timeout, pickledTransitionData, specialMode, wrapper, wrapper_args):
 
-        assert(specialMode in [None, 'upgrade', 'maintenance'])
-        self.specialMode = specialMode
-
+        # validate/store arguments
         #
-        # There was an issue with Linux that required the numWorkers to be 1,
-        # but that problem doesn't seem to exist any more. In order to
-        # assure proper startup of primary and mirror, we must start all
-        # segments on a node at the same time.
-        #
-        self.pool = base.WorkerPool(numWorkers=len(dblist))
-        self.expected_lc_collate=None
-        self.expected_lc_monetary=None
-        self.expected_lc_numeric=None
-        self.wrapper=wrapper
-        self.wrapper_args=wrapper_args
-        self.gphome=os.path.abspath(os.pardir)
-        
-        self.actual_gpversion=gp.GpVersion.local('local GP software version check',self.gphome)
-        if self.actual_gpversion != self.expected_gpversion:
+        self.dblist                = map(gparray.GpDB.initFromString, dblist)
+
+        expected_gpversion         = gpversion
+        actual_gpversion           = gp.GpVersion.local('local GP software version check', os.path.abspath(os.pardir))
+        if actual_gpversion != expected_gpversion:
             raise Exception("Local Software Version does not match what is expected.\n"
                             "The local software version is: '%s'\n"
                             "But we were expecting it to be: '%s'\n"
-                            "Please review and correct" % (self.actual_gpversion,self.expected_gpversion))
-                            
-        
-        collation_strings=collation.split(':')
+                            "Please review and correct" % (actual_gpversion, expected_gpversion))
+
+        collation_strings          = collation.split(':')
         if len(collation_strings) != 3:
             raise Exception("Invalid collation string specified!")
-        (self.expected_lc_collate,self.expected_lc_monetary,self.expected_lc_numeric)=collation_strings
-        pass
+        (self.expected_lc_collate, self.expected_lc_monetary, self.expected_lc_numeric) = collation_strings
 
-    def __markFailed(self, directoryToSegStartDataMap, results, dir, msg, reasonCode ):
+        self.mirroringMode         = mirroringMode
+        self.num_cids              = num_cids
+        self.timeout               = timeout
+        self.pickledTransitionData = pickledTransitionData
+
+        assert(specialMode in [None, 'upgrade', 'maintenance'])
+        self.specialMode           = specialMode
+
+        self.wrapper               = wrapper
+        self.wrapper_args          = wrapper_args
+
+        # initialize state
+        #
+        self.pool                  = base.WorkerPool(numWorkers=len(dblist))
+        self.logger                = logger
+        self.overall_status        = None
+
+
+    def __checkPostmasters(self, must_be_running):
         """
-        Mark a segment as failed during some startup process and remove
-          the entry for the segment from directoryToSegStartDataMap
-
-        @param reasonCode one of the gp.SEGSTART_* constant values
+        Check that segment postmasters have been started.
+        @param must_be_running True if postmasters must be running by now.
         """
+        self.logger.info("Checking segment postmasters... (must_be_running %s)" % must_be_running)
 
-        results.append(SegStartStatus(dir, False, msg, reasonCode))
-        del directoryToSegStartDataMap[dir]
+        for datadir in self.overall_status.dirmap.keys():
+            pid     = gp.read_postmaster_pidfile(datadir)
+            running = gp.check_pid(pid)
+            msg     = "Postmaster %s %srunning (pid %d)" % (datadir, "is " if running else "NOT ", pid)
+            self.logger.info(msg)
+
+            if must_be_running and not running:
+                reasoncode = gp.SEGSTART_ERROR_PG_CTL_FAILED
+                self.overall_status.mark_failed(datadir, msg, reasoncode)
 
 
-    def __validateDirectoriesAndSetupRecoveryStartup(self, directoryToSegStartDataMap, results):
+    def __validateDirectoriesAndSetupRecoveryStartup(self):
         """
         validate that the directories all exist and run recovery startup if needed
-
-        @param directoryToSegStartDataMap the directories to start.  Any failed ones will be removed from this map
-        @param results any failures will have segment statuses appended here
         """
-        for dir in directoryToSegStartDataMap.keys():
-            if os.path.isdir(dir):
-                if not os.path.exists(dir + '/pg_log'):
-                    os.mkdir(dir + '/pg_log')
+        self.logger.info("Validating directories...")
 
-                if os.path.exists(dir + '/postmaster.pid'):
-                    logger.warning("postmaster.pid file exists, checking if recovery startup required")
-                    res = gp.recovery_startup(dir)
-                    if res:
-                        self.__markFailed(directoryToSegStartDataMap, results, dir, res, gp.SEGSTART_ERROR_STOP_RUNNING_SEGMENT_FAILED)
+        for datadir in self.overall_status.dirmap.keys():
+            self.logger.info("Validating directory: %s" % datadir)
+
+            if os.path.isdir(datadir):
+                #
+                # segment datadir exists
+                #
+                pg_log = os.path.join(datadir, 'pg_log')
+                if not os.path.exists(pg_log):
+                    os.mkdir(pg_log)
+                    
+                postmaster_pid = os.path.join(datadir, 'postmaster.pid')
+                if os.path.exists(postmaster_pid):
+                    self.logger.warning("postmaster.pid file exists, checking if recovery startup required")
+
+                    msg = gp.recovery_startup(datadir)
+                    if msg:
+                        reasoncode = gp.SEGSTART_ERROR_STOP_RUNNING_SEGMENT_FAILED
+                        self.overall_status.mark_failed(datadir, msg, reasoncode)
+
             else:
-                logger.info("Segment data directory does not exist for: '%s'" % dir)
-                self.__markFailed(directoryToSegStartDataMap, results, dir, "segment data directory does not exist",
-                                    gp.SEGSTART_ERROR_DATA_DIRECTORY_DOES_NOT_EXIST)
+                #
+                # segment datadir does not exist
+                #
+                msg = "Segment data directory does not exist for: '%s'" % datadir
+                self.logger.warning(msg)
 
-    def __startSegments(self, directoryToSegStartDataMap, results):
+                reasoncode = gp.SEGSTART_ERROR_DATA_DIRECTORY_DOES_NOT_EXIST
+                self.overall_status.mark_failed(datadir, msg, reasoncode)
+
+
+    def __startSegments(self):
         """
         Start the segments themselves 
-
-        @param directoryToSegStartDataMap the directories to start.  Any failed ones will be removed from this map
-        @param results any failures will have segment statuses appended here
         """
+        self.logger.info("Starting segments... (mirroringMode %s)" % self.mirroringMode)
 
-        # this is the mirroring mode for the pre-conversion part of running
-        mirroringModeForStart = self.mirroringMode
-
-        if mirroringModeForStart == 'quiescent':
-            nowait = True
-        else:
-            nowait = False
-
-        logger.info("Starting segments...")
-        for dir, seg in directoryToSegStartDataMap.iteritems():
-            cmd=gp.SegmentStart("Starting seg at dir %s" % dir, seg,
-                                self.numContentsInCluster,
-                                mirroringModeForStart,
-                                noWait=nowait,
-                                timeout=self.timeout,
-                                specialMode=self.specialMode,
-                                wrapper=self.wrapper,
-                                wrapper_args=self.wrapper_args)
+        for datadir, seg in self.overall_status.dirmap.items():
+            cmd = gp.SegmentStart("Starting seg at dir %s" % datadir, 
+                                  seg,
+                                  self.num_cids,
+                                  self.mirroringMode,
+                                  noWait=(self.mirroringMode == 'quiescent'),
+                                  timeout=self.timeout,
+                                  specialMode=self.specialMode,
+                                  wrapper=self.wrapper,
+                                  wrapper_args=self.wrapper_args)
             self.pool.addCommand(cmd)
 
         self.pool.join()
 
         for cmd in self.pool.getCompletedItems():
-            res=cmd.get_results()
+            res = cmd.get_results()
             if res.rc != 0:
-                #TODO: read in last entries in startup.log
-                self.__markFailed(directoryToSegStartDataMap, results, cmd.segment.getSegmentDataDirectory(),
-                                  "PG_CTL failed.\nstdout:%s\nstderr:%s\n" % (res.stdout,res.stderr),
-                                   gp.SEGSTART_ERROR_PG_CTL_FAILED)
+
+                # we should also read in last entries in startup.log here
+                
+                datadir    = cmd.segment.getSegmentDataDirectory()
+                msg        = "PG_CTL failed.\nstdout:%s\nstderr:%s\n" % (res.stdout, res.stderr)
+                reasoncode = gp.SEGSTART_ERROR_PG_CTL_FAILED
+                self.overall_status.mark_failed(datadir, msg, reasoncode)
 
         self.pool.empty_completed_items()
 
-    def __checkLocaleAndConnect(self, directoryToSegStartDataMap, results):
 
-        if self.mirroringMode == 'quiescent':
-            logger.info("Awaiting segment startup and validating segments...")
-        else:
-            logger.info("Validating segments...")
 
+    def __convertSegments(self):
+        """
+        Inform segments of their role
+        """
+        if self.mirroringMode != 'quiescent':
+            self.logger.info("Not transitioning segments, mirroringMode is %s..." % self.mirroringMode)
+            return
+
+        self.logger.info("Transitioning segments, mirroringMode is %s..."  % self.mirroringMode)
+
+        transitionData = None
+        if self.pickledTransitionData is not None:
+            transitionData = pickle.loads(base64.urlsafe_b64decode(self.pickledTransitionData))
+
+        # send transition messages to the segments
         #
-        # we CANNOT validate using a psql connection because this may hang (see MPP-9974).
-        #    so we validate these items using a postmaster 'transition' message
+        for datadir, seg in self.overall_status.dirmap.items():
+            #
+            # This cmd will deliver a message to the postmaster using gp_primarymirror
+            # (look for the protocol message type PRIMARY_MIRROR_TRANSITION_REQUEST_CODE )
+            #
+            port = seg.getSegmentPort()
+            cmd  = gp.SendFilerepTransitionMessage.buildTransitionMessageCommand(transitionData, datadir, port)
+
+            self.pool.addCommand(cmd)
+        self.pool.join()
+
+
+        # examine the results from the segments
+        #
+        segments     = self.overall_status.dirmap.values()
+        dataDirToSeg = gparray.GpArray.getSegmentsGroupedByValue(segments, gparray.GpDB.getSegmentDataDirectory)
+        toStop       = []
+        cmds         = self.pool.getCompletedItems()
+
+        for cmd in cmds:
+            res = cmd.get_results()
+            if res.rc == 0:
+                continue
+
+            # some form of failure
+            #
+            stdoutFromFailure = res.stdout.replace("\n", " ").strip()
+            stderrFromFailure = res.stderr.replace("\n", " ").strip()
+            shouldStop = False
+
+            if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA:
+                msg        = "Segment did not respond to startup request; check segment logfile"
+                reasoncode = gp.SEGSTART_ERROR_SERVER_DID_NOT_RESPOND
+
+                # server crashed when sending response, should ensure it's stopped completely!
+                shouldStop = True
+
+            elif stderrFromFailure.endswith("failure: Error: MirroringFailure"):
+                msg        = "Failure in segment mirroring; check segment logfile"
+                reasoncode = gp.SEGSTART_ERROR_MIRRORING_FAILURE
+
+            elif stderrFromFailure.endswith("failure: Error: PostmasterDied"):
+                msg        = "Segment postmaster has exited; check segment logfile"
+                reasoncode = gp.SEGSTART_ERROR_POSTMASTER_DIED
+
+            elif stderrFromFailure.endswith("failure: Error: InvalidStateTransition"):
+                msg        = "Not a valid operation at this time; check segment logfile"
+                reasoncode = gp.SEGSTART_ERROR_INVALID_STATE_TRANSITION
+
+                # This should never happen, but if it does then we will ensure process is gone
+                shouldStop = True
+
+            elif stderrFromFailure.endswith("failure: Error: ServerIsInShutdown"):
+                msg        = "System is shutting down"
+                reasoncode = gp.SEGSTART_ERROR_SERVER_IS_IN_SHUTDOWN
+
+            else:
+                if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SOCKET:
+
+                    # Couldn't connect to server to do transition or got another problem
+                    # communicating, must make sure it's halted!
+                    shouldStop = True
+
+                msg        = "Start failed; check segment logfile.  \"%s%s\"" % (stdoutFromFailure, stderrFromFailure)
+                reasoncode = gp.SEGSTART_ERROR_OTHER
+
+            self.overall_status.mark_failed(cmd.dataDir, msg, reasoncode)
+
+            if shouldStop:
+                assert len(dataDirToSeg[cmd.dataDir]) == 1, "Multiple segments with dir %s" % cmd.dataDir
+                toStop.append( dataDirToSeg[cmd.dataDir][0] )
+
+
+        # ensure segments in a bad state are stopped
+        # 
+        for seg in toStop:
+            datadir, port = (seg.getSegmentDataDirectory(), seg.getSegmentPort())
+            
+            msg = "Stopping segment %s, %s because of failure sending transition" % (datadir, port)
+            self.logger.info(msg)
+
+            cmd = gp.SegmentStop('stop segment', datadir, mode="immediate")
+            cmd.run(validateAfter=False)
+            res = cmd.get_results()
+
+            if res.rc == 0:
+                self.logger.info("Stop of segment succeeded")
+            else:
+                stdoutFromFailure = res.stdout.replace("\n", " ").strip()
+                stderrFromFailure = res.stderr.replace("\n", " ").strip()
+                self.logger.info("Stop of segment failed: rc: %s\nstdout:%s\nstderr:%s" % \
+                                (res.rc, stdoutFromFailure, stderrFromFailure))
+            
+
+
+    def __checkLocaleAndConnect(self):
+        """
+        Check locale information of primaries.
+        """
+        self.logger.info("Validating segment locales...")
+
+        # ask each primary for its locale details
         #
         dataDirToCmd = {}
-        for datadir, seg in directoryToSegStartDataMap.iteritems():
+        for datadir, seg in self.overall_status.dirmap.items():
             if seg.isSegmentPrimary(True):
-                cmd = gp.SendFilerepTransitionStatusMessage("Check Status", "getCollationAndDataDirSettings",
-                                        seg.getSegmentDataDirectory(), seg.getSegmentPort())
+
+                # we CANNOT validate using a psql connection because this may hang (see MPP-9974).
+                #    so we validate these items using a postmaster 'transition' message
+                #
+                name      = "Check Status"
+                statusmsg = "getCollationAndDataDirSettings"
+                port      = seg.getSegmentPort()
+
+                self.logger.info("Checking %s, port %s" % (datadir, port))
+                cmd       = gp.SendFilerepTransitionStatusMessage(name, statusmsg, datadir, port)
+
                 dataDirToCmd[datadir] = cmd
                 self.pool.addCommand(cmd)
 
         self.pool.join()
 
-        for datadir, cmd in dataDirToCmd.iteritems():
+
+        # examine results from the primaries
+        #
+        for datadir, cmd in dataDirToCmd.items():
+            self.logger.info("Reviewing %s" % datadir)
+
             cmd.get_results()
             line = cmd.unpackSuccessLine()
             if line is None:
-                self.__markFailed(directoryToSegStartDataMap, results, datadir, "Unable to connect to server",
-                            gp.SEGSTART_ERROR_CHECKING_CONNECTION_AND_LOCALE_FAILED)
+
+                msg        = "Unable to connect to server"
+                reasoncode = gp.SEGSTART_ERROR_CHECKING_CONNECTION_AND_LOCALE_FAILED
+                self.overall_status.mark_failed(datadir, msg, reasoncode)
                 continue
-            dict = parseKeyColonValueLines(line)
+
+            dict_ = parseKeyColonValueLines(line)
 
             # verify was parsed, and we got all needed data
-            if dict is None or \
-                [s for s in ["datadir", "lc_collate", "lc_monetary", "lc_numeric"] if s not in dict]:
-                self.__markFailed(directoryToSegStartDataMap, results, datadir, "Invalid response from server",
-                            gp.SEGSTART_ERROR_CHECKING_CONNECTION_AND_LOCALE_FAILED)
+            if dict_ is None or \
+                [s for s in ["datadir", "lc_collate", "lc_monetary", "lc_numeric"] if s not in dict_]:
+
+                msg        = "Invalid response from server"
+                reasoncode = gp.SEGSTART_ERROR_CHECKING_CONNECTION_AND_LOCALE_FAILED
+                self.overall_status.mark_failed(datadir, msg, reasoncode)
                 continue
 
-            errorStr = ""
-            if dict["lc_collate"] != self.expected_lc_collate:
-                errorStr += "Segment's value of lc_collate does not match the master.\n" \
-                                " Master had value: '%s' while this segment has: '%s'\n" %\
-                                (self.expected_lc_collate,dict["lc_collate"])
-            if dict["lc_monetary"] != self.expected_lc_monetary:
-                errorStr += "Segment's value of lc_monetary does not match the master.\n"\
-                                  " Master had value: '%s' while this segment has: '%s'\n" %\
-                                (self.expected_lc_monetary,dict["lc_monetary"])
-            if dict["lc_numeric"] != self.expected_lc_numeric:
-                errorStr += "Segment's value of lc_numeric does not match the master.\n" \
-                                  " Master had value: '%s' while this segment has: '%s'\n" %\
-                                  (self.expected_lc_numeric,dict["lc_numeric"])
+            msg = ""
+            if dict_["lc_collate"] != self.expected_lc_collate:
+                msg += "".join(["Segment's value of lc_collate does not match the master.\n",
+                                " Master had value: '", str(self.expected_lc_collate), 
+                                "' while this segment has: '", str(dict_["lc_collate"]), "'\n"])
 
-            if not os.path.samefile(dict["datadir"], datadir):
-                errorStr += "Segment's data directory does not match. " \
-                              "Expected value %s, Actual value %s\n" % \
-                              (datadir, dict["datadir"])
+            if dict_["lc_monetary"] != self.expected_lc_monetary:
+                msg += "".join(["Segment's value of lc_monetary does not match the master.\n",
+                                " Master had value: '", str(self.expected_lc_monetary), 
+                                "' while this segment has: '", str(dict_["lc_monetary"]), "'\n"])
+
+            if dict_["lc_numeric"] != self.expected_lc_numeric:
+                msg += "".join(["Segment's value of lc_numeric does not match the master.\n",
+                                " Master had value: '", str(self.expected_lc_numeric), 
+                                "' while this segment has: '", str(dict_["lc_numeric"]), "'\n"])
+
+            if not os.path.samefile(dict_["datadir"], datadir):
+                msg += "".join(["Segment's data directory does not match. ",
+                                " Expected value: '", str(datadir), 
+                                "' Actual value: '", str(dict_["datadir"]), "'\n"])
+
+            if len(msg) > 0:
+                reasoncode = gp.SEGSTART_ERROR_CHECKING_CONNECTION_AND_LOCALE_FAILED
+                self.overall_status.mark_failed(datadir, msg, reasoncode)
+                            
 
 
-            if len(errorStr) > 0:
-                self.__markFailed(directoryToSegStartDataMap, results, datadir, errorStr,
-                            gp.SEGSTART_ERROR_CHECKING_CONNECTION_AND_LOCALE_FAILED)
-
-    def __convertSegments(self, directoryToSegStartDataMap, results, transitionData):
-
-        if self.mirroringMode == 'quiescent':
-
-            logger.info("Changing segments...")
-            for dir, seg in directoryToSegStartDataMap.iteritems():
-                #
-                # This cmd will deliver a message to the postmaster using gp_primarymirror
-                #
-                # (look for the protocol message type PRIMARY_MIRROR_TRANSITION_REQUEST_CODE )
-                #
-                cmd = gp.SendFilerepTransitionMessage.buildTransitionMessageCommand(transitionData,
-                                                                                    seg.getSegmentDataDirectory(),
-                                                                                    seg.getSegmentPort())
-                self.pool.addCommand(cmd)
-            self.pool.join()
-
-            dataDirToSeg = gparray.GpArray.getSegmentsGroupedByValue(\
-                                directoryToSegStartDataMap.values(), gparray.GpDB.getSegmentDataDirectory)
-
-            toStop = []
-            cmds=self.pool.getCompletedItems()
-            for cmd in cmds:
-                res=cmd.get_results()
-                if res.rc != 0:
-                    stdoutFromFailure = res.stdout.replace("\n", " ").strip()
-                    stderrFromFailure = res.stderr.replace("\n", " ").strip()
-
-                    shouldStop = False
-
-                    if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SERVER_DID_NOT_RETURN_DATA:
-                        reason = "Segment did not respond to startup request; check segment logfile"
-                        reasonCode = gp.SEGSTART_ERROR_SERVER_DID_NOT_RESPOND
-
-                        #
-                        # server crashed when sending response, should ensure it's stopped completely!
-                        #
-                        shouldStop = True
-
-                    elif stderrFromFailure.endswith("failure: Error: MirroringFailure"):
-                        reason = "Failure in segment mirroring; check segment logfile"
-                        reasonCode = gp.SEGSTART_ERROR_MIRRORING_FAILURE
-
-                    elif stderrFromFailure.endswith("failure: Error: PostmasterDied"):
-                        reason = "Segment postmaster has exited; check segment logfile"
-                        reasonCode = gp.SEGSTART_ERROR_POSTMASTER_DIED
-
-                    elif stderrFromFailure.endswith("failure: Error: InvalidStateTransition"):
-                        reason = "Not a valid operation at this time; check segment logfile"
-                        reasonCode = gp.SEGSTART_ERROR_INVALID_STATE_TRANSITION
-
-                        #
-                        # This should never happen, but if it does then we will ensure process is gone
-                        #
-                        shouldStop = True
-
-                    elif stderrFromFailure.endswith("failure: Error: ServerIsInShutdown"):
-                        reason = "System is shutting down"
-                        reasonCode = gp.SEGSTART_ERROR_SERVER_IS_IN_SHUTDOWN
-
-                    else:
-
-                        if res.rc == gp.SendFilerepTransitionMessage.TRANSITION_ERRCODE_ERROR_SOCKET:
-                            #
-                            # Couldn't connect to server to do transition or got another problem
-                            #     communicating, must make sure it's halted!
-                            #
-                            shouldStop = True
-
-                        reason = "Start failed; check segment logfile.  \"%s%s\"" % (stdoutFromFailure, stderrFromFailure)
-                        reasonCode = gp.SEGSTART_ERROR_OTHER
-
-                    self.__markFailed(directoryToSegStartDataMap, results, cmd.dataDir, reason, reasonCode)
-
-                    if shouldStop:
-                        assert len(dataDirToSeg[cmd.dataDir]) == 1, "Multiple segments with dir %s" % cmd.dataDir
-                        toStop.append(dataDirToSeg[cmd.dataDir][0])
-
-            #
-            # 
-            #
-            for seg in toStop:
-                logger.info("Stopping segment %s, %s because of failure sending transition" % \
-                                (seg.getSegmentDataDirectory(), seg.getSegmentPort()))
-                cmd=gp.SegmentStop('stop segment', seg.getSegmentDataDirectory(), mode="immediate")
-                cmd.run(validateAfter=False)
-                res = cmd.get_results()
-                if res.rc == 0:
-                    logger.info("Stop of segment succeeded")
-                else:
-                    stdoutFromFailure = res.stdout.replace("\n", " ").strip()
-                    stderrFromFailure = res.stderr.replace("\n", " ").strip()
-                    logger.info("Stop of segment failed: rc: %s\nstdout:%s\nstderr:%s" % \
-                                    (res.rc, stdoutFromFailure, stderrFromFailure))
-            
-
-    ######
     def run(self):
-        results=[]
-        failures=False
-        directoryToSegStartDataMap = {}
-        if self.pickledTransitionData is None:
-            transitionData = None
-        else:
-            transitionData = pickle.loads(base64.urlsafe_b64decode(self.pickledTransitionData))
+        """
+        Logic to start the segments.
+        """
 
-        for seg in self.dblist:
-            directoryToSegStartDataMap[seg.getSegmentDataDirectory()] = seg
-        numToStart = len(directoryToSegStartDataMap)
+        # we initialize an overall status object which maintains a mapping 
+        # from each segment's data directory to the segment object as well 
+        # as a list of specific success/failure results.
+        #
+        self.overall_status = OverallStatus(self.dblist)
 
-        self.__validateDirectoriesAndSetupRecoveryStartup(directoryToSegStartDataMap, results)
-        self.__startSegments(directoryToSegStartDataMap, results)
-        self.__convertSegments(directoryToSegStartDataMap, results, transitionData)
-        self.__checkLocaleAndConnect(directoryToSegStartDataMap, results)
+        # Each of the next four steps executes operations which may cause segment
+        # details to be removed from the mapping and recorded as failures.
+        #
+        self.__validateDirectoriesAndSetupRecoveryStartup()
+        self.__startSegments()
 
-        # any remaining items succeeded!
-        for datadir,segmentToStart in directoryToSegStartDataMap.iteritems():
-            results.append(SegStartStatus(datadir,True,"Start Succeeded", gp.SEGSTART_SUCCESS ))
+        # Being paranoid, we frequently check for postmaster failures.
+        # The postmasters should be running by now unless we're in quiescent mode
+        #
+        must_be_running = (self.mirroringMode != 'quiescent')
+        self.__checkPostmasters(must_be_running)
 
-        #Log the results!
-        status = '\nCOMMAND RESULTS\n'
-        for result in results:
-            status += str(result) + "\n"
-        logger.info(status)
+        self.__convertSegments()
+        self.__checkPostmasters(must_be_running=True)
 
-        # return exit code depending on if there were failures
-        return 1 if len(directoryToSegStartDataMap) != numToStart else 0
+        self.__checkLocaleAndConnect()
+        self.__checkPostmasters(must_be_running=True)
+
+        # At this point any segments remaining in the mapping are assumed to
+        # have successfully started.
+        #
+        self.overall_status.remaining_items_succeeded()
+        self.overall_status.log_results()
+        return self.overall_status.exit_code()
+
     
+
     def cleanup(self):
+        """
+        Cleanup worker pool resources
+        """
         if self.pool:
             self.pool.haltWork()
     
-    #-------------------------------------------------------------------------
+
     @staticmethod
     def createParser():
+        """
+        Create parser expected by simple_main
+        """
+
         parser = OptParser(option_class=OptChecker,
-                    description=' '.join(description.split()),
-                     version='%prog version $Revision: #12 $')
-        parser.setHelp(_help)
+                           description=' '.join(DESCRIPTION.split()),
+                           version='%prog version main build dev')
+        parser.setHelp(HELP)
 
-    #
-    # Note that this mirroringmode parameter should only be either mirrorless or quiescent.
-    #   If quiescent then it is implied that there is pickled transition data that will be
-    #   provided (using -p) to immediately convert to a primary or a mirror.
-    #
-
+        #
+        # Note that this mirroringmode parameter should only be either mirrorless or quiescent.
+        #   If quiescent then it is implied that there is pickled transition data that will be
+        #   provided (using -p) to immediately convert to a primary or a mirror.
+        #
         addStandardLoggingAndHelpOptions(parser, includeNonInteractiveOption=False)
 
         parser.add_option("-C", "--collation", type="string",
                             help="values for lc_collate, lc_monetary, lc_numeric separated by :")
-        parser.add_option("-D","--dblist",dest="dblist", action="append", type="string")
-        parser.add_option("-M","--mirroringmode",dest="mirroringMode", type="string")
-        parser.add_option("-p","--pickledTransitionData",dest="pickledTransitionData", type="string")
-        parser.add_option("-V", "--gp-version", dest="gpversion",metavar="GP_VERSION",
+        parser.add_option("-D", "--dblist", dest="dblist", action="append", type="string")
+        parser.add_option("-M", "--mirroringmode", dest="mirroringMode", type="string")
+        parser.add_option("-p", "--pickledTransitionData", dest="pickledTransitionData", type="string")
+        parser.add_option("-V", "--gp-version", dest="gpversion", metavar="GP_VERSION",
                             help="expected software version")
-        parser.add_option("-n", "--numsegments", dest="numsegments",
+        parser.add_option("-n", "--numsegments", dest="num_cids",
                           help="number of distinct content ids in cluster")
-        parser.add_option("-t", "--timeout", dest="timeout", type="int", default=SEGMENT_TIMEOUT_DEFAULT,
+        parser.add_option("-t", "--timeout", dest="timeout", type="int", default=gp.SEGMENT_TIMEOUT_DEFAULT,
                           help="seconds to wait")
         parser.add_option('-U', '--specialMode', type='choice', choices=['upgrade', 'maintenance'],
                            metavar='upgrade|maintenance', action='store', default=None,
                            help='start the instance in upgrade or maintenance mode')
-        parser.add_option('', '--wrapper', dest="wrapper", default=None, type='string');
-        parser.add_option('', '--wrapper-args', dest="wrapper_args", default=None, type='string');
+        parser.add_option('', '--wrapper', dest="wrapper", default=None, type='string')
+        parser.add_option('', '--wrapper-args', dest="wrapper_args", default=None, type='string')
         
         return parser
 
     @staticmethod
     def createProgram(options, args):
+        """
+        Create program expected by simple_main
+        """
         return GpSegStart(options.dblist,
-                                    options.gpversion,
-                                    options.collation,
-                                    options.mirroringMode,
-                                    options.numsegments,
-                                    options.timeout,
-                                    options.pickledTransitionData,
-                                    options.specialMode,
-                                    options.wrapper,
-                                    options.wrapper_args)
+                          options.gpversion,
+                          options.collation,
+                          options.mirroringMode,
+                          options.num_cids,
+                          options.timeout,
+                          options.pickledTransitionData,
+                          options.specialMode,
+                          options.wrapper,
+                          options.wrapper_args)
 
 #------------------------------------------------------------------------- 
 if __name__ == '__main__':
     mainOptions = { 'setNonuserOnToolLogger':True}
-    simple_main( GpSegStart.createParser, GpSegStart.createProgram, mainOptions)
+    simple_main( GpSegStart.createParser, GpSegStart.createProgram, mainOptions )

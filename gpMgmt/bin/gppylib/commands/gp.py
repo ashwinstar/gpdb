@@ -1292,14 +1292,6 @@ def read_postmaster_pidfile(datadir):
     return pid
 
 
-
-
-    f = open(file,'r')
-    pid = int(f.readline().strip())
-    f.close()
-    return pid
-
-
 def pausePg(db):
     """
     This function will pause an instance of postgres which is part of a GPDB
