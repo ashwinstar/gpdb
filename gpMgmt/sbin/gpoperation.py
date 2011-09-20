@@ -37,7 +37,7 @@ except Exception, e:
         # to RemoteOperation as well. See Pyro.
 
         pickled_ret = pickle.dumps(e)       # Pickle exception for stdout transmission
-    except pickle.PicklingError, f:
+    except Exception, f:
         # AK: By design, our gppylib custom exceptions should not cause PicklingErrors.
         # Thus, it's appropriate to call out PicklingErrors as serious issues.
 
