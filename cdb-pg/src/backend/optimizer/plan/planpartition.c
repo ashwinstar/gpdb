@@ -1017,7 +1017,7 @@ static void AddPartitionMatch(PartitionMatchInfo *pmi, Oid partOid)
 
 	if (gp_log_dynamic_partition_pruning)
 	{
-		elog(LOG, "matched partition %s", get_rel_name(partOid));
+		elog(DEBUG2, "matched partition %s", get_rel_name(partOid));
 	}
 
 	Oid *value = hash_search(pmi->matchingPartitionOids, &partOid,
